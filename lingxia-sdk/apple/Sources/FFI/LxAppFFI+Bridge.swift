@@ -169,6 +169,26 @@ extension LxApp {
         }
     }
 
+    nonisolated static func showSurface(id: RustStr, appid: RustStr) -> Bool {
+        let idString = id.toString()
+        let appIdString = appid.toString()
+        guard !idString.isEmpty, !appIdString.isEmpty else { return false }
+
+        return executeOnMain {
+            LxAppSurface.show(id: idString, appId: appIdString)
+        }
+    }
+
+    nonisolated static func hideSurface(id: RustStr, appid: RustStr) -> Bool {
+        let idString = id.toString()
+        let appIdString = appid.toString()
+        guard !idString.isEmpty, !appIdString.isEmpty else { return false }
+
+        return executeOnMain {
+            LxAppSurface.hide(id: idString, appId: appIdString)
+        }
+    }
+
     nonisolated static func exitApp() -> Bool {
         return executeOnMain {
             #if os(macOS)

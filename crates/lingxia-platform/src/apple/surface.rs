@@ -1,5 +1,5 @@
 use super::app::Platform;
-use super::ffi::{close_surface, present_surface};
+use super::ffi::{close_surface, hide_surface, present_surface, show_surface};
 use crate::error::PlatformError;
 use crate::traits::ui::{SurfacePosition, SurfacePresenter, SurfaceRequest};
 
@@ -40,6 +40,28 @@ impl SurfacePresenter for Platform {
         } else {
             Err(PlatformError::Platform(format!(
                 "Failed to close surface: id={}, appid={}",
+                id, app_id
+            )))
+        }
+    }
+
+    fn show_surface(&self, app_id: &str, id: &str) -> Result<(), PlatformError> {
+        if show_surface(id, app_id) {
+            Ok(())
+        } else {
+            Err(PlatformError::Platform(format!(
+                "Failed to show surface: id={}, appid={}",
+                id, app_id
+            )))
+        }
+    }
+
+    fn hide_surface(&self, app_id: &str, id: &str) -> Result<(), PlatformError> {
+        if hide_surface(id, app_id) {
+            Ok(())
+        } else {
+            Err(PlatformError::Platform(format!(
+                "Failed to hide surface: id={}, appid={}",
                 id, app_id
             )))
         }

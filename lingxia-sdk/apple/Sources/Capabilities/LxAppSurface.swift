@@ -307,6 +307,55 @@ enum LxAppSurface {
         return true
     }
 
+    static func show(id: String, appId: String) -> Bool {
+        guard let entry = entries[id], entry.appId == appId, let window = entry.window else {
+            os_log("show: surface not found id=%{public}@ app=%{public}@", log: log, type: .error, id, appId)
+            return false
+        }
+        // Defense in depth — JS-side already short-circuits on no-op.
+        if window.isVisible { return true }
+        if let parentWindow = entry.parentWindow, window.parent == nil {
+            parentWindow.addChildWindow(window, ordered: .above)
+        }
+        window.makeKeyAndOrderFront(nil)
+        // Wake any native overlay components on this page (video player,
+        // media swiper, ...) — their views were hidden and playback paused
+        // when hide() ran; this routes the active lifecycle so they re-show
+        // and the components that were playing auto-resume.
+        if let webView = entry.hostView?.webView {
+            MacNativeBridge.notifyPageActive(for: webView)
+        }
+        // Fire the page-side onShow lifecycle so JS observes the visibility
+        // transition. Skipped for URL surfaces (no page instance).
+        if !entry.pageInstanceId.isEmpty {
+            _ = notifyPageInstanceVisible(entry.pageInstanceId)
+        }
+        return true
+    }
+
+    static func hide(id: String, appId: String) -> Bool {
+        guard let entry = entries[id], entry.appId == appId, let window = entry.window else {
+            os_log("hide: surface not found id=%{public}@ app=%{public}@", log: log, type: .error, id, appId)
+            return false
+        }
+        if !window.isVisible { return true }
+        // orderOut keeps the window's contentView/web view/page mount intact;
+        // a subsequent show() simply reorders it back to the front. We still
+        // fire the page-side onHide lifecycle so JS can pause timers etc.
+        entry.parentWindow?.removeChildWindow(window)
+        window.orderOut(nil)
+        // Pause and visually hide any native overlay components on this page.
+        // The NativeComponentManager records playback intent so the matching
+        // show() can auto-resume what was playing.
+        if let webView = entry.hostView?.webView {
+            MacNativeBridge.notifyPageInactive(for: webView)
+        }
+        if !entry.pageInstanceId.isEmpty {
+            _ = notifyPageInstanceHidden(entry.pageInstanceId, "hidden")
+        }
+        return true
+    }
+
     private static func pinToEdges(_ child: NSView, in parent: NSView) {
         NSLayoutConstraint.activate([
             child.leadingAnchor.constraint(equalTo: parent.leadingAnchor),
@@ -553,11 +602,17 @@ enum LxAppSurface {
         let appId: String
         let contentView = UIView()
         private let contentFrame: CGRect
+        /// True when the surface was opened with both ratios ≈ 1.0. Drives
+        /// status-bar hiding + corner-radius / backdrop adjustments so the
+        /// surface visually covers the system status area, matching the
+        /// Android immersive treatment.
+        private let isFullScreen: Bool
 
-        init(id: String, appId: String, contentFrame: CGRect) {
+        init(id: String, appId: String, contentFrame: CGRect, isFullScreen: Bool) {
             self.id = id
             self.appId = appId
             self.contentFrame = contentFrame
+            self.isFullScreen = isFullScreen
             super.init(nibName: nil, bundle: nil)
             modalPresentationStyle = .overFullScreen
         }
@@ -566,22 +621,37 @@ enum LxAppSurface {
             nil
         }
 
+        // Hide the iOS status bar (time, signal, battery) when the surface
+        // is full-screen so its content actually covers the area, instead of
+        // showing through behind the system glyphs.
+        override var prefersStatusBarHidden: Bool { isFullScreen }
+        override var prefersHomeIndicatorAutoHidden: Bool { isFullScreen }
+        override var preferredScreenEdgesDeferringSystemGestures: UIRectEdge {
+            isFullScreen ? .all : []
+        }
+
         override func viewDidLoad() {
             super.viewDidLoad()
-            view.backgroundColor = UIColor.black.withAlphaComponent(0.45)
+            view.backgroundColor = isFullScreen
+                ? UIColor.clear
+                : UIColor.black.withAlphaComponent(0.45)
             let tap = UITapGestureRecognizer(target: self, action: #selector(closeFromBackdrop))
             tap.delegate = self
             view.addGestureRecognizer(tap)
 
             contentView.frame = contentFrame
             contentView.backgroundColor = .white
-            contentView.layer.cornerRadius = LxAppSurface.transientCornerRadius
+            contentView.layer.cornerRadius = isFullScreen ? 0 : LxAppSurface.transientCornerRadius
             contentView.layer.masksToBounds = true
             contentView.isUserInteractionEnabled = true
             view.addSubview(contentView)
         }
 
         @objc private func closeFromBackdrop() {
+            // Full-screen surfaces have no exposed backdrop — disable the
+            // tap-to-close affordance so users don't accidentally dismiss by
+            // tapping anywhere on the page.
+            if isFullScreen { return }
             _ = LxAppSurface.close(id: id, appId: appId, reason: "user")
         }
 
@@ -632,7 +702,18 @@ enum LxAppSurface {
             position: position,
             containerFrame: containerFrame
         )
-        let controller = PopupViewController(id: id, appId: appId, contentFrame: contentFrame)
+        // Same criterion as Android: both ratios at (near) 1.0 means "fill the
+        // whole screen including the status bar area".
+        let isFullScreen = widthRatio.isFinite
+            && heightRatio.isFinite
+            && widthRatio >= 0.999
+            && heightRatio >= 0.999
+        let controller = PopupViewController(
+            id: id,
+            appId: appId,
+            contentFrame: contentFrame,
+            isFullScreen: isFullScreen
+        )
         let window = UIWindow(windowScene: windowScene)
         window.frame = containerFrame
         window.windowLevel = .alert + 1
@@ -729,6 +810,54 @@ enum LxAppSurface {
         entry.window.rootViewController = nil
         entry.window.isHidden = true
         _ = onSurfaceClosed(appId, id, closeReason(reason))
+        return true
+    }
+
+    static func show(id: String, appId: String) -> Bool {
+        guard let entry = entries[id], entry.appId == appId else {
+            os_log("show: surface not found id=%{public}@ app=%{public}@", log: log, type: .error, id, appId)
+            return false
+        }
+        // Defense in depth — the Rust JS-side closure already short-circuits
+        // on no-op show/hide so this is currently unreachable from JS callers,
+        // but guard here so future SDK-internal callers don't double-fire the
+        // page lifecycle.
+        if !entry.window.isHidden { return true }
+        entry.window.isHidden = false
+        entry.window.makeKeyAndVisible()
+        // Wake any native overlay components on this page (video player,
+        // media swiper, ...) — their views were hidden and playback paused
+        // when hide() ran; this routes the active lifecycle so they re-show
+        // and components that were playing auto-resume.
+        if let webView = entry.hostView?.webView {
+            NativeBridge.notifyPageActive(for: webView)
+        }
+        // Fire the page-side onShow lifecycle so JS observes the visibility
+        // transition. Skipped for URL surfaces (no page instance).
+        if !entry.pageInstanceId.isEmpty {
+            _ = notifyPageInstanceVisible(entry.pageInstanceId)
+        }
+        return true
+    }
+
+    static func hide(id: String, appId: String) -> Bool {
+        guard let entry = entries[id], entry.appId == appId else {
+            os_log("hide: surface not found id=%{public}@ app=%{public}@", log: log, type: .error, id, appId)
+            return false
+        }
+        if entry.window.isHidden { return true }
+        // isHidden=true keeps the rootViewController/page mount alive so a
+        // subsequent show() restores the same state instead of remounting.
+        // We still fire onHide so JS can pause timers / save state, and route
+        // an inactive page lifecycle to NativeBridge so video / swiper / etc.
+        // overlay components pause and hide their views.
+        entry.window.isHidden = true
+        if let webView = entry.hostView?.webView {
+            NativeBridge.notifyPageInactive(for: webView)
+        }
+        if !entry.pageInstanceId.isEmpty {
+            _ = notifyPageInstanceHidden(entry.pageInstanceId, "hidden")
+        }
         return true
     }
 
@@ -862,6 +991,18 @@ enum LxAppSurface {
         _ = id
         _ = appId
         _ = reason
+        return false
+    }
+
+    static func show(id: String, appId: String) -> Bool {
+        _ = id
+        _ = appId
+        return false
+    }
+
+    static func hide(id: String, appId: String) -> Bool {
+        _ = id
+        _ = appId
         return false
     }
 }
