@@ -162,6 +162,52 @@ impl LxApp {
         }
     }
 
+    pub fn show_surface(&self, id: &str) -> Result<(), LxAppError> {
+        let id = id.trim();
+        if id.is_empty() {
+            return Err(LxAppError::InvalidParameter(
+                "surface id must not be empty".to_string(),
+            ));
+        }
+        let is_known = self
+            .state
+            .lock()
+            .ok()
+            .map(|state| state.surfaces.lock().unwrap().contains_key(id))
+            .unwrap_or(false);
+        if !is_known {
+            return Err(LxAppError::InvalidParameter(format!(
+                "unknown surface: {id}"
+            )));
+        }
+        self.runtime
+            .show_surface(&self.appid, id)
+            .map_err(Into::into)
+    }
+
+    pub fn hide_surface(&self, id: &str) -> Result<(), LxAppError> {
+        let id = id.trim();
+        if id.is_empty() {
+            return Err(LxAppError::InvalidParameter(
+                "surface id must not be empty".to_string(),
+            ));
+        }
+        let is_known = self
+            .state
+            .lock()
+            .ok()
+            .map(|state| state.surfaces.lock().unwrap().contains_key(id))
+            .unwrap_or(false);
+        if !is_known {
+            return Err(LxAppError::InvalidParameter(format!(
+                "unknown surface: {id}"
+            )));
+        }
+        self.runtime
+            .hide_surface(&self.appid, id)
+            .map_err(Into::into)
+    }
+
     pub fn forget_surface(&self, id: &str) -> bool {
         let id = id.trim();
         if id.is_empty() {

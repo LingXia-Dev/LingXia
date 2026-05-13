@@ -92,6 +92,18 @@ pub trait SurfacePresenter: Send + Sync + 'static {
             "surface close is not supported on this platform".to_string(),
         ))
     }
+
+    fn show_surface(&self, _app_id: &str, _id: &str) -> Result<(), PlatformError> {
+        Err(PlatformError::NotSupported(
+            "surface show is not supported on this platform".to_string(),
+        ))
+    }
+
+    fn hide_surface(&self, _app_id: &str, _id: &str) -> Result<(), PlatformError> {
+        Err(PlatformError::NotSupported(
+            "surface hide is not supported on this platform".to_string(),
+        ))
+    }
 }
 
 pub trait UIUpdate: Send + Sync + 'static {

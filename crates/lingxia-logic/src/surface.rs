@@ -8,6 +8,7 @@ use rong::{
 };
 use rong_event::{Emitter, EmitterExt, EventEmitter, EventKey};
 use serde_json::Value;
+use std::cell::{Cell, RefCell};
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -29,11 +30,38 @@ struct JSSurfaceClosed {
     reason: String,
 }
 
+#[derive(Debug, Clone, IntoJSObj)]
+struct JSSurfaceVisibility {
+    id: String,
+    kind: String,
+    /// Which side initiated the visibility change. "opener" when the caller
+    /// holds the opener-side surface, "page" when the page-side surface drove
+    /// it. Lets analytics / logging distinguish without having to wire extra
+    /// state through the caller.
+    source: String,
+}
+
 #[js_export]
 struct JSSurface {
     id: String,
+    kind: String,
     message_port: JSObject,
-    close_emitter: EventEmitter,
+    /// Bus for surface lifecycle events: "show", "hide", "close". Single
+    /// emitter shared across event names — EventKey discriminates listeners.
+    event_emitter: EventEmitter,
+    /// Pointer to the sibling surface (opener ↔ page). When opener calls
+    /// `show()/hide()` the event must also fire on the page-side Surface JS
+    /// object so observers there see the visibility transition, and vice
+    /// versa. Filled after both instances exist; before that it is None.
+    peer: RefCell<Option<JSObject>>,
+    /// Last-known visibility, mirrored from native. Reads through the JS
+    /// `visible` property; we update both this cell and the JS-visible field
+    /// in lockstep so consumers can branch on `surface.visible` declaratively.
+    visible: Cell<bool>,
+    /// True until close() fires. Becomes false in the close emit path so
+    /// post-close `show()`/`hide()` are caught early instead of bouncing off
+    /// the platform layer with an opaque error.
+    alive: Cell<bool>,
 }
 
 #[js_class]
@@ -96,13 +124,16 @@ impl JSSurface {
         F: FnMut(&JSValue),
     {
         mark_fn(self.message_port.as_js_value());
-        self.close_emitter.gc_mark_with(mark_fn);
+        if let Some(peer) = self.peer.borrow().as_ref() {
+            mark_fn(peer.as_js_value());
+        }
+        self.event_emitter.gc_mark_with(mark_fn);
     }
 }
 
 impl Emitter for JSSurface {
     fn get_event_emitter(&self) -> EventEmitter {
-        self.close_emitter.clone()
+        self.event_emitter.clone()
     }
 }
 
@@ -146,39 +177,65 @@ async fn open_surface(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
     let (opener_port, page_port) = crate::message_port::pair(&ctx)?;
     let surface = Class::lookup::<JSSurface>(&ctx)?.instance(JSSurface {
         id: opened_surface.id.clone(),
+        kind: kind.clone(),
         message_port: opener_port,
-        close_emitter: EventEmitter::default(),
+        event_emitter: EventEmitter::default(),
+        peer: RefCell::new(None),
+        visible: Cell::new(true),
+        alive: Cell::new(true),
     });
     surface.set("id", opened_surface.id)?;
-    surface.set("kind", kind)?;
+    surface.set("kind", kind.clone())?;
+    surface.set("visible", true)?;
+    surface.set("alive", true)?;
     attach_surface_methods(
         &ctx,
         &surface,
         lxapp.clone(),
         surface_id.clone(),
         surface.clone(),
+        "opener",
     )?;
     let mut page_surface_for_close = None;
     if let Some(page_svc) = page_svc.as_ref() {
+        let page_kind = surface_kind_label(opened_surface.kind).to_string();
         let page_surface = Class::lookup::<JSSurface>(&ctx)?.instance(JSSurface {
             id: surface_id.clone(),
+            kind: page_kind.clone(),
             message_port: page_port,
-            close_emitter: EventEmitter::default(),
+            event_emitter: EventEmitter::default(),
+            peer: RefCell::new(None),
+            visible: Cell::new(true),
+            alive: Cell::new(true),
         });
         page_surface.set("id", surface_id.clone())?;
-        page_surface.set("kind", surface_kind_label(opened_surface.kind))?;
+        page_surface.set("kind", page_kind)?;
+        page_surface.set("visible", true)?;
+        page_surface.set("alive", true)?;
         attach_surface_methods(
             &ctx,
             &page_surface,
             lxapp.clone(),
             surface_id.clone(),
             page_surface.clone(),
+            "page",
         )?;
         page_svc.bind_surface(page_surface.clone()).map_err(|err| {
             unregister_closed_sender(&surface_id);
             let _ = lxapp.close_surface(&surface_id, "failed");
             surface_error(rong::error::E_INTERNAL, "surface_open_failed", err)
         })?;
+        // Link the two surface objects so visibility events fired on one also
+        // fire on the other. Borrow scope is tight so we never hold a borrow
+        // across the JSObject.clone() call.
+        {
+            let opener_inner = surface.borrow::<JSSurface>()?;
+            *opener_inner.peer.borrow_mut() = Some(page_surface.clone());
+        }
+        {
+            let page_inner = page_surface.borrow::<JSSurface>()?;
+            *page_inner.peer.borrow_mut() = Some(surface.clone());
+        }
         page_surface_for_close = Some(page_surface);
     }
     let surface_for_close = surface.clone();
@@ -209,6 +266,7 @@ fn attach_surface_methods(
     lxapp: Arc<LxApp>,
     surface_id: String,
     surface_ref: JSObject,
+    side: &'static str,
 ) -> JSResult<()> {
     let close_lxapp = lxapp.clone();
     let close_id = surface_id.clone();
@@ -221,6 +279,53 @@ fn attach_surface_methods(
                 lxapp.close_surface(&id, "programmatic").map_err(|err| {
                     surface_error(rong::error::E_INTERNAL, "surface_close_failed", err)
                 })?;
+                Ok(())
+            })
+        })?,
+    )?;
+
+    let show_lxapp = lxapp.clone();
+    let show_id = surface_id.clone();
+    let show_self = surface_ref.clone();
+    surface.set(
+        "show",
+        JSFunc::new(ctx, move |ctx: JSContext| {
+            let lxapp = show_lxapp.clone();
+            let id = show_id.clone();
+            let self_obj = show_self.clone();
+            Promise::from_future(&ctx, None, async move {
+                if !should_change_visible(&self_obj, true)? {
+                    return Ok(());
+                }
+                lxapp.show_surface(&id).map_err(|err| {
+                    surface_error(rong::error::E_INTERNAL, "surface_show_failed", err)
+                })?;
+                // Emit AFTER the platform call resolves so `await surface.show()`
+                // returning implies listeners have been notified. Only fires on
+                // state change so consumers don't see duplicate events.
+                let _ = mark_visible(&self_obj, true, side);
+                Ok(())
+            })
+        })?,
+    )?;
+
+    let hide_lxapp = lxapp.clone();
+    let hide_id = surface_id.clone();
+    let hide_self = surface_ref.clone();
+    surface.set(
+        "hide",
+        JSFunc::new(ctx, move |ctx: JSContext| {
+            let lxapp = hide_lxapp.clone();
+            let id = hide_id.clone();
+            let self_obj = hide_self.clone();
+            Promise::from_future(&ctx, None, async move {
+                if !should_change_visible(&self_obj, false)? {
+                    return Ok(());
+                }
+                lxapp.hide_surface(&id).map_err(|err| {
+                    surface_error(rong::error::E_INTERNAL, "surface_hide_failed", err)
+                })?;
+                let _ = mark_visible(&self_obj, false, side);
                 Ok(())
             })
         })?,
@@ -244,24 +349,46 @@ fn attach_surface_methods(
         })?,
     )?;
 
-    let close_surface = surface_ref;
+    let on_close_surface = surface_ref.clone();
     surface.set(
         "onClose",
         JSFunc::new(ctx, move |handler: JSFunc| {
-            add_close_listener(&close_surface, handler)
+            add_event_listener_for(&on_close_surface, "close", handler)
+        })?,
+    )?;
+
+    let on_show_surface = surface_ref.clone();
+    surface.set(
+        "onShow",
+        JSFunc::new(ctx, move |handler: JSFunc| {
+            add_event_listener_for(&on_show_surface, "show", handler)
+        })?,
+    )?;
+
+    let on_hide_surface = surface_ref;
+    surface.set(
+        "onHide",
+        JSFunc::new(ctx, move |handler: JSFunc| {
+            add_event_listener_for(&on_hide_surface, "hide", handler)
         })?,
     )?;
 
     Ok(())
 }
 
-fn add_close_listener(surface: &JSObject, handler: JSFunc) -> JSResult<JSFunc> {
+fn add_event_listener_for(
+    surface: &JSObject,
+    event_name: &str,
+    handler: JSFunc,
+) -> JSResult<JSFunc> {
     let target = surface.clone();
     let ctx = target.context();
     let handler_for_off = handler.clone();
+    let name_owned = event_name.to_string();
+    let name_for_off = name_owned.clone();
     <JSSurface as EmitterExt>::add_event_listener(
         This(target.clone()),
-        EventKey::String("close".to_string()),
+        EventKey::String(name_owned),
         handler,
         false,
         false,
@@ -269,13 +396,96 @@ fn add_close_listener(surface: &JSObject, handler: JSFunc) -> JSResult<JSFunc> {
     JSFunc::new(&ctx, move || {
         <JSSurface as EmitterExt>::remove_event_listener(
             This(target.clone()),
-            EventKey::String("close".to_string()),
+            EventKey::String(name_for_off.clone()),
             handler_for_off.clone(),
         )
     })
 }
 
+fn should_change_visible(surface: &JSObject, visible: bool) -> JSResult<bool> {
+    let inner = surface.borrow::<JSSurface>()?;
+    Ok(inner.alive.get() && inner.visible.get() != visible)
+}
+
+/// Push a visibility change through one surface object: if it represents a real
+/// state transition, update the cached flag + JS-visible property on this side
+/// AND the peer, then emit `show` / `hide` on both. Idempotent: a no-op state
+/// transition is silent (no event, no extra property writes).
+fn mark_visible(surface: &JSObject, visible: bool, source: &str) -> JSResult<()> {
+    let (id, kind, peer, changed) = {
+        let inner = surface.borrow::<JSSurface>()?;
+        if !inner.alive.get() {
+            return Ok(());
+        }
+        let changed = inner.visible.get() != visible;
+        if changed {
+            inner.visible.set(visible);
+        }
+        let peer = inner.peer.borrow().clone();
+        (inner.id.clone(), inner.kind.clone(), peer, changed)
+    };
+    if !changed {
+        return Ok(());
+    }
+    surface.set("visible", visible)?;
+    emit_visibility(surface, &id, &kind, visible, source)?;
+    if let Some(peer_obj) = peer {
+        let peer_changed = {
+            let inner = peer_obj.borrow::<JSSurface>()?;
+            // Peer should already be in sync with us via this same call from
+            // the originating side; guard anyway so a future native-triggered
+            // path that only updates one side still leaves both consistent.
+            let was = inner.visible.get();
+            if was != visible {
+                inner.visible.set(visible);
+            }
+            was != visible
+        };
+        if peer_changed {
+            peer_obj.set("visible", visible)?;
+        }
+        // Always emit on the peer when self transitioned, even if peer's flag
+        // was already in sync — observers on the peer should see the event in
+        // lockstep with observers on self.
+        emit_visibility(&peer_obj, &id, &kind, visible, source)?;
+    }
+    Ok(())
+}
+
+fn emit_visibility(
+    surface: &JSObject,
+    id: &str,
+    kind: &str,
+    visible: bool,
+    source: &str,
+) -> JSResult<()> {
+    let ctx = surface.context();
+    let detail = JSSurfaceVisibility {
+        id: id.to_string(),
+        kind: kind.to_string(),
+        source: source.to_string(),
+    };
+    let value = JSValue::from_rust(&ctx, detail);
+    let event_name = if visible { "show" } else { "hide" };
+    <JSSurface as EmitterExt>::do_emit(
+        This(surface.clone()),
+        EventKey::String(event_name.to_string()),
+        Rest(vec![value]),
+    )?;
+    Ok(())
+}
+
 fn emit_close(surface: &JSObject, event: &JSSurfaceClosed) -> JSResult<()> {
+    // Mark closed: alive→false, visible→false. This pair of writes is what
+    // lets `surface.alive` / `surface.visible` remain a reliable source of
+    // truth for declarative consumers across the close transition.
+    {
+        let inner = surface.borrow::<JSSurface>()?;
+        inner.alive.set(false);
+        inner.visible.set(false);
+    }
+    let _ = surface.set("alive", false);
+    let _ = surface.set("visible", false);
     let ctx = surface.context();
     let value = JSValue::from_rust(&ctx, event.clone());
     <JSSurface as EmitterExt>::do_emit(
