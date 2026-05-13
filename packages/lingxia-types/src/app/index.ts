@@ -198,9 +198,34 @@ export interface SurfaceClosedEvent {
   reason: SurfaceCloseReason;
 }
 
+/**
+ * Detail payload for `onShow` / `onHide` events. `source` identifies which
+ * Surface object initiated the visibility change so observers can
+ * distinguish self-driven transitions from peer-driven ones (e.g. an opener
+ * UI that wants to update its own button state only when the page side
+ * toggled visibility).
+ */
+export interface SurfaceVisibilityEvent {
+  id: string;
+  kind: 'popup' | 'window';
+  source: 'opener' | 'page';
+}
+
 export interface Surface {
   readonly id: string;
   readonly kind: 'popup' | 'window';
+  /**
+   * Last-known visibility, kept in sync with the native side via show/hide
+   * events. False once the surface has been closed. Safe to bind into
+   * declarative UI; for event-driven updates subscribe via `onShow`/`onHide`.
+   */
+  readonly visible: boolean;
+  /**
+   * True until `close()` fires. After close the surface is detached and the
+   * page instance is being torn down; further `show()` / `hide()` calls will
+   * reject.
+   */
+  readonly alive: boolean;
   /**
    * Sends a message to the other side of a page surface.
    *
@@ -210,7 +235,34 @@ export interface Surface {
   postMessage(message: unknown): void;
   onMessage(handler: (message: unknown) => void): () => void;
   onClose(handler: (event: SurfaceClosedEvent) => void): () => void;
+  /**
+   * Fires when the surface transitions to visible, regardless of whether
+   * `show()` was called on this side or on the peer. Returns an unsubscribe
+   * function. Only fires on real state changes — calling `show()` on an
+   * already-visible surface is a no-op for listeners.
+   */
+  onShow(handler: (event: SurfaceVisibilityEvent) => void): () => void;
+  /**
+   * Fires when the surface transitions to hidden, regardless of which side
+   * triggered it. Returns an unsubscribe function. Only fires on real state
+   * changes.
+   */
+  onHide(handler: (event: SurfaceVisibilityEvent) => void): () => void;
   close(): Promise<void>;
+  /**
+   * Toggle the surface to visible without tearing it down. The page instance
+   * and its state survive a hide / show round-trip — only close() actually
+   * destroys the surface and fires the onClose listener. Idempotent: calling
+   * on an already-visible surface resolves without firing `onShow`.
+   */
+  show(): Promise<void>;
+  /**
+   * Hide the surface without destroying it. The page instance stays mounted,
+   * so a subsequent show() restores the same scroll position, form input,
+   * and JS state. Hidden surfaces still receive postMessage but are not
+   * visible to the user. Idempotent.
+   */
+  hide(): Promise<void>;
 }
 
 export interface PageMessagePort {

@@ -152,6 +152,11 @@ export interface WindowSurfaceSize {
   height?: number;
 }
 
+/**
+ * Window-kind surfaces are macOS-only. Android, iOS, and Harmony reject
+ * `kind: 'window'` at open() and surface a `surface_open_failed` error;
+ * use `PopupSurfaceOptions` for cross-platform code.
+ */
 export type WindowSurfaceOptions = SurfaceTargetOptions & {
   kind: 'window';
   size?: WindowSurfaceSize;
