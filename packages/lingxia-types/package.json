@@ -1,6 +1,6 @@
 {
   "name": "@lingxia/types",
-  "version": "0.6.3",
+  "version": "0.6.5",
   "description": "TypeScript type definitions for the LingXia JS API",
   "repository": {
     "type": "git",

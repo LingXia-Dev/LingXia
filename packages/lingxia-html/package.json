@@ -1,6 +1,6 @@
 {
   "name": "@lingxia/html",
-  "version": "0.6.3",
+  "version": "0.6.5",
   "private": false,
   "description": "LingXia HTML runtime for lxapp pages",
   "type": "module",
@@ -21,7 +21,7 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@lingxia/page-runtime": "0.6.3"
+    "@lingxia/page-runtime": "0.6.5"
   },
   "devDependencies": {
     "@lingxia/page-runtime": "file:../lingxia-page-runtime",

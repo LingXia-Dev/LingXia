@@ -4,6 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(realpath "$SCRIPT_DIR/../..")"
 WORKSPACE_CARGO_TOML="$ROOT_DIR/Cargo.toml"
+INSTALL_SH="$ROOT_DIR/install.sh"
 
 usage() {
   cat <<'EOF'
@@ -22,6 +23,7 @@ Options:
 This updates:
   - workspace.package.version in Cargo.toml
   - workspace crate dependency versions in Cargo.toml
+  - installer version in install.sh
   - package versions under packages/*
   - internal @lingxia/* package dependency versions in published package.json files
 
@@ -113,6 +115,39 @@ else:
 PY
 }
 
+update_install_sh() {
+  python3 - "$INSTALL_SH" "$VERSION" "$DRY_RUN" <<'PY'
+from pathlib import Path
+import re
+import sys
+
+path = Path(sys.argv[1])
+version = sys.argv[2]
+dry_run = sys.argv[3] == "1"
+text = path.read_text()
+
+new_text, count = re.subn(
+    r'(^VERSION=")[^"]+(")',
+    rf"\g<1>{version}\2",
+    text,
+    count=1,
+    flags=re.MULTILINE,
+)
+
+if count != 1:
+    print(f"error: expected exactly one VERSION assignment in {path}, found {count}", file=sys.stderr)
+    sys.exit(1)
+
+if dry_run:
+    print(f"would update {path}")
+    print(f"  install.sh VERSION -> {version}")
+else:
+    path.write_text(new_text)
+    print(f"updated {path}")
+    print(f"  install.sh VERSION -> {version}")
+PY
+}
+
 update_package_json() {
   local package_json="$1"
   node - "$package_json" "$VERSION" "$DRY_RUN" <<'NODE'
@@ -158,6 +193,7 @@ NODE
 }
 
 update_workspace_cargo
+update_install_sh
 
 while IFS= read -r package_json; do
   update_package_json "$package_json"
