@@ -75,11 +75,11 @@ export class WebViewManager {
     return CoreWebViewManager.getWebViewInfo(webtag);
   }
 
-  static setWebViewVisibility(appId: string, path: string, visible: boolean): void {
+  static setWebViewVisibility(appId: string, path: string, visible: boolean): boolean {
     const webtag = toWebTag(appId, path);
     const info = CoreWebViewManager.getWebViewInfo(webtag);
     if (!info) {
-      return;
+      return false;
     }
 
     CoreWebViewManager.setWebViewVisibility(appId, path, visible);
@@ -89,6 +89,16 @@ export class WebViewManager {
     } else {
       pauseAllComponents(webtag);
     }
+    return true;
+  }
+
+  static notifySurfaceState(
+    appId: string,
+    path: string,
+    active: boolean,
+    pageInstanceId?: string
+  ): boolean {
+    return CoreWebViewManager.notifySurfaceState(appId, path, active, pageInstanceId);
   }
 
   static pauseAllComponentsByAppId(appId: string): void {
@@ -101,10 +111,6 @@ export class WebViewManager {
         pauseAllComponents(info.webtag);
       }
     });
-  }
-
-  static notifySurfaceState(appId: string, path: string, active: boolean, pageInstanceId?: string): void {
-    CoreWebViewManager.notifySurfaceState(appId, path, active, pageInstanceId);
   }
 
   static getAllWebViewInfos(): WebViewInfo[] {

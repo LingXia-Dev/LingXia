@@ -3,7 +3,7 @@ import { webview } from '@kit.ArkWeb';
 import { window, display } from '@kit.ArkUI';
 import { common } from '@kit.AbilityKit';
 import { LxApp } from './LxApp';
-import { LxAppSurface, SurfaceLayoutConfig } from './APIs/LxAppSurface';
+import { LxAppSurface } from './APIs/LxAppSurface';
 import {
   findWebview,
   toWebTag,
@@ -18,7 +18,6 @@ import {
 import { LingXiaWebView } from './LingXiaWebView';
 import { NavigationBar, NavigationBarState, NAVBAR_TOTAL_HEIGHT } from './NavigationBar';
 import { NavigationButton, CapsuleButton } from './LxAppDrawables';
-import { notifyPageInstanceMounted, notifyPageInstanceVisible } from 'liblingxia.so';
 import { TabBar } from './TabBar';
 import { TabBarPosition, TabBarItem, UiEventType } from 'liblingxia.so';
 import liblingxia, { TabBarState, getNavigationBarState, isPullDownRefreshEnabled, onPageShow, onLxappEvent } from 'liblingxia.so';
@@ -488,34 +487,9 @@ export struct LxAppContainer {
 
     switch (action) {
       case 'create':
-        const activePresentation: SurfaceLayoutConfig | null = LxAppSurface.getActiveLayout();
-        if (activePresentation) {
-          const dynamicPresentationLogical = toWebTag(activePresentation.appId, activePresentation.path);
-          if (info.webtag === dynamicPresentationLogical || info.webtag.startsWith(`${dynamicPresentationLogical}#`)) {
-            this.webViewComponents.set(info.webtag, info.controller);
-            this.webViewKeys = Array.from(this.webViewComponents.keys());
-            if (!this.presentationPreviousWebTag && this.currentWebTag && this.currentWebTag !== info.webtag) {
-              this.presentationPreviousWebTag = this.currentWebTag;
-            }
-            this.currentWebTag = info.webtag;
-            if (this.keepAliveTags.indexOf(info.webtag) >= 0) {
-              this.keepAliveTags = this.keepAliveTags.filter((tag: string) => tag !== info.webtag);
-            }
-            this.applyOverlayState(
-              info.webtag,
-              true,
-              activePresentation.widthVp,
-              activePresentation.heightVp,
-              activePresentation.position as number,
-              activePresentation.bottomInset,
-              activePresentation.fullWidth,
-              activePresentation.fullHeight
-            );
-            notifyPageInstanceMounted(activePresentation.pageInstanceId);
-            notifyPageInstanceVisible(activePresentation.pageInstanceId);
-            hilog.info(DOMAIN, TAG, `Attach presentation webtag on create: ${info.webtag}`);
-            break;
-          }
+        if (this.isActiveSurfaceWebView(info.webtag)) {
+          hilog.info(DOMAIN, TAG, `Surface WebView is owned by SurfaceManager: ${info.webtag}`);
+          break;
         }
         this.webViewComponents.set(info.webtag, info.controller);
         this.webViewKeys = Array.from(this.webViewComponents.keys());
@@ -530,6 +504,10 @@ export struct LxAppContainer {
         }
         break;
       case 'destroy':
+        if (this.isActiveSurfaceWebView(info.webtag) && this.webViewComponents.get(info.webtag) === undefined) {
+          hilog.info(DOMAIN, TAG, `Surface WebView destroyed outside container: ${info.webtag}`);
+          break;
+        }
         this.webViewComponents.delete(info.webtag);
         this.webViewKeys = Array.from(this.webViewComponents.keys());
 
@@ -556,60 +534,10 @@ export struct LxAppContainer {
           }
           break;
       case 'surface_show':
-        {
-          const extracted = extractWebTag(info.webtag);
-          if (extracted && extracted.appId === this.appId) {
-            this.webViewComponents.set(info.webtag, info.controller);
-            this.webViewKeys = Array.from(this.webViewComponents.keys());
-            if (!this.presentationPreviousWebTag && this.currentWebTag && this.currentWebTag !== info.webtag) {
-              this.presentationPreviousWebTag = this.currentWebTag;
-            }
-            this.currentWebTag = info.webtag;
-            if (this.keepAliveTags.indexOf(info.webtag) >= 0) {
-              this.keepAliveTags = this.keepAliveTags.filter((tag: string) => tag !== info.webtag);
-            }
-
-            const layout: SurfaceLayoutConfig | null = LxAppSurface.getActiveLayout();
-            if (layout && layout.appId === this.appId) {
-              this.applyOverlayState(
-                info.webtag,
-                true,
-                layout.widthVp,
-                layout.heightVp,
-                layout.position as number,
-                layout.bottomInset,
-                layout.fullWidth,
-                layout.fullHeight
-              );
-              notifyPageInstanceMounted(layout.pageInstanceId);
-              notifyPageInstanceVisible(layout.pageInstanceId);
-              hilog.info(
-                DOMAIN,
-                TAG,
-                `Overlay style set for ${info.webtag}: w=${layout.widthVp} h=${layout.heightVp} pos=${layout.position}`
-              );
-            } else {
-              this.applyOverlayState(info.webtag, true);
-            }
-
-            hilog.info(DOMAIN, TAG, `Popup overlay active for ${info.webtag}`);
-          }
-        }
+        hilog.info(DOMAIN, TAG, `Ignoring legacy surface_show for ${info.webtag}; SurfaceManager owns page surface overlay`);
         break;
       case 'surface_hide':
-        {
-          const extracted = extractWebTag(info.webtag);
-          if (extracted && extracted.appId === this.appId) {
-            this.webViewComponents.set(info.webtag, info.controller);
-            this.webViewKeys = Array.from(this.webViewComponents.keys());
-            if (this.keepAliveTags.indexOf(info.webtag) < 0) {
-              this.keepAliveTags = [...this.keepAliveTags, info.webtag];
-            }
-            this.pageShowTriggered.delete(info.webtag);
-            this.applyOverlayState(info.webtag, false);
-            hilog.info(DOMAIN, TAG, `Popup overlay cleared for ${info.webtag}`);
-          }
-        }
+        hilog.info(DOMAIN, TAG, `Ignoring legacy surface_hide for ${info.webtag}; SurfaceManager owns page surface overlay`);
         break;
     }
   }
@@ -1504,6 +1432,52 @@ export struct LxAppContainer {
       return false;
     }
     return this.getLogicalWebTag(webTag) === this.getLogicalWebTag(this.presentationOverlayWebTag);
+  }
+
+  private isActiveSurfaceWebView(webTag: string): boolean {
+    const layout = LxAppSurface.getActiveLayout();
+    if (layout && layout.appId === this.appId && layout.pageInstanceId) {
+      const exactTag = `${toWebTag(layout.appId, layout.path)}#${layout.pageInstanceId}`;
+      if (webTag === exactTag || webTag.startsWith(`${exactTag}#`)) {
+        return true;
+      }
+    }
+    return this.isIsolatedPageInstanceWebView(webTag);
+  }
+
+  private isIsolatedPageInstanceWebView(webTag: string): boolean {
+    const extracted = extractWebTag(webTag);
+    if (!extracted || extracted.appId !== this.appId) {
+      return false;
+    }
+    const logicalPrefix = `${toWebTag(extracted.appId, extracted.path)}#`;
+    if (!webTag.startsWith(logicalPrefix)) {
+      return false;
+    }
+    const suffix = webTag.substring(logicalPrefix.length);
+    const sessionSeparator = suffix.indexOf('#');
+    if (sessionSeparator <= 0) {
+      return false;
+    }
+    const pageInstanceId = suffix.substring(0, sessionSeparator);
+    return this.looksLikePageInstanceId(pageInstanceId);
+  }
+
+  private looksLikePageInstanceId(value: string): boolean {
+    if (value.length < 32 || value.length > 36) {
+      return false;
+    }
+    for (let i = 0; i < value.length; i++) {
+      const code = value.charCodeAt(i);
+      const isDigit = code >= 48 && code <= 57;
+      const isLowerHex = code >= 97 && code <= 102;
+      const isUpperHex = code >= 65 && code <= 70;
+      const isDash = code === 45;
+      if (!isDigit && !isLowerHex && !isUpperHex && !isDash) {
+        return false;
+      }
+    }
+    return true;
   }
 
   private getRenderVisibility(webTag: string): Visibility {

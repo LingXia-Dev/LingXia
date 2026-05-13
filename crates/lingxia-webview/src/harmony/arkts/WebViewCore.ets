@@ -481,12 +481,12 @@ export class WebViewManager {
    * Notify UI that a WebView is being reused by the surface.
    * When `active` is true the base container should hide the WebView; when false it should restore it.
    */
-  static notifySurfaceState(appId: string, path: string, active: boolean, pageInstanceId?: string) {
+  static notifySurfaceState(appId: string, path: string, active: boolean, pageInstanceId?: string): boolean {
     const logicalTag = toWebTag(appId, path);
     const webViewInfos = WebViewManager.findSurfaceWebViewInfos(logicalTag, pageInstanceId);
     if (webViewInfos.length === 0) {
       hilog.warn(DOMAIN, TAG, `notifySurfaceState: WebView not found for ${logicalTag}`);
-      return;
+      return false;
     }
 
     webViewInfos.forEach((webViewInfo: WebViewInfo) => {
@@ -500,24 +500,38 @@ export class WebViewManager {
     });
 
     hilog.info(DOMAIN, TAG, `notifySurfaceState for ${logicalTag}`);
+    return true;
   }
 
   private static findSurfaceWebViewInfos(logicalTag: string, pageInstanceId?: string): WebViewInfo[] {
-    const direct = WebViewManager.webViewInfos.get(logicalTag);
-    if (direct) {
-      return [direct];
-    }
-
-    const prefix = pageInstanceId && pageInstanceId.length > 0
+    const exactTag = pageInstanceId && pageInstanceId.length > 0
       ? `${logicalTag}#${pageInstanceId}`
-      : `${logicalTag}#`;
+      : '';
     const matches: WebViewInfo[] = [];
     WebViewManager.webViewInfos.forEach((info: WebViewInfo, tag: string) => {
-      if (tag === logicalTag || tag.startsWith(prefix)) {
+      if (tag === logicalTag || (exactTag.length > 0 && (tag === exactTag || tag.startsWith(`${exactTag}#`)))) {
         matches.push(info);
       }
     });
-    return matches;
+    if (matches.length > 0 || exactTag.length === 0) {
+      return matches;
+    }
+
+    const fallbackPrefix = `${logicalTag}#`;
+    const fallbackMatches: WebViewInfo[] = [];
+    WebViewManager.webViewInfos.forEach((info: WebViewInfo, tag: string) => {
+      if (tag.startsWith(fallbackPrefix)) {
+        fallbackMatches.push(info);
+      }
+    });
+    if (fallbackMatches.length > 0) {
+      hilog.warn(
+        DOMAIN,
+        TAG,
+        `findSurfaceWebViewInfos: fallback matched ${fallbackMatches.length} WebView(s) for ${logicalTag}, pageInstanceId=${pageInstanceId}`
+      );
+    }
+    return fallbackMatches;
   }
 
   /**

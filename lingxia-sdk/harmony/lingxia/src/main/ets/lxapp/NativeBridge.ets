@@ -329,6 +329,14 @@ class NativeBridge {
       return LxAppSurface.close(id, appId, reason);
     });
 
+    this.register('showSurface', (id: string, appId: string): boolean => {
+      return LxAppSurface.show(id, appId);
+    });
+
+    this.register('hideSurface', (id: string, appId: string): boolean => {
+      return LxAppSurface.hide(id, appId);
+    });
+
     // Update TabBar APIs
     this.register('updateTabBarUI', (appId: string): boolean => {
       try {

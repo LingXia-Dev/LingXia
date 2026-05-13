@@ -34,6 +34,16 @@ impl SurfacePresenter for Platform {
         lingxia_webview::platform::harmony::tsfn::call_arkts("closeSurface", &[id, app_id, reason])
             .map_err(|e| PlatformError::Platform(format!("Failed to close surface: {e}")))
     }
+
+    fn show_surface(&self, app_id: &str, id: &str) -> Result<(), PlatformError> {
+        lingxia_webview::platform::harmony::tsfn::call_arkts("showSurface", &[id, app_id])
+            .map_err(|e| PlatformError::Platform(format!("Failed to show surface: {e}")))
+    }
+
+    fn hide_surface(&self, app_id: &str, id: &str) -> Result<(), PlatformError> {
+        lingxia_webview::platform::harmony::tsfn::call_arkts("hideSurface", &[id, app_id])
+            .map_err(|e| PlatformError::Platform(format!("Failed to hide surface: {e}")))
+    }
 }
 
 fn double_arg(value: f64) -> String {
