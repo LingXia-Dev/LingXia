@@ -39,6 +39,13 @@ internal object AndroidSecureStore {
     private val lock = Any()
     private val secureRandom = SecureRandom()
 
+    // In-process master key cache. Reads/writes are serialized via `lock`,
+    // so the cache itself doesn't need extra synchronization beyond visibility.
+    // Caching avoids re-unwrapping on every encrypt/decrypt — which on API < 23
+    // also suppresses the keystore daemon's CACERT_<alias> warning spam (the
+    // wrapped key is RSA self-signed and has no CA cert slot to read).
+    @Volatile private var cachedMasterKey: SecretKey? = null
+
     fun readValueBase64(storageKey: String): String? {
         val normalizedKey = normalizeKey(storageKey)
         val context = requireContext()
@@ -183,11 +190,14 @@ internal object AndroidSecureStore {
     }
 
     private fun getOrCreateMasterKey(context: Context, prefs: SharedPreferences): SecretKey {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+        cachedMasterKey?.let { return it }
+        val key = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             getOrCreateModernMasterKey(context, prefs)
         } else {
             getOrCreateLegacyMasterKey(context, prefs)
         }
+        cachedMasterKey = key
+        return key
     }
 
     private fun getOrCreateModernMasterKey(
@@ -309,6 +319,7 @@ internal object AndroidSecureStore {
         if (prefs.all.isNotEmpty()) {
             Log.w(TAG, "Resetting Android secure store after restore mismatch: $reason")
             prefs.edit().clear().commit()
+            cachedMasterKey = null
         }
     }
 
@@ -325,6 +336,7 @@ internal object AndroidSecureStore {
             }
         }
         prefs.edit().clear().commit()
+        cachedMasterKey = null
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             generateModernAesKey(masterKeyAlias(context))
