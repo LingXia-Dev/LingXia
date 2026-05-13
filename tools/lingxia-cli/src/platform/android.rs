@@ -8,8 +8,9 @@ use colored::Colorize;
 use indicatif::{ProgressBar, ProgressStyle};
 use std::env;
 use std::fs;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 mod doctor;
 pub use doctor::doctor_checks;
@@ -689,6 +690,95 @@ fn install_with_adb(
     file_size: u64,
     quiet: bool,
 ) -> Result<()> {
+    let output = match stream_install_with_adb(device_id, apk_path, file_size, quiet) {
+        Ok(output) => output,
+        Err(stream_err) => {
+            if !quiet {
+                eprintln!(
+                    "{} adb streaming install failed, falling back to adb install: {}",
+                    "Warning:".yellow(),
+                    stream_err
+                );
+            }
+            install_with_classic_adb(device_id, apk_path, file_size, quiet)?
+        }
+    };
+    if output.lines().any(|line| line.trim() == "Success") {
+        return Ok(());
+    }
+    Err(anyhow!("adb install failed: {}", output.trim()))
+}
+
+fn stream_install_with_adb(
+    device_id: Option<&str>,
+    apk_path: &Path,
+    file_size: u64,
+    quiet: bool,
+) -> Result<String> {
+    let progress = (!quiet).then(|| transfer_progress_bar(file_size));
+    let mut child = adb_command(device_id)
+        .arg("shell")
+        .args(["pm", "install", "-r", "-S", &file_size.to_string()])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .with_context(|| "Failed to execute adb streaming install")?;
+
+    let write_result = (|| -> Result<()> {
+        let mut apk = fs::File::open(apk_path)
+            .with_context(|| format!("Failed to open APK {}", apk_path.display()))?;
+        let mut stdin = child
+            .stdin
+            .take()
+            .ok_or_else(|| anyhow!("Failed to open adb install stdin"))?;
+        let mut buffer = [0u8; 64 * 1024];
+        loop {
+            let read = apk
+                .read(&mut buffer)
+                .with_context(|| format!("Failed to read APK {}", apk_path.display()))?;
+            if read == 0 {
+                break;
+            }
+            stdin
+                .write_all(&buffer[..read])
+                .with_context(|| "Failed to stream APK to adb")?;
+            if let Some(progress) = progress.as_ref() {
+                progress.inc(read as u64);
+            }
+        }
+        drop(stdin);
+        if let Some(progress) = progress.as_ref() {
+            progress.set_position(file_size);
+            progress.set_message("Installing APK...");
+        }
+        Ok(())
+    })();
+
+    let output = child
+        .wait_with_output()
+        .with_context(|| "Failed to wait for adb streaming install")?;
+    finish_progress(progress);
+    write_result?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    if output.status.success() {
+        return Ok(stdout);
+    }
+    Err(anyhow!(
+        "adb install failed\nstdout: {}\nstderr: {}",
+        stdout,
+        stderr
+    ))
+}
+
+fn install_with_classic_adb(
+    device_id: Option<&str>,
+    apk_path: &Path,
+    file_size: u64,
+    quiet: bool,
+) -> Result<String> {
     let spinner = (!quiet).then(|| {
         status_spinner(&format!(
             "Transferring & installing APK ({})...",
@@ -701,12 +791,7 @@ fn install_with_adb(
         "adb install",
     );
     finish_spinner(spinner);
-
-    let output = result?;
-    if output.lines().any(|line| line.trim() == "Success") {
-        return Ok(());
-    }
-    Err(anyhow!("adb install failed: {}", output.trim()))
+    result
 }
 
 fn adb_command(device_id: Option<&str>) -> Command {
@@ -826,6 +911,24 @@ fn status_spinner(message: &str) -> ProgressBar {
 fn finish_spinner(spinner: Option<ProgressBar>) {
     if let Some(spinner) = spinner {
         spinner.finish_and_clear();
+    }
+}
+
+fn transfer_progress_bar(total_bytes: u64) -> ProgressBar {
+    let progress = ProgressBar::new(total_bytes);
+    progress.set_style(
+        ProgressStyle::with_template("{spinner:.cyan} {msg} {bytes}/{total_bytes}")
+            .unwrap_or_else(|_| ProgressStyle::default_bar())
+            .tick_chars("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"),
+    );
+    progress.enable_steady_tick(std::time::Duration::from_millis(80));
+    progress.set_message("Transferring APK...");
+    progress
+}
+
+fn finish_progress(progress: Option<ProgressBar>) {
+    if let Some(progress) = progress {
+        progress.finish_and_clear();
     }
 }
 
