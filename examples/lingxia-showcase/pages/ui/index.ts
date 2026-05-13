@@ -33,8 +33,15 @@ Page({
     surfaceDemo: {
       message: "",
       supportsWindow: false,
+      // True when a surface is currently open (visible or hidden). The hide/show
+      // buttons are only meaningful while a surface exists; closing tears it
+      // down and resets this flag.
+      active: false,
+      visible: false,
     },
   },
+
+  _activeSurface: null,
 
   onLoad: function (options) {
     console.log("UI page onLoad options:", options);
@@ -185,6 +192,19 @@ Page({
   },
 
   openSurfaceDemo: async function (config) {
+    // Eagerly tear down any prior surface tracked in this demo so a stale
+    // reference (e.g., a surface closed by the user via backdrop tap whose
+    // onClose got lost) never prevents reopening. The platform also replaces
+    // any active surface on a new present(), so this is belt-and-suspenders.
+    if (this._activeSurface) {
+      try {
+        await this._activeSurface.close();
+      } catch (error) {
+        console.warn("[surfaceDemo] prior close failed:", error);
+      }
+      this._activeSurface = null;
+    }
+
     this.setData({
       "surfaceDemo.message": "",
     });
@@ -210,45 +230,115 @@ Page({
         options.position = cfg.position || "bottom";
       }
       const surface = await lx.surface.open(options);
+      this._activeSurface = surface;
 
       this.setData({
         "surfaceDemo.message": `Opened ${kind}: ${surface.id}`,
+        "surfaceDemo.active": true,
+        "surfaceDemo.visible": true,
       });
-      let unsubscribe = null;
-      let receivedMessage = "";
-      const handleMessage = (payload) => {
-        unsubscribe?.();
-        unsubscribe = null;
+      surface.onMessage((payload) => {
+        // Messages from the surface page no longer auto-close it — that
+        // would defeat the show/hide demo. We just log the payload and let
+        // the user decide whether to hide, show again, or close.
         const message =
           payload && typeof payload === "object"
             ? payload.message || JSON.stringify(payload)
             : payload;
-        receivedMessage = typeof message === "string" ? message : JSON.stringify(message);
+        const text = typeof message === "string" ? message : JSON.stringify(message);
         this.setData({
-          "surfaceDemo.message": `Message: ${receivedMessage}`,
+          "surfaceDemo.message": `Message: ${text}`,
         });
-        surface.close().catch((error) => {
-          console.warn("surface.close failed:", error);
+      });
+      // Subscribe to surface-driven visibility transitions. Both opener-side
+      // and page-side toggles flow through these events, so the parent UI
+      // stays in sync even when the popup hides itself via this.surface.hide().
+      surface.onShow((event) => {
+        this.setData({
+          "surfaceDemo.visible": true,
+          "surfaceDemo.message": `Shown ${event.id} (source=${event.source})`,
         });
-      };
-      unsubscribe = surface.onMessage(handleMessage);
+      });
+      surface.onHide((event) => {
+        this.setData({
+          "surfaceDemo.visible": false,
+          "surfaceDemo.message": `Hidden ${event.id} (source=${event.source})`,
+        });
+      });
       surface.onClose((event) => {
-        const status = `Closed ${event.id}: ${event.reason}`;
+        this._activeSurface = null;
+        const currentMessage = this.data.surfaceDemo?.message || "";
+        const closeMessage = `Closed ${event.id}: ${event.reason}`;
+        const displayMessage = currentMessage.startsWith("Message:")
+          ? `${currentMessage} (${closeMessage})`
+          : closeMessage;
         this.setData({
-          "surfaceDemo.message": receivedMessage
-            ? `Message: ${receivedMessage}\n${status}`
-            : status,
+          "surfaceDemo.message": displayMessage,
+          "surfaceDemo.active": false,
+          "surfaceDemo.visible": false,
         });
       });
     } catch (error) {
       console.error("lx.surface.open failed:", error);
       this.setData({
         "surfaceDemo.message": `Failed: ${error.message}`,
+        "surfaceDemo.active": false,
+        "surfaceDemo.visible": false,
       });
       lx.showToast({
         title: `open failed: ${error.message}`,
         icon: "none",
       });
+    }
+  },
+
+  showActiveSurface: async function () {
+    const surface = this._activeSurface;
+    if (!surface) {
+      return;
+    }
+    try {
+      await surface.show();
+      this.setData({
+        "surfaceDemo.message": `Shown ${surface.id}`,
+        "surfaceDemo.visible": true,
+      });
+    } catch (error) {
+      console.warn("surface.show failed:", error);
+      this.setData({
+        "surfaceDemo.message": `Show failed: ${error.message}`,
+      });
+    }
+  },
+
+  hideActiveSurface: async function () {
+    const surface = this._activeSurface;
+    if (!surface) {
+      return;
+    }
+    try {
+      await surface.hide();
+      this.setData({
+        "surfaceDemo.message": `Hidden ${surface.id}`,
+        "surfaceDemo.visible": false,
+      });
+    } catch (error) {
+      console.warn("surface.hide failed:", error);
+      this.setData({
+        "surfaceDemo.message": `Hide failed: ${error.message}`,
+      });
+    }
+  },
+
+  closeActiveSurface: async function () {
+    const surface = this._activeSurface;
+    if (!surface) {
+      return;
+    }
+    try {
+      await surface.close();
+    } catch (error) {
+      console.warn("surface.close failed:", error);
     }
   },
 

@@ -28,6 +28,9 @@ export default function UIPage() {
     chooseToastPosition,
     showDemoActionSheet,
     openSurfaceDemo,
+    showActiveSurface,
+    hideActiveSurface,
+    closeActiveSurface,
   } = actions;
   const {
     currentType = 'navigation',
@@ -53,6 +56,8 @@ export default function UIPage() {
   }, [toastPositionOptions, toastPosition, toastPositionLabel]);
 
   const surfaceMessage = (surfaceDemo && surfaceDemo.message) || '';
+  const surfaceActive = surfaceDemo?.active === true;
+  const surfaceVisible = surfaceDemo?.visible === true;
   const supportsSurfaceWindow =
     (typeof window !== 'undefined' &&
       (window as any).LingXiaBridge?.platform?.isDesktop?.() === true) ||
@@ -163,13 +168,15 @@ export default function UIPage() {
 
                   <div>
                     <div className="text-xs uppercase text-gray-500 tracking-wide mb-2">Kind</div>
-                    <div className={`grid ${supportsSurfaceWindow ? 'grid-cols-2' : 'grid-cols-1'} gap-2`}>
+                    {/* Segmented control. Visually distinct from the blue CTA
+                        below so the selected item doesn't look like it's the
+                        same affordance as "Open popup". */}
+                    <div className={`grid ${supportsSurfaceWindow ? 'grid-cols-2' : 'grid-cols-1'} gap-1 bg-gray-100 rounded-lg p-1`}>
                       {surfaceKinds.map((kind) => {
                         const active = surfaceKind === kind;
-                        const baseClass = 'py-2 text-sm rounded-lg transition-colors border';
                         const className = active
-                          ? `${baseClass} bg-blue-500 border-blue-500 text-white`
-                          : `${baseClass} bg-white border-gray-200 text-gray-600 hover:bg-gray-50`;
+                          ? 'py-1.5 px-2 text-sm font-medium rounded-md bg-white text-gray-900 shadow-sm transition-colors'
+                          : 'py-1.5 px-2 text-sm font-medium rounded-md text-gray-500 hover:text-gray-700 transition-colors';
                         return (
                           <button
                             key={kind}
@@ -263,6 +270,7 @@ export default function UIPage() {
 
                 <button
                   type="button"
+                  disabled={surfaceActive}
                   onClick={() =>
                     openSurfaceDemo({
                       kind: surfaceKind,
@@ -273,10 +281,38 @@ export default function UIPage() {
                       height: 720,
                     })
                   }
-                  className="w-full bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded-lg text-sm font-medium transition-colors"
+                  className="w-full bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white py-2 px-4 rounded-lg text-sm font-medium transition-colors"
                 >
-                  Open {surfaceKind}
+                  {surfaceActive ? `Open ${surfaceKind} (already open)` : `Open ${surfaceKind}`}
                 </button>
+
+                {surfaceActive && (
+                  <div className="grid grid-cols-3 gap-2">
+                    <button
+                      type="button"
+                      disabled={surfaceVisible}
+                      onClick={() => showActiveSurface()}
+                      className="bg-emerald-500 hover:bg-emerald-600 disabled:bg-gray-200 disabled:text-gray-500 text-white py-2 px-3 rounded-lg text-sm font-medium transition-colors"
+                    >
+                      Show
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!surfaceVisible}
+                      onClick={() => hideActiveSurface()}
+                      className="bg-amber-500 hover:bg-amber-600 disabled:bg-gray-200 disabled:text-gray-500 text-white py-2 px-3 rounded-lg text-sm font-medium transition-colors"
+                    >
+                      Hide
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => closeActiveSurface()}
+                      className="bg-rose-500 hover:bg-rose-600 text-white py-2 px-3 rounded-lg text-sm font-medium transition-colors"
+                    >
+                      Close
+                    </button>
+                  </div>
+                )}
 
                 <div className="text-xs text-gray-500 uppercase tracking-wide">Surface status</div>
                 <div className="text-sm text-gray-800 bg-gray-50 rounded-lg px-3 py-2 font-mono break-words">

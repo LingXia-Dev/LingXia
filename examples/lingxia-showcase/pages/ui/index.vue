@@ -63,9 +63,11 @@
                 </div>
                 <div>
                   <div class="text-xs uppercase text-gray-500 tracking-wide mb-2">Kind</div>
-                  <div :class="['grid gap-2', supportsSurfaceWindow ? 'grid-cols-2' : 'grid-cols-1']">
+                  <!-- Segmented control: neutral pill background so the active
+                       state doesn't compete visually with the blue CTA below. -->
+                  <div :class="['grid gap-1 bg-gray-100 rounded-lg p-1', supportsSurfaceWindow ? 'grid-cols-2' : 'grid-cols-1']">
                     <button v-for="kind in surfaceKinds" :key="kind" type="button"
-                      :class="['py-2 text-sm rounded-lg transition-colors border', surfaceKind === kind ? 'bg-blue-500 border-blue-500 text-white' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50']"
+                      :class="['py-1.5 px-2 text-sm font-medium rounded-md transition-colors', surfaceKind === kind ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700']"
                       @click="surfaceKind = kind">
                       {{ kind.charAt(0).toUpperCase() + kind.slice(1) }}
                     </button>
@@ -107,10 +109,24 @@
                   </div>
                 </div>
               </div>
-              <button type="button" @click="openSurfaceDemo({ kind: surfaceKind, widthRatio: surfaceWidthRatio, heightRatio: surfaceHeightRatio, position: surfacePosition, width: 960, height: 720 })"
-                class="w-full bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded-lg text-sm font-medium transition-colors">
-                Open {{ surfaceKind }}
+              <button type="button" :disabled="surfaceActive" @click="openSurfaceDemo({ kind: surfaceKind, widthRatio: surfaceWidthRatio, heightRatio: surfaceHeightRatio, position: surfacePosition, width: 960, height: 720 })"
+                class="w-full bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white py-2 px-4 rounded-lg text-sm font-medium transition-colors">
+                {{ surfaceActive ? `Open ${surfaceKind} (already open)` : `Open ${surfaceKind}` }}
               </button>
+              <div v-if="surfaceActive" class="grid grid-cols-3 gap-2">
+                <button type="button" :disabled="surfaceVisible" @click="showActiveSurface()"
+                  class="bg-emerald-500 hover:bg-emerald-600 disabled:bg-gray-200 disabled:text-gray-500 text-white py-2 px-3 rounded-lg text-sm font-medium transition-colors">
+                  Show
+                </button>
+                <button type="button" :disabled="!surfaceVisible" @click="hideActiveSurface()"
+                  class="bg-amber-500 hover:bg-amber-600 disabled:bg-gray-200 disabled:text-gray-500 text-white py-2 px-3 rounded-lg text-sm font-medium transition-colors">
+                  Hide
+                </button>
+                <button type="button" @click="closeActiveSurface()"
+                  class="bg-rose-500 hover:bg-rose-600 text-white py-2 px-3 rounded-lg text-sm font-medium transition-colors">
+                  Close
+                </button>
+              </div>
               <div class="text-xs text-gray-500 uppercase tracking-wide">Surface status</div>
               <div class="text-sm text-gray-800 bg-gray-50 rounded-lg px-3 py-2 font-mono break-words">
                 {{ surfaceMessage || 'No message received yet.' }}
@@ -401,6 +417,9 @@ const {
   chooseToastPosition,
   showDemoActionSheet,
   openSurfaceDemo,
+  showActiveSurface,
+  hideActiveSurface,
+  closeActiveSurface,
 } = actions;
 
 const currentType = computed(() => data.currentType ?? 'navigation');
@@ -413,6 +432,8 @@ const toastPosition = computed(() => data.toastPosition ?? 'center');
 const toastPositionLabel = computed(() => data.toastPositionLabel ?? 'Center');
 const toastPositionOptions = computed(() => data.toastPositionOptions ?? []);
 const surfaceMessage = computed(() => data.surfaceDemo?.message ?? '');
+const surfaceActive = computed(() => data.surfaceDemo?.active === true);
+const surfaceVisible = computed(() => data.surfaceDemo?.visible === true);
 const supportsSurfaceWindow = computed(() => {
   const bridge = typeof window !== 'undefined' ? (window as any).LingXiaBridge : null;
   return bridge?.platform?.isDesktop?.() === true || data.surfaceDemo?.supportsWindow === true;
