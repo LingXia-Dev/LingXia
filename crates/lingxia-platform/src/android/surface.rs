@@ -84,4 +84,60 @@ impl SurfacePresenter for Platform {
         })
         .map_err(|e| PlatformError::Platform(format!("Failed to close surface: {e}")))
     }
+
+    fn show_surface(&self, app_id: &str, id: &str) -> Result<(), PlatformError> {
+        let surface_class: &JClass = super::get_cached_class(super::CachedClass::LxAppSurface)
+            .map_err(|e| PlatformError::Platform(e.to_string()))?;
+        super::with_env(|env| -> Result<(), PlatformError> {
+            let id = env.new_string(id)?;
+            let app_id = env.new_string(app_id)?;
+            let ok = env
+                .call_static_method(
+                    surface_class,
+                    jni_str!("show"),
+                    jni_sig!("(Ljava/lang/String;Ljava/lang/String;)Z"),
+                    &[
+                        JValue::Object(&JObject::from(id)),
+                        JValue::Object(&JObject::from(app_id)),
+                    ],
+                )?
+                .z()?;
+            if ok {
+                Ok(())
+            } else {
+                Err(PlatformError::Platform(
+                    "Failed to show surface".to_string(),
+                ))
+            }
+        })
+        .map_err(|e| PlatformError::Platform(format!("Failed to show surface: {e}")))
+    }
+
+    fn hide_surface(&self, app_id: &str, id: &str) -> Result<(), PlatformError> {
+        let surface_class: &JClass = super::get_cached_class(super::CachedClass::LxAppSurface)
+            .map_err(|e| PlatformError::Platform(e.to_string()))?;
+        super::with_env(|env| -> Result<(), PlatformError> {
+            let id = env.new_string(id)?;
+            let app_id = env.new_string(app_id)?;
+            let ok = env
+                .call_static_method(
+                    surface_class,
+                    jni_str!("hide"),
+                    jni_sig!("(Ljava/lang/String;Ljava/lang/String;)Z"),
+                    &[
+                        JValue::Object(&JObject::from(id)),
+                        JValue::Object(&JObject::from(app_id)),
+                    ],
+                )?
+                .z()?;
+            if ok {
+                Ok(())
+            } else {
+                Err(PlatformError::Platform(
+                    "Failed to hide surface".to_string(),
+                ))
+            }
+        })
+        .map_err(|e| PlatformError::Platform(format!("Failed to hide surface: {e}")))
+    }
 }

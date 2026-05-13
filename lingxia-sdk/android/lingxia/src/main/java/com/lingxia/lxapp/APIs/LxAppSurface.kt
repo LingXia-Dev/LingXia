@@ -17,6 +17,7 @@ import com.lingxia.lxapp.LxApp
 import com.lingxia.lxapp.LxAppActivity
 import com.lingxia.lxapp.NativeApi
 import com.lingxia.lxapp.NativeComponents.NativeBridge
+import com.lingxia.lxapp.APIs.media.ImmersiveWindowUi
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import kotlin.math.roundToInt
@@ -47,12 +48,25 @@ internal object LxAppSurface {
     private const val MOUNT_RETRY_COUNT = 40
     private const val MOUNT_RETRY_DELAY_MS = 50L
 
-    private data class Entry(
+    // Entry is mutable so window snapshot can be re-captured if show() is
+    // called after a hide() that already restored the window (defensive: the
+    // first snapshot is taken at open time and we hold onto it across the
+    // surface's lifetime, but we lazily re-capture if it's ever been nulled).
+    private class Entry(
         val id: String,
         val appId: String,
         val pageInstanceId: String?,
         val overlay: FrameLayout,
-        val webView: android.webkit.WebView
+        val webView: android.webkit.WebView,
+        /**
+         * True when the surface was opened with widthRatio≈1 AND heightRatio≈1.
+         * In that case we apply ImmersiveWindowUi so the surface visually
+         * extends behind the status bar / navigation bar / display cutout —
+         * matching what `lx.previewMedia` does. Sub-full-screen surfaces keep
+         * the system bars visible.
+         */
+        val immersive: Boolean,
+        var windowSnapshot: ImmersiveWindowUi.Snapshot? = null,
     )
 
     private data class Request(
@@ -70,8 +84,14 @@ internal object LxAppSurface {
         val position: SurfacePosition
     )
 
+    private enum class PendingVisibility {
+        SHOW,
+        HIDE
+    }
+
     private val entries = LinkedHashMap<String, Entry>()
     private val pendingRequests = LinkedHashMap<String, Request>()
+    private val pendingVisibility = LinkedHashMap<String, PendingVisibility>()
 
     @JvmStatic
     fun present(
@@ -113,11 +133,11 @@ internal object LxAppSurface {
             heightRatio = heightRatio,
             position = SurfacePosition.fromInt(position)
         )
+        pendingRequests[request.id] = request
         activity.runOnUiThread {
             if (request.content == CONTENT_URL) {
                 mount(activity, request, createExternalWebView(activity, request.path))
             } else {
-                pendingRequests[request.id] = request
                 mountWhenReady(activity, request, 0)
             }
         }
@@ -139,6 +159,52 @@ internal object LxAppSurface {
         return true
     }
 
+    /**
+     * Toggle the surface to visible without tearing it down. Leaves the WebView
+     * attached so the page state survives — a subsequent hide() then show()
+     * round-trip restores the same scroll position, form input, and JS state.
+     *
+     * Also routes a page.lifecycle/state:active message through NativeBridge so
+     * any native overlay components (video player, media swiper, ...) come back
+     * online: their views are re-shown, blur is cleared, and components that
+     * were playing before the matching hide() auto-resume. WebView.resume()
+     * doesn't do this on its own (only pause() emits the inactive event).
+     */
+    @JvmStatic
+    fun show(id: String, appId: String): Boolean {
+        if (id.isBlank() || appId.isBlank()) return false
+        val entry = entries[id]
+        if (entry == null) {
+            return setPendingVisibility(id, appId, PendingVisibility.SHOW)
+        }
+        if (entry.appId != appId) return false
+        val activity = LxApp.getCurrentActivity() ?: return false
+        activity.runOnUiThread {
+            applyEntryVisibility(activity, entry, true)
+        }
+        return true
+    }
+
+    /**
+     * Toggle the surface to hidden without tearing it down. The overlay is
+     * collapsed visually but the WebView and page instance stay alive, so a
+     * subsequent show() restores the same state instead of remounting.
+     */
+    @JvmStatic
+    fun hide(id: String, appId: String): Boolean {
+        if (id.isBlank() || appId.isBlank()) return false
+        val entry = entries[id]
+        if (entry == null) {
+            return setPendingVisibility(id, appId, PendingVisibility.HIDE)
+        }
+        if (entry.appId != appId) return false
+        val activity = LxApp.getCurrentActivity() ?: return false
+        activity.runOnUiThread {
+            applyEntryVisibility(activity, entry, false)
+        }
+        return true
+    }
+
     private fun mountWhenReady(activity: Activity, request: Request, attempt: Int) {
         if (!pendingRequests.containsKey(request.id)) {
             return
@@ -149,6 +215,7 @@ internal object LxAppSurface {
                 activity.window?.decorView?.postDelayed({ mountWhenReady(activity, request, attempt + 1) }, MOUNT_RETRY_DELAY_MS)
             } else {
                 pendingRequests.remove(request.id)
+                pendingVisibility.remove(request.id)
                 Log.e(TAG, "present failed: WebView not ready for pageInstanceId=${request.pageInstanceId}")
                 NativeApi.disposePageInstance(request.pageInstanceId, "failed")
                 NativeApi.onSurfaceClosed(request.appId, request.id, "failed")
@@ -161,14 +228,23 @@ internal object LxAppSurface {
     private fun mount(activity: Activity, request: Request, webView: android.webkit.WebView) {
         closeEntry(request.id, request.appId, "programmatic", notifyNative = false)
         pendingRequests.remove(request.id)
+        val requestedVisibility = pendingVisibility.remove(request.id)
 
         val rootView = activity.findViewById<ViewGroup>(android.R.id.content)
         if (rootView == null) {
-            NativeApi.disposePageInstance(request.pageInstanceId, "failed")
+            if (request.content == CONTENT_PAGE) {
+                NativeApi.disposePageInstance(request.pageInstanceId, "failed")
+            } else {
+                webView.stopLoading()
+                webView.destroy()
+            }
             NativeApi.onSurfaceClosed(request.appId, request.id, "failed")
             return
         }
         (webView.parent as? ViewGroup)?.removeView(webView)
+
+        val immersive = isFullScreenRequest(request)
+        val cornerRadiusPx = if (immersive) 0f else dp(activity, 12).toFloat()
 
         val overlay = FrameLayout(activity).apply {
             layoutParams = FrameLayout.LayoutParams(
@@ -177,7 +253,11 @@ internal object LxAppSurface {
             )
             isClickable = true
             isFocusable = false
-            setBackgroundColor(Color.parseColor("#80000000"))
+            // No backdrop for full-screen surfaces — they cover the whole window
+            // including system bar areas, so a translucent backdrop would only
+            // be visible behind the rounded edges and corners which don't exist
+            // when immersive.
+            setBackgroundColor(if (immersive) Color.TRANSPARENT else Color.parseColor("#80000000"))
         }
         overlay.setOnClickListener {
             close(request.id, request.appId, "user")
@@ -186,7 +266,7 @@ internal object LxAppSurface {
         val surface = FrameLayout(activity).apply {
             background = GradientDrawable().apply {
                 setColor(Color.WHITE)
-                cornerRadius = dp(activity, 12).toFloat()
+                cornerRadius = cornerRadiusPx
             }
             clipToOutline = Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP
             elevation = dp(activity, 12).toFloat()
@@ -209,27 +289,70 @@ internal object LxAppSurface {
         if (webView is com.lingxia.lxapp.WebView) {
             NativeBridge.attachIfNeeded(webView)
         }
-        webView.visibility = View.VISIBLE
+        val initiallyVisible = requestedVisibility != PendingVisibility.HIDE
+        webView.visibility = if (initiallyVisible) View.VISIBLE else View.GONE
         if (webView is com.lingxia.lxapp.WebView) {
-            webView.resume()
             NativeApi.notifyPageInstanceMounted(request.pageInstanceId)
-            NativeApi.notifyPageInstanceVisible(request.pageInstanceId)
+            if (initiallyVisible) {
+                webView.resume()
+                NativeApi.notifyPageInstanceVisible(request.pageInstanceId)
+            }
         }
 
-        entries[request.id] = Entry(
-            request.id,
-            request.appId,
-            request.pageInstanceId.takeIf { request.content == CONTENT_PAGE },
-            overlay,
-            webView
+        val entry = Entry(
+            id = request.id,
+            appId = request.appId,
+            pageInstanceId = request.pageInstanceId.takeIf { request.content == CONTENT_PAGE },
+            overlay = overlay,
+            webView = webView,
+            immersive = immersive,
         )
-        Log.d(TAG, "presented id=${request.id} appId=${request.appId} path=${request.path}")
+        entries[request.id] = entry
+
+        if (requestedVisibility == PendingVisibility.HIDE) {
+            applyEntryVisibility(activity, entry, false)
+        }
+
+        // Switch the host window to immersive (status / nav / cutout hidden,
+        // decor extends edge-to-edge) so the surface visually covers the
+        // status bar — same approach as MediaPreviewFragment. Snapshot the
+        // prior state so we can restore on hide / close.
+        if (immersive && requestedVisibility != PendingVisibility.HIDE) {
+            entry.windowSnapshot = ImmersiveWindowUi.capture(activity.window)
+            ImmersiveWindowUi.apply(activity.window, keepScreenOn = false)
+        }
+
+        Log.d(TAG, "presented id=${request.id} appId=${request.appId} path=${request.path} immersive=$immersive")
+    }
+
+    /**
+     * A surface counts as "full-screen" when both ratios are essentially 1.0.
+     * We accept a small epsilon because JS sometimes sends 99/100 or 100/100
+     * percent strings that round-trip with float noise.
+     */
+    private fun isFullScreenRequest(request: Request): Boolean {
+        val w = request.widthRatio
+        val h = request.heightRatio
+        return w.isFinite() && h.isFinite() && w >= 0.999 && h >= 0.999
     }
 
     private fun closeEntry(id: String, appId: String, reason: String, notifyNative: Boolean = true): Boolean {
         val entry = entries[id] ?: return false
         if (entry.appId != appId) return false
         entries.remove(id)
+
+        // Hand system bars back to whatever the host page had before the
+        // surface opened. Safe even if hide() already restored — restore is
+        // idempotent against the same snapshot.
+        if (entry.immersive) {
+            val activity = LxApp.getCurrentActivity()
+            val window = activity?.window
+            val snapshot = entry.windowSnapshot
+            if (window != null && snapshot != null) {
+                ImmersiveWindowUi.restore(window, snapshot)
+            }
+            entry.windowSnapshot = null
+        }
 
         (entry.webView.parent as? ViewGroup)?.removeView(entry.webView)
         (entry.overlay.parent as? ViewGroup)?.removeView(entry.overlay)
@@ -253,9 +376,55 @@ internal object LxAppSurface {
         val request = pendingRequests[id] ?: return false
         if (request.appId != appId) return false
         pendingRequests.remove(id)
-        NativeApi.disposePageInstance(request.pageInstanceId, reason)
+        pendingVisibility.remove(id)
+        if (request.content == CONTENT_PAGE) {
+            NativeApi.disposePageInstance(request.pageInstanceId, reason)
+        }
         NativeApi.onSurfaceClosed(appId, id, reason)
         return true
+    }
+
+    private fun setPendingVisibility(id: String, appId: String, visibility: PendingVisibility): Boolean {
+        val request = pendingRequests[id] ?: return false
+        if (request.appId != appId) return false
+        pendingVisibility[id] = visibility
+        return true
+    }
+
+    private fun applyEntryVisibility(
+        activity: Activity,
+        entry: Entry,
+        visible: Boolean,
+        notifyLifecycle: Boolean = true
+    ) {
+        val target = if (visible) View.VISIBLE else View.GONE
+        // Defense in depth: the Rust JS-side closure already short-circuits
+        // on no-op transitions, so under normal flow this guard is unreachable.
+        // Skip the immersive flip + lifecycle re-notify if a future call path
+        // ever forwards a redundant show/hide.
+        if (entry.overlay.visibility == target) return
+        entry.overlay.visibility = target
+        entry.webView.visibility = target
+        if (entry.immersive) {
+            if (visible) {
+                if (entry.windowSnapshot == null) {
+                    entry.windowSnapshot = ImmersiveWindowUi.capture(activity.window)
+                }
+                ImmersiveWindowUi.apply(activity.window, keepScreenOn = false)
+            } else {
+                entry.windowSnapshot?.let { ImmersiveWindowUi.restore(activity.window, it) }
+            }
+        }
+        if (notifyLifecycle && entry.webView is com.lingxia.lxapp.WebView) {
+            if (visible) {
+                entry.webView.resume()
+                NativeBridge.notifyPageActive(entry.webView)
+                entry.pageInstanceId?.let { NativeApi.notifyPageInstanceVisible(it) }
+            } else {
+                entry.webView.pause()
+                entry.pageInstanceId?.let { NativeApi.notifyPageInstanceHidden(it, "hidden") }
+            }
+        }
     }
 
     @Suppress("DEPRECATION")
@@ -314,6 +483,11 @@ internal object LxAppSurface {
         val defaultHeightRatio = 0.55
         val width = resolveSize(activity, request.width, request.widthRatio, rootWidth, defaultWidthRatio)
         val height = resolveSize(activity, request.height, request.heightRatio, rootHeight, defaultHeightRatio)
+        // Full-screen surfaces should have zero margins so they actually reach
+        // edge to edge (and into the status / nav / cutout area once
+        // ImmersiveWindowUi expands the decor). Sub-full surfaces keep the
+        // 16dp inset that gives the card a visible gap from screen edges.
+        val isFull = isFullScreenRequest(request)
         return FrameLayout.LayoutParams(width, height).apply {
             gravity = when (request.position) {
                 SurfacePosition.BOTTOM -> Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
@@ -322,7 +496,7 @@ internal object LxAppSurface {
                 SurfacePosition.TOP -> Gravity.TOP or Gravity.CENTER_HORIZONTAL
                 SurfacePosition.CENTER -> Gravity.CENTER
             }
-            val margin = dp(activity, 16)
+            val margin = if (isFull) 0 else dp(activity, 16)
             if (request.position != SurfacePosition.BOTTOM) topMargin = margin
             bottomMargin = if (request.position == SurfacePosition.BOTTOM) bottomInset
                 else if (request.position != SurfacePosition.TOP) margin
