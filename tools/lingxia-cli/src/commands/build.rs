@@ -22,7 +22,7 @@ pub struct BuildExecuteOptions {
     pub ipa: bool,
     pub dmg: bool,
     pub package: bool,
-    /// Raw `--env` value from CLI; resolved against `app.environments`.
+    /// Raw `--env` value from CLI.
     pub env_version: Option<String>,
 }
 

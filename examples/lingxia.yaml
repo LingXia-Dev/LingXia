@@ -10,13 +10,10 @@ app:
     - harmony
   homeAppId: lingxia-showcase
 
-  environments:
-    developer:
-      lingxiaServer: http://192.168.37.77:8080
-    release:
-      lingxiaServer: http://192.168.37.77:8080
-    preview:
-      lingxiaServer: http://192.168.37.77:8080
+  lingxiaServer:
+    developer: http://192.168.37.77:8080
+    preview: http://192.168.37.77:8080
+    release: http://192.168.37.77:8080
 
 android:
   packageId: com.lingxia.example.lxapp

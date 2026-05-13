@@ -149,7 +149,7 @@ pub enum ResourceBundleType {
 
 /// Host app settings (checked into git via `lingxia.yaml`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HostAppConfig {
     /// Project name (technical identifier, used for Rust lib naming, e.g., "myapp" -> "myapp-lib")
     pub project_name: String,
@@ -1118,8 +1118,7 @@ impl LingXiaConfig {
     ///
     /// Model: env-version is a build-time property with built-in defaults
     /// (developer=".dev", preview=".preview", release=no suffix). Yaml only
-    /// supplies optional overrides — there is no "environments block exists
-    /// vs not" branch.
+    /// supplies optional overrides.
     ///
     /// - `lingxia_server`: `app.lingxiaServer` is queried; `Single` applies
     ///   everywhere, `PerEnv` selects by env. Empty string if not configured.
@@ -1208,6 +1207,30 @@ mod tests {
         let resources = parsed.resources.unwrap();
         assert_eq!(resources.bundles[0].app_id, "my-app");
         assert_eq!(resources.bundles[0].path.as_deref(), Some("my-app"));
+    }
+
+    #[test]
+    fn rejects_legacy_app_environments_config() {
+        let yaml = r#"
+app:
+  projectName: my-app
+  productName: My App
+  productVersion: 0.0.1
+  platforms:
+    - android
+  homeAppId: my-app
+  environments:
+    developer:
+      lingxiaServer: http://localhost:8080
+android:
+  packageId: com.example.myapp
+"#;
+
+        let err = yaml::from_str::<LingXiaConfig>(yaml).unwrap_err();
+        assert!(
+            err.to_string().contains("environments"),
+            "unexpected error: {err}"
+        );
     }
 
     #[test]

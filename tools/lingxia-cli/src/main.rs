@@ -61,8 +61,7 @@ struct BuildOptions {
     /// Environment (developer | preview | release; alias `dev` for developer).
     /// All commands default to developer when --env is omitted; release and
     /// preview must be requested explicitly. Independent from --release/debug
-    /// profile. If app.environments is configured, the selected env must
-    /// exist.
+    /// profile.
     #[arg(long = "env", value_parser = ["developer", "dev", "preview", "release"])]
     env_version: Option<String>,
 }

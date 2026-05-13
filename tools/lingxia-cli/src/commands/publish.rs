@@ -74,8 +74,8 @@ pub fn execute(opts: PublishOptions) -> Result<()> {
     } else if meta.channel.is_none() {
         meta.channel = Some("release".to_string());
     }
-    // Resolve server *after* channel is known so we can prefer the per-env
-    // server from app.environments.<channel>.lingxiaServer.
+    // Resolve server *after* channel is known so app.lingxiaServer can route
+    // per-env maps to the package's envVersion.
     let lingxia_server =
         resolve_lingxia_server(&cwd, meta.channel.as_deref(), opts.lingxia_server)?;
     let lingxia_server = lingxia_server.trim_end_matches('/').to_string();
