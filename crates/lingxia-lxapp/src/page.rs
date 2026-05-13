@@ -159,6 +159,10 @@ pub struct PageInstance {
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct PageInstanceId(String);
 
+pub(crate) enum WebTagInstance {
+    PageInstanceId,
+}
+
 impl PageInstanceId {
     pub fn new() -> Self {
         Self(uuid::Uuid::new_v4().to_string())
@@ -305,7 +309,7 @@ impl PageInstance {
         appid: String,
         path: String,
         lxapp: &LxApp,
-        webtag_instance_id: Option<String>,
+        webtag_instance: Option<WebTagInstance>,
         setup_callback: F,
     ) -> Self
     where
@@ -315,9 +319,12 @@ impl PageInstance {
         // Build page state from LxApp configuration
         let page_state = Self::build_page_state(lxapp, &path);
         let id = PageInstanceId::new();
-        let webtag = webtag_instance_id
-            .as_deref()
-            .map(|instance_id| {
+        let webtag = webtag_instance
+            .as_ref()
+            .map(|instance| {
+                let instance_id = match instance {
+                    WebTagInstance::PageInstanceId => id.as_str(),
+                };
                 WebTag::new(
                     &appid,
                     &format!("{path}#{instance_id}"),

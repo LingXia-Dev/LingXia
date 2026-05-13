@@ -23,7 +23,7 @@ use self::navbar::NavigationBarState;
 use crate::appservice::LxAppWorkers;
 use crate::error::LxAppError;
 use crate::page::config::{OrientationConfig, PageConfig};
-use crate::page::{PageInstance, PageInstanceId, ViewCallOptions};
+use crate::page::{PageInstance, PageInstanceId, ViewCallOptions, WebTagInstance};
 use crate::startup::LxAppStartupOptions;
 use crate::update::UpdateManager;
 use crate::{error, info, warn};

@@ -280,7 +280,7 @@ impl LxApp {
             appid.clone(),
             path.to_string(),
             self,
-            Some(uuid::Uuid::new_v4().simple().to_string()),
+            Some(WebTagInstance::PageInstanceId),
             move |page| {
                 let lxapp_arc = lxapp_arc.clone();
                 let page_clone = page.clone();
