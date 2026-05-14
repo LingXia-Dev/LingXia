@@ -993,9 +993,7 @@ internal class MediaPreviewFragment : Fragment() {
             }
         }
         val target = previewItems.getOrNull(realIndexFor(targetPagerPosition)) ?: return
-        if (!showTransitionOverlayForTargetVisual(target)) {
-            showTransitionOverlayFromCurrentVisual()
-        }
+        showTransitionOverlayForSwitchTarget(target)
     }
 
     private fun cancelPendingUpcomingPrefetch() {
@@ -1084,10 +1082,14 @@ internal class MediaPreviewFragment : Fragment() {
         clearTransitionOverlayBitmap()
     }
 
+    private fun showTransitionOverlayForSwitchTarget(target: PreviewItem): Boolean {
+        if (showTransitionOverlayForTargetVisual(target)) return true
+        if (target.mediaType == MediaPreviewType.VIDEO) return false
+        return showTransitionOverlayFromCurrentVisual()
+    }
+
     private fun switchToPagerPositionWithVisualOverlay(targetPagerPosition: Int, target: PreviewItem) {
-        if (!showTransitionOverlayForTargetVisual(target)) {
-            showTransitionOverlayFromCurrentVisual()
-        }
+        showTransitionOverlayForSwitchTarget(target)
         viewPager?.setCurrentItem(targetPagerPosition, false)
     }
 
