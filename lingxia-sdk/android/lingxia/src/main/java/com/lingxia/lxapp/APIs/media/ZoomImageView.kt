@@ -6,7 +6,6 @@ import android.graphics.Matrix
 import android.graphics.RectF
 import android.graphics.drawable.Drawable
 import android.util.AttributeSet
-import android.util.Log
 import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
@@ -116,17 +115,10 @@ internal class ZoomImageView @JvmOverloads constructor(
     }
 
     private fun configureMatrix() {
-        val d = drawable
+        val d = drawable ?: return
         val viewWidth = width.toFloat()
         val viewHeight = height.toFloat()
-        if (d == null) {
-            Log.i(LOG_TAG, "configureMatrix skip: drawable=null rot=$previewRotation view=${width}x${height}")
-            return
-        }
-        if (viewWidth <= 0f || viewHeight <= 0f) {
-            Log.i(LOG_TAG, "configureMatrix skip: view not laid out rot=$previewRotation drw=${d.intrinsicWidth}x${d.intrinsicHeight}")
-            return
-        }
+        if (viewWidth <= 0f || viewHeight <= 0f) return
 
         baseMatrix.reset()
         suppMatrix.reset()
@@ -134,11 +126,9 @@ internal class ZoomImageView @JvmOverloads constructor(
         val drawableWidth = d.intrinsicWidth.toFloat()
         val drawableHeight = d.intrinsicHeight.toFloat()
         if (drawableWidth <= 0f || drawableHeight <= 0f) {
-            Log.i(LOG_TAG, "configureMatrix skip: drawable bounds 0 rot=$previewRotation view=${width}x${height}")
             imageMatrix = baseMatrix
             return
         }
-        Log.i(LOG_TAG, "configureMatrix apply: rot=$previewRotation fit=$fitMode view=${width}x${height} drw=${drawableWidth.toInt()}x${drawableHeight.toInt()}")
 
         val rotatedWidth = if (previewRotation == 90 || previewRotation == 270) drawableHeight else drawableWidth
         val rotatedHeight = if (previewRotation == 90 || previewRotation == 270) drawableWidth else drawableHeight
@@ -353,7 +343,96 @@ internal class ZoomImageView @JvmOverloads constructor(
         scaleStateListener?.invoke(isZoomed())
     }
 
-    companion object {
-        private const val LOG_TAG = "LingXia.MediaPreview"
+}
+
+/**
+ * Non-interactive [ImageView][androidx.appcompat.widget.AppCompatImageView]
+ * that applies the same rotation + objectFit matrix as [ZoomImageView].
+ *
+ * Used as the poster placeholder for video pages so the first frame is shown
+ * already oriented to match what [LxMediaPlayer] will render once it attaches.
+ * Without this, the user sees the poster un-rotated, then the player rotating
+ * its surface into place — a visible orientation jump.
+ */
+internal class PreviewVideoPosterView @JvmOverloads constructor(
+    context: Context,
+    attrs: AttributeSet? = null
+) : androidx.appcompat.widget.AppCompatImageView(context, attrs) {
+
+    private val configMatrix = Matrix()
+    private var fitMode = LxMediaObjectFit.CONTAIN
+    private var previewRotation = 0
+
+    init {
+        scaleType = ScaleType.MATRIX
+    }
+
+    fun setPreviewObjectFit(value: LxMediaObjectFit?) {
+        val next = value ?: LxMediaObjectFit.CONTAIN
+        if (fitMode == next) return
+        fitMode = next
+        configureMatrix()
+    }
+
+    fun setPreviewRotationDegrees(value: Int?) {
+        val next = when (value) {
+            0, 90, 180, 270 -> value
+            else -> 0
+        }
+        if (previewRotation == next) return
+        previewRotation = next
+        configureMatrix()
+    }
+
+    override fun setImageDrawable(drawable: Drawable?) {
+        super.setImageDrawable(drawable)
+        configureMatrix()
+    }
+
+    override fun setImageBitmap(bm: android.graphics.Bitmap?) {
+        super.setImageBitmap(bm)
+        configureMatrix()
+    }
+
+    override fun setImageResource(resId: Int) {
+        super.setImageResource(resId)
+        configureMatrix()
+    }
+
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        super.onSizeChanged(w, h, oldw, oldh)
+        configureMatrix()
+    }
+
+    override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
+        super.onLayout(changed, left, top, right, bottom)
+        if (changed) configureMatrix()
+    }
+
+    private fun configureMatrix() {
+        val d = drawable ?: return
+        val viewWidth = width.toFloat()
+        val viewHeight = height.toFloat()
+        if (viewWidth <= 0f || viewHeight <= 0f) return
+        val drawableWidth = d.intrinsicWidth.toFloat()
+        val drawableHeight = d.intrinsicHeight.toFloat()
+        if (drawableWidth <= 0f || drawableHeight <= 0f) return
+
+        val rotatedWidth = if (previewRotation == 90 || previewRotation == 270) drawableHeight else drawableWidth
+        val rotatedHeight = if (previewRotation == 90 || previewRotation == 270) drawableWidth else drawableHeight
+        val scaleX = viewWidth / rotatedWidth
+        val scaleY = viewHeight / rotatedHeight
+        val (sx, sy) = when (fitMode) {
+            LxMediaObjectFit.COVER -> max(scaleX, scaleY).let { it to it }
+            LxMediaObjectFit.FILL -> scaleX to scaleY
+            LxMediaObjectFit.CONTAIN, LxMediaObjectFit.FIT -> min(scaleX, scaleY).let { it to it }
+        }
+
+        configMatrix.reset()
+        configMatrix.postTranslate(-drawableWidth / 2f, -drawableHeight / 2f)
+        if (previewRotation != 0) configMatrix.postRotate(previewRotation.toFloat())
+        configMatrix.postScale(sx, sy)
+        configMatrix.postTranslate(viewWidth / 2f, viewHeight / 2f)
+        imageMatrix = configMatrix
     }
 }

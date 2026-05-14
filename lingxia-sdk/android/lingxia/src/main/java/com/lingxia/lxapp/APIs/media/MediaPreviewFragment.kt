@@ -84,7 +84,7 @@ internal class MediaPreviewFragment : Fragment() {
     private var imageAutoRunnable: Runnable? = null
     private var imageAutoRunnablePagerPosition: Int = RecyclerView.NO_POSITION
     private var previewRoot: View? = null
-    private var transitionOverlay: ImageView? = null
+    private var transitionOverlay: PreviewVideoPosterView? = null
     private var transitionOverlayBitmap: Bitmap? = null
     private var transitionOverlayOwnsBitmap: Boolean = false
     private var initialContentRevealed: Boolean = false
@@ -122,6 +122,20 @@ internal class MediaPreviewFragment : Fragment() {
      */
     private var videoPlaylistIndexByPreviewIndex: IntArray = IntArray(0)
     private var sharedPlayerScrollState: Int = ViewPager2.SCROLL_STATE_IDLE
+    // Monotonically incremented on each video activation. Captured by
+    // posted runnables (eventSink → onSharedPlayerFirstFrame → host.post
+    // chain) so that stale callbacks from a prior activation cannot reveal
+    // the host or hide the overlay for the wrong source — a single boolean
+    // "handled" flag was racy: if activation A posts a frame event, then
+    // activation B begins before A's runnable runs, A's callback would
+    // see B as current, latch handled=true on B, and silently swallow B's
+    // own first-frame event.
+    private var sharedPlayerActivationGen: Long = 0L
+    // The activation gen that has already consumed its first-frame event.
+    // Equal to current `sharedPlayerActivationGen` ⇒ reveal already done
+    // for this activation; smaller ⇒ a fresh activation hasn't been
+    // handled yet.
+    private var sharedPlayerFirstFrameGen: Long = -1L
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -132,19 +146,6 @@ internal class MediaPreviewFragment : Fragment() {
         currentIndex = clampIndex(arguments?.getInt(ARG_START_INDEX, 0) ?: 0)
         currentPagerPosition = initialPagerPosition(currentIndex)
         showIndexIndicator = arguments?.getBoolean(ARG_SHOW_INDEX_INDICATOR, false) ?: false
-        Log.i(
-            LOG_TAG,
-            "onCreate args: callbackId=$callbackId advance=$advance " +
-                "startIndex=$currentIndex pagerPos=$currentPagerPosition " +
-                "showIndexIndicator=$showIndexIndicator items=${previewItems.size}"
-        )
-        previewItems.forEachIndexed { i, item ->
-            Log.i(
-                LOG_TAG,
-                "  item[$i] type=${item.mediaType} rotate=${item.rotate} " +
-                    "objectFit=${item.objectFit} durationMs=${item.durationMs} uri=${item.uri}"
-            )
-        }
     }
 
     override fun onCreateView(
@@ -197,10 +198,9 @@ internal class MediaPreviewFragment : Fragment() {
         sharedPlayerHost = playerHost
         root.addView(playerHost)
 
-        val overlay = ImageView(context).apply {
+        val overlay = PreviewVideoPosterView(context).apply {
             layoutParams = FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT)
             setBackgroundColor(Color.BLACK)
-            scaleType = ImageView.ScaleType.FIT_XY
             visibility = View.GONE
         }
         transitionOverlay = overlay
@@ -425,6 +425,20 @@ internal class MediaPreviewFragment : Fragment() {
         applySharedPlayerForCurrentItem()
         scheduleCurrentItemBehaviorWhenVisualReady("page_selected")
         prefetchUpcomingVisual(position)
+        // When ViewPager scrolls to a holder that was already bound during
+        // a previous neighbor-prefetch (e.g. LOOP back from video → image[0]
+        // where the image holder was bound while the video was activating),
+        // no new onItemVisualReady fires for the current position. Without
+        // an explicit hide here, the terminal-advance transitionOverlay
+        // (showing the next-item poster set in onVideoTerminal) keeps
+        // covering the page beneath — masking every subsequent in-place
+        // bitmap swap so the user perceives the cycle as stuck on one image.
+        val item = previewItems.getOrNull(currentIndex)
+        if (item?.mediaType != MediaPreviewType.VIDEO &&
+            previewAdapter?.isPositionVisualReady(position) == true
+        ) {
+            hideTransitionOverlay()
+        }
     }
 
     /// Match iOS / Harmony: chip is gated on (video page AND inline player
@@ -464,7 +478,7 @@ internal class MediaPreviewFragment : Fragment() {
             context.applicationContext,
             eventSink = { payload ->
                 val event = payload["event"] as? String
-                if (event == "firstframerendered" || event == "playing" || event == "timeupdate") {
+                if (event == "firstframerendered" || event == "playing") {
                     mainHandler.post { onSharedPlayerFirstFrame() }
                 }
             },
@@ -532,6 +546,9 @@ internal class MediaPreviewFragment : Fragment() {
         }
         when (item.mediaType) {
             MediaPreviewType.VIDEO -> {
+                // New video page activation → bump the gen so stale reveal
+                // runnables from prior activations no longer match.
+                sharedPlayerActivationGen += 1L
                 computeVideoPlaylist()
                 if (sharedPlaylistItems.isEmpty()) {
                     // Defensive: video items list is empty although the page is
@@ -585,8 +602,15 @@ internal class MediaPreviewFragment : Fragment() {
                 // Hide the host while the controller swaps source; promoted
                 // back to VISIBLE on firstframerendered so the holder's
                 // first-frame placeholder beneath bridges the decode gap.
+                host.animate().cancel()
+                host.alpha = 0f
                 host.visibility = View.INVISIBLE
                 player.playlistGoToIndex(playlistIdx)
+                // play() handles end-of-stream restart internally; calling
+                // seek(0) here would also fire on every re-invocation while
+                // the video is already playing (scroll-state-IDLE, visual
+                // ready, etc.) and effectively prevent playback from ever
+                // finishing.
                 player.play()
             }
             MediaPreviewType.IMAGE, MediaPreviewType.UNKNOWN -> {
@@ -594,23 +618,57 @@ internal class MediaPreviewFragment : Fragment() {
                 // INVISIBLE (not GONE) so the player's TextureView keeps its
                 // SurfaceTexture alive — switching back to a video page later
                 // can resume rendering immediately without a surface rebind.
+                host.animate().cancel()
+                host.alpha = 0f
                 host.visibility = View.INVISIBLE
             }
         }
     }
 
     private fun onSharedPlayerFirstFrame() {
-        val item = previewItems.getOrNull(currentIndex)
-        // Reveal the host only if the current preview item is a video and
-        // we're settled on it — events for a stale source must not flash
-        // a wrong frame.
-        if (item?.mediaType == MediaPreviewType.VIDEO &&
-            sharedPlayerScrollState == ViewPager2.SCROLL_STATE_IDLE
-        ) {
-            sharedPlayerHost?.visibility = View.VISIBLE
+        val gen = sharedPlayerActivationGen
+        val currentItem = previewItems.getOrNull(currentIndex)
+        if (currentItem?.mediaType != MediaPreviewType.VIDEO) return
+        // Only act once per activation, and only if this is still the live
+        // activation. A stale runnable from a prior activation would otherwise
+        // latch on the new activation, reveal the host before its first frame,
+        // and silently swallow the real first-frame event of the new source.
+        if (gen == sharedPlayerFirstFrameGen) return
+        sharedPlayerFirstFrameGen = gen
+        val host = sharedPlayerHost ?: return
+        host.post {
+            if (finished || gen != sharedPlayerActivationGen) return@post
+            val item = previewItems.getOrNull(currentIndex)
+            val willReveal = item?.mediaType == MediaPreviewType.VIDEO &&
+                sharedPlayerScrollState == ViewPager2.SCROLL_STATE_IDLE
+            if (willReveal) {
+                host.animate().cancel()
+                host.alpha = 0f
+                host.visibility = View.VISIBLE
+                val revealFrames = if (normalizePreviewRotation(item.rotate) == 0) 1 else 3
+                postAfterAnimationFrames(host, revealFrames) {
+                    if (!finished && gen == sharedPlayerActivationGen) {
+                        host.alpha = 1f
+                        host.postDelayed({
+                            if (!finished && gen == sharedPlayerActivationGen) {
+                                hideTransitionOverlay()
+                            }
+                        }, 50L)
+                    }
+                }
+            }
+            previewAdapter?.notifyVideoRenderedAt(currentPagerPosition)
         }
-        hideTransitionOverlay()
-        previewAdapter?.notifyVideoRenderedAt(currentPagerPosition)
+    }
+
+    private fun postAfterAnimationFrames(view: View, frames: Int, action: () -> Unit) {
+        if (frames <= 0) {
+            action()
+            return
+        }
+        view.postOnAnimation {
+            postAfterAnimationFrames(view, frames - 1, action)
+        }
     }
 
     private fun onSharedPlayerTerminal(terminal: String) {
@@ -866,7 +924,9 @@ internal class MediaPreviewFragment : Fragment() {
         clearTransitionOverlayBitmap()
         transitionOverlayBitmap = bitmap
         transitionOverlayOwnsBitmap = true
-        overlay.scaleType = ImageView.ScaleType.FIT_XY
+        // Snapshot already has the visible rotation baked into pixels — stretch to fill.
+        overlay.setPreviewRotationDegrees(0)
+        overlay.setPreviewObjectFit(LxMediaObjectFit.FILL)
         overlay.setImageBitmap(bitmap)
         overlay.visibility = View.VISIBLE
         return true
@@ -885,7 +945,10 @@ internal class MediaPreviewFragment : Fragment() {
         clearTransitionOverlayBitmap()
         transitionOverlayBitmap = bitmap
         transitionOverlayOwnsBitmap = false
-        overlay.scaleType = previewFrameScaleType(target.objectFit)
+        // Cached frame is raw, un-oriented — apply the item's rotation / fit so
+        // the overlay matches what the page (and the player, for video) will render.
+        overlay.setPreviewRotationDegrees(target.rotate)
+        overlay.setPreviewObjectFit(target.objectFit)
         overlay.setImageBitmap(bitmap)
         overlay.visibility = View.VISIBLE
         return true
@@ -1124,6 +1187,12 @@ private data class PreviewItem(
     val durationMs: Long?
 )
 
+private fun normalizePreviewRotation(value: Int?): Int {
+    val raw = value ?: return 0
+    val normalized = raw % 360
+    return if (normalized < 0) normalized + 360 else normalized
+}
+
 private data class PreviewRuntimeProfile(
     val isConstrainedDevice: Boolean,
     val enableVisualPrefetchBeforeSwitch: Boolean,
@@ -1205,14 +1274,6 @@ private fun resolveLxUriIfNeeded(input: String): String? {
     val appId = LxApp.getCurrentActivity()?.getAppId() ?: return null
     val resolved = NativeApi.resolveLxUri(appId, input)
     return resolved?.takeIf { it.isNotBlank() }
-}
-
-private fun previewFrameScaleType(objectFit: LxMediaObjectFit?): ImageView.ScaleType {
-    return when (objectFit ?: LxMediaObjectFit.CONTAIN) {
-        LxMediaObjectFit.COVER -> ImageView.ScaleType.CENTER_CROP
-        LxMediaObjectFit.FILL -> ImageView.ScaleType.FIT_XY
-        LxMediaObjectFit.CONTAIN, LxMediaObjectFit.FIT -> ImageView.ScaleType.FIT_CENTER
-    }
 }
 
 private class PreviewPagerAdapter(
@@ -1606,10 +1667,11 @@ private class PreviewPagerAdapter(
             val context = container.context
             val mediaUri = item.uri
 
-            val frameView = ImageView(context).apply {
+            val frameView = PreviewVideoPosterView(context).apply {
                 layoutParams = FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT)
                 setBackgroundColor(Color.BLACK)
-                scaleType = frameScaleType(item.objectFit)
+                setPreviewObjectFit(item.objectFit)
+                setPreviewRotationDegrees(item.rotate)
             }
             videoFrameView = frameView
             container.addView(
@@ -1618,8 +1680,10 @@ private class PreviewPagerAdapter(
             )
 
             if (mediaUri == Uri.EMPTY) {
+                // Reset orientation for the alert glyph so it isn't rotated.
+                frameView.setPreviewRotationDegrees(0)
+                frameView.setPreviewObjectFit(LxMediaObjectFit.CONTAIN)
                 frameView.setImageResource(android.R.drawable.ic_dialog_alert)
-                frameView.scaleType = ImageView.ScaleType.CENTER
                 notifyVisualReady(displayGeneration)
                 return
             }
@@ -1650,14 +1714,6 @@ private class PreviewPagerAdapter(
             // Remote video: no local first-frame extraction; rely on the
             // shared player's poster/buffering display once it takes over.
             notifyVisualReady(displayGeneration)
-        }
-
-        private fun frameScaleType(objectFit: LxMediaObjectFit?): ImageView.ScaleType {
-            return when (objectFit ?: LxMediaObjectFit.CONTAIN) {
-                LxMediaObjectFit.COVER -> ImageView.ScaleType.CENTER_CROP
-                LxMediaObjectFit.FILL -> ImageView.ScaleType.FIT_XY
-                LxMediaObjectFit.CONTAIN, LxMediaObjectFit.FIT -> ImageView.ScaleType.FIT_CENTER
-            }
         }
 
         private fun clearImageReferences(view: View?) {

@@ -732,8 +732,10 @@ internal class LxMediaPlayer(
     }
 
     fun play() {
+        Log.i("LingXia.MediaPreview", "LxMediaPlayer.play() hasEnded=$hasEnded isPausedByUser=$isPausedByUser")
         isPausedByUser = false  // User wants to play
         isBufferingForUi = true
+        val wasAtEnd = hasEnded
         if (hasEnded) {
             hasEnded = false
             updatePosterVisibility()
@@ -742,6 +744,15 @@ internal class LxMediaPlayer(
             ensureFeedBackendIfNeeded()
         }
         playerCore?.setRate(currentPlaybackRate)
+        // ExoPlayer parked at the end of stream won't restart from a bare
+        // play() — callers (preview LOOP back to the same single-video page,
+        // for example) expect play() to mean "play from the start if we're
+        // sitting at the end". Without this, a second activation of the same
+        // video page would no-op and leave the user looking at a frozen end
+        // frame.
+        if (wasAtEnd) {
+            playerCore?.seek(0L)
+        }
         playerCore?.play()
     }
 
@@ -1771,6 +1782,14 @@ internal class LxMediaPlayer(
         if (containerW <= 0f || containerH <= 0f) return
 
         val (scaleX, scaleY) = computeInlineRotationScales(degrees, containerW, containerH)
+        if (scaleX.isNaN() || scaleY.isNaN()) {
+            // Video size not in yet — defer the whole apply until LoadedMetadata
+            // re-triggers us via updatePreferredOrientation. Without this we'd
+            // pollute playerView's transform with stale fallback numbers; with
+            // it the playerView remains at its laid-out identity until we have
+            // the real fit, and the fragment doesn't reveal the host yet.
+            return
+        }
 
         fun apply(v: View?) {
             v ?: return
@@ -1817,14 +1836,14 @@ internal class LxMediaPlayer(
 
         val (sourceW, sourceH) = getDisplayVideoSize()
         if (sourceW <= 0.0 || sourceH <= 0.0) {
-            // Fallback before metadata is ready.
-            val ratio1 = containerW / containerH
-            val ratio2 = containerH / containerW
-            val uniform = when (objectFit) {
-                LxMediaObjectFit.COVER -> max(ratio1, ratio2)
-                else -> min(ratio1, ratio2)
-            }
-            return uniform to uniform
+            // Metadata not in yet — caller must skip the apply rather than
+            // settle for a container-ratio fallback (that produced a visible
+            // 0.45x shrunken first frame until the metadata-triggered
+            // re-apply corrected it). The fragment-level reveal is gated on
+            // firstframerendered, which by ExoPlayer's event order fires
+            // after LoadedMetadata, so the surface stays hidden during the
+            // brief unmeasured window.
+            return Float.NaN to Float.NaN
         }
 
         val baseScale = fitScale(sourceW, sourceH, containerW.toDouble(), containerH.toDouble())
@@ -1896,6 +1915,9 @@ internal class LxMediaPlayer(
 
     private fun updatePreferredOrientation(width: Double, height: Double, rotationDegrees: Int = videoRotationDegrees) {
         if (width <= 0 || height <= 0) return
+        val widthChanged = videoWidth != width
+        val heightChanged = videoHeight != height
+        val rotChanged = videoRotationDegrees != normalizeRotation(rotationDegrees)
         videoWidth = width
         videoHeight = height
         videoRotationDegrees = normalizeRotation(rotationDegrees)
@@ -1906,6 +1928,12 @@ internal class LxMediaPlayer(
             } else {
                 applyFullscreenTransform()
             }
+        } else if (widthChanged || heightChanged || rotChanged) {
+            // Inline rotation scale depends on these (via computeInlineRotationScales),
+            // so re-apply once metadata lands. Without this, the first apply uses the
+            // fallback "video size unknown" path and the scale stays wrong until some
+            // unrelated layout change happens to fire the layout listener.
+            applyInlineDisplayRotationTransform()
         }
     }
 
