@@ -140,7 +140,13 @@ internal class PlayerCore(
         hasEmittedPlay = false
         enginePlaying = false
         hasEmittedPlayingSinceLastWaiting = false
-        hasEnded = false
+        // Deliberately do NOT clear hasEnded here. Pausing an
+        // already-ended source (e.g. preview routing through an image
+        // page after a video reaches end-of-stream) must keep the
+        // end-of-stream signal so the next play() can auto-seek to 0
+        // via the play() handler. Clearing it left ExoPlayer parked at
+        // EOS with our flag stale, so play() no-op'd and the user saw
+        // a frozen last frame on the next video page activation.
         engine?.pause()
         emit(PlayerEvent.Pause(lastKnownTimeMs))
     }
@@ -160,16 +166,22 @@ internal class PlayerCore(
     }
 
     fun seek(targetTimeMs: Long) {
-        val shouldResumeAfterSeek = playIntent || hasEnded
-        if (hasEnded) {
-            playIntent = true
-            if (backend == BackendKind.FEED) {
-                emit(PlayerEvent.PlayRequest)
-                emit(PlayerEvent.Waiting(WaitingReason.INITIAL, currentTimeMs = lastKnownTimeMs))
-                isWaiting = true
-                lastWaitingReason = WaitingReason.INITIAL
-                hasEmittedPlayingSinceLastWaiting = false
-            }
+        // Resume only if the caller already had play intent. Previously this
+        // also OR'd `hasEnded`, which together with the pause() bug that
+        // silently cleared hasEnded happened to produce the "right" behavior
+        // for the typical play→EOS→seek replay flow (playIntent was still
+        // true). Now that pause() preserves hasEnded, the OR meant any
+        // post-EOS seek auto-resumed even when the caller had explicitly
+        // paused — a semantic break for lx-video callers that pause then
+        // scrub. playIntent alone captures the user's intent across pause
+        // and EOS, since EOS itself doesn't clear playIntent.
+        val shouldResumeAfterSeek = playIntent
+        if (hasEnded && backend == BackendKind.FEED) {
+            emit(PlayerEvent.PlayRequest)
+            emit(PlayerEvent.Waiting(WaitingReason.INITIAL, currentTimeMs = lastKnownTimeMs))
+            isWaiting = true
+            lastWaitingReason = WaitingReason.INITIAL
+            hasEmittedPlayingSinceLastWaiting = false
         }
         hasEnded = false
         hasEmittedPlayingSinceLastWaiting = false

@@ -732,10 +732,8 @@ internal class LxMediaPlayer(
     }
 
     fun play() {
-        Log.i("LingXia.MediaPreview", "LxMediaPlayer.play() hasEnded=$hasEnded isPausedByUser=$isPausedByUser")
         isPausedByUser = false  // User wants to play
         isBufferingForUi = true
-        val wasAtEnd = hasEnded
         if (hasEnded) {
             hasEnded = false
             updatePosterVisibility()
@@ -744,15 +742,6 @@ internal class LxMediaPlayer(
             ensureFeedBackendIfNeeded()
         }
         playerCore?.setRate(currentPlaybackRate)
-        // ExoPlayer parked at the end of stream won't restart from a bare
-        // play() — callers (preview LOOP back to the same single-video page,
-        // for example) expect play() to mean "play from the start if we're
-        // sitting at the end". Without this, a second activation of the same
-        // video page would no-op and leave the user looking at a frozen end
-        // frame.
-        if (wasAtEnd) {
-            playerCore?.seek(0L)
-        }
         playerCore?.play()
     }
 

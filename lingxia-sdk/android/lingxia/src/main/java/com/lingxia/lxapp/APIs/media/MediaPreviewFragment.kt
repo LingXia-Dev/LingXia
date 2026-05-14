@@ -131,11 +131,25 @@ internal class MediaPreviewFragment : Fragment() {
     // see B as current, latch handled=true on B, and silently swallow B's
     // own first-frame event.
     private var sharedPlayerActivationGen: Long = 0L
+    // Pager position the current activation gen was minted for. The gen
+    // only bumps when we transition to a *different* video page —
+    // re-invocations of applySharedPlayerForCurrentItem on the same page
+    // (handlePageSelected then scroll-state IDLE both call us; programmatic
+    // setCurrentItem can trigger an extra IDLE; etc.) must NOT bump gen,
+    // otherwise the seek-once-per-gen invariant decays into "seek on every
+    // re-invocation" and playback keeps restarting from 0.
+    private var sharedPlayerActivationPager: Int = Int.MIN_VALUE
     // The activation gen that has already consumed its first-frame event.
     // Equal to current `sharedPlayerActivationGen` ⇒ reveal already done
     // for this activation; smaller ⇒ a fresh activation hasn't been
     // handled yet.
     private var sharedPlayerFirstFrameGen: Long = -1L
+    // The activation gen for which we've already issued a seek-to-0 +
+    // play(). Re-invocations of applySharedPlayerForCurrentItem within
+    // the same activation (scroll-state-IDLE rebounce, visual-ready, …)
+    // must not seek again or playback gets restarted mid-stream and
+    // never reaches the end.
+    private var sharedPlayerSeekedGen: Long = -1L
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -419,6 +433,7 @@ internal class MediaPreviewFragment : Fragment() {
         clearAutoTimer()
         currentPagerPosition = position
         currentIndex = realIndexFor(position)
+        logPlaybackState("page_selected")
         updateIndicator(currentIndex)
         updateCloseButtonVisibility()
         previewAdapter?.onPageSelected(position)
@@ -455,6 +470,7 @@ internal class MediaPreviewFragment : Fragment() {
 
     private fun onPagerScrollStateChanged(state: Int) {
         sharedPlayerScrollState = state
+        logPlaybackState("scroll_state", "state=${scrollStateName(state)}")
         // Hide the player view while the user (or programmatic settle) is
         // mid-swipe so the underlying ViewPager pages — which carry the
         // first-frame placeholders — remain visible during the gesture.
@@ -479,13 +495,49 @@ internal class MediaPreviewFragment : Fragment() {
             eventSink = { payload ->
                 val event = payload["event"] as? String
                 if (event == "firstframerendered" || event == "playing") {
-                    mainHandler.post { onSharedPlayerFirstFrame() }
+                    // Capture the activation gen at the posting site, not at
+                    // runnable execution. Otherwise a stale event from a
+                    // previous video activation (still queued in mainHandler
+                    // when the user moves on to the next page) would observe
+                    // the new gen at execution and latch a reveal for the
+                    // wrong source — the new activation's real first-frame
+                    // event then no-ops because firstFrameGen is already
+                    // latched. The runnable matches against the captured
+                    // gen so it can drop itself if a newer activation took
+                    // over before it ran.
+                    val expectedGen = sharedPlayerActivationGen
+                    val expectedPagerPosition = sharedPlayerActivationPager
+                    mainHandler.post {
+                        if (expectedGen == sharedPlayerActivationGen &&
+                            expectedPagerPosition == currentPagerPosition
+                        ) {
+                            onSharedPlayerFirstFrame(expectedGen, expectedPagerPosition)
+                        }
+                    }
                 }
             },
             typedEventSink = { event ->
                 when (event) {
-                    is LxMediaEvent.Ended -> mainHandler.post { onSharedPlayerTerminal("ended") }
-                    is LxMediaEvent.Error -> mainHandler.post { onSharedPlayerTerminal("error") }
+                    is LxMediaEvent.Ended,
+                    is LxMediaEvent.Error -> {
+                        // Capture activation gen at the posting site. On
+                        // Android 5 a stale ended/error from the previous
+                        // source can arrive after we've already moved on to
+                        // the next page; running onVideoTerminal against
+                        // *that* page's currentPagerPosition would either
+                        // advance the wrong item (ended) or — worse —
+                        // close the whole new preview session (error).
+                        val expectedGen = sharedPlayerActivationGen
+                        val expectedPagerPosition = sharedPlayerActivationPager
+                        val terminal = if (event is LxMediaEvent.Error) "error" else "ended"
+                        mainHandler.post {
+                            if (expectedGen == sharedPlayerActivationGen &&
+                                expectedPagerPosition == currentPagerPosition
+                            ) {
+                                onSharedPlayerTerminal(expectedPagerPosition, terminal)
+                            }
+                        }
+                    }
                     else -> Unit
                 }
             }
@@ -546,9 +598,15 @@ internal class MediaPreviewFragment : Fragment() {
         }
         when (item.mediaType) {
             MediaPreviewType.VIDEO -> {
-                // New video page activation → bump the gen so stale reveal
-                // runnables from prior activations no longer match.
-                sharedPlayerActivationGen += 1L
+                // Only bump the gen when this is a different video page
+                // than the previous activation — handlePageSelected and
+                // scroll-state IDLE both route here, so the same page
+                // legitimately re-enters this branch and must not bump.
+                if (sharedPlayerActivationPager != currentPagerPosition) {
+                    sharedPlayerActivationGen += 1L
+                    sharedPlayerActivationPager = currentPagerPosition
+                    logPlaybackState("video_activate", "playlistIdx=pending")
+                }
                 computeVideoPlaylist()
                 if (sharedPlaylistItems.isEmpty()) {
                     // Defensive: video items list is empty although the page is
@@ -606,15 +664,35 @@ internal class MediaPreviewFragment : Fragment() {
                 host.alpha = 0f
                 host.visibility = View.INVISIBLE
                 player.playlistGoToIndex(playlistIdx)
-                // play() handles end-of-stream restart internally; calling
-                // seek(0) here would also fire on every re-invocation while
-                // the video is already playing (scroll-state-IDLE, visual
-                // ready, etc.) and effectively prevent playback from ever
-                // finishing.
+                logPlaybackState("video_apply", "playlistIdx=$playlistIdx")
+                // Seek to head exactly once per activation. Relying on the
+                // player's internal hasEnded flag isn't reliable on Android
+                // 5: ExoPlayer's state transitions there can route through
+                // an intermediate Play event that clears hasEnded before we
+                // re-enter the video page, leaving the source parked at the
+                // end of stream with hasEnded=false — a bare play() then
+                // no-ops and the user sees a frozen last frame. Gating on
+                // sharedPlayerActivationGen also keeps the seek from firing
+                // on every re-invocation of applySharedPlayerForCurrentItem
+                // within a single activation (scroll-state IDLE rebounce,
+                // visual-ready callback, …) which would otherwise restart
+                // playback mid-stream and prevent it from ever finishing.
+                if (sharedPlayerSeekedGen != sharedPlayerActivationGen) {
+                    sharedPlayerSeekedGen = sharedPlayerActivationGen
+                    logPlaybackState("video_seek_start", "playlistIdx=$playlistIdx")
+                    player.seek(0.0)
+                }
+                logPlaybackState("video_play", "playlistIdx=$playlistIdx")
                 player.play()
             }
             MediaPreviewType.IMAGE, MediaPreviewType.UNKNOWN -> {
+                if (sharedPlayerActivationPager != Int.MIN_VALUE) {
+                    sharedPlayerActivationGen += 1L
+                    sharedPlayerActivationPager = Int.MIN_VALUE
+                    logPlaybackState("video_deactivate_for_non_video")
+                }
                 sharedPlayer?.pause()
+                logPlaybackState("non_video_pause_player")
                 // INVISIBLE (not GONE) so the player's TextureView keeps its
                 // SurfaceTexture alive — switching back to a video page later
                 // can resume rendering immediately without a surface rebind.
@@ -625,23 +703,33 @@ internal class MediaPreviewFragment : Fragment() {
         }
     }
 
-    private fun onSharedPlayerFirstFrame() {
-        val gen = sharedPlayerActivationGen
+    private fun onSharedPlayerFirstFrame(expectedGen: Long, expectedPagerPosition: Int) {
+        val gen = expectedGen
         val currentItem = previewItems.getOrNull(currentIndex)
         if (currentItem?.mediaType != MediaPreviewType.VIDEO) return
-        // Only act once per activation, and only if this is still the live
-        // activation. A stale runnable from a prior activation would otherwise
-        // latch on the new activation, reveal the host before its first frame,
-        // and silently swallow the real first-frame event of the new source.
+        if (expectedPagerPosition != currentPagerPosition) return
+        // Already revealed for this activation? bail.
         if (gen == sharedPlayerFirstFrameGen) return
-        sharedPlayerFirstFrameGen = gen
         val host = sharedPlayerHost ?: return
         host.post {
-            if (finished || gen != sharedPlayerActivationGen) return@post
+            if (finished ||
+                gen != sharedPlayerActivationGen ||
+                expectedPagerPosition != currentPagerPosition
+            ) return@post
+            // Re-check at deferred-execution time: a stale runnable from a
+            // prior activation can't reach here (the eventSink wrapper drops
+            // mismatched gens before posting), but the firstFrameGen latch
+            // must wait until we actually commit to the reveal — otherwise
+            // a drag mid-flight makes willReveal=false here, we latch
+            // firstFrameGen anyway, and no subsequent firstframerendered
+            // for the same activation can re-trigger the reveal.
+            if (gen == sharedPlayerFirstFrameGen) return@post
             val item = previewItems.getOrNull(currentIndex)
             val willReveal = item?.mediaType == MediaPreviewType.VIDEO &&
                 sharedPlayerScrollState == ViewPager2.SCROLL_STATE_IDLE
             if (willReveal) {
+                sharedPlayerFirstFrameGen = gen
+                logPlaybackState("video_first_frame", "position=$expectedPagerPosition gen=$gen")
                 host.animate().cancel()
                 host.alpha = 0f
                 host.visibility = View.VISIBLE
@@ -657,7 +745,7 @@ internal class MediaPreviewFragment : Fragment() {
                     }
                 }
             }
-            previewAdapter?.notifyVideoRenderedAt(currentPagerPosition)
+            previewAdapter?.notifyVideoRenderedAt(expectedPagerPosition)
         }
     }
 
@@ -671,8 +759,11 @@ internal class MediaPreviewFragment : Fragment() {
         }
     }
 
-    private fun onSharedPlayerTerminal(terminal: String) {
-        onVideoTerminal(currentPagerPosition, terminal)
+    private fun onSharedPlayerTerminal(position: Int, terminal: String) {
+        val item = previewItems.getOrNull(currentIndex)
+        if (item?.mediaType != MediaPreviewType.VIDEO) return
+        logPlaybackState("video_terminal", "position=$position terminal=$terminal")
+        onVideoTerminal(position, terminal)
     }
 
     private fun scheduleCurrentItemBehaviorWhenVisualReady(reason: String) {
@@ -702,16 +793,19 @@ internal class MediaPreviewFragment : Fragment() {
                 if (finished || scheduledPagerPosition != currentPagerPosition) {
                     return@Runnable
                 }
+                logPlaybackState("auto_advance_fire", "timeoutMs=$timeoutMs")
                 advanceFromCurrentItem()
             }
             imageAutoRunnable = runnable
             imageAutoRunnablePagerPosition = scheduledPagerPosition
+            logPlaybackState("auto_advance_schedule", "timeoutMs=$timeoutMs reason=$reason")
             mainHandler.postDelayed(runnable, timeoutMs)
         }
     }
 
     private fun onVideoTerminal(position: Int, terminal: String) {
         if (finished || position != currentPagerPosition) return
+        logPlaybackState("video_terminal_handle", "position=$position terminal=$terminal")
         when (terminal) {
             "error" -> {
                 clearAutoRunnables()
@@ -730,6 +824,7 @@ internal class MediaPreviewFragment : Fragment() {
     }
 
     private fun advanceFromCurrentItem() {
+        logPlaybackState("advance_from_current")
         when (advance) {
             PreviewAdvance.MANUAL -> Unit
             PreviewAdvance.NEXT -> {
@@ -785,6 +880,13 @@ internal class MediaPreviewFragment : Fragment() {
     ) {
         cancelPendingSwitchPrefetch()
         val generation = pendingSwitchPrefetchGeneration
+        // Capture the source pager position at scheduling time. If the user
+        // (or auto-advance) moves to a different page while the async decode
+        // is in flight, the in-place replace must NOT land on whichever
+        // image happens to be current now — `replaceCurrentImage` just
+        // overwrites the current holder's bitmap and would silently corrupt
+        // the wrong page.
+        val sourcePagerPosition = currentPagerPosition
         pendingSwitchPrefetch = PreviewPagerAdapter.prefetchItemVisual(
             context = context,
             item = target,
@@ -792,6 +894,11 @@ internal class MediaPreviewFragment : Fragment() {
         ) { success ->
             if (finished || generation != pendingSwitchPrefetchGeneration) return@prefetchItemVisual
             pendingSwitchPrefetch = null
+            if (currentPagerPosition != sourcePagerPosition) {
+                // User moved past the source page while we were decoding —
+                // the in-place advance for the original target is stale.
+                return@prefetchItemVisual
+            }
             val bitmap = PreviewPagerAdapter.getCachedLocalImage(context, target.uri)
             if (bitmap != null && replaceCurrentImageInPlace(targetPagerPosition, targetIndex, target, bitmap)) {
                 return@prefetchItemVisual
@@ -1077,6 +1184,48 @@ internal class MediaPreviewFragment : Fragment() {
         val midpoint = Int.MAX_VALUE / 2
         val base = midpoint - (midpoint % size)
         return base + clampIndex(startIndex)
+    }
+
+    private fun logPlaybackState(event: String, extra: String? = null) {
+        val item = previewItems.getOrNull(currentIndex)
+        val uriTail = item?.uri?.toString()?.let { value ->
+            if (value.length <= 72) value else value.takeLast(72)
+        } ?: "-"
+        val host = sharedPlayerHost
+        val details = buildString {
+            append("event=").append(event)
+            append(" pager=").append(currentPagerPosition)
+            append(" index=").append(currentIndex).append('/').append(previewItems.size)
+            append(" type=").append(item?.mediaType ?: "-")
+            append(" advance=").append(advance)
+            append(" scroll=").append(scrollStateName(sharedPlayerScrollState))
+            append(" gen=").append(sharedPlayerActivationGen)
+            append(" activationPager=").append(sharedPlayerActivationPager)
+            append(" seekedGen=").append(sharedPlayerSeekedGen)
+            append(" host=").append(visibilityName(host?.visibility))
+            append(" hostAlpha=").append(host?.alpha ?: -1f)
+            append(" controls=").append(sharedPlayer?.isControlsVisible() == true)
+            append(" uri=").append(uriTail)
+            if (!extra.isNullOrBlank()) {
+                append(' ').append(extra)
+            }
+        }
+        Log.i(LOG_TAG, details)
+    }
+
+    private fun scrollStateName(state: Int): String = when (state) {
+        ViewPager2.SCROLL_STATE_IDLE -> "IDLE"
+        ViewPager2.SCROLL_STATE_DRAGGING -> "DRAGGING"
+        ViewPager2.SCROLL_STATE_SETTLING -> "SETTLING"
+        else -> state.toString()
+    }
+
+    private fun visibilityName(visibility: Int?): String = when (visibility) {
+        View.VISIBLE -> "VISIBLE"
+        View.INVISIBLE -> "INVISIBLE"
+        View.GONE -> "GONE"
+        null -> "null"
+        else -> visibility.toString()
     }
 
     companion object {
