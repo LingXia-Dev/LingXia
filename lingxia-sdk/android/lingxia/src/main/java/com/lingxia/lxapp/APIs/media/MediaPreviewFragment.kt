@@ -818,6 +818,13 @@ internal class MediaPreviewFragment : Fragment() {
                 if (item?.durationMs != null && item.durationMs > 0L && advance != PreviewAdvance.MANUAL) {
                     return
                 }
+                if (advance == PreviewAdvance.LOOP && previewItems.size == 1) {
+                    clearAutoRunnables()
+                    logPlaybackState("single_video_loop_restart")
+                    sharedPlayer?.seek(0.0)
+                    sharedPlayer?.play()
+                    return
+                }
                 showTerminalAdvanceOverlay()
                 clearAutoRunnables()
                 advanceFromCurrentItem()
@@ -1224,7 +1231,7 @@ internal class MediaPreviewFragment : Fragment() {
             if (currentMs != null &&
                 lastLoggedPlayerTimeUpdateMs != Long.MIN_VALUE &&
                 currentMs >= lastLoggedPlayerTimeUpdateMs &&
-                currentMs - lastLoggedPlayerTimeUpdateMs < 1000L
+                currentMs - lastLoggedPlayerTimeUpdateMs < PLAYER_TIMEUPDATE_LOG_INTERVAL_MS
             ) {
                 return
             }
@@ -1267,6 +1274,7 @@ internal class MediaPreviewFragment : Fragment() {
         private const val ARG_CALLBACK_ID = "arg_callback_id"
         private const val TAG = "MediaPreviewOverlay"
         private const val LOG_TAG = "LingXia.MediaPreview"
+        private const val PLAYER_TIMEUPDATE_LOG_INTERVAL_MS = 5_000L
 
         fun show(
             activity: AppCompatActivity,

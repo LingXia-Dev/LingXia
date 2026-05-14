@@ -368,6 +368,7 @@ internal class LxMediaPlayer(
                 ).also { engine ->
                     activeUrlEngine = engine
                     player = engine.exoPlayer
+                    engine.setLoopEnabled(loopEnabled && !playlistController.isActive)
                 }
             },
             createFeedEngine = {
