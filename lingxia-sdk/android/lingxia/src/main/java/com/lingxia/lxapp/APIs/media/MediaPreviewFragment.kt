@@ -150,6 +150,7 @@ internal class MediaPreviewFragment : Fragment() {
     // must not seek again or playback gets restarted mid-stream and
     // never reaches the end.
     private var sharedPlayerSeekedGen: Long = -1L
+    private var lastLoggedPlayerTimeUpdateMs: Long = Long.MIN_VALUE
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -494,6 +495,7 @@ internal class MediaPreviewFragment : Fragment() {
             context.applicationContext,
             eventSink = { payload ->
                 val event = payload["event"] as? String
+                logSharedPlayerEvent(payload)
                 if (event == "firstframerendered" || event == "playing") {
                     // Capture the activation gen at the posting site, not at
                     // runnable execution. Otherwise a stale event from a
@@ -1204,6 +1206,7 @@ internal class MediaPreviewFragment : Fragment() {
             append(" seekedGen=").append(sharedPlayerSeekedGen)
             append(" host=").append(visibilityName(host?.visibility))
             append(" hostAlpha=").append(host?.alpha ?: -1f)
+            append(" hostSize=").append(host?.width ?: -1).append('x').append(host?.height ?: -1)
             append(" controls=").append(sharedPlayer?.isControlsVisible() == true)
             append(" uri=").append(uriTail)
             if (!extra.isNullOrBlank()) {
@@ -1211,6 +1214,34 @@ internal class MediaPreviewFragment : Fragment() {
             }
         }
         Log.i(LOG_TAG, details)
+    }
+
+    private fun logSharedPlayerEvent(payload: Map<String, Any>) {
+        val event = payload["event"] as? String ?: return
+        val detail = payload["detail"] as? Map<*, *>
+        if (event == "timeupdate") {
+            val currentMs = ((detail?.get("currentTime") as? Number)?.toDouble()?.times(1000.0))?.toLong()
+            if (currentMs != null &&
+                lastLoggedPlayerTimeUpdateMs != Long.MIN_VALUE &&
+                currentMs >= lastLoggedPlayerTimeUpdateMs &&
+                currentMs - lastLoggedPlayerTimeUpdateMs < 1000L
+            ) {
+                return
+            }
+            lastLoggedPlayerTimeUpdateMs = currentMs ?: lastLoggedPlayerTimeUpdateMs
+        }
+
+        val compactDetail = when (event) {
+            "timeupdate" -> {
+                val current = detail?.get("currentTime")
+                val duration = detail?.get("duration")
+                "current=$current duration=$duration"
+            }
+            "seeked" -> "time=${detail?.get("time")}"
+            "error" -> "code=${detail?.get("code")} message=${detail?.get("message")}"
+            else -> detail?.toString() ?: "{}"
+        }
+        logPlaybackState("player_event", "playerEvent=$event detail=$compactDetail")
     }
 
     private fun scrollStateName(state: Int): String = when (state) {

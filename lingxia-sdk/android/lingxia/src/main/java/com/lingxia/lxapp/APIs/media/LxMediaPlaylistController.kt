@@ -84,6 +84,8 @@ internal class LxMediaPlaylistController(private val host: PlaylistHost) {
     private var transitionGeneration: Long = 0L
     /** Set on FirstFrameRendered, reset when we initiate a new transition. */
     private var engineHasRenderedFirstFrame: Boolean = false
+    /** URL whose transition bitmap is still allowed to cover the player. */
+    private var pendingOverlayUrl: String? = null
 
     /**
      * Whether the controller should auto-advance on Ended / Error. lx-video
@@ -147,6 +149,7 @@ internal class LxMediaPlaylistController(private val host: PlaylistHost) {
         if (items.isEmpty()) return
         items = emptyList()
         index = 0
+        pendingOverlayUrl = null
         overlay?.hide()
     }
 
@@ -184,8 +187,10 @@ internal class LxMediaPlaylistController(private val host: PlaylistHost) {
             // Even out of playlist mode, hide overlay on first frame so a
             // straggler `apply → deactivate` doesn't leave it visible.
             if (event is CorePlayerEvent.FirstFrameRendered ||
-                event is CorePlayerEvent.Playing
+                event is CorePlayerEvent.Playing ||
+                isPositiveTimeUpdate(event)
             ) {
+                pendingOverlayUrl = null
                 overlay?.hide()
             }
             return
@@ -196,6 +201,12 @@ internal class LxMediaPlaylistController(private val host: PlaylistHost) {
             is CorePlayerEvent.FirstFrameRendered,
             is CorePlayerEvent.Playing -> {
                 engineHasRenderedFirstFrame = true
+                pendingOverlayUrl = null
+                overlay?.hide()
+            }
+            is CorePlayerEvent.TimeUpdate -> if (event.currentTimeMs > 0) {
+                engineHasRenderedFirstFrame = true
+                pendingOverlayUrl = null
                 overlay?.hide()
             }
             else -> Unit
@@ -206,6 +217,7 @@ internal class LxMediaPlaylistController(private val host: PlaylistHost) {
     fun release() {
         items = emptyList()
         index = 0
+        pendingOverlayUrl = null
         overlay = null
     }
 
@@ -256,18 +268,30 @@ internal class LxMediaPlaylistController(private val host: PlaylistHost) {
         val item = items.getOrNull(targetIndex) ?: return
         val uri = host.parseUri(item.url) ?: return
         if (!isLocalUri(uri)) return
+        val url = item.url
+        pendingOverlayUrl = url
 
         LocalVideoFrameCache.peek(host.context, uri)?.let { cached ->
-            if (gen == transitionGeneration) overlay.show(cached)
+            if (canShowOverlay(gen, url)) overlay.show(cached)
             return
         }
         LocalVideoFrameCache.load(host.context, uri) { bitmap ->
             if (bitmap == null) return@load
-            // Suppress if we've moved on or the engine has already rendered.
-            if (gen != transitionGeneration) return@load
-            if (engineHasRenderedFirstFrame) return@load
+            // Suppress if we've moved on, the engine has already rendered, or
+            // overlay permission was cleared by a Playing/FirstFrame/TimeUpdate.
+            if (!canShowOverlay(gen, url)) return@load
             overlay.show(bitmap)
         }
+    }
+
+    private fun canShowOverlay(gen: Long, url: String): Boolean {
+        return gen == transitionGeneration &&
+            pendingOverlayUrl == url &&
+            !engineHasRenderedFirstFrame
+    }
+
+    private fun isPositiveTimeUpdate(event: CorePlayerEvent): Boolean {
+        return event is CorePlayerEvent.TimeUpdate && event.currentTimeMs > 0
     }
 
     /**
