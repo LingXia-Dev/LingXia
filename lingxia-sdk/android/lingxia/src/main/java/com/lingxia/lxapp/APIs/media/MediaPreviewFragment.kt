@@ -132,6 +132,19 @@ internal class MediaPreviewFragment : Fragment() {
         currentIndex = clampIndex(arguments?.getInt(ARG_START_INDEX, 0) ?: 0)
         currentPagerPosition = initialPagerPosition(currentIndex)
         showIndexIndicator = arguments?.getBoolean(ARG_SHOW_INDEX_INDICATOR, false) ?: false
+        Log.i(
+            LOG_TAG,
+            "onCreate args: callbackId=$callbackId advance=$advance " +
+                "startIndex=$currentIndex pagerPos=$currentPagerPosition " +
+                "showIndexIndicator=$showIndexIndicator items=${previewItems.size}"
+        )
+        previewItems.forEachIndexed { i, item ->
+            Log.i(
+                LOG_TAG,
+                "  item[$i] type=${item.mediaType} rotate=${item.rotate} " +
+                    "objectFit=${item.objectFit} durationMs=${item.durationMs} uri=${item.uri}"
+            )
+        }
     }
 
     override fun onCreateView(

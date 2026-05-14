@@ -6,6 +6,7 @@ import android.graphics.Matrix
 import android.graphics.RectF
 import android.graphics.drawable.Drawable
 import android.util.AttributeSet
+import android.util.Log
 import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
@@ -105,11 +106,27 @@ internal class ZoomImageView @JvmOverloads constructor(
         configureMatrix()
     }
 
+    override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
+        super.onLayout(changed, left, top, right, bottom)
+        // Re-apply on every layout. onSizeChanged only fires on size delta, and on
+        // API 21 AppCompat tinting can re-enter setImageDrawable after our
+        // configureMatrix runs, leaving mDrawMatrix as identity until the next
+        // forced redraw. A second pass here guarantees the rotation lands.
+        if (changed) configureMatrix()
+    }
+
     private fun configureMatrix() {
-        val d = drawable ?: return
+        val d = drawable
         val viewWidth = width.toFloat()
         val viewHeight = height.toFloat()
-        if (viewWidth <= 0f || viewHeight <= 0f) return
+        if (d == null) {
+            Log.i(LOG_TAG, "configureMatrix skip: drawable=null rot=$previewRotation view=${width}x${height}")
+            return
+        }
+        if (viewWidth <= 0f || viewHeight <= 0f) {
+            Log.i(LOG_TAG, "configureMatrix skip: view not laid out rot=$previewRotation drw=${d.intrinsicWidth}x${d.intrinsicHeight}")
+            return
+        }
 
         baseMatrix.reset()
         suppMatrix.reset()
@@ -117,9 +134,11 @@ internal class ZoomImageView @JvmOverloads constructor(
         val drawableWidth = d.intrinsicWidth.toFloat()
         val drawableHeight = d.intrinsicHeight.toFloat()
         if (drawableWidth <= 0f || drawableHeight <= 0f) {
+            Log.i(LOG_TAG, "configureMatrix skip: drawable bounds 0 rot=$previewRotation view=${width}x${height}")
             imageMatrix = baseMatrix
             return
         }
+        Log.i(LOG_TAG, "configureMatrix apply: rot=$previewRotation fit=$fitMode view=${width}x${height} drw=${drawableWidth.toInt()}x${drawableHeight.toInt()}")
 
         val rotatedWidth = if (previewRotation == 90 || previewRotation == 270) drawableHeight else drawableWidth
         val rotatedHeight = if (previewRotation == 90 || previewRotation == 270) drawableWidth else drawableHeight
@@ -332,5 +351,9 @@ internal class ZoomImageView @JvmOverloads constructor(
 
     private fun notifyScaleState() {
         scaleStateListener?.invoke(isZoomed())
+    }
+
+    companion object {
+        private const val LOG_TAG = "LingXia.MediaPreview"
     }
 }
