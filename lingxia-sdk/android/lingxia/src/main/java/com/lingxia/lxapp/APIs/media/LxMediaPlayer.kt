@@ -657,6 +657,20 @@ internal class LxMediaPlayer(
         return surfaceHost?.getFeedTextureView() ?: streamTextureView
     }
 
+    fun snapshotCurrentPlaybackFrame(): Bitmap? {
+        val textureView = findFirstTextureView(playerView) ?: return null
+        if (!textureView.isAvailable || textureView.width <= 0 || textureView.height <= 0) {
+            return null
+        }
+        return try {
+            textureView.getBitmap(textureView.width, textureView.height)
+        } catch (_: OutOfMemoryError) {
+            null
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     fun releaseStreamTextureView() {
         // No-op: keep the last rendered frame visible; backend switching controls visibility.
     }

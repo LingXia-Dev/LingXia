@@ -981,6 +981,7 @@ internal class MediaPreviewFragment : Fragment() {
     }
 
     private fun showTerminalAdvanceOverlay() {
+        val source = previewItems.getOrNull(currentIndex)
         val targetPagerPosition = when (advance) {
             PreviewAdvance.MANUAL -> return
             PreviewAdvance.NEXT -> {
@@ -1034,7 +1035,9 @@ internal class MediaPreviewFragment : Fragment() {
 
     private fun showTransitionOverlayFromCurrentVisual(): Boolean {
         val overlay = transitionOverlay ?: return false
-        val bitmap = previewAdapter?.snapshotCurrentVisualBitmap() ?: return false
+        val bitmap = sharedPlayer?.snapshotCurrentPlaybackFrame()
+            ?: previewAdapter?.snapshotCurrentVisualBitmap()
+            ?: return false
         clearTransitionOverlayBitmap()
         transitionOverlayBitmap = bitmap
         transitionOverlayOwnsBitmap = true
@@ -1084,7 +1087,6 @@ internal class MediaPreviewFragment : Fragment() {
 
     private fun showTransitionOverlayForSwitchTarget(target: PreviewItem): Boolean {
         if (showTransitionOverlayForTargetVisual(target)) return true
-        if (target.mediaType == MediaPreviewType.VIDEO) return false
         return showTransitionOverlayFromCurrentVisual()
     }
 
