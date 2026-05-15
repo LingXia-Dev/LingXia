@@ -123,22 +123,19 @@ fn log_facade_exports_app_authoring_surface_only() {
 }
 
 #[test]
-fn update_facade_exposes_custom_ui_surface_only() {
+fn update_facade_exposes_host_app_module_only() {
     let update = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/src/update.rs"))
         .expect("read lingxia update.rs");
 
     assert!(!update.contains("pub use lingxia_service::update"));
     assert!(!update.contains("pub use lingxia_update"));
-    assert!(!update.contains("apply_host_app_update"));
-    assert!(!update.contains("download_and_install"));
     assert!(!update.contains("pub fn configure"));
-    assert!(!update.contains("pub fn config"));
-    assert!(!update.contains("pub fn size("));
-    assert!(update.contains("pub fn use_custom_host_app_update()"));
-    assert!(update.contains("pub async fn check_host_app_update()"));
-    assert!(update.contains("pub struct HostAppUpdate"));
-    assert!(update.contains("pub fn apply(self) -> HostAppUpdateApply"));
-    assert!(update.contains("pub fn package_size_bytes(&self) -> Option<u64>"));
+    assert!(update.contains("pub mod host_app"));
+    assert!(update.contains("pub fn set_installer"));
+    assert!(update.contains("pub fn on_progress"));
+    assert!(update.contains("pub async fn check()"));
+    assert!(update.contains("pub enum Outcome"));
+    assert!(update.contains("pub enum Progress"));
 }
 
 #[test]

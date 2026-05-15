@@ -1,215 +1,297 @@
-//! Host app update helpers built on LingXia's update service.
+//! Host app update API.
+//!
+//! Three public functions, two enums, zero ceremony. See [`host_app`].
 
-use lingxia_service::update::{
-    AppUpdateApply, AppUpdateEvent, AppUpdateStage, HostAppUpdateService, UpdatePackageInfo,
-    UpdateUiMode, configure_update, update_config,
-};
-use std::fmt;
-use std::path::Path;
-
-pub use lingxia_service::update::HostAppInstall;
-
-/// Disables built-in host app update UX and startup auto-check.
+/// Host app update flow.
 ///
-/// Native code can still call [`check_host_app_update`] explicitly and render
-/// its own UI from the returned update and apply event stream.
-pub fn use_custom_host_app_update() {
-    let mut config = update_config();
-    config.ui_mode = UpdateUiMode::Custom;
-    config.auto_check_app = false;
-    configure_update(config);
-}
-
-/// Registers a custom host app installer.
+/// # Quick start
 ///
-/// The installer is called only after the package has been downloaded and
-/// verified. Use [`use_custom_host_app_update`] when the host wants to disable
-/// LingXia's built-in startup check and update UI.
+/// ```ignore
+/// // Once at startup. Optional; without this, the platform default installer is used.
+/// lingxia::update::host_app::set_installer(|apk| my_root_install(apk))?;
 ///
-/// Return [`HostAppInstall::Handled`] when the installer has handled the
-/// package, or [`HostAppInstall::Fallback`] to use the default platform
-/// installer.
-pub fn set_host_app_installer(
-    installer: impl Fn(&Path) -> crate::Result<HostAppInstall> + Send + Sync + 'static,
-) {
-    lingxia_service::update::set_host_app_installer(move |path| {
-        installer(path).map_err(|error| lingxia_update::UpdateError::runtime(error.to_string()))
-    });
-}
+/// // From a UI "check for updates" button.
+/// match lingxia::update::host_app::check().await? {
+///     Outcome::UpToDate => log::info!("already up to date"),
+///     Outcome::Installed { version } => log::info!("installed {version}"),
+/// }
+/// ```
+///
+/// LingXia also fires [`check`] once per process on its own, as soon as the
+/// platform reports network connectivity.
+pub mod host_app {
+    use lingxia_platform::traits::network::Network;
+    use lingxia_service::update::{
+        AppUpdateEvent, AppUpdateStage, HostAppUpdateService, UpdateError, UpdatePackageInfo,
+    };
+    use std::path::Path;
+    use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+    use std::sync::{Arc, OnceLock, RwLock};
+    use tokio::sync::{Mutex as AsyncMutex, broadcast};
 
-/// A checked host app update.
-pub struct HostAppUpdate {
-    info: UpdatePackageInfo,
-    service: HostAppUpdateService,
-}
-
-impl HostAppUpdate {
-    fn new(info: UpdatePackageInfo, service: HostAppUpdateService) -> Self {
-        Self { info, service }
+    /// Final result of a check + install attempt.
+    #[derive(Debug, Clone)]
+    pub enum Outcome {
+        /// No update was available.
+        UpToDate,
+        /// An update was downloaded and installation was handed off to the platform.
+        Installed { version: String },
     }
 
-    /// Returns update metadata for custom UI.
-    pub fn info(&self) -> HostAppUpdateInfo<'_> {
-        HostAppUpdateInfo { inner: &self.info }
+    /// Progress events emitted while a [`check`] is in progress.
+    #[derive(Debug, Clone)]
+    pub enum Progress {
+        /// Querying the provider for an update.
+        Checking,
+        /// Download has started (or restarted) for `version`.
+        DownloadStarted { version: String },
+        /// Periodic download progress.
+        Downloading {
+            version: String,
+            downloaded_bytes: u64,
+            total_bytes: Option<u64>,
+            percent: Option<u8>,
+        },
+        /// Download finished and the package was verified.
+        Downloaded { version: String },
+        /// Install hand-off has been requested (installer hook or platform installer).
+        Installing { version: String },
     }
 
-    /// Applies this update and returns an event receiver for UI state.
+    /// Registers a custom host app installer. Replaces any previously registered
+    /// installer.
     ///
-    /// The package path is intentionally not exposed. Native UI should render
-    /// progress from [`HostAppUpdateEvent`] and let LingXia hand off
-    /// installation to the platform.
-    pub fn apply(self) -> HostAppUpdateApply {
-        HostAppUpdateApply {
-            inner: self.service.apply(self.info),
-        }
-    }
-}
-
-/// Read-only host app update metadata.
-#[derive(Clone, Copy)]
-pub struct HostAppUpdateInfo<'a> {
-    inner: &'a UpdatePackageInfo,
-}
-
-impl HostAppUpdateInfo<'_> {
-    /// Returns the target app version.
-    pub fn version(&self) -> &str {
-        &self.inner.version
+    /// The installer receives the downloaded and verified package path and must
+    /// complete the installation. Return `Ok(())` to mark the install as handled.
+    /// When no installer is registered the platform default installer is used.
+    pub fn set_installer(installer: impl Fn(&Path) -> crate::Result<()> + Send + Sync + 'static) {
+        lingxia_service::update::set_host_app_installer(move |path| {
+            installer(path).map_err(|error| UpdateError::runtime(error.to_string()))
+        });
     }
 
-    /// Returns the expected package size in bytes when the provider supplied it.
-    pub fn package_size_bytes(&self) -> Option<u64> {
-        self.inner.size
-    }
-
-    /// Returns release notes when the update provider supplied them.
-    pub fn release_notes(&self) -> Option<&[String]> {
-        self.inner.release_notes.as_deref()
-    }
-
-    /// Reports whether this update must be applied before the app can continue.
-    pub fn is_force_update(&self) -> bool {
-        self.inner.is_force_update
-    }
-}
-
-impl fmt::Debug for HostAppUpdateInfo<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("HostAppUpdateInfo")
-            .field("version", &self.version())
-            .field("package_size_bytes", &self.package_size_bytes())
-            .field("release_notes", &self.release_notes())
-            .field("is_force_update", &self.is_force_update())
-            .finish()
-    }
-}
-
-/// Applies a checked host app update and yields UI events.
-pub struct HostAppUpdateApply {
-    inner: AppUpdateApply,
-}
-
-impl HostAppUpdateApply {
-    /// Waits for the next update event.
-    pub async fn next(&mut self) -> Option<HostAppUpdateEvent> {
-        while let Some(event) = self.inner.next().await {
-            if let Some(event) = HostAppUpdateEvent::from_service_event(event) {
-                return Some(event);
+    /// Registers (or replaces) the progress handler. Single slot — re-registering
+    /// overwrites. Pass `None` to clear.
+    pub fn on_progress<F>(handler: F)
+    where
+        F: Fn(Progress) + Send + Sync + 'static,
+    {
+        match progress_slot().write() {
+            Ok(mut guard) => {
+                *guard = Some(Arc::new(handler));
+            }
+            Err(error) => {
+                log::warn!("failed to register host app progress handler: {error}");
             }
         }
-        None
     }
-}
 
-/// Host app update state changes for custom native UI.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum HostAppUpdateEvent {
-    /// The update package is downloading.
-    Downloading {
-        downloaded_bytes: u64,
-        progress: Option<u8>,
-    },
-    /// The package finished downloading and validation passed.
-    Downloaded,
-    /// Installation has been handed off to the platform.
-    InstallRequested,
-    /// Applying the update failed.
-    Failed {
-        stage: HostAppUpdateStage,
-        error: String,
-    },
-}
+    /// Runs a complete check + install cycle: queries the provider, downloads
+    /// when there is an update, and hands off install via the registered
+    /// installer (or the platform default).
+    ///
+    /// Concurrent callers (UI button while the auto-trigger is still running,
+    /// double-tap, etc.) join the in-flight attempt rather than starting a new
+    /// one.
+    pub async fn check() -> crate::Result<Outcome> {
+        let action = {
+            let mut guard = inflight().lock().await;
+            match guard.as_ref() {
+                Some(sender) => Action::Wait(sender.subscribe()),
+                None => {
+                    let (tx, _) = broadcast::channel(1);
+                    *guard = Some(tx.clone());
+                    Action::Run(tx)
+                }
+            }
+        };
 
-impl HostAppUpdateEvent {
-    fn from_service_event(event: AppUpdateEvent) -> Option<Self> {
-        match event {
-            AppUpdateEvent::Available(_) => None,
-            AppUpdateEvent::DownloadStarted { .. } => Some(Self::Downloading {
-                downloaded_bytes: 0,
-                progress: None,
-            }),
-            AppUpdateEvent::DownloadProgress {
-                downloaded_bytes,
-                progress,
-                ..
-            } => Some(Self::Downloading {
-                downloaded_bytes,
-                progress,
-            }),
-            AppUpdateEvent::Downloaded { .. } => Some(Self::Downloaded),
-            AppUpdateEvent::InstallRequested { .. } => Some(Self::InstallRequested),
-            AppUpdateEvent::Failed { stage, error } => Some(Self::Failed {
-                stage: stage.into(),
-                error,
-            }),
+        match action {
+            Action::Run(tx) => {
+                let result = run_flow().await;
+                let shared: SharedResult = match &result {
+                    Ok(outcome) => Ok(outcome.clone()),
+                    Err(error) => Err(error.to_string()),
+                };
+                let _ = tx.send(Arc::new(shared));
+                *inflight().lock().await = None;
+                result
+            }
+            Action::Wait(mut rx) => match rx.recv().await {
+                Ok(arc) => match (*arc).clone() {
+                    Ok(outcome) => Ok(outcome),
+                    Err(detail) => Err(crate::Error::Internal(detail)),
+                },
+                Err(_) => Err(crate::Error::internal(
+                    "host app update check coordinator dropped",
+                )),
+            },
         }
     }
-}
 
-/// Stage that produced a host app update failure.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum HostAppUpdateStage {
-    Check,
-    Prompt,
-    Download,
-    Install,
-}
+    pub(crate) fn install_auto_trigger(runtime: Arc<lingxia_platform::Platform>) {
+        if AUTO_FIRED.swap(true, Ordering::SeqCst) {
+            return;
+        }
 
-impl From<AppUpdateStage> for HostAppUpdateStage {
-    fn from(stage: AppUpdateStage) -> Self {
+        let runtime_for_handler = runtime.clone();
+        let callback_id = lingxia_messaging::register_handler(move |result| {
+            let connected = matches!(
+                &result,
+                lingxia_messaging::CallbackResult::Success(json) if json_is_connected(json)
+            );
+            if !connected {
+                return;
+            }
+            if AUTO_TRIGGERED.swap(true, Ordering::SeqCst) {
+                return;
+            }
+            let listener_id = AUTO_LISTENER_ID.load(Ordering::SeqCst);
+            if listener_id != 0 {
+                let _ = runtime_for_handler.remove_network_change_listener(listener_id);
+                let _ = lingxia_messaging::remove_callback(listener_id);
+            }
+            let _ = lingxia::task::spawn(async {
+                match check().await {
+                    Ok(Outcome::UpToDate) => {
+                        log::info!("[lingxia] host app auto update: up to date");
+                    }
+                    Ok(Outcome::Installed { version }) => {
+                        log::info!("[lingxia] host app auto update: installed version {version}");
+                    }
+                    Err(error) => {
+                        log::warn!("[lingxia] host app auto update failed: {error}");
+                    }
+                }
+            });
+        });
+
+        AUTO_LISTENER_ID.store(callback_id, Ordering::SeqCst);
+
+        if let Err(error) = runtime.add_network_change_listener(callback_id) {
+            log::warn!(
+                "[lingxia] host app auto update: add_network_change_listener failed: {error}"
+            );
+            let _ = lingxia_messaging::remove_callback(callback_id);
+            AUTO_LISTENER_ID.store(0, Ordering::SeqCst);
+            AUTO_FIRED.store(false, Ordering::SeqCst);
+        }
+    }
+
+    enum Action {
+        Run(broadcast::Sender<Arc<SharedResult>>),
+        Wait(broadcast::Receiver<Arc<SharedResult>>),
+    }
+
+    type SharedResult = Result<Outcome, String>;
+
+    async fn run_flow() -> crate::Result<Outcome> {
+        emit(Progress::Checking);
+        let service = service()?;
+        let update = service.check().await?;
+        let Some(update) = update else {
+            return Ok(Outcome::UpToDate);
+        };
+        apply(service, update).await
+    }
+
+    async fn apply(
+        service: HostAppUpdateService,
+        update: UpdatePackageInfo,
+    ) -> crate::Result<Outcome> {
+        let target_version = update.version.clone();
+        let mut stream = service.apply(update);
+        while let Some(event) = stream.next().await {
+            match event {
+                AppUpdateEvent::Available(_) => {}
+                AppUpdateEvent::DownloadStarted { version } => {
+                    emit(Progress::DownloadStarted { version });
+                }
+                AppUpdateEvent::DownloadProgress {
+                    version,
+                    downloaded_bytes,
+                    total_bytes,
+                    progress,
+                } => emit(Progress::Downloading {
+                    version,
+                    downloaded_bytes,
+                    total_bytes,
+                    percent: progress,
+                }),
+                AppUpdateEvent::Downloaded { version } => {
+                    emit(Progress::Downloaded { version });
+                }
+                AppUpdateEvent::InstallRequested { version } => {
+                    emit(Progress::Installing {
+                        version: version.clone(),
+                    });
+                    return Ok(Outcome::Installed { version });
+                }
+                AppUpdateEvent::Failed { stage, error } => {
+                    return Err(crate::Error::Internal(format!(
+                        "host app update failed at {}: {error}",
+                        stage_name(stage)
+                    )));
+                }
+            }
+        }
+        Err(crate::Error::internal(format!(
+            "host app update for {target_version} ended without a terminal event"
+        )))
+    }
+
+    fn stage_name(stage: AppUpdateStage) -> &'static str {
         match stage {
-            AppUpdateStage::Check => Self::Check,
-            AppUpdateStage::Prompt => Self::Prompt,
-            AppUpdateStage::Download => Self::Download,
-            AppUpdateStage::Install => Self::Install,
+            AppUpdateStage::Check => "check",
+            AppUpdateStage::Download => "download",
+            AppUpdateStage::Install => "install",
         }
     }
+
+    fn emit(event: Progress) {
+        let handler = progress_slot()
+            .read()
+            .ok()
+            .and_then(|guard| guard.as_ref().cloned());
+        if let Some(handler) = handler {
+            handler(event);
+        }
+    }
+
+    fn service() -> crate::Result<HostAppUpdateService> {
+        let runtime = lxapp::get_platform()
+            .ok_or_else(|| crate::Error::internal("platform is not initialized"))?;
+        Ok(HostAppUpdateService::new(
+            runtime,
+            lxapp::provider::update_provider(),
+        ))
+    }
+
+    fn inflight() -> &'static AsyncMutex<Option<broadcast::Sender<Arc<SharedResult>>>> {
+        static CELL: OnceLock<AsyncMutex<Option<broadcast::Sender<Arc<SharedResult>>>>> =
+            OnceLock::new();
+        CELL.get_or_init(|| AsyncMutex::new(None))
+    }
+
+    type ProgressHandler = dyn Fn(Progress) + Send + Sync + 'static;
+
+    fn progress_slot() -> &'static RwLock<Option<Arc<ProgressHandler>>> {
+        static CELL: OnceLock<RwLock<Option<Arc<ProgressHandler>>>> = OnceLock::new();
+        CELL.get_or_init(|| RwLock::new(None))
+    }
+
+    fn json_is_connected(json: &str) -> bool {
+        serde_json::from_str::<serde_json::Value>(json)
+            .ok()
+            .and_then(|value| value.get("isConnected").and_then(|v| v.as_bool()))
+            .unwrap_or(false)
+    }
+
+    static AUTO_FIRED: AtomicBool = AtomicBool::new(false);
+    static AUTO_TRIGGERED: AtomicBool = AtomicBool::new(false);
+    static AUTO_LISTENER_ID: AtomicU64 = AtomicU64::new(0);
 }
 
-/// Checks the provider for a host app update.
-///
-/// The current version always comes from the initialized host app config
-/// (`productVersion`); native callers must not provide their own version.
-pub async fn check_host_app_update() -> crate::Result<Option<HostAppUpdate>> {
-    let service = host_update_service()?;
-    let Some(info) = service.check().await? else {
-        return Ok(None);
-    };
-    Ok(Some(HostAppUpdate::new(info, service)))
-}
-
-pub(crate) fn spawn_host_app_update_flow(runtime: std::sync::Arc<lingxia_platform::Platform>) {
-    host_update_service_from(runtime).spawn_builtin_flow();
-}
-
-fn host_update_service() -> crate::Result<HostAppUpdateService> {
-    let runtime = lxapp::get_platform()
-        .ok_or_else(|| crate::Error::internal("platform is not initialized"))?;
-    Ok(host_update_service_from(runtime))
-}
-
-fn host_update_service_from(
-    runtime: std::sync::Arc<lingxia_platform::Platform>,
-) -> HostAppUpdateService {
-    HostAppUpdateService::new(runtime, lxapp::provider::update_provider())
+pub(crate) fn install_auto_trigger(runtime: std::sync::Arc<lingxia_platform::Platform>) {
+    host_app::install_auto_trigger(runtime);
 }

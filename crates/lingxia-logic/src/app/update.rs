@@ -6,7 +6,7 @@ use futures::channel::oneshot;
 use lingxia_app_context::home_app_id;
 use lingxia_service::update::{
     AppUpdateApply, AppUpdateEvent, AppUpdateStage, HostAppUpdateService, UpdateError,
-    UpdatePackageInfo, UpdateUiMode, configure_update, update_config,
+    UpdatePackageInfo,
 };
 use lxapp::LxApp;
 use rong::function::Optional;
@@ -70,7 +70,6 @@ pub(super) fn init(ctx: &JSContext, app: &JSObject) -> JSResult<()> {
 async fn check_app_update(ctx: JSContext) -> JSResult<JSObject> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     ensure_home_lxapp(&lxapp)?;
-    enter_custom_host_app_update_mode();
 
     let update = host_update_service_from(&lxapp)
         .check()
@@ -134,7 +133,6 @@ fn create_apply_task(ctx: &JSContext, package: UpdatePackageInfo) -> JSResult<JS
 
     let lxapp = LxApp::from_ctx(ctx)?;
     ensure_home_lxapp(&lxapp)?;
-    enter_custom_host_app_update_mode();
 
     let apply = host_update_service_from(&lxapp).apply(package);
     let (tx, rx) = watch::channel::<Option<AppUpdateEvent>>(None);
@@ -364,18 +362,6 @@ fn completion_from_event(event: &AppUpdateEvent) -> AppUpdateCompletion {
     }
 }
 
-fn enter_custom_host_app_update_mode() {
-    let mut config = update_config();
-    if config.ui_mode == UpdateUiMode::Custom && !config.auto_check_app {
-        return;
-    }
-
-    config.ui_mode = UpdateUiMode::Custom;
-    config.auto_check_app = false;
-    configure_update(config);
-    log::info!("Host app update switched to custom mode by lx.app.checkUpdate");
-}
-
 fn host_update_service_from(lxapp: &LxApp) -> HostAppUpdateService {
     HostAppUpdateService::new(lxapp.runtime.clone(), lxapp::provider::update_provider())
 }
@@ -452,7 +438,6 @@ fn js_event_from_update_event(event: AppUpdateEvent) -> JSAppUpdateEvent {
 fn stage_name(stage: AppUpdateStage) -> &'static str {
     match stage {
         AppUpdateStage::Check => "check",
-        AppUpdateStage::Prompt => "prompt",
         AppUpdateStage::Download => "download",
         AppUpdateStage::Install => "install",
     }

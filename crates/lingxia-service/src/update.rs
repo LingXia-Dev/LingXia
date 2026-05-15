@@ -16,38 +16,25 @@ use std::sync::{Arc, OnceLock, RwLock};
 pub use lingxia_update::{
     AppUpdateApply, AppUpdateEvent, AppUpdateEventReceiver, AppUpdateProgressReporter,
     AppUpdateStage, UpdateConfig, UpdateError, UpdatePackageInfo, UpdateProvider, UpdateTarget,
-    UpdateUiMode, Version, VersionError, configure_update, subscribe_app_update_events,
-    update_config,
+    Version, VersionError, configure_update, subscribe_app_update_events, update_config,
 };
 
-/// Result of a custom host app installer.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum HostAppInstall {
-    /// The installer handled the package and no platform fallback is needed.
-    Handled,
-    /// The installer chose not to handle the package; use the default platform installer.
-    Fallback,
-}
-
-pub type HostAppInstaller =
-    dyn Fn(&Path) -> Result<HostAppInstall, UpdateError> + Send + Sync + 'static;
+pub type HostAppInstaller = dyn Fn(&Path) -> Result<(), UpdateError> + Send + Sync + 'static;
 
 static HOST_APP_INSTALLER: OnceLock<RwLock<Option<Arc<HostAppInstaller>>>> = OnceLock::new();
 
-fn host_app_installer() -> &'static RwLock<Option<Arc<HostAppInstaller>>> {
+fn host_app_installer_slot() -> &'static RwLock<Option<Arc<HostAppInstaller>>> {
     HOST_APP_INSTALLER.get_or_init(|| RwLock::new(None))
 }
 
-/// Registers a custom host app installer.
-///
-/// The installer receives the downloaded and verified package path. Return
-/// [`HostAppInstall::Handled`] after successfully handing off or applying the
-/// package, or [`HostAppInstall::Fallback`] when the default platform installer
-/// should be used instead.
+/// Registers a custom host app installer. Replaces any previously registered
+/// installer. The installer receives the downloaded and verified package path
+/// and is responsible for completing installation; returning `Ok(())` marks the
+/// install as handled and skips the platform default installer.
 pub fn set_host_app_installer(
-    installer: impl Fn(&Path) -> Result<HostAppInstall, UpdateError> + Send + Sync + 'static,
+    installer: impl Fn(&Path) -> Result<(), UpdateError> + Send + Sync + 'static,
 ) {
-    match host_app_installer().write() {
+    match host_app_installer_slot().write() {
         Ok(mut guard) => {
             *guard = Some(Arc::new(installer));
         }
@@ -55,6 +42,15 @@ pub fn set_host_app_installer(
             log::warn!("failed to register host app installer: {error}");
         }
     }
+}
+
+/// Returns whether a custom installer has been registered.
+pub fn has_host_app_installer() -> bool {
+    host_app_installer_slot()
+        .read()
+        .ok()
+        .map(|guard| guard.is_some())
+        .unwrap_or(false)
 }
 
 #[derive(Clone)]
@@ -133,14 +129,6 @@ impl HostAppUpdateService {
         });
         apply
     }
-
-    pub fn spawn_builtin_flow(&self) {
-        lingxia_update::spawn_app_update_flow(
-            self.clone(),
-            lingxia_update::APP_UPDATE_START_DELAY,
-            false,
-        );
-    }
 }
 
 impl lingxia_update::AppUpdateHost for HostAppUpdateService {
@@ -167,13 +155,6 @@ impl lingxia_update::AppUpdateHost for HostAppUpdateService {
         })
     }
 
-    fn show_builtin_update_prompt<'a>(
-        &'a self,
-        update: &'a UpdatePackageInfo,
-    ) -> BoxFuture<'a, Result<bool, UpdateError>> {
-        Box::pin(async move { show_builtin_update_prompt(self.runtime.clone(), update).await })
-    }
-
     fn download_app_update<'a>(
         &'a self,
         update: &'a UpdatePackageInfo,
@@ -193,15 +174,12 @@ impl lingxia_update::AppUpdateHost for HostAppUpdateService {
     }
 
     fn install_app_update(&self, package_path: &Path) -> Result<(), UpdateError> {
-        if let Some(installer) = host_app_installer()
+        if let Some(installer) = host_app_installer_slot()
             .read()
             .ok()
             .and_then(|guard| guard.as_ref().cloned())
         {
-            match installer(package_path)? {
-                HostAppInstall::Handled => return Ok(()),
-                HostAppInstall::Fallback => {}
-            }
+            return installer(package_path);
         }
 
         self.runtime.install_update(package_path).map_err(|error| {
@@ -212,31 +190,19 @@ impl lingxia_update::AppUpdateHost for HostAppUpdateService {
     fn log_app_update_warning(&self, detail: &str) {
         log::warn!("{detail}");
     }
-
-    fn notify_app_update_available(&self, _update: &UpdatePackageInfo) -> Result<(), UpdateError> {
-        Ok(())
-    }
 }
 
 struct ProgressSink {
     total_bytes: Option<u64>,
     downloaded_bytes: u64,
-    last_reported_progress: i32,
-    runtime: Option<Arc<Platform>>,
     reporter: AppUpdateProgressReporter,
 }
 
 impl ProgressSink {
-    fn new(
-        total_bytes: Option<u64>,
-        runtime: Option<Arc<Platform>>,
-        reporter: AppUpdateProgressReporter,
-    ) -> Self {
+    fn new(total_bytes: Option<u64>, reporter: AppUpdateProgressReporter) -> Self {
         Self {
             total_bytes,
             downloaded_bytes: 0,
-            last_reported_progress: 0,
-            runtime,
             reporter,
         }
     }
@@ -247,19 +213,6 @@ impl BodySink for ProgressSink {
         self.downloaded_bytes += chunk.len() as u64;
         self.reporter
             .report(self.downloaded_bytes, self.total_bytes);
-
-        if let Some(total_bytes) = self.total_bytes.filter(|total| *total > 0) {
-            let progress = ((self.downloaded_bytes as f64 / total_bytes as f64) * 100.0) as i32;
-            let progress = progress.min(100);
-
-            if progress > self.last_reported_progress {
-                self.last_reported_progress = progress;
-                if let Some(runtime) = &self.runtime {
-                    let _ = runtime.update_download_progress(progress);
-                }
-            }
-        }
-
         Ok(())
     }
 
@@ -269,11 +222,6 @@ impl BodySink for ProgressSink {
                 self.downloaded_bytes,
                 self.total_bytes.or(Some(self.downloaded_bytes)),
             );
-        }
-        if result.is_ok()
-            && let Some(runtime) = &self.runtime
-        {
-            let _ = runtime.update_download_progress(100);
         }
     }
 }
@@ -325,32 +273,21 @@ async fn download_host_app_update_package(
             }
         },
     };
-    let use_builtin_progress = update_config().ui_mode == UpdateUiMode::Builtin;
-    if use_builtin_progress && let Err(error) = runtime.show_download_progress() {
-        log::warn!("Failed to show download progress: {error}");
-    }
 
     progress.report(0, file_size);
-    let sink: Option<Box<dyn BodySink>> = Some(Box::new(ProgressSink::new(
-        file_size,
-        use_builtin_progress.then_some(runtime.clone()),
-        progress,
-    )));
+    let sink: Option<Box<dyn BodySink>> = Some(Box::new(ProgressSink::new(file_size, progress)));
 
     let receiver =
         match service_executor::request_download(url.to_string(), dest.clone(), None, sink) {
             Ok(receiver) => receiver,
             Err(error) => {
-                if use_builtin_progress {
-                    let _ = runtime.dismiss_download_progress();
-                }
                 return Err(UpdateError::runtime(format!(
                     "failed to start download: {error}"
                 )));
             }
         };
 
-    let result = match receiver
+    match receiver
         .await
         .map_err(|_| UpdateError::runtime("download task cancelled"))?
     {
@@ -370,54 +307,7 @@ async fn download_host_app_update_package(
             let _ = fs::remove_file(&dest);
             Err(UpdateError::runtime(format!("download failed: {error}")))
         }
-    };
-
-    if use_builtin_progress {
-        let _ = runtime.dismiss_download_progress();
     }
-    result
-}
-
-async fn show_builtin_update_prompt(
-    runtime: Arc<Platform>,
-    pkg: &UpdatePackageInfo,
-) -> Result<bool, UpdateError> {
-    let update_info_json = {
-        let mut json_obj = serde_json::Map::new();
-        json_obj.insert("version".to_string(), serde_json::json!(&pkg.version));
-        json_obj.insert(
-            "isForceUpdate".to_string(),
-            serde_json::json!(pkg.is_force_update),
-        );
-        if let Some(size) = pkg.size {
-            json_obj.insert("size".to_string(), serde_json::json!(size));
-        }
-        if let Some(notes) = &pkg.release_notes {
-            json_obj.insert("releaseNotes".to_string(), serde_json::json!(notes));
-        }
-        Some(serde_json::to_string(&json_obj).unwrap_or_default())
-    };
-
-    let (callback_id, receiver) = lingxia_messaging::get_callback();
-    if let Err(error) = runtime.show_update_prompt(callback_id, update_info_json.as_deref()) {
-        let _ = lingxia_messaging::remove_callback(callback_id);
-        return Err(UpdateError::runtime(format!(
-            "failed to show update prompt: {error}"
-        )));
-    }
-
-    let confirmed = match receiver.await {
-        Ok(lingxia_messaging::CallbackResult::Success(data)) => {
-            serde_json::from_str::<serde_json::Value>(&data)
-                .ok()
-                .and_then(|json| json.get("confirm").and_then(|value| value.as_bool()))
-                .unwrap_or(false)
-        }
-        Ok(lingxia_messaging::CallbackResult::Error(_)) => false,
-        Err(_) => false,
-    };
-
-    Ok(confirmed)
 }
 
 fn app_update_filename(url: &str, version: &str) -> String {

@@ -10,13 +10,12 @@ use std::fmt;
 use std::str::FromStr;
 
 pub use app::{
-    APP_UPDATE_START_DELAY, AppUpdateApply, AppUpdateEvent, AppUpdateEventReceiver,
-    AppUpdateEventSender, AppUpdateHost, AppUpdateProgressReporter, AppUpdateStage,
-    app_update_scope_key, check_and_install_app_update, check_app_update, download_app_update,
-    ensure_app_update_candidate_version, install_app_update, send_app_update_event,
-    send_app_update_failed, spawn_app_update_flow, subscribe_app_update_events,
+    AppUpdateApply, AppUpdateEvent, AppUpdateEventReceiver, AppUpdateEventSender, AppUpdateHost,
+    AppUpdateProgressReporter, AppUpdateStage, app_update_scope_key, check_app_update,
+    ensure_app_update_candidate_version, send_app_update_event, send_app_update_failed,
+    subscribe_app_update_events,
 };
-pub use config::{UpdateConfig, UpdateUiMode, configure_update, update_config};
+pub use config::{UpdateConfig, configure_update, update_config};
 pub use error::UpdateError;
 pub use lxapp::{
     LxAppUpdateHost, ensure_first_install as ensure_lxapp_first_install,

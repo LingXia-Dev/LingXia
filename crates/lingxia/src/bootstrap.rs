@@ -84,7 +84,7 @@ pub(crate) fn init_with_platform(platform: lingxia_platform::Platform) -> Option
     #[cfg(feature = "devtool")]
     crate::devtool::register_bundle_source_override();
     let home_app_id = lxapp::init(platform);
-    crate::update::spawn_host_app_update_flow(runtime.clone());
+    crate::update::install_auto_trigger(runtime.clone());
     crate::browser::register_builtin_assets();
     crate::host_addon::run_after_init();
     crate::browser::warmup();

@@ -1,14 +1,9 @@
-use crate::config::{UpdateUiMode, update_config};
 use crate::{BoxFuture, UpdatePackageInfo, UpdateTarget, Version};
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
-use std::time::Duration;
 use tokio::sync::broadcast;
-use tokio::time::sleep;
 
 use super::error::UpdateError;
-
-pub const APP_UPDATE_START_DELAY: Duration = Duration::from_secs(15);
 
 #[derive(Debug, Clone)]
 pub enum AppUpdateEvent {
@@ -37,7 +32,6 @@ pub enum AppUpdateEvent {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AppUpdateStage {
     Check,
-    Prompt,
     Download,
     Install,
 }
@@ -99,13 +93,6 @@ pub struct AppUpdateProgressReporter {
 }
 
 impl AppUpdateProgressReporter {
-    fn new(version: impl Into<String>) -> Self {
-        Self {
-            version: version.into(),
-            sender: None,
-        }
-    }
-
     pub fn scoped(version: impl Into<String>, sender: AppUpdateEventSender) -> Self {
         Self {
             version: version.into(),
@@ -140,13 +127,6 @@ pub fn send_app_update_event(sender: &AppUpdateEventSender, event: AppUpdateEven
     let _ = sender.send(event);
 }
 
-fn emit_app_update_failed(stage: AppUpdateStage, error: &UpdateError) {
-    emit_app_update_event(AppUpdateEvent::Failed {
-        stage,
-        error: error.to_string(),
-    });
-}
-
 pub fn send_app_update_failed(
     sender: &AppUpdateEventSender,
     stage: AppUpdateStage,
@@ -168,10 +148,6 @@ pub trait AppUpdateHost: Clone + Send + Sync + 'static {
         &'a self,
         current_version: &'a str,
     ) -> BoxFuture<'a, Result<Option<UpdatePackageInfo>, UpdateError>>;
-    fn show_builtin_update_prompt<'a>(
-        &'a self,
-        update: &'a UpdatePackageInfo,
-    ) -> BoxFuture<'a, Result<bool, UpdateError>>;
     fn download_app_update<'a>(
         &'a self,
         update: &'a UpdatePackageInfo,
@@ -179,7 +155,6 @@ pub trait AppUpdateHost: Clone + Send + Sync + 'static {
     ) -> BoxFuture<'a, Result<PathBuf, UpdateError>>;
     fn install_app_update(&self, package_path: &Path) -> Result<(), UpdateError>;
     fn log_app_update_warning(&self, detail: &str);
-    fn notify_app_update_available(&self, update: &UpdatePackageInfo) -> Result<(), UpdateError>;
 }
 
 fn app_update_events() -> &'static broadcast::Sender<AppUpdateEvent> {
@@ -203,146 +178,6 @@ pub async fn check_app_update<H: AppUpdateHost>(
 ) -> Result<Option<UpdatePackageInfo>, UpdateError> {
     let current_version = host.current_app_version()?;
     host.check_app_update(&current_version).await
-}
-
-pub async fn download_app_update<H: AppUpdateHost>(
-    host: &H,
-    update: &UpdatePackageInfo,
-) -> Result<PathBuf, UpdateError> {
-    let current_version = host.current_app_version().map_err(|error| {
-        emit_app_update_failed(AppUpdateStage::Download, &error);
-        error
-    })?;
-    ensure_app_update_candidate_version(&current_version, &update.version).map_err(|error| {
-        emit_app_update_failed(AppUpdateStage::Download, &error);
-        error
-    })?;
-
-    emit_app_update_event(AppUpdateEvent::DownloadStarted {
-        version: update.version.clone(),
-    });
-    let path = host
-        .download_app_update(update, AppUpdateProgressReporter::new(&update.version))
-        .await
-        .map_err(|error| {
-            emit_app_update_failed(AppUpdateStage::Download, &error);
-            error
-        })?;
-    emit_app_update_event(AppUpdateEvent::Downloaded {
-        version: update.version.clone(),
-    });
-
-    Ok(path)
-}
-
-pub fn install_app_update<H: AppUpdateHost>(
-    host: &H,
-    update: &UpdatePackageInfo,
-    package_path: &Path,
-) -> Result<(), UpdateError> {
-    let current_version = host.current_app_version().map_err(|error| {
-        emit_app_update_failed(AppUpdateStage::Install, &error);
-        error
-    })?;
-    ensure_app_update_candidate_version(&current_version, &update.version).map_err(|error| {
-        emit_app_update_failed(AppUpdateStage::Install, &error);
-        error
-    })?;
-
-    host.install_app_update(package_path).map_err(|error| {
-        emit_app_update_failed(AppUpdateStage::Install, &error);
-        error
-    })?;
-    emit_app_update_event(AppUpdateEvent::InstallRequested {
-        version: update.version.clone(),
-    });
-
-    Ok(())
-}
-
-pub async fn download_and_install_app_update<H: AppUpdateHost>(
-    host: &H,
-    update: &UpdatePackageInfo,
-) -> Result<PathBuf, UpdateError> {
-    let path = download_app_update(host, update).await?;
-    install_app_update(host, update, &path)?;
-    Ok(path)
-}
-
-pub async fn check_and_install_app_update<H: AppUpdateHost>(host: &H) -> Result<(), UpdateError> {
-    let current_version = host.current_app_version().map_err(|error| {
-        emit_app_update_failed(AppUpdateStage::Check, &error);
-        error
-    })?;
-    let update = host
-        .check_app_update(&current_version)
-        .await
-        .map_err(|error| {
-            emit_app_update_failed(AppUpdateStage::Check, &error);
-            error
-        })?;
-    let Some(update) = update else {
-        return Ok(());
-    };
-
-    ensure_app_update_candidate_version(&current_version, &update.version).map_err(|error| {
-        emit_app_update_failed(AppUpdateStage::Check, &error);
-        error
-    })?;
-    emit_app_update_event(AppUpdateEvent::Available(update.clone()));
-
-    if update_config().ui_mode == UpdateUiMode::Custom {
-        host.notify_app_update_available(&update)?;
-        if update.is_force_update {
-            return Err(UpdateError::runtime(
-                "forced app update requires explicit host handling in custom UI mode",
-            ));
-        }
-        return Ok(());
-    }
-
-    let confirmed = host
-        .show_builtin_update_prompt(&update)
-        .await
-        .map_err(|error| {
-            emit_app_update_failed(AppUpdateStage::Prompt, &error);
-            error
-        })?;
-
-    if !confirmed && update.is_force_update {
-        let error = UpdateError::runtime("forced app update was not confirmed");
-        emit_app_update_failed(AppUpdateStage::Prompt, &error);
-        return Err(error);
-    }
-
-    if !confirmed {
-        return Ok(());
-    }
-
-    download_and_install_app_update(host, &update)
-        .await
-        .map(|_| ())
-}
-
-pub fn spawn_app_update_flow<H: AppUpdateHost>(
-    host: H,
-    start_delay: Duration,
-    bypass_auto_check: bool,
-) {
-    let runner = host.clone();
-    host.spawn_detached(Box::pin(async move {
-        if !start_delay.is_zero() {
-            sleep(start_delay).await;
-        }
-
-        if !bypass_auto_check && !update_config().auto_check_app {
-            return;
-        }
-
-        if let Err(error) = check_and_install_app_update(&runner).await {
-            runner.log_app_update_warning(&format!("App update flow failed: {}", error));
-        }
-    }));
 }
 
 pub fn ensure_app_update_candidate_version(
