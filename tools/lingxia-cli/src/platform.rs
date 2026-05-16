@@ -2,6 +2,7 @@ use crate::config::LingXiaConfig;
 use anyhow::Result;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 pub mod android;
 pub mod android_abis;
@@ -17,6 +18,47 @@ pub fn resolve_cargo_target_dir(project_root: &Path) -> PathBuf {
     find_workspace_root(project_root)
         .unwrap_or_else(|| project_root.to_path_buf())
         .join("target")
+}
+
+pub(crate) const NATIVE_CLIENT_OUT_ENV: &str = "LINGXIA_NATIVE_CLIENT_OUT";
+
+pub(crate) fn native_client_out_for_host_project(
+    project_root: &Path,
+    config: &LingXiaConfig,
+) -> Result<Option<PathBuf>> {
+    let Some(app) = config.app.as_ref() else {
+        return Ok(None);
+    };
+    let Some(resources) = config.resources.as_ref() else {
+        return Ok(None);
+    };
+    let Some(bundle) = resources
+        .bundles
+        .iter()
+        .find(|bundle| bundle.app_id == app.home_app_id)
+    else {
+        return Ok(None);
+    };
+    let Some(path) = bundle
+        .path
+        .as_deref()
+        .map(str::trim)
+        .filter(|path| !path.is_empty())
+    else {
+        return Ok(None);
+    };
+    let lxapp_root = project_root.join(path);
+    let project = crate::lxapp::Project::discover(&lxapp_root, None)?;
+    Ok(Some(crate::lxapp::native_client_output_path(
+        &lxapp_root,
+        project.framework,
+    )))
+}
+
+pub(crate) fn set_native_client_codegen_env(cmd: &mut Command, out: Option<&Path>) {
+    if let Some(out) = out {
+        cmd.env(NATIVE_CLIENT_OUT_ENV, out);
+    }
 }
 
 fn find_workspace_root(start: &Path) -> Option<PathBuf> {

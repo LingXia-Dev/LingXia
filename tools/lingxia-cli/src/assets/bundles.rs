@@ -434,12 +434,6 @@ fn hash_resource_bundle_inputs(plan: &ResourceBundlePlan) -> Result<String> {
         &["dist", "node_modules", ".git", ".lingxia"],
     )?);
 
-    if let Some(rust_dir) = crate::lxapp::configured_native_rust_dir(&plan.bundle_dir)? {
-        hasher.update(b"native-client-rust-dir");
-        hasher.update(path_key(&rust_dir).as_bytes());
-        hasher.update(hash_tree(&rust_dir, &["target", ".git"])?);
-    }
-
     Ok(sha256_hex(&hasher.finalize()))
 }
 

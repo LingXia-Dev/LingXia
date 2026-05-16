@@ -21,6 +21,7 @@ pub mod srp;
 
 use crate::commands::rust::{resolve_build_profile, run_cargo_rustc_staticlib_for_target};
 use crate::platform::resolve_cargo_target_dir;
+use crate::platform::set_native_client_codegen_env;
 use anyhow::{Context, Result, anyhow};
 use colored::Colorize;
 use std::fs;
@@ -374,6 +375,7 @@ pub fn build_rust_staticlib(
     deployment_target: Option<&str>,
     features: &[String],
     default_features: bool,
+    native_client_out: Option<&Path>,
 ) -> Result<PathBuf> {
     println!("{}", "Compiling native static library...".cyan());
 
@@ -397,6 +399,7 @@ pub fn build_rust_staticlib(
             if !default_features {
                 cmd.arg("--no-default-features");
             }
+            set_native_client_codegen_env(cmd, native_client_out);
             if !features.is_empty() {
                 cmd.arg("--features").arg(features.join(","));
             }

@@ -10,7 +10,6 @@ mod host_assets;
 mod http_client;
 mod i18n;
 mod lxapp;
-mod native_codegen;
 mod path_completion;
 mod permission_cache;
 mod platform;

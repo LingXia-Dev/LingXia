@@ -1,6 +1,6 @@
 import React from 'react';
 import '../../app.css';
-import { native } from '../../src/generated/native';
+import { native } from '@lingxia/native';
 
 export default function HomePage() {
   return (

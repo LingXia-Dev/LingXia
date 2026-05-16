@@ -1,4 +1,5 @@
 use super::vite_pipeline::strip_ext;
+use crate::lxapp::framework::ProjectFramework;
 use crate::lxapp::project::{Project, ProjectKind};
 use anyhow::{Context, Result, anyhow, bail};
 use oxc_allocator::Allocator;
@@ -14,13 +15,6 @@ use std::path::{Path, PathBuf};
 struct LxAppBuildConfig {
     static_dirs: Vec<String>,
     optional_static_dirs: BTreeSet<String>,
-    native: Option<NativeConfig>,
-}
-
-#[derive(Debug, Clone)]
-struct NativeConfig {
-    rust_dir: String,
-    out: String,
 }
 
 pub(super) fn write_root_manifest(project: &Project) -> Result<()> {
@@ -100,19 +94,7 @@ fn rewrite_page_value(
 }
 
 pub(super) fn copy_static_assets(project: &Project) -> Result<()> {
-    let mut build_config = load_lxapp_build_config(project.root.as_path())?;
-    if let Some(native) = build_config.native.as_ref() {
-        generate_native_client(project.root.as_path(), native)?;
-        if native_output_is_static(&native.out)
-            && let Some(root_dir) = native.out.split('/').next()
-            && !root_dir.is_empty()
-        {
-            build_config.optional_static_dirs.remove(root_dir);
-            if !build_config.static_dirs.iter().any(|dir| dir == root_dir) {
-                build_config.static_dirs.push(root_dir.to_string());
-            }
-        }
-    }
+    let build_config = load_lxapp_build_config(project.root.as_path())?;
     for relative_dir in build_config.static_dirs {
         let source_dir = project.root.join(&relative_dir);
         if !source_dir.exists() {
@@ -156,23 +138,18 @@ pub(super) fn copy_static_assets(project: &Project) -> Result<()> {
     Ok(())
 }
 
-fn generate_native_client(project_root: &Path, config: &NativeConfig) -> Result<()> {
-    let rust_dir = project_root.join(&config.rust_dir);
-    let out = project_root.join(&config.out);
-    crate::native_codegen::generate_native_client_from_paths(&rust_dir, &out)
+pub(crate) fn native_client_output_path(
+    project_root: &Path,
+    framework: ProjectFramework,
+) -> PathBuf {
+    project_root.join(native_client_output_relative_path(framework))
 }
 
-pub(crate) fn configured_native_rust_dir(project_root: &Path) -> Result<Option<PathBuf>> {
-    Ok(load_lxapp_build_config(project_root)?
-        .native
-        .map(|config| project_root.join(config.rust_dir)))
-}
-
-fn native_output_is_static(out: &str) -> bool {
-    Path::new(out)
-        .extension()
-        .and_then(|ext| ext.to_str())
-        .is_some_and(|ext| ext.eq_ignore_ascii_case("js"))
+fn native_client_output_relative_path(framework: ProjectFramework) -> &'static str {
+    match framework {
+        ProjectFramework::Html => ".lingxia/native.js",
+        ProjectFramework::React | ProjectFramework::Vue => ".lingxia/native.ts",
+    }
 }
 
 pub(super) fn copy_dir_recursive(source: &Path, destination: &Path) -> Result<()> {
@@ -202,7 +179,7 @@ pub(super) fn copy_dir_recursive(source: &Path, destination: &Path) -> Result<()
 fn load_lxapp_build_config(project_root: &Path) -> Result<LxAppBuildConfig> {
     let mut static_dirs = BTreeSet::new();
     let mut optional_static_dirs = BTreeSet::new();
-    for default_dir in ["public", "assets"] {
+    for default_dir in ["public", "assets", ".lingxia"] {
         if project_root.join(default_dir).is_dir() {
             static_dirs.insert(default_dir.to_string());
         } else {
@@ -215,7 +192,6 @@ fn load_lxapp_build_config(project_root: &Path) -> Result<LxAppBuildConfig> {
         return Ok(LxAppBuildConfig {
             static_dirs: static_dirs.into_iter().collect(),
             optional_static_dirs,
-            native: None,
         });
     }
 
@@ -253,11 +229,9 @@ fn load_lxapp_build_config(project_root: &Path) -> Result<LxAppBuildConfig> {
         return Ok(LxAppBuildConfig {
             static_dirs: static_dirs.into_iter().collect(),
             optional_static_dirs,
-            native: None,
         });
     };
 
-    let mut native = None;
     for property in &config_object.properties {
         let ObjectPropertyKind::ObjectProperty(property) = property else {
             continue;
@@ -299,13 +273,6 @@ fn load_lxapp_build_config(project_root: &Path) -> Result<LxAppBuildConfig> {
                     static_dirs.insert(normalized);
                 }
             }
-            "native" => {
-                let Expression::ObjectExpression(object) = unwrap_expression(&property.value)
-                else {
-                    bail!("lxapp.config.ts native must be an object");
-                };
-                native = Some(parse_native_config(object, &config_path)?);
-            }
             _ => {}
         }
     }
@@ -313,50 +280,7 @@ fn load_lxapp_build_config(project_root: &Path) -> Result<LxAppBuildConfig> {
     Ok(LxAppBuildConfig {
         static_dirs: static_dirs.into_iter().collect(),
         optional_static_dirs,
-        native,
     })
-}
-
-fn parse_native_config(
-    object: &oxc_ast::ast::ObjectExpression<'_>,
-    config_path: &Path,
-) -> Result<NativeConfig> {
-    let rust_dir = string_property(object, "rustDir").ok_or_else(|| {
-        anyhow!("lxapp.config.ts native.rustDir must be a non-empty relative path")
-    })?;
-    let out = string_property(object, "out").ok_or_else(|| {
-        anyhow!("lxapp.config.ts native.out must be a non-empty root-relative path")
-    })?;
-    let rust_dir = normalize_native_rust_dir_entry(&rust_dir).ok_or_else(|| {
-        anyhow!(
-            "Invalid native.rustDir in {}: {:?}",
-            config_path.display(),
-            rust_dir
-        )
-    })?;
-    let out = normalize_static_dir_entry(&out)
-        .ok_or_else(|| anyhow!("Invalid native.out in {}: {:?}", config_path.display(), out))?;
-    Ok(NativeConfig { rust_dir, out })
-}
-
-fn string_property(object: &oxc_ast::ast::ObjectExpression<'_>, name: &str) -> Option<String> {
-    for property in &object.properties {
-        let ObjectPropertyKind::ObjectProperty(property) = property else {
-            continue;
-        };
-        if property_name(&property.key).as_deref() != Some(name) {
-            continue;
-        }
-        let Expression::StringLiteral(value) = unwrap_expression(&property.value) else {
-            return None;
-        };
-        let trimmed = value.value.as_str().trim();
-        if trimmed.is_empty() {
-            return None;
-        }
-        return Some(trimmed.to_string());
-    }
-    None
 }
 
 fn extract_config_object_expression<'a>(
@@ -395,18 +319,6 @@ fn normalize_static_dir_entry(value: &str) -> Option<String> {
     } else {
         Some(normalized)
     }
-}
-
-fn normalize_native_rust_dir_entry(value: &str) -> Option<String> {
-    let trimmed = value.trim();
-    if trimmed.is_empty()
-        || trimmed.starts_with("//")
-        || Path::new(trimmed).is_absolute()
-        || trimmed.split('/').any(|part| part == "")
-    {
-        return None;
-    }
-    Some(trimmed.trim_end_matches('/').to_string())
 }
 
 fn unwrap_expression<'a>(expression: &'a Expression<'a>) -> &'a Expression<'a> {
@@ -555,63 +467,32 @@ mod tests {
     }
 
     #[test]
-    fn copy_static_assets_generates_native_client() {
+    fn copy_static_assets_copies_generated_html_native_client() {
         let temp = tempdir().unwrap();
         let project = make_project(temp.path());
-        write_file(
-            temp.path(),
-            "lxapp.config.ts",
-            r#"export default {
-  native: { rustDir: 'native/src', out: '__lingxia/native.js' }
-};"#,
-        );
-        write_file(
-            temp.path(),
-            "native/src/lib.rs",
-            r#"
-pub struct PingInput {
-    pub message: String,
-}
-
-#[lingxia::native("demo.ping")]
-fn ping(input: PingInput) -> HostResult<String> { todo!() }
-"#,
-        );
+        write_file(temp.path(), ".lingxia/native.js", "window.native = {};");
 
         copy_static_assets(&project).unwrap();
 
-        let generated = fs::read_to_string(temp.path().join("__lingxia/native.js")).unwrap();
-        assert!(generated.contains("global.native"));
-        assert!(generated.contains("demo"));
-        assert!(project.output_dir.join("__lingxia/native.js").exists());
+        let generated = fs::read_to_string(project.output_dir.join(".lingxia/native.js")).unwrap();
+        assert_eq!(generated, "window.native = {};");
     }
 
     #[test]
-    fn copy_static_assets_does_not_copy_ts_native_client_root() {
+    fn copy_static_assets_copies_generated_native_module() {
         let temp = tempdir().unwrap();
-        let project = make_project(temp.path());
+        let mut project = make_project(temp.path());
+        project.framework = ProjectFramework::React;
         write_file(
             temp.path(),
-            "lxapp.config.ts",
-            r#"export default {
-  native: { rustDir: 'native/src', out: 'src/generated/native.ts' }
-};"#,
-        );
-        write_file(
-            temp.path(),
-            "native/src/lib.rs",
-            r#"
-#[lingxia::native("demo.streamInfo")]
-fn stream_info() -> HostResult<String> { todo!() }
-"#,
+            ".lingxia/native.ts",
+            "export const native = {};",
         );
 
         copy_static_assets(&project).unwrap();
 
-        let generated = fs::read_to_string(temp.path().join("src/generated/native.ts")).unwrap();
-        assert!(generated.contains("streamInfo"));
-        assert!(generated.contains("invoke<string>"));
-        assert!(!project.output_dir.join("src").exists());
+        let generated = fs::read_to_string(project.output_dir.join(".lingxia/native.ts")).unwrap();
+        assert_eq!(generated, "export const native = {};");
     }
 
     #[test]

@@ -117,6 +117,7 @@ const workspaceAliases = [
 
 const alias = [
   { find: /^@\//, replacement: `${projectRoot}/` },
+  { find: /^@lingxia\/native$/, replacement: path.resolve(projectRoot, '.lingxia/native.ts') },
   { find: /^\/public\//, replacement: `${path.resolve(projectRoot, 'public')}/` },
   ...workspaceAliases,
   ...Object.entries(projectConfig.alias ?? {})

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import '../../app.css';
-import { native } from '../../src/generated/native';
+import { native } from '@lingxia/native';
 </script>
 
 <template>

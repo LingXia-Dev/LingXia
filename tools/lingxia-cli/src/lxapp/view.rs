@@ -5,7 +5,7 @@ mod vite_pipeline;
 mod vite_tooling;
 mod vue;
 
-pub(crate) use vite_assets::configured_native_rust_dir;
+pub(crate) use vite_assets::native_client_output_path;
 pub(crate) use vite_html::view_target_from_dir;
 
 use crate::lxapp::framework::{PageAction, PageActionMode, ProjectFramework};

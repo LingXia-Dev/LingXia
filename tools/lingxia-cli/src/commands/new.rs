@@ -72,7 +72,6 @@ pub fn execute(
             &product_name,
             &framework,
             AppServiceMode::Enabled,
-            None,
             &versions,
             &scaffold_versions.bridge,
             &scaffold_versions.types,

@@ -3,6 +3,7 @@ name = "{{PROJECT_NAME}}"
 version = "0.1.0"
 edition = "2024"
 description = "Native library for LingXia App (builds to .so/.a)"
+build = "build.rs"
 
 [lib]
 name = "lingxia"
@@ -20,6 +21,9 @@ webview-input = ["lingxia/webview-input"]
 [dependencies]
 lingxia = { version = "{{LINGXIA_VERSION}}", default-features = false, features = {{LINGXIA_DEP_FEATURES}} }
 lingxia_devtool = { package = "lingxia-devtool", version = "{{LINGXIA_VERSION}}", optional = true, default-features = false }
+
+[build-dependencies]
+lingxia-native-codegen = { version = "{{LINGXIA_VERSION}}" }
 
 # Platform-specific dependencies for FFI
 {{ANDROID_DEPS_BLOCK}}

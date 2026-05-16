@@ -6,7 +6,7 @@ use super::apple::{self, IOS_TARGET};
 use super::spm;
 use super::{
     BuildArtifacts, BuildConfig, BuildProfile, Device, InstallConfig, Platform, RunConfig,
-    resolve_cargo_target_dir,
+    native_client_out_for_host_project, resolve_cargo_target_dir,
 };
 use crate::config::IosConfig;
 use crate::permission_cache::{DEFAULT_MAX_AGE_SECONDS, PermissionCache, PermissionPlatform};
@@ -73,6 +73,7 @@ impl IosPlatform {
             .ok_or_else(|| anyhow!("app.projectName is required in lingxia.config.json"))?;
 
         let rust_lib_dir = project_root.join(&rust_lib_name);
+        let native_client_out = native_client_out_for_host_project(project_root, lingxia_config)?;
 
         // Get deployment target from config
         let deployment_target = ios_config.and_then(|c| c.deployment_target.as_deref());
@@ -85,6 +86,7 @@ impl IosPlatform {
             deployment_target,
             &config.native_features,
             config.native_default_features,
+            native_client_out.as_deref(),
         )
     }
 
