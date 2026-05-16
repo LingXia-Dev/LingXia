@@ -1005,9 +1005,7 @@ impl PageSvc {
                     page_instance_id.unwrap_or_default().to_string(),
                 ),
             )
-            .map_err(|e: RongJSError| {
-                RongJSError::from(HostError::new(rong::error::E_INTERNAL, e.to_string()))
-            })
+            .map_err(|e: RongJSError| e.into_host_in(ctx))
     }
 
     pub fn get_page(&self) -> PageInstance {
