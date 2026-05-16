@@ -1,0 +1,13 @@
+[package]
+name = "lingxia-native-codegen"
+version.workspace = true
+edition.workspace = true
+description = "TypeScript code generation for LingXia native APIs"
+license = "MIT"
+repository.workspace = true
+
+[dependencies]
+anyhow = "1.0"
+syn = { version = "2", features = ["full"] }
+quote = "1"
+serde_json = "1.0"

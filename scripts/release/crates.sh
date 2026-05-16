@@ -25,6 +25,7 @@ CRATES=(
 
   # Facade and host support crates.
   "lingxia-native-macros"
+  "lingxia-native-codegen"
   "lingxia-browser"
   "lingxia-shell"
   "lingxia-terminal"
