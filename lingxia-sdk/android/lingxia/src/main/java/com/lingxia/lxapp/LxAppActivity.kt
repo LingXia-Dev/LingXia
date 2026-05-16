@@ -1120,6 +1120,9 @@ class LxAppActivity : AppCompatActivity() {
         }
         // Resume native components
         currentWebView?.let { NativeBridge.notifyPageActive(it) }
+        // Resume any update install that was deferred while the user was in
+        // the "Install unknown apps" system settings screen.
+        UpdateManager.tryInstallPendingUpdate()
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {

@@ -1,0 +1,26 @@
+# Android-only SDK strings.
+#
+# These keys feed `lingxia-sdk/android/.../res/values*/strings.xml` only.
+# They are NOT emitted to the Rust `I18nKey` enum, the TS keys list, the
+# iOS Localizable.strings, or the Harmony string.json — because no
+# logic-layer or non-Android-SDK code reads them.
+
+# UpdateManager: PackageInstaller status messages and the install-confirm
+# notification posted as a fallback when the app is backgrounded during a
+# self-update.
+update:
+  install_aborted: "Installation cancelled"
+  install_apk_empty: "Update package is missing"
+  install_apk_invalid: "Update package is corrupted"
+  install_apk_mismatch: "Update package does not match this app"
+  install_blocked: "Blocked by system"
+  install_conflict: "Conflicts with installed version"
+  install_failure: "Installation failed"
+  install_incompatible: "Update is not compatible with this device"
+  install_invalid: "Update package is invalid"
+  install_no_ui: "This device does not provide an install screen"
+  install_permission_required: "Please allow installing unknown apps in settings, then retry"
+  install_storage: "Insufficient storage"
+  notification_body: "Tap to install the downloaded update"
+  notification_channel: "App updates"
+  notification_title: "Update ready to install"
