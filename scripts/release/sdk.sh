@@ -251,26 +251,33 @@ generate_resources() {
   [[ -d "$I18N_DIR" ]] || die "Missing i18n dir: $I18N_DIR"
   [[ -d "$ICONS_SVG_DIR" ]] || die "Missing icons svg dir: $ICONS_SVG_DIR"
 
-  local i18n_args=(lingxia gen i18n --input "$I18N_DIR")
-  local icons_args=(lingxia gen icons --input "$ICONS_SVG_DIR")
+  local gen_cmd=(cargo run -p lingxia-gen --)
+  local i18n_args=(i18n --input "$I18N_DIR" --no-rust --no-ts)
+  local icons_args=(icons --input "$ICONS_SVG_DIR")
 
   if $WANT_ANDROID; then
     i18n_args+=(--android-out "$ANDROID_RES_DIR")
     icons_args+=(--android-out "$ANDROID_DRAWABLE_DIR")
+  else
+    i18n_args+=(--no-android)
   fi
 
   if $WANT_APPLE; then
     i18n_args+=(--ios-out "$APPLE_RES_DIR")
     icons_args+=(--ios-out "$APPLE_ICONS_DIR")
+  else
+    i18n_args+=(--no-ios)
   fi
 
   if $WANT_HARMONY; then
     i18n_args+=(--harmony-out "$HARMONY_RES_DIR")
     icons_args+=(--harmony-out "$HARMONY_ICONS_DIR")
+  else
+    i18n_args+=(--no-harmony)
   fi
 
-  run "${i18n_args[@]}"
-  run "${icons_args[@]}"
+  run "${gen_cmd[@]}" "${i18n_args[@]}"
+  run "${gen_cmd[@]}" "${icons_args[@]}"
 
 }
 
@@ -452,22 +459,31 @@ main() {
   local artifacts=()
 
   if $WANT_ANDROID; then
-    local android_out
-    android_out="$(build_android)"
+    local android_out_file android_out
+    android_out_file="$(mktemp 2>/dev/null || mktemp -t lingxia_android_out)"
+    build_android >"$android_out_file"
+    android_out="$(tail -n 1 "$android_out_file")"
+    rm -f "$android_out_file"
     if [[ -n "$android_out" && -f "$android_out" ]]; then
       artifacts+=("$android_out")
     fi
   fi
   if $WANT_HARMONY; then
-    local harmony_out
-    harmony_out="$(build_harmony)"
+    local harmony_out_file harmony_out
+    harmony_out_file="$(mktemp 2>/dev/null || mktemp -t lingxia_harmony_out)"
+    build_harmony >"$harmony_out_file"
+    harmony_out="$(tail -n 1 "$harmony_out_file")"
+    rm -f "$harmony_out_file"
     if [[ -n "$harmony_out" && -f "$harmony_out" ]]; then
       artifacts+=("$harmony_out")
     fi
   fi
   if $WANT_APPLE; then
-    local ios_out
-    ios_out="$(build_ios_source)"
+    local ios_out_file ios_out
+    ios_out_file="$(mktemp 2>/dev/null || mktemp -t lingxia_apple_out)"
+    build_ios_source >"$ios_out_file"
+    ios_out="$(tail -n 1 "$ios_out_file")"
+    rm -f "$ios_out_file"
     if [[ -n "$ios_out" && -f "$ios_out" ]]; then
       artifacts+=("$ios_out")
     fi
