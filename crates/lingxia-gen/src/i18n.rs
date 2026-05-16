@@ -7,36 +7,159 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-#[derive(Args, Debug, Clone)]
+#[derive(Args, Debug, Clone, Default)]
 pub struct I18nConfig {
     /// Path to the i18n source root directory
     /// (`ui/`, `permission/cli/`, `permission/runtime/`, `error/`, `schema/`)
     #[arg(short, long, default_value = "i18n")]
     pub input: PathBuf,
 
-    /// Path to output the Rust generated code (Optional)
+    /// Verify-only mode: regenerate every enabled target into a tempdir and
+    /// diff against the checked-in copy. Writes nothing on success and
+    /// exits non-zero on drift. Run this in pre-commit / pre-push hooks to
+    /// catch "forgot to regenerate after editing yaml".
+    #[arg(long)]
+    pub check: bool,
+
+    /// Override the Rust generated-source path. Defaults to the workspace
+    /// path used by `lingxia-logic`. Pass `--no-rust` to skip entirely.
     #[arg(long)]
     pub rust_out: Option<PathBuf>,
 
-    /// Path to output Android resources (res directory) (Optional)
+    /// Skip Rust generation.
+    #[arg(long, conflicts_with = "rust_out")]
+    pub no_rust: bool,
+
+    /// Override Android `res/` output. Defaults to the workspace path used
+    /// by the Android SDK. Pass `--no-android` to skip.
     #[arg(long)]
     pub android_out: Option<PathBuf>,
 
-    /// Path to output iOS resources (Resources directory) (Optional)
+    #[arg(long, conflicts_with = "android_out")]
+    pub no_android: bool,
+
+    /// Override iOS / macOS `Resources/` output. Pass `--no-ios` to skip.
     #[arg(long)]
     pub ios_out: Option<PathBuf>,
 
-    /// Path to output HarmonyOS resources (resources directory) (Optional)
+    #[arg(long, conflicts_with = "ios_out")]
+    pub no_ios: bool,
+
+    /// Override Harmony `resources/` output. Pass `--no-harmony` to skip.
     #[arg(long)]
     pub harmony_out: Option<PathBuf>,
 
-    /// Path to output generated TypeScript files (directory) (Optional)
+    #[arg(long, conflicts_with = "harmony_out")]
+    pub no_harmony: bool,
+
+    /// Override TypeScript-keys output directory. Defaults to the workspace
+    /// path used by `lingxia-types`. Pass `--no-ts` to skip.
     #[arg(long)]
     pub ts_out: Option<PathBuf>,
 
-    /// Path to JSON Schema directory (Optional arg, defaults to <input>/schema)
+    #[arg(long, conflicts_with = "ts_out")]
+    pub no_ts: bool,
+
+    /// Path to JSON Schema directory (defaults to <input>/schema).
     #[arg(long)]
     pub schema_dir: Option<PathBuf>,
+}
+
+/// Workspace-relative defaults so the bare command
+/// `cargo run -p lingxia-cli -- gen i18n` regenerates every target in place
+/// without 6 separate `--*-out` flags.
+const RUST_DEFAULT_OUT: &str = "crates/lingxia-logic/src/i18n_generated.rs";
+const TS_DEFAULT_OUT: &str = "packages/lingxia-types/src/generated";
+const ANDROID_DEFAULT_OUT: &str = "lingxia-sdk/android/lingxia/src/main/res";
+const APPLE_DEFAULT_OUT: &str = "lingxia-sdk/apple/Sources/Resources";
+const HARMONY_DEFAULT_OUT: &str = "lingxia-sdk/harmony/lingxia/src/main/resources";
+
+/// Resolved generation plan for a single target.
+struct OutputPlan {
+    /// Where this run physically writes. In `--check` mode this is inside a
+    /// tempdir; otherwise it's `expected`.
+    write_to: PathBuf,
+    /// Where the checked-in artifact normally lives. `--check` compares
+    /// `write_to` against this path tree.
+    expected: PathBuf,
+    /// Whether `--check` should byte-compare the generated result against
+    /// `expected`. Android `strings.xml` is intentionally generated/ignored,
+    /// so for that target `--check` only validates that generation succeeds.
+    compare_in_check: bool,
+}
+
+fn resolve_output_plan(
+    user_path: Option<&Path>,
+    no_flag: bool,
+    workspace_default: &str,
+    temp_subpath: &str,
+    temp_root: Option<&Path>,
+    compare_in_check: bool,
+) -> Option<OutputPlan> {
+    if no_flag {
+        return None;
+    }
+    let expected = user_path
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| PathBuf::from(workspace_default));
+    let write_to = match temp_root {
+        Some(td) => td.join(temp_subpath),
+        None => expected.clone(),
+    };
+    Some(OutputPlan {
+        write_to,
+        expected,
+        compare_in_check,
+    })
+}
+
+/// Byte-compare a single generated file against the checked-in copy and
+/// push human-readable drift entries on mismatch.
+fn compare_file(generated: &Path, expected: &Path, drift: &mut Vec<String>) -> Result<()> {
+    let gen_bytes =
+        fs::read(generated).with_context(|| format!("read generated {}", generated.display()))?;
+    match fs::read(expected) {
+        Ok(exp_bytes) if exp_bytes == gen_bytes => Ok(()),
+        Ok(_) => {
+            drift.push(format!("differs: {}", expected.display()));
+            Ok(())
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            drift.push(format!("missing on disk: {}", expected.display()));
+            Ok(())
+        }
+        Err(e) => Err(anyhow!("read expected {}: {}", expected.display(), e)),
+    }
+}
+
+/// Walk what the generator just produced and confirm every file matches
+/// the checked-in copy. Files that exist on disk but were not produced
+/// (e.g. unrelated Android `drawable/` resources sharing `res/`) are not
+/// flagged — drift is one-directional: "did we produce content the repo
+/// doesn't have yet?".
+fn diff_against_expected(plan: &OutputPlan, drift: &mut Vec<String>) -> Result<()> {
+    let generated = &plan.write_to;
+    let expected = &plan.expected;
+    if generated.is_file() || !generated.exists() {
+        if generated.is_file() {
+            compare_file(generated, expected, drift)?;
+        }
+        return Ok(());
+    }
+    let mut stack = vec![generated.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        for entry in fs::read_dir(&dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path);
+                continue;
+            }
+            let rel = path.strip_prefix(generated).unwrap();
+            compare_file(&path, &expected.join(rel), drift)?;
+        }
+    }
+    Ok(())
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -85,88 +208,157 @@ impl TranslationValue {
 // Use BTreeMap to ensure keys are sorted for deterministic output
 type Translations = BTreeMap<String, TranslationValue>;
 type I18nMap = BTreeMap<String, Translations>;
+// Scope -> locale -> flat translations.
+type ScopedI18nMap = BTreeMap<Scope, I18nMap>;
+
+/// Banner placed at the top of every auto-generated artifact. Points at
+/// the actual invocation (lingxia-gen is a library; the CLI is shipped via
+/// lingxia-cli) so grep-driven debugging lands on the right command.
+const GEN_HEADER_RUST: &str =
+    "// Auto-generated by `cargo run -p lingxia-cli -- gen i18n`. DO NOT EDIT.\n\n";
+const GEN_HEADER_C_STYLE: &str =
+    "/* Auto-generated by `cargo run -p lingxia-cli -- gen i18n`. DO NOT EDIT. */\n\n";
 
 const UI_LOCALE_DIR: &str = "ui";
 const PERMISSION_RUNTIME_DIR: &str = "permission/runtime";
 const PERMISSION_CLI_DIR: &str = "permission/cli";
 const ERROR_DIR: &str = "error";
+const LOGIC_DIR: &str = "logic";
+const ANDROID_DIR: &str = "android";
+const APPLE_DIR: &str = "apple";
+const HARMONY_DIR: &str = "harmony";
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum LocaleSourceKind {
+/// A YAML source bucket. The directory the file lives in determines who
+/// consumes its strings — the generators only union the scopes that emit
+/// to their respective target. Splitting the input by scope keeps native
+/// resource files (Android XML / Apple lproj / Harmony JSON) and the
+/// `i18n_generated.rs` baked into `lingxia-logic` from collecting strings
+/// nobody on that platform reads.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum Scope {
     Ui,
     PermissionRuntime,
-    ErrorLocale,
+    Error,
+    Logic,
+    Android,
+    Apple,
+    Harmony,
+}
+
+/// Output target. Each generator wires up to one of these.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum Target {
+    Rust,
+    Ts,
+    Android,
+    Apple,
+    Harmony,
+}
+
+impl std::fmt::Display for Scope {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}/", self.dir_name())
+    }
+}
+
+impl Scope {
+    fn dir_name(self) -> &'static str {
+        match self {
+            Scope::Ui => UI_LOCALE_DIR,
+            Scope::PermissionRuntime => PERMISSION_RUNTIME_DIR,
+            Scope::Error => ERROR_DIR,
+            Scope::Logic => LOGIC_DIR,
+            Scope::Android => ANDROID_DIR,
+            Scope::Apple => APPLE_DIR,
+            Scope::Harmony => HARMONY_DIR,
+        }
+    }
+
+    /// Whether this scope is mandatory at the input root. `ui/`, `error/`,
+    /// and `permission/runtime/` define the baseline catalog; the rest are
+    /// optional refinements.
+    fn is_required(self) -> bool {
+        matches!(self, Scope::Ui | Scope::PermissionRuntime | Scope::Error)
+    }
+
+    /// Schema files that documents in this scope must validate against.
+    /// `None` means no JSON schema check (caller still runs structural
+    /// validators).
+    fn schema_basename(self) -> Option<&'static str> {
+        match self {
+            Scope::Ui | Scope::PermissionRuntime => Some("ui.schema.json"),
+            // The error scope reuses the UI schema; its boundary check
+            // (only `error` / `err_code` top-level keys) runs separately.
+            Scope::Error => Some("ui.schema.json"),
+            Scope::Logic | Scope::Android | Scope::Apple | Scope::Harmony => {
+                Some("native.schema.json")
+            }
+        }
+    }
+
+    /// Targets this scope feeds. Generators reverse-look this up via
+    /// `scopes_feeding(target)`.
+    fn targets(self) -> &'static [Target] {
+        use Target::*;
+        match self {
+            // Cross-platform baseline: anything in ui/, permission/runtime/,
+            // or error/ feeds every target. Native SDK code currently reads
+            // `lx_permission_*_reason` and `lx_err_code_*` / `lx_error_*`
+            // strings directly via R.string / Localizable, so these stay
+            // emitted everywhere until the consumers migrate.
+            Scope::Ui | Scope::PermissionRuntime | Scope::Error => {
+                &[Rust, Ts, Android, Apple, Harmony]
+            }
+            // Rust + TS only: keys used by the logic crate (and surfaced to
+            // JS via the bridge) but never referenced from native SDK code.
+            Scope::Logic => &[Rust, Ts],
+            // Single-platform native strings — nothing else needs them.
+            Scope::Android => &[Android],
+            Scope::Apple => &[Apple],
+            Scope::Harmony => &[Harmony],
+        }
+    }
+}
+
+const ALL_SCOPES: &[Scope] = &[
+    Scope::Ui,
+    Scope::PermissionRuntime,
+    Scope::Error,
+    Scope::Logic,
+    Scope::Android,
+    Scope::Apple,
+    Scope::Harmony,
+];
+
+fn scopes_feeding(target: Target) -> Vec<Scope> {
+    ALL_SCOPES
+        .iter()
+        .copied()
+        .filter(|scope| scope.targets().contains(&target))
+        .collect()
+}
+
+/// Build a flat (locale -> key -> value) view across the scopes that
+/// emit to `target`. Cross-scope key collisions were already rejected at
+/// load time, so this is a straightforward extend.
+fn translations_for_target(scoped: &ScopedI18nMap, target: Target) -> I18nMap {
+    let mut out: I18nMap = BTreeMap::new();
+    for scope in scopes_feeding(target) {
+        let Some(by_lang) = scoped.get(&scope) else {
+            continue;
+        };
+        for (lang, translations) in by_lang {
+            let bucket = out.entry(lang.clone()).or_default();
+            for (key, value) in translations {
+                bucket.insert(key.clone(), value.clone());
+            }
+        }
+    }
+    out
 }
 
 pub fn run(config: I18nConfig) -> Result<()> {
     println!("Scanning for i18n files in: {:?}", config.input);
-
-    let mut i18n_map: I18nMap = BTreeMap::new();
-    let mut all_keys: BTreeMap<String, ()> = BTreeMap::new();
-    let mut locale_documents: Vec<(String, PathBuf, serde_yaml_ng::Value)> = Vec::new();
-    let locale_sources = [
-        (config.input.join(UI_LOCALE_DIR), LocaleSourceKind::Ui),
-        (
-            config.input.join(PERMISSION_RUNTIME_DIR),
-            LocaleSourceKind::PermissionRuntime,
-        ),
-        (config.input.join(ERROR_DIR), LocaleSourceKind::ErrorLocale),
-    ];
-    for (source_dir, _) in &locale_sources {
-        if !source_dir.exists() {
-            return Err(anyhow!(
-                "Missing locale i18n directory: {}",
-                source_dir.display()
-            ));
-        }
-    }
-
-    // 1. Read and parse YAML files from UI + runtime permission + error locale fragments.
-    for (source_dir, source_kind) in &locale_sources {
-        for path in collect_yaml_files(source_dir)? {
-            let lang_code = path
-                .file_stem()
-                .context("No file stem")?
-                .to_string_lossy()
-                .to_string();
-            println!("Found locale fragment: {} ({})", lang_code, path.display());
-
-            let content = fs::read_to_string(&path)?;
-            let yaml_value: serde_yaml_ng::Value = serde_yaml_ng::from_str(&content)?;
-            match source_kind {
-                LocaleSourceKind::Ui => validate_ui_locale_boundary(&path, &yaml_value)?,
-                LocaleSourceKind::ErrorLocale => {
-                    validate_error_locale_boundary(&path, &yaml_value)?
-                }
-                LocaleSourceKind::PermissionRuntime => {}
-            }
-            let flat_map = flatten_yaml(&yaml_value, None);
-
-            let locale_entry = i18n_map.entry(lang_code.clone()).or_default();
-            for (key, value) in flat_map {
-                if locale_entry.insert(key.clone(), value).is_some() {
-                    return Err(anyhow!(
-                        "Duplicate i18n key `{}` found in locale `{}` while loading `{}`",
-                        key,
-                        lang_code,
-                        path.display()
-                    ));
-                }
-                all_keys.insert(key, ());
-            }
-
-            locale_documents.push((lang_code, path, yaml_value));
-        }
-    }
-
-    if i18n_map.is_empty() {
-        return Err(anyhow!(
-            "No i18n locale YAML files found in {}, {}, or {}",
-            locale_sources[0].0.display(),
-            locale_sources[1].0.display(),
-            locale_sources[2].0.display()
-        ));
-    }
 
     let schema_dir = config
         .schema_dir
@@ -174,37 +366,273 @@ pub fn run(config: I18nConfig) -> Result<()> {
         .unwrap_or_else(|| config.input.join("schema"));
     let ui_schema_path = schema_dir.join("ui.schema.json");
     let permission_schema_path = schema_dir.join("permission.schema.json");
-    validate_schemas_exist(&[&ui_schema_path, &permission_schema_path])?;
+    let native_schema_path = schema_dir.join("native.schema.json");
+    validate_schemas_exist(&[
+        &ui_schema_path,
+        &permission_schema_path,
+        &native_schema_path,
+    ])?;
 
-    validate_locale_documents_schema(&ui_schema_path, &locale_documents)?;
+    // 1. Read + per-scope validate every locale fragment.
+    let mut scoped: ScopedI18nMap = BTreeMap::new();
+    // Where each flattened key first appeared. Used to fail loudly when a
+    // key collides across scopes (e.g. someone copies a `ui/` key into
+    // `android/` instead of moving it).
+    let mut key_origin: BTreeMap<String, (Scope, PathBuf)> = BTreeMap::new();
+
+    for &scope in ALL_SCOPES {
+        let source_dir = config.input.join(scope.dir_name());
+        if !source_dir.exists() {
+            if scope.is_required() {
+                return Err(anyhow!(
+                    "Missing required locale i18n directory: {}",
+                    source_dir.display()
+                ));
+            }
+            continue;
+        }
+
+        let mut docs_in_scope: Vec<(String, PathBuf, serde_yaml_ng::Value)> = Vec::new();
+        for path in collect_yaml_files(&source_dir)? {
+            let lang_code = path
+                .file_stem()
+                .context("No file stem")?
+                .to_string_lossy()
+                .to_string();
+            println!(
+                "Found locale fragment: {} ({}) [{}]",
+                lang_code,
+                path.display(),
+                scope
+            );
+
+            let content = fs::read_to_string(&path)?;
+            let yaml_value: serde_yaml_ng::Value = serde_yaml_ng::from_str(&content)?;
+
+            // Structural boundary checks (top-level key set) per scope.
+            match scope {
+                Scope::Ui => validate_ui_locale_boundary(&path, &yaml_value)?,
+                Scope::Error => validate_error_locale_boundary(&path, &yaml_value)?,
+                Scope::PermissionRuntime
+                | Scope::Logic
+                | Scope::Android
+                | Scope::Apple
+                | Scope::Harmony => {}
+            }
+
+            let flat_map = flatten_yaml(&yaml_value, None);
+
+            let bucket = scoped
+                .entry(scope)
+                .or_default()
+                .entry(lang_code.clone())
+                .or_default();
+            for (key, value) in flat_map {
+                if bucket.insert(key.clone(), value).is_some() {
+                    return Err(anyhow!(
+                        "Duplicate i18n key `{}` in locale `{}` while loading `{}`",
+                        key,
+                        lang_code,
+                        path.display()
+                    ));
+                }
+                if let Some((other_scope, other_path)) = key_origin.get(&key) {
+                    if *other_scope != scope {
+                        return Err(anyhow!(
+                            "Key `{}` declared in scope `{}` (`{}`) collides with scope `{}` (`{}`). Each key may live in exactly one scope directory.",
+                            key,
+                            other_scope,
+                            other_path.display(),
+                            scope,
+                            path.display(),
+                        ));
+                    }
+                } else {
+                    key_origin.insert(key.clone(), (scope, path.clone()));
+                }
+            }
+
+            docs_in_scope.push((lang_code, path, yaml_value));
+        }
+
+        // JSON-schema validation, per scope.
+        if let Some(schema_basename) = scope.schema_basename() {
+            let schema_path = schema_dir.join(schema_basename);
+            validate_locale_documents_schema(&schema_path, &docs_in_scope)?;
+        }
+    }
+
     let permission_cli_dir = config.input.join(PERMISSION_CLI_DIR);
     validate_permission_documents_schema(&permission_schema_path, &permission_cli_dir)?;
     validate_permission_key_sets(&permission_cli_dir)?;
 
-    // 2. Validate Consistency
-    validate_keys(&i18n_map, &all_keys)?;
-    let err_code_keys = collect_err_code_keys(&all_keys)?;
+    // 2. Per-scope locale-key set consistency: within a scope, each locale
+    // file must define the exact same key set. Cross-scope consistency
+    // (key uniqueness) was already enforced at load time via key_origin.
+    for (scope, by_lang) in &scoped {
+        let mut all_keys_in_scope: BTreeMap<String, ()> = BTreeMap::new();
+        for translations in by_lang.values() {
+            for key in translations.keys() {
+                all_keys_in_scope.insert(key.clone(), ());
+            }
+        }
+        validate_keys_in_scope(*scope, by_lang, &all_keys_in_scope)?;
+    }
+
+    // 3. `err_code_*` keys must live in the error scope and nowhere else.
+    let error_keys = scoped
+        .get(&Scope::Error)
+        .map(|by_lang| {
+            let mut keys = BTreeMap::<String, ()>::new();
+            for translations in by_lang.values() {
+                for key in translations.keys() {
+                    keys.insert(key.clone(), ());
+                }
+            }
+            keys
+        })
+        .unwrap_or_default();
+    for (key, (origin, path)) in &key_origin {
+        if key.starts_with("err_code_") && *origin != Scope::Error {
+            return Err(anyhow!(
+                "`{}` is reserved for the error scope but was declared under scope `{}` (`{}`). Move it to `i18n/error/`.",
+                key,
+                origin,
+                path.display(),
+            ));
+        }
+    }
+    let err_code_keys = collect_err_code_keys(&error_keys)?;
     if err_code_keys.is_empty() {
         return Err(anyhow!(
-            "No `err_code_*` keys found in locale fragments. At least one business error code is required."
+            "No `err_code_*` keys found in `i18n/error/`. At least one business error code is required."
         ));
     }
 
-    // 3. Generate Outputs
-    if let Some(path) = &config.rust_out {
-        generate_rust(path, &i18n_map, &all_keys, &err_code_keys)?;
+    if scoped.is_empty() {
+        return Err(anyhow!(
+            "No i18n locale YAML files found under {}",
+            config.input.display()
+        ));
     }
-    if let Some(path) = &config.android_out {
-        generate_android(path, &i18n_map)?;
+
+    // 4. Resolve output plans. In --check mode each plan's write_to is in a
+    // tempdir; afterwards we diff write_to vs expected.
+    let temp_root = if config.check {
+        Some(tempfile::tempdir().context("create tempdir for --check")?)
+    } else {
+        None
+    };
+    let temp_path = temp_root.as_ref().map(|d| d.path());
+    let rust_plan = resolve_output_plan(
+        config.rust_out.as_deref(),
+        config.no_rust,
+        RUST_DEFAULT_OUT,
+        "rust/i18n_generated.rs",
+        temp_path,
+        true,
+    );
+    let ts_plan = resolve_output_plan(
+        config.ts_out.as_deref(),
+        config.no_ts,
+        TS_DEFAULT_OUT,
+        "ts",
+        temp_path,
+        true,
+    );
+    let android_plan = resolve_output_plan(
+        config.android_out.as_deref(),
+        config.no_android,
+        ANDROID_DEFAULT_OUT,
+        "android",
+        temp_path,
+        false,
+    );
+    let ios_plan = resolve_output_plan(
+        config.ios_out.as_deref(),
+        config.no_ios,
+        APPLE_DEFAULT_OUT,
+        "apple",
+        temp_path,
+        true,
+    );
+    let harmony_plan = resolve_output_plan(
+        config.harmony_out.as_deref(),
+        config.no_harmony,
+        HARMONY_DEFAULT_OUT,
+        "harmony",
+        temp_path,
+        true,
+    );
+
+    // 5. Share the (combined, keys) computation between Rust and TS — they
+    // pull from the same scope set, so the data is identical.
+    let rust_ts_active = rust_plan.is_some() || ts_plan.is_some();
+    let rust_ts_combined = rust_ts_active.then(|| translations_for_target(&scoped, Target::Rust));
+    let rust_ts_keys = rust_ts_combined.as_ref().map(|c| {
+        c.values()
+            .flat_map(|t| t.keys().cloned().map(|k| (k, ())))
+            .collect::<BTreeMap<String, ()>>()
+    });
+
+    // 6. Run generators.
+    if let Some(plan) = &rust_plan {
+        generate_rust(
+            &plan.write_to,
+            rust_ts_combined.as_ref().expect("rust_ts_combined"),
+            rust_ts_keys.as_ref().expect("rust_ts_keys"),
+            &err_code_keys,
+        )?;
     }
-    if let Some(path) = &config.ios_out {
-        generate_ios(path, &i18n_map)?;
+    if let Some(plan) = &android_plan {
+        let combined = translations_for_target(&scoped, Target::Android);
+        generate_android(&plan.write_to, &combined)?;
     }
-    if let Some(path) = &config.harmony_out {
-        generate_harmony(path, &i18n_map)?;
+    if let Some(plan) = &ios_plan {
+        let combined = translations_for_target(&scoped, Target::Apple);
+        generate_ios(&plan.write_to, &combined)?;
     }
-    if let Some(path) = &config.ts_out {
-        generate_typescript(path, &all_keys, &err_code_keys)?;
+    if let Some(plan) = &harmony_plan {
+        let combined = translations_for_target(&scoped, Target::Harmony);
+        generate_harmony(&plan.write_to, &combined)?;
+    }
+    if let Some(plan) = &ts_plan {
+        generate_typescript(
+            &plan.write_to,
+            rust_ts_keys.as_ref().expect("rust_ts_keys"),
+            &err_code_keys,
+        )?;
+    }
+
+    // 7. Verify mode: diff generated tempdir against checked-in expected.
+    if config.check {
+        let mut drift = Vec::new();
+        for plan in [
+            &rust_plan,
+            &ts_plan,
+            &android_plan,
+            &ios_plan,
+            &harmony_plan,
+        ]
+        .into_iter()
+        .flatten()
+        {
+            if !plan.compare_in_check {
+                continue;
+            }
+            diff_against_expected(plan, &mut drift)?;
+        }
+        if drift.is_empty() {
+            println!("i18n outputs are in sync.");
+        } else {
+            eprintln!("i18n drift detected ({} file(s)):", drift.len());
+            for entry in &drift {
+                eprintln!("  {entry}");
+            }
+            return Err(anyhow!(
+                "Checked-in i18n outputs are stale. Run `cargo run -p lingxia-cli -- gen i18n` to regenerate."
+            ));
+        }
     }
 
     Ok(())
@@ -534,12 +962,18 @@ fn flatten_yaml(value: &serde_yaml_ng::Value, prefix: Option<String>) -> Transla
     map
 }
 
-fn validate_keys(i18n_map: &I18nMap, all_keys: &BTreeMap<String, ()>) -> Result<()> {
+fn validate_keys_in_scope(
+    scope: Scope,
+    i18n_map: &I18nMap,
+    all_keys: &BTreeMap<String, ()>,
+) -> Result<()> {
     let mut mismatches = Vec::new();
     for (lang, translations) in i18n_map {
         for key in all_keys.keys() {
             if !translations.contains_key(key) {
-                mismatches.push(format!("locale `{lang}` missing key `{key}`"));
+                mismatches.push(format!(
+                    "scope `{scope}` / locale `{lang}` missing key `{key}`"
+                ));
             }
         }
     }
@@ -583,7 +1017,7 @@ fn generate_rust(
     all_keys: &BTreeMap<String, ()>,
     err_code_keys: &BTreeMap<u32, String>,
 ) -> Result<()> {
-    let mut content = String::from("// Auto-generated by tools/i18n-gen. DO NOT EDIT.\n\n");
+    let mut content = String::from(GEN_HEADER_RUST);
 
     content.push_str("#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]\n");
     content.push_str("pub enum I18nKey {\n");
@@ -661,11 +1095,7 @@ fn generate_rust(
         }
     }
 
-    let supported_lang_list = supported_langs.into_iter().collect::<Vec<_>>().join(", ");
-    content.push_str(&format!(
-        "            _ => panic!(\"Unsupported locale language `{{}}`. Supported languages: {}\", lang),\n",
-        escape_rust_string(&supported_lang_list)
-    ));
+    content.push_str("            _ => self.get(\"en\"),\n");
 
     content.push_str("        }\n");
     content.push_str("    }\n\n");
@@ -708,7 +1138,7 @@ fn generate_typescript(
         )
     })?;
 
-    let mut i18n_content = String::from("// Auto-generated by lingxia-gen. DO NOT EDIT.\n\n");
+    let mut i18n_content = String::from(GEN_HEADER_RUST);
     i18n_content.push_str("export const I18N_KEYS = [\n");
     for key in all_keys.keys() {
         i18n_content.push_str(&format!("  \"{}\",\n", escape_ts_string(key)));
@@ -721,7 +1151,7 @@ fn generate_typescript(
         .with_context(|| format!("Failed to write {}", i18n_file.display()))?;
     println!("Generated TypeScript: {:?}", i18n_file);
 
-    let mut error_content = String::from("// Auto-generated by lingxia-gen. DO NOT EDIT.\n\n");
+    let mut error_content = String::from(GEN_HEADER_RUST);
     error_content.push_str("import type { I18nKey } from \"./i18n\";\n\n");
     error_content.push_str("export const ERR_CODE_INFO_BY_CODE = {\n");
     for (code, key) in err_code_keys {
@@ -803,7 +1233,7 @@ fn generate_ios(base_dir: &Path, i18n_map: &I18nMap) -> Result<()> {
         fs::create_dir_all(&dir_path)?;
         let file_path = dir_path.join("Localizable.strings");
 
-        let mut content = String::from("/* Auto-generated by tools/i18n-gen */\n\n");
+        let mut content = String::from(GEN_HEADER_C_STYLE);
 
         for (key, val) in translations {
             let res_key = format!("lx_{}", key);
@@ -877,11 +1307,12 @@ mod tests {
         I18nConfig {
             input: input.to_path_buf(),
             rust_out: Some(input.join("out.rs")),
-            android_out: None,
-            ios_out: None,
-            harmony_out: None,
-            ts_out: None,
-            schema_dir: None,
+            // Skip every other target so tests don't touch the workspace.
+            no_android: true,
+            no_ios: true,
+            no_harmony: true,
+            no_ts: true,
+            ..I18nConfig::default()
         }
     }
 
@@ -950,6 +1381,30 @@ mod tests {
   },
   "additionalProperties": false
 }"#,
+        );
+        write_file(
+            root,
+            "schema/native.schema.json",
+            r##"{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "minProperties": 1,
+  "additionalProperties": {
+    "$ref": "#/definitions/node"
+  },
+  "definitions": {
+    "node": {
+      "anyOf": [
+        { "type": "string", "minLength": 1 },
+        {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": { "$ref": "#/definitions/node" }
+        }
+      ]
+    }
+  }
+}"##,
         );
     }
 
