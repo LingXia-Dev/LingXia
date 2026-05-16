@@ -64,6 +64,14 @@ pub struct BuildConfig {
     /// `package_id_suffix` to package/bundle IDs for side-by-side installs
     /// without source-tree mutation.
     pub resolved_env: crate::config::ResolvedEnv,
+    /// Set by the multi-phase `commands::build` orchestrator only for
+    /// platforms that report `Platform::hoists_native_build() == true`,
+    /// signalling that Phase 1's `build_rust_library` already produced the
+    /// native artifacts. Platforms that opt into Phase 1 MUST honor this
+    /// flag inside `build` and skip the inline native build + stamp update
+    /// so cargo is not invoked twice. Platforms that don't opt in never
+    /// see this set to true and need not check it.
+    pub skip_native_build: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -108,6 +116,32 @@ pub struct RunConfig {
 pub trait Platform: Send + Sync {
     /// Build the project
     fn build(&self, config: &BuildConfig) -> Result<BuildArtifacts>;
+
+    /// Phase 1 entry point: build only the native Rust library (and any
+    /// linker stamps tied to it) before the lxapp asset build. Lets cargo's
+    /// `build.rs` checks (e.g. cloud-types drift) fail fast before the
+    /// slower JS bundle build runs.
+    ///
+    /// To opt into Phase 1 a platform overrides this AND returns `true`
+    /// from `hoists_native_build`. The orchestrator then sets
+    /// `BuildConfig::skip_native_build` for `build`, and the platform's
+    /// `build` impl must honor that flag.
+    ///
+    /// Default is a no-op for platforms (e.g. Harmony) whose native build
+    /// is structurally coupled to per-env staging.
+    fn build_rust_library(&self, _config: &BuildConfig) -> Result<()> {
+        Ok(())
+    }
+
+    /// Returns `true` iff a successful `build_rust_library` produces the
+    /// same native artifacts that `build` would otherwise produce inline.
+    /// When `true`, the multi-phase orchestrator runs `build_rust_library`
+    /// in Phase 1 and sets `BuildConfig::skip_native_build` so `build` does
+    /// not redo the work in Phase 3. Override to `true` alongside any
+    /// non-default `build_rust_library` impl.
+    fn hoists_native_build(&self) -> bool {
+        false
+    }
 
     /// Install the built artifacts to a device
     fn install(&self, config: &InstallConfig) -> Result<()>;

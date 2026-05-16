@@ -302,6 +302,61 @@ Specify one with `--platform <name>` or build all with `--all-platforms`."
         Vec::new()
     };
 
+    // Create platforms and build configs once.
+    let mut platform_builds: Vec<(Box<dyn platform::Platform>, BuildConfig, PlatformType)> =
+        Vec::new();
+    for platform_type in &platforms_to_build {
+        let platform = match platform::detector::create_platform(platform_type) {
+            Ok(p) => p,
+            Err(e) => {
+                if constrained_platforms {
+                    return Err(e);
+                }
+                eprintln!(
+                    "{} Skipping {}: {}",
+                    "⚠".yellow(),
+                    platform_type.as_str(),
+                    e
+                );
+                continue;
+            }
+        };
+        let build_config = BuildConfig {
+            project_root: project_root.clone(),
+            profile: build_profile,
+            build_native,
+            targets: if matches!(platform_type, PlatformType::Android) {
+                build_targets.clone()
+            } else {
+                Vec::new()
+            },
+            lingxia_config: Some(config.clone()),
+            ipa: ipa && matches!(platform_type, PlatformType::Ios),
+            package: package && matches!(platform_type, PlatformType::MacOs),
+            dmg: dmg && matches!(platform_type, PlatformType::MacOs),
+            macos_arch: if matches!(platform_type, PlatformType::MacOs) {
+                macos_arch.clone()
+            } else {
+                None
+            },
+            native_features: config.native_features_for_platform(platform_type.as_str()),
+            native_default_features: config.native_default_features_enabled(),
+            resolved_env: resolved_env.clone(),
+            skip_native_build: false,
+        };
+        platform_builds.push((platform, build_config, platform_type.clone()));
+    }
+
+    // Phase 1: Build the native Rust library first so that cargo build.rs
+    // checks (e.g. muke-lib's cloud-types drift check) fail fast before the
+    // slow lxapp asset build runs. Platforms that don't hoist their native
+    // build (default `Platform::hoists_native_build() == false`) are no-ops
+    // here and run native inline in Phase 3 as before.
+    for (platform, build_config, _) in &platform_builds {
+        platform.build_rust_library(build_config)?;
+    }
+
+    // Phase 2: Build lxapp assets.
     prepare_configured_host_assets(
         &project_root,
         &config,
@@ -318,49 +373,14 @@ Specify one with `--platform <name>` or build all with `--all-platforms`."
         &resolved_env,
     )?;
 
-    // Build each selected platform
+    // Phase 3: Build platform packages (Gradle / Swift / etc.).
+    // For platforms that hoisted their native build into Phase 1 we set
+    // skip_native_build so `build` doesn't re-invoke cargo. Platforms that
+    // didn't opt in (Phase 1 was a no-op for them) keep the flag false and
+    // build native inline as before.
     let mut all_artifacts = Vec::new();
-
-    for platform_type in platforms_to_build {
-        let platform = match platform::detector::create_platform(&platform_type) {
-            Ok(p) => p,
-            Err(e) => {
-                if constrained_platforms {
-                    return Err(e);
-                }
-                eprintln!(
-                    "{} Skipping {}: {}",
-                    "⚠".yellow(),
-                    platform_type.as_str(),
-                    e
-                );
-                continue;
-            }
-        };
-
-        let build_config = BuildConfig {
-            project_root: project_root.clone(),
-            profile: build_profile,
-            build_native,
-            targets: if matches!(platform_type, platform::detector::PlatformType::Android) {
-                build_targets.clone()
-            } else {
-                Vec::new()
-            },
-            lingxia_config: Some(config.clone()),
-            ipa: ipa && matches!(platform_type, platform::detector::PlatformType::Ios),
-            package: package && matches!(platform_type, platform::detector::PlatformType::MacOs),
-            dmg: dmg && matches!(platform_type, platform::detector::PlatformType::MacOs),
-            macos_arch: if matches!(platform_type, platform::detector::PlatformType::MacOs) {
-                macos_arch.clone()
-            } else {
-                None
-            },
-            native_features: config.native_features_for_platform(platform_type.as_str()),
-            native_default_features: config.native_default_features_enabled(),
-            resolved_env: resolved_env.clone(),
-        };
-
+    for (platform, mut build_config, platform_type) in platform_builds {
+        build_config.skip_native_build = platform.hoists_native_build();
         let artifacts = platform.build(&build_config)?;
         if package {
             stage_package_artifact(&project_root, &platform_type, &artifacts)?;
@@ -601,6 +621,7 @@ fn build_standalone_apple_swift_package(
                 lingxia_server: String::new(),
                 package_id_suffix: None,
             },
+            skip_native_build: false,
         };
 
         let artifacts = platform.build(&build_config)?;

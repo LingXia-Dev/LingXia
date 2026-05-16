@@ -79,7 +79,7 @@ Supported Rust target triples:\n\
     }
 
     /// Build Rust library for Android
-    fn build_rust_library(&self, project_root: &Path, config: &BuildConfig) -> Result<()> {
+    fn do_build_rust_library(&self, project_root: &Path, config: &BuildConfig) -> Result<()> {
         if !config.build_native {
             return Ok(());
         }
@@ -359,8 +359,11 @@ impl Platform for AndroidPlatform {
             );
         }
 
-        // Build Rust libraries
-        self.build_rust_library(&config.project_root, config)?;
+        // Build Rust libraries (skipped when the orchestrator already ran
+        // Phase 1 via `build_rust_library`).
+        if !config.skip_native_build {
+            self.do_build_rust_library(&config.project_root, config)?;
+        }
 
         // Stage env-version overlay resources outside the source tree and let
         // Gradle merge them via sourceSets.main.res.srcDirs. No source-tree
@@ -371,6 +374,14 @@ impl Platform for AndroidPlatform {
         let apk_path = self.build_gradle(&android_root, config, icon_overlay.as_ref())?;
 
         Ok(BuildArtifacts::Android { apk_path })
+    }
+
+    fn build_rust_library(&self, config: &BuildConfig) -> Result<()> {
+        self.do_build_rust_library(&config.project_root, config)
+    }
+
+    fn hoists_native_build(&self) -> bool {
+        true
     }
 
     fn install(&self, config: &InstallConfig) -> Result<()> {

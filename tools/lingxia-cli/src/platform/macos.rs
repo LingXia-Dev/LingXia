@@ -15,6 +15,7 @@ use anyhow::{Context, Result, anyhow};
 use colored::Colorize;
 use image::imageops::FilterType;
 use image::{DynamicImage, GenericImageView, ImageFormat};
+use std::borrow::Cow;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -49,8 +50,52 @@ impl MacosPlatform {
         format!("{arch}-apple-macosx{deployment_target}")
     }
 
+    /// Resolve the macOS-specific section of the project config, if any.
+    fn macos_config<'a>(&self, config: &'a BuildConfig) -> Option<&'a MacosConfig> {
+        config
+            .lingxia_config
+            .as_ref()
+            .and_then(|c| c.macos.as_ref())
+    }
+
+    /// Validate the requested macOS arch (falling back to host arch) and
+    /// derive the deployment target. Single source of truth shared by
+    /// `build` (Phase 3) and `build_rust_library` (Phase 1).
+    fn resolve_macos_params<'a>(&self, config: &'a BuildConfig) -> Result<(Cow<'a, str>, String)> {
+        let host_arch: &'static str = if cfg!(target_arch = "aarch64") {
+            "arm64"
+        } else {
+            "x86_64"
+        };
+        let arch: Cow<'a, str> = match config.macos_arch.as_deref() {
+            Some(a) => Cow::Borrowed(a),
+            None => Cow::Borrowed(host_arch),
+        };
+        if arch != "arm64" && arch != "x86_64" {
+            return Err(anyhow!(
+                "Unsupported macOS arch '{}'. Supported values: arm64, x86_64",
+                arch
+            ));
+        }
+        let deployment_target = self
+            .macos_config(config)
+            .and_then(|c| c.deployment_target.clone())
+            .unwrap_or_else(|| "14.0".to_string());
+        Ok((arch, deployment_target))
+    }
+
+    /// Compute the path cargo will produce for the macOS static library
+    /// without invoking cargo. Mirrors `apple::build_rust_staticlib`'s
+    /// output layout.
+    fn rust_lib_path(project_root: &Path, arch: &str, profile: BuildProfile) -> PathBuf {
+        resolve_cargo_target_dir(project_root)
+            .join(Self::rust_target(arch))
+            .join(profile.as_str())
+            .join("liblingxia.a")
+    }
+
     /// Build Rust static library for macOS
-    fn build_rust_library(
+    fn do_build_rust_library(
         &self,
         project_root: &Path,
         config: &BuildConfig,
@@ -248,23 +293,9 @@ impl Platform for MacosPlatform {
     fn build(&self, config: &BuildConfig) -> Result<BuildArtifacts> {
         apple::ensure_macos()?;
 
-        let macos_config = config
-            .lingxia_config
-            .as_ref()
-            .and_then(|c| c.macos.as_ref());
-
-        let host_arch = if cfg!(target_arch = "aarch64") {
-            "arm64"
-        } else {
-            "x86_64"
-        };
-        let arch = config.macos_arch.as_deref().unwrap_or(host_arch);
-        if arch != "arm64" && arch != "x86_64" {
-            return Err(anyhow!(
-                "Unsupported macOS arch '{}'. Supported values: arm64, x86_64",
-                arch
-            ));
-        }
+        let macos_config = self.macos_config(config);
+        let (arch, deployment_target) = self.resolve_macos_params(config)?;
+        let arch: &str = &arch;
 
         // Resolve macOS project directory
         let macos_dir = resolve_macos_dir(&config.project_root, macos_config)?;
@@ -326,22 +357,24 @@ impl Platform for MacosPlatform {
             );
         }
 
-        let deployment_target = macos_config
-            .and_then(|c| c.deployment_target.clone())
-            .unwrap_or_else(|| "14.0".to_string());
-
-        // Build Rust static library
-        let native_lib_path =
-            self.build_rust_library(&config.project_root, config, arch, &deployment_target)?;
-        if config.build_native && config.lingxia_config.is_some() {
-            let rust_target = Self::rust_target(arch);
-            apple::update_spm_rust_link_stamp(
-                &config.project_root,
-                &sdk_root,
-                rust_target,
-                config.profile.as_str(),
-            )?;
-        }
+        // Build Rust static library + refresh SwiftPM relink stamp.
+        // Skipped when the orchestrator already ran Phase 1 via
+        // `build_rust_library`.
+        let native_lib_path = if !config.skip_native_build {
+            let lib =
+                self.do_build_rust_library(&config.project_root, config, arch, &deployment_target)?;
+            if config.build_native && config.lingxia_config.is_some() {
+                apple::update_spm_rust_link_stamp(
+                    &config.project_root,
+                    &sdk_root,
+                    Self::rust_target(arch),
+                    config.profile.as_str(),
+                )?;
+            }
+            lib
+        } else {
+            Self::rust_lib_path(&config.project_root, arch, config.profile)
+        };
 
         // Build Swift Package and get bin dir
         let mut bin_dir = self.swift_build_and_get_bin_dir(
@@ -499,6 +532,25 @@ impl Platform for MacosPlatform {
             update_zip_path,
             dmg_path,
         })
+    }
+
+    fn build_rust_library(&self, config: &BuildConfig) -> Result<()> {
+        let (arch, deployment_target) = self.resolve_macos_params(config)?;
+        let arch: &str = &arch;
+        self.do_build_rust_library(&config.project_root, config, arch, &deployment_target)?;
+        if config.build_native && config.lingxia_config.is_some() {
+            apple::update_spm_rust_link_stamp(
+                &config.project_root,
+                &config.project_root,
+                Self::rust_target(arch),
+                config.profile.as_str(),
+            )?;
+        }
+        Ok(())
+    }
+
+    fn hoists_native_build(&self) -> bool {
+        true
     }
 
     fn install(&self, _config: &InstallConfig) -> Result<()> {

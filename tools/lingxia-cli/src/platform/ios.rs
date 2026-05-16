@@ -28,12 +28,17 @@ impl IosPlatform {
         Self
     }
 
+    /// Resolve the iOS-specific section of the project config, if any.
+    fn ios_config<'a>(&self, config: &'a BuildConfig) -> Option<&'a IosConfig> {
+        config.lingxia_config.as_ref().and_then(|c| c.ios.as_ref())
+    }
+
     /// Build Rust static library for iOS
     ///
     /// - `project_root`: Where to find the Rust library (e.g., examples/)
     /// - output is always under `{project_root}/target`
     /// - `ios_config`: iOS configuration for deployment target
-    fn build_rust_library(
+    fn do_build_rust_library(
         &self,
         project_root: &Path,
         config: &BuildConfig,
@@ -225,7 +230,7 @@ impl Platform for IosPlatform {
         apple::ensure_macos()?;
         apple::ensure_tools()?;
 
-        let ios_config = config.lingxia_config.as_ref().and_then(|c| c.ios.as_ref());
+        let ios_config = self.ios_config(config);
 
         // Resolve iOS project directory
         let ios_dir = resolve_ios_dir(&config.project_root, ios_config)?;
@@ -266,16 +271,19 @@ impl Platform for IosPlatform {
             );
         }
 
-        // Build Rust static library
-        // Use host project root for both crate discovery and target output.
-        self.build_rust_library(&config.project_root, config, ios_config)?;
-        if config.build_native && config.lingxia_config.is_some() {
-            apple::update_spm_rust_link_stamp(
-                &config.project_root,
-                &sdk_root,
-                IOS_TARGET,
-                config.profile.as_str(),
-            )?;
+        // Build Rust static library + refresh SwiftPM relink stamp.
+        // Skipped when the orchestrator already ran Phase 1 via
+        // `build_rust_library`.
+        if !config.skip_native_build {
+            self.do_build_rust_library(&config.project_root, config, ios_config)?;
+            if config.build_native && config.lingxia_config.is_some() {
+                apple::update_spm_rust_link_stamp(
+                    &config.project_root,
+                    &sdk_root,
+                    IOS_TARGET,
+                    config.profile.as_str(),
+                )?;
+            }
         }
 
         // Build Swift Package (library dependencies first)
@@ -360,6 +368,24 @@ impl Platform for IosPlatform {
         };
 
         Ok(BuildArtifacts::Ios { app_path, ipa_path })
+    }
+
+    fn build_rust_library(&self, config: &BuildConfig) -> Result<()> {
+        let ios_config = self.ios_config(config);
+        self.do_build_rust_library(&config.project_root, config, ios_config)?;
+        if config.build_native && config.lingxia_config.is_some() {
+            apple::update_spm_rust_link_stamp(
+                &config.project_root,
+                &config.project_root,
+                IOS_TARGET,
+                config.profile.as_str(),
+            )?;
+        }
+        Ok(())
+    }
+
+    fn hoists_native_build(&self) -> bool {
+        true
     }
 
     fn install(&self, config: &InstallConfig) -> Result<()> {

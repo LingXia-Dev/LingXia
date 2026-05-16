@@ -202,6 +202,7 @@ fn execute_android(ctx: DevContext, abis: Vec<String>) -> Result<()> {
             native_features: dev_native_features(&ctx.config, "android"),
             native_default_features: ctx.config.native_default_features_enabled(),
             resolved_env: ctx.resolved_env.clone(),
+            skip_native_build: false,
         };
 
         let artifacts = platform.build(&build_config)?;
@@ -304,6 +305,7 @@ fn execute_ios(ctx: DevContext) -> Result<()> {
             native_features: dev_native_features(&ctx.config, "ios"),
             native_default_features: ctx.config.native_default_features_enabled(),
             resolved_env: ctx.resolved_env.clone(),
+            skip_native_build: false,
         };
 
         let artifacts = platform.build(&build_config)?;
@@ -408,6 +410,7 @@ Use `lingxia build --platform macos --macos-arch {}` for cross-arch builds.",
         native_features: dev_native_features(&ctx.config, "macos"),
         native_default_features: ctx.config.native_default_features_enabled(),
         resolved_env: ctx.resolved_env.clone(),
+        skip_native_build: false,
     };
 
     let artifacts = platform.build(&build_config)?;
@@ -506,6 +509,7 @@ fn execute_harmony(ctx: DevContext) -> Result<()> {
             native_features: dev_native_features(&ctx.config, "harmony"),
             native_default_features: ctx.config.native_default_features_enabled(),
             resolved_env: ctx.resolved_env.clone(),
+            skip_native_build: false,
         };
 
         let artifacts = harmony_platform.build(&build_config)?;
