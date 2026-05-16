@@ -151,6 +151,14 @@ internal class MediaPreviewFragment : Fragment() {
     // never reaches the end.
     private var sharedPlayerSeekedGen: Long = -1L
     private var lastLoggedPlayerTimeUpdateMs: Long = Long.MIN_VALUE
+    // Prewarm state for image→video transitions: we tell the shared player to
+    // load the target video *before* swapping pages, then swap atomically on
+    // the player's firstframerendered event so the user never sees the new
+    // page's black background. -1L = no prewarm pending.
+    private var pendingPrewarmGen: Long = -1L
+    private var pendingPrewarmCommit: (() -> Unit)? = null
+    private var pendingPrewarmTimeout: Runnable? = null
+    private var suppressScrollHostHideForPrewarmGen: Long = -1L
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -173,6 +181,7 @@ internal class MediaPreviewFragment : Fragment() {
             setBackgroundColor(Color.BLACK)
             layoutParams = FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT)
             visibility = View.VISIBLE
+            alpha = if (shouldGateInitialRevealUntilVideoFrame()) 0f else 1f
         }
         previewRoot = root
 
@@ -287,6 +296,7 @@ internal class MediaPreviewFragment : Fragment() {
     }
 
     private fun cleanupPreviewResources() {
+        cancelPendingPrewarm()
         pageChangeCallback?.let { callback ->
             viewPager?.unregisterOnPageChangeCallback(callback)
         }
@@ -301,6 +311,7 @@ internal class MediaPreviewFragment : Fragment() {
         sharedPlaylistApplied = false
         sharedPlaylistItems = emptyList()
         videoPlaylistIndexByPreviewIndex = IntArray(0)
+        suppressScrollHostHideForPrewarmGen = -1L
         sharedPlayerHost = null
         previewRoot = null
         hideTransitionOverlay()
@@ -480,7 +491,13 @@ internal class MediaPreviewFragment : Fragment() {
         when (state) {
             ViewPager2.SCROLL_STATE_DRAGGING,
             ViewPager2.SCROLL_STATE_SETTLING -> {
-                sharedPlayerHost?.visibility = View.INVISIBLE
+                // User-initiated drag invalidates any in-flight prewarm: we
+                // were prewarming a *specific* target index, but the user is
+                // now choosing a different page themselves.
+                cancelPendingPrewarm()
+                if (suppressScrollHostHideForPrewarmGen != sharedPlayerActivationGen) {
+                    sharedPlayerHost?.visibility = View.INVISIBLE
+                }
             }
             ViewPager2.SCROLL_STATE_IDLE -> {
                 applySharedPlayerForCurrentItem()
@@ -510,9 +527,15 @@ internal class MediaPreviewFragment : Fragment() {
                     val expectedGen = sharedPlayerActivationGen
                     val expectedPagerPosition = sharedPlayerActivationPager
                     mainHandler.post {
-                        if (expectedGen == sharedPlayerActivationGen &&
-                            expectedPagerPosition == currentPagerPosition
-                        ) {
+                        if (expectedGen != sharedPlayerActivationGen) return@post
+                        // Prewarm first-frame: the activation's pager position is
+                        // the *future* target (we haven't swapped yet). Run the
+                        // commit instead of the normal reveal path.
+                        if (expectedGen == pendingPrewarmGen) {
+                            pendingPrewarmCommit?.invoke()
+                            return@post
+                        }
+                        if (expectedPagerPosition == currentPagerPosition) {
                             onSharedPlayerFirstFrame(expectedGen, expectedPagerPosition)
                         }
                     }
@@ -662,9 +685,17 @@ internal class MediaPreviewFragment : Fragment() {
                 // Hide the host while the controller swaps source; promoted
                 // back to VISIBLE on firstframerendered so the holder's
                 // first-frame placeholder beneath bridges the decode gap.
-                host.animate().cancel()
-                host.alpha = 0f
-                host.visibility = View.INVISIBLE
+                //
+                // Exception: if we already revealed for this activation gen
+                // (a prewarm completed before the page swap), don't hide
+                // again — handlePageSelected re-enters this method after a
+                // prewarm commit and that re-entry must not blank the screen
+                // back out.
+                if (sharedPlayerFirstFrameGen != sharedPlayerActivationGen) {
+                    host.animate().cancel()
+                    host.alpha = 0f
+                    host.visibility = View.INVISIBLE
+                }
                 player.playlistGoToIndex(playlistIdx)
                 logPlaybackState("video_apply", "playlistIdx=$playlistIdx")
                 // Seek to head exactly once per activation. Relying on the
@@ -738,6 +769,7 @@ internal class MediaPreviewFragment : Fragment() {
                 val revealFrames = if (normalizePreviewRotation(item.rotate) == 0) 1 else 3
                 postAfterAnimationFrames(host, revealFrames) {
                     if (!finished && gen == sharedPlayerActivationGen) {
+                        revealPreviewRoot()
                         host.alpha = 1f
                         host.postDelayed({
                             if (!finished && gen == sharedPlayerActivationGen) {
@@ -952,22 +984,34 @@ internal class MediaPreviewFragment : Fragment() {
     }
 
     private fun beginInitialRevealGate() {
+        if (shouldGateInitialRevealUntilVideoFrame()) {
+            initialContentRevealed = false
+            previewRoot?.alpha = 0f
+            return
+        }
         initialContentRevealed = true
         previewRoot?.visibility = View.VISIBLE
+        previewRoot?.alpha = 1f
+    }
+
+    private fun shouldGateInitialRevealUntilVideoFrame(): Boolean {
+        if (initialContentRevealed) return false
+        return previewItems.getOrNull(currentIndex)?.mediaType == MediaPreviewType.VIDEO
     }
 
     private fun revealPreviewRoot() {
         if (initialContentRevealed) return
         initialContentRevealed = true
         previewRoot?.visibility = View.VISIBLE
+        previewRoot?.alpha = 1f
     }
 
     private fun onItemVisualReady(position: Int) {
-        if (!initialContentRevealed && position == currentPagerPosition) {
-            revealPreviewRoot()
-        }
         if (position == currentPagerPosition) {
             val item = previewItems.getOrNull(currentIndex)
+            if (!initialContentRevealed && item?.mediaType != MediaPreviewType.VIDEO) {
+                revealPreviewRoot()
+            }
             // For video items, the placeholder being ready does not mean the
             // player has decoded its first frame yet. Keep the transition
             // overlay up until the shared player's firstframerendered event
@@ -981,7 +1025,6 @@ internal class MediaPreviewFragment : Fragment() {
     }
 
     private fun showTerminalAdvanceOverlay() {
-        val source = previewItems.getOrNull(currentIndex)
         val targetPagerPosition = when (advance) {
             PreviewAdvance.MANUAL -> return
             PreviewAdvance.NEXT -> {
@@ -1035,9 +1078,21 @@ internal class MediaPreviewFragment : Fragment() {
 
     private fun showTransitionOverlayFromCurrentVisual(): Boolean {
         val overlay = transitionOverlay ?: return false
-        val bitmap = sharedPlayer?.snapshotCurrentPlaybackFrame()
-            ?: previewAdapter?.snapshotCurrentVisualBitmap()
-            ?: return false
+        // Pick the snapshot source based on what the user is *actually* looking
+        // at right now. The shared player's TextureView is kept INVISIBLE (not
+        // GONE) across non-video pages to preserve its SurfaceTexture, so
+        // `snapshotCurrentPlaybackFrame()` will still return pixels — but they
+        // are the LAST FRAME of the previously-played video. Using that on an
+        // image→video transition surfaces a stale (often dark) frame that the
+        // user perceives as a black flash.
+        val currentItem = previewItems.getOrNull(currentIndex)
+        val bitmap = when (currentItem?.mediaType) {
+            MediaPreviewType.VIDEO ->
+                sharedPlayer?.snapshotCurrentPlaybackFrame()
+                    ?: previewAdapter?.snapshotCurrentVisualBitmap()
+            else ->
+                previewAdapter?.snapshotCurrentVisualBitmap()
+        } ?: return false
         clearTransitionOverlayBitmap()
         transitionOverlayBitmap = bitmap
         transitionOverlayOwnsBitmap = true
@@ -1101,6 +1156,15 @@ internal class MediaPreviewFragment : Fragment() {
         if (target == null) {
             return
         }
+        // Image → video: pre-warm the shared player so first-frame is rendered
+        // *before* we hand the user the new page. Otherwise the page's black
+        // container background shows through until the player catches up — an
+        // overlay snapshot can hide the gap but the moment we hide it the
+        // visual still pops abruptly.
+        if (shouldPrewarmTargetVideoBeforeSwap(target)) {
+            prewarmVideoBeforeSwap(targetPagerPosition, target)
+            return
+        }
         if (shouldPrefetchBeforePagerSwitch(target)) {
             val context = context
             if (context != null) {
@@ -1119,6 +1183,147 @@ internal class MediaPreviewFragment : Fragment() {
             }
         }
         switchToPagerPositionWithVisualOverlay(targetPagerPosition, target)
+    }
+
+    private fun shouldPrewarmTargetVideoBeforeSwap(target: PreviewItem): Boolean {
+        if (target.mediaType != MediaPreviewType.VIDEO) return false
+        if (sharedPlayerHost == null) return false
+        val current = previewItems.getOrNull(currentIndex) ?: return false
+        // Video → video already cross-fades through the shared player itself.
+        // Only image → video benefits from prewarm.
+        if (current.mediaType == MediaPreviewType.VIDEO) return false
+        // A non-empty playlist must exist for the target to be playable.
+        if (sharedPlaylistItems.isEmpty()) {
+            computeVideoPlaylist()
+            if (sharedPlaylistItems.isEmpty()) return false
+        }
+        val targetIndex = previewItems.indexOf(target).takeIf { it >= 0 } ?: return false
+        val playlistIdx = videoPlaylistIndexByPreviewIndex.getOrNull(targetIndex) ?: return false
+        return playlistIdx >= 0
+    }
+
+    private fun prewarmVideoBeforeSwap(targetPagerPosition: Int, target: PreviewItem) {
+        val host = sharedPlayerHost ?: run {
+            switchToPagerPositionWithVisualOverlay(targetPagerPosition, target)
+            return
+        }
+        val targetIndex = realIndexFor(targetPagerPosition)
+        computeVideoPlaylist()
+        val playlistIdx = videoPlaylistIndexByPreviewIndex
+            .getOrNull(targetIndex)?.takeIf { it >= 0 } ?: run {
+                switchToPagerPositionWithVisualOverlay(targetPagerPosition, target)
+                return
+            }
+
+        // Defensive cover for the swap: if prewarm somehow stalls and we time
+        // out into the immediate-swap fallback, the overlay snapshot bridges
+        // the gap. While prewarm is in flight the user keeps seeing the
+        // current image — overlay is harmless on top of it.
+        showTransitionOverlayFromCurrentVisual()
+
+        cancelPendingPrewarm()
+
+        sharedPlayerActivationGen += 1L
+        val prewarmGen = sharedPlayerActivationGen
+        // Targeting the *future* page so the eventSink's
+        // expectedPagerPosition routing knows this gen belongs to a prewarm.
+        sharedPlayerActivationPager = targetPagerPosition
+        // Reset the seek gate so the prewarm itself can seek to 0 once.
+        // The post-swap re-entry will see seekedGen == activationGen and skip
+        // seeking again, preserving the existing "seek-once-per-activation"
+        // invariant.
+        sharedPlayerSeekedGen = -1L
+        logPlaybackState("prewarm_start", "playlistIdx=$playlistIdx gen=$prewarmGen")
+
+        val timeoutRunnable = Runnable {
+            if (finished || pendingPrewarmGen != prewarmGen) return@Runnable
+            Log.w(TAG, "Prewarm timed out; falling back to immediate swap")
+            clearPendingPrewarm()
+            switchToPagerPositionWithVisualOverlay(targetPagerPosition, target)
+        }
+        pendingPrewarmTimeout = timeoutRunnable
+        pendingPrewarmCommit = commit@{
+            if (finished || pendingPrewarmGen != prewarmGen) return@commit
+            clearPendingPrewarm()
+            logPlaybackState("prewarm_commit", "gen=$prewarmGen")
+            // Mark first-frame already-rendered for this activation so the
+            // post-swap re-entry of applySharedPlayerForCurrentItem skips the
+            // host-hide branch.
+            sharedPlayerFirstFrameGen = prewarmGen
+            suppressScrollHostHideForPrewarmGen = prewarmGen
+            host.animate().cancel()
+            host.alpha = 0f
+            host.visibility = View.VISIBLE
+            // Swap pages atomically. Player is already covering with the
+            // target's first frame; the new page underneath is invisible.
+            viewPager?.setCurrentItem(targetPagerPosition, false)
+            // Keep the player in the composition for a few frames before
+            // revealing it. On slower TVs firstframerendered/playing can
+            // arrive before the TextureView's visible buffer is latched.
+            val revealFrames = if (normalizePreviewRotation(target.rotate) == 0) 1 else 3
+            postAfterAnimationFrames(host, revealFrames) {
+                if (!finished &&
+                    prewarmGen == sharedPlayerActivationGen &&
+                    targetPagerPosition == currentPagerPosition
+                ) {
+                    host.alpha = 1f
+                    suppressScrollHostHideForPrewarmGen = -1L
+                    host.postDelayed({
+                        if (!finished &&
+                            prewarmGen == sharedPlayerActivationGen &&
+                            targetPagerPosition == currentPagerPosition
+                        ) {
+                            hideTransitionOverlay()
+                        }
+                    }, 50L)
+                } else if (suppressScrollHostHideForPrewarmGen == prewarmGen) {
+                    suppressScrollHostHideForPrewarmGen = -1L
+                }
+            }
+            previewAdapter?.notifyVideoRenderedAt(targetPagerPosition)
+        }
+        pendingPrewarmGen = prewarmGen
+        mainHandler.postDelayed(timeoutRunnable, PREWARM_TIMEOUT_MS)
+
+        // Keep the player view attached and in the composition during prewarm,
+        // but transparent while the image page remains on screen. This gives
+        // TextureView a chance to latch the decoded frame before the swap.
+        host.animate().cancel()
+        host.alpha = 0f
+        host.visibility = View.VISIBLE
+
+        val player = ensureSharedPlayer()
+        if (!sharedPlaylistApplied) {
+            player.update(
+                LxMediaPlayerConfig(
+                    poster = null,
+                    autoplay = false,
+                    loop = shouldLoopSingleItemVideo(),
+                    controls = true,
+                )
+            )
+            player.applyPlaylist(
+                items = sharedPlaylistItems,
+                autoAdvance = false,
+                startingIndex = playlistIdx,
+            )
+            sharedPlaylistApplied = true
+        }
+        player.playlistGoToIndex(playlistIdx)
+        sharedPlayerSeekedGen = prewarmGen
+        player.seek(0.0)
+        player.play()
+    }
+
+    private fun cancelPendingPrewarm() {
+        pendingPrewarmTimeout?.let { mainHandler.removeCallbacks(it) }
+        clearPendingPrewarm()
+    }
+
+    private fun clearPendingPrewarm() {
+        pendingPrewarmGen = -1L
+        pendingPrewarmCommit = null
+        pendingPrewarmTimeout = null
     }
 
     private fun shouldPrefetchBeforePagerSwitch(item: PreviewItem): Boolean {
@@ -1279,6 +1484,12 @@ internal class MediaPreviewFragment : Fragment() {
         private const val TAG = "MediaPreviewOverlay"
         private const val LOG_TAG = "LingXia.MediaPreview"
         private const val PLAYER_TIMEUPDATE_LOG_INTERVAL_MS = 5_000L
+        // Cap on how long we'll wait for the shared player to emit a
+        // firstframerendered event during an image→video prewarm before
+        // giving up and falling back to the legacy immediate-swap path. On
+        // a flaky network / corrupt source we'd otherwise stall the
+        // auto-advance indefinitely.
+        private const val PREWARM_TIMEOUT_MS = 2_500L
 
         fun show(
             activity: AppCompatActivity,
