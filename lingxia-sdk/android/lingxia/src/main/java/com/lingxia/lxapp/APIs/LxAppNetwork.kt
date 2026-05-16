@@ -22,9 +22,15 @@ import java.net.Inet6Address
 import java.net.InetAddress
 import java.net.NetworkInterface
 import java.util.LinkedHashSet
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArraySet
+import java.util.concurrent.atomic.AtomicLong
 
-internal object LxAppNetwork {
+fun interface NetworkStatusListener {
+    fun onNetworkStatusChanged(isConnected: Boolean)
+}
+
+object LxAppNetwork {
     private const val TAG = "LingXia.Network"
     private const val NETWORK_TYPE_NR = 20 // TelephonyManager.NETWORK_TYPE_NR (API 29+)
     private const val NETWORK_TYPE_LTE_CA = 19 // TelephonyManager.NETWORK_TYPE_LTE_CA (API 24+)
@@ -32,12 +38,15 @@ internal object LxAppNetwork {
     private const val EMIT_DEBOUNCE_MS = 50L
 
     private val changeCallbacks = CopyOnWriteArraySet<Long>()
+    private val statusListeners = java.util.concurrent.ConcurrentHashMap<Long, NetworkStatusListener>()
+    private var nextStatusListenerId = AtomicLong(1L)
     private val workerThread = HandlerThread("LingXia.Network").apply { start() }
     private val workerHandler = Handler(workerThread.looper)
     private val emitRunnable = Runnable { emitInfoToAll() }
     @Volatile private var networkCallback: ConnectivityManager.NetworkCallback? = null
     @Volatile private var connectivityManager: ConnectivityManager? = null
     @Volatile private var lastSignature: String? = null
+    @Volatile private var lastIsConnected: Boolean? = null
 
     @JvmStatic
     fun getNetworkInfo(callbackId: Long) {
@@ -68,6 +77,28 @@ internal object LxAppNetwork {
             unregisterNetworkCallback()
             lastSignature = null
         }
+    }
+
+    @JvmStatic
+    fun addNetworkStatusListener(listener: NetworkStatusListener): Long {
+        val id = nextStatusListenerId.getAndIncrement()
+        statusListeners[id] = listener
+        // Fire current state immediately. Resolve eagerly on first registration
+        // so listeners always get an initial value, even at cold start.
+        val current = lastIsConnected ?: resolveAndCache()
+        listener.onNetworkStatusChanged(current)
+        return id
+    }
+
+    private fun resolveAndCache(): Boolean {
+        val connected = resolveNetworkStatus(LxApp.applicationContext()).isConnected
+        lastIsConnected = connected
+        return connected
+    }
+
+    @JvmStatic
+    fun removeNetworkStatusListener(id: Long) {
+        statusListeners.remove(id)
     }
 
     private fun registerNetworkCallback(connMgr: ConnectivityManager) {
@@ -151,7 +182,7 @@ internal object LxAppNetwork {
     }
 
     private fun emitInfoToAll() {
-        if (changeCallbacks.isEmpty()) {
+        if (changeCallbacks.isEmpty() && statusListeners.isEmpty()) {
             return
         }
         val info = resolveNetworkInfo(LxApp.applicationContext())
@@ -160,15 +191,27 @@ internal object LxAppNetwork {
             return
         }
         lastSignature = signature
-        val payload = JSONObject().apply {
-            put("isConnected", info.isConnected)
-            put("networkType", info.networkType)
-            put("ipv4", JSONArray(info.ipv4))
-            put("ipv6", JSONArray(info.ipv6))
-        }.toString()
 
-        changeCallbacks.forEach { id ->
-            NativeApi.onCallback(id, true, payload)
+        // Rust callbacks (full network info).
+        if (changeCallbacks.isNotEmpty()) {
+            val payload = JSONObject().apply {
+                put("isConnected", info.isConnected)
+                put("networkType", info.networkType)
+                put("ipv4", JSONArray(info.ipv4))
+                put("ipv6", JSONArray(info.ipv6))
+            }.toString()
+            changeCallbacks.forEach { id ->
+                NativeApi.onCallback(id, true, payload)
+            }
+        }
+
+        // Java status listeners (connected/disconnected only).
+        val prev = lastIsConnected
+        if (prev == null || prev != info.isConnected) {
+            lastIsConnected = info.isConnected
+            statusListeners.values.forEach { listener ->
+                listener.onNetworkStatusChanged(info.isConnected)
+            }
         }
     }
 
