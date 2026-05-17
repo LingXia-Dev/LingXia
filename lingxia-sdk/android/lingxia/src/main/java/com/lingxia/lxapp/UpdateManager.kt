@@ -750,17 +750,12 @@ internal object UpdateManager {
             return false
         }
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
-            !activity.packageManager.canRequestPackageInstalls() &&
-            resolveUnknownSourcesSettingsIntent(activity) == null
-        ) {
-            Log.e(TAG, "No settings activity available to grant install permission")
-            showInstallErrorToast(
-                activity,
-                activity.getString(R.string.lx_update_install_permission_required)
-            )
-            return false
-        }
+        // Intentionally do NOT fail here when unknown-sources settings can't
+        // be resolved: stripped MIUI TV builds (e.g. Mi TV Stick) ship without
+        // any "Install unknown apps" UI at all, but their packageinstaller
+        // activity often still accepts ACTION_VIEW installs. We rely on the
+        // fall-through in requestInstallPermission() to attempt the install
+        // anyway and surface whatever the system installer says.
         return true
     }
 
@@ -829,16 +824,18 @@ internal object UpdateManager {
 
     private fun requestInstallPermission(activity: LxAppActivity, apkPath: String): Boolean {
         Log.w(TAG, "Install permission not granted; opening settings")
-        val opened = openUnknownSourcesSettings(activity)
-        if (opened) {
+        if (openUnknownSourcesSettings(activity)) {
             pendingInstallPath.set(apkPath)
-        } else {
-            showInstallErrorToast(
-                activity,
-                activity.getString(R.string.lx_update_install_permission_required)
-            )
+            return true
         }
-        return opened
+        // No Settings UI exists to grant unknown-sources (e.g. stripped MIUI
+        // TV / Mi TV Stick where the action filters were stripped from the
+        // system Settings app). Falling through to the legacy ACTION_VIEW
+        // path hands the APK off to com.android.packageinstaller, which on
+        // such builds often accepts the install directly or surfaces its
+        // own actionable error — better than dead-ending the user here.
+        Log.w(TAG, "No settings UI available; trying legacy installer directly")
+        return launchInstallerLegacy(activity, File(apkPath))
     }
 
     private fun openUnknownSourcesSettings(activity: LxAppActivity): Boolean {

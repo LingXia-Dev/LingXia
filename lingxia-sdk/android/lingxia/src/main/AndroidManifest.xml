@@ -7,6 +7,19 @@
         <package android:name="cn.wps.moffice_eng" />
         <package android:name="cn.wps.moffice_i18n" />
         <package android:name="cn.wps.moffice_ent" />
+        <!-- Settings + installer activities probed by the self-update flow.
+             Required by Android 11+ package visibility: without these,
+             resolveActivity() returns null even for system intents. -->
+        <intent>
+            <action android:name="android.settings.MANAGE_UNKNOWN_APP_SOURCES" />
+        </intent>
+        <intent>
+            <action android:name="android.settings.SECURITY_SETTINGS" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:mimeType="application/vnd.android.package-archive" />
+        </intent>
     </queries>
 
     <uses-permission android:name="android.permission.INTERNET" />
