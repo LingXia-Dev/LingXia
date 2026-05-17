@@ -133,14 +133,24 @@ pub enum I18nKey {
 
 impl I18nKey {
     pub fn get(&self, locale: &str) -> &'static str {
-        let lang = locale.split('-').next().unwrap_or(locale).to_ascii_lowercase();
+        let lang = locale
+            .split('-')
+            .next()
+            .unwrap_or(locale)
+            .to_ascii_lowercase();
         match (self, lang.as_str()) {
-            (I18nKey::AlbumAddMoreMedia, "en") => "Add more
-accessible items",
-            (I18nKey::AlbumAddMorePhotos, "en") => "Add more
-accessible photos",
-            (I18nKey::AlbumAddMoreVideos, "en") => "Add more
-accessible videos",
+            (I18nKey::AlbumAddMoreMedia, "en") => {
+                "Add more
+accessible items"
+            }
+            (I18nKey::AlbumAddMorePhotos, "en") => {
+                "Add more
+accessible photos"
+            }
+            (I18nKey::AlbumAddMoreVideos, "en") => {
+                "Add more
+accessible videos"
+            }
             (I18nKey::AlbumAllMedia, "en") => "Photos & Videos",
             (I18nKey::AlbumAllPhotos, "en") => "All Photos",
             (I18nKey::AlbumAllVideos, "en") => "All Videos",
@@ -205,11 +215,15 @@ accessible videos",
             (I18nKey::ErrCode12002, "en") => "Password error (incorrect WiFi password)",
             (I18nKey::ErrCode12003, "en") => "Connection timeout",
             (I18nKey::ErrCode12004, "en") => "Duplicate connection request",
-            (I18nKey::ErrCode12005, "en") => "Requested WiFi capability is not supported on this platform",
+            (I18nKey::ErrCode12005, "en") => {
+                "Requested WiFi capability is not supported on this platform"
+            }
             (I18nKey::ErrCode12006, "en") => "Permission denied",
             (I18nKey::ErrCode12007, "en") => "User did not respond",
             (I18nKey::ErrCode12008, "en") => "User refused connection",
-            (I18nKey::ErrCode12009, "en") => "WiFi is disabled (Please enable WiFi in system settings)",
+            (I18nKey::ErrCode12009, "en") => {
+                "WiFi is disabled (Please enable WiFi in system settings)"
+            }
             (I18nKey::ErrCode12010, "en") => "WiFi network not found",
             (I18nKey::ErrCode2000, "en") => "User cancelled",
             (I18nKey::ErrCode2001, "en") => "User declined",
@@ -234,33 +248,55 @@ accessible videos",
             (I18nKey::ErrCode6001, "en") => "Device not supported",
             (I18nKey::ErrCode6002, "en") => "System version too low",
             (I18nKey::ErrorNetworkError, "en") => "Network Error",
-            (I18nKey::ErrorSaveFailed, "en") => "Save failed. Please check permissions or available space.",
+            (I18nKey::ErrorSaveFailed, "en") => {
+                "Save failed. Please check permissions or available space."
+            }
             (I18nKey::ErrorServerError, "en") => "Server Error",
             (I18nKey::ErrorTimeout, "en") => "Request Timeout",
             (I18nKey::ErrorUnauthorized, "en") => "Unauthorized",
             (I18nKey::ErrorUnknown, "en") => "Unknown Error",
             (I18nKey::ErrorVideoTooShort, "en") => "Video too short",
             (I18nKey::FileChooserDefaultTitle, "en") => "Choose File",
-            (I18nKey::FileChooserEmptySubtitle, "en") => "This folder does not contain any files or subfolders yet.",
+            (I18nKey::FileChooserEmptySubtitle, "en") => {
+                "This folder does not contain any files or subfolders yet."
+            }
             (I18nKey::FileChooserEmptyTitle, "en") => "Nothing here yet",
             (I18nKey::FileChooserFilterAudio, "en") => "Audio",
             (I18nKey::FileChooserFilterImages, "en") => "Images",
             (I18nKey::FileChooserFilterLabel, "en") => "Showing %1$s",
             (I18nKey::FileChooserFilterVideos, "en") => "Videos",
-            (I18nKey::FileChooserFilteredEmptySubtitle, "en") => "There are no files matching the current filter in this folder.",
+            (I18nKey::FileChooserFilteredEmptySubtitle, "en") => {
+                "There are no files matching the current filter in this folder."
+            }
             (I18nKey::FileChooserFilteredEmptyTitle, "en") => "No matching files",
             (I18nKey::FileChooserFolderSubtitle, "en") => "Folder",
-            (I18nKey::PermissionLimitedAccessAddMoreMedia, "en") => "Add more
-accessible items",
-            (I18nKey::PermissionLimitedAccessAddMorePhotos, "en") => "Add more
-accessible photos",
-            (I18nKey::PermissionLimitedAccessAddMoreVideos, "en") => "Add more
-accessible videos",
-            (I18nKey::PermissionLimitedAccessWarning, "en") => "You have limited photo access. Grant full access in settings.",
-            (I18nKey::PermissionLocationReason, "en") => "Location permission required to provide location-based services",
-            (I18nKey::PermissionMediaReason, "en") => "Media permission required to save images and videos to album",
-            (I18nKey::PermissionNetworkReason, "en") => "Network permission required to detect network status",
-            (I18nKey::PermissionWifiReason, "en") => "WiFi permission required to scan and connect to WiFi networks",
+            (I18nKey::PermissionLimitedAccessAddMoreMedia, "en") => {
+                "Add more
+accessible items"
+            }
+            (I18nKey::PermissionLimitedAccessAddMorePhotos, "en") => {
+                "Add more
+accessible photos"
+            }
+            (I18nKey::PermissionLimitedAccessAddMoreVideos, "en") => {
+                "Add more
+accessible videos"
+            }
+            (I18nKey::PermissionLimitedAccessWarning, "en") => {
+                "You have limited photo access. Grant full access in settings."
+            }
+            (I18nKey::PermissionLocationReason, "en") => {
+                "Location permission required to provide location-based services"
+            }
+            (I18nKey::PermissionMediaReason, "en") => {
+                "Media permission required to save images and videos to album"
+            }
+            (I18nKey::PermissionNetworkReason, "en") => {
+                "Network permission required to detect network status"
+            }
+            (I18nKey::PermissionWifiReason, "en") => {
+                "WiFi permission required to scan and connect to WiFi networks"
+            }
             (I18nKey::UpdateConfirm, "en") => "Download & Install",
             (I18nKey::UpdateDownloadFailed, "en") => "Download failed. Please try again.",
             (I18nKey::UpdateDownloading, "en") => "Downloading Update",
@@ -268,12 +304,18 @@ accessible videos",
             (I18nKey::UpdateTitle, "en") => "New Version Available",
             (I18nKey::VideoQuality, "en") => "Quality",
             (I18nKey::VideoSpeed, "en") => "Speed",
-            (I18nKey::AlbumAddMoreMedia, "zh") => "添加更多
-可访问内容",
-            (I18nKey::AlbumAddMorePhotos, "zh") => "添加更多
-可访问照片",
-            (I18nKey::AlbumAddMoreVideos, "zh") => "添加更多
-可访问视频",
+            (I18nKey::AlbumAddMoreMedia, "zh") => {
+                "添加更多
+可访问内容"
+            }
+            (I18nKey::AlbumAddMorePhotos, "zh") => {
+                "添加更多
+可访问照片"
+            }
+            (I18nKey::AlbumAddMoreVideos, "zh") => {
+                "添加更多
+可访问视频"
+            }
             (I18nKey::AlbumAllMedia, "zh") => "图片和视频",
             (I18nKey::AlbumAllPhotos, "zh") => "所有图片",
             (I18nKey::AlbumAllVideos, "zh") => "所有视频",
@@ -374,22 +416,34 @@ accessible videos",
             (I18nKey::ErrorUnknown, "zh") => "未知错误",
             (I18nKey::ErrorVideoTooShort, "zh") => "拍摄时间过短",
             (I18nKey::FileChooserDefaultTitle, "zh") => "选择文件",
-            (I18nKey::FileChooserEmptySubtitle, "zh") => "这个文件夹里还没有可显示的文件或子文件夹。",
+            (I18nKey::FileChooserEmptySubtitle, "zh") => {
+                "这个文件夹里还没有可显示的文件或子文件夹。"
+            }
             (I18nKey::FileChooserEmptyTitle, "zh") => "这里还是空的",
             (I18nKey::FileChooserFilterAudio, "zh") => "音频",
             (I18nKey::FileChooserFilterImages, "zh") => "图片",
             (I18nKey::FileChooserFilterLabel, "zh") => "筛选：%1$s",
             (I18nKey::FileChooserFilterVideos, "zh") => "视频",
-            (I18nKey::FileChooserFilteredEmptySubtitle, "zh") => "当前文件夹里没有符合筛选条件的文件。",
+            (I18nKey::FileChooserFilteredEmptySubtitle, "zh") => {
+                "当前文件夹里没有符合筛选条件的文件。"
+            }
             (I18nKey::FileChooserFilteredEmptyTitle, "zh") => "没有匹配的文件",
             (I18nKey::FileChooserFolderSubtitle, "zh") => "文件夹",
-            (I18nKey::PermissionLimitedAccessAddMoreMedia, "zh") => "添加更多
-可访问内容",
-            (I18nKey::PermissionLimitedAccessAddMorePhotos, "zh") => "添加更多
-可访问照片",
-            (I18nKey::PermissionLimitedAccessAddMoreVideos, "zh") => "添加更多
-可访问视频",
-            (I18nKey::PermissionLimitedAccessWarning, "zh") => "你仅开启有限访问相册权限，建议允许访问「所有照片」",
+            (I18nKey::PermissionLimitedAccessAddMoreMedia, "zh") => {
+                "添加更多
+可访问内容"
+            }
+            (I18nKey::PermissionLimitedAccessAddMorePhotos, "zh") => {
+                "添加更多
+可访问照片"
+            }
+            (I18nKey::PermissionLimitedAccessAddMoreVideos, "zh") => {
+                "添加更多
+可访问视频"
+            }
+            (I18nKey::PermissionLimitedAccessWarning, "zh") => {
+                "你仅开启有限访问相册权限，建议允许访问「所有照片」"
+            }
             (I18nKey::PermissionLocationReason, "zh") => "LingXia需要位置权限为你提供服务",
             (I18nKey::PermissionMediaReason, "zh") => "LingXia需要相册权限保存图片和视频",
             (I18nKey::PermissionNetworkReason, "zh") => "LingXia需要网络权限来检测网络状态",
@@ -404,7 +458,6 @@ accessible videos",
             _ => self.get("en"),
         }
     }
-
 }
 
 pub fn err_code_key(code: u32) -> Option<I18nKey> {
