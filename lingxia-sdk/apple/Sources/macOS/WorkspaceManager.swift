@@ -615,9 +615,11 @@ class WorkspaceManager: NSObject {
             slot.resizeHandle.frame = .zero
             slot.resizeHandle.isHidden = true
         } else {
+            // Bottom panel docks under the WebView card only — its trailing edge
+            // aligns with the card's, so an active right panel sits next to the terminal rather than over it.
             let size = clampedPanelSize(slot.currentSize, for: .bottom)
             let leading = max(0, sidebar.frame.maxX)
-            let trailing = max(leading, parent.bounds.width - p)
+            let trailing = max(leading, parent.bounds.width - cardTrailingInset())
             let width = max(0, trailing - leading)
             let bottom = p
             slot.shadowWrapper.frame = NSRect(
