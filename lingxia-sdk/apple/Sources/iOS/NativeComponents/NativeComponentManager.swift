@@ -73,6 +73,7 @@ final class NativeComponentManager {
     private var focusedTextInputKeyboardHeight: CGFloat = 0
     private var textInputKeyboardInsetRestore: UIEdgeInsets?
     private var textInputKeyboardIndicatorInsetRestore: UIEdgeInsets?
+    private var textInputWebViewTransformRestore: CGAffineTransform?
     private let textInputKeyboardBottomGap: CGFloat = 24
 
     init(
@@ -426,6 +427,11 @@ final class NativeComponentManager {
             if shouldEnsureVisibleForEvent(componentId: componentId, eventName: eventName) {
                 ensureVisible(component.view.frame, in: component.view.superview)
             }
+            // ensureVisible can only lift inputs that participate in scroll;
+            // fixed/sticky inputs need the WebView itself translated.
+            if eventName == "focus" || eventName == "keyboardheightchange" {
+                applyResidualTextInputLiftIfNeeded()
+            }
         }
         updatePlaybackIntent(componentId: componentId, event: payload["event"] as? String)
         payload["action"] = "component.event"
@@ -716,9 +722,62 @@ final class NativeComponentManager {
               shouldEnsureVisibleForTextInput(componentId: focusedId),
               focusedTextInputKeyboardHeight > 0 else {
             restoreTextInputKeyboardAvoidanceInsets()
+            restoreTextInputWebViewTransform()
             return
         }
         applyTextInputKeyboardAvoidanceInsets(to: scrollView)
+    }
+
+    /// Lift the WKWebView (and its overlay) for the gap that scroll-into-view
+    /// cannot cover — e.g. inputs in a `position: fixed` container whose frame
+    /// can't be scrolled into the visible region. Run AFTER `ensureVisible`
+    /// (which may have already absorbed part of the gap via scroll).
+    private func applyResidualTextInputLiftIfNeeded() {
+        guard let webView,
+              let focusedId = focusedTextInputComponentId,
+              shouldEnsureVisibleForTextInput(componentId: focusedId),
+              focusedTextInputKeyboardHeight > 0,
+              let component = components[focusedId],
+              let window = component.view.window else {
+            restoreTextInputWebViewTransform()
+            return
+        }
+        let baseTransform = textInputWebViewTransformRestore ?? webView.transform
+        // Measure against the un-lifted geometry so the math doesn't accumulate.
+        let savedTransform = webView.transform
+        webView.transform = baseTransform
+        let frameInWindow = component.view.convert(component.view.bounds, to: window)
+        webView.transform = savedTransform
+
+        let keyboardTopY = window.bounds.height - focusedTextInputKeyboardHeight
+        let needLift = max(0, frameInWindow.maxY + textInputKeyboardBottomGap - keyboardTopY)
+        if needLift > 0 {
+            if textInputWebViewTransformRestore == nil {
+                textInputWebViewTransformRestore = webView.transform
+            }
+            let base = textInputWebViewTransformRestore ?? .identity
+            let next = base.translatedBy(x: 0, y: -needLift)
+            if !webView.transform.equalTo(next) {
+                UIView.animate(withDuration: 0.2) {
+                    webView.transform = next
+                }
+            }
+        } else {
+            restoreTextInputWebViewTransform()
+        }
+    }
+
+    private func restoreTextInputWebViewTransform() {
+        guard let webView, let restore = textInputWebViewTransformRestore else {
+            textInputWebViewTransformRestore = nil
+            return
+        }
+        textInputWebViewTransformRestore = nil
+        if !webView.transform.equalTo(restore) {
+            UIView.animate(withDuration: 0.2) {
+                webView.transform = restore
+            }
+        }
     }
 
     private func applyTextInputKeyboardAvoidanceInsets(to scrollView: UIScrollView) {
