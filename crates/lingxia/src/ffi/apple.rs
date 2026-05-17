@@ -722,7 +722,7 @@ fn parse_close_reason(reason: &str) -> CloseReason {
 fn map_presentation_kind(surface: i32) -> PresentationKind {
     match surface {
         1 => PresentationKind::Panel,
-        3 => PresentationKind::Popup,
+        3 => PresentationKind::Overlay,
         _ => PresentationKind::Window,
     }
 }

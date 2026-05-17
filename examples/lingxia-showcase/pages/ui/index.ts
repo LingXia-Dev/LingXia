@@ -212,8 +212,8 @@ Page({
     try {
       const cfg = config || {};
       const supportsWindow = this.data.surfaceDemo?.supportsWindow === true;
-      const requestedKind = cfg.kind === "window" ? "window" : "popup";
-      const kind = requestedKind === "window" && supportsWindow ? "window" : "popup";
+      const requestedKind = cfg.kind === "window" ? "window" : "overlay";
+      const kind = requestedKind === "window" && supportsWindow ? "window" : "overlay";
       const isWindow = kind === "window";
       const options = {
         kind,
@@ -252,7 +252,7 @@ Page({
       });
       // Subscribe to surface-driven visibility transitions. Both opener-side
       // and page-side toggles flow through these events, so the parent UI
-      // stays in sync even when the popup hides itself via this.surface.hide().
+      // stays in sync even when the overlay hides itself via this.surface.hide().
       surface.onShow((event) => {
         this.setData({
           "surfaceDemo.visible": true,

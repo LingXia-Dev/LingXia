@@ -377,7 +377,7 @@ impl LxApp {
                 if matches!(reason, CloseReason::AppClosed) {
                     self.dispose_page_instance_internal(id, reason, false)?;
                 } else if let Some(dispose_ttl) = dispose_ttl {
-                    self.schedule_page_instance_dispose_timer(id, dispose_ttl, reason)?;
+                    self.schedule_page_instance_dispose_timer(id, dispose_ttl)?;
                 } else {
                     self.cancel_page_instance_dispose_timer(id);
                 }
@@ -413,6 +413,14 @@ impl LxApp {
             CloseReason::OwnerClosed
         };
         self.close_surfaces_for_owner(id, child_reason);
+
+        // If this page IS the content of a surface (i.e. it lives inside an
+        // overlay the owner opened), close that surface too so the owner's
+        // `Surface` handle gets an onClose. Without this, an SDK-side reclaim
+        // disposes the page silently and the owner keeps postMessaging into
+        // a dead handle. Propagate the actual reason (e.g. Reclaimed) so JS
+        // can distinguish SDK-initiated cleanup from a user close.
+        self.close_surfaces_hosting(id, reason);
 
         let page = self.get_page_by_instance_id(id).ok_or_else(|| {
             LxAppError::ResourceNotFound(format!("page instance id: {}", id.as_str()))

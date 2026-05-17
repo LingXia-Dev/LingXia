@@ -59,7 +59,7 @@
             <div class="px-4 py-4 space-y-4">
               <div class="space-y-3">
                 <div class="text-xs text-gray-500 leading-5 bg-gray-50 rounded-lg px-3 py-2">
-                  Popup is cross-platform. Window is shown only on desktop runtimes.
+                  Overlay is cross-platform. Window is shown only on desktop runtimes.
                 </div>
                 <div>
                   <div class="text-xs uppercase text-gray-500 tracking-wide mb-2">Kind</div>
@@ -73,9 +73,9 @@
                     </button>
                   </div>
                 </div>
-                <template v-if="surfaceKind === 'popup'">
+                <template v-if="surfaceKind === 'overlay'">
                 <div>
-                  <div class="text-xs uppercase text-gray-500 tracking-wide mb-2">Popup Size</div>
+                  <div class="text-xs uppercase text-gray-500 tracking-wide mb-2">Overlay Size</div>
                   <div class="flex items-center justify-between text-xs text-gray-500 tracking-wide">
                     <span>Width</span>
                     <span class="text-gray-700 font-mono">{{ surfaceWidthRatio.toFixed(2) }}</span>
@@ -96,7 +96,7 @@
                 <div class="text-xs text-gray-500 leading-5">
                   {{ surfaceDescription }}
                 </div>
-                <div v-if="surfaceKind === 'popup'">
+                <div v-if="surfaceKind === 'overlay'">
                   <div class="text-xs uppercase text-gray-500 tracking-wide mb-2">
                     Position
                   </div>
@@ -471,15 +471,15 @@ const surfaceWidthRatio = ref(1);
 const surfaceHeightRatio = ref(0.6);
 const surfacePosition = ref<'center' | 'bottom' | 'left' | 'right' | 'top'>('bottom');
 const surfacePositions = ['bottom', 'center', 'left', 'right', 'top'] as const;
-const surfaceKind = ref<'popup' | 'window'>('popup');
-const surfaceKinds = computed(() => supportsSurfaceWindow.value ? ['popup', 'window'] as const : ['popup'] as const);
+const surfaceKind = ref<'overlay' | 'window'>('overlay');
+const surfaceKinds = computed(() => supportsSurfaceWindow.value ? ['overlay', 'window'] as const : ['overlay'] as const);
 const surfaceDescription = computed(() => surfaceKind.value === 'window'
   ? 'Desktop-only independent window surface. Mobile runtimes reject this kind.'
-  : 'Transient modal surface inside the current app. Use it for lightweight local UI.');
+  : 'Transient overlay surface composited on top of the current app. Use it for lightweight local UI.');
 
 watch(supportsSurfaceWindow, (supports) => {
   if (!supports && surfaceKind.value === 'window') {
-    surfaceKind.value = 'popup';
+    surfaceKind.value = 'overlay';
   }
 }, { immediate: true });
 

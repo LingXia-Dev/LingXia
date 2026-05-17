@@ -663,12 +663,12 @@ fn parse_surface_kind(obj: &JSObject) -> JSResult<SurfaceKind> {
             )
         })?;
     match raw.trim().to_ascii_lowercase().as_str() {
-        "popup" => Ok(SurfaceKind::Popup),
+        "overlay" => Ok(SurfaceKind::Overlay),
         "window" => Ok(SurfaceKind::Window),
         _ => Err(surface_error(
             rong::error::E_INVALID_ARG,
             "unsupported_surface_kind",
-            format!("unsupported surface kind: {raw}; supported kinds are popup and window"),
+            format!("unsupported surface kind: {raw}; supported kinds are overlay and window"),
         )),
     }
 }
@@ -681,7 +681,7 @@ fn parse_position(obj: &JSObject, kind: SurfaceKind) -> JSResult<SurfacePosition
         return Err(surface_error(
             rong::error::E_INVALID_ARG,
             "invalid_surface_options",
-            "position is only supported for popup surfaces",
+            "position is only supported for overlay surfaces",
         ));
     }
     let raw = value.to_rust::<String>().map_err(|_| {
@@ -719,7 +719,7 @@ fn parse_size(
             "size must be an object",
         ));
     };
-    let allow_percentage = kind == SurfaceKind::Popup;
+    let allow_percentage = kind == SurfaceKind::Overlay;
     let (width, width_ratio) = parse_size_value(&size_obj, "width", allow_percentage)?;
     let (height, height_ratio) = parse_size_value(&size_obj, "height", allow_percentage)?;
     Ok((width, height, width_ratio, height_ratio))
@@ -762,7 +762,7 @@ fn parse_size_value(
             return Err(surface_error(
                 rong::error::E_INVALID_ARG,
                 "invalid_surface_options",
-                format!("size.{field} percentage is only supported for popup surfaces"),
+                format!("size.{field} percentage is only supported for overlay surfaces"),
             ));
         }
         let Some(percent) = raw.trim().strip_suffix('%') else {
@@ -882,6 +882,7 @@ fn normalize_close_reason(surface_id: &str, reason: Option<&str>) -> String {
         Some("programmatic") => "programmatic".to_string(),
         Some("owner_closed") => "owner_closed".to_string(),
         Some("app_closed") => "app_closed".to_string(),
+        Some("reclaimed") => "reclaimed".to_string(),
         Some("failed") | Some("surface_failed") => "failed".to_string(),
         Some("unknown") => "unknown".to_string(),
         Some(raw) => {
@@ -898,7 +899,7 @@ fn normalize_close_reason(surface_id: &str, reason: Option<&str>) -> String {
 
 fn surface_kind_label(kind: SurfaceKind) -> &'static str {
     match kind {
-        SurfaceKind::Popup => "popup",
+        SurfaceKind::Overlay => "overlay",
         SurfaceKind::Window => "window",
     }
 }

@@ -399,7 +399,7 @@ function computeDimensions(
 
 function normalizeReason(reason: string): string {
   const trimmed = reason.trim();
-  if (trimmed === 'user' || trimmed === 'programmatic' || trimmed === 'owner_closed' || trimmed === 'app_closed' || trimmed === 'failed') {
+  if (trimmed === 'user' || trimmed === 'programmatic' || trimmed === 'owner_closed' || trimmed === 'app_closed' || trimmed === 'reclaimed' || trimmed === 'failed') {
     return trimmed;
   }
   return 'unknown';

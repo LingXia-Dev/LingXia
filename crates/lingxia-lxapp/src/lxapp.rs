@@ -794,10 +794,14 @@ impl LxApp {
         &self,
         id: &PageInstanceId,
         dispose_ttl: Duration,
-        reason: CloseReason,
     ) -> Result<(), LxAppError> {
+        // When the TTL fires, the page is being reclaimed by the SDK because
+        // it stayed hidden too long — not because the consumer asked for it.
+        // Always carry `Reclaimed` so JS-side close listeners can distinguish
+        // SDK-initiated cleanup from a user/programmatic close.
+        let reclaim_reason = CloseReason::Reclaimed;
         if dispose_ttl.is_zero() {
-            return self.dispose_page_instance_internal(id, reason, false);
+            return self.dispose_page_instance_internal(id, reclaim_reason, false);
         }
 
         self.cancel_page_instance_dispose_timer(id);
@@ -828,7 +832,7 @@ impl LxApp {
             let Some(id) = PageInstanceId::parse(page_instance_id.clone()) else {
                 return;
             };
-            if let Err(err) = app.dispose_page_instance_internal(&id, reason, false) {
+            if let Err(err) = app.dispose_page_instance_internal(&id, reclaim_reason, false) {
                 warn!(
                     "Delayed dispose failed for page instance {}: {}",
                     page_instance_id, err
@@ -856,7 +860,7 @@ impl LxApp {
         }
 
         if let Some(ttl) = dispose_ttl {
-            self.schedule_page_instance_dispose_timer(id, ttl, CloseReason::Programmatic)?;
+            self.schedule_page_instance_dispose_timer(id, ttl)?;
         } else {
             self.cancel_page_instance_dispose_timer(id);
         }

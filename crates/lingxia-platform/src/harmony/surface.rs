@@ -4,7 +4,7 @@ use crate::traits::ui::{SurfaceKind, SurfacePresenter, SurfaceRequest};
 
 impl SurfacePresenter for Platform {
     fn present_surface(&self, request: SurfaceRequest) -> Result<(), PlatformError> {
-        if request.kind != SurfaceKind::Popup {
+        if request.kind != SurfaceKind::Overlay {
             return Err(PlatformError::NotSupported(
                 "window surface is not supported on Harmony".to_string(),
             ));

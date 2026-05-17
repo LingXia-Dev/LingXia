@@ -509,7 +509,7 @@ enum LxAppSurface {
 
     private static func closeReason(_ reason: String) -> String {
         switch reason {
-        case "user", "programmatic", "owner_closed", "app_closed", "failed", "unknown":
+        case "user", "programmatic", "owner_closed", "app_closed", "reclaimed", "failed", "unknown":
             return reason
         default:
             return "unknown"
@@ -923,7 +923,7 @@ enum LxAppSurface {
 
     private static func closeReason(_ reason: String) -> String {
         switch reason {
-        case "user", "programmatic", "owner_closed", "app_closed", "failed", "unknown":
+        case "user", "programmatic", "owner_closed", "app_closed", "reclaimed", "failed", "unknown":
             return reason
         default:
             return "unknown"

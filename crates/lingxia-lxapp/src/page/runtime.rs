@@ -38,7 +38,7 @@ pub enum PageOwner {
 pub enum PresentationKind {
     Window,
     Panel,
-    Popup,
+    Overlay,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -72,6 +72,11 @@ pub enum CloseReason {
     Programmatic,
     OwnerClosed,
     AppClosed,
+    /// SDK reclaimed a long-hidden surface webview for resource reasons.
+    /// Behaves like a normal close for the page instance, but distinguishes
+    /// "you didn't ask for this" cleanup so consumers can react (e.g.
+    /// re-open on next use).
+    Reclaimed,
     Unknown,
 }
 
@@ -122,6 +127,7 @@ impl CloseReason {
             Self::Programmatic => "programmatic",
             Self::OwnerClosed => "owner_closed",
             Self::AppClosed => "app_closed",
+            Self::Reclaimed => "reclaimed",
             Self::Unknown => "unknown",
         }
     }

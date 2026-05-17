@@ -42,7 +42,7 @@ pub struct ModalOptions {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SurfaceKind {
     Window = 0,
-    Popup = 1,
+    Overlay = 1,
 }
 
 #[repr(i32)]

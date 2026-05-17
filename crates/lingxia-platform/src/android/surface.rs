@@ -6,7 +6,7 @@ use jni::{jni_sig, jni_str};
 
 impl SurfacePresenter for Platform {
     fn present_surface(&self, request: SurfaceRequest) -> Result<(), PlatformError> {
-        if request.kind != SurfaceKind::Popup {
+        if request.kind != SurfaceKind::Overlay {
             return Err(PlatformError::NotSupported(
                 "window surface is not supported on Android".to_string(),
             ));

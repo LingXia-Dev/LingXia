@@ -125,24 +125,30 @@ export type SurfaceUrlTargetOptions = {
 export type SurfaceTargetOptions = SurfacePageTargetOptions | SurfaceUrlTargetOptions;
 
 /**
- * Popup size value.
+ * Overlay surface size value.
  *
  * - number: absolute size, must be > 0
  * - `${number}%`: percentage size, must be > 0% and <= 100%
  */
-export type PopupSurfaceSizeValue = number | `${number}%`;
+export type OverlaySurfaceSizeValue = number | `${number}%`;
 
-export interface PopupSurfaceSize {
-  /** Width for popup surface. */
-  width?: PopupSurfaceSizeValue;
-  /** Height for popup surface. */
-  height?: PopupSurfaceSizeValue;
+export interface OverlaySurfaceSize {
+  /** Width for overlay surface. */
+  width?: OverlaySurfaceSizeValue;
+  /** Height for overlay surface. */
+  height?: OverlaySurfaceSizeValue;
 }
 
-export type PopupSurfaceOptions = SurfaceTargetOptions & {
-  kind: 'popup';
+/**
+ * Overlay surface: a webview composited on top of the host activity's
+ * content. Cross-platform. Covers the screen (or a fraction of it) until
+ * closed; coexists with native media preview at the same z-tier — the
+ * later-added overlay or preview wins compositing order.
+ */
+export type OverlaySurfaceOptions = SurfaceTargetOptions & {
+  kind: 'overlay';
   position?: 'center' | 'bottom' | 'left' | 'right' | 'top';
-  size?: PopupSurfaceSize;
+  size?: OverlaySurfaceSize;
 };
 
 export interface WindowSurfaceSize {
@@ -155,14 +161,14 @@ export interface WindowSurfaceSize {
 /**
  * Window-kind surfaces are macOS-only. Android, iOS, and Harmony reject
  * `kind: 'window'` at open() and surface a `surface_open_failed` error;
- * use `PopupSurfaceOptions` for cross-platform code.
+ * use `OverlaySurfaceOptions` for cross-platform code.
  */
 export type WindowSurfaceOptions = SurfaceTargetOptions & {
   kind: 'window';
   size?: WindowSurfaceSize;
 };
 
-export type SurfaceOpenOptions = PopupSurfaceOptions | WindowSurfaceOptions;
+export type SurfaceOpenOptions = OverlaySurfaceOptions | WindowSurfaceOptions;
 
 export interface CapsuleRect {
   width?: number;

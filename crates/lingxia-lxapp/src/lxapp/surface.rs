@@ -50,6 +50,11 @@ pub struct PageSurface {
 #[derive(Debug, Clone)]
 pub(crate) struct SurfaceRecord {
     pub owner_page_instance_id: Option<String>,
+    /// The page instance hosted inside this surface (when content is a page).
+    /// Used to close the surface when its inner page is disposed (e.g. SDK
+    /// reclaim after long hide) so the owner's `Surface` handle reliably
+    /// receives an onClose event.
+    pub content_page_instance_id: Option<String>,
 }
 
 impl LxApp {
@@ -74,7 +79,7 @@ impl LxApp {
             .unwrap_or_else(|| PageOwner::Scene(SceneId("system".to_string())));
         let presentation_kind = match request.kind {
             SurfaceKind::Window => PresentationKind::Window,
-            SurfaceKind::Popup => PresentationKind::Popup,
+            SurfaceKind::Overlay => PresentationKind::Overlay,
         };
         let (path, page_instance_id, content, page_path) = match request.target {
             PageSurfaceTarget::Page(target) => {
@@ -95,11 +100,17 @@ impl LxApp {
             PageSurfaceTarget::Url(url) => (url, String::new(), SurfaceContent::Url, None),
         };
 
+        let content_page_instance_id = if page_instance_id.is_empty() {
+            None
+        } else {
+            Some(page_instance_id.clone())
+        };
         if let Ok(state) = self.state.lock() {
             state.surfaces.lock().unwrap().insert(
                 id.clone(),
                 SurfaceRecord {
                     owner_page_instance_id: owner_page_instance_id.map(|id| id.to_string()),
+                    content_page_instance_id,
                 },
             );
         }
@@ -232,6 +243,21 @@ impl LxApp {
         self.close_surfaces(ids, reason);
     }
 
+    /// Close any surfaces hosting the given page as their content.
+    /// Used when a page-in-surface is disposed (e.g. SDK reclaim after a
+    /// long hide) so the owner's `Surface` handle reliably receives an
+    /// onClose event instead of being left holding a dead handle.
+    pub(crate) fn close_surfaces_hosting(
+        &self,
+        content_page_instance_id: &PageInstanceId,
+        reason: CloseReason,
+    ) {
+        let ids = self.surface_ids(|record| {
+            record.content_page_instance_id.as_deref() == Some(content_page_instance_id.as_str())
+        });
+        self.close_surfaces(ids, reason);
+    }
+
     pub(crate) fn close_all_surfaces(&self, reason: CloseReason) {
         let ids = self.surface_ids(|_| true);
         self.close_surfaces(ids, reason);
@@ -278,6 +304,7 @@ fn close_reason_str(reason: CloseReason) -> &'static str {
         CloseReason::Programmatic => "programmatic",
         CloseReason::OwnerClosed => "owner_closed",
         CloseReason::AppClosed => "app_closed",
+        CloseReason::Reclaimed => "reclaimed",
         CloseReason::Unknown => "unknown",
     }
 }

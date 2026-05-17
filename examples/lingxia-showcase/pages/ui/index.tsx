@@ -62,19 +62,19 @@ export default function UIPage() {
     (typeof window !== 'undefined' &&
       (window as any).LingXiaBridge?.platform?.isDesktop?.() === true) ||
     surfaceDemo?.supportsWindow === true;
-  const [surfaceKind, setSurfaceKind] = React.useState<'popup' | 'window'>('popup');
+  const [surfaceKind, setSurfaceKind] = React.useState<'overlay' | 'window'>('overlay');
   const [surfaceWidthRatio, setSurfaceWidthRatio] = React.useState(1);
   const [surfaceHeightRatio, setSurfaceHeightRatio] = React.useState(0.6);
   const [surfacePosition, setSurfacePosition] = React.useState<'center' | 'bottom' | 'left' | 'right' | 'top'>('bottom');
   const surfacePositions: Array<'center' | 'bottom' | 'left' | 'right' | 'top'> = ['bottom', 'center', 'left', 'right', 'top'];
-  const surfaceKinds: Array<'popup' | 'window'> = supportsSurfaceWindow ? ['popup', 'window'] : ['popup'];
+  const surfaceKinds: Array<'overlay' | 'window'> = supportsSurfaceWindow ? ['overlay', 'window'] : ['overlay'];
   const surfaceDescription = surfaceKind === 'window'
     ? 'Desktop-only independent window surface. Mobile runtimes reject this kind.'
-    : 'Transient modal surface inside the current app. Use it for lightweight local UI.';
+    : 'Overlay surface composited on top of the host activity content. Cross-platform.';
 
   React.useEffect(() => {
     if (!supportsSurfaceWindow && surfaceKind === 'window') {
-      setSurfaceKind('popup');
+      setSurfaceKind('overlay');
     }
   }, [supportsSurfaceWindow, surfaceKind]);
 
@@ -163,14 +163,14 @@ export default function UIPage() {
               <div className="px-4 py-4 space-y-4">
                 <div className="space-y-3">
                   <div className="text-xs text-gray-500 leading-5 bg-gray-50 rounded-lg px-3 py-2">
-                    Popup is cross-platform. Window is shown only on desktop runtimes.
+                    Overlay is cross-platform. Window is shown only on desktop runtimes.
                   </div>
 
                   <div>
                     <div className="text-xs uppercase text-gray-500 tracking-wide mb-2">Kind</div>
                     {/* Segmented control. Visually distinct from the blue CTA
                         below so the selected item doesn't look like it's the
-                        same affordance as "Open popup". */}
+                        same affordance as "Open overlay". */}
                     <div className={`grid ${supportsSurfaceWindow ? 'grid-cols-2' : 'grid-cols-1'} gap-1 bg-gray-100 rounded-lg p-1`}>
                       {surfaceKinds.map((kind) => {
                         const active = surfaceKind === kind;
@@ -191,10 +191,10 @@ export default function UIPage() {
                     </div>
                   </div>
 
-                  {surfaceKind === 'popup' ? (
+                  {surfaceKind === 'overlay' ? (
                   <>
                     <div>
-                    <div className="text-xs uppercase text-gray-500 tracking-wide mb-2">Popup Size</div>
+                    <div className="text-xs uppercase text-gray-500 tracking-wide mb-2">Overlay Size</div>
                     <div className="flex items-center justify-between text-xs text-gray-500 tracking-wide">
                       <span>Width</span>
                       <span className="text-gray-700 font-mono">{surfaceWidthRatio.toFixed(2)}</span>
@@ -240,7 +240,7 @@ export default function UIPage() {
                     {surfaceDescription}
                   </div>
 
-                  {surfaceKind === 'popup' && (
+                  {surfaceKind === 'overlay' && (
                   <div>
                     <div className="text-xs uppercase text-gray-500 tracking-wide mb-2">
                       Position

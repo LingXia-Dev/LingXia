@@ -190,11 +190,17 @@ export type SurfaceCloseReason =
   | 'owner_closed'
   | 'app_closed'
   | 'failed'
+  /**
+   * The SDK reclaimed a long-hidden overlay surface for resource reasons.
+   * Treat as a normal close: the page instance is gone; further postMessage /
+   * show / hide calls will fail. The opener may immediately reopen if needed.
+   */
+  | 'reclaimed'
   | 'unknown';
 
 export interface SurfaceClosedEvent {
   id: string;
-  kind: 'popup' | 'window';
+  kind: 'overlay' | 'window';
   reason: SurfaceCloseReason;
 }
 
@@ -207,13 +213,13 @@ export interface SurfaceClosedEvent {
  */
 export interface SurfaceVisibilityEvent {
   id: string;
-  kind: 'popup' | 'window';
+  kind: 'overlay' | 'window';
   source: 'opener' | 'page';
 }
 
 export interface Surface {
   readonly id: string;
-  readonly kind: 'popup' | 'window';
+  readonly kind: 'overlay' | 'window';
   /**
    * Last-known visibility, kept in sync with the native side via show/hide
    * events. False once the surface has been closed. Safe to bind into

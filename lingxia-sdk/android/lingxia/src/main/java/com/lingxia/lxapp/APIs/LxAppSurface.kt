@@ -557,7 +557,7 @@ internal object LxAppSurface {
     private fun dp(activity: Activity, value: Double): Int = (value * activity.resources.displayMetrics.density).roundToInt()
 
     private fun normalizeReason(reason: String): String = when (reason.trim()) {
-        "user", "programmatic", "owner_closed", "app_closed", "failed" -> reason.trim()
+        "user", "programmatic", "owner_closed", "app_closed", "reclaimed", "failed" -> reason.trim()
         else -> "unknown"
     }
 
