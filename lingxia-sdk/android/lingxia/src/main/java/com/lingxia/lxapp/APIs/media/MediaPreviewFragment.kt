@@ -75,6 +75,13 @@ internal class MediaPreviewFragment : Fragment() {
     private var windowUiSnapshot: ImmersiveWindowUi.Snapshot? = null
     private var previewItems: List<PreviewItem> = emptyList()
     private var callbackId: Long = 0L
+    /**
+     * Callback id for the "first pixel composited" signal that backs the
+     * JS-side `PreviewMediaHandle.presented` Promise. Fired exactly once
+     * for the first item that becomes visually ready (image loaded or video
+     * first-frame). Zero once signaled, to make the fire idempotent.
+     */
+    private var presentedCallbackId: Long = 0L
     private var currentIndex: Int = 0
     private var currentPagerPosition: Int = 0
     private var advance: PreviewAdvance = PreviewAdvance.MANUAL
@@ -165,6 +172,7 @@ internal class MediaPreviewFragment : Fragment() {
         runtimeProfile = PreviewRuntimeProfile.from(requireContext())
         previewItems = readPreviewItems()
         callbackId = arguments?.getLong(ARG_CALLBACK_ID, 0L) ?: 0L
+        presentedCallbackId = arguments?.getLong(ARG_PRESENTED_CALLBACK_ID, 0L) ?: 0L
         advance = PreviewAdvance.fromRaw(arguments?.getString(ARG_ADVANCE))
         currentIndex = clampIndex(arguments?.getInt(ARG_START_INDEX, 0) ?: 0)
         currentPagerPosition = initialPagerPosition(currentIndex)
@@ -288,11 +296,30 @@ internal class MediaPreviewFragment : Fragment() {
     }
 
     private fun sendPreviewResult(reason: String) {
+        // Always settle `presented` before sending the completion result.
+        // Degenerate path: session ends (manual close, error) before any
+        // item rendered. The JS-side fallback already wakes presented on
+        // completion, but native side fires too so the message ordering
+        // stays predictable.
+        signalPresentedOnce()
         if (callbackId <= 0L) return
         val result = JSONObject()
             .put("reason", reason)
             .put("lastIndex", currentIndex)
         NativeApi.onCallback(callbackId, true, result.toString())
+    }
+
+    /**
+     * Fire the JS-side `presented` Promise exactly once. Safe to call from
+     * multiple visual-ready paths (image loaded vs video first frame) — the
+     * second call is a no-op. Always called with a `{}` payload because the
+     * presented Promise carries no useful value, just the timing signal.
+     */
+    private fun signalPresentedOnce() {
+        val id = presentedCallbackId
+        if (id <= 0L) return
+        presentedCallbackId = 0L
+        NativeApi.onCallback(id, true, "{}")
     }
 
     private fun cleanupPreviewResources() {
@@ -771,6 +798,8 @@ internal class MediaPreviewFragment : Fragment() {
                     if (!finished && gen == sharedPlayerActivationGen) {
                         revealPreviewRoot()
                         host.alpha = 1f
+                        // First video frame is on screen: settle `presented`.
+                        signalPresentedOnce()
                         host.postDelayed({
                             if (!finished && gen == sharedPlayerActivationGen) {
                                 hideTransitionOverlay()
@@ -1016,9 +1045,22 @@ internal class MediaPreviewFragment : Fragment() {
             // player has decoded its first frame yet. Keep the transition
             // overlay up until the shared player's firstframerendered event
             // fires (handled in onSharedPlayerFirstFrame). For images, the
-            // visual is fully on-screen now, so we can hide it immediately.
+            // visual is fully on-screen now, so we can hide it immediately
+            // and signal the JS-side `presented` Promise — deferred by one
+            // animation frame so the bitmap has actually been composited to
+            // screen before the consumer's .then() runs. The video path
+            // already goes through postAfterAnimationFrames, so this keeps
+            // the two paths' timing guarantees in sync.
             if (item?.mediaType != MediaPreviewType.VIDEO) {
                 hideTransitionOverlay()
+                val root = previewRoot
+                if (root != null) {
+                    root.postOnAnimation {
+                        if (!finished) signalPresentedOnce()
+                    }
+                } else {
+                    signalPresentedOnce()
+                }
             }
             scheduleCurrentItemBehavior("visual_ready")
         }
@@ -1481,6 +1523,7 @@ internal class MediaPreviewFragment : Fragment() {
         private const val ARG_ADVANCE = "arg_advance"
         private const val ARG_SHOW_INDEX_INDICATOR = "arg_show_index_indicator"
         private const val ARG_CALLBACK_ID = "arg_callback_id"
+        private const val ARG_PRESENTED_CALLBACK_ID = "arg_presented_callback_id"
         private const val TAG = "MediaPreviewOverlay"
         private const val LOG_TAG = "LingXia.MediaPreview"
         private const val PLAYER_TIMEUPDATE_LOG_INTERVAL_MS = 5_000L
@@ -1497,7 +1540,8 @@ internal class MediaPreviewFragment : Fragment() {
             startIndex: Int,
             advance: String,
             showIndexIndicator: Boolean,
-            callbackId: Long
+            callbackId: Long,
+            presentedCallbackId: Long
         ) {
             val fm = activity.supportFragmentManager
             (fm.findFragmentByTag(TAG) as? MediaPreviewFragment)?.finishPreview("interrupted")
@@ -1519,7 +1563,8 @@ internal class MediaPreviewFragment : Fragment() {
                             startIndex = startIndex,
                             advance = advance,
                             showIndexIndicator = showIndexIndicator,
-                            callbackId = callbackId
+                            callbackId = callbackId,
+                            presentedCallbackId = presentedCallbackId
                         )
                     }
                 }
@@ -1532,7 +1577,8 @@ internal class MediaPreviewFragment : Fragment() {
                 startIndex = startIndex,
                 advance = advance,
                 showIndexIndicator = showIndexIndicator,
-                callbackId = callbackId
+                callbackId = callbackId,
+                presentedCallbackId = presentedCallbackId
             )
         }
 
@@ -1542,7 +1588,8 @@ internal class MediaPreviewFragment : Fragment() {
             startIndex: Int,
             advance: String,
             showIndexIndicator: Boolean,
-            callbackId: Long
+            callbackId: Long,
+            presentedCallbackId: Long
         ) {
             val fm = activity.supportFragmentManager
             val fragment = MediaPreviewFragment().apply {
@@ -1552,6 +1599,7 @@ internal class MediaPreviewFragment : Fragment() {
                     putString(ARG_ADVANCE, advance)
                     putBoolean(ARG_SHOW_INDEX_INDICATOR, showIndexIndicator)
                     putLong(ARG_CALLBACK_ID, callbackId)
+                    putLong(ARG_PRESENTED_CALLBACK_ID, presentedCallbackId)
                 }
             }
 

@@ -35,8 +35,18 @@ pub struct PreviewMediaRequest {
     pub start_index: i32,
     pub advance: PreviewMediaAdvance,
     pub show_index_indicator: bool,
-    /// Internal callback_id for abort signal support.
+    /// Callback_id for the final preview result. Fires once when the session
+    /// ends (manual/auto/interrupted/error). Payload: serialized
+    /// `PreviewMediaResultObj` ({reason, lastIndex}).
     pub callback_id: u64,
+    /// Callback_id for the "first frame composited" signal. Fires once when
+    /// the first pixel of the underlying media has been painted to screen.
+    /// Native MAY skip on degenerate paths (abort before any item rendered,
+    /// process tear-down, etc.) — the JS-side `presented` Promise is also
+    /// woken by a fallback when `completed` settles, and by a total timeout
+    /// after that, so it never hangs. The callback payload, when fired, is
+    /// an empty JSON object `{}`.
+    pub presented_callback_id: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

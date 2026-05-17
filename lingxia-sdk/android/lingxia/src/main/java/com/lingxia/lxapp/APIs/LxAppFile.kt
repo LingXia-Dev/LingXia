@@ -331,6 +331,9 @@ internal object LxAppFile {
                     advance = "manual",
                     showIndexIndicator = false,
                     callbackId = 0L,
+                    // reviewDocument has no JS-side `presented` Promise to
+                    // coordinate — it's a fire-and-forget native preview.
+                    presentedCallbackId = 0L,
                 )
             }
             true

@@ -102,8 +102,8 @@ import type {
   ExtractVideoThumbnailResult,
   ChooseMediaOptions,
   ChosenMediaEntry,
+  PreviewMediaHandle,
   PreviewMediaOptions,
-  PreviewMediaResult,
   SaveMediaOptions,
   ScanCodeOptions,
   ScanCodeResult,
@@ -136,8 +136,8 @@ export interface SurfaceApi {
   /**
    * Dynamically opens a page or URL in a runtime-managed surface.
    *
-   * `popup` is cross-platform. `window` is a desktop capability and rejects on
-   * mobile platforms.
+   * `overlay` is cross-platform. `window` is a desktop capability and rejects
+   * on mobile platforms.
    */
   open(options: SurfaceOpenOptions): Promise<Surface>;
 }
@@ -207,11 +207,16 @@ export interface Lx {
    * - a single-item object for per-item options like `rotate`, `objectFit`, or `durationMs`
    * - a sequence object for multi-item preview with `sources`, `startIndex`, and `advance`
    *
-   * Resolves when preview session is closed (manual/auto/interrupted/error).
-   * Rejects with a cancellation error if `signal` is aborted, and abort also requests
-   * the active native preview session to close immediately.
+   * Returns a {@link PreviewMediaHandle} synchronously. Await `handle.completed`
+   * for the final session result (`reason`, `lastIndex`). Subscribe to
+   * `handle.presented` to learn when the first pixel hits the screen — useful
+   * for coordinating a hide of any overlay surface that was previously visible.
+   *
+   * `handle.completed` rejects with a cancellation error if `signal` is aborted;
+   * abort also requests the active native preview session to close immediately.
+   * `handle.presented` never rejects.
    */
-  previewMedia(options: PreviewMediaOptions): Promise<PreviewMediaResult>;
+  previewMedia(options: PreviewMediaOptions): PreviewMediaHandle;
 
   saveImageToPhotosAlbum(options: SaveMediaOptions): Promise<void>;
   saveVideoToPhotosAlbum(options: SaveMediaOptions): Promise<void>;

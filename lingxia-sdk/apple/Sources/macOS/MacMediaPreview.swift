@@ -52,7 +52,7 @@ extension LxAppMedia {
         let advance: String?
     }
 
-    nonisolated static func previewMedia(items_json: RustStr, callback_id: UInt64) -> Bool {
+    nonisolated static func previewMedia(items_json: RustStr, callback_id: UInt64, presented_callback_id: UInt64) -> Bool {
         let itemsJson = items_json.toString()
 
         guard let jsonData = itemsJson.data(using: .utf8) else {
@@ -74,12 +74,12 @@ extension LxAppMedia {
 
         if Thread.isMainThread {
             return MainActor.assumeIsolated {
-                previewMediaOnMain(request: request, callbackId: callback_id)
+                previewMediaOnMain(request: request, callbackId: callback_id, presentedCallbackId: presented_callback_id)
             }
         }
         var started = false
         DispatchQueue.main.sync {
-            started = previewMediaOnMain(request: request, callbackId: callback_id)
+            started = previewMediaOnMain(request: request, callbackId: callback_id, presentedCallbackId: presented_callback_id)
         }
         return started
     }
@@ -98,7 +98,7 @@ extension LxAppMedia {
     }
 
     @MainActor
-    private static func previewMediaOnMain(request: PreviewMediaRequestPayload, callbackId: UInt64) -> Bool {
+    private static func previewMediaOnMain(request: PreviewMediaRequestPayload, callbackId: UInt64, presentedCallbackId: UInt64) -> Bool {
         let urls = request.sources.map { payload -> URL in
             if let parsed = URL(string: payload.path), parsed.scheme != nil {
                 return parsed
@@ -108,6 +108,13 @@ extension LxAppMedia {
         guard !urls.isEmpty else {
             os_log(.error, log: previewLog, "previewMedia called with no valid URLs")
             return false
+        }
+        // macOS uses QuickLook which is presented synchronously; fire the
+        // `presented` signal immediately when we hand off to showQuickLook
+        // so the JS-side Promise resolves promptly. The Promise carries no
+        // value, just timing.
+        if presentedCallbackId != 0 {
+            let _ = onCallback(presentedCallbackId, true, "{}")
         }
         return showQuickLook(urls: urls, startIndex: request.startIndex ?? 0, callbackId: callbackId)
     }

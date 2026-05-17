@@ -26,7 +26,7 @@ extension LxAppMedia {
         let showIndexIndicator: Bool
     }
 
-    nonisolated static func previewMedia(items_json: RustStr, callback_id: UInt64) -> Bool {
+    nonisolated static func previewMedia(items_json: RustStr, callback_id: UInt64, presented_callback_id: UInt64) -> Bool {
         let itemsJson = items_json.toString()
         guard let jsonData = itemsJson.data(using: .utf8) else {
             os_log(.error, log: previewLog, "Failed to convert items JSON to data")
@@ -47,18 +47,18 @@ extension LxAppMedia {
 
         if Thread.isMainThread {
             return MainActor.assumeIsolated {
-                previewMediaOnMain(request: request, callbackId: callback_id)
+                previewMediaOnMain(request: request, callbackId: callback_id, presentedCallbackId: presented_callback_id)
             }
         }
         var started = false
         DispatchQueue.main.sync {
-            started = previewMediaOnMain(request: request, callbackId: callback_id)
+            started = previewMediaOnMain(request: request, callbackId: callback_id, presentedCallbackId: presented_callback_id)
         }
         return started
     }
 
     @MainActor
-    private static func previewMediaOnMain(request: PreviewMediaRequestPayload, callbackId: UInt64) -> Bool {
+    private static func previewMediaOnMain(request: PreviewMediaRequestPayload, callbackId: UInt64, presentedCallbackId: UInt64) -> Bool {
         guard let windowScene = UIApplication.shared.connectedScenes
             .compactMap({ $0 as? UIWindowScene })
             .first(where: { $0.activationState == .foregroundActive })
@@ -73,6 +73,7 @@ extension LxAppMedia {
             items: previewItems,
             startIndex: request.startIndex,
             callbackId: callbackId,
+            presentedCallbackId: presentedCallbackId,
             advance: PreviewMediaAdvance(rawValue: request.advance),
             showIndexIndicator: request.showIndexIndicator
         )
@@ -89,21 +90,7 @@ extension LxAppMedia {
         activePreviewController = previewController
         previewController.onInitialContentReady = { [weak previewController, weak window] in
             guard let previewController, activePreviewController === previewController else { return }
-            window?.makeKeyAndVisible()
-            window?.layoutIfNeeded()
-            previewController.view.layoutIfNeeded()
-            DispatchQueue.main.async { [weak previewController, weak window] in
-                guard let previewController, activePreviewController === previewController else { return }
-                window?.layoutIfNeeded()
-                previewController.view.layoutIfNeeded()
-                UIView.animate(
-                    withDuration: 0.12,
-                    delay: 0,
-                    options: [.curveEaseOut, .beginFromCurrentState]
-                ) {
-                    window?.alpha = 1
-                }
-            }
+            previewController.beginPreviewWindowPresentation(window)
         }
         previewController.loadViewIfNeeded()
         return true
@@ -289,6 +276,10 @@ private extension String {
 private final class MediaPreviewViewController: UIViewController, UIGestureRecognizerDelegate {
     private let items: [PreviewMediaItem]
     fileprivate let callbackId: UInt64
+    /// JS-side `presented` Promise callback id; fired exactly once when the
+    /// first item becomes visually ready. Zero once fired, to keep the call
+    /// idempotent across multiple visual-ready paths.
+    private var presentedCallbackId: UInt64
     private let advance: PreviewMediaAdvance
     private var currentIndex: Int
     private var didCleanup = false
@@ -300,6 +291,10 @@ private final class MediaPreviewViewController: UIViewController, UIGestureRecog
     private var isTransitioning = false
     private var previewTransitionGeneration: UInt64 = 0
     private let showIndexIndicator: Bool
+    private var initialVisualReady = false
+    private var previewWindowPresentationStarted = false
+    private var previewWindowVisible = false
+    private weak var previewWindowForPresentation: UIWindow?
     fileprivate var onInitialContentReady: (() -> Void)?
 
     private lazy var closeButton: UIButton = {
@@ -361,15 +356,26 @@ private final class MediaPreviewViewController: UIViewController, UIGestureRecog
         items: [PreviewMediaItem],
         startIndex: Int = 0,
         callbackId: UInt64,
+        presentedCallbackId: UInt64,
         advance: PreviewMediaAdvance,
         showIndexIndicator: Bool
     ) {
         self.items = items
         self.currentIndex = max(0, min(startIndex, items.count - 1))
         self.callbackId = callbackId
+        self.presentedCallbackId = presentedCallbackId
         self.advance = advance
         self.showIndexIndicator = showIndexIndicator
         super.init(nibName: nil, bundle: nil)
+    }
+
+    /// Fire the JS-side `presented` Promise exactly once. Safe to call
+    /// multiple times — second call is a no-op.
+    fileprivate func signalPresentedOnce() {
+        let id = presentedCallbackId
+        if id == 0 { return }
+        presentedCallbackId = 0
+        let _ = onCallback(id, true, "{}")
     }
 
     required init?(coder: NSCoder) {
@@ -379,6 +385,10 @@ private final class MediaPreviewViewController: UIViewController, UIGestureRecog
     deinit {
         if !didFinish {
             didFinish = true
+            // Settle `presented` first in case it never fired (degenerate
+            // path: deinit before any item rendered). Idempotent — no-op
+            // if already settled.
+            signalPresentedOnce()
             if callbackId > 0,
                let jsonData = try? JSONSerialization.data(
                 withJSONObject: [
@@ -494,6 +504,10 @@ private final class MediaPreviewViewController: UIViewController, UIGestureRecog
                 index: index,
                 firstFrame: firstFrame,
                 loopPlayback: shouldLoopCurrentVideo(at: index),
+                visualReadyHandler: { [weak self] readyIndex in
+                    guard let self, self.currentIndex == readyIndex else { return }
+                    self.markInitialVisualReady()
+                },
                 endedHandler: { [weak self] in
                     guard let self, self.currentIndex == index else { return }
                     self.handleVideoEnded()
@@ -511,6 +525,9 @@ private final class MediaPreviewViewController: UIViewController, UIGestureRecog
             return MediaPreviewImageController(item: item, index: index, zoomStateChanged: { [weak self] zoomed in
                 self?.isCurrentImageZoomed = zoomed
                 self?.updateManualNavigationGestures()
+            }, visualReadyHandler: { [weak self] readyIndex in
+                guard let self, self.currentIndex == readyIndex else { return }
+                self.markInitialVisualReady()
             }, dismissHandler: { [weak self] in self?.finishPreview(reason: .manual) })
         }
     }
@@ -532,13 +549,89 @@ private final class MediaPreviewViewController: UIViewController, UIGestureRecog
         controller.endAppearanceTransition()
         currentController = controller
         isCurrentImageZoomed = false
-        notifyInitialContentReady()
+        bootstrapControllerPresentation(controller)
+    }
+
+    /// Decide how aggressively to start the window-present animation when a
+    /// controller is first attached. Three regimes:
+    ///   - Image controllers: do nothing now; the image's own visualReady
+    ///     callback will drive both the window fade-in and the `presented`
+    ///     signal. We don't fade in over a still-loading image so the user
+    ///     never sees an empty window appear before content.
+    ///   - Video with embedded poster: poster is already on screen, so
+    ///     fast-path the visual-ready signal — window animates and
+    ///     `presented` fires right after it completes.
+    ///   - Video without poster: AVPlayer needs the window in the hierarchy
+    ///     (alpha-0 is fine) to reach viewDidAppear. Kick off only the
+    ///     window animation; `presented` still waits for the `.playing`
+    ///     event from the player.
+    private func bootstrapControllerPresentation(_ controller: UIViewController) {
+        guard let videoController = controller as? MediaPreviewVideoController else {
+            return
+        }
+        if videoController.hasFirstFramePoster {
+            markInitialVisualReady()
+        } else {
+            notifyInitialContentReady()
+        }
     }
 
     private func notifyInitialContentReady() {
         guard let onInitialContentReady else { return }
         self.onInitialContentReady = nil
         onInitialContentReady()
+    }
+
+    fileprivate func beginPreviewWindowPresentation(_ window: UIWindow?) {
+        if !previewWindowPresentationStarted {
+            previewWindowPresentationStarted = true
+            previewWindowForPresentation = window
+            window?.makeKeyAndVisible()
+            window?.layoutIfNeeded()
+            view.layoutIfNeeded()
+        }
+        animatePreviewWindowIfReady()
+    }
+
+    fileprivate func markPreviewWindowVisible() {
+        previewWindowVisible = true
+        signalPresentedIfReady()
+    }
+
+    fileprivate func markInitialVisualReady() {
+        if !initialVisualReady {
+            initialVisualReady = true
+        }
+        notifyInitialContentReady()
+        animatePreviewWindowIfReady()
+        signalPresentedIfReady()
+    }
+
+    private func signalPresentedIfReady() {
+        guard previewWindowVisible && initialVisualReady else { return }
+        signalPresentedOnce()
+    }
+
+    private func animatePreviewWindowIfReady() {
+        guard initialVisualReady, !previewWindowVisible else { return }
+        guard let window = previewWindowForPresentation else { return }
+        window.layoutIfNeeded()
+        view.layoutIfNeeded()
+        DispatchQueue.main.async { [weak self, weak window] in
+            guard let self, let window else { return }
+            guard self.initialVisualReady, !self.previewWindowVisible else { return }
+            window.layoutIfNeeded()
+            self.view.layoutIfNeeded()
+            UIView.animate(
+                withDuration: 0.12,
+                delay: 0,
+                options: [.curveEaseOut, .beginFromCurrentState]
+            ) {
+                window.alpha = 1
+            } completion: { [weak self] _ in
+                self?.markPreviewWindowVisible()
+            }
+        }
     }
 
     private func displayInitialControllerWhenReady(index: Int) {
@@ -882,6 +975,7 @@ private final class MediaPreviewViewController: UIViewController, UIGestureRecog
             return
         }
         didFinish = true
+        signalPresentedOnce()
         if callbackId > 0,
            let jsonData = try? JSONSerialization.data(
             withJSONObject: [
@@ -905,6 +999,7 @@ private final class MediaPreviewImageController: UIViewController, IndexedPrevie
     let index: Int
     private let item: PreviewMediaItem
     private let zoomStateChanged: (Bool) -> Void
+    private let visualReadyHandler: (Int) -> Void
     private let dismissHandler: () -> Void
 
     private lazy var zoomView: ZoomableImageView = {
@@ -915,13 +1010,24 @@ private final class MediaPreviewImageController: UIViewController, IndexedPrevie
         )
         view.translatesAutoresizingMaskIntoConstraints = false
         view.onZoomStateChanged = zoomStateChanged
+        view.onVisualReady = { [weak self] in
+            guard let self else { return }
+            self.visualReadyHandler(self.index)
+        }
         view.onDismiss = dismissHandler
         return view
     }()
 
-    init(item: PreviewMediaItem, index: Int, zoomStateChanged: @escaping (Bool) -> Void, dismissHandler: @escaping () -> Void) {
+    init(
+        item: PreviewMediaItem,
+        index: Int,
+        zoomStateChanged: @escaping (Bool) -> Void,
+        visualReadyHandler: @escaping (Int) -> Void,
+        dismissHandler: @escaping () -> Void
+    ) {
         self.item = item
         self.zoomStateChanged = zoomStateChanged
+        self.visualReadyHandler = visualReadyHandler
         self.dismissHandler = dismissHandler
         self.index = index
         super.init(nibName: nil, bundle: nil)
@@ -950,6 +1056,7 @@ private final class MediaPreviewVideoController: UIViewController, IndexedPrevie
     private let item: PreviewMediaItem
     private let firstFrame: UIImage?
     private let loopPlayback: Bool
+    private let visualReadyHandler: (Int) -> Void
     private let endedHandler: () -> Void
     private let errorHandler: () -> Void
     private let scrubStateChanged: (Bool) -> Void
@@ -958,13 +1065,19 @@ private final class MediaPreviewVideoController: UIViewController, IndexedPrevie
     private var player: LxMediaPlayer?
     private let firstFrameImageView = UIImageView()
     private var hasStartedPlayback = false
+    private var didSignalVisualReady = false
     fileprivate private(set) var isScrubbing = false
+
+    fileprivate var hasFirstFramePoster: Bool {
+        firstFrame != nil
+    }
 
     init(
         item: PreviewMediaItem,
         index: Int,
         firstFrame: UIImage?,
         loopPlayback: Bool,
+        visualReadyHandler: @escaping (Int) -> Void,
         endedHandler: @escaping () -> Void,
         errorHandler: @escaping () -> Void,
         scrubStateChanged: @escaping (Bool) -> Void
@@ -973,6 +1086,7 @@ private final class MediaPreviewVideoController: UIViewController, IndexedPrevie
         self.index = index
         self.firstFrame = firstFrame
         self.loopPlayback = loopPlayback
+        self.visualReadyHandler = visualReadyHandler
         self.endedHandler = endedHandler
         self.errorHandler = errorHandler
         self.scrubStateChanged = scrubStateChanged
@@ -1069,6 +1183,12 @@ private final class MediaPreviewVideoController: UIViewController, IndexedPrevie
         firstFrameImageView.image = nil
     }
 
+    private func markVisualReadyOnce() {
+        if didSignalVisualReady { return }
+        didSignalVisualReady = true
+        visualReadyHandler(index)
+    }
+
     private func embedPlayerInline() {
         view.layoutIfNeeded()
         let config = LxMediaPlayerConfig(
@@ -1095,6 +1215,7 @@ private final class MediaPreviewVideoController: UIViewController, IndexedPrevie
                 // black gap between attach and first decoded frame, i.e. the
                 // flicker the user reported.
                 self?.handOffFirstFrameToPlayerOverlay()
+                self?.markVisualReadyOnce()
             case .ended:
                 self?.endedHandler()
             case .error(let code, let message):
@@ -1135,7 +1256,9 @@ private final class ZoomableImageView: UIView, UIScrollViewDelegate {
     private let rotateDegrees: Int?
     private let objectFit: LxMediaObjectFit?
     var onZoomStateChanged: ((Bool) -> Void)?
+    var onVisualReady: (() -> Void)?
     var onDismiss: (() -> Void)?
+    private var didSignalVisualReady = false
 
     private let scrollView = UIScrollView()
     private let zoomContentView = UIView()
@@ -1240,8 +1363,17 @@ private final class ZoomableImageView: UIView, UIScrollViewDelegate {
                     imageView.tintColor = .white
                     self.applyImageRotationTransform()
                 }
+                self.notifyVisualReadyOnce()
             }
         }
+    }
+
+    private func notifyVisualReadyOnce() {
+        if didSignalVisualReady { return }
+        didSignalVisualReady = true
+        setNeedsLayout()
+        layoutIfNeeded()
+        onVisualReady?()
     }
 
     private func resolveImageContentMode() -> UIView.ContentMode {

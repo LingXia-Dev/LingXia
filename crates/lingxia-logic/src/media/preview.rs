@@ -10,9 +10,19 @@ use lingxia_service::media::{
 };
 use lxapp::{LxApp, lx};
 use rong::{
-    HostError, IntoJSObj, JSArray, JSContext, JSFunc, JSObject, JSResult, JSValue, RongJSError,
+    HostError, IntoJSObj, JSArray, JSContext, JSFunc, JSObject, JSResult, JSValue, Promise,
+    RongJSError,
 };
 use serde::Deserialize;
+use std::time::Duration;
+
+/// Hard cap on how long we wait for native to settle the preview session
+/// before rejecting `completed` ourselves. Native is expected to settle
+/// within a few seconds of the user closing or auto-advance finishing; a
+/// minute is generous enough to survive an unusually slow shutdown but
+/// short enough that a lost JNI call doesn't strand the JS Promise
+/// indefinitely.
+const PREVIEW_MEDIA_TOTAL_TIMEOUT: Duration = Duration::from_secs(60);
 
 #[derive(Debug, Clone)]
 struct RawPreviewMediaSource {
@@ -52,6 +62,12 @@ struct ParsedPreviewMediaRequest {
     signal: Option<JSObject>,
 }
 
+enum PreviewCompletion {
+    Native(Result<CallbackResult, tokio::sync::oneshot::error::RecvError>),
+    Aborted,
+    TimedOut,
+}
+
 impl AbortListener {
     fn attach(ctx: &JSContext, signal: JSObject) -> JSResult<(Self, oneshot::Receiver<()>)> {
         let add_event_listener = signal.get::<_, JSFunc>("addEventListener").map_err(|_| {
@@ -78,30 +94,37 @@ impl AbortListener {
 }
 
 pub fn init(ctx: &JSContext) -> JSResult<()> {
-    let preview_media_func = JSFunc::new(ctx, |ctx, options| async move {
-        preview_media(ctx, options).await
-    })?;
+    let preview_media_func = JSFunc::new(ctx, |ctx, options| preview_media(ctx, options))?;
     lx::register_js_api(ctx, "previewMedia", preview_media_func)?;
     Ok(())
 }
 
-async fn preview_media(ctx: JSContext, options: JSValue) -> JSResult<PreviewMediaResultObj> {
+/// Synchronously returns a JS handle `{ presented, completed }` where:
+/// - `presented` is a Promise that resolves with no value when the first
+///   pixel of the underlying media is composited to screen. It also
+///   resolves unconditionally once `completed` settles, so consumers can
+///   safely ignore it (it never rejects).
+/// - `completed` is a Promise that resolves with `PreviewMediaResultObj`
+///   when the preview session ends, or rejects on abort / error.
+fn preview_media(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
     let lxapp = LxApp::from_ctx(&ctx)?;
+    let parsed = parse_preview_request(&lxapp, options)?;
     let ParsedPreviewMediaRequest {
         items,
         start_index,
         advance,
         show_index_indicator,
         signal,
-    } = parse_preview_request(&lxapp, options)?;
+    } = parsed;
 
+    // Early-abort: build a handle whose Promises are pre-settled.
     if let Some(signal_obj) = signal.as_ref() {
         if signal_obj.get::<_, bool>("aborted").unwrap_or(false) {
-            return Err(js_abort_error("previewMedia aborted"));
+            return build_pre_aborted_handle(&ctx);
         }
     }
 
-    let (mut abort_listener, abort_rx) = match signal {
+    let (abort_listener, abort_rx) = match signal {
         Some(signal_obj) => {
             let (listener, rx) = AbortListener::attach(&ctx, signal_obj)?;
             (Some(listener), Some(rx))
@@ -109,48 +132,118 @@ async fn preview_media(ctx: JSContext, options: JSValue) -> JSResult<PreviewMedi
         None => (None, None),
     };
 
-    let (callback_id, receiver) = get_callback();
+    let (completed_cb_id, completed_rx) = get_callback();
+    let (presented_cb_id, presented_rx) = get_callback();
+
     let request = PreviewMediaRequest {
         items,
         start_index,
         advance,
         show_index_indicator,
-        callback_id,
+        callback_id: completed_cb_id,
+        presented_callback_id: presented_cb_id,
     };
 
     if let Err(err) = lingxia_service::media::preview_media(&*lxapp.runtime, request) {
-        if let Some(listener) = abort_listener.take() {
+        if let Some(listener) = abort_listener {
             listener.detach();
         }
-        let _ = remove_callback(callback_id);
+        let _ = remove_callback(completed_cb_id);
+        let _ = remove_callback(presented_cb_id);
         return Err(js_error_from_platform_error(&err));
     }
 
-    let callback_result = if let Some(abort_rx) = abort_rx {
-        match select(receiver, abort_rx).await {
-            Either::Left((callback_result, _)) => {
-                callback_result.map_err(|_| js_timeout_error("previewMedia callback timed out"))?
+    // Fallback channel: the completed-Promise's future signals this when it
+    // finishes (cleanly or via abort) so the presented-Promise always settles
+    // even if native never fired the presented callback. Both futures run on
+    // the same JS thread via Promise::from_future, so no Send bounds need to
+    // be satisfied and we don't need an external executor.
+    let (presented_fallback_tx, presented_fallback_rx) = oneshot::channel::<()>();
+
+    let presented = Promise::from_future(&ctx, None, async move {
+        // Whichever arrives first — native callback or fallback — resolves
+        // the presented Promise. Drops the other receiver after the race.
+        let _ = select(presented_rx, presented_fallback_rx).await;
+        Ok::<(), RongJSError>(())
+    })?;
+
+    // Hard total-timeout fallback: even if native loses both callbacks
+    // (JNI crash, sub-process abort, etc.) we MUST settle `completed` so the
+    // JS Promise doesn't hang forever. Drive it from a separate executor
+    // task; the JS-thread future just awaits the oneshot.
+    let (timeout_tx, timeout_rx) = oneshot::channel::<()>();
+    rong_rt::RongExecutor::global().spawn(async move {
+        tokio::time::sleep(PREVIEW_MEDIA_TOTAL_TIMEOUT).await;
+        let _ = timeout_tx.send(());
+    });
+
+    let lxapp_for_cancel = lxapp.clone();
+    let completed = Promise::from_future(&ctx, None, async move {
+        // Pick a winner among three signals: native completed callback, the
+        // (optional) abort, or the total-timeout. Use nested select so we can
+        // attribute each branch to a distinct error type / cleanup action.
+        let outcome: PreviewCompletion = match abort_rx {
+            Some(abort_rx) => match select(completed_rx, select(abort_rx, timeout_rx)).await {
+                Either::Left((cb, _)) => PreviewCompletion::Native(cb),
+                Either::Right((Either::Left((_aborted, _)), _)) => PreviewCompletion::Aborted,
+                Either::Right((Either::Right((_timed_out, _)), _)) => PreviewCompletion::TimedOut,
+            },
+            None => match select(completed_rx, timeout_rx).await {
+                Either::Left((cb, _)) => PreviewCompletion::Native(cb),
+                Either::Right((_timed_out, _)) => PreviewCompletion::TimedOut,
+            },
+        };
+
+        let result: JSResult<PreviewMediaResultObj> = match outcome {
+            PreviewCompletion::Native(cb) => cb
+                .map_err(|_| js_timeout_error("previewMedia callback timed out"))
+                .and_then(parse_preview_callback_result),
+            PreviewCompletion::Aborted => {
+                let _ = remove_callback(completed_cb_id);
+                let _ = lingxia_service::media::cancel_preview(
+                    &*lxapp_for_cancel.runtime,
+                    completed_cb_id,
+                );
+                Err(js_abort_error("previewMedia aborted"))
             }
-            Either::Right((_aborted, _)) => {
-                let _ = remove_callback(callback_id);
-                let _ = lingxia_service::media::cancel_preview(&*lxapp.runtime, callback_id);
-                if let Some(listener) = abort_listener.take() {
-                    listener.detach();
-                }
-                return Err(js_abort_error("previewMedia aborted"));
+            PreviewCompletion::TimedOut => {
+                let _ = remove_callback(completed_cb_id);
+                let _ = lingxia_service::media::cancel_preview(
+                    &*lxapp_for_cancel.runtime,
+                    completed_cb_id,
+                );
+                Err(js_timeout_error("previewMedia timed out"))
             }
+        };
+
+        if let Some(listener) = abort_listener {
+            listener.detach();
         }
-    } else {
-        receiver
-            .await
-            .map_err(|_| js_timeout_error("previewMedia callback timed out"))?
-    };
+        // Drop any still-registered presented callback (degenerate case
+        // where native never signaled it before the session ended).
+        let _ = remove_callback(presented_cb_id);
+        // Always wake the presented Promise; if it already resolved via the
+        // native callback, this sender just drops harmlessly.
+        let _ = presented_fallback_tx.send(());
 
-    if let Some(listener) = abort_listener.take() {
-        listener.detach();
-    }
+        result
+    })?;
 
-    parse_preview_callback_result(callback_result)
+    let handle = JSObject::new(&ctx);
+    handle.set("presented", presented)?;
+    handle.set("completed", completed)?;
+    Ok(handle)
+}
+
+fn build_pre_aborted_handle(ctx: &JSContext) -> JSResult<JSObject> {
+    let presented = Promise::from_future(ctx, None, async { Ok::<(), RongJSError>(()) })?;
+    let completed = Promise::from_future(ctx, None, async {
+        Err::<PreviewMediaResultObj, RongJSError>(js_abort_error("previewMedia aborted"))
+    })?;
+    let handle = JSObject::new(ctx);
+    handle.set("presented", presented)?;
+    handle.set("completed", completed)?;
+    Ok(handle)
 }
 
 fn parse_preview_request(lxapp: &LxApp, options: JSValue) -> JSResult<ParsedPreviewMediaRequest> {

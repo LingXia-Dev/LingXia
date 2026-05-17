@@ -186,7 +186,7 @@ mod bridge {
         fn hide_surface(id: &str, appid: &str) -> bool;
 
         #[swift_bridge(swift_name = "LxAppMedia.previewMedia")]
-        fn preview_media(items_json: &str, callback_id: u64) -> bool;
+        fn preview_media(items_json: &str, callback_id: u64, presented_callback_id: u64) -> bool;
 
         #[swift_bridge(swift_name = "LxAppMedia.cancelPreview")]
         fn cancel_preview_media(callback_id: u64) -> bool;

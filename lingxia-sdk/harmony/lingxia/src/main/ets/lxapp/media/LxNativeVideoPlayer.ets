@@ -2325,6 +2325,7 @@ export struct LxNativeVideoPlayer {
     LxNativeVideoPlayer.hasEverRenderedFrame.add(this.componentId);
     // Real first frame is on screen; transition overlay can come down.
     this.hideOverlay();
+    this.emitEvent('firstframerendered', new VideoEmptyDetail());
   }
 
   /** Map config.objectFit to ArkUI ImageFit for the transition overlay. */

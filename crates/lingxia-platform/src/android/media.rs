@@ -98,6 +98,7 @@ fn preview_media_impl(request: PreviewMediaRequest) -> Result<(), Box<dyn std::e
     let advance = request.advance.as_str();
     let show_index_indicator = request.show_index_indicator;
     let callback_id = request.callback_id as jlong;
+    let presented_callback_id = request.presented_callback_id as jlong;
 
     with_env(|env| {
         let payload_class: &JClass = payload_class_ref.as_ref();
@@ -169,13 +170,16 @@ fn preview_media_impl(request: PreviewMediaRequest) -> Result<(), Box<dyn std::e
         env.call_static_method(
             class,
             jni_str!("previewMedia"),
-            jni_sig!("([Lcom/lingxia/lxapp/APIs/media/PreviewMediaPayload;ILjava/lang/String;ZJ)V"),
+            jni_sig!(
+                "([Lcom/lingxia/lxapp/APIs/media/PreviewMediaPayload;ILjava/lang/String;ZJJ)V"
+            ),
             &[
                 JValue::Object(&payload_array),
                 JValue::Int(start_index),
                 JValue::Object(&advance_obj),
                 JValue::Bool(jboolean::from(show_index_indicator)),
                 JValue::Long(callback_id),
+                JValue::Long(presented_callback_id),
             ],
         )?;
 

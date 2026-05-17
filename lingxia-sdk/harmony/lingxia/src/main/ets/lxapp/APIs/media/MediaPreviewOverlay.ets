@@ -26,6 +26,12 @@ export interface MediaPreviewPageParams {
   items: MediaPreviewItem[];
   initialIndex?: number;
   callbackId?: string;
+  /**
+   * Callback id for the JS-side `presented` Promise. Fired once when the
+   * first item becomes visually ready. Omit / pass empty for callers that
+   * don't need the signal — overlay then no-ops on it.
+   */
+  presentedCallbackId?: string;
   advance?: MediaPreviewAdvance;
   showIndexIndicator: boolean;
 }
@@ -45,6 +51,11 @@ export class MediaPreviewOverlayManager {
   private static activePreviewPlayers: Set<string> = new Set();
   private static currentIndex: number = 0;
   private static callbackSent: boolean = false;
+  /**
+   * Pending JS-side `presented` Promise callback id. Set in show(); cleared
+   * after firing or on overlay teardown to keep the signal idempotent.
+   */
+  private static pendingPresentedCallbackId: string = '';
 
   private static listeners: Set<() => void> = new Set();
 
@@ -62,12 +73,14 @@ export class MediaPreviewOverlayManager {
       items: params.items,
       initialIndex: clampedIndex,
       callbackId: params.callbackId,
+      presentedCallbackId: params.presentedCallbackId,
       advance: params.advance ?? 'manual',
       showIndexIndicator: params.showIndexIndicator
     };
     MediaPreviewOverlayManager.isShowing = true;
     MediaPreviewOverlayManager.currentIndex = clampedIndex;
     MediaPreviewOverlayManager.callbackSent = false;
+    MediaPreviewOverlayManager.pendingPresentedCallbackId = String(params.presentedCallbackId ?? '').trim();
     hilog.info(DOMAIN, TAG, `Showing media preview overlay with ${params.items.length} items`);
     MediaPreviewOverlayManager.notifyListeners();
   }
@@ -162,7 +175,47 @@ export class MediaPreviewOverlayManager {
     MediaPreviewOverlayManager.listeners.forEach(listener => listener());
   }
 
+  /**
+   * Fire the JS-side `presented` Promise exactly once. Safe to call from
+   * multiple visual-ready paths (first image painted / first video frame /
+   * teardown fallback) — second call is a no-op.
+   *
+   * Use this directly only from teardown paths where the visual is no
+   * longer on screen anyway. Visual-ready paths should go through
+   * {@link signalPresentedAfterCompositorCommit} so the consumer's `.then`
+   * runs after the first pixel has actually been painted, matching the
+   * Android/iOS timing semantics.
+   */
+  public static signalPresentedOnce(): void {
+    const id = MediaPreviewOverlayManager.pendingPresentedCallbackId;
+    if (!id) {
+      return;
+    }
+    MediaPreviewOverlayManager.pendingPresentedCallbackId = '';
+    onCallback(id, true, '{}');
+  }
+
+  /**
+   * Defer {@link signalPresentedOnce} until after the next compositor tick
+   * so the consumer's `presented.then(…)` callback runs against a frame
+   * that has already painted the preview content. `setTimeout(0)` schedules
+   * to the next macrotask, which Harmony's ArkTS runtime processes after
+   * the pending paint commit.
+   */
+  public static signalPresentedAfterCompositorCommit(): void {
+    if (!MediaPreviewOverlayManager.pendingPresentedCallbackId) {
+      return;
+    }
+    setTimeout(() => {
+      MediaPreviewOverlayManager.signalPresentedOnce();
+    }, 0);
+  }
+
   private static emitSessionResult(reason: MediaPreviewCloseReason): void {
+    // Settle `presented` first so the JS Promise resolves even on a
+    // session that ended before any item painted (degenerate path).
+    MediaPreviewOverlayManager.signalPresentedOnce();
+
     const callbackId = String(MediaPreviewOverlayManager.overlayData?.callbackId ?? '').trim();
     if (!callbackId || MediaPreviewOverlayManager.callbackSent) {
       return;
@@ -400,6 +453,11 @@ struct MediaPreviewContent {
                 if (this.currentIndex === index) {
                   this.handleVideoTerminal(event);
                 }
+              },
+              onVisualReady: () => {
+                if (this.currentIndex === index) {
+                  MediaPreviewOverlayManager.signalPresentedAfterCompositorCommit();
+                }
               }
             })
               .width('100%')
@@ -595,6 +653,7 @@ struct MediaViewer {
   onZoomStateChanged: (zoomed: boolean) => void = () => {};
   onDismiss: () => void = () => {};
   onVideoTerminal: (event: 'ended' | 'error') => void = () => {};
+  onVisualReady: () => void = () => {};
 
   @State private imageScale: number = 1;
   // Video player state
@@ -1030,6 +1089,11 @@ struct MediaViewer {
           this.detectVideoOrientation();
         }
         break;
+      case 'firstframerendered':
+        if (this.isActive) {
+          this.onVisualReady();
+        }
+        break;
       case 'play':
       case 'playrequest':
         this.videoState.isPlaying = true;
@@ -1305,6 +1369,11 @@ struct MediaViewer {
             .height('100%')
             .objectFit(this.resolveImageFit(this.item.objectFit))
             .scale({ x: this.imageScale, y: this.imageScale })
+            .onComplete(() => {
+              if (this.isActive) {
+                this.onVisualReady();
+              }
+            })
             .gesture(
               PinchGesture({ fingers: 2, distance: 1 })
                 .onActionUpdate((event: GestureEvent) => {

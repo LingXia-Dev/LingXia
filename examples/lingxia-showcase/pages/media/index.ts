@@ -676,7 +676,15 @@ Page({
     this.setData({ previewSessionBusy: true, previewSessionResult: null, previewSessionError: "" });
 
     try {
-      const result = await lx.previewMedia(request);
+      const handle = lx.previewMedia(request);
+      // Telemetry: log first-paint latency. The showcase doesn't have an
+      // underlying overlay to hide, so we just observe and log.
+      const startedAt = Date.now();
+      handle.presented.then(() => {
+        const ms = Date.now() - startedAt;
+        console.log("[media-demo] presented:", { latencyMs: ms });
+      });
+      const result = await handle.completed;
       this.setData({ previewSessionBusy: false, previewSessionResult: result, previewSessionError: "" });
       return result;
     } catch (error) {

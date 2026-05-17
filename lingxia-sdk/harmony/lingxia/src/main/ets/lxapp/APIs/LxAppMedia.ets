@@ -33,6 +33,10 @@ interface PreviewMediaRequestPayload {
   advance: string;
   showIndexIndicator: boolean;
   callbackId: string;
+  // JS-side `presented` Promise callback id; fired once when the first
+  // item becomes visually ready. May be "0" or empty for callers that
+  // don't care; native side then no-ops.
+  presentedCallbackId: string;
 }
 
 interface SaveMediaPayload {
@@ -1014,6 +1018,7 @@ export class LxAppMedia {
         items: items,
         initialIndex: Math.trunc(request.startIndex),
         callbackId: request.callbackId,
+        presentedCallbackId: request.presentedCallbackId,
         advance: LxAppMedia.normalizeAdvance(request.advance),
         showIndexIndicator: request.showIndexIndicator
       };

@@ -290,6 +290,27 @@ export interface PreviewMediaResult {
   lastIndex: number;
 }
 
+/**
+ * Handle returned synchronously from `lx.previewMedia(...)`. Exposes two
+ * independent Promises so callers can coordinate transitions:
+ *
+ * - `presented` resolves once the first pixel of the underlying media has
+ *   been composited to screen. Use this to time the hide of an overlay
+ *   surface above the preview so the swap is seamless. Never rejects;
+ *   resolves with no value when the first frame is up. Safe to ignore.
+ * - `completed` resolves when the preview session ends (manual / auto /
+ *   interrupted / error). Replaces the previous `Promise<PreviewMediaResult>`
+ *   that `previewMedia` used to return directly.
+ *
+ * If the call was aborted before any frame was presented, `presented` still
+ * resolves (with no value) once the abort takes effect — it never rejects,
+ * to keep fire-and-forget usage safe.
+ */
+export interface PreviewMediaHandle {
+  readonly presented: Promise<void>;
+  readonly completed: Promise<PreviewMediaResult>;
+}
+
 export interface SaveMediaOptions {
   filePath: string;
 }
