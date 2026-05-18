@@ -9,7 +9,7 @@ usage() {
 Release LingXia npm packages.
 
 Usage:
-  scripts/release/npm.sh [--package bridge|elements|react|vue|html|page-runtime|types|all] [--publish] [--dry-run]
+  scripts/release/npm.sh [--package bridge|elements|react|vue|html|page-runtime|types|skill|all] [--publish] [--dry-run]
 
 Options:
   --package <name>  Package set to process (default: all)
@@ -51,7 +51,8 @@ case "$PACKAGE_SET" in
   html) targets=("html") ;;
   page-runtime) targets=("page-runtime") ;;
   types) targets=("types") ;;
-  all) targets=("bridge" "elements" "page-runtime" "react" "vue" "html" "types") ;;
+  skill) targets=("skill") ;;
+  all) targets=("bridge" "elements" "page-runtime" "react" "vue" "html" "types" "skill") ;;
   *) echo "Unknown package set: $PACKAGE_SET" >&2; exit 2 ;;
 esac
 
@@ -64,6 +65,7 @@ pkg_dir() {
     html) echo "$ROOT_DIR/packages/lingxia-html" ;;
     page-runtime) echo "$ROOT_DIR/packages/lingxia-page-runtime" ;;
     types) echo "$ROOT_DIR/packages/lingxia-types" ;;
+    skill) echo "$ROOT_DIR/packages/lingxia-skill" ;;
     *) return 1 ;;
   esac
 }

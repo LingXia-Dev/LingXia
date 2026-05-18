@@ -84,6 +84,7 @@ pub fn execute(
         println!("  cd {}", name);
         println!("  lingxia build");
         println!();
+        print_ai_skill_tip();
         return Ok(());
     }
 
@@ -161,8 +162,22 @@ pub fn execute(
     println!("  cd {}", config.name);
     println!("  lingxia build");
     println!();
+    print_ai_skill_tip();
 
     Ok(())
+}
+
+fn print_ai_skill_tip() {
+    println!("{}", "AI tooling (optional):".bold());
+    println!(
+        "  {}              # for Claude Code / Anthropic Skills",
+        "npx @lingxia/skill install".cyan()
+    );
+    println!(
+        "  {}  # for Codex CLI / AGENTS.md tools",
+        "npx @lingxia/skill install --agents-md".cyan()
+    );
+    println!();
 }
 
 // Platform-specific helpers are in `commands/new/*`.
