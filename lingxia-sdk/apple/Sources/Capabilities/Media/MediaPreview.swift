@@ -387,8 +387,13 @@ private final class MediaPreviewViewController: UIViewController, UIGestureRecog
             didFinish = true
             // Settle `presented` first in case it never fired (degenerate
             // path: deinit before any item rendered). Idempotent — no-op
-            // if already settled.
-            signalPresentedOnce()
+            // if already settled. Inlined because `signalPresentedOnce()`
+            // is @MainActor-isolated and unreachable from nonisolated deinit.
+            if presentedCallbackId != 0 {
+                let pid = presentedCallbackId
+                presentedCallbackId = 0
+                let _ = onCallback(pid, true, "{}")
+            }
             if callbackId > 0,
                let jsonData = try? JSONSerialization.data(
                 withJSONObject: [

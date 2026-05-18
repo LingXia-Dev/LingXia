@@ -757,7 +757,7 @@ final class NativeComponentManager {
             }
             let base = textInputWebViewTransformRestore ?? .identity
             let next = base.translatedBy(x: 0, y: -needLift)
-            if !webView.transform.equalTo(next) {
+            if webView.transform != next {
                 UIView.animate(withDuration: 0.2) {
                     webView.transform = next
                 }
@@ -773,7 +773,7 @@ final class NativeComponentManager {
             return
         }
         textInputWebViewTransformRestore = nil
-        if !webView.transform.equalTo(restore) {
+        if webView.transform != restore {
             UIView.animate(withDuration: 0.2) {
                 webView.transform = restore
             }

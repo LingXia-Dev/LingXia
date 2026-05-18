@@ -75,7 +75,11 @@ impl MediaInteraction for Platform {
             PlatformError::Platform(format!("Failed to serialize media items: {}", e))
         })?;
 
-        if preview_media(&items_json, request.callback_id, request.presented_callback_id) {
+        if preview_media(
+            &items_json,
+            request.callback_id,
+            request.presented_callback_id,
+        ) {
             Ok(())
         } else {
             Err(PlatformError::Platform(
