@@ -39,14 +39,20 @@ pub fn run_in_dir(args: &[String], cwd: &Path) -> Result<()> {
     build::run(args, cwd)
 }
 
+pub(crate) fn parse_framework_override(
+    framework: Option<&str>,
+) -> Result<Option<ProjectFramework>> {
+    match framework {
+        Some("react") => Ok(Some(ProjectFramework::React)),
+        Some("vue") => Ok(Some(ProjectFramework::Vue)),
+        Some("html") => Ok(Some(ProjectFramework::Html)),
+        Some(other) => Err(anyhow::anyhow!("Unsupported framework: {other}")),
+        None => Ok(None),
+    }
+}
+
 pub(crate) fn package_in_dir(cwd: &Path, framework: Option<&str>) -> Result<std::path::PathBuf> {
-    let framework_override = match framework {
-        Some("react") => Some(ProjectFramework::React),
-        Some("vue") => Some(ProjectFramework::Vue),
-        Some("html") => Some(ProjectFramework::Html),
-        Some(other) => return Err(anyhow::anyhow!("Unsupported framework: {other}")),
-        None => None,
-    };
+    let framework_override = parse_framework_override(framework)?;
     let project = project::Project::discover(cwd, framework_override)?;
     package::package_dist(&project)
 }

@@ -2,7 +2,6 @@ use crate::commands::rust::resolve_build_profile;
 use crate::config::{HOST_CONFIG_FILE, LXAPP_BUILD_CONFIG_FILE, LingXiaConfig};
 use crate::host_assets::prepare_configured_host_assets;
 use crate::lxapp;
-use crate::lxapp::ProjectFramework;
 use crate::platform::detector::PlatformType;
 use crate::platform::{self, BuildArtifacts, BuildConfig};
 use anyhow::{Result, anyhow};
@@ -302,6 +301,8 @@ Specify one with `--platform <name>` or build all with `--all-platforms`."
         Vec::new()
     };
 
+    let framework_override = lxapp::parse_framework_override(framework.as_deref())?;
+
     // Create platforms and build configs once.
     let mut platform_builds: Vec<(Box<dyn platform::Platform>, BuildConfig, PlatformType)> =
         Vec::new();
@@ -339,6 +340,7 @@ Specify one with `--platform <name>` or build all with `--all-platforms`."
             } else {
                 None
             },
+            framework: framework_override,
             native_features: config.native_features_for_platform(platform_type.as_str()),
             native_default_features: config.native_default_features_enabled(),
             resolved_env: resolved_env.clone(),
@@ -361,10 +363,7 @@ Specify one with `--platform <name>` or build all with `--all-platforms`."
         &project_root,
         &config,
         build_profile,
-        framework
-            .as_deref()
-            .map(parse_lxapp_framework)
-            .transpose()?,
+        framework_override,
         progress.as_deref(),
         &platforms_to_build,
         &build_targets,
@@ -440,17 +439,6 @@ fn stage_package_artifact(
 
     println!("{} package → {}", "✓".green(), dest.display());
     Ok(Some(dest))
-}
-
-fn parse_lxapp_framework(value: &str) -> Result<ProjectFramework> {
-    match value {
-        "react" => Ok(ProjectFramework::React),
-        "vue" => Ok(ProjectFramework::Vue),
-        "html" => Ok(ProjectFramework::Html),
-        _ => Err(anyhow!(
-            "Unsupported framework {value:?}; expected react, vue, or html"
-        )),
-    }
 }
 
 /// Resolve the active environment for a build/dev/package invocation.
@@ -608,6 +596,7 @@ fn build_standalone_apple_swift_package(
             } else {
                 None
             },
+            framework: None,
             native_features: if matches!(platform_type, PlatformType::MacOs) {
                 vec!["shell-runtime".to_string(), "webview-input".to_string()]
             } else {

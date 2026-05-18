@@ -25,6 +25,7 @@ pub(crate) const NATIVE_CLIENT_OUT_ENV: &str = "LINGXIA_NATIVE_CLIENT_OUT";
 pub(crate) fn native_client_out_for_host_project(
     project_root: &Path,
     config: &LingXiaConfig,
+    framework_override: Option<crate::lxapp::ProjectFramework>,
 ) -> Result<Option<PathBuf>> {
     let Some(app) = config.app.as_ref() else {
         return Ok(None);
@@ -48,7 +49,7 @@ pub(crate) fn native_client_out_for_host_project(
         return Ok(None);
     };
     let lxapp_root = project_root.join(path);
-    let project = crate::lxapp::Project::discover(&lxapp_root, None)?;
+    let project = crate::lxapp::Project::discover(&lxapp_root, framework_override)?;
     Ok(Some(crate::lxapp::native_client_output_path(
         &lxapp_root,
         project.framework,
@@ -98,6 +99,9 @@ pub struct BuildConfig {
     pub dmg: bool,
     /// Requested macOS architecture for native build (`arm64` or `x86_64`)
     pub macos_arch: Option<String>,
+    /// Optional `--framework` override forwarded to lxapp project discovery
+    /// when resolving the native client codegen output directory.
+    pub framework: Option<crate::lxapp::ProjectFramework>,
     /// Extra Rust features enabled for native app builds.
     pub native_features: Vec<String>,
     /// Build native crate with Cargo default features enabled.
@@ -270,5 +274,57 @@ impl Device {
         } else {
             self.id.clone()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::lxapp::ProjectFramework;
+    use tempfile::TempDir;
+
+    const AMBIGUOUS_MANIFEST: &str = r#"{
+        "appId": "showcase",
+        "version": "1.0.0",
+        "logic": false,
+        "security": {"network":{"trustedDomains":[]},"privileges":[]},
+        "pages": [{"name":"home","path":"pages/home/index"}]
+    }"#;
+
+    fn write_ambiguous_lxapp_fixture(temp: &TempDir) -> LingXiaConfig {
+        let lxapp_root = temp.path().join("showcase");
+        fs::create_dir_all(lxapp_root.join("pages/home")).unwrap();
+        fs::write(lxapp_root.join("lxapp.json"), AMBIGUOUS_MANIFEST).unwrap();
+        fs::write(lxapp_root.join("pages/home/index.tsx"), "export default 0;").unwrap();
+        fs::write(lxapp_root.join("pages/home/index.vue"), "<template/>").unwrap();
+        LingXiaConfig::new_android("demo", "com.example.demo", "showcase")
+    }
+
+    #[test]
+    fn native_client_out_errors_without_framework_on_ambiguous_pages() {
+        let temp = TempDir::new().unwrap();
+        let config = write_ambiguous_lxapp_fixture(&temp);
+
+        let error = native_client_out_for_host_project(temp.path(), &config, None)
+            .unwrap_err()
+            .to_string();
+
+        assert!(
+            error.contains("Pass --framework react|vue|html"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn native_client_out_uses_framework_override_for_ambiguous_pages() {
+        let temp = TempDir::new().unwrap();
+        let config = write_ambiguous_lxapp_fixture(&temp);
+
+        let out =
+            native_client_out_for_host_project(temp.path(), &config, Some(ProjectFramework::React))
+                .unwrap()
+                .expect("resources.bundles[0].path is set, so an output path must be returned");
+
+        assert_eq!(out, temp.path().join("showcase/.lingxia/native.ts"));
     }
 }
