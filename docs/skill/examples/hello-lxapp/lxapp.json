@@ -1,0 +1,14 @@
+{
+  "appId": "hello-lxapp",
+  "version": "0.1.0",
+  "appName": "Hello LxApp",
+  "pages": [
+    { "name": "home", "path": "pages/home/index" }
+  ],
+  "security": {
+    "network": {
+      "trustedDomains": []
+    },
+    "privileges": []
+  }
+}

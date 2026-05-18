@@ -1,0 +1,12 @@
+{
+  "appId": "hello-home",
+  "version": "0.1.0",
+  "appName": "Hello Home",
+  "pages": [
+    { "name": "home", "path": "pages/home/index" }
+  ],
+  "security": {
+    "network": { "trustedDomains": [] },
+    "privileges": []
+  }
+}

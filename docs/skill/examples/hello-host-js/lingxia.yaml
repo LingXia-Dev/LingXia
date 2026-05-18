@@ -1,0 +1,39 @@
+# Host app project config. The source of truth for the macOS build.
+# `lingxia build` regenerates app.json + ui.json from this file; do not
+# edit the generated files directly.
+
+app:
+  projectName: hello-host
+  productName: Hello Host
+  productVersion: 0.1.0
+  platforms: [macos]
+  homeAppId: hello-home   # must match resources.bundles[].appId below
+
+macos:
+  bundleId: com.example.hello-host
+  deploymentTarget: "12.0"
+  targetName: HelloHost
+  executableName: HelloHost
+
+features:
+  appService: true    # the embedded lxapp uses JS Logic, so AppService must be on
+  shell: false
+  devtools: false
+
+resources:
+  bundles:
+    - type: lxapp
+      appId: hello-home   # same string as app.homeAppId
+      path: home          # local directory containing lxapp.json + pages/
+
+ui:
+  launch:
+    initialSurface: main
+  surfaces:
+    - id: main
+      presentation:
+        kind: window
+      content:
+        kind: lxapp
+        appId: hello-home   # same id again — what to render inside the surface
+  activators: []
