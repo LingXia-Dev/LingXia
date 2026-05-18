@@ -5,102 +5,125 @@
 <h1 align="center">LingXia</h1>
 
 <p align="center">
-  /lɪŋ ʃiə/ — Cross-platform app runtime for React & Vue
+  /lɪŋ ʃiə/ - Cross-platform app runtime for lxapps, native host apps, and Rust extensions
 </p>
 
 <p align="center">
-  <a href="docs/getting-started.md">Getting Started</a> &middot;
-  <a href="docs/lxapp-guide.md">LxApp Guide</a> &middot;
-  <a href="docs/bridge-guide.md">Bridge Guide</a> &middot;
-  <a href="docs/cli.md">CLI Reference</a>
+  <a href="docs/quick-start.md">Quick Start</a> &middot;
+  <a href="docs/skill/SKILL.md">AI Skill</a> &middot;
+  <a href="docs/skill/lxapp/guide.md">LxApp Guide</a> &middot;
+  <a href="docs/skill/app/project.md">Host Apps</a> &middot;
+  <a href="docs/skill/cli/reference.md">CLI Reference</a>
 </p>
 
 ---
 
-LingXia runs React and Vue pages inside native apps on **iOS, macOS, Android, and HarmonyOS**. It splits every page into a **View** (WebView, rendering only) and a **Logic** (native JS runtime, business only), connected by a Rust bridge. The two layers live in separate runtimes — they can't accidentally couple.
+LingXia is a cross-platform app framework for building **standalone lxapps** and **native host apps** on Android, iOS, macOS, and HarmonyOS.
 
-## Why LingXia
+An lxapp is a page-based mini-app with a strict split between:
 
-Hybrid frameworks pack UI and business logic into a single WebView. LingXia doesn't.
+| Layer | Runs in | Owns |
+|---|---|---|
+| **View** | WebView | React, Vue, or HTML rendering |
+| **Logic** | Native JavaScript runtime or Rust host code | state, business logic, platform API calls |
+| **Bridge** | Rust runtime | `setData`, streams, channels, and native calls |
 
-```
- View  (WebView)              Logic  (JS Runtime)
- React / Vue                  state + business logic
- rendering only      bridge   native sandboxed
-       ◄──────────────────►
-          Rust · JSON Patch · streaming
-```
+This keeps UI rendering separate from business work. View code renders; Logic code owns state and platform APIs; the bridge moves data and events between them.
 
-**View** renders UI. No network calls, no state mutations, no business logic.
-**Logic** owns state and calls platform APIs. No DOM access, no rendering.
-**Bridge** connects them with three primitives: state sync (`setData`), streaming (`yield`), and bidirectional channels (`ch.send`).
+## What You Build
 
-This separation means heavy computation, long-running tasks, and platform API calls in Logic never block rendering in View.
-
-## Features
-
-| | |
-|---|---|
-| **View / Logic isolation** | UI and business logic run in separate runtimes. Clean separation enforced at the architecture level, not by convention. |
-| **Flexible business layer** | Write Logic in JavaScript (React/Vue lxapps) or in Rust (like the built-in Shell). Choose per module. |
-| **LxApp hot delivery** | Each lxapp is a self-contained archive. Update and ship new features without rebuilding or resubmitting the host app. |
-| **App self-update** | Android and macOS apps update in-app. iOS and HarmonyOS update through their App Stores. |
-| **Four platforms, one codebase** | Same lxapp runs on iOS, macOS, Android, and HarmonyOS. Platform differences handled by the Rust runtime and native SDKs. |
+| Shape | Use when | Starting point |
+|---|---|---|
+| **Standalone lxapp** | You are building pages that run inside any LingXia host. | `lingxia new my-lxapp -t lxapp -y` |
+| **Native host app** | You need an installable Android, iOS, macOS, or Harmony app embedding one or more lxapps. | `lingxia new my-app -t native-app -p macos --package-id com.example.myapp -y` |
+| **Rust native extension** | You need host APIs, background services, native file/media integration, or Rust-owned app logic. | `#[lingxia::native]` plus `HostAddon` |
 
 ## Quick Start
 
-```bash
-# Install CLI
-curl -fsSL https://raw.githubusercontent.com/LingXia-Dev/LingXia/main/install.sh | sh
+Install the CLI:
 
-# Create and run a native host app
-lingxia new my-app -t native-app -p android --package-id com.example.myapp -y
-cd my-app && lingxia build && lingxia dev
+```bash
+curl -fsSL https://raw.githubusercontent.com/LingXia-Dev/LingXia/main/install.sh | sh
+lingxia --version
 ```
 
-**Prerequisites:** Node.js 18+, Rust toolchain, platform SDK ([details](docs/getting-started.md)).
+Create and run a native host app:
 
-To develop lxapp pages without native packaging:
+```bash
+lingxia new my-app -t native-app -p macos --package-id com.example.myapp -y
+cd my-app
+lingxia dev
+```
+
+Or create a standalone lxapp:
 
 ```bash
 lingxia new my-lxapp -t lxapp -y
-cd my-lxapp && lingxia dev
+cd my-lxapp
+lingxia dev
 ```
 
-## Platform Support
+See [Quick Start](docs/quick-start.md) for Node.js, platform SDK, Android NDK, Harmony, Xcode, and Rust setup notes.
 
-| Platform | Runtime | Self-update | SDK |
-|----------|---------|-------------|-----|
-| Android | JavaScriptCore | In-app | Kotlin AAR |
-| iOS | JavaScriptCore | App Store | Swift Package |
-| macOS | JavaScriptCore | In-app | Swift Package |
-| HarmonyOS | NAPI | App Store | ArkTS HAR |
+## AI Assistant Skill
 
-## Project Structure
+LingXia ships an agent-oriented markdown skill as `@lingxia/skill`. It contains the decision tree, CLI reference, lxapp recipes, native component docs, `lx.*` API map, host project docs, and Rust native development guide.
 
+For Claude Code / Anthropic Skills:
+
+```bash
+npx @lingxia/skill install
 ```
-crates/                  Rust core — runtime, bridge, platform abstraction
-  lingxia/               Main framework crate
-  lingxia-lxapp/         LxApp loader, lifecycle, plugin system
-  lingxia-shell/         Built-in Shell (Rust-native lxapp)
-  lingxia-platform/      Platform trait implementations
-tools/lingxia-cli/       CLI — new, build, dev, publish, doctor
-lingxia-sdk/             Native SDKs (Android Kotlin, Apple Swift, Harmony ArkTS)
-packages/                npm packages (bridge runtime, React/Vue bindings)
-examples/                Example host app + lingxia-showcase lxapp
-docs/                    Documentation
+
+For OpenAI Codex CLI:
+
+```bash
+npx @lingxia/skill install --agents-md
 ```
+
+Codex reads `AGENTS.md`, so `--agents-md` installs the skill and adds a pointer from `<project>/AGENTS.md` to `.claude/skills/lingxia/SKILL.md`. The skill content is still plain markdown, so Cursor, GitHub Copilot, and other tools can use the same files when pointed at the installed `SKILL.md`.
+
+Browse the source directly at [docs/skill/SKILL.md](docs/skill/SKILL.md), or read the package docs at [packages/lingxia-skill/README.md](packages/lingxia-skill/README.md).
 
 ## Documentation
 
-| Guide | Description |
-|-------|-------------|
-| [Getting Started](docs/getting-started.md) | Install the CLI, scaffold a project, and run the first build |
-| [LxApp Guide](docs/lxapp-guide.md) | Start writing pages with `Page({})`, `useLxPage`, events, and native components |
-| [Bridge Guide](docs/bridge-guide.md) | Deep dive into `setData`, stream, and channel semantics |
-| [App Project](docs/app-project.md) | Host app structure, `lingxia.config.json` |
-| [CLI Reference](docs/cli.md) | All commands and flags |
-| [Native Development](docs/native-development.md) | Extend LingXia from Rust |
+| Need | Doc |
+|---|---|
+| Install CLI and create the first project | [docs/quick-start.md](docs/quick-start.md) |
+| Agent entrypoint and topic router | [docs/skill/SKILL.md](docs/skill/SKILL.md) |
+| Page authoring, `Page({})`, `useLxPage`, events | [docs/skill/lxapp/guide.md](docs/skill/lxapp/guide.md) |
+| Native components such as `LxInput`, `LxVideo`, `LxPicker` | [docs/skill/lxapp/components.md](docs/skill/lxapp/components.md) |
+| Logic-side `lx.*` API surface | [docs/skill/lxapp/lx-api.md](docs/skill/lxapp/lx-api.md) |
+| Bridge mechanics: `setData`, stream, channel | [docs/skill/lxapp/bridge.md](docs/skill/lxapp/bridge.md) |
+| Host project config and `lingxia.yaml` | [docs/skill/app/project.md](docs/skill/app/project.md) |
+| iOS/macOS SDK embedding | [docs/skill/app/apple-sdk.md](docs/skill/app/apple-sdk.md) |
+| Universal links and app links | [docs/skill/app/applinks.md](docs/skill/app/applinks.md) |
+| Rust native routes and host addons | [docs/skill/native/development.md](docs/skill/native/development.md) |
+| Every CLI command and flag | [docs/skill/cli/reference.md](docs/skill/cli/reference.md) |
+
+## Packages
+
+| Package | Purpose |
+|---|---|
+| `@lingxia/react` | React bindings and native component wrappers for lxapp Views |
+| `@lingxia/vue` | Vue bindings and native component wrappers for lxapp Views |
+| `@lingxia/html` | HTML-only View helpers |
+| `@lingxia/types` | TypeScript declarations for Logic-side `Page({})`, `App({})`, and `lx.*` |
+| `@lingxia/bridge` | Low-level bridge runtime |
+| `@lingxia/elements` | Custom elements behind the framework wrappers |
+| `@lingxia/skill` | Markdown skill bundle for AI coding tools |
+
+## Repository Layout
+
+```text
+crates/                  Rust runtime, bridge, lxapp loader, platform abstraction
+tools/lingxia-cli/       CLI: new, build, dev, publish, doctor
+lingxia-sdk/             Android, Apple, and Harmony native SDKs
+packages/                npm packages for View bindings, types, bridge, skill
+examples/                Example host apps and lxapps
+docs/                    Quick start, skill docs, internal docs
+scripts/release/         Release automation
+```
 
 ## License
 

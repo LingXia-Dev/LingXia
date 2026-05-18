@@ -1,16 +1,6 @@
 # CLI Command Reference
 
-Complete reference for the `lingxia` command-line interface.
-
----
-
-## Install
-
-Install the current LingXia CLI release:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/LingXia-Dev/LingXia/main/install.sh | sh
-```
+Complete reference for the `lingxia` command-line interface. This skill assumes the CLI is already installed and you are working inside a LingXia project. For first-time install and onboarding, see `docs/quick-start.md`.
 
 ---
 
@@ -80,20 +70,26 @@ lingxia build [options]
 | Option | Description | Default |
 |--------|-------------|---------|
 | `--release` | Release build (optimized) | false (debug) |
+| `--env <env>` | Build environment: `developer` (or `dev`), `preview`, `release` | `developer` |
 | `-f, --features <features>` | Rust features to enable (comma-separated) | none |
 | `--abis <abis>` | Android ABIs (comma-separated): `arm64-v8a`, `armeabi-v7a` | auto (`arm64-v8a`) |
 | `--macos-arch <arch>` | macOS build architecture: `arm64`, `x86_64` | host arch |
 | `--platform <platforms>` | Platforms to build (comma-separated) | all detected |
 | `--skip-native` | Skip native Rust library compilation | false |
 
+> **`--env` vs `--release`** — independent. `--env` chooses an environment slot (which determines the suffixed package id, the backend URL, and whether the launcher icon is badged); `--release` toggles the compiler's release profile. `lingxia build --env release --release` is the shippable combination. The CLI prints `ℹ Build env: <env> (default|--env)` on every build. See [App Project → Env versions](../app/project.md#environment-versions) for what each env produces.
+
 **Examples:**
 
 ```bash
-# Development build (default)
+# Development build (default: --env developer)
 lingxia build
 
-# Release build
-lingxia build --release
+# Optimized release build for shipping
+lingxia build --env release --release
+
+# Preview build (side-by-side installable next to release)
+lingxia build --env preview
 
 # Build for specific platform
 lingxia build --platform android
@@ -139,6 +135,7 @@ For native host projects, publishable Android artifacts are staged under
 
 | Option | Description | Default |
 |--------|-------------|---------|
+| `--env <env>` | Build environment: `developer` (or `dev`), `preview`, `release` | `release` |
 | `-f, --features <features>` | Rust features to enable (comma-separated) | none |
 | `--abis <abis>` | Android ABIs (comma-separated): `arm64-v8a`, `armeabi-v7a` | auto (`arm64-v8a`) |
 | `--macos-arch <arch>` | macOS package architecture: `arm64`, `x86_64` | host arch |
@@ -181,6 +178,7 @@ Behavior depends on the current project:
 | `-p, --platform <platform>` | Target platform: `android`, `ios`, `macos`, `harmony` | auto-detect for app projects |
 | `-d, --device <id>` | Target device ID (required if multiple connected) | auto-detect |
 | `--release` | Release build (optimized) | false (debug) |
+| `--env <env>` | Build environment: `developer` (or `dev`), `preview`, `release` | `developer` |
 | `-f, --features <features>` | Rust features to enable (comma-separated) | none |
 | `--skip-native` | Skip native Rust library compilation | false |
 | `--abis <abis>` | Android ABIs (comma-separated): `arm64-v8a`, `armeabi-v7a` | auto (`arm64-v8a`) |
@@ -443,40 +441,16 @@ lingxia ds apple profiles
 
 ## Environment Variables
 
-For Android and Harmony workflows, LingXia CLI only requires command-line tools.
+Required during build/dev for the listed platforms. One-time SDK installation is covered in `docs/quick-start.md`; the variables below must be present in your shell every time you build.
 
+| Variable | Used by | Description |
+|----------|---------|-------------|
+| `ANDROID_SDK_ROOT` | android | Android SDK root path |
+| `ANDROID_NDK_ROOT` | android | Android NDK path (e.g. `$ANDROID_SDK_ROOT/ndk/28.2.13676358`) |
+| `OHOS_NDK_HOME` | harmony | Harmony command-line tools SDK path |
+| `JAVA_HOME` | android | Java JDK path |
 
-| Variable | Description |
-|----------|-------------|
-| `ANDROID_SDK_ROOT` | Android SDK root path (required) |
-| `ANDROID_NDK_ROOT` | Android NDK path (required, e.g. `$ANDROID_SDK_ROOT/ndk/28.2.13676358`) |
-| `OHOS_NDK_HOME` | Harmony command-line tools SDK path (required) |
-| `JAVA_HOME` | Java JDK path |
-
-### Android Command-Line Tools Setup
-
-Download: https://developer.android.com/studio#command-tools
-
-```bash
-export ANDROID_SDK_ROOT=$HOME/android-sdk
-export ANDROID_NDK_ROOT=$ANDROID_SDK_ROOT/ndk/28.2.13676358
-
-$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --install \
-  "build-tools;34.0.0" \
-  "platform-tools" \
-  "platforms;android-33" \
-  "ndk;28.2.13676358"
-```
-
-If you hit a permission error, rerun the same command with `sudo`.
-
-### Harmony Command-Line Tools Setup
-
-Download: https://developer.huawei.com/consumer/en/download/command-line-tools-for-hmos
-
-```bash
-export OHOS_NDK_HOME=$HOME/OpenHarmony/command-line-tools/sdk/default/openharmony
-```
+If a platform build complains about missing tools, run `lingxia doctor --platform <p>` to see exactly what's missing.
 
 ---
 
@@ -486,9 +460,9 @@ This reference focuses on commands and flags. File schemas live in the dedicated
 
 | File | Purpose | Canonical guide |
 |---|---|---|
-| `lingxia.yaml` | Host app metadata, platform config, runtime-facing build inputs | [App Project](./app-project.md) |
-| `lxapp.json` | LxApp runtime metadata such as `appId`, `version`, and `pages` | [LxApp Development Guide](./lxapp-guide.md) |
-| `lxapp.config.ts` | LxApp build config such as aliases, view tooling, and `staticDirs` | [LxApp Development Guide](./lxapp-guide.md) |
+| `lingxia.yaml` | Host app metadata, platform config, runtime-facing build inputs | [App Project](../app/project.md) |
+| `lxapp.json` | LxApp runtime metadata such as `appId`, `version`, and `pages` | [LxApp Development Guide](../lxapp/guide.md) |
+| `lxapp.config.ts` | LxApp build config such as aliases, view tooling, and `staticDirs` | [LxApp Development Guide](../lxapp/guide.md) |
 
 Quick reminders:
 

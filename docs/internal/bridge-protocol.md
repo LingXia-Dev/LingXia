@@ -1,5 +1,7 @@
 # LingXia Bridge Protocol
 
+> **Audience**: contributors working on bridge implementations (`crates/lingxia-bridge`, `packages/lingxia-bridge`) or other transport endpoints. If you're **building an app on LingXia**, the bridge surface you actually use (`setData`, stream, channel — `useLxPage` / `useLxStream` / `useLxChannel`) is documented in the skill at [`docs/skill/lxapp/bridge.md`](../skill/lxapp/bridge.md) — start there. App code never constructs wire frames directly; this doc only matters when implementing or modifying the transport itself.
+
 > Status: Active
 > Class: Normative internal specification
 > Scope: Bridge (Rust) <-> View (`window.LingXiaBridge`)

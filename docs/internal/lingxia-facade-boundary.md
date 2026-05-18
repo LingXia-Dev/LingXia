@@ -1,5 +1,7 @@
 # LingXia Facade Boundary
 
+> **Audience**: contributors working on the `lingxia` crate facade and its internal implementation crates (`lingxia-logic`, `lingxia-bridge`, `lingxia-browser`, `rong`, proc-macro crates). If you're **building an app on LingXia**, the rule you need is simply "import from `lingxia::*` facades, never from internal crates" — this is restated in the skill at [`docs/skill/native/development.md`](../skill/native/development.md). This doc defines what stays behind the facade and why.
+
 This internal document defines the intended public Rust API boundary for LingXia application projects.
 
 The target state is simple:

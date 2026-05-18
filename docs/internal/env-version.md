@@ -1,5 +1,7 @@
 # Environment Version (`envVersion`)
 
+> **Audience**: contributors working on `tools/lingxia-cli`, `crates/lingxia-*`, or platform builders. If you're **building an app on LingXia**, the user-facing surface (CLI flag, YAML schema, `lx.app.envVersion`) is documented in the skill at [`docs/skill/app/project.md#environment-versions`](../skill/app/project.md#environment-versions) — start there. This doc covers the build-time injection mechanics, resolution algorithm, validation rules, publish-flow contract, and per-platform plumbing that the skill deliberately omits.
+
 ## Purpose
 
 This document describes how a host LingXia app declares per-environment

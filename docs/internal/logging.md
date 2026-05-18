@@ -1,5 +1,7 @@
 # Logging Design Doc
 
+> **Audience**: contributors working on the LingXia runtime, devtools bridge, or log providers. There is no app-author surface for this — lxapp code uses standard `console.log` / `console.error`, and host Rust uses `tracing` macros; both are captured by the runtime described here. **App authors do not need to read this doc.** Start in the skill for any user-facing concern.
+
 ## Purpose
 
 This document describes the current logging mechanism in LingXia runtime. It focuses on capability and runtime behavior:

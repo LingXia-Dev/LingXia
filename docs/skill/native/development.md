@@ -10,8 +10,8 @@ Use this guide when you want to:
   `lingxia::app`, `lingxia::task`, `lingxia::file`, `lingxia::media`, and
   `lingxia::update`
 
-For lxapp page development, see [LxApp Development Guide](./lxapp-guide.md).
-For host project configuration, see [App Project](./app-project.md).
+For lxapp page development, see [LxApp Development Guide](../lxapp/guide.md).
+For host project configuration, see [App Project](../app/project.md).
 
 ## Host Addon
 
@@ -24,8 +24,11 @@ struct AppHostAddon;
 
 impl lingxia::HostAddon for AppHostAddon {
     fn install_host_apis(&self) {
-        // Register #[lingxia::native] handlers here if your app collects
-        // registrations manually.
+        // For each #[lingxia::native] fn, call the macro-generated companion
+        // `<fn>_host()` and pass it to register_host_entry. See "The
+        // macro-generated <fn>_host() companion" below.
+        //
+        // lingxia::host::register_host_entry(pick_document_host());
     }
 
     #[cfg(feature = "standard")]
@@ -109,6 +112,35 @@ Rules:
 - Payload types must implement `serde::Deserialize`.
 - Return values must implement `serde::Serialize`.
 - Handler errors should use `lingxia::Result`.
+
+### The macro-generated `<fn>_host()` companion
+
+`#[lingxia::native(...)]` is an attribute macro. In addition to wrapping the
+function body, it generates a sibling `fn <name>_host() -> HostEntry` that
+returns the registration value the host addon hands to
+`lingxia::host::register_host_entry`. You do not write this companion yourself
+and you cannot rename it.
+
+For `pick_document` above, the macro generates `pick_document_host()`. Use it
+from `HostAddon::install_host_apis`:
+
+```rust
+impl lingxia::HostAddon for AppHostAddon {
+    fn install_host_apis(&self) {
+        lingxia::host::register_host_entry(pick_document_host());
+        lingxia::host::register_host_entry(load_document_host());
+        // …one register_host_entry call per #[lingxia::native] fn
+    }
+    fn start_services(&self) {}
+}
+```
+
+If you forget to register the companion, the View call returns
+`BRIDGE_METHOD_NOT_FOUND` — the route compiled but never made it into the
+runtime's dispatch table. This is the most common cause of that error.
+
+`stream` and `channel` variants of the macro (covered below) also generate
+their respective `<fn>_host()` companion; register them the same way.
 
 ### Cancellation
 
@@ -202,23 +234,58 @@ async fn editor_session(
 
 ## Generated Native Client
 
-The CLI can generate a typed client for View code from Rust native routes.
+Generate the View client from the native Rust crate's `build.rs` with
+`lingxia-native-codegen`. This keeps native route discovery next to the crate
+that owns `#[lingxia::native]` handlers, and `cargo build` fails before the
+lxapp is packaged if the generated client drifts.
 
-For React/Vue/TypeScript views, prefer module output:
+Native host templates already include this wiring. For a custom native crate,
+add the build dependency:
 
-```ts
-export default {
-  native: {
-    rustDir: "native/src",
-    out: "src/generated/native.ts",
-  },
-};
+```toml
+[package]
+build = "build.rs"
+
+[build-dependencies]
+lingxia-native-codegen = "0.6.8"
 ```
+
+Then generate to the lxapp's source tree:
+
+```rust
+// build.rs
+use std::path::PathBuf;
+
+fn main() {
+    println!("cargo:rerun-if-changed=build.rs");
+    println!("cargo:rerun-if-changed=src");
+    println!("cargo:rerun-if-env-changed=LINGXIA_NATIVE_CLIENT_OUT");
+
+    let Some(out) = std::env::var_os("LINGXIA_NATIVE_CLIENT_OUT") else {
+        return;
+    };
+
+    let manifest_dir = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
+    let rust_dir = manifest_dir.join("src");
+    let out = PathBuf::from(out);
+    let out = if out.is_absolute() { out } else { manifest_dir.join(out) };
+
+    lingxia_native_codegen::generate_native_client_from_paths(&rust_dir, &out)
+        .expect("generate LingXia native client");
+}
+```
+
+The generator scans `#[lingxia::native]` handlers and nearby struct DTOs. It
+supports TypeScript module output (`.ts`) and browser-global output (`.js`).
+
+The CLI sets `LINGXIA_NATIVE_CLIENT_OUT` to the framework-specific generated
+client path during native cargo builds: React/Vue use `.lingxia/native.ts`;
+HTML uses `.lingxia/native.js`.
 
 Use it from View code:
 
 ```ts
-import { native } from "./generated/native";
+import { native } from "@lingxia/native";
 
 const path = await native.editor.pickDocument({ title: "meeting-notes" });
 
@@ -233,20 +300,10 @@ channel.send({ kind: "cursor", payload: "{}" });
 channel.close();
 ```
 
-For plain HTML views, browser-global output is available:
-
-```ts
-export default {
-  staticDirs: ["public", "__lingxia"],
-  native: {
-    rustDir: "../src",
-    out: "__lingxia/native.js",
-  },
-};
-```
+For plain HTML views, browser-global output is available at the fixed path:
 
 ```html
-<script src="lingxia://lxapp/__lingxia/native.js"></script>
+<script src="lingxia://lxapp/.lingxia/native.js"></script>
 <script>
   window.native.editor.pickDocument({ title: "meeting-notes" }).then(console.log);
 </script>

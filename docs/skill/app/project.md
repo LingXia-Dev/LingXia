@@ -4,9 +4,9 @@ A LingXia app project is a native host app that embeds one home lxapp and can op
 
 This page focuses on the macOS host app path because that is the current product App UI runtime. Android, iOS, and Harmony still use their platform host scaffolding, but the `ui` section below is implemented for macOS first.
 
-For lxapp page development, see [LxApp Development Guide](./lxapp-guide.md).
-For quick onboarding, see [Getting Started](./getting-started.md).
-For CLI commands, see [CLI Command Reference](./cli.md).
+For lxapp page development, see [LxApp Development Guide](../lxapp/guide.md).
+For quick onboarding, see `docs/quick-start.md` (outside this skill).
+For CLI commands, see [CLI Command Reference](../cli/reference.md).
 
 ---
 
@@ -127,9 +127,71 @@ and a `logic: false` HTML home lxapp.
 | `platforms` | string[] | Yes | Enabled platforms, for example `macos`, `android`, `ios`, `harmony`. |
 | `homeAppId` | string | Yes | Home app id opened by default. |
 | `lingxiaId` | string | No | Logical publishing ID, used by app publishing flows. |
-| `lingxiaServer` | string | No | Optional LingXia server base URL paired with `lingxiaId`. |
+| `lingxiaServer` | string \| map | No | LingXia server base URL paired with `lingxiaId`. Single string applies to every env, or per-env map (see Environment versions). |
+| `packageIdSuffix` | map | No | Per-env override of the suffix appended to the bundle/package id (see Environment versions). |
 
 `homeAppVersion` is not configured in `lingxia.yaml`; the CLI derives it from the matching `resources.bundles` source.
+
+---
+
+## Environment versions
+
+A LingXia host build is always one of three envs — `developer`, `preview`, or `release` — selected via `lingxia {build,dev,package} --env <env>`. The default is `developer` for `build`/`dev` and `release` for `package`.
+
+**What each env produces:**
+
+| Env | Default `packageIdSuffix` | Launcher icon | Default `lingxia dev/build` | Default `lingxia package` |
+|---|---|---|---|---|
+| `developer` | `.dev` | red `D` badge | ✓ | |
+| `preview` | `.preview` | red `P` badge | | |
+| `release` | `(none)` | unmodified | | ✓ |
+
+Different envs of the same app install **side by side** because their bundle/package ids differ. No git-tracked file changes when you switch envs — every effect lands in a build-output directory or is passed at build time.
+
+### Per-env `lingxiaServer`
+
+Single URL (same for every env):
+
+```yaml
+app:
+  lingxiaServer: https://api.myapp.com
+```
+
+Per-env map (omit envs you don't have a server for — typical for `developer`):
+
+```yaml
+app:
+  lingxiaServer:
+    developer: http://192.168.1.10:8080
+    preview: https://preview.api.myapp.com
+    release: https://api.myapp.com
+```
+
+### Per-env `packageIdSuffix`
+
+Built-in defaults (`.dev` / `.preview` / `(none)`) cover most apps. Override only when you need custom suffixes:
+
+```yaml
+app:
+  packageIdSuffix:
+    developer: .internal   # → com.example.myapp.internal
+    preview: ".preview"    # quote when starting with .
+    release: ""            # "" = opt out of any suffix
+```
+
+Validation rules:
+
+- Each suffix must match `^\.[a-z0-9]+(\.[a-z0-9]+)*$` (start with `.`, lowercase a-z 0-9 segments) — or be `""` to opt out.
+- Empty `lingxiaServer` string is rejected. Per-env map must have at least one entry set.
+- Unknown keys (e.g. `enviroments:` typo) surface as YAML parse errors, not silent ignores.
+
+### Reading the env at runtime
+
+JS Logic (`pages/*/index.ts`): `lx.app.envVersion` — `'developer' | 'preview' | 'release'`, fixed at app boot. See [Logic-side `lx.*` API](../lxapp/lx-api.md).
+
+Rust host: `lingxia::env_version()` returns the same enum.
+
+The build-time plumbing per platform (Android Gradle properties, iOS bundle id rewrite, Harmony staging mirror, publish-flow id matching) is internal — app authors don't touch it. Framework contributors can find the normative spec in `docs/internal/env-version.md` in the LingXia repo.
 
 ---
 
@@ -445,11 +507,6 @@ Current scope and limits:
 - `content.backend` is not product config. If present, validation rejects it.
 - Rust owns terminal sessions, PTY/conpty transport, `libghostty-vt` terminal semantics, themes, and the stable snapshot/input protocol.
 - Platform SDKs own only native view rendering, focus/input event capture, clipboard/menu integration, and host UX such as tabs/splits/panel lifecycle.
-
-Reference material used for backend direction:
-
-- [con-ghostty](https://github.com/nowledge-co/con/tree/main/crates/con-ghostty)
-- [libghostty-rs bindings](https://github.com/Uzaaft/libghostty-rs/blob/master/crates/libghostty-vt-sys/src/bindings.rs)
 
 Ghostty preparation is handled by `crates/lingxia-terminal/build.rs`. Terminal builds use a pinned Ghostty git checkout and build `libghostty-vt`; the build script does not fetch release tarballs.
 

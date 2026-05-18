@@ -2,9 +2,14 @@
 
 This guide covers how to write lxapp pages — project layout, the View + Logic architecture, data flow, event handling, and native component integration.
 
-For host app project setup, see [App Project](./app-project.md).
-For quick onboarding, see [Getting Started](./getting-started.md).
-For a deep dive into `setData`, stream, and channel, see [Bridge Guide](./bridge-guide.md).
+Companion pages in this skill:
+
+- [Components](./components.md) — `LxInput`, `LxTextarea`, `LxPicker`, `LxVideo`, `LxMediaSwiper`, `LxNavigator` — every attribute and event.
+- [Logic-side `lx.*` API](./lx-api.md) — full Logic API surface map + how to install `@lingxia/types` for typing.
+- [Bridge Guide](./bridge.md) — `setData`, stream, channel mechanics in depth.
+- [App Project](../app/project.md) — host app setup (`lingxia.yaml`, macOS App UI).
+
+For first-time CLI install and platform toolchains (one-time, human onramp), the LingXia repo has `docs/quick-start.md`.
 
 ---
 
@@ -14,7 +19,7 @@ For a deep dive into `setData`, stream, and channel, see [Bridge Guide](./bridge
 lingxia new my-lxapp -t lxapp -y
 ```
 
-This creates a standalone lxapp project. To create a host app (which contains an embedded home lxapp), use `-t native-app` instead (see [App Project](./app-project.md)).
+This creates a standalone lxapp project. To create a host app (which contains an embedded home lxapp), use `-t native-app` instead (see [App Project](../app/project.md)).
 
 ---
 
@@ -54,7 +59,7 @@ export default {
 
 Rules:
 
-- `public/` and `assets/` are the default static directories. If the project root contains either directory, LingXia copies them to `dist/public/` and `dist/assets/` even when `staticDirs` is omitted.
+- `public/`, `assets/`, and `.lingxia/` are the default static directories. If the project root contains any of them, LingXia copies it to `dist/` even when `staticDirs` is omitted.
 - Additional directories must be declared explicitly in `staticDirs`.
 - Explicit `staticDirs` entries must exist at the project root. LingXia treats missing configured directories as build errors.
 - Paths are preserved. For example, `view/info-panel.js` becomes `dist/view/info-panel.js`.
@@ -102,19 +107,9 @@ Example:
 
 ### Native client
 
-Views call Rust native APIs through a generated Native client. Add `native` to `lxapp.config.ts` when the lxapp is backed by Rust native APIs:
+Views call Rust native APIs through a generated Native client. LxApp projects do not configure Rust source paths. Native host builds generate the client from the native Rust crate's `build.rs` with `lingxia-native-codegen`.
 
-```ts
-export default {
-  staticDirs: ['public', '__lingxia'],
-  native: {
-    rustDir: '../src',
-    out: '__lingxia/native.js',
-  },
-};
-```
-
-`rustDir` points to the Rust source directory that contains `#[lingxia::native]` functions. `out` is root-relative. A `.ts` output creates an importable module; a `.js` output creates `window.native` for HTML pages. `lingxia build` and `lingxia dev` generate the client before copying static assets, so `.js` outputs are included in `dist/`.
+The CLI passes the canonical output path through `LINGXIA_NATIVE_CLIENT_OUT` during native cargo builds. React/Vue projects get `.lingxia/native.ts` and import it through `@lingxia/native`; HTML projects get `.lingxia/native.js`, which is copied into `dist/.lingxia/native.js` by the default static asset rules.
 
 ### Build
 
@@ -140,7 +135,7 @@ Every page is split into two layers that communicate through a bridge:
 Recommended reading path:
 
 - This guide: page layout, `Page({})`, `useLxPage`, events, and native components.
-- [Bridge Guide](./bridge-guide.md): deeper mechanics of `setData`, stream, and channel.
+- [Bridge Guide](./bridge.md): deeper mechanics of `setData`, stream, and channel.
 
 ---
 
@@ -215,6 +210,15 @@ The View file can be a standard React component, a Vue component, or an HTML mod
 - `data` — reactive page state replicated from Logic via `setData()`
 - `actions` — public functions exported from `Page({})`
 
+### Typing `PageData` and `PageActions`
+
+The runtime guarantees that **(a)** `data` reflects Logic's initial `data: { … }` literal by first paint, and **(b)** every public method on `Page({})` is wired into `actions` during page setup. So in your typed shapes:
+
+- **Required by default.** Fields you declare in `data: { … }` are always present; public methods are always callable. Mark them required.
+- **Mark `?:` only when the field is genuinely populated lazily** — for example, a field that starts unset and is filled by `this.setData(…)` after an async fetch in `onLoad`.
+
+Using all-`?` fields is a footgun: it propagates `actions.foo?.()` and `data?.x ?? default` through every component for no reason. Don't do that.
+
 ### React
 
 ```tsx
@@ -222,25 +226,24 @@ The View file can be a standard React component, a Vue component, or an HTML mod
 import { useLxPage } from '@lingxia/react';
 
 type PageData = {
-  count?: number;
-  message?: string;
+  count: number;
+  message: string;
 };
 
 type PageActions = {
-  increment?: () => void;
-  updateMessage?: (params: { text: string }) => void;
+  increment: () => void;
+  updateMessage: (params: { text: string }) => void;
 };
 
 export default function HomePage() {
   const { data, actions } = useLxPage<PageData, PageActions>();
-  const { increment, updateMessage } = actions;
 
   return (
     <div>
-      <p>Count: {data?.count ?? 0}</p>
-      <p>{data?.message}</p>
-      <button onClick={() => increment?.()}>+1</button>
-      <button onClick={() => updateMessage?.({ text: "World" })}>
+      <p>Count: {data.count}</p>
+      <p>{data.message}</p>
+      <button onClick={() => actions.increment()}>+1</button>
+      <button onClick={() => actions.updateMessage({ text: 'World' })}>
         Update
       </button>
     </div>
@@ -254,32 +257,27 @@ export default function HomePage() {
 <!-- pages/home/index.vue -->
 <template>
   <div>
-    <p>Count: {{ count }}</p>
-    <p>{{ message }}</p>
-    <button @click="increment?.()">+1</button>
-    <button @click="updateMessage?.({ text: 'World' })">Update</button>
+    <p>Count: {{ data.count }}</p>
+    <p>{{ data.message }}</p>
+    <button @click="actions.increment()">+1</button>
+    <button @click="actions.updateMessage({ text: 'World' })">Update</button>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
 import { useLxPage } from '@lingxia/vue';
 
 type PageData = {
-  count?: number;
-  message?: string;
+  count: number;
+  message: string;
 };
 
 type PageActions = {
-  increment?: () => void;
-  updateMessage?: (params: { text: string }) => void;
+  increment: () => void;
+  updateMessage: (params: { text: string }) => void;
 };
 
 const { data, actions } = useLxPage<PageData, PageActions>();
-const { increment, updateMessage } = actions;
-
-const count = computed(() => data?.count ?? 0);
-const message = computed(() => data?.message ?? '');
 </script>
 ```
 
@@ -290,13 +288,13 @@ const message = computed(() => data?.message ?? '');
 import { getActions, subscribe } from '@lingxia/html';
 
 type PageData = {
-  count?: number;
-  message?: string;
+  count: number;
+  message: string;
 };
 
 type PageActions = {
-  increment?: () => void;
-  updateMessage?: (params: { text: string }) => void;
+  increment: () => void;
+  updateMessage: (params: { text: string }) => void;
 };
 
 const actions = getActions<PageActions>();
@@ -304,12 +302,12 @@ const countEl = document.getElementById('count');
 const messageEl = document.getElementById('message');
 
 document.getElementById('inc-btn')?.addEventListener('click', () => {
-  actions.increment?.();
+  actions.increment();
 });
 
 subscribe((data: PageData) => {
-  if (countEl) countEl.textContent = String(data.count ?? 0);
-  if (messageEl) messageEl.textContent = data.message ?? '';
+  if (countEl) countEl.textContent = String(data.count);
+  if (messageEl) messageEl.textContent = data.message;
 });
 ```
 
@@ -367,27 +365,26 @@ As a developer, you don't need to choose between these paths. Use framework-nati
 
 ### Native component events
 
-Use `@lingxia/elements` for native-backed components. Event handlers use standard React/Vue syntax:
+LingXia ships native-backed components (`LxInput`, `LxTextarea`, `LxPicker`, `LxVideo`, `LxMediaSwiper`, `LxNavigator`) from `@lingxia/react`, `@lingxia/vue`, and `@lingxia/html`. Event handlers use standard framework-native syntax:
 
 **React:**
 
 ```tsx
 import { useLxPage, LxInput, LxPicker, LxVideo } from '@lingxia/react';
 
-const { actions } = useLxPage();
-const { onInputChange, onPickerConfirm, onPlaying } = actions;
+const { actions } = useLxPage<PageData, PageActions>();
 
 // Input — handler receives unwrapped detail object
-<LxInput onInput={onInputChange} />
+<LxInput onInput={actions.onInputChange} />
 
 // Picker — handler receives resolved value directly
 <LxPicker
   columns={[['A', 'B', 'C']]}
-  onConfirm={(value) => onPickerConfirm?.({ field: 'choice', value })}
+  onConfirm={(value) => actions.onPickerConfirm({ field: 'choice', value })}
 />
 
 // Video — handler receives raw DOM Event
-<LxVideo src={url} onPlaying={onPlaying} />
+<LxVideo src={url} onPlaying={actions.onPlaying} />
 ```
 
 **Vue:**
@@ -396,29 +393,32 @@ const { onInputChange, onPickerConfirm, onPlaying } = actions;
 <script setup lang="ts">
 import { useLxPage, LxInput, LxPicker, LxVideo } from '@lingxia/vue';
 
-const { actions } = useLxPage();
-const { onInputChange, onPickerConfirm, onPlaying } = actions;
+const { actions } = useLxPage<PageData, PageActions>();
 </script>
 
-<LxInput @input="onInputChange" />
+<LxInput @input="actions.onInputChange" />
 
 <LxPicker
   :columns="[['A', 'B', 'C']]"
-  @confirm="(value) => onPickerConfirm?.({ field: 'choice', value })"
+  @confirm="(value) => actions.onPickerConfirm({ field: 'choice', value })"
 />
 
-<LxVideo :src="url" @playing="onPlaying" />
+<LxVideo :src="url" @playing="actions.onPlaying" />
 ```
 
 ### Callback signatures vary by component
 
+The framework wrappers unwrap or reshape some events; others come through as raw DOM `CustomEvent`. Quick reference:
+
 | Component | Callback receives | Example |
 | --- | --- | --- |
 | `LxInput` / `LxTextarea` | Unwrapped `event.detail` object | `onInput(detail)` → `detail.value` |
-| `LxPicker` | Resolved value directly | `onConfirm(value)` → `value` is `string \| string[]` |
+| `LxPicker` | Resolved value directly (on `onConfirm`) | `onConfirm(value)` → `value` is `string \| string[]` |
 | `LxVideo` | Raw DOM Event | `onPlaying(event)` → `event.detail` |
+| `LxMediaSwiper` | Raw `CustomEvent` with typed `detail` | `onChange(e)` → `e.detail.index` |
+| `LxNavigator` | Raw `CustomEvent` | `onFail(e)` → `e.detail.errMsg` |
 
-See [Component API Reference](../packages/lingxia-elements/docs/component-api-reference.md) for full event lists.
+**Full attribute, event, and behavior reference for every component — including imperative control of `LxVideo` via `lx.createVideoContext()` — lives in [`./components.md`](./components.md).**
 
 ---
 
@@ -438,7 +438,73 @@ Examples:
 - `async *onSend(...)` is a stream action and belongs with `useLxStream()`.
 - Session-style logic that stays open over time belongs with `useLxChannel()`.
 
-The runtime inspects the Logic method shape and routes it automatically. Use this guide for page authoring; use [Bridge Guide](./bridge-guide.md) for stream/channel lifecycle, cancellation, and transport details.
+The runtime inspects the Logic method shape and routes it automatically. Use this guide for page authoring; use [Bridge Guide](./bridge.md) for stream/channel lifecycle, cancellation, and transport details.
+
+---
+
+## App-wide lifecycle — `App({})`
+
+`Page({})` defines a single page; **`App({})`** defines the **lxapp-wide singleton** — created once when the lxapp boots, shared by every page. Use it for app-scope state, cross-page coordination, and lifecycle hooks that fire regardless of which page is on screen.
+
+Like `Page`, `App` is a runtime-provided global. Define it in a single file at the lxapp root (conventionally `app.ts`). It is **optional** — many lxapps don't need it.
+
+```ts
+// app.ts
+interface AppGlobals {
+  userId: string;
+  theme: 'light' | 'dark';
+}
+
+App({
+  globalData: <AppGlobals>{
+    userId: '',
+    theme: 'light',
+  },
+
+  async onLaunch(options) {
+    // Called once when the lxapp boots.
+    // `options`: AppLaunchOptions — { path?, query?, scene?, referrerInfo? }
+    //   referrerInfo is populated when this lxapp was opened by another lxapp.
+    const stored = await lx.getStorage().get<string>('userId');
+    if (stored) this.globalData.userId = stored;
+  },
+
+  onShow(args) {
+    // Called every time the lxapp comes to the foreground.
+    // args: AppLifecycleEventArgs
+    //   source: 'host' | 'lxapp'
+    //   reason: 'foreground' | 'background' | 'screenshot' | 'open' | 'close' | 'switch_back' | 'switch_away'
+  },
+
+  onHide(args) {
+    // The lxapp is being backgrounded. Same AppLifecycleEventArgs shape.
+  },
+
+  onUserCaptureScreen() {
+    // The user took a screenshot while this lxapp was active.
+  },
+});
+```
+
+Read app-scope state from any page with `getApp<T>()`:
+
+```ts
+// pages/profile/index.ts
+Page({
+  data: { userId: '' },
+  onLoad() {
+    const app = getApp<AppInstance & { globalData: AppGlobals }>();
+    if (app) this.setData({ userId: app.globalData.userId });
+  },
+});
+```
+
+Notes:
+
+- `globalData` is a plain object. **Mutations are not reactive** — pages don't re-render when you change `app.globalData.x`. To propagate changes into the View, write to a page's `data` via `setData`.
+- Lifecycle order on cold start: `App.onLaunch` → `App.onShow` → first page's `Page.onLoad` → `Page.onShow`. On foregrounding: `App.onShow` → top page's `Page.onShow`.
+- `getCurrentPages()` returns the active page stack (top of stack last) when you need to coordinate across pages.
+- Type declarations for `App`, `AppConfig`, `AppInstance`, `AppLaunchOptions`, `AppLifecycleEventArgs`, `getApp`, `getCurrentPages` come from [`@lingxia/types`](./lx-api.md#install-typing).
 
 ---
 
@@ -474,30 +540,115 @@ Page({
 ```tsx
 import { useLxPage, LxInput } from '@lingxia/react';
 
-type PageData = { syncValue?: string };
+type PageData = { syncValue: string };
 type PageActions = {
-  onInputChange?: (detail: Record<string, unknown>) => void;
-  onSyncInput?: (detail: Record<string, unknown>) => void;
+  onInputChange: (detail: Record<string, unknown>) => void;
+  onSyncInput: (detail: Record<string, unknown>) => void;
 };
 
 export default function InputPage() {
   const { data, actions } = useLxPage<PageData, PageActions>();
-  const { onInputChange, onSyncInput } = actions;
 
   return (
     <div>
-      <LxInput placeholder="Basic input" onInput={onInputChange} />
+      <LxInput placeholder="Basic input" onInput={actions.onInputChange} />
 
       <LxInput
-        value={data?.syncValue || ''}
+        value={data.syncValue}
         placeholder="Synced input"
-        onInput={onSyncInput}
+        onInput={actions.onSyncInput}
       />
-      <p>Current: {data?.syncValue}</p>
+      <p>Current: {data.syncValue}</p>
     </div>
   );
 }
 ```
+
+> Logic initializes `data: { syncValue: "" }`, so the field exists from first paint — required in the type.
+
+---
+
+## Tab bar navigation
+
+A **tab bar** is a persistent navigation strip — typically at the bottom of the screen — that shows the lxapp's primary pages. Tapping a tab switches the active page **without** push/pop semantics: the tab bar stays visible across all tab pages, and tab pages do not stack on each other.
+
+> **Scope.** Tab bar is an **lxapp-internal navigation concept** declared in `lxapp.json`. It has nothing to do with host App UI surfaces — `lingxia.yaml.ui.surfaces` / `activators` live one layer up and describe the native shell (windows, panels, menu bars). A host shell renders an lxapp; that lxapp may have its own tab bar inside.
+
+### Declaring the tab bar in `lxapp.json`
+
+Add a `tabBar` block alongside `pages`:
+
+```json
+{
+  "appId": "my-app",
+  "version": "0.1.0",
+  "pages": [
+    { "name": "home",     "path": "pages/home/index" },
+    { "name": "discover", "path": "pages/discover/index" },
+    { "name": "profile",  "path": "pages/profile/index" }
+  ],
+  "tabBar": {
+    "color":           "#999999",
+    "selectedColor":   "#1677ff",
+    "backgroundColor": "#ffffff",
+    "borderStyle":     "#eeeeee",
+    "position":        "bottom",
+    "list": [
+      {
+        "text":             "Home",
+        "pagePath":         "pages/home/index",
+        "iconPath":         "public/home.png",
+        "selectedIconPath": "public/home_selected.png",
+        "selected":         true
+      },
+      {
+        "text":     "Discover",
+        "pagePath": "pages/discover/index",
+        "iconPath": "public/discover.png"
+      },
+      {
+        "text":     "Profile",
+        "pagePath": "pages/profile/index",
+        "iconPath": "public/profile.png"
+      }
+    ]
+  }
+}
+```
+
+Rules:
+
+- Every `list[].pagePath` must match a registered page path under `pages[]`.
+- `iconPath` / `selectedIconPath` are project-relative — usually under `public/` so they're copied verbatim into `dist/` by the default static-assets rule.
+- `selected: true` on one entry picks the initial tab; if omitted, the first entry is selected.
+- `position`: `"bottom"` (default) or `"top"`.
+
+### Switching tabs at runtime
+
+From Logic, use `lx.switchTab(...)`. **`lx.navigateTo` and `lx.redirectTo` do not work on tab pages** — the runtime rejects them with errors like `"redirectTo cannot navigate to a tabBar page"`. Switching is the only way in and out of tabs:
+
+```ts
+lx.switchTab({ url: '/pages/profile/index' });
+```
+
+`lx.navigateBack` still works for popping non-tab pages that were pushed on top of the current tab.
+
+### Modifying the tab bar after declaration
+
+The `lx.setTabBar*` family **mutates an already-declared tab bar** — none of these create or remove tabs. If the lxapp has no `tabBar` in `lxapp.json`, every call returns `false`.
+
+```ts
+lx.setTabBarItem({ index: 1, text: 'Inbox', iconPath: 'public/inbox.png' });
+lx.setTabBarBadge({ index: 1, text: '3' });
+lx.removeTabBarBadge({ index: 1 });
+lx.showTabBarRedDot({ index: 0 });
+lx.hideTabBarRedDot({ index: 0 });
+lx.setTabBarStyle({ selectedColor: '#ff0000' });
+lx.showTabBar();
+lx.hideTabBar();
+```
+
+Full option shapes: [`./lx-api.md#page-chrome--ui`](./lx-api.md#page-chrome--ui).
 
 ---
 
@@ -505,8 +656,13 @@ export default function InputPage() {
 
 - Mixing view logic and page logic in one file; keep `index.tsx` and `index.ts` roles clear.
 - Mutating `data` directly in View instead of calling Logic actions.
-- Re-documenting bridge behavior inside page code instead of leaning on [Bridge Guide](./bridge-guide.md) for stream/channel details.
+- Re-documenting bridge behavior inside page code instead of leaning on [Bridge Guide](./bridge.md) for stream/channel details.
+- Assuming every component's event handler receives the same shape — `LxInput` unwraps `event.detail`, `LxVideo` passes the raw DOM `Event`. See [Components](./components.md#callback-shapes-by-component).
+- Skipping `@lingxia/types` in the lxapp's devDependencies and losing intellisense on the entire `lx.*` surface. See [Logic-side `lx.*` API](./lx-api.md).
 - Forgetting that only public `Page({})` methods become actions; lifecycle hooks and `_`-prefixed helpers are not exposed.
+- Mutating `App({}).globalData` and expecting page views to re-render — `globalData` is not reactive. Propagate to a page's `data` via `setData`.
+- Calling `lx.navigateTo` / `lx.redirectTo` on a tab page — rejected by the runtime. Use `lx.switchTab` for tab-page entry; `navigateBack` for non-tab stack pops.
+- Treating the tab bar as a host UI surface — it is an lxapp-internal feature declared in `lxapp.json`, orthogonal to `lingxia.yaml.ui` surfaces/activators.
 
 ---
 

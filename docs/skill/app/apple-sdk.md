@@ -16,7 +16,7 @@ Most apps should use `Lingxia.quickStart()`. Window shape, menu bar entries,
 sidebar items, toolbar items, titlebar items, startup behavior, and the home
 surface are configured in `lingxia.yaml`.
 
-For `lingxia.yaml` configuration, see [App Project Configuration](./app-project.md).
+For `lingxia.yaml` configuration, see [App Project Configuration](../app/project.md).
 
 ## Quick Start
 
@@ -74,7 +74,7 @@ Examples:
 - Create a menu bar monitor app with `statusPanel`, `menuBarItem`, and `openOnLaunch: false`.
 - Add sidebar, toolbar, or titlebar actions with `sidebarItem`, `toolbarItem`, and `titlebarItem`.
 
-See [macOS App UI](./app-project.md#macos-app-ui) for the full configuration model.
+See [macOS App UI](./project.md#macos-app-ui) for the full configuration model.
 
 ## Advanced Embedding
 

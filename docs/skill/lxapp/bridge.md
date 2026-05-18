@@ -2,7 +2,7 @@
 
 This guide explains how View and Logic communicate through the bridge — covering `setData`, stream, and channel. It is written for developers writing lxapp pages, not for implementers of the bridge itself.
 
-For a broad introduction to the View/Logic split, see [LxApp Development Guide](./lxapp-guide.md).
+For a broad introduction to the View/Logic split, see [LxApp Development Guide](./guide.md).
 
 ---
 
