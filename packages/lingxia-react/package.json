@@ -1,6 +1,6 @@
 {
   "name": "@lingxia/react",
-  "version": "0.6.5",
+  "version": "0.7.0",
   "private": false,
   "description": "LingXia React runtime and components for lxapp pages",
   "type": "module",
@@ -19,9 +19,9 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@lingxia/bridge": "0.6.5",
-    "@lingxia/elements": "0.6.5",
-    "@lingxia/page-runtime": "0.6.5"
+    "@lingxia/bridge": "0.7.0",
+    "@lingxia/elements": "0.7.0",
+    "@lingxia/page-runtime": "0.7.0"
   },
   "peerDependencies": {
     "react": "^19.0.0"

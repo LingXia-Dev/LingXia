@@ -94,7 +94,10 @@ for line in text.splitlines(True):
         in_ws_deps
         and 'path = "crates/' in line
         and 'version = "' in line
-        and re.match(r'^(lingxia(?:-[a-z0-9-]+)?|lxapp)\s*=', line)
+        # Match `lingxia`, `lingxia-foo`, `lingxia_foo` (underscore key for
+        # the few crates whose Rust ident requires it, e.g. lingxia_devtool
+        # which keys to the dash-named package), and the bare `lxapp` alias.
+        and re.match(r'^(lingxia(?:[_-][a-z0-9_-]+)?|lxapp)\s*=', line)
     ):
         new_line, n = re.subn(r'version\s*=\s*"[^"]+"', f'version = "{version}"', line, count=1)
         line = new_line
