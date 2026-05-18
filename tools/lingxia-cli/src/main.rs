@@ -4,6 +4,9 @@ use clap::{Parser, Subcommand, error::ErrorKind};
 mod appicon;
 mod commands;
 mod config;
+// `gen` is a reserved keyword in Rust 2024 — escape it so the module name
+// stays aligned with the user-facing `lingxia gen …` subcommand.
+mod r#gen;
 mod github;
 #[path = "assets.rs"]
 mod host_assets;
@@ -305,9 +308,9 @@ enum Commands {
 #[derive(Subcommand)]
 enum GenCommand {
     /// Generate i18n resources
-    I18n(lingxia_gen::i18n::I18nConfig),
+    I18n(r#gen::i18n::I18nConfig),
     /// Convert icons to platform-specific resources
-    Icons(lingxia_gen::icons::IconsConfig),
+    Icons(r#gen::icons::IconsConfig),
 }
 
 #[derive(Subcommand)]
@@ -569,10 +572,10 @@ fn main() -> Result<()> {
         }
         Commands::Gen { command } => match command {
             GenCommand::I18n(config) => {
-                lingxia_gen::i18n::run(config)?;
+                r#gen::i18n::run(config)?;
             }
             GenCommand::Icons(config) => {
-                lingxia_gen::icons::run(config)?;
+                r#gen::icons::run(config)?;
             }
         },
         Commands::Publish {

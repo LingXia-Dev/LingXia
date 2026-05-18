@@ -75,7 +75,7 @@ pub(super) fn prepare_app_ui_icons(
         let svg = fs::read_to_string(&source_path)
             .with_context(|| format!("Failed to read SVG icon {}", source_path.display()))?;
         validate_app_ui_svg_icon(&source, &svg)?;
-        let pdf = lingxia_gen::icons::svg_to_pdf_bytes(&svg)
+        let pdf = crate::r#gen::icons::svg_to_pdf_bytes(&svg)
             .with_context(|| format!("Failed to convert SVG icon '{}' to PDF", source))?;
         let hash = sha256_hex(&pdf);
         let stem = source_path
@@ -99,7 +99,7 @@ pub(super) fn prepare_app_ui_icons(
 
 fn prepare_builtin_terminal_icon() -> Result<PreparedAppUiIcon> {
     validate_app_ui_svg_icon(TERMINAL_ICON_SOURCE, TERMINAL_ICON_SVG)?;
-    let pdf = lingxia_gen::icons::svg_to_pdf_bytes(TERMINAL_ICON_SVG)
+    let pdf = crate::r#gen::icons::svg_to_pdf_bytes(TERMINAL_ICON_SVG)
         .with_context(|| "Failed to convert built-in terminal icon to PDF")?;
     let hash = sha256_hex(&pdf);
     Ok(PreparedAppUiIcon {
@@ -198,7 +198,7 @@ pub(super) fn sync_app_ui_icons(
 }
 
 pub(super) fn validate_app_ui_svg_icon(label: &str, svg: &str) -> Result<()> {
-    let (width, height) = lingxia_gen::icons::svg_size(svg)
+    let (width, height) = crate::r#gen::icons::svg_size(svg)
         .with_context(|| format!("Failed to parse SVG icon '{}'", label))?;
     if !(MIN_APP_UI_ICON_SIZE..=MAX_APP_UI_ICON_SIZE).contains(&width)
         || !(MIN_APP_UI_ICON_SIZE..=MAX_APP_UI_ICON_SIZE).contains(&height)

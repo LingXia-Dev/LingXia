@@ -7,5 +7,5 @@
 | `native.schema.json` | `logic/`, `android/`, `apple/`, `harmony/` | no — plain string leaves only |
 
 If you add a new scope under `i18n/` you must also wire it up in
-`crates/lingxia-gen/src/i18n.rs::Scope` and choose (or add) the schema
+`tools/lingxia-cli/src/gen/i18n.rs::Scope` and choose (or add) the schema
 it validates against.

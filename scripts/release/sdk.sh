@@ -251,7 +251,7 @@ generate_resources() {
   [[ -d "$I18N_DIR" ]] || die "Missing i18n dir: $I18N_DIR"
   [[ -d "$ICONS_SVG_DIR" ]] || die "Missing icons svg dir: $ICONS_SVG_DIR"
 
-  local gen_cmd=(cargo run -p lingxia-gen --)
+  local gen_cmd=(cargo run -p lingxia-cli -- gen)
   local i18n_args=(i18n --input "$I18N_DIR" --no-rust --no-ts)
   local icons_args=(icons --input "$ICONS_SVG_DIR")
 

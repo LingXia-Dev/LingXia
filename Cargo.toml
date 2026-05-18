@@ -24,7 +24,6 @@ members = [
     "tools/lingxia-runner/runner-lib",
     "tools/lingxia-cli",
     "tools/lingxia-devtools-cli",
-    "crates/lingxia-gen",
     "crates/lingxia-native-codegen",
 ]
 exclude = ["examples/lingxia-lib"]
