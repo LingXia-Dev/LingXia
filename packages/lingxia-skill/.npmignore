@@ -1,0 +1,5 @@
+# Override .gitignore for npm publishing — we DO want skill/ in the tarball
+# (it's produced by prepack via scripts/sync.mjs).
+!skill/
+node_modules/
+*.log

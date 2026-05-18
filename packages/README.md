@@ -7,6 +7,7 @@
 - `lingxia-html`: Public HTML package for lxapp pages.
 - `lingxia-page-runtime`: Shared implementation package behind the public framework packages.
 - `lingxia-types`: Shared TypeScript type definitions for lxapp logic code and runtime contracts.
+- `lingxia-skill`: Agent skill (plain markdown, Anthropic Skills layout) for the LingXia framework. Installs via `npx @lingxia/skill install` so any AI coding tool — Claude Code, Claude Agent SDK, OpenAI Codex, Cursor — can build on LingXia. Content is synced from `docs/skill/` at publish time.
 
 ## Release
 
@@ -28,4 +29,5 @@ scripts/release/npm.sh --package vue --publish
 scripts/release/npm.sh --package html --publish
 scripts/release/npm.sh --package page-runtime --publish
 scripts/release/npm.sh --package types --publish
+scripts/release/npm.sh --package skill --publish
 ```

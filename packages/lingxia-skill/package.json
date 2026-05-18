@@ -1,0 +1,49 @@
+{
+  "name": "@lingxia/skill",
+  "version": "0.7.0",
+  "private": false,
+  "description": "Agent skill for the LingXia cross-platform app framework. Installs a markdown skill bundle into your project so AI coding tools — Claude Code, Claude Agent SDK, OpenAI Codex, Cursor, or any agent that reads project markdown — can build lxapps, host apps, and native Rust extensions on LingXia.",
+  "type": "module",
+  "bin": {
+    "lingxia-skill": "bin/install.mjs"
+  },
+  "files": [
+    "bin",
+    "skill",
+    "scripts/sync.mjs",
+    "README.md"
+  ],
+  "scripts": {
+    "sync": "node scripts/sync.mjs",
+    "prepack": "node scripts/sync.mjs"
+  },
+  "keywords": [
+    "lingxia",
+    "lxapp",
+    "cross-platform",
+    "ai-tooling",
+    "agent-skill",
+    "skill",
+    "claude-code",
+    "claude-agent-sdk",
+    "codex",
+    "cursor"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/LingXia-Dev/LingXia.git",
+    "directory": "packages/lingxia-skill"
+  },
+  "homepage": "https://github.com/LingXia-Dev/LingXia/tree/main/packages/lingxia-skill",
+  "bugs": {
+    "url": "https://github.com/LingXia-Dev/LingXia/issues"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org",
+    "access": "public"
+  },
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  }
+}
