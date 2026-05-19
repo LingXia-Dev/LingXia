@@ -45,14 +45,17 @@ usage() {
 Release LingXia crates.io packages.
 
 Usage:
-  scripts/release/crates.sh [--publish] [--dry-run] [--allow-dirty] [--from <crate>]
+  scripts/release/crates.sh [--publish] [--dry-run] [--allow-dirty] [--from <crate>] [--only <crates>]
 
 Options:
-  --publish       Publish crates to crates.io in dependency order.
-  --dry-run       Run cargo package checks only.
-  --allow-dirty   Pass --allow-dirty to cargo publish.
-  --from <crate>  Start from the given crate in the publish order.
-  -h, --help      Show help.
+  --publish        Publish crates to crates.io in dependency order.
+  --dry-run        Run cargo package checks only.
+  --allow-dirty    Pass --allow-dirty to cargo publish.
+  --from <crate>   Start from the given crate in the publish order.
+  --only <crates>  Publish only the listed crates (comma-separated, or repeat the flag).
+                   The dependency order from this script is preserved regardless of input order.
+                   Mutually exclusive with --from.
+  -h, --help       Show help.
 EOF
 }
 
@@ -60,6 +63,7 @@ PUBLISH=0
 DRY_RUN=0
 ALLOW_DIRTY=0
 FROM_CRATE=""
+ONLY_CRATES=()
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -75,11 +79,29 @@ while [[ $# -gt 0 ]]; do
       fi
       FROM_CRATE="$1"
       ;;
+    --only)
+      shift
+      if [[ $# -eq 0 ]]; then
+        echo "--only requires one or more crate names (comma-separated)" >&2
+        usage
+        exit 2
+      fi
+      IFS=',' read -r -a _only_chunk <<< "$1"
+      for _c in "${_only_chunk[@]}"; do
+        _c="${_c// /}"
+        [[ -n "$_c" ]] && ONLY_CRATES+=("$_c")
+      done
+      ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown option: $1" >&2; usage; exit 2 ;;
   esac
   shift
 done
+
+if [[ -n "$FROM_CRATE" && "${#ONLY_CRATES[@]}" -gt 0 ]]; then
+  echo "--from and --only are mutually exclusive" >&2
+  exit 2
+fi
 
 if [[ "$PUBLISH" -eq 0 && "$DRY_RUN" -eq 0 ]]; then
   DRY_RUN=1
@@ -124,6 +146,37 @@ if [[ -n "$FROM_CRATE" ]]; then
   SELECTED_CRATES=("${CRATES[@]:$start_index}")
 fi
 
+if [[ "${#ONLY_CRATES[@]}" -gt 0 ]]; then
+  unknown=()
+  for requested in "${ONLY_CRATES[@]}"; do
+    found=0
+    for known in "${CRATES[@]}"; do
+      if [[ "$known" == "$requested" ]]; then
+        found=1
+        break
+      fi
+    done
+    [[ "$found" -eq 0 ]] && unknown+=("$requested")
+  done
+
+  if [[ "${#unknown[@]}" -gt 0 ]]; then
+    echo "Unknown crate(s) for --only: ${unknown[*]}" >&2
+    echo "Known crates: ${CRATES[*]}" >&2
+    exit 2
+  fi
+
+  filtered=()
+  for known in "${CRATES[@]}"; do
+    for requested in "${ONLY_CRATES[@]}"; do
+      if [[ "$known" == "$requested" ]]; then
+        filtered+=("$known")
+        break
+      fi
+    done
+  done
+  SELECTED_CRATES=("${filtered[@]}")
+fi
+
 wait_for_index() {
   local crate="$1"
   local version="$2"
@@ -161,6 +214,9 @@ if [[ "$DRY_RUN" -eq 1 ]]; then
   if [[ -n "$FROM_CRATE" ]]; then
     echo "Starting from: $FROM_CRATE"
   fi
+  if [[ "${#ONLY_CRATES[@]}" -gt 0 ]]; then
+    echo "Only: ${SELECTED_CRATES[*]}"
+  fi
   for crate in "${SELECTED_CRATES[@]}"; do
     echo "==> cargo package -p $crate --list"
     if [[ "$ALLOW_DIRTY" -eq 1 ]]; then
@@ -178,6 +234,9 @@ fi
 
 if [[ -n "$FROM_CRATE" ]]; then
   echo "Resuming publish order from: $FROM_CRATE"
+fi
+if [[ "${#ONLY_CRATES[@]}" -gt 0 ]]; then
+  echo "Publishing only: ${SELECTED_CRATES[*]}"
 fi
 
 for crate in "${SELECTED_CRATES[@]}"; do

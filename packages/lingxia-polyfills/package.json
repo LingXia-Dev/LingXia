@@ -1,6 +1,6 @@
 {
   "name": "@lingxia/polyfills",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "private": false,
   "description": "ES5 stdlib polyfills shipped to the lxapp runtime when targeting old Android WebView (Chromium 37–44).",
   "type": "module",
