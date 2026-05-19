@@ -1,6 +1,6 @@
 use crate::i18n::{
     js_error_from_business_code, js_error_from_lxapp_error, js_error_from_platform_error,
-    js_internal_error, js_invalid_parameter_error, js_timeout_error,
+    js_internal_error, js_invalid_parameter_error,
 };
 use futures::channel::oneshot;
 use futures::future::{Either, select};
@@ -14,15 +14,6 @@ use rong::{
     RongJSError,
 };
 use serde::Deserialize;
-use std::time::Duration;
-
-/// Hard cap on how long we wait for native to settle the preview session
-/// before rejecting `completed` ourselves. Native is expected to settle
-/// within a few seconds of the user closing or auto-advance finishing; a
-/// minute is generous enough to survive an unusually slow shutdown but
-/// short enough that a lost JNI call doesn't strand the JS Promise
-/// indefinitely.
-const PREVIEW_MEDIA_TOTAL_TIMEOUT: Duration = Duration::from_secs(60);
 
 #[derive(Debug, Clone)]
 struct RawPreviewMediaSource {
@@ -65,7 +56,6 @@ struct ParsedPreviewMediaRequest {
 enum PreviewCompletion {
     Native(Result<CallbackResult, tokio::sync::oneshot::error::RecvError>),
     Aborted,
-    TimedOut,
 }
 
 impl AbortListener {
@@ -167,36 +157,25 @@ fn preview_media(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
         Ok::<(), RongJSError>(())
     })?;
 
-    // Hard total-timeout fallback: even if native loses both callbacks
-    // (JNI crash, sub-process abort, etc.) we MUST settle `completed` so the
-    // JS Promise doesn't hang forever. Drive it from a separate executor
-    // task; the JS-thread future just awaits the oneshot.
-    let (timeout_tx, timeout_rx) = oneshot::channel::<()>();
-    rong_rt::RongExecutor::global().spawn(async move {
-        tokio::time::sleep(PREVIEW_MEDIA_TOTAL_TIMEOUT).await;
-        let _ = timeout_tx.send(());
-    });
-
     let lxapp_for_cancel = lxapp.clone();
     let completed = Promise::from_future(&ctx, None, async move {
-        // Pick a winner among three signals: native completed callback, the
-        // (optional) abort, or the total-timeout. Use nested select so we can
-        // attribute each branch to a distinct error type / cleanup action.
+        // `completed` settles on either the native callback or an external
+        // abort. No wall-clock timeout: a preview session is bound to a
+        // user-visible resource that the JS layer (or its AbortSignal)
+        // is responsible for closing. A lost native callback would be a
+        // bug to fix at the source; quietly tearing down a working
+        // session here would mask it.
         let outcome: PreviewCompletion = match abort_rx {
-            Some(abort_rx) => match select(completed_rx, select(abort_rx, timeout_rx)).await {
+            Some(abort_rx) => match select(completed_rx, abort_rx).await {
                 Either::Left((cb, _)) => PreviewCompletion::Native(cb),
-                Either::Right((Either::Left((_aborted, _)), _)) => PreviewCompletion::Aborted,
-                Either::Right((Either::Right((_timed_out, _)), _)) => PreviewCompletion::TimedOut,
+                Either::Right(_) => PreviewCompletion::Aborted,
             },
-            None => match select(completed_rx, timeout_rx).await {
-                Either::Left((cb, _)) => PreviewCompletion::Native(cb),
-                Either::Right((_timed_out, _)) => PreviewCompletion::TimedOut,
-            },
+            None => PreviewCompletion::Native(completed_rx.await),
         };
 
         let result: JSResult<PreviewMediaResultObj> = match outcome {
             PreviewCompletion::Native(cb) => cb
-                .map_err(|_| js_timeout_error("previewMedia callback timed out"))
+                .map_err(|_| js_internal_error("previewMedia callback channel closed"))
                 .and_then(parse_preview_callback_result),
             PreviewCompletion::Aborted => {
                 let _ = remove_callback(completed_cb_id);
@@ -205,14 +184,6 @@ fn preview_media(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
                     completed_cb_id,
                 );
                 Err(js_abort_error("previewMedia aborted"))
-            }
-            PreviewCompletion::TimedOut => {
-                let _ = remove_callback(completed_cb_id);
-                let _ = lingxia_service::media::cancel_preview(
-                    &*lxapp_for_cancel.runtime,
-                    completed_cb_id,
-                );
-                Err(js_timeout_error("previewMedia timed out"))
             }
         };
 
