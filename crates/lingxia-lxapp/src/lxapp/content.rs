@@ -195,6 +195,7 @@ fn build_content_security_policy(trusted_domains: &[String]) -> String {
     let mut img_sources = vec![
         "'self'".to_string(),
         "lx:".to_string(),
+        "lingxia:".to_string(),
         "data:".to_string(),
         "blob:".to_string(),
     ];
@@ -212,12 +213,12 @@ fn build_content_security_policy(trusted_domains: &[String]) -> String {
     }
 
     [
-        "default-src 'self' lx:".to_string(),
+        "default-src 'self' lx: lingxia:".to_string(),
         format!("img-src {}", img_sources.join(" ")),
         build_connect_src_policy(),
-        "script-src 'self' lx: 'unsafe-inline'".to_string(),
-        "style-src 'self' lx: 'unsafe-inline'".to_string(),
-        "font-src 'self' lx: data:".to_string(),
+        "script-src 'self' lx: lingxia: 'unsafe-inline'".to_string(),
+        "style-src 'self' lx: lingxia: 'unsafe-inline'".to_string(),
+        "font-src 'self' lx: lingxia: data:".to_string(),
         "media-src 'none'".to_string(),
         "worker-src 'none'".to_string(),
         "child-src 'none'".to_string(),
@@ -364,7 +365,7 @@ mod tests {
         ]);
 
         assert!(csp.contains(
-            "img-src 'self' lx: data: blob: https://cdn.example.com https://*.img.example.com"
+            "img-src 'self' lx: lingxia: data: blob: https://cdn.example.com https://*.img.example.com"
         ));
         #[cfg(any(target_os = "ios", target_os = "macos"))]
         assert!(csp.contains("connect-src lx-apple:"));
@@ -379,7 +380,7 @@ mod tests {
     fn csp_wildcard_trusted_domain_allows_https_images() {
         let csp = build_content_security_policy(&["*".to_string()]);
 
-        assert!(csp.contains("img-src 'self' lx: data: blob: https:"));
+        assert!(csp.contains("img-src 'self' lx: lingxia: data: blob: https:"));
         assert!(!csp.contains("https://*"));
     }
 
