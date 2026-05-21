@@ -143,24 +143,35 @@ pub mod host_app {
             if !connected {
                 return;
             }
-            if AUTO_TRIGGERED.swap(true, Ordering::SeqCst) {
+            // Already finished successfully — nothing more to do.
+            if AUTO_TRIGGERED.load(Ordering::SeqCst) {
                 return;
             }
-            let listener_id = AUTO_LISTENER_ID.load(Ordering::SeqCst);
-            if listener_id != 0 {
-                let _ = runtime_for_handler.remove_network_change_listener(listener_id);
-                let _ = lingxia_messaging::remove_callback(listener_id);
+            // Another attempt is already running. Skip; if it fails it will
+            // leave the listener subscribed and the next event will retry.
+            if AUTO_RUNNING.swap(true, Ordering::SeqCst) {
+                return;
             }
-            let _ = lingxia::task::spawn(async {
-                match check().await {
+
+            let runtime_for_task = runtime_for_handler.clone();
+            let _ = lingxia::task::spawn(async move {
+                let outcome = check().await;
+                AUTO_RUNNING.store(false, Ordering::SeqCst);
+                match outcome {
                     Ok(Outcome::UpToDate) => {
                         log::info!("[lingxia] host app auto update: up to date");
+                        unsubscribe_auto_listener(&runtime_for_task);
                     }
                     Ok(Outcome::Installed { version }) => {
                         log::info!("[lingxia] host app auto update: installed version {version}");
+                        unsubscribe_auto_listener(&runtime_for_task);
                     }
                     Err(error) => {
-                        log::warn!("[lingxia] host app auto update failed: {error}");
+                        // Keep the listener subscribed so the next connected
+                        // event retries — typical weak-network recovery.
+                        log::warn!(
+                            "[lingxia] host app auto update failed (will retry on next connect): {error}"
+                        );
                     }
                 }
             });
@@ -175,6 +186,17 @@ pub mod host_app {
             let _ = lingxia_messaging::remove_callback(callback_id);
             AUTO_LISTENER_ID.store(0, Ordering::SeqCst);
             AUTO_FIRED.store(false, Ordering::SeqCst);
+        }
+    }
+
+    /// Remove the network-change listener installed by `install_auto_trigger`.
+    /// Idempotent: safe to call if the listener was already removed.
+    fn unsubscribe_auto_listener(runtime: &Arc<lingxia_platform::Platform>) {
+        AUTO_TRIGGERED.store(true, Ordering::SeqCst);
+        let listener_id = AUTO_LISTENER_ID.swap(0, Ordering::SeqCst);
+        if listener_id != 0 {
+            let _ = runtime.remove_network_change_listener(listener_id);
+            let _ = lingxia_messaging::remove_callback(listener_id);
         }
     }
 
@@ -288,7 +310,13 @@ pub mod host_app {
     }
 
     static AUTO_FIRED: AtomicBool = AtomicBool::new(false);
+    /// Set only after a successful check (UpToDate or Installed). Once true,
+    /// the listener has been removed and subsequent network events are no-ops.
     static AUTO_TRIGGERED: AtomicBool = AtomicBool::new(false);
+    /// Guards against spawning a second check while one is already running.
+    /// Important on weak networks where the listener stays subscribed across
+    /// failed attempts and may receive multiple `isConnected: true` events.
+    static AUTO_RUNNING: AtomicBool = AtomicBool::new(false);
     static AUTO_LISTENER_ID: AtomicU64 = AtomicU64::new(0);
 }
 
