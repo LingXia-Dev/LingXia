@@ -40,6 +40,42 @@ Supported Rust target triples:\n\
         }
     }
 
+    /// Map a Rust target triple to the matching Android ABI name (the form
+    /// used in `lib/<abi>/` and `ndk.abiFilters`).
+    fn target_to_abi(target: &str) -> Option<&'static str> {
+        match target {
+            "aarch64-linux-android" => Some("arm64-v8a"),
+            "armv7-linux-androideabi" | "armv7a-linux-androideabi" => Some("armeabi-v7a"),
+            _ => None,
+        }
+    }
+
+    /// Materialize an init script that reads `lingxia.abis` and pins
+    /// `ndk.abiFilters` on every `com.android.application` project. This is
+    /// the only place that can prune .so contributed by transitive AARs from
+    /// the final APK without requiring the app's build script to opt in.
+    fn write_abi_filter_init_script() -> Result<PathBuf> {
+        const SCRIPT: &str = r#"
+gradle.allprojects { proj ->
+    proj.plugins.withId("com.android.application") {
+        def raw = proj.findProperty("lingxia.abis")
+        if (raw == null) return
+        def abis = raw.toString().split(',').collect { it.trim() }.findAll { it }
+        if (abis.isEmpty()) return
+        proj.android.defaultConfig.ndk {
+            abiFilters.clear()
+            abiFilters.addAll(abis)
+        }
+        proj.logger.lifecycle("[lingxia] abiFilters pinned to ${abis}")
+    }
+}
+"#;
+        let path = env::temp_dir().join("lingxia-abi-filter.init.gradle");
+        fs::write(&path, SCRIPT)
+            .with_context(|| format!("Failed to write init script: {}", path.display()))?;
+        Ok(path)
+    }
+
     /// Create a new Android platform instance
     pub fn new() -> Self {
         Self
@@ -280,11 +316,27 @@ Supported Rust target triples:\n\
         let app_id_arg = format!("-Plingxia.applicationIdSuffix={app_id_suffix}");
         let app_name_arg = format!("-Plingxia.appName={app_name}");
 
+        // Translate Rust targets back to Android ABI names so we can pass them
+        // to Gradle. The init script below uses this to constrain the merged
+        // APK's `lib/<abi>/` set, including .so contributed by transitive AARs
+        // (mlkit, camera, etc.) — which `--abis` alone cannot control.
+        let abis: Vec<&str> = config
+            .targets
+            .iter()
+            .filter_map(|t| Self::target_to_abi(t))
+            .collect();
+        let abis_arg = format!("-Plingxia.abis={}", abis.join(","));
+        let init_script_path = Self::write_abi_filter_init_script()?;
+        let init_script_arg_value = init_script_path.to_string_lossy().to_string();
+
         let mut command = Command::new(&gradlew);
         command
             .arg(task)
             .arg(app_id_arg)
             .arg(app_name_arg)
+            .arg(abis_arg)
+            .arg("-I")
+            .arg(&init_script_arg_value)
             .current_dir(project_root);
         if let Some(overlay) = icon_overlay {
             command.arg(format!(
