@@ -93,6 +93,7 @@ class LxApp private constructor(private val context: Context) {
                     appContext.filesDir.absolutePath,
                     appContext.cacheDir.absolutePath,
                     appContext.assets,
+                    appContext,
                     LxApp.getLocale()
                 )
 

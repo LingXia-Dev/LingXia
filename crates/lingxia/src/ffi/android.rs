@@ -165,6 +165,7 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_lingxiaInit<'a>(
     data_dir: JString<'a>,
     cache_dir: JString<'a>,
     asset_manager: JObject<'a>,
+    application_context: JObject<'a>,
     locale: JString<'a>,
 ) -> JString<'a> {
     env.with_env(|env| -> Result<JString, jni::errors::Error> {
@@ -187,6 +188,7 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_lingxiaInit<'a>(
             lingxia_platform::Platform::from_java(
                 env,
                 asset_manager.as_raw(),
+                application_context.as_raw(),
                 data_dir_str,
                 cache_dir_str,
                 locale_str,

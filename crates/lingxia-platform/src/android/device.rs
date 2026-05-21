@@ -15,34 +15,9 @@ use std::process::Command;
 
 use super::Platform;
 
-fn get_lxapp_context<'a>(env: &mut Env<'a>) -> Result<JObject<'a>, Box<dyn std::error::Error>> {
-    let lxapp_class: &jni::objects::JClass = super::get_cached_class(super::CachedClass::LxApp)?;
-
-    let mut context_obj = env
-        .call_static_method(
-            lxapp_class,
-            jni_str!("getCurrentActivity"),
-            jni_sig!("()Lcom/lingxia/lxapp/LxAppActivity;"),
-            &[],
-        )?
-        .l()?;
-
-    if context_obj.is_null() {
-        context_obj = env
-            .call_static_method(
-                lxapp_class,
-                jni_str!("applicationContext"),
-                jni_sig!("()Landroid/content/Context;"),
-                &[],
-            )?
-            .l()?;
-    }
-
-    if context_obj.is_null() {
-        return Err("LxApp context not available".into());
-    }
-
-    Ok(context_obj)
+fn host_context<'a>(env: &mut Env<'a>) -> Result<JObject<'a>, Box<dyn std::error::Error>> {
+    super::application_context(env)
+        .ok_or_else(|| "Application context not registered via set_application_context".into())
 }
 
 /// Get Android system property using getprop command
@@ -94,29 +69,16 @@ impl Device for Platform {
 
     fn screen_info(&self) -> ScreenInfo {
         let result = with_env(|env| -> Result<ScreenInfo, Box<dyn std::error::Error>> {
-            let lxapp_class: &jni::objects::JClass =
-                super::get_cached_class(super::CachedClass::LxApp)?;
-
-            let activity_obj = env
-                .call_static_method(
-                    lxapp_class,
-                    jni_str!("getCurrentActivity"),
-                    jni_sig!("()Lcom/lingxia/lxapp/LxAppActivity;"),
-                    &[],
-                )?
-                .l()?;
-
-            if activity_obj.is_null() {
-                return Ok(ScreenInfo {
-                    width: 0.0,
-                    height: 0.0,
-                    scale: 1.0,
-                });
-            }
+            // Use the registered application context — available from
+            // `lingxia_platform::Platform::from_java` onward, well before any
+            // Activity has a chance to attach. This sidesteps the timing
+            // window where lxapp module-level JS calls getScreenInfo before
+            // the first Activity reaches onCreate.
+            let context_obj = host_context(env)?;
 
             let resources: JObject = env
                 .call_method(
-                    activity_obj,
+                    context_obj,
                     jni_str!("getResources"),
                     jni_sig!("()Landroid/content/res/Resources;"),
                     &[],
@@ -201,7 +163,7 @@ pub fn get_android_id() -> Option<String> {
     use jni::objects::JValue;
 
     match with_env(|env| -> Result<String, Box<dyn std::error::Error>> {
-        let context_obj = get_lxapp_context(env)?;
+        let context_obj = host_context(env)?;
 
         // Get ContentResolver
         let content_resolver = env
@@ -556,7 +518,7 @@ pub fn get_api_level() -> i32 {
 /// Check if device has telephony feature (is a phone).
 pub fn has_telephony_feature() -> bool {
     match with_env(|env| -> Result<bool, Box<dyn std::error::Error>> {
-        let context = get_lxapp_context(env)?;
+        let context = host_context(env)?;
         let pm = env
             .call_method(
                 context,

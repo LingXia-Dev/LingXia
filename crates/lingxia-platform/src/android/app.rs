@@ -10,8 +10,6 @@ use std::ffi::CString;
 use std::io::{Read, Result as IoResult};
 use std::path::{Path, PathBuf};
 
-use super::{CachedClass, get_cached_class};
-
 // Platform for Android
 pub struct Platform {
     asset_manager: *mut ndk_sys::AAssetManager,
@@ -293,10 +291,12 @@ impl<'a> Iterator for RecursiveAssetIterator<'a> {
 
 impl Platform {
     /// # Safety
-    /// Caller must ensure `java_asset_manager_obj` is a valid `android.content.res.AssetManager`.
+    /// Caller must ensure `java_asset_manager_obj` is a valid `android.content.res.AssetManager`
+    /// and `java_application_context_obj` is a valid `android.content.Context`.
     pub unsafe fn from_java(
         jni_env: &mut Env,
         java_asset_manager_obj: jobject,
+        java_application_context_obj: jobject,
         data_dir: String,
         cache_dir: String,
         locale: String,
@@ -318,6 +318,15 @@ impl Platform {
             .new_global_ref(unsafe { JObject::from_raw(jni_env, java_asset_manager_obj) })
             .map_err(|e| format!("Failed to create global reference: {:?}", e))?;
 
+        // Register the host application context so platform APIs that need a
+        // Context (display metrics, Settings.Secure, resources) can resolve
+        // it without going through the lxapp business layer.
+        let app_context = unsafe { JObject::from_raw(jni_env, java_application_context_obj) };
+        if app_context.is_null() {
+            return Err("Application context is null".to_string());
+        }
+        super::set_application_context(jni_env, &app_context)?;
+
         Ok(Platform {
             asset_manager: asset_manager_ptr,
             java_asset_manager,
@@ -328,26 +337,11 @@ impl Platform {
     }
 
     fn resolve_app_identifier(jni_env: &mut Env) -> Result<String, PlatformError> {
-        // Use cached LxApp class to obtain the application context and package name.
-        let lxapp_class: &JClass = get_cached_class(CachedClass::LxApp)
-            .map_err(|e| PlatformError::Platform(e.to_string()))?;
-
-        let context = jni_env
-            .call_static_method(
-                lxapp_class,
-                jni_str!("getApplicationContext"),
-                jni_sig!("()Landroid/content/Context;"),
-                &[],
+        let context = super::application_context(jni_env).ok_or_else(|| {
+            PlatformError::Platform(
+                "Application context not registered via set_application_context".to_string(),
             )
-            .and_then(|val| val.l())
-            .map_err(|e| {
-                PlatformError::Platform(format!("Failed to get application context: {:?}", e))
-            })?;
-        if context.is_null() {
-            return Err(PlatformError::Platform(
-                "Application context is null".to_string(),
-            ));
-        }
+        })?;
 
         let package_obj = jni_env
             .call_method(

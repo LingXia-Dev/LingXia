@@ -1,7 +1,7 @@
 use jni::{
     Env, JavaVM,
     errors::Error as JniError,
-    objects::{Global, JClass},
+    objects::{Global, JClass, JObject},
 };
 use std::sync::OnceLock;
 
@@ -25,9 +25,32 @@ pub use device::{
 };
 
 static JAVA_VM: OnceLock<JavaVM> = OnceLock::new();
+static APPLICATION_CONTEXT: OnceLock<Global<JObject<'static>>> = OnceLock::new();
 
 pub fn initialize_jni(vm: JavaVM) {
     let _ = JAVA_VM.set(vm);
+}
+
+/// Register the host application's `android.content.Context` exactly once,
+/// at platform initialization. The platform crate uses this to fulfill any
+/// API that internally needs a Context (display metrics, Settings.Secure,
+/// resources). Hosts that integrate this crate directly — not just lingxia
+/// SDK apps — provide their own Context here without dragging in the SDK's
+/// LxApp class.
+pub fn set_application_context(env: &mut Env, ctx: &JObject) -> Result<(), String> {
+    let global = env
+        .new_global_ref(ctx)
+        .map_err(|e| format!("Failed to create global ref for application context: {}", e))?;
+    APPLICATION_CONTEXT
+        .set(global)
+        .map_err(|_| "Application context already registered".to_string())
+}
+
+/// Borrow the registered application context as a local reference.
+/// Returns `None` if [`set_application_context`] has not been called yet.
+pub(crate) fn application_context<'a>(env: &mut Env<'a>) -> Option<JObject<'a>> {
+    let global = APPLICATION_CONTEXT.get()?;
+    env.new_local_ref(global).ok()
 }
 
 pub(crate) fn with_env<T, E>(f: impl FnOnce(&mut Env) -> Result<T, E>) -> Result<T, E>

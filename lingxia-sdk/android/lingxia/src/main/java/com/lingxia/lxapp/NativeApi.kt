@@ -59,6 +59,9 @@ internal object NativeApi {
      * @param dataDir Application data directory path
      * @param cacheDir Application cache directory path
      * @param assetManager Android AssetManager for accessing bundled assets
+     * @param applicationContext The host application's Context, registered
+     *   once with the platform crate so device/display APIs do not depend on
+     *   any Activity lifecycle.
      * @param locale System locale (e.g., "en-US", "zh-CN")
      * @return Home app ID if successful, null otherwise
      */
@@ -67,6 +70,7 @@ internal object NativeApi {
         dataDir: String,
         cacheDir: String,
         assetManager: AssetManager,
+        applicationContext: android.content.Context,
         locale: String
     ): String?
 
