@@ -12,6 +12,7 @@ use std::fs;
 use std::io::{Error as IoError, Read};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock, RwLock};
+use std::time::Duration;
 
 pub use lingxia_update::{
     AppUpdateApply, AppUpdateEvent, AppUpdateEventReceiver, AppUpdateProgressReporter,
@@ -275,17 +276,23 @@ async fn download_host_app_update_package(
     };
 
     progress.report(0, file_size);
-    let sink: Option<Box<dyn BodySink>> = Some(Box::new(ProgressSink::new(file_size, progress)));
+    let sink: Box<dyn BodySink> = Box::new(ProgressSink::new(file_size, progress));
 
-    let receiver =
-        match service_executor::request_download(url.to_string(), dest.clone(), None, sink) {
-            Ok(receiver) => receiver,
-            Err(error) => {
-                return Err(UpdateError::runtime(format!(
-                    "failed to start download: {error}"
-                )));
-            }
-        };
+    // Resume on the existing `.part` file when possible. The 10s connect timeout
+    // is a sensible cap for weak networks — without it rong_rt falls back to the
+    // OS default which can hang far longer.
+    let options = service_executor::DownloadOptions::new(url.to_string(), dest.clone())
+        .with_sink(sink)
+        .with_resume()
+        .with_connect_timeout(Duration::from_secs(10));
+    let receiver = match service_executor::spawn_download(options, None) {
+        Ok(receiver) => receiver,
+        Err(error) => {
+            return Err(UpdateError::runtime(format!(
+                "failed to start download: {error}"
+            )));
+        }
+    };
 
     match receiver
         .await
@@ -332,10 +339,17 @@ async fn get_content_length(url: &str) -> Result<u64, String> {
         )
         .map_err(|error| format!("failed to build HEAD request: {error}"))?;
 
-    let response =
-        host_http::send_with_small_body_limit(request, 1024, host_http::RequestOptions::new())
-            .await
-            .map_err(|error| format!("HEAD request failed: {error}"))?;
+    // Add a connect timeout so weak-network HEAD probes don't hang on the
+    // system default (which can be a minute or more on some networks).
+    let response = host_http::send_with_small_body_limit(
+        request,
+        1024,
+        host_http::RequestOptions::new()
+            .with_connect_timeout(Duration::from_secs(10))
+            .with_request_timeout(Duration::from_secs(15)),
+    )
+    .await
+    .map_err(|error| format!("HEAD request failed: {error}"))?;
 
     if !response.status.is_success() {
         return Err(format!("HEAD request returned HTTP {}", response.status));

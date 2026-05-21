@@ -441,9 +441,13 @@ impl UpdateManager {
             let _ = fs::remove_file(&dest);
         }
 
-        let receiver =
-            service_executor::request_download(url.to_string(), dest.clone(), None, None)
-                .map_err(|e| LxAppError::IoError(format!("failed to start download: {}", e)))?;
+        // Keep any pre-existing `.part` file so an interrupted prior attempt
+        // (typically on weak networks) resumes from where it stopped.
+        let options = service_executor::DownloadOptions::new(url.to_string(), dest.clone())
+            .with_resume()
+            .with_connect_timeout(std::time::Duration::from_secs(10));
+        let receiver = service_executor::spawn_download(options, None)
+            .map_err(|e| LxAppError::IoError(format!("failed to start download: {}", e)))?;
 
         match receiver
             .await
