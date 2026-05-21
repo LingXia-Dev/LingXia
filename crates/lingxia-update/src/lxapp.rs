@@ -10,7 +10,12 @@ use tokio::time::timeout;
 
 use super::error::UpdateError;
 
-const FOREGROUND_UPDATE_CHECK_TIMEOUT: Duration = Duration::from_secs(3);
+// Outer ceiling. The actual HTTP timeouts are owned by the registered
+// `UpdateProvider`; this wrapper exists only as a fail-safe when a
+// misbehaving provider forgets to set its own deadline. Keep it strictly
+// larger than any reasonable provider timeout so this layer never preempts
+// the provider's own error reporting.
+const FOREGROUND_UPDATE_CHECK_TIMEOUT: Duration = Duration::from_secs(15);
 
 pub trait LxAppUpdateHost: Clone + Send + Sync + 'static {
     fn spawn_detached(&self, task: BoxFuture<'static, ()>);
