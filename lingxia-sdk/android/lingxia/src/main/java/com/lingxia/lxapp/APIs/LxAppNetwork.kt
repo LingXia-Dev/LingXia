@@ -83,10 +83,27 @@ object LxAppNetwork {
     fun addNetworkStatusListener(listener: NetworkStatusListener): Long {
         val id = nextStatusListenerId.getAndIncrement()
         statusListeners[id] = listener
-        // Fire current state immediately. Resolve eagerly on first registration
-        // so listeners always get an initial value, even at cold start.
-        val current = lastIsConnected ?: resolveAndCache()
-        listener.onNetworkStatusChanged(current)
+
+        // Ensure the OS NetworkCallback is registered even when the only consumer
+        // is a Java/Kotlin listener (no JS-side `lx.onNetworkChange` subscriber).
+        // Without this the listener would silently never receive updates.
+        val context = LxApp.applicationContext()
+        val connMgr = getConnectivityManager(context)
+        if (connMgr != null && networkCallback == null) {
+            registerNetworkCallback(connMgr)
+        }
+
+        // Fire the current state immediately ONLY if we can actually resolve one.
+        // When this is called before `LxApp.init` finishes (e.g. an Application or
+        // Activity registered early), `applicationContext` is still null and
+        // `resolveNetworkStatus(null)` would falsely return "disconnected" — causing
+        // a brief no-network UI flash on cold start. In that case, defer the first
+        // emission to the OS NetworkCallback path, which will fire with the real
+        // state once ConnectivityManager is available.
+        if (context != null) {
+            val current = lastIsConnected ?: resolveAndCache()
+            listener.onNetworkStatusChanged(current)
+        }
         return id
     }
 
