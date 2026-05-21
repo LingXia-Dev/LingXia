@@ -35,6 +35,9 @@ import org.json.JSONObject;
 public class LingXiaWebView extends WebView {
     private static final String TAG = "LingXiaWebView";
     private static final String MESSAGEPORT_BRIDGE_CLASS = "com.lingxia.webview.AndroidMessagePortBridge";
+    // Older Chromium builds expose createWebMessageChannel but its native
+    // implementation can SIGSEGV on first call.
+    private static final int MIN_CHROMIUM_MAJOR_FOR_MESSAGE_PORT = 60;
     private static final long PROXY_MAIN_THREAD_HOP_TIMEOUT_MS = 5000L;
     private static final long PROXY_CALLBACK_TIMEOUT_MS = 5000L;
     private static final long PROXY_TOTAL_TIMEOUT_MS =
@@ -416,6 +419,16 @@ public class LingXiaWebView extends WebView {
             messagePortBridge = null;
             return;
         }
+        // createWebMessageChannel can SIGSEGV on old Chromium builds — a native
+        // crash Java try/catch cannot rescue. Probe capability before touching it.
+        if (!isMessagePortSafe()) {
+            messagePortBridge = null;
+            sendPortMethod = null;
+            postMessageMethod = null;
+            cleanupMethod = null;
+            Log.i(TAG, "MessagePort bridge disabled; fallback to evaluateJavascript");
+            return;
+        }
         try {
             Class<?> bridgeClz = Class.forName(MESSAGEPORT_BRIDGE_CLASS);
             java.lang.reflect.Method create = bridgeClz.getMethod("create", LingXiaWebView.class);
@@ -432,6 +445,36 @@ public class LingXiaWebView extends WebView {
             cleanupMethod = null;
             Log.w(TAG, "MessagePort bridge unavailable, fallback to jsinterface", t);
         }
+    }
+
+    // Two gates: androidx feature flag, then a Chromium major-version floor
+    // parsed from the UA (catches builds that expose the API but crash on call).
+    private boolean isMessagePortSafe() {
+        try {
+            if (!WebViewFeature.isFeatureSupported(WebViewFeature.CREATE_WEB_MESSAGE_CHANNEL)) {
+                return false;
+            }
+        } catch (Throwable t) {
+            return false;
+        }
+        try {
+            WebSettings s = getSettings();
+            String ua = s != null ? s.getUserAgentString() : null;
+            if (ua != null) {
+                java.util.regex.Matcher m =
+                        java.util.regex.Pattern.compile("Chrome/(\\d+)").matcher(ua);
+                if (m.find()) {
+                    int major = Integer.parseInt(m.group(1));
+                    if (major < MIN_CHROMIUM_MAJOR_FOR_MESSAGE_PORT) {
+                        Log.i(TAG, "MessagePort gated off: Chromium " + major
+                                + " < " + MIN_CHROMIUM_MAJOR_FOR_MESSAGE_PORT);
+                        return false;
+                    }
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        return true;
     }
 
     /**
