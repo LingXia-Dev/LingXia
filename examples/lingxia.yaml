@@ -2,7 +2,7 @@ app:
   projectName: lingxia
   lingxiaId: lingxia-showcase
   productName: LingXia
-  productVersion: 0.2.5
+  productVersion: 0.2.6
   platforms:
     - android
     - ios
@@ -11,9 +11,8 @@ app:
   homeAppId: lingxia-showcase
 
   lingxiaServer:
-    developer: http://192.168.37.77:8080
-    preview: http://192.168.37.77:8080
-    release: http://192.168.37.77:8080
+    developer: http://192.168.1.8:8080
+    release: http://192.168.1.8:8080
 
 android:
   packageId: com.lingxia.example.lxapp
@@ -22,12 +21,12 @@ android:
   compileSdk: 35
 
 ios:
-  bundleId: com.lingxia.example
+  bundleId: app.lingxia.example.lxapp
   deploymentTarget: "17.0"
   targetName: lxapp
 
 macos:
-  bundleId: com.lingxia.example
+  bundleId: app.lingxia.example.lxapp
   deploymentTarget: "12.0"
   targetName: LingXiaDemo
   executableName: LingXiaDemo
