@@ -11,9 +11,22 @@ pub use lingxia::android::*;
 {{APPLE_REEXPORT}}
 {{HARMONY_REEXPORT}}
 
+// Auto-generated at build time from every `#[lingxia::native]` in this
+// crate. Defines `mod __lingxia_native { pub fn install() { ... } }` that
+// calls `register_host_entry(...)` for each handler. Adding a new native
+// no longer needs a paired manual registration line.
+//
+// If this crate has zero `#[lingxia::native]` handlers the generated
+// `install()` body is empty — still safe to call.
+include!(concat!(env!("OUT_DIR"), "/lingxia_native_handlers.rs"));
+
 struct AppHostAddon;
 
 impl lingxia::HostAddon for AppHostAddon {
+    fn install_host_apis(&self) {
+        __lingxia_native::install();
+    }
+
     fn start_services(&self) {
         #[cfg(all(feature = "devtools", any(target_os = "ios", target_os = "macos")))]
         lingxia_devtool::start_devtool_bridge_from_env();
