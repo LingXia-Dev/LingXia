@@ -450,19 +450,19 @@ class LxAppActivity : AppCompatActivity() {
                 return@setOnApplyWindowInsetsListener WindowInsetsCompat.CONSUMED
             }
             val sysBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            val imeBottom = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom
             systemBottomInset = resolveContentBottomInset(insets)
 
             val currentBg = tabBar?.config?.backgroundColor ?: tabBarConfig?.backgroundColor
             val isTabBarTransparent = currentBg == Color.TRANSPARENT ||
                                      (currentBg?.let { Color.alpha(it) < 255 } == true)
 
-            if (isTabBarTransparent) {
-                // Let TabBar overlay nav bar; do not pad root
-                view.setPadding(0, 0, 0, 0)
-            } else {
-                // Non-transparent TabBar: keep default system bars padding for root
-                view.setPadding(sysBars.left, 0, sysBars.right, sysBars.bottom)
-            }
+            // Edge-to-edge disables adjustResize; consume the IME inset manually.
+            val baseBottom = if (isTabBarTransparent) 0 else sysBars.bottom
+            val bottomPad = maxOf(baseBottom, imeBottom)
+            val sidePadLeft = if (isTabBarTransparent) 0 else sysBars.left
+            val sidePadRight = if (isTabBarTransparent) 0 else sysBars.right
+            view.setPadding(sidePadLeft, 0, sidePadRight, bottomPad)
 
             // Re-apply TabBar layout so bottom margin reflects latest inset when transparent
             tabBar?.config?.let { cfg ->
