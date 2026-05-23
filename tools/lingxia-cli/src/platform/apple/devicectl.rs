@@ -266,6 +266,22 @@ pub struct HardwareProperties {
     pub marketing_name: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+struct AppListOutput {
+    result: AppListResult,
+}
+
+#[derive(Debug, Deserialize)]
+struct AppListResult {
+    apps: Vec<InstalledApp>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct InstalledApp {
+    bundle_identifier: String,
+}
+
 // =============================================================================
 // Unified API (requires Xcode 15+ for devicectl)
 // =============================================================================
@@ -327,6 +343,11 @@ pub fn uninstall_app(bundle_id: &str, device_id: Option<&str>) -> Result<()> {
 
 /// Launch an app on a connected iOS device.
 ///
+/// `bundle_id` is the canonical bundle id from lingxia.yaml. Xcode builds
+/// can apply an env suffix (`.dev` / `.preview`) — auto-detect which
+/// variant is installed and target that, so callers don't have to track
+/// env state.
+///
 /// Requires Xcode 15+ (uses devicectl).
 pub fn launch_app(bundle_id: &str, device_id: Option<&str>, restart: bool) -> Result<()> {
     if !DeviceCtl::is_available() {
@@ -340,7 +361,70 @@ pub fn launch_app(bundle_id: &str, device_id: Option<&str>, restart: bool) -> Re
     } else {
         DeviceCtl::wait_for_device(30)?.identifier
     };
-    DeviceCtl::launch_app(bundle_id, &device_identifier, restart)
+    let installed_id =
+        resolve_installed_bundle_id(bundle_id, &device_identifier)?.ok_or_else(|| {
+            anyhow!(
+                "No installed app matching {bundle_id} (or {bundle_id}.<env>) on device. \
+                 Run `lingxia install` first."
+            )
+        })?;
+    DeviceCtl::launch_app(&installed_id, &device_identifier, restart)
+}
+
+/// Pick the installed bundle id matching `base_id` (canonical) or
+/// `base_id.<single-segment>` (env-suffixed via Xcode build settings).
+/// When several coexist, prefer the canonical id.
+fn resolve_installed_bundle_id(base_id: &str, device_identifier: &str) -> Result<Option<String>> {
+    let output = Command::new("xcrun")
+        .args([
+            "devicectl",
+            "device",
+            "info",
+            "apps",
+            "--device",
+            device_identifier,
+            "--json-output",
+            "-",
+        ])
+        .output()
+        .context("Failed to run devicectl info apps")?;
+    if !output.status.success() {
+        return Err(anyhow!(
+            "devicectl info apps failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+    let parsed: AppListOutput = serde_json::from_slice(&output.stdout)
+        .context("Failed to parse devicectl info apps JSON")?;
+    let prefix = format!("{base_id}.");
+    let mut matches: Vec<String> = parsed
+        .result
+        .apps
+        .into_iter()
+        .map(|a| a.bundle_identifier)
+        .filter(|pkg| {
+            pkg == base_id
+                || pkg
+                    .strip_prefix(&prefix)
+                    .map(|rest| !rest.is_empty() && !rest.contains('.'))
+                    .unwrap_or(false)
+        })
+        .collect();
+    if matches.is_empty() {
+        return Ok(None);
+    }
+    if let Some(idx) = matches.iter().position(|p| p == base_id) {
+        return Ok(Some(matches.swap_remove(idx)));
+    }
+    if matches.len() > 1 {
+        eprintln!(
+            "{} multiple installed variants of {base_id}: {:?} — picking {}",
+            "warn:".yellow(),
+            matches,
+            matches[0]
+        );
+    }
+    Ok(Some(matches.remove(0)))
 }
 
 /// List connected iOS devices.

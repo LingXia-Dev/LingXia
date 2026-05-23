@@ -512,13 +512,27 @@ impl Platform for AndroidPlatform {
     }
 
     fn run(&self, config: &RunConfig) -> Result<()> {
-        let activity = config
-            .main_activity
-            .as_ref()
-            .map(|activity| format!("{}/{}", config.package_id, activity))
-            .unwrap_or_else(|| format!("{}/{}.MainActivity", config.package_id, config.package_id));
-
         let device_id = resolve_adb_device_id(config.device_id.as_deref())?;
+        let base_id = config.package_id.as_str();
+
+        // Gradle's `applicationIdSuffix` (env=developer/preview) only changes
+        // the *application* id on device — Kotlin/Java class FQCNs stay
+        // canonical. Auto-detect which variant is installed so callers don't
+        // have to track env state.
+        let installed_id = resolve_installed_app_id(Some(device_id.as_str()), base_id)?
+            .ok_or_else(|| {
+                anyhow!(
+                    "No installed package matching {base_id} (or {base_id}.<env>) on device. \
+                     Run `lingxia install` first."
+                )
+            })?;
+
+        let class_fqcn = config
+            .main_activity
+            .clone()
+            .unwrap_or_else(|| format!("{base_id}.MainActivity"));
+        let activity = format!("{installed_id}/{class_fqcn}");
+
         let args = if config.restart {
             vec!["am", "start", "-S", "-n", activity.as_str()]
         } else {
@@ -866,6 +880,51 @@ fn adb_command(device_id: Option<&str>) -> Command {
         command.arg("-s").arg(device_id);
     }
     command
+}
+
+/// Pick the installed application id matching `base_id` (canonical) or
+/// `base_id.<single-segment>` (env-suffixed via Gradle's
+/// `applicationIdSuffix`). When several coexist, prefer the canonical id.
+fn resolve_installed_app_id(device_id: Option<&str>, base_id: &str) -> Result<Option<String>> {
+    let output = adb_command(device_id)
+        .arg("shell")
+        .args(["pm", "list", "packages"])
+        .output()
+        .with_context(|| "Failed to execute adb shell pm list packages")?;
+    if !output.status.success() {
+        return Err(anyhow!(
+            "adb shell pm list packages failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let prefix = format!("{base_id}.");
+    let mut matches: Vec<String> = stdout
+        .lines()
+        .filter_map(|line| line.strip_prefix("package:").map(|s| s.trim().to_string()))
+        .filter(|pkg| {
+            pkg == base_id
+                || pkg
+                    .strip_prefix(&prefix)
+                    .map(|rest| !rest.is_empty() && !rest.contains('.'))
+                    .unwrap_or(false)
+        })
+        .collect();
+    if matches.is_empty() {
+        return Ok(None);
+    }
+    if let Some(idx) = matches.iter().position(|p| p == base_id) {
+        return Ok(Some(matches.swap_remove(idx)));
+    }
+    if matches.len() > 1 {
+        eprintln!(
+            "{} multiple installed variants of {base_id}: {:?} — picking {}",
+            "warn:".yellow(),
+            matches,
+            matches[0]
+        );
+    }
+    Ok(Some(matches.remove(0)))
 }
 
 fn run_adb_shell_checked(device_id: Option<&str>, args: &[&str], label: &str) -> Result<()> {
