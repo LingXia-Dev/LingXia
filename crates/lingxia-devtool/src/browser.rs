@@ -1,4 +1,6 @@
 #[cfg(feature = "browser")]
+use crate::util::{png_response, run_async};
+#[cfg(feature = "browser")]
 use lingxia_devtool_protocol::handlers;
 #[cfg(feature = "browser")]
 use serde::Deserialize;
@@ -301,6 +303,12 @@ fn handle_browser_command_impl(
             run_async(lingxia_browser::clear_cookies(&tab_id))?;
             Ok(None)
         }
+        handlers::browser::SCREENSHOT => {
+            let args: TabArgs = parse_args(handler, args)?;
+            let tab_id = resolve_tab_id(&args.tab_id)?;
+            let bytes = run_async(lingxia_browser::take_screenshot(&tab_id))?;
+            Ok(Some(png_response(&bytes, [("tab_id", json!(tab_id))])))
+        }
         _ => Err(format!("unknown browser handler: {}", handler)),
     }
 }
@@ -341,19 +349,6 @@ where
 {
     serde_json::from_value(args.unwrap_or_else(|| json!({})))
         .map_err(|err| format!("invalid args for {}: {}", handler, err))
-}
-
-#[cfg(feature = "browser")]
-fn run_async<T, E>(future: impl std::future::Future<Output = Result<T, E>>) -> Result<T, String>
-where
-    E: std::fmt::Display,
-{
-    tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .map_err(|err| err.to_string())?
-        .block_on(future)
-        .map_err(|err| err.to_string())
 }
 
 #[cfg(feature = "browser")]

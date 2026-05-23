@@ -27,6 +27,7 @@ pub mod handlers {
         pub const COOKIES_SET: &str = "browser.cookies.set";
         pub const COOKIES_DELETE: &str = "browser.cookies.delete";
         pub const COOKIES_CLEAR: &str = "browser.cookies.clear";
+        pub const SCREENSHOT: &str = "browser.screenshot";
     }
 
     pub mod lxapp {
@@ -41,6 +42,19 @@ pub mod handlers {
         pub const UNINSTALL: &str = "lxapp.uninstall";
     }
 
+    pub mod app {
+        /// Capture a PNG of the host app's window. Accepts an optional
+        /// `window_id` (returned by [`WINDOWS`]) so multi-window desktop
+        /// apps can pick a specific surface; mobile platforms ignore it
+        /// since they have a single foreground window. Returns a JSON
+        /// envelope `{format, size_bytes, data_base64}`.
+        pub const SCREENSHOT: &str = "app.screenshot";
+
+        /// Enumerate the host app's top-level windows. Returns a JSON
+        /// array of `{id, title, focused, main, visible, width, height}`.
+        pub const WINDOWS: &str = "app.windows";
+    }
+
     pub mod lxapp_page {
         pub const CURRENT: &str = "lxapp.page.current";
         pub const LIST: &str = "lxapp.page.list";
@@ -52,6 +66,7 @@ pub mod handlers {
         pub const FILL: &str = "lxapp.page.fill";
         pub const PRESS: &str = "lxapp.page.press";
         pub const BACK: &str = "lxapp.page.back";
+        pub const SCREENSHOT: &str = "lxapp.page.screenshot";
     }
 }
 

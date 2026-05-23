@@ -1,3 +1,4 @@
+use crate::util::{png_response, run_async};
 use lingxia_devtool_protocol::handlers;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -130,6 +131,20 @@ fn handle_lxapp_page_command_impl(
             lingxia::dev::lxapp_dev_page_back(args.appid.as_deref(), args.delta.unwrap_or(1))?;
             Ok(None)
         }
+        handlers::lxapp_page::SCREENSHOT => {
+            let parsed: PageTargetArgs = parse_args(handler, args)?;
+            let bytes = run_async(lingxia::dev::lxapp_dev_page_screenshot(
+                parsed.appid.as_deref(),
+                parsed.page.as_deref(),
+            ))?;
+            Ok(Some(png_response(
+                &bytes,
+                [
+                    ("appid", json!(parsed.appid.unwrap_or_default())),
+                    ("page", json!(parsed.page.unwrap_or_default())),
+                ],
+            )))
+        }
         _ => Err(format!("unknown lxapp page handler: {}", handler)),
     }
 }
@@ -140,18 +155,6 @@ where
 {
     serde_json::from_value(args.unwrap_or_else(|| json!({})))
         .map_err(|err| format!("invalid args for {}: {}", handler, err))
-}
-
-fn run_async<T, E>(future: impl std::future::Future<Output = Result<T, E>>) -> Result<T, String>
-where
-    E: std::fmt::Display,
-{
-    tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .map_err(|err| err.to_string())?
-        .block_on(future)
-        .map_err(|err| err.to_string())
 }
 
 #[derive(Deserialize, Default)]

@@ -1,3 +1,4 @@
+use crate::util::run_async;
 use lingxia_devtool_protocol::handlers;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -208,18 +209,6 @@ where
 {
     serde_json::from_value(args.unwrap_or_else(|| json!({})))
         .map_err(|err| format!("invalid args for {}: {}", handler, err))
-}
-
-fn run_async<T, E>(future: impl std::future::Future<Output = Result<T, E>>) -> Result<T, String>
-where
-    E: std::fmt::Display,
-{
-    tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .map_err(|err| err.to_string())?
-        .block_on(future)
-        .map_err(|err| err.to_string())
 }
 
 #[derive(Deserialize)]

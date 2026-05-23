@@ -87,6 +87,10 @@ pub async fn evaluate_javascript(
     runtime::browser_evaluate_javascript(tab_id, js).await
 }
 
+pub async fn take_screenshot(tab_id: &str) -> Result<Vec<u8>, BrowserAutomationError> {
+    runtime::browser_take_screenshot(tab_id).await
+}
+
 pub async fn current_url(tab_id: &str) -> Result<Option<String>, BrowserAutomationError> {
     runtime::browser_current_url(tab_id).await
 }

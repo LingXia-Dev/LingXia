@@ -2,11 +2,13 @@ use anyhow::Result;
 use clap::{Args, Parser, Subcommand};
 use std::path::Path;
 
+mod app;
 mod browser;
 mod client;
 mod logs;
 mod lxapp;
 mod project;
+mod screenshot;
 mod sessions;
 
 use project::SessionSelector;
@@ -38,6 +40,8 @@ enum Commands {
     Logs(logs::LogsOptions),
     /// List or prune dev sessions for this project
     Sessions(SessionsCmd),
+    /// Operate on the host app as a whole (window-level screenshot, etc.)
+    App(app::AppOptions),
 }
 
 #[derive(Args, Clone)]
@@ -81,5 +85,9 @@ fn main() -> Result<()> {
             Some(SessionsAction::Prune) => sessions::execute_prune(&project_root),
             None => sessions::execute_list(&project_root, cmd.json),
         },
+        Commands::App(options) => {
+            let info = project::resolve_session(&project_root, &selector)?;
+            app::execute(&info, options)
+        }
     }
 }

@@ -1,5 +1,6 @@
 use crate::client;
 use crate::project::SessionInfo;
+use crate::screenshot;
 use anyhow::{Context, Result, anyhow};
 use clap::{Args, Subcommand};
 use lingxia_devtool_protocol::handlers;
@@ -258,6 +259,18 @@ pub enum BrowserCommand {
     },
     /// Manage browser cookies
     Cookies(CookiesOptions),
+    /// Capture a PNG screenshot of the current/specified tab
+    Screenshot {
+        #[arg(long, default_value = "current")]
+        tab: String,
+        /// Output path. Use `-` to write the PNG bytes to stdout.
+        /// Defaults to `.lingxia/screenshots/<tab>-<ts>.png` under the project root.
+        #[arg(long, short = 'o')]
+        output: Option<String>,
+        /// Print the JSON envelope (tab_id, size_bytes, data_base64) instead of writing a file
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Args, Clone)]
@@ -638,9 +651,35 @@ pub fn execute(info: &SessionInfo, options: BrowserOptions) -> Result<()> {
             print_optional_json(data, json)?;
         }
         BrowserCommand::Cookies(options) => execute_cookies(ws_url, options)?,
+        BrowserCommand::Screenshot { tab, output, json } => {
+            execute_screenshot(ws_url, tab, output, json)?
+        }
     }
 
     Ok(())
+}
+
+fn execute_screenshot(ws_url: &str, tab: String, output: Option<String>, json: bool) -> Result<()> {
+    let data = client::execute_command(
+        ws_url,
+        handlers::browser::SCREENSHOT,
+        Some(json!({ "tab_id": tab })),
+    )?
+    .unwrap_or(Value::Null);
+
+    if json {
+        return print_json(&data, false);
+    }
+
+    let bytes = screenshot::decode_png_payload(&data, handlers::browser::SCREENSHOT)?;
+    let resolved_tab = data
+        .get("tab_id")
+        .and_then(Value::as_str)
+        .unwrap_or(tab.as_str())
+        .to_string();
+    let ts = chrono::Local::now().format("%Y%m%d-%H%M%S");
+    let tab = screenshot::safe_component(&resolved_tab);
+    screenshot::write_png(output, format!("{tab}-{ts}.png"), &bytes)
 }
 
 fn execute_cookies(ws_url: &str, options: CookiesOptions) -> Result<()> {

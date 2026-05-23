@@ -293,6 +293,53 @@ pub async fn lxapp_dev_page_eval(
         .map_err(|err| err.to_string())
 }
 
+/// Capture a PNG snapshot of the host app's entire window (not just a
+/// WebView). Returns raw PNG bytes. The window includes host UI overlays,
+/// native controls, and any composited WebViews — useful when verifying
+/// app-level layout or surfacing host-drawn elements that WebView-only
+/// screenshots cannot see.
+///
+/// `window_id` is the platform-specific id returned by [`list_app_windows`].
+/// Passing `None` lets the platform pick (focused/main on desktop; the sole
+/// window on mobile).
+pub async fn take_app_screenshot(window_id: Option<&str>) -> Result<Vec<u8>, String> {
+    use lingxia_platform::traits::screenshot::AppScreenshot;
+    let platform =
+        lxapp::get_platform().ok_or_else(|| "platform is not initialized".to_string())?;
+    platform
+        .take_app_screenshot(window_id)
+        .await
+        .map_err(|err| err.to_string())
+}
+
+/// Enumerate the host app's top-level windows. Mobile platforms return a
+/// single entry; desktop platforms return one entry per open window.
+pub async fn list_app_windows()
+-> Result<Vec<lingxia_platform::traits::screenshot::WindowInfo>, String> {
+    use lingxia_platform::traits::screenshot::AppScreenshot;
+    let platform =
+        lxapp::get_platform().ok_or_else(|| "platform is not initialized".to_string())?;
+    platform
+        .list_app_windows()
+        .await
+        .map_err(|err| err.to_string())
+}
+
+/// Capture a PNG screenshot of the target lxapp page's WebView.
+/// Returns raw PNG bytes.
+pub async fn lxapp_dev_page_screenshot(
+    appid: Option<&str>,
+    page_name: Option<&str>,
+) -> Result<Vec<u8>, String> {
+    let app = resolve_dev_lxapp(appid.unwrap_or("current"))?;
+    let (page, _) = resolve_dev_page(&app, page_name)?;
+    page.webview()
+        .ok_or_else(|| "page WebView is not ready".to_string())?
+        .take_screenshot()
+        .await
+        .map_err(|err| err.to_string())
+}
+
 /// Queries DOM nodes in the target page and returns a JSON description payload.
 pub async fn lxapp_dev_page_query(
     appid: Option<&str>,

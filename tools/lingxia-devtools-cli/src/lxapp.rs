@@ -1,5 +1,6 @@
 use crate::client;
 use crate::project::SessionInfo;
+use crate::screenshot;
 use anyhow::{Context, Result};
 use clap::{Args, Parser, Subcommand};
 use lingxia_devtool_protocol::handlers;
@@ -271,6 +272,21 @@ pub enum PageCommand {
         #[arg(long)]
         json: bool,
     },
+    /// Capture a PNG screenshot of an lxapp page's WebView
+    Screenshot {
+        /// LxApp context; defaults to current
+        #[arg(long, default_value = "current")]
+        app: String,
+        /// Page name; defaults to current
+        #[arg(long, default_value = "current")]
+        page: String,
+        /// Output path; use `-` for stdout. Default: .lingxia/screenshots/<app>-<page>-<ts>.png
+        #[arg(long, short = 'o')]
+        output: Option<String>,
+        /// Print the JSON envelope instead of writing a PNG file
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 pub fn execute(project_root: &Path, info: &SessionInfo, options: LxAppOptions) -> Result<()> {
@@ -535,9 +551,43 @@ fn execute_page(ws_url: &str, options: PageOptions) -> Result<()> {
             )?;
             print_optional_json(data, json)?;
         }
+        PageCommand::Screenshot {
+            app,
+            page,
+            output,
+            json,
+        } => {
+            execute_page_screenshot(ws_url, app, page, output, json)?;
+        }
     }
 
     Ok(())
+}
+
+fn execute_page_screenshot(
+    ws_url: &str,
+    app: String,
+    page: String,
+    output: Option<String>,
+    json: bool,
+) -> Result<()> {
+    let data = client::execute_command(
+        ws_url,
+        handlers::lxapp_page::SCREENSHOT,
+        Some(json!({ "appid": app, "page": page })),
+    )?
+    .unwrap_or(Value::Null);
+
+    if json {
+        println!("{}", serde_json::to_string(&data)?);
+        return Ok(());
+    }
+
+    let bytes = screenshot::decode_png_payload(&data, handlers::lxapp_page::SCREENSHOT)?;
+    let ts = chrono::Local::now().format("%Y%m%d-%H%M%S");
+    let app = screenshot::safe_component(&app);
+    let page = screenshot::safe_component(&page);
+    screenshot::write_png(output, format!("{app}-{page}-{ts}.png"), &bytes)
 }
 
 fn is_top_level_help(args: &[String]) -> bool {

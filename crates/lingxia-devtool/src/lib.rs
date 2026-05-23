@@ -11,9 +11,11 @@ use tungstenite::protocol::Message;
 use tungstenite::stream::MaybeTlsStream;
 use tungstenite::{Error as WsError, WebSocket, connect};
 
+mod app;
 mod browser;
 mod lxapp;
 mod lxapp_page;
+mod util;
 
 pub use lingxia_devtool_protocol::{
     DevtoolsLogLevel, DevtoolsLogMessage, DevtoolsLogSource, DevtoolsPeerRole, DevtoolsWireMessage,
@@ -192,51 +194,14 @@ fn handle_incoming_message(
         return Ok(());
     };
 
-    let result = if let Some(result) = browser::handle_browser_command(&handler, args.clone()) {
-        match result {
-            Ok(data) => DevtoolsWireMessage::Result {
-                command_id,
-                ok: true,
-                data,
-                error: None,
-            },
-            Err(error) => DevtoolsWireMessage::Result {
-                command_id,
-                ok: false,
-                data: None,
-                error: Some(error),
-            },
-        }
+    let result = if let Some(result) = app::handle_app_command(&handler, args.clone()) {
+        command_result(command_id, result)
+    } else if let Some(result) = browser::handle_browser_command(&handler, args.clone()) {
+        command_result(command_id, result)
     } else if let Some(result) = lxapp_page::handle_lxapp_page_command(&handler, args.clone()) {
-        match result {
-            Ok(data) => DevtoolsWireMessage::Result {
-                command_id,
-                ok: true,
-                data,
-                error: None,
-            },
-            Err(error) => DevtoolsWireMessage::Result {
-                command_id,
-                ok: false,
-                data: None,
-                error: Some(error),
-            },
-        }
+        command_result(command_id, result)
     } else if let Some(result) = lxapp::handle_lxapp_command(&handler, args.clone()) {
-        match result {
-            Ok(data) => DevtoolsWireMessage::Result {
-                command_id,
-                ok: true,
-                data,
-                error: None,
-            },
-            Err(error) => DevtoolsWireMessage::Result {
-                command_id,
-                ok: false,
-                data: None,
-                error: Some(error),
-            },
-        }
+        command_result(command_id, result)
     } else {
         match handler.as_str() {
             handlers::ECHO => DevtoolsWireMessage::Result {
@@ -254,6 +219,26 @@ fn handle_incoming_message(
         }
     };
     send_wire_message(websocket, &result)
+}
+
+fn command_result(
+    command_id: String,
+    result: Result<Option<serde_json::Value>, String>,
+) -> DevtoolsWireMessage {
+    match result {
+        Ok(data) => DevtoolsWireMessage::Result {
+            command_id,
+            ok: true,
+            data,
+            error: None,
+        },
+        Err(error) => DevtoolsWireMessage::Result {
+            command_id,
+            ok: false,
+            data: None,
+            error: Some(error),
+        },
+    }
 }
 
 fn send_log_batch(

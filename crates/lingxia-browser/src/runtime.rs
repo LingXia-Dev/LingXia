@@ -2217,6 +2217,13 @@ pub async fn browser_evaluate_javascript(
         .map_err(BrowserAutomationError::from)
 }
 
+pub async fn browser_take_screenshot(tab_id: &str) -> Result<Vec<u8>, BrowserAutomationError> {
+    browser_tab_webview(tab_id)?
+        .take_screenshot()
+        .await
+        .map_err(BrowserAutomationError::from)
+}
+
 pub fn browser_reload(tab_id: &str) -> Result<(), BrowserAutomationError> {
     browser_tab_webview(tab_id)?.reload()?;
     Ok(())
