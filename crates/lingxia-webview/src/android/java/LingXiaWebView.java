@@ -1,11 +1,17 @@
 package com.lingxia.webview;
 
+import android.app.Activity;
 import android.content.Context;
+import android.content.ContextWrapper;
+import android.graphics.Bitmap;
+import android.graphics.Canvas;
+import android.graphics.Rect;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Base64;
 import android.util.Log;
+import android.view.PixelCopy;
 import android.view.View;
 import android.view.ViewGroup;
 import android.webkit.WebChromeClient;
@@ -15,6 +21,7 @@ import android.webkit.ValueCallback;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import java.io.ByteArrayOutputStream;
 import androidx.webkit.ProxyConfig;
 import androidx.webkit.ProxyController;
 import androidx.webkit.WebViewFeature;
@@ -951,6 +958,142 @@ public class LingXiaWebView extends WebView {
         String cookie
     );
     native void onEvaluateJavascriptResult(long requestId, String value, String error);
+    native void onScreenshotResult(long requestId, byte[] pngBytes, String error);
+
+    /**
+     * Capture the WebView's visible content into a PNG byte[].
+     * Result is delivered asynchronously via {@link #onScreenshotResult}.
+     * Implementation: PixelCopy from the containing window on API 26+, with
+     * draw(Canvas) as a fallback, then compress to PNG.
+     * Caller (Rust side) is expected to hold the requestId in a pending map.
+     */
+    public void captureScreenshot(final long requestId) {
+        ensureMainThread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    int width = getWidth();
+                    int height = getHeight();
+                    if (width <= 0 || height <= 0) {
+                        onScreenshotResult(requestId, new byte[0],
+                            "WebView has zero size; cannot capture");
+                        return;
+                    }
+
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        Activity activity = findActivity(getContext());
+                        if (activity != null && activity.getWindow() != null) {
+                            Bitmap bitmap = Bitmap.createBitmap(
+                                width, height, Bitmap.Config.ARGB_8888);
+                            int[] location = new int[2];
+                            getLocationInWindow(location);
+                            Rect srcRect = new Rect(
+                                location[0],
+                                location[1],
+                                location[0] + width,
+                                location[1] + height
+                            );
+                            try {
+                                PixelCopy.request(
+                                    activity.getWindow(),
+                                    srcRect,
+                                    bitmap,
+                                    new PixelCopy.OnPixelCopyFinishedListener() {
+                                        @Override
+                                        public void onPixelCopyFinished(int result) {
+                                            if (result == PixelCopy.SUCCESS) {
+                                                deliverScreenshotBitmap(requestId, bitmap);
+                                            } else {
+                                                bitmap.recycle();
+                                                Log.w(TAG, "PixelCopy screenshot failed: result=" + result);
+                                                captureScreenshotByDraw(requestId, width, height);
+                                            }
+                                        }
+                                    },
+                                    new Handler(Looper.getMainLooper())
+                                );
+                                return;
+                            } catch (Throwable pixelCopyError) {
+                                bitmap.recycle();
+                                Log.w(TAG, "PixelCopy screenshot threw; falling back to draw(Canvas)",
+                                    pixelCopyError);
+                            }
+                        }
+                    }
+
+                    captureScreenshotByDraw(requestId, width, height);
+                } catch (Throwable error) {
+                    try {
+                        onScreenshotResult(requestId, new byte[0],
+                            error.getMessage() != null ? error.getMessage() : error.toString());
+                    } catch (Throwable callbackError) {
+                        Log.e(TAG, "Failed to forward screenshot error", callbackError);
+                    }
+                }
+            }
+        });
+    }
+
+    private void captureScreenshotByDraw(final long requestId, int width, int height) {
+        try {
+            // Re-read current size: when PixelCopy is invoked and its
+            // listener fires asynchronously, the WebView may have been
+            // resized between request and callback. Trust the live
+            // measurement over the stale `width`/`height` captured before
+            // the PixelCopy attempt.
+            int liveWidth = getWidth();
+            int liveHeight = getHeight();
+            if (liveWidth <= 0) liveWidth = width;
+            if (liveHeight <= 0) liveHeight = height;
+            Bitmap bitmap = Bitmap.createBitmap(liveWidth, liveHeight, Bitmap.Config.ARGB_8888);
+            Canvas canvas = new Canvas(bitmap);
+            draw(canvas);
+            deliverScreenshotBitmap(requestId, bitmap);
+        } catch (Throwable error) {
+            try {
+                onScreenshotResult(requestId, new byte[0],
+                    error.getMessage() != null ? error.getMessage() : error.toString());
+            } catch (Throwable callbackError) {
+                Log.e(TAG, "Failed to forward screenshot fallback error", callbackError);
+            }
+        }
+    }
+
+    private void deliverScreenshotBitmap(final long requestId, Bitmap bitmap) {
+        try {
+            ByteArrayOutputStream stream = new ByteArrayOutputStream(
+                Math.max(64 * 1024, bitmap.getWidth() * bitmap.getHeight() / 4));
+            boolean ok = bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream);
+            bitmap.recycle();
+            if (!ok) {
+                onScreenshotResult(requestId, new byte[0],
+                    "Bitmap.compress(PNG) returned false");
+                return;
+            }
+            onScreenshotResult(requestId, stream.toByteArray(), "");
+        } catch (Throwable error) {
+            try {
+                if (!bitmap.isRecycled()) {
+                    bitmap.recycle();
+                }
+                onScreenshotResult(requestId, new byte[0],
+                    error.getMessage() != null ? error.getMessage() : error.toString());
+            } catch (Throwable callbackError) {
+                Log.e(TAG, "Failed to forward screenshot error", callbackError);
+            }
+        }
+    }
+
+    private static Activity findActivity(Context context) {
+        Context current = context;
+        while (current instanceof ContextWrapper) {
+            if (current instanceof Activity) {
+                return (Activity) current;
+            }
+            current = ((ContextWrapper) current).getBaseContext();
+        }
+        return null;
+    }
     native int handlePostMessage(String appId, String path, long sessionId, String message);
     native static void notifyWebViewReady(String appId, String path, long sessionId, Object webView);
 }

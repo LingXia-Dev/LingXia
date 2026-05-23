@@ -713,6 +713,38 @@ pub fn on_webview_controller_destroyed(webtag: String) -> bool {
     true
 }
 
+/// ArkTS → Rust callback for `captureScreenshot`.
+/// `request_id_str` is passed as a string (not number) so JS numeric precision
+/// cannot truncate it.
+#[napi]
+pub fn on_screenshot_result(request_id_str: String, png_base64: String, error: String) -> bool {
+    let Ok(request_id) = request_id_str.parse::<u64>() else {
+        log::error!(
+            "[Harmony] on_screenshot_result received unparseable request id: {}",
+            request_id_str
+        );
+        return false;
+    };
+    if !error.trim().is_empty() {
+        webview_harmony::complete_pending_screenshot_request(request_id, Err(error));
+        return true;
+    }
+    use base64::Engine as _;
+    match base64::engine::general_purpose::STANDARD.decode(png_base64.as_bytes()) {
+        Ok(bytes) => {
+            webview_harmony::complete_pending_screenshot_request(request_id, Ok(bytes));
+            true
+        }
+        Err(err) => {
+            webview_harmony::complete_pending_screenshot_request(
+                request_id,
+                Err(format!("failed to base64-decode screenshot payload: {err}")),
+            );
+            false
+        }
+    }
+}
+
 #[napi]
 pub fn on_navigation_policy(webtag: String, url: String) -> bool {
     webview_harmony::check_navigation_policy(&webtag, &url)

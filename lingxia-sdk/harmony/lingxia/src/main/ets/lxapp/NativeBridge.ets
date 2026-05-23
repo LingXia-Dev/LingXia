@@ -20,8 +20,10 @@ import {
   destroyWebViewController,
   loadUrl,
   clearBrowsingData,
-  setUserAgent
+  setUserAgent,
+  captureScreenshot
 } from './WebViewBridge';
+import { captureAppScreenshot } from '../app/AppScreenshot';
 import { animationTypeFromInt } from './NavigationBar';
 import { PermissionManager } from './PermissionManager';
 import { LxNativeVideoPlayer } from './media/LxNativeVideoPlayer';
@@ -225,6 +227,16 @@ class NativeBridge {
     // WebView user agent
     this.register('setUserAgent', (webtag: string, userAgent: string) => {
       return setUserAgent(webtag, userAgent);
+    });
+
+    // WebView screenshot (returns true on dispatch; bytes flow back asynchronously)
+    this.register('captureScreenshot', (webtag: string, requestIdStr: string) => {
+      return captureScreenshot(webtag, requestIdStr);
+    });
+
+    // App/window screenshot — entire host window contents, not a single WebView.
+    this.register('captureAppScreenshot', (callbackIdStr: string) => {
+      return captureAppScreenshot(callbackIdStr);
     });
 
     this.register('completeWebFileChooserRequest', (requestId: string, selectedJson: string): boolean => {

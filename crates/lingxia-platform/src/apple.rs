@@ -11,6 +11,7 @@ mod media;
 mod network;
 mod pull_to_refresh;
 mod resources;
+mod screenshot;
 mod surface;
 mod ui_update;
 mod user_feedback;

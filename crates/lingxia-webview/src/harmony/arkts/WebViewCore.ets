@@ -1,12 +1,37 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { webview } from '@kit.ArkWeb';
+import { image } from '@kit.ImageKit';
+import { util } from '@kit.ArkTS';
+import { BusinessError } from '@kit.BasicServicesKit';
 import {
   onDownloadStart as hostOnDownloadStart,
   onLoadError as hostOnLoadError,
   onNavigationPolicy as hostOnNavigationPolicy,
+  onScreenshotResult as hostOnScreenshotResult,
   onWebviewControllerCreated as hostOnWebviewControllerCreated,
   onWebviewControllerDestroyed as hostOnWebviewControllerDestroyed
 } from 'liblingxia.so';
+
+/// Subset of ArkWeb's `webview.SnapshotInfo` that we care about. Declared
+/// inline because the namespace type is not always re-exported across SDK
+/// versions and ArkTS strict mode forbids untyped object literals.
+interface ScreenshotSnapshotSize {
+  width: number;
+  height: number;
+}
+
+interface ScreenshotSnapshotInfo {
+  id?: string;
+  size?: ScreenshotSnapshotSize;
+  pixelMapType?: image.PixelMapFormat;
+}
+
+/// Subset of ArkWeb's `webview.SnapshotResult`.
+interface ScreenshotSnapshotResult {
+  id?: string;
+  status?: boolean;
+  imagePixelMap?: image.PixelMap;
+}
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.WebView';
@@ -444,6 +469,87 @@ export class WebViewManager {
   }
 
   /**
+   * Capture a PNG screenshot of the WebView and return the bytes asynchronously
+   * to the native layer via {@code onScreenshotResult}.
+   *
+   * @param webtag - WebView tag
+   * @param requestIdStr - request id assigned by the native side; round-tripped back
+   * @returns true if the snapshot was successfully dispatched, false on synchronous failure
+   */
+  static captureScreenshot(webtag: string, requestIdStr: string): boolean {
+    const logicalTag = WebViewManager.resolveLogicalTag(webtag);
+    const controller = WebViewManager.controllers.get(logicalTag);
+    const fail = (reason: string): boolean => {
+      try {
+        hostOnScreenshotResult(requestIdStr, '', reason);
+      } catch (callbackError) {
+        hilog.error(DOMAIN, TAG, `Failed to deliver screenshot error: ${callbackError}`);
+      }
+      return false;
+    };
+    if (!controller) {
+      return fail(`WebView not found for captureScreenshot: ${webtag}`);
+    }
+    try {
+      // ArkWeb's `webPageSnapshot` returns "create pixel map error" on
+      // Kirin devices when `size` is omitted or zero. Pass a concrete
+      // target size; the snapshot is scaled to fit. The 1080x1920 default
+      // matches typical phone resolutions and gives a reasonable file size.
+      const info: ScreenshotSnapshotInfo = {
+        id: webtag,
+        size: { width: 1080, height: 1920 },
+        pixelMapType: image.PixelMapFormat.RGBA_8888,
+      };
+      // `webPageSnapshot` is supplied by ArkWeb's WebviewController. If the
+      // host SDK version doesn't have it, this call throws — caught below.
+      // Using the structural cast instead of `Function.call` keeps ArkTS
+      // strict mode happy (arkts-no-func-apply-call).
+      (controller as webview.WebviewController).webPageSnapshot(
+        info as Object,
+        (err: BusinessError | null, data: ScreenshotSnapshotResult) => {
+          // Some OHOS callbacks pass `{code:0, message:''}` on success
+          // rather than `null`, so check the code, not just truthiness.
+          if (err && err.code !== 0) {
+            fail(`webPageSnapshot failed: code=${err.code} msg=${err.message}`);
+            return;
+          }
+          const pixelMap: image.PixelMap | undefined = data ? data.imagePixelMap : undefined;
+          if (!pixelMap) {
+            fail('webPageSnapshot returned no PixelMap');
+            return;
+          }
+          try {
+            const packer = image.createImagePacker();
+            const opts: image.PackingOption = { format: 'image/png', quality: 100 };
+            packer.packing(
+              pixelMap,
+              opts,
+              (packError: BusinessError | null, buffer: ArrayBuffer) => {
+                try {
+                  if (packError && packError.code !== 0) {
+                    fail(`PNG packing failed: code=${packError.code} msg=${packError.message}`);
+                    return;
+                  }
+                  const b64 = new util.Base64Helper().encodeToStringSync(new Uint8Array(buffer));
+                  hostOnScreenshotResult(requestIdStr, b64, '');
+                } finally {
+                  try { packer.release(); } catch (_) { /* ignore */ }
+                  try { pixelMap.release(); } catch (_) { /* ignore */ }
+                }
+              }
+            );
+          } catch (packerError) {
+            fail(`Failed to create image packer: ${packerError}`);
+          }
+        }
+      );
+      return true;
+    } catch (error) {
+      return fail(`captureScreenshot threw: ${error}`);
+    }
+  }
+
+  /**
    * Get WebView info by webtag (internal use)
    * @param webtag - WebView tag
    * @returns WebView info or null
@@ -773,4 +879,12 @@ export function clearBrowsingData(webtag: string): boolean {
  */
 export function setUserAgent(webtag: string, userAgent: string): boolean {
   return WebViewManager.setUserAgent(webtag, userAgent);
+}
+
+/**
+ * Capture a PNG screenshot of the WebView.
+ * Result is delivered asynchronously via the native `onScreenshotResult` callback.
+ */
+export function captureScreenshot(webtag: string, requestIdStr: string): boolean {
+  return WebViewManager.captureScreenshot(webtag, requestIdStr);
 }

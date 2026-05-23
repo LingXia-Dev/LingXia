@@ -71,6 +71,10 @@ export class WebViewManager {
     return CoreWebViewManager.setUserAgent(webtag, userAgent);
   }
 
+  static captureScreenshot(webtag: string, requestIdStr: string): boolean {
+    return CoreWebViewManager.captureScreenshot(webtag, requestIdStr);
+  }
+
   static getWebViewInfo(webtag: string): WebViewInfo | null {
     return CoreWebViewManager.getWebViewInfo(webtag);
   }
@@ -199,6 +203,10 @@ export function clearBrowsingData(webtag: string): boolean {
 
 export function setUserAgent(webtag: string, userAgent: string): boolean {
   return WebViewManager.setUserAgent(webtag, userAgent);
+}
+
+export function captureScreenshot(webtag: string, requestIdStr: string): boolean {
+  return WebViewManager.captureScreenshot(webtag, requestIdStr);
 }
 
 export function getWebViewEmbedManager(webtag: string): NativeComponentEmbedManager {

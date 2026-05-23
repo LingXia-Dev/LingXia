@@ -2174,6 +2174,205 @@ impl WebViewInner {
         }
     }
 
+    /// macOS implementation of `take_screenshot`. WKWebView returns an `NSImage`,
+    /// which we round-trip through `TIFFRepresentation` → `NSBitmapImageRep` to get PNG bytes.
+    #[cfg(target_os = "macos")]
+    async fn take_screenshot_macos(&self) -> Result<Vec<u8>, WebViewError> {
+        const SNAPSHOT_TIMEOUT: Duration = Duration::from_secs(5);
+        // NSBitmapImageFileType raw value for NSBitmapImageFileTypePNG.
+        const NS_BITMAP_PNG: u64 = 4;
+
+        let (tx, rx) = oneshot::channel::<Result<Vec<u8>, String>>();
+        let webview_ptr_addr = self.webview as usize;
+
+        DispatchQueue::main().exec_async(move || unsafe {
+            let webview_ptr = webview_ptr_addr as *mut AnyObject;
+            let tx_state = Arc::new(Mutex::new(Some(tx)));
+            let tx_state_for_block = Arc::clone(&tx_state);
+
+            let completion = StackBlock::new(move |image: *mut AnyObject, error: *mut NSError| {
+                let sender = tx_state_for_block
+                    .lock()
+                    .ok()
+                    .and_then(|mut guard| guard.take());
+                let Some(sender) = sender else { return };
+
+                if !error.is_null() {
+                    let description: *mut NSString = msg_send![error, localizedDescription];
+                    let description = if description.is_null() {
+                        "WKWebView takeSnapshot returned NSError".to_string()
+                    } else {
+                        (&*description).to_string()
+                    };
+                    let _ = sender.send(Err(description));
+                    return;
+                }
+                if image.is_null() {
+                    let _ = sender.send(Err(
+                        "WKWebView takeSnapshot returned a null NSImage".to_string()
+                    ));
+                    return;
+                }
+
+                let tiff: *mut AnyObject = msg_send![image, TIFFRepresentation];
+                if tiff.is_null() {
+                    let _ =
+                        sender.send(Err("NSImage TIFFRepresentation returned null".to_string()));
+                    return;
+                }
+                let bitmap_class = class!(NSBitmapImageRep);
+                let bitmap_rep: *mut AnyObject = msg_send![bitmap_class, imageRepWithData: tiff];
+                if bitmap_rep.is_null() {
+                    let _ = sender.send(Err(
+                        "NSBitmapImageRep imageRepWithData returned null".to_string()
+                    ));
+                    return;
+                }
+                let empty_props: Retained<NSDictionary<NSObject, NSObject>> =
+                    NSDictionary::dictionary();
+                let png_data: *mut AnyObject = msg_send![
+                    bitmap_rep,
+                    representationUsingType: NS_BITMAP_PNG,
+                    properties: &*empty_props
+                ];
+                if png_data.is_null() {
+                    let _ = sender.send(Err(
+                        "NSBitmapImageRep failed to produce PNG data".to_string()
+                    ));
+                    return;
+                }
+                let length: usize = msg_send![png_data, length];
+                let bytes_ptr: *const u8 = {
+                    let sel = objc2::sel!(bytes);
+                    let func: unsafe extern "C" fn(
+                        *mut AnyObject,
+                        objc2::runtime::Sel,
+                    )
+                        -> *const core::ffi::c_void =
+                        core::mem::transmute(objc2::ffi::objc_msgSend as *const ());
+                    func(png_data, sel).cast()
+                };
+                if bytes_ptr.is_null() || length == 0 {
+                    let _ = sender.send(Err("PNG data was empty".to_string()));
+                    return;
+                }
+                let bytes = std::slice::from_raw_parts(bytes_ptr, length).to_vec();
+                let _ = sender.send(Ok(bytes));
+            })
+            .copy();
+
+            let _: () = msg_send![
+                webview_ptr,
+                takeSnapshotWithConfiguration: std::ptr::null::<AnyObject>(),
+                completionHandler: Some(&*completion)
+            ];
+        });
+
+        match timeout(SNAPSHOT_TIMEOUT, rx).await {
+            Ok(Ok(Ok(bytes))) => Ok(bytes),
+            Ok(Ok(Err(err))) => Err(WebViewError::WebView(err)),
+            Ok(Err(_)) => Err(WebViewError::WebView(
+                "screenshot request was canceled".to_string(),
+            )),
+            Err(_) => Err(WebViewError::WebView("screenshot timed out".to_string())),
+        }
+    }
+
+    /// iOS implementation of `take_screenshot`. WKWebView returns a `UIImage`,
+    /// which we encode through the `UIImagePNGRepresentation` C function —
+    /// the Swift `UIImage.pngData()` method is sugar over that C call and
+    /// does NOT exist as an Objective-C selector, so sending `pngData` via
+    /// `msg_send!` raises an unrecognized-selector exception.
+    #[cfg(target_os = "ios")]
+    async fn take_screenshot_ios(&self) -> Result<Vec<u8>, WebViewError> {
+        const SNAPSHOT_TIMEOUT: Duration = Duration::from_secs(5);
+
+        // UIImage does NOT expose `-pngData` as a real Objective-C selector;
+        // Swift's `UIImage.pngData()` is sugar over this C function. Sending
+        // `pngData` via `msg_send!` crashes the app with an unrecognized-selector
+        // exception.
+        #[link(name = "UIKit", kind = "framework")]
+        unsafe extern "C" {
+            fn UIImagePNGRepresentation(image: *mut AnyObject) -> *mut AnyObject;
+        }
+
+        let (tx, rx) = oneshot::channel::<Result<Vec<u8>, String>>();
+        let webview_ptr_addr = self.webview as usize;
+
+        DispatchQueue::main().exec_async(move || unsafe {
+            let webview_ptr = webview_ptr_addr as *mut AnyObject;
+            let tx_state = Arc::new(Mutex::new(Some(tx)));
+            let tx_state_for_block = Arc::clone(&tx_state);
+
+            let completion = StackBlock::new(move |image: *mut AnyObject, error: *mut NSError| {
+                let sender = tx_state_for_block
+                    .lock()
+                    .ok()
+                    .and_then(|mut guard| guard.take());
+                let Some(sender) = sender else { return };
+
+                if !error.is_null() {
+                    let description: *mut NSString = msg_send![error, localizedDescription];
+                    let description = if description.is_null() {
+                        "WKWebView takeSnapshot returned NSError".to_string()
+                    } else {
+                        (&*description).to_string()
+                    };
+                    let _ = sender.send(Err(description));
+                    return;
+                }
+                if image.is_null() {
+                    let _ = sender.send(Err(
+                        "WKWebView takeSnapshot returned a null UIImage".to_string()
+                    ));
+                    return;
+                }
+
+                let png_data: *mut AnyObject = UIImagePNGRepresentation(image);
+                if png_data.is_null() {
+                    let _ = sender.send(Err(
+                        "UIImagePNGRepresentation returned null (image had no compatible CGImage?)"
+                            .to_string(),
+                    ));
+                    return;
+                }
+                let length: usize = msg_send![png_data, length];
+                let bytes_ptr: *const u8 = {
+                    let sel = objc2::sel!(bytes);
+                    let func: unsafe extern "C" fn(
+                        *mut AnyObject,
+                        objc2::runtime::Sel,
+                    )
+                        -> *const core::ffi::c_void =
+                        core::mem::transmute(objc2::ffi::objc_msgSend as *const ());
+                    func(png_data, sel).cast()
+                };
+                if bytes_ptr.is_null() || length == 0 {
+                    let _ = sender.send(Err("PNG data was empty".to_string()));
+                    return;
+                }
+                let bytes = std::slice::from_raw_parts(bytes_ptr, length).to_vec();
+                let _ = sender.send(Ok(bytes));
+            })
+            .copy();
+
+            let _: () = msg_send![
+                webview_ptr,
+                takeSnapshotWithConfiguration: std::ptr::null::<AnyObject>(),
+                completionHandler: Some(&*completion)
+            ];
+        });
+
+        match timeout(SNAPSHOT_TIMEOUT, rx).await {
+            Ok(Ok(Ok(bytes))) => Ok(bytes),
+            Ok(Ok(Err(err))) => Err(WebViewError::WebView(err)),
+            Ok(Err(_)) => Err(WebViewError::WebView(
+                "screenshot request was canceled".to_string(),
+            )),
+            Err(_) => Err(WebViewError::WebView("screenshot timed out".to_string())),
+        }
+    }
+
     /// Helper method to clear browsing data on main thread
     fn clear_browsing_data_on_main_thread(&self) -> Result<(), WebViewError> {
         unsafe {
@@ -2554,6 +2753,23 @@ impl WebViewController for WebViewInner {
         });
         rx.await
             .map_err(|_| WebViewError::WebView("cookie delete request was canceled".to_string()))?
+    }
+
+    async fn take_screenshot(&self) -> Result<Vec<u8>, WebViewError> {
+        #[cfg(target_os = "macos")]
+        {
+            self.take_screenshot_macos().await
+        }
+        #[cfg(target_os = "ios")]
+        {
+            self.take_screenshot_ios().await
+        }
+        #[cfg(not(any(target_os = "macos", target_os = "ios")))]
+        {
+            Err(WebViewError::WebView(
+                "screenshot is not implemented for this Apple-targeted build".to_string(),
+            ))
+        }
     }
 
     async fn clear_cookies(&self) -> Result<(), WebViewError> {

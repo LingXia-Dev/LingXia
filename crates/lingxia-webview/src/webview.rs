@@ -862,6 +862,10 @@ impl WebView {
         self.inner.clear_cookies().await
     }
 
+    pub async fn take_screenshot(&self) -> Result<Vec<u8>, WebViewError> {
+        self.inner.take_screenshot().await
+    }
+
     pub async fn click(
         &self,
         selector: &str,

@@ -12,6 +12,7 @@ mod location;
 mod media;
 mod network;
 mod pull_to_refresh;
+mod screenshot;
 mod surface;
 mod ui_update;
 mod update;
@@ -84,10 +85,11 @@ pub enum CachedClass {
     LxAppCapsule = 14,
     LxAppWifi = 15,
     LxAppNetwork = 16,
+    AppScreenshot = 17,
 }
 
 impl CachedClass {
-    const COUNT: usize = 17;
+    const COUNT: usize = 18;
 
     pub const fn class_path(self) -> &'static str {
         match self {
@@ -108,6 +110,7 @@ impl CachedClass {
             CachedClass::LxAppWifi => "com/lingxia/lxapp/APIs/LxAppWifi",
             CachedClass::LxAppCapsule => "com/lingxia/lxapp/APIs/LxAppCapsule",
             CachedClass::LxAppNetwork => "com/lingxia/lxapp/APIs/LxAppNetwork",
+            CachedClass::AppScreenshot => "com/lingxia/app/AppScreenshot",
         }
     }
 
@@ -181,12 +184,17 @@ impl CachedClass {
                 "Global class reference not found: ",
                 "com/lingxia/lxapp/APIs/LxAppNetwork"
             ),
+            CachedClass::AppScreenshot => concat!(
+                "Global class reference not found: ",
+                "com/lingxia/app/AppScreenshot"
+            ),
         }
     }
 }
 
 fn cached_slot(kind: CachedClass) -> &'static OnceLock<Global<JClass<'static>>> {
     static CLASS_CACHE: [OnceLock<Global<JClass<'static>>>; CachedClass::COUNT] = [
+        OnceLock::new(),
         OnceLock::new(),
         OnceLock::new(),
         OnceLock::new(),

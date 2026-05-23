@@ -6,6 +6,7 @@ mod location;
 mod media;
 mod network;
 mod pull_to_refresh;
+mod screenshot;
 mod surface;
 mod ui_update;
 mod user_feedback;

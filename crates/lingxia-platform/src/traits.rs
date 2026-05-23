@@ -6,6 +6,7 @@ pub mod media_interaction;
 pub mod media_runtime;
 pub mod network;
 pub mod pull_to_refresh;
+pub mod screenshot;
 pub mod secure_store;
 pub mod stream_decoder;
 pub mod ui;
@@ -22,6 +23,7 @@ pub mod prelude {
     pub use super::media_runtime::MediaRuntime;
     pub use super::network::Network;
     pub use super::pull_to_refresh::PullToRefresh;
+    pub use super::screenshot::AppScreenshot;
     pub use super::secure_store::SecureStore;
     pub use super::ui::{SurfacePresenter, UIUpdate, UserFeedback};
     pub use super::update::UpdateService;

@@ -60,6 +60,11 @@ class LxApp private constructor(private val context: Context) {
 
         // Reference to the current LxAppActivity instance
         private var currentActivity: LxAppActivity? = null
+        // Last activity (of any type) that received onResume. Used by APIs
+        // that need a window reference regardless of whether the host
+        // activity is an LxAppActivity (e.g. window-level screenshot from
+        // host apps that embed LingXia without subclassing LxAppActivity).
+        private var lastResumedActivity: android.app.Activity? = null
         @Volatile
         private var lifecycleCallbacksRegistered: Boolean = false
 
@@ -444,12 +449,16 @@ class LxApp private constructor(private val context: Context) {
                 }
 
                 override fun onActivityResumed(activity: android.app.Activity) {
+                    lastResumedActivity = activity
                     if (activity is LxAppActivity) {
                         setCurrentActivity(activity)
                     }
                 }
 
                 override fun onActivityDestroyed(activity: android.app.Activity) {
+                    if (lastResumedActivity === activity) {
+                        lastResumedActivity = null
+                    }
                     if (activity is LxAppActivity && currentActivity == activity) {
                         setCurrentActivity(null)
                     }
@@ -492,6 +501,14 @@ class LxApp private constructor(private val context: Context) {
          */
         @JvmStatic
         fun getCurrentActivity(): LxAppActivity? = currentActivity
+
+        /**
+         * Get the most recent foreground Activity of any type. Unlike
+         * [getCurrentActivity], this also surfaces non-LxAppActivity hosts
+         * (e.g. an app embedding LingXia inside a custom AppCompatActivity).
+         */
+        @JvmStatic
+        fun getLastResumedActivity(): android.app.Activity? = lastResumedActivity
 
         @JvmStatic
         fun applicationContext(): Context? = instance?.context

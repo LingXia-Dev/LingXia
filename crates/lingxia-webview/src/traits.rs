@@ -289,6 +289,14 @@ pub trait WebViewController: Send + Sync {
             "cookie store is not implemented for this platform".to_string(),
         ))
     }
+
+    /// Capture a PNG screenshot of the WebView's visible content.
+    /// Returns raw PNG-encoded bytes ready to be base64'd over the wire.
+    async fn take_screenshot(&self) -> Result<Vec<u8>, WebViewError> {
+        Err(WebViewError::WebView(
+            "screenshot is not implemented for this platform".to_string(),
+        ))
+    }
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

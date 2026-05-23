@@ -147,9 +147,9 @@ pub mod platform {
     #[cfg(all(target_os = "linux", target_env = "ohos"))]
     pub mod harmony {
         pub use crate::harmony::{
-            check_navigation_policy, on_file_chooser_requested,
-            schemehandler::register_custom_schemes, tsfn, webview_controller_created,
-            webview_controller_destroyed,
+            check_navigation_policy, complete_pending_screenshot_request,
+            on_file_chooser_requested, schemehandler::register_custom_schemes, tsfn,
+            webview_controller_created, webview_controller_destroyed,
         };
 
         #[doc(hidden)]

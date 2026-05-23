@@ -118,6 +118,28 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onEvaluateJavascr
     .resolve::<ThrowRuntimeExAndDefault>()
 }
 
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onScreenshotResult(
+    mut env: EnvUnowned,
+    _this: JObject,
+    request_id: jlong,
+    png_bytes: JByteArray,
+    error: JString,
+) {
+    env.with_env(|env| -> Result<(), jni::errors::Error> {
+        let request_id = request_id as u64;
+        let error: String = error.try_to_string(env)?;
+        if !error.trim().is_empty() {
+            super::webview::complete_pending_screenshot_request(request_id, Err(error));
+            return Ok(());
+        }
+        let bytes = env.convert_byte_array(&png_bytes)?;
+        super::webview::complete_pending_screenshot_request(request_id, Ok(bytes));
+        Ok(())
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
 fn android_load_error_kind(error_code: i32, description: &str) -> LoadErrorKind {
     match error_code {
         -2 => LoadErrorKind::Dns,

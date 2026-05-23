@@ -35,6 +35,7 @@ pub(crate) struct PendingWebViewCreation {
 
 type WebViewSendersMap = Arc<Mutex<HashMap<String, PendingWebViewCreation>>>;
 type PendingEvalRequests = Arc<Mutex<HashMap<u64, PendingEvalEntry>>>;
+type PendingScreenshotRequests = Arc<Mutex<HashMap<u64, PendingScreenshotEntry>>>;
 
 enum PendingEvalResponse {
     Success(String),
@@ -47,11 +48,25 @@ struct PendingEvalEntry {
     sender: oneshot::Sender<PendingEvalResponse>,
 }
 
+enum PendingScreenshotResponse {
+    Success(Vec<u8>),
+    Failure(String),
+    Destroyed,
+}
+
+struct PendingScreenshotEntry {
+    webtag: String,
+    sender: oneshot::Sender<PendingScreenshotResponse>,
+}
+
 // Global map to store senders for WebView creation
 pub(crate) static WEBVIEW_SENDERS: OnceLock<WebViewSendersMap> = OnceLock::new();
 static PENDING_EVAL_REQUESTS: OnceLock<PendingEvalRequests> = OnceLock::new();
+static PENDING_SCREENSHOT_REQUESTS: OnceLock<PendingScreenshotRequests> = OnceLock::new();
 static NEXT_EVAL_REQUEST_ID: AtomicU64 = AtomicU64::new(1);
+static NEXT_SCREENSHOT_REQUEST_ID: AtomicU64 = AtomicU64::new(1);
 const EVAL_TIMEOUT: Duration = Duration::from_secs(10);
+const SCREENSHOT_TIMEOUT: Duration = Duration::from_secs(5);
 
 fn pending_eval_requests() -> &'static PendingEvalRequests {
     PENDING_EVAL_REQUESTS.get_or_init(|| Arc::new(Mutex::new(HashMap::new())))
@@ -80,6 +95,41 @@ fn fail_pending_eval_requests_for_webtag(webtag: &WebTag) {
         for request_id in matching {
             if let Some(entry) = pending.remove(&request_id) {
                 let _ = entry.sender.send(PendingEvalResponse::Destroyed);
+            }
+        }
+    }
+}
+
+fn pending_screenshot_requests() -> &'static PendingScreenshotRequests {
+    PENDING_SCREENSHOT_REQUESTS.get_or_init(|| Arc::new(Mutex::new(HashMap::new())))
+}
+
+pub(crate) fn complete_pending_screenshot_request(
+    request_id: u64,
+    result: Result<Vec<u8>, String>,
+) {
+    if let Ok(mut pending) = pending_screenshot_requests().lock()
+        && let Some(entry) = pending.remove(&request_id)
+    {
+        let message = match result {
+            Ok(bytes) => PendingScreenshotResponse::Success(bytes),
+            Err(error) => PendingScreenshotResponse::Failure(error),
+        };
+        let _ = entry.sender.send(message);
+    }
+}
+
+fn fail_pending_screenshot_requests_for_webtag(webtag: &WebTag) {
+    if let Ok(mut pending) = pending_screenshot_requests().lock() {
+        let matching = pending
+            .iter()
+            .filter_map(|(request_id, entry)| {
+                (entry.webtag == webtag.as_str()).then_some(*request_id)
+            })
+            .collect::<Vec<_>>();
+        for request_id in matching {
+            if let Some(entry) = pending.remove(&request_id) {
+                let _ = entry.sender.send(PendingScreenshotResponse::Destroyed);
             }
         }
     }
@@ -260,6 +310,7 @@ impl WebViewInner {
 impl Drop for WebViewInner {
     fn drop(&mut self) {
         fail_pending_eval_requests_for_webtag(&self.webtag);
+        fail_pending_screenshot_requests_for_webtag(&self.webtag);
         let Some(java_webview) = self.java_webview.take() else {
             return;
         };
@@ -430,5 +481,62 @@ impl WebViewController for WebViewInner {
             Ok(())
         })
         .map_err(|e| WebViewError::WebView(format!("Failed to set user agent: {:?}", e)))
+    }
+
+    async fn take_screenshot(&self) -> Result<Vec<u8>, WebViewError> {
+        let request_id = NEXT_SCREENSHOT_REQUEST_ID.fetch_add(1, Ordering::Relaxed);
+        let (tx, rx) = oneshot::channel();
+
+        pending_screenshot_requests()
+            .lock()
+            .map_err(|_| {
+                WebViewError::WebView("Android pending screenshot map poisoned".to_string())
+            })?
+            .insert(
+                request_id,
+                PendingScreenshotEntry {
+                    webtag: self.webtag.to_string(),
+                    sender: tx,
+                },
+            );
+
+        {
+            let dispatch_result = with_env(|env| -> Result<(), Box<dyn std::error::Error>> {
+                env.call_method(
+                    &*self.get_java_webview(),
+                    jni_str!("captureScreenshot"),
+                    jni_sig!("(J)V"),
+                    &[(request_id as i64).into()],
+                )?;
+                Ok(())
+            });
+
+            if let Err(err) = dispatch_result {
+                if let Ok(mut pending) = pending_screenshot_requests().lock() {
+                    pending.remove(&request_id);
+                }
+                return Err(WebViewError::WebView(format!(
+                    "Failed to dispatch Android captureScreenshot: {:?}",
+                    err
+                )));
+            }
+        }
+
+        match timeout(SCREENSHOT_TIMEOUT, rx).await {
+            Ok(Ok(PendingScreenshotResponse::Success(bytes))) => Ok(bytes),
+            Ok(Ok(PendingScreenshotResponse::Failure(err))) => Err(WebViewError::WebView(err)),
+            Ok(Ok(PendingScreenshotResponse::Destroyed)) => Err(WebViewError::WebView(
+                "WebView was destroyed before screenshot completed".to_string(),
+            )),
+            Ok(Err(_)) => Err(WebViewError::WebView(
+                "screenshot request was canceled".to_string(),
+            )),
+            Err(_) => {
+                if let Ok(mut pending) = pending_screenshot_requests().lock() {
+                    pending.remove(&request_id);
+                }
+                Err(WebViewError::WebView("screenshot timed out".to_string()))
+            }
+        }
     }
 }

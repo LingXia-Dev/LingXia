@@ -53,6 +53,7 @@ oslog = "0.2.0"
 ohos_hilog = "0.1.3"
 napi-ohos = "1.1.0"
 napi-derive-ohos = "1.1.0"
+base64 = { workspace = true }
 
 [build-dependencies]
 swift-bridge-build = "0.1.59"
