@@ -387,9 +387,23 @@ enum LxAppSurface {
         window.title = ""
         window.isReleasedWhenClosed = false
         if kind == kindWindow {
-            window.styleMask.insert(.fullSizeContentView)
-            window.titlebarAppearsTransparent = true
-            window.titleVisibility = .hidden
+            // Use a standard NSWindow chrome (title bar + traffic lights)
+            // rather than the previous "fullSizeContentView + transparent
+            // title bar + hidden title" combination. The chromeless look was
+            // pretty but left users with no visible affordance to grab the
+            // window for drag/resize: WebView covers the entire content view
+            // and captures the mouse events that would otherwise reach the
+            // (invisible) title bar. A standard title bar gives back drag,
+            // close/minimize/zoom, and corner resize at the cost of a
+            // ~28-pt header strip.
+            //
+            // Note: deliberately NOT setting `isMovableByWindowBackground =
+            // true` — the WebView intercepts text selection, scroll, and
+            // drag-and-drop, so a "drag anywhere on background" policy
+            // would steal those gestures from the page. The visible title
+            // bar is the drag affordance.
+            window.titlebarAppearsTransparent = false
+            window.titleVisibility = .visible
             window.backgroundColor = .windowBackgroundColor
         } else if kind == kindPopup {
             window.backgroundColor = .clear
