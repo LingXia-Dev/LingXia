@@ -1,5 +1,5 @@
 use crate::client;
-use crate::project::DevInfo;
+use crate::project::SessionInfo;
 use anyhow::{Context, Result};
 use clap::{Args, Parser, Subcommand};
 use lingxia_devtool_protocol::handlers;
@@ -273,11 +273,8 @@ pub enum PageCommand {
     },
 }
 
-pub fn execute(project_root: &Path, info: &DevInfo, options: LxAppOptions) -> Result<()> {
-    let ws_url = info
-        .ws_url
-        .as_deref()
-        .ok_or_else(|| anyhow::anyhow!("dev websocket URL is missing from .lingxia/dev.json"))?;
+pub fn execute(project_root: &Path, info: &SessionInfo, options: LxAppOptions) -> Result<()> {
+    let ws_url = info.ws_url.as_str();
 
     if options.args.is_empty() || is_top_level_help(&options.args) {
         print_dynamic_help(commands_for_project(project_root));

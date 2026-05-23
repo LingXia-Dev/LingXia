@@ -43,6 +43,7 @@ pub struct DevExecuteOptions {
     pub platform_arg: Option<String>,
     pub reinstall: bool,
     pub env_version: Option<String>,
+    pub parallel: bool,
 }
 
 #[derive(Clone)]
@@ -56,6 +57,43 @@ struct DevContext {
     device: Option<String>,
     reinstall: bool,
     resolved_env: crate::config::ResolvedEnv,
+    parallel: bool,
+}
+
+/// Stable string used for `SessionInfo.platform`. Same set advertised by `lxdev`'s
+/// `--platform` selector; keep these in sync.
+fn platform_session_name(platform: PlatformType) -> &'static str {
+    match platform {
+        PlatformType::Android => "android",
+        PlatformType::Ios => "ios",
+        PlatformType::MacOs => "macos",
+        PlatformType::Harmony => "harmony",
+    }
+}
+
+/// Refuse to start a new dev session if another live session already exists for
+/// the same platform in this project, unless `--parallel` was passed.
+///
+/// Stale (unreachable) session files are pruned first; only WS-reachable peers
+/// count as conflicts. This is the single defense against the "human + agent
+/// both ran `lingxia dev -p ios`" footgun.
+fn precheck_platform_session(project_root: &Path, platform: &str, parallel: bool) -> Result<()> {
+    let _ = log_store::prune_stale(project_root);
+    let live = log_store::find_live_for_platform(project_root, platform)?;
+    if live.is_empty() || parallel {
+        return Ok(());
+    }
+    let mut msg = format!("Existing {platform} dev session is already running in this project:\n");
+    for info in &live {
+        msg.push_str(&format!(
+            "  {}  pid={}  ws={}\n",
+            info.session_id, info.pid, info.ws_url
+        ));
+    }
+    msg.push_str("\nStop it first, or rerun with --parallel to allow multiple ");
+    msg.push_str(platform);
+    msg.push_str(" sessions.");
+    Err(anyhow!(msg))
 }
 
 /// Execute the dev command.
@@ -153,6 +191,7 @@ pub fn execute(options: DevExecuteOptions) -> Result<()> {
         device: options.device,
         reinstall: options.reinstall,
         resolved_env,
+        parallel: options.parallel,
     };
 
     match platform_type {
@@ -164,6 +203,8 @@ pub fn execute(options: DevExecuteOptions) -> Result<()> {
 }
 
 fn execute_android(ctx: DevContext, abis: Vec<String>) -> Result<()> {
+    let platform_name = platform_session_name(PlatformType::Android);
+    precheck_platform_session(&ctx.project_root, platform_name, ctx.parallel)?;
     let platform = platform::android::AndroidPlatform::new();
     let build_targets = crate::platform::android_abis::resolve_android_targets_from_abis(&abis)?;
     let server = server::start_server(&ctx.project_root)?;
@@ -241,7 +282,7 @@ fn execute_android(ctx: DevContext, abis: Vec<String>) -> Result<()> {
         println!("{}", "Step 4/4: Launching app...".bold());
         let stop_requested = Arc::new(AtomicBool::new(false));
         install_ctrlc_handler(stop_requested.clone())?;
-        log_store::write_dev_info(&ctx.project_root, &session, &host_ws_url)?;
+        log_store::write_session(&ctx.project_root, &session, platform_name, &host_ws_url)?;
 
         let run_config = RunConfig {
             device_id: ctx.device,
@@ -264,11 +305,13 @@ fn execute_android(ctx: DevContext, abis: Vec<String>) -> Result<()> {
         Ok(())
     })();
 
-    let _ = log_store::remove_dev_info(&ctx.project_root);
+    let _ = log_store::remove_session(&ctx.project_root, &session.session_id);
     stop_dev_server(server, run_result)
 }
 
 fn execute_ios(ctx: DevContext) -> Result<()> {
+    let platform_name = platform_session_name(PlatformType::Ios);
+    precheck_platform_session(&ctx.project_root, platform_name, ctx.parallel)?;
     let platform = platform::ios::IosPlatform::new();
     let server = server::start_server_on(&ctx.project_root, "0.0.0.0:0")?;
     let host_ws_url = loopback_ws_url(server.port());
@@ -332,7 +375,7 @@ fn execute_ios(ctx: DevContext) -> Result<()> {
         println!("{}", "Step 3/3: Launching...".bold());
         let stop_requested = Arc::new(AtomicBool::new(false));
         install_ctrlc_handler(stop_requested.clone())?;
-        log_store::write_dev_info(&ctx.project_root, &session, &host_ws_url)?;
+        log_store::write_session(&ctx.project_root, &session, platform_name, &host_ws_url)?;
 
         // Read bundle ID from the signed app (signing may change it for free accounts)
         let bundle_id = platform::ios::read_bundle_id(app_path)?;
@@ -358,11 +401,13 @@ fn execute_ios(ctx: DevContext) -> Result<()> {
         Ok(())
     })();
 
-    let _ = log_store::remove_dev_info(&ctx.project_root);
+    let _ = log_store::remove_session(&ctx.project_root, &session.session_id);
     stop_dev_server(server, run_result)
 }
 
 fn execute_macos(ctx: DevContext, macos_arch: Option<String>) -> Result<()> {
+    let platform_name = platform_session_name(PlatformType::MacOs);
+    precheck_platform_session(&ctx.project_root, platform_name, ctx.parallel)?;
     use std::process::Command;
 
     let platform = platform::macos::MacosPlatform::new();
@@ -428,7 +473,7 @@ Use `lingxia build --platform macos --macos-arch {}` for cross-arch builds.",
     let run_result = (|| -> Result<()> {
         let stop_requested = Arc::new(AtomicBool::new(false));
         install_ctrlc_handler(stop_requested.clone())?;
-        log_store::write_dev_info(&ctx.project_root, &session, &ws_url)?;
+        log_store::write_session(&ctx.project_root, &session, platform_name, &ws_url)?;
 
         // Step 2: Run (run the built executable directly)
         println!("{}", "Step 2/2: Running...".bold());
@@ -446,9 +491,9 @@ Use `lingxia build --platform macos --macos-arch {}` for cross-arch builds.",
         println!("  {} Platform: {}", "*".bold(), "macOS".cyan());
         println!("  {} Artifact: {}", "*".bold(), app_path.display());
         println!(
-            "  {} Dev info: {}",
+            "  {} Session file: {}",
             "*".bold(),
-            log_store::dev_info_path(&ctx.project_root).display()
+            log_store::session_file_path(&ctx.project_root, &session.session_id).display()
         );
         println!("  {} WS: {}", "*".bold(), ws_url);
         println!("  {} Log file: {}", "*".bold(), session.log_file.display());
@@ -460,7 +505,7 @@ Use `lingxia build --platform macos --macos-arch {}` for cross-arch builds.",
         Ok(())
     })();
 
-    let _ = log_store::remove_dev_info(&ctx.project_root);
+    let _ = log_store::remove_session(&ctx.project_root, &session.session_id);
     let stop_result = server.stop();
     match (run_result, stop_result) {
         (Ok(()), Ok(())) => Ok(()),
@@ -475,6 +520,8 @@ Use `lingxia build --platform macos --macos-arch {}` for cross-arch builds.",
 }
 
 fn execute_harmony(ctx: DevContext) -> Result<()> {
+    let platform_name = platform_session_name(PlatformType::Harmony);
+    precheck_platform_session(&ctx.project_root, platform_name, ctx.parallel)?;
     let harmony_platform = platform::harmony::HarmonyPlatform::new();
     let server = server::start_server(&ctx.project_root)?;
     let host_ws_url = server.ws_url();
@@ -549,7 +596,7 @@ fn execute_harmony(ctx: DevContext) -> Result<()> {
         println!("{}", "Step 4/4: Launching app...".bold());
         let stop_requested = Arc::new(AtomicBool::new(false));
         install_ctrlc_handler(stop_requested.clone())?;
-        log_store::write_dev_info(&ctx.project_root, &session, &host_ws_url)?;
+        log_store::write_session(&ctx.project_root, &session, platform_name, &host_ws_url)?;
 
         // Read bundleName from app.json5 (authoritative source).
         let run_config = RunConfig {
@@ -574,7 +621,7 @@ fn execute_harmony(ctx: DevContext) -> Result<()> {
         Ok(())
     })();
 
-    let _ = log_store::remove_dev_info(&ctx.project_root);
+    let _ = log_store::remove_session(&ctx.project_root, &session.session_id);
     stop_dev_server(server, run_result)
 }
 
@@ -614,6 +661,9 @@ fn execute_lxapp_dev(project_root: PathBuf, options: DevExecuteOptions) -> Resul
         ));
     }
 
+    let platform_name = "lxapp";
+    precheck_platform_session(&project_root, platform_name, options.parallel)?;
+
     println!();
     println!("{}", "Development Mode: LxApp -> Runner".bold().cyan());
     println!();
@@ -641,7 +691,7 @@ fn execute_lxapp_dev(project_root: PathBuf, options: DevExecuteOptions) -> Resul
 
         let stop_requested = Arc::new(AtomicBool::new(false));
         install_ctrlc_handler(stop_requested.clone())?;
-        log_store::write_dev_info(&project_root, &session, &ws_url)?;
+        log_store::write_session(&project_root, &session, platform_name, &ws_url)?;
 
         println!();
         println!("{}", "Step 2/2: Launching Runner...".bold());
@@ -652,9 +702,9 @@ fn execute_lxapp_dev(project_root: PathBuf, options: DevExecuteOptions) -> Resul
         println!("  {} Mode: {}", "*".bold(), "LxApp Runner".cyan());
         println!("  {} Project: {}", "*".bold(), project_root.display());
         println!(
-            "  {} Dev info: {}",
+            "  {} Session file: {}",
             "*".bold(),
-            log_store::dev_info_path(&project_root).display()
+            log_store::session_file_path(&project_root, &session.session_id).display()
         );
         println!("  {} WS: {}", "*".bold(), ws_url);
         println!("  {} Log file: {}", "*".bold(), session.log_file.display());
@@ -666,7 +716,7 @@ fn execute_lxapp_dev(project_root: PathBuf, options: DevExecuteOptions) -> Resul
         Ok(())
     })();
 
-    let _ = log_store::remove_dev_info(&project_root);
+    let _ = log_store::remove_session(&project_root, &session.session_id);
     let stop_result = server.stop();
     match (run_result, stop_result) {
         (Ok(()), Ok(())) => Ok(()),
@@ -835,13 +885,14 @@ fn print_mobile_dev_started(
     println!("  {} Platform: {}", "*".bold(), platform.cyan());
     println!("  {} Artifact: {}", "*".bold(), artifact.display());
     println!(
-        "  {} Dev info: {}",
+        "  {} Session file: {}",
         "*".bold(),
-        log_store::dev_info_path(project_root).display()
+        log_store::session_file_path(project_root, &session.session_id).display()
     );
     println!("  {} Host WS: {}", "*".bold(), host_ws_url);
     println!("  {} Device WS: {}", "*".bold(), device_ws_url);
     println!("  {} Log file: {}", "*".bold(), session.log_file.display());
+    println!("  {} Session: {}", "*".bold(), session.session_id);
     println!("  {} Stop: {}", "*".bold(), "Ctrl+C".cyan());
     println!();
 }

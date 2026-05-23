@@ -1,5 +1,5 @@
 use crate::client;
-use crate::project::DevInfo;
+use crate::project::SessionInfo;
 use anyhow::{Context, Result, anyhow};
 use clap::{Args, Subcommand};
 use lingxia_devtool_protocol::handlers;
@@ -335,11 +335,8 @@ pub enum CookiesCommand {
     },
 }
 
-pub fn execute(info: &DevInfo, options: BrowserOptions) -> Result<()> {
-    let ws_url = info
-        .ws_url
-        .as_deref()
-        .ok_or_else(|| anyhow!("dev websocket URL is missing from .lingxia/dev.json"))?;
+pub fn execute(info: &SessionInfo, options: BrowserOptions) -> Result<()> {
+    let ws_url = info.ws_url.as_str();
 
     match options.command {
         BrowserCommand::Open { url, tab, json } => {

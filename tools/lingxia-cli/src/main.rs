@@ -84,6 +84,14 @@ struct DevOptions {
     /// Reinstall app by uninstalling existing one first (best effort)
     #[arg(long)]
     reinstall: bool,
+
+    /// Allow starting another dev session for a platform that already has one
+    /// running in this project. Without this flag, `lingxia dev` refuses to
+    /// launch a second same-platform session so that `lxdev` cannot silently
+    /// connect to the wrong one (the canonical "human + agent both ran
+    /// `lingxia dev -p ios`" footgun).
+    #[arg(long)]
+    parallel: bool,
 }
 
 #[derive(Subcommand)]
@@ -510,6 +518,7 @@ fn main() -> Result<()> {
                 platform_arg: dev_options.platform,
                 reinstall: dev_options.reinstall,
                 env_version: dev_options.build_options.env_version,
+                parallel: dev_options.parallel,
             })?;
         }
         Commands::Doctor { platform } => {
