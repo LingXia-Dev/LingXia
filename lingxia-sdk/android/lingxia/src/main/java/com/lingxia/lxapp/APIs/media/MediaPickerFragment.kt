@@ -31,7 +31,7 @@ import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
-import com.lingxia.lxapp.NativeApi
+import com.lingxia.app.NativeApi
 import com.lingxia.lxapp.R
 import org.json.JSONObject
 import android.view.animation.AccelerateDecelerateInterpolator
@@ -466,11 +466,11 @@ internal class MediaPickerFragment : Fragment() {
         root.addView(warningBar)
         warningBar.visibility = View.GONE
         limitedWarningBar = warningBar
-        com.lingxia.lxapp.util.ActivityInsets.applyBottomMargin(root, warningBar, bottomBarHeightPx)
+        com.lingxia.util.ActivityInsets.applyBottomMargin(root, warningBar, bottomBarHeightPx)
 
         // Lift bottom bar and content above system navigation bar using Activity provider
-        com.lingxia.lxapp.util.ActivityInsets.applyBottomMargin(root, bottom, 0)
-        com.lingxia.lxapp.util.ActivityInsets.applyBottomMargin(root, rv, bottomBarHeightPx)
+        com.lingxia.util.ActivityInsets.applyBottomMargin(root, bottom, 0)
+        com.lingxia.util.ActivityInsets.applyBottomMargin(root, rv, bottomBarHeightPx)
 
         recycler = rv
         sendBtn = send

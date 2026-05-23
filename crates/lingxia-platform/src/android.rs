@@ -93,7 +93,7 @@ impl CachedClass {
 
     pub const fn class_path(self) -> &'static str {
         match self {
-            CachedClass::LxApp => "com/lingxia/lxapp/LxApp",
+            CachedClass::LxApp => "com/lingxia/app/LxApp",
             CachedClass::LxAppMedia => "com/lingxia/lxapp/APIs/LxAppMedia",
             CachedClass::PreviewMediaPayload => "com/lingxia/lxapp/APIs/media/PreviewMediaPayload",
             CachedClass::LxAppDevice => "com/lingxia/lxapp/APIs/LxAppDevice",
@@ -106,7 +106,7 @@ impl CachedClass {
             CachedClass::LxAppFile => "com/lingxia/lxapp/APIs/LxAppFile",
             CachedClass::ComponentRouter => "com/lingxia/lxapp/NativeComponents/ComponentRouter",
             CachedClass::LxAppPullToRefresh => "com/lingxia/lxapp/APIs/LxAppPullToRefresh",
-            CachedClass::UpdateManager => "com/lingxia/lxapp/UpdateManager",
+            CachedClass::UpdateManager => "com/lingxia/app/UpdateManager",
             CachedClass::LxAppWifi => "com/lingxia/lxapp/APIs/LxAppWifi",
             CachedClass::LxAppCapsule => "com/lingxia/lxapp/APIs/LxAppCapsule",
             CachedClass::LxAppNetwork => "com/lingxia/lxapp/APIs/LxAppNetwork",
@@ -118,7 +118,7 @@ impl CachedClass {
         match self {
             CachedClass::LxApp => concat!(
                 "Global class reference not found: ",
-                "com/lingxia/lxapp/LxApp"
+                "com/lingxia/app/LxApp"
             ),
             CachedClass::LxAppMedia => concat!(
                 "Global class reference not found: ",
@@ -170,7 +170,7 @@ impl CachedClass {
             ),
             CachedClass::UpdateManager => concat!(
                 "Global class reference not found: ",
-                "com/lingxia/lxapp/UpdateManager"
+                "com/lingxia/app/UpdateManager"
             ),
             CachedClass::LxAppWifi => concat!(
                 "Global class reference not found: ",

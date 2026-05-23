@@ -1,4 +1,6 @@
-package com.lingxia.lxapp
+package com.lingxia.app
+
+import com.lingxia.lxapp.R
 
 import android.app.Dialog
 import android.app.PendingIntent

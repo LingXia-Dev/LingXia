@@ -1,4 +1,4 @@
-package com.lingxia.lxapp
+package com.lingxia.app
 
 import android.app.Activity
 import android.app.UiModeManager
@@ -36,8 +36,18 @@ import androidx.appcompat.app.AppCompatActivity
 import android.view.animation.AccelerateDecelerateInterpolator
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
-import com.lingxia.lxapp.NativeComponents.NativeBridge
+import com.lingxia.lxapp.CapsuleButton
+import com.lingxia.lxapp.CapsuleMenuBottomSheet
+import com.lingxia.lxapp.LxAppBrowserOverlay
+import com.lingxia.lxapp.LxAppTheme
 import com.lingxia.lxapp.LxNavBarUtils
+import com.lingxia.lxapp.NativeComponents.NativeBridge
+import com.lingxia.lxapp.NavigationBar
+import com.lingxia.lxapp.NavigationBarState
+import com.lingxia.lxapp.PullToRefreshHelper
+import com.lingxia.lxapp.TabBar
+import com.lingxia.lxapp.TabBarState
+import com.lingxia.lxapp.WebView
 
 /**
  * Animation type enum for page transitions

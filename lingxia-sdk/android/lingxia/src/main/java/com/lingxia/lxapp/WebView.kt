@@ -1,5 +1,7 @@
 package com.lingxia.lxapp
 
+import com.lingxia.app.NativeApi
+
 import android.content.Context
 import android.util.Log
 import android.view.MotionEvent

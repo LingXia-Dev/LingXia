@@ -12,7 +12,7 @@ import com.lingxia.lxapp.APIs.media.LxMediaPlayer
 import com.lingxia.lxapp.APIs.media.LxMediaPlayerConfig
 import com.lingxia.lxapp.APIs.media.LxMediaQuality
 import com.lingxia.lxapp.APIs.media.LxMediaSource
-import com.lingxia.lxapp.LxApp
+import com.lingxia.app.LxApp
 import com.lingxia.lxapp.NativeComponents.LxNativeComponent
 import com.lingxia.lxapp.NativeComponents.LxNativeComponentFactory
 

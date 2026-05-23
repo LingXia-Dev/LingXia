@@ -9,7 +9,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import org.json.JSONObject
-import com.lingxia.lxapp.LxApp
+import com.lingxia.app.LxApp
 import androidx.core.content.ContextCompat
 import java.io.File
 
@@ -30,7 +30,7 @@ internal object LxAppDevice {
                 put("scale", 1.0)
                 put("error", "No active activity")
             }
-            com.lingxia.lxapp.NativeApi.onCallback(callbackId, false, errorData.toString())
+            com.lingxia.app.NativeApi.onCallback(callbackId, false, errorData.toString())
             return
         }
         activity.runOnUiThread {
@@ -131,7 +131,7 @@ internal object LxAppDevice {
                 put("scale", scale)
             }
 
-            val success = com.lingxia.lxapp.NativeApi.onCallback(callbackId, true, screenInfo.toString())
+            val success = com.lingxia.app.NativeApi.onCallback(callbackId, true, screenInfo.toString())
             if (!success) {
                 Log.e(TAG, "Failed to send screen info callback for ID: $callbackId")
             }
@@ -142,7 +142,7 @@ internal object LxAppDevice {
                 put("height", 0)
                 put("scale", 1.0)
             }
-            com.lingxia.lxapp.NativeApi.onCallback(callbackId, false, errorData.toString())
+            com.lingxia.app.NativeApi.onCallback(callbackId, false, errorData.toString())
         }
     }
 

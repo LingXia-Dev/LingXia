@@ -1,5 +1,7 @@
 package com.lingxia.lxapp
 
+import com.lingxia.app.LxAppActivity
+
 import android.content.Context
 import android.graphics.Color
 import android.util.AttributeSet

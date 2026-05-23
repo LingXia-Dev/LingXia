@@ -1,4 +1,4 @@
-package com.lingxia.lxapp
+package com.lingxia.app
 
 import androidx.appcompat.app.AppCompatActivity
 import java.util.concurrent.atomic.AtomicBoolean

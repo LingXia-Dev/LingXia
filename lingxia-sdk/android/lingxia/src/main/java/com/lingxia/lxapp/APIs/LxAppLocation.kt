@@ -14,8 +14,8 @@ import android.os.Looper
 import android.util.Log
 import androidx.core.content.ContextCompat
 import org.json.JSONObject
-import com.lingxia.lxapp.LxApp
-import com.lingxia.lxapp.PermissionManager
+import com.lingxia.app.LxApp
+import com.lingxia.app.PermissionManager
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -45,7 +45,7 @@ internal object LxAppLocation {
         val activity = LxApp.getCurrentActivity()
         if (activity == null) {
             Log.e(TAG, "requestLocation: current activity is null")
-            com.lingxia.lxapp.NativeApi.onCallback(callbackId, false, "1000")
+            com.lingxia.app.NativeApi.onCallback(callbackId, false, "1000")
             return
         }
         activity.runOnUiThread {
@@ -242,14 +242,14 @@ internal object LxAppLocation {
             put("horizontal_accuracy", horizontalAccuracy)
         }
 
-        val success = com.lingxia.lxapp.NativeApi.onCallback(callbackId, true, payload.toString())
+        val success = com.lingxia.app.NativeApi.onCallback(callbackId, true, payload.toString())
         if (!success) {
             Log.w(TAG, "Location callback $callbackId was not handled by native layer")
         }
     }
 
     private fun sendFailure(callbackId: Long, code: Int) {
-        val success = com.lingxia.lxapp.NativeApi.onCallback(callbackId, false, code.toString())
+        val success = com.lingxia.app.NativeApi.onCallback(callbackId, false, code.toString())
         if (!success) {
             Log.w(TAG, "Failed to deliver location error for callback $callbackId")
         }

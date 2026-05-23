@@ -31,7 +31,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.color.MaterialColors
-import com.lingxia.lxapp.LxAppActivity
+import com.lingxia.app.LxAppActivity
 import com.lingxia.lxapp.R
 import org.json.JSONArray
 import java.io.File

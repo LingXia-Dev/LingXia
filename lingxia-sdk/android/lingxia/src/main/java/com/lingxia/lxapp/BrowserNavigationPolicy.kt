@@ -1,5 +1,7 @@
 package com.lingxia.lxapp
 
+import com.lingxia.app.NativeApi
+
 import org.json.JSONObject
 
 internal enum class BrowserNavigationDecision {

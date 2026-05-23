@@ -9,7 +9,7 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.*
-import com.lingxia.lxapp.LxApp
+import com.lingxia.app.LxApp
 import com.lingxia.lxapp.R
 import org.json.JSONArray
 import org.json.JSONObject
@@ -206,7 +206,7 @@ internal object LxAppDatePicker {
         pickerContent.addView(buttonsContainer)
 
         container.addView(pickerContent)
-        com.lingxia.lxapp.util.ActivityInsets.applyBottomMargin(container, pickerContent, 0)
+        com.lingxia.util.ActivityInsets.applyBottomMargin(container, pickerContent, 0)
 
         return container
     }
@@ -595,7 +595,7 @@ internal object LxAppDatePicker {
             localCallback(false, "2000")
             return
         }
-        com.lingxia.lxapp.NativeApi.onCallback(callbackId, false, "2000")
+        com.lingxia.app.NativeApi.onCallback(callbackId, false, "2000")
     }
 
     private fun sendPickerResultConfirm(callbackId: Long) {
@@ -609,7 +609,7 @@ internal object LxAppDatePicker {
             localCallback(true, resultStr)
             return
         }
-        com.lingxia.lxapp.NativeApi.onCallback(callbackId, true, resultStr)
+        com.lingxia.app.NativeApi.onCallback(callbackId, true, resultStr)
     }
 
     private fun sendPickerResultScroll(callbackId: Long, value: Any) {
@@ -625,7 +625,7 @@ internal object LxAppDatePicker {
             localCallback(true, resultStr)
             return
         }
-        com.lingxia.lxapp.NativeApi.onCallback(callbackId, true, resultStr)
+        com.lingxia.app.NativeApi.onCallback(callbackId, true, resultStr)
     }
 
     private fun hideDatePickerInternal() {

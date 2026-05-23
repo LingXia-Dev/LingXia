@@ -13,8 +13,8 @@ import android.os.HandlerThread
 import android.telephony.SubscriptionManager
 import android.telephony.TelephonyManager
 import android.util.Log
-import com.lingxia.lxapp.LxApp
-import com.lingxia.lxapp.NativeApi
+import com.lingxia.app.LxApp
+import com.lingxia.app.NativeApi
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.Inet4Address

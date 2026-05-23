@@ -36,9 +36,9 @@ import com.lingxia.lxapp.APIs.media.player.PlayerSource as CorePlayerSource
 import com.lingxia.lxapp.APIs.media.player.StopReason
 import com.lingxia.lxapp.APIs.media.player.SurfaceHost
 import com.lingxia.lxapp.APIs.media.player.UrlEngine
-import com.lingxia.lxapp.LxApp
-import com.lingxia.lxapp.LxAppActivity
-import com.lingxia.lxapp.NativeApi
+import com.lingxia.app.LxApp
+import com.lingxia.app.LxAppActivity
+import com.lingxia.app.NativeApi
 import com.lingxia.lxapp.NavigationBar
 import com.lingxia.lxapp.R
 import com.lingxia.lxapp.NativeComponents.ComponentRouter
@@ -854,8 +854,8 @@ internal class LxMediaPlayer(
 
         isFullscreen = true
 
-        val hostActivity = (activityContext as? com.lingxia.lxapp.LxAppActivity)
-            ?: (LxApp.getCurrentActivity() as? com.lingxia.lxapp.LxAppActivity)
+        val hostActivity = (activityContext as? com.lingxia.app.LxAppActivity)
+            ?: (LxApp.getCurrentActivity() as? com.lingxia.app.LxAppActivity)
         if (hostActivity == null) {
             Log.w(TAG, "enterFullscreen: host activity not found; using overlay fallback")
             hideOverlayViewsFallback(view.rootView)
@@ -1031,8 +1031,8 @@ internal class LxMediaPlayer(
         }
         isFullscreen = false
         val hostContext = getActivityContext()
-        val hostActivity = (hostContext as? com.lingxia.lxapp.LxAppActivity)
-            ?: (LxApp.getCurrentActivity() as? com.lingxia.lxapp.LxAppActivity)
+        val hostActivity = (hostContext as? com.lingxia.app.LxAppActivity)
+            ?: (LxApp.getCurrentActivity() as? com.lingxia.app.LxAppActivity)
         if (hostActivity == null) {
             restoreOverlayViewsFallback()
         } else {
@@ -1094,8 +1094,8 @@ internal class LxMediaPlayer(
         }
 
         isFullscreen = true
-        val hostActivity = (activityContext as? com.lingxia.lxapp.LxAppActivity)
-            ?: (LxApp.getCurrentActivity() as? com.lingxia.lxapp.LxAppActivity)
+        val hostActivity = (activityContext as? com.lingxia.app.LxAppActivity)
+            ?: (LxApp.getCurrentActivity() as? com.lingxia.app.LxAppActivity)
         if (hostActivity == null) {
             Log.w(TAG, "enterFullscreen: host activity not found; using overlay fallback")
             hideOverlayViewsFallback(view.rootView)
@@ -1166,8 +1166,8 @@ internal class LxMediaPlayer(
         isFullscreen = false
 
         val hostContext = getActivityContext()
-        val hostActivity = (hostContext as? com.lingxia.lxapp.LxAppActivity)
-            ?: (LxApp.getCurrentActivity() as? com.lingxia.lxapp.LxAppActivity)
+        val hostActivity = (hostContext as? com.lingxia.app.LxAppActivity)
+            ?: (LxApp.getCurrentActivity() as? com.lingxia.app.LxAppActivity)
         if (hostActivity == null) {
             Log.w(TAG, "exitFullscreen: host activity not found; using overlay fallback")
             restoreOverlayViewsFallback()

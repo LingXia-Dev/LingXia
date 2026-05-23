@@ -31,7 +31,7 @@ import com.google.mlkit.vision.barcode.BarcodeScanner
 import com.google.mlkit.vision.barcode.BarcodeScannerOptions
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.common.InputImage
-import com.lingxia.lxapp.NativeApi
+import com.lingxia.app.NativeApi
 import com.lingxia.lxapp.R
 import org.json.JSONObject
 import java.util.concurrent.ExecutorService

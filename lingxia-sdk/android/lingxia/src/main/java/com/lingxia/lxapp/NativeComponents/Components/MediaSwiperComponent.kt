@@ -22,8 +22,8 @@ import com.lingxia.lxapp.APIs.media.LxMediaEvent
 import com.lingxia.lxapp.APIs.media.LxMediaObjectFit
 import com.lingxia.lxapp.APIs.media.LxMediaPlayer
 import com.lingxia.lxapp.APIs.media.LxMediaPlayerConfig
-import com.lingxia.lxapp.LxApp
-import com.lingxia.lxapp.NativeApi
+import com.lingxia.app.LxApp
+import com.lingxia.app.NativeApi
 import com.lingxia.lxapp.NativeComponents.LxNativeComponent
 import com.lingxia.lxapp.NativeComponents.LxNativeComponentFactory
 import java.io.File

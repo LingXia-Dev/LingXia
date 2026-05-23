@@ -1,9 +1,9 @@
-package com.lingxia.lxapp.util
+package com.lingxia.util
 
 import android.view.View
 import android.view.ViewGroup
 import androidx.core.view.ViewCompat
-import com.lingxia.lxapp.LxApp
+import com.lingxia.app.LxApp
 
 /**
  * Helper object for querying activity-provided insets and applying them to transient UI.

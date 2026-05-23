@@ -7,7 +7,7 @@ import android.view.ViewGroup
 import android.view.ViewOutlineProvider
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
-import com.lingxia.lxapp.NativeApi
+import com.lingxia.app.NativeApi
 import com.lingxia.webview.LingXiaWebView
 import com.lingxia.lxapp.NativeComponents.Components.VideoComponent
 import android.os.Handler

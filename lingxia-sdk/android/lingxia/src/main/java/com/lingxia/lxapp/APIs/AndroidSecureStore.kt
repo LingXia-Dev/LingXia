@@ -8,7 +8,7 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
 import android.util.Log
-import com.lingxia.lxapp.LxApp
+import com.lingxia.app.LxApp
 import java.math.BigInteger
 import java.nio.charset.StandardCharsets
 import java.security.GeneralSecurityException

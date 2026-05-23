@@ -1,4 +1,4 @@
-package com.lingxia.lxapp
+package com.lingxia.app
 
 import android.app.Activity
 import android.content.pm.PackageManager

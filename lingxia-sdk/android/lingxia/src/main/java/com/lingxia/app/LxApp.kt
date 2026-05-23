@@ -1,4 +1,4 @@
-package com.lingxia.lxapp
+package com.lingxia.app
 
 import android.app.Activity
 import android.content.ActivityNotFoundException
@@ -10,6 +10,7 @@ import android.util.Log
 import android.view.View
 import android.view.ViewGroup
 import androidx.appcompat.app.AppCompatActivity
+import com.lingxia.lxapp.LxAppBrowserOverlay
 import java.net.URISyntaxException
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit

@@ -16,9 +16,9 @@ import android.net.wifi.WifiNetworkSpecifier
 import android.os.Build
 import android.util.Log
 import androidx.core.content.ContextCompat
-import com.lingxia.lxapp.LxApp
-import com.lingxia.lxapp.NativeApi
-import com.lingxia.lxapp.PermissionManager
+import com.lingxia.app.LxApp
+import com.lingxia.app.NativeApi
+import com.lingxia.app.PermissionManager
 import org.json.JSONArray
 import org.json.JSONObject
 

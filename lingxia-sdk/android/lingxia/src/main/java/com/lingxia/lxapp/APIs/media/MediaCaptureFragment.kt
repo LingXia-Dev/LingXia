@@ -48,9 +48,9 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.core.content.ContextCompat
-import com.lingxia.lxapp.util.ActivityInsets
+import com.lingxia.util.ActivityInsets
 import androidx.fragment.app.Fragment
-import com.lingxia.lxapp.NativeApi
+import com.lingxia.app.NativeApi
 import com.lingxia.lxapp.R
 import android.text.SpannableString
 import android.text.style.ForegroundColorSpan
@@ -1104,7 +1104,7 @@ internal class MediaCaptureFragment : Fragment() {
 
     private fun createOutputFile(suffix: String): File {
         // Strict: LxApp cache dir is guaranteed
-        val appId = (activity as com.lingxia.lxapp.LxAppActivity).getAppId()
+        val appId = (activity as com.lingxia.app.LxAppActivity).getAppId()
         val info = NativeApi.getLxAppInfo(appId)!!
         val dir = File(info.cacheDir).apply { if (!exists()) mkdirs() }
         val now = System.currentTimeMillis()

@@ -10,8 +10,8 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.*
 import androidx.core.view.ViewCompat
-import com.lingxia.lxapp.LxApp
-import com.lingxia.lxapp.NativeApi
+import com.lingxia.app.LxApp
+import com.lingxia.app.NativeApi
 import com.lingxia.lxapp.R
 import org.json.JSONArray
 import org.json.JSONObject
@@ -281,7 +281,7 @@ internal object LxAppPicker {
         container.addView(pickerContent)
 
         // Use Activity-provided bottom inset (encapsulated helper)
-        com.lingxia.lxapp.util.ActivityInsets.applyBottomMargin(container, pickerContent, 0)
+        com.lingxia.util.ActivityInsets.applyBottomMargin(container, pickerContent, 0)
         return container
     }
 

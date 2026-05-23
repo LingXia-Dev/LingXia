@@ -1,8 +1,8 @@
 package com.lingxia.lxapp.APIs
 
 import android.util.Log
-import com.lingxia.lxapp.LxApp
-import com.lingxia.lxapp.NativeApi
+import com.lingxia.app.LxApp
+import com.lingxia.app.NativeApi
 
 internal object LxAppCapsule {
     private const val TAG = "LingXia.Capsule"

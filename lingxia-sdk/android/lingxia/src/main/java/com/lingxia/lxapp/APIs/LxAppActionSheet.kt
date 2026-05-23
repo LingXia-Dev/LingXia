@@ -8,9 +8,9 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.*
-import com.lingxia.lxapp.LxApp
+import com.lingxia.app.LxApp
 import android.graphics.drawable.GradientDrawable
-import com.lingxia.lxapp.NativeApi
+import com.lingxia.app.NativeApi
 import org.json.JSONObject
 
 /**
@@ -147,7 +147,7 @@ internal object LxAppActionSheet {
         container.addView(actionSheetContent)
 
         // Use Activity-provided bottom inset (encapsulated helper)
-        com.lingxia.lxapp.util.ActivityInsets.applyBottomMargin(container, actionSheetContent, 0)
+        com.lingxia.util.ActivityInsets.applyBottomMargin(container, actionSheetContent, 0)
         return container
     }
 

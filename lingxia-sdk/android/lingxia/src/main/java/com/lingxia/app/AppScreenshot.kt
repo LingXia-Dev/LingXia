@@ -9,8 +9,8 @@ import android.os.Looper
 import android.util.Base64
 import android.util.Log
 import android.view.PixelCopy
-import com.lingxia.lxapp.LxApp
-import com.lingxia.lxapp.NativeApi
+import com.lingxia.app.LxApp
+import com.lingxia.app.NativeApi
 import java.io.ByteArrayOutputStream
 import org.json.JSONObject
 

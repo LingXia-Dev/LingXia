@@ -11,9 +11,9 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.*
 import androidx.core.view.setPadding
-import com.lingxia.lxapp.NativeApi
+import com.lingxia.app.NativeApi
 import org.json.JSONObject
-import com.lingxia.lxapp.LxApp
+import com.lingxia.app.LxApp
 
 /**
  * Modal configuration data class

@@ -1,5 +1,7 @@
 package com.lingxia.lxapp
 
+import com.lingxia.app.NativeApi
+
 import android.app.Activity
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable

@@ -33,8 +33,8 @@ import com.lingxia.lxapp.APIs.media.MediaPickerFragment
 import com.lingxia.lxapp.APIs.media.MediaPreviewFragment
 import com.lingxia.lxapp.APIs.media.PreviewMediaPayload
 import com.lingxia.lxapp.APIs.media.ScanCodeFragment
-import com.lingxia.lxapp.LxApp
-import com.lingxia.lxapp.NativeApi
+import com.lingxia.app.LxApp
+import com.lingxia.app.NativeApi
 import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
@@ -847,7 +847,7 @@ internal object LxAppMedia {
     ) {
         val context = LxApp.applicationContext()
         if (context == null) {
-            com.lingxia.lxapp.NativeApi.onCallback(callbackId, false, "1000")
+            com.lingxia.app.NativeApi.onCallback(callbackId, false, "1000")
             return
         }
 
@@ -862,9 +862,9 @@ internal object LxAppMedia {
             }
 
             if (errorCode == null) {
-                com.lingxia.lxapp.NativeApi.onCallback(callbackId, true, "{}")
+                com.lingxia.app.NativeApi.onCallback(callbackId, true, "{}")
             } else {
-                com.lingxia.lxapp.NativeApi.onCallback(callbackId, false, errorCode)
+                com.lingxia.app.NativeApi.onCallback(callbackId, false, errorCode)
             }
         }.start()
     }
@@ -964,7 +964,7 @@ internal object LxAppMedia {
         val activity = LxApp.getCurrentActivity()
         if (activity == null) {
             Log.w(TAG, "chooseMedia: current activity is null")
-            com.lingxia.lxapp.NativeApi.onCallback(callbackId, false, "1000")
+            com.lingxia.app.NativeApi.onCallback(callbackId, false, "1000")
             return
         }
 
@@ -974,7 +974,7 @@ internal object LxAppMedia {
 
         val appCompat = activity as? AppCompatActivity
         if (appCompat == null) {
-            com.lingxia.lxapp.NativeApi.onCallback(callbackId, false, "1000")
+            com.lingxia.app.NativeApi.onCallback(callbackId, false, "1000")
             return
         }
 
@@ -1004,7 +1004,7 @@ internal object LxAppMedia {
                     cameraFacing
                 )
             } else {
-                com.lingxia.lxapp.NativeApi.onCallback(callbackId, false, "1002")
+                com.lingxia.app.NativeApi.onCallback(callbackId, false, "1002")
             }
         }
     }

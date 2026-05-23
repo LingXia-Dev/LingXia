@@ -160,7 +160,7 @@ pub extern "system" fn JNI_OnLoad(vm: JavaVM, _: *mut std::os::raw::c_void) -> j
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_lingxiaInit<'a>(
+pub extern "system" fn Java_com_lingxia_app_NativeApi_lingxiaInit<'a>(
     mut env: EnvUnowned<'a>,
     _class: JClass<'a>,
     data_dir: JString<'a>,
@@ -215,7 +215,7 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_lingxiaInit<'a>(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_emitSdkLog(
+pub extern "system" fn Java_com_lingxia_app_NativeApi_emitSdkLog(
     mut env: EnvUnowned,
     _class: JClass,
     level: jint,
@@ -237,7 +237,7 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_emitSdkLog(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onPageShow(
+pub extern "system" fn Java_com_lingxia_app_NativeApi_onPageShow(
     mut env: EnvUnowned,
     _class: JClass,
     appid: JString,
@@ -256,7 +256,7 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onPageShow(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_findWebView<'a>(
+pub extern "system" fn Java_com_lingxia_app_NativeApi_findWebView<'a>(
     mut env: EnvUnowned<'a>,
     _class: JClass<'a>,
     appid: JString<'a>,
@@ -305,7 +305,7 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_findWebView<'a>(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_findWebViewByPageInstanceId<'a>(
+pub extern "system" fn Java_com_lingxia_app_NativeApi_findWebViewByPageInstanceId<'a>(
     mut env: EnvUnowned<'a>,
     _class: JClass<'a>,
     page_instance_id: JString<'a>,
@@ -336,7 +336,7 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_findWebViewByPageInstanc
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_notifyPageInstanceMounted(
+pub extern "system" fn Java_com_lingxia_app_NativeApi_notifyPageInstanceMounted(
     mut env: EnvUnowned,
     _class: JClass,
     page_instance_id: JString,
@@ -345,7 +345,7 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_notifyPageInstanceMounte
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_notifyPageInstanceVisible(
+pub extern "system" fn Java_com_lingxia_app_NativeApi_notifyPageInstanceVisible(
     mut env: EnvUnowned,
     _class: JClass,
     page_instance_id: JString,
@@ -354,7 +354,7 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_notifyPageInstanceVisibl
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_notifyPageInstanceHidden(
+pub extern "system" fn Java_com_lingxia_app_NativeApi_notifyPageInstanceHidden(
     mut env: EnvUnowned,
     _class: JClass,
     page_instance_id: JString,
@@ -375,7 +375,7 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_notifyPageInstanceHidden
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_disposePageInstance(
+pub extern "system" fn Java_com_lingxia_app_NativeApi_disposePageInstance(
     mut env: EnvUnowned,
     _class: JClass,
     page_instance_id: JString,
@@ -393,7 +393,7 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_disposePageInstance(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onSurfaceClosed(
+pub extern "system" fn Java_com_lingxia_app_NativeApi_onSurfaceClosed(
     mut env: EnvUnowned,
     _class: JClass,
     appid: JString,
@@ -421,7 +421,7 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onSurfaceClosed(
 
 // Function for LxAppActivity class to handle the mini app close event
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onLxAppClosed(
+pub extern "system" fn Java_com_lingxia_app_NativeApi_onLxAppClosed(
     mut env: EnvUnowned,
     _class: JClass,
     appid: JString,
@@ -449,7 +449,7 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onLxAppClosed(
 
 /// Get navigation bar configuration for a specific page
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getNavigationBarState<'a>(
+pub extern "system" fn Java_com_lingxia_app_NativeApi_getNavigationBarState<'a>(
     mut env: EnvUnowned<'a>,
     _class: JClass<'a>,
     appid: JString<'a>,
@@ -505,7 +505,7 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getNavigationBarState<'a
 
 /// Check if pull-to-refresh is enabled for a specific page
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_isPullDownRefreshEnabled<'a>(
+pub extern "system" fn Java_com_lingxia_app_NativeApi_isPullDownRefreshEnabled<'a>(
     mut env: EnvUnowned<'a>,
     _class: JClass<'a>,
     appid: JString<'a>,
@@ -527,7 +527,7 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_isPullDownRefreshEnabled
 /// Get page orientation for a specific page
 /// Returns: 0=auto, 1=portrait, 2=landscape, 3=reverse-portrait, 4=reverse-landscape
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getPageOrientation<'a>(
+pub extern "system" fn Java_com_lingxia_app_NativeApi_getPageOrientation<'a>(
     mut env: EnvUnowned<'a>,
     _class: JClass<'a>,
     appid: JString<'a>,
@@ -558,7 +558,7 @@ fn orientation_to_android_value(orientation: OrientationConfig) -> jint {
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn Java_com_lingxia_lxapp_NativeApi_onLxappEvent(
+pub extern "C" fn Java_com_lingxia_app_NativeApi_onLxappEvent(
     mut env: EnvUnowned,
     _class: JClass,
     appid: JString,
@@ -594,7 +594,7 @@ pub extern "C" fn Java_com_lingxia_lxapp_NativeApi_onLxappEvent(
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn Java_com_lingxia_lxapp_NativeApi_onKeyEvent(
+pub extern "C" fn Java_com_lingxia_app_NativeApi_onKeyEvent(
     mut env: EnvUnowned,
     _class: JClass,
     appid: JString,
@@ -638,7 +638,7 @@ pub extern "C" fn Java_com_lingxia_lxapp_NativeApi_onKeyEvent(
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn Java_com_lingxia_lxapp_NativeApi_onDeviceOrientationChanged(
+pub extern "C" fn Java_com_lingxia_app_NativeApi_onDeviceOrientationChanged(
     mut env: EnvUnowned,
     _class: JClass,
     appid: JString,
@@ -678,7 +678,7 @@ pub extern "C" fn Java_com_lingxia_lxapp_NativeApi_onDeviceOrientationChanged(
 
 // Function to notify the Rust layer that a mini app has been opened
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onLxAppOpened<'a>(
+pub extern "system" fn Java_com_lingxia_app_NativeApi_onLxAppOpened<'a>(
     mut env: EnvUnowned<'a>,
     _class: JClass<'a>,
     appid: JString<'a>,
@@ -728,7 +728,7 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onLxAppOpened<'a>(
 
 /// Get LxApp information using new typed API
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getLxAppInfo<'a>(
+pub extern "system" fn Java_com_lingxia_app_NativeApi_getLxAppInfo<'a>(
     mut env: EnvUnowned<'a>,
     _class: JClass<'a>,
     appid: JString<'a>,
@@ -742,7 +742,7 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getLxAppInfo<'a>(
         let lxapp_info = lxapp.get_lxapp_info();
 
         // Find the LxAppInfo class
-        let lxapp_info_class = env.find_class(jni_str!("com/lingxia/lxapp/LxAppInfo"))?;
+        let lxapp_info_class = env.find_class(jni_str!("com/lingxia/app/LxAppInfo"))?;
 
         // Create Java strings
         let app_name_str = env.new_string(&lxapp_info.app_name)?;
@@ -768,7 +768,7 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getLxAppInfo<'a>(
 
 // Get TabBar configuration using new typed API
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getTabBarState<'a>(
+pub extern "system" fn Java_com_lingxia_app_NativeApi_getTabBarState<'a>(
     mut env: EnvUnowned<'a>,
     _class: JClass<'a>,
     appid: JString<'a>,
@@ -935,7 +935,7 @@ fn create_tab_bar_item<'a>(
 
 /// Handle DeepLink URL by processing the path without host
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onAppLinkReceived(
+pub extern "system" fn Java_com_lingxia_app_NativeApi_onAppLinkReceived(
     mut env: EnvUnowned,
     _class: JClass,
     applink_url: JString,
@@ -949,7 +949,7 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onAppLinkReceived(
 
 /// Get current active LxApp ID and path from Rust stack
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getCurrentLxApp<'a>(
+pub extern "system" fn Java_com_lingxia_app_NativeApi_getCurrentLxApp<'a>(
     mut env: EnvUnowned<'a>,
     _class: JClass<'a>,
 ) -> JObject<'a> {
@@ -957,7 +957,7 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getCurrentLxApp<'a>(
         let (current_appid, current_path, current_session_id) = lxapp::get_current_lxapp();
 
         // Find the CurrentLxApp class (we'll need to create this)
-        let current_lxapp_class = env.find_class(jni_str!("com/lingxia/lxapp/CurrentLxApp"))?;
+        let current_lxapp_class = env.find_class(jni_str!("com/lingxia/app/CurrentLxApp"))?;
 
         // Create Java strings
         let appid_str = env.new_string(&current_appid)?;
@@ -980,7 +980,7 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getCurrentLxApp<'a>(
 
 /// Get runtime session id for a specific LxApp.
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getLxAppSessionId<'a>(
+pub extern "system" fn Java_com_lingxia_app_NativeApi_getLxAppSessionId<'a>(
     mut env: EnvUnowned<'a>,
     _class: JClass<'a>,
     appid: JString<'a>,
@@ -1002,7 +1002,7 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getLxAppSessionId<'a>(
 /// - `success`: Whether the operation completed successfully
 /// - `data`: When `success=true`, contains JSON payload; when `success=false`, contains error code string (see i18n/err_code)
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onCallback(
+pub extern "system" fn Java_com_lingxia_app_NativeApi_onCallback(
     mut env: EnvUnowned,
     _class: JClass,
     id: jlong,
@@ -1039,7 +1039,7 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onCallback(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onNativeComponentEvent<'a>(
+pub extern "system" fn Java_com_lingxia_app_NativeApi_onNativeComponentEvent<'a>(
     mut env: EnvUnowned<'a>,
     _class: JClass<'a>,
     appid: JString<'a>,
@@ -1078,7 +1078,7 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onNativeComponentEvent<'
 /// Notify native layer that app entered foreground
 /// This should be called from LxAppActivity.onStart
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onAppShow(
+pub extern "system" fn Java_com_lingxia_app_NativeApi_onAppShow(
     mut env: EnvUnowned,
     _class: JClass,
     lxappid: JString,
@@ -1111,7 +1111,7 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onAppShow(
 /// Notify native layer that app entered background
 /// This should be called from LxAppActivity.onStop
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onAppHide(
+pub extern "system" fn Java_com_lingxia_app_NativeApi_onAppHide(
     mut env: EnvUnowned,
     _class: JClass,
     lxappid: JString,
@@ -1149,7 +1149,7 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onAppHide(
 /// - Passes through `http(s)://...` unchanged.
 /// - Returns `file://...` for local filesystem paths.
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_resolveLxUri<'a>(
+pub extern "system" fn Java_com_lingxia_app_NativeApi_resolveLxUri<'a>(
     mut env: EnvUnowned<'a>,
     _class: JClass<'a>,
     appid: JString<'a>,
@@ -1197,7 +1197,7 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_resolveLxUri<'a>(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_openBrowserTab<'a>(
+pub extern "system" fn Java_com_lingxia_app_NativeApi_openBrowserTab<'a>(
     mut env: EnvUnowned<'a>,
     _class: JClass<'a>,
     appid: JString<'a>,
@@ -1231,7 +1231,7 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_openBrowserTab<'a>(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_browserTabClose(
+pub extern "system" fn Java_com_lingxia_app_NativeApi_browserTabClose(
     mut env: EnvUnowned,
     _class: JClass,
     tab_id: JString,
@@ -1247,7 +1247,7 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_browserTabClose(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getBuiltinBrowserAppId<'a>(
+pub extern "system" fn Java_com_lingxia_app_NativeApi_getBuiltinBrowserAppId<'a>(
     mut env: EnvUnowned<'a>,
     _class: JClass<'a>,
 ) -> JString<'a> {
@@ -1259,7 +1259,7 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getBuiltinBrowserAppId<'
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_browserTabPathForId<'a>(
+pub extern "system" fn Java_com_lingxia_app_NativeApi_browserTabPathForId<'a>(
     mut env: EnvUnowned<'a>,
     _class: JClass<'a>,
     tab_id: JString<'a>,
@@ -1276,7 +1276,7 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_browserTabPathForId<'a>(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_handleBrowserNavigationPolicy<'a>(
+pub extern "system" fn Java_com_lingxia_app_NativeApi_handleBrowserNavigationPolicy<'a>(
     mut env: EnvUnowned<'a>,
     _class: JClass<'a>,
     request_json: JString<'a>,
@@ -1298,7 +1298,7 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_handleBrowserNavigationP
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getAppCapabilities(
+pub extern "system" fn Java_com_lingxia_app_NativeApi_getAppCapabilities(
     _env: EnvUnowned,
     _class: JClass,
 ) -> jint {
