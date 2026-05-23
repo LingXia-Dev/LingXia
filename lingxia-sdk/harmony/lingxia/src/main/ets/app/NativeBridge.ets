@@ -1,20 +1,20 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
-import { setComponentCallback } from './NativeComponents/NativeCallbackRegistry';
+import { setComponentCallback } from '../lxapp/NativeComponents/NativeCallbackRegistry';
 import { LxApp } from './LxApp';
-import { LxAppToast, ToastIcon, ToastPosition } from './APIs/LxAppToast';
-import { LxAppModal } from './APIs/LxAppModal';
-import { LxAppActionSheet } from './APIs/LxAppActionSheet';
-import { LxAppPicker } from './APIs/LxAppPicker';
-import { LxAppDevice } from './APIs/LxAppDevice';
-import { LxAppMedia } from './APIs/LxAppMedia';
-import { LxAppScan } from './APIs/LxAppScan';
-import { LxAppContainer } from './LxAppContainer';
-import { LxAppSurface } from './APIs/LxAppSurface';
-import { BrowserOverlayManager } from './APIs/LxAppBrowserOverlay';
-import { LxAppFile } from './APIs/LxAppFile';
-import { LxAppWifi } from './APIs/LxAppWifi';
-import { LxAppNetwork } from './APIs/LxAppNetwork';
-import { LxAppCapsule } from './APIs/LxAppCapsule';
+import { LxAppToast, ToastIcon, ToastPosition } from '../lxapp/APIs/LxAppToast';
+import { LxAppModal } from '../lxapp/APIs/LxAppModal';
+import { LxAppActionSheet } from '../lxapp/APIs/LxAppActionSheet';
+import { LxAppPicker } from '../lxapp/APIs/LxAppPicker';
+import { LxAppDevice } from '../lxapp/APIs/LxAppDevice';
+import { LxAppMedia } from '../lxapp/APIs/LxAppMedia';
+import { LxAppScan } from '../lxapp/APIs/LxAppScan';
+import { LxAppContainer } from '../lxapp/LxAppContainer';
+import { LxAppSurface } from '../lxapp/APIs/LxAppSurface';
+import { BrowserOverlayManager } from '../lxapp/APIs/LxAppBrowserOverlay';
+import { LxAppFile } from '../lxapp/APIs/LxAppFile';
+import { LxAppWifi } from '../lxapp/APIs/LxAppWifi';
+import { LxAppNetwork } from '../lxapp/APIs/LxAppNetwork';
+import { LxAppCapsule } from '../lxapp/APIs/LxAppCapsule';
 import {
   createWebViewController,
   destroyWebViewController,
@@ -22,13 +22,13 @@ import {
   clearBrowsingData,
   setUserAgent,
   captureScreenshot
-} from './WebViewBridge';
-import { captureAppScreenshot } from '../app/AppScreenshot';
-import { animationTypeFromInt } from './NavigationBar';
+} from '../lxapp/WebViewBridge';
+import { captureAppScreenshot } from './AppScreenshot';
+import { animationTypeFromInt } from '../lxapp/NavigationBar';
 import { PermissionManager } from './PermissionManager';
-import { LxNativeVideoPlayer } from './media/LxNativeVideoPlayer';
-import { updateNativeComponentProps } from './NativeComponents/NativeBridgeInternal';
-import { completeWebFileChooserRequest } from './WebFileChooserBridge';
+import { LxNativeVideoPlayer } from '../lxapp/media/LxNativeVideoPlayer';
+import { updateNativeComponentProps } from '../lxapp/NativeComponents/NativeBridgeInternal';
+import { completeWebFileChooserRequest } from '../lxapp/WebFileChooserBridge';
 import { getCurrentLxapp, getLxappSessionId, openBrowserTab, type CurrentLxApp } from 'liblingxia.so';
 
 const DOMAIN = 0x0000;

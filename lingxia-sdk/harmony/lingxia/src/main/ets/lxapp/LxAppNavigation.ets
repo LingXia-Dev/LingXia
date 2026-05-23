@@ -1,5 +1,5 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
-import { LxApp } from './LxApp';
+import { LxApp } from '../app/LxApp';
 import { LxAppContainer } from './LxAppContainer';
 import { pauseAllComponentsByAppId } from './WebViewBridge';
 import { onLxappOpened, onLxappClosed, getTabBar, TabBarItem, TabBarState, getCurrentLxapp, CurrentLxApp, onLxappEvent, UiEventType } from 'liblingxia.so';

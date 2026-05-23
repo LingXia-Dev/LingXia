@@ -16,7 +16,7 @@
  * ```
  */
 
-export { Lingxia } from './src/main/ets/lxapp/Lingxia';
-export { LxApp } from './src/main/ets/lxapp/LxApp';
+export { Lingxia } from './src/main/ets/app/Lingxia';
+export { LxApp } from './src/main/ets/app/LxApp';
 export { LxAppNavigation } from './src/main/ets/lxapp/LxAppNavigation';
-export { LingxiaBaseAbility } from './src/main/ets/lxapp/LingxiaBaseAbility';
+export { LingxiaBaseAbility } from './src/main/ets/app/LingxiaBaseAbility';

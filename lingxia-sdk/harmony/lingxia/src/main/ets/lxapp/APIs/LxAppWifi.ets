@@ -2,7 +2,7 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import wifiManager from '@ohos.wifiManager';
 import liblingxia from 'liblingxia.so';
-import { PermissionManager } from '../PermissionManager';
+import { PermissionManager } from '../../app/PermissionManager';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.Wifi';

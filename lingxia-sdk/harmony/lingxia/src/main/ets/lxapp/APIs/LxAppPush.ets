@@ -2,7 +2,7 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import { notificationManager } from '@kit.NotificationKit';
 import { pushService } from '@kit.PushKit';
 import { BusinessError } from '@kit.BasicServicesKit';
-import { LxApp } from '../LxApp';
+import { LxApp } from '../../app/LxApp';
 import { onPushTokenReceived, onPushlinkReceived } from 'liblingxia.so';
 import { UIAbility } from '@kit.AbilityKit';
 

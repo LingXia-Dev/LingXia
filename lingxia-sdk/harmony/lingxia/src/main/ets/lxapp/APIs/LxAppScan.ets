@@ -1,9 +1,9 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { scanBarcode, scanCore } from '@kit.ScanKit';
-import { LxApp } from '../LxApp';
+import { LxApp } from '../../app/LxApp';
 import { onCallback } from 'liblingxia.so';
 import { BusinessError } from '@kit.BasicServicesKit';
-import { PermissionManager } from '../PermissionManager';
+import { PermissionManager } from '../../app/PermissionManager';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.Scan';

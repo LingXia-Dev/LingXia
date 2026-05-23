@@ -9,7 +9,7 @@ import {
   CAPSULE_ACTION_CLEAN_CACHE_RESTART,
   CAPSULE_ACTION_RESTART,
   CAPSULE_ACTION_UNINSTALL
-} from './NativeBridge';
+} from '../app/NativeBridge';
 
 const TAG = 'CapsuleMenuBottomSheet';
 const DOMAIN = 0xFF00;

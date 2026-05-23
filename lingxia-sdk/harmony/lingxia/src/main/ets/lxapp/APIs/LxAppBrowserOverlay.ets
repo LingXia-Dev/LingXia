@@ -1,7 +1,7 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { webview } from '@kit.ArkWeb';
 import { window } from '@kit.ArkUI';
-import { LxApp } from '../LxApp';
+import { LxApp } from '../../app/LxApp';
 import { requestWebFileChooser } from '../WebFileChooserBridge';
 import {
   WebViewManager,

@@ -4,10 +4,10 @@ import { photoAccessHelper } from '@kit.MediaLibraryKit';
 import { CameraCaptureOverlayManager, CameraCaptureOptions } from './media/CameraCaptureOverlay';
 import { media } from '@kit.MediaKit';
 import { fileIo } from '@kit.CoreFileKit';
-import { LxApp } from '../LxApp';
+import { LxApp } from '../../app/LxApp';
 import common from '@ohos.app.ability.common';
 import { onCallback } from 'liblingxia.so';
-import { PermissionManager } from '../PermissionManager';
+import { PermissionManager } from '../../app/PermissionManager';
 
 const DOMAIN = 0xD001100;
 const TAG = 'LingXiaMedia';

@@ -4,7 +4,7 @@ import { image } from '@kit.ImageKit';
 import { util } from '@kit.ArkTS';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { onCallback } from 'liblingxia.so';
-import { LxApp } from '../lxapp/LxApp';
+import { LxApp } from './LxApp';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.AppScreenshot';
