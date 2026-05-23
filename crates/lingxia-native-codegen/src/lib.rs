@@ -1,10 +1,13 @@
-//! TypeScript code generation for `#[lingxia::native]` host handlers.
+//! Code generation for `#[lingxia::native]` host handlers.
 //!
 //! Scans Rust source files for `#[lingxia::native("route")]` / `#[native("route")]`
-//! function attributes and `pub struct` definitions, then generates a `.ts` module
-//! with typed `invoke` / `stream` / `channel` bindings.
+//! function attributes and `pub struct` definitions, then emits one of:
 //!
-//! Intended as a build-dependency so `build.rs` can produce the types during
+//! - `.ts` — TypeScript client with typed `invoke` / `stream` / `channel` bindings
+//! - `.js` — browser global JS client
+//! - `.rs` — Rust auto-register module (`mod __lingxia_native { pub fn install() }`)
+//!
+//! Intended as a build-dependency so `build.rs` can produce the artifacts during
 //! `cargo build`, before the lxapp is assembled.
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -18,16 +21,33 @@ use syn::{Attribute, FnArg, ItemFn, ItemStruct, ReturnType};
 // Public API
 // ---------------------------------------------------------------------------
 
-/// Scan `rust_dir` (recursively) for `#[lingxia::native]` / `#[native]` handlers
-/// and struct definitions, then write a native client to `out_path`.
+/// Emit the TypeScript (or browser-global JS) client for every `#[native]`
+/// handler discovered under `rust_dir`. Output format is chosen by the
+/// extension of `out` (`.ts` → TS module, `.js` → browser global).
 ///
-/// If no native handlers are found the output file is removed (clean slate).
-pub fn generate(rust_dir: &Path, out: &Path) -> Result<()> {
-    generate_native_client_from_paths(rust_dir, out)
+/// If no handlers are found the output file is removed.
+pub fn generate_ts_client(rust_dir: &Path, out: &Path) -> Result<()> {
+    let kind = output_kind(out);
+    debug_assert!(matches!(
+        kind,
+        OutputKind::TypeScriptModule | OutputKind::BrowserGlobalJs
+    ));
+    write_artifact(rust_dir, out, kind)
 }
 
-/// Compatibility entry point used by native build scripts.
-pub fn generate_native_client_from_paths(rust_dir: &Path, out: &Path) -> Result<()> {
+/// Emit the Rust auto-register module that wraps every discovered handler's
+/// `register_host_entry(...)` call inside `mod __lingxia_native { pub fn install() }`.
+/// `out` must end in `.rs`.
+///
+/// Always writes the file (an empty `install()` body for handler-less crates)
+/// so the consumer's `include!` keeps compiling.
+pub fn generate_rust_registry(rust_dir: &Path, out: &Path) -> Result<()> {
+    let kind = output_kind(out);
+    debug_assert_eq!(kind, OutputKind::RustModule);
+    write_artifact(rust_dir, out, kind)
+}
+
+fn write_artifact(rust_dir: &Path, out: &Path, kind: OutputKind) -> Result<()> {
     if !rust_dir.exists() {
         return Err(anyhow!(
             "Native Rust API directory not found: {}",
@@ -35,12 +55,9 @@ pub fn generate_native_client_from_paths(rust_dir: &Path, out: &Path) -> Result<
         ));
     }
     let manifest = scan(rust_dir)?;
-    let kind = output_kind(out);
     // For TS / JS clients, "no routes" means the consumer doesn't need a
     // client file at all — we delete to avoid stale generated artifacts.
-    // For the Rust auto-register module the consumer's `include!` requires
-    // the file to exist regardless, so we always emit (an empty
-    // `register_all()` body if no handlers were found).
+    // The Rust registry's consumer `include!`s it, so we always emit.
     if manifest.routes.is_empty() && kind != OutputKind::RustModule {
         let _ = fs::remove_file(out);
         return Ok(());
