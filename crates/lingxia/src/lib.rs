@@ -55,6 +55,9 @@ pub mod js;
 mod logging;
 /// Media, camera, scanner, and media-preview helpers.
 pub mod media;
+/// Network status and change subscriptions (typed wrapper around the
+/// platform `Network` trait).
+pub mod network;
 /// Provider traits and registration helpers.
 pub mod provider;
 /// Shared async task helpers backed by LingXia's global executor.
