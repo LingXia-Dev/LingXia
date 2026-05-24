@@ -1,11 +1,14 @@
 package com.lingxia.app
 
 import android.app.Activity
+import android.app.ActivityManager
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.os.Handler
 import android.os.Looper
+import android.os.Process
 import android.util.Log
 import android.view.View
 import android.view.ViewGroup
@@ -52,6 +55,9 @@ internal data class CurrentLxApp(
 class LxApp private constructor(private val context: Context) {
     companion object {
         private const val TAG = "LingXia.LxApp"
+        // Delay killProcess on exit until ATM has processed the task removal — killing
+        // in the same tick races with ATM and the system relaunches the LAUNCHER.
+        private const val EXIT_KILL_DELAY_MS = 150L
         const val CAP_SHELL: Int = 0x1
         const val CAP_NOTIFICATIONS: Int = 0x2
         private var instance: LxApp? = null
@@ -152,12 +158,22 @@ class LxApp private constructor(private val context: Context) {
                 return false
             }
 
-            if (Looper.myLooper() == Looper.getMainLooper()) {
+            val doExit = {
                 activity.finishAffinity()
+                // Drop the task from recents — finishAffinity alone leaves it lingering.
+                (activity.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager)
+                    ?.appTasks?.forEach { it.finishAndRemoveTask() }
+                // Kill the process so the native runtime is reset; otherwise the next
+                // launch restores the lxapp's previous page instead of opening home.
+                Handler(Looper.getMainLooper()).postDelayed(
+                    { Process.killProcess(Process.myPid()) },
+                    EXIT_KILL_DELAY_MS,
+                )
+            }
+            if (Looper.myLooper() == Looper.getMainLooper()) {
+                doExit()
             } else {
-                activity.runOnUiThread {
-                    activity.finishAffinity()
-                }
+                activity.runOnUiThread { doExit() }
             }
             return true
         }
