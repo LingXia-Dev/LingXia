@@ -185,7 +185,19 @@ async fn take_app_screenshot_ios() -> Result<Vec<u8>, PlatformError> {
             return;
         }
         let layer: *mut AnyObject = msg_send![window, layer];
-        let _: () = msg_send![layer, renderInContext: ctx];
+        // Bypass msg_send! type encoding check: `ctx` here is *mut c_void (since we
+        // don't depend on objc2-core-graphics for a typed CGContextRef), but
+        // -[CALayer renderInContext:] declares `^{CGContext=}`. msg_send! verifies the
+        // encoding and panics on mismatch, so call objc_msgSend directly.
+        {
+            let sel = objc2::sel!(renderInContext:);
+            let func: unsafe extern "C" fn(
+                *mut AnyObject,
+                objc2::runtime::Sel,
+                *mut core::ffi::c_void,
+            ) = core::mem::transmute(objc2::ffi::objc_msgSend as *const ());
+            func(layer, sel, ctx);
+        }
         let image: *mut AnyObject = UIGraphicsGetImageFromCurrentImageContext();
         UIGraphicsEndImageContext();
         if image.is_null() {
