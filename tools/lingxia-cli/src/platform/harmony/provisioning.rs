@@ -195,11 +195,12 @@ impl ProvisioningManager {
         self.client
             .find_app_id_by_package_name(&token, bundle_name)?
             .ok_or_else(|| {
-            anyhow!(
-                "AppId not found for bundle `{}` in AppGallery Connect.\nCreate it in AGC first, then rerun.",
-                bundle_name
-            )
-        })
+                anyhow!(
+                    "No AGC App for bundle `{bundle_name}`. AGC has no create-app API; add it manually at \
+                     https://developer.huawei.com/consumer/cn/service/josp/agc/index.html (HarmonyOS, \
+                     package `{bundle_name}`), then re-run. Or pass `--env release` to skip the env-version suffix."
+                )
+            })
     }
 
     fn ensure_devices(
