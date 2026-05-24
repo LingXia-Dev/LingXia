@@ -270,10 +270,7 @@ impl LxAppUpdateHost for BoundLxAppUpdateHost {
     }
 
     fn register_builtin_bundle(&self) -> Result<(), UpdateError> {
-        lxapp_runtime::register_builtin_asset_bundle(
-            self.target_appid.clone(),
-            self.target_appid.clone(),
-        );
+        lxapp_runtime::register_builtin_asset_bundle(self.target_appid.clone());
         Ok(())
     }
 

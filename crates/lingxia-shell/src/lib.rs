@@ -102,6 +102,9 @@ pub fn register_runtime() {
 pub fn register_bundled_assets() {
     match bundled_internal_pages() {
         Ok(internal_pages) => {
+            // Upgrade the browser host from Synthetic to a real asset bundle so the
+            // lingxia:// scheme can serve newtab/settings/downloads pages.
+            lxapp::register_builtin_asset_bundle(lingxia_browser::BUILTIN_BROWSER_APPID);
             for (route, entry_asset) in internal_pages {
                 if let Err(err) = lingxia_browser::register_internal_page(route, entry_asset) {
                     lxapp::warn!(

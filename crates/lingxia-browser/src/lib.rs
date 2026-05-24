@@ -238,7 +238,7 @@ pub fn start_download(
 
 #[doc(hidden)]
 pub fn register_bundled_app() {
-    runtime::register_builtin_browser_asset_bundle();
+    runtime::register_builtin_browser_host();
 }
 
 #[doc(hidden)]

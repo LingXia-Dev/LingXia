@@ -30,7 +30,7 @@ use crate::{error, info, warn};
 use security::NetworkSecurity;
 
 pub mod config;
-use config::{LxAppConfig, LxAppPageEntry};
+use config::{LxAppConfig, LxAppLogicEntry, LxAppPageEntry};
 mod content;
 pub(crate) mod metadata;
 pub mod navbar;
@@ -134,13 +134,19 @@ fn get_num_workers() -> usize {
     NUM_WORKERS.get().copied().unwrap_or(LXAPP_STACK_MAX)
 }
 
-pub fn register_builtin_asset_bundle(appid: impl Into<String>, asset_root: impl Into<String>) {
-    register_lxapp_bundle_source(
-        appid,
-        LxAppBundleSource::BuiltinAssets {
-            asset_root: asset_root.into(),
-        },
-    );
+/// Register an lxapp whose pages/logic are bundled at `<appid>/...` inside the
+/// platform asset root (Android `assets/`, iOS bundle, etc.). The on-disk asset
+/// prefix is always the appid — no separate `asset_root` argument.
+pub fn register_builtin_asset_bundle(appid: impl Into<String>) {
+    register_lxapp_bundle_source(appid, LxAppBundleSource::BuiltinAssets);
+}
+
+/// Register a content-less builtin lxapp host. The LxApp is created with default
+/// empty config (no pages/plugins/logic). A later [`register_builtin_asset_bundle`]
+/// call for the same appid upgrades to a disk-backed bundle — used by shell-runtime
+/// to swap in the real shell webui on macOS.
+pub fn register_synthetic_lxapp(appid: impl Into<String>) {
+    register_lxapp_bundle_source(appid, LxAppBundleSource::Synthetic);
 }
 
 pub fn register_dev_bundle_source(appid: impl Into<String>, root: impl Into<PathBuf>) {
@@ -445,17 +451,14 @@ impl LxAppState {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum LxAppBundleSource {
     Installed,
-    DevPath { root: PathBuf },
-    BuiltinAssets { asset_root: String },
-}
-
-impl LxAppBundleSource {
-    fn builtin_asset_root(&self) -> Option<&str> {
-        match self {
-            Self::BuiltinAssets { asset_root } => Some(asset_root.as_str()),
-            _ => None,
-        }
-    }
+    DevPath {
+        root: PathBuf,
+    },
+    /// Pages/logic bundled at `<appid>/...` inside the platform asset root.
+    BuiltinAssets,
+    /// Content-less host. `LxAppConfig` stays at default (empty pages/plugins,
+    /// `logic_enabled() == false`). Used for SDK-internal hosts with no UI bundle.
+    Synthetic,
 }
 
 pub struct LxApp {
@@ -1029,7 +1032,7 @@ impl LxApp {
                     .with_appid(self.appid.clone());
                 self.lxapp_dir = root.clone();
             }
-            LxAppBundleSource::BuiltinAssets { .. } => {
+            LxAppBundleSource::BuiltinAssets | LxAppBundleSource::Synthetic => {
                 self.lxapp_dir = self
                     .runtime
                     .app_data_dir()
@@ -1141,7 +1144,15 @@ impl LxApp {
     /// Initialize paths and load configuration
     fn setup(&mut self) -> Result<(), LxAppError> {
         self.initialize_paths()?;
-        self.load_config()?;
+        if matches!(self.bundle_source, LxAppBundleSource::Synthetic) {
+            // No `lxapp.json` to read. The default `LxAppConfig.logic = None` resolves to
+            // `Some("logic.js")` (documented default for normal lxapps); force it off so
+            // `logic_enabled()` / `logic_entry_source` don't spin up JS workers we have
+            // no source for.
+            self.config.logic = Some(LxAppLogicEntry::Enabled(false));
+        } else {
+            self.load_config()?;
+        }
         Ok(())
     }
 
@@ -1177,10 +1188,14 @@ impl LxApp {
                 let source_path = self.lxapp_dir.join(&entry);
                 Source::from_path(ctx, &source_path).await.map(Some)
             }
-            LxAppBundleSource::BuiltinAssets { asset_root } => {
+            LxAppBundleSource::Synthetic => unreachable!(
+                "synthetic lxapp {} forces logic=false at setup(); logic_entry() must be None",
+                self.appid
+            ),
+            LxAppBundleSource::BuiltinAssets => {
                 let asset_path = format!(
                     "{}/{}",
-                    asset_root.trim_end_matches('/'),
+                    self.appid.trim_end_matches('/'),
                     entry.trim_start_matches('/')
                 );
                 let mut reader = self.runtime.read_asset(&asset_path).map_err(|err| {
@@ -1227,6 +1242,12 @@ impl LxApp {
 
     // Reads binary data from the specified relative path
     fn read_bytes(&self, relative_path: &str) -> Result<Vec<u8>, LxAppError> {
+        if matches!(self.bundle_source, LxAppBundleSource::Synthetic) {
+            return Err(LxAppError::ResourceNotFound(format!(
+                "{relative_path}: synthetic lxapp host {} has no on-disk content",
+                self.appid
+            )));
+        }
         let file_path = match crate::plugin::resolve_plugin_resource_path_from_internal_path(
             &self.runtime,
             &self.config.plugins,
@@ -1234,10 +1255,10 @@ impl LxApp {
         )? {
             Some(path) => path,
             None => {
-                if let Some(asset_root) = self.bundle_source.builtin_asset_root() {
+                if matches!(self.bundle_source, LxAppBundleSource::BuiltinAssets) {
                     let asset_path = format!(
                         "{}/{}",
-                        asset_root.trim_end_matches('/'),
+                        self.appid.trim_end_matches('/'),
                         relative_path.trim_start_matches('/')
                     );
                     let mut reader = self.runtime.read_asset(&asset_path).map_err(|e| {

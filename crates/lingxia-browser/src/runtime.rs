@@ -1806,8 +1806,10 @@ fn resolve_owner_lxapp(owner_appid: &str, owner_session_id: u64) -> Result<Arc<L
 // Public API
 // ---------------------------------------------------------------------------
 
-pub(crate) fn register_builtin_browser_asset_bundle() {
-    lxapp::register_builtin_asset_bundle(BUILTIN_BROWSER_APPID, BUILTIN_BROWSER_APPID);
+pub(crate) fn register_builtin_browser_host() {
+    // Synthetic host: just owns tab session_id + page lifecycle. shell-runtime
+    // upgrades this to a real asset bundle later (see lingxia-shell).
+    lxapp::register_synthetic_lxapp(BUILTIN_BROWSER_APPID);
 }
 
 pub(crate) fn warmup_builtin_browser_runtime() -> Result<(), LxAppError> {

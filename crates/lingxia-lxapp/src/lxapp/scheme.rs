@@ -180,7 +180,7 @@ impl LxApp {
             Some(lx_uri::HOST_LXAPP) => {
                 if matches!(
                     self.bundle_source,
-                    crate::lxapp::LxAppBundleSource::BuiltinAssets { .. }
+                    crate::lxapp::LxAppBundleSource::BuiltinAssets
                 ) {
                     self.resolve_lxapp_relative_path(page, uri)
                         .map(ResolvedLxAsset::BuiltinAsset)
@@ -209,10 +209,15 @@ impl LxApp {
     }
 
     fn handle_builtin_lxapp_asset(&self, relative_path: &str) -> Option<WebResourceResponse> {
-        let asset_root = self.bundle_source.builtin_asset_root()?;
+        if !matches!(
+            self.bundle_source,
+            crate::lxapp::LxAppBundleSource::BuiltinAssets
+        ) {
+            return None;
+        }
         let asset_path = format!(
             "{}/{}",
-            asset_root.trim_end_matches('/'),
+            self.appid.trim_end_matches('/'),
             relative_path.trim_start_matches('/')
         );
 

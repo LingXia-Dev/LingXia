@@ -167,7 +167,7 @@ fn ensure_lxapp_available(
     if lxapp::installed_lxapp_path(appid, release_type).is_some() {
         return lxapp::ensure_lxapp(appid, release_type).map_err(|err| err.to_string());
     }
-    lxapp::register_builtin_asset_bundle(appid.to_string(), appid.to_string());
+    lxapp::register_builtin_asset_bundle(appid.to_string());
     lxapp::ensure_builtin_lxapp(appid).map_err(|err| err.to_string())
 }
 

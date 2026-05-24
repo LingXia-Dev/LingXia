@@ -58,7 +58,8 @@ pub use lxapp::{
     get_platform, init, installed_lxapp_path, is_pull_down_refresh_enabled, list_lxapps,
     notify_page_instance, notify_page_instance_by_id, on_low_memory, open_lxapp,
     register_builtin_asset_bundle, register_dev_bundle_source, register_surface_close_observer,
-    restart_lxapp, tabbar, touch_page_instance_by_id, try_get, uninstall_lxapp,
+    register_synthetic_lxapp, restart_lxapp, tabbar, touch_page_instance_by_id, try_get,
+    uninstall_lxapp,
 };
 pub use native_component::on_native_component_event;
 pub use page::config::{OrientationConfig, PageOrientation};
