@@ -75,6 +75,7 @@ final class NativeComponentManager {
     private var textInputKeyboardIndicatorInsetRestore: UIEdgeInsets?
     private var textInputWebViewTransformRestore: CGAffineTransform?
     private let textInputKeyboardBottomGap: CGFloat = 24
+    private var textInputPendingScrollTargetY: CGFloat?
 
     init(
         scrollView: UIScrollView,
@@ -656,6 +657,7 @@ final class NativeComponentManager {
         let maxOffsetY = max(minOffsetY, scrollView.contentSize.height - scrollView.bounds.height + adjustedInset.bottom)
         let clampedOffsetY = min(max(targetOffsetY, minOffsetY), maxOffsetY)
         guard abs(clampedOffsetY - currentOffsetY) > 0.5 else { return }
+        textInputPendingScrollTargetY = clampedOffsetY
         scrollView.setContentOffset(
             CGPoint(x: scrollView.contentOffset.x, y: clampedOffsetY),
             animated: true
@@ -749,8 +751,22 @@ final class NativeComponentManager {
         let frameInWindow = component.view.convert(component.view.bounds, to: window)
         webView.transform = savedTransform
 
+        // If ensureVisible just started an animated scroll, the input's window
+        // frame is still pre-scroll. Subtract the remaining scroll delta so we
+        // don't double-lift on top of an in-flight scroll that already covers
+        // the keyboard gap.
+        var predictedMaxY = frameInWindow.maxY
+        if let scrollView,
+           let targetY = textInputPendingScrollTargetY,
+           component.view.isDescendant(of: scrollView) {
+            let pendingDelta = targetY - scrollView.contentOffset.y
+            if pendingDelta > 0 {
+                predictedMaxY -= pendingDelta
+            }
+        }
+
         let keyboardTopY = window.bounds.height - focusedTextInputKeyboardHeight
-        let needLift = max(0, frameInWindow.maxY + textInputKeyboardBottomGap - keyboardTopY)
+        let needLift = max(0, predictedMaxY + textInputKeyboardBottomGap - keyboardTopY)
         if needLift > 0 {
             if textInputWebViewTransformRestore == nil {
                 textInputWebViewTransformRestore = webView.transform
@@ -1006,6 +1022,7 @@ final class NativeComponentManager {
         }
         focusedTextInputComponentId = nil
         focusedTextInputKeyboardHeight = 0
+        textInputPendingScrollTargetY = nil
         updateTextInputKeyboardAvoidanceInsets()
     }
 
