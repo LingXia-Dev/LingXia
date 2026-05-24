@@ -68,7 +68,7 @@ where
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(usize)]
 pub enum CachedClass {
-    LxApp = 0,
+    Lingxia = 0,
     LxAppMedia = 1,
     PreviewMediaPayload = 2,
     LxAppDevice = 3,
@@ -86,14 +86,16 @@ pub enum CachedClass {
     LxAppWifi = 15,
     LxAppNetwork = 16,
     AppScreenshot = 17,
+    LxApp = 18,
 }
 
 impl CachedClass {
-    const COUNT: usize = 18;
+    const COUNT: usize = 19;
 
     pub const fn class_path(self) -> &'static str {
         match self {
-            CachedClass::LxApp => "com/lingxia/app/LxApp",
+            CachedClass::Lingxia => "com/lingxia/app/Lingxia",
+            CachedClass::LxApp => "com/lingxia/lxapp/LxApp",
             CachedClass::LxAppMedia => "com/lingxia/lxapp/APIs/LxAppMedia",
             CachedClass::PreviewMediaPayload => "com/lingxia/lxapp/APIs/media/PreviewMediaPayload",
             CachedClass::LxAppDevice => "com/lingxia/lxapp/APIs/LxAppDevice",
@@ -116,9 +118,13 @@ impl CachedClass {
 
     fn missing_message(self) -> &'static str {
         match self {
+            CachedClass::Lingxia => concat!(
+                "Global class reference not found: ",
+                "com/lingxia/app/Lingxia"
+            ),
             CachedClass::LxApp => concat!(
                 "Global class reference not found: ",
-                "com/lingxia/app/LxApp"
+                "com/lingxia/lxapp/LxApp"
             ),
             CachedClass::LxAppMedia => concat!(
                 "Global class reference not found: ",
@@ -194,6 +200,7 @@ impl CachedClass {
 
 fn cached_slot(kind: CachedClass) -> &'static OnceLock<Global<JClass<'static>>> {
     static CLASS_CACHE: [OnceLock<Global<JClass<'static>>>; CachedClass::COUNT] = [
+        OnceLock::new(),
         OnceLock::new(),
         OnceLock::new(),
         OnceLock::new(),

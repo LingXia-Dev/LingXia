@@ -1,4 +1,4 @@
-package com.lingxia.app
+package com.lingxia.lxapp
 
 import android.app.Activity
 import android.app.UiModeManager
@@ -36,18 +36,10 @@ import androidx.appcompat.app.AppCompatActivity
 import android.view.animation.AccelerateDecelerateInterpolator
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
-import com.lingxia.lxapp.CapsuleButton
-import com.lingxia.lxapp.CapsuleMenuBottomSheet
-import com.lingxia.lxapp.LxAppBrowserOverlay
-import com.lingxia.lxapp.LxAppTheme
-import com.lingxia.lxapp.LxNavBarUtils
+import com.lingxia.app.NativeApi
+import com.lingxia.app.PermissionManager
+import com.lingxia.app.UpdateManager
 import com.lingxia.lxapp.NativeComponents.NativeBridge
-import com.lingxia.lxapp.NavigationBar
-import com.lingxia.lxapp.NavigationBarState
-import com.lingxia.lxapp.PullToRefreshHelper
-import com.lingxia.lxapp.TabBar
-import com.lingxia.lxapp.TabBarState
-import com.lingxia.lxapp.WebView
 
 /**
  * Animation type enum for page transitions
@@ -321,7 +313,7 @@ class LxAppActivity : AppCompatActivity() {
         requestedPath: String,
         requestedSessionId: Long
     ): Pair<String, Long>? {
-        if (LxApp.HomeAppId == null) {
+        if (LxApp.homeAppId == null) {
             Log.e(TAG, "LxApp runtime is not initialized before LxAppActivity creation")
             return null
         }
@@ -356,7 +348,7 @@ class LxAppActivity : AppCompatActivity() {
         if (isMediaFullscreen) return false
         if (targetAppId.isBlank() || targetSessionId <= 0L) return false
 
-        val homeAppId = LxApp.HomeAppId ?: return false
+        val homeAppId = LxApp.homeAppId ?: return false
         if (targetAppId == homeAppId) return false
 
         val current = NativeApi.getCurrentLxApp() ?: return false
@@ -1237,7 +1229,7 @@ class LxAppActivity : AppCompatActivity() {
     }
 
     /**
-     * Notifies the native layer that a mini app is being closed
+     * Notifies the native layer that the LxApp is being closed
      * Returns whether the close matches current runtime session.
      */
     private fun notifyLxAppClosed(sessionId: Long = currentSessionId): Boolean {

@@ -6,7 +6,8 @@ import android.view.ViewGroup
 import android.widget.FrameLayout
 import com.lingxia.lxapp.APIs.LxAppPicker
 import com.lingxia.lxapp.APIs.LxAppDatePicker
-import com.lingxia.app.LxApp
+import com.lingxia.app.Lingxia
+import com.lingxia.lxapp.LxApp
 import com.lingxia.lxapp.NativeComponents.LxNativeComponent
 import com.lingxia.lxapp.NativeComponents.LxNativeComponentFactory
 import org.json.JSONArray

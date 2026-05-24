@@ -1,6 +1,6 @@
 package com.lingxia.lxapp
 
-import com.lingxia.app.LxAppActivity
+import com.lingxia.lxapp.LxAppActivity
 
 import android.content.Context
 import android.graphics.Color
@@ -38,7 +38,7 @@ internal data class NavigationBarState(
 }
 
 /**
- * Custom Navigation Bar view mimicking mini-app behavior.
+ * Custom Navigation Bar view used inside an LxAppActivity.
  */
 internal class NavigationBar @JvmOverloads constructor(
     context: Context,

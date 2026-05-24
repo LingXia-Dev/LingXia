@@ -1,7 +1,8 @@
 package com.lingxia.lxapp.APIs
 
 import android.util.Log
-import com.lingxia.app.LxApp
+import com.lingxia.app.Lingxia
+import com.lingxia.lxapp.LxApp
 
 /**
  * Pull-to-refresh API for LxApp

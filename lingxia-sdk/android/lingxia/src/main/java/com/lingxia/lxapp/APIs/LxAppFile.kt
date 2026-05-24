@@ -12,8 +12,9 @@ import android.util.Log
 import android.webkit.MimeTypeMap
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
-import com.lingxia.app.LxApp
-import com.lingxia.app.LxAppActivity
+import com.lingxia.app.Lingxia
+import com.lingxia.lxapp.LxApp
+import com.lingxia.lxapp.LxAppActivity
 import com.lingxia.app.NativeApi
 import com.lingxia.lxapp.APIs.document.PdfViewerActivity
 import com.lingxia.lxapp.APIs.document.LingxiaDocumentProvider

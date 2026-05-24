@@ -1,7 +1,7 @@
 package com.lingxia.lxapp
 
 import com.lingxia.app.NativeApi
-import com.lingxia.app.LxAppInfo
+import com.lingxia.lxapp.LxAppInfo
 
 import android.app.Activity
 import android.content.Context

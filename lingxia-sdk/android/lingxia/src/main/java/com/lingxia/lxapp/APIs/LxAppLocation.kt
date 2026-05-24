@@ -14,7 +14,8 @@ import android.os.Looper
 import android.util.Log
 import androidx.core.content.ContextCompat
 import org.json.JSONObject
-import com.lingxia.app.LxApp
+import com.lingxia.app.Lingxia
+import com.lingxia.lxapp.LxApp
 import com.lingxia.app.PermissionManager
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -32,7 +33,7 @@ internal object LxAppLocation {
 
     @JvmStatic
     fun isLocationEnabled(): Boolean {
-        val context = LxApp.getCurrentActivity() ?: LxApp.applicationContext()
+        val context = LxApp.getCurrentActivity() ?: Lingxia.applicationContext()
         if (context == null) {
             Log.w(TAG, "isLocationEnabled: no context available")
             return false

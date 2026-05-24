@@ -33,7 +33,8 @@ import com.lingxia.lxapp.APIs.media.MediaPickerFragment
 import com.lingxia.lxapp.APIs.media.MediaPreviewFragment
 import com.lingxia.lxapp.APIs.media.PreviewMediaPayload
 import com.lingxia.lxapp.APIs.media.ScanCodeFragment
-import com.lingxia.app.LxApp
+import com.lingxia.app.Lingxia
+import com.lingxia.lxapp.LxApp
 import com.lingxia.app.NativeApi
 import org.json.JSONObject
 import java.io.File
@@ -105,7 +106,7 @@ internal object LxAppMedia {
     /** Retrieve basic metadata for an image URI (width/height/mime). */
     @JvmStatic
     fun getImageInfo(uri: String): String {
-        val ctx = LxApp.applicationContext() ?: return JSONObject().apply {
+        val ctx = Lingxia.applicationContext() ?: return JSONObject().apply {
             put("success", false)
             put("error", "Application context unavailable")
         }.toString()
@@ -147,7 +148,7 @@ internal object LxAppMedia {
     @JvmStatic
     fun copyAlbumMediaToFile(uri: String, destPath: String): Boolean {
         return try {
-            val ctx = LxApp.getApplicationContext()
+            val ctx = Lingxia.getApplicationContext()
             val contentResolver = ctx.contentResolver
             val outFile = File(destPath)
             outFile.parentFile?.let { if (!it.exists()) it.mkdirs() }
@@ -169,7 +170,7 @@ internal object LxAppMedia {
             }
         } catch (oom: OutOfMemoryError) {
             Log.e(TAG, "copyAlbumMediaToFile OOM for $uri, falling back to stream", oom)
-            val ctx = LxApp.getApplicationContext()
+            val ctx = Lingxia.getApplicationContext()
             streamCopy(ctx.contentResolver, android.net.Uri.parse(uri), File(destPath))
         } catch (e: Exception) {
             Log.e(TAG, "copyAlbumMediaToFile failed: ${e.message}", e)
@@ -203,7 +204,7 @@ internal object LxAppMedia {
         targetHeight: Int
     ): String {
         return try {
-            val ctx = LxApp.getApplicationContext()
+            val ctx = Lingxia.getApplicationContext()
             val resolver = ctx.contentResolver
             val sourceFile = resolveLocalFile(uri)
                 ?: return errorResult("Only local file paths are supported")
@@ -434,7 +435,7 @@ internal object LxAppMedia {
             }.toString()
         }
 
-        val context = LxApp.applicationContext() ?: return JSONObject().apply {
+        val context = Lingxia.applicationContext() ?: return JSONObject().apply {
             put("success", false)
             put("error", "Application context unavailable")
         }.toString()
@@ -845,7 +846,7 @@ internal object LxAppMedia {
         isImage: Boolean,
         callbackId: Long
     ) {
-        val context = LxApp.applicationContext()
+        val context = Lingxia.applicationContext()
         if (context == null) {
             com.lingxia.app.NativeApi.onCallback(callbackId, false, "1000")
             return

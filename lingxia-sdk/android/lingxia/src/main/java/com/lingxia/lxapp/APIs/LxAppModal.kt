@@ -13,7 +13,8 @@ import android.widget.*
 import androidx.core.view.setPadding
 import com.lingxia.app.NativeApi
 import org.json.JSONObject
-import com.lingxia.app.LxApp
+import com.lingxia.app.Lingxia
+import com.lingxia.lxapp.LxApp
 
 /**
  * Modal configuration data class

@@ -9,7 +9,8 @@ import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import org.json.JSONObject
-import com.lingxia.app.LxApp
+import com.lingxia.app.Lingxia
+import com.lingxia.lxapp.LxApp
 import androidx.core.content.ContextCompat
 import java.io.File
 
@@ -223,7 +224,7 @@ internal object LxAppDevice {
     }
 
     private fun resolveStorageAppId(): String? {
-        val packageName = LxApp.applicationContext()?.packageName?.trim().orEmpty()
+        val packageName = Lingxia.applicationContext()?.packageName?.trim().orEmpty()
         if (packageName.isNotEmpty()) {
             return packageName
         }
@@ -245,7 +246,7 @@ internal object LxAppDevice {
         }
 
         val permissions = buildStoragePermissions()
-        val context = LxApp.applicationContext() ?: LxApp.getCurrentActivity()
+        val context = Lingxia.applicationContext() ?: LxApp.getCurrentActivity()
         if (context == null) {
             Log.w(TAG, "External storage access denied: context unavailable")
             return false

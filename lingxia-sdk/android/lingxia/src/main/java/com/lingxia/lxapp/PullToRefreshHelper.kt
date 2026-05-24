@@ -16,7 +16,7 @@ import kotlin.math.max
 import kotlin.math.min
 
 /**
- * Mini-app style pull-to-refresh.
+ * LxApp-style pull-to-refresh.
  *
  * Architecture:
  * - Indicator is added to webViewContainer at index 0 (BEHIND WebView in z-order)

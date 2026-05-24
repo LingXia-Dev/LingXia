@@ -13,7 +13,8 @@ import android.os.HandlerThread
 import android.telephony.SubscriptionManager
 import android.telephony.TelephonyManager
 import android.util.Log
-import com.lingxia.app.LxApp
+import com.lingxia.app.Lingxia
+import com.lingxia.lxapp.LxApp
 import com.lingxia.app.NativeApi
 import org.json.JSONArray
 import org.json.JSONObject
@@ -60,7 +61,7 @@ object LxAppNetwork {
             return
         }
 
-        val context = LxApp.applicationContext()
+        val context = Lingxia.applicationContext()
         val connMgr = getConnectivityManager(context)
         if (changeCallbacks.size == 1 && connMgr != null) {
             registerNetworkCallback(connMgr)
@@ -87,14 +88,14 @@ object LxAppNetwork {
         // Ensure the OS NetworkCallback is registered even when the only consumer
         // is a Java/Kotlin listener (no JS-side `lx.onNetworkChange` subscriber).
         // Without this the listener would silently never receive updates.
-        val context = LxApp.applicationContext()
+        val context = Lingxia.applicationContext()
         val connMgr = getConnectivityManager(context)
         if (connMgr != null && networkCallback == null) {
             registerNetworkCallback(connMgr)
         }
 
         // Fire the current state immediately ONLY if we can actually resolve one.
-        // When this is called before `LxApp.init` finishes (e.g. an Application or
+        // When this is called before `Lingxia.initializeRuntime` finishes (e.g. an Application or
         // Activity registered early), `applicationContext` is still null and
         // `resolveNetworkStatus(null)` would falsely return "disconnected" — causing
         // a brief no-network UI flash on cold start. In that case, defer the first
@@ -108,7 +109,7 @@ object LxAppNetwork {
     }
 
     private fun resolveAndCache(): Boolean {
-        val connected = resolveNetworkStatus(LxApp.applicationContext()).isConnected
+        val connected = resolveNetworkStatus(Lingxia.applicationContext()).isConnected
         lastIsConnected = connected
         return connected
     }
@@ -188,7 +189,7 @@ object LxAppNetwork {
     }
 
     private fun emitInfoTo(callbackId: Long) {
-        val info = resolveNetworkInfo(LxApp.applicationContext())
+        val info = resolveNetworkInfo(Lingxia.applicationContext())
         val payload = JSONObject().apply {
             put("isConnected", info.isConnected)
             put("networkType", info.networkType)
@@ -202,7 +203,7 @@ object LxAppNetwork {
         if (changeCallbacks.isEmpty() && statusListeners.isEmpty()) {
             return
         }
-        val info = resolveNetworkInfo(LxApp.applicationContext())
+        val info = resolveNetworkInfo(Lingxia.applicationContext())
         val signature = buildNetworkInfoSignature(info)
         if (signature == lastSignature) {
             return

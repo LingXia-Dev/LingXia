@@ -10,7 +10,8 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.*
 import androidx.core.view.ViewCompat
-import com.lingxia.app.LxApp
+import com.lingxia.app.Lingxia
+import com.lingxia.lxapp.LxApp
 import com.lingxia.app.NativeApi
 import com.lingxia.lxapp.R
 import org.json.JSONArray

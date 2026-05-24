@@ -122,6 +122,7 @@ fn init_cached_java_class(env: &mut Env<'_>, class: CachedClass) {
 fn init_cached_java_classes(env: &mut Env<'_>) {
     // Keep this in sync with `lingxia_platform::CachedClass`.
     let classes = [
+        CachedClass::Lingxia,
         CachedClass::LxApp,
         CachedClass::PreviewMediaPayload,
         CachedClass::LxAppMedia,
@@ -419,7 +420,7 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_onSurfaceClosed(
     .resolve::<ThrowRuntimeExAndDefault>()
 }
 
-// Function for LxAppActivity class to handle the mini app close event
+// Function for LxAppActivity class to handle the LxApp close event
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_com_lingxia_app_NativeApi_onLxAppClosed(
     mut env: EnvUnowned,
@@ -676,7 +677,7 @@ pub extern "C" fn Java_com_lingxia_app_NativeApi_onDeviceOrientationChanged(
     .resolve::<ThrowRuntimeExAndDefault>()
 }
 
-// Function to notify the Rust layer that a mini app has been opened
+// Function to notify the Rust layer that an LxApp has been opened
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_com_lingxia_app_NativeApi_onLxAppOpened<'a>(
     mut env: EnvUnowned<'a>,
@@ -742,7 +743,7 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_getLxAppInfo<'a>(
         let lxapp_info = lxapp.get_lxapp_info();
 
         // Find the LxAppInfo class
-        let lxapp_info_class = env.find_class(jni_str!("com/lingxia/app/LxAppInfo"))?;
+        let lxapp_info_class = env.find_class(jni_str!("com/lingxia/lxapp/LxAppInfo"))?;
 
         // Create Java strings
         let app_name_str = env.new_string(&lxapp_info.app_name)?;
@@ -957,7 +958,7 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_getCurrentLxApp<'a>(
         let (current_appid, current_path, current_session_id) = lxapp::get_current_lxapp();
 
         // Find the CurrentLxApp class (we'll need to create this)
-        let current_lxapp_class = env.find_class(jni_str!("com/lingxia/app/CurrentLxApp"))?;
+        let current_lxapp_class = env.find_class(jni_str!("com/lingxia/lxapp/CurrentLxApp"))?;
 
         // Create Java strings
         let appid_str = env.new_string(&current_appid)?;

@@ -9,7 +9,8 @@ import android.os.Looper
 import android.util.Base64
 import android.util.Log
 import android.view.PixelCopy
-import com.lingxia.app.LxApp
+import com.lingxia.app.Lingxia
+import com.lingxia.lxapp.LxApp
 import com.lingxia.app.NativeApi
 import java.io.ByteArrayOutputStream
 import org.json.JSONObject
@@ -39,7 +40,7 @@ object AppScreenshot {
         val mainHandler = Handler(Looper.getMainLooper())
         mainHandler.post {
             try {
-                val activity = LxApp.getLastResumedActivity()
+                val activity = Lingxia.getLastResumedActivity()
                 if (activity == null) {
                     deliverError(callbackId, "no foreground activity")
                     return@post

@@ -16,7 +16,8 @@ import android.net.wifi.WifiNetworkSpecifier
 import android.os.Build
 import android.util.Log
 import androidx.core.content.ContextCompat
-import com.lingxia.app.LxApp
+import com.lingxia.app.Lingxia
+import com.lingxia.lxapp.LxApp
 import com.lingxia.app.NativeApi
 import com.lingxia.app.PermissionManager
 import org.json.JSONArray
@@ -71,7 +72,7 @@ internal object LxAppWifi {
     @JvmStatic
     fun startWifi(callbackId: Long) {
         try {
-            val context = LxApp.applicationContext() ?: run {
+            val context = Lingxia.applicationContext() ?: run {
                 Log.e(TAG, "Context not available")
                 NativeApi.onCallback(callbackId, false, "12001") // System error
                 return
@@ -147,7 +148,7 @@ internal object LxAppWifi {
             // Unregister scan receiver if registered
             scanResultsReceiver?.let { receiver ->
                 try {
-                    LxApp.applicationContext()?.unregisterReceiver(receiver)
+                    Lingxia.applicationContext()?.unregisterReceiver(receiver)
                 } catch (e: Exception) {
                     Log.w(TAG, "Failed to unregister scan receiver", e)
                 }
@@ -186,7 +187,7 @@ internal object LxAppWifi {
         if (stateCallbacks.add(callbackId)) {
             Log.i(TAG, "Added WiFi state listener: $callbackId (total=${stateCallbacks.size})")
 
-            val context = LxApp.applicationContext() ?: return
+            val context = Lingxia.applicationContext() ?: return
             val connMgr = connectivityManager
                 ?: (context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager)
                     .also { connectivityManager = it }
@@ -276,7 +277,7 @@ internal object LxAppWifi {
     @JvmStatic
     fun connectWifi(callbackId: Long, ssid: String, password: String?) {
         try {
-            val context = LxApp.applicationContext() ?: run {
+            val context = Lingxia.applicationContext() ?: run {
                 Log.e(TAG, "Context not available")
                 NativeApi.onCallback(callbackId, false, "12001") // System error
                 return
@@ -491,7 +492,7 @@ internal object LxAppWifi {
      * Emit WiFi connected event to a specific callback
      */
     private fun emitWifiConnected(callbackId: Long, ssidHint: String?, password: String?, connectedHint: Boolean? = null) {
-        val context = LxApp.applicationContext() ?: run {
+        val context = Lingxia.applicationContext() ?: run {
             Log.e(TAG, "Context not available for wifi connected event")
             return
         }
@@ -513,7 +514,7 @@ internal object LxAppWifi {
             return
         }
 
-        val context = LxApp.applicationContext() ?: run {
+        val context = Lingxia.applicationContext() ?: run {
             Log.e(TAG, "Context not available for wifi connected event")
             return
         }
@@ -623,7 +624,7 @@ internal object LxAppWifi {
     @JvmStatic
     fun getWifiList(callbackId: Long) {
         try {
-            val context = LxApp.applicationContext() ?: run {
+            val context = Lingxia.applicationContext() ?: run {
                 Log.e(TAG, "Context not available")
                 NativeApi.onCallback(callbackId, false, "12001") // System error
                 return
@@ -743,7 +744,7 @@ internal object LxAppWifi {
     @JvmStatic
     fun isWifiEnabled(): Boolean {
         return try {
-            val context = LxApp.applicationContext() ?: return false
+            val context = Lingxia.applicationContext() ?: return false
             val wifiMgr = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
             wifiMgr?.isWifiEnabled ?: false
         } catch (e: Exception) {
@@ -759,7 +760,7 @@ internal object LxAppWifi {
     @JvmStatic
     fun getConnectedWifi(callbackId: Long) {
         try {
-            val context = LxApp.applicationContext() ?: run {
+            val context = Lingxia.applicationContext() ?: run {
                 Log.e(TAG, "Context not available")
                 NativeApi.onCallback(callbackId, false, "12001") // System error
                 return

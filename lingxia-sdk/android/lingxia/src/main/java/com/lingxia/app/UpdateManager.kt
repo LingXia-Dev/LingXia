@@ -1,5 +1,7 @@
 package com.lingxia.app
 
+import com.lingxia.lxapp.LxAppActivity
+import com.lingxia.lxapp.LxApp
 import com.lingxia.lxapp.R
 
 import android.app.Dialog

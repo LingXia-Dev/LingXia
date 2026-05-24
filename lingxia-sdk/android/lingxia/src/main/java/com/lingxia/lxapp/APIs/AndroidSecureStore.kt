@@ -8,7 +8,8 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
 import android.util.Log
-import com.lingxia.app.LxApp
+import com.lingxia.app.Lingxia
+import com.lingxia.lxapp.LxApp
 import java.math.BigInteger
 import java.nio.charset.StandardCharsets
 import java.security.GeneralSecurityException
@@ -79,7 +80,7 @@ internal object AndroidSecureStore {
     }
 
     private fun requireContext(): Context {
-        return LxApp.applicationContext()
+        return Lingxia.applicationContext()
             ?: LxApp.getCurrentActivity()
             ?: throw IllegalStateException("Secure store unavailable: no Android context")
     }

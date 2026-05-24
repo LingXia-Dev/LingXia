@@ -13,8 +13,9 @@ import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebViewClient
 import android.widget.FrameLayout
-import com.lingxia.app.LxApp
-import com.lingxia.app.LxAppActivity
+import com.lingxia.app.Lingxia
+import com.lingxia.lxapp.LxApp
+import com.lingxia.lxapp.LxAppActivity
 import com.lingxia.app.NativeApi
 import com.lingxia.lxapp.NativeComponents.NativeBridge
 import com.lingxia.lxapp.APIs.media.ImmersiveWindowUi

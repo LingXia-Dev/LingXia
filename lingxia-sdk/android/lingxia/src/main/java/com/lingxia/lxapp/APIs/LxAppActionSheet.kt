@@ -8,7 +8,8 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.*
-import com.lingxia.app.LxApp
+import com.lingxia.app.Lingxia
+import com.lingxia.lxapp.LxApp
 import android.graphics.drawable.GradientDrawable
 import com.lingxia.app.NativeApi
 import org.json.JSONObject

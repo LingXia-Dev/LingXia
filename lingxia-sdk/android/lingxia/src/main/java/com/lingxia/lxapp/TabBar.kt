@@ -75,7 +75,7 @@ internal data class TabBarItem(
 )
 
 /**
- * TabBar component for mini apps, supporting:
+ * TabBar component for LxApps, supporting:
  * - Customizable tab items with icons and text
  * - Bottom/left/right positioning
  * - Notification badges (red dot and text)

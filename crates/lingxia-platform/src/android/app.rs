@@ -437,15 +437,15 @@ impl AppRuntime for Platform {
         _open_mode: LxAppOpenMode,
         _panel_id: String,
     ) -> Result<(), PlatformError> {
-        let lxapp_class: &JClass = super::get_cached_class(super::CachedClass::LxApp)
+        let bridge_class: &JClass = super::get_cached_class(super::CachedClass::LxApp)
             .map_err(|e| PlatformError::Platform(e.to_string()))?;
         with_env(|env| -> Result<(), PlatformError> {
             let appid_jstring = env.new_string(&appid)?;
             let path_jstring = env.new_string(&path)?;
 
             env.call_static_method(
-                lxapp_class,
-                jni_str!("openLxApp"),
+                bridge_class,
+                jni_str!("open"),
                 jni_sig!("(Ljava/lang/String;Ljava/lang/String;J)V"),
                 &[
                     JValue::Object(&appid_jstring),
@@ -459,13 +459,13 @@ impl AppRuntime for Platform {
     }
 
     fn hide_lxapp(&self, appid: String, session_id: u64) -> Result<(), PlatformError> {
-        let lxapp_class: &JClass = super::get_cached_class(super::CachedClass::LxApp)
+        let bridge_class: &JClass = super::get_cached_class(super::CachedClass::LxApp)
             .map_err(|e| PlatformError::Platform(e.to_string()))?;
         with_env(|env| -> Result<(), PlatformError> {
             let appid_jstring = env.new_string(&appid)?;
             env.call_static_method(
-                lxapp_class,
-                jni_str!("closeLxApp"),
+                bridge_class,
+                jni_str!("close"),
                 jni_sig!("(Ljava/lang/String;J)V"),
                 &[
                     JValue::Object(&appid_jstring),
@@ -478,11 +478,11 @@ impl AppRuntime for Platform {
     }
 
     fn exit(&self) -> Result<(), PlatformError> {
-        let lxapp_class: &JClass = super::get_cached_class(super::CachedClass::LxApp)
+        let host_class: &JClass = super::get_cached_class(super::CachedClass::Lingxia)
             .map_err(|e| PlatformError::Platform(e.to_string()))?;
         with_env(|env| -> Result<(), PlatformError> {
             let result =
-                env.call_static_method(lxapp_class, jni_str!("exitApp"), jni_sig!("()Z"), &[])?;
+                env.call_static_method(host_class, jni_str!("exitApp"), jni_sig!("()Z"), &[])?;
             if !result.z()? {
                 return Err(PlatformError::Platform(
                     "exitApp returned false".to_string(),
@@ -499,7 +499,7 @@ impl AppRuntime for Platform {
         path: String,
         animation_type: crate::traits::app_runtime::AnimationType,
     ) -> Result<(), PlatformError> {
-        let lxapp_class: &JClass = super::get_cached_class(super::CachedClass::LxApp)
+        let bridge_class: &JClass = super::get_cached_class(super::CachedClass::LxApp)
             .map_err(|e| PlatformError::Platform(e.to_string()))?;
 
         with_env(|env| -> Result<(), PlatformError> {
@@ -508,7 +508,7 @@ impl AppRuntime for Platform {
             let anim_type_int = animation_type as i32;
 
             let result = env.call_static_method(
-                lxapp_class,
+                bridge_class,
                 jni_str!("navigate"),
                 jni_sig!("(Ljava/lang/String;Ljava/lang/String;I)Z"),
                 &[
@@ -537,7 +537,7 @@ impl AppRuntime for Platform {
         &self,
         req: crate::traits::app_runtime::OpenUrlRequest,
     ) -> Result<(), PlatformError> {
-        let lxapp_class: &JClass = super::get_cached_class(super::CachedClass::LxApp)
+        let host_class: &JClass = super::get_cached_class(super::CachedClass::Lingxia)
             .map_err(|e| PlatformError::Platform(e.to_string()))?;
 
         let target_str = match req.target {
@@ -551,7 +551,7 @@ impl AppRuntime for Platform {
             let target_jstring = env.new_string(target_str)?;
             let owner_appid_jstring = env.new_string(req.owner_appid)?;
             env.call_static_method(
-                lxapp_class,
+                host_class,
                 jni_str!("launchWithUrl"),
                 jni_sig!("(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;J)V"),
                 &[

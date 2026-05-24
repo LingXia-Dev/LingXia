@@ -1104,7 +1104,7 @@ internal class MediaCaptureFragment : Fragment() {
 
     private fun createOutputFile(suffix: String): File {
         // Strict: LxApp cache dir is guaranteed
-        val appId = (activity as com.lingxia.app.LxAppActivity).getAppId()
+        val appId = (activity as com.lingxia.lxapp.LxAppActivity).getAppId()
         val info = NativeApi.getLxAppInfo(appId)!!
         val dir = File(info.cacheDir).apply { if (!exists()) mkdirs() }
         val now = System.currentTimeMillis()

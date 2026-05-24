@@ -2,6 +2,8 @@ package com.lingxia.app
 
 import android.content.res.AssetManager
 import android.util.Log
+import com.lingxia.lxapp.CurrentLxApp
+import com.lingxia.lxapp.LxAppInfo
 import com.lingxia.lxapp.NavigationBarState
 import com.lingxia.lxapp.TabBarState
 import java.util.concurrent.atomic.AtomicBoolean
@@ -318,7 +320,7 @@ internal object NativeApi {
 
     /**
      * Returns a bitmask of host app capabilities.
-     * Check against LxApp.CAP_* constants to determine enabled host capabilities.
+     * Check against Lingxia.CAP_* constants to determine enabled host capabilities.
      */
     @JvmStatic
     external fun getAppCapabilities(): Int
