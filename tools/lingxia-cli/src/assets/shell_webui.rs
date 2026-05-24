@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use tar::Archive;
 
-pub(super) const APP_ID: &str = "app.lingxia.browser";
+pub(crate) const APP_ID: &str = "app.lingxia.browser";
 const DEFAULT_PACKAGE: &str = "@lingxia/shell-webui";
 
 pub(super) struct ShellWebUiSource {
@@ -45,24 +45,7 @@ pub(super) fn resolve_shell_webui_dir(
         });
     }
 
-    if let Some(repo_root) = option_env!("CARGO_MANIFEST_DIR")
-        .map(PathBuf::from)
-        .and_then(|manifest| {
-            manifest
-                .parent()
-                .and_then(Path::parent)
-                .map(Path::to_path_buf)
-        })
-    {
-        let local = repo_root.join("crates/lingxia-shell/webui");
-        if local.join("lxapp.json").exists() {
-            return Ok(ShellWebUiSource {
-                bundle_dir: local,
-                build: true,
-            });
-        }
-    }
-
+    // Fall back to the SDK's default npm package, pinned to the lingxia-cli version.
     Ok(ShellWebUiSource {
         bundle_dir: resolve_lxapp_package(
             project_root,
@@ -71,7 +54,7 @@ pub(super) fn resolve_shell_webui_dir(
         )
         .with_context(|| {
             format!(
-                "Failed to resolve default shell webui package {}@{}. Configure shell.webui.path for local development or shell.webui.package/version for external apps",
+                "Failed to resolve default shell webui package {}@{}. Set `shell.webui.path` to point at a local checkout, or `shell.webui.package`/`version` to pin a fork.",
                 DEFAULT_PACKAGE,
                 env!("CARGO_PKG_VERSION")
             )

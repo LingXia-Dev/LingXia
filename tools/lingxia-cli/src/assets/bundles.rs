@@ -85,7 +85,9 @@ pub(super) fn prepare_resource_lxapp_bundles(
 
     let mut bundles = Vec::new();
     for bundle in &resources.bundles {
-        if bundle.app_id == home_app_id || bundle.app_id == SHELL_WEBUI_APP_ID {
+        // home_app_id is staged by `prepare_home_app_bundle`. SDK-reserved appIds
+        // (e.g. `SHELL_WEBUI_APP_ID`) are rejected by `LingXiaConfig::validate`.
+        if bundle.app_id == home_app_id {
             continue;
         }
         if !resource_bundle_has_source(bundle) {
@@ -260,20 +262,7 @@ pub(super) fn prepare_shell_webui_bundle(
     build_profile: BuildProfile,
     cache: &mut HostAssetsCache,
 ) -> Result<PreparedResourceBundle> {
-    if let Some(bundle) = resource_bundle_for_app_id(config, SHELL_WEBUI_APP_ID)
-        && resource_bundle_has_source(bundle)
-    {
-        return prepare_resource_bundle(
-            project_root,
-            bundle,
-            "shell-webui",
-            build_profile,
-            None,
-            None,
-            cache,
-        );
-    }
-
+    // Customization goes through `shell.webui.path` / `shell.webui.package`.
     let source = resolve_shell_webui_dir(project_root, config)?;
     let lxapp_json = source.bundle_dir.join("lxapp.json");
     if !lxapp_json.exists() {

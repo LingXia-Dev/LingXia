@@ -39,6 +39,12 @@ features:
   shell: true
   devtools: false
 
+shell:
+  # In-monorepo dev — point at SDK source.
+  # External apps omit this to use the npm default.
+  webui:
+    path: ../crates/lingxia-shell/webui
+
 capabilities:
   notifications: true
   terminal: true
@@ -48,9 +54,6 @@ resources:
     - type: lxapp
       appId: lingxia-showcase
       path: lingxia-showcase
-    - type: lxapp
-      appId: app.lingxia.browser
-      path: ../crates/lingxia-shell/webui
     - type: lxapp
       appId: lingxia-chat
 

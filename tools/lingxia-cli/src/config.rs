@@ -576,8 +576,16 @@ impl LingXiaConfig {
             if app.platforms.is_empty() {
                 return Err(anyhow!("app.platforms must include at least one platform"));
             }
-            if app.home_app_id.trim().is_empty() {
+            let home_app_id = app.home_app_id.trim();
+            if home_app_id.is_empty() {
                 return Err(anyhow!("app.homeAppId must not be empty"));
+            }
+            if is_sdk_reserved_app_id(home_app_id) {
+                return Err(anyhow!(
+                    "app.homeAppId '{}' is an SDK-reserved appId. Pick a different id \
+                     for your home app (e.g. the project's reverse-domain identifier).",
+                    app.home_app_id
+                ));
             }
             if let Some(server) = app.lingxia_server.as_ref() {
                 validate_lingxia_server(server)?;
@@ -609,6 +617,14 @@ impl LingXiaConfig {
                 let app_id = bundle.app_id.trim();
                 if app_id.is_empty() {
                     return Err(anyhow!("resources.bundles[].appId must not be empty"));
+                }
+                if is_sdk_reserved_app_id(app_id) {
+                    return Err(anyhow!(
+                        "resources.bundles[{app_id}] uses an SDK-reserved appId. \
+                         To customize the in-app browser webui, use `shell.webui.path` \
+                         (or `shell.webui.package`) instead of declaring \
+                         `{app_id}` as a resource bundle."
+                    ));
                 }
                 if !app_ids.insert(app_id.to_string()) {
                     return Err(anyhow!("resources.bundles appId must be unique: {app_id}"));
@@ -719,6 +735,19 @@ fn optional_non_empty_str(value: Option<&Value>) -> Option<String> {
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .map(ToOwned::to_owned)
+}
+
+/// App IDs reserved for SDK-internal hosts that ship their own customization API.
+/// These must not appear in `resources.bundles` or `app.homeAppId`; the SDK provides
+/// dedicated config keys (e.g. `shell.webui.*` for the in-app browser webui).
+///
+/// Source of truth for each entry (kept in sync manually to avoid pulling the
+/// full browser runtime into the CLI build):
+/// - `crate::host_assets::SHELL_WEBUI_APP_ID` mirrors `lingxia_browser::BUILTIN_BROWSER_APPID`.
+const SDK_RESERVED_APP_IDS: &[&str] = &[crate::host_assets::SHELL_WEBUI_APP_ID];
+
+fn is_sdk_reserved_app_id(app_id: &str) -> bool {
+    SDK_RESERVED_APP_IDS.contains(&app_id)
 }
 
 fn validate_applink_host(host: &str) -> Result<()> {
@@ -1207,6 +1236,51 @@ mod tests {
         let resources = parsed.resources.unwrap();
         assert_eq!(resources.bundles[0].app_id, "my-app");
         assert_eq!(resources.bundles[0].path.as_deref(), Some("my-app"));
+    }
+
+    #[test]
+    fn rejects_sdk_reserved_app_id_in_resources_bundles() {
+        let mut config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
+        config
+            .resources
+            .as_mut()
+            .unwrap()
+            .bundles
+            .push(ResourceBundleConfig {
+                bundle_type: ResourceBundleType::Lxapp,
+                app_id: "app.lingxia.browser".to_string(),
+                path: Some("./my-shell-webui".to_string()),
+                package: None,
+                version: None,
+            });
+
+        let err = config
+            .validate()
+            .expect_err("validate must reject reserved appId");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("app.lingxia.browser") && msg.contains("shell.webui"),
+            "error must point at the new customization API; got: {msg}"
+        );
+    }
+
+    #[test]
+    fn rejects_sdk_reserved_app_id_as_home_app_id() {
+        let mut config =
+            LingXiaConfig::new_android("my-app", "com.example.myapp", "app.lingxia.browser");
+        // Drop the resources.bundles entry that new_android wrote pointing at the
+        // reserved appId so the homeAppId check is the one that fires (not the
+        // resources.bundles check).
+        config.resources.as_mut().unwrap().bundles.clear();
+
+        let err = config
+            .validate()
+            .expect_err("validate must reject reserved homeAppId");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("homeAppId") && msg.contains("app.lingxia.browser"),
+            "error must mention homeAppId and the reserved id; got: {msg}"
+        );
     }
 
     #[test]

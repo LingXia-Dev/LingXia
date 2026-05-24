@@ -43,6 +43,7 @@ mod json;
 mod runtime_asset;
 #[path = "assets/shell_webui.rs"]
 mod shell_webui;
+pub(crate) use shell_webui::APP_ID as SHELL_WEBUI_APP_ID;
 #[path = "assets/sync.rs"]
 mod sync;
 #[cfg(test)]

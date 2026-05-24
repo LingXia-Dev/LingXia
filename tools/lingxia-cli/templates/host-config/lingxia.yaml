@@ -65,31 +65,22 @@ capabilities:
   terminal: false
 
 # Resource bundle sources copied into native app assets.
-# app.homeAppId and ui surfaces reference appId; resources.bundles says where local/package assets come from.
+# app.homeAppId and ui surfaces reference appId; resources.bundles says where local/package
+# assets come from. SDK-reserved appIds (e.g. `app.lingxia.browser`) are not allowed here —
+# use the dedicated `shell.webui.*` keys below instead.
 resources:
   bundles:
     # Home lxapp bundled with the native app.
     - type: lxapp
       appId: {{HOME_APP_ID}}
       path: {{HOME_APP_PATH}}
-    # Optional shell webui override. If omitted and features.shell is true, the CLI uses the SDK default.
-    # - type: lxapp
-    #   appId: app.lingxia.browser
-    #   package: '@lingxia/shell-webui'
-    #   version: '0.5.1'
     # Optional product lxapp bundled for an App UI surface, for example an assistant panel.
     # - type: lxapp
     #   appId: assistant-lxapp
     #   path: assistant-lxapp
 
-# Shell product UI resources. Used only when features.shell is true.
-# Optional shorthand/override for shell webui. Equivalent to a resources.bundles entry with appId app.lingxia.browser.
-# For normal apps, omit this and let the CLI use resources/default behavior.
-# For repo development, point to a local checkout:
-# shell:
-#   webui:
-#     path: ../crates/lingxia-shell/webui
-# External app package form:
+# Optional: override the SDK's default in-app browser webui (used only when features.shell
+# is true). Omit to use the npm-published default `@lingxia/shell-webui`.
 # shell:
 #   webui:
 #     package: '@lingxia/shell-webui'
