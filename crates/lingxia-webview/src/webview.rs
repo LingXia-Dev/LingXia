@@ -825,6 +825,69 @@ impl WebView {
         self.inner.eval_js(js).await
     }
 
+    /// Synthetic-event click for platforms that don't expose a native touch
+    /// injection API (iOS WKWebView, ArkWeb on Harmony). Looks up the
+    /// selector, scrolls it into view, and dispatches a synthetic
+    /// `MouseEvent` (or sets `focus="true"` for `<lx-*>` custom elements
+    /// that proxy focus to a native overlay).
+    #[cfg(any(target_os = "ios", all(target_os = "linux", target_env = "ohos")))]
+    pub(crate) async fn click_via_js(
+        &self,
+        selector: &str,
+        index: Option<usize>,
+    ) -> Result<(), WebViewInputError> {
+        let selector_json = serde_json::to_string(selector)
+            .map_err(|err| WebViewInputError::Platform(format!("Invalid selector: {err}")))?;
+        let idx = index.unwrap_or(0);
+        let script = format!(
+            "((sel, i) => {{ \
+              const els = document.querySelectorAll(sel); \
+              if (!els.length || i < 0 || i >= els.length) return {{ ok:false, error:'no match', count:els.length }}; \
+              const el = els[i]; \
+              try {{ el.scrollIntoView({{block:'center', inline:'center'}}); }} catch(_e) {{}} \
+              const rect = el.getBoundingClientRect(); \
+              const style = window.getComputedStyle(el); \
+              const disabled = !!el.disabled || el.getAttribute('aria-disabled') === 'true'; \
+              const visible = rect.width > 0 && rect.height > 0 && rect.bottom > 0 && rect.right > 0 && \
+                rect.top < window.innerHeight && rect.left < window.innerWidth && \
+                style.visibility !== 'hidden' && style.display !== 'none' && Number(style.opacity || '1') !== 0; \
+              if (!visible) return {{ ok:false, error:'not visible', interactable:false, count:els.length }}; \
+              if (disabled) return {{ ok:false, error:'not enabled', interactable:false, count:els.length }}; \
+              const tag = (el.tagName || '').toLowerCase(); \
+              if (tag.indexOf('lx-') === 0) {{ \
+                el.setAttribute('focus', 'true'); \
+                if (typeof el.syncNativeProps === 'function') {{ try {{ el.syncNativeProps(); }} catch(_e) {{}} }} \
+                return {{ ok:true, count:els.length, native:true }}; \
+              }} \
+              if (typeof el.focus === 'function') {{ try {{ el.focus({{preventScroll:true}}); }} catch(_e) {{ try {{ el.focus(); }} catch(__){{}} }} }} \
+              const opts = {{ bubbles:true, cancelable:true, view:window, clientX: rect.left + rect.width/2, clientY: rect.top + rect.height/2 }}; \
+              try {{ el.dispatchEvent(new MouseEvent('mousedown', opts)); }} catch(_e) {{}} \
+              try {{ el.dispatchEvent(new MouseEvent('mouseup', opts)); }} catch(_e) {{}} \
+              try {{ el.dispatchEvent(new MouseEvent('click', opts)); }} catch(_e) {{}} \
+              return {{ ok:true, count:els.length }}; \
+            }})({selector_json}, {idx})"
+        );
+        let result = self
+            .inner
+            .eval_js(&script)
+            .await
+            .map_err(WebViewInputError::Script)?;
+        if result.get("ok").and_then(|v| v.as_bool()) == Some(true) {
+            Ok(())
+        } else {
+            let err_msg = result
+                .get("error")
+                .and_then(|v| v.as_str())
+                .unwrap_or("click failed")
+                .to_string();
+            if result.get("interactable").and_then(|v| v.as_bool()) == Some(false) {
+                Err(WebViewInputError::ElementNotInteractable(err_msg))
+            } else {
+                Err(WebViewInputError::ElementNotFound(err_msg))
+            }
+        }
+    }
+
     pub async fn current_url(&self) -> Result<Option<String>, WebViewError> {
         self.inner.current_url().await
     }
@@ -992,6 +1055,18 @@ impl WebViewInputController for WebView {
         #[cfg(all(feature = "webview-input", target_os = "macos"))]
         {
             return self.inner.click_inner(_selector, _options).await;
+        }
+        #[cfg(target_os = "android")]
+        {
+            return self.inner.click_inner(_selector, _options).await;
+        }
+        #[cfg(target_os = "ios")]
+        {
+            return self.click_via_js(_selector, _options.index).await;
+        }
+        #[cfg(all(target_os = "linux", target_env = "ohos"))]
+        {
+            return self.click_via_js(_selector, _options.index).await;
         }
         #[allow(unreachable_code)]
         Err(WebViewInputError::Unsupported(

@@ -218,6 +218,14 @@ pub trait WebViewController: Send + Sync {
     fn exec_js(&self, js: &str) -> Result<(), WebViewError>;
 
     /// Evaluate JavaScript in the WebView and return the decoded JSON value.
+    ///
+    /// Implementations are required to be both CSP-safe (no `(0,eval)` /
+    /// `new Function` — pages whose CSP omits `'unsafe-eval'` must still
+    /// work) and `await`-aware (top-level `await` in the user expression
+    /// resolves before the future returns). Platforms achieve this by
+    /// dispatching through the native await-capable API
+    /// (`callAsyncJavaScript:` on Apple, `LingXiaProxy.resolveEval` JS
+    /// bridge on Android/Harmony).
     async fn eval_js(&self, js: &str) -> Result<serde_json::Value, WebViewScriptError>;
 
     /// Return the platform WebView's current URL.

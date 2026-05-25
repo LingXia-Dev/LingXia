@@ -621,6 +621,23 @@ public class LingXiaWebView extends WebView {
                 Log.e(TAG, "Failed to handle JS message: " + e.getMessage(), e);
             }
         }
+
+        // Routes the result of a Rust-issued `eval_js` back into native land.
+        // The wrapper script awaits the user expression, builds a JSON
+        // {ok,value|error} envelope, and calls this method with the requestId
+        // and token it was given. The token prevents page JS from resolving
+        // unrelated pending native eval requests by guessing monotonic ids.
+        @android.webkit.JavascriptInterface
+        public void resolveEval(String requestIdStr, String token, String resultJson) {
+            try {
+                long requestId = Long.parseLong(requestIdStr);
+                onEvaluateJavascriptResult(requestId, token, resultJson, "");
+            } catch (NumberFormatException e) {
+                Log.w(TAG, "resolveEval invalid requestId: " + requestIdStr);
+            } catch (Exception e) {
+                Log.w(TAG, "resolveEval forwarding failed", e);
+            }
+        }
     }
 
     private void setupWebViewClients() {
@@ -716,41 +733,67 @@ public class LingXiaWebView extends WebView {
         });
     }
 
-    public void evaluateJavascriptWithResult(String script, long requestId) {
-        ensureMainThread(new Runnable() {
+    /**
+     * Native-dispatch a touch tap at (x, y) in WebView-local pixels. Emits an
+     * ACTION_DOWN followed by ACTION_UP so Chromium's content layer treats it
+     * as a real gesture (fires touchstart/touchend → click, focuses inputs,
+     * pops the IME). Used by `WebViewInputController::click` on Android in
+     * place of synthesized DOM events.
+     */
+    public void dispatchClickAt(final float x, final float y) {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            dispatchClickAtOnMainThread(x, y);
+            return;
+        }
+
+        final java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(1);
+        final java.util.concurrent.atomic.AtomicReference<Throwable> error =
+            new java.util.concurrent.atomic.AtomicReference<>();
+        new Handler(Looper.getMainLooper()).post(new Runnable() {
             @Override
             public void run() {
                 try {
-                    LingXiaWebView.super.evaluateJavascript(
-                        script,
-                        new ValueCallback<String>() {
-                            @Override
-                            public void onReceiveValue(String value) {
-                                try {
-                                    onEvaluateJavascriptResult(
-                                        requestId,
-                                        value != null ? value : "null",
-                                        ""
-                                    );
-                                } catch (Throwable callbackError) {
-                                    Log.e(TAG, "Failed to forward evaluateJavascript result", callbackError);
-                                }
-                            }
-                        }
-                    );
-                } catch (Throwable error) {
-                    try {
-                        onEvaluateJavascriptResult(
-                            requestId,
-                            "null",
-                            error.getMessage() != null ? error.getMessage() : error.toString()
-                        );
-                    } catch (Throwable callbackError) {
-                        Log.e(TAG, "Failed to forward evaluateJavascript error", callbackError);
-                    }
+                    dispatchClickAtOnMainThread(x, y);
+                } catch (Throwable t) {
+                    error.set(t);
+                } finally {
+                    latch.countDown();
                 }
             }
         });
+        try {
+            if (!latch.await(2, java.util.concurrent.TimeUnit.SECONDS)) {
+                throw new RuntimeException("Timed out dispatching click on main thread");
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("Interrupted while dispatching click on main thread", e);
+        }
+        Throwable t = error.get();
+        if (t instanceof RuntimeException) {
+            throw (RuntimeException) t;
+        }
+        if (t != null) {
+            throw new RuntimeException("Failed to dispatch click on main thread", t);
+        }
+    }
+
+    private void dispatchClickAtOnMainThread(final float x, final float y) {
+        long downTime = android.os.SystemClock.uptimeMillis();
+        android.view.MotionEvent down = android.view.MotionEvent.obtain(
+            downTime, downTime, android.view.MotionEvent.ACTION_DOWN, x, y, 0);
+        try {
+            LingXiaWebView.super.dispatchTouchEvent(down);
+        } finally {
+            down.recycle();
+        }
+        android.view.MotionEvent up = android.view.MotionEvent.obtain(
+            downTime, downTime + 50, android.view.MotionEvent.ACTION_UP, x, y, 0);
+        try {
+            LingXiaWebView.super.dispatchTouchEvent(up);
+        } finally {
+            up.recycle();
+        }
     }
 
     public boolean openFileChooser(
@@ -957,7 +1000,7 @@ public class LingXiaWebView extends WebView {
         long contentLength,
         String cookie
     );
-    native void onEvaluateJavascriptResult(long requestId, String value, String error);
+    native void onEvaluateJavascriptResult(long requestId, String token, String value, String error);
     native void onScreenshotResult(long requestId, byte[] pngBytes, String error);
 
     /**

@@ -8,7 +8,7 @@ use crate::WebViewInputError;
 use crate::input_helper::INPUT_HELPER_BOOTSTRAP;
 #[cfg(all(feature = "webview-input", target_os = "macos"))]
 use crate::input_helper::build_helper_invocation;
-use crate::input_helper::{build_wrapped_eval_script, parse_wrapped_eval_result};
+use crate::input_helper::{build_async_eval_body, parse_wrapped_eval_result};
 #[cfg(all(feature = "webview-input", target_os = "macos"))]
 use crate::traits::{ClickOptions, PressOptions, ScrollOptions, TypeOptions};
 use crate::traits::{
@@ -39,8 +39,8 @@ use objc2_foundation::{
     NSJSONWritingOptions, NSObjectProtocol, NSPoint, NSRect, NSSize, NSString, NSURL, NSURLRequest,
 };
 use objc2_web_kit::{
-    WKAudiovisualMediaTypes, WKNavigation, WKNavigationDelegate, WKUIDelegate, WKURLSchemeHandler,
-    WKWebViewConfiguration, WKWebsiteDataStore,
+    WKAudiovisualMediaTypes, WKContentWorld, WKNavigation, WKNavigationDelegate, WKUIDelegate,
+    WKURLSchemeHandler, WKWebViewConfiguration, WKWebsiteDataStore,
 };
 #[cfg(all(feature = "webview-input", target_os = "macos"))]
 use serde::Deserialize;
@@ -2112,6 +2112,99 @@ impl WebViewInner {
         }
     }
 
+    /// Dispatch `body` through WKWebView's `callAsyncJavaScript:` selector —
+    /// WebKit wraps `body` in an async function and natively awaits Promises
+    /// before invoking the completion handler. Used by `eval_js` to give
+    /// `await` semantics for free without the CSP-blocked `(0,eval)` trick.
+    /// `body` is expected to `return` a JSON envelope string (typically built
+    /// via [`build_async_eval_body`]).
+    async fn call_async_javascript_envelope(
+        &self,
+        body: &str,
+    ) -> Result<String, WebViewScriptError> {
+        let (tx, rx) = oneshot::channel::<Result<String, String>>();
+        let webview_ptr_addr = self.webview as usize;
+        let body_clone = body.to_string();
+
+        DispatchQueue::main().exec_async(move || unsafe {
+            let webview_ptr = webview_ptr_addr as *mut AnyObject;
+            let body_nsstring = NSString::from_str(&body_clone);
+            let tx_state = Arc::new(Mutex::new(Some(tx)));
+            let tx_state_for_block = Arc::clone(&tx_state);
+            let completion = StackBlock::new(move |result: *mut AnyObject, error: *mut NSError| {
+                let sender = tx_state_for_block
+                    .lock()
+                    .ok()
+                    .and_then(|mut guard| guard.take());
+                let Some(sender) = sender else {
+                    return;
+                };
+
+                if !error.is_null() {
+                    let description: *mut NSString = msg_send![error, localizedDescription];
+                    let description = if description.is_null() {
+                        "callAsyncJavaScript returned NSError".to_string()
+                    } else {
+                        (&*description).to_string()
+                    };
+                    let _ = sender.send(Err(description));
+                    return;
+                }
+
+                if result.is_null() {
+                    let _ =
+                        sender.send(Err("callAsyncJavaScript returned null result".to_string()));
+                    return;
+                }
+
+                let ns_string_class = class!(NSString);
+                let is_string: bool = msg_send![result, isKindOfClass: ns_string_class];
+                let text = if is_string {
+                    (&*(result as *mut NSString)).to_string()
+                } else {
+                    let description: *mut NSString = msg_send![result, description];
+                    if description.is_null() {
+                        String::new()
+                    } else {
+                        (&*description).to_string()
+                    }
+                };
+                let _ = sender.send(Ok(text));
+            })
+            .copy();
+
+            let null_args: *mut AnyObject = std::ptr::null_mut();
+            let null_frame: *mut AnyObject = std::ptr::null_mut();
+            let Some(mtm) = MainThreadMarker::new() else {
+                let sender = tx_state.lock().ok().and_then(|mut guard| guard.take());
+                if let Some(sender) = sender {
+                    let _ = sender.send(Err(
+                        "No MainThreadMarker available for callAsyncJavaScript".to_string(),
+                    ));
+                }
+                return;
+            };
+            let page_world = WKContentWorld::pageWorld(mtm);
+
+            let _: () = msg_send![
+                webview_ptr,
+                callAsyncJavaScript: &*body_nsstring,
+                arguments: null_args,
+                inFrame: null_frame,
+                inContentWorld: &*page_world,
+                completionHandler: Some(&*completion)
+            ];
+        });
+
+        match timeout(EVAL_TIMEOUT, rx).await {
+            Ok(Ok(Ok(raw))) => Ok(raw),
+            Ok(Ok(Err(err))) => Err(WebViewScriptError::Platform(err)),
+            Ok(Err(_)) => Err(WebViewScriptError::Destroyed),
+            Err(_) => Err(WebViewScriptError::Timeout),
+        }
+    }
+
+    #[cfg(all(feature = "webview-input", target_os = "macos"))]
     async fn eval_js_raw_string(&self, js: &str) -> Result<String, WebViewScriptError> {
         let (tx, rx) = oneshot::channel::<Result<String, String>>();
         let webview_ptr_addr = self.webview as usize;
@@ -2494,9 +2587,9 @@ impl WebViewController for WebViewInner {
     }
 
     async fn eval_js(&self, js: &str) -> Result<serde_json::Value, WebViewScriptError> {
-        let wrapped = build_wrapped_eval_script(js)?;
-        let raw = self.eval_js_raw_string(&wrapped).await?;
-        parse_wrapped_eval_result(&raw)
+        let body = build_async_eval_body(js, None);
+        let envelope = self.call_async_javascript_envelope(&body).await?;
+        parse_wrapped_eval_result(&envelope)
     }
 
     fn post_message(&self, message: &str) -> Result<(), WebViewError> {

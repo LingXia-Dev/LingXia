@@ -3,7 +3,7 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 
 use crate::harmony::schemehandler::set_webview_scheme_handler;
 use crate::harmony::tsfn::call_arkts;
-use crate::input_helper::{build_wrapped_eval_script, parse_wrapped_eval_result};
+use crate::input_helper::{build_async_eval_body, new_eval_token, parse_wrapped_eval_result};
 use crate::traits::{
     FileChooserRequest, FileChooserResponse, LoadError, LoadErrorKind, NavigationPolicy,
 };
@@ -140,11 +140,12 @@ pub(crate) fn apply_http_proxy(
 static LINGXIA_PROXY_NAME: &[u8] = b"LingXiaProxy\0";
 static LINGXIA_PROXY_GET_PORT: &[u8] = b"getPort\0";
 static LINGXIA_PROXY_NATIVE_COMPONENT_UPDATE: &[u8] = b"nativeComponentUpdate\0";
+static LINGXIA_PROXY_RESOLVE_EVAL: &[u8] = b"resolveEval\0";
 
 // Keep proxy method array alive for WebView lifetime
 #[repr(C)]
 struct ProxyStorage {
-    method: Box<[ArkWeb_ProxyMethod; 2]>,
+    method: Box<[ArkWeb_ProxyMethod; 3]>,
 }
 
 /// Wrapper for API pointers to make them Send + Sync
@@ -205,6 +206,7 @@ enum PendingEvalResponse {
 
 struct PendingEvalEntry {
     webtag: String,
+    token: String,
     sender: oneshot::Sender<PendingEvalResponse>,
 }
 
@@ -224,6 +226,7 @@ static PENDING_SCREENSHOT_REQUESTS: OnceLock<PendingScreenshotRequests> = OnceLo
 static NEXT_EVAL_REQUEST_ID: AtomicU64 = AtomicU64::new(1);
 static NEXT_SCREENSHOT_REQUEST_ID: AtomicU64 = AtomicU64::new(1);
 const EVAL_TIMEOUT: Duration = Duration::from_secs(10);
+const EVAL_PARSE_GUARD_MS: u64 = 1000;
 const SCREENSHOT_TIMEOUT: Duration = Duration::from_secs(5);
 
 fn pending_eval_requests() -> &'static PendingEvalRequests {
@@ -262,8 +265,11 @@ fn fail_pending_screenshot_requests_for_webtag(webtag: &WebTag) {
     }
 }
 
-fn complete_pending_eval_request(request_id: u64, result: Result<String, String>) {
+fn complete_pending_eval_request(request_id: u64, token: &str, result: Result<String, String>) {
     if let Ok(mut pending) = pending_eval_requests().lock()
+        && pending
+            .get(&request_id)
+            .is_some_and(|entry| entry.token == token)
         && let Some(entry) = pending.remove(&request_id)
     {
         let message = match result {
@@ -287,43 +293,6 @@ fn fail_pending_eval_requests_for_webtag(webtag: &WebTag) {
                 let _ = entry.sender.send(PendingEvalResponse::Destroyed);
             }
         }
-    }
-}
-
-unsafe extern "C" fn on_evaluate_javascript_callback(
-    _web_tag: *const c_char,
-    data: *const ArkWeb_JavaScriptBridgeData,
-    user_data: *mut c_void,
-) {
-    if user_data.is_null() {
-        log::warn!("evaluate_javascript callback missing user_data");
-        return;
-    }
-    let request_id = unsafe { *Box::from_raw(user_data as *mut u64) };
-    if data.is_null() {
-        complete_pending_eval_request(
-            request_id,
-            Err("Harmony JavaScript callback returned null data".to_string()),
-        );
-        return;
-    }
-
-    let bridge = unsafe { &*data };
-    if bridge.buffer.is_null() {
-        complete_pending_eval_request(
-            request_id,
-            Err("Harmony JavaScript callback missing buffer".to_string()),
-        );
-        return;
-    }
-
-    let bytes = unsafe { std::slice::from_raw_parts(bridge.buffer, bridge.size) };
-    match std::str::from_utf8(bytes) {
-        Ok(text) => complete_pending_eval_request(request_id, Ok(text.to_string())),
-        Err(err) => complete_pending_eval_request(
-            request_id,
-            Err(format!("Harmony JavaScript callback invalid UTF-8: {err}")),
-        ),
     }
 }
 
@@ -504,6 +473,11 @@ fn register_proxy_for_webtag(webtag: &WebTag) -> Result<(), WebViewError> {
                         callback: Some(native_component_update_callback),
                         userData: std::ptr::null_mut(),
                     },
+                    ArkWeb_ProxyMethod {
+                        methodName: LINGXIA_PROXY_RESOLVE_EVAL.as_ptr() as *const c_char,
+                        callback: Some(resolve_eval_callback),
+                        userData: std::ptr::null_mut(),
+                    },
                 ]),
             });
             let storage = Box::into_raw(storage);
@@ -610,6 +584,48 @@ unsafe extern "C" fn native_component_update_callback(
                 e
             );
         }
+    }
+}
+
+/// LingXiaProxy.resolveEval(requestIdStr, token, envelopeJson) — the Rust-issued
+/// `eval_js` wrapper script awaits the user expression, builds an
+/// {ok,value|error} envelope, then calls this proxy method with the requestId
+/// and token it was given. We forward the envelope into the pending-eval
+/// registry so the awaiting `eval_js` future resolves.
+unsafe extern "C" fn resolve_eval_callback(
+    _web_tag: *const std::ffi::c_char,
+    bridge_data: *const ArkWeb_JavaScriptBridgeData,
+    data_count: usize,
+    _user_data: *mut std::ffi::c_void,
+) {
+    if bridge_data.is_null() || data_count < 3 {
+        log::warn!(
+            "resolve_eval_callback missing args data_count={}",
+            data_count
+        );
+        return;
+    }
+    unsafe {
+        let request_id_data = &*bridge_data.offset(0);
+        let token_data = &*bridge_data.offset(1);
+        let envelope_data = &*bridge_data.offset(2);
+        let Some(request_id_str) = extract_string_from_bridge_data(request_id_data) else {
+            log::warn!("resolve_eval_callback missing requestId");
+            return;
+        };
+        let Ok(request_id) = request_id_str.parse::<u64>() else {
+            log::warn!(
+                "resolve_eval_callback invalid requestId: {}",
+                request_id_str
+            );
+            return;
+        };
+        let Some(token) = extract_string_from_bridge_data(token_data) else {
+            log::warn!("resolve_eval_callback missing token");
+            return;
+        };
+        let envelope = extract_string_from_bridge_data(envelope_data).unwrap_or_default();
+        complete_pending_eval_request(request_id, &token, Ok(envelope));
     }
 }
 
@@ -1036,8 +1052,15 @@ impl WebViewController for WebViewInner {
     }
 
     async fn eval_js(&self, js: &str) -> Result<serde_json::Value, WebViewScriptError> {
-        let wrapped = build_wrapped_eval_script(js)?;
+        // CSP-safe + await-aware: same pattern as Android — wrap the user
+        // expression in an async IIFE that builds a `{ok, value|error}`
+        // envelope and routes it back via `LingXiaProxy.resolveEval(reqId, …)`.
+        // ArkWeb's `runJavaScript` returns synchronously without awaiting
+        // Promises (it would just JSON-stringify the Promise object), so the
+        // bridge round-trip is what gives us native `await` semantics. No
+        // `(0,eval)` involved → page CSPs without `'unsafe-eval'` are fine.
         let request_id = NEXT_EVAL_REQUEST_ID.fetch_add(1, Ordering::Relaxed);
+        let token = new_eval_token(request_id);
         let (tx, rx) = oneshot::channel();
 
         pending_eval_requests()
@@ -1049,64 +1072,72 @@ impl WebViewController for WebViewInner {
                 request_id,
                 PendingEvalEntry {
                     webtag: self.webtag.to_string(),
+                    token: token.clone(),
                     sender: tx,
                 },
             );
 
-        unsafe {
-            let ark_webtag = self.ark_webtag_string();
-            let web_tag_cstr = cstring_from_str("ark_webtag", &ark_webtag)
-                .map_err(|err| WebViewScriptError::Platform(err.to_string()))?;
-            let controller_api =
-                OH_ArkWeb_GetNativeAPI(ArkWeb_NativeAPIVariantKind_ARKWEB_NATIVE_CONTROLLER);
-            if controller_api.is_null() {
-                if let Ok(mut pending) = pending_eval_requests().lock() {
-                    pending.remove(&request_id);
-                }
-                return Err(WebViewScriptError::Platform(
-                    "Failed to get Harmony Controller API".to_string(),
-                ));
-            }
-            let controller = &*(controller_api as *const ArkWeb_ControllerAPI);
-            let js_cstr = cstring_from_str("evaluate_javascript.js", &wrapped)
-                .map_err(|err| WebViewScriptError::Platform(err.to_string()))?;
-            let user_data = Box::into_raw(Box::new(request_id)) as *mut c_void;
-            let js_object = ArkWeb_JavaScriptObject {
-                buffer: js_cstr.as_ptr() as *const u8,
-                size: wrapped.len(),
-                callback: Some(on_evaluate_javascript_callback),
-                userData: user_data,
-            };
+        let request_id_json = serde_json::to_string(&request_id.to_string()).map_err(|err| {
+            WebViewScriptError::Platform(format!("Failed to encode eval request id: {err}"))
+        })?;
+        let token_json = serde_json::to_string(&token).map_err(|err| {
+            WebViewScriptError::Platform(format!("Failed to encode eval token: {err}"))
+        })?;
+        let resolve_expr =
+            format!("LingXiaProxy.resolveEval({request_id_json}, {token_json}, __lxR)");
+        let body = build_async_eval_body(js, Some(&resolve_expr));
+        let parse_guard_script = format!(
+            "(function(){{ \
+               const id={request_id_json}; const token={token_json}; \
+               const timers=window.__LingXiaEvalParseTimers||(window.__LingXiaEvalParseTimers=Object.create(null)); \
+               if (timers[id]) clearTimeout(timers[id]); \
+               timers[id]=setTimeout(function(){{ \
+                 try {{ LingXiaProxy.resolveEval(id, token, JSON.stringify({{ok:false, error:'JavaScript evaluation failed to start; source may contain a syntax error'}})); }} catch(_){{}} \
+               }}, {EVAL_PARSE_GUARD_MS}); \
+             }})()"
+        );
+        let clear_parse_guard = format!(
+            "try {{ \
+               const __lxTimers=window.__LingXiaEvalParseTimers; \
+               if (__lxTimers) {{ clearTimeout(__lxTimers[{request_id_json}]); delete __lxTimers[{request_id_json}]; }} \
+             }} catch(_){{}}"
+        );
+        let script = format!(
+            "(async () => {{ {clear_parse_guard} {body} }})().catch(e => {{ \
+               try {{ LingXiaProxy.resolveEval({request_id_json}, {token_json}, JSON.stringify({{ok:false, error: String(e)}})); }} catch(_){{}} \
+             }})"
+        );
 
-            if let Some(run_js) = controller.runJavaScript {
-                run_js(web_tag_cstr.as_ptr(), &js_object);
-            } else {
-                let _ = Box::from_raw(user_data as *mut u64);
-                if let Ok(mut pending) = pending_eval_requests().lock() {
-                    pending.remove(&request_id);
-                }
-                return Err(WebViewScriptError::Platform(
-                    "Harmony runJavaScript function not available".to_string(),
-                ));
+        if let Err(err) = self.dispatch_javascript_without_result(&parse_guard_script) {
+            if let Ok(mut pending) = pending_eval_requests().lock() {
+                pending.remove(&request_id);
             }
+            return Err(WebViewScriptError::Platform(format!(
+                "Harmony parse guard dispatch failed: {err:?}"
+            )));
         }
 
-        let raw = match timeout(EVAL_TIMEOUT, rx).await {
-            Ok(Ok(PendingEvalResponse::Success(raw))) => raw,
-            Ok(Ok(PendingEvalResponse::Failure(err))) => {
-                return Err(WebViewScriptError::Platform(err));
+        if let Err(err) = self.dispatch_javascript_without_result(&script) {
+            if let Ok(mut pending) = pending_eval_requests().lock() {
+                pending.remove(&request_id);
             }
-            Ok(Ok(PendingEvalResponse::Destroyed)) => return Err(WebViewScriptError::Destroyed),
-            Ok(Err(_)) => return Err(WebViewScriptError::Destroyed),
+            return Err(WebViewScriptError::Platform(format!(
+                "Harmony runJavaScript dispatch failed: {err:?}"
+            )));
+        }
+
+        match timeout(EVAL_TIMEOUT, rx).await {
+            Ok(Ok(PendingEvalResponse::Success(envelope))) => parse_wrapped_eval_result(&envelope),
+            Ok(Ok(PendingEvalResponse::Failure(err))) => Err(WebViewScriptError::Platform(err)),
+            Ok(Ok(PendingEvalResponse::Destroyed)) => Err(WebViewScriptError::Destroyed),
+            Ok(Err(_)) => Err(WebViewScriptError::Destroyed),
             Err(_) => {
                 if let Ok(mut pending) = pending_eval_requests().lock() {
                     pending.remove(&request_id);
                 }
-                return Err(WebViewScriptError::Timeout);
+                Err(WebViewScriptError::Timeout)
             }
-        };
-
-        parse_wrapped_eval_result(&raw)
+        }
     }
 
     fn clear_browsing_data(&self) -> Result<(), WebViewError> {

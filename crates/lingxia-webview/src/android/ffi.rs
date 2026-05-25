@@ -101,17 +101,19 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onEvaluateJavascr
     mut env: EnvUnowned,
     _this: JObject,
     request_id: jlong,
+    token: JString,
     value: JString,
     error: JString,
 ) {
     env.with_env(|env| -> Result<(), jni::errors::Error> {
         let request_id = request_id as u64;
+        let token: String = token.try_to_string(env)?;
         let value: String = value.try_to_string(env)?;
         let error: String = error.try_to_string(env)?;
         if error.trim().is_empty() {
-            complete_pending_eval_request(request_id, Ok(value));
+            complete_pending_eval_request(request_id, &token, Ok(value));
         } else {
-            complete_pending_eval_request(request_id, Err(error));
+            complete_pending_eval_request(request_id, &token, Err(error));
         }
         Ok(())
     })

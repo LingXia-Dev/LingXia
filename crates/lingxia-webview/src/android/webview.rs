@@ -1,7 +1,7 @@
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 
-use crate::input_helper::{build_wrapped_eval_script, parse_wrapped_eval_result};
+use crate::input_helper::{build_async_eval_body, new_eval_token, parse_wrapped_eval_result};
 use crate::webview::{
     EffectiveWebViewCreateOptions, ProxyActivation, ProxyApplyReport, ProxyConfig, WebTag,
     WebViewCreateSender, WebViewCreateStage,
@@ -45,6 +45,7 @@ enum PendingEvalResponse {
 
 struct PendingEvalEntry {
     webtag: String,
+    token: String,
     sender: oneshot::Sender<PendingEvalResponse>,
 }
 
@@ -66,14 +67,22 @@ static PENDING_SCREENSHOT_REQUESTS: OnceLock<PendingScreenshotRequests> = OnceLo
 static NEXT_EVAL_REQUEST_ID: AtomicU64 = AtomicU64::new(1);
 static NEXT_SCREENSHOT_REQUEST_ID: AtomicU64 = AtomicU64::new(1);
 const EVAL_TIMEOUT: Duration = Duration::from_secs(10);
+const EVAL_PARSE_GUARD_MS: u64 = 1000;
 const SCREENSHOT_TIMEOUT: Duration = Duration::from_secs(5);
 
 fn pending_eval_requests() -> &'static PendingEvalRequests {
     PENDING_EVAL_REQUESTS.get_or_init(|| Arc::new(Mutex::new(HashMap::new())))
 }
 
-pub(crate) fn complete_pending_eval_request(request_id: u64, result: Result<String, String>) {
+pub(crate) fn complete_pending_eval_request(
+    request_id: u64,
+    token: &str,
+    result: Result<String, String>,
+) {
     if let Ok(mut pending) = pending_eval_requests().lock()
+        && pending
+            .get(&request_id)
+            .is_some_and(|entry| entry.token == token)
         && let Some(entry) = pending.remove(&request_id)
     {
         let message = match result {
@@ -133,17 +142,6 @@ fn fail_pending_screenshot_requests_for_webtag(webtag: &WebTag) {
             }
         }
     }
-}
-
-fn decode_android_eval_string(raw: &str) -> Result<String, WebViewScriptError> {
-    let decoded: Option<String> = serde_json::from_str(raw).map_err(|err| {
-        WebViewScriptError::Platform(format!(
-            "Failed to decode Android evaluateJavascript payload: {err}"
-        ))
-    })?;
-    decoded.ok_or_else(|| {
-        WebViewScriptError::Platform("Android evaluateJavascript returned null result".to_string())
-    })
 }
 
 pub(crate) fn apply_http_proxy(
@@ -326,6 +324,98 @@ impl Drop for WebViewInner {
     }
 }
 
+#[derive(Debug, serde::Deserialize)]
+struct AndroidClickQueryResult {
+    #[serde(default)]
+    ok: bool,
+    #[serde(default)]
+    error: Option<String>,
+    #[serde(default)]
+    cx: f64,
+    #[serde(default)]
+    cy: f64,
+    #[serde(default)]
+    dpr: f64,
+    #[serde(default)]
+    visible: bool,
+    #[serde(default)]
+    enabled: bool,
+}
+
+impl WebViewInner {
+    /// Native-dispatch a click on `selector` (nth match) via Chromium's own
+    /// touch pipeline. Steps:
+    ///  1. Run a CSP-safe expression that locates the element, scrolls it
+    ///     into view, and returns its viewport-relative center + DPR.
+    ///  2. Call Java `LingXiaWebView.dispatchClickAt(x, y)` which builds a
+    ///     real `MotionEvent` (ACTION_DOWN/UP) — Chromium treats it as a
+    ///     genuine touch (fires touchstart/touchend → click, focuses inputs,
+    ///     surfaces the IME).
+    pub(crate) async fn click_inner(
+        &self,
+        selector: &str,
+        options: crate::traits::ClickOptions,
+    ) -> Result<(), crate::WebViewInputError> {
+        let selector_json = serde_json::to_string(selector).map_err(|err| {
+            crate::WebViewInputError::Platform(format!("Invalid selector: {err}"))
+        })?;
+        let index = options.index.unwrap_or(0);
+        let expr = format!(
+            "((sel, idx) => {{ const els = document.querySelectorAll(sel); const el = els[idx]; \
+             if (!el) return {{ ok:false, error:'no match', count:els.length }}; \
+             if (typeof el.scrollIntoView === 'function') {{ try {{ el.scrollIntoView({{block:'center', inline:'center'}}); }} catch(_e){{}} }} \
+             const r = el.getBoundingClientRect(); \
+             const s = window.getComputedStyle(el); \
+             const disabled = !!el.disabled || el.getAttribute('aria-disabled') === 'true'; \
+             return {{ ok:true, cx:r.left + r.width/2, cy:r.top + r.height/2, dpr:window.devicePixelRatio || 1, \
+                       enabled: !disabled, \
+                       visible: r.width > 0 && r.height > 0 && r.bottom > 0 && r.right > 0 && \
+                                r.top < window.innerHeight && r.left < window.innerWidth && \
+                                s.visibility !== 'hidden' && s.display !== 'none' && Number(s.opacity || '1') !== 0 }}; \
+             }})({selector_json}, {index})"
+        );
+        let value = self
+            .eval_js(&expr)
+            .await
+            .map_err(crate::WebViewInputError::Script)?;
+        let result: AndroidClickQueryResult = serde_json::from_value(value).map_err(|err| {
+            crate::WebViewInputError::Platform(format!(
+                "Failed to decode click query result: {err}"
+            ))
+        })?;
+        if !result.ok {
+            return Err(crate::WebViewInputError::ElementNotFound(
+                result.error.unwrap_or_else(|| selector.to_string()),
+            ));
+        }
+        if !result.visible {
+            return Err(crate::WebViewInputError::ElementNotInteractable(format!(
+                "Element not visible: {selector}"
+            )));
+        }
+        if !result.enabled {
+            return Err(crate::WebViewInputError::ElementNotInteractable(format!(
+                "Element not enabled: {selector}"
+            )));
+        }
+        let dpr = if result.dpr > 0.0 { result.dpr } else { 1.0 };
+        let device_x = (result.cx * dpr) as f32;
+        let device_y = (result.cy * dpr) as f32;
+        with_env(|env| -> Result<(), Box<dyn std::error::Error>> {
+            env.call_method(
+                &*self.get_java_webview(),
+                jni_str!("dispatchClickAt"),
+                jni_sig!("(FF)V"),
+                &[device_x.into(), device_y.into()],
+            )?;
+            Ok(())
+        })
+        .map_err(|err| {
+            crate::WebViewInputError::Platform(format!("dispatchClickAt failed: {:?}", err))
+        })
+    }
+}
+
 #[async_trait]
 impl WebViewController for WebViewInner {
     fn load_url(&self, url: &str) -> Result<(), WebViewError> {
@@ -381,8 +471,15 @@ impl WebViewController for WebViewInner {
     }
 
     async fn eval_js(&self, js: &str) -> Result<serde_json::Value, WebViewScriptError> {
-        let wrapped = build_wrapped_eval_script(js)?;
+        // CSP-safe + await-aware: the user script is wrapped in an async IIFE
+        // that awaits the result, builds a `{ok, value | error}` envelope, then
+        // ferries it back via `LingXiaProxy.resolveEval(reqId, envelope)`.
+        // Chromium's `WebView.evaluateJavascript` ValueCallback fires on Promise
+        // *creation* (not on resolution), so we deliberately ignore it and rely
+        // on the JS bridge round-trip — which gives us native `await` support
+        // without touching `eval()` (CSP `'unsafe-eval'` stays unneeded).
         let request_id = NEXT_EVAL_REQUEST_ID.fetch_add(1, Ordering::Relaxed);
+        let token = new_eval_token(request_id);
         let (tx, rx) = oneshot::channel();
 
         pending_eval_requests()
@@ -394,18 +491,61 @@ impl WebViewController for WebViewInner {
                 request_id,
                 PendingEvalEntry {
                     webtag: self.webtag.to_string(),
+                    token: token.clone(),
                     sender: tx,
                 },
             );
 
+        let request_id_json = serde_json::to_string(&request_id.to_string()).map_err(|err| {
+            WebViewScriptError::Platform(format!("Failed to encode eval request id: {err}"))
+        })?;
+        let token_json = serde_json::to_string(&token).map_err(|err| {
+            WebViewScriptError::Platform(format!("Failed to encode eval token: {err}"))
+        })?;
+        let resolve_expr =
+            format!("LingXiaProxy.resolveEval({request_id_json}, {token_json}, __lxR)");
+        let body = build_async_eval_body(js, Some(&resolve_expr));
+        let parse_guard_script = format!(
+            "(function(){{ \
+               const id={request_id_json}; const token={token_json}; \
+               const timers=window.__LingXiaEvalParseTimers||(window.__LingXiaEvalParseTimers=Object.create(null)); \
+               if (timers[id]) clearTimeout(timers[id]); \
+               timers[id]=setTimeout(function(){{ \
+                 try {{ LingXiaProxy.resolveEval(id, token, JSON.stringify({{ok:false, error:'JavaScript evaluation failed to start; source may contain a syntax error'}})); }} catch(_){{}} \
+               }}, {EVAL_PARSE_GUARD_MS}); \
+             }})()"
+        );
+        let clear_parse_guard = format!(
+            "try {{ \
+               const __lxTimers=window.__LingXiaEvalParseTimers; \
+               if (__lxTimers) {{ clearTimeout(__lxTimers[{request_id_json}]); delete __lxTimers[{request_id_json}]; }} \
+             }} catch(_){{}}"
+        );
+        // Defensive outer .catch — `build_async_eval_body` already wraps user
+        // code in try/catch, but if the async IIFE itself fails (e.g. a JS
+        // engine bug, OOM), still resolve the pending request so callers
+        // don't hang until timeout.
+        let script = format!(
+            "(async () => {{ {clear_parse_guard} {body} }})().catch(e => {{ \
+               try {{ LingXiaProxy.resolveEval({request_id_json}, {token_json}, JSON.stringify({{ok:false, error: String(e)}})); }} catch(_){{}} \
+             }})"
+        );
+
         {
             let dispatch_result = with_env(|env| -> Result<(), Box<dyn std::error::Error>> {
-                let script_string = env.new_string(&wrapped)?;
+                let parse_guard_string = env.new_string(&parse_guard_script)?;
                 env.call_method(
                     &*self.get_java_webview(),
-                    jni_str!("evaluateJavascriptWithResult"),
-                    jni_sig!("(Ljava/lang/String;J)V"),
-                    &[(&script_string).into(), (request_id as i64).into()],
+                    jni_str!("evaluateJavascript"),
+                    jni_sig!("(Ljava/lang/String;Landroid/webkit/ValueCallback;)V"),
+                    &[(&parse_guard_string).into(), (&JObject::null()).into()],
+                )?;
+                let script_string = env.new_string(&script)?;
+                env.call_method(
+                    &*self.get_java_webview(),
+                    jni_str!("evaluateJavascript"),
+                    jni_sig!("(Ljava/lang/String;Landroid/webkit/ValueCallback;)V"),
+                    &[(&script_string).into(), (&JObject::null()).into()],
                 )?;
                 Ok(())
             });
@@ -421,23 +561,18 @@ impl WebViewController for WebViewInner {
             }
         }
 
-        let raw = match timeout(EVAL_TIMEOUT, rx).await {
-            Ok(Ok(PendingEvalResponse::Success(raw))) => raw,
-            Ok(Ok(PendingEvalResponse::Failure(err))) => {
-                return Err(WebViewScriptError::Platform(err));
-            }
-            Ok(Ok(PendingEvalResponse::Destroyed)) => return Err(WebViewScriptError::Destroyed),
-            Ok(Err(_)) => return Err(WebViewScriptError::Destroyed),
+        match timeout(EVAL_TIMEOUT, rx).await {
+            Ok(Ok(PendingEvalResponse::Success(envelope))) => parse_wrapped_eval_result(&envelope),
+            Ok(Ok(PendingEvalResponse::Failure(err))) => Err(WebViewScriptError::Platform(err)),
+            Ok(Ok(PendingEvalResponse::Destroyed)) => Err(WebViewScriptError::Destroyed),
+            Ok(Err(_)) => Err(WebViewScriptError::Destroyed),
             Err(_) => {
                 if let Ok(mut pending) = pending_eval_requests().lock() {
                     pending.remove(&request_id);
                 }
-                return Err(WebViewScriptError::Timeout);
+                Err(WebViewScriptError::Timeout)
             }
-        };
-
-        let decoded = decode_android_eval_string(&raw)?;
-        parse_wrapped_eval_result(&decoded)
+        }
     }
 
     fn clear_browsing_data(&self) -> Result<(), WebViewError> {
