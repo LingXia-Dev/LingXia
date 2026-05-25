@@ -30,7 +30,7 @@ exclude = ["examples/lingxia-lib"]
 resolver = "2"
 
 [workspace.package]
-version = "0.7.1"
+version = "0.8.0"
 edition = "2024"
 repository = "https://github.com/LingXia-Dev/LingXia"
 
@@ -52,29 +52,29 @@ tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["registry"] }
 
 # Workspace-local crates
-lingxia-lxapp = { path = "crates/lingxia-lxapp", version = "0.7.0", default-features = false }
-lxapp = { package = "lingxia-lxapp", path = "crates/lingxia-lxapp", version = "0.7.0", default-features = false }
-lingxia_devtool = { package = "lingxia-devtool", path = "crates/lingxia-devtool", version = "0.7.1" }
-lingxia-devtool-protocol = { path = "crates/lingxia-devtool-protocol", version = "0.7.0" }
-lingxia-log = { path = "crates/lingxia-log", version = "0.7.0" }
-lingxia-provider = { path = "crates/lingxia-provider", version = "0.7.0" }
-lingxia-update = { path = "crates/lingxia-update", version = "0.7.0" }
-lingxia-app-context = { path = "crates/lingxia-app-context", version = "0.7.0" }
-lingxia-media = { path = "crates/lingxia-media", version = "0.7.0" }
-lingxia-webview = { path = "crates/lingxia-webview", version = "0.7.0" }
-lingxia-platform = { path = "crates/lingxia-platform", version = "0.7.0" }
-lingxia-messaging = { path = "crates/lingxia-messaging", version = "0.7.0" }
-lingxia-logic = { path = "crates/lingxia-logic", version = "0.7.1" }
-lingxia = { path = "crates/lingxia", version = "0.7.1", default-features = false }
-lingxia-native-codegen = { path = "crates/lingxia-native-codegen", version = "0.7.0" }
-lingxia-proxy = { path = "crates/lingxia-proxy", version = "0.7.0" }
-lingxia-native-macros = { path = "crates/lingxia-native-macros", version = "0.7.0" }
-lingxia-browser = { path = "crates/lingxia-browser", version = "0.7.0" }
-lingxia-service = { path = "crates/lingxia-service", version = "0.7.0" }
-lingxia-transfer = { path = "crates/lingxia-transfer", version = "0.7.0" }
-lingxia-terminal = { path = "crates/lingxia-terminal", version = "0.7.0" }
-lingxia-settings = { path = "crates/lingxia-settings", version = "0.7.0" }
-lingxia-shell = { path = "crates/lingxia-shell", version = "0.7.0" }
+lingxia-lxapp = { path = "crates/lingxia-lxapp", version = "0.8.0", default-features = false }
+lxapp = { package = "lingxia-lxapp", path = "crates/lingxia-lxapp", version = "0.8.0", default-features = false }
+lingxia_devtool = { package = "lingxia-devtool", path = "crates/lingxia-devtool", version = "0.8.0" }
+lingxia-devtool-protocol = { path = "crates/lingxia-devtool-protocol", version = "0.8.0" }
+lingxia-log = { path = "crates/lingxia-log", version = "0.8.0" }
+lingxia-provider = { path = "crates/lingxia-provider", version = "0.8.0" }
+lingxia-update = { path = "crates/lingxia-update", version = "0.8.0" }
+lingxia-app-context = { path = "crates/lingxia-app-context", version = "0.8.0" }
+lingxia-media = { path = "crates/lingxia-media", version = "0.8.0" }
+lingxia-webview = { path = "crates/lingxia-webview", version = "0.8.0" }
+lingxia-platform = { path = "crates/lingxia-platform", version = "0.8.0" }
+lingxia-messaging = { path = "crates/lingxia-messaging", version = "0.8.0" }
+lingxia-logic = { path = "crates/lingxia-logic", version = "0.8.0" }
+lingxia = { path = "crates/lingxia", version = "0.8.0", default-features = false }
+lingxia-native-codegen = { path = "crates/lingxia-native-codegen", version = "0.8.0" }
+lingxia-proxy = { path = "crates/lingxia-proxy", version = "0.8.0" }
+lingxia-native-macros = { path = "crates/lingxia-native-macros", version = "0.8.0" }
+lingxia-browser = { path = "crates/lingxia-browser", version = "0.8.0" }
+lingxia-service = { path = "crates/lingxia-service", version = "0.8.0" }
+lingxia-transfer = { path = "crates/lingxia-transfer", version = "0.8.0" }
+lingxia-terminal = { path = "crates/lingxia-terminal", version = "0.8.0" }
+lingxia-settings = { path = "crates/lingxia-settings", version = "0.8.0" }
+lingxia-shell = { path = "crates/lingxia-shell", version = "0.8.0" }
 
 # Harmony NAPI bindings
 napi-ohos = "1.1.0"
