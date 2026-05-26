@@ -93,6 +93,8 @@ static LXAPP_SOURCE_OVERRIDES: OnceLock<Mutex<HashMap<String, LxAppBundleSource>
     OnceLock::new();
 static TRANSIENT_FILE_GRANTS: OnceLock<DashMap<(String, LxAppSessionId, String), PathBuf>> =
     OnceLock::new();
+static TRANSIENT_FILE_REFERENCE_GRANTS: OnceLock<DashMap<(String, LxAppSessionId, String), ()>> =
+    OnceLock::new();
 
 #[derive(Debug, Clone, Copy)]
 enum TransientPathKind {
@@ -116,6 +118,21 @@ fn normalize_transient_path(path: &Path, kind: TransientPathKind) -> Result<Path
         )));
     }
     Ok(normalized)
+}
+
+fn normalize_transient_file_reference(reference: &str) -> Result<String, LxAppError> {
+    let normalized = reference.trim();
+    if normalized.is_empty()
+        || normalized.chars().any(char::is_control)
+        || !(normalized.starts_with("content://")
+            || normalized.starts_with("datashare://")
+            || normalized.starts_with("file://"))
+    {
+        return Err(LxAppError::InvalidParameter(
+            "invalid transient file reference".to_string(),
+        ));
+    }
+    Ok(normalized.to_string())
 }
 
 /// Set the number of JS workers (and lxapp navigation stack capacity).
@@ -605,6 +622,26 @@ impl LxApp {
         self.grant_transient_path_access(path, TransientPathKind::File)
     }
 
+    pub fn grant_transient_file_reference(&self, reference: &str) -> Result<String, LxAppError> {
+        let normalized = normalize_transient_file_reference(reference)?;
+        TRANSIENT_FILE_REFERENCE_GRANTS
+            .get_or_init(DashMap::new)
+            .insert(
+                (self.appid.clone(), self.session_id(), normalized.clone()),
+                (),
+            );
+        Ok(normalized)
+    }
+
+    pub fn has_transient_file_reference(&self, reference: &str) -> bool {
+        let Ok(normalized) = normalize_transient_file_reference(reference) else {
+            return false;
+        };
+        TRANSIENT_FILE_REFERENCE_GRANTS
+            .get_or_init(DashMap::new)
+            .contains_key(&(self.appid.clone(), self.session_id(), normalized))
+    }
+
     pub fn register_temp_file(&self, path: &Path) -> Result<uri::LxUri, LxAppError> {
         self.cleanup_temp_size(Some(path))?;
         let uri = self.grant_transient_file_access(path)?;
@@ -674,6 +711,9 @@ impl LxApp {
         let appid = self.appid.clone();
         let session_id = self.session_id();
         if let Some(grants) = TRANSIENT_FILE_GRANTS.get() {
+            grants.retain(|key, _| key.0 != appid || key.1 != session_id);
+        }
+        if let Some(grants) = TRANSIENT_FILE_REFERENCE_GRANTS.get() {
             grants.retain(|key, _| key.0 != appid || key.1 != session_id);
         }
         if !self.temp_dir.as_os_str().is_empty() {

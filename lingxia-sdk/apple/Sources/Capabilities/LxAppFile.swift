@@ -10,41 +10,63 @@ enum LxAppFile {
     fileprivate static var previewCoordinator: IOSDocumentPreviewCoordinator?
     fileprivate static var pickerCoordinator: IOSDocumentPickerCoordinator?
     fileprivate static var localChooserCoordinator: IOSLocalFileChooserCoordinator?
+    private static var securityScopedFileURLs: [String: URL] = [:]
 
     @discardableResult
     static func reviewDocument(path: String, mimeType: String?, showMenu: Bool = true) -> Bool {
         let fileURL = URL(fileURLWithPath: path)
-        guard FileManager.default.fileExists(atPath: fileURL.path) else {
-            return false
-        }
+        return withSecurityScopedAccess(path: path) {
+            guard FileManager.default.fileExists(atPath: fileURL.path) else {
+                return false
+            }
 
-        guard let presenter = LxApp.topViewController() else {
-            return false
-        }
+            guard let presenter = LxApp.topViewController() else {
+                return false
+            }
 
-        let coordinator = IOSDocumentPreviewCoordinator(fileURL: fileURL, showMenu: showMenu)
-        previewCoordinator = coordinator
-        return coordinator.present(from: presenter)
+            let coordinator = IOSDocumentPreviewCoordinator(fileURL: fileURL, showMenu: showMenu)
+            previewCoordinator = coordinator
+            return coordinator.present(from: presenter)
+        }
     }
 
     @discardableResult
     static func openExternal(path: String, mimeType: String?, showMenu: Bool = true) -> Bool {
         let fileURL = URL(fileURLWithPath: path)
-        guard FileManager.default.fileExists(atPath: fileURL.path) else {
-            return false
-        }
+        return withSecurityScopedAccess(path: path) {
+            guard FileManager.default.fileExists(atPath: fileURL.path) else {
+                return false
+            }
 
-        guard let presenter = LxApp.topViewController() else {
-            return false
-        }
+            guard let presenter = LxApp.topViewController() else {
+                return false
+            }
 
-        let controller = UIDocumentInteractionController(url: fileURL)
-        if let mimeType, !mimeType.isEmpty {
-            controller.uti = mimeType
+            let controller = UIDocumentInteractionController(url: fileURL)
+            if let mimeType, !mimeType.isEmpty {
+                controller.uti = mimeType
+            }
+            // Hold a strong reference until the interaction finishes
+            previewCoordinator = nil
+            return controller.presentOpenInMenu(from: .zero, in: presenter.view, animated: true)
         }
-        // Hold a strong reference until the interaction finishes
-        previewCoordinator = nil
-        return controller.presentOpenInMenu(from: .zero, in: presenter.view, animated: true)
+    }
+
+    static func withSecurityScopedAccess<T>(path: String, _ body: () -> T) -> T {
+        guard let url = securityScopedFileURLs[path] else {
+            return body()
+        }
+        let accessed = url.startAccessingSecurityScopedResource()
+        defer {
+            if accessed {
+                url.stopAccessingSecurityScopedResource()
+            }
+        }
+        return body()
+    }
+
+    fileprivate static func registerSecurityScopedURL(_ url: URL) {
+        securityScopedFileURLs[url.path] = url
     }
 
     @discardableResult
@@ -286,8 +308,8 @@ private final class IOSDocumentPickerCoordinator: NSObject, UIDocumentPickerDele
         }
 
         do {
-            let copiedPaths = try picked.map { try copyPickedItem(from: $0) }
-            emitPayload(canceled: copiedPaths.isEmpty, paths: copiedPaths)
+            let selectedPaths = try picked.map { try registerPickedItem(from: $0) }
+            emitPayload(canceled: selectedPaths.isEmpty, paths: selectedPaths)
         } catch {
             let _ = onCallback(callbackId, false, "1000")
         }
@@ -321,31 +343,8 @@ private final class IOSDocumentPickerCoordinator: NSObject, UIDocumentPickerDele
         }
     }
 
-    private func copyPickedItem(from sourceURL: URL) throws -> String {
+    private func registerPickedItem(from sourceURL: URL) throws -> String {
         guard sourceURL.isFileURL else {
-            throw NSError(domain: "LxAppFile", code: 1000, userInfo: nil)
-        }
-
-        var isDirectory: ObjCBool = false
-        let exists = FileManager.default.fileExists(atPath: sourceURL.path, isDirectory: &isDirectory)
-        guard exists else {
-            throw NSError(domain: "LxAppFile", code: 1000, userInfo: nil)
-        }
-
-        if isDirectory.boolValue {
-            return try copyDirectoryToCache(from: sourceURL).path
-        }
-
-        return try MediaStorage.copy(
-            from: sourceURL,
-            prefix: "file_picker",
-            fallbackExtension: sourceURL.pathExtension,
-            requiresSecurityScope: true
-        ).path
-    }
-
-    private func copyDirectoryToCache(from sourceURL: URL) throws -> URL {
-        guard let cacheDirectory = MediaStorage.cacheDirectory() else {
             throw NSError(domain: "LxAppFile", code: 1000, userInfo: nil)
         }
 
@@ -355,14 +354,19 @@ private final class IOSDocumentPickerCoordinator: NSObject, UIDocumentPickerDele
                 sourceURL.stopAccessingSecurityScopedResource()
             }
         }
-
-        let baseName = sanitizedName(sourceURL.lastPathComponent, fallback: "folder")
-        let destinationURL = cacheDirectory.appendingPathComponent("\(baseName)_\(UUID().uuidString)", isDirectory: true)
-        if FileManager.default.fileExists(atPath: destinationURL.path) {
-            try FileManager.default.removeItem(at: destinationURL)
+        var isDirectory: ObjCBool = false
+        let exists = FileManager.default.fileExists(atPath: sourceURL.path, isDirectory: &isDirectory)
+        guard exists else {
+            throw NSError(domain: "LxAppFile", code: 1000, userInfo: nil)
         }
-        try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
-        return destinationURL
+
+        LxAppFile.registerSecurityScopedURL(sourceURL)
+        switch mode {
+        case .file:
+            return sourceURL.absoluteString
+        case .directory:
+            return sourceURL.path
+        }
     }
 
     private func sanitizedName(_ name: String, fallback: String) -> String {
@@ -894,6 +898,11 @@ enum LxAppFile {
 
     static func closeQLController() {
         qlController?.finish(shouldClosePanel: true)
+    }
+
+    static func withSecurityScopedAccess<T>(path: String, _ body: () -> T) -> T {
+        let _ = path
+        return body()
     }
 
     @discardableResult

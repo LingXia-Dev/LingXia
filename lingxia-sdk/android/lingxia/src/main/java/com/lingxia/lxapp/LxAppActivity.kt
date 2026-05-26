@@ -593,14 +593,37 @@ class LxAppActivity : AppCompatActivity() {
 
         val values = mutableListOf<String>()
         data?.getStringArrayListExtra("selectedPaths")?.let { values.addAll(it) }
-        data?.data?.toString()?.let { values.add(it) }
+        data?.data?.let { uri ->
+            persistDocumentReadPermission(data, uri)
+            values.add(uri.toString())
+        }
         val clipData = data?.clipData
         if (clipData != null) {
             for (index in 0 until clipData.itemCount) {
-                clipData.getItemAt(index)?.uri?.toString()?.let { values.add(it) }
+                clipData.getItemAt(index)?.uri?.let { uri ->
+                    persistDocumentReadPermission(data, uri)
+                    values.add(uri.toString())
+                }
             }
         }
         return values.distinct()
+    }
+
+    private fun persistDocumentReadPermission(data: Intent, uri: Uri) {
+        val flags = data.flags and
+            (Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+        if (flags and Intent.FLAG_GRANT_READ_URI_PERMISSION == 0) {
+            return
+        }
+        try {
+            contentResolver.takePersistableUriPermission(
+                uri,
+                flags and Intent.FLAG_GRANT_READ_URI_PERMISSION
+            )
+        } catch (_: Throwable) {
+            // Not every provider/result supports persistable grants. The immediate grant
+            // is still enough for same-session use such as sharing right after chooseFile.
+        }
     }
 
     /**

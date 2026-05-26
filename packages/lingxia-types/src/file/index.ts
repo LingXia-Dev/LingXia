@@ -29,14 +29,23 @@ export interface ChooseFileOptions {
   multiple?: boolean;
   /** Optional file filters. Empty or omitted means all file types. */
   filters?: FileDialogFilter[];
-  /** Initial directory the dialog opens in. Platform default if omitted. */
+  /**
+   * Initial directory the dialog opens in.
+   *
+   * When this resolves to an app-local directory, LingXia may use its internal
+   * file picker. When omitted, the platform system file picker is used.
+   */
   defaultPath?: string;
 }
 
 export interface ChooseFileResult {
   /** True if the user dismissed the dialog without selecting. */
   canceled: boolean;
-  /** Native-consumable file references (paths or URIs). Empty when canceled. */
+  /**
+   * File paths returned by LingXia. Values may be app-local paths, `lx://...`
+   * paths, or platform system-picker references. Treat them as opaque strings
+   * and pass them back to LingXia APIs such as `lx.share`.
+   */
   paths: string[];
 }
 

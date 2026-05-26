@@ -439,6 +439,12 @@ fn selected_file_path_to_uri(lxapp: &LxApp, raw_path: &str) -> JSResult<String> 
         return Err(js_internal_error("chooseFile returned an empty path"));
     }
 
+    if is_platform_file_reference(path) {
+        return lxapp.grant_transient_file_reference(path).map_err(|err| {
+            js_internal_error(format!("chooseFile failed to grant file access: {err}"))
+        });
+    }
+
     if let Ok(resolved) = lxapp.resolve_accessible_path(path)
         && let Some(uri) = lxapp.to_uri(&resolved)
     {
@@ -463,6 +469,12 @@ fn selected_file_path_to_uri(lxapp: &LxApp, raw_path: &str) -> JSResult<String> 
         "chooseFile returned an inaccessible path: {}",
         path
     )))
+}
+
+fn is_platform_file_reference(path: &str) -> bool {
+    path.starts_with("content://")
+        || path.starts_with("datashare://")
+        || path.starts_with("file://")
 }
 
 fn selected_directory_path_to_uri(lxapp: &LxApp, raw_path: &str) -> JSResult<String> {
