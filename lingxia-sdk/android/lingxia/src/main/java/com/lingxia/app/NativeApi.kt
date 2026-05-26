@@ -2,7 +2,6 @@ package com.lingxia.app
 
 import android.content.res.AssetManager
 import android.util.Log
-import com.lingxia.lxapp.CurrentLxApp
 import com.lingxia.lxapp.LxAppInfo
 import com.lingxia.lxapp.NavigationBarState
 import com.lingxia.lxapp.TabBarState

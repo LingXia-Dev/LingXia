@@ -957,8 +957,7 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_getCurrentLxApp<'a>(
     env.with_env(|env| -> Result<JObject, jni::errors::Error> {
         let (current_appid, current_path, current_session_id) = lxapp::get_current_lxapp();
 
-        // Find the CurrentLxApp class (we'll need to create this)
-        let current_lxapp_class = env.find_class(jni_str!("com/lingxia/lxapp/CurrentLxApp"))?;
+        let current_lxapp_class = env.find_class(jni_str!("com/lingxia/app/CurrentLxApp"))?;
 
         // Create Java strings
         let appid_str = env.new_string(&current_appid)?;
