@@ -585,13 +585,15 @@ export struct LocalFileChooserOverlay {
   @Builder
   private buildEntry(entry: LocalFileChooserEntry): void {
     Row() {
-      Text(entry.isDirectory ? 'DIR' : entry.badge)
-        .fontSize(11)
-        .fontWeight(FontWeight.Medium)
-        .fontColor(entry.isDirectory ? '#2563EB' : '#111827')
-        .padding({ left: 10, right: 10, top: 6, bottom: 6 })
-        .backgroundColor(entry.isDirectory ? '#E8F1FF' : '#EEF2F7')
-        .borderRadius(12)
+      if (entry.isDirectory || entry.badge.length > 0) {
+        Text(entry.isDirectory ? $r('app.string.lx_file_chooser_folder_subtitle') : entry.badge)
+          .fontSize(11)
+          .fontWeight(FontWeight.Medium)
+          .fontColor(entry.isDirectory ? '#2563EB' : '#111827')
+          .padding({ left: 10, right: 10, top: 6, bottom: 6 })
+          .backgroundColor(entry.isDirectory ? '#E8F1FF' : '#EEF2F7')
+          .borderRadius(12)
+      }
 
       Column() {
         Text(entry.name)
@@ -601,14 +603,7 @@ export struct LocalFileChooserOverlay {
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
 
-        if (entry.isDirectory) {
-          Text($r('app.string.lx_file_chooser_folder_subtitle'))
-            .fontSize(12)
-            .fontColor('#6B7280')
-            .margin({ top: 4 })
-            .maxLines(1)
-            .textOverflow({ overflow: TextOverflow.Ellipsis })
-        } else if (entry.subtitle.length > 0) {
+        if (!entry.isDirectory && entry.subtitle.length > 0) {
           Text(entry.subtitle)
             .fontSize(12)
             .fontColor('#6B7280')

@@ -126,7 +126,6 @@ internal class LocalFileChooserActivity : AppCompatActivity() {
     private lateinit var contentFrame: FrameLayout
     private lateinit var recyclerView: RecyclerView
     private lateinit var stateContainer: LinearLayout
-    private lateinit var stateIconView: ImageView
     private lateinit var progressBar: ProgressBar
     private lateinit var stateTitleView: TextView
     private lateinit var stateSubtitleView: TextView
@@ -298,18 +297,11 @@ internal class LocalFileChooserActivity : AppCompatActivity() {
             setBackgroundColor(surface)
             overScrollMode = RecyclerView.OVER_SCROLL_IF_CONTENT_SCROLLS
             clipToPadding = false
-            addItemDecoration(SimpleDividerDecoration(outline, dp(72)))
+            addItemDecoration(SimpleDividerDecoration(outline, dp(16)))
         }
 
         progressBar = ProgressBar(this).apply {
             isIndeterminate = true
-            visibility = View.GONE
-        }
-
-        stateIconView = ImageView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(dp(40), dp(40))
-            setImageResource(R.drawable.icon_file_folder)
-            setColorFilter(primary)
             visibility = View.GONE
         }
 
@@ -336,7 +328,6 @@ internal class LocalFileChooserActivity : AppCompatActivity() {
             )
             setPadding(dp(24), dp(24), dp(24), dp(24))
             addView(progressBar)
-            addView(stateIconView)
             addView(stateTitleView, LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -475,14 +466,12 @@ internal class LocalFileChooserActivity : AppCompatActivity() {
                     showState(
                         title = getString(R.string.lx_file_chooser_filtered_empty_title),
                         subtitle = getString(R.string.lx_file_chooser_filtered_empty_subtitle),
-                        showIcon = true,
                         showProgress = false,
                     )
                 } else {
                     showState(
                         title = getString(R.string.lx_file_chooser_empty_title),
                         subtitle = getString(R.string.lx_file_chooser_empty_subtitle),
-                        showIcon = true,
                         showProgress = false,
                     )
                 }
@@ -500,7 +489,6 @@ internal class LocalFileChooserActivity : AppCompatActivity() {
         showState(
             title = getString(R.string.lx_common_loading),
             subtitle = "",
-            showIcon = false,
             showProgress = true,
         )
     }
@@ -509,7 +497,6 @@ internal class LocalFileChooserActivity : AppCompatActivity() {
         showState(
             title = getString(R.string.lx_err_code_1001),
             subtitle = "",
-            showIcon = true,
             showProgress = false,
         )
     }
@@ -517,11 +504,9 @@ internal class LocalFileChooserActivity : AppCompatActivity() {
     private fun showState(
         title: String,
         subtitle: String,
-        showIcon: Boolean,
         showProgress: Boolean,
     ) {
         progressBar.visibility = if (showProgress) View.VISIBLE else View.GONE
-        stateIconView.visibility = if (showIcon) View.VISIBLE else View.GONE
         stateTitleView.text = title
         stateSubtitleView.text = subtitle
         stateContainer.visibility = View.VISIBLE
@@ -711,19 +696,19 @@ internal class LocalFileChooserActivity : AppCompatActivity() {
                 setBackgroundResource(selectableItemBackground(context))
             }
 
-            val iconBackground = FrameLayout(parent.context).apply {
-                layoutParams = LinearLayout.LayoutParams(dp(42), dp(42))
+            val badgeView = TextView(parent.context).apply {
+                setTextColor(primary)
+                textSize = 11f
+                setTypeface(typeface, Typeface.BOLD)
+                gravity = Gravity.CENTER
+                minWidth = dp(44)
+                setPadding(dp(10), dp(6), dp(10), dp(6))
             }
-
-            val iconView = ImageView(parent.context).apply {
-                layoutParams = FrameLayout.LayoutParams(dp(22), dp(22), Gravity.CENTER)
-            }
-            iconBackground.addView(iconView)
 
             val textContainer = LinearLayout(parent.context).apply {
                 orientation = LinearLayout.VERTICAL
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                    marginStart = dp(14)
+                    marginStart = dp(12)
                 }
             }
 
@@ -750,16 +735,6 @@ internal class LocalFileChooserActivity : AppCompatActivity() {
                 topMargin = dp(4)
             })
 
-            val badgeView = TextView(parent.context).apply {
-                setTextColor(primary)
-                textSize = 11f
-                setTypeface(typeface, Typeface.BOLD)
-                gravity = Gravity.CENTER
-                minWidth = dp(44)
-                setPadding(dp(10), dp(6), dp(10), dp(6))
-                visibility = View.GONE
-            }
-
             val arrowView = ImageView(parent.context).apply {
                 layoutParams = LinearLayout.LayoutParams(dp(20), dp(20)).apply {
                     marginStart = dp(8)
@@ -783,16 +758,13 @@ internal class LocalFileChooserActivity : AppCompatActivity() {
                 visibility = View.GONE
             }
 
-            row.addView(iconBackground)
-            row.addView(textContainer)
             row.addView(badgeView)
+            row.addView(textContainer)
             row.addView(arrowView)
             row.addView(deleteView)
 
             return EntryViewHolder(
                 row = row,
-                iconBackground = iconBackground,
-                iconView = iconView,
                 titleView = titleView,
                 subtitleView = subtitleView,
                 badgeView = badgeView,
@@ -806,19 +778,17 @@ internal class LocalFileChooserActivity : AppCompatActivity() {
         override fun onBindViewHolder(holder: EntryViewHolder, position: Int) {
             val entry = items[position]
             holder.titleView.text = entry.title
-            holder.subtitleView.text = entry.subtitle
-            holder.badgeView.text = entry.badge
 
             if (entry.type == EntryType.DIRECTORY) {
-                holder.iconBackground.background = GradientDrawable().apply {
+                holder.subtitleView.visibility = View.GONE
+                holder.badgeView.text = holder.row.context.getString(R.string.lx_file_chooser_folder_subtitle)
+                holder.badgeView.background = GradientDrawable().apply {
                     shape = GradientDrawable.RECTANGLE
-                    cornerRadius = dpF(14f)
+                    cornerRadius = dpF(12f)
                     setColor(ColorUtils.setAlphaComponent(primary, 18))
-                    setStroke(dp(1), ColorUtils.setAlphaComponent(primary, 28))
+                    setStroke(dp(1), ColorUtils.setAlphaComponent(primary, 42))
                 }
-                holder.iconView.setImageResource(R.drawable.icon_file_folder)
-                holder.iconView.setColorFilter(primary)
-                holder.badgeView.visibility = View.GONE
+                holder.badgeView.visibility = if (isDeleteRevealed(entry)) View.GONE else View.VISIBLE
                 holder.arrowView.visibility = if (isDeleteRevealed(entry)) View.GONE else View.VISIBLE
                 holder.deleteView.visibility = if (isDeleteRevealed(entry)) View.VISIBLE else View.GONE
                 holder.row.setOnClickListener {
@@ -831,13 +801,9 @@ internal class LocalFileChooserActivity : AppCompatActivity() {
                     true
                 }
             } else {
-                holder.iconBackground.background = GradientDrawable().apply {
-                    shape = GradientDrawable.RECTANGLE
-                    cornerRadius = dpF(14f)
-                    setColor(ColorUtils.setAlphaComponent(outline, 28))
-                }
-                holder.iconView.setImageResource(R.drawable.icon_file_document)
-                holder.iconView.setColorFilter(onSurface)
+                holder.subtitleView.text = entry.subtitle
+                holder.subtitleView.visibility = View.VISIBLE
+                holder.badgeView.text = entry.badge
                 holder.badgeView.background = GradientDrawable().apply {
                     shape = GradientDrawable.RECTANGLE
                     cornerRadius = dpF(12f)
@@ -871,8 +837,6 @@ internal class LocalFileChooserActivity : AppCompatActivity() {
 
         inner class EntryViewHolder(
             val row: View,
-            val iconBackground: FrameLayout,
-            val iconView: ImageView,
             val titleView: TextView,
             val subtitleView: TextView,
             val badgeView: TextView,
