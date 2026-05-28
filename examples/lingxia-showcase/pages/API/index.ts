@@ -129,6 +129,12 @@ Page({
     }
   },
 
+  navigateToSharePage: async function() {
+    await lx.navigateTo({
+      page: "share",
+    });
+  },
+
   exitApp: async function() {
     const result = await lx.showModal({
       title: "Exit App",

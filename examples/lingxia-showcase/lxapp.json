@@ -65,6 +65,10 @@
       "path": "pages/file/index"
     },
     {
+      "name": "share",
+      "path": "pages/share/index"
+    },
+    {
       "name": "components",
       "path": "pages/components/index"
     },
