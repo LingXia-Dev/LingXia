@@ -8,6 +8,7 @@ pub mod network;
 pub mod pull_to_refresh;
 pub mod screenshot;
 pub mod secure_store;
+pub mod share;
 pub mod stream_decoder;
 pub mod ui;
 pub mod update;
@@ -25,6 +26,7 @@ pub mod prelude {
     pub use super::pull_to_refresh::PullToRefresh;
     pub use super::screenshot::AppScreenshot;
     pub use super::secure_store::SecureStore;
+    pub use super::share::ShareService;
     pub use super::ui::{SurfacePresenter, UIUpdate, UserFeedback};
     pub use super::update::UpdateService;
     pub use super::video_player::{VideoPlayerHandle, VideoPlayerManager};

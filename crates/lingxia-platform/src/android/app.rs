@@ -592,3 +592,66 @@ impl AppRuntime for Platform {
         .await
     }
 }
+
+impl crate::traits::share::ShareService for Platform {
+    async fn share(
+        &self,
+        request: crate::traits::share::ShareRequest,
+    ) -> Result<crate::traits::share::ShareResult, PlatformError> {
+        let files_json = serde_json::to_string(&request.files).map_err(|e| {
+            PlatformError::Platform(format!("Failed to serialize share files: {e}"))
+        })?;
+
+        let payload =
+            crate::rt::native_call(|callback_id| share_impl(&request, &files_json, callback_id))
+                .await?;
+        if payload.trim().is_empty() {
+            return Ok(crate::traits::share::ShareResult { completed: None });
+        }
+        serde_json::from_str(&payload)
+            .map_err(|e| PlatformError::Platform(format!("Failed to parse share result: {e}")))
+    }
+}
+
+fn share_impl(
+    request: &crate::traits::share::ShareRequest,
+    files_json: &str,
+    callback_id: u64,
+) -> Result<(), PlatformError> {
+    with_env(|env| -> Result<(), PlatformError> {
+        let class: &JClass = super::get_cached_class(super::CachedClass::LxAppShare)
+            .map_err(|e| PlatformError::Platform(e.to_string()))?;
+        let title = env.new_string(request.title.as_deref().unwrap_or_default())?;
+        let text = env.new_string(request.text.as_deref().unwrap_or_default())?;
+        let url = env.new_string(request.url.as_deref().unwrap_or_default())?;
+        let files = env.new_string(files_json)?;
+
+        let result = env.call_static_method(
+            class,
+            jni_str!("share"),
+            jni_sig!(
+                "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;J)Z"
+            ),
+            &[
+                JValue::Object(&title),
+                JValue::Object(&text),
+                JValue::Object(&url),
+                JValue::Object(&files),
+                JValue::Long(callback_id as i64),
+            ],
+        )?;
+        if env.exception_check() {
+            env.exception_clear();
+            return Err(PlatformError::Platform(
+                "Android share JNI call threw an exception".to_string(),
+            ));
+        }
+        if !result.z()? {
+            return Err(PlatformError::Platform(
+                "Android share returned false".to_string(),
+            ));
+        }
+        Ok(())
+    })
+    .map_err(|e| PlatformError::Platform(format!("Failed to call Android share: {e}")))
+}

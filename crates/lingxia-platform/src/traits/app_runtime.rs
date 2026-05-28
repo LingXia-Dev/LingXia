@@ -11,6 +11,7 @@ use super::media_interaction::{MediaInteraction, MediaKind};
 use super::media_runtime::MediaRuntime;
 use super::network::Network;
 use super::secure_store::SecureStore;
+use super::share::ShareService;
 use super::ui::{SurfacePresenter, UIUpdate, UserFeedback};
 use super::update::UpdateService;
 use super::wifi::Wifi;
@@ -101,6 +102,7 @@ pub trait AppRuntime:
     + Device
     + DeviceHardware
     + SecureStore
+    + ShareService
     + FileService
     + Location
     + UIUpdate

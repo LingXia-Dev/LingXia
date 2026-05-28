@@ -18,6 +18,7 @@ export * from './navigator';
 export * from './system';
 export * from './update';
 export * from './media';
+export * from './share';
 export * from './ui';
 export * from './error';
 export * from './generated/error';
@@ -109,6 +110,11 @@ import type {
   ScanCodeResult,
   VideoContext,
 } from './media';
+
+import type {
+  ShareOptions,
+  ShareResult,
+} from './share';
 
 import type {
   ShowToastOptions,
@@ -222,6 +228,8 @@ export interface Lx {
   saveVideoToPhotosAlbum(options: SaveMediaOptions): Promise<void>;
 
   scanCode(options?: ScanCodeOptions): Promise<ScanCodeResult>;
+
+  share(options: ShareOptions): Promise<ShareResult>;
 
   createVideoContext(componentId: string): VideoContext;
 

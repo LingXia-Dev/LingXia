@@ -348,6 +348,28 @@ extension LxApp {
         #endif
     }
 
+    nonisolated static func share(
+        title: RustStr,
+        text: RustStr,
+        url: RustStr,
+        files_json filesJson: RustStr,
+        callback_id callbackId: UInt64
+    ) -> Bool {
+        let titleString = title.toString()
+        let textString = text.toString()
+        let urlString = url.toString()
+        let filesJsonString = filesJson.toString()
+        return executeOnMain {
+            LxAppShare.share(
+                title: titleString,
+                text: textString,
+                url: urlString,
+                filesJson: filesJsonString,
+                callbackId: callbackId
+            )
+        }
+    }
+
     public static func handleAppLink(url: URL) {
         guard url.scheme == "https" else { return }
         let _ = onApplinkReceived(url.absoluteString)

@@ -139,6 +139,9 @@ mod bridge {
         #[swift_bridge(swift_name = "LxApp.openUrl")]
         fn open_url(owner_appid: &str, owner_session_id: u64, url: &str, target: i32) -> bool;
 
+        #[swift_bridge(swift_name = "LxApp.share")]
+        fn share(title: &str, text: &str, url: &str, files_json: &str, callback_id: u64) -> bool;
+
         #[swift_bridge(swift_name = "LxApp.exitApp")]
         fn exit_app() -> bool;
 
@@ -351,7 +354,7 @@ pub use bridge::{
     ActionSheetOptions, ModalOptions, ToastIcon, ToastOptions, ToastPosition, cancel_preview_media,
     close_lxapp, close_surface, exit_app, hide_surface, hide_toast, navigate,
     open_document_external, open_lxapp, open_url, present_surface, preview_media, review_document,
-    show_action_sheet, show_modal, show_surface, show_toast, update_navbar_ui,
+    share, show_action_sheet, show_modal, show_surface, show_toast, update_navbar_ui,
     update_orientation_ui, update_tabbar_ui,
 };
 

@@ -12,6 +12,7 @@ import { LxAppContainer } from '../lxapp/LxAppContainer';
 import { LxAppSurface } from '../lxapp/APIs/LxAppSurface';
 import { BrowserOverlayManager } from '../lxapp/APIs/LxAppBrowserOverlay';
 import { LxAppFile } from '../lxapp/APIs/LxAppFile';
+import { LxAppShare } from '../lxapp/APIs/LxAppShare';
 import { LxAppWifi } from '../lxapp/APIs/LxAppWifi';
 import { LxAppNetwork } from '../lxapp/APIs/LxAppNetwork';
 import { LxAppCapsule } from '../lxapp/APIs/LxAppCapsule';
@@ -398,6 +399,16 @@ class NativeBridge {
       defaultPath: string
     ): boolean => {
       return LxAppFile.chooseDirectory(callbackId, title, defaultPath);
+    });
+
+    this.register('share', (
+      title: string,
+      text: string,
+      url: string,
+      filesJson: string,
+      callbackId: string
+    ): boolean => {
+      return LxAppShare.share(title, text, url, filesJson, callbackId);
     });
 
     // WiFi APIs

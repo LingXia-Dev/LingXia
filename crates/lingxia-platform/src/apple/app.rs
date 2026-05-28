@@ -4,6 +4,7 @@ use crate::error::PlatformError;
 use crate::traits::app_runtime::AppRuntime;
 use crate::traits::app_runtime::LxAppOpenMode;
 use crate::traits::media_runtime::MediaRuntime;
+use crate::traits::share::{ShareRequest, ShareResult, ShareService};
 #[cfg(target_os = "macos")]
 use rfd::{MessageButtons, MessageDialog, MessageDialogResult, MessageLevel};
 #[cfg(target_os = "macos")]
@@ -257,6 +258,33 @@ impl AppRuntime for Platform {
                 "getCapsuleRect is only supported on iOS".to_string(),
             ))
         }
+    }
+}
+
+impl ShareService for Platform {
+    async fn share(&self, request: ShareRequest) -> Result<ShareResult, PlatformError> {
+        let files_json = serde_json::to_string(&request.files)
+            .map_err(|e| PlatformError::Platform(format!("Failed to encode share files: {}", e)))?;
+
+        let data = crate::rt::native_call(|callback_id| {
+            if ffi::share(
+                request.title.as_deref().unwrap_or_default(),
+                request.text.as_deref().unwrap_or_default(),
+                request.url.as_deref().unwrap_or_default(),
+                &files_json,
+                callback_id,
+            ) {
+                Ok(())
+            } else {
+                Err(PlatformError::Platform(
+                    "Failed to present share sheet".to_string(),
+                ))
+            }
+        })
+        .await?;
+
+        serde_json::from_str(&data)
+            .map_err(|e| PlatformError::Platform(format!("share returned invalid payload: {}", e)))
     }
 }
 

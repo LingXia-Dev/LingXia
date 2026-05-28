@@ -590,6 +590,38 @@ impl AppRuntime for Platform {
     }
 }
 
+impl crate::traits::share::ShareService for Platform {
+    async fn share(
+        &self,
+        request: crate::traits::share::ShareRequest,
+    ) -> Result<crate::traits::share::ShareResult, PlatformError> {
+        let files_json = serde_json::to_string(&request.files).map_err(|e| {
+            PlatformError::Platform(format!("Failed to serialize share files: {e}"))
+        })?;
+
+        let payload = crate::rt::native_call(|callback_id| {
+            let callback_id = callback_id.to_string();
+            lingxia_webview::platform::harmony::tsfn::call_arkts(
+                "share",
+                &[
+                    request.title.as_deref().unwrap_or_default(),
+                    request.text.as_deref().unwrap_or_default(),
+                    request.url.as_deref().unwrap_or_default(),
+                    &files_json,
+                    &callback_id,
+                ],
+            )
+            .map_err(|e| PlatformError::Platform(format!("Failed to share: {e}")))
+        })
+        .await?;
+        if payload.trim().is_empty() {
+            return Ok(crate::traits::share::ShareResult { completed: None });
+        }
+        serde_json::from_str(&payload)
+            .map_err(|e| PlatformError::Platform(format!("Failed to parse share result: {e}")))
+    }
+}
+
 #[allow(non_camel_case_types)]
 pub(super) mod ffi {
     use std::os::raw::{c_char, c_int};

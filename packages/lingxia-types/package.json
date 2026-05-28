@@ -81,6 +81,11 @@
       "import": "./dist/media/index.js",
       "require": "./dist/media/index.js"
     },
+    "./share": {
+      "types": "./dist/share/index.d.ts",
+      "import": "./dist/share/index.js",
+      "require": "./dist/share/index.js"
+    },
     "./ui": {
       "types": "./dist/ui/index.d.ts",
       "import": "./dist/ui/index.js",
