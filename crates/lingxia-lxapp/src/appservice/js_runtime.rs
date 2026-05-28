@@ -733,14 +733,22 @@ pub(crate) fn create_app_svc(
         free_workers_guard.pop_front().unwrap()
     };
 
-    // Establish instance mapping: LxApp ptr -> worker_id
-    instance_assignments.lock().unwrap().insert(key, worker_id);
-
-    // Send message to create the runtime in the dedicated worker
-    if let Err(e) = sender.send(ServiceMessage::CreateAppSvc { lxapp }) {
-        instance_assignments.lock().unwrap().remove(&key);
-        free_workers.lock().unwrap().push_front(worker_id);
-        return Err(e.into());
+    // Publish the worker mapping only after the CreateAppSvc message has been
+    // enqueued. A concurrent page creation treats the mapping as readiness to
+    // route CreatePage, so exposing it before this send can let CreatePage reach
+    // the worker before Page.js and the app logic have registered page definitions.
+    {
+        let mut assignments = instance_assignments.lock().unwrap();
+        if assignments.contains_key(&key) {
+            info!("Reusing existing worker for app {}", appid);
+            free_workers.lock().unwrap().push_front(worker_id);
+            return Ok(());
+        }
+        if let Err(e) = sender.send(ServiceMessage::CreateAppSvc { lxapp }) {
+            free_workers.lock().unwrap().push_front(worker_id);
+            return Err(e.into());
+        }
+        assignments.insert(key, worker_id);
     }
 
     info!("Assigned dedicated worker {} to app {}", worker_id, appid);
