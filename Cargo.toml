@@ -96,9 +96,3 @@ rong_exception = "0.3.1"
 rong_stream = "0.3.1"
 rong_timer = "0.3.1"
 rong_url = "0.3.1"
-
-# Local rong_rt override (pre-release fix: download resume support).
-# Path is relative to the workspace root and assumes starfire is a sibling
-# checkout of LingXia under the same parent directory.
-[patch.crates-io]
-rong_rt = { path = "../starfire/rong_rt" }
