@@ -5,6 +5,10 @@ import UIKit
 import UniformTypeIdentifiers
 import CLingXiaRustAPI
 
+private func allFileContentTypes() -> [UTType] {
+    [.item, .data]
+}
+
 @MainActor
 enum LxAppFile {
     fileprivate static var previewCoordinator: IOSDocumentPreviewCoordinator?
@@ -174,7 +178,7 @@ private struct IOSLocalFileFilterSpec {
             self.extensions = []
             self.exactMimeTypes = []
             self.wildcardMimeGroups = []
-            self.contentTypes = [.item]
+            self.contentTypes = allFileContentTypes()
             self.labels = []
             return
         }
@@ -213,7 +217,7 @@ private struct IOSLocalFileFilterSpec {
         self.extensions = extensions
         self.exactMimeTypes = exactMimeTypes
         self.wildcardMimeGroups = wildcardMimeGroups
-        self.contentTypes = contentTypes.isEmpty ? [.item] : Array(Set(contentTypes))
+        self.contentTypes = contentTypes.isEmpty ? allFileContentTypes() : Array(Set(contentTypes))
         self.labels = Array(NSOrderedSet(array: labels)) as? [String] ?? labels
     }
 
@@ -269,8 +273,8 @@ private final class IOSDocumentPickerCoordinator: NSObject, UIDocumentPickerDele
         switch mode {
         case .file(let multiple, let contentTypes):
             controller = UIDocumentPickerViewController(
-                forOpeningContentTypes: contentTypes.isEmpty ? [.item] : contentTypes,
-                asCopy: false
+                forOpeningContentTypes: contentTypes.isEmpty ? allFileContentTypes() : contentTypes,
+                asCopy: true
             )
             controller.allowsMultipleSelection = multiple
         case .directory:
@@ -363,7 +367,7 @@ private final class IOSDocumentPickerCoordinator: NSObject, UIDocumentPickerDele
         LxAppFile.registerSecurityScopedURL(sourceURL)
         switch mode {
         case .file:
-            return sourceURL.absoluteString
+            return sourceURL.path
         case .directory:
             return sourceURL.path
         }
@@ -777,7 +781,7 @@ private func parseDocumentContentTypes(_ filtersJson: String) -> [UTType] {
     guard !filtersJson.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
           let data = filtersJson.data(using: .utf8),
           let values = try? JSONSerialization.jsonObject(with: data) as? [String] else {
-        return [.item]
+        return allFileContentTypes()
     }
 
     let contentTypes = values.compactMap { raw -> UTType? in
@@ -792,7 +796,7 @@ private func parseDocumentContentTypes(_ filtersJson: String) -> [UTType] {
         return ext.isEmpty ? nil : UTType(filenameExtension: ext)
     }
 
-    return contentTypes.isEmpty ? [.item] : Array(Set(contentTypes))
+    return contentTypes.isEmpty ? allFileContentTypes() : Array(Set(contentTypes))
 }
 
 private func resolveLocalChooserRoot(_ defaultPath: String) -> URL? {

@@ -472,9 +472,13 @@ fn selected_file_path_to_uri(lxapp: &LxApp, raw_path: &str) -> JSResult<String> 
 }
 
 fn is_platform_file_reference(path: &str) -> bool {
-    path.starts_with("content://")
-        || path.starts_with("datashare://")
-        || path.starts_with("file://")
+    let Some((scheme, _)) = path.split_once(':') else {
+        return false;
+    };
+    matches!(
+        scheme.to_ascii_lowercase().as_str(),
+        "content" | "datashare" | "file"
+    )
 }
 
 fn selected_directory_path_to_uri(lxapp: &LxApp, raw_path: &str) -> JSResult<String> {

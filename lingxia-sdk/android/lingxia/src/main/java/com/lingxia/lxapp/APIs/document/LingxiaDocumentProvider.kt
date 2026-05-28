@@ -3,9 +3,11 @@ package com.lingxia.lxapp.APIs.document
 import android.content.ContentProvider
 import android.content.ContentValues
 import android.content.Context
+import android.database.MatrixCursor
 import android.database.Cursor
 import android.net.Uri
 import android.os.ParcelFileDescriptor
+import android.provider.OpenableColumns
 import android.util.Base64
 import android.webkit.MimeTypeMap
 import java.io.File
@@ -52,7 +54,22 @@ internal class LingxiaDocumentProvider : ContentProvider() {
         selection: String?,
         selectionArgs: Array<out String>?,
         sortOrder: String?
-    ): Cursor? = null
+    ): Cursor? {
+        val file = resolveFile(context, uri) ?: return null
+        val columns = projection?.takeIf { it.isNotEmpty() } ?: arrayOf(
+            OpenableColumns.DISPLAY_NAME,
+            OpenableColumns.SIZE,
+        )
+        return MatrixCursor(columns).apply {
+            addRow(columns.map { column ->
+                when (column) {
+                    OpenableColumns.DISPLAY_NAME -> file.name
+                    OpenableColumns.SIZE -> file.length()
+                    else -> null
+                }
+            }.toTypedArray())
+        }
+    }
 
     companion object {
         private const val AUTHORITY_SUFFIX = ".lingxia.documents"

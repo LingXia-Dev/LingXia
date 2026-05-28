@@ -122,11 +122,12 @@ fn normalize_transient_path(path: &Path, kind: TransientPathKind) -> Result<Path
 
 fn normalize_transient_file_reference(reference: &str) -> Result<String, LxAppError> {
     let normalized = reference.trim();
+    let scheme = normalized
+        .split_once(':')
+        .map(|(scheme, _)| scheme.to_ascii_lowercase());
     if normalized.is_empty()
         || normalized.chars().any(char::is_control)
-        || !(normalized.starts_with("content://")
-            || normalized.starts_with("datashare://")
-            || normalized.starts_with("file://"))
+        || !matches!(scheme.as_deref(), Some("content" | "datashare" | "file"))
     {
         return Err(LxAppError::InvalidParameter(
             "invalid transient file reference".to_string(),
