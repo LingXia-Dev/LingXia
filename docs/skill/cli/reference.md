@@ -205,6 +205,8 @@ lingxia dev --release
 
 > **Note:** For standalone lxapp projects, `--device`, `--abis`, and non-macOS `--platform` are not supported. Runner currently launches locally on macOS.
 
+> **Driving a live session:** once `lingxia dev` is running, use the separate **`lxdev`** binary to automate the running app — open URLs, click/type/eval in browser tabs and lxapp pages, screenshot windows, and tail logs without restarting. See [`lxdev` — Drive a running dev session](./lxdev.md).
+
 ---
 
 ### `lingxia install`

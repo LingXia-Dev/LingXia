@@ -91,6 +91,7 @@ For the full surface of `lx.*` and which namespace covers what, see [`./lxapp/lx
 | Need | File |
 |---|---|
 | Every CLI command, flag, env var (daily use) | [`./cli/reference.md`](./cli/reference.md) |
+| Drive a running `lingxia dev` session (`lxdev`: browser/app/lxapp/logs automation) | [`./cli/lxdev.md`](./cli/lxdev.md) |
 | Page authoring: `Page({})`, `useLxPage`, events | [`./lxapp/guide.md`](./lxapp/guide.md) |
 | **Native components: `LxInput`, `LxVideo`, `LxMediaSwiper`, `LxPicker`, `LxNavigator`, `LxTextarea`** | [`./lxapp/components.md`](./lxapp/components.md) |
 | **Logic-side `lx.*` API surface map** | [`./lxapp/lx-api.md`](./lxapp/lx-api.md) |
