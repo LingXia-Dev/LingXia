@@ -82,8 +82,11 @@ if (rootProject.name == "lingxia-sdk") {
     extensions.configure<com.vanniktech.maven.publish.MavenPublishBaseExtension> {
     coordinates(sdkGroupId, sdkArtifactId, sdkVersion)
 
-    // Single-variant Android library: publish the "release" variant with a
-    // sources jar and a javadoc jar (Central rejects publications missing them).
+    // Single-variant Android library: build the "release" variant with a
+    // sources jar and a javadoc jar. The vanniktech plugin is used only to
+    // assemble this publication; it is published to the local "localExample"
+    // repo below (zipped into the GitHub release artifact) — never to Maven
+    // Central. The lingxia CLI downloads that zip and resolves the SDK from it.
     configure(
         AndroidSingleVariantLibrary(
             variant = "release",
@@ -91,44 +94,6 @@ if (rootProject.name == "lingxia-sdk") {
             publishJavadocJar = true,
         )
     )
-
-    // publishToMavenCentral() (no SonatypeHost arg) targets the Central Portal.
-    // Credentials come from the gradle properties
-    // ORG_GRADLE_PROJECT_mavenCentralUsername / ...Password (populated from env
-    // in CI). They are never hardcoded here.
-    publishToMavenCentral()
-
-    // Only sign when an in-memory signing key is configured. This keeps local
-    // builds (scripts/release/sdk.sh -> publishAllPublicationsToLocalExampleRepository)
-    // working without a GPG key, while CI signs with ORG_GRADLE_PROJECT_signingInMemoryKey.
-    if (project.findProperty("signingInMemoryKey") != null) {
-        signAllPublications()
-    }
-
-    // Central rejects incomplete POMs, so provide the full metadata.
-    pom {
-        name.set("LingXia")
-        description.set("LingXia Android SDK — embed LingXia lxapps in native Android apps.")
-        url.set("https://github.com/LingXia-Dev/LingXia")
-        licenses {
-            license {
-                name.set("MIT")
-                url.set("https://opensource.org/licenses/MIT")
-            }
-        }
-        developers {
-            developer {
-                id.set("LingXia-Dev")
-                name.set("LingXia-Dev")
-                url.set("https://github.com/LingXia-Dev")
-            }
-        }
-        scm {
-            url.set("https://github.com/LingXia-Dev/LingXia")
-            connection.set("scm:git:git://github.com/LingXia-Dev/LingXia.git")
-            developerConnection.set("scm:git:ssh://git@github.com/LingXia-Dev/LingXia.git")
-        }
-    }
     }
 }
 
