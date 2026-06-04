@@ -870,7 +870,7 @@ fn encode_sign_info(
     out.extend_from_slice(&(extension_num as u32).to_le_bytes());
     out.extend_from_slice(&(extension_offset as u32).to_le_bytes());
     out.extend_from_slice(signature);
-    out.extend(std::iter::repeat(0).take(zero_padding_len));
+    out.extend(std::iter::repeat_n(0, zero_padding_len));
     if let Some(extension) = extension {
         out.extend_from_slice(&extension);
     }
@@ -913,11 +913,7 @@ fn encode_native_lib_info_segment(entries: &[(String, Vec<u8>)]) -> Vec<u8> {
     let mut positions = Vec::new();
 
     let mut name_offset = header_len;
-    let mut sign_offset = header_len
-        + entries
-            .iter()
-            .map(|(name, _)| name.as_bytes().len())
-            .sum::<usize>();
+    let mut sign_offset = header_len + entries.iter().map(|(name, _)| name.len()).sum::<usize>();
     let sign_padding = (4 - sign_offset % 4) % 4;
     sign_offset += sign_padding;
 
@@ -929,7 +925,7 @@ fn encode_native_lib_info_segment(entries: &[(String, Vec<u8>)]) -> Vec<u8> {
         sign_infos.extend_from_slice(sign_info);
         sign_offset += sign_info.len();
     }
-    file_names.extend(std::iter::repeat(0).take(sign_padding));
+    file_names.extend(std::iter::repeat_n(0, sign_padding));
 
     let segment_size = 12 + positions.len() * 16 + file_names.len() + sign_infos.len();
     let mut out = Vec::with_capacity(segment_size);
@@ -1010,7 +1006,7 @@ fn encode_code_sign_block(
         out.extend_from_slice(&(offset as u32).to_le_bytes());
         out.extend_from_slice(&(size as u32).to_le_bytes());
     }
-    out.extend(std::iter::repeat(0).take(padding_len));
+    out.extend(std::iter::repeat_n(0, padding_len));
     out.extend_from_slice(hap_merkle_tree);
     out.extend_from_slice(fsverity_segment);
     out.extend_from_slice(hap_segment);

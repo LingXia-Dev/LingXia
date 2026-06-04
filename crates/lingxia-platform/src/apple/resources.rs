@@ -56,7 +56,7 @@ fn get_resource_bundles() -> &'static [Retained<NSBundle>] {
             let already_added = main_path.as_deref().is_some_and(|mp| {
                 bundles.iter().any(|b| {
                     let bp: Option<Retained<NSString>> = msg_send![b, bundlePath];
-                    bp.as_deref().map_or(false, |p| p == mp)
+                    bp.as_deref() == Some(mp)
                 })
             });
             if !already_added {
@@ -75,11 +75,10 @@ fn detect_app_bundle(main_bundle: &NSBundle, bundle_type: &NSString) -> Option<R
             msg_send![main_bundle, bundleIdentifier];
         if let Some(identifier) = bundle_identifier {
             let identifier_str = identifier.to_string();
-            if let Some(last_component) = identifier_str.split('.').next_back() {
-                if let Some(bundle) = try_find_spm_bundle(main_bundle, last_component, bundle_type)
-                {
-                    return Some(bundle);
-                }
+            if let Some(last_component) = identifier_str.split('.').next_back()
+                && let Some(bundle) = try_find_spm_bundle(main_bundle, last_component, bundle_type)
+            {
+                return Some(bundle);
             }
         }
 
@@ -87,10 +86,10 @@ fn detect_app_bundle(main_bundle: &NSBundle, bundle_type: &NSString) -> Option<R
         let cf_bundle_name_key = NSString::from_str("CFBundleName");
         let bundle_name: Option<Retained<NSString>> =
             msg_send![main_bundle, objectForInfoDictionaryKey: &*cf_bundle_name_key];
-        if let Some(name) = bundle_name {
-            if let Some(bundle) = try_find_spm_bundle(main_bundle, &name.to_string(), bundle_type) {
-                return Some(bundle);
-            }
+        if let Some(name) = bundle_name
+            && let Some(bundle) = try_find_spm_bundle(main_bundle, &name.to_string(), bundle_type)
+        {
+            return Some(bundle);
         }
 
         // Try 3: CFBundleExecutable based (e.g., LingXiaDemo → LingXiaDemo_LingXiaDemo)
@@ -98,10 +97,10 @@ fn detect_app_bundle(main_bundle: &NSBundle, bundle_type: &NSString) -> Option<R
         let cf_executable_key = NSString::from_str("CFBundleExecutable");
         let executable_name: Option<Retained<NSString>> =
             msg_send![main_bundle, objectForInfoDictionaryKey: &*cf_executable_key];
-        if let Some(name) = executable_name {
-            if let Some(bundle) = try_find_spm_bundle(main_bundle, &name.to_string(), bundle_type) {
-                return Some(bundle);
-            }
+        if let Some(name) = executable_name
+            && let Some(bundle) = try_find_spm_bundle(main_bundle, &name.to_string(), bundle_type)
+        {
+            return Some(bundle);
         }
 
         None
@@ -118,7 +117,7 @@ fn try_find_spm_bundle(
         let spm_bundle_name = format!("{}_{}", name, name);
         let bundle_name_ns = NSString::from_str(&spm_bundle_name);
         let bundle_path: Option<Retained<NSString>> =
-            msg_send![main_bundle, pathForResource: &*bundle_name_ns, ofType: &*bundle_type];
+            msg_send![main_bundle, pathForResource: &*bundle_name_ns, ofType: bundle_type];
 
         if let Some(path) = bundle_path {
             let resource_bundle: Option<Retained<NSBundle>> =

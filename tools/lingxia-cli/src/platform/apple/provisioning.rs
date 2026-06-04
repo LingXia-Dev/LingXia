@@ -1385,7 +1385,6 @@ fn apply_associated_domains_policy(
             "!".yellow(),
             missing.join(", ")
         );
-        return;
     }
 }
 

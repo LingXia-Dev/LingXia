@@ -170,13 +170,12 @@ impl JSUpdateManager {
     fn on_update_ready(&mut self, ctx: JSContext, cb: JSFunc) -> JSResult<()> {
         self.on_ready = Some(cb.clone());
         with_update_state(&ctx, |state| state.on_ready = Some(cb));
-        if let Some(payload) = take_pending_ready(&ctx) {
-            if let Some(ready_cb) = self.on_ready.as_ref()
-                && ready_cb.call::<_, ()>(None, (payload.clone(),)).is_err()
-            {
-                warn!("Flushing pending UpdateReady failed; keeping event pending");
-                with_update_state(&ctx, |state| state.pending_ready = Some(payload));
-            }
+        if let Some(payload) = take_pending_ready(&ctx)
+            && let Some(ready_cb) = self.on_ready.as_ref()
+            && ready_cb.call::<_, ()>(None, (payload.clone(),)).is_err()
+        {
+            warn!("Flushing pending UpdateReady failed; keeping event pending");
+            with_update_state(&ctx, |state| state.pending_ready = Some(payload));
         }
         Ok(())
     }
@@ -185,13 +184,12 @@ impl JSUpdateManager {
     fn on_update_failed(&mut self, ctx: JSContext, cb: JSFunc) -> JSResult<()> {
         self.on_failed = Some(cb.clone());
         with_update_state(&ctx, |state| state.on_failed = Some(cb));
-        if let Some(payload) = take_pending_failed(&ctx) {
-            if let Some(failed_cb) = self.on_failed.as_ref()
-                && failed_cb.call::<_, ()>(None, (payload.clone(),)).is_err()
-            {
-                warn!("Flushing pending UpdateFailed failed; keeping event pending");
-                with_update_state(&ctx, |state| state.pending_failed = Some(payload));
-            }
+        if let Some(payload) = take_pending_failed(&ctx)
+            && let Some(failed_cb) = self.on_failed.as_ref()
+            && failed_cb.call::<_, ()>(None, (payload.clone(),)).is_err()
+        {
+            warn!("Flushing pending UpdateFailed failed; keeping event pending");
+            with_update_state(&ctx, |state| state.pending_failed = Some(payload));
         }
         Ok(())
     }

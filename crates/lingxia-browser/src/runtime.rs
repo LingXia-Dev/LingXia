@@ -204,8 +204,8 @@ fn internal_page_target_for_url(startup_path: &str, url: &str) -> Option<Interna
         return None;
     }
     let host = url
-        .splitn(2, "://")
-        .nth(1)
+        .split_once("://")
+        .map(|x| x.1)
         .unwrap_or("")
         .split('/')
         .next()
@@ -617,8 +617,8 @@ fn is_lingxia_startup_url(url: &str) -> Option<bool> {
         return None;
     }
     let host = url
-        .splitn(2, "://")
-        .nth(1)
+        .split_once("://")
+        .map(|x| x.1)
         .unwrap_or("")
         .split('/')
         .next()
@@ -1406,13 +1406,11 @@ async fn browser_on_webview_ready(
         TabCreateState::Missing => {
             // Tab was closed while creation was in-flight.
             browser_destroy_webview(&path, session_id);
-            return;
         }
         TabCreateState::Stale => {
             // A newer create lifecycle already took ownership of this tab id.
             // Destroy the orphaned webview from this old create cycle.
             browser_destroy_webview(&path, session_id);
-            return;
         }
         TabCreateState::Active { pending_url } => {
             if let Some(url) = pending_url {
@@ -2490,7 +2488,7 @@ pub async fn browser_type_text(
 pub async fn browser_press(tab_id: &str, key: &str) -> Result<(), BrowserAutomationError> {
     prepare_browser_tab_for_input(tab_id).await?;
     browser_tab_webview(tab_id)?
-        .press(key, lingxia_webview::PressOptions::default())
+        .press(key, lingxia_webview::PressOptions)
         .await
         .map_err(BrowserAutomationError::from)
 }
@@ -2498,7 +2496,7 @@ pub async fn browser_press(tab_id: &str, key: &str) -> Result<(), BrowserAutomat
 pub async fn browser_scroll(tab_id: &str, dx: f64, dy: f64) -> Result<(), BrowserAutomationError> {
     prepare_browser_tab_for_input(tab_id).await?;
     browser_tab_webview(tab_id)?
-        .scroll(dx, dy, lingxia_webview::ScrollOptions::default())
+        .scroll(dx, dy, lingxia_webview::ScrollOptions)
         .await
         .map_err(BrowserAutomationError::from)
 }
@@ -2506,7 +2504,7 @@ pub async fn browser_scroll(tab_id: &str, dx: f64, dy: f64) -> Result<(), Browse
 pub async fn browser_scroll_to(tab_id: &str, selector: &str) -> Result<(), BrowserAutomationError> {
     prepare_browser_tab_for_input(tab_id).await?;
     browser_tab_webview(tab_id)?
-        .scroll_to(selector, lingxia_webview::ScrollOptions::default())
+        .scroll_to(selector, lingxia_webview::ScrollOptions)
         .await
         .map_err(BrowserAutomationError::from)
 }

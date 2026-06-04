@@ -103,7 +103,7 @@ public class RunnerApp {
     }
 
     private func resolveOpenPath(appId: String, requestedPath: String, sessionId: UInt64) -> String {
-        let created = createPageInstance(appId, requestedPath, sessionId, 0, "", -1)
+        let created = createPageInstance(appId, requestedPath, sessionId, 0, "")
         guard created.ok else {
             os_log(
                 "Runner createPageInstance rejected appId=%@ session=%{public}llu error=%@",

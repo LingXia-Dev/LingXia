@@ -169,7 +169,7 @@ fn expand_host(
     let is_async = input_fn.sig.asyncness.is_some();
     if options.blocking && is_async {
         return syn::Error::new_spanned(
-            &input_fn.sig.asyncness,
+            input_fn.sig.asyncness,
             "#[native(..., blocking)] is only supported on non-async functions",
         )
         .to_compile_error();

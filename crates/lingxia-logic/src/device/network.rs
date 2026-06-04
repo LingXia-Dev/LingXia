@@ -77,10 +77,11 @@ fn normalize_primary_ipv4(values: Vec<String>) -> Vec<String> {
     let mut normalized = BTreeSet::new();
     for value in values {
         let trimmed = value.trim();
-        if let Ok(ip) = trimmed.parse::<Ipv4Addr>() {
-            if !ip.is_loopback() && !ip.is_unspecified() {
-                normalized.insert(ip.to_string());
-            }
+        if let Ok(ip) = trimmed.parse::<Ipv4Addr>()
+            && !ip.is_loopback()
+            && !ip.is_unspecified()
+        {
+            normalized.insert(ip.to_string());
         }
     }
     normalized.into_iter().take(1).collect()
@@ -90,14 +91,13 @@ fn normalize_primary_ipv6(values: Vec<String>) -> Vec<String> {
     let mut normalized = BTreeSet::new();
     for value in values {
         let trimmed = value.trim();
-        if let Ok(ip) = trimmed.parse::<Ipv6Addr>() {
-            if !ip.is_loopback()
-                && !ip.is_unspecified()
-                && !ip.is_multicast()
-                && !ip.is_unicast_link_local()
-            {
-                normalized.insert(ip.to_string());
-            }
+        if let Ok(ip) = trimmed.parse::<Ipv6Addr>()
+            && !ip.is_loopback()
+            && !ip.is_unspecified()
+            && !ip.is_multicast()
+            && !ip.is_unicast_link_local()
+        {
+            normalized.insert(ip.to_string());
         }
     }
     normalized.into_iter().take(1).collect()

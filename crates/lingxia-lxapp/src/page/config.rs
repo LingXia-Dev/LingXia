@@ -8,19 +8,15 @@ use serde_json::Value;
 /// PageInstance orientation configuration
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum PageOrientation {
     /// Portrait orientation (vertical)
+    #[default]
     Portrait,
     /// Landscape orientation (horizontal)
     Landscape,
     /// Auto - follow device orientation
     Auto,
-}
-
-impl Default for PageOrientation {
-    fn default() -> Self {
-        Self::Portrait
-    }
 }
 
 /// App-level orientation configuration with optional 180-degree rotation.
@@ -269,7 +265,7 @@ fn path_to_json_path(path: &str) -> String {
     // Remove any extension on the last path segment
     if let Some(dot_pos) = trimmed.rfind('.') {
         let last_slash = trimmed.rfind('/');
-        if last_slash.map_or(true, |slash| dot_pos > slash) {
+        if last_slash.is_none_or(|slash| dot_pos > slash) {
             trimmed.truncate(dot_pos);
         }
     }

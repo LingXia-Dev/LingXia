@@ -125,24 +125,22 @@ impl LxApp {
 
         if let Some(src_pos) =
             find_ascii_case_insensitive(&html_str, "lx://assets/bridge-runtime.js")
-        {
-            if let Some(script_start) =
+            && let Some(script_start) =
                 find_ascii_case_insensitive_rev(&html_str[..src_pos], "<script")
-            {
-                let (before, after) = html_str.split_at(script_start);
-                return format!("{}{}\n{}", before, script_tag, after).into_bytes();
-            }
+        {
+            let (before, after) = html_str.split_at(script_start);
+            return format!("{}{}\n{}", before, script_tag, after).into_bytes();
         }
         if let Some(head_pos) = find_ascii_case_insensitive(&html_str, "</head>") {
             let (before, after) = html_str.split_at(head_pos);
             return format!("{}{}\n{}", before, script_tag, after).into_bytes();
         }
-        if let Some(body_pos) = find_ascii_case_insensitive(&html_str, "<body") {
-            if let Some(body_end) = html_str[body_pos..].find('>') {
-                let insert_pos = body_pos + body_end + 1;
-                let (before, after) = html_str.split_at(insert_pos);
-                return format!("{}{}\n{}", before, script_tag, after).into_bytes();
-            }
+        if let Some(body_pos) = find_ascii_case_insensitive(&html_str, "<body")
+            && let Some(body_end) = html_str[body_pos..].find('>')
+        {
+            let insert_pos = body_pos + body_end + 1;
+            let (before, after) = html_str.split_at(insert_pos);
+            return format!("{}{}\n{}", before, script_tag, after).into_bytes();
         }
 
         format!("{}\n{}", script_tag, html_str).into_bytes()
@@ -233,10 +231,10 @@ fn build_content_security_policy(trusted_domains: &[String]) -> String {
 fn build_connect_src_policy() -> String {
     #[cfg(any(target_os = "ios", target_os = "macos"))]
     {
-        return format!(
+        format!(
             "connect-src {}",
             lingxia_webview::platform::apple::BRIDGE_DOWNSTREAM_CSP_SOURCE
-        );
+        )
     }
 
     #[cfg(not(any(target_os = "ios", target_os = "macos")))]

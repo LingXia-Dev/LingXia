@@ -718,14 +718,14 @@ impl PageInstance {
 
     async fn handle_loaded_async(&self) {
         self.set_render_status(PageRenderStatus::Finished);
-        if !self.inner.page_scripts.is_empty() {
-            if let Some(webview) = self.webview() {
-                for js in &self.inner.page_scripts {
-                    if let Err(e) = webview.exec_js(js) {
-                        crate::error!("page script injection failed: {}", e)
-                            .with_appid(self.inner.appid.clone())
-                            .with_path(self.inner.path.clone());
-                    }
+        if !self.inner.page_scripts.is_empty()
+            && let Some(webview) = self.webview()
+        {
+            for js in &self.inner.page_scripts {
+                if let Err(e) = webview.exec_js(js) {
+                    crate::error!("page script injection failed: {}", e)
+                        .with_appid(self.inner.appid.clone())
+                        .with_path(self.inner.path.clone());
                 }
             }
         }
@@ -864,7 +864,7 @@ impl PageInstance {
         let mut target_page = target_page;
         let is_tabbar_page = lxapp
             .get_tabbar()
-            .map_or(false, |tabbar| tabbar.is_tabbar_page(&path));
+            .is_some_and(|tabbar| tabbar.is_tabbar_page(&path));
         let is_tab_switch = nav_type == NavigationType::SwitchTab
             || (nav_type == NavigationType::Launch && is_tabbar_page);
         let is_initial_route = path == lxapp.config.get_initial_route();
@@ -908,12 +908,12 @@ impl PageInstance {
 
         // 3. Handle UI state based on navigation type (TabBar, NavBar)
         lxapp.with_tabbar_mut(|t| t.set_visible(is_tab_switch));
-        if is_tab_switch {
-            if let Some(Some(index)) = lxapp.with_tabbar_mut(|t| t.find_index_by_path(&path)) {
-                lxapp.with_tabbar_mut(|t| {
-                    t.set_selected_index(index);
-                });
-            }
+        if is_tab_switch
+            && let Some(Some(index)) = lxapp.with_tabbar_mut(|t| t.find_index_by_path(&path))
+        {
+            lxapp.with_tabbar_mut(|t| {
+                t.set_selected_index(index);
+            });
         }
         lxapp.push_to_page_stack(&path)?;
 
@@ -1230,13 +1230,13 @@ mod tests {
 impl Drop for PageInstanceInner {
     fn drop(&mut self) {
         // Destroy WebView if it exists
-        if let Ok(mut webview) = self.webview.lock() {
-            if let Some(_webview_controller) = webview.take() {
-                // WebView will be automatically destroyed when controller is dropped
-                info!("WebView destroyed for page")
-                    .with_appid(self.appid.clone())
-                    .with_path(self.path.clone());
-            }
+        if let Ok(mut webview) = self.webview.lock()
+            && let Some(_webview_controller) = webview.take()
+        {
+            // WebView will be automatically destroyed when controller is dropped
+            info!("WebView destroyed for page")
+                .with_appid(self.appid.clone())
+                .with_path(self.path.clone());
         }
     }
 }

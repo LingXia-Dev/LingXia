@@ -148,10 +148,10 @@ fn cookie_set_properties(
 
     let mut keys: Vec<&NSHTTPCookiePropertyKey> = unsafe {
         vec![
-            &*NSHTTPCookieName,
-            &*NSHTTPCookieValue,
-            &*NSHTTPCookieOriginURL,
-            &*NSHTTPCookiePath,
+            NSHTTPCookieName,
+            NSHTTPCookieValue,
+            NSHTTPCookieOriginURL,
+            NSHTTPCookiePath,
         ]
     };
     let mut values: Vec<&AnyObject> =
@@ -160,7 +160,7 @@ fn cookie_set_properties(
     let secure;
     if request.secure {
         secure = NSString::from_str("TRUE");
-        keys.push(unsafe { &*NSHTTPCookieSecure });
+        keys.push(unsafe { NSHTTPCookieSecure });
         values.push(secure.as_ref());
     }
 
@@ -171,21 +171,21 @@ fn cookie_set_properties(
         .filter(|value| !value.trim().is_empty())
     {
         domain = NSString::from_str(&cookie_domain_attribute(request_domain));
-        keys.push(unsafe { &*NSHTTPCookieDomain });
+        keys.push(unsafe { NSHTTPCookieDomain });
         values.push(domain.as_ref());
     }
 
     let same_site;
     if let Some(request_same_site) = request.same_site {
         same_site = request_same_site.platform_value();
-        keys.push(unsafe { &*NSHTTPCookieSameSitePolicy });
+        keys.push(unsafe { NSHTTPCookieSameSitePolicy });
         values.push(same_site.as_ref());
     }
 
     let expires;
     if let Some(expires_unix_ms) = request.expires_unix_ms {
         expires = NSDate::dateWithTimeIntervalSince1970(expires_unix_ms as f64 / 1000.0);
-        keys.push(unsafe { &*NSHTTPCookieExpires });
+        keys.push(unsafe { NSHTTPCookieExpires });
         values.push(expires.as_ref());
     }
 
@@ -313,12 +313,12 @@ fn validate_cookie_set_request(request: &WebViewCookieSetRequest) -> Result<(), 
             )));
         }
     }
-    if let Some(domain) = request.domain.as_deref() {
-        if domain.chars().any(|c| c.is_ascii_control() || c == ';') {
-            return Err(WebViewError::WebView(
-                "cookie domain contains invalid characters".to_string(),
-            ));
-        }
+    if let Some(domain) = request.domain.as_deref()
+        && domain.chars().any(|c| c.is_ascii_control() || c == ';')
+    {
+        return Err(WebViewError::WebView(
+            "cookie domain contains invalid characters".to_string(),
+        ));
     }
     Ok(())
 }
@@ -2724,7 +2724,7 @@ impl WebViewController for WebViewInner {
                     }
                 })
                 .copy();
-            cookie_store.getAllCookies(&*completion);
+            cookie_store.getAllCookies(&completion);
         });
         rx.await
             .map_err(|_| WebViewError::WebView("cookie list request was canceled".to_string()))?
@@ -2842,7 +2842,7 @@ impl WebViewController for WebViewInner {
                     finish_cookie_delete_if_done(&delete_state_for_block);
                 })
                 .copy();
-            cookie_store.getAllCookies(&*completion);
+            cookie_store.getAllCookies(&completion);
         });
         rx.await
             .map_err(|_| WebViewError::WebView("cookie delete request was canceled".to_string()))?
@@ -2917,7 +2917,7 @@ impl WebViewController for WebViewInner {
                     finish_cookie_delete_if_done(&delete_state_for_block);
                 })
                 .copy();
-            cookie_store.getAllCookies(&*completion);
+            cookie_store.getAllCookies(&completion);
         });
         rx.await
             .map_err(|_| WebViewError::WebView("cookie clear request was canceled".to_string()))?

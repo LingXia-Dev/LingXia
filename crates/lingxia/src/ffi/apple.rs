@@ -827,7 +827,7 @@ pub fn on_surface_closed(appid: &str, id: &str, reason: &str) -> bool {
     }
     #[cfg(feature = "standard")]
     {
-        return lingxia_logic::notify_surface_closed(id, reason);
+        lingxia_logic::notify_surface_closed(id, reason)
     }
     #[cfg(not(feature = "standard"))]
     {

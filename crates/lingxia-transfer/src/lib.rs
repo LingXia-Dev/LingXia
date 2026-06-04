@@ -1,3 +1,7 @@
+// Download/upload persistence runs as detached background tasks spawned on the
+// executor; the join handle is intentionally dropped (fire-and-forget).
+#![allow(clippy::let_underscore_future)]
+
 mod download;
 mod upload;
 

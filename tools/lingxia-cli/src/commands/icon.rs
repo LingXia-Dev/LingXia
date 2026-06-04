@@ -193,18 +193,17 @@ fn resolve_icon_context(current_dir: &std::path::Path) -> Result<IconCommandCont
 
     if let Some(host_root) =
         platform::detector::find_host_project_root(current_dir, HOST_CONFIG_FILE)
+        && let Ok(inferred_platform) = platform::detector::detect_platform_type(current_dir)
     {
-        if let Ok(inferred_platform) = platform::detector::detect_platform_type(current_dir) {
-            let config = LingXiaConfig::load(&host_root).context(format!(
-                "Failed to load {} from the detected host project.",
-                HOST_CONFIG_FILE
-            ))?;
-            return Ok(IconCommandContext {
-                project_root: host_root,
-                config: Some(config),
-                inferred_platform: Some(inferred_platform),
-            });
-        }
+        let config = LingXiaConfig::load(&host_root).context(format!(
+            "Failed to load {} from the detected host project.",
+            HOST_CONFIG_FILE
+        ))?;
+        return Ok(IconCommandContext {
+            project_root: host_root,
+            config: Some(config),
+            inferred_platform: Some(inferred_platform),
+        });
     }
 
     if let Some(inferred_platform) =

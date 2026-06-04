@@ -232,7 +232,6 @@ impl PlatformLogger {
                 LxLogLevel::Error => OsLevel::Fault,
             };
             self.apple.with_level(level, &formatted);
-            return;
         }
 
         #[cfg(not(any(

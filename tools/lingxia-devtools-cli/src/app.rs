@@ -65,8 +65,8 @@ fn execute_windows(info: &SessionInfo, json: bool) -> Result<()> {
         return Ok(());
     }
     println!(
-        "{:<12}  {:<5}  {:<5}  {:<7}  {:<9}  {}",
-        "ID", "FOCUS", "MAIN", "VISIBLE", "SIZE", "TITLE"
+        "{:<12}  {:<5}  {:<5}  {:<7}  {:<9}  TITLE",
+        "ID", "FOCUS", "MAIN", "VISIBLE", "SIZE"
     );
     for win in array {
         let id = win.get("id").and_then(Value::as_str).unwrap_or("-");

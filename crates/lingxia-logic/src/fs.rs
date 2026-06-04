@@ -51,7 +51,7 @@ impl OpenFileMode {
             Some("external") => Ok(Self::External),
             Some(_) => Err(js_error_from_business_code_with_detail(
                 1002,
-                &format!("{api_name} requires mode to be auto, review, or external"),
+                format!("{api_name} requires mode to be auto, review, or external"),
             )),
         }
     }
@@ -85,7 +85,7 @@ fn resolve_open_file_request(
     if options.file_path.is_empty() {
         return Err(js_error_from_business_code_with_detail(
             1002,
-            &format!("{api_name} requires filePath"),
+            format!("{api_name} requires filePath"),
         ));
     }
 
@@ -295,7 +295,7 @@ impl ManagedPathKind {
     }
 }
 
-fn managed_root<'a>(lxapp: &'a LxApp, kind: ManagedPathKind) -> Option<&'a Path> {
+fn managed_root(lxapp: &LxApp, kind: ManagedPathKind) -> Option<&Path> {
     match kind {
         ManagedPathKind::Temp => None,
         ManagedPathKind::UserData => Some(&lxapp.user_data_dir),

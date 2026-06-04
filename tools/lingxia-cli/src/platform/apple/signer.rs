@@ -258,10 +258,8 @@ impl Signer {
                 match key.trim() {
                     "Identifier" => info.identifier = Some(value.to_string()),
                     "TeamIdentifier" => info.team_identifier = Some(value.to_string()),
-                    "Authority" => {
-                        if info.authority.is_none() {
-                            info.authority = Some(value.to_string());
-                        }
+                    "Authority" if info.authority.is_none() => {
+                        info.authority = Some(value.to_string());
                     }
                     "Signed Time" => info.signed_time = Some(value.to_string()),
                     _ => {}

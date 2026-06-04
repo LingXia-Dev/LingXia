@@ -771,11 +771,11 @@ fn get_total_storage_bytes() -> Result<u64, PlatformError> {
         let stdout = String::from_utf8_lossy(&output.stdout);
         for line in stdout.lines().skip(1) {
             let parts: Vec<&str> = line.split_whitespace().collect();
-            if parts.len() >= 2 {
-                if let Ok(kb) = parts[1].parse::<u64>() {
-                    let total_bytes = kb * 1024;
-                    return Ok(total_bytes);
-                }
+            if parts.len() >= 2
+                && let Ok(kb) = parts[1].parse::<u64>()
+            {
+                let total_bytes = kb * 1024;
+                return Ok(total_bytes);
             }
         }
 

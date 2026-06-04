@@ -398,13 +398,13 @@ impl JSVideoContext {
                 let should_autostart = (shared.play_requested.load(Ordering::Relaxed)
                     || shared.platform_playing.load(Ordering::Relaxed))
                     && !shared.stream_paused.load(Ordering::Relaxed);
-                if should_autostart {
-                    if let Err(err) = resume_stream_session_shared(&shared, &component_id) {
-                        warn!(
-                            "setStreamSource autostart failed component_id={} err={}",
-                            component_id, err
-                        );
-                    }
+                if should_autostart
+                    && let Err(err) = resume_stream_session_shared(&shared, &component_id)
+                {
+                    warn!(
+                        "setStreamSource autostart failed component_id={} err={}",
+                        component_id, err
+                    );
                 }
             });
         } else {
@@ -413,13 +413,11 @@ impl JSVideoContext {
             let should_autostart = (self.shared.play_requested.load(Ordering::Relaxed)
                 || self.shared.platform_playing.load(Ordering::Relaxed))
                 && !self.shared.stream_paused.load(Ordering::Relaxed);
-            if should_autostart {
-                if let Err(err) = self.resume_stream_session() {
-                    warn!(
-                        "setStreamSource autostart failed component_id={} err={}",
-                        self.component_id, err
-                    );
-                }
+            if should_autostart && let Err(err) = self.resume_stream_session() {
+                warn!(
+                    "setStreamSource autostart failed component_id={} err={}",
+                    self.component_id, err
+                );
             }
         }
 

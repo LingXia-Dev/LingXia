@@ -78,10 +78,10 @@ fn append_query(path: String, query: Option<&Value>) -> Result<String, LxAppErro
 fn normalize_tabbar_path(url: &str) -> String {
     let (path, _) = crate::startup::split_path_query(url);
     let mut trimmed = path.trim_start_matches('/').to_string();
-    if let Some(dot_pos) = trimmed.rfind('.') {
-        if trimmed.rfind('/').map_or(true, |slash| dot_pos > slash) {
-            trimmed.truncate(dot_pos);
-        }
+    if let Some(dot_pos) = trimmed.rfind('.')
+        && trimmed.rfind('/').is_none_or(|slash| dot_pos > slash)
+    {
+        trimmed.truncate(dot_pos);
     }
     trimmed
 }
@@ -152,16 +152,16 @@ host_api_async!(
 
         // Best-effort wait for the destination page's WebView to be ready, so view callers can
         // await navigation completion and reliably receive errors.
-        if let Some(dest_path) = lxapp.peek_current_page() {
-            if let Some(dest_page) = lxapp.get_page(&dest_path) {
-                await_or_cancel(&mut cancel, async {
-                    dest_page
-                        .wait_webview_ready()
-                        .await
-                        .map_err(LxAppError::WebView)
-                })
-                .await?;
-            }
+        if let Some(dest_path) = lxapp.peek_current_page()
+            && let Some(dest_page) = lxapp.get_page(&dest_path)
+        {
+            await_or_cancel(&mut cancel, async {
+                dest_page
+                    .wait_webview_ready()
+                    .await
+                    .map_err(LxAppError::WebView)
+            })
+            .await?;
         }
         Ok(())
     }

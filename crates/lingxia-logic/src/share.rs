@@ -239,7 +239,7 @@ fn app_link_env_version(lxapp: &LxApp) -> Option<&'static str> {
 }
 
 fn first_app_link_host() -> JSResult<String> {
-    let config = lingxia_app_context::app_config().ok_or_else(|| share_page_unsupported_error())?;
+    let config = lingxia_app_context::app_config().ok_or_else(share_page_unsupported_error)?;
     let host = config
         .app_links
         .as_ref()

@@ -207,10 +207,10 @@ fn persist_update_cache(
     let Some(path) = update_cache_path() else {
         return;
     };
-    if let Some(parent) = path.parent() {
-        if fs::create_dir_all(parent).is_err() {
-            return;
-        }
+    if let Some(parent) = path.parent()
+        && fs::create_dir_all(parent).is_err()
+    {
+        return;
     }
     let cache = UpdateCheckCache {
         checked_at_unix_secs: current_unix_secs(),

@@ -5,8 +5,10 @@ use std::sync::OnceLock;
 const DEFAULT_LOCALE: &str = "en";
 const SUPPORTED_LOCALES: &[&str] = &["en", "zh-Hans"];
 
-static CATALOG: OnceLock<std::result::Result<HashMap<String, HashMap<String, String>>, String>> =
-    OnceLock::new();
+/// locale -> (key -> message)
+type LocaleCatalog = HashMap<String, HashMap<String, String>>;
+
+static CATALOG: OnceLock<std::result::Result<LocaleCatalog, String>> = OnceLock::new();
 
 pub fn default_locale() -> &'static str {
     DEFAULT_LOCALE

@@ -1155,9 +1155,7 @@ fn find_launcher_activity_end(content: &str) -> Option<usize> {
             offset = start + "<activity".len();
             continue;
         }
-        let Some(relative_end) = content[start..].find("</activity>") else {
-            return None;
-        };
+        let relative_end = content[start..].find("</activity>")?;
         let end = start + relative_end;
         let block = &content[start..end];
         if block.contains("android.intent.action.MAIN")

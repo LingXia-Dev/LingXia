@@ -239,41 +239,38 @@ fn load_lxapp_build_config(project_root: &Path) -> Result<LxAppBuildConfig> {
         let Some(name) = property_name(&property.key) else {
             continue;
         };
-        match name.as_str() {
-            "staticDirs" => {
-                let Expression::ArrayExpression(array) = unwrap_expression(&property.value) else {
-                    bail!(
-                        "lxapp.config.ts staticDirs must be an array of root-relative directory strings"
-                    );
-                };
-                for element in &array.elements {
-                    let expression = match element {
-                        oxc_ast::ast::ArrayExpressionElement::SpreadElement(_)
-                        | oxc_ast::ast::ArrayExpressionElement::Elision(_) => {
-                            bail!(
-                                "lxapp.config.ts staticDirs must contain only root-relative directory strings"
-                            );
-                        }
-                        _ => unwrap_expression(element.to_expression()),
-                    };
-                    let Expression::StringLiteral(value) = expression else {
+        if name.as_str() == "staticDirs" {
+            let Expression::ArrayExpression(array) = unwrap_expression(&property.value) else {
+                bail!(
+                    "lxapp.config.ts staticDirs must be an array of root-relative directory strings"
+                );
+            };
+            for element in &array.elements {
+                let expression = match element {
+                    oxc_ast::ast::ArrayExpressionElement::SpreadElement(_)
+                    | oxc_ast::ast::ArrayExpressionElement::Elision(_) => {
                         bail!(
                             "lxapp.config.ts staticDirs must contain only root-relative directory strings"
                         );
-                    };
-                    let normalized =
-                        normalize_static_dir_entry(value.value.as_str()).ok_or_else(|| {
-                            anyhow!(
-                                "Invalid staticDirs entry in {}: {:?}",
-                                config_path.display(),
-                                value.value
-                            )
-                        })?;
-                    optional_static_dirs.remove(&normalized);
-                    static_dirs.insert(normalized);
-                }
+                    }
+                    _ => unwrap_expression(element.to_expression()),
+                };
+                let Expression::StringLiteral(value) = expression else {
+                    bail!(
+                        "lxapp.config.ts staticDirs must contain only root-relative directory strings"
+                    );
+                };
+                let normalized =
+                    normalize_static_dir_entry(value.value.as_str()).ok_or_else(|| {
+                        anyhow!(
+                            "Invalid staticDirs entry in {}: {:?}",
+                            config_path.display(),
+                            value.value
+                        )
+                    })?;
+                optional_static_dirs.remove(&normalized);
+                static_dirs.insert(normalized);
             }
-            _ => {}
         }
     }
 

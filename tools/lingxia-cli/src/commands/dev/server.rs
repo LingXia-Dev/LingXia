@@ -201,12 +201,11 @@ fn run_server(
                 let state = state.clone();
                 let stop_flag = stop_flag.clone();
                 thread::spawn(move || {
-                    if let Err(err) = handle_connection(stream, &writer, &state) {
-                        if !stop_flag.load(Ordering::Acquire)
-                            && !is_expected_websocket_shutdown_error(&err)
-                        {
-                            eprintln!("[lingxia dev] websocket connection failed: {err}");
-                        }
+                    if let Err(err) = handle_connection(stream, &writer, &state)
+                        && !stop_flag.load(Ordering::Acquire)
+                        && !is_expected_websocket_shutdown_error(&err)
+                    {
+                        eprintln!("[lingxia dev] websocket connection failed: {err}");
                     }
                 });
             }

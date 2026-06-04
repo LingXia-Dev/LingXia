@@ -153,11 +153,11 @@ impl JSVideoContext {
         let runtime = lxapp.runtime.clone();
         let shared = shared_state_for(&runtime, &component_id);
         let callback_id = VideoContextSharedState::register_callback(&shared, &component_id)?;
-        if !shared.callback_bound.swap(true, Ordering::AcqRel) {
-            if let Err(e) = runtime.set_player_callback(&component_id, callback_id) {
-                shared.callback_bound.store(false, Ordering::Release);
-                return Err(js_error_from_platform_error(&e));
-            }
+        if !shared.callback_bound.swap(true, Ordering::AcqRel)
+            && let Err(e) = runtime.set_player_callback(&component_id, callback_id)
+        {
+            shared.callback_bound.store(false, Ordering::Release);
+            return Err(js_error_from_platform_error(&e));
         }
         let handle = runtime
             .bind_player(&component_id)

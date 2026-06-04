@@ -510,36 +510,35 @@ pub async fn upload_file_with_behavior(
     let uploaded_bytes = match writer.await {
         Ok(Ok(uploaded_bytes)) => uploaded_bytes,
         Ok(Err(err)) => {
-            if err.error == UPLOAD_CANCELED_ERROR {
-                if let Some(Ok(response_value)) = response.take() {
-                    if !response_value.status.is_success() {
-                        let status_code = response_value.status.as_u16();
-                        let body = collect_response_body(response_value.body)
-                            .await
-                            .unwrap_or_default();
-                        let error = String::from_utf8_lossy(&body).trim().to_string();
-                        let failure = UploadFailure::new(
-                            UploadFailureKind::Server,
-                            request.url.clone(),
-                            if error.is_empty() {
-                                format!("http status {status_code}")
-                            } else {
-                                format!("http status {status_code}: {error}")
-                            },
-                            err.uploaded_bytes,
-                            total_bytes,
-                        );
-                        let _ = event_tx.send(UploadEvent::Failed {
-                            url: request.url.clone(),
-                            error: failure.error.clone(),
-                            uploaded_bytes: failure.uploaded_bytes,
-                            total_bytes,
-                        });
-                        drop(event_tx);
-                        let _ = forwarder.await;
-                        return Err(failure);
-                    }
-                }
+            if err.error == UPLOAD_CANCELED_ERROR
+                && let Some(Ok(response_value)) = response.take()
+                && !response_value.status.is_success()
+            {
+                let status_code = response_value.status.as_u16();
+                let body = collect_response_body(response_value.body)
+                    .await
+                    .unwrap_or_default();
+                let error = String::from_utf8_lossy(&body).trim().to_string();
+                let failure = UploadFailure::new(
+                    UploadFailureKind::Server,
+                    request.url.clone(),
+                    if error.is_empty() {
+                        format!("http status {status_code}")
+                    } else {
+                        format!("http status {status_code}: {error}")
+                    },
+                    err.uploaded_bytes,
+                    total_bytes,
+                );
+                let _ = event_tx.send(UploadEvent::Failed {
+                    url: request.url.clone(),
+                    error: failure.error.clone(),
+                    uploaded_bytes: failure.uploaded_bytes,
+                    total_bytes,
+                });
+                drop(event_tx);
+                let _ = forwarder.await;
+                return Err(failure);
             }
             let event = if err.error == UPLOAD_CANCELED_ERROR {
                 UploadEvent::Canceled {

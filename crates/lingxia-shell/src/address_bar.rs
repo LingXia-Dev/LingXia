@@ -101,10 +101,7 @@ fn resolve_browser_http_url(raw: &str, preferred_scheme: &str) -> Option<Browser
         return None;
     }
 
-    let authority = rest
-        .split(|c| matches!(c, '/' | '?' | '#'))
-        .next()
-        .unwrap_or_default();
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
     let host = extract_host_from_authority(authority)?;
     if host.trim().is_empty() || host.chars().any(|c| c.is_whitespace()) {
         return None;

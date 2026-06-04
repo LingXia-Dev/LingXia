@@ -719,7 +719,7 @@ impl PageSvc {
                 let payload_json = js_value_to_json_str(payload).map_err(|e: RpcError| {
                     RongJSError::from(HostError::new(
                         rong::error::E_INTERNAL,
-                        e.message.unwrap_or_else(|| e.code),
+                        e.message.unwrap_or(e.code),
                     ))
                 })?;
                 page.bridge()
@@ -741,7 +741,7 @@ impl PageSvc {
                 let result_json = js_value_to_json_str(result).map_err(|e: RpcError| {
                     RongJSError::from(HostError::new(
                         rong::error::E_INTERNAL,
-                        e.message.unwrap_or_else(|| e.code),
+                        e.message.unwrap_or(e.code),
                     ))
                 })?;
                 if let Some(sender) = tx.borrow_mut().take() {
@@ -791,7 +791,7 @@ impl PageSvc {
                 let payload_json = js_value_to_json_str(payload).map_err(|e| {
                     RongJSError::from(HostError::new(
                         rong::error::E_INTERNAL,
-                        e.message.unwrap_or_else(|| e.code),
+                        e.message.unwrap_or(e.code),
                     ))
                 })?;
                 let seq = {

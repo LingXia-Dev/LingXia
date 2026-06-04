@@ -623,6 +623,9 @@ fn collect_top_level_function_bindings<'a>(
     for (alias, target) in aliases {
         let cursor = target.as_str();
         let mut visited = HashSet::new();
+        // Resolves a single alias hop; the visited-set/while scaffold is kept
+        // for future cycle-safe chain walking.
+        #[allow(clippy::never_loop)]
         while visited.insert(cursor.to_string()) {
             if let Some(binding) = direct.get(cursor).copied() {
                 resolved.insert(alias.clone(), binding);

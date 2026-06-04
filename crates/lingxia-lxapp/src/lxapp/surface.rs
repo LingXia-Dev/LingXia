@@ -227,8 +227,7 @@ impl LxApp {
         self.state
             .lock()
             .ok()
-            .map(|state| state.surfaces.lock().unwrap().remove(id))
-            .flatten()
+            .and_then(|state| state.surfaces.lock().unwrap().remove(id))
             .is_some()
     }
 

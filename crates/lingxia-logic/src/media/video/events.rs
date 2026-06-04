@@ -73,10 +73,10 @@ pub(super) fn handle_player_event(
                 if let Ok(mut guard) = shared.last_stream_source.lock() {
                     *guard = None;
                 }
-                if let Ok(mut guard) = shared.callback_id.lock() {
-                    if let Some(callback_id) = guard.take() {
-                        remove_callback(callback_id);
-                    }
+                if let Ok(mut guard) = shared.callback_id.lock()
+                    && let Some(callback_id) = guard.take()
+                {
+                    remove_callback(callback_id);
                 }
                 shared.callback_bound.store(false, Ordering::Release);
                 // Unregister seek callback to prevent leak and stale closure
@@ -89,12 +89,10 @@ pub(super) fn handle_player_event(
             }
             // If a play intent was latched but the user cancels before configuring a source,
             // clear the pending intent so `setStreamSource()` doesn't autostart unexpectedly.
-            "pause" | "stop" | "ended" => {
-                if shared.play_requested.load(Ordering::Relaxed) {
-                    shared.platform_playing.store(false, Ordering::Relaxed);
-                    shared.play_requested.store(false, Ordering::Relaxed);
-                    shared.stream_paused.store(true, Ordering::Relaxed);
-                }
+            "pause" | "stop" | "ended" if shared.play_requested.load(Ordering::Relaxed) => {
+                shared.platform_playing.store(false, Ordering::Relaxed);
+                shared.play_requested.store(false, Ordering::Relaxed);
+                shared.stream_paused.store(true, Ordering::Relaxed);
             }
             _ => {}
         }
@@ -198,7 +196,6 @@ pub(super) fn handle_player_event(
                         component_id, err
                     );
                 }
-                return;
             }
         }
         "playing" => {
@@ -269,12 +266,11 @@ pub(super) fn handle_player_event(
                     .store((position * 1000.0).round() as u64, Ordering::Relaxed);
             }
             shared.platform_playing.store(false, Ordering::Relaxed);
-            if is_live {
-                if let Some(reason) = pause_reason {
-                    if reason != "user" {
-                        return;
-                    }
-                }
+            if is_live
+                && let Some(reason) = pause_reason
+                && reason != "user"
+            {
+                return;
             }
             shared.play_requested.store(false, Ordering::Relaxed);
             if !shared.stream_paused.swap(true, Ordering::Relaxed) {
@@ -318,10 +314,10 @@ pub(super) fn handle_player_event(
             if let Ok(mut guard) = shared.last_stream_source.lock() {
                 *guard = None;
             }
-            if let Ok(mut guard) = shared.callback_id.lock() {
-                if let Some(callback_id) = guard.take() {
-                    remove_callback(callback_id);
-                }
+            if let Ok(mut guard) = shared.callback_id.lock()
+                && let Some(callback_id) = guard.take()
+            {
+                remove_callback(callback_id);
             }
             shared.callback_bound.store(false, Ordering::Release);
             // Unregister seek callback to prevent leak and stale closure.

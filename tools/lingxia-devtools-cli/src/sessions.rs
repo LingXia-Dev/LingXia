@@ -32,8 +32,8 @@ pub fn execute_list(project_root: &Path, json_output: bool) -> Result<()> {
     }
 
     println!(
-        "{:<36}  {:<5}  {:<8}  {:<19}  {:<22}  {}",
-        "ID", "STATE", "PLATFORM", "STARTED", "WS", "PID"
+        "{:<36}  {:<5}  {:<8}  {:<19}  {:<22}  PID",
+        "ID", "STATE", "PLATFORM", "STARTED", "WS"
     );
     for info in &sessions {
         let state = if project::is_stale(info) {

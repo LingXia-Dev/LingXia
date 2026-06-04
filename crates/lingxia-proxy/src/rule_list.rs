@@ -115,10 +115,10 @@ impl Rules {
             {
                 continue;
             }
-            if let Some(domain) = extract_domain(line) {
-                if !domain.is_empty() {
-                    suffixes.insert(domain.to_ascii_lowercase());
-                }
+            if let Some(domain) = extract_domain(line)
+                && !domain.is_empty()
+            {
+                suffixes.insert(domain.to_ascii_lowercase());
             }
         }
         Self { suffixes }

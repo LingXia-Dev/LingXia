@@ -130,14 +130,13 @@ async fn handle_app_service_event(
             | AppServiceEvent::OnShow
             | AppServiceEvent::OnHide
             | AppServiceEvent::OnUserCaptureScreen
-    ) {
-        if let Err(e) = svc.call_event(ctx, event, args.clone()).await {
-            error!(
-                "[Worker {}] App service event '{}' failed, Error: {}",
-                worker_id, event, e
-            )
-            .with_appid(appid);
-        }
+    ) && let Err(e) = svc.call_event(ctx, event, args.clone()).await
+    {
+        error!(
+            "[Worker {}] App service event '{}' failed, Error: {}",
+            worker_id, event, e
+        )
+        .with_appid(appid);
     }
 }
 
@@ -195,7 +194,7 @@ async fn eval_logic_script(ctx: &JSContext, script: &str) -> Result<String, LxAp
         .eval_async::<JSValue>(Source::from_bytes(expression))
         .await
     {
-        Ok(value) => return js_value_to_json_string(value),
+        Ok(value) => js_value_to_json_string(value),
         Err(expression_error) if script_may_be_function_body(script, &expression_error) => {
             let body = format!(
                 r#"(async () => {{

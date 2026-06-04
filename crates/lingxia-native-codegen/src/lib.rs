@@ -151,12 +151,12 @@ fn scan(src_dir: &Path) -> Result<NativeManifest> {
         let ast = syn::parse_file(&source).with_context(|| format!("parse {}", file.display()))?;
 
         for item in &ast.items {
-            if let syn::Item::Fn(item_fn) = item {
-                if let Some((route, kind)) = parse_attr(&item_fn.attrs) {
-                    manifest
-                        .routes
-                        .push(extract_route_info(&route, kind, item_fn));
-                }
+            if let syn::Item::Fn(item_fn) = item
+                && let Some((route, kind)) = parse_attr(&item_fn.attrs)
+            {
+                manifest
+                    .routes
+                    .push(extract_route_info(&route, kind, item_fn));
             }
             if let syn::Item::Struct(item_struct) = item {
                 let fields = extract_struct_fields(item_struct);
