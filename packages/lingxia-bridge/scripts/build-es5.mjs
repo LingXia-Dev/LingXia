@@ -53,6 +53,9 @@ function runRolldown() {
       {
         cwd: packageDir,
         stdio: "inherit",
+        // On Windows the .bin entry is rolldown.cmd; route through the shell so
+        // it resolves (node's spawn can't exec a .cmd directly -> spawn EINVAL).
+        shell: process.platform === "win32",
         env: {
           ...process.env,
           LX_RUNTIME_PLATFORM: "mobile",
@@ -89,6 +92,8 @@ function runTsc() {
       {
         cwd: distDir,
         stdio: "inherit",
+        // tsc on Windows is tsc.cmd; route through the shell (see above).
+        shell: process.platform === "win32",
         env: process.env,
       },
     );

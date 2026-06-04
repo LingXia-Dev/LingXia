@@ -44,6 +44,9 @@ function runRolldown() {
       {
         cwd: packageDir,
         stdio: "inherit",
+        // On Windows the .bin entry is rolldown.cmd; route through the shell so
+        // it resolves (node's spawn can't exec a .cmd directly -> spawn EINVAL).
+        shell: process.platform === "win32",
         env: {
           ...process.env,
           RUNTIME_OUTPUT: path.basename(tempFile),
