@@ -155,11 +155,11 @@ pub fn unregister_page_handler(ctx: &JSContext, page_path: &str, event_name: &st
     }
     let registry = ctx.runtime().get_or_init_service::<EventBusRegistry>();
     registry.handlers.borrow_mut().retain(|scope, entries| {
-        if let Scope::PageInstance(path) = scope {
-            if path == page_path {
-                entries.retain(|h| h.event_name != event_name);
-                return !entries.is_empty();
-            }
+        if let Scope::PageInstance(path) = scope
+            && path == page_path
+        {
+            entries.retain(|h| h.event_name != event_name);
+            return !entries.is_empty();
         }
         true
     });

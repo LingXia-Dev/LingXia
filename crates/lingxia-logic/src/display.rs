@@ -71,7 +71,7 @@ fn on_device_orientation_change(ctx: JSContext, callback: JSFunc) -> JSResult<()
     };
 
     let value = normalize_orientation_value(current.to_label())
-        .ok_or_else(|| js_invalid_parameter_error("Current orientation unavailable".to_string()))?;
+        .ok_or_else(|| js_invalid_parameter_error("Current orientation unavailable"))?;
 
     let callback_for_initial = callback.clone();
     register_app_handler(&ctx, DEVICE_ORIENTATION_CHANGE_EVENT, callback)?;

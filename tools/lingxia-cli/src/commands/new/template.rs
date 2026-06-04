@@ -37,14 +37,14 @@ pub fn process_template_dir(
 
         // Skip framework-specific files that don't match the selected framework.
         // .vue files → Vue only; .tsx files → React only.
-        if let Some(framework) = vars.get("FRAMEWORK").map(|s| s.as_str()) {
-            if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-                if ext == "vue" && framework != "vue" {
-                    continue;
-                }
-                if ext == "tsx" && framework != "react" {
-                    continue;
-                }
+        if let Some(framework) = vars.get("FRAMEWORK").map(|s| s.as_str())
+            && let Some(ext) = path.extension().and_then(|e| e.to_str())
+        {
+            if ext == "vue" && framework != "vue" {
+                continue;
+            }
+            if ext == "tsx" && framework != "react" {
+                continue;
             }
         }
 

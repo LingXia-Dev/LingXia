@@ -34,10 +34,10 @@ fn pick_and_scan(scan_types: &[ScanType]) -> Result<Option<(String, String)>, Pl
 
     for result in &results {
         let format = result.getBarcodeFormat();
-        if hints.is_empty() || hints.contains(&format) {
+        if hints.is_empty() || hints.contains(format) {
             return Ok(Some((
                 result.getText().to_string(),
-                format_to_type_string(&format),
+                format_to_type_string(format),
             )));
         }
     }

@@ -89,6 +89,10 @@ impl GrandSlamClient {
         device_info: &DeviceInfo,
         _anisette: &AnisetteData,
     ) -> Result<&GrandSlamEndpoints> {
+        // `if let` here would extend the borrow of self.endpoints across the
+        // whole fn (the returned &ref ties to self), conflicting with the
+        // assignment below — so the is_some()/unwrap() split is intentional.
+        #[allow(clippy::unnecessary_unwrap)]
         if self.endpoints.is_some() {
             return Ok(self.endpoints.as_ref().unwrap());
         }

@@ -86,7 +86,7 @@ async fn show_toast(ctx: JSContext, options: JSToastOptions) -> JSResult<()> {
             .await
             .map_err(|e| js_internal_error(format!("WebView toast failed: {}", e)))?;
 
-        return Ok(());
+        Ok(())
     }
 
     #[cfg(not(target_os = "macos"))]
@@ -117,7 +117,7 @@ async fn hide_toast(ctx: JSContext) -> JSResult<()> {
             .await
             .map_err(|e| js_internal_error(format!("WebView hideToast failed: {}", e)))?;
 
-        return Ok(());
+        Ok(())
     }
 
     #[cfg(not(target_os = "macos"))]

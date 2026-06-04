@@ -850,7 +850,7 @@ fn validate_permission_key_sets(permission_cli_dir: &Path) -> Result<()> {
     for entry in fs::read_dir(permission_cli_dir)? {
         let entry = entry?;
         let path = entry.path();
-        if !path.extension().is_some_and(|ext| ext == "yaml") {
+        if path.extension().is_none_or(|ext| ext != "yaml") {
             continue;
         }
         let locale = path

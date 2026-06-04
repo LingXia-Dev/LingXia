@@ -1,0 +1,3 @@
+# FFI bridge declarations and builder-style functions legitimately take many
+# arguments; raise the threshold rather than annotate each one.
+too-many-arguments-threshold = 16

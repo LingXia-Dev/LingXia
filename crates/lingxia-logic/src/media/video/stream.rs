@@ -280,10 +280,10 @@ pub(super) fn seek_stream_session_sync_shared(
         .store((position * 1000.0).round() as u64, Ordering::Relaxed);
 
     // Flush decoder (now safe - no session lock held)
-    if let Ok(decoder_lock) = shared.stream_decoder.lock() {
-        if let Some(decoder) = decoder_lock.as_ref() {
-            let _ = decoder.flush();
-        }
+    if let Ok(decoder_lock) = shared.stream_decoder.lock()
+        && let Some(decoder) = decoder_lock.as_ref()
+    {
+        let _ = decoder.flush();
     }
 
     // Stream seek successful. On Harmony, the stream decoder doesn't emit seekDone

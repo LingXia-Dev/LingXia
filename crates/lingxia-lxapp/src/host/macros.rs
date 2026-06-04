@@ -17,6 +17,7 @@ macro_rules! host_api {
                     let $param: $input = $crate::host::parse_input(input.as_deref())?;
                     // Wrap in a closure so `return` inside `$body` returns from the closure,
                     // not from this async block (which must return JSON string).
+                    #[allow(clippy::redundant_closure_call)]
                     let result: Result<$output, $crate::LxAppError> = (|| $body)();
                     $crate::host::serialize_result(result)
                 })

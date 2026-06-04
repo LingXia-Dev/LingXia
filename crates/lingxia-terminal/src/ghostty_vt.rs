@@ -464,6 +464,7 @@ unsafe extern "C" {
     ///   - `WritePty`: host callback function pointer
     ///   - color knobs (FG/BG/CURSOR): pointer to a single `GhosttyColorRgb`
     ///   - palette: pointer to `GhosttyColorRgb[256]`
+    ///
     /// Passing `value = NULL` clears the override and restores the
     /// built-in defaults where supported.
     pub fn ghostty_terminal_set(
@@ -562,6 +563,8 @@ pub struct ThemeColors {
 
 impl ThemeColors {
     /// Build a 256-color palette from a 16-entry ANSI base.
+    // Index-keyed palette math (the loop index *is* the color index).
+    #[allow(clippy::manual_memcpy, clippy::needless_range_loop)]
     pub fn from_ansi16(fg: [u8; 3], bg: [u8; 3], ansi16: [[u8; 3]; 16]) -> Self {
         let mut palette = [[0u8; 3]; 256];
         for i in 0..16 {

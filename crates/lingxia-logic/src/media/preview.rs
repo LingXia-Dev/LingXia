@@ -84,7 +84,7 @@ impl AbortListener {
 }
 
 pub fn init(ctx: &JSContext) -> JSResult<()> {
-    let preview_media_func = JSFunc::new(ctx, |ctx, options| preview_media(ctx, options))?;
+    let preview_media_func = JSFunc::new(ctx, preview_media)?;
     lx::register_js_api(ctx, "previewMedia", preview_media_func)?;
     Ok(())
 }
@@ -108,10 +108,10 @@ fn preview_media(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
     } = parsed;
 
     // Early-abort: build a handle whose Promises are pre-settled.
-    if let Some(signal_obj) = signal.as_ref() {
-        if signal_obj.get::<_, bool>("aborted").unwrap_or(false) {
-            return build_pre_aborted_handle(&ctx);
-        }
+    if let Some(signal_obj) = signal.as_ref()
+        && signal_obj.get::<_, bool>("aborted").unwrap_or(false)
+    {
+        return build_pre_aborted_handle(&ctx);
     }
 
     let (abort_listener, abort_rx) = match signal {

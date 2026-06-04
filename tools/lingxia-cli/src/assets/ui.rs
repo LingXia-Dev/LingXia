@@ -82,23 +82,22 @@ fn root_surface_id(ui: &Map<String, Value>) -> Result<String> {
         .and_then(Value::as_str)
         .map(str::trim)
         .filter(|id| !id.is_empty());
-    if let Some(initial_surface) = initial_surface {
-        if surface_is_root(surfaces, initial_surface) {
-            return Ok(initial_surface.to_string());
-        }
+    if let Some(initial_surface) = initial_surface
+        && surface_is_root(surfaces, initial_surface)
+    {
+        return Ok(initial_surface.to_string());
     }
 
     for surface in surfaces {
-        if surface_is_root_value(surface) {
-            if let Some(id) = surface
+        if surface_is_root_value(surface)
+            && let Some(id) = surface
                 .as_object()
                 .and_then(|surface| surface.get("id"))
                 .and_then(Value::as_str)
                 .map(str::trim)
                 .filter(|id| !id.is_empty())
-            {
-                return Ok(id.to_string());
-            }
+        {
+            return Ok(id.to_string());
         }
     }
 

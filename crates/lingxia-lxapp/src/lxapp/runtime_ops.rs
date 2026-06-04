@@ -16,7 +16,7 @@ pub fn ensure_builtin_lxapp(appid: &str) -> Result<Arc<LxApp>, LxAppError> {
     }
     if !matches!(
         lxapp_bundle_source_for(appid),
-        Some(LxAppBundleSource::BuiltinAssets { .. } | LxAppBundleSource::Synthetic)
+        Some(LxAppBundleSource::BuiltinAssets | LxAppBundleSource::Synthetic)
     ) {
         return Err(LxAppError::ResourceNotFound(format!(
             "builtin lxapp source not registered: {appid}"

@@ -128,7 +128,7 @@ pub fn compress_image_desktop(request: &CompressImageRequest) -> Result<PathBuf,
     let output_file = File::create(&request.output_path)
         .map_err(|e| PlatformError::Platform(format!("Failed to create output file: {}", e)))?;
 
-    let quality = request.quality.clamp(1, 100) as u8;
+    let quality = request.quality.clamp(1, 100);
     let mut encoder = JpegEncoder::new_with_quality(output_file, quality);
 
     encoder

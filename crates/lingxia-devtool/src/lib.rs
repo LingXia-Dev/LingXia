@@ -118,7 +118,7 @@ fn log_connect_failure(attempt: u32, err: &WsError) {
             "Failed to connect devtool websocket; retrying in background: {}",
             err
         );
-    } else if attempt % 12 == 0 {
+    } else if attempt.is_multiple_of(12) {
         log::warn!(
             "Still unable to connect devtool websocket after {} attempts: {}",
             attempt,
@@ -303,10 +303,7 @@ fn parse_wire_message(message: Message) -> Result<Option<DevtoolsWireMessage>, S
 }
 
 fn configure_read_timeout(websocket: &mut WebSocket<MaybeTlsStream<std::net::TcpStream>>) {
-    match websocket.get_mut() {
-        MaybeTlsStream::Plain(stream) => {
-            let _ = stream.set_read_timeout(Some(Duration::from_millis(100)));
-        }
-        _ => {}
+    if let MaybeTlsStream::Plain(stream) = websocket.get_mut() {
+        let _ = stream.set_read_timeout(Some(Duration::from_millis(100)));
     }
 }

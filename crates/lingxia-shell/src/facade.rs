@@ -24,8 +24,8 @@ fn is_lingxia_startup_url(url: &str) -> Option<bool> {
         return None;
     }
     let host = url
-        .splitn(2, "://")
-        .nth(1)
+        .split_once("://")
+        .map(|x| x.1)
         .unwrap_or("")
         .split('/')
         .next()

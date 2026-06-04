@@ -1,3 +1,7 @@
+// Update work runs as detached background tasks on the executor; the join
+// handle is intentionally dropped (fire-and-forget).
+#![allow(clippy::let_underscore_future)]
+
 use bytes::Bytes;
 use http::Request;
 use http_body_util::{BodyExt, Empty};

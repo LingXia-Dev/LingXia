@@ -90,10 +90,10 @@ fn ensure_page_exists_js(lxapp: &LxApp, url: &str) -> JSResult<()> {
 fn normalize_tabbar_path(url: &str) -> String {
     let (path, _) = startup::split_path_query(url);
     let mut trimmed = path.trim_start_matches('/').to_string();
-    if let Some(dot_pos) = trimmed.rfind('.') {
-        if trimmed.rfind('/').map_or(true, |slash| dot_pos > slash) {
-            trimmed.truncate(dot_pos);
-        }
+    if let Some(dot_pos) = trimmed.rfind('.')
+        && trimmed.rfind('/').is_none_or(|slash| dot_pos > slash)
+    {
+        trimmed.truncate(dot_pos);
     }
     trimmed
 }

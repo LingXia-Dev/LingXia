@@ -71,15 +71,16 @@ impl LxAppDelegate for LxApp {
         let was_already_opened = self.is_opened();
 
         // When switching to this app, hide the previously active app (if any).
-        if !previous_appid.is_empty() && previous_appid != self.appid {
-            if let Some(previous) = lxapp::try_get(&previous_appid) {
-                let args = crate::lifecycle::AppServiceEventArgs {
-                    source: crate::lifecycle::AppServiceEventSource::Lxapp,
-                    reason: crate::lifecycle::AppServiceEventReason::SwitchAway,
-                }
-                .to_json_string();
-                let _ = previous.appservice_notify(AppServiceEvent::OnHide, Some(args));
+        if !previous_appid.is_empty()
+            && previous_appid != self.appid
+            && let Some(previous) = lxapp::try_get(&previous_appid)
+        {
+            let args = crate::lifecycle::AppServiceEventArgs {
+                source: crate::lifecycle::AppServiceEventSource::Lxapp,
+                reason: crate::lifecycle::AppServiceEventReason::SwitchAway,
             }
+            .to_json_string();
+            let _ = previous.appservice_notify(AppServiceEvent::OnHide, Some(args));
         }
 
         // Move this app to the top of the navigation stack.
@@ -157,10 +158,10 @@ impl LxAppDelegate for LxApp {
         let _ = self.appservice_notify(AppServiceEvent::OnShow, args_str);
         self.trigger_home_update_check_once();
 
-        if self.has_pending_restart_request() {
-            if let Err(e) = self.restart() {
-                error!("Deferred restart after open failed: {}", e).with_appid(self.appid.clone());
-            }
+        if self.has_pending_restart_request()
+            && let Err(e) = self.restart()
+        {
+            error!("Deferred restart after open failed: {}", e).with_appid(self.appid.clone());
         }
 
         resolved_path

@@ -705,6 +705,7 @@ fn parse_position(obj: &JSObject, kind: SurfaceKind) -> JSResult<SurfacePosition
     }
 }
 
+#[allow(clippy::type_complexity)]
 fn parse_size(
     obj: &JSObject,
     kind: SurfaceKind,

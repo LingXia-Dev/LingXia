@@ -622,13 +622,13 @@ fn find_single_app_bundle(
         )));
     };
 
-    Ok(fs::canonicalize(&selected).map_err(|e| {
+    fs::canonicalize(&selected).map_err(|e| {
         PlatformError::Platform(format!(
             "Failed to resolve extracted app bundle {}: {}",
             selected.display(),
             e
         ))
-    })?)
+    })
 }
 
 #[cfg(target_os = "macos")]

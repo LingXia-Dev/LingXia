@@ -461,7 +461,7 @@ pub fn execute(info: &SessionInfo, options: BrowserOptions) -> Result<()> {
             selector,
             full,
             max_text,
-            json,
+            json: _,
         } => {
             let data = client::execute_command(
                 ws_url,
@@ -474,11 +474,8 @@ pub fn execute(info: &SessionInfo, options: BrowserOptions) -> Result<()> {
                 })),
             )?
             .unwrap_or(Value::Null);
-            if json {
-                print_json(&data, false)?;
-            } else {
-                print_json(&data, false)?;
-            }
+            // This command always emits JSON regardless of --json.
+            print_json(&data, false)?;
         }
         BrowserCommand::Wait {
             tab,

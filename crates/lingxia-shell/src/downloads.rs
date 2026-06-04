@@ -112,7 +112,7 @@ fn map_downloads_error(err: DownloadsError) -> LxAppError {
 
 #[lingxia::native("downloads.list")]
 fn list_downloads(app: Arc<LxApp>) -> HostResult<DownloadsSnapshot> {
-    Ok(lingxia_service::downloads::snapshot(&app.app_data_dir()).map_err(map_downloads_error)?)
+    lingxia_service::downloads::snapshot(&app.app_data_dir()).map_err(map_downloads_error)
 }
 
 #[lingxia::native("downloads.clearCompleted")]

@@ -305,14 +305,14 @@ impl LxApp {
         uri: &Uri,
     ) -> Result<String, LxAppError> {
         let decoded_path = lx_uri::decode_lx_path(uri.path());
-        if Path::new(&decoded_path).is_absolute() {
-            if let Ok(local_path) = self.resolve_accessible_path(&decoded_path) {
-                let relative = local_path
-                    .strip_prefix(&self.lxapp_dir)
-                    .map(|path| path.to_string_lossy().replace('\\', "/"))
-                    .unwrap_or_else(|_| decoded_path.trim_start_matches('/').to_string());
-                return Ok(relative);
-            }
+        if Path::new(&decoded_path).is_absolute()
+            && let Ok(local_path) = self.resolve_accessible_path(&decoded_path)
+        {
+            let relative = local_path
+                .strip_prefix(&self.lxapp_dir)
+                .map(|path| path.to_string_lossy().replace('\\', "/"))
+                .unwrap_or_else(|_| decoded_path.trim_start_matches('/').to_string());
+            return Ok(relative);
         }
         let raw_path = decoded_path.trim_start_matches('/');
         // Support both:

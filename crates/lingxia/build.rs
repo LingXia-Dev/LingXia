@@ -50,6 +50,16 @@ fn should_generate_swift_bridge(target: &str) -> bool {
         .exists()
 }
 
+// Swift bridge generation relies on `swift_bridge_build`, an apple-host-only
+// build dependency. The build script compiles for the *host*, so on non-apple
+// hosts (e.g. a Linux CI runner cross-building the lib for Android) this stub
+// keeps build.rs compiling. It is never reached for non-apple targets, since
+// should_generate_swift_bridge() requires `target.contains("apple")`.
+#[cfg(not(any(target_os = "ios", target_os = "macos")))]
+fn generate_swift_bridge() {
+    unreachable!("Swift bridge generation is only supported on macOS/iOS hosts");
+}
+
 #[cfg(any(target_os = "ios", target_os = "macos"))]
 fn generate_swift_bridge() {
     println!("cargo:rerun-if-changed=src/ffi/apple.rs");
@@ -75,12 +85,11 @@ fn generate_swift_bridge() {
             .join(format!("{}.swift", package_name)),
         temp_dir.join("SwiftBridgeCore.swift"),
     ] {
-        if let Ok(content) = fs::read_to_string(&path) {
-            if !content.contains("import CLingXiaRustAPI") {
-                let new_content =
-                    format!("import Foundation\nimport CLingXiaRustAPI\n\n{}", content);
-                write_if_changed(&path, new_content.as_bytes());
-            }
+        if let Ok(content) = fs::read_to_string(&path)
+            && !content.contains("import CLingXiaRustAPI")
+        {
+            let new_content = format!("import Foundation\nimport CLingXiaRustAPI\n\n{}", content);
+            write_if_changed(&path, new_content.as_bytes());
         }
     }
 
@@ -125,6 +134,7 @@ fn generate_swift_bridge() {
     );
 }
 
+#[cfg(any(target_os = "ios", target_os = "macos"))]
 fn write_if_changed(path: &Path, contents: &[u8]) {
     match fs::read(path) {
         Ok(existing) if existing == contents => return,
@@ -137,6 +147,7 @@ fn write_if_changed(path: &Path, contents: &[u8]) {
     fs::write(path, contents).expect("Failed to write generated file");
 }
 
+#[cfg(any(target_os = "ios", target_os = "macos"))]
 fn copy_if_changed(source: &Path, destination: &Path) {
     let source_bytes = fs::read(source)
         .unwrap_or_else(|_| panic!("Failed to read generated source file {}", source.display()));

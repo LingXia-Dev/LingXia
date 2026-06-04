@@ -23,13 +23,14 @@ fn update_current_navbar(
         .ok_or_else(|| js_service_unavailable_error("No current page found"))?;
 
     let updated = mutator(&lxapp, &current_path);
-    if updated && is_navbar_visible(&lxapp, &current_path) {
-        if let Err(e) = lxapp.runtime.update_navbar_ui(lxapp.appid.clone()) {
-            return Err(js_internal_error(format!(
-                "Failed to update navbar UI: {}",
-                e
-            )));
-        }
+    if updated
+        && is_navbar_visible(&lxapp, &current_path)
+        && let Err(e) = lxapp.runtime.update_navbar_ui(lxapp.appid.clone())
+    {
+        return Err(js_internal_error(format!(
+            "Failed to update navbar UI: {}",
+            e
+        )));
     }
     Ok(updated)
 }

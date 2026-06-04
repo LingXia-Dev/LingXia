@@ -432,7 +432,7 @@ pub async fn lxapp_dev_page_press(
     let (page, _) = resolve_dev_page(&app, page_name)?;
     page.webview()
         .ok_or_else(|| "page WebView is not ready".to_string())?
-        .press(key, lingxia_webview::PressOptions::default())
+        .press(key, lingxia_webview::PressOptions)
         .await
         .map_err(|err| err.to_string())
 }

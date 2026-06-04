@@ -738,7 +738,7 @@ fn ensure_sdk_resource_bundles_at_app_root(bin_dir: &Path, app_bundle: &Path) ->
     for entry in fs::read_dir(bin_dir)? {
         let entry = entry?;
         let path = entry.path();
-        if !path.extension().is_some_and(|e| e == "bundle") {
+        if path.extension().is_none_or(|e| e != "bundle") {
             continue;
         }
         let Some(bundle_name) = path.file_name() else {
@@ -767,7 +767,7 @@ fn sync_primary_spm_resources_to_app_root(bin_dir: &Path, app_bundle: &Path) -> 
     for entry in fs::read_dir(bin_dir)? {
         let entry = entry?;
         let path = entry.path();
-        if !path.extension().is_some_and(|e| e == "bundle") {
+        if path.extension().is_none_or(|e| e != "bundle") {
             continue;
         }
         let resources_dir = path.join("Resources");
@@ -857,6 +857,9 @@ fn create_dmg(app_path: &Path, project_root: &Path) -> Result<PathBuf> {
     if apps_link.exists() {
         fs::remove_file(&apps_link).context("Failed to remove existing Applications link")?;
     }
+    // DMG staging only ever runs on macOS at runtime (hdiutil below). Gate the
+    // unix-only symlink so the crate still compiles for Windows hosts.
+    #[cfg(unix)]
     std::os::unix::fs::symlink("/Applications", &apps_link)
         .context("Failed to create /Applications symlink in DMG staging directory")?;
 

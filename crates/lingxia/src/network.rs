@@ -52,7 +52,7 @@ pub struct NetworkInfo {
 /// string (`"wifi"`, `"4g"`, …); this enum gives callers a typed match.
 /// Any value the platform reports outside the known set — including the
 /// legacy `"cellular"` — folds into [`NetworkKind::Unknown`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum NetworkKind {
     #[serde(rename = "none")]
     None,
@@ -69,13 +69,8 @@ pub enum NetworkKind {
     #[serde(rename = "5g")]
     Cellular5G,
     #[serde(other)]
+    #[default]
     Unknown,
-}
-
-impl Default for NetworkKind {
-    fn default() -> Self {
-        NetworkKind::Unknown
-    }
 }
 
 impl NetworkKind {

@@ -99,7 +99,7 @@ pub fn execute(opts: PublishOptions) -> Result<()> {
     );
     println!("   Package: {}", package_path.display());
 
-    let file_data = fs::read(&package_path)
+    let file_data = fs::read(package_path)
         .with_context(|| format!("Failed to read package: {}", package_path.display()))?;
     let sha256 = sha256_hex(&file_data);
     println!("   SHA256:  {sha256}");
