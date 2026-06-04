@@ -287,6 +287,9 @@ impl DownloadsStore {
             b.updated_at
                 .cmp(&a.updated_at)
                 .then_with(|| b.created_at.cmp(&a.created_at))
+                // Stable final tiebreaker so equal-timestamp records (same pass)
+                // sort deterministically instead of in DashMap iteration order.
+                .then_with(|| a.task_id.cmp(&b.task_id))
         });
 
         Ok(DownloadsSnapshot {
@@ -326,7 +329,7 @@ impl DownloadsStore {
         let Some(record) = self.get_record(task_id) else {
             return Ok(None);
         };
-        self.reconcile_record(record).map(Some)
+        self.reconcile_record(record, unix_ms_now()).map(Some)
     }
 
     fn upsert_record(&self, record: DownloadRecord, kind: DownloadEventKind) -> Result<()> {
@@ -465,17 +468,21 @@ impl DownloadsStore {
     }
 
     fn reconciled_records(&self) -> Result<Vec<DownloadRecord>> {
+        // One timestamp for the whole pass: records reconciled together then tie
+        // on `updated_at` and sort deterministically by `created_at`, instead of
+        // each picking up its own `now` in (random) DashMap iteration order.
+        let now = unix_ms_now();
         self.records
             .iter()
             .map(|entry| entry.value().clone())
             .collect::<Vec<_>>()
             .into_iter()
-            .map(|record| self.reconcile_record(record))
+            .map(|record| self.reconcile_record(record, now))
             .collect()
     }
 
-    fn reconcile_record(&self, mut record: DownloadRecord) -> Result<DownloadRecord> {
-        let mut changed = reconcile_download_record(&mut record);
+    fn reconcile_record(&self, mut record: DownloadRecord, now: i64) -> Result<DownloadRecord> {
+        let mut changed = reconcile_download_record(&mut record, now);
         let retry = self.get_request_context(&record.task_id).is_some()
             && download_should_allow_retry(&record);
         if record.retry != retry {
@@ -905,9 +912,8 @@ fn download_should_allow_retry(record: &DownloadRecord) -> bool {
     )
 }
 
-fn reconcile_download_record(record: &mut DownloadRecord) -> bool {
+fn reconcile_download_record(record: &mut DownloadRecord, now: i64) -> bool {
     let original = record.clone();
-    let now = unix_ms_now();
     let target_path = Path::new(&record.target_path);
     let part_path = download_part_path(target_path);
     let target_exists = target_path.exists();
@@ -1058,6 +1064,12 @@ mod tests {
             }),
         )
         .expect("record start a");
+
+        // Record b a strict millisecond after a so "newest first" is
+        // deterministic: created_at/updated_at are millisecond-resolution, and
+        // back-to-back records would otherwise tie and sort in arbitrary order.
+        std::thread::sleep(std::time::Duration::from_millis(2));
+
         record_bridge_event(
             &root,
             BRIDGE_EVENT_STARTED,
