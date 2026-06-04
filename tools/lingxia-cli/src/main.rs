@@ -164,6 +164,12 @@ enum Commands {
         /// Package macOS build as DMG
         #[arg(long)]
         dmg: bool,
+
+        /// Build only the native library, skipping platform packaging. Harmony
+        /// stops after the .so (no ohpm/hvigor/.hap) — useful for CI to verify
+        /// the cross-compile without the gated API-21 HarmonyOS SDK.
+        #[arg(long)]
+        native_only: bool,
     },
 
     /// Remove generated build artifacts
@@ -444,6 +450,7 @@ fn main() -> Result<()> {
             all_platforms,
             ipa,
             dmg,
+            native_only,
         } => {
             commands::build::execute(commands::build::BuildExecuteOptions {
                 release: build_options.release,
@@ -457,6 +464,7 @@ fn main() -> Result<()> {
                 ipa,
                 dmg,
                 package: false,
+                native_only,
                 env_version: build_options.env_version,
             })?;
         }

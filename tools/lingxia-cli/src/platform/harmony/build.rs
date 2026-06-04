@@ -65,6 +65,18 @@ impl HarmonyPlatform {
             );
         }
 
+        if config.native_only {
+            // CI build-verification: the ohos cross-compile is the goal. The
+            // .hap needs `hvigor assembleHap`, which requires the gated API-21
+            // HarmonyOS SDK, so stop at the staged native library.
+            let so = staging.join("entry/libs/arm64-v8a/liblingxia.so");
+            println!(
+                "  {} --native-only: native library built; skipping ohpm + hvigor",
+                "⏭️".dimmed()
+            );
+            return Ok(BuildArtifacts::Harmony { hap_path: so });
+        }
+
         self.ohpm_install(&staging)?;
         let hap_path = self.build_hap(&staging, config)?;
 
