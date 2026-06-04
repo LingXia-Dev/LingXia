@@ -383,6 +383,19 @@ enum AppleAuthAction {
         #[arg(short = 'y', long)]
         yes: bool,
     },
+    /// Import a Developer ID Application .p12 for macOS signing/notarization
+    ImportDeveloperId {
+        /// Path to the Developer ID Application .p12 certificate
+        p12: String,
+
+        /// Certificate password (will prompt if not provided)
+        #[arg(long)]
+        password: Option<String>,
+
+        /// codesign identity name (auto-detected if not provided)
+        #[arg(long)]
+        identity: Option<String>,
+    },
     /// Logout and clear stored credentials
     Logout,
     /// Show current authentication status
@@ -561,6 +574,13 @@ fn main() -> Result<()> {
                         team_id,
                         yes,
                     })?;
+                }
+                AppleAuthAction::ImportDeveloperId {
+                    p12,
+                    password,
+                    identity,
+                } => {
+                    commands::auth::apple_import_developer_id(p12, password, identity)?;
                 }
                 AppleAuthAction::Logout => {
                     commands::auth::apple_logout()?;
