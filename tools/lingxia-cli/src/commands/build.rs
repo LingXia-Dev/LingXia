@@ -21,6 +21,9 @@ pub struct BuildExecuteOptions {
     pub ipa: bool,
     pub dmg: bool,
     pub package: bool,
+    /// Build only the native library, skipping platform packaging (harmony
+    /// stops after the `.so`, no ohpm/hvigor).
+    pub native_only: bool,
     /// Raw `--env` value from CLI.
     pub env_version: Option<String>,
 }
@@ -42,6 +45,7 @@ pub fn execute(options: BuildExecuteOptions) -> Result<()> {
         ipa,
         dmg,
         package,
+        native_only,
         env_version,
     } = options;
 
@@ -345,6 +349,7 @@ Specify one with `--platform <name>` or build all with `--all-platforms`."
             native_default_features: config.native_default_features_enabled(),
             resolved_env: resolved_env.clone(),
             skip_native_build: false,
+            native_only,
         };
         platform_builds.push((platform, build_config, platform_type.clone()));
     }
@@ -611,6 +616,7 @@ fn build_standalone_apple_swift_package(
                 package_id_suffix: None,
             },
             skip_native_build: false,
+            native_only: false,
         };
 
         let artifacts = platform.build(&build_config)?;

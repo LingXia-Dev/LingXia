@@ -118,6 +118,11 @@ pub struct BuildConfig {
     /// so cargo is not invoked twice. Platforms that don't opt in never
     /// see this set to true and need not check it.
     pub skip_native_build: bool,
+    /// Build only the native Rust library and skip platform packaging. For
+    /// harmony this stops after the `.so` (no ohpm/hvigor/.hap) — used by CI to
+    /// verify the ohos cross-compile without the gated API-21 HarmonyOS SDK
+    /// that `hvigor assembleHap` requires.
+    pub native_only: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
