@@ -12,8 +12,6 @@ struct ExampleHostAddon;
 impl lingxia::HostAddon for ExampleHostAddon {
     #[cfg(feature = "standard")]
     fn install_logic_extensions(&self) {
-        #[cfg(feature = "cloud")]
-        let _ = lingxia_cloud::init();
         lingxia::js::register_logic_extension(Box::new(extension::HelloExtension));
     }
 
