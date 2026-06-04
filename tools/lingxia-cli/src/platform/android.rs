@@ -50,12 +50,22 @@ Supported Rust target triples:\n\
         }
     }
 
-    /// Materialize an init script that reads `lingxia.abis` and pins
-    /// `ndk.abiFilters` on every `com.android.application` project. This is
-    /// the only place that can prune .so contributed by transitive AARs from
-    /// the final APK without requiring the app's build script to opt in.
-    fn write_abi_filter_init_script() -> Result<PathBuf> {
-        const SCRIPT: &str = r#"
+    /// Materialize an init script that:
+    ///   1. reads `lingxia.abis` and pins `ndk.abiFilters` on every
+    ///      `com.android.application` project — the only place that can prune
+    ///      .so contributed by transitive AARs from the final APK without
+    ///      requiring the app's build script to opt in; and
+    ///   2. (external projects only) injects the cached LingXia SDK Maven repo
+    ///      into `dependencyResolutionManagement.repositories` via a
+    ///      `settingsEvaluated` hook. Adding the repo here bypasses
+    ///      `RepositoriesMode.FAIL_ON_PROJECT_REPOS` in settings.gradle.kts —
+    ///      declaring it in a project build.gradle.kts would fail that mode.
+    ///
+    /// `sdk_maven_repo` is `Some(dir)` for external user projects (the cache
+    /// dir containing `io/github/...`) and `None` inside the workspace, where
+    /// the SDK resolves from a source/project dependency.
+    fn write_abi_filter_init_script(sdk_maven_repo: Option<&Path>) -> Result<PathBuf> {
+        const ABI_FILTER_BLOCK: &str = r#"
 gradle.allprojects { proj ->
     proj.plugins.withId("com.android.application") {
         def raw = proj.findProperty("lingxia.abis")
@@ -70,8 +80,30 @@ gradle.allprojects { proj ->
     }
 }
 "#;
+
+        let mut script = String::from(ABI_FILTER_BLOCK);
+
+        if let Some(repo) = sdk_maven_repo {
+            // Gradle URIs use forward slashes even on Windows; escape backslashes
+            // defensively so the Groovy string literal stays valid.
+            let repo_uri = repo.to_string_lossy().replace('\\', "/");
+            script.push_str(&format!(
+                r#"
+gradle.settingsEvaluated {{ settings ->
+    settings.dependencyResolutionManagement {{
+        repositories {{
+            maven {{
+                url = uri("{repo_uri}")
+            }}
+        }}
+    }}
+}}
+"#
+            ));
+        }
+
         let path = env::temp_dir().join("lingxia-abi-filter.init.gradle");
-        fs::write(&path, SCRIPT)
+        fs::write(&path, &script)
             .with_context(|| format!("Failed to write init script: {}", path.display()))?;
         Ok(path)
     }
@@ -279,6 +311,7 @@ gradle.allprojects { proj ->
         project_root: &Path,
         config: &BuildConfig,
         icon_overlay: Option<&LauncherIconOverlay>,
+        sdk_maven_repo: Option<&Path>,
     ) -> Result<PathBuf> {
         println!("{}", "Building APK...".cyan());
 
@@ -326,7 +359,7 @@ gradle.allprojects { proj ->
             .filter_map(|t| Self::target_to_abi(t))
             .collect();
         let abis_arg = format!("-Plingxia.abis={}", abis.join(","));
-        let init_script_path = Self::write_abi_filter_init_script()?;
+        let init_script_path = Self::write_abi_filter_init_script(sdk_maven_repo)?;
         let init_script_arg_value = init_script_path.to_string_lossy().to_string();
 
         let mut command = Command::new(&gradlew);
@@ -338,6 +371,16 @@ gradle.allprojects { proj ->
             .arg("-I")
             .arg(&init_script_arg_value)
             .current_dir(project_root);
+
+        // Pin the SDK coordinate version to the version we fetched so the app
+        // template's `io.github.lingxia-dev:lingxia:<v>` resolves from the
+        // injected cache repo without version skew.
+        if sdk_maven_repo.is_some() {
+            command.arg(format!(
+                "-Plingxia.sdkVersion={}",
+                crate::sdk_cache::sdk_version()
+            ));
+        }
         if let Some(overlay) = icon_overlay {
             command.arg(format!(
                 "-Plingxia.resOverlayDir={}",
@@ -425,8 +468,27 @@ impl Platform for AndroidPlatform {
         // mutation, no Drop-based rollback to fail on SIGKILL.
         let icon_overlay = prepare_launcher_icon_overlay(&android_root, config)?;
 
+        // External user projects don't have the SDK in their source tree, so
+        // fetch the published Maven artifact (verified, cached) and inject it
+        // as a repository at build time. Inside the workspace, the SDK resolves
+        // from `project(":lingxia")` with no network.
+        let sdk_maven_repo = if super::is_inside_lingxia_workspace(&config.project_root) {
+            None
+        } else {
+            let version = crate::sdk_cache::sdk_version();
+            Some(crate::sdk_cache::ensure_sdk(
+                crate::sdk_cache::SdkPlatform::Android,
+                &version,
+            )?)
+        };
+
         // Build Gradle project
-        let apk_path = self.build_gradle(&android_root, config, icon_overlay.as_ref())?;
+        let apk_path = self.build_gradle(
+            &android_root,
+            config,
+            icon_overlay.as_ref(),
+            sdk_maven_repo.as_deref(),
+        )?;
 
         Ok(BuildArtifacts::Android { apk_path })
     }

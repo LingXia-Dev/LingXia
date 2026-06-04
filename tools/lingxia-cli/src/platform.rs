@@ -81,6 +81,23 @@ fn manifest_declares_workspace(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
+/// Whether `project_root` lives inside the LingXia monorepo itself (as opposed
+/// to an external user project created via `lingxia new`).
+///
+/// Used to decide whether the native SDK must be downloaded from a GitHub
+/// release (external projects) or is already present in the source tree
+/// (in-workspace `examples/*`, which reference the SDK via source paths).
+///
+/// We require BOTH a `[workspace]` Cargo manifest AND a sibling `lingxia-sdk/`
+/// directory next to it, so an unrelated Cargo workspace that happens to
+/// contain a LingXia app does not get misclassified.
+pub(crate) fn is_inside_lingxia_workspace(project_root: &Path) -> bool {
+    let Some(workspace_root) = find_workspace_root(project_root) else {
+        return false;
+    };
+    workspace_root.join("lingxia-sdk").is_dir()
+}
+
 /// Platform-specific build configuration
 #[derive(Debug, Clone)]
 pub struct BuildConfig {
@@ -331,5 +348,33 @@ mod tests {
                 .expect("resources.bundles[0].path is set, so an output path must be returned");
 
         assert_eq!(out, temp.path().join("showcase/.lingxia/native.ts"));
+    }
+
+    #[test]
+    fn is_inside_lingxia_workspace_requires_sdk_sibling() {
+        // A bare workspace with no lingxia-sdk/ is an external project layout.
+        let temp = TempDir::new().unwrap();
+        fs::write(
+            temp.path().join("Cargo.toml"),
+            "[workspace]\nmembers = []\n",
+        )
+        .unwrap();
+        let project = temp.path().join("app");
+        fs::create_dir_all(&project).unwrap();
+        assert!(!is_inside_lingxia_workspace(&project));
+
+        // Adding a sibling lingxia-sdk/ dir marks it as the monorepo.
+        fs::create_dir_all(temp.path().join("lingxia-sdk")).unwrap();
+        assert!(is_inside_lingxia_workspace(&project));
+    }
+
+    #[test]
+    fn is_inside_lingxia_workspace_false_without_workspace_manifest() {
+        let temp = TempDir::new().unwrap();
+        // lingxia-sdk/ present but no [workspace] Cargo.toml anywhere.
+        fs::create_dir_all(temp.path().join("lingxia-sdk")).unwrap();
+        let project = temp.path().join("app");
+        fs::create_dir_all(&project).unwrap();
+        assert!(!is_inside_lingxia_workspace(&project));
     }
 }
