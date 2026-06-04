@@ -1,0 +1,21 @@
+name: Bootstrap android SDK
+description: >
+  Generate the gitignored android SDK resources a clean checkout lacks: vector
+  drawables (from the SVG icon set) and localized strings.xml. The SDK's Kotlin
+  references R.drawable.* / R.string.*, so these must exist before the gradle
+  build that `lingxia build --platform android` runs. Mirrors the android half
+  of scripts/release/sdk.sh's generate_resources. Assumes Rust is set up.
+
+runs:
+  using: composite
+  steps:
+    - name: Generate android SDK resources (icons + i18n)
+      shell: bash
+      run: |
+        set -euo pipefail
+        cargo run -p lingxia-cli -- gen icons \
+          --input lingxia-sdk/resources/icons/svg \
+          --android-out lingxia-sdk/android/lingxia/src/main/res/drawable
+        cargo run -p lingxia-cli -- gen i18n \
+          --input i18n --no-rust --no-ts --no-ios --no-harmony \
+          --android-out lingxia-sdk/android/lingxia/src/main/res

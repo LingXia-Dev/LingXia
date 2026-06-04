@@ -1,0 +1,177 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Detect which areas changed so PRs only run the relevant jobs. A core rust /
+  # CLI / web-runtime / CI change fans out to everything; platform-specific SDK
+  # or example changes stay scoped (e.g. an android-sdk-only PR skips iOS/macOS).
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    outputs:
+      rust: ${{ steps.compute.outputs.rust }}
+      i18n: ${{ steps.filter.outputs.i18n }}
+      ios: ${{ steps.compute.outputs.ios }}
+      macos: ${{ steps.compute.outputs.macos }}
+      android: ${{ steps.compute.outputs.android }}
+      runner: ${{ steps.compute.outputs.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            core:
+              - 'crates/**'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - 'rust-toolchain*'
+              - 'clippy.toml'
+            cli:
+              - 'tools/**'
+            web_runtime:
+              - 'packages/lingxia-bridge/**'
+              - 'packages/lingxia-polyfills/**'
+            web_frontend:
+              - 'packages/lingxia-elements/**'
+              - 'packages/lingxia-react/**'
+              - 'packages/lingxia-vue/**'
+              - 'packages/lingxia-page-runtime/**'
+            apple_sdk:
+              - 'lingxia-sdk/apple/**'
+            android_sdk:
+              - 'lingxia-sdk/android/**'
+            examples_common:
+              - 'examples/lingxia-showcase/**'
+              - 'examples/lingxia-chat/**'
+              - 'examples/lingxia-lib/**'
+              - 'examples/lingxia.yaml'
+            ex_ios:
+              - 'examples/ios/**'
+            ex_macos:
+              - 'examples/macos/**'
+            ex_android:
+              - 'examples/android/**'
+            i18n:
+              - 'i18n/**'
+            ci:
+              - '.github/**'
+      - id: compute
+        shell: bash
+        env:
+          CI_F: ${{ steps.filter.outputs.ci }}
+          CORE: ${{ steps.filter.outputs.core }}
+          CLI: ${{ steps.filter.outputs.cli }}
+          WEB_RT: ${{ steps.filter.outputs.web_runtime }}
+          WEB_FE: ${{ steps.filter.outputs.web_frontend }}
+          APPLE: ${{ steps.filter.outputs.apple_sdk }}
+          ANDROID: ${{ steps.filter.outputs.android_sdk }}
+          EX_COMMON: ${{ steps.filter.outputs.examples_common }}
+          EX_IOS: ${{ steps.filter.outputs.ex_ios }}
+          EX_MACOS: ${{ steps.filter.outputs.ex_macos }}
+          EX_ANDROID: ${{ steps.filter.outputs.ex_android }}
+          I18N: ${{ steps.filter.outputs.i18n }}
+        run: |
+          set -euo pipefail
+          any() { for v in "$@"; do [ "$v" = "true" ] && { echo true; return; }; done; echo false; }
+          # Anything that touches the rust build, the CLI, the embedded web
+          # runtime, or CI config rebuilds everything downstream.
+          rust=$(any "$CI_F" "$CORE" "$CLI" "$WEB_RT")
+          # Common base for the example apps (runtime + lxapp frontend + shared
+          # example config + localized strings).
+          ex_base=$(any "$rust" "$WEB_FE" "$EX_COMMON" "$I18N")
+          ios=$(any "$ex_base" "$APPLE" "$EX_IOS")
+          macos=$(any "$ex_base" "$APPLE" "$EX_MACOS")
+          android=$(any "$ex_base" "$ANDROID" "$EX_ANDROID")
+          # macOS runner = the apple SDK + the rust runtime/CLI.
+          runner=$(any "$rust" "$APPLE")
+          {
+            echo "rust=$rust"
+            echo "ios=$ios"
+            echo "macos=$macos"
+            echo "android=$android"
+            echo "runner=$runner"
+          } >> "$GITHUB_OUTPUT"
+
+  # ---- Gating jobs (required via ci-success) ----
+  rust-fmt:
+    name: Rust Fmt
+    needs: changes
+    if: ${{ needs.changes.outputs.rust == 'true' }}
+    uses: ./.github/workflows/_ci-rust-fmt.yml
+
+  rust-checks:
+    name: Rust Checks
+    needs: changes
+    if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.i18n == 'true' }}
+    uses: ./.github/workflows/_ci-rust.yml
+
+  cli:
+    name: CLI Build
+    needs: changes
+    if: ${{ needs.changes.outputs.rust == 'true' }}
+    uses: ./.github/workflows/_ci-cli.yml
+
+  rust-clippy:
+    name: Rust Clippy
+    needs: changes
+    if: ${{ needs.changes.outputs.rust == 'true' }}
+    uses: ./.github/workflows/_ci-rust-clippy.yml
+
+  runner:
+    name: Runner Build
+    needs: changes
+    if: ${{ needs.changes.outputs.runner == 'true' }}
+    uses: ./.github/workflows/_ci-runner.yml
+
+  examples:
+    name: Examples
+    needs: changes
+    if: ${{ needs.changes.outputs.ios == 'true' || needs.changes.outputs.macos == 'true' || needs.changes.outputs.android == 'true' }}
+    uses: ./.github/workflows/_ci-examples.yml
+    with:
+      run_ios: ${{ needs.changes.outputs.ios == 'true' }}
+      run_macos: ${{ needs.changes.outputs.macos == 'true' }}
+      run_android: ${{ needs.changes.outputs.android == 'true' }}
+
+  # ---- Advisory (runs + visible, NOT in ci-success.needs) ----
+  # rust-test stays advisory: it has pre-existing environment/timing-dependent
+  # tests (lingxia-terminal dylib rpath, lingxia-transfer wall-clock ordering).
+  rust-test:
+    name: Rust Test
+    needs: changes
+    if: ${{ needs.changes.outputs.rust == 'true' }}
+    uses: ./.github/workflows/_ci-rust-test.yml
+
+  # NOTE: npm (_ci-npm.yml) and sdk (_ci-sdk.yml) are not wired in yet — their
+  # package paths predate the current repo layout and need reconciling.
+
+  # Single required check. Skipped gating jobs report result 'skipped' (≠
+  # 'failure'), so a scoped PR still goes green and stays mergeable — require
+  # ONLY this check in branch protection, never the individual jobs.
+  ci-success:
+    name: CI Success
+    needs: [changes, rust-fmt, rust-checks, cli, rust-clippy, runner, examples]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Check gating jobs
+        run: |
+          if [[ "${{ contains(needs.*.result, 'failure') }}" == "true" ]]; then
+            echo "❌ A gating job failed"
+            exit 1
+          fi
+          if [[ "${{ contains(needs.*.result, 'cancelled') }}" == "true" ]]; then
+            echo "⚠️ A gating job was cancelled"
+            exit 1
+          fi
+          echo "✅ Gating CI checks passed (skipped jobs are OK)"

@@ -1,0 +1,36 @@
+name: Build web packages
+description: >
+  Install and build the @lingxia npm packages the example lxapps import: the
+  embedded runtime (bridge, polyfills — also needed by lingxia-cli's build.rs)
+  plus the frontend libs (elements, page-runtime, react, vue). The react/vue
+  build scripts cascade to elements + page-runtime, so a clean checkout ends up
+  with dist/ for all of them and `lingxia build`'s lxapp bundling can resolve
+  the @lingxia/* imports. Superset of build-web-runtime.
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v4
+      with:
+        node-version: "20"
+
+    - name: Install + build @lingxia web packages
+      shell: bash
+      env:
+        # bridge/polyfills `clean` scripts use `rm -rf`; run package scripts
+        # through bash so they also work on the Windows runner.
+        npm_config_script_shell: bash
+      run: |
+        set -euo pipefail
+        for pkg in lingxia-bridge lingxia-polyfills lingxia-elements \
+                   lingxia-page-runtime lingxia-react lingxia-vue; do
+          echo "::group::npm install ($pkg)"
+          (cd "packages/$pkg" && npm install)
+          echo "::endgroup::"
+        done
+        # react/vue cascade to elements + page-runtime + bridge:types.
+        for pkg in lingxia-bridge lingxia-polyfills lingxia-react lingxia-vue; do
+          echo "::group::npm run build ($pkg)"
+          (cd "packages/$pkg" && npm run build)
+          echo "::endgroup::"
+        done

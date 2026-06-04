@@ -1,0 +1,35 @@
+name: Bootstrap apple SDK
+description: >
+  Generate the gitignored apple SDK assets a clean checkout lacks, so the Swift
+  package can build: localized resources (Sources/Resources/*.lproj), icons,
+  and the swift bridge bindings (Sources/generated/{LingXiaRustAPI,
+  LingXiaSwiftAPI}). Required before any Swift build of the apple SDK — the
+  macOS runner or the macOS/iOS example apps.
+  Assumes Rust + Node (build-web-runtime) are already set up by the caller.
+
+runs:
+  using: composite
+  steps:
+    # Localized strings (.lproj) and PDF icons — same step scripts/release/sdk.sh
+    # runs when packaging the apple SDK.
+    - name: Generate apple SDK resources (i18n + icons)
+      shell: bash
+      run: |
+        set -euo pipefail
+        cargo run -p lingxia-cli -- gen i18n \
+          --input i18n --no-rust --no-ts --no-android --no-harmony \
+          --ios-out lingxia-sdk/apple/Sources/Resources
+        cargo run -p lingxia-cli -- gen icons \
+          --input lingxia-sdk/resources/icons/svg \
+          --ios-out lingxia-sdk/apple/Sources/Resources/icons
+
+    # Swift bridge bindings are a build.rs side-effect; cargo caches build
+    # scripts, so touch their rerun-if-changed inputs to force regeneration even
+    # on a cache hit (otherwise the generated dir is missing in a fresh checkout
+    # and the Swift build fails). This release build is reused downstream.
+    - name: Generate apple SDK swift bindings
+      shell: bash
+      run: |
+        set -euo pipefail
+        touch crates/lingxia-platform/src/apple/ffi.rs crates/lingxia/src/ffi/apple.rs
+        LINGXIA_GENERATE_BRIDGE=1 cargo build -p lingxia --release --target aarch64-apple-darwin
