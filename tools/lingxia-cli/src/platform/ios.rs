@@ -289,6 +289,19 @@ impl Platform for IosPlatform {
             }
         }
 
+        // External user projects don't have the Apple SDK in their source tree,
+        // so fetch the published source package (verified, cached) and rewrite
+        // the app's Package.swift to depend on it via a local `.package(path:)`.
+        // The SDK uses `unsafeFlags`, so it can ONLY be a local path dependency
+        // — a remote URL is rejected by SwiftPM. Inside the workspace the
+        // committed Package.swift already points at `../../lingxia-sdk/apple`.
+        if !super::is_inside_lingxia_workspace(&config.project_root) {
+            let version = crate::sdk_cache::sdk_version();
+            let sdk_dir =
+                crate::sdk_cache::ensure_sdk(crate::sdk_cache::SdkPlatform::Apple, &version)?;
+            inject_sdk_package_dependency(&ios_dir, &sdk_dir)?;
+        }
+
         // Build Swift Package (library dependencies first)
         self.swift_build(&ios_dir, &config.project_root, config.profile)?;
 
@@ -490,6 +503,109 @@ LingXia will not inject these entitlements until approval is confirmed.",
     ))
 }
 
+/// Sentinel marking the CLI-managed SDK package line in a generated
+/// `Package.swift`. Lets repeated builds / version bumps converge instead of
+/// appending duplicate dependencies.
+const SDK_PACKAGE_MARKER: &str = "// lingxia-sdk: managed by `lingxia build`";
+
+/// Idempotently rewrite the app's `Package.swift` so it depends on the cached
+/// LingXia Apple SDK via a local `.package(path:)`.
+///
+/// Two insertions, both keyed off markers so the operation is convergent:
+///   1. `dependencies:` gets `.package(name: "lingxia", path: "<abs>")`.
+///   2. the app target's `dependencies:` gets
+///      `.product(name: "lingxia", package: "lingxia")`.
+///
+/// The template (`templates/ios-native/Package.swift`) ships commented-out TODO
+/// placeholders for both; we replace those on the first build and replace our
+/// own previously-written line on subsequent builds (handles version/path drift).
+fn inject_sdk_package_dependency(ios_dir: &Path, sdk_dir: &Path) -> Result<()> {
+    let manifest_path = ios_dir.join("Package.swift");
+    let original = fs::read_to_string(&manifest_path).with_context(|| {
+        format!(
+            "Failed to read iOS Package.swift: {}",
+            manifest_path.display()
+        )
+    })?;
+
+    let abs = sdk_dir
+        .canonicalize()
+        .unwrap_or_else(|_| sdk_dir.to_path_buf());
+    let abs_str = abs.to_string_lossy().replace('\\', "/");
+
+    let package_line =
+        format!(".package(name: \"lingxia\", path: \"{abs_str}\"), {SDK_PACKAGE_MARKER}");
+    let product_line =
+        format!(".product(name: \"lingxia\", package: \"lingxia\"), {SDK_PACKAGE_MARKER}");
+
+    let mut rewritten = String::with_capacity(original.len() + 256);
+    let mut inserted_package = false;
+    let mut inserted_product = false;
+
+    for line in original.lines() {
+        let trimmed = line.trim();
+        let indent = &line[..line.len() - line.trim_start().len()];
+
+        // Replace an existing CLI-managed package line (path/version drift) or
+        // the template's TODO placeholder.
+        if trimmed.contains(SDK_PACKAGE_MARKER) && trimmed.contains(".package(") {
+            rewritten.push_str(indent);
+            rewritten.push_str(&package_line);
+            rewritten.push('\n');
+            inserted_package = true;
+            continue;
+        }
+        if !inserted_package
+            && trimmed.starts_with("// Add the LingXia Swift package dependency here")
+        {
+            rewritten.push_str(indent);
+            rewritten.push_str(&package_line);
+            rewritten.push('\n');
+            inserted_package = true;
+            continue;
+        }
+
+        // Replace an existing CLI-managed product line or the template TODO.
+        if trimmed.contains(SDK_PACKAGE_MARKER) && trimmed.contains(".product(") {
+            rewritten.push_str(indent);
+            rewritten.push_str(&product_line);
+            rewritten.push('\n');
+            inserted_product = true;
+            continue;
+        }
+        if !inserted_product
+            && trimmed.starts_with("// .product(name: \"lingxia\", package: \"lingxia\")")
+        {
+            rewritten.push_str(indent);
+            rewritten.push_str(&product_line);
+            rewritten.push('\n');
+            inserted_product = true;
+            continue;
+        }
+
+        rewritten.push_str(line);
+        rewritten.push('\n');
+    }
+
+    if !inserted_package || !inserted_product {
+        return Err(anyhow!(
+            "Could not locate LingXia dependency placeholders in {}\n  \
+             Expected the generated template's TODO comments in `dependencies:` and the app target.",
+            manifest_path.display()
+        ));
+    }
+
+    if rewritten != original {
+        fs::write(&manifest_path, &rewritten).with_context(|| {
+            format!(
+                "Failed to write iOS Package.swift: {}",
+                manifest_path.display()
+            )
+        })?;
+    }
+    Ok(())
+}
+
 /// Resolve the iOS Swift Package directory.
 ///
 /// Expects Package.swift in: `{projectRoot}/ios/`
@@ -558,4 +674,79 @@ pub fn get_resources_dir(
         app_project_name,
         "ios",
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    const TEMPLATE_PACKAGE_SWIFT: &str = r#"// swift-tools-version: 6.0
+import PackageDescription
+let package = Package(
+    name: "demo",
+    dependencies: [
+        // Add the LingXia Swift package dependency here before building.
+    ],
+    targets: [
+        .target(
+            name: "demo",
+            dependencies: [
+                // .product(name: "lingxia", package: "lingxia"),
+            ],
+            path: "Sources"
+        ),
+    ]
+)
+"#;
+
+    fn write_manifest(ios_dir: &Path, body: &str) {
+        fs::write(ios_dir.join("Package.swift"), body).unwrap();
+    }
+
+    #[test]
+    fn inject_replaces_template_placeholders() {
+        let ios = TempDir::new().unwrap();
+        write_manifest(ios.path(), TEMPLATE_PACKAGE_SWIFT);
+        let sdk = TempDir::new().unwrap();
+
+        inject_sdk_package_dependency(ios.path(), sdk.path()).unwrap();
+        let out = fs::read_to_string(ios.path().join("Package.swift")).unwrap();
+
+        assert!(out.contains(".package(name: \"lingxia\", path:"));
+        assert!(out.contains(".product(name: \"lingxia\", package: \"lingxia\")"));
+        assert!(out.contains(SDK_PACKAGE_MARKER));
+        // Placeholders consumed.
+        assert!(!out.contains("// Add the LingXia Swift package dependency here"));
+    }
+
+    #[test]
+    fn inject_is_idempotent_and_converges_on_path_change() {
+        let ios = TempDir::new().unwrap();
+        write_manifest(ios.path(), TEMPLATE_PACKAGE_SWIFT);
+        let sdk_a = TempDir::new().unwrap();
+
+        inject_sdk_package_dependency(ios.path(), sdk_a.path()).unwrap();
+        let first = fs::read_to_string(ios.path().join("Package.swift")).unwrap();
+
+        // Re-running with the same SDK dir is a no-op.
+        inject_sdk_package_dependency(ios.path(), sdk_a.path()).unwrap();
+        let again = fs::read_to_string(ios.path().join("Package.swift")).unwrap();
+        assert_eq!(first, again);
+
+        // A new SDK path replaces the managed line rather than duplicating it.
+        let sdk_b = TempDir::new().unwrap();
+        inject_sdk_package_dependency(ios.path(), sdk_b.path()).unwrap();
+        let third = fs::read_to_string(ios.path().join("Package.swift")).unwrap();
+        let package_lines = third
+            .lines()
+            .filter(|l| l.contains(".package(name: \"lingxia\""))
+            .count();
+        let product_lines = third
+            .lines()
+            .filter(|l| l.contains(".product(name: \"lingxia\""))
+            .count();
+        assert_eq!(package_lines, 1, "exactly one managed package line");
+        assert_eq!(product_lines, 1, "exactly one managed product line");
+    }
 }

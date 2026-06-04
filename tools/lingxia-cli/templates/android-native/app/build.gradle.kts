@@ -78,8 +78,12 @@ android {
 }
 
 dependencies {
-    // LingXia SDK
-    implementation("io.github.lingxia-dev:lingxia:{{SDK_VERSION}}")
+    // LingXia SDK. The Maven repo is injected by `lingxia build` (see
+    // settings.gradle.kts). `lingxia.sdkVersion` is passed by the CLI to keep
+    // the coordinate aligned with the fetched artifact; the baked
+    // `{{SDK_VERSION}}` is the fallback for direct Gradle invocations.
+    val lingxiaSdkVersion = (findProperty("lingxia.sdkVersion") as String?) ?: "{{SDK_VERSION}}"
+    implementation("io.github.lingxia-dev:lingxia:$lingxiaSdkVersion")
 
     // Android dependencies
     implementation(libs.androidx.core.ktx)

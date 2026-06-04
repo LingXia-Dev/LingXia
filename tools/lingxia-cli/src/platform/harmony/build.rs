@@ -55,6 +55,21 @@ impl HarmonyPlatform {
         // a partially-modified state.
         let staging = prepare_harmony_staging(harmony_dir, config)?;
 
+        // External user projects don't have the Harmony SDK in their source
+        // tree, so fetch the published HAR (verified, cached) and wire it into
+        // the STAGED entry/oh-package.json5 as an absolute `file:` dependency.
+        // We inject on the staging copy (after prepare_harmony_staging, before
+        // ohpm install) because `rewrite_file_dependencies` only rewrites
+        // RELATIVE `file:` deps — an absolute path injected here is left
+        // untouched. Inside the workspace the committed oh-package.json5 already
+        // references `file:../../../lingxia-sdk/harmony/lingxia`.
+        if !crate::platform::is_inside_lingxia_workspace(&config.project_root) {
+            let version = crate::sdk_cache::sdk_version();
+            let har =
+                crate::sdk_cache::ensure_sdk(crate::sdk_cache::SdkPlatform::Harmony, &version)?;
+            inject_harmony_har_dependency(&staging, &har)?;
+        }
+
         if config.build_native {
             let so_path = self.build_rust_library(&config.project_root, config)?;
             self.stage_native_library(&so_path, &staging)?;
@@ -418,6 +433,79 @@ fn rewrite_file_dependencies(content: &str, prefix: &str) -> String {
     out
 }
 
+/// Idempotently inject (or refresh) the LingXia SDK HAR as an absolute `file:`
+/// dependency in the STAGED `entry/oh-package.json5`.
+///
+/// Adding `"lingxia": "file:/abs/.../lingxia.har"` to the `dependencies` object.
+/// Absolute `file:` paths are left untouched by `rewrite_file_dependencies`, so
+/// injecting here (on the staging copy) survives staging-path rewrites. On
+/// repeat builds the existing `"lingxia"` line is replaced so version/path
+/// drift converges.
+fn inject_harmony_har_dependency(staging: &Path, har: &Path) -> Result<()> {
+    let pkg_path = staging.join("entry").join("oh-package.json5");
+    let original = std::fs::read_to_string(&pkg_path)
+        .with_context(|| format!("Failed to read {}", pkg_path.display()))?;
+
+    let abs = har.canonicalize().unwrap_or_else(|_| har.to_path_buf());
+    let abs_str = abs.to_string_lossy().replace('\\', "/");
+    let dep_value = format!("file:{abs_str}");
+
+    let rewritten = upsert_lingxia_har_dep(&original, &dep_value).ok_or_else(|| {
+        anyhow!(
+            "Could not locate a `dependencies` object in {}",
+            pkg_path.display()
+        )
+    })?;
+
+    if rewritten != original {
+        std::fs::write(&pkg_path, rewritten)
+            .with_context(|| format!("Failed to write {}", pkg_path.display()))?;
+    }
+    Ok(())
+}
+
+/// Insert or replace the `"lingxia"` entry in the `dependencies` object of a
+/// JSON5 `oh-package.json5` document. Returns `None` if no `dependencies` key
+/// is present. String matching keeps us off a full JSON5 parser (deps already
+/// avoid adding crates) while staying idempotent via the unique `"lingxia":` key.
+fn upsert_lingxia_har_dep(content: &str, dep_value: &str) -> Option<String> {
+    const DEPS_KEY: &str = "\"dependencies\"";
+    let deps_idx = content.find(DEPS_KEY)?;
+    // Find the opening brace of the dependencies object.
+    let after_key = &content[deps_idx + DEPS_KEY.len()..];
+    let brace_rel = after_key.find('{')?;
+    let brace_idx = deps_idx + DEPS_KEY.len() + brace_rel;
+    let indent = "    ";
+    let new_line = format!("\n{indent}\"lingxia\": \"{dep_value}\",");
+
+    // If a "lingxia" key already exists, replace its value in place.
+    if let Some(key_rel) = content[brace_idx..].find("\"lingxia\"") {
+        let key_idx = brace_idx + key_rel;
+        // Locate the value string that follows `"lingxia"` : `"<...>"`.
+        let after_lingxia = &content[key_idx + "\"lingxia\"".len()..];
+        let colon_rel = after_lingxia.find(':')?;
+        let value_region = &after_lingxia[colon_rel + 1..];
+        let first_quote_rel = value_region.find('"')?;
+        let value_start = colon_rel + 1 + first_quote_rel + 1;
+        let value_rest = &after_lingxia[value_start..];
+        let close_quote_rel = value_rest.find('"')?;
+        let abs_value_start = key_idx + "\"lingxia\"".len() + value_start;
+        let abs_value_end = abs_value_start + close_quote_rel;
+        let mut out = String::with_capacity(content.len() + dep_value.len());
+        out.push_str(&content[..abs_value_start]);
+        out.push_str(dep_value);
+        out.push_str(&content[abs_value_end..]);
+        return Some(out);
+    }
+
+    // Otherwise insert a new entry right after the opening brace.
+    let mut out = String::with_capacity(content.len() + new_line.len());
+    out.push_str(&content[..=brace_idx]);
+    out.push_str(&new_line);
+    out.push_str(&content[brace_idx + 1..]);
+    Some(out)
+}
+
 fn copy_dir_recursive_excluding(src: &Path, dst: &Path, skip: &[&str]) -> Result<()> {
     std::fs::create_dir_all(dst).with_context(|| format!("Failed to create {}", dst.display()))?;
     for entry in
@@ -705,9 +793,46 @@ fn parse_crate_and_lib_name(manifest_path: &Path) -> Result<(String, String)> {
 mod tests {
     use super::{
         copy_dir_recursive_excluding, replace_json5_string_field_value, rewrite_file_dependencies,
+        upsert_lingxia_har_dep,
     };
     use std::fs;
     use tempfile::TempDir;
+
+    #[test]
+    fn upsert_har_dep_inserts_into_empty_dependencies() {
+        let content = r#"{
+  "name": "entry",
+  "dependencies": {
+    // Add the LingXia dependency via ohpm before building.
+  }
+}"#;
+        let out = upsert_lingxia_har_dep(content, "file:/abs/lingxia.har").unwrap();
+        assert!(out.contains(r#""lingxia": "file:/abs/lingxia.har""#));
+        // Absolute file: path must survive the relative-only rewrite untouched.
+        assert_eq!(rewrite_file_dependencies(&out, "../../../"), out);
+    }
+
+    #[test]
+    fn upsert_har_dep_replaces_existing_value_idempotently() {
+        let content = r#"{
+  "dependencies": {
+    "lingxia": "file:/old/path/lingxia.har",
+    "other": "1.0.0"
+  }
+}"#;
+        let once = upsert_lingxia_har_dep(content, "file:/new/path/lingxia.har").unwrap();
+        assert!(once.contains(r#""lingxia": "file:/new/path/lingxia.har""#));
+        assert!(!once.contains("/old/path"));
+        assert!(once.contains(r#""other": "1.0.0""#));
+        // Running again with the same value is a no-op (converges).
+        let twice = upsert_lingxia_har_dep(&once, "file:/new/path/lingxia.har").unwrap();
+        assert_eq!(twice, once);
+    }
+
+    #[test]
+    fn upsert_har_dep_returns_none_without_dependencies_object() {
+        assert!(upsert_lingxia_har_dep(r#"{"name":"entry"}"#, "file:/x.har").is_none());
+    }
 
     #[test]
     fn rewrite_file_deps_prefixes_relative_paths() {
