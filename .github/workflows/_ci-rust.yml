@@ -1,0 +1,92 @@
+# Reusable workflow: blocking Rust compile checks.
+# Called by ci.yml. Tests live in _ci-rust-test.yml (advisory).
+#
+# Toolchain is pinned (not `stable`) so checks are reproducible — a new stable
+# can't silently break CI. Bump deliberately.
+
+name: Internal / Rust Checks
+
+on:
+  workflow_call:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_TOOLCHAIN: "1.95.0"
+  ZIG_VERSION: "0.15.2"
+
+jobs:
+  # The runtime crates (e.g. lingxia-webview) only have android / apple / ohos
+  # backends — there is no plain-linux-gnu host backend — so workspace-wide
+  # rust checks run on macOS, the project's real desktop host. Android is
+  # covered separately by the android-target job below.
+  check:
+    name: Check
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+
+      - uses: Swatinem/rust-cache@v2
+
+      # lingxia-terminal builds ghostty's libghostty-vt with zig.
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: ${{ env.ZIG_VERSION }}
+
+      # lingxia-cli build.rs (run by --workspace and the i18n gate) embeds the
+      # bridge/polyfills JS runtime.
+      - uses: ./.github/actions/build-web-runtime
+
+      - name: Check all workspace crates
+        run: cargo check --workspace
+
+      - name: Check i18n-related crates explicitly
+        run: cargo check -p lingxia-logic -p lingxia-cli
+
+      - name: Verify strict i18n generation gate
+        run: cargo run -p lingxia-cli -- gen i18n --input i18n --rust-out /tmp/i18n_generated.rs --ts-out /tmp/lingxia-types-generated
+
+  # lingxia (lib) for the android target does not pull lingxia-terminal, so this
+  # job needs neither zig nor the web runtime — just the NDK clang.
+  android-target:
+    name: Android Target
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          targets: aarch64-linux-android
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: rust-android
+
+      # C-dependency build scripts (e.g. `ring`) compile even under `cargo
+      # check`, so they need the NDK clang. The ubuntu runner ships the NDK;
+      # point cc/ar/linker at it for the android target (API matches the
+      # example's minSdk = 29), mirroring what `lingxia build` sets.
+      - name: Configure Android NDK toolchain
+        run: |
+          NDK="${ANDROID_NDK_LATEST_HOME:-${ANDROID_NDK_ROOT:-$ANDROID_NDK_HOME}}"
+          BIN="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          API=29
+          test -x "$BIN/aarch64-linux-android${API}-clang" || {
+            echo "NDK clang not found in $BIN" >&2; ls "$BIN" | head; exit 1;
+          }
+          echo "$BIN" >> "$GITHUB_PATH"
+          {
+            echo "CC_aarch64-linux-android=$BIN/aarch64-linux-android${API}-clang"
+            echo "CXX_aarch64-linux-android=$BIN/aarch64-linux-android${API}-clang++"
+            echo "AR_aarch64-linux-android=$BIN/llvm-ar"
+            echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$BIN/aarch64-linux-android${API}-clang"
+          } >> "$GITHUB_ENV"
+
+      - name: Check Rust compiles for Android target
+        run: cargo check --target aarch64-linux-android -p lingxia --lib

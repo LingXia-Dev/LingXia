@@ -9,6 +9,10 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/LingXia-Dev/LingXia/actions/workflows/ci.yml"><img src="https://github.com/LingXia-Dev/LingXia/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
+</p>
+
+<p align="center">
   <a href="docs/quick-start.md">Quick Start</a> &middot;
   <a href="docs/skill/SKILL.md">AI Skill</a> &middot;
   <a href="docs/skill/lxapp/guide.md">LxApp Guide</a> &middot;

@@ -1,0 +1,29 @@
+name: Build embedded web runtime
+description: >
+  Install deps and build @lingxia/bridge + @lingxia/polyfills. lingxia-cli's
+  build.rs embeds these JS runtimes at compile time, so every job that compiles
+  lingxia-cli — the CLI binary, the macOS runner, or `cargo {check,test,clippy}
+  --workspace` — needs their dist output present first.
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v4
+      with:
+        node-version: "20"
+
+    # Lockfiles are gitignored, so `npm install` (not `npm ci`) and no npm
+    # cache — matches what lingxia-cli's build.rs does when no lock is present.
+    - name: Build bridge + polyfills
+      shell: bash
+      env:
+        # The packages' `clean` scripts use `rm -rf`; force npm to run package
+        # scripts through bash so the build also works on the Windows runner.
+        npm_config_script_shell: bash
+      run: |
+        set -euo pipefail
+        for pkg in packages/lingxia-bridge packages/lingxia-polyfills; do
+          echo "::group::$pkg (npm install + build)"
+          (cd "$pkg" && npm install && npm run build)
+          echo "::endgroup::"
+        done
