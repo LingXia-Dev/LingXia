@@ -1,7 +1,10 @@
+import com.vanniktech.maven.publish.AndroidSingleVariantLibrary
+
 plugins {
     id("com.android.library")
     id("org.jetbrains.kotlin.android")
     id("maven-publish")
+    id("com.vanniktech.maven.publish") version "0.34.0" apply false
 }
 
 val targetSdkProp = (project.findProperty("targetSdk") as String?)?.toIntOrNull() ?: 35
@@ -44,13 +47,9 @@ android {
         }
     }
 
-    // Enable publishing of the release variant
-    publishing {
-        singleVariant("release") {
-            // withSourcesJar() // optional
-            // withJavadocJar() // optional
-        }
-    }
+    // The com.vanniktech.maven.publish plugin owns the release publication
+    // (it configures the single "release" variant with sources + javadoc below
+    // via mavenPublishing { configure(AndroidSingleVariantLibrary(...)) }).
 }
 
 dependencies {
@@ -71,17 +70,73 @@ dependencies {
     implementation("com.google.mlkit:barcode-scanning:17.2.0")
 }
 
-publishing {
-    publications {
-        create<MavenPublication>("release") {
-            groupId = "com.lingxia"
-            artifactId = "lingxia"
-            version = (project.findProperty("version") as String?) ?: "0.0.1"
-            afterEvaluate {
-                from(components["release"])
+val sdkGroupId = "io.github.lingxia-dev"
+val sdkArtifactId = "lingxia"
+val sdkVersion = (project.findProperty("version") as String?) ?: "0.0.1"
+
+// Publishing only applies when building the SDK standalone for release; the
+// example app includes this module as a project (rootProject "lingxia-example")
+// and must not apply the publishing plugin.
+if (rootProject.name == "lingxia-sdk") {
+    apply(plugin = "com.vanniktech.maven.publish")
+    extensions.configure<com.vanniktech.maven.publish.MavenPublishBaseExtension> {
+    coordinates(sdkGroupId, sdkArtifactId, sdkVersion)
+
+    // Single-variant Android library: publish the "release" variant with a
+    // sources jar and a javadoc jar (Central rejects publications missing them).
+    configure(
+        AndroidSingleVariantLibrary(
+            variant = "release",
+            sourcesJar = true,
+            publishJavadocJar = true,
+        )
+    )
+
+    // publishToMavenCentral() (no SonatypeHost arg) targets the Central Portal.
+    // Credentials come from the gradle properties
+    // ORG_GRADLE_PROJECT_mavenCentralUsername / ...Password (populated from env
+    // in CI). They are never hardcoded here.
+    publishToMavenCentral()
+
+    // Only sign when an in-memory signing key is configured. This keeps local
+    // builds (scripts/release/sdk.sh -> publishAllPublicationsToLocalExampleRepository)
+    // working without a GPG key, while CI signs with ORG_GRADLE_PROJECT_signingInMemoryKey.
+    if (project.findProperty("signingInMemoryKey") != null) {
+        signAllPublications()
+    }
+
+    // Central rejects incomplete POMs, so provide the full metadata.
+    pom {
+        name.set("LingXia")
+        description.set("LingXia Android SDK — embed LingXia lxapps in native Android apps.")
+        url.set("https://github.com/LingXia-Dev/LingXia")
+        licenses {
+            license {
+                name.set("MIT")
+                url.set("https://opensource.org/licenses/MIT")
             }
         }
+        developers {
+            developer {
+                id.set("LingXia-Dev")
+                name.set("LingXia-Dev")
+                url.set("https://github.com/LingXia-Dev")
+            }
+        }
+        scm {
+            url.set("https://github.com/LingXia-Dev/LingXia")
+            connection.set("scm:git:git://github.com/LingXia-Dev/LingXia.git")
+            developerConnection.set("scm:git:ssh://git@github.com/LingXia-Dev/LingXia.git")
+        }
     }
+    }
+}
+
+// Keep a local-directory Maven repository so scripts/release/sdk.sh can publish
+// the AAR + POM to a workspace dir (and zip it as a release artifact) without
+// touching Maven Central. The vanniktech plugin adds the publication; this only
+// adds an extra destination repository named "localExample".
+publishing {
     repositories {
         maven {
             name = "localExample"

@@ -14,10 +14,6 @@ pluginManagement {
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
-        // LingXia SDK local Maven repository
-        maven {
-            url = uri("../target/maven")
-        }
         google()
         mavenCentral()
     }

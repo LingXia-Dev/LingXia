@@ -1,0 +1,113 @@
+name: Maven Central Publish (Android SDK)
+
+# Publishes io.github.lingxia-dev:lingxia (the Android SDK AAR + sources +
+# javadoc + POM) to Maven Central via the Sonatype Central Portal, GPG-signed.
+#
+# Triggers:
+#   - manual: workflow_dispatch
+#   - push of an sdk-v* tag (e.g. sdk-v0.1.0)
+# It deliberately does NOT run on pushes/PRs to branches.
+#
+# Credentials are read from repo secrets and exposed to Gradle via the
+# vanniktech maven-publish plugin's ORG_GRADLE_PROJECT_* convention. Nothing is
+# hardcoded. If MAVEN_CENTRAL_USERNAME is unset (e.g. a manual run in a fork or
+# before secrets are configured), the publish step is skipped instead of failing.
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "sdk-v*"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish to Maven Central
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      # Gate: when no Central Portal username secret is configured, skip the
+      # actual publish so a manual run does not hard-fail.
+      - name: Check publish credentials
+        id: gate
+        env:
+          MAVEN_CENTRAL_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+        run: |
+          if [ -z "${MAVEN_CENTRAL_USERNAME}" ]; then
+            echo "MAVEN_CENTRAL_USERNAME is not set — skipping the Maven Central publish."
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Maven Central credentials present — will publish."
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-java@v4
+        if: steps.gate.outputs.configured == 'true'
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      - uses: dtolnay/rust-toolchain@stable
+        if: steps.gate.outputs.configured == 'true'
+
+      - uses: Swatinem/rust-cache@v2
+        if: steps.gate.outputs.configured == 'true'
+        with:
+          prefix-key: sdk-maven-publish
+
+      - name: Cache Gradle
+        if: steps.gate.outputs.configured == 'true'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-sdk-${{ hashFiles('lingxia-sdk/android/**/*.gradle*', 'lingxia-sdk/android/**/gradle-wrapper.properties') }}
+          restore-keys: gradle-sdk-
+
+      # The SDK's Kotlin references generated R.drawable.* / R.string.*, so build
+      # the embedded web runtime (consumed by lingxia-cli's build.rs) and then
+      # generate the vector drawables + localized strings the AAR build needs.
+      - uses: ./.github/actions/build-web-packages
+        if: steps.gate.outputs.configured == 'true'
+
+      - uses: ./.github/actions/bootstrap-android-sdk
+        if: steps.gate.outputs.configured == 'true'
+
+      - name: Read workspace version
+        id: version
+        if: steps.gate.outputs.configured == 'true'
+        run: |
+          set -euo pipefail
+          workspace_version="$(awk '
+            /^\[workspace\.package\]/ {in_section=1; next}
+            /^\[/ {in_section=0}
+            in_section && $1 == "version" {
+              gsub(/"/, "", $3);
+              print $3;
+              exit
+            }' Cargo.toml)"
+          if [ -z "$workspace_version" ]; then
+            echo "Failed to read workspace version from Cargo.toml" >&2
+            exit 1
+          fi
+          echo "Version: $workspace_version"
+          echo "version=$workspace_version" >> "$GITHUB_OUTPUT"
+
+      - name: Publish to Maven Central (Central Portal)
+        if: steps.gate.outputs.configured == 'true'
+        working-directory: lingxia-sdk/android
+        env:
+          ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+          ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.SIGNING_KEY }}
+          ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_PASSWORD }}
+        run: |
+          ./gradlew :lingxia:publishToMavenCentral \
+            -Pversion=${{ steps.version.outputs.version }} \
+            --no-daemon --no-configuration-cache

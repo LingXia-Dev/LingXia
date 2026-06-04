@@ -303,10 +303,15 @@ build_android() {
   gradle_props+=("-PLOCAL_MAVEN_REPO_DIR=$maven_dir")
   gradle_props+=("-Pversion=$VERSION")
 
-  log "+ (cd $ANDROID_SDK_DIR && ./gradlew :lingxia:publish ${gradle_props[*]})"
-  (cd "$ANDROID_SDK_DIR" && ./gradlew :lingxia:publish "${gradle_props[@]}" 1>&2)
+  # Publish only to the local "localExample" Maven repository (a plain directory).
+  # The Central Portal target (publishAndReleaseToMavenCentral) is deliberately
+  # NOT invoked here — that runs in CI with credentials + a signing key.
+  local publish_task=":lingxia:publishAllPublicationsToLocalExampleRepository"
+  log "+ (cd $ANDROID_SDK_DIR && ./gradlew $publish_task ${gradle_props[*]})"
+  (cd "$ANDROID_SDK_DIR" && ./gradlew "$publish_task" "${gradle_props[@]}" 1>&2)
 
-  local aar="$maven_dir/com/lingxia/lingxia/$VERSION/lingxia-$VERSION.aar"
+  # groupId io.github.lingxia-dev -> io/github/lingxia-dev on disk.
+  local aar="$maven_dir/io/github/lingxia-dev/lingxia/$VERSION/lingxia-$VERSION.aar"
   [[ -f "$aar" ]] || die "AAR not found after publish: $aar"
 
   if ! $ANDROID_ZIP; then
@@ -316,13 +321,13 @@ build_android() {
   fi
 
   # For release assets, zip only this artifact's group subtree to avoid bundling unrelated local Maven contents.
-  local group_dir="$maven_dir/com/lingxia/lingxia"
+  local group_dir="$maven_dir/io/github/lingxia-dev/lingxia"
   [[ -d "$group_dir" ]] || die "Android group dir missing: $group_dir"
 
   local tmp_dir
   tmp_dir="$(mktemp -d 2>/dev/null || mktemp -d -t lingxia_android_maven)"
-  mkdir -p "$tmp_dir/maven/com/lingxia"
-  cp -R "$group_dir" "$tmp_dir/maven/com/lingxia/"
+  mkdir -p "$tmp_dir/maven/io/github/lingxia-dev"
+  cp -R "$group_dir" "$tmp_dir/maven/io/github/lingxia-dev/"
   find "$tmp_dir/maven" -name ".DS_Store" -delete 2>/dev/null || true
 
   local out_zip="$OUT_DIR/lingxia-sdk-android-maven-$VERSION.zip"
