@@ -27,7 +27,7 @@ pub use lxapp::{LxApp, LxAppSecurityPrivilege};
 
 /// Host app metadata, state-path helpers, and lifecycle helpers.
 pub mod app;
-pub use app::{lingxia_id, product_version};
+pub use app::{home_app_id, lingxia_id, product_version};
 mod applink;
 mod bootstrap;
 mod capabilities;

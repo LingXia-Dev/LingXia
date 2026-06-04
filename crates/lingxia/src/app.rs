@@ -31,6 +31,11 @@ pub fn product_version() -> Option<&'static str> {
     lingxia_app_context::product_version()
 }
 
+/// Returns the configured home LxApp id from the initialized app config.
+pub fn home_app_id() -> Option<&'static str> {
+    lingxia_app_context::home_app_id()
+}
+
 /// Returns the configured LingXia host identifier, if any.
 pub fn lingxia_id() -> Option<&'static str> {
     lingxia_app_context::lingxia_id()
