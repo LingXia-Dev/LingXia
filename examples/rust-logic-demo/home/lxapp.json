@@ -1,0 +1,13 @@
+{
+  "appId": "rustlogic-home",
+  "version": "0.1.0",
+  "appName": "Rust Logic Demo",
+  "logic": false,
+  "pages": [
+    { "name": "home", "path": "pages/home/index" }
+  ],
+  "security": {
+    "network": { "trustedDomains": [] },
+    "privileges": []
+  }
+}

@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Rust Logic Demo</title>
+    <!--
+      Shape C: no @lingxia/html, no Page({}), no useLxPage, no JS framework.
+      The runtime auto-injects the CLI-generated native client at
+      lingxia://lxapp/.lingxia/native.js, exposing window.native.demo.*.
+      All state and "Logic" live in the Rust crate at ../../../rustlogic-lib/src/lib.rs.
+    -->
+    <script src="lingxia://lxapp/.lingxia/native.js"></script>
+    <style>
+      body { font-family: system-ui, sans-serif; padding: 24px; max-width: 760px; margin: 0 auto; color: #1d1d1f; }
+      h1 { font-size: 22px; }
+      section { border: 1px solid #e0e0e0; border-radius: 10px; padding: 16px; margin: 16px 0; }
+      h2 { font-size: 16px; margin: 0 0 10px 0; }
+      button { font-size: 15px; padding: 7px 14px; margin-right: 8px; cursor: pointer; }
+      input { font-size: 15px; padding: 6px 8px; }
+      pre { background: #f5f5f7; padding: 10px; border-radius: 8px; white-space: pre-wrap; word-break: break-word; margin: 10px 0 0 0; min-height: 20px; }
+      .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    </style>
+  </head>
+  <body>
+    <h1>Rust Logic Demo (Shape C — 100% Rust Logic)</h1>
+    <p>Every button below calls a <code>#[lingxia::native]</code> route in Rust through <code>window.native.demo.*</code>. There is no JS AppService.</p>
+
+    <!-- demo.appInfo : unary -->
+    <section>
+      <h2>demo.appInfo — host metadata (unary)</h2>
+      <button id="btn-appinfo">Call appInfo</button>
+      <pre id="out-appinfo"></pre>
+    </section>
+
+    <!-- demo.networkInfo : async unary -->
+    <section>
+      <h2>demo.networkInfo — network status (async)</h2>
+      <button id="btn-network">Call networkInfo</button>
+      <pre id="out-network"></pre>
+    </section>
+
+    <!-- demo.download : async + cancel -->
+    <section>
+      <h2>demo.download — download a URL (async, cancelable)</h2>
+      <div class="row">
+        <input id="dl-url" size="44" value="https://example.com/index.html" />
+        <button id="btn-download">Call download</button>
+      </div>
+      <pre id="out-download"></pre>
+    </section>
+
+    <!-- demo.chooseMedia : async -->
+    <section>
+      <h2>demo.chooseMedia — native media picker (async)</h2>
+      <button id="btn-media">Call chooseMedia</button>
+      <pre id="out-media"></pre>
+    </section>
+
+    <!-- demo.ticker : stream (Rust -> page push) -->
+    <section>
+      <h2>demo.ticker — server-push stream (Rust → page)</h2>
+      <div class="row">
+        <button id="btn-ticker-start">Start ticker</button>
+        <button id="btn-ticker-stop">Stop</button>
+      </div>
+      <pre id="out-ticker"></pre>
+    </section>
+
+    <!-- demo.echo : channel (bidirectional) -->
+    <section>
+      <h2>demo.echo — bidirectional channel</h2>
+      <div class="row">
+        <button id="btn-echo-open">Open channel</button>
+        <input id="echo-text" size="32" value="hello from the view" />
+        <button id="btn-echo-send">Send</button>
+        <button id="btn-echo-close">Close</button>
+      </div>
+      <pre id="out-echo"></pre>
+    </section>
+
+    <script>
+      function $(id) { return document.getElementById(id); }
+      function show(el, value) {
+        if (typeof value === "string") { el.textContent = value; }
+        else { el.textContent = JSON.stringify(value, null, 2); }
+      }
+      function errText(err) {
+        if (err && err.message) { return "Error: " + err.message; }
+        return "Error: " + String(err);
+      }
+
+      // ---- demo.appInfo ----
+      $("btn-appinfo").addEventListener("click", function () {
+        window.native.demo.appInfo().then(function (res) {
+          show($("out-appinfo"), res);
+        }).catch(function (err) { show($("out-appinfo"), errText(err)); });
+      });
+
+      // ---- demo.networkInfo ----
+      $("btn-network").addEventListener("click", function () {
+        window.native.demo.networkInfo().then(function (res) {
+          show($("out-network"), res);
+        }).catch(function (err) { show($("out-network"), errText(err)); });
+      });
+
+      // ---- demo.download ----
+      $("btn-download").addEventListener("click", function () {
+        var out = $("out-download");
+        show(out, "Downloading...");
+        window.native.demo.download({ url: $("dl-url").value }).then(function (res) {
+          show(out, res);
+        }).catch(function (err) { show(out, errText(err)); });
+      });
+
+      // ---- demo.chooseMedia ----
+      $("btn-media").addEventListener("click", function () {
+        var out = $("out-media");
+        show(out, "Opening picker...");
+        window.native.demo.chooseMedia({ maxCount: 3, mode: "images" }).then(function (res) {
+          show(out, res);
+        }).catch(function (err) { show(out, errText(err)); });
+      });
+
+      // ---- demo.ticker (stream) ----
+      var tickerHandle = null;
+      $("btn-ticker-start").addEventListener("click", function () {
+        var out = $("out-ticker");
+        out.textContent = "";
+        // stream(input) returns { onEvent, onError, result, cancel } synchronously.
+        tickerHandle = window.native.demo.ticker({ count: 8 });
+        tickerHandle.onEvent(function (tick) {
+          out.textContent += "tick #" + tick.index + " @ " + tick.atMs + "ms\n";
+        });
+        tickerHandle.onError(function (err) {
+          out.textContent += errText(err) + "\n";
+        });
+        tickerHandle.result.then(function (summary) {
+          out.textContent += "DONE — emitted " + summary.emitted + "\n";
+          tickerHandle = null;
+        }).catch(function (err) {
+          out.textContent += errText(err) + "\n";
+          tickerHandle = null;
+        });
+      });
+      $("btn-ticker-stop").addEventListener("click", function () {
+        if (tickerHandle) { tickerHandle.cancel(); tickerHandle = null; }
+      });
+
+      // ---- demo.echo (channel) ----
+      var echoHandle = null;
+      $("btn-echo-open").addEventListener("click", function () {
+        var out = $("out-echo");
+        out.textContent = "Opening channel...\n";
+        // channel(input) returns a Promise of { send, onMessage, onClose, close }.
+        window.native.demo.echo().then(function (handle) {
+          echoHandle = handle;
+          out.textContent += "Channel open.\n";
+          handle.onMessage(function (msg) {
+            out.textContent += "<- echo #" + msg.seq + ": " + msg.echo + "\n";
+          });
+          handle.onClose(function (event) {
+            out.textContent += "Channel closed (" + (event.code || "ok") + ")\n";
+            echoHandle = null;
+          });
+        }).catch(function (err) { show(out, errText(err)); });
+      });
+      $("btn-echo-send").addEventListener("click", function () {
+        if (!echoHandle) { $("out-echo").textContent += "Open the channel first.\n"; return; }
+        var text = $("echo-text").value;
+        $("out-echo").textContent += "-> " + text + "\n";
+        echoHandle.send({ text: text });
+      });
+      $("btn-echo-close").addEventListener("click", function () {
+        if (echoHandle) { echoHandle.close(); echoHandle = null; }
+      });
+    </script>
+  </body>
+</html>

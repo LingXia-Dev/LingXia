@@ -1,0 +1,32 @@
+app:
+  projectName: rustlogic
+  productName: Rust Logic Demo
+  productVersion: 0.1.0
+  platforms: [macos]
+  homeAppId: rustlogic-home
+
+macos:
+  bundleId: com.example.rustlogic
+  deploymentTarget: "12.0"
+  targetName: RustLogicDemo
+  executableName: RustLogicDemo
+
+features:
+  appService: false   # Shape C: no JS AppService runtime. All Logic lives in Rust.
+  shell: false
+  devtools: false
+
+resources:
+  bundles:
+    - type: lxapp
+      appId: rustlogic-home
+      path: home
+
+ui:
+  launch:
+    initialSurface: main
+  surfaces:
+    - id: main
+      presentation: { kind: window }
+      content: { kind: lxapp, appId: rustlogic-home }
+  activators: []
