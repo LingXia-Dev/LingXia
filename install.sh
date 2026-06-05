@@ -1,290 +1,167 @@
-#!/usr/bin/env sh
+#!/bin/sh
+# LingXia CLI installer (rustup / deno / bun style).
+#
+# Downloads a prebuilt `lingxia` binary from GitHub Releases, verifies its
+# sha256 against the release SHASUMS file, and installs it to ~/.local/bin.
+#
+# macOS only for now (arm64 + x86_64). Linux is not built yet; Windows users
+# download the binary manually from the releases page.
+#
+# Usage:
+#   curl -fsSL https://raw.githubusercontent.com/LingXia-Dev/LingXia/main/install.sh | sh
+#
+# Environment overrides:
+#   LINGXIA_REPO         GitHub repo (default: LingXia-Dev/LingXia)
+#   LINGXIA_VERSION      Version to install, e.g. 0.8.0 (default: latest CLI release)
+#   LINGXIA_INSTALL_DIR  Install directory (default: $HOME/.local/bin)
+
 set -eu
 
 REPO="${LINGXIA_REPO:-LingXia-Dev/LingXia}"
-INSTALL_DIR="$HOME/.local/bin"
-VERSION="0.8.0"
-BIN_NAME="lingxia"
-INSTALL_META_NAME="lingxia-cli-install.json"
-RUNNER_ROOT_DIR="$HOME/.lingxia/runner"
-RUNNER_APP_NAME="LingXia Runner.app"
+INSTALL_DIR="${LINGXIA_INSTALL_DIR:-$HOME/.local/bin}"
+TAG_PREFIX="lingxia-cli-v"
 
-need_cmd() {
-  if ! command -v "$1" >/dev/null 2>&1; then
-    echo "error: missing required command: $1" >&2
-    exit 1
-  fi
-}
-
-json_read() {
-  need_cmd python3
-  script="$1"
-  shift
-  python3 -c "$script" "$@"
-}
-
-say() {
-  printf '%s\n' "$*"
-}
-
-detect_platform() {
-  os="$(uname -s)"
-  arch="$(uname -m)"
-
-  case "$os" in
-    Darwin) os="darwin" ;;
-    Linux) os="linux" ;;
-    *)
-      echo "error: unsupported operating system: $os" >&2
-      exit 1
-      ;;
-  esac
-
-  case "$arch" in
-    x86_64|amd64) arch="x64" ;;
-    arm64|aarch64) arch="arm64" ;;
-    *)
-      echo "error: unsupported architecture: $arch" >&2
-      exit 1
-      ;;
-  esac
-
-  printf '%s-%s' "$os" "$arch"
-}
-
-download_file() {
-  url="$1"
-  output="$2"
-
-  if command -v curl >/dev/null 2>&1; then
-    if [ -n "${GITHUB_TOKEN:-}" ]; then
-      curl -fsSL \
-        -H "User-Agent: lingxia-install-script" \
-        -H "Authorization: Bearer $GITHUB_TOKEN" \
-        -o "$output" \
-        "$url"
-    else
-      curl -fsSL \
-        -H "User-Agent: lingxia-install-script" \
-        -o "$output" \
-        "$url"
-    fi
-    return
-  fi
-
-  if command -v wget >/dev/null 2>&1; then
-    args=""
-    if [ -n "${GITHUB_TOKEN:-}" ]; then
-      args="--header=Authorization: Bearer $GITHUB_TOKEN"
-    fi
-    # shellcheck disable=SC2086
-    wget -qO "$output" $args "$url"
-    return
-  fi
-
-  echo "error: neither curl nor wget is available" >&2
+err() {
+  echo "error: $*" >&2
   exit 1
 }
 
-github_api_get() {
-  url="$1"
-
-  if command -v curl >/dev/null 2>&1; then
-    curl -fsSL \
-      -H "User-Agent: lingxia-install-script" \
-      -H "Accept: application/vnd.github+json" \
-      -H "Authorization: Bearer $GITHUB_TOKEN" \
-      "$url"
-    return
-  fi
-
-  if command -v wget >/dev/null 2>&1; then
-    wget -qO- \
-      --header="User-Agent: lingxia-install-script" \
-      --header="Accept: application/vnd.github+json" \
-      --header="Authorization: Bearer $GITHUB_TOKEN" \
-      "$url"
-    return
-  fi
-
-  echo "error: neither curl nor wget is available" >&2
-  exit 1
+info() {
+  echo "$*"
 }
 
-download_github_release_asset() {
-  repo="$1"
-  tag="$2"
-  asset_name="$3"
-  output="$4"
+# --- Pick a downloader -------------------------------------------------------
+# Record the chosen tool once; fetch()/download() branch on it.
+if command -v curl >/dev/null 2>&1; then
+  DOWNLOADER="curl"
+elif command -v wget >/dev/null 2>&1; then
+  DOWNLOADER="wget"
+else
+  err "need curl or wget to download the CLI"
+fi
 
-  release_api="https://api.github.com/repos/$repo/releases/tags/$tag"
-  release_json="$(github_api_get "$release_api")"
-
-  asset_url="$(
-    printf '%s' "$release_json" | json_read '
-import json, sys
-
-asset_name = sys.argv[1]
-release = json.load(sys.stdin)
-for asset in release.get("assets", []):
-    if asset.get("name") == asset_name:
-        print(asset["url"])
-        break
-else:
-    raise SystemExit(1)
-' "$asset_name"
-  )" || {
-    echo "error: asset not found in release: $asset_name ($tag)" >&2
-    exit 1
-  }
-
-  if command -v curl >/dev/null 2>&1; then
-    curl -fsSL \
-      -H "User-Agent: lingxia-install-script" \
-      -H "Accept: application/octet-stream" \
-      -H "Authorization: Bearer $GITHUB_TOKEN" \
-      -o "$output" \
-      "$asset_url"
-    return
-  fi
-
-  if command -v wget >/dev/null 2>&1; then
-    wget -qO "$output" \
-      --header="User-Agent: lingxia-install-script" \
-      --header="Accept: application/octet-stream" \
-      --header="Authorization: Bearer $GITHUB_TOKEN" \
-      "$asset_url"
-    return
-  fi
-
-  echo "error: neither curl nor wget is available" >&2
-  exit 1
-}
-
-ensure_install_dir() {
-  mkdir -p "$INSTALL_DIR"
-  if [ ! -w "$INSTALL_DIR" ]; then
-    echo "error: install directory is not writable: $INSTALL_DIR" >&2
-    exit 1
-  fi
-}
-
-ensure_runner_dir() {
-  mkdir -p "$1"
-  if [ ! -w "$1" ]; then
-    echo "error: runner install directory is not writable: $1" >&2
-    exit 1
-  fi
-}
-
-write_install_metadata() {
-  meta_path="$INSTALL_DIR/$INSTALL_META_NAME"
-  cat > "$meta_path" <<EOF
-{
-  "channel": "github-release",
-  "repo": "$REPO",
-  "version": "$version",
-  "install_path": "$INSTALL_DIR/$BIN_NAME"
-}
-EOF
-}
-
-install_runner() {
-  platform="$1"
-  version="$2"
-
-  case "$platform" in
-    darwin-arm64) runner_arch="arm64" ;;
-    darwin-x64) runner_arch="x64" ;;
-    *) return 0 ;;
-  esac
-
-  runner_version_dir="$RUNNER_ROOT_DIR/$version"
-  runner_app_path="$runner_version_dir/$RUNNER_APP_NAME"
-  runner_asset_name="lingxia-runner-$version-macos-$runner_arch.zip"
-  runner_download_url="https://github.com/$REPO/releases/download/lingxia-cli-v$version/$runner_asset_name"
-
-  need_cmd unzip
-  ensure_runner_dir "$runner_version_dir"
-
-  say ""
-  say "Installing LingXia Runner $version for $runner_arch"
-  say "Download: $runner_download_url"
-
-  temp_runner_zip="$temp_dir/$runner_asset_name"
-  temp_runner_extract="$temp_dir/runner-extract"
-  rm -rf "$temp_runner_extract"
-  mkdir -p "$temp_runner_extract"
-
-  if [ -n "${GITHUB_TOKEN:-}" ]; then
-    download_github_release_asset "$REPO" "lingxia-cli-v$version" "$runner_asset_name" "$temp_runner_zip"
+# fetch <url> : print remote body to stdout (text/JSON).
+fetch() {
+  if [ "$DOWNLOADER" = "curl" ]; then
+    curl -fsSL "$1"
   else
-    download_file "$runner_download_url" "$temp_runner_zip"
+    wget -qO- "$1"
   fi
-
-  unzip -q "$temp_runner_zip" -d "$temp_runner_extract"
-
-  extracted_runner_app="$temp_runner_extract/$RUNNER_APP_NAME"
-  if [ ! -d "$extracted_runner_app" ]; then
-    echo "error: runner app bundle not found after unzip: $extracted_runner_app" >&2
-    exit 1
-  fi
-
-  rm -rf "$runner_app_path"
-  mv "$extracted_runner_app" "$runner_app_path"
-  say "Installed Runner: $runner_app_path"
 }
 
-main() {
-  need_cmd uname
-  need_cmd mktemp
-  need_cmd chmod
-  need_cmd mkdir
-  need_cmd mv
-
-  if [ -n "${LINGXIA_INSTALL_DIR:-}" ] && [ "${LINGXIA_INSTALL_DIR}" != "$INSTALL_DIR" ]; then
-    echo "error: custom install directories are no longer supported; LingXia CLI installs to $INSTALL_DIR" >&2
-    exit 1
-  fi
-
-  platform="$(detect_platform)"
-  version="$VERSION"
-  tag="lingxia-cli-v$version"
-  asset_name="lingxia-$platform"
-  download_url="https://github.com/$REPO/releases/download/$tag/$asset_name"
-
-  ensure_install_dir
-
-  temp_dir="$(mktemp -d)"
-  trap 'rm -rf "$temp_dir"' EXIT INT TERM
-  temp_bin="$temp_dir/$BIN_NAME"
-
-  say "Installing LingXia CLI $version for $platform"
-  say "Download: $download_url"
-  if [ -n "${GITHUB_TOKEN:-}" ]; then
-    download_github_release_asset "$REPO" "$tag" "$asset_name" "$temp_bin"
+# download <url> <dest> : save remote body to a file.
+download() {
+  if [ "$DOWNLOADER" = "curl" ]; then
+    curl -fsSL "$1" -o "$2"
   else
-    download_file "$download_url" "$temp_bin"
+    wget -q "$1" -O "$2"
   fi
-  chmod +x "$temp_bin"
-  mv "$temp_bin" "$INSTALL_DIR/$BIN_NAME"
-  write_install_metadata
-  install_runner "$platform" "$version"
+}
 
-  say ""
-  say "Installed: $INSTALL_DIR/$BIN_NAME"
-
-  case ":$PATH:" in
-    *":$INSTALL_DIR:"*) ;;
+# --- Detect platform ---------------------------------------------------------
+# The CLI currently ships macOS binaries only. Linux is not built yet; anything
+# else (incl. Windows via uname/MSYS) gets the manual-download pointer.
+detect_os() {
+  case "$(uname -s)" in
+    Darwin) echo "darwin" ;;
+    Linux)
+      err "Linux is not supported yet. Track progress and grab future builds at https://github.com/$REPO/releases"
+      ;;
     *)
-      say "Add this directory to your PATH if needed:"
-      say "  export PATH=\"$INSTALL_DIR:\$PATH\""
+      err "unsupported OS '$(uname -s)'. Windows users: download the binary manually from https://github.com/$REPO/releases"
       ;;
   esac
-
-  say ""
-  say "Verify:"
-  say "  $BIN_NAME --version"
 }
 
-main "$@"
+detect_arch() {
+  case "$(uname -m)" in
+    x86_64 | amd64) echo "x86_64" ;;
+    arm64 | aarch64) echo "aarch64" ;;
+    *)
+      err "unsupported architecture '$(uname -m)'"
+      ;;
+  esac
+}
+
+OS="$(detect_os)"
+ARCH="$(detect_arch)"
+# Asset name scheme matches .github/workflows/release-cli.yml exactly.
+ASSET="lingxia-${OS}-${ARCH}"
+
+# --- Resolve version ---------------------------------------------------------
+# The repo ships several components, each with its own tag prefix (e.g.
+# lingxia-cli-v*, sdk-v*), so /releases/latest is NOT reliable -- it returns the
+# newest release of ANY component. Instead we list releases (newest-first) and
+# take the first whose tag starts with "lingxia-cli-v".
+resolve_version() {
+  if [ -n "${LINGXIA_VERSION:-}" ]; then
+    echo "$LINGXIA_VERSION"
+    return
+  fi
+  tag="$(
+    fetch "https://api.github.com/repos/$REPO/releases" \
+      | grep -o '"tag_name"[[:space:]]*:[[:space:]]*"'"$TAG_PREFIX"'[^"]*"' \
+      | head -n 1 \
+      | sed -e 's/.*"'"$TAG_PREFIX"'/'"$TAG_PREFIX"'/' -e 's/"$//'
+  )"
+  [ -n "$tag" ] || err "could not find a $TAG_PREFIX release in $REPO"
+  echo "${tag#"$TAG_PREFIX"}"
+}
+
+VERSION="$(resolve_version)"
+TAG="${TAG_PREFIX}${VERSION}"
+BASE_URL="https://github.com/$REPO/releases/download/$TAG"
+SHASUMS="SHASUMS256-${VERSION}.txt"
+
+info "Installing lingxia $VERSION ($OS/$ARCH) from $REPO"
+
+# --- Download into a temp dir ------------------------------------------------
+TMP_DIR="$(mktemp -d)"
+trap 'rm -rf "$TMP_DIR"' EXIT INT TERM
+
+info "Downloading $ASSET ..."
+download "$BASE_URL/$ASSET" "$TMP_DIR/$ASSET" \
+  || err "failed to download $ASSET from $BASE_URL"
+
+info "Downloading checksums ..."
+download "$BASE_URL/$SHASUMS" "$TMP_DIR/$SHASUMS" \
+  || err "failed to download $SHASUMS from $BASE_URL"
+
+# --- Verify checksum ---------------------------------------------------------
+# The SHASUMS file covers every release asset; isolate the line for our binary
+# so `-c` does not fail on files we did not download.
+info "Verifying checksum ..."
+expected_line="$(grep -E "[[:space:]]${ASSET}\$" "$TMP_DIR/$SHASUMS" || true)"
+[ -n "$expected_line" ] || err "no checksum entry for $ASSET in $SHASUMS"
+echo "$expected_line" > "$TMP_DIR/$ASSET.sha256"
+
+(
+  cd "$TMP_DIR"
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum -c "$ASSET.sha256" >/dev/null
+  elif command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 -c "$ASSET.sha256" >/dev/null
+  else
+    err "need sha256sum or shasum to verify the download"
+  fi
+) || err "checksum verification failed for $ASSET"
+
+# --- Install -----------------------------------------------------------------
+mkdir -p "$INSTALL_DIR"
+DEST="$INSTALL_DIR/lingxia"
+mv "$TMP_DIR/$ASSET" "$DEST"
+chmod +x "$DEST"
+
+info ""
+info "Installed lingxia $VERSION to $DEST; run \`lingxia --version\`"
+
+# Warn if the install dir is not on PATH.
+case ":$PATH:" in
+  *":$INSTALL_DIR:"*) ;;
+  *)
+    info ""
+    info "note: $INSTALL_DIR is not on your PATH. Add it, e.g.:"
+    info "  export PATH=\"$INSTALL_DIR:\$PATH\""
+    info "Append that line to your shell profile (~/.bashrc, ~/.zshrc, ...) to persist it."
+    ;;
+esac
