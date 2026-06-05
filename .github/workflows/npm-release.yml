@@ -3,8 +3,13 @@ name: NPM Package Release
 on:
   push:
     tags:
+      - "lingxia-bridge-v*"
+      - "lingxia-elements-v*"
+      - "lingxia-html-v*"
+      - "lingxia-page-runtime-v*"
+      - "lingxia-react-v*"
       - "lingxia-types-v*"
-      - "lingxia-components-v*"
+      - "lingxia-vue-v*"
   workflow_dispatch:
     inputs:
       package:
@@ -12,8 +17,13 @@ on:
         required: true
         type: choice
         options:
+          - lingxia-bridge
+          - lingxia-elements
+          - lingxia-html
+          - lingxia-page-runtime
+          - lingxia-react
           - lingxia-types
-          - lingxia-components
+          - lingxia-vue
       version:
         description: "Version to publish (e.g. 0.1.0)"
         required: true
@@ -52,28 +62,31 @@ jobs:
             version="${{ inputs.version }}"
           else
             tag="${{ github.ref_name }}"
-            if [[ "$tag" == lingxia-types-v* ]]; then
-              package="lingxia-types"
-              version="${tag#lingxia-types-v}"
-            elif [[ "$tag" == lingxia-components-v* ]]; then
-              package="lingxia-components"
-              version="${tag#lingxia-components-v}"
-            else
-              echo "Unknown tag format: $tag" >&2
-              exit 1
-            fi
+            case "$tag" in
+              lingxia-bridge-v*) package="lingxia-bridge"; version="${tag#lingxia-bridge-v}" ;;
+              lingxia-elements-v*) package="lingxia-elements"; version="${tag#lingxia-elements-v}" ;;
+              lingxia-html-v*) package="lingxia-html"; version="${tag#lingxia-html-v}" ;;
+              lingxia-page-runtime-v*) package="lingxia-page-runtime"; version="${tag#lingxia-page-runtime-v}" ;;
+              lingxia-react-v*) package="lingxia-react"; version="${tag#lingxia-react-v}" ;;
+              lingxia-types-v*) package="lingxia-types"; version="${tag#lingxia-types-v}" ;;
+              lingxia-vue-v*) package="lingxia-vue"; version="${tag#lingxia-vue-v}" ;;
+              *) echo "Unknown tag format: $tag" >&2; exit 1 ;;
+            esac
           fi
 
-          # Map package to directory
+          # Map package to its source directory under packages/.
           case "$package" in
-            lingxia-types) directory="lingxia-types" ;;
-            lingxia-components) directory="lingxia-components" ;;
+            lingxia-bridge|lingxia-elements|lingxia-html|lingxia-page-runtime|lingxia-react|lingxia-types|lingxia-vue)
+              directory="packages/$package"
+              ;;
             *) echo "Unknown package: $package" >&2; exit 1 ;;
           esac
 
-          echo "package=$package" >> "$GITHUB_OUTPUT"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "directory=$directory" >> "$GITHUB_OUTPUT"
+          {
+            echo "package=$package"
+            echo "version=$version"
+            echo "directory=$directory"
+          } >> "$GITHUB_OUTPUT"
           echo "Publishing $package@$version from $directory"
 
   publish:
