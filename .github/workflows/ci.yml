@@ -26,7 +26,7 @@ jobs:
       runner: ${{ steps.compute.outputs.runner }}
       sdk: ${{ steps.compute.outputs.sdk }}
       harmony: ${{ steps.compute.outputs.harmony }}
-      npm: ${{ steps.filter.outputs.npm }}
+      npm: ${{ steps.compute.outputs.npm }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
@@ -99,27 +99,38 @@ jobs:
           EX_MACOS: ${{ steps.filter.outputs.ex_macos }}
           EX_ANDROID: ${{ steps.filter.outputs.ex_android }}
           I18N: ${{ steps.filter.outputs.i18n }}
+          NPM: ${{ steps.filter.outputs.npm }}
+          # A release/* PR (from Prepare Release PR) only touches Cargo.toml /
+          # install.sh / packages/*, so the path filters would skip sdk/harmony.
+          # Force the FULL validate set on release PRs so a maintainer sees every
+          # job before merging. head_ref is the PR source branch on pull_request.
+          IS_RELEASE: ${{ startsWith(github.head_ref, 'release/') }}
         run: |
           set -euo pipefail
           any() { for v in "$@"; do [ "$v" = "true" ] && { echo true; return; }; done; echo false; }
+          # On a release/* PR, every gating + advisory job runs regardless of
+          # which paths actually changed.
+          rel="$IS_RELEASE"
           # Anything that touches the rust build, the CLI, the embedded web
           # runtime, or CI config rebuilds everything downstream.
-          rust=$(any "$CI_F" "$CORE" "$CLI" "$WEB_RT")
+          rust=$(any "$rel" "$CI_F" "$CORE" "$CLI" "$WEB_RT")
           # Common base for the example apps (runtime + lxapp frontend + shared
           # example config + localized strings).
           ex_base=$(any "$rust" "$WEB_FE" "$EX_COMMON" "$I18N")
-          ios=$(any "$ex_base" "$APPLE" "$EX_IOS")
-          macos=$(any "$ex_base" "$APPLE" "$EX_MACOS")
-          android=$(any "$ex_base" "$ANDROID" "$EX_ANDROID")
+          ios=$(any "$rel" "$ex_base" "$APPLE" "$EX_IOS")
+          macos=$(any "$rel" "$ex_base" "$APPLE" "$EX_MACOS")
+          android=$(any "$rel" "$ex_base" "$ANDROID" "$EX_ANDROID")
           # macOS runner = the apple SDK + the rust runtime/CLI.
-          runner=$(any "$rust" "$APPLE")
+          runner=$(any "$rel" "$rust" "$APPLE")
           # The platform SDKs embed the web runtime (bridge/polyfills) + i18n +
           # the core rust crates, so fan those signals in too.
           sdk_base=$(any "$WEB_RT" "$I18N" "$CORE_RUST")
           # SDK (android + apple): per-platform SDK trees + release script.
-          sdk=$(any "$sdk_base" "$APPLE" "$ANDROID" "$SDK_RELEASE")
+          sdk=$(any "$rel" "$sdk_base" "$APPLE" "$ANDROID" "$SDK_RELEASE")
           # Harmony: harmony SDK tree + the harmony webview backend.
-          harmony=$(any "$sdk_base" "$HARMONY_SDK" "$WEBVIEW_HARMONY")
+          harmony=$(any "$rel" "$sdk_base" "$HARMONY_SDK" "$WEBVIEW_HARMONY")
+          # NPM packages (advisory): any packages/* change, or a release PR.
+          npm=$(any "$rel" "$NPM")
           {
             echo "rust=$rust"
             echo "ios=$ios"
@@ -128,6 +139,7 @@ jobs:
             echo "runner=$runner"
             echo "sdk=$sdk"
             echo "harmony=$harmony"
+            echo "npm=$npm"
           } >> "$GITHUB_OUTPUT"
 
   # ---- Gating jobs (required via ci-success) ----
