@@ -1,5 +1,14 @@
 # Reusable workflow for NPM package checks
-# Called by ci.yml
+# Called by ci.yml (advisory — not wired into ci-success).
+#
+# The @lingxia/* packages have no root workspace and ship no lockfiles, so each
+# package is installed with a plain `npm install` (matching .github/actions/
+# build-web-packages). Several `build` scripts cascade to their siblings via
+# `npm --prefix ../<pkg> run build` against the checked-out tree, so building
+# react/vue/html also covers elements + page-runtime + bridge.
+#
+# Built: bridge, polyfills, types, elements, page-runtime, html, react, vue.
+# Skipped: lingxia-skill (no `build` script — only `sync`/`prepack`).
 
 name: CI - NPM
 
@@ -8,10 +17,13 @@ on:
 
 env:
   NODE_VERSION: "20"
+  # bridge/polyfills `clean` scripts use `rm -rf`; run package scripts through
+  # bash so they behave consistently.
+  npm_config_script_shell: bash
 
 jobs:
-  web-runtime:
-    name: Web Runtime
+  bridge:
+    name: Bridge
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -25,17 +37,37 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.npm
-          key: npm-core-${{ hashFiles('packages/lingxia-core/package.json', 'packages/lingxia-core/package-lock.json') }}
-          restore-keys: npm-core-
+          key: npm-bridge-${{ hashFiles('packages/lingxia-bridge/package.json') }}
+          restore-keys: npm-bridge-
 
-      - name: Install & Build
-        working-directory: packages/lingxia-core
+      - name: Install & Build (@lingxia/bridge)
+        working-directory: packages/lingxia-bridge
         run: |
-          if [[ -f package-lock.json ]]; then
-            npm ci
-          else
-            npm install
-          fi
+          npm install
+          npm run build
+
+  polyfills:
+    name: Polyfills
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Cache npm
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: npm-polyfills-${{ hashFiles('packages/lingxia-polyfills/package.json') }}
+          restore-keys: npm-polyfills-
+
+      - name: Install & Build (@lingxia/polyfills)
+        working-directory: packages/lingxia-polyfills
+        run: |
+          npm install
           npm run build
 
   types:
@@ -49,8 +81,6 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      - uses: dtolnay/rust-toolchain@stable
-
       - name: Cache npm
         uses: actions/cache@v4
         with:
@@ -58,20 +88,16 @@ jobs:
           key: npm-types-${{ hashFiles('packages/lingxia-types/package.json') }}
           restore-keys: npm-types-
 
-      - name: Install & Build
+      - name: Install & Build (@lingxia/types)
         working-directory: packages/lingxia-types
         run: |
-          if [[ -f package-lock.json ]]; then
-            npm ci
-          else
-            npm install
-          fi
+          npm install
           npm run build
 
-  components:
-    name: Components
+  frontend:
+    name: Frontend (elements/page-runtime/html/react/vue)
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -83,47 +109,27 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.npm
-          key: npm-components-${{ hashFiles('packages/lingxia-components/package.json') }}
-          restore-keys: npm-components-
+          key: npm-frontend-${{ hashFiles('packages/lingxia-*/package.json') }}
+          restore-keys: npm-frontend-
 
-      - name: Install & Build
-        working-directory: packages/lingxia-components
+      # Each package's build cascades to its siblings via `npm --prefix`, so a
+      # plain `npm install` per package + building the leaf libs (html, react,
+      # vue) also builds elements + page-runtime + bridge against the tree.
+      - name: Install web packages
         run: |
-          if [[ -f package-lock.json ]]; then
-            npm ci
-          else
-            npm install
-          fi
-          npm run build
+          set -euo pipefail
+          for pkg in lingxia-bridge lingxia-elements lingxia-page-runtime \
+                     lingxia-html lingxia-react lingxia-vue; do
+            echo "::group::npm install ($pkg)"
+            (cd "packages/$pkg" && npm install)
+            echo "::endgroup::"
+          done
 
-  cli:
-    name: CLI NPM Package
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-
-      - name: Cache npm
-        uses: actions/cache@v4
-        with:
-          path: ~/.npm
-          key: npm-cli-${{ hashFiles('tools/lingxia-cli/npm/package-lock.json') }}
-          restore-keys: npm-cli-
-
-      - name: Install & Build
-        working-directory: tools/lingxia-cli/npm
+      - name: Build frontend packages
         run: |
-          if [[ -f package-lock.json ]]; then
-            npm ci
-          else
-            npm install
-          fi
-          npm run build
-
-      - name: Test
-        working-directory: tools/lingxia-cli/npm
-        run: npm test
+          set -euo pipefail
+          for pkg in lingxia-html lingxia-react lingxia-vue; do
+            echo "::group::npm run build ($pkg)"
+            (cd "packages/$pkg" && npm run build)
+            echo "::endgroup::"
+          done

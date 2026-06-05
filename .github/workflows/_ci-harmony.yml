@@ -13,11 +13,13 @@
 # public HarmonyOS command-line tools top out at API 18. Build the .hap on a
 # self-hosted runner or a private image that has the gated SDK.
 #
-# Trigger manually (Actions ▸ run workflow) or by pushing to the feature branch.
+# Trigger manually (Actions ▸ run workflow), via workflow_call from ci.yml
+# (advisory), or by pushing to the feature branch.
 
 name: Internal / Harmony Example (native)
 
 on:
+  workflow_call: {}
   workflow_dispatch: {}
   push:
     branches: [ci/cross-platform-builds]

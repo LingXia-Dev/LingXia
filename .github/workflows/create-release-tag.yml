@@ -1,0 +1,129 @@
+name: Maintainer / Create Release Tag
+
+# Tag one component for release. Run AFTER the unified version bump PR
+# (Prepare Release PR) has merged to main. Each component maps to a
+# `lingxia-<component>-v<version>` tag, which triggers its release workflow.
+
+on:
+  workflow_dispatch:
+    inputs:
+      component:
+        description: "Component to tag"
+        required: true
+        type: choice
+        options:
+          - sdk
+          - crates
+          - cli
+          - lingxia-bridge
+          - lingxia-elements
+          - lingxia-html
+          - lingxia-page-runtime
+          - lingxia-react
+          - lingxia-types
+          - lingxia-vue
+      version:
+        description: "Version to tag (e.g. 0.5.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  create-tag:
+    name: Create tag for ${{ inputs.component }} v${{ inputs.version }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify version in code
+        run: |
+          case "${{ inputs.component }}" in
+            sdk|crates|cli)
+              actual="$(awk '/^\[workspace\.package\]/{f=1} f && /^version/{gsub(/"/, "", $3); print $3; exit}' Cargo.toml)"
+              ;;
+            lingxia-bridge)
+              actual="$(node -p "require('./packages/lingxia-bridge/package.json').version")"
+              ;;
+            lingxia-elements)
+              actual="$(node -p "require('./packages/lingxia-elements/package.json').version")"
+              ;;
+            lingxia-html)
+              actual="$(node -p "require('./packages/lingxia-html/package.json').version")"
+              ;;
+            lingxia-page-runtime)
+              actual="$(node -p "require('./packages/lingxia-page-runtime/package.json').version")"
+              ;;
+            lingxia-react)
+              actual="$(node -p "require('./packages/lingxia-react/package.json').version")"
+              ;;
+            lingxia-types)
+              actual="$(node -p "require('./packages/lingxia-types/package.json').version")"
+              ;;
+            lingxia-vue)
+              actual="$(node -p "require('./packages/lingxia-vue/package.json').version")"
+              ;;
+            *)
+              echo "Unknown component: ${{ inputs.component }}" >&2
+              exit 1
+              ;;
+          esac
+
+          if [ "$actual" != "${{ inputs.version }}" ]; then
+            echo "Version mismatch: expected ${{ inputs.version }}, found $actual in code" >&2
+            echo "Did you merge the release PR first?" >&2
+            exit 1
+          fi
+          echo "Version verified: $actual"
+
+      - name: Create and push tag
+        run: |
+          # Determine correct tag format based on component
+          case "${{ inputs.component }}" in
+            sdk)
+              tag="lingxia-sdk-v${{ inputs.version }}"
+              ;;
+            crates)
+              tag="lingxia-crates-v${{ inputs.version }}"
+              ;;
+            cli)
+              tag="lingxia-cli-v${{ inputs.version }}"
+              ;;
+            lingxia-bridge)
+              tag="lingxia-bridge-v${{ inputs.version }}"
+              ;;
+            lingxia-elements)
+              tag="lingxia-elements-v${{ inputs.version }}"
+              ;;
+            lingxia-html)
+              tag="lingxia-html-v${{ inputs.version }}"
+              ;;
+            lingxia-page-runtime)
+              tag="lingxia-page-runtime-v${{ inputs.version }}"
+              ;;
+            lingxia-react)
+              tag="lingxia-react-v${{ inputs.version }}"
+              ;;
+            lingxia-types)
+              tag="lingxia-types-v${{ inputs.version }}"
+              ;;
+            lingxia-vue)
+              tag="lingxia-vue-v${{ inputs.version }}"
+              ;;
+            *)
+              echo "Unknown component: ${{ inputs.component }}" >&2
+              exit 1
+              ;;
+          esac
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git tag -a "$tag" -m "Release ${{ inputs.component }} v${{ inputs.version }}"
+          git push origin "$tag"
+
+          echo "✅ Created and pushed tag: $tag"
+          echo "🚀 Release workflow should be triggered automatically"

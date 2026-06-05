@@ -24,6 +24,9 @@ jobs:
       macos: ${{ steps.compute.outputs.macos }}
       android: ${{ steps.compute.outputs.android }}
       runner: ${{ steps.compute.outputs.runner }}
+      sdk: ${{ steps.compute.outputs.sdk }}
+      harmony: ${{ steps.compute.outputs.harmony }}
+      npm: ${{ steps.compute.outputs.npm }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
@@ -50,6 +53,16 @@ jobs:
               - 'lingxia-sdk/apple/**'
             android_sdk:
               - 'lingxia-sdk/android/**'
+            harmony_sdk:
+              - 'lingxia-sdk/harmony/**'
+            # Native rust the SDKs embed (webview + core runtime crate).
+            core_rust:
+              - 'crates/lingxia/**'
+              - 'crates/lingxia-webview/**'
+            webview_harmony:
+              - 'crates/lingxia-webview/src/harmony/**'
+            sdk_release:
+              - 'scripts/release/sdk.sh'
             examples_common:
               - 'examples/lingxia-showcase/**'
               - 'examples/lingxia-chat/**'
@@ -63,6 +76,8 @@ jobs:
               - 'examples/android/**'
             i18n:
               - 'i18n/**'
+            npm:
+              - 'packages/**'
             ci:
               - '.github/**'
       - id: compute
@@ -75,31 +90,56 @@ jobs:
           WEB_FE: ${{ steps.filter.outputs.web_frontend }}
           APPLE: ${{ steps.filter.outputs.apple_sdk }}
           ANDROID: ${{ steps.filter.outputs.android_sdk }}
+          HARMONY_SDK: ${{ steps.filter.outputs.harmony_sdk }}
+          CORE_RUST: ${{ steps.filter.outputs.core_rust }}
+          WEBVIEW_HARMONY: ${{ steps.filter.outputs.webview_harmony }}
+          SDK_RELEASE: ${{ steps.filter.outputs.sdk_release }}
           EX_COMMON: ${{ steps.filter.outputs.examples_common }}
           EX_IOS: ${{ steps.filter.outputs.ex_ios }}
           EX_MACOS: ${{ steps.filter.outputs.ex_macos }}
           EX_ANDROID: ${{ steps.filter.outputs.ex_android }}
           I18N: ${{ steps.filter.outputs.i18n }}
+          NPM: ${{ steps.filter.outputs.npm }}
+          # A release/* PR (from Prepare Release PR) only touches Cargo.toml /
+          # install.sh / packages/*, so the path filters would skip sdk/harmony.
+          # Force the FULL validate set on release PRs so a maintainer sees every
+          # job before merging. head_ref is the PR source branch on pull_request.
+          IS_RELEASE: ${{ startsWith(github.head_ref, 'release/') }}
         run: |
           set -euo pipefail
           any() { for v in "$@"; do [ "$v" = "true" ] && { echo true; return; }; done; echo false; }
+          # On a release/* PR, every gating + advisory job runs regardless of
+          # which paths actually changed.
+          rel="$IS_RELEASE"
           # Anything that touches the rust build, the CLI, the embedded web
           # runtime, or CI config rebuilds everything downstream.
-          rust=$(any "$CI_F" "$CORE" "$CLI" "$WEB_RT")
+          rust=$(any "$rel" "$CI_F" "$CORE" "$CLI" "$WEB_RT")
           # Common base for the example apps (runtime + lxapp frontend + shared
           # example config + localized strings).
           ex_base=$(any "$rust" "$WEB_FE" "$EX_COMMON" "$I18N")
-          ios=$(any "$ex_base" "$APPLE" "$EX_IOS")
-          macos=$(any "$ex_base" "$APPLE" "$EX_MACOS")
-          android=$(any "$ex_base" "$ANDROID" "$EX_ANDROID")
+          ios=$(any "$rel" "$ex_base" "$APPLE" "$EX_IOS")
+          macos=$(any "$rel" "$ex_base" "$APPLE" "$EX_MACOS")
+          android=$(any "$rel" "$ex_base" "$ANDROID" "$EX_ANDROID")
           # macOS runner = the apple SDK + the rust runtime/CLI.
-          runner=$(any "$rust" "$APPLE")
+          runner=$(any "$rel" "$rust" "$APPLE")
+          # The platform SDKs embed the web runtime (bridge/polyfills) + i18n +
+          # the core rust crates, so fan those signals in too.
+          sdk_base=$(any "$WEB_RT" "$I18N" "$CORE_RUST")
+          # SDK (android + apple): per-platform SDK trees + release script.
+          sdk=$(any "$rel" "$sdk_base" "$APPLE" "$ANDROID" "$SDK_RELEASE")
+          # Harmony: harmony SDK tree + the harmony webview backend.
+          harmony=$(any "$rel" "$sdk_base" "$HARMONY_SDK" "$WEBVIEW_HARMONY")
+          # NPM packages (advisory): any packages/* change, or a release PR.
+          npm=$(any "$rel" "$NPM")
           {
             echo "rust=$rust"
             echo "ios=$ios"
             echo "macos=$macos"
             echo "android=$android"
             echo "runner=$runner"
+            echo "sdk=$sdk"
+            echo "harmony=$harmony"
+            echo "npm=$npm"
           } >> "$GITHUB_OUTPUT"
 
   # ---- Gating jobs (required via ci-success) ----
@@ -152,8 +192,26 @@ jobs:
     if: ${{ needs.changes.outputs.rust == 'true' }}
     uses: ./.github/workflows/_ci-rust-test.yml
 
-  # NOTE: npm (_ci-npm.yml) and sdk (_ci-sdk.yml) are not wired in yet — their
-  # package paths predate the current repo layout and need reconciling.
+  # sdk / harmony / npm run + are visible on PRs but are deliberately NOT in
+  # ci-success.needs, so they can never block a merge. Promote each to a gating
+  # job (add to ci-success.needs) only once it has proven green on real PRs.
+  sdk:
+    name: SDK Build
+    needs: changes
+    if: ${{ needs.changes.outputs.sdk == 'true' }}
+    uses: ./.github/workflows/_ci-sdk.yml
+
+  harmony:
+    name: Harmony Native
+    needs: changes
+    if: ${{ needs.changes.outputs.harmony == 'true' }}
+    uses: ./.github/workflows/_ci-harmony.yml
+
+  npm:
+    name: NPM Packages
+    needs: changes
+    if: ${{ needs.changes.outputs.npm == 'true' }}
+    uses: ./.github/workflows/_ci-npm.yml
 
   # Single required check. Skipped gating jobs report result 'skipped' (≠
   # 'failure'), so a scoped PR still goes green and stays mergeable — require

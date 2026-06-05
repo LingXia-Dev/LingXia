@@ -1,0 +1,103 @@
+name: Maintainer / Prepare Release PR
+
+# Unified version bump: applies ONE version to the whole workspace
+# (Cargo.toml workspace.package + workspace deps, install.sh, every
+# packages/* package.json + internal @lingxia/* dep ranges) via
+# scripts/release/version.sh, then opens a Release PR.
+#
+# You do NOT pick a component here. After this PR merges, you choose what to
+# publish by which per-component tags you push (Create Release Tag workflow,
+# or `git tag lingxia-<component>-v<version>`).
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release (e.g. 0.5.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  prepare:
+    name: Prepare release v${{ inputs.version }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Validate semver input
+        run: |
+          if ! [[ "${{ inputs.version }}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid version: ${{ inputs.version }} (expected x.y.z)" >&2
+            exit 1
+          fi
+
+      - name: Create release branch
+        run: |
+          branch="release/v${{ inputs.version }}"
+          git checkout -b "$branch"
+          echo "BRANCH=$branch" >> "$GITHUB_ENV"
+
+      - name: Bump version (unified)
+        run: |
+          bash scripts/release/version.sh "${{ inputs.version }}"
+
+      - name: Commit version bump
+        run: |
+          git commit -am "chore(release): bump version to ${{ inputs.version }}"
+
+      - name: Push branch
+        run: |
+          git push -u origin "$BRANCH"
+
+      - name: Create Pull Request
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          version="${{ inputs.version }}"
+          pr_body="$(cat <<EOF
+          ## Release v${version}
+
+          Unified version bump to \`${version}\` applied via
+          \`scripts/release/version.sh\`. This rewrites the version in one shot:
+
+          - \`Cargo.toml\` \`workspace.package.version\` + workspace crate dep versions
+          - \`install.sh\` \`VERSION\`
+          - every \`packages/*/package.json\` version + internal \`@lingxia/*\` dep ranges
+
+          ### After merge
+
+          This bump does not publish anything on its own. Pick what to release by
+          creating the per-component tags you want, either via the **Create Release
+          Tag** workflow or by hand:
+
+          \`\`\`bash
+          git checkout main && git pull
+          # one or more of:
+          git tag lingxia-sdk-v${version}
+          git tag lingxia-crates-v${version}
+          git tag lingxia-cli-v${version}
+          git tag lingxia-bridge-v${version}
+          git tag lingxia-elements-v${version}
+          git tag lingxia-html-v${version}
+          git tag lingxia-page-runtime-v${version}
+          git tag lingxia-react-v${version}
+          git tag lingxia-types-v${version}
+          git tag lingxia-vue-v${version}
+          git push origin <tag>
+          \`\`\`
+          EOF
+          )"
+
+          gh pr create \
+            --title "Release v${version}" \
+            --body "$pr_body" \
+            --label "release"
