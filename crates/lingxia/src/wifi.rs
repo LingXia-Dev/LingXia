@@ -83,7 +83,7 @@ where
         return Err(crate::Error::from(err));
     }
 
-    let result = match rx.await {
+    match rx.await {
         Ok(result) => {
             guard.disarm();
             result
@@ -92,8 +92,7 @@ where
                 .map_err(crate::Error::from)
         }
         Err(_) => Err(crate::Error::from(PlatformError::CallbackDropped)),
-    };
-    result
+    }
 }
 
 fn parse_json<T>(operation: &str, raw: String) -> crate::Result<T>
