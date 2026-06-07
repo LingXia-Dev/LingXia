@@ -47,7 +47,7 @@ shell:
 
 capabilities:
   notifications: true
-  terminal: true
+  terminal: false
 
 resources:
   bundles:
