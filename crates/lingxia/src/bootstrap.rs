@@ -64,6 +64,7 @@ pub(crate) fn init_with_platform(platform: lingxia_platform::Platform) -> Option
     crate::host_addon::run_before_init();
 
     let runtime = std::sync::Arc::new(platform.clone());
+    crate::runtime::set_platform(runtime.clone());
     #[cfg(feature = "devtool")]
     let app_config = crate::devtool::load_host_app_config(&runtime, load_bundled_app_config)?;
     #[cfg(not(feature = "devtool"))]

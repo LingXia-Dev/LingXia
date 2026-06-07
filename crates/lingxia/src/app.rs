@@ -75,9 +75,7 @@ pub fn state_file_for(app: &crate::LxApp, name: &str) -> crate::Result<PathBuf> 
 
 /// Requests host app termination through the active platform runtime.
 pub fn exit() -> crate::Result<()> {
-    let runtime = lxapp::get_platform()
-        .ok_or_else(|| crate::Error::internal("platform is not initialized"))?;
-    runtime.exit().map_err(Into::into)
+    crate::runtime::platform()?.exit().map_err(Into::into)
 }
 
 fn state_file_in(root: impl AsRef<Path>, name: &str) -> crate::Result<PathBuf> {

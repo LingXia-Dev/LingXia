@@ -1,21 +1,19 @@
-//! Network status and change subscriptions.
+//! Network status and change subscriptions for native Rust code.
 //!
-//! Thin wrapper over `lingxia_platform::traits::network::Network` that
-//! returns typed structs instead of JSON strings and pairs a subscription
-//! with an RAII handle so callers can't forget to remove the platform
-//! listener and the [`lingxia_messaging`] callback.
+//! The platform reports network state as JSON payloads. This module exposes
+//! typed Rust structs and RAII subscriptions.
 //!
 //! # Example
 //!
 //! ```ignore
 //! use lingxia::network::{self, NetworkKind};
 //!
-//! let info = network::current(&app).await?;
+//! let info = network::current().await?;
 //! if info.kind != NetworkKind::Wifi {
 //!     // ...
 //! }
 //!
-//! let _subscription = network::subscribe(&app, |info| {
+//! let _subscription = network::subscribe(|info| {
 //!     log::info!("network changed: {:?}", info);
 //! })?;
 //! ```
@@ -26,8 +24,6 @@ use lingxia_messaging::CallbackResult;
 use lingxia_platform::Platform;
 use lingxia_platform::traits::network::Network;
 use serde::{Deserialize, Serialize};
-
-use crate::LxApp;
 
 /// Connection state plus IP addresses, as observed by the platform.
 ///
@@ -92,9 +88,8 @@ impl NetworkKind {
 }
 
 /// Fetch the current network state from the host platform.
-pub async fn current(app: &Arc<LxApp>) -> crate::Result<NetworkInfo> {
-    let raw = app
-        .runtime
+pub async fn current() -> crate::Result<NetworkInfo> {
+    let raw = crate::runtime::platform()?
         .get_network_info()
         .await
         .map_err(|err| crate::Error::platform(format!("get_network_info: {err}")))?;
@@ -140,10 +135,11 @@ impl Drop for Subscription {
 /// decoded [`NetworkInfo`] on every platform-reported transition. Hold
 /// the returned [`Subscription`] for the lifetime you want the callback
 /// active; dropping it unregisters automatically.
-pub fn subscribe<F>(app: &Arc<LxApp>, handler: F) -> crate::Result<Subscription>
+pub fn subscribe<F>(handler: F) -> crate::Result<Subscription>
 where
     F: Fn(NetworkInfo) + Send + Sync + 'static,
 {
+    let runtime = crate::runtime::platform()?;
     let callback_id = lingxia_messaging::register_handler(move |result| match result {
         CallbackResult::Success(json) => match serde_json::from_str::<NetworkInfo>(&json) {
             Ok(info) => handler(info),
@@ -153,7 +149,7 @@ where
             log::warn!("network change listener reported error code: {code}")
         }
     });
-    if let Err(err) = app.runtime.add_network_change_listener(callback_id) {
+    if let Err(err) = runtime.add_network_change_listener(callback_id) {
         lingxia_messaging::remove_callback(callback_id);
         return Err(crate::Error::platform(format!(
             "add_network_change_listener: {err}"
@@ -161,7 +157,7 @@ where
     }
     Ok(Subscription {
         callback_id,
-        runtime: app.runtime.clone(),
+        runtime,
     })
 }
 

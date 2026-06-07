@@ -6,7 +6,7 @@
 //!   HarmonyOS;
 //! - the [`native`] macro for page-facing Rust APIs;
 //! - host addon registration through [`HostAddon`] and [`register_host_addon`];
-//! - native service facades such as [`app`], [`mod@file`], [`media`], [`task`],
+//! - native service APIs such as [`app`], [`device`], [`wifi`], [`media`], [`task`],
 //!   and [`update`];
 //! - optional JS AppService extension APIs under [`js`] when the `standard`
 //!   feature is enabled;
@@ -43,6 +43,8 @@ pub mod dev {
         take_app_screenshot,
     };
 }
+/// Device identity, screen geometry, vibration, and system-setting APIs.
+pub mod device;
 #[cfg(feature = "devtool")]
 mod devtool;
 mod error;
@@ -52,14 +54,16 @@ mod host_addon;
 /// JS AppService extension registration helpers.
 #[cfg(feature = "standard")]
 pub mod js;
+/// Geolocation APIs.
+pub mod location;
 mod logging;
 /// Media, camera, scanner, and media-preview helpers.
 pub mod media;
-/// Network status and change subscriptions (typed wrapper around the
-/// platform `Network` trait).
+/// Network status and change subscriptions.
 pub mod network;
 /// Provider traits and registration helpers.
 pub mod provider;
+mod runtime;
 /// Shared async task helpers backed by LingXia's global executor.
 pub mod task;
 /// Terminal backend status and integration helpers.
@@ -73,6 +77,8 @@ pub mod terminal {
 }
 /// Host app update helpers and update event types.
 pub mod update;
+/// Wi-Fi control, scanning, and state subscriptions.
+pub mod wifi;
 
 pub use error::{Error, Result};
 

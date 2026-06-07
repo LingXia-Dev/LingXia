@@ -281,8 +281,7 @@ pub mod host_app {
     }
 
     fn service() -> crate::Result<HostAppUpdateService> {
-        let runtime = lxapp::get_platform()
-            .ok_or_else(|| crate::Error::internal("platform is not initialized"))?;
+        let runtime = crate::runtime::platform()?;
         Ok(HostAppUpdateService::new(
             runtime,
             lxapp::provider::update_provider(),
