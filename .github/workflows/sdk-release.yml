@@ -1,4 +1,4 @@
-name: SDK Release
+name: Release Executor / SDK
 
 on:
   push:
@@ -25,6 +25,11 @@ on:
         required: false
         default: false
         type: boolean
+      dry_run:
+        description: "Dry run (build artifacts, skip GitHub Release upload)"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -34,10 +39,10 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  NODE_VERSION: "20"
+  RUST_TOOLCHAIN: "1.95.0"
 
 jobs:
-  # Pre-check job to verify version and build shared artifacts
+  # Pre-check job to verify version before any platform build uploads assets.
   pre-check:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -74,33 +79,6 @@ jobs:
           echo "Version verified: $workspace_version"
           echo "version=$workspace_version" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-
-      - name: Cache npm dependencies
-        uses: actions/cache@v4
-        with:
-          path: ~/.npm
-          key: npm-core-${{ hashFiles('packages/lingxia-core/package.json', 'packages/lingxia-core/package-lock.json') }}
-          restore-keys: npm-
-
-      - name: Build web runtime (dist/)
-        run: |
-          cd packages/lingxia-core
-          if [[ -f package-lock.json ]]; then
-            npm ci
-          else
-            npm install
-          fi
-          npm run build
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: core-dist
-          path: packages/lingxia-core/dist
-          if-no-files-found: error
-
   android:
     needs: pre-check
     if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.android)
@@ -113,12 +91,9 @@ jobs:
           fetch-tags: true
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
 
-      - uses: actions/download-artifact@v4
+      - uses: dtolnay/rust-toolchain@master
         with:
-          name: core-dist
-          path: packages/lingxia-core/dist
-
-      - uses: dtolnay/rust-toolchain@stable
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -129,11 +104,14 @@ jobs:
           distribution: "temurin"
           java-version: "17"
 
+      - uses: ./.github/actions/build-web-runtime
+
       - name: Build Android SDK artifact
         run: |
           bash scripts/release/sdk.sh --platform android
 
       - name: Upload Android artifact to GitHub Release
+        if: github.event_name != 'workflow_dispatch' || !inputs.dry_run
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
@@ -154,24 +132,27 @@ jobs:
           fetch-tags: true
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
 
-      - uses: actions/download-artifact@v4
+      - uses: maxim-lobanov/setup-xcode@v1
         with:
-          name: core-dist
-          path: packages/lingxia-core/dist
+          xcode-version: latest-stable
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
           targets: aarch64-apple-ios
 
       - uses: Swatinem/rust-cache@v2
         with:
           prefix-key: sdk-ios
 
+      - uses: ./.github/actions/build-web-runtime
+
       - name: Build iOS (source) SDK artifact
         run: |
           bash scripts/release/sdk.sh --platform apple
 
       - name: Upload iOS artifact to GitHub Release
+        if: github.event_name != 'workflow_dispatch' || !inputs.dry_run
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
@@ -193,22 +174,22 @@ jobs:
           fetch-tags: true
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
 
-      - uses: actions/download-artifact@v4
+      - uses: dtolnay/rust-toolchain@master
         with:
-          name: core-dist
-          path: packages/lingxia-core/dist
-
-      - uses: dtolnay/rust-toolchain@stable
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
 
       - uses: Swatinem/rust-cache@v2
         with:
           prefix-key: sdk-harmony
+
+      - uses: ./.github/actions/build-web-runtime
 
       - name: Build HarmonyOS SDK artifact
         run: |
           bash scripts/release/sdk.sh --platform harmony
 
       - name: Upload HarmonyOS artifact to GitHub Release
+        if: github.event_name != 'workflow_dispatch' || !inputs.dry_run
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}

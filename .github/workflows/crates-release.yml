@@ -1,4 +1,4 @@
-name: Crates.io Release
+name: Release Executor / Crates
 
 on:
   push:
@@ -23,6 +23,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  RUST_TOOLCHAIN: "1.95.0"
+
 jobs:
   publish:
     name: Publish to crates.io
@@ -35,7 +38,9 @@ jobs:
           fetch-tags: true
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
 
       - uses: Swatinem/rust-cache@v2
 

@@ -10,6 +10,13 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  CARGO_TERM_COLOR: always
+  NODE_VERSION: "20"
+  OHOS_SDK_VERSION: "6.1-Release"
+  OHOS_SDK_URL: "https://repo.huaweicloud.com/openharmony/os/6.1-Release/ohos-sdk-windows_linux-public.tar.gz"
+  RUST_TOOLCHAIN: "1.95.0"
+
 jobs:
   # Detect which areas changed so PRs only run the relevant jobs. A core rust /
   # CLI / web-runtime / CI change fans out to everything; platform-specific SDK
@@ -24,7 +31,8 @@ jobs:
       macos: ${{ steps.compute.outputs.macos }}
       android: ${{ steps.compute.outputs.android }}
       runner: ${{ steps.compute.outputs.runner }}
-      sdk: ${{ steps.compute.outputs.sdk }}
+      sdk_apple: ${{ steps.compute.outputs.sdk_apple }}
+      sdk_android: ${{ steps.compute.outputs.sdk_android }}
       harmony: ${{ steps.compute.outputs.harmony }}
       npm: ${{ steps.compute.outputs.npm }}
     steps:
@@ -125,10 +133,11 @@ jobs:
           # The platform SDKs embed the web runtime (bridge/polyfills) + i18n +
           # the core rust crates, so fan those signals in too.
           sdk_base=$(any "$WEB_RT" "$I18N" "$CORE_RUST")
-          # SDK (android + apple): per-platform SDK trees + release script.
-          sdk=$(any "$rel" "$sdk_base" "$APPLE" "$ANDROID" "$SDK_RELEASE")
+          # SDK platform checks stay scoped unless shared runtime/release inputs changed.
+          sdk_apple=$(any "$rel" "$sdk_base" "$APPLE" "$SDK_RELEASE")
+          sdk_android=$(any "$rel" "$sdk_base" "$ANDROID" "$SDK_RELEASE")
           # Harmony: harmony SDK tree + the harmony webview backend.
-          harmony=$(any "$rel" "$sdk_base" "$HARMONY_SDK" "$WEBVIEW_HARMONY")
+          harmony=$(any "$rel" "$sdk_base" "$HARMONY_SDK" "$WEBVIEW_HARMONY" "$SDK_RELEASE")
           # NPM packages (advisory): any packages/* change, or a release PR.
           npm=$(any "$rel" "$NPM")
           {
@@ -137,88 +146,656 @@ jobs:
             echo "macos=$macos"
             echo "android=$android"
             echo "runner=$runner"
-            echo "sdk=$sdk"
+            echo "sdk_apple=$sdk_apple"
+            echo "sdk_android=$sdk_android"
             echo "harmony=$harmony"
             echo "npm=$npm"
           } >> "$GITHUB_OUTPUT"
 
   # ---- Gating jobs (required via ci-success) ----
-  rust-fmt:
-    name: Rust Fmt
+  fmt:
     needs: changes
     if: ${{ needs.changes.outputs.rust == 'true' }}
-    uses: ./.github/workflows/_ci-rust-fmt.yml
+    name: Format
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
 
-  rust-checks:
-    name: Rust Checks
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          components: rustfmt
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+  # The runtime crates (e.g. lingxia-webview) only have android / apple / ohos
+  # backends — there is no plain-linux-gnu host backend — so workspace-wide
+  # rust checks run on macOS, the project's real desktop host. Android is
+  # covered separately by the android-target job below.
+  rust-check:
     needs: changes
     if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.i18n == 'true' }}
-    uses: ./.github/workflows/_ci-rust.yml
+    name: Check
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+
+      - uses: Swatinem/rust-cache@v2
+
+      # lingxia-cli build.rs (run by --workspace and the i18n gate) embeds the
+      # bridge/polyfills JS runtime.
+      - uses: ./.github/actions/build-web-runtime
+
+      - name: Check all workspace crates
+        run: cargo check --workspace
+
+      - name: Check i18n-related crates explicitly
+        run: cargo check -p lingxia-logic -p lingxia-cli
+
+      - name: Verify strict i18n generation gate
+        run: cargo run -p lingxia-cli -- gen i18n --input i18n --rust-out /tmp/i18n_generated.rs --ts-out /tmp/lingxia-types-generated
+
+  # lingxia (lib) for the android target does not pull lingxia-terminal, so this
+  # job needs only the NDK clang.
+  rust-android-target:
+    needs: changes
+    if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.i18n == 'true' }}
+    name: Android Target
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          targets: aarch64-linux-android
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: rust-android
+
+      # C-dependency build scripts (e.g. `ring`) compile even under `cargo
+      # check`, so they need the NDK clang. The ubuntu runner ships the NDK;
+      # point cc/ar/linker at it for the android target (API matches the
+      # example's minSdk = 29), mirroring what `lingxia build` sets.
+      - name: Configure Android NDK toolchain
+        run: |
+          NDK="${ANDROID_NDK_LATEST_HOME:-${ANDROID_NDK_ROOT:-$ANDROID_NDK_HOME}}"
+          BIN="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          API=29
+          test -x "$BIN/aarch64-linux-android${API}-clang" || {
+            echo "NDK clang not found in $BIN" >&2; find "$BIN" -maxdepth 1 -type f | head; exit 1;
+          }
+          echo "$BIN" >> "$GITHUB_PATH"
+          {
+            echo "CC_aarch64-linux-android=$BIN/aarch64-linux-android${API}-clang"
+            echo "CXX_aarch64-linux-android=$BIN/aarch64-linux-android${API}-clang++"
+            echo "AR_aarch64-linux-android=$BIN/llvm-ar"
+            echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$BIN/aarch64-linux-android${API}-clang"
+          } >> "$GITHUB_ENV"
+
+      - name: Check Rust compiles for Android target
+        run: cargo check --target aarch64-linux-android -p lingxia --lib
 
   cli:
-    name: CLI Build
     needs: changes
     if: ${{ needs.changes.outputs.rust == 'true' }}
-    uses: ./.github/workflows/_ci-cli.yml
+    name: ${{ matrix.platform }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux-x64
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            exe: ""
+          - platform: linux-arm64
+            os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            exe: ""
+          - platform: darwin-arm64
+            os: macos-latest
+            target: aarch64-apple-darwin
+            exe: ""
+          - platform: darwin-x64
+            os: macos-latest
+            target: x86_64-apple-darwin
+            exe: ""
+          - platform: windows-x64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            exe: ".exe"
+    steps:
+      - uses: actions/checkout@v4
 
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: cli-${{ matrix.platform }}
+
+      # lingxia-cli build.rs embeds the bridge/polyfills JS runtime.
+      - uses: ./.github/actions/build-web-runtime
+
+      - name: Build CLI (release)
+        run: cargo build -p lingxia-cli --release --target ${{ matrix.target }}
+
+      - name: Smoke test (--version)
+        shell: bash
+        run: ./target/${{ matrix.target }}/release/lingxia${{ matrix.exe }} --version
+
+      - name: Upload CLI binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: lingxia-${{ matrix.platform }}
+          path: target/${{ matrix.target }}/release/lingxia${{ matrix.exe }}
+          if-no-files-found: error
+
+  # Runs on macOS for the same reason as the workspace check — the runtime
+  # crates only build for android / apple / ohos, not a plain-linux host.
+  # Advisory (wired in ci.yml outside the ci-success gate): the runtime crates
+  # carry ~12 pre-existing clippy lints (collapsible_if, explicit_auto_deref,
+  # …) to clean up before this can gate.
   rust-clippy:
-    name: Rust Clippy
     needs: changes
     if: ${{ needs.changes.outputs.rust == 'true' }}
-    uses: ./.github/workflows/_ci-rust-clippy.yml
+    name: Clippy
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      # lingxia-cli build.rs embeds the bridge/polyfills JS runtime.
+      - uses: ./.github/actions/build-web-runtime
+
+      # let_underscore_future is allowed workspace-wide: the runtime spawns many
+      # detached background tasks (`let _ = executor.spawn(..)`) where dropping
+      # the join handle is intentional fire-and-forget, not a dropped future.
+      - name: Clippy (all workspace crates)
+        run: cargo clippy --workspace -- -D warnings -A clippy::let_underscore_future
 
   runner:
-    name: Runner Build
     needs: changes
     if: ${{ needs.changes.outputs.runner == 'true' }}
-    uses: ./.github/workflows/_ci-runner.yml
+    name: runner-macos-arm64
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
 
-  examples:
-    name: Examples
+      # Match the dev toolchain (Xcode 26 = Swift 6.2) used by the example apps.
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: runner-arm64
+
+      - uses: ./.github/actions/build-web-runtime
+
+      # Generate the gitignored apple SDK assets (resources + swift bindings).
+      - uses: ./.github/actions/bootstrap-apple-sdk
+
+      - name: Build macOS Runner (arm64)
+        run: bash scripts/release/runner.sh --macos-arch arm64 --out dist/runner-release
+
+      - name: Upload Runner zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: lingxia-runner-macos-arm64
+          path: dist/runner-release/*.zip
+          if-no-files-found: error
+
+  macos:
     needs: changes
-    if: ${{ needs.changes.outputs.ios == 'true' || needs.changes.outputs.macos == 'true' || needs.changes.outputs.android == 'true' }}
-    uses: ./.github/workflows/_ci-examples.yml
-    with:
-      run_ios: ${{ needs.changes.outputs.ios == 'true' }}
-      run_macos: ${{ needs.changes.outputs.macos == 'true' }}
-      run_android: ${{ needs.changes.outputs.android == 'true' }}
+    name: example-macos
+    if: ${{ needs.changes.outputs.macos == 'true' }}
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      # Use the newest Xcode (26 = Swift 6.2) to match the dev toolchain; the
+      # iOS media SDK relies on Swift 6.2 concurrency inference that the default
+      # Xcode 16 (Swift 6.0/6.1) lacks.
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: example-macos
+      - uses: ./.github/actions/build-web-packages
+      - uses: ./.github/actions/bootstrap-apple-sdk
+      - name: Build macOS example app
+        working-directory: examples
+        run: cargo run -p lingxia-cli -- build --platform macos --framework react
+      - name: Upload macOS app
+        uses: actions/upload-artifact@v4
+        with:
+          name: example-macos-app
+          path: examples/macos/.lingxia/*.app
+          if-no-files-found: warn
+
+  ios:
+    needs: changes
+    name: example-ios
+    if: ${{ needs.changes.outputs.ios == 'true' }}
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      # The iOS SDK (media subsystem) compiles under Swift 6.2 but not the
+      # default Xcode 16's Swift 6.0/6.1 strict concurrency. Select the newest
+      # Xcode (26 = Swift 6.2) to match the dev toolchain.
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+      - name: Show active Xcode/Swift
+        run: xcodebuild -version && swift --version
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          targets: aarch64-apple-ios
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: example-ios
+      - uses: ./.github/actions/build-web-packages
+      - uses: ./.github/actions/bootstrap-apple-sdk
+      - name: Build iOS example app
+        working-directory: examples
+        run: cargo run -p lingxia-cli -- build --platform ios --framework react
+      - name: Upload iOS app
+        uses: actions/upload-artifact@v4
+        with:
+          name: example-ios-app
+          path: examples/ios/.lingxia/*.app
+          if-no-files-found: warn
+
+  android:
+    needs: changes
+    name: example-android
+    if: ${{ needs.changes.outputs.android == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          targets: aarch64-linux-android
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: example-android
+      - uses: ./.github/actions/build-web-packages
+      # Generate the gitignored android SDK drawables/strings the Kotlin
+      # references (R.drawable.* / R.string.*).
+      - uses: ./.github/actions/bootstrap-android-sdk
+      - name: Expose Android NDK to lingxia build
+        run: echo "ANDROID_NDK_HOME=${ANDROID_NDK_LATEST_HOME:-$ANDROID_NDK_ROOT}" >> "$GITHUB_ENV"
+      - name: Build Android example app
+        working-directory: examples
+        run: cargo run -p lingxia-cli -- build --platform android --framework react
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: example-android-apk
+          path: examples/android/app/build/outputs/**/*.apk
+          if-no-files-found: warn
 
   # ---- Advisory (runs + visible, NOT in ci-success.needs) ----
   # rust-test stays advisory: it has pre-existing environment/timing-dependent
   # tests (lingxia-terminal dylib rpath, lingxia-transfer wall-clock ordering).
   rust-test:
-    name: Rust Test
     needs: changes
     if: ${{ needs.changes.outputs.rust == 'true' }}
-    uses: ./.github/workflows/_ci-rust-test.yml
+    name: Test
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: ./.github/actions/build-web-runtime
+
+      - name: Test all workspace crates
+        run: cargo test --workspace --exclude lingxia-terminal
 
   # sdk / harmony / npm run + are visible on PRs but are deliberately NOT in
   # ci-success.needs, so they can never block a merge. Promote each to a gating
   # job (add to ci-success.needs) only once it has proven green on real PRs.
-  sdk:
-    name: SDK Build
+  sdk-android:
     needs: changes
-    if: ${{ needs.changes.outputs.sdk == 'true' }}
-    uses: ./.github/workflows/_ci-sdk.yml
+    if: ${{ needs.changes.outputs.sdk_android == 'true' }}
+    name: Android SDK Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
 
-  harmony:
-    name: Harmony Native
+      - uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: sdk-android
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-sdk-${{ hashFiles('lingxia-sdk/android/**/*.gradle*', 'lingxia-sdk/android/**/gradle-wrapper.properties') }}
+          restore-keys: gradle-sdk-
+
+      - uses: ./.github/actions/build-web-runtime
+
+      - name: Build Android SDK release artifact
+        run: bash scripts/release/sdk.sh --platform android --out dist/sdk-ci --no-shasums
+
+  sdk-apple:
+    needs: changes
+    if: ${{ needs.changes.outputs.sdk_apple == 'true' }}
+    name: Apple SDK Source Package
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          targets: aarch64-apple-ios
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: sdk-apple
+
+      - uses: ./.github/actions/build-web-runtime
+
+      - name: Build Apple SDK release artifact
+        run: bash scripts/release/sdk.sh --platform apple --out dist/sdk-ci --no-shasums
+
+  harmony-native:
     needs: changes
     if: ${{ needs.changes.outputs.harmony == 'true' }}
-    uses: ./.github/workflows/_ci-harmony.yml
+    name: example-harmony-native
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
 
-  npm:
-    name: NPM Packages
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          targets: aarch64-unknown-linux-ohos
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: example-harmony
+
+      # lxapp web bundle + native client codegen the native build links against.
+      - uses: ./.github/actions/build-web-packages
+
+      # Native NDK from the public OpenHarmony SDK tarball.
+      - name: Cache OpenHarmony native NDK
+        id: ndk-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/ohos-ndk
+          key: ohos-ndk-${{ env.OHOS_SDK_VERSION }}
+
+      - name: Download OpenHarmony native NDK
+        if: steps.ndk-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          echo "Downloading $OHOS_SDK_URL"
+          curl -fSL --retry 3 "$OHOS_SDK_URL" -o /tmp/ohos-sdk.tar.gz
+          EXPECTED=$(curl -fsSL "${OHOS_SDK_URL}.sha256" | awk '{print $1}')
+          echo "${EXPECTED}  /tmp/ohos-sdk.tar.gz" | sha256sum -c -
+          mkdir -p /tmp/ohos-sdk-x
+          tar -xzf /tmp/ohos-sdk.tar.gz -C /tmp/ohos-sdk-x
+          LINUX_DIR=$(find /tmp/ohos-sdk-x -maxdepth 2 -type d -name linux | head -1)
+          [ -n "$LINUX_DIR" ] || { echo "linux/ not found in SDK tarball"; find /tmp/ohos-sdk-x -maxdepth 2 -type d; exit 1; }
+          ( cd "$LINUX_DIR" && unzip -q -o 'native-linux-x64-*.zip' )
+          mkdir -p ~/ohos-ndk
+          cp -a "$LINUX_DIR/native" ~/ohos-ndk/native
+          rm -rf /tmp/ohos-sdk.tar.gz /tmp/ohos-sdk-x
+
+      - name: Expose OHOS NDK
+        run: |
+          set -euo pipefail
+          NDK=$(cd ~/ohos-ndk && pwd)
+          [ -d "$NDK/native" ] || { echo "native/ missing under $NDK"; ls -la "$NDK" || true; exit 1; }
+          echo "OHOS_NDK_HOME=$NDK" >> "$GITHUB_ENV"
+          echo "OHOS_NDK_HOME=$NDK"
+          # libavtranscoder confirms a media-complete NDK (was an earlier failure).
+          find "$NDK/native" -name 'libavtranscoder*' | head -1 || true
+
+      # Gen the gitignored harmony SDK resources + sync WebViewCore.ets so the
+      # harmony project tree matches a normal build.
+      - uses: ./.github/actions/bootstrap-harmony-sdk
+
+      - name: Build Harmony example (native only)
+        working-directory: examples
+        run: cargo run -p lingxia-cli -- build --platform harmony --framework react --native-only
+
+      - name: Upload native library
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: example-harmony-libs
+          path: examples/harmony/.lingxia/**/libs/**/*.so
+          if-no-files-found: warn
+
+  npm-bridge:
     needs: changes
     if: ${{ needs.changes.outputs.npm == 'true' }}
-    uses: ./.github/workflows/_ci-npm.yml
+    name: Bridge
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Cache npm
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: npm-bridge-${{ hashFiles('packages/lingxia-bridge/package.json') }}
+          restore-keys: npm-bridge-
+
+      - name: Install & Build (@lingxia/bridge)
+        working-directory: packages/lingxia-bridge
+        run: |
+          npm install
+          npm run build
+
+  npm-polyfills:
+    needs: changes
+    if: ${{ needs.changes.outputs.npm == 'true' }}
+    name: Polyfills
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Cache npm
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: npm-polyfills-${{ hashFiles('packages/lingxia-polyfills/package.json') }}
+          restore-keys: npm-polyfills-
+
+      - name: Install & Build (@lingxia/polyfills)
+        working-directory: packages/lingxia-polyfills
+        run: |
+          npm install
+          npm run build
+
+  npm-types:
+    needs: changes
+    if: ${{ needs.changes.outputs.npm == 'true' }}
+    name: TypeScript Types
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Cache npm
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: npm-types-${{ hashFiles('packages/lingxia-types/package.json') }}
+          restore-keys: npm-types-
+
+      - name: Install & Build (@lingxia/types)
+        working-directory: packages/lingxia-types
+        run: |
+          npm install
+          npm run build
+
+  npm-frontend:
+    needs: changes
+    if: ${{ needs.changes.outputs.npm == 'true' }}
+    name: Frontend (elements/page-runtime/html/react/vue)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Cache npm
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: npm-frontend-${{ hashFiles('packages/lingxia-*/package.json') }}
+          restore-keys: npm-frontend-
+
+      # Each package's build cascades to its siblings via `npm --prefix`, so a
+      # plain `npm install` per package + building the leaf libs (html, react,
+      # vue) also builds elements + page-runtime + bridge against the tree.
+      - name: Install web packages
+        run: |
+          set -euo pipefail
+          for pkg in lingxia-bridge lingxia-elements lingxia-page-runtime \
+                     lingxia-html lingxia-react lingxia-vue; do
+            echo "::group::npm install ($pkg)"
+            (cd "packages/$pkg" && npm install)
+            echo "::endgroup::"
+          done
+
+      - name: Build frontend packages
+        run: |
+          set -euo pipefail
+          for pkg in lingxia-html lingxia-react lingxia-vue; do
+            echo "::group::npm run build ($pkg)"
+            (cd "packages/$pkg" && npm run build)
+            echo "::endgroup::"
+          done
+
+  npm-skill:
+    needs: changes
+    if: ${{ needs.changes.outputs.npm == 'true' }}
+    name: Agent Skill
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Cache npm
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: npm-skill-${{ hashFiles('packages/lingxia-skill/package.json') }}
+          restore-keys: npm-skill-
+
+      - name: Install & Pack (@lingxia/skill)
+        working-directory: packages/lingxia-skill
+        run: |
+          npm install
+          npm pack --dry-run
 
   # Single required check. Skipped gating jobs report result 'skipped' (≠
   # 'failure'), so a scoped PR still goes green and stays mergeable — require
   # ONLY this check in branch protection, never the individual jobs.
   ci-success:
     name: CI Success
-    needs: [changes, rust-fmt, rust-checks, cli, rust-clippy, runner, examples]
+    needs:
+      - changes
+      - fmt
+      - rust-check
+      - rust-android-target
+      - cli
+      - rust-clippy
+      - runner
+      - macos
+      - ios
+      - android
     runs-on: ubuntu-latest
     if: always()
     steps:

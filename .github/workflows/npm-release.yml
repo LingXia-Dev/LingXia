@@ -1,4 +1,4 @@
-name: NPM Package Release
+name: Release Executor / NPM
 
 on:
   push:
@@ -8,6 +8,7 @@ on:
       - "lingxia-html-v*"
       - "lingxia-page-runtime-v*"
       - "lingxia-react-v*"
+      - "lingxia-skill-v*"
       - "lingxia-types-v*"
       - "lingxia-vue-v*"
   workflow_dispatch:
@@ -22,6 +23,7 @@ on:
           - lingxia-html
           - lingxia-page-runtime
           - lingxia-react
+          - lingxia-skill
           - lingxia-types
           - lingxia-vue
       version:
@@ -51,6 +53,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       package: ${{ steps.resolve.outputs.package }}
+      package_set: ${{ steps.resolve.outputs.package_set }}
       version: ${{ steps.resolve.outputs.version }}
       directory: ${{ steps.resolve.outputs.directory }}
     steps:
@@ -68,6 +71,7 @@ jobs:
               lingxia-html-v*) package="lingxia-html"; version="${tag#lingxia-html-v}" ;;
               lingxia-page-runtime-v*) package="lingxia-page-runtime"; version="${tag#lingxia-page-runtime-v}" ;;
               lingxia-react-v*) package="lingxia-react"; version="${tag#lingxia-react-v}" ;;
+              lingxia-skill-v*) package="lingxia-skill"; version="${tag#lingxia-skill-v}" ;;
               lingxia-types-v*) package="lingxia-types"; version="${tag#lingxia-types-v}" ;;
               lingxia-vue-v*) package="lingxia-vue"; version="${tag#lingxia-vue-v}" ;;
               *) echo "Unknown tag format: $tag" >&2; exit 1 ;;
@@ -76,14 +80,16 @@ jobs:
 
           # Map package to its source directory under packages/.
           case "$package" in
-            lingxia-bridge|lingxia-elements|lingxia-html|lingxia-page-runtime|lingxia-react|lingxia-types|lingxia-vue)
+            lingxia-bridge|lingxia-elements|lingxia-html|lingxia-page-runtime|lingxia-react|lingxia-skill|lingxia-types|lingxia-vue)
               directory="packages/$package"
+              package_set="${package#lingxia-}"
               ;;
             *) echo "Unknown package: $package" >&2; exit 1 ;;
           esac
 
           {
             echo "package=$package"
+            echo "package_set=$package_set"
             echo "version=$version"
             echo "directory=$directory"
           } >> "$GITHUB_OUTPUT"
@@ -120,36 +126,17 @@ jobs:
           fi
           echo "Version verified: $actual"
 
-      - name: Install dependencies
-        working-directory: ${{ needs.determine-package.outputs.directory }}
-        shell: bash
-        run: |
-          if [[ -f package-lock.json ]]; then
-            npm ci
-          else
-            npm install
-          fi
-
-      - name: Build
-        working-directory: ${{ needs.determine-package.outputs.directory }}
-        run: npm run build
-
       - name: Publish (dry run)
         if: github.event_name == 'workflow_dispatch' && inputs.dry_run
-        working-directory: ${{ needs.determine-package.outputs.directory }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          echo "DRY RUN - would publish:"
-          npm pack --dry-run
+        run: bash scripts/release/npm.sh --package "${{ needs.determine-package.outputs.package_set }}" --dry-run
 
       - name: Publish
         if: github.event_name != 'workflow_dispatch' || !inputs.dry_run
-        working-directory: ${{ needs.determine-package.outputs.directory }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          npm publish --access public --provenance
+        run: bash scripts/release/npm.sh --package "${{ needs.determine-package.outputs.package_set }}" --publish
 
       - name: Create GitHub Release
         if: github.event_name == 'push'
@@ -161,6 +148,6 @@ jobs:
             ## ${{ needs.determine-package.outputs.package }}@${{ needs.determine-package.outputs.version }}
 
             ```bash
-            npm install ${{ needs.determine-package.outputs.package }}@${{ needs.determine-package.outputs.version }}
+            npm install @lingxia/${{ needs.determine-package.outputs.package_set }}@${{ needs.determine-package.outputs.version }}
             ```
           generate_release_notes: true

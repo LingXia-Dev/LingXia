@@ -1,4 +1,4 @@
-name: Maintainer / Prepare Release PR
+name: Release / 1. Prepare Version PR
 
 # Unified version bump: applies ONE version to the whole workspace
 # (Cargo.toml workspace.package + workspace deps, install.sh, every
@@ -90,6 +90,7 @@ jobs:
           git tag lingxia-html-v${version}
           git tag lingxia-page-runtime-v${version}
           git tag lingxia-react-v${version}
+          git tag lingxia-skill-v${version}
           git tag lingxia-types-v${version}
           git tag lingxia-vue-v${version}
           git push origin <tag>
