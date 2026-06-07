@@ -172,8 +172,10 @@ jobs:
 
   # The runtime crates (e.g. lingxia-webview) only have android / apple / ohos
   # backends — there is no plain-linux-gnu host backend — so workspace-wide
-  # rust checks run on macOS, the project's real desktop host. Android is
-  # covered separately by the android-target job below.
+  # rust checks run on macOS, the project's real desktop host. lingxia-terminal
+  # is excluded from CI gates because its libghostty-vt build requires external
+  # Ghostty tooling that is not part of the normal LingXia CI toolchain.
+  # Android is covered separately by the android-target job below.
   rust-check:
     needs: changes
     if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.i18n == 'true' }}
@@ -194,7 +196,7 @@ jobs:
       - uses: ./.github/actions/build-web-runtime
 
       - name: Check all workspace crates
-        run: cargo check --workspace
+        run: cargo check --workspace --exclude lingxia-terminal
 
       - name: Check i18n-related crates explicitly
         run: cargo check -p lingxia-logic -p lingxia-cli
@@ -304,11 +306,8 @@ jobs:
           path: target/${{ matrix.target }}/release/lingxia${{ matrix.exe }}
           if-no-files-found: error
 
-  # Runs on macOS for the same reason as the workspace check — the runtime
-  # crates only build for android / apple / ohos, not a plain-linux host.
-  # Advisory (wired in ci.yml outside the ci-success gate): the runtime crates
-  # carry ~12 pre-existing clippy lints (collapsible_if, explicit_auto_deref,
-  # …) to clean up before this can gate.
+  # Runs on macOS for the same reason as the workspace check. Excludes
+  # lingxia-terminal for the same external-toolchain reason.
   rust-clippy:
     needs: changes
     if: ${{ needs.changes.outputs.rust == 'true' }}
@@ -332,7 +331,7 @@ jobs:
       # detached background tasks (`let _ = executor.spawn(..)`) where dropping
       # the join handle is intentional fire-and-forget, not a dropped future.
       - name: Clippy (all workspace crates)
-        run: cargo clippy --workspace -- -D warnings -A clippy::let_underscore_future
+        run: cargo clippy --workspace --exclude lingxia-terminal -- -D warnings -A clippy::let_underscore_future
 
   runner:
     needs: changes
