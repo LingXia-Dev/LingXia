@@ -1,3 +1,13 @@
+#![cfg_attr(
+    not(any(
+        target_os = "android",
+        target_os = "ios",
+        target_os = "macos",
+        all(target_os = "linux", target_env = "ohos")
+    )),
+    allow(dead_code)
+)]
+
 use crate::WebViewScriptError;
 use serde::Deserialize;
 use serde_json::Value;

@@ -1,3 +1,13 @@
+#![cfg_attr(
+    not(any(
+        target_os = "android",
+        target_os = "ios",
+        target_os = "macos",
+        all(target_os = "linux", target_env = "ohos")
+    )),
+    allow(dead_code)
+)]
+
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::future::Future;
@@ -16,6 +26,16 @@ use crate::apple::WebViewInner;
 #[cfg(all(target_os = "linux", target_env = "ohos"))]
 use crate::harmony::WebViewInner;
 
+#[cfg(not(any(
+    target_os = "android",
+    target_os = "ios",
+    target_os = "macos",
+    all(target_os = "linux", target_env = "ohos")
+)))]
+pub(crate) struct WebViewInner {
+    webtag: WebTag,
+}
+
 use crate::traits::{
     AsyncSchemeHandler, ClickOptions, DownloadHandler, DownloadRequest, FileChooserRequest,
     FileChooserResponse, FillOptions, NavigationHandler, NavigationPolicy, NewWindowHandler,
@@ -29,6 +49,77 @@ use crate::{
 use async_trait::async_trait;
 
 const APPLE_INTERNAL_SCHEME: &str = "lx-apple";
+
+#[cfg(not(any(
+    target_os = "android",
+    target_os = "ios",
+    target_os = "macos",
+    all(target_os = "linux", target_env = "ohos")
+)))]
+fn unsupported_webview_error(action: &str) -> WebViewError {
+    WebViewError::WebView(format!("{action} is not supported on this platform"))
+}
+
+#[cfg(not(any(
+    target_os = "android",
+    target_os = "ios",
+    target_os = "macos",
+    all(target_os = "linux", target_env = "ohos")
+)))]
+impl WebViewInner {
+    pub(crate) fn create(
+        appid: &str,
+        path: &str,
+        session_id: Option<u64>,
+        _effective_options: EffectiveWebViewCreateOptions,
+        sender: WebViewCreateSender,
+    ) {
+        let _webtag = WebTag::new(appid, path, session_id);
+        sender.fail(
+            WebViewCreateStage::Requested,
+            unsupported_webview_error("webview creation"),
+        );
+    }
+}
+
+#[cfg(not(any(
+    target_os = "android",
+    target_os = "ios",
+    target_os = "macos",
+    all(target_os = "linux", target_env = "ohos")
+)))]
+#[async_trait]
+impl WebViewController for WebViewInner {
+    fn load_url(&self, _url: &str) -> Result<(), WebViewError> {
+        Err(unsupported_webview_error("load_url"))
+    }
+
+    fn load_data(&self, _request: LoadDataRequest<'_>) -> Result<(), WebViewError> {
+        Err(unsupported_webview_error("load_data"))
+    }
+
+    fn exec_js(&self, _js: &str) -> Result<(), WebViewError> {
+        Err(unsupported_webview_error("exec_js"))
+    }
+
+    async fn eval_js(&self, _js: &str) -> Result<serde_json::Value, WebViewScriptError> {
+        Err(WebViewScriptError::Unsupported(
+            "JavaScript evaluation is not supported on this platform",
+        ))
+    }
+
+    fn post_message(&self, _message: &str) -> Result<(), WebViewError> {
+        Err(unsupported_webview_error("post_message"))
+    }
+
+    fn clear_browsing_data(&self) -> Result<(), WebViewError> {
+        Err(unsupported_webview_error("clear_browsing_data"))
+    }
+
+    fn set_user_agent(&self, _ua: &str) -> Result<(), WebViewError> {
+        Err(unsupported_webview_error("set_user_agent"))
+    }
+}
 
 fn lock_or_recover<'a, T>(mutex: &'a Mutex<T>, name: &str) -> std::sync::MutexGuard<'a, T> {
     match mutex.lock() {
