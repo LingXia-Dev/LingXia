@@ -65,23 +65,23 @@ openssl = { version = "0.10", features = ["vendored"] }
 Inflector = "0.11"
 svg2pdf = "0.13"
 roxmltree = "0.21"
-jsonschema = "0.42"
+jsonschema = "0.46"
 lingxia-devtool-protocol = { workspace = true }
 lingxia-log = { workspace = true }
 
 # LxApp build — oxc-based JS/TS compilation
-oxc_parser = "0.131"
+oxc_parser = "0.134"
 oxc_resolver = "11.19.1"
-oxc_transformer = "0.131"
-oxc_codegen = "0.131"
-oxc_minifier = "0.131"
-oxc_allocator = "0.131"
-oxc_span = "0.131"
-oxc_ast = "0.131"
-oxc_ast_visit = "0.131"
-oxc_syntax = "0.131"
-oxc_semantic = "0.131"
-oxc_sourcemap = "6.1.1"
+oxc_transformer = "0.134"
+oxc_codegen = "0.134"
+oxc_minifier = "0.134"
+oxc_allocator = "0.134"
+oxc_span = "0.134"
+oxc_ast = "0.134"
+oxc_ast_visit = "0.134"
+oxc_syntax = "0.134"
+oxc_semantic = "0.134"
+oxc_sourcemap = "7.0"
 sysinfo = "0.39"
 
 [build-dependencies]
