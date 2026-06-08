@@ -294,7 +294,7 @@ impl Platform for IosPlatform {
         // the app's Package.swift to depend on it via a local `.package(path:)`.
         // The SDK uses `unsafeFlags`, so it can ONLY be a local path dependency
         // — a remote URL is rejected by SwiftPM. Inside the workspace the
-        // committed Package.swift already points at `../../lingxia-sdk/apple`.
+        // committed Package.swift already points at the local SDK source.
         if !super::is_inside_lingxia_workspace(&config.project_root) {
             let version = crate::sdk_cache::sdk_version();
             let sdk_dir =

@@ -72,16 +72,20 @@ jobs:
             sdk_release:
               - 'scripts/release/sdk.sh'
             examples_common:
-              - 'examples/lingxia-showcase/**'
+              - 'examples/lingxia-showcase/lingxia.yaml'
+              - 'examples/lingxia-showcase/AppIcon.png'
+              - 'examples/lingxia-showcase/icons/**'
+              - 'examples/lingxia-showcase/lingxia-lib/**'
+              - 'examples/lingxia-showcase/lingxia-showcase/**'
               - 'examples/lingxia-chat/**'
-              - 'examples/lingxia-lib/**'
-              - 'examples/lingxia.yaml'
             ex_ios:
-              - 'examples/ios/**'
+              - 'examples/lingxia-showcase/ios/**'
             ex_macos:
-              - 'examples/macos/**'
+              - 'examples/lingxia-showcase/macos/**'
             ex_android:
-              - 'examples/android/**'
+              - 'examples/lingxia-showcase/android/**'
+            ex_harmony:
+              - 'examples/lingxia-showcase/harmony/**'
             i18n:
               - 'i18n/**'
             npm:
@@ -106,6 +110,7 @@ jobs:
           EX_IOS: ${{ steps.filter.outputs.ex_ios }}
           EX_MACOS: ${{ steps.filter.outputs.ex_macos }}
           EX_ANDROID: ${{ steps.filter.outputs.ex_android }}
+          EX_HARMONY: ${{ steps.filter.outputs.ex_harmony }}
           I18N: ${{ steps.filter.outputs.i18n }}
           NPM: ${{ steps.filter.outputs.npm }}
           # A release/* PR (from Prepare Release PR) only touches Cargo.toml /
@@ -136,8 +141,8 @@ jobs:
           # SDK platform checks stay scoped unless shared runtime/release inputs changed.
           sdk_apple=$(any "$rel" "$sdk_base" "$APPLE" "$SDK_RELEASE")
           sdk_android=$(any "$rel" "$sdk_base" "$ANDROID" "$SDK_RELEASE")
-          # Harmony: harmony SDK tree + the harmony webview backend.
-          harmony=$(any "$rel" "$sdk_base" "$HARMONY_SDK" "$WEBVIEW_HARMONY" "$SDK_RELEASE")
+          # Harmony: harmony SDK tree + harmony webview backend + harmony example inputs.
+          harmony=$(any "$rel" "$sdk_base" "$HARMONY_SDK" "$WEBVIEW_HARMONY" "$SDK_RELEASE" "$ex_base" "$EX_HARMONY")
           # NPM packages (advisory): any packages/* change, or a release PR.
           npm=$(any "$rel" "$NPM")
           {
@@ -393,13 +398,13 @@ jobs:
       - uses: ./.github/actions/build-web-packages
       - uses: ./.github/actions/bootstrap-apple-sdk
       - name: Build macOS example app
-        working-directory: examples
+        working-directory: examples/lingxia-showcase
         run: cargo run -p lingxia-cli -- build --platform macos --framework react
       - name: Upload macOS app
         uses: actions/upload-artifact@v4
         with:
           name: example-macos-app
-          path: examples/macos/.lingxia/*.app
+          path: examples/lingxia-showcase/macos/.lingxia/*.app
           if-no-files-found: warn
 
   ios:
@@ -428,13 +433,13 @@ jobs:
       - uses: ./.github/actions/build-web-packages
       - uses: ./.github/actions/bootstrap-apple-sdk
       - name: Build iOS example app
-        working-directory: examples
+        working-directory: examples/lingxia-showcase
         run: cargo run -p lingxia-cli -- build --platform ios --framework react
       - name: Upload iOS app
         uses: actions/upload-artifact@v4
         with:
           name: example-ios-app
-          path: examples/ios/.lingxia/*.app
+          path: examples/lingxia-showcase/ios/.lingxia/*.app
           if-no-files-found: warn
 
   android:
@@ -463,13 +468,13 @@ jobs:
       - name: Expose Android NDK to lingxia build
         run: echo "ANDROID_NDK_HOME=${ANDROID_NDK_LATEST_HOME:-$ANDROID_NDK_ROOT}" >> "$GITHUB_ENV"
       - name: Build Android example app
-        working-directory: examples
+        working-directory: examples/lingxia-showcase
         run: cargo run -p lingxia-cli -- build --platform android --framework react
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: example-android-apk
-          path: examples/android/app/build/outputs/**/*.apk
+          path: examples/lingxia-showcase/android/app/build/outputs/**/*.apk
           if-no-files-found: warn
 
   # ---- Advisory (runs + visible, NOT in ci-success.needs) ----
@@ -566,7 +571,7 @@ jobs:
     if: ${{ needs.changes.outputs.harmony == 'true' }}
     name: example-harmony-native
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
 
@@ -583,9 +588,9 @@ jobs:
       - uses: ./.github/actions/build-web-packages
 
       # Native NDK from the public OpenHarmony SDK tarball.
-      - name: Cache OpenHarmony native NDK
+      - name: Restore OpenHarmony native NDK cache
         id: ndk-cache
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: ~/ohos-ndk
           key: ohos-ndk-${{ env.OHOS_SDK_VERSION }}
@@ -595,7 +600,8 @@ jobs:
         run: |
           set -euo pipefail
           echo "Downloading $OHOS_SDK_URL"
-          curl -fSL --retry 3 "$OHOS_SDK_URL" -o /tmp/ohos-sdk.tar.gz
+          curl -fL --retry 5 --retry-all-errors --retry-delay 10 --connect-timeout 30 --speed-time 120 --speed-limit 1024 "$OHOS_SDK_URL" -o /tmp/ohos-sdk.tar.gz
+          du -h /tmp/ohos-sdk.tar.gz
           EXPECTED=$(curl -fsSL "${OHOS_SDK_URL}.sha256" | awk '{print $1}')
           echo "${EXPECTED}  /tmp/ohos-sdk.tar.gz" | sha256sum -c -
           mkdir -p /tmp/ohos-sdk-x
@@ -617,12 +623,19 @@ jobs:
           # libavtranscoder confirms a media-complete NDK (was an earlier failure).
           find "$NDK/native" -name 'libavtranscoder*' | head -1 || true
 
+      - name: Save OpenHarmony native NDK cache
+        if: steps.ndk-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/ohos-ndk
+          key: ohos-ndk-${{ env.OHOS_SDK_VERSION }}
+
       # Gen the gitignored harmony SDK resources + sync WebViewCore.ets so the
       # harmony project tree matches a normal build.
       - uses: ./.github/actions/bootstrap-harmony-sdk
 
       - name: Build Harmony example (native only)
-        working-directory: examples
+        working-directory: examples/lingxia-showcase
         run: cargo run -p lingxia-cli -- build --platform harmony --framework react --native-only
 
       - name: Upload native library
@@ -630,7 +643,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: example-harmony-libs
-          path: examples/harmony/.lingxia/**/libs/**/*.so
+          path: examples/lingxia-showcase/harmony/.lingxia/**/libs/**/*.so
           if-no-files-found: warn
 
   npm-bridge:

@@ -22,4 +22,4 @@ dependencyResolutionManagement {
 rootProject.name = "lingxia-example"
 include(":app")
 include(":lingxia")
-project(":lingxia").projectDir = file("../../lingxia-sdk/android/lingxia")
+project(":lingxia").projectDir = file("../../../lingxia-sdk/android/lingxia")

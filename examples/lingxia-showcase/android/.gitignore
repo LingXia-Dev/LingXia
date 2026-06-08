@@ -8,3 +8,5 @@ local.properties
 .DS_Store
 *.iml
 assets
+app/src/main/assets/
+app/src/main/jniLibs/

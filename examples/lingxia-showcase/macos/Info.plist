@@ -38,5 +38,13 @@
 	<string>LingXia needs location permission to access Wi-Fi information.</string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.productivity</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Required to capture photos and videos.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Required to record audio when capturing videos.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Required to save photos and videos.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Required to access photos and videos in your library.</string>
 </dict>
 </plist>

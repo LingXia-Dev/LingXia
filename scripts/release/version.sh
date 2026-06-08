@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(realpath "$SCRIPT_DIR/../..")"
 WORKSPACE_CARGO_TOML="$ROOT_DIR/Cargo.toml"
-EXAMPLE_HOST_CARGO_TOML="$ROOT_DIR/examples/lingxia-lib/Cargo.toml"
+EXAMPLE_HOST_CARGO_TOML="$ROOT_DIR/examples/lingxia-showcase/lingxia-lib/Cargo.toml"
 
 usage() {
   cat <<'EOF'

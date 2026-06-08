@@ -1,0 +1,62 @@
+[package]
+name = "lingxia-example-host"
+version = "0.1.0"
+edition = "2024"
+description = "Native library for LingXia example App (builds to .so/.a)"
+
+[lib]
+name = "lingxia"
+# cdylib for Android/Harmony (.so), staticlib for iOS (.a)
+crate-type = ["cdylib", "staticlib"]
+
+[features]
+default = ["standard"]
+standard = ["lingxia/standard"]
+shell-runtime = ["lingxia/shell-runtime", "webview-input", "standard"]
+terminal-runtime = ["lingxia/terminal-runtime"]
+devtools = ["dep:lingxia_devtool", "lingxia_devtool/browser"]
+webview-input = ["lingxia/webview-input"]
+
+[dependencies]
+lingxia = { version = "0.9.0", default-features = false }
+lingxia_devtool = { package = "lingxia-devtool", version = "0.9.0", optional = true, default-features = false }
+rong = { version = "0.3.1", default-features = false }
+log = "0.4.29"
+
+# Platform-specific dependencies for FFI
+[target.'cfg(target_os = "android")'.dependencies]
+jni = "0.22.1"
+
+[target.'cfg(target_env = "ohos")'.dependencies]
+napi-ohos = "1.1"
+napi-derive-ohos = "1.1"
+
+# Release profile: optimize for size
+[profile.release]
+opt-level = 'z'
+lto = true
+codegen-units = 1
+strip = true
+
+[patch.crates-io]
+lingxia = { path = "../../../crates/lingxia" }
+lingxia-app-context = { path = "../../../crates/lingxia-app-context" }
+lingxia-browser = { path = "../../../crates/lingxia-browser" }
+lingxia-devtool = { path = "../../../crates/lingxia-devtool" }
+lingxia-devtool-protocol = { path = "../../../crates/lingxia-devtool-protocol" }
+lingxia-log = { path = "../../../crates/lingxia-log" }
+lingxia-logic = { path = "../../../crates/lingxia-logic" }
+lingxia-lxapp = { path = "../../../crates/lingxia-lxapp" }
+lingxia-media = { path = "../../../crates/lingxia-media" }
+lingxia-messaging = { path = "../../../crates/lingxia-messaging" }
+lingxia-native-macros = { path = "../../../crates/lingxia-native-macros" }
+lingxia-platform = { path = "../../../crates/lingxia-platform" }
+lingxia-provider = { path = "../../../crates/lingxia-provider" }
+lingxia-proxy = { path = "../../../crates/lingxia-proxy" }
+lingxia-service = { path = "../../../crates/lingxia-service" }
+lingxia-settings = { path = "../../../crates/lingxia-settings" }
+lingxia-shell = { path = "../../../crates/lingxia-shell" }
+lingxia-terminal = { path = "../../../crates/lingxia-terminal" }
+lingxia-transfer = { path = "../../../crates/lingxia-transfer" }
+lingxia-update = { path = "../../../crates/lingxia-update" }
+lingxia-webview = { path = "../../../crates/lingxia-webview" }

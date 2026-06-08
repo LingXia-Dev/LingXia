@@ -62,7 +62,7 @@ impl HarmonyPlatform {
         // ohpm install) because `rewrite_file_dependencies` only rewrites
         // RELATIVE `file:` deps — an absolute path injected here is left
         // untouched. Inside the workspace the committed oh-package.json5 already
-        // references `file:../../../lingxia-sdk/harmony/lingxia`.
+        // references the local Harmony SDK source.
         if !crate::platform::is_inside_lingxia_workspace(&config.project_root) {
             let version = crate::sdk_cache::sdk_version();
             let har =
@@ -344,7 +344,7 @@ fn walk_and_rewrite_oh_packages(dir: &Path, prefix: &str) -> Result<()> {
             } else if name_os == std::ffi::OsStr::new("build-profile.json5") {
                 // build-profile.json5 declares hvigor `modules[].srcPath`; when a
                 // module's source lives outside the project root (e.g. SDK source
-                // dep via `../../lingxia-sdk/...`) the path needs the same staging
+                // dep via `../..` segments) the path needs the same staging
                 // prefix as `file:` deps in oh-package.json5.
                 let content = std::fs::read_to_string(&path)
                     .with_context(|| format!("Failed to read {}", path.display()))?;

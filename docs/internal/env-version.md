@@ -213,7 +213,7 @@ exclusively on the copy:
 
 1. Recursive copy from source, excluding `.lingxia`, `oh_modules`, `build`.
 2. Rewrite `oh-package.json5` `file:` deps in staging by prepending
-   `../../../` (so `file:../../../lingxia-sdk/...` still resolves to the
+   `../../../` (so `file:../../../../lingxia-sdk/...` still resolves to the
    original source-tree target after the 3-level path shift).
 3. Rewrite `AppScope/app.json5::bundleName` in staging via a token-aware
    JSON5 scanner (`replace_json5_string_field_value`) that skips comments

@@ -26,7 +26,7 @@ members = [
     "tools/lingxia-devtools-cli",
     "crates/lingxia-native-codegen",
 ]
-exclude = ["examples/lingxia-lib"]
+exclude = ["examples/lingxia-showcase/lingxia-lib"]
 resolver = "2"
 
 [workspace.package]

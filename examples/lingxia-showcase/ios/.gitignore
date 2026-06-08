@@ -1,0 +1,14 @@
+.DS_Store
+.build
+Packages
+xcuserdata/
+DerivedData/
+.swiftpm
+.netrc
+
+xtool
+Sources/Resources/
+Sources/lxapp/Resources/*
+!Sources/lxapp/Resources/Assets.xcassets/
+!Sources/lxapp/Resources/Assets.xcassets/AppIcon.appiconset/
+!Sources/lxapp/Resources/Assets.xcassets/AppIcon.appiconset/**

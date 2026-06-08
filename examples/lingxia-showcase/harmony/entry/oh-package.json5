@@ -8,6 +8,6 @@
   "dependencies": {
     // Source-module reference (resolved via root build-profile.json5 "modules").
     // No intermediate HAR — hvigor compiles lingxia-sdk/harmony/lingxia in place.
-    "lingxia": "file:../../../lingxia-sdk/harmony/lingxia"
+    "lingxia": "file:../../../../lingxia-sdk/harmony/lingxia"
   }
 }

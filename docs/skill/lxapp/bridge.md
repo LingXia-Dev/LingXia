@@ -123,7 +123,7 @@ Use streams when:
 
 ### Logic side — generator form
 
-The simplest form — no imports, no special API. Write a standard `async *` generator method on your `Page({})` and the runtime detects it automatically via `Symbol.asyncIterator`. Each `yield` becomes an event frame delivered to View; `return` ends the stream. The `examples/lingxia-showcase/pages/stream` demo uses this pattern with `onSend`.
+The simplest form — no imports, no special API. Write a standard `async *` generator method on your `Page({})` and the runtime detects it automatically via `Symbol.asyncIterator`. Each `yield` becomes an event frame delivered to View; `return` ends the stream. The `examples/lingxia-showcase/lingxia-showcase/pages/stream` demo uses this pattern with `onSend`.
 
 ```ts
 type ChatChunk =

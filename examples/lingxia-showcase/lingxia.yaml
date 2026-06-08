@@ -43,7 +43,7 @@ shell:
   # In-monorepo dev — point at SDK source.
   # External apps omit this to use the npm default.
   webui:
-    path: ../crates/lingxia-shell/webui
+    path: ../../crates/lingxia-shell/webui
 
 capabilities:
   notifications: true
@@ -56,6 +56,7 @@ resources:
       path: lingxia-showcase
     - type: lxapp
       appId: lingxia-chat
+      path: ../lingxia-chat
 
 ui:
   launch:
@@ -80,7 +81,7 @@ ui:
       kind: sidebarItem
       hostSurface: main
       label: AI Chat
-      icon: lingxia-chat/chat.svg
+      icon: icons/chat.svg
       action:
         kind: toggleSurface
         surface: assistant
