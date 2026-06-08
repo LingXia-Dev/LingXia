@@ -1,3 +1,13 @@
+#![cfg_attr(
+    not(any(
+        target_os = "android",
+        target_os = "ios",
+        target_os = "macos",
+        target_env = "ohos"
+    )),
+    allow(dead_code)
+)]
+
 use crate::error::PlatformError;
 use rong_rt::RongExecutor;
 #[cfg(any(target_os = "ios", target_os = "macos", target_env = "ohos"))]

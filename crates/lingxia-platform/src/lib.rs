@@ -40,6 +40,14 @@ mod apple;
 #[cfg(target_env = "ohos")]
 pub mod harmony;
 
+#[cfg(not(any(
+    target_os = "android",
+    target_os = "ios",
+    target_os = "macos",
+    target_env = "ohos"
+)))]
+mod unsupported;
+
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 pub mod desktop;
 
@@ -55,6 +63,14 @@ pub use apple::Platform;
 
 #[cfg(target_env = "ohos")]
 pub use harmony::Platform;
+
+#[cfg(not(any(
+    target_os = "android",
+    target_os = "ios",
+    target_os = "macos",
+    target_env = "ohos"
+)))]
+pub use unsupported::Platform;
 
 pub mod error;
 pub use error::*;
