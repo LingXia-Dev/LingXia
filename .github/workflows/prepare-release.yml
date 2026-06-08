@@ -19,6 +19,7 @@ on:
 
 permissions:
   contents: write
+  issues: write
   pull-requests: write
 
 jobs:
@@ -43,7 +44,12 @@ jobs:
       - name: Create release branch
         run: |
           branch="release/v${{ inputs.version }}"
-          git checkout -b "$branch"
+          if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
+            git fetch origin "$branch"
+            git checkout -B "$branch" "origin/$branch"
+          else
+            git checkout -b "$branch"
+          fi
           echo "BRANCH=$branch" >> "$GITHUB_ENV"
 
       - name: Bump version (unified)
@@ -52,11 +58,27 @@ jobs:
 
       - name: Commit version bump
         run: |
-          git commit -am "chore(release): bump version to ${{ inputs.version }}"
+          if git diff --quiet; then
+            echo "No version changes to commit"
+          else
+            git commit -am "chore(release): bump version to ${{ inputs.version }}"
+          fi
 
       - name: Push branch
         run: |
           git push -u origin "$BRANCH"
+
+      - name: Ensure release label
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh label create release \
+            --color "0E8A16" \
+            --description "Release preparation and publishing" \
+            2>/dev/null || \
+          gh label edit release \
+            --color "0E8A16" \
+            --description "Release preparation and publishing"
 
       - name: Create Pull Request
         env:
@@ -98,7 +120,15 @@ jobs:
           EOF
           )"
 
+          existing_pr="$(gh pr list --base main --head "$BRANCH" --state open --json url --jq '.[0].url')"
+          if [ -n "$existing_pr" ]; then
+            echo "Release PR already exists: $existing_pr"
+            exit 0
+          fi
+
           gh pr create \
+            --base main \
+            --head "$BRANCH" \
             --title "Release v${version}" \
             --body "$pr_body" \
             --label "release"
