@@ -156,6 +156,28 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           registry-url: "https://registry.npmjs.org"
 
+      - name: Verify npm publish access
+        if: github.event_name != 'workflow_dispatch' || !inputs.dry_run
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${NODE_AUTH_TOKEN:-}" ]]; then
+            echo "::error::Missing NPM_TOKEN secret."
+            exit 1
+          fi
+
+          npm ping --registry=https://registry.npmjs.org
+          npm whoami --registry=https://registry.npmjs.org >/dev/null
+
+          if ! npm access ls-packages @lingxia --registry=https://registry.npmjs.org >/dev/null 2>&1; then
+            echo "::error::NPM_TOKEN cannot access the @lingxia scope on npm. Create or claim the scope, then set NPM_TOKEN from an npm user or automation token with publish permission for @lingxia."
+            exit 1
+          fi
+
+          echo "npm publish access verified for @lingxia"
+
       - name: Cache npm
         uses: actions/cache@v4
         with:
@@ -260,7 +282,14 @@ jobs:
               continue
             fi
 
-            notes="$(printf '## %s@%s\n\n```bash\nnpm install @lingxia/%s@%s\n```\n' "$package" "$VERSION" "$package_set" "$VERSION")"
+            notes="$(cat <<EOF
+          ## ${package}@${VERSION}
+
+          \`\`\`bash
+          npm install @lingxia/${package_set}@${VERSION}
+          \`\`\`
+          EOF
+          )"
 
             gh release create "$tag" \
               --title "${package}@${VERSION}" \

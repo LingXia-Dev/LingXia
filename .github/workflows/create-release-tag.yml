@@ -2,8 +2,9 @@ name: Release / 2. Publish Component
 
 # Public release entrypoint. Run AFTER the unified version bump PR has merged
 # to main. This workflow creates the release tag(s), then explicitly dispatches
-# the matching executor workflow. We do not rely on tag-push fanout here because
-# tags pushed with GITHUB_TOKEN do not reliably trigger downstream workflows.
+# and waits for the matching executor workflow. We do not rely on tag-push
+# fanout here because tags pushed with GITHUB_TOKEN do not reliably trigger
+# downstream workflows.
 
 on:
   workflow_dispatch:
@@ -175,41 +176,92 @@ jobs:
             echo "Created and pushed tag: $tag"
           }
 
+          dispatch_and_wait() {
+            local workflow="$1"
+            local label="$2"
+            shift 2
+
+            local dispatch_after
+            local output
+            local run_id
+            local run_url
+            dispatch_after="$(date -u +%s)"
+
+            echo "Dispatching $label..."
+            output="$(gh workflow run "$workflow" --ref main "$@")"
+            printf '%s\n' "$output"
+
+            run_url="$(printf '%s\n' "$output" | awk '/actions\/runs\// {print $0; exit}')"
+            run_id="${run_url##*/}"
+
+            if ! [[ "$run_id" =~ ^[0-9]+$ ]]; then
+              run_id=""
+              echo "Waiting for GitHub to create the $label run..."
+              for _ in {1..30}; do
+                run_id="$(gh run list \
+                  --workflow "$workflow" \
+                  --event workflow_dispatch \
+                  --limit 20 \
+                  --json databaseId,createdAt,headSha \
+                  | jq -r \
+                    --arg sha "$GITHUB_SHA" \
+                    --argjson earliest "$((dispatch_after - 5))" \
+                    '[.[] | select(.headSha == $sha) | select((.createdAt | fromdateiso8601) >= $earliest)] | sort_by(.createdAt) | reverse | .[0].databaseId // empty')"
+                [[ -n "$run_id" ]] && break
+                sleep 2
+              done
+            fi
+
+            if [[ -z "$run_id" ]]; then
+              echo "Failed to find dispatched $label run" >&2
+              exit 1
+            fi
+
+            if [[ -z "$run_url" ]]; then
+              run_url="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${run_id}"
+            fi
+
+            {
+              echo "### $label"
+              echo ""
+              echo "- Executor run: $run_url"
+            } >> "$GITHUB_STEP_SUMMARY"
+
+            echo "Watching $label: $run_url"
+            gh run watch "$run_id" --interval 15 --exit-status
+          }
+
           publish_crates() {
             local tag="lingxia-crates-v$VERSION"
             create_or_reuse_tag "$tag" "Release crates v$VERSION"
-            gh workflow run crates-release.yml --ref main -f tag="$tag" -f dry_run=false
-            echo "Dispatched Release Executor / Crates for $tag"
+            dispatch_and_wait "crates-release.yml" "Release Executor / Crates" -f tag="$tag" -f dry_run=false
           }
 
           publish_sdk() {
             local tag="lingxia-sdk-v$VERSION"
             create_or_reuse_tag "$tag" "Release sdk v$VERSION"
-            gh workflow run sdk-release.yml --ref main \
+            dispatch_and_wait "sdk-release.yml" "Release Executor / SDK" \
               -f tag="$tag" \
               -f android=true \
               -f ios=true \
               -f harmony=false \
               -f dry_run=false
-            echo "Dispatched Release Executor / SDK for $tag"
           }
 
           publish_cli() {
             local tag="lingxia-cli-v$VERSION"
             create_or_reuse_tag "$tag" "Release cli v$VERSION"
-            gh workflow run release-cli.yml --ref main -f tag="$tag" -f dry_run=false
-            echo "Dispatched Release Executor / CLI for $tag"
+            dispatch_and_wait "release-cli.yml" "Release Executor / CLI" -f tag="$tag" -f dry_run=false
           }
 
           publish_npm_package() {
             local package="$1"
             local tag="${package}-v$VERSION"
             create_or_reuse_tag "$tag" "Release $package v$VERSION"
-            gh workflow run npm-release.yml --ref main \
+            dispatch_and_wait "npm-release.yml" "Release Executor / NPM" \
               -f package="$package" \
               -f version="$VERSION" \
               -f dry_run=false
-            echo "Dispatched Release Executor / NPM for $package@$VERSION"
           }
 
           publish_all_npm_packages() {
@@ -218,11 +270,10 @@ jobs:
               create_or_reuse_tag "$tag" "Release $package v$VERSION"
             done
 
-            gh workflow run npm-release.yml --ref main \
+            dispatch_and_wait "npm-release.yml" "Release Executor / NPM" \
               -f package=all \
               -f version="$VERSION" \
               -f dry_run=false
-            echo "Dispatched Release Executor / NPM for all packages@$VERSION"
           }
 
           case "$COMPONENT" in
