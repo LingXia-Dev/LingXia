@@ -24,6 +24,7 @@ This updates:
   - workspace.package.version in Cargo.toml
   - workspace crate dependency versions in Cargo.toml
   - example native host LingXia crate dependency versions
+  - example native host Cargo.lock LingXia package versions
   - package versions under packages/*
   - internal @lingxia/* package dependency versions in published package.json files
 EOF
@@ -192,8 +193,25 @@ else:
 PY
 }
 
+update_example_host_lock() {
+  [[ -f "$EXAMPLE_HOST_CARGO_TOML" ]] || return 0
+  [[ -f "$(dirname "$EXAMPLE_HOST_CARGO_TOML")/Cargo.lock" ]] || return 0
+
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    echo "would update $(dirname "$EXAMPLE_HOST_CARGO_TOML")/Cargo.lock"
+    echo "  example host lockfile LingXia packages -> $VERSION"
+    return 0
+  fi
+
+  cargo update \
+    --manifest-path "$EXAMPLE_HOST_CARGO_TOML" \
+    -p lingxia \
+    -p lingxia-devtool
+}
+
 update_workspace_cargo
 update_example_host_cargo
+update_example_host_lock
 
 while IFS= read -r package_json; do
   update_package_json "$package_json"
