@@ -4,6 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(realpath "$SCRIPT_DIR/../..")"
 WORKSPACE_CARGO_TOML="$ROOT_DIR/Cargo.toml"
+EXAMPLE_HOST_CARGO_TOML="$ROOT_DIR/examples/lingxia-lib/Cargo.toml"
 
 usage() {
   cat <<'EOF'
@@ -22,11 +23,9 @@ Options:
 This updates:
   - workspace.package.version in Cargo.toml
   - workspace crate dependency versions in Cargo.toml
+  - example native host LingXia crate dependency versions
   - package versions under packages/*
   - internal @lingxia/* package dependency versions in published package.json files
-
-CLI/template LingXia versions follow the workspace CLI version automatically and
-do not need direct rewriting here.
 EOF
 }
 
@@ -160,7 +159,41 @@ if (dryRun) {
 NODE
 }
 
+update_example_host_cargo() {
+  [[ -f "$EXAMPLE_HOST_CARGO_TOML" ]] || return 0
+
+  python3 - "$EXAMPLE_HOST_CARGO_TOML" "$VERSION" "$DRY_RUN" <<'PY'
+from pathlib import Path
+import re
+import sys
+
+path = Path(sys.argv[1])
+version = sys.argv[2]
+dry_run = sys.argv[3] == "1"
+text = path.read_text()
+
+patterns = [
+    r'(^lingxia\s*=\s*\{[^}\n]*version\s*=\s*")[^"]+(")',
+    r'(^lingxia_devtool\s*=\s*\{[^}\n]*version\s*=\s*")[^"]+(")',
+]
+
+count = 0
+for pattern in patterns:
+    text, changed = re.subn(pattern, rf"\g<1>{version}\2", text, count=1, flags=re.MULTILINE)
+    count += changed
+
+if dry_run:
+    print(f"would update {path}")
+    print(f"  example host dependency versions updated: {count}")
+else:
+    path.write_text(text)
+    print(f"updated {path}")
+    print(f"  example host dependency versions updated: {count}")
+PY
+}
+
 update_workspace_cargo
+update_example_host_cargo
 
 while IFS= read -r package_json; do
   update_package_json "$package_json"
