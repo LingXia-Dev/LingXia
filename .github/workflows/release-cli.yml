@@ -130,8 +130,10 @@ jobs:
         include:
           - arch: arm64
             label: macOS arm64
+            target: aarch64-apple-darwin
           - arch: x86_64
             label: macOS x64
+            target: x86_64-apple-darwin
     steps:
       - uses: actions/checkout@v4
         with:
@@ -144,6 +146,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
+          targets: ${{ matrix.target }}
 
       - uses: Swatinem/rust-cache@v2
         with:
