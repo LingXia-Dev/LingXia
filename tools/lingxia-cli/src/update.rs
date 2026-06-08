@@ -315,9 +315,9 @@ fn current_platform_asset_name() -> Result<String> {
             ));
         }
     };
+    // Release assets use raw Rust target_arch names (e.g. x86_64, aarch64).
     let arch = match env::consts::ARCH {
-        "x86_64" => "x64",
-        "aarch64" => "arm64",
+        "x86_64" | "aarch64" => env::consts::ARCH,
         other => {
             return Err(anyhow!(
                 "Automatic CLI update is not supported on this architecture yet: {}",

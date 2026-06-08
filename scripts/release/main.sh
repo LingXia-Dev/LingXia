@@ -81,9 +81,8 @@ current_cli_target() {
   esac
 
   case "$arch" in
-    x86_64|amd64) arch="x64" ;;
-    arm64|aarch64) arch="arm64" ;;
-    *)
+    x86_64|amd64) arch="x86_64" ;;
+    arm64|aarch64) arch="aarch64" ;;    *)
       echo "ERROR: unsupported CLI host arch: $arch" >&2
       return 2
       ;;

@@ -70,8 +70,8 @@ current_cli_target() {
   esac
 
   case "$arch" in
-    x86_64|amd64) arch="x64" ;;
-    arm64|aarch64) arch="arm64" ;;
+    x86_64|amd64) arch="x86_64" ;;
+    arm64|aarch64) arch="aarch64" ;;
     *)
       echo "ERROR: unsupported CLI host arch: $arch" >&2
       return 2
@@ -83,8 +83,8 @@ current_cli_target() {
 
 cli_target_info() {
   case "$1" in
-    darwin-x64)   echo "x86_64-apple-darwin lingxia-darwin-x64" ;;
-    darwin-arm64) echo "aarch64-apple-darwin lingxia-darwin-arm64" ;;
+    darwin-x64)   echo "x86_64-apple-darwin lingxia-darwin-x86_64" ;;
+    darwin-arm64) echo "aarch64-apple-darwin lingxia-darwin-aarch64" ;;
     *) return 1 ;;
   esac
 }
