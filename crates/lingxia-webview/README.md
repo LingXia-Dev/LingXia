@@ -16,3 +16,7 @@ Cross-platform WebView bindings
 - OpenHarmony ArkWeb integration
 - NAPI bindings
 
+### Windows
+- WebView2 backend
+- Hidden native host window managed by the Rust runtime
+

@@ -78,6 +78,9 @@ mod apple;
 #[cfg(all(target_os = "linux", target_env = "ohos"))]
 mod harmony;
 
+#[cfg(target_os = "windows")]
+mod windows;
+
 // Public exports
 // WebViewError and LogLevel are defined above
 pub use traits::{
@@ -175,5 +178,12 @@ pub mod platform {
                 content_length,
             )
         }
+    }
+
+    #[cfg(target_os = "windows")]
+    pub mod windows {
+        pub use crate::windows::{
+            hide_webview_window, set_webview_close_handler, show_webview_window,
+        };
     }
 }

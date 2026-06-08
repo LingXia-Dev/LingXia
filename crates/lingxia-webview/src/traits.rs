@@ -177,6 +177,8 @@ pub enum WebResourceBody {
 pub struct SystemPipeReader {
     #[cfg(unix)]
     fd: std::os::fd::RawFd,
+    #[cfg(windows)]
+    handle: std::os::windows::io::RawHandle,
 }
 
 impl SystemPipeReader {
@@ -202,6 +204,30 @@ impl SystemPipeReader {
     pub fn into_file(self) -> std::fs::File {
         use std::os::fd::FromRawFd;
         unsafe { std::fs::File::from_raw_fd(self.into_raw_fd()) }
+    }
+
+    /// Consume and return the raw handle (Windows).
+    /// Caller becomes responsible for closing it.
+    #[cfg(windows)]
+    pub fn into_raw_handle(self) -> std::os::windows::io::RawHandle {
+        self.handle
+    }
+
+    /// Construct from a raw handle (Windows).
+    ///
+    /// # Safety
+    ///
+    /// Caller guarantees that `handle` is a valid readable OS handle.
+    #[cfg(windows)]
+    pub unsafe fn from_raw_handle(handle: std::os::windows::io::RawHandle) -> Self {
+        Self { handle }
+    }
+
+    /// Convert into a File for reading (consumes self).
+    #[cfg(windows)]
+    pub fn into_file(self) -> std::fs::File {
+        use std::os::windows::io::FromRawHandle;
+        unsafe { std::fs::File::from_raw_handle(self.into_raw_handle()) }
     }
 }
 

@@ -54,3 +54,18 @@ napi-ohos = "1.1.4"
 napi-derive-ohos = "1.1.4"
 ohos-raw-sys="0.1.0"
 ohos-web-sys="0.0.1"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+base64 = { workspace = true }
+webview2-com = "0.38.0"
+windows = { version = "0.61.3", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_System_Com",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Memory",
+    "Win32_System_Ole",
+    "Win32_System_Threading",
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+] }

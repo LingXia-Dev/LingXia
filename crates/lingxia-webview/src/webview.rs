@@ -3,6 +3,7 @@
         target_os = "android",
         target_os = "ios",
         target_os = "macos",
+        target_os = "windows",
         all(target_os = "linux", target_env = "ohos")
     )),
     allow(dead_code)
@@ -26,10 +27,14 @@ use crate::apple::WebViewInner;
 #[cfg(all(target_os = "linux", target_env = "ohos"))]
 use crate::harmony::WebViewInner;
 
+#[cfg(target_os = "windows")]
+use crate::windows::WebViewInner;
+
 #[cfg(not(any(
     target_os = "android",
     target_os = "ios",
     target_os = "macos",
+    target_os = "windows",
     all(target_os = "linux", target_env = "ohos")
 )))]
 pub(crate) struct WebViewInner {
@@ -54,6 +59,7 @@ const APPLE_INTERNAL_SCHEME: &str = "lx-apple";
     target_os = "android",
     target_os = "ios",
     target_os = "macos",
+    target_os = "windows",
     all(target_os = "linux", target_env = "ohos")
 )))]
 fn unsupported_webview_error(action: &str) -> WebViewError {
@@ -64,6 +70,7 @@ fn unsupported_webview_error(action: &str) -> WebViewError {
     target_os = "android",
     target_os = "ios",
     target_os = "macos",
+    target_os = "windows",
     all(target_os = "linux", target_env = "ohos")
 )))]
 impl WebViewInner {
@@ -86,6 +93,7 @@ impl WebViewInner {
     target_os = "android",
     target_os = "ios",
     target_os = "macos",
+    target_os = "windows",
     all(target_os = "linux", target_env = "ohos")
 )))]
 #[async_trait]
@@ -864,6 +872,14 @@ impl WebView {
         }
     }
 
+    pub(crate) fn has_download_handler(&self) -> bool {
+        self.download_handler
+            .read()
+            .ok()
+            .is_some_and(|guard| guard.is_some())
+    }
+
+    #[cfg_attr(target_os = "windows", allow(dead_code))]
     pub(crate) fn handle_file_chooser<C>(&self, request: FileChooserRequest, completion: C) -> bool
     where
         C: FnOnce(FileChooserResponse) + Send + 'static,
@@ -877,6 +893,7 @@ impl WebView {
         true
     }
 
+    #[cfg_attr(target_os = "windows", allow(dead_code))]
     fn make_file_chooser_future(&self, request: FileChooserRequest) -> Option<FileChooserFuture> {
         let Ok(guard) = self.file_chooser_handler.read() else {
             return None;
@@ -1817,6 +1834,7 @@ pub(crate) fn list_webviews() -> Vec<WebTag> {
     target_os = "android",
     target_os = "ios",
     target_os = "macos",
+    target_os = "windows",
     all(target_os = "linux", target_env = "ohos")
 ))]
 pub(crate) fn find_webview_delegate(webtag: &WebTag) -> Option<Arc<dyn WebViewDelegate>> {
