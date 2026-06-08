@@ -142,11 +142,7 @@ for target in "${targets[@]}"; do
     continue
   fi
 
-  if [[ -n "${GITHUB_ACTIONS:-}" ]]; then
-    (cd "$dir" && npm publish --access public --provenance)
-  else
-    (cd "$dir" && npm publish --access public)
-  fi
+  (cd "$dir" && npm publish --access public)
   echo "✓ Published $name@$version"
 done
 

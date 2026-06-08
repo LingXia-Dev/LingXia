@@ -41,14 +41,14 @@ on:
 
 permissions:
   contents: write
-  id-token: write  # For npm provenance
+  id-token: write
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' && inputs.package || github.ref_name }}
   cancel-in-progress: true
 
 env:
-  NODE_VERSION: "20"
+  NODE_VERSION: "24"
   NPM_PACKAGES: >-
     lingxia-bridge
     lingxia-polyfills
@@ -156,27 +156,37 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           registry-url: "https://registry.npmjs.org"
 
-      - name: Verify npm publish access
+      - name: Use npm 11
+        run: npm install -g npm@11
+
+      - name: Verify npm trusted publishing environment
         if: github.event_name != 'workflow_dispatch' || !inputs.dry_run
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           set -euo pipefail
 
-          if [[ -z "${NODE_AUTH_TOKEN:-}" ]]; then
-            echo "::error::Missing NPM_TOKEN secret."
-            exit 1
-          fi
-
           npm ping --registry=https://registry.npmjs.org
-          npm whoami --registry=https://registry.npmjs.org >/dev/null
+          NPM_VERSION="$(npm --version)"
+          echo "npm $NPM_VERSION"
 
-          if ! npm access ls-packages @lingxia --registry=https://registry.npmjs.org >/dev/null 2>&1; then
-            echo "::error::NPM_TOKEN cannot access the @lingxia scope on npm. Create or claim the scope, then set NPM_TOKEN from an npm user or automation token with publish permission for @lingxia."
+          NPM_VERSION="$NPM_VERSION" node <<'NODE'
+          const version = process.env.NPM_VERSION ?? "";
+          const [major, minor, patch] = version.split(".").map(Number);
+          if (
+            !Number.isFinite(major) ||
+            major < 11 ||
+            (major === 11 && (minor < 5 || (minor === 5 && patch < 1)))
+          ) {
+            console.error(`npm ${version} is too old for trusted publishing; need >= 11.5.1`);
+            process.exit(1);
+          }
+          NODE
+
+          if [[ -z "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" || -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ]]; then
+            echo "::error::GitHub OIDC token request environment is missing. Check id-token: write permissions."
             exit 1
           fi
 
-          echo "npm publish access verified for @lingxia"
+          echo "npm trusted publishing environment verified"
 
       - name: Cache npm
         uses: actions/cache@v4
@@ -234,14 +244,10 @@ jobs:
 
       - name: Publish (dry run)
         if: github.event_name == 'workflow_dispatch' && inputs.dry_run
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: bash scripts/release/npm.sh --package "${{ needs.determine-package.outputs.package_set }}" --dry-run
 
       - name: Publish
         if: github.event_name != 'workflow_dispatch' || !inputs.dry_run
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: bash scripts/release/npm.sh --package "${{ needs.determine-package.outputs.package_set }}" --publish
 
       - name: Create GitHub Release
