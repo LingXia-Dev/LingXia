@@ -104,20 +104,42 @@ jobs:
           distribution: "temurin"
           java-version: "17"
 
+      - uses: gradle/actions/setup-gradle@v4
+
       - uses: ./.github/actions/build-web-runtime
+
+      - name: Warm Gradle wrapper
+        run: |
+          set -euo pipefail
+
+          # The wrapper distribution download can occasionally time out on
+          # GitHub-hosted runners. Warm it separately with retry so the SDK
+          # build itself does not leave a partial release.
+          if ! grep -q '^networkTimeout=' lingxia-sdk/android/gradle/wrapper/gradle-wrapper.properties; then
+            echo 'networkTimeout=120000' >> lingxia-sdk/android/gradle/wrapper/gradle-wrapper.properties
+          fi
+
+          for attempt in 1 2 3; do
+            if (cd lingxia-sdk/android && ./gradlew --version --no-daemon); then
+              exit 0
+            fi
+            sleep "$((attempt * 10))"
+          done
+
+          (cd lingxia-sdk/android && ./gradlew --version --no-daemon)
 
       - name: Build Android SDK artifact
         run: |
           bash scripts/release/sdk.sh --platform android
 
-      - name: Upload Android artifact to GitHub Release
-        if: github.event_name != 'workflow_dispatch' || !inputs.dry_run
-        uses: softprops/action-gh-release@v2
+      - name: Upload Android SDK artifact
+        uses: actions/upload-artifact@v4
         with:
-          tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
-          files: |
+          name: sdk-android
+          path: |
             dist/sdk-release/lingxia-sdk-android-maven-*.zip
             dist/sdk-release/SHASUMS256-*-android.txt
+          if-no-files-found: error
 
   ios_source:
     needs: pre-check
@@ -151,14 +173,14 @@ jobs:
         run: |
           bash scripts/release/sdk.sh --platform apple
 
-      - name: Upload iOS artifact to GitHub Release
-        if: github.event_name != 'workflow_dispatch' || !inputs.dry_run
-        uses: softprops/action-gh-release@v2
+      - name: Upload iOS SDK artifact
+        uses: actions/upload-artifact@v4
         with:
-          tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
-          files: |
+          name: sdk-apple
+          path: |
             dist/sdk-release/lingxia-sdk-apple-source-*.zip
             dist/sdk-release/SHASUMS256-*-apple.txt
+          if-no-files-found: error
 
   harmony:
     needs: pre-check
@@ -188,11 +210,70 @@ jobs:
         run: |
           bash scripts/release/sdk.sh --platform harmony
 
-      - name: Upload HarmonyOS artifact to GitHub Release
-        if: github.event_name != 'workflow_dispatch' || !inputs.dry_run
+      - name: Upload HarmonyOS SDK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdk-harmony
+          path: |
+            dist/sdk-release/lingxia-sdk-harmony-*.har
+            dist/sdk-release/SHASUMS256-*-harmony.txt
+          if-no-files-found: error
+
+  publish:
+    needs: [pre-check, android, ios_source, harmony]
+    if: always() && needs.pre-check.result == 'success' && (github.event_name != 'workflow_dispatch' || !inputs.dry_run)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Verify selected SDK builds succeeded
+        env:
+          ANDROID_INPUT: ${{ inputs.android }}
+          ANDROID_RESULT: ${{ needs.android.result }}
+          EVENT_NAME: ${{ github.event_name }}
+          HARMONY_INPUT: ${{ inputs.harmony }}
+          HARMONY_RESULT: ${{ needs.harmony.result }}
+          IOS_INPUT: ${{ inputs.ios }}
+          IOS_RESULT: ${{ needs.ios_source.result }}
+        run: |
+          set -euo pipefail
+
+          want_android=false
+          want_ios=false
+          want_harmony=false
+
+          if [[ "$EVENT_NAME" == "push" ]]; then
+            want_android=true
+            want_ios=true
+          else
+            [[ "$ANDROID_INPUT" == "true" ]] && want_android=true
+            [[ "$IOS_INPUT" == "true" ]] && want_ios=true
+            [[ "$HARMONY_INPUT" == "true" ]] && want_harmony=true
+          fi
+
+          verify_result() {
+            local label="$1"
+            local wanted="$2"
+            local result="$3"
+
+            if [[ "$wanted" == "true" && "$result" != "success" ]]; then
+              echo "::error::$label SDK build did not succeed (result: $result)"
+              exit 1
+            fi
+          }
+
+          verify_result "Android" "$want_android" "$ANDROID_RESULT"
+          verify_result "Apple" "$want_ios" "$IOS_RESULT"
+          verify_result "HarmonyOS" "$want_harmony" "$HARMONY_RESULT"
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist/sdk-release
+          merge-multiple: true
+
+      - name: Upload SDK artifacts to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
-          files: |
-            dist/sdk-release/lingxia-sdk-harmony-*.har
-            dist/sdk-release/SHASUMS256-*-harmony.txt
+          files: dist/sdk-release/*
+          fail_on_unmatched_files: true
+          overwrite_files: true

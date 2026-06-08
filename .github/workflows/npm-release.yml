@@ -40,7 +40,7 @@ on:
         type: boolean
 
 permissions:
-  contents: write
+  contents: read
   id-token: write
 
 concurrency:
@@ -249,58 +249,3 @@ jobs:
       - name: Publish
         if: github.event_name != 'workflow_dispatch' || !inputs.dry_run
         run: bash scripts/release/npm.sh --package "${{ needs.determine-package.outputs.package_set }}" --publish
-
-      - name: Create GitHub Release
-        if: needs.determine-package.outputs.package != 'all' && (github.event_name != 'workflow_dispatch' || !inputs.dry_run)
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ needs.determine-package.outputs.tag }}
-          name: ${{ needs.determine-package.outputs.package }}@${{ needs.determine-package.outputs.version }}
-          body: |
-            ## ${{ needs.determine-package.outputs.package }}@${{ needs.determine-package.outputs.version }}
-
-            ```bash
-            npm install @lingxia/${{ needs.determine-package.outputs.package_set }}@${{ needs.determine-package.outputs.version }}
-            ```
-          generate_release_notes: true
-
-      - name: Create GitHub Releases
-        if: needs.determine-package.outputs.package == 'all' && (github.event_name != 'workflow_dispatch' || !inputs.dry_run)
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          VERSION: ${{ needs.determine-package.outputs.version }}
-        run: |
-          set -euo pipefail
-
-          git fetch --tags origin
-
-          for package in $NPM_PACKAGES; do
-            package_set="${package#lingxia-}"
-            tag="${package}-v${VERSION}"
-
-            if ! git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
-              echo "Missing release tag: $tag" >&2
-              exit 1
-            fi
-
-            if gh release view "$tag" >/dev/null 2>&1; then
-              echo "GitHub Release already exists: $tag"
-              continue
-            fi
-
-            notes="$(cat <<EOF
-          ## ${package}@${VERSION}
-
-          \`\`\`bash
-          npm install @lingxia/${package_set}@${VERSION}
-          \`\`\`
-          EOF
-          )"
-
-            gh release create "$tag" \
-              --title "${package}@${VERSION}" \
-              --notes "$notes" \
-              --generate-notes \
-              --verify-tag
-            echo "Created GitHub Release: $tag"
-          done
