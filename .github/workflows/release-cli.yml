@@ -15,6 +15,7 @@
 # that compiles the CLI runs build-web-runtime first (incl. Windows).
 
 name: Release Executor / CLI
+run-name: CLI ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
 
 on:
   push:
@@ -36,7 +37,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
   cancel-in-progress: true
 
 env:
@@ -45,7 +46,7 @@ env:
 
 jobs:
   build:
-    name: build-${{ matrix.os }}-${{ matrix.arch }}
+    name: CLI binary / ${{ matrix.label }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
     strategy:
@@ -57,16 +58,19 @@ jobs:
           # covered. Windows x64 runs on Win11-ARM via emulation.
           - os: darwin
             arch: aarch64
+            label: macOS arm64
             runner: macos-latest
             target: aarch64-apple-darwin
             ext: ""
           - os: darwin
             arch: x86_64
+            label: macOS x64
             runner: macos-latest
             target: x86_64-apple-darwin
             ext: ""
           - os: windows
             arch: x86_64
+            label: Windows x64
             runner: windows-latest
             target: x86_64-pc-windows-msvc
             ext: ".exe"
@@ -117,13 +121,17 @@ jobs:
           if-no-files-found: error
 
   build-runner:
-    name: build-runner-${{ matrix.arch }}
+    name: macOS runner / ${{ matrix.label }}
     runs-on: macos-latest
     timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
-        arch: [arm64, x86_64]
+        include:
+          - arch: arm64
+            label: macOS arm64
+          - arch: x86_64
+            label: macOS x64
     steps:
       - uses: actions/checkout@v4
         with:
@@ -168,6 +176,7 @@ jobs:
           if-no-files-found: error
 
   publish:
+    name: Release / Publish CLI assets
     needs: [build, build-runner]
     runs-on: ubuntu-latest
     timeout-minutes: 15

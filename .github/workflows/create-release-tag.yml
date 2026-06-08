@@ -1,4 +1,5 @@
 name: Release / 2. Publish Component
+run-name: Publish ${{ inputs.component == 'npm' && format('npm/{0}', inputs.npm_package) || inputs.component }} v${{ inputs.version }}
 
 # Public release entrypoint. Run AFTER the unified version bump PR has merged
 # to main. This workflow creates the release tag(s), then explicitly dispatches
@@ -58,7 +59,7 @@ env:
 
 jobs:
   publish:
-    name: Publish ${{ inputs.component }} v${{ inputs.version }}
+    name: Dispatch ${{ inputs.component == 'npm' && format('npm/{0}', inputs.npm_package) || inputs.component }} v${{ inputs.version }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -229,22 +230,33 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
 
             echo "Watching $label: $run_url"
+            set +e
             gh run watch "$run_id" --interval 15 --exit-status
+            local watch_status="$?"
+            set -e
+
+            {
+              echo ""
+              echo "#### Executor jobs"
+              gh run view "$run_id" --json jobs --jq '.jobs[] | "- " + .name + ": " + ((.conclusion // .status) // "unknown")'
+            } >> "$GITHUB_STEP_SUMMARY"
+
+            return "$watch_status"
           }
 
           publish_crates() {
             local tag="lingxia-crates-v$VERSION"
             create_or_reuse_tag "$tag" "Release crates v$VERSION"
-            dispatch_and_wait "crates-release.yml" "Release Executor / Crates" -f tag="$tag" -f dry_run=false
+            dispatch_and_wait "crates-release.yml" "Crates v$VERSION" -f tag="$tag" -f dry_run=false
           }
 
           publish_sdk() {
             local tag="lingxia-sdk-v$VERSION"
             create_or_reuse_tag "$tag" "Release sdk v$VERSION"
-            dispatch_and_wait "sdk-release.yml" "Release Executor / SDK" \
+            dispatch_and_wait "sdk-release.yml" "SDK v$VERSION" \
               -f tag="$tag" \
               -f android=true \
-              -f ios=true \
+              -f apple=true \
               -f harmony=false \
               -f dry_run=false
           }
@@ -252,14 +264,14 @@ jobs:
           publish_cli() {
             local tag="lingxia-cli-v$VERSION"
             create_or_reuse_tag "$tag" "Release cli v$VERSION"
-            dispatch_and_wait "release-cli.yml" "Release Executor / CLI" -f tag="$tag" -f dry_run=false
+            dispatch_and_wait "release-cli.yml" "CLI v$VERSION" -f tag="$tag" -f dry_run=false
           }
 
           publish_npm_package() {
             local package="$1"
             local tag="${package}-v$VERSION"
             create_or_reuse_tag "$tag" "Release $package v$VERSION"
-            dispatch_and_wait "npm-release.yml" "Release Executor / NPM" \
+            dispatch_and_wait "npm-release.yml" "NPM $package v$VERSION" \
               -f package="$package" \
               -f version="$VERSION" \
               -f dry_run=false
@@ -271,7 +283,7 @@ jobs:
               create_or_reuse_tag "$tag" "Release $package v$VERSION"
             done
 
-            dispatch_and_wait "npm-release.yml" "Release Executor / NPM" \
+            dispatch_and_wait "npm-release.yml" "NPM all v$VERSION" \
               -f package=all \
               -f version="$VERSION" \
               -f dry_run=false

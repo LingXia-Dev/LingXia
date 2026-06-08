@@ -1,4 +1,5 @@
 name: Release Executor / SDK
+run-name: SDK ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
 
 on:
   push:
@@ -15,8 +16,8 @@ on:
         required: false
         default: true
         type: boolean
-      ios:
-        description: "Build + upload iOS (source) artifact"
+      apple:
+        description: "Build + upload Apple source artifact"
         required: false
         default: true
         type: boolean
@@ -35,7 +36,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
   cancel-in-progress: true
 
 env:
@@ -44,6 +45,7 @@ env:
 jobs:
   # Pre-check job to verify version before any platform build uploads assets.
   pre-check:
+    name: Release / Verify SDK tag
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
@@ -80,6 +82,7 @@ jobs:
           echo "version=$workspace_version" >> "$GITHUB_OUTPUT"
 
   android:
+    name: SDK / Android
     needs: pre-check
     if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.android)
     runs-on: ubuntu-latest
@@ -141,10 +144,11 @@ jobs:
             dist/sdk-release/SHASUMS256-*-android.txt
           if-no-files-found: error
 
-  ios_source:
+  apple:
+    name: SDK / Apple
     needs: pre-check
-    # iOS SDK requires macOS for swift-bridge code generation (cargo build --target aarch64-apple-ios)
-    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.ios)
+    # Apple SDK source packaging requires macOS for swift-bridge code generation.
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.apple)
     runs-on: macos-latest
     timeout-minutes: 45
     steps:
@@ -165,15 +169,15 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          prefix-key: sdk-ios
+          prefix-key: sdk-apple
 
       - uses: ./.github/actions/build-web-runtime
 
-      - name: Build iOS (source) SDK artifact
+      - name: Build Apple source SDK artifact
         run: |
           bash scripts/release/sdk.sh --platform apple
 
-      - name: Upload iOS SDK artifact
+      - name: Upload Apple SDK artifact
         uses: actions/upload-artifact@v4
         with:
           name: sdk-apple
@@ -183,6 +187,7 @@ jobs:
           if-no-files-found: error
 
   harmony:
+    name: SDK / HarmonyOS
     needs: pre-check
     # HarmonyOS requires DevEco tooling (hvigorw) - only available on self-hosted runners
     # Only triggered via workflow_dispatch with harmony=true
@@ -220,7 +225,8 @@ jobs:
           if-no-files-found: error
 
   publish:
-    needs: [pre-check, android, ios_source, harmony]
+    name: Release / Publish SDK assets
+    needs: [pre-check, android, apple, harmony]
     if: always() && needs.pre-check.result == 'success' && (github.event_name != 'workflow_dispatch' || !inputs.dry_run)
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -232,21 +238,21 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           HARMONY_INPUT: ${{ inputs.harmony }}
           HARMONY_RESULT: ${{ needs.harmony.result }}
-          IOS_INPUT: ${{ inputs.ios }}
-          IOS_RESULT: ${{ needs.ios_source.result }}
+          APPLE_INPUT: ${{ inputs.apple }}
+          APPLE_RESULT: ${{ needs.apple.result }}
         run: |
           set -euo pipefail
 
           want_android=false
-          want_ios=false
+          want_apple=false
           want_harmony=false
 
           if [[ "$EVENT_NAME" == "push" ]]; then
             want_android=true
-            want_ios=true
+            want_apple=true
           else
             [[ "$ANDROID_INPUT" == "true" ]] && want_android=true
-            [[ "$IOS_INPUT" == "true" ]] && want_ios=true
+            [[ "$APPLE_INPUT" == "true" ]] && want_apple=true
             [[ "$HARMONY_INPUT" == "true" ]] && want_harmony=true
           fi
 
@@ -262,7 +268,7 @@ jobs:
           }
 
           verify_result "Android" "$want_android" "$ANDROID_RESULT"
-          verify_result "Apple" "$want_ios" "$IOS_RESULT"
+          verify_result "Apple" "$want_apple" "$APPLE_RESULT"
           verify_result "HarmonyOS" "$want_harmony" "$HARMONY_RESULT"
 
       - uses: actions/download-artifact@v4

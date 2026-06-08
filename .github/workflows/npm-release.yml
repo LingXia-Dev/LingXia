@@ -1,4 +1,5 @@
 name: Release Executor / NPM
+run-name: NPM ${{ github.event_name == 'workflow_dispatch' && format('{0} v{1}', inputs.package, inputs.version) || github.ref_name }}
 
 on:
   push:

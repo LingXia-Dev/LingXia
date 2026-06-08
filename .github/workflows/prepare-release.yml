@@ -1,4 +1,5 @@
 name: Release / 1. Prepare Version PR
+run-name: Prepare release v${{ inputs.version }}
 
 # Unified version bump: applies ONE version to the whole workspace
 # (Cargo.toml workspace.package + workspace deps, install.sh, every
