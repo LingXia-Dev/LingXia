@@ -7,6 +7,7 @@ on:
       - "lingxia-elements-v*"
       - "lingxia-html-v*"
       - "lingxia-page-runtime-v*"
+      - "lingxia-polyfills-v*"
       - "lingxia-react-v*"
       - "lingxia-skill-v*"
       - "lingxia-types-v*"
@@ -18,10 +19,12 @@ on:
         required: true
         type: choice
         options:
+          - all
           - lingxia-bridge
           - lingxia-elements
           - lingxia-html
           - lingxia-page-runtime
+          - lingxia-polyfills
           - lingxia-react
           - lingxia-skill
           - lingxia-types
@@ -41,11 +44,21 @@ permissions:
   id-token: write  # For npm provenance
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' && inputs.package || github.ref_name }}
   cancel-in-progress: true
 
 env:
   NODE_VERSION: "20"
+  NPM_PACKAGES: >-
+    lingxia-bridge
+    lingxia-polyfills
+    lingxia-elements
+    lingxia-page-runtime
+    lingxia-html
+    lingxia-react
+    lingxia-vue
+    lingxia-types
+    lingxia-skill
 
 jobs:
   determine-package:
@@ -56,6 +69,7 @@ jobs:
       package_set: ${{ steps.resolve.outputs.package_set }}
       version: ${{ steps.resolve.outputs.version }}
       directory: ${{ steps.resolve.outputs.directory }}
+      tag: ${{ steps.resolve.outputs.tag }}
     steps:
       - name: Resolve package and version
         id: resolve
@@ -70,6 +84,7 @@ jobs:
               lingxia-elements-v*) package="lingxia-elements"; version="${tag#lingxia-elements-v}" ;;
               lingxia-html-v*) package="lingxia-html"; version="${tag#lingxia-html-v}" ;;
               lingxia-page-runtime-v*) package="lingxia-page-runtime"; version="${tag#lingxia-page-runtime-v}" ;;
+              lingxia-polyfills-v*) package="lingxia-polyfills"; version="${tag#lingxia-polyfills-v}" ;;
               lingxia-react-v*) package="lingxia-react"; version="${tag#lingxia-react-v}" ;;
               lingxia-skill-v*) package="lingxia-skill"; version="${tag#lingxia-skill-v}" ;;
               lingxia-types-v*) package="lingxia-types"; version="${tag#lingxia-types-v}" ;;
@@ -80,7 +95,11 @@ jobs:
 
           # Map package to its source directory under packages/.
           case "$package" in
-            lingxia-bridge|lingxia-elements|lingxia-html|lingxia-page-runtime|lingxia-react|lingxia-skill|lingxia-types|lingxia-vue)
+            all)
+              directory="packages"
+              package_set="all"
+              ;;
+            lingxia-bridge|lingxia-elements|lingxia-html|lingxia-page-runtime|lingxia-polyfills|lingxia-react|lingxia-skill|lingxia-types|lingxia-vue)
               directory="packages/$package"
               package_set="${package#lingxia-}"
               ;;
@@ -92,6 +111,7 @@ jobs:
             echo "package_set=$package_set"
             echo "version=$version"
             echo "directory=$directory"
+            echo "tag=${package}-v${version}"
           } >> "$GITHUB_OUTPUT"
           echo "Publishing $package@$version from $directory"
 
@@ -99,9 +119,37 @@ jobs:
     name: Publish ${{ needs.determine-package.outputs.package }}
     needs: determine-package
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
+      - name: Resolve checkout ref
+        id: checkout-ref
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+          EVENT_NAME: ${{ github.event_name }}
+          PACKAGE: ${{ needs.determine-package.outputs.package }}
+          REF_NAME: ${{ github.ref_name }}
+          TAG: ${{ needs.determine-package.outputs.tag }}
+          VERSION: ${{ needs.determine-package.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          ref="$REF_NAME"
+          if [[ "$EVENT_NAME" == "workflow_dispatch" && "$DRY_RUN" != "true" ]]; then
+            if [[ "$PACKAGE" == "all" ]]; then
+              ref="lingxia-bridge-v$VERSION"
+            else
+              ref="$TAG"
+            fi
+          fi
+
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+          echo "Checkout ref: $ref"
+
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          ref: ${{ steps.checkout-ref.outputs.ref }}
 
       - uses: actions/setup-node@v4
         with:
@@ -112,19 +160,55 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.npm
-          key: npm-${{ needs.determine-package.outputs.package }}-${{ hashFiles(format('{0}/package.json', needs.determine-package.outputs.directory)) }}
+          key: npm-${{ needs.determine-package.outputs.package }}-${{ needs.determine-package.outputs.version }}-${{ hashFiles('packages/*/package.json') }}
           restore-keys: npm-${{ needs.determine-package.outputs.package }}-
 
       - name: Verify version matches package.json
-        working-directory: ${{ needs.determine-package.outputs.directory }}
         run: |
           expected="${{ needs.determine-package.outputs.version }}"
-          actual="$(node -p "require('./package.json').version")"
-          if [ "$expected" != "$actual" ]; then
-            echo "Version mismatch: expected $expected, got $actual in package.json" >&2
-            exit 1
+
+          verify_package() {
+            local package_json="$1"
+            local actual
+            actual="$(node -p "require('./$package_json').version")"
+            if [ "$expected" != "$actual" ]; then
+              echo "Version mismatch: expected $expected, got $actual in $package_json" >&2
+              exit 1
+            fi
+            echo "Version verified: $package_json -> $actual"
+          }
+
+          if [ "${{ needs.determine-package.outputs.package }}" = "all" ]; then
+            for package in $NPM_PACKAGES; do
+              verify_package "packages/$package/package.json"
+            done
+          else
+            verify_package "${{ needs.determine-package.outputs.directory }}/package.json"
           fi
-          echo "Version verified: $actual"
+
+      - name: Verify release tag exists
+        if: github.event_name != 'workflow_dispatch' || !inputs.dry_run
+        run: |
+          set -euo pipefail
+
+          git fetch --tags origin
+
+          verify_tag() {
+            local tag="$1"
+            if ! git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+              echo "Missing release tag: $tag" >&2
+              exit 1
+            fi
+            echo "Tag verified: $tag"
+          }
+
+          if [ "${{ needs.determine-package.outputs.package }}" = "all" ]; then
+            for package in $NPM_PACKAGES; do
+              verify_tag "${package}-v${{ needs.determine-package.outputs.version }}"
+            done
+          else
+            verify_tag "${{ needs.determine-package.outputs.tag }}"
+          fi
 
       - name: Publish (dry run)
         if: github.event_name == 'workflow_dispatch' && inputs.dry_run
@@ -139,10 +223,10 @@ jobs:
         run: bash scripts/release/npm.sh --package "${{ needs.determine-package.outputs.package_set }}" --publish
 
       - name: Create GitHub Release
-        if: github.event_name == 'push'
+        if: needs.determine-package.outputs.package != 'all' && (github.event_name != 'workflow_dispatch' || !inputs.dry_run)
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
+          tag_name: ${{ needs.determine-package.outputs.tag }}
           name: ${{ needs.determine-package.outputs.package }}@${{ needs.determine-package.outputs.version }}
           body: |
             ## ${{ needs.determine-package.outputs.package }}@${{ needs.determine-package.outputs.version }}
@@ -151,3 +235,37 @@ jobs:
             npm install @lingxia/${{ needs.determine-package.outputs.package_set }}@${{ needs.determine-package.outputs.version }}
             ```
           generate_release_notes: true
+
+      - name: Create GitHub Releases
+        if: needs.determine-package.outputs.package == 'all' && (github.event_name != 'workflow_dispatch' || !inputs.dry_run)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.determine-package.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          git fetch --tags origin
+
+          for package in $NPM_PACKAGES; do
+            package_set="${package#lingxia-}"
+            tag="${package}-v${VERSION}"
+
+            if ! git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+              echo "Missing release tag: $tag" >&2
+              exit 1
+            fi
+
+            if gh release view "$tag" >/dev/null 2>&1; then
+              echo "GitHub Release already exists: $tag"
+              continue
+            fi
+
+            notes="$(printf '## %s@%s\n\n```bash\nnpm install @lingxia/%s@%s\n```\n' "$package" "$VERSION" "$package_set" "$VERSION")"
+
+            gh release create "$tag" \
+              --title "${package}@${VERSION}" \
+              --notes "$notes" \
+              --generate-notes \
+              --verify-tag
+            echo "Created GitHub Release: $tag"
+          done

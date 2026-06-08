@@ -9,7 +9,7 @@ usage() {
 Release LingXia npm packages.
 
 Usage:
-  scripts/release/npm.sh [--package bridge|elements|react|vue|html|page-runtime|types|skill|all] [--publish] [--dry-run]
+  scripts/release/npm.sh [--package bridge|elements|react|vue|html|page-runtime|polyfills|types|skill|all] [--publish] [--dry-run]
 
 Options:
   --package <name>  Package set to process (default: all)
@@ -50,9 +50,10 @@ case "$PACKAGE_SET" in
   vue) targets=("vue") ;;
   html) targets=("html") ;;
   page-runtime) targets=("page-runtime") ;;
+  polyfills) targets=("polyfills") ;;
   types) targets=("types") ;;
   skill) targets=("skill") ;;
-  all) targets=("bridge" "elements" "page-runtime" "react" "vue" "html" "types" "skill") ;;
+  all) targets=("bridge" "polyfills" "elements" "page-runtime" "html" "react" "vue" "types" "skill") ;;
   *) echo "Unknown package set: $PACKAGE_SET" >&2; exit 2 ;;
 esac
 
@@ -64,6 +65,7 @@ pkg_dir() {
     vue) echo "$ROOT_DIR/packages/lingxia-vue" ;;
     html) echo "$ROOT_DIR/packages/lingxia-html" ;;
     page-runtime) echo "$ROOT_DIR/packages/lingxia-page-runtime" ;;
+    polyfills) echo "$ROOT_DIR/packages/lingxia-polyfills" ;;
     types) echo "$ROOT_DIR/packages/lingxia-types" ;;
     skill) echo "$ROOT_DIR/packages/lingxia-skill" ;;
     *) return 1 ;;

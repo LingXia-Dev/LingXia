@@ -1,152 +1,245 @@
 name: Release / 2. Publish Component
 
-# Tag one component for release. Run AFTER the unified version bump PR
-# (Prepare Release PR) has merged to main. Each component maps to a
-# `lingxia-<component>-v<version>` tag, which triggers its release workflow.
+# Public release entrypoint. Run AFTER the unified version bump PR has merged
+# to main. This workflow creates the release tag(s), then explicitly dispatches
+# the matching executor workflow. We do not rely on tag-push fanout here because
+# tags pushed with GITHUB_TOKEN do not reliably trigger downstream workflows.
 
 on:
   workflow_dispatch:
     inputs:
       component:
-        description: "Component to tag"
+        description: "High-level component to publish"
         required: true
         type: choice
         options:
-          - sdk
           - crates
+          - sdk
           - cli
+          - npm
+      npm_package:
+        description: "NPM package when component=npm"
+        required: false
+        default: all
+        type: choice
+        options:
+          - all
           - lingxia-bridge
           - lingxia-elements
           - lingxia-html
           - lingxia-page-runtime
+          - lingxia-polyfills
           - lingxia-react
           - lingxia-skill
           - lingxia-types
           - lingxia-vue
       version:
-        description: "Version to tag (e.g. 0.5.0)"
+        description: "Version to publish (e.g. 0.9.0)"
         required: true
         type: string
 
 permissions:
+  actions: write
   contents: write
 
+env:
+  NPM_PACKAGES: >-
+    lingxia-bridge
+    lingxia-polyfills
+    lingxia-elements
+    lingxia-page-runtime
+    lingxia-html
+    lingxia-react
+    lingxia-vue
+    lingxia-types
+    lingxia-skill
+
 jobs:
-  create-tag:
-    name: Create tag for ${{ inputs.component }} v${{ inputs.version }}
+  publish:
+    name: Publish ${{ inputs.component }} v${{ inputs.version }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          fetch-tags: true
 
-      - name: Validate semver input
+      - name: Validate inputs
+        env:
+          COMPONENT: ${{ inputs.component }}
+          NPM_PACKAGE: ${{ inputs.npm_package }}
+          VERSION: ${{ inputs.version }}
         run: |
-          if ! [[ "${{ inputs.version }}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "Invalid version: ${{ inputs.version }} (expected x.y.z)" >&2
+          set -euo pipefail
+
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid version: $VERSION (expected x.y.z)" >&2
             exit 1
+          fi
+
+          case "$COMPONENT" in
+            crates|sdk|cli|npm) ;;
+            *) echo "Unknown component: $COMPONENT" >&2; exit 1 ;;
+          esac
+
+          if [[ "$COMPONENT" == "npm" && "$NPM_PACKAGE" != "all" ]]; then
+            found=0
+            for package in $NPM_PACKAGES; do
+              [[ "$package" == "$NPM_PACKAGE" ]] && found=1
+            done
+            if [[ "$found" -ne 1 ]]; then
+              echo "Unknown npm package: $NPM_PACKAGE" >&2
+              exit 1
+            fi
           fi
 
       - name: Verify version in code
+        env:
+          COMPONENT: ${{ inputs.component }}
+          NPM_PACKAGE: ${{ inputs.npm_package }}
+          VERSION: ${{ inputs.version }}
         run: |
-          case "${{ inputs.component }}" in
-            sdk|crates|cli)
-              actual="$(awk '/^\[workspace\.package\]/{f=1} f && /^version/{gsub(/"/, "", $3); print $3; exit}' Cargo.toml)"
-              ;;
-            lingxia-bridge)
-              actual="$(node -p "require('./packages/lingxia-bridge/package.json').version")"
-              ;;
-            lingxia-elements)
-              actual="$(node -p "require('./packages/lingxia-elements/package.json').version")"
-              ;;
-            lingxia-html)
-              actual="$(node -p "require('./packages/lingxia-html/package.json').version")"
-              ;;
-            lingxia-page-runtime)
-              actual="$(node -p "require('./packages/lingxia-page-runtime/package.json').version")"
-              ;;
-            lingxia-react)
-              actual="$(node -p "require('./packages/lingxia-react/package.json').version")"
-              ;;
-            lingxia-skill)
-              actual="$(node -p "require('./packages/lingxia-skill/package.json').version")"
-              ;;
-            lingxia-types)
-              actual="$(node -p "require('./packages/lingxia-types/package.json').version")"
-              ;;
-            lingxia-vue)
-              actual="$(node -p "require('./packages/lingxia-vue/package.json').version")"
-              ;;
-            *)
-              echo "Unknown component: ${{ inputs.component }}" >&2
+          set -euo pipefail
+
+          verify_workspace_version() {
+            local actual
+            actual="$(awk '/^\[workspace\.package\]/{f=1} f && /^version/{gsub(/"/, "", $3); print $3; exit}' Cargo.toml)"
+            if [[ "$actual" != "$VERSION" ]]; then
+              echo "Version mismatch: expected $VERSION, found $actual in Cargo.toml" >&2
+              echo "Did you merge the release PR first?" >&2
               exit 1
+            fi
+            echo "Workspace version verified: $actual"
+          }
+
+          verify_npm_package_version() {
+            local package="$1"
+            local package_json="packages/$package/package.json"
+            if [[ ! -f "$package_json" ]]; then
+              echo "Missing package.json: $package_json" >&2
+              exit 1
+            fi
+            local actual
+            actual="$(node -p "require('./$package_json').version")"
+            if [[ "$actual" != "$VERSION" ]]; then
+              echo "Version mismatch: expected $VERSION, found $actual in $package_json" >&2
+              echo "Did you merge the release PR first?" >&2
+              exit 1
+            fi
+            echo "$package version verified: $actual"
+          }
+
+          case "$COMPONENT" in
+            crates|sdk|cli)
+              verify_workspace_version
+              ;;
+            npm)
+              if [[ "$NPM_PACKAGE" == "all" ]]; then
+                for package in $NPM_PACKAGES; do
+                  verify_npm_package_version "$package"
+                done
+              else
+                verify_npm_package_version "$NPM_PACKAGE"
+              fi
               ;;
           esac
 
-          if [ "$actual" != "${{ inputs.version }}" ]; then
-            echo "Version mismatch: expected ${{ inputs.version }}, found $actual in code" >&2
-            echo "Did you merge the release PR first?" >&2
-            exit 1
-          fi
-          echo "Version verified: $actual"
-
-      - name: Create and push tag
+      - name: Create tag(s) and dispatch executor
+        env:
+          COMPONENT: ${{ inputs.component }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_PACKAGE: ${{ inputs.npm_package }}
+          VERSION: ${{ inputs.version }}
         run: |
-          # Determine correct tag format based on component
-          case "${{ inputs.component }}" in
-            sdk)
-              tag="lingxia-sdk-v${{ inputs.version }}"
-              ;;
-            crates)
-              tag="lingxia-crates-v${{ inputs.version }}"
-              ;;
-            cli)
-              tag="lingxia-cli-v${{ inputs.version }}"
-              ;;
-            lingxia-bridge)
-              tag="lingxia-bridge-v${{ inputs.version }}"
-              ;;
-            lingxia-elements)
-              tag="lingxia-elements-v${{ inputs.version }}"
-              ;;
-            lingxia-html)
-              tag="lingxia-html-v${{ inputs.version }}"
-              ;;
-            lingxia-page-runtime)
-              tag="lingxia-page-runtime-v${{ inputs.version }}"
-              ;;
-            lingxia-react)
-              tag="lingxia-react-v${{ inputs.version }}"
-              ;;
-            lingxia-skill)
-              tag="lingxia-skill-v${{ inputs.version }}"
-              ;;
-            lingxia-types)
-              tag="lingxia-types-v${{ inputs.version }}"
-              ;;
-            lingxia-vue)
-              tag="lingxia-vue-v${{ inputs.version }}"
-              ;;
-            *)
-              echo "Unknown component: ${{ inputs.component }}" >&2
-              exit 1
-              ;;
-          esac
+          set -euo pipefail
 
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
-            echo "Tag already exists locally: $tag" >&2
-            exit 1
-          fi
-          if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1; then
-            echo "Tag already exists on origin: $tag" >&2
-            exit 1
-          fi
+          create_or_reuse_tag() {
+            local tag="$1"
+            local message="$2"
 
-          git tag -a "$tag" -m "Release ${{ inputs.component }} v${{ inputs.version }}"
-          git push origin "$tag"
+            if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1; then
+              echo "Tag already exists on origin, reusing: $tag"
+              return 0
+            fi
 
-          echo "✅ Created and pushed tag: $tag"
-          echo "🚀 Release workflow should be triggered automatically"
+            if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+              echo "Tag exists locally but not on origin: $tag" >&2
+              exit 1
+            fi
+
+            git tag -a "$tag" -m "$message"
+            git push origin "$tag"
+            echo "Created and pushed tag: $tag"
+          }
+
+          publish_crates() {
+            local tag="lingxia-crates-v$VERSION"
+            create_or_reuse_tag "$tag" "Release crates v$VERSION"
+            gh workflow run crates-release.yml --ref main -f tag="$tag" -f dry_run=false
+            echo "Dispatched Release Executor / Crates for $tag"
+          }
+
+          publish_sdk() {
+            local tag="lingxia-sdk-v$VERSION"
+            create_or_reuse_tag "$tag" "Release sdk v$VERSION"
+            gh workflow run sdk-release.yml --ref main \
+              -f tag="$tag" \
+              -f android=true \
+              -f ios=true \
+              -f harmony=false \
+              -f dry_run=false
+            echo "Dispatched Release Executor / SDK for $tag"
+          }
+
+          publish_cli() {
+            local tag="lingxia-cli-v$VERSION"
+            create_or_reuse_tag "$tag" "Release cli v$VERSION"
+            gh workflow run release-cli.yml --ref main -f tag="$tag" -f dry_run=false
+            echo "Dispatched Release Executor / CLI for $tag"
+          }
+
+          publish_npm_package() {
+            local package="$1"
+            local tag="${package}-v$VERSION"
+            create_or_reuse_tag "$tag" "Release $package v$VERSION"
+            gh workflow run npm-release.yml --ref main \
+              -f package="$package" \
+              -f version="$VERSION" \
+              -f dry_run=false
+            echo "Dispatched Release Executor / NPM for $package@$VERSION"
+          }
+
+          publish_all_npm_packages() {
+            for package in $NPM_PACKAGES; do
+              local tag="${package}-v$VERSION"
+              create_or_reuse_tag "$tag" "Release $package v$VERSION"
+            done
+
+            gh workflow run npm-release.yml --ref main \
+              -f package=all \
+              -f version="$VERSION" \
+              -f dry_run=false
+            echo "Dispatched Release Executor / NPM for all packages@$VERSION"
+          }
+
+          case "$COMPONENT" in
+            crates)
+              publish_crates
+              ;;
+            sdk)
+              publish_sdk
+              ;;
+            cli)
+              publish_cli
+              ;;
+            npm)
+              if [[ "$NPM_PACKAGE" == "all" ]]; then
+                publish_all_npm_packages
+              else
+                publish_npm_package "$NPM_PACKAGE"
+              fi
+              ;;
+          esac

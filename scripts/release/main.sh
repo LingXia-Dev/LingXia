@@ -17,7 +17,7 @@ Usage:
 Commands:
   doctor              Show key versions, release tag, and script locations
   crates              Release crates.io packages
-  npm                 Release npm packages (@lingxia/bridge/elements/react/vue/html/types/skill and internal page-runtime)
+  npm                 Release npm packages (@lingxia/bridge/polyfills/elements/react/vue/html/types/skill and internal page-runtime)
   cli                 Build/upload CLI GitHub Release assets
   runner              Build/upload Runner GitHub Release assets
   sdk                 Build/package SDK release artifacts
@@ -93,7 +93,7 @@ current_cli_target() {
 }
 
 doctor() {
-  local ws_v cli_asset cli_runner_tag sdk_tag bridge_v elements_v react_v vue_v html_v page_runtime_v types_v cli_target
+  local ws_v cli_asset cli_runner_tag sdk_tag bridge_v polyfills_v elements_v react_v vue_v html_v page_runtime_v types_v skill_v cli_target
   ws_v="$(workspace_version)"
   if cli_target="$(current_cli_target 2>/dev/null)"; then
     cli_asset="lingxia-$cli_target"
@@ -103,6 +103,7 @@ doctor() {
   cli_runner_tag="$(release_tag_for_version "$ws_v")"
   sdk_tag="lingxia-sdk-v$ws_v"
   bridge_v="$(node -p "require('$ROOT_DIR/packages/lingxia-bridge/package.json').version" 2>/dev/null || echo "N/A")"
+  polyfills_v="$(node -p "require('$ROOT_DIR/packages/lingxia-polyfills/package.json').version" 2>/dev/null || echo "N/A")"
   elements_v="$(node -p "require('$ROOT_DIR/packages/lingxia-elements/package.json').version" 2>/dev/null || echo "N/A")"
   react_v="$(node -p "require('$ROOT_DIR/packages/lingxia-react/package.json').version" 2>/dev/null || echo "N/A")"
   vue_v="$(node -p "require('$ROOT_DIR/packages/lingxia-vue/package.json').version" 2>/dev/null || echo "N/A")"
@@ -119,6 +120,7 @@ Runner release tag:     $cli_runner_tag
 Runner arches:          ${RUNNER_ALL_ARCHES[*]}
 SDK release tag:        $sdk_tag
 NPM bridge version:     $bridge_v
+NPM polyfills version:  $polyfills_v
 NPM elements version:   $elements_v
 NPM react version:      $react_v
 NPM vue version:        $vue_v

@@ -97,25 +97,15 @@ jobs:
 
           ### After merge
 
-          This bump does not publish anything on its own. Pick what to release by
-          creating the per-component tags you want, either via the **Create Release
-          Tag** workflow or by hand:
+          This bump does not publish anything on its own. Publish from the
+          **Release / 2. Publish Component** workflow after this PR merges:
 
           \`\`\`bash
-          git checkout main && git pull
-          # one or more of:
-          git tag lingxia-sdk-v${version}
-          git tag lingxia-crates-v${version}
-          git tag lingxia-cli-v${version}
-          git tag lingxia-bridge-v${version}
-          git tag lingxia-elements-v${version}
-          git tag lingxia-html-v${version}
-          git tag lingxia-page-runtime-v${version}
-          git tag lingxia-react-v${version}
-          git tag lingxia-skill-v${version}
-          git tag lingxia-types-v${version}
-          git tag lingxia-vue-v${version}
-          git push origin <tag>
+          # Recommended order:
+          # 1. component=crates, version=${version}
+          # 2. component=sdk,    version=${version}
+          # 3. component=cli,    version=${version}
+          # 4. component=npm,    npm_package=all, version=${version}
           \`\`\`
           EOF
           )"
