@@ -247,9 +247,9 @@ for crate in "${SELECTED_CRATES[@]}"; do
 
   set +e
   if [[ "$ALLOW_DIRTY" -eq 1 ]]; then
-    output="$(cargo publish -p "$crate" --locked --allow-dirty 2>&1)"
+    output="$(cargo publish -p "$crate" --allow-dirty 2>&1)"
   else
-    output="$(cargo publish -p "$crate" --locked 2>&1)"
+    output="$(cargo publish -p "$crate" 2>&1)"
   fi
   status=$?
   set -e
