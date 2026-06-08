@@ -45,12 +45,13 @@ usage() {
 Release LingXia crates.io packages.
 
 Usage:
-  scripts/release/crates.sh [--publish] [--dry-run] [--allow-dirty] [--from <crate>] [--only <crates>]
+  scripts/release/crates.sh [--publish] [--dry-run] [--allow-dirty] [--no-verify] [--from <crate>] [--only <crates>]
 
 Options:
   --publish        Publish crates to crates.io in dependency order.
   --dry-run        Run cargo package checks only.
   --allow-dirty    Pass --allow-dirty to cargo publish.
+  --no-verify      Pass --no-verify to cargo publish.
   --from <crate>   Start from the given crate in the publish order.
   --only <crates>  Publish only the listed crates (comma-separated, or repeat the flag).
                    The dependency order from this script is preserved regardless of input order.
@@ -62,6 +63,7 @@ EOF
 PUBLISH=0
 DRY_RUN=0
 ALLOW_DIRTY=0
+NO_VERIFY=0
 FROM_CRATE=""
 ONLY_CRATES=()
 
@@ -70,6 +72,7 @@ while [[ $# -gt 0 ]]; do
     --publish) PUBLISH=1 ;;
     --dry-run) DRY_RUN=1 ;;
     --allow-dirty) ALLOW_DIRTY=1 ;;
+    --no-verify) NO_VERIFY=1 ;;
     --from)
       shift
       if [[ $# -eq 0 ]]; then
@@ -246,11 +249,10 @@ for crate in "${SELECTED_CRATES[@]}"; do
   echo "=========================================="
 
   set +e
-  if [[ "$ALLOW_DIRTY" -eq 1 ]]; then
-    output="$(cargo publish -p "$crate" --allow-dirty 2>&1)"
-  else
-    output="$(cargo publish -p "$crate" 2>&1)"
-  fi
+  publish_args=(-p "$crate")
+  [[ "$ALLOW_DIRTY" -eq 1 ]] && publish_args+=(--allow-dirty)
+  [[ "$NO_VERIFY" -eq 1 ]] && publish_args+=(--no-verify)
+  output="$(cargo publish "${publish_args[@]}" 2>&1)"
   status=$?
   set -e
 
