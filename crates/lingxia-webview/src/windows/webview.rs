@@ -109,6 +109,7 @@ enum UiCommand {
     },
     ShowWindow {
         title: String,
+        activate: bool,
         resp: Sender<StdResult<()>>,
     },
     HideWindow {
@@ -240,9 +241,21 @@ impl std::fmt::Debug for WebViewInner {
 }
 
 pub fn show_webview_window(webtag: &WebTag, title: &str) -> StdResult<()> {
+    show_webview_window_with_activation(webtag, title, true)
+}
+
+pub fn show_webview_window_inactive(webtag: &WebTag, title: &str) -> StdResult<()> {
+    show_webview_window_with_activation(webtag, title, false)
+}
+
+fn show_webview_window_with_activation(
+    webtag: &WebTag,
+    title: &str,
+    activate: bool,
+) -> StdResult<()> {
     let webview = find_webview(webtag)
         .ok_or_else(|| WebViewError::WebView(format!("WebView not found for {}", webtag.key())))?;
-    webview.inner.show_window(title.to_string())
+    webview.inner.show_window(title.to_string(), activate)
 }
 
 pub fn hide_webview_window(webtag: &WebTag) -> StdResult<()> {
@@ -620,8 +633,12 @@ impl WebViewInner {
             .map_err(|_| WebViewError::WebView("WebView UI thread did not reply".to_string()))?
     }
 
-    fn show_window(&self, title: String) -> StdResult<()> {
-        self.dispatch_command(|resp| UiCommand::ShowWindow { title, resp })
+    fn show_window(&self, title: String, activate: bool) -> StdResult<()> {
+        self.dispatch_command(|resp| UiCommand::ShowWindow {
+            title,
+            activate,
+            resp,
+        })
     }
 
     fn hide_window(&self) -> StdResult<()> {
@@ -2175,8 +2192,12 @@ fn handle_command(state: &mut UiState, command: UiCommand) -> StdResult<bool> {
             let result = window_snapshot(state);
             let _ = resp.send(result);
         }
-        UiCommand::ShowWindow { title, resp } => {
-            let result = show_native_window(state, &title);
+        UiCommand::ShowWindow {
+            title,
+            activate,
+            resp,
+        } => {
+            let result = show_native_window(state, &title, activate);
             let _ = resp.send(result);
         }
         UiCommand::HideWindow { resp } => {
@@ -2200,7 +2221,7 @@ fn cleanup_state(state: &mut UiState) {
     }
 }
 
-fn show_native_window(state: &mut UiState, _title: &str) -> StdResult<()> {
+fn show_native_window(state: &mut UiState, _title: &str, activate: bool) -> StdResult<()> {
     apply_group_window_placement(state);
     sync_controller_bounds(state)?;
     let title = to_wide("");
@@ -2210,9 +2231,14 @@ fn show_native_window(state: &mut UiState, _title: &str) -> StdResult<()> {
             .SetIsVisible(true)
             .map_err(|err| WebViewError::WebView(format!("SetIsVisible(true) failed: {err}")))?;
         let _ = WindowsAndMessaging::SetWindowTextW(state.hwnd, PCWSTR(title.as_ptr()));
-        let _ = WindowsAndMessaging::ShowWindow(state.hwnd, WindowsAndMessaging::SW_SHOW);
-        let _ = WindowsAndMessaging::BringWindowToTop(state.hwnd);
-        let _ = WindowsAndMessaging::SetForegroundWindow(state.hwnd);
+        if activate {
+            let _ = WindowsAndMessaging::ShowWindow(state.hwnd, WindowsAndMessaging::SW_SHOW);
+            let _ = WindowsAndMessaging::BringWindowToTop(state.hwnd);
+            let _ = WindowsAndMessaging::SetForegroundWindow(state.hwnd);
+        } else {
+            let _ =
+                WindowsAndMessaging::ShowWindow(state.hwnd, WindowsAndMessaging::SW_SHOWNOACTIVATE);
+        }
     }
     state.window_visible = true;
     store_current_window_placement(state);

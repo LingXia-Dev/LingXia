@@ -524,7 +524,7 @@ impl AppRuntime for Platform {
         _panel_id: String,
     ) -> Result<(), PlatformError> {
         let webtag = WebTag::new(&appid, &path, Some(session_id));
-        show_webtag_window(webtag, self.product_name.clone());
+        show_webtag_window(webtag, self.product_name.clone(), true);
         Ok(())
     }
 
@@ -552,7 +552,7 @@ impl AppRuntime for Platform {
             .find(|tag| tag.extract_appid() == appid)
             .and_then(|tag| tag.session_id());
         let webtag = WebTag::new(&appid, &path, session_id);
-        show_webtag_window(webtag, self.product_name.clone());
+        show_webtag_window(webtag, self.product_name.clone(), false);
         Ok(())
     }
 
@@ -565,10 +565,10 @@ impl AppRuntime for Platform {
     }
 }
 
-fn show_webtag_window(webtag: WebTag, title: String) {
+fn show_webtag_window(webtag: WebTag, title: String, activate: bool) {
     if webview_runtime::find_webview(&webtag).is_some() {
         install_close_handler(&webtag);
-        let _ = lingxia_webview::platform::windows::show_webview_window(&webtag, &title);
+        show_webview_window_for_mode(&webtag, &title, activate);
         hide_sibling_webtag_windows(&webtag);
         return;
     }
@@ -580,8 +580,7 @@ fn show_webtag_window(webtag: WebTag, title: String) {
             while Instant::now() < deadline {
                 if webview_runtime::find_webview(&webtag).is_some() {
                     install_close_handler(&webtag);
-                    let _ =
-                        lingxia_webview::platform::windows::show_webview_window(&webtag, &title);
+                    show_webview_window_for_mode(&webtag, &title, activate);
                     hide_sibling_webtag_windows(&webtag);
                     return;
                 }
@@ -589,6 +588,17 @@ fn show_webtag_window(webtag: WebTag, title: String) {
             }
             log::error!("Timed out waiting for Windows WebView {}", webtag.key());
         });
+}
+
+fn show_webview_window_for_mode(webtag: &WebTag, title: &str, activate: bool) {
+    let result = if activate {
+        lingxia_webview::platform::windows::show_webview_window(webtag, title)
+    } else {
+        lingxia_webview::platform::windows::show_webview_window_inactive(webtag, title)
+    };
+    if let Err(err) = result {
+        log::warn!("Failed to show Windows WebView window {}: {}", webtag.key(), err);
+    }
 }
 
 fn hide_sibling_webtag_windows(target: &WebTag) {

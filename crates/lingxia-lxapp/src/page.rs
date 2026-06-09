@@ -927,6 +927,9 @@ impl PageInstance {
             navbar.set_home_button_visibility(show_home_button && allow_buttons);
         });
 
+        #[cfg(target_os = "windows")]
+        lxapp.sync_windows_shell_layout();
+
         // 5. Dispatch lifecycle events for current and target pages
         match nav_type {
             NavigationType::Replace => {
