@@ -38,8 +38,7 @@ use async_trait::async_trait;
 
 const DEFAULT_APP_IDENTIFIER: &str = "app.lingxia.windows";
 type WindowsUiUpdateHandler = Arc<dyn Fn(String) + Send + Sync>;
-static WINDOWS_UI_UPDATE_HANDLER: OnceLock<Mutex<Option<WindowsUiUpdateHandler>>> =
-    OnceLock::new();
+static WINDOWS_UI_UPDATE_HANDLER: OnceLock<Mutex<Option<WindowsUiUpdateHandler>>> = OnceLock::new();
 
 #[derive(Debug, Clone)]
 pub struct Platform {
@@ -519,7 +518,6 @@ impl AppRuntime for Platform {
         _panel_id: String,
     ) -> Result<(), PlatformError> {
         let webtag = WebTag::new(&appid, &path, Some(session_id));
-        hide_sibling_webtag_windows(&webtag);
         show_webtag_window(webtag, self.product_name.clone());
         Ok(())
     }
@@ -548,7 +546,6 @@ impl AppRuntime for Platform {
             .find(|tag| tag.extract_appid() == appid)
             .and_then(|tag| tag.session_id());
         let webtag = WebTag::new(&appid, &path, session_id);
-        hide_sibling_webtag_windows(&webtag);
         show_webtag_window(webtag, self.product_name.clone());
         Ok(())
     }
@@ -566,6 +563,7 @@ fn show_webtag_window(webtag: WebTag, title: String) {
     if webview_runtime::find_webview(&webtag).is_some() {
         install_close_handler(&webtag);
         let _ = lingxia_webview::platform::windows::show_webview_window(&webtag, &title);
+        hide_sibling_webtag_windows(&webtag);
         return;
     }
 
@@ -578,6 +576,7 @@ fn show_webtag_window(webtag: WebTag, title: String) {
                     install_close_handler(&webtag);
                     let _ =
                         lingxia_webview::platform::windows::show_webview_window(&webtag, &title);
+                    hide_sibling_webtag_windows(&webtag);
                     return;
                 }
                 thread::sleep(Duration::from_millis(50));

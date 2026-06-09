@@ -21,9 +21,10 @@ use windows::{
     Win32::{
         Foundation::{COLORREF, E_POINTER, HINSTANCE, HWND, LPARAM, LRESULT, RECT, WPARAM},
         Graphics::Gdi::{
-            BeginPaint, CreateBitmap, CreateSolidBrush, DeleteObject, DrawTextW, EndPaint,
-            FillRect, HDC, HGDIOBJ, InvalidateRect, PAINTSTRUCT, SetBkMode, SetTextColor,
-            DT_CENTER, DT_END_ELLIPSIS, DT_SINGLELINE, DT_VCENTER, TRANSPARENT,
+            BeginPaint, CreateBitmap, CreateSolidBrush, DT_CENTER, DT_END_ELLIPSIS, DT_LEFT,
+            DT_SINGLELINE, DT_VCENTER, DeleteObject, DrawTextW, EndPaint, FillRect, GetStockObject,
+            HDC, HGDIOBJ, InvalidateRect, NULL_PEN, PAINTSTRUCT, RoundRect, SelectObject,
+            SetBkMode, SetTextColor, TRANSPARENT,
         },
         System::{
             Com::{COINIT_APARTMENTTHREADED, IStream, STREAM_SEEK_SET},
@@ -42,6 +43,17 @@ use windows::{
 };
 
 const WM_LINGXIA_COMMAND: u32 = WM_APP + 0x154;
+const ARC_PANEL_PADDING: i32 = 6;
+const ARC_PANEL_RADIUS: i32 = 14;
+const ARC_WINDOW_BACKGROUND: u32 = 0xe7e8eb;
+const ARC_PANEL_BACKGROUND: u32 = 0xffffff;
+const ARC_SIDEBAR_BACKGROUND: u32 = 0xe7e8eb;
+const ARC_SIDEBAR_WIDTH: i32 = 180;
+const SIDEBAR_HEADER_HEIGHT: i32 = 66;
+const SIDEBAR_ITEM_HEIGHT: i32 = 34;
+const SIDEBAR_ITEM_GAP: i32 = 4;
+const SIDEBAR_ITEM_INSET: i32 = 10;
+const SIDEBAR_FOOTER_HEIGHT: i32 = 46;
 type StdResult<T, E = WebViewError> = std::result::Result<T, E>;
 
 enum UiCommand {
@@ -161,6 +173,7 @@ pub struct WindowsTabBarLayout {
     pub visible: bool,
     pub position: WindowsTabBarPosition,
     pub dimension: i32,
+    pub app_name: String,
     pub color: u32,
     pub selected_color: u32,
     pub background_color: u32,
@@ -208,10 +221,7 @@ pub fn hide_webview_window(webtag: &WebTag) -> StdResult<()> {
     webview.inner.hide_window()
 }
 
-pub fn set_webview_window_layout(
-    webtag: &WebTag,
-    layout: WindowsWindowLayout,
-) -> StdResult<()> {
+pub fn set_webview_window_layout(webtag: &WebTag, layout: WindowsWindowLayout) -> StdResult<()> {
     let webview = find_webview(webtag)
         .ok_or_else(|| WebViewError::WebView(format!("WebView not found for {}", webtag.key())))?;
     webview.inner.set_window_layout(layout)
@@ -863,6 +873,7 @@ fn create_hidden_window(webtag: &WebTag) -> StdResult<HWND> {
 #[derive(Debug, Clone, Copy)]
 struct ChromeRects {
     content: RECT,
+    panel: RECT,
     navigation_bar: Option<RECT>,
     tab_bar: Option<RECT>,
 }
@@ -873,26 +884,41 @@ fn compute_content_rect(client: RECT, layout: &WindowsWindowLayout) -> RECT {
 
 fn compute_chrome_rects(client: RECT, layout: &WindowsWindowLayout) -> ChromeRects {
     let mut content = client;
-    let navigation_bar = layout
-        .navigation_bar
-        .as_ref()
-        .filter(|navbar| navbar.visible && navbar.height > 0)
-        .map(|navbar| {
-            let bottom = (client.top + navbar.height).min(client.bottom);
-            content.top = bottom;
-            RECT {
-                left: client.left,
-                top: client.top,
-                right: client.right,
-                bottom,
-            }
-        });
-
     let tab_bar = layout
         .tab_bar
         .as_ref()
         .filter(|tabbar| tabbar.visible && !tabbar.items.is_empty() && tabbar.dimension > 0)
         .map(|tabbar| match tabbar.position {
+            WindowsTabBarPosition::Left => {
+                let width = tabbar.dimension.max(ARC_SIDEBAR_WIDTH);
+                let right = (content.left + width).min(content.right);
+                let rect = RECT {
+                    left: content.left,
+                    top: content.top,
+                    right,
+                    bottom: content.bottom,
+                };
+                content.left = right + ARC_PANEL_PADDING;
+                content.top += ARC_PANEL_PADDING;
+                content.right -= ARC_PANEL_PADDING;
+                content.bottom -= ARC_PANEL_PADDING;
+                rect
+            }
+            WindowsTabBarPosition::Right => {
+                let width = tabbar.dimension.max(ARC_SIDEBAR_WIDTH);
+                let left = (content.right - width).max(content.left);
+                let rect = RECT {
+                    left,
+                    top: content.top,
+                    right: content.right,
+                    bottom: content.bottom,
+                };
+                content.right = left - ARC_PANEL_PADDING;
+                content.top += ARC_PANEL_PADDING;
+                content.left += ARC_PANEL_PADDING;
+                content.bottom -= ARC_PANEL_PADDING;
+                rect
+            }
             WindowsTabBarPosition::Bottom => {
                 let top = (content.bottom - tabbar.dimension).max(content.top);
                 let rect = RECT {
@@ -904,32 +930,29 @@ fn compute_chrome_rects(client: RECT, layout: &WindowsWindowLayout) -> ChromeRec
                 content.bottom = top;
                 rect
             }
-            WindowsTabBarPosition::Left => {
-                let right = (content.left + tabbar.dimension).min(content.right);
-                let rect = RECT {
-                    left: content.left,
-                    top: content.top,
-                    right,
-                    bottom: content.bottom,
-                };
-                content.left = right;
-                rect
-            }
-            WindowsTabBarPosition::Right => {
-                let left = (content.right - tabbar.dimension).max(content.left);
-                let rect = RECT {
-                    left,
-                    top: content.top,
-                    right: content.right,
-                    bottom: content.bottom,
-                };
-                content.right = left;
-                rect
+        });
+
+    content = normalize_rect(content);
+    let panel = content;
+
+    let navigation_bar = layout
+        .navigation_bar
+        .as_ref()
+        .filter(|navbar| navbar.visible && navbar.height > 0)
+        .map(|navbar| {
+            let bottom = (content.top + navbar.height).min(content.bottom);
+            content.top = bottom;
+            RECT {
+                left: content.left,
+                top: panel.top,
+                right: content.right,
+                bottom,
             }
         });
 
     ChromeRects {
         content: normalize_rect(content),
+        panel: normalize_rect(panel),
         navigation_bar: navigation_bar.map(normalize_rect),
         tab_bar: tab_bar.map(normalize_rect),
     }
@@ -986,6 +1009,11 @@ fn draw_window_chrome(hwnd: HWND, hdc: HDC) {
     }
     let rects = compute_chrome_rects(client, &layout);
 
+    fill_rect(hdc, client, ARC_WINDOW_BACKGROUND);
+    if rect_width(&rects.panel) > 0 && rect_height(&rects.panel) > 0 {
+        fill_round_rect(hdc, rects.panel, ARC_PANEL_BACKGROUND, ARC_PANEL_RADIUS);
+    }
+
     if let (Some(navbar), Some(navbar_rect)) = (&layout.navigation_bar, rects.navigation_bar) {
         draw_navigation_bar(hdc, navbar_rect, navbar);
     }
@@ -995,9 +1023,9 @@ fn draw_window_chrome(hwnd: HWND, hdc: HDC) {
 }
 
 fn window_webtag_key(hwnd: HWND) -> Option<String> {
-    let raw = unsafe {
-        WindowsAndMessaging::GetWindowLongPtrW(hwnd, WindowsAndMessaging::GWLP_USERDATA)
-    } as *mut WindowUserData;
+    let raw =
+        unsafe { WindowsAndMessaging::GetWindowLongPtrW(hwnd, WindowsAndMessaging::GWLP_USERDATA) }
+            as *mut WindowUserData;
     if raw.is_null() {
         None
     } else {
@@ -1044,6 +1072,14 @@ fn nav_button_rect(navbar: RECT, index: i32) -> RECT {
 }
 
 fn draw_tab_bar(hdc: HDC, rect: RECT, tabbar: &WindowsTabBarLayout) {
+    if matches!(
+        tabbar.position,
+        WindowsTabBarPosition::Left | WindowsTabBarPosition::Right
+    ) {
+        draw_sidebar_tab_bar(hdc, rect, tabbar);
+        return;
+    }
+
     fill_rect(hdc, rect, tabbar.background_color);
     draw_tabbar_border(hdc, rect, tabbar);
 
@@ -1076,6 +1112,69 @@ fn draw_tab_bar(hdc: HDC, rect: RECT, tabbar: &WindowsTabBarLayout) {
             draw_red_dot(hdc, item_rect);
         }
     }
+}
+
+fn draw_sidebar_tab_bar(hdc: HDC, rect: RECT, tabbar: &WindowsTabBarLayout) {
+    fill_rect(hdc, rect, ARC_SIDEBAR_BACKGROUND);
+
+    let title = if tabbar.app_name.trim().is_empty() {
+        "LXAPP".to_string()
+    } else {
+        tabbar.app_name.to_ascii_uppercase()
+    };
+    let header_rect = RECT {
+        left: rect.left + SIDEBAR_ITEM_INSET + 2,
+        top: rect.top + 22,
+        right: rect.right - SIDEBAR_ITEM_INSET,
+        bottom: rect.top + SIDEBAR_HEADER_HEIGHT,
+    };
+    draw_text(hdc, &title, header_rect, 0x4f5661, DT_LEFT);
+
+    for (index, item) in tabbar.items.iter().enumerate() {
+        let item_rect = sidebar_item_rect(rect, index);
+        let selected = tabbar.selected_index == index as i32;
+        if selected {
+            fill_round_rect(hdc, item_rect, 0xffffff, 8);
+            fill_round_rect(
+                hdc,
+                RECT {
+                    left: item_rect.left + 6,
+                    top: item_rect.top + 9,
+                    right: item_rect.left + 10,
+                    bottom: item_rect.bottom - 9,
+                },
+                tabbar.selected_color,
+                3,
+            );
+        }
+
+        let label_rect = RECT {
+            left: item_rect.left + 18,
+            top: item_rect.top,
+            right: item_rect.right - 8,
+            bottom: item_rect.bottom,
+        };
+        let text_color = if selected { 0x111827 } else { 0x667085 };
+        draw_text(hdc, &item.text, label_rect, text_color, DT_LEFT);
+
+        if let Some(badge) = item.badge.as_ref().filter(|badge| !badge.is_empty()) {
+            draw_badge(hdc, item_rect, badge);
+        } else if item.has_red_dot {
+            draw_red_dot(hdc, item_rect);
+        }
+    }
+
+    let footer_top = rect.bottom - SIDEBAR_FOOTER_HEIGHT;
+    draw_top_border(
+        hdc,
+        RECT {
+            left: rect.left + SIDEBAR_ITEM_INSET,
+            top: footer_top,
+            right: rect.right - SIDEBAR_ITEM_INSET,
+            bottom: rect.bottom,
+        },
+        0xd6d9de,
+    );
 }
 
 fn draw_tabbar_border(hdc: HDC, rect: RECT, tabbar: &WindowsTabBarLayout) {
@@ -1121,6 +1220,17 @@ fn tab_item_rect(rect: RECT, position: WindowsTabBarPosition, count: usize, inde
     }
 }
 
+fn sidebar_item_rect(rect: RECT, index: usize) -> RECT {
+    let top =
+        rect.top + SIDEBAR_HEADER_HEIGHT + index as i32 * (SIDEBAR_ITEM_HEIGHT + SIDEBAR_ITEM_GAP);
+    normalize_rect(RECT {
+        left: rect.left + SIDEBAR_ITEM_INSET,
+        top,
+        right: rect.right - SIDEBAR_ITEM_INSET,
+        bottom: top + SIDEBAR_ITEM_HEIGHT,
+    })
+}
+
 fn inset_rect(rect: RECT, dx: i32, dy: i32) -> RECT {
     normalize_rect(RECT {
         left: rect.left + dx,
@@ -1145,7 +1255,8 @@ fn handle_window_chrome_click(hwnd: HWND, webtag_key: &str, point: (i32, i32)) -
             return invoke_chrome_event_handler(webtag_key, WindowsChromeEvent::NavigationBack);
         }
         let home_index = if navbar.show_back_button { 1 } else { 0 };
-        if navbar.show_home_button && rect_contains(&nav_button_rect(navbar_rect, home_index), point)
+        if navbar.show_home_button
+            && rect_contains(&nav_button_rect(navbar_rect, home_index), point)
         {
             return invoke_chrome_event_handler(webtag_key, WindowsChromeEvent::NavigationHome);
         }
@@ -1156,7 +1267,14 @@ fn handle_window_chrome_click(hwnd: HWND, webtag_key: &str, point: (i32, i32)) -
         && rect_contains(&tabbar_rect, point)
     {
         for index in 0..tabbar.items.len() {
-            let item_rect = tab_item_rect(tabbar_rect, tabbar.position, tabbar.items.len(), index);
+            let item_rect = if matches!(
+                tabbar.position,
+                WindowsTabBarPosition::Left | WindowsTabBarPosition::Right
+            ) {
+                sidebar_item_rect(tabbar_rect, index)
+            } else {
+                tab_item_rect(tabbar_rect, tabbar.position, tabbar.items.len(), index)
+            };
             if rect_contains(&item_rect, point) {
                 return invoke_chrome_event_handler(
                     webtag_key,
@@ -1278,6 +1396,37 @@ fn fill_rect(hdc: HDC, rect: RECT, rgb: u32) {
             return;
         }
         let _ = FillRect(hdc, &rect, brush);
+        let _ = DeleteObject(HGDIOBJ(brush.0));
+    }
+}
+
+fn fill_round_rect(hdc: HDC, rect: RECT, rgb: u32, radius: i32) {
+    if rect_width(&rect) == 0 || rect_height(&rect) == 0 {
+        return;
+    }
+    unsafe {
+        let brush = CreateSolidBrush(rgb_to_colorref(rgb));
+        if brush.is_invalid() {
+            return;
+        }
+        let old_brush = SelectObject(hdc, HGDIOBJ(brush.0));
+        let pen = GetStockObject(NULL_PEN);
+        let old_pen = SelectObject(hdc, pen);
+        let _ = RoundRect(
+            hdc,
+            rect.left,
+            rect.top,
+            rect.right,
+            rect.bottom,
+            radius,
+            radius,
+        );
+        if !old_pen.is_invalid() {
+            let _ = SelectObject(hdc, old_pen);
+        }
+        if !old_brush.is_invalid() {
+            let _ = SelectObject(hdc, old_brush);
+        }
         let _ = DeleteObject(HGDIOBJ(brush.0));
     }
 }
@@ -1882,9 +2031,9 @@ fn cleanup_state(state: &mut UiState) {
     }
 }
 
-fn show_native_window(state: &UiState, title: &str) -> StdResult<()> {
+fn show_native_window(state: &UiState, _title: &str) -> StdResult<()> {
     sync_controller_bounds(state)?;
-    let title = to_wide(title);
+    let title = to_wide("");
     unsafe {
         state
             .controller

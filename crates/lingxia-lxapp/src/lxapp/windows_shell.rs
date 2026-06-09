@@ -7,12 +7,12 @@ use lingxia_webview::platform::windows::{
     set_webview_window_layout,
 };
 
-use super::tabbar::TabBarPosition;
 use super::{LxApp, try_get};
 use crate::delegate::{LxAppDelegate, LxAppUiEventType};
 use crate::{error, warn};
 
 const DEFAULT_NAV_BAR_HEIGHT: i32 = 48;
+const DEFAULT_SIDEBAR_WIDTH: i32 = 180;
 
 pub(crate) fn install_update_handler() {
     lingxia_platform::set_windows_ui_update_handler(Arc::new(|appid| {
@@ -68,10 +68,7 @@ impl LxApp {
         WindowsNavigationBarLayout {
             visible: navbar.show_navbar,
             title,
-            background_color: parse_css_color(
-                &navbar.navigationBarBackgroundColor,
-                0xffffff,
-            ),
+            background_color: parse_css_color(&navbar.navigationBarBackgroundColor, 0xffffff),
             text_color,
             show_back_button: navbar.show_back_button,
             show_home_button: navbar.show_home_button,
@@ -82,13 +79,10 @@ impl LxApp {
     fn build_windows_tab_bar_layout(&self) -> Option<WindowsTabBarLayout> {
         let tabbar = self.get_tabbar()?;
         Some(WindowsTabBarLayout {
-            visible: tabbar.is_visible,
-            position: match tabbar.position {
-                TabBarPosition::Bottom => WindowsTabBarPosition::Bottom,
-                TabBarPosition::Left => WindowsTabBarPosition::Left,
-                TabBarPosition::Right => WindowsTabBarPosition::Right,
-            },
-            dimension: tabbar.dimension.max(1),
+            visible: !tabbar.list.is_empty(),
+            position: WindowsTabBarPosition::Left,
+            dimension: DEFAULT_SIDEBAR_WIDTH,
+            app_name: self.config.appName.clone(),
             color: parse_css_color(&tabbar.color, 0x666666),
             selected_color: parse_css_color(&tabbar.selectedColor, 0x1677ff),
             background_color: parse_css_color(&tabbar.backgroundColor, 0xffffff),
@@ -149,10 +143,7 @@ fn parse_css_color(raw: &str, fallback: u32) -> u32 {
     let hex = value.strip_prefix('#').unwrap_or(value);
     let rgb = match hex.len() {
         3 => {
-            let expanded = hex
-                .chars()
-                .flat_map(|ch| [ch, ch])
-                .collect::<String>();
+            let expanded = hex.chars().flat_map(|ch| [ch, ch]).collect::<String>();
             u32::from_str_radix(&expanded, 16).ok()
         }
         6 => u32::from_str_radix(hex, 16).ok(),
