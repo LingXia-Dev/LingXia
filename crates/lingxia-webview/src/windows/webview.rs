@@ -194,10 +194,19 @@ struct AppIconHandles {
     large: isize,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct WindowPlacement {
+    left: i32,
+    top: i32,
+    width: i32,
+    height: i32,
+}
+
 static WINDOW_CLOSE_HANDLERS: OnceLock<Mutex<HashMap<String, CloseHandler>>> = OnceLock::new();
 static WINDOW_CHROME_HANDLERS: OnceLock<Mutex<HashMap<String, ChromeEventHandler>>> =
     OnceLock::new();
 static WINDOW_LAYOUTS: OnceLock<Mutex<HashMap<String, WindowsWindowLayout>>> = OnceLock::new();
+static WINDOW_GROUP_PLACEMENTS: OnceLock<Mutex<HashMap<String, WindowPlacement>>> = OnceLock::new();
 static APP_ICON_HANDLES: OnceLock<Mutex<Option<AppIconHandles>>> = OnceLock::new();
 
 impl std::fmt::Debug for WebViewInner {
@@ -420,6 +429,67 @@ fn invoke_chrome_event_handler(webtag_key: &str, event: WindowsChromeEvent) -> b
         return true;
     }
     false
+}
+
+fn webtag_group_key(webtag_key: &str) -> String {
+    let Some((appid, path_with_session)) = webtag_key.split_once(':') else {
+        return webtag_key.to_string();
+    };
+    let session = path_with_session
+        .rsplit_once('#')
+        .and_then(|(_, suffix)| suffix.parse::<u64>().ok())
+        .map(|session| session.to_string())
+        .unwrap_or_else(|| "0".to_string());
+    format!("{appid}#{session}")
+}
+
+fn current_group_window_placement(webtag_key: &str) -> Option<WindowPlacement> {
+    WINDOW_GROUP_PLACEMENTS
+        .get()
+        .and_then(|placements| placements.lock().ok())
+        .and_then(|placements| placements.get(&webtag_group_key(webtag_key)).copied())
+}
+
+fn store_current_window_placement(state: &UiState) {
+    let mut rect = RECT::default();
+    if unsafe { WindowsAndMessaging::GetWindowRect(state.hwnd, &mut rect) }.is_err() {
+        return;
+    }
+    let width = rect.right - rect.left;
+    let height = rect.bottom - rect.top;
+    if width <= 0 || height <= 0 {
+        return;
+    }
+
+    let placements = WINDOW_GROUP_PLACEMENTS.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Ok(mut placements) = placements.lock() {
+        placements.insert(
+            webtag_group_key(&state.webtag_key),
+            WindowPlacement {
+                left: rect.left,
+                top: rect.top,
+                width,
+                height,
+            },
+        );
+    }
+}
+
+fn apply_group_window_placement(state: &UiState) {
+    let Some(placement) = current_group_window_placement(&state.webtag_key) else {
+        return;
+    };
+    unsafe {
+        let _ = WindowsAndMessaging::SetWindowPos(
+            state.hwnd,
+            None,
+            placement.left,
+            placement.top,
+            placement.width,
+            placement.height,
+            WindowsAndMessaging::SWP_NOZORDER | WindowsAndMessaging::SWP_NOACTIVATE,
+        );
+    }
 }
 
 impl WebViewInner {
@@ -1905,6 +1975,9 @@ fn message_loop(state: &mut UiState, command_rx: Receiver<UiCommand>) -> StdResu
                 if msg.message != WM_LINGXIA_COMMAND {
                     if msg.message == WindowsAndMessaging::WM_SIZE {
                         let _ = sync_controller_bounds(state);
+                        store_current_window_placement(state);
+                    } else if msg.message == WindowsAndMessaging::WM_MOVE {
+                        store_current_window_placement(state);
                     }
                     unsafe {
                         let _ = WindowsAndMessaging::TranslateMessage(&msg);
@@ -2032,6 +2105,7 @@ fn cleanup_state(state: &mut UiState) {
 }
 
 fn show_native_window(state: &UiState, _title: &str) -> StdResult<()> {
+    apply_group_window_placement(state);
     sync_controller_bounds(state)?;
     let title = to_wide("");
     unsafe {
@@ -2044,10 +2118,12 @@ fn show_native_window(state: &UiState, _title: &str) -> StdResult<()> {
         let _ = WindowsAndMessaging::BringWindowToTop(state.hwnd);
         let _ = WindowsAndMessaging::SetForegroundWindow(state.hwnd);
     }
+    store_current_window_placement(state);
     Ok(())
 }
 
 fn hide_native_window(state: &UiState) -> StdResult<()> {
+    store_current_window_placement(state);
     unsafe {
         state
             .controller
