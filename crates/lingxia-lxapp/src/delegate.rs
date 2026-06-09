@@ -346,12 +346,12 @@ impl LxApp {
 
                 let appid = self.appid.clone();
                 let lxapp = self.clone();
-                let _ = crate::executor::spawn(async move {
+                std::mem::drop(crate::executor::spawn(async move {
                     let updater = UpdateManager::new(lxapp);
                     if let Err(e) = updater.uninstall_all(&appid) {
                         error!("Failed to uninstall app: {}", e).with_appid(appid);
                     }
-                });
+                }));
                 return true;
             }
             _ => {

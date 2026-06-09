@@ -33,13 +33,13 @@ fn spawn_cache_cleanup(runtime: Arc<Platform>) {
         return;
     }
 
-    let _ = crate::executor::spawn(async move {
+    std::mem::drop(crate::executor::spawn(async move {
         let cache_base_dir = runtime
             .app_data_dir()
             .join(LINGXIA_DIR)
             .join(USER_CACHE_DIR);
         cleanup_cache_base_dir(&cache_base_dir, max_bytes);
-    });
+    }));
 }
 
 fn cleanup_cache_base_dir(cache_base_dir: &Path, max_bytes: u64) {

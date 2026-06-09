@@ -740,9 +740,9 @@ impl PageInstance {
     /// Script injection is awaited before `OnReady` and loaded notifications.
     pub fn handle_loaded(&self) {
         let page = self.clone();
-        let _ = crate::executor::spawn(async move {
+        std::mem::drop(crate::executor::spawn(async move {
             page.handle_loaded_async().await;
-        });
+        }));
     }
 
     /// Subscribe to page-loaded events.

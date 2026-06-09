@@ -65,7 +65,7 @@ impl BoundLxAppUpdateHost {
 
 impl LxAppUpdateHost for BoundLxAppUpdateHost {
     fn spawn_detached(&self, task: BoxFuture<'static, ()>) {
-        let _ = crate::executor::spawn(task);
+        std::mem::drop(crate::executor::spawn(task));
     }
 
     fn target_appid(&self) -> &str {
@@ -175,7 +175,7 @@ impl LxAppUpdateHost for BoundLxAppUpdateHost {
                     let version_bg = update.version.clone();
                     let release_type = self.release_type;
 
-                    let _ = crate::executor::spawn(async move {
+                    std::mem::drop(crate::executor::spawn(async move {
                         let result = manager_bg
                             .download_archive_with_checksum(
                                 &target_appid_bg,
@@ -192,7 +192,7 @@ impl LxAppUpdateHost for BoundLxAppUpdateHost {
                                 state::force_update_tracker().mark_failed(&key_bg, err.to_string())
                             }
                         }
-                    });
+                    }));
 
                     loop {
                         let state = { rx.borrow().clone() };

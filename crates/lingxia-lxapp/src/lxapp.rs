@@ -330,7 +330,7 @@ impl LxApps {
 
             let mgr_weak = Arc::downgrade(self);
             let task_appid = appid.clone();
-            let _ = crate::executor::spawn(async move {
+            std::mem::drop(crate::executor::spawn(async move {
                 let sleep = time::sleep(Duration::from_secs(1800));
                 tokio::pin!(rx);
                 tokio::pin!(sleep);
@@ -347,7 +347,7 @@ impl LxApps {
                         guard.remove(&task_appid);
                     }
                 }
-            });
+            }));
         }
     }
 
@@ -861,7 +861,7 @@ impl LxApp {
 
         let appid = self.appid.clone();
         let page_instance_id = id.to_string();
-        let _ = crate::executor::spawn(async move {
+        std::mem::drop(crate::executor::spawn(async move {
             let sleep = time::sleep(dispose_ttl);
             tokio::pin!(sleep);
             tokio::pin!(rx);
@@ -883,7 +883,7 @@ impl LxApp {
                 )
                 .with_appid(appid);
             }
-        });
+        }));
 
         Ok(())
     }
@@ -1837,7 +1837,7 @@ impl LxApp {
         let relaunch_path = self.config.get_initial_route();
         let appid = self.appid.clone();
         let release_type = self.release_type;
-        let _ = crate::executor::spawn(async move {
+        std::mem::drop(crate::executor::spawn(async move {
             let wait_deadline = Instant::now() + Duration::from_millis(1500);
             loop {
                 let Some(current) = crate::lxapp::try_get(&appid) else {
@@ -1883,7 +1883,7 @@ impl LxApp {
                 }
             }
             // Status will be driven back to Opened by on_lxapp_opened delegate after reopen.
-        });
+        }));
         Ok(())
     }
 

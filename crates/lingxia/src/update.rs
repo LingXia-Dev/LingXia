@@ -154,7 +154,7 @@ pub mod host_app {
             }
 
             let runtime_for_task = runtime_for_handler.clone();
-            let _ = lingxia::task::spawn(async move {
+            std::mem::drop(lingxia::task::spawn(async move {
                 let outcome = check().await;
                 AUTO_RUNNING.store(false, Ordering::SeqCst);
                 match outcome {
@@ -174,7 +174,7 @@ pub mod host_app {
                         );
                     }
                 }
-            });
+            }));
         });
 
         AUTO_LISTENER_ID.store(callback_id, Ordering::SeqCst);
