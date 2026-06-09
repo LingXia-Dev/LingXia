@@ -26,7 +26,7 @@ Options:
 With --component all (default), this updates:
   - workspace.package.version in Cargo.toml
   - workspace crate dependency versions in Cargo.toml
-  - lingxia-cli package version and embedded component versions
+  - lingxia-cli package version and embedded LingXia component versions
   - example native host LingXia crate dependency versions
   - example native host Cargo.lock LingXia package versions
   - package versions under packages/*
@@ -169,7 +169,6 @@ if component == "all":
         "bridge-version",
         "polyfills-version",
         "types-version",
-        "rong-version",
         "rust-crate-version",
         "sdk-version",
         "shell-webui-version",
