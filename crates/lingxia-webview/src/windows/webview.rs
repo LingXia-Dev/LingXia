@@ -21,10 +21,11 @@ use windows::{
     Win32::{
         Foundation::{COLORREF, E_POINTER, HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM},
         Graphics::Gdi::{
-            BeginPaint, ClientToScreen, CreateBitmap, CreateSolidBrush, DT_CENTER, DT_END_ELLIPSIS,
-            DT_LEFT, DT_SINGLELINE, DT_VCENTER, DeleteObject, DrawTextW, EndPaint, FillRect,
-            GetStockObject, HDC, HGDIOBJ, InvalidateRect, NULL_PEN, PAINTSTRUCT, RoundRect,
-            SelectObject, SetBkMode, SetTextColor, TRANSPARENT,
+            BeginPaint, ClientToScreen, CreateBitmap, CreatePen, CreateSolidBrush, DT_CENTER,
+            DT_END_ELLIPSIS, DT_LEFT, DT_SINGLELINE, DT_VCENTER, DeleteObject, DrawTextW, EndPaint,
+            FillRect, GetStockObject, HDC, HGDIOBJ, InvalidateRect, LineTo, MoveToEx, NULL_PEN,
+            PAINTSTRUCT, PS_SOLID, RoundRect, ScreenToClient, SelectObject, SetBkMode,
+            SetTextColor, TRANSPARENT,
         },
         System::{
             Com::{
@@ -52,6 +53,9 @@ const ARC_PANEL_RADIUS: i32 = 14;
 const ARC_WINDOW_BACKGROUND: u32 = 0xe7e8eb;
 const ARC_PANEL_BACKGROUND: u32 = 0xffffff;
 const ARC_SIDEBAR_BACKGROUND: u32 = 0xe7e8eb;
+const SHELL_TOP_BAR_HEIGHT: i32 = 38;
+const WINDOW_BUTTON_WIDTH: i32 = 46;
+const WINDOW_BUTTON_ICON_SIZE: i32 = 10;
 const ARC_SIDEBAR_WIDTH: i32 = 180;
 const SIDEBAR_HEADER_HEIGHT: i32 = 66;
 const SIDEBAR_ITEM_HEIGHT: i32 = 34;
@@ -260,6 +264,13 @@ struct WindowPlacement {
     top: i32,
     width: i32,
     height: i32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WindowFrameButton {
+    Minimize,
+    Maximize,
+    Close,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -962,10 +973,22 @@ fn attached_group_rects(group_key: &str, host: HWND) -> Option<AttachedGroupRect
         .and_then(|layouts| layouts.lock().ok())
         .and_then(|layouts| layouts.get(group_key).cloned())
         .unwrap_or_default();
-    let mut main = compute_content_rect(client, &layout);
-    let mut panels = HashMap::new();
+    Some(attached_group_rects_from_layout(
+        client,
+        &layout,
+        group_panels(group_key),
+    ))
+}
 
-    for panel in group_panels(group_key) {
+fn attached_group_rects_from_layout(
+    client: RECT,
+    layout: &WindowsWindowLayout,
+    panels: Vec<GroupPanel>,
+) -> AttachedGroupRects {
+    let mut main = compute_content_rect(client, layout);
+    let mut panel_rects = HashMap::new();
+
+    for panel in panels {
         let rect = match panel.position {
             WindowsPanelPosition::Left => {
                 let width = attached_panel_width(main);
@@ -1001,13 +1024,13 @@ fn attached_group_rects(group_key: &str, host: HWND) -> Option<AttachedGroupRect
                 rect
             }
         };
-        panels.insert(panel.webtag_key, normalize_rect(rect));
+        panel_rects.insert(panel.webtag_key, normalize_rect(rect));
     }
 
-    Some(AttachedGroupRects {
+    AttachedGroupRects {
         main: normalize_rect(main),
-        panels,
-    })
+        panels: panel_rects,
+    }
 }
 
 fn attached_panel_width(content: RECT) -> i32 {
@@ -1547,6 +1570,17 @@ fn create_hidden_window(webtag: &WebTag) -> StdResult<HWND> {
                     );
                 }
             }
+        } else if msg == WindowsAndMessaging::WM_NCCALCSIZE {
+            return LRESULT(0);
+        } else if msg == WindowsAndMessaging::WM_NCHITTEST {
+            let raw = unsafe {
+                WindowsAndMessaging::GetWindowLongPtrW(hwnd, WindowsAndMessaging::GWLP_USERDATA)
+            } as *mut WindowUserData;
+            if !raw.is_null() {
+                let result =
+                    handle_window_frame_hit_test(hwnd, unsafe { &(*raw).webtag_key }, lparam);
+                return LRESULT(result as isize);
+            }
         } else if msg == WindowsAndMessaging::WM_ERASEBKGND {
             return LRESULT(1);
         } else if msg == WindowsAndMessaging::WM_SIZE || msg == WindowsAndMessaging::WM_MOVE {
@@ -1625,11 +1659,18 @@ fn create_hidden_window(webtag: &WebTag) -> StdResult<HWND> {
         });
         let user_data_ptr = Box::into_raw(user_data);
 
+        let window_style = WINDOW_STYLE(
+            WindowsAndMessaging::WS_POPUP.0
+                | WindowsAndMessaging::WS_THICKFRAME.0
+                | WindowsAndMessaging::WS_SYSMENU.0
+                | WindowsAndMessaging::WS_MINIMIZEBOX.0
+                | WindowsAndMessaging::WS_MAXIMIZEBOX.0,
+        );
         let result = WindowsAndMessaging::CreateWindowExW(
             WINDOW_EX_STYLE::default(),
             w!("LingXiaHiddenWebViewHost"),
             w!("LingXiaHiddenWebViewHost"),
-            WINDOW_STYLE(WS_OVERLAPPEDWINDOW.0),
+            window_style,
             WindowsAndMessaging::CW_USEDEFAULT,
             WindowsAndMessaging::CW_USEDEFAULT,
             1024,
@@ -1664,6 +1705,7 @@ fn create_hidden_window(webtag: &WebTag) -> StdResult<HWND> {
 struct ChromeRects {
     content: RECT,
     panel: RECT,
+    top_bar: RECT,
     navigation_bar: Option<RECT>,
     tab_bar: Option<RECT>,
 }
@@ -1674,6 +1716,8 @@ fn compute_content_rect(client: RECT, layout: &WindowsWindowLayout) -> RECT {
 
 fn compute_chrome_rects(client: RECT, layout: &WindowsWindowLayout) -> ChromeRects {
     let mut content = client;
+    let mut top_bar_left = client.left;
+    let mut top_bar_right = client.right;
     let tab_bar = layout
         .tab_bar
         .as_ref()
@@ -1689,7 +1733,9 @@ fn compute_chrome_rects(client: RECT, layout: &WindowsWindowLayout) -> ChromeRec
                     bottom: content.bottom,
                 };
                 content.left = right + ARC_PANEL_PADDING;
-                content.top += ARC_PANEL_PADDING;
+                top_bar_left = content.left;
+                top_bar_right = content.right;
+                content.top = content.top + SHELL_TOP_BAR_HEIGHT + ARC_PANEL_PADDING;
                 content.right -= ARC_PANEL_PADDING;
                 content.bottom -= ARC_PANEL_PADDING;
                 rect
@@ -1704,7 +1750,9 @@ fn compute_chrome_rects(client: RECT, layout: &WindowsWindowLayout) -> ChromeRec
                     bottom: content.bottom,
                 };
                 content.right = left - ARC_PANEL_PADDING;
-                content.top += ARC_PANEL_PADDING;
+                top_bar_left = content.left + ARC_PANEL_PADDING;
+                top_bar_right = content.right;
+                content.top = content.top + SHELL_TOP_BAR_HEIGHT + ARC_PANEL_PADDING;
                 content.left += ARC_PANEL_PADDING;
                 content.bottom -= ARC_PANEL_PADDING;
                 rect
@@ -1722,30 +1770,62 @@ fn compute_chrome_rects(client: RECT, layout: &WindowsWindowLayout) -> ChromeRec
             }
         });
 
+    if !matches!(
+        layout.tab_bar.as_ref().map(|tabbar| tabbar.position),
+        Some(WindowsTabBarPosition::Left | WindowsTabBarPosition::Right)
+    ) {
+        content.top += SHELL_TOP_BAR_HEIGHT;
+        top_bar_left = content.left;
+        top_bar_right = content.right;
+    }
+
     content = normalize_rect(content);
     let panel = content;
+    let top_bar = normalize_rect(RECT {
+        left: top_bar_left,
+        top: client.top,
+        right: top_bar_right,
+        bottom: (client.top + SHELL_TOP_BAR_HEIGHT).min(client.bottom),
+    });
 
     let navigation_bar = layout
         .navigation_bar
         .as_ref()
         .filter(|navbar| navbar.visible && navbar.height > 0)
-        .map(|navbar| {
-            let bottom = (content.top + navbar.height).min(content.bottom);
-            content.top = bottom;
-            RECT {
-                left: content.left,
-                top: panel.top,
-                right: content.right,
-                bottom,
-            }
-        });
+        .map(|_| top_bar);
 
     ChromeRects {
         content: normalize_rect(content),
         panel: normalize_rect(panel),
+        top_bar,
         navigation_bar: navigation_bar.map(normalize_rect),
         tab_bar: tab_bar.map(normalize_rect),
     }
+}
+
+fn chrome_rects_for_window(
+    webtag_key: &str,
+    client: RECT,
+    layout: &WindowsWindowLayout,
+) -> ChromeRects {
+    let mut rects = compute_chrome_rects(client, layout);
+    let has_navigation_bar = rects.navigation_bar.is_some();
+    let is_shell_host = window_attachment(webtag_key)
+        .is_some_and(|attachment| matches!(attachment.kind, WindowAttachmentKind::MainHost));
+    if has_navigation_bar && is_shell_host {
+        let group_key = layout_group_key_for_webtag(webtag_key);
+        let panels = group_panels(&group_key);
+        if !panels.is_empty() {
+            let attached = attached_group_rects_from_layout(client, layout, panels);
+            rects.navigation_bar = Some(normalize_rect(RECT {
+                left: attached.main.left,
+                top: rects.top_bar.top,
+                right: attached.main.right,
+                bottom: rects.top_bar.bottom,
+            }));
+        }
+    }
+    rects
 }
 
 fn normalize_rect(mut rect: RECT) -> RECT {
@@ -1777,6 +1857,76 @@ fn lparam_to_point(lparam: LPARAM) -> (i32, i32) {
     (x, y)
 }
 
+fn lparam_screen_to_client(hwnd: HWND, lparam: LPARAM) -> (i32, i32) {
+    let (x, y) = lparam_to_point(lparam);
+    let mut point = POINT { x, y };
+    unsafe {
+        let _ = ScreenToClient(hwnd, &mut point);
+    }
+    (point.x, point.y)
+}
+
+fn handle_window_frame_hit_test(hwnd: HWND, webtag_key: &str, lparam: LPARAM) -> u32 {
+    if !window_draws_shell_chrome(webtag_key) {
+        return WindowsAndMessaging::HTCLIENT;
+    }
+
+    let mut client = RECT::default();
+    unsafe {
+        let _ = WindowsAndMessaging::GetClientRect(hwnd, &mut client);
+    }
+    let point = lparam_screen_to_client(hwnd, lparam);
+    if let Some(hit) = window_resize_hit_test(hwnd, client, point) {
+        return hit;
+    }
+
+    if window_frame_button_at(client, point).is_some() {
+        return WindowsAndMessaging::HTCLIENT;
+    }
+
+    let layout = current_window_layout(webtag_key);
+    let rects = chrome_rects_for_window(webtag_key, client, &layout);
+    if navigation_button_at(&layout, &rects, point) {
+        return WindowsAndMessaging::HTCLIENT;
+    }
+    if rect_contains(&rects.top_bar, point) {
+        return WindowsAndMessaging::HTCAPTION;
+    }
+
+    WindowsAndMessaging::HTCLIENT
+}
+
+fn window_resize_hit_test(hwnd: HWND, client: RECT, point: (i32, i32)) -> Option<u32> {
+    if unsafe { WindowsAndMessaging::IsZoomed(hwnd).as_bool() } {
+        return None;
+    }
+    let border = resize_border_thickness();
+    let left = point.0 >= client.left && point.0 < client.left + border;
+    let right = point.0 < client.right && point.0 >= client.right - border;
+    let top = point.1 >= client.top && point.1 < client.top + border;
+    let bottom = point.1 < client.bottom && point.1 >= client.bottom - border;
+
+    match (left, right, top, bottom) {
+        (true, _, true, _) => Some(WindowsAndMessaging::HTTOPLEFT),
+        (_, true, true, _) => Some(WindowsAndMessaging::HTTOPRIGHT),
+        (true, _, _, true) => Some(WindowsAndMessaging::HTBOTTOMLEFT),
+        (_, true, _, true) => Some(WindowsAndMessaging::HTBOTTOMRIGHT),
+        (_, _, true, _) => Some(WindowsAndMessaging::HTTOP),
+        (_, _, _, true) => Some(WindowsAndMessaging::HTBOTTOM),
+        (true, _, _, _) => Some(WindowsAndMessaging::HTLEFT),
+        (_, true, _, _) => Some(WindowsAndMessaging::HTRIGHT),
+        _ => None,
+    }
+}
+
+fn resize_border_thickness() -> i32 {
+    unsafe {
+        let frame = WindowsAndMessaging::GetSystemMetrics(WindowsAndMessaging::SM_CXFRAME);
+        let padded = WindowsAndMessaging::GetSystemMetrics(WindowsAndMessaging::SM_CXPADDEDBORDER);
+        (frame + padded).max(6)
+    }
+}
+
 fn paint_window_chrome(hwnd: HWND) {
     let mut paint = PAINTSTRUCT::default();
     unsafe {
@@ -1800,9 +1950,10 @@ fn draw_window_chrome(hwnd: HWND, hdc: HDC) {
     unsafe {
         let _ = WindowsAndMessaging::GetClientRect(hwnd, &mut client);
     }
-    let rects = compute_chrome_rects(client, &layout);
+    let rects = chrome_rects_for_window(&webtag_key, client, &layout);
 
     fill_rect(hdc, client, ARC_WINDOW_BACKGROUND);
+    draw_shell_top_bar(hdc, hwnd, &rects, &layout);
     if rect_width(&rects.panel) > 0 && rect_height(&rects.panel) > 0 {
         fill_round_rect(hdc, rects.panel, ARC_PANEL_BACKGROUND, ARC_PANEL_RADIUS);
     }
@@ -1814,6 +1965,7 @@ fn draw_window_chrome(hwnd: HWND, hdc: HDC) {
         draw_tab_bar(hdc, tabbar_rect, tabbar);
     }
     draw_panel_activators(hdc, client, &rects, &layout);
+    draw_window_frame_buttons(hdc, hwnd, client);
 }
 
 fn window_draws_shell_chrome(webtag_key: &str) -> bool {
@@ -1834,15 +1986,20 @@ fn window_webtag_key(hwnd: HWND) -> Option<String> {
     }
 }
 
+fn draw_shell_top_bar(hdc: HDC, _hwnd: HWND, rects: &ChromeRects, _layout: &WindowsWindowLayout) {
+    fill_rect(hdc, rects.top_bar, ARC_WINDOW_BACKGROUND);
+    draw_bottom_border(hdc, rects.top_bar, 0xd6d9de);
+}
+
 fn draw_navigation_bar(hdc: HDC, rect: RECT, navbar: &WindowsNavigationBarLayout) {
     fill_rect(hdc, rect, navbar.background_color);
     draw_bottom_border(hdc, rect, 0xe6e6e6);
 
     let text_color = navbar.text_color;
     let mut title_rect = RECT {
-        left: rect.left + 96,
+        left: rect.left + window_frame_buttons_width(),
         top: rect.top,
-        right: rect.right - 96,
+        right: rect.right - window_frame_buttons_width(),
         bottom: rect.bottom,
     };
 
@@ -1862,6 +2019,93 @@ fn draw_navigation_bar(hdc: HDC, rect: RECT, navbar: &WindowsNavigationBarLayout
     }
 }
 
+fn draw_window_frame_buttons(hdc: HDC, hwnd: HWND, client: RECT) {
+    let text_color = 0x1f2937;
+    for (button, rect) in window_frame_button_rects(client) {
+        match button {
+            WindowFrameButton::Minimize => {
+                let y = rect.top + rect_height(&rect) / 2 + 5;
+                draw_line(
+                    hdc,
+                    rect.left + (rect_width(&rect) - WINDOW_BUTTON_ICON_SIZE) / 2,
+                    y,
+                    rect.left + (rect_width(&rect) + WINDOW_BUTTON_ICON_SIZE) / 2,
+                    y,
+                    text_color,
+                );
+            }
+            WindowFrameButton::Maximize => {
+                let size = WINDOW_BUTTON_ICON_SIZE;
+                let left = rect.left + (rect_width(&rect) - size) / 2;
+                let top = rect.top + (rect_height(&rect) - size) / 2;
+                if unsafe { WindowsAndMessaging::IsZoomed(hwnd).as_bool() } {
+                    draw_rect_outline(
+                        hdc,
+                        RECT {
+                            left: left + 3,
+                            top,
+                            right: left + 3 + size - 2,
+                            bottom: top + size - 2,
+                        },
+                        text_color,
+                    );
+                    draw_rect_outline(
+                        hdc,
+                        RECT {
+                            left,
+                            top: top + 3,
+                            right: left + size - 2,
+                            bottom: top + 3 + size - 2,
+                        },
+                        text_color,
+                    );
+                } else {
+                    draw_rect_outline(
+                        hdc,
+                        RECT {
+                            left,
+                            top,
+                            right: left + size,
+                            bottom: top + size,
+                        },
+                        text_color,
+                    );
+                }
+            }
+            WindowFrameButton::Close => {
+                let size = WINDOW_BUTTON_ICON_SIZE;
+                let left = rect.left + (rect_width(&rect) - size) / 2;
+                let top = rect.top + (rect_height(&rect) - size) / 2;
+                draw_line(hdc, left, top, left + size, top + size, text_color);
+                draw_line(hdc, left + size, top, left, top + size, text_color);
+            }
+        }
+    }
+}
+
+fn draw_rect_outline(hdc: HDC, rect: RECT, rgb: u32) {
+    draw_line(hdc, rect.left, rect.top, rect.right, rect.top, rgb);
+    draw_line(hdc, rect.right, rect.top, rect.right, rect.bottom, rgb);
+    draw_line(hdc, rect.right, rect.bottom, rect.left, rect.bottom, rgb);
+    draw_line(hdc, rect.left, rect.bottom, rect.left, rect.top, rgb);
+}
+
+fn draw_line(hdc: HDC, x1: i32, y1: i32, x2: i32, y2: i32, rgb: u32) {
+    unsafe {
+        let pen = CreatePen(PS_SOLID, 1, rgb_to_colorref(rgb));
+        if pen.is_invalid() {
+            return;
+        }
+        let old_pen = SelectObject(hdc, HGDIOBJ(pen.0));
+        let _ = MoveToEx(hdc, x1, y1, None);
+        let _ = LineTo(hdc, x2, y2);
+        if !old_pen.is_invalid() {
+            let _ = SelectObject(hdc, old_pen);
+        }
+        let _ = DeleteObject(HGDIOBJ(pen.0));
+    }
+}
+
 fn nav_button_rect(navbar: RECT, index: i32) -> RECT {
     let width = 44;
     RECT {
@@ -1869,6 +2113,86 @@ fn nav_button_rect(navbar: RECT, index: i32) -> RECT {
         top: navbar.top,
         right: navbar.left + 8 + (index + 1) * width,
         bottom: navbar.bottom,
+    }
+}
+
+fn navigation_button_at(
+    layout: &WindowsWindowLayout,
+    rects: &ChromeRects,
+    point: (i32, i32),
+) -> bool {
+    let (Some(navbar), Some(navbar_rect)) = (&layout.navigation_bar, rects.navigation_bar) else {
+        return false;
+    };
+    if navbar.show_back_button && rect_contains(&nav_button_rect(navbar_rect, 0), point) {
+        return true;
+    }
+    let home_index = if navbar.show_back_button { 1 } else { 0 };
+    navbar.show_home_button && rect_contains(&nav_button_rect(navbar_rect, home_index), point)
+}
+
+fn window_frame_buttons_width() -> i32 {
+    WINDOW_BUTTON_WIDTH * 3
+}
+
+fn window_frame_button_rects(client: RECT) -> [(WindowFrameButton, RECT); 3] {
+    let top = client.top;
+    let bottom = (client.top + SHELL_TOP_BAR_HEIGHT).min(client.bottom);
+    let close = RECT {
+        left: client.right - WINDOW_BUTTON_WIDTH,
+        top,
+        right: client.right,
+        bottom,
+    };
+    let maximize = RECT {
+        left: close.left - WINDOW_BUTTON_WIDTH,
+        top,
+        right: close.left,
+        bottom,
+    };
+    let minimize = RECT {
+        left: maximize.left - WINDOW_BUTTON_WIDTH,
+        top,
+        right: maximize.left,
+        bottom,
+    };
+    [
+        (WindowFrameButton::Minimize, normalize_rect(minimize)),
+        (WindowFrameButton::Maximize, normalize_rect(maximize)),
+        (WindowFrameButton::Close, normalize_rect(close)),
+    ]
+}
+
+fn window_frame_button_at(client: RECT, point: (i32, i32)) -> Option<WindowFrameButton> {
+    window_frame_button_rects(client)
+        .into_iter()
+        .find(|(_, rect)| rect_contains(rect, point))
+        .map(|(button, _)| button)
+}
+
+fn handle_window_frame_button(hwnd: HWND, button: WindowFrameButton) {
+    unsafe {
+        match button {
+            WindowFrameButton::Minimize => {
+                let _ = WindowsAndMessaging::ShowWindow(hwnd, WindowsAndMessaging::SW_MINIMIZE);
+            }
+            WindowFrameButton::Maximize => {
+                let cmd = if WindowsAndMessaging::IsZoomed(hwnd).as_bool() {
+                    WindowsAndMessaging::SW_RESTORE
+                } else {
+                    WindowsAndMessaging::SW_MAXIMIZE
+                };
+                let _ = WindowsAndMessaging::ShowWindow(hwnd, cmd);
+            }
+            WindowFrameButton::Close => {
+                let _ = WindowsAndMessaging::SendMessageW(
+                    hwnd,
+                    WindowsAndMessaging::WM_CLOSE,
+                    None,
+                    None,
+                );
+            }
+        }
     }
 }
 
@@ -2135,7 +2459,12 @@ fn handle_window_chrome_click(hwnd: HWND, webtag_key: &str, point: (i32, i32)) -
     unsafe {
         let _ = WindowsAndMessaging::GetClientRect(hwnd, &mut client);
     }
-    let rects = compute_chrome_rects(client, &layout);
+    let rects = chrome_rects_for_window(webtag_key, client, &layout);
+
+    if let Some(button) = window_frame_button_at(client, point) {
+        handle_window_frame_button(hwnd, button);
+        return true;
+    }
 
     if let (Some(navbar), Some(navbar_rect)) = (&layout.navigation_bar, rects.navigation_bar)
         && rect_contains(&navbar_rect, point)
@@ -2198,7 +2527,6 @@ fn draw_panel_activators(
             .iter()
             .find(|item| item.id == panel_id)
             .is_some_and(|item| item.active);
-        let fill = if active { 0x111827 } else { 0xffffff };
         let activator = layout
             .panel_activators
             .iter()
@@ -2206,10 +2534,21 @@ fn draw_panel_activators(
         let text = activator
             .map(|item| panel_activator_label(&item.label))
             .unwrap_or_else(|| panel_activator_label(&panel_id));
-        let text_color = if active { 0xffffff } else { 0x667085 };
+        let text_color = if active { 0x1677ff } else { 0x667085 };
 
         if active {
-            fill_round_rect(hdc, rect, fill, 6);
+            fill_round_rect(hdc, rect, 0xffffff, 6);
+            fill_round_rect(
+                hdc,
+                RECT {
+                    left: rect.left + 3,
+                    top: rect.bottom - 5,
+                    right: rect.right - 3,
+                    bottom: rect.bottom - 3,
+                },
+                0x1677ff,
+                2,
+            );
         }
         let icon_rect = centered_icon_rect(rect, PANEL_ACTIVATOR_ICON_SIZE);
         let icon_drawn = activator

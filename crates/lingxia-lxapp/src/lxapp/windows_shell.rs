@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use lingxia_platform::traits::app_runtime::LxAppOpenMode;
+use lingxia_platform::traits::app_runtime::{AppRuntime, LxAppOpenMode};
 use lingxia_webview::WebTag;
 use lingxia_webview::platform::windows::{
     WindowsChromeEvent, WindowsNavigationBarLayout, WindowsPanelActivatorLayout,
@@ -14,7 +14,7 @@ use super::{LxApp, try_get};
 use crate::delegate::{LxAppDelegate, LxAppUiEventType};
 use crate::{LxAppStartupOptions, ReleaseType, error, warn};
 
-const DEFAULT_NAV_BAR_HEIGHT: i32 = 48;
+const DEFAULT_NAV_BAR_HEIGHT: i32 = 38;
 const DEFAULT_SIDEBAR_WIDTH: i32 = 180;
 
 pub(crate) fn install_update_handler() {
@@ -162,6 +162,20 @@ fn handle_windows_panel_activator(appid: &str, panel_id: String) {
             .with_path(panel_id);
         return;
     };
+
+    if is_panel_visible(&panel_id) {
+        if let Some(panel) = try_get(&panel_appid)
+            && let Err(err) = panel
+                .runtime
+                .hide_lxapp(panel_appid.clone(), panel.session_id())
+        {
+            error!("Failed to close Windows panel lxapp: {}", err).with_appid(panel_appid);
+        }
+        if let Some(owner) = try_get(appid) {
+            owner.sync_windows_shell_layout();
+        }
+        return;
+    }
 
     let owner_appid = appid.to_string();
     crate::executor::spawn(async move {
