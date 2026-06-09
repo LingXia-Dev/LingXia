@@ -1740,11 +1740,32 @@ impl LxApp {
         // Open UI
         self.runtime.show_lxapp(
             self.appid.clone(),
-            startup_options.path,
+            startup_options.path.clone(),
             self.session.id,
             startup_options.open_mode,
-            startup_options.panel_id,
+            startup_options.panel_id.clone(),
         )?;
+
+        #[cfg(target_os = "windows")]
+        {
+            let surface = match startup_options.open_mode {
+                lingxia_platform::traits::app_runtime::LxAppOpenMode::Panel => {
+                    PresentationKind::Panel
+                }
+                lingxia_platform::traits::app_runtime::LxAppOpenMode::Normal => {
+                    PresentationKind::Window
+                }
+            };
+            let query = (!startup_options.query.is_empty())
+                .then(|| PageQueryInput::Raw(startup_options.query.clone()));
+            self.create_page_instance(
+                PageOwner::Scene(SceneId("system".to_string())),
+                PageTarget::Path(startup_options.path),
+                query,
+                surface,
+                None,
+            )?;
+        }
         Ok(())
     }
 

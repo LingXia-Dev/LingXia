@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone)]
 pub struct WindowsApp {
@@ -8,6 +8,7 @@ pub struct WindowsApp {
     pub locale: String,
     pub app_identifier: String,
     pub product_name: String,
+    pub icon_path: Option<PathBuf>,
 }
 
 impl WindowsApp {
@@ -23,6 +24,7 @@ impl WindowsApp {
             locale: default_locale(),
             app_identifier: "app.lingxia.windows".to_string(),
             product_name: "LingXia".to_string(),
+            icon_path: None,
         }
     }
 
@@ -51,6 +53,11 @@ impl WindowsApp {
         self.product_name = product_name.into();
         self
     }
+
+    pub fn with_icon_path(mut self, icon_path: impl Into<PathBuf>) -> Self {
+        self.icon_path = Some(icon_path.into());
+        self
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -59,12 +66,18 @@ pub enum WindowsHostError {
     Platform(#[from] lingxia_platform::PlatformError),
     #[error("LingXia runtime did not return a home app id")]
     MissingHomeApp,
+    #[error("failed to open home lxapp: {0}")]
+    OpenHomeApp(String),
+    #[error("failed to set Windows app icon from {path:?}: {message}")]
+    AppIcon { path: PathBuf, message: String },
 }
 
 pub type Result<T> = std::result::Result<T, WindowsHostError>;
 
 #[cfg(target_os = "windows")]
 pub fn init(app: WindowsApp) -> Result<String> {
+    let asset_dir = app.asset_dir.clone();
+    let icon_path = app.icon_path.clone();
     let platform = lingxia::windows::Platform::with_assets(
         app.data_dir,
         app.cache_dir,
@@ -73,7 +86,17 @@ pub fn init(app: WindowsApp) -> Result<String> {
         app.app_identifier,
         app.product_name,
     )?;
-    lingxia::windows::init(platform).ok_or(WindowsHostError::MissingHomeApp)
+    let home_app_id = lingxia::windows::init(platform).ok_or(WindowsHostError::MissingHomeApp)?;
+    if let Some(icon_path) = resolve_app_icon_path(&asset_dir, &home_app_id, icon_path) {
+        lingxia::windows::set_app_icon_from_path(&icon_path).map_err(|message| {
+            WindowsHostError::AppIcon {
+                path: icon_path,
+                message,
+            }
+        })?;
+    }
+    lingxia::windows::open_home_app(&home_app_id).map_err(WindowsHostError::OpenHomeApp)?;
+    Ok(home_app_id)
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -136,6 +159,26 @@ fn default_asset_dir() -> PathBuf {
         .and_then(|exe| exe.parent().map(PathBuf::from))
         .map(|dir| dir.join("assets"))
         .unwrap_or_else(|| PathBuf::from("assets"))
+}
+
+fn resolve_app_icon_path(
+    asset_dir: &Path,
+    home_app_id: &str,
+    explicit: Option<PathBuf>,
+) -> Option<PathBuf> {
+    if explicit.is_some() {
+        return explicit;
+    }
+
+    [
+        asset_dir
+            .join(home_app_id)
+            .join("public")
+            .join("AppIcon.png"),
+        asset_dir.join("AppIcon.png"),
+    ]
+    .into_iter()
+    .find(|path| path.is_file())
 }
 
 fn default_locale() -> String {

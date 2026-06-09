@@ -252,12 +252,15 @@ fn build_bridge_config_script(bridge_nonce: Option<&str>) -> String {
     };
     #[cfg(target_os = "android")]
     let bridge_os = "Android";
+    #[cfg(target_os = "windows")]
+    let bridge_os = "Windows";
     #[cfg(all(target_os = "linux", target_env = "ohos"))]
     let bridge_os = "Harmony";
     #[cfg(not(any(
         target_os = "ios",
         target_os = "macos",
         target_os = "android",
+        target_os = "windows",
         all(target_os = "linux", target_env = "ohos"),
     )))]
     let bridge_os = "unknown";

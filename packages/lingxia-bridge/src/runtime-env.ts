@@ -26,14 +26,18 @@ export function isMacOS(): boolean {
   return BRIDGE_CONFIG.os === 'macOS';
 }
 
+export function isWindows(): boolean {
+  return BRIDGE_CONFIG.os === 'Windows';
+}
+
 export function isDesktop(): boolean {
-  return isMacOS();
+  return isMacOS() || isWindows();
 }
 
 export function getCommunicationMethod(): CommunicationMethod {
   if (BRIDGE_CONFIG.os === 'iOS' || BRIDGE_CONFIG.os === 'macOS') return 'webkit';
   if (BRIDGE_CONFIG.os === 'Harmony') return 'messageport';
-  if (BRIDGE_CONFIG.os === 'Android') {
+  if (BRIDGE_CONFIG.os === 'Android' || BRIDGE_CONFIG.os === 'Windows') {
     if (window.LingXiaProxy?.supportsMessagePort?.()) return 'messageport';
     return 'jsinterface';
   }

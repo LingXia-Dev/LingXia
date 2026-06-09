@@ -10,7 +10,9 @@ use crate::{
 use async_trait::async_trait;
 use http::{Request, StatusCode};
 use std::collections::HashMap;
+use std::ffi::c_void;
 use std::io::Read;
+use std::path::Path;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::thread::{self, JoinHandle};
@@ -18,6 +20,7 @@ use webview2_com::{Microsoft::Web::WebView2::Win32::*, *};
 use windows::{
     Win32::{
         Foundation::{E_POINTER, HINSTANCE, HWND, LPARAM, LRESULT, RECT, WPARAM},
+        Graphics::Gdi::{CreateBitmap, DeleteObject, HGDIOBJ},
         System::{
             Com::{COINIT_APARTMENTTHREADED, IStream, STREAM_SEEK_SET},
             LibraryLoader, Threading,
@@ -25,7 +28,8 @@ use windows::{
         UI::{
             Shell::SHCreateMemStream,
             WindowsAndMessaging::{
-                self, CREATESTRUCTW, MSG, WINDOW_EX_STYLE, WINDOW_STYLE, WM_APP, WM_NCCREATE,
+                self, CREATESTRUCTW, GCLP_HICON, GCLP_HICONSM, HICON, ICON_BIG, ICON_SMALL,
+                ICONINFO, MSG, WINDOW_EX_STYLE, WINDOW_STYLE, WM_APP, WM_NCCREATE, WM_SETICON,
                 WNDCLASSW, WS_OVERLAPPEDWINDOW,
             },
         },
@@ -108,7 +112,14 @@ struct WindowUserData {
     webtag_key: String,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct AppIconHandles {
+    small: isize,
+    large: isize,
+}
+
 static WINDOW_CLOSE_HANDLERS: OnceLock<Mutex<HashMap<String, CloseHandler>>> = OnceLock::new();
+static APP_ICON_HANDLES: OnceLock<Mutex<Option<AppIconHandles>>> = OnceLock::new();
 
 impl std::fmt::Debug for WebViewInner {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -135,6 +146,106 @@ pub fn set_webview_close_handler(webtag: &WebTag, handler: CloseHandler) {
     let handlers = WINDOW_CLOSE_HANDLERS.get_or_init(|| Mutex::new(HashMap::new()));
     if let Ok(mut handlers) = handlers.lock() {
         handlers.insert(webtag.key().to_string(), handler);
+    }
+}
+
+pub fn set_app_icon_from_path(path: &Path) -> StdResult<()> {
+    let handles = AppIconHandles {
+        small: create_icon_from_png(path, 16)?,
+        large: create_icon_from_png(path, 32)?,
+    };
+    let icon_state = APP_ICON_HANDLES.get_or_init(|| Mutex::new(None));
+    let mut icon_state = icon_state
+        .lock()
+        .map_err(|_| WebViewError::WebView("Windows app icon state is poisoned".to_string()))?;
+    *icon_state = Some(handles);
+    Ok(())
+}
+
+fn current_app_icon_handles() -> Option<AppIconHandles> {
+    APP_ICON_HANDLES
+        .get()
+        .and_then(|icons| icons.lock().ok().and_then(|icons| *icons))
+}
+
+fn create_icon_from_png(path: &Path, size: u32) -> StdResult<isize> {
+    let image = image::open(path)
+        .map_err(|err| {
+            WebViewError::WebView(format!(
+                "Failed to load Windows app icon {}: {}",
+                path.display(),
+                err
+            ))
+        })?
+        .resize_exact(size, size, image::imageops::FilterType::Lanczos3)
+        .into_rgba8();
+
+    let mut bgra = Vec::with_capacity(image.len());
+    for pixel in image.pixels() {
+        let [r, g, b, a] = pixel.0;
+        bgra.extend_from_slice(&[b, g, r, a]);
+    }
+
+    unsafe {
+        let width = size as i32;
+        let height = size as i32;
+        let color = CreateBitmap(width, height, 1, 32, Some(bgra.as_ptr().cast()));
+        if color.is_invalid() {
+            return Err(WebViewError::WebView(format!(
+                "Failed to create Windows app icon color bitmap from {}",
+                path.display()
+            )));
+        }
+
+        let mask = CreateBitmap(width, height, 1, 1, None);
+        if mask.is_invalid() {
+            let _ = DeleteObject(HGDIOBJ(color.0));
+            return Err(WebViewError::WebView(format!(
+                "Failed to create Windows app icon mask bitmap from {}",
+                path.display()
+            )));
+        }
+
+        let info = ICONINFO {
+            fIcon: BOOL(1),
+            xHotspot: 0,
+            yHotspot: 0,
+            hbmMask: mask,
+            hbmColor: color,
+        };
+        let icon = WindowsAndMessaging::CreateIconIndirect(&info).map_err(|err| {
+            WebViewError::WebView(format!(
+                "Failed to create Windows app icon from {}: {}",
+                path.display(),
+                err
+            ))
+        })?;
+        let _ = DeleteObject(HGDIOBJ(color.0));
+        let _ = DeleteObject(HGDIOBJ(mask.0));
+        Ok(icon.0 as isize)
+    }
+}
+
+fn hicon(handle: isize) -> HICON {
+    HICON(handle as *mut c_void)
+}
+
+fn apply_window_icons(hwnd: HWND, icons: AppIconHandles) {
+    unsafe {
+        let _ = WindowsAndMessaging::SendMessageW(
+            hwnd,
+            WM_SETICON,
+            Some(WPARAM(ICON_SMALL as usize)),
+            Some(LPARAM(icons.small)),
+        );
+        let _ = WindowsAndMessaging::SendMessageW(
+            hwnd,
+            WM_SETICON,
+            Some(WPARAM(ICON_BIG as usize)),
+            Some(LPARAM(icons.large)),
+        );
+        let _ = WindowsAndMessaging::SetClassLongPtrW(hwnd, GCLP_HICONSM, icons.small);
+        let _ = WindowsAndMessaging::SetClassLongPtrW(hwnd, GCLP_HICON, icons.large);
     }
 }
 
@@ -535,8 +646,12 @@ fn create_hidden_window(webtag: &WebTag) -> StdResult<HWND> {
         unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
     }
 
+    let app_icons = current_app_icon_handles();
     let class = WNDCLASSW {
         lpfnWndProc: Some(window_proc),
+        hIcon: app_icons
+            .map(|icons| hicon(icons.large))
+            .unwrap_or_default(),
         lpszClassName: w!("LingXiaHiddenWebViewHost"),
         ..Default::default()
     };
@@ -566,7 +681,12 @@ fn create_hidden_window(webtag: &WebTag) -> StdResult<HWND> {
         );
 
         match result {
-            Ok(hwnd) => Ok(hwnd),
+            Ok(hwnd) => {
+                if let Some(icons) = app_icons {
+                    apply_window_icons(hwnd, icons);
+                }
+                Ok(hwnd)
+            }
             Err(err) => {
                 let _ = Box::from_raw(user_data_ptr);
                 Err(WebViewError::WebView(format!(
@@ -934,7 +1054,9 @@ fn register_event_handlers(
                     }
 
                     if let Some(delegate) = find_webview_delegate(&message_tag) {
-                        delegate.handle_post_message(payload);
+                        let _ = thread::Builder::new()
+                            .name(format!("lingxia-web-message-{}", message_tag.key()))
+                            .spawn(move || delegate.handle_post_message(payload));
                     }
                     Ok(())
                 })),

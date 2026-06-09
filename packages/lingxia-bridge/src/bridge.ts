@@ -32,6 +32,7 @@ import {
   isHarmony,
   isIOS,
   isMacOS,
+  isWindows,
   isDesktop,
 } from "./runtime-env";
 
@@ -1753,6 +1754,7 @@ export const LingXiaBridge: LingXiaBridgeInterface = {
     isIOS,
     isAndroid,
     isMacOS,
+    isWindows,
     isDesktop,
     getOS: getPlatformOS,
   },

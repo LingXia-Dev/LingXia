@@ -183,7 +183,8 @@ pub mod platform {
     #[cfg(target_os = "windows")]
     pub mod windows {
         pub use crate::windows::{
-            hide_webview_window, set_webview_close_handler, show_webview_window,
+            hide_webview_window, set_app_icon_from_path, set_webview_close_handler,
+            show_webview_window,
         };
     }
 }

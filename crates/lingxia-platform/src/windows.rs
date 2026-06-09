@@ -28,11 +28,13 @@ use crate::traits::media_runtime::{
     ImageInfo, MediaRuntime, VideoInfo, VideoThumbnail,
 };
 use crate::traits::pull_to_refresh::PullToRefresh;
+use crate::traits::screenshot::{AppScreenshot, WindowInfo};
 use crate::traits::share::{ShareRequest, ShareResult, ShareService};
 use crate::traits::stream_decoder::{VideoStreamDecoderHandle, VideoStreamDecoderManager};
 use crate::traits::ui::{ModalOptions, ToastOptions, UIUpdate, UserFeedback};
 use crate::traits::video_player::{VideoPlayerHandle, VideoPlayerManager};
 use crate::{AssetFileEntry, DeviceInfo, ScreenInfo};
+use async_trait::async_trait;
 
 const DEFAULT_APP_IDENTIFIER: &str = "app.lingxia.windows";
 
@@ -214,7 +216,13 @@ impl crate::traits::secure_store::SecureStore for Platform {}
 impl crate::traits::ui::SurfacePresenter for Platform {}
 impl crate::traits::update::UpdateService for Platform {}
 impl crate::traits::wifi::Wifi for Platform {}
-impl crate::traits::screenshot::AppScreenshot for Platform {}
+
+#[async_trait]
+impl AppScreenshot for Platform {
+    async fn list_app_windows(&self) -> Result<Vec<WindowInfo>, PlatformError> {
+        list_app_windows()
+    }
+}
 
 impl FileService for Platform {
     fn review_file(
@@ -562,6 +570,96 @@ fn install_close_handler(webtag: &WebTag) {
             let _ = lingxia_webview::platform::windows::hide_webview_window(&webtag_for_close);
         }),
     );
+}
+
+fn list_app_windows() -> Result<Vec<WindowInfo>, PlatformError> {
+    use windows::Win32::Foundation::{HWND, LPARAM, RECT};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        EnumWindows, GetForegroundWindow, GetWindowRect, GetWindowThreadProcessId, IsIconic,
+        IsWindowVisible,
+    };
+    use windows::core::BOOL;
+
+    struct EnumState {
+        pid: u32,
+        foreground: HWND,
+        windows: Vec<WindowInfo>,
+    }
+
+    unsafe extern "system" fn enum_window(hwnd: HWND, lparam: LPARAM) -> BOOL {
+        let state = unsafe { &mut *(lparam.0 as *mut EnumState) };
+        let mut owner_pid = 0u32;
+        unsafe {
+            GetWindowThreadProcessId(hwnd, Some(&mut owner_pid));
+        }
+        if owner_pid != state.pid {
+            return BOOL(1);
+        }
+
+        let mut rect = RECT::default();
+        let has_rect = unsafe { GetWindowRect(hwnd, &mut rect).is_ok() };
+        let visible = unsafe { IsWindowVisible(hwnd).as_bool() && !IsIconic(hwnd).as_bool() };
+        let title = window_title(hwnd);
+        let width = if has_rect {
+            (rect.right - rect.left).max(0) as u32
+        } else {
+            0
+        };
+        let height = if has_rect {
+            (rect.bottom - rect.top).max(0) as u32
+        } else {
+            0
+        };
+
+        state.windows.push(WindowInfo {
+            id: (hwnd.0 as usize).to_string(),
+            title,
+            focused: hwnd == state.foreground,
+            main: hwnd == state.foreground,
+            visible,
+            width,
+            height,
+        });
+        BOOL(1)
+    }
+
+    let mut state = EnumState {
+        pid: std::process::id(),
+        foreground: unsafe { GetForegroundWindow() },
+        windows: Vec::new(),
+    };
+
+    unsafe {
+        EnumWindows(
+            Some(enum_window),
+            LPARAM((&mut state as *mut EnumState) as isize),
+        )
+    }
+    .map_err(|err| PlatformError::Platform(format!("EnumWindows failed: {err}")))?;
+
+    state.windows.sort_by(|a, b| {
+        b.focused
+            .cmp(&a.focused)
+            .then_with(|| b.visible.cmp(&a.visible))
+            .then_with(|| a.title.cmp(&b.title))
+            .then_with(|| a.id.cmp(&b.id))
+    });
+    Ok(state.windows)
+}
+
+fn window_title(hwnd: windows::Win32::Foundation::HWND) -> String {
+    use windows::Win32::UI::WindowsAndMessaging::{GetWindowTextLengthW, GetWindowTextW};
+
+    let len = unsafe { GetWindowTextLengthW(hwnd) };
+    if len <= 0 {
+        return String::new();
+    }
+    let mut buffer = vec![0u16; len as usize + 1];
+    let copied = unsafe { GetWindowTextW(hwnd, &mut buffer) };
+    if copied <= 0 {
+        return String::new();
+    }
+    String::from_utf16_lossy(&buffer[..copied as usize])
 }
 
 fn open_with_shell(target: &str) -> Result<(), PlatformError> {

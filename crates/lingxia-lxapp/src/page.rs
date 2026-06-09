@@ -1183,6 +1183,20 @@ impl WebViewDelegate for PageInstance {
     }
 }
 
+impl Drop for PageInstanceInner {
+    fn drop(&mut self) {
+        // Destroy WebView if it exists
+        if let Ok(mut webview) = self.webview.lock()
+            && let Some(_webview_controller) = webview.take()
+        {
+            // WebView will be automatically destroyed when controller is dropped
+            info!("WebView destroyed for page")
+                .with_appid(self.appid.clone())
+                .with_path(self.path.clone());
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1224,19 +1238,5 @@ mod tests {
     #[test]
     fn view_call_options_default_timeout_is_positive() {
         assert!(ViewCallOptions::default().timeout() > Duration::ZERO);
-    }
-}
-
-impl Drop for PageInstanceInner {
-    fn drop(&mut self) {
-        // Destroy WebView if it exists
-        if let Ok(mut webview) = self.webview.lock()
-            && let Some(_webview_controller) = webview.take()
-        {
-            // WebView will be automatically destroyed when controller is dropped
-            info!("WebView destroyed for page")
-                .with_appid(self.appid.clone())
-                .with_path(self.path.clone());
-        }
     }
 }

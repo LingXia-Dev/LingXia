@@ -114,10 +114,24 @@ pub mod harmony;
 /// Windows platform bootstrap for pure Rust host apps.
 #[cfg(target_os = "windows")]
 pub mod windows {
+    use std::path::Path;
+
     pub use lingxia_platform::Platform;
 
     pub fn init(platform: Platform) -> Option<String> {
+        crate::logging::init();
         crate::init_with_platform(platform)
+    }
+
+    pub fn open_home_app(appid: &str) -> Result<(), String> {
+        lxapp::open_lxapp(appid, lxapp::LxAppStartupOptions::new(""))
+            .map(|_| ())
+            .map_err(|err| err.to_string())
+    }
+
+    pub fn set_app_icon_from_path(path: &Path) -> Result<(), String> {
+        lingxia_webview::platform::windows::set_app_icon_from_path(path)
+            .map_err(|err| err.to_string())
     }
 }
 
