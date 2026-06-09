@@ -43,6 +43,7 @@ pub(super) enum Platform {
     Ios,
     Macos,
     Harmony,
+    Windows,
 }
 
 impl Platform {
@@ -52,6 +53,7 @@ impl Platform {
             Platform::Ios => "ios",
             Platform::Macos => "macos",
             Platform::Harmony => "harmony",
+            Platform::Windows => "windows",
         }
     }
 
@@ -61,6 +63,7 @@ impl Platform {
             "ios" => Some(Platform::Ios),
             "macos" => Some(Platform::Macos),
             "harmony" | "harmonyos" => Some(Platform::Harmony),
+            "windows" | "win" => Some(Platform::Windows),
             _ => None,
         }
     }

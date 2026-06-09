@@ -11,6 +11,7 @@ pub(crate) use clean::clean_configured_host_assets;
 use colored::Colorize;
 use destinations::{
     prepare_android_assets_root, prepare_apple_resources_root, prepare_harmony_rawfile_root,
+    prepare_windows_assets_root,
 };
 use hash::sha256_hex;
 #[cfg(test)]
@@ -195,6 +196,7 @@ pub(crate) fn prepare_configured_host_assets(
                 | platform::detector::PlatformType::Ios
                 | platform::detector::PlatformType::MacOs
                 | platform::detector::PlatformType::Harmony
+                | platform::detector::PlatformType::Windows
         )
     });
     if !needs_embedded_lxapp {
@@ -361,6 +363,21 @@ pub(crate) fn prepare_configured_host_assets(
                     &mut cache,
                 )?;
                 copy_splash_asset(config, project_root, &rawfile_root)?;
+            }
+            platform::detector::PlatformType::Windows => {
+                let assets_root =
+                    crate::platform::windows::resolve_windows_assets_dir(project_root)?;
+                prepare_windows_assets_root(
+                    &assets_root,
+                    &app_json,
+                    &app_json_hash,
+                    ui_json.as_deref(),
+                    ui_json_hash.as_deref(),
+                    &prepared_bundles,
+                    prepared_runtime_es2020.as_ref(),
+                    &mut cache,
+                )?;
+                copy_splash_asset(config, project_root, &assets_root)?;
             }
         }
     }

@@ -57,8 +57,8 @@ ohos-web-sys="0.0.1"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 base64 = { workspace = true }
-webview2-com = "0.38.0"
-windows = { version = "0.61.3", features = [
+webview2-com = "0.39.1"
+windows = { workspace = true, features = [
     "Win32_Foundation",
     "Win32_Graphics_Gdi",
     "Win32_System_Com",

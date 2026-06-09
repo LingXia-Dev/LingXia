@@ -61,27 +61,6 @@ pub struct OpenUrlRequest {
     pub target: OpenUrlTarget,
 }
 
-#[cfg(test)]
-mod tests {
-    use super::OpenUrlTarget;
-
-    #[test]
-    fn parse_supports_new_browser_tab() {
-        assert_eq!(
-            OpenUrlTarget::parse(Some("new_browser_tab")),
-            OpenUrlTarget::NewBrowserTab
-        );
-    }
-
-    #[test]
-    fn parse_unknown_falls_back_to_external() {
-        assert_eq!(
-            OpenUrlTarget::parse(Some("foobar")),
-            OpenUrlTarget::External
-        );
-    }
-}
-
 impl From<i32> for AnimationType {
     fn from(value: i32) -> Self {
         match value {
@@ -174,4 +153,25 @@ pub trait AppRuntime:
     fn get_capsule_rect(
         &self,
     ) -> impl std::future::Future<Output = Result<String, PlatformError>> + Send;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::OpenUrlTarget;
+
+    #[test]
+    fn parse_supports_new_browser_tab() {
+        assert_eq!(
+            OpenUrlTarget::parse(Some("new_browser_tab")),
+            OpenUrlTarget::NewBrowserTab
+        );
+    }
+
+    #[test]
+    fn parse_unknown_falls_back_to_external() {
+        assert_eq!(
+            OpenUrlTarget::parse(Some("foobar")),
+            OpenUrlTarget::External
+        );
+    }
 }

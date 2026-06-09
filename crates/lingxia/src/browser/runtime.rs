@@ -1,4 +1,5 @@
 //! Internal adapter for the optional `lingxia-browser` runtime.
+#![cfg_attr(target_os = "windows", allow(dead_code))]
 
 #[cfg(feature = "browser-runtime")]
 pub(crate) const APP_ID: &str = lingxia_browser::BUILTIN_BROWSER_APPID;

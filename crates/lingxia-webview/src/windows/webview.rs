@@ -1516,7 +1516,7 @@ fn pipe_reader_to_file(reader: crate::SystemPipeReader) -> Option<std::fs::File>
 }
 
 fn body_to_stream(bytes: &[u8]) -> WinResult<IStream> {
-    unsafe { SHCreateMemStream(Some(bytes)).ok_or_else(windows::core::Error::from_win32) }
+    unsafe { SHCreateMemStream(Some(bytes)).ok_or_else(windows::core::Error::from_thread) }
 }
 
 fn format_headers(headers: &http::HeaderMap) -> String {

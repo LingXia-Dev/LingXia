@@ -154,6 +154,12 @@ pub fn execute(
                     }
                 }
             }
+            "windows" | "win" => {
+                println!(
+                    "{}",
+                    "Windows icon generation is not implemented yet.".yellow()
+                );
+            }
             _ => {
                 eprintln!(
                     "  {} Unknown platform: {}",

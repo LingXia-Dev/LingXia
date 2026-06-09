@@ -2,6 +2,7 @@
 //!
 //! This module is intentionally crate-private. Public native APIs should stay in
 //! focused facades such as `app`, `file`, `media`, and `update`.
+#![cfg_attr(target_os = "windows", allow(unused_imports))]
 
 mod runtime;
 mod shell;

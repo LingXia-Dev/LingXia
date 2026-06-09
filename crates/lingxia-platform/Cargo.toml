@@ -25,6 +25,12 @@ rxing = "0.8.3"
 rfd = { version = "0.17.2", default-features = false }
 serde_json = { workspace = true }
 
+[target.'cfg(target_os = "windows")'.dependencies]
+lingxia-webview = { workspace = true }
+windows = { workspace = true, features = [
+    "Win32_UI_WindowsAndMessaging",
+] }
+
 # Android-specific dependencies (only what's needed for FFI)
 [target.'cfg(target_os = "android")'.dependencies]
 jni = "0.22.1"

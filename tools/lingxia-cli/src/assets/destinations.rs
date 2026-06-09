@@ -203,3 +203,63 @@ pub(super) fn prepare_harmony_rawfile_root(
 
     Ok(())
 }
+
+pub(super) fn prepare_windows_assets_root(
+    assets_root: &Path,
+    app_json: &str,
+    app_json_hash: &str,
+    ui_json: Option<&str>,
+    ui_json_hash: Option<&str>,
+    bundles: &[PreparedResourceBundle],
+    runtime_asset: Option<&PreparedRuntimeAsset>,
+    cache: &mut HostAssetsCache,
+) -> Result<()> {
+    println!(
+        "{}",
+        format!("Preparing Windows assets -> {}", assets_root.display()).cyan()
+    );
+
+    fs::create_dir_all(assets_root)?;
+
+    let dest_key = path_key(assets_root);
+    let prev = cache.destinations.get(&dest_key).cloned();
+
+    let desired = DestinationStamp {
+        app_json_hash: app_json_hash.to_string(),
+        ui_json_hash: ui_json_hash.map(ToOwned::to_owned),
+        bundle_hashes: bundle_hashes(bundles),
+        app_ui_icon_hashes: BTreeMap::new(),
+        runtime_hash: runtime_asset.map(|r| r.runtime_hash.clone()),
+        polyfills_hash: None,
+    };
+
+    let mut changed = false;
+
+    let app_json_path = assets_root.join("app.json");
+    if write_if_changed(&app_json_path, app_json.as_bytes())? {
+        changed = true;
+        println!("  {} app.json -> {}", "ok".green(), app_json_path.display());
+    }
+    changed |= sync_optional_json_file(
+        &assets_root.join("ui.json"),
+        ui_json,
+        prev.as_ref().and_then(|s| s.ui_json_hash.as_deref()),
+        "ui.json",
+    )?;
+    changed |= sync_runtime_file(
+        &assets_root.join("bridge-runtime.js"),
+        runtime_asset,
+        prev.as_ref().and_then(|s| s.runtime_hash.as_deref()),
+    )?;
+    changed |= sync_resource_bundles(
+        assets_root,
+        bundles,
+        prev.as_ref().map(|s| &s.bundle_hashes),
+    )?;
+
+    if changed {
+        cache.destinations.insert(dest_key, desired);
+    }
+
+    Ok(())
+}

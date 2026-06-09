@@ -1,0 +1,26 @@
+[package]
+name = "lingxia-windows"
+version.workspace = true
+edition.workspace = true
+description = "Pure Rust Windows host runtime for LingXia"
+license = "MIT"
+repository.workspace = true
+keywords = ["lingxia", "windows", "webview2", "lxapp"]
+categories = ["gui", "os::windows-apis"]
+
+[features]
+default = ["standard"]
+standard = ["lingxia/standard"]
+shell-runtime = ["lingxia/shell-runtime"]
+terminal-runtime = ["lingxia/terminal-runtime"]
+webview-input = ["lingxia/webview-input"]
+
+[dependencies]
+lingxia = { workspace = true, default-features = false }
+lingxia-platform = { workspace = true }
+thiserror = { workspace = true }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { workspace = true, features = [
+    "Win32_UI_WindowsAndMessaging",
+] }

@@ -166,6 +166,7 @@ fn clean_host_platform_dirs(
             PlatformType::Ios => clean_ios(project_root, config, removed)?,
             PlatformType::MacOs => clean_macos(project_root, config, removed)?,
             PlatformType::Harmony => clean_harmony(project_root, config, removed)?,
+            PlatformType::Windows => clean_windows(project_root, removed)?,
         }
     }
     Ok(())
@@ -246,6 +247,13 @@ fn clean_harmony(
         let native_lib = harmony_dir.join("entry/libs/arm64-v8a/liblingxia.so");
         remove_path(&native_lib, removed)?;
         remove_empty_parent_dirs_until(&harmony_dir, native_lib.parent());
+    }
+    Ok(())
+}
+
+fn clean_windows(project_root: &Path, removed: &mut Vec<PathBuf>) -> Result<()> {
+    if let Ok(windows_dir) = platform::windows::resolve_windows_dir(project_root) {
+        remove_path(&windows_dir.join("assets"), removed)?;
     }
     Ok(())
 }

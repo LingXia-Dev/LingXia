@@ -5,6 +5,7 @@ use super::locate_templates_dir;
 use super::macos;
 use super::template::process_template_dir;
 use super::types::{AppServiceMode, Platform, ProjectConfig};
+use super::windows;
 use crate::versions::LingXiaVersions;
 use anyhow::{Result, anyhow};
 use colored::Colorize;
@@ -44,6 +45,10 @@ pub(super) fn create_project(config: &ProjectConfig, versions: &LingXiaVersions)
                 harmony::create_harmony_project(config)?;
                 created_any = true;
             }
+            Platform::Windows => {
+                windows::create_windows_project(config, versions)?;
+                created_any = true;
+            }
         }
     }
 
@@ -78,6 +83,16 @@ fn create_root_gitignore(config: &ProjectConfig) -> Result<()> {
             "harmony/entry/build/",
             "harmony/entry/.preview/",
             "harmony/entry/src/main/resources/rawfile/",
+        ]);
+    }
+
+    if config.platforms.contains(&Platform::Windows) {
+        lines.extend([
+            "",
+            "# Windows generated",
+            "windows/assets/",
+            "windows/Cargo.lock",
+            "windows/target/",
         ]);
     }
 
@@ -134,10 +149,22 @@ pub(super) fn create_rust_library(
     vars.insert("LINGXIA_DEP_FEATURES".to_string(), "[]".to_string());
     vars.insert(
         "APPLE_REEXPORT".to_string(),
-        if config.platforms.contains(&Platform::Ios) || config.platforms.contains(&Platform::Macos)
+        if config.platforms.contains(&Platform::Ios)
+            || config.platforms.contains(&Platform::Macos)
+            || config.platforms.contains(&Platform::Windows)
         {
-            "#[cfg(any(target_os = \"ios\", target_os = \"macos\"))]\npub use lingxia::apple::*;"
-                .to_string()
+            let mut reexports = Vec::new();
+            if config.platforms.contains(&Platform::Ios)
+                || config.platforms.contains(&Platform::Macos)
+            {
+                reexports.push(
+                    "#[cfg(any(target_os = \"ios\", target_os = \"macos\"))]\npub use lingxia::apple::*;",
+                );
+            }
+            if config.platforms.contains(&Platform::Windows) {
+                reexports.push("#[cfg(target_os = \"windows\")]\npub use lingxia::windows::*;");
+            }
+            reexports.join("\n")
         } else {
             String::new()
         },
@@ -174,6 +201,14 @@ pub(super) fn create_rust_library(
         if config.platforms.contains(&Platform::Ios) || config.platforms.contains(&Platform::Macos)
         {
             "// iOS/macOS: C export\n#[cfg(any(target_os = \"ios\", target_os = \"macos\"))]\n#[unsafe(no_mangle)]\npub extern \"C\" fn lingxia_register_host_addon() {\n    register_host_addons();\n}".to_string()
+        } else {
+            String::new()
+        },
+    );
+    vars.insert(
+        "WINDOWS_EXPORT_BLOCK".to_string(),
+        if config.platforms.contains(&Platform::Windows) {
+            "// Windows: Rust host export\n#[cfg(target_os = \"windows\")]\npub fn lingxia_register_host_addon() {\n    register_host_addons();\n}".to_string()
         } else {
             String::new()
         },

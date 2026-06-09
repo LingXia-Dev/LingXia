@@ -322,7 +322,7 @@ fn spawn_app_update_forwarder(
     tx: watch::Sender<Option<AppUpdateEvent>>,
     completion_tx: oneshot::Sender<AppUpdateCompletion>,
 ) {
-    let _ = rong::RongExecutor::global().spawn(async move {
+    std::mem::drop(rong::RongExecutor::global().spawn(async move {
         let mut completion_tx = Some(completion_tx);
         while let Some(event) = apply.next().await {
             if matches!(event, AppUpdateEvent::Available(_)) {
@@ -344,7 +344,7 @@ fn spawn_app_update_forwarder(
         if let Some(sender) = completion_tx.take() {
             let _ = sender.send(AppUpdateCompletion::Canceled);
         }
-    });
+    }));
 }
 
 fn completion_from_event(event: &AppUpdateEvent) -> AppUpdateCompletion {

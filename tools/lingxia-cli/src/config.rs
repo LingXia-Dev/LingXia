@@ -26,6 +26,8 @@ pub struct LingXiaConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub harmony: Option<HarmonyConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub windows: Option<WindowsConfig>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub features: Option<FeaturesConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub capabilities: Option<CapabilitiesConfig>,
@@ -407,6 +409,18 @@ pub struct HarmonyConfig {
     pub target_sdk_version: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WindowsConfig {
+    /// Windows host application identifier. Env suffixes are applied the same
+    /// way as package/bundle identifiers on other platforms.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub app_id: Option<String>,
+    /// Cargo binary name produced by windows/Cargo.toml.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub executable_name: Option<String>,
+}
+
 impl LingXiaConfig {
     /// Get the project name from config
     pub fn get_project_name(&self) -> Option<&str> {
@@ -533,6 +547,7 @@ impl LingXiaConfig {
             ios: None,
             macos: None,
             harmony: None,
+            windows: None,
             features: Some(FeaturesConfig::default()),
             capabilities: Some(CapabilitiesConfig::default()),
             shell: None,
@@ -604,6 +619,22 @@ impl LingXiaConfig {
                     ));
                 };
                 validate_macos_ui_config(ui, self.terminal_enabled("macos"))?;
+            }
+        }
+        if let Some(windows) = &self.windows {
+            if windows
+                .app_id
+                .as_deref()
+                .is_some_and(|value| value.trim().is_empty())
+            {
+                return Err(anyhow!("windows.appId must not be empty"));
+            }
+            if windows
+                .executable_name
+                .as_deref()
+                .is_some_and(|value| value.trim().is_empty())
+            {
+                return Err(anyhow!("windows.executableName must not be empty"));
             }
         }
         if let Some(app_links) = &self.app_links {

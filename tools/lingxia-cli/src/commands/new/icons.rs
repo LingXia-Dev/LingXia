@@ -185,6 +185,7 @@ fn generate_app_icons(
                     eprintln!("Skipping HarmonyOS icon generation.");
                 }
             }
+            Platform::Windows => {}
         }
     }
 

@@ -1,4 +1,4 @@
-[package]
+﻿[package]
 name = "lingxia-cli"
 version = "0.9.1"
 edition.workspace = true
@@ -69,7 +69,6 @@ urlencoding = "2.1"
 
 image = { version = "0.25.10", default-features = false, features = ["png", "webp"] }
 
-openssl = { version = "0.10", features = ["vendored"] }
 # Resource-generation deps (i18n/icons), absorbed from the former
 # standalone `lingxia-gen` crate; see src/gen/.
 Inflector = "0.11"
@@ -93,6 +92,9 @@ oxc_syntax = "0.135"
 oxc_semantic = "0.135"
 oxc_sourcemap = "7.0"
 sysinfo = "0.39"
+
+[target.'cfg(not(target_os = "windows"))'.dependencies]
+openssl = { version = "0.10", features = ["vendored"] }
 
 [build-dependencies]
 serde_json = "1.0"

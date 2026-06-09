@@ -15,6 +15,7 @@ pub enum PlatformType {
     Ios,
     MacOs,
     Harmony,
+    Windows,
 }
 
 impl PlatformType {
@@ -24,6 +25,7 @@ impl PlatformType {
             PlatformType::Ios => "ios",
             PlatformType::MacOs => "macos",
             PlatformType::Harmony => "harmony",
+            PlatformType::Windows => "windows",
         }
     }
 }
@@ -49,6 +51,7 @@ impl FromStr for PlatformType {
             "ios" => Ok(PlatformType::Ios),
             "macos" | "macosx" | "osx" | "mac" => Ok(PlatformType::MacOs),
             "harmony" | "harmonyos" => Ok(PlatformType::Harmony),
+            "windows" | "win" => Ok(PlatformType::Windows),
             _ => Err(anyhow!("Unknown platform: {}", s)),
         }
     }
@@ -77,6 +80,10 @@ pub fn detect_available_platforms(project_root: &Path) -> Vec<PlatformType> {
         platforms.push(PlatformType::Harmony);
     }
 
+    if is_windows_project(project_root) || is_windows_project(&project_root.join("windows")) {
+        platforms.push(PlatformType::Windows);
+    }
+
     platforms
 }
 
@@ -93,6 +100,7 @@ pub fn create_platform(platform_type: &PlatformType) -> Result<Box<dyn Platform>
             Ok(Box::new(super::macos::MacosPlatform::new()))
         }
         PlatformType::Harmony => Ok(Box::new(super::harmony::HarmonyPlatform::new())),
+        PlatformType::Windows => Ok(Box::new(super::windows::WindowsPlatform::new())),
     }
 }
 
@@ -135,11 +143,11 @@ pub fn detect_platform_type(project_root: &Path) -> Result<PlatformType> {
         [platform] => Ok(platform.clone()),
         [] => Err(anyhow!(
             "Cannot detect platform type. Make sure you're in a valid LingXia project directory.\n\
-             Supported platforms: Android, iOS, macOS, HarmonyOS"
+             Supported platforms: Android, iOS, macOS, HarmonyOS, Windows"
         )),
         _ => Err(anyhow!(
             "Multiple platform candidates found: {}.\n\
-             Pass --platform <android|ios|macos|harmony> to disambiguate.",
+             Pass --platform <android|ios|macos|harmony|windows> to disambiguate.",
             format_platform_list(&platforms)
         )),
     }
@@ -211,6 +219,18 @@ fn is_harmony_project(project_root: &Path) -> bool {
         || project_root.join("oh-package.json5").exists()
 }
 
+/// Check if the project is a Windows Rust host project.
+fn is_windows_project(project_root: &Path) -> bool {
+    let manifest = project_root.join("Cargo.toml");
+    if !manifest.exists() {
+        return false;
+    }
+
+    std::fs::read_to_string(manifest)
+        .map(|content| content.contains("[package]") && content.contains("lingxia-windows"))
+        .unwrap_or(false)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -267,9 +287,18 @@ mod tests {
         fs::create_dir_all(&harmony_root).unwrap();
         fs::write(harmony_root.join("build-profile.json5"), "").unwrap();
 
+        let windows_root = project_root.join("windows");
+        fs::create_dir_all(&windows_root).unwrap();
+        fs::write(
+            windows_root.join("Cargo.toml"),
+            "[package]\nname = \"demo-windows\"\nversion = \"0.1.0\"\n[dependencies]\nlingxia-windows = \"0.9\"\n",
+        )
+        .unwrap();
+
         let platforms = detect_available_platforms(project_root);
         assert!(platforms.contains(&PlatformType::Ios));
         assert!(platforms.contains(&PlatformType::Harmony));
+        assert!(platforms.contains(&PlatformType::Windows));
     }
 
     #[test]
@@ -302,6 +331,6 @@ mod tests {
 
         let err = detect_platform_type(project_root).unwrap_err().to_string();
         assert!(err.contains("Multiple platform candidates found: ios, harmony"));
-        assert!(err.contains("Pass --platform <android|ios|macos|harmony>"));
+        assert!(err.contains("Pass --platform <android|ios|macos|harmony|windows>"));
     }
 }

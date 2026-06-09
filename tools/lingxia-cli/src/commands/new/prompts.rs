@@ -73,6 +73,7 @@ pub(super) fn gather_native_project_info(
             Platform::Ios,
             Platform::Macos,
             Platform::Harmony,
+            Platform::Windows,
         ]
     } else {
         println!("Use ↑/↓ to move, Space to select, Enter to confirm.");
@@ -82,9 +83,10 @@ pub(super) fn gather_native_project_info(
             "iOS",
             "macOS",
             "Harmony",
-            "All (Android + iOS + macOS + Harmony)",
+            "Windows",
+            "All (Android + iOS + macOS + Harmony + Windows)",
         ];
-        let defaults = vec![false, false, false, false, false];
+        let defaults = vec![false, false, false, false, false, false];
         let selections = MultiSelect::with_theme(&ColorfulTheme::default())
             .with_prompt("Target platforms")
             .items(&items)
@@ -97,8 +99,8 @@ pub(super) fn gather_native_project_info(
             ));
         }
 
-        let has_all = selections.contains(&4);
-        let has_specific = selections.iter().any(|idx| *idx != 4);
+        let has_all = selections.contains(&5);
+        let has_specific = selections.iter().any(|idx| *idx != 5);
 
         if has_all && !has_specific {
             vec![
@@ -106,11 +108,12 @@ pub(super) fn gather_native_project_info(
                 Platform::Ios,
                 Platform::Macos,
                 Platform::Harmony,
+                Platform::Windows,
             ]
         } else {
             let mut selected = Vec::new();
             for idx in selections {
-                if idx == 4 {
+                if idx == 5 {
                     continue;
                 }
                 let platform = match idx {
@@ -118,6 +121,7 @@ pub(super) fn gather_native_project_info(
                     1 => Platform::Ios,
                     2 => Platform::Macos,
                     3 => Platform::Harmony,
+                    4 => Platform::Windows,
                     _ => unreachable!(),
                 };
                 if !selected.contains(&platform) {
@@ -226,6 +230,7 @@ fn normalize_platforms(input: Vec<String>) -> Result<Vec<Platform>> {
             Platform::Ios,
             Platform::Macos,
             Platform::Harmony,
+            Platform::Windows,
         ]);
     }
 

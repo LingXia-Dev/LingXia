@@ -74,7 +74,7 @@ struct DevOptions {
     #[command(flatten)]
     build_options: BuildOptions,
 
-    /// Target platform (android, ios, macos, harmony). Auto-detected if not specified.
+    /// Target platform (android, ios, macos, harmony, windows). Auto-detected if not specified.
     #[arg(short = 'p', long)]
     platform: Option<String>,
 
@@ -106,7 +106,7 @@ enum Commands {
         #[arg(short = 't', long)]
         project_type: Option<String>,
 
-        /// Target platforms (comma-separated): android, ios, macos, harmony, all
+        /// Target platforms (comma-separated): android, ios, macos, harmony, windows, all
         #[arg(short = 'p', long, value_delimiter = ',')]
         platform: Vec<String>,
 

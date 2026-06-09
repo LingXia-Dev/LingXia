@@ -1,3 +1,5 @@
+#![cfg_attr(target_os = "windows", allow(dead_code))]
+
 use anyhow::{Context, Result, anyhow};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

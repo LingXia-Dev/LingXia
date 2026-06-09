@@ -13,6 +13,7 @@ pub mod harmony;
 pub mod ios;
 pub mod macos;
 pub mod spm;
+pub mod windows;
 
 pub fn resolve_cargo_target_dir(project_root: &Path) -> PathBuf {
     find_workspace_root(project_root)
@@ -243,6 +244,9 @@ pub enum BuildArtifacts {
     Harmony {
         hap_path: PathBuf,
     },
+    Windows {
+        exe_path: PathBuf,
+    },
 }
 
 impl BuildArtifacts {
@@ -266,6 +270,7 @@ impl BuildArtifacts {
                 .or(dmg_path.as_deref())
                 .unwrap_or(app_path.as_path()),
             BuildArtifacts::Harmony { hap_path } => hap_path.as_path(),
+            BuildArtifacts::Windows { exe_path } => exe_path.as_path(),
         }
     }
 }

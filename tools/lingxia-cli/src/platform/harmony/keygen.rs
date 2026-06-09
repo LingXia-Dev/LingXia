@@ -1,3 +1,5 @@
+#![cfg_attr(target_os = "windows", allow(dead_code))]
+
 use anyhow::{Context, Result};
 use rcgen::{CertificateParams, DistinguishedName, DnType, IsCa, KeyPair, KeyUsagePurpose};
 

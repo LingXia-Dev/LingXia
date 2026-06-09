@@ -6,8 +6,8 @@ description = "Native library for LingXia example App (builds to .so/.a)"
 
 [lib]
 name = "lingxia"
-# cdylib for Android/Harmony (.so), staticlib for iOS (.a)
-crate-type = ["cdylib", "staticlib"]
+# cdylib for Android/Harmony (.so), staticlib for iOS/macOS (.a), rlib for Windows host deps.
+crate-type = ["cdylib", "staticlib", "rlib"]
 
 [features]
 default = ["standard"]
@@ -60,3 +60,4 @@ lingxia-terminal = { path = "../../../crates/lingxia-terminal" }
 lingxia-transfer = { path = "../../../crates/lingxia-transfer" }
 lingxia-update = { path = "../../../crates/lingxia-update" }
 lingxia-webview = { path = "../../../crates/lingxia-webview" }
+lingxia-windows = { path = "../../../crates/lingxia-windows" }

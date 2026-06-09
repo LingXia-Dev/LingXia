@@ -111,6 +111,16 @@ pub mod apple;
 #[path = "ffi/harmony.rs"]
 pub mod harmony;
 
+/// Windows platform bootstrap for pure Rust host apps.
+#[cfg(target_os = "windows")]
+pub mod windows {
+    pub use lingxia_platform::Platform;
+
+    pub fn init(platform: Platform) -> Option<String> {
+        crate::init_with_platform(platform)
+    }
+}
+
 pub(crate) mod browser;
 pub(crate) mod push;
 pub(crate) use bootstrap::init_with_platform;

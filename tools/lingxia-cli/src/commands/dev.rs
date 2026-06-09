@@ -68,6 +68,7 @@ fn platform_session_name(platform: PlatformType) -> &'static str {
         PlatformType::Ios => "ios",
         PlatformType::MacOs => "macos",
         PlatformType::Harmony => "harmony",
+        PlatformType::Windows => "windows",
     }
 }
 
@@ -136,8 +137,14 @@ pub fn execute(options: DevExecuteOptions) -> Result<()> {
     let platform_type = if let Some(ref p) = options.platform_arg {
         p.parse::<PlatformType>()?
     } else {
-        // Auto-detect: prefer iOS, then macOS, then Android
-        if app.platforms.iter().any(|p| p.eq_ignore_ascii_case("ios")) {
+        let has_windows = app
+            .platforms
+            .iter()
+            .any(|p| p.eq_ignore_ascii_case("windows") || p.eq_ignore_ascii_case("win"));
+        // Auto-detect: prefer the local desktop platform when available.
+        if cfg!(target_os = "windows") && has_windows {
+            PlatformType::Windows
+        } else if app.platforms.iter().any(|p| p.eq_ignore_ascii_case("ios")) {
             PlatformType::Ios
         } else if app
             .platforms
@@ -157,9 +164,11 @@ pub fn execute(options: DevExecuteOptions) -> Result<()> {
             .any(|p| p.eq_ignore_ascii_case("harmony") || p.eq_ignore_ascii_case("harmonyos"))
         {
             PlatformType::Harmony
+        } else if has_windows {
+            PlatformType::Windows
         } else {
             return Err(anyhow!(
-                "No supported platform found in config. Add 'ios', 'macos', 'android', or 'harmony' to app.platforms."
+                "No supported platform found in config. Add 'ios', 'macos', 'android', 'harmony', or 'windows' to app.platforms."
             ));
         }
     };
@@ -199,6 +208,7 @@ pub fn execute(options: DevExecuteOptions) -> Result<()> {
         PlatformType::Ios => execute_ios(ctx),
         PlatformType::MacOs => execute_macos(ctx, options.macos_arch),
         PlatformType::Harmony => execute_harmony(ctx),
+        PlatformType::Windows => execute_windows(ctx),
     }
 }
 
@@ -622,6 +632,97 @@ fn execute_harmony(ctx: DevContext) -> Result<()> {
         );
         println!("  {} Bundle: {}", "*".bold(), bundle_name);
         wait_for_interrupt(stop_requested)?;
+        Ok(())
+    })();
+
+    let _ = log_store::remove_session(&ctx.project_root, &session.session_id);
+    stop_dev_server(server, run_result)
+}
+
+fn execute_windows(ctx: DevContext) -> Result<()> {
+    let platform_name = platform_session_name(PlatformType::Windows);
+    precheck_platform_session(&ctx.project_root, platform_name, ctx.parallel)?;
+    let platform = platform::windows::WindowsPlatform::new();
+    let server = server::start_server(&ctx.project_root)?;
+    let ws_url = server.ws_url();
+    let session = server.session().clone();
+
+    let run_result = (|| -> Result<()> {
+        let platforms_to_build = vec![PlatformType::Windows];
+        prepare_configured_host_assets(
+            &ctx.project_root,
+            &ctx.config,
+            ctx.build_profile,
+            ctx.framework,
+            ctx.progress.as_deref(),
+            &platforms_to_build,
+            &[],
+            true,
+            Some(&ws_url),
+            &ctx.resolved_env,
+        )?;
+
+        println!("{}", "Step 1/2: Building...".bold());
+        let build_config = BuildConfig {
+            project_root: ctx.project_root.clone(),
+            profile: ctx.build_profile,
+            build_native: ctx.build_native,
+            targets: vec![],
+            lingxia_config: Some(ctx.config.clone()),
+            ipa: false,
+            package: false,
+            dmg: false,
+            macos_arch: None,
+            framework: ctx.framework,
+            native_features: dev_native_features(&ctx.config, "windows"),
+            native_default_features: ctx.config.native_default_features_enabled(),
+            resolved_env: ctx.resolved_env.clone(),
+            skip_native_build: false,
+            native_only: false,
+        };
+
+        let artifacts = platform.build(&build_config)?;
+        let exe_path = artifacts.path().to_path_buf();
+        let runtime_env = platform::windows::windows_runtime_env(
+            &ctx.project_root,
+            &ctx.config,
+            &ctx.resolved_env,
+        )?;
+        println!();
+
+        println!("{}", "Step 2/2: Running...".bold());
+        let stop_requested = Arc::new(AtomicBool::new(false));
+        install_ctrlc_handler(stop_requested.clone())?;
+        log_store::write_session(&ctx.project_root, &session, platform_name, &ws_url)?;
+
+        let mut command = Command::new(&exe_path);
+        command.env(RUNNER_DEV_WS_URL_ENV, &ws_url);
+        for (key, value) in &runtime_env {
+            command.env(key, value);
+        }
+        let mut child = command
+            .stdin(Stdio::null())
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit())
+            .spawn()
+            .with_context(|| format!("Failed to run {}", exe_path.display()))?;
+
+        println!();
+        println!("{}", "Dev workflow started.".green().bold());
+        println!("  {} Platform: {}", "*".bold(), "Windows".cyan());
+        println!("  {} Artifact: {}", "*".bold(), exe_path.display());
+        println!(
+            "  {} Session file: {}",
+            "*".bold(),
+            log_store::session_file_path(&ctx.project_root, &session.session_id).display()
+        );
+        println!("  {} WS: {}", "*".bold(), ws_url);
+        println!("  {} Log file: {}", "*".bold(), session.log_file.display());
+        println!("  {} Session: {}", "*".bold(), session.session_id);
+        println!("  {} Stop: {}", "*".bold(), "Ctrl+C or close app".cyan());
+        println!();
+
+        wait_for_child_or_interrupt(&mut child, stop_requested, "Windows app")?;
         Ok(())
     })();
 

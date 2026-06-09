@@ -443,7 +443,7 @@ fn resolve_upload_path(lxapp: &LxApp, file_path: &str) -> JSResult<PathBuf> {
 }
 
 fn spawn_upload_worker(state: Arc<Mutex<UploadIteratorState>>) {
-    let _ = rong::RongExecutor::global().spawn(async move {
+    std::mem::drop(rong::RongExecutor::global().spawn(async move {
         let (mut progress_tx, config, abort_rx) = {
             let mut guard = state.lock().await;
             if guard.status.is_terminal() || guard.status != UploadTaskStatus::Running {
@@ -544,7 +544,7 @@ fn spawn_upload_worker(state: Arc<Mutex<UploadIteratorState>>) {
                 let _ = progress_tx.send(UploadIteratorMessage::Error(error)).await;
             }
         }
-    });
+    }));
 }
 
 fn upload_file(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {

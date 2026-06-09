@@ -481,10 +481,10 @@ fn add_dir_to_zip<W: std::io::Write + std::io::Seek>(
             add_dir_to_zip(zip, &path, &name, options)?;
         } else {
             // Preserve executable permissions for binaries
-            let metadata = path.metadata()?;
             #[cfg(unix)]
             let file_options = {
                 use std::os::unix::fs::PermissionsExt;
+                let metadata = path.metadata()?;
                 let mode = metadata.permissions().mode();
                 options.unix_permissions(mode)
             };
