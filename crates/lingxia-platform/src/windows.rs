@@ -1,8 +1,9 @@
 #![allow(clippy::manual_async_fn)]
 
+use std::ffi::c_void;
 use std::fs::{self, File};
 use std::future::Future;
-use std::io::Read;
+use std::io::{Cursor, Read};
 use std::path::{Component, Path, PathBuf};
 use std::process::Command;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -240,6 +241,11 @@ impl crate::traits::wifi::Wifi for Platform {}
 impl AppScreenshot for Platform {
     async fn list_app_windows(&self) -> Result<Vec<WindowInfo>, PlatformError> {
         list_app_windows()
+    }
+
+    async fn take_app_screenshot(&self, window_id: Option<&str>) -> Result<Vec<u8>, PlatformError> {
+        let hwnd = resolve_screenshot_window(window_id)?;
+        capture_window_png(hwnd.0 as usize).await
     }
 }
 
@@ -681,6 +687,267 @@ fn list_app_windows() -> Result<Vec<WindowInfo>, PlatformError> {
             .then_with(|| a.id.cmp(&b.id))
     });
     Ok(state.windows)
+}
+
+fn resolve_screenshot_window(
+    window_id: Option<&str>,
+) -> Result<windows::Win32::Foundation::HWND, PlatformError> {
+    if let Some(window_id) = window_id {
+        return hwnd_from_window_id(window_id);
+    }
+
+    let windows = list_app_windows()?;
+    let selected = windows
+        .iter()
+        .find(|window| window.focused && window.visible && window.width > 0 && window.height > 0)
+        .or_else(|| {
+            windows
+                .iter()
+                .find(|window| window.visible && window.width > 0 && window.height > 0)
+        })
+        .ok_or_else(|| {
+            PlatformError::Platform("no visible Windows app window available to screenshot".into())
+        })?;
+    hwnd_from_window_id(&selected.id)
+}
+
+fn hwnd_from_window_id(raw: &str) -> Result<windows::Win32::Foundation::HWND, PlatformError> {
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::WindowsAndMessaging::{GetWindowThreadProcessId, IsWindow};
+
+    let id = raw.trim().parse::<usize>().map_err(|err| {
+        PlatformError::InvalidParameter(format!(
+            "window id must be a numeric HWND, got {raw}: {err}"
+        ))
+    })?;
+    let hwnd = HWND(id as *mut c_void);
+    if hwnd.0.is_null() || !unsafe { IsWindow(Some(hwnd)).as_bool() } {
+        return Err(PlatformError::InvalidParameter(format!(
+            "window id is not a live HWND: {raw}"
+        )));
+    }
+
+    let mut owner_pid = 0u32;
+    unsafe {
+        GetWindowThreadProcessId(hwnd, Some(&mut owner_pid));
+    }
+    if owner_pid != std::process::id() {
+        return Err(PlatformError::InvalidParameter(format!(
+            "window id {raw} does not belong to this process"
+        )));
+    }
+    Ok(hwnd)
+}
+
+async fn capture_window_png(window_id: usize) -> Result<Vec<u8>, PlatformError> {
+    let hwnd = windows::Win32::Foundation::HWND(window_id as *mut c_void);
+    let (width, height, mut image) = capture_window_native_rgba(hwnd)?;
+    if let Some((snapshot, webview_png)) = visible_webview_screenshot_for_window(window_id).await {
+        overlay_webview_screenshot(&mut image, &snapshot, &webview_png)?;
+    }
+    encode_rgba_png(width, height, image)
+}
+
+fn capture_window_native_rgba(
+    hwnd: windows::Win32::Foundation::HWND,
+) -> Result<(u32, u32, image::RgbaImage), PlatformError> {
+    use windows::Win32::Graphics::Gdi::{
+        BI_RGB, BITMAPINFO, BITMAPINFOHEADER, CreateCompatibleDC, CreateDIBSection, DIB_RGB_COLORS,
+        DeleteDC, DeleteObject, GetWindowDC, HGDIOBJ, ReleaseDC, SelectObject,
+    };
+    use windows::Win32::Storage::Xps::{PRINT_WINDOW_FLAGS, PrintWindow};
+
+    let rect = visible_window_rect(hwnd)?;
+    let width = rect.right - rect.left;
+    let height = rect.bottom - rect.top;
+    if width <= 0 || height <= 0 {
+        return Err(PlatformError::Platform(format!(
+            "window has empty bounds: {width}x{height}"
+        )));
+    }
+
+    unsafe {
+        let window_dc = GetWindowDC(Some(hwnd));
+        if window_dc.is_invalid() {
+            return Err(PlatformError::Platform("GetWindowDC failed".to_string()));
+        }
+
+        let memory_dc = CreateCompatibleDC(Some(window_dc));
+        if memory_dc.is_invalid() {
+            let _ = ReleaseDC(Some(hwnd), window_dc);
+            return Err(PlatformError::Platform(
+                "CreateCompatibleDC failed".to_string(),
+            ));
+        }
+
+        let bitmap_info = BITMAPINFO {
+            bmiHeader: BITMAPINFOHEADER {
+                biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+                biWidth: width,
+                biHeight: -height,
+                biPlanes: 1,
+                biBitCount: 32,
+                biCompression: BI_RGB.0,
+                biSizeImage: (width * height * 4) as u32,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let mut bits_ptr: *mut c_void = std::ptr::null_mut();
+        let bitmap = match CreateDIBSection(
+            Some(window_dc),
+            &bitmap_info,
+            DIB_RGB_COLORS,
+            &mut bits_ptr,
+            None,
+            0,
+        ) {
+            Ok(bitmap) => bitmap,
+            Err(err) => {
+                let _ = DeleteDC(memory_dc);
+                let _ = ReleaseDC(Some(hwnd), window_dc);
+                return Err(PlatformError::Platform(format!(
+                    "CreateDIBSection failed: {err}"
+                )));
+            }
+        };
+
+        let old_bitmap = SelectObject(memory_dc, HGDIOBJ(bitmap.0));
+        let copied = PrintWindow(hwnd, memory_dc, PRINT_WINDOW_FLAGS(0)).as_bool();
+
+        let result = if !copied || bits_ptr.is_null() {
+            Err(PlatformError::Platform("PrintWindow failed".to_string()))
+        } else {
+            let byte_len = (width as usize)
+                .saturating_mul(height as usize)
+                .saturating_mul(4);
+            let bgra = std::slice::from_raw_parts(bits_ptr.cast::<u8>(), byte_len);
+            bgra_top_down_image(width as u32, height as u32, bgra)
+        };
+
+        if !old_bitmap.is_invalid() {
+            let _ = SelectObject(memory_dc, old_bitmap);
+        }
+        let _ = DeleteObject(HGDIOBJ(bitmap.0));
+        let _ = DeleteDC(memory_dc);
+        let _ = ReleaseDC(Some(hwnd), window_dc);
+
+        result.map(|image| (width as u32, height as u32, image))
+    }
+}
+
+fn visible_window_rect(
+    hwnd: windows::Win32::Foundation::HWND,
+) -> Result<windows::Win32::Foundation::RECT, PlatformError> {
+    use windows::Win32::Foundation::RECT;
+    use windows::Win32::UI::WindowsAndMessaging::GetWindowRect;
+
+    let mut rect = RECT::default();
+    unsafe {
+        GetWindowRect(hwnd, &mut rect)
+            .map_err(|err| PlatformError::Platform(format!("GetWindowRect failed: {err}")))?;
+    }
+    Ok(rect)
+}
+
+async fn visible_webview_screenshot_for_window(
+    window_id: usize,
+) -> Option<(
+    lingxia_webview::platform::windows::WindowsWebViewWindowSnapshot,
+    Vec<u8>,
+)> {
+    for webtag in webview_runtime::list_webviews() {
+        let snapshot = match lingxia_webview::platform::windows::webview_window_snapshot(&webtag) {
+            Ok(snapshot)
+                if snapshot.window_id == window_id
+                    && snapshot.visible
+                    && snapshot.content_width > 0
+                    && snapshot.content_height > 0 =>
+            {
+                snapshot
+            }
+            _ => continue,
+        };
+
+        let Some(webview) = webview_runtime::find_webview(&webtag) else {
+            continue;
+        };
+        match webview.take_screenshot().await {
+            Ok(bytes) => return Some((snapshot, bytes)),
+            Err(err) => log::warn!(
+                "failed to capture Windows WebView screenshot for {}: {}",
+                webtag.key(),
+                err
+            ),
+        }
+    }
+    None
+}
+
+fn overlay_webview_screenshot(
+    base: &mut image::RgbaImage,
+    snapshot: &lingxia_webview::platform::windows::WindowsWebViewWindowSnapshot,
+    webview_png: &[u8],
+) -> Result<(), PlatformError> {
+    if snapshot.content_left < 0 || snapshot.content_top < 0 {
+        return Ok(());
+    }
+    let left = snapshot.content_left as u32;
+    let top = snapshot.content_top as u32;
+    if left >= base.width() || top >= base.height() {
+        return Ok(());
+    }
+    let width = snapshot.content_width.min(base.width() - left);
+    let height = snapshot.content_height.min(base.height() - top);
+    if width == 0 || height == 0 {
+        return Ok(());
+    }
+
+    let webview = image::load_from_memory(webview_png)
+        .map_err(|err| PlatformError::Platform(format!("failed to decode WebView PNG: {err}")))?
+        .into_rgba8();
+    let webview = image::imageops::resize(
+        &webview,
+        width,
+        height,
+        image::imageops::FilterType::Lanczos3,
+    );
+    image::imageops::overlay(base, &webview, i64::from(left), i64::from(top));
+    Ok(())
+}
+
+fn bgra_top_down_image(
+    width: u32,
+    height: u32,
+    bgra: &[u8],
+) -> Result<image::RgbaImage, PlatformError> {
+    let mut rgba = Vec::with_capacity(bgra.len());
+    for pixel in bgra.chunks_exact(4) {
+        rgba.extend_from_slice(&[pixel[2], pixel[1], pixel[0], 255]);
+    }
+
+    image::ImageBuffer::<image::Rgba<u8>, Vec<u8>>::from_raw(width, height, rgba)
+        .ok_or_else(|| PlatformError::Platform("failed to build screenshot image".to_string()))
+}
+
+fn encode_rgba_png(
+    width: u32,
+    height: u32,
+    image: image::RgbaImage,
+) -> Result<Vec<u8>, PlatformError> {
+    if image.width() != width || image.height() != height {
+        return Err(PlatformError::Platform(format!(
+            "screenshot image dimensions changed during composition: expected {width}x{height}, got {}x{}",
+            image.width(),
+            image.height()
+        )));
+    }
+    let mut out = Cursor::new(Vec::new());
+    image::DynamicImage::ImageRgba8(image)
+        .write_to(&mut out, image::ImageFormat::Png)
+        .map_err(|err| PlatformError::Platform(format!("failed to encode PNG: {err}")))?;
+    Ok(out.into_inner())
 }
 
 fn window_title(hwnd: windows::Win32::Foundation::HWND) -> String {

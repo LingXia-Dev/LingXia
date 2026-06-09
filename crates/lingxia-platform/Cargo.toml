@@ -29,6 +29,8 @@ serde_json = { workspace = true }
 lingxia-webview = { workspace = true }
 windows = { workspace = true, features = [
     "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_Storage_Xps",
     "Win32_UI_WindowsAndMessaging",
 ] }
 

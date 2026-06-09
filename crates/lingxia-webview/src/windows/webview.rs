@@ -19,15 +19,18 @@ use std::thread::{self, JoinHandle};
 use webview2_com::{Microsoft::Web::WebView2::Win32::*, *};
 use windows::{
     Win32::{
-        Foundation::{COLORREF, E_POINTER, HINSTANCE, HWND, LPARAM, LRESULT, RECT, WPARAM},
+        Foundation::{COLORREF, E_POINTER, HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM},
         Graphics::Gdi::{
-            BeginPaint, CreateBitmap, CreateSolidBrush, DT_CENTER, DT_END_ELLIPSIS, DT_LEFT,
-            DT_SINGLELINE, DT_VCENTER, DeleteObject, DrawTextW, EndPaint, FillRect, GetStockObject,
-            HDC, HGDIOBJ, InvalidateRect, NULL_PEN, PAINTSTRUCT, RoundRect, SelectObject,
-            SetBkMode, SetTextColor, TRANSPARENT,
+            BeginPaint, ClientToScreen, CreateBitmap, CreateSolidBrush, DT_CENTER, DT_END_ELLIPSIS,
+            DT_LEFT, DT_SINGLELINE, DT_VCENTER, DeleteObject, DrawTextW, EndPaint, FillRect,
+            GetStockObject, HDC, HGDIOBJ, InvalidateRect, NULL_PEN, PAINTSTRUCT, RoundRect,
+            SelectObject, SetBkMode, SetTextColor, TRANSPARENT,
         },
         System::{
-            Com::{COINIT_APARTMENTTHREADED, IStream, STREAM_SEEK_SET},
+            Com::{
+                COINIT_APARTMENTTHREADED, IStream, STREAM_SEEK_SET,
+                StructuredStorage::CreateStreamOnHGlobal,
+            },
             LibraryLoader, Threading,
         },
         UI::{
@@ -98,6 +101,12 @@ enum UiCommand {
     GoForward {
         resp: Sender<StdResult<()>>,
     },
+    TakeScreenshot {
+        resp: Sender<StdResult<Vec<u8>>>,
+    },
+    WindowSnapshot {
+        resp: Sender<StdResult<WindowsWebViewWindowSnapshot>>,
+    },
     ShowWindow {
         title: String,
         resp: Sender<StdResult<()>>,
@@ -117,6 +126,7 @@ struct UiState {
     webview: ICoreWebView2,
     hwnd: HWND,
     webtag_key: String,
+    window_visible: bool,
     memory_pages: Arc<Mutex<HashMap<String, Vec<u8>>>>,
 }
 
@@ -188,6 +198,17 @@ pub struct WindowsWindowLayout {
     pub tab_bar: Option<WindowsTabBarLayout>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WindowsWebViewWindowSnapshot {
+    pub window_id: usize,
+    pub webtag_key: String,
+    pub visible: bool,
+    pub content_left: i32,
+    pub content_top: i32,
+    pub content_width: u32,
+    pub content_height: u32,
+}
+
 #[derive(Debug, Clone, Copy)]
 struct AppIconHandles {
     small: isize,
@@ -234,6 +255,12 @@ pub fn set_webview_window_layout(webtag: &WebTag, layout: WindowsWindowLayout) -
     let webview = find_webview(webtag)
         .ok_or_else(|| WebViewError::WebView(format!("WebView not found for {}", webtag.key())))?;
     webview.inner.set_window_layout(layout)
+}
+
+pub fn webview_window_snapshot(webtag: &WebTag) -> StdResult<WindowsWebViewWindowSnapshot> {
+    let webview = find_webview(webtag)
+        .ok_or_else(|| WebViewError::WebView(format!("WebView not found for {}", webtag.key())))?;
+    webview.inner.window_snapshot()
 }
 
 pub fn set_webview_close_handler(webtag: &WebTag, handler: CloseHandler) {
@@ -451,6 +478,10 @@ fn current_group_window_placement(webtag_key: &str) -> Option<WindowPlacement> {
 }
 
 fn store_current_window_placement(state: &UiState) {
+    if !state.window_visible {
+        return;
+    }
+
     let mut rect = RECT::default();
     if unsafe { WindowsAndMessaging::GetWindowRect(state.hwnd, &mut rect) }.is_err() {
         return;
@@ -601,6 +632,58 @@ impl WebViewInner {
         self.dispatch_command(|resp| UiCommand::SetWindowLayout { layout, resp })
     }
 
+    fn dispatch_screenshot_command(&self) -> StdResult<Vec<u8>> {
+        if unsafe { Threading::GetCurrentThreadId() } == self.thread_id {
+            return Err(WebViewError::WebView(
+                "Cannot capture WebView screenshot from WebView UI thread".to_string(),
+            ));
+        }
+
+        let (resp_tx, resp_rx) = mpsc::channel();
+        self.command_tx
+            .send(UiCommand::TakeScreenshot { resp: resp_tx })
+            .map_err(|_| WebViewError::WebView("WebView UI thread is unavailable".to_string()))?;
+
+        unsafe {
+            let _ = WindowsAndMessaging::PostThreadMessageW(
+                self.thread_id,
+                WM_LINGXIA_COMMAND,
+                WPARAM::default(),
+                LPARAM::default(),
+            );
+        }
+
+        resp_rx
+            .recv()
+            .map_err(|_| WebViewError::WebView("WebView UI thread did not reply".to_string()))?
+    }
+
+    fn window_snapshot(&self) -> StdResult<WindowsWebViewWindowSnapshot> {
+        if unsafe { Threading::GetCurrentThreadId() } == self.thread_id {
+            return Err(WebViewError::WebView(
+                "Cannot inspect WebView window from WebView UI thread".to_string(),
+            ));
+        }
+
+        let (resp_tx, resp_rx) = mpsc::channel();
+        self.command_tx
+            .send(UiCommand::WindowSnapshot { resp: resp_tx })
+            .map_err(|_| WebViewError::WebView("WebView UI thread is unavailable".to_string()))?;
+
+        unsafe {
+            let _ = WindowsAndMessaging::PostThreadMessageW(
+                self.thread_id,
+                WM_LINGXIA_COMMAND,
+                WPARAM::default(),
+                LPARAM::default(),
+            );
+        }
+
+        resp_rx
+            .recv()
+            .map_err(|_| WebViewError::WebView("WebView UI thread did not reply".to_string()))?
+    }
+
     fn dispatch_eval_command(
         &self,
         js: String,
@@ -714,6 +797,10 @@ impl WebViewController for WebViewInner {
     fn go_forward(&self) -> StdResult<()> {
         self.dispatch_command(|resp| UiCommand::GoForward { resp })
     }
+
+    async fn take_screenshot(&self) -> StdResult<Vec<u8>> {
+        self.dispatch_screenshot_command()
+    }
 }
 
 impl Drop for WebViewInner {
@@ -799,6 +886,7 @@ fn run_ui_thread_inner(
         webview,
         hwnd,
         webtag_key,
+        window_visible: false,
         memory_pages,
     };
 
@@ -2079,6 +2167,14 @@ fn handle_command(state: &mut UiState, command: UiCommand) -> StdResult<bool> {
             let result = go_history(&state.webview, HistoryDirection::Forward);
             let _ = resp.send(result);
         }
+        UiCommand::TakeScreenshot { resp } => {
+            let result = capture_preview_png(&state.webview);
+            let _ = resp.send(result);
+        }
+        UiCommand::WindowSnapshot { resp } => {
+            let result = window_snapshot(state);
+            let _ = resp.send(result);
+        }
         UiCommand::ShowWindow { title, resp } => {
             let result = show_native_window(state, &title);
             let _ = resp.send(result);
@@ -2104,7 +2200,7 @@ fn cleanup_state(state: &mut UiState) {
     }
 }
 
-fn show_native_window(state: &UiState, _title: &str) -> StdResult<()> {
+fn show_native_window(state: &mut UiState, _title: &str) -> StdResult<()> {
     apply_group_window_placement(state);
     sync_controller_bounds(state)?;
     let title = to_wide("");
@@ -2118,11 +2214,12 @@ fn show_native_window(state: &UiState, _title: &str) -> StdResult<()> {
         let _ = WindowsAndMessaging::BringWindowToTop(state.hwnd);
         let _ = WindowsAndMessaging::SetForegroundWindow(state.hwnd);
     }
+    state.window_visible = true;
     store_current_window_placement(state);
     Ok(())
 }
 
-fn hide_native_window(state: &UiState) -> StdResult<()> {
+fn hide_native_window(state: &mut UiState) -> StdResult<()> {
     store_current_window_placement(state);
     unsafe {
         state
@@ -2131,6 +2228,7 @@ fn hide_native_window(state: &UiState) -> StdResult<()> {
             .map_err(|err| WebViewError::WebView(format!("SetIsVisible(false) failed: {err}")))?;
         let _ = WindowsAndMessaging::ShowWindow(state.hwnd, WindowsAndMessaging::SW_HIDE);
     }
+    state.window_visible = false;
     Ok(())
 }
 
@@ -2162,6 +2260,39 @@ fn sync_controller_bounds(state: &UiState) -> StdResult<()> {
             .map_err(|err| WebViewError::WebView(format!("SetBounds failed: {err}")))?;
     }
     Ok(())
+}
+
+fn window_snapshot(state: &UiState) -> StdResult<WindowsWebViewWindowSnapshot> {
+    let mut window_rect = RECT::default();
+    let mut client_rect = RECT::default();
+    let mut client_origin = POINT { x: 0, y: 0 };
+
+    unsafe {
+        WindowsAndMessaging::GetWindowRect(state.hwnd, &mut window_rect)
+            .map_err(|err| WebViewError::WebView(format!("GetWindowRect failed: {err}")))?;
+        WindowsAndMessaging::GetClientRect(state.hwnd, &mut client_rect)
+            .map_err(|err| WebViewError::WebView(format!("GetClientRect failed: {err}")))?;
+        if !ClientToScreen(state.hwnd, &mut client_origin).as_bool() {
+            return Err(WebViewError::WebView("ClientToScreen failed".to_string()));
+        }
+    }
+
+    let content = compute_content_rect(client_rect, &current_window_layout(&state.webtag_key));
+    let content_left = client_origin.x - window_rect.left + content.left;
+    let content_top = client_origin.y - window_rect.top + content.top;
+    let content_width = rect_width(&content) as u32;
+    let content_height = rect_height(&content) as u32;
+
+    Ok(WindowsWebViewWindowSnapshot {
+        window_id: state.hwnd.0 as usize,
+        webtag_key: state.webtag_key.clone(),
+        visible: state.window_visible
+            && unsafe { WindowsAndMessaging::IsWindowVisible(state.hwnd).as_bool() },
+        content_left,
+        content_top,
+        content_width,
+        content_height,
+    })
 }
 
 fn set_user_agent(webview: &ICoreWebView2, ua: &str) -> StdResult<()> {
@@ -2253,6 +2384,36 @@ fn go_history(webview: &ICoreWebView2, direction: HistoryDirection) -> StdResult
         }
     }
     Ok(())
+}
+
+fn capture_preview_png(webview: &ICoreWebView2) -> StdResult<Vec<u8>> {
+    let stream = unsafe { CreateStreamOnHGlobal(None, true) }
+        .map_err(|err| WebViewError::WebView(format!("CreateStreamOnHGlobal failed: {err}")))?;
+    let capture_stream = stream.clone();
+    let webview = webview.clone();
+
+    CapturePreviewCompletedHandler::wait_for_async_operation(
+        Box::new(move |handler| unsafe {
+            webview
+                .CapturePreview(
+                    COREWEBVIEW2_CAPTURE_PREVIEW_IMAGE_FORMAT_PNG,
+                    &capture_stream,
+                    &handler,
+                )
+                .map_err(webview2_com::Error::WindowsError)
+        }),
+        Box::new(|result| result),
+    )
+    .map_err(map_webview2_error)?;
+
+    let bytes = read_stream_to_end(&stream)
+        .map_err(|err| WebViewError::WebView(format!("read screenshot stream failed: {err}")))?;
+    if bytes.is_empty() {
+        return Err(WebViewError::WebView(
+            "WebView2 screenshot stream was empty".to_string(),
+        ));
+    }
+    Ok(bytes)
 }
 
 fn execute_script_json(
