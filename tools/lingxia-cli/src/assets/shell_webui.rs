@@ -102,7 +102,7 @@ pub(super) fn resolve_lxapp_package(
         .tempdir_in(cache_dir)
         .with_context(|| format!("Failed to create temp dir in {}", cache_dir.display()))?;
     let spec = format!("{package}@{version}");
-    let output = Command::new("npm")
+    let output = Command::new(crate::npm::command())
         .arg("pack")
         .arg("--json")
         .arg(&spec)

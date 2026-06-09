@@ -13,6 +13,7 @@ mod host_assets;
 mod http_client;
 mod i18n;
 mod lxapp;
+mod npm;
 mod path_completion;
 mod permission_cache;
 mod platform;
