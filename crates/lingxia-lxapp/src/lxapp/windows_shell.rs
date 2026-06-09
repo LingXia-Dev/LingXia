@@ -7,6 +7,7 @@ use lingxia_webview::platform::windows::{
     set_webview_window_layout,
 };
 
+use super::tabbar::TabBarPosition;
 use super::{LxApp, try_get};
 use crate::delegate::{LxAppDelegate, LxAppUiEventType};
 use crate::{error, warn};
@@ -78,10 +79,17 @@ impl LxApp {
 
     fn build_windows_tab_bar_layout(&self) -> Option<WindowsTabBarLayout> {
         let tabbar = self.get_tabbar()?;
+        let position = windows_tab_bar_position(&tabbar.position);
+        let dimension = match position {
+            WindowsTabBarPosition::Left | WindowsTabBarPosition::Right => {
+                tabbar.dimension.max(DEFAULT_SIDEBAR_WIDTH)
+            }
+            WindowsTabBarPosition::Bottom => tabbar.dimension,
+        };
         Some(WindowsTabBarLayout {
             visible: !tabbar.list.is_empty(),
-            position: WindowsTabBarPosition::Left,
-            dimension: DEFAULT_SIDEBAR_WIDTH,
+            position,
+            dimension,
             app_name: self.config.appName.clone(),
             color: parse_css_color(&tabbar.color, 0x666666),
             selected_color: parse_css_color(&tabbar.selectedColor, 0x1677ff),
@@ -99,6 +107,14 @@ impl LxApp {
                 })
                 .collect(),
         })
+    }
+}
+
+fn windows_tab_bar_position(position: &TabBarPosition) -> WindowsTabBarPosition {
+    match position {
+        TabBarPosition::Bottom => WindowsTabBarPosition::Bottom,
+        TabBarPosition::Left => WindowsTabBarPosition::Left,
+        TabBarPosition::Right => WindowsTabBarPosition::Right,
     }
 }
 
