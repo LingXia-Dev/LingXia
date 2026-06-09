@@ -12,7 +12,7 @@ Page({
     appVersion: "",
   },
 
-  onReady: function () {
+  onReady: function() {
     console.log("[Home] Page ready");
     // Add callback directly to App
     app.ipReadyCallback = (ip) => {
@@ -32,11 +32,11 @@ Page({
     }
   },
 
-  onUnload: function () {
+  onUnload: function() {
     console.log("[Home] Page unloaded");
   },
 
-  onLoad: async function () {
+  onLoad: async function() {
     console.log("[Home] Page loaded");
     try {
       const info = lx.getLxAppInfo();
@@ -67,16 +67,16 @@ Page({
     }
   },
 
-  onHide: function () {
+  onHide: function() {
     console.log("[Home] Page hidden");
   },
 
-  onShow: function () {
+  onShow: function() {
     console.log("[Home] Page shown");
     console.log("[Home] App data:", app.globalData);
   },
 
-  greet: function (option = {}) {
+  greet: function(option = {}) {
     const name = typeof option.name === "string" && option.name ? option.name : "LingXia";
     const count = this.data.greetCount + 1;
     this.setData(
@@ -93,6 +93,3 @@ Page({
     );
   },
 });
-
-// futuristic.png is got from link below
-// https://unsplash.com/photos/a-red-cube-surrounded-by-yellow-squares-on-a-blue-background-0PePVHSlu_8
