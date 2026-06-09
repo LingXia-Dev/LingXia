@@ -520,11 +520,11 @@ impl AppRuntime for Platform {
         appid: String,
         path: String,
         session_id: u64,
-        _open_mode: LxAppOpenMode,
-        _panel_id: String,
+        open_mode: LxAppOpenMode,
+        panel_id: String,
     ) -> Result<(), PlatformError> {
         let webtag = WebTag::new(&appid, &path, Some(session_id));
-        show_webtag_window(webtag, self.product_name.clone(), true);
+        show_webtag_window(webtag, self.product_name.clone(), true, open_mode, panel_id);
         Ok(())
     }
 
@@ -552,7 +552,13 @@ impl AppRuntime for Platform {
             .find(|tag| tag.extract_appid() == appid)
             .and_then(|tag| tag.session_id());
         let webtag = WebTag::new(&appid, &path, session_id);
-        show_webtag_window(webtag, self.product_name.clone(), false);
+        show_webtag_window(
+            webtag,
+            self.product_name.clone(),
+            false,
+            LxAppOpenMode::Normal,
+            String::new(),
+        );
         Ok(())
     }
 
@@ -565,11 +571,19 @@ impl AppRuntime for Platform {
     }
 }
 
-fn show_webtag_window(webtag: WebTag, title: String, activate: bool) {
+fn show_webtag_window(
+    webtag: WebTag,
+    title: String,
+    activate: bool,
+    open_mode: LxAppOpenMode,
+    panel_id: String,
+) {
     if webview_runtime::find_webview(&webtag).is_some() {
         install_close_handler(&webtag);
-        show_webview_window_for_mode(&webtag, &title, activate);
-        hide_sibling_webtag_windows(&webtag);
+        show_webview_window_for_mode(&webtag, &title, activate, open_mode, &panel_id);
+        if open_mode == LxAppOpenMode::Normal {
+            hide_sibling_webtag_windows(&webtag);
+        }
         return;
     }
 
@@ -580,8 +594,10 @@ fn show_webtag_window(webtag: WebTag, title: String, activate: bool) {
             while Instant::now() < deadline {
                 if webview_runtime::find_webview(&webtag).is_some() {
                     install_close_handler(&webtag);
-                    show_webview_window_for_mode(&webtag, &title, activate);
-                    hide_sibling_webtag_windows(&webtag);
+                    show_webview_window_for_mode(&webtag, &title, activate, open_mode, &panel_id);
+                    if open_mode == LxAppOpenMode::Normal {
+                        hide_sibling_webtag_windows(&webtag);
+                    }
                     return;
                 }
                 thread::sleep(Duration::from_millis(50));
@@ -590,14 +606,30 @@ fn show_webtag_window(webtag: WebTag, title: String, activate: bool) {
         });
 }
 
-fn show_webview_window_for_mode(webtag: &WebTag, title: &str, activate: bool) {
-    let result = if activate {
-        lingxia_webview::platform::windows::show_webview_window(webtag, title)
-    } else {
-        lingxia_webview::platform::windows::show_webview_window_inactive(webtag, title)
+fn show_webview_window_for_mode(
+    webtag: &WebTag,
+    title: &str,
+    activate: bool,
+    open_mode: LxAppOpenMode,
+    panel_id: &str,
+) {
+    let result = match open_mode {
+        LxAppOpenMode::Panel => {
+            lingxia_webview::platform::windows::show_webview_panel(webtag, title, panel_id)
+        }
+        LxAppOpenMode::Normal if activate => {
+            lingxia_webview::platform::windows::show_webview_window(webtag, title)
+        }
+        LxAppOpenMode::Normal => {
+            lingxia_webview::platform::windows::show_webview_window_inactive(webtag, title)
+        }
     };
     if let Err(err) = result {
-        log::warn!("Failed to show Windows WebView window {}: {}", webtag.key(), err);
+        log::warn!(
+            "Failed to show Windows WebView window {}: {}",
+            webtag.key(),
+            err
+        );
     }
 }
 
@@ -752,7 +784,7 @@ fn hwnd_from_window_id(raw: &str) -> Result<windows::Win32::Foundation::HWND, Pl
 async fn capture_window_png(window_id: usize) -> Result<Vec<u8>, PlatformError> {
     let hwnd = windows::Win32::Foundation::HWND(window_id as *mut c_void);
     let (width, height, mut image) = capture_window_native_rgba(hwnd)?;
-    if let Some((snapshot, webview_png)) = visible_webview_screenshot_for_window(window_id).await {
+    for (snapshot, webview_png) in visible_webview_screenshots_for_window(window_id).await {
         overlay_webview_screenshot(&mut image, &snapshot, &webview_png)?;
     }
     encode_rgba_png(width, height, image)
@@ -861,12 +893,13 @@ fn visible_window_rect(
     Ok(rect)
 }
 
-async fn visible_webview_screenshot_for_window(
+async fn visible_webview_screenshots_for_window(
     window_id: usize,
-) -> Option<(
+) -> Vec<(
     lingxia_webview::platform::windows::WindowsWebViewWindowSnapshot,
     Vec<u8>,
 )> {
+    let mut captures = Vec::new();
     for webtag in webview_runtime::list_webviews() {
         let snapshot = match lingxia_webview::platform::windows::webview_window_snapshot(&webtag) {
             Ok(snapshot)
@@ -884,7 +917,7 @@ async fn visible_webview_screenshot_for_window(
             continue;
         };
         match webview.take_screenshot().await {
-            Ok(bytes) => return Some((snapshot, bytes)),
+            Ok(bytes) => captures.push((snapshot, bytes)),
             Err(err) => log::warn!(
                 "failed to capture Windows WebView screenshot for {}: {}",
                 webtag.key(),
@@ -892,7 +925,14 @@ async fn visible_webview_screenshot_for_window(
             ),
         }
     }
-    None
+    captures.sort_by_key(|(snapshot, _)| {
+        std::cmp::Reverse(
+            snapshot
+                .content_width
+                .saturating_mul(snapshot.content_height),
+        )
+    });
+    captures
 }
 
 fn overlay_webview_screenshot(

@@ -12,7 +12,7 @@ use http::{Request, StatusCode};
 use std::collections::HashMap;
 use std::ffi::c_void;
 use std::io::Read;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::thread::{self, JoinHandle};
@@ -46,6 +46,7 @@ use windows::{
 };
 
 const WM_LINGXIA_COMMAND: u32 = WM_APP + 0x154;
+const WM_LINGXIA_LAYOUT: u32 = WM_APP + 0x155;
 const ARC_PANEL_PADDING: i32 = 6;
 const ARC_PANEL_RADIUS: i32 = 14;
 const ARC_WINDOW_BACKGROUND: u32 = 0xe7e8eb;
@@ -57,7 +58,20 @@ const SIDEBAR_ITEM_HEIGHT: i32 = 34;
 const SIDEBAR_ITEM_GAP: i32 = 4;
 const SIDEBAR_ITEM_INSET: i32 = 10;
 const SIDEBAR_FOOTER_HEIGHT: i32 = 46;
+const SIDEBAR_ICON_SIZE: i32 = 16;
+const PANEL_ACTIVATOR_SIZE: i32 = 28;
+const PANEL_ACTIVATOR_ICON_SIZE: i32 = 16;
+const PANEL_ACTIVATOR_GAP: i32 = 4;
+const PANEL_ACTIVATOR_MARGIN: i32 = 6;
+const ATTACHED_PANEL_WIDTH: i32 = 380;
+const ATTACHED_PANEL_BOTTOM_HEIGHT: i32 = 280;
 type StdResult<T, E = WebViewError> = std::result::Result<T, E>;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum WindowsWindowRole {
+    Main,
+    Panel { panel_id: String },
+}
 
 enum UiCommand {
     LoadUrl {
@@ -110,6 +124,7 @@ enum UiCommand {
     ShowWindow {
         title: String,
         activate: bool,
+        role: WindowsWindowRole,
         resp: Sender<StdResult<()>>,
     },
     HideWindow {
@@ -140,6 +155,8 @@ pub struct WebViewInner {
 
 type CloseHandler = Arc<dyn Fn() + Send + Sync>;
 type ChromeEventHandler = Arc<dyn Fn(WindowsChromeEvent) + Send + Sync>;
+type IconCacheKey = (PathBuf, u32);
+type IconHandleCache = HashMap<IconCacheKey, Option<isize>>;
 
 struct WindowUserData {
     webtag_key: String,
@@ -148,6 +165,7 @@ struct WindowUserData {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WindowsChromeEvent {
     TabBarClick { index: usize },
+    PanelActivatorClick { panel_id: String },
     NavigationBack,
     NavigationHome,
 }
@@ -175,6 +193,8 @@ pub struct WindowsNavigationBarLayout {
 pub struct WindowsTabBarItemLayout {
     pub page_path: String,
     pub text: String,
+    pub icon_path: String,
+    pub selected_icon_path: String,
     pub badge: Option<String>,
     pub has_red_dot: bool,
 }
@@ -193,10 +213,28 @@ pub struct WindowsTabBarLayout {
     pub items: Vec<WindowsTabBarItemLayout>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum WindowsPanelPosition {
+    Left,
+    #[default]
+    Right,
+    Bottom,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WindowsPanelActivatorLayout {
+    pub id: String,
+    pub label: String,
+    pub icon_path: String,
+    pub position: WindowsPanelPosition,
+    pub active: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct WindowsWindowLayout {
     pub navigation_bar: Option<WindowsNavigationBarLayout>,
     pub tab_bar: Option<WindowsTabBarLayout>,
+    pub panel_activators: Vec<WindowsPanelActivatorLayout>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -224,12 +262,44 @@ struct WindowPlacement {
     height: i32,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct WindowAttachment {
+    group_key: String,
+    kind: WindowAttachmentKind,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum WindowAttachmentKind {
+    MainHost,
+    MainChild,
+    Panel {
+        panel_id: String,
+        position: WindowsPanelPosition,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct GroupPanel {
+    webtag_key: String,
+    panel_id: String,
+    position: WindowsPanelPosition,
+}
+
 static WINDOW_CLOSE_HANDLERS: OnceLock<Mutex<HashMap<String, CloseHandler>>> = OnceLock::new();
 static WINDOW_CHROME_HANDLERS: OnceLock<Mutex<HashMap<String, ChromeEventHandler>>> =
     OnceLock::new();
 static WINDOW_LAYOUTS: OnceLock<Mutex<HashMap<String, WindowsWindowLayout>>> = OnceLock::new();
+static WINDOW_GROUP_LAYOUTS: OnceLock<Mutex<HashMap<String, WindowsWindowLayout>>> =
+    OnceLock::new();
 static WINDOW_GROUP_PLACEMENTS: OnceLock<Mutex<HashMap<String, WindowPlacement>>> = OnceLock::new();
+static WINDOW_GROUP_HOSTS: OnceLock<Mutex<HashMap<String, isize>>> = OnceLock::new();
+static WINDOW_HANDLES: OnceLock<Mutex<HashMap<String, isize>>> = OnceLock::new();
+static WINDOW_ATTACHMENTS: OnceLock<Mutex<HashMap<String, WindowAttachment>>> = OnceLock::new();
+static WINDOW_GROUP_ACTIVE_MAIN: OnceLock<Mutex<HashMap<String, String>>> = OnceLock::new();
+static WINDOW_ACTIVE_GROUP: OnceLock<Mutex<Option<String>>> = OnceLock::new();
+static WINDOW_GROUP_PANELS: OnceLock<Mutex<HashMap<String, Vec<GroupPanel>>>> = OnceLock::new();
 static APP_ICON_HANDLES: OnceLock<Mutex<Option<AppIconHandles>>> = OnceLock::new();
+static PANEL_ICON_HANDLES: OnceLock<Mutex<IconHandleCache>> = OnceLock::new();
 
 impl std::fmt::Debug for WebViewInner {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -248,6 +318,18 @@ pub fn show_webview_window_inactive(webtag: &WebTag, title: &str) -> StdResult<(
     show_webview_window_with_activation(webtag, title, false)
 }
 
+pub fn show_webview_panel(webtag: &WebTag, title: &str, panel_id: &str) -> StdResult<()> {
+    let webview = find_webview(webtag)
+        .ok_or_else(|| WebViewError::WebView(format!("WebView not found for {}", webtag.key())))?;
+    webview.inner.show_window(
+        title.to_string(),
+        true,
+        WindowsWindowRole::Panel {
+            panel_id: panel_id.to_string(),
+        },
+    )
+}
+
 fn show_webview_window_with_activation(
     webtag: &WebTag,
     title: &str,
@@ -255,7 +337,9 @@ fn show_webview_window_with_activation(
 ) -> StdResult<()> {
     let webview = find_webview(webtag)
         .ok_or_else(|| WebViewError::WebView(format!("WebView not found for {}", webtag.key())))?;
-    webview.inner.show_window(title.to_string(), activate)
+    webview
+        .inner
+        .show_window(title.to_string(), activate, WindowsWindowRole::Main)
 }
 
 pub fn hide_webview_window(webtag: &WebTag) -> StdResult<()> {
@@ -274,6 +358,16 @@ pub fn webview_window_snapshot(webtag: &WebTag) -> StdResult<WindowsWebViewWindo
     let webview = find_webview(webtag)
         .ok_or_else(|| WebViewError::WebView(format!("WebView not found for {}", webtag.key())))?;
     webview.inner.window_snapshot()
+}
+
+pub fn is_panel_visible(panel_id: &str) -> bool {
+    active_group_key()
+        .map(|group_key| {
+            group_panels(&group_key)
+                .into_iter()
+                .any(|panel| panel.panel_id == panel_id)
+        })
+        .unwrap_or(false)
 }
 
 pub fn set_webview_close_handler(webtag: &WebTag, handler: CloseHandler) {
@@ -390,6 +484,45 @@ fn apply_window_icons(hwnd: HWND, icons: AppIconHandles) {
     }
 }
 
+fn hide_titlebar_icon(hwnd: HWND) {
+    unsafe {
+        let _ = WindowsAndMessaging::SendMessageW(
+            hwnd,
+            WM_SETICON,
+            Some(WPARAM(ICON_SMALL as usize)),
+            Some(LPARAM(0)),
+        );
+        let _ = WindowsAndMessaging::SendMessageW(
+            hwnd,
+            WM_SETICON,
+            Some(WPARAM(ICON_BIG as usize)),
+            Some(LPARAM(0)),
+        );
+        let _ = WindowsAndMessaging::SetClassLongPtrW(hwnd, GCLP_HICONSM, 0);
+        let _ = WindowsAndMessaging::SetClassLongPtrW(hwnd, GCLP_HICON, 0);
+        let ex_style =
+            WindowsAndMessaging::GetWindowLongPtrW(hwnd, WindowsAndMessaging::GWL_EXSTYLE) as u32;
+        let _ = WindowsAndMessaging::SetWindowLongPtrW(
+            hwnd,
+            WindowsAndMessaging::GWL_EXSTYLE,
+            (ex_style | WindowsAndMessaging::WS_EX_DLGMODALFRAME.0) as isize,
+        );
+        let _ = WindowsAndMessaging::SetWindowPos(
+            hwnd,
+            None,
+            0,
+            0,
+            0,
+            0,
+            WindowsAndMessaging::SWP_NOMOVE
+                | WindowsAndMessaging::SWP_NOSIZE
+                | WindowsAndMessaging::SWP_NOZORDER
+                | WindowsAndMessaging::SWP_NOACTIVATE
+                | WindowsAndMessaging::SWP_FRAMECHANGED,
+        );
+    }
+}
+
 fn invoke_close_handler(webtag_key: &str) -> bool {
     let Some(handlers) = WINDOW_CLOSE_HANDLERS.get() else {
         return false;
@@ -417,17 +550,42 @@ fn remove_close_handler(webtag_key: &str) {
 }
 
 fn current_window_layout(webtag_key: &str) -> WindowsWindowLayout {
-    WINDOW_LAYOUTS
+    let exact = WINDOW_LAYOUTS
         .get()
         .and_then(|layouts| layouts.lock().ok())
-        .and_then(|layouts| layouts.get(webtag_key).cloned())
-        .unwrap_or_default()
+        .and_then(|layouts| layouts.get(webtag_key).cloned());
+    let group = layout_group_key_for_webtag(webtag_key);
+    let group_layout = WINDOW_GROUP_LAYOUTS
+        .get()
+        .and_then(|layouts| layouts.lock().ok())
+        .and_then(|layouts| layouts.get(&group).cloned());
+
+    if window_attachment(webtag_key)
+        .is_some_and(|attachment| matches!(attachment.kind, WindowAttachmentKind::MainHost))
+    {
+        return group_layout.or(exact).unwrap_or_default();
+    }
+
+    exact.or(group_layout).unwrap_or_default()
 }
 
 fn set_window_layout_for_key(webtag_key: &str, layout: WindowsWindowLayout) {
     let layouts = WINDOW_LAYOUTS.get_or_init(|| Mutex::new(HashMap::new()));
     if let Ok(mut layouts) = layouts.lock() {
         layouts.insert(webtag_key.to_string(), layout);
+    }
+
+    if !window_attachment(webtag_key)
+        .is_some_and(|attachment| matches!(attachment.kind, WindowAttachmentKind::Panel { .. }))
+    {
+        let group_key = layout_group_key_for_webtag(webtag_key);
+        let layouts = WINDOW_GROUP_LAYOUTS.get_or_init(|| Mutex::new(HashMap::new()));
+        if let Ok(mut layouts) = layouts.lock() {
+            layouts.insert(
+                group_key,
+                current_exact_window_layout(webtag_key).unwrap_or_default(),
+            );
+        }
     }
 }
 
@@ -436,6 +594,14 @@ fn remove_window_layout(webtag_key: &str) {
         && let Ok(mut layouts) = layouts.lock()
     {
         layouts.remove(webtag_key);
+    }
+}
+
+fn remove_group_layout(group_key: &str) {
+    if let Some(layouts) = WINDOW_GROUP_LAYOUTS.get()
+        && let Ok(mut layouts) = layouts.lock()
+    {
+        layouts.remove(group_key);
     }
 }
 
@@ -459,6 +625,7 @@ fn invoke_chrome_event_handler(webtag_key: &str, event: WindowsChromeEvent) -> b
     if let Some(handler) = handler {
         let event_name = match &event {
             WindowsChromeEvent::TabBarClick { .. } => "tabbar",
+            WindowsChromeEvent::PanelActivatorClick { .. } => "panel-activator",
             WindowsChromeEvent::NavigationBack => "nav-back",
             WindowsChromeEvent::NavigationHome => "nav-home",
         };
@@ -483,20 +650,49 @@ fn webtag_group_key(webtag_key: &str) -> String {
     format!("{appid}#{session}")
 }
 
-fn current_group_window_placement(webtag_key: &str) -> Option<WindowPlacement> {
-    WINDOW_GROUP_PLACEMENTS
+fn current_exact_window_layout(webtag_key: &str) -> Option<WindowsWindowLayout> {
+    WINDOW_LAYOUTS
         .get()
-        .and_then(|placements| placements.lock().ok())
-        .and_then(|placements| placements.get(&webtag_group_key(webtag_key)).copied())
+        .and_then(|layouts| layouts.lock().ok())
+        .and_then(|layouts| layouts.get(webtag_key).cloned())
+}
+
+fn window_attachment(webtag_key: &str) -> Option<WindowAttachment> {
+    WINDOW_ATTACHMENTS
+        .get()
+        .and_then(|attachments| attachments.lock().ok())
+        .and_then(|attachments| attachments.get(webtag_key).cloned())
+}
+
+fn layout_group_key_for_webtag(webtag_key: &str) -> String {
+    window_attachment(webtag_key)
+        .map(|attachment| attachment.group_key)
+        .unwrap_or_else(|| webtag_group_key(webtag_key))
+}
+
+fn hwnd_handle(hwnd: HWND) -> isize {
+    hwnd.0 as isize
+}
+
+fn hwnd_from_handle(handle: isize) -> HWND {
+    HWND(handle as *mut c_void)
+}
+
+fn is_window_handle_valid(handle: isize) -> bool {
+    unsafe { WindowsAndMessaging::IsWindow(Some(hwnd_from_handle(handle))).as_bool() }
 }
 
 fn store_current_window_placement(state: &UiState) {
-    if !state.window_visible {
+    if matches!(
+        window_attachment(&state.webtag_key).map(|attachment| attachment.kind),
+        Some(WindowAttachmentKind::MainChild | WindowAttachmentKind::Panel { .. })
+    ) {
         return;
     }
-
     let mut rect = RECT::default();
-    if unsafe { WindowsAndMessaging::GetWindowRect(state.hwnd, &mut rect) }.is_err() {
+    if !unsafe { WindowsAndMessaging::IsWindowVisible(state.hwnd).as_bool() }
+        || unsafe { WindowsAndMessaging::GetWindowRect(state.hwnd, &mut rect) }.is_err()
+    {
         return;
     }
     let width = rect.right - rect.left;
@@ -519,19 +715,427 @@ fn store_current_window_placement(state: &UiState) {
     }
 }
 
-fn apply_group_window_placement(state: &UiState) {
-    let Some(placement) = current_group_window_placement(&state.webtag_key) else {
+fn register_window_handle(webtag_key: &str, hwnd: HWND) {
+    let handles = WINDOW_HANDLES.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Ok(mut handles) = handles.lock() {
+        handles.insert(webtag_key.to_string(), hwnd_handle(hwnd));
+    }
+}
+
+fn window_handle_for_key(webtag_key: &str) -> Option<HWND> {
+    WINDOW_HANDLES
+        .get()
+        .and_then(|handles| handles.lock().ok())
+        .and_then(|handles| handles.get(webtag_key).copied())
+        .filter(|handle| is_window_handle_valid(*handle))
+        .map(hwnd_from_handle)
+}
+
+fn host_handle_for_group(group_key: &str) -> Option<HWND> {
+    WINDOW_GROUP_HOSTS
+        .get()
+        .and_then(|hosts| hosts.lock().ok())
+        .and_then(|hosts| hosts.get(group_key).copied())
+        .filter(|handle| is_window_handle_valid(*handle))
+        .map(hwnd_from_handle)
+}
+
+fn set_window_attachment(webtag_key: &str, attachment: WindowAttachment) {
+    let attachments = WINDOW_ATTACHMENTS.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Ok(mut attachments) = attachments.lock() {
+        attachments.insert(webtag_key.to_string(), attachment);
+    }
+}
+
+fn remove_window_attachment(webtag_key: &str) -> Option<WindowAttachment> {
+    WINDOW_ATTACHMENTS
+        .get()
+        .and_then(|attachments| attachments.lock().ok())
+        .and_then(|mut attachments| attachments.remove(webtag_key))
+}
+
+fn remove_window_handle(webtag_key: &str) {
+    if let Some(handles) = WINDOW_HANDLES.get()
+        && let Ok(mut handles) = handles.lock()
+    {
+        handles.remove(webtag_key);
+    }
+}
+
+fn ensure_main_attachment(state: &UiState) -> (String, HWND, bool) {
+    register_window_handle(&state.webtag_key, state.hwnd);
+    let group_key = webtag_group_key(&state.webtag_key);
+    let host_handle = {
+        let hosts = WINDOW_GROUP_HOSTS.get_or_init(|| Mutex::new(HashMap::new()));
+        let Ok(mut hosts) = hosts.lock() else {
+            return (group_key, state.hwnd, true);
+        };
+        let existing = hosts
+            .get(&group_key)
+            .copied()
+            .filter(|handle| is_window_handle_valid(*handle));
+        let host_handle = existing.unwrap_or_else(|| hwnd_handle(state.hwnd));
+        hosts.insert(group_key.clone(), host_handle);
+        host_handle
+    };
+    let is_host = host_handle == hwnd_handle(state.hwnd);
+    let kind = if is_host {
+        WindowAttachmentKind::MainHost
+    } else {
+        WindowAttachmentKind::MainChild
+    };
+    set_window_attachment(
+        &state.webtag_key,
+        WindowAttachment {
+            group_key: group_key.clone(),
+            kind,
+        },
+    );
+
+    let host = hwnd_from_handle(host_handle);
+    if !is_host {
+        attach_child_window_to_host(state.hwnd, host);
+    }
+    (group_key, host, is_host)
+}
+
+fn active_group_key() -> Option<String> {
+    WINDOW_ACTIVE_GROUP
+        .get()
+        .and_then(|active| active.lock().ok())
+        .and_then(|active| active.clone())
+}
+
+fn set_active_group(group_key: &str) {
+    let active = WINDOW_ACTIVE_GROUP.get_or_init(|| Mutex::new(None));
+    if let Ok(mut active) = active.lock() {
+        *active = Some(group_key.to_string());
+    }
+}
+
+fn group_active_main(group_key: &str) -> Option<String> {
+    WINDOW_GROUP_ACTIVE_MAIN
+        .get()
+        .and_then(|active| active.lock().ok())
+        .and_then(|active| active.get(group_key).cloned())
+}
+
+fn set_group_active_main(group_key: &str, webtag_key: &str) {
+    let active = WINDOW_GROUP_ACTIVE_MAIN.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Ok(mut active) = active.lock() {
+        active.insert(group_key.to_string(), webtag_key.to_string());
+    }
+}
+
+fn panel_position_for_group(group_key: &str, panel_id: &str) -> WindowsPanelPosition {
+    WINDOW_GROUP_LAYOUTS
+        .get()
+        .and_then(|layouts| layouts.lock().ok())
+        .and_then(|layouts| layouts.get(group_key).cloned())
+        .and_then(|layout| {
+            layout
+                .panel_activators
+                .into_iter()
+                .find(|activator| activator.id == panel_id)
+                .map(|activator| activator.position)
+        })
+        .unwrap_or_default()
+}
+
+fn register_group_panel(group_key: &str, panel: GroupPanel) {
+    let panels = WINDOW_GROUP_PANELS.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Ok(mut panels) = panels.lock() {
+        let group_panels = panels.entry(group_key.to_string()).or_default();
+        group_panels.retain(|item| item.panel_id != panel.panel_id);
+        group_panels.push(panel);
+    }
+}
+
+fn remove_group_panel(group_key: &str, webtag_key: &str) {
+    if let Some(panels) = WINDOW_GROUP_PANELS.get()
+        && let Ok(mut panels) = panels.lock()
+        && let Some(group_panels) = panels.get_mut(group_key)
+    {
+        group_panels.retain(|panel| panel.webtag_key != webtag_key);
+    }
+}
+
+fn group_panels(group_key: &str) -> Vec<GroupPanel> {
+    WINDOW_GROUP_PANELS
+        .get()
+        .and_then(|panels| panels.lock().ok())
+        .and_then(|panels| panels.get(group_key).cloned())
+        .unwrap_or_default()
+}
+
+fn attach_child_window_to_host(child: HWND, host: HWND) {
+    unsafe {
+        let _ = WindowsAndMessaging::SetParent(child, Some(host));
+        let style =
+            WindowsAndMessaging::GetWindowLongPtrW(child, WindowsAndMessaging::GWL_STYLE) as u32;
+        let child_style = (style & !WS_OVERLAPPEDWINDOW.0 & !WindowsAndMessaging::WS_POPUP.0)
+            | WindowsAndMessaging::WS_CHILD.0
+            | WindowsAndMessaging::WS_CLIPCHILDREN.0
+            | WindowsAndMessaging::WS_CLIPSIBLINGS.0;
+        let _ = WindowsAndMessaging::SetWindowLongPtrW(
+            child,
+            WindowsAndMessaging::GWL_STYLE,
+            child_style as isize,
+        );
+        let _ = WindowsAndMessaging::SetWindowPos(
+            child,
+            Some(WindowsAndMessaging::HWND_TOP),
+            0,
+            0,
+            0,
+            0,
+            WindowsAndMessaging::SWP_NOMOVE
+                | WindowsAndMessaging::SWP_NOSIZE
+                | WindowsAndMessaging::SWP_NOACTIVATE
+                | WindowsAndMessaging::SWP_NOOWNERZORDER
+                | WindowsAndMessaging::SWP_FRAMECHANGED,
+        );
+    }
+}
+
+fn show_shell_host(group_key: &str, host: HWND, activate: bool) {
+    if let Some(placement) = current_group_window_placement_for_group(group_key) {
+        unsafe {
+            let _ = WindowsAndMessaging::SetWindowPos(
+                host,
+                None,
+                placement.left,
+                placement.top,
+                placement.width,
+                placement.height,
+                WindowsAndMessaging::SWP_NOZORDER | WindowsAndMessaging::SWP_NOACTIVATE,
+            );
+        }
+    }
+
+    let title = to_wide("");
+    unsafe {
+        hide_titlebar_icon(host);
+        let _ = WindowsAndMessaging::SetWindowTextW(host, PCWSTR(title.as_ptr()));
+        let mut flags = WindowsAndMessaging::SWP_NOMOVE | WindowsAndMessaging::SWP_NOSIZE;
+        if !activate {
+            flags |= WindowsAndMessaging::SWP_NOACTIVATE;
+        }
+        let _ = WindowsAndMessaging::SetWindowPos(
+            host,
+            None,
+            0,
+            0,
+            0,
+            0,
+            flags | WindowsAndMessaging::SWP_SHOWWINDOW,
+        );
+        if activate {
+            let _ = WindowsAndMessaging::BringWindowToTop(host);
+            let _ = WindowsAndMessaging::SetForegroundWindow(host);
+        }
+    }
+}
+
+fn current_group_window_placement_for_group(group_key: &str) -> Option<WindowPlacement> {
+    WINDOW_GROUP_PLACEMENTS
+        .get()
+        .and_then(|placements| placements.lock().ok())
+        .and_then(|placements| placements.get(group_key).copied())
+}
+
+#[derive(Debug, Clone)]
+struct AttachedGroupRects {
+    main: RECT,
+    panels: HashMap<String, RECT>,
+}
+
+fn attached_group_rects(group_key: &str, host: HWND) -> Option<AttachedGroupRects> {
+    let mut client = RECT::default();
+    unsafe {
+        if WindowsAndMessaging::GetClientRect(host, &mut client).is_err() {
+            return None;
+        }
+    }
+    let layout = WINDOW_GROUP_LAYOUTS
+        .get()
+        .and_then(|layouts| layouts.lock().ok())
+        .and_then(|layouts| layouts.get(group_key).cloned())
+        .unwrap_or_default();
+    let mut main = compute_content_rect(client, &layout);
+    let mut panels = HashMap::new();
+
+    for panel in group_panels(group_key) {
+        let rect = match panel.position {
+            WindowsPanelPosition::Left => {
+                let width = attached_panel_width(main);
+                let rect = RECT {
+                    left: main.left,
+                    top: main.top,
+                    right: (main.left + width).min(main.right),
+                    bottom: main.bottom,
+                };
+                main.left = (rect.right + ARC_PANEL_PADDING).min(main.right);
+                rect
+            }
+            WindowsPanelPosition::Right => {
+                let width = attached_panel_width(main);
+                let rect = RECT {
+                    left: (main.right - width).max(main.left),
+                    top: main.top,
+                    right: main.right,
+                    bottom: main.bottom,
+                };
+                main.right = (rect.left - ARC_PANEL_PADDING).max(main.left);
+                rect
+            }
+            WindowsPanelPosition::Bottom => {
+                let height = attached_panel_bottom_height(main);
+                let rect = RECT {
+                    left: main.left,
+                    top: (main.bottom - height).max(main.top),
+                    right: main.right,
+                    bottom: main.bottom,
+                };
+                main.bottom = (rect.top - ARC_PANEL_PADDING).max(main.top);
+                rect
+            }
+        };
+        panels.insert(panel.webtag_key, normalize_rect(rect));
+    }
+
+    Some(AttachedGroupRects {
+        main: normalize_rect(main),
+        panels,
+    })
+}
+
+fn attached_panel_width(content: RECT) -> i32 {
+    let available = rect_width(&content);
+    if available <= 0 {
+        return 0;
+    }
+    ATTACHED_PANEL_WIDTH
+        .min((available / 2).max(260))
+        .min(available)
+}
+
+fn attached_panel_bottom_height(content: RECT) -> i32 {
+    let available = rect_height(&content);
+    if available <= 0 {
+        return 0;
+    }
+    ATTACHED_PANEL_BOTTOM_HEIGHT
+        .min((available / 2).max(180))
+        .min(available)
+}
+
+fn layout_group_windows(group_key: &str) {
+    let Some(host) = host_handle_for_group(group_key) else {
+        return;
+    };
+    let Some(rects) = attached_group_rects(group_key, host) else {
+        return;
+    };
+    let active_main = group_active_main(group_key);
+    let attachments = WINDOW_ATTACHMENTS
+        .get()
+        .and_then(|attachments| attachments.lock().ok())
+        .map(|attachments| {
+            attachments
+                .iter()
+                .filter(|(_, attachment)| attachment.group_key == group_key)
+                .map(|(webtag_key, attachment)| (webtag_key.clone(), attachment.clone()))
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
+    for (webtag_key, attachment) in attachments {
+        let Some(hwnd) = window_handle_for_key(&webtag_key) else {
+            continue;
+        };
+        match attachment.kind {
+            WindowAttachmentKind::MainHost => {}
+            WindowAttachmentKind::MainChild => {
+                let visible = active_main.as_deref() == Some(webtag_key.as_str());
+                set_attached_window_rect(hwnd, rects.main, visible);
+            }
+            WindowAttachmentKind::Panel { .. } => {
+                let Some(rect) = rects.panels.get(&webtag_key).copied() else {
+                    hide_attached_window(hwnd);
+                    continue;
+                };
+                set_attached_window_rect(hwnd, rect, true);
+            }
+        }
+    }
+
+    unsafe {
+        let _ = InvalidateRect(Some(host), None, false);
+    }
+}
+
+fn layout_group_for_state(state: &UiState) {
+    if !matches!(
+        window_attachment(&state.webtag_key).map(|attachment| attachment.kind),
+        Some(WindowAttachmentKind::MainHost)
+    ) {
+        return;
+    }
+    layout_group_windows(&layout_group_key_for_webtag(&state.webtag_key));
+}
+
+fn request_group_shell_refresh(group_key: &str) {
+    let Some(host) = host_handle_for_group(group_key) else {
         return;
     };
     unsafe {
+        let _ = WindowsAndMessaging::PostMessageW(
+            Some(host),
+            WM_LINGXIA_LAYOUT,
+            WPARAM::default(),
+            LPARAM::default(),
+        );
+        let _ = InvalidateRect(Some(host), None, false);
+    }
+}
+
+fn set_attached_window_rect(hwnd: HWND, rect: RECT, visible: bool) {
+    let width = rect_width(&rect);
+    let height = rect_height(&rect);
+    if width == 0 || height == 0 || !visible {
+        hide_attached_window(hwnd);
+        return;
+    }
+    unsafe {
         let _ = WindowsAndMessaging::SetWindowPos(
-            state.hwnd,
+            hwnd,
+            Some(WindowsAndMessaging::HWND_TOP),
+            rect.left,
+            rect.top,
+            width,
+            height,
+            WindowsAndMessaging::SWP_NOACTIVATE
+                | WindowsAndMessaging::SWP_NOOWNERZORDER
+                | WindowsAndMessaging::SWP_SHOWWINDOW,
+        );
+    }
+}
+
+fn hide_attached_window(hwnd: HWND) {
+    unsafe {
+        let _ = WindowsAndMessaging::SetWindowPos(
+            hwnd,
             None,
-            placement.left,
-            placement.top,
-            placement.width,
-            placement.height,
-            WindowsAndMessaging::SWP_NOZORDER | WindowsAndMessaging::SWP_NOACTIVATE,
+            0,
+            0,
+            0,
+            0,
+            WindowsAndMessaging::SWP_NOMOVE
+                | WindowsAndMessaging::SWP_NOSIZE
+                | WindowsAndMessaging::SWP_NOZORDER
+                | WindowsAndMessaging::SWP_NOACTIVATE
+                | WindowsAndMessaging::SWP_HIDEWINDOW,
         );
     }
 }
@@ -633,10 +1237,11 @@ impl WebViewInner {
             .map_err(|_| WebViewError::WebView("WebView UI thread did not reply".to_string()))?
     }
 
-    fn show_window(&self, title: String, activate: bool) -> StdResult<()> {
+    fn show_window(&self, title: String, activate: bool, role: WindowsWindowRole) -> StdResult<()> {
         self.dispatch_command(|resp| UiCommand::ShowWindow {
             title,
             activate,
+            role,
             resp,
         })
     }
@@ -944,6 +1549,15 @@ fn create_hidden_window(webtag: &WebTag) -> StdResult<HWND> {
             }
         } else if msg == WindowsAndMessaging::WM_ERASEBKGND {
             return LRESULT(1);
+        } else if msg == WindowsAndMessaging::WM_SIZE || msg == WindowsAndMessaging::WM_MOVE {
+            unsafe {
+                let _ = WindowsAndMessaging::PostMessageW(
+                    Some(hwnd),
+                    WM_LINGXIA_LAYOUT,
+                    WPARAM::default(),
+                    LPARAM::default(),
+                );
+            }
         } else if msg == WindowsAndMessaging::WM_PAINT {
             paint_window_chrome(hwnd);
             return LRESULT(0);
@@ -1033,6 +1647,7 @@ fn create_hidden_window(webtag: &WebTag) -> StdResult<HWND> {
                 if let Some(icons) = app_icons {
                     apply_window_icons(hwnd, icons);
                 }
+                hide_titlebar_icon(hwnd);
                 Ok(hwnd)
             }
             Err(err) => {
@@ -1177,6 +1792,9 @@ fn draw_window_chrome(hwnd: HWND, hdc: HDC) {
     let Some(webtag_key) = window_webtag_key(hwnd) else {
         return;
     };
+    if !window_draws_shell_chrome(&webtag_key) {
+        return;
+    }
     let layout = current_window_layout(&webtag_key);
     let mut client = RECT::default();
     unsafe {
@@ -1195,6 +1813,14 @@ fn draw_window_chrome(hwnd: HWND, hdc: HDC) {
     if let (Some(tabbar), Some(tabbar_rect)) = (&layout.tab_bar, rects.tab_bar) {
         draw_tab_bar(hdc, tabbar_rect, tabbar);
     }
+    draw_panel_activators(hdc, client, &rects, &layout);
+}
+
+fn window_draws_shell_chrome(webtag_key: &str) -> bool {
+    !matches!(
+        window_attachment(webtag_key).map(|attachment| attachment.kind),
+        Some(WindowAttachmentKind::MainChild | WindowAttachmentKind::Panel { .. })
+    )
 }
 
 fn window_webtag_key(hwnd: HWND) -> Option<String> {
@@ -1324,12 +1950,31 @@ fn draw_sidebar_tab_bar(hdc: HDC, rect: RECT, tabbar: &WindowsTabBarLayout) {
         }
 
         let label_rect = RECT {
-            left: item_rect.left + 18,
+            left: item_rect.left + 42,
             top: item_rect.top,
             right: item_rect.right - 8,
             bottom: item_rect.bottom,
         };
         let text_color = if selected { 0x111827 } else { 0x667085 };
+        let icon_path = if selected && !item.selected_icon_path.trim().is_empty() {
+            &item.selected_icon_path
+        } else {
+            &item.icon_path
+        };
+        if !icon_path.trim().is_empty() {
+            let icon_rect = centered_icon_rect(
+                RECT {
+                    left: item_rect.left + 18,
+                    top: item_rect.top,
+                    right: item_rect.left + 18 + SIDEBAR_ICON_SIZE,
+                    bottom: item_rect.bottom,
+                },
+                SIDEBAR_ICON_SIZE,
+            );
+            if !draw_icon_from_path(hdc, icon_path, icon_rect, SIDEBAR_ICON_SIZE as u32) {
+                draw_text(hdc, "□", icon_rect, text_color, DT_CENTER);
+            }
+        }
         draw_text(hdc, &item.text, label_rect, text_color, DT_LEFT);
 
         if let Some(badge) = item.badge.as_ref().filter(|badge| !badge.is_empty()) {
@@ -1406,6 +2051,72 @@ fn sidebar_item_rect(rect: RECT, index: usize) -> RECT {
     })
 }
 
+fn panel_activator_rects(
+    client: RECT,
+    rects: &ChromeRects,
+    layout: &WindowsWindowLayout,
+) -> Vec<(String, RECT)> {
+    if layout.panel_activators.is_empty() {
+        return Vec::new();
+    }
+
+    let mut out = Vec::with_capacity(layout.panel_activators.len());
+
+    if let (Some(tabbar), Some(tabbar_rect)) = (&layout.tab_bar, rects.tab_bar)
+        && matches!(
+            tabbar.position,
+            WindowsTabBarPosition::Left | WindowsTabBarPosition::Right
+        )
+    {
+        let footer_top = tabbar_rect.bottom - SIDEBAR_FOOTER_HEIGHT;
+        let top = footer_top + (SIDEBAR_FOOTER_HEIGHT - PANEL_ACTIVATOR_SIZE) / 2;
+        let mut right = tabbar_rect.right - PANEL_ACTIVATOR_MARGIN;
+        for activator in &layout.panel_activators {
+            let left = right - PANEL_ACTIVATOR_SIZE;
+            if left < tabbar_rect.left + PANEL_ACTIVATOR_MARGIN {
+                break;
+            }
+            out.push((
+                activator.id.clone(),
+                normalize_rect(RECT {
+                    left,
+                    top,
+                    right,
+                    bottom: top + PANEL_ACTIVATOR_SIZE,
+                }),
+            ));
+            right = left - PANEL_ACTIVATOR_GAP;
+        }
+        return out;
+    }
+
+    let bottom_limit = rects
+        .tab_bar
+        .map(|tabbar| tabbar.top)
+        .unwrap_or(client.bottom);
+    let left = rects.panel.left + PANEL_ACTIVATOR_MARGIN;
+    let mut bottom = bottom_limit - PANEL_ACTIVATOR_MARGIN;
+
+    for activator in &layout.panel_activators {
+        let top = bottom - PANEL_ACTIVATOR_SIZE;
+        if top < client.top + PANEL_ACTIVATOR_MARGIN {
+            break;
+        }
+        out.push((
+            activator.id.clone(),
+            normalize_rect(RECT {
+                left,
+                top,
+                right: left + PANEL_ACTIVATOR_SIZE,
+                bottom,
+            }),
+        ));
+        bottom = top - PANEL_ACTIVATOR_GAP;
+    }
+
+    out
+}
+
 fn inset_rect(rect: RECT, dx: i32, dy: i32) -> RECT {
     normalize_rect(RECT {
         left: rect.left + dx,
@@ -1416,6 +2127,9 @@ fn inset_rect(rect: RECT, dx: i32, dy: i32) -> RECT {
 }
 
 fn handle_window_chrome_click(hwnd: HWND, webtag_key: &str, point: (i32, i32)) -> bool {
+    if !window_draws_shell_chrome(webtag_key) {
+        return false;
+    }
     let layout = current_window_layout(webtag_key);
     let mut client = RECT::default();
     unsafe {
@@ -1436,6 +2150,15 @@ fn handle_window_chrome_click(hwnd: HWND, webtag_key: &str, point: (i32, i32)) -
             return invoke_chrome_event_handler(webtag_key, WindowsChromeEvent::NavigationHome);
         }
         return true;
+    }
+
+    for (panel_id, rect) in panel_activator_rects(client, &rects, &layout) {
+        if rect_contains(&rect, point) {
+            return invoke_chrome_event_handler(
+                webtag_key,
+                WindowsChromeEvent::PanelActivatorClick { panel_id },
+            );
+        }
     }
 
     if let (Some(tabbar), Some(tabbar_rect)) = (&layout.tab_bar, rects.tab_bar)
@@ -1461,6 +2184,59 @@ fn handle_window_chrome_click(hwnd: HWND, webtag_key: &str, point: (i32, i32)) -
     }
 
     false
+}
+
+fn draw_panel_activators(
+    hdc: HDC,
+    client: RECT,
+    rects: &ChromeRects,
+    layout: &WindowsWindowLayout,
+) {
+    for (panel_id, rect) in panel_activator_rects(client, rects, layout) {
+        let active = layout
+            .panel_activators
+            .iter()
+            .find(|item| item.id == panel_id)
+            .is_some_and(|item| item.active);
+        let fill = if active { 0x111827 } else { 0xffffff };
+        let activator = layout
+            .panel_activators
+            .iter()
+            .find(|item| item.id == panel_id);
+        let text = activator
+            .map(|item| panel_activator_label(&item.label))
+            .unwrap_or_else(|| panel_activator_label(&panel_id));
+        let text_color = if active { 0xffffff } else { 0x667085 };
+
+        if active {
+            fill_round_rect(hdc, rect, fill, 6);
+        }
+        let icon_rect = centered_icon_rect(rect, PANEL_ACTIVATOR_ICON_SIZE);
+        let icon_drawn = activator
+            .filter(|item| !item.icon_path.trim().is_empty())
+            .is_some_and(|item| {
+                draw_icon_from_path(
+                    hdc,
+                    &item.icon_path,
+                    icon_rect,
+                    PANEL_ACTIVATOR_ICON_SIZE as u32,
+                )
+            });
+        if !icon_drawn {
+            draw_text(hdc, &text, rect, text_color, DT_CENTER);
+        }
+    }
+}
+
+fn panel_activator_label(label: &str) -> String {
+    let mut out = String::new();
+    for ch in label.chars().filter(|ch| ch.is_ascii_alphanumeric()) {
+        out.push(ch.to_ascii_uppercase());
+        if out.len() == 2 {
+            break;
+        }
+    }
+    if out.is_empty() { "?".to_string() } else { out }
 }
 
 fn draw_text(
@@ -1606,6 +2382,52 @@ fn fill_round_rect(hdc: HDC, rect: RECT, rgb: u32, radius: i32) {
     }
 }
 
+fn centered_icon_rect(rect: RECT, size: i32) -> RECT {
+    let left = rect.left + (rect_width(&rect) - size).max(0) / 2;
+    let top = rect.top + (rect_height(&rect) - size).max(0) / 2;
+    normalize_rect(RECT {
+        left,
+        top,
+        right: left + size,
+        bottom: top + size,
+    })
+}
+
+fn draw_icon_from_path(hdc: HDC, path: &str, rect: RECT, size: u32) -> bool {
+    let Some(handle) = cached_png_icon_handle(path, size) else {
+        return false;
+    };
+    unsafe {
+        WindowsAndMessaging::DrawIconEx(
+            hdc,
+            rect.left,
+            rect.top,
+            hicon(handle),
+            rect_width(&rect),
+            rect_height(&rect),
+            0,
+            None,
+            WindowsAndMessaging::DI_NORMAL,
+        )
+        .is_ok()
+    }
+}
+
+fn cached_png_icon_handle(path: &str, size: u32) -> Option<isize> {
+    let path = PathBuf::from(path);
+    let key = (path.clone(), size);
+    let handles = PANEL_ICON_HANDLES.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Ok(mut handles) = handles.lock() {
+        if let Some(handle) = handles.get(&key) {
+            return *handle;
+        }
+        let handle = create_icon_from_png(&path, size).ok();
+        handles.insert(key, handle);
+        return handle;
+    }
+    create_icon_from_png(&path, size).ok()
+}
+
 fn rgb_to_colorref(rgb: u32) -> COLORREF {
     let r = (rgb >> 16) & 0xff;
     let g = (rgb >> 8) & 0xff;
@@ -1713,7 +2535,7 @@ fn configure_controller(controller: &ICoreWebView2Controller) -> StdResult<()> {
             })
             .map_err(|err| WebViewError::WebView(format!("SetBounds failed: {err}")))?;
         controller
-            .SetIsVisible(false)
+            .SetIsVisible(true)
             .map_err(|err| WebViewError::WebView(format!("SetIsVisible failed: {err}")))?;
     }
     Ok(())
@@ -2077,9 +2899,14 @@ fn message_loop(state: &mut UiState, command_rx: Receiver<UiCommand>) -> StdResu
                 return Ok(());
             }
             _ => {
-                if msg.message != WM_LINGXIA_COMMAND {
+                if msg.message == WM_LINGXIA_LAYOUT {
+                    let _ = sync_controller_bounds(state);
+                    layout_group_for_state(state);
+                    store_current_window_placement(state);
+                } else if msg.message != WM_LINGXIA_COMMAND {
                     if msg.message == WindowsAndMessaging::WM_SIZE {
                         let _ = sync_controller_bounds(state);
+                        layout_group_for_state(state);
                         store_current_window_placement(state);
                     } else if msg.message == WindowsAndMessaging::WM_MOVE {
                         store_current_window_placement(state);
@@ -2195,9 +3022,10 @@ fn handle_command(state: &mut UiState, command: UiCommand) -> StdResult<bool> {
         UiCommand::ShowWindow {
             title,
             activate,
+            role,
             resp,
         } => {
-            let result = show_native_window(state, &title, activate);
+            let result = show_native_window(state, &title, activate, role);
             let _ = resp.send(result);
         }
         UiCommand::HideWindow { resp } => {
@@ -2215,54 +3043,203 @@ fn handle_command(state: &mut UiState, command: UiCommand) -> StdResult<bool> {
 }
 
 fn cleanup_state(state: &mut UiState) {
+    cleanup_window_state(state);
     unsafe {
         let _ = state.controller.Close();
         let _ = WindowsAndMessaging::DestroyWindow(state.hwnd);
     }
 }
 
-fn show_native_window(state: &mut UiState, _title: &str, activate: bool) -> StdResult<()> {
-    apply_group_window_placement(state);
-    sync_controller_bounds(state)?;
-    let title = to_wide("");
-    unsafe {
-        state
-            .controller
-            .SetIsVisible(true)
-            .map_err(|err| WebViewError::WebView(format!("SetIsVisible(true) failed: {err}")))?;
-        let _ = WindowsAndMessaging::SetWindowTextW(state.hwnd, PCWSTR(title.as_ptr()));
-        if activate {
-            let _ = WindowsAndMessaging::ShowWindow(state.hwnd, WindowsAndMessaging::SW_SHOW);
-            let _ = WindowsAndMessaging::BringWindowToTop(state.hwnd);
-            let _ = WindowsAndMessaging::SetForegroundWindow(state.hwnd);
-        } else {
-            let _ =
-                WindowsAndMessaging::ShowWindow(state.hwnd, WindowsAndMessaging::SW_SHOWNOACTIVATE);
+fn cleanup_window_state(state: &UiState) {
+    let attachment = remove_window_attachment(&state.webtag_key);
+    remove_window_handle(&state.webtag_key);
+    remove_window_layout(&state.webtag_key);
+    remove_close_handler(&state.webtag_key);
+    remove_chrome_event_handler(&state.webtag_key);
+
+    if let Some(attachment) = attachment {
+        match attachment.kind {
+            WindowAttachmentKind::MainHost => {
+                if let Some(hosts) = WINDOW_GROUP_HOSTS.get()
+                    && let Ok(mut hosts) = hosts.lock()
+                    && hosts.get(&attachment.group_key).copied() == Some(hwnd_handle(state.hwnd))
+                {
+                    hosts.remove(&attachment.group_key);
+                }
+                if let Some(active) = WINDOW_GROUP_ACTIVE_MAIN.get()
+                    && let Ok(mut active) = active.lock()
+                {
+                    active.remove(&attachment.group_key);
+                }
+                if let Some(active_group) = WINDOW_ACTIVE_GROUP.get()
+                    && let Ok(mut active_group) = active_group.lock()
+                    && active_group.as_deref() == Some(attachment.group_key.as_str())
+                {
+                    *active_group = None;
+                }
+                remove_group_layout(&attachment.group_key);
+            }
+            WindowAttachmentKind::MainChild => {
+                if let Some(active) = WINDOW_GROUP_ACTIVE_MAIN.get()
+                    && let Ok(mut active) = active.lock()
+                    && active
+                        .get(&attachment.group_key)
+                        .is_some_and(|key| key == &state.webtag_key)
+                {
+                    active.remove(&attachment.group_key);
+                }
+            }
+            WindowAttachmentKind::Panel { .. } => {
+                remove_group_panel(&attachment.group_key, &state.webtag_key);
+                layout_group_windows(&attachment.group_key);
+                request_group_shell_refresh(&attachment.group_key);
+            }
         }
     }
+}
+
+fn show_native_window(
+    state: &mut UiState,
+    _title: &str,
+    activate: bool,
+    role: WindowsWindowRole,
+) -> StdResult<()> {
+    match role {
+        WindowsWindowRole::Main => show_native_main_window(state, activate),
+        WindowsWindowRole::Panel { panel_id } => show_native_panel_window(state, &panel_id),
+    }
+}
+
+fn show_native_main_window(state: &mut UiState, activate: bool) -> StdResult<()> {
+    let (group_key, host, is_host) = ensure_main_attachment(state);
+    set_active_group(&group_key);
+    set_group_active_main(&group_key, &state.webtag_key);
+    show_shell_host(&group_key, host, activate);
+
+    if is_host {
+        set_controller_visible(state, true)?;
+        sync_controller_bounds(state)?;
+    } else {
+        attach_child_window_to_host(state.hwnd, host);
+        set_controller_visible(state, true)?;
+        layout_group_windows(&group_key);
+    }
+
+    request_group_shell_refresh(&group_key);
     state.window_visible = true;
     store_current_window_placement(state);
     Ok(())
 }
 
+fn show_native_panel_window(state: &mut UiState, panel_id: &str) -> StdResult<()> {
+    register_window_handle(&state.webtag_key, state.hwnd);
+    let group_key = active_group_key().unwrap_or_else(|| webtag_group_key(&state.webtag_key));
+    let Some(host) = host_handle_for_group(&group_key) else {
+        return show_native_main_window(state, true);
+    };
+    let position = panel_position_for_group(&group_key, panel_id);
+    attach_child_window_to_host(state.hwnd, host);
+    set_window_attachment(
+        &state.webtag_key,
+        WindowAttachment {
+            group_key: group_key.clone(),
+            kind: WindowAttachmentKind::Panel {
+                panel_id: panel_id.to_string(),
+                position,
+            },
+        },
+    );
+    register_group_panel(
+        &group_key,
+        GroupPanel {
+            webtag_key: state.webtag_key.clone(),
+            panel_id: panel_id.to_string(),
+            position,
+        },
+    );
+    set_controller_visible(state, true)?;
+    layout_group_windows(&group_key);
+    request_group_shell_refresh(&group_key);
+    state.window_visible = true;
+    Ok(())
+}
+
 fn hide_native_window(state: &mut UiState) -> StdResult<()> {
     store_current_window_placement(state);
+    match window_attachment(&state.webtag_key).map(|attachment| attachment.kind) {
+        Some(WindowAttachmentKind::MainHost) => hide_native_main_host_window(state),
+        Some(WindowAttachmentKind::MainChild) => {
+            set_controller_visible(state, false)?;
+            hide_attached_window(state.hwnd);
+            state.window_visible = false;
+            Ok(())
+        }
+        Some(WindowAttachmentKind::Panel { .. }) => {
+            let group_key = layout_group_key_for_webtag(&state.webtag_key);
+            set_controller_visible(state, false)?;
+            hide_attached_window(state.hwnd);
+            remove_group_panel(&group_key, &state.webtag_key);
+            layout_group_windows(&group_key);
+            request_group_shell_refresh(&group_key);
+            state.window_visible = false;
+            Ok(())
+        }
+        None => hide_detached_window(state),
+    }
+}
+
+fn hide_native_main_host_window(state: &mut UiState) -> StdResult<()> {
+    let group_key = layout_group_key_for_webtag(&state.webtag_key);
+    if group_active_main(&group_key).as_deref() != Some(state.webtag_key.as_str()) {
+        set_controller_visible(state, false)?;
+        state.window_visible = false;
+        return Ok(());
+    }
+    hide_detached_window(state)
+}
+
+fn hide_detached_window(state: &mut UiState) -> StdResult<()> {
+    set_controller_visible(state, false)?;
+    unsafe {
+        let _ = WindowsAndMessaging::SetWindowPos(
+            state.hwnd,
+            None,
+            0,
+            0,
+            0,
+            0,
+            WindowsAndMessaging::SWP_NOMOVE
+                | WindowsAndMessaging::SWP_NOSIZE
+                | WindowsAndMessaging::SWP_NOZORDER
+                | WindowsAndMessaging::SWP_NOACTIVATE
+                | WindowsAndMessaging::SWP_HIDEWINDOW,
+        );
+    }
+    state.window_visible = false;
+    Ok(())
+}
+
+fn set_controller_visible(state: &UiState, visible: bool) -> StdResult<()> {
     unsafe {
         state
             .controller
-            .SetIsVisible(false)
-            .map_err(|err| WebViewError::WebView(format!("SetIsVisible(false) failed: {err}")))?;
-        let _ = WindowsAndMessaging::ShowWindow(state.hwnd, WindowsAndMessaging::SW_HIDE);
+            .SetIsVisible(visible)
+            .map_err(|err| WebViewError::WebView(format!("SetIsVisible failed: {err}")))?;
     }
-    state.window_visible = false;
     Ok(())
 }
 
 fn set_native_window_layout(state: &UiState, layout: WindowsWindowLayout) -> StdResult<()> {
     set_window_layout_for_key(&state.webtag_key, layout);
     sync_controller_bounds(state)?;
+    if let Some(attachment) = window_attachment(&state.webtag_key)
+        && !matches!(attachment.kind, WindowAttachmentKind::Panel { .. })
+    {
+        layout_group_windows(&attachment.group_key);
+        request_group_shell_refresh(&attachment.group_key);
+    }
     unsafe {
-        let _ = InvalidateRect(Some(state.hwnd), None, true);
+        let _ = InvalidateRect(Some(state.hwnd), None, false);
     }
     Ok(())
 }
@@ -2279,7 +3256,7 @@ fn sync_controller_bounds(state: &UiState) -> StdResult<()> {
                 bottom: 768,
             };
         }
-        rect = compute_content_rect(rect, &current_window_layout(&state.webtag_key));
+        rect = controller_bounds_for_state(state, rect);
         state
             .controller
             .SetBounds(rect)
@@ -2288,29 +3265,72 @@ fn sync_controller_bounds(state: &UiState) -> StdResult<()> {
     Ok(())
 }
 
+fn controller_bounds_for_state(state: &UiState, client: RECT) -> RECT {
+    match window_attachment(&state.webtag_key) {
+        Some(WindowAttachment {
+            kind: WindowAttachmentKind::MainChild | WindowAttachmentKind::Panel { .. },
+            ..
+        }) => normalize_rect(client),
+        Some(WindowAttachment {
+            group_key,
+            kind: WindowAttachmentKind::MainHost,
+        }) => {
+            let content = compute_content_rect(client, &current_window_layout(&state.webtag_key));
+            attached_group_rects(&group_key, state.hwnd)
+                .map(|rects| rects.main)
+                .unwrap_or(content)
+        }
+        None => compute_content_rect(client, &current_window_layout(&state.webtag_key)),
+    }
+}
+
 fn window_snapshot(state: &UiState) -> StdResult<WindowsWebViewWindowSnapshot> {
     let mut window_rect = RECT::default();
     let mut client_rect = RECT::default();
     let mut client_origin = POINT { x: 0, y: 0 };
 
+    let window_id = if let Some(attachment) = window_attachment(&state.webtag_key) {
+        if matches!(
+            attachment.kind,
+            WindowAttachmentKind::MainChild | WindowAttachmentKind::Panel { .. }
+        ) {
+            let host = host_handle_for_group(&attachment.group_key).unwrap_or(state.hwnd);
+            unsafe {
+                WindowsAndMessaging::GetWindowRect(host, &mut window_rect)
+                    .map_err(|err| WebViewError::WebView(format!("GetWindowRect failed: {err}")))?;
+            }
+            hwnd_handle(host) as usize
+        } else {
+            unsafe {
+                WindowsAndMessaging::GetWindowRect(state.hwnd, &mut window_rect)
+                    .map_err(|err| WebViewError::WebView(format!("GetWindowRect failed: {err}")))?;
+            }
+            hwnd_handle(state.hwnd) as usize
+        }
+    } else {
+        unsafe {
+            WindowsAndMessaging::GetWindowRect(state.hwnd, &mut window_rect)
+                .map_err(|err| WebViewError::WebView(format!("GetWindowRect failed: {err}")))?;
+        }
+        hwnd_handle(state.hwnd) as usize
+    };
+
     unsafe {
-        WindowsAndMessaging::GetWindowRect(state.hwnd, &mut window_rect)
-            .map_err(|err| WebViewError::WebView(format!("GetWindowRect failed: {err}")))?;
         WindowsAndMessaging::GetClientRect(state.hwnd, &mut client_rect)
-            .map_err(|err| WebViewError::WebView(format!("GetClientRect failed: {err}")))?;
+            .map_err(|err| WebViewError::WebView(format!("GetWindowRect failed: {err}")))?;
         if !ClientToScreen(state.hwnd, &mut client_origin).as_bool() {
             return Err(WebViewError::WebView("ClientToScreen failed".to_string()));
         }
     }
 
-    let content = compute_content_rect(client_rect, &current_window_layout(&state.webtag_key));
+    let content = controller_bounds_for_state(state, client_rect);
     let content_left = client_origin.x - window_rect.left + content.left;
     let content_top = client_origin.y - window_rect.top + content.top;
     let content_width = rect_width(&content) as u32;
     let content_height = rect_height(&content) as u32;
 
     Ok(WindowsWebViewWindowSnapshot {
-        window_id: state.hwnd.0 as usize,
+        window_id,
         webtag_key: state.webtag_key.clone(),
         visible: state.window_visible
             && unsafe { WindowsAndMessaging::IsWindowVisible(state.hwnd).as_bool() },

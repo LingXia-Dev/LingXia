@@ -14,14 +14,18 @@ const APP_UI_ICON_DIR: &str = "icons";
 const MAX_APP_UI_ICON_BYTES: u64 = 512 * 1024;
 const MIN_APP_UI_ICON_SIZE: f32 = 16.0;
 const MAX_APP_UI_ICON_SIZE: f32 = 512.0;
+const WINDOWS_APP_UI_ICON_PNG_SIZE: u32 = 64;
 const TERMINAL_ICON_SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><rect x="7" y="11" width="50" height="42" rx="8" fill="none" stroke="#000000" stroke-width="5"/><path d="M17 25l8 7-8 7" fill="none" stroke="#000000" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/><path d="M31 40h15" fill="none" stroke="#000000" stroke-width="5" stroke-linecap="round"/></svg>"##;
 
 #[derive(Clone, Debug)]
 pub(super) struct PreparedAppUiIcon {
     pub(super) relative_path: String,
+    pub(super) windows_relative_path: String,
     pub(super) source_path: String,
     pub(super) bytes: Vec<u8>,
+    pub(super) windows_bytes: Vec<u8>,
     pub(super) hash: String,
+    pub(super) windows_hash: String,
 }
 
 pub(super) fn prepare_app_ui_icons(
@@ -77,7 +81,10 @@ pub(super) fn prepare_app_ui_icons(
         validate_app_ui_svg_icon(&source, &svg)?;
         let pdf = crate::r#gen::icons::svg_to_pdf_bytes(&svg)
             .with_context(|| format!("Failed to convert SVG icon '{}' to PDF", source))?;
+        let windows_png = crate::r#gen::icons::svg_to_png_bytes(&svg, WINDOWS_APP_UI_ICON_PNG_SIZE)
+            .with_context(|| format!("Failed to convert SVG icon '{}' to Windows PNG", source))?;
         let hash = sha256_hex(&pdf);
+        let windows_hash = sha256_hex(&windows_png);
         let stem = source_path
             .file_stem()
             .and_then(|stem| stem.to_str())
@@ -85,12 +92,17 @@ pub(super) fn prepare_app_ui_icons(
             .filter(|stem| !stem.is_empty())
             .unwrap_or_else(|| "icon".to_string());
         let relative_path = format!("{}/{}-{}.pdf", APP_UI_ICON_DIR, stem, &hash[..12]);
+        let windows_relative_path =
+            format!("{}/{}-{}.png", APP_UI_ICON_DIR, stem, &windows_hash[..12]);
 
         prepared.push(PreparedAppUiIcon {
             relative_path,
+            windows_relative_path,
             source_path: source,
             bytes: pdf,
+            windows_bytes: windows_png,
             hash,
+            windows_hash,
         });
     }
 
@@ -101,12 +113,19 @@ fn prepare_builtin_terminal_icon() -> Result<PreparedAppUiIcon> {
     validate_app_ui_svg_icon(TERMINAL_ICON_SOURCE, TERMINAL_ICON_SVG)?;
     let pdf = crate::r#gen::icons::svg_to_pdf_bytes(TERMINAL_ICON_SVG)
         .with_context(|| "Failed to convert built-in terminal icon to PDF")?;
+    let windows_png =
+        crate::r#gen::icons::svg_to_png_bytes(TERMINAL_ICON_SVG, WINDOWS_APP_UI_ICON_PNG_SIZE)
+            .with_context(|| "Failed to convert built-in terminal icon to Windows PNG")?;
     let hash = sha256_hex(&pdf);
+    let windows_hash = sha256_hex(&windows_png);
     Ok(PreparedAppUiIcon {
         relative_path: format!("{}/terminal-{}.pdf", APP_UI_ICON_DIR, &hash[..12]),
+        windows_relative_path: format!("{}/terminal-{}.png", APP_UI_ICON_DIR, &windows_hash[..12]),
         source_path: TERMINAL_ICON_SOURCE.to_string(),
         bytes: pdf,
+        windows_bytes: windows_png,
         hash,
+        windows_hash,
     })
 }
 
@@ -136,10 +155,29 @@ pub(super) fn rewrite_app_ui_icon_paths(
     Ok(())
 }
 
+pub(super) fn rewrite_windows_app_ui_icon_paths(
+    ui: &mut serde_json::Value,
+    by_source: &HashMap<&str, &str>,
+) -> Result<()> {
+    rewrite_app_ui_icon_paths(ui, by_source)
+}
+
 pub(super) fn app_ui_icon_hashes(icons: &[PreparedAppUiIcon]) -> BTreeMap<String, String> {
     icons
         .iter()
         .map(|icon| (icon.relative_path.clone(), icon.hash.clone()))
+        .collect()
+}
+
+pub(super) fn windows_app_ui_icon_hashes(icons: &[PreparedAppUiIcon]) -> BTreeMap<String, String> {
+    icons
+        .iter()
+        .map(|icon| {
+            (
+                icon.windows_relative_path.clone(),
+                icon.windows_hash.clone(),
+            )
+        })
         .collect()
 }
 
@@ -175,6 +213,60 @@ pub(super) fn sync_app_ui_icons(
             println!(
                 "  {} icon {} → {}",
                 "✓".green(),
+                icon.source_path,
+                target.display()
+            );
+            changed = true;
+        }
+    }
+
+    let icon_dir = target_root.join(APP_UI_ICON_DIR);
+    if icons.is_empty() && prev_hashes.is_some() && icon_dir.exists() {
+        let is_empty = fs::read_dir(&icon_dir)
+            .map(|mut entries| entries.next().is_none())
+            .unwrap_or(false);
+        if is_empty {
+            fs::remove_dir(&icon_dir)
+                .with_context(|| format!("Failed to remove {}", icon_dir.display()))?;
+            changed = true;
+        }
+    }
+
+    Ok(changed)
+}
+
+pub(super) fn sync_windows_app_ui_icons(
+    target_root: &Path,
+    icons: &[PreparedAppUiIcon],
+    prev_hashes: Option<&BTreeMap<String, String>>,
+) -> Result<bool> {
+    let desired_hashes = windows_app_ui_icon_hashes(icons);
+    let mut changed = false;
+
+    if let Some(prev_hashes) = prev_hashes {
+        for prev_name in prev_hashes.keys() {
+            if !desired_hashes.contains_key(prev_name) {
+                let stale = target_root.join(prev_name);
+                if stale.exists() {
+                    fs::remove_file(&stale)
+                        .with_context(|| format!("Failed to remove {}", stale.display()))?;
+                    remove_empty_parent_dirs_until(target_root, stale.parent());
+                    changed = true;
+                }
+            }
+        }
+    }
+
+    for icon in icons {
+        let target = target_root.join(&icon.windows_relative_path);
+        let prev_hash = prev_hashes.and_then(|hashes| hashes.get(&icon.windows_relative_path));
+        if prev_hash == Some(&icon.windows_hash) && target.exists() {
+            continue;
+        }
+        if write_if_changed(&target, &icon.windows_bytes)? {
+            println!(
+                "  {} icon {} -> {}",
+                "ok".green(),
                 icon.source_path,
                 target.display()
             );

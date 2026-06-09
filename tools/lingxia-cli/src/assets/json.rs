@@ -3,7 +3,9 @@ use anyhow::{Result, anyhow};
 use std::collections::HashMap;
 
 use super::bundles::PreparedResourceBundle;
-use super::icons::{PreparedAppUiIcon, rewrite_app_ui_icon_paths};
+use super::icons::{
+    PreparedAppUiIcon, rewrite_app_ui_icon_paths, rewrite_windows_app_ui_icon_paths,
+};
 use super::ui::effective_ui_config;
 
 /// Build the runtime `app.json` for the host app.
@@ -99,6 +101,29 @@ pub(super) fn build_ui_json_from_config(
             .map(|icon| (icon.source_path.as_str(), icon.relative_path.as_str()))
             .collect::<HashMap<_, _>>();
         rewrite_app_ui_icon_paths(&mut rewritten, &by_source)?;
+    }
+    Ok(Some(serde_json::to_string_pretty(&rewritten)?))
+}
+
+pub(super) fn build_windows_ui_json_from_config(
+    config: &LingXiaConfig,
+    app_ui_icons: &[PreparedAppUiIcon],
+) -> Result<Option<String>> {
+    let Some(ui) = effective_ui_config(config)? else {
+        return Ok(None);
+    };
+    let mut rewritten = ui;
+    if !app_ui_icons.is_empty() {
+        let by_source = app_ui_icons
+            .iter()
+            .map(|icon| {
+                (
+                    icon.source_path.as_str(),
+                    icon.windows_relative_path.as_str(),
+                )
+            })
+            .collect::<HashMap<_, _>>();
+        rewrite_windows_app_ui_icon_paths(&mut rewritten, &by_source)?;
     }
     Ok(Some(serde_json::to_string_pretty(&rewritten)?))
 }

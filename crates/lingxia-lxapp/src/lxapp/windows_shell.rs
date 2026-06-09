@@ -1,16 +1,18 @@
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use lingxia_platform::traits::app_runtime::LxAppOpenMode;
 use lingxia_webview::WebTag;
 use lingxia_webview::platform::windows::{
-    WindowsChromeEvent, WindowsNavigationBarLayout, WindowsTabBarItemLayout, WindowsTabBarLayout,
-    WindowsTabBarPosition, WindowsWindowLayout, set_webview_chrome_event_handler,
+    WindowsChromeEvent, WindowsNavigationBarLayout, WindowsPanelActivatorLayout,
+    WindowsPanelPosition, WindowsTabBarItemLayout, WindowsTabBarLayout, WindowsTabBarPosition,
+    WindowsWindowLayout, is_panel_visible, set_webview_chrome_event_handler,
     set_webview_window_layout,
 };
 
-use super::tabbar::TabBarPosition;
 use super::{LxApp, try_get};
 use crate::delegate::{LxAppDelegate, LxAppUiEventType};
-use crate::{error, warn};
+use crate::{LxAppStartupOptions, ReleaseType, error, warn};
 
 const DEFAULT_NAV_BAR_HEIGHT: i32 = 48;
 const DEFAULT_SIDEBAR_WIDTH: i32 = 180;
@@ -51,6 +53,7 @@ impl LxApp {
         WindowsWindowLayout {
             navigation_bar: Some(self.build_windows_navigation_bar_layout(path)),
             tab_bar: self.build_windows_tab_bar_layout(),
+            panel_activators: self.build_windows_panel_activators(),
         }
     }
 
@@ -60,15 +63,9 @@ impl LxApp {
             "white" => 0xffffff,
             _ => 0x111111,
         };
-        let title = if navbar.navigationBarTitleText.trim().is_empty() {
-            self.config.appName.clone()
-        } else {
-            navbar.navigationBarTitleText
-        };
-
         WindowsNavigationBarLayout {
             visible: navbar.show_navbar,
-            title,
+            title: navbar.navigationBarTitleText,
             background_color: parse_css_color(&navbar.navigationBarBackgroundColor, 0xffffff),
             text_color,
             show_back_button: navbar.show_back_button,
@@ -79,13 +76,8 @@ impl LxApp {
 
     fn build_windows_tab_bar_layout(&self) -> Option<WindowsTabBarLayout> {
         let tabbar = self.get_tabbar()?;
-        let position = windows_tab_bar_position(&tabbar.position);
-        let dimension = match position {
-            WindowsTabBarPosition::Left | WindowsTabBarPosition::Right => {
-                tabbar.dimension.max(DEFAULT_SIDEBAR_WIDTH)
-            }
-            WindowsTabBarPosition::Bottom => tabbar.dimension,
-        };
+        let position = WindowsTabBarPosition::Left;
+        let dimension = tabbar.dimension.max(DEFAULT_SIDEBAR_WIDTH);
         Some(WindowsTabBarLayout {
             visible: !tabbar.list.is_empty(),
             position,
@@ -102,19 +94,37 @@ impl LxApp {
                 .map(|item| WindowsTabBarItemLayout {
                     page_path: item.pagePath,
                     text: item.text.unwrap_or_default(),
+                    icon_path: item.iconPath.unwrap_or_default(),
+                    selected_icon_path: item.selectedIconPath.unwrap_or_default(),
                     badge: item.badge,
                     has_red_dot: item.has_red_dot,
                 })
                 .collect(),
         })
     }
-}
 
-fn windows_tab_bar_position(position: &TabBarPosition) -> WindowsTabBarPosition {
-    match position {
-        TabBarPosition::Bottom => WindowsTabBarPosition::Bottom,
-        TabBarPosition::Left => WindowsTabBarPosition::Left,
-        TabBarPosition::Right => WindowsTabBarPosition::Right,
+    fn build_windows_panel_activators(&self) -> Vec<WindowsPanelActivatorLayout> {
+        lingxia_app_context::app_config()
+            .and_then(|config| config.panels.as_ref().cloned())
+            .map(|panels| {
+                panels
+                    .items
+                    .into_iter()
+                    .map(|item| {
+                        let active = is_panel_visible(&item.id);
+                        WindowsPanelActivatorLayout {
+                            id: item.id,
+                            label: item.label,
+                            icon_path: resolve_windows_asset_path(&item.icon)
+                                .map(|path| path.to_string_lossy().to_string())
+                                .unwrap_or(item.icon),
+                            position: windows_panel_position(item.position),
+                            active,
+                        }
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
     }
 }
 
@@ -133,6 +143,9 @@ fn handle_windows_chrome_event(appid: &str, event: WindowsChromeEvent) {
         WindowsChromeEvent::NavigationHome => {
             lxapp.on_lxapp_event(LxAppUiEventType::NavigationClick, "home".to_string())
         }
+        WindowsChromeEvent::PanelActivatorClick { panel_id } => {
+            return handle_windows_panel_activator(appid, panel_id);
+        }
     };
 
     if handled {
@@ -140,6 +153,76 @@ fn handle_windows_chrome_event(appid: &str, event: WindowsChromeEvent) {
     } else {
         error!("Windows shell chrome event was not handled").with_appid(appid.to_string());
     }
+}
+
+fn handle_windows_panel_activator(appid: &str, panel_id: String) {
+    let Some((panel_appid, path)) = panel_item_for_id(&panel_id) else {
+        error!("Windows panel activator was not found")
+            .with_appid(appid.to_string())
+            .with_path(panel_id);
+        return;
+    };
+
+    let owner_appid = appid.to_string();
+    crate::executor::spawn(async move {
+        if let Err(err) = open_panel_lxapp(&panel_id, &panel_appid, &path).await {
+            error!("Failed to open Windows panel lxapp: {}", err).with_appid(panel_appid);
+            return;
+        }
+        if let Some(owner) = try_get(&owner_appid) {
+            owner.sync_windows_shell_layout();
+        }
+    });
+}
+
+fn panel_item_for_id(panel_id: &str) -> Option<(String, String)> {
+    lingxia_app_context::app_config()
+        .and_then(|config| config.panels.as_ref().cloned())
+        .and_then(|panels| panels.items.into_iter().find(|item| item.id == panel_id))
+        .map(|item| (item.content.app_id, item.content.path.unwrap_or_default()))
+}
+
+async fn open_panel_lxapp(
+    panel_id: &str,
+    appid: &str,
+    path: &str,
+) -> Result<(), crate::LxAppError> {
+    crate::prepare_lxapp_open(appid, ReleaseType::Release).await?;
+    let _ = crate::open_lxapp(
+        appid,
+        LxAppStartupOptions::new(path)
+            .set_open_mode(LxAppOpenMode::Panel)
+            .set_panel_id(panel_id.to_string()),
+    )?;
+    crate::schedule_lxapp_update_check(appid, ReleaseType::Release);
+    Ok(())
+}
+
+fn windows_panel_position(position: lingxia_app_context::PanelPosition) -> WindowsPanelPosition {
+    match position {
+        lingxia_app_context::PanelPosition::Left => WindowsPanelPosition::Left,
+        lingxia_app_context::PanelPosition::Right => WindowsPanelPosition::Right,
+        lingxia_app_context::PanelPosition::Bottom => WindowsPanelPosition::Bottom,
+    }
+}
+
+fn resolve_windows_asset_path(raw: &str) -> Option<PathBuf> {
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return None;
+    }
+    let path = Path::new(raw);
+    if path.is_absolute() {
+        return Some(path.to_path_buf());
+    }
+
+    if let Some(asset_dir) = std::env::var_os("LINGXIA_ASSET_DIR") {
+        return Some(PathBuf::from(asset_dir).join(path));
+    }
+    std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(Path::to_path_buf))
+        .map(|dir| dir.join("assets").join(path))
 }
 
 fn parse_css_color(raw: &str, fallback: u32) -> u32 {

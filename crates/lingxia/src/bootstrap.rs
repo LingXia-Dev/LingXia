@@ -46,11 +46,136 @@ fn load_bundled_app_config(
         return None;
     }
     match lingxia_app_context::AppConfig::parse_and_validate(&content) {
-        Ok(config) => Some(config),
+        Ok(mut config) => {
+            if config.panels.is_none()
+                && let Some(panels) = load_panels_from_ui_config(runtime)
+            {
+                config.panels = Some(panels);
+            }
+            Some(config)
+        }
         Err(e) => {
             log::error!("Failed to load app configuration: {}", e);
             None
         }
+    }
+}
+
+fn load_panels_from_ui_config(
+    runtime: &std::sync::Arc<lingxia_platform::Platform>,
+) -> Option<lingxia_app_context::PanelsConfig> {
+    use lingxia_platform::traits::app_runtime::AppRuntime;
+    use std::io::Read;
+
+    let mut reader = runtime.read_asset("ui.json").ok()?;
+    let mut content = String::new();
+    reader.read_to_string(&mut content).ok()?;
+    let ui = serde_json::from_str::<serde_json::Value>(&content).ok()?;
+    panels_from_ui_config(&ui)
+}
+
+fn panels_from_ui_config(ui: &serde_json::Value) -> Option<lingxia_app_context::PanelsConfig> {
+    use lingxia_app_context::{PanelContent, PanelItem, PanelPosition, PanelsConfig};
+
+    let surfaces = ui.get("surfaces")?.as_array()?;
+    let surfaces_by_id = surfaces
+        .iter()
+        .filter_map(|surface| {
+            let id = surface.get("id")?.as_str()?.trim();
+            (!id.is_empty()).then_some((id, surface))
+        })
+        .collect::<std::collections::HashMap<_, _>>();
+    let activators = ui.get("activators")?.as_array()?;
+    let mut items = Vec::new();
+
+    for activator in activators {
+        if activator.get("kind").and_then(serde_json::Value::as_str) != Some("sidebarItem") {
+            continue;
+        }
+        let id = match activator.get("id").and_then(serde_json::Value::as_str) {
+            Some(id) if !id.trim().is_empty() => id.trim(),
+            _ => continue,
+        };
+        let Some(action) = activator.get("action") else {
+            continue;
+        };
+        if !matches!(
+            action.get("kind").and_then(serde_json::Value::as_str),
+            Some("toggleSurface" | "openSurface")
+        ) {
+            continue;
+        }
+        let surface_id = match action.get("surface").and_then(serde_json::Value::as_str) {
+            Some(surface_id) if !surface_id.trim().is_empty() => surface_id.trim(),
+            _ => continue,
+        };
+        let Some(surface) = surfaces_by_id.get(surface_id) else {
+            continue;
+        };
+        if surface
+            .get("presentation")
+            .and_then(|presentation| presentation.get("kind"))
+            .and_then(serde_json::Value::as_str)
+            != Some("attachPanel")
+        {
+            continue;
+        }
+        let Some(app_id) = surface
+            .get("content")
+            .and_then(|content| content.get("appId"))
+            .and_then(serde_json::Value::as_str)
+            .map(str::trim)
+            .filter(|app_id| !app_id.is_empty())
+        else {
+            continue;
+        };
+
+        let label = activator
+            .get("label")
+            .and_then(serde_json::Value::as_str)
+            .map(str::trim)
+            .filter(|label| !label.is_empty())
+            .unwrap_or(id)
+            .to_string();
+        let icon = activator
+            .get("icon")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+        let position = surface
+            .get("presentation")
+            .and_then(|presentation| presentation.get("edge"))
+            .and_then(serde_json::Value::as_str)
+            .map(panel_position_from_edge)
+            .unwrap_or(PanelPosition::Right);
+        let path = surface
+            .get("content")
+            .and_then(|content| content.get("path"))
+            .and_then(serde_json::Value::as_str)
+            .map(str::trim)
+            .filter(|path| !path.is_empty())
+            .map(ToOwned::to_owned);
+
+        items.push(PanelItem {
+            id: id.to_string(),
+            label,
+            icon,
+            position,
+            content: PanelContent {
+                app_id: app_id.to_string(),
+                path,
+            },
+        });
+    }
+
+    (!items.is_empty()).then_some(PanelsConfig { items })
+}
+
+fn panel_position_from_edge(edge: &str) -> lingxia_app_context::PanelPosition {
+    match edge {
+        "leading" | "left" => lingxia_app_context::PanelPosition::Left,
+        "bottom" => lingxia_app_context::PanelPosition::Bottom,
+        _ => lingxia_app_context::PanelPosition::Right,
     }
 }
 
@@ -91,4 +216,72 @@ pub(crate) fn init_with_platform(platform: lingxia_platform::Platform) -> Option
     crate::browser::warmup();
     crate::host_addon::run_start_services();
     home_app_id
+}
+
+#[cfg(test)]
+mod tests {
+    use super::panels_from_ui_config;
+    use lingxia_app_context::PanelPosition;
+
+    #[test]
+    fn derives_lxapp_attach_panels_from_ui_config() {
+        let ui = serde_json::json!({
+            "launch": { "initialSurface": "main" },
+            "surfaces": [{
+                "id": "main",
+                "presentation": { "kind": "window" },
+                "content": { "kind": "lxapp", "appId": "home" }
+            }, {
+                "id": "assistant",
+                "presentation": {
+                    "kind": "attachPanel",
+                    "attachTo": "main",
+                    "edge": "trailing"
+                },
+                "content": { "kind": "lxapp", "appId": "lingxia-chat", "path": "pages/chat/index" }
+            }],
+            "activators": [{
+                "id": "assistantSidebar",
+                "kind": "sidebarItem",
+                "hostSurface": "main",
+                "label": "AI Chat",
+                "icon": "icons/chat.pdf",
+                "action": { "kind": "toggleSurface", "surface": "assistant" }
+            }]
+        });
+
+        let panels = panels_from_ui_config(&ui).expect("panel config");
+        assert_eq!(panels.items.len(), 1);
+        assert_eq!(panels.items[0].id, "assistantSidebar");
+        assert_eq!(panels.items[0].label, "AI Chat");
+        assert_eq!(panels.items[0].icon, "icons/chat.pdf");
+        assert_eq!(panels.items[0].position, PanelPosition::Right);
+        assert_eq!(panels.items[0].content.app_id, "lingxia-chat");
+        assert_eq!(
+            panels.items[0].content.path.as_deref(),
+            Some("pages/chat/index")
+        );
+    }
+
+    #[test]
+    fn ignores_non_lxapp_attach_panel_content() {
+        let ui = serde_json::json!({
+            "surfaces": [{
+                "id": "terminal",
+                "presentation": {
+                    "kind": "attachPanel",
+                    "edge": "bottom"
+                },
+                "content": { "kind": "terminal" }
+            }],
+            "activators": [{
+                "id": "terminalSidebar",
+                "kind": "sidebarItem",
+                "label": "Terminal",
+                "action": { "kind": "toggleSurface", "surface": "terminal" }
+            }]
+        });
+
+        assert!(panels_from_ui_config(&ui).is_none());
+    }
 }

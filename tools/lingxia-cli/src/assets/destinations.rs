@@ -1,7 +1,10 @@
 use super::bundles::{PreparedResourceBundle, bundle_hashes, sync_resource_bundles};
 use super::cache::{DestinationStamp, HostAssetsCache};
 use super::hash::path_key;
-use super::icons::{PreparedAppUiIcon, app_ui_icon_hashes, sync_app_ui_icons};
+use super::icons::{
+    PreparedAppUiIcon, app_ui_icon_hashes, sync_app_ui_icons, sync_windows_app_ui_icons,
+    windows_app_ui_icon_hashes,
+};
 use super::runtime_asset::{PreparedPolyfillsAsset, PreparedRuntimeAsset};
 use super::sync::{
     sync_optional_json_file, sync_polyfills_file, sync_runtime_file, write_if_changed,
@@ -211,6 +214,7 @@ pub(super) fn prepare_windows_assets_root(
     ui_json: Option<&str>,
     ui_json_hash: Option<&str>,
     bundles: &[PreparedResourceBundle],
+    app_ui_icons: &[PreparedAppUiIcon],
     runtime_asset: Option<&PreparedRuntimeAsset>,
     cache: &mut HostAssetsCache,
 ) -> Result<()> {
@@ -228,7 +232,7 @@ pub(super) fn prepare_windows_assets_root(
         app_json_hash: app_json_hash.to_string(),
         ui_json_hash: ui_json_hash.map(ToOwned::to_owned),
         bundle_hashes: bundle_hashes(bundles),
-        app_ui_icon_hashes: BTreeMap::new(),
+        app_ui_icon_hashes: windows_app_ui_icon_hashes(app_ui_icons),
         runtime_hash: runtime_asset.map(|r| r.runtime_hash.clone()),
         polyfills_hash: None,
     };
@@ -255,6 +259,11 @@ pub(super) fn prepare_windows_assets_root(
         assets_root,
         bundles,
         prev.as_ref().map(|s| &s.bundle_hashes),
+    )?;
+    changed |= sync_windows_app_ui_icons(
+        assets_root,
+        app_ui_icons,
+        prev.as_ref().map(|s| &s.app_ui_icon_hashes),
     )?;
 
     if changed {

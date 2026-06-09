@@ -111,6 +111,24 @@ pub fn svg_to_pdf_bytes(svg_content: &str) -> Result<Vec<u8>> {
     Ok(pdf)
 }
 
+pub fn svg_to_png_bytes(svg_content: &str, target_size: u32) -> Result<Vec<u8>> {
+    let tree = parse_png_svg_tree(svg_content)?;
+    let source_size = tree.size();
+    let max_side = source_size.width().max(source_size.height());
+    anyhow::ensure!(max_side > 0.0, "SVG has an empty viewport");
+
+    let scale = target_size as f32 / max_side;
+    let offset_x = (target_size as f32 - source_size.width() * scale) / 2.0;
+    let offset_y = (target_size as f32 - source_size.height() * scale) / 2.0;
+    let mut pixmap = tiny_skia::Pixmap::new(target_size, target_size)
+        .ok_or_else(|| anyhow::anyhow!("Failed to allocate icon pixmap"))?;
+    let transform = tiny_skia::Transform::from_row(scale, 0.0, 0.0, scale, offset_x, offset_y);
+    resvg::render(&tree, transform, &mut pixmap.as_mut());
+    pixmap
+        .encode_png()
+        .context("Failed to encode rendered SVG as PNG")
+}
+
 pub fn svg_size(svg_content: &str) -> Result<(f32, f32)> {
     let tree = parse_svg_tree(svg_content)?;
     let size = tree.size();
@@ -121,6 +139,12 @@ fn parse_svg_tree(svg_content: &str) -> Result<svg2pdf::usvg::Tree> {
     let mut options = svg2pdf::usvg::Options::default();
     options.fontdb_mut().load_system_fonts();
     svg2pdf::usvg::Tree::from_str(svg_content, &options).context("Failed to parse SVG")
+}
+
+fn parse_png_svg_tree(svg_content: &str) -> Result<usvg::Tree> {
+    let mut options = usvg::Options::default();
+    options.fontdb_mut().load_system_fonts();
+    usvg::Tree::from_str(svg_content, &options).context("Failed to parse SVG")
 }
 
 /// Convert SVG to PDF for iOS

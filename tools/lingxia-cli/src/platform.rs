@@ -16,6 +16,17 @@ pub mod spm;
 pub mod windows;
 
 pub fn resolve_cargo_target_dir(project_root: &Path) -> PathBuf {
+    if let Some(target_dir) = std::env::var_os("CARGO_TARGET_DIR")
+        .map(PathBuf::from)
+        .filter(|path| !path.as_os_str().is_empty())
+    {
+        return if target_dir.is_absolute() {
+            target_dir
+        } else {
+            project_root.join(target_dir)
+        };
+    }
+
     find_workspace_root(project_root)
         .unwrap_or_else(|| project_root.to_path_buf())
         .join("target")
