@@ -12,11 +12,10 @@ pub struct LingXiaVersions {
 }
 
 pub fn current_versions() -> LingXiaVersions {
-    let version = env!("CARGO_PKG_VERSION").to_string();
     LingXiaVersions {
-        rong: version.clone(),
-        lingxia_crate: version.clone(),
-        sdk: version,
+        rong: env!("LINGXIA_RONG_VERSION").to_string(),
+        lingxia_crate: env!("LINGXIA_RUST_CRATE_VERSION").to_string(),
+        sdk: env!("LINGXIA_SDK_VERSION").to_string(),
     }
 }
 
@@ -25,11 +24,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn current_versions_are_aligned_with_cli_version() {
+    fn current_versions_use_configured_component_versions() {
         let versions = current_versions();
-        let cli_version = env!("CARGO_PKG_VERSION");
-        assert_eq!(versions.sdk, cli_version);
-        assert_eq!(versions.rong, cli_version);
-        assert_eq!(versions.lingxia_crate, cli_version);
+        assert_eq!(versions.sdk, env!("LINGXIA_SDK_VERSION"));
+        assert_eq!(versions.rong, env!("LINGXIA_RONG_VERSION"));
+        assert_eq!(versions.lingxia_crate, env!("LINGXIA_RUST_CRATE_VERSION"));
     }
 }

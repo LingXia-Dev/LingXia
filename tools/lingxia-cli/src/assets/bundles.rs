@@ -195,7 +195,7 @@ fn resolve_resource_bundle_source(
         .as_deref()
         .map(str::trim)
         .filter(|version| !version.is_empty())
-        .unwrap_or(env!("CARGO_PKG_VERSION"));
+        .unwrap_or(env!("LINGXIA_RESOURCE_BUNDLE_VERSION"));
     Ok(ResourceBundleSource {
         bundle_dir: resolve_lxapp_package(project_root, package, version)?,
         build: false,

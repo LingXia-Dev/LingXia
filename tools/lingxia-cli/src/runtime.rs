@@ -61,10 +61,9 @@ pub(crate) fn target_from_build_targets(
 }
 
 pub(crate) fn current_scaffold_versions() -> ScaffoldPackageVersions {
-    let version = env!("CARGO_PKG_VERSION").to_string();
     ScaffoldPackageVersions {
-        bridge: version.clone(),
-        types: version,
+        bridge: env!("LINGXIA_BRIDGE_VERSION").to_string(),
+        types: env!("LINGXIA_TYPES_VERSION").to_string(),
     }
 }
 

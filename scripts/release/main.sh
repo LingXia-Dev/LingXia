@@ -62,6 +62,17 @@ workspace_version() {
     }' "$ROOT_DIR/Cargo.toml"
 }
 
+cli_version() {
+  awk '
+    /^\[package\]/ {in_section=1; next}
+    /^\[/ {in_section=0}
+    in_section && $1 == "version" {
+      gsub(/"/, "", $3);
+      print $3;
+      exit
+    }' "$ROOT_DIR/tools/lingxia-cli/Cargo.toml"
+}
+
 release_tag_for_version() {
   local version="$1"
   printf 'lingxia-cli-v%s\n' "$version"
@@ -92,14 +103,15 @@ current_cli_target() {
 }
 
 doctor() {
-  local ws_v cli_asset cli_runner_tag sdk_tag bridge_v polyfills_v elements_v react_v vue_v html_v page_runtime_v types_v skill_v cli_target
+  local ws_v cli_v cli_asset cli_runner_tag sdk_tag bridge_v polyfills_v elements_v react_v vue_v html_v page_runtime_v types_v skill_v cli_target
   ws_v="$(workspace_version)"
+  cli_v="$(cli_version)"
   if cli_target="$(current_cli_target 2>/dev/null)"; then
     cli_asset="lingxia-$cli_target"
   else
     cli_asset="N/A (unsupported host)"
   fi
-  cli_runner_tag="$(release_tag_for_version "$ws_v")"
+  cli_runner_tag="$(release_tag_for_version "$cli_v")"
   sdk_tag="lingxia-sdk-v$ws_v"
   bridge_v="$(node -p "require('$ROOT_DIR/packages/lingxia-bridge/package.json').version" 2>/dev/null || echo "N/A")"
   polyfills_v="$(node -p "require('$ROOT_DIR/packages/lingxia-polyfills/package.json').version" 2>/dev/null || echo "N/A")"
@@ -113,6 +125,7 @@ doctor() {
 
   cat <<EOF
 Workspace version:      $ws_v
+CLI version:            $cli_v
 CLI release tag:        $cli_runner_tag
 CLI current asset:      $cli_asset
 Runner release tag:     $cli_runner_tag

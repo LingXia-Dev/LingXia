@@ -1,8 +1,18 @@
 [package]
 name = "lingxia-cli"
-version.workspace = true
+version = "0.9.0"
 edition.workspace = true
 build = "build.rs"
+
+[package.metadata.lingxia]
+bridge-version = "0.9.0"
+polyfills-version = "0.9.0"
+types-version = "0.9.0"
+rong-version = "0.9.0"
+rust-crate-version = "0.9.0"
+sdk-version = "0.9.0"
+shell-webui-version = "0.9.0"
+resource-bundle-version = "0.9.0"
 
 [[bin]]
 name = "lingxia"
@@ -86,6 +96,7 @@ sysinfo = "0.39"
 
 [build-dependencies]
 serde_json = "1.0"
+toml = "1.1.2"
 
 [dev-dependencies]
 filetime = "0.2"

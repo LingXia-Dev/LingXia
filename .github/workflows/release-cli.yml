@@ -91,18 +91,18 @@ jobs:
       # lingxia-cli build.rs embeds the bridge/polyfills JS runtime.
       - uses: ./.github/actions/build-web-runtime
 
-      - name: Verify tag matches workspace version
+      - name: Verify tag matches CLI package version
         # Windows runners default to PowerShell; force Git Bash for awk + [ ].
         shell: bash
         run: |
           tag="${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}"
           expected="${tag#lingxia-cli-v}"
-          workspace_version="$(awk '
-            /^\[workspace\.package\]/ {in_section=1; next}
+          cli_version="$(awk '
+            /^\[package\]/ {in_section=1; next}
             /^\[/ {in_section=0}
-            in_section && $1 == "version" { gsub(/"/, "", $3); print $3; exit }' Cargo.toml)"
-          [ -n "$workspace_version" ] || { echo "Failed to read workspace version" >&2; exit 1; }
-          [ "$expected" = "$workspace_version" ] || { echo "Tag ($expected) != workspace ($workspace_version)" >&2; exit 1; }
+            in_section && $1 == "version" { gsub(/"/, "", $3); print $3; exit }' tools/lingxia-cli/Cargo.toml)"
+          [ -n "$cli_version" ] || { echo "Failed to read lingxia-cli version" >&2; exit 1; }
+          [ "$expected" = "$cli_version" ] || { echo "Tag ($expected) != lingxia-cli ($cli_version)" >&2; exit 1; }
 
       - name: Build
         run: cargo build -p lingxia-cli --release --target ${{ matrix.target }}
@@ -157,16 +157,16 @@ jobs:
       # Generate the gitignored apple SDK assets (resources + swift bindings).
       - uses: ./.github/actions/bootstrap-apple-sdk
 
-      - name: Verify tag matches workspace version
+      - name: Verify tag matches CLI package version
         run: |
           tag="${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}"
           expected="${tag#lingxia-cli-v}"
-          workspace_version="$(awk '
-            /^\[workspace\.package\]/ {in_section=1; next}
+          cli_version="$(awk '
+            /^\[package\]/ {in_section=1; next}
             /^\[/ {in_section=0}
-            in_section && $1 == "version" { gsub(/"/, "", $3); print $3; exit }' Cargo.toml)"
-          [ -n "$workspace_version" ] || { echo "Failed to read workspace version" >&2; exit 1; }
-          [ "$expected" = "$workspace_version" ] || { echo "Tag ($expected) != workspace ($workspace_version)" >&2; exit 1; }
+            in_section && $1 == "version" { gsub(/"/, "", $3); print $3; exit }' tools/lingxia-cli/Cargo.toml)"
+          [ -n "$cli_version" ] || { echo "Failed to read lingxia-cli version" >&2; exit 1; }
+          [ "$expected" = "$cli_version" ] || { echo "Tag ($expected) != lingxia-cli ($cli_version)" >&2; exit 1; }
 
       - name: Build macOS Runner (${{ matrix.arch }})
         run: bash scripts/release/runner.sh --out dist/runner-release --macos-arch ${{ matrix.arch }}
@@ -188,16 +188,16 @@ jobs:
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
 
-      - name: Verify tag matches workspace version
+      - name: Verify tag matches CLI package version
         run: |
           tag="${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}"
           expected="${tag#lingxia-cli-v}"
-          workspace_version="$(awk '
-            /^\[workspace\.package\]/ {in_section=1; next}
+          cli_version="$(awk '
+            /^\[package\]/ {in_section=1; next}
             /^\[/ {in_section=0}
-            in_section && $1 == "version" { gsub(/"/, "", $3); print $3; exit }' Cargo.toml)"
-          [ -n "$workspace_version" ] || { echo "Failed to read workspace version" >&2; exit 1; }
-          [ "$expected" = "$workspace_version" ] || { echo "Tag ($expected) != workspace ($workspace_version)" >&2; exit 1; }
+            in_section && $1 == "version" { gsub(/"/, "", $3); print $3; exit }' tools/lingxia-cli/Cargo.toml)"
+          [ -n "$cli_version" ] || { echo "Failed to read lingxia-cli version" >&2; exit 1; }
+          [ "$expected" = "$cli_version" ] || { echo "Tag ($expected) != lingxia-cli ($cli_version)" >&2; exit 1; }
 
       - uses: actions/download-artifact@v4
         with:

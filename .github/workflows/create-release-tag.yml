@@ -115,6 +115,17 @@ jobs:
             echo "Workspace version verified: $actual"
           }
 
+          verify_cli_version() {
+            local actual
+            actual="$(awk '/^\[package\]/{f=1} f && /^version/{gsub(/"/, "", $3); print $3; exit}' tools/lingxia-cli/Cargo.toml)"
+            if [[ "$actual" != "$VERSION" ]]; then
+              echo "Version mismatch: expected $VERSION, found $actual in tools/lingxia-cli/Cargo.toml" >&2
+              echo "Did you merge the CLI release PR first?" >&2
+              exit 1
+            fi
+            echo "lingxia-cli version verified: $actual"
+          }
+
           verify_npm_package_version() {
             local package="$1"
             local package_json="packages/$package/package.json"
@@ -133,8 +144,11 @@ jobs:
           }
 
           case "$COMPONENT" in
-            crates|sdk|cli)
+            crates|sdk)
               verify_workspace_version
+              ;;
+            cli)
+              verify_cli_version
               ;;
             npm)
               if [[ "$NPM_PACKAGE" == "all" ]]; then

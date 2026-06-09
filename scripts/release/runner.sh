@@ -3,7 +3,7 @@ set -euo pipefail
 
 START_DIR="$(pwd)"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-WORKSPACE_CARGO_TOML="$ROOT_DIR/Cargo.toml"
+CLI_CARGO_TOML="$ROOT_DIR/tools/lingxia-cli/Cargo.toml"
 RUNNER_PACKAGE_DIR="$ROOT_DIR/tools/lingxia-runner"
 RUNNER_RAW_APP_DIR="$ROOT_DIR/tools/lingxia-runner/.lingxia"
 RUNNER_RAW_DIST_DIR="$ROOT_DIR/tools/lingxia-runner/dist/macos"
@@ -32,15 +32,15 @@ Examples:
 EOF
 }
 
-read_workspace_version() {
+read_cli_version() {
   awk '
-    /^\[workspace\.package\]/ {in_section=1; next}
+    /^\[package\]/ {in_section=1; next}
     /^\[/ {in_section=0}
     in_section && $1 == "version" {
       gsub(/"/, "", $3);
       print $3;
       exit
-    }' "$WORKSPACE_CARGO_TOML"
+    }' "$CLI_CARGO_TOML"
 }
 
 require_command() {
@@ -143,9 +143,9 @@ done
 ensure_macos
 require_command cargo
 
-VERSION="$(read_workspace_version)"
+VERSION="$(read_cli_version)"
 if [[ -z "$VERSION" ]]; then
-  echo "ERROR: failed to read workspace version from $WORKSPACE_CARGO_TOML" >&2
+  echo "ERROR: failed to read lingxia-cli version from $CLI_CARGO_TOML" >&2
   exit 1
 fi
 

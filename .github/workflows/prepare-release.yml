@@ -1,31 +1,38 @@
 name: Release / 1. Prepare Version PR
-run-name: Prepare release v${{ inputs.version }}
+run-name: Prepare ${{ inputs.component }} v${{ inputs.version }}
 
-# Unified version bump: applies ONE version to the whole workspace
-# (Cargo.toml workspace.package + workspace deps, install.sh, every
-# packages/* package.json + internal @lingxia/* dep ranges) via
-# scripts/release/version.sh, then opens a Release PR.
+# Version bump PR helper. `component=all` applies ONE version to the whole
+# workspace/package set via scripts/release/version.sh. `component=cli` bumps
+# only tools/lingxia-cli so the CLI can ship patch releases independently.
 #
-# You do NOT pick a component here. After this PR merges, you choose what to
-# publish by which per-component tags you push (Create Release Tag workflow,
-# or `git tag lingxia-<component>-v<version>`).
+# After this PR merges, publish from the "Release / 2. Publish Component"
+# workflow for the matching component/version.
 
 on:
   workflow_dispatch:
     inputs:
+      component:
+        description: "Version scope"
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - cli
       version:
         description: "Version to release (e.g. 0.5.0)"
         required: true
         type: string
 
 permissions:
+  actions: write
   contents: write
   issues: write
   pull-requests: write
 
 jobs:
   prepare:
-    name: Prepare release v${{ inputs.version }}
+    name: Prepare ${{ inputs.component }} v${{ inputs.version }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -41,33 +48,45 @@ jobs:
             echo "Invalid version: ${{ inputs.version }} (expected x.y.z)" >&2
             exit 1
           fi
+          case "${{ inputs.component }}" in
+            all|cli) ;;
+            *) echo "Invalid component: ${{ inputs.component }}" >&2; exit 1 ;;
+          esac
 
       - name: Create release branch
         run: |
-          branch="release/v${{ inputs.version }}"
-          if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
-            git fetch origin "$branch"
-            git checkout -B "$branch" "origin/$branch"
+          set -euo pipefail
+          if [[ "${{ inputs.component }}" == "all" ]]; then
+            branch="release/v${{ inputs.version }}"
           else
-            git checkout -b "$branch"
+            branch="release/${{ inputs.component }}/v${{ inputs.version }}"
           fi
+          remote_sha="$(git ls-remote --heads origin "$branch" | awk '{print $1}')"
+          git checkout -B "$branch"
           echo "BRANCH=$branch" >> "$GITHUB_ENV"
+          echo "REMOTE_BRANCH_SHA=$remote_sha" >> "$GITHUB_ENV"
 
-      - name: Bump version (unified)
+      - name: Bump version
         run: |
-          bash scripts/release/version.sh "${{ inputs.version }}"
+          bash scripts/release/version.sh "${{ inputs.version }}" --component "${{ inputs.component }}"
 
       - name: Commit version bump
         run: |
+          set -euo pipefail
           if git diff --quiet; then
-            echo "No version changes to commit"
-          else
-            git commit -am "chore(release): bump version to ${{ inputs.version }}"
+            echo "No version changes to commit. The selected component already appears to be at ${{ inputs.version }}." >&2
+            exit 1
           fi
+          git commit -am "chore(release): bump ${{ inputs.component }} version to ${{ inputs.version }}"
 
       - name: Push branch
         run: |
-          git push -u origin "$BRANCH"
+          set -euo pipefail
+          if [[ -n "$REMOTE_BRANCH_SHA" ]]; then
+            git push --force-with-lease="refs/heads/$BRANCH:$REMOTE_BRANCH_SHA" -u origin "$BRANCH"
+          else
+            git push -u origin "$BRANCH"
+          fi
 
       - name: Ensure release label
         env:
@@ -82,18 +101,23 @@ jobs:
             --description "Release preparation and publishing"
 
       - name: Create Pull Request
+        id: create-pr
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set -euo pipefail
           version="${{ inputs.version }}"
-          pr_body="$(cat <<EOF
+          component="${{ inputs.component }}"
+          if [[ "$component" == "all" ]]; then
+            pr_title="Release v${version}"
+            pr_body="$(cat <<EOF
           ## Release v${version}
 
           Unified version bump to \`${version}\` applied via
           \`scripts/release/version.sh\`. This rewrites the version in one shot:
 
           - \`Cargo.toml\` \`workspace.package.version\` + workspace crate dep versions
-          - \`install.sh\` \`VERSION\`
+          - \`tools/lingxia-cli/Cargo.toml\` CLI version + embedded component versions
           - every \`packages/*/package.json\` version + internal \`@lingxia/*\` dep ranges
 
           ### After merge
@@ -110,16 +134,93 @@ jobs:
           \`\`\`
           EOF
           )"
+          else
+            pr_title="Release CLI v${version}"
+            pr_body="$(cat <<EOF
+          ## CLI Release v${version}
+
+          CLI-only version bump to \`${version}\` applied via:
+
+          \`\`\`bash
+          scripts/release/version.sh ${version} --component cli
+          \`\`\`
+
+          This only allows changes to \`tools/lingxia-cli/Cargo.toml\` and,
+          when Cargo needs metadata synchronization, the root \`Cargo.lock\`.
+          Workspace crates, SDK artifacts, and npm packages stay on their
+          existing versions.
+
+          ### After merge
+
+          Publish from **Release / 2. Publish Component**:
+
+          \`\`\`bash
+          component=cli, version=${version}
+          \`\`\`
+          EOF
+          )"
+          fi
 
           existing_pr="$(gh pr list --base main --head "$BRANCH" --state open --json url --jq '.[0].url')"
           if [ -n "$existing_pr" ]; then
-            echo "Release PR already exists: $existing_pr"
-            exit 0
+            pr_url="$existing_pr"
+            echo "Release PR already exists: $pr_url"
+          else
+            pr_url="$(gh pr create \
+              --base main \
+              --head "$BRANCH" \
+              --title "$pr_title" \
+              --body "$pr_body" \
+              --label "release")"
           fi
 
-          gh pr create \
-            --base main \
-            --head "$BRANCH" \
-            --title "Release v${version}" \
-            --body "$pr_body" \
-            --label "release"
+          echo "PR_URL=$pr_url" >> "$GITHUB_ENV"
+          echo "pr_url=$pr_url" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Release PR"
+            echo ""
+            echo "- Branch: \`$BRANCH\`"
+            echo "- Pull request: $pr_url"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Dispatch CI for release PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          head_sha="$(git rev-parse HEAD)"
+          dispatch_after="$(date -u +%s)"
+
+          gh workflow run ci.yml --ref "$BRANCH"
+
+          run_id=""
+          for _ in {1..30}; do
+            run_id="$(gh run list \
+              --workflow ci.yml \
+              --branch "$BRANCH" \
+              --event workflow_dispatch \
+              --limit 20 \
+              --json databaseId,createdAt,headSha \
+              | jq -r \
+                --arg sha "$head_sha" \
+                --argjson earliest "$((dispatch_after - 5))" \
+                '[.[] | select(.headSha == $sha) | select((.createdAt | fromdateiso8601) >= $earliest)] | sort_by(.createdAt) | reverse | .[0].databaseId // empty')"
+            [[ -n "$run_id" ]] && break
+            sleep 2
+          done
+
+          if [[ -z "$run_id" ]]; then
+            echo "Failed to find dispatched CI run for $BRANCH" >&2
+            exit 1
+          fi
+
+          run_url="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${run_id}"
+          {
+            echo ""
+            echo "### CI"
+            echo ""
+            echo "- Run: $run_url"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          gh run watch "$run_id" --interval 15 --exit-status

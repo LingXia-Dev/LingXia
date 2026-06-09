@@ -5,6 +5,7 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -116,8 +117,10 @@ jobs:
           # A release/* PR (from Prepare Release PR) only touches Cargo.toml /
           # install.sh / packages/*, so the path filters would skip sdk/harmony.
           # Force the FULL validate set on release PRs so a maintainer sees every
-          # job before merging. head_ref is the PR source branch on pull_request.
-          IS_RELEASE: ${{ startsWith(github.head_ref, 'release/') }}
+          # job before merging. head_ref is the PR source branch on pull_request;
+          # ref_name covers workflow_dispatch runs explicitly launched on the
+          # release branch by the prepare-release workflow.
+          IS_RELEASE: ${{ startsWith(github.head_ref, 'release/') || startsWith(github.ref_name, 'release/') }}
         run: |
           set -euo pipefail
           any() { for v in "$@"; do [ "$v" = "true" ] && { echo true; return; }; done; echo false; }

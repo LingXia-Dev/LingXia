@@ -4,6 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(realpath "$SCRIPT_DIR/../..")"
 WORKSPACE_CARGO_TOML="$ROOT_DIR/Cargo.toml"
+CLI_CARGO_TOML="$ROOT_DIR/tools/lingxia-cli/Cargo.toml"
 EXAMPLE_HOST_CARGO_TOML="$ROOT_DIR/examples/lingxia-showcase/lingxia-lib/Cargo.toml"
 
 usage() {
@@ -11,31 +12,49 @@ usage() {
 Update LingXia release versions in one step.
 
 Usage:
-  scripts/release/version.sh <version> [--dry-run]
+  scripts/release/version.sh <version> [--component all|cli] [--dry-run]
 
 Arguments:
   <version>       Semver to apply (for example: 0.5.0)
 
 Options:
+  --component     Version scope. `all` keeps the lockstep release bump;
+                  `cli` bumps only tools/lingxia-cli.
   --dry-run       Print the files that would change without modifying them.
   -h, --help      Show help.
 
-This updates:
+With --component all (default), this updates:
   - workspace.package.version in Cargo.toml
   - workspace crate dependency versions in Cargo.toml
+  - lingxia-cli package version and embedded component versions
   - example native host LingXia crate dependency versions
   - example native host Cargo.lock LingXia package versions
   - package versions under packages/*
   - internal @lingxia/* package dependency versions in published package.json files
+
+With --component cli, this updates:
+  - lingxia-cli package version only
+  - root Cargo.lock package metadata when Cargo needs it
 EOF
 }
 
 DRY_RUN=0
+COMPONENT="all"
 VERSION=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --dry-run) DRY_RUN=1 ;;
+    --component)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for --component" >&2
+        exit 2
+      fi
+      COMPONENT="${2:-}"
+      shift 2
+      continue
+      ;;
+    --cli-only) COMPONENT="cli" ;;
     -h|--help) usage; exit 0 ;;
     *)
       if [[ -n "$VERSION" ]]; then
@@ -58,6 +77,14 @@ if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   echo "Invalid version: $VERSION (expected x.y.z)" >&2
   exit 2
 fi
+
+case "$COMPONENT" in
+  all|cli) ;;
+  *)
+    echo "Invalid component: $COMPONENT (expected all or cli)" >&2
+    exit 2
+    ;;
+esac
 
 update_workspace_cargo() {
   python3 - "$WORKSPACE_CARGO_TOML" "$VERSION" "$DRY_RUN" <<'PY'
@@ -113,6 +140,58 @@ else:
     print(f"updated {path}")
     print(f"  workspace.package.version -> {version}")
     print(f"  workspace dependency versions updated: {deps_count}")
+PY
+}
+
+update_cli_cargo() {
+  python3 - "$CLI_CARGO_TOML" "$VERSION" "$DRY_RUN" "$COMPONENT" <<'PY'
+from pathlib import Path
+import re
+import sys
+
+path = Path(sys.argv[1])
+version = sys.argv[2]
+dry_run = sys.argv[3] == "1"
+component = sys.argv[4]
+text = path.read_text()
+
+package_re = re.compile(
+    r'(^\[package\]\n(?:(?!^\[).*\n)*?)^version(?:\.workspace)?\s*=\s*(?:true|"[^"]+")',
+    re.MULTILINE,
+)
+text, package_count = package_re.subn(rf'\g<1>version = "{version}"', text, count=1)
+if package_count != 1:
+    raise SystemExit(f"failed to update [package] version in {path}")
+
+metadata_count = 0
+if component == "all":
+    for key in [
+        "bridge-version",
+        "polyfills-version",
+        "types-version",
+        "rong-version",
+        "rust-crate-version",
+        "sdk-version",
+        "shell-webui-version",
+        "resource-bundle-version",
+    ]:
+        pattern = rf'(^\s*{re.escape(key)}\s*=\s*")[^"]+(")'
+        text, changed = re.subn(pattern, rf'\g<1>{version}\2', text, count=1, flags=re.MULTILINE)
+        if changed != 1:
+            raise SystemExit(f"failed to update package.metadata.lingxia.{key} in {path}")
+        metadata_count += changed
+
+if dry_run:
+    print(f"would update {path}")
+    print(f"  lingxia-cli package version -> {version}")
+    if component == "all":
+        print(f"  embedded component versions updated: {metadata_count}")
+else:
+    path.write_text(text)
+    print(f"updated {path}")
+    print(f"  lingxia-cli package version -> {version}")
+    if component == "all":
+        print(f"  embedded component versions updated: {metadata_count}")
 PY
 }
 
@@ -209,18 +288,40 @@ update_example_host_lock() {
     -p lingxia-devtool
 }
 
-update_workspace_cargo
-update_example_host_cargo
-update_example_host_lock
+update_root_lock() {
+  [[ -f "$ROOT_DIR/Cargo.lock" ]] || return 0
 
-while IFS= read -r package_json; do
-  update_package_json "$package_json"
-done < <(find "$ROOT_DIR/packages" -mindepth 2 -maxdepth 2 -name package.json | sort)
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    echo "would refresh $ROOT_DIR/Cargo.lock if Cargo needs metadata changes"
+    return 0
+  fi
+
+  cargo metadata \
+    --manifest-path "$ROOT_DIR/Cargo.toml" \
+    --format-version 1 \
+    --no-deps \
+    >/dev/null
+}
+
+if [[ "$COMPONENT" == "all" ]]; then
+  update_workspace_cargo
+  update_cli_cargo
+  update_example_host_cargo
+  update_example_host_lock
+
+  while IFS= read -r package_json; do
+    update_package_json "$package_json"
+  done < <(find "$ROOT_DIR/packages" -mindepth 2 -maxdepth 2 -name package.json | sort)
+else
+  update_cli_cargo
+fi
+
+update_root_lock
 
 if [[ "$DRY_RUN" -eq 1 ]]; then
   echo ""
   echo "Dry run complete."
 else
   echo ""
-  echo "✅ Version updated to $VERSION"
+  echo "✅ Version updated to $VERSION ($COMPONENT)"
 fi

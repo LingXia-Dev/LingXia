@@ -38,25 +38,25 @@ pub(super) fn resolve_shell_webui_dir(
     {
         let version = webui
             .and_then(|webui| webui.version.as_deref())
-            .unwrap_or(env!("CARGO_PKG_VERSION"));
+            .unwrap_or(env!("LINGXIA_SHELL_WEBUI_VERSION"));
         return Ok(ShellWebUiSource {
             bundle_dir: resolve_lxapp_package(project_root, package, version)?,
             build: false,
         });
     }
 
-    // Fall back to the SDK's default npm package, pinned to the lingxia-cli version.
+    // Fall back to the SDK's default npm package, pinned to the SDK package set.
     Ok(ShellWebUiSource {
         bundle_dir: resolve_lxapp_package(
             project_root,
             DEFAULT_PACKAGE,
-            env!("CARGO_PKG_VERSION"),
+            env!("LINGXIA_SHELL_WEBUI_VERSION"),
         )
         .with_context(|| {
             format!(
                 "Failed to resolve default shell webui package {}@{}. Set `shell.webui.path` to point at a local checkout, or `shell.webui.package`/`version` to pin a fork.",
                 DEFAULT_PACKAGE,
-                env!("CARGO_PKG_VERSION")
+                env!("LINGXIA_SHELL_WEBUI_VERSION")
             )
         })?,
         build: false,

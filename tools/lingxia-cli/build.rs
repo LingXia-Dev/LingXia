@@ -1,9 +1,22 @@
-use serde_json::Value;
+use serde_json::Value as JsonValue;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::SystemTime;
+use toml::{Table as TomlTable, Value as TomlValue};
+
+#[derive(Debug)]
+struct ComponentVersions {
+    bridge: String,
+    polyfills: String,
+    types: String,
+    rong: String,
+    rust_crate: String,
+    sdk: String,
+    shell_webui: String,
+    resource_bundle: String,
+}
 
 fn main() {
     if let Err(err) = run() {
@@ -21,22 +34,23 @@ fn run() -> Result<(), String> {
     let polyfills_dir = repo_root.join("packages").join("lingxia-polyfills");
     let bridge_package_json = bridge_dir.join("package.json");
     let polyfills_package_json = polyfills_dir.join("package.json");
-    let expected_version = env::var("CARGO_PKG_VERSION").map_err(|e| e.to_string())?;
+    let component_versions = read_component_versions(&manifest_dir.join("Cargo.toml"))?;
 
     emit_rerun_markers(&manifest_dir, &bridge_dir, &polyfills_dir)?;
+    emit_component_version_env(&component_versions);
 
     let actual_bridge_version = read_npm_package_version(&bridge_package_json)?;
-    if actual_bridge_version != expected_version {
+    if actual_bridge_version != component_versions.bridge {
         return Err(format!(
-            "lingxia-cli version {} does not match @lingxia/bridge version {}",
-            expected_version, actual_bridge_version
+            "configured @lingxia/bridge version {} does not match package.json version {}",
+            component_versions.bridge, actual_bridge_version
         ));
     }
     let actual_polyfills_version = read_npm_package_version(&polyfills_package_json)?;
-    if actual_polyfills_version != expected_version {
+    if actual_polyfills_version != component_versions.polyfills {
         return Err(format!(
-            "lingxia-cli version {} does not match @lingxia/polyfills version {}",
-            expected_version, actual_polyfills_version
+            "configured @lingxia/polyfills version {} does not match package.json version {}",
+            component_versions.polyfills, actual_polyfills_version
         ));
     }
 
@@ -87,6 +101,74 @@ fn run() -> Result<(), String> {
     );
 
     Ok(())
+}
+
+fn read_component_versions(manifest: &Path) -> Result<ComponentVersions, String> {
+    let content = fs::read_to_string(manifest)
+        .map_err(|e| format!("failed to read {}: {e}", manifest.display()))?;
+    let value: TomlTable = content
+        .parse()
+        .map_err(|e| format!("failed to parse {}: {e}", manifest.display()))?;
+    let table = value
+        .get("package")
+        .and_then(|value| value.get("metadata"))
+        .and_then(|value| value.get("lingxia"))
+        .and_then(TomlValue::as_table)
+        .ok_or_else(|| {
+            format!(
+                "missing [package.metadata.lingxia] in {}",
+                manifest.display()
+            )
+        })?;
+
+    let get = |key: &str| -> Result<String, String> {
+        table
+            .get(key)
+            .and_then(TomlValue::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+            .ok_or_else(|| {
+                format!(
+                    "missing non-empty package.metadata.lingxia.{key} in {}",
+                    manifest.display()
+                )
+            })
+    };
+
+    Ok(ComponentVersions {
+        bridge: get("bridge-version")?,
+        polyfills: get("polyfills-version")?,
+        types: get("types-version")?,
+        rong: get("rong-version")?,
+        rust_crate: get("rust-crate-version")?,
+        sdk: get("sdk-version")?,
+        shell_webui: get("shell-webui-version")?,
+        resource_bundle: get("resource-bundle-version")?,
+    })
+}
+
+fn emit_component_version_env(versions: &ComponentVersions) {
+    println!("cargo:rustc-env=LINGXIA_BRIDGE_VERSION={}", versions.bridge);
+    println!(
+        "cargo:rustc-env=LINGXIA_POLYFILLS_VERSION={}",
+        versions.polyfills
+    );
+    println!("cargo:rustc-env=LINGXIA_TYPES_VERSION={}", versions.types);
+    println!("cargo:rustc-env=LINGXIA_RONG_VERSION={}", versions.rong);
+    println!(
+        "cargo:rustc-env=LINGXIA_RUST_CRATE_VERSION={}",
+        versions.rust_crate
+    );
+    println!("cargo:rustc-env=LINGXIA_SDK_VERSION={}", versions.sdk);
+    println!(
+        "cargo:rustc-env=LINGXIA_SHELL_WEBUI_VERSION={}",
+        versions.shell_webui
+    );
+    println!(
+        "cargo:rustc-env=LINGXIA_RESOURCE_BUNDLE_VERSION={}",
+        versions.resource_bundle
+    );
 }
 
 fn run_npm_build(package_dir: &Path) -> Result<(), String> {
@@ -154,11 +236,11 @@ Run `cd {} && {install_cmd}` first, then retry `cargo build -p lingxia-cli`.",
 fn read_npm_package_version(package_json: &Path) -> Result<String, String> {
     let content = fs::read_to_string(package_json)
         .map_err(|e| format!("failed to read {}: {e}", package_json.display()))?;
-    let value: Value = serde_json::from_str(&content)
+    let value: JsonValue = serde_json::from_str(&content)
         .map_err(|e| format!("failed to parse {}: {e}", package_json.display()))?;
     value
         .get("version")
-        .and_then(Value::as_str)
+        .and_then(JsonValue::as_str)
         .map(str::to_string)
         .ok_or_else(|| format!("missing version in {}", package_json.display()))
 }
@@ -171,6 +253,10 @@ fn emit_rerun_markers(
     println!(
         "cargo:rerun-if-changed={}",
         manifest_dir.join("build.rs").display()
+    );
+    println!(
+        "cargo:rerun-if-changed={}",
+        manifest_dir.join("Cargo.toml").display()
     );
     emit_rerun_for_dir(&manifest_dir.join("templates"))?;
 

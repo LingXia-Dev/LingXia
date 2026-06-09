@@ -4,7 +4,7 @@ set -euo pipefail
 START_DIR="$(pwd)"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
-WORKSPACE_CARGO_TOML="$ROOT_DIR/Cargo.toml"
+CLI_CARGO_TOML="$ROOT_DIR/tools/lingxia-cli/Cargo.toml"
 GH_REPO="${LINGXIA_RELEASE_REPO:-LingXia-Dev/LingXia}"
 ALL_TARGETS=(darwin-x64 darwin-arm64)
 
@@ -33,15 +33,15 @@ Examples:
 EOF
 }
 
-read_workspace_version() {
+read_cli_version() {
   awk '
-    /^\[workspace\.package\]/ {in_section=1; next}
+    /^\[package\]/ {in_section=1; next}
     /^\[/ {in_section=0}
     in_section && $1 == "version" {
       gsub(/"/, "", $3);
       print $3;
       exit
-    }' "$WORKSPACE_CARGO_TOML"
+    }' "$CLI_CARGO_TOML"
 }
 
 release_tag_for_version() {
@@ -151,9 +151,9 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
-VERSION="$(read_workspace_version)"
+VERSION="$(read_cli_version)"
 if [[ -z "$VERSION" ]]; then
-  echo "ERROR: failed to read workspace version from $WORKSPACE_CARGO_TOML" >&2
+  echo "ERROR: failed to read lingxia-cli version from $CLI_CARGO_TOML" >&2
   exit 1
 fi
 

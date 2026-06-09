@@ -67,7 +67,8 @@ fn release_tag(version: &str) -> String {
     format!("lingxia-sdk-v{version}")
 }
 
-/// The SDK version to fetch. Single source of truth = CLI's CARGO_PKG_VERSION.
+/// The SDK version to fetch. This is intentionally independent of the CLI
+/// binary version so CLI-only patch releases can reuse an existing SDK release.
 pub fn sdk_version() -> String {
     crate::versions::current_versions().sdk
 }
