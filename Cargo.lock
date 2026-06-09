@@ -2860,7 +2860,7 @@ dependencies = [
 
 [[package]]
 name = "lingxia-cli"
-version = "0.9.0"
+version = "0.9.1"
 dependencies = [
  "Inflector",
  "aes 0.9.0",

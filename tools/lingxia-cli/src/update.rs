@@ -61,8 +61,8 @@ pub fn maybe_auto_update() {
     }
 
     println!(
-        "A newer LingXia CLI is available: {} (current {}). Updating now...",
-        status.latest_version, status.current_version
+        "Updating LingXia CLI {} -> {}...",
+        status.current_version, status.latest_version
     );
     if let Err(err) = install_update(&exe_path, &status) {
         eprintln!("warning: automatic CLI update failed: {err}");
@@ -72,10 +72,6 @@ pub fn maybe_auto_update() {
 
 fn install_update(exe_path: &Path, status: &UpdateStatus) -> Result<()> {
     let asset_name = current_platform_asset_name()?;
-    println!(
-        "Updating LingXia CLI from {} to {}",
-        status.current_version, status.latest_version
-    );
     let bytes = github::download_release_asset_from_repo(
         &status.release_repo,
         &status.latest_tag,
