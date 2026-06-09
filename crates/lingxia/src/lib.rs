@@ -36,11 +36,12 @@ mod capabilities;
 pub mod dev {
     pub use crate::devtool::{
         LxAppDevConfig, LxAppDevIdentity, LxAppDevPageInfo, install_lxapp_dev_config,
-        install_lxapp_dev_config_from_env, list_app_windows, lxapp_dev_page_back,
-        lxapp_dev_page_click, lxapp_dev_page_current, lxapp_dev_page_eval, lxapp_dev_page_fill,
-        lxapp_dev_page_info, lxapp_dev_page_input_supported, lxapp_dev_page_list,
-        lxapp_dev_page_press, lxapp_dev_page_query, lxapp_dev_page_screenshot, lxapp_dev_page_type,
-        take_app_screenshot,
+        install_lxapp_dev_config_from_env, list_app_windows, lxapp_dev_nav_back,
+        lxapp_dev_nav_redirect, lxapp_dev_nav_relaunch, lxapp_dev_nav_switch_tab, lxapp_dev_nav_to,
+        lxapp_dev_page_back, lxapp_dev_page_click, lxapp_dev_page_current, lxapp_dev_page_eval,
+        lxapp_dev_page_fill, lxapp_dev_page_info, lxapp_dev_page_input_supported,
+        lxapp_dev_page_list, lxapp_dev_page_press, lxapp_dev_page_query, lxapp_dev_page_screenshot,
+        lxapp_dev_page_type, take_app_screenshot,
     };
 }
 /// Device identity, screen geometry, vibration, and system-setting APIs.

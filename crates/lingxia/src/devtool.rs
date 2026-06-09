@@ -256,11 +256,14 @@ pub fn lxapp_dev_page_list(appid: Option<&str>) -> Result<Vec<LxAppDevPageInfo>,
                 appid: info.appid.clone(),
                 name: entry.name.clone(),
                 path: entry.path.clone(),
-                current: info.current_page.as_deref() == Some(entry.path.as_str()),
+                current: info
+                    .current_page
+                    .as_deref()
+                    .is_some_and(|current_page| dev_page_paths_match(current_page, &entry.path)),
                 in_stack: info
                     .page_stack
                     .iter()
-                    .any(|stack_page| stack_page == &entry.path),
+                    .any(|stack_page| dev_page_paths_match(stack_page, &entry.path)),
                 ready: active.as_ref().is_some_and(|page| page.webview().is_some()),
                 input_supported: lxapp_dev_page_input_supported(),
             }
@@ -446,6 +449,156 @@ pub fn lxapp_dev_page_back(appid: Option<&str>, delta: u32) -> Result<(), String
         .map_err(|err| err.to_string())
 }
 
+/// Navigation mode used by [`lxapp_dev_nav_with_kind`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LxAppDevNavKind {
+    To,
+    Redirect,
+    SwitchTab,
+    Relaunch,
+}
+
+impl LxAppDevNavKind {
+    fn navigation_type(self) -> lxapp::NavigationType {
+        match self {
+            Self::To => lxapp::NavigationType::Forward,
+            Self::Redirect => lxapp::NavigationType::Replace,
+            Self::SwitchTab => lxapp::NavigationType::SwitchTab,
+            Self::Relaunch => lxapp::NavigationType::Launch,
+        }
+    }
+}
+
+/// Navigate to a configured page by page name.
+pub async fn lxapp_dev_nav_to(
+    appid: Option<&str>,
+    page_name: &str,
+    query: Option<serde_json::Value>,
+) -> Result<LxAppDevPageInfo, String> {
+    lxapp_dev_nav_with_kind(appid, page_name, query, LxAppDevNavKind::To).await
+}
+
+/// Replace the current page with a configured page by page name.
+pub async fn lxapp_dev_nav_redirect(
+    appid: Option<&str>,
+    page_name: &str,
+    query: Option<serde_json::Value>,
+) -> Result<LxAppDevPageInfo, String> {
+    lxapp_dev_nav_with_kind(appid, page_name, query, LxAppDevNavKind::Redirect).await
+}
+
+/// Switch to a configured tab page by page name.
+pub async fn lxapp_dev_nav_switch_tab(
+    appid: Option<&str>,
+    page_name: &str,
+    query: Option<serde_json::Value>,
+) -> Result<LxAppDevPageInfo, String> {
+    lxapp_dev_nav_with_kind(appid, page_name, query, LxAppDevNavKind::SwitchTab).await
+}
+
+/// Relaunch the lxapp at a configured page by page name.
+pub async fn lxapp_dev_nav_relaunch(
+    appid: Option<&str>,
+    page_name: &str,
+    query: Option<serde_json::Value>,
+) -> Result<LxAppDevPageInfo, String> {
+    lxapp_dev_nav_with_kind(appid, page_name, query, LxAppDevNavKind::Relaunch).await
+}
+
+/// Navigate back in the current page stack and return the destination page.
+pub async fn lxapp_dev_nav_back(
+    appid: Option<&str>,
+    delta: u32,
+) -> Result<LxAppDevPageInfo, String> {
+    let app = resolve_dev_lxapp(appid.unwrap_or("current"))?;
+    app.current_page()
+        .map_err(|err| err.to_string())?
+        .navigate_back(delta)
+        .map_err(|err| err.to_string())?;
+
+    let (page, name) = resolve_dev_page(&app, None)?;
+    page.wait_webview_ready()
+        .await
+        .map_err(|err| err.to_string())?;
+    Ok(dev_page_info(&app, &page, name.as_deref()))
+}
+
+async fn lxapp_dev_nav_with_kind(
+    appid: Option<&str>,
+    page_name: &str,
+    query: Option<serde_json::Value>,
+    kind: LxAppDevNavKind,
+) -> Result<LxAppDevPageInfo, String> {
+    let app = resolve_dev_lxapp(appid.unwrap_or("current"))?;
+    let target_url = resolve_dev_page_target(&app, page_name, query.as_ref())?;
+
+    if kind == LxAppDevNavKind::Redirect && is_dev_tabbar_page_url(&app, &target_url) {
+        return Err("redirectTo cannot navigate to a tabBar page".to_string());
+    }
+
+    app.ensure_page_exists(&target_url)
+        .map_err(|err| err.to_string())?;
+
+    let current_path = app
+        .peek_current_page()
+        .ok_or_else(|| "No current page found".to_string())?;
+    let current_page = app
+        .get_page(&current_path)
+        .ok_or_else(|| "Current page not found".to_string())?;
+    let target_page = app.get_or_create_page(&target_url);
+    let target_page = current_page
+        .navigate_to(target_page, kind.navigation_type())
+        .map_err(|err| err.to_string())?;
+
+    target_page
+        .wait_webview_ready()
+        .await
+        .map_err(|err| err.to_string())?;
+
+    let (page, name) = resolve_dev_page(&app, None)?;
+    Ok(dev_page_info(&app, &page, name.as_deref()))
+}
+
+fn resolve_dev_page_target(
+    app: &std::sync::Arc<lxapp::LxApp>,
+    page_name: &str,
+    query: Option<&serde_json::Value>,
+) -> Result<String, String> {
+    let page_name = page_name.trim();
+    if page_name.is_empty() {
+        return Err("page name is required".to_string());
+    }
+    let path = app
+        .find_page_path_by_name(page_name)
+        .ok_or_else(|| format!("unknown page name: {page_name}"))?;
+    match query {
+        Some(query) => lxapp::append_page_query(path, query),
+        None => Ok(path),
+    }
+}
+
+fn normalize_dev_tabbar_path(url: &str) -> String {
+    let (path, _) = lxapp::startup::split_path_query(url);
+    let mut trimmed = path.trim_start_matches('/').to_string();
+    if let Some(dot_pos) = trimmed.rfind('.')
+        && trimmed.rfind('/').is_none_or(|slash| dot_pos > slash)
+    {
+        trimmed.truncate(dot_pos);
+    }
+    trimmed
+}
+
+fn is_dev_tabbar_page_url(app: &lxapp::LxApp, url: &str) -> bool {
+    let Some(tabbar) = app.get_tabbar() else {
+        return false;
+    };
+    let target = normalize_dev_tabbar_path(url);
+    tabbar
+        .list
+        .iter()
+        .any(|item| normalize_dev_tabbar_path(&item.pagePath) == target)
+}
+
 fn resolve_dev_lxapp(raw: &str) -> Result<std::sync::Arc<lxapp::LxApp>, String> {
     let appid = resolve_dev_appid(raw)?;
     lxapp::try_get(&appid).ok_or_else(|| format!("lxapp is not active: {appid}"))
@@ -486,19 +639,43 @@ fn resolve_dev_page(
     let path = app
         .find_page_path_by_name(page_name)
         .ok_or_else(|| format!("unknown page name: {page_name}"))?;
-    let page = app
-        .require_page(&path)
-        .map_err(|_| format!("page is not active: {page_name}"))?;
+    let page = resolve_active_dev_page_by_path(app, &path)
+        .ok_or_else(|| format!("page is not active: {page_name}"))?;
     Ok((page, Some(page_name.to_string())))
+}
+
+fn resolve_active_dev_page_by_path(
+    app: &std::sync::Arc<lxapp::LxApp>,
+    path: &str,
+) -> Option<lxapp::PageInstance> {
+    if let Ok(page) = app.require_page(path) {
+        return Some(page);
+    }
+
+    let info = app.runtime_info();
+    info.current_page
+        .iter()
+        .chain(info.page_stack.iter().rev())
+        .find(|candidate| dev_page_paths_match(candidate, path))
+        .and_then(|candidate| app.get_page(candidate))
 }
 
 fn dev_page_name_for_path(app: &std::sync::Arc<lxapp::LxApp>, path: &str) -> Option<String> {
     app.runtime_info()
         .page_entries
         .into_iter()
-        .find(|entry| entry.path == path)
+        .find(|entry| dev_page_paths_match(&entry.path, path))
         .map(|entry| entry.name)
         .filter(|name| !name.is_empty())
+}
+
+fn dev_page_path_key(path: &str) -> String {
+    let (path, _) = lxapp::startup::split_path_query(path);
+    path.trim_start_matches('/').to_string()
+}
+
+fn dev_page_paths_match(left: &str, right: &str) -> bool {
+    dev_page_path_key(left) == dev_page_path_key(right)
 }
 
 fn dev_page_info(
@@ -512,8 +689,14 @@ fn dev_page_info(
         appid: info.appid,
         name: name.unwrap_or("").to_string(),
         path: path.clone(),
-        current: info.current_page.as_deref() == Some(path.as_str()),
-        in_stack: info.page_stack.iter().any(|stack_page| stack_page == &path),
+        current: info
+            .current_page
+            .as_deref()
+            .is_some_and(|current_page| dev_page_paths_match(current_page, &path)),
+        in_stack: info
+            .page_stack
+            .iter()
+            .any(|stack_page| dev_page_paths_match(stack_page, &path)),
         ready: page.webview().is_some(),
         input_supported: lxapp_dev_page_input_supported(),
     }

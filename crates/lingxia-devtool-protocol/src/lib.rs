@@ -42,6 +42,14 @@ pub mod handlers {
         pub const UNINSTALL: &str = "lxapp.uninstall";
     }
 
+    pub mod lxapp_nav {
+        pub const TO: &str = "lxapp.nav.to";
+        pub const REDIRECT: &str = "lxapp.nav.redirect";
+        pub const SWITCH_TAB: &str = "lxapp.nav.switch_tab";
+        pub const RELAUNCH: &str = "lxapp.nav.relaunch";
+        pub const BACK: &str = "lxapp.nav.back";
+    }
+
     pub mod app {
         /// Capture a PNG of the host app's window. Accepts an optional
         /// `window_id` (returned by [`WINDOWS`]) so multi-window desktop

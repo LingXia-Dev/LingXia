@@ -57,6 +57,8 @@ pub enum LxAppCommand {
     },
     /// Inspect and automate lxapp pages
     Page(PageOptions),
+    /// Navigate the lxapp runtime by page name
+    Nav(NavOptions),
     /// Evaluate JavaScript in the lxapp logic runtime
     Eval {
         /// JavaScript expression, or a function body that uses return/await
@@ -114,6 +116,55 @@ pub enum LxAppCommand {
 pub struct PageOptions {
     #[command(subcommand)]
     command: PageCommand,
+}
+
+#[derive(Args, Clone)]
+pub struct NavOptions {
+    #[command(subcommand)]
+    command: NavCommand,
+}
+
+#[derive(Subcommand, Clone)]
+pub enum NavCommand {
+    /// Push a configured page onto the page stack
+    To(PageNavOptions),
+    /// Replace the current page with a configured page
+    Redirect(PageNavOptions),
+    /// Switch to a configured tab page
+    #[command(name = "switch-tab")]
+    SwitchTab(PageNavOptions),
+    /// Clear the stack and relaunch at a configured page
+    Relaunch(PageNavOptions),
+    /// Navigate back in the lxapp page stack
+    Back(NavBackOptions),
+}
+
+#[derive(Args, Clone)]
+pub struct PageNavOptions {
+    /// Page name from lxapp.json
+    page: String,
+    /// LxApp context; defaults to current
+    #[arg(long, default_value = "current")]
+    app: String,
+    /// Query string pair; repeat for multiple keys
+    #[arg(long = "query", value_name = "KEY=VALUE")]
+    query: Vec<String>,
+    /// Print JSON output
+    #[arg(long)]
+    json: bool,
+}
+
+#[derive(Args, Clone)]
+pub struct NavBackOptions {
+    /// LxApp context; defaults to current
+    #[arg(long, default_value = "current")]
+    app: String,
+    /// Number of pages to go back
+    #[arg(long, default_value_t = 1)]
+    delta: u32,
+    /// Print JSON output
+    #[arg(long)]
+    json: bool,
 }
 
 #[derive(Subcommand, Clone)]
@@ -333,6 +384,7 @@ pub fn execute(project_root: &Path, info: &SessionInfo, options: LxAppOptions) -
             print_json(&data, pretty)?;
         }
         LxAppCommand::Page(options) => execute_page(ws_url, options)?,
+        LxAppCommand::Nav(options) => execute_nav(ws_url, options)?,
         LxAppCommand::Eval {
             script,
             app,
@@ -385,6 +437,44 @@ pub fn execute(project_root: &Path, info: &SessionInfo, options: LxAppOptions) -
     }
 
     Ok(())
+}
+
+fn execute_nav(ws_url: &str, options: NavOptions) -> Result<()> {
+    match options.command {
+        NavCommand::To(options) => execute_page_nav(ws_url, handlers::lxapp_nav::TO, options)?,
+        NavCommand::Redirect(options) => {
+            execute_page_nav(ws_url, handlers::lxapp_nav::REDIRECT, options)?
+        }
+        NavCommand::SwitchTab(options) => {
+            execute_page_nav(ws_url, handlers::lxapp_nav::SWITCH_TAB, options)?
+        }
+        NavCommand::Relaunch(options) => {
+            execute_page_nav(ws_url, handlers::lxapp_nav::RELAUNCH, options)?
+        }
+        NavCommand::Back(options) => {
+            let data = client::execute_command(
+                ws_url,
+                handlers::lxapp_nav::BACK,
+                Some(json!({ "appid": options.app, "delta": options.delta })),
+            )?;
+            print_optional_json(data, options.json)?;
+        }
+    }
+    Ok(())
+}
+
+fn execute_page_nav(ws_url: &str, handler: &str, options: PageNavOptions) -> Result<()> {
+    let query = parse_query_pairs(&options.query)?;
+    let data = client::execute_command(
+        ws_url,
+        handler,
+        Some(json!({
+            "appid": options.app,
+            "page": options.page,
+            "query": query,
+        })),
+    )?;
+    print_optional_json(data, options.json)
 }
 
 fn execute_page(ws_url: &str, options: PageOptions) -> Result<()> {
@@ -601,9 +691,29 @@ fn parse_lxapp_cli(args: Vec<String>) -> Result<LxAppCli> {
     LxAppCli::try_parse_from(argv).map_err(Into::into)
 }
 
+fn parse_query_pairs(pairs: &[String]) -> Result<Option<Value>> {
+    if pairs.is_empty() {
+        return Ok(None);
+    }
+
+    let mut query = serde_json::Map::new();
+    for pair in pairs {
+        let Some((key, value)) = pair.split_once('=') else {
+            return Err(anyhow::anyhow!("--query must be KEY=VALUE"));
+        };
+        let key = key.trim();
+        if key.is_empty() {
+            return Err(anyhow::anyhow!("--query key must not be empty"));
+        }
+        query.insert(key.to_string(), Value::String(value.to_string()));
+    }
+
+    Ok(Some(Value::Object(query)))
+}
+
 fn commands_for_project(project_root: &Path) -> &'static [&'static str] {
     if project_root.join("lxapp.json").exists() && !project_root.join("lingxia.yaml").exists() {
-        &["info", "pages", "page", "eval"]
+        &["info", "pages", "page", "nav", "eval"]
     } else {
         &[
             "list",
@@ -611,6 +721,7 @@ fn commands_for_project(project_root: &Path) -> &'static [&'static str] {
             "info",
             "pages",
             "page",
+            "nav",
             "eval",
             "open",
             "close",
@@ -642,6 +753,7 @@ fn command_description(command: &str) -> &'static str {
         "info" => "Print lxapp runtime summary",
         "pages" => "Print configured lxapp pages",
         "page" => "Inspect and automate lxapp pages",
+        "nav" => "Navigate the lxapp runtime by page name",
         "eval" => "Evaluate JavaScript in the lxapp logic runtime",
         "open" => "Open an lxapp",
         "close" => "Close an lxapp",
@@ -683,4 +795,60 @@ fn print_eval_result(data: &Value, pretty: bool) -> Result<()> {
         return Ok(());
     }
     print_json(value, pretty)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn args(values: &[&str]) -> Vec<String> {
+        values.iter().map(|value| value.to_string()).collect()
+    }
+
+    #[test]
+    fn parses_nav_switch_tab_by_page_name() {
+        let cli = parse_lxapp_cli(args(&[
+            "nav",
+            "switch-tab",
+            "profile",
+            "--app",
+            "demo",
+            "--query",
+            "tab=account",
+            "--json",
+        ]))
+        .unwrap();
+
+        let LxAppCommand::Nav(options) = cli.command else {
+            panic!("expected nav command");
+        };
+        let NavCommand::SwitchTab(options) = options.command else {
+            panic!("expected switch-tab command");
+        };
+
+        assert_eq!(options.page, "profile");
+        assert_eq!(options.app, "demo");
+        assert_eq!(options.query, vec!["tab=account"]);
+        assert!(options.json);
+    }
+
+    #[test]
+    fn query_pairs_become_json_object() {
+        let query = parse_query_pairs(&args(&["tab=account", "empty=", "encoded=a/b c"])).unwrap();
+
+        assert_eq!(
+            query,
+            Some(json!({
+                "tab": "account",
+                "empty": "",
+                "encoded": "a/b c",
+            }))
+        );
+    }
+
+    #[test]
+    fn query_pairs_reject_missing_separator() {
+        let err = parse_query_pairs(&args(&["tab"])).unwrap_err();
+        assert!(err.to_string().contains("KEY=VALUE"));
+    }
 }

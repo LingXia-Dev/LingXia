@@ -631,6 +631,12 @@ From Logic, use `lx.switchTab(...)`. **`lx.navigateTo` and `lx.redirectTo` do no
 lx.switchTab({ url: '/pages/profile/index' });
 ```
 
+When driving a running app from `lxdev`, use the page name from `lxapp.json` rather than the path:
+
+```bash
+lxdev lxapp nav switch-tab profile
+```
+
 `lx.navigateBack` still works for popping non-tab pages that were pushed on top of the current tab.
 
 ### Modifying the tab bar after declaration
