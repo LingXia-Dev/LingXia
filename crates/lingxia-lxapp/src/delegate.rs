@@ -164,6 +164,9 @@ impl LxAppDelegate for LxApp {
             error!("Deferred restart after open failed: {}", e).with_appid(self.appid.clone());
         }
 
+        #[cfg(target_os = "windows")]
+        self.sync_windows_shell_layout();
+
         resolved_path
     }
 
@@ -219,18 +222,26 @@ impl LxAppDelegate for LxApp {
 
         // Mark the page as active for LRU tracking
         page.mark_active();
+
+        #[cfg(target_os = "windows")]
+        self.sync_windows_shell_layout();
     }
 
     fn on_lxapp_event(self: &Arc<Self>, event_type: LxAppUiEventType, data: String) -> bool {
         info!("UI event received: {:?}, data: {}", event_type, data).with_appid(self.appid.clone());
 
-        match event_type {
+        let handled = match event_type {
             LxAppUiEventType::TabBarClick => self.handle_tabbar_click(data),
             LxAppUiEventType::CapsuleClick => self.handle_capsule_click(data),
             LxAppUiEventType::NavigationClick => self.handle_navigation_click(data),
             LxAppUiEventType::BackPress => self.handle_back_press(),
             LxAppUiEventType::PullDownRefresh => self.handle_pull_down_refresh(data),
-        }
+        };
+
+        #[cfg(target_os = "windows")]
+        self.sync_windows_shell_layout();
+
+        handled
     }
 }
 

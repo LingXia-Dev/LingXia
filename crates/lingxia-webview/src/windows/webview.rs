@@ -19,8 +19,12 @@ use std::thread::{self, JoinHandle};
 use webview2_com::{Microsoft::Web::WebView2::Win32::*, *};
 use windows::{
     Win32::{
-        Foundation::{E_POINTER, HINSTANCE, HWND, LPARAM, LRESULT, RECT, WPARAM},
-        Graphics::Gdi::{CreateBitmap, DeleteObject, HGDIOBJ},
+        Foundation::{COLORREF, E_POINTER, HINSTANCE, HWND, LPARAM, LRESULT, RECT, WPARAM},
+        Graphics::Gdi::{
+            BeginPaint, CreateBitmap, CreateSolidBrush, DeleteObject, DrawTextW, EndPaint,
+            FillRect, HDC, HGDIOBJ, InvalidateRect, PAINTSTRUCT, SetBkMode, SetTextColor,
+            DT_CENTER, DT_END_ELLIPSIS, DT_SINGLELINE, DT_VCENTER, TRANSPARENT,
+        },
         System::{
             Com::{COINIT_APARTMENTTHREADED, IStream, STREAM_SEEK_SET},
             LibraryLoader, Threading,
@@ -89,6 +93,10 @@ enum UiCommand {
     HideWindow {
         resp: Sender<StdResult<()>>,
     },
+    SetWindowLayout {
+        layout: WindowsWindowLayout,
+        resp: Sender<StdResult<()>>,
+    },
     Shutdown,
 }
 
@@ -96,6 +104,7 @@ struct UiState {
     controller: ICoreWebView2Controller,
     webview: ICoreWebView2,
     hwnd: HWND,
+    webtag_key: String,
     memory_pages: Arc<Mutex<HashMap<String, Vec<u8>>>>,
 }
 
@@ -107,9 +116,63 @@ pub struct WebViewInner {
 }
 
 type CloseHandler = Arc<dyn Fn() + Send + Sync>;
+type ChromeEventHandler = Arc<dyn Fn(WindowsChromeEvent) + Send + Sync>;
 
 struct WindowUserData {
     webtag_key: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WindowsChromeEvent {
+    TabBarClick { index: usize },
+    NavigationBack,
+    NavigationHome,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum WindowsTabBarPosition {
+    #[default]
+    Bottom,
+    Left,
+    Right,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WindowsNavigationBarLayout {
+    pub visible: bool,
+    pub title: String,
+    pub background_color: u32,
+    pub text_color: u32,
+    pub show_back_button: bool,
+    pub show_home_button: bool,
+    pub height: i32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WindowsTabBarItemLayout {
+    pub page_path: String,
+    pub text: String,
+    pub badge: Option<String>,
+    pub has_red_dot: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WindowsTabBarLayout {
+    pub visible: bool,
+    pub position: WindowsTabBarPosition,
+    pub dimension: i32,
+    pub color: u32,
+    pub selected_color: u32,
+    pub background_color: u32,
+    pub border_color: u32,
+    pub selected_index: i32,
+    pub items: Vec<WindowsTabBarItemLayout>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct WindowsWindowLayout {
+    pub navigation_bar: Option<WindowsNavigationBarLayout>,
+    pub tab_bar: Option<WindowsTabBarLayout>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -119,6 +182,9 @@ struct AppIconHandles {
 }
 
 static WINDOW_CLOSE_HANDLERS: OnceLock<Mutex<HashMap<String, CloseHandler>>> = OnceLock::new();
+static WINDOW_CHROME_HANDLERS: OnceLock<Mutex<HashMap<String, ChromeEventHandler>>> =
+    OnceLock::new();
+static WINDOW_LAYOUTS: OnceLock<Mutex<HashMap<String, WindowsWindowLayout>>> = OnceLock::new();
 static APP_ICON_HANDLES: OnceLock<Mutex<Option<AppIconHandles>>> = OnceLock::new();
 
 impl std::fmt::Debug for WebViewInner {
@@ -142,8 +208,24 @@ pub fn hide_webview_window(webtag: &WebTag) -> StdResult<()> {
     webview.inner.hide_window()
 }
 
+pub fn set_webview_window_layout(
+    webtag: &WebTag,
+    layout: WindowsWindowLayout,
+) -> StdResult<()> {
+    let webview = find_webview(webtag)
+        .ok_or_else(|| WebViewError::WebView(format!("WebView not found for {}", webtag.key())))?;
+    webview.inner.set_window_layout(layout)
+}
+
 pub fn set_webview_close_handler(webtag: &WebTag, handler: CloseHandler) {
     let handlers = WINDOW_CLOSE_HANDLERS.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Ok(mut handlers) = handlers.lock() {
+        handlers.insert(webtag.key().to_string(), handler);
+    }
+}
+
+pub fn set_webview_chrome_event_handler(webtag: &WebTag, handler: ChromeEventHandler) {
+    let handlers = WINDOW_CHROME_HANDLERS.get_or_init(|| Mutex::new(HashMap::new()));
     if let Ok(mut handlers) = handlers.lock() {
         handlers.insert(webtag.key().to_string(), handler);
     }
@@ -275,6 +357,61 @@ fn remove_close_handler(webtag_key: &str) {
     }
 }
 
+fn current_window_layout(webtag_key: &str) -> WindowsWindowLayout {
+    WINDOW_LAYOUTS
+        .get()
+        .and_then(|layouts| layouts.lock().ok())
+        .and_then(|layouts| layouts.get(webtag_key).cloned())
+        .unwrap_or_default()
+}
+
+fn set_window_layout_for_key(webtag_key: &str, layout: WindowsWindowLayout) {
+    let layouts = WINDOW_LAYOUTS.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Ok(mut layouts) = layouts.lock() {
+        layouts.insert(webtag_key.to_string(), layout);
+    }
+}
+
+fn remove_window_layout(webtag_key: &str) {
+    if let Some(layouts) = WINDOW_LAYOUTS.get()
+        && let Ok(mut layouts) = layouts.lock()
+    {
+        layouts.remove(webtag_key);
+    }
+}
+
+fn remove_chrome_event_handler(webtag_key: &str) {
+    if let Some(handlers) = WINDOW_CHROME_HANDLERS.get()
+        && let Ok(mut handlers) = handlers.lock()
+    {
+        handlers.remove(webtag_key);
+    }
+}
+
+fn invoke_chrome_event_handler(webtag_key: &str, event: WindowsChromeEvent) -> bool {
+    let Some(handlers) = WINDOW_CHROME_HANDLERS.get() else {
+        return false;
+    };
+
+    let handler = handlers
+        .lock()
+        .ok()
+        .and_then(|handlers| handlers.get(webtag_key).cloned());
+    if let Some(handler) = handler {
+        let event_name = match &event {
+            WindowsChromeEvent::TabBarClick { .. } => "tabbar",
+            WindowsChromeEvent::NavigationBack => "nav-back",
+            WindowsChromeEvent::NavigationHome => "nav-home",
+        };
+        let thread_name = format!("lingxia-webview-chrome-{event_name}-{webtag_key}");
+        let _ = std::thread::Builder::new()
+            .name(thread_name)
+            .spawn(move || handler(event));
+        return true;
+    }
+    false
+}
+
 impl WebViewInner {
     pub(crate) fn create(
         appid: &str,
@@ -378,6 +515,10 @@ impl WebViewInner {
 
     fn hide_window(&self) -> StdResult<()> {
         self.dispatch_command(|resp| UiCommand::HideWindow { resp })
+    }
+
+    fn set_window_layout(&self, layout: WindowsWindowLayout) -> StdResult<()> {
+        self.dispatch_command(|resp| UiCommand::SetWindowLayout { layout, resp })
     }
 
     fn dispatch_eval_command(
@@ -498,6 +639,8 @@ impl WebViewController for WebViewInner {
 impl Drop for WebViewInner {
     fn drop(&mut self) {
         remove_close_handler(self.webtag.key());
+        remove_chrome_event_handler(self.webtag.key());
+        remove_window_layout(self.webtag.key());
 
         let _ = self.command_tx.send(UiCommand::Shutdown);
         unsafe {
@@ -557,6 +700,7 @@ fn run_ui_thread_inner(
     configure_settings(&webview)?;
     install_document_scripts(&webview)?;
     let memory_pages = Arc::new(Mutex::new(HashMap::new()));
+    let webtag_key = webtag.key().to_string();
     register_event_handlers(
         &env,
         &webview,
@@ -574,6 +718,7 @@ fn run_ui_thread_inner(
         controller,
         webview,
         hwnd,
+        webtag_key,
         memory_pages,
     };
 
@@ -611,6 +756,24 @@ fn create_hidden_window(webtag: &WebTag) -> StdResult<HWND> {
                         user_data as isize,
                     );
                 }
+            }
+        } else if msg == WindowsAndMessaging::WM_ERASEBKGND {
+            return LRESULT(1);
+        } else if msg == WindowsAndMessaging::WM_PAINT {
+            paint_window_chrome(hwnd);
+            return LRESULT(0);
+        } else if msg == WindowsAndMessaging::WM_LBUTTONUP {
+            let raw = unsafe {
+                WindowsAndMessaging::GetWindowLongPtrW(hwnd, WindowsAndMessaging::GWLP_USERDATA)
+            } as *mut WindowUserData;
+            if !raw.is_null()
+                && handle_window_chrome_click(
+                    hwnd,
+                    unsafe { &(*raw).webtag_key },
+                    lparam_to_point(lparam),
+                )
+            {
+                return LRESULT(0);
             }
         } else if msg == WindowsAndMessaging::WM_CLOSE {
             let raw = unsafe {
@@ -695,6 +858,435 @@ fn create_hidden_window(webtag: &WebTag) -> StdResult<HWND> {
             }
         }
     }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ChromeRects {
+    content: RECT,
+    navigation_bar: Option<RECT>,
+    tab_bar: Option<RECT>,
+}
+
+fn compute_content_rect(client: RECT, layout: &WindowsWindowLayout) -> RECT {
+    compute_chrome_rects(client, layout).content
+}
+
+fn compute_chrome_rects(client: RECT, layout: &WindowsWindowLayout) -> ChromeRects {
+    let mut content = client;
+    let navigation_bar = layout
+        .navigation_bar
+        .as_ref()
+        .filter(|navbar| navbar.visible && navbar.height > 0)
+        .map(|navbar| {
+            let bottom = (client.top + navbar.height).min(client.bottom);
+            content.top = bottom;
+            RECT {
+                left: client.left,
+                top: client.top,
+                right: client.right,
+                bottom,
+            }
+        });
+
+    let tab_bar = layout
+        .tab_bar
+        .as_ref()
+        .filter(|tabbar| tabbar.visible && !tabbar.items.is_empty() && tabbar.dimension > 0)
+        .map(|tabbar| match tabbar.position {
+            WindowsTabBarPosition::Bottom => {
+                let top = (content.bottom - tabbar.dimension).max(content.top);
+                let rect = RECT {
+                    left: content.left,
+                    top,
+                    right: content.right,
+                    bottom: content.bottom,
+                };
+                content.bottom = top;
+                rect
+            }
+            WindowsTabBarPosition::Left => {
+                let right = (content.left + tabbar.dimension).min(content.right);
+                let rect = RECT {
+                    left: content.left,
+                    top: content.top,
+                    right,
+                    bottom: content.bottom,
+                };
+                content.left = right;
+                rect
+            }
+            WindowsTabBarPosition::Right => {
+                let left = (content.right - tabbar.dimension).max(content.left);
+                let rect = RECT {
+                    left,
+                    top: content.top,
+                    right: content.right,
+                    bottom: content.bottom,
+                };
+                content.right = left;
+                rect
+            }
+        });
+
+    ChromeRects {
+        content: normalize_rect(content),
+        navigation_bar: navigation_bar.map(normalize_rect),
+        tab_bar: tab_bar.map(normalize_rect),
+    }
+}
+
+fn normalize_rect(mut rect: RECT) -> RECT {
+    if rect.right < rect.left {
+        rect.right = rect.left;
+    }
+    if rect.bottom < rect.top {
+        rect.bottom = rect.top;
+    }
+    rect
+}
+
+fn rect_width(rect: &RECT) -> i32 {
+    (rect.right - rect.left).max(0)
+}
+
+fn rect_height(rect: &RECT) -> i32 {
+    (rect.bottom - rect.top).max(0)
+}
+
+fn rect_contains(rect: &RECT, point: (i32, i32)) -> bool {
+    point.0 >= rect.left && point.0 < rect.right && point.1 >= rect.top && point.1 < rect.bottom
+}
+
+fn lparam_to_point(lparam: LPARAM) -> (i32, i32) {
+    let value = lparam.0 as u32;
+    let x = (value & 0xffff) as i16 as i32;
+    let y = ((value >> 16) & 0xffff) as i16 as i32;
+    (x, y)
+}
+
+fn paint_window_chrome(hwnd: HWND) {
+    let mut paint = PAINTSTRUCT::default();
+    unsafe {
+        let hdc = BeginPaint(hwnd, &mut paint);
+        if !hdc.is_invalid() {
+            draw_window_chrome(hwnd, hdc);
+        }
+        let _ = EndPaint(hwnd, &paint);
+    }
+}
+
+fn draw_window_chrome(hwnd: HWND, hdc: HDC) {
+    let Some(webtag_key) = window_webtag_key(hwnd) else {
+        return;
+    };
+    let layout = current_window_layout(&webtag_key);
+    let mut client = RECT::default();
+    unsafe {
+        let _ = WindowsAndMessaging::GetClientRect(hwnd, &mut client);
+    }
+    let rects = compute_chrome_rects(client, &layout);
+
+    if let (Some(navbar), Some(navbar_rect)) = (&layout.navigation_bar, rects.navigation_bar) {
+        draw_navigation_bar(hdc, navbar_rect, navbar);
+    }
+    if let (Some(tabbar), Some(tabbar_rect)) = (&layout.tab_bar, rects.tab_bar) {
+        draw_tab_bar(hdc, tabbar_rect, tabbar);
+    }
+}
+
+fn window_webtag_key(hwnd: HWND) -> Option<String> {
+    let raw = unsafe {
+        WindowsAndMessaging::GetWindowLongPtrW(hwnd, WindowsAndMessaging::GWLP_USERDATA)
+    } as *mut WindowUserData;
+    if raw.is_null() {
+        None
+    } else {
+        Some(unsafe { (*raw).webtag_key.clone() })
+    }
+}
+
+fn draw_navigation_bar(hdc: HDC, rect: RECT, navbar: &WindowsNavigationBarLayout) {
+    fill_rect(hdc, rect, navbar.background_color);
+    draw_bottom_border(hdc, rect, 0xe6e6e6);
+
+    let text_color = navbar.text_color;
+    let mut title_rect = RECT {
+        left: rect.left + 96,
+        top: rect.top,
+        right: rect.right - 96,
+        bottom: rect.bottom,
+    };
+
+    if navbar.show_back_button {
+        let back_rect = nav_button_rect(rect, 0);
+        draw_text(hdc, "<", back_rect, text_color, DT_CENTER);
+        title_rect.left = title_rect.left.max(back_rect.right + 8);
+    }
+    if navbar.show_home_button {
+        let home_rect = nav_button_rect(rect, if navbar.show_back_button { 1 } else { 0 });
+        draw_text(hdc, "Home", home_rect, text_color, DT_CENTER);
+        title_rect.left = title_rect.left.max(home_rect.right + 8);
+    }
+
+    if !navbar.title.trim().is_empty() {
+        draw_text(hdc, &navbar.title, title_rect, text_color, DT_CENTER);
+    }
+}
+
+fn nav_button_rect(navbar: RECT, index: i32) -> RECT {
+    let width = 44;
+    RECT {
+        left: navbar.left + 8 + index * width,
+        top: navbar.top,
+        right: navbar.left + 8 + (index + 1) * width,
+        bottom: navbar.bottom,
+    }
+}
+
+fn draw_tab_bar(hdc: HDC, rect: RECT, tabbar: &WindowsTabBarLayout) {
+    fill_rect(hdc, rect, tabbar.background_color);
+    draw_tabbar_border(hdc, rect, tabbar);
+
+    let count = tabbar.items.len();
+    if count == 0 {
+        return;
+    }
+
+    for (index, item) in tabbar.items.iter().enumerate() {
+        let item_rect = tab_item_rect(rect, tabbar.position, count, index);
+        let selected = tabbar.selected_index == index as i32;
+        if selected {
+            fill_rect(hdc, inset_rect(item_rect, 4, 5), 0xf3f7ff);
+        }
+
+        let text_color = if selected {
+            tabbar.selected_color
+        } else {
+            tabbar.color
+        };
+        let mut label_rect = inset_rect(item_rect, 6, 4);
+        if matches!(tabbar.position, WindowsTabBarPosition::Bottom) {
+            label_rect.top += 6;
+        }
+        draw_text(hdc, &item.text, label_rect, text_color, DT_CENTER);
+
+        if let Some(badge) = item.badge.as_ref().filter(|badge| !badge.is_empty()) {
+            draw_badge(hdc, item_rect, badge);
+        } else if item.has_red_dot {
+            draw_red_dot(hdc, item_rect);
+        }
+    }
+}
+
+fn draw_tabbar_border(hdc: HDC, rect: RECT, tabbar: &WindowsTabBarLayout) {
+    match tabbar.position {
+        WindowsTabBarPosition::Bottom => draw_top_border(hdc, rect, tabbar.border_color),
+        WindowsTabBarPosition::Left => draw_right_border(hdc, rect, tabbar.border_color),
+        WindowsTabBarPosition::Right => draw_left_border(hdc, rect, tabbar.border_color),
+    }
+}
+
+fn tab_item_rect(rect: RECT, position: WindowsTabBarPosition, count: usize, index: usize) -> RECT {
+    let count_i32 = count.max(1) as i32;
+    let index_i32 = index as i32;
+    match position {
+        WindowsTabBarPosition::Bottom => {
+            let width = (rect_width(&rect) / count_i32).max(1);
+            let left = rect.left + width * index_i32;
+            RECT {
+                left,
+                top: rect.top,
+                right: if index + 1 == count {
+                    rect.right
+                } else {
+                    left + width
+                },
+                bottom: rect.bottom,
+            }
+        }
+        WindowsTabBarPosition::Left | WindowsTabBarPosition::Right => {
+            let height = (rect_height(&rect) / count_i32).max(1);
+            let top = rect.top + height * index_i32;
+            RECT {
+                left: rect.left,
+                top,
+                right: rect.right,
+                bottom: if index + 1 == count {
+                    rect.bottom
+                } else {
+                    top + height
+                },
+            }
+        }
+    }
+}
+
+fn inset_rect(rect: RECT, dx: i32, dy: i32) -> RECT {
+    normalize_rect(RECT {
+        left: rect.left + dx,
+        top: rect.top + dy,
+        right: rect.right - dx,
+        bottom: rect.bottom - dy,
+    })
+}
+
+fn handle_window_chrome_click(hwnd: HWND, webtag_key: &str, point: (i32, i32)) -> bool {
+    let layout = current_window_layout(webtag_key);
+    let mut client = RECT::default();
+    unsafe {
+        let _ = WindowsAndMessaging::GetClientRect(hwnd, &mut client);
+    }
+    let rects = compute_chrome_rects(client, &layout);
+
+    if let (Some(navbar), Some(navbar_rect)) = (&layout.navigation_bar, rects.navigation_bar)
+        && rect_contains(&navbar_rect, point)
+    {
+        if navbar.show_back_button && rect_contains(&nav_button_rect(navbar_rect, 0), point) {
+            return invoke_chrome_event_handler(webtag_key, WindowsChromeEvent::NavigationBack);
+        }
+        let home_index = if navbar.show_back_button { 1 } else { 0 };
+        if navbar.show_home_button && rect_contains(&nav_button_rect(navbar_rect, home_index), point)
+        {
+            return invoke_chrome_event_handler(webtag_key, WindowsChromeEvent::NavigationHome);
+        }
+        return true;
+    }
+
+    if let (Some(tabbar), Some(tabbar_rect)) = (&layout.tab_bar, rects.tab_bar)
+        && rect_contains(&tabbar_rect, point)
+    {
+        for index in 0..tabbar.items.len() {
+            let item_rect = tab_item_rect(tabbar_rect, tabbar.position, tabbar.items.len(), index);
+            if rect_contains(&item_rect, point) {
+                return invoke_chrome_event_handler(
+                    webtag_key,
+                    WindowsChromeEvent::TabBarClick { index },
+                );
+            }
+        }
+        return true;
+    }
+
+    false
+}
+
+fn draw_text(
+    hdc: HDC,
+    text: &str,
+    rect: RECT,
+    rgb: u32,
+    horizontal: windows::Win32::Graphics::Gdi::DRAW_TEXT_FORMAT,
+) {
+    if text.is_empty() || rect_width(&rect) == 0 || rect_height(&rect) == 0 {
+        return;
+    }
+
+    let mut wide: Vec<u16> = text.encode_utf16().collect();
+    let mut rect = rect;
+    unsafe {
+        let _ = SetBkMode(hdc, TRANSPARENT);
+        let _ = SetTextColor(hdc, rgb_to_colorref(rgb));
+        let _ = DrawTextW(
+            hdc,
+            &mut wide,
+            &mut rect,
+            horizontal | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS,
+        );
+    }
+}
+
+fn draw_badge(hdc: HDC, item_rect: RECT, badge: &str) {
+    let badge_rect = RECT {
+        left: item_rect.right - 30,
+        top: item_rect.top + 7,
+        right: item_rect.right - 8,
+        bottom: item_rect.top + 25,
+    };
+    fill_rect(hdc, badge_rect, 0xff3b30);
+    draw_text(hdc, badge, badge_rect, 0xffffff, DT_CENTER);
+}
+
+fn draw_red_dot(hdc: HDC, item_rect: RECT) {
+    let dot_rect = RECT {
+        left: item_rect.right - 18,
+        top: item_rect.top + 9,
+        right: item_rect.right - 10,
+        bottom: item_rect.top + 17,
+    };
+    fill_rect(hdc, dot_rect, 0xff3b30);
+}
+
+fn draw_top_border(hdc: HDC, rect: RECT, rgb: u32) {
+    fill_rect(
+        hdc,
+        RECT {
+            left: rect.left,
+            top: rect.top,
+            right: rect.right,
+            bottom: rect.top + 1,
+        },
+        rgb,
+    );
+}
+
+fn draw_bottom_border(hdc: HDC, rect: RECT, rgb: u32) {
+    fill_rect(
+        hdc,
+        RECT {
+            left: rect.left,
+            top: rect.bottom - 1,
+            right: rect.right,
+            bottom: rect.bottom,
+        },
+        rgb,
+    );
+}
+
+fn draw_left_border(hdc: HDC, rect: RECT, rgb: u32) {
+    fill_rect(
+        hdc,
+        RECT {
+            left: rect.left,
+            top: rect.top,
+            right: rect.left + 1,
+            bottom: rect.bottom,
+        },
+        rgb,
+    );
+}
+
+fn draw_right_border(hdc: HDC, rect: RECT, rgb: u32) {
+    fill_rect(
+        hdc,
+        RECT {
+            left: rect.right - 1,
+            top: rect.top,
+            right: rect.right,
+            bottom: rect.bottom,
+        },
+        rgb,
+    );
+}
+
+fn fill_rect(hdc: HDC, rect: RECT, rgb: u32) {
+    if rect_width(&rect) == 0 || rect_height(&rect) == 0 {
+        return;
+    }
+    unsafe {
+        let brush = CreateSolidBrush(rgb_to_colorref(rgb));
+        if brush.is_invalid() {
+            return;
+        }
+        let _ = FillRect(hdc, &rect, brush);
+        let _ = DeleteObject(HGDIOBJ(brush.0));
+    }
+}
+
+fn rgb_to_colorref(rgb: u32) -> COLORREF {
+    let r = (rgb >> 16) & 0xff;
+    let g = (rgb >> 8) & 0xff;
+    let b = rgb & 0xff;
+    COLORREF(r | (g << 8) | (b << 16))
 }
 
 fn create_environment(
@@ -1273,6 +1865,10 @@ fn handle_command(state: &mut UiState, command: UiCommand) -> StdResult<bool> {
             let result = hide_native_window(state);
             let _ = resp.send(result);
         }
+        UiCommand::SetWindowLayout { layout, resp } => {
+            let result = set_native_window_layout(state, layout);
+            let _ = resp.send(result);
+        }
         UiCommand::Shutdown => return Ok(true),
     }
 
@@ -1313,6 +1909,15 @@ fn hide_native_window(state: &UiState) -> StdResult<()> {
     Ok(())
 }
 
+fn set_native_window_layout(state: &UiState, layout: WindowsWindowLayout) -> StdResult<()> {
+    set_window_layout_for_key(&state.webtag_key, layout);
+    sync_controller_bounds(state)?;
+    unsafe {
+        let _ = InvalidateRect(Some(state.hwnd), None, true);
+    }
+    Ok(())
+}
+
 fn sync_controller_bounds(state: &UiState) -> StdResult<()> {
     let mut rect = RECT::default();
     unsafe {
@@ -1325,6 +1930,7 @@ fn sync_controller_bounds(state: &UiState) -> StdResult<()> {
                 bottom: 768,
             };
         }
+        rect = compute_content_rect(rect, &current_window_layout(&state.webtag_key));
         state
             .controller
             .SetBounds(rect)

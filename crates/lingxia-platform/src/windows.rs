@@ -5,7 +5,7 @@ use std::future::Future;
 use std::io::Read;
 use std::path::{Component, Path, PathBuf};
 use std::process::Command;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -37,6 +37,9 @@ use crate::{AssetFileEntry, DeviceInfo, ScreenInfo};
 use async_trait::async_trait;
 
 const DEFAULT_APP_IDENTIFIER: &str = "app.lingxia.windows";
+type WindowsUiUpdateHandler = Arc<dyn Fn(String) + Send + Sync>;
+static WINDOWS_UI_UPDATE_HANDLER: OnceLock<Mutex<Option<WindowsUiUpdateHandler>>> =
+    OnceLock::new();
 
 #[derive(Debug, Clone)]
 pub struct Platform {
@@ -175,6 +178,23 @@ impl Platform {
         let mut out = Vec::new();
         collect_asset_files(&base, &root, &mut out);
         out
+    }
+}
+
+pub fn set_windows_ui_update_handler(handler: WindowsUiUpdateHandler) {
+    let slot = WINDOWS_UI_UPDATE_HANDLER.get_or_init(|| Mutex::new(None));
+    if let Ok(mut slot) = slot.lock() {
+        *slot = Some(handler);
+    }
+}
+
+fn invoke_windows_ui_update_handler(appid: String) {
+    let handler = WINDOWS_UI_UPDATE_HANDLER
+        .get()
+        .and_then(|slot| slot.lock().ok())
+        .and_then(|slot| slot.clone());
+    if let Some(handler) = handler {
+        handler(appid);
     }
 }
 
@@ -389,11 +409,13 @@ impl ShareService for Platform {
 }
 
 impl UIUpdate for Platform {
-    fn update_navbar_ui(&self, _appid: String) -> Result<(), PlatformError> {
+    fn update_navbar_ui(&self, appid: String) -> Result<(), PlatformError> {
+        invoke_windows_ui_update_handler(appid);
         Ok(())
     }
 
-    fn update_tabbar_ui(&self, _appid: String) -> Result<(), PlatformError> {
+    fn update_tabbar_ui(&self, appid: String) -> Result<(), PlatformError> {
+        invoke_windows_ui_update_handler(appid);
         Ok(())
     }
 }
@@ -497,6 +519,7 @@ impl AppRuntime for Platform {
         _panel_id: String,
     ) -> Result<(), PlatformError> {
         let webtag = WebTag::new(&appid, &path, Some(session_id));
+        hide_sibling_webtag_windows(&webtag);
         show_webtag_window(webtag, self.product_name.clone());
         Ok(())
     }
@@ -525,6 +548,7 @@ impl AppRuntime for Platform {
             .find(|tag| tag.extract_appid() == appid)
             .and_then(|tag| tag.session_id());
         let webtag = WebTag::new(&appid, &path, session_id);
+        hide_sibling_webtag_windows(&webtag);
         show_webtag_window(webtag, self.product_name.clone());
         Ok(())
     }
@@ -560,6 +584,19 @@ fn show_webtag_window(webtag: WebTag, title: String) {
             }
             log::error!("Timed out waiting for Windows WebView {}", webtag.key());
         });
+}
+
+fn hide_sibling_webtag_windows(target: &WebTag) {
+    let appid = target.extract_appid();
+    let session_id = target.session_id();
+    for webtag in webview_runtime::list_webviews() {
+        if webtag.key() != target.key()
+            && webtag.extract_appid() == appid
+            && webtag.session_id() == session_id
+        {
+            let _ = lingxia_webview::platform::windows::hide_webview_window(&webtag);
+        }
+    }
 }
 
 fn install_close_handler(webtag: &WebTag) {

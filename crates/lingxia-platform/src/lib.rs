@@ -69,7 +69,7 @@ pub use apple::Platform;
 pub use harmony::Platform;
 
 #[cfg(target_os = "windows")]
-pub use windows::Platform;
+pub use windows::{Platform, set_windows_ui_update_handler};
 
 #[cfg(not(any(
     target_os = "android",

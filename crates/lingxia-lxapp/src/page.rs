@@ -948,6 +948,9 @@ impl PageInstance {
             .navigate(self.appid(), path, nav_type.to_animation())
             .map_err(LxAppError::from)?;
 
+        #[cfg(target_os = "windows")]
+        lxapp.sync_windows_shell_layout();
+
         // Do not dispatch OnReady here. WebViewDelegate::on_page_finished() will do it.
 
         Ok(target_page)
@@ -1005,6 +1008,8 @@ impl PageInstance {
                 path,
                 NavigationType::Backward.to_animation(),
             )?;
+            #[cfg(target_os = "windows")]
+            lxapp.sync_windows_shell_layout();
             Ok(())
         } else {
             Err(LxAppError::UnsupportedOperation(

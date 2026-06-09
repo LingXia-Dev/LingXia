@@ -118,6 +118,8 @@ pub fn init(runtime: Platform) -> Option<String> {
 
     let runtime_arc = Arc::new(runtime.clone());
     super::runtime_registry::set_runtime(runtime_arc.clone());
+    #[cfg(target_os = "windows")]
+    super::windows_shell::install_update_handler();
 
     // Prepare directory structure
     if let Err(e) = prepare_directory_structure(runtime_arc.clone()) {

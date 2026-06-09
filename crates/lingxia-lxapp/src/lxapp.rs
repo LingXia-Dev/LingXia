@@ -41,6 +41,8 @@ mod runtime_registry;
 mod scheme;
 mod security;
 mod surface;
+#[cfg(target_os = "windows")]
+mod windows_shell;
 pub use security::LxAppSecurityPrivilege;
 pub mod tabbar;
 pub mod uri;
@@ -1765,6 +1767,7 @@ impl LxApp {
                 surface,
                 None,
             )?;
+            self.sync_windows_shell_layout();
         }
         Ok(())
     }
