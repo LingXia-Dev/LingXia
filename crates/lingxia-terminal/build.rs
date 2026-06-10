@@ -306,15 +306,19 @@ where
     if let Some(cache) = env_os("ZIG_GLOBAL_CACHE_DIR") {
         command.env("ZIG_GLOBAL_CACHE_DIR", cache);
     }
-    let status = command
-        .status()
+    // Capture instead of inheriting stdout: inherited child output goes
+    // straight to cargo and could be misinterpreted as `cargo:` directives.
+    let output = command
+        .output()
         .map_err(|e| format!("failed to start {}: {e}", program.to_string_lossy()))?;
-    if status.success() {
+    if output.status.success() {
         Ok(())
     } else {
         Err(format!(
-            "{} failed with status {status}",
-            program.to_string_lossy()
+            "{} failed with status {}: {}",
+            program.to_string_lossy(),
+            output.status,
+            String::from_utf8_lossy(&output.stderr).trim()
         ))
     }
 }
@@ -323,8 +327,11 @@ fn cache_dir() -> Result<PathBuf, String> {
     if let Some(path) = env_path("LINGXIA_GHOSTTY_CACHE_DIR") {
         return Ok(path);
     }
-    let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").map_err(|e| e.to_string())?);
-    Ok(manifest_dir.join("../../target/ghostty-cache"))
+    // Default inside OUT_DIR — CARGO_MANIFEST_DIR/../../target breaks
+    // for the published crate (it would write outside the registry
+    // checkout). LINGXIA_GHOSTTY_CACHE_DIR overrides for shared caches.
+    let out_dir = PathBuf::from(env::var("OUT_DIR").map_err(|e| e.to_string())?);
+    Ok(out_dir.join("ghostty-cache"))
 }
 
 fn current_git_rev(repo_dir: &Path) -> Option<String> {

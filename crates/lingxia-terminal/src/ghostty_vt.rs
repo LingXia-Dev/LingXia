@@ -106,6 +106,16 @@ pub enum GhosttyTerminalScreen {
     Alternate = 1,
 }
 
+impl GhosttyTerminalScreen {
+    /// See [`GhosttyRenderStateDirty::from_raw`]; unknown → `Primary`.
+    fn from_raw(value: c_int) -> Self {
+        match value {
+            1 => Self::Alternate,
+            _ => Self::Primary,
+        }
+    }
+}
+
 /// `GHOSTTY_SCROLL_VIEWPORT_*` values.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -185,6 +195,21 @@ pub enum GhosttyRenderStateDirty {
     Full = 2,
 }
 
+impl GhosttyRenderStateDirty {
+    /// Convert a C-written integer into the enum. Out-of-range values
+    /// from a mismatched header would be instant UB if received into
+    /// the enum directly; unknown values degrade to `Full` (repaint
+    /// everything — always safe).
+    fn from_raw(value: c_int) -> Self {
+        match value {
+            0 => Self::False,
+            1 => Self::Partial,
+            2 => Self::Full,
+            _ => Self::Full,
+        }
+    }
+}
+
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum GhosttyRenderStateCursorVisualStyle {
@@ -193,6 +218,19 @@ pub enum GhosttyRenderStateCursorVisualStyle {
     Block = 1,
     Underline = 2,
     BlockHollow = 3,
+}
+
+impl GhosttyRenderStateCursorVisualStyle {
+    /// See [`GhosttyRenderStateDirty::from_raw`]; unknown → `Block`.
+    fn from_raw(value: c_int) -> Self {
+        match value {
+            0 => Self::Bar,
+            1 => Self::Block,
+            2 => Self::Underline,
+            3 => Self::BlockHollow,
+            _ => Self::Block,
+        }
+    }
 }
 
 /// `GHOSTTY_RENDER_STATE_ROW_DATA_*` keys for `ghostty_render_state_row_get`.
@@ -248,6 +286,18 @@ pub enum GhosttyCellWide {
     Wide = 1,
     SpacerTail = 2,
     SpacerHead = 3,
+}
+
+impl GhosttyCellWide {
+    /// See [`GhosttyRenderStateDirty::from_raw`]; unknown → `Narrow`.
+    fn from_raw(value: c_int) -> Self {
+        match value {
+            1 => Self::Wide,
+            2 => Self::SpacerTail,
+            3 => Self::SpacerHead,
+            _ => Self::Narrow,
+        }
+    }
 }
 
 /// Opaque cell snapshot returned by `row_cells_get(RAW, ...)`.
@@ -435,12 +485,13 @@ impl GhosttyStyle {
 
 // Attr bits packed into `Cell.attrs`. Kept in sync with the HLSL
 // pixel shader's interpretation (bit 0 = bold, 1 = italic, 2 =
-// underline, 3 = strike, 4 = inverse).
+// underline, 3 = strike, 4 = inverse, 5 = dim/faint).
 pub const ATTR_BOLD: u8 = 1 << 0;
 pub const ATTR_ITALIC: u8 = 1 << 1;
 pub const ATTR_UNDERLINE: u8 = 1 << 2;
 pub const ATTR_STRIKE: u8 = 1 << 3;
 pub const ATTR_INVERSE: u8 = 1 << 4;
+pub const ATTR_DIM: u8 = 1 << 5;
 
 // ── Raw FFI ────────────────────────────────────────────────────────────
 
@@ -673,7 +724,7 @@ pub struct ScreenSnapshot {
 // ── Safe wrapper ───────────────────────────────────────────────────────
 
 pub struct VtScreen {
-    inner: Arc<Mutex<VtInner>>,
+    inner: Mutex<VtInner>,
 }
 
 pub type PtyWriteCallback = Arc<dyn Fn(&[u8]) + Send + Sync + 'static>;
@@ -876,7 +927,7 @@ impl VtScreen {
         }
 
         Ok(Self {
-            inner: Arc::new(Mutex::new(VtInner {
+            inner: Mutex::new(VtInner {
                 terminal,
                 render_state,
                 row_iter,
@@ -890,7 +941,7 @@ impl VtScreen {
                 scratch_rows: rows,
                 scratch: Vec::with_capacity(cols as usize * rows as usize),
                 last_cursor: Cursor::default(),
-            })),
+            }),
         })
     }
 
@@ -1041,15 +1092,18 @@ impl VtScreen {
 
         let mut force_all_dirty = inner.force_full_snapshot;
         let mut full_redraw = force_all_dirty;
-        let mut state_dirty = GhosttyRenderStateDirty::False;
-        // SAFETY: DIRTY out param is sized for the enum.
+        // Receive into the underlying C int — writing an out-of-range
+        // value into a fieldless Rust enum would be UB.
+        let mut state_dirty_raw: c_int = GhosttyRenderStateDirty::False as c_int;
+        // SAFETY: DIRTY out param is a C enum (int).
         unsafe {
             let _ = ghostty_render_state_get(
                 inner.render_state,
                 GhosttyRenderStateData::Dirty,
-                &mut state_dirty as *mut _ as *mut c_void,
+                &mut state_dirty_raw as *mut _ as *mut c_void,
             );
         }
+        let state_dirty = GhosttyRenderStateDirty::from_raw(state_dirty_raw);
         if state_dirty == GhosttyRenderStateDirty::Full {
             full_redraw = true;
         }
@@ -1088,15 +1142,16 @@ impl VtScreen {
                 break;
             }
 
-            let mut dirty = GhosttyRenderStateDirty::False;
-            // SAFETY: DIRTY out param is sized for the enum.
+            let mut dirty_raw: c_int = GhosttyRenderStateDirty::False as c_int;
+            // SAFETY: DIRTY out param is a C enum (int).
             unsafe {
                 let _ = ghostty_render_state_row_get(
                     inner.row_iter,
                     GhosttyRenderStateRowData::Dirty,
-                    &mut dirty as *mut _ as *mut c_void,
+                    &mut dirty_raw as *mut _ as *mut c_void,
                 );
             }
+            let dirty = GhosttyRenderStateDirty::from_raw(dirty_raw);
 
             if !full_redraw && dirty == GhosttyRenderStateDirty::False {
                 row_idx += 1;
@@ -1171,8 +1226,9 @@ impl VtScreen {
         let mut visible: bool = false;
         let mut col_u16: u16 = 0;
         let mut row_u16: u16 = 0;
-        let mut cursor_style = GhosttyRenderStateCursorVisualStyle::Block;
-        // SAFETY: out params sized per upstream render.h.
+        let mut cursor_style_raw: c_int = GhosttyRenderStateCursorVisualStyle::Block as c_int;
+        // SAFETY: out params sized per upstream render.h; the visual
+        // style is a C enum (int) converted after the call.
         unsafe {
             let _ = ghostty_render_state_get(
                 inner.render_state,
@@ -1192,7 +1248,7 @@ impl VtScreen {
             let _ = ghostty_render_state_get(
                 inner.render_state,
                 GhosttyRenderStateData::CursorVisualStyle,
-                &mut cursor_style as *mut _ as *mut c_void,
+                &mut cursor_style_raw as *mut _ as *mut c_void,
             );
         }
 
@@ -1200,7 +1256,7 @@ impl VtScreen {
             col: col_u16,
             row: row_u16,
             visible,
-            style: cursor_style,
+            style: GhosttyRenderStateCursorVisualStyle::from_raw(cursor_style_raw),
         };
         let previous_cursor = inner.last_cursor;
         if previous_cursor != cursor {
@@ -1327,15 +1383,17 @@ impl VtScreen {
         if inner.terminal.is_null() {
             return false;
         }
-        let mut screen = GhosttyTerminalScreen::Primary;
+        // Receive into the underlying C int — writing an out-of-range
+        // value into a fieldless Rust enum would be UB.
+        let mut screen_raw: c_int = GhosttyTerminalScreen::Primary as c_int;
         let rc = unsafe {
             ghostty_terminal_get(
                 inner.terminal,
                 GhosttyTerminalData::ActiveScreen,
-                &mut screen as *mut _ as *mut c_void,
+                &mut screen_raw as *mut _ as *mut c_void,
             )
         };
-        rc == 0 && screen == GhosttyTerminalScreen::Alternate
+        rc == 0 && GhosttyTerminalScreen::from_raw(screen_raw) == GhosttyTerminalScreen::Alternate
     }
 
     /// Scroll the visible viewport by terminal rows. Negative is up;
@@ -1577,9 +1635,11 @@ fn read_cell(
     // Gate text decode on HAS_TEXT — blank cells can carry opaque metadata
     // we'd otherwise rasterize as visible glyphs.
     let mut has_text: bool = false;
-    let mut wide_mode = GhosttyCellWide::Narrow;
-    // SAFETY: `has_text` is a C `_Bool` (1 byte); `wide_mode` matches the
-    // upstream enum representation.
+    // Receive into the underlying C int — writing an out-of-range
+    // value into a fieldless Rust enum would be UB.
+    let mut wide_raw: c_int = GhosttyCellWide::Narrow as c_int;
+    // SAFETY: `has_text` is a C `_Bool` (1 byte); WIDE writes the C
+    // enum (int), converted after the call.
     unsafe {
         let _ = ghostty_cell_get(
             raw,
@@ -1589,9 +1649,10 @@ fn read_cell(
         let _ = ghostty_cell_get(
             raw,
             GhosttyCellData::Wide,
-            &mut wide_mode as *mut _ as *mut c_void,
+            &mut wide_raw as *mut _ as *mut c_void,
         );
     }
+    let wide_mode = GhosttyCellWide::from_raw(wide_raw);
     let is_spacer = matches!(
         wide_mode,
         GhosttyCellWide::SpacerTail | GhosttyCellWide::SpacerHead
@@ -1633,6 +1694,9 @@ fn read_cell(
     }
     if style.italic {
         attrs |= ATTR_ITALIC;
+    }
+    if style.faint {
+        attrs |= ATTR_DIM;
     }
     if style.underline != 0 {
         attrs |= ATTR_UNDERLINE;
@@ -1700,26 +1764,24 @@ fn read_cell_text(cells: GhosttyRowCells, raw: GhosttyCell) -> String {
 
 impl Drop for VtScreen {
     fn drop(&mut self) {
-        if let Some(mutex) = Arc::get_mut(&mut self.inner) {
-            let inner = mutex.get_mut();
-            // Free in reverse-creation order: cells, iter, state, terminal.
-            // SAFETY: unique owner via Arc::get_mut.
-            if !inner.row_cells.is_null() {
-                unsafe { ghostty_render_state_row_cells_free(inner.row_cells) };
-                inner.row_cells = std::ptr::null_mut();
-            }
-            if !inner.row_iter.is_null() {
-                unsafe { ghostty_render_state_row_iterator_free(inner.row_iter) };
-                inner.row_iter = std::ptr::null_mut();
-            }
-            if !inner.render_state.is_null() {
-                unsafe { ghostty_render_state_free(inner.render_state) };
-                inner.render_state = std::ptr::null_mut();
-            }
-            if !inner.terminal.is_null() {
-                unsafe { ghostty_terminal_free(inner.terminal) };
-                inner.terminal = std::ptr::null_mut();
-            }
+        let inner = self.inner.get_mut();
+        // Free in reverse-creation order: cells, iter, state, terminal.
+        // SAFETY: `&mut self` guarantees unique ownership of the handles.
+        if !inner.row_cells.is_null() {
+            unsafe { ghostty_render_state_row_cells_free(inner.row_cells) };
+            inner.row_cells = std::ptr::null_mut();
+        }
+        if !inner.row_iter.is_null() {
+            unsafe { ghostty_render_state_row_iterator_free(inner.row_iter) };
+            inner.row_iter = std::ptr::null_mut();
+        }
+        if !inner.render_state.is_null() {
+            unsafe { ghostty_render_state_free(inner.render_state) };
+            inner.render_state = std::ptr::null_mut();
+        }
+        if !inner.terminal.is_null() {
+            unsafe { ghostty_terminal_free(inner.terminal) };
+            inner.terminal = std::ptr::null_mut();
         }
     }
 }
