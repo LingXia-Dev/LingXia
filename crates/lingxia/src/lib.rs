@@ -114,11 +114,14 @@ pub mod harmony;
 /// Windows platform bootstrap for pure Rust host apps.
 #[cfg(target_os = "windows")]
 pub mod windows {
+    mod shell;
+
     #[cfg(feature = "terminal-runtime")]
     use serde::Deserialize;
     #[cfg(feature = "terminal-runtime")]
     use std::collections::HashMap;
     use std::path::Path;
+    #[cfg(feature = "terminal-runtime")]
     use std::sync::Arc;
     #[cfg(feature = "terminal-runtime")]
     use std::sync::atomic::{AtomicBool, Ordering};
@@ -130,6 +133,7 @@ pub mod windows {
     use std::time::Duration;
 
     pub use lingxia_platform::Platform;
+    use lingxia_platform::traits::app_runtime::AppRuntime;
 
     #[cfg(feature = "terminal-runtime")]
     struct WindowsTerminalPanelSession {
@@ -152,7 +156,10 @@ pub mod windows {
 
     pub fn init(platform: Platform) -> Option<String> {
         crate::logging::init();
-        install_terminal_panel_handler();
+        lingxia_webview::platform::windows::set_webview_user_data_dir(
+            platform.app_cache_dir().join("webview2"),
+        );
+        shell::install();
         crate::init_with_platform(platform)
     }
 
@@ -165,39 +172,6 @@ pub mod windows {
     pub fn set_app_icon_from_path(path: &Path) -> Result<(), String> {
         lingxia_webview::platform::windows::set_app_icon_from_path(path)
             .map_err(|err| err.to_string())
-    }
-
-    fn install_terminal_panel_handler() {
-        lxapp::set_windows_terminal_panel_handler(
-            Arc::new(|request| {
-                let position = match request.position {
-                    lingxia_app_context::PanelPosition::Left => {
-                        lingxia_webview::platform::windows::WindowsPanelPosition::Left
-                    }
-                    lingxia_app_context::PanelPosition::Right => {
-                        lingxia_webview::platform::windows::WindowsPanelPosition::Right
-                    }
-                    lingxia_app_context::PanelPosition::Bottom => {
-                        lingxia_webview::platform::windows::WindowsPanelPosition::Bottom
-                    }
-                };
-                let title = if request.label.trim().is_empty() {
-                    "Terminal"
-                } else {
-                    request.label.trim()
-                };
-                if lingxia_webview::platform::windows::is_panel_visible(&request.panel_id) {
-                    if let Err(err) = close_windows_terminal_panel(&request.panel_id) {
-                        log::warn!("failed to hide Windows terminal panel: {err}");
-                    }
-                    return;
-                }
-                if let Err(err) = open_windows_terminal_panel(&request.panel_id, title, position) {
-                    log::warn!("failed to show Windows terminal panel: {err}");
-                }
-            }),
-            Arc::new(lingxia_webview::platform::windows::is_panel_visible),
-        );
     }
 
     fn open_windows_terminal_panel(

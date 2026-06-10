@@ -6,6 +6,7 @@ use std::future::Future;
 use std::io::{Cursor, Read};
 use std::path::{Component, Path, PathBuf};
 use std::process::Command;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -39,7 +40,18 @@ use async_trait::async_trait;
 
 const DEFAULT_APP_IDENTIFIER: &str = "app.lingxia.windows";
 type WindowsUiUpdateHandler = Arc<dyn Fn(String) + Send + Sync>;
+type WindowsAppExitHandler = Arc<dyn Fn() + Send + Sync>;
 static WINDOWS_UI_UPDATE_HANDLER: OnceLock<Mutex<Option<WindowsUiUpdateHandler>>> = OnceLock::new();
+static WINDOWS_APP_EXIT_HANDLER: OnceLock<Mutex<Option<WindowsAppExitHandler>>> = OnceLock::new();
+static WINDOWS_SHOW_SEQUENCE: AtomicU64 = AtomicU64::new(1);
+static WINDOWS_SHOW_REQUESTS: OnceLock<Mutex<std::collections::HashMap<String, u64>>> =
+    OnceLock::new();
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WindowsCloseAction {
+    ExitApp,
+    HideWindow,
+}
 
 #[derive(Debug, Clone)]
 pub struct Platform {
@@ -188,6 +200,13 @@ pub fn set_windows_ui_update_handler(handler: WindowsUiUpdateHandler) {
     }
 }
 
+pub fn set_windows_app_exit_handler(handler: WindowsAppExitHandler) {
+    let slot = WINDOWS_APP_EXIT_HANDLER.get_or_init(|| Mutex::new(None));
+    if let Ok(mut slot) = slot.lock() {
+        *slot = Some(handler);
+    }
+}
+
 fn invoke_windows_ui_update_handler(appid: String) {
     let handler = WINDOWS_UI_UPDATE_HANDLER
         .get()
@@ -195,6 +214,18 @@ fn invoke_windows_ui_update_handler(appid: String) {
         .and_then(|slot| slot.clone());
     if let Some(handler) = handler {
         handler(appid);
+    }
+}
+
+fn request_windows_app_exit() {
+    let handler = WINDOWS_APP_EXIT_HANDLER
+        .get()
+        .and_then(|slot| slot.lock().ok())
+        .and_then(|slot| slot.clone());
+    if let Some(handler) = handler {
+        handler();
+    } else {
+        std::process::exit(0);
     }
 }
 
@@ -538,7 +569,8 @@ impl AppRuntime for Platform {
     }
 
     fn exit(&self) -> Result<(), PlatformError> {
-        std::process::exit(0);
+        request_windows_app_exit();
+        Ok(())
     }
 
     fn navigate(
@@ -578,9 +610,13 @@ fn show_webtag_window(
     open_mode: LxAppOpenMode,
     panel_id: String,
 ) {
+    let request_key = show_request_key(&webtag, open_mode, &panel_id);
+    let request_id = remember_show_request(&request_key);
     if webview_runtime::find_webview(&webtag).is_some() {
-        install_close_handler(&webtag);
-        show_webview_window_for_mode(&webtag, &title, activate, open_mode, &panel_id);
+        if show_request_is_current(&request_key, request_id) {
+            install_close_handler(&webtag, close_action_for_mode(open_mode));
+            show_webview_window_for_mode(&webtag, &title, activate, open_mode, &panel_id);
+        }
         return;
     }
 
@@ -589,8 +625,11 @@ fn show_webtag_window(
         .spawn(move || {
             let deadline = Instant::now() + Duration::from_secs(5);
             while Instant::now() < deadline {
+                if !show_request_is_current(&request_key, request_id) {
+                    return;
+                }
                 if webview_runtime::find_webview(&webtag).is_some() {
-                    install_close_handler(&webtag);
+                    install_close_handler(&webtag, close_action_for_mode(open_mode));
                     show_webview_window_for_mode(&webtag, &title, activate, open_mode, &panel_id);
                     return;
                 }
@@ -627,12 +666,56 @@ fn show_webview_window_for_mode(
     }
 }
 
-fn install_close_handler(webtag: &WebTag) {
+fn show_request_key(webtag: &WebTag, open_mode: LxAppOpenMode, panel_id: &str) -> String {
+    match open_mode {
+        LxAppOpenMode::Normal => {
+            format!(
+                "main:{}#{}",
+                webtag.extract_appid(),
+                webtag
+                    .session_id()
+                    .map(|session| session.to_string())
+                    .unwrap_or_else(|| "0".to_string())
+            )
+        }
+        LxAppOpenMode::Panel => format!("panel:{panel_id}"),
+    }
+}
+
+fn remember_show_request(key: &str) -> u64 {
+    let request_id = WINDOWS_SHOW_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+    let requests =
+        WINDOWS_SHOW_REQUESTS.get_or_init(|| Mutex::new(std::collections::HashMap::new()));
+    if let Ok(mut requests) = requests.lock() {
+        requests.insert(key.to_string(), request_id);
+    }
+    request_id
+}
+
+fn show_request_is_current(key: &str, request_id: u64) -> bool {
+    WINDOWS_SHOW_REQUESTS
+        .get()
+        .and_then(|requests| requests.lock().ok())
+        .and_then(|requests| requests.get(key).copied())
+        == Some(request_id)
+}
+
+fn close_action_for_mode(open_mode: LxAppOpenMode) -> WindowsCloseAction {
+    match open_mode {
+        LxAppOpenMode::Normal => WindowsCloseAction::ExitApp,
+        LxAppOpenMode::Panel => WindowsCloseAction::HideWindow,
+    }
+}
+
+fn install_close_handler(webtag: &WebTag, action: WindowsCloseAction) {
     let webtag_for_close = webtag.clone();
     lingxia_webview::platform::windows::set_webview_close_handler(
         webtag,
-        Arc::new(move || {
-            let _ = lingxia_webview::platform::windows::hide_webview_window(&webtag_for_close);
+        Arc::new(move || match action {
+            WindowsCloseAction::ExitApp => request_windows_app_exit(),
+            WindowsCloseAction::HideWindow => {
+                let _ = lingxia_webview::platform::windows::hide_webview_window(&webtag_for_close);
+            }
         }),
     );
 }

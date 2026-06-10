@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 #[derive(Debug, Clone)]
 pub struct WindowsApp {
@@ -111,8 +112,18 @@ pub fn init(_app: WindowsApp) -> Result<String> {
 #[cfg(target_os = "windows")]
 pub fn run_message_loop() -> i32 {
     use windows::Win32::UI::WindowsAndMessaging::{
-        DispatchMessageW, GetMessageW, MSG, TranslateMessage, WM_QUIT,
+        DispatchMessageW, GetMessageW, MSG, PostThreadMessageW, TranslateMessage, WM_QUIT,
     };
+
+    let main_thread_id = unsafe { windows::Win32::System::Threading::GetCurrentThreadId() };
+    lingxia_platform::set_windows_app_exit_handler(Arc::new(move || unsafe {
+        let _ = PostThreadMessageW(
+            main_thread_id,
+            WM_QUIT,
+            Default::default(),
+            Default::default(),
+        );
+    }));
 
     let mut msg = MSG::default();
     loop {

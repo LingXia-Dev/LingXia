@@ -927,8 +927,7 @@ impl PageInstance {
             navbar.set_home_button_visibility(show_home_button && allow_buttons);
         });
 
-        #[cfg(target_os = "windows")]
-        lxapp.sync_windows_shell_layout();
+        lxapp.sync_host_ui();
 
         // 5. Dispatch lifecycle events for current and target pages
         match nav_type {
@@ -951,8 +950,7 @@ impl PageInstance {
             .navigate(self.appid(), path, nav_type.to_animation())
             .map_err(LxAppError::from)?;
 
-        #[cfg(target_os = "windows")]
-        lxapp.sync_windows_shell_layout();
+        lxapp.sync_host_ui();
 
         // Do not dispatch OnReady here. WebViewDelegate::on_page_finished() will do it.
 
@@ -1011,8 +1009,7 @@ impl PageInstance {
                 path,
                 NavigationType::Backward.to_animation(),
             )?;
-            #[cfg(target_os = "windows")]
-            lxapp.sync_windows_shell_layout();
+            lxapp.sync_host_ui();
             Ok(())
         } else {
             Err(LxAppError::UnsupportedOperation(

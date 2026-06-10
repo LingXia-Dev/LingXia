@@ -349,6 +349,7 @@ static WINDOW_GROUP_PANEL_SIZES: OnceLock<Mutex<HashMap<String, i32>>> = OnceLoc
 static WINDOW_PANEL_RESIZE_DRAG: OnceLock<Mutex<Option<PanelResizeDrag>>> = OnceLock::new();
 static APP_ICON_HANDLES: OnceLock<Mutex<Option<AppIconHandles>>> = OnceLock::new();
 static PANEL_ICON_HANDLES: OnceLock<Mutex<IconHandleCache>> = OnceLock::new();
+static WEBVIEW_USER_DATA_DIR: OnceLock<Mutex<Option<PathBuf>>> = OnceLock::new();
 
 impl std::fmt::Debug for WebViewInner {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -544,6 +545,21 @@ pub fn set_app_icon_from_path(path: &Path) -> StdResult<()> {
         .map_err(|_| WebViewError::WebView("Windows app icon state is poisoned".to_string()))?;
     *icon_state = Some(handles);
     Ok(())
+}
+
+pub fn set_webview_user_data_dir(path: impl Into<PathBuf>) {
+    let dir = path.into();
+    let state = WEBVIEW_USER_DATA_DIR.get_or_init(|| Mutex::new(None));
+    if let Ok(mut state) = state.lock() {
+        *state = Some(dir);
+    }
+}
+
+fn configured_webview_user_data_dir() -> Option<PathBuf> {
+    WEBVIEW_USER_DATA_DIR
+        .get()
+        .and_then(|state| state.lock().ok())
+        .and_then(|state| state.clone())
 }
 
 fn current_app_icon_handles() -> Option<AppIconHandles> {
@@ -3656,6 +3672,10 @@ fn create_environment(
 ) -> StdResult<ICoreWebView2Environment> {
     let options = CoreWebView2EnvironmentOptions::default();
     let custom_schemes = webview2_custom_schemes(&effective_options.registered_schemes);
+    let user_data_folder = configured_webview_user_data_dir().map(|path| {
+        let _ = std::fs::create_dir_all(&path);
+        path.to_string_lossy().to_string()
+    });
 
     unsafe {
         let registrations = custom_schemes
@@ -3674,9 +3694,16 @@ fn create_environment(
     let (tx, rx) = mpsc::channel();
     CreateCoreWebView2EnvironmentCompletedHandler::wait_for_async_operation(
         Box::new(move |handler| unsafe {
+            let user_data_folder = user_data_folder
+                .as_ref()
+                .map(|path| CoTaskMemPWSTR::from(path.as_str()));
+            let user_data_folder = user_data_folder
+                .as_ref()
+                .map(|path| *path.as_ref().as_pcwstr())
+                .unwrap_or(PCWSTR::null());
             CreateCoreWebView2EnvironmentWithOptions(
                 windows::core::PCWSTR::null(),
-                windows::core::PCWSTR::null(),
+                user_data_folder,
                 &options_iface,
                 &handler,
             )

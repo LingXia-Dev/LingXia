@@ -2,6 +2,7 @@ use dashmap::DashMap;
 use http::Uri as HttpUri;
 use lingxia_platform::Platform;
 use lingxia_platform::traits::app_runtime::AppRuntime;
+use lingxia_platform::traits::ui::UIUpdate;
 #[cfg(feature = "js-appservice")]
 use rong::{JSContext, JSResult, Source, error::HostError};
 use serde::Serialize;
@@ -41,14 +42,7 @@ mod runtime_registry;
 mod scheme;
 mod security;
 mod surface;
-#[cfg(target_os = "windows")]
-mod windows_shell;
 pub use security::LxAppSecurityPrivilege;
-#[cfg(target_os = "windows")]
-pub use windows_shell::{
-    WindowsTerminalPanelHandler, WindowsTerminalPanelRequest,
-    WindowsTerminalPanelVisibilityHandler, set_windows_terminal_panel_handler,
-};
 pub mod tabbar;
 pub mod uri;
 pub(crate) mod version;
@@ -68,8 +62,9 @@ pub use runtime_bootstrap::init;
 pub use runtime_ops::{
     close_lxapp, create_page_instance, dispose_page_instance, dispose_page_instance_by_id,
     ensure_builtin_lxapp, ensure_lxapp, get_current_lxapp, installed_lxapp_path, is_lxapp_open,
-    is_pull_down_refresh_enabled, list_lxapps, notify_page_instance, notify_page_instance_by_id,
-    on_low_memory, open_lxapp, restart_lxapp, touch_page_instance_by_id, uninstall_lxapp,
+    is_pull_down_refresh_enabled, list_lxapps, mark_lxapp_active, notify_page_instance,
+    notify_page_instance_by_id, on_low_memory, open_lxapp, restart_lxapp,
+    touch_page_instance_by_id, uninstall_lxapp,
 };
 pub use runtime_registry::{find_page_by_instance_id, get_locale, get_platform, try_get};
 pub(crate) use runtime_registry::{get, get_lxapps_manager};
@@ -624,6 +619,15 @@ impl LxApp {
 
     pub fn session_id(&self) -> LxAppSessionId {
         self.session.id
+    }
+
+    pub(crate) fn sync_host_ui(&self) {
+        if let Err(err) = self.runtime.update_navbar_ui(self.appid.clone()) {
+            warn!("Failed to update host NavigationBar UI: {}", err).with_appid(self.appid.clone());
+        }
+        if let Err(err) = self.runtime.update_tabbar_ui(self.appid.clone()) {
+            warn!("Failed to update host TabBar UI: {}", err).with_appid(self.appid.clone());
+        }
     }
 
     pub fn grant_transient_file_access(&self, path: &Path) -> Result<uri::LxUri, LxAppError> {
@@ -1772,7 +1776,7 @@ impl LxApp {
                 surface,
                 None,
             )?;
-            self.sync_windows_shell_layout();
+            self.sync_host_ui();
         }
         Ok(())
     }
