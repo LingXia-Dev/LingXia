@@ -6,7 +6,7 @@ use lingxia_webview::WebTag;
 use lingxia_webview::platform::windows::{
     WindowsChromeEvent, WindowsNavigationBarLayout, WindowsPanelActivatorLayout,
     WindowsPanelPosition, WindowsTabBarItemLayout, WindowsTabBarLayout, WindowsTabBarPosition,
-    WindowsWindowLayout, is_panel_visible, set_webview_chrome_event_handler,
+    WindowsWindowLayout, hide_panel, is_panel_visible, set_webview_chrome_event_handler,
     set_webview_window_layout,
 };
 
@@ -205,6 +205,9 @@ fn handle_windows_panel_activator(appid: &str, panel_id: String) {
                 .hide_lxapp(panel_appid.clone(), panel.session_id())
         {
             error!("Failed to close Windows panel lxapp: {}", err).with_appid(panel_appid);
+        }
+        if let Err(err) = hide_panel(&panel_id) {
+            warn!("Failed to hide Windows panel {}: {}", panel_id, err).with_appid(appid);
         }
         if let Some(owner) = try_get(appid) {
             owner.sync_windows_shell_layout();

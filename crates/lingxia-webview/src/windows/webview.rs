@@ -443,6 +443,10 @@ pub fn show_native_panel(
 }
 
 pub fn hide_native_panel(panel_id: &str) -> StdResult<()> {
+    hide_panel(panel_id)
+}
+
+pub fn hide_panel(panel_id: &str) -> StdResult<()> {
     let group_key = active_group_key()
         .ok_or_else(|| WebViewError::WebView("no active Windows shell group".to_string()))?;
     remove_group_panel_by_panel_id(&group_key, panel_id);
@@ -770,6 +774,9 @@ fn store_current_window_placement(state: &UiState) {
     ) {
         return;
     }
+    if unsafe { WindowsAndMessaging::IsZoomed(state.hwnd).as_bool() } {
+        return;
+    }
     let mut rect = RECT::default();
     if !unsafe { WindowsAndMessaging::IsWindowVisible(state.hwnd).as_bool() }
         || unsafe { WindowsAndMessaging::GetWindowRect(state.hwnd, &mut rect) }.is_err()
@@ -993,7 +1000,12 @@ fn attach_child_window_to_host(child: HWND, host: HWND) {
 }
 
 fn show_shell_host(group_key: &str, host: HWND, activate: bool) {
-    if let Some(placement) = current_group_window_placement_for_group(group_key) {
+    let host_visible = unsafe { WindowsAndMessaging::IsWindowVisible(host).as_bool() };
+    let host_zoomed = unsafe { WindowsAndMessaging::IsZoomed(host).as_bool() };
+    if !host_visible
+        && !host_zoomed
+        && let Some(placement) = current_group_window_placement_for_group(group_key)
+    {
         unsafe {
             let _ = WindowsAndMessaging::SetWindowPos(
                 host,
@@ -2864,7 +2876,7 @@ fn draw_sidebar_tab_bar(hdc: HDC, rect: RECT, tabbar: &WindowsTabBarLayout) {
                 SIDEBAR_ICON_SIZE,
             );
             if !draw_icon_from_path(hdc, icon_path, icon_rect, SIDEBAR_ICON_SIZE as u32) {
-                draw_text(hdc, "□", icon_rect, text_color, DT_CENTER);
+                draw_text(hdc, "?", icon_rect, text_color, DT_CENTER);
             }
         }
         draw_text(hdc, &item.text, label_rect, text_color, DT_LEFT);
