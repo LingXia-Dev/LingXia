@@ -454,7 +454,7 @@ impl LingXiaConfig {
             .as_ref()
             .map(|capabilities| capabilities.terminal)
             .unwrap_or(false);
-        terminal_requested && platform == "macos"
+        terminal_requested && matches!(platform, "macos" | "windows")
     }
 
     pub fn devtools_enabled(&self) -> bool {
@@ -1363,11 +1363,12 @@ android:
     }
 
     #[test]
-    fn terminal_capability_enables_macos_shell_runtime() {
+    fn terminal_capability_enables_macos_and_windows_runtime() {
         let mut config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
         config.capabilities.as_mut().unwrap().terminal = true;
 
         assert!(config.shell_enabled("macos"));
+        assert!(config.terminal_enabled("windows"));
         assert!(!config.shell_enabled("android"));
         assert_eq!(
             config.native_features_for_platform("macos"),
@@ -1377,6 +1378,10 @@ android:
                 "terminal-runtime".to_string(),
                 "webview-input".to_string(),
             ]
+        );
+        assert_eq!(
+            config.native_features_for_platform("windows"),
+            vec!["standard".to_string(), "terminal-runtime".to_string()]
         );
     }
 

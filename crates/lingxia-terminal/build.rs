@@ -10,10 +10,14 @@ const DEFAULT_REV: &str = "ca7516bea60190ee2e9a4f9182b61d318d107c6e";
 
 fn main() {
     emit_rerun_env();
+    emit_check_cfg();
 
     match prepare_ghostty_vt() {
         Ok(prepared) => emit_prepared(&prepared),
-        Err(err) => panic!("failed to prepare libghostty-vt: {err}"),
+        Err(err) if env_flag("LINGXIA_GHOSTTY_REQUIRED") => {
+            panic!("failed to prepare libghostty-vt: {err}");
+        }
+        Err(err) => emit_unavailable(&err),
     }
 }
 
@@ -29,13 +33,19 @@ fn emit_rerun_env() {
         "LINGXIA_GHOSTTY_VT_STEP",
         "LINGXIA_GHOSTTY_VT_SIMD",
         "LINGXIA_GHOSTTY_OPTIMIZE",
+        "LINGXIA_GHOSTTY_REQUIRED",
         "ZIG_GLOBAL_CACHE_DIR",
     ] {
         println!("cargo:rerun-if-env-changed={key}");
     }
 }
 
+fn emit_check_cfg() {
+    println!("cargo:rustc-check-cfg=cfg(lingxia_ghostty_vt_available)");
+}
+
 fn emit_prepared(prepared: &PreparedGhostty) {
+    println!("cargo:rustc-cfg=lingxia_ghostty_vt_available");
     println!("cargo:rustc-env=LINGXIA_GHOSTTY_AVAILABLE=1");
     println!(
         "cargo:rustc-env=LINGXIA_GHOSTTY_SOURCE_DIR={}",
@@ -53,7 +63,19 @@ fn emit_prepared(prepared: &PreparedGhostty) {
     println!("cargo:rustc-link-lib=static={}", prepared.link_name);
 }
 
+fn emit_unavailable(reason: &str) {
+    println!("cargo:warning=libghostty-vt unavailable: {reason}");
+    println!("cargo:rustc-env=LINGXIA_GHOSTTY_AVAILABLE=0");
+    println!(
+        "cargo:rustc-env=LINGXIA_GHOSTTY_STATUS={}",
+        sanitize_status(reason)
+    );
+}
+
 fn prepare_ghostty_vt() -> Result<PreparedGhostty, String> {
+    let zig = env_os("LINGXIA_GHOSTTY_ZIG").unwrap_or_else(|| OsString::from("zig"));
+    probe_zig(&zig)?;
+
     let source_dir = if let Some(source_dir) = env_path("LINGXIA_GHOSTTY_SOURCE_DIR") {
         if !source_dir.is_dir() {
             return Err(format!(
@@ -66,7 +88,7 @@ fn prepare_ghostty_vt() -> Result<PreparedGhostty, String> {
         fetch_git_checkout()?
     };
 
-    build_vt(&source_dir)?;
+    build_vt(&source_dir, &zig)?;
     let (lib_path, link_name) = find_vt_lib(&source_dir)?;
     let lib_dir = lib_path
         .parent()
@@ -123,11 +145,8 @@ fn fetch_git_checkout() -> Result<PathBuf, String> {
     Ok(cache_dir)
 }
 
-fn build_vt(source_dir: &Path) -> Result<(), String> {
-    let zig = env_os("LINGXIA_GHOSTTY_ZIG").unwrap_or_else(|| OsString::from("zig"));
-    probe_zig(&zig)?;
-
-    let invocation = pick_vt_invocation(&zig, source_dir)?;
+fn build_vt(source_dir: &Path, zig: &OsStr) -> Result<(), String> {
+    let invocation = pick_vt_invocation(zig, source_dir)?;
     let optimize =
         env_string("LINGXIA_GHOSTTY_OPTIMIZE").unwrap_or_else(|| "ReleaseFast".to_string());
     let simd = if env_flag("LINGXIA_GHOSTTY_VT_SIMD") {
@@ -147,7 +166,7 @@ fn build_vt(source_dir: &Path) -> Result<(), String> {
         args.extend(extra.split_whitespace().map(ToOwned::to_owned));
     }
 
-    run_os(&zig, args.iter().map(OsStr::new), Some(source_dir))
+    run_os(zig, args.iter().map(OsStr::new), Some(source_dir))
 }
 
 fn probe_zig(zig: &OsStr) -> Result<(), String> {
@@ -391,6 +410,17 @@ fn sanitize(value: &str) -> String {
             } else {
                 '_'
             }
+        })
+        .collect()
+}
+
+fn sanitize_status(value: &str) -> String {
+    value
+        .chars()
+        .map(|ch| match ch {
+            '\r' | '\n' => ' ',
+            ch if ch.is_control() => ' ',
+            ch => ch,
         })
         .collect()
 }
