@@ -93,6 +93,19 @@ fn root_js_extension_exports_stay_scoped_to_js_module() {
 }
 
 #[test]
+fn windows_facade_must_not_reexport_webview_internals() {
+    let windows_dir = std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/src/windows"));
+    for file in ["mod.rs", "shell.rs", "terminal_panel.rs"] {
+        let source = std::fs::read_to_string(windows_dir.join(file))
+            .unwrap_or_else(|err| panic!("read lingxia src/windows/{file}: {err}"));
+        assert!(
+            !source.contains("pub use lingxia_webview::"),
+            "src/windows/{file} must not re-export lingxia_webview internals"
+        );
+    }
+}
+
+#[test]
 fn file_download_facade_stays_user_cache_scoped() {
     let file = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/src/file.rs"))
         .expect("read lingxia file.rs");

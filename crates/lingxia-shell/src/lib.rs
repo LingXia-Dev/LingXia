@@ -1,3 +1,12 @@
+//! Shell product module and host registrations for LingXia.
+//!
+//! This crate owns product-level shell behavior on top of the generic
+//! runtime crates: address-bar resolution, downloads, settings, panels,
+//! and — on Windows — the custom window chrome (GDI painting and
+//! hit-testing) registered into `lingxia-webview`'s
+//! `WindowsChromeRenderer` seam. `lingxia-webview` itself stays strictly
+//! generic webview hosting.
+
 extern crate self as lingxia;
 
 mod address_bar;
@@ -10,6 +19,8 @@ mod proxy;
 #[cfg(target_os = "macos")]
 mod proxy_settings;
 mod settings;
+#[cfg(target_os = "windows")]
+mod windows;
 
 pub use address_bar::{resolve_input, resolve_input_json};
 pub use facade::{
@@ -95,6 +106,8 @@ pub fn register_runtime() {
     downloads::register();
     #[cfg(target_os = "macos")]
     proxy::register();
+    #[cfg(target_os = "windows")]
+    windows::install();
     settings::register();
 }
 

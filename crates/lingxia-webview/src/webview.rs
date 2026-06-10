@@ -1662,6 +1662,22 @@ impl WebTag {
             .and_then(|raw| raw.parse::<u64>().ok())
     }
 
+    /// Grouping key combining appid and session id (`appid#session`), with the
+    /// session defaulting to `0` when the tag carries no `#session` suffix.
+    /// Tags without an `appid:` prefix are returned unchanged.
+    #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+    pub(crate) fn group_key(&self) -> String {
+        let Some((appid, path_with_session)) = self.0.split_once(':') else {
+            return self.0.clone();
+        };
+        let session = path_with_session
+            .rsplit_once('#')
+            .and_then(|(_, suffix)| suffix.parse::<u64>().ok())
+            .map(|session| session.to_string())
+            .unwrap_or_else(|| "0".to_string());
+        format!("{appid}#{session}")
+    }
+
     fn key_path(&self) -> String {
         let Some((_, path_with_suffix)) = self.0.split_once(':') else {
             return self.0.clone();

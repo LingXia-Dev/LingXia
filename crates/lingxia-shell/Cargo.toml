@@ -29,3 +29,10 @@ rong = { workspace = true, default-features = false }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 lingxia-proxy = { workspace = true, features = ["rule-list-routing"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { workspace = true, features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_UI_WindowsAndMessaging",
+] }

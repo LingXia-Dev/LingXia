@@ -1,3 +1,16 @@
+//! Cross-platform WebView hosting layer for LingXia.
+//!
+//! This crate is strictly *generic* webview hosting: webview creation and
+//! lifecycle, navigation/scheme/event plumbing, and (on Windows) native
+//! window mechanics such as the message loop, window groups, bounds, and
+//! focus. It contains no product UI.
+//!
+//! Product window chrome (tab bars, sidebars, navigation bars, panel
+//! decorations) is owned by the product shell layer (`lingxia-shell`),
+//! which registers a renderer via
+//! `platform::windows::set_windows_chrome_renderer`. When no renderer is
+//! registered, Windows hosts get plain standard OS frames.
+
 use thiserror::Error;
 
 /// WebView-specific error types
@@ -183,13 +196,17 @@ pub mod platform {
     #[cfg(target_os = "windows")]
     pub mod windows {
         pub use crate::windows::{
-            WindowsChromeEvent, WindowsNavigationBarLayout, WindowsPanelActivatorLayout,
+            WindowsChromeAttachedState, WindowsChromeEvent, WindowsChromeHit, WindowsChromePanel,
+            WindowsChromeRenderer, WindowsChromeState, WindowsFrameButton,
+            WindowsNativePanelContent, WindowsNativePanelKind, WindowsNavigationBarLayout,
+            WindowsPanelActivatorLayout, WindowsPanelInputHandler, WindowsPanelKeyEvent,
             WindowsPanelPosition, WindowsTabBarItemLayout, WindowsTabBarLayout,
             WindowsTabBarPosition, WindowsWebViewWindowSnapshot, WindowsWindowLayout,
-            clear_native_panel_input_handler, hide_native_panel, hide_panel, hide_webview_window,
-            is_panel_visible, set_app_icon_from_path, set_native_panel_input_handler,
-            set_webview_chrome_event_handler, set_webview_close_handler, set_webview_user_data_dir,
-            set_webview_window_layout, show_native_panel, show_native_terminal_panel,
+            cached_png_icon_handle, clear_native_panel_input_handler, hide_native_panel,
+            hide_panel, hide_webview_window, is_panel_visible, set_app_icon_from_path,
+            set_native_panel_input_handler, set_webview_chrome_event_handler,
+            set_webview_close_handler, set_webview_user_data_dir, set_webview_window_layout,
+            set_windows_chrome_renderer, show_native_panel, show_native_terminal_panel,
             show_webview_panel, show_webview_window, show_webview_window_inactive,
             update_native_panel_body, webview_window_snapshot,
         };

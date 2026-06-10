@@ -1,5 +1,6 @@
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, OnceLock};
 
 use lingxia_platform::traits::app_runtime::{AppRuntime, LxAppOpenMode};
 use lingxia_webview::WebTag;
@@ -12,7 +13,19 @@ use lingxia_webview::platform::windows::{
 use lxapp::{LxApp, LxAppDelegate, LxAppStartupOptions, LxAppUiEventType, ReleaseType};
 
 const DEFAULT_NAV_BAR_HEIGHT: i32 = 38;
-const DEFAULT_SIDEBAR_WIDTH: i32 = 180;
+const MIN_SIDEBAR_WIDTH: i32 = 180;
+
+/// Panel ids whose lxapp open is still in flight, used to ignore repeated
+/// activator clicks until the open completes.
+static PENDING_PANEL_OPENS: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+
+fn pending_panel_opens() -> std::sync::MutexGuard<'static, HashSet<String>> {
+    PENDING_PANEL_OPENS
+        .get_or_init(|| Mutex::new(HashSet::new()))
+        .lock()
+        // The pending set has no invariants that poisoning can break.
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct TerminalPanelRequest {
@@ -93,7 +106,7 @@ fn build_tab_bar_layout(app: &LxApp) -> Option<WindowsTabBarLayout> {
     Some(WindowsTabBarLayout {
         visible: !tabbar.list.is_empty(),
         position: WindowsTabBarPosition::Left,
-        dimension: tabbar.dimension.max(DEFAULT_SIDEBAR_WIDTH),
+        dimension: tabbar.dimension.max(MIN_SIDEBAR_WIDTH),
         app_name: app.runtime_info().app_name,
         color: parse_css_color(&tabbar.color, 0x666666),
         selected_color: parse_css_color(&tabbar.selectedColor, 0x1677ff),
@@ -153,8 +166,9 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeEvent) {
             app.on_lxapp_event(LxAppUiEventType::NavigationClick, "home".to_string())
         }
         WindowsChromeEvent::PanelActivatorClick { panel_id } => {
+            // The activator handlers sync the shell layout in every branch.
             handle_panel_activator(appid, panel_id);
-            true
+            return;
         }
     };
 
@@ -195,14 +209,20 @@ fn handle_panel_activator(appid: &str, panel_id: String) {
         return;
     }
 
+    if !pending_panel_opens().insert(panel_id.clone()) {
+        return;
+    }
+
     let owner_appid = appid.to_string();
-    std::mem::drop(crate::task::spawn(async move {
-        if let Err(err) = open_panel_lxapp(&panel_id, &panel_appid, &path).await {
+    let _ = crate::task::spawn(async move {
+        let result = open_panel_lxapp(&panel_id, &panel_appid, &path).await;
+        pending_panel_opens().remove(&panel_id);
+        if let Err(err) = result {
             log::error!("failed to open Windows panel lxapp {panel_appid}: {err}");
             return;
         }
         sync_shell_layout(&owner_appid);
-    }));
+    });
 }
 
 fn panel_target_for_id(panel_id: &str) -> Option<PanelTarget> {
@@ -227,7 +247,7 @@ fn panel_target_for_id(panel_id: &str) -> Option<PanelTarget> {
 fn handle_terminal_panel_activator(appid: &str, request: TerminalPanelRequest) {
     let position = panel_position(request.position);
     if is_panel_visible(&request.panel_id) {
-        if let Err(err) = super::close_windows_terminal_panel(&request.panel_id) {
+        if let Err(err) = super::terminal_panel::close_windows_terminal_panel(&request.panel_id) {
             log::warn!(
                 "failed to hide Windows terminal panel {}: {}",
                 request.panel_id,
@@ -243,7 +263,9 @@ fn handle_terminal_panel_activator(appid: &str, request: TerminalPanelRequest) {
     } else {
         request.label.trim()
     };
-    if let Err(err) = super::open_windows_terminal_panel(&request.panel_id, title, position) {
+    if let Err(err) =
+        super::terminal_panel::open_windows_terminal_panel(&request.panel_id, title, position)
+    {
         log::warn!(
             "failed to show Windows terminal panel {}: {}",
             request.panel_id,
@@ -305,13 +327,17 @@ fn parse_css_color(raw: &str, fallback: u32) -> u32 {
     }
 
     let hex = value.strip_prefix('#').unwrap_or(value);
+    if !hex.is_ascii() {
+        return fallback;
+    }
     let rgb = match hex.len() {
         3 => {
             let expanded = hex.chars().flat_map(|ch| [ch, ch]).collect::<String>();
             u32::from_str_radix(&expanded, 16).ok()
         }
         6 => u32::from_str_radix(hex, 16).ok(),
-        8 => u32::from_str_radix(&hex[2..], 16).ok(),
+        // CSS 8-digit hex is #RRGGBBAA: keep the leading RGB bytes, ignore alpha.
+        8 => u32::from_str_radix(&hex[..6], 16).ok(),
         _ => None,
     };
     rgb.unwrap_or(fallback)

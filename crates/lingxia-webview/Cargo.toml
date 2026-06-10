@@ -2,7 +2,7 @@
 name = "lingxia-webview"
 version.workspace = true
 edition.workspace = true
-description = "WebView abstraction layer for LingXia framework (Android, iOS, HarmonyOS)"
+description = "WebView abstraction layer for LingXia framework (Android, iOS, HarmonyOS, Windows)"
 license = "MIT"
 repository.workspace = true
 keywords = ["lingxia", "webview", "lxapp", "cross-platform"]

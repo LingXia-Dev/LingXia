@@ -23,6 +23,8 @@ fn install_global_executor() {
         Ok(()) => {
             log::info!("Installed dedicated RongExecutor for host async work");
         }
+        // rong_rt offers no way to probe for an installed global executor, so
+        // discarding the freshly built executor on AlreadyInstalled is accepted.
         Err(InstallGlobalExecutorError::AlreadyInstalled) => {}
     }
 }
@@ -75,9 +77,7 @@ fn load_panels_from_ui_config(
 }
 
 fn panels_from_ui_config(ui: &serde_json::Value) -> Option<lingxia_app_context::PanelsConfig> {
-    use lingxia_app_context::{
-        PanelContent, PanelContentKind, PanelItem, PanelPosition, PanelsConfig,
-    };
+    use lingxia_app_context::PanelsConfig;
 
     let surfaces = ui.get("surfaces")?.as_array()?;
     let surfaces_by_id = surfaces
@@ -88,101 +88,105 @@ fn panels_from_ui_config(ui: &serde_json::Value) -> Option<lingxia_app_context::
         })
         .collect::<std::collections::HashMap<_, _>>();
     let activators = ui.get("activators")?.as_array()?;
-    let mut items = Vec::new();
 
-    for activator in activators {
-        if activator.get("kind").and_then(serde_json::Value::as_str) != Some("sidebarItem") {
-            continue;
-        }
-        let id = match activator.get("id").and_then(serde_json::Value::as_str) {
-            Some(id) if !id.trim().is_empty() => id.trim(),
-            _ => continue,
-        };
-        let Some(action) = activator.get("action") else {
-            continue;
-        };
-        if !matches!(
-            action.get("kind").and_then(serde_json::Value::as_str),
-            Some("toggleSurface" | "openSurface")
-        ) {
-            continue;
-        }
-        let surface_id = match action.get("surface").and_then(serde_json::Value::as_str) {
-            Some(surface_id) if !surface_id.trim().is_empty() => surface_id.trim(),
-            _ => continue,
-        };
-        let Some(surface) = surfaces_by_id.get(surface_id) else {
-            continue;
-        };
-        if surface
-            .get("presentation")
-            .and_then(|presentation| presentation.get("kind"))
-            .and_then(serde_json::Value::as_str)
-            != Some("attachPanel")
-        {
-            continue;
-        }
-        let Some(content) = surface.get("content") else {
-            continue;
-        };
-        let content_kind = match content
-            .get("kind")
-            .and_then(serde_json::Value::as_str)
-            .unwrap_or("lxapp")
-        {
-            "terminal" => PanelContentKind::Terminal,
-            "lxapp" => PanelContentKind::LxApp,
-            _ => continue,
-        };
-        let app_id = content
-            .get("appId")
-            .and_then(serde_json::Value::as_str)
-            .map(str::trim)
-            .filter(|app_id| !app_id.is_empty());
-        if content_kind == PanelContentKind::LxApp && app_id.is_none() {
-            continue;
-        }
-
-        let label = activator
-            .get("label")
-            .and_then(serde_json::Value::as_str)
-            .map(str::trim)
-            .filter(|label| !label.is_empty())
-            .unwrap_or(id)
-            .to_string();
-        let icon = activator
-            .get("icon")
-            .and_then(serde_json::Value::as_str)
-            .unwrap_or_default()
-            .to_string();
-        let position = surface
-            .get("presentation")
-            .and_then(|presentation| presentation.get("edge"))
-            .and_then(serde_json::Value::as_str)
-            .map(panel_position_from_edge)
-            .unwrap_or(PanelPosition::Right);
-        let path = surface
-            .get("content")
-            .and_then(|content| content.get("path"))
-            .and_then(serde_json::Value::as_str)
-            .map(str::trim)
-            .filter(|path| !path.is_empty())
-            .map(ToOwned::to_owned);
-
-        items.push(PanelItem {
-            id: id.to_string(),
-            label,
-            icon,
-            position,
-            content: PanelContent {
-                kind: content_kind,
-                app_id: app_id.unwrap_or_default().to_string(),
-                path,
-            },
-        });
-    }
+    let items = activators
+        .iter()
+        .filter_map(|activator| panel_item_from_activator(activator, &surfaces_by_id))
+        .collect::<Vec<_>>();
 
     (!items.is_empty()).then_some(PanelsConfig { items })
+}
+
+fn panel_item_from_activator(
+    activator: &serde_json::Value,
+    surfaces_by_id: &std::collections::HashMap<&str, &serde_json::Value>,
+) -> Option<lingxia_app_context::PanelItem> {
+    use lingxia_app_context::{PanelContent, PanelContentKind, PanelItem, PanelPosition};
+
+    if activator.get("kind").and_then(serde_json::Value::as_str) != Some("sidebarItem") {
+        return None;
+    }
+    let id = activator
+        .get("id")
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|id| !id.is_empty())?;
+    let action = activator.get("action")?;
+    if !matches!(
+        action.get("kind").and_then(serde_json::Value::as_str),
+        Some("toggleSurface" | "openSurface")
+    ) {
+        return None;
+    }
+    let surface_id = action
+        .get("surface")
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|surface_id| !surface_id.is_empty())?;
+    let surface = surfaces_by_id.get(surface_id)?;
+    if surface
+        .get("presentation")
+        .and_then(|presentation| presentation.get("kind"))
+        .and_then(serde_json::Value::as_str)
+        != Some("attachPanel")
+    {
+        return None;
+    }
+    let content = surface.get("content")?;
+    let content_kind = match content
+        .get("kind")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("lxapp")
+    {
+        "terminal" => PanelContentKind::Terminal,
+        "lxapp" => PanelContentKind::LxApp,
+        _ => return None,
+    };
+    let app_id = content
+        .get("appId")
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|app_id| !app_id.is_empty());
+    if content_kind == PanelContentKind::LxApp && app_id.is_none() {
+        return None;
+    }
+
+    let label = activator
+        .get("label")
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|label| !label.is_empty())
+        .unwrap_or(id)
+        .to_string();
+    let icon = activator
+        .get("icon")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    let position = surface
+        .get("presentation")
+        .and_then(|presentation| presentation.get("edge"))
+        .and_then(serde_json::Value::as_str)
+        .map(panel_position_from_edge)
+        .unwrap_or(PanelPosition::Right);
+    let path = content
+        .get("path")
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|path| !path.is_empty())
+        .map(ToOwned::to_owned);
+
+    Some(PanelItem {
+        id: id.to_string(),
+        label,
+        icon,
+        position,
+        content: PanelContent {
+            kind: content_kind,
+            app_id: app_id.unwrap_or_default().to_string(),
+            path,
+        },
+    })
 }
 
 fn panel_position_from_edge(edge: &str) -> lingxia_app_context::PanelPosition {
