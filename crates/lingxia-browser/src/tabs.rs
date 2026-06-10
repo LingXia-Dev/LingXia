@@ -1,0 +1,631 @@
+//! Browser tab state: tab id resolution and scopes, open/close/update/activate,
+//! and the create-token machinery shared with WebView creation.
+
+use crate::BUILTIN_BROWSER_APPID;
+use crate::policy::{is_lingxia_startup_url, normalize_browser_target_url};
+use crate::types::{BrowserAutomationError, BrowserTabInfo};
+use crate::webview::{
+    browser_create_webview, browser_destroy_webview, browser_find_webview, browser_load_url,
+};
+use lxapp::{LxApp, LxAppError};
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
+
+pub(crate) const INTERNAL_TAB_PATH_PREFIX: &str = "/tabs/";
+
+// Internal browser tab model:
+// 1) All tabs are hosted by the built-in browser lxapp (BUILTIN_BROWSER_APPID).
+// 2) Callers may provide a stable tab key; the core resolves that key against an
+//    explicit scope and maps it to a canonical runtime UUID tab id.
+// 3) One canonical runtime tab id maps to one page path: /tabs/{tab_id}.
+// 4) One canonical runtime tab id owns one managed WebView instance lifecycle.
+
+#[derive(Clone)]
+pub(crate) struct BrowserTabState {
+    pub(crate) session_id: u64,
+    /// Monotonic token to identify the current create lifecycle of this tab.
+    /// Used to ignore stale async callbacks when tab gets recreated quickly.
+    pub(crate) create_token: u64,
+    /// True while a WebView create for `create_token` is still in-flight.
+    /// Cleared once the create resolves; used to detect dead tabs whose
+    /// earlier create failed so they can be recreated instead of being
+    /// stuck with a `pending_url` that is never replayed.
+    pub(crate) create_in_flight: bool,
+    /// URL queued for loading while WebView creation is in-flight.
+    pub(crate) pending_url: Option<String>,
+    pub(crate) current_url: Option<String>,
+    pub(crate) title: Option<String>,
+}
+
+pub(crate) struct BrowserState {
+    // tab_id -> tab lifecycle state (single WebView lifecycle per tab_id)
+    pub(crate) tabs: HashMap<String, BrowserTabState>,
+}
+
+static BROWSER_STATE: OnceLock<Mutex<BrowserState>> = OnceLock::new();
+static BROWSER_TAB_COUNTER: AtomicU64 = AtomicU64::new(1);
+static BROWSER_CREATE_TOKEN: AtomicU64 = AtomicU64::new(1);
+static BROWSER_LOAD_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
+static BROWSER_ACTIVE_TAB_ID: OnceLock<Mutex<Option<String>>> = OnceLock::new();
+
+pub(crate) fn lock_state() -> MutexGuard<'static, BrowserState> {
+    BROWSER_STATE
+        .get_or_init(|| {
+            Mutex::new(BrowserState {
+                tabs: HashMap::new(),
+            })
+        })
+        .lock()
+        .unwrap_or_else(|e| {
+            lxapp::warn!("[InternalBrowser] recovered poisoned browser state mutex");
+            e.into_inner()
+        })
+}
+
+fn lock_active_tab() -> MutexGuard<'static, Option<String>> {
+    BROWSER_ACTIVE_TAB_ID
+        .get_or_init(|| Mutex::new(None))
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+}
+
+fn set_active_browser_tab(tab_id: &str) {
+    *lock_active_tab() = Some(tab_id.to_string());
+}
+
+#[derive(Clone, Copy)]
+pub(crate) enum BrowserTabScope<'a> {
+    Global,
+    OwnerSession {
+        owner_appid: &'a str,
+        owner_session_id: u64,
+    },
+}
+
+fn generate_tab_id() -> String {
+    loop {
+        let candidate = format!(
+            "tab-{}",
+            BROWSER_TAB_COUNTER.fetch_add(1, Ordering::Relaxed)
+        );
+        if !lock_state().tabs.contains_key(&candidate) {
+            return candidate;
+        }
+    }
+}
+
+fn validate_requested_tab_key(input: &str) -> Result<String, LxAppError> {
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        return Err(LxAppError::InvalidParameter(
+            "tab_id is required".to_string(),
+        ));
+    }
+    if !trimmed
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        return Err(LxAppError::InvalidParameter(
+            "tab_id must contain only ASCII letters, digits, '-' or '_'".to_string(),
+        ));
+    }
+    Ok(trimmed.to_ascii_lowercase())
+}
+
+pub(crate) fn normalize_runtime_tab_id(input: &str) -> Option<String> {
+    validate_requested_tab_key(input).ok()
+}
+
+fn resolve_tab_scope_seed(scope: BrowserTabScope<'_>, stable_tab_key: &str) -> String {
+    match scope {
+        BrowserTabScope::Global => format!("global:{stable_tab_key}"),
+        BrowserTabScope::OwnerSession {
+            owner_appid,
+            owner_session_id,
+        } => format!("owner:{owner_appid}:{owner_session_id}:{stable_tab_key}"),
+    }
+}
+
+fn deterministic_tab_suffix(seed: &str) -> String {
+    const FNV_OFFSET_A: u64 = 0xcbf29ce484222325;
+    const FNV_PRIME: u64 = 0x100000001b3;
+
+    fn fnv1a64(bytes: &[u8], offset: u64, prime: u64) -> u64 {
+        let mut hash = offset;
+        for byte in bytes {
+            hash ^= u64::from(*byte);
+            hash = hash.wrapping_mul(prime);
+        }
+        hash
+    }
+
+    format!(
+        "{:08x}",
+        fnv1a64(seed.as_bytes(), FNV_OFFSET_A, FNV_PRIME) as u32
+    )
+}
+
+fn resolve_browser_tab_id(
+    requested_tab_key: Option<&str>,
+    scope: BrowserTabScope<'_>,
+) -> Result<String, LxAppError> {
+    match requested_tab_key {
+        Some(tab_key) => {
+            let stable_tab_key = validate_requested_tab_key(tab_key)?;
+            match scope {
+                BrowserTabScope::Global => Ok(stable_tab_key),
+                BrowserTabScope::OwnerSession { .. } => {
+                    let seed = resolve_tab_scope_seed(scope, &stable_tab_key);
+                    Ok(format!(
+                        "{}-{}",
+                        stable_tab_key,
+                        deterministic_tab_suffix(&seed)
+                    ))
+                }
+            }
+        }
+        None => Ok(generate_tab_id()),
+    }
+}
+
+fn next_browser_create_token() -> u64 {
+    BROWSER_CREATE_TOKEN.fetch_add(1, Ordering::Relaxed)
+}
+
+// ---------------------------------------------------------------------------
+// Owner resolution (used by FFI bridge layer)
+// ---------------------------------------------------------------------------
+
+fn resolve_owner_lxapp(owner_appid: &str, owner_session_id: u64) -> Result<Arc<LxApp>, LxAppError> {
+    let owner_appid = owner_appid.trim();
+    if owner_appid.is_empty() || owner_session_id == 0 {
+        return Err(LxAppError::InvalidParameter(
+            "owner_appid and owner_session_id are required".to_string(),
+        ));
+    }
+
+    let owner = lxapp::try_get(owner_appid).ok_or_else(|| {
+        LxAppError::ResourceNotFound(format!(
+            "owner lxapp not found for browser tab operation: {}",
+            owner_appid
+        ))
+    })?;
+
+    if owner.session_id() != owner_session_id {
+        return Err(LxAppError::InvalidParameter(format!(
+            "owner session mismatch for {}: expected {}, got {}",
+            owner_appid,
+            owner.session_id(),
+            owner_session_id
+        )));
+    }
+
+    Ok(owner)
+}
+
+pub(crate) fn register_builtin_browser_host() {
+    // Synthetic host: just owns tab session_id + page lifecycle. shell-runtime
+    // upgrades this to a real asset bundle later (see lingxia-shell).
+    lxapp::register_synthetic_lxapp(BUILTIN_BROWSER_APPID);
+}
+
+/// Ensure browser lxapp instance exists in manager.
+pub(crate) fn ensure_browser_lxapp() -> Result<Arc<LxApp>, LxAppError> {
+    let _load_guard = BROWSER_LOAD_MUTEX
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+
+    if let Some(browser) = lxapp::try_get(BUILTIN_BROWSER_APPID) {
+        return Ok(browser);
+    }
+
+    lxapp::ensure_builtin_lxapp(BUILTIN_BROWSER_APPID)
+}
+
+pub(crate) fn browser_tab_path_for_runtime_id(tab_id: &str) -> String {
+    format!("{INTERNAL_TAB_PATH_PREFIX}{tab_id}")
+}
+
+pub(crate) fn browser_tab_path_for_id(tab_id: &str) -> String {
+    normalize_runtime_tab_id(tab_id)
+        .map(|tab_id| browser_tab_path_for_runtime_id(&tab_id))
+        .unwrap_or_else(|| INTERNAL_TAB_PATH_PREFIX.to_string())
+}
+
+pub(crate) fn normalize_optional_string(value: Option<&str>) -> Option<String> {
+    let text = value.unwrap_or_default().trim();
+    if text.is_empty() {
+        None
+    } else {
+        Some(text.to_string())
+    }
+}
+
+fn build_tab_info(tab_id: &str, state: &BrowserTabState) -> BrowserTabInfo {
+    BrowserTabInfo {
+        tab_id: tab_id.to_string(),
+        path: browser_tab_path_for_runtime_id(tab_id),
+        session_id: state.session_id,
+        current_url: state.current_url.clone(),
+        title: state.title.clone(),
+    }
+}
+
+pub fn browser_tab_info(tab_id: &str) -> Option<BrowserTabInfo> {
+    let normalized = normalize_runtime_tab_id(tab_id)?;
+    let state = lock_state();
+    state
+        .tabs
+        .get(&normalized)
+        .map(|tab| build_tab_info(&normalized, tab))
+}
+
+pub fn browser_tabs() -> Vec<BrowserTabInfo> {
+    let state = lock_state();
+    let mut tabs: Vec<BrowserTabInfo> = state
+        .tabs
+        .iter()
+        .map(|(tab_id, tab)| build_tab_info(tab_id, tab))
+        .collect();
+    tabs.sort_by(|a, b| a.tab_id.cmp(&b.tab_id));
+    tabs
+}
+
+pub fn browser_current_tab() -> Option<BrowserTabInfo> {
+    if let Some(tab_id) = lock_active_tab().clone()
+        && let Some(info) = browser_tab_info(&tab_id)
+    {
+        return Some(info);
+    }
+    browser_tabs().into_iter().next()
+}
+
+pub fn browser_activate_tab(tab_id: &str) -> Result<BrowserTabInfo, BrowserAutomationError> {
+    let normalized_tab_id = normalize_runtime_tab_id(tab_id)
+        .ok_or_else(|| BrowserAutomationError::TabNotFound(tab_id.to_string()))?;
+    let info = browser_tab_info(&normalized_tab_id)
+        .ok_or_else(|| BrowserAutomationError::TabNotFound(tab_id.to_string()))?;
+    set_active_browser_tab(&normalized_tab_id);
+    Ok(info)
+}
+
+pub(crate) fn browser_update_tab_info(
+    tab_id: &str,
+    current_url: Option<&str>,
+    title: Option<&str>,
+) -> bool {
+    let Some(normalized) = normalize_runtime_tab_id(tab_id) else {
+        return false;
+    };
+    let mut state = lock_state();
+    let Some(tab) = state.tabs.get_mut(&normalized) else {
+        return false;
+    };
+    if current_url.is_some() {
+        tab.current_url = normalize_optional_string(current_url);
+    }
+    if title.is_some() {
+        tab.title = normalize_optional_string(title);
+    }
+    true
+}
+
+// ---------------------------------------------------------------------------
+// Create-token machinery (shared with the WebView creation flow)
+// ---------------------------------------------------------------------------
+
+#[derive(Debug)]
+pub(crate) enum TabCreateState {
+    Active { pending_url: Option<String> },
+    Missing,
+    Stale,
+}
+
+pub(crate) fn browser_tab_create_state(
+    tab_id: &str,
+    session_id: u64,
+    create_token: u64,
+) -> TabCreateState {
+    let mut state = lock_state();
+    match state.tabs.get_mut(tab_id) {
+        Some(tab) if tab.session_id == session_id && tab.create_token == create_token => {
+            // This create cycle now owns a live WebView; clear the in-flight
+            // marker so a missing WebView later means the tab must be recreated.
+            tab.create_in_flight = false;
+            TabCreateState::Active {
+                pending_url: tab.pending_url.clone(),
+            }
+        }
+        Some(_) => TabCreateState::Stale,
+        None => TabCreateState::Missing,
+    }
+}
+
+pub(crate) fn browser_remove_tab_if_token_matches(
+    tab_id: &str,
+    session_id: u64,
+    create_token: u64,
+) {
+    let mut state = lock_state();
+    let should_remove = state
+        .tabs
+        .get(tab_id)
+        .map(|tab| tab.session_id == session_id && tab.create_token == create_token)
+        .unwrap_or(false);
+    if should_remove {
+        state.tabs.remove(tab_id);
+    }
+}
+
+pub(crate) fn browser_clear_pending_if_token_matches(
+    tab_id: &str,
+    session_id: u64,
+    create_token: u64,
+) {
+    let mut state = lock_state();
+    if let Some(tab) = state.tabs.get_mut(tab_id)
+        && tab.session_id == session_id
+        && tab.create_token == create_token
+    {
+        tab.pending_url = None;
+    }
+}
+
+pub(crate) fn browser_commit_navigation_if_token_matches(
+    tab_id: &str,
+    session_id: u64,
+    create_token: u64,
+    current_url: Option<&str>,
+) {
+    let mut state = lock_state();
+    if let Some(tab) = state.tabs.get_mut(tab_id)
+        && tab.session_id == session_id
+        && tab.create_token == create_token
+    {
+        tab.pending_url = None;
+        tab.current_url = normalize_optional_string(current_url);
+    }
+}
+
+fn browser_clear_pending_url(tab_id: &str) {
+    let mut state = lock_state();
+    if let Some(tab) = state.tabs.get_mut(tab_id) {
+        tab.pending_url = None;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Open / close
+// ---------------------------------------------------------------------------
+
+fn open_internal_browser_tab_with_scope(
+    url: &str,
+    requested_tab_key: Option<&str>,
+    scope: BrowserTabScope<'_>,
+) -> Result<String, LxAppError> {
+    let browser = ensure_browser_lxapp()?;
+    let browser_session_id = browser.session_id();
+
+    let raw_url = url.trim();
+
+    // `lingxia://newtab` (and bare `lingxia://`) → startup page (no URL).
+    // Other `lingxia://` pages stay as-is and are served by the lingxia:// scheme handler.
+    let effective_url: String = match is_lingxia_startup_url(raw_url) {
+        Some(true) => String::new(),
+        _ => raw_url.to_string(),
+    };
+    let target_url = effective_url.as_str();
+
+    let normalized_target_url = normalize_browser_target_url(target_url);
+    let has_target_url = !normalized_target_url.is_empty();
+    let tab_id = resolve_browser_tab_id(requested_tab_key, scope)?;
+    let path = browser_tab_path_for_runtime_id(&tab_id);
+    let session_id = browser_session_id;
+    let mut create_token: Option<u64> = None;
+    let mut is_new_tab = false;
+
+    {
+        let mut state = lock_state();
+        if let Some(existing) = state.tabs.get_mut(&tab_id) {
+            existing.session_id = session_id;
+            if has_target_url {
+                existing.pending_url = Some(normalized_target_url.clone());
+            }
+        } else {
+            is_new_tab = true;
+            let token = next_browser_create_token();
+            create_token = Some(token);
+            state.tabs.insert(
+                tab_id.clone(),
+                BrowserTabState {
+                    session_id,
+                    create_token: token,
+                    create_in_flight: true,
+                    pending_url: if has_target_url {
+                        Some(normalized_target_url.clone())
+                    } else {
+                        None
+                    },
+                    current_url: None,
+                    title: None,
+                },
+            );
+        }
+    }
+
+    if is_new_tab {
+        let token = create_token.expect("create_token must exist for new tab");
+        if let Err(e) = browser_create_webview(&path, session_id, &tab_id, token) {
+            lock_state().tabs.remove(&tab_id);
+            return Err(e);
+        }
+        set_active_browser_tab(&tab_id);
+        return Ok(tab_id);
+    }
+
+    // Existing tab — load target URL if provided.
+    if has_target_url {
+        match browser_load_url(&path, session_id, &normalized_target_url) {
+            Ok(()) => {
+                if let Some(s) = lock_state().tabs.get_mut(&tab_id) {
+                    s.pending_url = None;
+                    s.current_url = Some(normalized_target_url.clone());
+                }
+            }
+            Err(LxAppError::ResourceNotFound(_)) => {
+                // WebView is missing. If a create is still in-flight, keep
+                // pending_url for replay once the WebView becomes ready.
+                // Otherwise the earlier create failed (or the WebView is gone),
+                // so start a fresh create cycle instead of leaving the tab dead.
+                let retry_token = {
+                    let mut state = lock_state();
+                    match state.tabs.get_mut(&tab_id) {
+                        Some(tab) if !tab.create_in_flight => {
+                            let token = next_browser_create_token();
+                            tab.create_token = token;
+                            tab.create_in_flight = true;
+                            Some(token)
+                        }
+                        _ => None,
+                    }
+                };
+                if let Some(token) = retry_token
+                    && let Err(e) = browser_create_webview(&path, session_id, &tab_id, token)
+                {
+                    lock_state().tabs.remove(&tab_id);
+                    return Err(e);
+                }
+            }
+            Err(e) => {
+                browser_clear_pending_url(&tab_id);
+                return Err(e);
+            }
+        }
+    }
+
+    set_active_browser_tab(&tab_id);
+    Ok(tab_id)
+}
+
+pub(crate) fn open_internal_browser_tab(
+    url: &str,
+    tab_id: Option<&str>,
+) -> Result<String, LxAppError> {
+    open_internal_browser_tab_with_scope(url, tab_id, BrowserTabScope::Global)
+}
+
+pub(crate) fn open_internal_browser_tab_for_owner(
+    owner_appid: &str,
+    owner_session_id: u64,
+    url: &str,
+    tab_id: Option<&str>,
+) -> Result<String, LxAppError> {
+    let _owner = resolve_owner_lxapp(owner_appid, owner_session_id)?;
+    open_internal_browser_tab_with_scope(
+        url,
+        tab_id,
+        BrowserTabScope::OwnerSession {
+            owner_appid,
+            owner_session_id,
+        },
+    )
+}
+
+pub fn browser_tab_exists(tab_id: &str) -> bool {
+    let Some(normalized) = normalize_runtime_tab_id(tab_id) else {
+        return false;
+    };
+    lock_state().tabs.contains_key(&normalized)
+}
+
+pub(crate) fn close_browser_tab(tab_id: &str) -> Result<(), LxAppError> {
+    let normalized = normalize_runtime_tab_id(tab_id).ok_or_else(|| {
+        LxAppError::InvalidParameter("tab_id must be a valid runtime browser tab id".to_string())
+    })?;
+
+    let removed = {
+        let mut state = lock_state();
+        state.tabs.remove(&normalized)
+    };
+    if let Some(tab) = removed {
+        let tab_path = browser_tab_path_for_runtime_id(&normalized);
+        // Detach only when this tab currently backs the startup page bridge.
+        // Closing a background tab must not break the active tab bridge.
+        if let Ok(browser) = ensure_browser_lxapp() {
+            let startup_path = browser.initial_route();
+            if let Some(page) = browser.get_page(&startup_path) {
+                let startup_webview = page.webview();
+                let closing_tab_webview = browser_find_webview(&tab_path, tab.session_id).ok();
+                if let (Some(startup_webview), Some(closing_tab_webview)) =
+                    (startup_webview, closing_tab_webview)
+                    && Arc::ptr_eq(&startup_webview, &closing_tab_webview)
+                {
+                    page.detach_webview();
+                }
+            }
+            if let Some(page) = browser.get_page(&tab_path) {
+                page.detach_webview();
+            }
+            browser.remove_pages(std::slice::from_ref(&tab_path));
+        }
+        browser_destroy_webview(&tab_path, tab.session_id);
+    }
+    let active_matches_closed = lock_active_tab().as_deref() == Some(normalized.as_str());
+    if active_matches_closed {
+        let next = browser_tabs().into_iter().next().map(|tab| tab.tab_id);
+        *lock_active_tab() = next;
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn stable_browser_tab_ids_are_deterministic_per_scope() {
+        let global_a = resolve_browser_tab_id(Some("settings"), BrowserTabScope::Global).unwrap();
+        let global_b = resolve_browser_tab_id(Some("settings"), BrowserTabScope::Global).unwrap();
+        let owner_a = resolve_browser_tab_id(
+            Some("settings"),
+            BrowserTabScope::OwnerSession {
+                owner_appid: "app.demo",
+                owner_session_id: 1,
+            },
+        )
+        .unwrap();
+        let owner_b = resolve_browser_tab_id(
+            Some("settings"),
+            BrowserTabScope::OwnerSession {
+                owner_appid: "app.demo",
+                owner_session_id: 2,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(global_a, global_b);
+        assert_ne!(global_a, owner_a);
+        assert_ne!(owner_a, owner_b);
+    }
+
+    #[test]
+    fn stable_browser_tab_ids_reject_invalid_keys() {
+        let result = resolve_browser_tab_id(Some("settings/main"), BrowserTabScope::Global);
+        assert!(matches!(result, Err(LxAppError::InvalidParameter(_))));
+    }
+
+    #[test]
+    fn runtime_tab_id_lookup_normalizes_stable_keys() {
+        assert_eq!(
+            normalize_runtime_tab_id("settings"),
+            Some("settings".to_string())
+        );
+        assert_eq!(
+            normalize_runtime_tab_id("SeTtings"),
+            Some("settings".to_string())
+        );
+        assert!(normalize_runtime_tab_id("settings/main").is_none());
+    }
+}
