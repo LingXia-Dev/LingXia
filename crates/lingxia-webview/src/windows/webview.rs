@@ -307,6 +307,8 @@ struct GroupPanel {
     webtag_key: String,
     panel_id: String,
     position: WindowsPanelPosition,
+    native_title: Option<String>,
+    native_body: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -409,6 +411,44 @@ pub fn is_panel_visible(panel_id: &str) -> bool {
                 .any(|panel| panel.panel_id == panel_id)
         })
         .unwrap_or(false)
+}
+
+pub fn show_native_panel(
+    panel_id: &str,
+    title: &str,
+    body: &str,
+    position: WindowsPanelPosition,
+) -> StdResult<()> {
+    let group_key = active_group_key()
+        .ok_or_else(|| WebViewError::WebView("no active Windows shell group".to_string()))?;
+    let Some(_host) = host_handle_for_group(&group_key) else {
+        return Err(WebViewError::WebView(format!(
+            "active Windows shell group has no host: {group_key}"
+        )));
+    };
+
+    register_group_panel(
+        &group_key,
+        GroupPanel {
+            webtag_key: native_panel_key(panel_id),
+            panel_id: panel_id.to_string(),
+            position,
+            native_title: Some(title.to_string()),
+            native_body: Some(body.to_string()),
+        },
+    );
+    layout_group_windows(&group_key);
+    request_group_shell_refresh(&group_key);
+    Ok(())
+}
+
+pub fn hide_native_panel(panel_id: &str) -> StdResult<()> {
+    let group_key = active_group_key()
+        .ok_or_else(|| WebViewError::WebView("no active Windows shell group".to_string()))?;
+    remove_group_panel_by_panel_id(&group_key, panel_id);
+    layout_group_windows(&group_key);
+    request_group_shell_refresh(&group_key);
+    Ok(())
 }
 
 pub fn set_webview_close_handler(webtag: &WebTag, handler: CloseHandler) {
@@ -883,6 +923,10 @@ fn panel_position_for_group(group_key: &str, panel_id: &str) -> WindowsPanelPosi
         .unwrap_or_default()
 }
 
+fn native_panel_key(panel_id: &str) -> String {
+    format!("native-panel:{panel_id}")
+}
+
 fn register_group_panel(group_key: &str, panel: GroupPanel) {
     let panels = WINDOW_GROUP_PANELS.get_or_init(|| Mutex::new(HashMap::new()));
     if let Ok(mut panels) = panels.lock() {
@@ -898,6 +942,15 @@ fn remove_group_panel(group_key: &str, webtag_key: &str) {
         && let Some(group_panels) = panels.get_mut(group_key)
     {
         group_panels.retain(|panel| panel.webtag_key != webtag_key);
+    }
+}
+
+fn remove_group_panel_by_panel_id(group_key: &str, panel_id: &str) {
+    if let Some(panels) = WINDOW_GROUP_PANELS.get()
+        && let Ok(mut panels) = panels.lock()
+        && let Some(group_panels) = panels.get_mut(group_key)
+    {
+        group_panels.retain(|panel| panel.panel_id != panel_id);
     }
 }
 
@@ -2431,6 +2484,13 @@ fn draw_content_cards(
             for rect in attached.panels.values().copied() {
                 draw_content_card(hdc, rect);
             }
+            for panel in group_panels(&group_key) {
+                if panel.native_title.is_some()
+                    && let Some(rect) = attached.panels.get(&panel.webtag_key).copied()
+                {
+                    draw_native_panel_content(hdc, rect, &panel);
+                }
+            }
             return;
         }
     }
@@ -2442,6 +2502,36 @@ fn draw_content_card(hdc: HDC, rect: RECT) {
     if rect_width(&rect) > 0 && rect_height(&rect) > 0 {
         fill_round_rect(hdc, rect, ARC_PANEL_BACKGROUND, ARC_PANEL_RADIUS);
     }
+}
+
+fn draw_native_panel_content(hdc: HDC, rect: RECT, panel: &GroupPanel) {
+    let content = inset_rect(rect, 22, 22);
+    let title_rect = RECT {
+        left: content.left,
+        top: content.top,
+        right: content.right,
+        bottom: content.top + 26,
+    };
+    let body_rect = RECT {
+        left: content.left,
+        top: title_rect.bottom + 10,
+        right: content.right,
+        bottom: title_rect.bottom + 42,
+    };
+    draw_text(
+        hdc,
+        panel.native_title.as_deref().unwrap_or("Panel"),
+        title_rect,
+        0x111827,
+        DT_LEFT,
+    );
+    draw_text(
+        hdc,
+        panel.native_body.as_deref().unwrap_or_default(),
+        body_rect,
+        0x667085,
+        DT_LEFT,
+    );
 }
 
 fn window_draws_shell_chrome(webtag_key: &str) -> bool {
@@ -4023,6 +4113,8 @@ fn show_native_panel_window(state: &mut UiState, panel_id: &str) -> StdResult<()
             webtag_key: state.webtag_key.clone(),
             panel_id: panel_id.to_string(),
             position,
+            native_title: None,
+            native_body: None,
         },
     );
     set_controller_visible(state, true)?;

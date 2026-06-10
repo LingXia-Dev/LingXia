@@ -115,11 +115,13 @@ pub mod harmony;
 #[cfg(target_os = "windows")]
 pub mod windows {
     use std::path::Path;
+    use std::sync::Arc;
 
     pub use lingxia_platform::Platform;
 
     pub fn init(platform: Platform) -> Option<String> {
         crate::logging::init();
+        install_terminal_panel_handler();
         crate::init_with_platform(platform)
     }
 
@@ -132,6 +134,61 @@ pub mod windows {
     pub fn set_app_icon_from_path(path: &Path) -> Result<(), String> {
         lingxia_webview::platform::windows::set_app_icon_from_path(path)
             .map_err(|err| err.to_string())
+    }
+
+    fn install_terminal_panel_handler() {
+        lxapp::set_windows_terminal_panel_handler(
+            Arc::new(|request| {
+                let position = match request.position {
+                    lingxia_app_context::PanelPosition::Left => {
+                        lingxia_webview::platform::windows::WindowsPanelPosition::Left
+                    }
+                    lingxia_app_context::PanelPosition::Right => {
+                        lingxia_webview::platform::windows::WindowsPanelPosition::Right
+                    }
+                    lingxia_app_context::PanelPosition::Bottom => {
+                        lingxia_webview::platform::windows::WindowsPanelPosition::Bottom
+                    }
+                };
+                let title = if request.label.trim().is_empty() {
+                    "Terminal"
+                } else {
+                    request.label.trim()
+                };
+                if lingxia_webview::platform::windows::is_panel_visible(&request.panel_id) {
+                    if let Err(err) =
+                        lingxia_webview::platform::windows::hide_native_panel(&request.panel_id)
+                    {
+                        log::warn!("failed to hide Windows terminal panel: {err}");
+                    }
+                    return;
+                }
+                if let Err(err) = lingxia_webview::platform::windows::show_native_panel(
+                    &request.panel_id,
+                    title,
+                    terminal_panel_status_text(),
+                    position,
+                ) {
+                    log::warn!("failed to show Windows terminal panel: {err}");
+                }
+            }),
+            Arc::new(lingxia_webview::platform::windows::is_panel_visible),
+        );
+    }
+
+    fn terminal_panel_status_text() -> &'static str {
+        #[cfg(feature = "terminal-runtime")]
+        {
+            if crate::terminal::ghostty_available() {
+                "Terminal backend is available"
+            } else {
+                "Terminal runtime is not available"
+            }
+        }
+        #[cfg(not(feature = "terminal-runtime"))]
+        {
+            "Terminal runtime is disabled"
+        }
     }
 }
 
