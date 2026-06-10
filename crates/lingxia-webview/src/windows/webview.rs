@@ -385,12 +385,6 @@ pub fn hide_webview_window(webtag: &WebTag) -> StdResult<()> {
     webview.inner.hide_window()
 }
 
-fn post_hide_webview_window(webtag: &WebTag) -> StdResult<()> {
-    let webview = find_webview(webtag)
-        .ok_or_else(|| WebViewError::WebView(format!("WebView not found for {}", webtag.key())))?;
-    webview.inner.post_hide_window()
-}
-
 pub fn set_webview_window_layout(webtag: &WebTag, layout: WindowsWindowLayout) -> StdResult<()> {
     let webview = find_webview(webtag)
         .ok_or_else(|| WebViewError::WebView(format!("WebView not found for {}", webtag.key())))?;
@@ -1617,23 +1611,6 @@ impl WebViewInner {
 
     fn hide_window(&self) -> StdResult<()> {
         self.dispatch_command(|resp| UiCommand::HideWindow { resp })
-    }
-
-    fn post_hide_window(&self) -> StdResult<()> {
-        let (resp_tx, _resp_rx) = mpsc::channel();
-        self.command_tx
-            .send(UiCommand::HideWindow { resp: resp_tx })
-            .map_err(|_| WebViewError::WebView("WebView UI thread is unavailable".to_string()))?;
-
-        unsafe {
-            let _ = WindowsAndMessaging::PostThreadMessageW(
-                self.thread_id,
-                WM_LINGXIA_COMMAND,
-                WPARAM::default(),
-                LPARAM::default(),
-            );
-        }
-        Ok(())
     }
 
     fn set_window_layout(&self, layout: WindowsWindowLayout) -> StdResult<()> {
@@ -4063,42 +4040,26 @@ fn show_native_window(
 
 fn show_native_main_window(state: &mut UiState, activate: bool) -> StdResult<()> {
     let (group_key, host, is_host) = ensure_main_attachment(state);
-    let previous_active = group_active_main(&group_key);
     set_active_group(&group_key);
     set_group_active_main(&group_key, &state.webtag_key);
 
     if is_host {
-        hide_previous_main_content(previous_active.as_deref(), &state.webtag_key);
         show_shell_host(&group_key, host, activate);
-        set_controller_visible(state, true)?;
         sync_controller_bounds(state)?;
         layout_group_windows(&group_key);
+        set_controller_visible(state, true)?;
     } else {
         attach_child_window_to_host(state.hwnd, host);
-        set_controller_visible(state, true)?;
-        hide_previous_main_content(previous_active.as_deref(), &state.webtag_key);
         show_shell_host(&group_key, host, activate);
         layout_group_windows(&group_key);
+        sync_controller_bounds(state)?;
+        set_controller_visible(state, true)?;
     }
 
     request_group_shell_refresh(&group_key);
     state.window_visible = true;
     store_current_window_placement(state);
     Ok(())
-}
-
-fn hide_previous_main_content(previous: Option<&str>, current: &str) {
-    let Some(previous) = previous.filter(|previous| *previous != current) else {
-        return;
-    };
-    let previous = WebTag::from(previous);
-    if let Err(err) = post_hide_webview_window(&previous) {
-        log::warn!(
-            "Failed to schedule hiding previous Windows main WebView {} during switch: {}",
-            previous.key(),
-            err
-        );
-    }
 }
 
 fn show_native_panel_window(state: &mut UiState, panel_id: &str) -> StdResult<()> {
