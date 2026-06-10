@@ -270,15 +270,6 @@ impl LxApp {
                         .unwrap_or_else(|| self.get_or_create_page(&current_page_path));
                     let target_page = self.get_or_create_page(tab_path);
 
-                    #[cfg(target_os = "windows")]
-                    {
-                        self.with_tabbar_mut(|t| {
-                            t.set_selected_index(index as i32);
-                        });
-                        self.sync_windows_shell_layout();
-                        wait_windows_tab_target_first_load(target_page.clone());
-                    }
-
                     if current_page
                         .navigate_to(target_page, NavigationType::SwitchTab)
                         .is_ok()
@@ -481,26 +472,4 @@ impl LxApp {
             false
         }
     }
-}
-
-#[cfg(target_os = "windows")]
-fn wait_windows_tab_target_first_load(page: crate::PageInstance) {
-    let mut loaded_rx = page.subscribe_loaded();
-    if *loaded_rx.borrow() > 0 {
-        return;
-    }
-
-    let (done_tx, done_rx) = std::sync::mpsc::channel();
-    crate::executor::spawn(async move {
-        if page.wait_webview_ready().await.is_ok() && *loaded_rx.borrow() == 0 {
-            while loaded_rx.changed().await.is_ok() {
-                if *loaded_rx.borrow() > 0 {
-                    break;
-                }
-            }
-        }
-        let _ = done_tx.send(());
-    });
-
-    let _ = done_rx.recv_timeout(std::time::Duration::from_millis(1_200));
 }

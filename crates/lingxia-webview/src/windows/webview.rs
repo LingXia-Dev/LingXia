@@ -2693,19 +2693,6 @@ fn draw_tab_bar(hdc: HDC, rect: RECT, tabbar: &WindowsTabBarLayout) {
 fn draw_sidebar_tab_bar(hdc: HDC, rect: RECT, tabbar: &WindowsTabBarLayout) {
     fill_rect(hdc, rect, ARC_SIDEBAR_BACKGROUND);
 
-    let title = if tabbar.app_name.trim().is_empty() {
-        "LXAPP".to_string()
-    } else {
-        tabbar.app_name.to_ascii_uppercase()
-    };
-    let header_rect = RECT {
-        left: rect.left + SIDEBAR_ITEM_INSET + 2,
-        top: rect.top + 22,
-        right: rect.right - SIDEBAR_ITEM_INSET,
-        bottom: rect.top + SIDEBAR_HEADER_HEIGHT,
-    };
-    draw_text(hdc, &title, header_rect, 0x4f5661, DT_LEFT);
-
     for (index, item) in tabbar.items.iter().enumerate() {
         let item_rect = sidebar_item_rect(rect, index);
         let selected = tabbar.selected_index == index as i32;
