@@ -12,14 +12,16 @@ usage() {
 Update LingXia release versions in one step.
 
 Usage:
-  scripts/release/version.sh <version> [--component all|cli] [--dry-run]
+  scripts/release/version.sh <version> [--component all|cli|npm:<package>] [--dry-run]
 
 Arguments:
   <version>       Semver to apply (for example: 0.5.0)
 
 Options:
   --component     Version scope. `all` keeps the lockstep release bump;
-                  `cli` bumps only tools/lingxia-cli.
+                  `cli` bumps only tools/lingxia-cli; `npm:<package>` bumps a
+                  single npm package (bridge|elements|react|vue|html|
+                  page-runtime|polyfills|types|skill).
   --dry-run       Print the files that would change without modifying them.
   -h, --help      Show help.
 
@@ -35,6 +37,12 @@ With --component all (default), this updates:
 With --component cli, this updates:
   - lingxia-cli package version only
   - root Cargo.lock package metadata when Cargo needs it
+
+With --component npm:<package>, this updates:
+  - that package's package.json version only. Internal @lingxia/* dependency
+    ranges are left untouched: they are caret ranges (^0.x.y), so a patch
+    bump stays inside the range siblings already accept. Keep major.minor
+    in lockstep via --component all; this escape hatch is for patch drift.
 EOF
 }
 
@@ -78,10 +86,21 @@ if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   exit 2
 fi
 
+NPM_PACKAGE=""
 case "$COMPONENT" in
   all|cli) ;;
+  npm:*)
+    NPM_PACKAGE="${COMPONENT#npm:}"
+    case "$NPM_PACKAGE" in
+      bridge|elements|react|vue|html|page-runtime|polyfills|types|skill) ;;
+      *)
+        echo "Invalid npm package: $NPM_PACKAGE (expected bridge|elements|react|vue|html|page-runtime|polyfills|types|skill)" >&2
+        exit 2
+        ;;
+    esac
+    ;;
   *)
-    echo "Invalid component: $COMPONENT (expected all or cli)" >&2
+    echo "Invalid component: $COMPONENT (expected all, cli, or npm:<package>)" >&2
     exit 2
     ;;
 esac
@@ -196,11 +215,13 @@ PY
 
 update_package_json() {
   local package_json="$1"
-  node - "$package_json" "$VERSION" "$DRY_RUN" <<'NODE'
+  local rewrite_deps="${2:-1}"
+  node - "$package_json" "$VERSION" "$DRY_RUN" "$rewrite_deps" <<'NODE'
 const fs = require("fs");
 const path = process.argv[2];
 const version = process.argv[3];
 const dryRun = process.argv[4] === "1";
+const rewriteDeps = process.argv[5] === "1";
 
 const pkg = JSON.parse(fs.readFileSync(path, "utf8"));
 const sections = ["dependencies", "peerDependencies", "optionalDependencies", "devDependencies"];
@@ -220,12 +241,14 @@ function rewriteLingxiaRange(spec, version) {
   return spec;
 }
 
-for (const section of sections) {
-  const deps = pkg[section];
-  if (!deps) continue;
-  for (const [name, value] of Object.entries(deps)) {
-    if (!name.startsWith("@lingxia/")) continue;
-    deps[name] = rewriteLingxiaRange(value, version);
+if (rewriteDeps) {
+  for (const section of sections) {
+    const deps = pkg[section];
+    if (!deps) continue;
+    for (const [name, value] of Object.entries(deps)) {
+      if (!name.startsWith("@lingxia/")) continue;
+      deps[name] = rewriteLingxiaRange(value, version);
+    }
   }
 }
 
@@ -311,11 +334,17 @@ if [[ "$COMPONENT" == "all" ]]; then
   while IFS= read -r package_json; do
     update_package_json "$package_json"
   done < <(find "$ROOT_DIR/packages" -mindepth 2 -maxdepth 2 -name package.json | sort)
+elif [[ -n "$NPM_PACKAGE" ]]; then
+  package_json="$ROOT_DIR/packages/lingxia-$NPM_PACKAGE/package.json"
+  [[ -f "$package_json" ]] || { echo "Missing $package_json" >&2; exit 1; }
+  update_package_json "$package_json" 0
 else
   update_cli_cargo
 fi
 
-update_root_lock
+if [[ -z "$NPM_PACKAGE" ]]; then
+  update_root_lock
+fi
 
 if [[ "$DRY_RUN" -eq 1 ]]; then
   echo ""

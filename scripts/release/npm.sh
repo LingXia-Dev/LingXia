@@ -87,20 +87,26 @@ const pkg = JSON.parse(fs.readFileSync(`${path}/package.json`, "utf8"));
 const sections = ["dependencies", "peerDependencies", "optionalDependencies"];
 const mismatches = [];
 
+// Internal deps must be caret ranges on the same major.minor line as the
+// publishing package: major.minor stays in lockstep across @lingxia/*,
+// patch versions may drift per package.
+const [major, minor] = pkg.version.split(".");
+const expected = new RegExp(`^\\^${major}\\.${minor}\\.\\d+$`);
+
 for (const section of sections) {
   const deps = pkg[section];
   if (!deps) continue;
   for (const [name, spec] of Object.entries(deps)) {
     if (!name.startsWith("@lingxia/")) continue;
     if (name === pkg.name) continue;
-    if (spec !== pkg.version) {
+    if (!expected.test(spec)) {
       mismatches.push(`${section}.${name}=${spec}`);
     }
   }
 }
 
 if (mismatches.length > 0) {
-  console.error(`ERROR: ${pkg.name}@${pkg.version} has mismatched internal @lingxia dependency versions:`);
+  console.error(`ERROR: ${pkg.name}@${pkg.version} expects internal @lingxia dependencies as caret ranges on the ${major}.${minor}.x line:`);
   for (const item of mismatches) {
     console.error(`  - ${item}`);
   }

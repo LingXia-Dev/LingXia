@@ -4,6 +4,8 @@ run-name: Prepare ${{ inputs.component }} v${{ inputs.version }}
 # Version bump PR helper. `component=all` applies ONE version to the whole
 # workspace/package set via scripts/release/version.sh. `component=cli` bumps
 # only tools/lingxia-cli so the CLI can ship patch releases independently.
+# `component=npm:<package>` bumps a single npm package for patch drift within
+# the lockstep major.minor line (internal @lingxia/* deps are caret ranges).
 #
 # After this PR merges, publish from the "Release / 2. Publish Component"
 # workflow for the matching component/version.
@@ -19,6 +21,15 @@ on:
         options:
           - all
           - cli
+          - npm:bridge
+          - npm:elements
+          - npm:html
+          - npm:page-runtime
+          - npm:polyfills
+          - npm:react
+          - npm:skill
+          - npm:types
+          - npm:vue
       version:
         description: "Version to release (e.g. 0.5.0)"
         required: true
@@ -49,7 +60,7 @@ jobs:
             exit 1
           fi
           case "${{ inputs.component }}" in
-            all|cli) ;;
+            all|cli|npm:*) ;;
             *) echo "Invalid component: ${{ inputs.component }}" >&2; exit 1 ;;
           esac
 
@@ -59,7 +70,9 @@ jobs:
           if [[ "${{ inputs.component }}" == "all" ]]; then
             branch="release/v${{ inputs.version }}"
           else
-            branch="release/${{ inputs.component }}/v${{ inputs.version }}"
+            # ":" is not allowed in git ref names (npm:react -> npm-react)
+            component_slug="$(echo "${{ inputs.component }}" | tr ':' '-')"
+            branch="release/${component_slug}/v${{ inputs.version }}"
           fi
           remote_sha="$(git ls-remote --heads origin "$branch" | awk '{print $1}')"
           git checkout -B "$branch"
@@ -131,6 +144,32 @@ jobs:
           # 2. component=sdk,    version=${version}
           # 3. component=cli,    version=${version}
           # 4. component=npm,    npm_package=all, version=${version}
+          \`\`\`
+          EOF
+          )"
+          elif [[ "$component" == npm:* ]]; then
+            package="${component#npm:}"
+            pr_title="Release @lingxia/${package} v${version}"
+            pr_body="$(cat <<EOF
+          ## NPM Release @lingxia/${package} v${version}
+
+          Single-package version bump to \`${version}\` applied via:
+
+          \`\`\`bash
+          scripts/release/version.sh ${version} --component npm:${package}
+          \`\`\`
+
+          Internal \`@lingxia/*\` dependency ranges are caret ranges, so this
+          patch stays inside the range sibling packages already accept. Other
+          packages, workspace crates, SDK artifacts, and the CLI stay on their
+          existing versions.
+
+          ### After merge
+
+          Publish from **Release / 2. Publish Component**:
+
+          \`\`\`bash
+          component=npm, npm_package=lingxia-${package}, version=${version}
           \`\`\`
           EOF
           )"
