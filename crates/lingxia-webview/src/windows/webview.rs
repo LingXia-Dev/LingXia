@@ -39,7 +39,7 @@ use windows::{
             LibraryLoader, Threading,
         },
         UI::{
-            Input::KeyboardAndMouse::{ReleaseCapture, SetCapture},
+            Input::KeyboardAndMouse::{ReleaseCapture, SetCapture, SetFocus},
             Shell::SHCreateMemStream,
             WindowsAndMessaging::{
                 self, CREATESTRUCTW, GCLP_HICON, GCLP_HICONSM, HICON, ICON_BIG, ICON_SMALL,
@@ -172,6 +172,7 @@ pub struct WebViewInner {
 
 type CloseHandler = Arc<dyn Fn() + Send + Sync>;
 type ChromeEventHandler = Arc<dyn Fn(WindowsChromeEvent) + Send + Sync>;
+type NativePanelInputHandler = Arc<dyn Fn(String) + Send + Sync>;
 type IconCacheKey = (PathBuf, u32);
 type IconHandleCache = HashMap<IconCacheKey, Option<isize>>;
 
@@ -307,8 +308,15 @@ struct GroupPanel {
     webtag_key: String,
     panel_id: String,
     position: WindowsPanelPosition,
+    native_kind: NativePanelKind,
     native_title: Option<String>,
     native_body: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum NativePanelKind {
+    Text,
+    Terminal,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -323,6 +331,10 @@ struct PanelResizeDrag {
 static WINDOW_CLOSE_HANDLERS: OnceLock<Mutex<HashMap<String, CloseHandler>>> = OnceLock::new();
 static WINDOW_CHROME_HANDLERS: OnceLock<Mutex<HashMap<String, ChromeEventHandler>>> =
     OnceLock::new();
+static WINDOW_NATIVE_PANEL_INPUT_HANDLERS: OnceLock<
+    Mutex<HashMap<String, NativePanelInputHandler>>,
+> = OnceLock::new();
+static WINDOW_ACTIVE_NATIVE_PANEL: OnceLock<Mutex<Option<String>>> = OnceLock::new();
 static WINDOW_LAYOUTS: OnceLock<Mutex<HashMap<String, WindowsWindowLayout>>> = OnceLock::new();
 static WINDOW_GROUP_LAYOUTS: OnceLock<Mutex<HashMap<String, WindowsWindowLayout>>> =
     OnceLock::new();
@@ -427,6 +439,7 @@ pub fn show_native_panel(
             webtag_key: native_panel_key(panel_id),
             panel_id: panel_id.to_string(),
             position,
+            native_kind: NativePanelKind::Text,
             native_title: Some(title.to_string()),
             native_body: Some(body.to_string()),
         },
@@ -434,6 +447,63 @@ pub fn show_native_panel(
     layout_group_windows(&group_key);
     request_group_shell_refresh(&group_key);
     Ok(())
+}
+
+pub fn show_native_terminal_panel(
+    panel_id: &str,
+    title: &str,
+    body: &str,
+    position: WindowsPanelPosition,
+) -> StdResult<()> {
+    let group_key = active_group_key()
+        .ok_or_else(|| WebViewError::WebView("no active Windows shell group".to_string()))?;
+    let Some(_host) = host_handle_for_group(&group_key) else {
+        return Err(WebViewError::WebView(format!(
+            "active Windows shell group has no host: {group_key}"
+        )));
+    };
+
+    register_group_panel(
+        &group_key,
+        GroupPanel {
+            webtag_key: native_panel_key(panel_id),
+            panel_id: panel_id.to_string(),
+            position,
+            native_kind: NativePanelKind::Terminal,
+            native_title: Some(title.to_string()),
+            native_body: Some(body.to_string()),
+        },
+    );
+    set_active_native_panel(Some(panel_id.to_string()));
+    layout_group_windows(&group_key);
+    request_group_shell_refresh(&group_key);
+    Ok(())
+}
+
+pub fn update_native_panel_body(panel_id: &str, body: &str) -> StdResult<()> {
+    let Some(group_key) = update_group_panel_body(panel_id, body.to_string()) else {
+        return Ok(());
+    };
+    request_group_shell_refresh(&group_key);
+    Ok(())
+}
+
+pub fn set_native_panel_input_handler(panel_id: &str, handler: Arc<dyn Fn(String) + Send + Sync>) {
+    let handlers = WINDOW_NATIVE_PANEL_INPUT_HANDLERS.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Ok(mut handlers) = handlers.lock() {
+        handlers.insert(panel_id.to_string(), handler);
+    }
+}
+
+pub fn clear_native_panel_input_handler(panel_id: &str) {
+    if let Some(handlers) = WINDOW_NATIVE_PANEL_INPUT_HANDLERS.get()
+        && let Ok(mut handlers) = handlers.lock()
+    {
+        handlers.remove(panel_id);
+    }
+    if active_native_panel().as_deref() == Some(panel_id) {
+        set_active_native_panel(None);
+    }
 }
 
 pub fn hide_native_panel(panel_id: &str) -> StdResult<()> {
@@ -937,12 +1007,36 @@ fn register_group_panel(group_key: &str, panel: GroupPanel) {
     }
 }
 
+fn update_group_panel_body(panel_id: &str, body: String) -> Option<String> {
+    let panels = WINDOW_GROUP_PANELS.get()?;
+    let mut panels = panels.lock().ok()?;
+    for (group_key, group_panels) in panels.iter_mut() {
+        if let Some(panel) = group_panels
+            .iter_mut()
+            .find(|panel| panel.panel_id == panel_id)
+        {
+            panel.native_body = Some(body);
+            return Some(group_key.clone());
+        }
+    }
+    None
+}
+
 fn remove_group_panel(group_key: &str, webtag_key: &str) {
+    let mut removed_active = false;
     if let Some(panels) = WINDOW_GROUP_PANELS.get()
         && let Ok(mut panels) = panels.lock()
         && let Some(group_panels) = panels.get_mut(group_key)
     {
+        if let Some(active) = active_native_panel() {
+            removed_active = group_panels
+                .iter()
+                .any(|panel| panel.webtag_key == webtag_key && panel.panel_id == active);
+        }
         group_panels.retain(|panel| panel.webtag_key != webtag_key);
+    }
+    if removed_active {
+        set_active_native_panel(None);
     }
 }
 
@@ -953,6 +1047,9 @@ fn remove_group_panel_by_panel_id(group_key: &str, panel_id: &str) {
     {
         group_panels.retain(|panel| panel.panel_id != panel_id);
     }
+    if active_native_panel().as_deref() == Some(panel_id) {
+        set_active_native_panel(None);
+    }
 }
 
 fn group_panels(group_key: &str) -> Vec<GroupPanel> {
@@ -961,6 +1058,20 @@ fn group_panels(group_key: &str) -> Vec<GroupPanel> {
         .and_then(|panels| panels.lock().ok())
         .and_then(|panels| panels.get(group_key).cloned())
         .unwrap_or_default()
+}
+
+fn active_native_panel() -> Option<String> {
+    WINDOW_ACTIVE_NATIVE_PANEL
+        .get()
+        .and_then(|active| active.lock().ok())
+        .and_then(|active| active.clone())
+}
+
+fn set_active_native_panel(panel_id: Option<String>) {
+    let active = WINDOW_ACTIVE_NATIVE_PANEL.get_or_init(|| Mutex::new(None));
+    if let Ok(mut active) = active.lock() {
+        *active = panel_id;
+    }
 }
 
 fn attach_child_window_to_host(child: HWND, host: HWND) {
@@ -1938,6 +2049,14 @@ fn create_hidden_window(webtag: &WebTag) -> StdResult<HWND> {
         } else if msg == WindowsAndMessaging::WM_PAINT {
             paint_window_chrome(hwnd);
             return LRESULT(0);
+        } else if msg == WindowsAndMessaging::WM_CHAR {
+            if handle_native_panel_char(wparam) {
+                return LRESULT(0);
+            }
+        } else if msg == WindowsAndMessaging::WM_KEYDOWN {
+            if handle_native_panel_keydown(wparam) {
+                return LRESULT(0);
+            }
         } else if msg == WindowsAndMessaging::WM_LBUTTONDOWN {
             let raw = unsafe {
                 WindowsAndMessaging::GetWindowLongPtrW(hwnd, WindowsAndMessaging::GWLP_USERDATA)
@@ -2494,6 +2613,11 @@ fn draw_content_card(hdc: HDC, rect: RECT) {
 }
 
 fn draw_native_panel_content(hdc: HDC, rect: RECT, panel: &GroupPanel) {
+    if panel.native_kind == NativePanelKind::Terminal {
+        draw_terminal_panel_content(hdc, rect, panel);
+        return;
+    }
+
     let content = inset_rect(rect, 22, 22);
     let title_rect = RECT {
         left: content.left,
@@ -2521,6 +2645,94 @@ fn draw_native_panel_content(hdc: HDC, rect: RECT, panel: &GroupPanel) {
         0x667085,
         DT_LEFT,
     );
+}
+
+fn draw_terminal_panel_content(hdc: HDC, rect: RECT, panel: &GroupPanel) {
+    let content = inset_rect(rect, 14, 14);
+    let title_rect = RECT {
+        left: content.left + 8,
+        top: content.top,
+        right: content.right,
+        bottom: content.top + 24,
+    };
+    draw_text(
+        hdc,
+        panel.native_title.as_deref().unwrap_or("Terminal"),
+        title_rect,
+        0x111827,
+        DT_LEFT,
+    );
+
+    let terminal_rect = normalize_rect(RECT {
+        left: content.left,
+        top: title_rect.bottom + 8,
+        right: content.right,
+        bottom: content.bottom,
+    });
+    if rect_width(&terminal_rect) == 0 || rect_height(&terminal_rect) == 0 {
+        return;
+    }
+
+    fill_round_rect(hdc, terminal_rect, 0x111827, 8);
+    let text_rect = inset_rect(terminal_rect, 12, 10);
+    let line_height = logical_font_height(hdc, 10).max(13);
+    let max_lines = (rect_height(&text_rect) / line_height).max(1) as usize;
+    let body = panel
+        .native_body
+        .as_deref()
+        .filter(|body| !body.trim().is_empty())
+        .unwrap_or("Starting terminal...");
+
+    unsafe {
+        let font = CreateFontW(
+            -logical_font_height(hdc, 10),
+            0,
+            0,
+            0,
+            400,
+            0,
+            0,
+            0,
+            DEFAULT_CHARSET,
+            OUT_DEFAULT_PRECIS,
+            CLIP_DEFAULT_PRECIS,
+            CLEARTYPE_QUALITY,
+            DEFAULT_PITCH.0 as u32 | FF_SWISS.0 as u32,
+            w!("Cascadia Mono"),
+        );
+        let old_font = if font.is_invalid() {
+            HGDIOBJ::default()
+        } else {
+            SelectObject(hdc, HGDIOBJ(font.0))
+        };
+        let _ = SetBkMode(hdc, TRANSPARENT);
+        let _ = SetTextColor(hdc, rgb_to_colorref(0xe5e7eb));
+        for (line_index, line) in body.lines().take(max_lines).enumerate() {
+            let top = text_rect.top + (line_index as i32 * line_height);
+            let mut line_rect = RECT {
+                left: text_rect.left,
+                top,
+                right: text_rect.right,
+                bottom: (top + line_height).min(text_rect.bottom),
+            };
+            if rect_height(&line_rect) <= 0 {
+                break;
+            }
+            let mut wide: Vec<u16> = line.encode_utf16().collect();
+            let _ = DrawTextW(
+                hdc,
+                &mut wide,
+                &mut line_rect,
+                DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS,
+            );
+        }
+        if !old_font.is_invalid() {
+            let _ = SelectObject(hdc, old_font);
+        }
+        if !font.is_invalid() {
+            let _ = DeleteObject(HGDIOBJ(font.0));
+        }
+    }
 }
 
 fn window_draws_shell_chrome(webtag_key: &str) -> bool {
@@ -3023,6 +3235,14 @@ fn handle_window_chrome_click(hwnd: HWND, webtag_key: &str, point: (i32, i32)) -
         return true;
     }
 
+    if let Some(panel_id) = native_panel_at_point(webtag_key, client, &layout, point) {
+        set_active_native_panel(Some(panel_id));
+        unsafe {
+            let _ = SetFocus(Some(hwnd));
+        }
+        return true;
+    }
+
     if let (Some(navbar), Some(navbar_rect)) = (&layout.navigation_bar, rects.navigation_bar)
         && rect_contains(&navbar_rect, point)
     {
@@ -3070,6 +3290,73 @@ fn handle_window_chrome_click(hwnd: HWND, webtag_key: &str, point: (i32, i32)) -
     }
 
     false
+}
+
+fn native_panel_at_point(
+    webtag_key: &str,
+    client: RECT,
+    layout: &WindowsWindowLayout,
+    point: (i32, i32),
+) -> Option<String> {
+    if !window_attachment(webtag_key)
+        .is_some_and(|attachment| matches!(attachment.kind, WindowAttachmentKind::MainHost))
+    {
+        return None;
+    }
+    let group_key = layout_group_key_for_webtag(webtag_key);
+    let panels = group_panels(&group_key);
+    if panels.is_empty() {
+        return None;
+    }
+    let rects = attached_group_rects_from_layout(&group_key, client, layout, panels.clone());
+    panels.into_iter().find_map(|panel| {
+        if panel.native_kind != NativePanelKind::Terminal {
+            return None;
+        }
+        let rect = rects.panels.get(&panel.webtag_key)?;
+        rect_contains(rect, point).then_some(panel.panel_id)
+    })
+}
+
+fn handle_native_panel_char(wparam: WPARAM) -> bool {
+    let value = wparam.0 as u32;
+    let input = match value {
+        0x08 => Some("\u{7f}".to_string()),
+        0x09 => Some("\t".to_string()),
+        0x0d => Some("\r".to_string()),
+        0x1b => Some("\u{1b}".to_string()),
+        _ => char::from_u32(value)
+            .filter(|ch| !ch.is_control())
+            .map(|ch| ch.to_string()),
+    };
+    input.is_some_and(invoke_native_panel_input)
+}
+
+fn handle_native_panel_keydown(wparam: WPARAM) -> bool {
+    let input = match wparam.0 as u32 {
+        0x25 => "\u{1b}[D",
+        0x26 => "\u{1b}[A",
+        0x27 => "\u{1b}[C",
+        0x28 => "\u{1b}[B",
+        0x2e => "\u{1b}[3~",
+        _ => return false,
+    };
+    invoke_native_panel_input(input.to_string())
+}
+
+fn invoke_native_panel_input(input: String) -> bool {
+    let Some(panel_id) = active_native_panel() else {
+        return false;
+    };
+    let Some(handler) = WINDOW_NATIVE_PANEL_INPUT_HANDLERS
+        .get()
+        .and_then(|handlers| handlers.lock().ok())
+        .and_then(|handlers| handlers.get(&panel_id).cloned())
+    else {
+        return false;
+    };
+    handler(input);
+    true
 }
 
 fn draw_panel_activators(
@@ -4086,6 +4373,7 @@ fn show_native_panel_window(state: &mut UiState, panel_id: &str) -> StdResult<()
             webtag_key: state.webtag_key.clone(),
             panel_id: panel_id.to_string(),
             position,
+            native_kind: NativePanelKind::Text,
             native_title: None,
             native_body: None,
         },

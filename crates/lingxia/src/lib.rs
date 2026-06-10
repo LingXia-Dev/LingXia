@@ -114,10 +114,41 @@ pub mod harmony;
 /// Windows platform bootstrap for pure Rust host apps.
 #[cfg(target_os = "windows")]
 pub mod windows {
+    #[cfg(feature = "terminal-runtime")]
+    use serde::Deserialize;
+    #[cfg(feature = "terminal-runtime")]
+    use std::collections::HashMap;
     use std::path::Path;
     use std::sync::Arc;
+    #[cfg(feature = "terminal-runtime")]
+    use std::sync::atomic::{AtomicBool, Ordering};
+    #[cfg(feature = "terminal-runtime")]
+    use std::sync::{Mutex, OnceLock};
+    #[cfg(feature = "terminal-runtime")]
+    use std::thread;
+    #[cfg(feature = "terminal-runtime")]
+    use std::time::Duration;
 
     pub use lingxia_platform::Platform;
+
+    #[cfg(feature = "terminal-runtime")]
+    struct WindowsTerminalPanelSession {
+        session_id: u64,
+        stop: Arc<AtomicBool>,
+    }
+
+    #[cfg(feature = "terminal-runtime")]
+    #[derive(Deserialize)]
+    struct WindowsTerminalSnapshot {
+        lines: Vec<String>,
+        exited: bool,
+        title: Option<String>,
+        process_title: Option<String>,
+    }
+
+    #[cfg(feature = "terminal-runtime")]
+    static WINDOWS_TERMINAL_PANELS: OnceLock<Mutex<HashMap<String, WindowsTerminalPanelSession>>> =
+        OnceLock::new();
 
     pub fn init(platform: Platform) -> Option<String> {
         crate::logging::init();
@@ -156,19 +187,12 @@ pub mod windows {
                     request.label.trim()
                 };
                 if lingxia_webview::platform::windows::is_panel_visible(&request.panel_id) {
-                    if let Err(err) =
-                        lingxia_webview::platform::windows::hide_native_panel(&request.panel_id)
-                    {
+                    if let Err(err) = close_windows_terminal_panel(&request.panel_id) {
                         log::warn!("failed to hide Windows terminal panel: {err}");
                     }
                     return;
                 }
-                if let Err(err) = lingxia_webview::platform::windows::show_native_panel(
-                    &request.panel_id,
-                    title,
-                    terminal_panel_status_text(),
-                    position,
-                ) {
+                if let Err(err) = open_windows_terminal_panel(&request.panel_id, title, position) {
                     log::warn!("failed to show Windows terminal panel: {err}");
                 }
             }),
@@ -176,11 +200,58 @@ pub mod windows {
         );
     }
 
+    fn open_windows_terminal_panel(
+        panel_id: &str,
+        title: &str,
+        position: lingxia_webview::platform::windows::WindowsPanelPosition,
+    ) -> Result<(), String> {
+        #[cfg(feature = "terminal-runtime")]
+        {
+            if crate::terminal::ghostty_available() {
+                return open_windows_terminal_session_panel(panel_id, title, position);
+            }
+            lingxia_webview::platform::windows::show_native_terminal_panel(
+                panel_id,
+                title,
+                terminal_panel_status_text(),
+                position,
+            )
+            .map_err(|err| err.to_string())
+        }
+        #[cfg(not(feature = "terminal-runtime"))]
+        {
+            lingxia_webview::platform::windows::show_native_terminal_panel(
+                panel_id,
+                title,
+                terminal_panel_status_text(),
+                position,
+            )
+            .map_err(|err| err.to_string())
+        }
+    }
+
+    fn close_windows_terminal_panel(panel_id: &str) -> Result<(), String> {
+        #[cfg(feature = "terminal-runtime")]
+        {
+            lingxia_webview::platform::windows::clear_native_panel_input_handler(panel_id);
+            if let Some(session) = WINDOWS_TERMINAL_PANELS
+                .get()
+                .and_then(|panels| panels.lock().ok())
+                .and_then(|mut panels| panels.remove(panel_id))
+            {
+                session.stop.store(true, Ordering::Release);
+                crate::terminal::terminal_close(session.session_id);
+            }
+        }
+        lingxia_webview::platform::windows::hide_native_panel(panel_id)
+            .map_err(|err| err.to_string())
+    }
+
     fn terminal_panel_status_text() -> &'static str {
         #[cfg(feature = "terminal-runtime")]
         {
             if crate::terminal::ghostty_available() {
-                "Terminal backend is available"
+                "Starting terminal..."
             } else {
                 "Terminal runtime is not available"
             }
@@ -188,6 +259,124 @@ pub mod windows {
         #[cfg(not(feature = "terminal-runtime"))]
         {
             "Terminal runtime is disabled"
+        }
+    }
+
+    #[cfg(feature = "terminal-runtime")]
+    fn open_windows_terminal_session_panel(
+        panel_id: &str,
+        title: &str,
+        position: lingxia_webview::platform::windows::WindowsPanelPosition,
+    ) -> Result<(), String> {
+        close_existing_windows_terminal_session(panel_id);
+        let session_id = crate::terminal::terminal_create(100, 24);
+        if session_id == 0 {
+            return lingxia_webview::platform::windows::show_native_terminal_panel(
+                panel_id,
+                title,
+                "Terminal failed to start",
+                position,
+            )
+            .map_err(|err| err.to_string());
+        }
+
+        lingxia_webview::platform::windows::show_native_terminal_panel(
+            panel_id,
+            title,
+            "Starting terminal...",
+            position,
+        )
+        .map_err(|err| err.to_string())?;
+
+        let write_session_id = session_id;
+        lingxia_webview::platform::windows::set_native_panel_input_handler(
+            panel_id,
+            Arc::new(move |input| {
+                let _ = crate::terminal::terminal_write(write_session_id, &input);
+            }),
+        );
+
+        let stop = Arc::new(AtomicBool::new(false));
+        let panel_key = panel_id.to_string();
+        WINDOWS_TERMINAL_PANELS
+            .get_or_init(|| Mutex::new(HashMap::new()))
+            .lock()
+            .map_err(|_| "Windows terminal panel registry is unavailable".to_string())?
+            .insert(
+                panel_key.clone(),
+                WindowsTerminalPanelSession {
+                    session_id,
+                    stop: Arc::clone(&stop),
+                },
+            );
+
+        thread::spawn(move || {
+            let mut last_body = String::new();
+            loop {
+                if stop.load(Ordering::Acquire) {
+                    break;
+                }
+                let snapshot_json = crate::terminal::terminal_snapshot(session_id);
+                let body = windows_terminal_snapshot_body(&snapshot_json);
+                if body != last_body {
+                    let _ = lingxia_webview::platform::windows::update_native_panel_body(
+                        &panel_key, &body,
+                    );
+                    last_body = body;
+                }
+                if crate::terminal::terminal_exited(session_id) {
+                    let _ = lingxia_webview::platform::windows::update_native_panel_body(
+                        &panel_key,
+                        &format!("{last_body}\n[process exited]"),
+                    );
+                    break;
+                }
+                thread::sleep(Duration::from_millis(80));
+            }
+        });
+
+        Ok(())
+    }
+
+    #[cfg(feature = "terminal-runtime")]
+    fn close_existing_windows_terminal_session(panel_id: &str) {
+        lingxia_webview::platform::windows::clear_native_panel_input_handler(panel_id);
+        if let Some(session) = WINDOWS_TERMINAL_PANELS
+            .get()
+            .and_then(|panels| panels.lock().ok())
+            .and_then(|mut panels| panels.remove(panel_id))
+        {
+            session.stop.store(true, Ordering::Release);
+            crate::terminal::terminal_close(session.session_id);
+        }
+    }
+
+    #[cfg(feature = "terminal-runtime")]
+    fn windows_terminal_snapshot_body(snapshot_json: &str) -> String {
+        match serde_json::from_str::<WindowsTerminalSnapshot>(snapshot_json) {
+            Ok(snapshot) => {
+                let mut lines = snapshot.lines;
+                while lines.last().is_some_and(|line| line.trim().is_empty()) {
+                    lines.pop();
+                }
+                if lines.is_empty() {
+                    let title = snapshot
+                        .title
+                        .or(snapshot.process_title)
+                        .filter(|title| !title.trim().is_empty())
+                        .unwrap_or_else(|| "terminal".to_string());
+                    if snapshot.exited {
+                        format!("{title}\n[process exited]")
+                    } else {
+                        title
+                    }
+                } else if snapshot.exited {
+                    format!("{}\n[process exited]", lines.join("\n"))
+                } else {
+                    lines.join("\n")
+                }
+            }
+            Err(_) => snapshot_json.to_string(),
         }
     }
 }
