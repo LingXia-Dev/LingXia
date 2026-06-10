@@ -52,6 +52,81 @@ pub(crate) fn open_for_app(
     }
 }
 
+/// Whether the optional browser runtime is compiled in.
+#[cfg(target_os = "windows")]
+pub(crate) fn runtime_enabled() -> bool {
+    cfg!(feature = "browser-runtime")
+}
+
+/// Crate-internal projection of a browser tab for shell UI policy
+/// (sidebar rows, presentation targets).
+#[cfg(target_os = "windows")]
+#[derive(Debug, Clone)]
+pub(crate) struct BrowserTabSummary {
+    pub(crate) tab_id: String,
+    pub(crate) path: String,
+    pub(crate) session_id: u64,
+    pub(crate) title: Option<String>,
+    pub(crate) current_url: Option<String>,
+}
+
+#[cfg(all(target_os = "windows", feature = "browser-runtime"))]
+fn tab_summary_from_info(info: lingxia_browser::BrowserTabInfo) -> BrowserTabSummary {
+    BrowserTabSummary {
+        tab_id: info.tab_id,
+        path: info.path,
+        session_id: info.session_id,
+        title: info.title,
+        current_url: info.current_url,
+    }
+}
+
+#[cfg(target_os = "windows")]
+pub(crate) fn tabs() -> Vec<BrowserTabSummary> {
+    #[cfg(feature = "browser-runtime")]
+    return lingxia_browser::tabs()
+        .into_iter()
+        .map(tab_summary_from_info)
+        .collect();
+    #[cfg(not(feature = "browser-runtime"))]
+    Vec::new()
+}
+
+#[cfg(target_os = "windows")]
+pub(crate) fn tab_summary(tab_id: &str) -> Option<BrowserTabSummary> {
+    #[cfg(feature = "browser-runtime")]
+    return lingxia_browser::tabs()
+        .into_iter()
+        .find(|tab| tab.tab_id == tab_id)
+        .map(tab_summary_from_info);
+    #[cfg(not(feature = "browser-runtime"))]
+    {
+        let _ = tab_id;
+        None
+    }
+}
+
+/// Marks `tab_id` as the active browser tab. Returns `false` when the tab
+/// does not exist (or the browser runtime is disabled).
+#[cfg(target_os = "windows")]
+pub(crate) fn activate(tab_id: &str) -> bool {
+    #[cfg(feature = "browser-runtime")]
+    return lingxia_browser::activate(tab_id).is_ok();
+    #[cfg(not(feature = "browser-runtime"))]
+    {
+        let _ = tab_id;
+        false
+    }
+}
+
+#[cfg(target_os = "windows")]
+pub(crate) fn set_tabs_changed_handler(handler: std::sync::Arc<dyn Fn() + Send + Sync>) {
+    #[cfg(feature = "browser-runtime")]
+    lingxia_browser::set_tabs_changed_handler(handler);
+    #[cfg(not(feature = "browser-runtime"))]
+    let _ = handler;
+}
+
 pub(crate) fn close(tab_id: &str) -> Result<(), lxapp::LxAppError> {
     #[cfg(feature = "browser-runtime")]
     return lingxia_browser::close(tab_id);

@@ -5,19 +5,33 @@ use std::sync::{Arc, Mutex, OnceLock};
 use lingxia_platform::traits::app_runtime::{AppRuntime, LxAppOpenMode};
 use lingxia_webview::WebTag;
 use lingxia_webview::platform::windows::{
-    WindowsChromeEvent, WindowsNavigationBarLayout, WindowsPanelActivatorLayout,
-    WindowsPanelPosition, WindowsTabBarItemLayout, WindowsTabBarLayout, WindowsTabBarPosition,
-    WindowsWindowLayout, hide_panel, is_panel_visible, set_webview_chrome_event_handler,
-    set_webview_window_layout,
+    WindowsBrowserTabItemLayout, WindowsChromeEvent, WindowsNavigationBarLayout,
+    WindowsPanelActivatorLayout, WindowsPanelPosition, WindowsTabBarItemLayout,
+    WindowsTabBarLayout, WindowsTabBarPosition, WindowsWindowLayout, hide_panel, is_panel_visible,
+    present_webview_as_group_main, restore_presented_group_main,
+    set_webview_chrome_event_handler, set_webview_window_layout,
 };
 use lxapp::{LxApp, LxAppDelegate, LxAppStartupOptions, LxAppUiEventType, ReleaseType};
 
 const DEFAULT_NAV_BAR_HEIGHT: i32 = 38;
 const MIN_SIDEBAR_WIDTH: i32 = 180;
 
+/// How many times to retry presenting a freshly opened browser tab whose
+/// WebView creation is still in flight, and the delay between attempts.
+const PRESENT_BROWSER_TAB_MAX_RETRY: u32 = 30;
+const PRESENT_BROWSER_TAB_RETRY_DELAY_MS: u64 = 100;
+
 /// Panel ids whose lxapp open is still in flight, used to ignore repeated
 /// activator clicks until the open completes.
 static PENDING_PANEL_OPENS: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+
+/// The lxapp that owns the main shell window (set when the home app opens
+/// and refreshed on every chrome event); browser tab-change notifications
+/// re-sync this app's layout.
+static SHELL_OWNER_APPID: OnceLock<Mutex<Option<String>>> = OnceLock::new();
+
+/// Browser tab currently presented over the main content card, if any.
+static PRESENTED_BROWSER_TAB: OnceLock<Mutex<Option<String>>> = OnceLock::new();
 
 fn pending_panel_opens() -> std::sync::MutexGuard<'static, HashSet<String>> {
     PENDING_PANEL_OPENS
@@ -25,6 +39,34 @@ fn pending_panel_opens() -> std::sync::MutexGuard<'static, HashSet<String>> {
         .lock()
         // The pending set has no invariants that poisoning can break.
         .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+pub(super) fn set_shell_owner_appid(appid: &str) {
+    let slot = SHELL_OWNER_APPID.get_or_init(|| Mutex::new(None));
+    if let Ok(mut slot) = slot.lock() {
+        *slot = Some(appid.to_string());
+    }
+}
+
+fn shell_owner_appid() -> Option<String> {
+    SHELL_OWNER_APPID
+        .get()
+        .and_then(|slot| slot.lock().ok())
+        .and_then(|slot| slot.clone())
+}
+
+fn presented_browser_tab() -> Option<String> {
+    PRESENTED_BROWSER_TAB
+        .get()
+        .and_then(|slot| slot.lock().ok())
+        .and_then(|slot| slot.clone())
+}
+
+fn set_presented_browser_tab(tab_id: Option<String>) {
+    let slot = PRESENTED_BROWSER_TAB.get_or_init(|| Mutex::new(None));
+    if let Ok(mut slot) = slot.lock() {
+        *slot = tab_id;
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -43,6 +85,31 @@ pub(super) fn install() {
     lingxia_platform::set_windows_ui_update_handler(Arc::new(|appid| {
         sync_shell_layout(&appid);
     }));
+    // Mirror browser tab list/title changes into the sidebar. The handler
+    // may fire from webview UI threads, so hop onto the executor before
+    // touching window state (layout syncs block on those UI threads).
+    crate::browser::set_tabs_changed_handler(Arc::new(|| {
+        let _ = crate::task::spawn(async {
+            on_browser_tabs_changed();
+        });
+    }));
+}
+
+/// Re-syncs the shell after any browser tab change: drops a stale
+/// presentation when the presented tab disappeared and refreshes the
+/// sidebar of the shell owner app.
+fn on_browser_tabs_changed() {
+    if let Some(presented) = presented_browser_tab()
+        && crate::browser::tab_summary(&presented).is_none()
+    {
+        set_presented_browser_tab(None);
+        if let Err(err) = restore_presented_group_main() {
+            log::warn!("failed to restore main webview after browser tab close: {err}");
+        }
+    }
+    if let Some(appid) = shell_owner_appid() {
+        sync_shell_layout(&appid);
+    }
 }
 
 fn sync_shell_layout(appid: &str) {
@@ -125,7 +192,49 @@ fn build_tab_bar_layout(app: &LxApp) -> Option<WindowsTabBarLayout> {
                 has_red_dot: item.has_red_dot,
             })
             .collect(),
+        browser_tabs: build_browser_tab_items(),
+        show_browser_new_tab: crate::browser::runtime_enabled(),
     })
+}
+
+fn build_browser_tab_items() -> Vec<WindowsBrowserTabItemLayout> {
+    let presented = presented_browser_tab();
+    crate::browser::tabs()
+        .into_iter()
+        .map(|tab| WindowsBrowserTabItemLayout {
+            title: browser_tab_display_title(&tab),
+            active: presented.as_deref() == Some(tab.tab_id.as_str()),
+            tab_id: tab.tab_id,
+        })
+        .collect()
+}
+
+/// Sidebar row title for a browser tab: page title, else the URL host,
+/// else "New Tab".
+fn browser_tab_display_title(tab: &crate::browser::BrowserTabSummary) -> String {
+    if let Some(title) = tab
+        .title
+        .as_deref()
+        .map(str::trim)
+        .filter(|title| !title.is_empty())
+    {
+        return title.to_string();
+    }
+    if let Some(host) = tab.current_url.as_deref().and_then(url_host) {
+        return host;
+    }
+    "New Tab".to_string()
+}
+
+fn url_host(url: &str) -> Option<String> {
+    let (_, rest) = url.trim().split_once("://")?;
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
+    let host = authority.rsplit('@').next().unwrap_or(authority).trim();
+    if host.is_empty() {
+        None
+    } else {
+        Some(host.to_string())
+    }
 }
 
 fn build_panel_activators(app: &LxApp) -> Vec<WindowsPanelActivatorLayout> {
@@ -151,23 +260,40 @@ fn build_panel_activators(app: &LxApp) -> Vec<WindowsPanelActivatorLayout> {
 }
 
 fn handle_chrome_event(appid: &str, event: WindowsChromeEvent) {
+    set_shell_owner_appid(appid);
     let Some(app) = lxapp::try_get(appid) else {
         return;
     };
 
     let handled = match event {
         WindowsChromeEvent::TabBarClick { index } => {
+            // Selecting an lxapp item while a browser tab is presented
+            // returns the main surface to the lxapp webview.
+            return_to_lxapp_from_browser(appid);
             app.on_lxapp_event(LxAppUiEventType::TabBarClick, index.to_string())
         }
         WindowsChromeEvent::NavigationBack => {
             app.on_lxapp_event(LxAppUiEventType::NavigationClick, "back".to_string())
         }
         WindowsChromeEvent::NavigationHome => {
+            return_to_lxapp_from_browser(appid);
             app.on_lxapp_event(LxAppUiEventType::NavigationClick, "home".to_string())
         }
         WindowsChromeEvent::PanelActivatorClick { panel_id } => {
             // The activator handlers sync the shell layout in every branch.
             handle_panel_activator(appid, panel_id);
+            return;
+        }
+        WindowsChromeEvent::BrowserNewTabClick => {
+            handle_browser_new_tab(appid, app.session_id());
+            return;
+        }
+        WindowsChromeEvent::BrowserTabClick { tab_id } => {
+            handle_browser_tab_click(appid, &tab_id);
+            return;
+        }
+        WindowsChromeEvent::BrowserTabCloseClick { tab_id } => {
+            handle_browser_tab_close(appid, &tab_id);
             return;
         }
     };
@@ -177,6 +303,81 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeEvent) {
     } else {
         log::error!("Windows shell chrome event was not handled for {appid}");
     }
+}
+
+/// Ends a browser-tab presentation (if any), restoring the lxapp webview
+/// as the main surface. Safe to call when nothing is presented.
+fn return_to_lxapp_from_browser(appid: &str) {
+    if presented_browser_tab().is_none() {
+        return;
+    }
+    set_presented_browser_tab(None);
+    if let Err(err) = restore_presented_group_main() {
+        log::warn!("failed to restore lxapp webview for {appid}: {err}");
+    }
+}
+
+/// Opens a new browser tab at `lingxia://newtab` owned by the shell app
+/// and presents it once its webview is ready.
+fn handle_browser_new_tab(appid: &str, session_id: u64) {
+    match crate::browser::open_for_app(appid, session_id, "lingxia://newtab", None) {
+        Ok(tab_id) => present_browser_tab_when_ready(appid, tab_id),
+        Err(err) => log::error!("failed to open new browser tab for {appid}: {err}"),
+    }
+}
+
+fn handle_browser_tab_click(appid: &str, tab_id: &str) {
+    if !crate::browser::activate(tab_id) {
+        log::warn!("browser tab no longer exists: {tab_id}");
+        sync_shell_layout(appid);
+        return;
+    }
+    present_browser_tab_when_ready(appid, tab_id.to_string());
+}
+
+fn handle_browser_tab_close(appid: &str, tab_id: &str) {
+    if presented_browser_tab().as_deref() == Some(tab_id) {
+        return_to_lxapp_from_browser(appid);
+    }
+    if let Err(err) = crate::browser::close(tab_id) {
+        log::error!("failed to close browser tab {tab_id}: {err}");
+    }
+    // The tabs-changed observer re-syncs as well; sync directly so the row
+    // disappears even if no observer is installed.
+    sync_shell_layout(appid);
+}
+
+/// Presents `tab_id`'s webview over the main content card, retrying while
+/// the tab's WebView creation is still in flight (new tabs create their
+/// webview asynchronously).
+fn present_browser_tab_when_ready(appid: &str, tab_id: String) {
+    let owner_appid = appid.to_string();
+    let _ = crate::task::spawn(async move {
+        for attempt in 0..PRESENT_BROWSER_TAB_MAX_RETRY {
+            let Some(tab) = crate::browser::tab_summary(&tab_id) else {
+                // Tab was closed while waiting.
+                return;
+            };
+            let webtag = WebTag::new(crate::browser::APP_ID, &tab.path, Some(tab.session_id));
+            match present_webview_as_group_main(&webtag) {
+                Ok(()) => {
+                    set_presented_browser_tab(Some(tab_id.clone()));
+                    sync_shell_layout(&owner_appid);
+                    return;
+                }
+                Err(err) => {
+                    if attempt + 1 == PRESENT_BROWSER_TAB_MAX_RETRY {
+                        log::error!("failed to present browser tab {tab_id}: {err}");
+                        return;
+                    }
+                }
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(
+                PRESENT_BROWSER_TAB_RETRY_DELAY_MS,
+            ))
+            .await;
+        }
+    });
 }
 
 fn handle_panel_activator(appid: &str, panel_id: String) {

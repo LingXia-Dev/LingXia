@@ -8,6 +8,10 @@ mod runtime;
 mod shell;
 
 pub(crate) use runtime::{APP_ID, close, open_for_app, tab_path};
+#[cfg(target_os = "windows")]
+pub(crate) use runtime::{
+    BrowserTabSummary, activate, runtime_enabled, set_tabs_changed_handler, tab_summary, tabs,
+};
 #[cfg(any(target_os = "ios", target_os = "macos"))]
 pub(crate) use runtime::{download, update_tab};
 #[cfg(any(target_os = "ios", target_os = "macos"))]

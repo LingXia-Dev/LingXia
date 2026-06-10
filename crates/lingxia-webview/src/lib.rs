@@ -196,14 +196,15 @@ pub mod platform {
     #[cfg(target_os = "windows")]
     pub mod windows {
         pub use crate::windows::{
-            WindowsChromeAttachedState, WindowsChromeEvent, WindowsChromeHit, WindowsChromePanel,
-            WindowsChromeRenderer, WindowsChromeState, WindowsFrameButton,
-            WindowsNativePanelContent, WindowsNativePanelKind, WindowsNavigationBarLayout,
-            WindowsPanelActivatorLayout, WindowsPanelInputHandler, WindowsPanelKeyEvent,
-            WindowsPanelPosition, WindowsTabBarItemLayout, WindowsTabBarLayout,
-            WindowsTabBarPosition, WindowsWebViewWindowSnapshot, WindowsWindowLayout,
-            cached_png_icon_handle, clear_native_panel_input_handler, hide_native_panel,
-            hide_panel, hide_webview_window, invalidate_native_panel, is_panel_visible,
+            WindowsBrowserTabItemLayout, WindowsChromeAttachedState, WindowsChromeEvent,
+            WindowsChromeHit, WindowsChromePanel, WindowsChromeRenderer, WindowsChromeState,
+            WindowsFrameButton, WindowsNativePanelContent, WindowsNativePanelKind,
+            WindowsNavigationBarLayout, WindowsPanelActivatorLayout, WindowsPanelInputHandler,
+            WindowsPanelKeyEvent, WindowsPanelPosition, WindowsTabBarItemLayout,
+            WindowsTabBarLayout, WindowsTabBarPosition, WindowsWebViewWindowSnapshot,
+            WindowsWindowLayout, cached_png_icon_handle, clear_native_panel_input_handler,
+            hide_native_panel, hide_panel, hide_webview_window, invalidate_native_panel,
+            is_panel_visible, present_webview_as_group_main, restore_presented_group_main,
             set_app_icon_from_path, set_native_panel_input_handler,
             set_webview_chrome_event_handler,
             set_webview_close_handler, set_webview_user_data_dir, set_webview_window_layout,

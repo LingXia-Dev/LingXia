@@ -76,6 +76,19 @@ pub(crate) static WINDOW_ATTACHMENTS: OnceLock<Mutex<HashMap<String, WindowAttac
 pub(crate) static WINDOW_GROUP_ACTIVE_MAIN: OnceLock<Mutex<HashMap<String, String>>> =
     OnceLock::new();
 
+/// A webview presented over a group's main content card via
+/// `present_webview_as_group_main`, plus the main webview it displaced
+/// (restored when the presentation ends).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct PresentedGroupMain {
+    pub(crate) presented_key: String,
+    pub(crate) previous_main_key: Option<String>,
+}
+
+pub(crate) static WINDOW_GROUP_PRESENTED_MAIN: OnceLock<
+    Mutex<HashMap<String, PresentedGroupMain>>,
+> = OnceLock::new();
+
 pub(crate) static WINDOW_ACTIVE_GROUP: OnceLock<Mutex<Option<String>>> = OnceLock::new();
 
 pub(crate) static WINDOW_GROUP_PANELS: OnceLock<Mutex<HashMap<String, Vec<GroupPanel>>>> =
@@ -275,6 +288,83 @@ pub(crate) fn set_group_active_main(group_key: &str, webtag_key: &str) {
     let active = WINDOW_GROUP_ACTIVE_MAIN.get_or_init(|| Mutex::new(HashMap::new()));
     if let Ok(mut active) = active.lock() {
         active.insert(group_key.to_string(), webtag_key.to_string());
+    }
+}
+
+/// Removes the group's active-main entry when it currently points at
+/// `webtag_key`.
+pub(crate) fn remove_group_active_main(group_key: &str, webtag_key: &str) {
+    if let Some(active) = WINDOW_GROUP_ACTIVE_MAIN.get()
+        && let Ok(mut active) = active.lock()
+        && active
+            .get(group_key)
+            .is_some_and(|key| key.as_str() == webtag_key)
+    {
+        active.remove(group_key);
+    }
+}
+
+/// Records `presented_key` as the group's presented main surface. When a
+/// presentation is already in flight (switching directly between presented
+/// webviews), the originally displaced main webview is kept so the eventual
+/// restore returns to it, not to an intermediate presented webview.
+pub(crate) fn remember_presented_main(
+    group_key: &str,
+    presented_key: &str,
+    previous_main: Option<String>,
+) {
+    let map = WINDOW_GROUP_PRESENTED_MAIN.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Ok(mut map) = map.lock() {
+        let previous_main_key = map
+            .get(group_key)
+            .map(|existing| existing.previous_main_key.clone())
+            .unwrap_or(previous_main);
+        map.insert(
+            group_key.to_string(),
+            PresentedGroupMain {
+                presented_key: presented_key.to_string(),
+                previous_main_key,
+            },
+        );
+    }
+}
+
+pub(crate) fn take_presented_main(group_key: &str) -> Option<PresentedGroupMain> {
+    WINDOW_GROUP_PRESENTED_MAIN
+        .get()?
+        .lock()
+        .ok()?
+        .remove(group_key)
+}
+
+/// Takes the group's presented-main entry only when it is `presented_key`.
+pub(crate) fn take_presented_main_if(
+    group_key: &str,
+    presented_key: &str,
+) -> Option<PresentedGroupMain> {
+    let map = WINDOW_GROUP_PRESENTED_MAIN.get()?;
+    let mut map = map.lock().ok()?;
+    if map
+        .get(group_key)
+        .is_some_and(|entry| entry.presented_key == presented_key)
+    {
+        map.remove(group_key)
+    } else {
+        None
+    }
+}
+
+/// Drops the group's presented-main entry when a different webview became
+/// the group's main surface through the regular show flow (the
+/// presentation is over; there is nothing left to restore).
+pub(crate) fn clear_presented_main_for_new_main(group_key: &str, new_main_key: &str) {
+    if let Some(map) = WINDOW_GROUP_PRESENTED_MAIN.get()
+        && let Ok(mut map) = map.lock()
+        && map
+            .get(group_key)
+            .is_some_and(|entry| entry.presented_key != new_main_key)
+    {
+        map.remove(group_key);
     }
 }
 

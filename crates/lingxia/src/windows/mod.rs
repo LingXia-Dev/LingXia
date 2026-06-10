@@ -26,6 +26,7 @@ pub fn init(platform: Platform) -> Option<String> {
 ///
 /// Call this after [`init`] returned the home app id.
 pub fn open_home_app(appid: &str) -> Result<(), String> {
+    shell::set_shell_owner_appid(appid);
     lxapp::open_lxapp(appid, lxapp::LxAppStartupOptions::new(""))
         .map(|_| ())
         .map_err(|err| err.to_string())

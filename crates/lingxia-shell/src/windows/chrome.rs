@@ -104,6 +104,15 @@ pub(super) const SIDEBAR_ITEM_INSET: i32 = 10;
 
 pub(super) const SIDEBAR_FOOTER_HEIGHT: i32 = 46;
 
+/// Vertical padding above and below the browser-section separator line.
+pub(super) const SIDEBAR_BROWSER_SECTION_GAP: i32 = 8;
+
+/// Width of the close-glyph hit area at the trailing edge of a browser row.
+pub(super) const SIDEBAR_BROWSER_CLOSE_SIZE: i32 = 22;
+
+/// Close glyph for browser tab rows (multiplication X).
+pub(super) const GLYPH_TAB_CLOSE: &str = "\u{2715}";
+
 pub(super) const SIDEBAR_ICON_SIZE: i32 = 16;
 
 pub(super) const PANEL_ACTIVATOR_SIZE: i32 = 28;
@@ -346,11 +355,12 @@ pub(super) fn chrome_hit_test(
     if let (Some(tabbar), Some(tabbar_rect)) = (&layout.tab_bar, rects.tab_bar)
         && rect_contains(&tabbar_rect, point)
     {
+        let sidebar = matches!(
+            tabbar.position,
+            WindowsTabBarPosition::Left | WindowsTabBarPosition::Right
+        );
         for index in 0..tabbar.items.len() {
-            let item_rect = if matches!(
-                tabbar.position,
-                WindowsTabBarPosition::Left | WindowsTabBarPosition::Right
-            ) {
+            let item_rect = if sidebar {
                 sidebar_item_rect(tabbar_rect, index)
             } else {
                 tab_item_rect(tabbar_rect, tabbar.position, tabbar.items.len(), index)
@@ -358,6 +368,9 @@ pub(super) fn chrome_hit_test(
             if rect_contains(&item_rect, point) {
                 return Some(WindowsChromeHit::TabBarItem { index });
             }
+        }
+        if sidebar && let Some(hit) = sidebar_browser_hit_test(tabbar_rect, tabbar, point) {
+            return Some(hit);
         }
         return Some(WindowsChromeHit::Chrome);
     }
@@ -935,6 +948,8 @@ pub(super) fn draw_sidebar_tab_bar(hdc: HDC, rect: RECT, tabbar: &WindowsTabBarL
         }
     }
 
+    draw_sidebar_browser_section(hdc, rect, tabbar);
+
     let footer_top = rect.bottom - SIDEBAR_FOOTER_HEIGHT;
     draw_top_border(
         hdc,
@@ -1005,6 +1020,158 @@ pub(super) fn sidebar_item_rect(rect: RECT, index: usize) -> RECT {
         right: rect.right - SIDEBAR_ITEM_INSET,
         bottom: top + SIDEBAR_ITEM_HEIGHT,
     })
+}
+
+/// Geometry of the sidebar browser section: separator line, one row rect
+/// per browser tab (rows that would collide with the footer are dropped),
+/// and the "New Tab" row.
+pub(super) struct SidebarBrowserRects {
+    pub(super) separator: RECT,
+    /// Row rects aligned index-for-index with `tabbar.browser_tabs`
+    /// (possibly truncated when rows run out of vertical space).
+    pub(super) tabs: Vec<RECT>,
+    pub(super) new_tab: Option<RECT>,
+}
+
+pub(super) fn sidebar_browser_rects(
+    rect: RECT,
+    tabbar: &WindowsTabBarLayout,
+) -> Option<SidebarBrowserRects> {
+    if tabbar.browser_tabs.is_empty() && !tabbar.show_browser_new_tab {
+        return None;
+    }
+    let footer_top = rect.bottom - SIDEBAR_FOOTER_HEIGHT;
+    let items_bottom = rect.top
+        + SIDEBAR_HEADER_HEIGHT
+        + tabbar.items.len() as i32 * (SIDEBAR_ITEM_HEIGHT + SIDEBAR_ITEM_GAP);
+    let mut top = items_bottom + SIDEBAR_BROWSER_SECTION_GAP;
+    let separator = normalize_rect(RECT {
+        left: rect.left + SIDEBAR_ITEM_INSET,
+        top,
+        right: rect.right - SIDEBAR_ITEM_INSET,
+        bottom: top + 1,
+    });
+    top += 1 + SIDEBAR_BROWSER_SECTION_GAP;
+
+    let row = |top: &mut i32| -> Option<RECT> {
+        let bottom = *top + SIDEBAR_ITEM_HEIGHT;
+        if bottom > footer_top {
+            return None;
+        }
+        let rect = normalize_rect(RECT {
+            left: rect.left + SIDEBAR_ITEM_INSET,
+            top: *top,
+            right: rect.right - SIDEBAR_ITEM_INSET,
+            bottom,
+        });
+        *top = bottom + SIDEBAR_ITEM_GAP;
+        Some(rect)
+    };
+
+    let mut tabs = Vec::with_capacity(tabbar.browser_tabs.len());
+    for _ in &tabbar.browser_tabs {
+        match row(&mut top) {
+            Some(rect) => tabs.push(rect),
+            None => break,
+        }
+    }
+    let new_tab = if tabbar.show_browser_new_tab {
+        row(&mut top)
+    } else {
+        None
+    };
+
+    Some(SidebarBrowserRects {
+        separator,
+        tabs,
+        new_tab,
+    })
+}
+
+pub(super) fn sidebar_browser_hit_test(
+    rect: RECT,
+    tabbar: &WindowsTabBarLayout,
+    point: (i32, i32),
+) -> Option<WindowsChromeHit> {
+    let browser = sidebar_browser_rects(rect, tabbar)?;
+    for (item, item_rect) in tabbar.browser_tabs.iter().zip(&browser.tabs) {
+        if rect_contains(item_rect, point) {
+            if rect_contains(&sidebar_browser_close_rect(*item_rect), point) {
+                return Some(WindowsChromeHit::BrowserTabClose {
+                    tab_id: item.tab_id.clone(),
+                });
+            }
+            return Some(WindowsChromeHit::BrowserTab {
+                tab_id: item.tab_id.clone(),
+            });
+        }
+    }
+    if let Some(new_tab_rect) = browser.new_tab
+        && rect_contains(&new_tab_rect, point)
+    {
+        return Some(WindowsChromeHit::BrowserNewTab);
+    }
+    None
+}
+
+pub(super) fn sidebar_browser_close_rect(item_rect: RECT) -> RECT {
+    normalize_rect(RECT {
+        left: item_rect.right - SIDEBAR_BROWSER_CLOSE_SIZE,
+        top: item_rect.top,
+        right: item_rect.right,
+        bottom: item_rect.bottom,
+    })
+}
+
+pub(super) fn draw_sidebar_browser_section(hdc: HDC, rect: RECT, tabbar: &WindowsTabBarLayout) {
+    let Some(browser) = sidebar_browser_rects(rect, tabbar) else {
+        return;
+    };
+
+    fill_rect(hdc, browser.separator, SHELL_DIVIDER);
+
+    for (item, item_rect) in tabbar.browser_tabs.iter().zip(&browser.tabs) {
+        let item_rect = *item_rect;
+        if item.active {
+            fill_round_rect(hdc, item_rect, 0xffffff, 8);
+            fill_round_rect(
+                hdc,
+                RECT {
+                    left: item_rect.left + 6,
+                    top: item_rect.top + 9,
+                    right: item_rect.left + 10,
+                    bottom: item_rect.bottom - 9,
+                },
+                tabbar.selected_color,
+                3,
+            );
+        }
+
+        let close_rect = sidebar_browser_close_rect(item_rect);
+        let label_rect = normalize_rect(RECT {
+            left: item_rect.left + 16,
+            top: item_rect.top,
+            right: close_rect.left - 2,
+            bottom: item_rect.bottom,
+        });
+        let text_color = if item.active {
+            SHELL_TEXT_PRIMARY
+        } else {
+            SHELL_TEXT_MUTED
+        };
+        draw_text(hdc, &item.title, label_rect, text_color, DT_LEFT);
+        draw_text(hdc, GLYPH_TAB_CLOSE, close_rect, SHELL_TEXT_MUTED, DT_CENTER);
+    }
+
+    if let Some(new_tab_rect) = browser.new_tab {
+        let label_rect = normalize_rect(RECT {
+            left: new_tab_rect.left + 16,
+            top: new_tab_rect.top,
+            right: new_tab_rect.right - 8,
+            bottom: new_tab_rect.bottom,
+        });
+        draw_text(hdc, "+  New Tab", label_rect, SHELL_TEXT_MUTED, DT_LEFT);
+    }
 }
 
 pub(super) fn panel_activator_rects(

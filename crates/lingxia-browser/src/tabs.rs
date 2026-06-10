@@ -48,6 +48,28 @@ static BROWSER_TAB_COUNTER: AtomicU64 = AtomicU64::new(1);
 static BROWSER_CREATE_TOKEN: AtomicU64 = AtomicU64::new(1);
 static BROWSER_LOAD_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
 static BROWSER_ACTIVE_TAB_ID: OnceLock<Mutex<Option<String>>> = OnceLock::new();
+static BROWSER_TABS_CHANGED_HANDLER: OnceLock<Mutex<Option<Arc<dyn Fn() + Send + Sync>>>> =
+    OnceLock::new();
+
+pub(crate) fn set_tabs_changed_handler(handler: Arc<dyn Fn() + Send + Sync>) {
+    let slot = BROWSER_TABS_CHANGED_HANDLER.get_or_init(|| Mutex::new(None));
+    if let Ok(mut slot) = slot.lock() {
+        *slot = Some(handler);
+    }
+}
+
+/// Invokes the registered tabs-changed handler (if any). Must never be
+/// called while a browser state lock is held: handlers typically read the
+/// tab list back synchronously.
+pub(crate) fn notify_tabs_changed() {
+    let handler = BROWSER_TABS_CHANGED_HANDLER
+        .get()
+        .and_then(|slot| slot.lock().ok())
+        .and_then(|slot| slot.clone());
+    if let Some(handler) = handler {
+        handler();
+    }
+}
 
 pub(crate) fn lock_state() -> MutexGuard<'static, BrowserState> {
     BROWSER_STATE
@@ -70,8 +92,14 @@ fn lock_active_tab() -> MutexGuard<'static, Option<String>> {
         .unwrap_or_else(|e| e.into_inner())
 }
 
-fn set_active_browser_tab(tab_id: &str) {
-    *lock_active_tab() = Some(tab_id.to_string());
+/// Sets the active tab; returns whether the active tab actually changed.
+fn set_active_browser_tab(tab_id: &str) -> bool {
+    let mut active = lock_active_tab();
+    if active.as_deref() == Some(tab_id) {
+        return false;
+    }
+    *active = Some(tab_id.to_string());
+    true
 }
 
 #[derive(Clone, Copy)]
@@ -287,7 +315,9 @@ pub fn browser_activate_tab(tab_id: &str) -> Result<BrowserTabInfo, BrowserAutom
         .ok_or_else(|| BrowserAutomationError::TabNotFound(tab_id.to_string()))?;
     let info = browser_tab_info(&normalized_tab_id)
         .ok_or_else(|| BrowserAutomationError::TabNotFound(tab_id.to_string()))?;
-    set_active_browser_tab(&normalized_tab_id);
+    if set_active_browser_tab(&normalized_tab_id) {
+        notify_tabs_changed();
+    }
     Ok(info)
 }
 
@@ -299,15 +329,30 @@ pub(crate) fn browser_update_tab_info(
     let Some(normalized) = normalize_runtime_tab_id(tab_id) else {
         return false;
     };
-    let mut state = lock_state();
-    let Some(tab) = state.tabs.get_mut(&normalized) else {
-        return false;
+    let changed = {
+        let mut state = lock_state();
+        let Some(tab) = state.tabs.get_mut(&normalized) else {
+            return false;
+        };
+        let mut changed = false;
+        if current_url.is_some() {
+            let value = normalize_optional_string(current_url);
+            if tab.current_url != value {
+                tab.current_url = value;
+                changed = true;
+            }
+        }
+        if title.is_some() {
+            let value = normalize_optional_string(title);
+            if tab.title != value {
+                tab.title = value;
+                changed = true;
+            }
+        }
+        changed
     };
-    if current_url.is_some() {
-        tab.current_url = normalize_optional_string(current_url);
-    }
-    if title.is_some() {
-        tab.title = normalize_optional_string(title);
+    if changed {
+        notify_tabs_changed();
     }
     true
 }
@@ -348,14 +393,20 @@ pub(crate) fn browser_remove_tab_if_token_matches(
     session_id: u64,
     create_token: u64,
 ) {
-    let mut state = lock_state();
-    let should_remove = state
-        .tabs
-        .get(tab_id)
-        .map(|tab| tab.session_id == session_id && tab.create_token == create_token)
-        .unwrap_or(false);
-    if should_remove {
-        state.tabs.remove(tab_id);
+    let removed = {
+        let mut state = lock_state();
+        let should_remove = state
+            .tabs
+            .get(tab_id)
+            .map(|tab| tab.session_id == session_id && tab.create_token == create_token)
+            .unwrap_or(false);
+        if should_remove {
+            state.tabs.remove(tab_id);
+        }
+        should_remove
+    };
+    if removed {
+        notify_tabs_changed();
     }
 }
 
@@ -379,13 +430,21 @@ pub(crate) fn browser_commit_navigation_if_token_matches(
     create_token: u64,
     current_url: Option<&str>,
 ) {
-    let mut state = lock_state();
-    if let Some(tab) = state.tabs.get_mut(tab_id)
-        && tab.session_id == session_id
-        && tab.create_token == create_token
-    {
-        tab.pending_url = None;
-        tab.current_url = normalize_optional_string(current_url);
+    let committed = {
+        let mut state = lock_state();
+        if let Some(tab) = state.tabs.get_mut(tab_id)
+            && tab.session_id == session_id
+            && tab.create_token == create_token
+        {
+            tab.pending_url = None;
+            tab.current_url = normalize_optional_string(current_url);
+            true
+        } else {
+            false
+        }
+    };
+    if committed {
+        notify_tabs_changed();
     }
 }
 
@@ -461,7 +520,8 @@ fn open_internal_browser_tab_with_scope(
             lock_state().tabs.remove(&tab_id);
             return Err(e);
         }
-        set_active_browser_tab(&tab_id);
+        let _ = set_active_browser_tab(&tab_id);
+        notify_tabs_changed();
         return Ok(tab_id);
     }
 
@@ -505,7 +565,8 @@ fn open_internal_browser_tab_with_scope(
         }
     }
 
-    set_active_browser_tab(&tab_id);
+    let _ = set_active_browser_tab(&tab_id);
+    notify_tabs_changed();
     Ok(tab_id)
 }
 
@@ -549,6 +610,7 @@ pub(crate) fn close_browser_tab(tab_id: &str) -> Result<(), LxAppError> {
         let mut state = lock_state();
         state.tabs.remove(&normalized)
     };
+    let removed_any = removed.is_some();
     if let Some(tab) = removed {
         let tab_path = browser_tab_path_for_runtime_id(&normalized);
         // Detach only when this tab currently backs the startup page bridge.
@@ -576,6 +638,9 @@ pub(crate) fn close_browser_tab(tab_id: &str) -> Result<(), LxAppError> {
     if active_matches_closed {
         let next = browser_tabs().into_iter().next().map(|tab| tab.tab_id);
         *lock_active_tab() = next;
+    }
+    if removed_any || active_matches_closed {
+        notify_tabs_changed();
     }
     Ok(())
 }

@@ -80,11 +80,12 @@ mod window;
 pub(crate) use controller::WebViewInner;
 
 pub use api::{
-    WindowsChromeEvent, WindowsNavigationBarLayout, WindowsPanelActivatorLayout,
-    WindowsPanelInputHandler, WindowsPanelKeyEvent, WindowsPanelPosition, WindowsTabBarItemLayout,
-    WindowsTabBarLayout, WindowsTabBarPosition, WindowsWebViewWindowSnapshot, WindowsWindowLayout,
-    clear_native_panel_input_handler, hide_native_panel, hide_panel, hide_webview_window,
-    invalidate_native_panel, is_panel_visible, set_native_panel_input_handler,
+    WindowsBrowserTabItemLayout, WindowsChromeEvent, WindowsNavigationBarLayout,
+    WindowsPanelActivatorLayout, WindowsPanelInputHandler, WindowsPanelKeyEvent,
+    WindowsPanelPosition, WindowsTabBarItemLayout, WindowsTabBarLayout, WindowsTabBarPosition,
+    WindowsWebViewWindowSnapshot, WindowsWindowLayout, clear_native_panel_input_handler,
+    hide_native_panel, hide_panel, hide_webview_window, invalidate_native_panel, is_panel_visible,
+    present_webview_as_group_main, restore_presented_group_main, set_native_panel_input_handler,
     set_webview_chrome_event_handler,
     set_webview_close_handler, set_webview_user_data_dir, set_webview_window_layout,
     show_native_panel, show_native_terminal_panel, show_webview_panel, show_webview_window,

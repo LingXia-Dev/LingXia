@@ -100,6 +100,21 @@ pub(crate) fn handle_window_geometry_change(hwnd: HWND) {
     unsafe {
         let _ = controller.NotifyParentWindowPositionChanged();
     }
+    // A presented MainChild (e.g. a browser tab) occupies the main card rect
+    // of this host, and the host's own WebView2 child-window chain would
+    // z-fight with it — hide the host controller while another webview is
+    // the group's active main, restore it once the presentation ends.
+    if matches!(
+        window_attachment(&webtag_key).map(|attachment| attachment.kind),
+        Some(WindowAttachmentKind::MainHost)
+    ) {
+        let group_key = layout_group_key_for_webtag(&webtag_key);
+        let covered =
+            group_active_main(&group_key).is_some_and(|active| active != webtag_key);
+        unsafe {
+            let _ = controller.SetIsVisible(!covered);
+        }
+    }
     layout_group_for_main_host(&webtag_key);
     store_window_placement(hwnd, &webtag_key);
 }
@@ -1155,6 +1170,16 @@ pub(crate) fn handle_window_chrome_click(hwnd: HWND, webtag_key: &str, point: (i
         Some(WindowsChromeHit::TabBarItem { index }) => {
             invoke_chrome_event_handler(webtag_key, WindowsChromeEvent::TabBarClick { index })
         }
+        Some(WindowsChromeHit::BrowserNewTab) => {
+            invoke_chrome_event_handler(webtag_key, WindowsChromeEvent::BrowserNewTabClick)
+        }
+        Some(WindowsChromeHit::BrowserTab { tab_id }) => {
+            invoke_chrome_event_handler(webtag_key, WindowsChromeEvent::BrowserTabClick { tab_id })
+        }
+        Some(WindowsChromeHit::BrowserTabClose { tab_id }) => invoke_chrome_event_handler(
+            webtag_key,
+            WindowsChromeEvent::BrowserTabCloseClick { tab_id },
+        ),
         Some(WindowsChromeHit::Chrome) => true,
         // Caption points never arrive as client clicks (WM_NCHITTEST maps
         // them to HTCAPTION first); treat defensively as unhandled.
@@ -1182,6 +1207,9 @@ pub(crate) fn show_native_main_window(
     let (group_key, host, is_host) = ensure_main_attachment(state);
     set_active_group(&group_key);
     set_group_active_main(&group_key, &state.webtag_key);
+    // A regular main webview taking over the main surface ends any
+    // in-flight presentation (there is nothing left to restore).
+    clear_presented_main_for_new_main(&group_key, &state.webtag_key);
 
     if is_host {
         show_shell_host(&group_key, host, title, activate);
@@ -1199,6 +1227,50 @@ pub(crate) fn show_native_main_window(
     request_group_shell_refresh(&group_key);
     state.window_visible = true;
     store_current_window_placement(state);
+    Ok(())
+}
+
+/// Presents this window as the main-content child of `group_key`'s host:
+/// reparents it into the host (same SetParent/child-style machinery as
+/// attached main children), makes it the group's active main surface over
+/// the main card rect, and remembers the displaced main webview for
+/// `restore_presented_group_main`.
+pub(crate) fn present_native_window_as_group_main(
+    state: &mut UiState,
+    group_key: &str,
+) -> StdResult<()> {
+    let Some(host) = host_handle_for_group(group_key) else {
+        return Err(WebViewError::WebView(format!(
+            "no host window for Windows shell group {group_key}"
+        )));
+    };
+    if hwnd_handle(host) == hwnd_handle(state.hwnd) {
+        return Err(WebViewError::WebView(
+            "cannot present a group host window as its own main child".to_string(),
+        ));
+    }
+
+    register_window_handle(&state.webtag_key, state.hwnd);
+    let previous_main = group_active_main(group_key)
+        .filter(|previous| previous.as_str() != state.webtag_key.as_str());
+    if previous_main.is_some() || group_active_main(group_key).is_none() {
+        remember_presented_main(group_key, &state.webtag_key, previous_main);
+    }
+
+    attach_child_window_to_host(state.hwnd, host);
+    set_window_attachment(
+        &state.webtag_key,
+        WindowAttachment {
+            group_key: group_key.to_string(),
+            kind: WindowAttachmentKind::MainChild,
+        },
+    );
+    set_group_active_main(group_key, &state.webtag_key);
+    layout_group_windows(group_key);
+    sync_controller_bounds(state)?;
+    set_controller_visible(state, true)?;
+    request_group_shell_refresh(group_key);
+    state.window_visible = true;
     Ok(())
 }
 

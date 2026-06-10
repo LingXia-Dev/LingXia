@@ -61,6 +61,30 @@ pub(crate) fn register_event_handlers(
             })?;
     }
 
+    let title_tag = webtag.clone();
+    unsafe {
+        let mut token = 0;
+        webview
+            .add_DocumentTitleChanged(
+                &DocumentTitleChangedEventHandler::create(Box::new(move |sender, _args| {
+                    let Some(sender) = sender else {
+                        return Ok(());
+                    };
+                    let mut title = PWSTR::null();
+                    sender.DocumentTitle(&mut title)?;
+                    let title = CoTaskMemPWSTR::from(title).to_string();
+                    if let Some(delegate) = find_webview_delegate(&title_tag) {
+                        delegate.on_title_changed(&title);
+                    }
+                    Ok(())
+                })),
+                &mut token,
+            )
+            .map_err(|err| {
+                WebViewError::WebView(format!("add_DocumentTitleChanged failed: {err}"))
+            })?;
+    }
+
     let new_window_tag = webtag.clone();
     unsafe {
         let mut token = 0;

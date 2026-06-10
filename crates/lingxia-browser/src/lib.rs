@@ -86,6 +86,18 @@ pub fn activate(tab_id: &str) -> Result<BrowserTabInfo, BrowserAutomationError> 
     tabs::browser_activate_tab(tab_id)
 }
 
+/// Registers a process-wide observer invoked whenever the browser tab set
+/// or tab metadata changes: tab opened/closed, active tab switched, or a
+/// tab's URL/title updated. Intended for shell UIs that mirror the tab
+/// list (e.g. sidebar tab rows); the previous handler (if any) is replaced.
+///
+/// The callback may fire from arbitrary runtime threads (webview UI
+/// threads included) and must not block; query [`tabs`]/[`current_tab`]
+/// from it to read the new state.
+pub fn set_tabs_changed_handler(handler: Arc<dyn Fn() + Send + Sync>) {
+    tabs::set_tabs_changed_handler(handler);
+}
+
 pub fn register_native_input_host(host: Arc<dyn BrowserNativeInputHost>) -> bool {
     automation::register_native_input_host(host)
 }

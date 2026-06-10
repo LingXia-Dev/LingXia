@@ -36,6 +36,12 @@ pub enum WindowsChromeEvent {
     PanelActivatorClick { panel_id: String },
     NavigationBack,
     NavigationHome,
+    /// Click on the sidebar "New Tab" browser row.
+    BrowserNewTabClick,
+    /// Click on a sidebar browser-tab row.
+    BrowserTabClick { tab_id: String },
+    /// Click on the close glyph of a sidebar browser-tab row.
+    BrowserTabCloseClick { tab_id: String },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -67,6 +73,16 @@ pub struct WindowsTabBarItemLayout {
     pub has_red_dot: bool,
 }
 
+/// One browser-tab row of the sidebar browser section. Pure layout data:
+/// the product layer owns titles (including any URL fallback) and the
+/// meaning of `active`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WindowsBrowserTabItemLayout {
+    pub tab_id: String,
+    pub title: String,
+    pub active: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WindowsTabBarLayout {
     pub visible: bool,
@@ -79,6 +95,11 @@ pub struct WindowsTabBarLayout {
     pub border_color: u32,
     pub selected_index: i32,
     pub items: Vec<WindowsTabBarItemLayout>,
+    /// Browser-tab rows drawn under the regular items (sidebar positions
+    /// only). Empty when the product has no browser tabs to show.
+    pub browser_tabs: Vec<WindowsBrowserTabItemLayout>,
+    /// Whether a "New Tab" row is drawn under the browser-tab rows.
+    pub show_browser_new_tab: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -170,6 +191,41 @@ pub fn set_webview_window_layout(webtag: &WebTag, layout: WindowsWindowLayout) -
     let webview = find_webview(webtag)
         .ok_or_else(|| WebViewError::WebView(format!("WebView not found for {}", webtag.key())))?;
     webview.inner.set_window_layout(layout)
+}
+
+/// Presents `webtag`'s window as the main-content surface of the active
+/// shell group: the window is reparented into the group host (SetParent /
+/// child-style machinery, same as attached main children) and shown over
+/// the group's main content card. The previously active main webview is
+/// hidden and remembered so [`restore_presented_group_main`] can bring it
+/// back. Pure window mechanics — callers own all policy (which webview to
+/// present and when).
+pub fn present_webview_as_group_main(webtag: &WebTag) -> StdResult<()> {
+    let group_key = active_group_key()
+        .ok_or_else(|| WebViewError::WebView("no active Windows shell group".to_string()))?;
+    let webview = find_webview(webtag)
+        .ok_or_else(|| WebViewError::WebView(format!("WebView not found for {}", webtag.key())))?;
+    webview.inner.present_as_group_main(group_key)
+}
+
+/// Hides the webview presented via [`present_webview_as_group_main`] (if
+/// any) in the active group and restores the previously active main
+/// webview. No-op when nothing is presented.
+pub fn restore_presented_group_main() -> StdResult<()> {
+    let Some(group_key) = active_group_key() else {
+        return Ok(());
+    };
+    let Some(presented) = take_presented_main(&group_key) else {
+        return Ok(());
+    };
+    match presented.previous_main_key {
+        Some(previous) => set_group_active_main(&group_key, &previous),
+        // No known previous main: drop the entry so the host surface shows.
+        None => remove_group_active_main(&group_key, &presented.presented_key),
+    }
+    layout_group_windows(&group_key);
+    request_group_shell_refresh(&group_key);
+    Ok(())
 }
 
 pub fn webview_window_snapshot(webtag: &WebTag) -> StdResult<WindowsWebViewWindowSnapshot> {
@@ -372,6 +428,9 @@ pub(crate) fn invoke_chrome_event_handler(webtag_key: &str, event: WindowsChrome
             WindowsChromeEvent::PanelActivatorClick { .. } => "panel-activator",
             WindowsChromeEvent::NavigationBack => "nav-back",
             WindowsChromeEvent::NavigationHome => "nav-home",
+            WindowsChromeEvent::BrowserNewTabClick => "browser-new-tab",
+            WindowsChromeEvent::BrowserTabClick { .. } => "browser-tab",
+            WindowsChromeEvent::BrowserTabCloseClick { .. } => "browser-tab-close",
         };
         let thread_name = format!("lingxia-webview-chrome-{event_name}-{webtag_key}");
         let _ = std::thread::Builder::new()

@@ -72,6 +72,13 @@ impl WebViewDelegate for BrowserTabDelegate {
         }
     }
 
+    fn on_title_changed(&self, title: &str) {
+        // Mirror the document title into the tab state (fires the
+        // tabs-changed observer for shell sidebars). Platforms whose host
+        // layer reports titles separately (e.g. macOS KVO) do not call this.
+        let _ = crate::tabs::browser_update_tab_info(&self.tab_id, None, Some(title));
+    }
+
     fn handle_post_message(&self, msg: String) {
         match browser_resolve_delegate_page(&self.page_path, self.session_id) {
             Ok(page) => {

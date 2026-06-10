@@ -70,6 +70,10 @@ pub(crate) enum UiCommand {
         role: WindowsWindowRole,
         resp: Sender<StdResult<()>>,
     },
+    PresentAsGroupMain {
+        group_key: String,
+        resp: Sender<StdResult<()>>,
+    },
     HideWindow {
         resp: Sender<StdResult<()>>,
     },
@@ -233,6 +237,10 @@ impl WebViewInner {
 
     pub(crate) fn hide_window(&self) -> StdResult<()> {
         self.dispatch_command(|resp| UiCommand::HideWindow { resp })
+    }
+
+    pub(crate) fn present_as_group_main(&self, group_key: String) -> StdResult<()> {
+        self.dispatch_command(|resp| UiCommand::PresentAsGroupMain { group_key, resp })
     }
 
     pub(crate) fn set_window_layout(&self, layout: WindowsWindowLayout) -> StdResult<()> {
@@ -661,6 +669,10 @@ pub(crate) fn handle_command(state: &mut UiState, command: UiCommand) -> StdResu
             let result = show_native_window(state, &title, activate, role);
             let _ = resp.send(result);
         }
+        UiCommand::PresentAsGroupMain { group_key, resp } => {
+            let result = present_native_window_as_group_main(state, &group_key);
+            let _ = resp.send(result);
+        }
         UiCommand::HideWindow { resp } => {
             let result = hide_native_window(state);
             let _ = resp.send(result);
@@ -714,6 +726,17 @@ pub(crate) fn cleanup_window_state(state: &UiState) {
                 remove_group_layout(&attachment.group_key);
             }
             WindowAttachmentKind::MainChild => {
+                // A presented main surface that goes away restores the main
+                // webview it displaced.
+                if let Some(presented) =
+                    take_presented_main_if(&attachment.group_key, &state.webtag_key)
+                {
+                    if let Some(previous) = presented.previous_main_key {
+                        set_group_active_main(&attachment.group_key, &previous);
+                    }
+                    layout_group_windows(&attachment.group_key);
+                    request_group_shell_refresh(&attachment.group_key);
+                }
                 if let Some(active) = WINDOW_GROUP_ACTIVE_MAIN.get()
                     && let Ok(mut active) = active.lock()
                     && active

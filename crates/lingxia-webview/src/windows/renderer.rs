@@ -95,6 +95,13 @@ pub enum WindowsChromeHit {
     NavigationHome,
     /// A tab-bar item; dispatched as a chrome event.
     TabBarItem { index: usize },
+    /// The sidebar "New Tab" browser row; dispatched as a chrome event.
+    BrowserNewTab,
+    /// A sidebar browser-tab row; dispatched as a chrome event.
+    BrowserTab { tab_id: String },
+    /// The close glyph of a sidebar browser-tab row; dispatched as a
+    /// chrome event.
+    BrowserTabClose { tab_id: String },
     /// A panel activator; dispatched as a chrome event.
     PanelActivator { panel_id: String },
     /// A natively drawn panel that accepts keyboard focus (e.g. terminal).

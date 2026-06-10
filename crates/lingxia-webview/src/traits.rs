@@ -484,6 +484,11 @@ pub trait WebViewDelegate: Send + Sync {
     /// Default is a no-op so existing implementations do not need to change.
     fn on_load_error(&self, _error: &LoadError) {}
 
+    /// Called when the document title changes (where the platform reports
+    /// it; currently Windows/WebView2). Default is a no-op so existing
+    /// implementations do not need to change.
+    fn on_title_changed(&self, _title: &str) {}
+
     /// Handles a postMessage from the page View(WebView)
     fn handle_post_message(&self, msg: String);
 
