@@ -4,6 +4,7 @@ pub mod file;
 pub mod location;
 pub mod media_interaction;
 pub mod media_runtime;
+pub mod mouse;
 pub mod network;
 pub mod pull_to_refresh;
 pub mod screenshot;
@@ -22,6 +23,7 @@ pub mod prelude {
     pub use super::location::Location;
     pub use super::media_interaction::MediaInteraction;
     pub use super::media_runtime::MediaRuntime;
+    pub use super::mouse::{AppMouse, AppMouseAction, AppMouseButton, AppMouseRequest};
     pub use super::network::Network;
     pub use super::pull_to_refresh::PullToRefresh;
     pub use super::screenshot::AppScreenshot;

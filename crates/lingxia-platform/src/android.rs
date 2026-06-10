@@ -10,6 +10,7 @@ mod device;
 mod file;
 mod location;
 mod media;
+mod mouse;
 mod network;
 mod pull_to_refresh;
 mod screenshot;

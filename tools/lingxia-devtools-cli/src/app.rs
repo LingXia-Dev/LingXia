@@ -1,10 +1,10 @@
 use crate::client;
 use crate::project::SessionInfo;
 use crate::screenshot;
-use anyhow::Result;
-use clap::{Args, Subcommand};
+use anyhow::{Result, bail};
+use clap::{Args, Subcommand, ValueEnum};
 use lingxia_devtool_protocol::handlers;
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
 
 #[derive(Args, Clone)]
 pub struct AppOptions {
@@ -34,6 +34,139 @@ pub enum AppCommand {
         #[arg(long)]
         json: bool,
     },
+    /// Send mouse input to the host app window
+    Mouse {
+        #[command(subcommand)]
+        command: MouseCommand,
+    },
+}
+
+#[derive(Subcommand, Clone)]
+pub enum MouseCommand {
+    /// Move the mouse pointer to a window content coordinate
+    Move(MousePointOptions),
+    /// Press a mouse button at a window content coordinate
+    Down(MouseButtonPointOptions),
+    /// Release a mouse button at a window content coordinate
+    Up(MouseButtonPointOptions),
+    /// Click at a window content coordinate
+    Click(MouseClickOptions),
+    /// Drag between two window content coordinates
+    Drag(MouseDragOptions),
+    /// Scroll at a window content coordinate
+    Scroll(MouseScrollOptions),
+}
+
+#[derive(Args, Clone)]
+pub struct MouseTargetOptions {
+    /// Specific window id (from `lxdev app windows`); defaults to the
+    /// platform's focused/main window.
+    #[arg(long)]
+    window: Option<String>,
+    /// Print JSON output
+    #[arg(long)]
+    json: bool,
+}
+
+#[derive(Args, Clone)]
+pub struct MousePointOptions {
+    /// X coordinate in logical window content points
+    #[arg(long)]
+    x: f64,
+    /// Y coordinate in logical window content points
+    #[arg(long)]
+    y: f64,
+    #[command(flatten)]
+    target: MouseTargetOptions,
+}
+
+#[derive(Args, Clone)]
+pub struct MouseButtonPointOptions {
+    /// X coordinate in logical window content points
+    #[arg(long)]
+    x: f64,
+    /// Y coordinate in logical window content points
+    #[arg(long)]
+    y: f64,
+    /// Mouse button
+    #[arg(long, value_enum, default_value = "left")]
+    button: MouseButtonArg,
+    #[command(flatten)]
+    target: MouseTargetOptions,
+}
+
+#[derive(Args, Clone)]
+pub struct MouseClickOptions {
+    /// X coordinate in logical window content points
+    #[arg(long)]
+    x: f64,
+    /// Y coordinate in logical window content points
+    #[arg(long)]
+    y: f64,
+    /// Mouse button
+    #[arg(long, value_enum, default_value = "left")]
+    button: MouseButtonArg,
+    /// Number of clicks to report in the event
+    #[arg(long, default_value_t = 1)]
+    click_count: u8,
+    #[command(flatten)]
+    target: MouseTargetOptions,
+}
+
+#[derive(Args, Clone)]
+pub struct MouseDragOptions {
+    /// Starting X coordinate in logical window content points
+    #[arg(long)]
+    from_x: f64,
+    /// Starting Y coordinate in logical window content points
+    #[arg(long)]
+    from_y: f64,
+    /// Ending X coordinate in logical window content points
+    #[arg(long)]
+    to_x: f64,
+    /// Ending Y coordinate in logical window content points
+    #[arg(long)]
+    to_y: f64,
+    /// Mouse button
+    #[arg(long, value_enum, default_value = "left")]
+    button: MouseButtonArg,
+    #[command(flatten)]
+    target: MouseTargetOptions,
+}
+
+#[derive(Args, Clone)]
+pub struct MouseScrollOptions {
+    /// X coordinate in logical window content points
+    #[arg(long)]
+    x: f64,
+    /// Y coordinate in logical window content points
+    #[arg(long)]
+    y: f64,
+    /// Horizontal scroll delta in logical points
+    #[arg(long, default_value_t = 0.0, allow_hyphen_values = true)]
+    dx: f64,
+    /// Vertical scroll delta in logical points
+    #[arg(long, default_value_t = 0.0, allow_hyphen_values = true)]
+    dy: f64,
+    #[command(flatten)]
+    target: MouseTargetOptions,
+}
+
+#[derive(Clone, Copy, ValueEnum)]
+pub enum MouseButtonArg {
+    Left,
+    Right,
+    Middle,
+}
+
+impl MouseButtonArg {
+    fn as_protocol_str(self) -> &'static str {
+        match self {
+            Self::Left => "left",
+            Self::Right => "right",
+            Self::Middle => "middle",
+        }
+    }
 }
 
 pub fn execute(info: &SessionInfo, options: AppOptions) -> Result<()> {
@@ -44,6 +177,7 @@ pub fn execute(info: &SessionInfo, options: AppOptions) -> Result<()> {
             json,
         } => execute_screenshot(info, window, output, json),
         AppCommand::Windows { json } => execute_windows(info, json),
+        AppCommand::Mouse { command } => execute_mouse(info, command),
     }
 }
 
@@ -108,4 +242,100 @@ fn execute_screenshot(
     let ts = chrono::Local::now().format("%Y%m%d-%H%M%S");
     let platform = screenshot::safe_component(&info.platform);
     screenshot::write_png(output, format!("app-{platform}-{ts}.png"), &bytes)
+}
+
+fn execute_mouse(info: &SessionInfo, command: MouseCommand) -> Result<()> {
+    let (target, action) = match command {
+        MouseCommand::Move(options) => (
+            options.target,
+            json!({
+                "kind": "move",
+                "x": options.x,
+                "y": options.y,
+            }),
+        ),
+        MouseCommand::Down(options) => (
+            options.target,
+            json!({
+                "kind": "down",
+                "x": options.x,
+                "y": options.y,
+                "button": options.button.as_protocol_str(),
+            }),
+        ),
+        MouseCommand::Up(options) => (
+            options.target,
+            json!({
+                "kind": "up",
+                "x": options.x,
+                "y": options.y,
+                "button": options.button.as_protocol_str(),
+            }),
+        ),
+        MouseCommand::Click(options) => {
+            if options.click_count == 0 {
+                bail!("--click-count must be greater than zero");
+            }
+            (
+                options.target,
+                json!({
+                    "kind": "click",
+                    "x": options.x,
+                    "y": options.y,
+                    "button": options.button.as_protocol_str(),
+                    "click_count": options.click_count,
+                }),
+            )
+        }
+        MouseCommand::Drag(options) => (
+            options.target,
+            json!({
+                "kind": "drag",
+                "from_x": options.from_x,
+                "from_y": options.from_y,
+                "to_x": options.to_x,
+                "to_y": options.to_y,
+                "button": options.button.as_protocol_str(),
+            }),
+        ),
+        MouseCommand::Scroll(options) => (
+            options.target,
+            json!({
+                "kind": "scroll",
+                "x": options.x,
+                "y": options.y,
+                "dx": options.dx,
+                "dy": options.dy,
+            }),
+        ),
+    };
+
+    let payload = mouse_payload(target.window, action);
+    let data = client::execute_command(&info.ws_url, handlers::app::MOUSE, Some(payload))?
+        .unwrap_or(Value::Null);
+
+    if target.json {
+        println!("{}", serde_json::to_string_pretty(&data)?);
+        return Ok(());
+    }
+
+    let action = data
+        .get("action")
+        .and_then(Value::as_str)
+        .unwrap_or("mouse");
+    let window_id = data
+        .get("window_id")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
+    println!("Sent app mouse {action} to window {window_id}");
+    Ok(())
+}
+
+fn mouse_payload(window: Option<String>, action: Value) -> Value {
+    let mut payload = Map::new();
+    if let Some(window) = window {
+        payload.insert("window_id".to_string(), Value::String(window));
+    }
+    payload.insert("action".to_string(), action);
+    Value::Object(payload)
 }

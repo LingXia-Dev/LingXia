@@ -328,6 +328,22 @@ pub async fn list_app_windows()
         .map_err(|err| err.to_string())
 }
 
+/// Dispatch mouse input to the host app's window.
+///
+/// Coordinates are logical points in the target window content area, with
+/// origin at the top-left corner.
+pub async fn perform_app_mouse(
+    request: lingxia_platform::traits::mouse::AppMouseRequest,
+) -> Result<lingxia_platform::traits::mouse::AppMouseResult, String> {
+    use lingxia_platform::traits::mouse::AppMouse;
+    let platform =
+        lxapp::get_platform().ok_or_else(|| "platform is not initialized".to_string())?;
+    platform
+        .perform_app_mouse(request)
+        .await
+        .map_err(|err| err.to_string())
+}
+
 /// Capture a PNG screenshot of the target lxapp page's WebView.
 /// Returns raw PNG bytes.
 pub async fn lxapp_dev_page_screenshot(

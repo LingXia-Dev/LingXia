@@ -61,6 +61,11 @@ pub mod handlers {
         /// Enumerate the host app's top-level windows. Returns a JSON
         /// array of `{id, title, focused, main, visible, width, height}`.
         pub const WINDOWS: &str = "app.windows";
+
+        /// Dispatch mouse input to a host app window. Accepts
+        /// `{window_id?, action}` where action is a tagged object such as
+        /// `{kind:"click", x, y, button?}`.
+        pub const MOUSE: &str = "app.mouse";
     }
 
     pub mod lxapp_page {

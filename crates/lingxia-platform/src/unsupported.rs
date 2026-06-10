@@ -19,6 +19,7 @@ use crate::traits::media_runtime::{
     CompressImageRequest, CompressVideoRequest, CompressedVideo, ExtractVideoThumbnailRequest,
     ImageInfo, MediaRuntime, VideoInfo, VideoThumbnail,
 };
+use crate::traits::mouse::AppMouse;
 use crate::traits::network::Network;
 use crate::traits::pull_to_refresh::PullToRefresh;
 use crate::traits::screenshot::AppScreenshot;
@@ -104,6 +105,7 @@ impl SurfacePresenter for Platform {}
 impl UpdateService for Platform {}
 impl Wifi for Platform {}
 impl AppScreenshot for Platform {}
+impl AppMouse for Platform {}
 
 impl FileService for Platform {
     fn review_file(

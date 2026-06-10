@@ -40,6 +40,17 @@ fn handle_app_command_impl(handler: &str, args: Option<Value>) -> Result<Option<
                 .map(Some)
                 .map_err(|err| err.to_string())
         }
+        handlers::app::MOUSE => {
+            let request: lingxia::dev::AppMouseRequest = match args {
+                Some(value) => serde_json::from_value(value)
+                    .map_err(|e| format!("invalid args for {}: {}", handler, e))?,
+                None => return Err(format!("missing args for {}", handler)),
+            };
+            let result = run_async(lingxia::dev::perform_app_mouse(request))?;
+            serde_json::to_value(result)
+                .map(Some)
+                .map_err(|err| err.to_string())
+        }
         other => Err(format!("unknown app handler: {}", other)),
     }
 }
