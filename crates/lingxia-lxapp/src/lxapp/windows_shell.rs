@@ -104,6 +104,7 @@ impl LxApp {
     }
 
     fn build_windows_panel_activators(&self) -> Vec<WindowsPanelActivatorLayout> {
+        let asset_dir = self.runtime.asset_dir();
         lingxia_app_context::app_config()
             .and_then(|config| config.panels.as_ref().cloned())
             .map(|panels| {
@@ -115,7 +116,7 @@ impl LxApp {
                         WindowsPanelActivatorLayout {
                             id: item.id,
                             label: item.label,
-                            icon_path: resolve_windows_asset_path(&item.icon)
+                            icon_path: resolve_windows_asset_path(asset_dir, &item.icon)
                                 .map(|path| path.to_string_lossy().to_string())
                                 .unwrap_or(item.icon),
                             position: windows_panel_position(item.position),
@@ -220,7 +221,7 @@ fn windows_panel_position(position: lingxia_app_context::PanelPosition) -> Windo
     }
 }
 
-fn resolve_windows_asset_path(raw: &str) -> Option<PathBuf> {
+fn resolve_windows_asset_path(asset_dir: &Path, raw: &str) -> Option<PathBuf> {
     let raw = raw.trim();
     if raw.is_empty() {
         return None;
@@ -230,13 +231,7 @@ fn resolve_windows_asset_path(raw: &str) -> Option<PathBuf> {
         return Some(path.to_path_buf());
     }
 
-    if let Some(asset_dir) = std::env::var_os("LINGXIA_ASSET_DIR") {
-        return Some(PathBuf::from(asset_dir).join(path));
-    }
-    std::env::current_exe()
-        .ok()
-        .and_then(|exe| exe.parent().map(Path::to_path_buf))
-        .map(|dir| dir.join("assets").join(path))
+    Some(asset_dir.join(path))
 }
 
 fn parse_css_color(raw: &str, fallback: u32) -> u32 {

@@ -21,11 +21,14 @@ use windows::{
     Win32::{
         Foundation::{COLORREF, E_POINTER, HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM},
         Graphics::Gdi::{
-            BeginPaint, ClientToScreen, CreateBitmap, CreatePen, CreateSolidBrush, DT_CENTER,
-            DT_END_ELLIPSIS, DT_LEFT, DT_SINGLELINE, DT_VCENTER, DeleteObject, DrawTextW, EndPaint,
-            FillRect, GetStockObject, HDC, HGDIOBJ, InvalidateRect, LineTo, MoveToEx, NULL_PEN,
-            PAINTSTRUCT, PS_SOLID, RoundRect, ScreenToClient, SelectObject, SetBkMode,
-            SetTextColor, TRANSPARENT,
+            BeginPaint, CLEARTYPE_QUALITY, CLIP_DEFAULT_PRECIS, ClientToScreen, CreateBitmap,
+            CreateFontW, CreatePen, CreateRoundRectRgn, CreateSolidBrush, DEFAULT_CHARSET,
+            DEFAULT_PITCH, DT_CENTER, DT_END_ELLIPSIS, DT_LEFT, DT_SINGLELINE, DT_VCENTER,
+            DeleteObject, DrawTextW, EndPaint, FF_SWISS, FillRect, GetDeviceCaps, GetMonitorInfoW,
+            GetStockObject, HDC, HGDIOBJ, InvalidateRect, LOGPIXELSY, LineTo,
+            MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromWindow, MoveToEx, NULL_PEN,
+            OUT_DEFAULT_PRECIS, PAINTSTRUCT, PS_SOLID, RoundRect, ScreenToClient, SelectObject,
+            SetBkMode, SetTextColor, SetWindowRgn, TRANSPARENT,
         },
         System::{
             Com::{
@@ -35,11 +38,12 @@ use windows::{
             LibraryLoader, Threading,
         },
         UI::{
+            Input::KeyboardAndMouse::{ReleaseCapture, SetCapture},
             Shell::SHCreateMemStream,
             WindowsAndMessaging::{
                 self, CREATESTRUCTW, GCLP_HICON, GCLP_HICONSM, HICON, ICON_BIG, ICON_SMALL,
-                ICONINFO, MSG, WINDOW_EX_STYLE, WINDOW_STYLE, WM_APP, WM_NCCREATE, WM_SETICON,
-                WNDCLASSW, WS_OVERLAPPEDWINDOW,
+                ICONINFO, MINMAXINFO, MSG, WINDOW_EX_STYLE, WINDOW_STYLE, WM_APP, WM_NCCREATE,
+                WM_SETICON, WNDCLASSW, WS_OVERLAPPEDWINDOW,
             },
         },
     },
@@ -69,6 +73,13 @@ const PANEL_ACTIVATOR_GAP: i32 = 4;
 const PANEL_ACTIVATOR_MARGIN: i32 = 6;
 const ATTACHED_PANEL_WIDTH: i32 = 380;
 const ATTACHED_PANEL_BOTTOM_HEIGHT: i32 = 280;
+const ATTACHED_PANEL_MIN_SIZE: i32 = 160;
+const ATTACHED_PANEL_MAX_SIZE: i32 = 700;
+const ATTACHED_PANEL_HANDLE_SIZE: i32 = 5;
+const ATTACHED_MAIN_MIN_WIDTH: i32 = 320;
+const ATTACHED_MAIN_MIN_HEIGHT: i32 = 240;
+const SHELL_TEXT_POINT_SIZE: i32 = 9;
+const SHELL_TEXT_WEIGHT: i32 = 400;
 type StdResult<T, E = WebViewError> = std::result::Result<T, E>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -296,6 +307,15 @@ struct GroupPanel {
     position: WindowsPanelPosition,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct PanelResizeDrag {
+    group_key: String,
+    panel_id: String,
+    position: WindowsPanelPosition,
+    start_point: (i32, i32),
+    start_size: i32,
+}
+
 static WINDOW_CLOSE_HANDLERS: OnceLock<Mutex<HashMap<String, CloseHandler>>> = OnceLock::new();
 static WINDOW_CHROME_HANDLERS: OnceLock<Mutex<HashMap<String, ChromeEventHandler>>> =
     OnceLock::new();
@@ -309,6 +329,8 @@ static WINDOW_ATTACHMENTS: OnceLock<Mutex<HashMap<String, WindowAttachment>>> = 
 static WINDOW_GROUP_ACTIVE_MAIN: OnceLock<Mutex<HashMap<String, String>>> = OnceLock::new();
 static WINDOW_ACTIVE_GROUP: OnceLock<Mutex<Option<String>>> = OnceLock::new();
 static WINDOW_GROUP_PANELS: OnceLock<Mutex<HashMap<String, Vec<GroupPanel>>>> = OnceLock::new();
+static WINDOW_GROUP_PANEL_SIZES: OnceLock<Mutex<HashMap<String, i32>>> = OnceLock::new();
+static WINDOW_PANEL_RESIZE_DRAG: OnceLock<Mutex<Option<PanelResizeDrag>>> = OnceLock::new();
 static APP_ICON_HANDLES: OnceLock<Mutex<Option<AppIconHandles>>> = OnceLock::new();
 static PANEL_ICON_HANDLES: OnceLock<Mutex<IconHandleCache>> = OnceLock::new();
 
@@ -924,6 +946,8 @@ fn show_shell_host(group_key: &str, host: HWND, activate: bool) {
         }
     }
 
+    fit_window_to_work_area(host);
+
     let title = to_wide("");
     unsafe {
         hide_titlebar_icon(host);
@@ -948,6 +972,94 @@ fn show_shell_host(group_key: &str, host: HWND, activate: bool) {
     }
 }
 
+fn monitor_info_for_window(hwnd: HWND) -> Option<MONITORINFO> {
+    let mut info = MONITORINFO {
+        cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+        rcMonitor: RECT::default(),
+        rcWork: RECT::default(),
+        dwFlags: 0,
+    };
+    unsafe {
+        let monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+        if GetMonitorInfoW(monitor, &mut info).as_bool() {
+            Some(info)
+        } else {
+            None
+        }
+    }
+}
+
+fn apply_window_maximized_bounds(hwnd: HWND, lparam: LPARAM) {
+    if lparam.0 == 0 {
+        return;
+    }
+    let Some(info) = monitor_info_for_window(hwnd) else {
+        return;
+    };
+    let work = info.rcWork;
+    let monitor = info.rcMonitor;
+    unsafe {
+        let minmax = &mut *(lparam.0 as *mut MINMAXINFO);
+        minmax.ptMaxPosition.x = work.left - monitor.left;
+        minmax.ptMaxPosition.y = work.top - monitor.top;
+        minmax.ptMaxSize.x = rect_width(&work);
+        minmax.ptMaxSize.y = rect_height(&work);
+    }
+}
+
+fn fit_window_to_work_area(hwnd: HWND) {
+    unsafe {
+        if WindowsAndMessaging::IsZoomed(hwnd).as_bool() {
+            return;
+        }
+    }
+    let Some(info) = monitor_info_for_window(hwnd) else {
+        return;
+    };
+    let mut rect = RECT::default();
+    unsafe {
+        if WindowsAndMessaging::GetWindowRect(hwnd, &mut rect).is_err() {
+            return;
+        }
+    }
+
+    let work = info.rcWork;
+    let work_width = rect_width(&work);
+    let work_height = rect_height(&work);
+    if work_width <= 0 || work_height <= 0 {
+        return;
+    }
+
+    let min_width = 320.min(work_width);
+    let min_height = 240.min(work_height);
+    let width = rect_width(&rect).clamp(min_width, work_width);
+    let height = rect_height(&rect).clamp(min_height, work_height);
+    let max_left = work.right - width;
+    let max_top = work.bottom - height;
+    let left = rect.left.clamp(work.left, max_left.max(work.left));
+    let top = rect.top.clamp(work.top, max_top.max(work.top));
+
+    if left == rect.left
+        && top == rect.top
+        && width == rect_width(&rect)
+        && height == rect_height(&rect)
+    {
+        return;
+    }
+
+    unsafe {
+        let _ = WindowsAndMessaging::SetWindowPos(
+            hwnd,
+            None,
+            left,
+            top,
+            width,
+            height,
+            WindowsAndMessaging::SWP_NOZORDER | WindowsAndMessaging::SWP_NOACTIVATE,
+        );
+    }
+}
+
 fn current_group_window_placement_for_group(group_key: &str) -> Option<WindowPlacement> {
     WINDOW_GROUP_PLACEMENTS
         .get()
@@ -959,6 +1071,7 @@ fn current_group_window_placement_for_group(group_key: &str) -> Option<WindowPla
 struct AttachedGroupRects {
     main: RECT,
     panels: HashMap<String, RECT>,
+    resize_handles: HashMap<String, RECT>,
 }
 
 fn attached_group_rects(group_key: &str, host: HWND) -> Option<AttachedGroupRects> {
@@ -974,6 +1087,7 @@ fn attached_group_rects(group_key: &str, host: HWND) -> Option<AttachedGroupRect
         .and_then(|layouts| layouts.get(group_key).cloned())
         .unwrap_or_default();
     Some(attached_group_rects_from_layout(
+        group_key,
         client,
         &layout,
         group_panels(group_key),
@@ -981,46 +1095,75 @@ fn attached_group_rects(group_key: &str, host: HWND) -> Option<AttachedGroupRect
 }
 
 fn attached_group_rects_from_layout(
+    group_key: &str,
     client: RECT,
     layout: &WindowsWindowLayout,
     panels: Vec<GroupPanel>,
 ) -> AttachedGroupRects {
     let mut main = compute_content_rect(client, layout);
     let mut panel_rects = HashMap::new();
+    let mut resize_handles = HashMap::new();
+    let (side_panels, bottom_panels): (Vec<_>, Vec<_>) = panels
+        .into_iter()
+        .partition(|panel| panel.position != WindowsPanelPosition::Bottom);
 
-    for panel in panels {
+    for panel in side_panels.into_iter().chain(bottom_panels) {
         let rect = match panel.position {
             WindowsPanelPosition::Left => {
-                let width = attached_panel_width(main);
+                let width = attached_panel_width(group_key, &panel, main);
                 let rect = RECT {
                     left: main.left,
                     top: main.top,
                     right: (main.left + width).min(main.right),
                     bottom: main.bottom,
                 };
-                main.left = (rect.right + ARC_PANEL_PADDING).min(main.right);
+                let handle_width = ARC_PANEL_PADDING.max(ATTACHED_PANEL_HANDLE_SIZE);
+                let handle = normalize_rect(RECT {
+                    left: rect.right,
+                    top: rect.top,
+                    right: (rect.right + handle_width).min(main.right),
+                    bottom: rect.bottom,
+                });
+                main.left = handle.right.min(main.right);
+                resize_handles.insert(panel.panel_id.clone(), handle);
                 rect
             }
             WindowsPanelPosition::Right => {
-                let width = attached_panel_width(main);
+                let width = attached_panel_width(group_key, &panel, main);
                 let rect = RECT {
                     left: (main.right - width).max(main.left),
                     top: main.top,
                     right: main.right,
                     bottom: main.bottom,
                 };
-                main.right = (rect.left - ARC_PANEL_PADDING).max(main.left);
+                let handle_width = ARC_PANEL_PADDING.max(ATTACHED_PANEL_HANDLE_SIZE);
+                let handle = normalize_rect(RECT {
+                    left: (rect.left - handle_width).max(main.left),
+                    top: rect.top,
+                    right: rect.left,
+                    bottom: rect.bottom,
+                });
+                main.right = handle.left.max(main.left);
+                resize_handles.insert(panel.panel_id.clone(), handle);
                 rect
             }
             WindowsPanelPosition::Bottom => {
-                let height = attached_panel_bottom_height(main);
+                let height = attached_panel_bottom_height(group_key, &panel, main);
                 let rect = RECT {
                     left: main.left,
                     top: (main.bottom - height).max(main.top),
                     right: main.right,
                     bottom: main.bottom,
                 };
-                main.bottom = (rect.top - ARC_PANEL_PADDING).max(main.top);
+                let handle_height = ARC_PANEL_PADDING.max(ATTACHED_PANEL_HANDLE_SIZE);
+                let handle = normalize_rect(RECT {
+                    left: rect.left,
+                    top: (rect.top - handle_height).max(main.top),
+                    right: rect.right,
+                    bottom: rect.top,
+                });
+                main.bottom = handle.top.max(main.top);
+                resize_handles.insert(panel.panel_id.clone(), handle);
                 rect
             }
         };
@@ -1030,27 +1173,67 @@ fn attached_group_rects_from_layout(
     AttachedGroupRects {
         main: normalize_rect(main),
         panels: panel_rects,
+        resize_handles,
     }
 }
 
-fn attached_panel_width(content: RECT) -> i32 {
-    let available = rect_width(&content);
-    if available <= 0 {
-        return 0;
-    }
-    ATTACHED_PANEL_WIDTH
-        .min((available / 2).max(260))
-        .min(available)
+fn attached_panel_width(group_key: &str, panel: &GroupPanel, content: RECT) -> i32 {
+    let requested = remembered_panel_size(group_key, &panel.panel_id)
+        .unwrap_or(ATTACHED_PANEL_WIDTH)
+        .max(1);
+    clamp_attached_panel_size(panel.position, requested, content)
 }
 
-fn attached_panel_bottom_height(content: RECT) -> i32 {
-    let available = rect_height(&content);
+fn attached_panel_bottom_height(group_key: &str, panel: &GroupPanel, content: RECT) -> i32 {
+    let requested = remembered_panel_size(group_key, &panel.panel_id)
+        .unwrap_or(ATTACHED_PANEL_BOTTOM_HEIGHT)
+        .max(1);
+    clamp_attached_panel_size(panel.position, requested, content)
+}
+
+fn clamp_attached_panel_size(position: WindowsPanelPosition, requested: i32, content: RECT) -> i32 {
+    let available = match position {
+        WindowsPanelPosition::Bottom => rect_height(&content),
+        WindowsPanelPosition::Left | WindowsPanelPosition::Right => rect_width(&content),
+    };
     if available <= 0 {
         return 0;
     }
-    ATTACHED_PANEL_BOTTOM_HEIGHT
-        .min((available / 2).max(180))
-        .min(available)
+
+    let max_with_main = match position {
+        WindowsPanelPosition::Bottom => available - ARC_PANEL_PADDING - ATTACHED_MAIN_MIN_HEIGHT,
+        WindowsPanelPosition::Left | WindowsPanelPosition::Right => {
+            available - ARC_PANEL_PADDING - ATTACHED_MAIN_MIN_WIDTH
+        }
+    };
+    let max_size = if max_with_main > 0 {
+        max_with_main
+    } else {
+        available / 2
+    }
+    .min(ATTACHED_PANEL_MAX_SIZE)
+    .min(available)
+    .max(1);
+    let min_size = ATTACHED_PANEL_MIN_SIZE.min(max_size);
+    requested.clamp(min_size, max_size)
+}
+
+fn panel_size_key(group_key: &str, panel_id: &str) -> String {
+    format!("{group_key}::{panel_id}")
+}
+
+fn remembered_panel_size(group_key: &str, panel_id: &str) -> Option<i32> {
+    WINDOW_GROUP_PANEL_SIZES
+        .get()
+        .and_then(|sizes| sizes.lock().ok())
+        .and_then(|sizes| sizes.get(&panel_size_key(group_key, panel_id)).copied())
+}
+
+fn set_remembered_panel_size(group_key: &str, panel_id: &str, size: i32) {
+    let sizes = WINDOW_GROUP_PANEL_SIZES.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Ok(mut sizes) = sizes.lock() {
+        sizes.insert(panel_size_key(group_key, panel_id), size.max(1));
+    }
 }
 
 fn layout_group_windows(group_key: &str) {
@@ -1143,6 +1326,17 @@ fn set_attached_window_rect(hwnd: HWND, rect: RECT, visible: bool) {
                 | WindowsAndMessaging::SWP_SHOWWINDOW,
         );
     }
+    apply_round_region_to_window(hwnd, width, height, ARC_PANEL_RADIUS);
+    apply_round_region_to_webview_children(
+        hwnd,
+        RECT {
+            left: 0,
+            top: 0,
+            right: width,
+            bottom: height,
+        },
+        ARC_PANEL_RADIUS,
+    );
 }
 
 fn hide_attached_window(hwnd: HWND) {
@@ -1160,6 +1354,85 @@ fn hide_attached_window(hwnd: HWND) {
                 | WindowsAndMessaging::SWP_NOACTIVATE
                 | WindowsAndMessaging::SWP_HIDEWINDOW,
         );
+    }
+}
+
+struct ChildRegionState {
+    target: RECT,
+    radius: i32,
+}
+
+unsafe extern "system" fn apply_child_region_proc(hwnd: HWND, lparam: LPARAM) -> BOOL {
+    let state = unsafe { &mut *(lparam.0 as *mut ChildRegionState) };
+    let mut rect = RECT::default();
+    unsafe {
+        if WindowsAndMessaging::GetWindowRect(hwnd, &mut rect).is_err() {
+            return BOOL(1);
+        }
+    }
+    if rects_match_with_tolerance(&rect, &state.target, 2) {
+        apply_round_region_to_window(hwnd, rect_width(&rect), rect_height(&rect), state.radius);
+    }
+    BOOL(1)
+}
+
+fn apply_round_region_to_webview_children(parent: HWND, client_rect: RECT, radius: i32) {
+    let width = rect_width(&client_rect);
+    let height = rect_height(&client_rect);
+    if width <= 0 || height <= 0 {
+        return;
+    }
+
+    let mut top_left = POINT {
+        x: client_rect.left,
+        y: client_rect.top,
+    };
+    let mut bottom_right = POINT {
+        x: client_rect.right,
+        y: client_rect.bottom,
+    };
+    unsafe {
+        let _ = ClientToScreen(parent, &mut top_left);
+        let _ = ClientToScreen(parent, &mut bottom_right);
+    }
+    let mut state = ChildRegionState {
+        target: RECT {
+            left: top_left.x,
+            top: top_left.y,
+            right: bottom_right.x,
+            bottom: bottom_right.y,
+        },
+        radius,
+    };
+    unsafe {
+        let _ = WindowsAndMessaging::EnumChildWindows(
+            Some(parent),
+            Some(apply_child_region_proc),
+            LPARAM((&mut state as *mut ChildRegionState) as isize),
+        );
+    }
+}
+
+fn rects_match_with_tolerance(a: &RECT, b: &RECT, tolerance: i32) -> bool {
+    (a.left - b.left).abs() <= tolerance
+        && (a.top - b.top).abs() <= tolerance
+        && (a.right - b.right).abs() <= tolerance
+        && (a.bottom - b.bottom).abs() <= tolerance
+}
+
+fn apply_round_region_to_window(hwnd: HWND, width: i32, height: i32, radius: i32) {
+    if width <= 0 || height <= 0 || radius <= 0 {
+        return;
+    }
+    unsafe {
+        let diameter = (radius * 2).max(1);
+        let region = CreateRoundRectRgn(0, 0, width + 1, height + 1, diameter, diameter);
+        if region.0.is_null() {
+            return;
+        }
+        if SetWindowRgn(hwnd, Some(region), true) == 0 {
+            let _ = DeleteObject(HGDIOBJ(region.0));
+        }
     }
 }
 
@@ -1570,6 +1843,9 @@ fn create_hidden_window(webtag: &WebTag) -> StdResult<HWND> {
                     );
                 }
             }
+        } else if msg == WindowsAndMessaging::WM_GETMINMAXINFO {
+            apply_window_maximized_bounds(hwnd, lparam);
+            return LRESULT(0);
         } else if msg == WindowsAndMessaging::WM_NCCALCSIZE {
             return LRESULT(0);
         } else if msg == WindowsAndMessaging::WM_NCHITTEST {
@@ -1595,7 +1871,27 @@ fn create_hidden_window(webtag: &WebTag) -> StdResult<HWND> {
         } else if msg == WindowsAndMessaging::WM_PAINT {
             paint_window_chrome(hwnd);
             return LRESULT(0);
+        } else if msg == WindowsAndMessaging::WM_LBUTTONDOWN {
+            let raw = unsafe {
+                WindowsAndMessaging::GetWindowLongPtrW(hwnd, WindowsAndMessaging::GWLP_USERDATA)
+            } as *mut WindowUserData;
+            if !raw.is_null()
+                && handle_window_chrome_mouse_down(
+                    hwnd,
+                    unsafe { &(*raw).webtag_key },
+                    lparam_to_point(lparam),
+                )
+            {
+                return LRESULT(0);
+            }
+        } else if msg == WindowsAndMessaging::WM_MOUSEMOVE {
+            if handle_window_chrome_mouse_move(hwnd, lparam_to_point(lparam)) {
+                return LRESULT(0);
+            }
         } else if msg == WindowsAndMessaging::WM_LBUTTONUP {
+            if handle_window_chrome_mouse_up(hwnd) {
+                return LRESULT(0);
+            }
             let raw = unsafe {
                 WindowsAndMessaging::GetWindowLongPtrW(hwnd, WindowsAndMessaging::GWLP_USERDATA)
             } as *mut WindowUserData;
@@ -1816,7 +2112,7 @@ fn chrome_rects_for_window(
         let group_key = layout_group_key_for_webtag(webtag_key);
         let panels = group_panels(&group_key);
         if !panels.is_empty() {
-            let attached = attached_group_rects_from_layout(client, layout, panels);
+            let attached = attached_group_rects_from_layout(&group_key, client, layout, panels);
             rects.navigation_bar = Some(normalize_rect(RECT {
                 left: attached.main.left,
                 top: rects.top_bar.top,
@@ -1927,6 +2223,132 @@ fn resize_border_thickness() -> i32 {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct PanelResizeHit {
+    group_key: String,
+    panel_id: String,
+    position: WindowsPanelPosition,
+    current_size: i32,
+}
+
+fn panel_resize_hit_test(
+    webtag_key: &str,
+    client: RECT,
+    layout: &WindowsWindowLayout,
+    point: (i32, i32),
+) -> Option<PanelResizeHit> {
+    if !window_attachment(webtag_key)
+        .is_some_and(|attachment| matches!(attachment.kind, WindowAttachmentKind::MainHost))
+    {
+        return None;
+    }
+
+    let group_key = layout_group_key_for_webtag(webtag_key);
+    let panels = group_panels(&group_key);
+    if panels.is_empty() {
+        return None;
+    }
+    let rects = attached_group_rects_from_layout(&group_key, client, layout, panels.clone());
+    panels.into_iter().find_map(|panel| {
+        let handle = rects.resize_handles.get(&panel.panel_id).copied()?;
+        if !rect_contains(&handle, point) {
+            return None;
+        }
+        let panel_rect = rects.panels.get(&panel.webtag_key).copied()?;
+        let current_size = match panel.position {
+            WindowsPanelPosition::Bottom => rect_height(&panel_rect),
+            WindowsPanelPosition::Left | WindowsPanelPosition::Right => rect_width(&panel_rect),
+        };
+        Some(PanelResizeHit {
+            group_key: group_key.clone(),
+            panel_id: panel.panel_id,
+            position: panel.position,
+            current_size,
+        })
+    })
+}
+
+fn handle_window_chrome_mouse_down(hwnd: HWND, webtag_key: &str, point: (i32, i32)) -> bool {
+    if !window_draws_shell_chrome(webtag_key) {
+        return false;
+    }
+    let layout = current_window_layout(webtag_key);
+    let mut client = RECT::default();
+    unsafe {
+        let _ = WindowsAndMessaging::GetClientRect(hwnd, &mut client);
+    }
+    let Some(hit) = panel_resize_hit_test(webtag_key, client, &layout, point) else {
+        return false;
+    };
+    let drag = PanelResizeDrag {
+        group_key: hit.group_key,
+        panel_id: hit.panel_id,
+        position: hit.position,
+        start_point: point,
+        start_size: hit.current_size,
+    };
+    let state = WINDOW_PANEL_RESIZE_DRAG.get_or_init(|| Mutex::new(None));
+    if let Ok(mut state) = state.lock() {
+        *state = Some(drag);
+    }
+    unsafe {
+        let _ = SetCapture(hwnd);
+    }
+    true
+}
+
+fn handle_window_chrome_mouse_move(_hwnd: HWND, point: (i32, i32)) -> bool {
+    let drag = WINDOW_PANEL_RESIZE_DRAG
+        .get()
+        .and_then(|state| state.lock().ok())
+        .and_then(|state| state.clone());
+    let Some(drag) = drag else {
+        return false;
+    };
+
+    let delta = match drag.position {
+        WindowsPanelPosition::Left => point.0 - drag.start_point.0,
+        WindowsPanelPosition::Right => drag.start_point.0 - point.0,
+        WindowsPanelPosition::Bottom => drag.start_point.1 - point.1,
+    };
+    let requested = (drag.start_size + delta).max(1);
+    let Some(host) = host_handle_for_group(&drag.group_key) else {
+        return true;
+    };
+    let mut client = RECT::default();
+    unsafe {
+        if WindowsAndMessaging::GetClientRect(host, &mut client).is_err() {
+            return true;
+        }
+    }
+    let content = WINDOW_GROUP_LAYOUTS
+        .get()
+        .and_then(|layouts| layouts.lock().ok())
+        .and_then(|layouts| layouts.get(&drag.group_key).cloned())
+        .map(|layout| compute_content_rect(client, &layout))
+        .unwrap_or(client);
+    let clamped = clamp_attached_panel_size(drag.position, requested, content);
+    set_remembered_panel_size(&drag.group_key, &drag.panel_id, clamped);
+    layout_group_windows(&drag.group_key);
+    request_group_shell_refresh(&drag.group_key);
+    true
+}
+
+fn handle_window_chrome_mouse_up(hwnd: HWND) -> bool {
+    let state = WINDOW_PANEL_RESIZE_DRAG.get_or_init(|| Mutex::new(None));
+    let had_drag = state
+        .lock()
+        .map(|mut state| state.take().is_some())
+        .unwrap_or(false);
+    if had_drag {
+        unsafe {
+            let _ = ReleaseCapture();
+            let _ = InvalidateRect(Some(hwnd), None, false);
+        }
+    }
+    had_drag
+}
+
 fn paint_window_chrome(hwnd: HWND) {
     let mut paint = PAINTSTRUCT::default();
     unsafe {
@@ -1954,9 +2376,7 @@ fn draw_window_chrome(hwnd: HWND, hdc: HDC) {
 
     fill_rect(hdc, client, ARC_WINDOW_BACKGROUND);
     draw_shell_top_bar(hdc, hwnd, &rects, &layout);
-    if rect_width(&rects.panel) > 0 && rect_height(&rects.panel) > 0 {
-        fill_round_rect(hdc, rects.panel, ARC_PANEL_BACKGROUND, ARC_PANEL_RADIUS);
-    }
+    draw_content_cards(hdc, &webtag_key, client, &layout, &rects);
 
     if let (Some(navbar), Some(navbar_rect)) = (&layout.navigation_bar, rects.navigation_bar) {
         draw_navigation_bar(hdc, navbar_rect, navbar);
@@ -1966,6 +2386,37 @@ fn draw_window_chrome(hwnd: HWND, hdc: HDC) {
     }
     draw_panel_activators(hdc, client, &rects, &layout);
     draw_window_frame_buttons(hdc, hwnd, client);
+}
+
+fn draw_content_cards(
+    hdc: HDC,
+    webtag_key: &str,
+    client: RECT,
+    layout: &WindowsWindowLayout,
+    rects: &ChromeRects,
+) {
+    let is_shell_host = window_attachment(webtag_key)
+        .is_some_and(|attachment| matches!(attachment.kind, WindowAttachmentKind::MainHost));
+    if is_shell_host {
+        let group_key = layout_group_key_for_webtag(webtag_key);
+        let panels = group_panels(&group_key);
+        if !panels.is_empty() {
+            let attached = attached_group_rects_from_layout(&group_key, client, layout, panels);
+            draw_content_card(hdc, attached.main);
+            for rect in attached.panels.values().copied() {
+                draw_content_card(hdc, rect);
+            }
+            return;
+        }
+    }
+
+    draw_content_card(hdc, rects.panel);
+}
+
+fn draw_content_card(hdc: HDC, rect: RECT) {
+    if rect_width(&rect) > 0 && rect_height(&rect) > 0 {
+        fill_round_rect(hdc, rect, ARC_PANEL_BACKGROUND, ARC_PANEL_RADIUS);
+    }
 }
 
 fn window_draws_shell_chrome(webtag_key: &str) -> bool {
@@ -2592,6 +3043,27 @@ fn draw_text(
     let mut wide: Vec<u16> = text.encode_utf16().collect();
     let mut rect = rect;
     unsafe {
+        let font = CreateFontW(
+            -logical_font_height(hdc, SHELL_TEXT_POINT_SIZE),
+            0,
+            0,
+            0,
+            SHELL_TEXT_WEIGHT,
+            0,
+            0,
+            0,
+            DEFAULT_CHARSET,
+            OUT_DEFAULT_PRECIS,
+            CLIP_DEFAULT_PRECIS,
+            CLEARTYPE_QUALITY,
+            DEFAULT_PITCH.0 as u32 | FF_SWISS.0 as u32,
+            w!("Segoe UI"),
+        );
+        let old_font = if font.is_invalid() {
+            HGDIOBJ::default()
+        } else {
+            SelectObject(hdc, HGDIOBJ(font.0))
+        };
         let _ = SetBkMode(hdc, TRANSPARENT);
         let _ = SetTextColor(hdc, rgb_to_colorref(rgb));
         let _ = DrawTextW(
@@ -2600,7 +3072,19 @@ fn draw_text(
             &mut rect,
             horizontal | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS,
         );
+        if !old_font.is_invalid() {
+            let _ = SelectObject(hdc, old_font);
+        }
+        if !font.is_invalid() {
+            let _ = DeleteObject(HGDIOBJ(font.0));
+        }
     }
+}
+
+fn logical_font_height(hdc: HDC, point_size: i32) -> i32 {
+    let dpi_y = unsafe { GetDeviceCaps(Some(hdc), LOGPIXELSY) };
+    let dpi_y = if dpi_y > 0 { dpi_y } else { 96 };
+    (point_size * dpi_y + 36) / 72
 }
 
 fn draw_badge(hdc: HDC, item_rect: RECT, badge: &str) {
@@ -3451,16 +3935,20 @@ fn show_native_window(
 
 fn show_native_main_window(state: &mut UiState, activate: bool) -> StdResult<()> {
     let (group_key, host, is_host) = ensure_main_attachment(state);
+    let previous_active = group_active_main(&group_key);
     set_active_group(&group_key);
     set_group_active_main(&group_key, &state.webtag_key);
-    show_shell_host(&group_key, host, activate);
 
     if is_host {
+        hide_previous_main_content(previous_active.as_deref(), &state.webtag_key);
+        show_shell_host(&group_key, host, activate);
         set_controller_visible(state, true)?;
         sync_controller_bounds(state)?;
     } else {
         attach_child_window_to_host(state.hwnd, host);
         set_controller_visible(state, true)?;
+        hide_previous_main_content(previous_active.as_deref(), &state.webtag_key);
+        show_shell_host(&group_key, host, activate);
         layout_group_windows(&group_key);
     }
 
@@ -3468,6 +3956,20 @@ fn show_native_main_window(state: &mut UiState, activate: bool) -> StdResult<()>
     state.window_visible = true;
     store_current_window_placement(state);
     Ok(())
+}
+
+fn hide_previous_main_content(previous: Option<&str>, current: &str) {
+    let Some(previous) = previous.filter(|previous| *previous != current) else {
+        return;
+    };
+    let previous = WebTag::from(previous);
+    if let Err(err) = hide_webview_window(&previous) {
+        log::warn!(
+            "Failed to hide previous Windows main WebView {} during switch: {}",
+            previous.key(),
+            err
+        );
+    }
 }
 
 fn show_native_panel_window(state: &mut UiState, panel_id: &str) -> StdResult<()> {
@@ -3600,6 +4102,9 @@ fn sync_controller_bounds(state: &UiState) -> StdResult<()> {
             .controller
             .SetBounds(rect)
             .map_err(|err| WebViewError::WebView(format!("SetBounds failed: {err}")))?;
+        if window_attachment(&state.webtag_key).is_some() {
+            apply_round_region_to_webview_children(state.hwnd, rect, ARC_PANEL_RADIUS);
+        }
     }
     Ok(())
 }
