@@ -81,18 +81,18 @@ napi-ohos = "1.1.0"
 napi-derive-ohos = "1.1.0"
 
 # Rong runtime (published on crates.io)
-rong = { version = "0.3.1", default-features = false }
-rong_rt = { version = "0.3.1", default-features = false }
-rong_modules = { version = "0.3.1", default-features = false }
-rong_http = { version = "0.3.1", default-features = false }
-rong_console = "0.3.1"
-rong_event = "0.3.1"
-rong_storage = "0.3.1"
-rong_abort = "0.3.1"
-rong_assert = "0.3.1"
-rong_buffer = "0.3.1"
-rong_encoding = "0.3.1"
-rong_exception = "0.3.1"
-rong_stream = "0.3.1"
-rong_timer = "0.3.1"
-rong_url = "0.3.1"
+rong = { version = "0.4.0", default-features = false }
+rong_rt = { version = "0.4.0", default-features = false }
+rong_modules = { version = "0.4.0", default-features = false }
+rong_http = { version = "0.4.0", default-features = false }
+rong_console = "0.4.0"
+rong_event = "0.4.0"
+rong_storage = "0.4.0"
+rong_abort = "0.4.0"
+rong_assert = "0.4.0"
+rong_buffer = "0.4.0"
+rong_encoding = "0.4.0"
+rong_exception = "0.4.0"
+rong_stream = "0.4.0"
+rong_timer = "0.4.0"
+rong_url = "0.4.0"
