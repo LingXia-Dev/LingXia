@@ -383,6 +383,12 @@ pub fn hide_webview_window(webtag: &WebTag) -> StdResult<()> {
     webview.inner.hide_window()
 }
 
+fn post_hide_webview_window(webtag: &WebTag) -> StdResult<()> {
+    let webview = find_webview(webtag)
+        .ok_or_else(|| WebViewError::WebView(format!("WebView not found for {}", webtag.key())))?;
+    webview.inner.post_hide_window()
+}
+
 pub fn set_webview_window_layout(webtag: &WebTag, layout: WindowsWindowLayout) -> StdResult<()> {
     let webview = find_webview(webtag)
         .ok_or_else(|| WebViewError::WebView(format!("WebView not found for {}", webtag.key())))?;
@@ -1531,8 +1537,8 @@ impl WebViewInner {
         }
 
         resp_rx
-            .recv_timeout(WEBVIEW_SCREENSHOT_TIMEOUT)
-            .map_err(|err| WebViewError::WebView(format!("WebView screenshot timed out: {err}")))?
+            .recv()
+            .map_err(|_| WebViewError::WebView("WebView UI thread did not reply".to_string()))?
     }
 
     fn show_window(&self, title: String, activate: bool, role: WindowsWindowRole) -> StdResult<()> {
@@ -1546,6 +1552,23 @@ impl WebViewInner {
 
     fn hide_window(&self) -> StdResult<()> {
         self.dispatch_command(|resp| UiCommand::HideWindow { resp })
+    }
+
+    fn post_hide_window(&self) -> StdResult<()> {
+        let (resp_tx, _resp_rx) = mpsc::channel();
+        self.command_tx
+            .send(UiCommand::HideWindow { resp: resp_tx })
+            .map_err(|_| WebViewError::WebView("WebView UI thread is unavailable".to_string()))?;
+
+        unsafe {
+            let _ = WindowsAndMessaging::PostThreadMessageW(
+                self.thread_id,
+                WM_LINGXIA_COMMAND,
+                WPARAM::default(),
+                LPARAM::default(),
+            );
+        }
+        Ok(())
     }
 
     fn set_window_layout(&self, layout: WindowsWindowLayout) -> StdResult<()> {
@@ -1574,8 +1597,8 @@ impl WebViewInner {
         }
 
         resp_rx
-            .recv()
-            .map_err(|_| WebViewError::WebView("WebView UI thread did not reply".to_string()))?
+            .recv_timeout(WEBVIEW_SCREENSHOT_TIMEOUT)
+            .map_err(|err| WebViewError::WebView(format!("WebView screenshot timed out: {err}")))?
     }
 
     fn window_snapshot(&self) -> StdResult<WindowsWebViewWindowSnapshot> {
@@ -2449,25 +2472,27 @@ fn draw_navigation_bar(hdc: HDC, rect: RECT, navbar: &WindowsNavigationBarLayout
     draw_bottom_border(hdc, rect, 0xe6e6e6);
 
     let text_color = navbar.text_color;
-    let mut title_rect = RECT {
-        left: rect.left + window_frame_buttons_width(),
-        top: rect.top,
-        right: rect.right - window_frame_buttons_width(),
-        bottom: rect.bottom,
-    };
+    let mut left_controls_width = 0;
 
     if navbar.show_back_button {
         let back_rect = nav_button_rect(rect, 0);
         draw_text(hdc, "<", back_rect, text_color, DT_CENTER);
-        title_rect.left = title_rect.left.max(back_rect.right + 8);
+        left_controls_width = back_rect.right - rect.left;
     }
     if navbar.show_home_button {
         let home_rect = nav_button_rect(rect, if navbar.show_back_button { 1 } else { 0 });
         draw_text(hdc, "Home", home_rect, text_color, DT_CENTER);
-        title_rect.left = title_rect.left.max(home_rect.right + 8);
+        left_controls_width = home_rect.right - rect.left;
     }
 
     if !navbar.title.trim().is_empty() {
+        let title_inset = (left_controls_width + 8).max(window_frame_buttons_width() + 8);
+        let title_rect = normalize_rect(RECT {
+            left: rect.left + title_inset,
+            top: rect.top,
+            right: rect.right - title_inset,
+            bottom: rect.bottom,
+        });
         draw_text(hdc, &navbar.title, title_rect, text_color, DT_CENTER);
     }
 }
@@ -3965,9 +3990,9 @@ fn hide_previous_main_content(previous: Option<&str>, current: &str) {
         return;
     };
     let previous = WebTag::from(previous);
-    if let Err(err) = hide_webview_window(&previous) {
+    if let Err(err) = post_hide_webview_window(&previous) {
         log::warn!(
-            "Failed to hide previous Windows main WebView {} during switch: {}",
+            "Failed to schedule hiding previous Windows main WebView {} during switch: {}",
             previous.key(),
             err
         );
