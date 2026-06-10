@@ -473,7 +473,7 @@ pub(super) fn draw_native_panel_content(hdc: HDC, panel: &WindowsChromePanel) {
         return;
     };
     if native.kind == WindowsNativePanelKind::Terminal {
-        draw_terminal_panel_content(hdc, panel.rect, native);
+        draw_terminal_panel_content(hdc, panel.rect, &panel.panel_id, native);
         return;
     }
 
@@ -509,6 +509,7 @@ pub(super) fn draw_native_panel_content(hdc: HDC, panel: &WindowsChromePanel) {
 pub(super) fn draw_terminal_panel_content(
     hdc: HDC,
     rect: RECT,
+    panel_id: &str,
     native: &WindowsNativePanelContent,
 ) {
     let content = inset_rect(rect, 14, 14);
@@ -533,6 +534,13 @@ pub(super) fn draw_terminal_panel_content(
         bottom: content.bottom,
     });
     if rect_width(&terminal_rect) == 0 || rect_height(&terminal_rect) == 0 {
+        return;
+    }
+
+    // Live sessions are drawn as a cell grid from the snapshot store; the
+    // body-text path below remains for pre-session states ("Starting
+    // terminal...", runtime-unavailable, failures).
+    if super::terminal_grid::draw_panel_grid(hdc, panel_id, terminal_rect) {
         return;
     }
 

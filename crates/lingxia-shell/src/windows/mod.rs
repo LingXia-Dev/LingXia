@@ -7,6 +7,7 @@
 //! [`lingxia_webview::platform::windows::WindowsChromeRenderer`] seam.
 
 mod chrome;
+pub mod terminal_grid;
 
 /// Registers the shell window chrome renderer with `lingxia-webview`.
 ///

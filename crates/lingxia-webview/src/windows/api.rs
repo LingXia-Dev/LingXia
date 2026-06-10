@@ -248,6 +248,18 @@ pub fn update_native_panel_body(panel_id: &str, body: &str) -> StdResult<()> {
     Ok(())
 }
 
+/// Repaints the host-window region covering `panel_id` without changing the
+/// panel's registered body text (for panels whose content is drawn by the
+/// chrome renderer from external state). Returns `false` when no group
+/// currently hosts the panel.
+pub fn invalidate_native_panel(panel_id: &str) -> bool {
+    let Some(group_key) = group_key_for_panel(panel_id) else {
+        return false;
+    };
+    request_group_shell_refresh(&group_key);
+    true
+}
+
 pub fn set_native_panel_input_handler(panel_id: &str, handler: WindowsPanelInputHandler) {
     let handlers = WINDOW_NATIVE_PANEL_INPUT_HANDLERS.get_or_init(|| Mutex::new(HashMap::new()));
     if let Ok(mut handlers) = handlers.lock() {

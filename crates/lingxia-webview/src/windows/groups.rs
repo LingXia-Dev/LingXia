@@ -321,6 +321,17 @@ pub(crate) fn update_group_panel_body(panel_id: &str, body: String) -> Option<St
     None
 }
 
+pub(crate) fn group_key_for_panel(panel_id: &str) -> Option<String> {
+    let panels = WINDOW_GROUP_PANELS.get()?;
+    let panels = panels.lock().ok()?;
+    panels.iter().find_map(|(group_key, group_panels)| {
+        group_panels
+            .iter()
+            .any(|panel| panel.panel_id == panel_id)
+            .then(|| group_key.clone())
+    })
+}
+
 pub(crate) fn remove_group_panel(group_key: &str, webtag_key: &str) {
     let mut removed_active = false;
     if let Some(panels) = WINDOW_GROUP_PANELS.get()

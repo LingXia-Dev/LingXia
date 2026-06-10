@@ -145,6 +145,8 @@ fn open_windows_terminal_session_panel(
 
     thread::spawn(move || {
         let mut last_generations = None;
+        #[cfg(feature = "shell-runtime")]
+        let mut pending_resize: Option<(u16, u16)> = None;
         loop {
             if stop.load(Ordering::Acquire) {
                 break;
@@ -153,14 +155,27 @@ fn open_windows_terminal_session_panel(
                 break;
             };
             let generations = (snapshot.generation, snapshot.title_generation);
-            if snapshot.exited || last_generations != Some(generations) {
-                let _ = lingxia_webview::platform::windows::update_native_panel_body(
-                    &panel_key,
-                    &windows_terminal_snapshot_body(&snapshot),
-                );
+            let exited = snapshot.exited;
+            #[cfg(feature = "shell-runtime")]
+            if !exited {
+                let desired =
+                    lingxia_shell::windows::terminal_grid::desired_grid_size(&panel_key)
+                        .filter(|&(cols, rows)| (cols, rows) != (snapshot.cols, snapshot.rows));
+                // Resize the PTY only once the desired grid held for two
+                // consecutive ticks, so panel drags don't cause resize storms.
+                match desired {
+                    Some((cols, rows)) if pending_resize == Some((cols, rows)) => {
+                        lingxia_terminal::terminal_resize(session_id, cols, rows);
+                        pending_resize = None;
+                    }
+                    other => pending_resize = other,
+                }
+            }
+            if exited || last_generations != Some(generations) {
+                publish_windows_terminal_snapshot(&panel_key, snapshot);
                 last_generations = Some(generations);
             }
-            if snapshot.exited {
+            if exited {
                 break;
             }
             thread::sleep(Duration::from_millis(80));
@@ -173,13 +188,34 @@ fn open_windows_terminal_session_panel(
 #[cfg(feature = "terminal-runtime")]
 fn close_existing_windows_terminal_session(panel_id: &str) {
     lingxia_webview::platform::windows::clear_native_panel_input_handler(panel_id);
+    #[cfg(feature = "shell-runtime")]
+    lingxia_shell::windows::terminal_grid::clear_panel(panel_id);
     if let Some(session) = windows_terminal_panels().remove(panel_id) {
         session.stop.store(true, Ordering::Release);
         lingxia_terminal::terminal_close(session.session_id);
     }
 }
 
-#[cfg(feature = "terminal-runtime")]
+/// Hands the snapshot to the shell chrome's grid store and repaints the
+/// panel. Exited sessions keep their final snapshot in the store; the grid
+/// painter renders the `[process exited]` state itself.
+#[cfg(all(feature = "terminal-runtime", feature = "shell-runtime"))]
+fn publish_windows_terminal_snapshot(panel_id: &str, snapshot: TerminalSnapshot) {
+    lingxia_shell::windows::terminal_grid::set_panel_snapshot(panel_id, snapshot);
+    lingxia_webview::platform::windows::invalidate_native_panel(panel_id);
+}
+
+/// Without the shell chrome there is no grid painter; flatten the snapshot
+/// to the panel's plain body text as before.
+#[cfg(all(feature = "terminal-runtime", not(feature = "shell-runtime")))]
+fn publish_windows_terminal_snapshot(panel_id: &str, snapshot: TerminalSnapshot) {
+    let _ = lingxia_webview::platform::windows::update_native_panel_body(
+        panel_id,
+        &windows_terminal_snapshot_body(&snapshot),
+    );
+}
+
+#[cfg(all(feature = "terminal-runtime", not(feature = "shell-runtime")))]
 fn windows_terminal_snapshot_body(snapshot: &TerminalSnapshot) -> String {
     let mut lines = snapshot.lines.as_slice();
     while lines.last().is_some_and(|line| line.trim().is_empty()) {

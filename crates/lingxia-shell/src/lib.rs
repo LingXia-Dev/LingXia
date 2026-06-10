@@ -20,7 +20,7 @@ mod proxy;
 mod proxy_settings;
 mod settings;
 #[cfg(target_os = "windows")]
-mod windows;
+pub mod windows;
 
 pub use address_bar::{resolve_input, resolve_input_json};
 pub use facade::{
