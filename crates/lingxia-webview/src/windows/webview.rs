@@ -16,6 +16,7 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::thread::{self, JoinHandle};
+use std::time::Duration;
 use webview2_com::{Microsoft::Web::WebView2::Win32::*, *};
 use windows::{
     Win32::{
@@ -80,6 +81,7 @@ const ATTACHED_MAIN_MIN_WIDTH: i32 = 320;
 const ATTACHED_MAIN_MIN_HEIGHT: i32 = 240;
 const SHELL_TEXT_POINT_SIZE: i32 = 9;
 const SHELL_TEXT_WEIGHT: i32 = 400;
+const WEBVIEW_SCREENSHOT_TIMEOUT: Duration = Duration::from_secs(4);
 type StdResult<T, E = WebViewError> = std::result::Result<T, E>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1529,8 +1531,8 @@ impl WebViewInner {
         }
 
         resp_rx
-            .recv()
-            .map_err(|_| WebViewError::WebView("WebView UI thread did not reply".to_string()))?
+            .recv_timeout(WEBVIEW_SCREENSHOT_TIMEOUT)
+            .map_err(|err| WebViewError::WebView(format!("WebView screenshot timed out: {err}")))?
     }
 
     fn show_window(&self, title: String, activate: bool, role: WindowsWindowRole) -> StdResult<()> {
@@ -2693,6 +2695,19 @@ fn draw_tab_bar(hdc: HDC, rect: RECT, tabbar: &WindowsTabBarLayout) {
 fn draw_sidebar_tab_bar(hdc: HDC, rect: RECT, tabbar: &WindowsTabBarLayout) {
     fill_rect(hdc, rect, ARC_SIDEBAR_BACKGROUND);
 
+    let title = if tabbar.app_name.trim().is_empty() {
+        "LXAPP".to_string()
+    } else {
+        tabbar.app_name.to_ascii_uppercase()
+    };
+    let header_rect = RECT {
+        left: rect.left + SIDEBAR_ITEM_INSET + 2,
+        top: rect.top + 22,
+        right: rect.right - SIDEBAR_ITEM_INSET,
+        bottom: rect.top + SIDEBAR_HEADER_HEIGHT,
+    };
+    draw_text(hdc, &title, header_rect, 0x4f5661, DT_LEFT);
+
     for (index, item) in tabbar.items.iter().enumerate() {
         let item_rect = sidebar_item_rect(rect, index);
         let selected = tabbar.selected_index == index as i32;
@@ -3822,8 +3837,7 @@ fn handle_command(state: &mut UiState, command: UiCommand) -> StdResult<bool> {
             let _ = resp.send(result);
         }
         UiCommand::TakeScreenshot { resp } => {
-            let result = capture_preview_png(&state.webview);
-            let _ = resp.send(result);
+            start_capture_preview_png(&state.webview, resp);
         }
         UiCommand::WindowSnapshot { resp } => {
             let result = window_snapshot(state);
@@ -3931,6 +3945,7 @@ fn show_native_main_window(state: &mut UiState, activate: bool) -> StdResult<()>
         show_shell_host(&group_key, host, activate);
         set_controller_visible(state, true)?;
         sync_controller_bounds(state)?;
+        layout_group_windows(&group_key);
     } else {
         attach_child_window_to_host(state.hwnd, host);
         set_controller_visible(state, true)?;
@@ -4263,34 +4278,52 @@ fn go_history(webview: &ICoreWebView2, direction: HistoryDirection) -> StdResult
     Ok(())
 }
 
-fn capture_preview_png(webview: &ICoreWebView2) -> StdResult<Vec<u8>> {
-    let stream = unsafe { CreateStreamOnHGlobal(None, true) }
-        .map_err(|err| WebViewError::WebView(format!("CreateStreamOnHGlobal failed: {err}")))?;
+fn start_capture_preview_png(webview: &ICoreWebView2, resp: Sender<StdResult<Vec<u8>>>) {
+    let stream = match unsafe { CreateStreamOnHGlobal(None, true) } {
+        Ok(stream) => stream,
+        Err(err) => {
+            let _ = resp.send(Err(WebViewError::WebView(format!(
+                "CreateStreamOnHGlobal failed: {err}"
+            ))));
+            return;
+        }
+    };
     let capture_stream = stream.clone();
-    let webview = webview.clone();
+    let read_stream = stream.clone();
+    let start_resp = resp.clone();
+    let callback = CapturePreviewCompletedHandler::create(Box::new(move |result| {
+        let response = match result {
+            Ok(()) => {
+                let bytes = read_stream_to_end(&read_stream).map_err(|err| {
+                    WebViewError::WebView(format!("read screenshot stream failed: {err}"))
+                });
+                match bytes {
+                    Ok(bytes) if bytes.is_empty() => Err(WebViewError::WebView(
+                        "WebView2 screenshot stream was empty".to_string(),
+                    )),
+                    result => result,
+                }
+            }
+            Err(err) => Err(WebViewError::WebView(format!(
+                "WebView2 CapturePreview failed: {err}"
+            ))),
+        };
+        let _ = resp.send(response);
+        Ok(())
+    }));
 
-    CapturePreviewCompletedHandler::wait_for_async_operation(
-        Box::new(move |handler| unsafe {
-            webview
-                .CapturePreview(
-                    COREWEBVIEW2_CAPTURE_PREVIEW_IMAGE_FORMAT_PNG,
-                    &capture_stream,
-                    &handler,
-                )
-                .map_err(webview2_com::Error::WindowsError)
-        }),
-        Box::new(|result| result),
-    )
-    .map_err(map_webview2_error)?;
-
-    let bytes = read_stream_to_end(&stream)
-        .map_err(|err| WebViewError::WebView(format!("read screenshot stream failed: {err}")))?;
-    if bytes.is_empty() {
-        return Err(WebViewError::WebView(
-            "WebView2 screenshot stream was empty".to_string(),
-        ));
+    let result = unsafe {
+        webview.CapturePreview(
+            COREWEBVIEW2_CAPTURE_PREVIEW_IMAGE_FORMAT_PNG,
+            &capture_stream,
+            &callback,
+        )
+    };
+    if let Err(err) = result {
+        let _ = start_resp.send(Err(WebViewError::WebView(format!(
+            "CapturePreview failed: {err}"
+        ))));
     }
-    Ok(bytes)
 }
 
 fn execute_script_json(

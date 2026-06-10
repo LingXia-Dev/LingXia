@@ -581,9 +581,6 @@ fn show_webtag_window(
     if webview_runtime::find_webview(&webtag).is_some() {
         install_close_handler(&webtag);
         show_webview_window_for_mode(&webtag, &title, activate, open_mode, &panel_id);
-        if open_mode == LxAppOpenMode::Normal {
-            hide_sibling_webtag_windows(&webtag);
-        }
         return;
     }
 
@@ -595,9 +592,6 @@ fn show_webtag_window(
                 if webview_runtime::find_webview(&webtag).is_some() {
                     install_close_handler(&webtag);
                     show_webview_window_for_mode(&webtag, &title, activate, open_mode, &panel_id);
-                    if open_mode == LxAppOpenMode::Normal {
-                        hide_sibling_webtag_windows(&webtag);
-                    }
                     return;
                 }
                 thread::sleep(Duration::from_millis(50));
@@ -630,19 +624,6 @@ fn show_webview_window_for_mode(
             webtag.key(),
             err
         );
-    }
-}
-
-fn hide_sibling_webtag_windows(target: &WebTag) {
-    let appid = target.extract_appid();
-    let session_id = target.session_id();
-    for webtag in webview_runtime::list_webviews() {
-        if webtag.key() != target.key()
-            && webtag.extract_appid() == appid
-            && webtag.session_id() == session_id
-        {
-            let _ = lingxia_webview::platform::windows::hide_webview_window(&webtag);
-        }
     }
 }
 
@@ -794,10 +775,10 @@ fn capture_window_native_rgba(
     hwnd: windows::Win32::Foundation::HWND,
 ) -> Result<(u32, u32, image::RgbaImage), PlatformError> {
     use windows::Win32::Graphics::Gdi::{
-        BI_RGB, BITMAPINFO, BITMAPINFOHEADER, CreateCompatibleDC, CreateDIBSection, DIB_RGB_COLORS,
-        DeleteDC, DeleteObject, GetWindowDC, HGDIOBJ, ReleaseDC, SelectObject,
+        BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BitBlt, CreateCompatibleDC, CreateDIBSection,
+        DIB_RGB_COLORS, DeleteDC, DeleteObject, GetWindowDC, HGDIOBJ, ReleaseDC, SRCCOPY,
+        SelectObject,
     };
-    use windows::Win32::Storage::Xps::{PRINT_WINDOW_FLAGS, PrintWindow};
 
     let rect = visible_window_rect(hwnd)?;
     let width = rect.right - rect.left;
@@ -856,10 +837,21 @@ fn capture_window_native_rgba(
         };
 
         let old_bitmap = SelectObject(memory_dc, HGDIOBJ(bitmap.0));
-        let copied = PrintWindow(hwnd, memory_dc, PRINT_WINDOW_FLAGS(0)).as_bool();
+        let copied = BitBlt(
+            memory_dc,
+            0,
+            0,
+            width,
+            height,
+            Some(window_dc),
+            0,
+            0,
+            SRCCOPY,
+        )
+        .is_ok();
 
         let result = if !copied || bits_ptr.is_null() {
-            Err(PlatformError::Platform("PrintWindow failed".to_string()))
+            Err(PlatformError::Platform("BitBlt failed".to_string()))
         } else {
             let byte_len = (width as usize)
                 .saturating_mul(height as usize)
