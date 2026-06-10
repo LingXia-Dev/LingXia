@@ -597,14 +597,14 @@ pub(crate) fn layout_group_windows(group_key: &str) {
     }
 }
 
-pub(crate) fn layout_group_for_state(state: &UiState) {
+pub(crate) fn layout_group_for_main_host(webtag_key: &str) {
     if !matches!(
-        window_attachment(&state.webtag_key).map(|attachment| attachment.kind),
+        window_attachment(webtag_key).map(|attachment| attachment.kind),
         Some(WindowAttachmentKind::MainHost)
     ) {
         return;
     }
-    layout_group_windows(&layout_group_key_for_webtag(&state.webtag_key));
+    layout_group_windows(&layout_group_key_for_webtag(webtag_key));
 }
 
 pub(crate) fn request_group_shell_refresh(group_key: &str) {

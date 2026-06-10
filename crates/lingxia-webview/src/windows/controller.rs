@@ -496,6 +496,10 @@ pub(crate) fn run_ui_thread_inner(
         memory_pages,
     };
 
+    // Let the window procedure drive layout directly (required during the
+    // modal move/size loop, where this command loop is starved).
+    register_live_layout_context(&state);
+
     message_loop(&mut state, command_rx)
 }
 
@@ -536,11 +540,10 @@ pub(crate) fn message_loop(state: &mut UiState, command_rx: Receiver<UiCommand>)
                 return Ok(());
             }
             _ => {
-                if msg.message == WM_LINGXIA_LAYOUT {
-                    let _ = sync_controller_bounds(state);
-                    layout_group_for_state(state);
-                    store_current_window_placement(state);
-                } else if msg.message != WM_LINGXIA_COMMAND {
+                // WM_LINGXIA_LAYOUT is handled by the window procedure (so
+                // it also works inside modal move/size loops); dispatch it
+                // like any other window message.
+                if msg.message != WM_LINGXIA_COMMAND {
                     unsafe {
                         let _ = WindowsAndMessaging::TranslateMessage(&msg);
                         WindowsAndMessaging::DispatchMessageW(&msg);
@@ -673,6 +676,7 @@ pub(crate) fn handle_command(state: &mut UiState, command: UiCommand) -> StdResu
 }
 
 pub(crate) fn cleanup_state(state: &mut UiState) {
+    clear_live_layout_context();
     cleanup_window_state(state);
     unsafe {
         let _ = state.controller.Close();

@@ -18,6 +18,60 @@ pub(crate) struct WindowPlacement {
 pub(crate) static WINDOW_GROUP_PLACEMENTS: OnceLock<Mutex<HashMap<String, WindowPlacement>>> =
     OnceLock::new();
 
+/// Per-UI-thread handle to the window's WebView2 controller so the window
+/// procedure can drive layout itself. Interactive move/size runs inside
+/// `DefWindowProcW`'s modal loop, which starves both the command channel
+/// and posted thread messages, so anything that must track a drag live has
+/// to run on the window-message path, never the command queue.
+struct LiveLayoutContext {
+    hwnd: HWND,
+    webtag_key: String,
+    controller: ICoreWebView2Controller,
+}
+
+thread_local! {
+    static LIVE_LAYOUT_CONTEXT: RefCell<Option<LiveLayoutContext>> = const { RefCell::new(None) };
+}
+
+pub(crate) fn register_live_layout_context(state: &UiState) {
+    LIVE_LAYOUT_CONTEXT.with(|slot| {
+        *slot.borrow_mut() = Some(LiveLayoutContext {
+            hwnd: state.hwnd,
+            webtag_key: state.webtag_key.clone(),
+            controller: state.controller.clone(),
+        });
+    });
+}
+
+pub(crate) fn clear_live_layout_context() {
+    LIVE_LAYOUT_CONTEXT.with(|slot| {
+        slot.borrow_mut().take();
+    });
+}
+
+/// Lays out the window owned by this UI thread directly from the window
+/// procedure: syncs the WebView2 controller bounds, notifies the controller
+/// of the new window position, re-arranges attached group windows, and
+/// stores the placement. Coalesced per message (no timers); cheap enough to
+/// run on every `WM_WINDOWPOSCHANGED` step of an interactive drag.
+pub(crate) fn handle_window_geometry_change(hwnd: HWND) {
+    let context = LIVE_LAYOUT_CONTEXT.with(|slot| {
+        slot.borrow()
+            .as_ref()
+            .filter(|context| context.hwnd == hwnd)
+            .map(|context| (context.webtag_key.clone(), context.controller.clone()))
+    });
+    let Some((webtag_key, controller)) = context else {
+        return;
+    };
+    let _ = sync_controller_bounds_for(hwnd, &webtag_key, &controller);
+    unsafe {
+        let _ = controller.NotifyParentWindowPositionChanged();
+    }
+    layout_group_for_main_host(&webtag_key);
+    store_window_placement(hwnd, &webtag_key);
+}
+
 pub(crate) fn hwnd_handle(hwnd: HWND) -> isize {
     hwnd.0 as isize
 }
@@ -31,18 +85,22 @@ pub(crate) fn is_window_handle_valid(handle: isize) -> bool {
 }
 
 pub(crate) fn store_current_window_placement(state: &UiState) {
+    store_window_placement(state.hwnd, &state.webtag_key);
+}
+
+pub(crate) fn store_window_placement(hwnd: HWND, webtag_key: &str) {
     if matches!(
-        window_attachment(&state.webtag_key).map(|attachment| attachment.kind),
+        window_attachment(webtag_key).map(|attachment| attachment.kind),
         Some(WindowAttachmentKind::MainChild | WindowAttachmentKind::Panel { .. })
     ) {
         return;
     }
-    if unsafe { WindowsAndMessaging::IsZoomed(state.hwnd).as_bool() } {
+    if unsafe { WindowsAndMessaging::IsZoomed(hwnd).as_bool() } {
         return;
     }
     let mut rect = RECT::default();
-    if !unsafe { WindowsAndMessaging::IsWindowVisible(state.hwnd).as_bool() }
-        || unsafe { WindowsAndMessaging::GetWindowRect(state.hwnd, &mut rect) }.is_err()
+    if !unsafe { WindowsAndMessaging::IsWindowVisible(hwnd).as_bool() }
+        || unsafe { WindowsAndMessaging::GetWindowRect(hwnd, &mut rect) }.is_err()
     {
         return;
     }
@@ -55,7 +113,7 @@ pub(crate) fn store_current_window_placement(state: &UiState) {
     let placements = WINDOW_GROUP_PLACEMENTS.get_or_init(|| Mutex::new(HashMap::new()));
     if let Ok(mut placements) = placements.lock() {
         placements.insert(
-            webtag_group_key(&state.webtag_key),
+            webtag_group_key(webtag_key),
             WindowPlacement {
                 left: rect.left,
                 top: rect.top,
@@ -418,15 +476,32 @@ pub(crate) fn create_hidden_window(webtag: &WebTag) -> StdResult<HWND> {
             if windows_chrome_renderer().is_some() {
                 return LRESULT(1);
             }
-        } else if msg == WindowsAndMessaging::WM_SIZE || msg == WindowsAndMessaging::WM_MOVE {
-            unsafe {
-                let _ = WindowsAndMessaging::PostMessageW(
-                    Some(hwnd),
-                    WM_LINGXIA_LAYOUT,
-                    WPARAM::default(),
-                    LPARAM::default(),
-                );
+        } else if msg == WindowsAndMessaging::WM_WINDOWPOSCHANGED {
+            // Interactive move/size runs inside DefWindowProc's modal loop
+            // where the command queue and posted thread messages are starved,
+            // so layout must track the drag live from this message path.
+            let pos = lparam.0 as *const WindowsAndMessaging::WINDOWPOS;
+            if !pos.is_null() {
+                let flags = unsafe { (*pos).flags };
+                let sized = !flags.contains(WindowsAndMessaging::SWP_NOSIZE)
+                    || flags.contains(WindowsAndMessaging::SWP_FRAMECHANGED);
+                let moved = !flags.contains(WindowsAndMessaging::SWP_NOMOVE);
+                if sized || moved {
+                    handle_window_geometry_change(hwnd);
+                }
+                if sized && windows_chrome_renderer().is_some() {
+                    // Chrome elements are anchored to the client edges, so a
+                    // size change must repaint the whole window, not just the
+                    // newly exposed strip.
+                    unsafe {
+                        let _ = InvalidateRect(Some(hwnd), None, false);
+                    }
+                }
             }
+            // Fall through so DefWindowProc still produces WM_SIZE/WM_MOVE.
+        } else if msg == WM_LINGXIA_LAYOUT {
+            handle_window_geometry_change(hwnd);
+            return LRESULT(0);
         } else if msg == WindowsAndMessaging::WM_PAINT {
             if windows_chrome_renderer().is_some() {
                 paint_window_chrome(hwnd);
@@ -524,20 +599,14 @@ pub(crate) fn create_hidden_window(webtag: &WebTag) -> StdResult<HWND> {
         });
         let user_data_ptr = Box::into_raw(user_data);
 
-        // With a registered chrome renderer the window is borderless and the
-        // renderer paints the whole frame; otherwise keep the standard OS
-        // frame so windows stay usable without any product chrome.
-        let window_style = if windows_chrome_renderer().is_some() {
-            WINDOW_STYLE(
-                WindowsAndMessaging::WS_POPUP.0
-                    | WindowsAndMessaging::WS_THICKFRAME.0
-                    | WindowsAndMessaging::WS_SYSMENU.0
-                    | WindowsAndMessaging::WS_MINIMIZEBOX.0
-                    | WindowsAndMessaging::WS_MAXIMIZEBOX.0,
-            )
-        } else {
-            WS_OVERLAPPEDWINDOW
-        };
+        // Both modes keep the WS_OVERLAPPEDWINDOW styles. With a registered
+        // chrome renderer the renderer paints the whole frame: the standard
+        // styles (WS_THICKFRAME | WS_CAPTION) stay so DWM keeps drawing the
+        // drop shadow and Win11 snap keeps working, while the visible frame
+        // is removed in WM_NCCALCSIZE (client covers the window) and DWM is
+        // extended 1px into the client area after creation. Without a
+        // renderer the standard OS frame is left untouched.
+        let window_style = WS_OVERLAPPEDWINDOW;
         let result = WindowsAndMessaging::CreateWindowExW(
             WINDOW_EX_STYLE::default(),
             w!("LingXiaHiddenWebViewHost"),
@@ -562,6 +631,7 @@ pub(crate) fn create_hidden_window(webtag: &WebTag) -> StdResult<HWND> {
                 }
                 if windows_chrome_renderer().is_some() {
                     hide_titlebar_icon(hwnd);
+                    extend_frame_into_client_area(hwnd);
                 }
                 Ok(hwnd)
             }
@@ -572,6 +642,36 @@ pub(crate) fn create_hidden_window(webtag: &WebTag) -> StdResult<HWND> {
                 )))
             }
         }
+    }
+}
+
+/// Standard custom-frame setup: WM_NCCALCSIZE already makes the client area
+/// cover the whole window, so extend the DWM frame 1px into the top of the
+/// client area to keep the DWM drop shadow (and Win11 rounded corners) on a
+/// window without a visible non-client frame, then force WM_NCCALCSIZE so
+/// the borderless client area applies immediately.
+pub(crate) fn extend_frame_into_client_area(hwnd: HWND) {
+    let margins = MARGINS {
+        cxLeftWidth: 0,
+        cxRightWidth: 0,
+        cyTopHeight: 1,
+        cyBottomHeight: 0,
+    };
+    unsafe {
+        let _ = DwmExtendFrameIntoClientArea(hwnd, &margins);
+        let _ = WindowsAndMessaging::SetWindowPos(
+            hwnd,
+            None,
+            0,
+            0,
+            0,
+            0,
+            WindowsAndMessaging::SWP_NOMOVE
+                | WindowsAndMessaging::SWP_NOSIZE
+                | WindowsAndMessaging::SWP_NOZORDER
+                | WindowsAndMessaging::SWP_NOACTIVATE
+                | WindowsAndMessaging::SWP_FRAMECHANGED,
+        );
     }
 }
 
@@ -913,9 +1013,17 @@ pub(crate) fn set_native_window_layout(
 }
 
 pub(crate) fn sync_controller_bounds(state: &UiState) -> StdResult<()> {
+    sync_controller_bounds_for(state.hwnd, &state.webtag_key, &state.controller)
+}
+
+pub(crate) fn sync_controller_bounds_for(
+    hwnd: HWND,
+    webtag_key: &str,
+    controller: &ICoreWebView2Controller,
+) -> StdResult<()> {
     let mut rect = RECT::default();
     unsafe {
-        let _ = WindowsAndMessaging::GetClientRect(state.hwnd, &mut rect);
+        let _ = WindowsAndMessaging::GetClientRect(hwnd, &mut rect);
         if rect.right <= rect.left || rect.bottom <= rect.top {
             rect = RECT {
                 left: 0,
@@ -924,20 +1032,19 @@ pub(crate) fn sync_controller_bounds(state: &UiState) -> StdResult<()> {
                 bottom: 768,
             };
         }
-        rect = controller_bounds_for_state(state, rect);
-        state
-            .controller
+        rect = controller_bounds_for_window(hwnd, webtag_key, rect);
+        controller
             .SetBounds(rect)
             .map_err(|err| WebViewError::WebView(format!("SetBounds failed: {err}")))?;
-        if window_attachment(&state.webtag_key).is_some() {
-            apply_round_region_to_webview_children(state.hwnd, rect, renderer_panel_radius());
+        if window_attachment(webtag_key).is_some() {
+            apply_round_region_to_webview_children(hwnd, rect, renderer_panel_radius());
         }
     }
     Ok(())
 }
 
-pub(crate) fn controller_bounds_for_state(state: &UiState, client: RECT) -> RECT {
-    match window_attachment(&state.webtag_key) {
+pub(crate) fn controller_bounds_for_window(hwnd: HWND, webtag_key: &str, client: RECT) -> RECT {
+    match window_attachment(webtag_key) {
         Some(WindowAttachment {
             kind: WindowAttachmentKind::MainChild | WindowAttachmentKind::Panel { .. },
             ..
@@ -946,12 +1053,12 @@ pub(crate) fn controller_bounds_for_state(state: &UiState, client: RECT) -> RECT
             group_key,
             kind: WindowAttachmentKind::MainHost,
         }) => {
-            let content = renderer_content_rect(client, &current_window_layout(&state.webtag_key));
-            attached_group_rects(&group_key, state.hwnd)
+            let content = renderer_content_rect(client, &current_window_layout(webtag_key));
+            attached_group_rects(&group_key, hwnd)
                 .map(|rects| rects.main)
                 .unwrap_or(content)
         }
-        None => renderer_content_rect(client, &current_window_layout(&state.webtag_key)),
+        None => renderer_content_rect(client, &current_window_layout(webtag_key)),
     }
 }
 
@@ -994,7 +1101,7 @@ pub(crate) fn window_snapshot(state: &UiState) -> StdResult<WindowsWebViewWindow
         }
     }
 
-    let content = controller_bounds_for_state(state, client_rect);
+    let content = controller_bounds_for_window(state.hwnd, &state.webtag_key, client_rect);
     let content_left = client_origin.x - window_rect.left + content.left;
     let content_top = client_origin.y - window_rect.top + content.top;
     let content_width = rect_width(&content) as u32;

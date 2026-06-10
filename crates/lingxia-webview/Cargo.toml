@@ -61,6 +61,7 @@ image = { version = "0.25.10", default-features = false, features = ["png"] }
 webview2-com = "0.39.1"
 windows = { workspace = true, features = [
     "Win32_Foundation",
+    "Win32_Graphics_Dwm",
     "Win32_Graphics_Gdi",
     "Win32_System_Com",
     "Win32_System_Com_StructuredStorage",
@@ -68,6 +69,7 @@ windows = { workspace = true, features = [
     "Win32_System_Memory",
     "Win32_System_Ole",
     "Win32_System_Threading",
+    "Win32_UI_Controls",
     "Win32_UI_Input_KeyboardAndMouse",
     "Win32_UI_Shell",
     "Win32_UI_WindowsAndMessaging",
