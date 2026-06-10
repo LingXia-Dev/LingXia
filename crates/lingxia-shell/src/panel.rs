@@ -6,6 +6,7 @@ pub fn panel_item_for_id(panel_id: &str) -> Option<(String, String)> {
     lingxia_app_context::app_config()
         .and_then(|config| config.panels.as_ref())
         .and_then(|panels| panels.items.iter().find(|item| item.id == panel_id))
+        .filter(|item| item.content.kind.is_lxapp())
         .map(|item| {
             (
                 item.content.app_id.clone(),
@@ -25,11 +26,11 @@ pub fn open_panel_lxapp(panel_id: &str, appid: &str, path: &str) {
     let appid = appid.to_string();
     let path = path.to_string();
 
-    let _ = rong::RongExecutor::global().spawn(async move {
+    std::mem::drop(rong::RongExecutor::global().spawn(async move {
         if let Err(err) = do_open_panel_lxapp(&panel_id, &appid, &path).await {
             log::error!("open_panel_lxapp failed for {}: {}", appid, err);
         }
-    });
+    }));
 }
 
 async fn do_open_panel_lxapp(panel_id: &str, appid: &str, path: &str) -> Result<(), LxAppError> {

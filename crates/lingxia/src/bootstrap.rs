@@ -75,7 +75,9 @@ fn load_panels_from_ui_config(
 }
 
 fn panels_from_ui_config(ui: &serde_json::Value) -> Option<lingxia_app_context::PanelsConfig> {
-    use lingxia_app_context::{PanelContent, PanelItem, PanelPosition, PanelsConfig};
+    use lingxia_app_context::{
+        PanelContent, PanelContentKind, PanelItem, PanelPosition, PanelsConfig,
+    };
 
     let surfaces = ui.get("surfaces")?.as_array()?;
     let surfaces_by_id = surfaces
@@ -120,15 +122,26 @@ fn panels_from_ui_config(ui: &serde_json::Value) -> Option<lingxia_app_context::
         {
             continue;
         }
-        let Some(app_id) = surface
-            .get("content")
-            .and_then(|content| content.get("appId"))
-            .and_then(serde_json::Value::as_str)
-            .map(str::trim)
-            .filter(|app_id| !app_id.is_empty())
-        else {
+        let Some(content) = surface.get("content") else {
             continue;
         };
+        let content_kind = match content
+            .get("kind")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("lxapp")
+        {
+            "terminal" => PanelContentKind::Terminal,
+            "lxapp" => PanelContentKind::LxApp,
+            _ => continue,
+        };
+        let app_id = content
+            .get("appId")
+            .and_then(serde_json::Value::as_str)
+            .map(str::trim)
+            .filter(|app_id| !app_id.is_empty());
+        if content_kind == PanelContentKind::LxApp && app_id.is_none() {
+            continue;
+        }
 
         let label = activator
             .get("label")
@@ -162,7 +175,8 @@ fn panels_from_ui_config(ui: &serde_json::Value) -> Option<lingxia_app_context::
             icon,
             position,
             content: PanelContent {
-                app_id: app_id.to_string(),
+                kind: content_kind,
+                app_id: app_id.unwrap_or_default().to_string(),
                 path,
             },
         });
@@ -264,7 +278,7 @@ mod tests {
     }
 
     #[test]
-    fn ignores_non_lxapp_attach_panel_content() {
+    fn derives_terminal_attach_panels_from_ui_config() {
         let ui = serde_json::json!({
             "surfaces": [{
                 "id": "terminal",
@@ -282,6 +296,15 @@ mod tests {
             }]
         });
 
-        assert!(panels_from_ui_config(&ui).is_none());
+        let panels = panels_from_ui_config(&ui).expect("panel config");
+        assert_eq!(panels.items.len(), 1);
+        assert_eq!(panels.items[0].id, "terminalSidebar");
+        assert_eq!(panels.items[0].label, "Terminal");
+        assert_eq!(panels.items[0].position, PanelPosition::Bottom);
+        assert_eq!(
+            panels.items[0].content.kind,
+            lingxia_app_context::PanelContentKind::Terminal
+        );
+        assert!(panels.items[0].content.app_id.is_empty());
     }
 }

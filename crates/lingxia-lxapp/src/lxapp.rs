@@ -44,6 +44,11 @@ mod surface;
 #[cfg(target_os = "windows")]
 mod windows_shell;
 pub use security::LxAppSecurityPrivilege;
+#[cfg(target_os = "windows")]
+pub use windows_shell::{
+    WindowsTerminalPanelHandler, WindowsTerminalPanelRequest,
+    WindowsTerminalPanelVisibilityHandler, set_windows_terminal_panel_handler,
+};
 pub mod tabbar;
 pub mod uri;
 pub(crate) mod version;

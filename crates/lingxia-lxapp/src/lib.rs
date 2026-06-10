@@ -61,6 +61,11 @@ pub use lxapp::{
     register_synthetic_lxapp, restart_lxapp, tabbar, touch_page_instance_by_id, try_get,
     uninstall_lxapp,
 };
+#[cfg(target_os = "windows")]
+pub use lxapp::{
+    WindowsTerminalPanelHandler, WindowsTerminalPanelRequest,
+    WindowsTerminalPanelVisibilityHandler, set_windows_terminal_panel_handler,
+};
 pub use native_component::on_native_component_event;
 pub use page::config::{OrientationConfig, PageOrientation};
 pub use page::{

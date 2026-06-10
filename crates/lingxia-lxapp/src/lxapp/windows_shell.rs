@@ -1,5 +1,5 @@
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use lingxia_platform::traits::app_runtime::{AppRuntime, LxAppOpenMode};
 use lingxia_webview::WebTag;
@@ -16,6 +16,29 @@ use crate::{LxAppStartupOptions, ReleaseType, error, warn};
 
 const DEFAULT_NAV_BAR_HEIGHT: i32 = 38;
 const DEFAULT_SIDEBAR_WIDTH: i32 = 180;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WindowsTerminalPanelRequest {
+    pub panel_id: String,
+    pub label: String,
+    pub icon: String,
+    pub position: lingxia_app_context::PanelPosition,
+}
+
+pub type WindowsTerminalPanelHandler = Arc<dyn Fn(WindowsTerminalPanelRequest) + Send + Sync>;
+pub type WindowsTerminalPanelVisibilityHandler = Arc<dyn Fn(&str) -> bool + Send + Sync>;
+
+static WINDOWS_TERMINAL_PANEL_HANDLER: OnceLock<WindowsTerminalPanelHandler> = OnceLock::new();
+static WINDOWS_TERMINAL_PANEL_VISIBILITY: OnceLock<WindowsTerminalPanelVisibilityHandler> =
+    OnceLock::new();
+
+pub fn set_windows_terminal_panel_handler(
+    handler: WindowsTerminalPanelHandler,
+    visibility: WindowsTerminalPanelVisibilityHandler,
+) {
+    let _ = WINDOWS_TERMINAL_PANEL_HANDLER.set(handler);
+    let _ = WINDOWS_TERMINAL_PANEL_VISIBILITY.set(visibility);
+}
 
 pub(crate) fn install_update_handler() {
     lingxia_platform::set_windows_ui_update_handler(Arc::new(|appid| {
@@ -112,7 +135,11 @@ impl LxApp {
                     .items
                     .into_iter()
                     .map(|item| {
-                        let active = is_panel_visible(&item.id);
+                        let active = if item.content.kind.is_lxapp() {
+                            is_panel_visible(&item.id)
+                        } else {
+                            is_windows_terminal_panel_visible(&item.id)
+                        };
                         WindowsPanelActivatorLayout {
                             id: item.id,
                             label: item.label,
@@ -157,11 +184,18 @@ fn handle_windows_chrome_event(appid: &str, event: WindowsChromeEvent) {
 }
 
 fn handle_windows_panel_activator(appid: &str, panel_id: String) {
-    let Some((panel_appid, path)) = panel_item_for_id(&panel_id) else {
+    let Some(target) = panel_target_for_id(&panel_id) else {
         error!("Windows panel activator was not found")
             .with_appid(appid.to_string())
             .with_path(panel_id);
         return;
+    };
+
+    let (panel_appid, path) = match target {
+        WindowsPanelTarget::LxApp { appid, path } => (appid, path),
+        WindowsPanelTarget::Terminal(request) => {
+            return handle_windows_terminal_panel_activator(appid, request);
+        }
     };
 
     if is_panel_visible(&panel_id) {
@@ -190,11 +224,49 @@ fn handle_windows_panel_activator(appid: &str, panel_id: String) {
     });
 }
 
-fn panel_item_for_id(panel_id: &str) -> Option<(String, String)> {
-    lingxia_app_context::app_config()
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum WindowsPanelTarget {
+    LxApp { appid: String, path: String },
+    Terminal(WindowsTerminalPanelRequest),
+}
+
+fn panel_target_for_id(panel_id: &str) -> Option<WindowsPanelTarget> {
+    let item = lingxia_app_context::app_config()
         .and_then(|config| config.panels.as_ref().cloned())
-        .and_then(|panels| panels.items.into_iter().find(|item| item.id == panel_id))
-        .map(|item| (item.content.app_id, item.content.path.unwrap_or_default()))
+        .and_then(|panels| panels.items.into_iter().find(|item| item.id == panel_id))?;
+
+    if item.content.kind.is_lxapp() {
+        Some(WindowsPanelTarget::LxApp {
+            appid: item.content.app_id,
+            path: item.content.path.unwrap_or_default(),
+        })
+    } else {
+        Some(WindowsPanelTarget::Terminal(WindowsTerminalPanelRequest {
+            panel_id: item.id,
+            label: item.label,
+            icon: item.icon,
+            position: item.position,
+        }))
+    }
+}
+
+fn handle_windows_terminal_panel_activator(appid: &str, request: WindowsTerminalPanelRequest) {
+    let Some(handler) = WINDOWS_TERMINAL_PANEL_HANDLER.get().cloned() else {
+        error!("Windows terminal panel handler is not installed")
+            .with_appid(appid.to_string())
+            .with_path(request.panel_id);
+        return;
+    };
+    handler(request);
+    if let Some(owner) = try_get(appid) {
+        owner.sync_windows_shell_layout();
+    }
+}
+
+fn is_windows_terminal_panel_visible(panel_id: &str) -> bool {
+    WINDOWS_TERMINAL_PANEL_VISIBILITY
+        .get()
+        .is_some_and(|visibility| visibility(panel_id))
 }
 
 async fn open_panel_lxapp(
