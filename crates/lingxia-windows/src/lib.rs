@@ -1,18 +1,39 @@
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
+//! Windows host entry crate for LingXia.
+//!
+//! This crate sits above the [`lingxia`] facade and provides the thin host
+//! glue a pure Rust Windows executable needs: [`WindowsApp`] describes the
+//! host process, [`init`] boots the LingXia runtime and opens the home lxapp,
+//! and [`run_message_loop`] pumps the Win32 message loop until the app exits.
+//!
+//! [`init`] and [`run_message_loop`] must be called on the same thread: the
+//! message loop installs an exit handler that posts `WM_QUIT` to the thread it
+//! runs on, and the webview windows created during [`init`] are serviced by
+//! that thread's message queue. [`quick_start`] performs both steps in order
+//! on the calling thread.
 
+use std::path::{Path, PathBuf};
+
+/// Host process description used to initialize the LingXia runtime.
+///
+/// Construct it with [`WindowsApp::new`] or [`WindowsApp::from_env`] and
+/// customize it through the `with_*` builder methods before passing it to
+/// [`init`].
 #[derive(Debug, Clone)]
 pub struct WindowsApp {
-    pub data_dir: PathBuf,
-    pub cache_dir: PathBuf,
-    pub asset_dir: PathBuf,
-    pub locale: String,
-    pub app_identifier: String,
-    pub product_name: String,
-    pub icon_path: Option<PathBuf>,
+    pub(crate) data_dir: PathBuf,
+    pub(crate) cache_dir: PathBuf,
+    pub(crate) asset_dir: PathBuf,
+    pub(crate) locale: String,
+    pub(crate) app_identifier: String,
+    pub(crate) product_name: String,
+    pub(crate) icon_path: Option<PathBuf>,
 }
 
 impl WindowsApp {
+    /// Creates an app description with the given state and asset directories.
+    ///
+    /// The locale defaults to the user's Windows display locale, the app
+    /// identifier to `app.lingxia.windows`, and the product name to `LingXia`.
     pub fn new(
         data_dir: impl Into<PathBuf>,
         cache_dir: impl Into<PathBuf>,
@@ -29,52 +50,79 @@ impl WindowsApp {
         }
     }
 
+    /// Creates an app description from the process environment.
+    ///
+    /// State directories live under `%LOCALAPPDATA%\<product name>`; the
+    /// `LINGXIA_ASSET_DIR`, `LINGXIA_APP_ID`, and `LINGXIA_PRODUCT_NAME`
+    /// environment variables override the asset directory, app identifier,
+    /// and product name.
     pub fn from_env() -> Self {
         let root = state_root();
         let asset_dir = std::env::var_os("LINGXIA_ASSET_DIR")
             .map(PathBuf::from)
             .unwrap_or_else(default_asset_dir);
         Self::new(root.join("data"), root.join("cache"), asset_dir)
-            .with_locale(default_locale())
             .with_app_identifier(env_or("LINGXIA_APP_ID", "app.lingxia.windows"))
             .with_product_name(env_or("LINGXIA_PRODUCT_NAME", "LingXia"))
     }
 
+    /// Overrides the BCP-47 locale reported to the runtime (e.g. `en-US`).
     pub fn with_locale(mut self, locale: impl Into<String>) -> Self {
         self.locale = locale.into();
         self
     }
 
+    /// Overrides the reverse-DNS application identifier.
     pub fn with_app_identifier(mut self, app_identifier: impl Into<String>) -> Self {
         self.app_identifier = app_identifier.into();
         self
     }
 
+    /// Overrides the user-visible product name.
     pub fn with_product_name(mut self, product_name: impl Into<String>) -> Self {
         self.product_name = product_name.into();
         self
     }
 
+    /// Sets an explicit window/taskbar icon image path.
+    ///
+    /// When unset, [`init`] falls back to `AppIcon.png` from the home app's
+    /// `public` directory or the asset directory root.
     pub fn with_icon_path(mut self, icon_path: impl Into<PathBuf>) -> Self {
         self.icon_path = Some(icon_path.into());
         self
     }
 }
 
+/// Errors surfaced while bootstrapping the Windows host.
 #[derive(Debug, thiserror::Error)]
 pub enum WindowsHostError {
+    /// The LingXia platform layer failed to initialize.
+    #[cfg(target_os = "windows")]
     #[error(transparent)]
-    Platform(#[from] lingxia_platform::PlatformError),
+    Platform(#[from] lingxia::windows::PlatformError),
+    /// The host crate was built for a target other than Windows.
+    #[cfg(not(target_os = "windows"))]
+    #[error("{0}")]
+    Platform(String),
+    /// The runtime initialized but did not report a home app id.
     #[error("LingXia runtime did not return a home app id")]
     MissingHomeApp,
+    /// The home lxapp could not be opened.
     #[error("failed to open home lxapp: {0}")]
     OpenHomeApp(String),
+    /// The window icon could not be loaded from the resolved path.
     #[error("failed to set Windows app icon from {path:?}: {message}")]
     AppIcon { path: PathBuf, message: String },
 }
 
+/// Convenience alias for results produced by this crate.
 pub type Result<T> = std::result::Result<T, WindowsHostError>;
 
+/// Initializes the LingXia runtime and opens the home lxapp.
+///
+/// Returns the home app id on success. Must run on the thread that will later
+/// call [`run_message_loop`].
 #[cfg(target_os = "windows")]
 pub fn init(app: WindowsApp) -> Result<String> {
     let asset_dir = app.asset_dir.clone();
@@ -100,23 +148,31 @@ pub fn init(app: WindowsApp) -> Result<String> {
     Ok(home_app_id)
 }
 
+/// Initializes the LingXia runtime and opens the home lxapp.
+///
+/// This non-Windows stub always fails with [`WindowsHostError::Platform`].
 #[cfg(not(target_os = "windows"))]
 pub fn init(_app: WindowsApp) -> Result<String> {
     Err(WindowsHostError::Platform(
-        lingxia_platform::PlatformError::NotSupported(
-            "lingxia-windows can only initialize on target_os = \"windows\"".to_string(),
-        ),
+        "lingxia-windows can only initialize on target_os = \"windows\"".to_string(),
     ))
 }
 
+/// Runs the Win32 message loop until the application quits.
+///
+/// Installs the LingXia app exit handler for the calling thread and pumps
+/// messages until `WM_QUIT`, returning the loop exit code. Must run on the
+/// same thread that called [`init`].
 #[cfg(target_os = "windows")]
 pub fn run_message_loop() -> i32 {
+    use std::sync::Arc;
+
     use windows::Win32::UI::WindowsAndMessaging::{
         DispatchMessageW, GetMessageW, MSG, PostThreadMessageW, TranslateMessage, WM_QUIT,
     };
 
     let main_thread_id = unsafe { windows::Win32::System::Threading::GetCurrentThreadId() };
-    lingxia_platform::set_windows_app_exit_handler(Arc::new(move || unsafe {
+    lingxia::windows::set_windows_app_exit_handler(Arc::new(move || unsafe {
         let _ = PostThreadMessageW(
             main_thread_id,
             WM_QUIT,
@@ -131,30 +187,30 @@ pub fn run_message_loop() -> i32 {
         match result.0 {
             -1 => return 1,
             0 => return msg.wParam.0 as i32,
-            _ => {
-                if msg.message != WM_QUIT {
-                    unsafe {
-                        let _ = TranslateMessage(&msg);
-                        DispatchMessageW(&msg);
-                    }
-                }
-            }
+            _ => unsafe {
+                let _ = TranslateMessage(&msg);
+                DispatchMessageW(&msg);
+            },
         }
     }
 }
 
+/// Runs the Win32 message loop until the application quits.
+///
+/// This non-Windows stub returns immediately with exit code `0`.
 #[cfg(not(target_os = "windows"))]
 pub fn run_message_loop() -> i32 {
     0
 }
 
-pub fn quick_start() -> Result<String> {
-    let home_app_id = init(WindowsApp::from_env())?;
-    #[cfg(target_os = "windows")]
-    {
-        let _ = run_message_loop();
-    }
-    Ok(home_app_id)
+/// Boots the host from the environment and blocks until the app exits.
+///
+/// Equivalent to [`init`] with [`WindowsApp::from_env`] followed by
+/// [`run_message_loop`] on the calling thread. Returns the message-loop exit
+/// code once the application quits.
+pub fn quick_start() -> Result<i32> {
+    init(WindowsApp::from_env())?;
+    Ok(run_message_loop())
 }
 
 fn state_root() -> PathBuf {
@@ -192,11 +248,24 @@ fn resolve_app_icon_path(
     .find(|path| path.is_file())
 }
 
+#[cfg(target_os = "windows")]
 fn default_locale() -> String {
-    std::env::var("LANG")
-        .ok()
-        .filter(|value| !value.trim().is_empty())
-        .unwrap_or_else(|| "en-US".to_string())
+    use windows::Win32::Globalization::GetUserDefaultLocaleName;
+
+    // LOCALE_NAME_MAX_LENGTH is 85; the returned length includes the
+    // terminating null, so anything above 1 carries a real locale name.
+    let mut buffer = [0_u16; 85];
+    let len = unsafe { GetUserDefaultLocaleName(&mut buffer) };
+    if len > 1 {
+        String::from_utf16_lossy(&buffer[..len as usize - 1])
+    } else {
+        "en-US".to_string()
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn default_locale() -> String {
+    "en-US".to_string()
 }
 
 fn env_or(name: &str, fallback: &str) -> String {
