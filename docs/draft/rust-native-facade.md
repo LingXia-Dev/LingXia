@@ -18,11 +18,17 @@ modules:
 - `lingxia::task`
 - `lingxia::file`
 - `lingxia::media`
+- `lingxia::device`
+- `lingxia::wifi`
+- `lingxia::network`
+- `lingxia::location`
 - `lingxia::provider`
 - `lingxia::log`
 - `lingxia::update`
 - `lingxia::host`
 - `lingxia::js` when `standard` is enabled
+- `lingxia::terminal` when `terminal-runtime` is enabled
+- `lingxia::dev` when `devtool` is enabled
 
 Lower-level workspace crate names should not be part of normal native app
 authoring.
@@ -34,10 +40,13 @@ authoring.
 
 Current service modules:
 
+- `applink`
 - `downloads`
-- `settings`
 - `file`
 - `media`
+- `settings`
+- `storage`
+- `update`
 
 `downloads` and `settings` are service modules, not public `lingxia` facade
 modules. Native app code should use `lingxia::file::download` for explicit

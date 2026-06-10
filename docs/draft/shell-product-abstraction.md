@@ -1,5 +1,13 @@
 # LingXia Shell Product Abstraction Draft
 
+> **Status: aspirational draft — migration not started.** Nothing below
+> (`ShellProduct`, `ShellCapabilities`, `install_default`, the
+> `surfaces/` / `services/` / `platform/` layout) exists in the code yet.
+> The current `crates/lingxia-shell/src` is flat: `address_bar`,
+> `downloads`, `facade`, `panel`, `platform_error`, `proxy`,
+> `proxy_settings`, `settings`. This document describes the target design
+> only.
+
 `lingxia-shell` is a good product-level abstraction, but its current shape is
 too close to a collection of shell implementation details. The goal is to make
 it represent LingXia Shell as a product capability layer, not a bundle of
@@ -120,6 +128,12 @@ settings, proxy, or panels.
 
 Proxy is a cross-platform optional Shell product capability. It is not macOS
 only, and it should not be modeled as a desktop implementation detail.
+
+> **Known gap:** the current code contradicts this — `lingxia-shell` gates
+> the `proxy` and `proxy_settings` modules (and their registration/warmup)
+> behind `cfg(target_os = "macos")`. Resolving this means switching from an
+> OS gate to a feature gate (e.g. a `proxy` Cargo feature) as described
+> below.
 
 Model it explicitly:
 
