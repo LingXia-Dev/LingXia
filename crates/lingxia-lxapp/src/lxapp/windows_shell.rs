@@ -10,7 +10,7 @@ use lingxia_webview::platform::windows::{
     set_webview_window_layout,
 };
 
-use super::{LxApp, try_get};
+use super::{LxApp, get_lxapps_manager, try_get};
 use crate::delegate::{LxAppDelegate, LxAppUiEventType};
 use crate::{LxAppStartupOptions, ReleaseType, error, warn};
 
@@ -204,11 +204,12 @@ fn handle_windows_panel_activator(appid: &str, panel_id: String) {
                 .runtime
                 .hide_lxapp(panel_appid.clone(), panel.session_id())
         {
-            error!("Failed to close Windows panel lxapp: {}", err).with_appid(panel_appid);
+            error!("Failed to close Windows panel lxapp: {}", err).with_appid(panel_appid.clone());
         }
         if let Err(err) = hide_panel(&panel_id) {
             warn!("Failed to hide Windows panel {}: {}", panel_id, err).with_appid(appid);
         }
+        reactivate_windows_owner_lxapp(appid, &panel_appid);
         if let Some(owner) = try_get(appid) {
             owner.sync_windows_shell_layout();
         }
@@ -225,6 +226,15 @@ fn handle_windows_panel_activator(appid: &str, panel_id: String) {
             owner.sync_windows_shell_layout();
         }
     });
+}
+
+fn reactivate_windows_owner_lxapp(owner_appid: &str, panel_appid: &str) {
+    let Some(manager) = get_lxapps_manager() else {
+        return;
+    };
+    manager.remove_from_stack(panel_appid);
+    manager.remove_from_stack(owner_appid);
+    manager.push_lxapp_stack(owner_appid.to_string());
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
