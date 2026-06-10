@@ -30,6 +30,9 @@ fn download_settings_result(app: &LxApp) -> HostResult<DownloadSettingsResult> {
     Ok(DownloadSettingsResult {
         download_dir: effective.to_string_lossy().to_string(),
         uses_default_dir: configured.is_none(),
+        // TODO: replace this hardcoded platform check with an AppRuntime
+        // capability query (directory-picker support). Windows dialog support
+        // is unverified, so behavior is intentionally left unchanged for now.
         can_choose_directory: cfg!(target_os = "macos"),
     })
 }

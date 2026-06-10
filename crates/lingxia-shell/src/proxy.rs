@@ -16,8 +16,9 @@ use lxapp::{LxApp, LxAppError};
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc;
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, LazyLock, Mutex, OnceLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::broadcast;
 
@@ -464,6 +465,15 @@ fn gfwlist_meta_from_cache_result(
 }
 
 fn start_local_proxy() -> Result<RunningProxy, LxAppError> {
+    // Serialize startup: without this guard two concurrent callers can both
+    // observe `running == None`, spawn two proxy threads, and the loser leaks
+    // a bound listener forever. This function already blocks (recv_timeout),
+    // so holding a std mutex across check+spawn+recv+commit is fine.
+    static START_GUARD: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+    let _start_guard = START_GUARD
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+
     {
         let state = lock_state();
         if let Some(running) = state.running.clone() {
@@ -522,11 +532,8 @@ fn start_local_proxy() -> Result<RunningProxy, LxAppError> {
         .map_err(|error| LxAppError::Runtime(format!("failed to start local proxy: {}", error)))?
         .map_err(LxAppError::Runtime)?;
 
-    let mut state = lock_state();
-    if let Some(existing) = state.running.clone() {
-        return Ok(existing);
-    }
-    state.running = Some(running.clone());
+    // START_GUARD is held, so no concurrent starter can have raced us here.
+    lock_state().running = Some(running.clone());
     Ok(running)
 }
 
@@ -694,12 +701,20 @@ fn load_proxy_settings(app_data_dir: &Path) -> Result<ProxySettings, LxAppError>
 
 fn get_proxy_settings_result(app_data_dir: &Path) -> Result<ProxySettingsResult, LxAppError> {
     let settings = load_proxy_settings(app_data_dir)?;
-    let (gfwlist_cache, gfwlist_meta) =
-        gfwlist_meta_from_cache_result(load_gfwlist_cache(app_data_dir));
-    let _ = gfwlist_cache;
+    let (_, gfwlist_meta) = gfwlist_meta_from_cache_result(load_gfwlist_cache(app_data_dir));
     let snapshot = runtime_snapshot_for(&settings, &gfwlist_meta);
     Ok(settings_result(settings, snapshot, gfwlist_meta))
 }
+
+/// Monotonic generation for settings updates: each successful save bumps it,
+/// and the matching background apply is skipped when a newer save exists.
+/// This removes the last-writer-wins nondeterminism between concurrent
+/// `proxy.updateSettings` calls.
+static PROXY_APPLY_GENERATION: AtomicU64 = AtomicU64::new(0);
+
+/// Serializes writes to the proxy settings file so the file's final content
+/// always corresponds to the highest `PROXY_APPLY_GENERATION` value.
+static PROXY_SETTINGS_SAVE_MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 fn save_proxy_settings_and_schedule_apply(
     app_data_dir: PathBuf,
@@ -725,14 +740,22 @@ fn save_proxy_settings_and_schedule_apply(
         ));
     }
 
-    if let Err(error) = crate::proxy_settings::save_proxy_settings(&app_data_dir, &settings) {
-        log::warn!("[ShellProxy] failed to persist proxy settings: {}", error);
-        return Ok(settings_result(
-            settings,
-            snapshot_from_error(error.to_string()),
-            gfwlist_meta,
-        ));
-    }
+    // Hold the save mutex across save + generation bump so concurrent updates
+    // assign generations in the same order as their file writes.
+    let apply_generation = {
+        let _save_guard = PROXY_SETTINGS_SAVE_MUTEX
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if let Err(error) = crate::proxy_settings::save_proxy_settings(&app_data_dir, &settings) {
+            log::warn!("[ShellProxy] failed to persist proxy settings: {}", error);
+            return Ok(settings_result(
+                settings,
+                snapshot_from_error(error.to_string()),
+                gfwlist_meta,
+            ));
+        }
+        PROXY_APPLY_GENERATION.fetch_add(1, Ordering::SeqCst) + 1
+    };
 
     let saved_snapshot = saved_snapshot_for_save(&settings, &gfwlist_meta);
     update_runtime_snapshot(saved_snapshot.clone());
@@ -740,6 +763,13 @@ fn save_proxy_settings_and_schedule_apply(
     let settings_for_apply = settings.clone();
     let app_data_dir_for_apply = app_data_dir.clone();
     let _ = rong::RongExecutor::global().spawn_blocking(move || {
+        if PROXY_APPLY_GENERATION.load(Ordering::SeqCst) != apply_generation {
+            log::info!(
+                "[ShellProxy] skipping stale background apply (generation {})",
+                apply_generation
+            );
+            return;
+        }
         let (gfwlist_cache, _gfwlist_meta) =
             gfwlist_meta_from_cache_result(load_gfwlist_cache(&app_data_dir_for_apply));
         let snapshot = match apply_proxy_settings(&settings_for_apply, gfwlist_cache.as_ref()) {
@@ -758,6 +788,13 @@ fn save_proxy_settings_and_schedule_apply(
             snapshot.status,
             snapshot.is_active
         );
+        if PROXY_APPLY_GENERATION.load(Ordering::SeqCst) != apply_generation {
+            log::info!(
+                "[ShellProxy] discarding stale background apply result (generation {})",
+                apply_generation
+            );
+            return;
+        }
         update_runtime_snapshot(snapshot);
         match get_proxy_settings_result(&app_data_dir_for_apply) {
             Ok(result) => publish_proxy_state(&result),
@@ -802,11 +839,22 @@ async fn refresh_gfwlist_result(app_data_dir: &Path) -> Result<ProxySettingsResu
     save_gfwlist_cache(app_data_dir, &cache)?;
 
     if matches!(settings.mode, ProxyMode::GfwList) {
-        let snapshot = match apply_proxy_settings(&settings, Some(&cache)) {
-            Ok(snapshot) => snapshot,
-            Err(error) => {
+        // apply_proxy_settings blocks (proxy startup waits on recv_timeout), so
+        // run it on the blocking pool just like proxy.updateSettings does.
+        let task = rong::RongExecutor::global()
+            .spawn_blocking(move || apply_proxy_settings(&settings, Some(&cache)));
+        let snapshot = match task.await {
+            Ok(Ok(snapshot)) => snapshot,
+            Ok(Err(error)) => {
                 log::warn!(
                     "[ShellProxy] failed to apply GFW List immediately after refresh: {}",
+                    error
+                );
+                snapshot_from_error(error.to_string())
+            }
+            Err(error) => {
+                log::warn!(
+                    "[ShellProxy] GFW List apply task failed after refresh: {}",
                     error
                 );
                 snapshot_from_error(error.to_string())
@@ -886,9 +934,11 @@ async fn watch_proxy_settings(
     app: Arc<LxApp>,
     mut stream: StreamContext<ProxySettingsResult>,
 ) -> HostResult<()> {
+    // Subscribe before building the initial snapshot so state changes that
+    // happen in between are not lost.
+    let mut rx = proxy_state_sender().subscribe();
     let initial = get_proxy_settings_result(&app.app_data_dir())?;
     stream.send(initial)?;
-    let mut rx = proxy_state_sender().subscribe();
 
     loop {
         tokio::select! {

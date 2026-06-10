@@ -1,7 +1,7 @@
 use lingxia_browser::{
     BrowserAddressAction, BrowserAddressInputError, BrowserAddressInputRequest,
     BrowserAddressInputResponse, BrowserAddressInputTrigger, BrowserAddressNavigation,
-    BrowserAddressState, BrowserAddressValueKind, BrowserNavigationTarget,
+    BrowserAddressState, BrowserAddressValueKind, BrowserNavigationTarget, extract_url_scheme,
 };
 use std::net::IpAddr;
 
@@ -125,20 +125,6 @@ fn classify_browser_address_value(raw: &str) -> BrowserAddressValueKind {
     } else {
         BrowserAddressValueKind::Invalid
     }
-}
-
-fn extract_url_scheme(raw: &str) -> Option<String> {
-    let (scheme, _) = raw.split_once(':')?;
-    if scheme.is_empty() {
-        return None;
-    }
-    let is_valid = scheme
-        .chars()
-        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'));
-    if !is_valid {
-        return None;
-    }
-    Some(scheme.to_ascii_lowercase())
 }
 
 pub fn resolve_input(request: BrowserAddressInputRequest) -> BrowserAddressInputResponse {

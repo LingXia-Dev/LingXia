@@ -1,38 +1,9 @@
 use lingxia_browser::{
     BrowserNavigationPolicyRequest, BrowserNavigationPolicyResponse, LxAppError,
+    is_lingxia_startup_url,
 };
 
 pub const APP_ID: &str = lingxia_browser::BUILTIN_BROWSER_APPID;
-const LINGXIA_SCHEME: &str = "lingxia";
-
-fn extract_url_scheme(raw: &str) -> Option<String> {
-    let (scheme, _) = raw.split_once(':')?;
-    if scheme.is_empty() {
-        return None;
-    }
-    let is_valid = scheme
-        .chars()
-        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'));
-    if !is_valid {
-        return None;
-    }
-    Some(scheme.to_ascii_lowercase())
-}
-
-fn is_lingxia_startup_url(url: &str) -> Option<bool> {
-    if extract_url_scheme(url).as_deref() != Some(LINGXIA_SCHEME) {
-        return None;
-    }
-    let host = url
-        .split_once("://")
-        .map(|x| x.1)
-        .unwrap_or("")
-        .split('/')
-        .next()
-        .unwrap_or("")
-        .to_ascii_lowercase();
-    Some(host.is_empty() || host == "newtab")
-}
 
 pub fn classify_navigation(
     request: BrowserNavigationPolicyRequest,
