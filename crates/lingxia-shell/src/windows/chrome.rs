@@ -6,7 +6,7 @@
 //! [`WindowsChromeRenderer`] seam.
 
 use std::ffi::c_void;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use lingxia_webview::platform::windows::{
     WindowsChromeHit, WindowsChromePanel, WindowsChromeRenderer, WindowsChromeState,
@@ -14,16 +14,22 @@ use lingxia_webview::platform::windows::{
     WindowsNavigationBarLayout, WindowsTabBarLayout, WindowsTabBarPosition, WindowsWindowLayout,
     cached_png_icon_handle, set_windows_chrome_renderer,
 };
-use windows::Win32::Foundation::{COLORREF, HWND, RECT};
+use windows::Win32::Foundation::{COLORREF, RECT};
 use windows::Win32::Graphics::Gdi::{
-    CLEARTYPE_QUALITY, CLIP_DEFAULT_PRECIS, CreateFontW, CreatePen, CreateSolidBrush,
-    DEFAULT_CHARSET, DEFAULT_PITCH, DT_CENTER, DT_END_ELLIPSIS, DT_LEFT, DT_SINGLELINE, DT_VCENTER,
-    DeleteObject, DrawTextW, FF_SWISS, FillRect, GetDeviceCaps, GetStockObject, HDC, HGDIOBJ,
-    LOGPIXELSY, LineTo, MoveToEx, NULL_PEN, OUT_DEFAULT_PRECIS, PS_SOLID, RoundRect, SelectObject,
-    SetBkMode, SetTextColor, TRANSPARENT,
+    CLEARTYPE_QUALITY, CLIP_DEFAULT_PRECIS, CreateFontW, CreateSolidBrush, DEFAULT_CHARSET,
+    DEFAULT_PITCH, DT_CENTER, DT_END_ELLIPSIS, DT_LEFT, DT_SINGLELINE, DT_VCENTER, DeleteObject,
+    DrawTextW, FF_SWISS, FillRect, GetDeviceCaps, GetStockObject, GetTextFaceW, HDC, HFONT,
+    HGDIOBJ, LOGPIXELSY, NULL_PEN, OUT_DEFAULT_PRECIS, RoundRect, SelectObject, SetBkMode,
+    SetTextColor, TRANSPARENT,
+};
+use windows::Win32::Graphics::GdiPlus::{
+    self, FillModeAlternate, GdipAddPathArc, GdipClosePathFigure, GdipCreateFromHDC,
+    GdipCreatePath, GdipCreatePen1, GdipDeleteGraphics, GdipDeletePath, GdipDeletePen,
+    GdipDrawPath, GdipSetSmoothingMode, GdiplusStartup, GdiplusStartupInput,
+    SmoothingModeAntiAlias, UnitPixel,
 };
 use windows::Win32::UI::WindowsAndMessaging::{self, HICON};
-use windows::core::w;
+use windows::core::{PCWSTR, w};
 
 pub(super) const SHELL_PANEL_PADDING: i32 = 6;
 
@@ -47,6 +53,19 @@ pub(super) const SHELL_BADGE_RED: u32 = 0xff3b30;
 
 pub(super) const SHELL_FRAME_BUTTON_ICON: u32 = 0x1f2937;
 
+/// System red of the Win11 close button when hovered (#C42B1C).
+pub(super) const SHELL_CLOSE_HOVER: u32 = 0xc42b1c;
+
+/// Slightly darker close-button red while pressed.
+pub(super) const SHELL_CLOSE_PRESSED: u32 = 0xb22a1b;
+
+/// Black-overlay strength (percent) for hovered minimize/maximize buttons
+/// (Win11 light theme: ~6% black).
+pub(super) const FRAME_BUTTON_HOVER_OVERLAY: u32 = 6;
+
+/// Black-overlay strength (percent) for pressed minimize/maximize buttons.
+pub(super) const FRAME_BUTTON_PRESSED_OVERLAY: u32 = 9;
+
 pub(super) const SHELL_TERMINAL_BACKGROUND: u32 = 0x111827;
 
 pub(super) const SHELL_TERMINAL_TEXT: u32 = 0xe5e7eb;
@@ -57,9 +76,21 @@ pub(super) const SHELL_TAB_SELECTED_BACKGROUND: u32 = 0xf3f7ff;
 
 pub(super) const SHELL_TOP_BAR_HEIGHT: i32 = 38;
 
+/// Win11 caption-button width (every Win11 app uses 46px-wide buttons
+/// flush against the top-right window edge).
 pub(super) const WINDOW_BUTTON_WIDTH: i32 = 46;
 
-pub(super) const WINDOW_BUTTON_ICON_SIZE: i32 = 10;
+/// Caption glyph size: 10pt Segoe Fluent Icons, like the system frame.
+pub(super) const WINDOW_BUTTON_GLYPH_POINT_SIZE: i32 = 10;
+
+/// Caption glyphs (Segoe Fluent Icons / Segoe MDL2 Assets codepoints).
+pub(super) const GLYPH_MINIMIZE: &str = "\u{e921}";
+
+pub(super) const GLYPH_MAXIMIZE: &str = "\u{e922}";
+
+pub(super) const GLYPH_RESTORE: &str = "\u{e923}";
+
+pub(super) const GLYPH_CLOSE: &str = "\u{e8bb}";
 
 pub(super) const SHELL_SIDEBAR_WIDTH: i32 = 180;
 
@@ -109,6 +140,17 @@ impl WindowsChromeRenderer for ShellChromeRenderer {
 
     fn hit_test(&self, state: &WindowsChromeState, point: (i32, i32)) -> Option<WindowsChromeHit> {
         chrome_hit_test(state, point)
+    }
+
+    fn frame_button_rect(
+        &self,
+        state: &WindowsChromeState,
+        button: WindowsFrameButton,
+    ) -> Option<RECT> {
+        window_frame_button_rects(state.client)
+            .into_iter()
+            .find(|(candidate, _)| *candidate == button)
+            .map(|(_, rect)| rect)
     }
 }
 
@@ -247,7 +289,7 @@ pub(super) fn draw_window_chrome(hdc: HDC, state: &WindowsChromeState) {
         draw_tab_bar(hdc, tabbar_rect, tabbar);
     }
     draw_panel_activators(hdc, client, &rects, layout);
-    draw_window_frame_buttons(hdc, state.hwnd, client);
+    draw_window_frame_buttons(hdc, state);
 }
 
 pub(super) fn chrome_hit_test(
@@ -338,10 +380,86 @@ pub(super) fn draw_content_cards(hdc: HDC, state: &WindowsChromeState, rects: &C
                 draw_native_panel_content(hdc, panel);
             }
         }
+        // Blend the aliased round-region corners of the attached cards
+        // (see `draw_card_corner_ring` for why a region is used at all).
+        draw_card_corner_ring(hdc, attached.main);
+        for panel in &attached.panels {
+            draw_card_corner_ring(hdc, panel.rect);
+        }
         return;
     }
 
     draw_content_card(hdc, rects.panel);
+}
+
+/// Anti-aliased rounded border ring drawn around an attached card rect.
+///
+/// Corner strategy: attached cards/panels are `WS_CHILD` windows —
+/// `attach_child_window_to_host` reparents them into the host — so the DWM
+/// corner preference used for top-level windows cannot round them. They are
+/// clipped with a GDI `CreateRoundRectRgn`, whose edge is aliased. This
+/// ring strokes the same rounded boundary with a 2px anti-aliased GDI+ pen
+/// in the window background color so the region's staircase edge blends
+/// into the surrounding chrome.
+pub(super) fn draw_card_corner_ring(hdc: HDC, rect: RECT) {
+    draw_round_rect_border_aa(hdc, rect, SHELL_PANEL_RADIUS, SHELL_WINDOW_BACKGROUND, 2.0);
+}
+
+/// Process-wide GDI+ token; `None` when GDI+ failed to start (the border
+/// ring is then skipped and card corners stay region-clipped only).
+static GDIPLUS_TOKEN: OnceLock<Option<usize>> = OnceLock::new();
+
+pub(super) fn ensure_gdiplus_started() -> bool {
+    GDIPLUS_TOKEN
+        .get_or_init(|| {
+            let input = GdiplusStartupInput {
+                GdiplusVersion: 1,
+                ..Default::default()
+            };
+            let mut token = 0usize;
+            let status = unsafe { GdiplusStartup(&mut token, &input, std::ptr::null_mut()) };
+            (status == GdiPlus::Ok).then_some(token)
+        })
+        .is_some()
+}
+
+/// Strokes the rounded-rect boundary of `rect` with an anti-aliased GDI+
+/// pen (`stroke` pixels wide, centered on the boundary).
+pub(super) fn draw_round_rect_border_aa(hdc: HDC, rect: RECT, radius: i32, rgb: u32, stroke: f32) {
+    let diameter = radius * 2;
+    if rect_width(&rect) <= diameter || rect_height(&rect) <= diameter || !ensure_gdiplus_started()
+    {
+        return;
+    }
+    unsafe {
+        let mut graphics: *mut GdiPlus::GpGraphics = std::ptr::null_mut();
+        if GdipCreateFromHDC(hdc, &mut graphics) != GdiPlus::Ok || graphics.is_null() {
+            return;
+        }
+        let _ = GdipSetSmoothingMode(graphics, SmoothingModeAntiAlias);
+        let mut pen: *mut GdiPlus::GpPen = std::ptr::null_mut();
+        if GdipCreatePen1(0xff00_0000 | rgb, stroke, UnitPixel, &mut pen) == GdiPlus::Ok
+            && !pen.is_null()
+        {
+            let mut path: *mut GdiPlus::GpPath = std::ptr::null_mut();
+            if GdipCreatePath(FillModeAlternate, &mut path) == GdiPlus::Ok && !path.is_null() {
+                let left = rect.left as f32;
+                let top = rect.top as f32;
+                let right = (rect.right - 1) as f32;
+                let bottom = (rect.bottom - 1) as f32;
+                let arc = diameter as f32;
+                let _ = GdipAddPathArc(path, left, top, arc, arc, 180.0, 90.0);
+                let _ = GdipAddPathArc(path, right - arc, top, arc, arc, 270.0, 90.0);
+                let _ = GdipAddPathArc(path, right - arc, bottom - arc, arc, arc, 0.0, 90.0);
+                let _ = GdipAddPathArc(path, left, bottom - arc, arc, arc, 90.0, 90.0);
+                let _ = GdipClosePathFigure(path);
+                let _ = GdipDrawPath(graphics, pen, path);
+                let _ = GdipDeletePath(path);
+            }
+            let _ = GdipDeletePen(pen);
+        }
+        let _ = GdipDeleteGraphics(graphics);
+    }
 }
 
 pub(super) fn draw_content_card(hdc: HDC, rect: RECT) {
@@ -515,68 +633,136 @@ pub(super) fn draw_navigation_bar(hdc: HDC, rect: RECT, navbar: &WindowsNavigati
     }
 }
 
-pub(super) fn draw_window_frame_buttons(hdc: HDC, hwnd: HWND, client: RECT) {
-    let text_color = SHELL_FRAME_BUTTON_ICON;
-    for (button, rect) in window_frame_button_rects(client) {
-        match button {
-            WindowsFrameButton::Minimize => {
-                let y = rect.top + rect_height(&rect) / 2 + 5;
-                draw_line(
-                    hdc,
-                    rect.left + (rect_width(&rect) - WINDOW_BUTTON_ICON_SIZE) / 2,
-                    y,
-                    rect.left + (rect_width(&rect) + WINDOW_BUTTON_ICON_SIZE) / 2,
-                    y,
-                    text_color,
-                );
+/// Draws the Win11-style caption buttons: 46px-wide cells flush against the
+/// top-right edge, Segoe Fluent Icons glyphs (restore glyph while zoomed),
+/// and system hover/pressed states — the close button turns system red with
+/// a white glyph; minimize/maximize get a subtle black overlay.
+pub(super) fn draw_window_frame_buttons(hdc: HDC, state: &WindowsChromeState) {
+    for (button, rect) in window_frame_button_rects(state.client) {
+        let hovered = state.frame_button_hover == Some(button);
+        let pressed_here = state.frame_button_pressed == Some(button);
+        // Pressed visual needs the cursor on the button; hovering a button
+        // while another button's click is in flight shows no highlight.
+        let show_pressed = hovered && pressed_here;
+        let show_hover =
+            hovered && (state.frame_button_pressed.is_none() || pressed_here) && !show_pressed;
+
+        let background = if button == WindowsFrameButton::Close {
+            if show_pressed {
+                Some(SHELL_CLOSE_PRESSED)
+            } else if show_hover {
+                Some(SHELL_CLOSE_HOVER)
+            } else {
+                None
             }
+        } else if show_pressed {
+            Some(darken_rgb(
+                SHELL_WINDOW_BACKGROUND,
+                FRAME_BUTTON_PRESSED_OVERLAY,
+            ))
+        } else if show_hover {
+            Some(darken_rgb(SHELL_WINDOW_BACKGROUND, FRAME_BUTTON_HOVER_OVERLAY))
+        } else {
+            None
+        };
+        if let Some(background) = background {
+            fill_rect(hdc, rect, background);
+        }
+
+        let glyph = match button {
+            WindowsFrameButton::Minimize => GLYPH_MINIMIZE,
             WindowsFrameButton::Maximize => {
-                let size = WINDOW_BUTTON_ICON_SIZE;
-                let left = rect.left + (rect_width(&rect) - size) / 2;
-                let top = rect.top + (rect_height(&rect) - size) / 2;
-                if unsafe { WindowsAndMessaging::IsZoomed(hwnd).as_bool() } {
-                    draw_rect_outline(
-                        hdc,
-                        RECT {
-                            left: left + 3,
-                            top,
-                            right: left + 3 + size - 2,
-                            bottom: top + size - 2,
-                        },
-                        text_color,
-                    );
-                    draw_rect_outline(
-                        hdc,
-                        RECT {
-                            left,
-                            top: top + 3,
-                            right: left + size - 2,
-                            bottom: top + 3 + size - 2,
-                        },
-                        text_color,
-                    );
+                if unsafe { WindowsAndMessaging::IsZoomed(state.hwnd).as_bool() } {
+                    GLYPH_RESTORE
                 } else {
-                    draw_rect_outline(
-                        hdc,
-                        RECT {
-                            left,
-                            top,
-                            right: left + size,
-                            bottom: top + size,
-                        },
-                        text_color,
-                    );
+                    GLYPH_MAXIMIZE
                 }
             }
-            WindowsFrameButton::Close => {
-                let size = WINDOW_BUTTON_ICON_SIZE;
-                let left = rect.left + (rect_width(&rect) - size) / 2;
-                let top = rect.top + (rect_height(&rect) - size) / 2;
-                draw_line(hdc, left, top, left + size, top + size, text_color);
-                draw_line(hdc, left + size, top, left, top + size, text_color);
-            }
+            WindowsFrameButton::Close => GLYPH_CLOSE,
+        };
+        let glyph_color = if button == WindowsFrameButton::Close && (show_hover || show_pressed) {
+            0xffffff
+        } else {
+            SHELL_FRAME_BUTTON_ICON
+        };
+        draw_frame_button_glyph(hdc, glyph, rect, glyph_color);
+    }
+}
+
+/// Blends `percent`% black into an `0xRRGGBB` color.
+pub(super) fn darken_rgb(rgb: u32, percent: u32) -> u32 {
+    let blend = |channel: u32| channel * (100 - percent) / 100;
+    (blend((rgb >> 16) & 0xff) << 16) | (blend((rgb >> 8) & 0xff) << 8) | blend(rgb & 0xff)
+}
+
+pub(super) fn draw_frame_button_glyph(hdc: HDC, glyph: &str, rect: RECT, rgb: u32) {
+    let mut wide: Vec<u16> = glyph.encode_utf16().collect();
+    let mut rect = rect;
+    unsafe {
+        let font = create_caption_icon_font(hdc);
+        let old_font = if font.is_invalid() {
+            HGDIOBJ::default()
+        } else {
+            SelectObject(hdc, HGDIOBJ(font.0))
+        };
+        let _ = SetBkMode(hdc, TRANSPARENT);
+        let _ = SetTextColor(hdc, rgb_to_colorref(rgb));
+        let _ = DrawTextW(hdc, &mut wide, &mut rect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+        if !old_font.is_invalid() {
+            let _ = SelectObject(hdc, old_font);
+        }
+        if !font.is_invalid() {
+            let _ = DeleteObject(HGDIOBJ(font.0));
         }
     }
+}
+
+/// Caption icon font: Segoe Fluent Icons (Win11), falling back to Segoe
+/// MDL2 Assets (Win10). The GDI font mapper silently substitutes missing
+/// faces, so each candidate is verified via `GetTextFaceW` before its
+/// private-use glyphs are trusted.
+pub(super) fn create_caption_icon_font(hdc: HDC) -> HFONT {
+    let height = -logical_font_height(hdc, WINDOW_BUTTON_GLYPH_POINT_SIZE);
+    for face in ["Segoe Fluent Icons", "Segoe MDL2 Assets"] {
+        let face_wide: Vec<u16> = face.encode_utf16().chain(std::iter::once(0)).collect();
+        unsafe {
+            let font = CreateFontW(
+                height,
+                0,
+                0,
+                0,
+                400,
+                0,
+                0,
+                0,
+                DEFAULT_CHARSET,
+                OUT_DEFAULT_PRECIS,
+                CLIP_DEFAULT_PRECIS,
+                CLEARTYPE_QUALITY,
+                DEFAULT_PITCH.0 as u32 | FF_SWISS.0 as u32,
+                PCWSTR(face_wide.as_ptr()),
+            );
+            if font.is_invalid() {
+                continue;
+            }
+            let old_font = SelectObject(hdc, HGDIOBJ(font.0));
+            let mut resolved = [0u16; 64];
+            let copied = GetTextFaceW(hdc, Some(&mut resolved)).max(0) as usize;
+            if !old_font.is_invalid() {
+                let _ = SelectObject(hdc, old_font);
+            }
+            let resolved_len = resolved
+                .iter()
+                .position(|&unit| unit == 0)
+                .unwrap_or(copied.min(resolved.len()));
+            let resolved = String::from_utf16_lossy(&resolved[..resolved_len]);
+            if resolved.eq_ignore_ascii_case(face) {
+                return font;
+            }
+            let _ = DeleteObject(HGDIOBJ(font.0));
+        }
+    }
+    HFONT::default()
 }
 
 pub(super) fn window_frame_buttons_width() -> i32 {
@@ -609,29 +795,6 @@ pub(super) fn window_frame_button_rects(client: RECT) -> [(WindowsFrameButton, R
         (WindowsFrameButton::Maximize, normalize_rect(maximize)),
         (WindowsFrameButton::Close, normalize_rect(close)),
     ]
-}
-
-pub(super) fn draw_rect_outline(hdc: HDC, rect: RECT, rgb: u32) {
-    draw_line(hdc, rect.left, rect.top, rect.right, rect.top, rgb);
-    draw_line(hdc, rect.right, rect.top, rect.right, rect.bottom, rgb);
-    draw_line(hdc, rect.right, rect.bottom, rect.left, rect.bottom, rgb);
-    draw_line(hdc, rect.left, rect.bottom, rect.left, rect.top, rgb);
-}
-
-pub(super) fn draw_line(hdc: HDC, x1: i32, y1: i32, x2: i32, y2: i32, rgb: u32) {
-    unsafe {
-        let pen = CreatePen(PS_SOLID, 1, rgb_to_colorref(rgb));
-        if pen.is_invalid() {
-            return;
-        }
-        let old_pen = SelectObject(hdc, HGDIOBJ(pen.0));
-        let _ = MoveToEx(hdc, x1, y1, None);
-        let _ = LineTo(hdc, x2, y2);
-        if !old_pen.is_invalid() {
-            let _ = SelectObject(hdc, old_pen);
-        }
-        let _ = DeleteObject(HGDIOBJ(pen.0));
-    }
 }
 
 pub(super) fn nav_button_rect(navbar: RECT, index: i32) -> RECT {

@@ -799,11 +799,14 @@ pub(crate) fn chrome_state_for_window(hwnd: HWND, webtag_key: &str) -> WindowsCh
             })
         });
 
+    let (frame_button_hover, frame_button_pressed) = frame_button_visual_state(hwnd);
     WindowsChromeState {
         hwnd,
         client,
         layout,
         attached,
+        frame_button_hover,
+        frame_button_pressed,
     }
 }
 

@@ -21,7 +21,7 @@ use crate::{
     WebViewScriptError,
 };
 use http::{Request, StatusCode};
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::ffi::c_void;
 use std::io::Read;
@@ -34,7 +34,10 @@ use webview2_com::{Microsoft::Web::WebView2::Win32::*, *};
 use windows::{
     Win32::{
         Foundation::{E_POINTER, HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM},
-        Graphics::Dwm::DwmExtendFrameIntoClientArea,
+        Graphics::Dwm::{
+            DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND, DwmExtendFrameIntoClientArea,
+            DwmSetWindowAttribute,
+        },
         Graphics::Gdi::{
             BeginPaint, ClientToScreen, CreateBitmap, CreateRoundRectRgn, DeleteObject, EndPaint,
             GetMonitorInfoW, HDC, HGDIOBJ, InvalidateRect, MONITOR_DEFAULTTONEAREST, MONITORINFO,
@@ -48,9 +51,10 @@ use windows::{
             LibraryLoader, Threading,
         },
         UI::{
-            Controls::MARGINS,
+            Controls::{MARGINS, WM_MOUSELEAVE},
             Input::KeyboardAndMouse::{
-                GetKeyState, ReleaseCapture, SetCapture, SetFocus, VK_CONTROL, VK_MENU, VK_SHIFT,
+                GetKeyState, ReleaseCapture, SetCapture, SetFocus, TME_LEAVE, TME_NONCLIENT,
+                TRACKMOUSEEVENT, TrackMouseEvent, VK_CONTROL, VK_MENU, VK_SHIFT,
             },
             Shell::SHCreateMemStream,
             WindowsAndMessaging::{

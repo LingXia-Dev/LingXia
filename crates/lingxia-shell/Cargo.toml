@@ -34,5 +34,6 @@ lingxia-proxy = { workspace = true, features = ["rule-list-routing"] }
 windows = { workspace = true, features = [
     "Win32_Foundation",
     "Win32_Graphics_Gdi",
+    "Win32_Graphics_GdiPlus",
     "Win32_UI_WindowsAndMessaging",
 ] }

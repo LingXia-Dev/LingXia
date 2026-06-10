@@ -5,6 +5,38 @@ use super::*;
 
 pub(crate) struct WindowUserData {
     webtag_key: String,
+    /// Frame button currently under the cursor (client or non-client
+    /// space). Only touched on the window's UI thread, hence `Cell`.
+    hovered_frame_button: Cell<Option<WindowsFrameButton>>,
+    /// Frame button with an in-progress left click.
+    pressed_frame_button: Cell<Option<WindowsFrameButton>>,
+    /// Whether `TrackMouseEvent(TME_LEAVE)` is armed for the client area.
+    tracking_client_mouse: Cell<bool>,
+    /// Whether `TrackMouseEvent(TME_LEAVE | TME_NONCLIENT)` is armed.
+    tracking_nc_mouse: Cell<bool>,
+}
+
+impl WindowUserData {
+    fn new(webtag_key: String) -> Self {
+        Self {
+            webtag_key,
+            hovered_frame_button: Cell::new(None),
+            pressed_frame_button: Cell::new(None),
+            tracking_client_mouse: Cell::new(false),
+            tracking_nc_mouse: Cell::new(false),
+        }
+    }
+}
+
+fn with_window_user_data<R>(hwnd: HWND, f: impl FnOnce(&WindowUserData) -> R) -> Option<R> {
+    let raw =
+        unsafe { WindowsAndMessaging::GetWindowLongPtrW(hwnd, WindowsAndMessaging::GWLP_USERDATA) }
+            as *mut WindowUserData;
+    if raw.is_null() {
+        None
+    } else {
+        Some(f(unsafe { &*raw }))
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -415,6 +447,10 @@ pub(crate) fn rects_match_with_tolerance(a: &RECT, b: &RECT, tolerance: i32) -> 
         && (a.bottom - b.bottom).abs() <= tolerance
 }
 
+/// Clips an attached (child) window to a rounded rect. Only ever applied to
+/// child surfaces (attached cards/panels and their WebView2 children): on a
+/// top-level window a region would disable DWM corner rounding and the drop
+/// shadow — top-level windows use [`apply_round_corner_preference`] instead.
 pub(crate) fn apply_round_region_to_window(hwnd: HWND, width: i32, height: i32, radius: i32) {
     if width <= 0 || height <= 0 || radius <= 0 {
         return;
@@ -519,17 +555,31 @@ pub(crate) fn create_hidden_window(webtag: &WebTag) -> StdResult<HWND> {
             let raw = unsafe {
                 WindowsAndMessaging::GetWindowLongPtrW(hwnd, WindowsAndMessaging::GWLP_USERDATA)
             } as *mut WindowUserData;
-            if !raw.is_null()
-                && handle_window_chrome_mouse_down(
-                    hwnd,
-                    unsafe { &(*raw).webtag_key },
-                    lparam_to_point(lparam),
-                )
-            {
-                return LRESULT(0);
+            if !raw.is_null() {
+                let webtag_key = unsafe { &(*raw).webtag_key };
+                let point = lparam_to_point(lparam);
+                if handle_window_chrome_mouse_down(hwnd, webtag_key, point)
+                    || handle_frame_button_mouse_down(hwnd, webtag_key, point)
+                {
+                    return LRESULT(0);
+                }
             }
         } else if msg == WindowsAndMessaging::WM_MOUSEMOVE {
+            handle_frame_button_client_mouse_move(hwnd, lparam_to_point(lparam));
             if handle_window_chrome_mouse_move(hwnd, lparam_to_point(lparam)) {
+                return LRESULT(0);
+            }
+        } else if msg == WM_MOUSELEAVE {
+            handle_frame_button_client_mouse_leave(hwnd);
+        } else if msg == WindowsAndMessaging::WM_NCMOUSEMOVE {
+            handle_frame_button_nc_mouse_move(hwnd, wparam.0 as u32);
+        } else if msg == WindowsAndMessaging::WM_NCMOUSELEAVE {
+            handle_frame_button_nc_mouse_leave(hwnd);
+        } else if msg == WindowsAndMessaging::WM_NCLBUTTONDOWN
+            || msg == WindowsAndMessaging::WM_NCLBUTTONDBLCLK
+            || msg == WindowsAndMessaging::WM_NCLBUTTONUP
+        {
+            if handle_frame_button_nc_button(hwnd, msg, wparam.0 as u32) {
                 return LRESULT(0);
             }
         } else if msg == WindowsAndMessaging::WM_LBUTTONUP {
@@ -539,14 +589,14 @@ pub(crate) fn create_hidden_window(webtag: &WebTag) -> StdResult<HWND> {
             let raw = unsafe {
                 WindowsAndMessaging::GetWindowLongPtrW(hwnd, WindowsAndMessaging::GWLP_USERDATA)
             } as *mut WindowUserData;
-            if !raw.is_null()
-                && handle_window_chrome_click(
-                    hwnd,
-                    unsafe { &(*raw).webtag_key },
-                    lparam_to_point(lparam),
-                )
-            {
-                return LRESULT(0);
+            if !raw.is_null() {
+                let webtag_key = unsafe { &(*raw).webtag_key };
+                let point = lparam_to_point(lparam);
+                if handle_frame_button_mouse_up(hwnd, webtag_key, point)
+                    || handle_window_chrome_click(hwnd, webtag_key, point)
+                {
+                    return LRESULT(0);
+                }
             }
         } else if msg == WindowsAndMessaging::WM_CLOSE {
             let raw = unsafe {
@@ -594,9 +644,7 @@ pub(crate) fn create_hidden_window(webtag: &WebTag) -> StdResult<HWND> {
 
     unsafe {
         WindowsAndMessaging::RegisterClassW(&class);
-        let user_data = Box::new(WindowUserData {
-            webtag_key: webtag.key().to_string(),
-        });
+        let user_data = Box::new(WindowUserData::new(webtag.key().to_string()));
         let user_data_ptr = Box::into_raw(user_data);
 
         // Both modes keep the WS_OVERLAPPEDWINDOW styles. With a registered
@@ -632,6 +680,7 @@ pub(crate) fn create_hidden_window(webtag: &WebTag) -> StdResult<HWND> {
                 if windows_chrome_renderer().is_some() {
                     hide_titlebar_icon(hwnd);
                     extend_frame_into_client_area(hwnd);
+                    apply_round_corner_preference(hwnd);
                 }
                 Ok(hwnd)
             }
@@ -671,6 +720,23 @@ pub(crate) fn extend_frame_into_client_area(hwnd: HWND) {
                 | WindowsAndMessaging::SWP_NOZORDER
                 | WindowsAndMessaging::SWP_NOACTIVATE
                 | WindowsAndMessaging::SWP_FRAMECHANGED,
+        );
+    }
+}
+
+/// Opts a top-level window into DWM-rounded corners (Win11): unlike a GDI
+/// window region, DWM rounding is anti-aliased and keeps the drop shadow.
+/// Top-level windows must therefore never get `SetWindowRgn` (a region
+/// disables DWM corner rounding); rounded regions are reserved for attached
+/// child surfaces where DWM rounding cannot apply.
+pub(crate) fn apply_round_corner_preference(hwnd: HWND) {
+    let preference = DWMWCP_ROUND;
+    unsafe {
+        let _ = DwmSetWindowAttribute(
+            hwnd,
+            DWMWA_WINDOW_CORNER_PREFERENCE,
+            (&preference as *const _) as *const c_void,
+            std::mem::size_of_val(&preference) as u32,
         );
     }
 }
@@ -733,7 +799,250 @@ pub(crate) fn handle_window_frame_hit_test(hwnd: HWND, webtag_key: &str, lparam:
     let state = chrome_state_for_window(hwnd, webtag_key);
     match renderer.hit_test(&state, point) {
         Some(WindowsChromeHit::Caption) => WindowsAndMessaging::HTCAPTION,
+        // Win11 Snap Layouts: the flyout only appears when WM_NCHITTEST
+        // reports HTMAXBUTTON over the maximize button. DefWindowProc does
+        // not click client-drawn snap buttons, so the click itself is
+        // performed in WM_NCLBUTTONDOWN/WM_NCLBUTTONUP. Minimize and close
+        // stay HTCLIENT and keep their client-message click handling.
+        Some(WindowsChromeHit::FrameButton(WindowsFrameButton::Maximize)) => {
+            WindowsAndMessaging::HTMAXBUTTON
+        }
         _ => WindowsAndMessaging::HTCLIENT,
+    }
+}
+
+/// Hover/pressed frame-button state of a window, surfaced to the chrome
+/// renderer through [`WindowsChromeState`].
+pub(crate) fn frame_button_visual_state(
+    hwnd: HWND,
+) -> (Option<WindowsFrameButton>, Option<WindowsFrameButton>) {
+    with_window_user_data(hwnd, |data| {
+        (
+            data.hovered_frame_button.get(),
+            data.pressed_frame_button.get(),
+        )
+    })
+    .unwrap_or((None, None))
+}
+
+/// Invalidates just the rect of one frame button (no full-window flicker on
+/// hover changes). Falls back to a full invalidation when the renderer does
+/// not expose button rects.
+fn invalidate_frame_button(hwnd: HWND, button: WindowsFrameButton) {
+    let Some(renderer) = windows_chrome_renderer() else {
+        return;
+    };
+    let Some(webtag_key) = window_webtag_key(hwnd) else {
+        return;
+    };
+    let state = chrome_state_for_window(hwnd, &webtag_key);
+    match renderer.frame_button_rect(&state, button) {
+        Some(rect) => unsafe {
+            let _ = InvalidateRect(Some(hwnd), Some(&rect), false);
+        },
+        None => unsafe {
+            let _ = InvalidateRect(Some(hwnd), None, false);
+        },
+    }
+}
+
+fn set_frame_button_hover(hwnd: HWND, hovered: Option<WindowsFrameButton>) {
+    let previous = with_window_user_data(hwnd, |data| data.hovered_frame_button.replace(hovered));
+    let Some(previous) = previous else {
+        return;
+    };
+    if previous == hovered {
+        return;
+    }
+    if let Some(button) = previous {
+        invalidate_frame_button(hwnd, button);
+    }
+    if let Some(button) = hovered {
+        invalidate_frame_button(hwnd, button);
+    }
+}
+
+fn set_frame_button_pressed(hwnd: HWND, pressed: Option<WindowsFrameButton>) {
+    let previous = with_window_user_data(hwnd, |data| data.pressed_frame_button.replace(pressed));
+    let Some(previous) = previous else {
+        return;
+    };
+    if previous == pressed {
+        return;
+    }
+    if let Some(button) = previous {
+        invalidate_frame_button(hwnd, button);
+    }
+    if let Some(button) = pressed {
+        invalidate_frame_button(hwnd, button);
+    }
+}
+
+/// Arms `TrackMouseEvent` so the window receives WM_MOUSELEAVE (client) or
+/// WM_NCMOUSELEAVE (non-client) once, deduplicated per window via the
+/// tracking flags in [`WindowUserData`].
+fn begin_mouse_tracking(hwnd: HWND, nonclient: bool) {
+    let already = with_window_user_data(hwnd, |data| {
+        if nonclient {
+            data.tracking_nc_mouse.replace(true)
+        } else {
+            data.tracking_client_mouse.replace(true)
+        }
+    })
+    .unwrap_or(true);
+    if already {
+        return;
+    }
+    let mut track = TRACKMOUSEEVENT {
+        cbSize: std::mem::size_of::<TRACKMOUSEEVENT>() as u32,
+        dwFlags: if nonclient {
+            TME_LEAVE | TME_NONCLIENT
+        } else {
+            TME_LEAVE
+        },
+        hwndTrack: hwnd,
+        dwHoverTime: 0,
+    };
+    unsafe {
+        let _ = TrackMouseEvent(&mut track);
+    }
+}
+
+/// Frame-button element under a client-space point, or `None`.
+fn frame_button_at_point(
+    hwnd: HWND,
+    webtag_key: &str,
+    point: (i32, i32),
+) -> Option<WindowsFrameButton> {
+    if !window_draws_shell_chrome(webtag_key) {
+        return None;
+    }
+    let renderer = windows_chrome_renderer()?;
+    let state = chrome_state_for_window(hwnd, webtag_key);
+    match renderer.hit_test(&state, point) {
+        Some(WindowsChromeHit::FrameButton(button)) => Some(button),
+        _ => None,
+    }
+}
+
+/// WM_MOUSEMOVE path: tracks hover for the client-handled frame buttons
+/// (minimize/close; the maximize button lives in non-client space).
+pub(crate) fn handle_frame_button_client_mouse_move(hwnd: HWND, point: (i32, i32)) {
+    if windows_chrome_renderer().is_none() {
+        return;
+    }
+    let Some(webtag_key) = window_webtag_key(hwnd) else {
+        return;
+    };
+    let hovered = frame_button_at_point(hwnd, &webtag_key, point);
+    set_frame_button_hover(hwnd, hovered);
+    if hovered.is_some() {
+        begin_mouse_tracking(hwnd, false);
+    }
+}
+
+/// WM_NCMOUSEMOVE path: the maximize button reports HTMAXBUTTON from
+/// WM_NCHITTEST, so its hover updates arrive as non-client mouse moves.
+pub(crate) fn handle_frame_button_nc_mouse_move(hwnd: HWND, hit_code: u32) {
+    if windows_chrome_renderer().is_none() {
+        return;
+    }
+    if hit_code == WindowsAndMessaging::HTMAXBUTTON {
+        set_frame_button_hover(hwnd, Some(WindowsFrameButton::Maximize));
+        begin_mouse_tracking(hwnd, true);
+    } else if frame_button_visual_state(hwnd).0 == Some(WindowsFrameButton::Maximize) {
+        set_frame_button_hover(hwnd, None);
+    }
+}
+
+/// WM_MOUSELEAVE: clears hover for client-tracked buttons only; the maximize
+/// button is cleared by WM_NCMOUSELEAVE (the cursor moving from a client
+/// button onto the maximize button produces WM_MOUSELEAVE after the
+/// non-client move already set the new hover).
+pub(crate) fn handle_frame_button_client_mouse_leave(hwnd: HWND) {
+    with_window_user_data(hwnd, |data| data.tracking_client_mouse.set(false));
+    if frame_button_visual_state(hwnd).0 != Some(WindowsFrameButton::Maximize) {
+        set_frame_button_hover(hwnd, None);
+    }
+}
+
+/// WM_NCMOUSELEAVE: clears maximize-button hover/pressed state.
+pub(crate) fn handle_frame_button_nc_mouse_leave(hwnd: HWND) {
+    with_window_user_data(hwnd, |data| data.tracking_nc_mouse.set(false));
+    let (hovered, pressed) = frame_button_visual_state(hwnd);
+    if hovered == Some(WindowsFrameButton::Maximize) {
+        set_frame_button_hover(hwnd, None);
+    }
+    if pressed == Some(WindowsFrameButton::Maximize) {
+        set_frame_button_pressed(hwnd, None);
+    }
+}
+
+/// WM_LBUTTONDOWN on a client-handled frame button: records the pressed
+/// state for painting and captures the mouse so the release is seen even
+/// when it happens outside the button.
+pub(crate) fn handle_frame_button_mouse_down(
+    hwnd: HWND,
+    webtag_key: &str,
+    point: (i32, i32),
+) -> bool {
+    let Some(button) = frame_button_at_point(hwnd, webtag_key, point) else {
+        return false;
+    };
+    set_frame_button_pressed(hwnd, Some(button));
+    unsafe {
+        let _ = SetCapture(hwnd);
+    }
+    true
+}
+
+/// WM_LBUTTONUP with a pressed frame button: executes the button only when
+/// the release still lands on it (standard button-cancel semantics).
+pub(crate) fn handle_frame_button_mouse_up(
+    hwnd: HWND,
+    webtag_key: &str,
+    point: (i32, i32),
+) -> bool {
+    let (_, pressed) = frame_button_visual_state(hwnd);
+    let Some(button) = pressed else {
+        return false;
+    };
+    set_frame_button_pressed(hwnd, None);
+    unsafe {
+        let _ = ReleaseCapture();
+    }
+    if frame_button_at_point(hwnd, webtag_key, point) == Some(button) {
+        handle_window_frame_button(hwnd, button);
+    }
+    true
+}
+
+/// WM_NCLBUTTONDOWN/WM_NCLBUTTONUP for HTMAXBUTTON: DefWindowProc does not
+/// click client-drawn snap buttons, so the maximize/restore click is
+/// performed here. Returns `true` when the message was consumed.
+pub(crate) fn handle_frame_button_nc_button(hwnd: HWND, msg: u32, hit_code: u32) -> bool {
+    if windows_chrome_renderer().is_none() {
+        return false;
+    }
+    match msg {
+        WindowsAndMessaging::WM_NCLBUTTONDOWN | WindowsAndMessaging::WM_NCLBUTTONDBLCLK => {
+            if hit_code != WindowsAndMessaging::HTMAXBUTTON {
+                return false;
+            }
+            set_frame_button_pressed(hwnd, Some(WindowsFrameButton::Maximize));
+            true
+        }
+        WindowsAndMessaging::WM_NCLBUTTONUP => {
+            if frame_button_visual_state(hwnd).1 != Some(WindowsFrameButton::Maximize) {
+                return false;
+            }
+            set_frame_button_pressed(hwnd, None);
+            if hit_code == WindowsAndMessaging::HTMAXBUTTON {
+                handle_window_frame_button(hwnd, WindowsFrameButton::Maximize);
+            }
+            true
+        }
+        _ => false,
     }
 }
 

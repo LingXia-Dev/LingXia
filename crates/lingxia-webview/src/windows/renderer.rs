@@ -63,6 +63,13 @@ pub struct WindowsChromeState {
     /// Group geometry; `Some` only for a group host window with attached
     /// panels.
     pub attached: Option<WindowsChromeAttachedState>,
+    /// Frame button currently under the cursor, for hover painting.
+    /// Tracked by lingxia-webview (client + non-client mouse messages);
+    /// `None` when no frame button is hovered.
+    pub frame_button_hover: Option<WindowsFrameButton>,
+    /// Frame button with an in-progress left click (mouse down, not yet
+    /// released), for pressed painting. `None` when no click is in flight.
+    pub frame_button_pressed: Option<WindowsFrameButton>,
 }
 
 /// Window frame buttons handled by lingxia-webview (minimize/maximize/close
@@ -117,6 +124,20 @@ pub trait WindowsChromeRenderer: Send + Sync {
     /// Map a client-space point to a chrome element, or `None` for plain
     /// client area.
     fn hit_test(&self, state: &WindowsChromeState, point: (i32, i32)) -> Option<WindowsChromeHit>;
+
+    /// Rect of `button` in client coordinates, used by lingxia-webview to
+    /// invalidate only the affected button on hover/pressed changes. The
+    /// default `None` means the renderer draws no frame buttons (or does not
+    /// expose their rects); hover changes then fall back to a full-window
+    /// invalidation.
+    fn frame_button_rect(
+        &self,
+        state: &WindowsChromeState,
+        button: WindowsFrameButton,
+    ) -> Option<RECT> {
+        let _ = (state, button);
+        None
+    }
 }
 
 static WINDOWS_CHROME_RENDERER: OnceLock<Mutex<Option<Arc<dyn WindowsChromeRenderer>>>> =
