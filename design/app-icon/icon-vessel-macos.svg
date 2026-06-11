@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- macOS variant: Big Sur squircle on a transparent canvas. The artwork
+       occupies the inner 824×824 (Apple's grid) so the Dock renders the
+       margin; corner radius is 22.37% of the plate. Same glyph as light. -->
+  <rect x="100" y="100" width="824" height="824" rx="184.3" fill="#FAFAF7"/>
+  <g transform="translate(512 512) scale(0.805) translate(-512 -512)">
+    <path d="M 288 430 L 288 588 Q 288 692 392 692 L 632 692 Q 736 692 736 588 L 736 430"
+          fill="none" stroke="#1B1F26" stroke-width="96" stroke-linecap="round"/>
+    <circle cx="512" cy="410" r="102" fill="#14CF95"/>
+  </g>
+</svg>

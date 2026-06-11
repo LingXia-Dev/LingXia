@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>LingXia app icon — vessel mark preview</title>
+<style>
+  body { margin: 0; padding: 48px; font: 14px/1.5 -apple-system, system-ui, sans-serif;
+         background: #f2f2ef; color: #3c434b; }
+  h1 { font-size: 18px; font-weight: 600; color: #16191d; margin-top: 40px; }
+  h1:first-child { margin-top: 0; }
+  .note { max-width: 64ch; color: #6b7682; font-size: 13px; }
+  .row { display: flex; align-items: flex-end; gap: 28px; margin: 20px 0 36px; flex-wrap: wrap; }
+  .cell { text-align: center; }
+  .cell span { display: block; margin-top: 10px; font-size: 12px; color: #818a94; }
+  /* iOS home-screen squircle approximation — the OS applies this mask */
+  .squircle { display: block; border-radius: 22.37%; }
+  /* Android launcher circle mask approximation */
+  .circle { display: block; border-radius: 50%; }
+  /* macOS art carries its own squircle + margin; never re-mask it */
+  .plain { display: block; }
+  .dark { background: #1d2127; padding: 32px; border-radius: 16px; }
+  .dark .cell span { color: #9aa4af; }
+</style>
+</head>
+<body>
+  <h1>iOS / full-bleed · light (default)</h1>
+  <p class="note">Source for <code>lingxia icon appicon-1024.png</code> on iOS, Android, and
+     HarmonyOS. The OS applies the corner mask — artwork stays full-bleed.</p>
+  <div class="row">
+    <div class="cell"><img class="squircle" src="icon-vessel-light.svg" width="256" height="256"><span>256</span></div>
+    <div class="cell"><img class="squircle" src="icon-vessel-light.svg" width="128" height="128"><span>128</span></div>
+    <div class="cell"><img class="squircle" src="icon-vessel-light.svg" width="64" height="64"><span>64</span></div>
+    <div class="cell"><img class="squircle" src="icon-vessel-light.svg" width="32" height="32"><span>32</span></div>
+  </div>
+
+  <h1>Dark · on dark surfaces</h1>
+  <p class="note">Same glyph, paper vessel on warm ink — for dark UI contexts and marketing
+     surfaces where the light plate would glare.</p>
+  <div class="row dark">
+    <div class="cell"><img class="squircle" src="icon-vessel-dark.svg" width="128" height="128"><span>dark 128</span></div>
+    <div class="cell"><img class="squircle" src="icon-vessel-dark.svg" width="64" height="64"><span>dark 64</span></div>
+    <div class="cell"><img class="squircle" src="icon-vessel-dark.svg" width="32" height="32"><span>dark 32</span></div>
+  </div>
+
+  <h1>macOS · squircle plate with Dock margin</h1>
+  <p class="note">macOS does not mask icons — the artwork carries its own rounded plate
+     (824/1024 grid, 22.37% radius) and transparent margin.
+     Source for <code>lingxia icon appicon-macos-1024.png -p macos</code>.</p>
+  <div class="row">
+    <div class="cell"><img class="plain" src="icon-vessel-macos.svg" width="256" height="256"><span>256</span></div>
+    <div class="cell"><img class="plain" src="icon-vessel-macos.svg" width="128" height="128"><span>128</span></div>
+    <div class="cell"><img class="plain" src="icon-vessel-macos.svg" width="64" height="64"><span>64</span></div>
+    <div class="cell"><img class="plain" src="icon-vessel-macos.svg" width="32" height="32"><span>32</span></div>
+  </div>
+  <div class="row dark">
+    <div class="cell"><img class="plain" src="icon-vessel-macos.svg" width="128" height="128"><span>dark desktop 128</span></div>
+  </div>
+
+  <h1>Android · adaptive circle mask (approximation)</h1>
+  <p class="note">The CLI builds the adaptive foreground (icon scaled to the 66/108 safe zone) over
+     the <code>#FAFAF7</code> background color. Most launchers mask to a circle.</p>
+  <div class="row">
+    <div class="cell"><img class="circle" src="icon-vessel-light.svg" width="128" height="128"><span>128</span></div>
+    <div class="cell"><img class="circle" src="icon-vessel-light.svg" width="64" height="64"><span>64</span></div>
+  </div>
+</body>
+</html>

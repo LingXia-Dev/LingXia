@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- Layered-icon foreground: the bare mark on transparency, scaled so it
+       fills ~85% of the canvas. The CLI scales this into the Android 66/108
+       (and Harmony 72%) safe zone over the background color layer. -->
+  <g transform="translate(512 512) scale(1.55) translate(-512 -523)">
+    <path d="M 288 430 L 288 588 Q 288 692 392 692 L 632 692 Q 736 692 736 588 L 736 430"
+          fill="none" stroke="#1B1F26" stroke-width="96" stroke-linecap="round"/>
+    <circle cx="512" cy="410" r="102" fill="#14CF95"/>
+  </g>
+</svg>

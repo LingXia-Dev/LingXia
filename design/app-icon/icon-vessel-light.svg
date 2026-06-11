@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- LingXia mark: 凵 (the open vessel of 匣) with a pearl (灵) rising at
+       the mouth. One glyph, two colors, no gradients. OS applies the mask. -->
+  <rect width="1024" height="1024" fill="#FAFAF7"/>
+  <path d="M 288 430 L 288 588 Q 288 692 392 692 L 632 692 Q 736 692 736 588 L 736 430"
+        fill="none" stroke="#1B1F26" stroke-width="96" stroke-linecap="round"/>
+  <circle cx="512" cy="410" r="102" fill="#14CF95"/>
+</svg>
