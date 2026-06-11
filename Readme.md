@@ -1,8 +1,6 @@
 <p align="center">
-  <img src="design/app-icon/appicon-1024.png" alt="LingXia" width="128" />
+  <img src="design/banner/banner.png" alt="LingXia — one runtime, every platform" />
 </p>
-
-<h1 align="center">LingXia</h1>
 
 <p align="center">
   /lɪŋ ʃiə/ - Cross-platform app runtime for lxapps, native host apps, and Rust extensions

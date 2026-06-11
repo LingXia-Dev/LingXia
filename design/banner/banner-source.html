@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>LingXia readme banner — render at 1200×340 @2x</title>
+<style>
+  @font-face {
+    font-family: 'Space Grotesk';
+    src: url('../../website/node_modules/@fontsource-variable/space-grotesk/files/space-grotesk-latin-wght-normal.woff2') format('woff2');
+    font-weight: 300 700;
+  }
+  @font-face {
+    font-family: 'Inter';
+    src: url('../../website/node_modules/@fontsource-variable/inter/files/inter-latin-wght-normal.woff2') format('woff2');
+    font-weight: 100 900;
+  }
+  * { margin: 0; box-sizing: border-box; }
+  body {
+    width: 1200px; height: 340px; overflow: hidden;
+    background:
+      radial-gradient(620px 300px at 50% -20%, rgba(20, 207, 149, 0.16), transparent 70%),
+      #15181d;
+    color: #f4f5f2;
+    font-family: 'Inter', sans-serif;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 22px;
+  }
+  .brand { display: flex; align-items: center; gap: 22px; }
+  .brand span {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 64px; font-weight: 600; letter-spacing: -0.02em;
+  }
+  p { font-size: 22px; letter-spacing: 0.01em; color: #9fb0c3; }
+  p b { font-weight: 600; color: #1fdda4; }
+</style>
+</head>
+<body>
+  <div class="brand">
+    <svg width="84" height="84" viewBox="0 0 100 100" fill="none">
+      <path d="M 28.1 44 L 28.1 57.4 Q 28.1 67.6 38.3 67.6 L 61.7 67.6 Q 71.9 67.6 71.9 57.4 L 71.9 44"
+            stroke="#F4F5F2" stroke-width="9.4" stroke-linecap="round"/>
+      <circle cx="50" cy="41.5" r="10" fill="#1FDDA4"/>
+    </svg>
+    <span>LingXia</span>
+  </div>
+  <p><b>One runtime, every platform</b> — Android · iOS · macOS · Windows · HarmonyOS, powered by Rust</p>
+</body>
+</html>

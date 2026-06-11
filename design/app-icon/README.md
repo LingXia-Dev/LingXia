@@ -66,4 +66,4 @@ lingxia icon design/app-icon/appicon-1024.png -b "#FAFAF7" \
 | Website favicon / touch icon | `website/public/favicon.svg`, `website/public/app-icon.png` | favicon is hand-kept in sync; app-icon is a copy of `appicon-1024.png` |
 | Website og:image | `website/public/og.png` | render `design/og/og-source.html` at 1200×630 |
 | Showcase example | `examples/lingxia-showcase/AppIcon.png` + platform dirs | the `lingxia icon` commands above |
-| Repo readme | references `design/app-icon/appicon-1024.png` directly | nothing to copy |
+| Repo readme | `design/banner/banner.png` (mark + wordmark + tagline) | render `design/banner/banner-source.html` at 1200×340 @2x |
