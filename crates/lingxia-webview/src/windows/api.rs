@@ -53,9 +53,13 @@ pub enum WindowsChromeEvent {
     /// Double-click on the active tab title of a native panel header; the
     /// product layer starts an inline rename in response.
     NativePanelTabRenameRequest { panel_id: String, tab_id: u64 },
-    /// Right-click on a native panel's content area (terminals treat this
-    /// as paste, following Windows Terminal convention).
-    NativePanelRightClick { panel_id: String },
+    /// Right-click on a native panel's content area, with the click point
+    /// in screen coordinates (products typically show a context menu there).
+    NativePanelRightClick {
+        panel_id: String,
+        screen_x: i32,
+        screen_y: i32,
+    },
     /// Click on the top-bar address-bar back button.
     BrowserNavBackClick,
     /// Click on the top-bar address-bar forward button.
@@ -454,7 +458,10 @@ pub fn invalidate_native_panel(panel_id: &str) -> bool {
     let Some(group_key) = group_key_for_panel(panel_id) else {
         return false;
     };
-    request_group_shell_refresh(&group_key);
+    // Content-only updates (terminal output) repaint just the panel rect;
+    // a full-window invalidation here would repaint the sidebar on every
+    // terminal frame, which reads as chrome flicker.
+    request_group_panel_repaint(&group_key, panel_id);
     true
 }
 

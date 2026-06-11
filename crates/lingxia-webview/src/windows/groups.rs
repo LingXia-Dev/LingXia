@@ -833,6 +833,30 @@ pub(crate) fn request_group_shell_refresh(group_key: &str) {
     }
 }
 
+/// Repaints only the host-window region of one panel, identified by its
+/// panel id. Content-only updates (e.g. terminal output frames) use this
+/// instead of [`request_group_shell_refresh`] so the rest of the chrome
+/// (sidebar, top bar) is not repainted dozens of times per second.
+pub(crate) fn request_group_panel_repaint(group_key: &str, panel_id: &str) {
+    let Some(host) = host_handle_for_group(group_key) else {
+        return;
+    };
+    let panel_rect = group_panels(group_key)
+        .into_iter()
+        .find(|panel| panel.panel_id == panel_id)
+        .and_then(|panel| {
+            attached_group_rects(group_key, host)
+                .and_then(|rects| rects.panels.get(&panel.webtag_key).copied())
+        });
+    match panel_rect {
+        Some(rect) => unsafe {
+            let _ = InvalidateRect(Some(host), Some(&rect), false);
+        },
+        // Unknown rect (panel not laid out yet): fall back to a full refresh.
+        None => request_group_shell_refresh(group_key),
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct PanelResizeHit {
     group_key: String,

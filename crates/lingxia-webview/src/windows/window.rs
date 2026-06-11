@@ -1715,8 +1715,9 @@ pub(crate) fn handle_window_chrome_double_click(
 }
 
 /// WM_RBUTTONDOWN on chrome: a right-click on a native panel's content area
-/// is dispatched to the product layer (terminals treat it as paste). Returns
-/// `false` for all other chrome so the message falls through.
+/// is dispatched to the product layer with the screen-space click point
+/// (products typically show a context menu there). Returns `false` for all
+/// other chrome so the message falls through.
 pub(crate) fn handle_window_chrome_right_click(
     hwnd: HWND,
     webtag_key: &str,
@@ -1735,10 +1736,22 @@ pub(crate) fn handle_window_chrome_right_click(
 
     // Keep keyboard input flowing into the panel the user right-clicked.
     set_active_native_panel(Some(panel_id.clone()));
+    let mut screen = POINT {
+        x: point.0,
+        y: point.1,
+    };
     unsafe {
         let _ = SetFocus(Some(hwnd));
+        let _ = ClientToScreen(hwnd, &mut screen);
     }
-    invoke_chrome_event_handler(webtag_key, WindowsChromeEvent::NativePanelRightClick { panel_id })
+    invoke_chrome_event_handler(
+        webtag_key,
+        WindowsChromeEvent::NativePanelRightClick {
+            panel_id,
+            screen_x: screen.x,
+            screen_y: screen.y,
+        },
+    )
 }
 
 pub(crate) fn show_native_window(

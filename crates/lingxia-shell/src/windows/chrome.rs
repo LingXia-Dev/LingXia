@@ -148,6 +148,9 @@ pub(super) const GLYPH_NAV_FORWARD: &str = "\u{e72a}";
 /// "Refresh" glyph of the browser address bar.
 pub(super) const GLYPH_NAV_RELOAD: &str = "\u{e72c}";
 
+/// "Home" glyph of the lxapp navigation bar's home button.
+pub(super) const GLYPH_NAV_HOME: &str = "\u{e80f}";
+
 /// GlobalNavButton (hamburger) — the closest Fluent match to Arc's
 /// sidebar collapse/expand toggle.
 pub(super) const GLYPH_SIDEBAR_TOGGLE: &str = "\u{e700}";
@@ -1134,23 +1137,9 @@ pub(super) fn top_bar_controls(
         return controls;
     }
 
-    let capsule_width = capsule_space.min(ADDRESS_CAPSULE_MAX_WIDTH);
-    let capsule_height = ADDRESS_CAPSULE_HEIGHT.min(rect_height(&top_bar));
-    let capsule_top = top_bar.top + (rect_height(&top_bar) - capsule_height).max(0) / 2;
-    // Center the capsule in the top bar, clamped so the nav cluster always
-    // fits to its left and nothing runs under the frame buttons.
-    let centered_left = (top_bar.left + top_bar.right - capsule_width) / 2;
-    let capsule_left = centered_left
-        .max(left_edge + nav_width + ADDRESS_CAPSULE_NAV_GAP)
-        .min(right_edge - capsule_width);
-    let address = normalize_rect(RECT {
-        left: capsule_left,
-        top: capsule_top,
-        right: capsule_left + capsule_width,
-        bottom: capsule_top + capsule_height,
-    });
-
-    let nav_left = capsule_left - ADDRESS_CAPSULE_NAV_GAP - nav_width;
+    // The nav cluster anchors at the content (webview region) leading edge,
+    // like Arc; the capsule centers in the space that remains.
+    let nav_left = left_edge;
     controls.nav_back = Some(square_button(nav_left));
     controls.nav_forward = Some(square_button(
         nav_left + TOP_BAR_BUTTON_SIZE + TOP_BAR_BUTTON_GAP,
@@ -1158,7 +1147,23 @@ pub(super) fn top_bar_controls(
     controls.nav_reload = Some(square_button(
         nav_left + 2 * (TOP_BAR_BUTTON_SIZE + TOP_BAR_BUTTON_GAP),
     ));
-    controls.address = Some(address);
+
+    let capsule_min_left = nav_left + nav_width + ADDRESS_CAPSULE_NAV_GAP;
+    let capsule_width = capsule_space.min(ADDRESS_CAPSULE_MAX_WIDTH);
+    let capsule_height = ADDRESS_CAPSULE_HEIGHT.min(rect_height(&top_bar));
+    let capsule_top = top_bar.top + (rect_height(&top_bar) - capsule_height).max(0) / 2;
+    // Center the capsule between the nav cluster and the frame buttons,
+    // clamped so it never runs under either.
+    let centered_left = (capsule_min_left + right_edge - capsule_width) / 2;
+    let capsule_left = centered_left
+        .max(capsule_min_left)
+        .min(right_edge - capsule_width);
+    controls.address = Some(normalize_rect(RECT {
+        left: capsule_left,
+        top: capsule_top,
+        right: capsule_left + capsule_width,
+        bottom: capsule_top + capsule_height,
+    }));
     controls
 }
 
@@ -1282,7 +1287,7 @@ pub(super) fn draw_navigation_bar(
 
     if navbar.show_back_button {
         let back_rect = nav_button_rect(rect, buttons_left, 0);
-        draw_text(hdc, "<", back_rect, text_color, DT_CENTER);
+        draw_frame_button_glyph(hdc, GLYPH_NAV_BACK, back_rect, text_color);
         left_controls_width = back_rect.right - rect.left;
     }
     if navbar.show_home_button {
@@ -1291,7 +1296,7 @@ pub(super) fn draw_navigation_bar(
             buttons_left,
             if navbar.show_back_button { 1 } else { 0 },
         );
-        draw_text(hdc, "Home", home_rect, text_color, DT_CENTER);
+        draw_frame_button_glyph(hdc, GLYPH_NAV_HOME, home_rect, text_color);
         left_controls_width = home_rect.right - rect.left;
     }
 

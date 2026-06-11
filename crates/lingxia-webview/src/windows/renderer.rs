@@ -281,7 +281,30 @@ pub(crate) fn paint_window_chrome(hwnd: HWND) {
             && window_draws_shell_chrome(&webtag_key)
         {
             let state = chrome_state_for_window(hwnd, &webtag_key);
-            renderer.paint(hdc, &state);
+            // Double-buffer: chrome paints background-then-content, which
+            // flickers when drawn straight to the screen (visible on every
+            // terminal frame). The buffer is pre-filled from the screen so
+            // regions the renderer clips out (e.g. an inline EDIT child)
+            // survive the blt unchanged.
+            let width = rect_width(&state.client);
+            let height = rect_height(&state.client);
+            let mem_dc = CreateCompatibleDC(Some(hdc));
+            let mem_bitmap = CreateCompatibleBitmap(hdc, width, height);
+            if !mem_dc.is_invalid() && !mem_bitmap.is_invalid() {
+                let previous = SelectObject(mem_dc, HGDIOBJ(mem_bitmap.0));
+                let _ = BitBlt(mem_dc, 0, 0, width, height, Some(hdc), 0, 0, SRCCOPY);
+                renderer.paint(mem_dc, &state);
+                let _ = BitBlt(hdc, 0, 0, width, height, Some(mem_dc), 0, 0, SRCCOPY);
+                SelectObject(mem_dc, previous);
+            } else {
+                renderer.paint(hdc, &state);
+            }
+            if !mem_bitmap.is_invalid() {
+                let _ = DeleteObject(HGDIOBJ(mem_bitmap.0));
+            }
+            if !mem_dc.is_invalid() {
+                let _ = DeleteDC(mem_dc);
+            }
         }
         let _ = EndPaint(hwnd, &paint);
     }

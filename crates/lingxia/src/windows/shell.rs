@@ -474,8 +474,12 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeEvent) {
             super::terminal_panel::begin_terminal_tab_rename(&panel_id, tab_id);
             return;
         }
-        WindowsChromeEvent::NativePanelRightClick { panel_id } => {
-            super::terminal_panel::paste_clipboard_into_panel(&panel_id);
+        WindowsChromeEvent::NativePanelRightClick {
+            panel_id,
+            screen_x,
+            screen_y,
+        } => {
+            super::terminal_panel::show_terminal_context_menu(appid, &panel_id, screen_x, screen_y);
             return;
         }
         // Address-bar navigation targets the presented browser tab; URL and
@@ -644,6 +648,25 @@ fn open_or_present_browser_page(appid: &str, session_id: u64, url: &str) {
 /// resolves the input through the shell address resolver and navigates the
 /// presented tab. Requires the shell chrome; without it there is no
 /// address bar to edit.
+/// Host-window handle of `appid`'s shell window (the window whose chrome
+/// painted the sidebar/top bar), for product UI that needs a real HWND
+/// (inline edits, context menus).
+#[cfg(feature = "shell-runtime")]
+pub(super) fn owner_window_handle(appid: &str) -> Option<isize> {
+    let app = lxapp::try_get(appid)?;
+    let path = app
+        .peek_current_page()
+        .unwrap_or_else(|| app.initial_route());
+    let webtag = WebTag::new(&app.appid, &path, Some(app.session_id()));
+    match lingxia_webview::platform::windows::webview_window_snapshot(&webtag) {
+        Ok(snapshot) => Some(snapshot.window_id as isize),
+        Err(err) => {
+            log::warn!("no shell window handle for {appid}: {err}");
+            None
+        }
+    }
+}
+
 #[cfg(feature = "shell-runtime")]
 fn begin_presented_tab_address_edit(app: &LxApp) {
     let Some(tab_id) = presented_browser_tab() else {
@@ -654,16 +677,8 @@ fn begin_presented_tab_address_edit(app: &LxApp) {
     };
     // The capsule was painted by the shell-owner window's chrome; its host
     // window handle comes from the owner webtag's window snapshot.
-    let path = app
-        .peek_current_page()
-        .unwrap_or_else(|| app.initial_route());
-    let webtag = WebTag::new(&app.appid, &path, Some(app.session_id()));
-    let window = match lingxia_webview::platform::windows::webview_window_snapshot(&webtag) {
-        Ok(snapshot) => snapshot.window_id as isize,
-        Err(err) => {
-            log::warn!("no shell window for address edit of {}: {err}", app.appid);
-            return;
-        }
+    let Some(window) = owner_window_handle(&app.appid) else {
+        return;
     };
 
     let owner_appid = app.appid.clone();

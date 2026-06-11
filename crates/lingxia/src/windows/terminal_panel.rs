@@ -238,9 +238,62 @@ pub(super) fn begin_terminal_tab_rename(panel_id: &str, tab_id: u64) {
     let _ = (panel_id, tab_id);
 }
 
-/// Pastes the clipboard text into the panel's active session (right-click
-/// paste, Windows Terminal convention). CRLF/LF normalize to CR, and the
-/// text is wrapped in bracketed-paste escapes when the session requests it.
+/// Shows the terminal context menu (Copy / Paste) at the given screen point
+/// in response to a right-click on the panel.
+pub(super) fn show_terminal_context_menu(
+    owner_appid: &str,
+    panel_id: &str,
+    screen_x: i32,
+    screen_y: i32,
+) {
+    #[cfg(all(feature = "terminal-runtime", feature = "shell-runtime"))]
+    {
+        let Some(window) = super::shell::owner_window_handle(owner_appid) else {
+            return;
+        };
+        let panel_key = panel_id.to_string();
+        lingxia_shell::windows::context_menu::show_context_menu(
+            window,
+            (screen_x, screen_y),
+            vec!["Copy".to_string(), "Paste".to_string()],
+            Arc::new(move |index| match index {
+                0 => copy_panel_screen_to_clipboard(&panel_key),
+                1 => paste_clipboard_into_panel(&panel_key),
+                _ => {}
+            }),
+        );
+    }
+    #[cfg(not(all(feature = "terminal-runtime", feature = "shell-runtime")))]
+    let _ = (owner_appid, panel_id, screen_x, screen_y);
+}
+
+/// Copies the active session's visible screen text to the clipboard
+/// (no cell-level selection support yet — Copy takes the whole screen).
+#[cfg(all(feature = "terminal-runtime", feature = "shell-runtime"))]
+fn copy_panel_screen_to_clipboard(panel_id: &str) {
+    let Some(session_id) = active_session_id(panel_id) else {
+        return;
+    };
+    let Some(snapshot) = lingxia_terminal::terminal_snapshot_data(session_id) else {
+        return;
+    };
+    let mut lines: Vec<&str> = snapshot.lines.iter().map(|line| line.trim_end()).collect();
+    while lines.last().is_some_and(|line| line.is_empty()) {
+        lines.pop();
+    }
+    let text = lines.join("\r\n");
+    if !text.is_empty() {
+        lingxia_shell::windows::clipboard::set_clipboard_text(&text);
+    }
+}
+
+/// Pastes the clipboard text into the panel's active session (the context
+/// menu's Paste). CRLF/LF normalize to CR, and the text is wrapped in
+/// bracketed-paste escapes when the session requests it.
+#[cfg_attr(
+    not(all(feature = "terminal-runtime", feature = "shell-runtime")),
+    allow(dead_code)
+)]
 pub(super) fn paste_clipboard_into_panel(panel_id: &str) {
     #[cfg(all(feature = "terminal-runtime", feature = "shell-runtime"))]
     {

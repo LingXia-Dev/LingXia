@@ -42,10 +42,11 @@ use windows::{
         },
         Graphics::Gdi::{
             AC_SRC_ALPHA, AC_SRC_OVER, BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BLENDFUNCTION,
-            BeginPaint, ClientToScreen, CreateBitmap, CreateCompatibleDC, CreateDIBSection,
-            DIB_RGB_COLORS, DeleteDC, DeleteObject, EndPaint, GetDC, GetMonitorInfoW, HDC, HGDIOBJ,
-            InvalidateRect, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromWindow, PAINTSTRUCT,
-            ReleaseDC, ScreenToClient, SelectObject,
+            BeginPaint, BitBlt, ClientToScreen, CreateBitmap, CreateCompatibleBitmap,
+            CreateCompatibleDC, CreateDIBSection, DIB_RGB_COLORS, DeleteDC, DeleteObject, EndPaint,
+            GetDC, GetMonitorInfoW, HDC, HGDIOBJ, InvalidateRect, MONITOR_DEFAULTTONEAREST,
+            MONITORINFO, MonitorFromWindow, PAINTSTRUCT, ReleaseDC, SRCCOPY, ScreenToClient,
+            SelectObject,
         },
         System::{
             Com::{

@@ -8,6 +8,7 @@
 
 mod chrome;
 pub mod clipboard;
+pub mod context_menu;
 pub mod terminal_grid;
 pub mod text_input;
 
