@@ -424,7 +424,13 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeEvent) {
             // Selecting an lxapp item while a browser tab is presented
             // returns the main surface to the lxapp webview.
             return_to_lxapp_from_browser(appid);
-            app.on_lxapp_event(LxAppUiEventType::TabBarClick, index.to_string())
+            // No immediate re-sync after this event: the tab switch
+            // completes asynchronously and the runtime's own sync_host_ui
+            // (before and after the page navigation) is the authoritative
+            // layout source. A sync issued now races it and can overwrite
+            // the new selection with the not-yet-switched page state.
+            let _ = app.on_lxapp_event(LxAppUiEventType::TabBarClick, index.to_string());
+            return;
         }
         WindowsChromeEvent::NavigationBack => {
             app.on_lxapp_event(LxAppUiEventType::NavigationClick, "back".to_string())

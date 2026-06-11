@@ -1975,11 +1975,21 @@ pub(crate) fn set_native_window_layout(
     // Layout syncs fire on every shell-relevant runtime event (navigator
     // calls, tab updates, ...); repainting an unchanged layout in full
     // reads as a visible sidebar flicker, so it is a no-op instead.
-    // Compare against the EFFECTIVE layout (the group layout for hosts):
-    // the per-webtag exact layout can already match the incoming one when
-    // the user returns to a previously visited tab, while the group layout
-    // the host actually paints still highlights the old tab.
-    if current_window_layout(&state.webtag_key) == layout {
+    // Skip only when NOTHING this layout feeds would change: both the
+    // per-webtag exact layout AND the group layout the host paints must
+    // already match. A previously visited tab's exact layout always equals
+    // the incoming one when the user returns to it (it was written while
+    // that tab was active), so comparing exact alone misses the group
+    // (highlight) update; comparing the group alone misses per-window
+    // changes for detached windows.
+    let group_key = layout_group_key_for_webtag(&state.webtag_key);
+    let group_same = WINDOW_GROUP_LAYOUTS
+        .get()
+        .and_then(|layouts| layouts.lock().ok())
+        .and_then(|layouts| layouts.get(&group_key).cloned())
+        .is_some_and(|group| group == layout);
+    let exact_same = current_exact_window_layout(&state.webtag_key).as_ref() == Some(&layout);
+    if group_same && exact_same {
         return Ok(());
     }
     set_window_layout_for_key(&state.webtag_key, layout);
