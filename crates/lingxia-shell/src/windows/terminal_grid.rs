@@ -5,15 +5,18 @@
 //! [`set_panel_snapshot`] and reads [`desired_grid_size`] to keep the PTY
 //! grid in sync with the panel rect; the chrome painter consumes the latest
 //! snapshot on repaint and records the grid geometry it painted into, so
-//! both sides agree on cell metrics. Styling mirrors the macOS terminal
+//! both sides agree on cell metrics. The chrome painter also records the
+//! header tab-title rects it painted, which [`begin_tab_rename`] uses to
+//! place the inline rename editor. Styling mirrors the macOS terminal
 //! surface (`SurfaceCore.swift`): dark `#282C34` background, white default
 //! foreground, mono font, dim text blended at 58%.
 
 use std::collections::HashMap;
-use std::sync::{Mutex, MutexGuard, OnceLock};
+use std::ffi::c_void;
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
 use lingxia_terminal::{TerminalCell, TerminalSnapshot};
-use windows::Win32::Foundation::RECT;
+use windows::Win32::Foundation::{HWND, RECT};
 use windows::Win32::Graphics::Gdi::{
     CLEARTYPE_QUALITY, CLIP_DEFAULT_PRECIS, CreateFontW, DEFAULT_CHARSET, DeleteObject,
     ETO_OPTIONS, ExtTextOutW, FF_MODERN, FIXED_PITCH, GetTextFaceW, GetTextMetricsW, HDC, HFONT,
@@ -23,8 +26,7 @@ use windows::Win32::Graphics::Gdi::{
 use windows::core::PCWSTR;
 
 use super::chrome::{
-    fill_rect, fill_round_rect, inset_rect, logical_font_height, rect_height, rect_width,
-    rgb_to_colorref,
+    fill_rect, inset_rect, logical_font_height, rect_height, rect_width, rgb_to_colorref,
 };
 
 /// Inner padding between the terminal card edge and the cell grid.
@@ -43,9 +45,6 @@ const GRID_DEFAULT_FOREGROUND: u32 = 0xffffff;
 /// macOS surface draws dim text at 0.58 alpha).
 const GRID_DIM_FOREGROUND_PERCENT: u32 = 58;
 
-/// Corner radius of the terminal card (same as the body-text fallback).
-const GRID_CARD_RADIUS: i32 = 8;
-
 /// Minimum grid reported to the PTY, mirroring the macOS surface clamp.
 const GRID_MIN_COLS: i32 = 20;
 
@@ -60,10 +59,21 @@ struct GridGeometry {
     grid_height: i32,
 }
 
+/// Host window and header tab-title rects recorded at the last paint of a
+/// panel's header, used to place the inline rename editor.
+#[derive(Clone, Default)]
+struct PanelHeaderGeometry {
+    /// Raw handle of the host window the header was painted into.
+    hwnd: isize,
+    /// `(tab_id, title rect)` pairs in host client coordinates.
+    titles: Vec<(u64, RECT)>,
+}
+
 #[derive(Default)]
 struct PanelGridState {
     snapshot: Option<TerminalSnapshot>,
     geometry: Option<GridGeometry>,
+    header: Option<PanelHeaderGeometry>,
 }
 
 static PANEL_GRIDS: OnceLock<Mutex<HashMap<String, PanelGridState>>> = OnceLock::new();
@@ -90,6 +100,70 @@ pub fn clear_panel(panel_id: &str) {
     panel_grids().remove(panel_id);
 }
 
+/// Surface background of the panel's last snapshot (the `#rrggbb` default
+/// background reported by the terminal), or `None` before the first
+/// snapshot. The chrome painter fills the dock card with this color so the
+/// header, card corners, and cell grid agree.
+pub(super) fn panel_surface_background(panel_id: &str) -> Option<u32> {
+    panel_grids()
+        .get(panel_id)?
+        .snapshot
+        .as_ref()?
+        .default_background
+        .as_deref()
+        .and_then(parse_hex_color)
+}
+
+/// Records the host window and tab-title rects the chrome painter drew for
+/// `panel_id`'s header, so [`begin_tab_rename`] can place the inline
+/// editor over the renamed title.
+pub(super) fn set_panel_tab_title_rects(panel_id: &str, hwnd: isize, titles: Vec<(u64, RECT)>) {
+    panel_grids()
+        .entry(panel_id.to_string())
+        .or_default()
+        .header = Some(PanelHeaderGeometry { hwnd, titles });
+}
+
+/// Starts an inline rename of `tab_id`'s title in `panel_id`'s header: an
+/// EDIT child (see [`super::text_input`]) is created over the title rect
+/// recorded at the last paint. Safe to call from any thread — the editor
+/// is marshalled onto the host window's UI thread. `on_commit` receives
+/// the edited text on Enter/focus loss (Esc cancels); it runs on that UI
+/// thread. Returns `false` when the tab has not been painted yet or the
+/// host window is gone.
+pub fn begin_tab_rename(
+    panel_id: &str,
+    tab_id: u64,
+    initial_text: &str,
+    on_commit: Arc<dyn Fn(String) + Send + Sync>,
+) -> bool {
+    let header = panel_grids().get(panel_id).and_then(|state| state.header.clone());
+    let Some(header) = header else {
+        return false;
+    };
+    let Some((_, rect)) = header
+        .titles
+        .iter()
+        .find(|(id, _)| *id == tab_id)
+        .copied()
+    else {
+        return false;
+    };
+    let hwnd = header.hwnd;
+    let initial = initial_text.to_string();
+    lingxia_webview::platform::windows::post_to_window_thread(
+        hwnd,
+        Box::new(move || {
+            super::text_input::begin_inline_edit(
+                HWND(hwnd as *mut c_void),
+                rect,
+                &initial,
+                on_commit,
+            );
+        }),
+    )
+}
+
 /// Grid size `(cols, rows)` that fits the panel rect seen at the last
 /// paint, or `None` before the panel was first painted.
 pub fn desired_grid_size(panel_id: &str) -> Option<(u16, u16)> {
@@ -106,9 +180,10 @@ pub fn desired_grid_size(panel_id: &str) -> Option<(u16, u16)> {
     ))
 }
 
-/// Paints the terminal cell grid for `panel_id` into `rect` (the card area
-/// below the panel title row). Returns `false` when no snapshot is stored
-/// yet so the caller can fall back to body-text rendering; grid geometry is
+/// Paints the terminal cell grid for `panel_id` into `rect` (the dock body
+/// below the panel header row; the caller has already filled it with the
+/// surface background). Returns `false` when no snapshot is stored yet so
+/// the caller can fall back to body-text rendering; grid geometry is
 /// recorded either way so [`desired_grid_size`] tracks the panel rect from
 /// the first paint on.
 pub(super) fn draw_panel_grid(hdc: HDC, panel_id: &str, rect: RECT) -> bool {
@@ -121,7 +196,7 @@ pub(super) fn draw_panel_grid(hdc: HDC, panel_id: &str, rect: RECT) -> bool {
     // SaveDC/RestoreDC bracket all font/clip/color changes; the fonts are
     // deleted (on drop) only after the DC stopped referencing them.
     let saved = unsafe { SaveDC(hdc) };
-    let drew = draw_panel_grid_clipped(hdc, panel_id, rect, grid_rect, &mut fonts);
+    let drew = draw_panel_grid_clipped(hdc, panel_id, grid_rect, &mut fonts);
     unsafe {
         let _ = RestoreDC(hdc, saved);
     }
@@ -131,7 +206,6 @@ pub(super) fn draw_panel_grid(hdc: HDC, panel_id: &str, rect: RECT) -> bool {
 fn draw_panel_grid_clipped(
     hdc: HDC,
     panel_id: &str,
-    rect: RECT,
     grid_rect: RECT,
     fonts: &mut GridFonts,
 ) -> bool {
@@ -167,7 +241,6 @@ fn draw_panel_grid_clipped(
         .as_deref()
         .and_then(parse_hex_color)
         .unwrap_or(GRID_DEFAULT_FOREGROUND);
-    fill_round_rect(hdc, rect, background, GRID_CARD_RADIUS);
 
     unsafe {
         let _ = IntersectClipRect(
@@ -220,17 +293,11 @@ fn draw_panel_grid_clipped(
         fonts,
     );
 
-    if snapshot.exited {
-        draw_exited_overlay(
-            hdc,
-            grid_rect,
-            line_height,
-            snapshot.cursor_row,
-            background,
-            foreground,
-            fonts,
-        );
-    } else if snapshot.cursor_visible {
+    // Exited sessions are closed by the facade as soon as their snapshot
+    // reports `exited` (the tab closes; the last tab closes the panel), so
+    // no `[process exited]` overlay is drawn — at most one repaint shows
+    // the final screen without a cursor.
+    if !snapshot.exited && snapshot.cursor_visible {
         draw_cursor(
             hdc,
             snapshot,
@@ -452,53 +519,6 @@ fn draw_cursor(
                 }
             }
         }
-    }
-}
-
-/// Exited sessions keep their final snapshot in the store; the painter
-/// renders this dimmed status line under the last cursor row instead of
-/// switching back to body text.
-fn draw_exited_overlay(
-    hdc: HDC,
-    grid_rect: RECT,
-    line_height: i32,
-    cursor_row: u16,
-    background: u32,
-    foreground: u32,
-    fonts: &mut GridFonts,
-) {
-    if !fonts.select(hdc, false, false, false) {
-        return;
-    }
-    let visible_rows = (rect_height(&grid_rect) / line_height).max(1);
-    let row = (i32::from(cursor_row) + 1).clamp(0, visible_rows - 1);
-    let top = grid_rect.top + row * line_height;
-    fill_rect(
-        hdc,
-        RECT {
-            left: grid_rect.left,
-            top,
-            right: grid_rect.right,
-            bottom: top + line_height,
-        },
-        background,
-    );
-    let text: Vec<u16> = "[process exited]".encode_utf16().collect();
-    unsafe {
-        let _ = SetTextColor(
-            hdc,
-            rgb_to_colorref(blend_rgb(foreground, background, GRID_DIM_FOREGROUND_PERCENT)),
-        );
-        let _ = ExtTextOutW(
-            hdc,
-            grid_rect.left,
-            top,
-            ETO_OPTIONS(0),
-            None,
-            PCWSTR(text.as_ptr()),
-            text.len() as u32,
-            None,
-        );
     }
 }
 

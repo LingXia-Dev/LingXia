@@ -55,6 +55,17 @@ fn shell_owner_appid() -> Option<String> {
         .and_then(|slot| slot.clone())
 }
 
+/// Re-syncs the shell-owner app's layout (panel activator states etc.)
+/// after a panel changed visibility outside a chrome event — e.g. the
+/// terminal panel closing itself because its last session exited (the
+/// only caller, hence unused without the terminal runtime).
+#[cfg_attr(not(feature = "terminal-runtime"), allow(dead_code))]
+pub(super) fn sync_owner_shell_layout() {
+    if let Some(appid) = shell_owner_appid() {
+        sync_shell_layout(&appid);
+    }
+}
+
 fn presented_browser_tab() -> Option<String> {
     PRESENTED_BROWSER_TAB
         .get()
@@ -294,6 +305,34 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeEvent) {
         }
         WindowsChromeEvent::BrowserTabCloseClick { tab_id } => {
             handle_browser_tab_close(appid, &tab_id);
+            return;
+        }
+        // Native-panel header events (terminal dock): pure terminal policy,
+        // interpreted by the terminal panel facade. Tab/panel closes may
+        // change panel visibility; those paths re-sync the layout
+        // themselves via `sync_owner_shell_layout`.
+        WindowsChromeEvent::NativePanelTabClick { panel_id, tab_id } => {
+            super::terminal_panel::activate_terminal_tab(&panel_id, tab_id);
+            return;
+        }
+        WindowsChromeEvent::NativePanelTabCloseClick { panel_id, tab_id } => {
+            super::terminal_panel::close_terminal_tab(&panel_id, tab_id);
+            return;
+        }
+        WindowsChromeEvent::NativePanelNewTabClick { panel_id } => {
+            super::terminal_panel::open_terminal_tab(&panel_id);
+            return;
+        }
+        WindowsChromeEvent::NativePanelMaximizeClick { panel_id } => {
+            super::terminal_panel::toggle_terminal_panel_maximized(&panel_id);
+            return;
+        }
+        WindowsChromeEvent::NativePanelTabRenameRequest { panel_id, tab_id } => {
+            super::terminal_panel::begin_terminal_tab_rename(&panel_id, tab_id);
+            return;
+        }
+        WindowsChromeEvent::NativePanelRightClick { panel_id } => {
+            super::terminal_panel::paste_clipboard_into_panel(&panel_id);
             return;
         }
     };
