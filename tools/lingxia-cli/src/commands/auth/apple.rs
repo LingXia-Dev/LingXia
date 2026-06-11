@@ -2,12 +2,14 @@
 
 use crate::path_completion::FilePathCompleter;
 use crate::platform::apple::anisette::OmnisetteProvider;
-use crate::platform::apple::auth::{AuthCredentials, CredentialStorage};
+use crate::platform::apple::auth::{AuthCredentials, CredentialStorage, DeveloperIdCredentials};
 use crate::platform::apple::developer_services;
 use crate::platform::apple::grandslam::{
     DeviceInfo, GrandSlamClient, GrandSlamLoginData, TwoFactorMode, TwoFactorRequired,
 };
 use anyhow::{Context, Result, anyhow};
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD;
 use colored::Colorize;
 use dialoguer::{Input, Password, Select};
 use std::path::PathBuf;
@@ -99,6 +101,50 @@ pub fn apple_login(options: AppleLoginOptions) -> Result<()> {
         "key" => login_with_api_key(&storage, key_args)?,
         _ => login_with_password(&storage, username, password)?,
     }
+
+    Ok(())
+}
+
+/// Import a Developer ID Application `.p12` certificate into the credential
+/// store (`~/.lingxia/apple/developer-id.json`) for macOS signing/notarization.
+pub fn apple_import_developer_id(
+    p12_path: String,
+    password: Option<String>,
+    identity: Option<String>,
+) -> Result<()> {
+    println!("\n{}\n", "Import Developer ID Certificate".cyan().bold());
+
+    let path = expand_path(&p12_path);
+    if !path.exists() {
+        return Err(anyhow!(".p12 file not found: {}", path.display()));
+    }
+
+    let bytes =
+        std::fs::read(&path).with_context(|| format!("Failed to read {}", path.display()))?;
+    let p12_base64 = STANDARD.encode(&bytes);
+
+    let password = if let Some(p) = password {
+        p
+    } else {
+        Password::new()
+            .with_prompt("Certificate (.p12) password")
+            .interact()?
+    };
+
+    let credentials = DeveloperIdCredentials {
+        p12_base64,
+        password,
+        identity: identity.filter(|s| !s.trim().is_empty()),
+    };
+    credentials.save()?;
+
+    println!();
+    println!("{} Developer ID certificate imported.", "✓".green());
+    println!("  Saved to: {}", DeveloperIdCredentials::path()?.display());
+    println!(
+        "  {} This must be a 'Developer ID Application' certificate (for macOS distribution/notarization).",
+        "ℹ".blue()
+    );
 
     Ok(())
 }
