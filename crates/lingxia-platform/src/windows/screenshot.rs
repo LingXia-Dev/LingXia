@@ -1,4 +1,4 @@
-use std::ffi::c_void;
+﻿use std::ffi::c_void;
 use std::io::Cursor;
 
 use async_trait::async_trait;
@@ -95,7 +95,7 @@ fn list_app_windows() -> Result<Vec<WindowInfo>, PlatformError> {
     Ok(state.windows)
 }
 
-fn resolve_screenshot_window(
+pub(super) fn resolve_screenshot_window(
     window_id: Option<&str>,
 ) -> Result<windows::Win32::Foundation::HWND, PlatformError> {
     if let Some(window_id) = window_id {
