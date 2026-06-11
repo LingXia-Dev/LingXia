@@ -57,7 +57,8 @@ internal object LxAppMedia {
         advance: String,
         showIndexIndicator: Boolean,
         callbackId: Long,
-        presentedCallbackId: Long
+        presentedCallbackId: Long,
+        changeCallbackId: Long
     ) {
         val activity = LxApp.getCurrentActivity()
         if (activity == null) {
@@ -90,7 +91,8 @@ internal object LxAppMedia {
                 advance = advance,
                 showIndexIndicator = showIndexIndicator,
                 callbackId = callbackId,
-                presentedCallbackId = presentedCallbackId
+                presentedCallbackId = presentedCallbackId,
+                changeCallbackId = changeCallbackId
             )
         }
     }

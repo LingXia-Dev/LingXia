@@ -36,6 +36,8 @@ struct PreviewMediaRequestPayload<'a> {
     callback_id: String,
     #[serde(rename = "presentedCallbackId")]
     presented_callback_id: String,
+    #[serde(rename = "changeCallbackId")]
+    change_callback_id: String,
 }
 
 #[derive(Serialize)]
@@ -84,6 +86,7 @@ impl MediaInteraction for Platform {
             show_index_indicator: request.show_index_indicator,
             callback_id: request.callback_id.to_string(),
             presented_callback_id: request.presented_callback_id.to_string(),
+            change_callback_id: request.change_callback_id.to_string(),
         };
 
         let json = serde_json::to_string(&payload).map_err(|e| {

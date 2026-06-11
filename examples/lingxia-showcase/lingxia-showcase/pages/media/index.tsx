@@ -97,7 +97,8 @@ type CompressVideoResult = {
 
 type PreviewSessionResult = {
   reason: string;
-  lastIndex: number;
+  index: number;
+  source: { path: string; type: string };
 };
 
 type VideoThumbnailSourceInfo = {
@@ -1299,7 +1300,8 @@ export default function MediaPage() {
                       title="Last Preview Result"
                       items={[
                         { label: 'Reason', value: previewSessionResult.reason },
-                        { label: 'Last Index', value: previewSessionResult.lastIndex },
+                        { label: 'Index', value: previewSessionResult.index },
+                        { label: 'Source', value: previewSessionResult.source.path },
                       ]}
                     />
                   )}

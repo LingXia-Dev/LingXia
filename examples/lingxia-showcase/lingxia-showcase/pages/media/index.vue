@@ -690,8 +690,12 @@
                     <span class="font-semibold text-gray-800">{{ previewSessionResult.reason }}</span>
                   </div>
                   <div class="flex items-center justify-between text-sm">
-                    <span class="text-gray-600">Last Index</span>
-                    <span class="font-semibold text-gray-800">{{ previewSessionResult.lastIndex }}</span>
+                    <span class="text-gray-600">Index</span>
+                    <span class="font-semibold text-gray-800">{{ previewSessionResult.index }}</span>
+                  </div>
+                  <div class="flex items-center justify-between gap-3 text-sm">
+                    <span class="text-gray-600">Source</span>
+                    <span class="font-semibold text-gray-800 truncate">{{ previewSessionResult.source.path }}</span>
                   </div>
                 </div>
               </div>
@@ -904,7 +908,8 @@ type CompressVideoResult = {
 };
 type PreviewSessionResult = {
   reason: string;
-  lastIndex: number;
+  index: number;
+  source: { path: string; type: string };
 };
 
 const { data, actions } = useLxPage();

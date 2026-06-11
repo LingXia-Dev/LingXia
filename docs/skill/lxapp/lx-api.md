@@ -172,7 +172,18 @@ lx.scanCode(options?) -> Promise<ScanCodeResult>
 lx.createVideoContext(componentId) -> VideoContext
 ```
 
-`previewMedia` returns a handle, not a promise. Await `handle.completed` for the final session result; subscribe to `handle.presented` to know when the first pixel hits the screen.
+`previewMedia` returns a handle, not a promise — synchronous so listeners are attached before the first event:
+
+```ts
+const preview = lx.previewMedia({ sources, startIndex: 2 });
+preview.onChange(({ index, source }) => markAsViewed(source.path)); // live: every item the user views
+console.log(preview.current.source.path);                            // snapshot of the on-screen item
+await preview.presented;                                             // first pixel hit the screen
+const { reason, index, source } = await preview.completed;           // session ended; `source` = the
+                                                                     // item the user was viewing
+```
+
+`source` is `{ path, type }` with `path` exactly as passed in the request, so it can be matched against caller data without re-indexing the array. `completed` rejects on `signal` abort; `presented` never rejects.
 
 ### File and transfer
 

@@ -79,6 +79,7 @@ impl MediaInteraction for Platform {
             &items_json,
             request.callback_id,
             request.presented_callback_id,
+            request.change_callback_id,
         ) {
             Ok(())
         } else {

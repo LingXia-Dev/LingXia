@@ -684,7 +684,13 @@ Page({
         const ms = Date.now() - startedAt;
         console.log("[media-demo] presented:", { latencyMs: ms });
       });
+      // Live change stream: know which item the user is looking at, as
+      // they swipe / the session auto-advances.
+      const unsubscribe = handle.onChange(({ index, source }) => {
+        console.log("[media-demo] viewing:", index, source.path);
+      });
       const result = await handle.completed;
+      unsubscribe();
       this.setData({ previewSessionBusy: false, previewSessionResult: result, previewSessionError: "" });
       return result;
     } catch (error) {

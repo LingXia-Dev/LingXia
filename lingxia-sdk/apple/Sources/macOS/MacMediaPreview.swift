@@ -52,7 +52,7 @@ extension LxAppMedia {
         let advance: String?
     }
 
-    nonisolated static func previewMedia(items_json: RustStr, callback_id: UInt64, presented_callback_id: UInt64) -> Bool {
+    nonisolated static func previewMedia(items_json: RustStr, callback_id: UInt64, presented_callback_id: UInt64, change_callback_id: UInt64) -> Bool {
         let itemsJson = items_json.toString()
 
         guard let jsonData = itemsJson.data(using: .utf8) else {
@@ -74,12 +74,12 @@ extension LxAppMedia {
 
         if Thread.isMainThread {
             return MainActor.assumeIsolated {
-                previewMediaOnMain(request: request, callbackId: callback_id, presentedCallbackId: presented_callback_id)
+                previewMediaOnMain(request: request, callbackId: callback_id, presentedCallbackId: presented_callback_id, changeCallbackId: change_callback_id)
             }
         }
         var started = false
         DispatchQueue.main.sync {
-            started = previewMediaOnMain(request: request, callbackId: callback_id, presentedCallbackId: presented_callback_id)
+            started = previewMediaOnMain(request: request, callbackId: callback_id, presentedCallbackId: presented_callback_id, changeCallbackId: change_callback_id)
         }
         return started
     }
@@ -98,7 +98,7 @@ extension LxAppMedia {
     }
 
     @MainActor
-    private static func previewMediaOnMain(request: PreviewMediaRequestPayload, callbackId: UInt64, presentedCallbackId: UInt64) -> Bool {
+    private static func previewMediaOnMain(request: PreviewMediaRequestPayload, callbackId: UInt64, presentedCallbackId: UInt64, changeCallbackId: UInt64) -> Bool {
         let urls = request.sources.map { payload -> URL in
             if let parsed = URL(string: payload.path), parsed.scheme != nil {
                 return parsed
@@ -116,15 +116,15 @@ extension LxAppMedia {
         if presentedCallbackId != 0 {
             let _ = onCallback(presentedCallbackId, true, "{}")
         }
-        return showQuickLook(urls: urls, startIndex: request.startIndex ?? 0, callbackId: callbackId)
+        return showQuickLook(urls: urls, startIndex: request.startIndex ?? 0, callbackId: callbackId, changeCallbackId: changeCallbackId)
     }
 
     @MainActor
-    private static func showQuickLook(urls: [URL], startIndex: Int, callbackId: UInt64) -> Bool {
+    private static func showQuickLook(urls: [URL], startIndex: Int, callbackId: UInt64, changeCallbackId: UInt64) -> Bool {
         LxAppFile.closeQLController()
         qlController?.finish(reason: .interrupted)
 
-        let controller = MacQuickLookController(urls: urls, startIndex: startIndex, callbackId: callbackId)
+        let controller = MacQuickLookController(urls: urls, startIndex: startIndex, callbackId: callbackId, changeCallbackId: changeCallbackId)
         guard controller.show() else {
             return false
         }
@@ -157,13 +157,19 @@ final class MacQuickLookController: NSObject, @preconcurrency QLPreviewPanelData
     private let items: [QLPreviewURL]
     private let startIndex: Int
     let callbackId: UInt64
+    /// JS-side change-stream callback id; fired with `{"index": N}` whenever
+    /// the displayed item changes (including the initial item). Zero disables.
+    private let changeCallbackId: UInt64
+    private var lastNotifiedIndex: Int = -1
     private var closeObserver: NSObjectProtocol?
+    private var indexObservation: NSKeyValueObservation?
     private var didFinish = false
 
-    init(urls: [URL], startIndex: Int, callbackId: UInt64) {
+    init(urls: [URL], startIndex: Int, callbackId: UInt64, changeCallbackId: UInt64) {
         self.items = urls.map { QLPreviewURL(url: $0) }
         self.startIndex = startIndex
         self.callbackId = callbackId
+        self.changeCallbackId = changeCallbackId
         super.init()
     }
 
@@ -177,8 +183,25 @@ final class MacQuickLookController: NSObject, @preconcurrency QLPreviewPanelData
         installCloseObserver(for: panel)
         panel.reloadData()
         panel.currentPreviewItemIndex = normalizedIndex(startIndex)
+        installIndexObserver(for: panel)
         panel.makeKeyAndOrderFront(nil)
         return true
+    }
+
+    /// Observe QuickLook's own page navigation. `.initial` also fires for the
+    /// item displayed at open, so the JS change stream always sees item 0..n
+    /// transitions without a separate initial hook.
+    private func installIndexObserver(for panel: QLPreviewPanel) {
+        guard changeCallbackId != 0 else { return }
+        indexObservation = panel.observe(\.currentPreviewItemIndex, options: [.initial, .new]) { [weak self] panel, _ in
+            DispatchQueue.main.async {
+                guard let self, !self.didFinish else { return }
+                let index = self.normalizedIndex(panel.currentPreviewItemIndex)
+                guard index != self.lastNotifiedIndex else { return }
+                self.lastNotifiedIndex = index
+                let _ = onCallback(self.changeCallbackId, true, "{\"index\":\(index)}")
+            }
+        }
     }
 
     fileprivate func finish(reason: PreviewMediaCloseReason, shouldClosePanel: Bool = true) {
@@ -190,6 +213,8 @@ final class MacQuickLookController: NSObject, @preconcurrency QLPreviewPanelData
         let panel = QLPreviewPanel.shared()
         let lastIndex = currentIndex(from: panel)
         removeCloseObserver()
+        indexObservation?.invalidate()
+        indexObservation = nil
         panel?.delegate = nil
         panel?.dataSource = nil
 

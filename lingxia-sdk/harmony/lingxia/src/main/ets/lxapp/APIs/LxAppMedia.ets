@@ -37,6 +37,9 @@ interface PreviewMediaRequestPayload {
   // item becomes visually ready. May be "0" or empty for callers that
   // don't care; native side then no-ops.
   presentedCallbackId: string;
+  // JS-side change-stream callback id; fired with {"index": N} whenever the
+  // displayed item changes (including the initial item). "0"/empty disables.
+  changeCallbackId: string;
 }
 
 interface SaveMediaPayload {
@@ -1019,6 +1022,7 @@ export class LxAppMedia {
         initialIndex: Math.trunc(request.startIndex),
         callbackId: request.callbackId,
         presentedCallbackId: request.presentedCallbackId,
+        changeCallbackId: request.changeCallbackId,
         advance: LxAppMedia.normalizeAdvance(request.advance),
         showIndexIndicator: request.showIndexIndicator
       };

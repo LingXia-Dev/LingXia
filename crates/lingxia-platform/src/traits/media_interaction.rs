@@ -47,6 +47,13 @@ pub struct PreviewMediaRequest {
     /// after that, so it never hangs. The callback payload, when fired, is
     /// an empty JSON object `{}`.
     pub presented_callback_id: u64,
+    /// Stream callback_id for current-item changes. Native fires it with
+    /// payload `{"index": N}` whenever the displayed item changes — including
+    /// the initially displayed item — for swipes, taps, and auto-advance.
+    /// Consecutive duplicates are tolerated (the JS side dedupes); missing
+    /// the initial fire is also tolerated (the JS side seeds the snapshot
+    /// from startIndex).
+    pub change_callback_id: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

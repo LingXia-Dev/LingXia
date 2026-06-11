@@ -26,7 +26,7 @@ extension LxAppMedia {
         let showIndexIndicator: Bool
     }
 
-    nonisolated static func previewMedia(items_json: RustStr, callback_id: UInt64, presented_callback_id: UInt64) -> Bool {
+    nonisolated static func previewMedia(items_json: RustStr, callback_id: UInt64, presented_callback_id: UInt64, change_callback_id: UInt64) -> Bool {
         let itemsJson = items_json.toString()
         guard let jsonData = itemsJson.data(using: .utf8) else {
             os_log(.error, log: previewLog, "Failed to convert items JSON to data")
@@ -47,18 +47,18 @@ extension LxAppMedia {
 
         if Thread.isMainThread {
             return MainActor.assumeIsolated {
-                previewMediaOnMain(request: request, callbackId: callback_id, presentedCallbackId: presented_callback_id)
+                previewMediaOnMain(request: request, callbackId: callback_id, presentedCallbackId: presented_callback_id, changeCallbackId: change_callback_id)
             }
         }
         var started = false
         DispatchQueue.main.sync {
-            started = previewMediaOnMain(request: request, callbackId: callback_id, presentedCallbackId: presented_callback_id)
+            started = previewMediaOnMain(request: request, callbackId: callback_id, presentedCallbackId: presented_callback_id, changeCallbackId: change_callback_id)
         }
         return started
     }
 
     @MainActor
-    private static func previewMediaOnMain(request: PreviewMediaRequestPayload, callbackId: UInt64, presentedCallbackId: UInt64) -> Bool {
+    private static func previewMediaOnMain(request: PreviewMediaRequestPayload, callbackId: UInt64, presentedCallbackId: UInt64, changeCallbackId: UInt64) -> Bool {
         guard let windowScene = UIApplication.shared.connectedScenes
             .compactMap({ $0 as? UIWindowScene })
             .first(where: { $0.activationState == .foregroundActive })
@@ -74,6 +74,7 @@ extension LxAppMedia {
             startIndex: request.startIndex,
             callbackId: callbackId,
             presentedCallbackId: presentedCallbackId,
+            changeCallbackId: changeCallbackId,
             advance: PreviewMediaAdvance(rawValue: request.advance),
             showIndexIndicator: request.showIndexIndicator
         )
@@ -280,6 +281,10 @@ private final class MediaPreviewViewController: UIViewController, UIGestureRecog
     /// first item becomes visually ready. Zero once fired, to keep the call
     /// idempotent across multiple visual-ready paths.
     private var presentedCallbackId: UInt64
+    /// JS-side change-stream callback id; fired with `{"index": N}` whenever
+    /// the displayed item changes (including the initial item). Zero disables.
+    private let changeCallbackId: UInt64
+    private var lastNotifiedIndex: Int = -1
     private let advance: PreviewMediaAdvance
     private var currentIndex: Int
     private var didCleanup = false
@@ -357,6 +362,7 @@ private final class MediaPreviewViewController: UIViewController, UIGestureRecog
         startIndex: Int = 0,
         callbackId: UInt64,
         presentedCallbackId: UInt64,
+        changeCallbackId: UInt64,
         advance: PreviewMediaAdvance,
         showIndexIndicator: Bool
     ) {
@@ -364,6 +370,7 @@ private final class MediaPreviewViewController: UIViewController, UIGestureRecog
         self.currentIndex = max(0, min(startIndex, items.count - 1))
         self.callbackId = callbackId
         self.presentedCallbackId = presentedCallbackId
+        self.changeCallbackId = changeCallbackId
         self.advance = advance
         self.showIndexIndicator = showIndexIndicator
         super.init(nibName: nil, bundle: nil)
@@ -376,6 +383,14 @@ private final class MediaPreviewViewController: UIViewController, UIGestureRecog
         if id == 0 { return }
         presentedCallbackId = 0
         let _ = onCallback(id, true, "{}")
+    }
+
+    /// Notify the JS-side change stream that `currentIndex` is now on screen.
+    /// Dedupes consecutive fires for the same index.
+    fileprivate func notifyIndexChanged() {
+        guard changeCallbackId != 0, currentIndex != lastNotifiedIndex else { return }
+        lastNotifiedIndex = currentIndex
+        let _ = onCallback(changeCallbackId, true, "{\"index\":\(currentIndex)}")
     }
 
     required init?(coder: NSCoder) {
@@ -650,6 +665,7 @@ private final class MediaPreviewViewController: UIViewController, UIGestureRecog
             }
             guard let initial = self.viewController(for: index, firstFrame: image) else { return }
             self.displayInitialController(initial)
+            self.notifyIndexChanged()
         }
     }
 
@@ -684,6 +700,7 @@ private final class MediaPreviewViewController: UIViewController, UIGestureRecog
             self.suppressVideoEndedUntil = 0
             self.isCurrentImageZoomed = false
             self.currentIndex = index
+            self.notifyIndexChanged()
             self.updateIndicator()
             self.updateCloseButtonVisibility()
             self.transition(to: controller, direction: direction, animated: animated)
