@@ -7,6 +7,7 @@ mod device;
 mod file;
 mod location;
 mod media;
+mod mouse;
 mod screenshot;
 mod secure_store;
 mod surface;
