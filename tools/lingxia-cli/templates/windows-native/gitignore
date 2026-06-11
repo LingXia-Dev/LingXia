@@ -1,0 +1,4 @@
+target/
+assets/
+Cargo.lock
+.lingxia/
