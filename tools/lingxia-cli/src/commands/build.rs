@@ -4,7 +4,7 @@ use crate::host_assets::prepare_configured_host_assets;
 use crate::lxapp;
 use crate::platform::detector::PlatformType;
 use crate::platform::{self, BuildArtifacts, BuildConfig};
-use anyhow::{Result, anyhow};
+use anyhow::{Context, Result, anyhow};
 use colored::Colorize;
 use std::path::{Path, PathBuf};
 use std::{env, fs};
@@ -385,7 +385,10 @@ Specify one with `--platform <name>` or build all with `--all-platforms`."
     let mut all_artifacts = Vec::new();
     for (platform, mut build_config, platform_type) in platform_builds {
         build_config.skip_native_build = platform.hoists_native_build();
-        let artifacts = platform.build(&build_config)?;
+        let mut artifacts = platform.build(&build_config)?;
+        if matches!(platform_type, PlatformType::Windows) {
+            artifacts = assemble_windows_dist(&project_root, &config, artifacts)?;
+        }
         if package {
             stage_package_artifact(&project_root, &platform_type, &artifacts)?;
         }
@@ -408,6 +411,48 @@ Specify one with `--platform <name>` or build all with `--all-platforms`."
     }
 
     Ok(())
+}
+
+/// Assembles the self-contained Windows app directory — the Windows
+/// equivalent of a macOS `.app` bundle:
+/// `<project>/windows/dist/<ProductName>/` holding the executable next to
+/// the prepared `assets/` (the runtime's default asset dir is the `assets`
+/// folder beside the exe, so the directory runs and ships as-is).
+fn assemble_windows_dist(
+    project_root: &Path,
+    config: &LingXiaConfig,
+    artifacts: BuildArtifacts,
+) -> Result<BuildArtifacts> {
+    let BuildArtifacts::Windows { exe_path } = artifacts else {
+        return Ok(artifacts);
+    };
+    let product_name = config
+        .app
+        .as_ref()
+        .map(|app| app.product_name.as_str())
+        .unwrap_or("LingXia");
+    let windows_dir = project_root.join("windows");
+    let dist_dir = windows_dir.join("dist").join(product_name);
+    if dist_dir.exists() {
+        std::fs::remove_dir_all(&dist_dir)
+            .with_context(|| format!("Failed to clear {}", dist_dir.display()))?;
+    }
+    std::fs::create_dir_all(&dist_dir)
+        .with_context(|| format!("Failed to create {}", dist_dir.display()))?;
+
+    let exe_name = exe_path
+        .file_name()
+        .ok_or_else(|| anyhow!("Windows executable path has no file name"))?;
+    let dist_exe = dist_dir.join(exe_name);
+    std::fs::copy(&exe_path, &dist_exe)
+        .with_context(|| format!("Failed to copy {} into dist", exe_path.display()))?;
+
+    let assets_src = windows_dir.join("assets");
+    if assets_src.is_dir() {
+        crate::platform::apple::copy_dir_recursive(&assets_src, &dist_dir.join("assets"))?;
+    }
+
+    Ok(BuildArtifacts::Windows { exe_path: dist_exe })
 }
 
 fn stage_package_artifact(

@@ -1,4 +1,5 @@
 target/
 assets/
+dist/
 Cargo.lock
 .lingxia/

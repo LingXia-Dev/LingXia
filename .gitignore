@@ -18,3 +18,4 @@ examples/*/windows/Cargo.lock
 
 # Harmony generated/synced artifacts
 lingxia-sdk/harmony/lingxia/src/main/ets/lxapp/WebViewCore.ets
+examples/*/windows/dist/
