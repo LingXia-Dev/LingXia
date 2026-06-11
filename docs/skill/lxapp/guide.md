@@ -331,23 +331,7 @@ Use typed `PageActions` interfaces so View and Logic stay aligned as your page g
 
 ## Data Flow
 
-```
-Logic: this.setData({ count: 1 })
-  ↓
-Bridge: state replication (native → WebView)
-  ↓
-View: useLxPage().data updates → component re-renders
-```
-
-```
-View: actions.increment?.()
-  ↓
-Bridge: function call (WebView → native → Logic JS runtime)
-  ↓
-Logic: increment() runs, may call this.setData() → cycle repeats
-```
-
-State flows **one way**: Logic → View. View never mutates `data` directly. Instead, View calls Logic actions which call `setData()` to update state.
+State flows **one way**: Logic `setData()` → bridge replication → View `data` re-render. View never mutates `data` directly — it calls Logic actions, which call `setData()`. Full mechanics (JSON Patch replication, batching, stream/channel): [`./bridge.md`](./bridge.md).
 
 ---
 
@@ -671,6 +655,14 @@ Full option shapes: [`./lx-api.md#page-chrome--ui`](./lx-api.md#page-chrome--ui)
 - Treating the tab bar as a host UI surface — it is an lxapp-internal feature declared in `lxapp.json`, orthogonal to `lingxia.yaml.ui` surfaces/activators.
 
 ---
+
+## Pre-ship checklist
+
+- [ ] `lxapp.json` lists every page; `appId` set; `version` bumped if shipping.
+- [ ] `security.network.trustedDomains` covers every external host (exact host names, no scheme/port/path).
+- [ ] One view-framework file per page.
+- [ ] Public actions typed in `PageActions`; private helpers prefixed `_`.
+- [ ] `lingxia dev` runs cleanly.
 
 ## Tips
 

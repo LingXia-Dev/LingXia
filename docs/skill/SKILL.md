@@ -82,9 +82,7 @@ Every published package and what to import from each. Don't guess imports from t
 | `@lingxia/page-runtime` | Internal — shared impl behind react/vue/html | **don't import directly** | — |
 | `@lingxia/skill` | This skill itself | install via `npx @lingxia/skill install` | not imported in code |
 
-**Logic-side typing.** Add `@lingxia/types` to the lxapp's `devDependencies` so `pages/*/index.ts` gets full intellisense for `lx.navigateTo(...)`, `lx.chooseMedia(...)`, the `Page({ data, onLoad, … })` shape, and so on. The declarations are global — no `import` needed in your Logic files.
-
-For the full surface of `lx.*` and which namespace covers what, see [`./lxapp/lx-api.md`](./lxapp/lx-api.md).
+**Logic-side typing**: install `@lingxia/types` as a devDependency (declarations are global — no `import`). Full install steps and the `lx.*` surface map: [`./lxapp/lx-api.md`](./lxapp/lx-api.md).
 
 ## Reference map (inside this skill)
 
@@ -104,7 +102,7 @@ For the full surface of `lx.*` and which namespace covers what, see [`./lxapp/lx
 
 ## Bundled hello-world examples
 
-Three minimal end-to-end shapes ship with this skill — one per shape, named to make the JS-vs-Rust Logic split obvious. Read them first when you need to see the exact file layout for a shape. They are **not buildable starters** (no lockfiles, generated artifacts, or platform host scaffolding); they exist so you can match the shape and write real code with `lingxia new`.
+Three minimal end-to-end shapes ship with this skill — one per shape. Read them to see the exact file layout, then scaffold a real project with `lingxia new` (they are layout references, not buildable starters).
 
 | Example | Shape | Logic in | What it shows |
 |---|---|---|---|
@@ -115,8 +113,6 @@ Three minimal end-to-end shapes ship with this skill — one per shape, named to
 `hello-host-js` and `hello-host-rust` share the host shell wiring (`lingxia.yaml` `ui`, `resources.bundles`, FFI export) — the diff is entirely on the Logic side: who owns state and how the View talks to it. Read both side-by-side when picking B vs C.
 
 For a real, buildable starter, run `lingxia new` — the CLI emits a working project that matches the version on `PATH` and is regenerated per release.
-
-**SDK-author internals** (bridge wire protocol, logging, webview lifecycle, env-version build-time plumbing) live in the LingXia repo under `docs/internal/` and `docs/draft/`. The skill summarizes the app-author-facing surface where relevant (e.g. env-version → [`./app/project.md`](./app/project.md#environment-versions)); the internal docs themselves are not needed for building on LingXia.
 
 ---
 
@@ -147,137 +143,18 @@ Jump straight here when the user reports a concrete failure:
 
 ## Fast-path recipes
 
-These cover the 80% case. For anything beyond, jump to the linked reference file.
+Each recipe lives in full in its reference file — open the one matching the task:
 
-### Recipe 1 — A standalone lxapp page
+| Task | Full recipe | Working layout |
+|---|---|---|
+| Standalone lxapp page — `Page({})` Logic, `useLxPage` View, page config, `lxapp.json` registration | [`./lxapp/guide.md` → Logic Layer](./lxapp/guide.md#logic-layer--page) | [`./examples/hello-lxapp/`](./examples/hello-lxapp/README.md) |
+| macOS host-app window — minimal `lingxia.yaml` (`app` / `macos` / `features` / `resources` / `ui`) | [`./app/project.md` → Minimal macOS Example](./app/project.md#minimal-macos-example) | [`./examples/hello-host-js/`](./examples/hello-host-js/README.md) |
+| Rust native route called from the View — `#[lingxia::native]`, `HostAddon`, `@lingxia/native` client | [`./native/development.md` → Native Routes](./native/development.md#native-routes) | [`./examples/hello-host-rust/`](./examples/hello-host-rust/README.md) |
 
-**Logic** (`pages/home/index.ts`):
+Run any shape with `lingxia dev`. Two rules worth knowing before opening anything:
 
-```ts
-Page({
-  data: { count: 0 },
-  onLoad(options) { /* options = URL query params */ },
-  increment() { this.setData({ count: this.data.count + 1 }); },
-  _privateHelper(n) { return n * 2; }, // _-prefixed = NOT exposed to View
-});
-```
-
-**View — React** (`pages/home/index.tsx`):
-
-```tsx
-import { useLxPage } from '@lingxia/react';
-
-type PageData = { count: number };
-type PageActions = { increment: () => void };
-
-export default function HomePage() {
-  const { data, actions } = useLxPage<PageData, PageActions>();
-  return <button onClick={() => actions.increment()}>{data.count}</button>;
-}
-```
-
-> **On the `?:` question.** The runtime guarantees `data` reflects Logic's initial `data` object by first paint, and `actions` is fully wired during page setup. Mark `PageData` / `PageActions` fields **required** unless your Logic genuinely populates them lazily (e.g. via an async `setData` after `onLoad`). Earlier drafts used all-`?` fields and produced unnecessary `actions.foo?.()` and `data?.x ?? default` noise — avoid that pattern.
-
-**Page config** (`pages/home/index.json`):
-
-```json
-{ "navigationBarTitleText": "Home", "navigationStyle": "custom" }
-```
-
-**Register** in `lxapp.json`:
-
-```json
-{ "pages": [{ "name": "home", "path": "pages/home/index" }] }
-```
-
-**Run:** `lingxia dev` (launches macOS Runner).
-
-Vue / HTML variants, action shapes (stream, channel), native components, `trustedDomains` security policy: [`./lxapp/guide.md`](./lxapp/guide.md). Bridge mechanics: [`./lxapp/bridge.md`](./lxapp/bridge.md).
-
-### Recipe 2 — A macOS host app window
-
-**`lingxia.yaml`:**
-
-```yaml
-app:
-  projectName: myapp
-  productName: My App
-  productVersion: 1.0.0
-  platforms: [macos]
-  homeAppId: my-home
-
-macos:
-  bundleId: com.example.myapp
-  deploymentTarget: "12.0"
-  targetName: MyApp
-  executableName: MyApp
-
-features: { appService: true, shell: false, devtools: false }
-
-resources:
-  bundles:
-    - { type: lxapp, appId: my-home, path: my-home }
-
-ui:
-  launch: { initialSurface: main }
-  surfaces:
-    - id: main
-      presentation: { kind: window }
-      content: { kind: lxapp, appId: my-home }
-  activators: []
-```
-
-**Run:** `lingxia dev` (build, install, launch).
-
-Menu-bar shape, sidebar + attachPanel shape, every section of `lingxia.yaml`, surfaces/activators rules, icon paths: [`./app/project.md`](./app/project.md).
-
-### Recipe 3 — A Rust native route called from the View
-
-**Rust** (host crate `src/lib.rs`):
-
-```rust
-use std::sync::Arc;
-
-#[derive(serde::Deserialize)]
-struct OpenInput { title: String }
-
-// The #[lingxia::native(...)] attribute macro generates a sibling fn
-// `pick_document_host()` that returns the host-entry registration value.
-// You do NOT write `pick_document_host` yourself — it is macro-generated.
-#[lingxia::native("editor.pickDocument")]
-async fn pick_document(
-    app: Arc<lingxia::LxApp>,            // optional, FIRST when present
-    input: OpenInput,                     // optional JSON payload
-    cancel: lingxia::host::HostCancel,    // optional, LAST when present
-) -> lingxia::Result<String> {
-    let path = lingxia::app::state_file_for(&app, &format!("{}.md", input.title))?;
-    Ok(path.to_string_lossy().into_owned())
-}
-
-struct AppHostAddon;
-impl lingxia::HostAddon for AppHostAddon {
-    fn install_host_apis(&self) {
-        // pick_document_host() is generated by the macro on `pick_document`.
-        lingxia::host::register_host_entry(pick_document_host());
-    }
-    fn start_services(&self) {}
-}
-
-#[cfg(any(target_os = "ios", target_os = "macos"))]
-#[unsafe(no_mangle)]
-pub extern "C" fn lingxia_register_host_addon() {
-    lingxia::register_host_addon(Box::new(AppHostAddon));
-}
-```
-
-**Call from the View** (after a native build regenerates the client):
-
-```ts
-import { native } from '@lingxia/native';   // module form, React/Vue
-const path = await native.editor.pickDocument({ title: 'notes' });
-```
-
-Streams, channels, JS AppService extensions, facade modules (`lingxia::app/task/file/media/update`), platform FFI for Android/Harmony, generated-client paths: [`./native/development.md`](./native/development.md).
+- Type View `PageData` / `PageActions` fields as **required**, not all-`?` — the runtime guarantees Logic's initial `data` by first paint and fully wired `actions` at setup. All-optional fields produce needless `actions.foo?.()` noise.
+- `#[lingxia::native]` **generates** the `<fn>_host()` registration companion — never write it yourself; parameter order is `app: Arc<LxApp>` first (when present), `HostCancel` last.
 
 ---
 
@@ -317,19 +194,4 @@ Streams, channels, JS AppService extensions, facade modules (`lingxia::app/task/
 
 ## Pre-ship checklist
 
-**LxApp:**
-
-- [ ] `lxapp.json` lists every page; `appId` set; `version` bumped if shipping.
-- [ ] `security.network.trustedDomains` covers every external host (exact host names, no scheme/port/path).
-- [ ] One view-framework file per page.
-- [ ] Public actions typed in `PageActions`; private helpers prefixed `_`.
-- [ ] `lingxia dev` runs cleanly.
-
-**Host app:**
-
-- [ ] `lingxia.yaml` validates: every required platform section present; `homeAppId` resolvable.
-- [ ] `features.appService` matches the embedded lxapp's logic mode.
-- [ ] All native routes return `lingxia::Result<T>` with `Serialize` outputs.
-- [ ] `HostAddon` registers every route and extension.
-- [ ] FFI exports for each target platform present.
-- [ ] `lingxia doctor` passes; `lingxia dev` boots on a real/simulated device.
+Run the per-layer checklists before shipping: [LxApp](./lxapp/guide.md#pre-ship-checklist) · [Host app](./app/project.md#pre-ship-checklist).

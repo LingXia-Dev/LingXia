@@ -745,6 +745,14 @@ If `--skip-native` is used, SwiftPM links an existing Rust static library. That 
 
 ---
 
+## Pre-ship checklist
+
+- [ ] `lingxia.yaml` validates: every required platform section present; `homeAppId` resolvable to a `resources.bundles[].appId`.
+- [ ] `features.appService` matches the embedded lxapp's logic mode.
+- [ ] All native routes return `lingxia::Result<T>` with `Serialize` outputs.
+- [ ] `HostAddon` registers every route and extension; FFI exports present for each target platform.
+- [ ] `lingxia doctor` passes; `lingxia dev` boots on a real/simulated device.
+
 ## Out Of Scope / Not Implemented In macOS App UI
 
 This page intentionally does not define product behavior for:

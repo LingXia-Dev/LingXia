@@ -64,7 +64,7 @@ Page({
 
 ## Standard Web APIs (built-in globals)
 
-The Logic JS runtime is **not** a stripped-down sandbox. It's the [Rong](https://github.com/) runtime with the standard Web API set wired in, so you write Logic code the same way you'd write any modern JS — `fetch`, `setTimeout`, `URL`, `console`, all available globally with no import.
+The Logic JS runtime is **not** a stripped-down sandbox. It's the Rong runtime with the standard Web API set wired in, so you write Logic code the same way you'd write any modern JS — `fetch`, `setTimeout`, `URL`, `console`, all available globally with no import.
 
 Available everywhere (every lxapp Logic file):
 
@@ -100,7 +100,7 @@ When the host has `features.appService: true`, the wider **AppService scope** (t
 - **`cron`** — scheduled-task module for app-lifetime jobs. Useful for periodic checks (heartbeat, badge refresh, polling) that should run as long as the lxapp is loaded, not tied to a single page lifecycle.
 - **App-wide `storage`** — durable key/value at the lxapp scope.
 
-The Rong-supplied cron surface isn't yet declared in `@lingxia/types`; check the runtime's current globals (e.g. via `console.log(globalThis)` from `App({}).onLaunch`) for the exact API, or look at `crates/lingxia-lxapp/Cargo.toml`'s `rong_modules` feature list for what's enabled. App-scope key/value is available via the page-level `lx.getStorage()` (see [Storage](#storage-keyvalue)) — values written there persist across pages and app launches.
+The Rong-supplied cron surface isn't yet declared in `@lingxia/types`; check the runtime's current globals (e.g. via `console.log(globalThis)` from `App({}).onLaunch`) for the exact API, or look at the LingXia repo's `crates/lingxia-lxapp/Cargo.toml` `rong_modules` feature list for what's enabled. App-scope key/value is available via the page-level `lx.getStorage()` (see [Storage](#storage-keyvalue)) — values written there persist across pages and app launches.
 
 ---
 
@@ -204,7 +204,7 @@ lx.uploadFile(options) -> UploadTask
 
 ```ts
 // Simple form — await for the final result
-const result = await lx.downloadFile({ url: 'https://cdn.example.com/big.zip', filePath: 'lingxia://cache/big.zip' });
+const result = await lx.downloadFile({ url: 'https://cdn.example.com/big.zip', filePath: 'lx://usercache/big.zip' });
 
 // Progress form — iterate
 const task = lx.downloadFile({ url, filePath });
@@ -224,8 +224,7 @@ Control methods (all `Promise<void>`):
 | `cancel()` | ✓ | ✓ | Aborts the underlying transfer; the task promise rejects. |
 | `abort()` | ✓ | — | Alias for `cancel()` — matches browser / mini-program naming. |
 | `wait()` | ✓ | ✓ | Awaits the final result. Equivalent to `await task`. Use when you stopped iterating partway. |
-
-`return()` on the iterator (e.g. `break` inside `for await`) stops iteration **without** cancelling the underlying transfer — call `cancel()` explicitly if you want to abort.
+| iterator `return()` | ✓ | ✓ | `break` inside `for await` stops iteration **without** cancelling the transfer — call `cancel()` to abort. |
 
 For low-level read/write/stat/list/mkdir/copy/rename/remove, get a `FileManager`:
 
@@ -237,7 +236,7 @@ const fm = lx.getFileManager();
 
 | Method | Signature | Notes |
 |---|---|---|
-| `exists` | `({ path }) → boolean` | |
+| `exists` | `({ path }) → boolean` (async, like every method here) | |
 | `stat` | `({ path }) → FileStats` | `{ isFile, isDirectory, isSymlink, size, lastModifiedTime?, lastAccessedTime?, createTime? }` |
 | `readDir` | `({ path }) → AsyncIterableIterator<DirEntry>` | `for await (const entry of await fm.readDir(...))` — `DirEntry = { name, isFile, isDirectory, isSymlink }` |
 | `mkdir` | `({ path, recursive? })` | `recursive: true` for `mkdir -p` behavior |
@@ -247,7 +246,7 @@ const fm = lx.getFileManager();
 | `rename` | `({ oldPath, newPath, overwrite? })` | Use for moves too. |
 | `remove` | `({ path, recursive? })` | `recursive: true` removes directories with content. |
 
-`path` / `filePath` strings use the storage-class scheme described in [`../reference/file-lifecycle.md`](../reference/file-lifecycle.md) (e.g. `lingxia://temp/...`, `lingxia://cache/...`). That doc also covers when each storage class is auto-cleaned and how `downloadFile` paths interact with the lifecycle.
+`path` / `filePath` strings use the `lx://` storage-class scheme described in [`../reference/file-lifecycle.md`](../reference/file-lifecycle.md) (`lx://temp/...`, `lx://userdata/...`, `lx://usercache/...`); bundle-relative paths (`images/a.png`) resolve against the lxapp bundle. Generic-path methods take `path`; file-content methods take `filePath`; copy/rename take source/destination pairs. The lifecycle doc also covers when each storage class is auto-cleaned and how `downloadFile` paths interact with it.
 
 ### Device / system
 
@@ -377,7 +376,7 @@ Direct package handoff is supported on Android and macOS today. Other platforms 
 
 ```ts
 const shot = await lx.app.screenshot();
-// shot.tempFilePath → 'lx://tmp/app-screenshot/lx_<ts>.png', usable in <image>, lx.fs, uploads
+// shot.tempFilePath → 'lx://temp/<opaque_id>', usable in <image>, lx.getFileManager(), uploads
 ```
 
 `windowId` targets a specific desktop window (platform-specific id); omit it to capture the key/main window (desktop) or the sole window (mobile).
@@ -464,7 +463,15 @@ Returns `LxAppInfo` with the lxapp's `appId`, `version`, `appName`, and other ma
 
 ### Updates (lxapp self-update — distinct from `lx.app.checkUpdate`)
 
-Sub-module: `@lingxia/types/update`. The **lxapp** update manager — different from `lx.app.checkUpdate()` (host app update). This one handles the runtime swapping a newer lxapp bundle into place:
+Two separate update flows exist — don't mix them up:
+
+| | `lx.getUpdateManager()` | `lx.app.checkUpdate()` |
+|---|---|---|
+| Updates | the **lxapp bundle** | the **host app** (native shell) |
+| Available to | every lxapp | home lxapp only |
+| Model | event callbacks (`onUpdateReady` / `onUpdateFailed`) | Promise + `update.apply()` task |
+
+Sub-module: `@lingxia/types/update`. This one handles the runtime swapping a newer lxapp bundle into place:
 
 ```ts
 interface UpdateManager {

@@ -18,6 +18,8 @@ Shell or desktop-visible downloads are host product behavior and are not exposed
 
 ## Physical Layout
 
+> Informational, not a contract: lxapp code must only use `lx://` URIs. The physical layout below explains *where* those map on disk and may change between releases.
+
 LingXia identifies each LxApp storage owner by its fingermark.
 
 ```text
