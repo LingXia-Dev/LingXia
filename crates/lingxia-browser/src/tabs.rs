@@ -36,6 +36,10 @@ pub(crate) struct BrowserTabState {
     pub(crate) pending_url: Option<String>,
     pub(crate) current_url: Option<String>,
     pub(crate) title: Option<String>,
+    /// PNG-encoded favicon of the current page, as reported by the platform
+    /// webview (`WebViewDelegate::on_favicon_changed`). `Arc`'d so shell
+    /// layers can mirror it into layout snapshots without copying.
+    pub(crate) favicon_png: Option<Arc<Vec<u8>>>,
 }
 
 pub(crate) struct BrowserState {
@@ -357,6 +361,48 @@ pub(crate) fn browser_update_tab_info(
     true
 }
 
+/// Stores the PNG favicon reported by the platform webview for `tab_id`
+/// (empty bytes clear it) and fires the tabs-changed observer when it
+/// actually changed. Returns `false` when the tab does not exist.
+pub(crate) fn browser_update_tab_favicon(tab_id: &str, png_bytes: Vec<u8>) -> bool {
+    let Some(normalized) = normalize_runtime_tab_id(tab_id) else {
+        return false;
+    };
+    let value = if png_bytes.is_empty() {
+        None
+    } else {
+        Some(Arc::new(png_bytes))
+    };
+    let changed = {
+        let mut state = lock_state();
+        let Some(tab) = state.tabs.get_mut(&normalized) else {
+            return false;
+        };
+        let same = match (&tab.favicon_png, &value) {
+            (None, None) => true,
+            (Some(old), Some(new)) => old.as_ref() == new.as_ref(),
+            _ => false,
+        };
+        if !same {
+            tab.favicon_png = value;
+        }
+        !same
+    };
+    if changed {
+        notify_tabs_changed();
+    }
+    true
+}
+
+/// PNG favicon currently stored for `tab_id`, if any.
+pub(crate) fn browser_tab_favicon(tab_id: &str) -> Option<Arc<Vec<u8>>> {
+    let normalized = normalize_runtime_tab_id(tab_id)?;
+    lock_state()
+        .tabs
+        .get(&normalized)
+        .and_then(|tab| tab.favicon_png.clone())
+}
+
 // ---------------------------------------------------------------------------
 // Create-token machinery (shared with the WebView creation flow)
 // ---------------------------------------------------------------------------
@@ -509,6 +555,7 @@ fn open_internal_browser_tab_with_scope(
                     },
                     current_url: None,
                     title: None,
+                    favicon_png: None,
                 },
             );
         }

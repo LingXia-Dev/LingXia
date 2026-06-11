@@ -98,6 +98,14 @@ pub fn set_tabs_changed_handler(handler: Arc<dyn Fn() + Send + Sync>) {
     tabs::set_tabs_changed_handler(handler);
 }
 
+/// PNG-encoded favicon of `tab_id`'s current page, if the platform webview
+/// reported one (see `WebViewDelegate::on_favicon_changed`). Kept out of
+/// [`BrowserTabInfo`] so the serialized tab projection stays byte-free;
+/// shell sidebars query it per tab when mirroring the tab list.
+pub fn tab_favicon(tab_id: &str) -> Option<Arc<Vec<u8>>> {
+    tabs::browser_tab_favicon(tab_id)
+}
+
 pub fn register_native_input_host(host: Arc<dyn BrowserNativeInputHost>) -> bool {
     automation::register_native_input_host(host)
 }

@@ -79,6 +79,12 @@ impl WebViewDelegate for BrowserTabDelegate {
         let _ = crate::tabs::browser_update_tab_info(&self.tab_id, None, Some(title));
     }
 
+    fn on_favicon_changed(&self, png_bytes: Vec<u8>) {
+        // Mirror the page favicon into the tab state (fires the tabs-changed
+        // observer for shell sidebars); empty bytes clear a stale favicon.
+        let _ = crate::tabs::browser_update_tab_favicon(&self.tab_id, png_bytes);
+    }
+
     fn handle_post_message(&self, msg: String) {
         match browser_resolve_delegate_page(&self.page_path, self.session_id) {
             Ok(page) => {
