@@ -33,15 +33,19 @@ use std::time::Duration;
 use webview2_com::{Microsoft::Web::WebView2::Win32::*, *};
 use windows::{
     Win32::{
-        Foundation::{E_POINTER, HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM},
+        Foundation::{
+            COLORREF, E_POINTER, HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, SIZE, WPARAM,
+        },
         Graphics::Dwm::{
             DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND, DwmExtendFrameIntoClientArea,
             DwmSetWindowAttribute,
         },
         Graphics::Gdi::{
-            BeginPaint, ClientToScreen, CreateBitmap, CreateRoundRectRgn, DeleteObject, EndPaint,
-            GetMonitorInfoW, HDC, HGDIOBJ, InvalidateRect, MONITOR_DEFAULTTONEAREST, MONITORINFO,
-            MonitorFromWindow, PAINTSTRUCT, ScreenToClient, SetWindowRgn,
+            AC_SRC_ALPHA, AC_SRC_OVER, BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BLENDFUNCTION,
+            BeginPaint, ClientToScreen, CreateBitmap, CreateCompatibleDC, CreateDIBSection,
+            DIB_RGB_COLORS, DeleteDC, DeleteObject, EndPaint, GetDC, GetMonitorInfoW, HDC, HGDIOBJ,
+            InvalidateRect, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromWindow, PAINTSTRUCT,
+            ReleaseDC, ScreenToClient, SelectObject,
         },
         System::{
             Com::{
@@ -85,9 +89,10 @@ pub use api::{
     WindowsPanelPosition, WindowsTabBarItemLayout, WindowsTabBarLayout, WindowsTabBarPosition,
     WindowsWebViewWindowSnapshot, WindowsWindowLayout, clear_native_panel_input_handler,
     hide_native_panel, hide_panel, hide_webview_window, invalidate_native_panel, is_panel_visible,
-    present_webview_as_group_main, restore_presented_group_main, set_native_panel_input_handler,
-    set_webview_chrome_event_handler,
-    set_webview_close_handler, set_webview_user_data_dir, set_webview_window_layout,
+    post_to_window_thread, present_webview_as_group_main, restore_presented_group_main,
+    set_native_panel_input_handler, set_native_panel_maximized, set_native_panel_tabs,
+    set_webview_chrome_event_handler, set_webview_close_handler, set_webview_user_data_dir,
+    set_webview_window_layout,
     show_native_panel, show_native_terminal_panel, show_webview_panel, show_webview_window,
     show_webview_window_inactive, update_native_panel_body, webview_window_snapshot,
 };
@@ -95,7 +100,7 @@ pub use icons::{cached_png_icon_handle, set_app_icon_from_path};
 pub use renderer::{
     WindowsChromeAttachedState, WindowsChromeHit, WindowsChromePanel, WindowsChromeRenderer,
     WindowsChromeState, WindowsFrameButton, WindowsNativePanelContent, WindowsNativePanelKind,
-    set_windows_chrome_renderer,
+    WindowsNativePanelTab, set_windows_chrome_renderer,
 };
 
 // Private glob re-imports so submodules can reach their siblings (and this

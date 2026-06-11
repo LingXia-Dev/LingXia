@@ -127,45 +127,6 @@ pub(crate) fn apply_window_icons(hwnd: HWND, icons: AppIconHandles) {
     }
 }
 
-pub(crate) fn hide_titlebar_icon(hwnd: HWND) {
-    unsafe {
-        let _ = WindowsAndMessaging::SendMessageW(
-            hwnd,
-            WM_SETICON,
-            Some(WPARAM(ICON_SMALL as usize)),
-            Some(LPARAM(0)),
-        );
-        let _ = WindowsAndMessaging::SendMessageW(
-            hwnd,
-            WM_SETICON,
-            Some(WPARAM(ICON_BIG as usize)),
-            Some(LPARAM(0)),
-        );
-        let _ = WindowsAndMessaging::SetClassLongPtrW(hwnd, GCLP_HICONSM, 0);
-        let _ = WindowsAndMessaging::SetClassLongPtrW(hwnd, GCLP_HICON, 0);
-        let ex_style =
-            WindowsAndMessaging::GetWindowLongPtrW(hwnd, WindowsAndMessaging::GWL_EXSTYLE) as u32;
-        let _ = WindowsAndMessaging::SetWindowLongPtrW(
-            hwnd,
-            WindowsAndMessaging::GWL_EXSTYLE,
-            (ex_style | WindowsAndMessaging::WS_EX_DLGMODALFRAME.0) as isize,
-        );
-        let _ = WindowsAndMessaging::SetWindowPos(
-            hwnd,
-            None,
-            0,
-            0,
-            0,
-            0,
-            WindowsAndMessaging::SWP_NOMOVE
-                | WindowsAndMessaging::SWP_NOSIZE
-                | WindowsAndMessaging::SWP_NOZORDER
-                | WindowsAndMessaging::SWP_NOACTIVATE
-                | WindowsAndMessaging::SWP_FRAMECHANGED,
-        );
-    }
-}
-
 /// Returns a cached `HICON` handle (as `isize`) for a PNG file rendered at
 /// `size` x `size` pixels, or `None` if the image cannot be loaded.
 ///

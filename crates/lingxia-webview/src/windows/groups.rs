@@ -41,6 +41,21 @@ pub(crate) struct GroupPanel {
     pub(crate) native_kind: NativePanelKind,
     pub(crate) native_title: Option<String>,
     pub(crate) native_body: Option<String>,
+    /// Header tab strip of a native panel (generic ids/titles supplied by
+    /// the product layer); empty for webview-backed panels.
+    pub(crate) native_tabs: Vec<WindowsNativePanelTab>,
+    /// Whether the panel currently covers the whole content area (the
+    /// main card collapses while maximized).
+    pub(crate) maximized: bool,
+}
+
+impl GroupPanel {
+    /// Whether the panel lays out as a compact dock flush against the main
+    /// card (zero gap, thin divider): bottom-positioned terminal panels.
+    pub(crate) fn docked(&self) -> bool {
+        self.position == WindowsPanelPosition::Bottom
+            && self.native_kind == NativePanelKind::Terminal
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -411,6 +426,42 @@ pub(crate) fn update_group_panel_body(panel_id: &str, body: String) -> Option<St
     None
 }
 
+/// Replaces a native panel's header tab strip; returns the owning group.
+pub(crate) fn update_group_panel_tabs(
+    panel_id: &str,
+    tabs: Vec<WindowsNativePanelTab>,
+) -> Option<String> {
+    let panels = WINDOW_GROUP_PANELS.get()?;
+    let mut panels = panels.lock().ok()?;
+    for (group_key, group_panels) in panels.iter_mut() {
+        if let Some(panel) = group_panels
+            .iter_mut()
+            .find(|panel| panel.panel_id == panel_id)
+        {
+            panel.native_tabs = tabs;
+            return Some(group_key.clone());
+        }
+    }
+    None
+}
+
+/// Sets a native panel's maximized flag; returns the owning group so the
+/// caller can re-run its layout.
+pub(crate) fn update_group_panel_maximized(panel_id: &str, maximized: bool) -> Option<String> {
+    let panels = WINDOW_GROUP_PANELS.get()?;
+    let mut panels = panels.lock().ok()?;
+    for (group_key, group_panels) in panels.iter_mut() {
+        if let Some(panel) = group_panels
+            .iter_mut()
+            .find(|panel| panel.panel_id == panel_id)
+        {
+            panel.maximized = maximized;
+            return Some(group_key.clone());
+        }
+    }
+    None
+}
+
 pub(crate) fn group_key_for_panel(panel_id: &str) -> Option<String> {
     let panels = WINDOW_GROUP_PANELS.get()?;
     let panels = panels.lock().ok()?;
@@ -458,6 +509,22 @@ pub(crate) fn group_panels(group_key: &str) -> Vec<GroupPanel> {
         .and_then(|panels| panels.lock().ok())
         .and_then(|panels| panels.get(group_key).cloned())
         .unwrap_or_default()
+}
+
+/// Whether `webtag_key`'s window covers the group's main-card surface and
+/// that surface sits flush above a docked bottom panel. The card's bottom
+/// corners then stay square (its corner caps would otherwise notch the
+/// shared edge with the dock).
+pub(crate) fn main_surface_has_docked_bottom_panel(webtag_key: &str) -> bool {
+    let Some(attachment) = window_attachment(webtag_key) else {
+        return false;
+    };
+    if matches!(attachment.kind, WindowAttachmentKind::Panel { .. }) {
+        return false;
+    }
+    group_panels(&attachment.group_key)
+        .iter()
+        .any(GroupPanel::docked)
 }
 
 pub(crate) fn active_native_panel() -> Option<String> {
@@ -511,6 +578,26 @@ pub(crate) fn attached_group_rects_from_layout(
     let mut main = renderer_content_rect(client, layout);
     let mut panel_rects = HashMap::new();
     let mut resize_handles = HashMap::new();
+
+    // A maximized docked panel takes over the whole app area the renderer
+    // grants it (typically everything below the caption strip, covering the
+    // sidebar); the main card collapses and every other panel hides.
+    if let Some(maximized) = panels
+        .iter()
+        .find(|panel| panel.docked() && panel.maximized)
+    {
+        panel_rects.insert(
+            maximized.webtag_key.clone(),
+            renderer_maximized_panel_rect(client, layout),
+        );
+        main.bottom = main.top;
+        return AttachedGroupRects {
+            main,
+            panels: panel_rects,
+            resize_handles,
+        };
+    }
+
     let (side_panels, bottom_panels): (Vec<_>, Vec<_>) = panels
         .into_iter()
         .partition(|panel| panel.position != WindowsPanelPosition::Bottom);
@@ -552,6 +639,29 @@ pub(crate) fn attached_group_rects_from_layout(
                     bottom: rect.bottom,
                 });
                 main.right = handle.left.max(main.left);
+                resize_handles.insert(panel.panel_id.clone(), handle);
+                rect
+            }
+            WindowsPanelPosition::Bottom if panel.docked() => {
+                // Compact dock: the panel sits flush under the main card
+                // (gap 0); the top strip of the panel itself doubles as the
+                // thin draggable divider (the renderer draws it; the strip
+                // is host-owned chrome, so the host receives the drag's
+                // mouse messages). The maximized case returns early above.
+                let height = attached_panel_bottom_height(group_key, &panel, main);
+                let rect = RECT {
+                    left: main.left,
+                    top: (main.bottom - height).max(main.top),
+                    right: main.right,
+                    bottom: main.bottom,
+                };
+                let handle = normalize_rect(RECT {
+                    left: rect.left,
+                    top: rect.top,
+                    right: rect.right,
+                    bottom: (rect.top + ATTACHED_PANEL_HANDLE_SIZE).min(rect.bottom),
+                });
+                main.bottom = rect.top.max(main.top);
                 resize_handles.insert(panel.panel_id.clone(), handle);
                 rect
             }
@@ -876,6 +986,7 @@ pub(crate) fn chrome_state_for_window(hwnd: HWND, webtag_key: &str) -> WindowsCh
                 .into_iter()
                 .filter_map(|panel| {
                     let rect = rects.panels.get(&panel.webtag_key).copied()?;
+                    let docked = panel.docked();
                     let native = panel
                         .native_title
                         .is_some()
@@ -886,11 +997,14 @@ pub(crate) fn chrome_state_for_window(hwnd: HWND, webtag_key: &str) -> WindowsCh
                             },
                             title: panel.native_title.clone(),
                             body: panel.native_body.clone(),
+                            tabs: panel.native_tabs.clone(),
+                            maximized: panel.maximized,
                         });
                     Some(WindowsChromePanel {
                         panel_id: panel.panel_id,
                         rect,
                         native,
+                        docked,
                     })
                 })
                 .collect();

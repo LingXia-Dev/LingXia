@@ -81,11 +81,55 @@ pub(crate) fn clear_live_layout_context() {
     });
 }
 
+/// Timer pumping layout during an interactive move/size: inside
+/// `DefWindowProcW`'s modal loop `WM_WINDOWPOSCHANGED` can be coalesced
+/// (live drags then visibly outrun the webview area), but `WM_TIMER` keeps
+/// firing in that loop, so the drag is tracked at the timer cadence
+/// regardless. Armed on `WM_ENTERSIZEMOVE`, killed on `WM_EXITSIZEMOVE`.
+pub(crate) const SIZEMOVE_TIMER_ID: usize = 0x4C58_4D56; // "LXMV"
+
+pub(crate) const SIZEMOVE_TIMER_INTERVAL_MS: u32 = 16;
+
+/// Last seen window rect per window, so the move/size timer can skip ticks
+/// where the window did not actually move or resize (the timer fires every
+/// ~16ms for the whole drag, including while the cursor rests).
+static LAST_WINDOW_RECTS: OnceLock<Mutex<HashMap<isize, (i32, i32, i32, i32)>>> = OnceLock::new();
+
+fn current_window_rect(hwnd: HWND) -> Option<(i32, i32, i32, i32)> {
+    let mut rect = RECT::default();
+    unsafe {
+        WindowsAndMessaging::GetWindowRect(hwnd, &mut rect).ok()?;
+    }
+    Some((rect.left, rect.top, rect.right, rect.bottom))
+}
+
+/// `WM_TIMER` tick of the move/size timer: runs the full geometry sync only
+/// when the window rect changed since the last pass, then repaints the
+/// chrome so newly exposed strips don't linger as stale content.
+pub(crate) fn handle_live_sizemove_tick(hwnd: HWND) {
+    let rect = current_window_rect(hwnd);
+    let unchanged = LAST_WINDOW_RECTS
+        .get()
+        .and_then(|rects| rects.lock().ok())
+        .is_some_and(|rects| rect.is_some() && rects.get(&hwnd_handle(hwnd)).copied() == rect);
+    if unchanged {
+        return;
+    }
+    handle_window_geometry_change(hwnd);
+    if windows_chrome_renderer().is_some() {
+        unsafe {
+            let _ = InvalidateRect(Some(hwnd), None, false);
+        }
+    }
+}
+
 /// Lays out the window owned by this UI thread directly from the window
 /// procedure: syncs the WebView2 controller bounds, notifies the controller
 /// of the new window position, re-arranges attached group windows, and
-/// stores the placement. Coalesced per message (no timers); cheap enough to
-/// run on every `WM_WINDOWPOSCHANGED` step of an interactive drag.
+/// stores the placement. Cheap and idempotent: `sync_controller_bounds_for`
+/// skips the controller `SetBounds` when the target bounds are unchanged,
+/// so it can run on every `WM_WINDOWPOSCHANGED` step and every ~16ms
+/// move/size timer tick of an interactive drag.
 pub(crate) fn handle_window_geometry_change(hwnd: HWND) {
     let context = LIVE_LAYOUT_CONTEXT.with(|slot| {
         slot.borrow()
@@ -96,6 +140,13 @@ pub(crate) fn handle_window_geometry_change(hwnd: HWND) {
     let Some((webtag_key, controller)) = context else {
         return;
     };
+    if let Some(rect) = current_window_rect(hwnd)
+        && let Ok(mut rects) = LAST_WINDOW_RECTS
+            .get_or_init(|| Mutex::new(HashMap::new()))
+            .lock()
+    {
+        rects.insert(hwnd_handle(hwnd), rect);
+    }
     let _ = sync_controller_bounds_for(hwnd, &webtag_key, &controller);
     unsafe {
         let _ = controller.NotifyParentWindowPositionChanged();
@@ -113,6 +164,11 @@ pub(crate) fn handle_window_geometry_change(hwnd: HWND) {
             group_active_main(&group_key).is_some_and(|active| active != webtag_key);
         unsafe {
             let _ = controller.SetIsVisible(!covered);
+        }
+        if !covered {
+            // The visibility flip can churn WebView2's child z-order after
+            // the bounds sync already placed the caps; re-assert them.
+            raise_corner_caps(hwnd);
         }
     }
     layout_group_for_main_host(&webtag_key);
@@ -228,9 +284,6 @@ pub(crate) fn show_shell_host(group_key: &str, host: HWND, title: &str, activate
     let custom_chrome = windows_chrome_renderer().is_some();
     let title = to_wide(if custom_chrome { "" } else { title });
     unsafe {
-        if custom_chrome {
-            hide_titlebar_icon(host);
-        }
         let _ = WindowsAndMessaging::SetWindowTextW(host, PCWSTR(title.as_ptr()));
         let mut flags = WindowsAndMessaging::SWP_NOMOVE | WindowsAndMessaging::SWP_NOSIZE;
         if !activate {
@@ -355,6 +408,9 @@ pub(crate) fn set_attached_window_rect(hwnd: HWND, rect: RECT, visible: bool) {
         return;
     }
     unsafe {
+        // SWP_NOCOPYBITS: during live resizes the old surface contents must
+        // not be blitted into the new position (stale-content ghosting);
+        // the webview repaints the full card anyway.
         let _ = WindowsAndMessaging::SetWindowPos(
             hwnd,
             Some(WindowsAndMessaging::HWND_TOP),
@@ -364,12 +420,11 @@ pub(crate) fn set_attached_window_rect(hwnd: HWND, rect: RECT, visible: bool) {
             height,
             WindowsAndMessaging::SWP_NOACTIVATE
                 | WindowsAndMessaging::SWP_NOOWNERZORDER
+                | WindowsAndMessaging::SWP_NOCOPYBITS
                 | WindowsAndMessaging::SWP_SHOWWINDOW,
         );
     }
-    let radius = renderer_panel_radius();
-    apply_round_region_to_window(hwnd, width, height, radius);
-    apply_round_region_to_webview_children(
+    update_corner_caps(
         hwnd,
         RECT {
             left: 0,
@@ -377,11 +432,11 @@ pub(crate) fn set_attached_window_rect(hwnd: HWND, rect: RECT, visible: bool) {
             right: width,
             bottom: height,
         },
-        radius,
     );
 }
 
 pub(crate) fn hide_attached_window(hwnd: HWND) {
+    destroy_corner_caps(hwnd);
     unsafe {
         let _ = WindowsAndMessaging::SetWindowPos(
             hwnd,
@@ -399,86 +454,405 @@ pub(crate) fn hide_attached_window(hwnd: HWND) {
     }
 }
 
-pub(crate) struct ChildRegionState {
-    target: RECT,
-    radius: i32,
+/// Corner-cap overlays: attached cards/panels are `WS_CHILD` windows, so
+/// the DWM corner rounding used for top-level windows cannot apply, and a
+/// GDI window region (`SetWindowRgn`) clips to an aliased staircase edge.
+/// Instead, four tiny per-pixel-alpha "cap" child windows are layered over
+/// each card's corners, above the card's WebView2 child: each cap paints
+/// the renderer's [`card_corner_color`](WindowsChromeRenderer::card_corner_color)
+/// outside the rounded-corner arc, anti-aliased coverage along the arc, and
+/// full transparency inside, visually rounding the card without clipping
+/// it. Caps are input-transparent, created lazily per card window by the
+/// attached layout paths, repositioned on every layout, and destroyed when
+/// their card hides or goes away.
+struct CornerCapSet {
+    /// Cap handles ordered top-left, top-right, bottom-left, bottom-right.
+    caps: [isize; 4],
+    /// Cap side length (the corner radius) the bitmaps were rendered at.
+    side: i32,
+    /// `COLORREF` value the bitmaps were rendered with.
+    color: u32,
 }
 
-pub(crate) unsafe extern "system" fn apply_child_region_proc(hwnd: HWND, lparam: LPARAM) -> BOOL {
-    let state = unsafe { &mut *(lparam.0 as *mut ChildRegionState) };
-    let mut rect = RECT::default();
-    unsafe {
-        if WindowsAndMessaging::GetWindowRect(hwnd, &mut rect).is_err() {
-            return BOOL(1);
+/// Live corner-cap sets, keyed by the window the caps are children of (an
+/// attached card window, or a group host for its own main card).
+static CORNER_CAPS: OnceLock<Mutex<HashMap<isize, CornerCapSet>>> = OnceLock::new();
+
+/// Cap windows take no input: `WS_EX_TRANSPARENT` already excludes the
+/// layered caps from hit testing, and `HTTRANSPARENT` covers any hit test
+/// that still reaches the window.
+unsafe extern "system" fn corner_cap_proc(
+    hwnd: HWND,
+    msg: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+) -> LRESULT {
+    if msg == WindowsAndMessaging::WM_NCHITTEST {
+        return LRESULT(WindowsAndMessaging::HTTRANSPARENT as isize);
+    }
+    unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
+}
+
+fn corner_cap_class() -> PCWSTR {
+    static REGISTERED: OnceLock<()> = OnceLock::new();
+    REGISTERED.get_or_init(|| {
+        // Register with the same module handle that cap creation passes to
+        // `CreateWindowExW`: window classes are keyed by (name, module), so
+        // a mismatched module would make every cap creation fail.
+        let module = unsafe { LibraryLoader::GetModuleHandleW(None) }
+            .map(|module| HINSTANCE(module.0))
+            .unwrap_or_default();
+        let class = WNDCLASSW {
+            lpfnWndProc: Some(corner_cap_proc),
+            hInstance: module,
+            lpszClassName: w!("LingXiaCardCornerCap"),
+            ..Default::default()
+        };
+        if unsafe { WindowsAndMessaging::RegisterClassW(&class) } == 0 {
+            // A failed registration leaves every later cap creation failing;
+            // surface it instead of silently losing the rounded corners.
+            log::error!(
+                "corner cap class registration failed: {}",
+                windows::core::Error::from_thread()
+            );
+        }
+    });
+    w!("LingXiaCardCornerCap")
+}
+
+/// Creates (lazily) and lays out the four corner caps of one card surface.
+/// `card_rect` is in `parent`'s client coordinates: the full client rect
+/// for attached card windows, the controller bounds for a group host's own
+/// main card. Skipped when the renderer reports no corner color (plain
+/// OS-frame fallback) or no corner radius.
+pub(crate) fn update_corner_caps(parent: HWND, card_rect: RECT) {
+    // Cap windows are children of `parent` and must be owned by the thread
+    // that owns `parent`: group layout also runs on short-lived helper
+    // threads (chrome-event dispatch, async tasks), and Windows destroys a
+    // thread's windows when the thread exits — caps created there silently
+    // vanish moments later. Marshal the update onto the parent's UI thread.
+    let owner_thread =
+        unsafe { WindowsAndMessaging::GetWindowThreadProcessId(parent, None) };
+    if owner_thread != 0 && owner_thread != unsafe { Threading::GetCurrentThreadId() } {
+        let parent_handle = hwnd_handle(parent);
+        post_to_window_thread(
+            parent_handle,
+            Box::new(move || update_corner_caps(hwnd_from_handle(parent_handle), card_rect)),
+        );
+        return;
+    }
+    let Some(color) = renderer_card_corner_color() else {
+        return;
+    };
+    let side = renderer_panel_radius();
+    if side <= 0 {
+        return;
+    }
+    if rect_width(&card_rect) < side * 2 || rect_height(&card_rect) < side * 2 {
+        destroy_corner_caps(parent);
+        return;
+    }
+
+    let sets = CORNER_CAPS.get_or_init(|| Mutex::new(HashMap::new()));
+    let existing = sets
+        .lock()
+        .ok()
+        .and_then(|sets| {
+            sets.get(&hwnd_handle(parent))
+                .map(|set| (set.caps, set.side, set.color))
+        })
+        .filter(|(caps, cap_side, cap_color)| {
+            *cap_side == side
+                && *cap_color == color.0
+                && caps.iter().all(|cap| is_window_handle_valid(*cap))
+        });
+    let caps = match existing {
+        Some((caps, _, _)) => caps,
+        None => {
+            destroy_corner_caps(parent);
+            let Some(caps) = create_corner_caps(parent, side, color) else {
+                return;
+            };
+            if let Ok(mut sets) = sets.lock() {
+                sets.insert(
+                    hwnd_handle(parent),
+                    CornerCapSet {
+                        caps,
+                        side,
+                        color: color.0,
+                    },
+                );
+            }
+            log::debug!(
+                "created corner caps for {:?} (side {side}, color #{:06x})",
+                parent,
+                color.0
+            );
+            caps
+        }
+    };
+
+    // A main-card surface flush above a docked bottom panel keeps square
+    // bottom corners: its bottom caps would notch the shared dock edge.
+    let square_bottom = window_webtag_key(parent)
+        .is_some_and(|webtag_key| main_surface_has_docked_bottom_panel(&webtag_key));
+
+    let positions = [
+        (card_rect.left, card_rect.top),
+        (card_rect.right - side, card_rect.top),
+        (card_rect.left, card_rect.bottom - side),
+        (card_rect.right - side, card_rect.bottom - side),
+    ];
+    for (index, (cap, (x, y))) in caps.iter().zip(positions).enumerate() {
+        let hide = square_bottom && index >= 2;
+        unsafe {
+            let _ = WindowsAndMessaging::SetWindowPos(
+                hwnd_from_handle(*cap),
+                Some(WindowsAndMessaging::HWND_TOP),
+                x,
+                y,
+                side,
+                side,
+                WindowsAndMessaging::SWP_NOACTIVATE
+                    | WindowsAndMessaging::SWP_NOOWNERZORDER
+                    | WindowsAndMessaging::SWP_NOCOPYBITS
+                    | if hide {
+                        WindowsAndMessaging::SWP_HIDEWINDOW
+                    } else {
+                        WindowsAndMessaging::SWP_SHOWWINDOW
+                    },
+            );
         }
     }
-    if rects_match_with_tolerance(&rect, &state.target, 2) {
-        apply_round_region_to_window(hwnd, rect_width(&rect), rect_height(&rect), state.radius);
-    }
-    BOOL(1)
 }
 
-pub(crate) fn apply_round_region_to_webview_children(parent: HWND, client_rect: RECT, radius: i32) {
-    let width = rect_width(&client_rect);
-    let height = rect_height(&client_rect);
-    if width <= 0 || height <= 0 {
+/// Re-asserts the caps of `parent` at the top of its child z-order without
+/// moving or resizing them. WebView2 reorders its own `Chrome_WidgetWin`
+/// child chain on visibility/focus changes, which can bury the caps under
+/// the webview surface; every layout pass re-asserts `HWND_TOP` through
+/// [`update_corner_caps`], and the controller visibility flips call this
+/// directly. Hidden caps (square-bottom dock seam) stay hidden.
+pub(crate) fn raise_corner_caps(parent: HWND) {
+    let caps = CORNER_CAPS
+        .get()
+        .and_then(|sets| sets.lock().ok())
+        .and_then(|sets| sets.get(&hwnd_handle(parent)).map(|set| set.caps));
+    let Some(caps) = caps else {
         return;
-    }
-
-    let mut top_left = POINT {
-        x: client_rect.left,
-        y: client_rect.top,
     };
-    let mut bottom_right = POINT {
-        x: client_rect.right,
-        y: client_rect.bottom,
-    };
-    unsafe {
-        let _ = ClientToScreen(parent, &mut top_left);
-        let _ = ClientToScreen(parent, &mut bottom_right);
-    }
-    let mut state = ChildRegionState {
-        target: RECT {
-            left: top_left.x,
-            top: top_left.y,
-            right: bottom_right.x,
-            bottom: bottom_right.y,
-        },
-        radius,
-    };
-    unsafe {
-        let _ = WindowsAndMessaging::EnumChildWindows(
-            Some(parent),
-            Some(apply_child_region_proc),
-            LPARAM((&mut state as *mut ChildRegionState) as isize),
-        );
+    for cap in caps {
+        unsafe {
+            let _ = WindowsAndMessaging::SetWindowPos(
+                hwnd_from_handle(cap),
+                Some(WindowsAndMessaging::HWND_TOP),
+                0,
+                0,
+                0,
+                0,
+                WindowsAndMessaging::SWP_NOMOVE
+                    | WindowsAndMessaging::SWP_NOSIZE
+                    | WindowsAndMessaging::SWP_NOACTIVATE
+                    | WindowsAndMessaging::SWP_NOOWNERZORDER,
+            );
+        }
     }
 }
 
-pub(crate) fn rects_match_with_tolerance(a: &RECT, b: &RECT, tolerance: i32) -> bool {
-    (a.left - b.left).abs() <= tolerance
-        && (a.top - b.top).abs() <= tolerance
-        && (a.right - b.right).abs() <= tolerance
-        && (a.bottom - b.bottom).abs() <= tolerance
+/// Creates the four layered cap windows of one card and renders their
+/// per-pixel-alpha bitmaps. Returns `None` (destroying any partial set)
+/// when a window fails to create.
+fn create_corner_caps(parent: HWND, side: i32, color: COLORREF) -> Option<[isize; 4]> {
+    let class = corner_cap_class();
+    let mut caps = [0isize; 4];
+    for corner in 0..4 {
+        let result = unsafe {
+            WindowsAndMessaging::CreateWindowExW(
+                WindowsAndMessaging::WS_EX_LAYERED
+                    | WindowsAndMessaging::WS_EX_TRANSPARENT
+                    | WindowsAndMessaging::WS_EX_NOACTIVATE,
+                class,
+                PCWSTR::null(),
+                WindowsAndMessaging::WS_CHILD,
+                0,
+                0,
+                side,
+                side,
+                Some(parent),
+                None,
+                LibraryLoader::GetModuleHandleW(None)
+                    .ok()
+                    .map(|module| HINSTANCE(module.0)),
+                None,
+            )
+        };
+        let cap = match result {
+            Ok(cap) => cap,
+            Err(err) => {
+                log::warn!("corner cap creation failed for {parent:?}: {err}");
+                for created in &caps[..corner] {
+                    unsafe {
+                        let _ = WindowsAndMessaging::DestroyWindow(hwnd_from_handle(*created));
+                    }
+                }
+                return None;
+            }
+        };
+        paint_corner_cap(cap, corner, side, color);
+        caps[corner] = hwnd_handle(cap);
+    }
+    Some(caps)
 }
 
-/// Clips an attached (child) window to a rounded rect. Only ever applied to
-/// child surfaces (attached cards/panels and their WebView2 children): on a
-/// top-level window a region would disable DWM corner rounding and the drop
-/// shadow — top-level windows use [`apply_round_corner_preference`] instead.
-pub(crate) fn apply_round_region_to_window(hwnd: HWND, width: i32, height: i32, radius: i32) {
-    if width <= 0 || height <= 0 || radius <= 0 {
-        return;
-    }
+/// Uploads one cap's premultiplied 32-bit ARGB bitmap via
+/// `UpdateLayeredWindow` (`ULW_ALPHA`): opaque `color` outside the
+/// quarter-circle arc, anti-aliased coverage along it, transparent inside.
+fn paint_corner_cap(cap: HWND, corner: usize, side: i32, color: COLORREF) {
+    let pixels = corner_cap_pixels(corner, side, color);
     unsafe {
-        let diameter = (radius * 2).max(1);
-        let region = CreateRoundRectRgn(0, 0, width + 1, height + 1, diameter, diameter);
-        if region.0.is_null() {
+        let screen_dc = GetDC(None);
+        if screen_dc.is_invalid() {
             return;
         }
-        if SetWindowRgn(hwnd, Some(region), true) == 0 {
-            let _ = DeleteObject(HGDIOBJ(region.0));
+        let memory_dc = CreateCompatibleDC(Some(screen_dc));
+        if !memory_dc.is_invalid() {
+            let info = BITMAPINFO {
+                bmiHeader: BITMAPINFOHEADER {
+                    biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+                    biWidth: side,
+                    // Negative height: top-down rows, matching `pixels`.
+                    biHeight: -side,
+                    biPlanes: 1,
+                    biBitCount: 32,
+                    biCompression: BI_RGB.0,
+                    ..Default::default()
+                },
+                ..Default::default()
+            };
+            let mut bits: *mut c_void = std::ptr::null_mut();
+            if let Ok(bitmap) =
+                CreateDIBSection(Some(screen_dc), &info, DIB_RGB_COLORS, &mut bits, None, 0)
+                && !bits.is_null()
+            {
+                std::ptr::copy_nonoverlapping(pixels.as_ptr(), bits.cast::<u32>(), pixels.len());
+                let old_bitmap = SelectObject(memory_dc, HGDIOBJ(bitmap.0));
+                let size = SIZE { cx: side, cy: side };
+                let origin = POINT { x: 0, y: 0 };
+                let blend = BLENDFUNCTION {
+                    BlendOp: AC_SRC_OVER as u8,
+                    BlendFlags: 0,
+                    SourceConstantAlpha: 255,
+                    AlphaFormat: AC_SRC_ALPHA as u8,
+                };
+                let _ = WindowsAndMessaging::UpdateLayeredWindow(
+                    cap,
+                    None,
+                    None,
+                    Some(&size),
+                    Some(memory_dc),
+                    Some(&origin),
+                    COLORREF(0),
+                    Some(&blend),
+                    WindowsAndMessaging::ULW_ALPHA,
+                );
+                if !old_bitmap.is_invalid() {
+                    let _ = SelectObject(memory_dc, old_bitmap);
+                }
+                let _ = DeleteObject(HGDIOBJ(bitmap.0));
+            }
+            let _ = DeleteDC(memory_dc);
         }
+        let _ = ReleaseDC(None, screen_dc);
+    }
+}
+
+/// Premultiplied ARGB pixels of one corner cap, top-down row order.
+/// `corner`: 0 top-left, 1 top-right, 2 bottom-left, 3 bottom-right. Alpha
+/// is the 4x4-supersampled coverage of "outside the rounded corner", so
+/// the arc edge blends smoothly between the cap color and the webview
+/// pixels underneath.
+fn corner_cap_pixels(corner: usize, side: i32, color: COLORREF) -> Vec<u32> {
+    let radius = side as f32;
+    // Arc center in cap-local coordinates: the cap corner that points into
+    // the card interior.
+    let (center_x, center_y) = match corner {
+        0 => (radius, radius),
+        1 => (0.0, radius),
+        2 => (radius, 0.0),
+        _ => (0.0, 0.0),
+    };
+    let red = color.0 & 0xff;
+    let green = (color.0 >> 8) & 0xff;
+    let blue = (color.0 >> 16) & 0xff;
+    let mut pixels = Vec::with_capacity((side * side) as usize);
+    for y in 0..side {
+        for x in 0..side {
+            let mut outside = 0u32;
+            for sub_y in 0..4 {
+                for sub_x in 0..4 {
+                    let sample_x = x as f32 + (sub_x as f32 + 0.5) / 4.0;
+                    let sample_y = y as f32 + (sub_y as f32 + 0.5) / 4.0;
+                    let dx = sample_x - center_x;
+                    let dy = sample_y - center_y;
+                    if dx * dx + dy * dy > radius * radius {
+                        outside += 1;
+                    }
+                }
+            }
+            let alpha = outside * 255 / 16;
+            let premultiply = |channel: u32| channel * alpha / 255;
+            pixels.push(
+                (alpha << 24)
+                    | (premultiply(red) << 16)
+                    | (premultiply(green) << 8)
+                    | premultiply(blue),
+            );
+        }
+    }
+    pixels
+}
+
+/// Destroys the caps of one card and forgets its registry entry. Group
+/// layout runs on whichever UI thread triggered it, so a cap may belong to
+/// a different thread than the caller; `DestroyWindow` fails cross-thread,
+/// and those caps are instead closed via `WM_CLOSE` on their owning thread.
+pub(crate) fn destroy_corner_caps(parent: HWND) {
+    let removed = CORNER_CAPS
+        .get()
+        .and_then(|sets| sets.lock().ok())
+        .and_then(|mut sets| sets.remove(&hwnd_handle(parent)));
+    let Some(set) = removed else {
+        return;
+    };
+    log::debug!("destroying corner caps for {parent:?}");
+    for cap in set.caps {
+        let cap = hwnd_from_handle(cap);
+        unsafe {
+            if WindowsAndMessaging::DestroyWindow(cap).is_err() {
+                let _ = WindowsAndMessaging::PostMessageW(
+                    Some(cap),
+                    WindowsAndMessaging::WM_CLOSE,
+                    WPARAM::default(),
+                    LPARAM::default(),
+                );
+            }
+        }
+    }
+}
+
+/// Drops the per-window layout caches and corner caps of a window that is
+/// going away.
+pub(crate) fn forget_window_layout_state(hwnd: HWND) {
+    destroy_corner_caps(hwnd);
+    let key = hwnd_handle(hwnd);
+    if let Some(rects) = LAST_WINDOW_RECTS.get()
+        && let Ok(mut rects) = rects.lock()
+    {
+        rects.remove(&key);
+    }
+    if let Some(bounds) = LAST_CONTROLLER_BOUNDS.get()
+        && let Ok(mut bounds) = bounds.lock()
+    {
+        bounds.remove(&key);
     }
 }
 
@@ -550,8 +924,39 @@ pub(crate) fn create_hidden_window(webtag: &WebTag) -> StdResult<HWND> {
                 }
             }
             // Fall through so DefWindowProc still produces WM_SIZE/WM_MOVE.
+        } else if msg == WindowsAndMessaging::WM_ENTERSIZEMOVE {
+            // WM_WINDOWPOSCHANGED is coalesced inside DefWindowProc's modal
+            // move/size loop, so a real mouse drag can outrun the layout;
+            // timers still fire inside that loop and keep layout pumping.
+            unsafe {
+                let _ = WindowsAndMessaging::SetTimer(
+                    Some(hwnd),
+                    SIZEMOVE_TIMER_ID,
+                    SIZEMOVE_TIMER_INTERVAL_MS,
+                    None,
+                );
+            }
+        } else if msg == WindowsAndMessaging::WM_EXITSIZEMOVE {
+            unsafe {
+                let _ = WindowsAndMessaging::KillTimer(Some(hwnd), SIZEMOVE_TIMER_ID);
+            }
+            handle_window_geometry_change(hwnd);
+            unsafe {
+                let _ = InvalidateRect(Some(hwnd), None, false);
+            }
+        } else if msg == WindowsAndMessaging::WM_TIMER {
+            if wparam.0 == SIZEMOVE_TIMER_ID {
+                handle_live_sizemove_tick(hwnd);
+                return LRESULT(0);
+            }
         } else if msg == WM_LINGXIA_LAYOUT {
             handle_window_geometry_change(hwnd);
+            return LRESULT(0);
+        } else if msg == WM_LINGXIA_RUN_CALLBACK {
+            // Closure marshalled from another thread via
+            // `post_to_window_thread` (e.g. a product layer creating child
+            // controls that must live on this UI thread).
+            run_posted_window_callback(wparam);
             return LRESULT(0);
         } else if msg == WindowsAndMessaging::WM_PAINT {
             if windows_chrome_renderer().is_some() {
@@ -566,16 +971,37 @@ pub(crate) fn create_hidden_window(webtag: &WebTag) -> StdResult<HWND> {
             if handle_native_panel_keydown(wparam) {
                 return LRESULT(0);
             }
-        } else if msg == WindowsAndMessaging::WM_LBUTTONDOWN {
+        } else if msg == WindowsAndMessaging::WM_LBUTTONDOWN
+            || msg == WindowsAndMessaging::WM_LBUTTONDBLCLK
+        {
+            // CS_DBLCLKS turns the second press of a double-click into
+            // WM_LBUTTONDBLCLK; a native-panel tab maps it to a rename
+            // request, everything else keeps plain button-down handling so
+            // fast double clicks on dividers/buttons behave like clicks.
             let raw = unsafe {
                 WindowsAndMessaging::GetWindowLongPtrW(hwnd, WindowsAndMessaging::GWLP_USERDATA)
             } as *mut WindowUserData;
             if !raw.is_null() {
                 let webtag_key = unsafe { &(*raw).webtag_key };
                 let point = lparam_to_point(lparam);
+                if msg == WindowsAndMessaging::WM_LBUTTONDBLCLK
+                    && handle_window_chrome_double_click(hwnd, webtag_key, point)
+                {
+                    return LRESULT(0);
+                }
                 if handle_window_chrome_mouse_down(hwnd, webtag_key, point)
                     || handle_frame_button_mouse_down(hwnd, webtag_key, point)
                 {
+                    return LRESULT(0);
+                }
+            }
+        } else if msg == WindowsAndMessaging::WM_RBUTTONDOWN {
+            let raw = unsafe {
+                WindowsAndMessaging::GetWindowLongPtrW(hwnd, WindowsAndMessaging::GWLP_USERDATA)
+            } as *mut WindowUserData;
+            if !raw.is_null() {
+                let webtag_key = unsafe { &(*raw).webtag_key };
+                if handle_window_chrome_right_click(hwnd, webtag_key, lparam_to_point(lparam)) {
                     return LRESULT(0);
                 }
             }
@@ -649,6 +1075,13 @@ pub(crate) fn create_hidden_window(webtag: &WebTag) -> StdResult<HWND> {
 
     let app_icons = current_app_icon_handles();
     let class = WNDCLASSW {
+        // CS_HREDRAW | CS_VREDRAW: a resize invalidates the whole window,
+        // not just the exposed strip — the chrome is anchored to all client
+        // edges, and stale strips would otherwise linger during live drags.
+        // CS_DBLCLKS: native-panel tab titles are renamed via double-click.
+        style: WindowsAndMessaging::CS_HREDRAW
+            | WindowsAndMessaging::CS_VREDRAW
+            | WindowsAndMessaging::CS_DBLCLKS,
         lpfnWndProc: Some(window_proc),
         hIcon: app_icons
             .map(|icons| hicon(icons.large))
@@ -693,7 +1126,6 @@ pub(crate) fn create_hidden_window(webtag: &WebTag) -> StdResult<HWND> {
                     apply_window_icons(hwnd, icons);
                 }
                 if windows_chrome_renderer().is_some() {
-                    hide_titlebar_icon(hwnd);
                     extend_frame_into_client_area(hwnd);
                     apply_round_corner_preference(hwnd);
                 }
@@ -742,8 +1174,9 @@ pub(crate) fn extend_frame_into_client_area(hwnd: HWND) {
 /// Opts a top-level window into DWM-rounded corners (Win11): unlike a GDI
 /// window region, DWM rounding is anti-aliased and keeps the drop shadow.
 /// Top-level windows must therefore never get `SetWindowRgn` (a region
-/// disables DWM corner rounding); rounded regions are reserved for attached
-/// child surfaces where DWM rounding cannot apply.
+/// disables DWM corner rounding); attached child surfaces — where DWM
+/// rounding cannot apply — are rounded visually by the corner-cap overlays
+/// instead (see [`update_corner_caps`]).
 pub(crate) fn apply_round_corner_preference(hwnd: HWND) {
     let preference = DWMWCP_ROUND;
     unsafe {
@@ -1180,11 +1613,109 @@ pub(crate) fn handle_window_chrome_click(hwnd: HWND, webtag_key: &str, point: (i
             webtag_key,
             WindowsChromeEvent::BrowserTabCloseClick { tab_id },
         ),
+        Some(WindowsChromeHit::NativePanelTab { panel_id, tab_id }) => {
+            // Switching tabs keeps keyboard input flowing into the panel.
+            set_active_native_panel(Some(panel_id.clone()));
+            unsafe {
+                let _ = SetFocus(Some(hwnd));
+            }
+            invoke_chrome_event_handler(
+                webtag_key,
+                WindowsChromeEvent::NativePanelTabClick { panel_id, tab_id },
+            )
+        }
+        Some(WindowsChromeHit::NativePanelTabClose { panel_id, tab_id }) => {
+            invoke_chrome_event_handler(
+                webtag_key,
+                WindowsChromeEvent::NativePanelTabCloseClick { panel_id, tab_id },
+            )
+        }
+        Some(WindowsChromeHit::NativePanelNewTab { panel_id }) => invoke_chrome_event_handler(
+            webtag_key,
+            WindowsChromeEvent::NativePanelNewTabClick { panel_id },
+        ),
+        Some(WindowsChromeHit::NativePanelMaximize { panel_id }) => invoke_chrome_event_handler(
+            webtag_key,
+            WindowsChromeEvent::NativePanelMaximizeClick { panel_id },
+        ),
         Some(WindowsChromeHit::Chrome) => true,
         // Caption points never arrive as client clicks (WM_NCHITTEST maps
         // them to HTCAPTION first); treat defensively as unhandled.
         Some(WindowsChromeHit::Caption) | None => false,
     }
+}
+
+/// WM_LBUTTONDBLCLK on chrome: double-clicking the ACTIVE tab of a native
+/// panel requests an inline rename; an inactive tab is treated as a plain
+/// tab click. Returns `false` for all other chrome (the caller then runs
+/// the regular button-down path).
+pub(crate) fn handle_window_chrome_double_click(
+    hwnd: HWND,
+    webtag_key: &str,
+    point: (i32, i32),
+) -> bool {
+    if !window_draws_shell_chrome(webtag_key) {
+        return false;
+    }
+    let Some(renderer) = windows_chrome_renderer() else {
+        return false;
+    };
+    let state = chrome_state_for_window(hwnd, webtag_key);
+    let Some(WindowsChromeHit::NativePanelTab { panel_id, tab_id }) =
+        renderer.hit_test(&state, point)
+    else {
+        return false;
+    };
+
+    let is_active_tab = state
+        .attached
+        .as_ref()
+        .and_then(|attached| {
+            attached
+                .panels
+                .iter()
+                .find(|panel| panel.panel_id == panel_id)
+        })
+        .and_then(|panel| panel.native.as_ref())
+        .is_some_and(|native| {
+            native
+                .tabs
+                .iter()
+                .any(|tab| tab.id == tab_id && tab.active)
+        });
+    let event = if is_active_tab {
+        WindowsChromeEvent::NativePanelTabRenameRequest { panel_id, tab_id }
+    } else {
+        WindowsChromeEvent::NativePanelTabClick { panel_id, tab_id }
+    };
+    invoke_chrome_event_handler(webtag_key, event)
+}
+
+/// WM_RBUTTONDOWN on chrome: a right-click on a native panel's content area
+/// is dispatched to the product layer (terminals treat it as paste). Returns
+/// `false` for all other chrome so the message falls through.
+pub(crate) fn handle_window_chrome_right_click(
+    hwnd: HWND,
+    webtag_key: &str,
+    point: (i32, i32),
+) -> bool {
+    if !window_draws_shell_chrome(webtag_key) {
+        return false;
+    }
+    let Some(renderer) = windows_chrome_renderer() else {
+        return false;
+    };
+    let state = chrome_state_for_window(hwnd, webtag_key);
+    let Some(WindowsChromeHit::NativePanel { panel_id }) = renderer.hit_test(&state, point) else {
+        return false;
+    };
+
+    // Keep keyboard input flowing into the panel the user right-clicked.
+    set_active_native_panel(Some(panel_id.clone()));
+    unsafe {
+        let _ = SetFocus(Some(hwnd));
+    }
+    invoke_chrome_event_handler(webtag_key, WindowsChromeEvent::NativePanelRightClick { panel_id })
 }
 
 pub(crate) fn show_native_window(
@@ -1301,6 +1832,8 @@ pub(crate) fn show_native_panel_window(state: &mut UiState, panel_id: &str) -> S
             native_kind: NativePanelKind::Text,
             native_title: None,
             native_body: None,
+            native_tabs: Vec::new(),
+            maximized: false,
         },
     );
     set_controller_visible(state, true)?;
@@ -1346,6 +1879,9 @@ pub(crate) fn hide_native_main_host_window(state: &mut UiState) -> StdResult<()>
 
 pub(crate) fn hide_detached_window(state: &mut UiState) -> StdResult<()> {
     set_controller_visible(state, false)?;
+    // A hidden group host drops its main-card corner caps; they are
+    // recreated by the next bounds sync when the window shows again.
+    destroy_corner_caps(state.hwnd);
     unsafe {
         let _ = WindowsAndMessaging::SetWindowPos(
             state.hwnd,
@@ -1372,6 +1908,11 @@ pub(crate) fn set_controller_visible(state: &UiState, visible: bool) -> StdResul
             .SetIsVisible(visible)
             .map_err(|err| WebViewError::WebView(format!("SetIsVisible failed: {err}")))?;
     }
+    if visible {
+        // WebView2 may reorder its child-window chain while it becomes
+        // visible; keep the corner caps above the webview surface.
+        raise_corner_caps(state.hwnd);
+    }
     Ok(())
 }
 
@@ -1397,6 +1938,13 @@ pub(crate) fn sync_controller_bounds(state: &UiState) -> StdResult<()> {
     sync_controller_bounds_for(state.hwnd, &state.webtag_key, &state.controller)
 }
 
+/// Last bounds applied to each window's WebView2 controller. The controller
+/// resize is the expensive part of a layout pass, and the interactive
+/// move/size paths re-enter the layout far more often than the bounds
+/// actually change, so unchanged `SetBounds` calls are skipped.
+static LAST_CONTROLLER_BOUNDS: OnceLock<Mutex<HashMap<isize, (i32, i32, i32, i32)>>> =
+    OnceLock::new();
+
 pub(crate) fn sync_controller_bounds_for(
     hwnd: HWND,
     webtag_key: &str,
@@ -1405,21 +1953,41 @@ pub(crate) fn sync_controller_bounds_for(
     let mut rect = RECT::default();
     unsafe {
         let _ = WindowsAndMessaging::GetClientRect(hwnd, &mut rect);
-        if rect.right <= rect.left || rect.bottom <= rect.top {
-            rect = RECT {
-                left: 0,
-                top: 0,
-                right: 1024,
-                bottom: 768,
-            };
+    }
+    if rect.right <= rect.left || rect.bottom <= rect.top {
+        rect = RECT {
+            left: 0,
+            top: 0,
+            right: 1024,
+            bottom: 768,
+        };
+    }
+    let rect = controller_bounds_for_window(hwnd, webtag_key, rect);
+
+    let bounds = (rect.left, rect.top, rect.right, rect.bottom);
+    let cache = LAST_CONTROLLER_BOUNDS.get_or_init(|| Mutex::new(HashMap::new()));
+    let unchanged = cache
+        .lock()
+        .map(|cache| cache.get(&hwnd_handle(hwnd)) == Some(&bounds))
+        .unwrap_or(false);
+    if !unchanged {
+        unsafe {
+            controller
+                .SetBounds(rect)
+                .map_err(|err| WebViewError::WebView(format!("SetBounds failed: {err}")))?;
         }
-        rect = controller_bounds_for_window(hwnd, webtag_key, rect);
-        controller
-            .SetBounds(rect)
-            .map_err(|err| WebViewError::WebView(format!("SetBounds failed: {err}")))?;
-        if window_attachment(webtag_key).is_some() {
-            apply_round_region_to_webview_children(hwnd, rect, renderer_panel_radius());
+        if let Ok(mut cache) = cache.lock() {
+            cache.insert(hwnd_handle(hwnd), bounds);
         }
+    }
+    // A group host's own main card is not an attached child window; its
+    // corner caps are managed here, where its card rect is known. Attached
+    // cards get theirs from `set_attached_window_rect`.
+    if matches!(
+        window_attachment(webtag_key).map(|attachment| attachment.kind),
+        Some(WindowAttachmentKind::MainHost)
+    ) {
+        update_corner_caps(hwnd, rect);
     }
     Ok(())
 }

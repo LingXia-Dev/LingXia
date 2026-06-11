@@ -20,6 +20,19 @@ pub enum WindowsNativePanelKind {
     Terminal,
 }
 
+/// One generic tab of a native panel's tab strip. Pure layout data: the
+/// product layer owns ids, titles, and what activation means; the renderer
+/// only draws the strip and maps clicks back to tab ids.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WindowsNativePanelTab {
+    /// Stable tab identifier assigned by the product layer.
+    pub id: u64,
+    /// Display title (already resolved by the product layer).
+    pub title: String,
+    /// Whether this tab is the panel's active tab.
+    pub active: bool,
+}
+
 /// Content of a panel that is drawn natively by the chrome renderer
 /// (as opposed to panels backed by their own webview window).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -27,6 +40,13 @@ pub struct WindowsNativePanelContent {
     pub kind: WindowsNativePanelKind,
     pub title: Option<String>,
     pub body: Option<String>,
+    /// Tab strip drawn in the panel header; empty when the panel has no
+    /// tabs (the header then shows `title`). Updated by the product layer
+    /// via `set_native_panel_tabs`.
+    pub tabs: Vec<WindowsNativePanelTab>,
+    /// Whether the panel is currently maximized over the whole content
+    /// area (the renderer draws the restore glyph instead of maximize).
+    pub maximized: bool,
 }
 
 /// One attached panel of a host window, in client coordinates.
@@ -39,6 +59,10 @@ pub struct WindowsChromePanel {
     /// `Some` when the panel content is drawn natively by the renderer;
     /// `None` when a separate webview window covers the rect.
     pub native: Option<WindowsNativePanelContent>,
+    /// Whether the panel lays out flush against the main card (compact
+    /// bottom dock: zero gap, only a thin divider strip between the two).
+    /// Renderers draw the shared edge with square corners.
+    pub docked: bool,
 }
 
 /// Attached-group geometry of a host window: the main content card plus the
@@ -106,6 +130,17 @@ pub enum WindowsChromeHit {
     PanelActivator { panel_id: String },
     /// A natively drawn panel that accepts keyboard focus (e.g. terminal).
     NativePanel { panel_id: String },
+    /// A tab in a native panel's header tab strip; dispatched as a chrome
+    /// event (double-clicking the active tab dispatches a rename request).
+    NativePanelTab { panel_id: String, tab_id: u64 },
+    /// The close glyph of a native panel tab; dispatched as a chrome event.
+    NativePanelTabClose { panel_id: String, tab_id: u64 },
+    /// The new-tab button of a native panel header; dispatched as a chrome
+    /// event.
+    NativePanelNewTab { panel_id: String },
+    /// The maximize/restore toggle of a native panel header; dispatched as
+    /// a chrome event.
+    NativePanelMaximize { panel_id: String },
     /// Inert chrome surface: consumes the click without producing an event.
     Chrome,
 }
@@ -124,6 +159,23 @@ pub trait WindowsChromeRenderer: Send + Sync {
 
     /// Corner radius applied to attached webview surfaces.
     fn panel_corner_radius(&self) -> i32;
+
+    /// Solid color of the per-pixel-alpha corner caps layered over the
+    /// corners of attached card surfaces — the background the rounded cards
+    /// visually blend into (normally the window background). The default
+    /// `None` disables the caps entirely; attached cards then keep plain
+    /// square corners (as in the plain-frame fallback).
+    fn card_corner_color(&self) -> Option<COLORREF> {
+        None
+    }
+
+    /// Rect a maximized native panel expands to. The default is the content
+    /// rect (panel covers the webview area); product renderers typically
+    /// return the whole client area below the caption strip so a maximized
+    /// panel covers the sidebar as well.
+    fn maximized_panel_rect(&self, client: RECT, layout: &WindowsWindowLayout) -> RECT {
+        self.content_rect(client, layout)
+    }
 
     /// Paint the full window chrome into `hdc`.
     fn paint(&self, hdc: HDC, state: &WindowsChromeState);
@@ -186,6 +238,20 @@ pub(crate) fn renderer_panel_radius() -> i32 {
     windows_chrome_renderer()
         .map(|renderer| renderer.panel_corner_radius())
         .unwrap_or(0)
+}
+
+/// Corner-cap color for attached cards; `None` (no renderer, or a renderer
+/// that opts out) disables the corner-cap overlays.
+pub(crate) fn renderer_card_corner_color() -> Option<COLORREF> {
+    windows_chrome_renderer().and_then(|renderer| renderer.card_corner_color())
+}
+
+/// Rect a maximized native panel expands to; the content rect when no
+/// renderer is registered.
+pub(crate) fn renderer_maximized_panel_rect(client: RECT, layout: &WindowsWindowLayout) -> RECT {
+    windows_chrome_renderer()
+        .map(|renderer| renderer.maximized_panel_rect(client, layout))
+        .unwrap_or_else(|| renderer_content_rect(client, layout))
 }
 
 /// WM_PAINT handler used when a renderer is registered: validates the window

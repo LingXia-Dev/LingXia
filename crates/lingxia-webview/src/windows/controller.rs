@@ -697,6 +697,7 @@ pub(crate) fn cleanup_state(state: &mut UiState) {
 }
 
 pub(crate) fn cleanup_window_state(state: &UiState) {
+    forget_window_layout_state(state.hwnd);
     let attachment = remove_window_attachment(&state.webtag_key);
     remove_window_handle(&state.webtag_key);
     remove_window_layout(&state.webtag_key);

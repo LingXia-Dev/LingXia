@@ -42,6 +42,20 @@ pub enum WindowsChromeEvent {
     BrowserTabClick { tab_id: String },
     /// Click on the close glyph of a sidebar browser-tab row.
     BrowserTabCloseClick { tab_id: String },
+    /// Click on a tab in a native panel's header tab strip.
+    NativePanelTabClick { panel_id: String, tab_id: u64 },
+    /// Click on the close glyph of a native panel tab.
+    NativePanelTabCloseClick { panel_id: String, tab_id: u64 },
+    /// Click on the new-tab button of a native panel header.
+    NativePanelNewTabClick { panel_id: String },
+    /// Click on the maximize/restore toggle of a native panel header.
+    NativePanelMaximizeClick { panel_id: String },
+    /// Double-click on the active tab title of a native panel header; the
+    /// product layer starts an inline rename in response.
+    NativePanelTabRenameRequest { panel_id: String, tab_id: u64 },
+    /// Right-click on a native panel's content area (terminals treat this
+    /// as paste, following Windows Terminal convention).
+    NativePanelRightClick { panel_id: String },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -286,6 +300,8 @@ pub(crate) fn show_native_group_panel(
             native_kind,
             native_title: Some(title.to_string()),
             native_body: Some(body.to_string()),
+            native_tabs: Vec::new(),
+            maximized: false,
         },
     );
     if native_kind == NativePanelKind::Terminal {
@@ -302,6 +318,73 @@ pub fn update_native_panel_body(panel_id: &str, body: &str) -> StdResult<()> {
     };
     request_group_shell_refresh(&group_key);
     Ok(())
+}
+
+/// Replaces the header tab strip of a native panel and repaints the host
+/// chrome. The strip is generic data: ids, titles, and the active flag are
+/// owned by the product layer. Returns `false` when no group currently
+/// hosts the panel.
+pub fn set_native_panel_tabs(panel_id: &str, tabs: Vec<WindowsNativePanelTab>) -> bool {
+    let Some(group_key) = update_group_panel_tabs(panel_id, tabs) else {
+        return false;
+    };
+    request_group_shell_refresh(&group_key);
+    true
+}
+
+/// Sets whether a native panel is maximized over the whole content area
+/// (the main card collapses while maximized) and re-runs the group layout.
+/// Pure rect mechanics; the toggle policy lives in the product layer.
+/// Returns `false` when no group currently hosts the panel.
+pub fn set_native_panel_maximized(panel_id: &str, maximized: bool) -> bool {
+    let Some(group_key) = update_group_panel_maximized(panel_id, maximized) else {
+        return false;
+    };
+    layout_group_windows(&group_key);
+    request_group_shell_refresh(&group_key);
+    true
+}
+
+/// Window message carrying a boxed callback posted by
+/// [`post_to_window_thread`]; handled in the window procedure.
+pub(crate) const WM_LINGXIA_RUN_CALLBACK: u32 = WM_APP + 0x158;
+
+/// Runs `callback` on the UI thread that owns `window` (a window handle
+/// previously surfaced to a product layer, e.g. via `WindowsChromeState`).
+///
+/// Generic thread-marshalling mechanics for product layers that must touch
+/// Win32 UI owned by a webview UI thread (e.g. creating child controls)
+/// from a background thread. Returns `false` when the window is gone or
+/// the post failed; the callback is dropped in that case.
+pub fn post_to_window_thread(window: isize, callback: Box<dyn FnOnce() + Send>) -> bool {
+    if !is_window_handle_valid(window) {
+        return false;
+    }
+    let raw = Box::into_raw(Box::new(callback));
+    let posted = unsafe {
+        WindowsAndMessaging::PostMessageW(
+            Some(hwnd_from_handle(window)),
+            WM_LINGXIA_RUN_CALLBACK,
+            WPARAM(raw as usize),
+            LPARAM(0),
+        )
+        .is_ok()
+    };
+    if !posted {
+        // Reclaim the leaked box so the callback (and its captures) drop.
+        drop(unsafe { Box::from_raw(raw) });
+    }
+    posted
+}
+
+/// Executes a callback delivered through [`WM_LINGXIA_RUN_CALLBACK`].
+pub(crate) fn run_posted_window_callback(wparam: WPARAM) {
+    let raw = wparam.0 as *mut Box<dyn FnOnce() + Send>;
+    if raw.is_null() {
+        return;
+    }
+    let callback = unsafe { Box::from_raw(raw) };
+    callback();
 }
 
 /// Repaints the host-window region covering `panel_id` without changing the
@@ -431,6 +514,12 @@ pub(crate) fn invoke_chrome_event_handler(webtag_key: &str, event: WindowsChrome
             WindowsChromeEvent::BrowserNewTabClick => "browser-new-tab",
             WindowsChromeEvent::BrowserTabClick { .. } => "browser-tab",
             WindowsChromeEvent::BrowserTabCloseClick { .. } => "browser-tab-close",
+            WindowsChromeEvent::NativePanelTabClick { .. } => "panel-tab",
+            WindowsChromeEvent::NativePanelTabCloseClick { .. } => "panel-tab-close",
+            WindowsChromeEvent::NativePanelNewTabClick { .. } => "panel-new-tab",
+            WindowsChromeEvent::NativePanelMaximizeClick { .. } => "panel-maximize",
+            WindowsChromeEvent::NativePanelTabRenameRequest { .. } => "panel-tab-rename",
+            WindowsChromeEvent::NativePanelRightClick { .. } => "panel-right-click",
         };
         let thread_name = format!("lingxia-webview-chrome-{event_name}-{webtag_key}");
         let _ = std::thread::Builder::new()
