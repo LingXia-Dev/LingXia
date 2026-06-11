@@ -319,6 +319,7 @@ interface HostAppApi {
   getBaseInfo(): AppBaseInfo;
   checkUpdate(): Promise<HostAppUpdateCheckResult>;
   exit(): void;
+  screenshot(options?: { windowId?: string }): Promise<AppScreenshotResult>;
 }
 
 interface AppBaseInfo {
@@ -360,6 +361,15 @@ if (result.hasUpdate) {
 Direct package handoff is supported on Android and macOS today. Other platforms reject `apply()` with an unsupported-operation error — use `update.version` and `update.releaseNotes` to point users at the app store.
 
 **`exit()`** — terminate the host app immediately. **No confirmation dialog** — show one yourself with `lx.showModal(...)` first if needed.
+
+**`screenshot(options?)`** — **home-lxapp only**. Captures the host app's **whole window** as a PNG — app-level semantics, one level above any page/WebView capture: the image is what the user currently sees, including host-drawn navigation chrome, native overlays, and every composited WebView (which may include other lxapps' UI — hence the home-lxapp restriction). Saves into the lxapp temp directory and resolves to `{ tempFilePath, width?, height? }`:
+
+```ts
+const shot = await lx.app.screenshot();
+// shot.tempFilePath → 'lx://tmp/app-screenshot/lx_<ts>.png', usable in <image>, lx.fs, uploads
+```
+
+`windowId` targets a specific desktop window (platform-specific id); omit it to capture the key/main window (desktop) or the sole window (mobile).
 
 ### `lx.surface` — dynamic surfaces (`SurfaceApi`)
 

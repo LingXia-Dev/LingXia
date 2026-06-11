@@ -69,7 +69,7 @@ pub(super) fn init(ctx: &JSContext, app: &JSObject) -> JSResult<()> {
 
 async fn check_app_update(ctx: JSContext) -> JSResult<JSObject> {
     let lxapp = LxApp::from_ctx(&ctx)?;
-    ensure_home_lxapp(&lxapp)?;
+    ensure_home_lxapp(&lxapp, "lx.app.checkUpdate")?;
 
     let update = host_update_service_from(&lxapp)
         .check()
@@ -132,7 +132,7 @@ fn create_apply_task(ctx: &JSContext, package: UpdatePackageInfo) -> JSResult<JS
     }
 
     let lxapp = LxApp::from_ctx(ctx)?;
-    ensure_home_lxapp(&lxapp)?;
+    ensure_home_lxapp(&lxapp, "lx.app.checkUpdate")?;
 
     let apply = host_update_service_from(&lxapp).apply(package);
     let (tx, rx) = watch::channel::<Option<AppUpdateEvent>>(None);
@@ -370,7 +370,7 @@ fn can_apply_host_app_update() -> bool {
     cfg!(any(target_os = "android", target_os = "macos"))
 }
 
-fn ensure_home_lxapp(lxapp: &LxApp) -> JSResult<()> {
+pub(super) fn ensure_home_lxapp(lxapp: &LxApp, api_name: &str) -> JSResult<()> {
     let home_appid = home_app_id()
         .ok_or_else(|| js_service_unavailable_error("home lxapp is not configured"))?;
     if lxapp.appid == home_appid {
@@ -379,7 +379,7 @@ fn ensure_home_lxapp(lxapp: &LxApp) -> JSResult<()> {
 
     Err(js_error_from_business_code_with_detail(
         3000,
-        "lx.app.checkUpdate is only available in the home lxapp",
+        format!("{api_name} is only available in the home lxapp"),
     ))
 }
 
