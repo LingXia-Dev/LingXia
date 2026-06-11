@@ -1248,6 +1248,7 @@ pub fn generate_icons(
     source_icon: &Path,
     background_color: &str,
     legacy: bool,
+    foreground_icon: Option<&Path>,
 ) -> Result<()> {
     let android_res = resolve_android_assets_dir(project_root);
 
@@ -1258,7 +1259,13 @@ pub fn generate_icons(
         );
     }
 
-    crate::appicon::generate_android_icons(source_icon, &android_res, background_color, legacy)
+    crate::appicon::generate_android_icons(
+        source_icon,
+        &android_res,
+        background_color,
+        legacy,
+        foreground_icon,
+    )
 }
 
 /// Resolve Android assets/res directory

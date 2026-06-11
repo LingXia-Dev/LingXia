@@ -139,6 +139,11 @@ enum Commands {
         /// Generate legacy icons for Android minSdk < 26
         #[arg(long)]
         legacy: bool,
+
+        /// Transparent artwork for Android/Harmony layered foregrounds
+        /// (defaults to the main icon, which embeds its own background)
+        #[arg(long)]
+        foreground: Option<String>,
     },
 
     /// Build the project
@@ -442,8 +447,9 @@ fn main() -> Result<()> {
             platform,
             background_color,
             legacy,
+            foreground,
         } => {
-            commands::icon::execute(icon_path, platform, background_color, legacy)?;
+            commands::icon::execute(icon_path, platform, background_color, legacy, foreground)?;
         }
         Commands::Build {
             build_options,

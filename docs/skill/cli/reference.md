@@ -296,6 +296,14 @@ lingxia icon <icon_path> [options]
 |--------|-------------|---------|
 | `-p, --platform <platform>` | Target platform | all from config |
 | `-b, --background-color <color>` | Background color for adaptive icons (hex) | #FFFFFF |
+| `--foreground <path>` | Transparent artwork for Android/Harmony layered foregrounds | main icon |
+| `--legacy` | Also generate legacy Android icons for minSdk < 26 | off |
+
+The full-bleed source works for every platform: macOS art is normalized
+automatically (content scaled to Dock proportions, rounded corners, transparent
+margin). Without `--foreground`, the Android/Harmony foreground embeds the full
+source — including its background — so keep `-b` matched to the source's
+background color.
 
 **Examples:**
 
@@ -308,6 +316,9 @@ lingxia icon logo.png -b "#1E88E5"
 
 # For specific platform only
 lingxia icon logo.png -p android
+
+# Transparent glyph as the adaptive foreground (mark renders larger)
+lingxia icon logo.png -p android -b "#FAFAF7" --foreground glyph.png
 ```
 
 ---

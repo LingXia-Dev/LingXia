@@ -145,6 +145,7 @@ fn generate_app_icons(
                     &icon_path,
                     background_color,
                     false,
+                    None,
                 ) {
                     eprintln!("{} {}", "Warning:".yellow(), e);
                     eprintln!("Skipping Android icon generation.");
@@ -177,6 +178,7 @@ fn generate_app_icons(
                     &config.target_dir,
                     &icon_path,
                     background_color,
+                    None,
                     None,
                 ) {
                     eprintln!("{} {}", "Warning:".yellow(), e);

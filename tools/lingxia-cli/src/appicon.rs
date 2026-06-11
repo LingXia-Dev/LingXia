@@ -46,11 +46,17 @@ pub fn normalize_android_color(color: &str) -> Result<String> {
 /// * `res_dir` - Path to Android app/src/main/res directory
 /// * `background_color` - Background color for adaptive icons (hex, e.g., "#FFFFFF")
 /// * `include_legacy` - If true, generate legacy icons for minSdk < 26
+/// * `foreground_icon` - Optional transparent artwork used for the adaptive
+///   foreground instead of the full-bleed source. Without it the full source
+///   (background included) lands in the safe zone, which both shrinks the
+///   visible mark and relies on `background_color` matching the source's
+///   background exactly.
 pub fn generate_android_icons(
     source_icon: &Path,
     res_dir: &Path,
     background_color: &str,
     include_legacy: bool,
+    foreground_icon: Option<&Path>,
 ) -> Result<()> {
     let background_color = normalize_android_color(background_color)?;
 
@@ -59,6 +65,15 @@ pub fn generate_android_icons(
     }
 
     let img = image::open(source_icon).context("Failed to open source image")?;
+    let foreground_img = match foreground_icon {
+        Some(path) => {
+            if !path.exists() {
+                anyhow::bail!("Foreground icon not found: {:?}", path);
+            }
+            Some(image::open(path).context("Failed to open foreground image")?)
+        }
+        None => None,
+    };
     let (width, height) = img.dimensions();
 
     if width != height {
@@ -102,7 +117,7 @@ pub fn generate_android_icons(
         }
 
         // Foreground for adaptive icon (always generated)
-        let foreground = create_adaptive_foreground(&img, adaptive_size);
+        let foreground = create_adaptive_foreground(foreground_img.as_ref().unwrap_or(&img), adaptive_size);
         foreground.save_with_format(
             mipmap_dir.join("ic_launcher_foreground.webp"),
             ImageFormat::WebP,
@@ -340,16 +355,28 @@ pub fn generate_macos_icons(source_icon: &Path, resources_dir: &Path) -> Result<
 /// * `source_icon` - Path to source icon (PNG, recommended 1024x1024)
 /// * `harmony_dir` - Path to the HarmonyOS project directory (containing AppScope/)
 /// * `background_color` - Background color hex (e.g., "#FFFFFF")
+/// * `foreground_icon` - Optional transparent artwork for the layered-icon
+///   foreground (same semantics as the Android adaptive foreground)
 pub fn generate_harmony_icons(
     source_icon: &Path,
     harmony_dir: &Path,
     background_color: &str,
+    foreground_icon: Option<&Path>,
 ) -> Result<()> {
     if !source_icon.exists() {
         anyhow::bail!("Source icon not found: {:?}", source_icon);
     }
 
     let img = image::open(source_icon).context("Failed to open source image")?;
+    let foreground_src = match foreground_icon {
+        Some(path) => {
+            if !path.exists() {
+                anyhow::bail!("Foreground icon not found: {:?}", path);
+            }
+            Some(image::open(path).context("Failed to open foreground image")?)
+        }
+        None => None,
+    };
     let (width, height) = img.dimensions();
 
     if width != height {
@@ -383,7 +410,9 @@ pub fn generate_harmony_icons(
     let offset = (canvas_size - icon_size) / 2;
 
     // Create foreground: icon centered on transparent canvas
-    let resized = img
+    let resized = foreground_src
+        .as_ref()
+        .unwrap_or(&img)
         .resize_exact(icon_size, icon_size, FilterType::Lanczos3)
         .to_rgba8();
     let mut foreground = image::RgbaImage::new(canvas_size, canvas_size);

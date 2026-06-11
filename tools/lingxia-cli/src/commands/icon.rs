@@ -14,6 +14,7 @@ pub fn execute(
     platform: Option<String>,
     background_color: Option<String>,
     legacy: bool,
+    foreground: Option<String>,
 ) -> Result<()> {
     println!("{}", "Generate/Update App Icons".bold());
     println!();
@@ -24,6 +25,17 @@ pub fn execute(
     if !icon_path.exists() {
         return Err(anyhow!("Icon file not found: {:?}", icon_path));
     }
+
+    let foreground_path = match &foreground {
+        Some(p) => {
+            let path = current_dir.join(p);
+            if !path.exists() {
+                return Err(anyhow!("Foreground icon file not found: {:?}", path));
+            }
+            Some(path)
+        }
+        None => None,
+    };
 
     let context = resolve_icon_context(&current_dir)?;
 
@@ -66,6 +78,9 @@ pub fn execute(
     if legacy {
         println!("  Legacy support:   {}", "enabled (minSdk < 26)".cyan());
     }
+    if let Some(p) = &foreground_path {
+        println!("  Foreground:       {}", p.display().to_string().cyan());
+    }
     println!();
 
     let mut generated_count = 0;
@@ -84,6 +99,7 @@ pub fn execute(
                     &icon_path,
                     &bg_color,
                     legacy,
+                    foreground_path.as_deref(),
                 ) {
                     Ok(()) => generated_count += 1,
                     Err(e) => {
@@ -129,6 +145,7 @@ pub fn execute(
                     &icon_path,
                     &bg_color,
                     context.config.as_ref().and_then(|cfg| cfg.harmony.as_ref()),
+                    foreground_path.as_deref(),
                 ) {
                     Ok(()) => generated_count += 1,
                     Err(e) => {

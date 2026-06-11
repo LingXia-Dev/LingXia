@@ -409,9 +409,15 @@ pub fn generate_icons(
     source_icon: &Path,
     background_color: &str,
     harmony_config: Option<&HarmonyConfig>,
+    foreground_icon: Option<&Path>,
 ) -> Result<()> {
     let harmony_dir = resolve_harmony_dir(project_root, harmony_config)?;
-    crate::appicon::generate_harmony_icons(source_icon, &harmony_dir, background_color)
+    crate::appicon::generate_harmony_icons(
+        source_icon,
+        &harmony_dir,
+        background_color,
+        foreground_icon,
+    )
 }
 
 #[cfg(test)]
