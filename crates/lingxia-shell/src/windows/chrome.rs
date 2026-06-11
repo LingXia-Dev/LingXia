@@ -5,14 +5,16 @@
 //! file is pure product policy registered through the
 //! [`WindowsChromeRenderer`] seam.
 
+use std::collections::HashMap;
 use std::ffi::c_void;
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use lingxia_webview::platform::windows::{
     WindowsChromeHit, WindowsChromePanel, WindowsChromeRenderer, WindowsChromeState,
     WindowsFrameButton, WindowsNativePanelContent, WindowsNativePanelKind,
     WindowsNavigationBarLayout, WindowsTabBarLayout, WindowsTabBarPosition, WindowsWindowLayout,
-    cached_png_icon_handle, set_windows_chrome_renderer,
+    cached_png_bytes_icon_handle, cached_png_icon_handle, post_to_window_thread,
+    set_windows_chrome_renderer,
 };
 use windows::Win32::Foundation::{COLORREF, HWND, RECT};
 use windows::Win32::Graphics::Gdi::{
@@ -106,23 +108,79 @@ pub(super) const SHELL_SIDEBAR_HEADER_TEXT: u32 = 0x4f5661;
 
 pub(super) const SHELL_TAB_SELECTED_BACKGROUND: u32 = 0xf3f7ff;
 
-pub(super) const SHELL_TOP_BAR_HEIGHT: i32 = 38;
+/// Compact Arc-style caption strip.
+pub(super) const SHELL_TOP_BAR_HEIGHT: i32 = 32;
 
 /// Win11 caption-button width (every Win11 app uses 46px-wide buttons
 /// flush against the top-right window edge).
 pub(super) const WINDOW_BUTTON_WIDTH: i32 = 46;
 
-/// Caption glyph size: 10pt Segoe Fluent Icons, like the system frame.
-pub(super) const WINDOW_BUTTON_GLYPH_POINT_SIZE: i32 = 10;
+/// Caption glyph size: 9pt Segoe Fluent Icons, scaled down with the
+/// compact 32px caption strip (the system frame uses 10pt at 38px).
+pub(super) const WINDOW_BUTTON_GLYPH_POINT_SIZE: i32 = 9;
 
 /// Caption glyphs (Segoe Fluent Icons / Segoe MDL2 Assets codepoints).
 pub(super) const GLYPH_MINIMIZE: &str = "\u{e921}";
 
+/// Window-frame maximize/restore squares (ChromeMaximize / ChromeRestore);
+/// the terminal dock's fill toggle uses [`GLYPH_PANEL_EXPAND`] /
+/// [`GLYPH_PANEL_SHRINK`] instead.
 pub(super) const GLYPH_MAXIMIZE: &str = "\u{e922}";
 
 pub(super) const GLYPH_RESTORE: &str = "\u{e923}";
 
 pub(super) const GLYPH_CLOSE: &str = "\u{e8bb}";
+
+/// Panel expand/shrink (Fluent FullScreen / BackToWindow): used by the
+/// terminal dock's maximize toggle, whose semantic is "fill the app area",
+/// not the window-frame maximize square.
+pub(super) const GLYPH_PANEL_EXPAND: &str = "\u{e740}";
+pub(super) const GLYPH_PANEL_SHRINK: &str = "\u{e73f}";
+
+// ---- Arc-style top-bar controls (Segoe Fluent Icons codepoints). ----
+
+/// "Back" glyph of the browser address bar.
+pub(super) const GLYPH_NAV_BACK: &str = "\u{e72b}";
+
+/// "Forward" glyph of the browser address bar.
+pub(super) const GLYPH_NAV_FORWARD: &str = "\u{e72a}";
+
+/// "Refresh" glyph of the browser address bar.
+pub(super) const GLYPH_NAV_RELOAD: &str = "\u{e72c}";
+
+/// GlobalNavButton (hamburger) — the closest Fluent match to Arc's
+/// sidebar collapse/expand toggle.
+pub(super) const GLYPH_SIDEBAR_TOGGLE: &str = "\u{e700}";
+
+/// ChevronDown: sidebar group header while the group is expanded.
+pub(super) const GLYPH_CHEVRON_DOWN: &str = "\u{e70d}";
+
+/// ChevronRight: sidebar group header while the group is collapsed.
+pub(super) const GLYPH_CHEVRON_RIGHT: &str = "\u{e76c}";
+
+/// Side length of the square top-bar buttons (sidebar toggle, back/
+/// forward/reload).
+pub(super) const TOP_BAR_BUTTON_SIZE: i32 = 26;
+
+pub(super) const TOP_BAR_BUTTON_GAP: i32 = 2;
+
+pub(super) const TOP_BAR_PADDING: i32 = 6;
+
+/// Maximum width of the centered URL capsule.
+pub(super) const ADDRESS_CAPSULE_MAX_WIDTH: i32 = 520;
+
+pub(super) const ADDRESS_CAPSULE_HEIGHT: i32 = 24;
+
+/// Gap between the nav-button cluster and the URL capsule.
+pub(super) const ADDRESS_CAPSULE_NAV_GAP: i32 = 8;
+
+/// Side length of the sidebar group-header chevron hit area.
+pub(super) const SIDEBAR_CHEVRON_SIZE: i32 = 18;
+
+/// Side length of the sidebar header action buttons (settings/downloads),
+/// and the gap between them.
+pub(super) const SIDEBAR_HEADER_ACTION_SIZE: i32 = 22;
+pub(super) const SIDEBAR_HEADER_ACTION_GAP: i32 = 4;
 
 pub(super) const SHELL_SIDEBAR_WIDTH: i32 = 180;
 
@@ -146,6 +204,12 @@ pub(super) const SIDEBAR_BROWSER_CLOSE_SIZE: i32 = 22;
 pub(super) const GLYPH_TAB_CLOSE: &str = "\u{2715}";
 
 pub(super) const SIDEBAR_ICON_SIZE: i32 = 16;
+
+/// Edge length of the favicon drawn on a sidebar browser-tab row.
+pub(super) const SIDEBAR_FAVICON_SIZE: i32 = 16;
+
+/// Gap between a browser row's favicon and its title text.
+pub(super) const SIDEBAR_FAVICON_TEXT_GAP: i32 = 6;
 
 pub(super) const PANEL_ACTIVATOR_SIZE: i32 = 28;
 
@@ -245,7 +309,13 @@ pub(super) fn compute_chrome_rects(client: RECT, layout: &WindowsWindowLayout) -
         .filter(|tabbar| tabbar.visible && !tabbar.items.is_empty() && tabbar.dimension > 0)
         .map(|tabbar| match tabbar.position {
             WindowsTabBarPosition::Left => {
-                let width = tabbar.dimension.max(SHELL_SIDEBAR_WIDTH);
+                // A collapsed sidebar keeps the side-card layout (insets,
+                // top bar) at width 0; the top-bar toggle re-expands it.
+                let width = if tabbar.collapsed {
+                    0
+                } else {
+                    tabbar.dimension.max(SHELL_SIDEBAR_WIDTH)
+                };
                 let right = (content.left + width).min(content.right);
                 let rect = RECT {
                     left: content.left,
@@ -262,7 +332,11 @@ pub(super) fn compute_chrome_rects(client: RECT, layout: &WindowsWindowLayout) -
                 rect
             }
             WindowsTabBarPosition::Right => {
-                let width = tabbar.dimension.max(SHELL_SIDEBAR_WIDTH);
+                let width = if tabbar.collapsed {
+                    0
+                } else {
+                    tabbar.dimension.max(SHELL_SIDEBAR_WIDTH)
+                };
                 let left = (content.right - width).max(content.left);
                 let rect = RECT {
                     left,
@@ -350,12 +424,20 @@ pub(super) fn draw_window_chrome(hdc: HDC, state: &WindowsChromeState) {
     draw_shell_top_bar(hdc, &rects);
     draw_content_cards(hdc, state, &rects);
 
-    if let (Some(navbar), Some(navbar_rect)) = (&layout.navigation_bar, rects.navigation_bar) {
-        draw_navigation_bar(hdc, navbar_rect, navbar);
+    // The address bar owns the top bar while a browser surface is
+    // presented; the lxapp navigation bar yields.
+    if !address_bar_visible(layout)
+        && let (Some(navbar), Some(navbar_rect)) = (&layout.navigation_bar, rects.navigation_bar)
+    {
+        let buttons_left = navbar_buttons_left(client, rects.top_bar, layout, navbar_rect);
+        draw_navigation_bar(hdc, navbar_rect, buttons_left, navbar);
     }
     if let (Some(tabbar), Some(tabbar_rect)) = (&layout.tab_bar, rects.tab_bar) {
         draw_tab_bar(hdc, tabbar_rect, tabbar);
     }
+    // Painted after the navigation bar: the navbar fills the whole top bar
+    // with its own background, and the toggle/address controls sit on top.
+    draw_top_bar_controls(hdc, state, &rects);
     draw_panel_activators(hdc, client, &rects, layout);
     draw_maximized_native_panels(hdc, state);
     draw_window_frame_buttons(hdc, state);
@@ -396,15 +478,46 @@ pub(super) fn chrome_hit_test(
         }
     }
 
-    if let (Some(navbar), Some(navbar_rect)) = (&layout.navigation_bar, rects.navigation_bar)
+    let controls = top_bar_controls(client, rects.top_bar, layout);
+    if let Some(toggle) = controls.sidebar_toggle
+        && rect_contains(&toggle, point)
+    {
+        return Some(WindowsChromeHit::SidebarToggle);
+    }
+    if let Some(back) = controls.nav_back
+        && rect_contains(&back, point)
+    {
+        return Some(WindowsChromeHit::BrowserNavBack);
+    }
+    if let Some(forward) = controls.nav_forward
+        && rect_contains(&forward, point)
+    {
+        return Some(WindowsChromeHit::BrowserNavForward);
+    }
+    if let Some(reload) = controls.nav_reload
+        && rect_contains(&reload, point)
+    {
+        return Some(WindowsChromeHit::BrowserNavReload);
+    }
+    if let Some(address) = controls.address
+        && rect_contains(&address, point)
+    {
+        return Some(WindowsChromeHit::BrowserAddressBar);
+    }
+
+    if !address_bar_visible(layout)
+        && let (Some(navbar), Some(navbar_rect)) = (&layout.navigation_bar, rects.navigation_bar)
         && rect_contains(&navbar_rect, point)
     {
-        if navbar.show_back_button && rect_contains(&nav_button_rect(navbar_rect, 0), point) {
+        let buttons_left = navbar_buttons_left(client, rects.top_bar, layout, navbar_rect);
+        if navbar.show_back_button
+            && rect_contains(&nav_button_rect(navbar_rect, buttons_left, 0), point)
+        {
             return Some(WindowsChromeHit::NavigationBack);
         }
         let home_index = if navbar.show_back_button { 1 } else { 0 };
         if navbar.show_home_button
-            && rect_contains(&nav_button_rect(navbar_rect, home_index), point)
+            && rect_contains(&nav_button_rect(navbar_rect, buttons_left, home_index), point)
         {
             return Some(WindowsChromeHit::NavigationHome);
         }
@@ -424,14 +537,28 @@ pub(super) fn chrome_hit_test(
             tabbar.position,
             WindowsTabBarPosition::Left | WindowsTabBarPosition::Right
         );
-        for index in 0..tabbar.items.len() {
-            let item_rect = if sidebar {
-                sidebar_item_rect(tabbar_rect, index)
-            } else {
-                tab_item_rect(tabbar_rect, tabbar.position, tabbar.items.len(), index)
-            };
-            if rect_contains(&item_rect, point) {
-                return Some(WindowsChromeHit::TabBarItem { index });
+        if sidebar {
+            if rect_contains(&sidebar_group_chevron_rect(tabbar_rect), point) {
+                return Some(WindowsChromeHit::SidebarGroupToggle {
+                    group: tabbar.group_id.clone(),
+                });
+            }
+            for (action_id, action_rect) in sidebar_header_action_rects(tabbar_rect, tabbar) {
+                if rect_contains(&action_rect, point) {
+                    return Some(WindowsChromeHit::SidebarAction { action_id });
+                }
+            }
+        }
+        if !(sidebar && tabbar.items_collapsed) {
+            for index in 0..tabbar.items.len() {
+                let item_rect = if sidebar {
+                    sidebar_item_rect(tabbar_rect, index)
+                } else {
+                    tab_item_rect(tabbar_rect, tabbar.position, tabbar.items.len(), index)
+                };
+                if rect_contains(&item_rect, point) {
+                    return Some(WindowsChromeHit::TabBarItem { index });
+                }
             }
         }
         if sidebar && let Some(hit) = sidebar_browser_hit_test(tabbar_rect, tabbar, point) {
@@ -829,9 +956,9 @@ pub(super) fn draw_terminal_panel_content(
     }
     if let Some(maximize) = header_rects.maximize {
         let glyph = if native.maximized {
-            GLYPH_RESTORE
+            GLYPH_PANEL_SHRINK
         } else {
-            GLYPH_MAXIMIZE
+            GLYPH_PANEL_EXPAND
         };
         draw_frame_button_glyph(hdc, glyph, maximize, TERMINAL_HEADER_TEXT_MUTED);
     }
@@ -927,12 +1054,226 @@ pub(super) fn draw_terminal_panel_content(
     }
 }
 
+/// Whether the layout carries a visible browser address bar (which then
+/// owns the top bar; the lxapp navigation bar yields).
+pub(super) fn address_bar_visible(layout: &WindowsWindowLayout) -> bool {
+    layout
+        .address_bar
+        .as_ref()
+        .is_some_and(|address_bar| address_bar.visible)
+}
+
+/// Interactive controls of the shell top bar: the sidebar toggle at the
+/// leading edge and — while a browser surface is presented — the back/
+/// forward/reload cluster left of the centered URL capsule. Shared between
+/// drawing and hit-testing so both always agree.
+pub(super) struct TopBarControls {
+    pub(super) sidebar_toggle: Option<RECT>,
+    pub(super) nav_back: Option<RECT>,
+    pub(super) nav_forward: Option<RECT>,
+    pub(super) nav_reload: Option<RECT>,
+    /// The URL capsule (also the inline address-edit anchor).
+    pub(super) address: Option<RECT>,
+}
+
+pub(super) fn top_bar_controls(
+    client: RECT,
+    top_bar: RECT,
+    layout: &WindowsWindowLayout,
+) -> TopBarControls {
+    let button_top = top_bar.top + (rect_height(&top_bar) - TOP_BAR_BUTTON_SIZE).max(0) / 2;
+    let square_button = |left: i32| {
+        normalize_rect(RECT {
+            left,
+            top: button_top,
+            right: left + TOP_BAR_BUTTON_SIZE,
+            bottom: button_top + TOP_BAR_BUTTON_SIZE,
+        })
+    };
+
+    // Sidebar toggle: only products with a sidebar tab bar get one. It is
+    // intentionally independent of the collapsed flag (it must stay
+    // clickable to re-expand a collapsed sidebar) and sits at the window's
+    // leading edge: inside the sidebar column while the sidebar is
+    // expanded, over the top bar's leading edge while it is collapsed
+    // (`navbar_buttons_left` shifts the lxapp navbar buttons clear of it).
+    let sidebar_toggle = layout
+        .tab_bar
+        .as_ref()
+        .filter(|tabbar| {
+            tabbar.visible
+                && matches!(
+                    tabbar.position,
+                    WindowsTabBarPosition::Left | WindowsTabBarPosition::Right
+                )
+        })
+        .map(|_| square_button(client.left + TOP_BAR_PADDING));
+    let mut left_edge = top_bar.left + TOP_BAR_PADDING;
+    if let Some(toggle) = &sidebar_toggle {
+        left_edge = left_edge.max(toggle.right + TOP_BAR_BUTTON_GAP);
+    }
+
+    let mut controls = TopBarControls {
+        sidebar_toggle,
+        nav_back: None,
+        nav_forward: None,
+        nav_reload: None,
+        address: None,
+    };
+    if !address_bar_visible(layout) {
+        return controls;
+    }
+
+    // The frame buttons own the client's trailing edge; everything between
+    // the toggle and them is available to the address section.
+    let right_edge = (client.right - window_frame_buttons_width() - TOP_BAR_PADDING)
+        .min(top_bar.right - TOP_BAR_PADDING);
+    let nav_width = 3 * TOP_BAR_BUTTON_SIZE + 2 * TOP_BAR_BUTTON_GAP;
+    let capsule_space = right_edge - left_edge - nav_width - ADDRESS_CAPSULE_NAV_GAP;
+    if capsule_space < 48 {
+        return controls;
+    }
+
+    let capsule_width = capsule_space.min(ADDRESS_CAPSULE_MAX_WIDTH);
+    let capsule_height = ADDRESS_CAPSULE_HEIGHT.min(rect_height(&top_bar));
+    let capsule_top = top_bar.top + (rect_height(&top_bar) - capsule_height).max(0) / 2;
+    // Center the capsule in the top bar, clamped so the nav cluster always
+    // fits to its left and nothing runs under the frame buttons.
+    let centered_left = (top_bar.left + top_bar.right - capsule_width) / 2;
+    let capsule_left = centered_left
+        .max(left_edge + nav_width + ADDRESS_CAPSULE_NAV_GAP)
+        .min(right_edge - capsule_width);
+    let address = normalize_rect(RECT {
+        left: capsule_left,
+        top: capsule_top,
+        right: capsule_left + capsule_width,
+        bottom: capsule_top + capsule_height,
+    });
+
+    let nav_left = capsule_left - ADDRESS_CAPSULE_NAV_GAP - nav_width;
+    controls.nav_back = Some(square_button(nav_left));
+    controls.nav_forward = Some(square_button(
+        nav_left + TOP_BAR_BUTTON_SIZE + TOP_BAR_BUTTON_GAP,
+    ));
+    controls.nav_reload = Some(square_button(
+        nav_left + 2 * (TOP_BAR_BUTTON_SIZE + TOP_BAR_BUTTON_GAP),
+    ));
+    controls.address = Some(address);
+    controls
+}
+
+/// Last painted URL-capsule rect per host window, so the facade can start
+/// an inline address edit (EDIT child) over the capsule — same pattern as
+/// the terminal tab-title rects in `terminal_grid`.
+static ADDRESS_CAPSULE_RECTS: OnceLock<Mutex<HashMap<isize, RECT>>> = OnceLock::new();
+
+fn remember_address_capsule_rect(hwnd: HWND, rect: Option<RECT>) {
+    let rects = ADDRESS_CAPSULE_RECTS.get_or_init(|| Mutex::new(HashMap::new()));
+    let Ok(mut rects) = rects.lock() else {
+        return;
+    };
+    match rect {
+        Some(rect) => {
+            rects.insert(hwnd.0 as isize, rect);
+        }
+        None => {
+            rects.remove(&(hwnd.0 as isize));
+        }
+    }
+}
+
+/// Starts an inline URL edit over the address capsule last painted in
+/// `window`'s top bar, prefilled with `initial_text` (selected). Safe to
+/// call from any thread — the editor is marshalled onto the window's UI
+/// thread (see [`super::text_input`] for lifecycle). `on_commit` receives
+/// the submitted text on Enter/focus loss; Esc cancels. Returns `false`
+/// when no address capsule has been painted for `window`.
+pub fn begin_address_edit(
+    window: isize,
+    initial_text: &str,
+    on_commit: super::text_input::InlineEditCommit,
+) -> bool {
+    let capsule = ADDRESS_CAPSULE_RECTS
+        .get()
+        .and_then(|rects| rects.lock().ok())
+        .and_then(|rects| rects.get(&window).copied());
+    let Some(capsule) = capsule else {
+        return false;
+    };
+    // The editor sits inside the capsule (white EDIT on the white capsule
+    // fill), inset past the rounded ends.
+    let edit_rect = inset_rect(capsule, ADDRESS_CAPSULE_HEIGHT / 2, 4);
+    if rect_width(&edit_rect) == 0 || rect_height(&edit_rect) == 0 {
+        return false;
+    }
+    let initial = initial_text.to_string();
+    post_to_window_thread(
+        window,
+        Box::new(move || {
+            super::text_input::begin_inline_edit(
+                HWND(window as *mut c_void),
+                edit_rect,
+                &initial,
+                on_commit,
+            );
+        }),
+    )
+}
+
 pub(super) fn draw_shell_top_bar(hdc: HDC, rects: &ChromeRects) {
     fill_rect(hdc, rects.top_bar, SHELL_WINDOW_BACKGROUND);
     draw_bottom_border(hdc, rects.top_bar, SHELL_DIVIDER);
 }
 
-pub(super) fn draw_navigation_bar(hdc: HDC, rect: RECT, navbar: &WindowsNavigationBarLayout) {
+/// Draws the interactive top-bar controls (sidebar toggle, browser nav
+/// buttons, URL capsule) and records the capsule rect for the inline
+/// address editor. Painted after the navigation bar, which fills the top
+/// bar with its own background.
+pub(super) fn draw_top_bar_controls(hdc: HDC, state: &WindowsChromeState, rects: &ChromeRects) {
+    let layout = &state.layout;
+    let controls = top_bar_controls(state.client, rects.top_bar, layout);
+    if let Some(toggle) = controls.sidebar_toggle {
+        draw_frame_button_glyph(hdc, GLYPH_SIDEBAR_TOGGLE, toggle, SHELL_FRAME_BUTTON_ICON);
+    }
+    if let Some(back) = controls.nav_back {
+        draw_frame_button_glyph(hdc, GLYPH_NAV_BACK, back, SHELL_FRAME_BUTTON_ICON);
+    }
+    if let Some(forward) = controls.nav_forward {
+        draw_frame_button_glyph(hdc, GLYPH_NAV_FORWARD, forward, SHELL_FRAME_BUTTON_ICON);
+    }
+    if let Some(reload) = controls.nav_reload {
+        draw_frame_button_glyph(hdc, GLYPH_NAV_RELOAD, reload, SHELL_FRAME_BUTTON_ICON);
+    }
+    if let Some(address) = controls.address {
+        // White capsule on the gray caption strip — anti-alias the arc.
+        fill_round_rect_aa(
+            hdc,
+            address,
+            rect_height(&address) / 2,
+            SHELL_PANEL_BACKGROUND,
+        );
+        let text = layout
+            .address_bar
+            .as_ref()
+            .map(|address_bar| address_bar.url_text.as_str())
+            .unwrap_or_default();
+        draw_text(
+            hdc,
+            text,
+            inset_rect(address, ADDRESS_CAPSULE_HEIGHT / 2, 0),
+            SHELL_TEXT_PRIMARY,
+            DT_CENTER,
+        );
+    }
+    remember_address_capsule_rect(state.hwnd, controls.address);
+}
+
+pub(super) fn draw_navigation_bar(
+    hdc: HDC,
+    rect: RECT,
+    buttons_left: i32,
+    navbar: &WindowsNavigationBarLayout,
+) {
     fill_rect(hdc, rect, navbar.background_color);
     draw_bottom_border(hdc, rect, 0xe6e6e6);
 
@@ -940,12 +1281,16 @@ pub(super) fn draw_navigation_bar(hdc: HDC, rect: RECT, navbar: &WindowsNavigati
     let mut left_controls_width = 0;
 
     if navbar.show_back_button {
-        let back_rect = nav_button_rect(rect, 0);
+        let back_rect = nav_button_rect(rect, buttons_left, 0);
         draw_text(hdc, "<", back_rect, text_color, DT_CENTER);
         left_controls_width = back_rect.right - rect.left;
     }
     if navbar.show_home_button {
-        let home_rect = nav_button_rect(rect, if navbar.show_back_button { 1 } else { 0 });
+        let home_rect = nav_button_rect(
+            rect,
+            buttons_left,
+            if navbar.show_back_button { 1 } else { 0 },
+        );
         draw_text(hdc, "Home", home_rect, text_color, DT_CENTER);
         left_controls_width = home_rect.right - rect.left;
     }
@@ -1126,12 +1471,27 @@ pub(super) fn window_frame_button_rects(client: RECT) -> [(WindowsFrameButton, R
     ]
 }
 
-pub(super) fn nav_button_rect(navbar: RECT, index: i32) -> RECT {
+/// Leading x of the navigation bar's back/home buttons: just right of the
+/// top-bar sidebar toggle when one is shown (so they never overlap), else
+/// the navbar's own inset.
+pub(super) fn navbar_buttons_left(
+    client: RECT,
+    top_bar: RECT,
+    layout: &WindowsWindowLayout,
+    navbar_rect: RECT,
+) -> i32 {
+    match top_bar_controls(client, top_bar, layout).sidebar_toggle {
+        Some(toggle) => (navbar_rect.left + 8).max(toggle.right + TOP_BAR_BUTTON_GAP),
+        None => navbar_rect.left + 8,
+    }
+}
+
+pub(super) fn nav_button_rect(navbar: RECT, buttons_left: i32, index: i32) -> RECT {
     let width = 44;
     RECT {
-        left: navbar.left + 8 + index * width,
+        left: buttons_left + index * width,
         top: navbar.top,
-        right: navbar.left + 8 + (index + 1) * width,
+        right: buttons_left + (index + 1) * width,
         bottom: navbar.bottom,
     }
 }
@@ -1184,6 +1544,9 @@ pub(super) fn draw_tab_bar(hdc: HDC, rect: RECT, tabbar: &WindowsTabBarLayout) {
 }
 
 pub(super) fn draw_sidebar_tab_bar(hdc: HDC, rect: RECT, tabbar: &WindowsTabBarLayout) {
+    if rect_width(&rect) == 0 {
+        return;
+    }
     fill_rect(hdc, rect, SHELL_SIDEBAR_BACKGROUND);
 
     let title = if tabbar.app_name.trim().is_empty() {
@@ -1191,13 +1554,67 @@ pub(super) fn draw_sidebar_tab_bar(hdc: HDC, rect: RECT, tabbar: &WindowsTabBarL
     } else {
         tabbar.app_name.to_ascii_uppercase()
     };
+    let chevron_rect = sidebar_group_chevron_rect(rect);
     let header_rect = RECT {
         left: rect.left + SIDEBAR_ITEM_INSET + 2,
         top: rect.top + 22,
-        right: rect.right - SIDEBAR_ITEM_INSET,
+        right: chevron_rect.left - 4,
         bottom: rect.top + SIDEBAR_HEADER_HEIGHT,
     };
     draw_text(hdc, &title, header_rect, SHELL_SIDEBAR_HEADER_TEXT, DT_LEFT);
+    let chevron = if tabbar.items_collapsed {
+        GLYPH_CHEVRON_RIGHT
+    } else {
+        GLYPH_CHEVRON_DOWN
+    };
+    draw_frame_button_glyph(hdc, chevron, chevron_rect, SHELL_SIDEBAR_HEADER_TEXT);
+
+    if !tabbar.items_collapsed {
+        draw_sidebar_items(hdc, rect, tabbar);
+    }
+
+    draw_sidebar_browser_section(hdc, rect, tabbar);
+
+    let footer_top = rect.bottom - SIDEBAR_FOOTER_HEIGHT;
+    draw_top_border(
+        hdc,
+        RECT {
+            left: rect.left + SIDEBAR_ITEM_INSET,
+            top: footer_top,
+            right: rect.right - SIDEBAR_ITEM_INSET,
+            bottom: rect.bottom,
+        },
+        SHELL_DIVIDER,
+    );
+    for (action_id, action_rect) in sidebar_header_action_rects(rect, tabbar) {
+        let glyph = tabbar
+            .header_actions
+            .iter()
+            .find(|action| action.id == action_id)
+            .map(|action| action.glyph.as_str())
+            .unwrap_or_default();
+        draw_frame_button_glyph(hdc, glyph, action_rect, SHELL_TEXT_MUTED);
+    }
+}
+
+/// Draws the lxapp item rows plus the macOS-parity connector line: a thin
+/// vertical line along the items' leading edge linking them, drawn first so
+/// it sits behind the item cards and accent bars.
+fn draw_sidebar_items(hdc: HDC, rect: RECT, tabbar: &WindowsTabBarLayout) {
+    if !tabbar.items.is_empty() {
+        let first = sidebar_item_rect(rect, 0);
+        let last = sidebar_item_rect(rect, tabbar.items.len() - 1);
+        fill_rect(
+            hdc,
+            RECT {
+                left: first.left + 7,
+                top: first.top + 8,
+                right: first.left + 8,
+                bottom: (last.bottom - 8).max(first.top + 8),
+            },
+            SHELL_DIVIDER,
+        );
+    }
 
     for (index, item) in tabbar.items.iter().enumerate() {
         let item_rect = sidebar_item_rect(rect, index);
@@ -1256,20 +1673,55 @@ pub(super) fn draw_sidebar_tab_bar(hdc: HDC, rect: RECT, tabbar: &WindowsTabBarL
             draw_red_dot(hdc, item_rect);
         }
     }
+}
 
-    draw_sidebar_browser_section(hdc, rect, tabbar);
+/// Chevron hit/draw rect at the trailing edge of the sidebar group header
+/// row (the lxapp name).
+pub(super) fn sidebar_group_chevron_rect(rect: RECT) -> RECT {
+    let top = rect.top + 22 + (SIDEBAR_HEADER_HEIGHT - 22 - SIDEBAR_CHEVRON_SIZE).max(0) / 2;
+    normalize_rect(RECT {
+        left: rect.right - SIDEBAR_ITEM_INSET - SIDEBAR_CHEVRON_SIZE,
+        top,
+        right: rect.right - SIDEBAR_ITEM_INSET,
+        bottom: top + SIDEBAR_CHEVRON_SIZE,
+    })
+}
 
-    let footer_top = rect.bottom - SIDEBAR_FOOTER_HEIGHT;
-    draw_top_border(
-        hdc,
-        RECT {
-            left: rect.left + SIDEBAR_ITEM_INSET,
-            top: footer_top,
-            right: rect.right - SIDEBAR_ITEM_INSET,
-            bottom: rect.bottom,
-        },
-        SHELL_DIVIDER,
-    );
+/// Sidebar action buttons (settings/downloads) in the top caption strip,
+/// immediately right of the sidebar toggle. They belong to the sidebar:
+/// hidden while it is collapsed (only the toggle remains), and clamped to
+/// the sidebar column so they never reach the lxapp navbar region.
+/// `sidebar_rect` is the sidebar column rect (its top-left is the window
+/// origin; the caption strip sits inside its top).
+pub(super) fn sidebar_header_action_rects(
+    sidebar_rect: RECT,
+    tabbar: &WindowsTabBarLayout,
+) -> Vec<(String, RECT)> {
+    if tabbar.header_actions.is_empty() || tabbar.collapsed {
+        return Vec::new();
+    }
+    let top = sidebar_rect.top + (SHELL_TOP_BAR_HEIGHT - SIDEBAR_HEADER_ACTION_SIZE).max(0) / 2;
+    // Start right of the sidebar toggle at the window's leading edge.
+    let mut left =
+        sidebar_rect.left + TOP_BAR_PADDING + TOP_BAR_BUTTON_SIZE + SIDEBAR_HEADER_ACTION_GAP;
+    let mut out = Vec::with_capacity(tabbar.header_actions.len());
+    for action in &tabbar.header_actions {
+        let right = left + SIDEBAR_HEADER_ACTION_SIZE;
+        if right > sidebar_rect.left + tabbar.dimension - SIDEBAR_ITEM_INSET {
+            break;
+        }
+        out.push((
+            action.id.clone(),
+            normalize_rect(RECT {
+                left,
+                top,
+                right,
+                bottom: top + SIDEBAR_HEADER_ACTION_SIZE,
+            }),
+        ));
+        left = right + SIDEBAR_HEADER_ACTION_GAP;
+    }
+    out
 }
 
 pub(super) fn draw_tabbar_border(hdc: HDC, rect: RECT, tabbar: &WindowsTabBarLayout) {
@@ -1350,9 +1802,14 @@ pub(super) fn sidebar_browser_rects(
         return None;
     }
     let footer_top = rect.bottom - SIDEBAR_FOOTER_HEIGHT;
-    let items_bottom = rect.top
-        + SIDEBAR_HEADER_HEIGHT
-        + tabbar.items.len() as i32 * (SIDEBAR_ITEM_HEIGHT + SIDEBAR_ITEM_GAP);
+    // A collapsed items group hides its rows; the browser section moves up
+    // directly under the group header.
+    let items_height = if tabbar.items_collapsed {
+        0
+    } else {
+        tabbar.items.len() as i32 * (SIDEBAR_ITEM_HEIGHT + SIDEBAR_ITEM_GAP)
+    };
+    let items_bottom = rect.top + SIDEBAR_HEADER_HEIGHT + items_height;
     let mut top = items_bottom + SIDEBAR_BROWSER_SECTION_GAP;
     let separator = normalize_rect(RECT {
         left: rect.left + SIDEBAR_ITEM_INSET,
@@ -1458,8 +1915,23 @@ pub(super) fn draw_sidebar_browser_section(hdc: HDC, rect: RECT, tabbar: &Window
         }
 
         let close_rect = sidebar_browser_close_rect(item_rect);
+        // 16px favicon left of the title when the tab reported one;
+        // text-only row otherwise (the title keeps its original left edge).
+        let mut label_left = item_rect.left + 16;
+        if let Some(png) = item.favicon_png.as_deref() {
+            let icon_top = item_rect.top + (rect_height(&item_rect) - SIDEBAR_FAVICON_SIZE) / 2;
+            let icon_rect = normalize_rect(RECT {
+                left: label_left,
+                top: icon_top,
+                right: label_left + SIDEBAR_FAVICON_SIZE,
+                bottom: icon_top + SIDEBAR_FAVICON_SIZE,
+            });
+            if draw_icon_from_png_bytes(hdc, &item.tab_id, png, icon_rect) {
+                label_left = icon_rect.right + SIDEBAR_FAVICON_TEXT_GAP;
+            }
+        }
         let label_rect = normalize_rect(RECT {
-            left: item_rect.left + 16,
+            left: label_left,
             top: item_rect.top,
             right: close_rect.left - 2,
             bottom: item_rect.bottom,
@@ -1474,13 +1946,8 @@ pub(super) fn draw_sidebar_browser_section(hdc: HDC, rect: RECT, tabbar: &Window
     }
 
     if let Some(new_tab_rect) = browser.new_tab {
-        let label_rect = normalize_rect(RECT {
-            left: new_tab_rect.left + 16,
-            top: new_tab_rect.top,
-            right: new_tab_rect.right - 8,
-            bottom: new_tab_rect.bottom,
-        });
-        draw_text(hdc, "+  New Tab", label_rect, SHELL_TEXT_MUTED, DT_LEFT);
+        // Arc-style new-tab row: a centered "+" glyph only, no label.
+        draw_frame_button_glyph(hdc, GLYPH_ADD, new_tab_rect, SHELL_TEXT_MUTED);
     }
 }
 
@@ -1915,6 +2382,21 @@ pub(super) fn draw_icon_from_path(hdc: HDC, path: &str, rect: RECT, size: u32) -
     let Some(handle) = cached_png_icon_handle(path, size) else {
         return false;
     };
+    draw_icon_handle(hdc, handle, rect)
+}
+
+/// Draws a PNG supplied as in-memory bytes (e.g. a tab favicon) into
+/// `rect`, decoding through the id-keyed icon cache in `lingxia-webview`.
+/// Returns `false` when the bytes cannot be decoded.
+pub(super) fn draw_icon_from_png_bytes(hdc: HDC, cache_key: &str, png: &[u8], rect: RECT) -> bool {
+    let Some(handle) = cached_png_bytes_icon_handle(cache_key, png, rect_width(&rect).max(1) as u32)
+    else {
+        return false;
+    };
+    draw_icon_handle(hdc, handle, rect)
+}
+
+fn draw_icon_handle(hdc: HDC, handle: isize, rect: RECT) -> bool {
     unsafe {
         WindowsAndMessaging::DrawIconEx(
             hdc,

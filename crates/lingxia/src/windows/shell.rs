@@ -1,15 +1,18 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 
-use lingxia_platform::traits::app_runtime::{AppRuntime, LxAppOpenMode};
+use lingxia_platform::traits::app_runtime::{
+    AppRuntime, LxAppOpenMode, OpenUrlRequest, OpenUrlTarget,
+};
 use lingxia_webview::WebTag;
 use lingxia_webview::platform::windows::{
-    WindowsBrowserTabItemLayout, WindowsChromeEvent, WindowsNavigationBarLayout,
-    WindowsPanelActivatorLayout, WindowsPanelPosition, WindowsTabBarItemLayout,
-    WindowsTabBarLayout, WindowsTabBarPosition, WindowsWindowLayout, hide_panel, is_panel_visible,
-    present_webview_as_group_main, restore_presented_group_main,
-    set_webview_chrome_event_handler, set_webview_window_layout,
+    WindowsAddressBarLayout, WindowsBrowserTabItemLayout, WindowsChromeEvent,
+    WindowsNavigationBarLayout, WindowsPanelActivatorLayout, WindowsPanelPosition,
+    WindowsSidebarActionLayout, WindowsTabBarItemLayout, WindowsTabBarLayout,
+    WindowsTabBarPosition, WindowsWindowLayout, hide_panel, is_panel_visible,
+    present_webview_as_group_main, restore_presented_group_main, set_webview_chrome_event_handler,
+    set_webview_window_layout,
 };
 use lxapp::{LxApp, LxAppDelegate, LxAppStartupOptions, LxAppUiEventType, ReleaseType};
 
@@ -32,6 +35,43 @@ static SHELL_OWNER_APPID: OnceLock<Mutex<Option<String>>> = OnceLock::new();
 
 /// Browser tab currently presented over the main content card, if any.
 static PRESENTED_BROWSER_TAB: OnceLock<Mutex<Option<String>>> = OnceLock::new();
+
+/// Sidebar header action ids (echoed back through
+/// `WindowsChromeEvent::SidebarActionClick`) and their browser targets.
+const SIDEBAR_ACTION_SETTINGS: &str = "settings";
+const SIDEBAR_ACTION_DOWNLOADS: &str = "downloads";
+const SETTINGS_PAGE_URL: &str = "lingxia://settings";
+const DOWNLOADS_PAGE_URL: &str = "lingxia://downloads";
+
+/// Segoe Fluent Icons glyphs of the sidebar header actions (passed through
+/// layout data so the webview layer stays product-agnostic).
+const GLYPH_SETTINGS: &str = "\u{e713}";
+const GLYPH_DOWNLOAD: &str = "\u{e896}";
+
+/// Per-group (per shell-owner lxapp) sidebar UI state, kept for the
+/// session: whole-sidebar collapse and the lxapp items-group collapse.
+#[derive(Debug, Clone, Copy, Default)]
+struct SidebarUiState {
+    collapsed: bool,
+    items_collapsed: bool,
+}
+
+static SIDEBAR_UI_STATE: OnceLock<Mutex<HashMap<String, SidebarUiState>>> = OnceLock::new();
+
+fn sidebar_ui_state(group: &str) -> SidebarUiState {
+    SIDEBAR_UI_STATE
+        .get()
+        .and_then(|state| state.lock().ok())
+        .and_then(|state| state.get(group).copied())
+        .unwrap_or_default()
+}
+
+fn update_sidebar_ui_state(group: &str, update: impl FnOnce(&mut SidebarUiState)) {
+    let state = SIDEBAR_UI_STATE.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Ok(mut state) = state.lock() {
+        update(state.entry(group.to_string()).or_default());
+    }
+}
 
 fn pending_panel_opens() -> std::sync::MutexGuard<'static, HashSet<String>> {
     PENDING_PANEL_OPENS
@@ -104,6 +144,54 @@ pub(super) fn install() {
             on_browser_tabs_changed();
         });
     }));
+    // Keep in-app open-url targets (new-window requests from browser tabs,
+    // lxapp openURL with self/new_browser_tab) inside the app as browser
+    // tabs; unhandled requests fall back to the OS shell handler.
+    lingxia_platform::set_windows_open_url_handler(Arc::new(handle_open_url_request));
+}
+
+/// Routes `open_url` requests with in-app targets into the internal
+/// browser. Returns `false` (let the platform open the system handler)
+/// for explicit external targets or when no shell/browser is available.
+fn handle_open_url_request(req: &OpenUrlRequest) -> bool {
+    match req.target {
+        OpenUrlTarget::External => false,
+        OpenUrlTarget::SelfTarget | OpenUrlTarget::NewBrowserTab => {
+            if !crate::browser::runtime_enabled() {
+                return false;
+            }
+            let Some(owner_appid) = shell_owner_appid() else {
+                return false;
+            };
+            // Presentation policy: requests from the presented browser tab
+            // (or from a non-browser surface such as an lxapp page) present
+            // the new tab; background browser tabs only add a sidebar row.
+            let from_browser_tab = req.owner_appid == crate::browser::APP_ID;
+            let present = !from_browser_tab || presented_browser_tab().is_some();
+            let url = req.url.clone();
+            // May be called on a webview UI thread (NewWindowRequested);
+            // hop onto the executor before touching tab/window state.
+            let _ = crate::task::spawn(async move {
+                open_browser_tab_for_open_url(&owner_appid, &url, present);
+            });
+            true
+        }
+    }
+}
+
+/// Opens `url` as a new in-app browser tab owned by the shell app and, when
+/// `present` is set, shows it over the main content card (same flow as the
+/// sidebar rows). The tabs-changed observer keeps the sidebar in sync.
+fn open_browser_tab_for_open_url(owner_appid: &str, url: &str, present: bool) {
+    let Some(app) = lxapp::try_get(owner_appid) else {
+        log::warn!("no shell owner app for in-app open-url of {url}");
+        return;
+    };
+    match crate::browser::open_for_app(owner_appid, app.session_id(), url, None) {
+        Ok(tab_id) if present => present_browser_tab_when_ready(owner_appid, tab_id),
+        Ok(_) => sync_shell_layout(owner_appid),
+        Err(err) => log::error!("failed to open browser tab for {url}: {err}"),
+    }
 }
 
 /// Re-syncs the shell after any browser tab change: drops a stale
@@ -155,11 +243,42 @@ fn sync_shell_layout(appid: &str) {
 }
 
 fn build_window_layout(app: &LxApp, path: &str) -> WindowsWindowLayout {
+    // The Arc-style address bar owns the top bar while a browser tab is
+    // presented; the lxapp navigation bar yields for that time.
+    let address_bar = build_address_bar_layout();
+    let navigation_bar = if address_bar.is_some() {
+        None
+    } else {
+        Some(build_navigation_bar_layout(app, path))
+    };
     WindowsWindowLayout {
-        navigation_bar: Some(build_navigation_bar_layout(app, path)),
+        navigation_bar,
+        address_bar,
         tab_bar: build_tab_bar_layout(app),
         panel_activators: build_panel_activators(app),
     }
+}
+
+/// Address-bar layout for the presented browser tab, or `None` while the
+/// main surface shows an lxapp webview.
+fn build_address_bar_layout() -> Option<WindowsAddressBarLayout> {
+    let presented = presented_browser_tab()?;
+    let tab = crate::browser::tab_summary(&presented)?;
+    Some(WindowsAddressBarLayout {
+        visible: true,
+        url_text: browser_tab_display_url(&tab),
+    })
+}
+
+/// Capsule text of the presented tab: its current URL, else its title
+/// (matching the sidebar row fallback).
+fn browser_tab_display_url(tab: &crate::browser::BrowserTabSummary) -> String {
+    tab.current_url
+        .as_deref()
+        .map(str::trim)
+        .filter(|url| !url.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| browser_tab_display_title(tab))
 }
 
 fn build_navigation_bar_layout(app: &LxApp, path: &str) -> WindowsNavigationBarLayout {
@@ -181,11 +300,15 @@ fn build_navigation_bar_layout(app: &LxApp, path: &str) -> WindowsNavigationBarL
 
 fn build_tab_bar_layout(app: &LxApp) -> Option<WindowsTabBarLayout> {
     let tabbar = app.get_tabbar()?;
+    let ui_state = sidebar_ui_state(&app.appid);
     Some(WindowsTabBarLayout {
         visible: !tabbar.list.is_empty(),
         position: WindowsTabBarPosition::Left,
         dimension: tabbar.dimension.max(MIN_SIDEBAR_WIDTH),
         app_name: app.runtime_info().app_name,
+        group_id: app.appid.clone(),
+        collapsed: ui_state.collapsed,
+        items_collapsed: ui_state.items_collapsed,
         color: parse_css_color(&tabbar.color, 0x666666),
         selected_color: parse_css_color(&tabbar.selectedColor, 0x1677ff),
         background_color: parse_css_color(&tabbar.backgroundColor, 0xffffff),
@@ -205,7 +328,26 @@ fn build_tab_bar_layout(app: &LxApp) -> Option<WindowsTabBarLayout> {
             .collect(),
         browser_tabs: build_browser_tab_items(),
         show_browser_new_tab: crate::browser::runtime_enabled(),
+        header_actions: build_sidebar_header_actions(),
     })
+}
+
+/// Sidebar header actions (settings / downloads), shown only when the
+/// browser runtime backing their target pages is compiled in.
+fn build_sidebar_header_actions() -> Vec<WindowsSidebarActionLayout> {
+    if !crate::browser::runtime_enabled() {
+        return Vec::new();
+    }
+    vec![
+        WindowsSidebarActionLayout {
+            id: SIDEBAR_ACTION_SETTINGS.to_string(),
+            glyph: GLYPH_SETTINGS.to_string(),
+        },
+        WindowsSidebarActionLayout {
+            id: SIDEBAR_ACTION_DOWNLOADS.to_string(),
+            glyph: GLYPH_DOWNLOAD.to_string(),
+        },
+    ]
 }
 
 fn build_browser_tab_items() -> Vec<WindowsBrowserTabItemLayout> {
@@ -215,6 +357,7 @@ fn build_browser_tab_items() -> Vec<WindowsBrowserTabItemLayout> {
         .map(|tab| WindowsBrowserTabItemLayout {
             title: browser_tab_display_title(&tab),
             active: presented.as_deref() == Some(tab.tab_id.as_str()),
+            favicon_png: tab.favicon_png.clone(),
             tab_id: tab.tab_id,
         })
         .collect()
@@ -335,6 +478,52 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeEvent) {
             super::terminal_panel::paste_clipboard_into_panel(&panel_id);
             return;
         }
+        // Address-bar navigation targets the presented browser tab; URL and
+        // title updates flow back through the tabs-changed observer.
+        WindowsChromeEvent::BrowserNavBackClick => {
+            if let Some(tab_id) = presented_browser_tab()
+                && !crate::browser::go_back(&tab_id)
+            {
+                log::warn!("browser back failed for tab {tab_id}");
+            }
+            return;
+        }
+        WindowsChromeEvent::BrowserNavForwardClick => {
+            if let Some(tab_id) = presented_browser_tab()
+                && !crate::browser::go_forward(&tab_id)
+            {
+                log::warn!("browser forward failed for tab {tab_id}");
+            }
+            return;
+        }
+        WindowsChromeEvent::BrowserNavReloadClick => {
+            if let Some(tab_id) = presented_browser_tab()
+                && !crate::browser::reload(&tab_id)
+            {
+                log::warn!("browser reload failed for tab {tab_id}");
+            }
+            return;
+        }
+        WindowsChromeEvent::BrowserAddressBarClick => {
+            begin_presented_tab_address_edit(&app);
+            return;
+        }
+        WindowsChromeEvent::SidebarToggleClick => {
+            update_sidebar_ui_state(appid, |state| state.collapsed = !state.collapsed);
+            sync_shell_layout(appid);
+            return;
+        }
+        WindowsChromeEvent::SidebarGroupToggleClick { group } => {
+            update_sidebar_ui_state(&group, |state| {
+                state.items_collapsed = !state.items_collapsed;
+            });
+            sync_shell_layout(appid);
+            return;
+        }
+        WindowsChromeEvent::SidebarActionClick { action_id } => {
+            handle_sidebar_action(appid, app.session_id(), &action_id);
+            return;
+        }
     };
 
     if handled {
@@ -416,6 +605,118 @@ fn present_browser_tab_when_ready(appid: &str, tab_id: String) {
             ))
             .await;
         }
+    });
+}
+
+/// Opens the browser page behind a sidebar header action (settings /
+/// downloads) as a presented browser tab.
+fn handle_sidebar_action(appid: &str, session_id: u64, action_id: &str) {
+    let target = match action_id {
+        SIDEBAR_ACTION_SETTINGS => SETTINGS_PAGE_URL,
+        SIDEBAR_ACTION_DOWNLOADS => DOWNLOADS_PAGE_URL,
+        _ => {
+            log::warn!("unknown Windows sidebar action: {action_id}");
+            return;
+        }
+    };
+    open_or_present_browser_page(appid, session_id, target);
+}
+
+/// Presents `url` as a browser page: when a tab already shows it, that tab
+/// is activated and presented; otherwise a new tab opens at `url` (same
+/// flow as the sidebar "New Tab" row, just with a target URL).
+fn open_or_present_browser_page(appid: &str, session_id: u64, url: &str) {
+    let existing = crate::browser::tabs()
+        .into_iter()
+        .find(|tab| tab.current_url.as_deref() == Some(url));
+    if let Some(existing) = existing {
+        handle_browser_tab_click(appid, &existing.tab_id);
+        return;
+    }
+    match crate::browser::open_for_app(appid, session_id, url, None) {
+        Ok(tab_id) => present_browser_tab_when_ready(appid, tab_id),
+        Err(err) => log::error!("failed to open browser page {url} for {appid}: {err}"),
+    }
+}
+
+/// Starts the inline URL edit over the top-bar address capsule (the shell
+/// chrome's EDIT helper, the same one terminal tab renames use). The commit
+/// resolves the input through the shell address resolver and navigates the
+/// presented tab. Requires the shell chrome; without it there is no
+/// address bar to edit.
+#[cfg(feature = "shell-runtime")]
+fn begin_presented_tab_address_edit(app: &LxApp) {
+    let Some(tab_id) = presented_browser_tab() else {
+        return;
+    };
+    let Some(tab) = crate::browser::tab_summary(&tab_id) else {
+        return;
+    };
+    // The capsule was painted by the shell-owner window's chrome; its host
+    // window handle comes from the owner webtag's window snapshot.
+    let path = app
+        .peek_current_page()
+        .unwrap_or_else(|| app.initial_route());
+    let webtag = WebTag::new(&app.appid, &path, Some(app.session_id()));
+    let window = match lingxia_webview::platform::windows::webview_window_snapshot(&webtag) {
+        Ok(snapshot) => snapshot.window_id as isize,
+        Err(err) => {
+            log::warn!("no shell window for address edit of {}: {err}", app.appid);
+            return;
+        }
+    };
+
+    let owner_appid = app.appid.clone();
+    let initial = tab.current_url.clone().unwrap_or_default();
+    lingxia_shell::windows::begin_address_edit(
+        window,
+        &initial,
+        Arc::new(move |text: String| {
+            commit_address_input(&owner_appid, &tab_id, &text);
+        }),
+    );
+}
+
+#[cfg(not(feature = "shell-runtime"))]
+fn begin_presented_tab_address_edit(_app: &LxApp) {
+    // Without the shell chrome no address bar is drawn (plain OS frame),
+    // so there is nothing to edit.
+}
+
+/// Resolves a committed address input and navigates the presented tab.
+/// Runs on the host window's UI thread (inline-edit commit); the actual
+/// navigation hops onto the executor so webview work never blocks that
+/// thread.
+#[cfg(feature = "shell-runtime")]
+fn commit_address_input(appid: &str, tab_id: &str, raw_input: &str) {
+    if raw_input.trim().is_empty() {
+        return;
+    }
+    let response = lingxia_shell::resolve_input(lingxia_shell::BrowserAddressInputRequest {
+        raw_input: raw_input.to_string(),
+        trigger: lingxia_shell::BrowserAddressInputTrigger::Submit,
+        context: lingxia_shell::BrowserAddressInputContext::default(),
+    });
+    let Some(navigation) = response.navigation else {
+        log::info!(
+            "address input did not resolve to a navigation: {}",
+            response
+                .error
+                .map(|error| error.code)
+                .unwrap_or_else(|| "no navigation".to_string())
+        );
+        return;
+    };
+
+    let appid = appid.to_string();
+    let tab_id = tab_id.to_string();
+    let _ = crate::task::spawn(async move {
+        if let Err(err) = crate::browser::navigate(&tab_id, &navigation.url) {
+            log::error!("failed to navigate browser tab {tab_id}: {err}");
+        }
+        // The tabs-changed observer re-syncs as well; sync directly so the
+        // capsule reflects the committed URL even without an observer.
+        sync_shell_layout(&appid);
     });
 }
 

@@ -68,16 +68,20 @@ pub(crate) struct BrowserTabSummary {
     pub(crate) session_id: u64,
     pub(crate) title: Option<String>,
     pub(crate) current_url: Option<String>,
+    /// PNG favicon of the tab's current page, when the webview reported one.
+    pub(crate) favicon_png: Option<std::sync::Arc<Vec<u8>>>,
 }
 
 #[cfg(all(target_os = "windows", feature = "browser-runtime"))]
 fn tab_summary_from_info(info: lingxia_browser::BrowserTabInfo) -> BrowserTabSummary {
+    let favicon_png = lingxia_browser::tab_favicon(&info.tab_id);
     BrowserTabSummary {
         tab_id: info.tab_id,
         path: info.path,
         session_id: info.session_id,
         title: info.title,
         current_url: info.current_url,
+        favicon_png,
     }
 }
 
@@ -125,6 +129,56 @@ pub(crate) fn set_tabs_changed_handler(handler: std::sync::Arc<dyn Fn() + Send +
     lingxia_browser::set_tabs_changed_handler(handler);
     #[cfg(not(feature = "browser-runtime"))]
     let _ = handler;
+}
+
+/// Navigates an existing browser tab to `url`. Uses the global tab scope so
+/// the runtime tab id is kept as-is (owner scoping would derive a new id).
+#[cfg(target_os = "windows")]
+pub(crate) fn navigate(tab_id: &str, url: &str) -> Result<(), lxapp::LxAppError> {
+    #[cfg(feature = "browser-runtime")]
+    return lingxia_browser::open(url, Some(tab_id)).map(|_| ());
+    #[cfg(not(feature = "browser-runtime"))]
+    {
+        let _ = (tab_id, url);
+        unavailable()
+    }
+}
+
+/// Navigates the tab's webview back in history. Returns `false` when the
+/// tab is gone or the browser runtime is disabled.
+#[cfg(target_os = "windows")]
+pub(crate) fn go_back(tab_id: &str) -> bool {
+    #[cfg(feature = "browser-runtime")]
+    return lingxia_browser::go_back(tab_id).is_ok();
+    #[cfg(not(feature = "browser-runtime"))]
+    {
+        let _ = tab_id;
+        false
+    }
+}
+
+/// Navigates the tab's webview forward in history.
+#[cfg(target_os = "windows")]
+pub(crate) fn go_forward(tab_id: &str) -> bool {
+    #[cfg(feature = "browser-runtime")]
+    return lingxia_browser::go_forward(tab_id).is_ok();
+    #[cfg(not(feature = "browser-runtime"))]
+    {
+        let _ = tab_id;
+        false
+    }
+}
+
+/// Reloads the tab's webview.
+#[cfg(target_os = "windows")]
+pub(crate) fn reload(tab_id: &str) -> bool {
+    #[cfg(feature = "browser-runtime")]
+    return lingxia_browser::reload(tab_id).is_ok();
+    #[cfg(not(feature = "browser-runtime"))]
+    {
+        let _ = tab_id;
+        false
+    }
 }
 
 pub(crate) fn close(tab_id: &str) -> Result<(), lxapp::LxAppError> {

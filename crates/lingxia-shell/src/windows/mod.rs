@@ -11,6 +11,8 @@ pub mod clipboard;
 pub mod terminal_grid;
 pub mod text_input;
 
+pub use chrome::begin_address_edit;
+
 /// Registers the shell window chrome renderer with `lingxia-webview`.
 ///
 /// Called from `register_runtime()`; must run before the first window is
