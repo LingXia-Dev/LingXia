@@ -184,6 +184,50 @@ pub(crate) fn install_document_scripts(webview: &ICoreWebView2) -> StdResult<()>
                 }
             };
 
+            // Embedded native components: the page bridge posts component
+            // messages (component.mount/update/unmount, ...) through this
+            // object; they travel in a tagged envelope so the host can route
+            // them separately from regular bridge traffic. A lightweight
+            // scroll tracker keeps native overlays aligned with document
+            // coordinates; it stays dormant until a component message is
+            // actually sent.
+            if (!window.NativeComponentBridge) {
+                var lxNcActive = false;
+                var lxNcScrollScheduled = false;
+                var lxNcPost = function(payload) {
+                    try {
+                        window.chrome && window.chrome.webview && window.chrome.webview.postMessage(JSON.stringify({
+                            __lingxia_native_component__: true,
+                            payload: String(payload)
+                        }));
+                    } catch (e) {}
+                };
+                var lxNcPostScroll = function() {
+                    lxNcScrollScheduled = false;
+                    lxNcPost(JSON.stringify({
+                        action: 'page.scroll',
+                        x: window.scrollX || 0,
+                        y: window.scrollY || 0
+                    }));
+                };
+                var lxNcScheduleScroll = function() {
+                    if (!lxNcActive || lxNcScrollScheduled) return;
+                    lxNcScrollScheduled = true;
+                    window.requestAnimationFrame(lxNcPostScroll);
+                };
+                window.addEventListener('scroll', lxNcScheduleScroll, { passive: true });
+                window.addEventListener('resize', lxNcScheduleScroll);
+                window.NativeComponentBridge = {
+                    postMessage: function(message) {
+                        if (!lxNcActive) {
+                            lxNcActive = true;
+                            lxNcPostScroll();
+                        }
+                        lxNcPost(message);
+                    }
+                };
+            }
+
             if (window.__LingXiaConsoleInjected) return;
             window.__LingXiaConsoleInjected = true;
             ['log', 'info', 'warn', 'error', 'debug'].forEach(function(level) {

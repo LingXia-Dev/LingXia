@@ -498,6 +498,16 @@ pub trait WebViewDelegate: Send + Sync {
     /// Handles a postMessage from the page View(WebView)
     fn handle_post_message(&self, msg: String);
 
+    /// Handles a native-component message posted by the page through the
+    /// embedded-component channel (`window.NativeComponentBridge`), where
+    /// the platform routes it in-process (currently Windows/WebView2).
+    /// `message_json` is the raw component message (`component.mount`,
+    /// `component.update`, ...). Default is a no-op so existing
+    /// implementations do not need to change.
+    fn handle_native_component_message(&self, message_json: &str) {
+        let _ = message_json;
+    }
+
     /// Receive log from WebView
     fn log(&self, level: LogLevel, message: &str);
 }

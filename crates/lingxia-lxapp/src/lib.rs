@@ -61,7 +61,9 @@ pub use lxapp::{
     register_synthetic_lxapp, restart_lxapp, tabbar, touch_page_instance_by_id, try_get,
     uninstall_lxapp,
 };
-pub use native_component::on_native_component_event;
+pub use native_component::{
+    NativeComponentHost, on_native_component_event, register_native_component_host,
+};
 pub use page::config::{OrientationConfig, PageOrientation};
 pub use page::{
     NavigationType, PageInstance, PageInstanceId, ViewCallOptions, add_global_page_script,

@@ -16,6 +16,10 @@ export function isMacOS(): boolean {
   return window.LingXiaBridge?.platform?.isMacOS?.() === true;
 }
 
+export function isWindows(): boolean {
+  return window.LingXiaBridge?.platform?.isWindows?.() === true;
+}
+
 export function isDesktop(): boolean {
   return window.LingXiaBridge?.platform?.isDesktop?.() === true;
 }

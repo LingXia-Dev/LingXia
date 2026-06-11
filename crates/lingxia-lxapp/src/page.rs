@@ -490,7 +490,9 @@ impl PageInstance {
         self.inner.id.to_string()
     }
 
-    pub(crate) fn webtag(&self) -> WebTag {
+    /// The webview tag identifying this page instance's view (also the
+    /// page key passed to [`crate::NativeComponentHost::on_page_destroyed`]).
+    pub fn webtag(&self) -> WebTag {
         self.inner.webtag.clone()
     }
 
@@ -1170,6 +1172,13 @@ impl WebViewDelegate for PageInstance {
         }
     }
 
+    /// Routes embedded native-component messages from the view to the
+    /// registered in-process host (Windows; other platforms deliver
+    /// component traffic through their own channels and never hit this).
+    fn handle_native_component_message(&self, message_json: &str) {
+        crate::native_component::dispatch_component_message(self, message_json);
+    }
+
     /// Receive log from WebView
     fn log(&self, level: LogLevel, message: &str) {
         // Convert lingxia_webview::LogLevel to lingxia_log::LogLevel
@@ -1190,6 +1199,9 @@ impl WebViewDelegate for PageInstance {
 
 impl Drop for PageInstanceInner {
     fn drop(&mut self) {
+        // Native components mounted by this page (if any) go down with it.
+        crate::native_component::notify_page_destroyed(self.webtag.key());
+
         // Destroy WebView if it exists
         if let Ok(mut webview) = self.webview.lock()
             && let Some(_webview_controller) = webview.take()

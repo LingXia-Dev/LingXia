@@ -6,7 +6,7 @@ import {
 } from "./nativecomponent.js";
 import { ensureComponentId, NativeComponentUpdateState } from "./component.js";
 import { measureElement } from "./dom.js";
-import { isHarmony, isDesktop, isMacOS, isAndroid, isIOS } from "./platform.js";
+import { isHarmony, isDesktop, isMacOS, isAndroid, isIOS, isWindows } from "./platform.js";
 import {
   getPropOrAttr as getSharedPropOrAttr,
   getBoolAttr as getSharedBoolAttr,
@@ -192,7 +192,7 @@ export class LxTextareaElement extends HTMLElement {
   }
 
   private unmountNativeComponentById(componentId: string): void {
-    const useDesktopFallback = isDesktop() && !isMacOS();
+    const useDesktopFallback = isDesktop() && !isMacOS() && !isWindows();
     if (!componentId || isHarmony() || useDesktopFallback) return;
     sendNativeComponentMessage({
       action: "component.unmount",
@@ -303,7 +303,7 @@ export class LxTextareaElement extends HTMLElement {
   }
 
   private shouldTrackNativeLayout(): boolean {
-    return isAndroid() || isIOS() || isHarmony();
+    return isAndroid() || isIOS() || isHarmony() || isWindows();
   }
 
   private startTracking(): void {
@@ -318,6 +318,11 @@ export class LxTextareaElement extends HTMLElement {
     } else if (isIOS()) {
       // Match video behavior on iOS: track top-level page scrolling only.
       window.addEventListener("scroll", this.layoutEventListener, { passive: true });
+    } else if (isWindows()) {
+      // Page-level scrolling is tracked natively (the bridge posts scroll
+      // offsets); the capture listener catches nested scroll containers,
+      // which change the element's document rect.
+      window.addEventListener("scroll", this.layoutEventListener, { capture: true, passive: true });
     }
     window.visualViewport?.addEventListener("resize", this.layoutEventListener);
     window.visualViewport?.addEventListener("scroll", this.layoutEventListener);
@@ -441,6 +446,9 @@ export class LxTextareaElement extends HTMLElement {
     const textColor = this.getHostTextColor();
     if (textColor) props.textColor = textColor;
 
+    const fontSize = this.getHostFontSize();
+    if (fontSize !== undefined) props.fontSize = fontSize;
+
     const placeholderClass = this.getAttr("placeholder-class");
     if (placeholderClass) props.placeholderClass = placeholderClass;
 
@@ -473,6 +481,11 @@ export class LxTextareaElement extends HTMLElement {
     if (!color) return undefined;
     if (color === "transparent" || color === "rgba(0, 0, 0, 0)") return undefined;
     return color;
+  }
+
+  private getHostFontSize(): number | undefined {
+    const size = Number.parseFloat(getComputedStyle(this).fontSize);
+    return Number.isFinite(size) && size > 0 ? size : undefined;
   }
 
   private shouldAdjustPosition(): boolean {
@@ -741,7 +754,9 @@ export class LxTextareaElement extends HTMLElement {
       this.autoHeightMinHeight = undefined;
     }
 
-    if (isDesktop() && !isMacOS()) {
+    // Windows takes the native-component path below (like macOS); other
+    // desktop platforms keep the in-page fallback textarea.
+    if (isDesktop() && !isMacOS() && !isWindows()) {
       this.mountDesktopTextarea();
       this.mounted = true;
       return;

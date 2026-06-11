@@ -203,6 +203,47 @@ pub struct WindowsWindowLayout {
     pub panel_activators: Vec<WindowsPanelActivatorLayout>,
 }
 
+/// Geometry of a webview's own content window, for product layers that
+/// place native child controls (embedded components) over the rendered
+/// page. Unlike [`WindowsWebViewWindowSnapshot`], `window` is always the
+/// webview's own window — the correct parent for overlay children — never
+/// the group host.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct WindowsWebViewContentWindow {
+    /// Raw handle of the webview's own window (parent for overlay children).
+    pub window: isize,
+    /// WebView2 content origin within the window's client area, physical px.
+    pub content_left: i32,
+    pub content_top: i32,
+    /// WebView2 content size, physical px.
+    pub content_width: i32,
+    pub content_height: i32,
+    /// Physical pixels per CSS pixel (window DPI / 96).
+    pub scale: f64,
+}
+
+/// Resolves the content-window geometry for `webtag`, or `None` while the
+/// webview has no registered window yet (not shown/attached). Pure registry
+/// and Win32 reads; safe to call from any thread.
+pub fn webview_content_window(webtag: &WebTag) -> Option<WindowsWebViewContentWindow> {
+    let hwnd = window_handle_for_key(webtag.key())?;
+    let mut client = RECT::default();
+    unsafe {
+        WindowsAndMessaging::GetClientRect(hwnd, &mut client).ok()?;
+    }
+    let content = controller_bounds_for_window(hwnd, webtag.key(), client);
+    let dpi = unsafe { windows::Win32::UI::HiDpi::GetDpiForWindow(hwnd) };
+    let scale = if dpi == 0 { 1.0 } else { dpi as f64 / 96.0 };
+    Some(WindowsWebViewContentWindow {
+        window: hwnd_handle(hwnd),
+        content_left: content.left,
+        content_top: content.top,
+        content_width: (content.right - content.left).max(0),
+        content_height: (content.bottom - content.top).max(0),
+        scale,
+    })
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WindowsWebViewWindowSnapshot {
     pub window_id: usize,
