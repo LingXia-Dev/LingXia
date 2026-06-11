@@ -93,6 +93,23 @@ fn installed_home_version(
     }))
 }
 
+/// Dev sessions rebuild the bundled lxapp assets in place without bumping the
+/// manifest version, so the version comparison alone would keep serving the
+/// stale installed copy forever. Force a refresh from bundled assets whenever
+/// a devtool bridge is configured for this process.
+fn dev_session_active() -> bool {
+    let env_active = std::env::var("LINGXIA_DEV_WS_URL")
+        .map(|value| !value.trim().is_empty())
+        .unwrap_or(false);
+    if env_active {
+        return true;
+    }
+    lingxia_app_context::app_config()
+        .and_then(|config| config.dev_ws_url.as_deref())
+        .map(|value| !value.trim().is_empty())
+        .unwrap_or(false)
+}
+
 /// Initialize the LxApps singleton using the host app configuration from app-context.
 pub fn init(runtime: Platform) -> Option<String> {
     // Set up panic hook to capture panic information
@@ -160,18 +177,24 @@ pub fn init(runtime: Platform) -> Option<String> {
         }
     };
 
-    let should_reinstall_home = installed_home_version
-        .as_ref()
-        .map(|installed| installed < &bundled_home_version)
-        .unwrap_or(true);
+    let dev_session_active = dev_session_active();
+    let should_reinstall_home = dev_session_active
+        || installed_home_version
+            .as_ref()
+            .map(|installed| installed < &bundled_home_version)
+            .unwrap_or(true);
 
     if should_reinstall_home {
-        let reason = match installed_home_version {
-            None => "home lxapp is not installed or install is invalid".to_string(),
-            Some(installed) => format!(
-                "bundled version {} is newer than installed {}",
-                bundled_home_version, installed
-            ),
+        let reason = if dev_session_active {
+            "dev session active; refreshing from bundled assets".to_string()
+        } else {
+            match installed_home_version {
+                None => "home lxapp is not installed or install is invalid".to_string(),
+                Some(installed) => format!(
+                    "bundled version {} is newer than installed {}",
+                    bundled_home_version, installed
+                ),
+            }
         };
         info!("Installing home lxapp from bundled assets: {}", reason)
             .with_appid(home_app_id.clone());
