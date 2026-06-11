@@ -340,8 +340,18 @@ pub fn hide_webview_window(webtag: &WebTag) -> StdResult<()> {
 }
 
 pub fn set_webview_window_layout(webtag: &WebTag, layout: WindowsWindowLayout) -> StdResult<()> {
-    let webview = find_webview(webtag)
-        .ok_or_else(|| WebViewError::WebView(format!("WebView not found for {}", webtag.key())))?;
+    let Some(webview) = find_webview(webtag) else {
+        // The webview may still be creating (e.g. the first switch to a
+        // tab page syncs its layout before the page webview exists). The
+        // layout registries and the group host don't need it: record the
+        // layout and repaint the host so chrome (tab highlight, navbar)
+        // updates immediately; controller bounds sync once the webview's
+        // own layout path runs after creation.
+        set_window_layout_for_key(&webtag.key(), layout);
+        let group_key = layout_group_key_for_webtag(&webtag.key());
+        request_group_shell_refresh(&group_key);
+        return Ok(());
+    };
     webview.inner.set_window_layout(layout)
 }
 
@@ -384,6 +394,104 @@ pub fn webview_window_snapshot(webtag: &WebTag) -> StdResult<WindowsWebViewWindo
     let webview = find_webview(webtag)
         .ok_or_else(|| WebViewError::WebView(format!("WebView not found for {}", webtag.key())))?;
     webview.inner.window_snapshot()
+}
+
+/// Whether newly created webviews allow the WebView2 DevTools (F12 inside
+/// the page, "Inspect" in the context menu, [`open_webview_devtools`]).
+/// Defaults to enabled, matching WebView2 itself.
+static WEBVIEW_DEVTOOLS_ENABLED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(true);
+
+/// Enables or disables the WebView2 DevTools on webviews created after this
+/// call (existing webviews are unaffected). DevTools are enabled by default;
+/// products that must lock their pages down can turn them off during host
+/// bootstrap, before the first webview is created.
+pub fn set_webview_devtools_enabled(enabled: bool) {
+    WEBVIEW_DEVTOOLS_ENABLED.store(enabled, std::sync::atomic::Ordering::Relaxed);
+}
+
+pub(crate) fn webview_devtools_enabled() -> bool {
+    WEBVIEW_DEVTOOLS_ENABLED.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// Opens the WebView2 DevTools window for `webtag`'s webview. The call is
+/// dispatched as a synchronous command on the webview's UI thread (like
+/// eval/screenshot) and maps to `ICoreWebView2::OpenDevToolsWindow`.
+/// Requires DevTools to be enabled (see [`set_webview_devtools_enabled`]).
+pub fn open_webview_devtools(webtag: &WebTag) -> StdResult<()> {
+    let webview = find_webview(webtag)
+        .ok_or_else(|| WebViewError::WebView(format!("WebView not found for {}", webtag.key())))?;
+    webview.inner.open_devtools()
+}
+
+/// Resizes the top-level window presenting `webtag` so its client (content)
+/// area is exactly `width` x `height` physical pixels. Attached surfaces
+/// (presented main children, panels) resolve to their group host window.
+/// The non-client frame — caption, borders, and an attached menu bar (see
+/// [`set_windows_app_menu`](super::set_windows_app_menu)) — is accounted
+/// for via `AdjustWindowRectExForDpi` at the window's current DPI; with a
+/// registered chrome renderer the client area covers the whole window, so
+/// this sizes the outer window directly. Pure geometry mechanics: which
+/// size to apply and when is caller policy. Safe to call from any thread.
+pub fn resize_webview_window_content(webtag: &WebTag, width: i32, height: i32) -> StdResult<()> {
+    if width <= 0 || height <= 0 {
+        return Err(WebViewError::WebView(format!(
+            "invalid window content size {width}x{height}"
+        )));
+    }
+    let hwnd = window_handle_for_key(webtag.key()).ok_or_else(|| {
+        WebViewError::WebView(format!("no window registered for {}", webtag.key()))
+    })?;
+    let hwnd = match window_attachment(webtag.key()) {
+        Some(WindowAttachment {
+            group_key,
+            kind: WindowAttachmentKind::MainChild | WindowAttachmentKind::Panel { .. },
+        }) => host_handle_for_group(&group_key).ok_or_else(|| {
+            WebViewError::WebView(format!("no host window for Windows shell group {group_key}"))
+        })?,
+        _ => hwnd,
+    };
+
+    let mut rect = RECT {
+        left: 0,
+        top: 0,
+        right: width,
+        bottom: height,
+    };
+    unsafe {
+        let style = WindowsAndMessaging::GetWindowLongPtrW(hwnd, WindowsAndMessaging::GWL_STYLE);
+        let ex_style =
+            WindowsAndMessaging::GetWindowLongPtrW(hwnd, WindowsAndMessaging::GWL_EXSTYLE);
+        let has_menu = !WindowsAndMessaging::GetMenu(hwnd).is_invalid();
+        let dpi = windows::Win32::UI::HiDpi::GetDpiForWindow(hwnd);
+        // With a chrome renderer WM_NCCALCSIZE makes the client area cover
+        // the window, so the frame delta computed here must stay zero.
+        if windows_chrome_renderer().is_none() {
+            windows::Win32::UI::HiDpi::AdjustWindowRectExForDpi(
+                &mut rect,
+                WindowsAndMessaging::WINDOW_STYLE(style as u32),
+                has_menu,
+                WindowsAndMessaging::WINDOW_EX_STYLE(ex_style as u32),
+                if dpi == 0 { 96 } else { dpi },
+            )
+            .map_err(|err| {
+                WebViewError::WebView(format!("AdjustWindowRectExForDpi failed: {err}"))
+            })?;
+        }
+        WindowsAndMessaging::SetWindowPos(
+            hwnd,
+            None,
+            0,
+            0,
+            rect.right - rect.left,
+            rect.bottom - rect.top,
+            WindowsAndMessaging::SWP_NOMOVE
+                | WindowsAndMessaging::SWP_NOZORDER
+                | WindowsAndMessaging::SWP_NOACTIVATE,
+        )
+        .map_err(|err| WebViewError::WebView(format!("SetWindowPos failed: {err}")))?;
+    }
+    Ok(())
 }
 
 pub fn is_panel_visible(panel_id: &str) -> bool {

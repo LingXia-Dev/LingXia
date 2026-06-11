@@ -78,6 +78,7 @@ mod environment;
 mod events;
 mod groups;
 mod icons;
+mod menu;
 mod renderer;
 mod scheme;
 mod window;
@@ -92,8 +93,10 @@ pub use api::{
     WindowsWebViewContentWindow, WindowsWebViewWindowSnapshot, WindowsWindowLayout,
     clear_native_panel_input_handler,
     hide_native_panel, hide_panel, hide_webview_window, invalidate_native_panel, is_panel_visible,
-    post_to_window_thread, present_webview_as_group_main, restore_presented_group_main,
-    set_default_window_size,
+    open_webview_devtools,
+    post_to_window_thread, present_webview_as_group_main, resize_webview_window_content,
+    restore_presented_group_main,
+    set_default_window_size, set_webview_devtools_enabled,
     set_native_panel_input_handler, set_native_panel_maximized, set_native_panel_tabs,
     set_webview_chrome_event_handler, set_webview_close_handler, set_webview_user_data_dir,
     set_webview_window_layout,
@@ -102,6 +105,10 @@ pub use api::{
     webview_window_snapshot,
 };
 pub use icons::{cached_png_bytes_icon_handle, cached_png_icon_handle, set_app_icon_from_path};
+pub use menu::{
+    WindowsAppMenu, WindowsAppMenuCommandHandler, WindowsAppMenuEntry, WindowsAppMenuItem,
+    set_windows_app_menu, set_windows_app_menu_command_handler,
+};
 pub use renderer::{
     WindowsChromeAttachedState, WindowsChromeHit, WindowsChromePanel, WindowsChromeRenderer,
     WindowsChromeState, WindowsFrameButton, WindowsNativePanelContent, WindowsNativePanelKind,
@@ -116,6 +123,7 @@ use environment::*;
 use events::*;
 use groups::*;
 use icons::*;
+use menu::*;
 use renderer::*;
 use scheme::*;
 use window::*;

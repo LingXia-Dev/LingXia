@@ -61,6 +61,9 @@ pub(crate) enum UiCommand {
     TakeScreenshot {
         resp: Sender<StdResult<Vec<u8>>>,
     },
+    OpenDevTools {
+        resp: Sender<StdResult<()>>,
+    },
     WindowSnapshot {
         resp: Sender<StdResult<WindowsWebViewWindowSnapshot>>,
     },
@@ -258,6 +261,10 @@ impl WebViewInner {
             }
             err => err.into_webview_error("capture WebView screenshot"),
         })?
+    }
+
+    pub(crate) fn open_devtools(&self) -> StdResult<()> {
+        self.dispatch_command(|resp| UiCommand::OpenDevTools { resp })
     }
 
     pub(crate) fn window_snapshot(&self) -> StdResult<WindowsWebViewWindowSnapshot> {
@@ -655,6 +662,14 @@ pub(crate) fn handle_command(state: &mut UiState, command: UiCommand) -> StdResu
         }
         UiCommand::TakeScreenshot { resp } => {
             start_capture_preview_png(&state.webview, resp);
+        }
+        UiCommand::OpenDevTools { resp } => {
+            let result = unsafe {
+                state.webview.OpenDevToolsWindow().map_err(|err| {
+                    WebViewError::WebView(format!("OpenDevToolsWindow failed: {err}"))
+                })
+            };
+            let _ = resp.send(result);
         }
         UiCommand::WindowSnapshot { resp } => {
             let result = window_snapshot(state);

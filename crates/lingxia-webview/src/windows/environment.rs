@@ -152,6 +152,14 @@ pub(crate) fn configure_settings(webview: &ICoreWebView2) -> StdResult<()> {
         settings
             .SetIsStatusBarEnabled(false)
             .map_err(|err| WebViewError::WebView(format!("SetIsStatusBarEnabled failed: {err}")))?;
+        // DevTools (F12 inside the page, context-menu "Inspect", and the
+        // host-side `open_webview_devtools`) follow the process-wide flag;
+        // enabled by default, see `set_webview_devtools_enabled`.
+        settings
+            .SetAreDevToolsEnabled(webview_devtools_enabled())
+            .map_err(|err| {
+                WebViewError::WebView(format!("SetAreDevToolsEnabled failed: {err}"))
+            })?;
     }
     Ok(())
 }

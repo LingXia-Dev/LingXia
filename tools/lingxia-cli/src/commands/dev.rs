@@ -998,6 +998,16 @@ fn prepare_windows_runner_assets(
     std::fs::write(&runtime_path, runtime.bytes)
         .with_context(|| format!("Failed to write {}", runtime_path.display()))?;
 
+    // Runner window/taskbar icon: the LingXia vessel mark, embedded in the
+    // CLI so published builds don't depend on the repo's design sources.
+    // `lingxia-windows` picks `<assets>/AppIcon.png` up automatically.
+    let icon_path = assets_dir.join("AppIcon.png");
+    std::fs::write(
+        &icon_path,
+        include_bytes!("../../assets/runner-icon.png"),
+    )
+    .with_context(|| format!("Failed to write {}", icon_path.display()))?;
+
     // The runtime's home-app bootstrap installs from `<assets>/<appid>/`
     // before the dev-config override kicks in, so the built bundle is
     // mirrored into the assets as the install source; live edits still

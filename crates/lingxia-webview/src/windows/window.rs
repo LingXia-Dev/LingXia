@@ -963,11 +963,23 @@ pub(crate) fn create_hidden_window(webtag: &WebTag) -> StdResult<HWND> {
                 paint_window_chrome(hwnd);
                 return LRESULT(0);
             }
+        } else if msg == WindowsAndMessaging::WM_COMMAND {
+            // App menu-bar selections (see menu.rs); ids the installed menu
+            // model does not define fall through to default handling.
+            if handle_app_menu_wm_command(wparam) {
+                return LRESULT(0);
+            }
         } else if msg == WindowsAndMessaging::WM_CHAR {
             if handle_native_panel_char(wparam) {
                 return LRESULT(0);
             }
         } else if msg == WindowsAndMessaging::WM_KEYDOWN {
+            // Plain-key app-menu accelerators (e.g. F12) run first: they
+            // only exist when a product installed a menu model, and native
+            // panels never claim those unmodified function keys.
+            if handle_app_menu_keydown(wparam) {
+                return LRESULT(0);
+            }
             if handle_native_panel_keydown(wparam) {
                 return LRESULT(0);
             }
@@ -1781,6 +1793,9 @@ pub(crate) fn show_native_main_window(
 
     if is_host {
         show_shell_host(&group_key, host, title, activate);
+        // A product-installed menu bar attaches to top-level main host
+        // windows when they show (no-op without an installed model).
+        apply_app_menu_to_window(state.hwnd);
         sync_controller_bounds(state)?;
         layout_group_windows(&group_key);
         set_controller_visible(state, true)?;
@@ -1960,7 +1975,11 @@ pub(crate) fn set_native_window_layout(
     // Layout syncs fire on every shell-relevant runtime event (navigator
     // calls, tab updates, ...); repainting an unchanged layout in full
     // reads as a visible sidebar flicker, so it is a no-op instead.
-    if current_exact_window_layout(&state.webtag_key).as_ref() == Some(&layout) {
+    // Compare against the EFFECTIVE layout (the group layout for hosts):
+    // the per-webtag exact layout can already match the incoming one when
+    // the user returns to a previously visited tab, while the group layout
+    // the host actually paints still highlights the old tab.
+    if current_window_layout(&state.webtag_key) == layout {
         return Ok(());
     }
     set_window_layout_for_key(&state.webtag_key, layout);
