@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="LingXia.png" alt="LingXia" width="128" />
+  <img src="design/app-icon/appicon-1024.png" alt="LingXia" width="128" />
 </p>
 
 <h1 align="center">LingXia</h1>
