@@ -2,7 +2,7 @@ use crate::config::LingXiaConfig;
 use crate::lxapp::ProjectFramework;
 use crate::platform::{self, BuildProfile};
 use crate::runtime;
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Result, anyhow};
 use bundles::{
     prepare_home_app_bundle, prepare_resource_lxapp_bundles, prepare_shell_webui_bundle,
 };
@@ -21,9 +21,7 @@ use icons::validate_app_ui_svg_icon;
 use json::{build_app_json_from_config, build_ui_json_from_config};
 use runtime_asset::{prepare_polyfills_es5_asset, prepare_runtime_asset};
 use std::collections::HashSet;
-use std::fs;
 use std::path::{Path, PathBuf};
-use sync::write_if_changed;
 
 #[path = "assets/bundles.rs"]
 mod bundles;
@@ -51,13 +49,6 @@ mod sync;
 mod tests;
 #[path = "assets/ui.rs"]
 mod ui;
-
-fn is_png_path(path: &Path) -> bool {
-    path.extension()
-        .and_then(|ext| ext.to_str())
-        .map(|ext| ext.eq_ignore_ascii_case("png"))
-        .unwrap_or(false)
-}
 
 /// Collect build-time warnings for any path-based lxapp bundle whose
 /// `view.target` won't run on the Android floor declared in `lingxia.yaml`.
@@ -147,30 +138,6 @@ fn any_path_bundle_targets_es5(project_root: &Path, config: &LingXiaConfig) -> b
         }
     }
     false
-}
-
-fn copy_splash_asset(config: &LingXiaConfig, project_root: &Path, dest_dir: &Path) -> Result<()> {
-    let splash_path = match config.splash_path() {
-        Some(path) => path,
-        None => return Ok(()),
-    };
-    let src = project_root.join(splash_path);
-    if !is_png_path(&src) {
-        anyhow::bail!(
-            "Invalid ui.launch.splash.path '{}': splash image must be a PNG file",
-            splash_path
-        );
-    }
-    if !src.exists() {
-        anyhow::bail!("Splash image not found: {}", src.display());
-    }
-    let dest = dest_dir.join("splash.png");
-    let src_bytes = fs::read(&src)
-        .with_context(|| format!("Failed to read splash image: {}", src.display()))?;
-    if write_if_changed(&dest, &src_bytes)? {
-        println!("  {} splash.png → {}", "✓".green(), dest.display());
-    }
-    Ok(())
 }
 
 pub(crate) fn prepare_configured_host_assets(
@@ -293,7 +260,6 @@ pub(crate) fn prepare_configured_host_assets(
                     prepared_polyfills_es5.as_ref(),
                     &mut cache,
                 )?;
-                copy_splash_asset(config, project_root, &assets_root)?;
             }
             platform::detector::PlatformType::Ios => {
                 if !crate::platform::apple::is_macos() {
@@ -319,7 +285,6 @@ pub(crate) fn prepare_configured_host_assets(
                     &mut prepared_resource_roots,
                     &mut cache,
                 )?;
-                copy_splash_asset(config, project_root, &resources_dir)?;
             }
             platform::detector::PlatformType::MacOs => {
                 if !crate::platform::apple::is_macos() {
@@ -345,7 +310,6 @@ pub(crate) fn prepare_configured_host_assets(
                     &mut prepared_resource_roots,
                     &mut cache,
                 )?;
-                copy_splash_asset(config, project_root, &resources_dir)?;
             }
             platform::detector::PlatformType::Harmony => {
                 let rawfile_root =
@@ -360,7 +324,6 @@ pub(crate) fn prepare_configured_host_assets(
                     prepared_runtime_es2020.as_ref(),
                     &mut cache,
                 )?;
-                copy_splash_asset(config, project_root, &rawfile_root)?;
             }
         }
     }

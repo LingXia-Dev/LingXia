@@ -1,6 +1,6 @@
 use super::{
     any_path_bundle_targets_es5, build_app_json_from_config, build_ui_json_from_config,
-    collect_view_target_warnings, is_png_path, prepare_app_ui_icons, validate_app_ui_svg_icon,
+    collect_view_target_warnings, prepare_app_ui_icons, validate_app_ui_svg_icon,
 };
 use crate::config::{EnvVersion, HostAppConfig, LingXiaConfig, LingxiaServer, ResolvedEnv};
 use std::fs;
@@ -13,21 +13,6 @@ fn test_resolved_env() -> ResolvedEnv {
         lingxia_server: "https://api.example.com".to_string(),
         package_id_suffix: None,
     }
-}
-
-#[test]
-fn png_path_check_accepts_png_case_insensitively() {
-    assert!(is_png_path(Path::new("splash.png")));
-    assert!(is_png_path(Path::new("SPLASH.PNG")));
-    assert!(is_png_path(Path::new("assets/launch.PnG")));
-}
-
-#[test]
-fn png_path_check_rejects_non_png_extensions() {
-    assert!(!is_png_path(Path::new("splash.jpg")));
-    assert!(!is_png_path(Path::new("splash.jpeg")));
-    assert!(!is_png_path(Path::new("splash.webp")));
-    assert!(!is_png_path(Path::new("splash")));
 }
 
 #[test]
@@ -65,7 +50,6 @@ fn generated_app_json_excludes_ui_fields() {
 
     assert!(value.get("ui").is_none());
     assert!(value.get("panels").is_none());
-    assert!(value.get("splashTimeout").is_none());
 }
 
 #[test]

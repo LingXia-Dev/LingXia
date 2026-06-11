@@ -18,12 +18,6 @@ struct LxAppUIConfig: Decodable, Sendable {
     struct Launch: Decodable, Sendable {
         let initialSurface: String
         let openOnLaunch: Bool?
-        let splash: Splash?
-
-        struct Splash: Decodable, Sendable {
-            let path: String
-            let minDurationMs: Int?
-        }
     }
 
     struct Surface: Decodable, Sendable {
