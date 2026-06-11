@@ -137,53 +137,55 @@ fn accelerator_command(vk: u32) -> Option<u32> {
     })
 }
 
+/// Appends each menu of `menus` to `parent` as a `MF_POPUP` submenu.
+fn append_app_menus(parent: WindowsAndMessaging::HMENU, menus: &[WindowsAppMenu]) -> WinResult<()> {
+    for menu in menus {
+        let popup = unsafe { WindowsAndMessaging::CreateMenu() }?;
+        for entry in &menu.entries {
+            match entry {
+                WindowsAppMenuEntry::Separator => unsafe {
+                    WindowsAndMessaging::AppendMenuW(
+                        popup,
+                        WindowsAndMessaging::MF_SEPARATOR,
+                        0,
+                        PCWSTR::null(),
+                    )?;
+                },
+                WindowsAppMenuEntry::Item(item) => {
+                    let mut flags = WindowsAndMessaging::MF_STRING;
+                    if item.checked {
+                        flags |= WindowsAndMessaging::MF_CHECKED;
+                    }
+                    let label = to_wide(&item.label);
+                    unsafe {
+                        WindowsAndMessaging::AppendMenuW(
+                            popup,
+                            flags,
+                            item.id as usize,
+                            PCWSTR(label.as_ptr()),
+                        )?;
+                    }
+                }
+            }
+        }
+        let title = to_wide(&menu.title);
+        unsafe {
+            WindowsAndMessaging::AppendMenuW(
+                parent,
+                WindowsAndMessaging::MF_POPUP,
+                popup.0 as usize,
+                PCWSTR(title.as_ptr()),
+            )?;
+        }
+    }
+    Ok(())
+}
+
 /// Builds the Win32 menu bar for `menus`. Returns `None` (destroying any
 /// partial menu) when a Win32 call fails.
 fn build_app_menu(menus: &[WindowsAppMenu]) -> Option<WindowsAndMessaging::HMENU> {
     let bar = unsafe { WindowsAndMessaging::CreateMenu() }.ok()?;
-    let build = (|| -> WinResult<()> {
-        for menu in menus {
-            let popup = unsafe { WindowsAndMessaging::CreateMenu() }?;
-            for entry in &menu.entries {
-                match entry {
-                    WindowsAppMenuEntry::Separator => unsafe {
-                        WindowsAndMessaging::AppendMenuW(
-                            popup,
-                            WindowsAndMessaging::MF_SEPARATOR,
-                            0,
-                            PCWSTR::null(),
-                        )?;
-                    },
-                    WindowsAppMenuEntry::Item(item) => {
-                        let mut flags = WindowsAndMessaging::MF_STRING;
-                        if item.checked {
-                            flags |= WindowsAndMessaging::MF_CHECKED;
-                        }
-                        let label = to_wide(&item.label);
-                        unsafe {
-                            WindowsAndMessaging::AppendMenuW(
-                                popup,
-                                flags,
-                                item.id as usize,
-                                PCWSTR(label.as_ptr()),
-                            )?;
-                        }
-                    }
-                }
-            }
-            let title = to_wide(&menu.title);
-            unsafe {
-                WindowsAndMessaging::AppendMenuW(
-                    bar,
-                    WindowsAndMessaging::MF_POPUP,
-                    popup.0 as usize,
-                    PCWSTR(title.as_ptr()),
-                )?;
-            }
-        }
-        Ok(())
-    })();
-    if let Err(err) = build {
+    if let Err(err) = append_app_menus(bar, menus) {
         log::warn!("Windows app menu construction failed: {err}");
         unsafe {
             let _ = WindowsAndMessaging::DestroyMenu(bar);
@@ -191,6 +193,54 @@ fn build_app_menu(menus: &[WindowsAppMenu]) -> Option<WindowsAndMessaging::HMENU
         return None;
     }
     Some(bar)
+}
+
+/// Offers the installed app-menu model as a context menu at screen
+/// coordinates and dispatches the selected command — used by presentations
+/// without a menu bar (the device-frame bezel). `owner` must be an
+/// activatable window on the calling thread. Returns `false` when no model
+/// is installed or the popup could not be built.
+pub(crate) fn show_app_menu_context(owner: HWND, screen_x: i32, screen_y: i32) -> bool {
+    let model = app_menu_model_snapshot();
+    if model.is_empty() {
+        return false;
+    }
+    let Ok(popup) = (unsafe { WindowsAndMessaging::CreatePopupMenu() }) else {
+        return false;
+    };
+    if let Err(err) = append_app_menus(popup, &model) {
+        log::warn!("Windows app context menu construction failed: {err}");
+        unsafe {
+            let _ = WindowsAndMessaging::DestroyMenu(popup);
+        }
+        return false;
+    }
+    // TPM_RETURNCMD: the selected command id comes back as the return value
+    // instead of a WM_COMMAND, so dismissal and dispatch stay local.
+    let selected = unsafe {
+        let _ = WindowsAndMessaging::SetForegroundWindow(owner);
+        WindowsAndMessaging::TrackPopupMenu(
+            popup,
+            WindowsAndMessaging::TPM_LEFTALIGN
+                | WindowsAndMessaging::TPM_TOPALIGN
+                | WindowsAndMessaging::TPM_RIGHTBUTTON
+                | WindowsAndMessaging::TPM_RETURNCMD
+                | WindowsAndMessaging::TPM_NONOTIFY,
+            screen_x,
+            screen_y,
+            None,
+            owner,
+            None,
+        )
+    };
+    unsafe {
+        let _ = WindowsAndMessaging::DestroyMenu(popup);
+    }
+    let id = selected.0 as u32;
+    if id != 0 {
+        dispatch_app_menu_command(id);
+    }
+    true
 }
 
 /// Applies the installed menu model to `hwnd` (a top-level main host
@@ -210,6 +260,11 @@ pub(crate) fn apply_app_menu_to_window(hwnd: HWND) {
 
     let model = app_menu_model_snapshot();
     if model.is_empty() {
+        return;
+    }
+    // A device-framed screen window has no room for a menu bar; its model
+    // is offered from the bezel's context menu instead (device_frame.rs).
+    if has_device_frame(hwnd) {
         return;
     }
     let Some(menu) = build_app_menu(&model) else {
@@ -271,8 +326,9 @@ pub(crate) fn handle_app_menu_keydown(wparam: WPARAM) -> bool {
 
 /// Invokes the registered command handler for `id` on a short-lived thread
 /// (handlers may synchronously dispatch webview commands, which would
-/// deadlock if run on the UI thread that owns the webview).
-fn dispatch_app_menu_command(id: u32) -> bool {
+/// deadlock if run on the UI thread that owns the webview). Also the
+/// dispatch path of device-frame toolbar selections (device_frame.rs).
+pub(crate) fn dispatch_app_menu_command(id: u32) -> bool {
     let handler = APP_MENU_HANDLER
         .get()
         .and_then(|slot| slot.lock().ok())

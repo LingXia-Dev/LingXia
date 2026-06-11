@@ -74,6 +74,7 @@ use windows::{
 
 mod api;
 mod controller;
+mod device_frame;
 mod environment;
 mod events;
 mod groups;
@@ -104,6 +105,9 @@ pub use api::{
     show_webview_window_inactive, update_native_panel_body, webview_content_window,
     webview_window_snapshot,
 };
+pub use device_frame::{
+    WindowsDeviceFrame, WindowsDeviceFrameToolbar, set_webview_device_frame,
+};
 pub use icons::{cached_png_bytes_icon_handle, cached_png_icon_handle, set_app_icon_from_path};
 pub use menu::{
     WindowsAppMenu, WindowsAppMenuCommandHandler, WindowsAppMenuEntry, WindowsAppMenuItem,
@@ -119,6 +123,7 @@ pub use renderer::{
 // prelude) through a single `use super::*;`.
 use api::*;
 use controller::*;
+use device_frame::*;
 use environment::*;
 use events::*;
 use groups::*;
