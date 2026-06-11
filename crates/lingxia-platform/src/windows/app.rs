@@ -40,6 +40,30 @@ pub(crate) fn request_windows_app_exit() {
     }
 }
 
+/// Process-wide interceptor for [`AppRuntime::open_url`] requests. Returns
+/// `true` when the request was handled (e.g. routed into an in-app browser
+/// tab); `false` falls back to the OS shell handler.
+type WindowsOpenUrlHandler = Arc<dyn Fn(&OpenUrlRequest) -> bool + Send + Sync>;
+static WINDOWS_OPEN_URL_HANDLER: Mutex<Option<WindowsOpenUrlHandler>> = Mutex::new(None);
+
+/// Registers the open-url interceptor. Product shells (the `lingxia`
+/// facade) use this to keep in-app targets (`SelfTarget`,
+/// `NewBrowserTab`) inside the app instead of launching the system
+/// default browser; the previous handler (if any) is replaced.
+pub fn set_windows_open_url_handler(handler: WindowsOpenUrlHandler) {
+    if let Ok(mut slot) = WINDOWS_OPEN_URL_HANDLER.lock() {
+        *slot = Some(handler);
+    }
+}
+
+fn invoke_windows_open_url_handler(req: &OpenUrlRequest) -> bool {
+    let handler = WINDOWS_OPEN_URL_HANDLER
+        .lock()
+        .ok()
+        .and_then(|slot| slot.clone());
+    handler.map(|handler| handler(req)).unwrap_or(false)
+}
+
 #[derive(Debug, Clone)]
 pub struct Platform {
     data_dir: PathBuf,
@@ -203,6 +227,11 @@ impl AppRuntime for Platform {
     }
 
     fn open_url(&self, req: OpenUrlRequest) -> Result<(), PlatformError> {
+        // In-app targets (browser tabs) are owned by the registered product
+        // shell handler; only unhandled requests reach the OS shell.
+        if invoke_windows_open_url_handler(&req) {
+            return Ok(());
+        }
         // Sync trait method: launch without waiting so the executor never blocks.
         file::open_with_shell_detached(&req.url)
     }

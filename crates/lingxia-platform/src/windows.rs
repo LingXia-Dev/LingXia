@@ -11,7 +11,7 @@ mod surface;
 mod ui_update;
 mod user_feedback;
 
-pub use app::{Platform, set_windows_app_exit_handler};
+pub use app::{Platform, set_windows_app_exit_handler, set_windows_open_url_handler};
 pub(crate) use app::request_windows_app_exit;
 pub use ui_update::set_windows_ui_update_handler;
 
