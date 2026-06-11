@@ -1,10 +1,10 @@
-name: Release Executor / Crates
+# INTERNAL executor — dispatched automatically by "Release / 2. Publish
+# Component". Do not run directly except to debug with dry_run; the normal
+# release path is: Release / 1 (version PR) -> merge -> Release / 2.
+name: Release Executor / Crates (internal)
 run-name: Crates ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
 
 on:
-  push:
-    tags:
-      - "lingxia-crates-v*"
   workflow_dispatch:
     inputs:
       tag:

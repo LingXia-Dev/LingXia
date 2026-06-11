@@ -1,18 +1,10 @@
-name: Release Executor / NPM
+# INTERNAL executor — dispatched automatically by "Release / 2. Publish
+# Component". Do not run directly except to debug with dry_run; the normal
+# release path is: Release / 1 (version PR) -> merge -> Release / 2.
+name: Release Executor / NPM (internal)
 run-name: NPM ${{ github.event_name == 'workflow_dispatch' && format('{0} v{1}', inputs.package, inputs.version) || github.ref_name }}
 
 on:
-  push:
-    tags:
-      - "lingxia-bridge-v*"
-      - "lingxia-elements-v*"
-      - "lingxia-html-v*"
-      - "lingxia-page-runtime-v*"
-      - "lingxia-polyfills-v*"
-      - "lingxia-react-v*"
-      - "lingxia-skill-v*"
-      - "lingxia-types-v*"
-      - "lingxia-vue-v*"
   workflow_dispatch:
     inputs:
       package:

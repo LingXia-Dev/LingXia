@@ -1,4 +1,6 @@
-# Release / CLI
+# Release Executor / CLI — INTERNAL, dispatched automatically by "Release /
+# 2. Publish Component". Do not run directly except to debug with dry_run;
+# the normal release path is: Release / 1 (version PR) -> merge -> Release / 2.
 #
 # Ships the `lingxia` CLI exclusively as GitHub Release binaries (installed via
 # the root install.sh, rustup/deno-style). NO npm distribution.
@@ -14,13 +16,10 @@
 # lingxia-cli's build.rs embeds the bridge/polyfills JS runtime, so every job
 # that compiles the CLI runs build-web-runtime first (incl. Windows).
 
-name: Release Executor / CLI
+name: Release Executor / CLI (internal)
 run-name: CLI ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
 
 on:
-  push:
-    tags:
-      - "lingxia-cli-v*"
   workflow_dispatch:
     inputs:
       tag:
