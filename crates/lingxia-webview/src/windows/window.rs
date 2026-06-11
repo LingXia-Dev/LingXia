@@ -1638,6 +1638,29 @@ pub(crate) fn handle_window_chrome_click(hwnd: HWND, webtag_key: &str, point: (i
             webtag_key,
             WindowsChromeEvent::NativePanelMaximizeClick { panel_id },
         ),
+        Some(WindowsChromeHit::BrowserNavBack) => {
+            invoke_chrome_event_handler(webtag_key, WindowsChromeEvent::BrowserNavBackClick)
+        }
+        Some(WindowsChromeHit::BrowserNavForward) => {
+            invoke_chrome_event_handler(webtag_key, WindowsChromeEvent::BrowserNavForwardClick)
+        }
+        Some(WindowsChromeHit::BrowserNavReload) => {
+            invoke_chrome_event_handler(webtag_key, WindowsChromeEvent::BrowserNavReloadClick)
+        }
+        Some(WindowsChromeHit::BrowserAddressBar) => {
+            invoke_chrome_event_handler(webtag_key, WindowsChromeEvent::BrowserAddressBarClick)
+        }
+        Some(WindowsChromeHit::SidebarToggle) => {
+            invoke_chrome_event_handler(webtag_key, WindowsChromeEvent::SidebarToggleClick)
+        }
+        Some(WindowsChromeHit::SidebarGroupToggle { group }) => invoke_chrome_event_handler(
+            webtag_key,
+            WindowsChromeEvent::SidebarGroupToggleClick { group },
+        ),
+        Some(WindowsChromeHit::SidebarAction { action_id }) => invoke_chrome_event_handler(
+            webtag_key,
+            WindowsChromeEvent::SidebarActionClick { action_id },
+        ),
         Some(WindowsChromeHit::Chrome) => true,
         // Caption points never arrive as client clicks (WM_NCHITTEST maps
         // them to HTCAPTION first); treat defensively as unhandled.
@@ -1920,6 +1943,12 @@ pub(crate) fn set_native_window_layout(
     state: &UiState,
     layout: WindowsWindowLayout,
 ) -> StdResult<()> {
+    // Layout syncs fire on every shell-relevant runtime event (navigator
+    // calls, tab updates, ...); repainting an unchanged layout in full
+    // reads as a visible sidebar flicker, so it is a no-op instead.
+    if current_exact_window_layout(&state.webtag_key).as_ref() == Some(&layout) {
+        return Ok(());
+    }
     set_window_layout_for_key(&state.webtag_key, layout);
     sync_controller_bounds(state)?;
     if let Some(attachment) = window_attachment(&state.webtag_key)

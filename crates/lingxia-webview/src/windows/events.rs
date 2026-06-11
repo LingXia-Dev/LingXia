@@ -85,6 +85,46 @@ pub(crate) fn register_event_handlers(
             })?;
     }
 
+    // Favicon change notifications need ICoreWebView2_15 (newer WebView2
+    // runtimes); older runtimes simply do without favicons.
+    let favicon_tag = webtag.clone();
+    if let Ok(webview15) = webview.cast::<ICoreWebView2_15>() {
+        let handler = FaviconChangedEventHandler::create(Box::new(move |sender, _args| {
+            let Some(sender) = sender else {
+                return Ok(());
+            };
+            let Ok(sender15) = sender.cast::<ICoreWebView2_15>() else {
+                return Ok(());
+            };
+            let tag = favicon_tag.clone();
+            unsafe {
+                sender15.GetFavicon(
+                    COREWEBVIEW2_FAVICON_IMAGE_FORMAT_PNG,
+                    &GetFaviconCompletedHandler::create(Box::new(move |result, stream| {
+                        if result.is_err() {
+                            return Ok(());
+                        }
+                        // No stream / empty bytes = page has no favicon.
+                        let png_bytes = stream
+                            .as_ref()
+                            .and_then(|stream| read_stream_to_end(stream).ok())
+                            .unwrap_or_default();
+                        if let Some(delegate) = find_webview_delegate(&tag) {
+                            delegate.on_favicon_changed(png_bytes);
+                        }
+                        Ok(())
+                    })),
+                )?;
+            }
+            Ok(())
+        }));
+        let mut token = 0;
+        if let Err(err) = unsafe { webview15.add_FaviconChanged(&handler, &mut token) } {
+            // Favicons are cosmetic; never fail webview creation over them.
+            log::warn!("add_FaviconChanged failed: {err}");
+        }
+    }
+
     let new_window_tag = webtag.clone();
     unsafe {
         let mut token = 0;

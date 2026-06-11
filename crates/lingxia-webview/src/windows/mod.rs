@@ -84,9 +84,10 @@ mod window;
 pub(crate) use controller::WebViewInner;
 
 pub use api::{
-    WindowsBrowserTabItemLayout, WindowsChromeEvent, WindowsNavigationBarLayout,
-    WindowsPanelActivatorLayout, WindowsPanelInputHandler, WindowsPanelKeyEvent,
-    WindowsPanelPosition, WindowsTabBarItemLayout, WindowsTabBarLayout, WindowsTabBarPosition,
+    WindowsAddressBarLayout, WindowsBrowserTabItemLayout, WindowsChromeEvent,
+    WindowsNavigationBarLayout, WindowsPanelActivatorLayout, WindowsPanelInputHandler,
+    WindowsPanelKeyEvent, WindowsPanelPosition, WindowsSidebarActionLayout,
+    WindowsTabBarItemLayout, WindowsTabBarLayout, WindowsTabBarPosition,
     WindowsWebViewWindowSnapshot, WindowsWindowLayout, clear_native_panel_input_handler,
     hide_native_panel, hide_panel, hide_webview_window, invalidate_native_panel, is_panel_visible,
     post_to_window_thread, present_webview_as_group_main, restore_presented_group_main,
@@ -96,7 +97,7 @@ pub use api::{
     show_native_panel, show_native_terminal_panel, show_webview_panel, show_webview_window,
     show_webview_window_inactive, update_native_panel_body, webview_window_snapshot,
 };
-pub use icons::{cached_png_icon_handle, set_app_icon_from_path};
+pub use icons::{cached_png_bytes_icon_handle, cached_png_icon_handle, set_app_icon_from_path};
 pub use renderer::{
     WindowsChromeAttachedState, WindowsChromeHit, WindowsChromePanel, WindowsChromeRenderer,
     WindowsChromeState, WindowsFrameButton, WindowsNativePanelContent, WindowsNativePanelKind,

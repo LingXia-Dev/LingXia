@@ -56,6 +56,24 @@ pub enum WindowsChromeEvent {
     /// Right-click on a native panel's content area (terminals treat this
     /// as paste, following Windows Terminal convention).
     NativePanelRightClick { panel_id: String },
+    /// Click on the top-bar address-bar back button.
+    BrowserNavBackClick,
+    /// Click on the top-bar address-bar forward button.
+    BrowserNavForwardClick,
+    /// Click on the top-bar address-bar reload button.
+    BrowserNavReloadClick,
+    /// Click on the top-bar URL capsule (the product layer starts an
+    /// inline address edit in response).
+    BrowserAddressBarClick,
+    /// Click on the top-bar sidebar collapse/expand toggle.
+    SidebarToggleClick,
+    /// Click on the sidebar group header chevron (collapses/expands the
+    /// group's items). `group` is the generic id supplied through
+    /// [`WindowsTabBarLayout::group_id`].
+    SidebarGroupToggleClick { group: String },
+    /// Click on a sidebar header action button. `action_id` is the generic
+    /// id supplied through [`WindowsSidebarActionLayout`].
+    SidebarActionClick { action_id: String },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -95,6 +113,21 @@ pub struct WindowsBrowserTabItemLayout {
     pub tab_id: String,
     pub title: String,
     pub active: bool,
+    /// PNG-encoded favicon of the tab's current page, when known. `Arc`'d so
+    /// per-sync layout clones share the bytes; the renderer draws it left of
+    /// the title (text-only row when `None`).
+    pub favicon_png: Option<Arc<Vec<u8>>>,
+}
+
+/// One sidebar header action button. Pure layout data: the product layer
+/// owns the action id and the glyph (an icon-font codepoint string); the
+/// renderer only draws the button and maps clicks back to the id.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WindowsSidebarActionLayout {
+    pub id: String,
+    /// Icon-font glyph drawn on the button (e.g. a Segoe Fluent Icons
+    /// codepoint), supplied by the product layer.
+    pub glyph: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -103,17 +136,40 @@ pub struct WindowsTabBarLayout {
     pub position: WindowsTabBarPosition,
     pub dimension: i32,
     pub app_name: String,
+    /// Generic group identifier echoed back in
+    /// [`WindowsChromeEvent::SidebarGroupToggleClick`].
+    pub group_id: String,
     pub color: u32,
     pub selected_color: u32,
     pub background_color: u32,
     pub border_color: u32,
     pub selected_index: i32,
     pub items: Vec<WindowsTabBarItemLayout>,
+    /// Whether the whole sidebar is collapsed (width 0, content expands);
+    /// the top-bar sidebar toggle stays visible so it can be re-expanded.
+    pub collapsed: bool,
+    /// Whether the lxapp items group is collapsed (items hidden, the
+    /// browser section moves up under the group header).
+    pub items_collapsed: bool,
     /// Browser-tab rows drawn under the regular items (sidebar positions
     /// only). Empty when the product has no browser tabs to show.
     pub browser_tabs: Vec<WindowsBrowserTabItemLayout>,
     /// Whether a "New Tab" row is drawn under the browser-tab rows.
     pub show_browser_new_tab: bool,
+    /// Header action buttons drawn in the caption strip right of the
+    /// sidebar toggle; hidden while the sidebar is collapsed.
+    pub header_actions: Vec<WindowsSidebarActionLayout>,
+}
+
+/// Top-bar address-bar section: a centered URL capsule with back/forward/
+/// reload buttons. Pure layout data; navigation policy (what the buttons
+/// do, how input resolves) lives entirely in the product layer.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct WindowsAddressBarLayout {
+    pub visible: bool,
+    /// Text shown inside the URL capsule (current URL or page title,
+    /// already resolved by the product layer).
+    pub url_text: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -136,6 +192,9 @@ pub struct WindowsPanelActivatorLayout {
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct WindowsWindowLayout {
     pub navigation_bar: Option<WindowsNavigationBarLayout>,
+    /// Browser address-bar section of the top bar; `None` when no browser
+    /// surface is presented.
+    pub address_bar: Option<WindowsAddressBarLayout>,
     pub tab_bar: Option<WindowsTabBarLayout>,
     pub panel_activators: Vec<WindowsPanelActivatorLayout>,
 }
@@ -520,6 +579,13 @@ pub(crate) fn invoke_chrome_event_handler(webtag_key: &str, event: WindowsChrome
             WindowsChromeEvent::NativePanelMaximizeClick { .. } => "panel-maximize",
             WindowsChromeEvent::NativePanelTabRenameRequest { .. } => "panel-tab-rename",
             WindowsChromeEvent::NativePanelRightClick { .. } => "panel-right-click",
+            WindowsChromeEvent::BrowserNavBackClick => "browser-nav-back",
+            WindowsChromeEvent::BrowserNavForwardClick => "browser-nav-forward",
+            WindowsChromeEvent::BrowserNavReloadClick => "browser-nav-reload",
+            WindowsChromeEvent::BrowserAddressBarClick => "browser-address-bar",
+            WindowsChromeEvent::SidebarToggleClick => "sidebar-toggle",
+            WindowsChromeEvent::SidebarGroupToggleClick { .. } => "sidebar-group-toggle",
+            WindowsChromeEvent::SidebarActionClick { .. } => "sidebar-action",
         };
         let thread_name = format!("lingxia-webview-chrome-{event_name}-{webtag_key}");
         let _ = std::thread::Builder::new()

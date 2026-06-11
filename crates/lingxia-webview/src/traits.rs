@@ -489,6 +489,12 @@ pub trait WebViewDelegate: Send + Sync {
     /// implementations do not need to change.
     fn on_title_changed(&self, _title: &str) {}
 
+    /// Called when the page favicon changes (where the platform reports it;
+    /// currently Windows/WebView2). `png_bytes` holds the favicon encoded
+    /// as PNG; an empty vector means the page has no favicon. Default is a
+    /// no-op so existing implementations do not need to change.
+    fn on_favicon_changed(&self, _png_bytes: Vec<u8>) {}
+
     /// Handles a postMessage from the page View(WebView)
     fn handle_post_message(&self, msg: String);
 

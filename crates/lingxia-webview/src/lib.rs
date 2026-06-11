@@ -196,13 +196,15 @@ pub mod platform {
     #[cfg(target_os = "windows")]
     pub mod windows {
         pub use crate::windows::{
-            WindowsBrowserTabItemLayout, WindowsChromeAttachedState, WindowsChromeEvent,
-            WindowsChromeHit, WindowsChromePanel, WindowsChromeRenderer, WindowsChromeState,
-            WindowsFrameButton, WindowsNativePanelContent, WindowsNativePanelKind,
-            WindowsNativePanelTab, WindowsNavigationBarLayout, WindowsPanelActivatorLayout,
-            WindowsPanelInputHandler, WindowsPanelKeyEvent, WindowsPanelPosition,
+            WindowsAddressBarLayout, WindowsBrowserTabItemLayout, WindowsChromeAttachedState,
+            WindowsChromeEvent, WindowsChromeHit, WindowsChromePanel, WindowsChromeRenderer,
+            WindowsChromeState, WindowsFrameButton, WindowsNativePanelContent,
+            WindowsNativePanelKind, WindowsNativePanelTab, WindowsNavigationBarLayout,
+            WindowsPanelActivatorLayout, WindowsPanelInputHandler, WindowsPanelKeyEvent,
+            WindowsPanelPosition, WindowsSidebarActionLayout,
             WindowsTabBarItemLayout, WindowsTabBarLayout, WindowsTabBarPosition,
-            WindowsWebViewWindowSnapshot, WindowsWindowLayout, cached_png_icon_handle,
+            WindowsWebViewWindowSnapshot, WindowsWindowLayout, cached_png_bytes_icon_handle,
+            cached_png_icon_handle,
             clear_native_panel_input_handler, hide_native_panel, hide_panel, hide_webview_window,
             invalidate_native_panel, is_panel_visible, post_to_window_thread,
             present_webview_as_group_main, restore_presented_group_main, set_app_icon_from_path,

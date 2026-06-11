@@ -47,14 +47,24 @@ pub(crate) fn current_app_icon_handles() -> Option<AppIconHandles> {
 }
 
 pub(crate) fn create_icon_from_png(path: &Path, size: u32) -> StdResult<isize> {
-    let image = image::open(path)
-        .map_err(|err| {
-            WebViewError::WebView(format!(
-                "Failed to load Windows app icon {}: {}",
-                path.display(),
-                err
-            ))
-        })?
+    let image = image::open(path).map_err(|err| {
+        WebViewError::WebView(format!(
+            "Failed to load Windows app icon {}: {}",
+            path.display(),
+            err
+        ))
+    })?;
+    create_icon_from_image(image, size, &path.display().to_string())
+}
+
+pub(crate) fn create_icon_from_png_bytes(png: &[u8], size: u32) -> StdResult<isize> {
+    let image = image::load_from_memory_with_format(png, image::ImageFormat::Png)
+        .map_err(|err| WebViewError::WebView(format!("Failed to decode PNG icon bytes: {err}")))?;
+    create_icon_from_image(image, size, "<png bytes>")
+}
+
+fn create_icon_from_image(image: image::DynamicImage, size: u32, source: &str) -> StdResult<isize> {
+    let image = image
         .resize_exact(size, size, image::imageops::FilterType::Lanczos3)
         .into_rgba8();
 
@@ -70,8 +80,7 @@ pub(crate) fn create_icon_from_png(path: &Path, size: u32) -> StdResult<isize> {
         let color = CreateBitmap(width, height, 1, 32, Some(bgra.as_ptr().cast()));
         if color.is_invalid() {
             return Err(WebViewError::WebView(format!(
-                "Failed to create Windows app icon color bitmap from {}",
-                path.display()
+                "Failed to create Windows app icon color bitmap from {source}"
             )));
         }
 
@@ -79,8 +88,7 @@ pub(crate) fn create_icon_from_png(path: &Path, size: u32) -> StdResult<isize> {
         if mask.is_invalid() {
             let _ = DeleteObject(HGDIOBJ(color.0));
             return Err(WebViewError::WebView(format!(
-                "Failed to create Windows app icon mask bitmap from {}",
-                path.display()
+                "Failed to create Windows app icon mask bitmap from {source}"
             )));
         }
 
@@ -93,9 +101,7 @@ pub(crate) fn create_icon_from_png(path: &Path, size: u32) -> StdResult<isize> {
         };
         let icon = WindowsAndMessaging::CreateIconIndirect(&info).map_err(|err| {
             WebViewError::WebView(format!(
-                "Failed to create Windows app icon from {}: {}",
-                path.display(),
-                err
+                "Failed to create Windows app icon from {source}: {err}"
             ))
         })?;
         let _ = DeleteObject(HGDIOBJ(color.0));
@@ -150,4 +156,53 @@ pub fn cached_png_icon_handle(path: &str, size: u32) -> Option<isize> {
         return handle;
     }
     create_icon_from_png(&path, size).ok()
+}
+
+/// Per-key cache of HICONs decoded from in-memory PNG bytes: the cached
+/// content hash detects when the bytes behind a key changed (e.g. a tab
+/// navigated to a site with a different favicon) and the stale handle is
+/// destroyed and replaced.
+pub(crate) type BytesIconCache = HashMap<(String, u32), (u64, Option<isize>)>;
+
+pub(crate) static BYTES_ICON_HANDLES: OnceLock<Mutex<BytesIconCache>> = OnceLock::new();
+
+fn fnv1a64(bytes: &[u8]) -> u64 {
+    const FNV_OFFSET: u64 = 0xcbf29ce484222325;
+    const FNV_PRIME: u64 = 0x100000001b3;
+    let mut hash = FNV_OFFSET;
+    for byte in bytes {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(FNV_PRIME);
+    }
+    hash
+}
+
+/// Returns a cached `HICON` handle (as `isize`) for PNG-encoded bytes
+/// rendered at `size` x `size` pixels, or `None` if the bytes cannot be
+/// decoded. `cache_key` identifies the icon slot (e.g. a browser tab id);
+/// when the bytes behind a key change, the cached handle is replaced.
+///
+/// Part of the chrome-renderer seam (the bytes sibling of
+/// [`cached_png_icon_handle`]): registered [`WindowsChromeRenderer`]s use
+/// this to draw favicons without owning an icon cache. The returned handle
+/// stays owned by the cache and must not be destroyed.
+pub fn cached_png_bytes_icon_handle(cache_key: &str, png: &[u8], size: u32) -> Option<isize> {
+    let hash = fnv1a64(png);
+    let key = (cache_key.to_string(), size);
+    let handles = BYTES_ICON_HANDLES.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Ok(mut handles) = handles.lock() {
+        if let Some((cached_hash, handle)) = handles.get(&key)
+            && *cached_hash == hash
+        {
+            return *handle;
+        }
+        let handle = create_icon_from_png_bytes(png, size).ok();
+        if let Some((_, Some(previous))) = handles.insert(key, (hash, handle))
+            && Some(previous) != handle
+        {
+            destroy_icon_handle(previous);
+        }
+        return handle;
+    }
+    create_icon_from_png_bytes(png, size).ok()
 }

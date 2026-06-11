@@ -141,6 +141,21 @@ pub enum WindowsChromeHit {
     /// The maximize/restore toggle of a native panel header; dispatched as
     /// a chrome event.
     NativePanelMaximize { panel_id: String },
+    /// The top-bar address-bar back button; dispatched as a chrome event.
+    BrowserNavBack,
+    /// The top-bar address-bar forward button; dispatched as a chrome event.
+    BrowserNavForward,
+    /// The top-bar address-bar reload button; dispatched as a chrome event.
+    BrowserNavReload,
+    /// The top-bar URL capsule; dispatched as a chrome event.
+    BrowserAddressBar,
+    /// The top-bar sidebar collapse/expand toggle; dispatched as a chrome
+    /// event.
+    SidebarToggle,
+    /// The chevron of a sidebar group header; dispatched as a chrome event.
+    SidebarGroupToggle { group: String },
+    /// A sidebar header action button; dispatched as a chrome event.
+    SidebarAction { action_id: String },
     /// Inert chrome surface: consumes the click without producing an event.
     Chrome,
 }
