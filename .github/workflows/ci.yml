@@ -398,6 +398,11 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           prefix-key: example-macos
+      # The showcase enables the terminal (lingxia-terminal builds
+      # libghostty-vt from source), which needs zig on the host.
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.2
       - uses: ./.github/actions/build-web-packages
       - uses: ./.github/actions/bootstrap-apple-sdk
       - name: Build macOS example app

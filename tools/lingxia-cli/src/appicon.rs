@@ -117,7 +117,8 @@ pub fn generate_android_icons(
         }
 
         // Foreground for adaptive icon (always generated)
-        let foreground = create_adaptive_foreground(foreground_img.as_ref().unwrap_or(&img), adaptive_size);
+        let foreground =
+            create_adaptive_foreground(foreground_img.as_ref().unwrap_or(&img), adaptive_size);
         foreground.save_with_format(
             mipmap_dir.join("ic_launcher_foreground.webp"),
             ImageFormat::WebP,

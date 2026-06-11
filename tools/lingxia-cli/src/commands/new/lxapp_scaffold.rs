@@ -545,10 +545,7 @@ mod tests {
             s.contains("@lingxia/react"),
             "must reference @lingxia/react"
         );
-        assert!(
-            s.contains("@rongjs/rong"),
-            "must reference @rongjs/rong"
-        );
+        assert!(s.contains("@rongjs/rong"), "must reference @rongjs/rong");
         assert!(
             !s.contains("@lingxia/rong"),
             "must not reference deprecated @lingxia/rong"
