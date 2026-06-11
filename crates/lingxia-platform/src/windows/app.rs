@@ -10,7 +10,6 @@ use lingxia_webview::runtime as webview_runtime;
 use super::{file, not_supported, surface};
 use crate::error::PlatformError;
 use crate::traits::app_runtime::{AnimationType, AppRuntime, LxAppOpenMode, OpenUrlRequest};
-use crate::traits::location::{Location, LocationRequestConfig};
 use crate::traits::pull_to_refresh::PullToRefresh;
 use crate::traits::share::{ShareRequest, ShareResult, ShareService};
 use crate::traits::stream_decoder::{VideoStreamDecoderHandle, VideoStreamDecoderManager};
@@ -126,6 +125,14 @@ impl Platform {
         &self.asset_dir
     }
 
+    pub(super) fn app_identifier(&self) -> &str {
+        &self.app_identifier
+    }
+
+    pub(super) fn data_dir(&self) -> &Path {
+        &self.data_dir
+    }
+
     fn resolve_asset_path(&self, path: &str) -> Result<PathBuf, PlatformError> {
         let normalized = normalize_relative_path(path)?;
         Ok(self.asset_dir.join(normalized))
@@ -237,31 +244,32 @@ impl AppRuntime for Platform {
     }
 
     fn get_capsule_rect(&self) -> impl Future<Output = Result<String, PlatformError>> + Send {
+        // No capsule button exists in the Windows shell; a zero rect tells
+        // callers there is nothing to avoid overlapping.
         async { Ok(r#"{"width":0,"height":0,"top":0,"right":0,"bottom":0,"left":0}"#.to_string()) }
     }
 }
 
-impl crate::traits::device::DeviceHardware for Platform {}
+// Stubbed: get_network_info is feasible via WinRT
+// Windows.Networking.Connectivity (GetInternetConnectionProfile) but the JSON
+// payload contract lives in the per-OS bridges; left on trait defaults until
+// the payload shape is shared.
 impl crate::traits::network::Network for Platform {}
-impl crate::traits::secure_store::SecureStore for Platform {}
+// Stubbed: overlay/panel surfaces are presented by the Windows product shell
+// (surface.rs windows); the generic SurfacePresenter contract is unused here.
 impl crate::traits::ui::SurfacePresenter for Platform {}
+// Stubbed: in-app update prompt/install flows have no Windows updater helper
+// yet; trait defaults report not_supported for prompt/install.
 impl crate::traits::update::UpdateService for Platform {}
+// Stubbed: Wi-Fi management needs the Native Wifi API (wlanapi.dll session
+// handles, scan-completion callbacks, profile XML for connect); the pinned
+// windows-rs rev exposes Win32_NetworkManagement_WiFi, but the bridge is
+// substantial and is left for a dedicated change.
 impl crate::traits::wifi::Wifi for Platform {}
 
-impl Location for Platform {
-    fn is_location_enabled(&self) -> Result<bool, PlatformError> {
-        not_supported("is_location_enabled")
-    }
-
-    fn request_location(
-        &self,
-        _config: LocationRequestConfig,
-    ) -> impl Future<Output = Result<String, PlatformError>> + Send {
-        async { not_supported("request_location") }
-    }
-}
-
 impl PullToRefresh for Platform {
+    // Pull-to-refresh is a touch gesture surfaced by the mobile shells; the
+    // Windows desktop shell has no equivalent affordance.
     fn start_pull_down_refresh(&self, _app_id: &str, _path: &str) -> Result<(), PlatformError> {
         not_supported("start_pull_down_refresh")
     }
@@ -272,6 +280,9 @@ impl PullToRefresh for Platform {
 }
 
 impl ShareService for Platform {
+    // Stubbed: the Windows share sheet (DataTransferManager) must be obtained
+    // through IDataTransferManagerInterop with an owning HWND, and the
+    // platform layer deliberately has no access to shell window handles.
     fn share(
         &self,
         _request: ShareRequest,
@@ -281,6 +292,8 @@ impl ShareService for Platform {
 }
 
 impl VideoPlayerManager for Platform {
+    // Stubbed: native video playback needs a Media Foundation/MediaPlayer
+    // bridge plus compositor integration with the WebView surface.
     fn bind_player(
         &self,
         _component_id: &str,
@@ -290,6 +303,7 @@ impl VideoPlayerManager for Platform {
 }
 
 impl VideoStreamDecoderManager for Platform {
+    // Stubbed: requires a Media Foundation decode pipeline; see bind_player.
     fn create_stream_decoder(
         &self,
         _component_id: &str,

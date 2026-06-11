@@ -28,9 +28,16 @@ serde_json = { workspace = true }
 [target.'cfg(target_os = "windows")'.dependencies]
 lingxia-webview = { workspace = true }
 windows = { workspace = true, features = [
+    "Devices_Geolocation",
+    "Foundation",
     "Win32_Foundation",
     "Win32_Globalization",
     "Win32_Graphics_Gdi",
+    "Win32_Security_Credentials",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Registry",
+    "Win32_System_SystemInformation",
+    "Win32_UI_HiDpi",
     "Win32_UI_WindowsAndMessaging",
 ] }
 

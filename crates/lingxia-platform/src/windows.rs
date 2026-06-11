@@ -5,8 +5,10 @@
 mod app;
 mod device;
 mod file;
+mod location;
 mod media;
 mod screenshot;
+mod secure_store;
 mod surface;
 mod ui_update;
 mod user_feedback;
