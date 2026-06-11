@@ -4,10 +4,26 @@ version.workspace = true
 edition.workspace = true
 publish = false
 
+# macOS: static library linked into the Swift "LingXia Runner.app".
 [lib]
 name = "lingxia"
 crate-type = ["staticlib"]
 
-[dependencies]
+# Windows: standalone dev-runner executable. `lingxia dev` in a standalone
+# lxapp project builds and launches it (see tools/lingxia-cli commands/dev.rs).
+[[bin]]
+name = "lingxia-runner"
+path = "src/bin/lingxia-runner.rs"
+
+# The macOS Runner ships the full shell chrome; the Windows runner is a plain
+# standalone-lxapp window (standard runtime only, no shell chrome). Keeping
+# the dependency sets target-gated lets each platform resolve its own lingxia
+# feature set (resolver v2 ignores features of inactive target dependencies).
+[target.'cfg(not(target_os = "windows"))'.dependencies]
 lingxia = { workspace = true, features = ["standard", "shell-runtime", "webview-input"] }
 lingxia_devtool = { workspace = true, features = ["browser"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+lingxia = { workspace = true, features = ["standard"] }
+lingxia_devtool = { workspace = true, features = ["browser"] }
+lingxia-windows = { workspace = true }

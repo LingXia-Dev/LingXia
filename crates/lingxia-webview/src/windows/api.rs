@@ -5,6 +5,40 @@ use super::*;
 
 pub(crate) type CloseHandler = Arc<dyn Fn() + Send + Sync>;
 
+/// Built-in initial outer size of top-level webview host windows, used when
+/// no process-wide override was installed via [`set_default_window_size`].
+const BUILTIN_DEFAULT_WINDOW_SIZE: (i32, i32) = (1024, 768);
+
+/// Process-wide override of the initial outer window size, set at most once
+/// before the first window is created (see [`set_default_window_size`]).
+static DEFAULT_WINDOW_SIZE: OnceLock<(i32, i32)> = OnceLock::new();
+
+/// Overrides the initial outer size, in pixels, of top-level webview host
+/// windows created after this call — in particular the main window of a
+/// host app. Attached surfaces (panels, presented main children) are
+/// re-laid out by their group and are unaffected in practice.
+///
+/// Call once during host bootstrap, before the first webview window is
+/// created. The first call wins; later calls and non-positive dimensions
+/// are ignored. Without an override windows open at 1024x768.
+pub fn set_default_window_size(width: i32, height: i32) {
+    if width <= 0 || height <= 0 {
+        log::warn!("ignoring non-positive default window size {width}x{height}");
+        return;
+    }
+    if DEFAULT_WINDOW_SIZE.set((width, height)).is_err() {
+        log::warn!("default window size already set; ignoring {width}x{height}");
+    }
+}
+
+/// Initial outer size for newly created top-level webview host windows.
+pub(crate) fn default_window_size() -> (i32, i32) {
+    DEFAULT_WINDOW_SIZE
+        .get()
+        .copied()
+        .unwrap_or(BUILTIN_DEFAULT_WINDOW_SIZE)
+}
+
 pub(crate) type ChromeEventHandler = Arc<dyn Fn(WindowsChromeEvent) + Send + Sync>;
 
 /// Handler for structured key input targeted at a native panel.

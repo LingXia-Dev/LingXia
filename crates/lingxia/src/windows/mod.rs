@@ -36,3 +36,13 @@ pub fn open_home_app(appid: &str) -> Result<(), String> {
 pub fn set_app_icon_from_path(path: &Path) -> Result<(), String> {
     lingxia_webview::platform::windows::set_app_icon_from_path(path).map_err(|err| err.to_string())
 }
+
+/// Overrides the initial outer size, in pixels, of webview host windows
+/// created after this call — in particular the main window of the host app.
+///
+/// Call before [`init`] (the first window is created when the home lxapp
+/// opens). The first call wins; later calls and non-positive dimensions are
+/// ignored. Without an override windows open at the built-in 1024x768.
+pub fn set_default_window_size(width: i32, height: i32) {
+    lingxia_webview::platform::windows::set_default_window_size(width, height);
+}

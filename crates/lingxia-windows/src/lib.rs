@@ -27,6 +27,7 @@ pub struct WindowsApp {
     pub(crate) app_identifier: String,
     pub(crate) product_name: String,
     pub(crate) icon_path: Option<PathBuf>,
+    pub(crate) window_size: Option<(i32, i32)>,
 }
 
 impl WindowsApp {
@@ -47,6 +48,7 @@ impl WindowsApp {
             app_identifier: "app.lingxia.windows".to_string(),
             product_name: "LingXia".to_string(),
             icon_path: None,
+            window_size: None,
         }
     }
 
@@ -92,6 +94,17 @@ impl WindowsApp {
         self.icon_path = Some(icon_path.into());
         self
     }
+
+    /// Sets the initial outer size, in pixels, of the app's webview windows
+    /// — in particular the main window opened for the home lxapp.
+    ///
+    /// When unset, windows open at the runtime default (1024x768). Users can
+    /// still resize the window afterwards; non-positive dimensions are
+    /// ignored by the runtime.
+    pub fn with_window_size(mut self, width: i32, height: i32) -> Self {
+        self.window_size = Some((width, height));
+        self
+    }
 }
 
 /// Errors surfaced while bootstrapping the Windows host.
@@ -127,6 +140,9 @@ pub type Result<T> = std::result::Result<T, WindowsHostError>;
 pub fn init(app: WindowsApp) -> Result<String> {
     let asset_dir = app.asset_dir.clone();
     let icon_path = app.icon_path.clone();
+    if let Some((width, height)) = app.window_size {
+        lingxia::windows::set_default_window_size(width, height);
+    }
     let platform = lingxia::windows::Platform::with_assets(
         app.data_dir,
         app.cache_dir,

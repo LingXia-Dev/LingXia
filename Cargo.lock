@@ -3162,6 +3162,7 @@ version = "0.9.0"
 dependencies = [
  "lingxia",
  "lingxia-devtool",
+ "lingxia-windows",
 ]
 
 [[package]]

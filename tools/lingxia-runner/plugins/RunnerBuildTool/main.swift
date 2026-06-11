@@ -276,8 +276,12 @@ struct RunnerBuildTool {
         let targetTriple = try resolveRustTargetTriple(baseEnvironment: baseEnvironment)
         let macosDeploymentTarget = "12.0"
 
+        // `--lib` selects the staticlib target explicitly: the package also
+        // declares the Windows runner bin, and `cargo rustc --crate-type`
+        // refuses to run against more than one target.
         var args = [
             "rustc",
+            "--lib",
             "--crate-type=staticlib",
             "--target",
             targetTriple,
@@ -285,7 +289,7 @@ struct RunnerBuildTool {
             "lingxia-runner-lib",
         ]
         if buildConfig == "release" {
-            args.insert("--release", at: 4)
+            args.insert("--release", at: 5)
         }
 
         let libDir = pathJoin(projectRoot, "target/\(targetTriple)/\(buildConfig)")

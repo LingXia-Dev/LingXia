@@ -90,7 +90,7 @@ fi
 echo "==> Building Runner native staticlib ($RUST_TARGET)"
 (
   cd "$ROOT_DIR"
-  "$CARGO_BIN" build -p lingxia-runner-lib --target "$RUST_TARGET"
+  "$CARGO_BIN" build -p lingxia-runner-lib --lib --target "$RUST_TARGET"
 )
 
 echo "==> Building Runner"

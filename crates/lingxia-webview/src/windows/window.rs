@@ -1103,6 +1103,7 @@ pub(crate) fn create_hidden_window(webtag: &WebTag) -> StdResult<HWND> {
         // extended 1px into the client area after creation. Without a
         // renderer the standard OS frame is left untouched.
         let window_style = WS_OVERLAPPEDWINDOW;
+        let (default_width, default_height) = default_window_size();
         let result = WindowsAndMessaging::CreateWindowExW(
             WINDOW_EX_STYLE::default(),
             w!("LingXiaHiddenWebViewHost"),
@@ -1110,8 +1111,8 @@ pub(crate) fn create_hidden_window(webtag: &WebTag) -> StdResult<HWND> {
             window_style,
             WindowsAndMessaging::CW_USEDEFAULT,
             WindowsAndMessaging::CW_USEDEFAULT,
-            1024,
-            768,
+            default_width,
+            default_height,
             None,
             None,
             LibraryLoader::GetModuleHandleW(None)

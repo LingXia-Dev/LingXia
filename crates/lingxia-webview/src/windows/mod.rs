@@ -93,6 +93,7 @@ pub use api::{
     clear_native_panel_input_handler,
     hide_native_panel, hide_panel, hide_webview_window, invalidate_native_panel, is_panel_visible,
     post_to_window_thread, present_webview_as_group_main, restore_presented_group_main,
+    set_default_window_size,
     set_native_panel_input_handler, set_native_panel_maximized, set_native_panel_tabs,
     set_webview_chrome_event_handler, set_webview_close_handler, set_webview_user_data_dir,
     set_webview_window_layout,

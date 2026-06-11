@@ -24,6 +24,12 @@ const RUNNER_LXAPP_PATH_ENV: &str = "LINGXIA_LXAPP_PATH";
 const RUNNER_DEV_WS_URL_ENV: &str = "LINGXIA_DEV_WS_URL";
 const REQUIRED_RUNNER_VERSION: &str = env!("CARGO_PKG_VERSION");
 
+/// Windows runner: bin target inside the runner-lib package, built from the
+/// LingXia workspace on demand (see `build_windows_runner`).
+const RUNNER_WINDOWS_PACKAGE: &str = "lingxia-runner-lib";
+const RUNNER_WINDOWS_BIN_NAME: &str = "lingxia-runner";
+const RUNNER_WINDOWS_PRODUCT_NAME: &str = "LingXia Runner";
+
 fn dev_native_features(config: &LingXiaConfig, platform: &str) -> Vec<String> {
     let mut features = config.native_features_for_platform(platform);
     if !features.iter().any(|feature| feature == "devtools") {
@@ -731,18 +737,14 @@ fn execute_windows(ctx: DevContext) -> Result<()> {
 }
 
 fn execute_lxapp_dev(project_root: PathBuf, options: DevExecuteOptions) -> Result<()> {
-    platform::apple::ensure_macos().map_err(|e| {
-        anyhow!(
-            "{}\nTip: `lingxia dev` for lxapp currently only supports macOS Runner.",
-            e
-        )
-    })?;
+    let runner_host = LxAppRunnerHost::detect()?;
 
     if let Some(platform) = options.platform_arg.as_deref() {
         let parsed = platform.parse::<PlatformType>()?;
-        if parsed != PlatformType::MacOs {
+        if parsed != runner_host.platform_type() {
             return Err(anyhow!(
-                "`lingxia dev` for lxapp currently only supports macOS Runner.\nDo not pass `--platform {}`.",
+                "`lingxia dev` for lxapp launches the local {} Runner.\nDo not pass `--platform {}`.",
+                runner_host.display_name(),
                 parsed.as_str()
             ));
         }
@@ -762,7 +764,7 @@ fn execute_lxapp_dev(project_root: PathBuf, options: DevExecuteOptions) -> Resul
 
     if options.macos_arch.is_some() {
         return Err(anyhow!(
-            "`--macos-arch` is not supported for lxapp dev.\nRunner always launches locally on the current Mac."
+            "`--macos-arch` is not supported for lxapp dev.\nRunner always launches locally on the current machine."
         ));
     }
 
@@ -800,7 +802,10 @@ fn execute_lxapp_dev(project_root: PathBuf, options: DevExecuteOptions) -> Resul
 
         println!();
         println!("{}", "Step 2/2: Launching Runner...".bold());
-        let mut runner = launch_runner_for_lxapp(&project_root, &ws_url)?;
+        let mut runner = match runner_host {
+            LxAppRunnerHost::MacOs => launch_runner_for_lxapp(&project_root, &ws_url)?,
+            LxAppRunnerHost::Windows => launch_windows_runner_for_lxapp(&project_root, &ws_url)?,
+        };
 
         println!();
         println!("{}", "Dev workflow started.".green().bold());
@@ -837,6 +842,41 @@ fn execute_lxapp_dev(project_root: PathBuf, options: DevExecuteOptions) -> Resul
 
 fn is_standalone_lxapp_project(project_root: &Path) -> bool {
     project_root.join("lxapp.json").exists() && !has_host_config(project_root)
+}
+
+/// Local desktop host that runs the standalone-lxapp dev Runner.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LxAppRunnerHost {
+    MacOs,
+    Windows,
+}
+
+impl LxAppRunnerHost {
+    fn detect() -> Result<Self> {
+        if cfg!(target_os = "macos") {
+            Ok(Self::MacOs)
+        } else if cfg!(target_os = "windows") {
+            Ok(Self::Windows)
+        } else {
+            Err(anyhow!(
+                "`lingxia dev` for a standalone lxapp project requires macOS or Windows."
+            ))
+        }
+    }
+
+    fn platform_type(self) -> PlatformType {
+        match self {
+            Self::MacOs => PlatformType::MacOs,
+            Self::Windows => PlatformType::Windows,
+        }
+    }
+
+    fn display_name(self) -> &'static str {
+        match self {
+            Self::MacOs => "macOS",
+            Self::Windows => "Windows",
+        }
+    }
 }
 
 fn ensure_valid_lxapp_dir(path: &Path) -> Result<()> {
@@ -883,6 +923,180 @@ fn launch_runner_for_lxapp(lxapp_path: &Path, ws_url: &str) -> Result<Child> {
     })?;
 
     println!("{} Launched {}", "[runner]".cyan(), app_path.display());
+    Ok(child)
+}
+
+/// Identity of the lxapp the Windows runner hosts, read from the built
+/// bundle manifest (`dist/lxapp.json` preferred, project `lxapp.json`
+/// otherwise — same resolution as the runtime's dev bundle source).
+struct WindowsRunnerLxAppIdentity {
+    app_id: String,
+    version: String,
+}
+
+fn read_windows_runner_lxapp_identity(lxapp_path: &Path) -> Result<WindowsRunnerLxAppIdentity> {
+    let dist_manifest = lxapp_path.join("dist").join("lxapp.json");
+    let manifest_path = if dist_manifest.exists() {
+        dist_manifest
+    } else {
+        lxapp_path.join("lxapp.json")
+    };
+    let content = std::fs::read_to_string(&manifest_path)
+        .with_context(|| format!("Failed to read {}", manifest_path.display()))?;
+    let manifest: serde_json::Value = serde_json::from_str(&content)
+        .with_context(|| format!("Invalid JSON in {}", manifest_path.display()))?;
+    let field = |name: &str| -> Result<String> {
+        manifest
+            .get(name)
+            .and_then(serde_json::Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned)
+            .ok_or_else(|| {
+                anyhow!(
+                    "Missing or empty \"{name}\" in {}",
+                    manifest_path.display()
+                )
+            })
+    };
+    Ok(WindowsRunnerLxAppIdentity {
+        app_id: field("appId")?,
+        version: field("version")?,
+    })
+}
+
+/// Prepares the Windows runner's host asset directory under
+/// `.lingxia/runner/windows-assets`: an `app.json` with the lxapp as home
+/// app and the embedded `bridge-runtime.js`. The lxapp bundle itself is not
+/// copied — the runner serves it live from the project's `dist/` via
+/// `LINGXIA_LXAPP_PATH` (same dev bundle source as the macOS Runner).
+fn prepare_windows_runner_assets(
+    lxapp_path: &Path,
+    identity: &WindowsRunnerLxAppIdentity,
+    ws_url: &str,
+) -> Result<PathBuf> {
+    let assets_dir = log_store::dev_dir(lxapp_path)
+        .join("runner")
+        .join("windows-assets");
+    std::fs::create_dir_all(&assets_dir)
+        .with_context(|| format!("Failed to create {}", assets_dir.display()))?;
+
+    let app_json = serde_json::json!({
+        "productName": RUNNER_WINDOWS_PRODUCT_NAME,
+        "productVersion": REQUIRED_RUNNER_VERSION,
+        "envVersion": "developer",
+        "homeAppId": identity.app_id,
+        "homeAppVersion": identity.version,
+        "devWsUrl": ws_url,
+    });
+    let app_json_path = assets_dir.join("app.json");
+    std::fs::write(&app_json_path, serde_json::to_vec_pretty(&app_json)?)
+        .with_context(|| format!("Failed to write {}", app_json_path.display()))?;
+
+    let runtime = crate::runtime::embedded_runtime(crate::runtime::RuntimeEcmaTarget::Es2020);
+    let runtime_path = assets_dir.join("bridge-runtime.js");
+    std::fs::write(&runtime_path, runtime.bytes)
+        .with_context(|| format!("Failed to write {}", runtime_path.display()))?;
+
+    Ok(assets_dir)
+}
+
+/// LingXia workspace the Windows runner sources are built from. The CLI is
+/// compiled inside that workspace, so `CARGO_MANIFEST_DIR` (= `<workspace>/
+/// tools/lingxia-cli` at build time) anchors the lookup.
+fn windows_runner_workspace_root() -> Result<PathBuf> {
+    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let workspace_root = manifest_dir
+        .ancestors()
+        .nth(2)
+        .ok_or_else(|| anyhow!("Failed to resolve the LingXia workspace root"))?;
+    let runner_manifest = workspace_root
+        .join("tools")
+        .join("lingxia-runner")
+        .join("runner-lib")
+        .join("Cargo.toml");
+    if !runner_manifest.exists() {
+        return Err(anyhow!(
+            "LingXia Runner sources not found: {}\n\
+             The Windows runner is built from the LingXia workspace this CLI was compiled in;\n\
+             keep that checkout available (or rebuild the CLI from your checkout).",
+            runner_manifest.display()
+        ));
+    }
+    Ok(workspace_root.to_path_buf())
+}
+
+/// Builds the Windows runner bin in release mode from the LingXia workspace
+/// and returns the executable path. Respects `CARGO_TARGET_DIR` (and the
+/// workspace's `.cargo/config.toml`) through `resolve_cargo_target_dir`.
+fn build_windows_runner() -> Result<PathBuf> {
+    let workspace_root = windows_runner_workspace_root()?;
+    let cargo_target_dir = crate::platform::resolve_cargo_target_dir(&workspace_root);
+
+    println!(
+        "{} Building Windows Runner from {}",
+        "[runner]".cyan(),
+        workspace_root.display()
+    );
+    let status = Command::new("cargo")
+        .current_dir(&workspace_root)
+        .env("CARGO_TARGET_DIR", &cargo_target_dir)
+        .args([
+            "build",
+            "--release",
+            "--package",
+            RUNNER_WINDOWS_PACKAGE,
+            "--bin",
+            RUNNER_WINDOWS_BIN_NAME,
+        ])
+        .status()
+        .context("Failed to execute cargo build for the Windows Runner")?;
+    if !status.success() {
+        return Err(anyhow!("Windows Runner cargo build failed"));
+    }
+
+    let exe_path = cargo_target_dir
+        .join("release")
+        .join(format!("{RUNNER_WINDOWS_BIN_NAME}.exe"));
+    if !exe_path.exists() {
+        return Err(anyhow!(
+            "Windows Runner executable not found after build: {}",
+            exe_path.display()
+        ));
+    }
+    Ok(exe_path)
+}
+
+/// Windows counterpart of `launch_runner_for_lxapp`: prepares the runner
+/// asset layout, builds the runner bin, and spawns it against the dev
+/// server. Env contract: `LINGXIA_ASSET_DIR` (host assets),
+/// `LINGXIA_LXAPP_PATH` (live lxapp bundle), `LINGXIA_DEV_WS_URL`
+/// (devtool bridge), `LINGXIA_APP_ID` / `LINGXIA_PRODUCT_NAME` (identity
+/// and state-root scoping).
+fn launch_windows_runner_for_lxapp(lxapp_path: &Path, ws_url: &str) -> Result<Child> {
+    ensure_valid_lxapp_dir(lxapp_path)?;
+    let identity = read_windows_runner_lxapp_identity(lxapp_path)?;
+    let assets_dir = prepare_windows_runner_assets(lxapp_path, &identity, ws_url)?;
+    let exe_path = build_windows_runner()?;
+
+    let mut command = Command::new(&exe_path);
+    command.env(RUNNER_LXAPP_PATH_ENV, lxapp_path);
+    command.env(RUNNER_DEV_WS_URL_ENV, ws_url);
+    command.env("LINGXIA_ASSET_DIR", &assets_dir);
+    command.env("LINGXIA_APP_ID", &identity.app_id);
+    command.env("LINGXIA_PRODUCT_NAME", RUNNER_WINDOWS_PRODUCT_NAME);
+    command.stdin(Stdio::null());
+    command.stdout(Stdio::inherit());
+    command.stderr(Stdio::inherit());
+
+    let child = command.spawn().with_context(|| {
+        format!(
+            "Failed to launch Windows Runner executable: {}",
+            exe_path.display()
+        )
+    })?;
+
+    println!("{} Launched {}", "[runner]".cyan(), exe_path.display());
     Ok(child)
 }
 
