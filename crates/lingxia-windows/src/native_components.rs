@@ -260,10 +260,17 @@ struct VideoComponent {
 struct PageView {
     scroll_x: f64,
     scroll_y: f64,
-    /// The page is in the foreground; hidden pages (another page pushed on
-    /// top) keep their component overlays hidden and playback paused.
-    visible: bool,
     target: WindowsWebViewContentWindow,
+}
+
+/// A page's overlays show only while it is its app's current page.
+/// Derived live from the page stack on every layout pass — a cached flag
+/// wedges as soon as any navigation path forgets to dispatch a lifecycle
+/// event (the pause/resume hooks remain event-driven).
+fn page_is_foreground(context: &PageContext) -> bool {
+    lxapp::try_get(&context.appid)
+        .and_then(|app| app.peek_current_page())
+        .is_some_and(|current| current == context.path)
 }
 
 static COMPONENTS: OnceLock<Mutex<HashMap<String, ComponentEntry>>> = OnceLock::new();
@@ -320,7 +327,6 @@ fn handle_message(context: PageContext, target: Option<WindowsWebViewContentWind
         let view = views.entry(context.page_key.clone()).or_insert(PageView {
             scroll_x: 0.0,
             scroll_y: 0.0,
-            visible: true,
             target,
         });
         view.target = target;
@@ -523,16 +529,6 @@ fn handle_page_scroll(context: &PageContext, message: &Value) {
 /// manager's inactive/active handling: hiding pauses a playing video
 /// immediately and remembers to resume it when the page returns.
 fn set_page_components_visible(page_key: &str, visible: bool) {
-    {
-        let mut views = page_views();
-        let Some(view) = views.get_mut(page_key) else {
-            return;
-        };
-        if view.visible == visible {
-            return;
-        }
-        view.visible = visible;
-    }
     let targets: Vec<(String, isize)> = components()
         .iter()
         .filter(|(_, entry)| entry.context.page_key == page_key)
@@ -1169,7 +1165,7 @@ impl VideoLayout {
 }
 
 fn apply_layout(key: &str) {
-    let (container, edit, doc_rect, page_key, font_size, multiline, corner_radius, video) = {
+    let (container, edit, doc_rect, context, font_size, multiline, corner_radius, video) = {
         let components = components();
         let Some(entry) = components.get(key) else {
             return;
@@ -1178,7 +1174,7 @@ fn apply_layout(key: &str) {
             entry.container,
             entry.edit,
             entry.doc_rect,
-            entry.context.page_key.clone(),
+            entry.context.clone(),
             entry.state.font_size.unwrap_or(DEFAULT_FONT_SIZE),
             entry.multiline,
             entry.state.corner_radius.unwrap_or(0.0),
@@ -1195,11 +1191,11 @@ fn apply_layout(key: &str) {
             }),
         )
     };
-    let Some(view) = page_views().get(&page_key).copied() else {
+    let Some(view) = page_views().get(&context.page_key).copied() else {
         return;
     };
     let container_hwnd = HWND(container as *mut _);
-    if !view.visible || video.as_ref().is_some_and(|video| video.stopped) {
+    if !page_is_foreground(&context) || video.as_ref().is_some_and(|video| video.stopped) {
         // Background pages keep their overlays hidden; a stopped video
         // hides too, letting the element's DOM placeholder/poster show.
         unsafe {
