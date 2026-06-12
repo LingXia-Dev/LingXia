@@ -42,17 +42,17 @@ use lingxia_webview::platform::windows::{
     WindowsWebViewContentWindow, post_to_window_thread, webview_content_window,
 };
 use serde_json::{Value, json};
-use windows::Win32::Foundation::{COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, WPARAM};
+use windows::Win32::Foundation::{COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
-    CLEARTYPE_QUALITY, CLIP_DEFAULT_PRECIS, COLOR_WINDOW, CombineRgn, CreateFontW, CreateRectRgn,
-    CreateRoundRectRgn, DEFAULT_CHARSET, DEFAULT_PITCH, DeleteObject, FF_SWISS, GetStockObject,
-    HBRUSH, HDC, HGDIOBJ, InvalidateRect, OUT_DEFAULT_PRECIS, RGN_AND, SetBkColor, SetTextColor,
-    SetWindowRgn, WHITE_BRUSH,
+    BLACK_BRUSH, CLEARTYPE_QUALITY, CLIP_DEFAULT_PRECIS, COLOR_WINDOW, CombineRgn, CreateFontW,
+    CreateRectRgn, CreateRoundRectRgn, DEFAULT_CHARSET, DEFAULT_PITCH, DeleteObject, FF_SWISS,
+    GetStockObject, HBRUSH, HDC, HGDIOBJ, InvalidateRect, OUT_DEFAULT_PRECIS, RGN_AND, SetBkColor,
+    SetTextColor, SetWindowRgn, WHITE_BRUSH,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::Threading::GetCurrentThreadId;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    EnableWindow, GetFocus, GetKeyState, SetFocus, VK_CONTROL, VK_RETURN,
+    EnableWindow, GetFocus, GetKeyState, SetFocus, VK_CONTROL, VK_ESCAPE, VK_RETURN,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     self, ES_AUTOHSCROLL, ES_AUTOVSCROLL, ES_MULTILINE, ES_PASSWORD, ES_WANTRETURN, GW_CHILD,
@@ -222,6 +222,14 @@ struct ComponentEntry {
 
 struct VideoComponent {
     player: Arc<VideoPlayer>,
+    /// Inner child window MFPlay renders into (and subclasses for its
+    /// repaints). Hidden while stopped so the retained last frame never
+    /// shows.
+    surface: isize,
+    /// No media is presented (initial state, after `stop()`, on error).
+    /// The whole container hides so the element's DOM placeholder/poster
+    /// shows through; playing reveals it again.
+    stopped: bool,
     /// Covers the whole content area instead of its document rect
     /// (`requestFullScreen` from the video context).
     fullscreen: bool,
@@ -818,8 +826,37 @@ fn mount_video_on_ui(
     props: ComponentProps,
 ) {
     let key = component_key(&context.page_key, &component_id);
-    let sink = video_event_sink(key.clone(), container.0 as isize);
-    let Some(player) = VideoPlayer::new(container, sink) else {
+    let surface = unsafe {
+        WindowsAndMessaging::CreateWindowExW(
+            WINDOW_EX_STYLE::default(),
+            video_surface_class(),
+            PCWSTR::null(),
+            WINDOW_STYLE(
+                WindowsAndMessaging::WS_CHILD.0
+                    | WindowsAndMessaging::WS_VISIBLE.0
+                    | WindowsAndMessaging::WS_CLIPSIBLINGS.0,
+            ),
+            0,
+            0,
+            16,
+            16,
+            Some(container),
+            None,
+            GetModuleHandleW(None)
+                .ok()
+                .map(|module| HINSTANCE(module.0)),
+            None,
+        )
+    };
+    let Ok(surface) = surface else {
+        log::warn!("failed to create video surface for {component_id}");
+        unsafe {
+            let _ = WindowsAndMessaging::DestroyWindow(container);
+        }
+        return;
+    };
+    let sink = video_event_sink(key.clone(), container.0 as isize, surface.0 as isize);
+    let Some(player) = VideoPlayer::new(surface, sink) else {
         log::warn!("failed to create video player for {component_id}");
         unsafe {
             let _ = WindowsAndMessaging::DestroyWindow(container);
@@ -837,6 +874,8 @@ fn mount_video_on_ui(
         font: 0,
         video: Some(VideoComponent {
             player: Arc::new(player),
+            surface: surface.0 as isize,
+            stopped: true,
             fullscreen: false,
             playing: false,
             resume_on_show: false,
@@ -949,6 +988,8 @@ fn container_class() -> PCWSTR {
     static REGISTERED: OnceLock<()> = OnceLock::new();
     REGISTERED.get_or_init(|| {
         let class = WNDCLASSW {
+            // Double clicks toggle video fullscreen.
+            style: WindowsAndMessaging::CS_DBLCLKS,
             lpfnWndProc: Some(container_proc),
             hInstance: unsafe { GetModuleHandleW(None) }
                 .map(|module| HINSTANCE(module.0))
@@ -962,6 +1003,85 @@ fn container_class() -> PCWSTR {
         }
     });
     w!("LingXiaNativeComponentHost")
+}
+
+/// Registers (once) and returns the video-surface window class: the inner
+/// child MFPlay renders into. Black background (the element's placeholder
+/// color), double clicks toggling fullscreen and Escape leaving it.
+fn video_surface_class() -> PCWSTR {
+    static REGISTERED: OnceLock<()> = OnceLock::new();
+    REGISTERED.get_or_init(|| {
+        let class = WNDCLASSW {
+            style: WindowsAndMessaging::CS_DBLCLKS,
+            lpfnWndProc: Some(video_surface_proc),
+            hInstance: unsafe { GetModuleHandleW(None) }
+                .map(|module| HINSTANCE(module.0))
+                .unwrap_or_default(),
+            lpszClassName: w!("LingXiaVideoSurface"),
+            hbrBackground: HBRUSH(unsafe { GetStockObject(BLACK_BRUSH) }.0),
+            ..Default::default()
+        };
+        unsafe {
+            WindowsAndMessaging::RegisterClassW(&class);
+        }
+    });
+    w!("LingXiaVideoSurface")
+}
+
+fn component_key_for_surface(surface: HWND) -> Option<String> {
+    let container = unsafe { WindowsAndMessaging::GetParent(surface) }.ok()?;
+    component_key_for_container(container)
+}
+
+/// Window procedure of the video surface (MFPlay subclasses it for its
+/// repaints and forwards what it does not handle here).
+unsafe extern "system" fn video_surface_proc(
+    hwnd: HWND,
+    msg: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+) -> LRESULT {
+    match msg {
+        // Take focus so Escape reaches the surface.
+        WindowsAndMessaging::WM_LBUTTONDOWN => {
+            unsafe {
+                let _ = SetFocus(Some(hwnd));
+            }
+            LRESULT(0)
+        }
+        WindowsAndMessaging::WM_LBUTTONDBLCLK => {
+            if let Some(key) = component_key_for_surface(hwnd) {
+                let fullscreen = {
+                    let components = components();
+                    components
+                        .get(&key)
+                        .and_then(|entry| entry.video.as_ref())
+                        .map(|video| video.fullscreen)
+                };
+                if let Some(fullscreen) = fullscreen {
+                    set_video_fullscreen(&key, !fullscreen);
+                }
+            }
+            LRESULT(0)
+        }
+        WindowsAndMessaging::WM_KEYDOWN if wparam.0 == VK_ESCAPE.0 as usize => {
+            if let Some(key) = component_key_for_surface(hwnd) {
+                let fullscreen = {
+                    let components = components();
+                    components
+                        .get(&key)
+                        .and_then(|entry| entry.video.as_ref())
+                        .is_some_and(|video| video.fullscreen)
+                };
+                if fullscreen {
+                    set_video_fullscreen(&key, false);
+                    return LRESULT(0);
+                }
+            }
+            unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
+        }
+        _ => unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) },
+    }
 }
 
 /// Repositions a component's container over the webview content from its
@@ -983,19 +1103,24 @@ fn apply_layout(key: &str) {
             entry.state.font_size.unwrap_or(DEFAULT_FONT_SIZE),
             entry.multiline,
             entry.state.corner_radius.unwrap_or(0.0),
-            entry
-                .video
-                .as_ref()
-                .map(|video| (video.player.clone(), video.fullscreen)),
+            entry.video.as_ref().map(|video| {
+                (
+                    video.player.clone(),
+                    video.fullscreen,
+                    video.surface,
+                    video.stopped,
+                )
+            }),
         )
     };
     let Some(view) = page_views().get(&page_key).copied() else {
         return;
     };
     let container_hwnd = HWND(container as *mut _);
-    if !view.visible {
-        // The page is in the background; its overlays stay hidden until
-        // the page returns to the foreground.
+    let video_stopped = matches!(video, Some((_, _, _, true)));
+    if !view.visible || video_stopped {
+        // Background pages keep their overlays hidden; a stopped video
+        // hides too, letting the element's DOM placeholder/poster show.
         unsafe {
             let _ = WindowsAndMessaging::ShowWindow(container_hwnd, WindowsAndMessaging::SW_HIDE);
         }
@@ -1004,7 +1129,7 @@ fn apply_layout(key: &str) {
     let target = view.target;
     let scale = if target.scale > 0.0 { target.scale } else { 1.0 };
 
-    let fullscreen = matches!(video, Some((_, true)));
+    let fullscreen = matches!(video, Some((_, true, _, _)));
     let (x, y, width, height) = if fullscreen {
         // A fullscreen video covers the whole content area of its window.
         (
@@ -1091,7 +1216,15 @@ fn apply_layout(key: &str) {
 
         // The video surface fills the container; MFPlay just needs a
         // repaint nudge after the window moved or resized.
-        if let Some((player, _)) = video {
+        if let Some((player, _, surface, _)) = video {
+            let _ = WindowsAndMessaging::MoveWindow(
+                HWND(surface as *mut _),
+                0,
+                0,
+                width,
+                height,
+                true,
+            );
             player.update_video();
             return;
         }
@@ -1372,16 +1505,24 @@ fn apply_video_props(key: &str, props: &ComponentProps) {
 /// Builds the sink translating player transitions into the element's media
 /// events and driving the `timeupdate` timer. MFPlay delivers these on the
 /// UI thread that owns the container window.
-fn video_event_sink(key: String, container: isize) -> VideoEventSink {
+fn video_event_sink(key: String, container: isize, surface: isize) -> VideoEventSink {
     Arc::new(move |event| {
         let container_hwnd = HWND(container as *mut _);
+        let surface_hwnd = HWND(surface as *mut _);
         match event {
             VideoPlayerEvent::MediaLoaded { duration } => {
                 emit_event(&key, "loadedmetadata", json!({ "duration": duration }));
             }
             VideoPlayerEvent::Play => {
                 set_video_playing(&key, true);
+                set_video_stopped(&key, false);
                 unsafe {
+                    // Bring the surface back after a stop hid it; the
+                    // layout pass re-shows the container.
+                    let _ = WindowsAndMessaging::ShowWindow(
+                        surface_hwnd,
+                        WindowsAndMessaging::SW_SHOWNA,
+                    );
                     let _ = WindowsAndMessaging::SetTimer(
                         Some(container_hwnd),
                         VIDEO_TIMER_ID,
@@ -1389,6 +1530,7 @@ fn video_event_sink(key: String, container: isize) -> VideoEventSink {
                         None,
                     );
                 }
+                apply_layout(&key);
                 emit_event(&key, "play", json!({}));
                 emit_event(&key, "playing", json!({}));
             }
@@ -1399,7 +1541,21 @@ fn video_event_sink(key: String, container: isize) -> VideoEventSink {
             }
             VideoPlayerEvent::Stop => {
                 set_video_playing(&key, false);
+                set_video_stopped(&key, true);
                 stop_video_timer(container_hwnd);
+                // MFPlay's subclassed surface keeps blitting the released
+                // frame; hide the whole component so the element's DOM
+                // placeholder/poster shows instead.
+                unsafe {
+                    let _ = WindowsAndMessaging::ShowWindow(
+                        surface_hwnd,
+                        WindowsAndMessaging::SW_HIDE,
+                    );
+                    let _ = WindowsAndMessaging::ShowWindow(
+                        container_hwnd,
+                        WindowsAndMessaging::SW_HIDE,
+                    );
+                }
                 emit_event(&key, "stop", json!({}));
             }
             VideoPlayerEvent::Ended => {
@@ -1409,7 +1565,18 @@ fn video_event_sink(key: String, container: isize) -> VideoEventSink {
             }
             VideoPlayerEvent::Error { message } => {
                 set_video_playing(&key, false);
+                set_video_stopped(&key, true);
                 stop_video_timer(container_hwnd);
+                unsafe {
+                    let _ = WindowsAndMessaging::ShowWindow(
+                        surface_hwnd,
+                        WindowsAndMessaging::SW_HIDE,
+                    );
+                    let _ = WindowsAndMessaging::ShowWindow(
+                        container_hwnd,
+                        WindowsAndMessaging::SW_HIDE,
+                    );
+                }
                 log::warn!("native video component {key}: {message}");
                 emit_event(&key, "error", json!({ "errMsg": message }));
             }
@@ -1421,6 +1588,13 @@ fn set_video_playing(key: &str, playing: bool) {
     let mut components = components();
     if let Some(video) = components.get_mut(key).and_then(|entry| entry.video.as_mut()) {
         video.playing = playing;
+    }
+}
+
+fn set_video_stopped(key: &str, stopped: bool) {
+    let mut components = components();
+    if let Some(video) = components.get_mut(key).and_then(|entry| entry.video.as_mut()) {
+        video.stopped = stopped;
     }
 }
 
@@ -1506,20 +1680,31 @@ fn apply_video_command(key: &str, command: &VideoPlayerCommand) {
 }
 
 fn set_video_fullscreen(key: &str, fullscreen: bool) {
-    {
+    let (surface, parent) = {
         let mut components = components();
-        let Some(video) = components
-            .get_mut(key)
-            .and_then(|entry| entry.video.as_mut())
-        else {
+        let Some(entry) = components.get_mut(key) else {
+            return;
+        };
+        let Some(video) = entry.video.as_mut() else {
             return;
         };
         if video.fullscreen == fullscreen {
             return;
         }
         video.fullscreen = fullscreen;
-    }
+        (video.surface, entry.parent)
+    };
     apply_layout(key);
+    // The fullscreen surface covers the page's controls; focus it so
+    // Escape dismisses, and hand focus back when leaving.
+    unsafe {
+        let surface_hwnd = HWND(surface as *mut _);
+        if fullscreen {
+            let _ = SetFocus(Some(surface_hwnd));
+        } else if GetFocus() == surface_hwnd {
+            let _ = SetFocus(Some(HWND(parent as *mut _)));
+        }
+    }
     emit_event(key, "fullscreenchange", json!({ "fullScreen": fullscreen }));
 }
 
@@ -1676,6 +1861,14 @@ fn component_key_for_container(container: HWND) -> Option<String> {
     containers().get(&(container.0 as isize)).cloned()
 }
 
+fn container_is_video(container: HWND) -> bool {
+    let Some(key) = component_key_for_container(container) else {
+        return false;
+    };
+    let components = components();
+    components.get(&key).is_some_and(|entry| entry.video.is_some())
+}
+
 fn edit_caret_position(edit: HWND) -> u32 {
     let selection =
         unsafe { WindowsAndMessaging::SendMessageW(edit, EM_GETSEL, None, None) }.0 as u64;
@@ -1763,14 +1956,83 @@ unsafe extern "system" fn container_proc(
             on_video_timer(hwnd);
             LRESULT(0)
         }
-        // Clicks on the container padding focus the inner EDIT.
+        // A video container paints black (matching the element's
+        // placeholder and the letterbox bars) while its surface is hidden
+        // after a stop. Both the erase and the paint pass fill, so the
+        // class brush never shows through.
+        WindowsAndMessaging::WM_ERASEBKGND if container_is_video(hwnd) => {
+            let hdc = HDC(wparam.0 as *mut _);
+            let mut rect = RECT::default();
+            unsafe {
+                let _ = WindowsAndMessaging::GetClientRect(hwnd, &mut rect);
+                let _ = windows::Win32::Graphics::Gdi::FillRect(
+                    hdc,
+                    &rect,
+                    HBRUSH(GetStockObject(BLACK_BRUSH).0),
+                );
+            }
+            LRESULT(1)
+        }
+        WindowsAndMessaging::WM_PAINT if container_is_video(hwnd) => {
+            let mut paint = windows::Win32::Graphics::Gdi::PAINTSTRUCT::default();
+            unsafe {
+                let hdc = windows::Win32::Graphics::Gdi::BeginPaint(hwnd, &mut paint);
+                let mut rect = RECT::default();
+                let _ = WindowsAndMessaging::GetClientRect(hwnd, &mut rect);
+                let _ = windows::Win32::Graphics::Gdi::FillRect(
+                    hdc,
+                    &rect,
+                    HBRUSH(GetStockObject(BLACK_BRUSH).0),
+                );
+                let _ = windows::Win32::Graphics::Gdi::EndPaint(hwnd, &paint);
+            }
+            LRESULT(0)
+        }
+        // Clicks on the container padding focus the inner EDIT; clicking a
+        // video focuses the surface itself so Escape reaches it.
         WindowsAndMessaging::WM_LBUTTONDOWN => {
             unsafe {
-                if let Ok(edit) = WindowsAndMessaging::GetWindow(hwnd, GW_CHILD) {
+                if container_is_video(hwnd) {
+                    let _ = SetFocus(Some(hwnd));
+                } else if let Ok(edit) = WindowsAndMessaging::GetWindow(hwnd, GW_CHILD) {
                     let _ = SetFocus(Some(edit));
                 }
             }
             LRESULT(0)
+        }
+        // Double click toggles video fullscreen, Escape leaves it — the
+        // fullscreen surface covers the page's own controls, so it must be
+        // dismissible from the surface itself.
+        WindowsAndMessaging::WM_LBUTTONDBLCLK => {
+            if let Some(key) = component_key_for_container(hwnd) {
+                let fullscreen = {
+                    let components = components();
+                    components
+                        .get(&key)
+                        .and_then(|entry| entry.video.as_ref())
+                        .map(|video| video.fullscreen)
+                };
+                if let Some(fullscreen) = fullscreen {
+                    set_video_fullscreen(&key, !fullscreen);
+                }
+            }
+            LRESULT(0)
+        }
+        WindowsAndMessaging::WM_KEYDOWN if wparam.0 == VK_ESCAPE.0 as usize => {
+            if let Some(key) = component_key_for_container(hwnd) {
+                let fullscreen = {
+                    let components = components();
+                    components
+                        .get(&key)
+                        .and_then(|entry| entry.video.as_ref())
+                        .is_some_and(|video| video.fullscreen)
+                };
+                if fullscreen {
+                    set_video_fullscreen(&key, false);
+                    return LRESULT(0);
+                }
+            }
+            unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
         }
         WindowsAndMessaging::WM_NCDESTROY => {
             containers().remove(&(hwnd.0 as isize));

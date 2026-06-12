@@ -52,6 +52,11 @@ struct SharedState {
     pending_play: bool,
     /// Restart from the beginning instead of surfacing `Ended`.
     looping: bool,
+    /// Current source URL. `stop()` clears the media item (releasing the
+    /// decoder and the displayed frame); `play()` reopens from here.
+    source: Option<String>,
+    /// An async `CreateMediaItemFromURL` is in flight.
+    opening: bool,
 }
 
 pub(crate) struct VideoPlayer {
@@ -103,7 +108,29 @@ impl VideoPlayer {
     /// Starts opening `url` asynchronously; the item is attached (and any
     /// pending play issued) from the MFPlay callback.
     pub(crate) fn set_source(&self, url: &str) {
-        self.lock().media_ready = false;
+        {
+            let mut shared = self.lock();
+            shared.source = Some(url.to_string());
+            shared.media_ready = false;
+            shared.opening = false;
+        }
+        self.open_current_source();
+    }
+
+    /// Opens the stored source unless an open is already in flight.
+    fn open_current_source(&self) {
+        let url = {
+            let mut shared = self.lock();
+            if shared.opening {
+                return;
+            }
+            let Some(url) = shared.source.clone() else {
+                return;
+            };
+            shared.opening = true;
+            shared.media_ready = false;
+            url
+        };
         let wide: Vec<u16> = url.encode_utf16().chain(std::iter::once(0)).collect();
         unsafe {
             let _ = self.player.ClearMediaItem();
@@ -112,23 +139,38 @@ impl VideoPlayer {
                     .CreateMediaItemFromURL(PCWSTR(wide.as_ptr()), false, 0, None)
             {
                 log::warn!("failed to open video source {url}: {err}");
+                self.lock().opening = false;
             }
         }
     }
 
-    /// Plays now, or as soon as the media item finishes opening.
+    /// Plays now, or as soon as the media item finishes opening; after a
+    /// `stop()` the stored source is reopened from the start.
     pub(crate) fn play(&self) {
-        let ready = {
+        enum Action {
+            Direct,
+            Reopen,
+            Wait,
+        }
+        let action = {
             let mut shared = self.lock();
-            if !shared.media_ready {
+            if shared.media_ready {
+                Action::Direct
+            } else {
                 shared.pending_play = true;
+                if !shared.opening && shared.source.is_some() {
+                    Action::Reopen
+                } else {
+                    Action::Wait
+                }
             }
-            shared.media_ready
         };
-        if ready {
-            unsafe {
+        match action {
+            Action::Direct => unsafe {
                 let _ = self.player.Play();
-            }
+            },
+            Action::Reopen => self.open_current_source(),
+            Action::Wait => {}
         }
     }
 
@@ -139,10 +181,19 @@ impl VideoPlayer {
         }
     }
 
+    /// Stops playback and releases the media item: the decoder and the
+    /// displayed frame go away (the surface falls back to the container's
+    /// black background) and `play()` starts over from the source.
     pub(crate) fn stop(&self) {
-        self.lock().pending_play = false;
+        {
+            let mut shared = self.lock();
+            shared.pending_play = false;
+            shared.media_ready = false;
+            shared.opening = false;
+        }
         unsafe {
             let _ = self.player.Stop();
+            let _ = self.player.ClearMediaItem();
         }
     }
 
@@ -238,7 +289,11 @@ impl IMFPMediaPlayerCallback_Impl for PlayerCallback_Impl {
         let player: Option<&IMFPMediaPlayer> = (*header.pMediaPlayer).as_ref();
 
         if let Err(err) = header.hrEvent.ok() {
-            self.lock().pending_play = false;
+            {
+                let mut shared = self.lock();
+                shared.pending_play = false;
+                shared.opening = false;
+            }
             (self.sink)(VideoPlayerEvent::Error {
                 message: format!("playback failed: {err}"),
             });
@@ -264,6 +319,7 @@ impl IMFPMediaPlayerCallback_Impl for PlayerCallback_Impl {
                 let pending_play = {
                     let mut shared = self.lock();
                     shared.media_ready = true;
+                    shared.opening = false;
                     std::mem::take(&mut shared.pending_play)
                 };
                 let duration = player
