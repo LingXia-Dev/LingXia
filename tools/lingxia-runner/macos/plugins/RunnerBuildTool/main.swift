@@ -114,6 +114,7 @@ struct RunnerBuildTool {
             baseEnvironment: baseEnvironment
         )
         try syncBridgeRuntimeAsset(projectRoot: projectRoot, packageDir: options.packageDir)
+        try syncRunnerDevicesAsset(projectRoot: projectRoot, packageDir: options.packageDir)
 
         let stampPath = (options.outputDir as NSString).appendingPathComponent("prepared.stamp")
         let formatter = ISO8601DateFormatter()
@@ -333,6 +334,17 @@ struct RunnerBuildTool {
         )
         try copyIfChanged(from: source, to: destination)
         print("[runner-plugin] bridge-runtime.js updated: \(destination)")
+    }
+
+    private static func syncRunnerDevicesAsset(projectRoot: String, packageDir: String) throws {
+        let source = pathJoin(projectRoot, "tools/lingxia-runner/devices.json")
+        guard FileManager.default.fileExists(atPath: source) else {
+            throw RunnerBuildToolError.missingFile(source)
+        }
+
+        let destination = pathJoin(packageDir, "Sources/Resources/devices.json")
+        try copyIfChanged(from: source, to: destination)
+        print("[runner-plugin] devices.json updated: \(destination)")
     }
 
     private static func resolveRustTargetTriple(baseEnvironment: [String: String]) throws -> String {

@@ -16,8 +16,8 @@ Rust Windows host:
 
 - runtime bootstrap through `WindowsApp`, `init`, `run_message_loop`, and
   `quick_start`
-- app identity, asset, cache, data, locale, icon, and initial window-size
-  configuration
+- generated `app.json` host identity loading (`productName`, `windowsAppId`),
+  plus asset, cache, data, locale, icon, and initial window-size configuration
 - registration of embedded native components such as text input and video
   overlays
 - optional app-window device frame and app menu hooks exposed to host
@@ -51,6 +51,10 @@ fn main() -> lingxia_windows::Result<i32> {
     lingxia_windows::quick_start()
 }
 ```
+
+`quick_start` reads the generated `assets/app.json` when present, matching the
+Apple SDK pattern where host metadata comes from bundled config rather than
+from the application entry point.
 
 For custom paths and identity:
 

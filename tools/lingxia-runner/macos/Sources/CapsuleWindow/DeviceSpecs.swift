@@ -1,154 +1,104 @@
-import Foundation
 import CoreGraphics
+import Foundation
 
-/// Predefined device sizes for Runner window sizing
-public enum MobileDeviceSize: Equatable, CaseIterable {
-    // ── iPhone ──
-    case iPhoneSE           // 375 × 667
-    case iPhone13Mini       // 375 × 812
-    case iPhone13Pro        // 390 × 844
-    case iPhone15Pro        // 393 × 852
-    case iPhone11           // 414 × 896
-    case iPhone15ProMax     // 430 × 932
-    // ── iPad ──
-    case iPad               // 768 × 1024
-    case iPadPro            // 1024 × 1366
-    // ── Desktop ──
-    case desktop1280        // 1280 × 800
-    case desktop1440        // 1440 × 900
-    case desktop1920        // 1920 × 1080
+private struct RunnerDevicesManifest: Decodable {
+    let `default`: String
+    let devices: [MobileDeviceSize]
+}
 
-    // CaseIterable conformance
+/// Predefined device sizes for Runner window sizing.
+public struct MobileDeviceSize: Equatable, Hashable, Decodable, Sendable {
+    public let id: String
+    public let group: String
+    public let name: String
+    public let width: CGFloat
+    public let height: CGFloat
+    public let bezelWidth: CGFloat
+    public let outerRadius: CGFloat
+    public let screenRadius: CGFloat
+    public let notchSpec: iPhoneNotchSpec
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case group
+        case name
+        case width
+        case height
+        case bezelWidth
+        case outerRadius
+        case screenRadius
+        case notchSpec = "notch"
+    }
+
+    public static var iPhoneSE: MobileDeviceSize { device(id: "iphone-se") }
+    public static var iPhone13Mini: MobileDeviceSize { device(id: "iphone-13-mini") }
+    public static var iPhone13Pro: MobileDeviceSize { device(id: "iphone-13-pro") }
+    public static var iPhone15Pro: MobileDeviceSize { device(id: "iphone-15-pro") }
+    public static var iPhone11: MobileDeviceSize { device(id: "iphone-11") }
+    public static var iPhone15ProMax: MobileDeviceSize { device(id: "iphone-15-pro-max") }
+
     public static var allCases: [MobileDeviceSize] {
-        return [
-            .iPhoneSE, .iPhone13Mini, .iPhone13Pro, .iPhone15Pro, .iPhone11, .iPhone15ProMax,
-            .iPad, .iPadPro,
-            .desktop1280, .desktop1440, .desktop1920,
-        ]
+        manifest.devices
     }
 
-    /// True for iPad and desktop sizes — skips phone-shell UI overlay
+    public static var defaultDevice: MobileDeviceSize {
+        device(id: manifest.default)
+    }
+
+    /// True for iPad and desktop sizes; skips phone-shell UI overlay.
     public var isDesktop: Bool {
-        switch self {
-        case .iPad, .iPadPro, .desktop1280, .desktop1440, .desktop1920: return true
-        default: return false
-        }
+        group != "phone"
     }
 
-    public var width: CGFloat {
-        switch self {
-        case .iPhoneSE, .iPhone13Mini: return 375
-        case .iPhone13Pro: return 390
-        case .iPhone15Pro: return 393
-        case .iPhone11: return 414
-        case .iPhone15ProMax: return 430
-        case .iPad: return 768
-        case .iPadPro: return 1024
-        case .desktop1280: return 1280
-        case .desktop1440: return 1440
-        case .desktop1920: return 1920
-        }
-    }
-
-    public var height: CGFloat {
-        switch self {
-        case .iPhoneSE: return 667
-        case .iPhone13Mini: return 812
-        case .iPhone13Pro: return 844
-        case .iPhone15Pro: return 852
-        case .iPhone11: return 896
-        case .iPhone15ProMax: return 932
-        case .iPad: return 1024
-        case .iPadPro: return 1366
-        case .desktop1280: return 800
-        case .desktop1440: return 900
-        case .desktop1920: return 1080
-        }
-    }
-
-    /// Display name for UI
     public var displayName: String {
-        switch self {
-        case .iPhoneSE: return "iPhone SE"
-        case .iPhone13Mini: return "iPhone 13 mini"
-        case .iPhone13Pro: return "iPhone 13 Pro"
-        case .iPhone15Pro: return "iPhone 15 Pro"
-        case .iPhone11: return "iPhone 11"
-        case .iPhone15ProMax: return "iPhone 15 Pro Max"
-        case .iPad: return "iPad"
-        case .iPadPro: return "iPad Pro 12.9\""
-        case .desktop1280: return "Desktop 1280"
-        case .desktop1440: return "Desktop 1440"
-        case .desktop1920: return "Desktop 1920"
-        }
+        name
     }
 
-    /// Screen size description
     public var sizeDescription: String {
-        return "\(Int(width)) × \(Int(height))"
-    }
-
-    public var notchSpec: iPhoneNotchSpec {
-        switch self {
-        case .iPhone11: return .iPhone11
-        case .iPhone13Mini: return .iPhone13Mini
-        case .iPhone13Pro: return .iPhone13Pro
-        case .iPhone15Pro: return .iPhone15Pro
-        case .iPhone15ProMax: return .iPhone15ProMax
-        // No notch for SE, iPad, desktop
-        default: return .iPhoneSE
-        }
+        "\(Int(width)) x \(Int(height))"
     }
 
     public var size: CGSize {
-        return CGSize(width: width, height: height)
+        CGSize(width: width, height: height)
     }
+
+    private static func device(id: String) -> MobileDeviceSize {
+        guard let device = allCases.first(where: { $0.id == id }) else {
+            fatalError("Missing runner device preset: \(id)")
+        }
+        return device
+    }
+
+    private static let manifest: RunnerDevicesManifest = {
+        let url = Bundle.module.url(forResource: "devices", withExtension: "json")
+            ?? Bundle.module.url(
+                forResource: "devices",
+                withExtension: "json",
+                subdirectory: "Resources"
+            )
+        guard let url else {
+            fatalError("Missing runner devices.json resource")
+        }
+        do {
+            let data = try Data(contentsOf: url)
+            return try JSONDecoder().decode(RunnerDevicesManifest.self, from: data)
+        } catch {
+            fatalError("Invalid runner devices.json: \(error)")
+        }
+    }()
 }
 
-/// iPhone notch specifications for accurate system status bar simulation
-public enum iPhoneNotchSpec: Sendable {
-    case iPhone11           // Standard notch
-    case iPhone13Mini       // Standard notch
-    case iPhone13Pro        // Standard notch
-    case iPhone15Pro        // Dynamic Island
-    case iPhone15ProMax     // Dynamic Island (larger)
-    case iPhoneSE           // No notch
+/// iPhone notch specifications for accurate system status bar simulation.
+public struct iPhoneNotchSpec: Equatable, Hashable, Decodable, Sendable {
+    public let width: CGFloat
+    public let height: CGFloat
+    public let cornerRadius: CGFloat
+    public let statusBarHeight: CGFloat
 
-    public var width: CGFloat {
-        switch self {
-        case .iPhone11: return 210
-        case .iPhone13Mini: return 210
-        case .iPhone13Pro: return 210
-        case .iPhone15Pro, .iPhone15ProMax: return 126
-        case .iPhoneSE: return 0
-        }
-    }
-
-    public var height: CGFloat {
-        switch self {
-        case .iPhone11: return 30
-        case .iPhone13Mini: return 30
-        case .iPhone13Pro: return 30
-        case .iPhone15Pro, .iPhone15ProMax: return 37
-        case .iPhoneSE: return 0
-        }
-    }
-
-    public var cornerRadius: CGFloat {
-        switch self {
-        case .iPhone11, .iPhone13Mini, .iPhone13Pro: return 15
-        case .iPhone15Pro, .iPhone15ProMax: return 18.5
-        case .iPhoneSE: return 0
-        }
-    }
-
-    public var statusBarHeight: CGFloat {
-        switch self {
-        case .iPhone11: return 44
-        case .iPhone13Mini: return 44
-        case .iPhone13Pro: return 47
-        case .iPhone15Pro, .iPhone15ProMax: return 54
-        case .iPhoneSE: return 20
-        }
-    }
+    public static let iPhoneSE = iPhoneNotchSpec(
+        width: 0,
+        height: 0,
+        cornerRadius: 0,
+        statusBarHeight: 20
+    )
 }

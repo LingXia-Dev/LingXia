@@ -28,7 +28,7 @@ public class SimulatorToolbar: NSView {
     public var onCloseClicked: (() -> Void)?
     public var onInspectClicked: (() -> Void)?
 
-    private var currentDevice: MobileDeviceSize = .iPhoneSE
+    private var currentDevice: MobileDeviceSize = .defaultDevice
     
     // MARK: - Initialization
     

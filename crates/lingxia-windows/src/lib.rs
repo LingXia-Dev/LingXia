@@ -72,18 +72,29 @@ impl WindowsApp {
 
     /// Creates an app description from the process environment.
     ///
-    /// State directories live under `%LOCALAPPDATA%\<product name>`; the
-    /// `LINGXIA_ASSET_DIR`, `LINGXIA_APP_ID`, and `LINGXIA_PRODUCT_NAME`
-    /// environment variables override the asset directory, app identifier,
-    /// and product name.
+    /// State directories live under `%LOCALAPPDATA%\<product name>`. The
+    /// product name and Windows app identifier are read from the generated
+    /// `app.json` when present. `LINGXIA_ASSET_DIR`, `LINGXIA_APP_ID`, and
+    /// `LINGXIA_PRODUCT_NAME` remain host-tooling overrides.
     pub fn from_env() -> Self {
-        let root = state_root();
         let asset_dir = std::env::var_os("LINGXIA_ASSET_DIR")
             .map(PathBuf::from)
             .unwrap_or_else(default_asset_dir);
+        let config = GeneratedAppConfig::read_from_assets(&asset_dir);
+        let product_name = std::env::var("LINGXIA_PRODUCT_NAME")
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+            .or(config.product_name)
+            .unwrap_or_else(|| "LingXia".to_string());
+        let app_identifier = std::env::var("LINGXIA_APP_ID")
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+            .or(config.windows_app_id)
+            .unwrap_or_else(|| "app.lingxia.windows".to_string());
+        let root = state_root_for_product(&product_name);
         Self::new(root.join("data"), root.join("cache"), asset_dir)
-            .with_app_identifier(env_or("LINGXIA_APP_ID", "app.lingxia.windows"))
-            .with_product_name(env_or("LINGXIA_PRODUCT_NAME", "LingXia"))
+            .with_app_identifier(app_identifier)
+            .with_product_name(product_name)
     }
 
     /// Overrides the BCP-47 locale reported to the runtime (e.g. `en-US`).
@@ -253,11 +264,11 @@ pub fn quick_start() -> Result<i32> {
     Ok(run_message_loop())
 }
 
-fn state_root() -> PathBuf {
+fn state_root_for_product(product_name: &str) -> PathBuf {
     std::env::var_os("LOCALAPPDATA")
         .map(PathBuf::from)
         .unwrap_or_else(std::env::temp_dir)
-        .join(env_or("LINGXIA_PRODUCT_NAME", "LingXia"))
+        .join(product_name)
 }
 
 fn default_asset_dir() -> PathBuf {
@@ -308,9 +319,33 @@ fn default_locale() -> String {
     "en-US".to_string()
 }
 
-fn env_or(name: &str, fallback: &str) -> String {
-    std::env::var(name)
-        .ok()
-        .filter(|value| !value.trim().is_empty())
-        .unwrap_or_else(|| fallback.to_string())
+#[derive(Debug, Default)]
+struct GeneratedAppConfig {
+    product_name: Option<String>,
+    windows_app_id: Option<String>,
+}
+
+impl GeneratedAppConfig {
+    fn read_from_assets(asset_dir: &Path) -> Self {
+        let Ok(content) = std::fs::read_to_string(asset_dir.join("app.json")) else {
+            return Self::default();
+        };
+        let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) else {
+            return Self::default();
+        };
+        Self {
+            product_name: json
+                .get("productName")
+                .and_then(serde_json::Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string),
+            windows_app_id: json
+                .get("windowsAppId")
+                .and_then(serde_json::Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string),
+        }
+    }
 }

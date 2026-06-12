@@ -20,28 +20,16 @@ public class DeviceFrame: NSView {
 
         // Corner radius for device frame (outer)
         public static func frameCornerRadius(for device: MobileDeviceSize) -> CGFloat {
-            if device.isDesktop { return 8 }
-            switch device {
-            case .iPhoneSE: return 8
-            case .iPhone11, .iPhone13Mini, .iPhone13Pro: return 48
-            case .iPhone15Pro, .iPhone15ProMax: return 58
-            default: return 8
-            }
+            device.outerRadius
         }
 
         // Corner radius for screen (inner, slightly smaller)
         public static func screenCornerRadius(for device: MobileDeviceSize) -> CGFloat {
-            if device.isDesktop { return 6 }
-            switch device {
-            case .iPhoneSE: return 0
-            case .iPhone11, .iPhone13Mini, .iPhone13Pro: return 44
-            case .iPhone15Pro, .iPhone15ProMax: return 54
-            default: return 0
-            }
+            device.screenRadius
         }
 
         public static func bezelWidth(for device: MobileDeviceSize) -> CGFloat {
-            return device.isDesktop ? desktopBezelWidth : bezelWidth
+            return device.bezelWidth
         }
     }
     
@@ -49,7 +37,7 @@ public class DeviceFrame: NSView {
     
     private var deviceBezel: NSView!     // The black frame
     private var screenContainer: NSView!  // The screen area
-    private var deviceSize: MobileDeviceSize = .iPhoneSE
+    private var deviceSize: MobileDeviceSize = .defaultDevice
     
     /// The content view that should contain the phone screen content
     public var contentView: NSView? {

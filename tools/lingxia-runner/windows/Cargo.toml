@@ -12,3 +12,8 @@ path = "src/main.rs"
 lingxia = { workspace = true, features = ["standard"] }
 lingxia_devtool = { workspace = true, features = ["browser"] }
 lingxia-windows = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+
+[build-dependencies]
+lingxia-windows-build = { workspace = true }

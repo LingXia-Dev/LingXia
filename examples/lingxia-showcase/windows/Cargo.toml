@@ -9,15 +9,18 @@ path = "src/main.rs"
 
 [features]
 default = ["standard"]
-standard = ["showcase_host/standard", "lingxia-windows/standard"]
-shell-runtime = ["showcase_host/shell-runtime", "lingxia-windows/shell-runtime"]
-terminal-runtime = ["showcase_host/terminal-runtime", "lingxia-windows/terminal-runtime"]
-devtools = ["showcase_host/devtools"]
-webview-input = ["showcase_host/webview-input", "lingxia-windows/webview-input"]
+standard = ["host/standard", "lingxia-windows/standard"]
+shell-runtime = ["host/shell-runtime", "lingxia-windows/shell-runtime"]
+terminal-runtime = ["host/terminal-runtime", "lingxia-windows/terminal-runtime"]
+devtools = ["host/devtools"]
+webview-input = ["host/webview-input", "lingxia-windows/webview-input"]
 
 [dependencies]
 lingxia-windows = { path = "../../../crates/lingxia-windows", default-features = false }
-showcase_host = { package = "lingxia-example-host", path = "../lingxia-lib", default-features = false }
+host = { package = "lingxia-example-host", path = "../lingxia-lib", default-features = false }
+
+[build-dependencies]
+lingxia-windows-build = { path = "../../../crates/lingxia-windows-build" }
 
 [patch.crates-io]
 lingxia = { path = "../../../crates/lingxia" }

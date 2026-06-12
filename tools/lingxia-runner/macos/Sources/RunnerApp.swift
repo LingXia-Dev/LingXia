@@ -12,7 +12,7 @@ public class RunnerApp {
     private var windowController: CapsuleWindowController?
     private var controller: LxAppController?
     private var controllerEventsTask: Task<Void, Never>?
-    private(set) var deviceSize: MobileDeviceSize = .iPhoneSE
+    private(set) var deviceSize: MobileDeviceSize = .defaultDevice
     
     private init() {}
     

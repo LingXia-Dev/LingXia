@@ -31,14 +31,6 @@ pub(super) fn create_windows_project(
     vars.insert("WINDOWS_CRATE_NAME".to_string(), windows_crate_name);
     vars.insert("WINDOWS_EXECUTABLE_NAME".to_string(), config.name.clone());
     vars.insert(
-        "PRODUCT_NAME_RUST".to_string(),
-        rust_string(&config.product_name),
-    );
-    vars.insert(
-        "PACKAGE_ID_RUST".to_string(),
-        rust_string(&config.package_id),
-    );
-    vars.insert(
         "LINGXIA_VERSION".to_string(),
         versions.lingxia_crate.clone(),
     );
@@ -46,8 +38,4 @@ pub(super) fn create_windows_project(
     process_template_dir(&template_dir, &windows_dir, &vars)?;
     println!("  Created Windows host project: windows/");
     Ok(())
-}
-
-fn rust_string(value: &str) -> String {
-    format!("{value:?}")
 }

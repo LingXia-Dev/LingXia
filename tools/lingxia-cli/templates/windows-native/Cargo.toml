@@ -18,3 +18,6 @@ webview-input = ["host/webview-input", "lingxia-windows/webview-input"]
 [dependencies]
 lingxia-windows = { version = "{{LINGXIA_VERSION}}", default-features = false }
 host = { package = "{{HOST_CRATE_NAME}}", path = "../{{HOST_CRATE_NAME}}", default-features = false }
+
+[build-dependencies]
+lingxia-windows-build = { version = "{{LINGXIA_VERSION}}" }

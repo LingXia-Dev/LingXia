@@ -3171,6 +3171,9 @@ dependencies = [
  "lingxia",
  "lingxia-devtool",
  "lingxia-windows",
+ "lingxia-windows-build",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -3319,6 +3322,10 @@ dependencies = [
  "windows",
  "windows-core",
 ]
+
+[[package]]
+name = "lingxia-windows-build"
+version = "0.9.0"
 
 [[package]]
 name = "linux-raw-sys"

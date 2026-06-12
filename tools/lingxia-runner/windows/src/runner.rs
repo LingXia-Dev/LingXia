@@ -1,6 +1,6 @@
 use crate::device::{
-    DEFAULT_DEVICE, DEVICE_COMMAND_BASE, DEVICE_GROUP_STARTS, DEVICE_PRESETS,
-    OPEN_DEVTOOLS_COMMAND, device_label, frame_spec,
+    DEVICE_COMMAND_BASE, OPEN_DEVTOOLS_COMMAND, default_device_index, device_label, frame_spec,
+    is_device_group_start, presets,
 };
 use lingxia_windows::{WindowsAppMenu, WindowsAppMenuEntry, WindowsAppMenuItem};
 
@@ -28,8 +28,8 @@ pub(crate) fn run() -> lingxia_windows::Result<()> {
 
 fn runner_menus(active_device: Option<usize>) -> Vec<WindowsAppMenu> {
     let mut device_entries = Vec::new();
-    for (index, preset) in DEVICE_PRESETS.iter().enumerate() {
-        if DEVICE_GROUP_STARTS.contains(&index) {
+    for (index, preset) in presets().iter().enumerate() {
+        if is_device_group_start(index) {
             device_entries.push(WindowsAppMenuEntry::Separator);
         }
         device_entries.push(WindowsAppMenuEntry::Item(WindowsAppMenuItem {
@@ -75,14 +75,14 @@ fn install_runner_menu(home_app_id: String) {
         let Some(index) = command
             .checked_sub(DEVICE_COMMAND_BASE)
             .map(|index| index as usize)
-            .filter(|index| *index < DEVICE_PRESETS.len())
+            .filter(|index| *index < presets().len())
         else {
             return;
         };
         if let Err(err) = apply_device(&home_app_id, index) {
             eprintln!(
                 "lingxia-runner: failed to switch to {}: {err}",
-                DEVICE_PRESETS[index].name
+                presets()[index].name
             );
         }
     }));
@@ -94,7 +94,7 @@ fn apply_default_device(home_app_id: String) {
     std::thread::spawn(move || {
         for _ in 0..50 {
             std::thread::sleep(std::time::Duration::from_millis(200));
-            if apply_device(&home_app_id, DEFAULT_DEVICE).is_ok() {
+            if apply_device(&home_app_id, default_device_index()).is_ok() {
                 return;
             }
         }

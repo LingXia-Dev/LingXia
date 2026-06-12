@@ -34,7 +34,7 @@ private class RunnerKitDelegate: NSObject, NSApplicationDelegate {
             return .handled
         }
 
-        RunnerApp.shared.setDeviceSize(.iPhoneSE)
+        RunnerApp.shared.setDeviceSize(.defaultDevice)
         Task { @MainActor in
             _ = try? await controller.openHomeApp()
         }

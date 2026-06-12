@@ -37,7 +37,7 @@ public class CapsuleWindowController: NSWindowController, NSWindowDelegate {
 
     // MARK: - Device Configuration
 
-    private static var currentDeviceSize: MobileDeviceSize = .iPhoneSE
+    private static var currentDeviceSize: MobileDeviceSize = .defaultDevice
 
     // MARK: - UI Components - Simulator Shell
 

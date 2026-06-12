@@ -49,6 +49,19 @@ pub(super) fn build_app_json_from_config(
         };
         obj.insert("lingxiaId".to_string(), serde_json::json!(resolved_id));
     }
+    if let Some(windows_app_id) = config
+        .windows
+        .as_ref()
+        .and_then(|windows| windows.app_id.as_deref())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        let resolved_id = match resolved_env.effective_package_id_suffix() {
+            Some(suffix) => format!("{windows_app_id}{suffix}"),
+            None => windows_app_id.to_string(),
+        };
+        obj.insert("windowsAppId".to_string(), serde_json::json!(resolved_id));
+    }
     obj.insert(
         "envVersion".to_string(),
         serde_json::json!(resolved_env.version.as_str()),

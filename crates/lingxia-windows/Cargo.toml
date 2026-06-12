@@ -18,6 +18,7 @@ webview-input = ["lingxia/webview-input"]
 
 [dependencies]
 lingxia = { workspace = true, default-features = false }
+serde_json = { workspace = true }
 thiserror = { workspace = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]
@@ -26,7 +27,6 @@ lxapp = { workspace = true, default-features = false }
 lingxia-messaging = { workspace = true }
 lingxia-platform = { workspace = true }
 lingxia-webview = { workspace = true }
-serde_json = { workspace = true }
 # proc-macros: the `#[implement]` attribute (MFPlay callback in video_player).
 windows-core = { workspace = true, features = ["proc-macros"] }
 windows = { workspace = true, features = [
