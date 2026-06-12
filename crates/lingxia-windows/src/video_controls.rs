@@ -28,19 +28,19 @@ use windows::Win32::UI::WindowsAndMessaging::{
 };
 use windows::core::{PCWSTR, w};
 
-/// Bar metrics (device pixels; the bar is small enough that DPI-scaling
-/// can come later with the rest of the component chrome).
-const BAR_HEIGHT: i32 = 36;
-const BAR_RADIUS: f32 = 8.0;
-const BAR_MARGIN: i32 = 12;
-const BAR_MAX_WIDTH: i32 = 640;
+/// Bar metrics (device pixels), matching the macOS player's bottom bar:
+/// a full-width 48px strip over the video with a clear→black gradient
+/// scrim, controls vertically centered with 8px gaps.
+const BAR_HEIGHT: i32 = 48;
 const BAR_MIN_WIDTH: i32 = 220;
-const BAR_COLOR: (u32, u32, u32) = (0x20, 0x20, 0x20);
-const BAR_ALPHA: u32 = 230;
-const BUTTON_WIDTH: i32 = 30;
-const SIDE_PADDING: i32 = 10;
+/// Bottom-edge opacity of the gradient scrim (black at 0.6).
+const BAR_ALPHA: u32 = 153;
+const BUTTON_WIDTH: i32 = 28;
+const SIDE_PADDING: i32 = 8;
+const GAP: i32 = 8;
 const TRACK_HEIGHT: f32 = 4.0;
 const KNOB_RADIUS: f32 = 6.0;
+const VOLUME_WIDTH: i32 = 60;
 /// Hide delay while playing, mirroring the macOS bar.
 const AUTO_HIDE_MS: u32 = 2500;
 const AUTO_HIDE_TIMER_ID: usize = 0x4C58_4342; // "LXCB"
@@ -58,6 +58,8 @@ pub(crate) struct ControlsState {
     pub quality: Option<String>,
     /// Playback rate; `None` hides the rate slot.
     pub rate: Option<f64>,
+    /// Volume in `0.0..=1.0` (the bar's volume slider).
+    pub volume: f64,
 }
 
 /// User intents reported to the component host. Menu anchors are screen
@@ -67,8 +69,16 @@ pub(crate) enum ControlsAction {
     ToggleMute,
     ToggleFullscreen,
     Seek(f64),
+    SetVolume(f64),
     QualityMenu { anchor: (i32, i32) },
     RateMenu { anchor: (i32, i32) },
+}
+
+/// Active drag gesture on one of the sliders.
+#[derive(Clone, Copy)]
+enum Drag {
+    Seek(f64),
+    Volume(f64),
 }
 
 pub(crate) type ControlsActionSink = Arc<dyn Fn(ControlsAction) + Send + Sync>;
@@ -78,8 +88,8 @@ struct ControlsInner {
     sink: ControlsActionSink,
     state: ControlsState,
     width: i32,
-    /// Seek drag in progress: the ratio under the cursor.
-    drag_ratio: Option<f64>,
+    /// Slider drag in progress with the ratio under the cursor.
+    drag: Option<Drag>,
     /// Last live seek issued during the drag (throttling).
     last_live_seek: Option<std::time::Instant>,
     /// Last observed cursor position: every repaint under a resting
@@ -88,48 +98,52 @@ struct ControlsInner {
     last_mouse: Option<(i32, i32)>,
 }
 
-/// Element rects computed from the current width. Empty slots collapse
-/// to zero width.
+/// Element rects computed from the current width, in the macOS bar's
+/// order: play | progress | time | quality | rate | mute | volume |
+/// fullscreen. Empty slots collapse to zero width.
 struct BarLayout {
     play: (i32, i32),
-    time: (i32, i32),
     track: (i32, i32),
+    time: (i32, i32),
     quality: (i32, i32),
     rate: (i32, i32),
     mute: (i32, i32),
+    volume: (i32, i32),
     fullscreen: (i32, i32),
 }
 
-const QUALITY_WIDTH: i32 = 52;
-const RATE_WIDTH: i32 = 44;
+const QUALITY_WIDTH: i32 = 48;
+const RATE_WIDTH: i32 = 38;
 
 fn bar_layout(width: i32, time_width: i32, state: &ControlsState) -> BarLayout {
     let play = (SIDE_PADDING, SIDE_PADDING + BUTTON_WIDTH);
-    let time = (play.1, play.1 + time_width);
     let fullscreen = (width - SIDE_PADDING - BUTTON_WIDTH, width - SIDE_PADDING);
-    let mute = (fullscreen.0 - BUTTON_WIDTH, fullscreen.0);
+    let volume = (fullscreen.0 - GAP - VOLUME_WIDTH, fullscreen.0 - GAP);
+    let mute = (volume.0 - 4 - BUTTON_WIDTH, volume.0 - 4);
     let rate = if state.rate.is_some() {
-        (mute.0 - RATE_WIDTH, mute.0)
+        (mute.0 - GAP - RATE_WIDTH, mute.0 - GAP)
     } else {
         (mute.0, mute.0)
     };
     let quality = if state.quality.is_some() {
-        (rate.0 - QUALITY_WIDTH, rate.0)
+        (rate.0 - GAP - QUALITY_WIDTH, rate.0 - GAP)
     } else {
         (rate.0, rate.0)
     };
+    let time = (quality.0 - GAP - time_width, quality.0 - GAP);
     let track = if state.show_progress {
-        (time.1 + 10, quality.0 - 10)
+        (play.1 + GAP, time.0 - GAP)
     } else {
         (0, 0)
     };
     BarLayout {
         play,
-        time,
         track,
+        time,
         quality,
         rate,
         mute,
+        volume,
         fullscreen,
     }
 }
@@ -167,7 +181,7 @@ impl VideoControls {
             sink,
             state: ControlsState::default(),
             width: BAR_MIN_WIDTH,
-            drag_ratio: None,
+            drag: None,
             last_live_seek: None,
             last_mouse: None,
         });
@@ -187,12 +201,13 @@ impl VideoControls {
         HWND(self.hwnd as *mut _)
     }
 
-    /// Anchors the bar to the bottom of a `parent_width`x`parent_height`
-    /// surface and repaints at the new width.
+    /// Anchors the bar to the bottom edge of a `parent_width` x
+    /// `parent_height` surface (full width, like the macOS bar) and
+    /// repaints at the new width.
     pub(crate) fn layout(&self, parent_width: i32, parent_height: i32) {
-        let width = (parent_width - 2 * BAR_MARGIN).clamp(BAR_MIN_WIDTH, BAR_MAX_WIDTH);
-        let x = (parent_width - width) / 2;
-        let y = parent_height - BAR_HEIGHT - BAR_MARGIN;
+        let width = parent_width.max(BAR_MIN_WIDTH);
+        let x = 0;
+        let y = parent_height - BAR_HEIGHT;
         unsafe {
             let _ = WindowsAndMessaging::MoveWindow(self.window(), x, y, width, BAR_HEIGHT, false);
             let _ = WindowsAndMessaging::SetWindowPos(
@@ -291,15 +306,24 @@ fn time_label(state: &ControlsState) -> String {
     )
 }
 
-/// Ratio shown by the slider: the drag preview wins over playback.
+/// Ratio shown by the progress slider: the drag preview wins.
 fn shown_ratio(inner: &ControlsInner) -> f64 {
-    inner.drag_ratio.unwrap_or_else(|| {
-        if inner.state.duration > 0.0 {
-            (inner.state.position / inner.state.duration).clamp(0.0, 1.0)
-        } else {
-            0.0
-        }
-    })
+    if let Some(Drag::Seek(ratio)) = inner.drag {
+        return ratio;
+    }
+    if inner.state.duration > 0.0 {
+        (inner.state.position / inner.state.duration).clamp(0.0, 1.0)
+    } else {
+        0.0
+    }
+}
+
+/// Ratio shown by the volume slider: the drag preview wins.
+fn shown_volume(inner: &ControlsInner) -> f64 {
+    if let Some(Drag::Volume(ratio)) = inner.drag {
+        return ratio;
+    }
+    inner.state.volume.clamp(0.0, 1.0)
 }
 
 // ---------------------------------------------------------------------------
@@ -316,9 +340,10 @@ fn repaint(hwnd: HWND) {
     let mut pixels = capsule_pixels(width, height);
 
     let ratio = shown_ratio(inner);
+    let volume = shown_volume(inner);
     let time_text = time_label(&inner.state);
 
-    // Slider drawn analytically (premultiplied) before the GDI text pass.
+    // Sliders drawn analytically (premultiplied) before the GDI text pass.
     let time_width = 86; // fixed slot, enough for "00:00 / 00:00"
     let layout = bar_layout(width, time_width, &inner.state);
     if inner.state.show_progress && layout.track.1 > layout.track.0 + 20 {
@@ -329,8 +354,20 @@ fn repaint(hwnd: HWND) {
             layout.track.0,
             layout.track.1,
             ratio,
+            TRACK_HEIGHT,
+            KNOB_RADIUS,
         );
     }
+    draw_slider(
+        &mut pixels,
+        width,
+        height,
+        layout.volume.0,
+        layout.volume.1,
+        volume,
+        3.0,
+        5.0,
+    );
 
     // GDI pass: glyphs + time text, then restore the alpha GDI zeroed.
     draw_texts(hwnd, &mut pixels, width, height, inner, &layout, &time_text);
@@ -338,33 +375,23 @@ fn repaint(hwnd: HWND) {
     upload(hwnd, width, height, &pixels);
 }
 
-/// The translucent capsule background with 1px anti-aliased corners,
-/// premultiplied BGRA.
+/// The macOS bar's gradient scrim: transparent at the top edge fading to
+/// black at 0.6 opacity at the bottom, premultiplied BGRA (black, so the
+/// color channels stay zero).
 fn capsule_pixels(width: i32, height: i32) -> Vec<u32> {
-    let (red, green, blue) = BAR_COLOR;
-    let half_w = width as f32 / 2.0 - BAR_RADIUS;
-    let half_h = height as f32 / 2.0 - BAR_RADIUS;
-    let center_x = width as f32 / 2.0;
-    let center_y = height as f32 / 2.0;
     let mut pixels = Vec::with_capacity((width * height) as usize);
     for y in 0..height {
-        for x in 0..width {
-            let qx = (x as f32 + 0.5 - center_x).abs() - half_w;
-            let qy = (y as f32 + 0.5 - center_y).abs() - half_h;
-            let outside = (qx.max(0.0).powi(2) + qy.max(0.0).powi(2)).sqrt();
-            let distance = outside + qx.max(qy).min(0.0) - BAR_RADIUS;
-            let coverage = (0.5 - distance).clamp(0.0, 1.0);
-            let alpha = (BAR_ALPHA as f32 * coverage) as u32;
-            let premultiply = |channel: u32| (channel * alpha + 127) / 255;
-            pixels.push(
-                (alpha << 24) | (premultiply(red) << 16) | (premultiply(green) << 8) | premultiply(blue),
-            );
+        let alpha = BAR_ALPHA * (y as u32 + 1) / height.max(1) as u32;
+        let row = alpha << 24;
+        for _ in 0..width {
+            pixels.push(row);
         }
     }
     pixels
 }
 
-/// Blends an opaque-over-bar pixel (premultiplied against BAR_ALPHA).
+/// Composites an opaque element pixel over the scrim (src-over on
+/// premultiplied BGRA, src alpha = coverage).
 fn blend_pixel(pixels: &mut [u32], width: i32, x: i32, y: i32, color: (u32, u32, u32), coverage: f32) {
     if coverage <= 0.0 {
         return;
@@ -374,22 +401,30 @@ fn blend_pixel(pixels: &mut [u32], width: i32, x: i32, y: i32, color: (u32, u32,
         return;
     };
     let existing = *slot;
-    let alpha = (existing >> 24) & 0xff;
-    let mix = |old: u32, new: u32| -> u32 {
-        let new_pre = (new * alpha + 127) / 255;
-        (old as f32 + (new_pre as f32 - old as f32) * coverage) as u32
-    };
-    let red = mix((existing >> 16) & 0xff, color.0);
-    let green = mix((existing >> 8) & 0xff, color.1);
-    let blue = mix(existing & 0xff, color.2);
+    let src_alpha = (coverage * 255.0) as u32;
+    let inverse = 255 - src_alpha;
+    let out = |channel: u32, old: u32| (channel * src_alpha + old * inverse + 127) / 255;
+    let alpha = src_alpha + ((existing >> 24) & 0xff) * inverse / 255;
+    let red = out(color.0, (existing >> 16) & 0xff);
+    let green = out(color.1, (existing >> 8) & 0xff);
+    let blue = out(color.2, existing & 0xff);
     *slot = (alpha << 24) | (red << 16) | (green << 8) | blue;
 }
 
-/// Track, fill and knob of the progress slider.
-fn draw_slider(pixels: &mut [u32], width: i32, height: i32, left: i32, right: i32, ratio: f64) {
+/// Track, fill and knob of a horizontal slider.
+fn draw_slider(
+    pixels: &mut [u32],
+    width: i32,
+    height: i32,
+    left: i32,
+    right: i32,
+    ratio: f64,
+    track_height: f32,
+    knob_radius: f32,
+) {
     let center_y = height as f32 / 2.0;
-    let track_top = center_y - TRACK_HEIGHT / 2.0;
-    let track_bottom = center_y + TRACK_HEIGHT / 2.0;
+    let track_top = center_y - track_height / 2.0;
+    let track_bottom = center_y + track_height / 2.0;
     let knob_x = left as f32 + (right - left) as f32 * ratio as f32;
     for y in 0..height {
         for x in left..right {
@@ -401,14 +436,14 @@ fn draw_slider(pixels: &mut [u32], width: i32, height: i32, left: i32, right: i3
                 let color = if px <= knob_x {
                     (0xff, 0xff, 0xff)
                 } else {
-                    (0x6a, 0x6a, 0x6a)
+                    (0x8a, 0x8a, 0x8a)
                 };
-                blend_pixel(pixels, width, x, y, color, band);
+                blend_pixel(pixels, width, x, y, color, band * 0.9);
             }
             // Knob.
             let dx = px - knob_x;
             let dy = py - center_y;
-            let distance = (dx * dx + dy * dy).sqrt() - KNOB_RADIUS;
+            let distance = (dx * dx + dy * dy).sqrt() - knob_radius;
             let coverage = (0.5 - distance).clamp(0.0, 1.0);
             if coverage > 0.0 {
                 blend_pixel(pixels, width, x, y, (0xff, 0xff, 0xff), coverage);
@@ -542,15 +577,13 @@ fn draw_texts(
             glyph_font_obj,
         );
 
-        // Copy back and fix the GDI-zeroed alpha (premultiplied to the
-        // bar alpha, like the device-frame toolbar text).
+        // Copy back and fix the GDI-zeroed alpha: text/glyph pixels are
+        // opaque elements over the scrim (anti-aliasing blends toward the
+        // black gradient underneath, which suits the dark bar).
         std::ptr::copy_nonoverlapping(bits as *const u32, pixels.as_mut_ptr(), pixels.len());
         for pixel in pixels.iter_mut() {
             if (*pixel >> 24) == 0 && (*pixel & 0x00ff_ffff) != 0 {
-                let red = ((*pixel >> 16) & 0xff) * BAR_ALPHA / 255;
-                let green = ((*pixel >> 8) & 0xff) * BAR_ALPHA / 255;
-                let blue = (*pixel & 0xff) * BAR_ALPHA / 255;
-                *pixel = (BAR_ALPHA << 24) | (red << 16) | (green << 8) | blue;
+                *pixel |= 0xff00_0000;
             }
         }
 
@@ -625,12 +658,21 @@ fn upload(hwnd: HWND, width: i32, height: i32, pixels: &[u32]) {
 // Interaction
 // ---------------------------------------------------------------------------
 
-fn ratio_at(inner: &ControlsInner, x: i32) -> Option<f64> {
-    let layout = bar_layout(inner.width, 86, &inner.state);
-    if !inner.state.show_progress || layout.track.1 <= layout.track.0 {
-        return None;
+fn commit_drag(inner: &ControlsInner, drag: Drag) {
+    match drag {
+        Drag::Seek(ratio) => {
+            let target = ratio * inner.state.duration.max(0.0);
+            (inner.sink)(ControlsAction::Seek(target));
+        }
+        Drag::Volume(ratio) => (inner.sink)(ControlsAction::SetVolume(ratio)),
     }
-    Some(((x - layout.track.0) as f64 / (layout.track.1 - layout.track.0) as f64).clamp(0.0, 1.0))
+}
+
+fn slot_ratio(slot: (i32, i32), x: i32) -> f64 {
+    if slot.1 <= slot.0 {
+        return 0.0;
+    }
+    ((x - slot.0) as f64 / (slot.1 - slot.0) as f64).clamp(0.0, 1.0)
 }
 
 unsafe extern "system" fn controls_proc(
@@ -669,11 +711,19 @@ unsafe extern "system" fn controls_proc(
                 (inner.sink)(ControlsAction::RateMenu {
                     anchor: anchor(layout.rate),
                 });
+            } else if hit(layout.volume) {
+                unsafe {
+                    SetCapture(hwnd);
+                }
+                let ratio = slot_ratio(layout.volume, x);
+                inner.drag = Some(Drag::Volume(ratio));
+                (inner.sink)(ControlsAction::SetVolume(ratio));
+                repaint(hwnd);
             } else if inner.state.show_progress && hit(layout.track) {
                 unsafe {
                     SetCapture(hwnd);
                 }
-                inner.drag_ratio = ratio_at(inner, x);
+                inner.drag = Some(Drag::Seek(slot_ratio(layout.track, x)));
                 repaint(hwnd);
             }
             LRESULT(0)
@@ -690,19 +740,30 @@ unsafe extern "system" fn controls_proc(
             if let Some(inner) = inner_mut(hwnd) {
                 moved = inner.last_mouse != Some((x, y));
                 inner.last_mouse = Some((x, y));
-                if inner.drag_ratio.is_some() {
-                    inner.drag_ratio = ratio_at(inner, x);
-                    // Scrub live (throttled) so the drag takes effect even
-                    // if the button-up never reaches us.
-                    let due = inner
-                        .last_live_seek
-                        .is_none_or(|last| last.elapsed().as_millis() >= 150);
-                    if due && let Some(ratio) = inner.drag_ratio {
-                        inner.last_live_seek = Some(std::time::Instant::now());
-                        let target = ratio * inner.state.duration.max(0.0);
-                        (inner.sink)(ControlsAction::Seek(target));
+                let layout = bar_layout(inner.width, 86, &inner.state);
+                match inner.drag {
+                    Some(Drag::Seek(_)) => {
+                        let ratio = slot_ratio(layout.track, x);
+                        inner.drag = Some(Drag::Seek(ratio));
+                        // Scrub live (throttled) so the drag takes effect
+                        // even if the button-up never reaches us.
+                        let due = inner
+                            .last_live_seek
+                            .is_none_or(|last| last.elapsed().as_millis() >= 150);
+                        if due {
+                            inner.last_live_seek = Some(std::time::Instant::now());
+                            let target = ratio * inner.state.duration.max(0.0);
+                            (inner.sink)(ControlsAction::Seek(target));
+                        }
+                        repaint(hwnd);
                     }
-                    repaint(hwnd);
+                    Some(Drag::Volume(_)) => {
+                        let ratio = slot_ratio(layout.volume, x);
+                        inner.drag = Some(Drag::Volume(ratio));
+                        (inner.sink)(ControlsAction::SetVolume(ratio));
+                        repaint(hwnd);
+                    }
+                    None => {}
                 }
             }
             // Real movement over the bar keeps it shown (repaints under a
@@ -721,14 +782,13 @@ unsafe extern "system" fn controls_proc(
         }
         WindowsAndMessaging::WM_LBUTTONUP => {
             if let Some(inner) = inner_mut(hwnd)
-                && let Some(ratio) = inner.drag_ratio.take()
+                && let Some(drag) = inner.drag.take()
             {
                 unsafe {
                     let _ = ReleaseCapture();
                 }
                 inner.last_live_seek = None;
-                let target = ratio * inner.state.duration.max(0.0);
-                (inner.sink)(ControlsAction::Seek(target));
+                commit_drag(inner, drag);
                 repaint(hwnd);
             }
             LRESULT(0)
@@ -738,11 +798,10 @@ unsafe extern "system" fn controls_proc(
         // dropping the gesture.
         WindowsAndMessaging::WM_CAPTURECHANGED => {
             if let Some(inner) = inner_mut(hwnd)
-                && let Some(ratio) = inner.drag_ratio.take()
+                && let Some(drag) = inner.drag.take()
             {
                 inner.last_live_seek = None;
-                let target = ratio * inner.state.duration.max(0.0);
-                (inner.sink)(ControlsAction::Seek(target));
+                commit_drag(inner, drag);
                 repaint(hwnd);
             }
             LRESULT(0)
@@ -752,7 +811,7 @@ unsafe extern "system" fn controls_proc(
                 let _ = WindowsAndMessaging::KillTimer(Some(hwnd), AUTO_HIDE_TIMER_ID);
             }
             let hide = inner_mut(hwnd)
-                .map(|inner| inner.state.playing && inner.drag_ratio.is_none())
+                .map(|inner| inner.state.playing && inner.drag.is_none())
                 .unwrap_or(true);
             if hide {
                 unsafe {

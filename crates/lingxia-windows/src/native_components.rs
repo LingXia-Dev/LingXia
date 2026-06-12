@@ -254,6 +254,8 @@ struct VideoComponent {
     current_quality: Option<String>,
     /// Active playback rate (bar rate menu).
     current_rate: f64,
+    /// Volume in `0.0..=1.0` (volume prop and the bar's slider).
+    volume: f64,
     /// Fullscreen plays in a borderless topmost window covering the
     /// monitor (the macOS player's screen-sized fullscreen window).
     fullscreen: bool,
@@ -945,6 +947,7 @@ fn mount_video_on_ui(
             muted: props.muted == Some(true),
             current_quality: active_quality_label(&props),
             current_rate: 1.0,
+            volume: props.volume.unwrap_or(1.0).clamp(0.0, 1.0),
             playing: false,
             resume_on_show: false,
         }),
@@ -1609,10 +1612,15 @@ fn apply_video_props(key: &str, props: &ComponentProps) {
             src_changed && entry.state.autoplay == Some(true),
         )
     };
-    if let Some(muted) = props.muted {
+    if props.muted.is_some() || props.volume.is_some() {
         let mut components = components();
         if let Some(video) = components.get_mut(key).and_then(|entry| entry.video.as_mut()) {
-            video.muted = muted;
+            if let Some(muted) = props.muted {
+                video.muted = muted;
+            }
+            if let Some(volume) = props.volume {
+                video.volume = volume.clamp(0.0, 1.0);
+            }
         }
     }
     let (player, source, autoplay) = pending;
@@ -1780,6 +1788,18 @@ fn video_controls_sink(key: String) -> super::video_controls::ControlsActionSink
             }
             ControlsAction::ToggleFullscreen => set_video_fullscreen(&key, !fullscreen),
             ControlsAction::Seek(position) => player.seek(position),
+            ControlsAction::SetVolume(volume) => {
+                player.set_volume(volume);
+                {
+                    let mut components = components();
+                    if let Some(video) =
+                        components.get_mut(&key).and_then(|entry| entry.video.as_mut())
+                    {
+                        video.volume = volume;
+                    }
+                }
+                update_video_controls(&key);
+            }
             ControlsAction::QualityMenu { anchor } => show_quality_menu(&key, anchor),
             ControlsAction::RateMenu { anchor } => show_rate_menu(&key, anchor),
         }
@@ -1945,6 +1965,7 @@ fn update_video_controls(key: &str) {
                                 .as_ref()
                                 .filter(|rates| !rates.is_empty())
                                 .map(|_| video.current_rate),
+                            volume: video.volume,
                         },
                     )
                 })
