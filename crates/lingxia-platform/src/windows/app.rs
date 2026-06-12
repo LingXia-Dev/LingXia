@@ -13,7 +13,6 @@ use crate::traits::app_runtime::{AnimationType, AppRuntime, LxAppOpenMode, OpenU
 use crate::traits::pull_to_refresh::PullToRefresh;
 use crate::traits::share::{ShareRequest, ShareResult, ShareService};
 use crate::traits::stream_decoder::{VideoStreamDecoderHandle, VideoStreamDecoderManager};
-use crate::traits::video_player::{VideoPlayerHandle, VideoPlayerManager};
 use crate::AssetFileEntry;
 
 const DEFAULT_APP_IDENTIFIER: &str = "app.lingxia.windows";
@@ -288,17 +287,6 @@ impl ShareService for Platform {
         _request: ShareRequest,
     ) -> impl Future<Output = Result<ShareResult, PlatformError>> + Send {
         async { not_supported("share") }
-    }
-}
-
-impl VideoPlayerManager for Platform {
-    // Stubbed: native video playback needs a Media Foundation/MediaPlayer
-    // bridge plus compositor integration with the WebView surface.
-    fn bind_player(
-        &self,
-        _component_id: &str,
-    ) -> Result<Box<dyn VideoPlayerHandle>, PlatformError> {
-        not_supported("bind_player")
     }
 }
 

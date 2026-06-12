@@ -20,8 +20,23 @@ lingxia = { workspace = true, default-features = false }
 thiserror = { workspace = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]
+log = { workspace = true }
+lxapp = { workspace = true, default-features = false }
+lingxia-platform = { workspace = true }
+lingxia-webview = { workspace = true }
+serde_json = { workspace = true }
+# proc-macros: the `#[implement]` attribute (MFPlay callback in video_player).
+windows-core = { workspace = true, features = ["proc-macros"] }
 windows = { workspace = true, features = [
+    "Win32_Foundation",
     "Win32_Globalization",
+    "Win32_Graphics_Gdi",
+    "Win32_Media_MediaFoundation",
+    "Win32_System_Com_StructuredStorage",
+    "Win32_System_LibraryLoader",
     "Win32_System_Threading",
+    "Win32_System_Variant",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_Shell_PropertiesSystem",
     "Win32_UI_WindowsAndMessaging",
 ] }

@@ -3301,8 +3301,14 @@ name = "lingxia-windows"
 version = "0.9.0"
 dependencies = [
  "lingxia",
+ "lingxia-lxapp",
+ "lingxia-platform",
+ "lingxia-webview",
+ "log",
+ "serde_json",
  "thiserror 2.0.18",
  "windows",
+ "windows-core",
 ]
 
 [[package]]

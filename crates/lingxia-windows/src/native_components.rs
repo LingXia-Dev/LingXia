@@ -1,15 +1,20 @@
-//! Embedded native components for Windows — Phase 1: Input / Textarea.
+//! Embedded native components for Windows — Input / Textarea / Video.
 //!
-//! The page view mounts `<lx-input>` / `<lx-textarea>` over the webview by
-//! sending component messages (`component.mount` / `component.update` /
-//! `component.unmount`, plus `component.ready` and `page.scroll`) through
-//! the native-component bridge channel. `lingxia-lxapp` routes those
-//! messages to the host registered by [`install`]; this module owns all
-//! component policy: it places a borderless Win32 `EDIT` child (multiline
-//! for textarea) over the webview content at the reported coverage rect,
-//! keeps it aligned while the page scrolls/relays out, and emits `input` /
-//! `focus` / `blur` / `confirm` events back to the page view and to
-//! page-function bindings.
+//! The page view mounts `<lx-input>` / `<lx-textarea>` / `<lx-video>` over
+//! the webview by sending component messages (`component.mount` /
+//! `component.update` / `component.unmount`, plus `component.ready` and
+//! `page.scroll`) through the native-component bridge channel.
+//! `lingxia-lxapp` routes those messages to the host registered by
+//! [`install`]; this module owns all component policy: it places a
+//! borderless Win32 child over the webview content at the reported
+//! coverage rect — an `EDIT` control (multiline for textarea) or an MFPlay
+//! video surface (`video_player::VideoPlayer`) — keeps it aligned while
+//! the page scrolls/relays out, and emits the component's events back to
+//! the page view and to page-function bindings (`input`/`focus`/`blur`/
+//! `confirm` for text, the media transitions plus a timer-driven
+//! `timeupdate` for video). Video control commands from the logic layer
+//! (`lx.createVideoContext`) arrive through the dispatcher registered with
+//! `lingxia_platform::register_windows_video_command_dispatcher`.
 //!
 //! Mirrors the manager contract of
 //! `lingxia-sdk/apple/Sources/macOS/NativeComponents/MacNativeComponentManager.swift`:
@@ -31,6 +36,7 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex, OnceLock};
 
+use lingxia_platform::traits::video_player::VideoPlayerCommand;
 use lingxia_webview::WebViewController;
 use lingxia_webview::platform::windows::{
     WindowsWebViewContentWindow, post_to_window_thread, webview_content_window,
@@ -52,6 +58,8 @@ use windows::Win32::UI::WindowsAndMessaging::{
     WINDOW_EX_STYLE, WINDOW_STYLE, WNDCLASSW, WNDPROC,
 };
 use windows::core::{PCWSTR, w};
+
+use super::video_player::{VideoEventSink, VideoPlayer, VideoPlayerEvent};
 
 /// Edit-control messages and notification codes, defined locally (they live
 /// in `Win32::UI::Controls`; the constants are stable and tiny, matching
@@ -75,12 +83,19 @@ const EDIT_PADDING_Y: f64 = 6.0;
 /// Events queued per component until the view sends `component.ready`.
 const MAX_PENDING_EVENTS: usize = 8;
 
-/// Registers this module as the process-wide native-component host.
+/// `WM_TIMER` id driving `timeupdate` while a video component plays ("LXVT").
+const VIDEO_TIMER_ID: usize = 0x4C58_5654;
+/// Video `timeupdate` cadence, matching the HTML media-event ballpark.
+const VIDEO_TIMER_INTERVAL_MS: u32 = 250;
+
+/// Registers this module as the process-wide native-component host and as
+/// the video-command dispatcher of the platform layer.
 /// Called from the shell `register_runtime()` path (`windows::install`).
 pub(crate) fn install() {
     if !lxapp::register_native_component_host(Arc::new(ShellNativeComponentHost)) {
         log::warn!("a native-component host was already registered; Windows manager inactive");
     }
+    lingxia_platform::register_windows_video_command_dispatcher(Arc::new(dispatch_video_command));
 }
 
 struct ShellNativeComponentHost;
@@ -124,8 +139,10 @@ struct DocRect {
     height: f64,
 }
 
-/// Component props this phase applies. Each field is `Some` only when the
-/// view supplied it; updates merge field-wise into the stored state.
+/// Component props this host applies. Each field is `Some` only when the
+/// view supplied it; updates merge field-wise into the stored state. Text
+/// and video components read disjoint subsets of one props bag — the parse
+/// is shared and unknown fields are simply never consulted.
 #[derive(Clone, Default)]
 struct ComponentProps {
     value: Option<String>,
@@ -136,6 +153,12 @@ struct ComponentProps {
     password: Option<bool>,
     maxlength: Option<u32>,
     focus: Option<bool>,
+    // — video —
+    src: Option<String>,
+    autoplay: Option<bool>,
+    looping: Option<bool>,
+    muted: Option<bool>,
+    volume: Option<f64>,
     bindings_json: Option<String>,
     dataset_json: Option<String>,
 }
@@ -157,6 +180,11 @@ impl ComponentProps {
         take!(password);
         take!(maxlength);
         take!(focus);
+        take!(src);
+        take!(autoplay);
+        take!(looping);
+        take!(muted);
+        take!(volume);
         take!(bindings_json);
         take!(dataset_json);
     }
@@ -168,13 +196,25 @@ struct ComponentEntry {
     multiline: bool,
     parent: isize,
     container: isize,
+    /// `0` for components without an EDIT control (video).
     edit: isize,
     font: isize,
+    /// Playback engine of a `video.native` component, `None` for text.
+    /// `Arc` so command/timer paths can call it after dropping the
+    /// registry lock.
+    video: Option<VideoComponent>,
     doc_rect: DocRect,
     state: ComponentProps,
     last_value: String,
     ready: bool,
     pending: Vec<(String, Value)>,
+}
+
+struct VideoComponent {
+    player: Arc<VideoPlayer>,
+    /// Covers the whole content area instead of its document rect
+    /// (`requestFullScreen` from the video context).
+    fullscreen: bool,
 }
 
 /// Per-page view state: latest scroll offset (CSS px) and content-window
@@ -269,13 +309,21 @@ fn message_component_id(message: &Value) -> Option<String> {
         .map(str::to_string)
 }
 
+/// Kinds of components this host can mount.
+#[derive(Clone, Copy)]
+enum MountKind {
+    Edit { multiline: bool },
+    Video,
+}
+
 fn handle_mount(context: &PageContext, message: &Value) {
     let Some(component_id) = message_component_id(message) else {
         return;
     };
-    let multiline = match message.get("type").and_then(Value::as_str) {
-        Some("input.native") => false,
-        Some("textarea.native") => true,
+    let kind = match message.get("type").and_then(Value::as_str) {
+        Some("input.native") => MountKind::Edit { multiline: false },
+        Some("textarea.native") => MountKind::Edit { multiline: true },
+        Some("video.native") => MountKind::Video,
         Some(other) => {
             log::info!("native component type '{other}' is not supported on Windows yet; ignoring");
             return;
@@ -298,7 +346,7 @@ fn handle_mount(context: &PageContext, message: &Value) {
 
     let context = context.clone();
     run_on_window_thread(parent, move || {
-        mount_on_ui(context, component_id, multiline, parent, doc_rect, props);
+        mount_on_ui(context, component_id, kind, parent, doc_rect, props);
     });
 }
 
@@ -382,6 +430,10 @@ fn handle_focus_action(context: &PageContext, message: &Value, focus: bool) {
             };
             (entry.edit, entry.parent)
         };
+        if edit == 0 {
+            // Components without an EDIT control (video) do not take focus.
+            return;
+        }
         set_edit_focus_with_parent(edit, parent, focus);
     });
 }
@@ -521,6 +573,14 @@ fn parse_props(raw: Option<&Value>) -> ComponentProps {
         .filter(|n| *n >= 0.0)
         .map(|n| n as u32);
     props.focus = raw.get("focus").and_then(value_as_bool);
+    props.src = raw.get("src").and_then(Value::as_str).map(str::to_string);
+    props.autoplay = raw.get("autoplay").and_then(value_as_bool);
+    props.looping = raw.get("loop").and_then(value_as_bool);
+    props.muted = raw.get("muted").and_then(value_as_bool);
+    props.volume = raw
+        .get("volume")
+        .and_then(Value::as_f64)
+        .filter(|volume| volume.is_finite());
     props.bindings_json = raw
         .get("pageFuncBindingsJson")
         .and_then(Value::as_str)
@@ -583,7 +643,7 @@ fn from_edit_text(value: &str) -> String {
 fn mount_on_ui(
     context: PageContext,
     component_id: String,
-    multiline: bool,
+    kind: MountKind,
     parent: isize,
     doc_rect: DocRect,
     props: ComponentProps,
@@ -592,11 +652,26 @@ fn mount_on_ui(
     // Remount of a live id replaces the previous control.
     destroy_component(&key);
 
-    let parent_hwnd = HWND(parent as *mut _);
     if !is_window(parent) {
         return;
     }
+    let Some(container) = create_container(parent, &component_id) else {
+        return;
+    };
 
+    match kind {
+        MountKind::Edit { multiline } => {
+            mount_edit_on_ui(context, component_id, multiline, parent, container, doc_rect, props)
+        }
+        MountKind::Video => {
+            mount_video_on_ui(context, component_id, parent, container, doc_rect, props)
+        }
+    }
+}
+
+/// Creates the (hidden) component container as a child of the webview
+/// window; `apply_layout` positions and shows it.
+fn create_container(parent: isize, component_id: &str) -> Option<HWND> {
     let container_style = WINDOW_STYLE(
         WindowsAndMessaging::WS_CHILD.0
             | WindowsAndMessaging::WS_CLIPCHILDREN.0
@@ -612,7 +687,7 @@ fn mount_on_ui(
             0,
             16,
             16,
-            Some(parent_hwnd),
+            Some(HWND(parent as *mut _)),
             None,
             GetModuleHandleW(None)
                 .ok()
@@ -620,11 +695,71 @@ fn mount_on_ui(
             None,
         )
     };
-    let Ok(container) = container else {
-        log::warn!("failed to create native-component container for {component_id}");
+    match container {
+        Ok(container) => Some(container),
+        Err(_) => {
+            log::warn!("failed to create native-component container for {component_id}");
+            None
+        }
+    }
+}
+
+/// Mounts a `video.native` component: an MFPlay player rendering into the
+/// container window. Playback transitions and the play-timer drive the
+/// element's media events; the document rect only positions the surface.
+fn mount_video_on_ui(
+    context: PageContext,
+    component_id: String,
+    parent: isize,
+    container: HWND,
+    doc_rect: DocRect,
+    props: ComponentProps,
+) {
+    let key = component_key(&context.page_key, &component_id);
+    let sink = video_event_sink(key.clone(), container.0 as isize);
+    let Some(player) = VideoPlayer::new(container, sink) else {
+        log::warn!("failed to create video player for {component_id}");
+        unsafe {
+            let _ = WindowsAndMessaging::DestroyWindow(container);
+        }
         return;
     };
 
+    let entry = ComponentEntry {
+        context,
+        component_id,
+        multiline: false,
+        parent,
+        container: container.0 as isize,
+        edit: 0,
+        font: 0,
+        video: Some(VideoComponent {
+            player: Arc::new(player),
+            fullscreen: false,
+        }),
+        doc_rect,
+        state: ComponentProps::default(),
+        last_value: String::new(),
+        ready: ready_keys().contains(&key),
+        pending: Vec::new(),
+    };
+    components().insert(key.clone(), entry);
+    containers().insert(container.0 as isize, key.clone());
+
+    apply_video_props(&key, &props);
+    apply_layout(&key);
+}
+
+fn mount_edit_on_ui(
+    context: PageContext,
+    component_id: String,
+    multiline: bool,
+    parent: isize,
+    container: HWND,
+    doc_rect: DocRect,
+    props: ComponentProps,
+) {
+    let key = component_key(&context.page_key, &component_id);
     let mut edit_style = WindowsAndMessaging::WS_CHILD.0
         | WindowsAndMessaging::WS_VISIBLE.0
         | WindowsAndMessaging::WS_CLIPSIBLINGS.0;
@@ -690,6 +825,7 @@ fn mount_on_ui(
         container: container.0 as isize,
         edit: edit.0 as isize,
         font: 0,
+        video: None,
         doc_rect,
         state: ComponentProps::default(),
         last_value: props.value.clone().unwrap_or_default(),
@@ -729,7 +865,7 @@ fn container_class() -> PCWSTR {
 /// clips it to the content area (chrome regions stay clean) and keeps it
 /// above the WebView2 child windows.
 fn apply_layout(key: &str) {
-    let (container, edit, doc_rect, page_key, font_size, multiline) = {
+    let (container, edit, doc_rect, page_key, font_size, multiline, video) = {
         let components = components();
         let Some(entry) = components.get(key) else {
             return;
@@ -741,6 +877,10 @@ fn apply_layout(key: &str) {
             entry.context.page_key.clone(),
             entry.state.font_size.unwrap_or(DEFAULT_FONT_SIZE),
             entry.multiline,
+            entry
+                .video
+                .as_ref()
+                .map(|video| (video.player.clone(), video.fullscreen)),
         )
     };
     let Some(view) = page_views().get(&page_key).copied() else {
@@ -749,10 +889,23 @@ fn apply_layout(key: &str) {
     let target = view.target;
     let scale = if target.scale > 0.0 { target.scale } else { 1.0 };
 
-    let x = ((doc_rect.x - view.scroll_x) * scale).round() as i32 + target.content_left;
-    let y = ((doc_rect.y - view.scroll_y) * scale).round() as i32 + target.content_top;
-    let width = (doc_rect.width * scale).round().max(0.0) as i32;
-    let height = (doc_rect.height * scale).round().max(0.0) as i32;
+    let fullscreen = matches!(video, Some((_, true)));
+    let (x, y, width, height) = if fullscreen {
+        // A fullscreen video covers the whole content area of its window.
+        (
+            target.content_left,
+            target.content_top,
+            target.content_width,
+            target.content_height,
+        )
+    } else {
+        (
+            ((doc_rect.x - view.scroll_x) * scale).round() as i32 + target.content_left,
+            ((doc_rect.y - view.scroll_y) * scale).round() as i32 + target.content_top,
+            (doc_rect.width * scale).round().max(0.0) as i32,
+            (doc_rect.height * scale).round().max(0.0) as i32,
+        )
+    };
 
     let content_right = target.content_left + target.content_width;
     let content_bottom = target.content_top + target.content_height;
@@ -805,6 +958,13 @@ fn apply_layout(key: &str) {
                 | WindowsAndMessaging::SWP_NOOWNERZORDER,
         );
 
+        // The video surface fills the container; MFPlay just needs a
+        // repaint nudge after the window moved or resized.
+        if let Some((player, _)) = video {
+            player.update_video();
+            return;
+        }
+
         // Lay the EDIT out inside the container: multiline fills it (with a
         // small inset); single-line is vertically centered on its font.
         let pad_x = (EDIT_PADDING_X * scale).round() as i32;
@@ -837,8 +997,21 @@ fn apply_layout(key: &str) {
 }
 
 /// Merges `props` into a component's stored state and applies the visible
-/// changes to its EDIT control. Runs on the owning UI thread.
+/// changes to its EDIT control or video player. Runs on the owning UI
+/// thread.
 fn apply_props(key: &str, props: &ComponentProps) {
+    let is_video = {
+        let components = components();
+        components.get(key).is_some_and(|entry| entry.video.is_some())
+    };
+    if is_video {
+        apply_video_props(key, props);
+        return;
+    }
+    apply_edit_props(key, props);
+}
+
+fn apply_edit_props(key: &str, props: &ComponentProps) {
     struct Pending {
         edit: isize,
         container: isize,
@@ -1016,6 +1189,195 @@ fn set_edit_focus_with_parent(edit: isize, parent: isize, focus: bool) {
             let _ = SetFocus(Some(HWND(parent as *mut _)));
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Video components (UI thread only)
+// ---------------------------------------------------------------------------
+
+/// Merges `props` into a video component's stored state and applies the
+/// changes to its player. The player calls run after the registry lock is
+/// dropped (they are COM calls into MFPlay).
+fn apply_video_props(key: &str, props: &ComponentProps) {
+    let pending = {
+        let mut components = components();
+        let Some(entry) = components.get_mut(key) else {
+            return;
+        };
+        let Some(video) = entry.video.as_ref() else {
+            return;
+        };
+        let src_changed = props.src.is_some() && props.src != entry.state.src;
+        entry.state.merge_from(props);
+        (
+            video.player.clone(),
+            src_changed.then(|| entry.state.src.clone().unwrap_or_default()),
+            src_changed && entry.state.autoplay == Some(true),
+        )
+    };
+    let (player, source, autoplay) = pending;
+
+    if let Some(looping) = props.looping {
+        player.set_looping(looping);
+    }
+    if let Some(volume) = props.volume {
+        player.set_volume(volume);
+    }
+    if let Some(muted) = props.muted {
+        player.set_muted(muted);
+    }
+    if let Some(source) = source {
+        if source.is_empty() {
+            player.stop();
+        } else {
+            player.set_source(&source);
+            if autoplay {
+                player.play();
+            }
+        }
+    }
+}
+
+/// Builds the sink translating player transitions into the element's media
+/// events and driving the `timeupdate` timer. MFPlay delivers these on the
+/// UI thread that owns the container window.
+fn video_event_sink(key: String, container: isize) -> VideoEventSink {
+    Arc::new(move |event| {
+        let container_hwnd = HWND(container as *mut _);
+        match event {
+            VideoPlayerEvent::MediaLoaded { duration } => {
+                emit_event(&key, "loadedmetadata", json!({ "duration": duration }));
+            }
+            VideoPlayerEvent::Play => {
+                unsafe {
+                    let _ = WindowsAndMessaging::SetTimer(
+                        Some(container_hwnd),
+                        VIDEO_TIMER_ID,
+                        VIDEO_TIMER_INTERVAL_MS,
+                        None,
+                    );
+                }
+                emit_event(&key, "play", json!({}));
+                emit_event(&key, "playing", json!({}));
+            }
+            VideoPlayerEvent::Pause => {
+                stop_video_timer(container_hwnd);
+                emit_event(&key, "pause", json!({}));
+            }
+            VideoPlayerEvent::Stop => {
+                stop_video_timer(container_hwnd);
+                emit_event(&key, "stop", json!({}));
+            }
+            VideoPlayerEvent::Ended => {
+                stop_video_timer(container_hwnd);
+                emit_event(&key, "ended", json!({}));
+            }
+            VideoPlayerEvent::Error { message } => {
+                stop_video_timer(container_hwnd);
+                log::warn!("native video component {key}: {message}");
+                emit_event(&key, "error", json!({ "errMsg": message }));
+            }
+        }
+    })
+}
+
+fn stop_video_timer(container: HWND) {
+    unsafe {
+        let _ = WindowsAndMessaging::KillTimer(Some(container), VIDEO_TIMER_ID);
+    }
+}
+
+/// Emits `timeupdate` while a video plays (container `WM_TIMER` tick).
+fn on_video_timer(container: HWND) {
+    let Some(key) = component_key_for_container(container) else {
+        stop_video_timer(container);
+        return;
+    };
+    let player = {
+        let components = components();
+        components
+            .get(&key)
+            .and_then(|entry| entry.video.as_ref())
+            .map(|video| video.player.clone())
+    };
+    let Some(player) = player else {
+        stop_video_timer(container);
+        return;
+    };
+    let current_time = player.position();
+    let duration = player.duration();
+    emit_event(
+        &key,
+        "timeupdate",
+        json!({ "currentTime": current_time, "duration": duration }),
+    );
+}
+
+/// Routes a video-context command (`lx.createVideoContext`) to the mounted
+/// `video.native` component with that id. Registered with the platform
+/// layer at [`install`]; called from logic threads.
+fn dispatch_video_command(component_id: &str, command: &VideoPlayerCommand) -> Result<(), String> {
+    let target = {
+        let components = components();
+        components
+            .iter()
+            .find(|(_, entry)| entry.video.is_some() && entry.component_id == component_id)
+            .map(|(key, entry)| (key.clone(), entry.parent))
+    };
+    let Some((key, parent)) = target else {
+        return Err(format!("no native video component '{component_id}'"));
+    };
+    let command = command.clone();
+    if run_on_window_thread(parent, move || apply_video_command(&key, &command)) {
+        Ok(())
+    } else {
+        Err(format!("window of video component '{component_id}' is gone"))
+    }
+}
+
+fn apply_video_command(key: &str, command: &VideoPlayerCommand) {
+    let player = {
+        let components = components();
+        let Some(video) = components.get(key).and_then(|entry| entry.video.as_ref()) else {
+            return;
+        };
+        video.player.clone()
+    };
+    match command {
+        VideoPlayerCommand::Play => player.play(),
+        VideoPlayerCommand::Pause => player.pause(),
+        VideoPlayerCommand::Stop => player.stop(),
+        VideoPlayerCommand::Seek { position } => player.seek(*position),
+        VideoPlayerCommand::NotifyEnded => {
+            // Stream providers surface an authoritative end-of-stream.
+            player.stop();
+            emit_event(key, "ended", json!({}));
+        }
+        VideoPlayerCommand::SetDuration { .. } => {
+            // Stream-piped duration; file/URL playback reads it from the
+            // media item instead.
+        }
+        VideoPlayerCommand::EnterFullscreen => set_video_fullscreen(key, true),
+        VideoPlayerCommand::ExitFullscreen => set_video_fullscreen(key, false),
+    }
+}
+
+fn set_video_fullscreen(key: &str, fullscreen: bool) {
+    {
+        let mut components = components();
+        let Some(video) = components
+            .get_mut(key)
+            .and_then(|entry| entry.video.as_mut())
+        else {
+            return;
+        };
+        if video.fullscreen == fullscreen {
+            return;
+        }
+        video.fullscreen = fullscreen;
+    }
+    apply_layout(key);
+    emit_event(key, "fullscreenchange", json!({ "fullScreen": fullscreen }));
 }
 
 /// Destroys a component's windows and removes all its bookkeeping. Runs on
@@ -1253,6 +1615,10 @@ unsafe extern "system" fn container_proc(
                 SetBkColor(hdc, COLORREF(0x00ff_ffff));
                 LRESULT(GetStockObject(WHITE_BRUSH).0 as isize)
             }
+        }
+        WindowsAndMessaging::WM_TIMER if wparam.0 == VIDEO_TIMER_ID => {
+            on_video_timer(hwnd);
+            LRESULT(0)
         }
         // Clicks on the container padding focus the inner EDIT.
         WindowsAndMessaging::WM_LBUTTONDOWN => {

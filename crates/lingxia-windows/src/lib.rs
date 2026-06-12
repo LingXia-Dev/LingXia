@@ -13,6 +13,11 @@
 
 use std::path::{Path, PathBuf};
 
+#[cfg(target_os = "windows")]
+mod native_components;
+#[cfg(target_os = "windows")]
+mod video_player;
+
 /// Host process description used to initialize the LingXia runtime.
 ///
 /// Construct it with [`WindowsApp::new`] or [`WindowsApp::from_env`] and
@@ -138,6 +143,12 @@ pub type Result<T> = std::result::Result<T, WindowsHostError>;
 /// call [`run_message_loop`].
 #[cfg(target_os = "windows")]
 pub fn init(app: WindowsApp) -> Result<String> {
+    // Embedded native components (input/textarea/video overlays) are part
+    // of the host SDK — every Windows host gets them, like the managers in
+    // the Android/iOS SDK layers. Must register before the first page can
+    // mount a component.
+    native_components::install();
+
     let asset_dir = app.asset_dir.clone();
     let icon_path = app.icon_path.clone();
     if let Some((width, height)) = app.window_size {

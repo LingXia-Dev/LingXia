@@ -70,8 +70,8 @@ pub use harmony::Platform;
 
 #[cfg(target_os = "windows")]
 pub use windows::{
-    Platform, set_windows_app_exit_handler, set_windows_open_url_handler,
-    set_windows_ui_update_handler,
+    Platform, WindowsVideoCommandDispatcher, register_windows_video_command_dispatcher,
+    set_windows_app_exit_handler, set_windows_open_url_handler, set_windows_ui_update_handler,
 };
 
 #[cfg(not(any(
