@@ -7,12 +7,6 @@ use std::path::Path;
 
 use lingxia_platform::traits::app_runtime::AppRuntime;
 pub use lingxia_platform::{Platform, PlatformError, set_windows_app_exit_handler};
-pub use lingxia_webview::platform::windows::{
-    WindowsAppMenu, WindowsAppMenuCommandHandler, WindowsAppMenuEntry, WindowsAppMenuItem,
-    WindowsDeviceFrame, WindowsDeviceFrameToolbar, set_webview_devtools_enabled,
-    set_windows_app_menu,
-    set_windows_app_menu_command_handler,
-};
 
 /// Initializes the LingXia runtime for a Windows host process.
 ///
@@ -53,18 +47,6 @@ pub fn set_default_window_size(width: i32, height: i32) {
     lingxia_webview::platform::windows::set_default_window_size(width, height);
 }
 
-/// Opens the WebView2 DevTools window for the current page of `appid`.
-///
-/// Resolves the lxapp's current foreground page webview and dispatches
-/// `ICoreWebView2::OpenDevToolsWindow` on its UI thread. Requires DevTools
-/// to be enabled (the default; see
-/// [`set_webview_devtools_enabled`]).
-pub fn open_current_page_devtools(appid: &str) -> Result<(), String> {
-    let webview = current_page_webview(appid)?;
-    lingxia_webview::platform::windows::open_webview_devtools(&webview.webtag())
-        .map_err(|err| err.to_string())
-}
-
 /// Resizes the top-level window of `appid` so its content (client) area is
 /// exactly `width` x `height` physical pixels, accounting for the caption,
 /// borders, and any attached menu bar.
@@ -79,22 +61,6 @@ pub fn resize_app_window_content(appid: &str, width: i32, height: i32) -> Result
         height,
     )
     .map_err(|err| err.to_string())
-}
-
-/// Presents (or clears, with `None`) a simulated-device frame around the
-/// top-level window of `appid`: the window becomes a borderless "screen" at
-/// exactly the frame's screen size, with rounded corners and a layered
-/// bezel-and-shadow companion window glued behind it. While framed, the
-/// window has no caption or menu bar; the installed app menu (see
-/// [`set_windows_app_menu`]) is offered from the bezel's right-click menu,
-/// and dragging the bezel moves the window.
-pub fn set_app_window_device_frame(
-    appid: &str,
-    frame: Option<WindowsDeviceFrame>,
-) -> Result<(), String> {
-    let webview = current_page_webview(appid)?;
-    lingxia_webview::platform::windows::set_webview_device_frame(&webview.webtag(), frame)
-        .map_err(|err| err.to_string())
 }
 
 fn current_page_webview(appid: &str) -> Result<std::sync::Arc<lingxia_webview::WebView>, String> {

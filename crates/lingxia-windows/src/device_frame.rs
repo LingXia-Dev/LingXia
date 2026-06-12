@@ -34,12 +34,14 @@ pub struct WindowsDeviceFrame {
     pub toolbar: Option<WindowsDeviceFrameToolbar>,
 }
 
-pub use lingxia::windows::{
+pub use lingxia_webview::platform::windows::{
     WindowsAppMenu, WindowsAppMenuCommandHandler, WindowsAppMenuEntry, WindowsAppMenuItem,
     set_windows_app_menu, set_windows_app_menu_command_handler,
 };
 
-impl From<WindowsDeviceFrameToolbar> for lingxia::windows::WindowsDeviceFrameToolbar {
+impl From<WindowsDeviceFrameToolbar>
+    for lingxia_webview::platform::windows::WindowsDeviceFrameToolbar
+{
     fn from(value: WindowsDeviceFrameToolbar) -> Self {
         Self {
             selector_label: value.selector_label,
@@ -49,7 +51,7 @@ impl From<WindowsDeviceFrameToolbar> for lingxia::windows::WindowsDeviceFrameToo
     }
 }
 
-impl From<WindowsDeviceFrame> for lingxia::windows::WindowsDeviceFrame {
+impl From<WindowsDeviceFrame> for lingxia_webview::platform::windows::WindowsDeviceFrame {
     fn from(value: WindowsDeviceFrame) -> Self {
         Self {
             screen_width: value.screen_width,
@@ -70,11 +72,26 @@ pub fn set_app_window_device_frame(
     appid: &str,
     frame: Option<WindowsDeviceFrame>,
 ) -> Result<(), String> {
-    lingxia::windows::set_app_window_device_frame(appid, frame.map(Into::into))
+    let webview = current_page_webview(appid)?;
+    lingxia_webview::platform::windows::set_webview_device_frame(
+        &webview.webtag(),
+        frame.map(Into::into),
+    )
+    .map_err(|err| err.to_string())
 }
 
 /// Opens the WebView2 DevTools window for the current page of `appid`.
 #[cfg(target_os = "windows")]
 pub fn open_current_page_devtools(appid: &str) -> Result<(), String> {
-    lingxia::windows::open_current_page_devtools(appid)
+    let webview = current_page_webview(appid)?;
+    lingxia_webview::platform::windows::open_webview_devtools(&webview.webtag())
+        .map_err(|err| err.to_string())
+}
+
+#[cfg(target_os = "windows")]
+fn current_page_webview(appid: &str) -> Result<std::sync::Arc<lingxia_webview::WebView>, String> {
+    let app = lxapp::try_get(appid).ok_or_else(|| format!("lxapp is not active: {appid}"))?;
+    let page = app.current_page().map_err(|err| err.to_string())?;
+    page.webview()
+        .ok_or_else(|| "page WebView is not ready".to_string())
 }
