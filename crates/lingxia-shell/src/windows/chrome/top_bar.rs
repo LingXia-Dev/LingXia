@@ -1,6 +1,7 @@
 //! Shell top bar, address capsule, navigation bar, and caption buttons.
 
 use std::collections::HashMap;
+use std::ffi::c_void;
 use std::sync::Mutex;
 
 use super::*;
