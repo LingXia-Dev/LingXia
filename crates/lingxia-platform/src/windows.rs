@@ -14,6 +14,7 @@ mod surface;
 mod media_preview;
 mod ui_update;
 mod user_feedback;
+mod video_info;
 mod video_player;
 
 pub use app::{Platform, set_windows_app_exit_handler, set_windows_open_url_handler};

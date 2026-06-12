@@ -161,14 +161,18 @@ impl MediaRuntime for Platform {
         not_supported("compress_video")
     }
 
-    fn get_video_info(&self, _uri: &str) -> Result<VideoInfo, PlatformError> {
-        not_supported("get_video_info")
+    fn get_video_info(&self, uri: &str) -> Result<VideoInfo, PlatformError> {
+        let path = file::normalize_file_uri(uri)?;
+        super::video_info::read_video_info(&path)
     }
 
     fn extract_video_thumbnail(
         &self,
-        _request: &ExtractVideoThumbnailRequest,
+        request: &ExtractVideoThumbnailRequest,
     ) -> Result<VideoThumbnail, PlatformError> {
-        not_supported("extract_video_thumbnail")
+        let source = file::normalize_file_uri(&request.source_uri)?;
+        super::video_info::extract_thumbnail(request, &source).inspect_err(|err| {
+            log::warn!("extract_video_thumbnail({}): {err}", source.display());
+        })
     }
 }
