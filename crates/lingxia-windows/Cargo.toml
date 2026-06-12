@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 description = "Pure Rust Windows host runtime for LingXia"
 license = "MIT"
+readme = "README.md"
 repository.workspace = true
 keywords = ["lingxia", "windows", "webview2", "lxapp"]
 categories = ["gui", "os::windows-apis"]
