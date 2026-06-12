@@ -99,6 +99,7 @@ pub(crate) fn install() {
         log::warn!("a native-component host was already registered; Windows manager inactive");
     }
     lingxia_platform::register_windows_video_command_dispatcher(Arc::new(dispatch_video_command));
+    super::media_preview::install();
 }
 
 struct ShellNativeComponentHost;

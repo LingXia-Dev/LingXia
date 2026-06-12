@@ -3302,6 +3302,7 @@ version = "0.9.0"
 dependencies = [
  "lingxia",
  "lingxia-lxapp",
+ "lingxia-messaging",
  "lingxia-platform",
  "lingxia-webview",
  "log",

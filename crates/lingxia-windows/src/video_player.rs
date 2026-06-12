@@ -154,6 +154,12 @@ impl VideoPlayer {
         }
     }
 
+    /// MFPlay's URL parser misreads extended-length paths (`\\?\C:\...`)
+    /// as network paths; plain absolute paths work.
+    fn normalize_source(url: &str) -> &str {
+        url.strip_prefix(r"\\?\").unwrap_or(url)
+    }
+
     /// Opens the stored source unless a (live) open is already in flight.
     fn open_current_source(&self) {
         let url = {
@@ -171,6 +177,7 @@ impl VideoPlayer {
             shared.media_ready = false;
             url
         };
+        let url = Self::normalize_source(&url).to_string();
         let wide: Vec<u16> = url.encode_utf16().chain(std::iter::once(0)).collect();
         log::info!("mfplay opening source {url}");
         unsafe {

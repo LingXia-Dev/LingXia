@@ -13,12 +13,12 @@ use crate::traits::media_runtime::{
 };
 
 impl MediaInteraction for Platform {
-    fn preview_media(&self, _request: PreviewMediaRequest) -> Result<(), PlatformError> {
-        not_supported("preview_media")
+    fn preview_media(&self, request: PreviewMediaRequest) -> Result<(), PlatformError> {
+        super::media_preview::open_preview(request).map_err(PlatformError::Platform)
     }
 
-    fn cancel_preview(&self, _callback_id: u64) -> Result<(), PlatformError> {
-        not_supported("cancel_preview")
+    fn cancel_preview(&self, callback_id: u64) -> Result<(), PlatformError> {
+        super::media_preview::cancel_preview(callback_id).map_err(PlatformError::Platform)
     }
 
     fn choose_media(

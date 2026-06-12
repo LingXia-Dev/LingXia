@@ -14,6 +14,8 @@
 use std::path::{Path, PathBuf};
 
 #[cfg(target_os = "windows")]
+mod media_preview;
+#[cfg(target_os = "windows")]
 mod native_components;
 #[cfg(target_os = "windows")]
 mod video_controls;

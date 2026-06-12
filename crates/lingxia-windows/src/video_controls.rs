@@ -530,7 +530,7 @@ fn draw_texts(
         );
         SetBkMode(dc, TRANSPARENT);
 
-        let mut draw_centered = |text: &str, slot: (i32, i32), color: u32, font: HGDIOBJ| {
+        let draw_centered = |text: &str, slot: (i32, i32), color: u32, font: HGDIOBJ| {
             let _ = SelectObject(dc, font);
             SetTextColor(dc, COLORREF(color));
             let wide: Vec<u16> = text.encode_utf16().collect();
