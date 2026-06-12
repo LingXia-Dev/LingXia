@@ -288,37 +288,43 @@ internal class TabBar(context: Context) : LinearLayout(context) {
     private fun setupGroupedLayout(container: LinearLayout) {
         val isVertical = config.position.value == TabBarState.POSITION_LEFT || config.position.value == TabBarState.POSITION_RIGHT
 
-        // Group items by their group value
+        // Group items per the FFI contract: 0 = center (default), 1 = start,
+        // 2 = end — matching the iOS and Harmony grouped layouts.
         val startItems = mutableListOf<TabBarItem>()
+        val centerItems = mutableListOf<TabBarItem>()
         val endItems = mutableListOf<TabBarItem>()
 
-        items.forEachIndexed { index, item ->
+        items.forEach { item ->
             when (item.group) {
-                2 -> endItems.add(item) // end
-                else -> startItems.add(item) // 0 (no group) or 1 (start) → all treated as start
+                1 -> startItems.add(item)
+                2 -> endItems.add(item)
+                else -> centerItems.add(item)
             }
         }
 
-        // Create start container
-        if (startItems.isNotEmpty()) {
-            val startContainer = createGroupContainer(startItems, isVertical)
-            container.addView(startContainer)
-        }
-
-        // Add flexible spacer to push end items to bottom/right
-        val spacer = View(context).apply {
+        fun flexibleSpacer() = View(context).apply {
             layoutParams = LinearLayout.LayoutParams(
                 if (isVertical) LinearLayout.LayoutParams.MATCH_PARENT else 0,
                 if (isVertical) 0 else LinearLayout.LayoutParams.MATCH_PARENT,
                 1f
             )
         }
-        container.addView(spacer)
 
-        // Create end container
+        if (startItems.isNotEmpty()) {
+            container.addView(createGroupContainer(startItems, isVertical))
+        }
+
+        // Spacers on both sides of the center group keep it centered; with no
+        // center items a single spacer pushes the end group to bottom/right.
+        container.addView(flexibleSpacer())
+
+        if (centerItems.isNotEmpty()) {
+            container.addView(createGroupContainer(centerItems, isVertical))
+            container.addView(flexibleSpacer())
+        }
+
         if (endItems.isNotEmpty()) {
-            val endContainer = createGroupContainer(endItems, isVertical)
-            container.addView(endContainer)
+            container.addView(createGroupContainer(endItems, isVertical))
         }
     }
 
@@ -604,7 +610,7 @@ internal class TabBar(context: Context) : LinearLayout(context) {
             // Create very compact rounded background
             background = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
-                setColor(0xFFFF4444.toInt())  // Bright red
+                setColor(0xFFFA5151.toInt())  // Badge red, unified across platforms
                 cornerRadius = (6 * resources.displayMetrics.density)  // Smaller radius
             }
 
@@ -638,7 +644,7 @@ internal class TabBar(context: Context) : LinearLayout(context) {
             // Create small red circle
             background = GradientDrawable().apply {
                 shape = GradientDrawable.OVAL
-                setColor(0xFFFF4444.toInt())  // Bright red
+                setColor(0xFFFA5151.toInt())  // Badge red, unified across platforms
             }
 
             // Position at top-right within wrapper bounds

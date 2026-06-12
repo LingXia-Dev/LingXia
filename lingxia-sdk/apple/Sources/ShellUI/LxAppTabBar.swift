@@ -249,14 +249,14 @@ fileprivate struct TabBarHelpers {
             .foregroundColor(.white)
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
-            .background(Capsule().fill(Color.red))
+            .background(Capsule().fill(lxBadgeRed))
             .zIndex(1)
     }
 
     @ViewBuilder
     static func buildRedDot() -> some View {
         Circle()
-            .fill(Color.red)
+            .fill(lxBadgeRed)
             .frame(width: 8, height: 8)
             .zIndex(1)
     }
@@ -278,6 +278,9 @@ struct TabBarHelper {
 }
 
 /// Unified SwiftUI TabBar for iOS and macOS
+/// Badge / red-dot red, unified across iOS, Android, and Harmony (#FA5151).
+let lxBadgeRed = Color(red: 0xFA / 255.0, green: 0x51 / 255.0, blue: 0x51 / 255.0)
+
 struct LxAppTabBar: View {
     let appId: String
     let config: TabBar
@@ -307,10 +310,10 @@ struct LxAppTabBar: View {
             case .bottom:
                 if TabBarHelpers.hasGroupField(items: items) {
                     buildGroupedHorizontalTabBar(items: items)
-                        .frame(height: LxAppTheme.Metrics.tabBarHeight)
+                        .frame(height: config.dimensionPoints)
                 } else {
                     buildHorizontalTabBar(items: items)
-                        .frame(height: LxAppTheme.Metrics.tabBarHeight)
+                        .frame(height: config.dimensionPoints)
                 }
 
             case .left, .right:
@@ -526,10 +529,10 @@ struct MacOSLxAppTabBar: View {
             case .bottom:
                 if TabBarHelpers.hasGroupField(items: items) {
                     buildGroupedHorizontalTabBar(items: items)
-                        .frame(height: LxAppTheme.Metrics.tabBarHeight)
+                        .frame(height: config.dimensionPoints)
                 } else {
                     buildHorizontalTabBar(items: items)
-                        .frame(height: LxAppTheme.Metrics.tabBarHeight)
+                        .frame(height: config.dimensionPoints)
                 }
 
             case .left, .right:
@@ -722,6 +725,15 @@ struct MacOSLxAppTabBar: View {
 }
 
 /// Protocol for tab bar implementations
+extension TabBar {
+    /// Configured bar thickness in points (height when horizontal, width when
+    /// vertical). Rust guarantees a positive default; the theme constant is a
+    /// last-resort fallback so a malformed config can't collapse the bar.
+    var dimensionPoints: CGFloat {
+        dimension > 0 ? CGFloat(dimension) : LxAppTheme.Metrics.tabBarHeight
+    }
+}
+
 @MainActor
 protocol TabBarProtocol: AnyObject {
     var config: TabBar? { get }
@@ -823,7 +835,7 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
 
     private func createRedDotView() -> UIView {
         let redDot = UIView()
-        redDot.backgroundColor = UIColor.red
+        redDot.backgroundColor = UIColor(red: 0xFA / 255.0, green: 0x51 / 255.0, blue: 0x51 / 255.0, alpha: 1.0)
         redDot.layer.cornerRadius = 4
         redDot.translatesAutoresizingMaskIntoConstraints = false
         return redDot
@@ -1136,7 +1148,7 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
 
     private func createBadgeView(text: String) -> UIView {
         let badgeView = UIView()
-        badgeView.backgroundColor = UIColor.red
+        badgeView.backgroundColor = UIColor(red: 0xFA / 255.0, green: 0x51 / 255.0, blue: 0x51 / 255.0, alpha: 1.0)
         badgeView.layer.cornerRadius = 8
         badgeView.translatesAutoresizingMaskIntoConstraints = false
 

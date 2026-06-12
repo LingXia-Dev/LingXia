@@ -54,7 +54,7 @@ const COLOR_BLACK = '#000000';
 const COLOR_TRANSPARENT = Color.Transparent;
 const COLOR_LIGHT_BORDER = '#DDDDDD';
 const COLOR_BADGE_RED = '#FA5151';
-const COLOR_RED_DOT = '#ff0000';
+const COLOR_RED_DOT = '#FA5151';
 const COLOR_TEXT_SHADOW = 'rgba(255,255,255,0.8)';
 
 // Text shadow configuration
@@ -277,9 +277,23 @@ export struct TabBar {
       }
     })
 
-    // Flexible spacer to push end items to the bottom
+    // Flexible spacer; with center items present this balances the one
+    // below so the center group sits in the middle (iOS parity).
     Blank()
       .layoutWeight(1)
+
+    // Center items (group 0 — the default)
+    ForEach(this.getCenterItems(), (item: TabBarItem, index: number) => {
+      this.buildTabItem(item, this.tabbar.items.indexOf(item))
+      if (index < this.getCenterItems().length - 1) {
+        Blank().height(TAB_BAR_ITEM_SPACING) // Adaptive spacer
+      }
+    })
+
+    if (this.getCenterItems().length > 0) {
+      Blank()
+        .layoutWeight(1)
+    }
 
     // End items
     ForEach(this.getEndItems(), (item: TabBarItem, index: number) => {
@@ -303,9 +317,23 @@ export struct TabBar {
       }
     })
 
-    // Flexible spacer to push end items to the right
+    // Flexible spacer; with center items present this balances the one
+    // below so the center group sits in the middle (iOS parity).
     Blank()
       .layoutWeight(1)
+
+    // Center items (group 0 — the default)
+    ForEach(this.getCenterItems(), (item: TabBarItem, index: number) => {
+      this.buildTabItem(item, this.tabbar.items.indexOf(item))
+      if (index < this.getCenterItems().length - 1) {
+        Blank().width(TAB_BAR_ITEM_SPACING) // Adaptive spacer
+      }
+    })
+
+    if (this.getCenterItems().length > 0) {
+      Blank()
+        .layoutWeight(1)
+    }
 
     // End items
     ForEach(this.getEndItems(), (item: TabBarItem, index: number) => {
@@ -324,13 +352,18 @@ export struct TabBar {
   }
 
   /**
-   * Get start items (group 0 or 1)
+   * Get start items (group 1)
    */
   private getStartItems(): TabBarItem[] {
-    return this.tabbar.items.filter((item: TabBarItem): boolean => {
-      const group: number = item.group ?? 0;
-      return group !== TAB_BAR_GROUP_END; // 0 (no group) or 1 (start) → all treated as start
-    });
+    return this.tabbar.items.filter((item: TabBarItem): boolean => (item.group ?? 0) === TAB_BAR_GROUP_START);
+  }
+
+  /**
+   * Get center items (group 0 — the default). Matches the FFI contract
+   * (0=center, 1=start, 2=end) and the iOS grouped layout.
+   */
+  private getCenterItems(): TabBarItem[] {
+    return this.tabbar.items.filter((item: TabBarItem): boolean => (item.group ?? 0) === 0);
   }
 
   /**
