@@ -23,7 +23,8 @@ Commands:
   sdk                 Build/package SDK release artifacts
 
 CLI options:
-  --target <platform> Build specific target(s): darwin-x64, darwin-arm64, all
+  --target <platform> Build specific target(s): darwin-x64, darwin-arm64,
+                      windows-x64, windows-arm64, all
   --publish           Upload built assets to the GitHub release tag
   --tag <tag>         Release tag to upload to (default: lingxia-cli-v<version>)
   --out <dir>         Output directory (default: ./dist/cli-release)
@@ -78,6 +79,16 @@ release_tag_for_version() {
   printf 'lingxia-cli-v%s\n' "$version"
 }
 
+cli_asset_for_target() {
+  case "$1" in
+    darwin-x64) echo "lingxia-darwin-x86_64" ;;
+    darwin-arm64) echo "lingxia-darwin-aarch64" ;;
+    windows-x64) echo "lingxia-windows-x86_64.exe" ;;
+    windows-arm64) echo "lingxia-windows-aarch64.exe" ;;
+    *) return 1 ;;
+  esac
+}
+
 current_cli_target() {
   local os arch
   os="$(uname -s)"
@@ -85,6 +96,7 @@ current_cli_target() {
 
   case "$os" in
     Darwin) os="darwin" ;;
+    MINGW*|MSYS*|CYGWIN*|Windows_NT) os="windows" ;;
     *)
       echo "ERROR: unsupported CLI host OS: $os" >&2
       return 2
@@ -92,8 +104,9 @@ current_cli_target() {
   esac
 
   case "$arch" in
-    x86_64|amd64) arch="x86_64" ;;
-    arm64|aarch64) arch="aarch64" ;;    *)
+    x86_64|amd64) arch="x64" ;;
+    arm64|aarch64) arch="arm64" ;;
+    *)
       echo "ERROR: unsupported CLI host arch: $arch" >&2
       return 2
       ;;
@@ -107,7 +120,7 @@ doctor() {
   ws_v="$(workspace_version)"
   cli_v="$(cli_version)"
   if cli_target="$(current_cli_target 2>/dev/null)"; then
-    cli_asset="lingxia-$cli_target"
+    cli_asset="$(cli_asset_for_target "$cli_target")"
   else
     cli_asset="N/A (unsupported host)"
   fi
