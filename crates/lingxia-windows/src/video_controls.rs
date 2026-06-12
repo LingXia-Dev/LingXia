@@ -75,6 +75,10 @@ struct ControlsInner {
     drag_ratio: Option<f64>,
     /// Last live seek issued during the drag (throttling).
     last_live_seek: Option<std::time::Instant>,
+    /// Last observed cursor position: every repaint under a resting
+    /// cursor synthesizes a WM_MOUSEMOVE, which must not count as
+    /// activity or the bar never auto-hides.
+    last_mouse: Option<(i32, i32)>,
 }
 
 /// Element rects computed from the current width.
@@ -140,6 +144,7 @@ impl VideoControls {
             width: BAR_MIN_WIDTH,
             drag_ratio: None,
             last_live_seek: None,
+            last_mouse: None,
         });
         unsafe {
             WindowsAndMessaging::SetWindowLongPtrW(
@@ -625,30 +630,37 @@ unsafe extern "system" fn controls_proc(
         }
         WindowsAndMessaging::WM_MOUSEMOVE => {
             let x = (lparam.0 & 0xffff) as i16 as i32;
-            if let Some(inner) = inner_mut(hwnd)
-                && inner.drag_ratio.is_some()
-            {
-                inner.drag_ratio = ratio_at(inner, x);
-                // Scrub live (throttled) so the drag takes effect even if
-                // the button-up never reaches us.
-                let due = inner
-                    .last_live_seek
-                    .is_none_or(|last| last.elapsed().as_millis() >= 150);
-                if due && let Some(ratio) = inner.drag_ratio {
-                    inner.last_live_seek = Some(std::time::Instant::now());
-                    let target = ratio * inner.state.duration.max(0.0);
-                    (inner.sink)(ControlsAction::Seek(target));
+            let y = ((lparam.0 >> 16) & 0xffff) as i16 as i32;
+            let mut moved = false;
+            if let Some(inner) = inner_mut(hwnd) {
+                moved = inner.last_mouse != Some((x, y));
+                inner.last_mouse = Some((x, y));
+                if inner.drag_ratio.is_some() {
+                    inner.drag_ratio = ratio_at(inner, x);
+                    // Scrub live (throttled) so the drag takes effect even
+                    // if the button-up never reaches us.
+                    let due = inner
+                        .last_live_seek
+                        .is_none_or(|last| last.elapsed().as_millis() >= 150);
+                    if due && let Some(ratio) = inner.drag_ratio {
+                        inner.last_live_seek = Some(std::time::Instant::now());
+                        let target = ratio * inner.state.duration.max(0.0);
+                        (inner.sink)(ControlsAction::Seek(target));
+                    }
+                    repaint(hwnd);
                 }
-                repaint(hwnd);
             }
-            // Mouse over the bar keeps it shown.
-            unsafe {
-                let _ = WindowsAndMessaging::SetTimer(
-                    Some(hwnd),
-                    AUTO_HIDE_TIMER_ID,
-                    AUTO_HIDE_MS,
-                    None,
-                );
+            // Real movement over the bar keeps it shown (repaints under a
+            // resting cursor synthesize this message).
+            if moved {
+                unsafe {
+                    let _ = WindowsAndMessaging::SetTimer(
+                        Some(hwnd),
+                        AUTO_HIDE_TIMER_ID,
+                        AUTO_HIDE_MS,
+                        None,
+                    );
+                }
             }
             LRESULT(0)
         }

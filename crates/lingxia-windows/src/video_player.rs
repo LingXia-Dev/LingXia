@@ -1,4 +1,4 @@
-//! MFPlay-backed playback engine for the `video.native` component.
+﻿//! MFPlay-backed playback engine for the `video.native` component.
 //!
 //! One [`VideoPlayer`] per mounted component: an `IMFPMediaPlayer` that
 //! renders into the component's container window (EVR letterboxing on a
@@ -55,9 +55,13 @@ struct SharedState {
     /// Current source URL. `stop()` clears the media item (releasing the
     /// decoder and the displayed frame); `play()` reopens from here.
     source: Option<String>,
-    /// An async `CreateMediaItemFromURL` is in flight.
-    opening: bool,
+    /// An async `CreateMediaItemFromURL` is in flight (since when — an
+    /// open whose callbacks never came back must not wedge `play()`).
+    opening: Option<std::time::Instant>,
 }
+
+/// An async open older than this is presumed dead and gets retried.
+const OPEN_STALE_AFTER: std::time::Duration = std::time::Duration::from_secs(10);
 
 pub(crate) struct VideoPlayer {
     player: IMFPMediaPlayer,
@@ -112,26 +116,30 @@ impl VideoPlayer {
             let mut shared = self.lock();
             shared.source = Some(url.to_string());
             shared.media_ready = false;
-            shared.opening = false;
+            shared.opening = None;
         }
         self.open_current_source();
     }
 
-    /// Opens the stored source unless an open is already in flight.
+    /// Opens the stored source unless a (live) open is already in flight.
     fn open_current_source(&self) {
         let url = {
             let mut shared = self.lock();
-            if shared.opening {
+            if shared
+                .opening
+                .is_some_and(|since| since.elapsed() < OPEN_STALE_AFTER)
+            {
                 return;
             }
             let Some(url) = shared.source.clone() else {
                 return;
             };
-            shared.opening = true;
+            shared.opening = Some(std::time::Instant::now());
             shared.media_ready = false;
             url
         };
         let wide: Vec<u16> = url.encode_utf16().chain(std::iter::once(0)).collect();
+        log::info!("mfplay opening source {url}");
         unsafe {
             let _ = self.player.ClearMediaItem();
             if let Err(err) =
@@ -139,7 +147,7 @@ impl VideoPlayer {
                     .CreateMediaItemFromURL(PCWSTR(wide.as_ptr()), false, 0, None)
             {
                 log::warn!("failed to open video source {url}: {err}");
-                self.lock().opening = false;
+                self.lock().opening = None;
             }
         }
     }
@@ -158,7 +166,10 @@ impl VideoPlayer {
                 Action::Direct
             } else {
                 shared.pending_play = true;
-                if !shared.opening && shared.source.is_some() {
+                let opening_live = shared
+                    .opening
+                    .is_some_and(|since| since.elapsed() < OPEN_STALE_AFTER);
+                if !opening_live && shared.source.is_some() {
                     Action::Reopen
                 } else {
                     Action::Wait
@@ -189,7 +200,7 @@ impl VideoPlayer {
             let mut shared = self.lock();
             shared.pending_play = false;
             shared.media_ready = false;
-            shared.opening = false;
+            shared.opening = None;
         }
         unsafe {
             let _ = self.player.Stop();
@@ -286,13 +297,18 @@ impl IMFPMediaPlayerCallback_Impl for PlayerCallback_Impl {
         let Some(header) = (unsafe { header.as_ref() }) else {
             return;
         };
+        log::info!(
+            "mfplay event type={} hr=0x{:08x}",
+            header.eEventType.0,
+            header.hrEvent.0
+        );
         let player: Option<&IMFPMediaPlayer> = (*header.pMediaPlayer).as_ref();
 
         if let Err(err) = header.hrEvent.ok() {
             {
                 let mut shared = self.lock();
                 shared.pending_play = false;
-                shared.opening = false;
+                shared.opening = None;
             }
             (self.sink)(VideoPlayerEvent::Error {
                 message: format!("playback failed: {err}"),
@@ -319,7 +335,7 @@ impl IMFPMediaPlayerCallback_Impl for PlayerCallback_Impl {
                 let pending_play = {
                     let mut shared = self.lock();
                     shared.media_ready = true;
-                    shared.opening = false;
+                    shared.opening = None;
                     std::mem::take(&mut shared.pending_play)
                 };
                 let duration = player

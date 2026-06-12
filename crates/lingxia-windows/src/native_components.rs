@@ -228,6 +228,10 @@ struct ComponentEntry {
 
 struct VideoComponent {
     player: Arc<VideoPlayer>,
+    /// Last observed cursor position over the surface — repaints under a
+    /// resting cursor synthesize WM_MOUSEMOVEs that must not count as
+    /// activity (or the controls bar never auto-hides).
+    last_surface_mouse: Option<(i32, i32)>,
     /// Inner child window MFPlay renders into (and subclasses for its
     /// repaints). Hidden while stopped so the retained last frame never
     /// shows.
@@ -906,6 +910,7 @@ fn mount_video_on_ui(
         font: 0,
         video: Some(VideoComponent {
             player: Arc::new(player),
+            last_surface_mouse: None,
             surface: surface.0 as isize,
             stopped: true,
             fullscreen: false,
@@ -1087,10 +1092,27 @@ unsafe extern "system" fn video_surface_proc(
             }
             LRESULT(0)
         }
-        // Mouse over the video reveals the controls bar.
+        // Real mouse movement over the video reveals the controls bar
+        // (repaints under a resting cursor synthesize this message).
         WindowsAndMessaging::WM_MOUSEMOVE => {
+            let x = (lparam.0 & 0xffff) as i16 as i32;
+            let y = ((lparam.0 >> 16) & 0xffff) as i16 as i32;
             if let Some(key) = component_key_for_surface(hwnd) {
-                poke_video_controls(&key);
+                let moved = {
+                    let mut components = components();
+                    components
+                        .get_mut(&key)
+                        .and_then(|entry| entry.video.as_mut())
+                        .map(|video| {
+                            let moved = video.last_surface_mouse != Some((x, y));
+                            video.last_surface_mouse = Some((x, y));
+                            moved
+                        })
+                        .unwrap_or(false)
+                };
+                if moved {
+                    poke_video_controls(&key);
+                }
             }
             LRESULT(0)
         }
