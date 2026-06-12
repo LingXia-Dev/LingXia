@@ -613,6 +613,20 @@ impl PageInstance {
             let path = self.path();
 
             for (event, query) in events_to_fire {
+                // Keep the in-process native-component host in sync with
+                // page visibility: hidden pages hide their overlays and
+                // pause playback (mirrors the platform managers'
+                // inactive/active handling).
+                match event {
+                    PageLifecycleEvent::OnShow => {
+                        crate::native_component::notify_page_visibility(self.webtag().key(), true);
+                    }
+                    PageLifecycleEvent::OnHide => {
+                        crate::native_component::notify_page_visibility(self.webtag().key(), false);
+                    }
+                    _ => {}
+                }
+
                 let page_event = match event {
                     PageLifecycleEvent::OnLoad => crate::lifecycle::PageServiceEvent::OnLoad,
                     PageLifecycleEvent::OnShow => crate::lifecycle::PageServiceEvent::OnShow,
@@ -1008,9 +1022,18 @@ impl PageInstance {
 
             (*lxapp.runtime).navigate(
                 self.appid(),
-                path,
+                path.clone(),
                 NavigationType::Backward.to_animation(),
             )?;
+            // Reveal lifecycle for the destination. Platforms with native
+            // page containers (iOS/Android/Harmony) call `on_page_show`
+            // from the container when the page surfaces; the windowed
+            // runtime has no such callback, and `dispatch_lifecycle_event`
+            // de-dupes when both paths fire.
+            if let Some(dest_page) = lxapp.get_page(&path) {
+                dest_page.dispatch_lifecycle_event(PageLifecycleEvent::OnShow);
+                dest_page.mark_active();
+            }
             lxapp.sync_host_ui();
             Ok(())
         } else {

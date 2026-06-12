@@ -44,9 +44,10 @@ use lingxia_webview::platform::windows::{
 use serde_json::{Value, json};
 use windows::Win32::Foundation::{COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
-    CLEARTYPE_QUALITY, CLIP_DEFAULT_PRECIS, COLOR_WINDOW, CreateFontW, CreateRectRgn, DEFAULT_CHARSET,
-    DEFAULT_PITCH, DeleteObject, FF_SWISS, GetStockObject, HBRUSH, HDC, HGDIOBJ,
-    InvalidateRect, OUT_DEFAULT_PRECIS, SetBkColor, SetTextColor, SetWindowRgn, WHITE_BRUSH,
+    CLEARTYPE_QUALITY, CLIP_DEFAULT_PRECIS, COLOR_WINDOW, CombineRgn, CreateFontW, CreateRectRgn,
+    CreateRoundRectRgn, DEFAULT_CHARSET, DEFAULT_PITCH, DeleteObject, FF_SWISS, GetStockObject,
+    HBRUSH, HDC, HGDIOBJ, InvalidateRect, OUT_DEFAULT_PRECIS, RGN_AND, SetBkColor, SetTextColor,
+    SetWindowRgn, WHITE_BRUSH,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::Threading::GetCurrentThreadId;
@@ -101,6 +102,10 @@ pub(crate) fn install() {
 struct ShellNativeComponentHost;
 
 impl lxapp::NativeComponentHost for ShellNativeComponentHost {
+    fn on_page_visibility(&self, page_key: &str, visible: bool) {
+        set_page_components_visible(page_key, visible);
+    }
+
     fn on_component_message(&self, page: &lxapp::PageInstance, message_json: &str) {
         let message: Value = match serde_json::from_str(message_json) {
             Ok(message) => message,
@@ -153,6 +158,10 @@ struct ComponentProps {
     password: Option<bool>,
     maxlength: Option<u32>,
     focus: Option<bool>,
+    /// The element's measured CSS border-radius (CSS px); clips the
+    /// container window. Geometry-only updates carry it at the payload top
+    /// level; the message handlers lift it into the props.
+    corner_radius: Option<f64>,
     // — video —
     src: Option<String>,
     autoplay: Option<bool>,
@@ -180,6 +189,7 @@ impl ComponentProps {
         take!(password);
         take!(maxlength);
         take!(focus);
+        take!(corner_radius);
         take!(src);
         take!(autoplay);
         take!(looping);
@@ -215,6 +225,11 @@ struct VideoComponent {
     /// Covers the whole content area instead of its document rect
     /// (`requestFullScreen` from the video context).
     fullscreen: bool,
+    /// Mirrors the player's play/pause transitions (sink updates).
+    playing: bool,
+    /// Was playing when its page left the foreground; auto-resumes when
+    /// the page returns (mirrors the macOS manager).
+    resume_on_show: bool,
 }
 
 /// Per-page view state: latest scroll offset (CSS px) and content-window
@@ -223,6 +238,9 @@ struct VideoComponent {
 struct PageView {
     scroll_x: f64,
     scroll_y: f64,
+    /// The page is in the foreground; hidden pages (another page pushed on
+    /// top) keep their component overlays hidden and playback paused.
+    visible: bool,
     target: WindowsWebViewContentWindow,
 }
 
@@ -280,6 +298,7 @@ fn handle_message(context: PageContext, target: Option<WindowsWebViewContentWind
         let view = views.entry(context.page_key.clone()).or_insert(PageView {
             scroll_x: 0.0,
             scroll_y: 0.0,
+            visible: true,
             target,
         });
         view.target = target;
@@ -334,7 +353,10 @@ fn handle_mount(context: &PageContext, message: &Value) {
         log::warn!("component.mount without rect for {component_id}; ignoring");
         return;
     };
-    let props = parse_props(message.get("props"));
+    let mut props = parse_props(message.get("props"));
+    if props.corner_radius.is_none() {
+        props.corner_radius = corner_radius_value(message.get("cornerRadius"));
+    }
 
     let Some(parent) = parent_window_for_page(&context.page_key) else {
         log::warn!(
@@ -355,7 +377,12 @@ fn handle_update(context: &PageContext, message: &Value) {
         return;
     };
     let doc_rect = parse_rect(message.get("rect"));
-    let props = message.get("props").map(|raw| parse_props(Some(raw)));
+    let mut props = message.get("props").map(|raw| parse_props(Some(raw)));
+    // Geometry-only updates carry the measured radius at the top level.
+    if let Some(radius) = corner_radius_value(message.get("cornerRadius")) {
+        let merged = props.get_or_insert_with(ComponentProps::default);
+        merged.corner_radius.get_or_insert(radius);
+    }
 
     let key = component_key(&context.page_key, &component_id);
     let Some(parent) = components().get(&key).map(|entry| entry.parent) else {
@@ -469,6 +496,75 @@ fn handle_page_scroll(context: &PageContext, message: &Value) {
     });
 }
 
+/// Hides or re-shows every component of `page_key` when it leaves or
+/// re-enters the foreground (page navigation), mirroring the macOS
+/// manager's inactive/active handling: hiding pauses a playing video
+/// immediately and remembers to resume it when the page returns.
+fn set_page_components_visible(page_key: &str, visible: bool) {
+    {
+        let mut views = page_views();
+        let Some(view) = views.get_mut(page_key) else {
+            return;
+        };
+        if view.visible == visible {
+            return;
+        }
+        view.visible = visible;
+    }
+    let targets: Vec<(String, isize)> = components()
+        .iter()
+        .filter(|(_, entry)| entry.context.page_key == page_key)
+        .map(|(key, entry)| (key.clone(), entry.parent))
+        .collect();
+    for (key, parent) in targets {
+        run_on_window_thread(parent, move || apply_component_visibility(&key, visible));
+    }
+}
+
+/// Applies one component's page-visibility change on its UI thread.
+fn apply_component_visibility(key: &str, visible: bool) {
+    let (container, edit, parent, video) = {
+        let mut components = components();
+        let Some(entry) = components.get_mut(key) else {
+            return;
+        };
+        let video = entry.video.as_mut().map(|video| {
+            if visible {
+                (video.player.clone(), std::mem::take(&mut video.resume_on_show))
+            } else {
+                video.resume_on_show = video.playing;
+                (video.player.clone(), false)
+            }
+        });
+        (entry.container, entry.edit, entry.parent, video)
+    };
+
+    if visible {
+        // Re-position and re-show through the normal layout pass, then
+        // resume a video the hide had paused.
+        apply_layout(key);
+        if let Some((player, resume)) = video {
+            if resume {
+                player.play();
+            }
+        }
+        return;
+    }
+
+    if edit != 0 {
+        set_edit_focus_with_parent(edit, parent, false);
+    }
+    if let Some((player, _)) = video {
+        player.pause();
+    }
+    unsafe {
+        let _ = WindowsAndMessaging::ShowWindow(
+            HWND(container as *mut _),
+            WindowsAndMessaging::SW_HIDE,
+        );
+    }
+}
+
 /// Destroys every component mounted by `page_key` and drops its view state.
 fn teardown_page(page_key: &str) {
     page_views().remove(page_key);
@@ -546,6 +642,11 @@ fn value_as_bool(value: &Value) -> Option<bool> {
     }
 }
 
+fn corner_radius_value(raw: Option<&Value>) -> Option<f64> {
+    raw.and_then(Value::as_f64)
+        .filter(|radius| radius.is_finite() && *radius >= 0.0)
+}
+
 fn parse_props(raw: Option<&Value>) -> ComponentProps {
     let mut props = ComponentProps::default();
     let Some(raw) = raw.and_then(Value::as_object) else {
@@ -573,6 +674,7 @@ fn parse_props(raw: Option<&Value>) -> ComponentProps {
         .filter(|n| *n >= 0.0)
         .map(|n| n as u32);
     props.focus = raw.get("focus").and_then(value_as_bool);
+    props.corner_radius = corner_radius_value(raw.get("cornerRadius"));
     props.src = raw.get("src").and_then(Value::as_str).map(str::to_string);
     props.autoplay = raw.get("autoplay").and_then(value_as_bool);
     props.looping = raw.get("loop").and_then(value_as_bool);
@@ -736,6 +838,8 @@ fn mount_video_on_ui(
         video: Some(VideoComponent {
             player: Arc::new(player),
             fullscreen: false,
+            playing: false,
+            resume_on_show: false,
         }),
         doc_rect,
         state: ComponentProps::default(),
@@ -862,10 +966,11 @@ fn container_class() -> PCWSTR {
 
 /// Repositions a component's container over the webview content from its
 /// document rect, the page scroll offset, and the content-window geometry;
-/// clips it to the content area (chrome regions stay clean) and keeps it
-/// above the WebView2 child windows.
+/// clips it to the content area (chrome regions stay clean) and to the
+/// element's measured corner radius, and keeps it above the WebView2 child
+/// windows.
 fn apply_layout(key: &str) {
-    let (container, edit, doc_rect, page_key, font_size, multiline, video) = {
+    let (container, edit, doc_rect, page_key, font_size, multiline, corner_radius, video) = {
         let components = components();
         let Some(entry) = components.get(key) else {
             return;
@@ -877,6 +982,7 @@ fn apply_layout(key: &str) {
             entry.context.page_key.clone(),
             entry.state.font_size.unwrap_or(DEFAULT_FONT_SIZE),
             entry.multiline,
+            entry.state.corner_radius.unwrap_or(0.0),
             entry
                 .video
                 .as_ref()
@@ -886,6 +992,15 @@ fn apply_layout(key: &str) {
     let Some(view) = page_views().get(&page_key).copied() else {
         return;
     };
+    let container_hwnd = HWND(container as *mut _);
+    if !view.visible {
+        // The page is in the background; its overlays stay hidden until
+        // the page returns to the foreground.
+        unsafe {
+            let _ = WindowsAndMessaging::ShowWindow(container_hwnd, WindowsAndMessaging::SW_HIDE);
+        }
+        return;
+    }
     let target = view.target;
     let scale = if target.scale > 0.0 { target.scale } else { 1.0 };
 
@@ -914,7 +1029,6 @@ fn apply_layout(key: &str) {
     let visible_right = (x + width).min(content_right);
     let visible_bottom = (y + height).min(content_bottom);
 
-    let container_hwnd = HWND(container as *mut _);
     if width <= 0 || height <= 0 || visible_right <= visible_left || visible_bottom <= visible_top {
         unsafe {
             let _ = WindowsAndMessaging::ShowWindow(container_hwnd, WindowsAndMessaging::SW_HIDE);
@@ -925,20 +1039,37 @@ fn apply_layout(key: &str) {
     unsafe {
         let _ = WindowsAndMessaging::MoveWindow(container_hwnd, x, y, width, height, true);
         // Clip to the content area when the component pokes out of it
-        // (scrolled partially under the chrome).
+        // (scrolled partially under the chrome), and round the corners to
+        // the element's measured border-radius (a fullscreen video has no
+        // rounding). Both clips compose into one region.
+        let radius = if fullscreen {
+            0
+        } else {
+            (corner_radius * scale).round() as i32
+        };
         let fully_visible = visible_left == x
             && visible_top == y
             && visible_right == x + width
             && visible_bottom == y + height;
-        if fully_visible {
+        if fully_visible && radius <= 0 {
             SetWindowRgn(container_hwnd, None, true);
         } else {
-            let region = CreateRectRgn(
-                visible_left - x,
-                visible_top - y,
-                visible_right - x,
-                visible_bottom - y,
-            );
+            let region = if radius > 0 {
+                // End coordinates are exclusive, hence the +1.
+                CreateRoundRectRgn(0, 0, width + 1, height + 1, radius * 2, radius * 2)
+            } else {
+                CreateRectRgn(0, 0, width, height)
+            };
+            if !fully_visible {
+                let clip = CreateRectRgn(
+                    visible_left - x,
+                    visible_top - y,
+                    visible_right - x,
+                    visible_bottom - y,
+                );
+                let _ = CombineRgn(Some(region), Some(region), Some(clip), RGN_AND);
+                let _ = DeleteObject(HGDIOBJ(clip.0));
+            }
             // The system owns the region after SetWindowRgn succeeds.
             if SetWindowRgn(container_hwnd, Some(region), true) == 0 {
                 let _ = DeleteObject(HGDIOBJ(region.0));
@@ -1249,6 +1380,7 @@ fn video_event_sink(key: String, container: isize) -> VideoEventSink {
                 emit_event(&key, "loadedmetadata", json!({ "duration": duration }));
             }
             VideoPlayerEvent::Play => {
+                set_video_playing(&key, true);
                 unsafe {
                     let _ = WindowsAndMessaging::SetTimer(
                         Some(container_hwnd),
@@ -1261,24 +1393,35 @@ fn video_event_sink(key: String, container: isize) -> VideoEventSink {
                 emit_event(&key, "playing", json!({}));
             }
             VideoPlayerEvent::Pause => {
+                set_video_playing(&key, false);
                 stop_video_timer(container_hwnd);
                 emit_event(&key, "pause", json!({}));
             }
             VideoPlayerEvent::Stop => {
+                set_video_playing(&key, false);
                 stop_video_timer(container_hwnd);
                 emit_event(&key, "stop", json!({}));
             }
             VideoPlayerEvent::Ended => {
+                set_video_playing(&key, false);
                 stop_video_timer(container_hwnd);
                 emit_event(&key, "ended", json!({}));
             }
             VideoPlayerEvent::Error { message } => {
+                set_video_playing(&key, false);
                 stop_video_timer(container_hwnd);
                 log::warn!("native video component {key}: {message}");
                 emit_event(&key, "error", json!({ "errMsg": message }));
             }
         }
     })
+}
+
+fn set_video_playing(key: &str, playing: bool) {
+    let mut components = components();
+    if let Some(video) = components.get_mut(key).and_then(|entry| entry.video.as_mut()) {
+        video.playing = playing;
+    }
 }
 
 fn stop_video_timer(container: HWND) {

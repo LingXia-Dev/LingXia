@@ -20,6 +20,13 @@ pub trait NativeComponentHost: Send + Sync {
     /// `page_key` (the page's webview-tag key); called when the page
     /// instance is destroyed.
     fn on_page_destroyed(&self, page_key: &str);
+
+    /// Notifies that the page identified by `page_key` left or re-entered
+    /// the foreground (page navigation): hidden pages must hide their
+    /// component overlays and pause playback, mirroring the
+    /// inactive/active handling of the platform component managers.
+    /// Default: no-op (platform channels deliver their own lifecycle).
+    fn on_page_visibility(&self, _page_key: &str, _visible: bool) {}
 }
 
 static NATIVE_COMPONENT_HOST: OnceLock<Arc<dyn NativeComponentHost>> = OnceLock::new();
@@ -46,6 +53,14 @@ pub(crate) fn dispatch_component_message(page: &crate::PageInstance, message_jso
 pub(crate) fn notify_page_destroyed(page_key: &str) {
     if let Some(host) = NATIVE_COMPONENT_HOST.get() {
         host.on_page_destroyed(page_key);
+    }
+}
+
+/// Notifies the registered host (if any) that a page left or re-entered
+/// the foreground.
+pub(crate) fn notify_page_visibility(page_key: &str, visible: bool) {
+    if let Some(host) = NATIVE_COMPONENT_HOST.get() {
+        host.on_page_visibility(page_key, visible);
     }
 }
 
