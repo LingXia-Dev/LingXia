@@ -997,7 +997,9 @@ pub(super) fn draw_terminal_panel_content(
     }
 
     let text_rect = inset_rect(body, 12, 10);
-    let line_height = logical_font_height(hdc, 10).max(13);
+    // Line advance with leading: the glyph cell alone clips descenders
+    // when DrawText clamps to the per-line rect.
+    let line_height = (logical_font_height(hdc, 10).max(13) * 4 + 2) / 3;
     let max_lines = (rect_height(&text_rect) / line_height).max(1) as usize;
     let body = native
         .body
