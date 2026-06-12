@@ -33,21 +33,6 @@ export {
   type LxPickerEventDetail,
 } from "./picker.js";
 
-export {
-  registerInputComponent,
-  LxInputElement,
-  type LxInputAttributes,
-  type LxInputEvent,
-  type LxInputEventDetail,
-} from "./input.js";
-
-export {
-  registerTextareaComponent,
-  LxTextareaElement,
-  type LxTextareaAttributes,
-  type LxTextareaEvent,
-  type LxTextareaEventDetail,
-} from "./textarea.js";
 
 export {
   LxNavigatorElement,
@@ -70,11 +55,6 @@ export {
   VIDEO_DOM_EVENT_MAP,
   MEDIA_SWIPER_DOM_EVENT_MAP,
 } from "./native_component_wrapper_shared.js";
-
-export {
-  buildInputNativeAttrs,
-  buildTextareaNativeAttrs,
-} from "./text_component_native_attrs.js";
 
 export {
   isHarmony,

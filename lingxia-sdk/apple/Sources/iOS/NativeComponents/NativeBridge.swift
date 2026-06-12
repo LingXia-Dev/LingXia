@@ -249,9 +249,6 @@ extension NativeBridge {
         if registeredFactories["picker.native"] == nil {
             registeredFactories["picker.native"] = PickerComponentFactory()
         }
-        if registeredFactories["input.native"] == nil {
-            registeredFactories["input.native"] = InputComponentFactory()
-        }
     }
 
     private static func makePageKey(for webView: WKWebView) -> String {

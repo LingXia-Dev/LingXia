@@ -69,7 +69,6 @@ internal class NativeComponentManager(
     // return 0-size. Keep retrying a few times so the native overlay catches the final layout.
     private val rectSyncRetries = mutableMapOf<String, Int>()
     private val rectSyncRetryRunnables = mutableMapOf<String, Runnable>()
-    private val focusVisibilityRunnables = mutableMapOf<String, MutableList<Runnable>>()
     private val pageInactiveStopRunnables = mutableMapOf<String, Runnable>()
     private val componentPlaybackIntent = mutableMapOf<String, Boolean>()
     private val componentsPendingAutoResume = mutableSetOf<String>()
@@ -234,7 +233,6 @@ internal class NativeComponentManager(
 
     private fun handleBlur(params: Map<String, Any?>) {
         val id = params["id"] as? String ?: return
-        focusVisibilityRunnables.remove(id)?.forEach { mainHandler.removeCallbacks(it) }
         components[id]?.blur()
     }
 
@@ -259,8 +257,6 @@ internal class NativeComponentManager(
     fun teardownAll() {
         pageInactiveStopRunnables.values.forEach { mainHandler.removeCallbacks(it) }
         pageInactiveStopRunnables.clear()
-        focusVisibilityRunnables.values.flatten().forEach { mainHandler.removeCallbacks(it) }
-        focusVisibilityRunnables.clear()
         componentsPendingAutoResume.clear()
         componentPlaybackIntent.clear()
         val allIds = components.keys.toList()
@@ -426,9 +422,6 @@ internal class NativeComponentManager(
         payload["componentId"] = componentId
         componentPage[componentId]?.let { payload["pageId"] = it }
         val eventName = payload["event"] as? String
-        if (eventName == "focus") {
-            scheduleEnsureFocusedComponentVisible(componentId)
-        }
         updatePlaybackIntent(componentId, eventName)
         emitEventToView(componentId, payload)
         dispatchPageFunc(componentId, payload)
@@ -550,61 +543,7 @@ internal class NativeComponentManager(
         }
     }
 
-    private fun scheduleEnsureFocusedComponentVisible(componentId: String) {
-        if (componentAdjustPosition[componentId] == false) {
-            return
-        }
-        // Cancel ALL pending scroll-into-view runnables, not just those for this component.
-        // If the user moves focus from component A to B before A's runnables fire, A's
-        // runnables would otherwise scroll the WebView unexpectedly and scramble positions.
-        focusVisibilityRunnables.keys.toList().forEach { id ->
-            focusVisibilityRunnables.remove(id)?.forEach { mainHandler.removeCallbacks(it) }
-        }
-        val tasks = mutableListOf<Runnable>()
-        val delays = longArrayOf(120L, 260L)
-        delays.forEach { delay ->
-            val task = Runnable {
-                ensureComponentVisibleForIme(componentId)
-            }
-            tasks.add(task)
-            mainHandler.postDelayed(task, delay)
-        }
-        focusVisibilityRunnables[componentId] = tasks
-    }
 
-    private fun ensureComponentVisibleForIme(componentId: String) {
-        if (componentAdjustPosition[componentId] == false) return
-        val webView = webViewRef?.get() ?: return
-        val host = hostViewRef.get() ?: return
-        val contentRect = componentContentRects[componentId] ?: return
-
-        val rootInsets = ViewCompat.getRootWindowInsets(host)
-        val imeBottom = rootInsets?.getInsets(WindowInsetsCompat.Type.ime())?.bottom ?: 0
-        val navBottom = rootInsets?.getInsets(WindowInsetsCompat.Type.navigationBars())?.bottom ?: 0
-        val keyboardHeight = (imeBottom - navBottom).coerceAtLeast(0)
-        val viewportHeight = webView.height.toFloat()
-        if (viewportHeight <= 0f) return
-
-        val scrollY = webView.scrollY.toFloat()
-        val screenTop = contentRect.top - scrollY
-        val screenBottom = contentRect.bottom - scrollY
-        val topSafe = 12f * density
-        val bottomSafe = 24f * density
-        val visibleBottom = (viewportHeight - keyboardHeight - bottomSafe).coerceAtLeast(topSafe)
-
-        var delta = 0f
-        if (screenBottom > visibleBottom) {
-            delta = screenBottom - visibleBottom
-        } else if (screenTop < topSafe) {
-            delta = screenTop - topSafe
-        }
-        if (abs(delta) < 1f) return
-
-        val targetY = (webView.scrollY + delta.roundToInt()).coerceAtLeast(0)
-        if (targetY == webView.scrollY) return
-        webView.scrollTo(webView.scrollX, targetY)
-        onWebViewScroll(webView.scrollX, targetY)
-    }
 
     private fun jsonToAny(value: Any?): Any? {
         return when (value) {
@@ -823,7 +762,6 @@ internal class NativeComponentManager(
 
     private fun unmountComponent(id: String, pageId: String?) {
         webOverlayCoverageRestore.remove(id)
-        focusVisibilityRunnables.remove(id)?.forEach { mainHandler.removeCallbacks(it) }
         componentsPendingAutoResume.remove(id)
         componentPlaybackIntent.remove(id)
         readyComponentIds.remove(id)

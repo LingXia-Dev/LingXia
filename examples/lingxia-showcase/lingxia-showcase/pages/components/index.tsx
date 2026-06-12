@@ -123,29 +123,6 @@ export default function ComponentsPage() {
             </div>
           </div>
 
-          {/* Input */}
-          <div
-            className="px-4 py-3.5 hover:bg-gray-50 cursor-pointer flex items-center justify-between group transition-colors"
-            onClick={() => navigateTo({ page: 'input', query: { type: 'input' } })}
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-lg flex items-center justify-center">
-                <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" className="w-5 h-5">
-                  <rect x="3" y="7" width="18" height="10" rx="2" />
-                  <line x1="7" y1="11" x2="7" y2="13" />
-                </svg>
-              </div>
-              <div>
-                <div className="text-sm font-medium text-gray-900">Input</div>
-                <div className="text-xs text-gray-500">Native text input demos</div>
-              </div>
-            </div>
-            <div className="w-5 h-5 text-gray-400 group-hover:text-blue-500 transition-colors">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M9 18l6-6-6-6" />
-              </svg>
-            </div>
-          </div>
 
         </div>
 

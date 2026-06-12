@@ -21,7 +21,7 @@ const emit = defineEmits<{
   'update:modelValue': [value: string | string[]];
   confirm: [value: string | string[]];
   cancel: [];
-  scroll: [value: string | string[]];
+  columnChange: [value: string | string[]];
 }>();
 
 if (typeof window !== 'undefined') {
@@ -45,7 +45,6 @@ const pickerEventListeners: Record<string, EventListenerObject> = {
 const displayText = computed(() => getPickerDisplayText(props.modelValue, props.fields));
 
 function handleChange(e: Event) {
-  props.onChange?.(e);
   const detail = getCustomEventDetail<{
     confirmed?: boolean;
     cancelled?: boolean;
@@ -70,15 +69,14 @@ function handleChange(e: Event) {
 }
 
 function handleScroll(e: Event) {
-  props.onNativeScroll?.(e);
   const detail = getCustomEventDetail<{
     value?: string | string[];
     index?: number | number[];
   }>(e);
   if (detail.value !== undefined) {
-    emit('scroll', detail.value);
+    emit('columnChange', detail.value);
   } else if (detail.index !== undefined) {
-    emit('scroll', getPickerValueFromIndex(props.columns, detail.index));
+    emit('columnChange', getPickerValueFromIndex(props.columns, detail.index));
   }
 }
 

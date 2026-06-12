@@ -1,6 +1,6 @@
 # Native Components
 
-LingXia ships a set of native-backed components for lxapp views: `LxInput`, `LxTextarea`, `LxPicker`, `LxVideo`, `LxMediaSwiper`, `LxNavigator`. They render as platform-native UI under the WebView and are wired into the bridge so events can route directly to Logic.
+LingXia ships native-backed components for lxapp views: `LxPicker`, `LxVideo`, `LxMediaSwiper`, `LxNavigator` — reserved for capabilities the web platform cannot deliver. Text input is deliberately **not** a component: use plain `<input>` / `<textarea>` (see [Text inputs](#text-inputs--use-plain-input--textarea)).
 
 The components live in `@lingxia/elements` (the pure-JS custom elements) and are re-exported as framework-friendly wrappers from `@lingxia/react`, `@lingxia/vue`, and `@lingxia/html`. **Almost always import from the framework package**, not from `@lingxia/elements`.
 
@@ -12,13 +12,13 @@ For framework wiring (event short-path vs. View DOM path, `useLxPage` shape) see
 
 ```ts
 // React
-import { LxInput, LxVideo, LxPicker, LxMediaSwiper, LxNavigator, LxTextarea } from '@lingxia/react';
+import { LxVideo, LxPicker, LxMediaSwiper, LxNavigator } from '@lingxia/react';
 
 // Vue
-import { LxInput, LxVideo, LxPicker, LxMediaSwiper, LxNavigator, LxTextarea } from '@lingxia/vue';
+import { LxVideo, LxPicker, LxMediaSwiper, LxNavigator } from '@lingxia/vue';
 
 // HTML (custom-element registration runs automatically when @lingxia/html is loaded)
-// Use the tag names directly in markup: <lx-input>, <lx-video>, <lx-picker>, <lx-media-swiper>, <lx-navigator>, <lx-textarea>
+// Use the tag names directly in markup: <lx-video>, <lx-picker>, <lx-media-swiper>, <lx-navigator>
 ```
 
 The React/Vue wrappers accept all the underlying attributes (camelCase or kebab-case where noted) plus the framework's standard `className` / `class` / `style` / `ref`.
@@ -31,8 +31,7 @@ A common source of confusion: not every component passes the same thing to its e
 
 | Component | What the handler receives | Example |
 |---|---|---|
-| `LxInput` / `LxTextarea` | **Unwrapped `event.detail` object** (`LxInputEventDetail`) | `onInput(detail)` → `detail.value`, `detail.cursor`, … |
-| `LxPicker` | **Resolved value directly** — `string \| string[]` for selectors, or full `LxPickerEventDetail` on `onChange` | `onConfirm(value)` |
+| `LxPicker` | **Resolved value directly** — `string \| string[]` | `onConfirm(value)`, `onColumnChange(value)` |
 | `LxVideo` | **Raw DOM `Event`** | `onPlaying(event)` → `event.detail` |
 | `LxMediaSwiper` | **Raw DOM `CustomEvent`** with a typed `detail` | `onChange(event)` → `event.detail.index` |
 | `LxNavigator` | Raw DOM `CustomEvent` | `onSuccess(event)` → `event.detail.success` |
@@ -41,84 +40,46 @@ When in doubt: log the value once, or read the component's type export below.
 
 ---
 
-## `LxInput`
+## Text inputs — use plain `<input>` / `<textarea>`
 
-Single-line input, backed by the native input field.
+There is **no `LxInput` or `LxTextarea` component**. Text inputs are plain
+web `<input>` / `<textarea>` elements: the browser engine owns IME, keyboard avoidance, autofill,
+selection, and accessibility, and your CSS applies directly. Components must
+earn their existence by bridging to capabilities the web cannot deliver —
+text input is not one of them. (A native **secure-keyboard modal** for
+payment-grade password entry is planned as its own component.)
 
-**Attributes (`LxInputAttributes`):**
+**The keyboard never covers a focused input** in normal document flow — the
+engine scrolls it into view. This is window-level host configuration, done
+once per platform (Android consumes IME insets; Harmony sets the Web
+component's `RESIZE_CONTENT` keyboard-avoid mode; iOS WKWebView handles it
+natively). `position: fixed` inputs are the one edge case to test.
 
-| Attribute | Type | Notes |
-|---|---|---|
-| `id` | `string` | Used by Logic-side `lx.createSelectorQuery()` if you need it. |
-| `value` | `string` | Two-way: pass `data.value` and update from a Logic handler. |
-| `type` | `'text' \| 'number' \| 'password' \| 'digit'` | |
-| `placeholder` | `string` | |
-| `placeholder-style` / `placeholder-class` | `string` | Styling hooks for the placeholder. |
-| `maxlength` | `number \| string` | |
-| `disabled` | `boolean \| string` | |
-| `focus` | `boolean \| string` | Set true to programmatically focus. |
-| `auto-focus` | `boolean \| string` | |
-| `confirm-type` | `'send' \| 'search' \| 'next' \| 'go' \| 'done'` | Keyboard return key label. |
-| `confirm-hold` | `boolean \| string` | Keep keyboard open after confirm. |
-| `cursor`, `cursor-spacing`, `cursor-color` | varied | Cursor position and styling. |
-| `selection-start` / `selection-end` | `number \| string` | Initial selection range. |
-| `adjust-position` | `boolean \| string` | Auto-scroll page so input stays above keyboard. |
-| `hold-keyboard` | `boolean \| string` | |
-| `password` | `boolean \| string` | Legacy alias for `type="password"`. |
+**Mini-program attribute mapping** (for code ported from WeChat-style
+`<input>`):
 
-**Events** — handler receives `LxInputEventDetail`:
+| Mini-program | Plain web equivalent |
+|---|---|
+| `bindinput` / `bindconfirm` | `onInput` / `onKeyDown` + `key === 'Enter'` |
+| `confirm-type` | `enterkeyhint` attribute |
+| `type="digit"` | `type="text" inputMode="decimal"` |
+| `type="number"` | `type="number"` (or `inputMode="numeric"`) |
+| `maxlength` | `maxLength` |
+| `placeholder-style` | CSS `::placeholder` |
+| `focus` (programmatic) | `ref.focus()` / `ref.blur()` driven by Logic state |
+| `auto-height` (textarea) | CSS `field-sizing: content`, or on input: `el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px'` |
+| `bindlinechange` (textarea) | derive from `scrollHeight / lineHeight` in the same handler |
+
+**Soft-keyboard height** (rarely needed — e.g. pinning a toolbar above the
+IME): derive it from `visualViewport`:
 
 ```ts
-interface LxInputEventDetail {
-  value?: string;
-  cursor?: number;
-  keyCode?: number;
-  height?: number;        // keyboard height (onKeyboardheightchange)
-  duration?: number;
-  encryptedValue?: string;
-  encryptError?: string;
-  pass?: boolean;
-}
+const onResize = () => {
+  const h = Math.max(0, Math.round(window.innerHeight - visualViewport.height));
+  // h > 0 while the keyboard is up
+};
+visualViewport?.addEventListener('resize', onResize);
 ```
-
-| Event prop | Fires on |
-|---|---|
-| `onInput` | every character change |
-| `onChange` | value committed (e.g. blur on some platforms) |
-| `onFocus` / `onBlur` | focus state change |
-| `onConfirm` | keyboard return key pressed |
-| `onKeyboardheightchange` | software keyboard resize |
-
-```tsx
-<LxInput
-  value={data.email}
-  type="text"
-  placeholder="you@example.com"
-  onInput={actions.onEmailInput}      // (detail) => void
-  onConfirm={actions.onSubmit}
-/>
-```
-
----
-
-## `LxTextarea`
-
-Multi-line input. Same event detail shape as `LxInput` plus `onLinechange`.
-
-**Notable attributes beyond `LxInput`:**
-
-| Attribute | Type | Notes |
-|---|---|---|
-| `auto-height` | `boolean \| string` | Grow with content. |
-| `show-confirm-bar` | `boolean \| string` | Toolbar above keyboard. |
-| `disable-default-padding` | `boolean \| string` | |
-| `fixed` | `boolean \| string` | For use inside scroll containers. |
-| `adjust-keyboard-to` | `'cursor' \| 'bottom'` | Keyboard avoidance anchor. |
-| `confirm-type` | adds `'return'` over `LxInput` | |
-
-**Extra event:**
-
-- `onLinechange` — fires when line count changes (when `auto-height` is on).
 
 ---
 
@@ -149,20 +110,15 @@ Native picker with several modes.
 | `cancelText` / `confirmText` | `string` | Button labels. |
 | `cancelButtonColor` / `confirmButtonColor` / `cancelTextColor` / `confirmTextColor` | `string` (hex) | Styling. |
 
-**Event handler shapes:**
+**Event handler shapes** — all three callbacks receive the resolved **value**
+(the wrappers unwrap the raw event): a `string` for `selector` / `date` /
+`time`, a `string[]` for `multiSelector` / `cascading`.
 
-```ts
-// onChange (scroll-time updates) — receives the FULL detail
-type LxPickerEventDetail = {
-  index?: number | number[];
-  value?: string | string[];
-  confirmed?: boolean;
-  cancelled?: boolean;
-};
-
-// onConfirm — receives the resolved VALUE directly (the framework wrapper unwraps it)
-// value: string for `selector` / `date` / `time`; string[] for `multiSelector` / `cascading`
-```
+| Event prop (React) | Vue event | Fires on |
+|---|---|---|
+| `onConfirm(value)` | `@confirm` | confirm button |
+| `onCancel()` | `@cancel` | cancel button / dismiss |
+| `onColumnChange(value)` | `@column-change` | a column scrolled, before confirm |
 
 ```tsx
 <LxPicker
@@ -173,7 +129,7 @@ type LxPickerEventDetail = {
   ]}
   defaultIndex={[0, 0]}
   onConfirm={(value) => actions.setCity({ value })}
-  onChange={(detail) => console.log('scrolling', detail.index)}
+  onColumnChange={(value) => console.log('scrolling', value)}
 />
 ```
 
@@ -366,10 +322,10 @@ You don't pick between them. Pass an `actions.foo` and you get the short path; p
 
 ## Where these wrappers come from
 
-- **Pure JS custom elements** live in `@lingxia/elements` (`registerInputComponent`, `LxInputElement`, etc.). Importing `@lingxia/elements` registers `<lx-input>`, `<lx-video>`, … into `customElements`.
+- **Pure JS custom elements** live in `@lingxia/elements` (`registerVideoComponent`, `LxVideoElement`, etc.). Importing `@lingxia/elements` registers `<lx-video>`, `<lx-picker>`, … into `customElements`.
 - **React wrappers** (`@lingxia/react`) wrap each custom element with prop-to-attribute translation and `pageBindings` injection.
 - **Vue wrappers** (`@lingxia/vue`) do the same for Vue's reactivity.
 - **HTML** views use the custom elements directly — `@lingxia/html` only handles page state / actions (`subscribe`, `getActions`).
 
 For attributes not listed here (rare, mostly low-level styling escape hatches), the underlying types are exported from `@lingxia/elements`:
-`LxInputAttributes`, `LxTextareaAttributes`, `LxPickerAttributes`, `LxVideoAttributes`, `LxMediaSwiperAttributes`, `LxNavigatorAttributes`, plus matching `*EventDetail` and `*Event` types.
+`LxPickerAttributes`, `LxVideoAttributes`, `LxMediaSwiperAttributes`, `LxNavigatorAttributes`, plus matching `*EventDetail` and `*Event` types.

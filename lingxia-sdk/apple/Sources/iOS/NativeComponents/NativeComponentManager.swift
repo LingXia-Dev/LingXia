@@ -69,13 +69,6 @@ final class NativeComponentManager {
     private var componentPlaybackIntent: [String: Bool] = [:]
     private var componentsPendingAutoResume: Set<String> = []
     private var inactivePages: Set<String> = []
-    private var focusedTextInputComponentId: String?
-    private var focusedTextInputKeyboardHeight: CGFloat = 0
-    private var textInputKeyboardInsetRestore: UIEdgeInsets?
-    private var textInputKeyboardIndicatorInsetRestore: UIEdgeInsets?
-    private var textInputWebViewTransformRestore: CGAffineTransform?
-    private let textInputKeyboardBottomGap: CGFloat = 24
-    private var textInputPendingScrollTargetY: CGFloat?
 
     init(
         scrollView: UIScrollView,
@@ -173,7 +166,7 @@ final class NativeComponentManager {
         ComponentRouter.shared.register(componentId: id, manager: self)
 
         // Preferred path on iOS: mount into WKChildScrollView for same-level behavior.
-        // Only media components (video) use this path; input/textarea use overlay so
+        // Only media components (video) use this path; other components use the overlay so
         // that WKChildScrollView mis-matching never puts them at the wrong position.
         //
         // JS measureElement sends document coordinates (viewport + window.scrollY), so use
@@ -276,7 +269,6 @@ final class NativeComponentManager {
             }
             component.update(props: props)
         }
-        syncFocusedTextInputLayout(componentId: id, component: component)
         if let zIndex = parameters["zIndex"] as? Double {
             component.view.layer.zPosition = CGFloat(zIndex)
         }
@@ -342,7 +334,6 @@ final class NativeComponentManager {
     private func handleBlur(_ parameters: [String: Any]) {
         guard let id = parameters["id"] as? String,
               let component = components[id] else { return }
-        handleTextInputFocusState(componentId: id, eventName: "blur", payload: [:])
         component.blur()
     }
 
@@ -423,16 +414,9 @@ final class NativeComponentManager {
     private func dispatchComponentEvent(componentId: String, event: [String: Any]) {
         guard let component = components[componentId] else { return }
         var payload = event
-        if let eventName = payload["event"] as? String {
-            handleTextInputFocusState(componentId: componentId, eventName: eventName, payload: payload)
-            if shouldEnsureVisibleForEvent(componentId: componentId, eventName: eventName) {
-                ensureVisible(component.view.frame, in: component.view.superview)
-            }
-            // ensureVisible can only lift inputs that participate in scroll;
-            // fixed/sticky inputs need the WebView itself translated.
-            if eventName == "focus" || eventName == "keyboardheightchange" {
-                applyResidualTextInputLiftIfNeeded()
-            }
+        if let eventName = payload["event"] as? String,
+           shouldEnsureVisibleForEvent(componentId: componentId, eventName: eventName) {
+            ensureVisible(component.view.frame, in: component.view.superview)
         }
         updatePlaybackIntent(componentId: componentId, event: payload["event"] as? String)
         payload["action"] = "component.event"
@@ -657,220 +641,26 @@ final class NativeComponentManager {
         let maxOffsetY = max(minOffsetY, scrollView.contentSize.height - scrollView.bounds.height + adjustedInset.bottom)
         let clampedOffsetY = min(max(targetOffsetY, minOffsetY), maxOffsetY)
         guard abs(clampedOffsetY - currentOffsetY) > 0.5 else { return }
-        textInputPendingScrollTargetY = clampedOffsetY
         scrollView.setContentOffset(
             CGPoint(x: scrollView.contentOffset.x, y: clampedOffsetY),
             animated: true
         )
     }
 
-    private func shouldEnsureVisibleForTextInput(componentId: String) -> Bool {
-        guard componentAdjustPosition[componentId] != false else { return false }
-        return isTextInputComponent(componentId)
-    }
 
     private func shouldEnsureVisibleForEvent(componentId: String, eventName: String) -> Bool {
-        switch eventName {
-        case "focus":
-            return componentAdjustPosition[componentId] != false
-        case "keyboardheightchange":
-            return shouldEnsureVisibleForTextInput(componentId: componentId)
-        default:
-            return false
-        }
+        eventName == "focus" && componentAdjustPosition[componentId] != false
     }
 
-    private func isTextInputComponent(_ componentId: String) -> Bool {
-        let type = componentTypes[componentId]
-        return type == "input.native"
-    }
 
-    private func handleTextInputFocusState(componentId: String, eventName: String, payload: [String: Any]) {
-        guard isTextInputComponent(componentId) else { return }
-        switch eventName {
-        case "focus":
-            focusedTextInputComponentId = componentId
-            if let keyboardHeight = extractKeyboardHeight(from: payload) {
-                focusedTextInputKeyboardHeight = keyboardHeight
-            }
-            updateTextInputKeyboardAvoidanceInsets()
-        case "keyboardheightchange":
-            if focusedTextInputComponentId == componentId,
-               let keyboardHeight = extractKeyboardHeight(from: payload) {
-                focusedTextInputKeyboardHeight = keyboardHeight
-            }
-            updateTextInputKeyboardAvoidanceInsets()
-        case "blur":
-            clearFocusedTextInput(ifMatching: componentId)
-        default:
-            break
-        }
-    }
 
-    private func syncFocusedTextInputLayout(componentId: String, component: LxNativeComponent) {
-        guard focusedTextInputComponentId == componentId else { return }
-        updateTextInputKeyboardAvoidanceInsets()
-        guard shouldEnsureVisibleForTextInput(componentId: componentId) else { return }
-        ensureVisible(component.view.frame, in: component.view.superview)
-    }
 
-    private func updateTextInputKeyboardAvoidanceInsets() {
-        guard let scrollView else {
-            textInputKeyboardInsetRestore = nil
-            textInputKeyboardIndicatorInsetRestore = nil
-            return
-        }
-        guard let focusedId = focusedTextInputComponentId,
-              shouldEnsureVisibleForTextInput(componentId: focusedId),
-              focusedTextInputKeyboardHeight > 0 else {
-            restoreTextInputKeyboardAvoidanceInsets()
-            restoreTextInputWebViewTransform()
-            return
-        }
-        applyTextInputKeyboardAvoidanceInsets(to: scrollView)
-    }
 
-    /// Lift the WKWebView (and its overlay) for the gap that scroll-into-view
-    /// cannot cover — e.g. inputs in a `position: fixed` container whose frame
-    /// can't be scrolled into the visible region. Run AFTER `ensureVisible`
-    /// (which may have already absorbed part of the gap via scroll).
-    private func applyResidualTextInputLiftIfNeeded() {
-        guard let webView,
-              let focusedId = focusedTextInputComponentId,
-              shouldEnsureVisibleForTextInput(componentId: focusedId),
-              focusedTextInputKeyboardHeight > 0,
-              let component = components[focusedId],
-              let window = component.view.window else {
-            restoreTextInputWebViewTransform()
-            return
-        }
-        let baseTransform = textInputWebViewTransformRestore ?? webView.transform
-        // Measure against the un-lifted geometry so the math doesn't accumulate.
-        let savedTransform = webView.transform
-        webView.transform = baseTransform
-        let frameInWindow = component.view.convert(component.view.bounds, to: window)
-        webView.transform = savedTransform
 
-        // If ensureVisible just started an animated scroll, the input's window
-        // frame is still pre-scroll. Subtract the remaining scroll delta so we
-        // don't double-lift on top of an in-flight scroll that already covers
-        // the keyboard gap.
-        var predictedMaxY = frameInWindow.maxY
-        if let scrollView,
-           let targetY = textInputPendingScrollTargetY,
-           component.view.isDescendant(of: scrollView) {
-            let pendingDelta = targetY - scrollView.contentOffset.y
-            if pendingDelta > 0 {
-                predictedMaxY -= pendingDelta
-            }
-        }
 
-        let keyboardTopY = window.bounds.height - focusedTextInputKeyboardHeight
-        let needLift = max(0, predictedMaxY + textInputKeyboardBottomGap - keyboardTopY)
-        if needLift > 0 {
-            if textInputWebViewTransformRestore == nil {
-                textInputWebViewTransformRestore = webView.transform
-            }
-            let base = textInputWebViewTransformRestore ?? .identity
-            let next = base.translatedBy(x: 0, y: -needLift)
-            if webView.transform != next {
-                UIView.animate(withDuration: 0.2) {
-                    webView.transform = next
-                }
-            }
-        } else {
-            restoreTextInputWebViewTransform()
-        }
-    }
 
-    private func restoreTextInputWebViewTransform() {
-        guard let webView, let restore = textInputWebViewTransformRestore else {
-            textInputWebViewTransformRestore = nil
-            return
-        }
-        textInputWebViewTransformRestore = nil
-        if webView.transform != restore {
-            UIView.animate(withDuration: 0.2) {
-                webView.transform = restore
-            }
-        }
-    }
 
-    private func applyTextInputKeyboardAvoidanceInsets(to scrollView: UIScrollView) {
-        if textInputKeyboardInsetRestore == nil {
-            textInputKeyboardInsetRestore = scrollView.contentInset
-        }
-        if textInputKeyboardIndicatorInsetRestore == nil {
-            textInputKeyboardIndicatorInsetRestore = currentScrollIndicatorInsets(for: scrollView)
-        }
 
-        let baseInset = textInputKeyboardInsetRestore ?? scrollView.contentInset
-        let baseIndicatorInset = textInputKeyboardIndicatorInsetRestore ?? currentScrollIndicatorInsets(for: scrollView)
-        let requiredBottomInset = max(baseInset.bottom, focusedTextInputKeyboardHeight + textInputKeyboardBottomGap)
-
-        var nextInset = baseInset
-        nextInset.bottom = requiredBottomInset
-        var nextIndicatorInset = baseIndicatorInset
-        nextIndicatorInset.bottom = max(baseIndicatorInset.bottom, requiredBottomInset)
-
-        scrollView.contentInset = nextInset
-        scrollView.scrollIndicatorInsets = nextIndicatorInset
-    }
-
-    private func currentScrollIndicatorInsets(for scrollView: UIScrollView) -> UIEdgeInsets {
-        if #available(iOS 13.0, *) {
-            return UIEdgeInsets(
-                top: scrollView.verticalScrollIndicatorInsets.top,
-                left: scrollView.horizontalScrollIndicatorInsets.left,
-                bottom: scrollView.verticalScrollIndicatorInsets.bottom,
-                right: scrollView.horizontalScrollIndicatorInsets.right
-            )
-        } else {
-            return scrollView.scrollIndicatorInsets
-        }
-    }
-
-    private func restoreTextInputKeyboardAvoidanceInsets() {
-        guard let scrollView else {
-            textInputKeyboardInsetRestore = nil
-            textInputKeyboardIndicatorInsetRestore = nil
-            return
-        }
-        guard let restoreInset = textInputKeyboardInsetRestore,
-              let restoreIndicatorInset = textInputKeyboardIndicatorInsetRestore else {
-            return
-        }
-
-        scrollView.contentInset = restoreInset
-        scrollView.scrollIndicatorInsets = restoreIndicatorInset
-        textInputKeyboardInsetRestore = nil
-        textInputKeyboardIndicatorInsetRestore = nil
-
-        let adjustedInset = scrollView.adjustedContentInset
-        let minOffsetY = -adjustedInset.top
-        let maxOffsetY = max(minOffsetY, scrollView.contentSize.height - scrollView.bounds.height + adjustedInset.bottom)
-        let clampedOffsetY = min(max(scrollView.contentOffset.y, minOffsetY), maxOffsetY)
-        if abs(clampedOffsetY - scrollView.contentOffset.y) > 0.5 {
-            scrollView.setContentOffset(
-                CGPoint(x: scrollView.contentOffset.x, y: clampedOffsetY),
-                animated: false
-            )
-        }
-    }
-
-    private func extractKeyboardHeight(from payload: [String: Any]) -> CGFloat? {
-        guard let detail = payload["detail"] as? [String: Any] else { return nil }
-        if let number = detail["height"] as? NSNumber {
-            return CGFloat(truncating: number)
-        }
-        if let value = detail["height"] as? Double {
-            return CGFloat(value)
-        }
-        if let value = detail["height"] as? CGFloat {
-            return value
-        }
-        return nil
-    }
 
     private func unmountPage(_ pageId: String) {
         cancelInactivePageStop(pageId)
@@ -893,9 +683,6 @@ final class NativeComponentManager {
             component.blur()
             component.view.isHidden = true
             component.handleCommand(name: "pause", params: nil)
-        }
-        if let focusedId = focusedTextInputComponentId, ids.contains(focusedId) {
-            clearFocusedTextInput()
         }
         scheduleInactivePageStop(pageId)
     }
@@ -987,9 +774,6 @@ final class NativeComponentManager {
         componentAdjustPosition.removeValue(forKey: id)
         componentPageFuncBindings.removeValue(forKey: id)
         componentDataset.removeValue(forKey: id)
-        if focusedTextInputComponentId == id {
-            clearFocusedTextInput()
-        }
         if let callbackId {
             let payload: [String: Any] = [
                 "action": "component.event",
@@ -1016,15 +800,6 @@ final class NativeComponentManager {
         }
     }
 
-    private func clearFocusedTextInput(ifMatching componentId: String? = nil) {
-        if let componentId, focusedTextInputComponentId != componentId {
-            return
-        }
-        focusedTextInputComponentId = nil
-        focusedTextInputKeyboardHeight = 0
-        textInputPendingScrollTargetY = nil
-        updateTextInputKeyboardAvoidanceInsets()
-    }
 
     private func handleCoverage(_ parameters: [String: Any]) {
         guard let id = parameters["id"] as? String,
@@ -1110,7 +885,7 @@ final class NativeComponentManager {
     }
 
     /// Only video-type components use WKChildScrollView same-level mounting.
-    /// Input/textarea use the overlay host which is already in content space,
+    /// Non-media components use the overlay host which is already in content space,
     /// avoiding WKChildScrollView mis-matching that causes position drift.
     private func prefersSameLevelMounting(type: String) -> Bool {
         return type == "video.native"

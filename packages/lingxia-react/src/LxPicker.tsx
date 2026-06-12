@@ -12,7 +12,7 @@ import {
   unbindElementEvents,
 } from './text_component_shared.js';
 
-export interface LxPickerProps extends Omit<React.HTMLAttributes<HTMLElement>, 'onChange' | 'onScroll'> {
+export interface LxPickerProps extends Omit<React.HTMLAttributes<HTMLElement>, 'onChange'> {
   // For selector/multiSelector/cascading mode
   columns?: string[][] | [string[], Record<string, string[]>];
 
@@ -25,12 +25,12 @@ export interface LxPickerProps extends Omit<React.HTMLAttributes<HTMLElement>, '
   // Value (type depends on mode)
   value?: string | string[];
 
-  // Callbacks
+  // Callbacks. `value` is a string for single-column / date / time pickers
+  // and a string[] for multi-column / cascading pickers.
   onConfirm?: (value: string | string[]) => void;
   onCancel?: () => void;
-  onScroll?: (value: string | string[]) => void;
-  onChange?: (event: CustomEvent) => void;
-  onNativeScroll?: (event: CustomEvent) => void;
+  /** Fires while the user scrolls columns, before confirm. */
+  onColumnChange?: (value: string | string[]) => void;
 
   // Logic bindings (CLI-generated)
   pageBindings?: Record<string, string>;
@@ -58,8 +58,8 @@ if (typeof window !== "undefined") {
 
 export const LxPicker = forwardRef<HTMLElement, LxPickerProps>(({
   id,
-  columns, mode, start, end, fields, value, onConfirm, onCancel, onScroll, placeholder = 'Please select',
-  onChange, onNativeScroll, pageBindings,
+  columns, mode, start, end, fields, value, onConfirm, onCancel, onColumnChange, placeholder = 'Please select',
+  pageBindings,
   className, style, disabled, cancelText, cancelTextColor, cancelButtonColor,
   confirmText, confirmTextColor, confirmButtonColor, children,
   ...rest
@@ -74,18 +74,14 @@ export const LxPicker = forwardRef<HTMLElement, LxPickerProps>(({
     mode,
     onConfirm,
     onCancel,
-    onScroll,
-    onChange,
-    onNativeScroll,
+    onColumnChange,
   });
   handlerRef.current = {
     columns,
     mode,
     onConfirm,
     onCancel,
-    onScroll,
-    onChange,
-    onNativeScroll,
+    onColumnChange,
   };
   const listenerMapRef = useRef<Record<string, EventListenerObject>>({
     change: {
@@ -96,7 +92,6 @@ export const LxPicker = forwardRef<HTMLElement, LxPickerProps>(({
           value?: string | string[];
           index?: number | number[];
         }>(event);
-        handlerRef.current.onChange?.(event as CustomEvent);
         if (detail.confirmed) {
           const nextValue =
             handlerRef.current.mode === 'date' || handlerRef.current.mode === 'time'
@@ -120,13 +115,12 @@ export const LxPicker = forwardRef<HTMLElement, LxPickerProps>(({
           value?: string | string[];
           index?: number | number[];
         }>(event);
-        handlerRef.current.onNativeScroll?.(event as CustomEvent);
         if (detail.value !== undefined) {
-          handlerRef.current.onScroll?.(detail.value);
+          handlerRef.current.onColumnChange?.(detail.value);
           return;
         }
         if (detail.index !== undefined) {
-          handlerRef.current.onScroll?.(getPickerValueFromIndex(handlerRef.current.columns, detail.index));
+          handlerRef.current.onColumnChange?.(getPickerValueFromIndex(handlerRef.current.columns, detail.index));
         }
       },
     },
