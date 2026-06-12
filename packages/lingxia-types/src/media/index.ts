@@ -73,6 +73,41 @@ export interface CompressVideoResult {
   type: string;
 }
 
+export interface CompressVideoProgressEvent {
+  /** Transcode progress in percent, `0`-`100`. */
+  progress: number;
+}
+
+export interface CompressVideoIteratorResult {
+  done: boolean;
+  value?: CompressVideoProgressEvent;
+}
+
+/**
+ * Handle returned by `lx.compressVideo`.
+ *
+ * Awaiting the task resolves with the final {@link CompressVideoResult}.
+ * Iterating it with `for await` yields {@link CompressVideoProgressEvent}s
+ * while the transcode runs.
+ */
+export interface CompressVideoTask
+  extends PromiseLike<CompressVideoResult>,
+    AsyncIterable<CompressVideoProgressEvent> {
+  next(): Promise<CompressVideoIteratorResult>;
+  /** Stops iteration only. Does not cancel the compression. */
+  return(): Promise<CompressVideoIteratorResult>;
+  catch<TResult = never>(
+    onrejected?: ((reason: unknown) => TResult | PromiseLike<TResult>) | null,
+  ): Promise<CompressVideoResult | TResult>;
+  finally(onfinally?: (() => void) | null): Promise<CompressVideoResult>;
+  /**
+   * Cancels the transcode and deletes any partial output.
+   * The task promise rejects after cancellation.
+   */
+  cancel(): void;
+  wait(): Promise<CompressVideoResult>;
+}
+
 export interface GetVideoInfoOptions {
   /**
    * Video file path or `lx://` URI.

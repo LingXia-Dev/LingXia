@@ -5,7 +5,7 @@ use crate::traits::media_interaction::{
     MediaSource, PreviewMediaRequest, SaveMediaRequest, ScanCodeRequest, ScanType,
 };
 use crate::traits::media_runtime::{
-    CompressImageRequest, CompressVideoRequest, CompressedVideo, ExtractVideoThumbnailRequest,
+    CompressImageRequest, CompressVideoRequest, ExtractVideoThumbnailRequest,
     ImageInfo, MediaRuntime, VideoInfo, VideoThumbnail,
 };
 use serde::Serialize;
@@ -242,11 +242,12 @@ impl MediaRuntime for Platform {
         video_native::extract_video_thumbnail(request)
     }
 
-    fn compress_video(
-        &self,
-        request: &CompressVideoRequest,
-    ) -> Result<CompressedVideo, PlatformError> {
+    fn compress_video(&self, request: &CompressVideoRequest) -> Result<(), PlatformError> {
         video_native::compress_video(request)
+    }
+
+    fn cancel_compress_video(&self, callback_id: u64) -> Result<(), PlatformError> {
+        video_native::cancel_compress_video(callback_id)
     }
 }
 
@@ -917,6 +918,8 @@ mod video_native {
     use std::os::fd::{AsRawFd, RawFd};
     use std::path::Path;
     use std::ptr;
+    use std::collections::HashMap;
+    use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::{Arc, Condvar, Mutex, OnceLock};
     use std::time::Duration;
 
@@ -1071,6 +1074,7 @@ mod video_native {
 
     struct TranscodeCallbackContext {
         signal: Arc<TranscodeSignal>,
+        progress_callback_id: u64,
     }
 
     struct ScopedFd(i32);
@@ -1346,13 +1350,108 @@ mod video_native {
 
     unsafe extern "C" fn on_transcoder_progress(
         _transcoder: *mut OH_AVTranscoder,
-        _progress: i32,
-        _user_data: *mut c_void,
+        progress: i32,
+        user_data: *mut c_void,
     ) {
+        if user_data.is_null() {
+            return;
+        }
+        let context = unsafe { &*(user_data as *const TranscodeCallbackContext) };
+        if context.progress_callback_id == 0 {
+            return;
+        }
+        let pct = progress.clamp(0, 100);
+        let _ = lingxia_messaging::invoke_callback(
+            context.progress_callback_id,
+            Ok(format!("{{\"progress\":{}}}", pct)),
+        );
     }
 
-    pub(super) fn compress_video(
+    /// Cancellation handles for running compressVideo jobs, keyed by completion
+    /// callback id. A job whose token is flagged must not fire its completion.
+    struct CompressCancelToken {
+        cancelled: AtomicBool,
+        active_signal: Mutex<Option<Arc<TranscodeSignal>>>,
+    }
+
+    fn compress_cancel_registry() -> &'static Mutex<HashMap<u64, Arc<CompressCancelToken>>> {
+        static REGISTRY: OnceLock<Mutex<HashMap<u64, Arc<CompressCancelToken>>>> = OnceLock::new();
+        REGISTRY.get_or_init(|| Mutex::new(HashMap::new()))
+    }
+
+    pub(super) fn cancel_compress_video(callback_id: u64) -> Result<(), PlatformError> {
+        let token = compress_cancel_registry()
+            .lock()
+            .ok()
+            .and_then(|mut reg| reg.remove(&callback_id));
+        if let Some(token) = token {
+            token.cancelled.store(true, Ordering::SeqCst);
+            if let Ok(signal) = token.active_signal.lock() {
+                if let Some(signal) = signal.as_ref() {
+                    signal.mark_error("compressVideo cancelled".to_string());
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub(super) fn compress_video(request: &CompressVideoRequest) -> Result<(), PlatformError> {
+        let request = request.clone();
+        let callback_id = request.callback_id;
+        let token = Arc::new(CompressCancelToken {
+            cancelled: AtomicBool::new(false),
+            active_signal: Mutex::new(None),
+        });
+        if let Ok(mut reg) = compress_cancel_registry().lock() {
+            reg.insert(callback_id, Arc::clone(&token));
+        }
+
+        std::thread::Builder::new()
+            .name("lingxia-compress-video".to_string())
+            .spawn(move || {
+                let result = run_compress_video(&request, &token);
+                if let Ok(mut reg) = compress_cancel_registry().lock() {
+                    reg.remove(&callback_id);
+                }
+                if token.cancelled.load(Ordering::SeqCst) {
+                    let _ = fs::remove_file(&request.output_path);
+                    return;
+                }
+                let payload = match result {
+                    Ok(video) => {
+                        if request.progress_callback_id != 0 {
+                            // Final 100% so progress bars land cleanly before the result.
+                            let _ = lingxia_messaging::invoke_callback(
+                                request.progress_callback_id,
+                                Ok("{\"progress\":100}".to_string()),
+                            );
+                        }
+                        serde_json::json!({
+                            "success": true,
+                            "path": video.path.to_string_lossy(),
+                            "width": video.width,
+                            "height": video.height,
+                            "durationMs": video.duration_ms,
+                            "size": video.size,
+                            "mimeType": video.mime_type,
+                        })
+                    }
+                    Err(err) => {
+                        let _ = fs::remove_file(&request.output_path);
+                        serde_json::json!({"success": false, "error": err.to_string()})
+                    }
+                };
+                let _ = lingxia_messaging::invoke_callback(callback_id, Ok(payload.to_string()));
+            })
+            .map_err(|err| {
+                PlatformError::Platform(format!("Failed to spawn compress thread: {}", err))
+            })?;
+        Ok(())
+    }
+
+    fn run_compress_video(
         request: &CompressVideoRequest,
+        token: &Arc<CompressCancelToken>,
     ) -> Result<CompressedVideo, PlatformError> {
         if request.source_uri.trim().is_empty() {
             return Err(PlatformError::Platform("source_uri is empty".to_string()));
@@ -1449,6 +1548,9 @@ mod video_native {
                 attempt_bitrate,
                 attempt_resolution
             );
+            if token.cancelled.load(Ordering::SeqCst) {
+                return Err(PlatformError::Platform("compressVideo cancelled".to_string()));
+            }
             match run_transcode_attempt(
                 src_fd.raw(),
                 src_size,
@@ -1456,6 +1558,8 @@ mod video_native {
                 *include_audio,
                 *attempt_bitrate,
                 *attempt_resolution,
+                request.progress_callback_id,
+                token,
             ) {
                 Ok(()) => {
                     transcode_ok = true;
@@ -1476,6 +1580,10 @@ mod video_native {
 
         // Ensure source descriptor is closed before probing output metadata.
         drop(src_fd);
+
+        if token.cancelled.load(Ordering::SeqCst) {
+            return Err(PlatformError::Platform("compressVideo cancelled".to_string()));
+        }
 
         if !transcode_ok {
             log::info!(
@@ -1625,6 +1733,7 @@ mod video_native {
         (value / alignment) * alignment
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn run_transcode_attempt(
         src_fd: i32,
         src_size: i64,
@@ -1632,6 +1741,8 @@ mod video_native {
         include_audio: bool,
         bitrate: Option<i32>,
         resolution: Option<(i32, i32)>,
+        progress_callback_id: u64,
+        token: &Arc<CompressCancelToken>,
     ) -> Result<(), PlatformError> {
         let dst_fd = open_output_descriptor(output_path)?;
         let dst_fd = ScopedFd(dst_fd);
@@ -1655,16 +1766,28 @@ mod video_native {
 
         let mut transcoder = NativeAvTranscoder::new()?;
         let signal = Arc::new(TranscodeSignal::new());
+        if let Ok(mut active) = token.active_signal.lock() {
+            *active = Some(Arc::clone(&signal));
+        }
         let callback_ptr = Box::into_raw(Box::new(TranscodeCallbackContext {
             signal: Arc::clone(&signal),
+            progress_callback_id,
         }));
 
         let transcode_result = (|| {
+            if token.cancelled.load(Ordering::SeqCst) {
+                return Err(PlatformError::Platform(
+                    "compressVideo cancelled".to_string(),
+                ));
+            }
             transcoder.set_callbacks(callback_ptr as *mut c_void)?;
             transcoder.prepare(&config)?;
             transcoder.start()?;
             signal.wait(TRANSCODE_TIMEOUT)
         })();
+        if let Ok(mut active) = token.active_signal.lock() {
+            *active = None;
+        }
 
         if transcode_result.is_err() {
             let _ = transcoder.cancel();

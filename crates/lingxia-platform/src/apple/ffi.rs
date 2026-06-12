@@ -96,17 +96,6 @@ mod bridge {
     }
 
     #[swift_bridge(swift_repr = "struct")]
-    pub struct SwiftCompressVideoResult {
-        pub success: bool,
-        pub error: String,
-        pub path: String,
-        pub width: u32,
-        pub height: u32,
-        pub duration_ms: u64,
-        pub size: u64,
-        pub mime_type: String,
-    }
-
     extern "Swift" {
         // LxApp navigation functions
         #[swift_bridge(swift_name = "LxApp.openLxApp")]
@@ -271,7 +260,12 @@ mod bridge {
             fps: u32,
             resolution_ratio: f32,
             output_path: &str,
-        ) -> SwiftCompressVideoResult;
+            progress_callback_id: u64,
+            callback_id: u64,
+        ) -> bool;
+
+        #[swift_bridge(swift_name = "LxAppMedia.cancelCompressVideo")]
+        fn cancel_compress_video(callback_id: u64) -> bool;
 
         // Video player control (native component-backed)
         // Note: UI manages component lifecycle; Rust only dispatches commands.
@@ -368,8 +362,9 @@ pub use bridge::{choose_directory, choose_file};
 #[cfg(any(target_os = "ios", target_os = "macos"))]
 #[allow(unused_imports)]
 pub use bridge::{
-    compress_image, compress_video, configure_stream_audio, configure_stream_video,
-    copy_album_media_to_file, create_stream_decoder, extract_video_thumbnail, get_capsule_rect,
+    cancel_compress_video, compress_image, compress_video, configure_stream_audio,
+    configure_stream_video, copy_album_media_to_file, create_stream_decoder,
+    extract_video_thumbnail, get_capsule_rect,
     get_image_info, get_video_info, push_stream_audio, push_stream_video, scan_code,
     stop_stream_decoder,
 };

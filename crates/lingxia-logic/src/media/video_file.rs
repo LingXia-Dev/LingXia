@@ -2,17 +2,21 @@ use crate::i18n::{
     js_error_from_business_code_with_detail, js_error_from_lxapp_error,
     js_error_from_platform_error, js_internal_error, js_invalid_parameter_error,
 };
+use lingxia_messaging::{CallbackResult, get_callback, get_stream_callback, remove_callback};
 use lingxia_platform::traits::media_runtime::{
-    CompressVideoRequest, CompressedVideo as PlatformCompressedVideo, ExtractVideoThumbnailRequest,
-    MediaRuntime, VideoCompressQuality, VideoInfo as PlatformVideoInfo,
+    CompressVideoRequest, ExtractVideoThumbnailRequest, MediaRuntime, VideoCompressQuality,
+    VideoInfo as PlatformVideoInfo,
 };
 use lingxia_service::storage;
 use lxapp::{LxApp, lx};
-use rong::{FromJSObj, IntoJSObj, JSContext, JSFunc, JSResult};
+use rong::{FromJSObj, IntoJSObj, JSContext, JSFunc, JSObject, JSResult, Promise};
+use serde::Deserialize;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
+use tokio::sync::{Mutex, mpsc};
 
 static THUMBNAIL_NAME_COUNTER: AtomicU64 = AtomicU64::new(0);
 static COMPRESS_VIDEO_NAME_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -82,6 +86,43 @@ struct JSCompressVideoResult {
     size: u64,
     #[rename = "type"]
     video_type: String,
+}
+
+#[derive(Debug, Clone, IntoJSObj)]
+struct JSCompressProgressEvent {
+    progress: u8,
+}
+
+#[derive(Debug, Clone, IntoJSObj)]
+struct JSCompressIteratorStep {
+    done: bool,
+    value: Option<JSCompressProgressEvent>,
+}
+
+/// Completion payload sent by the platform natives.
+#[derive(Deserialize)]
+struct NativeCompressVideoResult {
+    success: bool,
+    error: Option<String>,
+    path: Option<String>,
+    width: Option<u32>,
+    height: Option<u32>,
+    #[serde(rename = "durationMs")]
+    duration_ms: Option<u64>,
+    size: Option<u64>,
+    #[serde(rename = "mimeType")]
+    mime_type: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct NativeCompressProgressEvent {
+    progress: u8,
+}
+
+struct CompressProgressState {
+    receiver: Option<mpsc::Receiver<CallbackResult>>,
+    last_progress: Option<u8>,
+    closed: bool,
 }
 
 pub fn init(ctx: &JSContext) -> JSResult<()> {
@@ -172,12 +213,9 @@ async fn extract_video_thumbnail_api(
     })
 }
 
-async fn compress_video_api(
-    ctx: JSContext,
-    options: JSCompressVideoOptions,
-) -> JSResult<JSCompressVideoResult> {
+fn compress_video_api(ctx: JSContext, options: JSCompressVideoOptions) -> JSResult<JSObject> {
     let lxapp = LxApp::from_ctx(&ctx)?;
-    let runtime = &lxapp.runtime;
+    let runtime = lxapp.runtime.clone();
 
     let resolved_source = lxapp
         .resolve_accessible_path(options.path.trim())
@@ -196,21 +234,188 @@ async fn compress_video_api(
         )
     };
 
+    let (progress_callback_id, progress_rx) = get_stream_callback();
+    let (callback_id, completion_rx) = get_callback();
+
     let request = CompressVideoRequest {
         source_uri,
         quality,
         bitrate_kbps,
         fps,
         resolution_ratio,
-        output_path,
+        output_path: output_path.clone(),
+        progress_callback_id,
+        callback_id,
     };
 
-    let compressed = runtime
-        .compress_video(&request)
-        .map_err(|e| js_error_from_platform_error(&e))?;
-    ensure_output_quota(&lxapp, &compressed.path)?;
+    if let Err(err) = runtime.compress_video(&request) {
+        remove_callback(progress_callback_id);
+        remove_callback(callback_id);
+        return Err(js_error_from_platform_error(&err));
+    }
 
-    compressed_video_to_js(&lxapp, compressed)
+    let cancelled = Arc::new(AtomicBool::new(false));
+
+    let final_lxapp = lxapp.clone();
+    let final_promise = Promise::from_future(&ctx, None, async move {
+        let result = completion_rx.await;
+        // The transcode is over (or cancelled): close the progress stream so
+        // `for await` loops over the task finish.
+        remove_callback(progress_callback_id);
+        match result {
+            Ok(CallbackResult::Success(json)) => {
+                let parsed: NativeCompressVideoResult =
+                    serde_json::from_str(&json).map_err(|err| {
+                        js_internal_error(format!("compressVideo returned invalid payload: {err}"))
+                    })?;
+                if !parsed.success {
+                    return Err(js_internal_error(
+                        parsed
+                            .error
+                            .unwrap_or_else(|| "compressVideo failed".to_string()),
+                    ));
+                }
+                let path = PathBuf::from(parsed.path.ok_or_else(|| {
+                    js_internal_error("compressVideo result is missing the output path")
+                })?);
+                ensure_output_quota(&final_lxapp, &path)?;
+                let temp_file_path = final_lxapp
+                    .to_uri(&path)
+                    .ok_or_else(|| {
+                        js_internal_error(
+                            "compressVideo failed to convert output path to lx:// uri",
+                        )
+                    })?
+                    .into_string();
+                Ok(JSCompressVideoResult {
+                    temp_file_path,
+                    width: parsed.width.unwrap_or(0),
+                    height: parsed.height.unwrap_or(0),
+                    duration_ms: parsed.duration_ms.unwrap_or(0),
+                    size: parsed.size.unwrap_or(0),
+                    video_type: parsed
+                        .mime_type
+                        .filter(|m| !m.is_empty())
+                        .unwrap_or_else(|| "video/mp4".to_string()),
+                })
+            }
+            Ok(CallbackResult::Error(code)) => Err(js_internal_error(format!(
+                "compressVideo failed with code {code}"
+            ))),
+            Err(_) => Err(js_internal_error("compressVideo cancelled")),
+        }
+    })?;
+
+    let state = Arc::new(Mutex::new(CompressProgressState {
+        receiver: Some(progress_rx),
+        last_progress: None,
+        closed: false,
+    }));
+    let task = JSObject::new(&ctx);
+
+    let next_state = state.clone();
+    task.set(
+        "next",
+        JSFunc::new(&ctx, move || {
+            let state = next_state.clone();
+            async move { compress_progress_next_step(&state).await }
+        })?,
+    )?;
+
+    let return_state = state.clone();
+    task.set(
+        "return",
+        JSFunc::new(&ctx, move || {
+            let state = return_state.clone();
+            async move {
+                let mut guard = state.lock().await;
+                guard.closed = true;
+                guard.receiver = None;
+                Ok(JSCompressIteratorStep {
+                    done: true,
+                    value: None,
+                })
+            }
+        })?,
+    )?;
+
+    let cancel_output_path = output_path;
+    task.set(
+        "cancel",
+        JSFunc::new(&ctx, move || {
+            if cancelled.swap(true, Ordering::SeqCst) {
+                return Ok(());
+            }
+            let _ = runtime.cancel_compress_video(callback_id);
+            remove_callback(progress_callback_id);
+            remove_callback(callback_id);
+            let _ = fs::remove_file(&cancel_output_path);
+            Ok(())
+        })?,
+    )?;
+
+    crate::task_object::install_promise_methods(&ctx, &task, final_promise)?;
+    crate::task_object::install_async_iterator(&ctx, &task)?;
+    Ok(task)
+}
+
+async fn compress_progress_next_step(
+    state: &Arc<Mutex<CompressProgressState>>,
+) -> JSResult<JSCompressIteratorStep> {
+    loop {
+        let (mut receiver, last_progress) = {
+            let mut guard = state.lock().await;
+            if guard.closed {
+                return Ok(JSCompressIteratorStep {
+                    done: true,
+                    value: None,
+                });
+            }
+            let Some(receiver) = guard.receiver.take() else {
+                return Ok(JSCompressIteratorStep {
+                    done: true,
+                    value: None,
+                });
+            };
+            (receiver, guard.last_progress)
+        };
+
+        let event = receiver.recv().await;
+
+        let mut guard = state.lock().await;
+        if guard.closed {
+            return Ok(JSCompressIteratorStep {
+                done: true,
+                value: None,
+            });
+        }
+
+        let Some(event) = event else {
+            guard.receiver = None;
+            return Ok(JSCompressIteratorStep {
+                done: true,
+                value: None,
+            });
+        };
+        guard.receiver = Some(receiver);
+
+        let CallbackResult::Success(json) = event else {
+            continue;
+        };
+        let Ok(parsed) = serde_json::from_str::<NativeCompressProgressEvent>(&json) else {
+            continue;
+        };
+        let progress = parsed.progress.min(100);
+        // Natives poll their encoders, so consecutive ticks often repeat.
+        if last_progress == Some(progress) {
+            continue;
+        }
+        guard.last_progress = Some(progress);
+        return Ok(JSCompressIteratorStep {
+            done: false,
+            value: Some(JSCompressProgressEvent { progress }),
+        });
+    }
 }
 
 fn resolve_thumbnail_output_path(
@@ -258,27 +463,6 @@ fn platform_video_info_to_js(info: PlatformVideoInfo, path: String) -> JSVideoIn
         video_type: info.mime_type,
         path,
     }
-}
-
-fn compressed_video_to_js(
-    lxapp: &LxApp,
-    compressed: PlatformCompressedVideo,
-) -> JSResult<JSCompressVideoResult> {
-    let temp_file_path = lxapp
-        .to_uri(&compressed.path)
-        .ok_or_else(|| {
-            js_internal_error("compressVideo failed to convert output path to lx:// uri")
-        })?
-        .into_string();
-
-    Ok(JSCompressVideoResult {
-        temp_file_path,
-        width: compressed.width,
-        height: compressed.height,
-        duration_ms: compressed.duration_ms,
-        size: compressed.size,
-        video_type: "video/mp4".to_string(),
-    })
 }
 
 fn parse_video_quality(value: Option<&str>) -> JSResult<Option<VideoCompressQuality>> {

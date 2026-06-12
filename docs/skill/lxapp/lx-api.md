@@ -162,7 +162,7 @@ lx.saveVideoToPhotosAlbum(options)
 
 lx.getImageInfo(options) -> Promise<ImageInfo>
 lx.compressImage(options) -> Promise<CompressImageResult>
-lx.compressVideo(options) -> Promise<CompressVideoResult>
+lx.compressVideo(options) -> CompressVideoTask   // PromiseLike + AsyncIterable
 lx.getVideoInfo(options) -> Promise<VideoInfo>
 lx.extractVideoThumbnail(options) -> Promise<ExtractVideoThumbnailResult>
 
@@ -184,6 +184,25 @@ const { reason, index, source } = await preview.completed;           // session 
 ```
 
 `source` is `{ path, type }` with `path` exactly as passed in the request, so it can be matched against caller data without re-indexing the array. `completed` rejects on `signal` abort; `presented` never rejects.
+
+**`CompressVideoTask`** follows the same task shape as `DownloadTask`: `await` it for the final `CompressVideoResult`, or iterate it for live progress — transcoding can take a while, so show progress for anything longer than a clip:
+
+```ts
+// Simple form — await the final result
+const { tempFilePath, size } = await lx.compressVideo({ path, quality: 'medium' });
+
+// Progress form — iterate
+const task = lx.compressVideo({ path, quality: 'medium' });
+for await (const { progress } of task) {
+  setData({ percent: progress });        // progress: 0..100
+}
+const result = await task.wait();
+
+// Cancel — stops the transcode and deletes the partial output; the task promise rejects
+task.cancel();
+```
+
+`break` inside `for await` stops iteration without cancelling the transcode — call `task.cancel()` to abort it.
 
 ### File and transfer
 

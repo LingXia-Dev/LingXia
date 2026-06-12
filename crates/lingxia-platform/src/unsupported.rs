@@ -213,11 +213,12 @@ impl MediaRuntime for Platform {
         not_supported("compress_image")
     }
 
-    fn compress_video(
-        &self,
-        _request: &CompressVideoRequest,
-    ) -> Result<CompressedVideo, PlatformError> {
+    fn compress_video(&self, _request: &CompressVideoRequest) -> Result<(), PlatformError> {
         not_supported("compress_video")
+    }
+
+    fn cancel_compress_video(&self, _callback_id: u64) -> Result<(), PlatformError> {
+        not_supported("cancel_compress_video")
     }
 
     fn get_video_info(&self, _uri: &str) -> Result<VideoInfo, PlatformError> {
