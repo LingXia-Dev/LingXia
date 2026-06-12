@@ -91,7 +91,8 @@ pub use api::{
     WindowsNavigationBarLayout, WindowsPanelActivatorLayout, WindowsPanelInputHandler,
     WindowsPanelKeyEvent, WindowsPanelPosition, WindowsSidebarActionLayout,
     WindowsTabBarItemLayout, WindowsTabBarLayout, WindowsTabBarPosition,
-    WindowsWebViewContentWindow, WindowsWebViewWindowSnapshot, WindowsWindowLayout,
+    WindowsWebViewContentWindow, WindowsWebViewHostWindow, WindowsWebViewWindowSnapshot,
+    WindowsWindowLayout,
     clear_native_panel_input_handler,
     hide_native_panel, hide_panel, hide_webview_window, invalidate_native_panel, is_panel_visible,
     open_webview_devtools,
@@ -103,7 +104,7 @@ pub use api::{
     set_webview_window_layout,
     show_native_panel, show_native_terminal_panel, show_webview_panel, show_webview_window,
     show_webview_window_inactive, update_native_panel_body, webview_content_window,
-    webview_window_snapshot,
+    webview_host_window, webview_window_snapshot,
 };
 pub use device_frame::{
     WindowsDeviceFrame, WindowsDeviceFrameToolbar, set_webview_device_frame,

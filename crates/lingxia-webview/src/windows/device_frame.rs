@@ -204,18 +204,7 @@ pub fn set_webview_device_frame(
     webtag: &WebTag,
     frame: Option<WindowsDeviceFrame>,
 ) -> StdResult<()> {
-    let hwnd = window_handle_for_key(webtag.key()).ok_or_else(|| {
-        WebViewError::WebView(format!("no window registered for {}", webtag.key()))
-    })?;
-    let hwnd = match window_attachment(webtag.key()) {
-        Some(WindowAttachment {
-            group_key,
-            kind: WindowAttachmentKind::MainChild | WindowAttachmentKind::Panel { .. },
-        }) => host_handle_for_group(&group_key).ok_or_else(|| {
-            WebViewError::WebView(format!("no host window for Windows shell group {group_key}"))
-        })?,
-        _ => hwnd,
-    };
+    let hwnd = webview_host_hwnd(webtag)?;
     let handle = hwnd_handle(hwnd);
     let posted = post_to_window_thread(
         handle,

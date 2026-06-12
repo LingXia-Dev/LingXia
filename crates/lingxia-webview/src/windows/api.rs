@@ -278,6 +278,45 @@ pub fn webview_content_window(webtag: &WebTag) -> Option<WindowsWebViewContentWi
     })
 }
 
+/// Top-level host window currently presenting a webview surface.
+///
+/// For a standalone webview this is its own window. For attached main
+/// surfaces and panels, this resolves to the shell group host that actually
+/// owns window chrome, menus, sizing, and host-level presentation effects.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WindowsWebViewHostWindow {
+    /// Raw host `HWND` as an integer handle.
+    pub window: isize,
+}
+
+pub(crate) fn webview_host_hwnd(webtag: &WebTag) -> StdResult<HWND> {
+    let hwnd = window_handle_for_key(webtag.key()).ok_or_else(|| {
+        WebViewError::WebView(format!("no window registered for {}", webtag.key()))
+    })?;
+    match window_attachment(webtag.key()) {
+        Some(WindowAttachment {
+            group_key,
+            kind: WindowAttachmentKind::MainChild | WindowAttachmentKind::Panel { .. },
+        }) => host_handle_for_group(&group_key).ok_or_else(|| {
+            WebViewError::WebView(format!(
+                "no host window for Windows shell group {group_key}"
+            ))
+        }),
+        _ => Ok(hwnd),
+    }
+}
+
+/// Resolves the host window currently presenting `webtag`.
+///
+/// This is generic webview hosting state; product layers can use the handle
+/// with [`post_to_window_thread`] for host-window UI work without knowing
+/// how LingXia shell groups attach child webviews internally.
+pub fn webview_host_window(webtag: &WebTag) -> StdResult<WindowsWebViewHostWindow> {
+    webview_host_hwnd(webtag).map(|window| WindowsWebViewHostWindow {
+        window: hwnd_handle(window),
+    })
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WindowsWebViewWindowSnapshot {
     pub window_id: usize,
@@ -439,18 +478,7 @@ pub fn resize_webview_window_content(webtag: &WebTag, width: i32, height: i32) -
             "invalid window content size {width}x{height}"
         )));
     }
-    let hwnd = window_handle_for_key(webtag.key()).ok_or_else(|| {
-        WebViewError::WebView(format!("no window registered for {}", webtag.key()))
-    })?;
-    let hwnd = match window_attachment(webtag.key()) {
-        Some(WindowAttachment {
-            group_key,
-            kind: WindowAttachmentKind::MainChild | WindowAttachmentKind::Panel { .. },
-        }) => host_handle_for_group(&group_key).ok_or_else(|| {
-            WebViewError::WebView(format!("no host window for Windows shell group {group_key}"))
-        })?,
-        _ => hwnd,
-    };
+    let hwnd = webview_host_hwnd(webtag)?;
 
     let mut rect = RECT {
         left: 0,

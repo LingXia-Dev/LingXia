@@ -206,7 +206,8 @@ pub mod platform {
             WindowsPanelActivatorLayout, WindowsPanelInputHandler, WindowsPanelKeyEvent,
             WindowsPanelPosition, WindowsSidebarActionLayout,
             WindowsTabBarItemLayout, WindowsTabBarLayout, WindowsTabBarPosition,
-            WindowsWebViewContentWindow, WindowsWebViewWindowSnapshot, WindowsWindowLayout,
+            WindowsWebViewContentWindow, WindowsWebViewHostWindow, WindowsWebViewWindowSnapshot,
+            WindowsWindowLayout,
             cached_png_bytes_icon_handle, cached_png_icon_handle,
             clear_native_panel_input_handler, hide_native_panel, hide_panel, hide_webview_window,
             invalidate_native_panel, is_panel_visible, open_webview_devtools,
@@ -221,7 +222,7 @@ pub mod platform {
             set_windows_app_menu_command_handler, set_windows_chrome_renderer, show_native_panel,
             show_native_terminal_panel, show_webview_panel, show_webview_window,
             show_webview_window_inactive, update_native_panel_body, webview_content_window,
-            webview_window_snapshot,
+            webview_host_window, webview_window_snapshot,
         };
     }
 }
