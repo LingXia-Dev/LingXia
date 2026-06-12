@@ -16,6 +16,8 @@ use std::path::{Path, PathBuf};
 #[cfg(target_os = "windows")]
 mod native_components;
 #[cfg(target_os = "windows")]
+mod video_controls;
+#[cfg(target_os = "windows")]
 mod video_player;
 
 /// Host process description used to initialize the LingXia runtime.

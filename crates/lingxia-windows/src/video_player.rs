@@ -24,7 +24,7 @@ use windows::Win32::Media::MediaFoundation::{
     MFPCreateMediaPlayer,
 };
 use windows::Win32::System::Com::StructuredStorage::PROPVARIANT;
-use windows::Win32::System::Variant::VT_I8;
+use windows::Win32::System::Variant::{VT_I8, VT_UI8};
 use windows::core::{PCWSTR, implement};
 
 /// Playback transitions reported to the component host, on the UI thread.
@@ -368,7 +368,9 @@ fn propvariant_from_100ns(value: i64) -> PROPVARIANT {
 fn seconds_from_propvariant(variant: &PROPVARIANT) -> f64 {
     unsafe {
         let inner = &*variant.Anonymous.Anonymous;
-        if inner.vt == VT_I8 {
+        // Positions come back as VT_I8, durations as VT_UI8; both are
+        // 100ns counts in the same union slot.
+        if inner.vt == VT_I8 || inner.vt == VT_UI8 {
             inner.Anonymous.hVal as f64 / 1e7
         } else {
             0.0

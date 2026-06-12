@@ -61,6 +61,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 };
 use windows::core::{PCWSTR, w};
 
+use super::video_controls::{ControlsAction, ControlsState, VideoControls};
 use super::video_player::{VideoEventSink, VideoPlayer, VideoPlayerEvent};
 
 /// Edit-control messages and notification codes, defined locally (they live
@@ -169,6 +170,8 @@ struct ComponentProps {
     looping: Option<bool>,
     muted: Option<bool>,
     volume: Option<f64>,
+    controls: Option<bool>,
+    progress_bar: Option<bool>,
     bindings_json: Option<String>,
     dataset_json: Option<String>,
 }
@@ -196,6 +199,8 @@ impl ComponentProps {
         take!(looping);
         take!(muted);
         take!(volume);
+        take!(controls);
+        take!(progress_bar);
         take!(bindings_json);
         take!(dataset_json);
     }
@@ -231,6 +236,11 @@ struct VideoComponent {
     /// The whole container hides so the element's DOM placeholder/poster
     /// shows through; playing reveals it again.
     stopped: bool,
+    /// Native playback controls (`controls` prop), floating over the
+    /// surface; auto-hides while playing.
+    controls: Option<VideoControls>,
+    /// Mirrors the `muted` prop and the bar's mute toggle.
+    muted: bool,
     /// Fullscreen plays in a borderless topmost window covering the
     /// monitor (the macOS player's screen-sized fullscreen window).
     fullscreen: bool,
@@ -709,6 +719,8 @@ fn parse_props(raw: Option<&Value>) -> ComponentProps {
         .get("volume")
         .and_then(Value::as_f64)
         .filter(|volume| volume.is_finite());
+    props.controls = raw.get("controls").and_then(value_as_bool);
+    props.progress_bar = raw.get("progressBar").and_then(value_as_bool);
     props.bindings_json = raw
         .get("pageFuncBindingsJson")
         .and_then(Value::as_str)
@@ -882,6 +894,12 @@ fn mount_video_on_ui(
         return;
     };
 
+    // Native playback controls (the macOS player's bottom bar) when the
+    // element asks for them.
+    let controls = (props.controls == Some(true))
+        .then(|| VideoControls::create(container, video_controls_sink(key.clone())))
+        .flatten();
+
     let entry = ComponentEntry {
         context,
         component_id,
@@ -896,6 +914,8 @@ fn mount_video_on_ui(
             stopped: true,
             fullscreen: false,
             fullscreen_host: 0,
+            controls,
+            muted: props.muted == Some(true),
             playing: false,
             resume_on_show: false,
         }),
@@ -1066,6 +1086,16 @@ unsafe extern "system" fn video_surface_proc(
             unsafe {
                 let _ = SetFocus(Some(hwnd));
             }
+            if let Some(key) = component_key_for_surface(hwnd) {
+                poke_video_controls(&key);
+            }
+            LRESULT(0)
+        }
+        // Mouse over the video reveals the controls bar.
+        WindowsAndMessaging::WM_MOUSEMOVE => {
+            if let Some(key) = component_key_for_surface(hwnd) {
+                poke_video_controls(&key);
+            }
             LRESULT(0)
         }
         WindowsAndMessaging::WM_LBUTTONDBLCLK => {
@@ -1114,6 +1144,28 @@ struct VideoLayout {
     surface: isize,
     stopped: bool,
     fullscreen_host: isize,
+    controls: Option<isize>,
+}
+
+impl VideoLayout {
+    /// Sizes the surface (and the controls bar over it) to `width`x`height`
+    /// inside the container, then nudges MFPlay to repaint.
+    fn layout_children(&self, width: i32, height: i32) {
+        unsafe {
+            let _ = WindowsAndMessaging::MoveWindow(
+                HWND(self.surface as *mut _),
+                0,
+                0,
+                width,
+                height,
+                true,
+            );
+        }
+        if let Some(controls) = self.controls {
+            VideoControls { hwnd: controls }.layout(width, height);
+        }
+        self.player.update_video();
+    }
 }
 
 fn apply_layout(key: &str) {
@@ -1139,6 +1191,7 @@ fn apply_layout(key: &str) {
                 } else {
                     0
                 },
+                controls: video.controls.as_ref().map(|controls| controls.hwnd),
             }),
         )
     };
@@ -1162,9 +1215,8 @@ fn apply_layout(key: &str) {
         .filter(|video| video.fullscreen_host != 0 && is_window(video.fullscreen_host))
     {
         let host = HWND(video.fullscreen_host as *mut _);
-        let surface = HWND(video.surface as *mut _);
+        let mut rect = RECT::default();
         unsafe {
-            let mut rect = RECT::default();
             let _ = WindowsAndMessaging::GetClientRect(host, &mut rect);
             let _ = WindowsAndMessaging::MoveWindow(
                 container_hwnd,
@@ -1176,9 +1228,8 @@ fn apply_layout(key: &str) {
             );
             SetWindowRgn(container_hwnd, None, true);
             let _ = WindowsAndMessaging::ShowWindow(container_hwnd, WindowsAndMessaging::SW_SHOWNA);
-            let _ = WindowsAndMessaging::MoveWindow(surface, 0, 0, rect.right, rect.bottom, true);
         }
-        video.player.update_video();
+        video.layout_children(rect.right, rect.bottom);
         return;
     }
 
@@ -1258,15 +1309,7 @@ fn apply_layout(key: &str) {
         // The video surface fills the container; MFPlay just needs a
         // repaint nudge after the window moved or resized.
         if let Some(video) = video {
-            let _ = WindowsAndMessaging::MoveWindow(
-                HWND(video.surface as *mut _),
-                0,
-                0,
-                width,
-                height,
-                true,
-            );
-            video.player.update_video();
+            video.layout_children(width, height);
             return;
         }
 
@@ -1520,6 +1563,12 @@ fn apply_video_props(key: &str, props: &ComponentProps) {
             src_changed && entry.state.autoplay == Some(true),
         )
     };
+    if let Some(muted) = props.muted {
+        let mut components = components();
+        if let Some(video) = components.get_mut(key).and_then(|entry| entry.video.as_mut()) {
+            video.muted = muted;
+        }
+    }
     let (player, source, autoplay) = pending;
 
     if let Some(looping) = props.looping {
@@ -1572,12 +1621,14 @@ fn video_event_sink(key: String, container: isize, surface: isize) -> VideoEvent
                     );
                 }
                 apply_layout(&key);
+                poke_video_controls(&key);
                 emit_event(&key, "play", json!({}));
                 emit_event(&key, "playing", json!({}));
             }
             VideoPlayerEvent::Pause => {
                 set_video_playing(&key, false);
                 stop_video_timer(container_hwnd);
+                poke_video_controls(&key);
                 emit_event(&key, "pause", json!({}));
             }
             VideoPlayerEvent::Stop => {
@@ -1632,6 +1683,100 @@ fn set_video_playing(key: &str, playing: bool) {
     }
 }
 
+/// Routes bar interactions back into the player; runs on the UI thread
+/// (the bar's window procedure).
+fn video_controls_sink(key: String) -> super::video_controls::ControlsActionSink {
+    Arc::new(move |action| {
+        let snapshot = {
+            let components = components();
+            components.get(&key).and_then(|entry| {
+                entry
+                    .video
+                    .as_ref()
+                    .map(|video| (video.player.clone(), video.playing, video.muted, video.fullscreen))
+            })
+        };
+        let Some((player, playing, muted, fullscreen)) = snapshot else {
+            return;
+        };
+        match action {
+            ControlsAction::TogglePlay => {
+                if playing {
+                    player.pause();
+                } else {
+                    player.play();
+                }
+            }
+            ControlsAction::ToggleMute => {
+                let muted = !muted;
+                player.set_muted(muted);
+                {
+                    let mut components = components();
+                    if let Some(video) =
+                        components.get_mut(&key).and_then(|entry| entry.video.as_mut())
+                    {
+                        video.muted = muted;
+                    }
+                }
+                update_video_controls(&key);
+            }
+            ControlsAction::ToggleFullscreen => set_video_fullscreen(&key, !fullscreen),
+            ControlsAction::Seek(position) => player.seek(position),
+        }
+    })
+}
+
+/// Pushes the current playback state into the bar (no-op without one).
+fn update_video_controls(key: &str) {
+    let snapshot = {
+        let components = components();
+        components.get(key).and_then(|entry| {
+            entry.video.as_ref().and_then(|video| {
+                video.controls.as_ref().map(|controls| {
+                    (
+                        VideoControls { hwnd: controls.hwnd },
+                        video.player.clone(),
+                        video.playing,
+                        video.muted,
+                        video.fullscreen,
+                        entry.state.progress_bar != Some(false),
+                    )
+                })
+            })
+        })
+    };
+    let Some((controls, player, playing, muted, fullscreen, show_progress)) = snapshot else {
+        return;
+    };
+    controls.update(ControlsState {
+        playing,
+        muted,
+        fullscreen,
+        position: player.position(),
+        duration: player.duration(),
+        show_progress,
+    });
+}
+
+/// Reveals the bar on mouse activity over the video.
+fn poke_video_controls(key: &str) {
+    let controls = {
+        let components = components();
+        components.get(key).and_then(|entry| {
+            entry.video.as_ref().and_then(|video| {
+                video
+                    .controls
+                    .as_ref()
+                    .map(|controls| VideoControls { hwnd: controls.hwnd })
+            })
+        })
+    };
+    if let Some(controls) = controls {
+        update_video_controls(key);
+        controls.poke();
+    }
+}
+
 fn set_video_stopped(key: &str, stopped: bool) {
     let mut components = components();
     if let Some(video) = components.get_mut(key).and_then(|entry| entry.video.as_mut()) {
@@ -1664,6 +1809,7 @@ fn on_video_timer(container: HWND) {
     };
     let current_time = player.position();
     let duration = player.duration();
+    update_video_controls(&key);
     emit_event(
         &key,
         "timeupdate",
