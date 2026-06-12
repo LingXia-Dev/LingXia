@@ -122,13 +122,14 @@
       {
         "text": "API",
         "pagePath": "pages/API/index",
-        "iconPath": "public/api.png"
+        "iconPath": "public/api.png",
+        "selectedIconPath": "public/api_selected.png"
       },
       {
         "text": "Components",
         "pagePath": "pages/components/index",
         "iconPath": "public/component.png",
-        "selectedIconPath": "public/component.png"
+        "selectedIconPath": "public/component_selected.png"
       },
       {
         "text": "ToDo",
