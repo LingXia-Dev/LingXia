@@ -2,6 +2,7 @@ use ::lxapp::lx::{LxLogicExtension, register_logic_extension};
 use rong::{JSContext, JSResult};
 
 mod app;
+mod task_object;
 mod device;
 mod display;
 mod env;
