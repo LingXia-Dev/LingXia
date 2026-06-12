@@ -73,6 +73,8 @@ struct ControlsInner {
     width: i32,
     /// Seek drag in progress: the ratio under the cursor.
     drag_ratio: Option<f64>,
+    /// Last live seek issued during the drag (throttling).
+    last_live_seek: Option<std::time::Instant>,
 }
 
 /// Element rects computed from the current width.
@@ -137,6 +139,7 @@ impl VideoControls {
             state: ControlsState::default(),
             width: BAR_MIN_WIDTH,
             drag_ratio: None,
+            last_live_seek: None,
         });
         unsafe {
             WindowsAndMessaging::SetWindowLongPtrW(
@@ -615,12 +618,27 @@ unsafe extern "system" fn controls_proc(
             }
             LRESULT(0)
         }
+        WindowsAndMessaging::WM_MOUSEACTIVATE => {
+            // Interacting with the bar must not shuffle activation/focus —
+            // an activation pass can steal the mouse capture mid-drag.
+            LRESULT(WindowsAndMessaging::MA_NOACTIVATE as isize)
+        }
         WindowsAndMessaging::WM_MOUSEMOVE => {
             let x = (lparam.0 & 0xffff) as i16 as i32;
             if let Some(inner) = inner_mut(hwnd)
                 && inner.drag_ratio.is_some()
             {
                 inner.drag_ratio = ratio_at(inner, x);
+                // Scrub live (throttled) so the drag takes effect even if
+                // the button-up never reaches us.
+                let due = inner
+                    .last_live_seek
+                    .is_none_or(|last| last.elapsed().as_millis() >= 150);
+                if due && let Some(ratio) = inner.drag_ratio {
+                    inner.last_live_seek = Some(std::time::Instant::now());
+                    let target = ratio * inner.state.duration.max(0.0);
+                    (inner.sink)(ControlsAction::Seek(target));
+                }
                 repaint(hwnd);
             }
             // Mouse over the bar keeps it shown.
@@ -641,6 +659,21 @@ unsafe extern "system" fn controls_proc(
                 unsafe {
                     let _ = ReleaseCapture();
                 }
+                inner.last_live_seek = None;
+                let target = ratio * inner.state.duration.max(0.0);
+                (inner.sink)(ControlsAction::Seek(target));
+                repaint(hwnd);
+            }
+            LRESULT(0)
+        }
+        // The system (or an activation pass) took the capture away while
+        // dragging: commit the position under the cursor instead of
+        // dropping the gesture.
+        WindowsAndMessaging::WM_CAPTURECHANGED => {
+            if let Some(inner) = inner_mut(hwnd)
+                && let Some(ratio) = inner.drag_ratio.take()
+            {
+                inner.last_live_seek = None;
                 let target = ratio * inner.state.duration.max(0.0);
                 (inner.sink)(ControlsAction::Seek(target));
                 repaint(hwnd);

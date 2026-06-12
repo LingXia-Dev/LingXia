@@ -614,14 +614,18 @@ impl PageInstance {
 
             for (event, query) in events_to_fire {
                 // Keep the in-process native-component host in sync with
-                // page visibility: hidden pages hide their overlays and
-                // pause playback (mirrors the platform managers'
-                // inactive/active handling).
+                // the page lifecycle: hidden AND unloaded pages hide their
+                // overlays and pause playback (an unloaded page's webview
+                // may stay cached and be revived by a later navigation, so
+                // its components only pause here — they are torn down with
+                // the page instance through `on_page_destroyed` when it is
+                // disposed). Mirrors the platform managers' inactive/
+                // active/destroyed handling.
                 match event {
                     PageLifecycleEvent::OnShow => {
                         crate::native_component::notify_page_visibility(self.webtag().key(), true);
                     }
-                    PageLifecycleEvent::OnHide => {
+                    PageLifecycleEvent::OnHide | PageLifecycleEvent::OnUnload => {
                         crate::native_component::notify_page_visibility(self.webtag().key(), false);
                     }
                     _ => {}
