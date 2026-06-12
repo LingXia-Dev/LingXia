@@ -1539,12 +1539,6 @@ pub(crate) fn toggle_devtools_by_swift_ptr(swift_ptr: usize, detached: bool) -> 
     }
     let exec = move || unsafe {
         let webview = swift_ptr as *mut AnyObject;
-        let can_set_attachment: objc2::runtime::Bool =
-            msg_send![webview, respondsToSelector: objc2::sel!(_setInspectorAttachmentView:)];
-        if detached && can_set_attachment.as_bool() {
-            let nil_view: *mut AnyObject = std::ptr::null_mut();
-            let _: () = msg_send![webview, _setInspectorAttachmentView: nil_view];
-        }
         let inspector: *mut AnyObject = msg_send![webview, _inspector];
         if inspector.is_null() {
             return;
@@ -1554,6 +1548,20 @@ pub(crate) fn toggle_devtools_by_swift_ptr(swift_ptr: usize, detached: bool) -> 
             let _: () = msg_send![inspector, close];
         } else {
             let _: () = msg_send![inspector, show];
+            // WebKit persists the user's attach preference and re-docks the
+            // inspector INTO the inspected webview whenever it is wide
+            // enough (e.g. an iPad/desktop-sized simulator frame). Setting
+            // `_inspectorAttachmentView` to nil does NOT prevent that — nil
+            // just resets the dock target to the webview itself. Forcing a
+            // `detach` after `show` is what actually keeps the inspector in
+            // its own window.
+            if detached {
+                let can_detach: objc2::runtime::Bool =
+                    msg_send![inspector, respondsToSelector: objc2::sel!(detach)];
+                if can_detach.as_bool() {
+                    let _: () = msg_send![inspector, detach];
+                }
+            }
         }
     };
     if MainThreadMarker::new().is_some() {
