@@ -54,14 +54,21 @@ pub(crate) struct ControlsState {
     pub position: f64,
     pub duration: f64,
     pub show_progress: bool,
+    /// Active quality label; `None` hides the quality slot.
+    pub quality: Option<String>,
+    /// Playback rate; `None` hides the rate slot.
+    pub rate: Option<f64>,
 }
 
-/// User intents reported to the component host.
+/// User intents reported to the component host. Menu anchors are screen
+/// coordinates of the originating slot's top-left corner.
 pub(crate) enum ControlsAction {
     TogglePlay,
     ToggleMute,
     ToggleFullscreen,
     Seek(f64),
+    QualityMenu { anchor: (i32, i32) },
+    RateMenu { anchor: (i32, i32) },
 }
 
 pub(crate) type ControlsActionSink = Arc<dyn Fn(ControlsAction) + Send + Sync>;
@@ -81,22 +88,38 @@ struct ControlsInner {
     last_mouse: Option<(i32, i32)>,
 }
 
-/// Element rects computed from the current width.
+/// Element rects computed from the current width. Empty slots collapse
+/// to zero width.
 struct BarLayout {
     play: (i32, i32),
     time: (i32, i32),
     track: (i32, i32),
+    quality: (i32, i32),
+    rate: (i32, i32),
     mute: (i32, i32),
     fullscreen: (i32, i32),
 }
 
-fn bar_layout(width: i32, time_width: i32, show_progress: bool) -> BarLayout {
+const QUALITY_WIDTH: i32 = 52;
+const RATE_WIDTH: i32 = 44;
+
+fn bar_layout(width: i32, time_width: i32, state: &ControlsState) -> BarLayout {
     let play = (SIDE_PADDING, SIDE_PADDING + BUTTON_WIDTH);
     let time = (play.1, play.1 + time_width);
     let fullscreen = (width - SIDE_PADDING - BUTTON_WIDTH, width - SIDE_PADDING);
     let mute = (fullscreen.0 - BUTTON_WIDTH, fullscreen.0);
-    let track = if show_progress {
-        (time.1 + 10, mute.0 - 10)
+    let rate = if state.rate.is_some() {
+        (mute.0 - RATE_WIDTH, mute.0)
+    } else {
+        (mute.0, mute.0)
+    };
+    let quality = if state.quality.is_some() {
+        (rate.0 - QUALITY_WIDTH, rate.0)
+    } else {
+        (rate.0, rate.0)
+    };
+    let track = if state.show_progress {
+        (time.1 + 10, quality.0 - 10)
     } else {
         (0, 0)
     };
@@ -104,6 +127,8 @@ fn bar_layout(width: i32, time_width: i32, show_progress: bool) -> BarLayout {
         play,
         time,
         track,
+        quality,
+        rate,
         mute,
         fullscreen,
     }
@@ -295,7 +320,7 @@ fn repaint(hwnd: HWND) {
 
     // Slider drawn analytically (premultiplied) before the GDI text pass.
     let time_width = 86; // fixed slot, enough for "00:00 / 00:00"
-    let layout = bar_layout(width, time_width, inner.state.show_progress);
+    let layout = bar_layout(width, time_width, &inner.state);
     if inner.state.show_progress && layout.track.1 > layout.track.0 + 20 {
         draw_slider(
             &mut pixels,
@@ -490,6 +515,20 @@ fn draw_texts(
             glyph_font_obj,
         );
         draw_centered(time_text, layout.time, 0x00d8d8d8, text_font_obj);
+        if let Some(quality) = inner.state.quality.as_deref() {
+            draw_centered(quality, layout.quality, 0x00d8d8d8, text_font_obj);
+        }
+        if let Some(rate) = inner.state.rate {
+            let label = if (rate - rate.round()).abs() < 0.01 {
+                format!("{:.0}x", rate)
+            } else {
+                format!("{:.2}x", rate)
+                    .trim_end_matches('0')
+                    .trim_end_matches('.')
+                    .to_string()
+            };
+            draw_centered(&label, layout.rate, 0x00d8d8d8, text_font_obj);
+        }
         draw_centered(
             if inner.state.muted { GLYPH_MUTE } else { GLYPH_VOLUME },
             layout.mute,
@@ -587,7 +626,7 @@ fn upload(hwnd: HWND, width: i32, height: i32, pixels: &[u32]) {
 // ---------------------------------------------------------------------------
 
 fn ratio_at(inner: &ControlsInner, x: i32) -> Option<f64> {
-    let layout = bar_layout(inner.width, 86, inner.state.show_progress);
+    let layout = bar_layout(inner.width, 86, &inner.state);
     if !inner.state.show_progress || layout.track.1 <= layout.track.0 {
         return None;
     }
@@ -606,14 +645,30 @@ unsafe extern "system" fn controls_proc(
             let Some(inner) = inner_mut(hwnd) else {
                 return LRESULT(0);
             };
-            let layout = bar_layout(inner.width, 86, inner.state.show_progress);
+            let layout = bar_layout(inner.width, 86, &inner.state);
             let hit = |slot: (i32, i32)| x >= slot.0 && x < slot.1;
+            // Menus pop above the bar, anchored at the slot's top edge.
+            let anchor = |slot: (i32, i32)| {
+                let mut point = POINT { x: slot.0, y: 0 };
+                unsafe {
+                    let _ = windows::Win32::Graphics::Gdi::ClientToScreen(hwnd, &mut point);
+                }
+                (point.x, point.y)
+            };
             if hit(layout.play) {
                 (inner.sink)(ControlsAction::TogglePlay);
             } else if hit(layout.mute) {
                 (inner.sink)(ControlsAction::ToggleMute);
             } else if hit(layout.fullscreen) {
                 (inner.sink)(ControlsAction::ToggleFullscreen);
+            } else if inner.state.quality.is_some() && hit(layout.quality) {
+                (inner.sink)(ControlsAction::QualityMenu {
+                    anchor: anchor(layout.quality),
+                });
+            } else if inner.state.rate.is_some() && hit(layout.rate) {
+                (inner.sink)(ControlsAction::RateMenu {
+                    anchor: anchor(layout.rate),
+                });
             } else if inner.state.show_progress && hit(layout.track) {
                 unsafe {
                     SetCapture(hwnd);

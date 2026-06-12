@@ -58,6 +58,11 @@ struct SharedState {
     /// An async `CreateMediaItemFromURL` is in flight (since when — an
     /// open whose callbacks never came back must not wedge `play()`).
     opening: Option<std::time::Instant>,
+    /// Position to restore once the next media item attaches (quality
+    /// switches keep the playback position across the source change).
+    pending_seek: Option<f64>,
+    /// Playback rate, re-applied whenever a media item attaches.
+    rate: f32,
 }
 
 /// An async open older than this is presumed dead and gets retried.
@@ -80,7 +85,10 @@ impl VideoPlayer {
     /// Creates a player rendering into `video_window`. `sink` receives
     /// playback transitions on this same (UI) thread.
     pub(crate) fn new(video_window: HWND, sink: VideoEventSink) -> Option<Self> {
-        let shared = Arc::new(Mutex::new(SharedState::default()));
+        let shared = Arc::new(Mutex::new(SharedState {
+            rate: 1.0,
+            ..Default::default()
+        }));
         let callback: IMFPMediaPlayerCallback = PlayerCallback {
             sink,
             shared: shared.clone(),
@@ -117,8 +125,33 @@ impl VideoPlayer {
             shared.source = Some(url.to_string());
             shared.media_ready = false;
             shared.opening = None;
+            shared.pending_seek = None;
         }
         self.open_current_source();
+    }
+
+    /// Switches to `url` keeping playback continuity: restores `position`
+    /// once the new media item attaches and resumes when `resume` is set
+    /// (quality switching).
+    pub(crate) fn switch_source(&self, url: &str, position: f64, resume: bool) {
+        {
+            let mut shared = self.lock();
+            shared.source = Some(url.to_string());
+            shared.media_ready = false;
+            shared.opening = None;
+            shared.pending_seek = (position > 0.0).then_some(position);
+            shared.pending_play = resume;
+        }
+        self.open_current_source();
+    }
+
+    /// Playback rate (1.0 = normal); survives source switches.
+    pub(crate) fn set_rate(&self, rate: f64) {
+        let rate = rate.clamp(0.1, 8.0) as f32;
+        self.lock().rate = rate;
+        unsafe {
+            let _ = self.player.SetRate(rate);
+        }
     }
 
     /// Opens the stored source unless a (live) open is already in flight.
@@ -332,12 +365,27 @@ impl IMFPMediaPlayerCallback_Impl for PlayerCallback_Impl {
                 }
             }
             MFP_EVENT_TYPE_MEDIAITEM_SET => {
-                let pending_play = {
+                let (pending_play, pending_seek, rate) = {
                     let mut shared = self.lock();
                     shared.media_ready = true;
                     shared.opening = None;
-                    std::mem::take(&mut shared.pending_play)
+                    (
+                        std::mem::take(&mut shared.pending_play),
+                        std::mem::take(&mut shared.pending_seek),
+                        shared.rate,
+                    )
                 };
+                if let Some(player) = player {
+                    unsafe {
+                        if let Some(position) = pending_seek {
+                            let target = propvariant_from_100ns((position.max(0.0) * 1e7) as i64);
+                            let _ = player.SetPosition(&MFP_POSITIONTYPE_100NS, &target);
+                        }
+                        if rate != 0.0 && rate != 1.0 {
+                            let _ = player.SetRate(rate);
+                        }
+                    }
+                }
                 let duration = player
                     .and_then(|player| unsafe { player.GetDuration(&MFP_POSITIONTYPE_100NS) }.ok())
                     .map(|value| seconds_from_propvariant(&value))
