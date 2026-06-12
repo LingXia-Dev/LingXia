@@ -46,7 +46,8 @@ use windows::Win32::Foundation::{COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, REC
 use windows::Win32::Graphics::Gdi::{
     BLACK_BRUSH, CLEARTYPE_QUALITY, CLIP_DEFAULT_PRECIS, COLOR_WINDOW, CombineRgn, CreateFontW,
     CreateRectRgn, CreateRoundRectRgn, DEFAULT_CHARSET, DEFAULT_PITCH, DeleteObject, FF_SWISS,
-    GetStockObject, HBRUSH, HDC, HGDIOBJ, InvalidateRect, OUT_DEFAULT_PRECIS, RGN_AND, SetBkColor,
+    GetMonitorInfoW, GetStockObject, HBRUSH, HDC, HGDIOBJ, InvalidateRect, MONITORINFO,
+    MONITOR_DEFAULTTONEAREST, MonitorFromWindow, OUT_DEFAULT_PRECIS, RGN_AND, SetBkColor,
     SetTextColor, SetWindowRgn, WHITE_BRUSH,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
@@ -230,9 +231,12 @@ struct VideoComponent {
     /// The whole container hides so the element's DOM placeholder/poster
     /// shows through; playing reveals it again.
     stopped: bool,
-    /// Covers the whole content area instead of its document rect
-    /// (`requestFullScreen` from the video context).
+    /// Fullscreen plays in a borderless topmost window covering the
+    /// monitor (the macOS player's screen-sized fullscreen window).
     fullscreen: bool,
+    /// The fullscreen host window; `0` while not fullscreen. The
+    /// container reparents into it and back.
+    fullscreen_host: isize,
     /// Mirrors the player's play/pause transitions (sink updates).
     playing: bool,
     /// Was playing when its page left the foreground; auto-resumes when
@@ -531,6 +535,20 @@ fn set_page_components_visible(page_key: &str, visible: bool) {
 
 /// Applies one component's page-visibility change on its UI thread.
 fn apply_component_visibility(key: &str, visible: bool) {
+    if !visible {
+        // A fullscreen video must leave its screen-sized window before the
+        // page hides, or the black host would stay covering the monitor.
+        let fullscreen = {
+            let components = components();
+            components
+                .get(key)
+                .and_then(|entry| entry.video.as_ref())
+                .is_some_and(|video| video.fullscreen)
+        };
+        if fullscreen {
+            set_video_fullscreen(key, false);
+        }
+    }
     let (container, edit, parent, video) = {
         let mut components = components();
         let Some(entry) = components.get_mut(key) else {
@@ -877,6 +895,7 @@ fn mount_video_on_ui(
             surface: surface.0 as isize,
             stopped: true,
             fullscreen: false,
+            fullscreen_host: 0,
             playing: false,
             resume_on_show: false,
         }),
@@ -1089,6 +1108,14 @@ unsafe extern "system" fn video_surface_proc(
 /// clips it to the content area (chrome regions stay clean) and to the
 /// element's measured corner radius, and keeps it above the WebView2 child
 /// windows.
+/// Snapshot of a video component's layout-relevant state.
+struct VideoLayout {
+    player: Arc<VideoPlayer>,
+    surface: isize,
+    stopped: bool,
+    fullscreen_host: isize,
+}
+
 fn apply_layout(key: &str) {
     let (container, edit, doc_rect, page_key, font_size, multiline, corner_radius, video) = {
         let components = components();
@@ -1103,13 +1130,15 @@ fn apply_layout(key: &str) {
             entry.state.font_size.unwrap_or(DEFAULT_FONT_SIZE),
             entry.multiline,
             entry.state.corner_radius.unwrap_or(0.0),
-            entry.video.as_ref().map(|video| {
-                (
-                    video.player.clone(),
-                    video.fullscreen,
-                    video.surface,
-                    video.stopped,
-                )
+            entry.video.as_ref().map(|video| VideoLayout {
+                player: video.player.clone(),
+                surface: video.surface,
+                stopped: video.stopped,
+                fullscreen_host: if video.fullscreen {
+                    video.fullscreen_host
+                } else {
+                    0
+                },
             }),
         )
     };
@@ -1117,8 +1146,7 @@ fn apply_layout(key: &str) {
         return;
     };
     let container_hwnd = HWND(container as *mut _);
-    let video_stopped = matches!(video, Some((_, _, _, true)));
-    if !view.visible || video_stopped {
+    if !view.visible || video.as_ref().is_some_and(|video| video.stopped) {
         // Background pages keep their overlays hidden; a stopped video
         // hides too, letting the element's DOM placeholder/poster show.
         unsafe {
@@ -1126,26 +1154,43 @@ fn apply_layout(key: &str) {
         }
         return;
     }
+
+    // Fullscreen: the container fills its dedicated screen-sized host
+    // window instead of tracking the document rect.
+    if let Some(video) = video
+        .as_ref()
+        .filter(|video| video.fullscreen_host != 0 && is_window(video.fullscreen_host))
+    {
+        let host = HWND(video.fullscreen_host as *mut _);
+        let surface = HWND(video.surface as *mut _);
+        unsafe {
+            let mut rect = RECT::default();
+            let _ = WindowsAndMessaging::GetClientRect(host, &mut rect);
+            let _ = WindowsAndMessaging::MoveWindow(
+                container_hwnd,
+                0,
+                0,
+                rect.right,
+                rect.bottom,
+                true,
+            );
+            SetWindowRgn(container_hwnd, None, true);
+            let _ = WindowsAndMessaging::ShowWindow(container_hwnd, WindowsAndMessaging::SW_SHOWNA);
+            let _ = WindowsAndMessaging::MoveWindow(surface, 0, 0, rect.right, rect.bottom, true);
+        }
+        video.player.update_video();
+        return;
+    }
+
     let target = view.target;
     let scale = if target.scale > 0.0 { target.scale } else { 1.0 };
 
-    let fullscreen = matches!(video, Some((_, true, _, _)));
-    let (x, y, width, height) = if fullscreen {
-        // A fullscreen video covers the whole content area of its window.
-        (
-            target.content_left,
-            target.content_top,
-            target.content_width,
-            target.content_height,
-        )
-    } else {
-        (
-            ((doc_rect.x - view.scroll_x) * scale).round() as i32 + target.content_left,
-            ((doc_rect.y - view.scroll_y) * scale).round() as i32 + target.content_top,
-            (doc_rect.width * scale).round().max(0.0) as i32,
-            (doc_rect.height * scale).round().max(0.0) as i32,
-        )
-    };
+    let (x, y, width, height) = (
+        ((doc_rect.x - view.scroll_x) * scale).round() as i32 + target.content_left,
+        ((doc_rect.y - view.scroll_y) * scale).round() as i32 + target.content_top,
+        (doc_rect.width * scale).round().max(0.0) as i32,
+        (doc_rect.height * scale).round().max(0.0) as i32,
+    );
 
     let content_right = target.content_left + target.content_width;
     let content_bottom = target.content_top + target.content_height;
@@ -1165,13 +1210,9 @@ fn apply_layout(key: &str) {
         let _ = WindowsAndMessaging::MoveWindow(container_hwnd, x, y, width, height, true);
         // Clip to the content area when the component pokes out of it
         // (scrolled partially under the chrome), and round the corners to
-        // the element's measured border-radius (a fullscreen video has no
-        // rounding). Both clips compose into one region.
-        let radius = if fullscreen {
-            0
-        } else {
-            (corner_radius * scale).round() as i32
-        };
+        // the element's measured border-radius. Both clips compose into
+        // one region.
+        let radius = (corner_radius * scale).round() as i32;
         let fully_visible = visible_left == x
             && visible_top == y
             && visible_right == x + width
@@ -1216,16 +1257,16 @@ fn apply_layout(key: &str) {
 
         // The video surface fills the container; MFPlay just needs a
         // repaint nudge after the window moved or resized.
-        if let Some((player, _, surface, _)) = video {
+        if let Some(video) = video {
             let _ = WindowsAndMessaging::MoveWindow(
-                HWND(surface as *mut _),
+                HWND(video.surface as *mut _),
                 0,
                 0,
                 width,
                 height,
                 true,
             );
-            player.update_video();
+            video.player.update_video();
             return;
         }
 
@@ -1679,23 +1720,148 @@ fn apply_video_command(key: &str, command: &VideoPlayerCommand) {
     }
 }
 
-fn set_video_fullscreen(key: &str, fullscreen: bool) {
-    let (surface, parent) = {
-        let mut components = components();
-        let Some(entry) = components.get_mut(key) else {
-            return;
+/// Registers (once) and returns the fullscreen host class: a black
+/// borderless topmost window covering the monitor (the macOS player's
+/// screen-sized fullscreen window).
+fn fullscreen_host_class() -> PCWSTR {
+    static REGISTERED: OnceLock<()> = OnceLock::new();
+    REGISTERED.get_or_init(|| {
+        let class = WNDCLASSW {
+            lpfnWndProc: Some(fullscreen_host_proc),
+            hInstance: unsafe { GetModuleHandleW(None) }
+                .map(|module| HINSTANCE(module.0))
+                .unwrap_or_default(),
+            lpszClassName: w!("LingXiaVideoFullscreenHost"),
+            hbrBackground: HBRUSH(unsafe { GetStockObject(BLACK_BRUSH) }.0),
+            ..Default::default()
         };
-        let Some(video) = entry.video.as_mut() else {
-            return;
-        };
-        if video.fullscreen == fullscreen {
-            return;
+        unsafe {
+            WindowsAndMessaging::RegisterClassW(&class);
         }
-        video.fullscreen = fullscreen;
-        (video.surface, entry.parent)
+    });
+    w!("LingXiaVideoFullscreenHost")
+}
+
+fn component_key_for_fullscreen_host(host: HWND) -> Option<String> {
+    let host = host.0 as isize;
+    let components = components();
+    components
+        .iter()
+        .find(|(_, entry)| {
+            entry
+                .video
+                .as_ref()
+                .is_some_and(|video| video.fullscreen_host == host)
+        })
+        .map(|(key, _)| key.clone())
+}
+
+unsafe extern "system" fn fullscreen_host_proc(
+    hwnd: HWND,
+    msg: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+) -> LRESULT {
+    match msg {
+        WindowsAndMessaging::WM_CLOSE => {
+            if let Some(key) = component_key_for_fullscreen_host(hwnd) {
+                set_video_fullscreen(&key, false);
+            }
+            LRESULT(0)
+        }
+        _ => unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) },
+    }
+}
+
+fn set_video_fullscreen(key: &str, fullscreen: bool) {
+    let Some((surface, container, parent)) = ({
+        let components = components();
+        components.get(key).and_then(|entry| {
+            entry
+                .video
+                .as_ref()
+                .filter(|video| video.fullscreen != fullscreen)
+                .map(|video| (video.surface, entry.container, entry.parent))
+        })
+    }) else {
+        return;
     };
+
+    let container_hwnd = HWND(container as *mut _);
+    if fullscreen {
+        // A borderless topmost window covering the monitor the app sits
+        // on; the container reparents into it and fills it.
+        let monitor =
+            unsafe { MonitorFromWindow(HWND(parent as *mut _), MONITOR_DEFAULTTONEAREST) };
+        let mut info = MONITORINFO {
+            cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+            ..Default::default()
+        };
+        unsafe {
+            let _ = GetMonitorInfoW(monitor, &mut info);
+        }
+        let area = info.rcMonitor;
+        let host = unsafe {
+            WindowsAndMessaging::CreateWindowExW(
+                WindowsAndMessaging::WS_EX_TOPMOST,
+                fullscreen_host_class(),
+                PCWSTR::null(),
+                WINDOW_STYLE(
+                    WindowsAndMessaging::WS_POPUP.0
+                        | WindowsAndMessaging::WS_VISIBLE.0
+                        | WindowsAndMessaging::WS_CLIPCHILDREN.0,
+                ),
+                area.left,
+                area.top,
+                area.right - area.left,
+                area.bottom - area.top,
+                None,
+                None,
+                GetModuleHandleW(None)
+                    .ok()
+                    .map(|module| HINSTANCE(module.0)),
+                None,
+            )
+        };
+        let Ok(host) = host else {
+            log::warn!("failed to create video fullscreen window");
+            return;
+        };
+        {
+            let mut components = components();
+            let Some(video) = components.get_mut(key).and_then(|entry| entry.video.as_mut())
+            else {
+                unsafe {
+                    let _ = WindowsAndMessaging::DestroyWindow(host);
+                }
+                return;
+            };
+            video.fullscreen = true;
+            video.fullscreen_host = host.0 as isize;
+        }
+        unsafe {
+            let _ = WindowsAndMessaging::SetParent(container_hwnd, Some(host));
+        }
+    } else {
+        let host = {
+            let mut components = components();
+            let Some(video) = components.get_mut(key).and_then(|entry| entry.video.as_mut())
+            else {
+                return;
+            };
+            video.fullscreen = false;
+            std::mem::take(&mut video.fullscreen_host)
+        };
+        unsafe {
+            let _ = WindowsAndMessaging::SetParent(container_hwnd, Some(HWND(parent as *mut _)));
+            if host != 0 {
+                let _ = WindowsAndMessaging::DestroyWindow(HWND(host as *mut _));
+            }
+        }
+    }
+
     apply_layout(key);
-    // The fullscreen surface covers the page's controls; focus it so
+    // The fullscreen window covers everything; focus the surface so
     // Escape dismisses, and hand focus back when leaving.
     unsafe {
         let surface_hwnd = HWND(surface as *mut _);
@@ -1711,16 +1877,32 @@ fn set_video_fullscreen(key: &str, fullscreen: bool) {
 /// Destroys a component's windows and removes all its bookkeeping. Runs on
 /// the owning UI thread (window destruction requirement).
 fn destroy_component(key: &str) {
-    let Some((container, font)) = ({
+    let Some((container, font, fullscreen_host)) = ({
         let components = components();
-        components.get(key).map(|entry| (entry.container, entry.font))
+        components.get(key).map(|entry| {
+            (
+                entry.container,
+                entry.font,
+                entry
+                    .video
+                    .as_ref()
+                    .map(|video| video.fullscreen_host)
+                    .unwrap_or(0),
+            )
+        })
     }) else {
         return;
     };
     unsafe {
-        // Destroys the EDIT child too; WM_NCDESTROY unsubclasses it and the
-        // container removes itself from the lookup map.
-        let _ = WindowsAndMessaging::DestroyWindow(HWND(container as *mut _));
+        // Destroys the EDIT/surface child too; WM_NCDESTROY unsubclasses
+        // it and the container removes itself from the lookup map. A
+        // fullscreen host owns the container while fullscreen, so
+        // destroying it tears both down.
+        if fullscreen_host != 0 && is_window(fullscreen_host) {
+            let _ = WindowsAndMessaging::DestroyWindow(HWND(fullscreen_host as *mut _));
+        } else {
+            let _ = WindowsAndMessaging::DestroyWindow(HWND(container as *mut _));
+        }
         if font != 0 {
             let _ = DeleteObject(HGDIOBJ(font as *mut _));
         }

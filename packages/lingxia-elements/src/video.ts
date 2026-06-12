@@ -314,6 +314,9 @@ export class LxVideoElement extends HTMLElement {
       }
     }
     if (!this.isConnected) return;
+    if (name === "poster" || name === "object-fit" || name === "objectfit") {
+      this.syncPosterPlaceholder();
+    }
     // Keep content-rotate/object-fit updates immediate across all native platforms.
     const forcePropsUpdate = name === "content-rotate" || name === "object-fit" || name === "objectfit";
     if (isHarmony() && forcePropsUpdate) {
@@ -399,6 +402,27 @@ export class LxVideoElement extends HTMLElement {
     if (!this.style.position) this.style.position = "relative"; // Needed for iOS scroll container
     if (!this.style.backgroundColor) this.style.backgroundColor = "black";
     if (!this.style.aspectRatio) this.style.aspectRatio = "16 / 9";
+    this.syncPosterPlaceholder();
+  }
+
+  /// The poster doubles as the element's CSS background: on platforms
+  /// where the native layer hides while no media is presented (Windows:
+  /// initial state, after stop, on error), the placeholder shows it.
+  private syncPosterPlaceholder() {
+    const poster = this.getAttribute("poster");
+    if (!poster) {
+      this.style.backgroundImage = "";
+      return;
+    }
+    const objectFit = this.parseObjectFitValue(
+      this.getAttribute("object-fit") ?? this.getAttribute("objectfit")
+    );
+    const size =
+      objectFit === "cover" ? "cover" : objectFit === "fill" ? "100% 100%" : "contain";
+    this.style.backgroundImage = `url("${poster.replace(/"/g, '\\"')}")`;
+    this.style.backgroundSize = size;
+    this.style.backgroundPosition = "center";
+    this.style.backgroundRepeat = "no-repeat";
   }
 
   private collectProps() {
