@@ -958,6 +958,11 @@ pub(crate) fn create_hidden_window(webtag: &WebTag) -> StdResult<HWND> {
                 let moved = !flags.contains(WindowsAndMessaging::SWP_NOMOVE);
                 if sized || moved {
                     handle_window_geometry_change(hwnd);
+                } else if !flags.contains(WindowsAndMessaging::SWP_NOZORDER) {
+                    // A z-order-only change (e.g. click-to-front) must also
+                    // restack the device-frame shell band directly below this
+                    // window, or the shell stays buried behind other apps.
+                    sync_device_frame_for_content(hwnd);
                 }
                 if sized && windows_chrome_renderer().is_some() {
                     // Chrome elements are anchored to the client edges, so a

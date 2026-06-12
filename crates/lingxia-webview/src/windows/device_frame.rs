@@ -681,6 +681,22 @@ unsafe extern "system" fn frame_proc(
     } else if msg == WindowsAndMessaging::WM_NCLBUTTONDBLCLK {
         // No maximize semantics on a fixed-size device.
         return LRESULT(0);
+    } else if msg == WindowsAndMessaging::WM_WINDOWPOSCHANGING {
+        // The shell's device face is opaque, so it must never stack above
+        // the screen window — but DefWindowProc raises a window dragged by
+        // HTCAPTION. Rewrite every pending placement to sit directly below
+        // the content window instead.
+        let content = frame_state_by_frame(hwnd, |content, _| content);
+        if let Some(content) = content.filter(|content| is_window_handle_valid(*content)) {
+            let pos = lparam.0 as *mut WindowsAndMessaging::WINDOWPOS;
+            if !pos.is_null() {
+                unsafe {
+                    (*pos).hwndInsertAfter = hwnd_from_handle(content);
+                    (*pos).flags &= !WindowsAndMessaging::SWP_NOZORDER;
+                }
+            }
+        }
+        // Fall through so DefWindowProc still applies the placement.
     } else if msg == WindowsAndMessaging::WM_WINDOWPOSCHANGED {
         let pos = lparam.0 as *const WindowsAndMessaging::WINDOWPOS;
         if !pos.is_null() && !unsafe { (*pos).flags }.contains(WindowsAndMessaging::SWP_NOMOVE) {
@@ -688,6 +704,25 @@ unsafe extern "system" fn frame_proc(
         }
         // Fall through for default WM_MOVE generation.
     } else if msg == WindowsAndMessaging::WM_ENTERSIZEMOVE {
+        // Dragging grabs the shell, but the assembly should rise as one;
+        // raising the content also restacks the shell directly below it
+        // (see the z-order sync in the content's WM_WINDOWPOSCHANGED).
+        let content = frame_state_by_frame(hwnd, |content, _| content);
+        if let Some(content) = content.filter(|content| is_window_handle_valid(*content)) {
+            unsafe {
+                let _ = WindowsAndMessaging::SetWindowPos(
+                    hwnd_from_handle(content),
+                    Some(WindowsAndMessaging::HWND_TOP),
+                    0,
+                    0,
+                    0,
+                    0,
+                    WindowsAndMessaging::SWP_NOMOVE
+                        | WindowsAndMessaging::SWP_NOSIZE
+                        | WindowsAndMessaging::SWP_NOACTIVATE,
+                );
+            }
+        }
         // Track the modal drag loop at timer cadence — WM_WINDOWPOSCHANGED
         // is coalesced inside it (same pattern as the host windows).
         unsafe {
