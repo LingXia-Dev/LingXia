@@ -150,28 +150,45 @@ pub(super) fn extract_thumbnail(
             })?;
     }
 
-    if let Some(time_ms) = request.time_ms.filter(|time| *time > 0) {
+    let requested_100ns = request
+        .time_ms
+        .filter(|time| *time > 0)
+        .map(|time_ms| time_ms as i64 * 10_000);
+    if let Some(position_100ns) = requested_100ns {
         let mut position = PROPVARIANT::default();
         unsafe {
             let inner = &mut *position.Anonymous.Anonymous;
             inner.vt = VT_I8;
-            inner.Anonymous.hVal = (time_ms as i64) * 10_000;
+            inner.Anonymous.hVal = position_100ns;
             let _ = reader.SetCurrentPosition(&GUID::zeroed(), &position);
         }
     }
 
-    // First decodable video sample at/after the position.
+    // The seek lands on the keyframe before the position, so decode
+    // forward until the sample covering the requested time (keeping the
+    // last decoded frame as the fallback when the request is past EOS).
     let sample = unsafe {
         let mut sample = None;
-        for _ in 0..64 {
+        // Bounds the keyframe-to-target decode walk (~30s at 60fps).
+        for _ in 0..2048 {
             let mut flags = 0u32;
             let mut current = None;
             reader
                 .ReadSample(stream, 0, None, Some(&mut flags), None, Some(&mut current))
                 .map_err(|err| PlatformError::Platform(format!("decode failed: {err}")))?;
             if let Some(current) = current {
+                let reached = match requested_100ns {
+                    Some(target) => {
+                        let time = current.GetSampleTime().unwrap_or(i64::MAX);
+                        let duration = current.GetSampleDuration().unwrap_or(0).max(0);
+                        time + duration >= target
+                    }
+                    None => true,
+                };
                 sample = Some(current);
-                break;
+                if reached {
+                    break;
+                }
             }
             if flags & (MF_SOURCE_READERF_ENDOFSTREAM.0 as u32) != 0 {
                 break;
