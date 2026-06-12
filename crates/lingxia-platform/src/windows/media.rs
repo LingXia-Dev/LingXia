@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use super::{Platform, file, not_supported};
 use crate::error::PlatformError;
 use crate::traits::media_interaction::{
-    ChooseMediaMode, ChooseMediaRequest, MediaInteraction, MediaSource, PreviewMediaRequest,
+    ChooseMediaMode, ChooseMediaRequest, MediaInteraction, PreviewMediaRequest,
     SaveMediaRequest, ScanCodeRequest,
 };
 use crate::traits::media_runtime::{
@@ -27,9 +27,8 @@ impl MediaInteraction for Platform {
         request: ChooseMediaRequest,
     ) -> impl Future<Output = Result<String, PlatformError>> + Send {
         async move {
-            if !request.source_types.contains(&MediaSource::Album) {
-                return not_supported("choose_media from camera");
-            }
+            // Camera capture has no pipeline on desktop; like the macOS
+            // chooser, camera requests fall back to the file dialog.
             let handle = crate::rt::spawn_blocking(move || pick_media_files(&request));
             match handle {
                 Some(task) => task.await.map_err(|err| {

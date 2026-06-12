@@ -273,6 +273,9 @@ enum ManagedPathKind {
     Temp,
     UserData,
     UserCache,
+    /// A file outside managed storage that the user handed to the app
+    /// (e.g. through a chooser); readable for the session, never writable.
+    TransientGrant,
 }
 
 #[derive(Clone, Debug)]
@@ -288,7 +291,7 @@ impl ManagedPathKind {
 
     fn label(self) -> &'static str {
         match self {
-            Self::Temp => "lx://temp",
+            Self::Temp | Self::TransientGrant => "lx://temp",
             Self::UserData => "lx://userdata",
             Self::UserCache => "lx://usercache",
         }
@@ -297,7 +300,7 @@ impl ManagedPathKind {
 
 fn managed_root(lxapp: &LxApp, kind: ManagedPathKind) -> Option<&Path> {
     match kind {
-        ManagedPathKind::Temp => None,
+        ManagedPathKind::Temp | ManagedPathKind::TransientGrant => None,
         ManagedPathKind::UserData => Some(&lxapp.user_data_dir),
         ManagedPathKind::UserCache => Some(&lxapp.user_cache_dir),
     }
@@ -678,7 +681,7 @@ fn classify_managed_path(lxapp: &LxApp, path: &Path) -> Option<ManagedPathKind> 
 
 fn is_storage_root(lxapp: &LxApp, path: &ManagedPath) -> bool {
     match path.kind {
-        ManagedPathKind::Temp => false,
+        ManagedPathKind::Temp | ManagedPathKind::TransientGrant => false,
         ManagedPathKind::UserData => path.path == lxapp.user_data_dir,
         ManagedPathKind::UserCache => path.path == lxapp.user_cache_dir,
     }
@@ -692,13 +695,19 @@ fn resolve_managed_path(
     allow_temp: bool,
     allow_usercache: bool,
     require_child: bool,
+    allow_transient_grant: bool,
 ) -> JSResult<ManagedPath> {
     let path = raw_path.trim();
     if path.starts_with("lx://") {
         let resolved = lxapp
             .resolve_accessible_path(path)
             .map_err(|err| js_error_from_lxapp_error(&err))?;
-        let Some(kind) = classify_managed_path(lxapp, &resolved) else {
+        // An lx:// uri that resolves outside the managed roots can only
+        // come from a transient file grant (user-picked file); those are
+        // readable for the session but never writable.
+        let Some(kind) = classify_managed_path(lxapp, &resolved).or_else(|| {
+            allow_transient_grant.then_some(ManagedPathKind::TransientGrant)
+        }) else {
             return Err(js_invalid_parameter_error(format!(
                 "{api_name} {field_name} must target LingXia-managed storage"
             )));
@@ -745,7 +754,7 @@ fn resolve_readable_path(
             "{api_name} requires {field_name}"
         )));
     }
-    resolve_managed_path(lxapp, path, api_name, field_name, true, true, false)
+    resolve_managed_path(lxapp, path, api_name, field_name, true, true, false, true)
 }
 
 fn resolve_writable_path(
@@ -754,7 +763,7 @@ fn resolve_writable_path(
     api_name: &'static str,
     field_name: &'static str,
 ) -> JSResult<ManagedPath> {
-    resolve_managed_path(lxapp, raw_path, api_name, field_name, false, true, true)
+    resolve_managed_path(lxapp, raw_path, api_name, field_name, false, true, true, false)
 }
 
 fn file_stats(metadata: std::fs::Metadata) -> JSFileStats {
@@ -876,7 +885,9 @@ fn ensure_write_quota(
                     removed_source,
                 ),
             },
-            ManagedPathKind::Temp => Err(storage::StorageQuotaError::Temp),
+            ManagedPathKind::Temp | ManagedPathKind::TransientGrant => {
+                Err(storage::StorageQuotaError::Temp)
+            }
         }
         .map_err(storage::quota_error_to_js)?;
     }
@@ -1145,6 +1156,7 @@ impl JSFileManager {
             true,
             true,
             true,
+            false,
         )?;
         let new_path = resolve_writable_path(&lxapp, &options.new_path, "rename", "newPath")?;
         ensure_no_symlink_ancestors(&lxapp, &old_path, "rename", "oldPath")?;
