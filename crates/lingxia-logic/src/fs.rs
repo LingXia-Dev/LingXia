@@ -273,6 +273,10 @@ enum ManagedPathKind {
     Temp,
     UserData,
     UserCache,
+    /// A transient grant to a file/directory the user explicitly picked
+    /// (chooseFile / chooseDirectory / chooseMedia on desktop). Read-only:
+    /// the readable resolver accepts it, the writable resolver does not.
+    Granted,
 }
 
 #[derive(Clone, Debug)]
@@ -291,13 +295,14 @@ impl ManagedPathKind {
             Self::Temp => "lx://temp",
             Self::UserData => "lx://userdata",
             Self::UserCache => "lx://usercache",
+            Self::Granted => "granted file",
         }
     }
 }
 
 fn managed_root(lxapp: &LxApp, kind: ManagedPathKind) -> Option<&Path> {
     match kind {
-        ManagedPathKind::Temp => None,
+        ManagedPathKind::Temp | ManagedPathKind::Granted => None,
         ManagedPathKind::UserData => Some(&lxapp.user_data_dir),
         ManagedPathKind::UserCache => Some(&lxapp.user_cache_dir),
     }
@@ -678,7 +683,7 @@ fn classify_managed_path(lxapp: &LxApp, path: &Path) -> Option<ManagedPathKind> 
 
 fn is_storage_root(lxapp: &LxApp, path: &ManagedPath) -> bool {
     match path.kind {
-        ManagedPathKind::Temp => false,
+        ManagedPathKind::Temp | ManagedPathKind::Granted => false,
         ManagedPathKind::UserData => path.path == lxapp.user_data_dir,
         ManagedPathKind::UserCache => path.path == lxapp.user_cache_dir,
     }
@@ -693,15 +698,24 @@ fn resolve_managed_path(
     allow_usercache: bool,
     require_child: bool,
 ) -> JSResult<ManagedPath> {
+    // Read-only callers accept transient grants; writers never do.
+    let allow_granted = !require_child;
     let path = raw_path.trim();
     if path.starts_with("lx://") {
         let resolved = lxapp
             .resolve_accessible_path(path)
             .map_err(|err| js_error_from_lxapp_error(&err))?;
-        let Some(kind) = classify_managed_path(lxapp, &resolved) else {
-            return Err(js_invalid_parameter_error(format!(
-                "{api_name} {field_name} must target LingXia-managed storage"
-            )));
+        let kind = match classify_managed_path(lxapp, &resolved) {
+            Some(kind) => kind,
+            // The URI resolved (so the lxapp may access this path) but it is
+            // not under managed storage: a transient grant to a file the
+            // user explicitly picked (chooseFile / chooseMedia on desktop).
+            None if allow_granted => ManagedPathKind::Granted,
+            None => {
+                return Err(js_invalid_parameter_error(format!(
+                    "{api_name} {field_name} must target LingXia-managed storage"
+                )));
+            }
         };
         if kind == ManagedPathKind::Temp && !allow_temp {
             return Err(js_invalid_parameter_error(format!(
@@ -877,6 +891,10 @@ fn ensure_write_quota(
                 ),
             },
             ManagedPathKind::Temp => Err(storage::StorageQuotaError::Temp),
+            // The writable resolver never yields grants (allow_granted is
+            // derived from !require_child), so a granted destination cannot
+            // reach quota accounting.
+            ManagedPathKind::Granted => unreachable!("granted paths are read-only"),
         }
         .map_err(storage::quota_error_to_js)?;
     }
