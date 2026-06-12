@@ -331,7 +331,63 @@ fn cache_dir() -> Result<PathBuf, String> {
     // for the published crate (it would write outside the registry
     // checkout). LINGXIA_GHOSTTY_CACHE_DIR overrides for shared caches.
     let out_dir = PathBuf::from(env::var("OUT_DIR").map_err(|e| e.to_string())?);
+    if let Some(cache) = windows_same_drive_cache(&out_dir) {
+        return Ok(cache);
+    }
     Ok(out_dir.join("ghostty-cache"))
+}
+
+/// zig 0.15's build runner asserts when a tool path cannot be expressed
+/// relative to the build cwd, which on Windows happens whenever the
+/// ghostty checkout sits on a different drive than the zig compiler
+/// (e.g. project on D:, zig under C:\Users). When OUT_DIR and zig
+/// disagree on the drive, fall back to a per-user cache on zig's drive
+/// (under the profile root, not AppData — AV products are quick to eat
+/// freshly linked unsigned executables like zig's build runner there).
+fn windows_same_drive_cache(out_dir: &Path) -> Option<PathBuf> {
+    if !cfg!(windows) {
+        return None;
+    }
+    let zig = env_os("LINGXIA_GHOSTTY_ZIG").unwrap_or_else(|| OsString::from("zig"));
+    let zig_path = which_zig(&zig)?;
+    let zig_drive = windows_drive(&zig_path)?;
+    if windows_drive(out_dir) == Some(zig_drive) {
+        return None;
+    }
+    let profile = env_path("USERPROFILE")?;
+    if windows_drive(&profile) != Some(zig_drive) {
+        return None;
+    }
+    Some(profile.join(".lingxia").join("ghostty-cache"))
+}
+
+fn which_zig(zig: &OsStr) -> Option<PathBuf> {
+    let candidate = Path::new(zig);
+    if candidate.is_absolute() {
+        return Some(candidate.to_path_buf());
+    }
+    let output = Command::new("where.exe").arg(zig).output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    String::from_utf8(output.stdout)
+        .ok()?
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .map(PathBuf::from)
+}
+
+fn windows_drive(path: &Path) -> Option<char> {
+    match path.components().next() {
+        Some(std::path::Component::Prefix(prefix)) => match prefix.kind() {
+            std::path::Prefix::Disk(letter) | std::path::Prefix::VerbatimDisk(letter) => {
+                Some(letter.to_ascii_uppercase() as char)
+            }
+            _ => None,
+        },
+        _ => None,
+    }
 }
 
 fn current_git_rev(repo_dir: &Path) -> Option<String> {
