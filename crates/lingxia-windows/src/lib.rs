@@ -14,6 +14,8 @@
 use std::path::{Path, PathBuf};
 
 #[cfg(target_os = "windows")]
+mod device_frame;
+#[cfg(target_os = "windows")]
 mod media_preview;
 #[cfg(target_os = "windows")]
 mod native_components;
@@ -21,6 +23,13 @@ mod native_components;
 mod video_controls;
 #[cfg(target_os = "windows")]
 mod video_player;
+
+#[cfg(target_os = "windows")]
+pub use device_frame::{
+    WindowsAppMenu, WindowsAppMenuCommandHandler, WindowsAppMenuEntry, WindowsAppMenuItem,
+    WindowsDeviceFrame, WindowsDeviceFrameToolbar, open_current_page_devtools,
+    set_app_window_device_frame, set_windows_app_menu, set_windows_app_menu_command_handler,
+};
 
 /// Host process description used to initialize the LingXia runtime.
 ///

@@ -2,7 +2,7 @@ use crate::device::{
     DEFAULT_DEVICE, DEVICE_COMMAND_BASE, DEVICE_GROUP_STARTS, DEVICE_PRESETS,
     OPEN_DEVTOOLS_COMMAND, device_label, frame_spec,
 };
-use lingxia::windows::{WindowsAppMenu, WindowsAppMenuEntry, WindowsAppMenuItem};
+use lingxia_windows::{WindowsAppMenu, WindowsAppMenuEntry, WindowsAppMenuItem};
 
 const RUNNER_WINDOW_SIZE: (i32, i32) = (420, 880);
 const VK_F12: u32 = 0x7B;
@@ -58,15 +58,15 @@ fn runner_menus(active_device: Option<usize>) -> Vec<WindowsAppMenu> {
 }
 
 fn apply_device(home_app_id: &str, index: usize) -> Result<(), String> {
-    lingxia::windows::set_app_window_device_frame(home_app_id, Some(frame_spec(index)))?;
-    lingxia::windows::set_windows_app_menu(runner_menus(Some(index)));
+    lingxia_windows::set_app_window_device_frame(home_app_id, Some(frame_spec(index)))?;
+    lingxia_windows::set_windows_app_menu(runner_menus(Some(index)));
     Ok(())
 }
 
 fn install_runner_menu(home_app_id: String) {
-    lingxia::windows::set_windows_app_menu_command_handler(std::sync::Arc::new(move |command| {
+    lingxia_windows::set_windows_app_menu_command_handler(std::sync::Arc::new(move |command| {
         if command == OPEN_DEVTOOLS_COMMAND {
-            if let Err(err) = lingxia::windows::open_current_page_devtools(&home_app_id) {
+            if let Err(err) = lingxia_windows::open_current_page_devtools(&home_app_id) {
                 eprintln!("lingxia-runner: failed to open DevTools: {err}");
             }
             return;
@@ -87,7 +87,7 @@ fn install_runner_menu(home_app_id: String) {
         }
     }));
 
-    lingxia::windows::set_windows_app_menu(runner_menus(None));
+    lingxia_windows::set_windows_app_menu(runner_menus(None));
 }
 
 fn apply_default_device(home_app_id: String) {

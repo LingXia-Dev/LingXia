@@ -1,4 +1,4 @@
-use lingxia::windows::{WindowsAppMenuItem, WindowsDeviceFrame, WindowsDeviceFrameToolbar};
+use lingxia_windows::{WindowsAppMenuItem, WindowsDeviceFrame, WindowsDeviceFrameToolbar};
 
 pub(crate) const DEFAULT_DEVICE: usize = 3;
 
