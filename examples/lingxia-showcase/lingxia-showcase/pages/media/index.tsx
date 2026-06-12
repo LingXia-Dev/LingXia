@@ -154,6 +154,7 @@ type PageData = {
   videoCompressFps?: string | number;
   videoCompressResolution?: string | number;
   videoCompressBusy?: boolean;
+  videoCompressProgress?: number | null;
   videoCompressResult?: CompressVideoResult | null;
   videoCompressError?: string;
   saveToAlbumBusy?: boolean;
@@ -206,6 +207,7 @@ type PageActions = {
   onVideoCompressFpsInput?(event: any): void;
   onVideoCompressResolutionInput?(event: any): void;
   compressSelectedVideo?(): void;
+  cancelVideoCompress?(): void;
   previewCompressedVideo?(): void;
   compressSelectedImage?(): void;
   previewCompressedImage?(): void;
@@ -420,6 +422,7 @@ export default function MediaPage() {
     onVideoCompressFpsInput,
     onVideoCompressResolutionInput,
     compressSelectedVideo,
+    cancelVideoCompress,
     previewCompressedVideo,
     compressSelectedImage,
     previewCompressedImage,
@@ -518,6 +521,7 @@ export default function MediaPage() {
     ? rawVideoCompressResolution.toString()
     : rawVideoCompressResolution;
   const videoCompressBusy = Boolean(data?.videoCompressBusy);
+  const videoCompressProgress = data?.videoCompressProgress;
   const videoCompressResult = data?.videoCompressResult || null;
   const videoCompressError = data?.videoCompressError || '';
 
@@ -870,8 +874,24 @@ export default function MediaPage() {
             fullWidth
             variant="success"
           >
-            {videoCompressBusy ? 'Compressing…' : 'Compress Video'}
+            {videoCompressBusy
+              ? `Compressing…${typeof videoCompressProgress === 'number' ? ` ${videoCompressProgress}%` : ''}`
+              : 'Compress Video'}
           </Button>
+
+          {videoCompressBusy && (
+            <>
+              <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200">
+                <div
+                  className="h-full rounded-full bg-green-500 transition-all duration-200"
+                  style={{ width: `${typeof videoCompressProgress === 'number' ? videoCompressProgress : 0}%` }}
+                />
+              </div>
+              <Button onClick={() => cancelVideoCompress?.()} fullWidth variant="secondary">
+                Cancel
+              </Button>
+            </>
+          )}
 
           {videoCompressError && (
             <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 px-4 py-3 rounded-xl">

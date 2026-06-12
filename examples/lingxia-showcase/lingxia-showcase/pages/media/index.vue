@@ -502,8 +502,23 @@
                     videoCompressBusy ? 'bg-gray-400 text-white cursor-not-allowed' : 'bg-gradient-to-r from-green-600 to-green-500 hover:from-green-500 hover:to-green-600 text-white'
                   ]"
                 >
-                  {{ videoCompressBusy ? 'Compressing…' : 'Compress Video' }}
+                  {{ videoCompressBusy ? `Compressing…${videoCompressProgress !== null ? ` ${videoCompressProgress}%` : ''}` : 'Compress Video' }}
                 </button>
+
+                <template v-if="videoCompressBusy">
+                  <div class="h-2 w-full overflow-hidden rounded-full bg-gray-200">
+                    <div
+                      class="h-full rounded-full bg-green-500 transition-all duration-200"
+                      :style="{ width: `${videoCompressProgress ?? 0}%` }"
+                    ></div>
+                  </div>
+                  <button
+                    @click="cancelVideoCompress"
+                    class="w-full px-5 py-3 text-sm font-medium rounded-xl shadow-sm transition-all duration-200 active:scale-[0.98] bg-gray-100 hover:bg-gray-200 text-gray-700"
+                  >
+                    Cancel
+                  </button>
+                </template>
 
                 <div v-if="videoCompressError" class="flex items-center gap-2 text-sm text-red-600 bg-red-50 px-4 py-3 rounded-xl">
                   <span>⚠️</span>
@@ -949,6 +964,7 @@ const {
   onVideoCompressFpsInput,
   onVideoCompressResolutionInput,
   compressSelectedVideo,
+  cancelVideoCompress,
   previewCompressedVideo,
   captureImageForAlbum,
   captureVideoForAlbum,
@@ -1067,6 +1083,9 @@ const videoCompressResolution = computed(() => {
   return typeof raw === 'number' ? String(raw) : raw;
 });
 const videoCompressBusy = computed(() => Boolean(data?.videoCompressBusy));
+const videoCompressProgress = computed(() =>
+  typeof data?.videoCompressProgress === 'number' ? data.videoCompressProgress : null,
+);
 const videoCompressResult = computed<CompressVideoResult | null>(() => data?.videoCompressResult ?? null);
 const videoCompressError = computed(() => data?.videoCompressError || '');
 const saveToAlbumBusy = computed(() => Boolean(data?.saveToAlbumBusy));

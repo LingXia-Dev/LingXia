@@ -364,6 +364,7 @@ function createState(modeKey) {
     videoCompressFps: "30",
     videoCompressResolution: "0.8",
     videoCompressBusy: false,
+    videoCompressProgress: null,
     videoCompressResult: null,
     videoCompressError: "",
     previewRotateKey: "meta",
@@ -925,23 +926,40 @@ Page({
       videoCompressBusy: true,
       videoCompressError: "",
       videoCompressResult: null,
+      videoCompressProgress: 0,
     });
 
+    const task = lx.compressVideo(payload);
+    this._compressVideoTask = task;
     try {
-      const result = await lx.compressVideo(payload);
-      this.setData({ videoCompressResult: result, videoCompressBusy: false });
+      for await (const { progress } of task) {
+        this.setData({ videoCompressProgress: progress });
+      }
+      const result = await task.wait();
+      this.setData({
+        videoCompressResult: result,
+        videoCompressBusy: false,
+        videoCompressProgress: null,
+      });
     } catch (error) {
       const message = error?.message || "compressVideo failed";
       this.setData({
         videoCompressError: message,
         videoCompressResult: null,
         videoCompressBusy: false,
+        videoCompressProgress: null,
       });
       lx.showToast({
         title: message,
         icon: "none",
       });
+    } finally {
+      this._compressVideoTask = null;
     }
+  },
+
+  cancelVideoCompress: function () {
+    this._compressVideoTask?.cancel();
   },
 
   previewCompressedVideo: async function () {
