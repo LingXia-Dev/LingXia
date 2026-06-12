@@ -24,9 +24,9 @@ const RUNNER_LXAPP_PATH_ENV: &str = "LINGXIA_LXAPP_PATH";
 const RUNNER_DEV_WS_URL_ENV: &str = "LINGXIA_DEV_WS_URL";
 const REQUIRED_RUNNER_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-/// Windows runner: bin target inside the runner-lib package, built from the
-/// LingXia workspace on demand (see `build_windows_runner`).
-const RUNNER_WINDOWS_PACKAGE: &str = "lingxia-runner-lib";
+/// Windows runner: standalone executable crate built from the LingXia
+/// workspace on demand (see `build_windows_runner`).
+const RUNNER_WINDOWS_PACKAGE: &str = "lingxia-runner-windows";
 const RUNNER_WINDOWS_BIN_NAME: &str = "lingxia-runner";
 const RUNNER_WINDOWS_PRODUCT_NAME: &str = "LingXia Runner";
 
@@ -952,12 +952,7 @@ fn read_windows_runner_lxapp_identity(lxapp_path: &Path) -> Result<WindowsRunner
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .map(ToOwned::to_owned)
-            .ok_or_else(|| {
-                anyhow!(
-                    "Missing or empty \"{name}\" in {}",
-                    manifest_path.display()
-                )
-            })
+            .ok_or_else(|| anyhow!("Missing or empty \"{name}\" in {}", manifest_path.display()))
     };
     Ok(WindowsRunnerLxAppIdentity {
         app_id: field("appId")?,
@@ -1002,11 +997,8 @@ fn prepare_windows_runner_assets(
     // CLI so published builds don't depend on the repo's design sources.
     // `lingxia-windows` picks `<assets>/AppIcon.png` up automatically.
     let icon_path = assets_dir.join("AppIcon.png");
-    std::fs::write(
-        &icon_path,
-        include_bytes!("../../assets/runner-icon.png"),
-    )
-    .with_context(|| format!("Failed to write {}", icon_path.display()))?;
+    std::fs::write(&icon_path, include_bytes!("../../assets/runner-icon.png"))
+        .with_context(|| format!("Failed to write {}", icon_path.display()))?;
 
     // The runtime's home-app bootstrap installs from `<assets>/<appid>/`
     // before the dev-config override kicks in, so the built bundle is
@@ -1035,7 +1027,7 @@ fn windows_runner_workspace_root() -> Result<PathBuf> {
     let runner_manifest = workspace_root
         .join("tools")
         .join("lingxia-runner")
-        .join("runner-lib")
+        .join("windows")
         .join("Cargo.toml");
     if !runner_manifest.exists() {
         return Err(anyhow!(

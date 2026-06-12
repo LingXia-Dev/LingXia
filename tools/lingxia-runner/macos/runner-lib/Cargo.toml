@@ -1,0 +1,16 @@
+[package]
+name = "lingxia-runner-lib"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+# Static library linked into the macOS Swift "LingXia Runner.app".
+[lib]
+name = "lingxia"
+crate-type = ["staticlib"]
+
+# The macOS Runner ships the full shell chrome. The Windows dev runner lives
+# in tools/lingxia-runner/windows so platform entry crates stay separated.
+[dependencies]
+lingxia = { workspace = true, features = ["standard", "shell-runtime", "webview-input"] }
+lingxia_devtool = { workspace = true, features = ["browser"] }

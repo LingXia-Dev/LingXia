@@ -36,6 +36,7 @@ struct RunnerBuildPlugin: BuildToolPlugin {
         let projectRoot = packageDir
             .deletingLastPathComponent()
             .deletingLastPathComponent()
+            .deletingLastPathComponent()
             .standardizedFileURL
 
         var inputFiles: [URL] = []

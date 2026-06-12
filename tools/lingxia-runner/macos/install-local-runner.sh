@@ -8,7 +8,7 @@ if [[ $# -ne 0 ]]; then
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 WORKSPACE_CARGO_TOML="$ROOT_DIR/Cargo.toml"
 
 read_workspace_version() {

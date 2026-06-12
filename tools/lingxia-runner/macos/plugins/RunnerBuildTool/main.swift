@@ -139,7 +139,11 @@ struct RunnerBuildTool {
             return normalizePath(explicit)
         }
         let packageURL = URL(fileURLWithPath: packageDir)
-        return packageURL.deletingLastPathComponent().deletingLastPathComponent().path
+        return packageURL
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .path
     }
 
     private static func findMonorepoRoot(startPath: String) -> String? {
@@ -148,7 +152,7 @@ struct RunnerBuildTool {
 
         while true {
             let candidate = currentURL.path
-            let runnerLibCargo = pathJoin(candidate, "tools/lingxia-runner/runner-lib/Cargo.toml")
+            let runnerLibCargo = pathJoin(candidate, "tools/lingxia-runner/macos/runner-lib/Cargo.toml")
             let sdkPackage = pathJoin(candidate, "lingxia-sdk/apple/Package.swift")
 
             if fileManager.fileExists(atPath: runnerLibCargo)
@@ -276,9 +280,6 @@ struct RunnerBuildTool {
         let targetTriple = try resolveRustTargetTriple(baseEnvironment: baseEnvironment)
         let macosDeploymentTarget = "12.0"
 
-        // `--lib` selects the staticlib target explicitly: the package also
-        // declares the Windows runner bin, and `cargo rustc --crate-type`
-        // refuses to run against more than one target.
         var args = [
             "rustc",
             "--lib",

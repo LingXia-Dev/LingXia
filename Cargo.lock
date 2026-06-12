@@ -3162,6 +3162,14 @@ version = "0.9.0"
 dependencies = [
  "lingxia",
  "lingxia-devtool",
+]
+
+[[package]]
+name = "lingxia-runner-windows"
+version = "0.9.0"
+dependencies = [
+ "lingxia",
+ "lingxia-devtool",
  "lingxia-windows",
 ]
 
