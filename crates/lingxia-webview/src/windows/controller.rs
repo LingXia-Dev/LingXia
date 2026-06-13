@@ -13,7 +13,10 @@ pub(crate) const WEBVIEW_SCREENSHOT_TIMEOUT: Duration = Duration::from_secs(4);
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum WindowsWindowRole {
     Main,
-    Panel { panel_id: String },
+    #[cfg(feature = "windows-host")]
+    Panel {
+        panel_id: String,
+    },
 }
 
 pub(crate) enum UiCommand {
@@ -73,6 +76,7 @@ pub(crate) enum UiCommand {
         role: WindowsWindowRole,
         resp: Sender<StdResult<()>>,
     },
+    #[cfg(feature = "windows-host")]
     PresentAsGroupMain {
         group_key: String,
         resp: Sender<StdResult<()>>,
@@ -80,6 +84,7 @@ pub(crate) enum UiCommand {
     HideWindow {
         resp: Sender<StdResult<()>>,
     },
+    #[cfg(feature = "windows-host")]
     SetWindowLayout {
         layout: WindowsWindowLayout,
         resp: Sender<StdResult<()>>,
@@ -94,6 +99,7 @@ pub(crate) struct UiState {
     pub(crate) webtag_key: String,
     pub(crate) window_visible: bool,
     pub(crate) memory_pages: Arc<Mutex<HashMap<String, Vec<u8>>>>,
+    pub(crate) transient_user_data_dir: Option<PathBuf>,
 }
 
 pub struct WebViewInner {
@@ -242,10 +248,12 @@ impl WebViewInner {
         self.dispatch_command(|resp| UiCommand::HideWindow { resp })
     }
 
+    #[cfg(feature = "windows-host")]
     pub(crate) fn present_as_group_main(&self, group_key: String) -> StdResult<()> {
         self.dispatch_command(|resp| UiCommand::PresentAsGroupMain { group_key, resp })
     }
 
+    #[cfg(feature = "windows-host")]
     pub(crate) fn set_window_layout(&self, layout: WindowsWindowLayout) -> StdResult<()> {
         self.dispatch_command(|resp| UiCommand::SetWindowLayout { layout, resp })
     }
@@ -454,8 +462,13 @@ pub(crate) fn run_ui_thread_inner(
 
     // After the window exists, every failure must report the real error to the
     // creator and destroy the window (which also frees the WindowUserData box).
-    let setup = (|| -> StdResult<(ICoreWebView2Controller, ICoreWebView2, Arc<Mutex<HashMap<String, Vec<u8>>>>)> {
-        let env = create_environment(&effective_options)?;
+    let setup = (|| -> StdResult<(
+        ICoreWebView2Controller,
+        ICoreWebView2,
+        Arc<Mutex<HashMap<String, Vec<u8>>>>,
+        Option<PathBuf>,
+    )> {
+        let (env, transient_user_data_dir) = create_environment(&webtag, &effective_options)?;
         let controller = create_controller(&env, hwnd)?;
         let webview = unsafe {
             controller
@@ -464,7 +477,7 @@ pub(crate) fn run_ui_thread_inner(
         };
 
         configure_controller(&controller)?;
-        configure_settings(&webview)?;
+        configure_settings(&webview, &effective_options)?;
         install_document_scripts(&webview)?;
         let memory_pages = Arc::new(Mutex::new(HashMap::new()));
         register_event_handlers(
@@ -474,10 +487,10 @@ pub(crate) fn run_ui_thread_inner(
             &effective_options.registered_schemes,
             memory_pages.clone(),
         )?;
-        Ok((controller, webview, memory_pages))
+        Ok((controller, webview, memory_pages, transient_user_data_dir))
     })();
 
-    let (controller, webview, memory_pages) = match setup {
+    let (controller, webview, memory_pages, transient_user_data_dir) = match setup {
         Ok(parts) => parts,
         Err(err) => {
             let _ = startup_tx.send(Err(err.clone()));
@@ -509,6 +522,7 @@ pub(crate) fn run_ui_thread_inner(
         webtag_key,
         window_visible: false,
         memory_pages,
+        transient_user_data_dir,
     };
 
     // Let the window procedure drive layout directly (required during the
@@ -684,6 +698,7 @@ pub(crate) fn handle_command(state: &mut UiState, command: UiCommand) -> StdResu
             let result = show_native_window(state, &title, activate, role);
             let _ = resp.send(result);
         }
+        #[cfg(feature = "windows-host")]
         UiCommand::PresentAsGroupMain { group_key, resp } => {
             let result = present_native_window_as_group_main(state, &group_key);
             let _ = resp.send(result);
@@ -692,6 +707,7 @@ pub(crate) fn handle_command(state: &mut UiState, command: UiCommand) -> StdResu
             let result = hide_native_window(state);
             let _ = resp.send(result);
         }
+        #[cfg(feature = "windows-host")]
         UiCommand::SetWindowLayout { layout, resp } => {
             let result = set_native_window_layout(state, layout);
             let _ = resp.send(result);
@@ -709,8 +725,14 @@ pub(crate) fn cleanup_state(state: &mut UiState) {
         let _ = state.controller.Close();
         let _ = WindowsAndMessaging::DestroyWindow(state.hwnd);
     }
+    if let Some(dir) = state.transient_user_data_dir.take()
+        && let Err(err) = std::fs::remove_dir_all(&dir)
+    {
+        log::debug!("failed to remove strict WebView2 profile {dir:?}: {err}");
+    }
 }
 
+#[cfg(feature = "windows-host")]
 pub(crate) fn cleanup_window_state(state: &UiState) {
     forget_window_layout_state(state.hwnd);
     let attachment = remove_window_attachment(&state.webtag_key);
@@ -751,7 +773,7 @@ pub(crate) fn cleanup_window_state(state: &UiState) {
                         set_group_active_main(&attachment.group_key, &previous);
                     }
                     layout_group_windows(&attachment.group_key);
-                    request_group_shell_refresh(&attachment.group_key);
+                    request_group_chrome_refresh(&attachment.group_key);
                 }
                 if let Some(active) = WINDOW_GROUP_ACTIVE_MAIN.get()
                     && let Ok(mut active) = active.lock()
@@ -765,8 +787,13 @@ pub(crate) fn cleanup_window_state(state: &UiState) {
             WindowAttachmentKind::Panel { .. } => {
                 remove_group_panel(&attachment.group_key, &state.webtag_key);
                 layout_group_windows(&attachment.group_key);
-                request_group_shell_refresh(&attachment.group_key);
+                request_group_chrome_refresh(&attachment.group_key);
             }
         }
     }
+}
+
+#[cfg(not(feature = "windows-host"))]
+pub(crate) fn cleanup_window_state(state: &UiState) {
+    cleanup_standalone_window_state(state);
 }

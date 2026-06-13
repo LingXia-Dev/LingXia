@@ -26,29 +26,6 @@ struct CornerCapSet {
 /// attached card window, or a group host for its own main card).
 static CORNER_CAPS: OnceLock<Mutex<HashMap<isize, CornerCapSet>>> = OnceLock::new();
 
-/// Per-window cap style overrides `(side, COLORREF)` taking precedence over
-/// the renderer's corner color and panel radius. Installed by the
-/// device-frame presentation, whose screen corners are bezel-colored and
-/// rounded independently of any chrome renderer.
-static CAP_STYLE_OVERRIDES: OnceLock<Mutex<HashMap<isize, (i32, u32)>>> = OnceLock::new();
-
-pub(crate) fn set_corner_cap_style_override(parent: HWND, style: Option<(i32, u32)>) {
-    let overrides = CAP_STYLE_OVERRIDES.get_or_init(|| Mutex::new(HashMap::new()));
-    if let Ok(mut overrides) = overrides.lock() {
-        match style {
-            Some(style) => overrides.insert(hwnd_handle(parent), style),
-            None => overrides.remove(&hwnd_handle(parent)),
-        };
-    }
-}
-
-fn corner_cap_style_override(parent: HWND) -> Option<(i32, u32)> {
-    CAP_STYLE_OVERRIDES
-        .get()
-        .and_then(|overrides| overrides.lock().ok())
-        .and_then(|overrides| overrides.get(&hwnd_handle(parent)).copied())
-}
-
 /// Cap windows take no input: `WS_EX_TRANSPARENT` already excludes the
 /// layered caps from hit testing, and `HTTRANSPARENT` covers any hit test
 /// that still reaches the window.
@@ -111,16 +88,10 @@ pub(crate) fn update_corner_caps(parent: HWND, card_rect: RECT) {
         );
         return;
     }
-    let style_override = corner_cap_style_override(parent);
-    let Some(color) = style_override
-        .map(|(_, color)| COLORREF(color))
-        .or_else(renderer_card_corner_color)
-    else {
+    let Some(color) = renderer_card_corner_color() else {
         return;
     };
-    let side = style_override
-        .map(|(side, _)| side)
-        .unwrap_or_else(renderer_panel_radius);
+    let side = renderer_panel_radius();
     if side <= 0 {
         return;
     }
@@ -288,9 +259,8 @@ fn paint_corner_cap(cap: HWND, corner: usize, side: i32, color: COLORREF) {
 }
 
 /// Uploads a premultiplied 32-bit ARGB top-down pixel buffer to a layered
-/// window via `UpdateLayeredWindow` (`ULW_ALPHA`). Shared by the corner
-/// caps and the device-frame bezel window.
-pub(crate) fn upload_layered_window_pixels(window: HWND, width: i32, height: i32, pixels: &[u32]) {
+/// window via `UpdateLayeredWindow` (`ULW_ALPHA`).
+fn upload_layered_window_pixels(window: HWND, width: i32, height: i32, pixels: &[u32]) {
     unsafe {
         let screen_dc = GetDC(None);
         if screen_dc.is_invalid() {

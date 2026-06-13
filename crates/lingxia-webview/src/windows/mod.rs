@@ -1,20 +1,24 @@
 //! Windows (WebView2) platform implementation.
 //!
-//! This module is strictly generic WebView2 hosting: window/controller
-//! lifecycle, the message loop, command dispatch, scheme/event plumbing,
-//! and window-group arrangement mechanics. It draws no product UI itself;
-//! a product shell can register a [`WindowsChromeRenderer`] (see
-//! `renderer.rs`) to paint custom window chrome and map chrome hit tests.
-//! Without a registered renderer, windows keep a plain standard OS frame.
+//! This module is strictly generic WebView2 hosting: controller lifecycle,
+//! the message loop, command dispatch, scheme/event plumbing, and the
+//! minimal HWND surface required by WebView2.
+//!
+//! LingXia-specific host-window grouping, custom chrome, and native panel
+//! support are compiled only with the `windows-host` feature. That feature
+//! exists for the LingXia Windows runtime; standalone `lingxia-webview`
+//! users get a plain WebView2 surface by default.
 //!
 //! The implementation is split into focused submodules; this module
 //! declares them, hosts the shared import prelude (submodules pull it
 //! in with `use super::*;`), and re-exports the public API surface.
 
+#![cfg_attr(not(feature = "windows-host"), allow(dead_code, unused_imports))]
+
 use crate::traits::{DownloadRequest, LoadDataRequest, NavigationPolicy, NewWindowPolicy};
 use crate::webview::{
-    EffectiveWebViewCreateOptions, WebTag, WebViewCreateSender, WebViewCreateStage, find_webview,
-    find_webview_delegate, register_webview,
+    EffectiveWebViewCreateOptions, SecurityProfile, WebTag, WebViewCreateSender,
+    WebViewCreateStage, find_webview, find_webview_delegate, register_webview,
 };
 use crate::{
     LogLevel, WebResourceBody, WebResourceResponse, WebViewController, WebViewError,
@@ -25,7 +29,7 @@ use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::ffi::c_void;
 use std::io::Read;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::thread::{self, JoinHandle};
@@ -42,11 +46,10 @@ use windows::{
         },
         Graphics::Gdi::{
             AC_SRC_ALPHA, AC_SRC_OVER, BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BLENDFUNCTION,
-            BeginPaint, BitBlt, ClientToScreen, CreateBitmap, CreateCompatibleBitmap,
-            CreateCompatibleDC, CreateDIBSection, DIB_RGB_COLORS, DeleteDC, DeleteObject, EndPaint,
-            GetDC, GetMonitorInfoW, HDC, HGDIOBJ, InvalidateRect, MONITOR_DEFAULTTONEAREST,
-            MONITORINFO, MonitorFromWindow, PAINTSTRUCT, ReleaseDC, SRCCOPY, ScreenToClient,
-            SelectObject,
+            BeginPaint, BitBlt, ClientToScreen, CreateCompatibleBitmap, CreateCompatibleDC,
+            CreateDIBSection, DIB_RGB_COLORS, DeleteDC, DeleteObject, EndPaint, GetDC,
+            GetMonitorInfoW, HDC, HGDIOBJ, InvalidateRect, MONITOR_DEFAULTTONEAREST, MONITORINFO,
+            MonitorFromWindow, PAINTSTRUCT, ReleaseDC, SRCCOPY, ScreenToClient, SelectObject,
         },
         System::{
             Com::{
@@ -63,8 +66,7 @@ use windows::{
             },
             Shell::SHCreateMemStream,
             WindowsAndMessaging::{
-                self, CREATESTRUCTW, GCLP_HICON, GCLP_HICONSM, HICON, ICON_BIG, ICON_SMALL,
-                ICONINFO, MINMAXINFO, MSG, WINDOW_EX_STYLE, WM_APP, WM_NCCREATE, WM_SETICON,
+                self, CREATESTRUCTW, MINMAXINFO, MSG, WINDOW_EX_STYLE, WM_APP, WM_NCCREATE,
                 WNDCLASSW, WS_OVERLAPPEDWINDOW,
             },
         },
@@ -72,66 +74,52 @@ use windows::{
     core::{BOOL, Interface, PCWSTR, PWSTR, Result as WinResult, w},
 };
 
-mod api;
 mod controller;
-mod device_frame;
 mod environment;
 mod events;
-mod groups;
-mod icons;
-mod menu;
-mod renderer;
 mod scheme;
-mod window;
+#[cfg(not(feature = "windows-host"))]
+mod surface;
+
+#[cfg(feature = "windows-host")]
+mod host;
 
 pub(crate) use controller::WebViewInner;
 
-pub use api::{
-    WindowsAddressBarLayout, WindowsBrowserTabItemLayout, WindowsChromeEvent,
-    WindowsNavigationBarLayout, WindowsPanelActivatorLayout, WindowsPanelInputHandler,
-    WindowsPanelKeyEvent, WindowsPanelPosition, WindowsSidebarActionLayout,
-    WindowsTabBarItemLayout, WindowsTabBarLayout, WindowsTabBarPosition,
-    WindowsWebViewContentWindow, WindowsWebViewHostWindow, WindowsWebViewWindowSnapshot,
-    WindowsWindowLayout,
-    clear_native_panel_input_handler,
-    hide_native_panel, hide_panel, hide_webview_window, invalidate_native_panel, is_panel_visible,
-    open_webview_devtools,
-    post_to_window_thread, present_webview_as_group_main, resize_webview_window_content,
-    restore_presented_group_main,
-    set_default_window_size, set_webview_devtools_enabled,
-    set_native_panel_input_handler, set_native_panel_maximized, set_native_panel_tabs,
-    set_webview_chrome_event_handler, set_webview_close_handler, set_webview_user_data_dir,
-    set_webview_window_layout,
-    show_native_panel, show_native_terminal_panel, show_webview_panel, show_webview_window,
-    show_webview_window_inactive, update_native_panel_body, webview_content_window,
-    webview_host_window, webview_window_snapshot,
+#[cfg(not(feature = "windows-host"))]
+pub use surface::{
+    WindowsWebViewContentWindow, WindowsWebViewHandler, WindowsWebViewWindowSnapshot,
+    find_webview_content_window, find_webview_handler, post_to_window_thread,
+    set_webview_devtools_enabled, set_webview_user_data_dir,
 };
-pub use device_frame::{
-    WindowsDeviceFrame, WindowsDeviceFrameToolbar, set_webview_device_frame,
-};
-pub use icons::{cached_png_bytes_icon_handle, cached_png_icon_handle, set_app_icon_from_path};
-pub use menu::{
-    WindowsAppMenu, WindowsAppMenuCommandHandler, WindowsAppMenuEntry, WindowsAppMenuItem,
-    set_windows_app_menu, set_windows_app_menu_command_handler,
-};
-pub use renderer::{
-    WindowsChromeAttachedState, WindowsChromeHit, WindowsChromePanel, WindowsChromeRenderer,
-    WindowsChromeState, WindowsFrameButton, WindowsNativePanelContent, WindowsNativePanelKind,
-    WindowsNativePanelTab, set_windows_chrome_renderer,
+
+#[cfg(feature = "windows-host")]
+pub use host::{
+    HostWindowCreatedHandler, WindowsChromeAttachedLayout, WindowsChromeAttachedState,
+    WindowsChromeCommand, WindowsChromeHit, WindowsChromePanel, WindowsChromePanelLayout,
+    WindowsChromePanelLayoutInput, WindowsChromeRenderer, WindowsChromeState, WindowsFrameButton,
+    WindowsHostPanelContent, WindowsHostPanelInputHandler, WindowsHostPanelKeyEvent,
+    WindowsHostPanelTab, WindowsPanelPosition, WindowsWebViewContentWindow, WindowsWebViewHandler,
+    WindowsWebViewHostWindow, WindowsWebViewWindowSnapshot, WindowsWindowLayout,
+    add_webview_host_window_created_handler, clear_host_panel_input_handler,
+    find_webview_content_window, find_webview_handler, find_webview_host_window, hide_host_panel,
+    invalidate_host_panel, is_panel_visible, post_to_window_thread,
+    request_webview_host_window_layout, restore_presented_group_main, set_default_window_size,
+    set_host_panel_input_handler, set_host_panel_maximized, set_host_panel_tabs,
+    set_webview_chrome_event_handler, set_webview_close_handler, set_webview_devtools_enabled,
+    set_webview_user_data_dir, set_webview_window_layout, set_windows_chrome_renderer,
+    show_interactive_host_panel, update_host_panel_body,
 };
 
 // Private glob re-imports so submodules can reach their siblings (and this
 // prelude) through a single `use super::*;`.
-use api::*;
 use controller::*;
-use device_frame::*;
 use environment::*;
 use events::*;
-use groups::*;
-use icons::*;
-use menu::*;
-use renderer::*;
+#[cfg(feature = "windows-host")]
+use host::*;
 use scheme::*;
-use window::*;
+#[cfg(not(feature = "windows-host"))]
+use surface::*;
 
 type StdResult<T, E = WebViewError> = std::result::Result<T, E>;

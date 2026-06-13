@@ -1,49 +1,38 @@
 //! Window chrome renderer seam.
 //!
 //! `lingxia-webview` hosts WebView2 content in plain Win32 windows and owns
-//! only generic window mechanics. A product layer (e.g. `lingxia-shell`) may
-//! register a [`WindowsChromeRenderer`] to take over non-client handling:
-//! painting custom chrome (tab bars, sidebars, panels) and mapping points to
+//! only generic window mechanics. A host layer may register a
+//! [`WindowsChromeRenderer`] to take over non-client handling:
+//! painting custom chrome (bars, rails, panels) and mapping points to
 //! chrome elements. When no renderer is registered, windows fall back to a
 //! standard OS frame (`WS_OVERLAPPEDWINDOW`) with no custom non-client
 //! handling and the webview fills the whole client area.
 
 use super::*;
 
-/// Native panel content kind, mirrored from the window-group registry for
-/// renderers (which cannot see crate-internal group state).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum WindowsNativePanelKind {
-    /// Plain title/body text panel.
-    Text,
-    /// Terminal panel (body is the terminal screen text).
-    Terminal,
-}
-
-/// One generic tab of a native panel's tab strip. Pure layout data: the
-/// product layer owns ids, titles, and what activation means; the renderer
+/// One generic tab of a host panel's tab strip. Pure layout data: the host
+/// integration owns ids, titles, and what activation means; the renderer
 /// only draws the strip and maps clicks back to tab ids.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct WindowsNativePanelTab {
-    /// Stable tab identifier assigned by the product layer.
+pub struct WindowsHostPanelTab {
+    /// Stable tab identifier assigned by the host integration.
     pub id: u64,
-    /// Display title (already resolved by the product layer).
+    /// Display title (already resolved by the host integration).
     pub title: String,
     /// Whether this tab is the panel's active tab.
     pub active: bool,
 }
 
-/// Content of a panel that is drawn natively by the chrome renderer
+/// Content of a panel that is drawn by the host chrome renderer
 /// (as opposed to panels backed by their own webview window).
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct WindowsNativePanelContent {
-    pub kind: WindowsNativePanelKind,
+pub struct WindowsHostPanelContent {
     pub title: Option<String>,
     pub body: Option<String>,
     /// Tab strip drawn in the panel header; empty when the panel has no
-    /// tabs (the header then shows `title`). Updated by the product layer
-    /// via `set_native_panel_tabs`.
-    pub tabs: Vec<WindowsNativePanelTab>,
+    /// tabs (the header then shows `title`). Updated by the host integration
+    /// via `set_host_panel_tabs`.
+    pub tabs: Vec<WindowsHostPanelTab>,
     /// Whether the panel is currently maximized over the whole content
     /// area (the renderer draws the restore glyph instead of maximize).
     pub maximized: bool,
@@ -56,13 +45,40 @@ pub struct WindowsChromePanel {
     pub panel_id: String,
     /// Panel rect in host-window client coordinates.
     pub rect: RECT,
-    /// `Some` when the panel content is drawn natively by the renderer;
+    /// `Some` when the panel content is drawn by the host renderer;
     /// `None` when a separate webview window covers the rect.
-    pub native: Option<WindowsNativePanelContent>,
+    pub host_content: Option<WindowsHostPanelContent>,
     /// Whether the panel lays out flush against the main card (compact
     /// bottom dock: zero gap, only a thin divider strip between the two).
     /// Renderers draw the shared edge with square corners.
     pub docked: bool,
+}
+
+/// One panel input passed to the host renderer for attached-surface layout.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WindowsChromePanelLayoutInput {
+    pub panel_id: String,
+    pub webtag_key: String,
+    pub position: WindowsPanelPosition,
+    pub requested_size: Option<i32>,
+    pub docked: bool,
+    pub maximized: bool,
+}
+
+/// One renderer-computed attached panel rect.
+#[derive(Debug, Clone, PartialEq)]
+pub struct WindowsChromePanelLayout {
+    pub panel_id: String,
+    pub webtag_key: String,
+    pub rect: RECT,
+    pub resize_handle: Option<RECT>,
+}
+
+/// Renderer-computed attached-surface layout for one host window.
+#[derive(Debug, Clone, PartialEq)]
+pub struct WindowsChromeAttachedLayout {
+    pub main: RECT,
+    pub panels: Vec<WindowsChromePanelLayout>,
 }
 
 /// Attached-group geometry of a host window: the main content card plus the
@@ -82,7 +98,7 @@ pub struct WindowsChromeState {
     pub hwnd: HWND,
     /// Full client rect of the host window.
     pub client: RECT,
-    /// The product layout registered via `set_webview_window_layout`.
+    /// Opaque host-chrome layout registered via `set_webview_window_layout`.
     pub layout: WindowsWindowLayout,
     /// Group geometry; `Some` only for a group host window with attached
     /// panels.
@@ -105,62 +121,74 @@ pub enum WindowsFrameButton {
     Close,
 }
 
+/// Generic command emitted by a chrome renderer.
+#[derive(Debug, Clone, PartialEq)]
+pub struct WindowsChromeCommand {
+    pub id: String,
+    pub payload: serde_json::Value,
+    /// Optional surface id to focus before dispatching the command.
+    pub focus: Option<String>,
+    /// Command dispatched when the same hit is double-clicked. When absent,
+    /// double-click falls back to normal click handling.
+    pub double_click: Option<Box<WindowsChromeCommand>>,
+    /// Whether right-click dispatch should add `screen_x` / `screen_y` to
+    /// an object payload before sending the command.
+    pub include_screen_position: bool,
+}
+
+impl WindowsChromeCommand {
+    pub fn new(id: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            payload: serde_json::Value::Null,
+            focus: None,
+            double_click: None,
+            include_screen_position: false,
+        }
+    }
+
+    pub fn with_payload(mut self, payload: serde_json::Value) -> Self {
+        self.payload = payload;
+        self
+    }
+
+    pub fn with_focus(mut self, surface_id: impl Into<String>) -> Self {
+        self.focus = Some(surface_id.into());
+        self
+    }
+
+    pub fn with_double_click(mut self, command: WindowsChromeCommand) -> Self {
+        self.double_click = Some(Box::new(command));
+        self
+    }
+
+    pub fn with_screen_position(mut self) -> Self {
+        self.include_screen_position = true;
+        self
+    }
+}
+
 /// Result of a chrome hit test, mapped by lingxia-webview onto non-client
-/// hit-test codes and chrome events.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// hit-test codes and generic chrome commands.
+#[derive(Debug, Clone, PartialEq)]
 pub enum WindowsChromeHit {
     /// Draggable title-bar area (`HTCAPTION`).
     Caption,
     /// A window frame button; the click is handled by lingxia-webview.
     FrameButton(WindowsFrameButton),
-    /// Navigation-bar back button; dispatched as a chrome event.
-    NavigationBack,
-    /// Navigation-bar home button; dispatched as a chrome event.
-    NavigationHome,
-    /// A tab-bar item; dispatched as a chrome event.
-    TabBarItem { index: usize },
-    /// The sidebar "New Tab" browser row; dispatched as a chrome event.
-    BrowserNewTab,
-    /// A sidebar browser-tab row; dispatched as a chrome event.
-    BrowserTab { tab_id: String },
-    /// The close glyph of a sidebar browser-tab row; dispatched as a
-    /// chrome event.
-    BrowserTabClose { tab_id: String },
-    /// A panel activator; dispatched as a chrome event.
-    PanelActivator { panel_id: String },
-    /// A natively drawn panel that accepts keyboard focus (e.g. terminal).
-    NativePanel { panel_id: String },
-    /// A tab in a native panel's header tab strip; dispatched as a chrome
-    /// event (double-clicking the active tab dispatches a rename request).
-    NativePanelTab { panel_id: String, tab_id: u64 },
-    /// The close glyph of a native panel tab; dispatched as a chrome event.
-    NativePanelTabClose { panel_id: String, tab_id: u64 },
-    /// The new-tab button of a native panel header; dispatched as a chrome
-    /// event.
-    NativePanelNewTab { panel_id: String },
-    /// The maximize/restore toggle of a native panel header; dispatched as
-    /// a chrome event.
-    NativePanelMaximize { panel_id: String },
-    /// The top-bar address-bar back button; dispatched as a chrome event.
-    BrowserNavBack,
-    /// The top-bar address-bar forward button; dispatched as a chrome event.
-    BrowserNavForward,
-    /// The top-bar address-bar reload button; dispatched as a chrome event.
-    BrowserNavReload,
-    /// The top-bar URL capsule; dispatched as a chrome event.
-    BrowserAddressBar,
-    /// The top-bar sidebar collapse/expand toggle; dispatched as a chrome
-    /// event.
-    SidebarToggle,
-    /// The chevron of a sidebar group header; dispatched as a chrome event.
-    SidebarGroupToggle { group: String },
-    /// A sidebar header action button; dispatched as a chrome event.
-    SidebarAction { action_id: String },
+    /// A focusable chrome surface with optional right-click command.
+    Focusable {
+        id: String,
+        context_menu: Option<WindowsChromeCommand>,
+    },
+    /// A renderer-defined command. The webview host does not interpret the
+    /// id or payload.
+    Command(WindowsChromeCommand),
     /// Inert chrome surface: consumes the click without producing an event.
     Chrome,
 }
 
-/// Renderer of product window chrome, registered by the shell layer.
+/// Renderer of host window chrome.
 ///
 /// All methods are called on the webview UI thread that owns the window.
 pub trait WindowsChromeRenderer: Send + Sync {
@@ -168,15 +196,11 @@ pub trait WindowsChromeRenderer: Send + Sync {
     /// (i.e. the client rect minus all chrome insets).
     fn content_rect(&self, client: RECT, layout: &WindowsWindowLayout) -> RECT;
 
-    /// Gap in pixels inserted between the main content card and attached
-    /// panels (also the resize-handle thickness baseline).
-    fn panel_gap(&self) -> i32;
-
     /// Corner radius applied to attached webview surfaces.
     fn panel_corner_radius(&self) -> i32;
 
     /// Solid color of the per-pixel-alpha corner caps layered over the
-    /// corners of attached card surfaces — the background the rounded cards
+    /// corners of attached card surfaces 閳?the background the rounded cards
     /// visually blend into (normally the window background). The default
     /// `None` disables the caps entirely; attached cards then keep plain
     /// square corners (as in the plain-frame fallback).
@@ -184,12 +208,19 @@ pub trait WindowsChromeRenderer: Send + Sync {
         None
     }
 
-    /// Rect a maximized native panel expands to. The default is the content
-    /// rect (panel covers the webview area); product renderers typically
-    /// return the whole client area below the caption strip so a maximized
-    /// panel covers the sidebar as well.
-    fn maximized_panel_rect(&self, client: RECT, layout: &WindowsWindowLayout) -> RECT {
-        self.content_rect(client, layout)
+    /// Compute attached webview/panel surface rects for a host window.
+    ///
+    /// The WebView layer only applies these rects to child HWNDs; all UI
+    /// policy such as side rails, gaps, docking, and resize handles belongs
+    /// to the renderer/host layer.
+    fn attached_layout(
+        &self,
+        client: RECT,
+        layout: &WindowsWindowLayout,
+        panels: &[WindowsChromePanelLayoutInput],
+    ) -> Option<WindowsChromeAttachedLayout> {
+        let _ = (client, layout, panels);
+        None
     }
 
     /// Paint the full window chrome into `hdc`.
@@ -243,12 +274,6 @@ pub(crate) fn renderer_content_rect(client: RECT, layout: &WindowsWindowLayout) 
         .unwrap_or(client)
 }
 
-pub(crate) fn renderer_panel_gap() -> i32 {
-    windows_chrome_renderer()
-        .map(|renderer| renderer.panel_gap())
-        .unwrap_or(0)
-}
-
 pub(crate) fn renderer_panel_radius() -> i32 {
     windows_chrome_renderer()
         .map(|renderer| renderer.panel_corner_radius())
@@ -261,12 +286,12 @@ pub(crate) fn renderer_card_corner_color() -> Option<COLORREF> {
     windows_chrome_renderer().and_then(|renderer| renderer.card_corner_color())
 }
 
-/// Rect a maximized native panel expands to; the content rect when no
-/// renderer is registered.
-pub(crate) fn renderer_maximized_panel_rect(client: RECT, layout: &WindowsWindowLayout) -> RECT {
-    windows_chrome_renderer()
-        .map(|renderer| renderer.maximized_panel_rect(client, layout))
-        .unwrap_or_else(|| renderer_content_rect(client, layout))
+pub(crate) fn renderer_attached_layout(
+    client: RECT,
+    layout: &WindowsWindowLayout,
+    panels: &[WindowsChromePanelLayoutInput],
+) -> Option<WindowsChromeAttachedLayout> {
+    windows_chrome_renderer()?.attached_layout(client, layout, panels)
 }
 
 /// WM_PAINT handler used when a renderer is registered: validates the window
@@ -278,12 +303,12 @@ pub(crate) fn paint_window_chrome(hwnd: HWND) {
         if !hdc.is_invalid()
             && let Some(renderer) = windows_chrome_renderer()
             && let Some(webtag_key) = window_webtag_key(hwnd)
-            && window_draws_shell_chrome(&webtag_key)
+            && window_draws_host_chrome(&webtag_key)
         {
             let state = chrome_state_for_window(hwnd, &webtag_key);
             // Double-buffer: chrome paints background-then-content, which
             // flickers when drawn straight to the screen (visible on every
-            // terminal frame). The buffer is pre-filled from the screen so
+            // high-frequency host-panel frame). The buffer is pre-filled from the screen so
             // regions the renderer clips out (e.g. an inline EDIT child)
             // survive the blt unchanged.
             let width = rect_width(&state.client);

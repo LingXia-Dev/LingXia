@@ -1665,7 +1665,13 @@ impl WebTag {
     /// Grouping key combining appid and session id (`appid#session`), with the
     /// session defaulting to `0` when the tag carries no `#session` suffix.
     /// Tags without an `appid:` prefix are returned unchanged.
-    #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+    #[cfg_attr(
+        any(
+            not(target_os = "windows"),
+            all(target_os = "windows", not(feature = "windows-host"))
+        ),
+        allow(dead_code)
+    )]
     pub(crate) fn group_key(&self) -> String {
         let Some((appid, path_with_session)) = self.0.split_once(':') else {
             return self.0.clone();

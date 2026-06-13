@@ -1,15 +1,13 @@
 //! Cross-platform WebView hosting layer for LingXia.
 //!
 //! This crate is strictly *generic* webview hosting: webview creation and
-//! lifecycle, navigation/scheme/event plumbing, and (on Windows) native
-//! window mechanics such as the message loop, window groups, bounds, and
-//! focus. It contains no product UI.
+//! lifecycle, navigation/scheme/event plumbing, and minimal native surface
+//! ownership required by each platform WebView runtime. It contains no
+//! product UI.
 //!
-//! Product window chrome (tab bars, sidebars, navigation bars, panel
-//! decorations) is owned by the product shell layer (`lingxia-shell`),
-//! which registers a renderer via
-//! `platform::windows::set_windows_chrome_renderer`. When no renderer is
-//! registered, Windows hosts get plain standard OS frames.
+//! On Windows, LingXia's legacy host-window grouping/chrome bridge is behind
+//! the `windows-host` feature so standalone `lingxia-webview` users get a
+//! plain WebView2 surface by default.
 
 use thiserror::Error;
 
@@ -196,33 +194,29 @@ pub mod platform {
     #[cfg(target_os = "windows")]
     pub mod windows {
         pub use crate::windows::{
-            WindowsAddressBarLayout, WindowsAppMenu, WindowsAppMenuCommandHandler,
-            WindowsAppMenuEntry, WindowsAppMenuItem,
-            WindowsBrowserTabItemLayout, WindowsChromeAttachedState,
-            WindowsChromeEvent, WindowsChromeHit, WindowsChromePanel, WindowsChromeRenderer,
-            WindowsChromeState, WindowsDeviceFrame, WindowsDeviceFrameToolbar, WindowsFrameButton,
-            WindowsNativePanelContent,
-            WindowsNativePanelKind, WindowsNativePanelTab, WindowsNavigationBarLayout,
-            WindowsPanelActivatorLayout, WindowsPanelInputHandler, WindowsPanelKeyEvent,
-            WindowsPanelPosition, WindowsSidebarActionLayout,
-            WindowsTabBarItemLayout, WindowsTabBarLayout, WindowsTabBarPosition,
-            WindowsWebViewContentWindow, WindowsWebViewHostWindow, WindowsWebViewWindowSnapshot,
-            WindowsWindowLayout,
-            cached_png_bytes_icon_handle, cached_png_icon_handle,
-            clear_native_panel_input_handler, hide_native_panel, hide_panel, hide_webview_window,
-            invalidate_native_panel, is_panel_visible, open_webview_devtools,
-            post_to_window_thread,
-            present_webview_as_group_main, resize_webview_window_content,
-            restore_presented_group_main, set_app_icon_from_path,
-            set_default_window_size,
-            set_native_panel_input_handler, set_native_panel_maximized, set_native_panel_tabs,
-            set_webview_chrome_event_handler, set_webview_close_handler,
-            set_webview_device_frame, set_webview_devtools_enabled, set_webview_user_data_dir,
-            set_webview_window_layout, set_windows_app_menu,
-            set_windows_app_menu_command_handler, set_windows_chrome_renderer, show_native_panel,
-            show_native_terminal_panel, show_webview_panel, show_webview_window,
-            show_webview_window_inactive, update_native_panel_body, webview_content_window,
-            webview_host_window, webview_window_snapshot,
+            WindowsWebViewContentWindow, WindowsWebViewHandler, WindowsWebViewWindowSnapshot,
+            find_webview_content_window, find_webview_handler, post_to_window_thread,
+            set_webview_devtools_enabled, set_webview_user_data_dir,
         };
+
+        #[cfg(feature = "windows-host")]
+        #[doc(hidden)]
+        pub mod lingxia_host {
+            pub use crate::windows::{
+                HostWindowCreatedHandler, WindowsChromeAttachedLayout, WindowsChromeAttachedState,
+                WindowsChromeCommand, WindowsChromeHit, WindowsChromePanel,
+                WindowsChromePanelLayout, WindowsChromePanelLayoutInput, WindowsChromeRenderer,
+                WindowsChromeState, WindowsFrameButton, WindowsHostPanelContent,
+                WindowsHostPanelInputHandler, WindowsHostPanelKeyEvent, WindowsHostPanelTab,
+                WindowsPanelPosition, WindowsWebViewHostWindow, WindowsWindowLayout,
+                add_webview_host_window_created_handler, clear_host_panel_input_handler,
+                find_webview_host_window, hide_host_panel, invalidate_host_panel, is_panel_visible,
+                request_webview_host_window_layout, restore_presented_group_main,
+                set_default_window_size, set_host_panel_input_handler, set_host_panel_maximized,
+                set_host_panel_tabs, set_webview_chrome_event_handler, set_webview_close_handler,
+                set_webview_window_layout, set_windows_chrome_renderer,
+                show_interactive_host_panel, update_host_panel_body,
+            };
+        }
     }
 }

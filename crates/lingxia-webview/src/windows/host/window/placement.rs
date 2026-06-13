@@ -114,7 +114,7 @@ pub(crate) fn handle_window_geometry_change(hwnd: HWND) {
     unsafe {
         let _ = controller.NotifyParentWindowPositionChanged();
     }
-    // A presented MainChild (e.g. a browser tab) occupies the main card rect
+    // A presented MainChild occupies the main card rect
     // of this host, and the host's own WebView2 child-window chain would
     // z-fight with it — hide the host controller while another webview is
     // the group's active main, restore it once the presentation ends.
@@ -135,7 +135,6 @@ pub(crate) fn handle_window_geometry_change(hwnd: HWND) {
     }
     layout_group_for_main_host(&webtag_key);
     store_window_placement(hwnd, &webtag_key);
-    sync_device_frame_for_content(hwnd);
 }
 
 pub(crate) fn store_current_window_placement(state: &UiState) {

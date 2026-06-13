@@ -1,13 +1,15 @@
 //! Window grouping: attachments, group panels, attached layout
-//! computation, panel resize, and native panel input plumbing.
+//! computation, panel resize, and host panel input plumbing.
 
 use super::*;
 
+mod host_panel;
 mod layout;
-mod native_panel;
+mod resize;
 
+pub(crate) use host_panel::*;
 pub(crate) use layout::*;
-pub(crate) use native_panel::*;
+pub(crate) use resize::*;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct WindowAttachment {
@@ -23,37 +25,6 @@ pub(crate) enum WindowAttachmentKind {
         panel_id: String,
         position: WindowsPanelPosition,
     },
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct GroupPanel {
-    pub(crate) webtag_key: String,
-    pub(crate) panel_id: String,
-    pub(crate) position: WindowsPanelPosition,
-    pub(crate) native_kind: NativePanelKind,
-    pub(crate) native_title: Option<String>,
-    pub(crate) native_body: Option<String>,
-    /// Header tab strip of a native panel (generic ids/titles supplied by
-    /// the product layer); empty for webview-backed panels.
-    pub(crate) native_tabs: Vec<WindowsNativePanelTab>,
-    /// Whether the panel currently covers the whole content area (the
-    /// main card collapses while maximized).
-    pub(crate) maximized: bool,
-}
-
-impl GroupPanel {
-    /// Whether the panel lays out as a compact dock flush against the main
-    /// card (zero gap, thin divider): bottom-positioned terminal panels.
-    pub(crate) fn docked(&self) -> bool {
-        self.position == WindowsPanelPosition::Bottom
-            && self.native_kind == NativePanelKind::Terminal
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum NativePanelKind {
-    Text,
-    Terminal,
 }
 
 pub(crate) static WINDOW_LAYOUTS: OnceLock<Mutex<HashMap<String, WindowsWindowLayout>>> =
@@ -73,8 +44,8 @@ pub(crate) static WINDOW_GROUP_ACTIVE_MAIN: OnceLock<Mutex<HashMap<String, Strin
     OnceLock::new();
 
 /// A webview presented over a group's main content card via
-/// `present_webview_as_group_main`, plus the main webview it displaced
-/// (restored when the presentation ends).
+/// `WindowsWebViewHandler::present_in_active_group`, plus the main webview
+/// it displaced (restored when the presentation ends).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct PresentedGroupMain {
     pub(crate) presented_key: String,
@@ -86,9 +57,6 @@ pub(crate) static WINDOW_GROUP_PRESENTED_MAIN: OnceLock<
 > = OnceLock::new();
 
 pub(crate) static WINDOW_ACTIVE_GROUP: OnceLock<Mutex<Option<String>>> = OnceLock::new();
-
-pub(crate) static WINDOW_GROUP_PANELS: OnceLock<Mutex<HashMap<String, Vec<GroupPanel>>>> =
-    OnceLock::new();
 
 pub(crate) static WINDOW_GROUP_PANEL_SIZES: OnceLock<Mutex<HashMap<String, i32>>> = OnceLock::new();
 
@@ -359,148 +327,4 @@ pub(crate) fn clear_presented_main_for_new_main(group_key: &str, new_main_key: &
     {
         map.remove(group_key);
     }
-}
-
-pub(crate) fn panel_position_for_group(group_key: &str, panel_id: &str) -> WindowsPanelPosition {
-    WINDOW_GROUP_LAYOUTS
-        .get()
-        .and_then(|layouts| layouts.lock().ok())
-        .and_then(|layouts| layouts.get(group_key).cloned())
-        .and_then(|layout| {
-            layout
-                .panel_activators
-                .into_iter()
-                .find(|activator| activator.id == panel_id)
-                .map(|activator| activator.position)
-        })
-        .unwrap_or_default()
-}
-
-pub(crate) fn native_panel_key(panel_id: &str) -> String {
-    format!("native-panel:{panel_id}")
-}
-
-pub(crate) fn register_group_panel(group_key: &str, panel: GroupPanel) {
-    let panels = WINDOW_GROUP_PANELS.get_or_init(|| Mutex::new(HashMap::new()));
-    if let Ok(mut panels) = panels.lock() {
-        let group_panels = panels.entry(group_key.to_string()).or_default();
-        group_panels.retain(|item| item.panel_id != panel.panel_id);
-        group_panels.push(panel);
-    }
-}
-
-pub(crate) fn update_group_panel_body(panel_id: &str, body: String) -> Option<String> {
-    let panels = WINDOW_GROUP_PANELS.get()?;
-    let mut panels = panels.lock().ok()?;
-    for (group_key, group_panels) in panels.iter_mut() {
-        if let Some(panel) = group_panels
-            .iter_mut()
-            .find(|panel| panel.panel_id == panel_id)
-        {
-            panel.native_body = Some(body);
-            return Some(group_key.clone());
-        }
-    }
-    None
-}
-
-/// Replaces a native panel's header tab strip; returns the owning group.
-pub(crate) fn update_group_panel_tabs(
-    panel_id: &str,
-    tabs: Vec<WindowsNativePanelTab>,
-) -> Option<String> {
-    let panels = WINDOW_GROUP_PANELS.get()?;
-    let mut panels = panels.lock().ok()?;
-    for (group_key, group_panels) in panels.iter_mut() {
-        if let Some(panel) = group_panels
-            .iter_mut()
-            .find(|panel| panel.panel_id == panel_id)
-        {
-            panel.native_tabs = tabs;
-            return Some(group_key.clone());
-        }
-    }
-    None
-}
-
-/// Sets a native panel's maximized flag; returns the owning group so the
-/// caller can re-run its layout.
-pub(crate) fn update_group_panel_maximized(panel_id: &str, maximized: bool) -> Option<String> {
-    let panels = WINDOW_GROUP_PANELS.get()?;
-    let mut panels = panels.lock().ok()?;
-    for (group_key, group_panels) in panels.iter_mut() {
-        if let Some(panel) = group_panels
-            .iter_mut()
-            .find(|panel| panel.panel_id == panel_id)
-        {
-            panel.maximized = maximized;
-            return Some(group_key.clone());
-        }
-    }
-    None
-}
-
-pub(crate) fn group_key_for_panel(panel_id: &str) -> Option<String> {
-    let panels = WINDOW_GROUP_PANELS.get()?;
-    let panels = panels.lock().ok()?;
-    panels.iter().find_map(|(group_key, group_panels)| {
-        group_panels
-            .iter()
-            .any(|panel| panel.panel_id == panel_id)
-            .then(|| group_key.clone())
-    })
-}
-
-pub(crate) fn remove_group_panel(group_key: &str, webtag_key: &str) {
-    let mut removed_active = false;
-    if let Some(panels) = WINDOW_GROUP_PANELS.get()
-        && let Ok(mut panels) = panels.lock()
-        && let Some(group_panels) = panels.get_mut(group_key)
-    {
-        if let Some(active) = active_native_panel() {
-            removed_active = group_panels
-                .iter()
-                .any(|panel| panel.webtag_key == webtag_key && panel.panel_id == active);
-        }
-        group_panels.retain(|panel| panel.webtag_key != webtag_key);
-    }
-    if removed_active {
-        set_active_native_panel(None);
-    }
-}
-
-pub(crate) fn remove_group_panel_by_panel_id(group_key: &str, panel_id: &str) {
-    if let Some(panels) = WINDOW_GROUP_PANELS.get()
-        && let Ok(mut panels) = panels.lock()
-        && let Some(group_panels) = panels.get_mut(group_key)
-    {
-        group_panels.retain(|panel| panel.panel_id != panel_id);
-    }
-    if active_native_panel().as_deref() == Some(panel_id) {
-        set_active_native_panel(None);
-    }
-}
-
-pub(crate) fn group_panels(group_key: &str) -> Vec<GroupPanel> {
-    WINDOW_GROUP_PANELS
-        .get()
-        .and_then(|panels| panels.lock().ok())
-        .and_then(|panels| panels.get(group_key).cloned())
-        .unwrap_or_default()
-}
-
-/// Whether `webtag_key`'s window covers the group's main-card surface and
-/// that surface sits flush above a docked bottom panel. The card's bottom
-/// corners then stay square (its corner caps would otherwise notch the
-/// shared edge with the dock).
-pub(crate) fn main_surface_has_docked_bottom_panel(webtag_key: &str) -> bool {
-    let Some(attachment) = window_attachment(webtag_key) else {
-        return false;
-    };
-    if matches!(attachment.kind, WindowAttachmentKind::Panel { .. }) {
-        return false;
-    }
-    group_panels(&attachment.group_key)
-        .iter()
-        .any(GroupPanel::docked)
 }

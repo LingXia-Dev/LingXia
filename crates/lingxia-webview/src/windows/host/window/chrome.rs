@@ -3,7 +3,7 @@
 use super::*;
 
 pub(crate) fn handle_window_frame_hit_test(hwnd: HWND, webtag_key: &str, lparam: LPARAM) -> u32 {
-    if !window_draws_shell_chrome(webtag_key) {
+    if !window_draws_host_chrome(webtag_key) {
         return WindowsAndMessaging::HTCLIENT;
     }
 
@@ -137,7 +137,7 @@ fn frame_button_at_point(
     webtag_key: &str,
     point: (i32, i32),
 ) -> Option<WindowsFrameButton> {
-    if !window_draws_shell_chrome(webtag_key) {
+    if !window_draws_host_chrome(webtag_key) {
         return None;
     }
     let renderer = windows_chrome_renderer()?;
@@ -300,7 +300,7 @@ pub(crate) fn resize_border_thickness() -> i32 {
     }
 }
 
-pub(crate) fn window_draws_shell_chrome(webtag_key: &str) -> bool {
+pub(crate) fn window_draws_host_chrome(webtag_key: &str) -> bool {
     !matches!(
         window_attachment(webtag_key).map(|attachment| attachment.kind),
         Some(WindowAttachmentKind::MainChild | WindowAttachmentKind::Panel { .. })
@@ -345,7 +345,7 @@ pub(crate) fn handle_window_frame_button(hwnd: HWND, button: WindowsFrameButton)
 }
 
 pub(crate) fn handle_window_chrome_click(hwnd: HWND, webtag_key: &str, point: (i32, i32)) -> bool {
-    if !window_draws_shell_chrome(webtag_key) {
+    if !window_draws_host_chrome(webtag_key) {
         return false;
     }
     let Some(renderer) = windows_chrome_renderer() else {
@@ -358,84 +358,13 @@ pub(crate) fn handle_window_chrome_click(hwnd: HWND, webtag_key: &str, point: (i
             handle_window_frame_button(hwnd, button);
             true
         }
-        Some(WindowsChromeHit::NativePanel { panel_id }) => {
-            set_active_native_panel(Some(panel_id));
-            unsafe {
-                let _ = SetFocus(Some(hwnd));
-            }
+        Some(WindowsChromeHit::Focusable { id, .. }) => {
+            focus_chrome_surface(hwnd, id);
             true
         }
-        Some(WindowsChromeHit::NavigationBack) => {
-            invoke_chrome_event_handler(webtag_key, WindowsChromeEvent::NavigationBack)
+        Some(WindowsChromeHit::Command(command)) => {
+            dispatch_chrome_command(hwnd, webtag_key, command)
         }
-        Some(WindowsChromeHit::NavigationHome) => {
-            invoke_chrome_event_handler(webtag_key, WindowsChromeEvent::NavigationHome)
-        }
-        Some(WindowsChromeHit::PanelActivator { panel_id }) => invoke_chrome_event_handler(
-            webtag_key,
-            WindowsChromeEvent::PanelActivatorClick { panel_id },
-        ),
-        Some(WindowsChromeHit::TabBarItem { index }) => {
-            invoke_chrome_event_handler(webtag_key, WindowsChromeEvent::TabBarClick { index })
-        }
-        Some(WindowsChromeHit::BrowserNewTab) => {
-            invoke_chrome_event_handler(webtag_key, WindowsChromeEvent::BrowserNewTabClick)
-        }
-        Some(WindowsChromeHit::BrowserTab { tab_id }) => {
-            invoke_chrome_event_handler(webtag_key, WindowsChromeEvent::BrowserTabClick { tab_id })
-        }
-        Some(WindowsChromeHit::BrowserTabClose { tab_id }) => invoke_chrome_event_handler(
-            webtag_key,
-            WindowsChromeEvent::BrowserTabCloseClick { tab_id },
-        ),
-        Some(WindowsChromeHit::NativePanelTab { panel_id, tab_id }) => {
-            // Switching tabs keeps keyboard input flowing into the panel.
-            set_active_native_panel(Some(panel_id.clone()));
-            unsafe {
-                let _ = SetFocus(Some(hwnd));
-            }
-            invoke_chrome_event_handler(
-                webtag_key,
-                WindowsChromeEvent::NativePanelTabClick { panel_id, tab_id },
-            )
-        }
-        Some(WindowsChromeHit::NativePanelTabClose { panel_id, tab_id }) => {
-            invoke_chrome_event_handler(
-                webtag_key,
-                WindowsChromeEvent::NativePanelTabCloseClick { panel_id, tab_id },
-            )
-        }
-        Some(WindowsChromeHit::NativePanelNewTab { panel_id }) => invoke_chrome_event_handler(
-            webtag_key,
-            WindowsChromeEvent::NativePanelNewTabClick { panel_id },
-        ),
-        Some(WindowsChromeHit::NativePanelMaximize { panel_id }) => invoke_chrome_event_handler(
-            webtag_key,
-            WindowsChromeEvent::NativePanelMaximizeClick { panel_id },
-        ),
-        Some(WindowsChromeHit::BrowserNavBack) => {
-            invoke_chrome_event_handler(webtag_key, WindowsChromeEvent::BrowserNavBackClick)
-        }
-        Some(WindowsChromeHit::BrowserNavForward) => {
-            invoke_chrome_event_handler(webtag_key, WindowsChromeEvent::BrowserNavForwardClick)
-        }
-        Some(WindowsChromeHit::BrowserNavReload) => {
-            invoke_chrome_event_handler(webtag_key, WindowsChromeEvent::BrowserNavReloadClick)
-        }
-        Some(WindowsChromeHit::BrowserAddressBar) => {
-            invoke_chrome_event_handler(webtag_key, WindowsChromeEvent::BrowserAddressBarClick)
-        }
-        Some(WindowsChromeHit::SidebarToggle) => {
-            invoke_chrome_event_handler(webtag_key, WindowsChromeEvent::SidebarToggleClick)
-        }
-        Some(WindowsChromeHit::SidebarGroupToggle { group }) => invoke_chrome_event_handler(
-            webtag_key,
-            WindowsChromeEvent::SidebarGroupToggleClick { group },
-        ),
-        Some(WindowsChromeHit::SidebarAction { action_id }) => invoke_chrome_event_handler(
-            webtag_key,
-            WindowsChromeEvent::SidebarActionClick { action_id },
-        ),
         Some(WindowsChromeHit::Chrome) => true,
         // Caption points never arrive as client clicks (WM_NCHITTEST maps
         // them to HTCAPTION first); treat defensively as unhandled.
@@ -443,69 +372,53 @@ pub(crate) fn handle_window_chrome_click(hwnd: HWND, webtag_key: &str, point: (i
     }
 }
 
-/// WM_LBUTTONDBLCLK on chrome: double-clicking the ACTIVE tab of a native
-/// panel requests an inline rename; an inactive tab is treated as a plain
-/// tab click. Returns `false` for all other chrome (the caller then runs
-/// the regular button-down path).
+/// WM_LBUTTONDBLCLK on chrome: renderer-defined hits can provide a
+/// dedicated double-click command; otherwise the regular button-down path
+/// handles the interaction.
 pub(crate) fn handle_window_chrome_double_click(
     hwnd: HWND,
     webtag_key: &str,
     point: (i32, i32),
 ) -> bool {
-    if !window_draws_shell_chrome(webtag_key) {
+    if !window_draws_host_chrome(webtag_key) {
         return false;
     }
     let Some(renderer) = windows_chrome_renderer() else {
         return false;
     };
     let state = chrome_state_for_window(hwnd, webtag_key);
-    let Some(WindowsChromeHit::NativePanelTab { panel_id, tab_id }) =
-        renderer.hit_test(&state, point)
-    else {
+    let Some(WindowsChromeHit::Command(command)) = renderer.hit_test(&state, point) else {
         return false;
     };
-
-    let is_active_tab = state
-        .attached
-        .as_ref()
-        .and_then(|attached| {
-            attached
-                .panels
-                .iter()
-                .find(|panel| panel.panel_id == panel_id)
-        })
-        .and_then(|panel| panel.native.as_ref())
-        .is_some_and(|native| native.tabs.iter().any(|tab| tab.id == tab_id && tab.active));
-    let event = if is_active_tab {
-        WindowsChromeEvent::NativePanelTabRenameRequest { panel_id, tab_id }
-    } else {
-        WindowsChromeEvent::NativePanelTabClick { panel_id, tab_id }
-    };
-    invoke_chrome_event_handler(webtag_key, event)
+    let command = command.double_click.as_deref().cloned().unwrap_or(command);
+    dispatch_chrome_command(hwnd, webtag_key, command)
 }
 
-/// WM_RBUTTONDOWN on chrome: a right-click on a native panel's content area
-/// is dispatched to the product layer with the screen-space click point
-/// (products typically show a context menu there). Returns `false` for all
-/// other chrome so the message falls through.
+/// WM_RBUTTONDOWN on chrome: renderer-defined context commands receive the
+/// screen-space click point. Returns `false` for all other chrome so the
+/// message falls through.
 pub(crate) fn handle_window_chrome_right_click(
     hwnd: HWND,
     webtag_key: &str,
     point: (i32, i32),
 ) -> bool {
-    if !window_draws_shell_chrome(webtag_key) {
+    if !window_draws_host_chrome(webtag_key) {
         return false;
     }
     let Some(renderer) = windows_chrome_renderer() else {
         return false;
     };
     let state = chrome_state_for_window(hwnd, webtag_key);
-    let Some(WindowsChromeHit::NativePanel { panel_id }) = renderer.hit_test(&state, point) else {
-        return false;
+    let (focus, command) = match renderer.hit_test(&state, point) {
+        Some(WindowsChromeHit::Command(command)) if command.include_screen_position => {
+            (command.focus.clone(), command)
+        }
+        Some(WindowsChromeHit::Focusable {
+            id,
+            context_menu: Some(command),
+        }) if command.include_screen_position => (Some(id), command),
+        _ => return false,
     };
-
-    // Keep keyboard input flowing into the panel the user right-clicked.
-    set_active_native_panel(Some(panel_id.clone()));
     let mut screen = POINT {
         x: point.0,
         y: point.1,
@@ -514,12 +427,38 @@ pub(crate) fn handle_window_chrome_right_click(
         let _ = SetFocus(Some(hwnd));
         let _ = ClientToScreen(hwnd, &mut screen);
     }
-    invoke_chrome_event_handler(
-        webtag_key,
-        WindowsChromeEvent::NativePanelRightClick {
-            panel_id,
-            screen_x: screen.x,
-            screen_y: screen.y,
-        },
-    )
+    if let Some(focus) = focus {
+        focus_chrome_surface(hwnd, focus);
+    }
+    let payload = payload_with_screen_position(command.payload.clone(), screen.x, screen.y);
+    invoke_chrome_event_handler(webtag_key, command.with_payload(payload))
+}
+
+fn dispatch_chrome_command(hwnd: HWND, webtag_key: &str, command: WindowsChromeCommand) -> bool {
+    if let Some(focus) = command.focus.clone() {
+        focus_chrome_surface(hwnd, focus);
+    }
+    invoke_chrome_event_handler(webtag_key, command)
+}
+
+fn focus_chrome_surface(hwnd: HWND, id: String) {
+    set_active_host_panel(Some(id));
+    unsafe {
+        let _ = SetFocus(Some(hwnd));
+    }
+}
+
+fn payload_with_screen_position(
+    mut payload: serde_json::Value,
+    screen_x: i32,
+    screen_y: i32,
+) -> serde_json::Value {
+    if !payload.is_object() {
+        payload = serde_json::json!({});
+    }
+    if let Some(object) = payload.as_object_mut() {
+        object.insert("screen_x".to_string(), serde_json::json!(screen_x));
+        object.insert("screen_y".to_string(), serde_json::json!(screen_y));
+    }
+    payload
 }
