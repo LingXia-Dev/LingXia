@@ -315,6 +315,17 @@ pub(super) fn install() {
         };
         let _ = lxapp::dispose_page_instance_by_id(page_instance_id, reason);
     }));
+
+    // Programmatic lx.startPullDownRefresh(). Dispatch the page's
+    // onPullDownRefresh lifecycle through the same PullDownRefresh UI event the
+    // gesture path uses, which also enforces the page's pull-down-enabled config
+    // (and stops if disabled). stopPullDownRefresh is a no-op on the desktop
+    // shell today: there is no native refresh indicator to hide yet.
+    lingxia_platform::set_windows_pull_to_refresh_handler(Arc::new(|appid, path, start| {
+        if start && let Some(app) = lxapp::try_get(appid) {
+            app.on_lxapp_event(LxAppUiEventType::PullDownRefresh, path.to_string());
+        }
+    }));
 }
 
 /// Routes `open_url` requests with in-app targets into the internal

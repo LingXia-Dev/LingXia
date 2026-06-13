@@ -11,7 +11,6 @@ use super::{file, not_supported, surface, ui_update};
 use crate::AssetFileEntry;
 use crate::error::PlatformError;
 use crate::traits::app_runtime::{AnimationType, AppRuntime, LxAppOpenMode, OpenUrlRequest};
-use crate::traits::pull_to_refresh::PullToRefresh;
 use crate::traits::share::{ShareRequest, ShareResult, ShareService};
 use crate::traits::stream_decoder::{VideoStreamDecoderHandle, VideoStreamDecoderManager};
 
@@ -288,18 +287,6 @@ impl crate::traits::update::UpdateService for Platform {}
 // windows-rs rev exposes Win32_NetworkManagement_WiFi, but the bridge is
 // substantial and is left for a dedicated change.
 impl crate::traits::wifi::Wifi for Platform {}
-
-impl PullToRefresh for Platform {
-    // Pull-to-refresh is a touch gesture surfaced by the mobile shells; the
-    // Windows desktop shell has no equivalent affordance.
-    fn start_pull_down_refresh(&self, _app_id: &str, _path: &str) -> Result<(), PlatformError> {
-        not_supported("start_pull_down_refresh")
-    }
-
-    fn stop_pull_down_refresh(&self, _app_id: &str, _path: &str) -> Result<(), PlatformError> {
-        not_supported("stop_pull_down_refresh")
-    }
-}
 
 impl ShareService for Platform {
     // Stubbed: the Windows share sheet (DataTransferManager) must be obtained
