@@ -60,13 +60,6 @@ mod bridge {
         pub selected_index: i32,
     }
 
-    // Group alignment types
-    pub enum GroupAlignment {
-        Center, // 0=middle/center (default)
-        Start,  // 1=start (top/left)
-        End,    // 2=end (bottom/right)
-    }
-
     // TabBar item for Swift
     #[swift_bridge(swift_repr = "struct")]
     pub struct TabBarItem {
@@ -75,7 +68,6 @@ mod bridge {
         pub icon_path: String,
         pub selected_icon_path: String,
         pub selected: bool,
-        pub group: GroupAlignment,
         pub badge: String,
         pub has_red_dot: bool,
     }
@@ -988,11 +980,6 @@ pub fn get_tab_bar_item(appid: &str, index: i32) -> Option<self::bridge::TabBarI
                 icon_path: item.iconPath.clone().unwrap_or_default(),
                 selected_icon_path: item.selectedIconPath.clone().unwrap_or_default(),
                 selected: item.selected,
-                group: match &item.group {
-                    Some(lxapp::tabbar::TabItemGroup::Start) => self::bridge::GroupAlignment::Start,
-                    Some(lxapp::tabbar::TabItemGroup::End) => self::bridge::GroupAlignment::End,
-                    None => self::bridge::GroupAlignment::Center,
-                },
                 badge: item.badge.clone().unwrap_or_default(),
                 has_red_dot: item.has_red_dot,
             })

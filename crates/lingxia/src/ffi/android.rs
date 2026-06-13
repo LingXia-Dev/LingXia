@@ -882,13 +882,6 @@ fn create_tab_bar_item<'a>(
         Err(_) => return None,
     };
 
-    // Convert group enum
-    let group_int = match &item.group {
-        Some(lxapp::tabbar::TabItemGroup::Start) => 1,
-        Some(lxapp::tabbar::TabItemGroup::End) => 2,
-        None => 0,
-    };
-
     // Create strings
     let page_path = match env.new_string(&item.pagePath) {
         Ok(s) => s,
@@ -920,14 +913,13 @@ fn create_tab_bar_item<'a>(
     env
         .new_object(
             tab_item_class,
-            jni_sig!("(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZILjava/lang/String;Z)V"),
+            jni_sig!("(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZLjava/lang/String;Z)V"),
             &[
                 (&page_path).into(),
                 (&text).into(),
                 (&icon_path).into(),
                 (&selected_icon_path).into(),
                 item.selected.into(),
-                group_int.into(),
                 (&badge_jstring).into(),
                 item.has_red_dot.into(), // Use actual red dot data from Rust
             ],

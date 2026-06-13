@@ -579,4 +579,3 @@ typealias LxAppPlatform = macOSLxApp
 // Sendable Conformance for FFI Types
 extension ToastIcon: @unchecked Sendable {}
 extension ToastPosition: @unchecked Sendable {}
-extension GroupAlignment: @unchecked Sendable {}

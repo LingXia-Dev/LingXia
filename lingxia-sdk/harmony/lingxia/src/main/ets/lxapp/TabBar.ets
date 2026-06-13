@@ -18,11 +18,6 @@ const TAB_BAR_PADDING_VERTICAL_BOTTOM = 8;
 const TAB_BAR_PADDING_VERTICAL_LEFT = 8;
 const TAB_BAR_PADDING_VERTICAL_RIGHT = 8;
 
-// TabBar grouping constants
-const TAB_BAR_GROUP_DEFAULT = 0;  // Default group (no grouping)
-const TAB_BAR_GROUP_START = 1;    // Start group
-const TAB_BAR_GROUP_END = 2;      // End group
-
 // TabBar icon and text constants
 const TAB_BAR_ITEM_ICON_SIZE = 24;                    // Tab icon size
 const TAB_BAR_ITEM_ICON_CONTAINER_SIZE = 48;          // Tab icon container size
@@ -101,16 +96,12 @@ export struct TabBar {
   @Builder
   private buildVerticalTabBar() {
     Column() {
-      if (this.hasGroupField()) {
-        this.buildGroupedVerticalLayout()
-      } else {
-        this.buildCenteredVerticalLayout()
-      }
+      this.buildCenteredVerticalLayout()
     }
     .width(this.getTabBarSize())
     .height('100%')
     .backgroundColor(this.getBackgroundColor())
-    .justifyContent(this.hasGroupField() ? FlexAlign.Start : FlexAlign.SpaceEvenly)
+    .justifyContent(FlexAlign.SpaceEvenly)
     .alignItems(HorizontalAlign.Center)
     .padding({
       top: TAB_BAR_PADDING_VERTICAL_TOP,
@@ -133,16 +124,12 @@ export struct TabBar {
   @Builder
   private buildHorizontalTabBar() {
     Row() {
-      if (this.hasGroupField()) {
-        this.buildGroupedHorizontalLayout()
-      } else {
-        this.buildCenteredHorizontalLayout()
-      }
+      this.buildCenteredHorizontalLayout()
     }
     .width('100%')
     .height(this.getTabBarSize())
     .backgroundColor(this.getBackgroundColor())
-    .justifyContent(this.hasGroupField() ? FlexAlign.Start : FlexAlign.SpaceEvenly)
+    .justifyContent(FlexAlign.SpaceEvenly)
     .alignItems(VerticalAlign.Center)
     .padding(this.getHorizontalPadding())
       .border(this.getHorizontalBorder())
@@ -226,9 +213,8 @@ export struct TabBar {
           } : undefined)
       }
     }
-    // In grouped mode, layoutWeight is handled by Blank spacer
-    // In centered mode, each item gets equal weight to distribute space
-    .layoutWeight(this.hasGroupField() ? 0 : 1)
+    // Each item gets equal weight to distribute space
+    .layoutWeight(1)
     .width(this.isVertical() ? '100%' : undefined)
     .height(this.isVertical() ? undefined : '100%')
     .justifyContent(FlexAlign.Center)
@@ -262,118 +248,6 @@ export struct TabBar {
     ForEach(this.tabbar.items, (item: TabBarItem, index: number) => {
       this.buildTabItem(item, index)
     })
-  }
-
-  /**
-   * Build grouped vertical layout: distribute items to start/end positions
-   */
-  @Builder
-  buildGroupedVerticalLayout() {
-    // Start items
-    ForEach(this.getStartItems(), (item: TabBarItem, index: number) => {
-      this.buildTabItem(item, this.tabbar.items.indexOf(item))
-      if (index < this.getStartItems().length - 1) {
-        Blank().height(TAB_BAR_ITEM_SPACING) // Adaptive spacer
-      }
-    })
-
-    // Flexible spacer; with center items present this balances the one
-    // below so the center group sits in the middle (iOS parity).
-    Blank()
-      .layoutWeight(1)
-
-    // Center items (group 0 — the default)
-    ForEach(this.getCenterItems(), (item: TabBarItem, index: number) => {
-      this.buildTabItem(item, this.tabbar.items.indexOf(item))
-      if (index < this.getCenterItems().length - 1) {
-        Blank().height(TAB_BAR_ITEM_SPACING) // Adaptive spacer
-      }
-    })
-
-    if (this.getCenterItems().length > 0) {
-      Blank()
-        .layoutWeight(1)
-    }
-
-    // End items
-    ForEach(this.getEndItems(), (item: TabBarItem, index: number) => {
-      this.buildTabItem(item, this.tabbar.items.indexOf(item))
-      if (index < this.getEndItems().length - 1) {
-        Blank().height(TAB_BAR_ITEM_SPACING) // Adaptive spacer
-      }
-    })
-  }
-
-  /**
-   * Build grouped horizontal layout: distribute items to start/end positions
-   */
-  @Builder
-  buildGroupedHorizontalLayout() {
-    // Start items
-    ForEach(this.getStartItems(), (item: TabBarItem, index: number) => {
-      this.buildTabItem(item, this.tabbar.items.indexOf(item))
-      if (index < this.getStartItems().length - 1) {
-        Blank().width(TAB_BAR_ITEM_SPACING) // Adaptive spacer
-      }
-    })
-
-    // Flexible spacer; with center items present this balances the one
-    // below so the center group sits in the middle (iOS parity).
-    Blank()
-      .layoutWeight(1)
-
-    // Center items (group 0 — the default)
-    ForEach(this.getCenterItems(), (item: TabBarItem, index: number) => {
-      this.buildTabItem(item, this.tabbar.items.indexOf(item))
-      if (index < this.getCenterItems().length - 1) {
-        Blank().width(TAB_BAR_ITEM_SPACING) // Adaptive spacer
-      }
-    })
-
-    if (this.getCenterItems().length > 0) {
-      Blank()
-        .layoutWeight(1)
-    }
-
-    // End items
-    ForEach(this.getEndItems(), (item: TabBarItem, index: number) => {
-      this.buildTabItem(item, this.tabbar.items.indexOf(item))
-      if (index < this.getEndItems().length - 1) {
-        Blank().width(TAB_BAR_ITEM_SPACING) // Adaptive spacer
-      }
-    })
-  }
-
-  /**
-   * Check if any item has group field (grouped mode vs centered mode)
-   */
-  private hasGroupField(): boolean {
-    return this.tabbar.items.some((item: TabBarItem): boolean => (item.group ?? 0) !== 0);
-  }
-
-  /**
-   * Get start items (group 1)
-   */
-  private getStartItems(): TabBarItem[] {
-    return this.tabbar.items.filter((item: TabBarItem): boolean => (item.group ?? 0) === TAB_BAR_GROUP_START);
-  }
-
-  /**
-   * Get center items (group 0 — the default). Matches the FFI contract
-   * (0=center, 1=start, 2=end) and the iOS grouped layout.
-   */
-  private getCenterItems(): TabBarItem[] {
-    return this.tabbar.items.filter((item: TabBarItem): boolean => (item.group ?? 0) === 0);
-  }
-
-  /**
-   * Get end items (group 2)
-   */
-  private getEndItems(): TabBarItem[] {
-    return this.tabbar.items.filter((item: TabBarItem): boolean => {
-      const group: number = item.group ?? 0;
-      return group === TAB_BAR_GROUP_END; // end
-    });
   }
 
   /**

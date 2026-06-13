@@ -69,7 +69,6 @@ internal data class TabBarItem(
     val iconPath: String,                 // Absolute path to the icon file
     val selectedIconPath: String,         // Absolute path to the selected state icon file
     val selected: Boolean = false,        // Whether this tab is selected
-    val group: Int = 0,                   // Group positioning: 0=center (default), 1=start, 2=end
     val badge: String? = null,            // Badge text (optional)
     val hasRedDot: Boolean = false        // Whether to show red dot indicator
 )
@@ -267,64 +266,8 @@ internal class TabBar(context: Context) : LinearLayout(context) {
             tabViews.clear()
 
             if (items.isNotEmpty()) {
-
-                // Check if ANY item has group field (grouped mode vs centered mode)
-                val hasAnyGroupField = items.any { it.group != 0 }
-
-                if (hasAnyGroupField) {
-                    // Grouped Mode: Distribute items to start/end
-                    setupGroupedLayout(container)
-                } else {
-                    // Centered Mode: All items centered (original behavior)
-                    setupCenteredLayout(container)
-                }
+                setupCenteredLayout(container)
             }
-        }
-    }
-
-    /**
-     * Setup grouped layout: distribute items to start/end positions
-     */
-    private fun setupGroupedLayout(container: LinearLayout) {
-        val isVertical = config.position.value == TabBarState.POSITION_LEFT || config.position.value == TabBarState.POSITION_RIGHT
-
-        // Group items per the FFI contract: 0 = center (default), 1 = start,
-        // 2 = end — matching the iOS and Harmony grouped layouts.
-        val startItems = mutableListOf<TabBarItem>()
-        val centerItems = mutableListOf<TabBarItem>()
-        val endItems = mutableListOf<TabBarItem>()
-
-        items.forEach { item ->
-            when (item.group) {
-                1 -> startItems.add(item)
-                2 -> endItems.add(item)
-                else -> centerItems.add(item)
-            }
-        }
-
-        fun flexibleSpacer() = View(context).apply {
-            layoutParams = LinearLayout.LayoutParams(
-                if (isVertical) LinearLayout.LayoutParams.MATCH_PARENT else 0,
-                if (isVertical) 0 else LinearLayout.LayoutParams.MATCH_PARENT,
-                1f
-            )
-        }
-
-        if (startItems.isNotEmpty()) {
-            container.addView(createGroupContainer(startItems, isVertical))
-        }
-
-        // Spacers on both sides of the center group keep it centered; with no
-        // center items a single spacer pushes the end group to bottom/right.
-        container.addView(flexibleSpacer())
-
-        if (centerItems.isNotEmpty()) {
-            container.addView(createGroupContainer(centerItems, isVertical))
-            container.addView(flexibleSpacer())
-        }
-
-        if (endItems.isNotEmpty()) {
-            container.addView(createGroupContainer(endItems, isVertical))
         }
     }
 
@@ -352,53 +295,6 @@ internal class TabBar(context: Context) : LinearLayout(context) {
                 container.addView(view)
             }
         }
-    }
-
-    /**
-     * Create a container for a group of tab items
-     */
-    private fun createGroupContainer(groupItems: List<TabBarItem>, isVertical: Boolean): LinearLayout {
-        val container = LinearLayout(context).apply {
-            orientation = if (isVertical) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL
-            layoutParams = LinearLayout.LayoutParams(
-                if (isVertical) LinearLayout.LayoutParams.MATCH_PARENT else LinearLayout.LayoutParams.WRAP_CONTENT,
-                if (isVertical) LinearLayout.LayoutParams.WRAP_CONTENT else LinearLayout.LayoutParams.MATCH_PARENT
-            )
-
-            // Add spacing between items in the group
-            val spacing = (4 * resources.displayMetrics.density).toInt()
-            setPadding(
-                if (isVertical) 0 else spacing,
-                if (isVertical) spacing else 0,
-                if (isVertical) 0 else spacing,
-                if (isVertical) spacing else 0
-            )
-        }
-
-        groupItems.forEachIndexed { index, item ->
-            // Find the global index of this item
-            val globalIndex = items.indexOf(item)
-            if (globalIndex >= 0) {
-                val tabView = createTabView(item, config, globalIndex == config.selectedIndex, globalIndex)
-
-                // Add margin between items (except for the first item)
-                if (index > 0) {
-                    val marginPx = (12 * resources.displayMetrics.density).toInt() // Increased spacing
-                    (tabView.layoutParams as? LinearLayout.LayoutParams)?.apply {
-                        if (isVertical) {
-                            topMargin = marginPx
-                        } else {
-                            leftMargin = marginPx
-                        }
-                    }
-                }
-
-                tabViews.add(tabView)
-                container.addView(tabView)
-            }
-        }
-
-        return container
     }
 
     fun setSelectedIndex(index: Int, notifyListener: Boolean = true) {

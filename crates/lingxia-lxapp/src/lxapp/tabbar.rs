@@ -14,15 +14,6 @@ pub enum TabBarPosition {
     Right,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "lowercase")]
-pub enum TabItemGroup {
-    #[serde(rename = "start")]
-    Start,
-    #[serde(rename = "end")]
-    End,
-}
-
 impl TabBarPosition {
     pub fn to_i32(&self) -> i32 {
         match self {
@@ -71,8 +62,6 @@ pub struct TabBarItem {
     pub selectedIconPath: Option<String>,
     #[serde(default)]
     pub selected: bool,
-    #[serde(default)]
-    pub group: Option<TabItemGroup>,
 
     // Runtime state (not from JSON)
     #[serde(skip)]

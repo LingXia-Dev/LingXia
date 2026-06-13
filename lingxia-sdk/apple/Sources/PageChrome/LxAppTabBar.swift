@@ -43,205 +43,6 @@ enum TabBarPosition {
 
 // Shared TabBar Helper Functions
 fileprivate struct TabBarHelpers {
-    // Group items by their group property - used by all TabBar implementations
-    static func groupItems(_ items: [TabBarItem]) -> (start: [TabBarItem], center: [TabBarItem], end: [TabBarItem]) {
-        var startItems: [TabBarItem] = []
-        var centerItems: [TabBarItem] = []
-        var endItems: [TabBarItem] = []
-
-        for item in items {
-            switch item.group {
-            case .Start:
-                startItems.append(item)
-            case .End:
-                endItems.append(item)
-            case .Center:
-                centerItems.append(item)
-            }
-        }
-
-        return (start: startItems, center: centerItems, end: endItems)
-    }
-
-    // Find item index in items array - used by all TabBar implementations
-    static func findItemIndex(for item: TabBarItem, in items: [TabBarItem]) -> Int {
-        return items.firstIndex(where: { $0.cachedPagePath == item.cachedPagePath }) ?? 0
-    }
-
-    // Check if items have grouping - used by all TabBar implementations
-    static func hasGroupField(items: [TabBarItem]) -> Bool {
-        return items.contains { $0.group != .Center }
-    }
-
-    // Filter items by group - used by all TabBar implementations
-    static func getStartItems(items: [TabBarItem]) -> [TabBarItem] {
-        return items.filter { $0.group == .Start }
-    }
-
-    static func getCenterItems(items: [TabBarItem]) -> [TabBarItem] {
-        return items.filter { $0.group == .Center }
-    }
-
-    static func getEndItems(items: [TabBarItem]) -> [TabBarItem] {
-        return items.filter { $0.group == .End }
-    }
-
-    // Shared group layout builders
-    @MainActor @ViewBuilder
-    static func buildSharedGroupedHorizontalTabBar<TabItemView: View>(
-        items: [TabBarItem],
-        @ViewBuilder buildTabItem: @escaping (TabBarItem, Int) -> TabItemView
-    ) -> some View {
-        HStack(spacing: 0) {
-            let startItems = getStartItems(items: items)
-            let centerItems = getCenterItems(items: items)
-            let endItems = getEndItems(items: items)
-
-            // Start items (group 1)
-            if !startItems.isEmpty {
-                HStack(spacing: LxAppTheme.Metrics.standardSpacing) {
-                    ForEach(Array(startItems.enumerated()), id: \.offset) { _, item in
-                        let index = findItemIndex(for: item, in: items)
-                        buildTabItem(item, index)
-                    }
-                }
-                .padding(.leading, 6) // Slightly more padding from edge
-            }
-
-            // Flexible spacer
-            Spacer()
-
-            // Center items (group 0)
-            if !centerItems.isEmpty {
-                HStack(spacing: LxAppTheme.Metrics.standardSpacing) {
-                    ForEach(Array(centerItems.enumerated()), id: \.offset) { _, item in
-                        let index = findItemIndex(for: item, in: items)
-                        buildTabItem(item, index)
-                    }
-                }
-            }
-
-            // Flexible spacer
-            Spacer()
-
-            // End items (group 2)
-            if !endItems.isEmpty {
-                HStack(spacing: 6) { // Comfortable spacing between end items
-                    ForEach(Array(endItems.enumerated()), id: \.offset) { _, item in
-                        let index = findItemIndex(for: item, in: items)
-                        buildTabItem(item, index)
-                    }
-                }
-                .padding(.trailing, 6) // Slightly more padding from edge
-            }
-        }
-    }
-
-    @MainActor @ViewBuilder
-    static func buildSharedGroupedVerticalTabBar<TabItemView: View>(
-        items: [TabBarItem],
-        @ViewBuilder buildTabItem: @escaping (TabBarItem, Int) -> TabItemView
-    ) -> some View {
-        let startItems = getStartItems(items: items)
-        let centerItems = getCenterItems(items: items)
-        let endItems = getEndItems(items: items)
-
-        VStack(alignment: .center, spacing: 0) {
-            // Start items (group 1)
-            if !startItems.isEmpty {
-                VStack(spacing: LxAppTheme.Metrics.standardSpacing) {
-                    ForEach(Array(startItems.enumerated()), id: \.offset) { _, item in
-                        let index = findItemIndex(for: item, in: items)
-                        buildTabItem(item, index)
-                    }
-                }
-                .frame(maxWidth: .infinity)
-            }
-
-            Spacer()
-
-            // Center items (group 0)
-            if !centerItems.isEmpty {
-                VStack(spacing: LxAppTheme.Metrics.standardSpacing) {
-                    ForEach(Array(centerItems.enumerated()), id: \.offset) { _, item in
-                        let index = findItemIndex(for: item, in: items)
-                        buildTabItem(item, index)
-                    }
-                }
-                .frame(maxWidth: .infinity)
-                Spacer()
-            }
-
-            // End items (group 2)
-            if !endItems.isEmpty {
-                VStack(spacing: LxAppTheme.Metrics.standardSpacing) {
-                    ForEach(Array(endItems.enumerated()), id: \.offset) { _, item in
-                        let index = findItemIndex(for: item, in: items)
-                        buildTabItem(item, index)
-                    }
-                }
-                .frame(maxWidth: .infinity)
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-    }
-
-    // Shared compact tab item builder
-    @MainActor @ViewBuilder
-    static func buildSharedCompactTabItem<IconView: View>(
-        item: TabBarItem,
-        index: Int,
-        selectedIndex: Int,
-        config: TabBar,
-        appId: String,
-        onTabSelected: @escaping (Int, String) -> Void,
-        @ViewBuilder buildTabIcon: @escaping (TabBarItem, Bool, Color) -> IconView
-    ) -> some View {
-        let isSelected = (index == selectedIndex)
-        // Get state directly from Rust
-        let rustItem = getTabBarItem(appId, Int32(index))
-
-        let forceColor = isSelected ?
-            Color(PlatformColor(argb: config.selected_color)) :
-            Color(PlatformColor(argb: config.color))
-
-        Button(action: {
-            // Always trigger callback - let parent decide if action is needed
-            onTabSelected(index, item.cachedPagePath)
-        }) {
-            VStack(spacing: LxAppTheme.Metrics.smallSpacing) {
-                // Tab icon with badge and red dot overlay
-                ZStack {
-                    if !item.cachedIconPath.isEmpty {
-                        buildTabIcon(item, isSelected, forceColor)
-                    }
-
-                    // Badge overlay (from Rust state)
-                    if let rustItem = rustItem, !rustItem.badge.toString().isEmpty {
-                        buildBadge(text: rustItem.badge.toString())
-                            .offset(x: 16, y: -6)
-                    }
-                    // Red dot overlay (only show if no badge)
-                    else if let rustItem = rustItem, rustItem.has_red_dot {
-                        buildRedDot()
-                            .offset(x: 16, y: -4)
-                    }
-                }
-
-                // Tab title
-                if !item.cachedText.isEmpty {
-                    Text(item.cachedText)
-                        .font(LxAppTheme.Typography.tabTitle)
-                        .foregroundColor(forceColor)
-                        .lineLimit(1)
-                }
-            }
-            // Natural content size - no maxWidth expansion for group layouts
-            .padding(.vertical, LxAppTheme.Metrics.smallSpacing)
-        }
-        .buttonStyle(PlainButtonStyle())
-    }
-
     @ViewBuilder
     static func buildBadge(text: String) -> some View {
         Text(text)
@@ -308,22 +109,12 @@ struct LxAppTabBar: View {
         Group {
             switch config.positionEnum {
             case .bottom:
-                if TabBarHelpers.hasGroupField(items: items) {
-                    buildGroupedHorizontalTabBar(items: items)
-                        .frame(height: config.dimensionPoints)
-                } else {
-                    buildHorizontalTabBar(items: items)
-                        .frame(height: config.dimensionPoints)
-                }
+                buildHorizontalTabBar(items: items)
+                    .frame(height: config.dimensionPoints)
 
             case .left, .right:
-                if TabBarHelpers.hasGroupField(items: items) {
-                    buildGroupedVerticalTabBar(items: items)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else {
-                    buildVerticalTabBar(items: items)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                }
+                buildVerticalTabBar(items: items)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         .background(getTabBarBackgroundColor())
@@ -349,20 +140,6 @@ struct LxAppTabBar: View {
             }
         }
         .padding(.vertical, LxAppTheme.Metrics.largeSpacing)
-    }
-
-    @ViewBuilder
-    private func buildGroupedHorizontalTabBar(items: [TabBarItem]) -> some View {
-        TabBarHelpers.buildSharedGroupedHorizontalTabBar(items: items) { item, index in
-            buildCompactTabItem(item: item, index: index)
-        }
-    }
-
-    @ViewBuilder
-    private func buildGroupedVerticalTabBar(items: [TabBarItem]) -> some View {
-        TabBarHelpers.buildSharedGroupedVerticalTabBar(items: items) { item, index in
-            buildTabItem(item: item, index: index)
-        }
     }
 
     @ViewBuilder
@@ -410,21 +187,6 @@ struct LxAppTabBar: View {
             .padding(.vertical, LxAppTheme.Metrics.smallSpacing)
         }
         .buttonStyle(PlainButtonStyle())
-    }
-
-    // Compact tab item for group layouts - uses natural content size instead of maxWidth: .infinity
-    @ViewBuilder
-    private func buildCompactTabItem(item: TabBarItem, index: Int) -> some View {
-        TabBarHelpers.buildSharedCompactTabItem(
-            item: item,
-            index: index,
-            selectedIndex: selectedIndex,
-            config: config,
-            appId: appId,
-            onTabSelected: onTabSelected
-        ) { item, isSelected, forceColor in
-            buildTabIcon(item: item, isSelected: isSelected, forceColor: forceColor)
-        }
     }
 
     @ViewBuilder
@@ -527,28 +289,17 @@ struct MacOSLxAppTabBar: View {
         Group {
             switch config.positionEnum {
             case .bottom:
-                if TabBarHelpers.hasGroupField(items: items) {
-                    buildGroupedHorizontalTabBar(items: items)
-                        .frame(height: config.dimensionPoints)
-                } else {
-                    buildHorizontalTabBar(items: items)
-                        .frame(height: config.dimensionPoints)
-                }
+                buildHorizontalTabBar(items: items)
+                    .frame(height: config.dimensionPoints)
 
             case .left, .right:
-                if TabBarHelpers.hasGroupField(items: items) {
-                    buildGroupedVerticalTabBar(items: items)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else {
-                    buildVerticalTabBar(items: items)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                }
+                buildVerticalTabBar(items: items)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         .background(getTabBarBackgroundColor())
     }
 
-    // Copy helper methods from LxAppTabBar
     @ViewBuilder
     private func buildTabItem(item: TabBarItem, index: Int) -> some View {
         let isSelected = (index == selectedIndex)
@@ -596,22 +347,6 @@ struct MacOSLxAppTabBar: View {
         .buttonStyle(PlainButtonStyle())
     }
 
-    // Compact tab item for group layouts - uses natural content size instead of maxWidth: .infinity
-    @ViewBuilder
-    private func buildCompactTabItem(item: TabBarItem, index: Int) -> some View {
-        TabBarHelpers.buildSharedCompactTabItem(
-            item: item,
-            index: index,
-            selectedIndex: selectedIndex,
-            config: config,
-            appId: appId,
-            onTabSelected: onTabSelected
-        ) { item, isSelected, forceColor in
-            buildTabIcon(item: item, isSelected: isSelected, forceColor: forceColor)
-        }
-    }
-
-    // Copy helper methods from LxAppTabBar
     @ViewBuilder
     private func buildHorizontalTabBar(items: [TabBarItem]) -> some View {
         HStack(spacing: LxAppTheme.Metrics.standardSpacing) {
@@ -632,22 +367,6 @@ struct MacOSLxAppTabBar: View {
         }
         .padding(.vertical, LxAppTheme.Metrics.largeSpacing)
     }
-
-    @ViewBuilder
-    private func buildGroupedHorizontalTabBar(items: [TabBarItem]) -> some View {
-        TabBarHelpers.buildSharedGroupedHorizontalTabBar(items: items) { item, index in
-            buildCompactTabItem(item: item, index: index)
-        }
-    }
-
-    @ViewBuilder
-    private func buildGroupedVerticalTabBar(items: [TabBarItem]) -> some View {
-        TabBarHelpers.buildSharedGroupedVerticalTabBar(items: items) { item, index in
-            buildTabItem(item: item, index: index)
-        }
-    }
-
-    // Use shared TabBarHelpers instead of duplicated methods
 
     @ViewBuilder
     private func buildTabIcon(item: TabBarItem, isSelected: Bool, forceColor: Color) -> some View {
@@ -851,14 +570,9 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
         addSubview(containerView)
 
         let isVertical = config.position == 1 || config.position == 2
-        let hasGroupField = TabBarHelpers.hasGroupField(items: items)
 
-        if isVertical && hasGroupField {
-            setupVerticalGroupedLayout(items: items, config: config, containerView: containerView)
-        } else if isVertical {
+        if isVertical {
             setupVerticalLayout(items: items, config: config, containerView: containerView)
-        } else if hasGroupField {
-            setupHorizontalGroupedLayout(items: items, config: config, containerView: containerView)
         } else {
             setupHorizontalLayout(items: items, config: config, containerView: containerView)
         }
@@ -869,102 +583,6 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
             containerView.trailingAnchor.constraint(equalTo: trailingAnchor),
             containerView.bottomAnchor.constraint(equalTo: bottomAnchor)
         ])
-    }
-
-    private func setupVerticalGroupedLayout(items: [TabBarItem], config: TabBar, containerView: UIView) {
-        setupGroupedLayout(items: items, config: config, containerView: containerView, isVertical: true)
-    }
-
-    private func setupHorizontalGroupedLayout(items: [TabBarItem], config: TabBar, containerView: UIView) {
-        setupGroupedLayout(items: items, config: config, containerView: containerView, isVertical: false)
-    }
-
-    private func setupGroupedLayout(items: [TabBarItem], config: TabBar, containerView: UIView, isVertical: Bool) {
-        let stackView = UIStackView()
-        stackView.axis = isVertical ? .vertical : .horizontal
-        stackView.distribution = .fill
-        stackView.alignment = .center
-        stackView.spacing = isVertical ? 8 : 0
-        stackView.translatesAutoresizingMaskIntoConstraints = false
-        containerView.addSubview(stackView)
-
-        let startItems = items.filter { $0.group == .Start }
-        let centerItems = items.filter { $0.group == .Center }
-        let endItems = items.filter { $0.group == .End }
-
-        // Add start items
-        addGroupContainer(items: startItems, allItems: items, config: config, to: stackView, isVertical: isVertical)
-
-        // Add flexible spacer (only if we have both start and end items)
-        if !startItems.isEmpty && (!centerItems.isEmpty || !endItems.isEmpty) {
-            addFlexibleSpacer(to: stackView, isVertical: isVertical)
-        }
-
-        // Add center items (only for horizontal layout)
-        if !isVertical && !centerItems.isEmpty {
-            addGroupContainer(items: centerItems, allItems: items, config: config, to: stackView, isVertical: isVertical)
-
-            // Add spacer after center items if we have end items
-            if !endItems.isEmpty {
-                addFlexibleSpacer(to: stackView, isVertical: isVertical)
-            }
-        }
-
-        // Add end items
-        addGroupContainer(items: endItems, allItems: items, config: config, to: stackView, isVertical: isVertical)
-
-        NSLayoutConstraint.activate([
-            stackView.topAnchor.constraint(equalTo: containerView.topAnchor, constant: 8),
-            stackView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 8),
-            stackView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -8),
-            stackView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor, constant: -8)
-        ])
-    }
-
-    private func addGroupContainer(items: [TabBarItem], allItems: [TabBarItem], config: TabBar, to stackView: UIStackView, isVertical: Bool) {
-        guard !items.isEmpty else { return }
-
-        if isVertical {
-            // For vertical layout, add items directly to the main stack
-            for (groupIndex, item) in items.enumerated() {
-                // Find the correct index in the original allItems array
-                let originalIndex = allItems.firstIndex { $0.page_path.toString() == item.page_path.toString() } ?? groupIndex
-                let tabView = createUIKitTabItem(item: item, index: originalIndex, config: config)
-                stackView.addArrangedSubview(tabView)
-            }
-        } else {
-            // For horizontal layout, create a container for the group
-            let groupContainer = UIStackView()
-            groupContainer.axis = .horizontal
-            groupContainer.distribution = .fillEqually
-            groupContainer.alignment = .center
-            groupContainer.spacing = 8
-            groupContainer.translatesAutoresizingMaskIntoConstraints = false
-
-            for (groupIndex, item) in items.enumerated() {
-                // Find the correct index in the original allItems array
-                let originalIndex = allItems.firstIndex { $0.page_path.toString() == item.page_path.toString() } ?? groupIndex
-                let tabView = createUIKitTabItem(item: item, index: originalIndex, config: config)
-                groupContainer.addArrangedSubview(tabView)
-            }
-            stackView.addArrangedSubview(groupContainer)
-        }
-    }
-
-    private func addFlexibleSpacer(to stackView: UIStackView, isVertical: Bool) {
-        let spacer = UIView()
-        spacer.backgroundColor = UIColor.clear
-        spacer.translatesAutoresizingMaskIntoConstraints = false
-
-        if isVertical {
-            spacer.setContentHuggingPriority(.defaultLow, for: .vertical)
-            spacer.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
-        } else {
-            spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
-            spacer.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        }
-
-        stackView.addArrangedSubview(spacer)
     }
 
     private func setupVerticalLayout(items: [TabBarItem], config: TabBar, containerView: UIView) {
