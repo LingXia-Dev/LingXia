@@ -18,6 +18,8 @@ pub use api::{
     WindowsPanelPosition, WindowsWebViewContentWindow, WindowsWebViewHandler,
     WindowsWebViewHostWindow, WindowsWebViewWindowSnapshot, WindowsWindowLayout,
     add_webview_host_window_created_handler, clear_host_panel_input_handler,
+    clear_webview_group_override, clear_webview_os_frame, set_webview_group_override,
+    set_webview_os_frame,
     find_webview_content_window, find_webview_handler, find_webview_host_window, hide_host_panel,
     invalidate_host_panel, is_panel_visible, post_to_window_thread,
     request_webview_host_window_layout, restore_presented_group_main, set_default_window_size,

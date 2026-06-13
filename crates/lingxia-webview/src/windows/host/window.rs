@@ -77,16 +77,16 @@ pub(crate) fn create_hidden_window(webtag: &WebTag) -> StdResult<HWND> {
         } else if msg == WindowsAndMessaging::WM_GETMINMAXINFO {
             // Custom-chrome (borderless) windows compute maximized bounds
             // themselves; plain OS-frame windows use default handling.
-            if windows_chrome_renderer().is_some() {
+            if windows_chrome_renderer().is_some() && !window_uses_os_frame(hwnd) {
                 apply_window_maximized_bounds(hwnd, lparam);
                 return LRESULT(0);
             }
         } else if msg == WindowsAndMessaging::WM_NCCALCSIZE {
-            if windows_chrome_renderer().is_some() {
+            if windows_chrome_renderer().is_some() && !window_uses_os_frame(hwnd) {
                 return LRESULT(0);
             }
         } else if msg == WindowsAndMessaging::WM_NCHITTEST {
-            if windows_chrome_renderer().is_some() {
+            if windows_chrome_renderer().is_some() && !window_uses_os_frame(hwnd) {
                 let raw = unsafe {
                     WindowsAndMessaging::GetWindowLongPtrW(hwnd, WindowsAndMessaging::GWLP_USERDATA)
                 } as *mut WindowUserData;
@@ -97,7 +97,7 @@ pub(crate) fn create_hidden_window(webtag: &WebTag) -> StdResult<HWND> {
                 }
             }
         } else if msg == WindowsAndMessaging::WM_ERASEBKGND {
-            if windows_chrome_renderer().is_some() {
+            if windows_chrome_renderer().is_some() && !window_uses_os_frame(hwnd) {
                 return LRESULT(1);
             }
         } else if msg == WindowsAndMessaging::WM_WINDOWPOSCHANGED {
@@ -158,7 +158,7 @@ pub(crate) fn create_hidden_window(webtag: &WebTag) -> StdResult<HWND> {
             run_posted_window_callback(wparam);
             return LRESULT(0);
         } else if msg == WindowsAndMessaging::WM_PAINT {
-            if windows_chrome_renderer().is_some() {
+            if windows_chrome_renderer().is_some() && !window_uses_os_frame(hwnd) {
                 paint_window_chrome(hwnd);
                 return LRESULT(0);
             }
@@ -281,6 +281,13 @@ pub(crate) fn create_hidden_window(webtag: &WebTag) -> StdResult<HWND> {
             | WindowsAndMessaging::CS_VREDRAW
             | WindowsAndMessaging::CS_DBLCLKS,
         lpfnWndProc: Some(window_proc),
+        // Without an explicit class cursor the window never resets the pointer,
+        // so the launch-time "AppStarting" busy spinner lingers over it. Use the
+        // standard arrow.
+        hCursor: unsafe {
+            WindowsAndMessaging::LoadCursorW(None, WindowsAndMessaging::IDC_ARROW)
+        }
+        .unwrap_or_default(),
         lpszClassName: w!("LingXiaHiddenWebViewHost"),
         ..Default::default()
     };
@@ -319,7 +326,11 @@ pub(crate) fn create_hidden_window(webtag: &WebTag) -> StdResult<HWND> {
         match result {
             Ok(hwnd) => {
                 invoke_host_window_created_handler(hwnd);
-                if windows_chrome_renderer().is_some() {
+                // OS-frame webviews (standalone window surfaces) keep the plain
+                // WS_OVERLAPPEDWINDOW frame so the native title bar and
+                // minimize/maximize/close buttons render; only custom-chrome
+                // windows get the borderless DWM extension.
+                if windows_chrome_renderer().is_some() && !webtag_uses_os_frame(webtag.key()) {
                     extend_frame_into_client_area(hwnd);
                     apply_round_corner_preference(hwnd);
                 }

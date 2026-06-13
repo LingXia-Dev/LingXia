@@ -276,6 +276,45 @@ pub(super) fn install() {
     // lxapp openURL with self/new_browser_tab) inside the app as browser
     // tabs; unhandled requests fall back to the OS shell handler.
     lingxia_platform::set_windows_open_url_handler(Arc::new(handle_open_url_request));
+
+    // Deliver lx.surface closes (user window-close or programmatic) back to the
+    // logic layer so the JS Surface handle fires onClose, mirroring the
+    // apple/android/harmony FFI bridges.
+    lingxia_platform::set_windows_surface_closed_handler(Arc::new(|id, reason| {
+        lingxia_logic::notify_surface_closed(id, reason);
+    }));
+
+    // Report surface page visibility to lxapp so a presented surface fires
+    // onShow and is not reclaimed by the page-instance dispose timer (which
+    // would close the surface window), mirroring the Apple/Harmony FFI
+    // notify_page_instance_visible bridges.
+    lingxia_platform::set_windows_page_visibility_handler(Arc::new(|page_instance_id, visible| {
+        let event = if visible {
+            lxapp::PageInstanceEvent::Visible
+        } else {
+            lxapp::PageInstanceEvent::Hidden {
+                reason: lxapp::CloseReason::Unknown,
+            }
+        };
+        let _ = lxapp::notify_page_instance_by_id(page_instance_id, event);
+    }));
+
+    // Dispose a surface's content page instance when the surface closes (native
+    // close button or programmatic). Disposing detaches and destroys the page's
+    // webview, which is what actually closes the surface window/overlay — the
+    // page instance otherwise keeps the webview alive so a bare destroy cannot.
+    // Mirrors the dispose_page_instance FFI bridges on the mobile platforms.
+    lingxia_platform::set_windows_surface_dispose_handler(Arc::new(|page_instance_id, reason| {
+        let reason = match reason.trim().to_ascii_lowercase().as_str() {
+            "user" => lxapp::CloseReason::User,
+            "owner_closed" => lxapp::CloseReason::OwnerClosed,
+            "app_closed" => lxapp::CloseReason::AppClosed,
+            "programmatic" => lxapp::CloseReason::Programmatic,
+            "reclaimed" => lxapp::CloseReason::Reclaimed,
+            _ => lxapp::CloseReason::Unknown,
+        };
+        let _ = lxapp::dispose_page_instance_by_id(page_instance_id, reason);
+    }));
 }
 
 /// Routes `open_url` requests with in-app targets into the internal

@@ -144,7 +144,11 @@ pub(crate) fn store_current_window_placement(state: &UiState) {
 pub(crate) fn store_window_placement(hwnd: HWND, webtag_key: &str) {
     if matches!(
         window_attachment(webtag_key).map(|attachment| attachment.kind),
-        Some(WindowAttachmentKind::MainChild | WindowAttachmentKind::Panel { .. })
+        Some(
+            WindowAttachmentKind::MainChild
+                | WindowAttachmentKind::Panel { .. }
+                | WindowAttachmentKind::Overlay
+        )
     ) {
         return;
     }

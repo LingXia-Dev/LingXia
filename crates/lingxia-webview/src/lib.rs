@@ -211,6 +211,8 @@ pub mod platform {
                 WindowsHostPanelInputHandler, WindowsHostPanelKeyEvent, WindowsHostPanelTab,
                 WindowsPanelPosition, WindowsWebViewHostWindow, WindowsWindowLayout,
                 add_webview_host_window_created_handler, clear_host_panel_input_handler,
+                clear_webview_group_override, clear_webview_os_frame, set_webview_group_override,
+                set_webview_os_frame,
                 find_webview_host_window, hide_host_panel, invalidate_host_panel, is_panel_visible,
                 request_webview_host_window_layout, restore_presented_group_main,
                 set_default_window_size, set_host_panel_input_handler, set_host_panel_maximized,

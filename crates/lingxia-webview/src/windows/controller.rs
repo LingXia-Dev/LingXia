@@ -81,6 +81,14 @@ pub(crate) enum UiCommand {
         group_key: String,
         resp: Sender<StdResult<()>>,
     },
+    /// Present the webview as a floating card layered over the group's main
+    /// content (an `overlay`-kind surface), sized/positioned per the placement.
+    #[cfg(feature = "windows-host")]
+    PresentAsOverlay {
+        group_key: String,
+        placement: OverlayCardPlacement,
+        resp: Sender<StdResult<()>>,
+    },
     HideWindow {
         resp: Sender<StdResult<()>>,
     },
@@ -271,6 +279,19 @@ impl WebViewInner {
     #[cfg(feature = "windows-host")]
     pub(crate) fn present_as_group_main(&self, group_key: String) -> StdResult<()> {
         self.dispatch_command(|resp| UiCommand::PresentAsGroupMain { group_key, resp })
+    }
+
+    #[cfg(feature = "windows-host")]
+    pub(crate) fn present_as_overlay(
+        &self,
+        group_key: String,
+        placement: OverlayCardPlacement,
+    ) -> StdResult<()> {
+        self.dispatch_command(|resp| UiCommand::PresentAsOverlay {
+            group_key,
+            placement,
+            resp,
+        })
     }
 
     #[cfg(feature = "windows-host")]
@@ -723,6 +744,15 @@ pub(crate) fn handle_command(state: &mut UiState, command: UiCommand) -> StdResu
             let result = present_native_window_as_group_main(state, &group_key);
             let _ = resp.send(result);
         }
+        #[cfg(feature = "windows-host")]
+        UiCommand::PresentAsOverlay {
+            group_key,
+            placement,
+            resp,
+        } => {
+            let result = present_native_window_as_overlay(state, &group_key, placement);
+            let _ = resp.send(result);
+        }
         UiCommand::HideWindow { resp } => {
             let result = hide_native_window(state);
             let _ = resp.send(result);
@@ -774,6 +804,8 @@ pub(crate) fn cleanup_window_state(state: &UiState) {
     let attachment = remove_window_attachment(&state.webtag_key);
     remove_window_handle(&state.webtag_key);
     remove_window_layout(&state.webtag_key);
+    clear_group_override(&state.webtag_key);
+    clear_os_frame(&state.webtag_key);
     remove_close_handler(&state.webtag_key);
     remove_chrome_event_handler(&state.webtag_key);
 
@@ -822,6 +854,13 @@ pub(crate) fn cleanup_window_state(state: &UiState) {
             }
             WindowAttachmentKind::Panel { .. } => {
                 remove_group_panel(&attachment.group_key, &state.webtag_key);
+                layout_group_windows(&attachment.group_key);
+                request_group_chrome_refresh(&attachment.group_key);
+            }
+            WindowAttachmentKind::Overlay => {
+                // The overlay card is gone; drop its placement and re-lay the
+                // group so the main content repaints over the freed region.
+                clear_overlay_placement(&state.webtag_key);
                 layout_group_windows(&attachment.group_key);
                 request_group_chrome_refresh(&attachment.group_key);
             }

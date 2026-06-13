@@ -76,7 +76,10 @@ pub(crate) fn sync_controller_bounds_for(
 pub(crate) fn controller_bounds_for_window(hwnd: HWND, webtag_key: &str, client: RECT) -> RECT {
     match window_attachment(webtag_key) {
         Some(WindowAttachment {
-            kind: WindowAttachmentKind::MainChild | WindowAttachmentKind::Panel { .. },
+            kind:
+                WindowAttachmentKind::MainChild
+                | WindowAttachmentKind::Panel { .. }
+                | WindowAttachmentKind::Overlay,
             ..
         }) => normalize_rect(client),
         Some(WindowAttachment {
@@ -100,7 +103,9 @@ pub(crate) fn window_snapshot(state: &UiState) -> StdResult<WindowsWebViewWindow
     let window_id = if let Some(attachment) = window_attachment(&state.webtag_key) {
         if matches!(
             attachment.kind,
-            WindowAttachmentKind::MainChild | WindowAttachmentKind::Panel { .. }
+            WindowAttachmentKind::MainChild
+                | WindowAttachmentKind::Panel { .. }
+                | WindowAttachmentKind::Overlay
         ) {
             let host = host_handle_for_group(&attachment.group_key).unwrap_or(state.hwnd);
             unsafe {

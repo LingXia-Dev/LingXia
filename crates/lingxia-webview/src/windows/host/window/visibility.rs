@@ -25,14 +25,29 @@ pub(crate) fn show_group_host(group_key: &str, host: HWND, title: &str, activate
     fit_window_to_work_area(host);
 
     // With custom chrome the renderer paints the title area itself; plain
-    // OS-frame windows keep the real title and title-bar icon.
-    let custom_chrome = windows_chrome_renderer().is_some();
+    // OS-frame windows (including standalone surface windows) keep the real
+    // title and native title-bar buttons.
+    let custom_chrome = windows_chrome_renderer().is_some() && !window_uses_os_frame(host);
     let title = to_wide(if custom_chrome { "" } else { title });
     unsafe {
         let _ = WindowsAndMessaging::SetWindowTextW(host, PCWSTR(title.as_ptr()));
         let mut flags = WindowsAndMessaging::SWP_NOMOVE | WindowsAndMessaging::SWP_NOSIZE;
         if !activate {
             flags |= WindowsAndMessaging::SWP_NOACTIVATE;
+        }
+        if window_uses_os_frame(host) {
+            // Undo the borderless DWM frame extension applied at creation and
+            // force WM_NCCALCSIZE to re-run, so the native caption (icon,
+            // title, and minimize/maximize/close buttons) renders for this
+            // OS-frame window instead of the borderless custom-chrome frame.
+            let margins = MARGINS {
+                cxLeftWidth: 0,
+                cxRightWidth: 0,
+                cyTopHeight: 0,
+                cyBottomHeight: 0,
+            };
+            let _ = DwmExtendFrameIntoClientArea(host, &margins);
+            flags |= WindowsAndMessaging::SWP_FRAMECHANGED;
         }
         let _ = WindowsAndMessaging::SetWindowPos(
             host,
@@ -60,6 +75,47 @@ pub(crate) fn show_native_window(
         WindowsWindowRole::Main => show_native_main_window(state, title, activate),
         WindowsWindowRole::Panel { panel_id } => show_host_panel_window(state, &panel_id),
     }
+}
+
+/// Presents this webview as a floating card layered over `group_key`'s main
+/// content (an `overlay`-kind surface): reparents it into the host as a child
+/// (so it follows the host on move/resize and is clipped to the content area),
+/// marks it an `Overlay` attachment, and lays the group out so the card sits at
+/// its placement sub-rect on top of — without displacing — the active main.
+pub(crate) fn present_native_window_as_overlay(
+    state: &mut UiState,
+    group_key: &str,
+    placement: OverlayCardPlacement,
+) -> StdResult<()> {
+    let Some(host) = host_handle_for_group(group_key) else {
+        return Err(WebViewError::WebView(format!(
+            "no host window for Windows host group {group_key}"
+        )));
+    };
+    if hwnd_handle(host) == hwnd_handle(state.hwnd) {
+        return Err(WebViewError::WebView(
+            "cannot present a group host window as its own overlay".to_string(),
+        ));
+    }
+
+    register_window_handle(&state.webtag_key, state.hwnd);
+    set_overlay_placement(&state.webtag_key, placement);
+    attach_child_window_to_host(state.hwnd, host);
+    set_window_attachment(
+        &state.webtag_key,
+        WindowAttachment {
+            group_key: group_key.to_string(),
+            kind: WindowAttachmentKind::Overlay,
+        },
+    );
+    // Deliberately NOT set_group_active_main: the overlay layers over the main
+    // content, which stays the active main and visible behind the card.
+    layout_group_windows(group_key);
+    sync_controller_bounds(state)?;
+    set_controller_visible(state, true)?;
+    request_group_chrome_refresh(group_key);
+    state.window_visible = true;
+    Ok(())
 }
 
 pub(crate) fn show_native_main_window(
@@ -178,7 +234,7 @@ pub(crate) fn hide_native_window(state: &mut UiState) -> StdResult<()> {
     store_current_window_placement(state);
     match window_attachment(&state.webtag_key).map(|attachment| attachment.kind) {
         Some(WindowAttachmentKind::MainHost) => hide_native_main_host_window(state),
-        Some(WindowAttachmentKind::MainChild) => {
+        Some(WindowAttachmentKind::MainChild | WindowAttachmentKind::Overlay) => {
             set_controller_visible(state, false)?;
             hide_attached_window(state.hwnd);
             state.window_visible = false;

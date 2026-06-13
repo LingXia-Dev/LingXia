@@ -256,9 +256,30 @@ impl AppRuntime for Platform {
 // payload contract lives in the per-OS bridges; left on trait defaults until
 // the payload shape is shared.
 impl crate::traits::network::Network for Platform {}
-// Stubbed: overlay/panel surfaces are presented by the Windows product shell
-// (surface.rs windows); the generic SurfacePresenter contract is unused here.
-impl crate::traits::ui::SurfacePresenter for Platform {}
+// lx.surface: the surface's content webview is created by lxapp; the
+// presenter shows it as a desktop window and reports closes back to the logic
+// layer through the callback the `lingxia` facade registers (see
+// surface::set_windows_surface_closed_handler).
+impl crate::traits::ui::SurfacePresenter for Platform {
+    fn present_surface(
+        &self,
+        request: crate::traits::ui::SurfaceRequest,
+    ) -> Result<(), PlatformError> {
+        surface::present_surface(request, &self.product_name)
+    }
+
+    fn close_surface(&self, app_id: &str, id: &str, reason: &str) -> Result<(), PlatformError> {
+        surface::close_surface(app_id, id, reason)
+    }
+
+    fn show_surface(&self, app_id: &str, id: &str) -> Result<(), PlatformError> {
+        surface::show_surface(app_id, id)
+    }
+
+    fn hide_surface(&self, app_id: &str, id: &str) -> Result<(), PlatformError> {
+        surface::hide_surface(app_id, id)
+    }
+}
 // Stubbed: in-app update prompt/install flows have no Windows updater helper
 // yet; trait defaults report not_supported for prompt/install.
 impl crate::traits::update::UpdateService for Platform {}

@@ -79,6 +79,35 @@ impl WindowsWebViewHandler {
         self.present_as_group_main(group_key)
     }
 
+    /// Presents this webview as a floating card layered over the active group's
+    /// main content (an `overlay`-kind surface): a second layer within the
+    /// content area that does not displace the main and follows the host window.
+    /// `width`/`height` are logical pixels (0 = derive from the ratio or a
+    /// default); `width_ratio`/`height_ratio` are fractions of the content area;
+    /// `position` mirrors the `SurfacePosition` discriminants (0 center, 1
+    /// bottom, 2 left, 3 right, 4 top).
+    pub fn present_as_overlay(
+        &self,
+        width: f64,
+        height: f64,
+        width_ratio: f64,
+        height_ratio: f64,
+        position: u8,
+    ) -> StdResult<()> {
+        let group_key = active_group_key()
+            .ok_or_else(|| WebViewError::WebView("no active Windows host group".to_string()))?;
+        self.webview.inner.present_as_overlay(
+            group_key,
+            OverlayCardPlacement {
+                width,
+                height,
+                width_ratio,
+                height_ratio,
+                anchor: OverlayAnchor::from_position(position),
+            },
+        )
+    }
+
     pub fn window_snapshot(&self) -> StdResult<WindowsWebViewWindowSnapshot> {
         self.webview.inner.window_snapshot()
     }
@@ -118,6 +147,52 @@ impl WindowsWebViewHandler {
 
 pub fn find_webview_handler(webtag: &WebTag) -> Option<WindowsWebViewHandler> {
     find_webview(webtag).map(|webview| WindowsWebViewHandler { webview })
+}
+
+/// Overrides the host group a webview belongs to. By default every page of an
+/// app/session shares one host window (`appid#session`); a webview given a
+/// unique override group becomes its own group's host — a standalone
+/// top-level window. Used to present a `window`-kind surface as a separate
+/// window. Call before showing the webview; clear it when the surface closes.
+pub fn set_webview_group_override(webtag: &WebTag, group_key: &str) {
+    set_group_override(webtag.key(), group_key);
+}
+
+/// Clears a group override registered via [`set_webview_group_override`].
+pub fn clear_webview_group_override(webtag: &WebTag) {
+    clear_group_override(webtag.key());
+}
+
+/// Makes a webview's host window keep the standard OS frame (native title bar +
+/// minimize / maximize / close) instead of custom chrome. Used for a
+/// standalone `window`-kind surface so its own top-level window has real
+/// window controls. Call before showing; clear when the surface closes.
+pub fn set_webview_os_frame(webtag: &WebTag) {
+    set_os_frame(webtag.key());
+    // If the window already exists, force a frame recalc so the native frame
+    // appears without waiting for the next size change.
+    if let Some(hwnd) = window_handle_for_key(webtag.key()) {
+        unsafe {
+            let _ = WindowsAndMessaging::SetWindowPos(
+                hwnd,
+                None,
+                0,
+                0,
+                0,
+                0,
+                WindowsAndMessaging::SWP_NOMOVE
+                    | WindowsAndMessaging::SWP_NOSIZE
+                    | WindowsAndMessaging::SWP_NOZORDER
+                    | WindowsAndMessaging::SWP_NOACTIVATE
+                    | WindowsAndMessaging::SWP_FRAMECHANGED,
+            );
+        }
+    }
+}
+
+/// Clears an OS-frame mark registered via [`set_webview_os_frame`].
+pub fn clear_webview_os_frame(webtag: &WebTag) {
+    clear_os_frame(webtag.key());
 }
 
 pub fn set_webview_window_layout(webtag: &WebTag, layout: WindowsWindowLayout) -> StdResult<()> {

@@ -300,10 +300,50 @@ pub(crate) fn resize_border_thickness() -> i32 {
     }
 }
 
+/// Webviews whose host window keeps the standard OS frame (native title bar +
+/// minimize/maximize/close) instead of custom chrome. A standalone
+/// `window`-kind surface registers here so its own top-level window has real
+/// window controls.
+pub(crate) static WINDOW_OS_FRAME: OnceLock<Mutex<std::collections::HashSet<String>>> =
+    OnceLock::new();
+
+pub(crate) fn set_os_frame(webtag_key: &str) {
+    let set = WINDOW_OS_FRAME.get_or_init(|| Mutex::new(std::collections::HashSet::new()));
+    if let Ok(mut set) = set.lock() {
+        set.insert(webtag_key.to_string());
+    }
+}
+
+pub(crate) fn clear_os_frame(webtag_key: &str) {
+    if let Some(set) = WINDOW_OS_FRAME.get()
+        && let Ok(mut set) = set.lock()
+    {
+        set.remove(webtag_key);
+    }
+}
+
+pub(crate) fn webtag_uses_os_frame(webtag_key: &str) -> bool {
+    WINDOW_OS_FRAME
+        .get()
+        .and_then(|set| set.lock().ok())
+        .is_some_and(|set| set.contains(webtag_key))
+}
+
+pub(crate) fn window_uses_os_frame(hwnd: HWND) -> bool {
+    window_webtag_key(hwnd).is_some_and(|key| webtag_uses_os_frame(&key))
+}
+
 pub(crate) fn window_draws_host_chrome(webtag_key: &str) -> bool {
+    if webtag_uses_os_frame(webtag_key) {
+        return false;
+    }
     !matches!(
         window_attachment(webtag_key).map(|attachment| attachment.kind),
-        Some(WindowAttachmentKind::MainChild | WindowAttachmentKind::Panel { .. })
+        Some(
+            WindowAttachmentKind::MainChild
+                | WindowAttachmentKind::Panel { .. }
+                | WindowAttachmentKind::Overlay
+        )
     )
 }
 

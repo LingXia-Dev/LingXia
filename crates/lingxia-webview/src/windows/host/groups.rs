@@ -25,6 +25,60 @@ pub(crate) enum WindowAttachmentKind {
         panel_id: String,
         position: WindowsPanelPosition,
     },
+    /// A floating card layered over the group's main content (an
+    /// `overlay`-kind surface). Unlike a `MainChild` it does not displace the
+    /// active main — the main content stays visible behind it — and it is sized
+    /// to a sub-rect of the content area (see [`OVERLAY_PLACEMENTS`]) instead of
+    /// filling it. Being a child of the host window, it follows the host on
+    /// move/resize and cannot leave the content area.
+    Overlay,
+}
+
+/// Where an overlay card is anchored within the content area. Mirrors the
+/// `SurfacePosition` discriminants the logic layer sends.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum OverlayAnchor {
+    Center,
+    Bottom,
+    Left,
+    Right,
+    Top,
+}
+
+impl OverlayAnchor {
+    pub(crate) fn from_position(position: u8) -> Self {
+        match position {
+            1 => OverlayAnchor::Bottom,
+            2 => OverlayAnchor::Left,
+            3 => OverlayAnchor::Right,
+            4 => OverlayAnchor::Top,
+            _ => OverlayAnchor::Center,
+        }
+    }
+}
+
+/// Requested overlay-card geometry within the content area. `width`/`height`
+/// are logical pixels (0 = derive from the ratio or a default); `width_ratio`/
+/// `height_ratio` are fractions of the content area (0 = none).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct OverlayCardPlacement {
+    pub width: f64,
+    pub height: f64,
+    pub width_ratio: f64,
+    pub height_ratio: f64,
+    pub anchor: OverlayAnchor,
+}
+
+impl Default for OverlayCardPlacement {
+    fn default() -> Self {
+        OverlayCardPlacement {
+            width: 0.0,
+            height: 0.0,
+            width_ratio: 0.0,
+            height_ratio: 0.0,
+            anchor: OverlayAnchor::Center,
+        }
+    }
 }
 
 pub(crate) static WINDOW_LAYOUTS: OnceLock<Mutex<HashMap<String, WindowsWindowLayout>>> =
@@ -59,6 +113,33 @@ pub(crate) static WINDOW_GROUP_PRESENTED_MAIN: OnceLock<
 pub(crate) static WINDOW_ACTIVE_GROUP: OnceLock<Mutex<Option<String>>> = OnceLock::new();
 
 pub(crate) static WINDOW_GROUP_PANEL_SIZES: OnceLock<Mutex<HashMap<String, i32>>> = OnceLock::new();
+
+/// Per-webview overlay-card placement, keyed by webtag. Set when an overlay is
+/// presented and read by the layout to size/position the card; cleared on close.
+pub(crate) static OVERLAY_PLACEMENTS: OnceLock<Mutex<HashMap<String, OverlayCardPlacement>>> =
+    OnceLock::new();
+
+pub(crate) fn set_overlay_placement(webtag_key: &str, placement: OverlayCardPlacement) {
+    let map = OVERLAY_PLACEMENTS.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Ok(mut map) = map.lock() {
+        map.insert(webtag_key.to_string(), placement);
+    }
+}
+
+pub(crate) fn overlay_placement_for(webtag_key: &str) -> Option<OverlayCardPlacement> {
+    OVERLAY_PLACEMENTS
+        .get()
+        .and_then(|map| map.lock().ok())
+        .and_then(|map| map.get(webtag_key).copied())
+}
+
+pub(crate) fn clear_overlay_placement(webtag_key: &str) {
+    if let Some(map) = OVERLAY_PLACEMENTS.get()
+        && let Ok(mut map) = map.lock()
+    {
+        map.remove(webtag_key);
+    }
+}
 
 pub(crate) fn current_window_layout(webtag_key: &str) -> WindowsWindowLayout {
     let exact = WINDOW_LAYOUTS
@@ -116,8 +197,36 @@ pub(crate) fn remove_group_layout(group_key: &str) {
     }
 }
 
+/// Per-webview group-key overrides. By default a webview's group is
+/// `appid#session` (all pages of one app/session share one host window). A
+/// surface presented as its own window registers an override here so it
+/// becomes its own group's `MainHost` — a standalone top-level window.
+pub(crate) static WEBTAG_GROUP_OVERRIDES: OnceLock<Mutex<HashMap<String, String>>> = OnceLock::new();
+
+pub(crate) fn set_group_override(webtag_key: &str, group_key: &str) {
+    let map = WEBTAG_GROUP_OVERRIDES.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Ok(mut map) = map.lock() {
+        map.insert(webtag_key.to_string(), group_key.to_string());
+    }
+}
+
+pub(crate) fn clear_group_override(webtag_key: &str) {
+    if let Some(map) = WEBTAG_GROUP_OVERRIDES.get()
+        && let Ok(mut map) = map.lock()
+    {
+        map.remove(webtag_key);
+    }
+}
+
+fn group_override_for(webtag_key: &str) -> Option<String> {
+    WEBTAG_GROUP_OVERRIDES
+        .get()
+        .and_then(|map| map.lock().ok())
+        .and_then(|map| map.get(webtag_key).cloned())
+}
+
 pub(crate) fn webtag_group_key(webtag_key: &str) -> String {
-    WebTag::from(webtag_key).group_key()
+    group_override_for(webtag_key).unwrap_or_else(|| WebTag::from(webtag_key).group_key())
 }
 
 pub(crate) fn current_exact_window_layout(webtag_key: &str) -> Option<WindowsWindowLayout> {

@@ -91,6 +91,10 @@ pub(crate) fn layout_group_windows(group_key: &str) {
         })
         .unwrap_or_default();
 
+    // Overlays must end up above the main content, so position them in a
+    // second pass — set_attached_window_rect raises each window to HWND_TOP,
+    // and the main/panels are laid out first.
+    let mut overlays = Vec::new();
     for (webtag_key, attachment) in attachments {
         let Some(hwnd) = window_handle_for_key(&webtag_key) else {
             continue;
@@ -108,11 +112,94 @@ pub(crate) fn layout_group_windows(group_key: &str) {
                 };
                 set_attached_window_rect(hwnd, rect, true);
             }
+            WindowAttachmentKind::Overlay => overlays.push((webtag_key, hwnd)),
+        }
+    }
+
+    if !overlays.is_empty() {
+        let dpi = unsafe { windows::Win32::UI::HiDpi::GetDpiForWindow(host) };
+        for (webtag_key, hwnd) in overlays {
+            let placement = overlay_placement_for(&webtag_key).unwrap_or_default();
+            let card = overlay_card_rect(rects.main, &placement, dpi);
+            set_attached_window_rect(hwnd, card, true);
+            // The card layers over arbitrary page content, so the corner-cap
+            // decorator (which paints corners in the window-background color)
+            // cannot round it; clip the card window to a rounded rect so the
+            // content behind shows through at the corners.
+            apply_overlay_corner_region(hwnd, rect_width(&card), rect_height(&card), dpi);
         }
     }
 
     unsafe {
         let _ = InvalidateRect(Some(host), None, false);
+    }
+}
+
+/// Logical (DIP) corner radius of an overlay card, matching the macOS card.
+const OVERLAY_CORNER_RADIUS_DIP: i32 = 12;
+
+/// Clips an overlay card window to a rounded rectangle so its corners reveal
+/// the page content layered behind it. The system owns the region after
+/// `SetWindowRgn` succeeds, so it must not be deleted here.
+fn apply_overlay_corner_region(hwnd: HWND, width: i32, height: i32, dpi: u32) {
+    if width <= 0 || height <= 0 {
+        return;
+    }
+    let scale = if dpi == 0 { 1.0 } else { dpi as f64 / 96.0 };
+    let diameter = (((OVERLAY_CORNER_RADIUS_DIP as f64) * scale).round() as i32 * 2).max(2);
+    unsafe {
+        let region = windows::Win32::Graphics::Gdi::CreateRoundRectRgn(
+            0,
+            0,
+            width + 1,
+            height + 1,
+            diameter,
+            diameter,
+        );
+        let _ = windows::Win32::Graphics::Gdi::SetWindowRgn(hwnd, Some(region), true);
+    }
+}
+
+/// Resolves an overlay card's rect within the content area: logical
+/// width/height (DPI-scaled), else a ratio of the content area, else a
+/// generous default, anchored per the requested position (e.g. `Bottom` sits
+/// the card flush against the content area's bottom edge).
+fn overlay_card_rect(content: RECT, placement: &OverlayCardPlacement, dpi: u32) -> RECT {
+    let area_w = (content.right - content.left).max(1);
+    let area_h = (content.bottom - content.top).max(1);
+    let scale = if dpi == 0 { 1.0 } else { dpi as f64 / 96.0 };
+
+    let mut width = if placement.width > 0.0 {
+        (placement.width * scale).round() as i32
+    } else if placement.width_ratio > 0.0 {
+        (area_w as f64 * placement.width_ratio.min(1.0)).round() as i32
+    } else {
+        (area_w as f64 * 0.9).round() as i32
+    };
+    let mut height = if placement.height > 0.0 {
+        (placement.height * scale).round() as i32
+    } else if placement.height_ratio > 0.0 {
+        (area_h as f64 * placement.height_ratio.min(1.0)).round() as i32
+    } else {
+        (area_h as f64 * 0.55).round() as i32
+    };
+    width = width.clamp(160.min(area_w), area_w);
+    height = height.clamp(120.min(area_h), area_h);
+
+    let center_x = content.left + (area_w - width) / 2;
+    let center_y = content.top + (area_h - height) / 2;
+    let (left, top) = match placement.anchor {
+        OverlayAnchor::Center => (center_x, center_y),
+        OverlayAnchor::Bottom => (center_x, content.bottom - height),
+        OverlayAnchor::Top => (center_x, content.top),
+        OverlayAnchor::Left => (content.left, center_y),
+        OverlayAnchor::Right => (content.right - width, center_y),
+    };
+    RECT {
+        left,
+        top,
+        right: left + width,
+        bottom: top + height,
     }
 }
 
