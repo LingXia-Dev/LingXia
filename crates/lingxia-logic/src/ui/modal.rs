@@ -1,10 +1,10 @@
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 use crate::i18n::js_error_from_platform_error;
 use crate::i18n::{js_internal_error, js_service_unavailable_error};
 use crate::{I18nKey, i18n::t};
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 use lingxia_platform::error::PlatformError;
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 use lingxia_platform::traits::ui::{ModalOptions, UserFeedback};
 use lxapp::{LxApp, lx};
 use rong::{FromJSObj, IntoJSObj, JSContext, JSFunc, JSResult, RongJSError};
@@ -28,7 +28,7 @@ struct JSModalOptions {
     confirm_color: Option<String>,
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 impl JSModalOptions {
     fn into_modal_options(self) -> ModalOptions {
         ModalOptions {
@@ -75,19 +75,19 @@ async fn present_modal(
     lxapp: &Arc<LxApp>,
     options: JSModalOptions,
 ) -> Result<JSModalResult, RongJSError> {
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     {
         return present_modal_webview(lxapp, options).await;
     }
 
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
         present_modal_native(lxapp, options).await
     }
 }
 
 /// macOS: render modal inside the WebView via Logic→View RPC.
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 async fn present_modal_webview(
     lxapp: &Arc<LxApp>,
     options: JSModalOptions,
@@ -114,7 +114,7 @@ async fn present_modal_webview(
 }
 
 /// Non-macOS: show modal via native platform UI.
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 async fn present_modal_native(
     lxapp: &Arc<LxApp>,
     options: JSModalOptions,

@@ -1,20 +1,14 @@
 //! User feedback (toast/modal/action sheet) is intentionally unimplemented on
-//! Windows for now:
+//! Windows: desktop LingXia renders these in the page WebView (the same path
+//! macOS uses), so the Logic layer never calls into the platform here. See
+//! `lingxia-logic/src/ui/{toast,modal,action_sheet}.rs`, where the
+//! `any(macos, windows)` branch routes to `call_view_with("ui.show*")` and the
+//! View framework draws the overlay.
 //!
-//! - Toasts: WinRT `ToastNotificationManager` only delivers notifications for
-//!   callers with package identity (MSIX) or an explicit AUMID that is backed
-//!   by a registered Start Menu shortcut. This process runs unpackaged with
-//!   neither, so `CreateToastNotifierWithId`/`Show` either fails with
-//!   "element not found" or silently drops the toast depending on the OS
-//!   build — too unreliable to ship. An in-process popup fallback would mean
-//!   building UI inside the platform layer, which is owned by the product
-//!   shell instead.
-//! - Modals/action sheets: `TaskDialogIndirect`/owned popups need the host
-//!   HWND for correct ownership and modality, and the platform layer has no
-//!   access to shell window handles by design.
-//!
-//! All four methods therefore report `NotSupported` honestly rather than
-//! pretending to display feedback.
+//! A native Win32 fallback would also be unreliable: WinRT toasts need package
+//! identity this unpackaged process lacks, and `TaskDialogIndirect`/owned
+//! popups need shell window handles the platform layer has no access to by
+//! design. All four methods therefore report `NotSupported`.
 
 use std::future::Future;
 
