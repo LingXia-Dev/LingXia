@@ -7,12 +7,14 @@
 
 use std::sync::{Arc, OnceLock};
 
-use lingxia_webview::platform::windows::{
-    WindowsChromeHit, WindowsChromePanel, WindowsChromeRenderer, WindowsChromeState,
-    WindowsFrameButton, WindowsNativePanelContent, WindowsNativePanelKind,
-    WindowsNavigationBarLayout, WindowsTabBarLayout, WindowsTabBarPosition, WindowsWindowLayout,
-    post_to_window_thread, set_windows_chrome_renderer,
+use lingxia_webview::platform::windows::lingxia_host::{
+    WindowsChromeAttachedLayout, WindowsChromeCommand, WindowsChromeHit, WindowsChromePanel,
+    WindowsChromePanelLayout, WindowsChromePanelLayoutInput, WindowsChromeRenderer,
+    WindowsChromeState, WindowsFrameButton, WindowsHostPanelContent, WindowsPanelPosition,
+    WindowsWindowLayout, set_windows_chrome_renderer,
 };
+use lingxia_webview::platform::windows::post_to_window_thread;
+use serde_json::json;
 use windows::Win32::Foundation::{COLORREF, HWND, RECT};
 use windows::Win32::Graphics::Gdi::{
     CLEARTYPE_QUALITY, CLIP_DEFAULT_PRECIS, CreateFontW, DEFAULT_CHARSET, DEFAULT_PITCH, DT_CENTER,
@@ -26,16 +28,19 @@ use windows::core::{PCWSTR, w};
 use super::style::*;
 
 mod drawing;
+mod icons;
+mod layout;
 mod native_panel;
 mod sidebar;
 mod top_bar;
 pub(super) use drawing::*;
+pub use layout::*;
 use native_panel::*;
 use sidebar::*;
 pub use top_bar::begin_address_edit;
 use top_bar::*;
 
-/// GlobalNavButton (hamburger) — the closest Fluent match to Arc's
+/// GlobalNavButton (hamburger) 閳?the closest Fluent match to Arc's
 /// sidebar collapse/expand toggle.
 pub(super) const GLYPH_SIDEBAR_TOGGLE: &str = "\u{e700}";
 
@@ -110,16 +115,59 @@ pub(super) const SHELL_TEXT_POINT_SIZE: i32 = 9;
 
 pub(super) const SHELL_TEXT_WEIGHT: i32 = 400;
 
+pub(super) const ATTACHED_PANEL_WIDTH: i32 = 380;
+
+pub(super) const ATTACHED_PANEL_BOTTOM_HEIGHT: i32 = 280;
+
+pub(super) const ATTACHED_PANEL_MIN_SIZE: i32 = 160;
+
+pub(super) const ATTACHED_PANEL_MAX_SIZE: i32 = 700;
+
+pub(super) const ATTACHED_PANEL_HANDLE_SIZE: i32 = 5;
+
+pub(super) const ATTACHED_MAIN_MIN_WIDTH: i32 = 320;
+
+pub(super) const ATTACHED_MAIN_MIN_HEIGHT: i32 = 240;
+
+pub(super) mod command_id {
+    pub(super) const TAB_BAR_CLICK: &str = "tabbar.click";
+    pub(super) const PANEL_ACTIVATOR_CLICK: &str = "panel-activator.click";
+    pub(super) const NAVIGATION_BACK: &str = "navigation.back";
+    pub(super) const NAVIGATION_HOME: &str = "navigation.home";
+    pub(super) const BROWSER_NEW_TAB: &str = "browser.new-tab";
+    pub(super) const BROWSER_TAB_CLICK: &str = "browser.tab.click";
+    pub(super) const BROWSER_TAB_CLOSE: &str = "browser.tab.close";
+    pub(super) const NATIVE_PANEL_TAB_CLICK: &str = "native-panel.tab.click";
+    pub(super) const NATIVE_PANEL_TAB_CLOSE: &str = "native-panel.tab.close";
+    pub(super) const NATIVE_PANEL_NEW_TAB: &str = "native-panel.new-tab";
+    pub(super) const NATIVE_PANEL_MAXIMIZE: &str = "native-panel.maximize";
+    pub(super) const NATIVE_PANEL_TAB_RENAME: &str = "native-panel.tab.rename";
+    pub(super) const NATIVE_PANEL_RIGHT_CLICK: &str = "native-panel.right-click";
+    pub(super) const BROWSER_NAV_BACK: &str = "browser.nav.back";
+    pub(super) const BROWSER_NAV_FORWARD: &str = "browser.nav.forward";
+    pub(super) const BROWSER_NAV_RELOAD: &str = "browser.nav.reload";
+    pub(super) const BROWSER_ADDRESS_BAR: &str = "browser.address-bar";
+    pub(super) const SIDEBAR_TOGGLE: &str = "sidebar.toggle";
+    pub(super) const SIDEBAR_GROUP_TOGGLE: &str = "sidebar.group.toggle";
+    pub(super) const SIDEBAR_ACTION: &str = "sidebar.action";
+}
+
+pub(super) fn chrome_command(
+    id: impl Into<String>,
+    payload: serde_json::Value,
+) -> WindowsChromeHit {
+    WindowsChromeHit::Command(WindowsChromeCommand::new(id).with_payload(payload))
+}
+
 /// The shell's window chrome renderer, registered into `lingxia-webview`.
 struct ShellChromeRenderer;
 
 impl WindowsChromeRenderer for ShellChromeRenderer {
     fn content_rect(&self, client: RECT, layout: &WindowsWindowLayout) -> RECT {
+        let Some(layout) = shell_layout(layout) else {
+            return client;
+        };
         compute_chrome_rects(client, layout).content
-    }
-
-    fn panel_gap(&self) -> i32 {
-        SHELL_PANEL_PADDING
     }
 
     fn panel_corner_radius(&self) -> i32 {
@@ -133,16 +181,14 @@ impl WindowsChromeRenderer for ShellChromeRenderer {
         Some(rgb_to_colorref(SHELL_WINDOW_BACKGROUND))
     }
 
-    fn maximized_panel_rect(&self, client: RECT, _layout: &WindowsWindowLayout) -> RECT {
-        // A maximized panel takes the whole app area below the caption
-        // strip — covering the sidebar — so only the frame buttons stay
-        // reachable while maximized.
-        RECT {
-            left: client.left,
-            top: (client.top + SHELL_TOP_BAR_HEIGHT).min(client.bottom),
-            right: client.right,
-            bottom: client.bottom,
-        }
+    fn attached_layout(
+        &self,
+        client: RECT,
+        layout: &WindowsWindowLayout,
+        panels: &[WindowsChromePanelLayoutInput],
+    ) -> Option<WindowsChromeAttachedLayout> {
+        let layout = shell_layout(layout)?;
+        Some(compute_attached_layout(client, layout, panels))
     }
 
     fn paint(&self, hdc: HDC, state: &WindowsChromeState) {
@@ -151,14 +197,17 @@ impl WindowsChromeRenderer for ShellChromeRenderer {
         // rect is clipped out to keep chrome repaints from drawing over it.
         let saved = unsafe { SaveDC(hdc) };
         super::text_input::exclude_active_inline_edit(hdc, state.hwnd);
-        draw_window_chrome(hdc, state);
+        if let Some(layout) = shell_layout(&state.layout) {
+            draw_window_chrome(hdc, state, layout);
+        }
         unsafe {
             let _ = RestoreDC(hdc, saved);
         }
     }
 
     fn hit_test(&self, state: &WindowsChromeState, point: (i32, i32)) -> Option<WindowsChromeHit> {
-        chrome_hit_test(state, point)
+        let layout = shell_layout(&state.layout)?;
+        chrome_hit_test(state, layout, point)
     }
 
     fn frame_button_rect(
@@ -177,6 +226,10 @@ pub(super) fn install() {
     set_windows_chrome_renderer(Arc::new(ShellChromeRenderer));
 }
 
+fn shell_layout(layout: &WindowsWindowLayout) -> Option<&WindowsShellWindowLayout> {
+    layout.downcast_ref::<WindowsShellWindowLayout>()
+}
+
 #[derive(Debug, Clone, Copy)]
 pub(super) struct ChromeRects {
     pub(super) content: RECT,
@@ -186,7 +239,7 @@ pub(super) struct ChromeRects {
     pub(super) tab_bar: Option<RECT>,
 }
 
-pub(super) fn compute_chrome_rects(client: RECT, layout: &WindowsWindowLayout) -> ChromeRects {
+pub(super) fn compute_chrome_rects(client: RECT, layout: &WindowsShellWindowLayout) -> ChromeRects {
     let mut content = client;
     let mut top_bar_left = client.left;
     let mut top_bar_right = client.right;
@@ -195,7 +248,7 @@ pub(super) fn compute_chrome_rects(client: RECT, layout: &WindowsWindowLayout) -
         .as_ref()
         .filter(|tabbar| tabbar.visible && !tabbar.items.is_empty() && tabbar.dimension > 0)
         .map(|tabbar| match tabbar.position {
-            WindowsTabBarPosition::Left => {
+            WindowsShellTabBarPosition::Left => {
                 // A collapsed sidebar keeps the side-card layout (insets,
                 // top bar) at width 0; the top-bar toggle re-expands it.
                 let width = if tabbar.collapsed {
@@ -218,7 +271,7 @@ pub(super) fn compute_chrome_rects(client: RECT, layout: &WindowsWindowLayout) -
                 content.bottom -= SHELL_PANEL_PADDING;
                 rect
             }
-            WindowsTabBarPosition::Right => {
+            WindowsShellTabBarPosition::Right => {
                 let width = if tabbar.collapsed {
                     0
                 } else {
@@ -239,7 +292,7 @@ pub(super) fn compute_chrome_rects(client: RECT, layout: &WindowsWindowLayout) -
                 content.bottom -= SHELL_PANEL_PADDING;
                 rect
             }
-            WindowsTabBarPosition::Bottom => {
+            WindowsShellTabBarPosition::Bottom => {
                 let top = (content.bottom - tabbar.dimension).max(content.top);
                 let rect = RECT {
                     left: content.left,
@@ -254,7 +307,7 @@ pub(super) fn compute_chrome_rects(client: RECT, layout: &WindowsWindowLayout) -
 
     if !matches!(
         layout.tab_bar.as_ref().map(|tabbar| tabbar.position),
-        Some(WindowsTabBarPosition::Left | WindowsTabBarPosition::Right)
+        Some(WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right)
     ) {
         content.top += SHELL_TOP_BAR_HEIGHT;
         top_bar_left = content.left;
@@ -285,10 +338,168 @@ pub(super) fn compute_chrome_rects(client: RECT, layout: &WindowsWindowLayout) -
     }
 }
 
+fn compute_attached_layout(
+    client: RECT,
+    layout: &WindowsShellWindowLayout,
+    panels: &[WindowsChromePanelLayoutInput],
+) -> WindowsChromeAttachedLayout {
+    let mut main = compute_chrome_rects(client, layout).content;
+    let mut out = Vec::new();
+
+    if let Some(maximized) = panels.iter().find(|panel| panel.docked && panel.maximized) {
+        out.push(WindowsChromePanelLayout {
+            panel_id: maximized.panel_id.clone(),
+            webtag_key: maximized.webtag_key.clone(),
+            rect: shell_maximized_panel_rect(client),
+            resize_handle: None,
+        });
+        main.bottom = main.top;
+        return WindowsChromeAttachedLayout { main, panels: out };
+    }
+
+    let mut ordered = panels.iter().collect::<Vec<_>>();
+    ordered.sort_by_key(|panel| match panel.position {
+        WindowsPanelPosition::Left | WindowsPanelPosition::Right => 0,
+        WindowsPanelPosition::Bottom => 1,
+    });
+
+    for panel in ordered {
+        let (rect, resize_handle) = match panel.position {
+            WindowsPanelPosition::Left => {
+                let width = attached_panel_size(panel, main, ATTACHED_PANEL_WIDTH);
+                let rect = RECT {
+                    left: main.left,
+                    top: main.top,
+                    right: (main.left + width).min(main.right),
+                    bottom: main.bottom,
+                };
+                let handle_width = SHELL_PANEL_PADDING.max(ATTACHED_PANEL_HANDLE_SIZE);
+                let handle = normalize_rect(RECT {
+                    left: rect.right,
+                    top: rect.top,
+                    right: (rect.right + handle_width).min(main.right),
+                    bottom: rect.bottom,
+                });
+                main.left = handle.right.min(main.right);
+                (rect, Some(handle))
+            }
+            WindowsPanelPosition::Right => {
+                let width = attached_panel_size(panel, main, ATTACHED_PANEL_WIDTH);
+                let rect = RECT {
+                    left: (main.right - width).max(main.left),
+                    top: main.top,
+                    right: main.right,
+                    bottom: main.bottom,
+                };
+                let handle_width = SHELL_PANEL_PADDING.max(ATTACHED_PANEL_HANDLE_SIZE);
+                let handle = normalize_rect(RECT {
+                    left: (rect.left - handle_width).max(main.left),
+                    top: rect.top,
+                    right: rect.left,
+                    bottom: rect.bottom,
+                });
+                main.right = handle.left.max(main.left);
+                (rect, Some(handle))
+            }
+            WindowsPanelPosition::Bottom if panel.docked => {
+                let height = attached_panel_size(panel, main, ATTACHED_PANEL_BOTTOM_HEIGHT);
+                let rect = RECT {
+                    left: main.left,
+                    top: (main.bottom - height).max(main.top),
+                    right: main.right,
+                    bottom: main.bottom,
+                };
+                let handle = normalize_rect(RECT {
+                    left: rect.left,
+                    top: rect.top,
+                    right: rect.right,
+                    bottom: (rect.top + ATTACHED_PANEL_HANDLE_SIZE).min(rect.bottom),
+                });
+                main.bottom = rect.top.max(main.top);
+                (rect, Some(handle))
+            }
+            WindowsPanelPosition::Bottom => {
+                let height = attached_panel_size(panel, main, ATTACHED_PANEL_BOTTOM_HEIGHT);
+                let rect = RECT {
+                    left: main.left,
+                    top: (main.bottom - height).max(main.top),
+                    right: main.right,
+                    bottom: main.bottom,
+                };
+                let handle_height = SHELL_PANEL_PADDING.max(ATTACHED_PANEL_HANDLE_SIZE);
+                let handle = normalize_rect(RECT {
+                    left: rect.left,
+                    top: (rect.top - handle_height).max(main.top),
+                    right: rect.right,
+                    bottom: rect.top,
+                });
+                main.bottom = handle.top.max(main.top);
+                (rect, Some(handle))
+            }
+        };
+
+        out.push(WindowsChromePanelLayout {
+            panel_id: panel.panel_id.clone(),
+            webtag_key: panel.webtag_key.clone(),
+            rect: normalize_rect(rect),
+            resize_handle,
+        });
+    }
+
+    WindowsChromeAttachedLayout {
+        main: normalize_rect(main),
+        panels: out,
+    }
+}
+
+fn attached_panel_size(
+    panel: &WindowsChromePanelLayoutInput,
+    content: RECT,
+    default_size: i32,
+) -> i32 {
+    let requested = panel.requested_size.unwrap_or(default_size).max(1);
+    let available = match panel.position {
+        WindowsPanelPosition::Bottom => rect_height(&content),
+        WindowsPanelPosition::Left | WindowsPanelPosition::Right => rect_width(&content),
+    };
+    if available <= 0 {
+        return 0;
+    }
+
+    let max_with_main = match panel.position {
+        WindowsPanelPosition::Bottom => available - SHELL_PANEL_PADDING - ATTACHED_MAIN_MIN_HEIGHT,
+        WindowsPanelPosition::Left | WindowsPanelPosition::Right => {
+            available - SHELL_PANEL_PADDING - ATTACHED_MAIN_MIN_WIDTH
+        }
+    };
+    let max_size = if max_with_main > 0 {
+        max_with_main
+    } else {
+        available / 2
+    }
+    .min(ATTACHED_PANEL_MAX_SIZE)
+    .min(available)
+    .max(1);
+    let min_size = ATTACHED_PANEL_MIN_SIZE.min(max_size);
+    requested.clamp(min_size, max_size)
+}
+
+fn shell_maximized_panel_rect(client: RECT) -> RECT {
+    RECT {
+        left: client.left,
+        top: (client.top + SHELL_TOP_BAR_HEIGHT).min(client.bottom),
+        right: client.right,
+        bottom: client.bottom,
+    }
+}
+
 /// Chrome rects for a concrete window state: when the host has attached
 /// panels, the navigation bar is clipped to the main content card.
-pub(super) fn chrome_rects_for_state(state: &WindowsChromeState) -> ChromeRects {
-    let mut rects = compute_chrome_rects(state.client, &state.layout);
+pub(super) fn chrome_rects_for_state(
+    state: &WindowsChromeState,
+    layout: &WindowsShellWindowLayout,
+) -> ChromeRects {
+    let mut rects = compute_chrome_rects(state.client, layout);
     if rects.navigation_bar.is_some()
         && let Some(attached) = &state.attached
     {
@@ -302,10 +513,13 @@ pub(super) fn chrome_rects_for_state(state: &WindowsChromeState) -> ChromeRects 
     rects
 }
 
-pub(super) fn draw_window_chrome(hdc: HDC, state: &WindowsChromeState) {
+pub(super) fn draw_window_chrome(
+    hdc: HDC,
+    state: &WindowsChromeState,
+    layout: &WindowsShellWindowLayout,
+) {
     let client = state.client;
-    let layout = &state.layout;
-    let rects = chrome_rects_for_state(state);
+    let rects = chrome_rects_for_state(state, layout);
 
     fill_rect(hdc, client, SHELL_WINDOW_BACKGROUND);
     draw_shell_top_bar(hdc, &rects);
@@ -324,7 +538,7 @@ pub(super) fn draw_window_chrome(hdc: HDC, state: &WindowsChromeState) {
     }
     // Painted after the navigation bar: the navbar fills the whole top bar
     // with its own background, and the toggle/address controls sit on top.
-    draw_top_bar_controls(hdc, state, &rects);
+    draw_top_bar_controls(hdc, state, &rects, layout);
     draw_panel_activators(hdc, client, &rects, layout);
     draw_maximized_native_panels(hdc, state);
     draw_window_frame_buttons(hdc, state);
@@ -332,11 +546,11 @@ pub(super) fn draw_window_chrome(hdc: HDC, state: &WindowsChromeState) {
 
 pub(super) fn chrome_hit_test(
     state: &WindowsChromeState,
+    layout: &WindowsShellWindowLayout,
     point: (i32, i32),
 ) -> Option<WindowsChromeHit> {
     let client = state.client;
-    let layout = &state.layout;
-    let rects = chrome_rects_for_state(state);
+    let rects = chrome_rects_for_state(state, layout);
 
     if let Some((button, _)) = window_frame_button_rects(client)
         .into_iter()
@@ -347,19 +561,19 @@ pub(super) fn chrome_hit_test(
 
     if let Some(attached) = &state.attached {
         for panel in &attached.panels {
-            if panel
-                .native
-                .as_ref()
-                .is_some_and(|native| native.kind == WindowsNativePanelKind::Terminal)
-                && rect_contains(&panel.rect, point)
-            {
+            if panel.host_content.is_some() && rect_contains(&panel.rect, point) {
                 // Header elements (tabs, new-tab, maximize) win over the
                 // generic focus hit; the rest of the panel focuses it.
                 if let Some(hit) = terminal_header_hit_test(panel, point) {
                     return Some(hit);
                 }
-                return Some(WindowsChromeHit::NativePanel {
-                    panel_id: panel.panel_id.clone(),
+                return Some(WindowsChromeHit::Focusable {
+                    id: panel.panel_id.clone(),
+                    context_menu: Some(
+                        WindowsChromeCommand::new(command_id::NATIVE_PANEL_RIGHT_CLICK)
+                            .with_payload(json!({ "panel_id": panel.panel_id.clone() }))
+                            .with_screen_position(),
+                    ),
                 });
             }
         }
@@ -369,27 +583,27 @@ pub(super) fn chrome_hit_test(
     if let Some(toggle) = controls.sidebar_toggle
         && rect_contains(&toggle, point)
     {
-        return Some(WindowsChromeHit::SidebarToggle);
+        return Some(chrome_command(command_id::SIDEBAR_TOGGLE, json!({})));
     }
     if let Some(back) = controls.nav_back
         && rect_contains(&back, point)
     {
-        return Some(WindowsChromeHit::BrowserNavBack);
+        return Some(chrome_command(command_id::BROWSER_NAV_BACK, json!({})));
     }
     if let Some(forward) = controls.nav_forward
         && rect_contains(&forward, point)
     {
-        return Some(WindowsChromeHit::BrowserNavForward);
+        return Some(chrome_command(command_id::BROWSER_NAV_FORWARD, json!({})));
     }
     if let Some(reload) = controls.nav_reload
         && rect_contains(&reload, point)
     {
-        return Some(WindowsChromeHit::BrowserNavReload);
+        return Some(chrome_command(command_id::BROWSER_NAV_RELOAD, json!({})));
     }
     if let Some(address) = controls.address
         && rect_contains(&address, point)
     {
-        return Some(WindowsChromeHit::BrowserAddressBar);
+        return Some(chrome_command(command_id::BROWSER_ADDRESS_BAR, json!({})));
     }
 
     if !address_bar_visible(layout)
@@ -400,7 +614,7 @@ pub(super) fn chrome_hit_test(
         if navbar.show_back_button
             && rect_contains(&nav_button_rect(navbar_rect, buttons_left, 0), point)
         {
-            return Some(WindowsChromeHit::NavigationBack);
+            return Some(chrome_command(command_id::NAVIGATION_BACK, json!({})));
         }
         let home_index = if navbar.show_back_button { 1 } else { 0 };
         if navbar.show_home_button
@@ -409,14 +623,17 @@ pub(super) fn chrome_hit_test(
                 point,
             )
         {
-            return Some(WindowsChromeHit::NavigationHome);
+            return Some(chrome_command(command_id::NAVIGATION_HOME, json!({})));
         }
         return Some(WindowsChromeHit::Caption);
     }
 
     for (panel_id, rect) in panel_activator_rects(client, &rects, layout) {
         if rect_contains(&rect, point) {
-            return Some(WindowsChromeHit::PanelActivator { panel_id });
+            return Some(chrome_command(
+                command_id::PANEL_ACTIVATOR_CLICK,
+                json!({ "panel_id": panel_id }),
+            ));
         }
     }
 
@@ -425,17 +642,21 @@ pub(super) fn chrome_hit_test(
     {
         let sidebar = matches!(
             tabbar.position,
-            WindowsTabBarPosition::Left | WindowsTabBarPosition::Right
+            WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right
         );
         if sidebar {
             if rect_contains(&sidebar_group_chevron_rect(tabbar_rect), point) {
-                return Some(WindowsChromeHit::SidebarGroupToggle {
-                    group: tabbar.group_id.clone(),
-                });
+                return Some(chrome_command(
+                    command_id::SIDEBAR_GROUP_TOGGLE,
+                    json!({ "group": tabbar.group_id.clone() }),
+                ));
             }
             for (action_id, action_rect) in sidebar_header_action_rects(tabbar_rect, tabbar) {
                 if rect_contains(&action_rect, point) {
-                    return Some(WindowsChromeHit::SidebarAction { action_id });
+                    return Some(chrome_command(
+                        command_id::SIDEBAR_ACTION,
+                        json!({ "action_id": action_id }),
+                    ));
                 }
             }
         }
@@ -447,11 +668,14 @@ pub(super) fn chrome_hit_test(
                     tab_item_rect(tabbar_rect, tabbar.position, tabbar.items.len(), index)
                 };
                 if rect_contains(&item_rect, point) {
-                    return Some(WindowsChromeHit::TabBarItem { index });
+                    return Some(chrome_command(
+                        command_id::TAB_BAR_CLICK,
+                        json!({ "index": index }),
+                    ));
                 }
             }
         }
-        if sidebar && let Some(hit) = sidebar_browser_hit_test(tabbar_rect, tabbar, point) {
+        if sidebar && let Some(hit) = sidebar_auxiliary_hit_test(tabbar_rect, tabbar, point) {
             return Some(hit);
         }
         return Some(WindowsChromeHit::Chrome);
@@ -474,12 +698,8 @@ pub(super) fn draw_content_cards(hdc: HDC, state: &WindowsChromeState, rects: &C
             square_card_bottom_corners(hdc, attached.main);
         }
         for panel in &attached.panels {
-            // Terminal panels paint their own full-bleed dark card.
-            if panel
-                .native
-                .as_ref()
-                .is_some_and(|native| native.kind == WindowsNativePanelKind::Terminal)
-            {
+            // Interactive panels paint their own full-bleed card.
+            if panel.host_content.is_some() {
                 continue;
             }
             draw_content_card(hdc, panel.rect);
@@ -487,7 +707,7 @@ pub(super) fn draw_content_cards(hdc: HDC, state: &WindowsChromeState, rects: &C
         for panel in &attached.panels {
             // Maximized panels cover the sidebar and are repainted after
             // the sidebar pass in `draw_window_chrome`.
-            if panel.native.is_some() && !panel_is_maximized(panel) {
+            if panel.host_content.is_some() && !panel_is_maximized(panel) {
                 draw_native_panel_content(hdc, state.hwnd, panel);
             }
         }

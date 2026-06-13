@@ -30,9 +30,11 @@ use std::time::Duration;
 
 #[cfg(feature = "terminal-runtime")]
 use lingxia_terminal::TerminalSnapshot;
+use lingxia_webview::platform::windows::lingxia_host::WindowsPanelPosition;
 #[cfg(feature = "terminal-runtime")]
-use lingxia_webview::platform::windows::WindowsNativePanelTab;
-use lingxia_webview::platform::windows::WindowsPanelPosition;
+use lingxia_webview::platform::windows::lingxia_host::{
+    WindowsHostPanelKeyEvent, WindowsHostPanelTab,
+};
 
 /// One terminal tab: a PTY session plus its title state. `auto_title`
 /// tracks the session's reported title; `custom_title` (set by rename)
@@ -64,7 +66,7 @@ struct WindowsTerminalPanel {
     /// Stop flag of the panel's poll thread.
     stop: Arc<AtomicBool>,
     /// Tab strip last pushed to the webview layer (pushed only on change).
-    published_tabs: Vec<WindowsNativePanelTab>,
+    published_tabs: Vec<WindowsHostPanelTab>,
 }
 
 #[cfg(feature = "terminal-runtime")]
@@ -72,8 +74,8 @@ static WINDOWS_TERMINAL_PANELS: OnceLock<Mutex<HashMap<String, WindowsTerminalPa
     OnceLock::new();
 
 #[cfg(feature = "terminal-runtime")]
-fn windows_terminal_panels()
--> std::sync::MutexGuard<'static, HashMap<String, WindowsTerminalPanel>> {
+fn windows_terminal_panels() -> std::sync::MutexGuard<'static, HashMap<String, WindowsTerminalPanel>>
+{
     WINDOWS_TERMINAL_PANELS
         .get_or_init(|| Mutex::new(HashMap::new()))
         .lock()
@@ -90,7 +92,7 @@ pub(super) fn open_windows_terminal_panel(
     if crate::terminal::ghostty_available() {
         return open_windows_terminal_session_panel(panel_id, title, position);
     }
-    lingxia_webview::platform::windows::show_native_terminal_panel(
+    lingxia_webview::platform::windows::lingxia_host::show_interactive_host_panel(
         panel_id,
         title,
         terminal_panel_status_text(),
@@ -102,7 +104,8 @@ pub(super) fn open_windows_terminal_panel(
 pub(super) fn close_windows_terminal_panel(panel_id: &str) -> Result<(), String> {
     #[cfg(feature = "terminal-runtime")]
     shutdown_windows_terminal_panel_state(panel_id);
-    lingxia_webview::platform::windows::hide_native_panel(panel_id).map_err(|err| err.to_string())
+    lingxia_webview::platform::windows::lingxia_host::hide_host_panel(panel_id)
+        .map_err(|err| err.to_string())
 }
 
 fn terminal_panel_status_text() -> &'static str {
@@ -133,11 +136,7 @@ pub(super) fn activate_terminal_tab(panel_id: &str, tab_id: u64) {
             let Some(panel) = panels.get_mut(panel_id) else {
                 return;
             };
-            let Some(index) = panel
-                .tabs
-                .iter()
-                .position(|tab| tab.session_id == tab_id)
-            else {
+            let Some(index) = panel.tabs.iter().position(|tab| tab.session_id == tab_id) else {
                 return;
             };
             panel.active = index;
@@ -199,7 +198,9 @@ pub(super) fn toggle_terminal_panel_maximized(panel_id: &str) {
             panel.maximized = !panel.maximized;
             panel.maximized
         };
-        lingxia_webview::platform::windows::set_native_panel_maximized(panel_id, maximized);
+        lingxia_webview::platform::windows::lingxia_host::set_host_panel_maximized(
+            panel_id, maximized,
+        );
     }
     #[cfg(not(feature = "terminal-runtime"))]
     let _ = panel_id;
@@ -268,7 +269,7 @@ pub(super) fn show_terminal_context_menu(
 }
 
 /// Copies the active session's visible screen text to the clipboard
-/// (no cell-level selection support yet — Copy takes the whole screen).
+/// (no cell-level selection support yet 鈥?Copy takes the whole screen).
 #[cfg(all(feature = "terminal-runtime", feature = "shell-runtime"))]
 fn copy_panel_screen_to_clipboard(panel_id: &str) {
     let Some(session_id) = active_session_id(panel_id) else {
@@ -324,12 +325,10 @@ pub(super) fn paste_clipboard_into_panel(panel_id: &str) {
 fn set_terminal_tab_custom_title(panel_id: &str, tab_id: u64, text: &str) {
     {
         let mut panels = windows_terminal_panels();
-        let Some(tab) = panels.get_mut(panel_id).and_then(|panel| {
-            panel
-                .tabs
-                .iter_mut()
-                .find(|tab| tab.session_id == tab_id)
-        }) else {
+        let Some(tab) = panels
+            .get_mut(panel_id)
+            .and_then(|panel| panel.tabs.iter_mut().find(|tab| tab.session_id == tab_id))
+        else {
             return;
         };
         let trimmed = text.trim();
@@ -346,8 +345,8 @@ fn set_terminal_tab_custom_title(panel_id: &str, tab_id: u64, text: &str) {
 fn create_panel_session(panel_id: &str) -> u64 {
     let _ = panel_id;
     #[cfg(feature = "shell-runtime")]
-    let (cols, rows) = lingxia_shell::windows::terminal_grid::desired_grid_size(panel_id)
-        .unwrap_or((100, 24));
+    let (cols, rows) =
+        lingxia_shell::windows::terminal_grid::desired_grid_size(panel_id).unwrap_or((100, 24));
     #[cfg(not(feature = "shell-runtime"))]
     let (cols, rows) = (100, 24);
     lingxia_terminal::terminal_create(cols, rows)
@@ -362,7 +361,7 @@ fn open_windows_terminal_session_panel(
     shutdown_windows_terminal_panel_state(panel_id);
     let session_id = create_panel_session(panel_id);
     if session_id == 0 {
-        return lingxia_webview::platform::windows::show_native_terminal_panel(
+        return lingxia_webview::platform::windows::lingxia_host::show_interactive_host_panel(
             panel_id,
             title,
             "Terminal failed to start",
@@ -371,7 +370,7 @@ fn open_windows_terminal_session_panel(
         .map_err(|err| err.to_string());
     }
 
-    if let Err(err) = lingxia_webview::platform::windows::show_native_terminal_panel(
+    if let Err(err) = lingxia_webview::platform::windows::lingxia_host::show_interactive_host_panel(
         panel_id,
         title,
         "Starting terminal...",
@@ -385,10 +384,10 @@ fn open_windows_terminal_session_panel(
     // sequence knowledge lives in lingxia-terminal's encoder. Input always
     // routes to the panel's ACTIVE session at event time.
     let input_panel_key = panel_id.to_string();
-    lingxia_webview::platform::windows::set_native_panel_input_handler(
+    lingxia_webview::platform::windows::lingxia_host::set_host_panel_input_handler(
         panel_id,
         Arc::new(
-            move |event: lingxia_webview::platform::windows::WindowsPanelKeyEvent| {
+            move |event: WindowsHostPanelKeyEvent| {
                 let Some(session_id) = active_session_id(&input_panel_key) else {
                     return false;
                 };
@@ -553,10 +552,7 @@ fn update_auto_title(panel_id: &str, session_id: u64, snapshot: &TerminalSnapsho
 fn active_session_id(panel_id: &str) -> Option<u64> {
     let panels = windows_terminal_panels();
     let panel = panels.get(panel_id)?;
-    panel
-        .tabs
-        .get(panel.active)
-        .map(|tab| tab.session_id)
+    panel.tabs.get(panel.active).map(|tab| tab.session_id)
 }
 
 /// Closes one tab's session and removes the tab, activating a neighbor.
@@ -611,7 +607,7 @@ fn close_terminal_tab_session(panel_id: &str, session_id: u64) -> bool {
 /// caller (`close_windows_terminal_panel`).
 #[cfg(feature = "terminal-runtime")]
 fn shutdown_windows_terminal_panel_state(panel_id: &str) {
-    lingxia_webview::platform::windows::clear_native_panel_input_handler(panel_id);
+    lingxia_webview::platform::windows::lingxia_host::clear_host_panel_input_handler(panel_id);
     #[cfg(feature = "shell-runtime")]
     lingxia_shell::windows::terminal_grid::clear_panel(panel_id);
     if let Some(panel) = windows_terminal_panels().remove(panel_id) {
@@ -633,11 +629,11 @@ fn publish_tab_strip(panel_id: &str) {
         let Some(panel) = panels.get_mut(panel_id) else {
             return;
         };
-        let strip: Vec<WindowsNativePanelTab> = panel
+        let strip: Vec<WindowsHostPanelTab> = panel
             .tabs
             .iter()
             .enumerate()
-            .map(|(index, tab)| WindowsNativePanelTab {
+            .map(|(index, tab)| WindowsHostPanelTab {
                 id: tab.session_id,
                 title: tab.display_title().to_string(),
                 active: index == panel.active,
@@ -649,7 +645,7 @@ fn publish_tab_strip(panel_id: &str) {
         panel.published_tabs = strip.clone();
         strip
     };
-    lingxia_webview::platform::windows::set_native_panel_tabs(panel_id, strip);
+    lingxia_webview::platform::windows::lingxia_host::set_host_panel_tabs(panel_id, strip);
 }
 
 /// Publishes the active session's current snapshot immediately (tab
@@ -670,14 +666,14 @@ fn publish_active_snapshot(panel_id: &str) {
 #[cfg(all(feature = "terminal-runtime", feature = "shell-runtime"))]
 fn publish_windows_terminal_snapshot(panel_id: &str, snapshot: TerminalSnapshot) {
     lingxia_shell::windows::terminal_grid::set_panel_snapshot(panel_id, snapshot);
-    lingxia_webview::platform::windows::invalidate_native_panel(panel_id);
+    lingxia_webview::platform::windows::lingxia_host::invalidate_host_panel(panel_id);
 }
 
 /// Without the shell chrome there is no grid painter; flatten the snapshot
 /// to the panel's plain body text as before.
 #[cfg(all(feature = "terminal-runtime", not(feature = "shell-runtime")))]
 fn publish_windows_terminal_snapshot(panel_id: &str, snapshot: TerminalSnapshot) {
-    let _ = lingxia_webview::platform::windows::update_native_panel_body(
+    let _ = lingxia_webview::platform::windows::lingxia_host::update_host_panel_body(
         panel_id,
         &windows_terminal_snapshot_body(&snapshot),
     );

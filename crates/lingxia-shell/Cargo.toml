@@ -17,7 +17,7 @@ lingxia-app-context = { workspace = true }
 lingxia-browser = { workspace = true }
 lingxia-service = { workspace = true }
 lingxia-terminal = { workspace = true }
-lingxia-webview = { workspace = true }
+lingxia-webview = { workspace = true, features = ["windows-host"] }
 lingxia-native-macros = { workspace = true }
 lingxia-platform = { workspace = true }
 futures = { workspace = true }
@@ -32,6 +32,7 @@ rong = { workspace = true, default-features = false }
 lingxia-proxy = { workspace = true, features = ["rule-list-routing"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
+image = { version = "0.25.10", default-features = false, features = ["png"] }
 windows = { workspace = true, features = [
     "Win32_Foundation",
     "Win32_Graphics_Gdi",

@@ -1,27 +1,27 @@
-//! Sidebar browser-tab rows.
+//! Sidebar auxiliary rows.
 
 use super::*;
 
-/// Geometry of the sidebar browser section: separator line, one row rect
-/// per browser tab (rows that would collide with the footer are dropped),
-/// and the "New Tab" row.
-pub(in crate::windows::chrome) struct SidebarBrowserRects {
+/// Geometry of the sidebar auxiliary section: separator line, one row rect
+/// per auxiliary item (rows that would collide with the footer are dropped),
+/// and the add row.
+pub(in crate::windows::chrome) struct SidebarAuxiliaryRects {
     pub(super) separator: RECT,
-    /// Row rects aligned index-for-index with `tabbar.browser_tabs`
+    /// Row rects aligned index-for-index with `tabbar.auxiliary_items`
     /// (possibly truncated when rows run out of vertical space).
-    pub(super) tabs: Vec<RECT>,
-    pub(super) new_tab: Option<RECT>,
+    pub(super) items: Vec<RECT>,
+    pub(super) add: Option<RECT>,
 }
 
-pub(in crate::windows::chrome) fn sidebar_browser_rects(
+pub(in crate::windows::chrome) fn sidebar_auxiliary_rects(
     rect: RECT,
-    tabbar: &WindowsTabBarLayout,
-) -> Option<SidebarBrowserRects> {
-    if tabbar.browser_tabs.is_empty() && !tabbar.show_browser_new_tab {
+    tabbar: &WindowsShellTabBarLayout,
+) -> Option<SidebarAuxiliaryRects> {
+    if tabbar.auxiliary_items.is_empty() && !tabbar.show_auxiliary_add {
         return None;
     }
     let footer_top = rect.bottom - SIDEBAR_FOOTER_HEIGHT;
-    // A collapsed items group hides its rows; the browser section moves up
+    // A collapsed items group hides its rows; the auxiliary section moves up
     // directly under the group header.
     let items_height = if tabbar.items_collapsed {
         0
@@ -53,53 +53,58 @@ pub(in crate::windows::chrome) fn sidebar_browser_rects(
         Some(rect)
     };
 
-    let mut tabs = Vec::with_capacity(tabbar.browser_tabs.len());
-    for _ in &tabbar.browser_tabs {
+    let mut items = Vec::with_capacity(tabbar.auxiliary_items.len());
+    for _ in &tabbar.auxiliary_items {
         match row(&mut top) {
-            Some(rect) => tabs.push(rect),
+            Some(rect) => items.push(rect),
             None => break,
         }
     }
-    let new_tab = if tabbar.show_browser_new_tab {
+    let add = if tabbar.show_auxiliary_add {
         row(&mut top)
     } else {
         None
     };
 
-    Some(SidebarBrowserRects {
+    Some(SidebarAuxiliaryRects {
         separator,
-        tabs,
-        new_tab,
+        items,
+        add,
     })
 }
 
-pub(in crate::windows::chrome) fn sidebar_browser_hit_test(
+pub(in crate::windows::chrome) fn sidebar_auxiliary_hit_test(
     rect: RECT,
-    tabbar: &WindowsTabBarLayout,
+    tabbar: &WindowsShellTabBarLayout,
     point: (i32, i32),
 ) -> Option<WindowsChromeHit> {
-    let browser = sidebar_browser_rects(rect, tabbar)?;
-    for (item, item_rect) in tabbar.browser_tabs.iter().zip(&browser.tabs) {
+    let auxiliary = sidebar_auxiliary_rects(rect, tabbar)?;
+    for (item, item_rect) in tabbar.auxiliary_items.iter().zip(&auxiliary.items) {
         if rect_contains(item_rect, point) {
-            if rect_contains(&sidebar_browser_close_rect(*item_rect), point) {
-                return Some(WindowsChromeHit::BrowserTabClose {
-                    tab_id: item.tab_id.clone(),
-                });
+            if rect_contains(&sidebar_auxiliary_close_rect(*item_rect), point) {
+                return Some(chrome_command(
+                    command_id::BROWSER_TAB_CLOSE,
+                    serde_json::json!({ "tab_id": item.id.clone() }),
+                ));
             }
-            return Some(WindowsChromeHit::BrowserTab {
-                tab_id: item.tab_id.clone(),
-            });
+            return Some(chrome_command(
+                command_id::BROWSER_TAB_CLICK,
+                serde_json::json!({ "tab_id": item.id.clone() }),
+            ));
         }
     }
-    if let Some(new_tab_rect) = browser.new_tab
-        && rect_contains(&new_tab_rect, point)
+    if let Some(add_rect) = auxiliary.add
+        && rect_contains(&add_rect, point)
     {
-        return Some(WindowsChromeHit::BrowserNewTab);
+        return Some(chrome_command(
+            command_id::BROWSER_NEW_TAB,
+            serde_json::json!({}),
+        ));
     }
     None
 }
 
-pub(in crate::windows::chrome) fn sidebar_browser_close_rect(item_rect: RECT) -> RECT {
+pub(in crate::windows::chrome) fn sidebar_auxiliary_close_rect(item_rect: RECT) -> RECT {
     normalize_rect(RECT {
         left: item_rect.right - SIDEBAR_BROWSER_CLOSE_SIZE,
         top: item_rect.top,
@@ -108,18 +113,18 @@ pub(in crate::windows::chrome) fn sidebar_browser_close_rect(item_rect: RECT) ->
     })
 }
 
-pub(in crate::windows::chrome) fn draw_sidebar_browser_section(
+pub(in crate::windows::chrome) fn draw_sidebar_auxiliary_section(
     hdc: HDC,
     rect: RECT,
-    tabbar: &WindowsTabBarLayout,
+    tabbar: &WindowsShellTabBarLayout,
 ) {
-    let Some(browser) = sidebar_browser_rects(rect, tabbar) else {
+    let Some(auxiliary) = sidebar_auxiliary_rects(rect, tabbar) else {
         return;
     };
 
-    fill_rect(hdc, browser.separator, SHELL_DIVIDER);
+    fill_rect(hdc, auxiliary.separator, SHELL_DIVIDER);
 
-    for (item, item_rect) in tabbar.browser_tabs.iter().zip(&browser.tabs) {
+    for (item, item_rect) in tabbar.auxiliary_items.iter().zip(&auxiliary.items) {
         let item_rect = *item_rect;
         if item.active {
             // White row card on the gray sidebar, accent bar on white.
@@ -137,11 +142,11 @@ pub(in crate::windows::chrome) fn draw_sidebar_browser_section(
             );
         }
 
-        let close_rect = sidebar_browser_close_rect(item_rect);
-        // 16px favicon left of the title when the tab reported one;
+        let close_rect = sidebar_auxiliary_close_rect(item_rect);
+        // 16px icon left of the title when supplied by the product layer;
         // text-only row otherwise (the title keeps its original left edge).
         let mut label_left = item_rect.left + 16;
-        if let Some(png) = item.favicon_png.as_deref() {
+        if let Some(png) = item.icon_png.as_deref() {
             let icon_top = item_rect.top + (rect_height(&item_rect) - SIDEBAR_FAVICON_SIZE) / 2;
             let icon_rect = normalize_rect(RECT {
                 left: label_left,
@@ -149,7 +154,7 @@ pub(in crate::windows::chrome) fn draw_sidebar_browser_section(
                 right: label_left + SIDEBAR_FAVICON_SIZE,
                 bottom: icon_top + SIDEBAR_FAVICON_SIZE,
             });
-            if draw_icon_from_png_bytes(hdc, &item.tab_id, png, icon_rect) {
+            if draw_icon_from_png_bytes(hdc, &item.id, png, icon_rect) {
                 label_left = icon_rect.right + SIDEBAR_FAVICON_TEXT_GAP;
             }
         }
@@ -174,8 +179,8 @@ pub(in crate::windows::chrome) fn draw_sidebar_browser_section(
         );
     }
 
-    if let Some(new_tab_rect) = browser.new_tab {
-        // Arc-style new-tab row: a centered "+" glyph only, no label.
-        draw_frame_button_glyph(hdc, GLYPH_ADD, new_tab_rect, SHELL_TEXT_MUTED);
+    if let Some(add_rect) = auxiliary.add {
+        // Add row: a centered "+" glyph only, no label.
+        draw_frame_button_glyph(hdc, GLYPH_ADD, add_rect, SHELL_TEXT_MUTED);
     }
 }

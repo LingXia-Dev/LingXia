@@ -3,7 +3,6 @@
 use std::ffi::c_void;
 use std::sync::OnceLock;
 
-use lingxia_webview::platform::windows::{cached_png_bytes_icon_handle, cached_png_icon_handle};
 use windows::Win32::Foundation::{COLORREF, RECT};
 use windows::Win32::Graphics::Gdi::{
     CLEARTYPE_QUALITY, CLIP_DEFAULT_PRECIS, CreateFontW, CreateSolidBrush, DEFAULT_CHARSET,
@@ -15,6 +14,7 @@ use windows::Win32::Graphics::GdiPlus;
 use windows::Win32::UI::WindowsAndMessaging::{self, HICON};
 use windows::core::w;
 
+use super::icons::{cached_png_bytes_icon_handle, cached_png_icon_handle};
 use super::*;
 
 /// Chrome text font ("Segoe UI" at the shell text size/weight) sized for

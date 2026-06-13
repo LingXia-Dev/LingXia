@@ -137,16 +137,13 @@ pub fn begin_tab_rename(
     initial_text: &str,
     on_commit: Arc<dyn Fn(String) + Send + Sync>,
 ) -> bool {
-    let header = panel_grids().get(panel_id).and_then(|state| state.header.clone());
+    let header = panel_grids()
+        .get(panel_id)
+        .and_then(|state| state.header.clone());
     let Some(header) = header else {
         return false;
     };
-    let Some((_, rect)) = header
-        .titles
-        .iter()
-        .find(|(id, _)| *id == tab_id)
-        .copied()
-    else {
+    let Some((_, rect)) = header.titles.iter().find(|(id, _)| *id == tab_id).copied() else {
         return false;
     };
     let hwnd = header.hwnd;
@@ -369,9 +366,9 @@ fn draw_cell_runs(
             continue;
         }
         let style = cell_style(cell, background, foreground);
-        let continues = run
-            .as_ref()
-            .is_some_and(|run| run.row == cell.row && run.next_col == cell.col && run.style == style);
+        let continues = run.as_ref().is_some_and(|run| {
+            run.row == cell.row && run.next_col == cell.col && run.style == style
+        });
         if !continues {
             flush_run(hdc, grid_rect, cell_width, line_height, fonts, &mut run);
             run = Some(GridRun {
@@ -497,9 +494,10 @@ fn draw_cursor(
         // covered glyph redrawn in the background color.
         _ => {
             fill_rect(hdc, cell_rect, foreground);
-            let covered = snapshot.cells.iter().find(|cell| {
-                cell.row == snapshot.cursor_row && cell.col == snapshot.cursor_col
-            });
+            let covered = snapshot
+                .cells
+                .iter()
+                .find(|cell| cell.row == snapshot.cursor_row && cell.col == snapshot.cursor_col);
             if let Some(cell) = covered.filter(|cell| !cell.text.is_empty())
                 && fonts.select(hdc, cell.bold, cell.italic, cell.underline)
             {

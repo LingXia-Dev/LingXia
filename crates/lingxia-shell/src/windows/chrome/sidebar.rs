@@ -2,15 +2,15 @@
 
 use super::*;
 
-mod browser;
+mod auxiliary;
 mod panel_activator;
-pub(super) use browser::*;
+pub(super) use auxiliary::*;
 pub(super) use panel_activator::*;
 
-pub(super) fn draw_tab_bar(hdc: HDC, rect: RECT, tabbar: &WindowsTabBarLayout) {
+pub(super) fn draw_tab_bar(hdc: HDC, rect: RECT, tabbar: &WindowsShellTabBarLayout) {
     if matches!(
         tabbar.position,
-        WindowsTabBarPosition::Left | WindowsTabBarPosition::Right
+        WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right
     ) {
         draw_sidebar_tab_bar(hdc, rect, tabbar);
         return;
@@ -41,7 +41,7 @@ pub(super) fn draw_tab_bar(hdc: HDC, rect: RECT, tabbar: &WindowsTabBarLayout) {
             tabbar.color
         };
         let mut label_rect = inset_rect(item_rect, 6, 4);
-        if matches!(tabbar.position, WindowsTabBarPosition::Bottom) {
+        if matches!(tabbar.position, WindowsShellTabBarPosition::Bottom) {
             label_rect.top += 6;
         }
         draw_text(hdc, &item.text, label_rect, text_color, DT_CENTER);
@@ -54,7 +54,7 @@ pub(super) fn draw_tab_bar(hdc: HDC, rect: RECT, tabbar: &WindowsTabBarLayout) {
     }
 }
 
-pub(super) fn draw_sidebar_tab_bar(hdc: HDC, rect: RECT, tabbar: &WindowsTabBarLayout) {
+pub(super) fn draw_sidebar_tab_bar(hdc: HDC, rect: RECT, tabbar: &WindowsShellTabBarLayout) {
     if rect_width(&rect) == 0 {
         return;
     }
@@ -84,7 +84,7 @@ pub(super) fn draw_sidebar_tab_bar(hdc: HDC, rect: RECT, tabbar: &WindowsTabBarL
         draw_sidebar_items(hdc, rect, tabbar);
     }
 
-    draw_sidebar_browser_section(hdc, rect, tabbar);
+    draw_sidebar_auxiliary_section(hdc, rect, tabbar);
 
     let footer_top = rect.bottom - SIDEBAR_FOOTER_HEIGHT;
     draw_top_border(
@@ -111,7 +111,7 @@ pub(super) fn draw_sidebar_tab_bar(hdc: HDC, rect: RECT, tabbar: &WindowsTabBarL
 /// Draws the lxapp item rows plus the macOS-parity connector line: a thin
 /// vertical line along the items' leading edge linking them, drawn first so
 /// it sits behind the item cards and accent bars.
-fn draw_sidebar_items(hdc: HDC, rect: RECT, tabbar: &WindowsTabBarLayout) {
+fn draw_sidebar_items(hdc: HDC, rect: RECT, tabbar: &WindowsShellTabBarLayout) {
     if !tabbar.items.is_empty() {
         let first = sidebar_item_rect(rect, 0);
         let last = sidebar_item_rect(rect, tabbar.items.len() - 1);
@@ -206,7 +206,7 @@ pub(super) fn sidebar_group_chevron_rect(rect: RECT) -> RECT {
 /// origin; the caption strip sits inside its top).
 pub(super) fn sidebar_header_action_rects(
     sidebar_rect: RECT,
-    tabbar: &WindowsTabBarLayout,
+    tabbar: &WindowsShellTabBarLayout,
 ) -> Vec<(String, RECT)> {
     if tabbar.header_actions.is_empty() || tabbar.collapsed {
         return Vec::new();
@@ -235,24 +235,24 @@ pub(super) fn sidebar_header_action_rects(
     out
 }
 
-pub(super) fn draw_tabbar_border(hdc: HDC, rect: RECT, tabbar: &WindowsTabBarLayout) {
+pub(super) fn draw_tabbar_border(hdc: HDC, rect: RECT, tabbar: &WindowsShellTabBarLayout) {
     match tabbar.position {
-        WindowsTabBarPosition::Bottom => draw_top_border(hdc, rect, tabbar.border_color),
-        WindowsTabBarPosition::Left => draw_right_border(hdc, rect, tabbar.border_color),
-        WindowsTabBarPosition::Right => draw_left_border(hdc, rect, tabbar.border_color),
+        WindowsShellTabBarPosition::Bottom => draw_top_border(hdc, rect, tabbar.border_color),
+        WindowsShellTabBarPosition::Left => draw_right_border(hdc, rect, tabbar.border_color),
+        WindowsShellTabBarPosition::Right => draw_left_border(hdc, rect, tabbar.border_color),
     }
 }
 
 pub(super) fn tab_item_rect(
     rect: RECT,
-    position: WindowsTabBarPosition,
+    position: WindowsShellTabBarPosition,
     count: usize,
     index: usize,
 ) -> RECT {
     let count_i32 = count.max(1) as i32;
     let index_i32 = index as i32;
     match position {
-        WindowsTabBarPosition::Bottom => {
+        WindowsShellTabBarPosition::Bottom => {
             let width = (rect_width(&rect) / count_i32).max(1);
             let left = rect.left + width * index_i32;
             RECT {
@@ -266,7 +266,7 @@ pub(super) fn tab_item_rect(
                 bottom: rect.bottom,
             }
         }
-        WindowsTabBarPosition::Left | WindowsTabBarPosition::Right => {
+        WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right => {
             let height = (rect_height(&rect) / count_i32).max(1);
             let top = rect.top + height * index_i32;
             RECT {

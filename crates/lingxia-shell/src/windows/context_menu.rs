@@ -37,12 +37,7 @@ pub fn show_context_menu(
                     text.push(0);
                     // Command ids are 1-based: TrackPopupMenu returns 0 for
                     // "dismissed without a choice".
-                    let _ = AppendMenuW(
-                        menu,
-                        MF_STRING,
-                        index + 1,
-                        PCWSTR(text.as_ptr()),
-                    );
+                    let _ = AppendMenuW(menu, MF_STRING, index + 1, PCWSTR(text.as_ptr()));
                 }
                 // Required for the menu to dismiss when clicking elsewhere.
                 let _ = SetForegroundWindow(hwnd);

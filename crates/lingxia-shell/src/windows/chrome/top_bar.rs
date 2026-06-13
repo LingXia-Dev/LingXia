@@ -8,7 +8,7 @@ use super::*;
 
 /// Whether the layout carries a visible browser address bar (which then
 /// owns the top bar; the lxapp navigation bar yields).
-pub(super) fn address_bar_visible(layout: &WindowsWindowLayout) -> bool {
+pub(super) fn address_bar_visible(layout: &WindowsShellWindowLayout) -> bool {
     layout
         .address_bar
         .as_ref()
@@ -31,7 +31,7 @@ pub(super) struct TopBarControls {
 pub(super) fn top_bar_controls(
     client: RECT,
     top_bar: RECT,
-    layout: &WindowsWindowLayout,
+    layout: &WindowsShellWindowLayout,
 ) -> TopBarControls {
     let button_top = top_bar.top + (rect_height(&top_bar) - TOP_BAR_BUTTON_SIZE).max(0) / 2;
     let square_button = |left: i32| {
@@ -56,7 +56,7 @@ pub(super) fn top_bar_controls(
             tabbar.visible
                 && matches!(
                     tabbar.position,
-                    WindowsTabBarPosition::Left | WindowsTabBarPosition::Right
+                    WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right
                 )
         })
         .map(|_| square_button(client.left + TOP_BAR_PADDING));
@@ -183,8 +183,12 @@ pub(super) fn draw_shell_top_bar(hdc: HDC, rects: &ChromeRects) {
 /// buttons, URL capsule) and records the capsule rect for the inline
 /// address editor. Painted after the navigation bar, which fills the top
 /// bar with its own background.
-pub(super) fn draw_top_bar_controls(hdc: HDC, state: &WindowsChromeState, rects: &ChromeRects) {
-    let layout = &state.layout;
+pub(super) fn draw_top_bar_controls(
+    hdc: HDC,
+    state: &WindowsChromeState,
+    rects: &ChromeRects,
+    layout: &WindowsShellWindowLayout,
+) {
     let controls = top_bar_controls(state.client, rects.top_bar, layout);
     if let Some(toggle) = controls.sidebar_toggle {
         draw_frame_button_glyph(hdc, GLYPH_SIDEBAR_TOGGLE, toggle, SHELL_FRAME_BUTTON_ICON);
@@ -226,7 +230,7 @@ pub(super) fn draw_navigation_bar(
     hdc: HDC,
     rect: RECT,
     buttons_left: i32,
-    navbar: &WindowsNavigationBarLayout,
+    navbar: &WindowsShellNavigationBarLayout,
 ) {
     fill_rect(hdc, rect, navbar.background_color);
     draw_bottom_border(hdc, rect, 0xe6e6e6);
@@ -439,7 +443,7 @@ pub(super) fn window_frame_button_rects(client: RECT) -> [(WindowsFrameButton, R
 pub(super) fn navbar_buttons_left(
     client: RECT,
     top_bar: RECT,
-    layout: &WindowsWindowLayout,
+    layout: &WindowsShellWindowLayout,
     navbar_rect: RECT,
 ) -> i32 {
     match top_bar_controls(client, top_bar, layout).sidebar_toggle {

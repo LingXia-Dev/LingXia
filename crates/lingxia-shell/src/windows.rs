@@ -4,7 +4,7 @@
 //! dimensions, GDI painting of the top bar / sidebar / tab bar / panel
 //! decorations, and the mapping from client points to chrome elements.
 //! It plugs into `lingxia-webview`'s generic hosting layer through the
-//! [`lingxia_webview::platform::windows::WindowsChromeRenderer`] seam.
+//! [`lingxia_webview::platform::windows::lingxia_host::WindowsChromeRenderer`] seam.
 
 mod chrome;
 pub mod clipboard;
@@ -13,7 +13,12 @@ mod style;
 pub mod terminal_grid;
 pub mod text_input;
 
-pub use chrome::begin_address_edit;
+pub use chrome::{
+    WindowsShellAddressBarLayout, WindowsShellAuxiliaryItemLayout, WindowsShellHeaderActionLayout,
+    WindowsShellNavigationBarLayout, WindowsShellPanelActivatorLayout,
+    WindowsShellTabBarItemLayout, WindowsShellTabBarLayout, WindowsShellTabBarPosition,
+    WindowsShellWindowLayout, begin_address_edit,
+};
 
 /// Registers the shell window chrome renderer with `lingxia-webview`.
 /// The embedded native components live in the host SDK layer

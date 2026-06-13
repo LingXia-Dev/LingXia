@@ -3,7 +3,10 @@
 use super::*;
 
 pub(super) fn panel_is_maximized(panel: &WindowsChromePanel) -> bool {
-    panel.native.as_ref().is_some_and(|native| native.maximized)
+    panel
+        .host_content
+        .as_ref()
+        .is_some_and(|native| native.maximized)
 }
 
 /// Painted after the sidebar/tab-bar pass: a maximized native panel covers
@@ -13,48 +16,17 @@ pub(super) fn draw_maximized_native_panels(hdc: HDC, state: &WindowsChromeState)
         return;
     };
     for panel in &attached.panels {
-        if panel.native.is_some() && panel_is_maximized(panel) {
+        if panel.host_content.is_some() && panel_is_maximized(panel) {
             draw_native_panel_content(hdc, state.hwnd, panel);
         }
     }
 }
 
 pub(super) fn draw_native_panel_content(hdc: HDC, hwnd: HWND, panel: &WindowsChromePanel) {
-    let Some(native) = &panel.native else {
+    let Some(native) = &panel.host_content else {
         return;
     };
-    if native.kind == WindowsNativePanelKind::Terminal {
-        draw_terminal_panel_content(hdc, hwnd, panel, native);
-        return;
-    }
-
-    let content = inset_rect(panel.rect, 22, 22);
-    let title_rect = RECT {
-        left: content.left,
-        top: content.top,
-        right: content.right,
-        bottom: content.top + 26,
-    };
-    let body_rect = RECT {
-        left: content.left,
-        top: title_rect.bottom + 10,
-        right: content.right,
-        bottom: title_rect.bottom + 42,
-    };
-    draw_text(
-        hdc,
-        native.title.as_deref().unwrap_or("Panel"),
-        title_rect,
-        SHELL_TEXT_PRIMARY,
-        DT_LEFT,
-    );
-    draw_text(
-        hdc,
-        native.body.as_deref().unwrap_or_default(),
-        body_rect,
-        SHELL_TEXT_MUTED,
-        DT_LEFT,
-    );
+    draw_terminal_panel_content(hdc, hwnd, panel, native);
 }
 
 /// Header geometry of one terminal panel tab.
@@ -81,7 +53,7 @@ pub(super) struct TerminalHeaderRects {
 
 pub(super) fn terminal_header_rects(
     rect: RECT,
-    native: &WindowsNativePanelContent,
+    native: &WindowsHostPanelContent,
 ) -> TerminalHeaderRects {
     let header = normalize_rect(RECT {
         left: rect.left,
@@ -167,7 +139,7 @@ pub(super) fn terminal_header_hit_test(
     panel: &WindowsChromePanel,
     point: (i32, i32),
 ) -> Option<WindowsChromeHit> {
-    let native = panel.native.as_ref()?;
+    let native = panel.host_content.as_ref()?;
     let rects = terminal_header_rects(panel.rect, native);
     if !rect_contains(&rects.header, point) {
         return None;
@@ -175,31 +147,52 @@ pub(super) fn terminal_header_hit_test(
     if let Some(maximize) = rects.maximize
         && rect_contains(&maximize, point)
     {
-        return Some(WindowsChromeHit::NativePanelMaximize {
-            panel_id: panel.panel_id.clone(),
-        });
+        return Some(chrome_command(
+            command_id::NATIVE_PANEL_MAXIMIZE,
+            serde_json::json!({ "panel_id": panel.panel_id.clone() }),
+        ));
     }
     if let Some(new_tab) = rects.new_tab
         && rect_contains(&new_tab, point)
     {
-        return Some(WindowsChromeHit::NativePanelNewTab {
-            panel_id: panel.panel_id.clone(),
-        });
+        return Some(chrome_command(
+            command_id::NATIVE_PANEL_NEW_TAB,
+            serde_json::json!({ "panel_id": panel.panel_id.clone() }),
+        ));
     }
     for tab in &rects.tabs {
         if let Some(close) = tab.close
             && rect_contains(&close, point)
         {
-            return Some(WindowsChromeHit::NativePanelTabClose {
-                panel_id: panel.panel_id.clone(),
-                tab_id: tab.tab_id,
-            });
+            return Some(chrome_command(
+                command_id::NATIVE_PANEL_TAB_CLOSE,
+                serde_json::json!({ "panel_id": panel.panel_id.clone(), "tab_id": tab.tab_id }),
+            ));
         }
         if rect_contains(&tab.rect, point) {
-            return Some(WindowsChromeHit::NativePanelTab {
-                panel_id: panel.panel_id.clone(),
-                tab_id: tab.tab_id,
-            });
+            let click = WindowsChromeCommand::new(command_id::NATIVE_PANEL_TAB_CLICK)
+                .with_payload(serde_json::json!({
+                    "panel_id": panel.panel_id.clone(),
+                    "tab_id": tab.tab_id
+                }))
+                .with_focus(panel.panel_id.clone());
+            let active = native
+                .tabs
+                .iter()
+                .any(|native_tab| native_tab.id == tab.tab_id && native_tab.active);
+            let command = if active {
+                click.with_double_click(
+                    WindowsChromeCommand::new(command_id::NATIVE_PANEL_TAB_RENAME)
+                        .with_payload(serde_json::json!({
+                            "panel_id": panel.panel_id.clone(),
+                            "tab_id": tab.tab_id
+                        }))
+                        .with_focus(panel.panel_id.clone()),
+                )
+            } else {
+                click
+            };
+            return Some(WindowsChromeHit::Command(command));
         }
     }
     None
@@ -214,7 +207,7 @@ pub(super) fn draw_terminal_panel_content(
     hdc: HDC,
     hwnd: HWND,
     panel: &WindowsChromePanel,
-    native: &WindowsNativePanelContent,
+    native: &WindowsHostPanelContent,
 ) {
     let rect = panel.rect;
     if rect_width(&rect) == 0 || rect_height(&rect) == 0 {
@@ -224,7 +217,7 @@ pub(super) fn draw_terminal_panel_content(
         .unwrap_or(TERMINAL_SURFACE_BACKGROUND);
     let square_top = panel.docked && !native.maximized;
 
-    // Surface card: dark terminal surface on the light window background —
+    // Surface card: dark terminal surface on the light window background 鈥?
     // the rounded corners (bottom while docked; all four when maximized or
     // floating) need anti-aliasing. Docked panels then square their top
     // corners with the overpaint below.
@@ -266,7 +259,7 @@ pub(super) fn draw_terminal_panel_content(
         if tab.active {
             // The active tab flows into the surface below it: surface
             // fill, rounded on top, square at the header's bottom edge.
-            // Surface-on-header contrast — anti-alias the pill arc.
+            // Surface-on-header contrast 鈥?anti-alias the pill arc.
             fill_round_rect_aa(hdc, tab.rect, 10, surface);
             fill_rect(
                 hdc,

@@ -5,7 +5,7 @@ use super::*;
 pub(in crate::windows::chrome) fn panel_activator_rects(
     client: RECT,
     rects: &ChromeRects,
-    layout: &WindowsWindowLayout,
+    layout: &WindowsShellWindowLayout,
 ) -> Vec<(String, RECT)> {
     if layout.panel_activators.is_empty() {
         return Vec::new();
@@ -16,7 +16,7 @@ pub(in crate::windows::chrome) fn panel_activator_rects(
     if let (Some(tabbar), Some(tabbar_rect)) = (&layout.tab_bar, rects.tab_bar)
         && matches!(
             tabbar.position,
-            WindowsTabBarPosition::Left | WindowsTabBarPosition::Right
+            WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right
         )
     {
         let footer_top = tabbar_rect.bottom - SIDEBAR_FOOTER_HEIGHT;
@@ -72,7 +72,7 @@ pub(in crate::windows::chrome) fn draw_panel_activators(
     hdc: HDC,
     client: RECT,
     rects: &ChromeRects,
-    layout: &WindowsWindowLayout,
+    layout: &WindowsShellWindowLayout,
 ) {
     for (panel_id, rect) in panel_activator_rects(client, rects, layout) {
         let active = layout

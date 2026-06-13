@@ -5,16 +5,122 @@ use std::sync::{Arc, Mutex, OnceLock};
 use lingxia_platform::traits::app_runtime::{
     AppRuntime, LxAppOpenMode, OpenUrlRequest, OpenUrlTarget,
 };
+#[cfg(feature = "shell-runtime")]
+use lingxia_shell::windows::{
+    WindowsShellAddressBarLayout, WindowsShellAuxiliaryItemLayout, WindowsShellHeaderActionLayout,
+    WindowsShellNavigationBarLayout, WindowsShellPanelActivatorLayout,
+    WindowsShellTabBarItemLayout, WindowsShellTabBarLayout, WindowsShellTabBarPosition,
+    WindowsShellWindowLayout,
+};
 use lingxia_webview::WebTag;
-use lingxia_webview::platform::windows::{
-    WindowsAddressBarLayout, WindowsBrowserTabItemLayout, WindowsChromeEvent,
-    WindowsNavigationBarLayout, WindowsPanelActivatorLayout, WindowsPanelPosition,
-    WindowsSidebarActionLayout, WindowsTabBarItemLayout, WindowsTabBarLayout,
-    WindowsTabBarPosition, WindowsWindowLayout, hide_panel, is_panel_visible,
-    present_webview_as_group_main, restore_presented_group_main, set_webview_chrome_event_handler,
+use lingxia_webview::platform::windows::find_webview_handler;
+use lingxia_webview::platform::windows::lingxia_host::{
+    WindowsChromeCommand, WindowsPanelPosition, WindowsWindowLayout, hide_host_panel,
+    is_panel_visible, restore_presented_group_main, set_webview_chrome_event_handler,
     set_webview_window_layout,
 };
 use lxapp::{LxApp, LxAppDelegate, LxAppStartupOptions, LxAppUiEventType, ReleaseType};
+#[cfg(not(feature = "shell-runtime"))]
+use shell_layout_fallback::{
+    WindowsShellAddressBarLayout, WindowsShellAuxiliaryItemLayout, WindowsShellHeaderActionLayout,
+    WindowsShellNavigationBarLayout, WindowsShellPanelActivatorLayout,
+    WindowsShellTabBarItemLayout, WindowsShellTabBarLayout, WindowsShellTabBarPosition,
+    WindowsShellWindowLayout,
+};
+
+#[cfg(not(feature = "shell-runtime"))]
+#[allow(dead_code)]
+mod shell_layout_fallback {
+    use std::sync::Arc;
+
+    use lingxia_webview::platform::windows::lingxia_host::WindowsPanelPosition;
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+    pub enum WindowsShellTabBarPosition {
+        #[default]
+        Bottom,
+        Left,
+        Right,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct WindowsShellNavigationBarLayout {
+        pub visible: bool,
+        pub title: String,
+        pub background_color: u32,
+        pub text_color: u32,
+        pub show_back_button: bool,
+        pub show_home_button: bool,
+        pub height: i32,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct WindowsShellTabBarItemLayout {
+        pub page_path: String,
+        pub text: String,
+        pub icon_path: String,
+        pub selected_icon_path: String,
+        pub badge: Option<String>,
+        pub has_red_dot: bool,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct WindowsShellAuxiliaryItemLayout {
+        pub id: String,
+        pub title: String,
+        pub active: bool,
+        pub icon_png: Option<Arc<Vec<u8>>>,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct WindowsShellHeaderActionLayout {
+        pub id: String,
+        pub glyph: String,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct WindowsShellTabBarLayout {
+        pub visible: bool,
+        pub position: WindowsShellTabBarPosition,
+        pub dimension: i32,
+        pub app_name: String,
+        pub group_id: String,
+        pub color: u32,
+        pub selected_color: u32,
+        pub background_color: u32,
+        pub border_color: u32,
+        pub selected_index: i32,
+        pub items: Vec<WindowsShellTabBarItemLayout>,
+        pub collapsed: bool,
+        pub items_collapsed: bool,
+        pub auxiliary_items: Vec<WindowsShellAuxiliaryItemLayout>,
+        pub show_auxiliary_add: bool,
+        pub header_actions: Vec<WindowsShellHeaderActionLayout>,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq, Default)]
+    pub struct WindowsShellAddressBarLayout {
+        pub visible: bool,
+        pub url_text: String,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct WindowsShellPanelActivatorLayout {
+        pub id: String,
+        pub label: String,
+        pub icon_path: String,
+        pub position: WindowsPanelPosition,
+        pub active: bool,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq, Default)]
+    pub struct WindowsShellWindowLayout {
+        pub navigation_bar: Option<WindowsShellNavigationBarLayout>,
+        pub address_bar: Option<WindowsShellAddressBarLayout>,
+        pub tab_bar: Option<WindowsShellTabBarLayout>,
+        pub panel_activators: Vec<WindowsShellPanelActivatorLayout>,
+    }
+}
 
 const DEFAULT_NAV_BAR_HEIGHT: i32 = 38;
 const MIN_SIDEBAR_WIDTH: i32 = 180;
@@ -36,8 +142,7 @@ static SHELL_OWNER_APPID: OnceLock<Mutex<Option<String>>> = OnceLock::new();
 /// Browser tab currently presented over the main content card, if any.
 static PRESENTED_BROWSER_TAB: OnceLock<Mutex<Option<String>>> = OnceLock::new();
 
-/// Sidebar header action ids (echoed back through
-/// `WindowsChromeEvent::SidebarActionClick`) and their browser targets.
+/// Sidebar header action ids and their browser targets.
 const SIDEBAR_ACTION_SETTINGS: &str = "settings";
 const SIDEBAR_ACTION_DOWNLOADS: &str = "downloads";
 const SETTINGS_PAGE_URL: &str = "lingxia://settings";
@@ -47,6 +152,29 @@ const DOWNLOADS_PAGE_URL: &str = "lingxia://downloads";
 /// layout data so the webview layer stays product-agnostic).
 const GLYPH_SETTINGS: &str = "\u{e713}";
 const GLYPH_DOWNLOAD: &str = "\u{e896}";
+
+mod chrome_command {
+    pub(super) const TAB_BAR_CLICK: &str = "tabbar.click";
+    pub(super) const PANEL_ACTIVATOR_CLICK: &str = "panel-activator.click";
+    pub(super) const NAVIGATION_BACK: &str = "navigation.back";
+    pub(super) const NAVIGATION_HOME: &str = "navigation.home";
+    pub(super) const BROWSER_NEW_TAB: &str = "browser.new-tab";
+    pub(super) const BROWSER_TAB_CLICK: &str = "browser.tab.click";
+    pub(super) const BROWSER_TAB_CLOSE: &str = "browser.tab.close";
+    pub(super) const NATIVE_PANEL_TAB_CLICK: &str = "native-panel.tab.click";
+    pub(super) const NATIVE_PANEL_TAB_CLOSE: &str = "native-panel.tab.close";
+    pub(super) const NATIVE_PANEL_NEW_TAB: &str = "native-panel.new-tab";
+    pub(super) const NATIVE_PANEL_MAXIMIZE: &str = "native-panel.maximize";
+    pub(super) const NATIVE_PANEL_TAB_RENAME: &str = "native-panel.tab.rename";
+    pub(super) const NATIVE_PANEL_RIGHT_CLICK: &str = "native-panel.right-click";
+    pub(super) const BROWSER_NAV_BACK: &str = "browser.nav.back";
+    pub(super) const BROWSER_NAV_FORWARD: &str = "browser.nav.forward";
+    pub(super) const BROWSER_NAV_RELOAD: &str = "browser.nav.reload";
+    pub(super) const BROWSER_ADDRESS_BAR: &str = "browser.address-bar";
+    pub(super) const SIDEBAR_TOGGLE: &str = "sidebar.toggle";
+    pub(super) const SIDEBAR_GROUP_TOGGLE: &str = "sidebar.group.toggle";
+    pub(super) const SIDEBAR_ACTION: &str = "sidebar.action";
+}
 
 /// Per-group (per shell-owner lxapp) sidebar UI state, kept for the
 /// session: whole-sidebar collapse and the lxapp items-group collapse.
@@ -96,7 +224,7 @@ fn shell_owner_appid() -> Option<String> {
 }
 
 /// Re-syncs the shell-owner app's layout (panel activator states etc.)
-/// after a panel changed visibility outside a chrome event — e.g. the
+/// after a panel changed visibility outside a chrome event 鈥?e.g. the
 /// terminal panel closing itself because its last session exited (the
 /// only caller, hence unused without the terminal runtime).
 #[cfg_attr(not(feature = "terminal-runtime"), allow(dead_code))]
@@ -232,7 +360,7 @@ fn sync_shell_layout(appid: &str) {
         }),
     );
 
-    if let Err(err) = set_webview_window_layout(&webtag, layout) {
+    if let Err(err) = set_webview_window_layout(&webtag, WindowsWindowLayout::new(layout)) {
         log::warn!(
             "failed to sync Windows shell layout for {}:{}: {}",
             appid,
@@ -242,7 +370,7 @@ fn sync_shell_layout(appid: &str) {
     }
 }
 
-fn build_window_layout(app: &LxApp, path: &str) -> WindowsWindowLayout {
+fn build_window_layout(app: &LxApp, path: &str) -> WindowsShellWindowLayout {
     // The Arc-style address bar owns the top bar while a browser tab is
     // presented; the lxapp navigation bar yields for that time.
     let address_bar = build_address_bar_layout();
@@ -251,7 +379,7 @@ fn build_window_layout(app: &LxApp, path: &str) -> WindowsWindowLayout {
     } else {
         Some(build_navigation_bar_layout(app, path))
     };
-    WindowsWindowLayout {
+    WindowsShellWindowLayout {
         navigation_bar,
         address_bar,
         tab_bar: build_tab_bar_layout(app),
@@ -261,10 +389,10 @@ fn build_window_layout(app: &LxApp, path: &str) -> WindowsWindowLayout {
 
 /// Address-bar layout for the presented browser tab, or `None` while the
 /// main surface shows an lxapp webview.
-fn build_address_bar_layout() -> Option<WindowsAddressBarLayout> {
+fn build_address_bar_layout() -> Option<WindowsShellAddressBarLayout> {
     let presented = presented_browser_tab()?;
     let tab = crate::browser::tab_summary(&presented)?;
-    Some(WindowsAddressBarLayout {
+    Some(WindowsShellAddressBarLayout {
         visible: true,
         url_text: browser_tab_display_url(&tab),
     })
@@ -281,13 +409,13 @@ fn browser_tab_display_url(tab: &crate::browser::BrowserTabSummary) -> String {
         .unwrap_or_else(|| browser_tab_display_title(tab))
 }
 
-fn build_navigation_bar_layout(app: &LxApp, path: &str) -> WindowsNavigationBarLayout {
+fn build_navigation_bar_layout(app: &LxApp, path: &str) -> WindowsShellNavigationBarLayout {
     let navbar = app.get_navbar_state(path);
     let text_color = match navbar.navigationBarTextStyle.as_str() {
         "white" => 0xffffff,
         _ => 0x111111,
     };
-    WindowsNavigationBarLayout {
+    WindowsShellNavigationBarLayout {
         visible: navbar.show_navbar,
         title: navbar.navigationBarTitleText,
         background_color: parse_css_color(&navbar.navigationBarBackgroundColor, 0xffffff),
@@ -298,12 +426,12 @@ fn build_navigation_bar_layout(app: &LxApp, path: &str) -> WindowsNavigationBarL
     }
 }
 
-fn build_tab_bar_layout(app: &LxApp) -> Option<WindowsTabBarLayout> {
+fn build_tab_bar_layout(app: &LxApp) -> Option<WindowsShellTabBarLayout> {
     let tabbar = app.get_tabbar()?;
     let ui_state = sidebar_ui_state(&app.appid);
-    Some(WindowsTabBarLayout {
+    Some(WindowsShellTabBarLayout {
         visible: !tabbar.list.is_empty(),
-        position: WindowsTabBarPosition::Left,
+        position: WindowsShellTabBarPosition::Left,
         dimension: tabbar.dimension.max(MIN_SIDEBAR_WIDTH),
         app_name: app.runtime_info().app_name,
         group_id: app.appid.clone(),
@@ -317,7 +445,7 @@ fn build_tab_bar_layout(app: &LxApp) -> Option<WindowsTabBarLayout> {
         items: tabbar
             .list
             .into_iter()
-            .map(|item| WindowsTabBarItemLayout {
+            .map(|item| WindowsShellTabBarItemLayout {
                 page_path: item.pagePath,
                 text: item.text.unwrap_or_default(),
                 icon_path: item.iconPath.unwrap_or_default(),
@@ -326,39 +454,44 @@ fn build_tab_bar_layout(app: &LxApp) -> Option<WindowsTabBarLayout> {
                 has_red_dot: item.has_red_dot,
             })
             .collect(),
-        browser_tabs: build_browser_tab_items(),
-        show_browser_new_tab: crate::browser::runtime_enabled(),
+        auxiliary_items: build_browser_tab_items(),
+        show_auxiliary_add: crate::browser::runtime_enabled(),
         header_actions: build_sidebar_header_actions(),
     })
 }
 
 /// Sidebar header actions (settings / downloads), shown only when the
 /// browser runtime backing their target pages is compiled in.
-fn build_sidebar_header_actions() -> Vec<WindowsSidebarActionLayout> {
+fn build_sidebar_header_actions() -> Vec<WindowsShellHeaderActionLayout> {
     if !crate::browser::runtime_enabled() {
         return Vec::new();
     }
     vec![
-        WindowsSidebarActionLayout {
+        WindowsShellHeaderActionLayout {
             id: SIDEBAR_ACTION_SETTINGS.to_string(),
             glyph: GLYPH_SETTINGS.to_string(),
         },
-        WindowsSidebarActionLayout {
+        WindowsShellHeaderActionLayout {
             id: SIDEBAR_ACTION_DOWNLOADS.to_string(),
             glyph: GLYPH_DOWNLOAD.to_string(),
         },
     ]
 }
 
-fn build_browser_tab_items() -> Vec<WindowsBrowserTabItemLayout> {
+fn build_browser_tab_items() -> Vec<WindowsShellAuxiliaryItemLayout> {
     let presented = presented_browser_tab();
     crate::browser::tabs()
         .into_iter()
-        .map(|tab| WindowsBrowserTabItemLayout {
-            title: browser_tab_display_title(&tab),
-            active: presented.as_deref() == Some(tab.tab_id.as_str()),
-            favicon_png: tab.favicon_png.clone(),
-            tab_id: tab.tab_id,
+        .map(|tab| {
+            let active = presented.as_deref() == Some(tab.tab_id.as_str());
+            let title = browser_tab_display_title(&tab);
+            let icon_png = tab.favicon_png.clone();
+            WindowsShellAuxiliaryItemLayout {
+                id: tab.tab_id,
+                title,
+                active,
+                icon_png,
+            }
         })
         .collect()
 }
@@ -391,7 +524,7 @@ fn url_host(url: &str) -> Option<String> {
     }
 }
 
-fn build_panel_activators(app: &LxApp) -> Vec<WindowsPanelActivatorLayout> {
+fn build_panel_activators(app: &LxApp) -> Vec<WindowsShellPanelActivatorLayout> {
     let asset_dir = app.runtime.asset_dir();
     lingxia_app_context::app_config()
         .and_then(|config| config.panels.as_ref().cloned())
@@ -399,7 +532,7 @@ fn build_panel_activators(app: &LxApp) -> Vec<WindowsPanelActivatorLayout> {
             panels
                 .items
                 .into_iter()
-                .map(|item| WindowsPanelActivatorLayout {
+                .map(|item| WindowsShellPanelActivatorLayout {
                     id: item.id.clone(),
                     label: item.label,
                     icon_path: resolve_asset_path(asset_dir, &item.icon)
@@ -413,14 +546,17 @@ fn build_panel_activators(app: &LxApp) -> Vec<WindowsPanelActivatorLayout> {
         .unwrap_or_default()
 }
 
-fn handle_chrome_event(appid: &str, event: WindowsChromeEvent) {
+fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
     set_shell_owner_appid(appid);
     let Some(app) = lxapp::try_get(appid) else {
         return;
     };
 
-    let handled = match event {
-        WindowsChromeEvent::TabBarClick { index } => {
+    let handled = match event.id.as_str() {
+        chrome_command::TAB_BAR_CLICK => {
+            let Some(index) = payload_usize(&event, "index") else {
+                return;
+            };
             // Selecting an lxapp item while a browser tab is presented
             // returns the main surface to the lxapp webview.
             return_to_lxapp_from_browser(appid);
@@ -432,27 +568,36 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeEvent) {
             let _ = app.on_lxapp_event(LxAppUiEventType::TabBarClick, index.to_string());
             return;
         }
-        WindowsChromeEvent::NavigationBack => {
+        chrome_command::NAVIGATION_BACK => {
             app.on_lxapp_event(LxAppUiEventType::NavigationClick, "back".to_string())
         }
-        WindowsChromeEvent::NavigationHome => {
+        chrome_command::NAVIGATION_HOME => {
             return_to_lxapp_from_browser(appid);
             app.on_lxapp_event(LxAppUiEventType::NavigationClick, "home".to_string())
         }
-        WindowsChromeEvent::PanelActivatorClick { panel_id } => {
+        chrome_command::PANEL_ACTIVATOR_CLICK => {
+            let Some(panel_id) = payload_string(&event, "panel_id") else {
+                return;
+            };
             // The activator handlers sync the shell layout in every branch.
             handle_panel_activator(appid, panel_id);
             return;
         }
-        WindowsChromeEvent::BrowserNewTabClick => {
+        chrome_command::BROWSER_NEW_TAB => {
             handle_browser_new_tab(appid, app.session_id());
             return;
         }
-        WindowsChromeEvent::BrowserTabClick { tab_id } => {
+        chrome_command::BROWSER_TAB_CLICK => {
+            let Some(tab_id) = payload_string(&event, "tab_id") else {
+                return;
+            };
             handle_browser_tab_click(appid, &tab_id);
             return;
         }
-        WindowsChromeEvent::BrowserTabCloseClick { tab_id } => {
+        chrome_command::BROWSER_TAB_CLOSE => {
+            let Some(tab_id) = payload_string(&event, "tab_id") else {
+                return;
+            };
             handle_browser_tab_close(appid, &tab_id);
             return;
         }
@@ -460,37 +605,66 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeEvent) {
         // interpreted by the terminal panel facade. Tab/panel closes may
         // change panel visibility; those paths re-sync the layout
         // themselves via `sync_owner_shell_layout`.
-        WindowsChromeEvent::NativePanelTabClick { panel_id, tab_id } => {
+        chrome_command::NATIVE_PANEL_TAB_CLICK => {
+            let Some(panel_id) = payload_string(&event, "panel_id") else {
+                return;
+            };
+            let Some(tab_id) = payload_u64(&event, "tab_id") else {
+                return;
+            };
             super::terminal_panel::activate_terminal_tab(&panel_id, tab_id);
             return;
         }
-        WindowsChromeEvent::NativePanelTabCloseClick { panel_id, tab_id } => {
+        chrome_command::NATIVE_PANEL_TAB_CLOSE => {
+            let Some(panel_id) = payload_string(&event, "panel_id") else {
+                return;
+            };
+            let Some(tab_id) = payload_u64(&event, "tab_id") else {
+                return;
+            };
             super::terminal_panel::close_terminal_tab(&panel_id, tab_id);
             return;
         }
-        WindowsChromeEvent::NativePanelNewTabClick { panel_id } => {
+        chrome_command::NATIVE_PANEL_NEW_TAB => {
+            let Some(panel_id) = payload_string(&event, "panel_id") else {
+                return;
+            };
             super::terminal_panel::open_terminal_tab(&panel_id);
             return;
         }
-        WindowsChromeEvent::NativePanelMaximizeClick { panel_id } => {
+        chrome_command::NATIVE_PANEL_MAXIMIZE => {
+            let Some(panel_id) = payload_string(&event, "panel_id") else {
+                return;
+            };
             super::terminal_panel::toggle_terminal_panel_maximized(&panel_id);
             return;
         }
-        WindowsChromeEvent::NativePanelTabRenameRequest { panel_id, tab_id } => {
+        chrome_command::NATIVE_PANEL_TAB_RENAME => {
+            let Some(panel_id) = payload_string(&event, "panel_id") else {
+                return;
+            };
+            let Some(tab_id) = payload_u64(&event, "tab_id") else {
+                return;
+            };
             super::terminal_panel::begin_terminal_tab_rename(&panel_id, tab_id);
             return;
         }
-        WindowsChromeEvent::NativePanelRightClick {
-            panel_id,
-            screen_x,
-            screen_y,
-        } => {
+        chrome_command::NATIVE_PANEL_RIGHT_CLICK => {
+            let Some(panel_id) = payload_string(&event, "panel_id") else {
+                return;
+            };
+            let Some(screen_x) = payload_i32(&event, "screen_x") else {
+                return;
+            };
+            let Some(screen_y) = payload_i32(&event, "screen_y") else {
+                return;
+            };
             super::terminal_panel::show_terminal_context_menu(appid, &panel_id, screen_x, screen_y);
             return;
         }
         // Address-bar navigation targets the presented browser tab; URL and
         // title updates flow back through the tabs-changed observer.
-        WindowsChromeEvent::BrowserNavBackClick => {
+        chrome_command::BROWSER_NAV_BACK => {
             if let Some(tab_id) = presented_browser_tab()
                 && !crate::browser::go_back(&tab_id)
             {
@@ -498,7 +672,7 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeEvent) {
             }
             return;
         }
-        WindowsChromeEvent::BrowserNavForwardClick => {
+        chrome_command::BROWSER_NAV_FORWARD => {
             if let Some(tab_id) = presented_browser_tab()
                 && !crate::browser::go_forward(&tab_id)
             {
@@ -506,7 +680,7 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeEvent) {
             }
             return;
         }
-        WindowsChromeEvent::BrowserNavReloadClick => {
+        chrome_command::BROWSER_NAV_RELOAD => {
             if let Some(tab_id) = presented_browser_tab()
                 && !crate::browser::reload(&tab_id)
             {
@@ -514,25 +688,35 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeEvent) {
             }
             return;
         }
-        WindowsChromeEvent::BrowserAddressBarClick => {
+        chrome_command::BROWSER_ADDRESS_BAR => {
             begin_presented_tab_address_edit(&app);
             return;
         }
-        WindowsChromeEvent::SidebarToggleClick => {
+        chrome_command::SIDEBAR_TOGGLE => {
             update_sidebar_ui_state(appid, |state| state.collapsed = !state.collapsed);
             sync_shell_layout(appid);
             return;
         }
-        WindowsChromeEvent::SidebarGroupToggleClick { group } => {
+        chrome_command::SIDEBAR_GROUP_TOGGLE => {
+            let Some(group) = payload_string(&event, "group") else {
+                return;
+            };
             update_sidebar_ui_state(&group, |state| {
                 state.items_collapsed = !state.items_collapsed;
             });
             sync_shell_layout(appid);
             return;
         }
-        WindowsChromeEvent::SidebarActionClick { action_id } => {
+        chrome_command::SIDEBAR_ACTION => {
+            let Some(action_id) = payload_string(&event, "action_id") else {
+                return;
+            };
             handle_sidebar_action(appid, app.session_id(), &action_id);
             return;
+        }
+        other => {
+            log::warn!("unknown Windows shell chrome command for {appid}: {other}");
+            false
         }
     };
 
@@ -541,6 +725,54 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeEvent) {
     } else {
         log::error!("Windows shell chrome event was not handled for {appid}");
     }
+}
+
+fn payload_string(command: &WindowsChromeCommand, field: &str) -> Option<String> {
+    command
+        .payload
+        .get(field)
+        .and_then(serde_json::Value::as_str)
+        .map(ToString::to_string)
+        .or_else(|| {
+            log::warn!(
+                "Windows shell chrome command {} missing string field {field}",
+                command.id
+            );
+            None
+        })
+}
+
+fn payload_u64(command: &WindowsChromeCommand, field: &str) -> Option<u64> {
+    command
+        .payload
+        .get(field)
+        .and_then(serde_json::Value::as_u64)
+        .or_else(|| {
+            log::warn!(
+                "Windows shell chrome command {} missing u64 field {field}",
+                command.id
+            );
+            None
+        })
+}
+
+fn payload_usize(command: &WindowsChromeCommand, field: &str) -> Option<usize> {
+    payload_u64(command, field).and_then(|value| usize::try_from(value).ok())
+}
+
+fn payload_i32(command: &WindowsChromeCommand, field: &str) -> Option<i32> {
+    command
+        .payload
+        .get(field)
+        .and_then(serde_json::Value::as_i64)
+        .and_then(|value| i32::try_from(value).ok())
+        .or_else(|| {
+            log::warn!(
+                "Windows shell chrome command {} missing i32 field {field}",
+                command.id
+            );
+            None
+        })
 }
 
 /// Ends a browser-tab presentation (if any), restoring the lxapp webview
@@ -597,7 +829,15 @@ fn present_browser_tab_when_ready(appid: &str, tab_id: String) {
                 return;
             };
             let webtag = WebTag::new(crate::browser::APP_ID, &tab.path, Some(tab.session_id));
-            match present_webview_as_group_main(&webtag) {
+            let result = find_webview_handler(&webtag)
+                .ok_or_else(|| {
+                    lingxia_webview::WebViewError::WebView(format!(
+                        "WebView handler not found for {}",
+                        webtag.key()
+                    ))
+                })
+                .and_then(|handler| handler.present_in_active_group());
+            match result {
                 Ok(()) => {
                     set_presented_browser_tab(Some(tab_id.clone()));
                     sync_shell_layout(&owner_appid);
@@ -664,10 +904,15 @@ pub(super) fn owner_window_handle(appid: &str) -> Option<isize> {
         .peek_current_page()
         .unwrap_or_else(|| app.initial_route());
     let webtag = WebTag::new(&app.appid, &path, Some(app.session_id()));
-    match lingxia_webview::platform::windows::webview_window_snapshot(&webtag) {
-        Ok(snapshot) => Some(snapshot.window_id as isize),
-        Err(err) => {
+    let snapshot = find_webview_handler(&webtag).map(|handler| handler.window_snapshot());
+    match snapshot {
+        Some(Ok(snapshot)) => Some(snapshot.window_id as isize),
+        Some(Err(err)) => {
             log::warn!("no shell window handle for {appid}: {err}");
+            None
+        }
+        None => {
+            log::warn!("no shell window handle for {appid}: WebView handler is not ready");
             None
         }
     }
@@ -763,7 +1008,7 @@ fn handle_panel_activator(appid: &str, panel_id: String) {
         {
             log::error!("failed to close Windows panel lxapp {panel_appid}: {err}");
         }
-        if let Err(err) = hide_panel(&panel_id) {
+        if let Err(err) = hide_host_panel(&panel_id) {
             log::warn!("failed to hide Windows panel {panel_id}: {err}");
         }
         lxapp::mark_lxapp_active(appid);
