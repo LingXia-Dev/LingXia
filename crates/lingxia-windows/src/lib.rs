@@ -11,24 +11,35 @@
 //! that thread's message queue. [`quick_start`] performs both steps in order
 //! on the calling thread.
 
+#[cfg(feature = "runtime")]
 use std::path::{Path, PathBuf};
 
-#[cfg(target_os = "windows")]
+#[cfg(all(target_os = "windows", feature = "runtime"))]
+mod app_icon;
+#[cfg(all(target_os = "windows", feature = "runtime"))]
+mod app_menu;
+#[cfg(all(target_os = "windows", feature = "runtime"))]
 mod device_frame;
-#[cfg(target_os = "windows")]
+#[cfg(all(target_os = "windows", feature = "runtime"))]
 mod media_preview;
-#[cfg(target_os = "windows")]
+#[cfg(all(target_os = "windows", feature = "runtime"))]
 mod native_components;
-#[cfg(target_os = "windows")]
+#[cfg(all(target_os = "windows", feature = "runtime"))]
 mod video_controls;
-#[cfg(target_os = "windows")]
+#[cfg(all(target_os = "windows", feature = "runtime"))]
 mod video_player;
+#[cfg(all(target_os = "windows", feature = "host-api"))]
+pub mod webview_host;
 
-#[cfg(target_os = "windows")]
-pub use device_frame::{
+#[cfg(all(target_os = "windows", feature = "runtime"))]
+pub use app_menu::{
     WindowsAppMenu, WindowsAppMenuCommandHandler, WindowsAppMenuEntry, WindowsAppMenuItem,
+    set_windows_app_menu, set_windows_app_menu_command_handler,
+};
+#[cfg(all(target_os = "windows", feature = "runtime"))]
+pub use device_frame::{
     WindowsDeviceFrame, WindowsDeviceFrameToolbar, open_current_page_devtools,
-    set_app_window_device_frame, set_windows_app_menu, set_windows_app_menu_command_handler,
+    set_app_window_device_frame,
 };
 
 /// Host process description used to initialize the LingXia runtime.
@@ -37,6 +48,7 @@ pub use device_frame::{
 /// customize it through the `with_*` builder methods before passing it to
 /// [`init`].
 #[derive(Debug, Clone)]
+#[cfg(feature = "runtime")]
 pub struct WindowsApp {
     pub(crate) data_dir: PathBuf,
     pub(crate) cache_dir: PathBuf,
@@ -48,6 +60,7 @@ pub struct WindowsApp {
     pub(crate) window_size: Option<(i32, i32)>,
 }
 
+#[cfg(feature = "runtime")]
 impl WindowsApp {
     /// Creates an app description with the given state and asset directories.
     ///
@@ -138,9 +151,10 @@ impl WindowsApp {
 
 /// Errors surfaced while bootstrapping the Windows host.
 #[derive(Debug, thiserror::Error)]
+#[cfg(feature = "runtime")]
 pub enum WindowsHostError {
     /// The LingXia platform layer failed to initialize.
-    #[cfg(target_os = "windows")]
+    #[cfg(all(target_os = "windows", feature = "runtime"))]
     #[error(transparent)]
     Platform(#[from] lingxia::windows::PlatformError),
     /// The host crate was built for a target other than Windows.
@@ -159,19 +173,21 @@ pub enum WindowsHostError {
 }
 
 /// Convenience alias for results produced by this crate.
+#[cfg(feature = "runtime")]
 pub type Result<T> = std::result::Result<T, WindowsHostError>;
 
 /// Initializes the LingXia runtime and opens the home lxapp.
 ///
 /// Returns the home app id on success. Must run on the thread that will later
 /// call [`run_message_loop`].
-#[cfg(target_os = "windows")]
+#[cfg(all(target_os = "windows", feature = "runtime"))]
 pub fn init(app: WindowsApp) -> Result<String> {
     // Embedded native components (input/textarea/video overlays) are part
     // of the host SDK — every Windows host gets them, like the managers in
     // the Android/iOS SDK layers. Must register before the first page can
     // mount a component.
     native_components::install();
+    app_menu::install_host_window_menu_support();
 
     let asset_dir = app.asset_dir.clone();
     let icon_path = app.icon_path.clone();
@@ -188,7 +204,7 @@ pub fn init(app: WindowsApp) -> Result<String> {
     )?;
     let home_app_id = lingxia::windows::init(platform).ok_or(WindowsHostError::MissingHomeApp)?;
     if let Some(icon_path) = resolve_app_icon_path(&asset_dir, &home_app_id, icon_path) {
-        lingxia::windows::set_app_icon_from_path(&icon_path).map_err(|message| {
+        app_icon::set_app_icon_from_path(&icon_path).map_err(|message| {
             WindowsHostError::AppIcon {
                 path: icon_path,
                 message,
@@ -202,7 +218,7 @@ pub fn init(app: WindowsApp) -> Result<String> {
 /// Initializes the LingXia runtime and opens the home lxapp.
 ///
 /// This non-Windows stub always fails with [`WindowsHostError::Platform`].
-#[cfg(not(target_os = "windows"))]
+#[cfg(all(not(target_os = "windows"), feature = "runtime"))]
 pub fn init(_app: WindowsApp) -> Result<String> {
     Err(WindowsHostError::Platform(
         "lingxia-windows can only initialize on target_os = \"windows\"".to_string(),
@@ -214,7 +230,7 @@ pub fn init(_app: WindowsApp) -> Result<String> {
 /// Installs the LingXia app exit handler for the calling thread and pumps
 /// messages until `WM_QUIT`, returning the loop exit code. Must run on the
 /// same thread that called [`init`].
-#[cfg(target_os = "windows")]
+#[cfg(all(target_os = "windows", feature = "runtime"))]
 pub fn run_message_loop() -> i32 {
     use std::sync::Arc;
 
@@ -249,7 +265,7 @@ pub fn run_message_loop() -> i32 {
 /// Runs the Win32 message loop until the application quits.
 ///
 /// This non-Windows stub returns immediately with exit code `0`.
-#[cfg(not(target_os = "windows"))]
+#[cfg(all(not(target_os = "windows"), feature = "runtime"))]
 pub fn run_message_loop() -> i32 {
     0
 }
@@ -259,11 +275,13 @@ pub fn run_message_loop() -> i32 {
 /// Equivalent to [`init`] with [`WindowsApp::from_env`] followed by
 /// [`run_message_loop`] on the calling thread. Returns the message-loop exit
 /// code once the application quits.
+#[cfg(feature = "runtime")]
 pub fn quick_start() -> Result<i32> {
     init(WindowsApp::from_env())?;
     Ok(run_message_loop())
 }
 
+#[cfg(feature = "runtime")]
 fn state_root_for_product(product_name: &str) -> PathBuf {
     std::env::var_os("LOCALAPPDATA")
         .map(PathBuf::from)
@@ -271,6 +289,7 @@ fn state_root_for_product(product_name: &str) -> PathBuf {
         .join(product_name)
 }
 
+#[cfg(feature = "runtime")]
 fn default_asset_dir() -> PathBuf {
     std::env::current_exe()
         .ok()
@@ -279,6 +298,7 @@ fn default_asset_dir() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("assets"))
 }
 
+#[cfg(feature = "runtime")]
 fn resolve_app_icon_path(
     asset_dir: &Path,
     home_app_id: &str,
@@ -299,7 +319,7 @@ fn resolve_app_icon_path(
     .find(|path| path.is_file())
 }
 
-#[cfg(target_os = "windows")]
+#[cfg(all(target_os = "windows", feature = "runtime"))]
 fn default_locale() -> String {
     use windows::Win32::Globalization::GetUserDefaultLocaleName;
 
@@ -314,17 +334,19 @@ fn default_locale() -> String {
     }
 }
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(all(not(target_os = "windows"), feature = "runtime"))]
 fn default_locale() -> String {
     "en-US".to_string()
 }
 
 #[derive(Debug, Default)]
+#[cfg(feature = "runtime")]
 struct GeneratedAppConfig {
     product_name: Option<String>,
     windows_app_id: Option<String>,
 }
 
+#[cfg(feature = "runtime")]
 impl GeneratedAppConfig {
     fn read_from_assets(asset_dir: &Path) -> Self {
         let Ok(content) = std::fs::read_to_string(asset_dir.join("app.json")) else {

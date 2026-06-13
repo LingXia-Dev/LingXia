@@ -11,26 +11,42 @@ categories = ["gui", "os::windows-apis"]
 
 [features]
 default = ["standard"]
-standard = ["lingxia/standard"]
-shell-runtime = ["lingxia/shell-runtime"]
-terminal-runtime = ["lingxia/terminal-runtime"]
-webview-input = ["lingxia/webview-input"]
+host-api = ["dep:lingxia-webview"]
+runtime = [
+    "host-api",
+    "dep:image",
+    "dep:lingxia",
+    "dep:lingxia-messaging",
+    "dep:lingxia-platform",
+    "dep:log",
+    "dep:lxapp",
+    "dep:serde_json",
+    "dep:thiserror",
+    "dep:windows",
+    "dep:windows-core",
+]
+standard = ["runtime", "lingxia/standard"]
+shell-runtime = ["runtime", "lingxia/shell-runtime"]
+terminal-runtime = ["runtime", "lingxia/terminal-runtime"]
+webview-input = ["host-api", "lingxia?/webview-input"]
 
 [dependencies]
-lingxia = { workspace = true, default-features = false }
-serde_json = { workspace = true }
-thiserror = { workspace = true }
+lingxia = { workspace = true, default-features = false, optional = true }
+serde_json = { workspace = true, optional = true }
+thiserror = { workspace = true, optional = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]
-log = { workspace = true }
-lxapp = { workspace = true, default-features = false }
-lingxia-messaging = { workspace = true }
-lingxia-platform = { workspace = true }
-lingxia-webview = { workspace = true }
+image = { version = "0.25.10", default-features = false, features = ["png"], optional = true }
+log = { workspace = true, optional = true }
+lxapp = { workspace = true, default-features = false, optional = true }
+lingxia-messaging = { workspace = true, optional = true }
+lingxia-platform = { workspace = true, optional = true }
+lingxia-webview = { workspace = true, features = ["windows-host"], optional = true }
 # proc-macros: the `#[implement]` attribute (MFPlay callback in video_player).
-windows-core = { workspace = true, features = ["proc-macros"] }
+windows-core = { workspace = true, features = ["proc-macros"], optional = true }
 windows = { workspace = true, features = [
     "Win32_Foundation",
+    "Win32_Graphics_Dwm",
     "Win32_Globalization",
     "Win32_Graphics_Gdi",
     "Win32_Graphics_GdiPlus",
@@ -43,4 +59,4 @@ windows = { workspace = true, features = [
     "Win32_UI_Input_KeyboardAndMouse",
     "Win32_UI_Shell_PropertiesSystem",
     "Win32_UI_WindowsAndMessaging",
-] }
+], optional = true }

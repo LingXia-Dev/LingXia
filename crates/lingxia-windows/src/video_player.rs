@@ -1,4 +1,4 @@
-﻿//! MFPlay-backed playback engine for the `video.native` component.
+//! MFPlay-backed playback engine for the `video.native` component.
 //!
 //! One [`VideoPlayer`] per mounted component: an `IMFPMediaPlayer` that
 //! renders into the component's container window (EVR letterboxing on a
@@ -19,9 +19,8 @@ use windows::Win32::Foundation::{COLORREF, HWND};
 use windows::Win32::Media::MediaFoundation::{
     IMFPMediaPlayer, IMFPMediaPlayerCallback, IMFPMediaPlayerCallback_Impl, MFP_EVENT_HEADER,
     MFP_EVENT_TYPE_ERROR, MFP_EVENT_TYPE_MEDIAITEM_CREATED, MFP_EVENT_TYPE_MEDIAITEM_SET,
-    MFP_EVENT_TYPE_PAUSE, MFP_EVENT_TYPE_PLAY, MFP_EVENT_TYPE_PLAYBACK_ENDED,
-    MFP_EVENT_TYPE_STOP, MFP_MEDIAITEM_CREATED_EVENT, MFP_OPTION_NONE, MFP_POSITIONTYPE_100NS,
-    MFPCreateMediaPlayer,
+    MFP_EVENT_TYPE_PAUSE, MFP_EVENT_TYPE_PLAY, MFP_EVENT_TYPE_PLAYBACK_ENDED, MFP_EVENT_TYPE_STOP,
+    MFP_MEDIAITEM_CREATED_EVENT, MFP_OPTION_NONE, MFP_POSITIONTYPE_100NS, MFPCreateMediaPlayer,
 };
 use windows::Win32::System::Com::StructuredStorage::PROPVARIANT;
 use windows::Win32::System::Variant::{VT_I8, VT_UI8};
@@ -31,12 +30,16 @@ use windows::core::{PCWSTR, implement};
 pub(crate) enum VideoPlayerEvent {
     /// The media item is attached and ready; duration in seconds
     /// (`0` when unknown, e.g. live sources).
-    MediaLoaded { duration: f64 },
+    MediaLoaded {
+        duration: f64,
+    },
     Play,
     Pause,
     Stop,
     Ended,
-    Error { message: String },
+    Error {
+        message: String,
+    },
 }
 
 pub(crate) type VideoEventSink = Arc<dyn Fn(VideoPlayerEvent) + Send + Sync>;
@@ -359,8 +362,9 @@ impl IMFPMediaPlayerCallback_Impl for PlayerCallback_Impl {
         match header.eEventType {
             MFP_EVENT_TYPE_MEDIAITEM_CREATED => {
                 // The header is the first field of the created-item event.
-                let created =
-                    unsafe { &*(header as *const MFP_EVENT_HEADER).cast::<MFP_MEDIAITEM_CREATED_EVENT>() };
+                let created = unsafe {
+                    &*(header as *const MFP_EVENT_HEADER).cast::<MFP_MEDIAITEM_CREATED_EVENT>()
+                };
                 if let (Some(item), Some(player)) = ((*created.pMediaItem).as_ref(), player) {
                     unsafe {
                         if let Err(err) = player.SetMediaItem(item) {
@@ -408,7 +412,9 @@ impl IMFPMediaPlayerCallback_Impl for PlayerCallback_Impl {
             MFP_EVENT_TYPE_PAUSE => (self.sink)(VideoPlayerEvent::Pause),
             MFP_EVENT_TYPE_STOP => (self.sink)(VideoPlayerEvent::Stop),
             MFP_EVENT_TYPE_PLAYBACK_ENDED => {
-                if self.lock().looping && let Some(player) = player {
+                if self.lock().looping
+                    && let Some(player) = player
+                {
                     unsafe {
                         let start = propvariant_from_100ns(0);
                         let _ = player.SetPosition(&MFP_POSITIONTYPE_100NS, &start);

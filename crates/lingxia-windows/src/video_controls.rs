@@ -17,8 +17,8 @@ use windows::Win32::Foundation::{COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, POI
 use windows::Win32::Graphics::Gdi::{
     AC_SRC_ALPHA, AC_SRC_OVER, BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BLENDFUNCTION,
     CLEARTYPE_QUALITY, CLIP_DEFAULT_PRECIS, CreateCompatibleDC, CreateDIBSection, CreateFontW,
-    DEFAULT_CHARSET, DEFAULT_PITCH, DIB_RGB_COLORS, DeleteDC, DeleteObject, FF_DONTCARE,
-    FW_NORMAL, FW_SEMIBOLD, GetDC, GetTextExtentPoint32W, HGDIOBJ, OUT_DEFAULT_PRECIS, ReleaseDC,
+    DEFAULT_CHARSET, DEFAULT_PITCH, DIB_RGB_COLORS, DeleteDC, DeleteObject, FF_DONTCARE, FW_NORMAL,
+    FW_SEMIBOLD, GetDC, GetTextExtentPoint32W, HGDIOBJ, OUT_DEFAULT_PRECIS, ReleaseDC,
     SelectObject, SetBkMode, SetTextColor, TRANSPARENT, TextOutW,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
@@ -392,7 +392,14 @@ fn capsule_pixels(width: i32, height: i32) -> Vec<u32> {
 
 /// Composites an opaque element pixel over the scrim (src-over on
 /// premultiplied BGRA, src alpha = coverage).
-fn blend_pixel(pixels: &mut [u32], width: i32, x: i32, y: i32, color: (u32, u32, u32), coverage: f32) {
+fn blend_pixel(
+    pixels: &mut [u32],
+    width: i32,
+    x: i32,
+    y: i32,
+    color: (u32, u32, u32),
+    coverage: f32,
+) {
     if coverage <= 0.0 {
         return;
     }
@@ -544,7 +551,11 @@ fn draw_texts(
         let glyph_font_obj = HGDIOBJ(glyph_font.0);
         let text_font_obj = HGDIOBJ(text_font.0);
         draw_centered(
-            if inner.state.playing { GLYPH_PAUSE } else { GLYPH_PLAY },
+            if inner.state.playing {
+                GLYPH_PAUSE
+            } else {
+                GLYPH_PLAY
+            },
             layout.play,
             0x00f0f0f0,
             glyph_font_obj,
@@ -565,13 +576,21 @@ fn draw_texts(
             draw_centered(&label, layout.rate, 0x00d8d8d8, text_font_obj);
         }
         draw_centered(
-            if inner.state.muted { GLYPH_MUTE } else { GLYPH_VOLUME },
+            if inner.state.muted {
+                GLYPH_MUTE
+            } else {
+                GLYPH_VOLUME
+            },
             layout.mute,
             0x00d0d0d0,
             glyph_font_obj,
         );
         draw_centered(
-            if inner.state.fullscreen { GLYPH_RESTORE } else { GLYPH_FULLSCREEN },
+            if inner.state.fullscreen {
+                GLYPH_RESTORE
+            } else {
+                GLYPH_FULLSCREEN
+            },
             layout.fullscreen,
             0x00d0d0d0,
             glyph_font_obj,

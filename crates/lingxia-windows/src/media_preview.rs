@@ -39,9 +39,7 @@ use windows::Win32::Graphics::GdiPlus::{
 use windows::Win32::System::Com::Urlmon::URLDownloadToCacheFileW;
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Input::KeyboardAndMouse::{SetFocus, VK_ESCAPE, VK_LEFT, VK_RIGHT};
-use windows::Win32::UI::WindowsAndMessaging::{
-    self, WINDOW_EX_STYLE, WINDOW_STYLE, WNDCLASSW,
-};
+use windows::Win32::UI::WindowsAndMessaging::{self, WINDOW_EX_STYLE, WINDOW_STYLE, WNDCLASSW};
 use windows::core::{PCWSTR, w};
 
 use super::video_controls::{ControlsAction, ControlsState, VideoControls};
@@ -143,7 +141,11 @@ struct Session {
 fn session_mut<'a>(hwnd: HWND) -> Option<&'a mut Session> {
     let raw =
         unsafe { WindowsAndMessaging::GetWindowLongPtrW(hwnd, WindowsAndMessaging::GWLP_USERDATA) };
-    if raw == 0 { None } else { Some(unsafe { &mut *(raw as *mut Session) }) }
+    if raw == 0 {
+        None
+    } else {
+        Some(unsafe { &mut *(raw as *mut Session) })
+    }
 }
 
 fn ensure_gdiplus() {
@@ -338,8 +340,10 @@ fn show_item(window: HWND) {
                 return;
             };
             unsafe {
-                let _ =
-                    WindowsAndMessaging::ShowWindow(session.surface, WindowsAndMessaging::SW_SHOWNA);
+                let _ = WindowsAndMessaging::ShowWindow(
+                    session.surface,
+                    WindowsAndMessaging::SW_SHOWNA,
+                );
             }
             let sink = preview_video_sink(window.0 as isize);
             let Some(player) = VideoPlayer::new(session.surface, sink) else {
@@ -470,14 +474,8 @@ fn layout_children(window: HWND) {
     let mut rect = RECT::default();
     unsafe {
         let _ = WindowsAndMessaging::GetClientRect(window, &mut rect);
-        let _ = WindowsAndMessaging::MoveWindow(
-            session.surface,
-            0,
-            0,
-            rect.right,
-            rect.bottom,
-            true,
-        );
+        let _ =
+            WindowsAndMessaging::MoveWindow(session.surface, 0, 0, rect.right, rect.bottom, true);
     }
     if let Some(player) = session.player.as_ref() {
         player.update_video();

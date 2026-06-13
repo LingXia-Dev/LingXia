@@ -3213,6 +3213,7 @@ name = "lingxia-shell"
 version = "0.9.0"
 dependencies = [
  "futures",
+ "image",
  "lingxia-app-context",
  "lingxia-browser",
  "lingxia-lxapp",
@@ -3283,7 +3284,6 @@ dependencies = [
  "block2",
  "dispatch2",
  "http",
- "image",
  "jni",
  "libc",
  "log",
@@ -3311,6 +3311,7 @@ dependencies = [
 name = "lingxia-windows"
 version = "0.9.0"
 dependencies = [
+ "image",
  "lingxia",
  "lingxia-lxapp",
  "lingxia-messaging",

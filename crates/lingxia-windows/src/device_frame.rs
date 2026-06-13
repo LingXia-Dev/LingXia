@@ -4,6 +4,10 @@
 //! the public model here so Windows runners depend on `lingxia-windows`
 //! instead of reaching into the lower `lingxia::windows` facade directly.
 
+use crate::{WindowsAppMenuCommandHandler, WindowsAppMenuItem, app_menu};
+
+mod native;
+
 /// Toolbar model floating above a simulated device frame.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WindowsDeviceFrameToolbar {
@@ -34,37 +38,6 @@ pub struct WindowsDeviceFrame {
     pub toolbar: Option<WindowsDeviceFrameToolbar>,
 }
 
-pub use lingxia_webview::platform::windows::{
-    WindowsAppMenu, WindowsAppMenuCommandHandler, WindowsAppMenuEntry, WindowsAppMenuItem,
-    set_windows_app_menu, set_windows_app_menu_command_handler,
-};
-
-impl From<WindowsDeviceFrameToolbar>
-    for lingxia_webview::platform::windows::WindowsDeviceFrameToolbar
-{
-    fn from(value: WindowsDeviceFrameToolbar) -> Self {
-        Self {
-            selector_label: value.selector_label,
-            selector_items: value.selector_items,
-            action_command: value.action_command,
-        }
-    }
-}
-
-impl From<WindowsDeviceFrame> for lingxia_webview::platform::windows::WindowsDeviceFrame {
-    fn from(value: WindowsDeviceFrame) -> Self {
-        Self {
-            screen_width: value.screen_width,
-            screen_height: value.screen_height,
-            bezel_width: value.bezel_width,
-            outer_corner_radius: value.outer_corner_radius,
-            screen_corner_radius: value.screen_corner_radius,
-            bezel_color: value.bezel_color,
-            toolbar: value.toolbar.map(Into::into),
-        }
-    }
-}
-
 /// Presents or clears a simulated-device frame around the top-level window
 /// showing `appid`.
 #[cfg(target_os = "windows")]
@@ -73,18 +46,27 @@ pub fn set_app_window_device_frame(
     frame: Option<WindowsDeviceFrame>,
 ) -> Result<(), String> {
     let webview = current_page_webview(appid)?;
-    lingxia_webview::platform::windows::set_webview_device_frame(
-        &webview.webtag(),
-        frame.map(Into::into),
-    )
-    .map_err(|err| err.to_string())
+    let host_window = (frame.is_none())
+        .then(|| crate::webview_host::find_webview_host_window(&webview.webtag()).ok())
+        .flatten();
+    native::set_webview_device_frame(&webview.webtag(), frame)?;
+    if let Some(host_window) = host_window {
+        app_menu::refresh_host_window_menu(host_window.window);
+    }
+    Ok(())
+}
+
+pub(crate) fn set_device_frame_command_handler(handler: WindowsAppMenuCommandHandler) {
+    native::set_device_frame_command_handler(handler);
 }
 
 /// Opens the WebView2 DevTools window for the current page of `appid`.
 #[cfg(target_os = "windows")]
 pub fn open_current_page_devtools(appid: &str) -> Result<(), String> {
     let webview = current_page_webview(appid)?;
-    lingxia_webview::platform::windows::open_webview_devtools(&webview.webtag())
+    lingxia_webview::platform::windows::find_webview_handler(&webview.webtag())
+        .ok_or_else(|| "page WebView handler is not ready".to_string())?
+        .open_devtools()
         .map_err(|err| err.to_string())
 }
 

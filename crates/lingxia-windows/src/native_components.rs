@@ -39,16 +39,16 @@ use std::sync::{Arc, Mutex, OnceLock};
 use lingxia_platform::traits::video_player::VideoPlayerCommand;
 use lingxia_webview::WebViewController;
 use lingxia_webview::platform::windows::{
-    WindowsWebViewContentWindow, post_to_window_thread, webview_content_window,
+    WindowsWebViewContentWindow, find_webview_content_window, post_to_window_thread,
 };
 use serde_json::{Value, json};
 use windows::Win32::Foundation::{COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
     BLACK_BRUSH, CLEARTYPE_QUALITY, CLIP_DEFAULT_PRECIS, COLOR_WINDOW, CombineRgn, CreateFontW,
     CreateRectRgn, CreateRoundRectRgn, DEFAULT_CHARSET, DEFAULT_PITCH, DeleteObject, FF_SWISS,
-    GetMonitorInfoW, GetStockObject, HBRUSH, HDC, HGDIOBJ, InvalidateRect, MONITORINFO,
-    MONITOR_DEFAULTTONEAREST, MonitorFromWindow, OUT_DEFAULT_PRECIS, RGN_AND, SetBkColor,
-    SetTextColor, SetWindowRgn, WHITE_BRUSH,
+    GetMonitorInfoW, GetStockObject, HBRUSH, HDC, HGDIOBJ, InvalidateRect,
+    MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromWindow, OUT_DEFAULT_PRECIS, RGN_AND,
+    SetBkColor, SetTextColor, SetWindowRgn, WHITE_BRUSH,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::Threading::GetCurrentThreadId;
@@ -106,7 +106,7 @@ impl lxapp::NativeComponentHost for ShellNativeComponentHost {
             appid: page.appid(),
             path: page.path(),
         };
-        let target = webview_content_window(&webtag);
+        let target = find_webview_content_window(&webtag);
         handle_message(context, target, &message);
     }
 
@@ -193,7 +193,9 @@ fn suppressed_edits() -> std::sync::MutexGuard<'static, HashSet<isize>> {
 
 fn lock_registry<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     // The registries hold no invariants that poisoning can break.
-    mutex.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+    mutex
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 fn component_key(page_key: &str, component_id: &str) -> String {
@@ -204,7 +206,11 @@ fn component_key(page_key: &str, component_id: &str) -> String {
 // Message dispatch
 // ---------------------------------------------------------------------------
 
-fn handle_message(context: PageContext, target: Option<WindowsWebViewContentWindow>, message: &Value) {
+fn handle_message(
+    context: PageContext,
+    target: Option<WindowsWebViewContentWindow>,
+    message: &Value,
+) {
     let Some(action) = message.get("action").and_then(Value::as_str) else {
         log::debug!("native-component message without action; ignoring");
         return;
@@ -450,7 +456,10 @@ fn apply_component_visibility(key: &str, visible: bool) {
         };
         let video = entry.video.as_mut().map(|video| {
             if visible {
-                (video.player.clone(), std::mem::take(&mut video.resume_on_show))
+                (
+                    video.player.clone(),
+                    std::mem::take(&mut video.resume_on_show),
+                )
             } else {
                 video.resume_on_show = video.playing;
                 (video.player.clone(), false)
@@ -490,7 +499,9 @@ fn teardown_page(page_key: &str) {
     page_views().remove(page_key);
     {
         let mut ready = ready_keys();
-        ready.retain(|key| !key.starts_with(page_key) || !key[page_key.len()..].starts_with('\u{1}'));
+        ready.retain(|key| {
+            !key.starts_with(page_key) || !key[page_key.len()..].starts_with('\u{1}')
+        });
     }
     let targets: Vec<(String, isize)> = components()
         .iter()
@@ -498,11 +509,10 @@ fn teardown_page(page_key: &str) {
         .map(|(key, entry)| (key.clone(), entry.parent))
         .collect();
     for (key, parent) in targets {
-        let posted = is_window(parent)
-            && {
-                let key = key.clone();
-                run_on_window_thread(parent, move || destroy_component(&key))
-            };
+        let posted = is_window(parent) && {
+            let key = key.clone();
+            run_on_window_thread(parent, move || destroy_component(&key))
+        };
         if !posted {
             // Window (and its children) are already gone; purge bookkeeping.
             purge_component_state(&key);
@@ -559,9 +569,15 @@ fn mount_on_ui(
     };
 
     match kind {
-        MountKind::Edit { multiline } => {
-            mount_edit_on_ui(context, component_id, multiline, parent, container, doc_rect, props)
-        }
+        MountKind::Edit { multiline } => mount_edit_on_ui(
+            context,
+            component_id,
+            multiline,
+            parent,
+            container,
+            doc_rect,
+            props,
+        ),
         MountKind::Video => {
             mount_video_on_ui(context, component_id, parent, container, doc_rect, props)
         }
@@ -697,7 +713,11 @@ fn apply_layout(key: &str) {
     }
 
     let target = view.target;
-    let scale = if target.scale > 0.0 { target.scale } else { 1.0 };
+    let scale = if target.scale > 0.0 {
+        target.scale
+    } else {
+        1.0
+    };
 
     let (x, y, width, height) = (
         ((doc_rect.x - view.scroll_x) * scale).round() as i32 + target.content_left,
@@ -813,7 +833,9 @@ fn apply_layout(key: &str) {
 fn apply_props(key: &str, props: &ComponentProps) {
     let is_video = {
         let components = components();
-        components.get(key).is_some_and(|entry| entry.video.is_some())
+        components
+            .get(key)
+            .is_some_and(|entry| entry.video.is_some())
     };
     if is_video {
         apply_video_props(key, props);
@@ -907,7 +929,14 @@ fn emit_event(key: &str, event: &str, detail: Value) {
     let spawned = std::thread::Builder::new()
         .name(format!("lingxia-nc-event-{}", component_id))
         .spawn(move || {
-            deliver_event(&context, &component_id, &event, detail, bindings_json, dataset_json);
+            deliver_event(
+                &context,
+                &component_id,
+                &event,
+                detail,
+                bindings_json,
+                dataset_json,
+            );
         });
     if let Err(err) = spawned {
         log::warn!("failed to spawn native-component event thread: {err}");
@@ -991,7 +1020,9 @@ fn container_is_video(container: HWND) -> bool {
         return false;
     };
     let components = components();
-    components.get(&key).is_some_and(|entry| entry.video.is_some())
+    components
+        .get(&key)
+        .is_some_and(|entry| entry.video.is_some())
 }
 
 unsafe extern "system" fn container_proc(
@@ -1015,7 +1046,9 @@ unsafe extern "system" fn container_proc(
             let color = component_key_for_container(hwnd)
                 .and_then(|key| {
                     let components = components();
-                    components.get(&key).and_then(|entry| entry.state.text_color)
+                    components
+                        .get(&key)
+                        .and_then(|entry| entry.state.text_color)
                 })
                 .unwrap_or(DEFAULT_TEXT_COLOR);
             let hdc = HDC(wparam.0 as *mut _);
