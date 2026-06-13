@@ -6,7 +6,7 @@ use windows::Win32::System::Registry::{
 };
 use windows::core::HSTRING;
 
-use super::{Platform, file, not_supported};
+use super::{Platform, not_supported};
 use crate::error::PlatformError;
 use crate::traits::device::{Device, DeviceHardware};
 use crate::{DeviceInfo, ScreenInfo};
@@ -46,9 +46,8 @@ impl Device for Platform {
         not_supported("vibrate")
     }
 
-    fn make_phone_call(&self, phone_number: &str) -> Result<(), PlatformError> {
-        // Sync trait method: launch without waiting so the executor never blocks.
-        file::open_with_shell_detached(&format!("tel:{phone_number}"))
+    fn make_phone_call(&self, _phone_number: &str) -> Result<(), PlatformError> {
+        not_supported("make_phone_call")
     }
 }
 

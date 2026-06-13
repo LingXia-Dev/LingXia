@@ -250,11 +250,6 @@ impl AppRuntime for Platform {
     }
 }
 
-// Stubbed: get_network_info is feasible via WinRT
-// Windows.Networking.Connectivity (GetInternetConnectionProfile) but the JSON
-// payload contract lives in the per-OS bridges; left on trait defaults until
-// the payload shape is shared.
-impl crate::traits::network::Network for Platform {}
 // lx.surface: the surface's content webview is created by lxapp; the
 // presenter shows it as a desktop window and reports closes back to the logic
 // layer through the callback the `lingxia` facade registers (see
@@ -282,12 +277,6 @@ impl crate::traits::ui::SurfacePresenter for Platform {
 // Stubbed: in-app update prompt/install flows have no Windows updater helper
 // yet; trait defaults report not_supported for prompt/install.
 impl crate::traits::update::UpdateService for Platform {}
-// Stubbed: Wi-Fi management needs the Native Wifi API (wlanapi.dll session
-// handles, scan-completion callbacks, profile XML for connect); the pinned
-// windows-rs rev exposes Win32_NetworkManagement_WiFi, but the bridge is
-// substantial and is left for a dedicated change.
-impl crate::traits::wifi::Wifi for Platform {}
-
 impl ShareService for Platform {
     // Stubbed: the Windows share sheet (DataTransferManager) must be obtained
     // through IDataTransferManagerInterop with an owning HWND, and the
