@@ -14,19 +14,19 @@ mod renderer;
 mod window;
 
 pub use api::{
-    HostWindowCreatedHandler, WindowsHostPanelInputHandler, WindowsHostPanelKeyEvent,
-    WindowsPanelPosition, WindowsWebViewContentWindow, WindowsWebViewHandler,
-    WindowsWebViewHostWindow, WindowsWebViewWindowSnapshot, WindowsWindowLayout,
+    HostWindowCreatedHandler, WindowsContentRect, WindowsHostPanelInputHandler,
+    WindowsHostPanelKeyEvent, WindowsPanelPosition, WindowsWebViewContentWindow,
+    WindowsWebViewHandler, WindowsWebViewHostWindow, WindowsWebViewWindowSnapshot,
+    WindowsWindowLayout, active_content_screen_rect,
     add_webview_host_window_created_handler, clear_host_panel_input_handler,
-    clear_webview_group_override, clear_webview_os_frame, set_webview_group_override,
-    set_webview_os_frame,
-    find_webview_content_window, find_webview_handler, find_webview_host_window, hide_host_panel,
-    invalidate_host_panel, is_panel_visible, post_to_window_thread,
-    request_webview_host_window_layout, restore_presented_group_main, set_default_window_size,
-    set_host_panel_input_handler, set_host_panel_maximized, set_host_panel_tabs,
-    set_webview_chrome_event_handler, set_webview_close_handler, set_webview_devtools_enabled,
-    set_webview_user_data_dir, set_webview_window_layout, show_interactive_host_panel,
-    update_host_panel_body,
+    clear_webview_group_override, clear_webview_os_frame, find_webview_content_window,
+    find_webview_handler, find_webview_host_window, hide_host_panel, invalidate_host_panel,
+    is_panel_visible, post_to_window_thread, request_webview_host_window_layout,
+    restore_presented_group_main, set_default_window_size, set_host_panel_input_handler,
+    set_host_panel_maximized, set_host_panel_tabs, set_webview_chrome_event_handler,
+    set_webview_close_handler, set_webview_devtools_enabled, set_webview_group_override,
+    set_webview_os_frame, set_webview_user_data_dir, set_webview_window_layout,
+    show_interactive_host_panel, update_host_panel_body,
 };
 pub(crate) use api::{
     WINDOW_HOST_PANEL_INPUT_HANDLERS, WM_LINGXIA_RUN_CALLBACK, configured_webview_user_data_dir,

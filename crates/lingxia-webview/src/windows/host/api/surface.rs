@@ -13,6 +13,47 @@ pub struct WindowsWebViewWindowSnapshot {
     pub content_height: u32,
 }
 
+/// Screen-space geometry of a host window's main content area, its owning
+/// top-level window handle, and its DPI. A pure query for host UI layers (e.g.
+/// `lingxia-windows`) to position overlays (refresh indicator, …) over the
+/// current page — the webview reports where its display surface is and which
+/// window owns it; the UI layer decides what to draw over it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WindowsContentRect {
+    /// Top-level host window handle (`HWND` as isize) owning this content.
+    pub host_window: isize,
+    pub left: i32,
+    pub top: i32,
+    pub width: i32,
+    pub height: i32,
+    pub dpi: u32,
+}
+
+/// Screen-space rect of the active group's main content area, or `None` when no
+/// group is active. The webview owns window/group geometry; UI layers call this
+/// to place their own overlays over the live page.
+pub fn active_content_screen_rect() -> Option<WindowsContentRect> {
+    let group = active_group_key()?;
+    let host = host_handle_for_group(&group)?;
+    let content = attached_group_rects(&group, host).map(|rects| rects.main)?;
+    let mut origin = windows::Win32::Foundation::POINT {
+        x: content.left,
+        y: content.top,
+    };
+    unsafe {
+        let _ = windows::Win32::Graphics::Gdi::ClientToScreen(host, &mut origin);
+    }
+    let dpi = unsafe { windows::Win32::UI::HiDpi::GetDpiForWindow(host) };
+    Some(WindowsContentRect {
+        host_window: hwnd_handle(host),
+        left: origin.x,
+        top: origin.y,
+        width: content.right - content.left,
+        height: content.bottom - content.top,
+        dpi,
+    })
+}
+
 /// Handle to an already-created Windows WebView surface.
 ///
 /// UI layers find this handle and decide how/when to present the surface.

@@ -27,6 +27,8 @@ mod media_preview;
 #[cfg(all(target_os = "windows", feature = "runtime"))]
 mod native_components;
 #[cfg(all(target_os = "windows", feature = "runtime"))]
+mod refresh_indicator;
+#[cfg(all(target_os = "windows", feature = "runtime"))]
 mod video_controls;
 #[cfg(all(target_os = "windows", feature = "runtime"))]
 mod video_player;
@@ -190,6 +192,7 @@ pub fn init(app: WindowsApp) -> Result<String> {
     // mount a component.
     native_components::install();
     card_decorator::install();
+    refresh_indicator::install();
     app_menu::install_host_window_menu_support();
     install_current_thread_exit_handler();
 

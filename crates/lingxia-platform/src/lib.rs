@@ -74,8 +74,8 @@ pub use windows::{
     register_windows_media_preview_host, register_windows_video_command_dispatcher,
     set_windows_app_exit_handler, set_windows_open_url_handler,
     set_windows_page_visibility_handler, set_windows_pull_to_refresh_handler,
-    set_windows_surface_closed_handler, set_windows_surface_dispose_handler,
-    set_windows_ui_update_handler,
+    set_windows_refresh_indicator_handler, set_windows_surface_closed_handler,
+    set_windows_surface_dispose_handler, set_windows_ui_update_handler,
 };
 
 #[cfg(not(any(

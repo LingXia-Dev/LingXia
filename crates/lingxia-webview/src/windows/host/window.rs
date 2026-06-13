@@ -15,8 +15,8 @@ pub(crate) use controller_bounds::*;
 pub(crate) use geometry::*;
 pub(crate) use placement::*;
 
-pub(crate) use corner_caps::{destroy_corner_caps, raise_corner_caps, update_corner_caps};
 pub use corner_caps::{WindowsCardDecorator, set_windows_card_decorator};
+pub(crate) use corner_caps::{destroy_corner_caps, raise_corner_caps, update_corner_caps};
 pub(crate) use visibility::*;
 
 pub(crate) struct WindowUserData {
@@ -284,10 +284,8 @@ pub(crate) fn create_hidden_window(webtag: &WebTag) -> StdResult<HWND> {
         // Without an explicit class cursor the window never resets the pointer,
         // so the launch-time "AppStarting" busy spinner lingers over it. Use the
         // standard arrow.
-        hCursor: unsafe {
-            WindowsAndMessaging::LoadCursorW(None, WindowsAndMessaging::IDC_ARROW)
-        }
-        .unwrap_or_default(),
+        hCursor: unsafe { WindowsAndMessaging::LoadCursorW(None, WindowsAndMessaging::IDC_ARROW) }
+            .unwrap_or_default(),
         lpszClassName: w!("LingXiaHiddenWebViewHost"),
         ..Default::default()
     };
