@@ -16,9 +16,8 @@ pub fn configure_windows_app_with_manifest(manifest: impl AsRef<Path>) {
         "cargo:rustc-link-arg-bins=/MANIFESTINPUT:{}",
         manifest_path.display()
     );
-    if std::env::var_os("CARGO_CFG_DEBUG_ASSERTIONS").is_none() {
-        println!("cargo:rustc-link-arg-bins=/SUBSYSTEM:WINDOWS");
-    }
+    println!("cargo:rustc-link-arg-bins=/SUBSYSTEM:WINDOWS");
+    println!("cargo:rustc-link-arg-bins=/ENTRY:mainCRTStartup");
     println!("cargo:rerun-if-changed={}", manifest.display());
 }
 

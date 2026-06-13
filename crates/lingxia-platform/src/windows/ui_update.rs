@@ -23,6 +23,10 @@ fn invoke_windows_ui_update_handler(appid: String) {
     }
 }
 
+pub(super) fn sync_windows_ui(appid: &str) {
+    invoke_windows_ui_update_handler(appid.to_string());
+}
+
 impl UIUpdate for Platform {
     fn update_navbar_ui(&self, appid: String) -> Result<(), PlatformError> {
         invoke_windows_ui_update_handler(appid);

@@ -4,7 +4,6 @@ use crate::device::{
 };
 use lingxia_windows::{WindowsAppMenu, WindowsAppMenuEntry, WindowsAppMenuItem};
 
-const RUNNER_WINDOW_SIZE: (i32, i32) = (420, 880);
 const VK_F12: u32 = 0x7B;
 
 struct RunnerDevtoolAddon;
@@ -18,11 +17,14 @@ impl lingxia::HostAddon for RunnerDevtoolAddon {
 pub(crate) fn run() -> lingxia_windows::Result<()> {
     lingxia::register_host_addon(Box::new(RunnerDevtoolAddon));
 
+    let default_device = default_device_index();
+    let initial_frame = frame_spec(default_device);
+    lingxia_windows::set_initial_app_window_device_frame(initial_frame.clone());
     let app = lingxia_windows::WindowsApp::from_env()
-        .with_window_size(RUNNER_WINDOW_SIZE.0, RUNNER_WINDOW_SIZE.1);
+        .with_window_size(initial_frame.screen_width, initial_frame.screen_height);
     let home_app_id = lingxia_windows::init(app)?;
     install_runner_menu(home_app_id.clone());
-    apply_default_device(home_app_id);
+    apply_default_device(home_app_id, default_device);
     std::process::exit(lingxia_windows::run_message_loop());
 }
 
@@ -85,11 +87,13 @@ fn install_runner_menu(home_app_id: String) {
     lingxia_windows::set_windows_app_menu(runner_menus(None));
 }
 
-fn apply_default_device(home_app_id: String) {
+fn apply_default_device(home_app_id: String, default_device: usize) {
     std::thread::spawn(move || {
-        for _ in 0..50 {
-            std::thread::sleep(std::time::Duration::from_millis(200));
-            if apply_device(&home_app_id, default_device_index()).is_ok() {
+        for attempt in 0..80 {
+            if attempt > 0 {
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+            if apply_device(&home_app_id, default_device).is_ok() {
                 return;
             }
         }

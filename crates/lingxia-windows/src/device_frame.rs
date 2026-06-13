@@ -56,6 +56,15 @@ pub fn set_app_window_device_frame(
     Ok(())
 }
 
+/// Applies a simulated-device frame to the next WebView host window created
+/// by this process. Intended for runners that know their initial device
+/// before the home lxapp is opened, so the first visible frame already has
+/// the target shape.
+#[cfg(target_os = "windows")]
+pub fn set_initial_app_window_device_frame(frame: WindowsDeviceFrame) {
+    native::set_initial_device_frame(frame);
+}
+
 pub(crate) fn set_device_frame_command_handler(handler: WindowsAppMenuCommandHandler) {
     native::set_device_frame_command_handler(handler);
 }

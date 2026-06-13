@@ -39,7 +39,7 @@ pub use app_menu::{
 #[cfg(all(target_os = "windows", feature = "runtime"))]
 pub use device_frame::{
     WindowsDeviceFrame, WindowsDeviceFrameToolbar, open_current_page_devtools,
-    set_app_window_device_frame,
+    set_app_window_device_frame, set_initial_app_window_device_frame,
 };
 
 /// Host process description used to initialize the LingXia runtime.

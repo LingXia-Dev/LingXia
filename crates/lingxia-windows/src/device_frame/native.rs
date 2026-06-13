@@ -16,10 +16,11 @@ use std::collections::HashMap;
 use std::ffi::c_void;
 use std::sync::{Arc, Mutex, OnceLock};
 
-use lingxia_webview::WebTag;
 use crate::webview_host::{
-    WindowsWebViewHostWindow, find_webview_host_window, request_webview_host_window_layout,
+    WindowsWebViewHostWindow, add_webview_host_window_created_handler, find_webview_host_window,
+    request_webview_host_window_layout,
 };
+use lingxia_webview::WebTag;
 use lingxia_webview::platform::windows::post_to_window_thread;
 use windows::Win32::Foundation::{
     COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, SIZE, WPARAM,
@@ -51,12 +52,32 @@ pub(super) type WindowsDeviceFrameCommandHandler = Arc<dyn Fn(u32) + Send + Sync
 
 static DEVICE_FRAME_COMMAND_HANDLER: OnceLock<Mutex<Option<WindowsDeviceFrameCommandHandler>>> =
     OnceLock::new();
+static INITIAL_DEVICE_FRAME: OnceLock<Mutex<Option<WindowsDeviceFrame>>> = OnceLock::new();
+static INITIAL_DEVICE_FRAME_HOOK: OnceLock<()> = OnceLock::new();
 
 pub(super) fn set_device_frame_command_handler(handler: WindowsDeviceFrameCommandHandler) {
     let slot = DEVICE_FRAME_COMMAND_HANDLER.get_or_init(|| Mutex::new(None));
     if let Ok(mut slot) = slot.lock() {
         *slot = Some(handler);
     }
+}
+
+pub(super) fn set_initial_device_frame(frame: WindowsDeviceFrame) {
+    let slot = INITIAL_DEVICE_FRAME.get_or_init(|| Mutex::new(None));
+    if let Ok(mut slot) = slot.lock() {
+        *slot = Some(frame);
+    }
+    INITIAL_DEVICE_FRAME_HOOK.get_or_init(|| {
+        add_webview_host_window_created_handler(Arc::new(|window| {
+            let frame = INITIAL_DEVICE_FRAME
+                .get()
+                .and_then(|slot| slot.lock().ok())
+                .and_then(|mut slot| slot.take());
+            if let Some(frame) = frame {
+                apply_device_frame(hwnd_from_handle(window), frame);
+            }
+        }));
+    });
 }
 
 /// Timer used while the content or shell window is in an interactive

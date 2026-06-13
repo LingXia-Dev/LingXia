@@ -7,7 +7,7 @@ use std::sync::{Arc, Mutex};
 use lingxia_webview::WebTag;
 use lingxia_webview::runtime as webview_runtime;
 
-use super::{file, not_supported, surface};
+use super::{file, not_supported, surface, ui_update};
 use crate::AssetFileEntry;
 use crate::error::PlatformError;
 use crate::traits::app_runtime::{AnimationType, AppRuntime, LxAppOpenMode, OpenUrlRequest};
@@ -197,6 +197,7 @@ impl AppRuntime for Platform {
         panel_id: String,
     ) -> Result<(), PlatformError> {
         let webtag = WebTag::new(&appid, &path, Some(session_id));
+        ui_update::sync_windows_ui(&appid);
         surface::show_webtag_window(webtag, self.product_name.clone(), true, open_mode, panel_id);
         Ok(())
     }
@@ -222,6 +223,7 @@ impl AppRuntime for Platform {
             .find(|tag| tag.extract_appid() == appid)
             .and_then(|tag| tag.session_id());
         let webtag = WebTag::new(&appid, &path, session_id);
+        ui_update::sync_windows_ui(&appid);
         surface::show_webtag_window(
             webtag,
             self.product_name.clone(),
