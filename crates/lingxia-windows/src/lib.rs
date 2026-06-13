@@ -19,6 +19,8 @@ mod app_icon;
 #[cfg(all(target_os = "windows", feature = "runtime"))]
 mod app_menu;
 #[cfg(all(target_os = "windows", feature = "runtime"))]
+mod card_decorator;
+#[cfg(all(target_os = "windows", feature = "runtime"))]
 mod device_frame;
 #[cfg(all(target_os = "windows", feature = "runtime"))]
 mod media_preview;
@@ -187,6 +189,7 @@ pub fn init(app: WindowsApp) -> Result<String> {
     // the Android/iOS SDK layers. Must register before the first page can
     // mount a component.
     native_components::install();
+    card_decorator::install();
     app_menu::install_host_window_menu_support();
     install_current_thread_exit_handler();
 

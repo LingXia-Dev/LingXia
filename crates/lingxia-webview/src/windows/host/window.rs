@@ -16,6 +16,7 @@ pub(crate) use geometry::*;
 pub(crate) use placement::*;
 
 pub(crate) use corner_caps::{destroy_corner_caps, raise_corner_caps, update_corner_caps};
+pub use corner_caps::{WindowsCardDecorator, set_windows_card_decorator};
 pub(crate) use visibility::*;
 
 pub(crate) struct WindowUserData {

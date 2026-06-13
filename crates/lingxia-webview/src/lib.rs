@@ -203,7 +203,8 @@ pub mod platform {
         #[doc(hidden)]
         pub mod lingxia_host {
             pub use crate::windows::{
-                HostWindowCreatedHandler, WindowsChromeAttachedLayout, WindowsChromeAttachedState,
+                HostWindowCreatedHandler, WindowsCardDecorator, set_windows_card_decorator,
+                WindowsChromeAttachedLayout, WindowsChromeAttachedState,
                 WindowsChromeCommand, WindowsChromeHit, WindowsChromePanel,
                 WindowsChromePanelLayout, WindowsChromePanelLayoutInput, WindowsChromeRenderer,
                 WindowsChromeState, WindowsFrameButton, WindowsHostPanelContent,

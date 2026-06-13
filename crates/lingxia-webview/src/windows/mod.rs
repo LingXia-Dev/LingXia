@@ -38,18 +38,17 @@ use webview2_com::{Microsoft::Web::WebView2::Win32::*, *};
 use windows::{
     Win32::{
         Foundation::{
-            COLORREF, E_POINTER, HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, SIZE, WPARAM,
+            COLORREF, E_POINTER, HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM,
         },
         Graphics::Dwm::{
             DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND, DwmExtendFrameIntoClientArea,
             DwmSetWindowAttribute,
         },
         Graphics::Gdi::{
-            AC_SRC_ALPHA, AC_SRC_OVER, BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BLENDFUNCTION,
             BeginPaint, BitBlt, ClientToScreen, CreateCompatibleBitmap, CreateCompatibleDC,
-            CreateDIBSection, DIB_RGB_COLORS, DeleteDC, DeleteObject, EndPaint, GetDC,
-            GetMonitorInfoW, HDC, HGDIOBJ, InvalidateRect, MONITOR_DEFAULTTONEAREST, MONITORINFO,
-            MonitorFromWindow, PAINTSTRUCT, ReleaseDC, SRCCOPY, ScreenToClient, SelectObject,
+            DeleteDC, DeleteObject, EndPaint, GetMonitorInfoW, HDC, HGDIOBJ, InvalidateRect,
+            MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromWindow, PAINTSTRUCT, SRCCOPY,
+            ScreenToClient, SelectObject,
         },
         System::{
             Com::{
@@ -95,7 +94,8 @@ pub use surface::{
 
 #[cfg(feature = "windows-host")]
 pub use host::{
-    HostWindowCreatedHandler, WindowsChromeAttachedLayout, WindowsChromeAttachedState,
+    HostWindowCreatedHandler, WindowsCardDecorator, set_windows_card_decorator,
+    WindowsChromeAttachedLayout, WindowsChromeAttachedState,
     WindowsChromeCommand, WindowsChromeHit, WindowsChromePanel, WindowsChromePanelLayout,
     WindowsChromePanelLayoutInput, WindowsChromeRenderer, WindowsChromeState, WindowsFrameButton,
     WindowsHostPanelContent, WindowsHostPanelInputHandler, WindowsHostPanelKeyEvent,

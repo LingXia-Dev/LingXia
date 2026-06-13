@@ -37,6 +37,7 @@ pub use renderer::{
     WindowsChromeRenderer, WindowsChromeState, WindowsFrameButton, WindowsHostPanelContent,
     WindowsHostPanelTab, set_windows_chrome_renderer,
 };
+pub use window::{WindowsCardDecorator, set_windows_card_decorator};
 
 pub(crate) use api::*;
 pub(crate) use groups::*;
