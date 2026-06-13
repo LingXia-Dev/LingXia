@@ -38,7 +38,7 @@ use windows::Win32::Graphics::GdiPlus::{
 };
 use windows::Win32::System::Com::Urlmon::URLDownloadToCacheFileW;
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
-use windows::Win32::UI::Input::KeyboardAndMouse::{SetFocus, VK_ESCAPE, VK_LEFT, VK_RIGHT};
+use windows::Win32::UI::Input::KeyboardAndMouse::{VK_ESCAPE, VK_LEFT, VK_RIGHT};
 use windows::Win32::UI::WindowsAndMessaging::{self, WINDOW_EX_STYLE, WINDOW_STYLE, WNDCLASSW};
 use windows::core::{PCWSTR, w};
 
@@ -185,7 +185,7 @@ fn run_session(request: PreviewMediaRequest) {
 
     let Ok(window) = (unsafe {
         WindowsAndMessaging::CreateWindowExW(
-            WindowsAndMessaging::WS_EX_TOPMOST,
+            WindowsAndMessaging::WS_EX_TOPMOST | WindowsAndMessaging::WS_EX_NOACTIVATE,
             preview_class(),
             PCWSTR::null(),
             WINDOW_STYLE(
@@ -254,7 +254,6 @@ fn run_session(request: PreviewMediaRequest) {
             WindowsAndMessaging::GWLP_USERDATA,
             Box::into_raw(session) as isize,
         );
-        let _ = SetFocus(Some(window));
         let _ = WindowsAndMessaging::SetTimer(Some(window), TICK_TIMER_ID, TICK_INTERVAL_MS, None);
     }
     sessions().insert(callback_id, window.0 as isize);

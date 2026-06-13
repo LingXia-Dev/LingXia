@@ -188,6 +188,7 @@ pub fn init(app: WindowsApp) -> Result<String> {
     // mount a component.
     native_components::install();
     app_menu::install_host_window_menu_support();
+    install_current_thread_exit_handler();
 
     let asset_dir = app.asset_dir.clone();
     let icon_path = app.icon_path.clone();
@@ -232,21 +233,11 @@ pub fn init(_app: WindowsApp) -> Result<String> {
 /// same thread that called [`init`].
 #[cfg(all(target_os = "windows", feature = "runtime"))]
 pub fn run_message_loop() -> i32 {
-    use std::sync::Arc;
-
     use windows::Win32::UI::WindowsAndMessaging::{
-        DispatchMessageW, GetMessageW, MSG, PostThreadMessageW, TranslateMessage, WM_QUIT,
+        DispatchMessageW, GetMessageW, MSG, TranslateMessage,
     };
 
-    let main_thread_id = unsafe { windows::Win32::System::Threading::GetCurrentThreadId() };
-    lingxia::windows::set_windows_app_exit_handler(Arc::new(move || unsafe {
-        let _ = PostThreadMessageW(
-            main_thread_id,
-            WM_QUIT,
-            Default::default(),
-            Default::default(),
-        );
-    }));
+    install_current_thread_exit_handler();
 
     let mut msg = MSG::default();
     loop {
@@ -268,6 +259,32 @@ pub fn run_message_loop() -> i32 {
 #[cfg(all(not(target_os = "windows"), feature = "runtime"))]
 pub fn run_message_loop() -> i32 {
     0
+}
+
+#[cfg(all(target_os = "windows", feature = "runtime"))]
+fn install_current_thread_exit_handler() {
+    use std::sync::Arc;
+
+    use windows::Win32::UI::WindowsAndMessaging::{
+        MSG, PM_NOREMOVE, PeekMessageW, PostThreadMessageW, WM_QUIT,
+    };
+
+    // Ensure this thread owns a message queue before page code can request
+    // exit from a WebView UI thread.
+    let mut msg = MSG::default();
+    unsafe {
+        let _ = PeekMessageW(&mut msg, None, 0, 0, PM_NOREMOVE);
+    }
+
+    let main_thread_id = unsafe { windows::Win32::System::Threading::GetCurrentThreadId() };
+    lingxia::windows::set_windows_app_exit_handler(Arc::new(move || unsafe {
+        let _ = PostThreadMessageW(
+            main_thread_id,
+            WM_QUIT,
+            Default::default(),
+            Default::default(),
+        );
+    }));
 }
 
 /// Boots the host from the environment and blocks until the app exits.
