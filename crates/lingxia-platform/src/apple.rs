@@ -21,3 +21,4 @@ mod wifi;
 
 // Re-export Platform
 pub use app::Platform;
+pub use app::apply_staged_macos_update;

@@ -26,6 +26,8 @@ struct LxAppEvent {
 
 struct AppEvent {
     static var panelIconClick: AppUiEventType { AppUiEventType.PanelIconClick }
+    static var updateRestartClick: AppUiEventType { AppUiEventType.UpdateRestartClick }
+    static var updateInstallClick: AppUiEventType { AppUiEventType.UpdateInstallClick }
 }
 
 let ACTION_CLOSE_LXAPP = "com.lingxia.CLOSE_LXAPP_ACTION"

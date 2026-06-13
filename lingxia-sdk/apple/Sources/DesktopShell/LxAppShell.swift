@@ -434,6 +434,14 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         sidebar.onPanelItemToggled = { [weak self] actionID in
             self?.sidebarHostActionHandler?(actionID)
         }
+        sidebar.onUpdateActionRequested = { state in
+            switch state {
+            case .ready:
+                _ = onAppEvent(AppEvent.updateRestartClick, "")
+            case .available:
+                _ = onAppEvent(AppEvent.updateInstallClick, "")
+            }
+        }
         sidebarView = sidebar
         contentView.addSubview(sidebar)
 
@@ -980,6 +988,34 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     func updateSidebarHostActions(_ items: [LxAppUIActionItem]) {
         let sidebarItems = items.map { PanelIconItem(id: $0.id, iconURL: $0.iconURL, label: $0.label) }
         sidebarView?.updatePanelItems(sidebarItems)
+    }
+
+    /// Show the update callout above the bottom-left sidebar icon. `.ready` →
+    /// click restarts to apply; `.available` → click re-opens the install
+    /// flow. Reveals the sidebar first so the callout is visible.
+    func presentUpdateReadyCallout(appName: String, state: UpdateCalloutState) {
+        showSidebar()
+        sidebarView?.presentUpdateReadyCallout(appName: appName, state: state)
+    }
+
+    /// Present the centered "update available" card (Stage 1). The card then
+    /// drives the whole flow: Download & Install → live progress → Restart Now.
+    func presentUpdateCard(appName: String, infoJSON: String, callbackId: UInt64) {
+        UpdateAvailableCard.present(
+            appName: appName,
+            infoJSON: infoJSON,
+            over: window,
+            onDownload: {
+                _ = onCallback(callbackId, true, "{\"confirm\":true}")
+            },
+            onLater: { [weak self] in
+                _ = onCallback(callbackId, false, "2000")
+                // Drop to the quiet sidebar reminder.
+                self?.presentUpdateReadyCallout(appName: appName, state: .available)
+            },
+            onRestart: {
+                _ = onAppEvent(AppEvent.updateRestartClick, "")
+            })
     }
 
     func updateToolbarHostActions(_ items: [LxAppUIActionItem]) {

@@ -73,6 +73,20 @@ impl HostAppUpdateService {
         lingxia_update::check_app_update(self).await
     }
 
+    /// Ask the platform to present the "update available" prompt and resolve
+    /// `callback_id` with the user's choice ({"confirm":true} or error 2000).
+    /// Errors if the platform has no prompt (e.g. non-desktop).
+    pub fn show_update_prompt(&self, callback_id: u64, info_json: &str) -> Result<(), UpdateError> {
+        self.runtime
+            .show_update_prompt(callback_id, Some(info_json))
+            .map_err(|error| UpdateError::runtime(error.to_string()))
+    }
+
+    /// Report download progress (0-100) to the platform's update UI.
+    pub fn notify_download_progress(&self, percent: u8) {
+        let _ = self.runtime.update_download_progress(percent as i32);
+    }
+
     pub fn apply(&self, update: UpdatePackageInfo) -> AppUpdateApply {
         let (apply, sender) = AppUpdateApply::channel();
         let runner = self.clone();

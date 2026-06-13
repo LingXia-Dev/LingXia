@@ -98,6 +98,10 @@ mod bridge {
     pub enum AppUiEventType {
         /// Panel icon clicked in the host app UI
         PanelIconClick,
+        /// "Click to restart" callout clicked: apply the staged host-app update
+        UpdateRestartClick,
+        /// "Click to install" callout clicked: re-open the host-app update flow
+        UpdateInstallClick,
     }
 
     // Current LxApp info from Rust stack
@@ -488,6 +492,19 @@ pub fn on_app_event(event_type: self::bridge::AppUiEventType, data: &str) -> boo
             } else {
                 false
             }
+        }
+        self::bridge::AppUiEventType::UpdateRestartClick => {
+            // The sidebar "ready to update" callout was clicked: swap the
+            // staged bundle and quit so it relaunches into the new version.
+            lingxia_platform::apply_staged_macos_update()
+        }
+        self::bridge::AppUiEventType::UpdateInstallClick => {
+            // The "update available" reminder was clicked: re-run the update
+            // flow, which re-presents the card and downloads on confirm.
+            crate::task::spawn(async {
+                let _ = crate::update::host_app::check().await;
+            });
+            true
         }
     }
 }

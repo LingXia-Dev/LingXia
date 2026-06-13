@@ -109,6 +109,13 @@ class SidebarView: NSView {
     /// Called when a panel icon button is clicked: (panelId)
     var onPanelItemToggled: ((String) -> Void)?
 
+    /// Called when the update callout is clicked, with its current state
+    /// (`.ready` → restart, `.available` → install).
+    var onUpdateActionRequested: ((UpdateCalloutState) -> Void)?
+
+    /// The transient "ready to update" callout shown above the footer dock.
+    private var updateReadyCallout: UpdateReadyCallout?
+
     private var groupViews: [String: SidebarGroupView] = [:]
     private var currentTabs: [LxAppTab] = []
 
@@ -457,6 +464,35 @@ class SidebarView: NSView {
             panelStack.addArrangedSubview(btn)
             panelButtons.append(btn)
         }
+    }
+
+    // MARK: - Update-ready callout
+
+    /// Show the update callout floating just above the footer dock,
+    /// leading-aligned over the bottom-left icon. `.ready` → click to restart,
+    /// `.available` → click to install. Idempotent — replaces any existing one.
+    func presentUpdateReadyCallout(appName: String, state: UpdateCalloutState) {
+        updateReadyCallout?.removeFromSuperview()
+
+        let callout = UpdateReadyCallout(appName: appName, state: state) { [weak self] in
+            self?.onUpdateActionRequested?(state)
+        }
+        callout.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(callout, positioned: .above, relativeTo: footerView)
+        updateReadyCallout = callout
+
+        NSLayoutConstraint.activate([
+            callout.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Layout.footerInset),
+            callout.trailingAnchor.constraint(
+                lessThanOrEqualTo: footerView.trailingAnchor, constant: -Layout.footerInset),
+            callout.bottomAnchor.constraint(equalTo: footerView.topAnchor, constant: -6),
+        ])
+    }
+
+    /// Remove the callout (e.g. once the update is applied or dismissed).
+    func dismissUpdateReadyCallout() {
+        updateReadyCallout?.removeFromSuperview()
+        updateReadyCallout = nil
     }
 
     /// Update a panel button's icon from a file:// URL (resolved via resolveLxUri after lxapp installs).
