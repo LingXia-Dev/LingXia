@@ -178,12 +178,13 @@ jobs:
       - name: Check formatting
         run: cargo fmt --all -- --check
 
-  # The runtime crates (e.g. lingxia-webview) only have android / apple / ohos
-  # backends — there is no plain-linux-gnu host backend — so workspace-wide
-  # rust checks run on macOS, the project's real desktop host. lingxia-terminal
-  # is excluded from CI gates because its libghostty-vt build requires external
-  # Ghostty tooling that is not part of the normal LingXia CI toolchain.
-  # Android is covered separately by the android-target job below.
+  # The runtime crates (e.g. lingxia-webview) only have android / apple / ohos /
+  # windows backends — there is no plain-linux-gnu host backend — so the
+  # workspace-wide check runs on macOS, the project's real desktop host.
+  # lingxia-terminal is excluded from CI gates because its libghostty-vt build
+  # requires external Ghostty tooling that is not part of the normal LingXia CI
+  # toolchain. Android and Windows backends are checked separately by the
+  # *-target jobs below (their cfg-gated code never compiles on macOS).
   rust-check:
     needs: changes
     if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.i18n == 'true' }}
@@ -254,6 +255,35 @@ jobs:
 
       - name: Check Rust compiles for Android target
         run: cargo check --target aarch64-linux-android -p lingxia --lib
+
+  # lingxia-windows and the Windows backends of lingxia-platform / lingxia-webview
+  # (windows-host) / lingxia-shell are cfg(target_os = "windows"), so the macOS
+  # rust-check above never compiles them. Type-check the whole Windows host stack
+  # on a Windows runner — checking lingxia-windows pulls in the lingxia facade,
+  # shell, the windows-host webview backend, and the platform windows backend.
+  rust-windows-target:
+    needs: changes
+    if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.i18n == 'true' }}
+    name: Windows Target
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: rust-windows
+
+      # Some embedded-runtime build scripts expect the bundled bridge/polyfills JS.
+      - uses: ./.github/actions/build-web-runtime
+
+      - name: Check Windows host stack
+        shell: bash
+        run: cargo check -p lingxia-windows -p lingxia-windows-build
 
   cli:
     needs: changes
@@ -810,6 +840,7 @@ jobs:
       - fmt
       - rust-check
       - rust-android-target
+      - rust-windows-target
       - cli
       - rust-clippy
       - runner
