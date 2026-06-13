@@ -18,6 +18,9 @@ pub struct LxAppInfo {
     pub version: String,
     /// LxApp release type (release|preview|developer)
     pub release_type: String,
+    /// Absolute path to the app icon, or empty when the lxapp declares none
+    /// (the host then falls back to the default LingXia mark).
+    pub icon: String,
 }
 
 /// Plugin definition embedded in `lxapp.json`.
@@ -92,6 +95,12 @@ pub(crate) struct LxAppConfig {
     /// LingXia App version
     #[serde(default)]
     pub version: String,
+
+    /// App icon/logo path relative to the lxapp root (e.g. `assets/logo.png`).
+    /// Shown wherever the lxapp is represented (sidebar, capsule menu). When
+    /// omitted the host falls back to the default LingXia mark.
+    #[serde(default)]
+    pub icon: Option<String>,
 
     /// Logic entry configuration.
     ///
@@ -184,6 +193,9 @@ impl LxAppConfig {
             app_name: self.appName.clone(),
             version: self.version.clone(),
             release_type: release_type.to_string(),
+            // Raw (relative) icon path; `LxApp::get_lxapp_info` resolves it to
+            // an absolute path against the lxapp directory.
+            icon: self.icon.clone().unwrap_or_default(),
         }
     }
 

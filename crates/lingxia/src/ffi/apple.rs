@@ -31,6 +31,8 @@ mod bridge {
         pub version: String,
         pub release_type: String,
         pub cache_dir: String,
+        // Absolute path to the lxapp icon, or empty (host uses default mark).
+        pub icon: String,
     }
 
     // NavigationBar state for Swift
@@ -895,6 +897,7 @@ pub fn get_lxapp_info(appid: &str) -> self::bridge::LxAppInfo {
             version: lxapp_info.version,
             release_type: lxapp_info.release_type,
             cache_dir: lxapp.user_cache_dir.to_string_lossy().into_owned(),
+            icon: lxapp_info.icon,
         }
     } else {
         self::bridge::LxAppInfo {
@@ -902,6 +905,7 @@ pub fn get_lxapp_info(appid: &str) -> self::bridge::LxAppInfo {
             version: String::new(),
             release_type: String::new(),
             cache_dir: String::new(),
+            icon: String::new(),
         }
     }
 }

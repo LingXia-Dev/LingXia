@@ -131,7 +131,16 @@ class SidebarGroupView: NSView {
 
     private let itemsBackground = NSView()
     private let headerView = SidebarGroupHeaderView()
+    private let appIconView = NSImageView()
     private let appNameLabel = NSTextField(labelWithString: "")
+
+    /// The bundled default LingXia mark, used when an lxapp declares no icon.
+    private static let defaultAppIcon: NSImage? = {
+        guard let url = Bundle.module.url(
+            forResource: "lxapp_default", withExtension: "png", subdirectory: "icons")
+        else { return nil }
+        return NSImage(contentsOf: url)
+    }()
     private let chevronIndicator = NSImageView()
     private let closeButton = NSButton()
     private let itemsContainer = NSView()
@@ -200,6 +209,14 @@ class SidebarGroupView: NSView {
         }
         addSubview(headerView)
 
+        // App icon (left of the name)
+        appIconView.translatesAutoresizingMaskIntoConstraints = false
+        appIconView.imageScaling = .scaleProportionallyUpOrDown
+        appIconView.wantsLayer = true
+        appIconView.layer?.cornerRadius = 3
+        appIconView.layer?.masksToBounds = true
+        headerView.addSubview(appIconView)
+
         // App name (left-aligned in header)
         appNameLabel.translatesAutoresizingMaskIntoConstraints = false
         appNameLabel.font = NSFont.systemFont(ofSize: 11, weight: .semibold)
@@ -252,8 +269,14 @@ class SidebarGroupView: NSView {
             headerView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Layout.groupInset),
             headerView.heightAnchor.constraint(equalToConstant: Layout.headerHeight),
 
-            // App name: left side of header
-            appNameLabel.leadingAnchor.constraint(equalTo: headerView.leadingAnchor, constant: Layout.headerHPadding),
+            // App icon: leading edge of the header
+            appIconView.leadingAnchor.constraint(equalTo: headerView.leadingAnchor, constant: Layout.headerHPadding),
+            appIconView.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
+            appIconView.widthAnchor.constraint(equalToConstant: 16),
+            appIconView.heightAnchor.constraint(equalToConstant: 16),
+
+            // App name: right after the icon
+            appNameLabel.leadingAnchor.constraint(equalTo: appIconView.trailingAnchor, constant: 6),
             appNameLabel.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
             appNameLabel.trailingAnchor.constraint(lessThanOrEqualTo: closeButton.leadingAnchor, constant: -2),
 
@@ -292,10 +315,22 @@ class SidebarGroupView: NSView {
         applyColors()
     }
 
+    /// Show the lxapp's icon (`path` is an absolute file path from the lxapp
+    /// bundle), falling back to the bundled default LingXia mark when the
+    /// lxapp declares none or the file can't be read.
+    private func loadAppIcon(path: String) {
+        if !path.isEmpty, let image = NSImage(contentsOfFile: path) {
+            appIconView.image = image
+        } else {
+            appIconView.image = Self.defaultAppIcon
+        }
+    }
+
     /// Reload data from Rust API
     func refreshFromRust() {
         let info = getLxAppInfo(appId)
         appNameLabel.stringValue = info.app_name.toString().uppercased()
+        loadAppIcon(path: info.icon.toString())
 
         // Hide close button for home lxapp
         let isHome = LxAppCore.isHomeLxApp(appId)

@@ -1888,7 +1888,17 @@ impl LxApp {
     }
 
     pub fn get_lxapp_info(&self) -> config::LxAppInfo {
-        self.config.get_lxapp_info(self.release_type.as_str())
+        let mut info = self.config.get_lxapp_info(self.release_type.as_str());
+        // Resolve the icon path relative to the lxapp directory, mirroring the
+        // tabbar icon handling. Empty = the lxapp declared no icon.
+        if !info.icon.is_empty() {
+            info.icon = self
+                .lxapp_dir
+                .join(&info.icon)
+                .to_string_lossy()
+                .into_owned();
+        }
+        info
     }
 }
 
