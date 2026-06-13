@@ -1,4 +1,4 @@
-package com.lingxia.util
+package com.lingxia.lxapp
 
 import android.view.View
 import android.view.ViewGroup

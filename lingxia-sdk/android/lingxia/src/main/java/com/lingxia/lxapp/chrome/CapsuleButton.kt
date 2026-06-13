@@ -1,4 +1,6 @@
-package com.lingxia.lxapp
+package com.lingxia.lxapp.chrome
+
+import com.lingxia.lxapp.LxApp
 
 import android.content.Context
 import android.graphics.Color

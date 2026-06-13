@@ -1,4 +1,6 @@
-package com.lingxia.lxapp
+package com.lingxia.lxapp.chrome
+
+import com.lingxia.lxapp.R
 
 import com.lingxia.app.NativeApi
 import com.lingxia.lxapp.LxAppInfo
@@ -13,7 +15,7 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
-import com.lingxia.util.ActivityInsets
+import com.lingxia.lxapp.ActivityInsets
 
 /**
  * Bottom sheet menu that appears when clicking the capsule menu (3-dots) button.

@@ -7,10 +7,10 @@ import {
   LxNativeVideoConfig,
   LxNativeVideoState,
   VideoErrorDetail
-} from '../../media/LxNativeVideoPlayer';
-import { VideoControlsView, VideoControlSize } from '../../media/VideoControls';
-import { LxMediaFrameCache } from '../../media/LxMediaFrameCache';
-import { resolveLxUriForFileAccess } from '../../media/LxUri';
+} from './player/LxNativeVideoPlayer';
+import { VideoControlsView, VideoControlSize } from './player/VideoControls';
+import { LxMediaFrameCache } from './player/LxMediaFrameCache';
+import { resolveLxUriForFileAccess } from './LxUri';
 import { onCallback, videoPlayerSetVolume } from 'liblingxia.so';
 
 export interface MediaPreviewItem {

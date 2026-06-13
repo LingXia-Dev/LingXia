@@ -148,7 +148,7 @@ internal object LxAppActionSheet {
         container.addView(actionSheetContent)
 
         // Use Activity-provided bottom inset (encapsulated helper)
-        com.lingxia.util.ActivityInsets.applyBottomMargin(container, actionSheetContent, 0)
+        com.lingxia.lxapp.ActivityInsets.applyBottomMargin(container, actionSheetContent, 0)
         return container
     }
 

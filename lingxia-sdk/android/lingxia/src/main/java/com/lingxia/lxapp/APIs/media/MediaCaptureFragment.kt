@@ -48,7 +48,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.core.content.ContextCompat
-import com.lingxia.util.ActivityInsets
+import com.lingxia.lxapp.ActivityInsets
 import androidx.fragment.app.Fragment
 import com.lingxia.app.NativeApi
 import com.lingxia.lxapp.R

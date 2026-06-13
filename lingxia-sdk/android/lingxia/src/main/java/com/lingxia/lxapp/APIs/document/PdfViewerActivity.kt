@@ -27,7 +27,7 @@ import com.google.android.material.color.MaterialColors
 import java.io.File
 import java.io.IOException
 import kotlin.math.roundToInt
-import com.lingxia.lxapp.LxNavBarUtils
+import com.lingxia.lxapp.chrome.LxNavBarUtils
 import com.lingxia.lxapp.R
 
 internal class PdfViewerActivity : AppCompatActivity() {

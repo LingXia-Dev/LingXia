@@ -1,4 +1,4 @@
-package com.lingxia.lxapp
+package com.lingxia.lxapp.chrome
 
 internal object LxAppTheme {
 

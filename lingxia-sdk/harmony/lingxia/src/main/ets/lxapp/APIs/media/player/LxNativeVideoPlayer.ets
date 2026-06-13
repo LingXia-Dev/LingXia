@@ -22,7 +22,7 @@ import {
 } from 'liblingxia.so';
 import { calculateSliderValue, calculateTimeFromSlider } from './VideoUtils';
 import { VideoControlsView, VideoControlSize } from './VideoControls';
-import { resolveLxUriForFileAccess } from './LxUri';
+import { resolveLxUriForFileAccess } from '../LxUri';
 import { LxMediaFrameCache } from './LxMediaFrameCache';
 import { image } from '@kit.ImageKit';
 

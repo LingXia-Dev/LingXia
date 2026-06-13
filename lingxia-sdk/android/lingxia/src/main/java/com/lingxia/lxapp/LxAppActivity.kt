@@ -1,5 +1,15 @@
 package com.lingxia.lxapp
 
+import com.lingxia.app.CurrentLxApp
+
+import com.lingxia.lxapp.chrome.NavigationBarState
+import com.lingxia.lxapp.chrome.NavigationBar
+import com.lingxia.lxapp.chrome.TabBarState
+import com.lingxia.lxapp.chrome.TabBar
+import com.lingxia.lxapp.chrome.CapsuleButton
+import com.lingxia.lxapp.chrome.CapsuleMenuBottomSheet
+import com.lingxia.lxapp.chrome.LxAppTheme
+
 import android.app.Activity
 import android.app.UiModeManager
 import android.content.Context

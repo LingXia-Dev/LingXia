@@ -1,12 +1,12 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { webview } from '@kit.ArkWeb';
 import { window } from '@kit.ArkUI';
-import { LxApp } from '../../app/LxApp';
-import { requestWebFileChooser } from '../WebFileChooserBridge';
+import { LxApp } from './LxApp';
+import { requestWebFileChooser } from './WebFileChooserBridge';
 import {
   WebViewManager,
   notifyWebViewControllerAttached
-} from '../WebViewBridge';
+} from './WebViewBridge';
 import {
   resolveBrowserNavigationPolicy,
   type BrowserNavigationPolicyResponse

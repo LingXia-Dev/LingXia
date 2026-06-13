@@ -282,7 +282,7 @@ internal object LxAppPicker {
         container.addView(pickerContent)
 
         // Use Activity-provided bottom inset (encapsulated helper)
-        com.lingxia.util.ActivityInsets.applyBottomMargin(container, pickerContent, 0)
+        com.lingxia.lxapp.ActivityInsets.applyBottomMargin(container, pickerContent, 0)
         return container
     }
 

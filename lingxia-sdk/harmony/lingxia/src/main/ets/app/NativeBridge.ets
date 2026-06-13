@@ -1,6 +1,6 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { setComponentCallback } from '../lxapp/NativeComponents/NativeCallbackRegistry';
-import { LxApp } from './LxApp';
+import { LxApp } from '../lxapp/LxApp';
 import { LxAppToast, ToastIcon, ToastPosition } from '../lxapp/APIs/LxAppToast';
 import { LxAppModal } from '../lxapp/APIs/LxAppModal';
 import { LxAppActionSheet } from '../lxapp/APIs/LxAppActionSheet';
@@ -10,7 +10,7 @@ import { LxAppMedia } from '../lxapp/APIs/LxAppMedia';
 import { LxAppScan } from '../lxapp/APIs/LxAppScan';
 import { LxAppContainer } from '../lxapp/LxAppContainer';
 import { LxAppSurface } from '../lxapp/APIs/LxAppSurface';
-import { BrowserOverlayManager } from '../lxapp/APIs/LxAppBrowserOverlay';
+import { BrowserOverlayManager } from '../lxapp/LxAppBrowserOverlay';
 import { LxAppFile } from '../lxapp/APIs/LxAppFile';
 import { LxAppShare } from '../lxapp/APIs/LxAppShare';
 import { LxAppWifi } from '../lxapp/APIs/LxAppWifi';
@@ -27,7 +27,7 @@ import {
 import { captureAppScreenshot } from './AppScreenshot';
 import { animationTypeFromInt } from '../lxapp/NavigationBar';
 import { PermissionManager } from './PermissionManager';
-import { LxNativeVideoPlayer } from '../lxapp/media/LxNativeVideoPlayer';
+import { LxNativeVideoPlayer } from '../lxapp/APIs/media/player/LxNativeVideoPlayer';
 import { updateNativeComponentProps } from '../lxapp/NativeComponents/NativeBridgeInternal';
 import { completeWebFileChooserRequest } from '../lxapp/WebFileChooserBridge';
 import { getCurrentLxapp, getLxappSessionId, openBrowserTab, type CurrentLxApp } from 'liblingxia.so';

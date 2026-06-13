@@ -4,14 +4,14 @@ import { window } from '@kit.ArkUI';
 import { resourceManager, i18n } from '@kit.LocalizationKit';
 import { Want } from '@kit.AbilityKit';
 import common from '@ohos.app.ability.common';
-import { LxAppContainer } from '../lxapp/LxAppContainer';
-import { ToastManager } from '../lxapp/APIs/LxAppToast';
-import { initNativeBridge, getNativeCallbackFunction } from './NativeBridge';
-import { WebViewManager, toWebTag } from '../lxapp/WebViewBridge';
-import { AnimationType } from '../lxapp/LxAppNavigation';
-import { CameraCaptureOverlay } from '../lxapp/APIs/media/CameraCaptureOverlay';
-import { LxAppPush } from '../lxapp/APIs/LxAppPush';
-import { PermissionManager } from './PermissionManager';
+import { LxAppContainer } from './LxAppContainer';
+import { ToastManager } from './APIs/LxAppToast';
+import { initNativeBridge, getNativeCallbackFunction } from '../app/NativeBridge';
+import { WebViewManager, toWebTag } from './WebViewBridge';
+import { AnimationType } from './LxAppNavigation';
+import { CameraCaptureOverlay } from './APIs/media/CameraCaptureOverlay';
+import { LxAppPush } from './APIs/LxAppPush';
+import { PermissionManager } from '../app/PermissionManager';
 
 // Import native functions from Rust
 import { lingxiaInit, registerCustomSchemes, onLxappOpened, onLxappClosed, onPageShow, onApplinkReceived, getCurrentLxapp, getLxappSessionId, getPageOrientation, getAppCapabilities, CurrentLxApp } from 'liblingxia.so';

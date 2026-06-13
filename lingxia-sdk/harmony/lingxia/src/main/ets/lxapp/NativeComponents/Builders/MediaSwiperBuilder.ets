@@ -13,8 +13,8 @@ import {
   LxNativeVideoConfig,
   VideoEventDetail,
   VideoErrorDetail,
-} from '../../media/LxNativeVideoPlayer';
-import { resolveLxUriForFileAccess } from '../../media/LxUri';
+} from '../../APIs/media/player/LxNativeVideoPlayer';
+import { resolveLxUriForFileAccess } from '../../APIs/media/LxUri';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 
 const SWIPER_DOMAIN: number = 0xA000;

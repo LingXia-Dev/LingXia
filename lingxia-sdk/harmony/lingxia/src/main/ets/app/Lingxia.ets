@@ -1,6 +1,6 @@
 import { window } from '@kit.ArkUI';
 import common from '@ohos.app.ability.common';
-import { LxApp } from './LxApp';
+import { LxApp } from '../lxapp/LxApp';
 
 /**
  * Top-level entry point for the LingXia SDK.

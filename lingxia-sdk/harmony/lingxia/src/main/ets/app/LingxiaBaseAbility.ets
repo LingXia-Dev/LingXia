@@ -1,7 +1,7 @@
 import { AbilityConstant, UIAbility, Want } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { window, display } from '@kit.ArkUI';
-import { LxApp } from './LxApp';
+import { LxApp } from '../lxapp/LxApp';
 import {
   getCurrentLxapp,
   onLxappEvent,

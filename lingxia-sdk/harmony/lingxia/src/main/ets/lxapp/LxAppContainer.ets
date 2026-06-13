@@ -2,7 +2,7 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import { webview } from '@kit.ArkWeb';
 import { window, display } from '@kit.ArkUI';
 import { common } from '@kit.AbilityKit';
-import { LxApp } from '../app/LxApp';
+import { LxApp } from './LxApp';
 import { LxAppSurface } from './APIs/LxAppSurface';
 import {
   findWebview,
@@ -23,8 +23,8 @@ import { TabBarPosition, TabBarItem, UiEventType } from 'liblingxia.so';
 import liblingxia, { TabBarState, getNavigationBarState, isPullDownRefreshEnabled, onPageShow, onLxappEvent } from 'liblingxia.so';
 import { NAVIGATION_ACTION_BACK, NAVIGATION_ACTION_HOME, CAPSULE_ACTION_CLOSE } from '../app/NativeBridge';
 import { AnimationType } from './LxAppNavigation';
-import { LxNativeVideoPlayer } from './media/LxNativeVideoPlayer';
-import { LxFullscreenVideoOverlay } from './media/LxFullscreenVideoOverlay';
+import { LxNativeVideoPlayer } from './APIs/media/player/LxNativeVideoPlayer';
+import { LxFullscreenVideoOverlay } from './APIs/media/player/LxFullscreenVideoOverlay';
 import { RefreshHeader } from './RefreshHeader';
 import { CapsuleMenuManager, CapsuleMenuBottomSheetComponent } from './CapsuleMenuBottomSheet';
 

@@ -4,7 +4,7 @@ import { display, window } from '@kit.ArkUI';
 import { LxNativeVideoPlayer } from './LxNativeVideoPlayer';
 import { calculateSliderValue } from './VideoUtils';
 import { VideoControlsView, VideoControlSize } from './VideoControls';
-import { resolveLxUriForFileAccess } from './LxUri';
+import { resolveLxUriForFileAccess } from '../LxUri';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.FullscreenOverlay';

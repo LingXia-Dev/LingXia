@@ -4,7 +4,7 @@ import { photoAccessHelper } from '@kit.MediaLibraryKit';
 import { CameraCaptureOverlayManager, CameraCaptureOptions } from './media/CameraCaptureOverlay';
 import { media } from '@kit.MediaKit';
 import { fileIo } from '@kit.CoreFileKit';
-import { LxApp } from '../../app/LxApp';
+import { LxApp } from '../LxApp';
 import common from '@ohos.app.ability.common';
 import { onCallback } from 'liblingxia.so';
 import { PermissionManager } from '../../app/PermissionManager';

@@ -40,10 +40,10 @@ import com.lingxia.app.Lingxia
 import com.lingxia.lxapp.LxApp
 import com.lingxia.lxapp.LxAppActivity
 import com.lingxia.app.NativeApi
-import com.lingxia.lxapp.NavigationBar
+import com.lingxia.lxapp.chrome.NavigationBar
 import com.lingxia.lxapp.R
 import com.lingxia.lxapp.NativeComponents.ComponentRouter
-import com.lingxia.lxapp.TabBar
+import com.lingxia.lxapp.chrome.TabBar
 import java.io.File
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.Executors
