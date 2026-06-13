@@ -9,7 +9,7 @@ use lingxia_platform::traits::media_runtime::{
 };
 use lingxia_service::storage;
 use lxapp::{LxApp, lx};
-use rong::{FromJSObj, IntoJSObj, JSContext, JSFunc, JSObject, JSResult, Promise};
+use rong::{FromJSObj, HostError, IntoJSObj, JSContext, JSFunc, JSObject, JSResult, Promise};
 use serde::Deserialize;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -302,7 +302,10 @@ fn compress_video_api(ctx: JSContext, options: JSCompressVideoOptions) -> JSResu
             Ok(CallbackResult::Error(code)) => Err(js_internal_error(format!(
                 "compressVideo failed with code {code}"
             ))),
-            Err(_) => Err(js_internal_error("compressVideo cancelled")),
+            // The oneshot sender is dropped when cancel() removes the callback.
+            Err(_) => Err(HostError::new(rong::error::E_ABORT, "compressVideo canceled")
+                .with_name("AbortError")
+                .into()),
         }
     })?;
 

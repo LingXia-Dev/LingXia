@@ -102,7 +102,7 @@ export interface CompressVideoTask
   finally(onfinally?: (() => void) | null): Promise<CompressVideoResult>;
   /**
    * Cancels the transcode and deletes any partial output.
-   * The task promise rejects after cancellation.
+   * The task promise rejects with an `AbortError` (`code: 'E_ABORT'`).
    */
   cancel(): void;
   wait(): Promise<CompressVideoResult>;

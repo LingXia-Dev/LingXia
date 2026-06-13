@@ -198,7 +198,8 @@ for await (const { progress } of task) {
 }
 const result = await task.wait();
 
-// Cancel — stops the transcode and deletes the partial output; the task promise rejects
+// Cancel — stops the transcode and deletes the partial output;
+// the task promise rejects with AbortError (code 'E_ABORT')
 task.cancel();
 ```
 

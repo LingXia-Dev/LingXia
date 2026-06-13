@@ -942,15 +942,16 @@ Page({
         videoCompressProgress: null,
       });
     } catch (error) {
+      const isAbort = error?.name === "AbortError" || error?.code === "E_ABORT";
       const message = error?.message || "compressVideo failed";
       this.setData({
-        videoCompressError: message,
+        videoCompressError: isAbort ? "" : message,
         videoCompressResult: null,
         videoCompressBusy: false,
         videoCompressProgress: null,
       });
       lx.showToast({
-        title: message,
+        title: isAbort ? "Compression cancelled" : message,
         icon: "none",
       });
     } finally {
