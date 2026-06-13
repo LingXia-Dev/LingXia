@@ -739,7 +739,7 @@ fn save_proxy_settings_and_schedule_apply(
 
     let settings_for_apply = settings.clone();
     let app_data_dir_for_apply = app_data_dir.clone();
-    let _ = rong::RongExecutor::global().spawn_blocking(move || {
+    std::mem::drop(rong::RongExecutor::global().spawn_blocking(move || {
         let (gfwlist_cache, _gfwlist_meta) =
             gfwlist_meta_from_cache_result(load_gfwlist_cache(&app_data_dir_for_apply));
         let snapshot = match apply_proxy_settings(&settings_for_apply, gfwlist_cache.as_ref()) {
@@ -766,7 +766,7 @@ fn save_proxy_settings_and_schedule_apply(
                 error
             ),
         }
-    });
+    }));
 
     let result = settings_result(settings, saved_snapshot, gfwlist_meta);
     publish_proxy_state(&result);

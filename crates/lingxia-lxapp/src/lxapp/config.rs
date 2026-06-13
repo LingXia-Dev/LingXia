@@ -244,6 +244,102 @@ impl LxAppConfig {
     }
 }
 
+fn is_valid_page_name(name: &str) -> bool {
+    !name.is_empty()
+        && !name.starts_with('-')
+        && name
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+}
+
+fn is_safe_page_path(path: &str) -> bool {
+    let path = path.trim();
+    !path.is_empty()
+        && !path.contains('\\')
+        && !Path::new(path).is_absolute()
+        && Path::new(path)
+            .components()
+            .all(|component| matches!(component, Component::Normal(_)))
+}
+
+fn is_safe_logic_entry(entry: &str) -> bool {
+    if entry.contains('\\') {
+        return false;
+    }
+
+    Path::new(entry)
+        .components()
+        .all(|component| matches!(component, Component::Normal(_)))
+}
+
+fn validate_security_shape(
+    object: &serde_json::Map<String, Value>,
+) -> Result<(), serde_json::Error> {
+    let security = object
+        .get("security")
+        .ok_or_else(|| serde_json::Error::custom(r#""security" must be declared in lxapp.json"#))?;
+    let security = security
+        .as_object()
+        .ok_or_else(|| serde_json::Error::custom(r#""security" must be an object"#))?;
+    let network = security
+        .get("network")
+        .ok_or_else(|| serde_json::Error::custom(r#""security.network" must be declared"#))?;
+    let network = network
+        .as_object()
+        .ok_or_else(|| serde_json::Error::custom(r#""security.network" must be an object"#))?;
+    if !network.contains_key("trustedDomains") {
+        return Err(serde_json::Error::custom(
+            r#""security.network.trustedDomains" must be declared"#,
+        ));
+    }
+    if !security.contains_key("privileges") {
+        return Err(serde_json::Error::custom(
+            r#""security.privileges" must be declared"#,
+        ));
+    }
+    Ok(())
+}
+
+fn validate_security_config(config: &mut LxAppSecurityConfig) -> Result<(), serde_json::Error> {
+    let mut domains = BTreeSet::new();
+    let mut normalized_domains = Vec::new();
+    for domain in &config.network.trustedDomains {
+        let normalized = normalize_trusted_domain(domain).ok_or_else(|| {
+            serde_json::Error::custom(format!(
+                r#""security.network.trustedDomains" entries must be host names without scheme/path: {:?}"#,
+                domain
+            ))
+        })?;
+        if domains.insert(normalized.clone()) {
+            normalized_domains.push(normalized);
+        }
+    }
+    if normalized_domains.len() > 1 && normalized_domains.iter().any(|domain| domain == "*") {
+        return Err(serde_json::Error::custom(
+            r#""security.network.trustedDomains" wildcard "*" cannot be combined with other hosts"#,
+        ));
+    }
+    config.network.trustedDomains = normalized_domains;
+
+    let mut privileges = BTreeSet::new();
+    let mut normalized_privileges = Vec::new();
+    for privilege in &config.privileges {
+        let normalized = normalize_security_privilege_id(privilege).ok_or_else(|| {
+            serde_json::Error::custom(format!(
+                r#""security.privileges" entries must be lowercase identifiers: {:?}"#,
+                privilege
+            ))
+        })?;
+        if privileges.insert(normalized.clone()) {
+            normalized_privileges.push(normalized);
+        }
+    }
+    config.privileges = normalized_privileges;
+
+    Ok(())
+}
+
+
 #[cfg(test)]
 mod tests {
     use super::{LxAppConfig, LxAppSecurityPrivilege};
@@ -354,99 +450,4 @@ mod tests {
 
         assert!(err.to_string().contains("wildcard"));
     }
-}
-
-fn is_valid_page_name(name: &str) -> bool {
-    !name.is_empty()
-        && !name.starts_with('-')
-        && name
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
-}
-
-fn is_safe_page_path(path: &str) -> bool {
-    let path = path.trim();
-    !path.is_empty()
-        && !path.contains('\\')
-        && !Path::new(path).is_absolute()
-        && Path::new(path)
-            .components()
-            .all(|component| matches!(component, Component::Normal(_)))
-}
-
-fn is_safe_logic_entry(entry: &str) -> bool {
-    if entry.contains('\\') {
-        return false;
-    }
-
-    Path::new(entry)
-        .components()
-        .all(|component| matches!(component, Component::Normal(_)))
-}
-
-fn validate_security_shape(
-    object: &serde_json::Map<String, Value>,
-) -> Result<(), serde_json::Error> {
-    let security = object
-        .get("security")
-        .ok_or_else(|| serde_json::Error::custom(r#""security" must be declared in lxapp.json"#))?;
-    let security = security
-        .as_object()
-        .ok_or_else(|| serde_json::Error::custom(r#""security" must be an object"#))?;
-    let network = security
-        .get("network")
-        .ok_or_else(|| serde_json::Error::custom(r#""security.network" must be declared"#))?;
-    let network = network
-        .as_object()
-        .ok_or_else(|| serde_json::Error::custom(r#""security.network" must be an object"#))?;
-    if !network.contains_key("trustedDomains") {
-        return Err(serde_json::Error::custom(
-            r#""security.network.trustedDomains" must be declared"#,
-        ));
-    }
-    if !security.contains_key("privileges") {
-        return Err(serde_json::Error::custom(
-            r#""security.privileges" must be declared"#,
-        ));
-    }
-    Ok(())
-}
-
-fn validate_security_config(config: &mut LxAppSecurityConfig) -> Result<(), serde_json::Error> {
-    let mut domains = BTreeSet::new();
-    let mut normalized_domains = Vec::new();
-    for domain in &config.network.trustedDomains {
-        let normalized = normalize_trusted_domain(domain).ok_or_else(|| {
-            serde_json::Error::custom(format!(
-                r#""security.network.trustedDomains" entries must be host names without scheme/path: {:?}"#,
-                domain
-            ))
-        })?;
-        if domains.insert(normalized.clone()) {
-            normalized_domains.push(normalized);
-        }
-    }
-    if normalized_domains.len() > 1 && normalized_domains.iter().any(|domain| domain == "*") {
-        return Err(serde_json::Error::custom(
-            r#""security.network.trustedDomains" wildcard "*" cannot be combined with other hosts"#,
-        ));
-    }
-    config.network.trustedDomains = normalized_domains;
-
-    let mut privileges = BTreeSet::new();
-    let mut normalized_privileges = Vec::new();
-    for privilege in &config.privileges {
-        let normalized = normalize_security_privilege_id(privilege).ok_or_else(|| {
-            serde_json::Error::custom(format!(
-                r#""security.privileges" entries must be lowercase identifiers: {:?}"#,
-                privilege
-            ))
-        })?;
-        if privileges.insert(normalized.clone()) {
-            normalized_privileges.push(normalized);
-        }
-    }
-    config.privileges = normalized_privileges;
-
-    Ok(())
 }

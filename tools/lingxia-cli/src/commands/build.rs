@@ -462,79 +462,6 @@ pub(crate) fn resolve_build_env(
     config.resolve_env(version)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::{resolve_build_env, stage_package_artifact};
-    use crate::config::{EnvVersion, LingXiaConfig};
-    use crate::platform::BuildArtifacts;
-    use crate::platform::detector::PlatformType;
-    use std::fs;
-    use tempfile::TempDir;
-
-    #[test]
-    fn package_stages_android_apk_under_dist_android() {
-        let temp = TempDir::new().unwrap();
-        let source = temp
-            .path()
-            .join("android/app/build/outputs/apk/release/app-release.apk");
-        fs::create_dir_all(source.parent().unwrap()).unwrap();
-        fs::write(&source, b"apk").unwrap();
-
-        let artifacts = BuildArtifacts::Android {
-            apk_path: source.clone(),
-        };
-        let staged = stage_package_artifact(temp.path(), &PlatformType::Android, &artifacts)
-            .unwrap()
-            .unwrap();
-
-        assert_eq!(staged, temp.path().join("dist/android/app-release.apk"));
-        assert_eq!(fs::read(staged).unwrap(), b"apk");
-    }
-
-    #[test]
-    fn package_does_not_restage_macos_artifact() {
-        let temp = TempDir::new().unwrap();
-        let source = temp.path().join("dist/macos/Demo-1.0.0-macos.zip");
-        fs::create_dir_all(source.parent().unwrap()).unwrap();
-        fs::write(&source, b"zip").unwrap();
-
-        let artifacts = BuildArtifacts::MacOs {
-            app_path: temp.path().join("macos/.build/Demo.app"),
-            update_zip_path: Some(source),
-            dmg_path: None,
-        };
-
-        assert!(
-            stage_package_artifact(temp.path(), &PlatformType::MacOs, &artifacts)
-                .unwrap()
-                .is_none()
-        );
-    }
-
-    #[test]
-    fn omitted_env_defaults_to_developer_with_builtin_suffix() {
-        let config = LingXiaConfig::new_android("demo", "com.example.demo", "demo");
-
-        let resolved = resolve_build_env(&config, None).unwrap();
-
-        assert_eq!(resolved.version, EnvVersion::Developer);
-        assert_eq!(resolved.effective_package_id_suffix(), Some(".dev"));
-    }
-
-    #[test]
-    fn explicit_env_release_clears_suffix() {
-        let config = LingXiaConfig::new_android("demo", "com.example.demo", "demo");
-
-        let release = resolve_build_env(&config, Some("release")).unwrap();
-        let preview = resolve_build_env(&config, Some("preview")).unwrap();
-
-        assert_eq!(release.version, EnvVersion::Release);
-        assert_eq!(release.effective_package_id_suffix(), None);
-        assert_eq!(preview.version, EnvVersion::Preview);
-        assert_eq!(preview.effective_package_id_suffix(), Some(".preview"));
-    }
-}
-
 fn build_standalone_apple_swift_package(
     project_root: &std::path::Path,
     inferred_platform: Option<PlatformType>,
@@ -634,4 +561,78 @@ fn build_standalone_apple_swift_package(
     }
 
     Ok(())
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::{resolve_build_env, stage_package_artifact};
+    use crate::config::{EnvVersion, LingXiaConfig};
+    use crate::platform::BuildArtifacts;
+    use crate::platform::detector::PlatformType;
+    use std::fs;
+    use tempfile::TempDir;
+
+    #[test]
+    fn package_stages_android_apk_under_dist_android() {
+        let temp = TempDir::new().unwrap();
+        let source = temp
+            .path()
+            .join("android/app/build/outputs/apk/release/app-release.apk");
+        fs::create_dir_all(source.parent().unwrap()).unwrap();
+        fs::write(&source, b"apk").unwrap();
+
+        let artifacts = BuildArtifacts::Android {
+            apk_path: source.clone(),
+        };
+        let staged = stage_package_artifact(temp.path(), &PlatformType::Android, &artifacts)
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(staged, temp.path().join("dist/android/app-release.apk"));
+        assert_eq!(fs::read(staged).unwrap(), b"apk");
+    }
+
+    #[test]
+    fn package_does_not_restage_macos_artifact() {
+        let temp = TempDir::new().unwrap();
+        let source = temp.path().join("dist/macos/Demo-1.0.0-macos.zip");
+        fs::create_dir_all(source.parent().unwrap()).unwrap();
+        fs::write(&source, b"zip").unwrap();
+
+        let artifacts = BuildArtifacts::MacOs {
+            app_path: temp.path().join("macos/.build/Demo.app"),
+            update_zip_path: Some(source),
+            dmg_path: None,
+        };
+
+        assert!(
+            stage_package_artifact(temp.path(), &PlatformType::MacOs, &artifacts)
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn omitted_env_defaults_to_developer_with_builtin_suffix() {
+        let config = LingXiaConfig::new_android("demo", "com.example.demo", "demo");
+
+        let resolved = resolve_build_env(&config, None).unwrap();
+
+        assert_eq!(resolved.version, EnvVersion::Developer);
+        assert_eq!(resolved.effective_package_id_suffix(), Some(".dev"));
+    }
+
+    #[test]
+    fn explicit_env_release_clears_suffix() {
+        let config = LingXiaConfig::new_android("demo", "com.example.demo", "demo");
+
+        let release = resolve_build_env(&config, Some("release")).unwrap();
+        let preview = resolve_build_env(&config, Some("preview")).unwrap();
+
+        assert_eq!(release.version, EnvVersion::Release);
+        assert_eq!(release.effective_package_id_suffix(), None);
+        assert_eq!(preview.version, EnvVersion::Preview);
+        assert_eq!(preview.effective_package_id_suffix(), Some(".preview"));
+    }
 }

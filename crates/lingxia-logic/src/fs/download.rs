@@ -732,7 +732,7 @@ fn download_extension(url: &str, mime_type: Option<&str>) -> Option<String> {
 }
 
 fn spawn_download_worker(state: Arc<Mutex<DownloadIteratorState>>) {
-    let _ = rong::RongExecutor::global().spawn(async move {
+    std::mem::drop(rong::RongExecutor::global().spawn(async move {
         let (mut progress_tx, config) = {
             let guard = state.lock().await;
             if guard.status.is_terminal() {
@@ -863,7 +863,7 @@ fn spawn_download_worker(state: Arc<Mutex<DownloadIteratorState>>) {
                     .await;
             }
         }
-    });
+    }));
 }
 
 fn install_promise_methods(ctx: &JSContext, iterator: &JSObject, promise: Promise) -> JSResult<()> {

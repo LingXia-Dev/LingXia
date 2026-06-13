@@ -1131,6 +1131,26 @@ impl PageBridge {
     }
 }
 
+fn rpc_error_from_lxapp_error(err: &LxAppError) -> RpcError {
+    if let LxAppError::RongJSHost {
+        code,
+        message,
+        data,
+    } = err
+    {
+        return RpcError {
+            code: code.clone(),
+            message: Some(message.clone()),
+            data: data.clone(),
+        };
+    }
+    if matches!(err, LxAppError::Bridge(msg) if msg == "Canceled") {
+        return RpcError::new(BRIDGE_CANCELED, None);
+    }
+    RpcError::new(BRIDGE_INTERNAL_ERROR, Some(err.to_string()))
+}
+
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1151,23 +1171,4 @@ mod tests {
             r#"{"v":2,"kind":"ch.data","id":"ch-1","seq":3,"payload":true}"#
         );
     }
-}
-
-fn rpc_error_from_lxapp_error(err: &LxAppError) -> RpcError {
-    if let LxAppError::RongJSHost {
-        code,
-        message,
-        data,
-    } = err
-    {
-        return RpcError {
-            code: code.clone(),
-            message: Some(message.clone()),
-            data: data.clone(),
-        };
-    }
-    if matches!(err, LxAppError::Bridge(msg) if msg == "Canceled") {
-        return RpcError::new(BRIDGE_CANCELED, None);
-    }
-    RpcError::new(BRIDGE_INTERNAL_ERROR, Some(err.to_string()))
 }
