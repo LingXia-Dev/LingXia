@@ -71,6 +71,30 @@ impl WindowsWebViewHandler {
     pub fn open_devtools(&self) -> StdResult<()> {
         self.webview.inner.open_devtools()
     }
+
+    /// Positions the WebView2 content at `(left, top)` with size `width` x
+    /// `height`, in physical pixels relative to the window the controller is
+    /// parented to. The host UI layer owns layout and tells the surface where
+    /// to render; the webview only applies the rect.
+    pub fn set_content_bounds(
+        &self,
+        left: i32,
+        top: i32,
+        width: i32,
+        height: i32,
+    ) -> StdResult<()> {
+        self.webview.inner.set_content_bounds(RECT {
+            left,
+            top,
+            right: left + width.max(0),
+            bottom: top + height.max(0),
+        })
+    }
+
+    /// Shows or hides the WebView2 content without affecting the host window.
+    pub fn set_content_visible(&self, visible: bool) -> StdResult<()> {
+        self.webview.inner.set_content_visible(visible)
+    }
 }
 
 static WEBVIEW_USER_DATA_DIR: OnceLock<Mutex<Option<PathBuf>>> = OnceLock::new();

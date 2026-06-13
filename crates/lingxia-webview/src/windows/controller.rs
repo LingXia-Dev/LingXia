@@ -84,6 +84,18 @@ pub(crate) enum UiCommand {
     HideWindow {
         resp: Sender<StdResult<()>>,
     },
+    /// Position the WebView2 content within the window the controller is
+    /// parented to. The host UI layer owns layout and tells the surface where
+    /// to render; the webview only applies the rect.
+    SetContentBounds {
+        bounds: RECT,
+        resp: Sender<StdResult<()>>,
+    },
+    /// Show or hide the WebView2 content without touching the host window.
+    SetContentVisible {
+        visible: bool,
+        resp: Sender<StdResult<()>>,
+    },
     #[cfg(feature = "windows-host")]
     SetWindowLayout {
         layout: WindowsWindowLayout,
@@ -246,6 +258,14 @@ impl WebViewInner {
 
     pub(crate) fn hide_window(&self) -> StdResult<()> {
         self.dispatch_command(|resp| UiCommand::HideWindow { resp })
+    }
+
+    pub(crate) fn set_content_bounds(&self, bounds: RECT) -> StdResult<()> {
+        self.dispatch_command(|resp| UiCommand::SetContentBounds { bounds, resp })
+    }
+
+    pub(crate) fn set_content_visible(&self, visible: bool) -> StdResult<()> {
+        self.dispatch_command(|resp| UiCommand::SetContentVisible { visible, resp })
     }
 
     #[cfg(feature = "windows-host")]
@@ -705,6 +725,22 @@ pub(crate) fn handle_command(state: &mut UiState, command: UiCommand) -> StdResu
         }
         UiCommand::HideWindow { resp } => {
             let result = hide_native_window(state);
+            let _ = resp.send(result);
+        }
+        UiCommand::SetContentBounds { bounds, resp } => {
+            let result = unsafe {
+                state
+                    .controller
+                    .SetBounds(bounds)
+                    .map_err(|err| WebViewError::WebView(format!("SetBounds failed: {err}")))
+            };
+            let _ = resp.send(result);
+        }
+        UiCommand::SetContentVisible { visible, resp } => {
+            let result = set_controller_visible(state, visible);
+            if result.is_ok() {
+                state.window_visible = visible;
+            }
             let _ = resp.send(result);
         }
         #[cfg(feature = "windows-host")]
