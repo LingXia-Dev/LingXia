@@ -1,4 +1,7 @@
-use std::path::{Path, PathBuf};
+use std::{
+    fs, io,
+    path::{Path, PathBuf},
+};
 
 pub fn configure_windows_app() {
     configure_windows_app_with_manifest("app.manifest");
@@ -19,6 +22,7 @@ pub fn configure_windows_app_with_manifest(manifest: impl AsRef<Path>) {
     println!("cargo:rustc-link-arg-bins=/SUBSYSTEM:WINDOWS");
     println!("cargo:rustc-link-arg-bins=/ENTRY:mainCRTStartup");
     println!("cargo:rerun-if-changed={}", manifest.display());
+    copy_assets_to_target_profile_dir();
 }
 
 fn resolve_manifest_path(manifest: &Path) -> PathBuf {
@@ -28,4 +32,52 @@ fn resolve_manifest_path(manifest: &Path) -> PathBuf {
     std::env::current_dir()
         .expect("build script current directory")
         .join(manifest)
+}
+
+fn copy_assets_to_target_profile_dir() {
+    let Some(manifest_dir) = std::env::var_os("CARGO_MANIFEST_DIR").map(PathBuf::from) else {
+        return;
+    };
+    let source = manifest_dir.join("assets");
+    if !source.is_dir() {
+        return;
+    }
+    let Some(target_dir) = target_profile_dir() else {
+        return;
+    };
+    let destination = target_dir.join("assets");
+    copy_dir(&source, &destination).unwrap_or_else(|error| {
+        panic!(
+            "failed to copy Windows app assets from {} to {}: {error}",
+            source.display(),
+            destination.display()
+        )
+    });
+}
+
+fn target_profile_dir() -> Option<PathBuf> {
+    let out_dir = PathBuf::from(std::env::var_os("OUT_DIR")?);
+    out_dir.ancestors().nth(3).map(Path::to_path_buf)
+}
+
+fn copy_dir(source: &Path, destination: &Path) -> io::Result<()> {
+    println!("cargo:rerun-if-changed={}", source.display());
+    fs::create_dir_all(destination)?;
+
+    for entry in fs::read_dir(source)? {
+        let entry = entry?;
+        let source_path = entry.path();
+        let destination_path = destination.join(entry.file_name());
+        println!("cargo:rerun-if-changed={}", source_path.display());
+        if entry.file_type()?.is_dir() {
+            copy_dir(&source_path, &destination_path)?;
+        } else {
+            if let Some(parent) = destination_path.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            fs::copy(&source_path, &destination_path)?;
+        }
+    }
+
+    Ok(())
 }
