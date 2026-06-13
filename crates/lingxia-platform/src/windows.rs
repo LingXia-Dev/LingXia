@@ -7,22 +7,22 @@ mod device;
 mod file;
 mod location;
 mod media;
+mod media_preview;
 mod mouse;
 mod screenshot;
 mod secure_store;
 mod surface;
-mod media_preview;
 mod ui_update;
 mod user_feedback;
 mod video_info;
 mod video_player;
 
-pub use app::{Platform, set_windows_app_exit_handler, set_windows_open_url_handler};
 pub(crate) use app::request_windows_app_exit;
-pub use ui_update::set_windows_ui_update_handler;
+pub use app::{Platform, set_windows_app_exit_handler, set_windows_open_url_handler};
 pub use media_preview::{
     WindowsMediaPreviewCancel, WindowsMediaPreviewOpen, register_windows_media_preview_host,
 };
+pub use ui_update::set_windows_ui_update_handler;
 pub use video_player::{WindowsVideoCommandDispatcher, register_windows_video_command_dispatcher};
 
 use crate::error::PlatformError;

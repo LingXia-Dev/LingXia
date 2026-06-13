@@ -98,9 +98,7 @@ impl FileService for Platform {
                 .arg(format!("/select,{path}"))
                 .spawn()
                 .map(drop)
-                .map_err(|err| {
-                    PlatformError::Platform(format!("failed to start explorer: {err}"))
-                })
+                .map_err(|err| PlatformError::Platform(format!("failed to start explorer: {err}")))
         }
     }
 
@@ -130,8 +128,12 @@ fn filters_from_accept_types(accept_types: &[String]) -> Vec<FileDialogFilter> {
                 "image/*" => ["png", "jpg", "jpeg", "gif", "bmp", "webp"]
                     .map(String::from)
                     .to_vec(),
-                "video/*" => ["mp4", "mov", "avi", "mkv", "webm"].map(String::from).to_vec(),
-                "audio/*" => ["mp3", "wav", "m4a", "flac", "ogg"].map(String::from).to_vec(),
+                "video/*" => ["mp4", "mov", "avi", "mkv", "webm"]
+                    .map(String::from)
+                    .to_vec(),
+                "audio/*" => ["mp3", "wav", "m4a", "flac", "ogg"]
+                    .map(String::from)
+                    .to_vec(),
                 _ => accept
                     .split_once('/')
                     .and_then(|(_, subtype)| subtype.split('+').next())

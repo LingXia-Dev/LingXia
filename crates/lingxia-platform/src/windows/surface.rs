@@ -5,6 +5,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use lingxia_webview::WebTag;
+use lingxia_webview::platform::windows::{WindowsWebViewHandler, find_webview_handler};
 use lingxia_webview::runtime as webview_runtime;
 
 use super::request_windows_app_exit;
@@ -29,10 +30,10 @@ pub(super) fn show_webtag_window(
 ) {
     let request_key = show_request_key(&webtag, open_mode, &panel_id);
     let request_id = remember_show_request(&request_key);
-    if webview_runtime::find_webview(&webtag).is_some() {
+    if let Some(handler) = find_webview_handler(&webtag) {
         if show_request_is_current(&request_key, request_id) {
             install_close_handler(&webtag, close_action_for_mode(open_mode));
-            show_webview_window_for_mode(&webtag, &title, activate, open_mode, &panel_id);
+            show_webview_handler_for_mode(handler, &title, activate, open_mode, &panel_id);
         }
         return;
     }
@@ -45,9 +46,9 @@ pub(super) fn show_webtag_window(
                 if !show_request_is_current(&request_key, request_id) {
                     return;
                 }
-                if webview_runtime::find_webview(&webtag).is_some() {
+                if let Some(handler) = find_webview_handler(&webtag) {
                     install_close_handler(&webtag, close_action_for_mode(open_mode));
-                    show_webview_window_for_mode(&webtag, &title, activate, open_mode, &panel_id);
+                    show_webview_handler_for_mode(handler, &title, activate, open_mode, &panel_id);
                     return;
                 }
                 thread::sleep(Duration::from_millis(50));
@@ -62,33 +63,29 @@ pub(super) fn hide_lxapp_window(appid: &str, session_id: u64) {
     invalidate_show_request(&format!("main:{appid}#{session_id}"));
     for webtag in webview_runtime::list_webviews() {
         if webtag.extract_appid() == appid && webtag.session_id() == Some(session_id) {
-            let _ = lingxia_webview::platform::windows::hide_webview_window(&webtag);
+            if let Some(handler) = find_webview_handler(&webtag) {
+                let _ = handler.hide();
+            }
         }
     }
 }
 
-fn show_webview_window_for_mode(
-    webtag: &WebTag,
+fn show_webview_handler_for_mode(
+    handler: WindowsWebViewHandler,
     title: &str,
     activate: bool,
     open_mode: LxAppOpenMode,
     panel_id: &str,
 ) {
     let result = match open_mode {
-        LxAppOpenMode::Panel => {
-            lingxia_webview::platform::windows::show_webview_panel(webtag, title, panel_id)
-        }
-        LxAppOpenMode::Normal if activate => {
-            lingxia_webview::platform::windows::show_webview_window(webtag, title)
-        }
-        LxAppOpenMode::Normal => {
-            lingxia_webview::platform::windows::show_webview_window_inactive(webtag, title)
-        }
+        LxAppOpenMode::Panel => handler.show_panel(title, panel_id),
+        LxAppOpenMode::Normal if activate => handler.show_window(title),
+        LxAppOpenMode::Normal => handler.show_window_inactive(title),
     };
     if let Err(err) = result {
         log::warn!(
             "Failed to show Windows WebView window {}: {}",
-            webtag.key(),
+            handler.webtag().key(),
             err
         );
     }
@@ -141,12 +138,14 @@ fn close_action_for_mode(open_mode: LxAppOpenMode) -> WindowsCloseAction {
 
 fn install_close_handler(webtag: &WebTag, action: WindowsCloseAction) {
     let webtag_for_close = webtag.clone();
-    lingxia_webview::platform::windows::set_webview_close_handler(
+    lingxia_webview::platform::windows::lingxia_host::set_webview_close_handler(
         webtag,
         Arc::new(move || match action {
             WindowsCloseAction::ExitApp => request_windows_app_exit(),
             WindowsCloseAction::HideWindow => {
-                let _ = lingxia_webview::platform::windows::hide_webview_window(&webtag_for_close);
+                if let Some(handler) = find_webview_handler(&webtag_for_close) {
+                    let _ = handler.hide();
+                }
             }
         }),
     );

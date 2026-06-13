@@ -277,7 +277,11 @@ async fn visible_webview_screenshots_for_window(
 )> {
     let mut captures = Vec::new();
     for webtag in webview_runtime::list_webviews() {
-        let snapshot = match lingxia_webview::platform::windows::webview_window_snapshot(&webtag) {
+        let Some(handler) = lingxia_webview::platform::windows::find_webview_handler(&webtag)
+        else {
+            continue;
+        };
+        let snapshot = match handler.window_snapshot() {
             Ok(snapshot)
                 if snapshot.window_id == window_id
                     && snapshot.visible

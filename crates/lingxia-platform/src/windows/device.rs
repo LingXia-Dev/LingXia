@@ -60,8 +60,9 @@ impl DeviceHardware for Platform {
             dwLength: std::mem::size_of::<MEMORYSTATUSEX>() as u32,
             ..Default::default()
         };
-        unsafe { GlobalMemoryStatusEx(&mut status) }
-            .map_err(|err| PlatformError::Platform(format!("GlobalMemoryStatusEx failed: {err}")))?;
+        unsafe { GlobalMemoryStatusEx(&mut status) }.map_err(|err| {
+            PlatformError::Platform(format!("GlobalMemoryStatusEx failed: {err}"))
+        })?;
         Ok(status.ullTotalPhys)
     }
 
@@ -103,8 +104,8 @@ fn volume_root(path: &Path) -> PathBuf {
 }
 
 fn collect_device_info() -> DeviceInfo {
-    let brand = read_hklm_string(BIOS_KEY, "SystemManufacturer")
-        .unwrap_or_else(|| "Unknown".to_string());
+    let brand =
+        read_hklm_string(BIOS_KEY, "SystemManufacturer").unwrap_or_else(|| "Unknown".to_string());
     let model = read_hklm_string(BIOS_KEY, "SystemProductName")
         .unwrap_or_else(|| std::env::consts::ARCH.to_string());
     // SystemFamily carries the marketing line (e.g. "ThinkPad X1"); fall back

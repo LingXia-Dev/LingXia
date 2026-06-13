@@ -55,8 +55,7 @@ fn open_reader(path: &Path, with_processing: bool) -> Result<IMFSourceReader, Pl
         }
         if let Some(attributes) = attributes.as_ref() {
             unsafe {
-                let _ = attributes
-                    .SetUINT32(&MF_SOURCE_READER_ENABLE_ADVANCED_VIDEO_PROCESSING, 1);
+                let _ = attributes.SetUINT32(&MF_SOURCE_READER_ENABLE_ADVANCED_VIDEO_PROCESSING, 1);
             }
         }
         attributes
@@ -100,10 +99,9 @@ pub(super) fn read_video_info(path: &Path) -> Result<VideoInfo, PlatformError> {
     .map(|value| hundred_ns(&value) / 10_000)
     .unwrap_or(0);
 
-    let native = unsafe {
-        reader.GetNativeMediaType(MF_SOURCE_READER_FIRST_VIDEO_STREAM.0 as u32, 0)
-    }
-    .map_err(|err| PlatformError::Platform(format!("no video stream: {err}")))?;
+    let native =
+        unsafe { reader.GetNativeMediaType(MF_SOURCE_READER_FIRST_VIDEO_STREAM.0 as u32, 0) }
+            .map_err(|err| PlatformError::Platform(format!("no video stream: {err}")))?;
 
     let frame = unsafe { native.GetUINT64(&MF_MT_FRAME_SIZE) }.unwrap_or(0);
     let (width, height) = ((frame >> 32) as u32, frame as u32);
@@ -224,7 +222,11 @@ pub(super) fn extract_thumbnail(
         let row_bytes = (width * 4) as usize;
         let abs_stride = stride.unsigned_abs() as usize;
         for row in 0..height as usize {
-            let source_row = if stride < 0 { height as usize - 1 - row } else { row };
+            let source_row = if stride < 0 {
+                height as usize - 1 - row
+            } else {
+                row
+            };
             let offset = source_row * abs_stride;
             if offset + row_bytes <= length as usize {
                 std::ptr::copy_nonoverlapping(

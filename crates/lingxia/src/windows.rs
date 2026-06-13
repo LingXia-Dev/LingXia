@@ -3,8 +3,6 @@
 mod shell;
 mod terminal_panel;
 
-use std::path::Path;
-
 use lingxia_platform::traits::app_runtime::AppRuntime;
 pub use lingxia_platform::{Platform, PlatformError, set_windows_app_exit_handler};
 
@@ -32,11 +30,6 @@ pub fn open_home_app(appid: &str) -> Result<(), String> {
         .map_err(|err| err.to_string())
 }
 
-/// Sets the Windows taskbar and title-bar icon from an image file on disk.
-pub fn set_app_icon_from_path(path: &Path) -> Result<(), String> {
-    lingxia_webview::platform::windows::set_app_icon_from_path(path).map_err(|err| err.to_string())
-}
-
 /// Overrides the initial outer size, in pixels, of webview host windows
 /// created after this call — in particular the main window of the host app.
 ///
@@ -44,7 +37,7 @@ pub fn set_app_icon_from_path(path: &Path) -> Result<(), String> {
 /// opens). The first call wins; later calls and non-positive dimensions are
 /// ignored. Without an override windows open at the built-in 1024x768.
 pub fn set_default_window_size(width: i32, height: i32) {
-    lingxia_webview::platform::windows::set_default_window_size(width, height);
+    lingxia_webview::platform::windows::lingxia_host::set_default_window_size(width, height);
 }
 
 /// Resizes the top-level window of `appid` so its content (client) area is
@@ -55,12 +48,10 @@ pub fn set_default_window_size(width: i32, height: i32) {
 /// presenting it (attached surfaces resolve to their group host window).
 pub fn resize_app_window_content(appid: &str, width: i32, height: i32) -> Result<(), String> {
     let webview = current_page_webview(appid)?;
-    lingxia_webview::platform::windows::resize_webview_window_content(
-        &webview.webtag(),
-        width,
-        height,
-    )
-    .map_err(|err| err.to_string())
+    lingxia_webview::platform::windows::find_webview_handler(&webview.webtag())
+        .ok_or_else(|| "page WebView handler is not ready".to_string())?
+        .resize_host_content(width, height)
+        .map_err(|err| err.to_string())
 }
 
 fn current_page_webview(appid: &str) -> Result<std::sync::Arc<lingxia_webview::WebView>, String> {

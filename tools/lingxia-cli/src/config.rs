@@ -445,7 +445,8 @@ impl LingXiaConfig {
             .as_ref()
             .map(|features| features.shell)
             .unwrap_or(false);
-        (shell_requested || self.terminal_enabled(platform)) && matches!(platform, "macos" | "windows")
+        (shell_requested || self.terminal_enabled(platform))
+            && matches!(platform, "macos" | "windows")
     }
 
     pub fn terminal_enabled(&self, platform: &str) -> bool {

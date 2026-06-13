@@ -5,8 +5,8 @@ use std::path::{Path, PathBuf};
 use super::{Platform, file, not_supported};
 use crate::error::PlatformError;
 use crate::traits::media_interaction::{
-    ChooseMediaMode, ChooseMediaRequest, MediaInteraction, PreviewMediaRequest,
-    SaveMediaRequest, ScanCodeRequest,
+    ChooseMediaMode, ChooseMediaRequest, MediaInteraction, PreviewMediaRequest, SaveMediaRequest,
+    ScanCodeRequest,
 };
 use crate::traits::media_runtime::{
     CompressImageRequest, CompressVideoRequest, CompressedVideo, ExtractVideoThumbnailRequest,
@@ -92,7 +92,10 @@ fn pick_media_files(request: &ChooseMediaRequest) -> Result<String, PlatformErro
     let picked = if request.max_count > 1 {
         dialog.pick_files().unwrap_or_default()
     } else {
-        dialog.pick_file().map(|path| vec![path]).unwrap_or_default()
+        dialog
+            .pick_file()
+            .map(|path| vec![path])
+            .unwrap_or_default()
     };
     let entries: Vec<serde_json::Value> = picked
         .into_iter()

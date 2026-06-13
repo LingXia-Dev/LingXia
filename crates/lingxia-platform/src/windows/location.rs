@@ -45,14 +45,12 @@ impl Location for Platform {
     ) -> impl Future<Output = Result<String, PlatformError>> + Send {
         async move {
             match config.high_accuracy_expire_time {
-                Some(timeout_ms) if timeout_ms > 0 => {
-                    tokio::time::timeout(
-                        Duration::from_millis(u64::from(timeout_ms)),
-                        request_location_once(config),
-                    )
-                    .await
-                    .map_err(|_| PlatformError::BusinessError(CODE_TIMEOUT))?
-                }
+                Some(timeout_ms) if timeout_ms > 0 => tokio::time::timeout(
+                    Duration::from_millis(u64::from(timeout_ms)),
+                    request_location_once(config),
+                )
+                .await
+                .map_err(|_| PlatformError::BusinessError(CODE_TIMEOUT))?,
                 _ => request_location_once(config).await,
             }
         }

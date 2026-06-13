@@ -30,30 +30,25 @@ fn runner_menus(active_device: Option<usize>) -> Vec<WindowsAppMenu> {
     let mut device_entries = Vec::new();
     for (index, preset) in presets().iter().enumerate() {
         if is_device_group_start(index) {
-            device_entries.push(WindowsAppMenuEntry::Separator);
+            device_entries.push(WindowsAppMenuEntry::separator());
         }
-        device_entries.push(WindowsAppMenuEntry::Item(WindowsAppMenuItem {
-            id: DEVICE_COMMAND_BASE + index as u32,
-            label: device_label(preset),
-            checked: active_device == Some(index),
-            accelerator_vk: None,
-        }));
+        device_entries.push(
+            WindowsAppMenuItem::new(DEVICE_COMMAND_BASE + index as u32, device_label(preset))
+                .checked(active_device == Some(index))
+                .into(),
+        );
     }
 
     vec![
-        WindowsAppMenu {
-            title: "Device".to_string(),
-            entries: device_entries,
-        },
-        WindowsAppMenu {
-            title: "View".to_string(),
-            entries: vec![WindowsAppMenuEntry::Item(WindowsAppMenuItem {
-                id: OPEN_DEVTOOLS_COMMAND,
-                label: "Open DevTools\tF12".to_string(),
-                checked: false,
-                accelerator_vk: Some(VK_F12),
-            })],
-        },
+        WindowsAppMenu::new("Device", device_entries),
+        WindowsAppMenu::new(
+            "View",
+            [
+                WindowsAppMenuItem::new(OPEN_DEVTOOLS_COMMAND, "Open DevTools\tF12")
+                    .accelerator_vk(VK_F12)
+                    .into(),
+            ],
+        ),
     ]
 }
 
