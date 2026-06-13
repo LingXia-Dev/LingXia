@@ -75,8 +75,20 @@ class SidebarView: NSView {
     struct Layout {
         static let expandedWidth: CGFloat = 180
         static let maxWidth: CGFloat = 400
-        static let collapseThreshold: CGFloat = 80
         static let fullyHiddenThreshold: CGFloat = 1
+        /// Minimum width of the collapsed icon-only rail. The effective width
+        /// grows to clear the macOS traffic lights when they're wider (see
+        /// `effectiveRailWidth`).
+        static let railWidth: CGFloat = 60
+        /// Drag-end below this snaps to fully hidden (0).
+        static let railHideThreshold: CGFloat = 32
+        /// Drag-end below this (but at/above `railHideThreshold`) snaps to the icon rail;
+        /// at/above it the sidebar expands.
+        static let railExpandThreshold: CGFloat = 128
+        /// Square icon button in the rail.
+        static let railButtonSize: CGFloat = 34
+        /// Rendered icon size inside a rail button.
+        static let railIconSize: CGFloat = 22
         // Reserve only the shared traffic-light / toolbar row; the titlebar offset is
         // already handled by `buttonCenterYFromTop`.
         static let trafficLightsHeight: CGFloat = 38
@@ -105,6 +117,39 @@ class SidebarView: NSView {
     private var hideButtonTrackingArea: NSTrackingArea?
     private var panelButtons: [NSButton] = []
     private var appUIOnlyMode = false
+
+    // MARK: Icon-rail (collapsed) state
+
+    /// True when the sidebar is collapsed to the icon-only rail.
+    private(set) var isCompact = false
+    /// Supplies the minimum width that still clears the macOS traffic lights,
+    /// so the rail can be as narrow as those controls allow.
+    var trafficLightClearanceProvider: (() -> CGFloat)?
+    /// Rail width that both honors the minimum and clears the traffic lights.
+    /// The shell's clearance leaves ~12pt of breathing room for the expanded
+    /// layout; the rail hugs the traffic lights with only a small gap to the
+    /// webview edge.
+    private var effectiveRailWidth: CGFloat {
+        let clearance = trafficLightClearanceProvider?() ?? Layout.railWidth
+        return max(Layout.railWidth, clearance - 8)
+    }
+    /// Container hosting the rail; shown only in compact mode.
+    private let railScrollView = SidebarScrollView()
+    private let railStack = NSStackView()
+    /// Rail buttons keyed by a composite id ("app:<appId>" / "web:<tabId>").
+    private var railButtons: [String: NSButton] = [:]
+    /// Latest browser items, cached so the rail can be rebuilt without a tab refresh.
+    private var currentBrowserItems: [(id: String, title: String, favicon: NSImage?)] = []
+    /// The active selection ("app:<appId>" / "web:<tabId>") for rail highlighting.
+    private var activeRailKey: String?
+
+    /// The bundled default LingXia mark, used when an lxapp declares no icon.
+    private static let defaultAppIcon: NSImage? = {
+        guard let url = Bundle.module.url(
+            forResource: "lxapp_default", withExtension: "png", subdirectory: "icons")
+        else { return nil }
+        return NSImage(contentsOf: url)
+    }()
 
     /// Called when a panel icon button is clicked: (panelId)
     var onPanelItemToggled: ((String) -> Void)?
@@ -232,6 +277,36 @@ class SidebarView: NSView {
         flipView.translatesAutoresizingMaskIntoConstraints = false
         scrollView.documentView = flipView
 
+        // Icon rail (collapsed state) — a centered vertical strip of app/tab icons.
+        railScrollView.translatesAutoresizingMaskIntoConstraints = false
+        railScrollView.contentView = SidebarClipView()
+        railScrollView.hasVerticalScroller = false
+        railScrollView.hasHorizontalScroller = false
+        railScrollView.scrollerStyle = .overlay
+        railScrollView.verticalScrollElasticity = .none
+        railScrollView.drawsBackground = false
+        railScrollView.borderType = .noBorder
+        railScrollView.isHidden = true
+        addSubview(railScrollView)
+
+        let railDoc = FlippedView()
+        railDoc.translatesAutoresizingMaskIntoConstraints = false
+        railScrollView.documentView = railDoc
+
+        railStack.translatesAutoresizingMaskIntoConstraints = false
+        railStack.orientation = .vertical
+        railStack.alignment = .centerX
+        railStack.spacing = 6
+        railDoc.addSubview(railStack)
+        NSLayoutConstraint.activate([
+            railDoc.leadingAnchor.constraint(equalTo: railScrollView.contentView.leadingAnchor),
+            railDoc.trailingAnchor.constraint(equalTo: railScrollView.contentView.trailingAnchor),
+            railDoc.topAnchor.constraint(equalTo: railScrollView.contentView.topAnchor),
+            railStack.topAnchor.constraint(equalTo: railDoc.topAnchor, constant: 6),
+            railStack.centerXAnchor.constraint(equalTo: railDoc.centerXAnchor),
+            railStack.bottomAnchor.constraint(equalTo: railDoc.bottomAnchor, constant: -6),
+        ])
+
         // Footer dock — bottom toolbar row for icon buttons
         footerView.translatesAutoresizingMaskIntoConstraints = false
         footerView.wantsLayer = true
@@ -289,6 +364,12 @@ class SidebarView: NSView {
             scrollView.leadingAnchor.constraint(equalTo: leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Layout.resizeHandleWidth),
             scrollView.bottomAnchor.constraint(equalTo: footerView.topAnchor),
+
+            // Rail occupies the same region as the main scroll view.
+            railScrollView.topAnchor.constraint(equalTo: headerView.bottomAnchor),
+            railScrollView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            railScrollView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Layout.resizeHandleWidth),
+            railScrollView.bottomAnchor.constraint(equalTo: footerView.topAnchor),
 
             footerView.leadingAnchor.constraint(equalTo: leadingAnchor),
             footerView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Layout.resizeHandleWidth),
@@ -359,16 +440,123 @@ class SidebarView: NSView {
 
     private func handleDrag(proposedWidth: CGFloat) {
         let clamped = min(max(proposedWidth, 0), Layout.maxWidth)
+        // Live feedback: show the icon rail while in the rail zone so the
+        // expanded layout never has to render squished at narrow widths.
+        let compact = clamped >= Layout.railHideThreshold && clamped < Layout.railExpandThreshold
+        setCompactMode(compact)
         onWidthChanged?(clamped, false)
     }
 
     private func handleDragEnd(proposedWidth: CGFloat) {
-        if proposedWidth < Layout.collapseThreshold {
+        if proposedWidth < Layout.railHideThreshold {
+            // Fully hidden — restore the expanded layout for the next reveal.
+            setCompactMode(false)
             onWidthChanged?(0, true)
+        } else if proposedWidth < Layout.railExpandThreshold {
+            setCompactMode(true)
+            onWidthChanged?(effectiveRailWidth, true)
         } else {
-            let clamped = min(max(proposedWidth, Layout.collapseThreshold), Layout.maxWidth)
+            setCompactMode(false)
+            let clamped = min(max(proposedWidth, Layout.expandedWidth), Layout.maxWidth)
             onWidthChanged?(clamped, true)
         }
+    }
+
+    // MARK: - Compact (icon-rail) mode
+
+    /// Switch between the expanded sidebar and the collapsed icon rail.
+    func setCompactMode(_ compact: Bool) {
+        guard compact != isCompact else { return }
+        isCompact = compact
+        if compact {
+            rebuildRail()
+        }
+        updateVisibilityState()
+    }
+
+    /// Rebuild the rail's icon buttons from the current lxapps + browser tabs.
+    private func rebuildRail() {
+        railStack.arrangedSubviews.forEach {
+            railStack.removeArrangedSubview($0)
+            $0.removeFromSuperview()
+        }
+        railButtons.removeAll()
+
+        for tab in currentTabs {
+            let info = getLxAppInfo(tab.appId)
+            let iconPath = info.icon.toString()
+            let image: NSImage?
+            if !iconPath.isEmpty, let img = NSImage(contentsOfFile: iconPath) {
+                image = img
+            } else {
+                image = Self.defaultAppIcon
+            }
+            let key = "app:\(tab.appId)"
+            let btn = makeRailButton(key: key, tooltip: info.app_name.toString(), image: image, isTemplate: false)
+            btn.action = #selector(railAppClicked(_:))
+            railStack.addArrangedSubview(btn)
+            railButtons[key] = btn
+        }
+
+        for item in currentBrowserItems {
+            let key = "web:\(item.id)"
+            let image = item.favicon ?? NSImage(systemSymbolName: "globe", accessibilityDescription: item.title)
+            let btn = makeRailButton(key: key, tooltip: item.title, image: image, isTemplate: item.favicon == nil)
+            btn.action = #selector(railBrowserClicked(_:))
+            railStack.addArrangedSubview(btn)
+            railButtons[key] = btn
+        }
+
+        refreshRailHighlight()
+    }
+
+    private func makeRailButton(key: String, tooltip: String, image: NSImage?, isTemplate: Bool) -> NSButton {
+        let btn = NSButton()
+        btn.translatesAutoresizingMaskIntoConstraints = false
+        btn.isBordered = false
+        btn.bezelStyle = .regularSquare
+        btn.imagePosition = .imageOnly
+        btn.imageScaling = .scaleProportionallyDown
+        btn.wantsLayer = true
+        btn.layer?.cornerRadius = 8
+        btn.layer?.backgroundColor = NSColor.clear.cgColor
+        btn.toolTip = tooltip
+        btn.target = self
+        btn.identifier = NSUserInterfaceItemIdentifier(key)
+        if let image {
+            let copy = image.copy() as? NSImage ?? image
+            copy.size = NSSize(width: Layout.railIconSize, height: Layout.railIconSize)
+            copy.isTemplate = isTemplate
+            btn.image = copy
+            if isTemplate { btn.contentTintColor = NSColor.secondaryLabelColor }
+        }
+        NSLayoutConstraint.activate([
+            btn.widthAnchor.constraint(equalToConstant: Layout.railButtonSize),
+            btn.heightAnchor.constraint(equalToConstant: Layout.railButtonSize),
+        ])
+        return btn
+    }
+
+    /// Highlight the active app/tab button in the rail.
+    private func refreshRailHighlight() {
+        for (key, btn) in railButtons {
+            let selected = key == activeRailKey
+            btn.layer?.backgroundColor = selected
+                ? NSColor.labelColor.withAlphaComponent(0.12).cgColor
+                : NSColor.clear.cgColor
+        }
+    }
+
+    @objc private func railAppClicked(_ sender: NSButton) {
+        guard let key = sender.identifier?.rawValue, key.hasPrefix("app:") else { return }
+        let appId = String(key.dropFirst(4))
+        let index = getTabBar(appId).map { Int($0.selected_index) } ?? 0
+        onAppPageSelected?(appId, index)
+    }
+
+    @objc private func railBrowserClicked(_ sender: NSButton) {
+        guard let key = sender.identifier?.rawValue, key.hasPrefix("web:") else { return }
+        onBrowserTabSelected?(String(key.dropFirst(4)))
     }
 
     func updateVisibilityState() {
@@ -382,9 +570,13 @@ class SidebarView: NSView {
             shellEnabled ? "true" : "false",
             LxAppCore.capabilities
         )
-        scrollView.isHidden = hidden || appUIOnlyMode
-        settingsButton.isHidden = hidden || !shellEnabled || appUIOnlyMode
-        downloadButton.isHidden = hidden || !shellEnabled || appUIOnlyMode
+        let compact = isCompact && !hidden && !appUIOnlyMode
+        scrollView.isHidden = hidden || appUIOnlyMode || compact
+        railScrollView.isHidden = hidden || appUIOnlyMode || !compact
+        // The header action buttons and footer panel icons don't fit the rail.
+        settingsButton.isHidden = hidden || !shellEnabled || appUIOnlyMode || compact
+        downloadButton.isHidden = hidden || !shellEnabled || appUIOnlyMode || compact
+        panelStack.isHidden = compact
         footerView.isHidden = hidden
         resizeHandle.isHidden = hidden
     }
@@ -401,6 +593,14 @@ class SidebarView: NSView {
         groupViews.values.forEach { $0.removeFromSuperview() }
         groupViews.removeAll()
         groupTopConstraints.removeAll()
+
+        isCompact = false
+        currentBrowserItems.removeAll()
+        railStack.arrangedSubviews.forEach {
+            railStack.removeArrangedSubview($0)
+            $0.removeFromSuperview()
+        }
+        railButtons.removeAll()
 
         browserItemViews.values.forEach { $0.removeFromSuperview() }
         browserItemViews.removeAll()
@@ -583,6 +783,7 @@ class SidebarView: NSView {
             setActiveHighlight(appId: activeAppId)
         }
 
+        if isCompact { rebuildRail() }
     }
 
     /// Refresh a specific app group from Rust data
@@ -594,6 +795,8 @@ class SidebarView: NSView {
     /// Set active highlight on the appropriate group and item
     func setActiveHighlight(appId: String, pageIndex: Int? = nil) {
         guard !appUIOnlyMode else { return }
+        activeRailKey = "app:\(appId)"
+        refreshRailHighlight()
         // Clear browser selections when an lxapp is selected
         for (_, itemView) in browserItemViews {
             itemView.isSelected = false
@@ -617,6 +820,8 @@ class SidebarView: NSView {
     /// Clear all highlights (both lxapp and browser)
     func clearAllHighlights() {
         guard !appUIOnlyMode else { return }
+        activeRailKey = nil
+        refreshRailHighlight()
         for (_, group) in groupViews {
             group.clearHighlight()
         }
@@ -632,8 +837,10 @@ class SidebarView: NSView {
         guard !appUIOnlyMode else { return }
         guard let docView = scrollView.documentView else { return }
 
-        // Store ordering
+        // Store ordering + cache for the rail
         browserTabOrder = items.map { $0.id }
+        currentBrowserItems = items
+        if let activeId { activeRailKey = "web:\(activeId)" }
 
         // Remove browser items no longer present
         let currentIds = Set(items.map { $0.id })
@@ -668,6 +875,8 @@ class SidebarView: NSView {
 
         // Re-layout browser section
         relayoutBrowserSection(in: docView)
+
+        if isCompact { rebuildRail() }
     }
 
     /// Layout browser items and add button after lxapp groups
@@ -792,7 +1001,16 @@ class SidebarView: NSView {
     }
 
     @objc private func hideButtonClicked() {
-        onHideRequested?()
+        // Progressive collapse: expanded → icon rail → fully hidden.
+        if isCompact {
+            // Hide straight from the rail — keep the rail showing as it shrinks
+            // to zero so the expanded items never flash. The expanded layout is
+            // restored (invisibly, at width 0) on the next reveal.
+            onHideRequested?()
+        } else {
+            setCompactMode(true)
+            onWidthChanged?(effectiveRailWidth, true)
+        }
     }
 
     @objc private func settingsClicked() {

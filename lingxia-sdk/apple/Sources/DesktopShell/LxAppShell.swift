@@ -416,6 +416,9 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         sidebar.onWidthChanged = { [weak self] width, animated in
             self?.updateSidebarWidth(width, animated: animated)
         }
+        sidebar.trafficLightClearanceProvider = { [weak self] in
+            self?.trafficLightClearance() ?? SidebarView.Layout.railWidth
+        }
         sidebar.onAddBrowserTab = { [weak self] in
             self?.browserCoordinator.addTab()
         }
@@ -636,8 +639,15 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
             return
         }
 
-        if isVisible && constraint.constant > Layout.sidebarHiddenThreshold {
+        if isVisible && constraint.constant > Layout.sidebarHiddenThreshold
+            && !(sidebarView?.isCompact ?? false) {
             lastExpandedSidebarWidth = constraint.constant
+        }
+
+        // Revealing always returns to the expanded layout. Reset while still
+        // hidden (width 0) so the switch is invisible.
+        if visible {
+            sidebarView?.setCompactMode(false)
         }
 
         let targetWidth: CGFloat = visible ? lastExpandedSidebarWidth : 0
@@ -667,7 +677,10 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     func updateSidebarWidth(_ width: CGFloat, animated: Bool) {
         guard let constraint = sidebarWidthConstraint else { return }
 
-        if width > Layout.sidebarHiddenThreshold {
+        // Remember only settled, genuinely-expanded widths — never the icon
+        // rail or transient live-drag widths — so expanding always restores the
+        // pre-collapse width.
+        if animated && width > Layout.sidebarHiddenThreshold && !(sidebarView?.isCompact ?? false) {
             lastExpandedSidebarWidth = width
         }
 
