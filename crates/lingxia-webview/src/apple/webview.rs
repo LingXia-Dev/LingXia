@@ -1719,6 +1719,20 @@ impl WebViewInner {
                 // Register the WebView instance for future lookups
                 crate::webview::register_webview(webview.clone());
 
+                // The session may have been destroyed (tab closed/discarded)
+                // while we were building on the main thread. Re-check after
+                // registering and tear the instance back down so it never
+                // lingers as a zombie in the global registry.
+                if sender.is_destroyed() {
+                    log::info!(
+                        "WebView for {}-{} was destroyed during creation; discarding",
+                        appid,
+                        path
+                    );
+                    crate::webview::destroy_webview(&webview.webtag());
+                    return;
+                }
+
                 sender.succeed(webview);
                 log::info!("WebView created successfully for {}-{}", appid, path);
             }

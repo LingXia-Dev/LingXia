@@ -61,6 +61,33 @@ pub(crate) fn close(tab_id: &str) -> Result<(), lxapp::LxAppError> {
     }
 }
 
+pub(crate) fn discard(tab_id: &str) -> Result<(), lxapp::LxAppError> {
+    #[cfg(feature = "browser-runtime")]
+    return lingxia_browser::discard(tab_id);
+    #[cfg(not(feature = "browser-runtime"))]
+    {
+        let _ = tab_id;
+        unavailable()
+    }
+}
+
+pub(crate) fn reactivate(tab_id: &str) -> Result<(), lxapp::LxAppError> {
+    #[cfg(feature = "browser-runtime")]
+    return lingxia_browser::reactivate(tab_id);
+    #[cfg(not(feature = "browser-runtime"))]
+    {
+        let _ = tab_id;
+        unavailable()
+    }
+}
+
+pub(crate) fn mark_active(tab_id: &str) {
+    #[cfg(feature = "browser-runtime")]
+    lingxia_browser::mark_active(tab_id);
+    #[cfg(not(feature = "browser-runtime"))]
+    let _ = tab_id;
+}
+
 pub(crate) fn tab_path(tab_id: &str) -> String {
     #[cfg(feature = "browser-runtime")]
     return lingxia_browser::tab_path(tab_id);

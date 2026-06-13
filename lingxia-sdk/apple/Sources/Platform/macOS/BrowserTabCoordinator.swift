@@ -68,6 +68,29 @@ final class BrowserTabCoordinator: NSObject {
     private var tabFaviconRequestOrigins: [String: String] = [:]
     private var lastObservedURLs: [String: String] = [:]
 
+    /// Tabs whose WebView has been discarded to free memory (Chrome-style).
+    /// Their sidebar entry stays; the WebView is recreated on reactivation.
+    private var discardedTabs: Set<String> = []
+    /// Activation order, least-recently-used first — drives discard ordering.
+    private var tabRecency: [String] = []
+    /// When each background tab last went inactive — its idle clock.
+    private var backgroundedAt: [String: Date] = [:]
+
+    /// Reactive: free background tabs when the system reports memory pressure.
+    private var memoryPressureSource: DispatchSourceMemoryPressure?
+    /// Proactive: periodically free tabs idle longer than `idleDiscardThreshold`,
+    /// so memory stays low without waiting for pressure.
+    private var idleSweepTimer: Timer?
+    private var memoryManagementStarted = false
+    /// Background-idle time after which a tab is discarded proactively.
+    private static let idleDiscardThreshold: TimeInterval = 30 * 60
+    /// How often the idle sweep runs.
+    private static let idleSweepInterval: TimeInterval = 60
+    /// Under a `.warning` pressure event, only discard tabs idle at least this
+    /// long (avoid nuking a tab you just switched away from). `.critical`
+    /// discards all background tabs.
+    private static let warningPressureMinIdle: TimeInterval = 60
+
     // UI
     private var browserView: NSView?
     private let toolbar = NSView()
@@ -104,9 +127,13 @@ final class BrowserTabCoordinator: NSObject {
 
     /// Deactivate browser UI (called when switching to an lxapp tab). Idempotent.
     func deactivate() {
-        guard activeTabId != nil else { return }
+        guard let previous = activeTabId else { return }
         clearWebViewAttachment()
         hideBrowserView()
+        // The browser is leaving the foreground — start the idle clock for the
+        // tab that was active, so it isn't treated as infinitely idle and
+        // discarded prematurely on the next pressure event / sweep.
+        backgroundedAt[previous] = Date()
         activeTabId = nil
         host?.forceHideNavigationToolbar(false)
     }
@@ -156,6 +183,9 @@ final class BrowserTabCoordinator: NSObject {
         tabFavicons.removeValue(forKey: id)
         tabFaviconRequestOrigins.removeValue(forKey: id)
         lastObservedURLs.removeValue(forKey: id)
+        discardedTabs.remove(id)
+        tabRecency.removeAll { $0 == id }
+        backgroundedAt.removeValue(forKey: id)
         tabIds.remove(at: index)
 
         // Destroy Rust state (triggers WebView Drop — safe now that UI is detached)
@@ -191,6 +221,9 @@ final class BrowserTabCoordinator: NSObject {
         tabFavicons.removeAll()
         tabFaviconRequestOrigins.removeAll()
         lastObservedURLs.removeAll()
+        discardedTabs.removeAll()
+        tabRecency.removeAll()
+        backgroundedAt.removeAll()
         activeTabId = nil
         hideBrowserView()
         host?.updateSidebarBrowserItems([], activeId: nil)
@@ -582,10 +615,32 @@ final class BrowserTabCoordinator: NSObject {
             return
         }
 
+        startMemoryManagementIfNeeded()
+
         host?.browserWillActivateTab()
         clearWebViewAttachment()
 
+        // If the tab was discarded to save memory, recreate its WebView and
+        // reload the saved URL before attaching (reactivate also marks it
+        // active in Rust); otherwise sync the Rust-side active tab so a
+        // previously-active live tab can be discarded once it's in the
+        // background.
+        if discardedTabs.contains(id) {
+            if browserTabReactivate(tabIdString(id)) {
+                discardedTabs.remove(id)
+            }
+        } else {
+            browserTabActivate(tabIdString(id))
+        }
+
+        // The tab we're leaving starts its background idle clock now.
+        if let previous = activeTabId {
+            backgroundedAt[previous] = Date()
+        }
+
         activeTabId = id
+        backgroundedAt.removeValue(forKey: id)
+        touchRecency(id)
 
         host?.clearSidebarHighlights()
         host?.updateSidebarBrowserItems(sidebarItems(), activeId: id)
@@ -596,6 +651,80 @@ final class BrowserTabCoordinator: NSObject {
         updateBackButtonState(canGoBack: false)
 
         attachWebView(for: id, attempt: 0)
+    }
+
+    /// Move `id` to the most-recently-used position.
+    private func touchRecency(_ id: String) {
+        tabRecency.removeAll { $0 == id }
+        tabRecency.append(id)
+    }
+
+    // MARK: - Adaptive memory management (no fixed tab cap)
+
+    private func startMemoryManagementIfNeeded() {
+        guard !memoryManagementStarted else { return }
+        memoryManagementStarted = true
+
+        // Reactive: discard background tabs when the system is under memory
+        // pressure. `.critical` frees everything in the background; `.warning`
+        // frees only tabs that have been idle for a bit.
+        let source = DispatchSource.makeMemoryPressureSource(
+            eventMask: [.warning, .critical], queue: .main)
+        source.setEventHandler { [weak self] in
+            guard let self else { return }
+            let minIdle: TimeInterval =
+                source.data.contains(.critical) ? 0 : Self.warningPressureMinIdle
+            self.discardBackgroundTabs(minIdle: minIdle)
+        }
+        source.resume()
+        memoryPressureSource = source
+
+        // Proactive: sweep idle tabs so memory stays low before pressure hits.
+        let timer = Timer.scheduledTimer(
+            withTimeInterval: Self.idleSweepInterval, repeats: true
+        ) { [weak self] _ in
+            self?.discardBackgroundTabs(minIdle: Self.idleDiscardThreshold)
+        }
+        timer.tolerance = Self.idleSweepInterval / 2
+        idleSweepTimer = timer
+    }
+
+    /// Discard every background tab idle at least `minIdle` seconds (LRU order),
+    /// keeping its sidebar entry. The active tab and protected tabs are spared.
+    private func discardBackgroundTabs(minIdle: TimeInterval) {
+        let now = Date()
+        let candidates = tabRecency.filter { id in
+            id != activeTabId
+                && tabIds.contains(id)
+                && !discardedTabs.contains(id)
+                && !isProtectedFromDiscard(id)
+                && now.timeIntervalSince(backgroundedAt[id] ?? .distantPast) >= minIdle
+        }
+        var changed = false
+        for id in candidates {
+            if browserTabDiscard(tabIdString(id)) {
+                discardedTabs.insert(id)
+                changed = true
+            }
+        }
+        if changed {
+            host?.updateSidebarBrowserItems(sidebarItems(), activeId: activeTabId)
+        }
+    }
+
+    /// Tabs that must never be discarded. The active tab is already excluded by
+    /// the callers; this is the hook for audio-playing / pinned tabs.
+    private func isProtectedFromDiscard(_ id: String) -> Bool {
+        false
+    }
+
+    /// Manually discard a specific background tab (e.g. from a context menu).
+    func discardTab(id: String) {
+        guard tabIds.contains(id), id != activeTabId, !discardedTabs.contains(id) else { return }
+        if browserTabDiscard(tabIdString(id)) {
+            discardedTabs.insert(id)
+            host?.updateSidebarBrowserItems(sidebarItems(), activeId: activeTabId)
+        }
     }
 
     private func attachWebView(for tabId: String, attempt: Int) {

@@ -1375,6 +1375,11 @@ impl WebViewSessionSignals {
         state.terminal_result.clone()
     }
 
+    fn is_destroyed(&self) -> bool {
+        let state = lock_or_recover(&self.state, "webview_session_state.is_destroyed");
+        state.destroyed
+    }
+
     fn publish_result(
         &self,
         result: Result<Arc<WebView>, WebViewError>,
@@ -1445,6 +1450,14 @@ impl WebViewCreateSender {
 
     pub(crate) fn fail(self, stage: WebViewCreateStage, error: WebViewError) {
         self.signals.publish_result(Err(error), stage);
+    }
+
+    /// True if the session was destroyed (e.g. the tab was closed/discarded)
+    /// while the native WebView was still being built. The platform create
+    /// path checks this before registering, to avoid leaving a zombie in the
+    /// global registry.
+    pub(crate) fn is_destroyed(&self) -> bool {
+        self.signals.is_destroyed()
     }
 }
 
@@ -1825,6 +1838,14 @@ pub(crate) fn find_webview_delegate(webtag: &WebTag) -> Option<Arc<dyn WebViewDe
 
 /// Destroy a WebView instance by WebTag and remove it from global storage
 pub(crate) fn destroy_webview(webtag: &WebTag) {
+    // Mark the session destroyed FIRST. If a native create is still in flight
+    // (built on the main thread but not yet registered), it observes this via
+    // `WebViewCreateSender::is_destroyed()` after registering and tears the
+    // instance back down — so a destroy that races ahead of registration can't
+    // leave a zombie in the global registry.
+    if let Some(signals) = remove_session_signals(webtag) {
+        signals.publish_destroyed();
+    }
     let removed = if let Some(instances) = WEBVIEW_INSTANCES.get()
         && let Ok(mut webviews) = instances.lock()
     {
@@ -1836,7 +1857,4 @@ pub(crate) fn destroy_webview(webtag: &WebTag) {
         webview.remove_delegate();
     }
     clear_pending_callbacks(webtag);
-    if let Some(signals) = remove_session_signals(webtag) {
-        signals.publish_destroyed();
-    }
 }

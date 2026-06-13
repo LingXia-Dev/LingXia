@@ -64,6 +64,21 @@ pub fn close(tab_id: &str) -> Result<(), LxAppError> {
     runtime::close_browser_tab(tab_id)
 }
 
+/// Discard a tab's WebView to free memory while keeping its sidebar entry.
+pub fn discard(tab_id: &str) -> Result<(), LxAppError> {
+    runtime::discard_browser_tab(tab_id)
+}
+
+/// Recreate a discarded tab's WebView, reload its URL, and activate it.
+pub fn reactivate(tab_id: &str) -> Result<(), LxAppError> {
+    runtime::reactivate_browser_tab(tab_id)
+}
+
+/// Sync the Rust-side active tab when the SDK switches to an already-live tab.
+pub fn mark_active(tab_id: &str) {
+    runtime::mark_browser_tab_active(tab_id)
+}
+
 pub fn tabs() -> Vec<BrowserTabInfo> {
     runtime::browser_tabs()
 }

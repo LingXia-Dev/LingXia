@@ -212,6 +212,18 @@ mod bridge {
         #[swift_bridge(swift_name = "browserTabClose")]
         fn browser_tab_close(tab_id: &str) -> bool;
 
+        // Discard a background tab's WebView to free memory; keeps the entry.
+        #[swift_bridge(swift_name = "browserTabDiscard")]
+        fn browser_tab_discard(tab_id: &str) -> bool;
+
+        // Recreate a discarded tab's WebView, reload its URL, and activate it.
+        #[swift_bridge(swift_name = "browserTabReactivate")]
+        fn browser_tab_reactivate(tab_id: &str) -> bool;
+
+        // Sync the Rust-side active tab when switching to an already-live tab.
+        #[swift_bridge(swift_name = "browserTabActivate")]
+        fn browser_tab_activate(tab_id: &str);
+
         #[swift_bridge(swift_name = "getBuiltinBrowserAppId")]
         fn get_builtin_browser_app_id() -> String;
 
@@ -559,6 +571,24 @@ pub fn open_browser_tab_with_id(
 pub fn browser_tab_close(tab_id: &str) -> bool {
     ffi_catch_unwind!("browser_tab_close", false, || {
         crate::browser::close(tab_id).is_ok()
+    })
+}
+
+pub fn browser_tab_discard(tab_id: &str) -> bool {
+    ffi_catch_unwind!("browser_tab_discard", false, || {
+        crate::browser::discard(tab_id).is_ok()
+    })
+}
+
+pub fn browser_tab_reactivate(tab_id: &str) -> bool {
+    ffi_catch_unwind!("browser_tab_reactivate", false, || {
+        crate::browser::reactivate(tab_id).is_ok()
+    })
+}
+
+pub fn browser_tab_activate(tab_id: &str) {
+    ffi_catch_unwind!("browser_tab_activate", (), || {
+        crate::browser::mark_active(tab_id)
     })
 }
 
