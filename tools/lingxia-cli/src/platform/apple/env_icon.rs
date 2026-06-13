@@ -101,15 +101,50 @@ fn badge_appiconset(dir: &Path, letter: char, accent: [u8; 4]) -> Result<()> {
     Ok(())
 }
 
+/// The opaque bounding box of an icon: the rectangle covering every pixel
+/// with meaningful alpha. macOS app icons follow Apple's grid — the art sits
+/// inside ~10% transparent padding with a rounded squircle — so the visible
+/// icon is *not* the full canvas. iOS / Android icons are full-bleed, so their
+/// bounds are the whole canvas. Anchoring the badge to these bounds (instead
+/// of the raw canvas corner) keeps the badge inside the visible art on every
+/// platform.
+fn opaque_bounds(img: &RgbaImage) -> (i32, i32, i32, i32) {
+    let (w, h) = img.dimensions();
+    // 50% alpha: captures the solid squircle body while excluding the faint
+    // macOS drop shadow and anti-aliased corners, which would otherwise push
+    // the bounds out past the visible icon again.
+    const ALPHA_THRESHOLD: u8 = 128;
+    let (mut min_x, mut min_y, mut max_x, mut max_y) = (w as i32, h as i32, -1, -1);
+    for (x, y, pixel) in img.enumerate_pixels() {
+        if pixel.0[3] > ALPHA_THRESHOLD {
+            min_x = min_x.min(x as i32);
+            min_y = min_y.min(y as i32);
+            max_x = max_x.max(x as i32);
+            max_y = max_y.max(y as i32);
+        }
+    }
+    // Fully transparent (shouldn't happen) → fall back to the full canvas.
+    if max_x < 0 {
+        (0, 0, w as i32 - 1, h as i32 - 1)
+    } else {
+        (min_x, min_y, max_x, max_y)
+    }
+}
+
 /// Composite a circular badge with a hand-rolled bitmap letter at the
-/// bottom-right of `img`. Sized relative to the icon so it stays readable
-/// from 60×60 home-screen icons up to the 1024×1024 marketing icon.
+/// bottom-right of the icon's *visible* art. Sized relative to the visible
+/// art so it stays readable and consistent across platforms whether the icon
+/// is full-bleed (iOS/Android) or inset inside a squircle (macOS).
 fn composite_badge(img: &mut RgbaImage, letter: char, accent: [u8; 4]) {
     let (w, h) = img.dimensions();
-    let badge_diameter = ((w.min(h) as f32) * 0.35).round() as i32;
+    let (bb_min_x, bb_min_y, bb_max_x, bb_max_y) = opaque_bounds(img);
+    let bb_w = bb_max_x - bb_min_x + 1;
+    let bb_h = bb_max_y - bb_min_y + 1;
+    let badge_diameter = ((bb_w.min(bb_h) as f32) * 0.35).round() as i32;
     let inset = (badge_diameter / 8).max(2);
-    let center_x = w as i32 - badge_diameter / 2 - inset;
-    let center_y = h as i32 - badge_diameter / 2 - inset;
+    // Anchor to the bottom-right of the visible art, not the raw canvas.
+    let center_x = bb_max_x - badge_diameter / 2 - inset;
+    let center_y = bb_max_y - badge_diameter / 2 - inset;
     let outer_r = badge_diameter / 2;
     let border_w = (badge_diameter / 16).max(2);
     let inner_r = (outer_r - border_w).max(1);
