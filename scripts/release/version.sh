@@ -183,8 +183,52 @@ else:
 PY
 }
 
+# The CLI keeps its own version line. Its major.minor mirrors the workspace
+# (a CLI release is "the CLI for base runtime X.Y"), but its patch advances
+# independently so CLI-only hotfixes never force a base bump and a base release
+# never regresses the CLI. compute_cli_target picks the next CLI [package]
+# version for `--component all`:
+#   - same major.minor as the workspace target -> current CLI patch + 1
+#   - different major.minor (new base line)     -> X.Y.0
+compute_cli_target() {
+  python3 - "$CLI_CARGO_TOML" "$1" <<'PY'
+import re, sys
+from pathlib import Path
+
+text = Path(sys.argv[1]).read_text()
+ws = sys.argv[2]
+m = re.search(
+    r'^\[package\]\n(?:(?!^\[).*\n)*?^version\s*=\s*"([^"]+)"',
+    text,
+    re.MULTILINE,
+)
+cur = m.group(1) if m else "0.0.0"
+
+def parts(v):
+    p = (v.split(".") + ["0", "0", "0"])[:3]
+    return p[0], p[1], p[2]
+
+wm, wn, _ = parts(ws)
+cm, cn, cp = parts(cur)
+if (wm, wn) == (cm, cn):
+    try:
+        patch = str(int(cp) + 1)
+    except ValueError:
+        patch = cp
+    print(f"{wm}.{wn}.{patch}")
+else:
+    print(f"{wm}.{wn}.0")
+PY
+}
+
+# update_cli_cargo [cli_package_version]
+#   - cli_package_version: version to write to the CLI [package] (defaults to
+#     $VERSION for `--component cli`; the `all` branch passes compute_cli_target).
+#   - embedded component metadata (bridge/polyfills/types/crate/sdk/...) always
+#     tracks the workspace version ($VERSION) and is only rewritten on `all`.
 update_cli_cargo() {
-  python3 - "$CLI_CARGO_TOML" "$VERSION" "$DRY_RUN" "$COMPONENT" <<'PY'
+  local cli_version="${1:-$VERSION}"
+  python3 - "$CLI_CARGO_TOML" "$VERSION" "$DRY_RUN" "$COMPONENT" "$cli_version" <<'PY'
 from pathlib import Path
 import re
 import sys
@@ -193,13 +237,14 @@ path = Path(sys.argv[1])
 version = sys.argv[2]
 dry_run = sys.argv[3] == "1"
 component = sys.argv[4]
+cli_version = sys.argv[5]
 text = path.read_text()
 
 package_re = re.compile(
     r'(^\[package\]\n(?:(?!^\[).*\n)*?)^version(?:\.workspace)?\s*=\s*(?:true|"[^"]+")',
     re.MULTILINE,
 )
-text, package_count = package_re.subn(rf'\g<1>version = "{version}"', text, count=1)
+text, package_count = package_re.subn(rf'\g<1>version = "{cli_version}"', text, count=1)
 if package_count != 1:
     raise SystemExit(f"failed to update [package] version in {path}")
 
@@ -222,15 +267,15 @@ if component == "all":
 
 if dry_run:
     print(f"would update {path}")
-    print(f"  lingxia-cli package version -> {version}")
+    print(f"  lingxia-cli package version -> {cli_version}")
     if component == "all":
-        print(f"  embedded component versions updated: {metadata_count}")
+        print(f"  embedded component versions -> {version} ({metadata_count} keys)")
 else:
     path.write_text(text)
     print(f"updated {path}")
-    print(f"  lingxia-cli package version -> {version}")
+    print(f"  lingxia-cli package version -> {cli_version}")
     if component == "all":
-        print(f"  embedded component versions updated: {metadata_count}")
+        print(f"  embedded component versions -> {version} ({metadata_count} keys)")
 PY
 }
 
@@ -380,7 +425,7 @@ npm_pkg_changed() {
 
 if [[ "$COMPONENT" == "all" ]]; then
   update_workspace_cargo
-  update_cli_cargo
+  update_cli_cargo "$(compute_cli_target "$VERSION")"
   update_example_host_cargo
   update_example_host_lock
 

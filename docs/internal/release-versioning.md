@@ -10,7 +10,7 @@ runtime, SDK, CLI, and the JS runtime assets embedded in the app all share it.
 |---|---|---|
 | rust crates | crates.io | workspace version |
 | SDK (apple/android/harmony) | GitHub Release | workspace version |
-| CLI (`lingxia`) | GitHub Release | workspace version (may patch independently via `--component cli`) |
+| CLI (`lingxia`) | GitHub Release | **own version line** (major.minor mirrors the workspace; patch independent) |
 | npm packages | npm registry | **tiered — see below** |
 
 ## npm tiers
@@ -54,6 +54,27 @@ Not all npm packages may drift from the workspace. They split into three tiers:
 
 - Agent/CLI helper; not embedded, not protocol-bound. Version freely
   (`--component npm:skill`).
+
+## CLI version line
+
+The CLI embeds the base runtime (bridge/polyfills) as assets, so a base release
+must re-release the CLI. But the CLI also ships its own fixes, which must not
+require a base bump and must never be regressed by one. So the CLI keeps its
+**own version line**:
+
+- **major.minor mirrors the workspace** — CLI `0.9.x` means "the CLI for base
+  runtime 0.9". Its embedded `package.metadata.lingxia.*-version` always equals
+  the workspace version.
+- **patch is independent.** `--component all X` advances the CLI to
+  `X.major.X.minor.(currentCliPatch+1)` on the same minor, or `X.major.X.minor.0`
+  on a new minor — it reads the current CLI version and rolls forward, never
+  back. `--component cli Y` sets the CLI explicitly for a standalone hotfix.
+- When publishing a base release, pass the CLI's **own** version (from
+  `tools/lingxia-cli/Cargo.toml`) to `component=cli`, not the workspace version.
+
+Example: workspace `0.9.0`, CLI already `0.9.1` from a hotfix. `--component all
+0.9.0` → workspace/base npm stay `0.9.0`, CLI rolls to `0.9.2`, CLI metadata →
+`0.9.0`. No collision, no regression.
 
 ## Suggested CI release grouping
 

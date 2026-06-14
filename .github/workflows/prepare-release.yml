@@ -129,8 +129,13 @@ jobs:
           \`scripts/release/version.sh\`. This rewrites the version in one shot:
 
           - \`Cargo.toml\` \`workspace.package.version\` + workspace crate dep versions
-          - \`tools/lingxia-cli/Cargo.toml\` CLI version + embedded component versions
-          - every \`packages/*/package.json\` version + internal \`@lingxia/*\` dep ranges
+          - \`tools/lingxia-cli/Cargo.toml\`: embedded component versions track the
+            workspace; the CLI \`[package]\` version advances on its **own** patch
+            line (workspace major.minor + next CLI patch), so check the file for
+            the resulting CLI version.
+          - every \`packages/*/package.json\` version — except framework/tool
+            packages unchanged since their last tag, which keep their version and
+            are not republished. Internal \`@lingxia/*\` dep ranges stay caret.
 
           ### After merge
 
@@ -141,7 +146,7 @@ jobs:
           # Recommended order:
           # 1. component=crates, version=${version}
           # 2. component=sdk,    version=${version}
-          # 3. component=cli,    version=${version}
+          # 3. component=cli,    version=<CLI version from tools/lingxia-cli/Cargo.toml>
           # 4. component=npm,    npm_package=all, version=${version}
           \`\`\`
           EOF
