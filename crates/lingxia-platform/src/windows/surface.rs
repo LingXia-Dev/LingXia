@@ -4,14 +4,14 @@ use std::sync::{Arc, LazyLock, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use crate::windows::webview_host::{
-    clear_webview_group_override, clear_webview_os_frame, hide_webview_window,
-    present_webview_as_overlay, set_webview_close_handler, set_webview_group_override,
-    set_webview_os_frame, show_webview_as_panel, show_webview_window,
-};
 use lingxia_webview::WebTag;
 use lingxia_webview::platform::windows::{WindowsWebViewHandler, find_webview_handler};
 use lingxia_webview::runtime as webview_runtime;
+use lingxia_windows_host::{
+    clear_webview_group_override, clear_webview_os_frame, hide_webview_window,
+    navigate_webview_window, present_webview_as_overlay, set_webview_close_handler,
+    set_webview_group_override, set_webview_os_frame, show_webview_as_panel, show_webview_window,
+};
 
 use super::request_windows_app_exit;
 use crate::error::PlatformError;
@@ -64,6 +64,37 @@ pub(super) fn show_webtag_window(
         });
 }
 
+pub(super) fn navigate_webtag_window(webtag: WebTag, title: String) {
+    let request_key = show_request_key(&webtag, LxAppOpenMode::Normal, "");
+    let request_id = remember_show_request(&request_key);
+    if let Some(handler) = find_webview_handler(&webtag) {
+        if show_request_is_current(&request_key, request_id) {
+            show_webview_handler_navigate(handler, &title);
+        }
+        return;
+    }
+
+    let _ = thread::Builder::new()
+        .name(format!("lingxia-windows-navigate-{}", webtag.key()))
+        .spawn(move || {
+            let deadline = Instant::now() + Duration::from_secs(5);
+            while Instant::now() < deadline {
+                if !show_request_is_current(&request_key, request_id) {
+                    return;
+                }
+                if let Some(handler) = find_webview_handler(&webtag) {
+                    show_webview_handler_navigate(handler, &title);
+                    return;
+                }
+                thread::sleep(Duration::from_millis(50));
+            }
+            log::error!(
+                "Timed out waiting for Windows navigation WebView {}",
+                webtag.key()
+            );
+        });
+}
+
 pub(super) fn hide_lxapp_window(appid: &str, session_id: u64) {
     // Invalidate any pending show request first so the polling waiter thread
     // cannot re-show the window after this hide.
@@ -90,6 +121,17 @@ fn show_webview_handler_for_mode(
         log::warn!(
             "Failed to show Windows WebView window {}: {}",
             handler.webtag().key(),
+            err
+        );
+    }
+}
+
+fn show_webview_handler_navigate(handler: WindowsWebViewHandler, title: &str) {
+    let webtag = handler.webtag();
+    if let Err(err) = navigate_webview_window(&webtag, title, false) {
+        log::warn!(
+            "Failed to navigate Windows WebView window {}: {}",
+            webtag.key(),
             err
         );
     }
@@ -184,13 +226,10 @@ fn notify_surface_closed(id: &str, reason: &str) {
     }
 }
 
-/// Reports a surface page-instance's visibility to the logic layer. A surface
-/// page only fires `onShow` and escapes the page-instance dispose timer once
-/// it is marked visible, so a presented surface that is never marked visible
-/// is reclaimed (and its window closes) after the TTL. The `lingxia` facade
-/// wires this to `lxapp::notify_page_instance_by_id`, mirroring the Apple FFI
-/// `notify_page_instance_visible` call.
-type PageVisibilityHandler = Arc<dyn Fn(&str, bool) + Send + Sync>;
+/// Reports a surface page-instance's visibility to the logic layer. The
+/// callback returns whether the page instance accepted the transition; Windows
+/// may present the WebView before lxapp has marked the page instance mounted.
+type PageVisibilityHandler = Arc<dyn Fn(&str, bool) -> bool + Send + Sync>;
 static PAGE_VISIBILITY_HANDLER: Mutex<Option<PageVisibilityHandler>> = Mutex::new(None);
 
 pub fn set_windows_page_visibility_handler(handler: PageVisibilityHandler) {
@@ -199,14 +238,32 @@ pub fn set_windows_page_visibility_handler(handler: PageVisibilityHandler) {
     }
 }
 
-fn notify_page_visibility(page_instance_id: &str, visible: bool) {
+fn notify_page_visibility(page_instance_id: &str, visible: bool) -> bool {
     let handler = PAGE_VISIBILITY_HANDLER
         .lock()
         .ok()
         .and_then(|slot| slot.clone());
     if let Some(handler) = handler {
-        handler(page_instance_id, visible);
+        return handler(page_instance_id, visible);
     }
+    false
+}
+
+fn notify_page_visibility_when_ready(page_instance_id: String, visible: bool) {
+    if notify_page_visibility(&page_instance_id, visible) {
+        return;
+    }
+
+    let _ = thread::Builder::new()
+        .name(format!("lingxia-surface-visible-{page_instance_id}"))
+        .spawn(move || {
+            for _ in 0..100 {
+                thread::sleep(Duration::from_millis(50));
+                if notify_page_visibility(&page_instance_id, visible) {
+                    return;
+                }
+            }
+        });
 }
 
 /// Disposes a surface's content page instance in the logic layer. Disposing
@@ -386,7 +443,7 @@ pub(super) fn show_surface(_app_id: &str, id: &str) -> Result<(), PlatformError>
     if result.is_ok()
         && let Some(page_instance_id) = &entry.page_instance_id
     {
-        notify_page_visibility(page_instance_id, true);
+        notify_page_visibility_when_ready(page_instance_id.clone(), true);
     }
     result.map_err(|err| PlatformError::Platform(format!("failed to show surface {id}: {err}")))
 }
@@ -403,7 +460,7 @@ pub(super) fn hide_surface(_app_id: &str, id: &str) -> Result<(), PlatformError>
     // Mark hidden so the page fires onHide and the dispose timer can reclaim it
     // after the hidden TTL.
     if let Some(page_instance_id) = &entry.page_instance_id {
-        notify_page_visibility(page_instance_id, false);
+        notify_page_visibility_when_ready(page_instance_id.clone(), false);
     }
     Ok(())
 }
@@ -466,6 +523,6 @@ fn present_surface_with_handler(handler: WindowsWebViewHandler, webtag: &WebTag,
     // (which would otherwise reclaim the surface and close its window) and
     // fires the page's onShow.
     if let Some(page_instance_id) = surface_entry(id).and_then(|entry| entry.page_instance_id) {
-        notify_page_visibility(&page_instance_id, true);
+        notify_page_visibility_when_ready(page_instance_id, true);
     }
 }

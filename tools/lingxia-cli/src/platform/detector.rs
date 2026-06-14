@@ -227,7 +227,7 @@ fn is_windows_project(project_root: &Path) -> bool {
     }
 
     std::fs::read_to_string(manifest)
-        .map(|content| content.contains("[package]") && content.contains("lingxia-windows"))
+        .map(|content| content.contains("[package]") && content.contains("lingxia-windows-sdk"))
         .unwrap_or(false)
 }
 
@@ -291,7 +291,7 @@ mod tests {
         fs::create_dir_all(&windows_root).unwrap();
         fs::write(
             windows_root.join("Cargo.toml"),
-            "[package]\nname = \"demo-windows\"\nversion = \"0.1.0\"\n[dependencies]\nlingxia-windows = \"0.9\"\n",
+            "[package]\nname = \"demo-windows\"\nversion = \"0.1.0\"\n[dependencies]\nlingxia-windows-sdk = \"0.9\"\n",
         )
         .unwrap();
 

@@ -62,9 +62,9 @@ pub use runtime_bootstrap::init;
 pub use runtime_ops::{
     close_lxapp, create_page_instance, dispose_page_instance, dispose_page_instance_by_id,
     ensure_builtin_lxapp, ensure_lxapp, get_current_lxapp, installed_lxapp_path, is_lxapp_open,
-    is_pull_down_refresh_enabled, list_lxapps, mark_lxapp_active, notify_page_instance,
-    notify_page_instance_by_id, on_low_memory, open_lxapp, restart_lxapp,
-    touch_page_instance_by_id, uninstall_lxapp,
+    is_pull_down_refresh_enabled, list_lxapps, mark_lxapp_active, notify_lxapp_host_visibility,
+    notify_page_host_visibility, notify_page_instance, notify_page_instance_by_id, on_low_memory,
+    open_lxapp, restart_lxapp, touch_page_instance_by_id, uninstall_lxapp,
 };
 pub use runtime_registry::{find_page_by_instance_id, get_locale, get_platform, try_get};
 pub(crate) use runtime_registry::{get, get_lxapps_manager};
@@ -1776,7 +1776,12 @@ impl LxApp {
                 surface,
                 None,
             )?;
-            self.sync_host_ui();
+            if !matches!(
+                startup_options.open_mode,
+                lingxia_platform::traits::app_runtime::LxAppOpenMode::Panel
+            ) {
+                self.sync_host_ui();
+            }
         }
         Ok(())
     }

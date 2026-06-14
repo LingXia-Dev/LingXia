@@ -73,49 +73,36 @@ pub struct Platform {
 
 impl Default for Platform {
     fn default() -> Self {
-        let base = default_state_root();
-        Self {
-            data_dir: base.join("data"),
-            cache_dir: base.join("cache"),
-            asset_dir: default_asset_dir(),
-            locale: default_locale(),
-            app_identifier: DEFAULT_APP_IDENTIFIER.to_string(),
-            product_name: "LingXia".to_string(),
-        }
+        Self::from_env().unwrap_or_else(|_| {
+            let base = default_state_root();
+            Self {
+                data_dir: base.join("data"),
+                cache_dir: base.join("cache"),
+                asset_dir: default_asset_dir(),
+                locale: default_locale(),
+                app_identifier: DEFAULT_APP_IDENTIFIER.to_string(),
+                product_name: "LingXia".to_string(),
+            }
+        })
     }
 }
 
 impl Platform {
-    pub fn new(
-        data_dir: impl Into<PathBuf>,
-        cache_dir: impl Into<PathBuf>,
-        locale: impl Into<String>,
-    ) -> Result<Self, PlatformError> {
+    pub fn from_env() -> Result<Self, PlatformError> {
+        let asset_dir = default_asset_dir();
+        let config = GeneratedAppConfig::read_from_assets(&asset_dir);
+        let product_name = config.product_name.unwrap_or_else(|| "LingXia".to_string());
+        let app_identifier = config
+            .windows_app_id
+            .unwrap_or_else(|| DEFAULT_APP_IDENTIFIER.to_string());
+        let root = state_root_for_product(&product_name);
         Ok(Self {
-            data_dir: data_dir.into(),
-            cache_dir: cache_dir.into(),
-            asset_dir: default_asset_dir(),
-            locale: locale.into(),
-            app_identifier: DEFAULT_APP_IDENTIFIER.to_string(),
-            product_name: "LingXia".to_string(),
-        })
-    }
-
-    pub fn with_assets(
-        data_dir: impl Into<PathBuf>,
-        cache_dir: impl Into<PathBuf>,
-        asset_dir: impl Into<PathBuf>,
-        locale: impl Into<String>,
-        app_identifier: impl Into<String>,
-        product_name: impl Into<String>,
-    ) -> Result<Self, PlatformError> {
-        Ok(Self {
-            data_dir: data_dir.into(),
-            cache_dir: cache_dir.into(),
-            asset_dir: asset_dir.into(),
-            locale: locale.into(),
-            app_identifier: app_identifier.into(),
-            product_name: product_name.into(),
+            data_dir: root.join("data"),
+            cache_dir: root.join("cache"),
+            asset_dir,
+            locale: default_locale(),
+            app_identifier,
+            product_name,
         })
     }
 
@@ -196,7 +183,9 @@ impl AppRuntime for Platform {
         panel_id: String,
     ) -> Result<(), PlatformError> {
         let webtag = WebTag::new(&appid, &path, Some(session_id));
-        ui_update::sync_windows_ui(&appid);
+        if !matches!(open_mode, LxAppOpenMode::Panel) {
+            ui_update::sync_windows_ui(&appid);
+        }
         surface::show_webtag_window(webtag, self.product_name.clone(), true, open_mode, panel_id);
         Ok(())
     }
@@ -223,13 +212,7 @@ impl AppRuntime for Platform {
             .and_then(|tag| tag.session_id());
         let webtag = WebTag::new(&appid, &path, session_id);
         ui_update::sync_windows_ui(&appid);
-        surface::show_webtag_window(
-            webtag,
-            self.product_name.clone(),
-            false,
-            LxAppOpenMode::Normal,
-            String::new(),
-        );
+        surface::navigate_webtag_window(webtag, self.product_name.clone());
         Ok(())
     }
 
@@ -374,6 +357,13 @@ fn default_state_root() -> PathBuf {
         .join("LingXia")
 }
 
+fn state_root_for_product(product_name: &str) -> PathBuf {
+    std::env::var_os("LOCALAPPDATA")
+        .map(PathBuf::from)
+        .unwrap_or_else(std::env::temp_dir)
+        .join(product_name)
+}
+
 fn default_asset_dir() -> PathBuf {
     if let Some(path) = std::env::var_os("LINGXIA_ASSET_DIR") {
         return PathBuf::from(path);
@@ -396,5 +386,36 @@ fn default_locale() -> String {
         String::from_utf16_lossy(&buffer[..len as usize - 1])
     } else {
         "en-US".to_string()
+    }
+}
+
+#[derive(Debug, Default)]
+struct GeneratedAppConfig {
+    product_name: Option<String>,
+    windows_app_id: Option<String>,
+}
+
+impl GeneratedAppConfig {
+    fn read_from_assets(asset_dir: &Path) -> Self {
+        let Ok(content) = std::fs::read_to_string(asset_dir.join("app.json")) else {
+            return Self::default();
+        };
+        let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) else {
+            return Self::default();
+        };
+        Self {
+            product_name: json
+                .get("productName")
+                .and_then(serde_json::Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string),
+            windows_app_id: json
+                .get("windowsAppId")
+                .and_then(serde_json::Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string),
+        }
     }
 }

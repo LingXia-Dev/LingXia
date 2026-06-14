@@ -1,0 +1,18 @@
+[package]
+name = "lingxia-windows-host"
+version.workspace = true
+edition.workspace = true
+description = "Shared Windows host UI contracts for LingXia"
+license = "MIT"
+repository.workspace = true
+keywords = ["lingxia", "windows", "host", "ui"]
+categories = ["gui", "os::windows-apis"]
+
+[dependencies]
+log = { workspace = true }
+serde_json = { workspace = true }
+lingxia-webview = { workspace = true }
+windows = { workspace = true, features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+] }

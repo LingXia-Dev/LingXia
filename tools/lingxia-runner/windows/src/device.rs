@@ -1,4 +1,4 @@
-use lingxia_windows::{WindowsAppMenuItem, WindowsDeviceFrame, WindowsDeviceFrameToolbar};
+use lingxia_windows_sdk::{WindowsAppMenuItem, WindowsDeviceFrame, WindowsDeviceFrameToolbar};
 use serde::Deserialize;
 use std::sync::OnceLock;
 

@@ -1,5 +1,5 @@
-fn main() -> lingxia_windows::Result<()> {
+fn main() -> lingxia_windows_sdk::Result<()> {
     host::lingxia_register_host_addon();
-    let _ = lingxia_windows::quick_start()?;
+    let _ = lingxia_windows_sdk::quick_start()?;
     Ok(())
 }

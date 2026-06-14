@@ -8,15 +8,15 @@ name = "LingXiaDemo"
 path = "src/main.rs"
 
 [features]
-default = ["standard"]
-standard = ["host/standard", "lingxia-windows/standard"]
-shell-runtime = ["host/shell-runtime", "lingxia-windows/shell-runtime"]
-terminal-runtime = ["host/terminal-runtime", "lingxia-windows/terminal-runtime"]
+default = ["standard", "shell-runtime", "terminal-runtime", "webview-input"]
+standard = ["host/standard", "lingxia-windows-sdk/standard"]
+shell-runtime = ["host/shell-runtime", "lingxia-windows-sdk/shell-runtime"]
+terminal-runtime = ["host/terminal-runtime", "lingxia-windows-sdk/terminal-runtime"]
 devtools = ["host/devtools"]
-webview-input = ["host/webview-input", "lingxia-windows/webview-input"]
+webview-input = ["host/webview-input", "lingxia-windows-sdk/webview-input"]
 
 [dependencies]
-lingxia-windows = { path = "../../../crates/lingxia-windows", default-features = false }
+lingxia-windows-sdk = { path = "../../../crates/lingxia-windows-sdk", default-features = false }
 host = { package = "lingxia-example-host", path = "../lingxia-lib", default-features = false }
 
 [build-dependencies]
@@ -44,7 +44,7 @@ lingxia-terminal = { path = "../../../crates/lingxia-terminal" }
 lingxia-transfer = { path = "../../../crates/lingxia-transfer" }
 lingxia-update = { path = "../../../crates/lingxia-update" }
 lingxia-webview = { path = "../../../crates/lingxia-webview" }
-lingxia-windows = { path = "../../../crates/lingxia-windows" }
+lingxia-windows-sdk = { path = "../../../crates/lingxia-windows-sdk" }
 windows = { git = "https://github.com/microsoft/windows-rs.git", rev = "cf58d5cfe7deccb73a55aeb4aa6799dc1b06544c", package = "windows" }
 windows-collections = { git = "https://github.com/microsoft/windows-rs.git", rev = "cf58d5cfe7deccb73a55aeb4aa6799dc1b06544c", package = "windows-collections" }
 windows-core = { git = "https://github.com/microsoft/windows-rs.git", rev = "cf58d5cfe7deccb73a55aeb4aa6799dc1b06544c", package = "windows-core" }

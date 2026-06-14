@@ -1,0 +1,87 @@
+[package]
+name = "lingxia-windows-sdk"
+version.workspace = true
+edition.workspace = true
+description = "Pure Rust Windows SDK for LingXia"
+license = "MIT"
+readme = "README.md"
+repository.workspace = true
+keywords = ["lingxia", "windows", "webview2", "lxapp"]
+categories = ["gui", "os::windows-apis"]
+
+[features]
+default = []
+host-api = [
+    "dep:lingxia-platform",
+    "dep:lingxia-webview",
+    "dep:lingxia-windows-host",
+    "dep:log",
+    "dep:serde_json",
+    "dep:windows",
+]
+runtime = [
+    "host-api",
+    "dep:image",
+    "dep:lingxia",
+    "dep:lingxia-messaging",
+    "dep:lingxia-platform",
+    "dep:log",
+    "dep:lxapp",
+    "dep:serde_json",
+    "dep:thiserror",
+    "dep:windows",
+    "dep:windows-core",
+]
+standard = ["runtime", "lingxia/standard"]
+shell-runtime = [
+    "runtime",
+    "dep:lingxia-app-context",
+    "dep:lingxia-browser",
+    "dep:lingxia-logic",
+    "dep:lingxia-shell",
+    "dep:lingxia-terminal",
+    "dep:tokio",
+    "lingxia/shell-runtime",
+]
+terminal-runtime = ["runtime", "dep:lingxia-terminal", "lingxia/terminal-runtime"]
+webview-input = ["host-api", "lingxia?/webview-input"]
+
+[dependencies]
+lingxia = { workspace = true, default-features = false, optional = true }
+lingxia-app-context = { workspace = true, optional = true }
+lingxia-browser = { workspace = true, optional = true }
+lingxia-logic = { workspace = true, optional = true }
+lingxia-shell = { workspace = true, optional = true }
+lingxia-terminal = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
+thiserror = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+image = { version = "0.25.10", default-features = false, features = ["png"], optional = true }
+log = { workspace = true, optional = true }
+lxapp = { workspace = true, default-features = false, optional = true }
+lingxia-messaging = { workspace = true, optional = true }
+lingxia-platform = { workspace = true, optional = true }
+lingxia-webview = { workspace = true, optional = true }
+lingxia-windows-host = { workspace = true, optional = true }
+# proc-macros: the `#[implement]` attribute (MFPlay callback in video_player).
+windows-core = { workspace = true, features = ["proc-macros"], optional = true }
+windows = { workspace = true, features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Dwm",
+    "Win32_Globalization",
+    "Win32_Graphics_Gdi",
+    "Win32_Graphics_GdiPlus",
+    "Win32_Media_MediaFoundation",
+    "Win32_System_Com_StructuredStorage",
+    "Win32_System_Com_Urlmon",
+    "Win32_System_DataExchange",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Memory",
+    "Win32_System_Threading",
+    "Win32_System_Variant",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_Shell_PropertiesSystem",
+    "Win32_UI_WindowsAndMessaging",
+], optional = true }

@@ -2813,6 +2813,7 @@ dependencies = [
  "lingxia-transfer",
  "lingxia-update",
  "lingxia-webview",
+ "lingxia-windows-host",
  "log",
  "napi-build-ohos",
  "napi-derive-ohos",
@@ -3103,6 +3104,7 @@ dependencies = [
  "libc",
  "lingxia-messaging",
  "lingxia-webview",
+ "lingxia-windows-host",
  "log",
  "napi-build-ohos",
  "napi-derive-ohos",
@@ -3170,8 +3172,8 @@ version = "0.9.0"
 dependencies = [
  "lingxia",
  "lingxia-devtool",
- "lingxia-windows",
  "lingxia-windows-build",
+ "lingxia-windows-sdk",
  "serde",
  "serde_json",
 ]
@@ -3213,7 +3215,6 @@ name = "lingxia-shell"
 version = "0.9.0"
 dependencies = [
  "futures",
- "image",
  "lingxia-app-context",
  "lingxia-browser",
  "lingxia-lxapp",
@@ -3229,7 +3230,6 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.18",
  "tokio",
- "windows",
 ]
 
 [[package]]
@@ -3308,25 +3308,42 @@ dependencies = [
 ]
 
 [[package]]
-name = "lingxia-windows"
+name = "lingxia-windows-build"
+version = "0.9.0"
+
+[[package]]
+name = "lingxia-windows-host"
+version = "0.9.0"
+dependencies = [
+ "lingxia-webview",
+ "log",
+ "serde_json",
+ "windows",
+]
+
+[[package]]
+name = "lingxia-windows-sdk"
 version = "0.9.0"
 dependencies = [
  "image",
  "lingxia",
+ "lingxia-app-context",
+ "lingxia-browser",
+ "lingxia-logic",
  "lingxia-lxapp",
  "lingxia-messaging",
  "lingxia-platform",
+ "lingxia-shell",
+ "lingxia-terminal",
  "lingxia-webview",
+ "lingxia-windows-host",
  "log",
  "serde_json",
  "thiserror 2.0.18",
+ "tokio",
  "windows",
  "windows-core",
 ]
-
-[[package]]
-name = "lingxia-windows-build"
-version = "0.9.0"
 
 [[package]]
 name = "linux-raw-sys"

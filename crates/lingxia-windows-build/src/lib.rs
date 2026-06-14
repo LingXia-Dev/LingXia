@@ -8,7 +8,7 @@ pub fn configure_windows_app() {
 }
 
 pub fn configure_windows_app_with_manifest(manifest: impl AsRef<Path>) {
-    if std::env::var_os("CARGO_CFG_WINDOWS").is_none() {
+    if !is_windows_target() {
         return;
     }
 
@@ -23,6 +23,11 @@ pub fn configure_windows_app_with_manifest(manifest: impl AsRef<Path>) {
     println!("cargo:rustc-link-arg-bins=/ENTRY:mainCRTStartup");
     println!("cargo:rerun-if-changed={}", manifest.display());
     copy_assets_to_target_profile_dir();
+}
+
+fn is_windows_target() -> bool {
+    std::env::var("CARGO_CFG_TARGET_OS").ok().as_deref() == Some("windows")
+        || std::env::var_os("CARGO_CFG_WINDOWS").is_some()
 }
 
 fn resolve_manifest_path(manifest: &Path) -> PathBuf {
@@ -46,6 +51,14 @@ fn copy_assets_to_target_profile_dir() {
         return;
     };
     let destination = target_dir.join("assets");
+    if destination.exists() {
+        fs::remove_dir_all(&destination).unwrap_or_else(|error| {
+            panic!(
+                "failed to clear stale Windows app assets at {}: {error}",
+                destination.display()
+            )
+        });
+    }
     copy_dir(&source, &destination).unwrap_or_else(|error| {
         panic!(
             "failed to copy Windows app assets from {} to {}: {error}",
@@ -66,8 +79,12 @@ fn copy_dir(source: &Path, destination: &Path) -> io::Result<()> {
 
     for entry in fs::read_dir(source)? {
         let entry = entry?;
+        let file_name = entry.file_name();
+        if file_name == ".lingxia" {
+            continue;
+        }
         let source_path = entry.path();
-        let destination_path = destination.join(entry.file_name());
+        let destination_path = destination.join(file_name);
         println!("cargo:rerun-if-changed={}", source_path.display());
         if entry.file_type()?.is_dir() {
             copy_dir(&source_path, &destination_path)?;

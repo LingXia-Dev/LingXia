@@ -39,7 +39,7 @@ pub(crate) fn configure_controller(controller: &ICoreWebView2Controller) -> StdR
             })
             .map_err(|err| WebViewError::WebView(format!("SetBounds failed: {err}")))?;
         controller
-            .SetIsVisible(true)
+            .SetIsVisible(false)
             .map_err(|err| WebViewError::WebView(format!("SetIsVisible failed: {err}")))?;
     }
     Ok(())

@@ -304,7 +304,10 @@ impl LxApp {
 
                     page_clone
                         .load_html()
-                        .map_err(|e| format!("Failed to load HTML for page: {}", e))
+                        .map_err(|e| format!("Failed to load HTML for page: {}", e))?;
+                    lxapp_arc
+                        .notify_page_instance(&page_clone.instance_id(), PageInstanceEvent::Mounted)
+                        .map_err(|e| format!("Failed to mount page instance: {}", e))
                 }
             },
         );

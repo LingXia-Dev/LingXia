@@ -9,14 +9,14 @@ path = "src/main.rs"
 
 [features]
 default = ["standard"]
-standard = ["host/standard", "lingxia-windows/standard"]
-shell-runtime = ["host/shell-runtime", "lingxia-windows/shell-runtime"]
-terminal-runtime = ["host/terminal-runtime", "lingxia-windows/terminal-runtime"]
+standard = ["host/standard", "lingxia-windows-sdk/standard"]
+shell-runtime = ["host/shell-runtime", "lingxia-windows-sdk/shell-runtime"]
+terminal-runtime = ["host/terminal-runtime", "lingxia-windows-sdk/terminal-runtime"]
 devtools = ["host/devtools"]
-webview-input = ["host/webview-input", "lingxia-windows/webview-input"]
+webview-input = ["host/webview-input", "lingxia-windows-sdk/webview-input"]
 
 [dependencies]
-lingxia-windows = { version = "{{LINGXIA_VERSION}}", default-features = false }
+lingxia-windows-sdk = { version = "{{LINGXIA_VERSION}}", default-features = false }
 host = { package = "{{HOST_CRATE_NAME}}", path = "../{{HOST_CRATE_NAME}}", default-features = false }
 
 [build-dependencies]

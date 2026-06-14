@@ -18,16 +18,12 @@ mod ui_update;
 mod user_feedback;
 mod video_info;
 mod video_player;
-pub mod webview_host;
 mod wifi;
 
 pub(crate) use app::request_windows_app_exit;
 pub use app::{Platform, set_windows_app_exit_handler, set_windows_open_url_handler};
 pub use media_preview::{
     WindowsMediaPreviewCancel, WindowsMediaPreviewOpen, register_windows_media_preview_host,
-};
-pub use pull_to_refresh::{
-    set_windows_pull_to_refresh_handler, set_windows_refresh_indicator_handler,
 };
 pub use surface::{
     set_windows_page_visibility_handler, set_windows_surface_closed_handler,

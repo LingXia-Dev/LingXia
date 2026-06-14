@@ -4,7 +4,7 @@ mod device;
 mod runner;
 
 #[cfg(target_os = "windows")]
-fn main() -> lingxia_windows::Result<()> {
+fn main() -> lingxia_windows_sdk::Result<()> {
     runner::run()
 }
 

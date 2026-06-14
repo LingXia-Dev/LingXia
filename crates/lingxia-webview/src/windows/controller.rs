@@ -69,6 +69,12 @@ pub(crate) enum UiCommand {
         visible: bool,
         resp: Sender<StdResult<()>>,
     },
+    /// Rebind the WebView2 controller to a parent HWND owned by the Windows UI
+    /// layer.
+    SetParentWindow {
+        window: isize,
+        resp: Sender<StdResult<()>>,
+    },
     NotifyParentPositionChanged {
         resp: Sender<StdResult<()>>,
     },
@@ -223,12 +229,44 @@ impl WebViewInner {
             .map_err(|err| err.into_webview_error("run synchronous WebView command"))?
     }
 
+    fn dispatch_layout_command(
+        &self,
+        command: impl FnOnce(Sender<StdResult<()>>) -> UiCommand,
+    ) -> StdResult<()> {
+        let (resp_tx, resp_rx) = mpsc::channel();
+        self.command_tx
+            .send(command(resp_tx))
+            .map_err(|_| WebViewError::WebView("WebView UI thread is unavailable".to_string()))?;
+
+        unsafe {
+            let _ = WindowsAndMessaging::PostThreadMessageW(
+                self.thread_id,
+                WM_LINGXIA_COMMAND,
+                WPARAM::default(),
+                LPARAM::default(),
+            );
+        }
+
+        if unsafe { Threading::GetCurrentThreadId() } == self.thread_id {
+            return Ok(());
+        }
+
+        resp_rx
+            .recv()
+            .map_err(|_| WebViewError::WebView("WebView UI thread did not reply".to_string()))?
+            .map_err(|err| WebViewError::WebView(format!("run WebView layout command: {err}")))
+    }
+
     pub(crate) fn set_content_bounds(&self, bounds: RECT) -> StdResult<()> {
-        self.dispatch_command(|resp| UiCommand::SetContentBounds { bounds, resp })
+        self.dispatch_layout_command(|resp| UiCommand::SetContentBounds { bounds, resp })
     }
 
     pub(crate) fn set_content_visible(&self, visible: bool) -> StdResult<()> {
         self.dispatch_command(|resp| UiCommand::SetContentVisible { visible, resp })
+    }
+
+    pub(crate) fn set_parent_window(&self, window: isize) -> StdResult<()> {
+        self.dispatch_layout_command(|resp| UiCommand::SetParentWindow { window, resp })
     }
 
     fn dispatch_screenshot_command(&self) -> StdResult<Vec<u8>> {
@@ -249,7 +287,7 @@ impl WebViewInner {
     }
 
     pub(crate) fn notify_parent_position_changed(&self) -> StdResult<()> {
-        self.dispatch_command(|resp| UiCommand::NotifyParentPositionChanged { resp })
+        self.dispatch_layout_command(|resp| UiCommand::NotifyParentPositionChanged { resp })
     }
 
     fn dispatch_eval_command(
@@ -669,6 +707,19 @@ pub(crate) fn handle_command(state: &mut UiState, command: UiCommand) -> StdResu
         }
         UiCommand::SetContentVisible { visible, resp } => {
             let result = set_controller_visible(state, visible);
+            let _ = resp.send(result);
+        }
+        UiCommand::SetParentWindow { window, resp } => {
+            let hwnd = hwnd_from_handle(window);
+            let result = unsafe {
+                state
+                    .controller
+                    .SetParentWindow(hwnd)
+                    .map_err(|err| WebViewError::WebView(format!("SetParentWindow failed: {err}")))
+            };
+            if result.is_ok() {
+                state.hwnd = hwnd;
+            }
             let _ = resp.send(result);
         }
         UiCommand::NotifyParentPositionChanged { resp } => {

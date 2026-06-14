@@ -1,7 +1,7 @@
 //! Media-preview routing for Windows.
 //!
 //! `lx.previewMedia` sessions are owned by the UI layer (a dedicated
-//! preview window in `lingxia-windows`); the platform layer only routes
+//! preview window in `lingxia-windows-sdk`); the platform layer only routes
 //! the request and the cancel through a registered host — the same
 //! inversion as the video-command and app-exit handlers.
 

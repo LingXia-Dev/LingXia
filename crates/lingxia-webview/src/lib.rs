@@ -6,7 +6,7 @@
 //! product UI.
 //!
 //! On Windows, host-window grouping, chrome, panels, and app layout live in
-//! `lingxia-windows`; this crate only provides the WebView2 surface.
+//! `lingxia-windows-sdk`; this crate only provides the WebView2 surface.
 
 use thiserror::Error;
 

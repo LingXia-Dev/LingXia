@@ -2,7 +2,6 @@ use super::{
     BuildArtifacts, BuildConfig, Device, DeviceType, InstallConfig, Platform, RunConfig,
     resolve_cargo_target_dir,
 };
-use crate::config::{LingXiaConfig, ResolvedEnv};
 use crate::platform::doctor::{CheckResult, command_version_line};
 use anyhow::{Context, Result, anyhow};
 use colored::Colorize;
@@ -23,12 +22,7 @@ impl Platform for WindowsPlatform {
         let windows_dir = resolve_windows_dir(&config.project_root)?;
         let cargo_target_dir = resolve_cargo_target_dir(&config.project_root);
         let profile_dir = config.profile.as_str();
-        let runtime_env = config
-            .lingxia_config
-            .as_ref()
-            .map(|cfg| windows_runtime_env(&config.project_root, cfg, &config.resolved_env))
-            .transpose()?
-            .unwrap_or_default();
+        let runtime_env = windows_runtime_env(&config.project_root)?;
 
         println!(
             "{} Building Windows app from {}",
@@ -117,7 +111,7 @@ pub fn resolve_windows_dir(project_root: &Path) -> Result<PathBuf> {
         return Ok(project_root.to_path_buf());
     }
     Err(anyhow!(
-        "Windows host project not found. Expected windows/Cargo.toml with a lingxia-windows dependency."
+        "Windows host project not found. Expected windows/Cargo.toml with a lingxia-windows-sdk dependency."
     ))
 }
 
@@ -125,53 +119,13 @@ pub fn resolve_windows_assets_dir(project_root: &Path) -> Result<PathBuf> {
     Ok(resolve_windows_dir(project_root)?.join("assets"))
 }
 
-pub fn windows_runtime_env(
-    project_root: &Path,
-    config: &LingXiaConfig,
-    resolved_env: &ResolvedEnv,
-) -> Result<Vec<(String, String)>> {
-    Ok(vec![
-        (
-            "LINGXIA_ASSET_DIR".to_string(),
-            resolve_windows_assets_dir(project_root)?
-                .to_string_lossy()
-                .to_string(),
-        ),
-        (
-            "LINGXIA_APP_ID".to_string(),
-            resolve_windows_app_id(config, resolved_env),
-        ),
-        (
-            "LINGXIA_PRODUCT_NAME".to_string(),
-            resolve_windows_product_name(config),
-        ),
-    ])
-}
-
-pub fn resolve_windows_app_id(config: &LingXiaConfig, resolved_env: &ResolvedEnv) -> String {
-    let base = config
-        .windows
-        .as_ref()
-        .and_then(|cfg| cfg.app_id.as_deref())
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .or_else(|| config.android.as_ref().map(|cfg| cfg.package_id.as_str()))
-        .or_else(|| config.ios.as_ref().map(|cfg| cfg.bundle_id.as_str()))
-        .or_else(|| config.app.as_ref().map(|app| app.home_app_id.as_str()))
-        .unwrap_or("app.lingxia.windows");
-
-    match resolved_env.effective_package_id_suffix() {
-        Some(suffix) => format!("{base}{suffix}"),
-        None => base.to_string(),
-    }
-}
-
-pub fn resolve_windows_product_name(config: &LingXiaConfig) -> String {
-    config
-        .app
-        .as_ref()
-        .map(|app| app.product_name.clone())
-        .unwrap_or_else(|| "LingXia".to_string())
+pub fn windows_runtime_env(project_root: &Path) -> Result<Vec<(String, String)>> {
+    Ok(vec![(
+        "LINGXIA_ASSET_DIR".to_string(),
+        resolve_windows_assets_dir(project_root)?
+            .to_string_lossy()
+            .to_string(),
+    )])
 }
 
 pub fn doctor_checks() -> Vec<CheckResult> {
@@ -239,7 +193,7 @@ fn executable_file_name(name: &str) -> String {
 
 fn is_windows_manifest(path: &Path) -> bool {
     fs::read_to_string(path)
-        .map(|content| content.contains("[package]") && content.contains("lingxia-windows"))
+        .map(|content| content.contains("[package]") && content.contains("lingxia-windows-sdk"))
         .unwrap_or(false)
 }
 

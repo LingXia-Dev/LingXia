@@ -689,11 +689,7 @@ fn execute_windows(ctx: DevContext) -> Result<()> {
 
         let artifacts = platform.build(&build_config)?;
         let exe_path = artifacts.path().to_path_buf();
-        let runtime_env = platform::windows::windows_runtime_env(
-            &ctx.project_root,
-            &ctx.config,
-            &ctx.resolved_env,
-        )?;
+        let runtime_env = platform::windows::windows_runtime_env(&ctx.project_root)?;
         println!();
 
         println!("{}", "Step 2/2: Running...".bold());
@@ -980,6 +976,7 @@ fn prepare_windows_runner_assets(
         "productName": RUNNER_WINDOWS_PRODUCT_NAME,
         "productVersion": REQUIRED_RUNNER_VERSION,
         "envVersion": "developer",
+        "windowsAppId": identity.app_id,
         "homeAppId": identity.app_id,
         "homeAppVersion": identity.version,
         "devWsUrl": ws_url,
@@ -995,7 +992,7 @@ fn prepare_windows_runner_assets(
 
     // Runner window/taskbar icon: the LingXia vessel mark, embedded in the
     // CLI so published builds don't depend on the repo's design sources.
-    // `lingxia-windows` picks `<assets>/AppIcon.png` up automatically.
+    // `lingxia-windows-sdk` picks `<assets>/AppIcon.png` up automatically.
     let icon_path = assets_dir.join("AppIcon.png");
     std::fs::write(&icon_path, include_bytes!("../../assets/runner-icon.png"))
         .with_context(|| format!("Failed to write {}", icon_path.display()))?;
@@ -1084,9 +1081,8 @@ fn build_windows_runner() -> Result<PathBuf> {
 /// Windows counterpart of `launch_runner_for_lxapp`: prepares the runner
 /// asset layout, builds the runner bin, and spawns it against the dev
 /// server. Env contract: `LINGXIA_ASSET_DIR` (host assets),
-/// `LINGXIA_LXAPP_PATH` (live lxapp bundle), `LINGXIA_DEV_WS_URL`
-/// (devtool bridge), `LINGXIA_APP_ID` / `LINGXIA_PRODUCT_NAME` (identity
-/// and state-root scoping).
+/// `LINGXIA_LXAPP_PATH` (live lxapp bundle), and `LINGXIA_DEV_WS_URL`
+/// (devtool bridge). Host identity is generated into `app.json`.
 fn launch_windows_runner_for_lxapp(lxapp_path: &Path, ws_url: &str) -> Result<Child> {
     ensure_valid_lxapp_dir(lxapp_path)?;
     let identity = read_windows_runner_lxapp_identity(lxapp_path)?;
@@ -1097,8 +1093,6 @@ fn launch_windows_runner_for_lxapp(lxapp_path: &Path, ws_url: &str) -> Result<Ch
     command.env(RUNNER_LXAPP_PATH_ENV, lxapp_path);
     command.env(RUNNER_DEV_WS_URL_ENV, ws_url);
     command.env("LINGXIA_ASSET_DIR", &assets_dir);
-    command.env("LINGXIA_APP_ID", &identity.app_id);
-    command.env("LINGXIA_PRODUCT_NAME", RUNNER_WINDOWS_PRODUCT_NAME);
     command.stdin(Stdio::null());
     command.stdout(Stdio::inherit());
     command.stderr(Stdio::inherit());

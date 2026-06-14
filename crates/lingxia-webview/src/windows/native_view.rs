@@ -73,6 +73,10 @@ impl WindowsWebViewHandler {
         self.webview.inner.set_content_visible(visible)
     }
 
+    pub fn set_parent_window(&self, window: isize) -> StdResult<()> {
+        self.webview.inner.set_parent_window(window)
+    }
+
     pub fn notify_parent_position_changed(&self) -> StdResult<()> {
         self.webview.inner.notify_parent_position_changed()
     }

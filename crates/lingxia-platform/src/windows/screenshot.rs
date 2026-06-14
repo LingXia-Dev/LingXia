@@ -1,4 +1,4 @@
-﻿use std::ffi::c_void;
+use std::ffi::c_void;
 use std::io::Cursor;
 
 use async_trait::async_trait;
@@ -271,13 +271,10 @@ fn visible_window_rect(
 
 async fn visible_webview_screenshots_for_window(
     window_id: usize,
-) -> Vec<(
-    crate::windows::webview_host::WindowsWebViewWindowSnapshot,
-    Vec<u8>,
-)> {
+) -> Vec<(lingxia_windows_host::WindowsWebViewWindowSnapshot, Vec<u8>)> {
     let mut captures = Vec::new();
     for webtag in webview_runtime::list_webviews() {
-        let snapshot = match crate::windows::webview_host::webview_window_snapshot(&webtag) {
+        let snapshot = match lingxia_windows_host::webview_window_snapshot(&webtag) {
             Ok(snapshot)
                 if snapshot.window_id == window_id
                     && snapshot.visible
@@ -313,7 +310,7 @@ async fn visible_webview_screenshots_for_window(
 
 fn overlay_webview_screenshot(
     base: &mut image::RgbaImage,
-    snapshot: &crate::windows::webview_host::WindowsWebViewWindowSnapshot,
+    snapshot: &lingxia_windows_host::WindowsWebViewWindowSnapshot,
     webview_png: &[u8],
 ) -> Result<(), PlatformError> {
     if snapshot.content_left < 0 || snapshot.content_top < 0 {

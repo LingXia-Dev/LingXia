@@ -60,4 +60,4 @@ lingxia-terminal = { path = "../../../crates/lingxia-terminal" }
 lingxia-transfer = { path = "../../../crates/lingxia-transfer" }
 lingxia-update = { path = "../../../crates/lingxia-update" }
 lingxia-webview = { path = "../../../crates/lingxia-webview" }
-lingxia-windows = { path = "../../../crates/lingxia-windows" }
+lingxia-windows-sdk = { path = "../../../crates/lingxia-windows-sdk" }

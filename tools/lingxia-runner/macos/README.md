@@ -3,7 +3,7 @@
 LingXia Runner is the macOS app used by `lingxia dev` to run standalone lxapps.
 
 The Windows dev runner is intentionally separate: its executable crate lives at
-`tools/lingxia-runner/windows` and depends on `crates/lingxia-windows`. Keep
+`tools/lingxia-runner/windows` and depends on `crates/lingxia-windows-sdk`. Keep
 this directory focused on the macOS Swift app and its Rust static library.
 
 ## Development
