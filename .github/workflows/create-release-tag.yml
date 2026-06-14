@@ -292,9 +292,15 @@ jobs:
           }
 
           publish_all_npm_packages() {
+            # Base-runtime packages bump in lockstep with $VERSION; framework/tool
+            # packages may stay at an older version when unchanged (version.sh
+            # skips their bump). Tag each at its actual package.json version so the
+            # tag never claims a version the package was not published at.
             for package in $NPM_PACKAGES; do
-              local tag="${package}-v$VERSION"
-              create_or_reuse_tag "$tag" "Release $package v$VERSION"
+              local pkg_version
+              pkg_version="$(node -p "require('./packages/${package}/package.json').version")"
+              local tag="${package}-v${pkg_version}"
+              create_or_reuse_tag "$tag" "Release $package v${pkg_version}"
             done
 
             dispatch_and_wait "npm-release.yml" "NPM all v$VERSION" \

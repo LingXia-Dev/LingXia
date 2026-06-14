@@ -39,6 +39,15 @@ Not all npm packages may drift from the workspace. They split into three tiers:
   base runtime**; patch may drift.
 - Internal `@lingxia/*` deps are caret ranges (`^0.x.y`). Patch-release a single
   one with `--component npm:<package>`; move major.minor with `--component all`.
+- **Unchanged framework packages are not republished.** During `--component all`,
+  `version.sh` skips bumping a framework/tool package whose source is identical
+  to its last `lingxia-<pkg>-v*` release tag — it keeps its current version, so
+  `npm.sh` sees it already published and skips it. Base-runtime packages always
+  bump in lockstep. (No prior tag → bumped, the safe default.)
+- Because a framework package may lag the base by a patch, scaffolds pin the
+  framework dep to a **minor-floor caret** (`^M.m.0`, see
+  `lxapp_scaffold.rs::framework_caret_range`) rather than the exact base version,
+  so `npm install` resolves any patch within the minor.
 
 ### Tier 3 — standalone tools (independent)
 `@lingxia/skill`
@@ -51,7 +60,8 @@ Not all npm packages may drift from the workspace. They split into three tiers:
 1. **Base runtime** (one version = workspace version): rust crates + SDK + CLI +
    Tier-1 npm (`bridge`, `polyfills`, `types`) — published together.
 2. **Framework npm train**: Tier-2 packages, major.minor pinned to the base
-   runtime, patch may ship on its own.
+   runtime, patch may ship on its own. `--component all` only re-versions the
+   ones that actually changed since their last tag; the rest are skipped.
 3. **Tools**: `skill`, independent.
 
 The prepare-release workflow exposes `component=all | cli | npm:<framework|skill>`

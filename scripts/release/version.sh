@@ -18,7 +18,9 @@ Arguments:
   <version>       Semver to apply (for example: 0.5.0)
 
 Options:
-  --component     Version scope. `all` keeps the lockstep release bump;
+  --component     Version scope. `all` bumps the base runtime in lockstep and
+                  re-versions only the framework/tool packages that changed since
+                  their last release tag (unchanged ones keep their version);
                   `cli` bumps only tools/lingxia-cli; `npm:<package>` bumps a
                   single framework/tool npm package (elements|react|vue|html|
                   page-runtime|skill). bridge/polyfills/types are base-runtime
@@ -344,6 +346,38 @@ update_root_lock() {
     >/dev/null
 }
 
+# npm packages locked to the workspace version (base runtime). These always
+# bump with --component all. Every other packages/* entry is framework/tools and
+# only bumps when its source changed since its last release tag — an unchanged
+# framework package keeps its version, so npm.sh sees it already published and
+# skips it instead of republishing identical content under a new number.
+BASE_NPM_PACKAGES="bridge polyfills types"
+
+npm_short_name() { # packages/lingxia-foo/package.json -> foo
+  local dir
+  dir="$(basename "$(dirname "$1")")"
+  printf '%s' "${dir#lingxia-}"
+}
+
+is_base_npm() {
+  case " $BASE_NPM_PACKAGES " in
+    *" $1 "*) return 0 ;;
+  esac
+  return 1
+}
+
+# 0 = bump (changed, or no prior release tag, or git unavailable — safe default);
+# 1 = skip (unchanged since the last lingxia-<pkg>-v* release tag).
+npm_pkg_changed() {
+  local short="$1"
+  local dir="$ROOT_DIR/packages/lingxia-$short"
+  local tag
+  tag="$(git -C "$ROOT_DIR" tag --list "lingxia-$short-v*" --sort=-v:refname 2>/dev/null | head -n1)"
+  [[ -z "$tag" ]] && return 0
+  git -C "$ROOT_DIR" diff --quiet "$tag" -- "$dir" 2>/dev/null && return 1
+  return 0
+}
+
 if [[ "$COMPONENT" == "all" ]]; then
   update_workspace_cargo
   update_cli_cargo
@@ -351,7 +385,12 @@ if [[ "$COMPONENT" == "all" ]]; then
   update_example_host_lock
 
   while IFS= read -r package_json; do
-    update_package_json "$package_json"
+    short="$(npm_short_name "$package_json")"
+    if is_base_npm "$short" || npm_pkg_changed "$short"; then
+      update_package_json "$package_json"
+    else
+      echo "↳ skip lingxia-$short: unchanged since last release tag (stays at current version)"
+    fi
   done < <(find "$ROOT_DIR/packages" -mindepth 2 -maxdepth 2 -name package.json | sort)
 elif [[ -n "$NPM_PACKAGE" ]]; then
   package_json="$ROOT_DIR/packages/lingxia-$NPM_PACKAGE/package.json"
