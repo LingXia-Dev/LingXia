@@ -60,6 +60,9 @@ final class MacLxMediaPlayer: NSObject {
     private let bottomBar = NSView()
     private let playPauseButton = NSButton()
     private let fullscreenButton = NSButton()
+    private let settingsButton = NSButton()
+    private var settingsPanel: NSView?
+    private var settingsDismissOverlay: NSView?
     private let timeLabel = NSTextField(labelWithString: "0:00 / 0:00")
     private let progressSlider = ThinSlider()
     private let volumeSlider = ThinSlider()
@@ -212,6 +215,11 @@ final class MacLxMediaPlayer: NSObject {
         volumeSlider.translatesAutoresizingMaskIntoConstraints = false
         bottomBar.addSubview(volumeSlider)
 
+        configureButton(settingsButton, symbolName: "gearshape.fill", action: #selector(showSettingsMenu))
+        settingsButton.isHidden = true  // shown only when speeds/qualities are configured
+        bottomBar.addSubview(settingsButton)
+        settingsButton.translatesAutoresizingMaskIntoConstraints = false
+
         configureButton(fullscreenButton, symbolName: "arrow.up.left.and.arrow.down.right", action: #selector(toggleFullscreen))
         bottomBar.addSubview(fullscreenButton)
         fullscreenButton.translatesAutoresizingMaskIntoConstraints = false
@@ -232,7 +240,12 @@ final class MacLxMediaPlayer: NSObject {
             volumeSlider.centerYAnchor.constraint(equalTo: bottomBar.centerYAnchor),
             volumeSlider.widthAnchor.constraint(equalToConstant: 60),
 
-            fullscreenButton.leadingAnchor.constraint(equalTo: volumeSlider.trailingAnchor, constant: 8),
+            settingsButton.leadingAnchor.constraint(equalTo: volumeSlider.trailingAnchor, constant: 8),
+            settingsButton.centerYAnchor.constraint(equalTo: bottomBar.centerYAnchor),
+            settingsButton.widthAnchor.constraint(equalToConstant: 28),
+            settingsButton.heightAnchor.constraint(equalToConstant: 28),
+
+            fullscreenButton.leadingAnchor.constraint(equalTo: settingsButton.trailingAnchor, constant: 8),
             fullscreenButton.trailingAnchor.constraint(equalTo: bottomBar.trailingAnchor, constant: -8),
             fullscreenButton.centerYAnchor.constraint(equalTo: bottomBar.centerYAnchor),
             fullscreenButton.widthAnchor.constraint(equalToConstant: 28),
@@ -453,6 +466,145 @@ final class MacLxMediaPlayer: NSObject {
         updateVolumeUI(volume: volumeSlider.doubleValue, muted: !isMuted)
     }
 
+    // MARK: - Settings menu (speed / quality)
+
+    private func refreshSettingsButtonVisibility() {
+        // Only worth a menu when there's an actual choice to make.
+        let hasSettings = core.playbackRates.count > 1 || core.qualities.count > 1
+        settingsButton.isHidden = !hasSettings
+    }
+
+    @objc private func showSettingsMenu() {
+        if settingsPanel != nil {
+            dismissSettingsPanel()
+            return
+        }
+
+        let panel = buildSettingsPanel()
+
+        // Click-outside-to-dismiss overlay, kept inside the player view (no separate window).
+        let overlay = NSView(frame: view.bounds)
+        overlay.autoresizingMask = [.width, .height]
+        overlay.addGestureRecognizer(NSClickGestureRecognizer(target: self, action: #selector(dismissSettingsPanel)))
+        view.addSubview(overlay)
+        view.addSubview(panel)
+        settingsDismissOverlay = overlay
+        settingsPanel = panel
+
+        // Position above the gear, clamped to the player bounds (non-flipped: y grows up).
+        let gear = settingsButton.convert(settingsButton.bounds, to: view)
+        let w = panel.frame.width
+        let h = panel.frame.height
+        let x = min(max(gear.midX - w / 2, 8), max(8, view.bounds.width - w - 8))
+        let y = min(max(gear.maxY + 8, 8), max(8, view.bounds.height - h - 8))
+        panel.setFrameOrigin(NSPoint(x: x, y: y))
+
+        controlsHideWorkItem?.cancel()  // keep the bar up while the panel is open
+    }
+
+    @objc private func dismissSettingsPanel() {
+        settingsPanel?.removeFromSuperview()
+        settingsDismissOverlay?.removeFromSuperview()
+        settingsPanel = nil
+        settingsDismissOverlay = nil
+        scheduleHideControls()
+    }
+
+    private func buildSettingsPanel() -> NSView {
+        let rowWidth: CGFloat = 184
+        let stack = NSStackView()
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 2
+        stack.edgeInsets = NSEdgeInsets(top: 8, left: 8, bottom: 8, right: 8)
+        stack.translatesAutoresizingMaskIntoConstraints = false
+
+        // Quality section first (matches iOS).
+        let qualities = core.qualities
+        if qualities.count > 1 {
+            stack.addArrangedSubview(makeSettingsHeader(L10n.string("lx_video_quality")))
+            let active = core.activeQuality
+            for quality in qualities {
+                let label = quality.label
+                stack.addArrangedSubview(makeSettingsRow(title: label, selected: label == active, width: rowWidth) { [weak self] in
+                    self?.core.switchQuality(to: label)
+                    self?.dismissSettingsPanel()
+                })
+            }
+        }
+
+        // Speed section.
+        let rates = core.playbackRates
+        if rates.count > 1 {
+            if qualities.count > 1 { stack.addArrangedSubview(makeSettingsSeparator(width: rowWidth)) }
+            stack.addArrangedSubview(makeSettingsHeader(L10n.string("lx_video_speed")))
+            let active = core.activePlaybackRate
+            for rate in rates {
+                let title = "\(String(format: "%g", rate))x"
+                stack.addArrangedSubview(makeSettingsRow(title: title, selected: abs(rate - active) < 0.001, width: rowWidth) { [weak self] in
+                    self?.core.setPlaybackRate(rate)
+                    self?.dismissSettingsPanel()
+                })
+            }
+        }
+
+        let panel = NSView()
+        panel.wantsLayer = true
+        panel.appearance = NSAppearance(named: .darkAqua)  // light text on the dark panel
+        panel.layer?.backgroundColor = NSColor(calibratedWhite: 0.16, alpha: 0.98).cgColor
+        panel.layer?.cornerRadius = 10
+        panel.layer?.borderWidth = 0.5
+        panel.layer?.borderColor = NSColor.white.withAlphaComponent(0.15).cgColor
+        panel.layer?.shadowColor = NSColor.black.cgColor
+        panel.layer?.shadowOpacity = 0.4
+        panel.layer?.shadowRadius = 12
+        panel.layer?.shadowOffset = NSSize(width: 0, height: -4)
+        panel.addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.topAnchor.constraint(equalTo: panel.topAnchor),
+            stack.bottomAnchor.constraint(equalTo: panel.bottomAnchor),
+            stack.leadingAnchor.constraint(equalTo: panel.leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: panel.trailingAnchor),
+        ])
+        panel.layoutSubtreeIfNeeded()
+        panel.frame = NSRect(origin: .zero, size: panel.fittingSize)
+        return panel
+    }
+
+    private func makeSettingsHeader(_ text: String) -> NSView {
+        let label = NSTextField(labelWithString: text)
+        label.font = NSFont.systemFont(ofSize: 11, weight: .semibold)
+        label.textColor = .secondaryLabelColor
+        label.translatesAutoresizingMaskIntoConstraints = false
+        let wrap = NSView()
+        wrap.addSubview(label)
+        NSLayoutConstraint.activate([
+            label.leadingAnchor.constraint(equalTo: wrap.leadingAnchor, constant: 6),
+            label.trailingAnchor.constraint(lessThanOrEqualTo: wrap.trailingAnchor, constant: -6),
+            label.topAnchor.constraint(equalTo: wrap.topAnchor, constant: 4),
+            label.bottomAnchor.constraint(equalTo: wrap.bottomAnchor, constant: -2),
+        ])
+        return wrap
+    }
+
+    private func makeSettingsSeparator(width: CGFloat) -> NSView {
+        let line = NSBox()
+        line.boxType = .separator
+        line.translatesAutoresizingMaskIntoConstraints = false
+        line.widthAnchor.constraint(equalToConstant: width).isActive = true
+        return line
+    }
+
+    private func makeSettingsRow(title: String, selected: Bool, width: CGFloat, onClick: @escaping () -> Void) -> NSView {
+        let row = SettingsRowButton(title: title, selected: selected, onClick: onClick)
+        row.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            row.widthAnchor.constraint(equalToConstant: width),
+            row.heightAnchor.constraint(equalToConstant: 26),
+        ])
+        return row
+    }
+
     @objc private func toggleFullscreen() {
         if isFullscreen {
             exitFullscreen()
@@ -659,6 +811,12 @@ final class MacLxMediaPlayer: NSObject {
         if let qualities = config.qualities {
             core.setQualities(qualities)
         }
+
+        if let speeds = config.speeds {
+            core.setPlaybackRates(speeds)
+        }
+
+        refreshSettingsButtonVisibility()
 
         if let duration = config.duration, duration > 0 {
             core.setExternalDurationSeconds(duration)
@@ -951,6 +1109,71 @@ private final class ThinSliderCell: NSSliderCell {
 private extension CGFloat {
     func clamped(to range: ClosedRange<CGFloat>) -> CGFloat {
         Swift.min(Swift.max(self, range.lowerBound), range.upperBound)
+    }
+}
+
+/// A full-width row in the settings panel: title + trailing checkmark, with hover highlight.
+private final class SettingsRowButton: NSView {
+    private let onClick: () -> Void
+    private let titleLabel = NSTextField(labelWithString: "")
+    private let checkmark = NSImageView()
+    private var tracking: NSTrackingArea?
+
+    init(title: String, selected: Bool, onClick: @escaping () -> Void) {
+        self.onClick = onClick
+        super.init(frame: .zero)
+        wantsLayer = true
+        layer?.cornerRadius = 5
+
+        if selected {
+            checkmark.image = NSImage(systemSymbolName: "checkmark", accessibilityDescription: nil)
+        }
+        checkmark.contentTintColor = .controlAccentColor
+        checkmark.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(checkmark)
+
+        titleLabel.stringValue = title
+        titleLabel.font = NSFont.systemFont(ofSize: 12)
+        titleLabel.textColor = .labelColor
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(titleLabel)
+
+        NSLayoutConstraint.activate([
+            titleLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
+            titleLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
+            checkmark.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
+            checkmark.centerYAnchor.constraint(equalTo: centerYAnchor),
+            checkmark.widthAnchor.constraint(equalToConstant: 12),
+            checkmark.heightAnchor.constraint(equalToConstant: 12),
+        ])
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let existing = tracking { removeTrackingArea(existing) }
+        let area = NSTrackingArea(
+            rect: bounds,
+            options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect],
+            owner: self
+        )
+        addTrackingArea(area)
+        tracking = area
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(0.1).cgColor
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        layer?.backgroundColor = NSColor.clear.cgColor
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        if bounds.contains(convert(event.locationInWindow, from: nil)) {
+            onClick()
+        }
     }
 }
 
