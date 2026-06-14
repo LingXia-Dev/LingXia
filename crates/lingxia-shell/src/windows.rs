@@ -1,6 +1,6 @@
 //! Windows shell product layer: custom window chrome.
 //!
-//! The shell owns all product window-chrome policy on Windows 鈥?colors,
+//! The shell owns all product window-chrome policy on Windows: colors,
 //! dimensions, GDI painting of the top bar / sidebar / tab bar / panel
 //! decorations, and the mapping from client points to chrome elements.
 //! It plugs into `lingxia-webview`'s generic hosting layer through the

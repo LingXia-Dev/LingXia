@@ -217,7 +217,7 @@ pub(super) fn draw_terminal_panel_content(
         .unwrap_or(TERMINAL_SURFACE_BACKGROUND);
     let square_top = panel.docked && !native.maximized;
 
-    // Surface card: dark terminal surface on the light window background 鈥?
+    // Surface card: dark terminal surface on the light window background.
     // the rounded corners (bottom while docked; all four when maximized or
     // floating) need anti-aliasing. Docked panels then square their top
     // corners with the overpaint below.
@@ -259,7 +259,7 @@ pub(super) fn draw_terminal_panel_content(
         if tab.active {
             // The active tab flows into the surface below it: surface
             // fill, rounded on top, square at the header's bottom edge.
-            // Surface-on-header contrast 鈥?anti-alias the pill arc.
+            // Surface-on-header contrast: anti-alias the pill arc.
             fill_round_rect_aa(hdc, tab.rect, 10, surface);
             fill_rect(
                 hdc,

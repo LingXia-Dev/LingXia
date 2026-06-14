@@ -265,7 +265,7 @@ pub(super) fn show_terminal_context_menu(
 }
 
 /// Copies the active session's visible screen text to the clipboard
-/// (no cell-level selection support yet 閳?Copy takes the whole screen).
+/// No cell-level selection support yet; Copy takes the whole screen.
 #[cfg(all(feature = "terminal-runtime", feature = "shell-runtime"))]
 fn copy_panel_screen_to_clipboard(panel_id: &str) {
     let Some(session_id) = active_session_id(panel_id) else {

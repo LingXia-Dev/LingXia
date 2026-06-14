@@ -1,5 +1,6 @@
 //! Pull-to-refresh indicator: a small rounded pill with three pulsing dots,
-//! shown at the top-center of the current page while a refresh is in flight 鈥?//! the Windows counterpart of the macOS `MacPullToRefreshHelper`.
+//! shown at the top-center of the current page while a refresh is in flight.
+//! This is the Windows counterpart of the macOS `MacPullToRefreshHelper`.
 //!
 //! This is host UI, so it lives in the Windows host SDK, not in
 //! `lingxia-webview`. The webview only reports where its content is on screen

@@ -159,7 +159,7 @@ fn install_close_handler(webtag: &WebTag, action: WindowsCloseAction) {
 // presenter shows it as a desktop window and reports closes back to the logic
 // layer. The platform layer cannot depend on lingxia-logic, so the close
 // notification is delivered through a callback the `lingxia` facade registers
-// 鈥?the same inversion the apple/android/harmony FFI layers use to call
+// through the same inversion the apple/android/harmony FFI layers use to call
 // `lingxia_logic::notify_surface_closed`.
 
 type SurfaceClosedHandler = Arc<dyn Fn(&str, &str) + Send + Sync>;
@@ -210,7 +210,7 @@ fn notify_page_visibility(page_instance_id: &str, visible: bool) {
 }
 
 /// Disposes a surface's content page instance in the logic layer. Disposing
-/// detaches and destroys the page's webview (closing its window/overlay 鈥?a
+/// detaches and destroys the page's webview. Closing a window/overlay through
 /// plain `destroy_webview` cannot, because the page instance still holds a
 /// webview reference) and fires onClose. The `lingxia` facade wires this to
 /// `lxapp::dispose_page_instance_by_id`.
@@ -281,7 +281,7 @@ fn surface_entry(id: &str) -> Option<SurfaceEntry> {
     SURFACES.lock().ok().and_then(|map| map.get(id).cloned())
 }
 
-/// A finite, positive dimension, else 0 (meaning "unset" 鈥?the host derives a
+/// A finite, positive dimension, else 0 (meaning "unset"; the host derives a
 /// default). The logic layer passes NaN for unset surface dimensions.
 fn finite_or_zero(value: f64) -> f64 {
     if value.is_finite() && value > 0.0 {

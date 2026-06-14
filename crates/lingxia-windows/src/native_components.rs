@@ -1,37 +1,29 @@
-//! Embedded native components for Windows 鈥?Input / Textarea / Video.
+//! Embedded native components for Windows - Input / Textarea / Video / MediaSwiper.
 //!
-//! The page view mounts `<lx-input>` / `<lx-textarea>` / `<lx-video>` over
-//! the webview by sending component messages (`component.mount` /
-//! `component.update` / `component.unmount`, plus `component.ready` and
-//! `page.scroll`) through the native-component bridge channel.
-//! `lingxia-lxapp` routes those messages to the host registered by
-//! [`install`]; this module owns all component policy: it places a
-//! borderless Win32 child over the webview content at the reported
-//! coverage rect 鈥?an `EDIT` control (multiline for textarea) or an MFPlay
-//! video surface (`video_player::VideoPlayer`) 鈥?keeps it aligned while
-//! the page scrolls/relays out, and emits the component's events back to
-//! the page view and to page-function bindings (`input`/`focus`/`blur`/
-//! `confirm` for text, the media transitions plus a timer-driven
-//! `timeupdate` for video). Video control commands from the logic layer
-//! (`lx.createVideoContext`) arrive through the dispatcher registered with
-//! `lingxia_platform::register_windows_video_command_dispatcher`.
+//! The page view mounts `<lx-input>` / `<lx-textarea>` / `<lx-video>` /
+//! `<lx-media-swiper>` over the webview by sending component messages
+//! (`component.mount` / `component.update` / `component.unmount`, plus
+//! `component.ready` and `page.scroll`) through the native-component bridge
+//! channel. `lingxia-lxapp` routes those messages to the host registered by
+//! [`install`]. This module owns component policy: it places a borderless
+//! Win32 child over the webview content at the reported coverage rect, keeps
+//! it aligned while the page scrolls or relays out, and emits component events
+//! back to the page view and page-function bindings.
 //!
 //! Mirrors the manager contract of
 //! `lingxia-sdk/apple/Sources/macOS/NativeComponents/MacNativeComponentManager.swift`:
-//! a per-page component registry keyed by component id, document-space
-//! rects converted to viewport space with a natively tracked scroll
-//! offset, a ready handshake that queues events until the view handler is
-//! registered, and graceful no-ops (log only) for component kinds this
-//! phase does not support (picker/video/media-swiper are deferred).
+//! a per-page component registry keyed by component id, document-space rects
+//! converted to viewport space with a natively tracked scroll offset, a ready
+//! handshake that queues events until the view handler is registered, and
+//! graceful no-ops (log only) for component kinds this phase does not support
+//! (picker is deferred).
 //!
-//! Threading: every Win32 mutation runs on the UI thread that owns the
-//! webview window (component controls are its children). Messages already
-//! arrive on that thread (WebView2 `WebMessageReceived`); calls from other
-//! threads (page teardown) are marshalled with
-//! `crate::webview_host::post_to_window_thread`. The state
-//! registry is guarded by a mutex that is never held across Win32 calls
-//! that can re-enter the window procedures (e.g. `SetWindowTextW` 鈫?//! `EN_CHANGE`).
-
+//! Threading: every Win32 mutation runs on the UI thread that owns the webview
+//! window. Messages already arrive on that thread (WebView2
+//! `WebMessageReceived`); calls from other threads are marshalled with
+//! `crate::webview_host::post_to_window_thread`. The state registry is guarded
+//! by a mutex that is never held across Win32 calls that can re-enter the
+//! window procedures, such as `SetWindowTextW` causing `EN_CHANGE`.
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex, OnceLock};
 
@@ -64,10 +56,12 @@ use super::video_controls::{ControlsAction, ControlsState, VideoControls};
 use super::video_player::{VideoEventSink, VideoPlayer, VideoPlayerEvent};
 
 mod model;
+mod swiper;
 mod text;
 mod video;
 
 use model::*;
+use swiper::*;
 use text::*;
 use video::*;
 
@@ -134,6 +128,8 @@ struct ComponentEntry {
     /// `Arc` so command/timer paths can call it after dropping the
     /// registry lock.
     video: Option<VideoComponent>,
+    /// Paged carousel of a `media-swiper.native` component, `None` otherwise.
+    swiper: Option<MediaSwiperComponent>,
     doc_rect: DocRect,
     state: ComponentProps,
     last_value: String,
@@ -151,7 +147,7 @@ struct PageView {
 }
 
 /// A page's overlays show only while it is its app's current page.
-/// Derived live from the page stack on every layout pass 鈥?a cached flag
+/// Derived live from the page stack on every layout pass. A cached flag
 /// wedges as soon as any navigation path forgets to dispatch a lifecycle
 /// event (the pause/resume hooks remain event-driven).
 fn page_is_foreground(context: &PageContext) -> bool {
@@ -230,6 +226,7 @@ fn handle_message(
         "component.update" => handle_update(&context, message),
         "component.unmount" => handle_unmount(&context, message),
         "component.ready" => handle_ready(&context, message),
+        "component.command" => handle_command(&context, message),
         "component.focus" => handle_focus_action(&context, message, true),
         "component.blur" => handle_focus_action(&context, message, false),
         "page.scroll" => handle_page_scroll(&context, message),
@@ -264,6 +261,10 @@ fn handle_mount(context: &PageContext, message: &Value) {
         Some("input.native") => MountKind::Edit { multiline: false },
         Some("textarea.native") => MountKind::Edit { multiline: true },
         Some("video.native") => MountKind::Video,
+        Some("media-swiper.native") => {
+            handle_swiper_mount(context, message, component_id);
+            return;
+        }
         Some(other) => {
             log::info!("native component type '{other}' is not supported on Windows yet; ignoring");
             return;
@@ -293,10 +294,70 @@ fn handle_mount(context: &PageContext, message: &Value) {
     });
 }
 
+fn handle_swiper_mount(context: &PageContext, message: &Value, component_id: String) {
+    let Some(doc_rect) = parse_rect(message.get("rect")) else {
+        log::warn!("media-swiper mount without rect for {component_id}; ignoring");
+        return;
+    };
+    let config = SwiperConfig::parse(
+        message.get("props").unwrap_or(&Value::Null),
+        &SwiperConfig::default(),
+    );
+    let corner = corner_radius_value(message.get("cornerRadius"));
+    let Some(parent) = parent_window_for_page(&context.page_key) else {
+        log::warn!(
+            "no webview window for page {}; dropping mount of {component_id}",
+            context.page_key
+        );
+        return;
+    };
+    let context = context.clone();
+    run_on_window_thread(parent, move || {
+        mount_swiper_on_ui(context, component_id, parent, doc_rect, config, corner);
+    });
+}
+
+fn handle_command(context: &PageContext, message: &Value) {
+    let Some(component_id) = message_component_id(message) else {
+        return;
+    };
+    let key = component_key(&context.page_key, &component_id);
+    let Some(parent) = components().get(&key).map(|entry| entry.parent) else {
+        return;
+    };
+    let name = message
+        .get("name")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    let params = message.get("params").cloned();
+    run_on_window_thread(parent, move || {
+        handle_swiper_command(&key, &name, params.as_ref());
+    });
+}
+
 fn handle_update(context: &PageContext, message: &Value) {
     let Some(component_id) = message_component_id(message) else {
         return;
     };
+    let key = component_key(&context.page_key, &component_id);
+
+    if components()
+        .get(&key)
+        .is_some_and(|entry| entry.swiper.is_some())
+    {
+        let doc_rect = parse_rect(message.get("rect"));
+        let props = message.get("props").cloned();
+        let corner = corner_radius_value(message.get("cornerRadius"));
+        let Some(parent) = components().get(&key).map(|entry| entry.parent) else {
+            return;
+        };
+        run_on_window_thread(parent, move || {
+            apply_swiper_update(&key, doc_rect, props, corner);
+        });
+        return;
+    }
+
     let doc_rect = parse_rect(message.get("rect"));
     let mut props = message.get("props").map(|raw| parse_props(Some(raw)));
     // Geometry-only updates carry the measured radius at the top level.
@@ -305,7 +366,6 @@ fn handle_update(context: &PageContext, message: &Value) {
         merged.corner_radius.get_or_insert(radius);
     }
 
-    let key = component_key(&context.page_key, &component_id);
     let Some(parent) = components().get(&key).map(|entry| entry.parent) else {
         log::debug!("component.update for unknown component {component_id}; ignoring");
         return;
@@ -434,6 +494,27 @@ fn set_page_components_visible(page_key: &str, visible: bool) {
 
 /// Applies one component's page-visibility change on its UI thread.
 fn apply_component_visibility(key: &str, visible: bool) {
+    if components()
+        .get(key)
+        .is_some_and(|entry| entry.swiper.is_some())
+    {
+        if visible {
+            apply_layout(key);
+            swiper_on_visible(key, true);
+        } else {
+            swiper_on_visible(key, false);
+            if let Some(container) = components().get(key).map(|entry| entry.container) {
+                unsafe {
+                    let _ = WindowsAndMessaging::ShowWindow(
+                        HWND(container as *mut _),
+                        WindowsAndMessaging::SW_HIDE,
+                    );
+                }
+            }
+        }
+        return;
+    }
+
     if !visible {
         // A fullscreen video must leave its screen-sized window before the
         // page hides, or the black host would stay covering the monitor.
@@ -647,7 +728,7 @@ fn container_class() -> PCWSTR {
 /// element's measured corner radius, and keeps it above the WebView2 child
 /// windows.
 fn apply_layout(key: &str) {
-    let (container, edit, doc_rect, context, font_size, multiline, corner_radius, video) = {
+    let (container, edit, doc_rect, context, font_size, multiline, corner_radius, video, is_swiper) = {
         let components = components();
         let Some(entry) = components.get(key) else {
             return;
@@ -671,6 +752,7 @@ fn apply_layout(key: &str) {
                 },
                 controls: video.controls.as_ref().map(|controls| controls.hwnd),
             }),
+            entry.swiper.is_some(),
         )
     };
     let Some(view) = page_views().get(&context.page_key).copied() else {
@@ -788,6 +870,11 @@ fn apply_layout(key: &str) {
                 | WindowsAndMessaging::SWP_NOOWNERZORDER,
         );
 
+        if is_swiper {
+            layout_swiper_children(key, width, height);
+            return;
+        }
+
         // The video surface fills the container; MFPlay just needs a
         // repaint nudge after the window moved or resized.
         if let Some(video) = video {
@@ -897,7 +984,8 @@ fn purge_component_state(key: &str) {
 // ---------------------------------------------------------------------------
 
 /// Emits a component event to the page: queued until the view announces
-/// `component.ready`, then delivered to the view's component handler and 鈥?/// when the component declared page-function bindings 鈥?to the page's
+/// `component.ready`, then delivered to the view's component handler and,
+/// when the component declared page-function bindings, to the page's
 /// logic service through `lxapp::on_native_component_event`.
 fn emit_event(key: &str, event: &str, detail: Value) {
     let snapshot = {
@@ -1060,11 +1148,19 @@ unsafe extern "system" fn container_proc(
             on_video_timer(hwnd);
             LRESULT(0)
         }
-        // A video container paints black (matching the element's
-        // placeholder and the letterbox bars) while its surface is hidden
-        // after a stop. Both the erase and the paint pass fill, so the
-        // class brush never shows through.
-        WindowsAndMessaging::WM_ERASEBKGND if container_is_video(hwnd) => {
+        WindowsAndMessaging::WM_TIMER if wparam.0 == SWIPER_AUTOPLAY_TIMER_ID => {
+            on_swiper_autoplay_timer(hwnd);
+            LRESULT(0)
+        }
+        WindowsAndMessaging::WM_TIMER if wparam.0 == SWIPER_ANIM_TIMER_ID => {
+            on_swiper_anim_timer(hwnd);
+            LRESULT(0)
+        }
+        // A video or swiper container paints black while its media children
+        // decide their own visible content.
+        WindowsAndMessaging::WM_ERASEBKGND
+            if container_is_video(hwnd) || container_is_swiper(hwnd) =>
+        {
             let hdc = HDC(wparam.0 as *mut _);
             let mut rect = RECT::default();
             unsafe {
@@ -1077,7 +1173,7 @@ unsafe extern "system" fn container_proc(
             }
             LRESULT(1)
         }
-        WindowsAndMessaging::WM_PAINT if container_is_video(hwnd) => {
+        WindowsAndMessaging::WM_PAINT if container_is_video(hwnd) || container_is_swiper(hwnd) => {
             let mut paint = windows::Win32::Graphics::Gdi::PAINTSTRUCT::default();
             unsafe {
                 let hdc = windows::Win32::Graphics::Gdi::BeginPaint(hwnd, &mut paint);
@@ -1098,13 +1194,15 @@ unsafe extern "system" fn container_proc(
             unsafe {
                 if container_is_video(hwnd) {
                     let _ = SetFocus(Some(hwnd));
-                } else if let Ok(edit) = WindowsAndMessaging::GetWindow(hwnd, GW_CHILD) {
-                    let _ = SetFocus(Some(edit));
+                } else if !container_is_swiper(hwnd) {
+                    if let Ok(edit) = WindowsAndMessaging::GetWindow(hwnd, GW_CHILD) {
+                        let _ = SetFocus(Some(edit));
+                    }
                 }
             }
             LRESULT(0)
         }
-        // Double click toggles video fullscreen, Escape leaves it 鈥?the
+        // Double click toggles video fullscreen. Escape leaves it because the
         // fullscreen surface covers the page's own controls, so it must be
         // dismissible from the surface itself.
         WindowsAndMessaging::WM_LBUTTONDBLCLK => {

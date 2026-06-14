@@ -47,7 +47,9 @@ impl Device for Platform {
     }
 
     fn make_phone_call(&self, _phone_number: &str) -> Result<(), PlatformError> {
-        not_supported("make_phone_call")
+        Err(PlatformError::NotSupported(
+            "makePhoneCall is not supported on Windows".to_string(),
+        ))
     }
 }
 

@@ -40,7 +40,7 @@ use sidebar::*;
 pub use top_bar::begin_address_edit;
 use top_bar::*;
 
-/// GlobalNavButton (hamburger) 闁?the closest Fluent match to Arc's
+/// GlobalNavButton (hamburger): the closest Fluent match to Arc's
 /// sidebar collapse/expand toggle.
 pub(super) const GLYPH_SIDEBAR_TOGGLE: &str = "\u{e700}";
 

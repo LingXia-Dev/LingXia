@@ -37,7 +37,7 @@ use windows::core::{PCWSTR, w};
 /// focus loss. Runs on the host window's UI thread.
 pub type InlineEditCommit = Arc<dyn Fn(String) + Send + Sync>;
 
-/// `EM_SETSEL` (select text range) 鈥?lives in `Win32::UI::Controls` in the
+/// `EM_SETSEL` (select text range) lives in `Win32::UI::Controls` in the
 /// windows crate; defined locally to avoid pulling the whole feature.
 const EM_SETSEL: u32 = 0x00b1;
 
@@ -219,8 +219,8 @@ fn inline_edit_text(hwnd: HWND) -> String {
     }
 }
 
-/// Ends the edit: commits (unless cancelled), destroys the control, and 鈥?
-/// for keyboard-driven ends 鈥?returns focus to the host so terminal input
+/// Ends the edit: commits (unless cancelled), destroys the control, and
+/// for keyboard-driven ends, returns focus to the host so terminal input
 /// resumes without an extra click. Focus-loss ends leave focus where the
 /// user put it.
 fn finish_inline_edit(hwnd: HWND, commit: bool, refocus_host: bool) {

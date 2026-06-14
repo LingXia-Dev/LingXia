@@ -148,7 +148,7 @@ fn session_mut<'a>(hwnd: HWND) -> Option<&'a mut Session> {
     }
 }
 
-fn ensure_gdiplus() {
+pub(crate) fn ensure_gdiplus() {
     static STARTED: OnceLock<()> = OnceLock::new();
     STARTED.get_or_init(|| {
         let input = GdiplusStartupInput {
@@ -278,7 +278,7 @@ fn complete_request(request: &PreviewMediaRequest, reason: &str) {
 
 /// Resolves an item path: remote URLs go through the URL cache, file URIs
 /// strip their scheme, everything else is a local path already.
-fn resolve_media_path(path: &str) -> Option<String> {
+pub(crate) fn resolve_media_path(path: &str) -> Option<String> {
     if path.starts_with("http://") || path.starts_with("https://") {
         let wide_url: Vec<u16> = path.encode_utf16().chain(std::iter::once(0)).collect();
         let mut buffer = vec![0u16; 1024];

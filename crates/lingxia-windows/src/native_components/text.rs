@@ -97,6 +97,7 @@ pub(super) fn mount_edit_on_ui(
         edit: edit.0 as isize,
         font: 0,
         video: None,
+        swiper: None,
         doc_rect,
         state: ComponentProps::default(),
         last_value: props.value.clone().unwrap_or_default(),

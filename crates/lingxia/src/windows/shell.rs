@@ -223,7 +223,7 @@ fn shell_owner_appid() -> Option<String> {
 }
 
 /// Re-syncs the shell-owner app's layout (panel activator states etc.)
-/// after a panel changed visibility outside a chrome event 閳?e.g. the
+/// after a panel changed visibility outside a chrome event, e.g. the
 /// terminal panel closing itself because its last session exited (the
 /// only caller, hence unused without the terminal runtime).
 #[cfg_attr(not(feature = "terminal-runtime"), allow(dead_code))]
@@ -300,7 +300,7 @@ pub(super) fn install() {
 
     // Dispose a surface's content page instance when the surface closes (native
     // close button or programmatic). Disposing detaches and destroys the page's
-    // webview, which is what actually closes the surface window/overlay 鈥?the
+    // webview, which is what actually closes the surface window/overlay; the
     // page instance otherwise keeps the webview alive so a bare destroy cannot.
     // Mirrors the dispose_page_instance FFI bridges on the mobile platforms.
     lingxia_platform::set_windows_surface_dispose_handler(Arc::new(|page_instance_id, reason| {
@@ -317,9 +317,8 @@ pub(super) fn install() {
 
     // Programmatic lx.startPullDownRefresh(). Dispatch the page's
     // onPullDownRefresh lifecycle through the same PullDownRefresh UI event the
-    // gesture path uses, which also enforces the page's pull-down-enabled config
-    // (and stops if disabled). stopPullDownRefresh is a no-op on the desktop
-    // shell today: there is no native refresh indicator to hide yet.
+    // gesture path uses, which also enforces the page's pull-down-enabled config.
+    // The platform layer owns the native refresh indicator show/hide.
     lingxia_platform::set_windows_pull_to_refresh_handler(Arc::new(|appid, path, start| {
         if start && let Some(app) = lxapp::try_get(appid) {
             app.on_lxapp_event(LxAppUiEventType::PullDownRefresh, path.to_string());

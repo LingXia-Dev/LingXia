@@ -252,12 +252,6 @@ impl VideoControls {
         }
         repaint(self.window());
     }
-
-    pub(crate) fn hide(&self) {
-        unsafe {
-            let _ = WindowsAndMessaging::ShowWindow(self.window(), WindowsAndMessaging::SW_HIDE);
-        }
-    }
 }
 
 fn inner_mut<'a>(hwnd: HWND) -> Option<&'a mut ControlsInner> {

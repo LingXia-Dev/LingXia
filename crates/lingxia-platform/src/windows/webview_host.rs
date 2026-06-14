@@ -77,7 +77,7 @@ impl WindowsWebViewNativeViewHost for PlatformNativeViewHost {
     }
 
     fn destroy_webview_parent(&self, webtag_key: &str, view: WindowsWebViewNativeView) {
-        remove_window_handle(webtag_key);
+        cleanup_window_state(webtag_key);
         unsafe {
             let _ = WindowsAndMessaging::DestroyWindow(hwnd_from_handle(view.window));
         }
@@ -714,6 +714,7 @@ pub fn show_webview_window(webtag: &WebTag, title: &str, activate: bool) -> StdR
     let handler = find_webview_handler(webtag).ok_or_else(|| handler_not_ready(webtag))?;
     show_native_view(handler.native_view(), title, activate)?;
     handler.set_content_visible(true)?;
+    mark_active(webtag);
     Ok(())
 }
 
@@ -823,13 +824,9 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 }
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }
-            WindowsAndMessaging::WM_DESTROY => {
-                unsafe {
-                    WindowsAndMessaging::PostQuitMessage(0);
-                }
-                LRESULT(0)
-            }
+            WindowsAndMessaging::WM_DESTROY => LRESULT(0),
             WindowsAndMessaging::WM_NCDESTROY => {
+                let webtag_key = window_webtag_key(hwnd);
                 let raw = unsafe {
                     WindowsAndMessaging::GetWindowLongPtrW(hwnd, WindowsAndMessaging::GWLP_USERDATA)
                 } as *mut String;
@@ -842,6 +839,9 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                             0,
                         );
                     }
+                }
+                if let Some(webtag_key) = webtag_key {
+                    cleanup_window_state(&webtag_key);
                 }
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }
@@ -968,6 +968,33 @@ fn remove_window_handle(webtag_key: &str) {
         && let Ok(mut handles) = handles.lock()
     {
         handles.remove(webtag_key);
+    }
+}
+
+fn cleanup_window_state(webtag_key: &str) {
+    remove_window_handle(webtag_key);
+    if let Some(handlers) = CLOSE_HANDLERS.get()
+        && let Ok(mut handlers) = handlers.lock()
+    {
+        handlers.remove(webtag_key);
+    }
+    if let Some(handlers) = CHROME_HANDLERS.get()
+        && let Ok(mut handlers) = handlers.lock()
+    {
+        handlers.remove(webtag_key);
+    }
+    if let Some(layouts) = WINDOW_LAYOUTS.get()
+        && let Ok(mut layouts) = layouts.lock()
+    {
+        layouts.remove(webtag_key);
+    }
+    if let Some(active) = ACTIVE_WEBTAG.get()
+        && let Ok(mut active) = active.lock()
+        && active
+            .as_ref()
+            .is_some_and(|webtag| webtag.key() == webtag_key)
+    {
+        *active = None;
     }
 }
 
