@@ -4,8 +4,10 @@ run-name: Prepare ${{ inputs.component }} v${{ inputs.version }}
 # Version bump PR helper. `component=all` applies ONE version to the whole
 # workspace/package set via scripts/release/version.sh. `component=cli` bumps
 # only tools/lingxia-cli so the CLI can ship patch releases independently.
-# `component=npm:<package>` bumps a single npm package for patch drift within
-# the lockstep major.minor line (internal @lingxia/* deps are caret ranges).
+# `component=npm:<package>` bumps a single framework/tool npm package for patch
+# drift within the lockstep major.minor line (internal @lingxia/* deps are caret
+# ranges). Base-runtime npm (bridge/polyfills/types) are NOT listed here — they
+# are embedded as app assets / locked to the workspace and ship via component=all.
 #
 # After this PR merges, publish from the "Release / 2. Publish Component"
 # workflow for the matching component/version.
@@ -21,14 +23,11 @@ on:
         options:
           - all
           - cli
-          - npm:bridge
           - npm:elements
           - npm:html
           - npm:page-runtime
-          - npm:polyfills
           - npm:react
           - npm:skill
-          - npm:types
           - npm:vue
       version:
         description: "Version to release (e.g. 0.5.0)"

@@ -20,10 +20,19 @@ Arguments:
 Options:
   --component     Version scope. `all` keeps the lockstep release bump;
                   `cli` bumps only tools/lingxia-cli; `npm:<package>` bumps a
-                  single npm package (bridge|elements|react|vue|html|
-                  page-runtime|polyfills|types|skill).
+                  single framework/tool npm package (elements|react|vue|html|
+                  page-runtime|skill). bridge/polyfills/types are base-runtime
+                  packages locked to the workspace — bump them via `all`.
   --dry-run       Print the files that would change without modifying them.
   -h, --help      Show help.
+
+npm package tiers (see release notes):
+  - base runtime  (bridge, polyfills, types): locked to the workspace version.
+                  bridge & polyfills are embedded into the CLI as app assets
+                  (build.rs enforces the match); ship via --component all.
+  - framework     (page-runtime, elements, react, vue, html): major.minor
+                  tracks the workspace; patch may drift via npm:<package>.
+  - tools         (skill): independent; npm:skill.
 
 With --component all (default), this updates:
   - workspace.package.version in Cargo.toml
@@ -38,11 +47,12 @@ With --component cli, this updates:
   - lingxia-cli package version only
   - root Cargo.lock package metadata when Cargo needs it
 
-With --component npm:<package>, this updates:
+With --component npm:<package> (framework/tools only), this updates:
   - that package's package.json version only. Internal @lingxia/* dependency
     ranges are left untouched: they are caret ranges (^0.x.y), so a patch
     bump stays inside the range siblings already accept. Keep major.minor
     in lockstep via --component all; this escape hatch is for patch drift.
+    bridge/polyfills/types are rejected here — release them via --component all.
 EOF
 }
 
@@ -91,10 +101,19 @@ case "$COMPONENT" in
   all|cli) ;;
   npm:*)
     NPM_PACKAGE="${COMPONENT#npm:}"
+    # Per-package bumps are only allowed for the framework tier and standalone
+    # tools. bridge/polyfills/types are base-runtime packages locked to the
+    # workspace version: bridge & polyfills are embedded into the CLI as app
+    # assets (tools/lingxia-cli/build.rs panics on a version mismatch) and must
+    # ship together with the rust workspace via `--component all`.
     case "$NPM_PACKAGE" in
-      bridge|elements|react|vue|html|page-runtime|polyfills|types|skill) ;;
+      elements|react|vue|html|page-runtime|skill) ;;
+      bridge|polyfills|types)
+        echo "Refusing npm:$NPM_PACKAGE — base-runtime package locked to the workspace version; release it with '--component all'." >&2
+        exit 2
+        ;;
       *)
-        echo "Invalid npm package: $NPM_PACKAGE (expected bridge|elements|react|vue|html|page-runtime|polyfills|types|skill)" >&2
+        echo "Invalid npm package: $NPM_PACKAGE (expected elements|react|vue|html|page-runtime|skill)" >&2
         exit 2
         ;;
     esac
