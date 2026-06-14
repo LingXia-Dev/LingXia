@@ -9,6 +9,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+pub mod env_icon;
+
 pub struct WindowsPlatform;
 
 impl WindowsPlatform {

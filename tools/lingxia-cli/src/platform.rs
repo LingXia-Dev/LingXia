@@ -9,6 +9,7 @@ pub mod android_abis;
 pub mod apple;
 pub mod detector;
 pub mod doctor;
+pub mod env_badge;
 pub mod harmony;
 pub mod ios;
 pub mod macos;

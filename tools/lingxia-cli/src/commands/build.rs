@@ -387,7 +387,8 @@ Specify one with `--platform <name>` or build all with `--all-platforms`."
         build_config.skip_native_build = platform.hoists_native_build();
         let mut artifacts = platform.build(&build_config)?;
         if matches!(platform_type, PlatformType::Windows) {
-            artifacts = assemble_windows_dist(&project_root, &config, artifacts)?;
+            artifacts =
+                assemble_windows_dist(&project_root, &config, resolved_env.version, artifacts)?;
         }
         if package {
             stage_package_artifact(&project_root, &platform_type, &artifacts)?;
@@ -421,6 +422,7 @@ Specify one with `--platform <name>` or build all with `--all-platforms`."
 fn assemble_windows_dist(
     project_root: &Path,
     config: &LingXiaConfig,
+    env: crate::config::EnvVersion,
     artifacts: BuildArtifacts,
 ) -> Result<BuildArtifacts> {
     let BuildArtifacts::Windows { exe_path } = artifacts else {
@@ -449,7 +451,26 @@ fn assemble_windows_dist(
 
     let assets_src = windows_dir.join("assets");
     if assets_src.is_dir() {
-        crate::platform::apple::copy_dir_recursive(&assets_src, &dist_dir.join("assets"))?;
+        let dist_assets = dist_dir.join("assets");
+        crate::platform::apple::copy_dir_recursive(&assets_src, &dist_assets)?;
+        // dev/preview builds get the D/P badge — the Windows counterpart of the
+        // macOS/iOS env-icon overlay — so a dev build sits beside a release
+        // build distinguishably. The badge goes on a host-owned icon at the
+        // asset root, NOT the lxapp's served `<home>/public/AppIcon.png` (that
+        // is app content the home page renders).
+        let home_app_id = config.app.as_ref().map(|app| app.home_app_id.as_str());
+        let host_icon_badged = crate::platform::windows::env_icon::stage_dist_host_icon(
+            &dist_assets,
+            home_app_id,
+            env,
+        )?;
+        if host_icon_badged {
+            println!(
+                "{} Badged host app icon for {} env",
+                "[Windows]".cyan(),
+                env.as_str()
+            );
+        }
     }
 
     Ok(BuildArtifacts::Windows { exe_path: dist_exe })
