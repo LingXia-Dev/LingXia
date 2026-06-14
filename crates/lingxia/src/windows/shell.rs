@@ -5,6 +5,11 @@ use std::sync::{Arc, Mutex, OnceLock};
 use lingxia_platform::traits::app_runtime::{
     AppRuntime, LxAppOpenMode, OpenUrlRequest, OpenUrlTarget,
 };
+use lingxia_platform::windows::webview_host::{
+    WindowsChromeCommand, WindowsPanelPosition, WindowsWindowLayout, hide_host_panel,
+    is_panel_visible, present_webview_in_active_group, restore_presented_group_main,
+    set_webview_chrome_event_handler, set_webview_window_layout,
+};
 #[cfg(feature = "shell-runtime")]
 use lingxia_shell::windows::{
     WindowsShellAddressBarLayout, WindowsShellAuxiliaryItemLayout, WindowsShellHeaderActionLayout,
@@ -13,12 +18,6 @@ use lingxia_shell::windows::{
     WindowsShellWindowLayout,
 };
 use lingxia_webview::WebTag;
-use lingxia_webview::platform::windows::find_webview_handler;
-use lingxia_webview::platform::windows::lingxia_host::{
-    WindowsChromeCommand, WindowsPanelPosition, WindowsWindowLayout, hide_host_panel,
-    is_panel_visible, restore_presented_group_main, set_webview_chrome_event_handler,
-    set_webview_window_layout,
-};
 use lxapp::{LxApp, LxAppDelegate, LxAppStartupOptions, LxAppUiEventType, ReleaseType};
 #[cfg(not(feature = "shell-runtime"))]
 use shell_layout_fallback::{
@@ -33,7 +32,7 @@ use shell_layout_fallback::{
 mod shell_layout_fallback {
     use std::sync::Arc;
 
-    use lingxia_webview::platform::windows::lingxia_host::WindowsPanelPosition;
+    use lingxia_platform::windows::webview_host::WindowsPanelPosition;
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
     pub enum WindowsShellTabBarPosition {
@@ -224,7 +223,7 @@ fn shell_owner_appid() -> Option<String> {
 }
 
 /// Re-syncs the shell-owner app's layout (panel activator states etc.)
-/// after a panel changed visibility outside a chrome event 鈥?e.g. the
+/// after a panel changed visibility outside a chrome event 閳?e.g. the
 /// terminal panel closing itself because its last session exited (the
 /// only caller, hence unused without the terminal runtime).
 #[cfg_attr(not(feature = "terminal-runtime"), allow(dead_code))]
@@ -301,7 +300,7 @@ pub(super) fn install() {
 
     // Dispose a surface's content page instance when the surface closes (native
     // close button or programmatic). Disposing detaches and destroys the page's
-    // webview, which is what actually closes the surface window/overlay — the
+    // webview, which is what actually closes the surface window/overlay 鈥?the
     // page instance otherwise keeps the webview alive so a bare destroy cannot.
     // Mirrors the dispose_page_instance FFI bridges on the mobile platforms.
     lingxia_platform::set_windows_surface_dispose_handler(Arc::new(|page_instance_id, reason| {
@@ -879,14 +878,7 @@ fn present_browser_tab_when_ready(appid: &str, tab_id: String) {
                 return;
             };
             let webtag = WebTag::new(crate::browser::APP_ID, &tab.path, Some(tab.session_id));
-            let result = find_webview_handler(&webtag)
-                .ok_or_else(|| {
-                    lingxia_webview::WebViewError::WebView(format!(
-                        "WebView handler not found for {}",
-                        webtag.key()
-                    ))
-                })
-                .and_then(|handler| handler.present_in_active_group());
+            let result = present_webview_in_active_group(&webtag);
             match result {
                 Ok(()) => {
                     set_presented_browser_tab(Some(tab_id.clone()));
@@ -954,7 +946,7 @@ pub(super) fn owner_window_handle(appid: &str) -> Option<isize> {
         .peek_current_page()
         .unwrap_or_else(|| app.initial_route());
     let webtag = WebTag::new(&app.appid, &path, Some(app.session_id()));
-    let snapshot = find_webview_handler(&webtag).map(|handler| handler.window_snapshot());
+    let snapshot = Some(lingxia_platform::windows::webview_host::webview_window_snapshot(&webtag));
     match snapshot {
         Some(Ok(snapshot)) => Some(snapshot.window_id as isize),
         Some(Err(err)) => {

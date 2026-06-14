@@ -8,11 +8,11 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, VK_CONTROL, VK_ME
 use windows::Win32::UI::WindowsAndMessaging::{self, WNDPROC};
 use windows::core::{PCWSTR, Result as WinResult};
 
+use crate::webview_host::post_to_window_thread;
 use crate::webview_host::{
     WindowsWebViewHostWindow, add_webview_host_window_created_handler,
     request_webview_host_window_layout,
 };
-use lingxia_webview::platform::windows::post_to_window_thread;
 
 use super::{WindowsAppMenu, WindowsAppMenuCommandHandler, WindowsAppMenuEntry};
 

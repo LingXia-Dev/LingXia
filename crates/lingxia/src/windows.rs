@@ -13,6 +13,7 @@ pub use lingxia_platform::{Platform, PlatformError, set_windows_app_exit_handler
 /// home app id on success.
 pub fn init(platform: Platform) -> Option<String> {
     crate::logging::init();
+    lingxia_platform::windows::webview_host::install_native_view_host();
     lingxia_webview::platform::windows::set_webview_user_data_dir(
         platform.app_cache_dir().join("webview2"),
     );
@@ -31,13 +32,13 @@ pub fn open_home_app(appid: &str) -> Result<(), String> {
 }
 
 /// Overrides the initial outer size, in pixels, of webview host windows
-/// created after this call — in particular the main window of the host app.
+/// created after this call 鈥?in particular the main window of the host app.
 ///
 /// Call before [`init`] (the first window is created when the home lxapp
 /// opens). The first call wins; later calls and non-positive dimensions are
 /// ignored. Without an override windows open at the built-in 1024x768.
 pub fn set_default_window_size(width: i32, height: i32) {
-    lingxia_webview::platform::windows::lingxia_host::set_default_window_size(width, height);
+    lingxia_platform::windows::webview_host::set_default_window_size(width, height);
 }
 
 /// Resizes the top-level window of `appid` so its content (client) area is
@@ -48,10 +49,12 @@ pub fn set_default_window_size(width: i32, height: i32) {
 /// presenting it (attached surfaces resolve to their group host window).
 pub fn resize_app_window_content(appid: &str, width: i32, height: i32) -> Result<(), String> {
     let webview = current_page_webview(appid)?;
-    lingxia_webview::platform::windows::find_webview_handler(&webview.webtag())
-        .ok_or_else(|| "page WebView handler is not ready".to_string())?
-        .resize_host_content(width, height)
-        .map_err(|err| err.to_string())
+    lingxia_platform::windows::webview_host::resize_webview_host_content(
+        &webview.webtag(),
+        width,
+        height,
+    )
+    .map_err(|err| err.to_string())
 }
 
 fn current_page_webview(appid: &str) -> Result<std::sync::Arc<lingxia_webview::WebView>, String> {

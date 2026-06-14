@@ -7,13 +7,13 @@
 
 use std::sync::{Arc, OnceLock};
 
-use lingxia_webview::platform::windows::lingxia_host::{
+use lingxia_platform::windows::webview_host::post_to_window_thread;
+use lingxia_platform::windows::webview_host::{
     WindowsChromeAttachedLayout, WindowsChromeCommand, WindowsChromeHit, WindowsChromePanel,
     WindowsChromePanelLayout, WindowsChromePanelLayoutInput, WindowsChromeRenderer,
     WindowsChromeState, WindowsFrameButton, WindowsHostPanelContent, WindowsPanelPosition,
     WindowsWindowLayout, set_windows_chrome_renderer,
 };
-use lingxia_webview::platform::windows::post_to_window_thread;
 use serde_json::json;
 use windows::Win32::Foundation::{COLORREF, HWND, RECT};
 use windows::Win32::Graphics::Gdi::{
@@ -40,7 +40,7 @@ use sidebar::*;
 pub use top_bar::begin_address_edit;
 use top_bar::*;
 
-/// GlobalNavButton (hamburger) 閳?the closest Fluent match to Arc's
+/// GlobalNavButton (hamburger) 闁?the closest Fluent match to Arc's
 /// sidebar collapse/expand toggle.
 pub(super) const GLYPH_SIDEBAR_TOGGLE: &str = "\u{e700}";
 

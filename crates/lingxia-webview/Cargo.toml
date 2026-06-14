@@ -11,7 +11,6 @@ categories = ["web-programming", "api-bindings"]
 [features]
 default = []
 webview-input = []
-windows-host = []
 
 [dependencies]
 async-trait = "0.1"

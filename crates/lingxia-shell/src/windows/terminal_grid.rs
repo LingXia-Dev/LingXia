@@ -126,7 +126,7 @@ pub(super) fn set_panel_tab_title_rects(panel_id: &str, hwnd: isize, titles: Vec
 
 /// Starts an inline rename of `tab_id`'s title in `panel_id`'s header: an
 /// EDIT child (see [`super::text_input`]) is created over the title rect
-/// recorded at the last paint. Safe to call from any thread — the editor
+/// recorded at the last paint. Safe to call from any thread 鈥?the editor
 /// is marshalled onto the host window's UI thread. `on_commit` receives
 /// the edited text on Enter/focus loss (Esc cancels); it runs on that UI
 /// thread. Returns `false` when the tab has not been painted yet or the
@@ -148,7 +148,7 @@ pub fn begin_tab_rename(
     };
     let hwnd = header.hwnd;
     let initial = initial_text.to_string();
-    lingxia_webview::platform::windows::post_to_window_thread(
+    lingxia_platform::windows::webview_host::post_to_window_thread(
         hwnd,
         Box::new(move || {
             super::text_input::begin_inline_edit(
@@ -292,7 +292,7 @@ fn draw_panel_grid_clipped(
 
     // Exited sessions are closed by the facade as soon as their snapshot
     // reports `exited` (the tab closes; the last tab closes the panel), so
-    // no `[process exited]` overlay is drawn — at most one repaint shows
+    // no `[process exited]` overlay is drawn 鈥?at most one repaint shows
     // the final screen without a cursor.
     if !snapshot.exited && snapshot.cursor_visible {
         draw_cursor(
@@ -490,7 +490,7 @@ fn draw_cursor(
                 fill_rect(hdc, edge, foreground);
             }
         }
-        // Block cursor: inverse video — a foreground-filled cell with the
+        // Block cursor: inverse video 鈥?a foreground-filled cell with the
         // covered glyph redrawn in the background color.
         _ => {
             fill_rect(hdc, cell_rect, foreground);

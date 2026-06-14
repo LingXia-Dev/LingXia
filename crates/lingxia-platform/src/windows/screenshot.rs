@@ -272,16 +272,12 @@ fn visible_window_rect(
 async fn visible_webview_screenshots_for_window(
     window_id: usize,
 ) -> Vec<(
-    lingxia_webview::platform::windows::WindowsWebViewWindowSnapshot,
+    crate::windows::webview_host::WindowsWebViewWindowSnapshot,
     Vec<u8>,
 )> {
     let mut captures = Vec::new();
     for webtag in webview_runtime::list_webviews() {
-        let Some(handler) = lingxia_webview::platform::windows::find_webview_handler(&webtag)
-        else {
-            continue;
-        };
-        let snapshot = match handler.window_snapshot() {
+        let snapshot = match crate::windows::webview_host::webview_window_snapshot(&webtag) {
             Ok(snapshot)
                 if snapshot.window_id == window_id
                     && snapshot.visible
@@ -317,7 +313,7 @@ async fn visible_webview_screenshots_for_window(
 
 fn overlay_webview_screenshot(
     base: &mut image::RgbaImage,
-    snapshot: &lingxia_webview::platform::windows::WindowsWebViewWindowSnapshot,
+    snapshot: &crate::windows::webview_host::WindowsWebViewWindowSnapshot,
     webview_png: &[u8],
 ) -> Result<(), PlatformError> {
     if snapshot.content_left < 0 || snapshot.content_top < 0 {

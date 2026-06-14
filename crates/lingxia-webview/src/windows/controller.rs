@@ -1,4 +1,4 @@
-//! WebView controller: UI-thread lifecycle, command dispatch,
+﻿//! WebView controller: UI-thread lifecycle, command dispatch,
 //! the message loop, and the `WebViewController` implementation.
 
 use super::*;
@@ -9,15 +9,6 @@ pub(crate) const WM_LINGXIA_COMMAND: u32 = WM_APP + 0x154;
 pub(crate) const WM_LINGXIA_LAYOUT: u32 = WM_APP + 0x155;
 
 pub(crate) const WEBVIEW_SCREENSHOT_TIMEOUT: Duration = Duration::from_secs(4);
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum WindowsWindowRole {
-    Main,
-    #[cfg(feature = "windows-host")]
-    Panel {
-        panel_id: String,
-    },
-}
 
 pub(crate) enum UiCommand {
     LoadUrl {
@@ -67,46 +58,18 @@ pub(crate) enum UiCommand {
     OpenDevTools {
         resp: Sender<StdResult<()>>,
     },
-    WindowSnapshot {
-        resp: Sender<StdResult<WindowsWebViewWindowSnapshot>>,
-    },
-    ShowWindow {
-        title: String,
-        activate: bool,
-        role: WindowsWindowRole,
-        resp: Sender<StdResult<()>>,
-    },
-    #[cfg(feature = "windows-host")]
-    PresentAsGroupMain {
-        group_key: String,
-        resp: Sender<StdResult<()>>,
-    },
-    /// Present the webview as a floating card layered over the group's main
-    /// content (an `overlay`-kind surface), sized/positioned per the placement.
-    #[cfg(feature = "windows-host")]
-    PresentAsOverlay {
-        group_key: String,
-        placement: OverlayCardPlacement,
-        resp: Sender<StdResult<()>>,
-    },
-    HideWindow {
-        resp: Sender<StdResult<()>>,
-    },
-    /// Position the WebView2 content within the window the controller is
-    /// parented to. The host UI layer owns layout and tells the surface where
-    /// to render; the webview only applies the rect.
+    /// Position the WebView2 controller within the parent HWND supplied by
+    /// the Windows UI layer.
     SetContentBounds {
         bounds: RECT,
         resp: Sender<StdResult<()>>,
     },
-    /// Show or hide the WebView2 content without touching the host window.
+    /// Show or hide the WebView2 controller without touching the parent HWND.
     SetContentVisible {
         visible: bool,
         resp: Sender<StdResult<()>>,
     },
-    #[cfg(feature = "windows-host")]
-    SetWindowLayout {
-        layout: WindowsWindowLayout,
+    NotifyParentPositionChanged {
         resp: Sender<StdResult<()>>,
     },
     Shutdown,
@@ -116,10 +79,18 @@ pub(crate) struct UiState {
     pub(crate) controller: ICoreWebView2Controller,
     pub(crate) webview: ICoreWebView2,
     pub(crate) hwnd: HWND,
+    pub(crate) native_view: WindowsWebViewNativeView,
     pub(crate) webtag_key: String,
-    pub(crate) window_visible: bool,
     pub(crate) memory_pages: Arc<Mutex<HashMap<String, Vec<u8>>>>,
     pub(crate) transient_user_data_dir: Option<PathBuf>,
+}
+
+impl UiState {
+    pub(crate) fn notify_parent_position_changed(&self) {
+        unsafe {
+            let _ = self.controller.NotifyParentWindowPositionChanged();
+        }
+    }
 }
 
 pub struct WebViewInner {
@@ -127,6 +98,7 @@ pub struct WebViewInner {
     thread_id: u32,
     join_handle: Mutex<Option<JoinHandle<()>>>,
     pub(crate) webtag: WebTag,
+    pub(crate) native_view: isize,
 }
 
 impl std::fmt::Debug for WebViewInner {
@@ -176,13 +148,14 @@ impl WebViewInner {
         };
 
         match startup_rx.recv() {
-            Ok(Ok((command_tx, thread_id))) => {
+            Ok(Ok((command_tx, thread_id, native_view))) => {
                 let webview = Arc::new(crate::WebView::new(
                     WebViewInner {
                         command_tx,
                         thread_id,
                         join_handle: Mutex::new(Some(join_handle)),
                         webtag,
+                        native_view,
                     },
                     effective_options,
                 ));
@@ -250,53 +223,12 @@ impl WebViewInner {
             .map_err(|err| err.into_webview_error("run synchronous WebView command"))?
     }
 
-    pub(crate) fn show_window(
-        &self,
-        title: String,
-        activate: bool,
-        role: WindowsWindowRole,
-    ) -> StdResult<()> {
-        self.dispatch_command(|resp| UiCommand::ShowWindow {
-            title,
-            activate,
-            role,
-            resp,
-        })
-    }
-
-    pub(crate) fn hide_window(&self) -> StdResult<()> {
-        self.dispatch_command(|resp| UiCommand::HideWindow { resp })
-    }
-
     pub(crate) fn set_content_bounds(&self, bounds: RECT) -> StdResult<()> {
         self.dispatch_command(|resp| UiCommand::SetContentBounds { bounds, resp })
     }
 
     pub(crate) fn set_content_visible(&self, visible: bool) -> StdResult<()> {
         self.dispatch_command(|resp| UiCommand::SetContentVisible { visible, resp })
-    }
-
-    #[cfg(feature = "windows-host")]
-    pub(crate) fn present_as_group_main(&self, group_key: String) -> StdResult<()> {
-        self.dispatch_command(|resp| UiCommand::PresentAsGroupMain { group_key, resp })
-    }
-
-    #[cfg(feature = "windows-host")]
-    pub(crate) fn present_as_overlay(
-        &self,
-        group_key: String,
-        placement: OverlayCardPlacement,
-    ) -> StdResult<()> {
-        self.dispatch_command(|resp| UiCommand::PresentAsOverlay {
-            group_key,
-            placement,
-            resp,
-        })
-    }
-
-    #[cfg(feature = "windows-host")]
-    pub(crate) fn set_window_layout(&self, layout: WindowsWindowLayout) -> StdResult<()> {
-        self.dispatch_command(|resp| UiCommand::SetWindowLayout { layout, resp })
     }
 
     fn dispatch_screenshot_command(&self) -> StdResult<Vec<u8>> {
@@ -316,9 +248,8 @@ impl WebViewInner {
         self.dispatch_command(|resp| UiCommand::OpenDevTools { resp })
     }
 
-    pub(crate) fn window_snapshot(&self) -> StdResult<WindowsWebViewWindowSnapshot> {
-        self.dispatch_ui(|resp| UiCommand::WindowSnapshot { resp }, None)
-            .map_err(|err| err.into_webview_error("inspect WebView window"))?
+    pub(crate) fn notify_parent_position_changed(&self) -> StdResult<()> {
+        self.dispatch_command(|resp| UiCommand::NotifyParentPositionChanged { resp })
     }
 
     fn dispatch_eval_command(
@@ -439,10 +370,6 @@ impl WebViewController for WebViewInner {
 
 impl Drop for WebViewInner {
     fn drop(&mut self) {
-        remove_close_handler(self.webtag.key());
-        remove_chrome_event_handler(self.webtag.key());
-        remove_window_layout(self.webtag.key());
-
         let _ = self.command_tx.send(UiCommand::Shutdown);
         unsafe {
             let _ = WindowsAndMessaging::PostThreadMessageW(
@@ -474,7 +401,7 @@ impl Drop for WebViewInner {
 pub(crate) fn run_ui_thread(
     webtag: WebTag,
     effective_options: EffectiveWebViewCreateOptions,
-    startup_tx: Sender<StdResult<(Sender<UiCommand>, u32)>>,
+    startup_tx: Sender<StdResult<(Sender<UiCommand>, u32, isize)>>,
 ) -> StdResult<()> {
     unsafe {
         windows::Win32::System::Com::CoInitializeEx(None, COINIT_APARTMENTTHREADED)
@@ -494,11 +421,12 @@ pub(crate) fn run_ui_thread(
 pub(crate) fn run_ui_thread_inner(
     webtag: WebTag,
     effective_options: EffectiveWebViewCreateOptions,
-    startup_tx: Sender<StdResult<(Sender<UiCommand>, u32)>>,
+    startup_tx: Sender<StdResult<(Sender<UiCommand>, u32, isize)>>,
 ) -> StdResult<()> {
     ensure_message_queue();
 
-    let hwnd = create_hidden_window(&webtag)?;
+    let native_view = create_webview_parent(&webtag)?;
+    let hwnd = hwnd_from_handle(native_view.window);
     let webtag_key = webtag.key().to_string();
 
     // After the window exists, every failure must report the real error to the
@@ -517,6 +445,12 @@ pub(crate) fn run_ui_thread_inner(
                 .map_err(|err| WebViewError::WebView(format!("CoreWebView2 failed: {err}")))?
         };
 
+        let bounds = webview_parent_bounds(native_view)?;
+        unsafe {
+            controller
+                .SetBounds(bounds)
+                .map_err(|err| WebViewError::WebView(format!("SetBounds failed: {err}")))?;
+        }
         configure_controller(&controller)?;
         configure_settings(&webview, &effective_options)?;
         install_document_scripts(&webview)?;
@@ -535,22 +469,24 @@ pub(crate) fn run_ui_thread_inner(
         Ok(parts) => parts,
         Err(err) => {
             let _ = startup_tx.send(Err(err.clone()));
-            unsafe {
-                let _ = WindowsAndMessaging::DestroyWindow(hwnd);
-            }
+            destroy_webview_parent(webtag.key(), native_view);
             return Err(err);
         }
     };
 
     let (command_tx, command_rx) = mpsc::channel();
     if startup_tx
-        .send(Ok((command_tx, unsafe { Threading::GetCurrentThreadId() })))
+        .send(Ok((
+            command_tx,
+            unsafe { Threading::GetCurrentThreadId() },
+            native_view.window,
+        )))
         .is_err()
     {
         unsafe {
             let _ = controller.Close();
-            let _ = WindowsAndMessaging::DestroyWindow(hwnd);
         }
+        destroy_webview_parent(webtag.key(), native_view);
         return Err(WebViewError::WebView(
             "Failed to publish WebView startup".to_string(),
         ));
@@ -560,15 +496,11 @@ pub(crate) fn run_ui_thread_inner(
         controller,
         webview,
         hwnd,
+        native_view,
         webtag_key,
-        window_visible: false,
         memory_pages,
         transient_user_data_dir,
     };
-
-    // Let the window procedure drive layout directly (required during the
-    // modal move/size loop, where this command loop is starved).
-    register_live_layout_context(&state);
 
     message_loop(&mut state, command_rx)
 }
@@ -726,37 +658,6 @@ pub(crate) fn handle_command(state: &mut UiState, command: UiCommand) -> StdResu
             };
             let _ = resp.send(result);
         }
-        UiCommand::WindowSnapshot { resp } => {
-            let result = window_snapshot(state);
-            let _ = resp.send(result);
-        }
-        UiCommand::ShowWindow {
-            title,
-            activate,
-            role,
-            resp,
-        } => {
-            let result = show_native_window(state, &title, activate, role);
-            let _ = resp.send(result);
-        }
-        #[cfg(feature = "windows-host")]
-        UiCommand::PresentAsGroupMain { group_key, resp } => {
-            let result = present_native_window_as_group_main(state, &group_key);
-            let _ = resp.send(result);
-        }
-        #[cfg(feature = "windows-host")]
-        UiCommand::PresentAsOverlay {
-            group_key,
-            placement,
-            resp,
-        } => {
-            let result = present_native_window_as_overlay(state, &group_key, placement);
-            let _ = resp.send(result);
-        }
-        UiCommand::HideWindow { resp } => {
-            let result = hide_native_window(state);
-            let _ = resp.send(result);
-        }
         UiCommand::SetContentBounds { bounds, resp } => {
             let result = unsafe {
                 state
@@ -768,15 +669,11 @@ pub(crate) fn handle_command(state: &mut UiState, command: UiCommand) -> StdResu
         }
         UiCommand::SetContentVisible { visible, resp } => {
             let result = set_controller_visible(state, visible);
-            if result.is_ok() {
-                state.window_visible = visible;
-            }
             let _ = resp.send(result);
         }
-        #[cfg(feature = "windows-host")]
-        UiCommand::SetWindowLayout { layout, resp } => {
-            let result = set_native_window_layout(state, layout);
-            let _ = resp.send(result);
+        UiCommand::NotifyParentPositionChanged { resp } => {
+            state.notify_parent_position_changed();
+            let _ = resp.send(Ok(()));
         }
         UiCommand::Shutdown => return Ok(true),
     }
@@ -785,12 +682,10 @@ pub(crate) fn handle_command(state: &mut UiState, command: UiCommand) -> StdResu
 }
 
 pub(crate) fn cleanup_state(state: &mut UiState) {
-    clear_live_layout_context();
-    cleanup_window_state(state);
     unsafe {
         let _ = state.controller.Close();
-        let _ = WindowsAndMessaging::DestroyWindow(state.hwnd);
     }
+    destroy_webview_parent(&state.webtag_key, state.native_view);
     if let Some(dir) = state.transient_user_data_dir.take()
         && let Err(err) = std::fs::remove_dir_all(&dir)
     {
@@ -798,77 +693,11 @@ pub(crate) fn cleanup_state(state: &mut UiState) {
     }
 }
 
-#[cfg(feature = "windows-host")]
-pub(crate) fn cleanup_window_state(state: &UiState) {
-    forget_window_layout_state(state.hwnd);
-    let attachment = remove_window_attachment(&state.webtag_key);
-    remove_window_handle(&state.webtag_key);
-    remove_window_layout(&state.webtag_key);
-    clear_group_override(&state.webtag_key);
-    clear_os_frame(&state.webtag_key);
-    remove_close_handler(&state.webtag_key);
-    remove_chrome_event_handler(&state.webtag_key);
-
-    if let Some(attachment) = attachment {
-        match attachment.kind {
-            WindowAttachmentKind::MainHost => {
-                if let Some(hosts) = WINDOW_GROUP_HOSTS.get()
-                    && let Ok(mut hosts) = hosts.lock()
-                    && hosts.get(&attachment.group_key).copied() == Some(hwnd_handle(state.hwnd))
-                {
-                    hosts.remove(&attachment.group_key);
-                }
-                if let Some(active) = WINDOW_GROUP_ACTIVE_MAIN.get()
-                    && let Ok(mut active) = active.lock()
-                {
-                    active.remove(&attachment.group_key);
-                }
-                if let Some(active_group) = WINDOW_ACTIVE_GROUP.get()
-                    && let Ok(mut active_group) = active_group.lock()
-                    && active_group.as_deref() == Some(attachment.group_key.as_str())
-                {
-                    *active_group = None;
-                }
-                remove_group_layout(&attachment.group_key);
-            }
-            WindowAttachmentKind::MainChild => {
-                // A presented main surface that goes away restores the main
-                // webview it displaced.
-                if let Some(presented) =
-                    take_presented_main_if(&attachment.group_key, &state.webtag_key)
-                {
-                    if let Some(previous) = presented.previous_main_key {
-                        set_group_active_main(&attachment.group_key, &previous);
-                    }
-                    layout_group_windows(&attachment.group_key);
-                    request_group_chrome_refresh(&attachment.group_key);
-                }
-                if let Some(active) = WINDOW_GROUP_ACTIVE_MAIN.get()
-                    && let Ok(mut active) = active.lock()
-                    && active
-                        .get(&attachment.group_key)
-                        .is_some_and(|key| key == &state.webtag_key)
-                {
-                    active.remove(&attachment.group_key);
-                }
-            }
-            WindowAttachmentKind::Panel { .. } => {
-                remove_group_panel(&attachment.group_key, &state.webtag_key);
-                layout_group_windows(&attachment.group_key);
-                request_group_chrome_refresh(&attachment.group_key);
-            }
-            WindowAttachmentKind::Overlay => {
-                // The overlay card is gone; drop its placement and re-lay the
-                // group so the main content repaints over the freed region.
-                clear_overlay_placement(&state.webtag_key);
-                layout_group_windows(&attachment.group_key);
-                request_group_chrome_refresh(&attachment.group_key);
-            }
-        }
+pub(crate) fn set_controller_visible(state: &UiState, visible: bool) -> StdResult<()> {
+    unsafe {
+        state
+            .controller
+            .SetIsVisible(visible)
+            .map_err(|err| WebViewError::WebView(format!("SetIsVisible failed: {err}")))
     }
-}
-
-#[cfg(not(feature = "windows-host"))]
-pub(crate) fn cleanup_window_state(state: &UiState) {
-    cleanup_standalone_window_state(state);
 }

@@ -5,9 +5,8 @@
 //! ownership required by each platform WebView runtime. It contains no
 //! product UI.
 //!
-//! On Windows, LingXia's legacy host-window grouping/chrome bridge is behind
-//! the `windows-host` feature so standalone `lingxia-webview` users get a
-//! plain WebView2 surface by default.
+//! On Windows, host-window grouping, chrome, panels, and app layout live in
+//! `lingxia-windows`; this crate only provides the WebView2 surface.
 
 use thiserror::Error;
 
@@ -194,33 +193,9 @@ pub mod platform {
     #[cfg(target_os = "windows")]
     pub mod windows {
         pub use crate::windows::{
-            WindowsWebViewContentWindow, WindowsWebViewHandler, WindowsWebViewWindowSnapshot,
-            find_webview_content_window, find_webview_handler, post_to_window_thread,
-            set_webview_devtools_enabled, set_webview_user_data_dir,
+            WindowsWebViewHandler, WindowsWebViewNativeView, WindowsWebViewNativeViewHost,
+            find_webview_handler, set_webview_devtools_enabled, set_webview_native_view_host,
+            set_webview_user_data_dir,
         };
-
-        #[cfg(feature = "windows-host")]
-        #[doc(hidden)]
-        pub mod lingxia_host {
-            pub use crate::windows::{
-                HostWindowCreatedHandler, WindowsCardDecorator, WindowsChromeAttachedLayout,
-                WindowsChromeAttachedState, WindowsChromeCommand, WindowsChromeHit,
-                WindowsChromePanel, WindowsChromePanelLayout, WindowsChromePanelLayoutInput,
-                WindowsChromeRenderer, WindowsChromeState, WindowsContentRect, WindowsFrameButton,
-                WindowsHostPanelContent, WindowsHostPanelInputHandler, WindowsHostPanelKeyEvent,
-                WindowsHostPanelTab, WindowsPanelPosition, WindowsWebViewHostWindow,
-                WindowsWindowLayout, active_content_screen_rect,
-                add_webview_host_window_created_handler,
-                clear_host_panel_input_handler, clear_webview_group_override,
-                clear_webview_os_frame, find_webview_host_window, hide_host_panel,
-                invalidate_host_panel, is_panel_visible,
-                request_webview_host_window_layout, restore_presented_group_main,
-                set_default_window_size, set_host_panel_input_handler, set_host_panel_maximized,
-                set_host_panel_tabs, set_webview_chrome_event_handler, set_webview_close_handler,
-                set_webview_group_override, set_webview_os_frame, set_webview_window_layout,
-                set_windows_card_decorator, set_windows_chrome_renderer,
-                show_interactive_host_panel, update_host_panel_body,
-            };
-        }
     }
 }

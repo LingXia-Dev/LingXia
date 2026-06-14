@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use lingxia_webview::platform::windows::post_to_window_thread;
+use lingxia_platform::windows::webview_host::post_to_window_thread;
 use windows::Win32::Foundation::HWND;
 use windows::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CreatePopupMenu, DestroyMenu, MF_STRING, SetForegroundWindow, TPM_NONOTIFY,

@@ -4,11 +4,12 @@ use std::sync::{Arc, LazyLock, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use lingxia_webview::WebTag;
-use lingxia_webview::platform::windows::lingxia_host::{
-    clear_webview_group_override, clear_webview_os_frame, set_webview_group_override,
-    set_webview_os_frame,
+use crate::windows::webview_host::{
+    clear_webview_group_override, clear_webview_os_frame, hide_webview_window,
+    present_webview_as_overlay, set_webview_close_handler, set_webview_group_override,
+    set_webview_os_frame, show_webview_as_panel, show_webview_window,
 };
+use lingxia_webview::WebTag;
 use lingxia_webview::platform::windows::{WindowsWebViewHandler, find_webview_handler};
 use lingxia_webview::runtime as webview_runtime;
 
@@ -69,9 +70,7 @@ pub(super) fn hide_lxapp_window(appid: &str, session_id: u64) {
     invalidate_show_request(&format!("main:{appid}#{session_id}"));
     for webtag in webview_runtime::list_webviews() {
         if webtag.extract_appid() == appid && webtag.session_id() == Some(session_id) {
-            if let Some(handler) = find_webview_handler(&webtag) {
-                let _ = handler.hide();
-            }
+            let _ = hide_webview_window(&webtag);
         }
     }
 }
@@ -84,9 +83,8 @@ fn show_webview_handler_for_mode(
     panel_id: &str,
 ) {
     let result = match open_mode {
-        LxAppOpenMode::Panel => handler.show_panel(title, panel_id),
-        LxAppOpenMode::Normal if activate => handler.show_window(title),
-        LxAppOpenMode::Normal => handler.show_window_inactive(title),
+        LxAppOpenMode::Panel => show_webview_as_panel(&handler.webtag(), title, panel_id),
+        LxAppOpenMode::Normal => show_webview_window(&handler.webtag(), title, activate),
     };
     if let Err(err) = result {
         log::warn!(
@@ -144,14 +142,12 @@ fn close_action_for_mode(open_mode: LxAppOpenMode) -> WindowsCloseAction {
 
 fn install_close_handler(webtag: &WebTag, action: WindowsCloseAction) {
     let webtag_for_close = webtag.clone();
-    lingxia_webview::platform::windows::lingxia_host::set_webview_close_handler(
+    set_webview_close_handler(
         webtag,
         Arc::new(move || match action {
             WindowsCloseAction::ExitApp => request_windows_app_exit(),
             WindowsCloseAction::HideWindow => {
-                if let Some(handler) = find_webview_handler(&webtag_for_close) {
-                    let _ = handler.hide();
-                }
+                let _ = hide_webview_window(&webtag_for_close);
             }
         }),
     );
@@ -163,7 +159,7 @@ fn install_close_handler(webtag: &WebTag, action: WindowsCloseAction) {
 // presenter shows it as a desktop window and reports closes back to the logic
 // layer. The platform layer cannot depend on lingxia-logic, so the close
 // notification is delivered through a callback the `lingxia` facade registers
-// — the same inversion the apple/android/harmony FFI layers use to call
+// 鈥?the same inversion the apple/android/harmony FFI layers use to call
 // `lingxia_logic::notify_surface_closed`.
 
 type SurfaceClosedHandler = Arc<dyn Fn(&str, &str) + Send + Sync>;
@@ -214,7 +210,7 @@ fn notify_page_visibility(page_instance_id: &str, visible: bool) {
 }
 
 /// Disposes a surface's content page instance in the logic layer. Disposing
-/// detaches and destroys the page's webview (closing its window/overlay — a
+/// detaches and destroys the page's webview (closing its window/overlay 鈥?a
 /// plain `destroy_webview` cannot, because the page instance still holds a
 /// webview reference) and fires onClose. The `lingxia` facade wires this to
 /// `lxapp::dispose_page_instance_by_id`.
@@ -285,7 +281,7 @@ fn surface_entry(id: &str) -> Option<SurfaceEntry> {
     SURFACES.lock().ok().and_then(|map| map.get(id).cloned())
 }
 
-/// A finite, positive dimension, else 0 (meaning "unset" — the host derives a
+/// A finite, positive dimension, else 0 (meaning "unset" 鈥?the host derives a
 /// default). The logic layer passes NaN for unset surface dimensions.
 fn finite_or_zero(value: f64) -> f64 {
     if value.is_finite() && value > 0.0 {
@@ -297,12 +293,19 @@ fn finite_or_zero(value: f64) -> f64 {
 
 /// Shows a surface's webview per its kind: a standalone window for `window`,
 /// a floating top-most popup for `overlay`.
-fn present_for_kind(handler: &WindowsWebViewHandler, entry: &SurfaceEntry) -> Result<(), String> {
+fn present_for_kind(_handler: &WindowsWebViewHandler, entry: &SurfaceEntry) -> Result<(), String> {
     let result = match entry.kind {
-        SurfaceKind::Window => handler.show_window(&entry.title),
+        SurfaceKind::Window => show_webview_window(&entry.webtag, &entry.title, true),
         SurfaceKind::Overlay => {
             let p = &entry.placement;
-            handler.present_as_overlay(p.width, p.height, p.width_ratio, p.height_ratio, p.position)
+            present_webview_as_overlay(
+                &entry.webtag,
+                p.width,
+                p.height,
+                p.width_ratio,
+                p.height_ratio,
+                p.position,
+            )
         }
     };
     result.map_err(|err| err.to_string())
@@ -396,9 +399,7 @@ pub(super) fn hide_surface(_app_id: &str, id: &str) -> Result<(), PlatformError>
     };
     // Both kinds own their host window; hiding it keeps the webview alive so a
     // later show re-presents it.
-    if let Some(handler) = find_webview_handler(&entry.webtag) {
-        let _ = handler.hide();
-    }
+    let _ = hide_webview_window(&entry.webtag);
     // Mark hidden so the page fires onHide and the dispose timer can reclaim it
     // after the hidden TTL.
     if let Some(page_instance_id) = &entry.page_instance_id {
@@ -435,7 +436,7 @@ fn present_surface_when_ready(webtag: WebTag, id: String) {
 
 fn present_surface_with_handler(handler: WindowsWebViewHandler, webtag: &WebTag, id: &str) {
     let id_for_close = id.to_string();
-    lingxia_webview::platform::windows::lingxia_host::set_webview_close_handler(
+    set_webview_close_handler(
         webtag,
         // The native close button (or the WM_CLOSE that the OS frame sends)
         // must actually close the surface: the WM_CLOSE handler suppresses the

@@ -10,14 +10,15 @@ keywords = ["lingxia", "windows", "webview2", "lxapp"]
 categories = ["gui", "os::windows-apis"]
 
 [features]
-default = ["standard"]
-host-api = ["dep:lingxia-webview"]
+default = []
+host-api = ["dep:lingxia-platform"]
 runtime = [
     "host-api",
     "dep:image",
     "dep:lingxia",
     "dep:lingxia-messaging",
     "dep:lingxia-platform",
+    "dep:lingxia-webview",
     "dep:log",
     "dep:lxapp",
     "dep:serde_json",
@@ -41,7 +42,7 @@ log = { workspace = true, optional = true }
 lxapp = { workspace = true, default-features = false, optional = true }
 lingxia-messaging = { workspace = true, optional = true }
 lingxia-platform = { workspace = true, optional = true }
-lingxia-webview = { workspace = true, features = ["windows-host"], optional = true }
+lingxia-webview = { workspace = true, optional = true }
 # proc-macros: the `#[implement]` attribute (MFPlay callback in video_player).
 windows-core = { workspace = true, features = ["proc-macros"], optional = true }
 windows = { workspace = true, features = [

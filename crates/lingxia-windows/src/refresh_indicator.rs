@@ -1,6 +1,5 @@
 //! Pull-to-refresh indicator: a small rounded pill with three pulsing dots,
-//! shown at the top-center of the current page while a refresh is in flight —
-//! the Windows counterpart of the macOS `MacPullToRefreshHelper`.
+//! shown at the top-center of the current page while a refresh is in flight 鈥?//! the Windows counterpart of the macOS `MacPullToRefreshHelper`.
 //!
 //! This is host UI, so it lives in the Windows host SDK, not in
 //! `lingxia-webview`. The webview only reports where its content is on screen
@@ -12,11 +11,9 @@ use std::ffi::c_void;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 
+use crate::webview_host::post_to_window_thread;
+use crate::webview_host::{WindowsContentRect, active_content_screen_rect};
 use lingxia_platform::set_windows_refresh_indicator_handler;
-use lingxia_webview::platform::windows::lingxia_host::{
-    WindowsContentRect, active_content_screen_rect,
-};
-use lingxia_webview::platform::windows::post_to_window_thread;
 use windows::Win32::Foundation::{COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
     BeginPaint, CreateRoundRectRgn, CreateSolidBrush, DeleteObject, Ellipse, EndPaint, FillRect,

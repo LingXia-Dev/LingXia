@@ -17,7 +17,7 @@ lingxia-app-context = { workspace = true }
 lingxia-browser = { workspace = true }
 lingxia-service = { workspace = true }
 lingxia-terminal = { workspace = true }
-lingxia-webview = { workspace = true, features = ["windows-host"] }
+lingxia-webview = { workspace = true }
 lingxia-native-macros = { workspace = true }
 lingxia-platform = { workspace = true }
 futures = { workspace = true }

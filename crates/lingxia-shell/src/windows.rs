@@ -1,10 +1,10 @@
 //! Windows shell product layer: custom window chrome.
 //!
-//! The shell owns all product window-chrome policy on Windows — colors,
+//! The shell owns all product window-chrome policy on Windows 鈥?colors,
 //! dimensions, GDI painting of the top bar / sidebar / tab bar / panel
 //! decorations, and the mapping from client points to chrome elements.
 //! It plugs into `lingxia-webview`'s generic hosting layer through the
-//! [`lingxia_webview::platform::windows::lingxia_host::WindowsChromeRenderer`] seam.
+//! [`lingxia_platform::windows::webview_host::WindowsChromeRenderer`] seam.
 
 mod chrome;
 pub mod clipboard;

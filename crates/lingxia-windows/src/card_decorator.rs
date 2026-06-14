@@ -19,9 +19,7 @@ use std::collections::HashMap;
 use std::ffi::c_void;
 use std::sync::{Arc, Mutex, OnceLock};
 
-use lingxia_webview::platform::windows::lingxia_host::{
-    WindowsCardDecorator, set_windows_card_decorator,
-};
+use crate::webview_host::{WindowsCardDecorator, set_windows_card_decorator};
 use windows::Win32::Foundation::{COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, POINT, SIZE, WPARAM};
 use windows::Win32::Graphics::Gdi::{
     AC_SRC_ALPHA, AC_SRC_OVER, BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BLENDFUNCTION,

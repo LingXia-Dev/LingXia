@@ -1666,10 +1666,7 @@ impl WebTag {
     /// session defaulting to `0` when the tag carries no `#session` suffix.
     /// Tags without an `appid:` prefix are returned unchanged.
     #[cfg_attr(
-        any(
-            not(target_os = "windows"),
-            all(target_os = "windows", not(feature = "windows-host"))
-        ),
+        any(not(target_os = "windows"), target_os = "windows"),
         allow(dead_code)
     )]
     pub(crate) fn group_key(&self) -> String {

@@ -41,7 +41,7 @@ mod apple;
 pub mod harmony;
 
 #[cfg(target_os = "windows")]
-mod windows;
+pub mod windows;
 
 #[cfg(not(any(
     target_os = "android",

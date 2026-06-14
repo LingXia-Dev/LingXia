@@ -18,6 +18,7 @@ mod ui_update;
 mod user_feedback;
 mod video_info;
 mod video_player;
+pub mod webview_host;
 mod wifi;
 
 pub(crate) use app::request_windows_app_exit;

@@ -16,12 +16,12 @@ use std::collections::HashMap;
 use std::ffi::c_void;
 use std::sync::{Arc, Mutex, OnceLock};
 
+use crate::webview_host::post_to_window_thread;
 use crate::webview_host::{
     WindowsWebViewHostWindow, add_webview_host_window_created_handler, find_webview_host_window,
     request_webview_host_window_layout,
 };
 use lingxia_webview::WebTag;
-use lingxia_webview::platform::windows::post_to_window_thread;
 use windows::Win32::Foundation::{
     COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, SIZE, WPARAM,
 };

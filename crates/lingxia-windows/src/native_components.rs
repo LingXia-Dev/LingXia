@@ -1,4 +1,4 @@
-//! Embedded native components for Windows — Input / Textarea / Video.
+//! Embedded native components for Windows 鈥?Input / Textarea / Video.
 //!
 //! The page view mounts `<lx-input>` / `<lx-textarea>` / `<lx-video>` over
 //! the webview by sending component messages (`component.mount` /
@@ -7,8 +7,8 @@
 //! `lingxia-lxapp` routes those messages to the host registered by
 //! [`install`]; this module owns all component policy: it places a
 //! borderless Win32 child over the webview content at the reported
-//! coverage rect — an `EDIT` control (multiline for textarea) or an MFPlay
-//! video surface (`video_player::VideoPlayer`) — keeps it aligned while
+//! coverage rect 鈥?an `EDIT` control (multiline for textarea) or an MFPlay
+//! video surface (`video_player::VideoPlayer`) 鈥?keeps it aligned while
 //! the page scrolls/relays out, and emits the component's events back to
 //! the page view and to page-function bindings (`input`/`focus`/`blur`/
 //! `confirm` for text, the media transitions plus a timer-driven
@@ -28,19 +28,18 @@
 //! webview window (component controls are its children). Messages already
 //! arrive on that thread (WebView2 `WebMessageReceived`); calls from other
 //! threads (page teardown) are marshalled with
-//! `lingxia_webview::platform::windows::post_to_window_thread`. The state
+//! `crate::webview_host::post_to_window_thread`. The state
 //! registry is guarded by a mutex that is never held across Win32 calls
-//! that can re-enter the window procedures (e.g. `SetWindowTextW` →
-//! `EN_CHANGE`).
+//! that can re-enter the window procedures (e.g. `SetWindowTextW` 鈫?//! `EN_CHANGE`).
 
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex, OnceLock};
 
-use lingxia_platform::traits::video_player::VideoPlayerCommand;
-use lingxia_webview::WebViewController;
-use lingxia_webview::platform::windows::{
+use crate::webview_host::{
     WindowsWebViewContentWindow, find_webview_content_window, post_to_window_thread,
 };
+use lingxia_platform::traits::video_player::VideoPlayerCommand;
+use lingxia_webview::WebViewController;
 use serde_json::{Value, json};
 use windows::Win32::Foundation::{COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
@@ -152,7 +151,7 @@ struct PageView {
 }
 
 /// A page's overlays show only while it is its app's current page.
-/// Derived live from the page stack on every layout pass — a cached flag
+/// Derived live from the page stack on every layout pass 鈥?a cached flag
 /// wedges as soon as any navigation path forgets to dispatch a lifecycle
 /// event (the pause/resume hooks remain event-driven).
 fn page_is_foreground(context: &PageContext) -> bool {
@@ -898,8 +897,7 @@ fn purge_component_state(key: &str) {
 // ---------------------------------------------------------------------------
 
 /// Emits a component event to the page: queued until the view announces
-/// `component.ready`, then delivered to the view's component handler and —
-/// when the component declared page-function bindings — to the page's
+/// `component.ready`, then delivered to the view's component handler and 鈥?/// when the component declared page-function bindings 鈥?to the page's
 /// logic service through `lxapp::on_native_component_event`.
 fn emit_event(key: &str, event: &str, detail: Value) {
     let snapshot = {
@@ -1106,7 +1104,7 @@ unsafe extern "system" fn container_proc(
             }
             LRESULT(0)
         }
-        // Double click toggles video fullscreen, Escape leaves it — the
+        // Double click toggles video fullscreen, Escape leaves it 鈥?the
         // fullscreen surface covers the page's own controls, so it must be
         // dismissible from the surface itself.
         WindowsAndMessaging::WM_LBUTTONDBLCLK => {

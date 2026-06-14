@@ -11,7 +11,7 @@ path = "src/main.rs"
 [dependencies]
 lingxia = { workspace = true, features = ["standard"] }
 lingxia_devtool = { workspace = true, features = ["browser"] }
-lingxia-windows = { workspace = true }
+lingxia-windows = { workspace = true, features = ["standard"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 

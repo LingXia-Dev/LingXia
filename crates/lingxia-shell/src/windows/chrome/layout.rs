@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use lingxia_webview::platform::windows::lingxia_host::WindowsPanelPosition;
+use lingxia_platform::windows::webview_host::WindowsPanelPosition;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum WindowsShellTabBarPosition {

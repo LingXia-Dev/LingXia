@@ -233,7 +233,7 @@ pub(crate) fn register_event_handlers(
                         // are dispatched synchronously on this UI thread so
                         // mount/update/unmount ordering is preserved; handlers
                         // marshal their own Win32 work via
-                        // `post_to_window_thread` and never block here.
+                        // UI layers should hop to their own window thread and never block here.
                         if json
                             .get("__lingxia_native_component__")
                             .and_then(|value| value.as_bool())

@@ -32,7 +32,7 @@ lingxia-browser = { workspace = true, optional = true }
 lingxia-logic = { workspace = true, optional = true }
 lingxia-shell = { workspace = true, optional = true }
 lingxia-platform = { workspace = true }
-lingxia-webview = { workspace = true, features = ["windows-host"] }
+lingxia-webview = { workspace = true }
 lingxia-messaging = { workspace = true }
 lingxia-native-macros = { workspace = true }
 log = { workspace = true }
