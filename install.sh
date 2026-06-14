@@ -59,7 +59,7 @@ download() {
 
 # --- Detect platform ---------------------------------------------------------
 # The installer runs from a POSIX shell. On Windows this means Git Bash, MSYS,
-# or Cygwin; PowerShell users should download the .exe release asset directly.
+# or Cygwin; PowerShell users should run install.ps1 instead.
 detect_os() {
   case "$(uname -s)" in
     Darwin) echo "darwin" ;;
@@ -68,7 +68,7 @@ detect_os() {
       err "Linux is not supported yet. Track progress and grab future builds at https://github.com/$REPO/releases"
       ;;
     *)
-      err "unsupported OS '$(uname -s)'. Windows users: run this script from Git Bash/MSYS or download the .exe from https://github.com/$REPO/releases"
+      err "unsupported OS '$(uname -s)'. Windows users: run this script from Git Bash/MSYS, or use install.ps1 in PowerShell"
       ;;
   esac
 }

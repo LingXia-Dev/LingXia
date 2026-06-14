@@ -42,10 +42,19 @@ This keeps UI rendering separate from business work. View code renders; Logic co
 
 ## Quick Start
 
-Install the CLI:
+Install the CLI.
+
+**macOS** (or Git Bash, MSYS, Cygwin on Windows):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/LingXia-Dev/LingXia/main/install.sh | sh
+lingxia --version
+```
+
+**Windows PowerShell:**
+
+```powershell
+irm https://raw.githubusercontent.com/LingXia-Dev/LingXia/main/install.ps1 | iex
 lingxia --version
 ```
 
