@@ -390,12 +390,12 @@ Specify one with `--platform <name>` or build all with `--all-platforms`."
         build_config.skip_native_build = platform.hoists_native_build();
         let mut artifacts = platform.build(&build_config)?;
         if matches!(platform_type, PlatformType::Windows) {
-            artifacts =
-                assemble_windows_dist(&project_root, &config, resolved_env.version, artifacts)?;
-            if msix
-                && let Some(dist_dir) = artifacts.path().parent()
-            {
-                crate::platform::windows::msix::package(&project_root, &config, dist_dir)?;
+            if package || msix {
+                artifacts =
+                    assemble_windows_dist(&project_root, &config, resolved_env.version, artifacts)?;
+                if msix && let Some(dist_dir) = artifacts.path().parent() {
+                    crate::platform::windows::msix::package(&project_root, &config, dist_dir)?;
+                }
             }
         }
         if package {
@@ -444,10 +444,7 @@ fn assemble_windows_dist(
         .map(|app| app.product_name.as_str())
         .unwrap_or("LingXia");
     let windows_dir = project_root.join("windows");
-    let dist_dir = windows_dir
-        .join(".lingxia")
-        .join("dist")
-        .join(product_name);
+    let dist_dir = windows_dir.join(".lingxia").join("dist").join(product_name);
     if dist_dir.exists() {
         std::fs::remove_dir_all(&dist_dir)
             .with_context(|| format!("Failed to clear {}", dist_dir.display()))?;
