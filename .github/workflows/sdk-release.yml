@@ -43,9 +43,36 @@ env:
   RUST_TOOLCHAIN: "1.95.0"
 
 jobs:
+  # Footgun guard: this executor is dispatched by "Release / 2. Publish
+  # Component" (which runs it as github-actions[bot]). Block humans from running
+  # it by hand with a real publish, which would skip Release / 2's ordering and
+  # version-in-code checks. Manual dry_run=true is allowed for debugging.
+  guard:
+    name: Guard manual dispatch
+    runs-on: ubuntu-latest
+    steps:
+      - name: Reject manual non-dry-run runs
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+          ACTOR: ${{ github.triggering_actor }}
+        run: |
+          set -euo pipefail
+          if [[ "$DRY_RUN" == "true" ]]; then
+            echo "Dry run — manual dispatch allowed."
+            exit 0
+          fi
+          if [[ "$ACTOR" == "github-actions[bot]" ]]; then
+            echo "Dispatched by Release / 2. Publish Component — allowed."
+            exit 0
+          fi
+          echo "::error::Internal release executor — do not run it by hand."
+          echo "::error::Use 'Release / 2. Publish Component' for a real release, or set dry_run=true to debug. (triggering_actor=$ACTOR)"
+          exit 1
+
   # Pre-check job to verify version before any platform build uploads assets.
   pre-check:
     name: Release / Verify SDK tag
+    needs: guard
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
