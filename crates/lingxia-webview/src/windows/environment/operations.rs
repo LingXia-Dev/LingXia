@@ -93,6 +93,12 @@ pub(crate) fn go_history(webview: &ICoreWebView2, direction: HistoryDirection) -
     Ok(())
 }
 
+fn send_once<T>(sent: &std::sync::Arc<std::sync::atomic::AtomicBool>, resp: &Sender<T>, value: T) {
+    if !sent.swap(true, std::sync::atomic::Ordering::AcqRel) {
+        let _ = resp.send(value);
+    }
+}
+
 pub(crate) fn start_capture_preview_png(webview: &ICoreWebView2, resp: Sender<StdResult<Vec<u8>>>) {
     let stream = match unsafe { CreateStreamOnHGlobal(None, true) } {
         Ok(stream) => stream,
@@ -106,6 +112,8 @@ pub(crate) fn start_capture_preview_png(webview: &ICoreWebView2, resp: Sender<St
     let capture_stream = stream.clone();
     let read_stream = stream.clone();
     let start_resp = resp.clone();
+    let sent = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let callback_sent = sent.clone();
     let callback = CapturePreviewCompletedHandler::create(Box::new(move |result| {
         let response = match result {
             Ok(()) => {
@@ -123,7 +131,7 @@ pub(crate) fn start_capture_preview_png(webview: &ICoreWebView2, resp: Sender<St
                 "WebView2 CapturePreview failed: {err}"
             ))),
         };
-        let _ = resp.send(response);
+        send_once(&callback_sent, &resp, response);
         Ok(())
     }));
 
@@ -135,9 +143,13 @@ pub(crate) fn start_capture_preview_png(webview: &ICoreWebView2, resp: Sender<St
         )
     };
     if let Err(err) = result {
-        let _ = start_resp.send(Err(WebViewError::WebView(format!(
-            "CapturePreview failed: {err}"
-        ))));
+        send_once(
+            &sent,
+            &start_resp,
+            Err(WebViewError::WebView(format!(
+                "CapturePreview failed: {err}"
+            ))),
+        );
     }
 }
 
@@ -150,12 +162,14 @@ pub(crate) fn start_execute_script<T: Send + 'static>(
     map: fn(std::result::Result<String, WebViewScriptError>) -> T,
 ) {
     let handler_resp = resp.clone();
+    let sent = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let handler_sent = sent.clone();
     let handler = ExecuteScriptCompletedHandler::create(Box::new(move |result, json| {
         let outcome = match result {
             Ok(()) => Ok(json),
             Err(err) => Err(WebViewScriptError::Platform(err.to_string())),
         };
-        let _ = handler_resp.send(map(outcome));
+        send_once(&handler_sent, &handler_resp, map(outcome));
         Ok(())
     }));
 
@@ -164,7 +178,11 @@ pub(crate) fn start_execute_script<T: Send + 'static>(
         webview.ExecuteScript(*js.as_ref().as_pcwstr(), &handler)
     };
     if let Err(err) = started {
-        let _ = resp.send(map(Err(WebViewScriptError::Platform(err.to_string()))));
+        send_once(
+            &sent,
+            &resp,
+            map(Err(WebViewScriptError::Platform(err.to_string()))),
+        );
     }
 }
 

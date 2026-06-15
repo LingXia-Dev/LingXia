@@ -30,7 +30,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 #[cfg(lingxia_ghostty_vt_available)]
 use std::sync::mpsc::{self, Receiver, TrySendError};
 #[cfg(lingxia_ghostty_vt_available)]
-use std::sync::{Arc, LazyLock, Mutex};
+use std::sync::{Arc, LazyLock, Mutex, OnceLock};
 #[cfg(lingxia_ghostty_vt_available)]
 use std::thread;
 #[cfg(lingxia_ghostty_vt_available)]
@@ -714,6 +714,7 @@ fn cursor_style_name(style: GhosttyRenderStateCursorVisualStyle) -> &'static str
 }
 
 #[cfg(lingxia_ghostty_vt_available)]
+#[derive(Clone)]
 struct TerminalShell {
     path: String,
     args: Vec<String>,
@@ -721,6 +722,13 @@ struct TerminalShell {
 
 #[cfg(lingxia_ghostty_vt_available)]
 fn resolved_shell() -> TerminalShell {
+    static RESOLVED_SHELL: OnceLock<TerminalShell> = OnceLock::new();
+
+    RESOLVED_SHELL.get_or_init(resolve_shell_uncached).clone()
+}
+
+#[cfg(lingxia_ghostty_vt_available)]
+fn resolve_shell_uncached() -> TerminalShell {
     if let Some(path) = env_non_empty("LINGXIA_TERMINAL_SHELL") {
         return TerminalShell {
             path,
@@ -767,18 +775,40 @@ fn env_non_empty(key: &str) -> Option<String> {
 
 #[cfg(all(lingxia_ghostty_vt_available, windows))]
 fn command_available(command: &str) -> bool {
-    use std::os::windows::process::CommandExt;
+    let command = std::path::Path::new(command);
+    if command.components().count() > 1 {
+        return command.is_file();
+    }
 
-    // `CREATE_NO_WINDOW` — without it the spawn flashes a console
-    // window when the host is a GUI app.
-    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    let extensions: Vec<String> = if command.extension().is_some() {
+        vec![String::new()]
+    } else {
+        std::env::var_os("PATHEXT")
+            .map(|value| {
+                value
+                    .to_string_lossy()
+                    .split(';')
+                    .filter(|ext| !ext.is_empty())
+                    .map(str::to_string)
+                    .collect()
+            })
+            .filter(|extensions: &Vec<String>| !extensions.is_empty())
+            .unwrap_or_else(|| vec![".EXE".to_string(), ".BAT".to_string(), ".CMD".to_string()])
+    };
 
-    std::process::Command::new("where")
-        .arg(command)
-        .creation_flags(CREATE_NO_WINDOW)
-        .output()
-        .map(|output| output.status.success())
-        .unwrap_or(false)
+    let Some(path_var) = std::env::var_os("PATH") else {
+        return false;
+    };
+
+    std::env::split_paths(&path_var).any(|dir| {
+        extensions.iter().any(|ext| {
+            let mut candidate = dir.join(command);
+            if !ext.is_empty() {
+                candidate.set_extension(ext.trim_start_matches('.'));
+            }
+            candidate.is_file()
+        })
+    })
 }
 
 #[cfg(lingxia_ghostty_vt_available)]

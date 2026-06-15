@@ -215,6 +215,7 @@ mod tests {
             windows: Some(WindowsConfig {
                 app_id: Some("app.example.demo.windows".into()),
                 executable_name: Some("Demo".into()),
+                publisher: None,
             }),
             features: None,
             capabilities: None,

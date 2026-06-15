@@ -117,8 +117,7 @@ impl WindowsWebViewNativeViewHost for PlatformNativeViewHost {
         create_webview_parent_window(webtag)
     }
 
-    fn destroy_webview_parent(&self, webtag_key: &str, view: WindowsWebViewNativeView) {
-        cleanup_window_state(webtag_key);
+    fn destroy_webview_parent(&self, _webtag_key: &str, view: WindowsWebViewNativeView) {
         unsafe {
             let _ = WindowsAndMessaging::DestroyWindow(hwnd_from_handle(view.window));
         }
