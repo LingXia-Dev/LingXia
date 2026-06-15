@@ -11,6 +11,10 @@ struct RunnerBuildPlugin: BuildToolPlugin {
         let tool = try context.tool(named: "RunnerBuildTool")
         let outputDir = context.pluginWorkDirectoryURL.appending(path: "RunnerBuild")
         let stampPath = outputDir.appending(path: "prepared.stamp")
+        // Generated Swift whose content is the Rust staticlib's hash. As a compiled
+        // plugin output it makes SwiftPM recompile + relink whenever liblingxia.a
+        // changes (SwiftPM otherwise doesn't track the external `.a` as a link input).
+        let fingerprintPath = outputDir.appending(path: "RustLibFingerprint.swift")
         let packageDir = context.package.directoryURL
         let inputFiles = collectInputFiles(packageDir: packageDir)
 
@@ -26,7 +30,7 @@ struct RunnerBuildPlugin: BuildToolPlugin {
                 ],
                 environment: [:],
                 inputFiles: inputFiles,
-                outputFiles: [stampPath]
+                outputFiles: [stampPath, fingerprintPath]
             )
         ]
     }
