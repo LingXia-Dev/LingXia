@@ -8,10 +8,11 @@ use std::path::Path;
 use windows::Win32::Media::MediaFoundation::{
     IMFSourceReader, MF_API_VERSION, MF_MT_AVG_BITRATE, MF_MT_DEFAULT_STRIDE, MF_MT_FRAME_RATE,
     MF_MT_FRAME_SIZE, MF_MT_MAJOR_TYPE, MF_MT_SUBTYPE, MF_MT_VIDEO_ROTATION, MF_PD_DURATION,
-    MF_SDK_VERSION, MF_SOURCE_READER_ENABLE_ADVANCED_VIDEO_PROCESSING,
-    MF_SOURCE_READER_FIRST_VIDEO_STREAM, MF_SOURCE_READER_MEDIASOURCE,
-    MF_SOURCE_READERF_ENDOFSTREAM, MFCreateAttributes, MFCreateMediaType,
-    MFCreateSourceReaderFromURL, MFMediaType_Video, MFStartup, MFVideoFormat_RGB32,
+    MF_SDK_VERSION, MF_SOURCE_READER_DISABLE_DXVA,
+    MF_SOURCE_READER_ENABLE_ADVANCED_VIDEO_PROCESSING, MF_SOURCE_READER_FIRST_VIDEO_STREAM,
+    MF_SOURCE_READER_MEDIASOURCE, MF_SOURCE_READERF_ENDOFSTREAM, MFCreateAttributes,
+    MFCreateMediaType, MFCreateSourceReaderFromURL, MFMediaType_Video, MFStartup,
+    MFVideoFormat_RGB32,
 };
 use windows::Win32::System::Com::StructuredStorage::PROPVARIANT;
 use windows::Win32::System::Com::{COINIT_MULTITHREADED, CoInitializeEx};
@@ -24,7 +25,7 @@ use crate::traits::media_runtime::{ExtractVideoThumbnailRequest, VideoInfo, Vide
 /// `MFSTARTUP_NOSOCKET` — the lite startup without the RTSP stack.
 const MFSTARTUP_LITE: u32 = 0x1;
 
-fn ensure_media_foundation() {
+pub(super) fn ensure_media_foundation() {
     use std::sync::OnceLock;
     static STARTED: OnceLock<()> = OnceLock::new();
     STARTED.get_or_init(|| unsafe {
@@ -50,12 +51,17 @@ fn open_reader(path: &Path, with_processing: bool) -> Result<IMFSourceReader, Pl
     let attributes = if with_processing {
         let mut attributes = None;
         unsafe {
-            MFCreateAttributes(&mut attributes, 1)
+            MFCreateAttributes(&mut attributes, 2)
                 .map_err(|err| PlatformError::Platform(format!("attributes: {err}")))?;
         }
         if let Some(attributes) = attributes.as_ref() {
             unsafe {
                 let _ = attributes.SetUINT32(&MF_SOURCE_READER_ENABLE_ADVANCED_VIDEO_PROCESSING, 1);
+                // Force software decode so frames land in system memory. With
+                // DXVA the decoder hands back D3D surfaces, and a plain
+                // `IMFMediaBuffer::Lock` of those yields an all-zero (black)
+                // buffer — which is exactly what the thumbnail grabber reads.
+                let _ = attributes.SetUINT32(&MF_SOURCE_READER_DISABLE_DXVA, 1);
             }
         }
         attributes

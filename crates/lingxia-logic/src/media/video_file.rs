@@ -177,7 +177,6 @@ async fn compress_video_api(
     options: JSCompressVideoOptions,
 ) -> JSResult<JSCompressVideoResult> {
     let lxapp = LxApp::from_ctx(&ctx)?;
-    let runtime = &lxapp.runtime;
 
     let resolved_source = lxapp
         .resolve_accessible_path(options.path.trim())
@@ -185,6 +184,11 @@ async fn compress_video_api(
     let source_uri = resolved_source.to_string_lossy().into_owned();
 
     let output_path = resolve_compress_video_output_path(&lxapp, options.output_path.as_deref())?;
+    if paths_refer_to_same_file(&resolved_source, &output_path) {
+        return Err(js_invalid_parameter_error(
+            "compressVideo outputPath must be different from source path",
+        ));
+    }
     let quality = parse_video_quality(options.quality.as_deref())?;
     let (bitrate_kbps, fps, resolution_ratio) = if quality.is_some() {
         (None, None, None)
@@ -205,8 +209,13 @@ async fn compress_video_api(
         output_path,
     };
 
-    let compressed = runtime
-        .compress_video(&request)
+    // A full transcode can run for many seconds; keep it off the JS executor
+    // thread so the runtime stays responsive while compression proceeds.
+    let runtime = lxapp.runtime.clone();
+    let compressed = rong::RongExecutor::global()
+        .spawn_blocking(move || runtime.compress_video(&request))
+        .await
+        .map_err(|_| js_internal_error("compressVideo task failed to complete"))?
         .map_err(|e| js_error_from_platform_error(&e))?;
     ensure_output_quota(&lxapp, &compressed.path)?;
 
@@ -247,6 +256,29 @@ where
     }
 }
 
+fn paths_refer_to_same_file(left: &Path, right: &Path) -> bool {
+    let left = comparable_path(left);
+    let right = comparable_path(right);
+    if cfg!(windows) {
+        left.to_string_lossy()
+            .eq_ignore_ascii_case(&right.to_string_lossy())
+    } else {
+        left == right
+    }
+}
+
+fn comparable_path(path: &Path) -> PathBuf {
+    if let Ok(path) = fs::canonicalize(path) {
+        return path;
+    }
+    if let (Some(parent), Some(file_name)) = (path.parent(), path.file_name())
+        && let Ok(parent) = fs::canonicalize(parent)
+    {
+        return parent.join(file_name);
+    }
+    path.to_path_buf()
+}
+
 fn platform_video_info_to_js(info: PlatformVideoInfo, path: String) -> JSVideoInfoResult {
     JSVideoInfoResult {
         width: info.width,
@@ -277,7 +309,10 @@ fn compressed_video_to_js(
         height: compressed.height,
         duration_ms: compressed.duration_ms,
         size: compressed.size,
-        video_type: "video/mp4".to_string(),
+        video_type: compressed
+            .mime_type
+            .filter(|mime| !mime.trim().is_empty())
+            .unwrap_or_else(|| "video/mp4".to_string()),
     })
 }
 

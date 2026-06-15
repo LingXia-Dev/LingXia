@@ -158,9 +158,10 @@ impl MediaRuntime for Platform {
 
     fn compress_video(
         &self,
-        _request: &CompressVideoRequest,
+        request: &CompressVideoRequest,
     ) -> Result<CompressedVideo, PlatformError> {
-        not_supported("compress_video")
+        let source = file::normalize_file_uri(&request.source_uri)?;
+        super::video_compress::compress_video(request, &source)
     }
 
     fn get_video_info(&self, uri: &str) -> Result<VideoInfo, PlatformError> {

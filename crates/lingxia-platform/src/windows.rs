@@ -16,6 +16,7 @@ mod secure_store;
 mod surface;
 mod ui_update;
 mod user_feedback;
+mod video_compress;
 mod video_info;
 mod video_player;
 mod wifi;
