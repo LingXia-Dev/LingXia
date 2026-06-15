@@ -33,6 +33,7 @@ const REQUIRED_RUNNER_VERSION: &str = env!("CARGO_PKG_VERSION");
 const RUNNER_WINDOWS_PACKAGE: &str = "lingxia-runner-windows";
 const RUNNER_WINDOWS_BIN_NAME: &str = "lingxia-runner";
 const RUNNER_WINDOWS_PRODUCT_NAME: &str = "LingXia Runner";
+const RUNNER_WINDOWS_APP_ID: &str = "app.lingxia.runner";
 
 fn dev_native_features(config: &LingXiaConfig, platform: &str) -> Vec<String> {
     let mut features = config.native_features_for_platform(platform);
@@ -998,7 +999,7 @@ fn prepare_windows_runner_assets(
         "productName": RUNNER_WINDOWS_PRODUCT_NAME,
         "productVersion": REQUIRED_RUNNER_VERSION,
         "envVersion": "developer",
-        "windowsAppId": identity.app_id,
+        "windowsAppId": RUNNER_WINDOWS_APP_ID,
         "homeAppId": identity.app_id,
         "homeAppVersion": identity.version,
         "devWsUrl": ws_url,
