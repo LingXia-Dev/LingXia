@@ -1,6 +1,6 @@
 use crate::commands::rust::resolve_build_profile;
 use crate::config::{LingXiaConfig, has_host_config};
-use crate::host_assets::prepare_configured_host_assets;
+use crate::host_assets::{prepare_configured_host_assets, prepare_windows_design_icon_assets};
 use crate::lxapp::ProjectFramework;
 use crate::platform::detector::PlatformType;
 use crate::platform::{self, BuildConfig, BuildProfile, InstallConfig, Platform, RunConfig};
@@ -1019,6 +1019,7 @@ fn prepare_windows_runner_assets(
     let icon_path = assets_dir.join("AppIcon.png");
     std::fs::write(&icon_path, include_bytes!("../../assets/runner-icon.png"))
         .with_context(|| format!("Failed to write {}", icon_path.display()))?;
+    prepare_windows_design_icon_assets(&assets_dir)?;
 
     // The runtime's home-app bootstrap installs from `<assets>/<appid>/`
     // before the dev-config override kicks in, so the built bundle is

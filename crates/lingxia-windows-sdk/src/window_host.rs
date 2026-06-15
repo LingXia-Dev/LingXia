@@ -54,6 +54,7 @@ static WEBTAG_CONTENT_BOUNDS: OnceLock<Mutex<HashMap<String, ContentBounds>>> = 
 static HOST_ACTIVE_WEBTAG: OnceLock<Mutex<HashMap<isize, String>>> = OnceLock::new();
 static PRESENTED_GROUP_MAIN: OnceLock<Mutex<HashMap<isize, String>>> = OnceLock::new();
 static FOCUSED_HOST_PANEL: OnceLock<Mutex<Option<String>>> = OnceLock::new();
+#[cfg(feature = "shell-runtime")]
 static HOST_CHROME_SNAPSHOTS: OnceLock<Mutex<HashMap<isize, HostChromeSnapshot>>> = OnceLock::new();
 static CHROME_INTERACTIONS: OnceLock<Mutex<HashMap<isize, ChromeInteraction>>> = OnceLock::new();
 static PULL_REFRESH_WEBTAGS: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
@@ -107,6 +108,7 @@ struct ContentBounds {
     height: i32,
 }
 
+#[cfg(feature = "shell-runtime")]
 #[derive(Clone)]
 struct HostChromeSnapshot {
     layout: WindowsWindowLayout,
@@ -1532,6 +1534,7 @@ fn invalidate_precise_shell_chrome(
     false
 }
 
+#[cfg(feature = "shell-runtime")]
 fn attached_chrome_dirty_rects(
     previous: Option<&WindowsChromeAttachedLayout>,
     current: Option<&WindowsChromeAttachedLayout>,
@@ -1550,6 +1553,7 @@ fn attached_chrome_dirty_rects(
     dirty
 }
 
+#[cfg(feature = "shell-runtime")]
 fn push_attached_layout_dirty_rects(dirty: &mut Vec<RECT>, attached: &WindowsChromeAttachedLayout) {
     for panel in &attached.panels {
         push_unique_dirty_rect(dirty, panel.rect);
@@ -1559,6 +1563,7 @@ fn push_attached_layout_dirty_rects(dirty: &mut Vec<RECT>, attached: &WindowsChr
     }
 }
 
+#[cfg(feature = "shell-runtime")]
 fn push_unique_dirty_rect(dirty: &mut Vec<RECT>, rect: RECT) {
     let rect = normalize_rect(RECT {
         left: rect.left.saturating_sub(2),

@@ -4,6 +4,8 @@ use std::collections::HashMap;
 use std::ffi::c_void;
 use std::sync::Mutex;
 
+use crate::{WindowsDesignIcon, draw_windows_design_icon_with_color};
+
 use super::*;
 
 /// Whether the layout carries a visible browser address bar (which then
@@ -194,13 +196,31 @@ pub(super) fn draw_top_bar_controls(
         draw_frame_button_glyph(hdc, GLYPH_SIDEBAR_TOGGLE, toggle, SHELL_FRAME_BUTTON_ICON);
     }
     if let Some(back) = controls.nav_back {
-        draw_frame_button_glyph(hdc, GLYPH_NAV_BACK, back, SHELL_FRAME_BUTTON_ICON);
+        draw_design_icon_button(
+            hdc,
+            back,
+            WindowsDesignIcon::Back,
+            SHELL_FRAME_BUTTON_ICON,
+            18,
+        );
     }
     if let Some(forward) = controls.nav_forward {
-        draw_frame_button_glyph(hdc, GLYPH_NAV_FORWARD, forward, SHELL_FRAME_BUTTON_ICON);
+        draw_design_icon_button(
+            hdc,
+            forward,
+            WindowsDesignIcon::Forward,
+            SHELL_FRAME_BUTTON_ICON,
+            18,
+        );
     }
     if let Some(reload) = controls.nav_reload {
-        draw_frame_button_glyph(hdc, GLYPH_NAV_RELOAD, reload, SHELL_FRAME_BUTTON_ICON);
+        draw_design_icon_button(
+            hdc,
+            reload,
+            WindowsDesignIcon::BrowserRefresh,
+            SHELL_FRAME_BUTTON_ICON,
+            18,
+        );
     }
     if let Some(address) = controls.address {
         // White capsule on the gray caption strip; anti-alias the arc.
@@ -240,7 +260,7 @@ pub(super) fn draw_navigation_bar(
 
     if navbar.show_back_button {
         let back_rect = nav_button_rect(rect, buttons_left, 0);
-        draw_frame_button_glyph(hdc, GLYPH_NAV_BACK, back_rect, text_color);
+        draw_design_icon_button(hdc, back_rect, WindowsDesignIcon::Back, text_color, 22);
         left_controls_width = back_rect.right - rect.left;
     }
     if navbar.show_home_button {
@@ -249,7 +269,7 @@ pub(super) fn draw_navigation_bar(
             buttons_left,
             if navbar.show_back_button { 1 } else { 0 },
         );
-        draw_frame_button_glyph(hdc, GLYPH_NAV_HOME, home_rect, text_color);
+        draw_design_icon_button(hdc, home_rect, WindowsDesignIcon::Home, text_color, 22);
         left_controls_width = home_rect.right - rect.left;
     }
 
@@ -263,6 +283,35 @@ pub(super) fn draw_navigation_bar(
         });
         draw_text(hdc, &navbar.title, title_rect, text_color, DT_CENTER);
     }
+}
+
+fn draw_design_icon_button(hdc: HDC, rect: RECT, icon: WindowsDesignIcon, rgb: u32, size: i32) {
+    let icon_rect = centered_square(rect, size);
+    if !draw_windows_design_icon_with_color(hdc, icon, icon_rect, rgb) {
+        let fallback = match icon {
+            WindowsDesignIcon::Back => Some(GLYPH_NAV_BACK),
+            WindowsDesignIcon::Forward => Some(GLYPH_NAV_FORWARD),
+            WindowsDesignIcon::BrowserRefresh => Some(GLYPH_NAV_RELOAD),
+            WindowsDesignIcon::Home => Some(GLYPH_NAV_HOME),
+            _ => None,
+        };
+        if let Some(glyph) = fallback {
+            draw_frame_button_glyph(hdc, glyph, rect, rgb);
+        }
+    }
+}
+
+fn centered_square(rect: RECT, size: i32) -> RECT {
+    let width = rect_width(&rect);
+    let height = rect_height(&rect);
+    let left = rect.left + (width - size).max(0) / 2;
+    let top = rect.top + (height - size).max(0) / 2;
+    normalize_rect(RECT {
+        left,
+        top,
+        right: left + size.min(width.max(1)),
+        bottom: top + size.min(height.max(1)),
+    })
 }
 
 /// Draws the Win11-style caption buttons: 46px-wide cells flush against the

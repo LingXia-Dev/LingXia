@@ -131,7 +131,7 @@ case "$PLATFORM" in
 esac
 
 I18N_DIR="$ROOT_DIR/i18n"
-ICONS_SVG_DIR="$ROOT_DIR/lingxia-sdk/resources/icons/svg"
+ICONS_SVG_DIR="$ROOT_DIR/design/icons/svg"
 ANDROID_SDK_DIR="$ROOT_DIR/lingxia-sdk/android"
 ANDROID_RES_DIR="$ANDROID_SDK_DIR/lingxia/src/main/res"
 ANDROID_DRAWABLE_DIR="$ANDROID_RES_DIR/drawable"

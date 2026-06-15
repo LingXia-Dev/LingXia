@@ -16,9 +16,9 @@ use destinations::{
 use hash::sha256_hex;
 #[cfg(test)]
 use icons::PreparedAppUiIcon;
-use icons::prepare_app_ui_icons;
 #[cfg(test)]
 use icons::validate_app_ui_svg_icon;
+use icons::{prepare_app_ui_icons, prepare_windows_design_icons, sync_windows_design_icons};
 use json::{
     build_app_json_from_config, build_ui_json_from_config, build_windows_ui_json_from_config,
 };
@@ -60,6 +60,12 @@ fn is_png_path(path: &Path) -> bool {
         .and_then(|ext| ext.to_str())
         .map(|ext| ext.eq_ignore_ascii_case("png"))
         .unwrap_or(false)
+}
+
+pub(crate) fn prepare_windows_design_icon_assets(assets_root: &Path) -> Result<()> {
+    let icons = prepare_windows_design_icons()?;
+    sync_windows_design_icons(assets_root, &icons, None)?;
+    Ok(())
 }
 
 /// Collect build-time warnings for any path-based lxapp bundle whose

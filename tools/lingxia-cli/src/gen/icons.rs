@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 #[derive(Args, Debug, Clone)]
 pub struct IconsConfig {
     /// Path to the SVG source directory
-    #[arg(short, long, default_value = "lingxia-sdk/resources/icons/svg")]
+    #[arg(short, long, default_value = "design/icons/svg")]
     pub input: PathBuf,
 
     /// Path to output iOS resources (PDF files)
@@ -20,6 +20,14 @@ pub struct IconsConfig {
     /// Path to output HarmonyOS resources (SVG copy)
     #[arg(long)]
     pub harmony_out: Option<PathBuf>,
+
+    /// Path to output Windows resources (PNG files)
+    #[arg(long)]
+    pub windows_out: Option<PathBuf>,
+
+    /// Rendered Windows PNG icon size in pixels
+    #[arg(long, default_value_t = 64)]
+    pub windows_png_size: u32,
 }
 
 pub fn run(config: IconsConfig) -> Result<()> {
@@ -79,6 +87,19 @@ pub fn run(config: IconsConfig) -> Result<()> {
                     }
                 }
             }
+
+            // Windows (PNG)
+            if let Some(ref windows_dir) = config.windows_out {
+                fs::create_dir_all(windows_dir)?;
+                let dest = windows_dir.join(format!("{}.png", file_name));
+                match convert_to_png(&svg_content, &dest, config.windows_png_size) {
+                    Ok(_) => stats.windows += 1,
+                    Err(e) => {
+                        eprintln!("  [Windows] Failed: {}", e);
+                        stats.errors += 1;
+                    }
+                }
+            }
         }
     }
 
@@ -86,6 +107,7 @@ pub fn run(config: IconsConfig) -> Result<()> {
     println!("  iOS (PDF):     {}", stats.ios);
     println!("  Android (XML): {}", stats.android);
     println!("  Harmony (SVG): {}", stats.harmony);
+    println!("  Windows (PNG): {}", stats.windows);
 
     if stats.errors > 0 {
         anyhow::bail!("Encountered {} errors during sync", stats.errors);
@@ -99,6 +121,7 @@ struct Stats {
     ios: usize,
     android: usize,
     harmony: usize,
+    windows: usize,
     errors: usize,
 }
 
@@ -157,6 +180,13 @@ fn convert_to_pdf(svg_content: &str, output_path: &Path) -> Result<()> {
 fn convert_to_android_vector(svg_content: &str, output_path: &Path) -> Result<()> {
     let xml = svg_to_vector_drawable(svg_content)?;
     fs::write(output_path, xml).context("Failed to write XML")?;
+    Ok(())
+}
+
+/// Convert SVG to PNG for Windows
+fn convert_to_png(svg_content: &str, output_path: &Path, target_size: u32) -> Result<()> {
+    fs::write(output_path, svg_to_png_bytes(svg_content, target_size)?)
+        .context("Failed to write PNG")?;
     Ok(())
 }
 

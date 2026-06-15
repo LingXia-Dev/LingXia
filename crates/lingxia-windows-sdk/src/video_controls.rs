@@ -1,19 +1,21 @@
-//! Native playback controls for the video component — the macOS player's
+//! Native playback controls for the video component, mirroring the macOS player's
 //! bottom bar (`MacLxMediaPlayer`): play/pause, a seekable progress
 //! slider, elapsed/total time, mute and fullscreen toggles, auto-hiding
 //! while playing.
 //!
 //! The bar is a per-pixel-alpha layered child window floating over the
 //! video surface: an analytically rendered translucent capsule
-//! (anti-aliased rounded rect + slider) with GDI-drawn glyphs (Segoe MDL2
-//! Assets) and time text (Segoe UI), followed by an alpha fix-up because
-//! GDI zeroes the alpha of the pixels it touches — the same approach as
-//! the device-frame toolbar. All calls run on the UI thread that owns the
-//! parent window.
+//! (anti-aliased rounded rect + slider) with shared design icons and time
+//! text, followed by an alpha fix-up because GDI can zero the alpha of the
+//! pixels it touches. All calls run on the UI thread that owns the parent
+//! window.
 
 use std::sync::Arc;
 
-use windows::Win32::Foundation::{COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, POINT, SIZE, WPARAM};
+use crate::{WindowsDesignIcon, draw_windows_design_icon_with_color};
+use windows::Win32::Foundation::{
+    COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, SIZE, WPARAM,
+};
 use windows::Win32::Graphics::Gdi::{
     AC_SRC_ALPHA, AC_SRC_OVER, BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BLENDFUNCTION,
     CLEARTYPE_QUALITY, CLIP_DEFAULT_PRECIS, CreateCompatibleDC, CreateDIBSection, CreateFontW,
@@ -453,7 +455,8 @@ fn draw_slider(
     }
 }
 
-/// Segoe MDL2 Assets glyphs.
+/// Segoe MDL2 Assets glyph fallback used when generated design icons
+/// are not available in the app assets.
 const GLYPH_PLAY: &str = "\u{E768}";
 const GLYPH_PAUSE: &str = "\u{E769}";
 const GLYPH_VOLUME: &str = "\u{E767}";
@@ -544,7 +547,31 @@ fn draw_texts(
 
         let glyph_font_obj = HGDIOBJ(glyph_font.0);
         let text_font_obj = HGDIOBJ(text_font.0);
-        draw_centered(
+
+        let icon_rect = |slot: (i32, i32)| {
+            let size = 18;
+            let left = slot.0 + ((slot.1 - slot.0) - size) / 2;
+            let top = (height - size) / 2;
+            RECT {
+                left,
+                top,
+                right: left + size,
+                bottom: top + size,
+            }
+        };
+        let draw_design_icon =
+            |icon: WindowsDesignIcon, fallback: &str, slot: (i32, i32), color: u32| {
+                if !draw_windows_design_icon_with_color(dc, icon, icon_rect(slot), color) {
+                    draw_centered(fallback, slot, color, glyph_font_obj);
+                }
+            };
+
+        draw_design_icon(
+            if inner.state.playing {
+                WindowsDesignIcon::Pause
+            } else {
+                WindowsDesignIcon::Play
+            },
             if inner.state.playing {
                 GLYPH_PAUSE
             } else {
@@ -552,7 +579,6 @@ fn draw_texts(
             },
             layout.play,
             0x00f0f0f0,
-            glyph_font_obj,
         );
         draw_centered(time_text, layout.time, 0x00d8d8d8, text_font_obj);
         if let Some(quality) = inner.state.quality.as_deref() {
@@ -569,7 +595,12 @@ fn draw_texts(
             };
             draw_centered(&label, layout.rate, 0x00d8d8d8, text_font_obj);
         }
-        draw_centered(
+        draw_design_icon(
+            if inner.state.muted {
+                WindowsDesignIcon::VolumeOff
+            } else {
+                WindowsDesignIcon::VolumeOn
+            },
             if inner.state.muted {
                 GLYPH_MUTE
             } else {
@@ -577,9 +608,13 @@ fn draw_texts(
             },
             layout.mute,
             0x00d0d0d0,
-            glyph_font_obj,
         );
-        draw_centered(
+        draw_design_icon(
+            if inner.state.fullscreen {
+                WindowsDesignIcon::FullscreenExit
+            } else {
+                WindowsDesignIcon::FullscreenEnter
+            },
             if inner.state.fullscreen {
                 GLYPH_RESTORE
             } else {
@@ -587,7 +622,6 @@ fn draw_texts(
             },
             layout.fullscreen,
             0x00d0d0d0,
-            glyph_font_obj,
         );
 
         // Copy back and fix the GDI-zeroed alpha: text/glyph pixels are

@@ -2,8 +2,9 @@ use super::bundles::{PreparedResourceBundle, bundle_hashes, sync_resource_bundle
 use super::cache::{DestinationStamp, HostAssetsCache};
 use super::hash::path_key;
 use super::icons::{
-    PreparedAppUiIcon, app_ui_icon_hashes, sync_app_ui_icons, sync_windows_app_ui_icons,
-    windows_app_ui_icon_hashes,
+    PreparedAppUiIcon, app_ui_icon_hashes, prepare_windows_design_icons, sync_app_ui_icons,
+    sync_windows_app_ui_icons, sync_windows_design_icons, windows_app_ui_icon_hashes,
+    windows_design_icon_hashes,
 };
 use super::runtime_asset::{PreparedPolyfillsAsset, PreparedRuntimeAsset};
 use super::sync::{
@@ -36,6 +37,7 @@ pub(super) fn prepare_android_assets_root(
         ui_json_hash: ui_json_hash.map(ToOwned::to_owned),
         bundle_hashes: bundle_hashes(bundles),
         app_ui_icon_hashes: BTreeMap::new(),
+        windows_design_icon_hashes: BTreeMap::new(),
         runtime_hash: runtime_asset.map(|r| r.runtime_hash.clone()),
         polyfills_hash: polyfills_asset.map(|p| p.hash.clone()),
     };
@@ -107,6 +109,7 @@ pub(super) fn prepare_apple_resources_root(
         ui_json_hash: ui_json_hash.map(ToOwned::to_owned),
         bundle_hashes: bundle_hashes(bundles),
         app_ui_icon_hashes: app_ui_icon_hashes(app_ui_icons),
+        windows_design_icon_hashes: BTreeMap::new(),
         runtime_hash: runtime_asset.map(|r| r.runtime_hash.clone()),
         polyfills_hash: None,
     };
@@ -172,6 +175,7 @@ pub(super) fn prepare_harmony_rawfile_root(
         ui_json_hash: ui_json_hash.map(ToOwned::to_owned),
         bundle_hashes: bundle_hashes(bundles),
         app_ui_icon_hashes: BTreeMap::new(),
+        windows_design_icon_hashes: BTreeMap::new(),
         runtime_hash: runtime_asset.map(|r| r.runtime_hash.clone()),
         polyfills_hash: None,
     };
@@ -227,12 +231,14 @@ pub(super) fn prepare_windows_assets_root(
 
     let dest_key = path_key(assets_root);
     let prev = cache.destinations.get(&dest_key).cloned();
+    let windows_design_icons = prepare_windows_design_icons()?;
 
     let desired = DestinationStamp {
         app_json_hash: app_json_hash.to_string(),
         ui_json_hash: ui_json_hash.map(ToOwned::to_owned),
         bundle_hashes: bundle_hashes(bundles),
         app_ui_icon_hashes: windows_app_ui_icon_hashes(app_ui_icons),
+        windows_design_icon_hashes: windows_design_icon_hashes(&windows_design_icons),
         runtime_hash: runtime_asset.map(|r| r.runtime_hash.clone()),
         polyfills_hash: None,
     };
@@ -264,6 +270,11 @@ pub(super) fn prepare_windows_assets_root(
         assets_root,
         app_ui_icons,
         prev.as_ref().map(|s| &s.app_ui_icon_hashes),
+    )?;
+    changed |= sync_windows_design_icons(
+        assets_root,
+        &windows_design_icons,
+        prev.as_ref().map(|s| &s.windows_design_icon_hashes),
     )?;
 
     if changed {

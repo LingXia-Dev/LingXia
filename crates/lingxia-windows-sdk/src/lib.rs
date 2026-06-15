@@ -19,6 +19,8 @@ mod app_icon;
 #[cfg(all(target_os = "windows", feature = "runtime"))]
 mod app_menu;
 #[cfg(all(target_os = "windows", feature = "runtime"))]
+mod design_icons;
+#[cfg(all(target_os = "windows", feature = "runtime"))]
 mod device_frame;
 #[cfg(all(target_os = "windows", feature = "runtime"))]
 mod media_preview;
@@ -39,6 +41,11 @@ pub mod window_host;
 pub use app_menu::{
     WindowsAppMenu, WindowsAppMenuCommandHandler, WindowsAppMenuEntry, WindowsAppMenuItem,
     set_windows_app_menu, set_windows_app_menu_command_handler,
+};
+#[cfg(all(target_os = "windows", feature = "runtime"))]
+pub use design_icons::{
+    WindowsDesignIcon, draw_windows_design_icon, draw_windows_design_icon_with_color,
+    set_windows_design_icon_dir,
 };
 #[cfg(all(target_os = "windows", feature = "runtime"))]
 pub use device_frame::{
@@ -128,6 +135,7 @@ pub fn init(app: WindowsApp) -> Result<String> {
     }
     let platform = lingxia::windows::Platform::from_env()?;
     let asset_dir = platform.asset_dir().to_path_buf();
+    set_windows_design_icon_dir(asset_dir.join("icons").join("design"));
     let home_app_id = lingxia::windows::init(platform).ok_or(WindowsHostError::MissingHomeApp)?;
     if let Some(icon_path) = resolve_app_icon_path(&asset_dir, &home_app_id) {
         app_icon::set_app_icon_from_path(&icon_path).map_err(|message| {
