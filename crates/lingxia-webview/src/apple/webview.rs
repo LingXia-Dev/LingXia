@@ -1537,7 +1537,20 @@ pub(crate) fn toggle_devtools_by_swift_ptr(swift_ptr: usize, detached: bool) -> 
     if swift_ptr == 0 {
         return false;
     }
-    let exec = move || unsafe {
+    let open = move || unsafe {
+        if detached {
+            // Force the inspector to open in its own window instead of docked
+            // into the page (a docked inspector splits the webview and shows a
+            // black strip). Per WebKit's WebInspectorUIProxy:
+            //   shouldOpenAttached() = inspectorStartsAttached() && canAttach()
+            // `inspectorStartsAttached` is a preference that defaults to TRUE,
+            // so on a large inspected view (where canAttach() is also true) the
+            // inspector docks. It is read from NSUserDefaults when the inspector
+            // frontend is created, so seed it to false BEFORE touching
+            // `_inspector` (which creates the proxy). Deterministic — no
+            // dock-then-detach race, no flash.
+            set_inspector_starts_attached_false();
+        }
         let webview = swift_ptr as *mut AnyObject;
         let inspector: *mut AnyObject = msg_send![webview, _inspector];
         if inspector.is_null() {
@@ -1546,30 +1559,31 @@ pub(crate) fn toggle_devtools_by_swift_ptr(swift_ptr: usize, detached: bool) -> 
         let visible: objc2::runtime::Bool = msg_send![inspector, isVisible];
         if visible.as_bool() {
             let _: () = msg_send![inspector, close];
-        } else {
-            let _: () = msg_send![inspector, show];
-            // WebKit persists the user's attach preference and re-docks the
-            // inspector INTO the inspected webview whenever it is wide
-            // enough (e.g. an iPad/desktop-sized simulator frame). Setting
-            // `_inspectorAttachmentView` to nil does NOT prevent that — nil
-            // just resets the dock target to the webview itself. Forcing a
-            // `detach` after `show` is what actually keeps the inspector in
-            // its own window.
-            if detached {
-                let can_detach: objc2::runtime::Bool =
-                    msg_send![inspector, respondsToSelector: objc2::sel!(detach)];
-                if can_detach.as_bool() {
-                    let _: () = msg_send![inspector, detach];
-                }
-            }
+            return;
         }
+        let _: () = msg_send![inspector, show];
     };
     if MainThreadMarker::new().is_some() {
-        exec();
+        open();
     } else {
-        DispatchQueue::main().exec_async(exec);
+        DispatchQueue::main().exec_async(open);
     }
     true
+}
+
+/// Force the Web Inspector to open detached by seeding WebKit's
+/// `inspectorStartsAttached` preference to false for the default inspector page
+/// group. WebKit's `shouldOpenAttached()` reads this preference (default true)
+/// from `NSUserDefaults` when creating the inspector frontend; setting it false
+/// makes the inspector open in its own window regardless of the inspected
+/// view's size.
+unsafe fn set_inspector_starts_attached_false() {
+    let defaults: *mut AnyObject = msg_send![objc2::class!(NSUserDefaults), standardUserDefaults];
+    if defaults.is_null() {
+        return;
+    }
+    let key = NSString::from_str("__WebInspectorPageGroupLevel1__.WebKit2InspectorStartsAttached");
+    let _: () = msg_send![defaults, setBool: false, forKey: &*key];
 }
 
 impl std::fmt::Debug for WebViewInner {
