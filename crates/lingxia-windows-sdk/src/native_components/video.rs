@@ -294,7 +294,12 @@ pub(super) fn apply_video_props(key: &str, props: &ComponentProps) {
         entry.state.merge_from(props);
         (
             video.player.clone(),
-            src_changed.then(|| entry.state.src.clone().unwrap_or_default()),
+            src_changed.then(|| {
+                (
+                    entry.context.appid.clone(),
+                    entry.state.src.clone().unwrap_or_default(),
+                )
+            }),
             src_changed && entry.state.autoplay == Some(true),
         )
     };
@@ -323,10 +328,10 @@ pub(super) fn apply_video_props(key: &str, props: &ComponentProps) {
     if let Some(muted) = props.muted {
         player.set_muted(muted);
     }
-    if let Some(source) = source {
+    if let Some((appid, source)) = source {
         if source.is_empty() {
             player.stop();
-        } else {
+        } else if let Some(source) = resolve_native_media_source(&appid, &source) {
             player.set_source(&source);
             if autoplay {
                 player.play();

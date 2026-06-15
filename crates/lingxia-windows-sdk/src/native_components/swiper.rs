@@ -749,37 +749,10 @@ fn build_video_player(
     let player = VideoPlayer::new(window, sink)?;
     player.set_looping(false);
     player.set_muted(item.muted.unwrap_or(config_muted));
-    if let Some(source) = resolve_source(appid, &item.src) {
+    if let Some(source) = resolve_native_media_source(appid, &item.src) {
         player.set_source(&source);
     }
     Some(Arc::new(player))
-}
-
-/// Resolves a media item `src` to something the native players can open.
-///
-/// http(s) URLs pass through (MFPlay streams them, the image loader downloads
-/// them); `file://` is stripped; otherwise `lx://` URIs and app-relative /
-/// trusted paths map to a real filesystem path via the owning lxapp. This is
-/// the Windows analogue of macOS `resolveLxUri`: `chooseMedia` hands the swiper
-/// `lx://temp/<hash>` sources, and without resolving them MFPlay rejects the
-/// scheme (`MF_E_UNSUPPORTED_SCHEME`) and GDI+ fails to decode.
-fn resolve_source(appid: &str, src: &str) -> Option<String> {
-    let trimmed = src.trim();
-    if trimmed.is_empty() {
-        return None;
-    }
-    if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
-        return Some(trimmed.to_string());
-    }
-    if let Some(stripped) = trimmed.strip_prefix("file://") {
-        return Some(stripped.to_string());
-    }
-    if let Some(app) = lxapp::try_get(appid)
-        && let Ok(path) = app.resolve_accessible_path(trimmed)
-    {
-        return Some(path.to_string_lossy().into_owned());
-    }
-    Some(trimmed.to_string())
 }
 
 fn swiper_video_sink(key: String, index: usize) -> VideoEventSink {
@@ -834,7 +807,7 @@ fn begin_image_load(
             let resolved = if is_http {
                 crate::media_preview::resolve_media_path(&src)
             } else {
-                resolve_source(&appid, &src)
+                resolve_native_media_source(&appid, &src)
             };
             run_on_window_thread(dispatch_window, move || {
                 finish_image_load(&key, index, window, token, resolved, is_http);

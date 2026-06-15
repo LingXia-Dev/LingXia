@@ -197,6 +197,25 @@ fn component_key(page_key: &str, component_id: &str) -> String {
     format!("{page_key}\u{1}{component_id}")
 }
 
+fn resolve_native_media_source(appid: &str, src: &str) -> Option<String> {
+    let trimmed = src.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
+        return Some(trimmed.to_string());
+    }
+    if let Some(stripped) = trimmed.strip_prefix("file://") {
+        return Some(stripped.to_string());
+    }
+    if let Some(app) = lxapp::try_get(appid)
+        && let Ok(path) = app.resolve_accessible_path(trimmed)
+    {
+        return Some(path.to_string_lossy().into_owned());
+    }
+    Some(trimmed.to_string())
+}
+
 // ---------------------------------------------------------------------------
 // Message dispatch
 // ---------------------------------------------------------------------------
