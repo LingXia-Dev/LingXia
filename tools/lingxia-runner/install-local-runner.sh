@@ -9,22 +9,17 @@ fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
-WORKSPACE_CARGO_TOML="$ROOT_DIR/Cargo.toml"
+# The Runner is versioned with the CLI (tools version), independent of the SDK
+# crates' [workspace.package] version — so read the Runner's own package version.
+RUNNER_CARGO_TOML="$SCRIPT_DIR/runner-lib/Cargo.toml"
 
-read_workspace_version() {
-  awk '
-    /^\[workspace\.package\]/ {in_section=1; next}
-    /^\[/ {in_section=0}
-    in_section && $1 == "version" {
-      gsub(/"/, "", $3);
-      print $3;
-      exit
-    }' "$WORKSPACE_CARGO_TOML"
+read_tools_version() {
+  awk -F'"' '/^version = "/ { print $2; exit }' "$RUNNER_CARGO_TOML"
 }
 
-RUNNER_VERSION="${RUNNER_VERSION:-$(read_workspace_version)}"
+RUNNER_VERSION="${RUNNER_VERSION:-$(read_tools_version)}"
 if [[ -z "$RUNNER_VERSION" ]]; then
-  echo "ERROR: failed to read workspace version from $WORKSPACE_CARGO_TOML" >&2
+  echo "ERROR: failed to read runner (tools) version from $RUNNER_CARGO_TOML" >&2
   exit 1
 fi
 TARGET_DIR="${RUNNER_TARGET_DIR:-$HOME/.lingxia/runner/$RUNNER_VERSION}"

@@ -1,5 +1,15 @@
 [package]
 name = "lingxia-cli"
+# Tools version: CLI + Runner release together on their own cadence. Keep in
+# sync with tools/lingxia-runner. The CLI's CARGO_PKG_VERSION drives both the
+# Runner compatibility check and the Runner .app's CFBundleShortVersionString,
+# so this is the single source of truth.
+#
+# Only the PATCH is independent of the SDK crates ([workspace.package]). The
+# major.minor MUST track the workspace: the CLI embeds the base-runtime bridge
+# (packages/lingxia-bridge), which is version-locked to the workspace, and
+# build.rs fails the build on a mismatch. A CLI release is "the CLI for base
+# runtime X.Y" — so bump to the workspace's major.minor whenever it moves.
 version = "0.9.1"
 edition.workspace = true
 build = "build.rs"
