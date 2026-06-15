@@ -146,7 +146,3 @@ pub(crate) fn webview_parent_bounds(view: WindowsWebViewNativeView) -> StdResult
 pub(crate) fn hwnd_from_handle(handle: isize) -> HWND {
     HWND(handle as *mut c_void)
 }
-
-pub(crate) fn hwnd_handle(hwnd: HWND) -> isize {
-    hwnd.0 as isize
-}

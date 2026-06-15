@@ -6,8 +6,6 @@ use async_trait::async_trait;
 
 pub(crate) const WM_LINGXIA_COMMAND: u32 = WM_APP + 0x154;
 
-pub(crate) const WM_LINGXIA_LAYOUT: u32 = WM_APP + 0x155;
-
 pub(crate) const WEBVIEW_SCREENSHOT_TIMEOUT: Duration = Duration::from_secs(4);
 
 pub(crate) enum UiCommand {
@@ -581,9 +579,8 @@ pub(crate) fn message_loop(state: &mut UiState, command_rx: Receiver<UiCommand>)
                 return Ok(());
             }
             _ => {
-                // WM_LINGXIA_LAYOUT is handled by the window procedure (so
-                // it also works inside modal move/size loops); dispatch it
-                // like any other window message.
+                // Window messages still need normal dispatch; only the
+                // command wake is consumed by this loop.
                 if msg.message != WM_LINGXIA_COMMAND {
                     unsafe {
                         let _ = WindowsAndMessaging::TranslateMessage(&msg);

@@ -8,19 +8,15 @@
 //! declares them, keeps the shared import prelude for WebView2 plumbing,
 //! and re-exports the public Windows WebView API.
 
-#![allow(dead_code, unused_imports)]
-
 use crate::traits::{DownloadRequest, LoadDataRequest, NavigationPolicy, NewWindowPolicy};
 use crate::webview::{
     EffectiveWebViewCreateOptions, SecurityProfile, WebTag, WebViewCreateSender,
     WebViewCreateStage, find_webview, find_webview_delegate, register_webview,
 };
 use crate::{
-    LogLevel, WebResourceBody, WebResourceResponse, WebViewController, WebViewError,
-    WebViewScriptError,
+    WebResourceBody, WebResourceResponse, WebViewController, WebViewError, WebViewScriptError,
 };
 use http::{Request, StatusCode};
-use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::ffi::c_void;
 use std::io::Read;
@@ -64,7 +60,6 @@ pub use native_view::{
 
 // Private glob re-imports so submodules can reach their siblings (and this
 // prelude) through a single `use super::*;`.
-use controller::*;
 use environment::*;
 use events::*;
 use native_view::*;

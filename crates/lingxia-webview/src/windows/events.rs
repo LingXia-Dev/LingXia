@@ -206,49 +206,6 @@ pub(crate) fn register_event_handlers(
                     args.TryGetWebMessageAsString(&mut message)?;
                     let payload = CoTaskMemPWSTR::from(message).to_string();
 
-                    if let Ok(json) = serde_json::from_str::<serde_json::Value>(&payload) {
-                        if json
-                            .get("__lingxia_console__")
-                            .and_then(|value| value.as_bool())
-                            .unwrap_or(false)
-                        {
-                            if let (Some(level), Some(message)) = (
-                                json.get("level").and_then(|value| value.as_str()),
-                                json.get("message").and_then(|value| value.as_str()),
-                            ) && let Some(delegate) = find_webview_delegate(&message_tag)
-                            {
-                                let level = match level {
-                                    "error" => LogLevel::Error,
-                                    "warn" => LogLevel::Warn,
-                                    "debug" => LogLevel::Debug,
-                                    "info" => LogLevel::Info,
-                                    _ => LogLevel::Info,
-                                };
-                                delegate.log(level, message);
-                            }
-                            return Ok(());
-                        }
-
-                        // Native-component messages (window.NativeComponentBridge)
-                        // are dispatched synchronously on this UI thread so
-                        // mount/update/unmount ordering is preserved; handlers
-                        // marshal their own Win32 work via
-                        // UI layers should hop to their own window thread and never block here.
-                        if json
-                            .get("__lingxia_native_component__")
-                            .and_then(|value| value.as_bool())
-                            .unwrap_or(false)
-                        {
-                            if let Some(component_payload) =
-                                json.get("payload").and_then(|value| value.as_str())
-                                && let Some(delegate) = find_webview_delegate(&message_tag)
-                            {
-                                delegate.handle_native_component_message(component_payload);
-                            }
-                            return Ok(());
-                        }
-                    }
-
                     if let Some(delegate) = find_webview_delegate(&message_tag) {
                         let _ = thread::Builder::new()
                             .name(format!("lingxia-web-message-{}", message_tag.key()))

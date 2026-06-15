@@ -28,6 +28,7 @@ use lingxia_webview::{
     WebViewController, WebViewDelegate, WebViewSession,
 };
 use lxapp::LxAppError;
+use serde_json::Value;
 use std::sync::Arc;
 
 // ---------------------------------------------------------------------------
@@ -86,6 +87,11 @@ impl WebViewDelegate for BrowserTabDelegate {
     }
 
     fn handle_post_message(&self, msg: String) {
+        if let Some((level, message)) = decode_console_envelope(&msg) {
+            self.log(level, &message);
+            return;
+        }
+
         match browser_resolve_delegate_page(&self.page_path, self.session_id) {
             Ok(page) => {
                 if let Err(err) = page.handle_incoming_message_json(&msg) {
@@ -123,6 +129,23 @@ impl WebViewDelegate for BrowserTabDelegate {
 // ---------------------------------------------------------------------------
 // WebView helpers — thin wrappers around lingxia-webview cross-platform API
 // ---------------------------------------------------------------------------
+
+fn decode_console_envelope(msg: &str) -> Option<(LogLevel, String)> {
+    let json = serde_json::from_str::<Value>(msg).ok()?;
+    json.get("__lingxia_console__")
+        .and_then(Value::as_bool)
+        .filter(|enabled| *enabled)?;
+    let level = match json.get("level").and_then(Value::as_str) {
+        Some("error") => LogLevel::Error,
+        Some("warn") => LogLevel::Warn,
+        Some("debug") => LogLevel::Debug,
+        Some("info") => LogLevel::Info,
+        Some("verbose") => LogLevel::Verbose,
+        _ => LogLevel::Info,
+    };
+    let message = json.get("message").and_then(Value::as_str)?.to_string();
+    Some((level, message))
+}
 
 fn browser_webtag(path: &str, session_id: u64) -> WebTag {
     WebTag::new(BUILTIN_BROWSER_APPID, path, Some(session_id))

@@ -1184,6 +1184,15 @@ impl WebViewDelegate for PageInstance {
 
     /// Handles a postMessage from the WebView
     fn handle_post_message(&self, msg: String) {
+        if let Some((level, message)) = decode_console_envelope(&msg) {
+            self.log(level, &message);
+            return;
+        }
+        if let Some(component_payload) = decode_native_component_envelope(&msg) {
+            self.handle_native_component_message(&component_payload);
+            return;
+        }
+
         match IncomingMessage::from_json_str(&msg) {
             Ok(incoming) => {
                 if let Err(e) = self.bridge().handle_incoming(self, Arc::new(incoming)) {
@@ -1222,6 +1231,33 @@ impl WebViewDelegate for PageInstance {
             .with_path(&self.inner.path)
             .with_appid(self.inner.appid.clone());
     }
+}
+
+fn decode_console_envelope(msg: &str) -> Option<(LogLevel, String)> {
+    let json = serde_json::from_str::<Value>(msg).ok()?;
+    json.get("__lingxia_console__")
+        .and_then(Value::as_bool)
+        .filter(|enabled| *enabled)?;
+    let level = match json.get("level").and_then(Value::as_str) {
+        Some("error") => LogLevel::Error,
+        Some("warn") => LogLevel::Warn,
+        Some("debug") => LogLevel::Debug,
+        Some("info") => LogLevel::Info,
+        Some("verbose") => LogLevel::Verbose,
+        _ => LogLevel::Info,
+    };
+    let message = json.get("message").and_then(Value::as_str)?.to_string();
+    Some((level, message))
+}
+
+fn decode_native_component_envelope(msg: &str) -> Option<String> {
+    let json = serde_json::from_str::<Value>(msg).ok()?;
+    json.get("__lingxia_native_component__")
+        .and_then(Value::as_bool)
+        .filter(|enabled| *enabled)?;
+    json.get("payload")
+        .and_then(Value::as_str)
+        .map(str::to_string)
 }
 
 impl Drop for PageInstanceInner {
