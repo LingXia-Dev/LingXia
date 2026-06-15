@@ -1,13 +1,13 @@
 //! Windows platform bootstrap for pure Rust host apps.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, LazyLock, Mutex};
 
 use lingxia_platform::traits::app_runtime::AppRuntime;
 pub use lingxia_platform::{Platform, PlatformError, set_windows_app_exit_handler};
 use lingxia_webview::WebTag;
 
-static WINDOWS_APP_VISIBILITY: LazyLock<Mutex<HashMap<String, bool>>> =
+static WINDOWS_APP_VISIBLE_WEBTAGS: LazyLock<Mutex<HashMap<String, HashSet<String>>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
 /// Initializes the LingXia runtime for a Windows host process.
@@ -82,15 +82,7 @@ fn on_webview_visibility_changed(webtag: &WebTag, visible: bool) {
         );
     }
 
-    let app_event = {
-        let Ok(mut visibility) = WINDOWS_APP_VISIBILITY.lock() else {
-            return;
-        };
-        match visibility.insert(appid.clone(), visible) {
-            Some(previous) if previous != visible => Some(visible),
-            _ => None,
-        }
-    };
+    let app_event = update_app_visible_webtags(&appid, webtag.key(), visible);
 
     if let Some(visible) = app_event
         && let Err(err) = lxapp::notify_lxapp_host_visibility(&appid, visible)
@@ -100,6 +92,45 @@ fn on_webview_visibility_changed(webtag: &WebTag, visible: bool) {
             appid,
             visible,
             err
+        );
+    }
+}
+
+fn update_app_visible_webtags(appid: &str, webtag_key: &str, visible: bool) -> Option<bool> {
+    let Ok(mut visible_webtags) = WINDOWS_APP_VISIBLE_WEBTAGS.lock() else {
+        return None;
+    };
+    let webtags = visible_webtags.entry(appid.to_string()).or_default();
+    let was_visible = !webtags.is_empty();
+    if visible {
+        webtags.insert(webtag_key.to_string());
+    } else {
+        webtags.remove(webtag_key);
+    }
+    let is_visible = !webtags.is_empty();
+    if !is_visible {
+        visible_webtags.remove(appid);
+    }
+    (was_visible != is_visible).then_some(is_visible)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn app_visibility_is_aggregated_across_webtags() {
+        WINDOWS_APP_VISIBLE_WEBTAGS.lock().unwrap().clear();
+
+        assert_eq!(
+            update_app_visible_webtags("app", "app:main", true),
+            Some(true)
+        );
+        assert_eq!(update_app_visible_webtags("app", "app:panel", true), None);
+        assert_eq!(update_app_visible_webtags("app", "app:panel", false), None);
+        assert_eq!(
+            update_app_visible_webtags("app", "app:main", false),
+            Some(false)
         );
     }
 }

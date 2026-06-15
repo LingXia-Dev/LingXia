@@ -8,9 +8,8 @@ use lingxia_webview::WebTag;
 use lingxia_webview::platform::windows::{WindowsWebViewHandler, find_webview_handler};
 use lingxia_webview::runtime as webview_runtime;
 use lingxia_windows_host::{
-    clear_webview_group_override, clear_webview_os_frame, hide_webview_window,
-    navigate_webview_window, present_webview_as_overlay, set_webview_close_handler,
-    set_webview_group_override, set_webview_os_frame, show_webview_as_panel, show_webview_window,
+    hide_webview_window, navigate_webview_window, present_webview_as_overlay,
+    set_webview_close_handler, show_webview_as_panel, show_webview_window,
 };
 
 use super::request_windows_app_exit;
@@ -294,11 +293,6 @@ fn dispose_surface_page(page_instance_id: &str, reason: &str) {
 /// the content page instance (which closes the window/overlay). Used by both
 /// programmatic close and the native close button.
 fn teardown_surface(entry: &SurfaceEntry, id: &str, reason: &str) {
-    // Clear the window-mode marks; each clear is a no-op when unset, so this is
-    // safe regardless of kind. (An overlay's child attachment + placement are
-    // cleaned up by the webview when its window is destroyed.)
-    clear_webview_group_override(&entry.webtag);
-    clear_webview_os_frame(&entry.webtag);
     notify_surface_closed(id, reason);
     match &entry.page_instance_id {
         // Disposing the page instance detaches + destroys its webview (closing
@@ -396,13 +390,9 @@ pub(super) fn present_surface(
         height_ratio: finite_or_zero(request.height_ratio),
         position: request.position as u8,
     };
-    // A `window` surface gets its own host group so it opens as a separate
-    // top-level window with native controls. An `overlay` joins the app's main
-    // group and is layered over its content as a child card.
-    if matches!(kind, SurfaceKind::Window) {
-        set_webview_group_override(&webtag, &format!("surface:{id}"));
-        set_webview_os_frame(&webtag);
-    }
+    // A surface page instance has its own WebView parent. `Window` presents
+    // that parent as a standalone top-level window; `Overlay` positions it
+    // relative to the active app content.
     if let Ok(mut map) = SURFACES.lock() {
         map.insert(
             id.clone(),

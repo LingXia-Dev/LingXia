@@ -9,7 +9,7 @@ pub(in crate::shell::chrome) struct SidebarAuxiliaryRects {
     pub(super) separator: RECT,
     /// Row rects aligned index-for-index with `tabbar.auxiliary_items`
     /// (possibly truncated when rows run out of vertical space).
-    pub(super) items: Vec<RECT>,
+    pub(in crate::shell::chrome) items: Vec<RECT>,
     pub(super) add: Option<RECT>,
 }
 

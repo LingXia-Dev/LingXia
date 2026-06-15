@@ -35,10 +35,6 @@ static WINDOWS_CARD_DECORATOR: OnceLock<Mutex<Option<Arc<dyn WindowsCardDecorato
     OnceLock::new();
 
 pub trait WindowsHostBackend: Send + Sync {
-    fn clear_webview_group_override(&self, webtag: &WebTag);
-    fn set_webview_group_override(&self, webtag: &WebTag, group_key: &str);
-    fn clear_webview_os_frame(&self, webtag: &WebTag);
-    fn set_webview_os_frame(&self, webtag: &WebTag);
     fn show_webview_as_panel(&self, webtag: &WebTag, title: &str, panel_id: &str) -> StdResult<()>;
     fn present_webview_in_active_group(&self, webtag: &WebTag) -> StdResult<()>;
     fn present_webview_as_group_main(&self, webtag: &WebTag, group_key: String) -> StdResult<()>;
@@ -309,6 +305,12 @@ pub trait WindowsChromeRenderer: Send + Sync {
     }
 
     fn paint(&self, hdc: HDC, state: &WindowsChromeState);
+
+    fn paint_region(&self, hdc: HDC, state: &WindowsChromeState, invalid: RECT) {
+        let _ = invalid;
+        self.paint(hdc, state);
+    }
+
     fn hit_test(&self, state: &WindowsChromeState, point: (i32, i32)) -> Option<WindowsChromeHit>;
 
     fn frame_button_rect(
@@ -502,30 +504,6 @@ pub fn cleanup_webview_state(webtag_key: &str) {
         && let Ok(mut layouts) = layouts.lock()
     {
         layouts.remove(webtag_key);
-    }
-}
-
-pub fn clear_webview_group_override(webtag: &WebTag) {
-    if let Ok(backend) = backend() {
-        backend.clear_webview_group_override(webtag);
-    }
-}
-
-pub fn set_webview_group_override(webtag: &WebTag, group_key: &str) {
-    if let Ok(backend) = backend() {
-        backend.set_webview_group_override(webtag, group_key);
-    }
-}
-
-pub fn clear_webview_os_frame(webtag: &WebTag) {
-    if let Ok(backend) = backend() {
-        backend.clear_webview_os_frame(webtag);
-    }
-}
-
-pub fn set_webview_os_frame(webtag: &WebTag) {
-    if let Ok(backend) = backend() {
-        backend.set_webview_os_frame(webtag);
     }
 }
 

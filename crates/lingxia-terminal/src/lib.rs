@@ -265,6 +265,7 @@ pub fn encode_key_event(event: TerminalKeyEvent) -> Option<String> {
             0x09 => Some("\t".to_string()),
             0x0d => Some("\r".to_string()),
             0x1b => Some("\u{1b}".to_string()),
+            0x01..=0x09 | 0x0b..=0x1a => Some(character.to_string()),
             _ if !character.is_control() => Some(character.to_string()),
             _ => None,
         };
@@ -1032,8 +1033,15 @@ mod tests {
     }
 
     #[test]
-    fn rejects_other_control_characters() {
-        assert_eq!(encode_key_event(char_event('\u{1}')), None);
+    fn encodes_supported_control_characters() {
+        assert_eq!(
+            encode_key_event(char_event('\u{3}')).as_deref(),
+            Some("\u{3}")
+        );
+    }
+
+    #[test]
+    fn rejects_unsupported_control_characters() {
         assert_eq!(encode_key_event(char_event('\n')), None);
         assert_eq!(encode_key_event(char_event('\u{7f}')), None);
     }

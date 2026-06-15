@@ -204,14 +204,7 @@ impl WebViewInner {
             .send(make(resp_tx))
             .map_err(|_| UiDispatchError::Unavailable)?;
 
-        unsafe {
-            let _ = WindowsAndMessaging::PostThreadMessageW(
-                self.thread_id,
-                WM_LINGXIA_COMMAND,
-                WPARAM::default(),
-                LPARAM::default(),
-            );
-        }
+        self.wake_ui_thread();
 
         match timeout {
             Some(timeout) => resp_rx
@@ -238,14 +231,7 @@ impl WebViewInner {
             .send(command(resp_tx))
             .map_err(|_| WebViewError::WebView("WebView UI thread is unavailable".to_string()))?;
 
-        unsafe {
-            let _ = WindowsAndMessaging::PostThreadMessageW(
-                self.thread_id,
-                WM_LINGXIA_COMMAND,
-                WPARAM::default(),
-                LPARAM::default(),
-            );
-        }
+        self.wake_ui_thread();
 
         if unsafe { Threading::GetCurrentThreadId() } == self.thread_id {
             return Ok(());
@@ -288,6 +274,28 @@ impl WebViewInner {
 
     pub(crate) fn notify_parent_position_changed(&self) -> StdResult<()> {
         self.dispatch_layout_command(|resp| UiCommand::NotifyParentPositionChanged { resp })
+    }
+
+    fn wake_ui_thread(&self) {
+        let posted = unsafe {
+            WindowsAndMessaging::PostMessageW(
+                Some(hwnd_from_handle(self.native_view)),
+                WM_LINGXIA_COMMAND,
+                WPARAM::default(),
+                LPARAM::default(),
+            )
+            .is_ok()
+        };
+        if !posted {
+            unsafe {
+                let _ = WindowsAndMessaging::PostThreadMessageW(
+                    self.thread_id,
+                    WM_LINGXIA_COMMAND,
+                    WPARAM::default(),
+                    LPARAM::default(),
+                );
+            }
+        }
     }
 
     fn dispatch_eval_command(
@@ -409,14 +417,7 @@ impl WebViewController for WebViewInner {
 impl Drop for WebViewInner {
     fn drop(&mut self) {
         let _ = self.command_tx.send(UiCommand::Shutdown);
-        unsafe {
-            let _ = WindowsAndMessaging::PostThreadMessageW(
-                self.thread_id,
-                WM_LINGXIA_COMMAND,
-                WPARAM::default(),
-                LPARAM::default(),
-            );
-        }
+        self.wake_ui_thread();
 
         if unsafe { Threading::GetCurrentThreadId() } == self.thread_id {
             // The last Arc<WebView> was dropped by a callback running on the

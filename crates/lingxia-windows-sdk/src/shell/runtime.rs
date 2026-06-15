@@ -43,6 +43,7 @@ static SHELL_OWNER_APPID: OnceLock<Mutex<Option<String>>> = OnceLock::new();
 
 /// Browser tab currently presented over the main content card, if any.
 static PRESENTED_BROWSER_TAB: OnceLock<Mutex<Option<String>>> = OnceLock::new();
+static SUPPRESSED_BROWSER_TAB_SYNCS: OnceLock<Mutex<u32>> = OnceLock::new();
 
 /// Sidebar header action ids and their browser targets.
 const SIDEBAR_ACTION_SETTINGS: &str = "settings";
@@ -162,6 +163,13 @@ fn set_shell_owner_appid(appid: &str) {
     }
 }
 
+fn is_shell_owner_appid(appid: &str) -> bool {
+    shell_owner_appid()
+        .as_deref()
+        .map(|owner| owner == appid)
+        .unwrap_or(false)
+}
+
 pub(crate) fn open_home_app(appid: &str) -> Result<(), String> {
     set_shell_owner_appid(appid);
     lxapp::open_lxapp(appid, LxAppStartupOptions::new(""))
@@ -199,6 +207,27 @@ fn set_presented_browser_tab(tab_id: Option<String>) {
     if let Ok(mut slot) = slot.lock() {
         *slot = tab_id;
     }
+}
+
+fn suppress_next_browser_tab_sync() {
+    let slot = SUPPRESSED_BROWSER_TAB_SYNCS.get_or_init(|| Mutex::new(0));
+    if let Ok(mut count) = slot.lock() {
+        *count = count.saturating_add(1);
+    }
+}
+
+fn consume_suppressed_browser_tab_sync() -> bool {
+    let Some(slot) = SUPPRESSED_BROWSER_TAB_SYNCS.get() else {
+        return false;
+    };
+    let Ok(mut count) = slot.lock() else {
+        return false;
+    };
+    if *count == 0 {
+        return false;
+    }
+    *count -= 1;
+    true
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -337,12 +366,19 @@ fn on_browser_tabs_changed() {
             log::warn!("failed to restore main webview after browser tab close: {err}");
         }
     }
+    if consume_suppressed_browser_tab_sync() {
+        return;
+    }
     if let Some(appid) = shell_owner_appid() {
         sync_shell_layout(&appid);
     }
 }
 
 fn sync_shell_layout(appid: &str) {
+    if !is_shell_owner_appid(appid) {
+        return;
+    }
+
     let Some(app) = lxapp::try_get(appid) else {
         return;
     };
@@ -355,13 +391,7 @@ fn sync_shell_layout(appid: &str) {
 
     let webtag = WebTag::new(&app.appid, &path, Some(app.session_id()));
     let layout = build_window_layout(&app, &path);
-    let event_appid = app.appid.clone();
-    set_webview_chrome_event_handler(
-        &webtag,
-        Arc::new(move |event| {
-            handle_chrome_event(&event_appid, event);
-        }),
-    );
+    install_shell_chrome_event_handler(&webtag, &app.appid);
 
     if let Err(err) = set_webview_window_layout(&webtag, WindowsWindowLayout::new(layout)) {
         log::warn!(
@@ -371,6 +401,37 @@ fn sync_shell_layout(appid: &str) {
             err
         );
     }
+    if let Some(tab_id) = presented_browser_tab()
+        && let Some(tab) = browser_tab_summary(&tab_id)
+    {
+        let browser_webtag = WebTag::new(
+            lingxia_browser::BUILTIN_BROWSER_APPID,
+            &tab.path,
+            Some(tab.session_id),
+        );
+        install_shell_chrome_event_handler(&browser_webtag, &app.appid);
+        let layout = build_window_layout(&app, &path);
+        if let Err(err) =
+            set_webview_window_layout(&browser_webtag, WindowsWindowLayout::new(layout))
+        {
+            log::warn!(
+                "failed to sync Windows browser shell layout for {}:{}: {}",
+                browser_webtag.extract_appid(),
+                tab.path,
+                err
+            );
+        }
+    }
+}
+
+fn install_shell_chrome_event_handler(webtag: &WebTag, appid: &str) {
+    let event_appid = appid.to_string();
+    set_webview_chrome_event_handler(
+        webtag,
+        Arc::new(move |event| {
+            handle_chrome_event(&event_appid, event);
+        }),
+    );
 }
 
 fn build_window_layout(app: &LxApp, path: &str) -> WindowsShellWindowLayout {
@@ -598,7 +659,10 @@ fn build_panel_activators(app: &LxApp) -> Vec<WindowsShellPanelActivatorLayout> 
 }
 
 fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
-    set_shell_owner_appid(appid);
+    if !is_shell_owner_appid(appid) {
+        log::debug!("ignoring Windows shell chrome event for non-owner app {appid}");
+        return;
+    }
     let Some(app) = lxapp::try_get(appid) else {
         return;
     };
@@ -844,7 +908,16 @@ fn handle_browser_new_tab(appid: &str, session_id: u64) {
 }
 
 fn handle_browser_tab_click(appid: &str, tab_id: &str) {
+    let active_changed = lingxia_browser::current_tab()
+        .map(|tab| tab.tab_id != tab_id)
+        .unwrap_or(true);
+    if active_changed {
+        suppress_next_browser_tab_sync();
+    }
     if lingxia_browser::activate(tab_id).is_err() {
+        if active_changed {
+            let _ = consume_suppressed_browser_tab_sync();
+        }
         log::warn!("browser tab no longer exists: {tab_id}");
         sync_shell_layout(appid);
         return;

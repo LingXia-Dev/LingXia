@@ -20,6 +20,7 @@ pub use chrome::{
     WindowsShellWindowLayout, begin_address_edit,
 };
 
+pub(crate) use chrome::shell_chrome_dirty_rects;
 pub(crate) use runtime::open_home_app;
 
 /// Registers the Windows SDK default shell.

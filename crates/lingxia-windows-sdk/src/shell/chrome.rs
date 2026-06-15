@@ -205,6 +205,13 @@ impl WindowsChromeRenderer for ShellChromeRenderer {
         }
     }
 
+    fn paint_region(&self, hdc: HDC, state: &WindowsChromeState, invalid: RECT) {
+        if paint_native_panel_region(hdc, state, invalid) {
+            return;
+        }
+        self.paint(hdc, state);
+    }
+
     fn hit_test(&self, state: &WindowsChromeState, point: (i32, i32)) -> Option<WindowsChromeHit> {
         let layout = shell_layout(&state.layout)?;
         chrome_hit_test(state, layout, point)
@@ -228,6 +235,231 @@ pub(super) fn install() {
 
 fn shell_layout(layout: &WindowsWindowLayout) -> Option<&WindowsShellWindowLayout> {
     layout.downcast_ref::<WindowsShellWindowLayout>()
+}
+
+pub(crate) fn shell_chrome_dirty_rects(
+    client: RECT,
+    old_layout: &WindowsWindowLayout,
+    new_layout: &WindowsWindowLayout,
+) -> Option<Vec<RECT>> {
+    let old_layout = shell_layout(old_layout)?;
+    let new_layout = shell_layout(new_layout)?;
+    if old_layout == new_layout {
+        return Some(Vec::new());
+    }
+
+    let old_rects = compute_chrome_rects(client, old_layout);
+    let new_rects = compute_chrome_rects(client, new_layout);
+    if old_rects.content != new_rects.content
+        || old_rects.panel != new_rects.panel
+        || old_rects.tab_bar != new_rects.tab_bar
+    {
+        return None;
+    }
+
+    let mut dirty = Vec::new();
+    if old_layout.navigation_bar != new_layout.navigation_bar
+        || old_layout.address_bar != new_layout.address_bar
+    {
+        push_dirty_rect(&mut dirty, new_rects.top_bar, client);
+    }
+
+    let tabbar_dirty = tabbar_dirty_rects(
+        client,
+        new_rects.tab_bar,
+        old_layout.tab_bar.as_ref(),
+        new_layout.tab_bar.as_ref(),
+    )?;
+    dirty.extend(tabbar_dirty);
+    dirty.extend(panel_activator_dirty_rects(
+        client, &old_rects, old_layout, new_layout,
+    ));
+
+    Some(dirty)
+}
+
+fn tabbar_dirty_rects(
+    client: RECT,
+    tabbar_rect: Option<RECT>,
+    old_tabbar: Option<&WindowsShellTabBarLayout>,
+    new_tabbar: Option<&WindowsShellTabBarLayout>,
+) -> Option<Vec<RECT>> {
+    match (old_tabbar, new_tabbar) {
+        (None, None) => Some(Vec::new()),
+        (Some(_), None) | (None, Some(_)) => None,
+        (Some(old_tabbar), Some(new_tabbar)) => {
+            if old_tabbar == new_tabbar {
+                return Some(Vec::new());
+            }
+            let rect = tabbar_rect?;
+            if tabbar_requires_full_repaint(old_tabbar, new_tabbar) {
+                return Some(vec![clip_dirty_rect(rect, client)?]);
+            }
+
+            let mut dirty = Vec::new();
+            push_tabbar_selected_rects(&mut dirty, client, rect, old_tabbar, new_tabbar);
+            push_sidebar_auxiliary_dirty_rects(&mut dirty, client, rect, old_tabbar, new_tabbar);
+            Some(dirty)
+        }
+    }
+}
+
+fn tabbar_requires_full_repaint(
+    old_tabbar: &WindowsShellTabBarLayout,
+    new_tabbar: &WindowsShellTabBarLayout,
+) -> bool {
+    old_tabbar.visible != new_tabbar.visible
+        || old_tabbar.position != new_tabbar.position
+        || old_tabbar.dimension != new_tabbar.dimension
+        || old_tabbar.app_name != new_tabbar.app_name
+        || old_tabbar.group_id != new_tabbar.group_id
+        || old_tabbar.color != new_tabbar.color
+        || old_tabbar.background_color != new_tabbar.background_color
+        || old_tabbar.border_color != new_tabbar.border_color
+        || old_tabbar.items != new_tabbar.items
+        || old_tabbar.collapsed != new_tabbar.collapsed
+        || old_tabbar.items_collapsed != new_tabbar.items_collapsed
+        || old_tabbar.show_auxiliary_add != new_tabbar.show_auxiliary_add
+        || old_tabbar.header_actions != new_tabbar.header_actions
+        || !same_auxiliary_rows(old_tabbar, new_tabbar)
+}
+
+fn same_auxiliary_rows(
+    old_tabbar: &WindowsShellTabBarLayout,
+    new_tabbar: &WindowsShellTabBarLayout,
+) -> bool {
+    old_tabbar.auxiliary_items.len() == new_tabbar.auxiliary_items.len()
+        && old_tabbar
+            .auxiliary_items
+            .iter()
+            .zip(&new_tabbar.auxiliary_items)
+            .all(|(old_item, new_item)| {
+                old_item.id == new_item.id
+                    && old_item.title == new_item.title
+                    && old_item.icon_png == new_item.icon_png
+            })
+}
+
+fn push_tabbar_selected_rects(
+    dirty: &mut Vec<RECT>,
+    client: RECT,
+    rect: RECT,
+    old_tabbar: &WindowsShellTabBarLayout,
+    new_tabbar: &WindowsShellTabBarLayout,
+) {
+    if old_tabbar.selected_index == new_tabbar.selected_index
+        && old_tabbar.selected_color == new_tabbar.selected_color
+    {
+        return;
+    }
+    for index in [old_tabbar.selected_index, new_tabbar.selected_index] {
+        if index < 0 || index as usize >= new_tabbar.items.len() {
+            continue;
+        }
+        let item_rect = if matches!(
+            new_tabbar.position,
+            WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right
+        ) {
+            sidebar_item_rect(rect, index as usize)
+        } else {
+            tab_item_rect(
+                rect,
+                new_tabbar.position,
+                new_tabbar.items.len(),
+                index as usize,
+            )
+        };
+        push_dirty_rect(dirty, item_rect, client);
+    }
+}
+
+fn push_sidebar_auxiliary_dirty_rects(
+    dirty: &mut Vec<RECT>,
+    client: RECT,
+    rect: RECT,
+    old_tabbar: &WindowsShellTabBarLayout,
+    new_tabbar: &WindowsShellTabBarLayout,
+) {
+    if !matches!(
+        new_tabbar.position,
+        WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right
+    ) {
+        return;
+    }
+    let Some(auxiliary) = sidebar_auxiliary_rects(rect, new_tabbar) else {
+        return;
+    };
+    for (index, (old_item, new_item)) in old_tabbar
+        .auxiliary_items
+        .iter()
+        .zip(&new_tabbar.auxiliary_items)
+        .enumerate()
+    {
+        if old_item.active == new_item.active
+            && old_tabbar.selected_color == new_tabbar.selected_color
+        {
+            continue;
+        }
+        if let Some(item_rect) = auxiliary.items.get(index).copied() {
+            push_dirty_rect(dirty, item_rect, client);
+        }
+    }
+}
+
+fn panel_activator_dirty_rects(
+    client: RECT,
+    rects: &ChromeRects,
+    old_layout: &WindowsShellWindowLayout,
+    new_layout: &WindowsShellWindowLayout,
+) -> Vec<RECT> {
+    if old_layout.panel_activators == new_layout.panel_activators {
+        return Vec::new();
+    }
+
+    let activator_rects = panel_activator_rects(client, rects, new_layout);
+    let mut dirty = Vec::new();
+    for (index, (old_activator, new_activator)) in old_layout
+        .panel_activators
+        .iter()
+        .zip(&new_layout.panel_activators)
+        .enumerate()
+    {
+        if old_activator == new_activator {
+            continue;
+        }
+        if let Some((_, rect)) = activator_rects.get(index) {
+            push_dirty_rect(&mut dirty, *rect, client);
+        }
+    }
+    if old_layout.panel_activators.len() != new_layout.panel_activators.len() {
+        for (_, rect) in activator_rects {
+            push_dirty_rect(&mut dirty, rect, client);
+        }
+    }
+    dirty
+}
+
+fn push_dirty_rect(dirty: &mut Vec<RECT>, rect: RECT, client: RECT) {
+    let Some(rect) = clip_dirty_rect(rect, client) else {
+        return;
+    };
+    if !dirty.iter().any(|candidate| *candidate == rect) {
+        dirty.push(rect);
+    }
+}
+
+fn clip_dirty_rect(rect: RECT, client: RECT) -> Option<RECT> {
+    let rect = normalize_rect(RECT {
+        left: (rect.left - 2).max(client.left),
+        top: (rect.top - 2).max(client.top),
+        right: (rect.right + 2).min(client.right),
+        bottom: (rect.bottom + 2).min(client.bottom),
+    });
+    if rect_width(&rect) == 0 || rect_height(&rect) == 0 {
+        None
+    } else {
+        Some(rect)
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -544,6 +776,24 @@ pub(super) fn draw_window_chrome(
     draw_window_frame_buttons(hdc, state);
 }
 
+fn paint_native_panel_region(hdc: HDC, state: &WindowsChromeState, invalid: RECT) -> bool {
+    if rect_width(&invalid) == 0 || rect_height(&invalid) == 0 {
+        return false;
+    }
+    let Some(attached) = &state.attached else {
+        return false;
+    };
+    let Some(panel) = attached.panels.iter().find(|panel| {
+        panel.host_content.is_some()
+            && rect_contains_rect(&panel.rect, &invalid)
+            && rects_intersect(&panel.rect, &invalid)
+    }) else {
+        return false;
+    };
+    draw_native_panel_content(hdc, state.hwnd, panel);
+    true
+}
+
 pub(super) fn chrome_hit_test(
     state: &WindowsChromeState,
     layout: &WindowsShellWindowLayout,
@@ -788,6 +1038,17 @@ pub(super) fn normalize_rect(mut rect: RECT) -> RECT {
         rect.bottom = rect.top;
     }
     rect
+}
+
+pub(super) fn rects_intersect(a: &RECT, b: &RECT) -> bool {
+    a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom
+}
+
+pub(super) fn rect_contains_rect(outer: &RECT, inner: &RECT) -> bool {
+    inner.left >= outer.left
+        && inner.top >= outer.top
+        && inner.right <= outer.right
+        && inner.bottom <= outer.bottom
 }
 
 pub(super) fn rect_width(rect: &RECT) -> i32 {

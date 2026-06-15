@@ -670,9 +670,7 @@ fn publish_active_snapshot(panel_id: &str) {
 /// panel.
 #[cfg(all(feature = "terminal-runtime", feature = "shell-runtime"))]
 fn publish_windows_terminal_snapshot(panel_id: &str, snapshot: TerminalSnapshot) {
-    let body = windows_terminal_snapshot_body(&snapshot);
     super::terminal_grid::set_panel_snapshot(panel_id, snapshot);
-    let _ = lingxia_windows_host::update_host_panel_body(panel_id, &body);
     lingxia_windows_host::invalidate_host_panel(panel_id);
 }
 

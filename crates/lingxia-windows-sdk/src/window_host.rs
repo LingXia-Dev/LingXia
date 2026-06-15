@@ -5,8 +5,8 @@ use std::ffi::c_void;
 use std::sync::{Arc, Mutex, OnceLock};
 
 use lingxia_webview::platform::windows::{
-    WindowsWebViewNativeView, WindowsWebViewNativeViewHost, find_webview_handler,
-    set_webview_native_view_host,
+    WindowsWebViewHandler, WindowsWebViewNativeView, WindowsWebViewNativeViewHost,
+    find_webview_handler, set_webview_native_view_host,
 };
 use lingxia_webview::runtime as webview_runtime;
 use lingxia_webview::{WebTag, WebViewError};
@@ -15,20 +15,23 @@ pub use lingxia_windows_host::{
     WindowsChromeCommand, WindowsChromeHit, WindowsChromePanel, WindowsChromePanelLayoutInput,
     WindowsChromeState, WindowsContentRect, WindowsFrameButton, WindowsHostBackend,
     WindowsHostPanelContent, WindowsHostPanelTab, WindowsHostWindow, WindowsPanelPosition,
-    WindowsWebViewContentWindow, WindowsWebViewWindowSnapshot, add_host_window_created_handler,
-    cleanup_webview_state, current_window_layout, default_window_size,
-    host_window_created_handlers, set_webview_window_layout, set_windows_card_decorator,
-    set_windows_host_backend, webview_chrome_event_handler, webview_close_handler,
-    webview_visibility_handler, windows_chrome_renderer,
+    WindowsWebViewContentWindow, WindowsWebViewWindowSnapshot, WindowsWindowLayout,
+    add_host_window_created_handler, cleanup_webview_state, current_window_layout,
+    default_window_size, host_window_created_handlers, set_webview_window_layout,
+    set_windows_card_decorator, set_windows_host_backend, webview_chrome_event_handler,
+    webview_close_handler, webview_visibility_handler, windows_chrome_renderer,
 };
+use lingxia_windows_host::{WindowsHostPanelKeyEvent, host_panel_input_handler};
 use windows::Win32::Foundation::{COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
-    BeginPaint, CreatePen, CreateSolidBrush, DeleteObject, Ellipse, EndPaint, GetMonitorInfoW, HDC,
-    HGDIOBJ, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromWindow, PAINTSTRUCT, PS_SOLID,
-    ScreenToClient, SelectObject,
+    BeginPaint, CreatePen, CreateSolidBrush, DeleteObject, Ellipse, EndPaint, ExcludeClipRect,
+    GetMonitorInfoW, HDC, HGDIOBJ, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromWindow,
+    PAINTSTRUCT, PS_SOLID, RestoreDC, SaveDC, ScreenToClient, SelectObject,
 };
 use windows::Win32::System::LibraryLoader;
-use windows::Win32::UI::Input::KeyboardAndMouse::{ReleaseCapture, SetCapture};
+use windows::Win32::UI::Input::KeyboardAndMouse::{
+    GetKeyState, ReleaseCapture, SetCapture, SetFocus, VK_CONTROL, VK_MENU, VK_SHIFT,
+};
 use windows::Win32::UI::WindowsAndMessaging::{
     self, WINDOW_EX_STYLE, WINDOW_STYLE, WNDCLASSW, WS_MAXIMIZEBOX, WS_MINIMIZEBOX,
     WS_OVERLAPPEDWINDOW, WS_POPUP, WS_SIZEBOX, WS_SYSMENU,
@@ -46,6 +49,9 @@ static WEBTAG_WINDOWS: OnceLock<Mutex<HashMap<String, isize>>> = OnceLock::new()
 static WEBTAG_VISIBILITY: OnceLock<Mutex<HashMap<String, bool>>> = OnceLock::new();
 static WEBTAG_CONTENT_BOUNDS: OnceLock<Mutex<HashMap<String, ContentBounds>>> = OnceLock::new();
 static HOST_ACTIVE_WEBTAG: OnceLock<Mutex<HashMap<isize, String>>> = OnceLock::new();
+static PRESENTED_GROUP_MAIN: OnceLock<Mutex<HashMap<isize, String>>> = OnceLock::new();
+static FOCUSED_HOST_PANEL: OnceLock<Mutex<Option<String>>> = OnceLock::new();
+static HOST_CHROME_SNAPSHOTS: OnceLock<Mutex<HashMap<isize, HostChromeSnapshot>>> = OnceLock::new();
 static CHROME_INTERACTIONS: OnceLock<Mutex<HashMap<isize, ChromeInteraction>>> = OnceLock::new();
 static PULL_REFRESH_WEBTAGS: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
 static PULL_REFRESH_TICKS: OnceLock<Mutex<HashMap<isize, u32>>> = OnceLock::new();
@@ -98,6 +104,12 @@ struct ContentBounds {
     height: i32,
 }
 
+#[derive(Clone)]
+struct HostChromeSnapshot {
+    layout: WindowsWindowLayout,
+    attached: Option<WindowsChromeAttachedLayout>,
+}
+
 struct PlatformNativeViewHost;
 
 impl WindowsWebViewNativeViewHost for PlatformNativeViewHost {
@@ -129,22 +141,6 @@ pub fn install_native_view_host() {
 struct WindowsHostBackendImpl;
 
 impl WindowsHostBackend for WindowsHostBackendImpl {
-    fn clear_webview_group_override(&self, webtag: &WebTag) {
-        clear_webview_group_override(webtag);
-    }
-
-    fn set_webview_group_override(&self, webtag: &WebTag, group_key: &str) {
-        set_webview_group_override(webtag, group_key);
-    }
-
-    fn clear_webview_os_frame(&self, webtag: &WebTag) {
-        clear_webview_os_frame(webtag);
-    }
-
-    fn set_webview_os_frame(&self, webtag: &WebTag) {
-        set_webview_os_frame(webtag);
-    }
-
     fn show_webview_as_panel(&self, webtag: &WebTag, title: &str, panel_id: &str) -> StdResult<()> {
         show_webview_as_panel(webtag, title, panel_id)
     }
@@ -255,18 +251,24 @@ impl WindowsHostBackend for WindowsHostBackendImpl {
 
     fn sync_webview_window_layout(&self, webtag: &WebTag) {
         if let Some(hwnd) = window_handle_for_key(webtag.key()) {
-            sync_window_layout(hwnd);
-            unsafe {
-                let _ = windows::Win32::Graphics::Gdi::InvalidateRect(Some(hwnd), None, false);
+            if !should_sync_webview_layout_now(hwnd) {
+                return;
             }
+            sync_window_layout(hwnd);
+            invalidate_window_chrome(hwnd);
         }
     }
 }
 
-pub fn clear_webview_group_override(_webtag: &WebTag) {}
-pub fn set_webview_group_override(_webtag: &WebTag, _group_key: &str) {}
-pub fn clear_webview_os_frame(_webtag: &WebTag) {}
-pub fn set_webview_os_frame(_webtag: &WebTag) {}
+fn should_sync_webview_layout_now(hwnd: HWND) -> bool {
+    if windows_chrome_renderer().is_none() {
+        return true;
+    }
+    match active_host_window() {
+        Some(active) => active == hwnd,
+        None => true,
+    }
+}
 
 pub fn show_webview_as_panel(webtag: &WebTag, title: &str, panel_id: &str) -> StdResult<()> {
     let handler = find_webview_handler(webtag).ok_or_else(|| handler_not_ready(webtag))?;
@@ -277,7 +279,6 @@ pub fn show_webview_as_panel(webtag: &WebTag, title: &str, panel_id: &str) -> St
     };
 
     handler.set_content_visible(false)?;
-    handler.set_parent_window(hwnd_handle(host))?;
     set_window_handle(webtag.key(), host);
     register_webview_panel(panel_id, webtag, panel_position_for_id(panel_id));
     mark_panel_visible(panel_id, true);
@@ -290,13 +291,76 @@ pub fn show_webview_as_panel(webtag: &WebTag, title: &str, panel_id: &str) -> St
 
 pub fn present_webview_in_active_group(webtag: &WebTag) -> StdResult<()> {
     let handler = find_webview_handler(webtag).ok_or_else(|| handler_not_ready(webtag))?;
+    let Some(host) = active_host_window() else {
+        handler.set_content_visible(true)?;
+        show_native_view(handler.native_view(), "", true)?;
+        let hwnd = hwnd_from_handle(handler.native_view().window);
+        set_window_handle(webtag.key(), hwnd);
+        set_host_active_webtag(hwnd, webtag.key());
+        mark_active(webtag);
+        notify_webtag_visibility(webtag.key(), true);
+        return Ok(());
+    };
+
+    let previous = active_webtag_key_for_window(host);
+    let already_active =
+        previous.as_deref() == Some(webtag.key()) && webtag_is_visible(webtag.key());
+    if already_active {
+        sync_window_layout(host);
+        invalidate_window_chrome(host);
+        return Ok(());
+    }
+
+    if let Some(previous) = previous.as_ref()
+        && previous != webtag.key()
+    {
+        let presented = PRESENTED_GROUP_MAIN.get_or_init(|| Mutex::new(HashMap::new()));
+        if let Ok(mut presented) = presented.lock() {
+            presented
+                .entry(hwnd_handle(host))
+                .or_insert_with(|| previous.clone());
+        }
+    }
+
+    if webtag_is_visible(webtag.key()) {
+        handler.set_content_visible(false)?;
+    }
+    set_window_handle(webtag.key(), host);
+    set_host_active_webtag(host, webtag.key());
+    sync_window_layout(host);
     handler.set_content_visible(true)?;
-    show_native_view(handler.native_view(), "", true)?;
-    let hwnd = hwnd_from_handle(handler.native_view().window);
-    set_window_handle(webtag.key(), hwnd);
-    set_host_active_webtag(hwnd, webtag.key());
+
+    if let Some(previous) = previous
+        && previous != webtag.key()
+    {
+        if let Some(previous_webtag) = webtag_for_key(&previous)
+            && let Some(previous_handler) = find_webview_handler(&previous_webtag)
+        {
+            let _ = previous_handler.set_content_visible(false);
+        }
+        notify_webtag_visibility(&previous, false);
+    }
+
+    if !is_window_visible(host) {
+        unsafe {
+            let _ = WindowsAndMessaging::SetWindowPos(
+                host,
+                None,
+                0,
+                0,
+                0,
+                0,
+                WindowsAndMessaging::SWP_NOMOVE
+                    | WindowsAndMessaging::SWP_NOSIZE
+                    | WindowsAndMessaging::SWP_SHOWWINDOW,
+            );
+            let _ = WindowsAndMessaging::BringWindowToTop(host);
+            let _ = WindowsAndMessaging::SetForegroundWindow(host);
+        }
+    }
     mark_active(webtag);
     notify_webtag_visibility(webtag.key(), true);
+    invalidate_window_chrome(host);
     Ok(())
 }
 
@@ -480,6 +544,46 @@ pub fn resize_host_window_content(webtag: &WebTag, width: i32, height: i32) -> S
 }
 
 pub fn restore_presented_group_main() -> StdResult<()> {
+    let Some(host) = active_host_window() else {
+        return Ok(());
+    };
+    let main_key = PRESENTED_GROUP_MAIN
+        .get()
+        .and_then(|presented| presented.lock().ok())
+        .and_then(|mut presented| presented.remove(&hwnd_handle(host)));
+    let Some(main_key) = main_key else {
+        return Ok(());
+    };
+
+    let current = active_webtag_key_for_window(host);
+    let Some(main_webtag) = webtag_for_key(&main_key) else {
+        return Ok(());
+    };
+    let Some(main_handler) = find_webview_handler(&main_webtag) else {
+        return Ok(());
+    };
+
+    if webtag_is_visible(main_webtag.key()) {
+        main_handler.set_content_visible(false)?;
+    }
+    set_window_handle(main_webtag.key(), host);
+    set_host_active_webtag(host, main_webtag.key());
+    sync_window_layout(host);
+    main_handler.set_content_visible(true)?;
+
+    if let Some(current) = current
+        && current != main_webtag.key()
+    {
+        if let Some(current_webtag) = webtag_for_key(&current)
+            && let Some(current_handler) = find_webview_handler(&current_webtag)
+        {
+            let _ = current_handler.set_content_visible(false);
+        }
+        notify_webtag_visibility(&current, false);
+    }
+    mark_active(&main_webtag);
+    notify_webtag_visibility(main_webtag.key(), true);
+    invalidate_window_chrome(host);
     Ok(())
 }
 
@@ -504,12 +608,15 @@ pub fn show_interactive_host_panel(
         );
     }
     mark_panel_visible(panel_id, true);
+    focus_host_panel(panel_id);
+    focus_active_host_window();
     sync_active_host_layout();
     Ok(())
 }
 
 pub fn hide_host_panel(panel_id: &str) -> StdResult<()> {
     mark_panel_visible(panel_id, false);
+    clear_focused_host_panel(panel_id);
     sync_active_host_layout();
     Ok(())
 }
@@ -558,9 +665,8 @@ pub fn set_host_panel_maximized(panel_id: &str, maximized: bool) -> bool {
     updated
 }
 
-pub fn invalidate_host_panel(_panel_id: &str) -> bool {
-    repaint_active_host();
-    true
+pub fn invalidate_host_panel(panel_id: &str) -> bool {
+    invalidate_active_host_panel(panel_id)
 }
 
 pub fn is_panel_visible(panel_id: &str) -> bool {
@@ -667,6 +773,7 @@ fn sync_window_layout(hwnd: HWND) {
     };
     sync_webtag_content_bounds(hwnd, &webtag_key);
 
+    let mut visible_webtags = HashSet::from([webtag_key.clone()]);
     let mut client = RECT::default();
     unsafe {
         let _ = WindowsAndMessaging::GetClientRect(hwnd, &mut client);
@@ -679,12 +786,14 @@ fn sync_window_layout(hwnd: HWND) {
             .filter(|panel| !panel.webtag_key.is_empty())
         {
             laid_out_panels.insert(panel.webtag_key.clone());
+            visible_webtags.insert(panel.webtag_key.clone());
             sync_webtag_content_bounds(hwnd, &panel.webtag_key);
         }
         if attached_has_maximized_native_panel(&attached) {
             collapse_obscured_webview_panels(hwnd, &laid_out_panels);
         }
     }
+    reconcile_host_webview_visibility(hwnd, &visible_webtags);
 }
 
 fn notify_window_position_changed(hwnd: HWND) {
@@ -708,7 +817,7 @@ fn sync_webtag_content_bounds(hwnd: HWND, webtag_key: &str) {
 fn sync_webtag_content_bounds_to_rect(hwnd: HWND, webtag_key: &str, rect: RECT) {
     let width = (rect.right - rect.left).max(0);
     let height = (rect.bottom - rect.top).max(0);
-    let bounds = ContentBounds {
+    let host_bounds = ContentBounds {
         hwnd: hwnd_handle(hwnd),
         left: rect.left,
         top: rect.top,
@@ -721,10 +830,22 @@ fn sync_webtag_content_bounds_to_rect(hwnd: HWND, webtag_key: &str, rect: RECT) 
     let Some(handler) = find_webview_handler(&webtag) else {
         return;
     };
-    if webtag_content_bounds_changed(webtag_key, bounds)
-        && let Err(err) = handler.set_content_bounds(rect.left, rect.top, width, height)
+    let surface = hwnd_from_handle(handler.native_view().window);
+    if surface != hwnd
+        && let Err(err) = handler.set_parent_window(hwnd_handle(hwnd))
     {
-        log::debug!("Failed to sync Windows WebView content bounds: {err}");
+        log::debug!("Failed to set Windows WebView parent for {webtag_key}: {err}");
+    }
+    let controller_bounds = rect;
+    if webtag_content_bounds_changed(webtag_key, host_bounds) {
+        if let Err(err) = handler.set_content_bounds(
+            controller_bounds.left,
+            controller_bounds.top,
+            controller_bounds.right - controller_bounds.left,
+            controller_bounds.bottom - controller_bounds.top,
+        ) {
+            log::debug!("Failed to sync Windows WebView content bounds: {err}");
+        }
     }
     let _ = handler.notify_parent_position_changed();
 }
@@ -753,6 +874,71 @@ fn collapse_obscured_webview_panels(hwnd: HWND, laid_out: &HashSet<String>) {
             sync_webtag_content_bounds_to_rect(hwnd, &panel.webtag_key, RECT::default());
         }
     }
+}
+
+fn reconcile_host_webview_visibility(hwnd: HWND, visible_webtags: &HashSet<String>) {
+    let host = hwnd_handle(hwnd);
+    let host_visible = is_window_visible(hwnd) && !is_minimized(hwnd);
+    let mut to_show = Vec::new();
+    let mut to_hide = Vec::new();
+
+    for webtag in lingxia_webview::runtime::list_webviews() {
+        let key = webtag.key().to_string();
+        let Some(window) = window_handle_for_key(&key) else {
+            continue;
+        };
+        if hwnd_handle(window) != host {
+            continue;
+        }
+        let Some(handler) = find_webview_handler(&webtag) else {
+            continue;
+        };
+        let surface = hwnd_from_handle(handler.native_view().window);
+        let should_show = host_visible && visible_webtags.contains(&key);
+        match (should_show, webtag_is_visible(&key)) {
+            (true, false) => to_show.push((key, handler, surface)),
+            (false, true) => to_hide.push((key, handler, surface)),
+            _ => {}
+        }
+    }
+
+    let host_surface_incoming = to_show.iter().any(|(_, _, surface)| *surface == hwnd);
+    if host_surface_incoming {
+        for (key, handler, _) in to_hide {
+            hide_reconciled_webview(&key, &handler);
+        }
+        for (key, handler, _) in to_show {
+            show_reconciled_webview(&key, &handler);
+        }
+    } else {
+        // Show the incoming child surface before hiding the outgoing one.
+        // WebView2 controller visibility changes are not atomic across
+        // controllers; hiding first exposes the host background for a frame
+        // and reads as flicker.
+        for (key, handler, _) in to_show {
+            show_reconciled_webview(&key, &handler);
+        }
+        for (key, handler, _) in to_hide {
+            hide_reconciled_webview(&key, &handler);
+        }
+    }
+}
+
+fn show_reconciled_webview(key: &str, handler: &WindowsWebViewHandler) {
+    if let Err(err) = handler.set_content_visible(true) {
+        log::debug!("failed to show Windows WebView during visibility reconcile for {key}: {err}");
+        return;
+    }
+    let _ = handler.notify_parent_position_changed();
+    notify_webtag_visibility(key, true);
+}
+
+fn hide_reconciled_webview(key: &str, handler: &WindowsWebViewHandler) {
+    if let Err(err) = handler.set_content_visible(false) {
+        log::debug!("failed to hide Windows WebView during visibility reconcile for {key}: {err}");
+        return;
+    }
+    notify_webtag_visibility(key, false);
 }
 
 fn webtag_content_bounds_changed(webtag_key: &str, bounds: ContentBounds) -> bool {
@@ -933,9 +1119,31 @@ fn paint_window_chrome(hwnd: HWND) {
     unsafe {
         let mut ps = PAINTSTRUCT::default();
         let hdc = BeginPaint(hwnd, &mut ps);
-        renderer.paint(hdc, &state);
+        let saved = SaveDC(hdc);
+        exclude_host_webview_content_from_paint(hdc, hwnd, &webtag_key);
+        renderer.paint_region(hdc, &state, ps.rcPaint);
+        let _ = RestoreDC(hdc, saved);
         paint_pull_refresh_indicator(hdc, hwnd, &webtag_key);
         let _ = EndPaint(hwnd, &ps);
+    }
+}
+
+fn exclude_host_webview_content_from_paint(hdc: HDC, hwnd: HWND, webtag_key: &str) {
+    let Some(webtag) = webtag_for_key(webtag_key) else {
+        return;
+    };
+    let Some(handler) = find_webview_handler(&webtag) else {
+        return;
+    };
+    if hwnd_from_handle(handler.native_view().window) != hwnd {
+        return;
+    }
+    let rect = content_rect_for_window(hwnd, webtag_key);
+    if rect.right <= rect.left || rect.bottom <= rect.top {
+        return;
+    }
+    unsafe {
+        let _ = ExcludeClipRect(hdc, rect.left, rect.top, rect.right, rect.bottom);
     }
 }
 
@@ -1026,7 +1234,7 @@ fn active_host_window() -> Option<HWND> {
 fn sync_active_host_layout() {
     if let Some(hwnd) = active_host_window() {
         sync_window_layout(hwnd);
-        invalidate_window(hwnd);
+        invalidate_window_chrome(hwnd);
     }
 }
 
@@ -1114,6 +1322,43 @@ fn mark_panel_visible(panel_id: &str, visible: bool) {
             panels.remove(panel_id);
         }
     }
+    if !visible {
+        clear_focused_host_panel(panel_id);
+    }
+}
+
+fn focus_host_panel(panel_id: &str) {
+    let focused = FOCUSED_HOST_PANEL.get_or_init(|| Mutex::new(None));
+    if let Ok(mut focused) = focused.lock() {
+        *focused = Some(panel_id.to_string());
+    }
+}
+
+fn focus_active_host_window() {
+    if let Some(hwnd) = active_host_window() {
+        focus_host_window(hwnd);
+    }
+}
+
+fn focus_host_window(hwnd: HWND) {
+    let window = hwnd_handle(hwnd);
+    let _ = post_to_window_thread(
+        window,
+        Box::new(move || unsafe {
+            let hwnd = hwnd_from_handle(window);
+            let _ = WindowsAndMessaging::SetForegroundWindow(hwnd);
+            let _ = SetFocus(Some(hwnd));
+        }),
+    );
+}
+
+fn clear_focused_host_panel(panel_id: &str) {
+    if let Some(focused) = FOCUSED_HOST_PANEL.get()
+        && let Ok(mut focused) = focused.lock()
+        && focused.as_deref() == Some(panel_id)
+    {
+        *focused = None;
+    }
 }
 
 fn chrome_interaction(hwnd: HWND) -> ChromeInteraction {
@@ -1164,6 +1409,203 @@ fn chrome_hit_for_window(hwnd: HWND, point: (i32, i32)) -> Option<WindowsChromeH
 fn invalidate_window(hwnd: HWND) {
     unsafe {
         let _ = windows::Win32::Graphics::Gdi::InvalidateRect(Some(hwnd), None, false);
+    }
+}
+
+fn invalidate_window_chrome(hwnd: HWND) {
+    let Some(renderer) = windows_chrome_renderer() else {
+        invalidate_window(hwnd);
+        return;
+    };
+    let Some(webtag_key) = active_webtag_key_for_window(hwnd) else {
+        invalidate_window(hwnd);
+        return;
+    };
+
+    let mut client = RECT::default();
+    unsafe {
+        if WindowsAndMessaging::GetClientRect(hwnd, &mut client).is_err() {
+            invalidate_window(hwnd);
+            return;
+        }
+    }
+
+    let layout = current_window_layout(&webtag_key);
+    let attached = attached_layout_for_window(hwnd, &webtag_key, client);
+    if invalidate_precise_shell_chrome(hwnd, client, &layout, attached.as_ref()) {
+        return;
+    }
+
+    let content = attached
+        .as_ref()
+        .map(|attached| attached.main)
+        .unwrap_or_else(|| renderer.content_rect(client, &layout));
+
+    invalidate_rect_if_non_empty(
+        hwnd,
+        RECT {
+            left: client.left,
+            top: client.top,
+            right: client.right,
+            bottom: content.top,
+        },
+    );
+    invalidate_rect_if_non_empty(
+        hwnd,
+        RECT {
+            left: client.left,
+            top: content.top,
+            right: content.left,
+            bottom: content.bottom,
+        },
+    );
+    invalidate_rect_if_non_empty(
+        hwnd,
+        RECT {
+            left: content.right,
+            top: content.top,
+            right: client.right,
+            bottom: content.bottom,
+        },
+    );
+    invalidate_rect_if_non_empty(
+        hwnd,
+        RECT {
+            left: client.left,
+            top: content.bottom,
+            right: client.right,
+            bottom: client.bottom,
+        },
+    );
+
+    if let Some(attached) = attached {
+        for panel in attached.panels {
+            if host_panel_content(&panel.panel_id).is_some() {
+                invalidate_rect_if_non_empty(hwnd, panel.rect);
+            }
+        }
+    }
+}
+
+#[cfg(feature = "shell-runtime")]
+fn invalidate_precise_shell_chrome(
+    hwnd: HWND,
+    client: RECT,
+    layout: &WindowsWindowLayout,
+    attached: Option<&WindowsChromeAttachedLayout>,
+) -> bool {
+    let hwnd_key = hwnd_handle(hwnd);
+    let snapshots = HOST_CHROME_SNAPSHOTS.get_or_init(|| Mutex::new(HashMap::new()));
+    let Ok(mut snapshots) = snapshots.lock() else {
+        return false;
+    };
+    let snapshot = HostChromeSnapshot {
+        layout: layout.clone(),
+        attached: attached.cloned(),
+    };
+    let Some(previous) = snapshots.insert(hwnd_key, snapshot) else {
+        return false;
+    };
+    let attached_dirty = attached_chrome_dirty_rects(previous.attached.as_ref(), attached);
+    for rect in attached_dirty {
+        invalidate_rect_if_non_empty(hwnd, rect);
+    }
+    let Some(dirty) = crate::shell::shell_chrome_dirty_rects(client, &previous.layout, layout)
+    else {
+        return false;
+    };
+    for rect in dirty {
+        invalidate_rect_if_non_empty(hwnd, rect);
+    }
+    true
+}
+
+#[cfg(not(feature = "shell-runtime"))]
+fn invalidate_precise_shell_chrome(
+    _hwnd: HWND,
+    _client: RECT,
+    _layout: &WindowsWindowLayout,
+    _attached: Option<&WindowsChromeAttachedLayout>,
+) -> bool {
+    false
+}
+
+fn attached_chrome_dirty_rects(
+    previous: Option<&WindowsChromeAttachedLayout>,
+    current: Option<&WindowsChromeAttachedLayout>,
+) -> Vec<RECT> {
+    if previous == current {
+        return Vec::new();
+    }
+
+    let mut dirty = Vec::new();
+    if let Some(previous) = previous {
+        push_attached_layout_dirty_rects(&mut dirty, previous);
+    }
+    if let Some(current) = current {
+        push_attached_layout_dirty_rects(&mut dirty, current);
+    }
+    dirty
+}
+
+fn push_attached_layout_dirty_rects(dirty: &mut Vec<RECT>, attached: &WindowsChromeAttachedLayout) {
+    for panel in &attached.panels {
+        push_unique_dirty_rect(dirty, panel.rect);
+        if let Some(handle) = panel.resize_handle {
+            push_unique_dirty_rect(dirty, handle);
+        }
+    }
+}
+
+fn push_unique_dirty_rect(dirty: &mut Vec<RECT>, rect: RECT) {
+    let rect = normalize_rect(RECT {
+        left: rect.left.saturating_sub(2),
+        top: rect.top.saturating_sub(2),
+        right: rect.right.saturating_add(2),
+        bottom: rect.bottom.saturating_add(2),
+    });
+    if rect.right <= rect.left || rect.bottom <= rect.top {
+        return;
+    }
+    if !dirty.iter().any(|candidate| *candidate == rect) {
+        dirty.push(rect);
+    }
+}
+
+fn invalidate_rect_if_non_empty(hwnd: HWND, rect: RECT) {
+    let rect = normalize_rect(rect);
+    if rect.right <= rect.left || rect.bottom <= rect.top {
+        return;
+    }
+    unsafe {
+        let _ = windows::Win32::Graphics::Gdi::InvalidateRect(Some(hwnd), Some(&rect), false);
+    }
+}
+
+fn invalidate_active_host_panel(panel_id: &str) -> bool {
+    let Some(hwnd) = active_host_window() else {
+        return false;
+    };
+    let Some(webtag_key) = active_webtag_key_for_window(hwnd) else {
+        return false;
+    };
+    let mut client = RECT::default();
+    unsafe {
+        let _ = WindowsAndMessaging::GetClientRect(hwnd, &mut client);
+    }
+    let rect = attached_layout_for_window(hwnd, &webtag_key, client).and_then(|attached| {
+        attached
+            .panels
+            .into_iter()
+            .find(|panel| panel.panel_id == panel_id)
+            .map(|panel| panel.rect)
+    });
+    let Some(rect) = rect else {
+        invalidate_window(hwnd);
+        return true;
+    };
+    unsafe {
+        windows::Win32::Graphics::Gdi::InvalidateRect(Some(hwnd), Some(&rect), false).as_bool()
     }
 }
 
@@ -1331,9 +1773,12 @@ fn handle_chrome_left_down(hwnd: HWND, point: (i32, i32)) -> bool {
             invalidate_window(hwnd);
             true
         },
-        WindowsChromeHit::Chrome
-        | WindowsChromeHit::Command(_)
-        | WindowsChromeHit::Focusable { .. } => true,
+        WindowsChromeHit::Focusable { id, .. } => {
+            focus_host_panel(&id);
+            focus_host_window(hwnd);
+            true
+        }
+        WindowsChromeHit::Chrome | WindowsChromeHit::Command(_) => true,
     }
 }
 
@@ -1530,7 +1975,6 @@ fn show_webview_window_replacing(
     if webtag_is_visible(webtag.key()) {
         handler.set_content_visible(false)?;
     }
-    handler.set_parent_window(hwnd_handle(target))?;
     set_window_handle(webtag.key(), target);
     set_host_active_webtag(target, webtag.key());
     let inherited = if target_has_layout {
@@ -1719,9 +2163,7 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }
             WindowsAndMessaging::WM_CLOSE => {
-                if let Some(webtag_key) = active_webtag_key_for_window(hwnd)
-                    && invoke_close_handler(&webtag_key)
-                {
+                if invoke_window_close_handler(hwnd) {
                     return LRESULT(0);
                 }
                 unsafe {
@@ -1851,6 +2293,23 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 if let Some(webtag_key) = webtag_key {
                     cleanup_window_state(&webtag_key);
                 }
+                if is_top_level_window(hwnd) && !has_live_top_level_host_window_except(hwnd) {
+                    unsafe {
+                        WindowsAndMessaging::PostQuitMessage(0);
+                    }
+                }
+                unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
+            }
+            WindowsAndMessaging::WM_CHAR => {
+                if handle_host_panel_key_message(msg, wparam) {
+                    return LRESULT(0);
+                }
+                unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
+            }
+            WindowsAndMessaging::WM_KEYDOWN => {
+                if handle_host_panel_key_message(msg, wparam) {
+                    return LRESULT(0);
+                }
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }
             WM_LINGXIA_RUN_CALLBACK => {
@@ -1957,6 +2416,122 @@ fn invoke_close_handler(webtag_key: &str) -> bool {
     }
 }
 
+fn invoke_window_close_handler(hwnd: HWND) -> bool {
+    let mut candidates = Vec::new();
+    if let Some(main_key) = PRESENTED_GROUP_MAIN
+        .get()
+        .and_then(|presented| presented.lock().ok())
+        .and_then(|presented| presented.get(&hwnd_handle(hwnd)).cloned())
+    {
+        candidates.push(main_key);
+    }
+    if let Some(active_key) = active_webtag_key_for_window(hwnd) {
+        candidates.push(active_key);
+    }
+    if let Some(owner_key) = window_webtag_key(hwnd) {
+        candidates.push(owner_key);
+    }
+    let mut seen = HashSet::new();
+    candidates
+        .into_iter()
+        .filter(|key| seen.insert(key.clone()))
+        .any(|key| invoke_close_handler(&key))
+}
+
+fn handle_host_panel_key_message(msg: u32, wparam: WPARAM) -> bool {
+    let Some(panel_id) = focused_input_host_panel() else {
+        return false;
+    };
+    let Some(handler) = host_panel_input_handler(&panel_id) else {
+        return false;
+    };
+    let character = if msg == WindowsAndMessaging::WM_CHAR {
+        char::from_u32(wparam.0 as u32)
+    } else {
+        None
+    };
+    let event = WindowsHostPanelKeyEvent {
+        vk: if msg == WindowsAndMessaging::WM_KEYDOWN {
+            wparam.0 as u32
+        } else {
+            0
+        },
+        ctrl: key_is_down(VK_CONTROL.0 as i32),
+        shift: key_is_down(VK_SHIFT.0 as i32),
+        alt: key_is_down(VK_MENU.0 as i32),
+        character,
+    };
+    handler(event)
+}
+
+fn key_is_down(vk: i32) -> bool {
+    unsafe { GetKeyState(vk) < 0 }
+}
+
+fn focused_input_host_panel() -> Option<String> {
+    if let Some(panel_id) = FOCUSED_HOST_PANEL
+        .get()
+        .and_then(|focused| focused.lock().ok())
+        .and_then(|focused| focused.clone())
+        && visible_host_panel_accepts_input(&panel_id)
+    {
+        return Some(panel_id);
+    }
+    visible_input_host_panels().into_iter().next()
+}
+
+fn visible_input_host_panels() -> Vec<String> {
+    let visible = VISIBLE_PANELS
+        .get()
+        .and_then(|panels| panels.lock().ok())
+        .map(|panels| panels.clone())
+        .unwrap_or_default();
+    let Some(panels) = HOST_PANELS.get().and_then(|panels| panels.lock().ok()) else {
+        return Vec::new();
+    };
+    panels
+        .keys()
+        .filter(|panel_id| {
+            visible.contains(*panel_id) && host_panel_input_handler(panel_id).is_some()
+        })
+        .cloned()
+        .collect()
+}
+
+fn visible_host_panel_accepts_input(panel_id: &str) -> bool {
+    VISIBLE_PANELS
+        .get()
+        .and_then(|panels| panels.lock().ok())
+        .is_some_and(|panels| panels.contains(panel_id))
+        && HOST_PANELS
+            .get()
+            .and_then(|panels| panels.lock().ok())
+            .is_some_and(|panels| panels.contains_key(panel_id))
+        && host_panel_input_handler(panel_id).is_some()
+}
+
+fn is_top_level_window(hwnd: HWND) -> bool {
+    unsafe {
+        WindowsAndMessaging::GetParent(hwnd)
+            .map(|parent| parent.0.is_null())
+            .unwrap_or(true)
+    }
+}
+
+fn has_live_top_level_host_window_except(excluded: HWND) -> bool {
+    let Some(handles) = WEBTAG_WINDOWS.get().and_then(|handles| handles.lock().ok()) else {
+        return false;
+    };
+    let mut seen = HashSet::new();
+    handles.values().copied().any(|handle| {
+        if handle == hwnd_handle(excluded) || !seen.insert(handle) {
+            return false;
+        }
+        let hwnd = hwnd_from_handle(handle);
+        unsafe { WindowsAndMessaging::IsWindow(Some(hwnd)).as_bool() && is_top_level_window(hwnd) }
+    })
+}
+
 fn invoke_host_window_created_handler(hwnd: HWND) {
     for handler in host_window_created_handlers() {
         handler(hwnd_handle(hwnd));
@@ -1989,6 +2564,7 @@ fn remove_window_handle(webtag_key: &str) {
 fn cleanup_window_state(webtag_key: &str) {
     notify_webtag_visibility(webtag_key, false);
     clear_pull_refreshing(webtag_key);
+    let removed_panel = cleanup_webview_panel(webtag_key);
     if let Some(hwnd) = window_handle_for_key(webtag_key) {
         clear_chrome_interaction(hwnd);
     }
@@ -2013,6 +2589,31 @@ fn cleanup_window_state(webtag_key: &str) {
     {
         *active = None;
     }
+    if removed_panel {
+        sync_active_host_layout();
+    }
+}
+
+fn cleanup_webview_panel(webtag_key: &str) -> bool {
+    let panel_id = WEBVIEW_PANELS.get().and_then(|panels| {
+        let mut panels = panels.lock().ok()?;
+        let panel_id = panels
+            .iter()
+            .find(|(_, panel)| panel.webtag_key == webtag_key)
+            .map(|(panel_id, _)| panel_id.clone())?;
+        panels.remove(&panel_id);
+        Some(panel_id)
+    });
+    let Some(panel_id) = panel_id else {
+        return false;
+    };
+    mark_panel_visible(&panel_id, false);
+    if let Some(tabs) = PANEL_TABS.get()
+        && let Ok(mut tabs) = tabs.lock()
+    {
+        tabs.remove(&panel_id);
+    }
+    true
 }
 
 fn webtag_is_visible(webtag_key: &str) -> bool {
