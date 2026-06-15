@@ -26,6 +26,8 @@ mod device_frame;
 mod media_preview;
 #[cfg(all(target_os = "windows", feature = "runtime"))]
 mod native_components;
+#[cfg(all(target_os = "windows", feature = "runtime"))]
+mod pull_to_refresh;
 #[cfg(all(target_os = "windows", feature = "shell-runtime"))]
 mod shell;
 #[cfg(all(target_os = "windows", feature = "runtime"))]
@@ -117,6 +119,7 @@ pub fn init(app: WindowsApp) -> Result<String> {
     // mount a component.
     window_host::install_native_view_host();
     native_components::install();
+    pull_to_refresh::install();
     card_decorator::install();
     #[cfg(feature = "shell-runtime")]
     shell::install();

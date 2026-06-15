@@ -21,10 +21,11 @@ pub use lingxia_windows_host::{
     set_windows_host_backend, webview_chrome_event_handler, webview_close_handler,
     webview_visibility_handler, windows_chrome_renderer,
 };
-use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
+use windows::Win32::Foundation::{COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
-    BeginPaint, EndPaint, GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO,
-    MonitorFromWindow, PAINTSTRUCT, ScreenToClient,
+    BeginPaint, CreatePen, CreateSolidBrush, DeleteObject, Ellipse, EndPaint, GetMonitorInfoW, HDC,
+    HGDIOBJ, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromWindow, PAINTSTRUCT, PS_SOLID,
+    ScreenToClient, SelectObject,
 };
 use windows::Win32::System::LibraryLoader;
 use windows::Win32::UI::Input::KeyboardAndMouse::{ReleaseCapture, SetCapture};
@@ -46,7 +47,14 @@ static WEBTAG_VISIBILITY: OnceLock<Mutex<HashMap<String, bool>>> = OnceLock::new
 static WEBTAG_CONTENT_BOUNDS: OnceLock<Mutex<HashMap<String, ContentBounds>>> = OnceLock::new();
 static HOST_ACTIVE_WEBTAG: OnceLock<Mutex<HashMap<isize, String>>> = OnceLock::new();
 static CHROME_INTERACTIONS: OnceLock<Mutex<HashMap<isize, ChromeInteraction>>> = OnceLock::new();
+static PULL_REFRESH_WEBTAGS: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+static PULL_REFRESH_TICKS: OnceLock<Mutex<HashMap<isize, u32>>> = OnceLock::new();
 const WM_LINGXIA_RUN_CALLBACK: u32 = WindowsAndMessaging::WM_APP + 0x158;
+const PULL_REFRESH_TIMER_ID: usize = 0x5A17;
+const PULL_REFRESH_TIMER_MS: u32 = 120;
+const PULL_REFRESH_SLOT_HEIGHT: i32 = 42;
+const PULL_REFRESH_INDICATOR_WIDTH: i32 = 64;
+const PULL_REFRESH_INDICATOR_HEIGHT: i32 = 32;
 const OVERLAY_MARGIN: i32 = 24;
 const OVERLAY_MIN_WIDTH: i32 = 280;
 const OVERLAY_MIN_HEIGHT: i32 = 220;
@@ -611,6 +619,10 @@ pub fn active_content_screen_rect() -> Option<WindowsContentRect> {
 }
 
 fn content_rect_for_window(hwnd: HWND, webtag_key: &str) -> RECT {
+    refresh_adjusted_content_rect(webtag_key, base_content_rect_for_window(hwnd, webtag_key))
+}
+
+fn base_content_rect_for_window(hwnd: HWND, webtag_key: &str) -> RECT {
     let mut client = RECT::default();
     unsafe {
         if WindowsAndMessaging::GetClientRect(hwnd, &mut client).is_err() {
@@ -640,6 +652,13 @@ fn content_rect_for_window(hwnd: HWND, webtag_key: &str) -> RECT {
         }
     }
     normalize_rect(renderer.content_rect(client, &current_window_layout(webtag_key)))
+}
+
+fn refresh_adjusted_content_rect(webtag_key: &str, mut rect: RECT) -> RECT {
+    if is_pull_refreshing(webtag_key) && rect.bottom - rect.top > PULL_REFRESH_SLOT_HEIGHT + 80 {
+        rect.top = (rect.top + PULL_REFRESH_SLOT_HEIGHT).min(rect.bottom);
+    }
+    normalize_rect(rect)
 }
 
 fn sync_window_layout(hwnd: HWND) {
@@ -915,8 +934,64 @@ fn paint_window_chrome(hwnd: HWND) {
         let mut ps = PAINTSTRUCT::default();
         let hdc = BeginPaint(hwnd, &mut ps);
         renderer.paint(hdc, &state);
+        paint_pull_refresh_indicator(hdc, hwnd, &webtag_key);
         let _ = EndPaint(hwnd, &ps);
     }
+}
+
+fn paint_pull_refresh_indicator(hdc: HDC, hwnd: HWND, webtag_key: &str) {
+    if !is_pull_refreshing(webtag_key) {
+        return;
+    }
+    let rect = pull_refresh_indicator_rect(hwnd, webtag_key);
+    if rect.right <= rect.left || rect.bottom <= rect.top {
+        return;
+    }
+    let tick = pull_refresh_tick(hwnd);
+    let active = (tick / 2) % 3;
+    let center_y = rect.top + (rect.bottom - rect.top) / 2;
+    let center_x = rect.left + (rect.right - rect.left) / 2;
+    let spacing = 14;
+    for index in 0..3 {
+        let radius = if index == active { 4 } else { 3 };
+        let color = if index == active { 0x667085 } else { 0xA8AFBA };
+        let x = center_x + (index as i32 - 1) * spacing;
+        draw_refresh_dot(hdc, x, center_y, radius, color);
+    }
+}
+
+fn pull_refresh_indicator_rect(hwnd: HWND, webtag_key: &str) -> RECT {
+    let content = base_content_rect_for_window(hwnd, webtag_key);
+    let slot_top = content.top;
+    let slot_bottom = (slot_top + PULL_REFRESH_SLOT_HEIGHT).min(content.bottom);
+    let center_x = content.left + (content.right - content.left) / 2;
+    normalize_rect(RECT {
+        left: center_x - PULL_REFRESH_INDICATOR_WIDTH / 2,
+        top: slot_top + ((slot_bottom - slot_top) - PULL_REFRESH_INDICATOR_HEIGHT) / 2,
+        right: center_x + PULL_REFRESH_INDICATOR_WIDTH / 2,
+        bottom: slot_top
+            + ((slot_bottom - slot_top) - PULL_REFRESH_INDICATOR_HEIGHT) / 2
+            + PULL_REFRESH_INDICATOR_HEIGHT,
+    })
+}
+
+fn draw_refresh_dot(hdc: HDC, x: i32, y: i32, radius: i32, rgb: u32) {
+    let color = rgb_to_colorref(rgb);
+    unsafe {
+        let brush = CreateSolidBrush(color);
+        let pen = CreatePen(PS_SOLID, 1, color);
+        let old_brush = SelectObject(hdc, HGDIOBJ(brush.0));
+        let old_pen = SelectObject(hdc, HGDIOBJ(pen.0));
+        let _ = Ellipse(hdc, x - radius, y - radius, x + radius + 1, y + radius + 1);
+        let _ = SelectObject(hdc, old_pen);
+        let _ = SelectObject(hdc, old_brush);
+        let _ = DeleteObject(HGDIOBJ(pen.0));
+        let _ = DeleteObject(HGDIOBJ(brush.0));
+    }
+}
+
+fn rgb_to_colorref(rgb: u32) -> COLORREF {
+    COLORREF(((rgb & 0xff) << 16) | (rgb & 0x00ff00) | ((rgb >> 16) & 0xff))
 }
 
 fn normalize_rect(mut rect: RECT) -> RECT {
@@ -1377,6 +1452,43 @@ pub fn webview_window_snapshot(webtag: &WebTag) -> StdResult<WindowsWebViewWindo
     })
 }
 
+pub fn set_webview_pull_down_refreshing(webtag: &WebTag, refreshing: bool) -> bool {
+    let Some(hwnd) = window_handle_for_key(webtag.key()) else {
+        return false;
+    };
+    let webtag_key = webtag.key().to_string();
+    post_to_window_thread(
+        hwnd_handle(hwnd),
+        Box::new(move || set_webtag_pull_down_refreshing_on_window(&webtag_key, refreshing)),
+    )
+}
+
+fn set_webtag_pull_down_refreshing_on_window(webtag_key: &str, refreshing: bool) {
+    let Some(hwnd) = window_handle_for_key(webtag_key) else {
+        return;
+    };
+    let slot = PULL_REFRESH_WEBTAGS.get_or_init(|| Mutex::new(HashSet::new()));
+    let changed = match slot.lock() {
+        Ok(mut refreshing_webtags) => {
+            if refreshing {
+                refreshing_webtags.insert(webtag_key.to_string())
+            } else {
+                refreshing_webtags.remove(webtag_key)
+            }
+        }
+        Err(_) => false,
+    };
+    if refreshing {
+        ensure_pull_refresh_timer(hwnd);
+    } else {
+        stop_pull_refresh_timer_if_idle(hwnd);
+    }
+    if changed {
+        sync_window_layout(hwnd);
+        invalidate_window(hwnd);
+    }
+}
+
 pub fn show_webview_window(webtag: &WebTag, title: &str, activate: bool) -> StdResult<()> {
     let handler = find_webview_handler(webtag).ok_or_else(|| handler_not_ready(webtag))?;
     show_native_view(handler.native_view(), title, activate)?;
@@ -1669,6 +1781,11 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 }
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }
+            WindowsAndMessaging::WM_TIMER if wparam.0 == PULL_REFRESH_TIMER_ID => {
+                advance_pull_refresh_tick(hwnd);
+                invalidate_window(hwnd);
+                LRESULT(0)
+            }
             WindowsAndMessaging::WM_NCHITTEST => {
                 if windows_chrome_renderer().is_some() {
                     return hit_test_window(hwnd, lparam);
@@ -1871,6 +1988,7 @@ fn remove_window_handle(webtag_key: &str) {
 
 fn cleanup_window_state(webtag_key: &str) {
     notify_webtag_visibility(webtag_key, false);
+    clear_pull_refreshing(webtag_key);
     if let Some(hwnd) = window_handle_for_key(webtag_key) {
         clear_chrome_interaction(hwnd);
     }
@@ -1929,6 +2047,78 @@ fn notify_webtag_visibility(webtag_key: &str, visible: bool) {
             .name(format!("lingxia-windows-visible-{webtag_key}"))
             .spawn(move || handler(&webtag, visible));
     }
+}
+
+fn is_pull_refreshing(webtag_key: &str) -> bool {
+    PULL_REFRESH_WEBTAGS
+        .get()
+        .and_then(|slot| slot.lock().ok())
+        .is_some_and(|refreshing| refreshing.contains(webtag_key))
+}
+
+fn clear_pull_refreshing(webtag_key: &str) {
+    let hwnd = window_handle_for_key(webtag_key);
+    if let Some(slot) = PULL_REFRESH_WEBTAGS.get()
+        && let Ok(mut refreshing) = slot.lock()
+    {
+        refreshing.remove(webtag_key);
+    }
+    if let Some(hwnd) = hwnd {
+        stop_pull_refresh_timer_if_idle(hwnd);
+    }
+}
+
+fn ensure_pull_refresh_timer(hwnd: HWND) {
+    unsafe {
+        let _ = WindowsAndMessaging::SetTimer(
+            Some(hwnd),
+            PULL_REFRESH_TIMER_ID,
+            PULL_REFRESH_TIMER_MS,
+            None,
+        );
+    }
+}
+
+fn stop_pull_refresh_timer_if_idle(hwnd: HWND) {
+    if window_has_pull_refreshing_webtag(hwnd) {
+        return;
+    }
+    unsafe {
+        let _ = WindowsAndMessaging::KillTimer(Some(hwnd), PULL_REFRESH_TIMER_ID);
+    }
+    if let Some(ticks) = PULL_REFRESH_TICKS.get()
+        && let Ok(mut ticks) = ticks.lock()
+    {
+        ticks.remove(&hwnd_handle(hwnd));
+    }
+}
+
+fn window_has_pull_refreshing_webtag(hwnd: HWND) -> bool {
+    let Some(refreshing) = PULL_REFRESH_WEBTAGS.get().and_then(|slot| slot.lock().ok()) else {
+        return false;
+    };
+    refreshing.iter().any(|webtag_key| {
+        window_handle_for_key(webtag_key).is_some_and(|candidate| candidate == hwnd)
+    })
+}
+
+fn advance_pull_refresh_tick(hwnd: HWND) {
+    let ticks = PULL_REFRESH_TICKS.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Ok(mut ticks) = ticks.lock() {
+        let tick = ticks.entry(hwnd_handle(hwnd)).or_insert(0);
+        *tick = tick.wrapping_add(1);
+    }
+    if !window_has_pull_refreshing_webtag(hwnd) {
+        stop_pull_refresh_timer_if_idle(hwnd);
+    }
+}
+
+fn pull_refresh_tick(hwnd: HWND) -> u32 {
+    PULL_REFRESH_TICKS
+        .get()
+        .and_then(|ticks| ticks.lock().ok())
+        .and_then(|ticks| ticks.get(&hwnd_handle(hwnd)).copied())
+        .unwrap_or(0)
 }
 
 fn set_host_active_webtag(hwnd: HWND, webtag_key: &str) {

@@ -25,6 +25,7 @@ pub use app::{Platform, set_windows_app_exit_handler, set_windows_open_url_handl
 pub use media_preview::{
     WindowsMediaPreviewCancel, WindowsMediaPreviewOpen, register_windows_media_preview_host,
 };
+pub use pull_to_refresh::set_windows_pull_to_refresh_handler;
 pub use surface::{
     set_windows_page_visibility_handler, set_windows_surface_closed_handler,
     set_windows_surface_dispose_handler,
