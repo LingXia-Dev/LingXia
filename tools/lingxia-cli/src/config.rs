@@ -419,6 +419,11 @@ pub struct WindowsConfig {
     /// Cargo binary name produced by windows/Cargo.toml.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub executable_name: Option<String>,
+    /// MSIX package Identity `Publisher` (a distinguished name such as
+    /// `CN=Contoso`). Must match the signing certificate's subject. Defaults to
+    /// `CN=<productName>` when omitted.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub publisher: Option<String>,
 }
 
 impl LingXiaConfig {

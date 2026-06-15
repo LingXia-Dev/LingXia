@@ -172,6 +172,10 @@ enum Commands {
         #[arg(long)]
         dmg: bool,
 
+        /// Package Windows build as an (unsigned) MSIX installer
+        #[arg(long)]
+        msix: bool,
+
         /// Build only the native library, skipping platform packaging. Harmony
         /// stops after the .so (no ohpm/hvigor/.hap) — useful for CI to verify
         /// the cross-compile without the gated API-21 HarmonyOS SDK.
@@ -458,6 +462,7 @@ fn main() -> Result<()> {
             all_platforms,
             ipa,
             dmg,
+            msix,
             native_only,
         } => {
             commands::build::execute(commands::build::BuildExecuteOptions {
@@ -471,6 +476,7 @@ fn main() -> Result<()> {
                 all_platforms,
                 ipa,
                 dmg,
+                msix,
                 package: false,
                 native_only,
                 env_version: build_options.env_version,

@@ -20,6 +20,8 @@ pub struct BuildExecuteOptions {
     pub all_platforms: bool,
     pub ipa: bool,
     pub dmg: bool,
+    /// Package the Windows build as an (unsigned) MSIX installer.
+    pub msix: bool,
     pub package: bool,
     /// Build only the native library, skipping platform packaging (harmony
     /// stops after the `.so`, no ohpm/hvigor).
@@ -44,6 +46,7 @@ pub fn execute(options: BuildExecuteOptions) -> Result<()> {
         all_platforms,
         ipa,
         dmg,
+        msix,
         package,
         native_only,
         env_version,
@@ -389,6 +392,11 @@ Specify one with `--platform <name>` or build all with `--all-platforms`."
         if matches!(platform_type, PlatformType::Windows) {
             artifacts =
                 assemble_windows_dist(&project_root, &config, resolved_env.version, artifacts)?;
+            if msix
+                && let Some(dist_dir) = artifacts.path().parent()
+            {
+                crate::platform::windows::msix::package(&project_root, &config, dist_dir)?;
+            }
         }
         if package {
             stage_package_artifact(&project_root, &platform_type, &artifacts)?;

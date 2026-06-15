@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 pub mod env_icon;
+pub mod msix;
 
 pub struct WindowsPlatform;
 
