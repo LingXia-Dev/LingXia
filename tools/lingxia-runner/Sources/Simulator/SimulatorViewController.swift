@@ -4,11 +4,11 @@ import SwiftUI
 import os.log
 @_spi(Runner) import lingxia
 
-/// View controller for Runner Capsule mode - mirrors macOSLxAppViewController functionality
+/// View controller for Runner Simulator mode - mirrors macOSLxAppViewController functionality
 @MainActor
-public class CapsuleViewController: NSViewController, WKNavigationDelegate {
+public class SimulatorViewController: NSViewController, WKNavigationDelegate {
     
-    private static let log = OSLog(subsystem: "LingXiaRunner", category: "CapsuleViewController")
+    private static let log = OSLog(subsystem: "LingXiaRunner", category: "SimulatorViewController")
     
     // MARK: - Properties
     
@@ -274,7 +274,7 @@ public class CapsuleViewController: NSViewController, WKNavigationDelegate {
     @MainActor
     public func updateNavigationBar(appId: String, path: String) {
         RunnerSupport.Navigation.updateState(appId: appId, path: path)
-        // Capsule mode: notify window controller to update its custom navigation bar
+        // Simulator mode: notify window controller to update its custom navigation bar
         NotificationCenter.default.post(
             name: .capsuleNavigationBarStateChanged,
             object: nil,

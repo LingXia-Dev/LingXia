@@ -9,7 +9,7 @@ public class RunnerApp {
     public static let shared = RunnerApp()
     private static let log = OSLog(subsystem: "LingXiaRunner", category: "RunnerApp")
     
-    private var windowController: CapsuleWindowController?
+    private var windowController: SimulatorWindowController?
     private var controller: LxAppController?
     private var controllerEventsTask: Task<Void, Never>?
     private(set) var deviceSize: MobileDeviceSize = .iPhoneSE
@@ -22,7 +22,7 @@ public class RunnerApp {
     /// This can be called to change device while running
     public func setDeviceSize(_ size: MobileDeviceSize) {
         self.deviceSize = size
-        CapsuleWindowController.setWindowSize(size)
+        SimulatorWindowController.setWindowSize(size)
         os_log("Device size changed to: %@", log: Self.log, type: .info, size.displayName)
     }
 
@@ -62,7 +62,7 @@ public class RunnerApp {
     
     // MARK: - LxApp Management
     
-    /// Open LxApp in Capsule window
+    /// Open LxApp in Simulator window
     public func openLxApp(appId: String, path: String = "") {
         os_log("Runner openLxApp: %@ at path: %@", log: Self.log, type: .info, appId, path)
 
@@ -94,7 +94,7 @@ public class RunnerApp {
         RunnerSupport.Runtime.setCurrentApp(appId: appId, path: resolvedPath)
         
         // Create new window controller
-        let controller = CapsuleWindowController(appId: appId, path: resolvedPath)
+        let controller = SimulatorWindowController(appId: appId, path: resolvedPath)
         controller.showWindow(self)
         controller.window?.makeKeyAndOrderFront(self)
         NSApp.activate(ignoringOtherApps: true)
@@ -172,7 +172,7 @@ public class RunnerApp {
         windowController = nil
     }
 
-    func handleWindowClosed(_ controller: CapsuleWindowController) {
+    func handleWindowClosed(_ controller: SimulatorWindowController) {
         if windowController === controller {
             windowController = nil
         }

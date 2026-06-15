@@ -2,7 +2,7 @@ import AppKit
 
 /// Simulator-style window for Runner
 /// Borderless, transparent window like Xcode Simulator
-public class CapsuleWindow: NSWindow {
+public class SimulatorWindow: NSWindow {
     
     override init(contentRect: NSRect, styleMask style: NSWindow.StyleMask, backing backingStoreType: NSWindow.BackingStoreType, defer flag: Bool) {
         // Borderless window

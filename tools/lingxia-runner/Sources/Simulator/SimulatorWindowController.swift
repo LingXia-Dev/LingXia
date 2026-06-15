@@ -13,9 +13,9 @@ extension Notification.Name {
 /// Window controller for Runner Simulator mode
 /// Provides Xcode-like simulator interface with toolbar and device frame
 @MainActor
-public class CapsuleWindowController: NSWindowController, NSWindowDelegate {
+public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
 
-    private static let log = OSLog(subsystem: "LingXiaRunner", category: "CapsuleWindowController")
+    private static let log = OSLog(subsystem: "LingXiaRunner", category: "SimulatorWindowController")
 
     // MARK: - Layout Constants
 
@@ -55,7 +55,7 @@ public class CapsuleWindowController: NSWindowController, NSWindowDelegate {
 
     // MARK: - UI Components - Phone Content
 
-    private var viewController: CapsuleViewController?
+    private var viewController: SimulatorViewController?
     private var systemStatusBar: NSView?
     private var statusBarHeightConstraint: NSLayoutConstraint?
     private var navigationBar: NSView?
@@ -123,10 +123,10 @@ public class CapsuleWindowController: NSWindowController, NSWindowDelegate {
     
     // MARK: - Window Creation
     
-    private static func createSimulatorWindow() -> CapsuleWindow {
+    private static func createSimulatorWindow() -> SimulatorWindow {
         let windowSize = calculateWindowSize(for: currentDeviceSize, devToolsWidth: 0)
         
-        let window = CapsuleWindow(
+        let window = SimulatorWindow(
             contentRect: NSRect(x: 0, y: 0, width: windowSize.width, height: windowSize.height),
             styleMask: [.borderless],
             backing: .buffered,
@@ -322,7 +322,7 @@ public class CapsuleWindowController: NSWindowController, NSWindowDelegate {
         self.phoneContentView = phoneContent
         
         // Create view controller for WebView content
-        let vc = CapsuleViewController(appId: appId, path: path)
+        let vc = SimulatorViewController(appId: appId, path: path)
         viewController = vc
         
         // Add view controller's view to phone content
