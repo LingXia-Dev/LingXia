@@ -253,7 +253,12 @@ fn clean_harmony(
 
 fn clean_windows(project_root: &Path, removed: &mut Vec<PathBuf>) -> Result<()> {
     if let Ok(windows_dir) = platform::windows::resolve_windows_dir(project_root) {
+        // All generated Windows output (prepared assets, dist, env-icon overlay)
+        // lives under `windows/.lingxia/`.
+        remove_path(&windows_dir.join(".lingxia"), removed)?;
+        // Legacy layout (assets/dist at the windows/ root) — clean if present.
         remove_path(&windows_dir.join("assets"), removed)?;
+        remove_path(&windows_dir.join("dist"), removed)?;
     }
     Ok(())
 }

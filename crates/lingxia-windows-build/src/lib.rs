@@ -43,7 +43,9 @@ fn copy_assets_to_target_profile_dir() {
     let Some(manifest_dir) = std::env::var_os("CARGO_MANIFEST_DIR").map(PathBuf::from) else {
         return;
     };
-    let source = manifest_dir.join("assets");
+    // Prepared host assets live under `windows/.lingxia/assets/` (the CLI keeps
+    // all generated output beside the source in `.lingxia/`, mirroring macOS).
+    let source = manifest_dir.join(".lingxia").join("assets");
     if !source.is_dir() {
         return;
     }

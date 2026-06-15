@@ -118,7 +118,11 @@ pub fn resolve_windows_dir(project_root: &Path) -> Result<PathBuf> {
 }
 
 pub fn resolve_windows_assets_dir(project_root: &Path) -> Result<PathBuf> {
-    Ok(resolve_windows_dir(project_root)?.join("assets"))
+    // Generated host assets live under `windows/.lingxia/` (mirrors macOS's
+    // `macos/.lingxia/`) so the `windows/` source dir stays free of build output.
+    Ok(resolve_windows_dir(project_root)?
+        .join(".lingxia")
+        .join("assets"))
 }
 
 pub fn windows_runtime_env(project_root: &Path) -> Result<Vec<(String, String)>> {

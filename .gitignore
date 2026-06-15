@@ -11,11 +11,9 @@ dist/
 
 # Example app native outputs
 examples/android/app/src/main/jniLibs/
-examples/*/windows/assets/
 examples/*/windows/Cargo.lock
 
 # Generated TypeScript sources
 
 # Harmony generated/synced artifacts
 lingxia-sdk/harmony/lingxia/src/main/ets/lxapp/WebViewCore.ets
-examples/*/windows/dist/

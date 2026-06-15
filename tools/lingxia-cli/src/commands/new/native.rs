@@ -90,7 +90,7 @@ fn create_root_gitignore(config: &ProjectConfig) -> Result<()> {
         lines.extend([
             "",
             "# Windows generated",
-            "windows/assets/",
+            "windows/.lingxia/",
             "windows/Cargo.lock",
             "windows/target/",
         ]);

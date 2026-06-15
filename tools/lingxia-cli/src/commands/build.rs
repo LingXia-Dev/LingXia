@@ -416,9 +416,11 @@ Specify one with `--platform <name>` or build all with `--all-platforms`."
 
 /// Assembles the self-contained Windows app directory — the Windows
 /// equivalent of a macOS `.app` bundle:
-/// `<project>/windows/dist/<ProductName>/` holding the executable next to
-/// the prepared `assets/` (the runtime's default asset dir is the `assets`
-/// folder beside the exe, so the directory runs and ships as-is).
+/// `<project>/windows/.lingxia/dist/<ProductName>/` holding the executable next
+/// to the prepared `assets/` (the runtime's default asset dir is the `assets`
+/// folder beside the exe, so the directory runs and ships as-is). Generated
+/// output lives under `.lingxia/` so the `windows/` source dir stays clean,
+/// matching macOS's `macos/.lingxia/`.
 fn assemble_windows_dist(
     project_root: &Path,
     config: &LingXiaConfig,
@@ -434,7 +436,10 @@ fn assemble_windows_dist(
         .map(|app| app.product_name.as_str())
         .unwrap_or("LingXia");
     let windows_dir = project_root.join("windows");
-    let dist_dir = windows_dir.join("dist").join(product_name);
+    let dist_dir = windows_dir
+        .join(".lingxia")
+        .join("dist")
+        .join(product_name);
     if dist_dir.exists() {
         std::fs::remove_dir_all(&dist_dir)
             .with_context(|| format!("Failed to clear {}", dist_dir.display()))?;
@@ -449,7 +454,7 @@ fn assemble_windows_dist(
     std::fs::copy(&exe_path, &dist_exe)
         .with_context(|| format!("Failed to copy {} into dist", exe_path.display()))?;
 
-    let assets_src = windows_dir.join("assets");
+    let assets_src = windows_dir.join(".lingxia").join("assets");
     if assets_src.is_dir() {
         let dist_assets = dist_dir.join("assets");
         crate::platform::apple::copy_dir_recursive(&assets_src, &dist_assets)?;

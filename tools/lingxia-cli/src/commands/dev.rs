@@ -23,7 +23,7 @@ const RUNNER_EXECUTABLE_NAME: &str = "LingXiaRunner";
 const RUNNER_LXAPP_PATH_ENV: &str = "LINGXIA_LXAPP_PATH";
 const RUNNER_DEV_WS_URL_ENV: &str = "LINGXIA_DEV_WS_URL";
 /// Overrides the launcher icon `lingxia-windows-sdk` loads, so `lingxia dev`
-/// can show the env badge without touching the prepared `windows/assets`.
+/// can show the env badge without touching the prepared `windows/.lingxia/assets`.
 /// Must match the env var read in `lingxia-windows-sdk`'s `resolve_app_icon_path`.
 const WINDOWS_APP_ICON_PATH_ENV: &str = "LINGXIA_APP_ICON_PATH";
 const REQUIRED_RUNNER_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -697,11 +697,11 @@ fn execute_windows(ctx: DevContext) -> Result<()> {
 
         // dev/preview: stage a badged copy of the launcher icon and point the
         // SDK at it via env, so the running window/taskbar shows the D/P badge
-        // without mutating the prepared `windows/assets` icon (which a later
-        // `lingxia build` copies into its dist).
+        // without mutating the prepared `windows/.lingxia/assets` icon (which a
+        // later `lingxia build` copies into its dist).
         let windows_dir = platform::windows::resolve_windows_dir(&ctx.project_root)?;
         let staged_icon = crate::platform::windows::env_icon::stage_dev_badged_icon(
-            &windows_dir.join("assets"),
+            &windows_dir.join(".lingxia").join("assets"),
             ctx.config.app.as_ref().map(|app| app.home_app_id.as_str()),
             &windows_dir
                 .join(".lingxia")
