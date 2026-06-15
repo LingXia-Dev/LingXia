@@ -59,7 +59,7 @@ export default {
 
 Rules:
 
-- `public/`, `assets/`, and `.lingxia/` are the default static directories. If the project root contains any of them, LingXia copies it to `dist/` even when `staticDirs` is omitted.
+- `public/` and `assets/` are the default static directories. If the project root contains either of them, LingXia copies it to `dist/` even when `staticDirs` is omitted.
 - Additional directories must be declared explicitly in `staticDirs`.
 - Explicit `staticDirs` entries must exist at the project root. LingXia treats missing configured directories as build errors.
 - Paths are preserved. For example, `view/info-panel.js` becomes `dist/view/info-panel.js`.
@@ -109,7 +109,7 @@ Example:
 
 Views call Rust native APIs through a generated Native client. LxApp projects do not configure Rust source paths. Native host builds generate the client from the native Rust crate's `build.rs` with `lingxia-native-codegen`.
 
-The CLI passes the canonical output path through `LINGXIA_NATIVE_CLIENT_OUT` during native cargo builds. React/Vue projects get `.lingxia/native.ts` and import it through `@lingxia/native`; HTML projects get `.lingxia/native.js`, which is copied into `dist/.lingxia/native.js` by the default static asset rules.
+The CLI passes the canonical output path through `LINGXIA_NATIVE_CLIENT_OUT` during native cargo builds. React/Vue projects get `.lingxia/native.ts` and import it through `@lingxia/native`; HTML projects get `.lingxia/native.js`, which the build copies explicitly into `dist/.lingxia/native.js`.
 
 ### Build
 

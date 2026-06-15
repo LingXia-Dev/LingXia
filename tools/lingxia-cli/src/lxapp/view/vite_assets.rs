@@ -96,6 +96,9 @@ fn rewrite_page_value(
 pub(super) fn copy_static_assets(project: &Project) -> Result<()> {
     let build_config = load_lxapp_build_config(project.root.as_path())?;
     for relative_dir in build_config.static_dirs {
+        if is_internal_lingxia_dir(&relative_dir) {
+            bail!(".lingxia is internal build state and cannot be copied as static assets");
+        }
         let source_dir = project.root.join(&relative_dir);
         if !source_dir.exists() {
             if build_config.optional_static_dirs.contains(&relative_dir) {
@@ -135,7 +138,14 @@ pub(super) fn copy_static_assets(project: &Project) -> Result<()> {
             }
         }
     }
+    copy_generated_native_client(project)?;
     Ok(())
+}
+
+fn is_internal_lingxia_dir(relative_dir: &str) -> bool {
+    Path::new(relative_dir).components().next().is_some_and(
+        |component| matches!(component, std::path::Component::Normal(name) if name == ".lingxia"),
+    )
 }
 
 pub(crate) fn native_client_output_path(
@@ -150,6 +160,30 @@ fn native_client_output_relative_path(framework: ProjectFramework) -> &'static s
         ProjectFramework::Html => ".lingxia/native.js",
         ProjectFramework::React | ProjectFramework::Vue => ".lingxia/native.ts",
     }
+}
+
+fn copy_generated_native_client(project: &Project) -> Result<()> {
+    if project.framework != ProjectFramework::Html {
+        return Ok(());
+    }
+    let source = native_client_output_path(project.root.as_path(), project.framework);
+    if !source.exists() {
+        return Ok(());
+    }
+    let target = project
+        .output_dir
+        .join(native_client_output_relative_path(project.framework));
+    if let Some(parent) = target.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::copy(&source, &target).with_context(|| {
+        format!(
+            "Failed to copy generated native client {} -> {}",
+            source.display(),
+            target.display()
+        )
+    })?;
+    Ok(())
 }
 
 pub(super) fn copy_dir_recursive(source: &Path, destination: &Path) -> Result<()> {
@@ -179,7 +213,7 @@ pub(super) fn copy_dir_recursive(source: &Path, destination: &Path) -> Result<()
 fn load_lxapp_build_config(project_root: &Path) -> Result<LxAppBuildConfig> {
     let mut static_dirs = BTreeSet::new();
     let mut optional_static_dirs = BTreeSet::new();
-    for default_dir in ["public", "assets", ".lingxia"] {
+    for default_dir in ["public", "assets"] {
         if project_root.join(default_dir).is_dir() {
             static_dirs.insert(default_dir.to_string());
         } else {
@@ -488,8 +522,40 @@ mod tests {
 
         copy_static_assets(&project).unwrap();
 
-        let generated = fs::read_to_string(project.output_dir.join(".lingxia/native.ts")).unwrap();
-        assert_eq!(generated, "export const native = {};");
+        assert!(!project.output_dir.join(".lingxia/native.ts").exists());
+    }
+
+    #[test]
+    fn copy_static_assets_rejects_internal_lingxia_dir() {
+        let temp = tempdir().unwrap();
+        let project = make_project(temp.path());
+        write_file(
+            temp.path(),
+            "lxapp.config.ts",
+            r#"export default {
+  staticDirs: ['.lingxia']
+};"#,
+        );
+
+        let error = copy_static_assets(&project).unwrap_err().to_string();
+        assert!(error.contains(".lingxia is internal build state"));
+    }
+
+    #[test]
+    fn copy_static_assets_rejects_internal_lingxia_child_dir() {
+        let temp = tempdir().unwrap();
+        let project = make_project(temp.path());
+        write_file(temp.path(), ".lingxia/cache/file.txt", "private");
+        write_file(
+            temp.path(),
+            "lxapp.config.ts",
+            r#"export default {
+  staticDirs: ['.lingxia\\cache']
+};"#,
+        );
+
+        let error = copy_static_assets(&project).unwrap_err().to_string();
+        assert!(error.contains(".lingxia is internal build state"));
     }
 
     #[test]
