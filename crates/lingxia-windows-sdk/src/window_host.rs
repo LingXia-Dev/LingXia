@@ -10,18 +10,21 @@ use lingxia_webview::platform::windows::{
 };
 use lingxia_webview::runtime as webview_runtime;
 use lingxia_webview::{WebTag, WebViewError};
-pub use lingxia_windows_host::{
-    WindowsCardDecorator, WindowsChromeAttachedLayout, WindowsChromeAttachedState,
-    WindowsChromeCommand, WindowsChromeHit, WindowsChromePanel, WindowsChromePanelLayoutInput,
-    WindowsChromeState, WindowsContentRect, WindowsFrameButton, WindowsHostBackend,
-    WindowsHostPanelContent, WindowsHostPanelTab, WindowsHostWindow, WindowsPanelPosition,
+// Contract types/handlers are consumed straight from the contract crate. This
+// module is the host-window *implementation*; it does not re-export the
+// contract (so other SDK modules import contract symbols from
+// `lingxia_windows_host` directly, not via `crate::window_host`).
+use lingxia_windows_host::{
+    WindowsChromeAttachedLayout, WindowsChromeAttachedState, WindowsChromeCommand,
+    WindowsChromeHit, WindowsChromePanel, WindowsChromePanelLayoutInput, WindowsChromeState,
+    WindowsContentRect, WindowsFrameButton, WindowsHostBackend, WindowsHostPanelContent,
+    WindowsHostPanelKeyEvent, WindowsHostPanelTab, WindowsHostWindow, WindowsPanelPosition,
     WindowsWebViewContentWindow, WindowsWebViewWindowSnapshot, WindowsWindowLayout,
-    add_host_window_created_handler, cleanup_webview_state, current_window_layout,
-    default_window_size, host_window_created_handlers, set_webview_window_layout,
-    set_windows_card_decorator, set_windows_host_backend, webview_chrome_event_handler,
-    webview_close_handler, webview_visibility_handler, windows_chrome_renderer,
+    cleanup_webview_state, current_window_layout, default_window_size, host_panel_input_handler,
+    host_window_created_handlers, set_webview_window_layout, set_windows_host_backend,
+    webview_chrome_event_handler, webview_close_handler, webview_visibility_handler,
+    windows_chrome_renderer,
 };
-use lingxia_windows_host::{WindowsHostPanelKeyEvent, host_panel_input_handler};
 use windows::Win32::Foundation::{COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
     BeginPaint, CreatePen, CreateSolidBrush, DeleteObject, Ellipse, EndPaint, ExcludeClipRect,

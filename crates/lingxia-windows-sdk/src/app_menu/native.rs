@@ -8,10 +8,8 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, VK_CONTROL, VK_ME
 use windows::Win32::UI::WindowsAndMessaging::{self, WNDPROC};
 use windows::core::{PCWSTR, Result as WinResult};
 
-use crate::window_host::post_to_window_thread;
-use crate::window_host::{
-    WindowsHostWindow, add_host_window_created_handler, request_host_window_layout,
-};
+use crate::window_host::{post_to_window_thread, request_host_window_layout};
+use lingxia_windows_host::{WindowsHostWindow, add_host_window_created_handler};
 
 use super::{WindowsAppMenu, WindowsAppMenuCommandHandler, WindowsAppMenuEntry};
 

@@ -27,9 +27,8 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex, OnceLock};
 
-use crate::window_host::{
-    WindowsWebViewContentWindow, find_webview_content_window, post_to_window_thread,
-};
+use crate::window_host::{find_webview_content_window, post_to_window_thread};
+use lingxia_windows_host::WindowsWebViewContentWindow;
 use lingxia_platform::traits::video_player::VideoPlayerCommand;
 use lingxia_webview::WebViewController;
 use serde_json::{Value, json};

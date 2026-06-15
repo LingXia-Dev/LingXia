@@ -26,8 +26,9 @@ Rust Windows host:
 - optional app-window device frame and app menu hooks exposed to host
   executables
 
-The crate delegates generic WebView2 windowing to `lingxia-webview`, platform
-traits to `lingxia-platform`, and public runtime facade calls to `lingxia`.
+The crate delegates generic WebView2 controller mechanics to
+`lingxia-webview`, platform traits to `lingxia-platform`, and public runtime
+facade calls to `lingxia`.
 
 ## Boundaries
 
@@ -35,9 +36,11 @@ Keep these responsibilities out of `lingxia-windows-sdk`:
 
 - runner application appearance and simulator/device chrome; that belongs in
   `tools/lingxia-runner/windows`
-- generic WebView2 mechanics such as window creation, WebView controller
-  ownership, resize/layout plumbing, events, schemes, and menus; that belongs
-  in `lingxia-webview`
+- generic WebView2 mechanics such as environment setup, controller ownership,
+  navigation, events, scheme plumbing, and binding a controller to a supplied
+  parent HWND; that belongs in `lingxia-webview`
+- product-specific host window policy and layout beyond the reusable SDK shell;
+  keep those in the target app or runner layer
 - cross-platform public facade APIs; those belong in `lingxia`
 - app identity and bundle metadata decisions; those belong in `lingxia.toml`
   and the generated `assets/app.json`

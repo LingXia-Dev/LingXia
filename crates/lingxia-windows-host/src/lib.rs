@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
 
 use lingxia_webview::{WebTag, WebViewError};
-use windows::Win32::Foundation::{COLORREF, HWND, RECT};
+use windows::Win32::Foundation::{HWND, RECT};
 use windows::Win32::Graphics::Gdi::HDC;
 
 type StdResult<T, E = WebViewError> = std::result::Result<T, E>;
@@ -30,8 +30,6 @@ static HOST_PANEL_INPUT_HANDLERS: OnceLock<Mutex<HashMap<String, WindowsHostPane
     OnceLock::new();
 static WINDOW_LAYOUTS: OnceLock<Mutex<HashMap<String, WindowsWindowLayout>>> = OnceLock::new();
 static WINDOWS_CHROME_RENDERER: OnceLock<Mutex<Option<Arc<dyn WindowsChromeRenderer>>>> =
-    OnceLock::new();
-static WINDOWS_CARD_DECORATOR: OnceLock<Mutex<Option<Arc<dyn WindowsCardDecorator>>>> =
     OnceLock::new();
 
 pub trait WindowsHostBackend: Send + Sync {
@@ -290,10 +288,6 @@ pub trait WindowsChromeRenderer: Send + Sync {
     fn content_rect(&self, client: RECT, layout: &WindowsWindowLayout) -> RECT;
     fn panel_corner_radius(&self) -> i32;
 
-    fn card_corner_color(&self) -> Option<COLORREF> {
-        None
-    }
-
     fn attached_layout(
         &self,
         client: RECT,
@@ -321,12 +315,6 @@ pub trait WindowsChromeRenderer: Send + Sync {
         let _ = (state, button);
         None
     }
-}
-
-pub trait WindowsCardDecorator: Send + Sync {
-    fn update(&self, parent: HWND, card: RECT, color: COLORREF, side: i32, square_bottom: bool);
-    fn raise(&self, parent: HWND);
-    fn destroy(&self, parent: HWND);
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -375,20 +363,6 @@ pub fn windows_chrome_renderer() -> Option<Arc<dyn WindowsChromeRenderer>> {
         .get()
         .and_then(|renderer| renderer.lock().ok())
         .and_then(|renderer| renderer.clone())
-}
-
-pub fn set_windows_card_decorator(decorator: Arc<dyn WindowsCardDecorator>) {
-    let slot = WINDOWS_CARD_DECORATOR.get_or_init(|| Mutex::new(None));
-    if let Ok(mut slot) = slot.lock() {
-        *slot = Some(decorator);
-    }
-}
-
-pub fn windows_card_decorator() -> Option<Arc<dyn WindowsCardDecorator>> {
-    WINDOWS_CARD_DECORATOR
-        .get()
-        .and_then(|decorator| decorator.lock().ok())
-        .and_then(|decorator| decorator.clone())
 }
 
 pub fn set_webview_close_handler(webtag: &WebTag, handler: CloseHandler) {

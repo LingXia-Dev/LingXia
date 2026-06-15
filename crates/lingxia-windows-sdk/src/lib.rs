@@ -19,8 +19,6 @@ mod app_icon;
 #[cfg(all(target_os = "windows", feature = "runtime"))]
 mod app_menu;
 #[cfg(all(target_os = "windows", feature = "runtime"))]
-mod card_decorator;
-#[cfg(all(target_os = "windows", feature = "runtime"))]
 mod device_frame;
 #[cfg(all(target_os = "windows", feature = "runtime"))]
 mod media_preview;
@@ -120,7 +118,6 @@ pub fn init(app: WindowsApp) -> Result<String> {
     window_host::install_native_view_host();
     native_components::install();
     pull_to_refresh::install();
-    card_decorator::install();
     #[cfg(feature = "shell-runtime")]
     shell::install();
     app_menu::install_host_window_menu_support();

@@ -15,7 +15,7 @@ use lingxia_windows_host::{
     WindowsWindowLayout, set_windows_chrome_renderer,
 };
 use serde_json::json;
-use windows::Win32::Foundation::{COLORREF, HWND, RECT};
+use windows::Win32::Foundation::{HWND, RECT};
 use windows::Win32::Graphics::Gdi::{
     CLEARTYPE_QUALITY, CLIP_DEFAULT_PRECIS, CreateFontW, DEFAULT_CHARSET, DEFAULT_PITCH, DT_CENTER,
     DT_END_ELLIPSIS, DT_LEFT, DT_SINGLELINE, DT_VCENTER, DeleteObject, DrawTextW, FF_SWISS,
@@ -172,13 +172,6 @@ impl WindowsChromeRenderer for ShellChromeRenderer {
 
     fn panel_corner_radius(&self) -> i32 {
         SHELL_PANEL_RADIUS
-    }
-
-    fn card_corner_color(&self) -> Option<COLORREF> {
-        // Attached cards are rounded by lingxia-webview's per-pixel-alpha
-        // corner-cap overlays; this is the chrome background they blend
-        // the card corners into.
-        Some(rgb_to_colorref(SHELL_WINDOW_BACKGROUND))
     }
 
     fn attached_layout(
@@ -967,8 +960,7 @@ pub(super) fn draw_content_cards(hdc: HDC, state: &WindowsChromeState, rects: &C
     if let Some(attached) = &state.attached {
         draw_content_card(hdc, attached.main);
         // A docked panel sits flush under the main card; square the card's
-        // bottom corners so the shared seam has no notches. (The webview
-        // layer hides the card's bottom corner caps for the same reason.)
+        // bottom corners so the shared seam has no notches.
         if attached.panels.iter().any(|panel| panel.docked) {
             square_card_bottom_corners(hdc, attached.main);
         }
@@ -986,9 +978,9 @@ pub(super) fn draw_content_cards(hdc: HDC, state: &WindowsChromeState, rects: &C
                 draw_native_panel_content(hdc, state.hwnd, panel);
             }
         }
-        // Attached card corners are rounded by lingxia-webview's layered
-        // corner-cap overlays (see `card_corner_color` above); the cards
-        // themselves are plain filled rounded rects.
+        // Attached cards are painted as plain filled rounded rects; the
+        // rectangular WebView2 child overlays the corners, so they currently
+        // read as square.
         return;
     }
 
