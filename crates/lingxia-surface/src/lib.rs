@@ -8,10 +8,12 @@
 mod arbitrate;
 mod graph;
 mod layout;
+mod manager;
 mod model;
 
 pub use arbitrate::{Decision, Policy, arbitrate};
 pub use graph::SurfaceGraph;
+pub use manager::SurfaceManager;
 pub use layout::{
     Axis, BottomOwner, DEFAULT_HYSTERESIS, DerivedLayout, LayoutTree, SizeClass, SplitForm,
     SwitcherForm,

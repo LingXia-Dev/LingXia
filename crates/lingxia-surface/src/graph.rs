@@ -206,8 +206,15 @@ impl SurfaceGraph {
     pub fn derive_layout(&self, size_class: SizeClass) -> DerivedLayout {
         let main_count = self.mains().len();
         let aside_count = self.asides().len();
+        // On compact, asides peer-fall-back into the switcher, so they count as
+        // switchable items; elsewhere only mains drive the switcher.
+        let switchable = if size_class == SizeClass::Compact {
+            main_count + aside_count
+        } else {
+            main_count
+        };
 
-        let switcher_form = if main_count > 1 {
+        let switcher_form = if switchable > 1 {
             match size_class {
                 SizeClass::Expanded => SwitcherForm::Sidebar,
                 SizeClass::Medium => SwitcherForm::Rail,
@@ -229,8 +236,8 @@ impl SurfaceGraph {
         };
 
         // Bottom belongs to the Host switcher only when there's a switcher in
-        // compact; a lone main gives the bottom back to the app (§6.2).
-        let bottom_owner = if size_class == SizeClass::Compact && main_count > 1 {
+        // compact; a lone switchable item gives the bottom back to the app (§6.2).
+        let bottom_owner = if size_class == SizeClass::Compact && switchable > 1 {
             BottomOwner::Host
         } else {
             BottomOwner::App
@@ -246,32 +253,43 @@ impl SurfaceGraph {
     }
 
     /// Build the canonical authoritative `LayoutTree` from current state:
-    /// mains → switcher node (tabs), asides → split. Floats excluded.
+    /// mains → switcher (tabs), asides → split. On compact asides fold into the
+    /// switcher (peer-fall-back). Floats are never in the tree.
     pub fn canonical_layout(&self, size_class: SizeClass) -> Option<LayoutTree> {
         let main_ids = self.main_ids();
         if main_ids.is_empty() {
             return None;
         }
-        let main_node = if main_ids.len() == 1 {
-            LayoutTree::Leaf {
-                surface_id: main_ids[0].clone(),
-            }
-        } else {
-            LayoutTree::Tabs {
-                active_id: self
-                    .active_main_id
-                    .clone()
-                    .unwrap_or_else(|| main_ids[0].clone()),
-                children: main_ids,
+        let aside_ids: Vec<SurfaceId> = self.asides().iter().map(|s| s.id.clone()).collect();
+        let active = self
+            .active_main_id
+            .clone()
+            .unwrap_or_else(|| main_ids[0].clone());
+
+        let tabs_of = |ids: Vec<SurfaceId>| {
+            if ids.len() == 1 {
+                LayoutTree::Leaf {
+                    surface_id: ids[0].clone(),
+                }
+            } else {
+                LayoutTree::Tabs {
+                    active_id: active.clone(),
+                    children: ids,
+                }
             }
         };
 
-        let aside_ids: Vec<SurfaceId> = self.asides().iter().map(|s| s.id.clone()).collect();
-        // In compact, asides peer-fall-back: they don't form a split.
-        if aside_ids.is_empty() || size_class == SizeClass::Compact {
-            return Some(main_node);
+        // Compact: asides fold into the main switcher (peer-fall-back), one tree.
+        if size_class == SizeClass::Compact {
+            let mut ids = main_ids;
+            ids.extend(aside_ids);
+            return Some(tabs_of(ids));
         }
 
+        let main_node = tabs_of(main_ids);
+        if aside_ids.is_empty() {
+            return Some(main_node);
+        }
         let mut children = vec![main_node];
         children.extend(aside_ids.into_iter().map(|id| LayoutTree::Leaf { surface_id: id }));
         let n = children.len();
