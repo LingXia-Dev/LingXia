@@ -1269,6 +1269,201 @@ pub(super) fn focused_session(_panel_id: &str) -> Option<u64> {
     None
 }
 
+// ---- Divider drag (resizing split ratios) ----
+
+/// The split divider currently being dragged via the window proc's capture
+/// loop.
+#[cfg(all(feature = "terminal-runtime", feature = "shell-runtime"))]
+struct ActiveDivider {
+    panel_id: String,
+    /// Descent path (false = first child, true = second) to the Split node.
+    path: Vec<bool>,
+    /// Rect of the split node being divided (for ratio math).
+    bounds: RECT,
+    /// Whether the divider is vertical (a `Cols` split → horizontal drag).
+    vertical: bool,
+}
+
+#[cfg(all(feature = "terminal-runtime", feature = "shell-runtime"))]
+static ACTIVE_DIVIDER: OnceLock<Mutex<Option<ActiveDivider>>> = OnceLock::new();
+
+#[cfg(all(feature = "terminal-runtime", feature = "shell-runtime"))]
+fn active_divider() -> std::sync::MutexGuard<'static, Option<ActiveDivider>> {
+    ACTIVE_DIVIDER
+        .get_or_init(|| Mutex::new(None))
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+/// Extra grab tolerance (px) around the thin divider gap.
+#[cfg(all(feature = "terminal-runtime", feature = "shell-runtime"))]
+const DIVIDER_GRAB: i32 = 3;
+
+/// Collects each split's draggable divider as `(hit_rect, vertical, bounds,
+/// path)` over the laid-out tree.
+#[cfg(all(feature = "terminal-runtime", feature = "shell-runtime"))]
+fn collect_dividers(
+    node: &PaneNode,
+    rect: RECT,
+    path: &mut Vec<bool>,
+    out: &mut Vec<(RECT, bool, RECT, Vec<bool>)>,
+) {
+    if let PaneNode::Split {
+        orient,
+        ratio,
+        first,
+        second,
+    } = node
+    {
+        let (r1, r2) = split_rect(rect, *orient, *ratio);
+        let vertical = matches!(orient, PaneOrientation::Cols);
+        let hit = if vertical {
+            RECT {
+                left: r1.right - DIVIDER_GRAB,
+                top: rect.top,
+                right: r2.left + DIVIDER_GRAB,
+                bottom: rect.bottom,
+            }
+        } else {
+            RECT {
+                left: rect.left,
+                top: r1.bottom - DIVIDER_GRAB,
+                right: rect.right,
+                bottom: r2.top + DIVIDER_GRAB,
+            }
+        };
+        out.push((hit, vertical, rect, path.clone()));
+        path.push(false);
+        collect_dividers(first, r1, path, out);
+        path.pop();
+        path.push(true);
+        collect_dividers(second, r2, path, out);
+        path.pop();
+    }
+}
+
+#[cfg(all(feature = "terminal-runtime", feature = "shell-runtime"))]
+fn divider_under(panel_id: &str, x: i32, y: i32) -> Option<(bool, RECT, Vec<bool>)> {
+    let body = super::terminal_grid::panel_body_rect(panel_id)?;
+    let panels = windows_terminal_panels();
+    let tab = panels.get(panel_id).and_then(|panel| panel.active_tab())?;
+    let mut dividers = Vec::new();
+    collect_dividers(&tab.root, body, &mut Vec::new(), &mut dividers);
+    dividers
+        .into_iter()
+        .find(|(hit, ..)| x >= hit.left && x < hit.right && y >= hit.top && y < hit.bottom)
+        .map(|(_, vertical, bounds, path)| (vertical, bounds, path))
+}
+
+/// Whether a divider sits under `(x, y)` in the active tab, and its
+/// orientation (`Some(true)` = vertical). The window proc uses this for the
+/// resize cursor.
+#[cfg(all(feature = "terminal-runtime", feature = "shell-runtime"))]
+pub(crate) fn divider_orientation_at(panel_id: &str, x: i32, y: i32) -> Option<bool> {
+    divider_under(panel_id, x, y).map(|(vertical, ..)| vertical)
+}
+
+/// Begins dragging the divider under `(x, y)`. Returns `Some(vertical)` when
+/// one was hit (driven by the window proc's capture loop).
+#[cfg(all(feature = "terminal-runtime", feature = "shell-runtime"))]
+pub(crate) fn begin_divider_drag(panel_id: &str, x: i32, y: i32) -> Option<bool> {
+    let (vertical, bounds, path) = divider_under(panel_id, x, y)?;
+    *active_divider() = Some(ActiveDivider {
+        panel_id: panel_id.to_string(),
+        path,
+        bounds,
+        vertical,
+    });
+    Some(vertical)
+}
+
+/// Updates the dragged divider's ratio from the cursor position and repaints.
+#[cfg(all(feature = "terminal-runtime", feature = "shell-runtime"))]
+pub(crate) fn update_divider_drag(x: i32, y: i32) {
+    let (panel_id, path, ratio) = {
+        let guard = active_divider();
+        let Some(divider) = guard.as_ref() else {
+            return;
+        };
+        let ratio = if divider.vertical {
+            let span = (divider.bounds.right - divider.bounds.left) as f32;
+            if span <= 0.0 {
+                return;
+            }
+            (x - divider.bounds.left) as f32 / span
+        } else {
+            let span = (divider.bounds.bottom - divider.bounds.top) as f32;
+            if span <= 0.0 {
+                return;
+            }
+            (y - divider.bounds.top) as f32 / span
+        };
+        (
+            divider.panel_id.clone(),
+            divider.path.clone(),
+            ratio.clamp(0.05, 0.95),
+        )
+    };
+    {
+        let mut panels = windows_terminal_panels();
+        let Some(tab) = panels
+            .get_mut(&panel_id)
+            .and_then(|panel| panel.active_tab_mut())
+        else {
+            return;
+        };
+        if let Some(PaneNode::Split {
+            ratio: node_ratio, ..
+        }) = node_at_path_mut(&mut tab.root, &path)
+        {
+            *node_ratio = ratio;
+        }
+    }
+    // Repaint with the new layout; the poll loop resizes each pane's PTY to
+    // its new rect within a couple of ticks.
+    invalidate_panel(&panel_id);
+}
+
+/// Ends the divider drag.
+#[cfg(all(feature = "terminal-runtime", feature = "shell-runtime"))]
+pub(crate) fn end_divider_drag() {
+    *active_divider() = None;
+}
+
+/// Navigates to the node at `path` (false = first child, true = second).
+#[cfg(all(feature = "terminal-runtime", feature = "shell-runtime"))]
+fn node_at_path_mut<'a>(mut node: &'a mut PaneNode, path: &[bool]) -> Option<&'a mut PaneNode> {
+    for &second in path {
+        match node {
+            PaneNode::Split {
+                first, second: sec, ..
+            } => {
+                node = if second { sec } else { first };
+            }
+            PaneNode::Leaf(_) => return None,
+        }
+    }
+    Some(node)
+}
+
+// ---- Divider drag: no-op stubs without the terminal runtime ----
+
+#[cfg(all(not(feature = "terminal-runtime"), feature = "shell-runtime"))]
+pub(crate) fn divider_orientation_at(_panel_id: &str, _x: i32, _y: i32) -> Option<bool> {
+    None
+}
+
+#[cfg(all(not(feature = "terminal-runtime"), feature = "shell-runtime"))]
+pub(crate) fn begin_divider_drag(_panel_id: &str, _x: i32, _y: i32) -> Option<bool> {
+    None
+}
+
+#[cfg(all(not(feature = "terminal-runtime"), feature = "shell-runtime"))]
+pub(crate) fn update_divider_drag(_x: i32, _y: i32) {}
+
+#[cfg(all(not(feature = "terminal-runtime"), feature = "shell-runtime"))]
+pub(crate) fn end_divider_drag() {}
+
 // ---- Publishing to the webview/shell layers ----
 
 /// Pushes the panel's tab strip (id/title/active) to the webview layer

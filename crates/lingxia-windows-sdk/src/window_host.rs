@@ -2,6 +2,8 @@
 
 use std::collections::{HashMap, HashSet};
 use std::ffi::c_void;
+#[cfg(feature = "shell-runtime")]
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
 use lingxia_webview::platform::windows::{
@@ -1732,8 +1734,45 @@ fn handle_frame_button(hwnd: HWND, button: WindowsFrameButton) {
     }
 }
 
+/// True while a terminal pane divider is being dragged (a capture loop owned
+/// by the shell window proc). `DIVIDER_DRAG_VERTICAL` records its orientation
+/// for the resize cursor.
+#[cfg(feature = "shell-runtime")]
+static DIVIDER_DRAG: AtomicBool = AtomicBool::new(false);
+#[cfg(feature = "shell-runtime")]
+static DIVIDER_DRAG_VERTICAL: AtomicBool = AtomicBool::new(false);
+
+/// Sets the east-west / north-south resize cursor for a pane divider.
+#[cfg(feature = "shell-runtime")]
+fn set_divider_cursor(vertical: bool) {
+    let id = if vertical {
+        WindowsAndMessaging::IDC_SIZEWE
+    } else {
+        WindowsAndMessaging::IDC_SIZENS
+    };
+    unsafe {
+        if let Ok(cursor) = WindowsAndMessaging::LoadCursorW(None, id) {
+            let _ = WindowsAndMessaging::SetCursor(Some(cursor));
+        }
+    }
+}
+
 fn handle_chrome_mouse_move(hwnd: HWND, point: (i32, i32)) -> bool {
     let hit = chrome_hit_for_window(hwnd, point);
+    #[cfg(feature = "shell-runtime")]
+    {
+        if DIVIDER_DRAG.load(Ordering::Acquire) {
+            crate::shell::update_divider_drag(point.0, point.1);
+            set_divider_cursor(DIVIDER_DRAG_VERTICAL.load(Ordering::Acquire));
+            return true;
+        }
+        if let Some(WindowsChromeHit::Focusable { id, .. }) = &hit
+            && let Some(vertical) = crate::shell::divider_orientation_at(id, point.0, point.1)
+        {
+            set_divider_cursor(vertical);
+            return true;
+        }
+    }
     let hover = match hit {
         Some(WindowsChromeHit::FrameButton(button)) => Some(button),
         _ => None,
@@ -1780,6 +1819,18 @@ fn handle_chrome_left_down(hwnd: HWND, point: (i32, i32)) -> bool {
         WindowsChromeHit::Focusable {
             id, click_command, ..
         } => {
+            // A press on a pane divider starts a resize drag instead of
+            // focusing/clicking the pane.
+            #[cfg(feature = "shell-runtime")]
+            if let Some(vertical) = crate::shell::begin_divider_drag(&id, point.0, point.1) {
+                DIVIDER_DRAG.store(true, Ordering::Release);
+                DIVIDER_DRAG_VERTICAL.store(vertical, Ordering::Release);
+                unsafe {
+                    let _ = SetCapture(hwnd);
+                }
+                set_divider_cursor(vertical);
+                return true;
+            }
             focus_host_panel(&id);
             focus_host_window(hwnd);
             if let (Some(command), Some(webtag_key)) =
@@ -1794,6 +1845,14 @@ fn handle_chrome_left_down(hwnd: HWND, point: (i32, i32)) -> bool {
 }
 
 fn handle_chrome_left_up(hwnd: HWND, point: (i32, i32)) -> bool {
+    #[cfg(feature = "shell-runtime")]
+    if DIVIDER_DRAG.swap(false, Ordering::AcqRel) {
+        unsafe {
+            let _ = ReleaseCapture();
+        }
+        crate::shell::end_divider_drag();
+        return true;
+    }
     let webtag_key = active_webtag_key_for_window(hwnd);
     let pressed = chrome_interaction(hwnd).frame_button_pressed;
     unsafe {
