@@ -584,6 +584,12 @@ fn preview_class() -> PCWSTR {
                 .unwrap_or_default(),
             lpszClassName: w!("LingXiaMediaPreview"),
             hbrBackground: HBRUSH(unsafe { GetStockObject(BLACK_BRUSH) }.0),
+            // Without an explicit cursor the freshly-shown top-level preview
+            // window keeps the system "app-starting" (busy/spinning) cursor.
+            hCursor: unsafe {
+                WindowsAndMessaging::LoadCursorW(None, WindowsAndMessaging::IDC_ARROW)
+            }
+            .unwrap_or_default(),
             ..Default::default()
         };
         unsafe {
@@ -603,6 +609,10 @@ fn preview_surface_class() -> PCWSTR {
                 .unwrap_or_default(),
             lpszClassName: w!("LingXiaMediaPreviewSurface"),
             hbrBackground: HBRUSH(unsafe { GetStockObject(BLACK_BRUSH) }.0),
+            hCursor: unsafe {
+                WindowsAndMessaging::LoadCursorW(None, WindowsAndMessaging::IDC_ARROW)
+            }
+            .unwrap_or_default(),
             ..Default::default()
         };
         unsafe {
