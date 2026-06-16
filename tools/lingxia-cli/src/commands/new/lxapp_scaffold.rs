@@ -119,9 +119,9 @@ pub(super) fn build_framework_vars(
             "react-jsx",
             r#""**/*.ts", "**/*.tsx", ".lingxia/types/**/*.d.ts""#,
             "#root",
-            "\"react\": \"^19.2.4\",\n    \"react-dom\": \"^19.2.4\"",
-            "\"@types/react\": \"^19.2.10\",\n    \"@types/react-dom\": \"^19.2.3\",\n    ",
-            "\"@vitejs/plugin-react\": \"^6.0.1\",\n    \"rolldown\": \"^1.0.0-rc.15\",\n    \"vite\": \"^8.0.0\",\n    ",
+            "\"react\": \"^19.0.0\",\n    \"react-dom\": \"^19.0.0\"",
+            "\"@types/react\": \"^19.0.0\",\n    \"@types/react-dom\": \"^19.0.0\",\n    ",
+            "\"@vitejs/plugin-react\": \"^6.0.2\",\n    \"rolldown\": \"^1.0.0-rc.15\",\n    \"vite\": \"^8.0.0\",\n    ",
         ),
         "vue" => (
             "Vue",
@@ -132,7 +132,7 @@ pub(super) fn build_framework_vars(
             "#app",
             "\"vue\": \"^3.5.0\"",
             "\"vue-tsc\": \"^3.2.4\",\n    ",
-            "\"@vitejs/plugin-vue\": \"^6.0.5\",\n    \"rolldown\": \"^1.0.0-rc.15\",\n    \"vite\": \"^8.0.0\",\n    ",
+            "\"@vitejs/plugin-vue\": \"^6.0.7\",\n    \"rolldown\": \"^1.0.0-rc.15\",\n    \"vite\": \"^8.0.0\",\n    ",
         ),
         "html" => (
             "HTML",
