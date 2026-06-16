@@ -198,15 +198,19 @@ jobs:
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
 
+      # Shared with the Clippy and Test jobs so the three macOS Rust jobs reuse
+      # one compiled-dependency cache instead of three.
       - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: macos-rust
 
-      # lingxia-cli build.rs (run by --workspace and the i18n gate) embeds the
-      # bridge/polyfills JS runtime.
+      # lingxia-cli build.rs (run by the i18n gate) embeds the bridge/polyfills
+      # JS runtime.
       - uses: ./.github/actions/build-web-runtime
 
-      - name: Check all workspace crates
-        run: cargo check --workspace --exclude lingxia-terminal
-
+      # The full `cargo check --workspace` is covered by the Clippy job on the
+      # same macOS runner (clippy is a superset of check), so this job only runs
+      # the i18n-related check and the strict i18n generation gate.
       - name: Check i18n-related crates explicitly
         run: cargo check -p lingxia-logic -p lingxia-cli
 
@@ -365,6 +369,8 @@ jobs:
           components: clippy
 
       - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: macos-rust
 
       # lingxia-cli build.rs embeds the bridge/polyfills JS runtime.
       - uses: ./.github/actions/build-web-runtime
@@ -540,6 +546,8 @@ jobs:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
 
       - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: macos-rust
 
       - uses: ./.github/actions/build-web-runtime
 
