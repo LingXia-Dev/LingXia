@@ -4,6 +4,7 @@ use lingxia_platform::traits::ui::{
     SurfaceRequest as PlatformSurfaceRequest,
 };
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::sync::OnceLock;
 use std::time::Duration;
 
@@ -119,6 +120,10 @@ impl LxApp {
         // arbitrated outcome — the core graph is the single source of truth.
         let mut present_kind = request.kind;
         let mut present_position = request.position;
+        // Surfaces the core evicted to make room for this one (arbitration
+        // replacement). Closed natively after the new surface is presented so
+        // the platform never leaks the victim's window/pane.
+        let mut evicted: Vec<String> = Vec::new();
         if let Ok(state) = self.state.lock() {
             state.surfaces.lock().unwrap().insert(
                 id.clone(),
@@ -138,12 +143,20 @@ impl LxApp {
                 owner_pid.as_deref(),
             );
             let mut manager = state.surface_manager.lock().unwrap();
+            let before: HashSet<String> =
+                manager.graph().surfaces().iter().map(|s| s.id.clone()).collect();
             let _decision = manager.open(node);
             if let Some(role) = manager.graph().role_of(&id) {
                 let edge = manager.graph().get(&id).and_then(|s| s.placement.edge);
                 (present_kind, present_position) =
                     present_params_for_role(role, edge, request.position);
             }
+            let after: HashSet<String> =
+                manager.graph().surfaces().iter().map(|s| s.id.clone()).collect();
+            evicted = before
+                .into_iter()
+                .filter(|prev| prev != &id && !after.contains(prev))
+                .collect();
         }
 
         let present_result = self.runtime.present_surface(PlatformSurfaceRequest {
@@ -166,6 +179,11 @@ impl LxApp {
                 let _ = dispose_page_instance_by_id(&page_instance_id, CloseReason::Programmatic);
             }
             return Err(err.into());
+        }
+
+        // Now that the replacement is up, close the surfaces the core evicted.
+        for victim in &evicted {
+            let _ = self.close_surface(victim, "programmatic");
         }
 
         Ok(PageSurface {
