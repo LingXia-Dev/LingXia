@@ -192,6 +192,16 @@ mod bridge {
         #[swift_bridge(swift_name = "onSurfaceClosed")]
         fn on_surface_closed(appid: &str, id: &str, reason: &str) -> bool;
 
+        // Adaptive Surface Layout (new model): report the window's container
+        // width so the shared core resolves the sizeClass (with hysteresis);
+        // returns true when the sizeClass flipped. And read the resolved
+        // DerivedLayout as a JSON string for the skin to bind.
+        #[swift_bridge(swift_name = "setSurfaceWidth")]
+        fn set_surface_width(appid: &str, width: f64) -> bool;
+
+        #[swift_bridge(swift_name = "surfaceDerivedLayout")]
+        fn surface_derived_layout(appid: &str) -> String;
+
         #[swift_bridge(swift_name = "openBrowserTab")]
         fn open_browser_tab(appid: &str, session_id: u64, url: &str) -> Option<String>;
 
@@ -597,6 +607,23 @@ pub fn browser_tab_path_for_id(tab_id: &str) -> String {
 pub fn present_internal_browser_tab(tab_id: &str) -> bool {
     ffi_catch_unwind!("present_internal_browser_tab", false, || {
         self::bridge::present_internal_browser_tab(tab_id)
+    })
+}
+
+pub fn set_surface_width(appid: &str, width: f64) -> bool {
+    ffi_catch_unwind!("set_surface_width", false, || {
+        lxapp::try_get(appid)
+            .map(|lxapp| lxapp.set_surface_width(width))
+            .unwrap_or(false)
+    })
+}
+
+pub fn surface_derived_layout(appid: &str) -> String {
+    ffi_catch_unwind!("surface_derived_layout", "null".to_string(), || {
+        lxapp::try_get(appid)
+            .and_then(|lxapp| lxapp.surface_derived_layout())
+            .and_then(|layout| serde_json::to_string(&layout).ok())
+            .unwrap_or_else(|| "null".to_string())
     })
 }
 

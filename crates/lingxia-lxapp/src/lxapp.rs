@@ -467,9 +467,10 @@ impl LxAppState {
             tabbar: None,
             startup_options: LxAppStartupOptions::default(),
             surfaces: Mutex::new(SurfaceRecords::new()),
-            // Default to an expanded container; the platform reports the real
-            // container width via `set_surface_width` once a window exists.
-            surface_manager: Mutex::new(lingxia_surface::SurfaceManager::new(1280.0)),
+            // Neutral "unmeasured" default (medium band); the platform reports
+            // the real container width via `set_surface_width` once a window
+            // exists (e.g. macOS windowDidResize → reportSurfaceWidth).
+            surface_manager: Mutex::new(lingxia_surface::SurfaceManager::new(700.0)),
             orientation_override: None,
         }
     }

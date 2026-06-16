@@ -395,6 +395,16 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     public func windowDidResize(_ notification: Notification) {
         syncSidebarHeaderButtonAlignment()
         workspaceManager.relayoutPanels()
+        reportSurfaceWidth()
+    }
+
+    /// Report the content width to the Adaptive Surface Layout core so it
+    /// resolves the sizeClass (with hysteresis). This is what makes macOS
+    /// drive the new shared-core model from real window geometry.
+    private func reportSurfaceWidth() {
+        guard let appId = currentViewController?.appId,
+              let width = window?.contentView?.frame.width, width > 0 else { return }
+        _ = setSurfaceWidth(appId, Double(width))
     }
 
     // MARK: - Sidebar Interface Setup
@@ -824,6 +834,10 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         applyToolbarMode(configuration.toolbar)
         syncSidebarHeaderButtonAlignment()
         viewController.resumeNativeComponents()
+        // Now that an lxapp is current and laid out, seed the Adaptive Surface
+        // Layout core with the real container width (windowDidResize may have
+        // fired before any lxapp was current).
+        reportSurfaceWidth()
     }
 
     func refreshNavigationBar(for appId: String) {
