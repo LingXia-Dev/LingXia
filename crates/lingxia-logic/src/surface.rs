@@ -142,8 +142,17 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     let lx = ctx.global().get::<_, JSObject>("lx")?;
     let surface = JSObject::new(ctx);
     surface.set("open", JSFunc::new(ctx, open_surface)?)?;
+    // Adaptive Surface Layout (new model): read the core's resolved layout for
+    // this app's window. Returns a JSON string (JS-side `JSON.parse`).
+    surface.set("derivedLayout", JSFunc::new(ctx, surface_derived_layout)?)?;
     lx.set("surface", surface)?;
     Ok(())
+}
+
+fn surface_derived_layout(ctx: JSContext) -> JSResult<String> {
+    let lxapp = LxApp::from_ctx(&ctx)?;
+    Ok(serde_json::to_string(&lxapp.surface_derived_layout())
+        .unwrap_or_else(|_| "null".to_string()))
 }
 
 async fn open_surface(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
