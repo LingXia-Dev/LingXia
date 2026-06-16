@@ -76,6 +76,7 @@ lingxia-windows-host = { path = "crates/lingxia-windows-host", version = "0.9.0"
 lingxia-windows-sdk = { path = "crates/lingxia-windows-sdk", version = "0.9.0", default-features = false }
 lingxia-windows-build = { path = "crates/lingxia-windows-build", version = "0.9.0" }
 lingxia-platform = { path = "crates/lingxia-platform", version = "0.9.0" }
+lingxia-surface = { path = "crates/lingxia-surface", version = "0.9.0" }
 lingxia-messaging = { path = "crates/lingxia-messaging", version = "0.9.0" }
 lingxia-logic = { path = "crates/lingxia-logic", version = "0.9.0" }
 lingxia = { path = "crates/lingxia", version = "0.9.0", default-features = false }
