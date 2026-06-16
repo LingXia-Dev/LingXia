@@ -7,8 +7,8 @@ use std::sync::Arc;
 use lingxia_windows_host::post_to_window_thread;
 use windows::Win32::Foundation::HWND;
 use windows::Win32::UI::WindowsAndMessaging::{
-    AppendMenuW, CreatePopupMenu, DestroyMenu, MF_SEPARATOR, MF_STRING, SetForegroundWindow,
-    TPM_NONOTIFY, TPM_RETURNCMD, TPM_TOPALIGN, TrackPopupMenu,
+    AppendMenuW, CreatePopupMenu, DestroyMenu, MF_CHECKED, MF_SEPARATOR, MF_STRING,
+    SetForegroundWindow, TPM_NONOTIFY, TPM_RETURNCMD, TPM_TOPALIGN, TrackPopupMenu,
 };
 use windows::core::PCWSTR;
 
@@ -20,6 +20,18 @@ pub fn show_context_menu(
     window: isize,
     screen: (i32, i32),
     items: Vec<String>,
+    on_select: Arc<dyn Fn(usize) + Send + Sync>,
+) {
+    show_context_menu_checked(window, screen, items, Vec::new(), on_select);
+}
+
+/// Like [`show_context_menu`], but `checked[i] == true` draws item `i` with a
+/// checkmark (a shorter `checked` slice leaves later items unchecked).
+pub fn show_context_menu_checked(
+    window: isize,
+    screen: (i32, i32),
+    items: Vec<String>,
+    checked: Vec<bool>,
     on_select: Arc<dyn Fn(usize) + Send + Sync>,
 ) {
     if items.is_empty() {
@@ -42,9 +54,13 @@ pub fn show_context_menu(
                     }
                     let mut text: Vec<u16> = item.encode_utf16().collect();
                     text.push(0);
+                    let mut flags = MF_STRING;
+                    if checked.get(index).copied().unwrap_or(false) {
+                        flags |= MF_CHECKED;
+                    }
                     // Command ids are 1-based: TrackPopupMenu returns 0 for
                     // "dismissed without a choice".
-                    let _ = AppendMenuW(menu, MF_STRING, index + 1, PCWSTR(text.as_ptr()));
+                    let _ = AppendMenuW(menu, flags, index + 1, PCWSTR(text.as_ptr()));
                 }
                 // Required for the menu to dismiss when clicking elsewhere.
                 let _ = SetForegroundWindow(hwnd);

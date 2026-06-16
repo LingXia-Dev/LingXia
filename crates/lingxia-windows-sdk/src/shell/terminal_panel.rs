@@ -257,6 +257,9 @@ struct WindowsTerminalPanel {
     /// Index of the active tab in `tabs`.
     active: usize,
     maximized: bool,
+    /// When set, keyboard input to the panel's panes is dropped (the menu's
+    /// "Terminal Read-only" toggle), mirroring the macOS surface.
+    read_only: bool,
     /// Stop flag of the panel's poll thread.
     stop: Arc<AtomicBool>,
     /// Tab strip last pushed to the webview layer (pushed only on change).
@@ -608,10 +611,15 @@ pub(super) fn show_terminal_context_menu(
         }
         items.push(t(I18nKey::TerminalChangeTitle));
         items.push(t(I18nKey::TerminalReset));
-        super::context_menu::show_context_menu(
+        let read_only_index = items.len();
+        items.push(t(I18nKey::TerminalReadOnly));
+        let mut checked = vec![false; items.len()];
+        checked[read_only_index] = is_panel_read_only(panel_id);
+        super::context_menu::show_context_menu_checked(
             window,
             (screen_x, screen_y),
             items.clone(),
+            checked,
             Arc::new(move |index| {
                 // Map back through the same label list so the indices stay
                 // in sync with the (locale-dependent) items above.
@@ -656,6 +664,26 @@ fn handle_context_menu_choice(panel_id: &str, items: &[String], index: usize) {
         begin_focused_tab_rename(panel_id);
     } else if label == t(I18nKey::TerminalReset) {
         reset_focused_pane(panel_id);
+    } else if label == t(I18nKey::TerminalReadOnly) {
+        toggle_read_only(panel_id);
+    }
+}
+
+/// Whether the panel currently drops keyboard input (read-only).
+#[cfg(feature = "terminal-runtime")]
+fn is_panel_read_only(panel_id: &str) -> bool {
+    windows_terminal_panels()
+        .get(panel_id)
+        .map(|panel| panel.read_only)
+        .unwrap_or(false)
+}
+
+/// Toggles the panel's read-only state (the menu's "Terminal Read-only").
+#[cfg(all(feature = "terminal-runtime", feature = "shell-runtime"))]
+fn toggle_read_only(panel_id: &str) {
+    let mut panels = windows_terminal_panels();
+    if let Some(panel) = panels.get_mut(panel_id) {
+        panel.read_only = !panel.read_only;
     }
 }
 
@@ -865,6 +893,9 @@ fn open_windows_terminal_session_panel(
     lingxia_windows_host::set_host_panel_input_handler(
         panel_id,
         Arc::new(move |event: WindowsHostPanelKeyEvent| {
+            if is_panel_read_only(&input_panel_key) {
+                return false;
+            }
             let Some(session_id) = active_session_id(&input_panel_key) else {
                 return false;
             };
@@ -893,6 +924,7 @@ fn open_windows_terminal_session_panel(
             tabs: vec![TerminalTab::new(session_id)],
             active: 0,
             maximized: false,
+            read_only: false,
             stop: Arc::clone(&stop),
             published_tabs: Vec::new(),
         },
