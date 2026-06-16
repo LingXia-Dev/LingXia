@@ -51,6 +51,7 @@ lingxia-provider = { workspace = true }
 lingxia-settings = { workspace = true }
 lingxia-service = { workspace = true }
 lingxia-platform = { workspace = true }
+lingxia-surface = { workspace = true }
 lingxia-update = { workspace = true }
 lingxia-transfer = { workspace = true }
 lingxia-media = { workspace = true }

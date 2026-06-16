@@ -120,6 +120,9 @@ impl LxApp {
                     content_page_instance_id,
                 },
             );
+            // Mirror into the Adaptive Surface Layout core (authoritative model).
+            let node = self.build_surface_node(&id, content, request.kind, request.position, &path, &page_path);
+            let _ = state.surface_manager.lock().unwrap().open(node);
         }
 
         let present_result = self.runtime.present_surface(PlatformSurfaceRequest {
@@ -234,8 +237,81 @@ impl LxApp {
         self.state
             .lock()
             .ok()
-            .and_then(|state| state.surfaces.lock().unwrap().remove(id))
+            .and_then(|state| {
+                // Keep the Adaptive Surface Layout core in sync with removals.
+                let _ = state.surface_manager.lock().unwrap().close(id);
+                state.surfaces.lock().unwrap().remove(id)
+            })
             .is_some()
+    }
+
+    /// Report the container width so the core resolves the right `sizeClass`
+    /// (with hysteresis). Returns `true` when the `sizeClass` flipped.
+    pub fn set_surface_width(&self, width: f64) -> bool {
+        self.state
+            .lock()
+            .ok()
+            .map(|state| state.surface_manager.lock().unwrap().set_width(width))
+            .unwrap_or(false)
+    }
+
+    /// Snapshot the core's `DerivedLayout` for this app's window (new model).
+    pub fn surface_derived_layout(&self) -> Option<lingxia_surface::DerivedLayout> {
+        self.state
+            .lock()
+            .ok()
+            .map(|state| state.surface_manager.lock().unwrap().derive())
+    }
+
+    /// Map a legacy surface request into an Adaptive Surface Layout node
+    /// (§10.1 migration: Window→main, Overlay+Center→float, Overlay+edge→aside).
+    fn build_surface_node(
+        &self,
+        id: &str,
+        content: SurfaceContent,
+        kind: SurfaceKind,
+        position: SurfacePosition,
+        path_or_url: &str,
+        page_path: &Option<String>,
+    ) -> lingxia_surface::Surface {
+        use lingxia_surface::{
+            Edge as LxEdge, FloatSpec, Placement, Role as LxRole, Surface as LxSurface,
+            SurfaceContent as LxContent, SurfaceOwner as LxOwner, SurfaceState as LxState,
+        };
+        let role = match (kind, position) {
+            (SurfaceKind::Window, _) => LxRole::Main,
+            (SurfaceKind::Overlay, SurfacePosition::Center) => LxRole::Float,
+            (SurfaceKind::Overlay, _) => LxRole::Aside,
+        };
+        let edge = match position {
+            SurfacePosition::Left => Some(LxEdge::Left),
+            SurfacePosition::Right => Some(LxEdge::Right),
+            SurfacePosition::Top => Some(LxEdge::Top),
+            SurfacePosition::Bottom => Some(LxEdge::Bottom),
+            SurfacePosition::Center => None,
+        };
+        let node_content = match content {
+            SurfaceContent::Page => LxContent::Entry {
+                id: self.appid.clone(),
+                path: page_path.clone(),
+            },
+            SurfaceContent::Url => LxContent::Web {
+                url: path_or_url.to_string(),
+                chrome: false,
+            },
+        };
+        LxSurface {
+            id: id.to_string(),
+            role,
+            content: node_content,
+            owner: LxOwner::Host,
+            placement: Placement {
+                edge,
+                preferred_size: None,
+            },
+            state: LxState::Mounted,
+            float: (role == LxRole::Float).then(FloatSpec::default),
+        }
     }
 
     pub(crate) fn close_surfaces_for_owner(
