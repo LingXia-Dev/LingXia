@@ -41,7 +41,8 @@ use lingxia_windows_host::{WindowsHostPanelKeyEvent, WindowsHostPanelTab};
 use windows::Win32::Foundation::RECT;
 
 /// Direction a pane splits in, mirroring the macOS surface context menu.
-#[cfg(all(feature = "terminal-runtime", feature = "shell-runtime"))]
+#[cfg(feature = "shell-runtime")]
+#[cfg_attr(not(feature = "terminal-runtime"), allow(dead_code))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum SplitDir {
     Left,

@@ -284,6 +284,10 @@ pub enum WindowsChromeHit {
     Focusable {
         id: String,
         context_menu: Option<WindowsChromeCommand>,
+        /// Optional command invoked on left-button-down in addition to
+        /// focusing the surface (e.g. focusing the terminal pane under the
+        /// cursor). Carries the click's screen position when requested.
+        click_command: Option<WindowsChromeCommand>,
     },
     Command(WindowsChromeCommand),
     Chrome,

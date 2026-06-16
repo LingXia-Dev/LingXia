@@ -114,6 +114,7 @@ mod chrome_command {
     pub(super) const NATIVE_PANEL_MAXIMIZE: &str = "native-panel.maximize";
     pub(super) const NATIVE_PANEL_TAB_RENAME: &str = "native-panel.tab.rename";
     pub(super) const NATIVE_PANEL_RIGHT_CLICK: &str = "native-panel.right-click";
+    pub(super) const NATIVE_PANEL_PANE_FOCUS: &str = "native-panel.pane-focus";
     pub(super) const BROWSER_NAV_BACK: &str = "browser.nav.back";
     pub(super) const BROWSER_NAV_FORWARD: &str = "browser.nav.forward";
     pub(super) const BROWSER_NAV_RELOAD: &str = "browser.nav.reload";
@@ -773,6 +774,21 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
             super::terminal_panel::show_terminal_context_menu(appid, &panel_id, screen_x, screen_y);
             return;
         }
+        chrome_command::NATIVE_PANEL_PANE_FOCUS => {
+            let Some(panel_id) = payload_string(&event, "panel_id") else {
+                return;
+            };
+            let Some(screen_x) = payload_i32(&event, "screen_x") else {
+                return;
+            };
+            let Some(screen_y) = payload_i32(&event, "screen_y") else {
+                return;
+            };
+            if let Some((cx, cy)) = screen_to_panel_client(appid, screen_x, screen_y) {
+                super::terminal_panel::focus_pane_at(&panel_id, cx, cy);
+            }
+            return;
+        }
         // Address-bar navigation targets the presented browser tab; URL and
         // title updates flow back through the tabs-changed observer.
         chrome_command::BROWSER_NAV_BACK => {
@@ -1039,7 +1055,7 @@ pub(super) fn owner_window_handle(appid: &str) -> Option<isize> {
 /// matching the coordinate space the chrome paints panels in (used to
 /// focus the terminal pane under the cursor on right-click). `None` when
 /// the window handle is unavailable or the point is off-window.
-#[cfg(all(feature = "shell-runtime", feature = "terminal-runtime"))]
+#[cfg(feature = "shell-runtime")]
 pub(super) fn screen_to_panel_client(
     appid: &str,
     screen_x: i32,

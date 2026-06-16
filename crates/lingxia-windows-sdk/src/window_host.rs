@@ -1777,9 +1777,16 @@ fn handle_chrome_left_down(hwnd: HWND, point: (i32, i32)) -> bool {
             invalidate_window(hwnd);
             true
         },
-        WindowsChromeHit::Focusable { id, .. } => {
+        WindowsChromeHit::Focusable {
+            id, click_command, ..
+        } => {
             focus_host_panel(&id);
             focus_host_window(hwnd);
+            if let (Some(command), Some(webtag_key)) =
+                (click_command, active_webtag_key_for_window(hwnd))
+            {
+                invoke_chrome_command(&webtag_key, hwnd, point, command);
+            }
             true
         }
         WindowsChromeHit::Chrome | WindowsChromeHit::Command(_) => true,
