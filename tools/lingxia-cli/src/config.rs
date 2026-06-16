@@ -72,6 +72,10 @@ pub struct CapabilitiesConfig {
     pub notifications: bool,
     #[serde(default)]
     pub terminal: bool,
+    /// Which window edge the built-in terminal panel docks to: `bottom`
+    /// (default) or `top`. Only meaningful when `terminal` is enabled.
+    #[serde(default)]
+    pub terminal_edge: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -972,9 +976,9 @@ fn validate_macos_ui_config(ui: &Value, terminal_enabled: bool) -> Result<()> {
                 .edge
                 .as_deref()
                 .ok_or_else(|| anyhow!("terminal ui surface '{id}' requires presentation.edge"))?;
-            if edge != "bottom" {
+            if edge != "bottom" && edge != "top" {
                 return Err(anyhow!(
-                    "terminal ui surface '{id}' must use presentation.edge 'bottom'"
+                    "terminal ui surface '{id}' must use presentation.edge 'top' or 'bottom'"
                 ));
             }
         }
@@ -1009,12 +1013,7 @@ fn validate_macos_ui_config(ui: &Value, terminal_enabled: bool) -> Result<()> {
                     anyhow!("attachPanel ui surface '{id}' requires presentation.edge")
                 })?;
                 match edge {
-                    "leading" | "trailing" | "bottom" => {}
-                    "top" => {
-                        return Err(anyhow!(
-                            "macOS app UI currently does not support attachPanel.edge: top"
-                        ));
-                    }
+                    "leading" | "trailing" | "bottom" | "top" => {}
                     other => {
                         return Err(anyhow!(
                             "attachPanel ui surface '{id}' has unknown presentation.edge '{other}'"

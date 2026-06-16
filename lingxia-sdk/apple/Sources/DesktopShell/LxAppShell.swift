@@ -179,6 +179,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     private var contentLeadingConstraint: NSLayoutConstraint?
     private var cardTrailingConstraint: NSLayoutConstraint?
     private var cardBottomConstraint: NSLayoutConstraint?
+    private var cardTopConstraint: NSLayoutConstraint?
     private var lastExpandedSidebarWidth: CGFloat = Layout.sidebarWidth
     private let sidebarRevealButton = NSButton()
     private var currentViewController: macOSLxAppViewController?
@@ -508,10 +509,11 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
             overlayParent: contentView,
             sidebar: sidebar,
             padding: Layout.contentPanelPadding
-        ) { [weak self] trailingInset, bottomInset in
+        ) { [weak self] trailingInset, bottomInset, topInset in
             guard let self else { return }
             self.cardTrailingConstraint?.constant = -trailingInset
             self.cardBottomConstraint?.constant = -bottomInset
+            self.cardTopConstraint?.constant = topInset
         }
 
         configureSidebarRevealButton()
@@ -532,6 +534,8 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         cardTrailingConstraint = cardTrailing
         let cardBottom = shadowWrapper.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -p)
         cardBottomConstraint = cardBottom
+        let cardTop = shadowWrapper.topAnchor.constraint(equalTo: contentView.topAnchor, constant: p)
+        cardTopConstraint = cardTop
 
         NSLayoutConstraint.activate([
             base.topAnchor.constraint(equalTo: contentView.topAnchor),
@@ -544,7 +548,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
             sidebar.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
             sidebarWidth,
 
-            shadowWrapper.topAnchor.constraint(equalTo: contentView.topAnchor, constant: p),
+            cardTop,
             contentLeading,
             cardTrailing,
             cardBottom,

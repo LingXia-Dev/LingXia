@@ -74,8 +74,8 @@ impl SurfacePresenter for Platform {
         if set_managed_surface_visible(id, visible) {
             Ok(())
         } else {
-            Err(PlatformError::NotSupported(format!(
-                "no host shell to manage surface: id={id} (visible={visible})"
+            Err(PlatformError::Platform(format!(
+                "cannot manage surface (no host shell or unknown surface): id={id} (visible={visible})"
             )))
         }
     }
@@ -84,8 +84,8 @@ impl SurfacePresenter for Platform {
         if toggle_managed_surface(id) {
             Ok(())
         } else {
-            Err(PlatformError::NotSupported(format!(
-                "no host shell to manage surface: id={id}"
+            Err(PlatformError::Platform(format!(
+                "cannot manage surface (no host shell or unknown surface): id={id}"
             )))
         }
     }

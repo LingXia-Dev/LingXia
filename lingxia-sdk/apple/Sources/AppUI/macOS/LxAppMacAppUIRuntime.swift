@@ -320,22 +320,35 @@ final class LxAppMacAppUIRuntime: NSObject {
         }
     }
 
-    func toggleManagedSurface(id: String) {
+    /// Toggle a host-declared surface's visibility. Returns `false` if `id` is
+    /// not a declared surface, so the caller can report the failure.
+    @discardableResult
+    func toggleManagedSurface(id: String) -> Bool {
+        guard surfaceById[id] != nil else { return false }
         toggleSurface(id: id)
+        return true
     }
 
-    /// Show a host-declared surface (no-op if already visible). Backs
-    /// `lx.shell.open`.
-    func openManagedSurface(id: String) {
-        guard !visibleSurfaceIDs.contains(id) else { return }
-        openSurfaceHandlingError(id: id)
+    /// Show a host-declared surface (no-op if already visible). Returns `false`
+    /// for an unknown surface `id`.
+    @discardableResult
+    func openManagedSurface(id: String) -> Bool {
+        guard surfaceById[id] != nil else { return false }
+        if !visibleSurfaceIDs.contains(id) {
+            openSurfaceHandlingError(id: id)
+        }
+        return true
     }
 
-    /// Hide a host-declared surface (no-op if already hidden). Backs
-    /// `lx.shell.close`.
-    func closeManagedSurface(id: String) {
-        guard visibleSurfaceIDs.contains(id) else { return }
-        closeSurface(id: id)
+    /// Hide a host-declared surface (no-op if already hidden). Returns `false`
+    /// for an unknown surface `id`.
+    @discardableResult
+    func closeManagedSurface(id: String) -> Bool {
+        guard surfaceById[id] != nil else { return false }
+        if visibleSurfaceIDs.contains(id) {
+            closeSurface(id: id)
+        }
+        return true
     }
 
     private func openSurfaceHandlingError(id: String, sourceActivatorID: String? = nil) {
@@ -986,7 +999,9 @@ final class LxAppMacAppUIRuntime: NSObject {
             return .right
         case .bottom:
             return .bottom
-        case .top, .none:
+        case .top:
+            return .top
+        case .none:
             return nil
         }
     }
@@ -1057,8 +1072,8 @@ final class LxAppMacAppUIRuntime: NSObject {
                 guard surface.presentation.kind == .attachPanel else {
                     throw LxAppUIError.unsupported("terminal surface \(surface.id) must use presentation.kind attachPanel")
                 }
-                guard surface.presentation.edge == .bottom else {
-                    throw LxAppUIError.unsupported("terminal surface \(surface.id) must use presentation.edge bottom")
+                guard surface.presentation.edge == .bottom || surface.presentation.edge == .top else {
+                    throw LxAppUIError.unsupported("terminal surface \(surface.id) must use presentation.edge top or bottom")
                 }
             }
 
@@ -1079,9 +1094,6 @@ final class LxAppMacAppUIRuntime: NSObject {
                 }
                 guard parent.id == rootSurface.id else {
                     throw LxAppUIError.unsupported("macOS v1 only supports panels attached to the root window surface")
-                }
-                guard surface.presentation.edge != .top else {
-                    throw LxAppUIError.unsupported("macOS v1 does not support top-attach panels")
                 }
                 guard surface.presentation.edge != nil else {
                     throw LxAppUIError.invalidConfig("attachPanel surface \(surface.id) requires edge")

@@ -17,7 +17,17 @@ pub(super) fn effective_ui_config(config: &LingXiaConfig) -> Result<Option<Value
         .map(|capabilities| capabilities.terminal)
         .unwrap_or(false);
     if terminal_enabled {
-        add_terminal_ui(&mut ui)?;
+        let edge = config
+            .capabilities
+            .as_ref()
+            .and_then(|capabilities| capabilities.terminal_edge.as_deref())
+            .unwrap_or("bottom");
+        if edge != "bottom" && edge != "top" {
+            return Err(anyhow!(
+                "capabilities.terminalEdge must be 'top' or 'bottom', got '{edge}'"
+            ));
+        }
+        add_terminal_ui(&mut ui, edge)?;
     } else if contains_terminal_surface(&ui) {
         return Err(anyhow!(
             "ui contains terminal content but capabilities.terminal is not enabled"
@@ -26,7 +36,7 @@ pub(super) fn effective_ui_config(config: &LingXiaConfig) -> Result<Option<Value
     Ok(Some(ui))
 }
 
-fn add_terminal_ui(ui: &mut Value) -> Result<()> {
+fn add_terminal_ui(ui: &mut Value, edge: &str) -> Result<()> {
     let obj = ui
         .as_object_mut()
         .ok_or_else(|| anyhow!("ui must be a JSON object"))?;
@@ -42,7 +52,7 @@ fn add_terminal_ui(ui: &mut Value) -> Result<()> {
             "presentation": {
                 "kind": "attachPanel",
                 "attachTo": root_surface,
-                "edge": "bottom",
+                "edge": edge,
                 "size": { "height": 320 }
             },
             "content": {

@@ -118,9 +118,9 @@ pub trait SurfacePresenter: Send + Sync + 'static {
     }
 
     /// Show or hide a top-level surface declared by the host (e.g. the AI-chat
-    /// panel or terminal in `ui` config). This is the `lx.shell` owner: only
-    /// platforms with a host shell that manages declared surfaces (currently
-    /// macOS) support it; others have no such shell and return `NotSupported`.
+    /// panel or terminal in `ui` config). Only platforms with a host shell that
+    /// manages declared surfaces (currently macOS) support it; others have no
+    /// such shell and return `NotSupported`.
     fn set_managed_surface_visible(
         &self,
         _id: &str,

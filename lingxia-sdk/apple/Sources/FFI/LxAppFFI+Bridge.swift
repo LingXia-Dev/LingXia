@@ -158,21 +158,18 @@ extension LxApp {
         }
     }
 
-    /// `lx.shell.open` / `close`: show or hide a host-declared top-level surface
-    /// (e.g. the AI-chat panel or terminal). Only macOS has a host shell that
-    /// manages declared surfaces; other platforms return `false`.
+    /// Show or hide a host-declared top-level surface (e.g. the AI-chat panel or
+    /// terminal). Returns `false` when there is no host shell to manage the
+    /// surface, or when `id` is not a declared surface.
     nonisolated static func setManagedSurfaceVisible(id: RustStr, visible: Bool) -> Bool {
         let idString = id.toString()
         guard !idString.isEmpty else { return false }
         return executeOnMain {
             #if os(macOS)
             guard let runtime = LxAppMacAppUIRuntime.active else { return false }
-            if visible {
-                runtime.openManagedSurface(id: idString)
-            } else {
-                runtime.closeManagedSurface(id: idString)
-            }
-            return true
+            return visible
+                ? runtime.openManagedSurface(id: idString)
+                : runtime.closeManagedSurface(id: idString)
             #else
             _ = visible
             return false
@@ -180,15 +177,15 @@ extension LxApp {
         }
     }
 
-    /// `lx.shell.toggle`: flip a host-declared top-level surface's visibility.
+    /// Flip a host-declared top-level surface's visibility. Returns `false` when
+    /// there is no host shell, or when `id` is not a declared surface.
     nonisolated static func toggleManagedSurface(id: RustStr) -> Bool {
         let idString = id.toString()
         guard !idString.isEmpty else { return false }
         return executeOnMain {
             #if os(macOS)
             guard let runtime = LxAppMacAppUIRuntime.active else { return false }
-            runtime.toggleManagedSurface(id: idString)
-            return true
+            return runtime.toggleManagedSurface(id: idString)
             #else
             return false
             #endif

@@ -446,13 +446,14 @@ enum LxAppSurface {
     }
 
     /// Map a legacy `SurfacePosition` integer to a dockable workspace edge.
-    /// Center (0) is a float and Top (4) has no dock slot — both return nil so
-    /// the caller keeps the legacy popup path.
+    /// Center (0) is a float and has no dock slot — returns nil so the caller
+    /// keeps the legacy popup path.
     private static func panelPosition(for position: Int32) -> PanelPosition? {
         switch position {
         case 1: return .bottom
         case 2: return .left
         case 3: return .right
+        case 4: return .top
         default: return nil
         }
     }
@@ -469,7 +470,7 @@ enum LxAppSurface {
             return finitePositive(width)
                 ?? ratioSize(widthRatio, base: NSScreen.main?.visibleFrame.width ?? 1280)
                 ?? 360
-        case .bottom:
+        case .bottom, .top:
             return finitePositive(height)
                 ?? ratioSize(heightRatio, base: NSScreen.main?.visibleFrame.height ?? 800)
                 ?? 320
