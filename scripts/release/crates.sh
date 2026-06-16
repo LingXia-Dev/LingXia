@@ -14,6 +14,7 @@ CRATES=(
   "lingxia-webview"
   "lingxia-settings"
   "lingxia-transfer"
+  "lingxia-windows-host"
   "lingxia-platform"
   "lingxia-media"
   "lingxia-service"
@@ -38,6 +39,10 @@ CRATES=(
 
   # Devtool bridge depends on the public facade.
   "lingxia-devtool"
+
+  # Windows host SDK and build helper consumed by the windows app template.
+  "lingxia-windows-build"
+  "lingxia-windows-sdk"
 )
 
 usage() {

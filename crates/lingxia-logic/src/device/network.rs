@@ -211,8 +211,11 @@ fn clear_network_change_callback(ctx: &JSContext) -> JSResult<()> {
 }
 
 fn on_network_change(ctx: JSContext, callback: JSFunc) -> JSResult<()> {
-    ensure_network_change_callback(&ctx)?;
-    register_app_handler(&ctx, NETWORK_CHANGE_EVENT, callback)?;
+    register_app_handler(&ctx, NETWORK_CHANGE_EVENT, callback.clone())?;
+    if let Err(err) = ensure_network_change_callback(&ctx) {
+        let _ = unregister_app_handler(&ctx, NETWORK_CHANGE_EVENT, Some(callback));
+        return Err(err);
+    }
     Ok(())
 }
 

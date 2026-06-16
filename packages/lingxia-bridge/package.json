@@ -40,7 +40,7 @@
     "build:modules:es5": "tsc -p tsconfig.modules.legacy.json",
     "build:types": "tsc -p tsconfig.json --emitDeclarationOnly",
     "dev": "rolldown -c -w",
-    "clean": "rm -rf dist",
+    "clean": "node -e \"fs.rmSync('dist',{recursive:true,force:true})\"",
     "prepublishOnly": "npm run build"
   },
   "devDependencies": {

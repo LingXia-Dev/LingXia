@@ -25,54 +25,39 @@ struct DownloadTaskIdInput {
     task_id: String,
 }
 
+/// Build a `file://` URL for a local path without external dependencies.
+///
+/// - Windows drive paths: `C:\Users\x` → `file:///C:/Users/x`
+/// - UNC paths: `\\server\share\x` → `file://server/share/x`
+/// - POSIX paths: `/home/x` → `file:///home/x`
 fn file_url_for(path: &Path) -> String {
-    format!("file://{}", path.to_string_lossy())
+    let normalized = path.to_string_lossy().replace('\\', "/");
+    if let Some(unc) = normalized.strip_prefix("//") {
+        // UNC: the server becomes the URL authority.
+        format!("file://{unc}")
+    } else if normalized.starts_with('/') {
+        format!("file://{normalized}")
+    } else {
+        // Drive-letter (or other rootless) path: needs an empty authority.
+        format!("file:///{normalized}")
+    }
 }
 
 fn download_reveal_path(record: &DownloadRecord) -> PathBuf {
     let target_path = PathBuf::from(&record.target_path);
     let part_path = target_path.with_extension("part");
 
-    match record.status {
-        DownloadStatus::Downloading => {
-            if part_path.exists() {
-                return part_path;
-            }
-            if target_path.exists() {
-                return target_path;
-            }
+    // Finished states prefer the final file; in-progress/failed states prefer
+    // the .part file. Fall back to whichever of the two exists.
+    let candidates = match record.status {
+        DownloadStatus::Completed | DownloadStatus::Removed => [target_path.clone(), part_path],
+        DownloadStatus::Downloading | DownloadStatus::Failed | DownloadStatus::Paused => {
+            [part_path, target_path.clone()]
         }
-        DownloadStatus::Completed => {
-            if target_path.exists() {
-                return target_path;
-            }
-            if part_path.exists() {
-                return part_path;
-            }
-        }
-        DownloadStatus::Failed => {
-            if part_path.exists() {
-                return part_path;
-            }
-            if target_path.exists() {
-                return target_path;
-            }
-        }
-        DownloadStatus::Paused => {
-            if part_path.exists() {
-                return part_path;
-            }
-            if target_path.exists() {
-                return target_path;
-            }
-        }
-        DownloadStatus::Removed => {
-            if target_path.exists() {
-                return target_path;
-            }
-            if part_path.exists() {
-                return part_path;
-            }
+    };
+    for candidate in candidates {
+        if candidate.exists() {
+            return candidate;
         }
     }
 
@@ -298,4 +283,34 @@ pub(crate) fn register() {
     lxapp::host::register_host_entry(open_download_route_host());
     lxapp::host::register_host_entry(reveal_download_route_host());
     lxapp::host::register_host_entry(watch_downloads_host());
+}
+
+#[cfg(test)]
+mod tests {
+    use super::file_url_for;
+    use std::path::PathBuf;
+
+    #[test]
+    fn file_url_for_windows_drive_path() {
+        assert_eq!(
+            file_url_for(&PathBuf::from(r"C:\Users\admin\Downloads")),
+            "file:///C:/Users/admin/Downloads"
+        );
+    }
+
+    #[test]
+    fn file_url_for_unc_path() {
+        assert_eq!(
+            file_url_for(&PathBuf::from(r"\\server\share\dir")),
+            "file://server/share/dir"
+        );
+    }
+
+    #[test]
+    fn file_url_for_posix_path() {
+        assert_eq!(
+            file_url_for(&PathBuf::from("/home/user/downloads")),
+            "file:///home/user/downloads"
+        );
+    }
 }

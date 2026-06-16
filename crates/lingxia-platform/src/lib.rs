@@ -40,10 +40,14 @@ mod apple;
 #[cfg(target_env = "ohos")]
 pub mod harmony;
 
+#[cfg(target_os = "windows")]
+pub mod windows;
+
 #[cfg(not(any(
     target_os = "android",
     target_os = "ios",
     target_os = "macos",
+    target_os = "windows",
     target_env = "ohos"
 )))]
 mod unsupported;
@@ -66,10 +70,21 @@ pub use apple::apply_staged_macos_update;
 #[cfg(target_env = "ohos")]
 pub use harmony::Platform;
 
+#[cfg(target_os = "windows")]
+pub use windows::{
+    Platform, WindowsMediaPreviewCancel, WindowsMediaPreviewOpen, WindowsVideoCommandDispatcher,
+    register_windows_media_preview_host, register_windows_video_command_dispatcher,
+    set_windows_app_exit_handler, set_windows_open_url_handler,
+    set_windows_page_visibility_handler, set_windows_pull_to_refresh_handler,
+    set_windows_surface_closed_handler, set_windows_surface_dispose_handler,
+    set_windows_ui_update_handler,
+};
+
 #[cfg(not(any(
     target_os = "android",
     target_os = "ios",
     target_os = "macos",
+    target_os = "windows",
     target_env = "ohos"
 )))]
 pub use unsupported::Platform;

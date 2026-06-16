@@ -56,6 +56,7 @@ fn detect_platform_from_artifact(
             "apk" => return Ok(PlatformType::Android),
             "app" | "ipa" => return Ok(PlatformType::Ios),
             "hap" => return Ok(PlatformType::Harmony),
+            "exe" => return Ok(PlatformType::Windows),
             _ => {}
         }
     }

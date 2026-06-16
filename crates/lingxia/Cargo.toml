@@ -2,7 +2,7 @@
 name = "lingxia"
 version.workspace = true
 edition.workspace = true
-description = "LingXia - Cross-platform LxApp (lightweight application) framework for Android, iOS, and HarmonyOS"
+description = "LingXia - Cross-platform LxApp (lightweight application) framework for Android, iOS, macOS, HarmonyOS, and Windows"
 license = "MIT"
 repository.workspace = true
 keywords = ["lingxia", "lxapp", "cross-platform", "webview"]
@@ -33,6 +33,7 @@ lingxia-logic = { workspace = true, optional = true }
 lingxia-shell = { workspace = true, optional = true }
 lingxia-platform = { workspace = true }
 lingxia-webview = { workspace = true }
+lingxia-windows-host = { workspace = true }
 lingxia-messaging = { workspace = true }
 lingxia-native-macros = { workspace = true }
 log = { workspace = true }

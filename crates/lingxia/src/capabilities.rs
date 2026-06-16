@@ -1,3 +1,5 @@
+#![cfg_attr(target_os = "windows", allow(dead_code))]
+
 pub const CAP_SHELL: u32 = 0x1;
 pub const CAP_NOTIFICATIONS: u32 = 0x2;
 

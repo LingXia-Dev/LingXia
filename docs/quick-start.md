@@ -51,10 +51,25 @@ export OHOS_NDK_HOME=$HOME/OpenHarmony/command-line-tools/sdk/default/openharmon
 
 ## 2. Install the LingXia CLI
 
+**macOS / Linux** (or Git Bash, MSYS, Cygwin on Windows):
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/LingXia-Dev/LingXia/main/install.sh | sh
 lingxia --version
 ```
+
+**Windows PowerShell:**
+
+```powershell
+irm https://raw.githubusercontent.com/LingXia-Dev/LingXia/main/install.ps1 | iex
+lingxia --version
+```
+
+Both installers drop the binary in `~/.local/bin` (`%USERPROFILE%\.local\bin`
+on Windows). The PowerShell installer adds that directory to your user `PATH`
+automatically; open a new terminal afterward so the change is picked up.
+`install.sh` does not edit your profile; if `~/.local/bin` isn't already on
+`PATH` it prints the `export PATH=...` line to add to your shell profile.
 
 ---
 

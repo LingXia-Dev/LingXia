@@ -44,6 +44,22 @@ async fn choose_media(
 
     let mode = parse_choose_mode(opts.media_type)?;
     let sources = parse_sources(opts.source_type)?;
+    // Windows has no camera capture pipeline; album+camera requests
+    // degrade to the album picker instead of asking for a source that
+    // would only fail. Camera-only requests still surface NotSupported.
+    #[cfg(target_os = "windows")]
+    let sources: Vec<MediaSource> = {
+        let filtered: Vec<MediaSource> = sources
+            .iter()
+            .copied()
+            .filter(|source| !matches!(source, MediaSource::Camera))
+            .collect();
+        if filtered.is_empty() {
+            sources
+        } else {
+            filtered
+        }
+    };
     let selected_source = if sources.len() > 1 {
         match present_source_picker(&lxapp, &sources).await? {
             Some(source) => source,

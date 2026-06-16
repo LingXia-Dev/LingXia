@@ -13,7 +13,7 @@ Shell product module and host registration crate for LingXia.
 
 ## Key APIs
 
-- `register()` and `warmup()`
+- `register_runtime()`, `register_bundled_assets()`, and `warmup()`
 - `open(...)`, `open_for_app(...)`, `close(...)`, `download(...)`
 - `resolve_input(...)`, `classify_navigation(...)`
 - `open_panel_lxapp(...)`, `panel_item_for_id(...)`, `panels_config_json()`

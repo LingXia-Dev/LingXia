@@ -1,26 +1,12 @@
-#![cfg_attr(
-    not(any(
-        target_os = "android",
-        target_os = "ios",
-        target_os = "macos",
-        target_env = "ohos"
-    )),
-    allow(dead_code)
-)]
+// Each per-OS backend uses a different subset of these helpers; compiling them
+// everywhere avoids hand-maintained cfg lists that drift.
+#![allow(dead_code)]
 
 use crate::error::PlatformError;
 use rong_rt::RongExecutor;
-#[cfg(any(target_os = "ios", target_os = "macos", target_env = "ohos"))]
 use std::future::Future;
-#[cfg(any(
-    target_os = "ios",
-    target_os = "macos",
-    target_os = "windows",
-    target_env = "ohos"
-))]
 use tokio::task::JoinHandle;
 
-#[cfg(any(target_os = "ios", target_os = "macos", target_env = "ohos"))]
 pub(crate) fn spawn<F>(future: F) -> Option<JoinHandle<F::Output>>
 where
     F: Future + Send + 'static,
@@ -29,7 +15,6 @@ where
     Some(RongExecutor::global().spawn(future))
 }
 
-#[cfg(any(target_env = "ohos", target_os = "macos", target_os = "windows"))]
 pub(crate) fn spawn_blocking<F, R>(f: F) -> Option<JoinHandle<R>>
 where
     F: FnOnce() -> R + Send + 'static,

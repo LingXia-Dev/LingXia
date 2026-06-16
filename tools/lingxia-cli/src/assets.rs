@@ -11,14 +11,17 @@ pub(crate) use clean::clean_configured_host_assets;
 use colored::Colorize;
 use destinations::{
     prepare_android_assets_root, prepare_apple_resources_root, prepare_harmony_rawfile_root,
+    prepare_windows_assets_root,
 };
 use hash::sha256_hex;
 #[cfg(test)]
 use icons::PreparedAppUiIcon;
-use icons::prepare_app_ui_icons;
 #[cfg(test)]
 use icons::validate_app_ui_svg_icon;
-use json::{build_app_json_from_config, build_ui_json_from_config};
+use icons::{prepare_app_ui_icons, prepare_windows_design_icons, sync_windows_design_icons};
+use json::{
+    build_app_json_from_config, build_ui_json_from_config, build_windows_ui_json_from_config,
+};
 use runtime_asset::{prepare_polyfills_es5_asset, prepare_runtime_asset};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -49,6 +52,12 @@ mod sync;
 mod tests;
 #[path = "assets/ui.rs"]
 mod ui;
+
+pub(crate) fn prepare_windows_design_icon_assets(assets_root: &Path) -> Result<()> {
+    let icons = prepare_windows_design_icons()?;
+    sync_windows_design_icons(assets_root, &icons, None)?;
+    Ok(())
+}
 
 /// Collect build-time warnings for any path-based lxapp bundle whose
 /// `view.target` won't run on the Android floor declared in `lingxia.yaml`.
@@ -162,6 +171,7 @@ pub(crate) fn prepare_configured_host_assets(
                 | platform::detector::PlatformType::Ios
                 | platform::detector::PlatformType::MacOs
                 | platform::detector::PlatformType::Harmony
+                | platform::detector::PlatformType::Windows
         )
     });
     if !needs_embedded_lxapp {
@@ -201,6 +211,10 @@ pub(crate) fn prepare_configured_host_assets(
     let prepared_app_ui_icons = prepare_app_ui_icons(project_root, config)?;
     let ui_json = build_ui_json_from_config(config, &prepared_app_ui_icons)?;
     let ui_json_hash = ui_json.as_ref().map(|json| sha256_hex(json.as_bytes()));
+    let windows_ui_json = build_windows_ui_json_from_config(config, &prepared_app_ui_icons)?;
+    let windows_ui_json_hash = windows_ui_json
+        .as_ref()
+        .map(|json| sha256_hex(json.as_bytes()));
 
     let has_android = platforms
         .iter()
@@ -321,6 +335,21 @@ pub(crate) fn prepare_configured_host_assets(
                     ui_json.as_deref(),
                     ui_json_hash.as_deref(),
                     &prepared_bundles,
+                    prepared_runtime_es2020.as_ref(),
+                    &mut cache,
+                )?;
+            }
+            platform::detector::PlatformType::Windows => {
+                let assets_root =
+                    crate::platform::windows::resolve_windows_assets_dir(project_root)?;
+                prepare_windows_assets_root(
+                    &assets_root,
+                    &app_json,
+                    &app_json_hash,
+                    windows_ui_json.as_deref(),
+                    windows_ui_json_hash.as_deref(),
+                    &prepared_bundles,
+                    &prepared_app_ui_icons,
                     prepared_runtime_es2020.as_ref(),
                     &mut cache,
                 )?;

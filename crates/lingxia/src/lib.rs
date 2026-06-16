@@ -2,8 +2,8 @@
 //!
 //! Use this crate from native host apps and native Rust libraries. It provides:
 //!
-//! - platform bootstrap and FFI entry points for Android, Apple platforms, and
-//!   HarmonyOS;
+//! - platform bootstrap and FFI entry points for Android, Apple platforms
+//!   (iOS and macOS), HarmonyOS, and Windows;
 //! - the [`native`] macro for page-facing Rust APIs;
 //! - host addon registration through [`HostAddon`] and [`register_host_addon`];
 //! - native service APIs such as [`app`], [`device`], [`wifi`], [`media`], [`task`],
@@ -74,9 +74,9 @@ pub mod task;
 #[cfg(feature = "terminal-runtime")]
 pub mod terminal {
     pub use lingxia_terminal::{
-        BackendStatus, TerminalBackend, ghostty_available, ghostty_status, ghostty_status_json,
-        terminal_close, terminal_create, terminal_exited, terminal_read, terminal_resize,
-        terminal_snapshot, terminal_write,
+        BackendStatus, TerminalBackend, TerminalCell, TerminalSnapshot, ghostty_available,
+        ghostty_status, ghostty_status_json, terminal_close, terminal_create, terminal_exited,
+        terminal_read, terminal_resize, terminal_snapshot, terminal_snapshot_data, terminal_write,
     };
 }
 /// Host app update helpers and update event types.
@@ -113,6 +113,10 @@ pub mod apple;
 #[cfg(target_env = "ohos")]
 #[path = "ffi/harmony.rs"]
 pub mod harmony;
+
+/// Windows platform bootstrap for pure Rust host apps.
+#[cfg(target_os = "windows")]
+pub mod windows;
 
 pub(crate) mod browser;
 pub(crate) mod push;

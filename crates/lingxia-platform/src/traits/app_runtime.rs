@@ -155,7 +155,6 @@ pub trait AppRuntime:
     ) -> impl std::future::Future<Output = Result<String, PlatformError>> + Send;
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::OpenUrlTarget;

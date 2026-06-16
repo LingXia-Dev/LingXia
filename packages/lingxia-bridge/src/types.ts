@@ -1,5 +1,5 @@
 export interface BridgeConfig {
-  os?: 'Harmony' | 'iOS' | 'Android' | 'macOS';
+  os?: 'Harmony' | 'iOS' | 'Android' | 'macOS' | 'Windows';
   nonce?: string;
   appleDownstreamURL?: string;
 }
@@ -174,6 +174,7 @@ export interface LingXiaBridgeInterface {
     isIOS(): boolean;
     isAndroid(): boolean;
     isMacOS(): boolean;
+    isWindows(): boolean;
     isDesktop(): boolean;
     getOS(): string;
   };

@@ -15,6 +15,8 @@ const MACOS_SECTION_TEMPLATE: &str =
 const UI_SECTION_TEMPLATE: &str = include_str!("../../../templates/host-config/sections/ui.yaml");
 const HARMONY_SECTION_TEMPLATE: &str =
     include_str!("../../../templates/host-config/sections/harmony.yaml");
+const WINDOWS_SECTION_TEMPLATE: &str =
+    include_str!("../../../templates/host-config/sections/windows.yaml");
 const APP_LINKS_SECTION_TEMPLATE: &str =
     include_str!("../../../templates/host-config/sections/app-links.yaml");
 
@@ -86,6 +88,14 @@ fn render_host_config(
         render_optional_section(
             config.platforms.contains(&Platform::Harmony),
             HARMONY_SECTION_TEMPLATE,
+            &vars,
+        ),
+    );
+    vars.insert(
+        "WINDOWS_SECTION".to_string(),
+        render_optional_section(
+            config.platforms.contains(&Platform::Windows),
+            WINDOWS_SECTION_TEMPLATE,
             &vars,
         ),
     );

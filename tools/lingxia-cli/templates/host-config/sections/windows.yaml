@@ -1,0 +1,7 @@
+
+# Windows host settings.
+windows:
+  # Windows host application identifier.
+  appId: {{PACKAGE_ID}}
+  # Cargo binary name in windows/Cargo.toml.
+  executableName: {{PROJECT_NAME}}

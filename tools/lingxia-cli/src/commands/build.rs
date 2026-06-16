@@ -4,7 +4,7 @@ use crate::host_assets::prepare_configured_host_assets;
 use crate::lxapp;
 use crate::platform::detector::PlatformType;
 use crate::platform::{self, BuildArtifacts, BuildConfig};
-use anyhow::{Result, anyhow};
+use anyhow::{Context, Result, anyhow};
 use colored::Colorize;
 use std::path::{Path, PathBuf};
 use std::{env, fs};
@@ -20,6 +20,8 @@ pub struct BuildExecuteOptions {
     pub all_platforms: bool,
     pub ipa: bool,
     pub dmg: bool,
+    /// Package the Windows build as an (unsigned) MSIX installer.
+    pub msix: bool,
     pub package: bool,
     /// Build only the native library, skipping platform packaging (harmony
     /// stops after the `.so`, no ohpm/hvigor).
@@ -44,6 +46,7 @@ pub fn execute(options: BuildExecuteOptions) -> Result<()> {
         all_platforms,
         ipa,
         dmg,
+        msix,
         package,
         native_only,
         env_version,
@@ -207,7 +210,7 @@ pub fn execute(options: BuildExecuteOptions) -> Result<()> {
     if available_platforms.is_empty() {
         return Err(anyhow!(
             "No platform configured in lingxia.config.json.\n\
-             Set app.platforms to include at least one of: android, ios, macos, harmony"
+             Set app.platforms to include at least one of: android, ios, macos, harmony, windows"
         ));
     }
 
@@ -385,7 +388,14 @@ Specify one with `--platform <name>` or build all with `--all-platforms`."
     let mut all_artifacts = Vec::new();
     for (platform, mut build_config, platform_type) in platform_builds {
         build_config.skip_native_build = platform.hoists_native_build();
-        let artifacts = platform.build(&build_config)?;
+        let mut artifacts = platform.build(&build_config)?;
+        if matches!(platform_type, PlatformType::Windows) && (package || msix) {
+            artifacts =
+                assemble_windows_dist(&project_root, &config, resolved_env.version, artifacts)?;
+            if msix && let Some(dist_dir) = artifacts.path().parent() {
+                crate::platform::windows::msix::package(&project_root, &config, dist_dir)?;
+            }
+        }
         if package {
             stage_package_artifact(&project_root, &platform_type, &artifacts)?;
         }
@@ -408,6 +418,70 @@ Specify one with `--platform <name>` or build all with `--all-platforms`."
     }
 
     Ok(())
+}
+
+/// Assembles the self-contained Windows app directory — the Windows
+/// equivalent of a macOS `.app` bundle:
+/// `<project>/windows/.lingxia/dist/<ProductName>/` holding the executable next
+/// to the prepared `assets/` (the runtime's default asset dir is the `assets`
+/// folder beside the exe, so the directory runs and ships as-is). Generated
+/// output lives under `.lingxia/` so the `windows/` source dir stays clean,
+/// matching macOS's `macos/.lingxia/`.
+fn assemble_windows_dist(
+    project_root: &Path,
+    config: &LingXiaConfig,
+    env: crate::config::EnvVersion,
+    artifacts: BuildArtifacts,
+) -> Result<BuildArtifacts> {
+    let BuildArtifacts::Windows { exe_path } = artifacts else {
+        return Ok(artifacts);
+    };
+    let product_name = config
+        .app
+        .as_ref()
+        .map(|app| app.product_name.as_str())
+        .unwrap_or("LingXia");
+    let windows_dir = project_root.join("windows");
+    let dist_dir = windows_dir.join(".lingxia").join("dist").join(product_name);
+    if dist_dir.exists() {
+        std::fs::remove_dir_all(&dist_dir)
+            .with_context(|| format!("Failed to clear {}", dist_dir.display()))?;
+    }
+    std::fs::create_dir_all(&dist_dir)
+        .with_context(|| format!("Failed to create {}", dist_dir.display()))?;
+
+    let exe_name = exe_path
+        .file_name()
+        .ok_or_else(|| anyhow!("Windows executable path has no file name"))?;
+    let dist_exe = dist_dir.join(exe_name);
+    std::fs::copy(&exe_path, &dist_exe)
+        .with_context(|| format!("Failed to copy {} into dist", exe_path.display()))?;
+
+    let assets_src = windows_dir.join(".lingxia").join("assets");
+    if assets_src.is_dir() {
+        let dist_assets = dist_dir.join("assets");
+        crate::platform::apple::copy_dir_recursive(&assets_src, &dist_assets)?;
+        // dev/preview builds get the D/P badge — the Windows counterpart of the
+        // macOS/iOS env-icon overlay — so a dev build sits beside a release
+        // build distinguishably. The badge goes on a host-owned icon at the
+        // asset root, NOT the lxapp's served `<home>/public/AppIcon.png` (that
+        // is app content the home page renders).
+        let home_app_id = config.app.as_ref().map(|app| app.home_app_id.as_str());
+        let host_icon_badged = crate::platform::windows::env_icon::stage_dist_host_icon(
+            &dist_assets,
+            home_app_id,
+            env,
+        )?;
+        if host_icon_badged {
+            println!(
+                "{} Badged host app icon for {} env",
+                "[Windows]".cyan(),
+                env.as_str()
+            );
+        }
+    }
+
+    Ok(BuildArtifacts::Windows { exe_path: dist_exe })
 }
 
 fn stage_package_artifact(
@@ -562,7 +636,6 @@ fn build_standalone_apple_swift_package(
 
     Ok(())
 }
-
 
 #[cfg(test)]
 mod tests {

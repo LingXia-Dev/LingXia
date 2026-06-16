@@ -1,0 +1,11 @@
+[package]
+name = "lingxia-windows-build"
+version.workspace = true
+edition.workspace = true
+description = "Build-script helpers for LingXia Windows host applications"
+license = "MIT"
+repository.workspace = true
+keywords = ["lingxia", "windows", "build-script"]
+categories = ["development-tools::build-utils"]
+
+[dependencies]

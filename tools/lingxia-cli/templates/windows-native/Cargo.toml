@@ -1,0 +1,23 @@
+[package]
+name = "{{WINDOWS_CRATE_NAME}}"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "{{WINDOWS_EXECUTABLE_NAME}}"
+path = "src/main.rs"
+
+[features]
+default = ["standard"]
+standard = ["host/standard", "lingxia-windows-sdk/standard"]
+shell-runtime = ["host/shell-runtime", "lingxia-windows-sdk/shell-runtime"]
+terminal-runtime = ["host/terminal-runtime", "lingxia-windows-sdk/terminal-runtime"]
+devtools = ["host/devtools"]
+webview-input = ["host/webview-input", "lingxia-windows-sdk/webview-input"]
+
+[dependencies]
+lingxia-windows-sdk = { version = "{{LINGXIA_VERSION}}", default-features = false }
+host = { package = "{{HOST_CRATE_NAME}}", path = "../{{HOST_CRATE_NAME}}", default-features = false }
+
+[build-dependencies]
+lingxia-windows-build = { version = "{{LINGXIA_VERSION}}" }

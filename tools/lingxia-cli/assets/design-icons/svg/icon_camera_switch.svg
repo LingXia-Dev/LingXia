@@ -1,0 +1,18 @@
+<svg width="44" height="44" viewBox="0 0 44 44" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <mask id="cameraSwitchMask">
+      <rect width="44" height="44" fill="white"/>
+      <!-- Refresh/sync arrows - simple circular style -->
+      <!-- Upper-right arc with arrow -->
+      <path d="M22 23 A5 5 0 0 1 27 28" stroke="black" stroke-width="1.6" stroke-linecap="round" fill="none"/>
+      <path d="M27 28 L25 26.5 M27 28 L25.5 29.5" stroke="black" stroke-width="1.6" stroke-linecap="round" fill="none"/>
+      <!-- Lower-left arc with arrow -->
+      <path d="M22 33 A5 5 0 0 1 17 28" stroke="black" stroke-width="1.6" stroke-linecap="round" fill="none"/>
+      <path d="M17 28 L19 29.5 M17 28 L18.5 26.5" stroke="black" stroke-width="1.6" stroke-linecap="round" fill="none"/>
+    </mask>
+  </defs>
+  <!-- Camera body -->
+  <rect x="8" y="18" width="28" height="18" rx="2" fill="white" mask="url(#cameraSwitchMask)"/>
+  <!-- Camera viewfinder hump -->
+  <path d="M17 18 L19 12 H25 L27 18" fill="white"/>
+</svg>

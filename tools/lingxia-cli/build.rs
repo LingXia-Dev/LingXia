@@ -172,7 +172,7 @@ fn emit_component_version_env(versions: &ComponentVersions) {
 }
 
 fn run_npm_build(package_dir: &Path) -> Result<(), String> {
-    let status = Command::new("npm")
+    let status = Command::new(npm_command())
         .arg("run")
         .arg("build")
         .current_dir(package_dir)
@@ -194,7 +194,7 @@ fn run_npm_build(package_dir: &Path) -> Result<(), String> {
 }
 
 fn ensure_npm_available() -> Result<(), String> {
-    match Command::new("npm").arg("--version").status() {
+    match Command::new(npm_command()).arg("--version").status() {
         Ok(status) if status.success() => Ok(()),
         Ok(status) => Err(format!(
             "npm is required to build the embedded @lingxia/bridge runtime, but `npm --version` exited with status {}.\n\
@@ -206,6 +206,10 @@ Install Node.js/npm, then retry `cargo build -p lingxia-cli`.",
 Install Node.js/npm, then retry `cargo build -p lingxia-cli`."
         )),
     }
+}
+
+fn npm_command() -> &'static str {
+    if cfg!(windows) { "npm.cmd" } else { "npm" }
 }
 
 fn ensure_npm_bin_installed(package_dir: &Path, bin_name: &str) -> Result<(), String> {

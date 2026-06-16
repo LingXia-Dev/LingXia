@@ -4,9 +4,9 @@ set -euo pipefail
 START_DIR="$(pwd)"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 CLI_CARGO_TOML="$ROOT_DIR/tools/lingxia-cli/Cargo.toml"
-RUNNER_PACKAGE_DIR="$ROOT_DIR/tools/lingxia-runner"
-RUNNER_RAW_APP_DIR="$ROOT_DIR/tools/lingxia-runner/.lingxia"
-RUNNER_RAW_DIST_DIR="$ROOT_DIR/tools/lingxia-runner/dist/macos"
+RUNNER_PACKAGE_DIR="$ROOT_DIR/tools/lingxia-runner/macos"
+RUNNER_RAW_APP_DIR="$ROOT_DIR/tools/lingxia-runner/macos/.lingxia"
+RUNNER_RAW_DIST_DIR="$ROOT_DIR/tools/lingxia-runner/macos/dist/macos"
 RUNNER_RELEASE_APP_NAME="LingXia Runner.app"
 GH_REPO="${LINGXIA_RELEASE_REPO:-LingXia-Dev/LingXia}"
 
@@ -19,7 +19,7 @@ Options:
   --tag <tag>         Release tag to upload to (default: lingxia-cli-v<version>)
   --out <dir>         Output directory (default: dist/runner-release)
   --macos-arch <arch> Build a specific macOS arch: arm64, x86_64, or all
-  --skip-build        Reuse existing lingxia build artifacts from tools/lingxia-runner/.lingxia and dist/macos
+  --skip-build        Reuse existing lingxia build artifacts from tools/lingxia-runner/macos/.lingxia and dist/macos
 
 Environment:
   LINGXIA_RELEASE_REPO  Override target repo (default: LingXia-Dev/LingXia)

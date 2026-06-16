@@ -175,6 +175,60 @@ pub fn get_current_lxapp() -> (String, String, u64) {
     (String::new(), String::new(), 0)
 }
 
+/// Move an opened lxapp to the top of the runtime navigation stack.
+pub fn mark_lxapp_active(appid: &str) -> bool {
+    let Some(manager) = super::runtime_registry::get_lxapps_manager() else {
+        return false;
+    };
+    if !manager.lxapps.contains_key(appid) {
+        return false;
+    }
+    manager.remove_from_stack(appid);
+    manager.push_lxapp_stack(appid.to_string());
+    true
+}
+
+pub fn notify_lxapp_host_visibility(appid: &str, visible: bool) -> Result<(), LxAppError> {
+    let app = super::runtime_registry::try_get(appid)
+        .ok_or_else(|| LxAppError::ResourceNotFound(appid.to_string()))?;
+    let args = crate::lifecycle::AppServiceEventArgs {
+        source: crate::lifecycle::AppServiceEventSource::Host,
+        reason: if visible {
+            crate::lifecycle::AppServiceEventReason::Foreground
+        } else {
+            crate::lifecycle::AppServiceEventReason::Background
+        },
+    }
+    .to_json_string();
+    app.appservice_notify(
+        if visible {
+            crate::lifecycle::AppServiceEvent::OnShow
+        } else {
+            crate::lifecycle::AppServiceEvent::OnHide
+        },
+        Some(args),
+    )
+}
+
+pub fn notify_page_host_visibility(
+    appid: &str,
+    path: &str,
+    visible: bool,
+) -> Result<(), LxAppError> {
+    let app = super::runtime_registry::try_get(appid)
+        .ok_or_else(|| LxAppError::ResourceNotFound(appid.to_string()))?;
+    let page = app.require_page(path)?;
+    page.dispatch_lifecycle_event(if visible {
+        crate::lifecycle::PageLifecycleEvent::OnShow
+    } else {
+        crate::lifecycle::PageLifecycleEvent::OnHide
+    });
+    if visible {
+        page.mark_active();
+    }
+    Ok(())
+}
+
 /// Check if pull-to-refresh is enabled for a specific page
 /// Returns false if the app or page is not found
 pub fn is_pull_down_refresh_enabled(appid: &str, path: &str) -> bool {

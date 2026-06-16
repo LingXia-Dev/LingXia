@@ -83,12 +83,19 @@ impl LxApp {
         };
         let (path, page_instance_id, content, page_path) = match request.target {
             PageSurfaceTarget::Page(target) => {
+                let dispose_ttl = match request.kind {
+                    // A standalone window surface is a persistent window that
+                    // lives until explicitly closed; only hideable overlays are
+                    // reclaimed by the dispose timer after a long hide.
+                    SurfaceKind::Window => None,
+                    SurfaceKind::Overlay => Some(Duration::from_millis(SURFACE_DISPOSE_TTL_MS)),
+                };
                 let created = self.create_page_instance(
                     owner,
                     target,
                     request.query,
                     presentation_kind,
-                    Some(Duration::from_millis(SURFACE_DISPOSE_TTL_MS)),
+                    dispose_ttl,
                 )?;
                 (
                     created.resolved_path.clone(),

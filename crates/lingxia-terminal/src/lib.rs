@@ -3,28 +3,52 @@
 //! Product terminal mode is intentionally single-path:
 //! portable-pty owns process I/O, libghostty-vt owns terminal emulation.
 
+#[cfg(lingxia_ghostty_vt_available)]
 mod ghostty_vt;
 
+#[cfg(lingxia_ghostty_vt_available)]
 use ghostty_vt::{
-    ATTR_BOLD, ATTR_INVERSE, ATTR_ITALIC, ATTR_UNDERLINE, GhosttyRenderStateCursorVisualStyle,
-    PtyWriteCallback, ThemeColors, VtScreen,
+    ATTR_BOLD, ATTR_DIM, ATTR_INVERSE, ATTR_ITALIC, ATTR_UNDERLINE,
+    GhosttyRenderStateCursorVisualStyle, PtyWriteCallback, ThemeColors, VtScreen,
 };
+#[cfg(lingxia_ghostty_vt_available)]
 use portable_pty::{Child, CommandBuilder, MasterPty, PtySize, native_pty_system};
 use serde::Serialize;
+#[cfg(lingxia_ghostty_vt_available)]
 use std::collections::HashMap;
-#[cfg(any(target_os = "macos", target_os = "ios"))]
+#[cfg(all(
+    lingxia_ghostty_vt_available,
+    any(target_os = "macos", target_os = "ios")
+))]
 use std::ffi::CStr;
+#[cfg(lingxia_ghostty_vt_available)]
 use std::io::{Read, Write};
+#[cfg(lingxia_ghostty_vt_available)]
 use std::path::Path;
+#[cfg(lingxia_ghostty_vt_available)]
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::mpsc::{self, Receiver};
-use std::sync::{Arc, LazyLock, Mutex};
+#[cfg(lingxia_ghostty_vt_available)]
+use std::sync::mpsc::{self, Receiver, TrySendError};
+#[cfg(lingxia_ghostty_vt_available)]
+use std::sync::{Arc, LazyLock, Mutex, OnceLock};
+#[cfg(lingxia_ghostty_vt_available)]
 use std::thread;
+#[cfg(lingxia_ghostty_vt_available)]
 use std::time::{Duration, Instant};
 
+#[cfg(lingxia_ghostty_vt_available)]
 static NEXT_SESSION_ID: AtomicU64 = AtomicU64::new(1);
-static SESSIONS: LazyLock<Mutex<HashMap<u64, TerminalSession>>> =
+#[cfg(lingxia_ghostty_vt_available)]
+static SESSIONS: LazyLock<Mutex<HashMap<u64, Arc<Mutex<TerminalSession>>>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// Clone the session handle out of the registry so per-session I/O
+/// never holds the global map lock — a blocked write on one session
+/// must not freeze the others.
+#[cfg(lingxia_ghostty_vt_available)]
+fn session(id: u64) -> Option<Arc<Mutex<TerminalSession>>> {
+    SESSIONS.lock().ok()?.get(&id).cloned()
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TerminalBackend {
@@ -54,15 +78,27 @@ pub fn ghostty_available() -> bool {
     ghostty_status().available
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct GhosttyStatusJson {
+    backend: &'static str,
+    available: bool,
+    status: &'static str,
+    source_dir: Option<&'static str>,
+    lib_dir: Option<&'static str>,
+}
+
 pub fn ghostty_status_json() -> String {
     let status = ghostty_status();
-    format!(
-        r#"{{"backend":"ghostty-vt","available":{},"status":{},"sourceDir":{},"libDir":{}}}"#,
-        if status.available { "true" } else { "false" },
-        json_string(status.status),
-        json_option_string(status.source_dir),
-        json_option_string(status.lib_dir)
-    )
+    let json = GhosttyStatusJson {
+        backend: "ghostty-vt",
+        available: status.available,
+        status: status.status,
+        source_dir: status.source_dir,
+        lib_dir: status.lib_dir,
+    };
+    serde_json::to_string(&json)
+        .unwrap_or_else(|_| r#"{"backend":"ghostty-vt","available":false}"#.to_string())
 }
 
 /// Create a cross-platform terminal engine session.
@@ -70,82 +106,183 @@ pub fn ghostty_status_json() -> String {
 /// The engine owns PTY/conpty transport plus libghostty-vt terminal semantics.
 /// Platform SDKs should treat the returned JSON snapshots as the stable display
 /// contract and keep native code focused on view/input/UX.
+#[cfg(lingxia_ghostty_vt_available)]
 pub fn terminal_create(cols: u16, rows: u16) -> u64 {
     let cols = cols.max(1);
     let rows = rows.max(1);
-    match TerminalSession::spawn(cols, rows) {
-        Ok(session) => {
-            let id = NEXT_SESSION_ID.fetch_add(1, Ordering::Relaxed);
-            if let Ok(mut sessions) = SESSIONS.lock() {
-                sessions.insert(id, session);
-                id
-            } else {
-                0
-            }
-        }
+    let result = TerminalSession::spawn(cols, rows).and_then(|session| {
+        let mut sessions = SESSIONS
+            .lock()
+            .map_err(|_| "session registry lock poisoned".to_string())?;
+        let id = NEXT_SESSION_ID.fetch_add(1, Ordering::Relaxed);
+        sessions.insert(id, Arc::new(Mutex::new(session)));
+        Ok(id)
+    });
+    match result {
+        Ok(id) => id,
+        // Single reporting point; 0 is the public error sentinel.
         Err(err) => {
-            eprintln!("lingxia terminal spawn failed: {err}");
+            eprintln!("lingxia terminal create failed: {err}");
             0
         }
     }
 }
 
+#[cfg(not(lingxia_ghostty_vt_available))]
+pub fn terminal_create(_cols: u16, _rows: u16) -> u64 {
+    0
+}
+
+#[cfg(lingxia_ghostty_vt_available)]
 pub fn terminal_write(id: u64, input: &str) -> bool {
-    let Ok(mut sessions) = SESSIONS.lock() else {
+    let Some(session) = session(id) else {
         return false;
     };
-    let Some(session) = sessions.get_mut(&id) else {
+    let Ok(mut session) = session.lock() else {
         return false;
     };
     session.write(input.as_bytes()).is_ok()
 }
 
+#[cfg(not(lingxia_ghostty_vt_available))]
+pub fn terminal_write(_id: u64, _input: &str) -> bool {
+    false
+}
+
+#[cfg(lingxia_ghostty_vt_available)]
 pub fn terminal_read(id: u64) -> String {
-    let Ok(mut sessions) = SESSIONS.lock() else {
+    let Some(session) = session(id) else {
         return String::new();
     };
-    let Some(session) = sessions.get_mut(&id) else {
+    let Ok(mut session) = session.lock() else {
         return String::new();
     };
     session.drain_text()
 }
 
-pub fn terminal_snapshot(id: u64) -> String {
-    let Ok(mut sessions) = SESSIONS.lock() else {
-        return TerminalSnapshot::closed().to_json();
-    };
-    let Some(session) = sessions.get_mut(&id) else {
-        return TerminalSnapshot::closed().to_json();
-    };
-    session.drain_snapshot()
+#[cfg(not(lingxia_ghostty_vt_available))]
+pub fn terminal_read(_id: u64) -> String {
+    String::new()
 }
 
+#[cfg(lingxia_ghostty_vt_available)]
+pub fn terminal_snapshot(id: u64) -> String {
+    terminal_snapshot_data(id)
+        .map(|snapshot| snapshot.to_json())
+        .unwrap_or_else(|| TerminalSnapshot::closed().to_json())
+}
+
+#[cfg(not(lingxia_ghostty_vt_available))]
+pub fn terminal_snapshot(_id: u64) -> String {
+    TerminalSnapshot::closed().to_json()
+}
+
+/// Structured variant of [`terminal_snapshot`]: returns the snapshot
+/// data directly instead of its JSON encoding. `None` when the session
+/// does not exist (or its lock is poisoned).
+#[cfg(lingxia_ghostty_vt_available)]
+pub fn terminal_snapshot_data(session_id: u64) -> Option<TerminalSnapshot> {
+    let session = session(session_id)?;
+    let mut session = session.lock().ok()?;
+    Some(session.drain_snapshot())
+}
+
+#[cfg(not(lingxia_ghostty_vt_available))]
+pub fn terminal_snapshot_data(_session_id: u64) -> Option<TerminalSnapshot> {
+    None
+}
+
+#[cfg(lingxia_ghostty_vt_available)]
 pub fn terminal_exited(id: u64) -> bool {
-    let Ok(mut sessions) = SESSIONS.lock() else {
+    let Some(session) = session(id) else {
         return true;
     };
-    let Some(session) = sessions.get_mut(&id) else {
+    let Ok(mut session) = session.lock() else {
         return true;
     };
     session.exited()
 }
 
+#[cfg(not(lingxia_ghostty_vt_available))]
+pub fn terminal_exited(_id: u64) -> bool {
+    true
+}
+
+#[cfg(lingxia_ghostty_vt_available)]
 pub fn terminal_resize(id: u64, cols: u16, rows: u16) -> bool {
-    let Ok(mut sessions) = SESSIONS.lock() else {
+    let Some(session) = session(id) else {
         return false;
     };
-    let Some(session) = sessions.get_mut(&id) else {
+    let Ok(mut session) = session.lock() else {
         return false;
     };
     session.resize(cols.max(1), rows.max(1)).is_ok()
 }
 
+#[cfg(not(lingxia_ghostty_vt_available))]
+pub fn terminal_resize(_id: u64, _cols: u16, _rows: u16) -> bool {
+    false
+}
+
+#[cfg(lingxia_ghostty_vt_available)]
 pub fn terminal_close(id: u64) {
     if let Ok(mut sessions) = SESSIONS.lock() {
         sessions.remove(&id);
     }
 }
 
+#[cfg(not(lingxia_ghostty_vt_available))]
+pub fn terminal_close(_id: u64) {}
+
+/// A structured key event from a host window, to be encoded into the byte
+/// sequence a PTY expects.
+///
+/// Either `character` is set (translated character input, e.g. `WM_CHAR` on
+/// Windows) or `vk` carries a Windows virtual-key code for raw key-down
+/// input. This type is available regardless of whether a terminal backend
+/// is compiled in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct TerminalKeyEvent {
+    /// Virtual-key code for key-down events; `0` for character events.
+    pub vk: u32,
+    pub ctrl: bool,
+    pub shift: bool,
+    pub alt: bool,
+    /// Translated character for character events.
+    pub character: Option<char>,
+}
+
+/// Encodes a host key event into the string to write to a terminal PTY.
+///
+/// Character input maps backspace to DEL and passes printable characters
+/// through; key-down input maps arrow/delete keys to ANSI escape sequences.
+/// Returns `None` when the event has no terminal encoding (the caller
+/// should leave the originating window message unhandled).
+pub fn encode_key_event(event: TerminalKeyEvent) -> Option<String> {
+    if let Some(character) = event.character {
+        return match character as u32 {
+            0x08 => Some("\u{7f}".to_string()),
+            0x09 => Some("\t".to_string()),
+            0x0d => Some("\r".to_string()),
+            0x1b => Some("\u{1b}".to_string()),
+            0x01..=0x09 | 0x0b..=0x1a => Some(character.to_string()),
+            _ if !character.is_control() => Some(character.to_string()),
+            _ => None,
+        };
+    }
+
+    let sequence = match event.vk {
+        0x25 => "\u{1b}[D",  // VK_LEFT
+        0x26 => "\u{1b}[A",  // VK_UP
+        0x27 => "\u{1b}[C",  // VK_RIGHT
+        0x28 => "\u{1b}[B",  // VK_DOWN
+        0x2e => "\u{1b}[3~", // VK_DELETE
+        _ => return None,
+    };
+    Some(sequence.to_string())
+}
+
+#[cfg(lingxia_ghostty_vt_available)]
 struct TerminalSession {
     master: Box<dyn MasterPty + Send>,
     child: Box<dyn Child + Send + Sync>,
@@ -156,6 +293,7 @@ struct TerminalSession {
     _reader: thread::JoinHandle<()>,
 }
 
+#[cfg(lingxia_ghostty_vt_available)]
 struct TerminalTitleState {
     shell_pid: Option<u32>,
     shell_title: String,
@@ -164,12 +302,14 @@ struct TerminalTitleState {
     generation: u64,
 }
 
+#[cfg(lingxia_ghostty_vt_available)]
 struct ForegroundCandidate {
     pid: u32,
     name: String,
     first_seen: Instant,
 }
 
+#[cfg(lingxia_ghostty_vt_available)]
 impl TerminalTitleState {
     const PROMOTION_DELAY: Duration = Duration::from_millis(700);
 
@@ -245,41 +385,45 @@ impl TerminalTitleState {
 }
 
 #[derive(Serialize)]
-struct TerminalSnapshot {
-    cols: u16,
-    rows: u16,
-    lines: Vec<String>,
-    cells: Vec<TerminalCell>,
-    default_foreground: Option<String>,
-    default_background: Option<String>,
-    cursor_row: u16,
-    cursor_col: u16,
-    cursor_visible: bool,
-    cursor_style: &'static str,
-    application_cursor: bool,
-    bracketed_paste: bool,
-    alternate_screen: bool,
-    process_title: Option<String>,
-    title: Option<String>,
-    generation: u64,
-    exited: bool,
+pub struct TerminalSnapshot {
+    pub cols: u16,
+    pub rows: u16,
+    pub lines: Vec<String>,
+    pub cells: Vec<TerminalCell>,
+    pub default_foreground: Option<String>,
+    pub default_background: Option<String>,
+    pub cursor_row: u16,
+    pub cursor_col: u16,
+    pub cursor_visible: bool,
+    pub cursor_style: &'static str,
+    pub application_cursor: bool,
+    pub bracketed_paste: bool,
+    pub alternate_screen: bool,
+    pub process_title: Option<String>,
+    pub title: Option<String>,
+    /// Screen-content generation only; bumps when VT output lands.
+    pub generation: u64,
+    /// Bumps when the computed process title changes.
+    pub title_generation: u64,
+    pub exited: bool,
 }
 
 #[derive(Serialize)]
-struct TerminalCell {
-    row: u16,
-    col: u16,
-    text: String,
-    fg: Option<String>,
-    bg: Option<String>,
-    bold: bool,
-    dim: bool,
-    italic: bool,
-    underline: bool,
-    inverse: bool,
-    wide: bool,
+pub struct TerminalCell {
+    pub row: u16,
+    pub col: u16,
+    pub text: String,
+    pub fg: Option<String>,
+    pub bg: Option<String>,
+    pub bold: bool,
+    pub dim: bool,
+    pub italic: bool,
+    pub underline: bool,
+    pub inverse: bool,
+    pub wide: bool,
 }
 
+#[cfg(lingxia_ghostty_vt_available)]
 impl TerminalSession {
     fn spawn(cols: u16, rows: u16) -> Result<Self, String> {
         let pty_system = native_pty_system();
@@ -292,10 +436,12 @@ impl TerminalSession {
             })
             .map_err(|err| format!("open pty failed: {err}"))?;
 
-        let shell = resolved_shell_path();
-        let shell_title = process_name_from_path(&shell);
-        let mut command = CommandBuilder::new(shell);
-        command.arg("-i");
+        let shell = resolved_shell();
+        let shell_title = process_name_from_path(&shell.path);
+        let mut command = CommandBuilder::new(shell.path);
+        for arg in shell.args {
+            command.arg(arg);
+        }
         command.env("TERM", "xterm-ghostty");
         command.env("COLORTERM", "truecolor");
         command.env("TERM_PROGRAM", "LingXia");
@@ -330,17 +476,28 @@ impl TerminalSession {
         let theme = terminal_theme();
         let vt = VtScreen::new_with_write_pty(cols, rows, Some(&theme), Some(write_pty))?;
 
-        let (tx, rx) = mpsc::channel();
+        // Bounded so a consumer that stops polling can't buffer PTY
+        // output without limit. When the channel fills the reader
+        // blocks, the kernel PTY buffer fills, and the child throttles
+        // — correct terminal backpressure semantics.
+        let (tx, rx) = mpsc::sync_channel::<Vec<u8>>(4096);
         let reader_thread = thread::spawn(move || {
             let mut buffer = [0_u8; 8192];
             loop {
                 match reader.read(&mut buffer) {
                     Ok(0) => break,
-                    Ok(n) => {
-                        if tx.send(buffer[..n].to_vec()).is_err() {
-                            break;
+                    Ok(n) => match tx.try_send(buffer[..n].to_vec()) {
+                        Ok(()) => {}
+                        Err(TrySendError::Full(chunk)) => {
+                            // Receiver dropped (session closed) makes
+                            // this fail with disconnect, exiting the
+                            // thread.
+                            if tx.send(chunk).is_err() {
+                                break;
+                            }
                         }
-                    }
+                        Err(TrySendError::Disconnected(_)) => break,
+                    },
                     Err(_) => break,
                 }
             }
@@ -368,15 +525,22 @@ impl TerminalSession {
     }
 
     fn drain_text(&mut self) -> String {
-        String::from_utf8_lossy(&self.drain_bytes()).into_owned()
+        let bytes = self.drain_bytes();
+        // Keep the emulated screen consistent for callers that mix
+        // terminal_read with terminal_snapshot: drained bytes must
+        // still reach the VT.
+        if !bytes.is_empty() {
+            self.vt.feed(&bytes);
+        }
+        String::from_utf8_lossy(&bytes).into_owned()
     }
 
-    fn drain_snapshot(&mut self) -> String {
+    fn drain_snapshot(&mut self) -> TerminalSnapshot {
         let bytes = self.drain_bytes();
         if !bytes.is_empty() {
             self.vt.feed(&bytes);
         }
-        self.snapshot().to_json()
+        self.snapshot()
     }
 
     fn exited(&mut self) -> bool {
@@ -452,7 +616,7 @@ impl TerminalSession {
                     fg: color_from_rgba(cell.fg, true),
                     bg: color_from_rgba(cell.bg, false),
                     bold: cell.attrs & ATTR_BOLD != 0,
-                    dim: false,
+                    dim: cell.attrs & ATTR_DIM != 0,
                     italic: cell.attrs & ATTR_ITALIC != 0,
                     underline: cell.attrs & ATTR_UNDERLINE != 0,
                     inverse: cell.attrs & ATTR_INVERSE != 0,
@@ -480,7 +644,8 @@ impl TerminalSession {
             alternate_screen: self.vt.is_alternate_screen(),
             process_title: Some(process_title),
             title: raw_title,
-            generation: screen.generation.wrapping_add(title_generation << 48),
+            generation: screen.generation,
+            title_generation,
             exited: self.exited(),
         }
     }
@@ -499,9 +664,13 @@ impl TerminalSession {
     }
 }
 
+#[cfg(lingxia_ghostty_vt_available)]
 impl Drop for TerminalSession {
     fn drop(&mut self) {
+        // Kill, then reap — without the wait the dead child lingers as
+        // a zombie until the host process exits.
         let _ = self.child.kill();
+        let _ = self.child.wait();
     }
 }
 
@@ -524,6 +693,7 @@ impl TerminalSnapshot {
             process_title: None,
             title: None,
             generation: 0,
+            title_generation: 0,
             exited: true,
         }
     }
@@ -533,6 +703,7 @@ impl TerminalSnapshot {
     }
 }
 
+#[cfg(lingxia_ghostty_vt_available)]
 fn cursor_style_name(style: GhosttyRenderStateCursorVisualStyle) -> &'static str {
     match style {
         GhosttyRenderStateCursorVisualStyle::Bar => "bar",
@@ -542,14 +713,105 @@ fn cursor_style_name(style: GhosttyRenderStateCursorVisualStyle) -> &'static str
     }
 }
 
-fn resolved_shell_path() -> String {
-    std::env::var("SHELL")
-        .ok()
-        .map(|shell| shell.trim().to_string())
-        .filter(|shell| !shell.is_empty())
-        .unwrap_or_else(|| "/bin/sh".to_string())
+#[cfg(lingxia_ghostty_vt_available)]
+#[derive(Clone)]
+struct TerminalShell {
+    path: String,
+    args: Vec<String>,
 }
 
+#[cfg(lingxia_ghostty_vt_available)]
+fn resolved_shell() -> TerminalShell {
+    static RESOLVED_SHELL: OnceLock<TerminalShell> = OnceLock::new();
+
+    RESOLVED_SHELL.get_or_init(resolve_shell_uncached).clone()
+}
+
+#[cfg(lingxia_ghostty_vt_available)]
+fn resolve_shell_uncached() -> TerminalShell {
+    if let Some(path) = env_non_empty("LINGXIA_TERMINAL_SHELL") {
+        return TerminalShell {
+            path,
+            args: Vec::new(),
+        };
+    }
+
+    #[cfg(windows)]
+    {
+        if command_available("pwsh.exe") {
+            return TerminalShell {
+                path: "pwsh.exe".to_string(),
+                args: vec!["-NoLogo".to_string()],
+            };
+        }
+        if command_available("powershell.exe") {
+            return TerminalShell {
+                path: "powershell.exe".to_string(),
+                args: vec!["-NoLogo".to_string()],
+            };
+        }
+        TerminalShell {
+            path: env_non_empty("COMSPEC").unwrap_or_else(|| "cmd.exe".to_string()),
+            args: Vec::new(),
+        }
+    }
+
+    #[cfg(not(windows))]
+    {
+        TerminalShell {
+            path: env_non_empty("SHELL").unwrap_or_else(|| "/bin/sh".to_string()),
+            args: vec!["-i".to_string()],
+        }
+    }
+}
+
+#[cfg(lingxia_ghostty_vt_available)]
+fn env_non_empty(key: &str) -> Option<String> {
+    std::env::var(key)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+#[cfg(all(lingxia_ghostty_vt_available, windows))]
+fn command_available(command: &str) -> bool {
+    let command = std::path::Path::new(command);
+    if command.components().count() > 1 {
+        return command.is_file();
+    }
+
+    let extensions: Vec<String> = if command.extension().is_some() {
+        vec![String::new()]
+    } else {
+        std::env::var_os("PATHEXT")
+            .map(|value| {
+                value
+                    .to_string_lossy()
+                    .split(';')
+                    .filter(|ext| !ext.is_empty())
+                    .map(str::to_string)
+                    .collect()
+            })
+            .filter(|extensions: &Vec<String>| !extensions.is_empty())
+            .unwrap_or_else(|| vec![".EXE".to_string(), ".BAT".to_string(), ".CMD".to_string()])
+    };
+
+    let Some(path_var) = std::env::var_os("PATH") else {
+        return false;
+    };
+
+    std::env::split_paths(&path_var).any(|dir| {
+        extensions.iter().any(|ext| {
+            let mut candidate = dir.join(command);
+            if !ext.is_empty() {
+                candidate.set_extension(ext.trim_start_matches('.'));
+            }
+            candidate.is_file()
+        })
+    })
+}
+
+#[cfg(lingxia_ghostty_vt_available)]
 fn process_name_from_path(path: &str) -> String {
     std::path::Path::new(path)
         .file_name()
@@ -559,6 +821,7 @@ fn process_name_from_path(path: &str) -> String {
         .to_string()
 }
 
+#[cfg(lingxia_ghostty_vt_available)]
 fn looks_like_shell_title(value: &str, fallback: &str) -> bool {
     let token = value.trim();
     if token.is_empty() {
@@ -573,27 +836,31 @@ fn looks_like_shell_title(value: &str, fallback: &str) -> bool {
         )
 }
 
+#[cfg(lingxia_ghostty_vt_available)]
 fn current_directory_title(pid: Option<u32>) -> Option<String> {
     let pid = pid?;
     process_cwd(pid).map(|path| compact_path_title(&path))
 }
 
+#[cfg(lingxia_ghostty_vt_available)]
 fn compact_path_title(path: &Path) -> String {
-    let path = path.to_string_lossy();
-    let Some(home) = std::env::var_os("HOME").filter(|home| !home.is_empty()) else {
-        return path.into_owned();
+    let home = std::env::var_os("HOME")
+        .filter(|home| !home.is_empty())
+        .or_else(|| std::env::var_os("USERPROFILE").filter(|home| !home.is_empty()));
+    let Some(home) = home else {
+        return path.to_string_lossy().into_owned();
     };
-    let home = Path::new(&home).to_string_lossy().into_owned();
-    if path == home {
-        return "~".to_string();
+    match path.strip_prefix(Path::new(&home)) {
+        Ok(rest) if rest.as_os_str().is_empty() => "~".to_string(),
+        Ok(rest) => format!("~{}{}", std::path::MAIN_SEPARATOR, rest.display()),
+        Err(_) => path.to_string_lossy().into_owned(),
     }
-    if let Some(rest) = path.strip_prefix(&(home + "/")) {
-        return format!("~/{rest}");
-    }
-    path.into_owned()
 }
 
-#[cfg(any(target_os = "macos", target_os = "ios"))]
+#[cfg(all(
+    lingxia_ghostty_vt_available,
+    any(target_os = "macos", target_os = "ios")
+))]
 fn process_cwd(pid: u32) -> Option<std::path::PathBuf> {
     let mut info = unsafe { std::mem::zeroed::<libc::proc_vnodepathinfo>() };
     let size = std::mem::size_of::<libc::proc_vnodepathinfo>();
@@ -616,17 +883,23 @@ fn process_cwd(pid: u32) -> Option<std::path::PathBuf> {
         .map(Into::into)
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(all(lingxia_ghostty_vt_available, target_os = "linux"))]
 fn process_cwd(pid: u32) -> Option<std::path::PathBuf> {
     std::fs::read_link(format!("/proc/{pid}/cwd")).ok()
 }
 
-#[cfg(not(any(target_os = "macos", target_os = "ios", target_os = "linux")))]
+#[cfg(all(
+    lingxia_ghostty_vt_available,
+    not(any(target_os = "macos", target_os = "ios", target_os = "linux"))
+))]
 fn process_cwd(_pid: u32) -> Option<std::path::PathBuf> {
     None
 }
 
-#[cfg(any(target_os = "macos", target_os = "ios"))]
+#[cfg(all(
+    lingxia_ghostty_vt_available,
+    any(target_os = "macos", target_os = "ios")
+))]
 fn process_name(pid: u32) -> Option<String> {
     let mut buffer = [0_i8; 256];
     let rc = unsafe {
@@ -647,7 +920,7 @@ fn process_name(pid: u32) -> Option<String> {
         .map(ToOwned::to_owned)
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(all(lingxia_ghostty_vt_available, target_os = "linux"))]
 fn process_name(pid: u32) -> Option<String> {
     std::fs::read_to_string(format!("/proc/{pid}/comm"))
         .ok()
@@ -655,15 +928,20 @@ fn process_name(pid: u32) -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
-#[cfg(not(any(target_os = "macos", target_os = "ios", target_os = "linux")))]
+#[cfg(all(
+    lingxia_ghostty_vt_available,
+    not(any(target_os = "macos", target_os = "ios", target_os = "linux"))
+))]
 fn process_name(_pid: u32) -> Option<String> {
     None
 }
 
+#[cfg(lingxia_ghostty_vt_available)]
 fn rgba_alpha(value: u32) -> u8 {
     (value & 0xff) as u8
 }
 
+#[cfg(lingxia_ghostty_vt_available)]
 fn color_from_rgba(value: u32, include_transparent: bool) -> Option<String> {
     let alpha = rgba_alpha(value);
     if alpha == 0 && !include_transparent {
@@ -677,6 +955,7 @@ fn color_from_rgba(value: u32, include_transparent: bool) -> Option<String> {
     ))
 }
 
+#[cfg(lingxia_ghostty_vt_available)]
 fn terminal_theme() -> ThemeColors {
     let fg = env_rgb("LINGXIA_TERMINAL_FOREGROUND").unwrap_or([0xff, 0xff, 0xff]);
     let bg = env_rgb("LINGXIA_TERMINAL_BACKGROUND").unwrap_or([0x28, 0x2c, 0x34]);
@@ -706,12 +985,14 @@ fn terminal_theme() -> ThemeColors {
     ThemeColors::from_ansi16(fg, bg, ansi16)
 }
 
+#[cfg(lingxia_ghostty_vt_available)]
 fn env_rgb(key: &str) -> Option<[u8; 3]> {
     std::env::var(key)
         .ok()
         .and_then(|value| parse_hex_rgb(value.trim()))
 }
 
+#[cfg(lingxia_ghostty_vt_available)]
 fn parse_hex_rgb(value: &str) -> Option<[u8; 3]> {
     let hex = value.strip_prefix('#').unwrap_or(value);
     if hex.len() != 6 {
@@ -725,37 +1006,10 @@ fn parse_hex_rgb(value: &str) -> Option<[u8; 3]> {
     ])
 }
 
-fn json_option_string(value: Option<&str>) -> String {
-    match value {
-        Some(value) => json_string(value),
-        None => "null".to_string(),
-    }
-}
-
-fn json_string(value: &str) -> String {
-    let mut out = String::with_capacity(value.len() + 2);
-    out.push('"');
-    for ch in value.chars() {
-        match ch {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            ch if ch.is_control() => {
-                use std::fmt::Write;
-                let _ = write!(out, "\\u{:04x}", ch as u32);
-            }
-            ch => out.push(ch),
-        }
-    }
-    out.push('"');
-    out
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(lingxia_ghostty_vt_available)]
     use std::time::{Duration, Instant};
 
     #[test]
@@ -771,7 +1025,90 @@ mod tests {
         assert!(json.contains(r#""exited":true"#));
     }
 
+    fn char_event(character: char) -> TerminalKeyEvent {
+        TerminalKeyEvent {
+            character: Some(character),
+            ..TerminalKeyEvent::default()
+        }
+    }
+
+    fn keydown_event(vk: u32) -> TerminalKeyEvent {
+        TerminalKeyEvent {
+            vk,
+            ..TerminalKeyEvent::default()
+        }
+    }
+
     #[test]
+    fn encodes_printable_characters_verbatim() {
+        assert_eq!(encode_key_event(char_event('a')).as_deref(), Some("a"));
+        assert_eq!(encode_key_event(char_event('Z')).as_deref(), Some("Z"));
+        assert_eq!(encode_key_event(char_event('~')).as_deref(), Some("~"));
+        assert_eq!(encode_key_event(char_event('中')).as_deref(), Some("中"));
+    }
+
+    #[test]
+    fn encodes_special_characters() {
+        assert_eq!(
+            encode_key_event(char_event('\u{8}')).as_deref(),
+            Some("\u{7f}"),
+            "backspace becomes DEL"
+        );
+        assert_eq!(encode_key_event(char_event('\t')).as_deref(), Some("\t"));
+        assert_eq!(encode_key_event(char_event('\r')).as_deref(), Some("\r"));
+        assert_eq!(
+            encode_key_event(char_event('\u{1b}')).as_deref(),
+            Some("\u{1b}")
+        );
+    }
+
+    #[test]
+    fn encodes_supported_control_characters() {
+        assert_eq!(
+            encode_key_event(char_event('\u{3}')).as_deref(),
+            Some("\u{3}")
+        );
+    }
+
+    #[test]
+    fn rejects_unsupported_control_characters() {
+        assert_eq!(encode_key_event(char_event('\n')), None);
+        assert_eq!(encode_key_event(char_event('\u{7f}')), None);
+    }
+
+    #[test]
+    fn encodes_navigation_virtual_keys() {
+        assert_eq!(
+            encode_key_event(keydown_event(0x25)).as_deref(),
+            Some("\u{1b}[D")
+        );
+        assert_eq!(
+            encode_key_event(keydown_event(0x26)).as_deref(),
+            Some("\u{1b}[A")
+        );
+        assert_eq!(
+            encode_key_event(keydown_event(0x27)).as_deref(),
+            Some("\u{1b}[C")
+        );
+        assert_eq!(
+            encode_key_event(keydown_event(0x28)).as_deref(),
+            Some("\u{1b}[B")
+        );
+        assert_eq!(
+            encode_key_event(keydown_event(0x2e)).as_deref(),
+            Some("\u{1b}[3~")
+        );
+    }
+
+    #[test]
+    fn rejects_unmapped_virtual_keys() {
+        assert_eq!(encode_key_event(keydown_event(0x41)), None, "plain VK_A");
+        assert_eq!(encode_key_event(keydown_event(0x10)), None, "VK_SHIFT");
+        assert_eq!(encode_key_event(TerminalKeyEvent::default()), None);
+    }
+
+    #[test]
+    #[cfg(lingxia_ghostty_vt_available)]
     fn ghostty_vt_session_renders_shell_output() {
         let id = terminal_create(80, 24);
         assert_ne!(id, 0);

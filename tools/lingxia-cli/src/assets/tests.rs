@@ -1,6 +1,7 @@
 use super::{
     any_path_bundle_targets_es5, build_app_json_from_config, build_ui_json_from_config,
-    collect_view_target_warnings, prepare_app_ui_icons, validate_app_ui_svg_icon,
+    build_windows_ui_json_from_config, collect_view_target_warnings, prepare_app_ui_icons,
+    validate_app_ui_svg_icon,
 };
 use crate::config::{EnvVersion, HostAppConfig, LingXiaConfig, LingxiaServer, ResolvedEnv};
 use std::fs;
@@ -32,6 +33,7 @@ fn generated_app_json_excludes_ui_fields() {
         ios: None,
         macos: None,
         harmony: None,
+        windows: None,
         features: None,
         capabilities: None,
         shell: None,
@@ -69,6 +71,7 @@ fn generated_app_json_includes_dev_ws_url_when_configured() {
         ios: None,
         macos: None,
         harmony: None,
+        windows: None,
         features: None,
         capabilities: None,
         shell: None,
@@ -107,6 +110,7 @@ fn generated_app_json_includes_app_link_hosts() {
         ios: None,
         macos: None,
         harmony: None,
+        windows: None,
         features: None,
         capabilities: None,
         shell: None,
@@ -141,6 +145,7 @@ fn generated_app_json_includes_capabilities() {
         ios: None,
         macos: None,
         harmony: None,
+        windows: None,
         features: None,
         capabilities: Some(crate::config::CapabilitiesConfig {
             notifications: true,
@@ -177,6 +182,7 @@ fn generated_ui_json_matches_ui_section() {
         ios: None,
         macos: None,
         harmony: None,
+        windows: None,
         features: None,
         capabilities: None,
         shell: None,
@@ -212,6 +218,7 @@ fn generated_ui_json_rewrites_app_ui_icons() {
         ios: None,
         macos: None,
         harmony: None,
+        windows: None,
         features: None,
         capabilities: None,
         shell: None,
@@ -222,14 +229,61 @@ fn generated_ui_json_rewrites_app_ui_icons() {
     };
     let icons = vec![super::PreparedAppUiIcon {
         relative_path: "icons/browser-deadbeef.pdf".to_string(),
+        windows_relative_path: "icons/browser-deadbeef.png".to_string(),
         source_path: "icons/browser.svg".to_string(),
         bytes: Vec::new(),
+        windows_bytes: Vec::new(),
         hash: "deadbeef".to_string(),
+        windows_hash: "deadbeef".to_string(),
     }];
 
     let ui_json = build_ui_json_from_config(&config, &icons).unwrap().unwrap();
     let value: serde_json::Value = serde_json::from_str(&ui_json).unwrap();
     assert_eq!(value["activators"][0]["icon"], "icons/browser-deadbeef.pdf");
+}
+
+#[test]
+fn generated_windows_ui_json_rewrites_app_ui_icons_to_png() {
+    let ui = serde_json::json!({
+        "launch": { "initialSurface": "main" },
+        "surfaces": [],
+        "activators": [{
+            "id": "browser",
+            "kind": "sidebarItem",
+            "icon": "icons/browser.svg",
+            "action": { "kind": "toggleSurface", "surface": "main" }
+        }]
+    });
+    let config = LingXiaConfig {
+        app: None,
+        android: None,
+        ios: None,
+        macos: None,
+        harmony: None,
+        windows: None,
+        features: None,
+        capabilities: None,
+        shell: None,
+        ui: Some(ui),
+        app_links: None,
+        storage: None,
+        resources: None,
+    };
+    let icons = vec![super::PreparedAppUiIcon {
+        relative_path: "icons/browser-deadbeef.pdf".to_string(),
+        windows_relative_path: "icons/browser-cafebabe.png".to_string(),
+        source_path: "icons/browser.svg".to_string(),
+        bytes: Vec::new(),
+        windows_bytes: Vec::new(),
+        hash: "deadbeef".to_string(),
+        windows_hash: "cafebabe".to_string(),
+    }];
+
+    let ui_json = build_windows_ui_json_from_config(&config, &icons)
+        .unwrap()
+        .unwrap();
+    let value: serde_json::Value = serde_json::from_str(&ui_json).unwrap();
+    assert_eq!(value["activators"][0]["icon"], "icons/browser-cafebabe.png");
 }
 
 #[test]
@@ -240,6 +294,7 @@ fn generated_ui_json_adds_terminal_for_capability() {
         ios: None,
         macos: None,
         harmony: None,
+        windows: None,
         features: None,
         capabilities: Some(crate::config::CapabilitiesConfig {
             notifications: false,
@@ -289,6 +344,7 @@ fn generated_ui_json_rejects_terminal_when_capability_disabled() {
         ios: None,
         macos: None,
         harmony: None,
+        windows: None,
         features: None,
         capabilities: Some(crate::config::CapabilitiesConfig {
             notifications: false,
@@ -331,6 +387,7 @@ fn generated_ui_json_adds_terminal_activators_when_missing() {
         ios: None,
         macos: None,
         harmony: None,
+        windows: None,
         features: None,
         capabilities: Some(crate::config::CapabilitiesConfig {
             notifications: false,
@@ -367,6 +424,7 @@ fn generated_ui_json_attaches_terminal_to_initial_root_surface() {
         ios: None,
         macos: None,
         harmony: None,
+        windows: None,
         features: None,
         capabilities: Some(crate::config::CapabilitiesConfig {
             notifications: false,
@@ -425,6 +483,7 @@ fn app_ui_icon_preparation_requires_svg() {
         ios: None,
         macos: None,
         harmony: None,
+        windows: None,
         features: None,
         capabilities: None,
         shell: None,

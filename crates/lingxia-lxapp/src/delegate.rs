@@ -164,6 +164,8 @@ impl LxAppDelegate for LxApp {
             error!("Deferred restart after open failed: {}", e).with_appid(self.appid.clone());
         }
 
+        self.sync_host_ui();
+
         resolved_path
     }
 
@@ -219,18 +221,24 @@ impl LxAppDelegate for LxApp {
 
         // Mark the page as active for LRU tracking
         page.mark_active();
+
+        self.sync_host_ui();
     }
 
     fn on_lxapp_event(self: &Arc<Self>, event_type: LxAppUiEventType, data: String) -> bool {
         info!("UI event received: {:?}, data: {}", event_type, data).with_appid(self.appid.clone());
 
-        match event_type {
+        let handled = match event_type {
             LxAppUiEventType::TabBarClick => self.handle_tabbar_click(data),
             LxAppUiEventType::CapsuleClick => self.handle_capsule_click(data),
             LxAppUiEventType::NavigationClick => self.handle_navigation_click(data),
             LxAppUiEventType::BackPress => self.handle_back_press(),
             LxAppUiEventType::PullDownRefresh => self.handle_pull_down_refresh(data),
-        }
+        };
+
+        self.sync_host_ui();
+
+        handled
     }
 }
 
@@ -246,7 +254,8 @@ impl LxApp {
                 return true; // Already selected, do nothing
             }
 
-            // Don't set the index here - let page.navigate handle it
+            // Let page.navigate own the committed selection; Windows may mirror it early
+            // to keep native chrome responsive while the target WebView finishes loading.
             let tab_pages = self
                 .get_tabbar()
                 .map(|t| t.get_tabbar_pages())
@@ -257,6 +266,7 @@ impl LxApp {
                         .get_page(&current_page_path)
                         .unwrap_or_else(|| self.get_or_create_page(&current_page_path));
                     let target_page = self.get_or_create_page(tab_path);
+
                     if current_page
                         .navigate_to(target_page, NavigationType::SwitchTab)
                         .is_ok()

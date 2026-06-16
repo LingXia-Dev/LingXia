@@ -13,6 +13,7 @@ mod host_assets;
 mod http_client;
 mod i18n;
 mod lxapp;
+mod npm;
 mod path_completion;
 mod permission_cache;
 mod platform;
@@ -74,7 +75,7 @@ struct DevOptions {
     #[command(flatten)]
     build_options: BuildOptions,
 
-    /// Target platform (android, ios, macos, harmony). Auto-detected if not specified.
+    /// Target platform (android, ios, macos, harmony, windows). Auto-detected if not specified.
     #[arg(short = 'p', long)]
     platform: Option<String>,
 
@@ -106,7 +107,7 @@ enum Commands {
         #[arg(short = 't', long)]
         project_type: Option<String>,
 
-        /// Target platforms (comma-separated): android, ios, macos, harmony, all
+        /// Target platforms (comma-separated): android, ios, macos, harmony, windows, all
         #[arg(short = 'p', long, value_delimiter = ',')]
         platform: Vec<String>,
 
@@ -170,6 +171,10 @@ enum Commands {
         /// Package macOS build as DMG
         #[arg(long)]
         dmg: bool,
+
+        /// Package Windows build as an (unsigned) MSIX installer
+        #[arg(long)]
+        msix: bool,
 
         /// Build only the native library, skipping platform packaging. Harmony
         /// stops after the .so (no ohpm/hvigor/.hap) — useful for CI to verify
@@ -457,6 +462,7 @@ fn main() -> Result<()> {
             all_platforms,
             ipa,
             dmg,
+            msix,
             native_only,
         } => {
             commands::build::execute(commands::build::BuildExecuteOptions {
@@ -470,6 +476,7 @@ fn main() -> Result<()> {
                 all_platforms,
                 ipa,
                 dmg,
+                msix,
                 package: false,
                 native_only,
                 env_version: build_options.env_version,

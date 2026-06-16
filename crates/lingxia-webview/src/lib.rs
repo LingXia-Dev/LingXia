@@ -1,3 +1,13 @@
+//! Cross-platform WebView hosting layer for LingXia.
+//!
+//! This crate is strictly *generic* webview hosting: webview creation and
+//! lifecycle, navigation/scheme/event plumbing, and minimal native surface
+//! ownership required by each platform WebView runtime. It contains no
+//! product UI.
+//!
+//! On Windows, host-window grouping, chrome, panels, and app layout live in
+//! `lingxia-windows-sdk`; this crate only provides the WebView2 surface.
+
 use thiserror::Error;
 
 /// WebView-specific error types
@@ -77,6 +87,9 @@ mod apple;
 
 #[cfg(all(target_os = "linux", target_env = "ohos"))]
 mod harmony;
+
+#[cfg(target_os = "windows")]
+mod windows;
 
 // Public exports
 // WebViewError and LogLevel are defined above
@@ -175,5 +188,14 @@ pub mod platform {
                 content_length,
             )
         }
+    }
+
+    #[cfg(target_os = "windows")]
+    pub mod windows {
+        pub use crate::windows::{
+            WindowsWebViewHandler, WindowsWebViewNativeView, WindowsWebViewNativeViewHost,
+            find_webview_handler, set_webview_devtools_enabled, set_webview_native_view_host,
+            set_webview_user_data_dir,
+        };
     }
 }

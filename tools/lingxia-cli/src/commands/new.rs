@@ -12,6 +12,7 @@ mod template;
 mod template_assets;
 mod types;
 mod validation;
+mod windows;
 
 use crate::runtime;
 use crate::versions::current_versions;

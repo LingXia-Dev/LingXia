@@ -9,8 +9,8 @@ use crate::traits::media_interaction::{
     SaveMediaRequest, ScanCodeRequest,
 };
 use crate::traits::media_runtime::{
-    CompressImageRequest, CompressVideoRequest, ExtractVideoThumbnailRequest,
-    ImageInfo, MediaRuntime, VideoInfo, VideoThumbnail,
+    CompressImageRequest, CompressVideoRequest, ExtractVideoThumbnailRequest, ImageInfo,
+    MediaRuntime, VideoInfo, VideoThumbnail,
 };
 use serde::Serialize;
 use std::path::{Path, PathBuf};

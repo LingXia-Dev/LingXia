@@ -32,6 +32,7 @@ import {
   isHarmony,
   isIOS,
   isMacOS,
+  isWindows,
   isDesktop,
 } from "./runtime-env";
 
@@ -43,6 +44,7 @@ const HANDSHAKE_MAX_RETRIES = 3;
 const LOG_PREFIX = "[LX.Bridge]";
 const MESSAGE_PORT_TYPE = "messageport";
 const JS_INTERFACE_TYPE = "jsinterface";
+const WEB_MESSAGE_TYPE = "webmessage";
 const OUTBOX_LIMIT = 256;
 const APPLE_DOWNSTREAM_URL = BRIDGE_CONFIG.appleDownstreamURL;
 const APPLE_RECONNECT_BASE_MS = 200;
@@ -390,7 +392,8 @@ function postToNative(message: unknown): void {
       return;
     }
     if (
-      communicationMethod === JS_INTERFACE_TYPE &&
+      (communicationMethod === JS_INTERFACE_TYPE ||
+        communicationMethod === WEB_MESSAGE_TYPE) &&
       window.LingXiaProxy?.postMessage
     ) {
       window.LingXiaProxy.postMessage(messageString);
@@ -878,7 +881,8 @@ function isTransportReady(): boolean {
   if (useAppleDownstreamTransport()) return appleDownstreamConnected;
   return (
     communicationMethod === "webkit" ||
-    communicationMethod === JS_INTERFACE_TYPE
+    communicationMethod === JS_INTERFACE_TYPE ||
+    communicationMethod === WEB_MESSAGE_TYPE
   );
 }
 
@@ -1768,6 +1772,7 @@ export const LingXiaBridge: LingXiaBridgeInterface = {
     isIOS,
     isAndroid,
     isMacOS,
+    isWindows,
     isDesktop,
     getOS: getPlatformOS,
   },
@@ -1950,7 +1955,8 @@ export function initBridge(): void {
       getMessagePort().catch((e) => warn("Port init failed:", e));
     } else if (
       communicationMethod === "webkit" ||
-      communicationMethod === JS_INTERFACE_TYPE
+      communicationMethod === JS_INTERFACE_TYPE ||
+      communicationMethod === WEB_MESSAGE_TYPE
     ) {
       startHandshake();
     } else {

@@ -163,10 +163,15 @@ fn parse_wifi_info_from_json(item: &Value, default_signal: u8, default_secure: b
     JSWifiInfo {
         ssid: item
             .get("ssid")
+            .or_else(|| item.get("SSID"))
             .and_then(Value::as_str)
             .unwrap_or("")
             .to_string(),
-        bssid: item.get("bssid").and_then(Value::as_str).map(String::from),
+        bssid: item
+            .get("bssid")
+            .or_else(|| item.get("BSSID"))
+            .and_then(Value::as_str)
+            .map(String::from),
         secure: item
             .get("secure")
             .and_then(Value::as_bool)
@@ -338,8 +343,11 @@ async fn get_connected_wifi(ctx: JSContext) -> JSResult<JSWifiInfo> {
 
 fn on_wifi_connected(ctx: JSContext, callback: JSFunc) -> JSResult<()> {
     info!("onWifiConnected called");
-    ensure_wifi_connected_callback(&ctx)?;
-    register_app_handler(&ctx, WIFI_CONNECTED_EVENT, callback)?;
+    register_app_handler(&ctx, WIFI_CONNECTED_EVENT, callback.clone())?;
+    if let Err(err) = ensure_wifi_connected_callback(&ctx) {
+        let _ = unregister_app_handler(&ctx, WIFI_CONNECTED_EVENT, Some(callback));
+        return Err(err);
+    }
     Ok(())
 }
 

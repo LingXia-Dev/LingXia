@@ -2,6 +2,7 @@ use dashmap::DashMap;
 use http::Uri as HttpUri;
 use lingxia_platform::Platform;
 use lingxia_platform::traits::app_runtime::AppRuntime;
+use lingxia_platform::traits::ui::UIUpdate;
 #[cfg(feature = "js-appservice")]
 use rong::{JSContext, JSResult, Source, error::HostError};
 use serde::Serialize;
@@ -61,8 +62,9 @@ pub use runtime_bootstrap::init;
 pub use runtime_ops::{
     close_lxapp, create_page_instance, dispose_page_instance, dispose_page_instance_by_id,
     ensure_builtin_lxapp, ensure_lxapp, get_current_lxapp, installed_lxapp_path, is_lxapp_open,
-    is_pull_down_refresh_enabled, list_lxapps, notify_page_instance, notify_page_instance_by_id,
-    on_low_memory, open_lxapp, restart_lxapp, touch_page_instance_by_id, uninstall_lxapp,
+    is_pull_down_refresh_enabled, list_lxapps, mark_lxapp_active, notify_lxapp_host_visibility,
+    notify_page_host_visibility, notify_page_instance, notify_page_instance_by_id, on_low_memory,
+    open_lxapp, restart_lxapp, touch_page_instance_by_id, uninstall_lxapp,
 };
 pub use runtime_registry::{find_page_by_instance_id, get_locale, get_platform, try_get};
 pub(crate) use runtime_registry::{get, get_lxapps_manager};
@@ -617,6 +619,15 @@ impl LxApp {
 
     pub fn session_id(&self) -> LxAppSessionId {
         self.session.id
+    }
+
+    pub(crate) fn sync_host_ui(&self) {
+        if let Err(err) = self.runtime.update_navbar_ui(self.appid.clone()) {
+            warn!("Failed to update host NavigationBar UI: {}", err).with_appid(self.appid.clone());
+        }
+        if let Err(err) = self.runtime.update_tabbar_ui(self.appid.clone()) {
+            warn!("Failed to update host TabBar UI: {}", err).with_appid(self.appid.clone());
+        }
     }
 
     pub fn grant_transient_file_access(&self, path: &Path) -> Result<uri::LxUri, LxAppError> {
@@ -1740,11 +1751,38 @@ impl LxApp {
         // Open UI
         self.runtime.show_lxapp(
             self.appid.clone(),
-            startup_options.path,
+            startup_options.path.clone(),
             self.session.id,
             startup_options.open_mode,
-            startup_options.panel_id,
+            startup_options.panel_id.clone(),
         )?;
+
+        #[cfg(target_os = "windows")]
+        {
+            let surface = match startup_options.open_mode {
+                lingxia_platform::traits::app_runtime::LxAppOpenMode::Panel => {
+                    PresentationKind::Panel
+                }
+                lingxia_platform::traits::app_runtime::LxAppOpenMode::Normal => {
+                    PresentationKind::Window
+                }
+            };
+            let query = (!startup_options.query.is_empty())
+                .then(|| PageQueryInput::Raw(startup_options.query.clone()));
+            self.create_page_instance(
+                PageOwner::Scene(SceneId("system".to_string())),
+                PageTarget::Path(startup_options.path),
+                query,
+                surface,
+                None,
+            )?;
+            if !matches!(
+                startup_options.open_mode,
+                lingxia_platform::traits::app_runtime::LxAppOpenMode::Panel
+            ) {
+                self.sync_host_ui();
+            }
+        }
         Ok(())
     }
 

@@ -6,13 +6,13 @@
 # the root install.sh, rustup/deno-style). NO npm distribution.
 #
 # Job graph:
-#   build (3-target matrix)  ─┐
+#   build (4-target matrix)  ─┐
 #   build-runner (2 arches)  ─┴─> publish (combine + SHASUMS + gh-release)
 #
 # The CLI does NOT support Linux yet, so we build only macOS (arm64 + x86_64)
-# and Windows (x86_64). Each target builds natively on its own runner. The
-# arm64 macOS runner cross-compiles the x86_64-apple-darwin target natively
-# (a supported Apple cross); Windows x64 also covers Win11-ARM via emulation.
+# and Windows (arm64 + x86_64). Each target builds on its OS runner. The arm64
+# macOS runner cross-compiles the x86_64-apple-darwin target natively (a
+# supported Apple cross).
 # lingxia-cli's build.rs embeds the bridge/polyfills JS runtime, so every job
 # that compiles the CLI runs build-web-runtime first (incl. Windows).
 
@@ -81,7 +81,7 @@ jobs:
         include:
           # Native per-OS builds. The arm64 macOS runner also builds the
           # x86_64-apple-darwin target natively (Apple cross), so Intel Macs are
-          # covered. Windows x64 runs on Win11-ARM via emulation.
+          # covered. Windows publishes both x64 and arm64 assets.
           - os: darwin
             arch: aarch64
             label: macOS arm64
@@ -99,6 +99,12 @@ jobs:
             label: Windows x64
             runner: windows-latest
             target: x86_64-pc-windows-msvc
+            ext: ".exe"
+          - os: windows
+            arch: aarch64
+            label: Windows arm64
+            runner: windows-latest
+            target: aarch64-pc-windows-msvc
             ext: ".exe"
     steps:
       - uses: actions/checkout@v4
@@ -245,12 +251,13 @@ jobs:
           cp "artifacts/lingxia-darwin-aarch64/lingxia-darwin-aarch64"       "release-assets/lingxia-darwin-aarch64"
           cp "artifacts/lingxia-darwin-x86_64/lingxia-darwin-x86_64"         "release-assets/lingxia-darwin-x86_64"
           cp "artifacts/lingxia-windows-x86_64/lingxia-windows-x86_64.exe"   "release-assets/lingxia-windows-x86_64.exe"
+          cp "artifacts/lingxia-windows-aarch64/lingxia-windows-aarch64.exe" "release-assets/lingxia-windows-aarch64.exe"
 
           # Runner zips (one per macOS arch).
           cp artifacts/lingxia-runner-macos-*/*.zip release-assets/
 
           # Combined checksum file over every release asset. `lingxia-*` covers
-          # the darwin binaries and the windows `lingxia-windows-x86_64.exe`;
+          # the darwin binaries and the windows `.exe` assets;
           # `*.zip` covers the runner zips.
           # `--` stops option parsing so glob expansions starting with `-`
           # aren't mistaken for flags, while keeping plain filenames (no `./`

@@ -1,12 +1,12 @@
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 use crate::i18n::js_error_from_platform_error;
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 use crate::i18n::js_internal_error;
 use crate::i18n::{js_invalid_parameter_error, js_service_unavailable_error};
 use crate::{I18nKey, i18n::t};
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 use lingxia_platform::error::PlatformError;
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 use lingxia_platform::traits::ui::UserFeedback;
 use lxapp::{LxApp, lx};
 use rong::{FromJSObj, IntoJSObj, JSContext, JSFunc, JSResult, RongJSError};
@@ -71,20 +71,20 @@ pub(crate) async fn present_action_sheet(
     let item_color = item_color.unwrap_or_else(|| "#007AFF".to_string());
     let item_len = item_list.len();
 
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     {
         return present_action_sheet_webview(lxapp, item_list, cancel_text, item_color, item_len)
             .await;
     }
 
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
         present_action_sheet_native(lxapp, item_list, cancel_text, item_color, item_len).await
     }
 }
 
 /// macOS: render action sheet inside the WebView via Logic→View RPC.
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 async fn present_action_sheet_webview(
     lxapp: &Arc<LxApp>,
     item_list: Vec<String>,
@@ -119,7 +119,7 @@ async fn present_action_sheet_webview(
 }
 
 /// Non-macOS: show action sheet via native platform UI.
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 async fn present_action_sheet_native(
     lxapp: &Arc<LxApp>,
     item_list: Vec<String>,

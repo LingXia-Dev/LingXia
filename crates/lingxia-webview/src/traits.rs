@@ -177,6 +177,8 @@ pub enum WebResourceBody {
 pub struct SystemPipeReader {
     #[cfg(unix)]
     fd: std::os::fd::RawFd,
+    #[cfg(windows)]
+    handle: std::os::windows::io::RawHandle,
 }
 
 impl SystemPipeReader {
@@ -202,6 +204,30 @@ impl SystemPipeReader {
     pub fn into_file(self) -> std::fs::File {
         use std::os::fd::FromRawFd;
         unsafe { std::fs::File::from_raw_fd(self.into_raw_fd()) }
+    }
+
+    /// Consume and return the raw handle (Windows).
+    /// Caller becomes responsible for closing it.
+    #[cfg(windows)]
+    pub fn into_raw_handle(self) -> std::os::windows::io::RawHandle {
+        self.handle
+    }
+
+    /// Construct from a raw handle (Windows).
+    ///
+    /// # Safety
+    ///
+    /// Caller guarantees that `handle` is a valid readable OS handle.
+    #[cfg(windows)]
+    pub unsafe fn from_raw_handle(handle: std::os::windows::io::RawHandle) -> Self {
+        Self { handle }
+    }
+
+    /// Convert into a File for reading (consumes self).
+    #[cfg(windows)]
+    pub fn into_file(self) -> std::fs::File {
+        use std::os::windows::io::FromRawHandle;
+        unsafe { std::fs::File::from_raw_handle(self.into_raw_handle()) }
     }
 }
 
@@ -458,8 +484,29 @@ pub trait WebViewDelegate: Send + Sync {
     /// Default is a no-op so existing implementations do not need to change.
     fn on_load_error(&self, _error: &LoadError) {}
 
+    /// Called when the document title changes (where the platform reports
+    /// it; currently Windows/WebView2). Default is a no-op so existing
+    /// implementations do not need to change.
+    fn on_title_changed(&self, _title: &str) {}
+
+    /// Called when the page favicon changes (where the platform reports it;
+    /// currently Windows/WebView2). `png_bytes` holds the favicon encoded
+    /// as PNG; an empty vector means the page has no favicon. Default is a
+    /// no-op so existing implementations do not need to change.
+    fn on_favicon_changed(&self, _png_bytes: Vec<u8>) {}
+
     /// Handles a postMessage from the page View(WebView)
     fn handle_post_message(&self, msg: String);
+
+    /// Handles a native-component message posted by the page through the
+    /// embedded-component channel (`window.NativeComponentBridge`), where
+    /// the platform routes it in-process (currently Windows/WebView2).
+    /// `message_json` is the raw component message (`component.mount`,
+    /// `component.update`, ...). Default is a no-op so existing
+    /// implementations do not need to change.
+    fn handle_native_component_message(&self, message_json: &str) {
+        let _ = message_json;
+    }
 
     /// Receive log from WebView
     fn log(&self, level: LogLevel, message: &str);

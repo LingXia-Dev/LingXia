@@ -10,10 +10,14 @@ const DEFAULT_REV: &str = "ca7516bea60190ee2e9a4f9182b61d318d107c6e";
 
 fn main() {
     emit_rerun_env();
+    emit_check_cfg();
 
     match prepare_ghostty_vt() {
         Ok(prepared) => emit_prepared(&prepared),
-        Err(err) => panic!("failed to prepare libghostty-vt: {err}"),
+        Err(err) if env_flag("LINGXIA_GHOSTTY_REQUIRED") => {
+            panic!("failed to prepare libghostty-vt: {err}");
+        }
+        Err(err) => emit_unavailable(&err),
     }
 }
 
@@ -29,13 +33,19 @@ fn emit_rerun_env() {
         "LINGXIA_GHOSTTY_VT_STEP",
         "LINGXIA_GHOSTTY_VT_SIMD",
         "LINGXIA_GHOSTTY_OPTIMIZE",
+        "LINGXIA_GHOSTTY_REQUIRED",
         "ZIG_GLOBAL_CACHE_DIR",
     ] {
         println!("cargo:rerun-if-env-changed={key}");
     }
 }
 
+fn emit_check_cfg() {
+    println!("cargo:rustc-check-cfg=cfg(lingxia_ghostty_vt_available)");
+}
+
 fn emit_prepared(prepared: &PreparedGhostty) {
+    println!("cargo:rustc-cfg=lingxia_ghostty_vt_available");
     println!("cargo:rustc-env=LINGXIA_GHOSTTY_AVAILABLE=1");
     println!(
         "cargo:rustc-env=LINGXIA_GHOSTTY_SOURCE_DIR={}",
@@ -53,7 +63,19 @@ fn emit_prepared(prepared: &PreparedGhostty) {
     println!("cargo:rustc-link-lib=static={}", prepared.link_name);
 }
 
+fn emit_unavailable(reason: &str) {
+    println!("cargo:warning=libghostty-vt unavailable: {reason}");
+    println!("cargo:rustc-env=LINGXIA_GHOSTTY_AVAILABLE=0");
+    println!(
+        "cargo:rustc-env=LINGXIA_GHOSTTY_STATUS={}",
+        sanitize_status(reason)
+    );
+}
+
 fn prepare_ghostty_vt() -> Result<PreparedGhostty, String> {
+    let zig = env_os("LINGXIA_GHOSTTY_ZIG").unwrap_or_else(|| OsString::from("zig"));
+    probe_zig(&zig)?;
+
     let source_dir = if let Some(source_dir) = env_path("LINGXIA_GHOSTTY_SOURCE_DIR") {
         if !source_dir.is_dir() {
             return Err(format!(
@@ -66,7 +88,7 @@ fn prepare_ghostty_vt() -> Result<PreparedGhostty, String> {
         fetch_git_checkout()?
     };
 
-    build_vt(&source_dir)?;
+    build_vt(&source_dir, &zig)?;
     let (lib_path, link_name) = find_vt_lib(&source_dir)?;
     let lib_dir = lib_path
         .parent()
@@ -123,11 +145,8 @@ fn fetch_git_checkout() -> Result<PathBuf, String> {
     Ok(cache_dir)
 }
 
-fn build_vt(source_dir: &Path) -> Result<(), String> {
-    let zig = env_os("LINGXIA_GHOSTTY_ZIG").unwrap_or_else(|| OsString::from("zig"));
-    probe_zig(&zig)?;
-
-    let invocation = pick_vt_invocation(&zig, source_dir)?;
+fn build_vt(source_dir: &Path, zig: &OsStr) -> Result<(), String> {
+    let invocation = pick_vt_invocation(zig, source_dir)?;
     let optimize =
         env_string("LINGXIA_GHOSTTY_OPTIMIZE").unwrap_or_else(|| "ReleaseFast".to_string());
     let simd = if env_flag("LINGXIA_GHOSTTY_VT_SIMD") {
@@ -147,7 +166,7 @@ fn build_vt(source_dir: &Path) -> Result<(), String> {
         args.extend(extra.split_whitespace().map(ToOwned::to_owned));
     }
 
-    run_os(&zig, args.iter().map(OsStr::new), Some(source_dir))
+    run_os(zig, args.iter().map(OsStr::new), Some(source_dir))
 }
 
 fn probe_zig(zig: &OsStr) -> Result<(), String> {
@@ -287,15 +306,19 @@ where
     if let Some(cache) = env_os("ZIG_GLOBAL_CACHE_DIR") {
         command.env("ZIG_GLOBAL_CACHE_DIR", cache);
     }
-    let status = command
-        .status()
+    // Capture instead of inheriting stdout: inherited child output goes
+    // straight to cargo and could be misinterpreted as `cargo:` directives.
+    let output = command
+        .output()
         .map_err(|e| format!("failed to start {}: {e}", program.to_string_lossy()))?;
-    if status.success() {
+    if output.status.success() {
         Ok(())
     } else {
         Err(format!(
-            "{} failed with status {status}",
-            program.to_string_lossy()
+            "{} failed with status {}: {}",
+            program.to_string_lossy(),
+            output.status,
+            String::from_utf8_lossy(&output.stderr).trim()
         ))
     }
 }
@@ -304,8 +327,67 @@ fn cache_dir() -> Result<PathBuf, String> {
     if let Some(path) = env_path("LINGXIA_GHOSTTY_CACHE_DIR") {
         return Ok(path);
     }
-    let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").map_err(|e| e.to_string())?);
-    Ok(manifest_dir.join("../../target/ghostty-cache"))
+    // Default inside OUT_DIR — CARGO_MANIFEST_DIR/../../target breaks
+    // for the published crate (it would write outside the registry
+    // checkout). LINGXIA_GHOSTTY_CACHE_DIR overrides for shared caches.
+    let out_dir = PathBuf::from(env::var("OUT_DIR").map_err(|e| e.to_string())?);
+    if let Some(cache) = windows_same_drive_cache(&out_dir) {
+        return Ok(cache);
+    }
+    Ok(out_dir.join("ghostty-cache"))
+}
+
+/// zig 0.15's build runner asserts when a tool path cannot be expressed
+/// relative to the build cwd, which on Windows happens whenever the
+/// ghostty checkout sits on a different drive than the zig compiler
+/// (e.g. project on D:, zig under C:\Users). When OUT_DIR and zig
+/// disagree on the drive, fall back to a per-user cache on zig's drive
+/// (under the profile root, not AppData — AV products are quick to eat
+/// freshly linked unsigned executables like zig's build runner there).
+fn windows_same_drive_cache(out_dir: &Path) -> Option<PathBuf> {
+    if !cfg!(windows) {
+        return None;
+    }
+    let zig = env_os("LINGXIA_GHOSTTY_ZIG").unwrap_or_else(|| OsString::from("zig"));
+    let zig_path = which_zig(&zig)?;
+    let zig_drive = windows_drive(&zig_path)?;
+    if windows_drive(out_dir) == Some(zig_drive) {
+        return None;
+    }
+    let profile = env_path("USERPROFILE")?;
+    if windows_drive(&profile) != Some(zig_drive) {
+        return None;
+    }
+    Some(profile.join(".lingxia").join("ghostty-cache"))
+}
+
+fn which_zig(zig: &OsStr) -> Option<PathBuf> {
+    let candidate = Path::new(zig);
+    if candidate.is_absolute() {
+        return Some(candidate.to_path_buf());
+    }
+    let output = Command::new("where.exe").arg(zig).output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    String::from_utf8(output.stdout)
+        .ok()?
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .map(PathBuf::from)
+}
+
+fn windows_drive(path: &Path) -> Option<char> {
+    match path.components().next() {
+        Some(std::path::Component::Prefix(prefix)) => match prefix.kind() {
+            std::path::Prefix::Disk(letter) | std::path::Prefix::VerbatimDisk(letter) => {
+                Some(letter.to_ascii_uppercase() as char)
+            }
+            _ => None,
+        },
+        _ => None,
+    }
 }
 
 fn current_git_rev(repo_dir: &Path) -> Option<String> {
@@ -391,6 +473,17 @@ fn sanitize(value: &str) -> String {
             } else {
                 '_'
             }
+        })
+        .collect()
+}
+
+fn sanitize_status(value: &str) -> String {
+    value
+        .chars()
+        .map(|ch| match ch {
+            '\r' | '\n' => ' ',
+            ch if ch.is_control() => ' ',
+            ch => ch,
         })
         .collect()
 }

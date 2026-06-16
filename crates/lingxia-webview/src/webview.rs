@@ -3,6 +3,7 @@
         target_os = "android",
         target_os = "ios",
         target_os = "macos",
+        target_os = "windows",
         all(target_os = "linux", target_env = "ohos")
     )),
     allow(dead_code)
@@ -26,10 +27,14 @@ use crate::apple::WebViewInner;
 #[cfg(all(target_os = "linux", target_env = "ohos"))]
 use crate::harmony::WebViewInner;
 
+#[cfg(target_os = "windows")]
+use crate::windows::WebViewInner;
+
 #[cfg(not(any(
     target_os = "android",
     target_os = "ios",
     target_os = "macos",
+    target_os = "windows",
     all(target_os = "linux", target_env = "ohos")
 )))]
 pub(crate) struct WebViewInner {
@@ -54,6 +59,7 @@ const APPLE_INTERNAL_SCHEME: &str = "lx-apple";
     target_os = "android",
     target_os = "ios",
     target_os = "macos",
+    target_os = "windows",
     all(target_os = "linux", target_env = "ohos")
 )))]
 fn unsupported_webview_error(action: &str) -> WebViewError {
@@ -64,6 +70,7 @@ fn unsupported_webview_error(action: &str) -> WebViewError {
     target_os = "android",
     target_os = "ios",
     target_os = "macos",
+    target_os = "windows",
     all(target_os = "linux", target_env = "ohos")
 )))]
 impl WebViewInner {
@@ -86,6 +93,7 @@ impl WebViewInner {
     target_os = "android",
     target_os = "ios",
     target_os = "macos",
+    target_os = "windows",
     all(target_os = "linux", target_env = "ohos")
 )))]
 #[async_trait]
@@ -864,6 +872,16 @@ impl WebView {
         }
     }
 
+    // Consulted only by the Windows download-event path.
+    #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+    pub(crate) fn has_download_handler(&self) -> bool {
+        self.download_handler
+            .read()
+            .ok()
+            .is_some_and(|guard| guard.is_some())
+    }
+
+    #[cfg_attr(target_os = "windows", allow(dead_code))]
     pub(crate) fn handle_file_chooser<C>(&self, request: FileChooserRequest, completion: C) -> bool
     where
         C: FnOnce(FileChooserResponse) + Send + 'static,
@@ -877,6 +895,7 @@ impl WebView {
         true
     }
 
+    #[cfg_attr(target_os = "windows", allow(dead_code))]
     fn make_file_chooser_future(&self, request: FileChooserRequest) -> Option<FileChooserFuture> {
         let Ok(guard) = self.file_chooser_handler.read() else {
             return None;
@@ -1375,6 +1394,8 @@ impl WebViewSessionSignals {
         state.terminal_result.clone()
     }
 
+    // Only consulted by the Apple create path's registry-race guard.
+    #[cfg_attr(not(any(target_os = "macos", target_os = "ios")), allow(dead_code))]
     fn is_destroyed(&self) -> bool {
         let state = lock_or_recover(&self.state, "webview_session_state.is_destroyed");
         state.destroyed
@@ -1455,7 +1476,8 @@ impl WebViewCreateSender {
     /// True if the session was destroyed (e.g. the tab was closed/discarded)
     /// while the native WebView was still being built. The platform create
     /// path checks this before registering, to avoid leaving a zombie in the
-    /// global registry.
+    /// global registry. Only the Apple create path consults it today.
+    #[cfg_attr(not(any(target_os = "macos", target_os = "ios")), allow(dead_code))]
     pub(crate) fn is_destroyed(&self) -> bool {
         self.signals.is_destroyed()
     }
@@ -1658,6 +1680,25 @@ impl WebTag {
             .and_then(|raw| raw.parse::<u64>().ok())
     }
 
+    /// Grouping key combining appid and session id (`appid#session`), with the
+    /// session defaulting to `0` when the tag carries no `#session` suffix.
+    /// Tags without an `appid:` prefix are returned unchanged.
+    #[cfg_attr(
+        any(not(target_os = "windows"), target_os = "windows"),
+        allow(dead_code)
+    )]
+    pub(crate) fn group_key(&self) -> String {
+        let Some((appid, path_with_session)) = self.0.split_once(':') else {
+            return self.0.clone();
+        };
+        let session = path_with_session
+            .rsplit_once('#')
+            .and_then(|(_, suffix)| suffix.parse::<u64>().ok())
+            .map(|session| session.to_string())
+            .unwrap_or_else(|| "0".to_string());
+        format!("{appid}#{session}")
+    }
+
     fn key_path(&self) -> String {
         let Some((_, path_with_suffix)) = self.0.split_once(':') else {
             return self.0.clone();
@@ -1830,6 +1871,7 @@ pub(crate) fn list_webviews() -> Vec<WebTag> {
     target_os = "android",
     target_os = "ios",
     target_os = "macos",
+    target_os = "windows",
     all(target_os = "linux", target_env = "ohos")
 ))]
 pub(crate) fn find_webview_delegate(webtag: &WebTag) -> Option<Arc<dyn WebViewDelegate>> {

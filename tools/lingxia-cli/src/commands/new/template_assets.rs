@@ -88,19 +88,19 @@ fn write_embedded_file(file: &include_dir::File<'_>, output_dir: &Path) -> Resul
     Ok(())
 }
 
-fn set_template_permissions(path: &Path) -> Result<()> {
+fn set_template_permissions(_path: &Path) -> Result<()> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
 
-        let file_name = path
+        let file_name = _path
             .file_name()
             .and_then(|name| name.to_str())
             .unwrap_or("");
         if matches!(file_name, "gradlew") {
-            let mut perms = fs::metadata(path)?.permissions();
+            let mut perms = fs::metadata(_path)?.permissions();
             perms.set_mode(0o755);
-            fs::set_permissions(path, perms)?;
+            fs::set_permissions(_path, perms)?;
         }
     }
 

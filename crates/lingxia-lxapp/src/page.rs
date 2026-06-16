@@ -490,7 +490,9 @@ impl PageInstance {
         self.inner.id.to_string()
     }
 
-    pub(crate) fn webtag(&self) -> WebTag {
+    /// The webview tag identifying this page instance's view (also the
+    /// page key passed to [`crate::NativeComponentHost::on_page_destroyed`]).
+    pub fn webtag(&self) -> WebTag {
         self.inner.webtag.clone()
     }
 
@@ -611,6 +613,24 @@ impl PageInstance {
             let path = self.path();
 
             for (event, query) in events_to_fire {
+                // Keep the in-process native-component host in sync with
+                // the page lifecycle: hidden AND unloaded pages hide their
+                // overlays and pause playback (an unloaded page's webview
+                // may stay cached and be revived by a later navigation, so
+                // its components only pause here — they are torn down with
+                // the page instance through `on_page_destroyed` when it is
+                // disposed). Mirrors the platform managers' inactive/
+                // active/destroyed handling.
+                match event {
+                    PageLifecycleEvent::OnShow => {
+                        crate::native_component::notify_page_visibility(self.webtag().key(), true);
+                    }
+                    PageLifecycleEvent::OnHide | PageLifecycleEvent::OnUnload => {
+                        crate::native_component::notify_page_visibility(self.webtag().key(), false);
+                    }
+                    _ => {}
+                }
+
                 let page_event = match event {
                     PageLifecycleEvent::OnLoad => crate::lifecycle::PageServiceEvent::OnLoad,
                     PageLifecycleEvent::OnShow => crate::lifecycle::PageServiceEvent::OnShow,
@@ -927,6 +947,8 @@ impl PageInstance {
             navbar.set_home_button_visibility(show_home_button && allow_buttons);
         });
 
+        lxapp.sync_host_ui();
+
         // 5. Dispatch lifecycle events for current and target pages
         match nav_type {
             NavigationType::Replace => {
@@ -947,6 +969,8 @@ impl PageInstance {
         (*lxapp.runtime)
             .navigate(self.appid(), path, nav_type.to_animation())
             .map_err(LxAppError::from)?;
+
+        lxapp.sync_host_ui();
 
         // Do not dispatch OnReady here. WebViewDelegate::on_page_finished() will do it.
 
@@ -1002,9 +1026,19 @@ impl PageInstance {
 
             (*lxapp.runtime).navigate(
                 self.appid(),
-                path,
+                path.clone(),
                 NavigationType::Backward.to_animation(),
             )?;
+            // Reveal lifecycle for the destination. Platforms with native
+            // page containers (iOS/Android/Harmony) call `on_page_show`
+            // from the container when the page surfaces; the windowed
+            // runtime has no such callback, and `dispatch_lifecycle_event`
+            // de-dupes when both paths fire.
+            if let Some(dest_page) = lxapp.get_page(&path) {
+                dest_page.dispatch_lifecycle_event(PageLifecycleEvent::OnShow);
+                dest_page.mark_active();
+            }
+            lxapp.sync_host_ui();
             Ok(())
         } else {
             Err(LxAppError::UnsupportedOperation(
@@ -1150,6 +1184,15 @@ impl WebViewDelegate for PageInstance {
 
     /// Handles a postMessage from the WebView
     fn handle_post_message(&self, msg: String) {
+        if let Some((level, message)) = decode_console_envelope(&msg) {
+            self.log(level, &message);
+            return;
+        }
+        if let Some(component_payload) = decode_native_component_envelope(&msg) {
+            self.handle_native_component_message(&component_payload);
+            return;
+        }
+
         match IncomingMessage::from_json_str(&msg) {
             Ok(incoming) => {
                 if let Err(e) = self.bridge().handle_incoming(self, Arc::new(incoming)) {
@@ -1163,6 +1206,13 @@ impl WebViewDelegate for PageInstance {
                     .with_path(self.inner.path.clone());
             }
         }
+    }
+
+    /// Routes embedded native-component messages from the view to the
+    /// registered in-process host (Windows; other platforms deliver
+    /// component traffic through their own channels and never hit this).
+    fn handle_native_component_message(&self, message_json: &str) {
+        crate::native_component::dispatch_component_message(self, message_json);
     }
 
     /// Receive log from WebView
@@ -1183,8 +1233,38 @@ impl WebViewDelegate for PageInstance {
     }
 }
 
+fn decode_console_envelope(msg: &str) -> Option<(LogLevel, String)> {
+    let json = serde_json::from_str::<Value>(msg).ok()?;
+    json.get("__lingxia_console__")
+        .and_then(Value::as_bool)
+        .filter(|enabled| *enabled)?;
+    let level = match json.get("level").and_then(Value::as_str) {
+        Some("error") => LogLevel::Error,
+        Some("warn") => LogLevel::Warn,
+        Some("debug") => LogLevel::Debug,
+        Some("info") => LogLevel::Info,
+        Some("verbose") => LogLevel::Verbose,
+        _ => LogLevel::Info,
+    };
+    let message = json.get("message").and_then(Value::as_str)?.to_string();
+    Some((level, message))
+}
+
+fn decode_native_component_envelope(msg: &str) -> Option<String> {
+    let json = serde_json::from_str::<Value>(msg).ok()?;
+    json.get("__lingxia_native_component__")
+        .and_then(Value::as_bool)
+        .filter(|enabled| *enabled)?;
+    json.get("payload")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+}
+
 impl Drop for PageInstanceInner {
     fn drop(&mut self) {
+        // Native components mounted by this page (if any) go down with it.
+        crate::native_component::notify_page_destroyed(self.webtag.key());
+
         // Destroy WebView if it exists
         if let Ok(mut webview) = self.webview.lock()
             && let Some(_webview_controller) = webview.take()
@@ -1196,7 +1276,6 @@ impl Drop for PageInstanceInner {
         }
     }
 }
-
 
 #[cfg(test)]
 mod tests {

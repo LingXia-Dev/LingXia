@@ -235,8 +235,6 @@ async fn app_update_next_step(
     })
 }
 
-
-
 fn spawn_app_update_forwarder(
     mut apply: AppUpdateApply,
     tx: watch::Sender<Option<AppUpdateEvent>>,

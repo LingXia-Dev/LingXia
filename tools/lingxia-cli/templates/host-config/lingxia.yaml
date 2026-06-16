@@ -35,12 +35,12 @@ app:
   #   developer: ".dev"
   #   preview: ".preview"
   #   release: ""
-  # Native platforms included in this project: android, ios, macos, harmony.
+  # Native platforms included in this project: android, ios, macos, harmony, windows.
   platforms:
 {{PLATFORMS}}
   # Home app opened by default. Resource source is declared in resources.bundles.
   homeAppId: {{HOME_APP_ID}}
-{{ANDROID_SECTION}}{{IOS_SECTION}}{{MACOS_SECTION}}{{HARMONY_SECTION}}{{UI_SECTION}}
+{{ANDROID_SECTION}}{{IOS_SECTION}}{{MACOS_SECTION}}{{HARMONY_SECTION}}{{WINDOWS_SECTION}}{{UI_SECTION}}
 # Native compile-time features for the host Rust library.
 # appService: false makes the CLI build native Rust with --no-default-features.
 # appService: true keeps native crate defaults and adds the enabled features below.

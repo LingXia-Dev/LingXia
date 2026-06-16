@@ -1,9 +1,9 @@
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 use crate::i18n::js_error_from_platform_error;
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 use crate::i18n::js_internal_error;
 use crate::i18n::js_service_unavailable_error;
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 use lingxia_platform::traits::ui::{ToastIcon, ToastOptions, ToastPosition, UserFeedback};
 use lxapp::{LxApp, lx};
 use rong::{FromJSObj, JSContext, JSFunc, JSResult};
@@ -19,7 +19,7 @@ struct JSToastOptions {
     position: Option<String>,
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 fn convert_string_to_toast_icon(icon: &str) -> ToastIcon {
     match icon.to_lowercase().as_str() {
         "success" => ToastIcon::Success,
@@ -30,7 +30,7 @@ fn convert_string_to_toast_icon(icon: &str) -> ToastIcon {
     }
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 fn convert_string_to_toast_position(position: &str) -> ToastPosition {
     match position.to_lowercase().as_str() {
         "top" => ToastPosition::Top,
@@ -40,7 +40,7 @@ fn convert_string_to_toast_position(position: &str) -> ToastPosition {
     }
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 impl From<JSToastOptions> for ToastOptions {
     fn from(js_options: JSToastOptions) -> Self {
         // Convert duration from milliseconds (JS) to seconds (native platforms)
@@ -70,7 +70,7 @@ async fn show_toast(ctx: JSContext, options: JSToastOptions) -> JSResult<()> {
         ));
     }
 
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     {
         let params = serde_json::json!({
             "title": options.title,
@@ -89,7 +89,7 @@ async fn show_toast(ctx: JSContext, options: JSToastOptions) -> JSResult<()> {
         Ok(())
     }
 
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
         let toast_options: ToastOptions = options.into();
         lxapp
@@ -110,7 +110,7 @@ async fn hide_toast(ctx: JSContext) -> JSResult<()> {
         ));
     }
 
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     {
         let _: () = lxapp
             .call_view("ui.hideToast")
@@ -120,7 +120,7 @@ async fn hide_toast(ctx: JSContext) -> JSResult<()> {
         Ok(())
     }
 
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
         lxapp
             .runtime

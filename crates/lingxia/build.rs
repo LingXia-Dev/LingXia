@@ -7,6 +7,7 @@
 //! For normal builds (Android, user apps), this does nothing.
 
 use std::env;
+#[cfg(any(target_os = "ios", target_os = "macos"))]
 use std::fs;
 use std::path::{Path, PathBuf};
 

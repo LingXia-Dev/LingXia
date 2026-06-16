@@ -1,0 +1,60 @@
+[package]
+name = "lingxia-showcase-windows"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "LingXiaDemo"
+path = "src/main.rs"
+
+[features]
+default = ["standard", "shell-runtime", "terminal-runtime", "webview-input"]
+standard = ["host/standard", "lingxia-windows-sdk/standard"]
+shell-runtime = ["host/shell-runtime", "lingxia-windows-sdk/shell-runtime"]
+terminal-runtime = ["host/terminal-runtime", "lingxia-windows-sdk/terminal-runtime"]
+devtools = ["host/devtools"]
+webview-input = ["host/webview-input", "lingxia-windows-sdk/webview-input"]
+
+[dependencies]
+lingxia-windows-sdk = { path = "../../../crates/lingxia-windows-sdk", default-features = false }
+host = { package = "lingxia-example-host", path = "../lingxia-lib", default-features = false }
+
+[build-dependencies]
+lingxia-windows-build = { path = "../../../crates/lingxia-windows-build" }
+
+[patch.crates-io]
+lingxia = { path = "../../../crates/lingxia" }
+lingxia-app-context = { path = "../../../crates/lingxia-app-context" }
+lingxia-browser = { path = "../../../crates/lingxia-browser" }
+lingxia-devtool = { path = "../../../crates/lingxia-devtool" }
+lingxia-devtool-protocol = { path = "../../../crates/lingxia-devtool-protocol" }
+lingxia-log = { path = "../../../crates/lingxia-log" }
+lingxia-logic = { path = "../../../crates/lingxia-logic" }
+lingxia-lxapp = { path = "../../../crates/lingxia-lxapp" }
+lingxia-media = { path = "../../../crates/lingxia-media" }
+lingxia-messaging = { path = "../../../crates/lingxia-messaging" }
+lingxia-native-macros = { path = "../../../crates/lingxia-native-macros" }
+lingxia-platform = { path = "../../../crates/lingxia-platform" }
+lingxia-provider = { path = "../../../crates/lingxia-provider" }
+lingxia-proxy = { path = "../../../crates/lingxia-proxy" }
+lingxia-service = { path = "../../../crates/lingxia-service" }
+lingxia-settings = { path = "../../../crates/lingxia-settings" }
+lingxia-shell = { path = "../../../crates/lingxia-shell" }
+lingxia-terminal = { path = "../../../crates/lingxia-terminal" }
+lingxia-transfer = { path = "../../../crates/lingxia-transfer" }
+lingxia-update = { path = "../../../crates/lingxia-update" }
+lingxia-webview = { path = "../../../crates/lingxia-webview" }
+lingxia-windows-sdk = { path = "../../../crates/lingxia-windows-sdk" }
+windows = { git = "https://github.com/microsoft/windows-rs.git", rev = "cf58d5cfe7deccb73a55aeb4aa6799dc1b06544c", package = "windows" }
+windows-collections = { git = "https://github.com/microsoft/windows-rs.git", rev = "cf58d5cfe7deccb73a55aeb4aa6799dc1b06544c", package = "windows-collections" }
+windows-core = { git = "https://github.com/microsoft/windows-rs.git", rev = "cf58d5cfe7deccb73a55aeb4aa6799dc1b06544c", package = "windows-core" }
+windows-future = { git = "https://github.com/microsoft/windows-rs.git", rev = "cf58d5cfe7deccb73a55aeb4aa6799dc1b06544c", package = "windows-future" }
+windows-implement = { git = "https://github.com/microsoft/windows-rs.git", rev = "cf58d5cfe7deccb73a55aeb4aa6799dc1b06544c", package = "windows-implement" }
+windows-interface = { git = "https://github.com/microsoft/windows-rs.git", rev = "cf58d5cfe7deccb73a55aeb4aa6799dc1b06544c", package = "windows-interface" }
+windows-link = { git = "https://github.com/microsoft/windows-rs.git", rev = "cf58d5cfe7deccb73a55aeb4aa6799dc1b06544c", package = "windows-link" }
+windows-numerics = { git = "https://github.com/microsoft/windows-rs.git", rev = "cf58d5cfe7deccb73a55aeb4aa6799dc1b06544c", package = "windows-numerics" }
+windows-reference = { git = "https://github.com/microsoft/windows-rs.git", rev = "cf58d5cfe7deccb73a55aeb4aa6799dc1b06544c", package = "windows-reference" }
+windows-result = { git = "https://github.com/microsoft/windows-rs.git", rev = "cf58d5cfe7deccb73a55aeb4aa6799dc1b06544c", package = "windows-result" }
+windows-strings = { git = "https://github.com/microsoft/windows-rs.git", rev = "cf58d5cfe7deccb73a55aeb4aa6799dc1b06544c", package = "windows-strings" }
+windows-threading = { git = "https://github.com/microsoft/windows-rs.git", rev = "cf58d5cfe7deccb73a55aeb4aa6799dc1b06544c", package = "windows-threading" }
+windows-time = { git = "https://github.com/microsoft/windows-rs.git", rev = "cf58d5cfe7deccb73a55aeb4aa6799dc1b06544c", package = "windows-time" }

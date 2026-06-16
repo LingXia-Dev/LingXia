@@ -1150,7 +1150,6 @@ fn rpc_error_from_lxapp_error(err: &LxAppError) -> RpcError {
     RpcError::new(BRIDGE_INTERNAL_ERROR, Some(err.to_string()))
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;

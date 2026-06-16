@@ -20,7 +20,11 @@ pub(crate) fn install_async_iterator(ctx: &JSContext, iterator: &JSObject) -> JS
     Ok(())
 }
 
-pub(crate) fn install_promise_methods(ctx: &JSContext, iterator: &JSObject, promise: Promise) -> JSResult<()> {
+pub(crate) fn install_promise_methods(
+    ctx: &JSContext,
+    iterator: &JSObject,
+    promise: Promise,
+) -> JSResult<()> {
     let then_promise = promise.clone();
     let then_ctx = ctx.clone();
     iterator.set(

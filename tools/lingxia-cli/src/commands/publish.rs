@@ -547,6 +547,7 @@ fn normalize_platform(value: &str) -> Result<String> {
         PlatformType::Android | PlatformType::MacOs => Ok(platform.as_str().to_string()),
         PlatformType::Ios => bail!("iOS host app publishing uses App Store."),
         PlatformType::Harmony => bail!("Harmony host app publishing uses app marketplace."),
+        PlatformType::Windows => bail!("Windows host app publishing is not supported yet."),
     }
 }
 
@@ -554,7 +555,7 @@ fn normalize_config_platform(value: &str) -> Result<Option<String>> {
     let platform: PlatformType = value.parse()?;
     Ok(match platform {
         PlatformType::Android | PlatformType::MacOs => Some(platform.as_str().to_string()),
-        PlatformType::Ios | PlatformType::Harmony => None,
+        PlatformType::Ios | PlatformType::Harmony | PlatformType::Windows => None,
     })
 }
 

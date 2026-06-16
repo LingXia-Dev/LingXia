@@ -104,16 +104,29 @@ const inlineDynamicImports = __INLINE_DYNAMIC_IMPORTS__;
 const modulePreload = __MODULE_PRELOAD__;
 const useManualChunks = !inlineDynamicImports;
 
-const workspaceAliases = [
-  [/^@lingxia\/bridge$/, resolveWorkspaceSourceEntry('@lingxia/bridge', 'src/index.ts')],
-  [/^@lingxia\/html$/, resolveWorkspaceSourceEntry('@lingxia/html', 'src/index.ts')],
-  [/^@lingxia\/react$/, resolveWorkspaceSourceEntry('@lingxia/react', 'src/index.ts')],
-  [/^@lingxia\/vue$/, resolveWorkspaceSourceEntry('@lingxia/vue', 'src/index.ts')],
-  [/^@lingxia\/bridge\/invocation$/, resolveWorkspaceSourceEntry('@lingxia/bridge', 'src/invocation.ts')],
-  [/^@lingxia\/page-runtime$/, resolveWorkspaceSourceEntry('@lingxia/page-runtime', 'src/index.ts')],
-]
+const workspaceAliasEntries = [
+  ['@lingxia/bridge/invocation', resolveWorkspaceSourceEntry('@lingxia/bridge', 'src/invocation.ts')],
+  ['@lingxia/bridge', resolveWorkspaceSourceEntry('@lingxia/bridge', 'src/index.ts')],
+  ['@lingxia/elements', resolveWorkspaceSourceEntry('@lingxia/elements', 'src/index.ts')],
+  ['@lingxia/html', resolveWorkspaceSourceEntry('@lingxia/html', 'src/index.ts')],
+  ['@lingxia/page-runtime', resolveWorkspaceSourceEntry('@lingxia/page-runtime', 'src/index.ts')],
+  ['@lingxia/react', resolveWorkspaceSourceEntry('@lingxia/react', 'src/index.ts')],
+  ['@lingxia/vue', resolveWorkspaceSourceEntry('@lingxia/vue', 'src/index.ts')],
+];
+const workspaceAliases = workspaceAliasEntries
   .filter(([, replacement]) => typeof replacement === 'string')
   .map(([find, replacement]) => ({ find, replacement }));
+const workspaceAliasMap = new Map(
+  workspaceAliasEntries.filter(([, replacement]) => typeof replacement === 'string')
+);
+
+const lingxiaWorkspaceResolver = {
+  name: 'lingxia-workspace-resolver',
+  enforce: 'pre',
+  resolveId(source) {
+    return workspaceAliasMap.get(source) ?? null;
+  },
+};
 
 const alias = [
   { find: /^@\//, replacement: `${projectRoot}/` },
@@ -136,7 +149,7 @@ export default defineConfig({
   root: buildDir,
   base: '/',
   logLevel: 'warn',
-  plugins: frameworkPlugins,
+  plugins: [lingxiaWorkspaceResolver, ...frameworkPlugins],
   css,
   resolve: { alias, dedupe: ['react', 'react-dom', 'vue'] },
   build: {

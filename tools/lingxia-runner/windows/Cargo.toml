@@ -1,0 +1,19 @@
+[package]
+name = "lingxia-runner-windows"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[[bin]]
+name = "lingxia-runner"
+path = "src/main.rs"
+
+[dependencies]
+lingxia = { workspace = true, features = ["standard"] }
+lingxia_devtool = { workspace = true, features = ["browser"] }
+lingxia-windows-sdk = { workspace = true, features = ["standard"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+
+[build-dependencies]
+lingxia-windows-build = { workspace = true }

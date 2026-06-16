@@ -1,0 +1,7 @@
+<svg width="28" height="28" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+<!-- White circle background -->
+<circle cx="14" cy="14" r="14" fill="white"/>
+<!-- Dark curved return arrow -->
+<path d="M10 11L7 14L10 17" stroke="#3A3A3C" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M7 14H17C19 14 21 16 21 18V19" stroke="#3A3A3C" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

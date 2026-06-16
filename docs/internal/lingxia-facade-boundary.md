@@ -1,6 +1,6 @@
 # LingXia Facade Boundary
 
-> **Audience**: contributors working on the `lingxia` crate facade and its internal implementation crates (`lingxia-logic`, `lingxia-bridge`, `lingxia-browser`, `rong`, proc-macro crates). If you're **building an app on LingXia**, the rule you need is simply "import from `lingxia::*` facades, never from internal crates" — this is restated in the skill at [`docs/skill/native/development.md`](../skill/native/development.md). This doc defines what stays behind the facade and why.
+> **Audience**: contributors working on the `lingxia` crate facade and its internal implementation crates (`lingxia-logic`, `lingxia-lxapp` and its bridge module, `lingxia-browser`, `rong`, proc-macro crates). If you're **building an app on LingXia**, the rule you need is simply "import from `lingxia::*` facades, never from internal crates" — this is restated in the skill at [`docs/skill/native/development.md`](../skill/native/development.md). This doc defines what stays behind the facade and why.
 
 This internal document defines the intended public Rust API boundary for LingXia application projects.
 
@@ -94,15 +94,22 @@ Examples:
 
 These should be organized around product domains, not around internal crate ownership.
 
-Host app update should expose a checked update handle, not raw package data:
+Host app update should expose a complete check + install flow, not raw package
+data. The implemented surface is `lingxia::update::host_app`:
 
 ```rust
-if let Some(update) = lingxia::update::check_host_app_update().await? {
-    let info = update.info();
-    let mut apply = update.apply();
-    while let Some(event) = apply.next().await {
-        // Render native UI from event.
-    }
+// Optional, once at startup; without this the platform default installer is used.
+lingxia::update::host_app::set_installer(|package_path| my_install(package_path));
+
+// Optional, single-slot progress handler for native UI.
+lingxia::update::host_app::on_progress(|progress| {
+    // Render native UI from `Progress` events.
+});
+
+// Runs check + download + install hand-off in one call.
+match lingxia::update::host_app::check().await? {
+    lingxia::update::host_app::Outcome::UpToDate => {}
+    lingxia::update::host_app::Outcome::Installed { version } => {}
 }
 ```
 
@@ -236,7 +243,14 @@ To move the workspace to this model:
 
 The current architectural direction should be:
 
-- `lingxia` is the public facade and final product entry crate
+- `lingxia` is the public facade crate
+- host-runtime crates sit above the facade as platform host entry points:
+  `lingxia-windows` is the Windows host entry, providing the binary-level
+  pieces (`WindowsApp` configuration, `init`, `run_message_loop`,
+  `quick_start`), while `lingxia::windows` holds the facade-level Windows
+  APIs (`Platform`, `init`, `open_home_app`, app-icon helpers) that
+  `lingxia-windows` builds on — hosts use `lingxia-windows` for binary
+  entry and the message loop
 - `lxapp` is runtime core
 - browser and shell concerns stay behind `lingxia`
 - app authors only program against `lingxia`

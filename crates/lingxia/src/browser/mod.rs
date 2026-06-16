@@ -2,11 +2,17 @@
 //!
 //! This module is intentionally crate-private. Public native APIs should stay in
 //! focused facades such as `app`, `file`, `media`, and `update`.
+#![cfg_attr(target_os = "windows", allow(unused_imports))]
 
 mod runtime;
 mod shell;
 
 pub(crate) use runtime::{APP_ID, close, discard, mark_active, open_for_app, reactivate, tab_path};
+#[cfg(target_os = "windows")]
+pub(crate) use runtime::{
+    BrowserTabSummary, activate, go_back, go_forward, navigate, reload, runtime_enabled,
+    set_tabs_changed_handler, tab_summary, tabs,
+};
 #[cfg(any(target_os = "ios", target_os = "macos"))]
 pub(crate) use runtime::{download, update_tab};
 #[cfg(any(target_os = "ios", target_os = "macos"))]

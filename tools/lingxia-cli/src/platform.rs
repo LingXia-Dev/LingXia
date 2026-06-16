@@ -9,12 +9,29 @@ pub mod android_abis;
 pub mod apple;
 pub mod detector;
 pub mod doctor;
+pub mod env_badge;
 pub mod harmony;
 pub mod ios;
 pub mod macos;
 pub mod spm;
+pub mod windows;
 
 pub fn resolve_cargo_target_dir(project_root: &Path) -> PathBuf {
+    if let Some(target_dir) = std::env::var_os("CARGO_TARGET_DIR")
+        .map(PathBuf::from)
+        .filter(|path| !path.as_os_str().is_empty())
+    {
+        return if target_dir.is_absolute() {
+            target_dir
+        } else {
+            project_root.join(target_dir)
+        };
+    }
+
+    if let Some(target_dir) = resolve_cargo_config_target_dir(project_root) {
+        return target_dir;
+    }
+
     find_workspace_root(project_root)
         .unwrap_or_else(|| project_root.to_path_buf())
         .join("target")
@@ -73,6 +90,36 @@ fn find_workspace_root(start: &Path) -> Option<PathBuf> {
         }
     }
     None
+}
+
+fn resolve_cargo_config_target_dir(start: &Path) -> Option<PathBuf> {
+    for dir in start.ancestors() {
+        let cargo_dir = dir.join(".cargo");
+        for name in ["config.toml", "config"] {
+            let config_path = cargo_dir.join(name);
+            let Some(target_dir) = read_cargo_config_target_dir(&config_path) else {
+                continue;
+            };
+            return Some(if target_dir.is_absolute() {
+                target_dir
+            } else {
+                dir.join(target_dir)
+            });
+        }
+    }
+    None
+}
+
+fn read_cargo_config_target_dir(path: &Path) -> Option<PathBuf> {
+    let content = fs::read_to_string(path).ok()?;
+    let value = toml::from_str::<toml::Value>(&content).ok()?;
+    value
+        .get("build")
+        .and_then(|build| build.get("target-dir"))
+        .and_then(toml::Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
 }
 
 fn manifest_declares_workspace(path: &Path) -> bool {
@@ -243,6 +290,9 @@ pub enum BuildArtifacts {
     Harmony {
         hap_path: PathBuf,
     },
+    Windows {
+        exe_path: PathBuf,
+    },
 }
 
 impl BuildArtifacts {
@@ -266,6 +316,7 @@ impl BuildArtifacts {
                 .or(dmg_path.as_deref())
                 .unwrap_or(app_path.as_path()),
             BuildArtifacts::Harmony { hap_path } => hap_path.as_path(),
+            BuildArtifacts::Windows { exe_path } => exe_path.as_path(),
         }
     }
 }

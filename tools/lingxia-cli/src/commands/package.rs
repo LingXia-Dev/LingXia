@@ -60,6 +60,7 @@ pub fn execute(options: PackageExecuteOptions) -> Result<()> {
         all_platforms: options.all_platforms,
         ipa: false,
         dmg: false,
+        msix: false,
         package: true,
         // Packaging needs the full platform artifact, not just the native lib.
         native_only: false,

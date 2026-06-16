@@ -6,6 +6,7 @@ pub fn panel_item_for_id(panel_id: &str) -> Option<(String, String)> {
     lingxia_app_context::app_config()
         .and_then(|config| config.panels.as_ref())
         .and_then(|panels| panels.items.iter().find(|item| item.id == panel_id))
+        .filter(|item| item.content.kind.is_lxapp())
         .map(|item| {
             (
                 item.content.app_id.clone(),

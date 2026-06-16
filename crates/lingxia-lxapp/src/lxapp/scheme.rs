@@ -88,7 +88,13 @@ impl LxApp {
         };
 
         let file_len = metadata.len();
-        let mime_type = Self::infer_mime_type(uri.path());
+        // Infer the MIME from the resolved file path, not the request URL: temp
+        // grants are addressed by an extension-less token (`lx://temp/<uuid>`),
+        // so URL-based inference yields `application/octet-stream`. WebKit and
+        // Android WebView sniff image bytes for `<img>` and render anyway, but
+        // WebView2 honors the declared type strictly and refuses to render;
+        // the resolved path keeps the real extension, so use it.
+        let mime_type = Self::infer_mime_type(&asset_path.to_string_lossy());
 
         let mut builder = Response::builder()
             .status(StatusCode::OK)

@@ -4,7 +4,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-pub(super) const CACHE_VERSION: u32 = 4;
+pub(super) const CACHE_VERSION: u32 = 5;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub(super) struct DestinationStamp {
@@ -13,6 +13,8 @@ pub(super) struct DestinationStamp {
     pub(super) bundle_hashes: BTreeMap<String, String>,
     #[serde(default)]
     pub(super) app_ui_icon_hashes: BTreeMap<String, String>,
+    #[serde(default)]
+    pub(super) windows_design_icon_hashes: BTreeMap<String, String>,
     pub(super) runtime_hash: Option<String>,
     #[serde(default)]
     pub(super) polyfills_hash: Option<String>,

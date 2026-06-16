@@ -223,6 +223,11 @@ fn compress_video_api(ctx: JSContext, options: JSCompressVideoOptions) -> JSResu
     let source_uri = resolved_source.to_string_lossy().into_owned();
 
     let output_path = resolve_compress_video_output_path(&lxapp, options.output_path.as_deref())?;
+    if paths_refer_to_same_file(&resolved_source, &output_path) {
+        return Err(js_invalid_parameter_error(
+            "compressVideo outputPath must be different from source path",
+        ));
+    }
     let quality = parse_video_quality(options.quality.as_deref())?;
     let (bitrate_kbps, fps, resolution_ratio) = if quality.is_some() {
         (None, None, None)
@@ -303,9 +308,11 @@ fn compress_video_api(ctx: JSContext, options: JSCompressVideoOptions) -> JSResu
                 "compressVideo failed with code {code}"
             ))),
             // The oneshot sender is dropped when cancel() removes the callback.
-            Err(_) => Err(HostError::new(rong::error::E_ABORT, "compressVideo canceled")
-                .with_name("AbortError")
-                .into()),
+            Err(_) => Err(
+                HostError::new(rong::error::E_ABORT, "compressVideo canceled")
+                    .with_name("AbortError")
+                    .into(),
+            ),
         }
     })?;
 
@@ -453,6 +460,29 @@ where
             .map_err(|err| js_error_from_lxapp_error(&err)),
         None => default(),
     }
+}
+
+fn paths_refer_to_same_file(left: &Path, right: &Path) -> bool {
+    let left = comparable_path(left);
+    let right = comparable_path(right);
+    if cfg!(windows) {
+        left.to_string_lossy()
+            .eq_ignore_ascii_case(&right.to_string_lossy())
+    } else {
+        left == right
+    }
+}
+
+fn comparable_path(path: &Path) -> PathBuf {
+    if let Ok(path) = fs::canonicalize(path) {
+        return path;
+    }
+    if let (Some(parent), Some(file_name)) = (path.parent(), path.file_name())
+        && let Ok(parent) = fs::canonicalize(parent)
+    {
+        return parent.join(file_name);
+    }
+    path.to_path_buf()
 }
 
 fn platform_video_info_to_js(info: PlatformVideoInfo, path: String) -> JSVideoInfoResult {

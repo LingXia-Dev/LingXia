@@ -16,7 +16,7 @@ runs:
         set -euo pipefail
         # Icon SVGs into the SDK rawfile dir.
         cargo run -p lingxia-cli -- gen icons \
-          --input lingxia-sdk/resources/icons/svg \
+          --input design/icons/svg \
           --harmony-out lingxia-sdk/harmony/lingxia/src/main/resources/rawfile/icons
         # Localized strings into the SDK resources dir (harmony only).
         cargo run -p lingxia-cli -- gen i18n \

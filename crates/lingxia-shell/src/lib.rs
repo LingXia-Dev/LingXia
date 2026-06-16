@@ -1,3 +1,9 @@
+//! Shell product module and host registrations for LingXia.
+//!
+//! This crate owns product-level shell behavior on top of the generic
+//! runtime crates: address-bar resolution, downloads, settings, panels,
+//! and bundled browser assets. Platform SDK crates own their native shell UI.
+
 extern crate self as lingxia;
 
 mod address_bar;

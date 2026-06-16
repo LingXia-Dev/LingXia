@@ -146,9 +146,30 @@ pub struct PanelItem {
     pub content: PanelContent,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum PanelContentKind {
+    #[default]
+    LxApp,
+    Terminal,
+}
+
+impl PanelContentKind {
+    pub fn is_lxapp(self) -> bool {
+        self == PanelContentKind::LxApp
+    }
+}
+
+fn is_lxapp_panel_content_kind(kind: &PanelContentKind) -> bool {
+    kind.is_lxapp()
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct PanelContent {
+    #[serde(default, skip_serializing_if = "is_lxapp_panel_content_kind")]
+    pub kind: PanelContentKind,
     #[serde(rename = "appId")]
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub app_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
@@ -362,7 +383,7 @@ fn validate_panels(panels: Option<&PanelsConfig>) -> Result<(), AppContextError>
                 item.id
             )));
         }
-        if item.content.app_id.is_empty() {
+        if item.content.kind == PanelContentKind::LxApp && item.content.app_id.is_empty() {
             return Err(AppContextError::InvalidConfig(format!(
                 "panel '{}' content.appId cannot be empty",
                 item.id
@@ -380,7 +401,9 @@ fn validate_panels(panels: Option<&PanelsConfig>) -> Result<(), AppContextError>
                 panel_position_name(item.position)
             )));
         }
-        if !app_ids.insert(item.content.app_id.clone()) {
+        if item.content.kind == PanelContentKind::LxApp
+            && !app_ids.insert(item.content.app_id.clone())
+        {
             return Err(AppContextError::InvalidConfig(format!(
                 "panel appId '{}' must be unique",
                 item.content.app_id

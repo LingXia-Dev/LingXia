@@ -107,6 +107,7 @@ fn resolve_platforms(platform_arg: Option<String>) -> Result<Vec<PlatformType>> 
             PlatformType::Android,
             PlatformType::Ios,
             PlatformType::Harmony,
+            PlatformType::Windows,
         ])
     }
 }
@@ -165,13 +166,14 @@ fn infer_package_id_from_config(
         PlatformType::Ios => config.ios.as_ref().map(|cfg| cfg.bundle_id.clone()),
         PlatformType::Harmony => config.harmony.as_ref().map(|cfg| cfg.bundle_name.clone()),
         PlatformType::MacOs => None,
+        PlatformType::Windows => config.windows.as_ref().and_then(|cfg| cfg.app_id.clone()),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{AndroidConfig, HarmonyConfig, HostAppConfig, IosConfig};
+    use crate::config::{AndroidConfig, HarmonyConfig, HostAppConfig, IosConfig, WindowsConfig};
 
     fn sample_config() -> LingXiaConfig {
         LingXiaConfig {
@@ -182,7 +184,12 @@ mod tests {
                 lingxia_server: None,
                 lingxia_id: None,
                 package_id_suffix: None,
-                platforms: vec!["android".into(), "ios".into(), "harmony".into()],
+                platforms: vec![
+                    "android".into(),
+                    "ios".into(),
+                    "harmony".into(),
+                    "windows".into(),
+                ],
                 home_app_id: "demo-home".into(),
             }),
             android: Some(AndroidConfig {
@@ -204,6 +211,11 @@ mod tests {
                 bundle_name: "com.example.demo.hm".into(),
                 compatible_sdk_version: None,
                 target_sdk_version: None,
+            }),
+            windows: Some(WindowsConfig {
+                app_id: Some("app.example.demo.windows".into()),
+                executable_name: Some("Demo".into()),
+                publisher: None,
             }),
             features: None,
             capabilities: None,
@@ -229,6 +241,10 @@ mod tests {
         assert_eq!(
             infer_package_id_from_config(&config, &PlatformType::Harmony).as_deref(),
             Some("com.example.demo.hm")
+        );
+        assert_eq!(
+            infer_package_id_from_config(&config, &PlatformType::Windows).as_deref(),
+            Some("app.example.demo.windows")
         );
     }
 }

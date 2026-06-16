@@ -14,7 +14,7 @@ runs:
       run: |
         set -euo pipefail
         cargo run -p lingxia-cli -- gen icons \
-          --input lingxia-sdk/resources/icons/svg \
+          --input design/icons/svg \
           --android-out lingxia-sdk/android/lingxia/src/main/res/drawable
         cargo run -p lingxia-cli -- gen i18n \
           --input i18n --no-rust --no-ts --no-ios --no-harmony \

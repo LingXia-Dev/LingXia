@@ -6,7 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 CLI_CARGO_TOML="$ROOT_DIR/tools/lingxia-cli/Cargo.toml"
 GH_REPO="${LINGXIA_RELEASE_REPO:-LingXia-Dev/LingXia}"
-ALL_TARGETS=(darwin-x64 darwin-arm64)
+ALL_TARGETS=(darwin-x64 darwin-arm64 windows-x64 windows-arm64)
 
 usage() {
   cat <<'EOF'
@@ -16,7 +16,8 @@ Usage:
   scripts/release/cli.sh [OPTIONS]
 
 Options:
-  --target <platform>  Build specific target(s): darwin-x64, darwin-arm64, all
+  --target <platform>  Build specific target(s): darwin-x64, darwin-arm64,
+                       windows-x64, windows-arm64, all
   --publish            Upload built assets to the GitHub release tag
   --tag <tag>          Release tag to upload to (default: lingxia-cli-v<version>)
   --out <dir>          Output directory (default: dist/cli-release)
@@ -28,6 +29,7 @@ Environment:
 
 Examples:
   scripts/release/cli.sh --target darwin-arm64
+  scripts/release/cli.sh --target windows-x64
   scripts/release/cli.sh --target all
   scripts/release/cli.sh --publish
 EOF
@@ -63,6 +65,7 @@ current_cli_target() {
 
   case "$os" in
     Darwin) os="darwin" ;;
+    MINGW*|MSYS*|CYGWIN*|Windows_NT) os="windows" ;;
     *)
       echo "ERROR: unsupported CLI host OS: $os" >&2
       return 2
@@ -70,8 +73,8 @@ current_cli_target() {
   esac
 
   case "$arch" in
-    x86_64|amd64) arch="x86_64" ;;
-    arm64|aarch64) arch="aarch64" ;;
+    x86_64|amd64) arch="x64" ;;
+    arm64|aarch64) arch="arm64" ;;
     *)
       echo "ERROR: unsupported CLI host arch: $arch" >&2
       return 2
@@ -83,8 +86,10 @@ current_cli_target() {
 
 cli_target_info() {
   case "$1" in
-    darwin-x64)   echo "x86_64-apple-darwin lingxia-darwin-x86_64" ;;
-    darwin-arm64) echo "aarch64-apple-darwin lingxia-darwin-aarch64" ;;
+    darwin-x64)    echo "x86_64-apple-darwin lingxia-darwin-x86_64 lingxia" ;;
+    darwin-arm64)  echo "aarch64-apple-darwin lingxia-darwin-aarch64 lingxia" ;;
+    windows-x64)   echo "x86_64-pc-windows-msvc lingxia-windows-x86_64.exe lingxia.exe" ;;
+    windows-arm64) echo "aarch64-pc-windows-msvc lingxia-windows-aarch64.exe lingxia.exe" ;;
     *) return 1 ;;
   esac
 }
@@ -186,7 +191,7 @@ fi
 BUILT_ASSETS=()
 
 for platform in "${TARGETS[@]}"; do
-  read -r rust_target asset_name <<< "$(cli_target_info "$platform")"
+  read -r rust_target asset_name bin_name <<< "$(cli_target_info "$platform")"
 
   echo ""
   echo "========================================"
@@ -197,7 +202,7 @@ for platform in "${TARGETS[@]}"; do
     (cd "$ROOT_DIR" && cargo build -p lingxia-cli --release --target "$rust_target")
   fi
 
-  bin_src="$ROOT_DIR/target/$rust_target/release/lingxia"
+  bin_src="$ROOT_DIR/target/$rust_target/release/$bin_name"
   asset_out="$OUT_DIR/$asset_name"
   [[ -f "$bin_src" ]] || {
     echo "ERROR: CLI binary not found: $bin_src" >&2
@@ -205,7 +210,9 @@ for platform in "${TARGETS[@]}"; do
   }
 
   cp "$bin_src" "$asset_out"
-  chmod +x "$asset_out"
+  if [[ "$asset_out" != *.exe ]]; then
+    chmod +x "$asset_out"
+  fi
   BUILT_ASSETS+=("$asset_out")
   echo "✅ CLI asset -> $asset_out"
 done

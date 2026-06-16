@@ -11,6 +11,7 @@ dist/
 
 # Example app native outputs
 examples/android/app/src/main/jniLibs/
+examples/*/windows/Cargo.lock
 
 # Generated TypeScript sources
 

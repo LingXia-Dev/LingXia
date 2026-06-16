@@ -4,8 +4,7 @@
 # Downloads a prebuilt `lingxia` binary from GitHub Releases, verifies its
 # sha256 against the release SHASUMS file, and installs it to ~/.local/bin.
 #
-# macOS only for now (arm64 + x86_64). Linux is not built yet; Windows users
-# download the binary manually from the releases page.
+# macOS and Windows for now. Linux is not built yet.
 #
 # Usage:
 #   curl -fsSL https://raw.githubusercontent.com/LingXia-Dev/LingXia/main/install.sh | sh
@@ -59,16 +58,17 @@ download() {
 }
 
 # --- Detect platform ---------------------------------------------------------
-# The CLI currently ships macOS binaries only. Linux is not built yet; anything
-# else (incl. Windows via uname/MSYS) gets the manual-download pointer.
+# The installer runs from a POSIX shell. On Windows this means Git Bash, MSYS,
+# or Cygwin; PowerShell users should run install.ps1 instead.
 detect_os() {
   case "$(uname -s)" in
     Darwin) echo "darwin" ;;
+    MINGW* | MSYS* | CYGWIN*) echo "windows" ;;
     Linux)
       err "Linux is not supported yet. Track progress and grab future builds at https://github.com/$REPO/releases"
       ;;
     *)
-      err "unsupported OS '$(uname -s)'. Windows users: download the binary manually from https://github.com/$REPO/releases"
+      err "unsupported OS '$(uname -s)'. Windows users: run this script from Git Bash/MSYS, or use install.ps1 in PowerShell"
       ;;
   esac
 }
@@ -86,7 +86,13 @@ detect_arch() {
 OS="$(detect_os)"
 ARCH="$(detect_arch)"
 # Asset name scheme matches .github/workflows/release-cli.yml exactly.
-ASSET="lingxia-${OS}-${ARCH}"
+if [ "$OS" = "windows" ]; then
+  ASSET="lingxia-${OS}-${ARCH}.exe"
+  BIN_NAME="lingxia.exe"
+else
+  ASSET="lingxia-${OS}-${ARCH}"
+  BIN_NAME="lingxia"
+fi
 
 # --- Resolve version ---------------------------------------------------------
 # The repo ships several components, each with its own tag prefix (e.g.
@@ -148,12 +154,14 @@ echo "$expected_line" > "$TMP_DIR/$ASSET.sha256"
 
 # --- Install -----------------------------------------------------------------
 mkdir -p "$INSTALL_DIR"
-DEST="$INSTALL_DIR/lingxia"
+DEST="$INSTALL_DIR/$BIN_NAME"
 mv "$TMP_DIR/$ASSET" "$DEST"
-chmod +x "$DEST"
+if [ "$OS" != "windows" ]; then
+  chmod +x "$DEST"
+fi
 
 info ""
-info "Installed lingxia $VERSION to $DEST; run \`lingxia --version\`"
+info "Installed lingxia $VERSION to $DEST; run \`$BIN_NAME --version\`"
 
 # Warn if the install dir is not on PATH.
 case ":$PATH:" in

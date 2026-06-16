@@ -667,9 +667,16 @@ Page({
     this.cancelPreviewSession();
     const controller = new AbortController();
     this._previewAbortController = controller;
-    const request = sources.length === 1
-      ? { ...sources[0], advance, signal: controller.signal }
-      : { sources, startIndex, advance, signal: controller.signal };
+    // Callers may pass sources as plain path strings (thumbnail / compressed
+    // image previews) or as `{ path, type, ... }` objects (multi-select).
+    // Normalize to objects so spreading a single source can't scatter a bare
+    // string into character-indexed props (which drops `path`).
+    const normalizedSources = sources.map((source) =>
+      typeof source === "string" ? { path: source } : source
+    );
+    const request = normalizedSources.length === 1
+      ? { ...normalizedSources[0], advance, signal: controller.signal }
+      : { sources: normalizedSources, startIndex, advance, signal: controller.signal };
     if (this.data.previewHideIndexIndicator) {
       request.showIndexIndicator = false;
     }

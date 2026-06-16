@@ -7,8 +7,8 @@ build = "build.rs"
 
 [lib]
 name = "lingxia"
-# cdylib for Android/Harmony (.so), staticlib for iOS (.a)
-crate-type = ["cdylib", "staticlib"]
+# cdylib for Android/Harmony (.so), staticlib for iOS/macOS (.a), rlib for Windows host deps.
+crate-type = ["cdylib", "staticlib", "rlib"]
 
 [features]
 default = {{HOST_DEFAULT_FEATURES}}

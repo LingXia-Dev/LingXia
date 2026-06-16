@@ -351,7 +351,6 @@ fn validate_security_config(config: &mut LxAppSecurityConfig) -> Result<(), serd
     Ok(())
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::{LxAppConfig, LxAppSecurityPrivilege};

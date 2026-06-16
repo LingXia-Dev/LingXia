@@ -70,3 +70,8 @@ pub fn lingxia_register_host_addon() {
 pub extern "C" fn lingxia_register_host_addon() {
     register_host_addon();
 }
+
+#[cfg(target_os = "windows")]
+pub fn lingxia_register_host_addon() {
+    register_host_addon();
+}

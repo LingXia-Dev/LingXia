@@ -2,7 +2,7 @@ use crate::commands::rust::cargo_version_line;
 use crate::config::{HOST_CONFIG_FILE, LingXiaConfig, has_host_config};
 use crate::platform::detector::PlatformType;
 use crate::platform::doctor::{CheckResult, CheckStatus, command_version_line};
-use crate::platform::{android, detector, harmony, ios, macos};
+use crate::platform::{android, detector, harmony, ios, macos, windows};
 use anyhow::Result;
 use colored::Colorize;
 use std::env;
@@ -107,6 +107,7 @@ fn resolve_target_platforms(requested: Vec<String>) -> Result<Vec<PlatformType>>
         PlatformType::Ios,
         PlatformType::MacOs,
         PlatformType::Harmony,
+        PlatformType::Windows,
     ])
 }
 
@@ -119,6 +120,7 @@ fn parse_requested_platforms(requested: Vec<String>) -> Result<Vec<PlatformType>
                 PlatformType::Ios,
                 PlatformType::MacOs,
                 PlatformType::Harmony,
+                PlatformType::Windows,
             ] {
                 if !parsed.contains(&platform) {
                     parsed.push(platform);
@@ -183,6 +185,7 @@ fn platform_checks(platform: &PlatformType) -> Vec<CheckResult> {
         PlatformType::Ios => ios::doctor_checks(),
         PlatformType::MacOs => macos::doctor_checks(),
         PlatformType::Harmony => harmony::doctor_checks(),
+        PlatformType::Windows => windows::doctor_checks(),
     }
 }
 

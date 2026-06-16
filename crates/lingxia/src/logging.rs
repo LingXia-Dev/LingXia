@@ -1,3 +1,5 @@
+#![cfg_attr(target_os = "windows", allow(dead_code))]
+
 use lingxia_log::{LogBuilder, LogLevel as LxLogLevel, LogManager, LogMessage, LogTag};
 use log::{Level, LevelFilter, Log, Metadata, Record};
 use std::sync::OnceLock;

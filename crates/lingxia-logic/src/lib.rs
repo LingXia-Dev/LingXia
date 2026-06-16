@@ -2,7 +2,6 @@ use ::lxapp::lx::{LxLogicExtension, register_logic_extension};
 use rong::{JSContext, JSResult};
 
 mod app;
-mod task_object;
 mod device;
 mod display;
 mod env;
@@ -18,6 +17,7 @@ mod share;
 mod storage;
 mod surface;
 mod system;
+mod task_object;
 mod ui;
 mod update;
 
