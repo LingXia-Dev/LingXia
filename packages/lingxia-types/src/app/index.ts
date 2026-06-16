@@ -91,6 +91,23 @@ export interface HostAppUpdateTask
  */
 export type HostAppEnvVersion = 'developer' | 'preview' | 'release';
 
+export interface AppScreenshotOptions {
+  /**
+   * Platform-specific window id to capture (desktop only). Omit to let the
+   * platform pick: the key/main window on desktop, the sole window on mobile.
+   */
+  windowId?: string;
+}
+
+export interface AppScreenshotResult {
+  /** `lx://` URI of the captured PNG in the lxapp temp directory. */
+  tempFilePath: string;
+  /** Image width in pixels, when the runtime could read it from the PNG. */
+  width?: number;
+  /** Image height in pixels, when the runtime could read it from the PNG. */
+  height?: number;
+}
+
 export interface HostAppApi {
   /**
    * The environment this build was produced for, mirroring `app.json::envVersion`.
@@ -132,6 +149,18 @@ export interface HostAppApi {
    * only after the user confirms.
    */
   exit(): void;
+
+  /**
+   * Capture the host app's window as a PNG and save it to the lxapp temp
+   * directory.
+   *
+   * App-level semantics — one level above any page/WebView capture: the image
+   * is what the user currently sees of the whole app, including host-drawn
+   * navigation chrome, native overlays, and every composited WebView. Because
+   * that view can include other lxapps' UI, this API is only available to the
+   * home lxapp; other lxapps receive a permission error.
+   */
+  screenshot(options?: AppScreenshotOptions): Promise<AppScreenshotResult>;
 }
 
 export interface AppLifecycleEventArgs {

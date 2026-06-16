@@ -9,8 +9,7 @@ use lingxia_service::update::{
     UpdatePackageInfo,
 };
 use lxapp::LxApp;
-use rong::function::Optional;
-use rong::{IntoJSObj, JSContext, JSFunc, JSObject, JSResult, JSSymbol, JSValue, Promise};
+use rong::{IntoJSObj, JSContext, JSFunc, JSObject, JSResult, Promise};
 use std::sync::Arc;
 use std::sync::Mutex as StdMutex;
 use tokio::sync::{Mutex, watch};
@@ -69,7 +68,7 @@ pub(super) fn init(ctx: &JSContext, app: &JSObject) -> JSResult<()> {
 
 async fn check_app_update(ctx: JSContext) -> JSResult<JSObject> {
     let lxapp = LxApp::from_ctx(&ctx)?;
-    ensure_home_lxapp(&lxapp)?;
+    ensure_home_lxapp(&lxapp, "lx.app.checkUpdate")?;
 
     let update = host_update_service_from(&lxapp)
         .check()
@@ -132,7 +131,7 @@ fn create_apply_task(ctx: &JSContext, package: UpdatePackageInfo) -> JSResult<JS
     }
 
     let lxapp = LxApp::from_ctx(ctx)?;
-    ensure_home_lxapp(&lxapp)?;
+    ensure_home_lxapp(&lxapp, "lx.app.checkUpdate")?;
 
     let apply = host_update_service_from(&lxapp).apply(package);
     let (tx, rx) = watch::channel::<Option<AppUpdateEvent>>(None);
@@ -181,8 +180,8 @@ fn create_apply_task(ctx: &JSContext, package: UpdatePackageInfo) -> JSResult<JS
         })?,
     )?;
 
-    install_promise_methods(ctx, &iterator, final_promise)?;
-    install_async_iterator(ctx, &iterator)?;
+    crate::task_object::install_promise_methods(ctx, &iterator, final_promise)?;
+    crate::task_object::install_async_iterator(ctx, &iterator)?;
     Ok(iterator)
 }
 
@@ -236,86 +235,7 @@ async fn app_update_next_step(
     })
 }
 
-fn install_async_iterator(ctx: &JSContext, iterator: &JSObject) -> JSResult<()> {
-    let symbol = ctx
-        .global()
-        .get::<_, JSObject>("Symbol")?
-        .get::<_, JSSymbol>("asyncIterator")?;
-    iterator.set(
-        symbol,
-        JSFunc::new(ctx, move |this: rong::function::This<JSObject>| {
-            (*this).clone()
-        })?,
-    )?;
-    Ok(())
-}
 
-fn install_promise_methods(ctx: &JSContext, iterator: &JSObject, promise: Promise) -> JSResult<()> {
-    let then_promise = promise.clone();
-    let then_ctx = ctx.clone();
-    iterator.set(
-        "then",
-        JSFunc::new(
-            ctx,
-            move |on_fulfilled: Optional<JSValue>,
-                  on_rejected: Optional<JSValue>|
-                  -> JSResult<JSObject> {
-                let then = then_promise.then()?;
-                then.call(
-                    Some(then_promise.clone().into_object()),
-                    (
-                        on_fulfilled
-                            .0
-                            .unwrap_or_else(|| JSValue::undefined(&then_ctx)),
-                        on_rejected
-                            .0
-                            .unwrap_or_else(|| JSValue::undefined(&then_ctx)),
-                    ),
-                )
-            },
-        )?,
-    )?;
-
-    let catch_promise = promise.clone();
-    let catch_ctx = ctx.clone();
-    iterator.set(
-        "catch",
-        JSFunc::new(
-            ctx,
-            move |on_rejected: Optional<JSValue>| -> JSResult<JSObject> {
-                let catch_fn = catch_promise.catch()?;
-                catch_fn.call(
-                    Some(catch_promise.clone().into_object()),
-                    (on_rejected
-                        .0
-                        .unwrap_or_else(|| JSValue::undefined(&catch_ctx)),),
-                )
-            },
-        )?,
-    )?;
-
-    let finally_promise = promise.clone();
-    let finally_ctx = ctx.clone();
-    iterator.set(
-        "finally",
-        JSFunc::new(
-            ctx,
-            move |on_finally: Optional<JSValue>| -> JSResult<JSObject> {
-                let finally_fn = finally_promise.get::<_, JSFunc>("finally")?;
-                finally_fn.call(
-                    Some(finally_promise.clone().into_object()),
-                    (on_finally
-                        .0
-                        .unwrap_or_else(|| JSValue::undefined(&finally_ctx)),),
-                )
-            },
-        )?,
-    )?;
-
-    let wait_promise = promise;
-    iterator.set("wait", JSFunc::new(ctx, move || wait_promise.clone())?)?;
-    Ok(())
-}
 
 fn spawn_app_update_forwarder(
     mut apply: AppUpdateApply,
@@ -370,7 +290,7 @@ fn can_apply_host_app_update() -> bool {
     cfg!(any(target_os = "android", target_os = "macos"))
 }
 
-fn ensure_home_lxapp(lxapp: &LxApp) -> JSResult<()> {
+pub(super) fn ensure_home_lxapp(lxapp: &LxApp, api_name: &str) -> JSResult<()> {
     let home_appid = home_app_id()
         .ok_or_else(|| js_service_unavailable_error("home lxapp is not configured"))?;
     if lxapp.appid == home_appid {
@@ -379,7 +299,7 @@ fn ensure_home_lxapp(lxapp: &LxApp) -> JSResult<()> {
 
     Err(js_error_from_business_code_with_detail(
         3000,
-        "lx.app.checkUpdate is only available in the home lxapp",
+        format!("{api_name} is only available in the home lxapp"),
     ))
 }
 

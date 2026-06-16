@@ -40,6 +40,10 @@ pub(crate) struct BrowserTabState {
     /// webview (`WebViewDelegate::on_favicon_changed`). `Arc`'d so shell
     /// layers can mirror it into layout snapshots without copying.
     pub(crate) favicon_png: Option<Arc<Vec<u8>>>,
+    /// When true the tab's WebView has been destroyed to free memory
+    /// (Chrome-style discard); the entry/metadata is kept and the WebView is
+    /// recreated from `current_url` on reactivation.
+    pub(crate) discarded: bool,
 }
 
 pub(crate) struct BrowserState {
@@ -556,6 +560,7 @@ fn open_internal_browser_tab_with_scope(
                     current_url: None,
                     title: None,
                     favicon_png: None,
+                    discarded: false,
                 },
             );
         }
@@ -687,6 +692,125 @@ pub(crate) fn close_browser_tab(tab_id: &str) -> Result<(), LxAppError> {
         *lock_active_tab() = next;
     }
     if removed_any || active_matches_closed {
+        notify_tabs_changed();
+    }
+    Ok(())
+}
+
+/// Chrome-style tab discard: destroy the tab's WebView to free its native
+/// memory while keeping the tab entry (`current_url` / `title`) so the sidebar
+/// still shows it. Reactivation recreates the WebView and reloads the URL.
+/// Refuses to discard the active tab.
+pub(crate) fn discard_browser_tab(tab_id: &str) -> Result<(), LxAppError> {
+    let normalized = normalize_runtime_tab_id(tab_id).ok_or_else(|| {
+        LxAppError::InvalidParameter("tab_id must be a valid runtime browser tab id".to_string())
+    })?;
+    if lock_active_tab().as_deref() == Some(normalized.as_str()) {
+        return Err(LxAppError::InvalidParameter(
+            "cannot discard the active browser tab".to_string(),
+        ));
+    }
+    let tab = match lock_state().tabs.get(&normalized).cloned() {
+        // Unknown or already discarded — nothing to free.
+        Some(tab) if !tab.discarded => tab,
+        _ => return Ok(()),
+    };
+    let tab_path = browser_tab_path_for_runtime_id(&normalized);
+
+    // Bump the create token BEFORE destroying the WebView. If the WebView is
+    // still being created, its in-flight `browser_on_webview_ready` holds the
+    // old token; once `wait_ready()` errors after the destroy below, its
+    // `browser_remove_tab_if_token_matches(old)` no longer matches and the
+    // kept entry survives (otherwise reactivate would hit ResourceNotFound).
+    if let Some(state) = lock_state().tabs.get_mut(&normalized) {
+        state.create_token = next_browser_create_token();
+    }
+
+    // Detach from the shared startup bridge if this tab backs it, and drop any
+    // per-tab internal page — same dance as close_browser_tab.
+    if let Ok(browser) = ensure_browser_lxapp() {
+        let startup_path = browser.initial_route();
+        if let Some(page) = browser.get_page(&startup_path) {
+            let startup_webview = page.webview();
+            let tab_webview = browser_find_webview(&tab_path, tab.session_id).ok();
+            if let (Some(startup_webview), Some(tab_webview)) = (startup_webview, tab_webview)
+                && Arc::ptr_eq(&startup_webview, &tab_webview)
+            {
+                page.detach_webview();
+            }
+        }
+        if let Some(page) = browser.get_page(&tab_path) {
+            page.detach_webview();
+        }
+        browser.remove_pages(std::slice::from_ref(&tab_path));
+    }
+    browser_destroy_webview(&tab_path, tab.session_id);
+
+    // Keep the entry; remember where to reload from on reactivation. Preserve
+    // an in-flight `pending_url` (WebView not yet loaded / mid-navigation);
+    // only fall back to `current_url` when there is no pending target.
+    if let Some(state) = lock_state().tabs.get_mut(&normalized) {
+        state.discarded = true;
+        state.create_in_flight = false;
+        if state.pending_url.is_none() {
+            state.pending_url = state.current_url.clone();
+        }
+    }
+    Ok(())
+}
+
+/// Mark a tab as the active one without touching its WebView. Lets the SDK keep
+/// the Rust-side active tab in sync when switching to an already-live tab, so
+/// the discard policy doesn't mistake a backgrounded tab for the active one.
+pub(crate) fn mark_browser_tab_active(tab_id: &str) {
+    let Some(normalized) = normalize_runtime_tab_id(tab_id) else {
+        return;
+    };
+    let exists = lock_state().tabs.contains_key(&normalized);
+    if exists && set_active_browser_tab(&normalized) {
+        notify_tabs_changed();
+    }
+}
+
+/// Recreate a discarded tab's WebView and reload its saved URL, then make it
+/// the active tab. No-op if the tab is already live.
+pub(crate) fn reactivate_browser_tab(tab_id: &str) -> Result<(), LxAppError> {
+    let normalized = normalize_runtime_tab_id(tab_id).ok_or_else(|| {
+        LxAppError::InvalidParameter("tab_id must be a valid runtime browser tab id".to_string())
+    })?;
+    // Returns the create params when the tab needs its WebView rebuilt, or
+    // `None` when it is already live (just needs (re)activating below).
+    let recreate = {
+        let mut state = lock_state();
+        let Some(tab) = state.tabs.get_mut(&normalized) else {
+            return Err(LxAppError::ResourceNotFound(
+                "browser tab not found".to_string(),
+            ));
+        };
+        if tab.discarded {
+            let token = next_browser_create_token();
+            tab.create_token = token;
+            tab.discarded = false;
+            tab.create_in_flight = true;
+            // `pending_url` already holds the saved `current_url` from discard.
+            Some((tab.session_id, token))
+        } else {
+            None
+        }
+    };
+
+    if let Some((session_id, token)) = recreate {
+        let path = browser_tab_path_for_runtime_id(&normalized);
+        if let Err(error) = browser_create_webview(&path, session_id, &normalized, token) {
+            if let Some(tab) = lock_state().tabs.get_mut(&normalized) {
+                tab.discarded = true;
+                tab.create_in_flight = false;
+            }
+            return Err(error);
+        }
+    }
+
+    if set_active_browser_tab(&normalized) {
         notify_tabs_changed();
     }
     Ok(())

@@ -1,5 +1,7 @@
 package com.lingxia.lxapp
 
+import com.lingxia.app.CurrentLxApp
+
 import android.content.Intent
 import android.os.Handler
 import android.os.Looper

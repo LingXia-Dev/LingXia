@@ -86,7 +86,7 @@ export default function PickerPage() {
               columns={[coffees]}
               value={coffee}
               onConfirm={(value) => onPickerConfirm?.({ field: 'coffee', value })}
-              onScroll={(value) => onPickerScroll?.({ field: 'coffee', value })}
+              onColumnChange={(value) => onPickerScroll?.({ field: 'coffee', value })}
               placeholder="Select coffee"
             />
           </div>
@@ -100,7 +100,7 @@ export default function PickerPage() {
                 columns={[continents, cities]}
                 value={location}
                 onConfirm={(value) => onPickerConfirm?.({ field: 'location', value })}
-                onScroll={(value) => onPickerScroll?.({ field: 'location', value })}
+                onColumnChange={(value) => onPickerScroll?.({ field: 'location', value })}
                 placeholder="Select location"
                 cancelText="取消"
                 cancelTextColor="#FF6B6B"
@@ -118,7 +118,7 @@ export default function PickerPage() {
                 columns={[hours, minutes]}
                 value={multiTime}
                 onConfirm={(value) => onPickerConfirm?.({ field: 'multiTime', value })}
-                onScroll={(value) => onPickerScroll?.({ field: 'multiTime', value })}
+                onColumnChange={(value) => onPickerScroll?.({ field: 'multiTime', value })}
               >
                 <div className="p-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg text-center">
                   {multiTime.join(':')}
@@ -137,7 +137,7 @@ export default function PickerPage() {
               start="09:00"
               end="18:00"
               onConfirm={(value) => onPickerConfirm?.({ field: 'time', value })}
-              onScroll={(value) => onPickerScroll?.({ field: 'time', value })}
+              onColumnChange={(value) => onPickerScroll?.({ field: 'time', value })}
               placeholder="Select time"
             />
           </div>
@@ -154,7 +154,7 @@ export default function PickerPage() {
                 start="2010"
                 end="2030"
                 onConfirm={(value) => onPickerConfirm?.({ field: 'year', value })}
-                onScroll={(value) => onPickerScroll?.({ field: 'year', value })}
+                onColumnChange={(value) => onPickerScroll?.({ field: 'year', value })}
                 placeholder="Select year"
               />
             </div>
@@ -168,7 +168,7 @@ export default function PickerPage() {
                 start="2023-01"
                 end="2025-12"
                 onConfirm={(value) => onPickerConfirm?.({ field: 'month', value })}
-                onScroll={(value) => onPickerScroll?.({ field: 'month', value })}
+                onColumnChange={(value) => onPickerScroll?.({ field: 'month', value })}
                 placeholder="Select month"
               />
             </div>
@@ -182,7 +182,7 @@ export default function PickerPage() {
                 start="2024-01-01"
                 end="2027-12-31"
                 onConfirm={(value) => onPickerConfirm?.({ field: 'date', value })}
-                onScroll={(value) => onPickerScroll?.({ field: 'date', value })}
+                onColumnChange={(value) => onPickerScroll?.({ field: 'date', value })}
                 placeholder="Select a date"
               />
             </div>
@@ -194,7 +194,7 @@ export default function PickerPage() {
                 fields="range"
                 value={dateRange}
                 onConfirm={(value) => onPickerConfirm?.({ field: 'dateRange', value })}
-                onScroll={(value) => onPickerScroll?.({ field: 'dateRange', value })}
+                onColumnChange={(value) => onPickerScroll?.({ field: 'dateRange', value })}
                 placeholder="Select date range"
               />
             </div>

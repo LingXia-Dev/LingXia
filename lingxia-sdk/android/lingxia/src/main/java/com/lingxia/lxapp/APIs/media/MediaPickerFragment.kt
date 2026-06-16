@@ -466,11 +466,11 @@ internal class MediaPickerFragment : Fragment() {
         root.addView(warningBar)
         warningBar.visibility = View.GONE
         limitedWarningBar = warningBar
-        com.lingxia.util.ActivityInsets.applyBottomMargin(root, warningBar, bottomBarHeightPx)
+        com.lingxia.lxapp.ActivityInsets.applyBottomMargin(root, warningBar, bottomBarHeightPx)
 
         // Lift bottom bar and content above system navigation bar using Activity provider
-        com.lingxia.util.ActivityInsets.applyBottomMargin(root, bottom, 0)
-        com.lingxia.util.ActivityInsets.applyBottomMargin(root, rv, bottomBarHeightPx)
+        com.lingxia.lxapp.ActivityInsets.applyBottomMargin(root, bottom, 0)
+        com.lingxia.lxapp.ActivityInsets.applyBottomMargin(root, rv, bottomBarHeightPx)
 
         recycler = rv
         sendBtn = send

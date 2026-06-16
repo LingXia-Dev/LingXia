@@ -368,6 +368,18 @@ final class LxMediaPlayerCore: NSObject {
         send(.qualityChange(quality: label, url: url.absoluteString))
     }
 
+    // MARK: - Settings (exposed for native controls)
+
+    /// Configure the selectable playback-speed options (e.g. [0.5, 1, 1.5, 2]).
+    func setPlaybackRates(_ rates: [Double]) {
+        availablePlaybackRates = rates
+    }
+
+    var playbackRates: [Double] { availablePlaybackRates }
+    var qualities: [LxMediaQuality] { availableQualities }
+    var activePlaybackRate: Double { currentPlaybackRate }
+    var activeQuality: String? { currentQuality }
+
     // MARK: - Command dispatch
 
     func handle(command: LxMediaCommand) {

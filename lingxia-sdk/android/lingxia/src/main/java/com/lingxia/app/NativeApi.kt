@@ -3,8 +3,8 @@ package com.lingxia.app
 import android.content.res.AssetManager
 import android.util.Log
 import com.lingxia.lxapp.LxAppInfo
-import com.lingxia.lxapp.NavigationBarState
-import com.lingxia.lxapp.TabBarState
+import com.lingxia.lxapp.chrome.NavigationBarState
+import com.lingxia.lxapp.chrome.TabBarState
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**

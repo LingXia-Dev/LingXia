@@ -71,13 +71,13 @@ lingxia build [options]
 |--------|-------------|---------|
 | `--release` | Release build (optimized) | false (debug) |
 | `--env <env>` | Build environment: `developer` (or `dev`), `preview`, `release` | `developer` |
-| `-f, --features <features>` | Rust features to enable (comma-separated) | none |
 | `--abis <abis>` | Android ABIs (comma-separated): `arm64-v8a`, `armeabi-v7a` | auto (`arm64-v8a`) |
 | `--macos-arch <arch>` | macOS build architecture: `arm64`, `x86_64` | host arch |
 | `--platform <platforms>` | Platforms to build (comma-separated) | all detected |
+| `--all-platforms` | Build every configured platform (mutually exclusive with `--platform`) | false |
 | `--skip-native` | Skip native Rust library compilation | false |
 
-> **`--env` vs `--release`** — independent. `--env` chooses an environment slot (which determines the suffixed package id, the backend URL, and whether the launcher icon is badged); `--release` toggles the compiler's release profile. `lingxia build --env release --release` is the shippable combination. The CLI prints `ℹ Build env: <env> (default|--env)` on every build. See [App Project → Env versions](../app/project.md#environment-versions) for what each env produces.
+> **`--env` vs `--release`** — independent: `--env` picks the environment slot, `--release` the compiler profile; `lingxia build --env release --release` is the shippable combination. Defaults, package-id suffixing, and per-env server config: [App Project → Environment versions](../app/project.md#environment-versions).
 
 **Examples:**
 
@@ -136,10 +136,10 @@ For native host projects, publishable Android artifacts are staged under
 | Option | Description | Default |
 |--------|-------------|---------|
 | `--env <env>` | Build environment: `developer` (or `dev`), `preview`, `release` | `release` |
-| `-f, --features <features>` | Rust features to enable (comma-separated) | none |
 | `--abis <abis>` | Android ABIs (comma-separated): `arm64-v8a`, `armeabi-v7a` | auto (`arm64-v8a`) |
 | `--macos-arch <arch>` | macOS package architecture: `arm64`, `x86_64` | host arch |
 | `--platform <platforms>` | Platforms to package (comma-separated) | all detected |
+| `--all-platforms` | Package every configured platform (mutually exclusive with `--platform`) | false |
 | `--skip-native` | Skip native Rust library compilation | false |
 | `--framework <framework>` | Override lxapp view framework detection: `react`, `vue`, `html` | auto-detect |
 | `--progress <mode>` | LxApp progress output mode: `task`, `plain` | default CLI output |
@@ -179,13 +179,13 @@ Behavior depends on the current project:
 | `-d, --device <id>` | Target device ID (required if multiple connected) | auto-detect |
 | `--release` | Release build (optimized) | false (debug) |
 | `--env <env>` | Build environment: `developer` (or `dev`), `preview`, `release` | `developer` |
-| `-f, --features <features>` | Rust features to enable (comma-separated) | none |
 | `--skip-native` | Skip native Rust library compilation | false |
 | `--abis <abis>` | Android ABIs (comma-separated): `arm64-v8a`, `armeabi-v7a` | auto (`arm64-v8a`) |
 | `--macos-arch <arch>` | macOS build architecture: `arm64`, `x86_64` (must match host for local app dev) | host arch |
 | `--framework <framework>` | Override lxapp view framework detection: `react`, `vue`, `html` | auto-detect |
 | `--progress <mode>` | LxApp progress output mode: `task`, `plain` | default CLI output |
 | `--reinstall` | Reinstall app by uninstalling existing one first (best effort) | false |
+| `--parallel` | Allow another dev session for the same platform in this project | false |
 
 **Examples:**
 
@@ -224,6 +224,7 @@ lingxia install [options]
 | `-a, --artifact <path>` | Path to artifact file (APK/HAP) | auto-detected |
 | `-d, --device <id>` | Target device ID | auto-detect |
 | `--reinstall` | Reinstall app by uninstalling existing one first (best effort) | false |
+| `--quiet` | Suppress progress UI output (useful for automation) | false |
 
 **Examples:**
 
@@ -339,7 +340,7 @@ lingxia publish --token <token> [options]
 | `--lingxia-server <url>` | LingXia server URL (falls back to `app.lingxiaServer` when available) | from config |
 | `--package-path <path>` | Path to the package file (`app` only) | auto |
 | `--platform <platform>` | App platform to publish: `android`, `macos` | required for multi-platform app projects |
-| `--release-type <type>` | Release channel: `release`, `preview`, `developer` (required for lxapp) | none |
+| `--env <env>` (alias `--channel`) | Release channel: `release`, `preview`, `developer` (or `dev`) — required for lxapp | none |
 | `--framework <framework>` | Override lxapp view framework detection: `react`, `vue`, `html` | auto-detect |
 | `--progress <mode>` | LxApp progress output mode: `task`, `plain` | default CLI output |
 
@@ -482,7 +483,6 @@ Quick reminders:
 - `lingxia.yaml` is the source of truth for host app build metadata.
 - `homeAppVersion` is generated into runtime `app.json`; you do not set it manually.
 - Storage/cache limits live under `storage`; set `storage.cacheMaxSizeMB` to `0` to disable usercache size enforcement.
-- When `splash` is configured, CLI requires a PNG source image and writes `splashTimeout` into runtime `app.json`.
 
 ---
 

@@ -102,8 +102,11 @@ pub mod log {
 pub mod android;
 
 /// Apple platform bridge exports for iOS and macOS hosts.
+// The swift_bridge `AppUiEventType` host-UI events intentionally share the
+// `*Click` postfix (PanelIconClick / UpdateRestartClick / UpdateInstallClick).
 #[cfg(any(target_os = "ios", target_os = "macos"))]
 #[path = "ffi/apple.rs"]
+#[allow(clippy::enum_variant_names)]
 pub mod apple;
 
 /// HarmonyOS platform bridge exports for the native host runtime.

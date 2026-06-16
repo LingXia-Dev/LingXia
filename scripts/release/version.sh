@@ -18,12 +18,23 @@ Arguments:
   <version>       Semver to apply (for example: 0.5.0)
 
 Options:
-  --component     Version scope. `all` keeps the lockstep release bump;
+  --component     Version scope. `all` bumps the base runtime in lockstep and
+                  re-versions only the framework/tool packages that changed since
+                  their last release tag (unchanged ones keep their version);
                   `cli` bumps only tools/lingxia-cli; `npm:<package>` bumps a
-                  single npm package (bridge|elements|react|vue|html|
-                  page-runtime|polyfills|types|skill).
+                  single framework/tool npm package (elements|react|vue|html|
+                  page-runtime|skill). bridge/polyfills/types are base-runtime
+                  packages locked to the workspace — bump them via `all`.
   --dry-run       Print the files that would change without modifying them.
   -h, --help      Show help.
+
+npm package tiers (see release notes):
+  - base runtime  (bridge, polyfills, types): locked to the workspace version.
+                  bridge & polyfills are embedded into the CLI as app assets
+                  (build.rs enforces the match); ship via --component all.
+  - framework     (page-runtime, elements, react, vue, html): major.minor
+                  tracks the workspace; patch may drift via npm:<package>.
+  - tools         (skill): independent; npm:skill.
 
 With --component all (default), this updates:
   - workspace.package.version in Cargo.toml
@@ -38,11 +49,12 @@ With --component cli, this updates:
   - lingxia-cli package version only
   - root Cargo.lock package metadata when Cargo needs it
 
-With --component npm:<package>, this updates:
+With --component npm:<package> (framework/tools only), this updates:
   - that package's package.json version only. Internal @lingxia/* dependency
     ranges are left untouched: they are caret ranges (^0.x.y), so a patch
     bump stays inside the range siblings already accept. Keep major.minor
     in lockstep via --component all; this escape hatch is for patch drift.
+    bridge/polyfills/types are rejected here — release them via --component all.
 EOF
 }
 
@@ -91,10 +103,19 @@ case "$COMPONENT" in
   all|cli) ;;
   npm:*)
     NPM_PACKAGE="${COMPONENT#npm:}"
+    # Per-package bumps are only allowed for the framework tier and standalone
+    # tools. bridge/polyfills/types are base-runtime packages locked to the
+    # workspace version: bridge & polyfills are embedded into the CLI as app
+    # assets (tools/lingxia-cli/build.rs panics on a version mismatch) and must
+    # ship together with the rust workspace via `--component all`.
     case "$NPM_PACKAGE" in
-      bridge|elements|react|vue|html|page-runtime|polyfills|types|skill) ;;
+      elements|react|vue|html|page-runtime|skill) ;;
+      bridge|polyfills|types)
+        echo "Refusing npm:$NPM_PACKAGE — base-runtime package locked to the workspace version; release it with '--component all'." >&2
+        exit 2
+        ;;
       *)
-        echo "Invalid npm package: $NPM_PACKAGE (expected bridge|elements|react|vue|html|page-runtime|polyfills|types|skill)" >&2
+        echo "Invalid npm package: $NPM_PACKAGE (expected elements|react|vue|html|page-runtime|skill)" >&2
         exit 2
         ;;
     esac
@@ -162,8 +183,52 @@ else:
 PY
 }
 
+# The CLI keeps its own version line. Its major.minor mirrors the workspace
+# (a CLI release is "the CLI for base runtime X.Y"), but its patch advances
+# independently so CLI-only hotfixes never force a base bump and a base release
+# never regresses the CLI. compute_cli_target picks the next CLI [package]
+# version for `--component all`:
+#   - same major.minor as the workspace target -> current CLI patch + 1
+#   - different major.minor (new base line)     -> X.Y.0
+compute_cli_target() {
+  python3 - "$CLI_CARGO_TOML" "$1" <<'PY'
+import re, sys
+from pathlib import Path
+
+text = Path(sys.argv[1]).read_text()
+ws = sys.argv[2]
+m = re.search(
+    r'^\[package\]\n(?:(?!^\[).*\n)*?^version\s*=\s*"([^"]+)"',
+    text,
+    re.MULTILINE,
+)
+cur = m.group(1) if m else "0.0.0"
+
+def parts(v):
+    p = (v.split(".") + ["0", "0", "0"])[:3]
+    return p[0], p[1], p[2]
+
+wm, wn, _ = parts(ws)
+cm, cn, cp = parts(cur)
+if (wm, wn) == (cm, cn):
+    try:
+        patch = str(int(cp) + 1)
+    except ValueError:
+        patch = cp
+    print(f"{wm}.{wn}.{patch}")
+else:
+    print(f"{wm}.{wn}.0")
+PY
+}
+
+# update_cli_cargo [cli_package_version]
+#   - cli_package_version: version to write to the CLI [package] (defaults to
+#     $VERSION for `--component cli`; the `all` branch passes compute_cli_target).
+#   - embedded component metadata (bridge/polyfills/types/crate/sdk/...) always
+#     tracks the workspace version ($VERSION) and is only rewritten on `all`.
 update_cli_cargo() {
-  python3 - "$CLI_CARGO_TOML" "$VERSION" "$DRY_RUN" "$COMPONENT" <<'PY'
+  local cli_version="${1:-$VERSION}"
+  python3 - "$CLI_CARGO_TOML" "$VERSION" "$DRY_RUN" "$COMPONENT" "$cli_version" <<'PY'
 from pathlib import Path
 import re
 import sys
@@ -172,13 +237,14 @@ path = Path(sys.argv[1])
 version = sys.argv[2]
 dry_run = sys.argv[3] == "1"
 component = sys.argv[4]
+cli_version = sys.argv[5]
 text = path.read_text()
 
 package_re = re.compile(
     r'(^\[package\]\n(?:(?!^\[).*\n)*?)^version(?:\.workspace)?\s*=\s*(?:true|"[^"]+")',
     re.MULTILINE,
 )
-text, package_count = package_re.subn(rf'\g<1>version = "{version}"', text, count=1)
+text, package_count = package_re.subn(rf'\g<1>version = "{cli_version}"', text, count=1)
 if package_count != 1:
     raise SystemExit(f"failed to update [package] version in {path}")
 
@@ -201,15 +267,15 @@ if component == "all":
 
 if dry_run:
     print(f"would update {path}")
-    print(f"  lingxia-cli package version -> {version}")
+    print(f"  lingxia-cli package version -> {cli_version}")
     if component == "all":
-        print(f"  embedded component versions updated: {metadata_count}")
+        print(f"  embedded component versions -> {version} ({metadata_count} keys)")
 else:
     path.write_text(text)
     print(f"updated {path}")
-    print(f"  lingxia-cli package version -> {version}")
+    print(f"  lingxia-cli package version -> {cli_version}")
     if component == "all":
-        print(f"  embedded component versions updated: {metadata_count}")
+        print(f"  embedded component versions -> {version} ({metadata_count} keys)")
 PY
 }
 
@@ -325,14 +391,51 @@ update_root_lock() {
     >/dev/null
 }
 
+# npm packages locked to the workspace version (base runtime). These always
+# bump with --component all. Every other packages/* entry is framework/tools and
+# only bumps when its source changed since its last release tag — an unchanged
+# framework package keeps its version, so npm.sh sees it already published and
+# skips it instead of republishing identical content under a new number.
+BASE_NPM_PACKAGES="bridge polyfills types"
+
+npm_short_name() { # packages/lingxia-foo/package.json -> foo
+  local dir
+  dir="$(basename "$(dirname "$1")")"
+  printf '%s' "${dir#lingxia-}"
+}
+
+is_base_npm() {
+  case " $BASE_NPM_PACKAGES " in
+    *" $1 "*) return 0 ;;
+  esac
+  return 1
+}
+
+# 0 = bump (changed, or no prior release tag, or git unavailable — safe default);
+# 1 = skip (unchanged since the last lingxia-<pkg>-v* release tag).
+npm_pkg_changed() {
+  local short="$1"
+  local dir="$ROOT_DIR/packages/lingxia-$short"
+  local tag
+  tag="$(git -C "$ROOT_DIR" tag --list "lingxia-$short-v*" --sort=-v:refname 2>/dev/null | head -n1)"
+  [[ -z "$tag" ]] && return 0
+  git -C "$ROOT_DIR" diff --quiet "$tag" -- "$dir" 2>/dev/null && return 1
+  return 0
+}
+
 if [[ "$COMPONENT" == "all" ]]; then
   update_workspace_cargo
-  update_cli_cargo
+  update_cli_cargo "$(compute_cli_target "$VERSION")"
   update_example_host_cargo
   update_example_host_lock
 
   while IFS= read -r package_json; do
-    update_package_json "$package_json"
+    short="$(npm_short_name "$package_json")"
+    if is_base_npm "$short" || npm_pkg_changed "$short"; then
+      update_package_json "$package_json"
+    else
+      echo "↳ skip lingxia-$short: unchanged since last release tag (stays at current version)"
+    fi
   done < <(find "$ROOT_DIR/packages" -mindepth 2 -maxdepth 2 -name package.json | sort)
 elif [[ -n "$NPM_PACKAGE" ]]; then
   package_json="$ROOT_DIR/packages/lingxia-$NPM_PACKAGE/package.json"

@@ -11,7 +11,7 @@ import {
   LxNativeVideoConfig,
   LxMediaQuality,
   VideoEventDetail
-} from '../../media/LxNativeVideoPlayer';
+} from '../../APIs/media/player/LxNativeVideoPlayer';
 import { onCallback } from 'liblingxia.so';
 import { getComponentCallback } from '../NativeCallbackRegistry';
 

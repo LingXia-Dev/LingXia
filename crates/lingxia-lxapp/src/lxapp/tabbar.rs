@@ -14,15 +14,6 @@ pub enum TabBarPosition {
     Right,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "lowercase")]
-pub enum TabItemGroup {
-    #[serde(rename = "start")]
-    Start,
-    #[serde(rename = "end")]
-    End,
-}
-
 impl TabBarPosition {
     pub fn to_i32(&self) -> i32 {
         match self {
@@ -71,8 +62,6 @@ pub struct TabBarItem {
     pub selectedIconPath: Option<String>,
     #[serde(default)]
     pub selected: bool,
-    #[serde(default)]
-    pub group: Option<TabItemGroup>,
 
     // Runtime state (not from JSON)
     #[serde(skip)]
@@ -192,26 +181,9 @@ impl TabBar {
         self
     }
 
-    /// Set TabBar position (chainable)
-    pub fn set_position(&mut self, position: TabBarPosition) -> &mut Self {
-        self.position = position;
-        self
-    }
-
-    /// Set TabBar dimension (chainable)
-    pub fn set_dimension(&mut self, dimension: i32) -> &mut Self {
-        self.dimension = dimension;
-        self
-    }
-
     /// Get mutable reference to item by index
-    pub fn get_item_mut(&mut self, index: i32) -> Option<&mut TabBarItem> {
+    fn get_item_mut(&mut self, index: i32) -> Option<&mut TabBarItem> {
         self.list.get_mut(index as usize)
-    }
-
-    /// Get reference to item by index
-    pub fn get_item_ref(&self, index: i32) -> Option<&TabBarItem> {
-        self.list.get(index as usize)
     }
 
     /// Set item text by index (chainable)
@@ -234,30 +206,6 @@ impl TabBar {
     pub fn set_item_selected_icon(&mut self, index: i32, icon_path: &str) -> &mut Self {
         if let Some(item) = self.get_item_mut(index) {
             item.selectedIconPath = Some(icon_path.to_string());
-        }
-        self
-    }
-
-    /// Set item badge by index (chainable)
-    pub fn set_item_badge(&mut self, index: i32, badge: &str) -> &mut Self {
-        if let Some(item) = self.get_item_mut(index) {
-            item.badge = Some(badge.to_string());
-        }
-        self
-    }
-
-    /// Clear item badge by index (chainable)
-    pub fn clear_item_badge(&mut self, index: i32) -> &mut Self {
-        if let Some(item) = self.get_item_mut(index) {
-            item.badge = None;
-        }
-        self
-    }
-
-    /// Set item red dot by index (chainable)
-    pub fn set_item_red_dot(&mut self, index: i32, show: bool) -> &mut Self {
-        if let Some(item) = self.get_item_mut(index) {
-            item.has_red_dot = show;
         }
         self
     }

@@ -8,7 +8,6 @@ const GENERATED_HOST_RESOURCE_FILES: &[&str] = &[
     "ui.json",
     "bridge-runtime.js",
     "polyfills.es5.js",
-    "splash.png",
 ];
 
 pub(crate) fn clean_configured_host_assets(project_root: &Path) -> Result<Vec<PathBuf>> {

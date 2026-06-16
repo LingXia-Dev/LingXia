@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- LingXia Showcase tile: the brand vessel (凵 + pearl) on a dark tile,
+       with a jade sparkle marking it as the featured demo gallery.
+       Palette: ink #1B1F26, jade #14CF95, off-white #FAFAF7. -->
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#262B33"/>
+      <stop offset="1" stop-color="#161A20"/>
+    </linearGradient>
+  </defs>
+
+  <!-- app tile -->
+  <rect width="1024" height="1024" rx="232" fill="url(#tile)"/>
+
+  <!-- brand vessel, nudged up slightly to balance the sparkle -->
+  <g transform="translate(0 -28)">
+    <path d="M 288 430 L 288 588 Q 288 692 392 692 L 632 692 Q 736 692 736 588 L 736 430"
+          fill="none" stroke="#FAFAF7" stroke-width="96" stroke-linecap="round"/>
+    <circle cx="512" cy="410" r="102" fill="#14CF95"/>
+  </g>
+
+  <!-- showcase sparkle, upper-right -->
+  <path d="M 760 250
+           C 768 314 778 324 842 332
+           C 778 340 768 350 760 414
+           C 752 350 742 340 678 332
+           C 742 324 752 314 760 250 Z"
+        fill="#14CF95"/>
+</svg>

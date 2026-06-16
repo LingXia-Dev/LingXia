@@ -184,7 +184,19 @@ pub fn init(runtime: Platform) -> Option<String> {
             .map(|installed| installed < &bundled_home_version)
             .unwrap_or(true);
 
-    if should_reinstall_home {
+    // In dev mode the home app is served directly from its `DevPath` root (the
+    // freshly-built `dist`), not from bundled assets — so it must not be
+    // installed/reinstalled from the runner's assets (which don't contain the
+    // dev lxapp). `LxApp::new_as_home` loads it straight from the dev root.
+    let home_is_dev_sourced = matches!(
+        super::lxapp_bundle_source_for(&home_app_id),
+        Some(super::LxAppBundleSource::DevPath { .. })
+    );
+
+    if home_is_dev_sourced {
+        info!("Home lxapp is dev-sourced; serving from dev root, skipping bundled-asset install")
+            .with_appid(home_app_id.clone());
+    } else if should_reinstall_home {
         let reason = if dev_session_active {
             "dev session active; refreshing from bundled assets".to_string()
         } else {

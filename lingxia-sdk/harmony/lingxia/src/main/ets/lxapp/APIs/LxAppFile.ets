@@ -3,7 +3,7 @@ import { Want } from '@kit.AbilityKit';
 import wantConstant from '@ohos.ability.wantConstant';
 import common from '@ohos.app.ability.common';
 import picker from '@ohos.file.picker';
-import { LxApp } from '../../app/LxApp';
+import { LxApp } from '../LxApp';
 import { PdfSingleViewerOverlayManager } from './document/PdfSinglePageViewerOverlay';
 import { LocalFileChooserOverlayManager, resolveLocalFileChooserRoot } from './file/LocalFileChooserOverlay';
 import { MediaPreviewOverlayManager, MediaPreviewPageParams, MediaPreviewItem } from './media/MediaPreviewOverlay';

@@ -2,6 +2,7 @@
   "appId": "lingxia-showcase",
   "appName": "LingXia Showcase",
   "version": "1.1.1",
+  "icon": "public/showcase-icon.png",
   "security": {
     "network": {
       "trustedDomains": [
@@ -89,10 +90,6 @@
       "path": "pages/navigator/index"
     },
     {
-      "name": "input",
-      "path": "pages/input/index"
-    },
-    {
       "name": "stream",
       "path": "pages/stream/index"
     },
@@ -122,13 +119,14 @@
       {
         "text": "API",
         "pagePath": "pages/API/index",
-        "iconPath": "public/api.png"
+        "iconPath": "public/api.png",
+        "selectedIconPath": "public/api_selected.png"
       },
       {
         "text": "Components",
         "pagePath": "pages/components/index",
         "iconPath": "public/component.png",
-        "selectedIconPath": "public/component.png"
+        "selectedIconPath": "public/component_selected.png"
       },
       {
         "text": "ToDo",

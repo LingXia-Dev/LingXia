@@ -473,7 +473,7 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_getNavigationBarState<'a>(
             .unwrap_or_default();
 
         // Find the NavigationBarState class
-        let nav_bar_class = env.find_class(jni_str!("com/lingxia/lxapp/NavigationBarState"))?;
+        let nav_bar_class = env.find_class(jni_str!("com/lingxia/lxapp/chrome/NavigationBarState"))?;
 
         // Parse background color using unified function
         let bg_color_int = parse_color_to_i32(
@@ -786,7 +786,7 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_getTabBarState<'a>(
         };
 
         // Find the TabBarState class
-        let tab_bar_class = env.find_class(jni_str!("com/lingxia/lxapp/TabBarState"))?;
+        let tab_bar_class = env.find_class(jni_str!("com/lingxia/lxapp/chrome/TabBarState"))?;
 
         // Convert background color using unified function
         let background_color =
@@ -830,30 +830,30 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_getTabBarState<'a>(
         }
 
         // Create Position enum
-        let position_class = env.find_class(jni_str!("com/lingxia/lxapp/TabBarState$Position"))?;
+        let position_class = env.find_class(jni_str!("com/lingxia/lxapp/chrome/TabBarState$Position"))?;
 
         let position_enum = match position_int {
             1 => env.get_static_field(
                 position_class,
                 jni_str!("LEFT"),
-                jni_sig!("Lcom/lingxia/lxapp/TabBarState$Position;"),
+                jni_sig!("Lcom/lingxia/lxapp/chrome/TabBarState$Position;"),
             )?,
             2 => env.get_static_field(
                 position_class,
                 jni_str!("RIGHT"),
-                jni_sig!("Lcom/lingxia/lxapp/TabBarState$Position;"),
+                jni_sig!("Lcom/lingxia/lxapp/chrome/TabBarState$Position;"),
             )?,
             _ => env.get_static_field(
                 position_class,
                 jni_str!("BOTTOM"),
-                jni_sig!("Lcom/lingxia/lxapp/TabBarState$Position;"),
+                jni_sig!("Lcom/lingxia/lxapp/chrome/TabBarState$Position;"),
             )?,
         };
 
         // Create TabBarState object (all parameters non-nullable)
         let obj = env.new_object(
             tab_bar_class,
-            jni_sig!("(IIIIILcom/lingxia/lxapp/TabBarState$Position;Ljava/util/List;ZI)V"),
+            jni_sig!("(IIIIILcom/lingxia/lxapp/chrome/TabBarState$Position;Ljava/util/List;ZI)V"),
             &[
                 background_color.into(),
                 selected_color.into(),
@@ -877,16 +877,9 @@ fn create_tab_bar_item<'a>(
     item: &lxapp::tabbar::TabBarItem,
 ) -> Option<JObject<'a>> {
     // Find TabBarItem class
-    let tab_item_class = match env.find_class(jni_str!("com/lingxia/lxapp/TabBarItem")) {
+    let tab_item_class = match env.find_class(jni_str!("com/lingxia/lxapp/chrome/TabBarItem")) {
         Ok(c) => c,
         Err(_) => return None,
-    };
-
-    // Convert group enum
-    let group_int = match &item.group {
-        Some(lxapp::tabbar::TabItemGroup::Start) => 1,
-        Some(lxapp::tabbar::TabItemGroup::End) => 2,
-        None => 0,
     };
 
     // Create strings
@@ -920,14 +913,13 @@ fn create_tab_bar_item<'a>(
     env
         .new_object(
             tab_item_class,
-            jni_sig!("(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZILjava/lang/String;Z)V"),
+            jni_sig!("(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZLjava/lang/String;Z)V"),
             &[
                 (&page_path).into(),
                 (&text).into(),
                 (&icon_path).into(),
                 (&selected_icon_path).into(),
                 item.selected.into(),
-                group_int.into(),
                 (&badge_jstring).into(),
                 item.has_red_dot.into(), // Use actual red dot data from Rust
             ],

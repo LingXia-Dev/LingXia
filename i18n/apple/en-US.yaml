@@ -1,0 +1,23 @@
+# Apple-only SDK strings (iOS / macOS Localizable.strings).
+#
+# These keys feed `lingxia-sdk/apple/Sources/Resources/*.lproj/Localizable.strings`
+# only — not the Rust I18nKey enum, TS keys, Android strings.xml, or Harmony
+# string.json. Placeholder syntax is Apple-native (`%@`).
+
+# macOS desktop shell: the "ready to update" callout shown above the
+# sidebar icon after a host-app update has been staged. `%@` is the app's
+# product name.
+update:
+  ready_to_install: "%@ is ready to update!"
+  click_to_restart: "Click to restart"
+  available_title: "%@ update available"
+  click_to_install: "Click to install"
+  # Centered "update available" card (Stage 1).
+  card_title: "A new version is available"
+  card_version: "Version %@"
+  card_notes_title: "What's new"
+  card_later: "Later"
+  card_install: "Download & Install"
+  card_downloading: "Downloading… %@"
+  card_ready: "Update downloaded and ready to install."
+  card_restart: "Restart Now"

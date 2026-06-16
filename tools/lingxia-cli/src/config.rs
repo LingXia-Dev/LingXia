@@ -572,17 +572,6 @@ impl LingXiaConfig {
         }
     }
 
-    pub fn splash_path(&self) -> Option<&str> {
-        self.ui
-            .as_ref()
-            .and_then(|ui| ui.get("launch"))
-            .and_then(|launch| launch.get("splash"))
-            .and_then(|splash| splash.get("path"))
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-    }
-
     fn validate(&self) -> Result<()> {
         if let Some(app) = &self.app {
             if app.project_name.trim().is_empty() {
@@ -718,20 +707,10 @@ impl LingXiaConfig {
                 return Err(anyhow!("shell.webui.version must not be empty"));
             }
         }
-        if let Some(ui) = &self.ui {
-            if !ui.is_object() {
-                return Err(anyhow!("ui must be a JSON object"));
-            }
-            if self
-                .ui
-                .as_ref()
-                .and_then(|ui| ui.get("launch"))
-                .and_then(|launch| launch.get("splash"))
-                .is_some()
-                && self.splash_path().is_none()
-            {
-                return Err(anyhow!("ui.launch.splash.path must be a non-empty string"));
-            }
+        if let Some(ui) = &self.ui
+            && !ui.is_object()
+        {
+            return Err(anyhow!("ui must be a JSON object"));
         }
         Ok(())
     }
@@ -1387,7 +1366,12 @@ android:
         );
         assert_eq!(
             config.native_features_for_platform("windows"),
-            vec!["standard".to_string(), "terminal-runtime".to_string()]
+            vec![
+                "standard".to_string(),
+                "shell-runtime".to_string(),
+                "terminal-runtime".to_string(),
+                "webview-input".to_string(),
+            ]
         );
     }
 

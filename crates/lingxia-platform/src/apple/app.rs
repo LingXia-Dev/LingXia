@@ -6,7 +6,6 @@ use crate::traits::app_runtime::LxAppOpenMode;
 use crate::traits::media_runtime::MediaRuntime;
 use crate::traits::share::{ShareRequest, ShareResult, ShareService};
 #[cfg(target_os = "macos")]
-use rfd::{MessageButtons, MessageDialog, MessageDialogResult, MessageLevel};
 #[cfg(target_os = "macos")]
 use std::fs;
 #[cfg(target_os = "macos")]
@@ -39,6 +38,19 @@ unsafe impl Send for Platform {}
 unsafe impl Sync for Platform {}
 
 impl crate::traits::update::UpdateService for Platform {
+    fn update_download_progress(&self, progress: i32) -> Result<(), PlatformError> {
+        #[cfg(target_os = "macos")]
+        {
+            let percent = progress.clamp(0, 100) as u8;
+            ffi::update_download_progress(percent);
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            let _ = progress;
+        }
+        Ok(())
+    }
+
     fn show_update_prompt(
         &self,
         callback_id: u64,
@@ -46,39 +58,17 @@ impl crate::traits::update::UpdateService for Platform {
     ) -> Result<(), PlatformError> {
         #[cfg(target_os = "macos")]
         {
-            let prompt = UpdatePrompt::from_json(update_info_json);
-            thread::Builder::new()
-                .name("lingxia-update-prompt".to_string())
-                .spawn(move || {
-                    let callback_result = loop {
-                        let result = MessageDialog::new()
-                            .set_level(if prompt.is_force_update {
-                                MessageLevel::Warning
-                            } else {
-                                MessageLevel::Info
-                            })
-                            .set_title(&prompt.title)
-                            .set_description(&prompt.description)
-                            .set_buttons(if prompt.is_force_update {
-                                MessageButtons::Ok
-                            } else {
-                                MessageButtons::OkCancel
-                            })
-                            .show();
-
-                        match result {
-                            MessageDialogResult::Ok | MessageDialogResult::Yes => {
-                                break Ok(r#"{"confirm":true}"#.to_string());
-                            }
-                            _ if prompt.is_force_update => continue,
-                            _ => break Err(2000),
-                        }
-                    };
-                    let _ = lingxia_messaging::invoke_callback(callback_id, callback_result);
-                })
-                .map_err(|e| {
-                    PlatformError::Platform(format!("Failed to spawn update prompt thread: {}", e))
-                })?;
+            // Present the centered "update available" card. The card resolves
+            // the callback (confirm / 2000-cancel). With no shell (headless),
+            // auto-confirm so the update still proceeds unattended.
+            let info = update_info_json.unwrap_or("{}");
+            let presented = ffi::present_update_card(info, callback_id);
+            if !presented {
+                let _ = lingxia_messaging::invoke_callback(
+                    callback_id,
+                    Ok(r#"{"confirm":true}"#.to_string()),
+                );
+            }
             Ok(())
         }
         #[cfg(not(target_os = "macos"))]
@@ -333,94 +323,6 @@ impl Platform {
 }
 
 #[cfg(target_os = "macos")]
-struct UpdatePrompt {
-    title: String,
-    description: String,
-    is_force_update: bool,
-}
-
-#[cfg(target_os = "macos")]
-impl UpdatePrompt {
-    fn from_json(update_info_json: Option<&str>) -> Self {
-        let mut title = "Update Available".to_string();
-        let mut lines = vec!["A new version of the app is ready to install.".to_string()];
-        let mut is_force_update = false;
-
-        if let Some(json) = update_info_json
-            && let Ok(value) = serde_json::from_str::<serde_json::Value>(json)
-        {
-            if value
-                .get("isForceUpdate")
-                .and_then(serde_json::Value::as_bool)
-                .unwrap_or(false)
-            {
-                is_force_update = true;
-                title = "Update Required".to_string();
-                lines[0] = "This app version requires an update before you continue.".to_string();
-            }
-
-            if let Some(version) = value.get("version").and_then(serde_json::Value::as_str)
-                && !version.is_empty()
-            {
-                lines.push(format!("Version: {}", version));
-            }
-
-            if let Some(size) = value.get("size").and_then(serde_json::Value::as_u64) {
-                lines.push(format!("Package size: {}", human_size(size)));
-            }
-
-            if let Some(notes) = value
-                .get("releaseNotes")
-                .and_then(serde_json::Value::as_array)
-            {
-                let mut note_lines = notes
-                    .iter()
-                    .filter_map(serde_json::Value::as_str)
-                    .map(str::trim)
-                    .filter(|note| !note.is_empty())
-                    .take(5)
-                    .map(|note| format!("- {}", note))
-                    .collect::<Vec<_>>();
-                if !note_lines.is_empty() {
-                    lines.push("Release notes:".to_string());
-                    lines.append(&mut note_lines);
-                }
-            }
-        }
-
-        if is_force_update {
-            lines.push("Choose OK to install the required update and restart the app.".to_string());
-        } else {
-            lines.push("Choose OK to install the update and restart the app.".to_string());
-        }
-
-        Self {
-            title,
-            description: lines.join("\n"),
-            is_force_update,
-        }
-    }
-}
-
-#[cfg(target_os = "macos")]
-fn human_size(bytes: u64) -> String {
-    const UNITS: [&str; 5] = ["B", "KB", "MB", "GB", "TB"];
-
-    let mut value = bytes as f64;
-    let mut unit = 0usize;
-    while value >= 1024.0 && unit < UNITS.len() - 1 {
-        value /= 1024.0;
-        unit += 1;
-    }
-
-    if unit == 0 {
-        format!("{} {}", bytes, UNITS[unit])
-    } else {
-        format!("{:.1} {}", value, UNITS[unit])
-    }
-}
-
-#[cfg(target_os = "macos")]
 fn install_update_on_macos(platform: &Platform, package_path: &Path) -> Result<(), PlatformError> {
     if !package_path.exists() {
         return Err(PlatformError::InvalidParameter(format!(
@@ -432,9 +334,77 @@ fn install_update_on_macos(platform: &Platform, package_path: &Path) -> Result<(
     let current_app = current_macos_app_bundle_path()?;
     let prepared = prepare_macos_update_source(platform, package_path, &current_app)?;
     let helper = write_macos_update_helper(platform, &current_app, &prepared)?;
-    spawn_macos_update_helper(&helper)?;
-    request_current_process_exit(std::process::id(), platform.get_app_identifier().ok());
+    let staged = StagedMacosUpdate {
+        helper,
+        pid: std::process::id(),
+        bundle_id: platform.get_app_identifier().ok(),
+    };
+
+    // Ask the shell to show the "ready to update" callout and wait for the
+    // user to click it before swapping the bundle. If there is no shell
+    // (headless run), restart immediately — the old behavior.
+    let has_ui = ffi::notify_app_update_ready("ready");
+    if has_ui {
+        if let Ok(mut slot) = staged_macos_update_slot().lock() {
+            *slot = Some(staged);
+        }
+    } else {
+        spawn_and_exit_macos_update(staged)?;
+    }
     Ok(())
+}
+
+/// A prepared host-app update awaiting the user's confirmation click. Held in
+/// `STAGED_MACOS_UPDATE` between `install_update` (which stages it and shows
+/// the sidebar callout) and `apply_staged_macos_update` (the click handler).
+#[cfg(target_os = "macos")]
+struct StagedMacosUpdate {
+    helper: MacosUpdateHelper,
+    pid: u32,
+    bundle_id: Option<String>,
+}
+
+#[cfg(target_os = "macos")]
+fn staged_macos_update_slot() -> &'static std::sync::Mutex<Option<StagedMacosUpdate>> {
+    static SLOT: std::sync::OnceLock<std::sync::Mutex<Option<StagedMacosUpdate>>> =
+        std::sync::OnceLock::new();
+    SLOT.get_or_init(|| std::sync::Mutex::new(None))
+}
+
+#[cfg(target_os = "macos")]
+fn spawn_and_exit_macos_update(staged: StagedMacosUpdate) -> Result<(), PlatformError> {
+    spawn_macos_update_helper(&staged.helper)?;
+    request_current_process_exit(staged.pid, staged.bundle_id);
+    Ok(())
+}
+
+/// Apply the update staged by `install_update_on_macos`: launch the swap
+/// helper and quit so it can replace the running bundle. Returns `false`
+/// when nothing is staged (e.g. the click arrived twice). Invoked from the
+/// sidebar "click to restart" callout via the `UpdateRestartClick` app event.
+pub fn apply_staged_macos_update() -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        let staged = staged_macos_update_slot()
+            .lock()
+            .ok()
+            .and_then(|mut slot| slot.take());
+        match staged {
+            Some(staged) => {
+                if let Err(error) = spawn_and_exit_macos_update(staged) {
+                    log::warn!("Failed to apply staged macOS update: {error}");
+                    false
+                } else {
+                    true
+                }
+            }
+            None => false,
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        false
+    }
 }
 
 #[cfg(target_os = "macos")]
@@ -473,6 +443,19 @@ fn current_macos_app_bundle_path() -> Result<PathBuf, PlatformError> {
     )))
 }
 
+/// Returns true if the file begins with the ZIP local-file-header magic
+/// (`PK\x03\x04`). Used to recognize a downloaded update package that was
+/// saved without a `.zip` extension.
+#[cfg(target_os = "macos")]
+fn file_has_zip_magic(path: &Path) -> bool {
+    use std::io::Read as _;
+    let Ok(mut file) = fs::File::open(path) else {
+        return false;
+    };
+    let mut magic = [0u8; 4];
+    matches!(file.read_exact(&mut magic), Ok(())) && magic == [0x50, 0x4B, 0x03, 0x04]
+}
+
 #[cfg(target_os = "macos")]
 fn prepare_macos_update_source(
     platform: &Platform,
@@ -492,11 +475,15 @@ fn prepare_macos_update_source(
         });
     }
 
+    // Accept the package as a zip by extension OR by content. The downloader
+    // saves the verified package without an extension (e.g. `app_0.2.7_0.2.7`),
+    // so sniff the zip magic (`PK\x03\x04`) rather than relying on the name.
     let ext = package_path
         .extension()
         .and_then(|ext| ext.to_str())
         .map(|ext| ext.to_ascii_lowercase());
-    if !matches!(ext.as_deref(), Some("zip")) {
+    let is_zip = matches!(ext.as_deref(), Some("zip")) || file_has_zip_magic(package_path);
+    if !is_zip {
         return Err(PlatformError::InvalidParameter(format!(
             "Unsupported macOS update package {}. Expected a signed .zip or a staged .app bundle.",
             package_path.display()

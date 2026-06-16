@@ -73,6 +73,41 @@ export interface CompressVideoResult {
   type: string;
 }
 
+export interface CompressVideoProgressEvent {
+  /** Transcode progress in percent, `0`-`100`. */
+  progress: number;
+}
+
+export interface CompressVideoIteratorResult {
+  done: boolean;
+  value?: CompressVideoProgressEvent;
+}
+
+/**
+ * Handle returned by `lx.compressVideo`.
+ *
+ * Awaiting the task resolves with the final {@link CompressVideoResult}.
+ * Iterating it with `for await` yields {@link CompressVideoProgressEvent}s
+ * while the transcode runs.
+ */
+export interface CompressVideoTask
+  extends PromiseLike<CompressVideoResult>,
+    AsyncIterable<CompressVideoProgressEvent> {
+  next(): Promise<CompressVideoIteratorResult>;
+  /** Stops iteration only. Does not cancel the compression. */
+  return(): Promise<CompressVideoIteratorResult>;
+  catch<TResult = never>(
+    onrejected?: ((reason: unknown) => TResult | PromiseLike<TResult>) | null,
+  ): Promise<CompressVideoResult | TResult>;
+  finally(onfinally?: (() => void) | null): Promise<CompressVideoResult>;
+  /**
+   * Cancels the transcode and deletes any partial output.
+   * The task promise rejects with an `AbortError` (`code: 'E_ABORT'`).
+   */
+  cancel(): void;
+  wait(): Promise<CompressVideoResult>;
+}
+
 export interface GetVideoInfoOptions {
   /**
    * Video file path or `lx://` URI.
@@ -279,35 +314,68 @@ export type PreviewMediaOptions =
 
 export type PreviewMediaCloseReason = 'manual' | 'completed' | 'interrupted' | 'error';
 
+/**
+ * The item the user is (or was) looking at, handed back as the caller
+ * described it — `path` is returned verbatim, so it can be matched against
+ * the caller's own data without re-indexing an array.
+ */
+export interface PreviewMediaShownSource {
+  /** The path exactly as passed in the request. */
+  path: string;
+  /** Resolved media kind (after extension inference when `type` was omitted). */
+  type: 'image' | 'video';
+}
+
+/** One change-stream event / the `current` snapshot. */
+export interface PreviewMediaChange {
+  index: number;
+  source: PreviewMediaShownSource;
+}
+
 export interface PreviewMediaResult {
   /**
    * Why the preview session finished.
    */
   reason: PreviewMediaCloseReason;
   /**
-   * Last active item index before close.
+   * Index of the item on screen when the session closed.
    */
-  lastIndex: number;
+  index: number;
+  /**
+   * The item on screen when the session closed — "what the user just
+   * viewed/played", without mapping `index` back yourself.
+   */
+  source: PreviewMediaShownSource;
 }
 
 /**
- * Handle returned synchronously from `lx.previewMedia(...)`. Exposes two
- * independent Promises so callers can coordinate transitions:
+ * Handle returned synchronously from `lx.previewMedia(...)` — synchronous so
+ * listeners can be attached before the first event fires:
  *
  * - `presented` resolves once the first pixel of the underlying media has
  *   been composited to screen. Use this to time the hide of an overlay
  *   surface above the preview so the swap is seamless. Never rejects;
  *   resolves with no value when the first frame is up. Safe to ignore.
- * - `completed` resolves when the preview session ends (manual / auto /
- *   interrupted / error). Replaces the previous `Promise<PreviewMediaResult>`
- *   that `previewMedia` used to return directly.
+ * - `current` is a live `{ index, source }` snapshot of the item on screen,
+ *   updated as the user swipes and as the session auto-advances.
+ * - `onChange(listener)` fires for every item change. Returns an
+ *   unsubscribe function.
+ * - `completed` resolves `{ reason, index, source }` when the preview
+ *   session ends (manual / auto / interrupted / error), or rejects on abort.
  *
  * If the call was aborted before any frame was presented, `presented` still
  * resolves (with no value) once the abort takes effect — it never rejects,
  * to keep fire-and-forget usage safe.
+ *
+ * @example
+ * const preview = lx.previewMedia({ sources, startIndex: 2 });
+ * preview.onChange(({ source }) => markAsViewed(source.path));
+ * const { reason, source } = await preview.completed;
  */
 export interface PreviewMediaHandle {
   readonly presented: Promise<void>;
+  readonly current: PreviewMediaChange;
+  onChange(listener: (change: PreviewMediaChange) => void): () => void;
   readonly completed: Promise<PreviewMediaResult>;
 }
 

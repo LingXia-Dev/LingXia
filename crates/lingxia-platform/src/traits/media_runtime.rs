@@ -38,6 +38,14 @@ pub struct CompressVideoRequest {
     /// Scale ratio relative to source resolution in (0, 1].
     pub resolution_ratio: Option<f32>,
     pub output_path: PathBuf,
+    /// Stream callback fired with `{"progress": N}` (N = 0..100) while the
+    /// transcode runs. Native may fire at any cadence; consecutive
+    /// duplicates are fine (the JS side dedupes).
+    pub progress_callback_id: u64,
+    /// Oneshot callback fired when the transcode finishes:
+    /// `{"success":true,"path":...,"width":...,"height":...,"durationMs":...,
+    /// "size":...,"mimeType":...}` or `{"success":false,"error":"..."}`.
+    pub callback_id: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -103,10 +111,14 @@ pub trait MediaRuntime: Send + Sync + 'static {
 
     fn compress_image(&self, request: &CompressImageRequest) -> Result<PathBuf, PlatformError>;
 
-    fn compress_video(
-        &self,
-        request: &CompressVideoRequest,
-    ) -> Result<CompressedVideo, PlatformError>;
+    /// Start a video transcode. Returns as soon as the job is accepted;
+    /// progress and the final result arrive on the request's callbacks.
+    fn compress_video(&self, request: &CompressVideoRequest) -> Result<(), PlatformError>;
+
+    /// Cancel a running transcode by its completion `callback_id`. Native
+    /// stops the job and SHOULD delete any partial output; it MUST NOT fire
+    /// the completion callback afterwards (the caller already removed it).
+    fn cancel_compress_video(&self, callback_id: u64) -> Result<(), PlatformError>;
 
     fn get_video_info(&self, uri: &str) -> Result<VideoInfo, PlatformError>;
 

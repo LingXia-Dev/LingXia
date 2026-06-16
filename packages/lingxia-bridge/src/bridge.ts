@@ -712,8 +712,23 @@ function createChannel(
         | ((code?: string, reason?: string) => void)
         | ((error: LxBridgeError) => void),
     ) {
-      if (event === "data")
+      if (event === "data") {
         listeners.data.add(listener as (payload: unknown) => void);
+        // Flush data buffered before this listener attached. The host can send
+        // ch.data immediately after the open ack, before the consumer (e.g. a
+        // wrapped channel's onMessage) attaches its listener; without this those
+        // early events would sit in pendingData and never reach the listener.
+        if (pendingData.length > 0) {
+          const buffered = pendingData.splice(0);
+          for (const payload of buffered) {
+            try {
+              (listener as (payload: unknown) => void)(payload);
+            } catch (e) {
+              warn("Channel listener failed:", e);
+            }
+          }
+        }
+      }
       if (event === "close")
         listeners.close.add(
           listener as (code?: string, reason?: string) => void,

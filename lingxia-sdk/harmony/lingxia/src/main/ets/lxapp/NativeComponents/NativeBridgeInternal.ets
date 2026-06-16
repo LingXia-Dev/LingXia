@@ -8,7 +8,6 @@ import { NativeComponentEmbedManager } from './NativeComponentEmbed';
 import { NativeComponentNodeController } from './NativeComponentNodeController';
 import { registerVideoBuilder } from './Builders/VideoBuilder';
 import { registerPickerBuilder } from './Builders/PickerBuilder';
-import { registerInputBuilder } from './Builders/InputBuilder';
 import { registerMediaSwiperBuilder } from './Builders/MediaSwiperBuilder';
 
 // Embed managers by webTag
@@ -110,7 +109,6 @@ function registerDefaultBuilders(): void {
   defaultsRegistered = true;
   registerVideoBuilder();
   registerPickerBuilder();
-  registerInputBuilder();
   registerMediaSwiperBuilder();
 }
 

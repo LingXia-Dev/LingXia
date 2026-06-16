@@ -7,10 +7,10 @@ import {
   LxNativeVideoConfig,
   LxNativeVideoState,
   VideoErrorDetail
-} from '../../media/LxNativeVideoPlayer';
-import { VideoControlsView, VideoControlSize } from '../../media/VideoControls';
-import { LxMediaFrameCache } from '../../media/LxMediaFrameCache';
-import { resolveLxUriForFileAccess } from '../../media/LxUri';
+} from './player/LxNativeVideoPlayer';
+import { VideoControlsView, VideoControlSize } from './player/VideoControls';
+import { LxMediaFrameCache } from './player/LxMediaFrameCache';
+import { resolveLxUriForFileAccess } from './LxUri';
 import { onCallback, videoPlayerSetVolume } from 'liblingxia.so';
 
 export interface MediaPreviewItem {
@@ -32,6 +32,12 @@ export interface MediaPreviewPageParams {
    * don't need the signal — overlay then no-ops on it.
    */
   presentedCallbackId?: string;
+  /**
+   * Callback id for the JS-side change stream. Fired with `{"index": N}`
+   * whenever the displayed item changes, including the initial item.
+   * Omit / pass "0" or empty to disable.
+   */
+  changeCallbackId?: string;
   advance?: MediaPreviewAdvance;
   showIndexIndicator: boolean;
 }
@@ -50,6 +56,7 @@ export class MediaPreviewOverlayManager {
   private static overlayData: MediaPreviewPageParams | null = null;
   private static activePreviewPlayers: Set<string> = new Set();
   private static currentIndex: number = 0;
+  private static lastNotifiedIndex: number = -1;
   private static callbackSent: boolean = false;
   /**
    * Pending JS-side `presented` Promise callback id. Set in show(); cleared
@@ -69,11 +76,13 @@ export class MediaPreviewOverlayManager {
     // Defensive cleanup in case previous overlay exited abnormally.
     MediaPreviewOverlayManager.destroyActivePlayers();
     const clampedIndex = MediaPreviewOverlayManager.clampIndex(params.initialIndex ?? 0, params.items.length);
+    MediaPreviewOverlayManager.lastNotifiedIndex = -1;
     MediaPreviewOverlayManager.overlayData = {
       items: params.items,
       initialIndex: clampedIndex,
       callbackId: params.callbackId,
       presentedCallbackId: params.presentedCallbackId,
+      changeCallbackId: params.changeCallbackId,
       advance: params.advance ?? 'manual',
       showIndexIndicator: params.showIndexIndicator
     };
@@ -136,6 +145,24 @@ export class MediaPreviewOverlayManager {
   public static updateCurrentIndex(index: number): void {
     const total = MediaPreviewOverlayManager.overlayData?.items.length ?? 0;
     MediaPreviewOverlayManager.currentIndex = MediaPreviewOverlayManager.clampIndex(index, total);
+    MediaPreviewOverlayManager.notifyIndexChanged();
+  }
+
+  /**
+   * Notify the JS-side change stream that {@link currentIndex} is on screen.
+   * Dedupes consecutive fires for the same index.
+   */
+  private static notifyIndexChanged(): void {
+    const id = String(MediaPreviewOverlayManager.overlayData?.changeCallbackId ?? '').trim();
+    if (!id || id === '0') {
+      return;
+    }
+    const index = MediaPreviewOverlayManager.currentIndex;
+    if (index === MediaPreviewOverlayManager.lastNotifiedIndex) {
+      return;
+    }
+    MediaPreviewOverlayManager.lastNotifiedIndex = index;
+    onCallback(id, true, JSON.stringify({ index: index }));
   }
 
   public static registerListener(listener: () => void): void {

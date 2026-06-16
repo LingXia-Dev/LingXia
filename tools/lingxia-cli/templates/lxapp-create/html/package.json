@@ -7,7 +7,7 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "@lingxia/html": "^{{LINGXIA_BRIDGE_VERSION}}"
+    "@lingxia/html": "{{LINGXIA_FRAMEWORK_RANGE}}"
   },
   "devDependencies": {
     "@lingxia/types": "^{{LINGXIA_TYPES_VERSION}}",

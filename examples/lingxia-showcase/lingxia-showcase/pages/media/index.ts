@@ -364,6 +364,7 @@ function createState(modeKey) {
     videoCompressFps: "30",
     videoCompressResolution: "0.8",
     videoCompressBusy: false,
+    videoCompressProgress: null,
     videoCompressResult: null,
     videoCompressError: "",
     previewRotateKey: "meta",
@@ -684,7 +685,13 @@ Page({
         const ms = Date.now() - startedAt;
         console.log("[media-demo] presented:", { latencyMs: ms });
       });
+      // Live change stream: know which item the user is looking at, as
+      // they swipe / the session auto-advances.
+      const unsubscribe = handle.onChange(({ index, source }) => {
+        console.log("[media-demo] viewing:", index, source.path);
+      });
       const result = await handle.completed;
+      unsubscribe();
       this.setData({ previewSessionBusy: false, previewSessionResult: result, previewSessionError: "" });
       return result;
     } catch (error) {
@@ -919,23 +926,41 @@ Page({
       videoCompressBusy: true,
       videoCompressError: "",
       videoCompressResult: null,
+      videoCompressProgress: 0,
     });
 
+    const task = lx.compressVideo(payload);
+    this._compressVideoTask = task;
     try {
-      const result = await lx.compressVideo(payload);
-      this.setData({ videoCompressResult: result, videoCompressBusy: false });
+      for await (const { progress } of task) {
+        this.setData({ videoCompressProgress: progress });
+      }
+      const result = await task.wait();
+      this.setData({
+        videoCompressResult: result,
+        videoCompressBusy: false,
+        videoCompressProgress: null,
+      });
     } catch (error) {
+      const isAbort = error?.name === "AbortError" || error?.code === "E_ABORT";
       const message = error?.message || "compressVideo failed";
       this.setData({
-        videoCompressError: message,
+        videoCompressError: isAbort ? "" : message,
         videoCompressResult: null,
         videoCompressBusy: false,
+        videoCompressProgress: null,
       });
       lx.showToast({
-        title: message,
+        title: isAbort ? "Compression cancelled" : message,
         icon: "none",
       });
+    } finally {
+      this._compressVideoTask = null;
     }
+  },
+
+  cancelVideoCompress: function () {
+    this._compressVideoTask?.cancel();
   },
 
   previewCompressedVideo: async function () {

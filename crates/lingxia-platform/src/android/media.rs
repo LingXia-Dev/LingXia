@@ -6,7 +6,7 @@ use crate::traits::media_interaction::{
     SaveMediaRequest, ScanCodeRequest, ScanType,
 };
 use crate::traits::media_runtime::{
-    CompressImageRequest, CompressVideoRequest, CompressedVideo, ExtractVideoThumbnailRequest,
+    CompressImageRequest, CompressVideoRequest, ExtractVideoThumbnailRequest,
     ImageInfo, MediaRuntime, VideoInfo, VideoThumbnail,
 };
 use jni::objects::{JClass, JObject, JString, JValue};
@@ -99,6 +99,7 @@ fn preview_media_impl(request: PreviewMediaRequest) -> Result<(), Box<dyn std::e
     let show_index_indicator = request.show_index_indicator;
     let callback_id = request.callback_id as jlong;
     let presented_callback_id = request.presented_callback_id as jlong;
+    let change_callback_id = request.change_callback_id as jlong;
 
     with_env(|env| {
         let payload_class: &JClass = payload_class_ref.as_ref();
@@ -171,7 +172,7 @@ fn preview_media_impl(request: PreviewMediaRequest) -> Result<(), Box<dyn std::e
             class,
             jni_str!("previewMedia"),
             jni_sig!(
-                "([Lcom/lingxia/lxapp/APIs/media/PreviewMediaPayload;ILjava/lang/String;ZJJ)V"
+                "([Lcom/lingxia/lxapp/APIs/media/PreviewMediaPayload;ILjava/lang/String;ZJJJ)V"
             ),
             &[
                 JValue::Object(&payload_array),
@@ -180,6 +181,7 @@ fn preview_media_impl(request: PreviewMediaRequest) -> Result<(), Box<dyn std::e
                 JValue::Bool(jboolean::from(show_index_indicator)),
                 JValue::Long(callback_id),
                 JValue::Long(presented_callback_id),
+                JValue::Long(change_callback_id),
             ],
         )?;
 
@@ -366,12 +368,14 @@ impl MediaRuntime for Platform {
             .map_err(|e| PlatformError::Platform(format!("extract_video_thumbnail failed: {}", e)))
     }
 
-    fn compress_video(
-        &self,
-        request: &CompressVideoRequest,
-    ) -> Result<CompressedVideo, PlatformError> {
+    fn compress_video(&self, request: &CompressVideoRequest) -> Result<(), PlatformError> {
         compress_video_impl(request)
             .map_err(|e| PlatformError::Platform(format!("compress_video failed: {}", e)))
+    }
+
+    fn cancel_compress_video(&self, callback_id: u64) -> Result<(), PlatformError> {
+        cancel_compress_video_impl(callback_id)
+            .map_err(|e| PlatformError::Platform(format!("cancel_compress_video failed: {}", e)))
     }
 }
 
@@ -574,9 +578,7 @@ fn extract_video_thumbnail_impl(
     })
 }
 
-fn compress_video_impl(
-    request: &CompressVideoRequest,
-) -> Result<CompressedVideo, Box<dyn std::error::Error>> {
+fn compress_video_impl(request: &CompressVideoRequest) -> Result<(), Box<dyn std::error::Error>> {
     let media_class_ref = super::get_cached_class(super::CachedClass::LxAppMedia)?;
     let source_uri = request.source_uri.clone();
     let output_path = request.output_path.to_string_lossy().to_string();
@@ -588,6 +590,8 @@ fn compress_video_impl(
     let bitrate = request.bitrate_kbps.unwrap_or(0) as i32;
     let fps = request.fps.unwrap_or(0) as i32;
     let resolution = request.resolution_ratio.unwrap_or(0.0f32);
+    let progress_callback_id = request.progress_callback_id as i64;
+    let callback_id = request.callback_id as i64;
 
     with_env(|env| {
         let media_class: &JClass = media_class_ref.as_ref();
@@ -596,12 +600,10 @@ fn compress_video_impl(
         let j_output_path = env.new_string(&output_path)?;
         let j_quality = env.new_string(&quality)?;
 
-        let result = env.call_static_method(
+        let accepted = env.call_static_method(
             media_class,
             jni_str!("compressVideo"),
-            jni_sig!(
-                "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;IIF)Ljava/lang/String;"
-            ),
+            jni_sig!("(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;IIFJJ)Z"),
             &[
                 (&j_uri).into(),
                 (&j_output_path).into(),
@@ -609,37 +611,29 @@ fn compress_video_impl(
                 JValue::Int(bitrate),
                 JValue::Int(fps),
                 JValue::Float(resolution),
+                JValue::Long(progress_callback_id),
+                JValue::Long(callback_id),
             ],
         )?;
-        let json_obj = result.l()?;
-        if json_obj.is_null() {
-            return Err("compressVideo returned null".into());
+        if accepted.z()? {
+            Ok(())
+        } else {
+            Err("compressVideo could not start".into())
         }
-        let java_str = unsafe { JString::from_raw(env, json_obj.into_raw() as _) };
-        let json_str: String = java_str.try_to_string(env)?;
-        let parsed: AndroidCompressVideoResponse = serde_json::from_str(&json_str)?;
-        if !parsed.success {
-            return Err(parsed
-                .error
-                .unwrap_or_else(|| "compressVideo failed".to_string())
-                .into());
-        }
+    })
+}
 
-        let path = parsed.path.ok_or_else(|| {
-            std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "compressVideo missing output path",
-            )
-        })?;
-
-        Ok(CompressedVideo {
-            path: PathBuf::from(path),
-            width: parsed.width.unwrap_or(0),
-            height: parsed.height.unwrap_or(0),
-            duration_ms: parsed.duration_ms.unwrap_or(0),
-            size: parsed.size.unwrap_or(0),
-            mime_type: parsed.mime_type.filter(|s| !s.is_empty()),
-        })
+fn cancel_compress_video_impl(callback_id: u64) -> Result<(), Box<dyn std::error::Error>> {
+    let media_class_ref = super::get_cached_class(super::CachedClass::LxAppMedia)?;
+    with_env(|env| {
+        let media_class: &JClass = media_class_ref.as_ref();
+        env.call_static_method(
+            media_class,
+            jni_str!("cancelCompressVideo"),
+            jni_sig!("(J)Z"),
+            &[JValue::Long(callback_id as i64)],
+        )?;
+        Ok(())
     })
 }
 
@@ -681,16 +675,3 @@ struct AndroidVideoThumbnailResponse {
     mime_type: Option<String>,
 }
 
-#[derive(Deserialize)]
-struct AndroidCompressVideoResponse {
-    success: bool,
-    error: Option<String>,
-    path: Option<String>,
-    width: Option<u32>,
-    height: Option<u32>,
-    #[serde(rename = "durationMs")]
-    duration_ms: Option<u64>,
-    size: Option<u64>,
-    #[serde(rename = "mimeType")]
-    mime_type: Option<String>,
-}

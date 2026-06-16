@@ -1,5 +1,5 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
-import { LxApp } from '../app/LxApp';
+import { LxApp } from './LxApp';
 import { LxAppContainer } from './LxAppContainer';
 import { pauseAllComponentsByAppId } from './WebViewBridge';
 import { onLxappOpened, onLxappClosed, getTabBar, TabBarItem, TabBarState, getCurrentLxapp, CurrentLxApp, onLxappEvent, UiEventType } from 'liblingxia.so';
@@ -13,7 +13,7 @@ import { MediaPreviewOverlay, MediaPreviewOverlayManager } from './APIs/media/Me
 import { CameraCaptureOverlay, CameraCaptureOverlayManager } from './APIs/media/CameraCaptureOverlay';
 import { PdfSinglePageViewerOverlay, PdfSingleViewerOverlayManager } from './APIs/document/PdfSinglePageViewerOverlay';
 import { LocalFileChooserOverlay, LocalFileChooserOverlayManager } from './APIs/file/LocalFileChooserOverlay';
-import { BrowserOverlay, BrowserOverlayManager } from './APIs/LxAppBrowserOverlay';
+import { BrowserOverlay, BrowserOverlayManager } from './LxAppBrowserOverlay';
 
 const DOMAIN = 0xA000;
 const TAG = 'LingXia.Navigation';

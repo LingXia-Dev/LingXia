@@ -1537,14 +1537,21 @@ pub(crate) fn toggle_devtools_by_swift_ptr(swift_ptr: usize, detached: bool) -> 
     if swift_ptr == 0 {
         return false;
     }
-    let exec = move || unsafe {
-        let webview = swift_ptr as *mut AnyObject;
-        let can_set_attachment: objc2::runtime::Bool =
-            msg_send![webview, respondsToSelector: objc2::sel!(_setInspectorAttachmentView:)];
-        if detached && can_set_attachment.as_bool() {
-            let nil_view: *mut AnyObject = std::ptr::null_mut();
-            let _: () = msg_send![webview, _setInspectorAttachmentView: nil_view];
+    let open = move || unsafe {
+        if detached {
+            // Force the inspector to open in its own window instead of docked
+            // into the page (a docked inspector splits the webview and shows a
+            // black strip). Per WebKit's WebInspectorUIProxy:
+            //   shouldOpenAttached() = inspectorStartsAttached() && canAttach()
+            // `inspectorStartsAttached` is a preference that defaults to TRUE,
+            // so on a large inspected view (where canAttach() is also true) the
+            // inspector docks. It is read from NSUserDefaults when the inspector
+            // frontend is created, so seed it to false BEFORE touching
+            // `_inspector` (which creates the proxy). Deterministic — no
+            // dock-then-detach race, no flash.
+            set_inspector_starts_attached_false();
         }
+        let webview = swift_ptr as *mut AnyObject;
         let inspector: *mut AnyObject = msg_send![webview, _inspector];
         if inspector.is_null() {
             return;
@@ -1552,16 +1559,31 @@ pub(crate) fn toggle_devtools_by_swift_ptr(swift_ptr: usize, detached: bool) -> 
         let visible: objc2::runtime::Bool = msg_send![inspector, isVisible];
         if visible.as_bool() {
             let _: () = msg_send![inspector, close];
-        } else {
-            let _: () = msg_send![inspector, show];
+            return;
         }
+        let _: () = msg_send![inspector, show];
     };
     if MainThreadMarker::new().is_some() {
-        exec();
+        open();
     } else {
-        DispatchQueue::main().exec_async(exec);
+        DispatchQueue::main().exec_async(open);
     }
     true
+}
+
+/// Force the Web Inspector to open detached by seeding WebKit's
+/// `inspectorStartsAttached` preference to false for the default inspector page
+/// group. WebKit's `shouldOpenAttached()` reads this preference (default true)
+/// from `NSUserDefaults` when creating the inspector frontend; setting it false
+/// makes the inspector open in its own window regardless of the inspected
+/// view's size.
+unsafe fn set_inspector_starts_attached_false() {
+    let defaults: *mut AnyObject = msg_send![objc2::class!(NSUserDefaults), standardUserDefaults];
+    if defaults.is_null() {
+        return;
+    }
+    let key = NSString::from_str("__WebInspectorPageGroupLevel1__.WebKit2InspectorStartsAttached");
+    let _: () = msg_send![defaults, setBool: false, forKey: &*key];
 }
 
 impl std::fmt::Debug for WebViewInner {
@@ -1710,6 +1732,20 @@ impl WebViewInner {
 
                 // Register the WebView instance for future lookups
                 crate::webview::register_webview(webview.clone());
+
+                // The session may have been destroyed (tab closed/discarded)
+                // while we were building on the main thread. Re-check after
+                // registering and tear the instance back down so it never
+                // lingers as a zombie in the global registry.
+                if sender.is_destroyed() {
+                    log::info!(
+                        "WebView for {}-{} was destroyed during creation; discarding",
+                        appid,
+                        path
+                    );
+                    crate::webview::destroy_webview(&webview.webtag());
+                    return;
+                }
 
                 sender.succeed(webview);
                 log::info!("WebView created successfully for {}-{}", appid, path);

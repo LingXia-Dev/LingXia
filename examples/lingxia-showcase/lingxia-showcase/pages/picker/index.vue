@@ -26,7 +26,7 @@
           :columns="[coffees]"
           :value="coffee"
           @confirm="(value: string | string[]) => onPickerConfirm?.({ field: 'coffee', value })"
-          @scroll="(value: string | string[]) => onPickerScroll?.({ field: 'coffee', value })"
+          @column-change="(value: string | string[]) => onPickerScroll?.({ field: 'coffee', value })"
           placeholder="Select coffee"
         />
       </div>
@@ -38,7 +38,7 @@
             :columns="[continents, cities]"
             :value="location"
             @confirm="(value: string | string[]) => onPickerConfirm?.({ field: 'location', value })"
-            @scroll="(value: string | string[]) => onPickerScroll?.({ field: 'location', value })"
+            @column-change="(value: string | string[]) => onPickerScroll?.({ field: 'location', value })"
             placeholder="Select location"
             cancel-text="取消"
             cancel-text-color="#FF6B6B"
@@ -56,7 +56,7 @@
             :columns="[hours, minutes]"
             :value="multiTime"
             @confirm="(value: string | string[]) => onPickerConfirm?.({ field: 'multiTime', value })"
-            @scroll="(value: string | string[]) => onPickerScroll?.({ field: 'multiTime', value })"
+            @column-change="(value: string | string[]) => onPickerScroll?.({ field: 'multiTime', value })"
           >
             <div class="p-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg text-center">
               {{ multiTimeLabel }}
@@ -73,7 +73,7 @@
           start="09:00"
           end="18:00"
           @confirm="(value: string | string[]) => onPickerConfirm?.({ field: 'time', value })"
-          @scroll="(value: string | string[]) => onPickerScroll?.({ field: 'time', value })"
+          @column-change="(value: string | string[]) => onPickerScroll?.({ field: 'time', value })"
           placeholder="Select time"
         />
       </div>
@@ -88,7 +88,7 @@
             start="2010"
             end="2030"
             @confirm="(value: string | string[]) => onPickerConfirm?.({ field: 'year', value })"
-            @scroll="(value: string | string[]) => onPickerScroll?.({ field: 'year', value })"
+            @column-change="(value: string | string[]) => onPickerScroll?.({ field: 'year', value })"
             placeholder="Select year"
           />
         </div>
@@ -102,7 +102,7 @@
             start="2023-01"
             end="2025-12"
             @confirm="(value: string | string[]) => onPickerConfirm?.({ field: 'month', value })"
-            @scroll="(value: string | string[]) => onPickerScroll?.({ field: 'month', value })"
+            @column-change="(value: string | string[]) => onPickerScroll?.({ field: 'month', value })"
             placeholder="Select month"
           />
         </div>
@@ -116,7 +116,7 @@
             start="2024-01-01"
             end="2027-12-31"
             @confirm="(value: string | string[]) => onPickerConfirm?.({ field: 'date', value })"
-            @scroll="(value: string | string[]) => onPickerScroll?.({ field: 'date', value })"
+            @column-change="(value: string | string[]) => onPickerScroll?.({ field: 'date', value })"
             placeholder="Select a date"
           />
         </div>
@@ -128,7 +128,7 @@
             fields="range"
             :value="dateRange"
             @confirm="(value: string | string[]) => onPickerConfirm?.({ field: 'dateRange', value })"
-            @scroll="(value: string | string[]) => onPickerScroll?.({ field: 'dateRange', value })"
+            @column-change="(value: string | string[]) => onPickerScroll?.({ field: 'dateRange', value })"
             placeholder="Select date range"
           />
         </div>

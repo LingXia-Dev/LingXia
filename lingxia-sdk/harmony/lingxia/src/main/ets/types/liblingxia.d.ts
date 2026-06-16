@@ -75,7 +75,6 @@ declare module 'liblingxia.so' {
     iconPath: string;
     selectedIconPath: string;
     selected: boolean;
-    group: number;          // 0=center (default), 1=start, 2=end
     badge?: string;         // Badge text (e.g., "99+", "NEW")
     hasRedDot?: boolean;    // Show red dot indicator
   }

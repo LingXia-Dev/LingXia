@@ -222,31 +222,79 @@ extension LxAppMedia {
         )
     }
 
+    // MARK: - compressVideo (async, progress + cancel)
+
+    /// Running export sessions keyed by completion callback id, so
+    /// cancelCompressVideo can stop them. Guarded by `compressLock`.
+    nonisolated(unsafe) private static var activeCompressSessions: [UInt64: AVAssetExportSession] = [:]
+    nonisolated(unsafe) private static var compressProgressTimers: [UInt64: DispatchSourceTimer] = [:]
+    nonisolated private static let compressLock = NSLock()
+    nonisolated private static let compressQueue = DispatchQueue(label: "lingxia.compress-video", qos: .utility)
+
+    nonisolated private static func compressVideoFail(_ callbackId: UInt64, _ message: String) -> Bool {
+        let payload: [String: Any] = ["success": false, "error": message]
+        if let data = try? JSONSerialization.data(withJSONObject: payload),
+           let json = String(data: data, encoding: .utf8) {
+            _ = onCallback(callbackId, true, json)
+        }
+        return true
+    }
+
+    nonisolated private static func finishCompress(_ callbackId: UInt64) -> Bool {
+        compressLock.lock()
+        defer { compressLock.unlock() }
+        if let timer = compressProgressTimers.removeValue(forKey: callbackId) {
+            timer.cancel()
+        }
+        // nil means the job was cancelled; the completion callback must not fire.
+        return activeCompressSessions.removeValue(forKey: callbackId) != nil
+    }
+
+    nonisolated static func cancelCompressVideo(callback_id: UInt64) -> Bool {
+        compressLock.lock()
+        let session = activeCompressSessions.removeValue(forKey: callback_id)
+        if let timer = compressProgressTimers.removeValue(forKey: callback_id) {
+            timer.cancel()
+        }
+        compressLock.unlock()
+        guard let session else { return false }
+        let outputURL = session.outputURL
+        session.cancelExport()
+        if let outputURL {
+            compressQueue.asyncAfter(deadline: .now() + 0.5) {
+                _ = try? FileManager.default.removeItem(at: outputURL)
+            }
+        }
+        return true
+    }
+
     nonisolated static func compressVideo(
         source_uri: RustStr,
         quality: RustStr?,
         bitrate_kbps: UInt32,
         fps: UInt32,
         resolution_ratio: Float,
-        output_path: RustStr
-    ) -> SwiftCompressVideoResult {
+        output_path: RustStr,
+        progress_callback_id: UInt64,
+        callback_id: UInt64
+    ) -> Bool {
         let source = source_uri.toString()
         let qualityValue = quality?.toString().lowercased() ?? ""
         let outputPath = output_path.toString()
 
         guard !source.isEmpty else {
-            return compressVideoFailure("source_uri is empty")
+            return compressVideoFail(callback_id, "source_uri is empty")
         }
         guard !outputPath.isEmpty else {
-            return compressVideoFailure("output_path is empty")
+            return compressVideoFail(callback_id, "output_path is empty")
         }
         guard let sourceURL = normalizeURL(from: source), sourceURL.isFileURL else {
-            return compressVideoFailure("Invalid source URI")
+            return compressVideoFail(callback_id, "Invalid source URI")
         }
 
         let destinationURL = URL(fileURLWithPath: outputPath)
         if sourceURL.standardizedFileURL.path == destinationURL.standardizedFileURL.path {
-            return compressVideoFailure("output_path must differ from source file")
+            return compressVideoFail(callback_id, "output_path must differ from source file")
         }
         do {
             let parentDir = destinationURL.deletingLastPathComponent()
@@ -257,7 +305,7 @@ extension LxAppMedia {
                 try FileManager.default.removeItem(at: destinationURL)
             }
         } catch {
-            return compressVideoFailure("Failed to prepare output path: \(error.localizedDescription)")
+            return compressVideoFail(callback_id, "Failed to prepare output path: \(error.localizedDescription)")
         }
 
         let asset = AVURLAsset(url: sourceURL)
@@ -270,77 +318,101 @@ extension LxAppMedia {
         )
 
         guard let session = AVAssetExportSession(asset: asset, presetName: preset) else {
-            return compressVideoFailure("Failed to create AVAssetExportSession")
+            return compressVideoFail(callback_id, "Failed to create AVAssetExportSession")
         }
 
         session.outputURL = destinationURL
-        let supportedTypes = session.supportedFileTypes
-        guard supportedTypes.contains(.mp4) else {
-            return compressVideoFailure("Export session does not support MP4 output")
+        guard session.supportedFileTypes.contains(.mp4) else {
+            return compressVideoFail(callback_id, "Export session does not support MP4 output")
         }
         session.outputFileType = .mp4
         session.shouldOptimizeForNetworkUse = true
         let sourceFileSize = (try? FileManager.default.attributesOfItem(atPath: sourceURL.path)[.size] as? NSNumber)?
             .uint64Value ?? 0
 
-        let semaphore = DispatchSemaphore(value: 0)
+        compressLock.lock()
+        activeCompressSessions[callback_id] = session
+        compressLock.unlock()
+
+        if progress_callback_id != 0 {
+            let timer = DispatchSource.makeTimerSource(queue: compressQueue)
+            timer.schedule(deadline: .now() + 0.25, repeating: 0.25)
+            timer.setEventHandler { [weak session] in
+                guard let session else { return }
+                let pct = max(0, min(100, Int((session.progress * 100).rounded())))
+                _ = onCallback(progress_callback_id, true, "{\"progress\":\(pct)}")
+            }
+            compressLock.lock()
+            compressProgressTimers[callback_id] = timer
+            compressLock.unlock()
+            timer.resume()
+        }
+
         session.exportAsynchronously {
-            semaphore.signal()
-        }
-        let waitResult = semaphore.wait(timeout: .now() + 180)
-        if waitResult == .timedOut {
-            session.cancelExport()
-            _ = try? FileManager.default.removeItem(at: destinationURL)
-            return compressVideoFailure("compressVideo timed out")
-        }
-
-        guard session.status == .completed else {
-            let msg = session.error?.localizedDescription ?? "export failed with status \(session.status.rawValue)"
-            _ = try? FileManager.default.removeItem(at: destinationURL)
-            return compressVideoFailure(msg)
-        }
-
-        var finalMimeType = mimeTypeFromExportFileType(session.outputFileType)
-        var outputFileSize = (try? FileManager.default.attributesOfItem(atPath: destinationURL.path)[.size] as? NSNumber)?
-            .uint64Value ?? 0
-        if sourceFileSize > 0, outputFileSize >= sourceFileSize {
-            do {
-                if FileManager.default.fileExists(atPath: destinationURL.path) {
-                    try FileManager.default.removeItem(at: destinationURL)
-                }
-                try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
-                outputFileSize = (try? FileManager.default.attributesOfItem(atPath: destinationURL.path)[.size] as? NSNumber)?
-                    .uint64Value ?? sourceFileSize
-                finalMimeType = mimeTypeFromExtension(sourceURL.pathExtension.lowercased())
-            } catch {
+            // Returns false when cancelCompressVideo already tore the job down.
+            guard finishCompress(callback_id) else {
                 _ = try? FileManager.default.removeItem(at: destinationURL)
-                return compressVideoFailure("Failed to fallback to source video: \(error.localizedDescription)")
+                return
+            }
+
+            guard session.status == .completed else {
+                let msg = session.error?.localizedDescription ?? "export failed with status \(session.status.rawValue)"
+                _ = try? FileManager.default.removeItem(at: destinationURL)
+                _ = compressVideoFail(callback_id, msg)
+                return
+            }
+
+            var finalMimeType = mimeTypeFromExportFileType(session.outputFileType)
+            var outputFileSize = (try? FileManager.default.attributesOfItem(atPath: destinationURL.path)[.size] as? NSNumber)?
+                .uint64Value ?? 0
+            if sourceFileSize > 0, outputFileSize >= sourceFileSize {
+                do {
+                    if FileManager.default.fileExists(atPath: destinationURL.path) {
+                        try FileManager.default.removeItem(at: destinationURL)
+                    }
+                    try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
+                    outputFileSize = (try? FileManager.default.attributesOfItem(atPath: destinationURL.path)[.size] as? NSNumber)?
+                        .uint64Value ?? sourceFileSize
+                    finalMimeType = mimeTypeFromExtension(sourceURL.pathExtension.lowercased())
+                } catch {
+                    _ = try? FileManager.default.removeItem(at: destinationURL)
+                    _ = compressVideoFail(callback_id, "Failed to fallback to source video: \(error.localizedDescription)")
+                    return
+                }
+            }
+            if finalMimeType.isEmpty {
+                finalMimeType = mimeTypeFromExtension(destinationURL.pathExtension.lowercased())
+            }
+
+            let outputAsset = AVURLAsset(url: destinationURL)
+            let track = outputAsset.tracks(withMediaType: .video).first
+            let transformedSize = track?.naturalSize.applying(track?.preferredTransform ?? .identity)
+            let width = Int(abs((transformedSize?.width ?? 0).rounded()))
+            let height = Int(abs((transformedSize?.height ?? 0).rounded()))
+            let durationSeconds = CMTimeGetSeconds(outputAsset.duration)
+            let durationMs: UInt64 = (durationSeconds.isFinite && durationSeconds >= 0)
+                ? UInt64((durationSeconds * 1000.0).rounded())
+                : 0
+
+            // Final 100% so progress bars land cleanly before the result.
+            if progress_callback_id != 0 {
+                _ = onCallback(progress_callback_id, true, "{\"progress\":100}")
+            }
+            let payload: [String: Any] = [
+                "success": true,
+                "path": destinationURL.path,
+                "width": width,
+                "height": height,
+                "durationMs": durationMs,
+                "size": outputFileSize,
+                "mimeType": finalMimeType,
+            ]
+            if let data = try? JSONSerialization.data(withJSONObject: payload),
+               let json = String(data: data, encoding: .utf8) {
+                _ = onCallback(callback_id, true, json)
             }
         }
-        if finalMimeType.isEmpty {
-            finalMimeType = mimeTypeFromExtension(destinationURL.pathExtension.lowercased())
-        }
-
-        let outputAsset = AVURLAsset(url: destinationURL)
-        let track = outputAsset.tracks(withMediaType: .video).first
-        let transformedSize = track?.naturalSize.applying(track?.preferredTransform ?? .identity)
-        let width = UInt32(clamping: Int(abs((transformedSize?.width ?? 0).rounded())))
-        let height = UInt32(clamping: Int(abs((transformedSize?.height ?? 0).rounded())))
-        let durationSeconds = CMTimeGetSeconds(outputAsset.duration)
-        let durationMs: UInt64 = (durationSeconds.isFinite && durationSeconds >= 0)
-            ? UInt64((durationSeconds * 1000.0).rounded())
-            : 0
-
-        return SwiftCompressVideoResult(
-            success: true,
-            error: RustString(""),
-            path: RustString(destinationURL.path),
-            width: width,
-            height: height,
-            duration_ms: durationMs,
-            size: outputFileSize,
-            mime_type: RustString(finalMimeType)
-        )
+        return true
     }
 
     nonisolated private static func selectExportPreset(
@@ -390,19 +462,6 @@ extension LxAppMedia {
             return AVAssetExportPresetHighestQuality
         }
         return compatible.first ?? AVAssetExportPresetPassthrough
-    }
-
-    nonisolated private static func compressVideoFailure(_ message: String) -> SwiftCompressVideoResult {
-        SwiftCompressVideoResult(
-            success: false,
-            error: RustString(message),
-            path: RustString(""),
-            width: 0,
-            height: 0,
-            duration_ms: 0,
-            size: 0,
-            mime_type: RustString("")
-        )
     }
 
     /// Internal compress an image with optional quality, width, and height parameters
@@ -905,31 +964,79 @@ extension LxAppMedia {
         )
     }
 
+    // MARK: - compressVideo (async, progress + cancel)
+
+    /// Running export sessions keyed by completion callback id, so
+    /// cancelCompressVideo can stop them. Guarded by `compressLock`.
+    nonisolated(unsafe) private static var activeCompressSessions: [UInt64: AVAssetExportSession] = [:]
+    nonisolated(unsafe) private static var compressProgressTimers: [UInt64: DispatchSourceTimer] = [:]
+    nonisolated private static let compressLock = NSLock()
+    nonisolated private static let compressQueue = DispatchQueue(label: "lingxia.compress-video", qos: .utility)
+
+    nonisolated private static func compressVideoFail(_ callbackId: UInt64, _ message: String) -> Bool {
+        let payload: [String: Any] = ["success": false, "error": message]
+        if let data = try? JSONSerialization.data(withJSONObject: payload),
+           let json = String(data: data, encoding: .utf8) {
+            _ = onCallback(callbackId, true, json)
+        }
+        return true
+    }
+
+    nonisolated private static func finishCompress(_ callbackId: UInt64) -> Bool {
+        compressLock.lock()
+        defer { compressLock.unlock() }
+        if let timer = compressProgressTimers.removeValue(forKey: callbackId) {
+            timer.cancel()
+        }
+        // nil means the job was cancelled; the completion callback must not fire.
+        return activeCompressSessions.removeValue(forKey: callbackId) != nil
+    }
+
+    nonisolated static func cancelCompressVideo(callback_id: UInt64) -> Bool {
+        compressLock.lock()
+        let session = activeCompressSessions.removeValue(forKey: callback_id)
+        if let timer = compressProgressTimers.removeValue(forKey: callback_id) {
+            timer.cancel()
+        }
+        compressLock.unlock()
+        guard let session else { return false }
+        let outputURL = session.outputURL
+        session.cancelExport()
+        if let outputURL {
+            compressQueue.asyncAfter(deadline: .now() + 0.5) {
+                _ = try? FileManager.default.removeItem(at: outputURL)
+            }
+        }
+        return true
+    }
+
     nonisolated static func compressVideo(
         source_uri: RustStr,
         quality: RustStr?,
         bitrate_kbps: UInt32,
         fps: UInt32,
         resolution_ratio: Float,
-        output_path: RustStr
-    ) -> SwiftCompressVideoResult {
+        output_path: RustStr,
+        progress_callback_id: UInt64,
+        callback_id: UInt64
+    ) -> Bool {
         let source = source_uri.toString()
         let qualityValue = quality?.toString().lowercased() ?? ""
         let outputPath = output_path.toString()
 
         guard !source.isEmpty else {
-            return compressVideoFailureMac("source_uri is empty")
+            return compressVideoFail(callback_id, "source_uri is empty")
         }
         guard !outputPath.isEmpty else {
-            return compressVideoFailureMac("output_path is empty")
+            return compressVideoFail(callback_id, "output_path is empty")
         }
         guard let sourceURL = normalizeURLMac(from: source), sourceURL.isFileURL else {
-            return compressVideoFailureMac("Invalid source URI")
+            return compressVideoFail(callback_id, "Invalid source URI")
         }
 
         let destinationURL = URL(fileURLWithPath: outputPath)
         if sourceURL.standardizedFileURL.path == destinationURL.standardizedFileURL.path {
-            return compressVideoFailureMac("output_path must differ from source file")
+            return compressVideoFail(callback_id, "output_path must differ from source file")
         }
         do {
             let parentDir = destinationURL.deletingLastPathComponent()
@@ -940,7 +1047,7 @@ extension LxAppMedia {
                 try FileManager.default.removeItem(at: destinationURL)
             }
         } catch {
-            return compressVideoFailureMac("Failed to prepare output path: \(error.localizedDescription)")
+            return compressVideoFail(callback_id, "Failed to prepare output path: \(error.localizedDescription)")
         }
 
         let asset = AVURLAsset(url: sourceURL)
@@ -953,77 +1060,101 @@ extension LxAppMedia {
         )
 
         guard let session = AVAssetExportSession(asset: asset, presetName: preset) else {
-            return compressVideoFailureMac("Failed to create AVAssetExportSession")
+            return compressVideoFail(callback_id, "Failed to create AVAssetExportSession")
         }
 
         session.outputURL = destinationURL
-        let supportedTypes = session.supportedFileTypes
-        guard supportedTypes.contains(.mp4) else {
-            return compressVideoFailureMac("Export session does not support MP4 output")
+        guard session.supportedFileTypes.contains(.mp4) else {
+            return compressVideoFail(callback_id, "Export session does not support MP4 output")
         }
         session.outputFileType = .mp4
         session.shouldOptimizeForNetworkUse = true
         let sourceFileSize = (try? FileManager.default.attributesOfItem(atPath: sourceURL.path)[.size] as? NSNumber)?
             .uint64Value ?? 0
 
-        let semaphore = DispatchSemaphore(value: 0)
+        compressLock.lock()
+        activeCompressSessions[callback_id] = session
+        compressLock.unlock()
+
+        if progress_callback_id != 0 {
+            let timer = DispatchSource.makeTimerSource(queue: compressQueue)
+            timer.schedule(deadline: .now() + 0.25, repeating: 0.25)
+            timer.setEventHandler { [weak session] in
+                guard let session else { return }
+                let pct = max(0, min(100, Int((session.progress * 100).rounded())))
+                _ = onCallback(progress_callback_id, true, "{\"progress\":\(pct)}")
+            }
+            compressLock.lock()
+            compressProgressTimers[callback_id] = timer
+            compressLock.unlock()
+            timer.resume()
+        }
+
         session.exportAsynchronously {
-            semaphore.signal()
-        }
-        let waitResult = semaphore.wait(timeout: .now() + 180)
-        if waitResult == .timedOut {
-            session.cancelExport()
-            _ = try? FileManager.default.removeItem(at: destinationURL)
-            return compressVideoFailureMac("compressVideo timed out")
-        }
-
-        guard session.status == .completed else {
-            let msg = session.error?.localizedDescription ?? "export failed with status \(session.status.rawValue)"
-            _ = try? FileManager.default.removeItem(at: destinationURL)
-            return compressVideoFailureMac(msg)
-        }
-
-        var finalMimeType = mimeTypeFromExportFileTypeMac(session.outputFileType)
-        var outputFileSize = (try? FileManager.default.attributesOfItem(atPath: destinationURL.path)[.size] as? NSNumber)?
-            .uint64Value ?? 0
-        if sourceFileSize > 0, outputFileSize >= sourceFileSize {
-            do {
-                if FileManager.default.fileExists(atPath: destinationURL.path) {
-                    try FileManager.default.removeItem(at: destinationURL)
-                }
-                try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
-                outputFileSize = (try? FileManager.default.attributesOfItem(atPath: destinationURL.path)[.size] as? NSNumber)?
-                    .uint64Value ?? sourceFileSize
-                finalMimeType = inferVideoMimeTypeMac(sourceURL.pathExtension.lowercased())
-            } catch {
+            // Returns false when cancelCompressVideo already tore the job down.
+            guard finishCompress(callback_id) else {
                 _ = try? FileManager.default.removeItem(at: destinationURL)
-                return compressVideoFailureMac("Failed to fallback to source video: \(error.localizedDescription)")
+                return
+            }
+
+            guard session.status == .completed else {
+                let msg = session.error?.localizedDescription ?? "export failed with status \(session.status.rawValue)"
+                _ = try? FileManager.default.removeItem(at: destinationURL)
+                _ = compressVideoFail(callback_id, msg)
+                return
+            }
+
+            var finalMimeType = mimeTypeFromExportFileTypeMac(session.outputFileType)
+            var outputFileSize = (try? FileManager.default.attributesOfItem(atPath: destinationURL.path)[.size] as? NSNumber)?
+                .uint64Value ?? 0
+            if sourceFileSize > 0, outputFileSize >= sourceFileSize {
+                do {
+                    if FileManager.default.fileExists(atPath: destinationURL.path) {
+                        try FileManager.default.removeItem(at: destinationURL)
+                    }
+                    try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
+                    outputFileSize = (try? FileManager.default.attributesOfItem(atPath: destinationURL.path)[.size] as? NSNumber)?
+                        .uint64Value ?? sourceFileSize
+                    finalMimeType = inferVideoMimeTypeMac(sourceURL.pathExtension.lowercased())
+                } catch {
+                    _ = try? FileManager.default.removeItem(at: destinationURL)
+                    _ = compressVideoFail(callback_id, "Failed to fallback to source video: \(error.localizedDescription)")
+                    return
+                }
+            }
+            if finalMimeType.isEmpty {
+                finalMimeType = inferVideoMimeTypeMac(destinationURL.pathExtension.lowercased())
+            }
+
+            let outputAsset = AVURLAsset(url: destinationURL)
+            let track = outputAsset.tracks(withMediaType: .video).first
+            let transformedSize = track?.naturalSize.applying(track?.preferredTransform ?? .identity)
+            let width = Int(abs((transformedSize?.width ?? 0).rounded()))
+            let height = Int(abs((transformedSize?.height ?? 0).rounded()))
+            let durationSeconds = CMTimeGetSeconds(outputAsset.duration)
+            let durationMs: UInt64 = (durationSeconds.isFinite && durationSeconds >= 0)
+                ? UInt64((durationSeconds * 1000.0).rounded())
+                : 0
+
+            // Final 100% so progress bars land cleanly before the result.
+            if progress_callback_id != 0 {
+                _ = onCallback(progress_callback_id, true, "{\"progress\":100}")
+            }
+            let payload: [String: Any] = [
+                "success": true,
+                "path": destinationURL.path,
+                "width": width,
+                "height": height,
+                "durationMs": durationMs,
+                "size": outputFileSize,
+                "mimeType": finalMimeType,
+            ]
+            if let data = try? JSONSerialization.data(withJSONObject: payload),
+               let json = String(data: data, encoding: .utf8) {
+                _ = onCallback(callback_id, true, json)
             }
         }
-        if finalMimeType.isEmpty {
-            finalMimeType = inferVideoMimeTypeMac(destinationURL.pathExtension.lowercased())
-        }
-
-        let outputAsset = AVURLAsset(url: destinationURL)
-        let track = outputAsset.tracks(withMediaType: .video).first
-        let transformedSize = track?.naturalSize.applying(track?.preferredTransform ?? .identity)
-        let width = UInt32(clamping: Int(abs((transformedSize?.width ?? 0).rounded())))
-        let height = UInt32(clamping: Int(abs((transformedSize?.height ?? 0).rounded())))
-        let durationSeconds = CMTimeGetSeconds(outputAsset.duration)
-        let durationMs: UInt64 = (durationSeconds.isFinite && durationSeconds >= 0)
-            ? UInt64((durationSeconds * 1000.0).rounded())
-            : 0
-
-        return SwiftCompressVideoResult(
-            success: true,
-            error: RustString(""),
-            path: RustString(destinationURL.path),
-            width: width,
-            height: height,
-            duration_ms: durationMs,
-            size: outputFileSize,
-            mime_type: RustString(finalMimeType)
-        )
+        return true
     }
 
     nonisolated private static func normalizeURLMac(from path: String) -> URL? {
@@ -1122,19 +1253,6 @@ extension LxAppMedia {
             return AVAssetExportPresetHighestQuality
         }
         return compatible.first ?? AVAssetExportPresetPassthrough
-    }
-
-    nonisolated private static func compressVideoFailureMac(_ message: String) -> SwiftCompressVideoResult {
-        SwiftCompressVideoResult(
-            success: false,
-            error: RustString(message),
-            path: RustString(""),
-            width: 0,
-            height: 0,
-            duration_ms: 0,
-            size: 0,
-            mime_type: RustString("")
-        )
     }
 
     nonisolated private static func normalizedRotationDegreesMac(_ transform: CGAffineTransform) -> Int32? {

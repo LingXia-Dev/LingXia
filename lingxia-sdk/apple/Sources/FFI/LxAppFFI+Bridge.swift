@@ -205,6 +205,63 @@ extension LxApp {
         }
     }
 
+    /// Show the sidebar update callout. `state` is "ready" (downloaded, click
+    /// to restart) or "available" (deferred, click to install). When a card is
+    /// open in the "ready" case, the card itself shows the Restart button
+    /// instead of the sidebar callout. Returns `true` only when a macOS shell
+    /// is present — `false` tells Rust to fall back (restart when headless).
+    nonisolated static func notifyAppUpdateReady(state: RustStr) -> Bool {
+        let stateString = state.toString()
+        return executeOnMain {
+            #if os(macOS)
+            guard let runtime = LxAppMacAppUIRuntime.active else { return false }
+            if stateString == "ready", UpdateAvailableCard.handleReady() {
+                return true
+            }
+            let calloutState: UpdateCalloutState = (stateString == "available") ? .available : .ready
+            runtime.shell.presentUpdateReadyCallout(
+                appName: runtime.appConfig.productName, state: calloutState)
+            return true
+            #else
+            _ = stateString
+            return false
+            #endif
+        }
+    }
+
+    /// Push host-app download progress (0-100) into the open update card.
+    nonisolated static func updateDownloadProgress(percent: UInt8) {
+        executeOnMain {
+            #if os(macOS)
+            UpdateAvailableCard.reportProgress(Int(percent))
+            #else
+            _ = percent
+            #endif
+        }
+    }
+
+    /// Present the centered "update available" card (Stage 1). Resolves
+    /// `callback_id` via onCallback: {"confirm":true} for Download & Install,
+    /// error 2000 for "Later". Returns `false` if no shell is present (the
+    /// Rust side then auto-installs unattended).
+    nonisolated static func presentUpdateCard(info_json: RustStr, callback_id: UInt64) -> Bool {
+        let json = info_json.toString()
+        return executeOnMain {
+            #if os(macOS)
+            guard let runtime = LxAppMacAppUIRuntime.active else { return false }
+            runtime.shell.presentUpdateCard(
+                appName: runtime.appConfig.productName,
+                infoJSON: json,
+                callbackId: callback_id)
+            return true
+            #else
+            _ = json
+            _ = callback_id
+            return false
+            #endif
+        }
+    }
+
     nonisolated static func navigate(appid: RustStr, path: RustStr, animation_type: Int32) -> Bool {
         let appIdString = appid.toString()
         let pathString = path.toString()
@@ -522,4 +579,3 @@ typealias LxAppPlatform = macOSLxApp
 // Sendable Conformance for FFI Types
 extension ToastIcon: @unchecked Sendable {}
 extension ToastPosition: @unchecked Sendable {}
-extension GroupAlignment: @unchecked Sendable {}

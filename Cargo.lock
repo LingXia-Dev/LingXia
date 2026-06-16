@@ -3160,7 +3160,7 @@ dependencies = [
 
 [[package]]
 name = "lingxia-runner-lib"
-version = "0.9.0"
+version = "0.9.1"
 dependencies = [
  "lingxia",
  "lingxia-devtool",

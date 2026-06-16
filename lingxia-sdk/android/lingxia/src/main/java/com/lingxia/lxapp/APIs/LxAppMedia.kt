@@ -24,6 +24,7 @@ import androidx.media3.transformer.EditedMediaItem
 import androidx.media3.transformer.Effects
 import androidx.media3.transformer.ExportException
 import androidx.media3.transformer.ExportResult
+import androidx.media3.transformer.ProgressHolder
 import androidx.media3.transformer.TransformationRequest
 import androidx.media3.transformer.Transformer
 import androidx.media3.transformer.VideoEncoderSettings
@@ -41,8 +42,8 @@ import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
 import java.io.OutputStream
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.Executors
 import java.util.Locale
 import kotlin.math.roundToInt
 
@@ -57,7 +58,8 @@ internal object LxAppMedia {
         advance: String,
         showIndexIndicator: Boolean,
         callbackId: Long,
-        presentedCallbackId: Long
+        presentedCallbackId: Long,
+        changeCallbackId: Long
     ) {
         val activity = LxApp.getCurrentActivity()
         if (activity == null) {
@@ -90,7 +92,8 @@ internal object LxAppMedia {
                 advance = advance,
                 showIndexIndicator = showIndexIndicator,
                 callbackId = callbackId,
-                presentedCallbackId = presentedCallbackId
+                presentedCallbackId = presentedCallbackId,
+                changeCallbackId = changeCallbackId
             )
         }
     }
@@ -418,6 +421,35 @@ internal object LxAppMedia {
         }
     }
 
+    // Running transcodes keyed by completion callback id so cancelCompressVideo
+    // can stop them. A job removed from this map must not fire its completion.
+    private val activeCompressJobs = ConcurrentHashMap<Long, Transformer>()
+    private val compressExecutor = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "lingxia-compress-video")
+    }
+
+    private fun compressVideoFail(callbackId: Long, message: String): Boolean {
+        val payload = JSONObject().apply {
+            put("success", false)
+            put("error", message)
+        }
+        NativeApi.onCallback(callbackId, true, payload.toString())
+        return true
+    }
+
+    @OptIn(UnstableApi::class)
+    @JvmStatic
+    fun cancelCompressVideo(callbackId: Long): Boolean {
+        val transformer = activeCompressJobs.remove(callbackId) ?: return false
+        mainHandler.post {
+            try {
+                transformer.cancel()
+            } catch (_: Exception) {
+            }
+        }
+        return true
+    }
+
     @OptIn(UnstableApi::class)
     @JvmStatic
     fun compressVideo(
@@ -426,34 +458,19 @@ internal object LxAppMedia {
         quality: String,
         bitrateKbps: Int,
         fps: Int,
-        resolution: Float
-    ): String {
-        if (Looper.getMainLooper().thread === Thread.currentThread()) {
-            return JSONObject().apply {
-                put("success", false)
-                put("error", "compressVideo cannot run on main thread")
-            }.toString()
-        }
-
-        val context = Lingxia.applicationContext() ?: return JSONObject().apply {
-            put("success", false)
-            put("error", "Application context unavailable")
-        }.toString()
-        val sourceFile = resolveLocalFile(uri) ?: return JSONObject().apply {
-            put("success", false)
-            put("error", "Only local file paths are supported")
-        }.toString()
+        resolution: Float,
+        progressCallbackId: Long,
+        callbackId: Long
+    ): Boolean {
+        val context = Lingxia.applicationContext()
+            ?: return compressVideoFail(callbackId, "Application context unavailable")
+        val sourceFile = resolveLocalFile(uri)
+            ?: return compressVideoFail(callbackId, "Only local file paths are supported")
         if (!sourceFile.exists()) {
-            return JSONObject().apply {
-                put("success", false)
-                put("error", "Source file does not exist")
-            }.toString()
+            return compressVideoFail(callbackId, "Source file does not exist")
         }
         if (outputPath.isBlank()) {
-            return JSONObject().apply {
-                put("success", false)
-                put("error", "outputPath is empty")
-            }.toString()
+            return compressVideoFail(callbackId, "outputPath is empty")
         }
 
         val outputFile = File(outputPath)
@@ -463,17 +480,11 @@ internal object LxAppMedia {
             sourceFile.absolutePath == outputFile.absolutePath
         }
         if (samePath) {
-            return JSONObject().apply {
-                put("success", false)
-                put("error", "outputPath must differ from source file")
-            }.toString()
+            return compressVideoFail(callbackId, "outputPath must differ from source file")
         }
         outputFile.parentFile?.let { parent ->
             if (!parent.exists() && !parent.mkdirs()) {
-                return JSONObject().apply {
-                    put("success", false)
-                    put("error", "Failed to create output directory")
-                }.toString()
+                return compressVideoFail(callbackId, "Failed to create output directory")
             }
         }
         if (outputFile.exists()) {
@@ -506,11 +517,8 @@ internal object LxAppMedia {
             editedMediaItemBuilder.setEffects(Effects(emptyList(), videoEffects))
         }
         val editedMediaItem = editedMediaItemBuilder.build()
-
-        val latch = CountDownLatch(1)
-        var exportError: String? = null
-        val transformerHolder = arrayOfNulls<Transformer>(1)
         val request = requestBuilder.build()
+
         mainHandler.post {
             try {
                 val transformerBuilder = Transformer.Builder(context)
@@ -527,7 +535,14 @@ internal object LxAppMedia {
                 val transformer = transformerBuilder
                     .addListener(object : Transformer.Listener {
                         override fun onCompleted(composition: Composition, exportResult: ExportResult) {
-                            latch.countDown()
+                            // remove() returning null means the job was cancelled.
+                            if (activeCompressJobs.remove(callbackId) == null) {
+                                outputFile.delete()
+                                return
+                            }
+                            compressExecutor.execute {
+                                finishCompressVideo(sourceFile, outputFile, progressCallbackId, callbackId)
+                            }
                         }
 
                         override fun onError(
@@ -535,92 +550,92 @@ internal object LxAppMedia {
                             exportResult: ExportResult,
                             exportException: ExportException
                         ) {
-                            exportError = exportException.message ?: "compressVideo failed"
-                            latch.countDown()
+                            outputFile.delete()
+                            if (activeCompressJobs.remove(callbackId) == null) {
+                                return
+                            }
+                            compressVideoFail(callbackId, exportException.message ?: "compressVideo failed")
                         }
                     })
                     .build()
-                transformerHolder[0] = transformer
+                activeCompressJobs[callbackId] = transformer
                 transformer.start(editedMediaItem, outputFile.absolutePath)
+                if (progressCallbackId != 0L) {
+                    pollCompressProgress(transformer, progressCallbackId, callbackId)
+                }
             } catch (e: Exception) {
-                exportError = e.message ?: "compressVideo failed"
-                latch.countDown()
+                activeCompressJobs.remove(callbackId)
+                outputFile.delete()
+                compressVideoFail(callbackId, e.message ?: "compressVideo failed")
             }
         }
+        return true
+    }
 
-        return try {
-            val completed = latch.await(180, TimeUnit.SECONDS)
-            if (!completed) {
-                val transformer = transformerHolder[0]
-                if (transformer != null) {
-                    mainHandler.post { transformer.cancel() }
+    @OptIn(UnstableApi::class)
+    private fun pollCompressProgress(transformer: Transformer, progressCallbackId: Long, callbackId: Long) {
+        val holder = ProgressHolder()
+        val poller = object : Runnable {
+            override fun run() {
+                if (!activeCompressJobs.containsKey(callbackId)) {
+                    return
                 }
-                outputFile.delete()
-                return JSONObject().apply {
-                    put("success", false)
-                    put("error", "compressVideo timed out")
-                }.toString()
+                val state = transformer.getProgress(holder)
+                if (state == Transformer.PROGRESS_STATE_AVAILABLE) {
+                    val pct = holder.progress.coerceIn(0, 100)
+                    NativeApi.onCallback(progressCallbackId, true, "{\"progress\":$pct}")
+                }
+                mainHandler.postDelayed(this, 250)
             }
-            if (exportError != null) {
-                outputFile.delete()
-                return JSONObject().apply {
-                    put("success", false)
-                    put("error", exportError)
-                }.toString()
-            }
+        }
+        mainHandler.postDelayed(poller, 250)
+    }
 
-            val infoJson = getVideoInfo(outputFile.absolutePath)
-            val infoObj = JSONObject(infoJson)
-            if (!infoObj.optBoolean("success", false)) {
-                outputFile.delete()
-                return JSONObject().apply {
-                    put("success", false)
-                    put("error", infoObj.optString("error", "Failed to read compressed video info"))
-                }.toString()
-            }
-
+    private fun finishCompressVideo(
+        sourceFile: File,
+        outputFile: File,
+        progressCallbackId: Long,
+        callbackId: Long
+    ) {
+        try {
             if (sourceFile.length() > 0 && outputFile.length() >= sourceFile.length()) {
                 if (!replaceOutputWithSource(sourceFile, outputFile)) {
                     outputFile.delete()
-                    return JSONObject().apply {
-                        put("success", false)
-                        put("error", "Failed to fallback to source video")
-                    }.toString()
+                    compressVideoFail(callbackId, "Failed to fallback to source video")
+                    return
                 }
             }
 
-            val finalInfoJson = getVideoInfo(outputFile.absolutePath)
-            val finalInfoObj = JSONObject(finalInfoJson)
-            if (!finalInfoObj.optBoolean("success", false)) {
+            val infoObj = JSONObject(getVideoInfo(outputFile.absolutePath))
+            if (!infoObj.optBoolean("success", false)) {
                 outputFile.delete()
-                return JSONObject().apply {
-                    put("success", false)
-                    put("error", finalInfoObj.optString("error", "Failed to read compressed video info"))
-                }.toString()
+                compressVideoFail(
+                    callbackId,
+                    infoObj.optString("error", "Failed to read compressed video info")
+                )
+                return
             }
-            val mimeType = finalInfoObj.optString("mimeType", "").ifBlank {
+            val mimeType = infoObj.optString("mimeType", "").ifBlank {
                 inferVideoMimeType(outputFile)
             }
 
-            JSONObject().apply {
+            // Final 100% so progress bars land cleanly before the result.
+            if (progressCallbackId != 0L) {
+                NativeApi.onCallback(progressCallbackId, true, "{\"progress\":100}")
+            }
+            val payload = JSONObject().apply {
                 put("success", true)
                 put("path", outputFile.absolutePath)
-                put("width", finalInfoObj.optInt("width", 0))
-                put("height", finalInfoObj.optInt("height", 0))
-                put("durationMs", finalInfoObj.optLong("durationMs", 0L))
+                put("width", infoObj.optInt("width", 0))
+                put("height", infoObj.optInt("height", 0))
+                put("durationMs", infoObj.optLong("durationMs", 0L))
                 put("size", outputFile.length())
                 put("mimeType", mimeType)
-            }.toString()
-        } catch (e: Exception) {
-            val transformer = transformerHolder[0]
-            if (transformer != null) {
-                mainHandler.post { transformer.cancel() }
             }
+            NativeApi.onCallback(callbackId, true, payload.toString())
+        } catch (e: Exception) {
             outputFile.delete()
-            JSONObject().apply {
-                put("success", false)
-                put("error", e.message ?: "compressVideo failed")
-            }.toString()
+            compressVideoFail(callbackId, e.message ?: "compressVideo failed")
         }
     }
 

@@ -96,7 +96,7 @@ import type {
   CompressImageOptions,
   CompressImageResult,
   CompressVideoOptions,
-  CompressVideoResult,
+  CompressVideoTask,
   GetVideoInfoOptions,
   VideoInfo,
   ExtractVideoThumbnailOptions,
@@ -199,7 +199,7 @@ export interface Lx {
 
   getImageInfo(options: GetImageInfoOptions): Promise<ImageInfo>;
   compressImage(options: CompressImageOptions): Promise<CompressImageResult>;
-  compressVideo(options: CompressVideoOptions): Promise<CompressVideoResult>;
+  compressVideo(options: CompressVideoOptions): CompressVideoTask;
   getVideoInfo(options: GetVideoInfoOptions): Promise<VideoInfo>;
   extractVideoThumbnail(options: ExtractVideoThumbnailOptions): Promise<ExtractVideoThumbnailResult>;
 
@@ -214,9 +214,12 @@ export interface Lx {
    * - a sequence object for multi-item preview with `sources`, `startIndex`, and `advance`
    *
    * Returns a {@link PreviewMediaHandle} synchronously. Await `handle.completed`
-   * for the final session result (`reason`, `lastIndex`). Subscribe to
-   * `handle.presented` to learn when the first pixel hits the screen — useful
-   * for coordinating a hide of any overlay surface that was previously visible.
+   * for the final session result (`reason`, `index`, `source` — the item the
+   * user was viewing when the preview closed). Subscribe to
+   * `handle.onChange(...)` / read `handle.current` to follow the viewed item
+   * live, and to `handle.presented` to learn when the first pixel hits the
+   * screen — useful for coordinating a hide of any overlay surface that was
+   * previously visible.
    *
    * `handle.completed` rejects with a cancellation error if `signal` is aborted;
    * abort also requests the active native preview session to close immediately.

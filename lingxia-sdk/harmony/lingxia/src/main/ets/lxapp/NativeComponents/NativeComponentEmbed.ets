@@ -13,7 +13,7 @@ import {
 import { getComponentCallback, removeComponentCallback } from './NativeCallbackRegistry';
 import { onNativeComponentEvent, onCallback } from 'liblingxia.so';
 import { NativeComponentNodeController, NodeControllerParams, NodeControllerUpdateParams } from './NativeComponentNodeController';
-import { LxNativeVideoPlayer } from '../media/LxNativeVideoPlayer';
+import { LxNativeVideoPlayer } from '../APIs/media/player/LxNativeVideoPlayer';
 
 const PROPS_DATA_PREFIX: string = 'data:application/json,';
 

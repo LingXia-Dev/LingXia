@@ -75,7 +75,6 @@ pub struct TabItem {
     pub icon_path: Option<String>,
     pub selected_icon_path: Option<String>,
     pub selected: bool,
-    pub group: i32, // 0=middle/center (default), 1=start (left), 2=end (right)
     pub badge: Option<String>, // Optional - only populated by get_tab_bar_item
     pub has_red_dot: Option<bool>, // Optional - only populated by get_tab_bar_item
 }
@@ -255,11 +254,6 @@ fn get_tab_bar(appid: String) -> Option<TabBarState> {
                     icon_path: item.iconPath.clone(),
                     selected_icon_path: item.selectedIconPath.clone(),
                     selected: item.selected,
-                    group: match &item.group {
-                        Some(lxapp::tabbar::TabItemGroup::Start) => 1,
-                        Some(lxapp::tabbar::TabItemGroup::End) => 2,
-                        None => 0,
-                    },
                     badge: item.badge.clone(),
                     has_red_dot: Some(item.has_red_dot),
                 })

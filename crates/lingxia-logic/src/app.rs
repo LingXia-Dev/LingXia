@@ -4,6 +4,7 @@ use lingxia_platform::traits::app_runtime::AppRuntime;
 use lxapp::LxApp;
 use rong::{IntoJSObj, JSContext, JSFunc, JSObject, JSResult};
 
+mod screenshot;
 mod update;
 
 /// Host app base information.
@@ -58,6 +59,7 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     app.set("envVersion", env_version().as_str())?;
     app.set("getBaseInfo", JSFunc::new(ctx, get_app_base_info)?)?;
     app.set("exit", JSFunc::new(ctx, exit_app)?)?;
+    screenshot::init(ctx, &app)?;
     update::init(ctx, &app)?;
 
     Ok(())

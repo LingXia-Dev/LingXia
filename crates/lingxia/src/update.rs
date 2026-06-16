@@ -36,6 +36,8 @@ pub mod host_app {
         UpToDate,
         /// An update was downloaded and installation was handed off to the platform.
         Installed { version: String },
+        /// An update is available but the user chose "Later" at the prompt.
+        Deferred { version: String },
     }
 
     /// Progress events emitted while a [`check`] is in progress.
@@ -166,6 +168,12 @@ pub mod host_app {
                         log::info!("[lingxia] host app auto update: installed version {version}");
                         unsubscribe_auto_listener(&runtime_for_task);
                     }
+                    Ok(Outcome::Deferred { version }) => {
+                        // User chose "Later"; the shell shows a quiet reminder.
+                        // Stop polling so we don't re-prompt on every reconnect.
+                        log::info!("[lingxia] host app auto update: deferred {version}");
+                        unsubscribe_auto_listener(&runtime_for_task);
+                    }
                     Err(error) => {
                         // Keep the listener subscribed so the next connected
                         // event retries — typical weak-network recovery.
@@ -214,7 +222,43 @@ pub mod host_app {
         let Some(update) = update else {
             return Ok(Outcome::UpToDate);
         };
+        // Stage 1: present the centered "update available" card and wait for
+        // the user's decision. Headless / non-desktop auto-confirms so the
+        // update still proceeds. "Later" defers (the shell shows the quiet
+        // sidebar reminder).
+        if !present_update_prompt(&service, &update).await {
+            return Ok(Outcome::Deferred {
+                version: update.version,
+            });
+        }
         apply(service, update).await
+    }
+
+    /// Returns true to proceed with download+install, false if the user
+    /// deferred. Falls back to true (auto-install) when no prompt UI exists.
+    async fn present_update_prompt(
+        service: &HostAppUpdateService,
+        update: &UpdatePackageInfo,
+    ) -> bool {
+        let info = serde_json::json!({
+            "version": update.version,
+            "size": update.size,
+            "releaseNotes": update.release_notes,
+            "isForceUpdate": update.is_force_update,
+        })
+        .to_string();
+
+        let (callback_id, receiver) = lingxia_messaging::get_callback();
+        if let Err(error) = service.show_update_prompt(callback_id, &info) {
+            lingxia_messaging::remove_callback(callback_id);
+            log::debug!("[lingxia] update prompt unavailable, auto-installing: {error}");
+            return true;
+        }
+        match receiver.await {
+            Ok(lingxia_messaging::CallbackResult::Success(_)) => true,
+            // Error 2000 = user chose "Later".
+            Ok(lingxia_messaging::CallbackResult::Error(_)) | Err(_) => false,
+        }
     }
 
     async fn apply(
@@ -234,12 +278,17 @@ pub mod host_app {
                     downloaded_bytes,
                     total_bytes,
                     progress,
-                } => emit(Progress::Downloading {
-                    version,
-                    downloaded_bytes,
-                    total_bytes,
-                    percent: progress,
-                }),
+                } => {
+                    if let Some(percent) = progress {
+                        service.notify_download_progress(percent);
+                    }
+                    emit(Progress::Downloading {
+                        version,
+                        downloaded_bytes,
+                        total_bytes,
+                        percent: progress,
+                    });
+                }
                 AppUpdateEvent::Downloaded { version } => {
                     emit(Progress::Downloaded { version });
                 }

@@ -4,7 +4,7 @@ This guide covers how to write lxapp pages — project layout, the View + Logic 
 
 Companion pages in this skill:
 
-- [Components](./components.md) — `LxInput`, `LxTextarea`, `LxPicker`, `LxVideo`, `LxMediaSwiper`, `LxNavigator` — every attribute and event.
+- [Components](./components.md) — `LxPicker`, `LxVideo`, `LxMediaSwiper`, `LxNavigator` — every attribute and event; text input is plain `<input>` / `<textarea>`.
 - [Logic-side `lx.*` API](./lx-api.md) — full Logic API surface map + how to install `@lingxia/types` for typing.
 - [Bridge Guide](./bridge.md) — `setData`, stream, channel mechanics in depth.
 - [App Project](../app/project.md) — host app setup (`lingxia.yaml`, macOS App UI).
@@ -331,23 +331,7 @@ Use typed `PageActions` interfaces so View and Logic stay aligned as your page g
 
 ## Data Flow
 
-```
-Logic: this.setData({ count: 1 })
-  ↓
-Bridge: state replication (native → WebView)
-  ↓
-View: useLxPage().data updates → component re-renders
-```
-
-```
-View: actions.increment?.()
-  ↓
-Bridge: function call (WebView → native → Logic JS runtime)
-  ↓
-Logic: increment() runs, may call this.setData() → cycle repeats
-```
-
-State flows **one way**: Logic → View. View never mutates `data` directly. Instead, View calls Logic actions which call `setData()` to update state.
+State flows **one way**: Logic `setData()` → bridge replication → View `data` re-render. View never mutates `data` directly — it calls Logic actions, which call `setData()`. Full mechanics (JSON Patch replication, batching, stream/channel): [`./bridge.md`](./bridge.md).
 
 ---
 
@@ -365,17 +349,17 @@ As a developer, you don't need to choose between these paths. Use framework-nati
 
 ### Native component events
 
-LingXia ships native-backed components (`LxInput`, `LxTextarea`, `LxPicker`, `LxVideo`, `LxMediaSwiper`, `LxNavigator`) from `@lingxia/react`, `@lingxia/vue`, and `@lingxia/html`. Event handlers use standard framework-native syntax:
+LingXia ships native-backed components (`LxPicker`, `LxVideo`, `LxMediaSwiper`, `LxNavigator`) from `@lingxia/react`, `@lingxia/vue`, and `@lingxia/html`; text input is a plain `<input>` / `<textarea>`. Event handlers use standard framework-native syntax:
 
 **React:**
 
 ```tsx
-import { useLxPage, LxInput, LxPicker, LxVideo } from '@lingxia/react';
+import { useLxPage, LxPicker, LxVideo } from '@lingxia/react';
 
 const { actions } = useLxPage<PageData, PageActions>();
 
 // Input — handler receives unwrapped detail object
-<LxInput onInput={actions.onInputChange} />
+<input onInput={(e) => actions.onInputChange?.({ value: e.currentTarget.value })} />
 
 // Picker — handler receives resolved value directly
 <LxPicker
@@ -391,7 +375,7 @@ const { actions } = useLxPage<PageData, PageActions>();
 
 ```vue
 <script setup lang="ts">
-import { useLxPage, LxInput, LxPicker, LxVideo } from '@lingxia/vue';
+import { useLxPage, LxPicker, LxVideo } from '@lingxia/vue';
 
 const { actions } = useLxPage<PageData, PageActions>();
 </script>
@@ -412,7 +396,6 @@ The framework wrappers unwrap or reshape some events; others come through as raw
 
 | Component | Callback receives | Example |
 | --- | --- | --- |
-| `LxInput` / `LxTextarea` | Unwrapped `event.detail` object | `onInput(detail)` → `detail.value` |
 | `LxPicker` | Resolved value directly (on `onConfirm`) | `onConfirm(value)` → `value` is `string \| string[]` |
 | `LxVideo` | Raw DOM Event | `onPlaying(event)` → `event.detail` |
 | `LxMediaSwiper` | Raw `CustomEvent` with typed `detail` | `onChange(e)` → `e.detail.index` |
@@ -671,6 +654,14 @@ Full option shapes: [`./lx-api.md#page-chrome--ui`](./lx-api.md#page-chrome--ui)
 - Treating the tab bar as a host UI surface — it is an lxapp-internal feature declared in `lxapp.json`, orthogonal to `lingxia.yaml.ui` surfaces/activators.
 
 ---
+
+## Pre-ship checklist
+
+- [ ] `lxapp.json` lists every page; `appId` set; `version` bumped if shipping.
+- [ ] `security.network.trustedDomains` covers every external host (exact host names, no scheme/port/path).
+- [ ] One view-framework file per page.
+- [ ] Public actions typed in `PageActions`; private helpers prefixed `_`.
+- [ ] `lingxia dev` runs cleanly.
 
 ## Tips
 

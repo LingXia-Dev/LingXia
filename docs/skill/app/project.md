@@ -329,7 +329,6 @@ ui:
 |---|---|---:|---|
 | `initialSurface` | string | Yes | Surface opened first. Must reference `ui.surfaces[].id`. |
 | `openOnLaunch` | bool | No | Defaults to open-on-launch behavior. Set `false` for menu-bar style apps. |
-| `splash.path` | string | No | Optional PNG source path copied into native resources as `splash.png`; macOS App UI does not present it yet. |
 
 For menu-bar apps, use `openOnLaunch: false` and add a `menuBarItem` activator that toggles a panel anchored to the activator.
 
@@ -690,7 +689,6 @@ During `lingxia build`, the CLI generates platform resources:
 - `app.json`: runtime app metadata.
 - `ui.json`: macOS App UI structure.
 - `icons/*.pdf`: generated macOS native chrome icons.
-- `splash.png`: optional copied splash image when `ui.launch.splash.path` is configured.
 - bundled lxapp directories from `resources.bundles`.
 - bundled shell webui directory when `features.shell: true`.
 - `bridge-runtime.js`.
@@ -745,11 +743,19 @@ If `--skip-native` is used, SwiftPM links an existing Rust static library. That 
 
 ---
 
+## Pre-ship checklist
+
+- [ ] `lingxia.yaml` validates: every required platform section present; `homeAppId` resolvable to a `resources.bundles[].appId`.
+- [ ] `features.appService` matches the embedded lxapp's logic mode.
+- [ ] All native routes return `lingxia::Result<T>` with `Serialize` outputs.
+- [ ] `HostAddon` registers every route and extension; FFI exports present for each target platform.
+- [ ] `lingxia doctor` passes; `lingxia dev` boots on a real/simulated device.
+
 ## Out Of Scope / Not Implemented In macOS App UI
 
 This page intentionally does not define product behavior for:
 
-- splash presentation
+- splash / launch screens — LingXia does not provide them; host apps own their launch UX
 - multiple root windows
 - embedded native host surfaces
 - attach panels nested under other panels

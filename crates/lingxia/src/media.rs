@@ -270,8 +270,30 @@ pub fn extract_video_thumbnail(input: ExtractVideoThumbnail) -> crate::Result<Vi
     })
 }
 
+/// Completion payload sent by the platform natives.
+#[derive(Deserialize)]
+struct NativeCompressVideoResult {
+    success: bool,
+    error: Option<String>,
+    path: Option<String>,
+    width: Option<u32>,
+    height: Option<u32>,
+    #[serde(rename = "durationMs")]
+    duration_ms: Option<u64>,
+    size: Option<u64>,
+    #[serde(rename = "mimeType")]
+    mime_type: Option<String>,
+}
+
 /// Compresses a video to `output_path` and returns its resulting metadata.
+///
+/// Blocks the calling thread until the transcode finishes.
 pub fn compress_video(input: CompressVideo) -> crate::Result<CompressedVideo> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    let callback_id = lingxia_messaging::register_handler(move |result| {
+        let _ = tx.send(result);
+    });
+
     let request = PlatformCompressVideoRequest {
         source_uri: input.source_path,
         quality: input.quality.map(Into::into),
@@ -279,16 +301,43 @@ pub fn compress_video(input: CompressVideo) -> crate::Result<CompressedVideo> {
         fps: input.fps,
         resolution_ratio: input.resolution_ratio,
         output_path: PathBuf::from(input.output_path),
+        progress_callback_id: 0,
+        callback_id,
     };
-    let result = crate::runtime::platform()?
-        .compress_video(&request)
-        .map_err(crate::Error::from)?;
+
+    let platform = crate::runtime::platform()?;
+    if let Err(err) = platform.compress_video(&request) {
+        lingxia_messaging::remove_callback(callback_id);
+        return Err(crate::Error::from(err));
+    }
+
+    let completion = rx.recv().map_err(|_| {
+        crate::Error::internal("compressVideo completion channel closed unexpectedly")
+    })?;
+    let json = match completion {
+        lingxia_messaging::CallbackResult::Success(json) => json,
+        lingxia_messaging::CallbackResult::Error(code) => {
+            return Err(crate::Error::internal(format!(
+                "compressVideo failed with code {code}"
+            )));
+        }
+    };
+    let parsed: NativeCompressVideoResult = serde_json::from_str(&json).map_err(|err| {
+        crate::Error::internal(format!("compressVideo returned invalid payload: {err}"))
+    })?;
+    if !parsed.success {
+        return Err(crate::Error::internal(
+            parsed
+                .error
+                .unwrap_or_else(|| "compressVideo failed".to_string()),
+        ));
+    }
     Ok(CompressedVideo {
-        path: result.path,
-        width: result.width,
-        height: result.height,
-        duration_ms: result.duration_ms,
-        size: result.size,
-        mime_type: result.mime_type,
+        path: PathBuf::from(parsed.path.unwrap_or_default()),
+        width: parsed.width.unwrap_or(0),
+        height: parsed.height.unwrap_or(0),
+        duration_ms: parsed.duration_ms.unwrap_or(0),
+        size: parsed.size.unwrap_or(0),
+        mime_type: parsed.mime_type.filter(|m| !m.is_empty()),
     })
 }

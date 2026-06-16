@@ -8,7 +8,7 @@ import { image } from '@kit.ImageKit';
 import { systemShare } from '@kit.ShareKit';
 import util from '@ohos.util';
 import { onCallback } from 'liblingxia.so';
-import { LxApp } from '../../app/LxApp';
+import { LxApp } from '../LxApp';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.Share';

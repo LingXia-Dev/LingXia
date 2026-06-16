@@ -31,6 +31,8 @@ mod bridge {
         pub version: String,
         pub release_type: String,
         pub cache_dir: String,
+        // Absolute path to the lxapp icon, or empty (host uses default mark).
+        pub icon: String,
     }
 
     // NavigationBar state for Swift
@@ -58,13 +60,6 @@ mod bridge {
         pub selected_index: i32,
     }
 
-    // Group alignment types
-    pub enum GroupAlignment {
-        Center, // 0=middle/center (default)
-        Start,  // 1=start (top/left)
-        End,    // 2=end (bottom/right)
-    }
-
     // TabBar item for Swift
     #[swift_bridge(swift_repr = "struct")]
     pub struct TabBarItem {
@@ -73,7 +68,6 @@ mod bridge {
         pub icon_path: String,
         pub selected_icon_path: String,
         pub selected: bool,
-        pub group: GroupAlignment,
         pub badge: String,
         pub has_red_dot: bool,
     }
@@ -98,6 +92,10 @@ mod bridge {
     pub enum AppUiEventType {
         /// Panel icon clicked in the host app UI
         PanelIconClick,
+        /// "Click to restart" callout clicked: apply the staged host-app update
+        UpdateRestartClick,
+        /// "Click to install" callout clicked: re-open the host-app update flow
+        UpdateInstallClick,
     }
 
     // Current LxApp info from Rust stack
@@ -207,6 +205,18 @@ mod bridge {
 
         #[swift_bridge(swift_name = "browserTabClose")]
         fn browser_tab_close(tab_id: &str) -> bool;
+
+        // Discard a background tab's WebView to free memory; keeps the entry.
+        #[swift_bridge(swift_name = "browserTabDiscard")]
+        fn browser_tab_discard(tab_id: &str) -> bool;
+
+        // Recreate a discarded tab's WebView, reload its URL, and activate it.
+        #[swift_bridge(swift_name = "browserTabReactivate")]
+        fn browser_tab_reactivate(tab_id: &str) -> bool;
+
+        // Sync the Rust-side active tab when switching to an already-live tab.
+        #[swift_bridge(swift_name = "browserTabActivate")]
+        fn browser_tab_activate(tab_id: &str);
 
         #[swift_bridge(swift_name = "getBuiltinBrowserAppId")]
         fn get_builtin_browser_app_id() -> String;
@@ -489,6 +499,19 @@ pub fn on_app_event(event_type: self::bridge::AppUiEventType, data: &str) -> boo
                 false
             }
         }
+        self::bridge::AppUiEventType::UpdateRestartClick => {
+            // The sidebar "ready to update" callout was clicked: swap the
+            // staged bundle and quit so it relaunches into the new version.
+            lingxia_platform::apply_staged_macos_update()
+        }
+        self::bridge::AppUiEventType::UpdateInstallClick => {
+            // The "update available" reminder was clicked: re-run the update
+            // flow, which re-presents the card and downloads on confirm.
+            crate::task::spawn(async {
+                let _ = crate::update::host_app::check().await;
+            });
+            true
+        }
     }
 }
 
@@ -542,6 +565,24 @@ pub fn open_browser_tab_with_id(
 pub fn browser_tab_close(tab_id: &str) -> bool {
     ffi_catch_unwind!("browser_tab_close", false, || {
         crate::browser::close(tab_id).is_ok()
+    })
+}
+
+pub fn browser_tab_discard(tab_id: &str) -> bool {
+    ffi_catch_unwind!("browser_tab_discard", false, || {
+        crate::browser::discard(tab_id).is_ok()
+    })
+}
+
+pub fn browser_tab_reactivate(tab_id: &str) -> bool {
+    ffi_catch_unwind!("browser_tab_reactivate", false, || {
+        crate::browser::reactivate(tab_id).is_ok()
+    })
+}
+
+pub fn browser_tab_activate(tab_id: &str) {
+    ffi_catch_unwind!("browser_tab_activate", (), || {
+        crate::browser::mark_active(tab_id)
     })
 }
 
@@ -848,6 +889,7 @@ pub fn get_lxapp_info(appid: &str) -> self::bridge::LxAppInfo {
             version: lxapp_info.version,
             release_type: lxapp_info.release_type,
             cache_dir: lxapp.user_cache_dir.to_string_lossy().into_owned(),
+            icon: lxapp_info.icon,
         }
     } else {
         self::bridge::LxAppInfo {
@@ -855,6 +897,7 @@ pub fn get_lxapp_info(appid: &str) -> self::bridge::LxAppInfo {
             version: String::new(),
             release_type: String::new(),
             cache_dir: String::new(),
+            icon: String::new(),
         }
     }
 }
@@ -937,11 +980,6 @@ pub fn get_tab_bar_item(appid: &str, index: i32) -> Option<self::bridge::TabBarI
                 icon_path: item.iconPath.clone().unwrap_or_default(),
                 selected_icon_path: item.selectedIconPath.clone().unwrap_or_default(),
                 selected: item.selected,
-                group: match &item.group {
-                    Some(lxapp::tabbar::TabItemGroup::Start) => self::bridge::GroupAlignment::Start,
-                    Some(lxapp::tabbar::TabItemGroup::End) => self::bridge::GroupAlignment::End,
-                    None => self::bridge::GroupAlignment::Center,
-                },
                 badge: item.badge.clone().unwrap_or_default(),
                 has_red_dot: item.has_red_dot,
             })

@@ -9,7 +9,7 @@ use crate::traits::media_interaction::{
     SaveMediaRequest, ScanCodeRequest,
 };
 use crate::traits::media_runtime::{
-    CompressImageRequest, CompressVideoRequest, CompressedVideo, ExtractVideoThumbnailRequest,
+    CompressImageRequest, CompressVideoRequest, ExtractVideoThumbnailRequest,
     ImageInfo, MediaRuntime, VideoInfo, VideoThumbnail,
 };
 use serde::Serialize;
@@ -79,6 +79,7 @@ impl MediaInteraction for Platform {
             &items_json,
             request.callback_id,
             request.presented_callback_id,
+            request.change_callback_id,
         ) {
             Ok(())
         } else {
@@ -321,10 +322,7 @@ impl MediaRuntime for Platform {
         }
     }
 
-    fn compress_video(
-        &self,
-        request: &CompressVideoRequest,
-    ) -> Result<CompressedVideo, PlatformError> {
+    fn compress_video(&self, request: &CompressVideoRequest) -> Result<(), PlatformError> {
         #[cfg(any(target_os = "ios", target_os = "macos"))]
         {
             let output_path = request.output_path.to_string_lossy();
@@ -334,33 +332,35 @@ impl MediaRuntime for Platform {
                 crate::traits::media_runtime::VideoCompressQuality::High => "high",
             });
 
-            let result = super::ffi::compress_video(
+            if super::ffi::compress_video(
                 &request.source_uri,
                 quality,
                 request.bitrate_kbps.unwrap_or(0),
                 request.fps.unwrap_or(0),
                 request.resolution_ratio.unwrap_or(0.0f32),
                 output_path.as_ref(),
-            );
-            if !result.success || result.path.is_empty() {
-                return Err(PlatformError::Platform(if result.error.is_empty() {
-                    "compress_video failed".to_string()
-                } else {
-                    result.error
-                }));
+                request.progress_callback_id,
+                request.callback_id,
+            ) {
+                Ok(())
+            } else {
+                Err(PlatformError::Platform(
+                    "compress_video failed to start".to_string(),
+                ))
             }
-            Ok(CompressedVideo {
-                path: PathBuf::from(result.path),
-                width: result.width,
-                height: result.height,
-                duration_ms: result.duration_ms,
-                size: result.size,
-                mime_type: if result.mime_type.is_empty() {
-                    None
-                } else {
-                    Some(result.mime_type)
-                },
-            })
+        }
+    }
+
+    fn cancel_compress_video(&self, callback_id: u64) -> Result<(), PlatformError> {
+        #[cfg(any(target_os = "ios", target_os = "macos"))]
+        {
+            if super::ffi::cancel_compress_video(callback_id) {
+                Ok(())
+            } else {
+                Err(PlatformError::Platform(
+                    "cancel_compress_video: no running job".to_string(),
+                ))
+            }
         }
     }
 }

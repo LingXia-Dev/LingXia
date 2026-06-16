@@ -9,6 +9,7 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use windows::Win32::Media::MediaFoundation::{
     IMFMediaType, IMFSample, IMFSinkWriter, IMFSourceReader,
@@ -28,6 +29,13 @@ use windows::core::PCWSTR;
 
 use crate::error::PlatformError;
 use crate::traits::media_runtime::{CompressVideoRequest, CompressedVideo, VideoCompressQuality};
+
+/// Cooperative controls for a running transcode: a cancellation flag polled
+/// during the sample pump, and a progress sink invoked with 0..=100 percent.
+pub(super) struct CompressControl<'a> {
+    pub cancel: &'a AtomicBool,
+    pub on_progress: &'a (dyn Fn(u8) + Send + Sync),
+}
 
 /// Bits per encoded pixel for each preset; multiplied by `width * height * fps`
 /// to derive a target average bitrate that scales with the output geometry.
@@ -406,6 +414,7 @@ fn build_aac_type(pcm: &IMFMediaType) -> Result<IMFMediaType, PlatformError> {
 }
 
 /// Pump samples from reader to sink until every selected stream hits EOS.
+#[allow(clippy::too_many_arguments)]
 fn pump_samples(
     reader: &IMFSourceReader,
     sink: &IMFSinkWriter,
@@ -414,12 +423,24 @@ fn pump_samples(
     audio_index: Option<u32>,
     audio_sink: Option<u32>,
     drop_interval_100ns: Option<i64>,
+    total_duration_ms: u64,
+    ctrl: &CompressControl,
 ) -> Result<(), PlatformError> {
     let total_streams = 1 + audio_index.is_some() as u32;
     let mut ended = 0u32;
     let mut last_kept_video: Option<i64> = None;
+    // Source/sink durations are in 100ns units; derive a denominator for the
+    // 0..=100 progress estimate (0 disables reporting for unknown durations).
+    let total_100ns: i64 = total_duration_ms.saturating_mul(10_000) as i64;
+    let mut last_progress: Option<u8> = None;
 
     loop {
+        // Cooperative cancellation: stop before reading the next sample so a
+        // cancel during a long transcode takes effect promptly.
+        if ctrl.cancel.load(Ordering::Relaxed) {
+            return Err(PlatformError::Platform("compress_video cancelled".to_string()));
+        }
+
         let mut actual_index = 0u32;
         let mut flags = 0u32;
         let mut timestamp = 0i64;
@@ -454,6 +475,13 @@ fn pump_samples(
                         })?;
                     }
                 }
+                if total_100ns > 0 && timestamp > 0 {
+                    let pct = ((timestamp as i128 * 100) / total_100ns as i128).clamp(0, 100) as u8;
+                    if last_progress != Some(pct) {
+                        last_progress = Some(pct);
+                        (ctrl.on_progress)(pct);
+                    }
+                }
             } else if Some(actual_index) == audio_index {
                 if let Some(audio_sink) = audio_sink {
                     unsafe {
@@ -479,6 +507,7 @@ fn pump_samples(
 fn transcode(
     request: &CompressVideoRequest,
     source: &Path,
+    ctrl: &CompressControl,
 ) -> Result<CompressedVideo, PlatformError> {
     let reader = create_reader(source)?;
     let total_duration_ms = duration_ms(&reader);
@@ -564,6 +593,8 @@ fn transcode(
         audio_index,
         audio_sink,
         drop_interval,
+        total_duration_ms,
+        ctrl,
     )?;
 
     unsafe {
@@ -613,6 +644,7 @@ fn copy_source(
 pub(super) fn compress_video(
     request: &CompressVideoRequest,
     source: &Path,
+    ctrl: &CompressControl,
 ) -> Result<CompressedVideo, PlatformError> {
     if paths_refer_to_same_file(source, &request.output_path) {
         return Err(PlatformError::InvalidParameter(
@@ -626,7 +658,7 @@ pub(super) fn compress_video(
         })?;
     }
 
-    match transcode(request, source) {
+    match transcode(request, source, ctrl) {
         Ok(result) => {
             let src_size = fs::metadata(source).map(|m| m.len()).unwrap_or(0);
             // A re-encode that did not shrink the file is worse than the source —
@@ -642,6 +674,9 @@ pub(super) fn compress_video(
                 Ok(result)
             }
         }
+        // A cancelled transcode must not fall back to copying the source: the
+        // caller is tearing the job down and will discard the output.
+        Err(err) if ctrl.cancel.load(Ordering::Relaxed) => Err(err),
         Err(err) => {
             log::warn!("compress_video transcode failed: {err}; falling back to source copy");
             copy_source(request, source)

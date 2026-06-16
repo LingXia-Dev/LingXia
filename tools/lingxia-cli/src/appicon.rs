@@ -434,7 +434,7 @@ pub fn generate_harmony_icons(
   }
 }"#;
 
-    // Create startIcon: foreground composited onto background (used for start window splash)
+    // Create startIcon: foreground composited onto background (HarmonyOS start window)
     let start_icon_size: u32 = 256;
     let mut start_icon = background.clone();
     imageops::overlay(&mut start_icon, &foreground, 0, 0);
@@ -459,7 +459,7 @@ pub fn generate_harmony_icons(
         fs::write(media_dir.join("layered_image.json"), layered_image_json)?;
         count += 1;
 
-        // Also generate startIcon.png for the start window (splash screen)
+        // Also generate startIcon.png for the HarmonyOS start window
         start_icon_img.save_with_format(media_dir.join("startIcon.png"), ImageFormat::Png)?;
         count += 1;
     }

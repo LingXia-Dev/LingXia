@@ -105,6 +105,11 @@ export struct LingXiaWebView {
   @Builder
   private buildManagedWeb(): void {
     Web({ src: '', controller: this.controller })
+      // Form controls are web-rendered (lx-input is a real <input> in the
+      // page); RESIZE_CONTENT lets ArkWeb shrink the page and scroll the
+      // focused editable above the IME — engine-owned keyboard avoidance,
+      // replacing the removed native-embed input's manual position sync.
+      .keyboardAvoidMode(WebKeyboardAvoidMode.RESIZE_CONTENT)
       .onLoadIntercept((event) => {
         if (event && event.data) {
           const url = event.data.getRequestUrl();

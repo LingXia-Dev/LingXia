@@ -83,6 +83,10 @@ internal class MediaPreviewFragment : Fragment() {
      * first-frame). Zero once signaled, to make the fire idempotent.
      */
     private var presentedCallbackId: Long = 0L
+    /// JS-side change-stream callback id; fired with {"index": N} whenever the
+    /// displayed item changes (including the initial item). Zero disables.
+    private var changeCallbackId: Long = 0L
+    private var lastNotifiedIndex: Int = -1
     private var currentIndex: Int = 0
     private var currentPagerPosition: Int = 0
     private var advance: PreviewAdvance = PreviewAdvance.MANUAL
@@ -174,6 +178,7 @@ internal class MediaPreviewFragment : Fragment() {
         previewItems = readPreviewItems()
         callbackId = arguments?.getLong(ARG_CALLBACK_ID, 0L) ?: 0L
         presentedCallbackId = arguments?.getLong(ARG_PRESENTED_CALLBACK_ID, 0L) ?: 0L
+        changeCallbackId = arguments?.getLong(ARG_CHANGE_CALLBACK_ID, 0L) ?: 0L
         advance = PreviewAdvance.fromRaw(arguments?.getString(ARG_ADVANCE))
         currentIndex = clampIndex(arguments?.getInt(ARG_START_INDEX, 0) ?: 0)
         currentPagerPosition = initialPagerPosition(currentIndex)
@@ -469,10 +474,18 @@ internal class MediaPreviewFragment : Fragment() {
         }
     }
 
+    /** Notify the JS-side change stream that [currentIndex] is on screen. */
+    private fun notifyIndexChanged() {
+        if (changeCallbackId == 0L || currentIndex == lastNotifiedIndex) return
+        lastNotifiedIndex = currentIndex
+        NativeApi.onCallback(changeCallbackId, true, "{\"index\":$currentIndex}")
+    }
+
     private fun handlePageSelected(position: Int) {
         clearAutoTimer()
         currentPagerPosition = position
         currentIndex = realIndexFor(position)
+        notifyIndexChanged()
         logPlaybackState("page_selected")
         updateIndicator(currentIndex)
         updateCloseButtonVisibility()
@@ -1003,6 +1016,9 @@ internal class MediaPreviewFragment : Fragment() {
         cancelPendingSwitchPrefetch()
         currentPagerPosition = targetPagerPosition
         currentIndex = targetIndex
+        // In-place image advance bypasses ViewPager paging (no
+        // handlePageSelected), so the change stream must be notified here.
+        notifyIndexChanged()
         updateIndicator(currentIndex)
         scheduleCurrentItemBehavior("inplace_image")
         prefetchUpcomingVisual(currentPagerPosition)
@@ -1525,6 +1541,7 @@ internal class MediaPreviewFragment : Fragment() {
         private const val ARG_SHOW_INDEX_INDICATOR = "arg_show_index_indicator"
         private const val ARG_CALLBACK_ID = "arg_callback_id"
         private const val ARG_PRESENTED_CALLBACK_ID = "arg_presented_callback_id"
+        private const val ARG_CHANGE_CALLBACK_ID = "arg_change_callback_id"
         private const val TAG = "MediaPreviewOverlay"
         private const val LOG_TAG = "LingXia.MediaPreview"
         private const val PLAYER_TIMEUPDATE_LOG_INTERVAL_MS = 5_000L
@@ -1542,7 +1559,8 @@ internal class MediaPreviewFragment : Fragment() {
             advance: String,
             showIndexIndicator: Boolean,
             callbackId: Long,
-            presentedCallbackId: Long
+            presentedCallbackId: Long,
+            changeCallbackId: Long
         ) {
             val fm = activity.supportFragmentManager
             (fm.findFragmentByTag(TAG) as? MediaPreviewFragment)?.finishPreview("interrupted")
@@ -1565,7 +1583,8 @@ internal class MediaPreviewFragment : Fragment() {
                             advance = advance,
                             showIndexIndicator = showIndexIndicator,
                             callbackId = callbackId,
-                            presentedCallbackId = presentedCallbackId
+                            presentedCallbackId = presentedCallbackId,
+                            changeCallbackId = changeCallbackId
                         )
                     }
                 }
@@ -1579,7 +1598,8 @@ internal class MediaPreviewFragment : Fragment() {
                 advance = advance,
                 showIndexIndicator = showIndexIndicator,
                 callbackId = callbackId,
-                presentedCallbackId = presentedCallbackId
+                presentedCallbackId = presentedCallbackId,
+                changeCallbackId = changeCallbackId
             )
         }
 
@@ -1590,7 +1610,8 @@ internal class MediaPreviewFragment : Fragment() {
             advance: String,
             showIndexIndicator: Boolean,
             callbackId: Long,
-            presentedCallbackId: Long
+            presentedCallbackId: Long,
+            changeCallbackId: Long
         ) {
             val fm = activity.supportFragmentManager
             val fragment = MediaPreviewFragment().apply {
@@ -1601,6 +1622,7 @@ internal class MediaPreviewFragment : Fragment() {
                     putBoolean(ARG_SHOW_INDEX_INDICATOR, showIndexIndicator)
                     putLong(ARG_CALLBACK_ID, callbackId)
                     putLong(ARG_PRESENTED_CALLBACK_ID, presentedCallbackId)
+                    putLong(ARG_CHANGE_CALLBACK_ID, changeCallbackId)
                 }
             }
 

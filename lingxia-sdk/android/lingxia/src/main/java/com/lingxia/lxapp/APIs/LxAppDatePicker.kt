@@ -207,7 +207,7 @@ internal object LxAppDatePicker {
         pickerContent.addView(buttonsContainer)
 
         container.addView(pickerContent)
-        com.lingxia.util.ActivityInsets.applyBottomMargin(container, pickerContent, 0)
+        com.lingxia.lxapp.ActivityInsets.applyBottomMargin(container, pickerContent, 0)
 
         return container
     }

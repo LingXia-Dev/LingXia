@@ -64,6 +64,8 @@ pub use android::{
 
 #[cfg(any(target_os = "ios", target_os = "macos"))]
 pub use apple::Platform;
+#[cfg(any(target_os = "ios", target_os = "macos"))]
+pub use apple::apply_staged_macos_update;
 
 #[cfg(target_env = "ohos")]
 pub use harmony::Platform;
