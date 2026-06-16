@@ -113,6 +113,12 @@ impl LxApp {
             Some(page_instance_id.clone())
         };
         let owner_pid = owner_page_instance_id.map(|id| id.to_string());
+        // Default to the requested kind/position; the core may arbitrate a
+        // different role (e.g. an aside downgraded to a main on a compact
+        // window), in which case the native presentation must follow the
+        // arbitrated outcome — the core graph is the single source of truth.
+        let mut present_kind = request.kind;
+        let mut present_position = request.position;
         if let Ok(state) = self.state.lock() {
             state.surfaces.lock().unwrap().insert(
                 id.clone(),
@@ -131,7 +137,13 @@ impl LxApp {
                 &page_path,
                 owner_pid.as_deref(),
             );
-            let _ = state.surface_manager.lock().unwrap().open(node);
+            let mut manager = state.surface_manager.lock().unwrap();
+            let _decision = manager.open(node);
+            if let Some(role) = manager.graph().role_of(&id) {
+                let edge = manager.graph().get(&id).and_then(|s| s.placement.edge);
+                (present_kind, present_position) =
+                    present_params_for_role(role, edge, request.position);
+            }
         }
 
         let present_result = self.runtime.present_surface(PlatformSurfaceRequest {
@@ -141,12 +153,12 @@ impl LxApp {
             session_id: self.session_id(),
             page_instance_id: page_instance_id.clone(),
             content,
-            kind: request.kind,
+            kind: present_kind,
             width: finite_or_nan(request.width),
             height: finite_or_nan(request.height),
             width_ratio: finite_or_nan(request.width_ratio),
             height_ratio: finite_or_nan(request.height_ratio),
-            position: request.position,
+            position: present_position,
         });
         if let Err(err) = present_result {
             self.forget_surface(&id);
@@ -160,7 +172,7 @@ impl LxApp {
             id,
             page_path,
             page_instance_id: (!page_instance_id.is_empty()).then_some(page_instance_id),
-            kind: request.kind,
+            kind: present_kind,
         })
     }
 
@@ -447,6 +459,30 @@ impl LxApp {
 }
 
 pub(crate) type SurfaceRecords = HashMap<String, SurfaceRecord>;
+
+/// Map a core-arbitrated role (+ resolved edge) back to the legacy platform
+/// present parameters, so native presentation follows the core's decision.
+fn present_params_for_role(
+    role: lingxia_surface::Role,
+    edge: Option<lingxia_surface::Edge>,
+    fallback_position: SurfacePosition,
+) -> (SurfaceKind, SurfacePosition) {
+    use lingxia_surface::{Edge as LxEdge, Role as LxRole};
+    match role {
+        LxRole::Main => (SurfaceKind::Window, SurfacePosition::Center),
+        LxRole::Float => (SurfaceKind::Overlay, SurfacePosition::Center),
+        LxRole::Aside => {
+            let position = match edge {
+                Some(LxEdge::Left) => SurfacePosition::Left,
+                Some(LxEdge::Right) => SurfacePosition::Right,
+                Some(LxEdge::Top) => SurfacePosition::Top,
+                Some(LxEdge::Bottom) => SurfacePosition::Bottom,
+                None => fallback_position,
+            };
+            (SurfaceKind::Overlay, position)
+        }
+    }
+}
 
 fn finite_or_nan(value: Option<f64>) -> f64 {
     match value {
