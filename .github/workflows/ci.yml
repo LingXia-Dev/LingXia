@@ -256,11 +256,12 @@ jobs:
       - name: Check Rust compiles for Android target
         run: cargo check --target aarch64-linux-android -p lingxia --lib
 
-  # lingxia-windows and the Windows backends of lingxia-platform / lingxia-webview
-  # (windows-host) / lingxia-shell are cfg(target_os = "windows"), so the macOS
-  # rust-check above never compiles them. Type-check the whole Windows host stack
-  # on a Windows runner — checking lingxia-windows pulls in the lingxia facade,
-  # shell, the windows-host webview backend, and the platform windows backend.
+  # The Windows host stack (lingxia-windows-sdk / -host / -build and the Windows
+  # backends of lingxia-platform / lingxia-webview / lingxia-shell) is
+  # cfg(target_os = "windows"), so the macOS clippy job never compiles it (and
+  # excludes those crates). Clippy the full workspace on a Windows runner so the
+  # Windows-only code is both type-checked and linted; together with the macOS
+  # job this gives clippy coverage of every host's code paths.
   rust-windows-target:
     needs: changes
     if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.i18n == 'true' }}
@@ -273,6 +274,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
+          components: clippy
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -281,9 +283,11 @@ jobs:
       # Some embedded-runtime build scripts expect the bundled bridge/polyfills JS.
       - uses: ./.github/actions/build-web-runtime
 
-      - name: Check Windows host stack
+      # lingxia-terminal needs an external toolchain (libghostty), excluded like
+      # the macOS clippy job.
+      - name: Clippy Windows host stack
         shell: bash
-        run: cargo check -p lingxia-windows -p lingxia-windows-build
+        run: cargo clippy --workspace --exclude lingxia-terminal -- -D warnings -A clippy::let_underscore_future
 
   cli:
     needs: changes
@@ -368,8 +372,12 @@ jobs:
       # let_underscore_future is allowed workspace-wide: the runtime spawns many
       # detached background tasks (`let _ = executor.spawn(..)`) where dropping
       # the join handle is intentional fire-and-forget, not a dropped future.
+      #
+      # The Windows-only crates only partly compile on macOS (their Win32 code is
+      # cfg'd out, leaving helpers dead), so they are linted by the Windows
+      # clippy job instead — exclude them here.
       - name: Clippy (all workspace crates)
-        run: cargo clippy --workspace --exclude lingxia-terminal -- -D warnings -A clippy::let_underscore_future
+        run: cargo clippy --workspace --exclude lingxia-terminal --exclude lingxia-windows-sdk --exclude lingxia-windows-host --exclude lingxia-windows-build --exclude lingxia-runner-windows -- -D warnings -A clippy::let_underscore_future
 
   runner:
     needs: changes

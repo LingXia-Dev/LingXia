@@ -20,7 +20,7 @@ runs:
           --input i18n --no-rust --no-ts --no-android --no-harmony \
           --ios-out lingxia-sdk/apple/Sources/Resources
         cargo run -p lingxia-cli -- gen icons \
-          --input lingxia-sdk/resources/icons/svg \
+          --input design/icons/svg \
           --ios-out lingxia-sdk/apple/Sources/Resources/icons
 
     # Swift bridge bindings are a build.rs side-effect; cargo caches build
