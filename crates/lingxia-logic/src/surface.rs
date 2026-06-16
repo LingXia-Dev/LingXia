@@ -206,8 +206,14 @@ fn build_open_options(
         ));
     }
     if let Some(obj) = target.clone().into_object() {
-        // `{ url }` (embedded) or `{ browser }` (with chrome — mapped to url here).
-        if let Some(url) = read_optional_string(&obj, "url")?.or(read_optional_string(&obj, "browser")?) {
+        // `{ browser }` (a chromed top-level browser) is reserved for
+        // `lx.shell.open`; an embedded aside/float only takes `{ url }`.
+        if read_optional_string(&obj, "browser")?.is_some() {
+            return Err(invalid_surface_target(
+                "{ browser } is reserved for lx.shell.open; use { url } for an embedded web surface",
+            ));
+        }
+        if let Some(url) = read_optional_string(&obj, "url")? {
             return Ok(JSValue::from_rust(
                 ctx,
                 UrlSurfaceOptions {
@@ -219,7 +225,7 @@ fn build_open_options(
         }
     }
     Err(invalid_surface_target(
-        "target must be a page path string or { url } / { browser }",
+        "target must be a page path string or { url }",
     ))
 }
 

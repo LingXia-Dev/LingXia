@@ -112,16 +112,25 @@ impl LxApp {
         } else {
             Some(page_instance_id.clone())
         };
+        let owner_pid = owner_page_instance_id.map(|id| id.to_string());
         if let Ok(state) = self.state.lock() {
             state.surfaces.lock().unwrap().insert(
                 id.clone(),
                 SurfaceRecord {
-                    owner_page_instance_id: owner_page_instance_id.map(|id| id.to_string()),
+                    owner_page_instance_id: owner_pid.clone(),
                     content_page_instance_id,
                 },
             );
             // Mirror into the Adaptive Surface Layout core (authoritative model).
-            let node = self.build_surface_node(&id, content, request.kind, request.position, &path, &page_path);
+            let node = self.build_surface_node(
+                &id,
+                content,
+                request.kind,
+                request.position,
+                &path,
+                &page_path,
+                owner_pid.as_deref(),
+            );
             let _ = state.surface_manager.lock().unwrap().open(node);
         }
 
@@ -327,6 +336,7 @@ impl LxApp {
         position: SurfacePosition,
         path_or_url: &str,
         page_path: &Option<String>,
+        owner_page_instance_id: Option<&str>,
     ) -> lingxia_surface::Surface {
         use lingxia_surface::{
             Edge as LxEdge, FloatSpec, Placement, Role as LxRole, Surface as LxSurface,
@@ -354,11 +364,22 @@ impl LxApp {
                 chrome: false,
             },
         };
+        // A surface opened dynamically by an lxapp is caller-scoped: owned by the
+        // calling page when there is one (closes with the page), else by the
+        // lxapp. Host-declared surfaces are created elsewhere, not here.
+        let owner = match owner_page_instance_id {
+            Some(pid) => LxOwner::Page {
+                page_instance_id: pid.to_string(),
+            },
+            None => LxOwner::Lxapp {
+                app_id: self.appid.clone(),
+            },
+        };
         LxSurface {
             id: id.to_string(),
             role,
             content: node_content,
-            owner: LxOwner::Host,
+            owner,
             placement: Placement {
                 edge,
                 preferred_size: None,
