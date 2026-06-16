@@ -291,6 +291,12 @@ enum Commands {
         platform: commands::ds::DsPlatform,
     },
 
+    /// Submit installables to OS app stores (Microsoft Store, App Store, AppGallery)
+    Store {
+        #[command(subcommand)]
+        action: commands::store::StoreAction,
+    },
+
     /// Internal resource generation helpers
     #[command(hide = true)]
     Gen {
@@ -620,6 +626,9 @@ fn main() -> Result<()> {
         },
         Commands::Ds { platform } => {
             commands::ds::execute(platform)?;
+        }
+        Commands::Store { action } => {
+            commands::store::run(action)?;
         }
         Commands::Gen { command } => match command {
             GenCommand::I18n(config) => {
