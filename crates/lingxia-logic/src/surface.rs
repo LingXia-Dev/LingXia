@@ -145,6 +145,9 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     // Adaptive Surface Layout (new model): read the core's resolved layout for
     // this app's window. Returns a JSON string (JS-side `JSON.parse`).
     surface.set("derivedLayout", JSFunc::new(ctx, surface_derived_layout)?)?;
+    // current(): this window's adaptive context, so an lxapp can self-adapt
+    // (e.g. switch columns by sizeClass). Returns an object.
+    surface.set("current", JSFunc::new(ctx, surface_current)?)?;
     lx.set("surface", surface)?;
     Ok(())
 }
@@ -153,6 +156,33 @@ fn surface_derived_layout(ctx: JSContext) -> JSResult<String> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     Ok(serde_json::to_string(&lxapp.surface_derived_layout())
         .unwrap_or_else(|_| "null".to_string()))
+}
+
+#[derive(Debug, Clone, IntoJSObj)]
+struct JSSurfaceContext {
+    #[rename = "sizeClass"]
+    size_class: String,
+    #[rename = "bottomOwner"]
+    bottom_owner: String,
+}
+
+fn surface_current(ctx: JSContext) -> JSResult<JSSurfaceContext> {
+    use lingxia_surface::{BottomOwner, SizeClass};
+    let lxapp = LxApp::from_ctx(&ctx)?;
+    let layout = lxapp.surface_derived_layout();
+    let size_class = match layout.as_ref().map(|l| l.size_class) {
+        Some(SizeClass::Compact) => "compact",
+        Some(SizeClass::Medium) => "medium",
+        _ => "expanded",
+    };
+    let bottom_owner = match layout.as_ref().map(|l| l.bottom_owner) {
+        Some(BottomOwner::Host) => "host",
+        _ => "app",
+    };
+    Ok(JSSurfaceContext {
+        size_class: size_class.to_string(),
+        bottom_owner: bottom_owner.to_string(),
+    })
 }
 
 async fn open_surface(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
