@@ -418,7 +418,7 @@ class WorkspaceManager: NSObject {
             lxWorkspaceStdoutLog("setPanelFullscreen missing id=\(id)")
             return
         }
-        guard slot.config.position == .bottom else {
+        guard slot.config.position == .bottom || slot.config.position == .top else {
             lxWorkspaceStdoutLog("setPanelFullscreen ignored id=\(id) position=\(slot.config.position.rawValue)")
             return
         }
@@ -546,7 +546,7 @@ class WorkspaceManager: NSObject {
     private func cardInset(for position: PanelPosition) -> CGFloat {
         let p = padding
         guard let id = activeByPosition[position], let slot = panels[id], slot.isVisible else { return p }
-        if position == .bottom, slot.isFullscreen {
+        if (position == .bottom || position == .top), slot.isFullscreen {
             return p
         }
         return p + clampedPanelSize(slot.currentSize, for: position) + p
@@ -583,6 +583,9 @@ class WorkspaceManager: NSObject {
             }
             return (x: 0, y: -size)
         case .top:
+            if slot.isFullscreen, let parent = overlayParent {
+                return (x: 0, y: parent.bounds.height + padding)
+            }
             return (x: 0, y: size)
         }
     }
@@ -678,6 +681,18 @@ class WorkspaceManager: NSObject {
 
     private func layoutTopPanel(_ slot: PanelSlot, in parent: NSView, sidebar: NSView) {
         let p = padding
+        if slot.isFullscreen {
+            let width = max(0, parent.bounds.width - (p * 2))
+            let height = max(0, parent.bounds.height - (p * 2))
+            slot.shadowWrapper.frame = NSRect(x: p, y: p, width: width, height: height)
+            slot.resizeHandle.frame = .zero
+            slot.resizeHandle.isHidden = true
+            slot.shadowWrapper.layoutSubtreeIfNeeded()
+            lxWorkspaceStdoutLog(
+                "layoutTopPanel fullscreen id=\(slot.config.id) wrapperFrame=\(lxWorkspaceFormatRect(slot.shadowWrapper.frame))"
+            )
+            return
+        }
         // Top panel docks above the WebView card, spanning the same horizontal
         // band as the bottom panel (after the sidebar, before any right panel),
         // and its resize handle hangs just below its lower edge.
