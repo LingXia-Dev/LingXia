@@ -14,6 +14,7 @@ mod media;
 mod message_port;
 mod navigator;
 mod share;
+mod shell;
 mod storage;
 mod surface;
 mod system;
@@ -39,6 +40,7 @@ impl LxLogicExtension for LxLogicRuntime {
         update::init(ctx)?;
         message_port::init(ctx)?;
         surface::init(ctx)?;
+        shell::init(ctx)?;
         input::init(ctx)?;
         ui::init(ctx)?;
         system::init(ctx)?;

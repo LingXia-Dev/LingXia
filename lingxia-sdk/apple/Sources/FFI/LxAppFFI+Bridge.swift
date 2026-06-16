@@ -158,6 +158,43 @@ extension LxApp {
         }
     }
 
+    /// `lx.shell.open` / `close`: show or hide a host-declared top-level surface
+    /// (e.g. the AI-chat panel or terminal). Only macOS has a host shell that
+    /// manages declared surfaces; other platforms return `false`.
+    nonisolated static func setManagedSurfaceVisible(id: RustStr, visible: Bool) -> Bool {
+        let idString = id.toString()
+        guard !idString.isEmpty else { return false }
+        return executeOnMain {
+            #if os(macOS)
+            guard let runtime = LxAppMacAppUIRuntime.active else { return false }
+            if visible {
+                runtime.openManagedSurface(id: idString)
+            } else {
+                runtime.closeManagedSurface(id: idString)
+            }
+            return true
+            #else
+            _ = visible
+            return false
+            #endif
+        }
+    }
+
+    /// `lx.shell.toggle`: flip a host-declared top-level surface's visibility.
+    nonisolated static func toggleManagedSurface(id: RustStr) -> Bool {
+        let idString = id.toString()
+        guard !idString.isEmpty else { return false }
+        return executeOnMain {
+            #if os(macOS)
+            guard let runtime = LxAppMacAppUIRuntime.active else { return false }
+            runtime.toggleManagedSurface(id: idString)
+            return true
+            #else
+            return false
+            #endif
+        }
+    }
+
     nonisolated static func closeSurface(id: RustStr, appid: RustStr, reason: RustStr) -> Bool {
         let idString = id.toString()
         let appIdString = appid.toString()

@@ -229,6 +229,32 @@ impl LxApp {
             .map_err(Into::into)
     }
 
+    /// `lx.shell.open` / `close`: show or hide a host-declared top-level
+    /// surface (e.g. the AI-chat panel or terminal). Delegates to the platform
+    /// host shell; platforms without one return an error.
+    pub fn set_shell_surface_visible(&self, id: &str, visible: bool) -> Result<(), LxAppError> {
+        let id = id.trim();
+        if id.is_empty() {
+            return Err(LxAppError::InvalidParameter(
+                "shell surface id must not be empty".to_string(),
+            ));
+        }
+        self.runtime
+            .set_managed_surface_visible(id, visible)
+            .map_err(Into::into)
+    }
+
+    /// `lx.shell.toggle`: flip a host-declared top-level surface's visibility.
+    pub fn toggle_shell_surface(&self, id: &str) -> Result<(), LxAppError> {
+        let id = id.trim();
+        if id.is_empty() {
+            return Err(LxAppError::InvalidParameter(
+                "shell surface id must not be empty".to_string(),
+            ));
+        }
+        self.runtime.toggle_managed_surface(id).map_err(Into::into)
+    }
+
     pub fn forget_surface(&self, id: &str) -> bool {
         let id = id.trim();
         if id.is_empty() {

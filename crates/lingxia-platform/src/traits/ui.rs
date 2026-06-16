@@ -116,6 +116,28 @@ pub trait SurfacePresenter: Send + Sync + 'static {
             "surface hide is not supported on this platform".to_string(),
         ))
     }
+
+    /// Show or hide a top-level surface declared by the host (e.g. the AI-chat
+    /// panel or terminal in `ui` config). This is the `lx.shell` owner: only
+    /// platforms with a host shell that manages declared surfaces (currently
+    /// macOS) support it; others have no such shell and return `NotSupported`.
+    fn set_managed_surface_visible(
+        &self,
+        _id: &str,
+        _visible: bool,
+    ) -> Result<(), PlatformError> {
+        Err(PlatformError::NotSupported(
+            "managed surfaces are not supported on this platform".to_string(),
+        ))
+    }
+
+    /// Toggle a host-declared top-level surface's visibility. See
+    /// [`set_managed_surface_visible`](Self::set_managed_surface_visible).
+    fn toggle_managed_surface(&self, _id: &str) -> Result<(), PlatformError> {
+        Err(PlatformError::NotSupported(
+            "managed surfaces are not supported on this platform".to_string(),
+        ))
+    }
 }
 
 pub trait UIUpdate: Send + Sync + 'static {

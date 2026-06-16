@@ -191,6 +191,12 @@ mod bridge {
         #[swift_bridge(swift_name = "LxApp.closeSurface")]
         fn close_surface(id: &str, appid: &str, reason: &str) -> bool;
 
+        #[swift_bridge(swift_name = "LxApp.setManagedSurfaceVisible")]
+        fn set_managed_surface_visible(id: &str, visible: bool) -> bool;
+
+        #[swift_bridge(swift_name = "LxApp.toggleManagedSurface")]
+        fn toggle_managed_surface(id: &str) -> bool;
+
         #[swift_bridge(swift_name = "LxApp.showSurface")]
         fn show_surface(id: &str, appid: &str) -> bool;
 
@@ -373,9 +379,9 @@ pub use bridge::{
     ActionSheetOptions, ModalOptions, ToastIcon, ToastOptions, ToastPosition, cancel_preview_media,
     close_lxapp, close_surface, exit_app, hide_surface, hide_toast, navigate,
     notify_app_update_ready, open_document_external, open_lxapp, open_url, present_surface,
-    present_update_card, preview_media, review_document, share, show_action_sheet, show_modal,
-    show_surface, show_toast, update_download_progress, update_navbar_ui, update_orientation_ui,
-    update_tabbar_ui,
+    present_update_card, preview_media, review_document, set_managed_surface_visible, share,
+    show_action_sheet, show_modal, show_surface, show_toast, toggle_managed_surface,
+    update_download_progress, update_navbar_ui, update_orientation_ui, update_tabbar_ui,
 };
 
 #[cfg(any(target_os = "ios", target_os = "macos"))]

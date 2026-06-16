@@ -324,6 +324,20 @@ final class LxAppMacAppUIRuntime: NSObject {
         toggleSurface(id: id)
     }
 
+    /// Show a host-declared surface (no-op if already visible). Backs
+    /// `lx.shell.open`.
+    func openManagedSurface(id: String) {
+        guard !visibleSurfaceIDs.contains(id) else { return }
+        openSurfaceHandlingError(id: id)
+    }
+
+    /// Hide a host-declared surface (no-op if already hidden). Backs
+    /// `lx.shell.close`.
+    func closeManagedSurface(id: String) {
+        guard visibleSurfaceIDs.contains(id) else { return }
+        closeSurface(id: id)
+    }
+
     private func openSurfaceHandlingError(id: String, sourceActivatorID: String? = nil) {
         do {
             try openSurface(id: id, sourceActivatorID: sourceActivatorID)
