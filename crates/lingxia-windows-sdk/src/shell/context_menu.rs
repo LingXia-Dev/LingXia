@@ -16,17 +16,8 @@ use windows::core::PCWSTR;
 /// (an HWND handle as returned through the webview layer). Marshalled onto
 /// the window's UI thread; `on_select` receives the zero-based index of the
 /// chosen item, and is not called when the menu is dismissed.
-pub fn show_context_menu(
-    window: isize,
-    screen: (i32, i32),
-    items: Vec<String>,
-    on_select: Arc<dyn Fn(usize) + Send + Sync>,
-) {
-    show_context_menu_checked(window, screen, items, Vec::new(), on_select);
-}
-
-/// Like [`show_context_menu`], but `checked[i] == true` draws item `i` with a
-/// checkmark (a shorter `checked` slice leaves later items unchecked).
+/// Shows a popup menu; `checked[i] == true` draws item `i` with a checkmark
+/// (a shorter `checked` slice leaves later items unchecked).
 pub fn show_context_menu_checked(
     window: isize,
     screen: (i32, i32),

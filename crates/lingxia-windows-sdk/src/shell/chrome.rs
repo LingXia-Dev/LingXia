@@ -437,7 +437,7 @@ fn push_dirty_rect(dirty: &mut Vec<RECT>, rect: RECT, client: RECT) {
     let Some(rect) = clip_dirty_rect(rect, client) else {
         return;
     };
-    if !dirty.iter().any(|candidate| *candidate == rect) {
+    if !dirty.contains(&rect) {
         dirty.push(rect);
     }
 }

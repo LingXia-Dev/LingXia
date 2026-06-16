@@ -1573,7 +1573,7 @@ fn push_unique_dirty_rect(dirty: &mut Vec<RECT>, rect: RECT) {
     if rect.right <= rect.left || rect.bottom <= rect.top {
         return;
     }
-    if !dirty.iter().any(|candidate| *candidate == rect) {
+    if !dirty.contains(&rect) {
         dirty.push(rect);
     }
 }

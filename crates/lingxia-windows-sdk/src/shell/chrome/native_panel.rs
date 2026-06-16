@@ -88,7 +88,7 @@ pub(super) fn terminal_header_rects(
             - (TERMINAL_HEADER_BUTTON_SIZE + TERMINAL_TAB_GAP)
             - (count - 1) * TERMINAL_TAB_GAP)
             .max(0);
-        let tab_width = (avail / count).min(TERMINAL_TAB_MAX_WIDTH).max(24);
+        let tab_width = (avail / count).clamp(24, TERMINAL_TAB_MAX_WIDTH);
         for item in &native.tabs {
             let tab_rect = normalize_rect(RECT {
                 left,
