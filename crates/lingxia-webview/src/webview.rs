@@ -872,6 +872,8 @@ impl WebView {
         }
     }
 
+    // Consulted only by the Windows download-event path.
+    #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
     pub(crate) fn has_download_handler(&self) -> bool {
         self.download_handler
             .read()
@@ -1392,6 +1394,8 @@ impl WebViewSessionSignals {
         state.terminal_result.clone()
     }
 
+    // Only consulted by the Apple create path's registry-race guard.
+    #[cfg_attr(not(any(target_os = "macos", target_os = "ios")), allow(dead_code))]
     fn is_destroyed(&self) -> bool {
         let state = lock_or_recover(&self.state, "webview_session_state.is_destroyed");
         state.destroyed
@@ -1472,7 +1476,8 @@ impl WebViewCreateSender {
     /// True if the session was destroyed (e.g. the tab was closed/discarded)
     /// while the native WebView was still being built. The platform create
     /// path checks this before registering, to avoid leaving a zombie in the
-    /// global registry.
+    /// global registry. Only the Apple create path consults it today.
+    #[cfg_attr(not(any(target_os = "macos", target_os = "ios")), allow(dead_code))]
     pub(crate) fn is_destroyed(&self) -> bool {
         self.signals.is_destroyed()
     }

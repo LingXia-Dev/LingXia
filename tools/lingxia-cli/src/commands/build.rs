@@ -389,13 +389,11 @@ Specify one with `--platform <name>` or build all with `--all-platforms`."
     for (platform, mut build_config, platform_type) in platform_builds {
         build_config.skip_native_build = platform.hoists_native_build();
         let mut artifacts = platform.build(&build_config)?;
-        if matches!(platform_type, PlatformType::Windows) {
-            if package || msix {
-                artifacts =
-                    assemble_windows_dist(&project_root, &config, resolved_env.version, artifacts)?;
-                if msix && let Some(dist_dir) = artifacts.path().parent() {
-                    crate::platform::windows::msix::package(&project_root, &config, dist_dir)?;
-                }
+        if matches!(platform_type, PlatformType::Windows) && (package || msix) {
+            artifacts =
+                assemble_windows_dist(&project_root, &config, resolved_env.version, artifacts)?;
+            if msix && let Some(dist_dir) = artifacts.path().parent() {
+                crate::platform::windows::msix::package(&project_root, &config, dist_dir)?;
             }
         }
         if package {

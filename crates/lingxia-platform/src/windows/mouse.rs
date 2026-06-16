@@ -153,7 +153,7 @@ fn post_wheel_message(
         let _ = ClientToScreen(target, &mut screen);
     }
     let delta = (amount * f64::from(WHEEL_DELTA)) as i16;
-    let wparam = WPARAM(((delta as u16 as usize) << 16) as usize);
+    let wparam = WPARAM((delta as u16 as usize) << 16);
     let lparam = LPARAM(((screen.y as isize) << 16) | (screen.x as isize & 0xFFFF));
     unsafe {
         WindowsAndMessaging::PostMessageW(Some(target), message, wparam, lparam)

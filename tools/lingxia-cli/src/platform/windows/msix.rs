@@ -120,10 +120,10 @@ pub fn package(project_root: &Path, config: &LingXiaConfig, dist_dir: &Path) -> 
 /// Locate `makeappx.exe` from the Windows SDK (newest version, x64), or an
 /// explicit `LINGXIA_MAKEAPPX` override.
 fn find_makeappx() -> Result<PathBuf> {
-    if let Some(path) = std::env::var_os("LINGXIA_MAKEAPPX").map(PathBuf::from) {
-        if path.is_file() {
-            return Ok(path);
-        }
+    if let Some(path) = std::env::var_os("LINGXIA_MAKEAPPX").map(PathBuf::from)
+        && path.is_file()
+    {
+        return Ok(path);
     }
     let bin = Path::new(r"C:\Program Files (x86)\Windows Kits\10\bin");
     let mut candidates: Vec<PathBuf> = Vec::new();

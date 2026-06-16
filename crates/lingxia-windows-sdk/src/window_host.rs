@@ -450,12 +450,9 @@ fn overlay_rect(
 ) -> RECT {
     let bounds_width = (bounds.right - bounds.left).max(OVERLAY_MIN_WIDTH);
     let bounds_height = (bounds.bottom - bounds.top).max(OVERLAY_MIN_HEIGHT);
-    let max_width = (bounds_width - OVERLAY_MARGIN * 2)
-        .min(OVERLAY_MAX_WIDTH)
-        .max(OVERLAY_MIN_WIDTH);
-    let max_height = (bounds_height - OVERLAY_MARGIN * 2)
-        .min(OVERLAY_MAX_HEIGHT)
-        .max(OVERLAY_MIN_HEIGHT);
+    let max_width = (bounds_width - OVERLAY_MARGIN * 2).clamp(OVERLAY_MIN_WIDTH, OVERLAY_MAX_WIDTH);
+    let max_height =
+        (bounds_height - OVERLAY_MARGIN * 2).clamp(OVERLAY_MIN_HEIGHT, OVERLAY_MAX_HEIGHT);
     let overlay_width = resolve_overlay_extent(
         width,
         width_ratio,
@@ -841,15 +838,15 @@ fn sync_webtag_content_bounds_to_rect(hwnd: HWND, webtag_key: &str, rect: RECT) 
         log::debug!("Failed to set Windows WebView parent for {webtag_key}: {err}");
     }
     let controller_bounds = rect;
-    if webtag_content_bounds_changed(webtag_key, host_bounds) {
-        if let Err(err) = handler.set_content_bounds(
+    if webtag_content_bounds_changed(webtag_key, host_bounds)
+        && let Err(err) = handler.set_content_bounds(
             controller_bounds.left,
             controller_bounds.top,
             controller_bounds.right - controller_bounds.left,
             controller_bounds.bottom - controller_bounds.top,
-        ) {
-            log::debug!("Failed to sync Windows WebView content bounds: {err}");
-        }
+        )
+    {
+        log::debug!("Failed to sync Windows WebView content bounds: {err}");
     }
     let _ = handler.notify_parent_position_changed();
 }

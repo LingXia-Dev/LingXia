@@ -28,9 +28,9 @@ use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex, OnceLock};
 
 use crate::window_host::{find_webview_content_window, post_to_window_thread};
-use lingxia_windows_host::WindowsWebViewContentWindow;
 use lingxia_platform::traits::video_player::VideoPlayerCommand;
 use lingxia_webview::WebViewController;
+use lingxia_windows_host::WindowsWebViewContentWindow;
 use serde_json::{Value, json};
 use windows::Win32::Foundation::{COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
@@ -570,10 +570,10 @@ fn apply_component_visibility(key: &str, visible: bool) {
         // Re-position and re-show through the normal layout pass, then
         // resume a video the hide had paused.
         apply_layout(key);
-        if let Some((player, resume)) = video {
-            if resume {
-                player.play();
-            }
+        if let Some((player, resume)) = video
+            && resume
+        {
+            player.play();
         }
         return;
     }
@@ -1212,10 +1212,10 @@ unsafe extern "system" fn container_proc(
             unsafe {
                 if container_is_video(hwnd) {
                     let _ = SetFocus(Some(hwnd));
-                } else if !container_is_swiper(hwnd) {
-                    if let Ok(edit) = WindowsAndMessaging::GetWindow(hwnd, GW_CHILD) {
-                        let _ = SetFocus(Some(edit));
-                    }
+                } else if !container_is_swiper(hwnd)
+                    && let Ok(edit) = WindowsAndMessaging::GetWindow(hwnd, GW_CHILD)
+                {
+                    let _ = SetFocus(Some(edit));
                 }
             }
             LRESULT(0)

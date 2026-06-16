@@ -56,10 +56,12 @@ static BROWSER_TAB_COUNTER: AtomicU64 = AtomicU64::new(1);
 static BROWSER_CREATE_TOKEN: AtomicU64 = AtomicU64::new(1);
 static BROWSER_LOAD_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
 static BROWSER_ACTIVE_TAB_ID: OnceLock<Mutex<Option<String>>> = OnceLock::new();
-static BROWSER_TABS_CHANGED_HANDLER: OnceLock<Mutex<Option<Arc<dyn Fn() + Send + Sync>>>> =
-    OnceLock::new();
+static BROWSER_TABS_CHANGED_HANDLER: OnceLock<Mutex<Option<TabsChangedHandler>>> = OnceLock::new();
 
-pub(crate) fn set_tabs_changed_handler(handler: Arc<dyn Fn() + Send + Sync>) {
+/// Process-wide observer invoked when the browser tab set/metadata changes.
+type TabsChangedHandler = Arc<dyn Fn() + Send + Sync>;
+
+pub(crate) fn set_tabs_changed_handler(handler: TabsChangedHandler) {
     let slot = BROWSER_TABS_CHANGED_HANDLER.get_or_init(|| Mutex::new(None));
     if let Ok(mut slot) = slot.lock() {
         *slot = Some(handler);

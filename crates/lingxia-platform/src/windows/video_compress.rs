@@ -225,7 +225,7 @@ fn duration_ms(reader: &IMFSourceReader) -> u64 {
         Ok(variant) => unsafe {
             let inner = &*variant.Anonymous.Anonymous;
             if inner.vt == VT_UI8 || inner.vt == VT_I8 {
-                (inner.Anonymous.uhVal as u64) / 10_000
+                inner.Anonymous.uhVal / 10_000
             } else {
                 0
             }
@@ -271,11 +271,15 @@ fn classify_streams(reader: &IMFSourceReader) -> Result<Streams, PlatformError> 
     Ok(Streams { video, audio })
 }
 
+/// Source geometry/rate read from the native video media type:
+/// `(width, height, fps, bitrate_bps, frame_rate_ratio)`.
+type NativeVideoParams = (u32, u32, f64, Option<u64>, (u32, u32));
+
 /// Read source geometry / rate / bitrate from the native video media type.
 fn native_video_params(
     reader: &IMFSourceReader,
     video_index: u32,
-) -> Result<(u32, u32, f64, Option<u64>, (u32, u32)), PlatformError> {
+) -> Result<NativeVideoParams, PlatformError> {
     let native = unsafe { reader.GetNativeMediaType(video_index, 0) }
         .map_err(|err| PlatformError::Platform(format!("native video type: {err}")))?;
     let frame = unsafe { native.GetUINT64(&MF_MT_FRAME_SIZE) }.unwrap_or(0);
@@ -438,7 +442,9 @@ fn pump_samples(
         // Cooperative cancellation: stop before reading the next sample so a
         // cancel during a long transcode takes effect promptly.
         if ctrl.cancel.load(Ordering::Relaxed) {
-            return Err(PlatformError::Platform("compress_video cancelled".to_string()));
+            return Err(PlatformError::Platform(
+                "compress_video cancelled".to_string(),
+            ));
         }
 
         let mut actual_index = 0u32;
@@ -482,13 +488,13 @@ fn pump_samples(
                         (ctrl.on_progress)(pct);
                     }
                 }
-            } else if Some(actual_index) == audio_index {
-                if let Some(audio_sink) = audio_sink {
-                    unsafe {
-                        // Audio drops are non-fatal: keep video flowing.
-                        if let Err(err) = sink.WriteSample(audio_sink, &sample) {
-                            log::warn!("write audio sample failed: {err}");
-                        }
+            } else if Some(actual_index) == audio_index
+                && let Some(audio_sink) = audio_sink
+            {
+                unsafe {
+                    // Audio drops are non-fatal: keep video flowing.
+                    if let Err(err) = sink.WriteSample(audio_sink, &sample) {
+                        log::warn!("write audio sample failed: {err}");
                     }
                 }
             }
@@ -572,11 +578,11 @@ fn transcode(
     };
 
     // Drop the audio stream selection if we could not wire its encoder.
-    if audio_sink.is_none() {
-        if let Some(index) = streams.audio {
-            unsafe {
-                let _ = reader.SetStreamSelection(index, false);
-            }
+    if audio_sink.is_none()
+        && let Some(index) = streams.audio
+    {
+        unsafe {
+            let _ = reader.SetStreamSelection(index, false);
         }
     }
 

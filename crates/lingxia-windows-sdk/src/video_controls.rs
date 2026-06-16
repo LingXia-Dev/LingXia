@@ -513,7 +513,7 @@ fn draw_texts(
             OUT_DEFAULT_PRECIS,
             CLIP_DEFAULT_PRECIS,
             CLEARTYPE_QUALITY,
-            (DEFAULT_PITCH.0 as u32 | FF_DONTCARE.0 as u32).into(),
+            DEFAULT_PITCH.0 as u32 | FF_DONTCARE.0 as u32,
             w!("Segoe MDL2 Assets"),
         );
         let text_font = CreateFontW(
@@ -529,7 +529,7 @@ fn draw_texts(
             OUT_DEFAULT_PRECIS,
             CLIP_DEFAULT_PRECIS,
             CLEARTYPE_QUALITY,
-            (DEFAULT_PITCH.0 as u32 | FF_DONTCARE.0 as u32).into(),
+            DEFAULT_PITCH.0 as u32 | FF_DONTCARE.0 as u32,
             w!("Segoe UI"),
         );
         SetBkMode(dc, TRANSPARENT);

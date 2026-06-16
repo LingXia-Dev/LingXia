@@ -9,6 +9,8 @@ mod webview;
 
 pub use lingxia_webview::{WebViewCookie, WebViewCookieSameSite, WebViewCookieSetRequest};
 pub use policy::{extract_url_scheme, is_lingxia_startup_url};
+use std::sync::Arc;
+use std::time::Duration;
 pub use types::{
     BrowserAddressAction, BrowserAddressInputContext, BrowserAddressInputError,
     BrowserAddressInputRequest, BrowserAddressInputResponse, BrowserAddressInputTrigger,
@@ -18,8 +20,6 @@ pub use types::{
     BrowserNavigationPolicyResponse, BrowserNavigationTarget, BrowserRect, BrowserTabInfo,
     BrowserWaitCondition, BrowserWaitResult,
 };
-use std::sync::Arc;
-use std::time::Duration;
 
 pub use lxapp::LxAppError;
 

@@ -54,7 +54,11 @@ async fn choose_media(
             .copied()
             .filter(|source| !matches!(source, MediaSource::Camera))
             .collect();
-        if filtered.is_empty() { sources } else { filtered }
+        if filtered.is_empty() {
+            sources
+        } else {
+            filtered
+        }
     };
     let selected_source = if sources.len() > 1 {
         match present_source_picker(&lxapp, &sources).await? {

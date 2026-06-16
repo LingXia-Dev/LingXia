@@ -15,8 +15,8 @@ use crate::traits::media_interaction::{
     ScanCodeRequest,
 };
 use crate::traits::media_runtime::{
-    CompressImageRequest, CompressVideoRequest, ExtractVideoThumbnailRequest,
-    ImageInfo, MediaRuntime, VideoInfo, VideoThumbnail,
+    CompressImageRequest, CompressVideoRequest, ExtractVideoThumbnailRequest, ImageInfo,
+    MediaRuntime, VideoInfo, VideoThumbnail,
 };
 
 impl MediaInteraction for Platform {
@@ -182,7 +182,10 @@ impl MediaRuntime for Platform {
             .spawn(move || run_compress_video(request, source, progress_id, callback_id, cancel));
 
         if let Err(err) = spawned {
-            compress_cancel_registry().lock().unwrap().remove(&callback_id);
+            compress_cancel_registry()
+                .lock()
+                .unwrap()
+                .remove(&callback_id);
             return Err(PlatformError::Platform(format!(
                 "failed to start compress_video worker: {err}"
             )));
@@ -261,7 +264,8 @@ fn run_compress_video(
     }
 
     let on_progress = move |pct: u8| {
-        let _ = lingxia_messaging::invoke_callback(progress_id, Ok(format!("{{\"progress\":{pct}}}")));
+        let _ =
+            lingxia_messaging::invoke_callback(progress_id, Ok(format!("{{\"progress\":{pct}}}")));
     };
     let ctrl = super::video_compress::CompressControl {
         cancel: &cancel,
@@ -269,7 +273,10 @@ fn run_compress_video(
     };
     let result = super::video_compress::compress_video(&request, &source, &ctrl);
 
-    compress_cancel_registry().lock().unwrap().remove(&callback_id);
+    compress_cancel_registry()
+        .lock()
+        .unwrap()
+        .remove(&callback_id);
 
     if cancel.load(Ordering::SeqCst) {
         // Cancelled: discard any partial output and do not fire completion.

@@ -181,10 +181,8 @@ async fn open_surface(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
     // platforms drive this from their native presenter.
     #[cfg(target_os = "windows")]
     if let Some(page_instance_id) = opened_surface.page_instance_id.as_deref() {
-        let _ = lxapp::notify_page_instance_by_id(
-            page_instance_id,
-            lxapp::PageInstanceEvent::Visible,
-        );
+        let _ =
+            lxapp::notify_page_instance_by_id(page_instance_id, lxapp::PageInstanceEvent::Visible);
     }
     let (opener_port, page_port) = crate::message_port::pair(&ctx)?;
     let surface = Class::lookup::<JSSurface>(&ctx)?.instance(JSSurface {

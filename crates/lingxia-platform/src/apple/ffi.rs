@@ -373,22 +373,21 @@ pub use bridge::{
     ActionSheetOptions, ModalOptions, ToastIcon, ToastOptions, ToastPosition, cancel_preview_media,
     close_lxapp, close_surface, exit_app, hide_surface, hide_toast, navigate,
     notify_app_update_ready, open_document_external, open_lxapp, open_url, present_surface,
-    present_update_card, preview_media, review_document, update_download_progress,
-    share, show_action_sheet, show_modal, show_surface, show_toast, update_navbar_ui,
-    update_orientation_ui, update_tabbar_ui,
+    present_update_card, preview_media, review_document, share, show_action_sheet, show_modal,
+    show_surface, show_toast, update_download_progress, update_navbar_ui, update_orientation_ui,
+    update_tabbar_ui,
 };
 
-#[cfg(target_os = "ios")]
-pub use bridge::{choose_directory, choose_file};
 #[cfg(any(target_os = "ios", target_os = "macos"))]
 #[allow(unused_imports)]
 pub use bridge::{
     cancel_compress_video, compress_image, compress_video, configure_stream_audio,
     configure_stream_video, copy_album_media_to_file, create_stream_decoder,
-    extract_video_thumbnail, get_capsule_rect,
-    get_image_info, get_video_info, push_stream_audio, push_stream_video, scan_code,
-    stop_stream_decoder,
+    extract_video_thumbnail, get_capsule_rect, get_image_info, get_video_info, push_stream_audio,
+    push_stream_video, scan_code, stop_stream_decoder,
 };
+#[cfg(target_os = "ios")]
+pub use bridge::{choose_directory, choose_file};
 
 #[cfg(any(target_os = "ios", target_os = "macos"))]
 #[allow(unused_imports)]

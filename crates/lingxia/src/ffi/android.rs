@@ -473,7 +473,8 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_getNavigationBarState<'a>(
             .unwrap_or_default();
 
         // Find the NavigationBarState class
-        let nav_bar_class = env.find_class(jni_str!("com/lingxia/lxapp/chrome/NavigationBarState"))?;
+        let nav_bar_class =
+            env.find_class(jni_str!("com/lingxia/lxapp/chrome/NavigationBarState"))?;
 
         // Parse background color using unified function
         let bg_color_int = parse_color_to_i32(
@@ -830,7 +831,8 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_getTabBarState<'a>(
         }
 
         // Create Position enum
-        let position_class = env.find_class(jni_str!("com/lingxia/lxapp/chrome/TabBarState$Position"))?;
+        let position_class =
+            env.find_class(jni_str!("com/lingxia/lxapp/chrome/TabBarState$Position"))?;
 
         let position_enum = match position_int {
             1 => env.get_static_field(

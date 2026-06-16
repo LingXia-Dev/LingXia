@@ -72,10 +72,10 @@ fn handle_toolbar_click(frame: HWND, x: i32, y: i32) {
             return;
         };
         show_selector_menu(frame, content, &layout, &toolbar);
-    } else if point_in_rect(&layout.action_rect, x, y) {
-        if let Some(command) = spec.toolbar.and_then(|toolbar| toolbar.action_command) {
-            dispatch_device_frame_command(command);
-        }
+    } else if point_in_rect(&layout.action_rect, x, y)
+        && let Some(command) = spec.toolbar.and_then(|toolbar| toolbar.action_command)
+    {
+        dispatch_device_frame_command(command);
     }
 }
 
@@ -238,11 +238,9 @@ unsafe extern "system" fn frame_proc(
             let _ = WindowsAndMessaging::KillTimer(Some(hwnd), SIZEMOVE_TIMER_ID);
         }
         sync_content_to_frame(hwnd);
-    } else if msg == WindowsAndMessaging::WM_TIMER {
-        if wparam.0 == SIZEMOVE_TIMER_ID {
-            sync_content_to_frame(hwnd);
-            return LRESULT(0);
-        }
+    } else if msg == WindowsAndMessaging::WM_TIMER && wparam.0 == SIZEMOVE_TIMER_ID {
+        sync_content_to_frame(hwnd);
+        return LRESULT(0);
     }
     unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
 }

@@ -224,7 +224,7 @@ pub(super) fn prepare_windows_design_icons() -> Result<Vec<PreparedWindowsDesign
         let source_path = format!("design/icons/svg/{file_stem}.svg");
         let svg = std::str::from_utf8(file.contents())
             .with_context(|| format!("Failed to read embedded design icon {source_path}"))?;
-        let bytes = crate::r#gen::icons::svg_to_png_bytes(&svg, WINDOWS_DESIGN_ICON_PNG_SIZE)
+        let bytes = crate::r#gen::icons::svg_to_png_bytes(svg, WINDOWS_DESIGN_ICON_PNG_SIZE)
             .with_context(|| {
                 format!("Failed to convert design icon {source_path} to Windows PNG")
             })?;

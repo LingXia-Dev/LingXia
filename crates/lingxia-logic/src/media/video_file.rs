@@ -308,9 +308,11 @@ fn compress_video_api(ctx: JSContext, options: JSCompressVideoOptions) -> JSResu
                 "compressVideo failed with code {code}"
             ))),
             // The oneshot sender is dropped when cancel() removes the callback.
-            Err(_) => Err(HostError::new(rong::error::E_ABORT, "compressVideo canceled")
-                .with_name("AbortError")
-                .into()),
+            Err(_) => Err(
+                HostError::new(rong::error::E_ABORT, "compressVideo canceled")
+                    .with_name("AbortError")
+                    .into(),
+            ),
         }
     })?;
 

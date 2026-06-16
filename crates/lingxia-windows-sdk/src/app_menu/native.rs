@@ -272,17 +272,17 @@ unsafe extern "system" fn menu_window_proc(
         if handle_app_menu_keydown(wparam) {
             return LRESULT(0);
         }
-    } else if msg == WindowsAndMessaging::WM_NCDESTROY {
-        if let Some(state) = remove_menu_window_state(hwnd) {
-            unsafe {
-                let _ = WindowsAndMessaging::SetWindowLongPtrW(
-                    hwnd,
-                    WindowsAndMessaging::GWLP_WNDPROC,
-                    state.original_proc,
-                );
-            }
-            return unsafe { call_original(state.original_proc, hwnd, msg, wparam, lparam) };
+    } else if msg == WindowsAndMessaging::WM_NCDESTROY
+        && let Some(state) = remove_menu_window_state(hwnd)
+    {
+        unsafe {
+            let _ = WindowsAndMessaging::SetWindowLongPtrW(
+                hwnd,
+                WindowsAndMessaging::GWLP_WNDPROC,
+                state.original_proc,
+            );
         }
+        return unsafe { call_original(state.original_proc, hwnd, msg, wparam, lparam) };
     }
 
     match original {

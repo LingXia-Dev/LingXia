@@ -97,7 +97,14 @@ fn volume_root(path: &Path) -> PathBuf {
     }
     if root.as_os_str().is_empty() {
         std::env::var_os("SystemDrive")
-            .map(|drive| PathBuf::from(drive).join("\\"))
+            // `SystemDrive` is like `C:`; append the separator to get the drive
+            // root (`join("\\")` would replace the path with `\`).
+            .map(|drive| {
+                PathBuf::from(format!(
+                    "{}\\",
+                    drive.to_string_lossy().trim_end_matches('\\')
+                ))
+            })
             .unwrap_or_else(|| PathBuf::from("C:\\"))
     } else {
         root

@@ -76,7 +76,7 @@ fn hundred_ns(variant: &PROPVARIANT) -> u64 {
     unsafe {
         let inner = &*variant.Anonymous.Anonymous;
         if inner.vt == VT_UI8 || inner.vt == VT_I8 {
-            inner.Anonymous.uhVal as u64
+            inner.Anonymous.uhVal
         } else {
             0
         }

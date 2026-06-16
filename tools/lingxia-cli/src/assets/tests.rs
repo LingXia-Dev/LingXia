@@ -1,7 +1,7 @@
 use super::{
     any_path_bundle_targets_es5, build_app_json_from_config, build_ui_json_from_config,
-    build_windows_ui_json_from_config, collect_view_target_warnings,
-    prepare_app_ui_icons, validate_app_ui_svg_icon,
+    build_windows_ui_json_from_config, collect_view_target_warnings, prepare_app_ui_icons,
+    validate_app_ui_svg_icon,
 };
 use crate::config::{EnvVersion, HostAppConfig, LingXiaConfig, LingxiaServer, ResolvedEnv};
 use std::fs;

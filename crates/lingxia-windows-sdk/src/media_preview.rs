@@ -677,11 +677,11 @@ unsafe extern "system" fn preview_proc(
                 // Plain click on a single image closes, like the mobile
                 // viewers; videos keep their controls instead.
                 close_session(hwnd, "manual");
-            } else if let Some(session) = session_mut(hwnd) {
-                if let Some(controls) = session.controls.as_ref() {
-                    controls.poke();
-                    update_preview_controls(hwnd);
-                }
+            } else if let Some(session) = session_mut(hwnd)
+                && let Some(controls) = session.controls.as_ref()
+            {
+                controls.poke();
+                update_preview_controls(hwnd);
             }
             LRESULT(0)
         }

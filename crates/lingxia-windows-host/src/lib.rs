@@ -2,6 +2,11 @@
 //!
 //! This crate intentionally contains no Win32 window implementation. The
 //! implementation belongs to `lingxia-windows-sdk`.
+//!
+//! The crate is Windows-only; off-Windows it compiles to nothing so a
+//! `cargo *(--workspace)` on other hosts neither pulls the `windows` crate
+//! nor lints Win32 contracts that can't exist there.
+#![cfg(windows)]
 
 use std::any::Any;
 use std::collections::HashMap;

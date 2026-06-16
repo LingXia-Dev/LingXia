@@ -354,8 +354,10 @@ fn dot11_from_ssid(value: &str) -> Result<DOT11_SSID, PlatformError> {
             "Wi-Fi SSID must be 1..32 bytes".to_string(),
         ));
     }
-    let mut ssid = DOT11_SSID::default();
-    ssid.uSSIDLength = bytes.len() as u32;
+    let mut ssid = DOT11_SSID {
+        uSSIDLength: bytes.len() as u32,
+        ..Default::default()
+    };
     ssid.ucSSID[..bytes.len()].copy_from_slice(bytes);
     Ok(ssid)
 }

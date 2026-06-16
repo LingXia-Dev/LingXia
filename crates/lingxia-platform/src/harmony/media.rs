@@ -5,8 +5,8 @@ use crate::traits::media_interaction::{
     MediaSource, PreviewMediaRequest, SaveMediaRequest, ScanCodeRequest, ScanType,
 };
 use crate::traits::media_runtime::{
-    CompressImageRequest, CompressVideoRequest, ExtractVideoThumbnailRequest,
-    ImageInfo, MediaRuntime, VideoInfo, VideoThumbnail,
+    CompressImageRequest, CompressVideoRequest, ExtractVideoThumbnailRequest, ImageInfo,
+    MediaRuntime, VideoInfo, VideoThumbnail,
 };
 use serde::Serialize;
 use std::path::{Path, PathBuf};
@@ -912,13 +912,13 @@ mod video_native {
     use image::{
         ExtendedColorType, ImageBuffer, Rgba, codecs::jpeg::JpegEncoder, imageops::FilterType,
     };
+    use std::collections::HashMap;
     use std::collections::HashSet;
     use std::ffi::{CStr, CString};
     use std::fs::{self, OpenOptions};
     use std::os::fd::{AsRawFd, RawFd};
     use std::path::Path;
     use std::ptr;
-    use std::collections::HashMap;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::{Arc, Condvar, Mutex, OnceLock};
     use std::time::Duration;
@@ -1549,7 +1549,9 @@ mod video_native {
                 attempt_resolution
             );
             if token.cancelled.load(Ordering::SeqCst) {
-                return Err(PlatformError::Platform("compressVideo cancelled".to_string()));
+                return Err(PlatformError::Platform(
+                    "compressVideo cancelled".to_string(),
+                ));
             }
             match run_transcode_attempt(
                 src_fd.raw(),
@@ -1582,7 +1584,9 @@ mod video_native {
         drop(src_fd);
 
         if token.cancelled.load(Ordering::SeqCst) {
-            return Err(PlatformError::Platform("compressVideo cancelled".to_string()));
+            return Err(PlatformError::Platform(
+                "compressVideo cancelled".to_string(),
+            ));
         }
 
         if !transcode_ok {

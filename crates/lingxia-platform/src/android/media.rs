@@ -6,8 +6,8 @@ use crate::traits::media_interaction::{
     SaveMediaRequest, ScanCodeRequest, ScanType,
 };
 use crate::traits::media_runtime::{
-    CompressImageRequest, CompressVideoRequest, ExtractVideoThumbnailRequest,
-    ImageInfo, MediaRuntime, VideoInfo, VideoThumbnail,
+    CompressImageRequest, CompressVideoRequest, ExtractVideoThumbnailRequest, ImageInfo,
+    MediaRuntime, VideoInfo, VideoThumbnail,
 };
 use jni::objects::{JClass, JObject, JString, JValue};
 use jni::strings::JNIString;
@@ -674,4 +674,3 @@ struct AndroidVideoThumbnailResponse {
     #[serde(rename = "mimeType")]
     mime_type: Option<String>,
 }
-

@@ -455,6 +455,15 @@ pub(crate) fn run_ui_thread(
     result
 }
 
+/// The pieces produced while bringing up a WebView2 controller, returned from
+/// the fallible setup closure so a single error path can tear the window down.
+type WebViewControllerSetup = (
+    ICoreWebView2Controller,
+    ICoreWebView2,
+    Arc<Mutex<HashMap<String, Vec<u8>>>>,
+    Option<PathBuf>,
+);
+
 pub(crate) fn run_ui_thread_inner(
     webtag: WebTag,
     effective_options: EffectiveWebViewCreateOptions,
@@ -468,12 +477,7 @@ pub(crate) fn run_ui_thread_inner(
 
     // After the window exists, every failure must report the real error to the
     // creator and destroy the window (which also frees the WindowUserData box).
-    let setup = (|| -> StdResult<(
-        ICoreWebView2Controller,
-        ICoreWebView2,
-        Arc<Mutex<HashMap<String, Vec<u8>>>>,
-        Option<PathBuf>,
-    )> {
+    let setup = (|| -> StdResult<WebViewControllerSetup> {
         let (env, transient_user_data_dir) = create_environment(&webtag, &effective_options)?;
         let controller = create_controller(&env, hwnd)?;
         let webview = unsafe {

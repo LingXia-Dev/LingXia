@@ -750,10 +750,10 @@ fn resolve_shell_uncached() -> TerminalShell {
                 args: vec!["-NoLogo".to_string()],
             };
         }
-        return TerminalShell {
+        TerminalShell {
             path: env_non_empty("COMSPEC").unwrap_or_else(|| "cmd.exe".to_string()),
             args: Vec::new(),
-        };
+        }
     }
 
     #[cfg(not(windows))]
