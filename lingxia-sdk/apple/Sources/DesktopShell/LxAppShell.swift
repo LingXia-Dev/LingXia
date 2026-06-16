@@ -182,6 +182,9 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     /// left panel and the two never overlap. Kept separate from the sidebar base
     /// because sidebar reveal/hide also drives the leading constraint.
     private var cardLeadingPanelInset: CGFloat = 0
+    /// The transient update callout, pinned to the window's bottom-left corner on
+    /// the top layer (independent of the sidebar).
+    private var updateReadyCallout: UpdateReadyCallout?
     private var cardTrailingConstraint: NSLayoutConstraint?
     private var cardBottomConstraint: NSLayoutConstraint?
     private var cardTopConstraint: NSLayoutConstraint?
@@ -1029,12 +1032,43 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         sidebarView?.updatePanelItems(sidebarItems)
     }
 
-    /// Show the update callout above the bottom-left sidebar icon. `.ready` →
-    /// click restarts to apply; `.available` → click re-opens the install
-    /// flow. Reveals the sidebar first so the callout is visible.
+    /// Show the update callout pinned to the window's bottom-left corner on the
+    /// top layer, independent of the sidebar. `.ready` → click restarts to apply;
+    /// `.available` → click re-opens the install flow.
     func presentUpdateReadyCallout(appName: String, state: UpdateCalloutState) {
-        showSidebar()
-        sidebarView?.presentUpdateReadyCallout(appName: appName, state: state)
+        guard let contentView = window?.contentView else { return }
+        updateReadyCallout?.removeFromSuperview()
+
+        let callout = UpdateReadyCallout(appName: appName, state: state) { [weak self] in
+            self?.handleUpdateAction(state)
+        }
+        callout.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(callout, positioned: .above, relativeTo: nil)
+        updateReadyCallout = callout
+
+        // Bottom-left corner of the content area — just past the sidebar's icon
+        // strip so it never covers the sidebar icons, and on the top layer so it
+        // floats above any dock panel.
+        let margin = Layout.contentPanelPadding + 6
+        let leadingRef = sidebarView?.trailingAnchor ?? contentView.leadingAnchor
+        NSLayoutConstraint.activate([
+            callout.leadingAnchor.constraint(equalTo: leadingRef, constant: margin),
+            callout.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -margin),
+        ])
+    }
+
+    func dismissUpdateReadyCallout() {
+        updateReadyCallout?.removeFromSuperview()
+        updateReadyCallout = nil
+    }
+
+    private func handleUpdateAction(_ state: UpdateCalloutState) {
+        switch state {
+        case .ready:
+            _ = onAppEvent(AppEvent.updateRestartClick, "")
+        case .available:
+            _ = onAppEvent(AppEvent.updateInstallClick, "")
+        }
     }
 
     /// Present the centered "update available" card (Stage 1). The card then

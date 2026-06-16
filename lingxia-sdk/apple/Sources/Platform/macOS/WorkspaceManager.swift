@@ -555,7 +555,16 @@ class WorkspaceManager: NSObject {
     private func cardTrailingInset() -> CGFloat { cardInset(for: .right) }
     private func cardBottomInset() -> CGFloat { cardInset(for: .bottom) }
     private func cardTopInset() -> CGFloat { cardInset(for: .top) }
-    private func cardLeadingInset() -> CGFloat { cardInset(for: .left) }
+
+    /// Leading inset is 0 when no left panel is open (the content card sits flush
+    /// against the sidebar), and `padding + panel + padding` when one is, so the
+    /// card shrinks to exactly clear the left panel.
+    private func cardLeadingInset() -> CGFloat {
+        guard let id = activeByPosition[.left], let slot = panels[id], slot.isVisible else {
+            return 0
+        }
+        return padding + clampedPanelSize(slot.currentSize, for: .left) + padding
+    }
 
     private func bringPanelToFront(_ slot: PanelSlot) {
         guard let parent = overlayParent else { return }
@@ -643,7 +652,7 @@ class WorkspaceManager: NSObject {
             // Bottom panel docks under the WebView card only — its trailing edge
             // aligns with the card's, so an active right panel sits next to the terminal rather than over it.
             let size = clampedPanelSize(slot.currentSize, for: .bottom)
-            let leading = max(0, sidebar.frame.maxX)
+            let leading = max(0, sidebar.frame.maxX + cardLeadingInset())
             let trailing = max(leading, parent.bounds.width - cardTrailingInset())
             let width = max(0, trailing - leading)
             let bottom = p
@@ -673,7 +682,7 @@ class WorkspaceManager: NSObject {
         // band as the bottom panel (after the sidebar, before any right panel),
         // and its resize handle hangs just below its lower edge.
         let size = clampedPanelSize(slot.currentSize, for: .top)
-        let leading = max(0, sidebar.frame.maxX)
+        let leading = max(0, sidebar.frame.maxX + cardLeadingInset())
         let trailing = max(leading, parent.bounds.width - cardTrailingInset())
         let width = max(0, trailing - leading)
         let top = max(0, parent.bounds.height - p - size)
