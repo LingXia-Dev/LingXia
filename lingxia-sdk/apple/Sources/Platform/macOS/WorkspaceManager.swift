@@ -230,8 +230,8 @@ class WorkspaceManager: NSObject {
 
     /// Called inside an animation block whenever panel state changes.
     /// WindowController updates its WebView card edge constraints in this callback.
-    /// Parameters: (trailingInset, bottomInset, topInset)
-    var onCardEdgesChanged: ((_ trailing: CGFloat, _ bottom: CGFloat, _ top: CGFloat) -> Void)?
+    /// Parameters: (trailingInset, bottomInset, topInset, leadingInset)
+    var onCardEdgesChanged: ((_ trailing: CGFloat, _ bottom: CGFloat, _ top: CGFloat, _ leading: CGFloat) -> Void)?
 
     private var panels: [String: PanelSlot] = [:]
     /// At most one active panel per position.
@@ -250,7 +250,7 @@ class WorkspaceManager: NSObject {
         overlayParent: NSView,
         sidebar: NSView,
         padding: CGFloat,
-        onCardEdgesChanged: @escaping (_ trailing: CGFloat, _ bottom: CGFloat, _ top: CGFloat) -> Void
+        onCardEdgesChanged: @escaping (_ trailing: CGFloat, _ bottom: CGFloat, _ top: CGFloat, _ leading: CGFloat) -> Void
     ) {
         self.overlayParent = overlayParent
         self.sidebarRef = sidebar
@@ -360,7 +360,7 @@ class WorkspaceManager: NSObject {
             lxWorkspaceStdoutLog(
                 "showPanel animate id=\(id) trailingInset=\(String(format: "%.1f", cardTrailingInset())) bottomInset=\(String(format: "%.1f", cardBottomInset()))"
             )
-            onCardEdgesChanged?(cardTrailingInset(), cardBottomInset(), cardTopInset())
+            onCardEdgesChanged?(cardTrailingInset(), cardBottomInset(), cardTopInset(), cardLeadingInset())
             overlayParent?.layoutSubtreeIfNeeded()
             layoutFrameDrivenPanels()
         }
@@ -438,12 +438,12 @@ class WorkspaceManager: NSObject {
                 ctx.duration = Self.animationDuration
                 ctx.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
                 ctx.allowsImplicitAnimation = true
-                onCardEdgesChanged?(cardTrailingInset(), cardBottomInset(), cardTopInset())
+                onCardEdgesChanged?(cardTrailingInset(), cardBottomInset(), cardTopInset(), cardLeadingInset())
                 overlayParent?.layoutSubtreeIfNeeded()
                 layoutFrameDrivenPanels()
             }
         } else {
-            onCardEdgesChanged?(cardTrailingInset(), cardBottomInset(), cardTopInset())
+            onCardEdgesChanged?(cardTrailingInset(), cardBottomInset(), cardTopInset(), cardLeadingInset())
             layoutFrameDrivenPanels()
         }
     }
@@ -459,7 +459,7 @@ class WorkspaceManager: NSObject {
         )
         slot.currentSize = clamped
         slot.sizeConstraint?.constant = clamped
-        onCardEdgesChanged?(cardTrailingInset(), cardBottomInset(), cardTopInset())
+        onCardEdgesChanged?(cardTrailingInset(), cardBottomInset(), cardTopInset(), cardLeadingInset())
         overlayParent?.layoutSubtreeIfNeeded()
         layoutFrameDrivenPanels()
     }
@@ -555,6 +555,7 @@ class WorkspaceManager: NSObject {
     private func cardTrailingInset() -> CGFloat { cardInset(for: .right) }
     private func cardBottomInset() -> CGFloat { cardInset(for: .bottom) }
     private func cardTopInset() -> CGFloat { cardInset(for: .top) }
+    private func cardLeadingInset() -> CGFloat { cardInset(for: .left) }
 
     private func bringPanelToFront(_ slot: PanelSlot) {
         guard let parent = overlayParent else { return }
@@ -594,7 +595,7 @@ class WorkspaceManager: NSObject {
             ctx.allowsImplicitAnimation = true
             slot.shadowWrapper.layer?.transform = CATransform3DMakeTranslation(offset.x, offset.y, 0)
             if updateCardEdges {
-                onCardEdgesChanged?(cardTrailingInset(), cardBottomInset(), cardTopInset())
+                onCardEdgesChanged?(cardTrailingInset(), cardBottomInset(), cardTopInset(), cardLeadingInset())
                 overlayParent?.layoutSubtreeIfNeeded()
                 layoutFrameDrivenPanels()
             }
@@ -704,12 +705,10 @@ class WorkspaceManager: NSObject {
         let p = padding
         let maxByWindow: CGFloat
         switch position {
-        case .right:
+        case .right, .left:
             maxByWindow = parent.bounds.width - (sidebarRef?.frame.width ?? 0) - p * 3 - Self.minMainRegionWidth
         case .bottom, .top:
             maxByWindow = parent.bounds.height - p * 3 - Self.minMainRegionHeight
-        case .left:
-            return base
         }
 
         let result = min(base, max(Self.panelMinSize, maxByWindow))

@@ -177,6 +177,11 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     private var navigationToolbar: MacNavigationToolbar?
     private var sidebarWidthConstraint: NSLayoutConstraint?
     private var contentLeadingConstraint: NSLayoutConstraint?
+    /// Extra leading inset for an active left-edge dock panel. The content card's
+    /// leading is `sidebar width + this`, so the card shrinks to make room for a
+    /// left panel and the two never overlap. Kept separate from the sidebar base
+    /// because sidebar reveal/hide also drives the leading constraint.
+    private var cardLeadingPanelInset: CGFloat = 0
     private var cardTrailingConstraint: NSLayoutConstraint?
     private var cardBottomConstraint: NSLayoutConstraint?
     private var cardTopConstraint: NSLayoutConstraint?
@@ -509,11 +514,14 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
             overlayParent: contentView,
             sidebar: sidebar,
             padding: Layout.contentPanelPadding
-        ) { [weak self] trailingInset, bottomInset, topInset in
+        ) { [weak self] trailingInset, bottomInset, topInset, leadingInset in
             guard let self else { return }
             self.cardTrailingConstraint?.constant = -trailingInset
             self.cardBottomConstraint?.constant = -bottomInset
             self.cardTopConstraint?.constant = topInset
+            self.cardLeadingPanelInset = leadingInset
+            let sidebarBase = self.sidebarWidthConstraint?.constant ?? Layout.sidebarWidth
+            self.contentLeadingConstraint?.constant = sidebarBase + leadingInset
         }
 
         configureSidebarRevealButton()
@@ -642,7 +650,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         guard let constraint = sidebarWidthConstraint else { return }
         guard sidebarChromeEnabled else {
             constraint.constant = 0
-            contentLeadingConstraint?.constant = 0
+            contentLeadingConstraint?.constant = cardLeadingPanelInset
             refreshSidebarVisibilityUI()
             return
         }
@@ -666,7 +674,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
 
         let targetWidth: CGFloat = visible ? lastExpandedSidebarWidth : 0
         let sidebarHidden = !visible
-        let targetContentLeading = targetWidth
+        let targetContentLeading = targetWidth + cardLeadingPanelInset
 
         if animated {
             NSAnimationContext.runAnimationGroup({ context in
