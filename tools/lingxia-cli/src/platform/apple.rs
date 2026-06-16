@@ -15,6 +15,7 @@ pub mod devicectl;
 pub mod env_icon;
 pub mod grandslam;
 pub mod keychain;
+pub mod notarize;
 pub mod provisioning;
 pub mod signer;
 pub mod srp;
