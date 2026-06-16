@@ -12,6 +12,10 @@ enum LxAppSurface {
     private static let log = OSLog(subsystem: "LingXia", category: "Surface")
     private static let kindWindow: Int32 = 0
     private static let kindPopup: Int32 = 1
+    // Arbitrated role (mirrors lingxia_platform SurfaceRole): only an aside docks.
+    private static let roleMain: Int32 = 0
+    private static let roleAside: Int32 = 1
+    private static let roleFloat: Int32 = 2
     private static let contentPage: Int32 = 0
     private static let contentUrl: Int32 = 1
     private static let transientCornerRadius: CGFloat = 12
@@ -137,7 +141,8 @@ enum LxAppSurface {
         height: Double,
         widthRatio: Double,
         heightRatio: Double,
-        position: Int32
+        position: Int32,
+        role: Int32
     ) -> Bool {
         if let existing = entries[id] {
             if existing.dockedPosition != nil {
@@ -148,11 +153,12 @@ enum LxAppSurface {
             return true
         }
 
-        // Adaptive Surface Layout: an edge-aside (overlay + a dockable edge)
-        // renders as an in-window split pane via the shell's workspace dock —
-        // the same mechanism the terminal panel uses — instead of a floating
-        // window. Center/top overlays stay on the legacy popup path below.
+        // Adaptive Surface Layout: only an arbitrated aside (overlay on a
+        // dockable edge) renders as an in-window split pane via the shell's
+        // workspace dock — the same mechanism the terminal uses. Floats (and any
+        // other overlay) stay on the positioned popup path below.
         if kind == kindPopup,
+           role == roleAside,
            let panelPosition = panelPosition(for: position),
            let shell = LxAppActiveHost.activeShell {
             return presentDockedAside(

@@ -122,7 +122,8 @@ extension LxApp {
         height: Double,
         width_ratio: Double,
         height_ratio: Double,
-        position: Int32
+        position: Int32,
+        role: Int32
     ) -> Bool {
         let idString = id.toString()
         let appIdString = appid.toString()
@@ -153,7 +154,8 @@ extension LxApp {
                 height: height,
                 widthRatio: width_ratio,
                 heightRatio: height_ratio,
-                position: position
+                position: position,
+                role: role
             )
         }
     }

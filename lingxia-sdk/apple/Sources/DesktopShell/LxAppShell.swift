@@ -412,8 +412,17 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     /// drive the new shared-core model from real window geometry.
     private func reportSurfaceWidth() {
         guard let appId = currentViewController?.appId,
-              let width = window?.contentView?.frame.width, width > 0 else { return }
-        _ = setSurfaceWidth(appId, Double(width))
+              let windowWidth = window?.contentView?.frame.width, windowWidth > 0 else { return }
+        // Report the content card's width (what the lxapp actually gets), not the
+        // whole window — so when a left/right dock panel shrinks the card the
+        // core re-resolves the sizeClass and the content adapts. Derive it from
+        // the edge constraints rather than the frame, which lags during the
+        // panel open/close animation.
+        let leading = contentLeadingConstraint?.constant ?? Layout.sidebarWidth
+        let trailingInset = -(cardTrailingConstraint?.constant ?? 0)
+        let cardWidth = max(0, windowWidth - leading - trailingInset)
+        guard cardWidth > 0 else { return }
+        _ = setSurfaceWidth(appId, Double(cardWidth))
     }
 
     // MARK: - Sidebar Interface Setup
@@ -525,6 +534,8 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
             self.cardLeadingPanelInset = leadingInset
             let sidebarBase = self.sidebarWidthConstraint?.constant ?? Layout.sidebarWidth
             self.contentLeadingConstraint?.constant = sidebarBase + leadingInset
+            // The card width changed; re-report so the lxapp re-adapts its layout.
+            self.reportSurfaceWidth()
         }
 
         configureSidebarRevealButton()
@@ -1073,6 +1084,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
             _ = onAppEvent(AppEvent.updateInstallClick, "")
         }
     }
+
 
     /// Present the centered "update available" card (Stage 1). The card then
     /// drives the whole flow: Download & Install → live progress → Restart Now.

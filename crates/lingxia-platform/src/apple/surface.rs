@@ -27,6 +27,7 @@ impl SurfacePresenter for Platform {
                 SurfacePosition::Right => 3,
                 SurfacePosition::Top => 4,
             },
+            request.role as i32,
         ) {
             Ok(())
         } else {

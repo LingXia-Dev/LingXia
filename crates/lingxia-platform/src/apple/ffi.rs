@@ -186,6 +186,7 @@ mod bridge {
             width_ratio: f64,
             height_ratio: f64,
             position: i32,
+            role: i32,
         ) -> bool;
 
         #[swift_bridge(swift_name = "LxApp.closeSurface")]

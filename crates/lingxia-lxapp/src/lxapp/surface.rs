@@ -1,6 +1,6 @@
 use super::*;
 use lingxia_platform::traits::ui::{
-    SurfaceContent, SurfaceKind, SurfacePosition, SurfacePresenter,
+    SurfaceContent, SurfaceKind, SurfacePosition, SurfacePresenter, SurfaceRole,
     SurfaceRequest as PlatformSurfaceRequest,
 };
 use std::collections::HashMap;
@@ -123,6 +123,7 @@ impl LxApp {
         // arbitrated outcome — the core graph is the single source of truth.
         let mut present_kind = request.kind;
         let mut present_position = request.position;
+        let mut present_role = SurfaceRole::default();
         // Surfaces the core evicted to make room for this one (arbitration
         // replacement). Closed natively after the new surface is presented so
         // the platform never leaks the victim's window/pane.
@@ -152,7 +153,7 @@ impl LxApp {
             let _decision = manager.open(node);
             if let Some(role) = manager.graph().role_of(&id) {
                 let edge = manager.graph().get(&id).and_then(|s| s.placement.edge);
-                (present_kind, present_position) =
+                (present_kind, present_position, present_role) =
                     present_params_for_role(role, edge, request.position);
             }
             let after: HashSet<String> =
@@ -176,6 +177,7 @@ impl LxApp {
             width_ratio: finite_or_nan(request.width_ratio),
             height_ratio: finite_or_nan(request.height_ratio),
             position: present_position,
+            role: present_role,
         });
         if let Err(err) = present_result {
             self.forget_surface(&id);
@@ -490,26 +492,28 @@ impl LxApp {
 
 pub(crate) type SurfaceRecords = HashMap<String, SurfaceRecord>;
 
-/// Map a core-arbitrated role (+ resolved edge) back to the legacy platform
-/// present parameters, so native presentation follows the core's decision.
+/// Map a core-arbitrated role (+ resolved edge) back to the platform present
+/// parameters, so native presentation follows the core's decision. A float keeps
+/// its requested position (popup at that edge/center); an aside docks at its
+/// edge; a main is a window.
 fn present_params_for_role(
     role: lingxia_surface::Role,
     edge: Option<lingxia_surface::Edge>,
-    fallback_position: SurfacePosition,
-) -> (SurfaceKind, SurfacePosition) {
+    requested_position: SurfacePosition,
+) -> (SurfaceKind, SurfacePosition, SurfaceRole) {
     use lingxia_surface::{Edge as LxEdge, Role as LxRole};
     match role {
-        LxRole::Main => (SurfaceKind::Window, SurfacePosition::Center),
-        LxRole::Float => (SurfaceKind::Overlay, SurfacePosition::Center),
+        LxRole::Main => (SurfaceKind::Window, SurfacePosition::Center, SurfaceRole::Main),
+        LxRole::Float => (SurfaceKind::Overlay, requested_position, SurfaceRole::Float),
         LxRole::Aside => {
             let position = match edge {
                 Some(LxEdge::Left) => SurfacePosition::Left,
                 Some(LxEdge::Right) => SurfacePosition::Right,
                 Some(LxEdge::Top) => SurfacePosition::Top,
                 Some(LxEdge::Bottom) => SurfacePosition::Bottom,
-                None => fallback_position,
+                None => requested_position,
             };
-            (SurfaceKind::Overlay, position)
+            (SurfaceKind::Overlay, position, SurfaceRole::Aside)
         }
     }
 }

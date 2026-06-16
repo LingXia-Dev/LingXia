@@ -47,6 +47,19 @@ pub enum SurfaceKind {
     Overlay = 1,
 }
 
+/// The arbitrated role that drives how the platform presents a surface:
+/// `Main` = a top-level window/primary, `Aside` = a docked split companion,
+/// `Float` = a positioned popup (it keeps its edge/center placement but never
+/// splits the main). Distinguishes a float-popup-at-edge from an aside-dock.
+#[repr(i32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SurfaceRole {
+    #[default]
+    Main = 0,
+    Aside = 1,
+    Float = 2,
+}
+
 #[repr(i32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SurfaceContent {
@@ -80,6 +93,8 @@ pub struct SurfaceRequest {
     pub width_ratio: f64,
     pub height_ratio: f64,
     pub position: SurfacePosition,
+    /// Arbitrated role; the platform uses it to decide dock vs popup vs window.
+    pub role: SurfaceRole,
 }
 
 pub trait SurfacePresenter: Send + Sync + 'static {
