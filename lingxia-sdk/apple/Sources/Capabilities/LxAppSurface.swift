@@ -27,6 +27,13 @@ enum LxAppSurface {
         let window: NSWindow?
         weak var parentWindow: NSWindow?
         let delegate: WindowDelegate
+        /// Set when the surface is an edge-aside docked in-window via the shell's
+        /// workspace panels (Adaptive Surface Layout split pane) rather than a
+        /// standalone window. `nil` for window/float surfaces.
+        let dockedPosition: PanelPosition?
+        /// The container view handed to the shell's panel dock; held so close()
+        /// can detach it from the panel slot.
+        let dockedContainer: NSView?
 
         init(
             id: String,
@@ -37,7 +44,9 @@ enum LxAppSurface {
             navigationDelegate: WKNavigationDelegate?,
             window: NSWindow?,
             parentWindow: NSWindow?,
-            delegate: WindowDelegate
+            delegate: WindowDelegate,
+            dockedPosition: PanelPosition? = nil,
+            dockedContainer: NSView? = nil
         ) {
             self.id = id
             self.appId = appId
@@ -48,6 +57,8 @@ enum LxAppSurface {
             self.window = window
             self.parentWindow = parentWindow
             self.delegate = delegate
+            self.dockedPosition = dockedPosition
+            self.dockedContainer = dockedContainer
         }
     }
 
@@ -129,8 +140,35 @@ enum LxAppSurface {
         position: Int32
     ) -> Bool {
         if let existing = entries[id] {
-            existing.window?.makeKeyAndOrderFront(nil)
+            if existing.dockedPosition != nil {
+                LxAppActiveHost.activeShell?.showPanel(id: id)
+            } else {
+                existing.window?.makeKeyAndOrderFront(nil)
+            }
             return true
+        }
+
+        // Adaptive Surface Layout: an edge-aside (overlay + a dockable edge)
+        // renders as an in-window split pane via the shell's workspace dock —
+        // the same mechanism the terminal panel uses — instead of a floating
+        // window. Center/top overlays stay on the legacy popup path below.
+        if kind == kindPopup,
+           let panelPosition = panelPosition(for: position),
+           let shell = LxAppActiveHost.activeShell {
+            return presentDockedAside(
+                id: id,
+                appId: appId,
+                path: path,
+                sessionId: sessionId,
+                pageInstanceId: rawPageInstanceId,
+                content: content,
+                panelPosition: panelPosition,
+                width: width,
+                height: height,
+                widthRatio: widthRatio,
+                heightRatio: heightRatio,
+                shell: shell
+            )
         }
 
         let context = surfaceContext(kind: kind)
@@ -284,6 +322,160 @@ enum LxAppSurface {
         return true
     }
 
+    /// Render an edge-aside as an in-window split pane docked into the shell's
+    /// workspace. The aside's content (page host or web view) is mounted into a
+    /// plain container that the shell pins inside a panel slot; the main content
+    /// card shrinks to make room, producing a real split rather than a floating
+    /// window.
+    private static func presentDockedAside(
+        id: String,
+        appId: String,
+        path: String,
+        sessionId: UInt64,
+        pageInstanceId rawPageInstanceId: String,
+        content: Int32,
+        panelPosition: PanelPosition,
+        width: Double,
+        height: Double,
+        widthRatio: Double,
+        heightRatio: Double,
+        shell: LxAppShell
+    ) -> Bool {
+        let container = NSView()
+        container.wantsLayer = true
+        container.layer?.backgroundColor = NSColor.clear.cgColor
+
+        let pageInstanceId: String
+        let hostView: LxAppHostView?
+        let webView: WKWebView?
+        let navigationDelegate: WKNavigationDelegate?
+
+        switch content {
+        case contentPage:
+            pageInstanceId = rawPageInstanceId.trimmingCharacters(in: .whitespacesAndNewlines)
+            if path.isEmpty || pageInstanceId.isEmpty {
+                os_log(
+                    "aside page requires path and pageInstanceId id=%{public}@ app=%{public}@ path=%{public}@ pageInstanceId=%{public}@",
+                    log: log, type: .error, id, appId, path, pageInstanceId
+                )
+                return false
+            }
+            let controller = LxAppActiveHost.activeController ?? LxAppController()
+            let lxHostView = LxAppHostView(controller: controller)
+            lxHostView.translatesAutoresizingMaskIntoConstraints = false
+            lxHostView.wantsLayer = true
+            lxHostView.layer?.backgroundColor = NSColor.clear.cgColor
+            container.addSubview(lxHostView)
+            pinToEdges(lxHostView, in: container)
+
+            let session = LxAppSession(
+                id: LxAppSessionID(rawValue: sessionId),
+                appId: appId,
+                path: path,
+                presentation: .normal,
+                userInfo: [
+                    "pageInstanceId": .string(pageInstanceId),
+                    "dynamicSurfaceId": .string(id),
+                ]
+            )
+            hostView = lxHostView
+            webView = nil
+            navigationDelegate = nil
+            Task { @MainActor in
+                do {
+                    try await lxHostView.mount(session, notifyVisibleOnMount: true)
+                } catch {
+                    os_log(
+                        "aside mount failed id=%{public}@ app=%{public}@ path=%{public}@ error=%{public}@",
+                        log: log, type: .error, id, appId, path, String(describing: error)
+                    )
+                    _ = close(id: id, appId: appId, reason: "failed")
+                }
+            }
+
+        case contentUrl:
+            guard let url = URL(string: path), let scheme = url.scheme?.lowercased(), scheme == "https" || scheme == "http" else {
+                os_log("invalid web aside url id=%{public}@ url=%{public}@", log: log, type: .error, id, path)
+                return false
+            }
+            pageInstanceId = ""
+            hostView = nil
+            let configuration = WKWebViewConfiguration()
+            let wkWebView = WKWebView(frame: .zero, configuration: configuration)
+            let navDelegate = WebNavigationDelegate(initialURL: url)
+            wkWebView.navigationDelegate = navDelegate
+            wkWebView.translatesAutoresizingMaskIntoConstraints = false
+            container.addSubview(wkWebView)
+            pinToEdges(wkWebView, in: container)
+            wkWebView.load(URLRequest(url: url))
+            webView = wkWebView
+            navigationDelegate = navDelegate
+
+        default:
+            os_log("unsupported aside content=%{public}d id=%{public}@ app=%{public}@", log: log, type: .error, content, id, appId)
+            return false
+        }
+
+        let defaultSize = dockDefaultSize(
+            position: panelPosition,
+            width: width,
+            height: height,
+            widthRatio: widthRatio,
+            heightRatio: heightRatio
+        )
+        entries[id] = Entry(
+            id: id,
+            appId: appId,
+            pageInstanceId: pageInstanceId,
+            hostView: hostView,
+            webView: webView,
+            navigationDelegate: navigationDelegate,
+            window: nil,
+            parentWindow: nil,
+            delegate: WindowDelegate(id: id, appId: appId),
+            dockedPosition: panelPosition,
+            dockedContainer: container
+        )
+        shell.showPanelWithNativeContent(
+            id: id,
+            position: panelPosition,
+            contentView: container,
+            defaultSize: defaultSize
+        )
+        return true
+    }
+
+    /// Map a legacy `SurfacePosition` integer to a dockable workspace edge.
+    /// Center (0) is a float and Top (4) has no dock slot — both return nil so
+    /// the caller keeps the legacy popup path.
+    private static func panelPosition(for position: Int32) -> PanelPosition? {
+        switch position {
+        case 1: return .bottom
+        case 2: return .left
+        case 3: return .right
+        default: return nil
+        }
+    }
+
+    private static func dockDefaultSize(
+        position: PanelPosition,
+        width: Double,
+        height: Double,
+        widthRatio: Double,
+        heightRatio: Double
+    ) -> CGFloat {
+        switch position {
+        case .left, .right:
+            return finitePositive(width)
+                ?? ratioSize(widthRatio, base: NSScreen.main?.visibleFrame.width ?? 1280)
+                ?? 360
+        case .bottom:
+            return finitePositive(height)
+                ?? ratioSize(heightRatio, base: NSScreen.main?.visibleFrame.height ?? 800)
+                ?? 320
+        }
+    }
+
     static func close(id: String, appId: String, reason: String) -> Bool {
         guard let entry = entries.removeValue(forKey: id) else {
             _ = onSurfaceClosed(appId, id, closeReason(reason))
@@ -297,6 +489,11 @@ enum LxAppSurface {
         entry.hostView?.unmount(reason: closeReason(reason))
         entry.webView?.stopLoading()
         entry.webView?.navigationDelegate = nil
+        if entry.dockedPosition != nil {
+            // In-window aside: hide the panel slot and detach its content.
+            LxAppActiveHost.activeShell?.hidePanel(id: id)
+            entry.dockedContainer?.removeFromSuperview()
+        }
         entry.window?.delegate = nil
         if let window = entry.window {
             entry.parentWindow?.removeChildWindow(window)
@@ -308,8 +505,22 @@ enum LxAppSurface {
     }
 
     static func show(id: String, appId: String) -> Bool {
-        guard let entry = entries[id], entry.appId == appId, let window = entry.window else {
+        guard let entry = entries[id], entry.appId == appId else {
             os_log("show: surface not found id=%{public}@ app=%{public}@", log: log, type: .error, id, appId)
+            return false
+        }
+        if entry.dockedPosition != nil {
+            LxAppActiveHost.activeShell?.showPanel(id: id)
+            if let webView = entry.hostView?.webView {
+                MacNativeBridge.notifyPageActive(for: webView)
+            }
+            if !entry.pageInstanceId.isEmpty {
+                _ = notifyPageInstanceVisible(entry.pageInstanceId)
+            }
+            return true
+        }
+        guard let window = entry.window else {
+            os_log("show: surface has no window id=%{public}@ app=%{public}@", log: log, type: .error, id, appId)
             return false
         }
         // Defense in depth — JS-side already short-circuits on no-op.
@@ -334,8 +545,22 @@ enum LxAppSurface {
     }
 
     static func hide(id: String, appId: String) -> Bool {
-        guard let entry = entries[id], entry.appId == appId, let window = entry.window else {
+        guard let entry = entries[id], entry.appId == appId else {
             os_log("hide: surface not found id=%{public}@ app=%{public}@", log: log, type: .error, id, appId)
+            return false
+        }
+        if entry.dockedPosition != nil {
+            LxAppActiveHost.activeShell?.hidePanel(id: id)
+            if let webView = entry.hostView?.webView {
+                MacNativeBridge.notifyPageInactive(for: webView)
+            }
+            if !entry.pageInstanceId.isEmpty {
+                _ = notifyPageInstanceHidden(entry.pageInstanceId, "hidden")
+            }
+            return true
+        }
+        guard let window = entry.window else {
+            os_log("hide: surface has no window id=%{public}@ app=%{public}@", log: log, type: .error, id, appId)
             return false
         }
         if !window.isVisible { return true }
