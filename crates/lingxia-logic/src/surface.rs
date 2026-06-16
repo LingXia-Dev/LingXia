@@ -3,7 +3,7 @@ use lingxia_platform::traits::ui::{SurfaceKind, SurfacePosition};
 use lxapp::{LxApp, PageQueryInput, PageSurfaceRequest, PageSurfaceTarget, PageTarget};
 use rong::{
     Class, HostError, IntoJSObj, JSContext, JSFunc, JSObject, JSResult, JSValue, Promise,
-    function::{Rest, This},
+    function::{Optional, Rest, This},
     js_class, js_export, js_method,
 };
 use rong_event::{Emitter, EmitterExt, EventEmitter, EventKey};
@@ -148,8 +148,79 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     // current(): this window's adaptive context, so an lxapp can self-adapt
     // (e.g. switch columns by sizeClass). Returns an object.
     surface.set("current", JSFunc::new(ctx, surface_current)?)?;
+    // New-model creation sugar: aside (beside main) / float (overlay layer).
+    // role is expressed by the verb; the Host arbitrates the final placement.
+    surface.set("aside", JSFunc::new(ctx, open_aside)?)?;
+    surface.set("float", JSFunc::new(ctx, open_float)?)?;
     lx.set("surface", surface)?;
     Ok(())
+}
+
+#[derive(Debug, Clone, IntoJSObj)]
+struct UrlSurfaceOptions {
+    url: String,
+    kind: String,
+    position: String,
+}
+
+#[derive(Debug, Clone, IntoJSObj)]
+struct PageSurfaceOptions {
+    path: String,
+    kind: String,
+    position: String,
+}
+
+/// `lx.surface.aside(target, edge?)` — open a surface beside the main content.
+async fn open_aside(ctx: JSContext, target: JSValue, edge: Optional<String>) -> JSResult<JSObject> {
+    let position = edge.0.unwrap_or_else(|| "right".to_string());
+    let options = build_open_options(&ctx, &target, "overlay", &position)?;
+    open_surface(ctx, options).await
+}
+
+/// `lx.surface.float(target)` — open a surface floating above the main content.
+async fn open_float(ctx: JSContext, target: JSValue) -> JSResult<JSObject> {
+    let options = build_open_options(&ctx, &target, "overlay", "center")?;
+    open_surface(ctx, options).await
+}
+
+/// Translate a new-model `target` (string entry/path, or `{ url }` / `{ browser }`)
+/// + role-derived kind/position into the underlying open options.
+fn build_open_options(
+    ctx: &JSContext,
+    target: &JSValue,
+    kind: &str,
+    position: &str,
+) -> JSResult<JSValue> {
+    if target.is_string() {
+        let path = target
+            .clone()
+            .to_rust::<String>()
+            .map_err(|_| invalid_surface_target("target string must be a page path"))?;
+        return Ok(JSValue::from_rust(
+            ctx,
+            PageSurfaceOptions {
+                path,
+                kind: kind.to_string(),
+                position: position.to_string(),
+            },
+        ));
+    }
+    if let Some(obj) = target.clone().into_object() {
+        // `{ url }` (embedded) or `{ browser }` (with chrome — mapped to url here).
+        if let Some(url) = read_optional_string(&obj, "url")?.or(read_optional_string(&obj, "browser")?) {
+            return Ok(JSValue::from_rust(
+                ctx,
+                UrlSurfaceOptions {
+                    url,
+                    kind: kind.to_string(),
+                    position: position.to_string(),
+                },
+            ));
+        }
+    }
+    Err(invalid_surface_target(
+        "target must be a page path string or { url } / { browser }",
+    ))
 }
 
 fn surface_derived_layout(ctx: JSContext) -> JSResult<String> {
