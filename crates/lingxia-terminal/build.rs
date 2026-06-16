@@ -6,7 +6,7 @@ use std::process::Command;
 
 const DEFAULT_REPO: &str = "https://github.com/ghostty-org/ghostty.git";
 /// Pinned Ghostty revision for libghostty-vt terminal semantics.
-const DEFAULT_REV: &str = "ca7516bea60190ee2e9a4f9182b61d318d107c6e";
+const DEFAULT_REV: &str = "fdbf9ff3a31d7531b691cb49c98fc465a1a503a0";
 
 fn main() {
     emit_rerun_env();
