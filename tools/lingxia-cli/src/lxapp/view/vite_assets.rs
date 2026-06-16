@@ -550,7 +550,7 @@ mod tests {
             temp.path(),
             "lxapp.config.ts",
             r#"export default {
-  staticDirs: ['.lingxia\\cache']
+  staticDirs: ['.lingxia/cache']
 };"#,
         );
 

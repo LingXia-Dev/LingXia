@@ -1,4 +1,4 @@
-﻿[package]
+[package]
 name = "lingxia-cli"
 # Tools version: CLI + Runner release together on their own cadence. Keep in
 # sync with tools/lingxia-runner. The CLI's CARGO_PKG_VERSION drives both the
