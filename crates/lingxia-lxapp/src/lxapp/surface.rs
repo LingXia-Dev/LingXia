@@ -247,12 +247,40 @@ impl LxApp {
 
     /// Report the container width so the core resolves the right `sizeClass`
     /// (with hysteresis). Returns `true` when the `sizeClass` flipped.
+    ///
+    /// Also seeds the app's root `main` surface into the graph if absent — the
+    /// app's own primary content must be the `main`, otherwise asides have no
+    /// primary to dock to and arbitration promotes them.
     pub fn set_surface_width(&self, width: f64) -> bool {
+        let root = self.root_main_node();
         self.state
             .lock()
             .ok()
-            .map(|state| state.surface_manager.lock().unwrap().set_width(width))
+            .map(|state| {
+                let mut manager = state.surface_manager.lock().unwrap();
+                if manager.graph().mains().is_empty() {
+                    manager.open(root);
+                }
+                manager.set_width(width)
+            })
             .unwrap_or(false)
+    }
+
+    /// The app's root primary, represented as a `main` surface (id = appid).
+    fn root_main_node(&self) -> lingxia_surface::Surface {
+        use lingxia_surface::{Role, Surface as LxSurface, SurfaceContent, SurfaceOwner, SurfaceState};
+        LxSurface {
+            id: self.appid.clone(),
+            role: Role::Main,
+            content: SurfaceContent::Entry {
+                id: self.appid.clone(),
+                path: None,
+            },
+            owner: SurfaceOwner::Host,
+            placement: Default::default(),
+            state: SurfaceState::Mounted,
+            float: None,
+        }
     }
 
     /// Snapshot the core's `DerivedLayout` for this app's window (new model).
