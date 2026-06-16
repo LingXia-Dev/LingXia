@@ -161,6 +161,7 @@ struct UrlSurfaceOptions {
     url: String,
     kind: String,
     position: String,
+    role: String,
 }
 
 #[derive(Debug, Clone, IntoJSObj)]
@@ -168,18 +169,20 @@ struct PageSurfaceOptions {
     path: String,
     kind: String,
     position: String,
+    role: String,
 }
 
-/// `lx.surface.aside(target, edge?)` — open a surface beside the main content.
+/// `lx.surface.aside(target, edge?)` — dock a surface beside the main content
+/// (splits the main). The only verb that docks.
 async fn open_aside(ctx: JSContext, target: JSValue, edge: Optional<String>) -> JSResult<JSObject> {
     let position = edge.0.unwrap_or_else(|| "right".to_string());
-    let options = build_open_options(&ctx, &target, "overlay", &position)?;
+    let options = build_open_options(&ctx, &target, "overlay", &position, "aside")?;
     open_surface(ctx, options).await
 }
 
-/// `lx.surface.float(target)` — open a surface floating above the main content.
+/// `lx.surface.float(target)` — float a surface (popup) above the main content.
 async fn open_float(ctx: JSContext, target: JSValue) -> JSResult<JSObject> {
-    let options = build_open_options(&ctx, &target, "overlay", "center")?;
+    let options = build_open_options(&ctx, &target, "overlay", "center", "float")?;
     open_surface(ctx, options).await
 }
 
@@ -190,6 +193,7 @@ fn build_open_options(
     target: &JSValue,
     kind: &str,
     position: &str,
+    role: &str,
 ) -> JSResult<JSValue> {
     if target.is_string() {
         let path = target
@@ -202,6 +206,7 @@ fn build_open_options(
                 path,
                 kind: kind.to_string(),
                 position: position.to_string(),
+                role: role.to_string(),
             },
         ));
     }
@@ -220,6 +225,7 @@ fn build_open_options(
                     url,
                     kind: kind.to_string(),
                     position: position.to_string(),
+                    role: role.to_string(),
                 },
             ));
         }
@@ -676,6 +682,9 @@ fn parse_surface_options(lxapp: &LxApp, options: &JSValue) -> JSResult<PageSurfa
     let kind = parse_surface_kind(&obj)?;
     let position = parse_position(&obj, kind)?;
     let (width, height, width_ratio, height_ratio) = parse_size(&obj, kind)?;
+    // `role: "aside"` (set by lx.surface.aside) is the only thing that docks;
+    // legacy open() and float() have no role / "float" → popup.
+    let prefer_aside = read_optional_string(&obj, "role")?.as_deref() == Some("aside");
 
     Ok(PageSurfaceRequest {
         id: String::new(),
@@ -687,6 +696,7 @@ fn parse_surface_options(lxapp: &LxApp, options: &JSValue) -> JSResult<PageSurfa
         width_ratio,
         height_ratio,
         position,
+        prefer_aside,
     })
 }
 

@@ -32,6 +32,9 @@ pub struct PageSurfaceRequest {
     pub width_ratio: Option<f64>,
     pub height_ratio: Option<f64>,
     pub position: SurfacePosition,
+    /// True only for the explicit `lx.surface.aside()` verb — the one path that
+    /// docks (splits the main). Legacy `open()` and `float()` are popups.
+    pub prefer_aside: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -141,6 +144,7 @@ impl LxApp {
                 &path,
                 &page_path,
                 owner_pid.as_deref(),
+                request.prefer_aside,
             );
             let mut manager = state.surface_manager.lock().unwrap();
             let before: HashSet<String> =
@@ -367,22 +371,30 @@ impl LxApp {
         path_or_url: &str,
         page_path: &Option<String>,
         owner_page_instance_id: Option<&str>,
+        prefer_aside: bool,
     ) -> lingxia_surface::Surface {
         use lingxia_surface::{
             Edge as LxEdge, FloatSpec, Placement, Role as LxRole, Surface as LxSurface,
             SurfaceContent as LxContent, SurfaceOwner as LxOwner, SurfaceState as LxState,
         };
-        let role = match (kind, position) {
-            (SurfaceKind::Window, _) => LxRole::Main,
-            (SurfaceKind::Overlay, SurfacePosition::Center) => LxRole::Float,
-            (SurfaceKind::Overlay, _) => LxRole::Aside,
+        // Only the explicit aside() verb docks (splits the main). A window is a
+        // top-level main; every other overlay (legacy open / float) is a popup.
+        let role = match kind {
+            SurfaceKind::Window => LxRole::Main,
+            SurfaceKind::Overlay if prefer_aside => LxRole::Aside,
+            SurfaceKind::Overlay => LxRole::Float,
         };
-        let edge = match position {
-            SurfacePosition::Left => Some(LxEdge::Left),
-            SurfacePosition::Right => Some(LxEdge::Right),
-            SurfacePosition::Top => Some(LxEdge::Top),
-            SurfacePosition::Bottom => Some(LxEdge::Bottom),
-            SurfacePosition::Center => None,
+        // Edge only matters for a docked aside; a float popup is unanchored.
+        let edge = if role == LxRole::Aside {
+            match position {
+                SurfacePosition::Left => Some(LxEdge::Left),
+                SurfacePosition::Right => Some(LxEdge::Right),
+                SurfacePosition::Top => Some(LxEdge::Top),
+                SurfacePosition::Bottom => Some(LxEdge::Bottom),
+                SurfacePosition::Center => None,
+            }
+        } else {
+            None
         };
         let node_content = match content {
             SurfaceContent::Page => LxContent::Entry {
