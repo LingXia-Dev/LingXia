@@ -7,8 +7,8 @@ use std::sync::Arc;
 use lingxia_windows_host::post_to_window_thread;
 use windows::Win32::Foundation::HWND;
 use windows::Win32::UI::WindowsAndMessaging::{
-    AppendMenuW, CreatePopupMenu, DestroyMenu, MF_STRING, SetForegroundWindow, TPM_NONOTIFY,
-    TPM_RETURNCMD, TPM_TOPALIGN, TrackPopupMenu,
+    AppendMenuW, CreatePopupMenu, DestroyMenu, MF_SEPARATOR, MF_STRING, SetForegroundWindow,
+    TPM_NONOTIFY, TPM_RETURNCMD, TPM_TOPALIGN, TrackPopupMenu,
 };
 use windows::core::PCWSTR;
 
@@ -34,6 +34,12 @@ pub fn show_context_menu(
                     return;
                 };
                 for (index, item) in items.iter().enumerate() {
+                    // Empty items render as separator lines; they keep their
+                    // slot in the index space but are not selectable.
+                    if item.is_empty() {
+                        let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
+                        continue;
+                    }
                     let mut text: Vec<u16> = item.encode_utf16().collect();
                     text.push(0);
                     // Command ids are 1-based: TrackPopupMenu returns 0 for

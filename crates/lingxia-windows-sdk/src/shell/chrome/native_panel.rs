@@ -213,7 +213,8 @@ pub(super) fn draw_terminal_panel_content(
     if rect_width(&rect) == 0 || rect_height(&rect) == 0 {
         return;
     }
-    let surface = super::super::terminal_grid::panel_surface_background(&panel.panel_id)
+    let surface = super::super::terminal_panel::focused_session(&panel.panel_id)
+        .and_then(super::super::terminal_grid::session_surface_background)
         .unwrap_or(TERMINAL_SURFACE_BACKGROUND);
     let square_top = panel.docked && !native.maximized;
 
@@ -352,7 +353,7 @@ pub(super) fn draw_terminal_panel_content(
     // Live sessions are drawn as a cell grid from the snapshot store; the
     // body-text path below remains for pre-session states ("Starting
     // terminal...", runtime-unavailable, failures).
-    if super::super::terminal_grid::draw_panel_grid(hdc, &panel.panel_id, body) {
+    if super::super::terminal_grid::draw_panel_panes(hdc, &panel.panel_id, body) {
         return;
     }
 

@@ -1035,6 +1035,32 @@ pub(super) fn owner_window_handle(appid: &str) -> Option<isize> {
     }
 }
 
+/// Converts a screen point to `appid`'s shell-window client coordinates,
+/// matching the coordinate space the chrome paints panels in (used to
+/// focus the terminal pane under the cursor on right-click). `None` when
+/// the window handle is unavailable or the point is off-window.
+#[cfg(all(feature = "shell-runtime", feature = "terminal-runtime"))]
+pub(super) fn screen_to_panel_client(
+    appid: &str,
+    screen_x: i32,
+    screen_y: i32,
+) -> Option<(i32, i32)> {
+    use windows::Win32::Foundation::POINT;
+    use windows::Win32::Graphics::Gdi::ScreenToClient;
+    let hwnd = owner_window_handle(appid)?;
+    let mut point = POINT {
+        x: screen_x,
+        y: screen_y,
+    };
+    let ok = unsafe {
+        ScreenToClient(
+            windows::Win32::Foundation::HWND(hwnd as *mut core::ffi::c_void),
+            &mut point,
+        )
+    };
+    ok.as_bool().then_some((point.x, point.y))
+}
+
 #[cfg(feature = "shell-runtime")]
 fn begin_presented_tab_address_edit(app: &LxApp) {
     let Some(tab_id) = presented_browser_tab() else {

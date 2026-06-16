@@ -2,10 +2,11 @@
 //! and the GDI cell-grid painter used by the shell chrome.
 //!
 //! The facade's poll thread pushes full [`TerminalSnapshot`]s through
-//! [`set_panel_snapshot`] and reads [`desired_grid_size`] to keep the PTY
-//! grid in sync with the panel rect; the chrome painter consumes the latest
-//! snapshot on repaint and records the grid geometry it painted into, so
-//! both sides agree on cell metrics. The chrome painter also records the
+//! [`set_session_snapshot`] and reads [`desired_session_grid_size`] to keep
+//! each pane's PTY grid in sync with its rect; the chrome painter consumes
+//! the latest snapshot of every active pane on repaint and records the grid
+//! geometry it painted into, so both sides agree on cell metrics. The
+//! chrome painter also records the
 //! header tab-title rects it painted, which [`begin_tab_rename`] uses to
 //! place the inline rename editor. Styling mirrors the macOS terminal
 //! surface (`SurfaceCore.swift`): dark `#282C34` background, white default
@@ -51,13 +52,30 @@ const GRID_MIN_COLS: i32 = 20;
 
 const GRID_MIN_ROWS: i32 = 4;
 
-/// Cell metrics and grid area recorded at the last paint of a panel.
+/// Divider gaps between panes are filled with this color so split borders
+/// read as thin dark lines on the terminal surface.
+const PANE_DIVIDER_COLOR: u32 = 0x1b1e24;
+
+/// Focus ring drawn around the active pane when a tab has more than one.
+const PANE_FOCUS_BORDER: u32 = 0x4a9eff;
+
+const PANE_FOCUS_BORDER_THICKNESS: i32 = 2;
+
+/// Cell metrics and grid area recorded at the last paint of a pane.
 #[derive(Clone, Copy)]
 struct GridGeometry {
     cell_width: i32,
     line_height: i32,
     grid_width: i32,
     grid_height: i32,
+}
+
+/// Per-session state: the latest snapshot and the geometry it last painted
+/// into (so the facade can keep each pane's PTY grid sized to its rect).
+#[derive(Default)]
+struct SessionGridState {
+    snapshot: Option<TerminalSnapshot>,
+    geometry: Option<GridGeometry>,
 }
 
 /// Host window and header tab-title rects recorded at the last paint of a
@@ -70,44 +88,60 @@ struct PanelHeaderGeometry {
     titles: Vec<(u64, RECT)>,
 }
 
+/// Per-panel state: header geometry plus the body rect and cell metrics of
+/// the last paint, used to size newly created panes and hit-test clicks.
 #[derive(Default)]
 struct PanelGridState {
-    snapshot: Option<TerminalSnapshot>,
-    geometry: Option<GridGeometry>,
     header: Option<PanelHeaderGeometry>,
+    /// Terminal body rect (below the header) at the last paint.
+    body: Option<RECT>,
+    /// `(cell_width, line_height)` from the last pane paint (font-derived,
+    /// shared by every pane).
+    cell: Option<(i32, i32)>,
 }
 
+static SESSION_GRIDS: OnceLock<Mutex<HashMap<u64, SessionGridState>>> = OnceLock::new();
 static PANEL_GRIDS: OnceLock<Mutex<HashMap<String, PanelGridState>>> = OnceLock::new();
 
-fn panel_grids() -> MutexGuard<'static, HashMap<String, PanelGridState>> {
-    PANEL_GRIDS
+fn session_grids() -> MutexGuard<'static, HashMap<u64, SessionGridState>> {
+    SESSION_GRIDS
         .get_or_init(|| Mutex::new(HashMap::new()))
         .lock()
         // The store has no invariants that poisoning can break.
         .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
-/// Stores the latest snapshot for `panel_id`; the chrome painter renders it
-/// on the next repaint of the host window.
-pub fn set_panel_snapshot(panel_id: &str, snapshot: TerminalSnapshot) {
-    panel_grids()
-        .entry(panel_id.to_string())
-        .or_default()
-        .snapshot = Some(snapshot);
+fn panel_grids() -> MutexGuard<'static, HashMap<String, PanelGridState>> {
+    PANEL_GRIDS
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
-/// Drops all stored state for `panel_id` (snapshot and paint geometry).
+/// Stores the latest snapshot for `session_id`; the chrome painter renders
+/// it on the next repaint of the host window.
+pub fn set_session_snapshot(session_id: u64, snapshot: TerminalSnapshot) {
+    session_grids().entry(session_id).or_default().snapshot = Some(snapshot);
+}
+
+/// Drops all stored state for one pane session (snapshot and geometry).
+pub fn clear_session(session_id: u64) {
+    session_grids().remove(&session_id);
+}
+
+/// Drops a panel's header/body geometry (its pane sessions are cleared
+/// individually via [`clear_session`]).
 pub fn clear_panel(panel_id: &str) {
     panel_grids().remove(panel_id);
 }
 
-/// Surface background of the panel's last snapshot (the `#rrggbb` default
-/// background reported by the terminal), or `None` before the first
-/// snapshot. The chrome painter fills the dock card with this color so the
-/// header, card corners, and cell grid agree.
-pub(super) fn panel_surface_background(panel_id: &str) -> Option<u32> {
-    panel_grids()
-        .get(panel_id)?
+/// Surface background of one session's last snapshot (the `#rrggbb` default
+/// background reported by the terminal), or `None` before its first
+/// snapshot. The chrome painter fills the dock card with the focused pane's
+/// color so the header, card corners, and cell grid agree.
+pub(super) fn session_surface_background(session_id: u64) -> Option<u32> {
+    session_grids()
+        .get(&session_id)?
         .snapshot
         .as_ref()?
         .default_background
@@ -115,11 +149,12 @@ pub(super) fn panel_surface_background(panel_id: &str) -> Option<u32> {
         .and_then(parse_hex_color)
 }
 
-/// Plain-text fallback for a stored snapshot. Used only when the cell-grid
-/// painter cannot draw with the current DC/font state.
+/// Plain-text fallback for the focused pane's snapshot. Used only when the
+/// cell-grid painter cannot draw with the current DC/font state.
 pub(super) fn panel_snapshot_text(panel_id: &str) -> Option<String> {
-    let grids = panel_grids();
-    let snapshot = grids.get(panel_id)?.snapshot.as_ref()?;
+    let session_id = super::terminal_panel::focused_session(panel_id)?;
+    let grids = session_grids();
+    let snapshot = grids.get(&session_id)?.snapshot.as_ref()?;
     let mut lines: Vec<&str> = snapshot.lines.iter().map(|line| line.trim_end()).collect();
     while lines.last().is_some_and(|line| line.is_empty()) {
         lines.pop();
@@ -135,6 +170,12 @@ pub(super) fn panel_snapshot_text(panel_id: &str) -> Option<String> {
     } else {
         Some(lines.join("\r\n"))
     }
+}
+
+/// The terminal body rect recorded at the last paint of `panel_id` (host
+/// client coordinates), used to hit-test pane focus clicks.
+pub(super) fn panel_body_rect(panel_id: &str) -> Option<RECT> {
+    panel_grids().get(panel_id)?.body
 }
 
 /// Records the host window and tab-title rects the chrome painter drew for
@@ -184,11 +225,31 @@ pub fn begin_tab_rename(
     )
 }
 
-/// Grid size `(cols, rows)` that fits the panel rect seen at the last
-/// paint, or `None` before the panel was first painted.
-pub fn desired_grid_size(panel_id: &str) -> Option<(u16, u16)> {
+/// Grid size `(cols, rows)` that fits one pane session's painted rect, or
+/// `None` before that pane was first painted.
+pub fn desired_session_grid_size(session_id: u64) -> Option<(u16, u16)> {
+    let grids = session_grids();
+    let geometry = grids.get(&session_id)?.geometry?;
+    grid_size_from_geometry(geometry)
+}
+
+/// Grid size `(cols, rows)` for the whole panel body (a sensible default
+/// for a freshly created pane before it has been painted), or `None` before
+/// the panel was first painted.
+pub fn desired_panel_grid_size(panel_id: &str) -> Option<(u16, u16)> {
     let grids = panel_grids();
-    let geometry = grids.get(panel_id)?.geometry?;
+    let state = grids.get(panel_id)?;
+    let body = state.body?;
+    let (cell_width, line_height) = state.cell?;
+    grid_size_from_geometry(GridGeometry {
+        cell_width,
+        line_height,
+        grid_width: rect_width(&inset_rect(body, GRID_PADDING, GRID_PADDING)),
+        grid_height: rect_height(&inset_rect(body, GRID_PADDING, GRID_PADDING)),
+    })
+}
+
+fn grid_size_from_geometry(geometry: GridGeometry) -> Option<(u16, u16)> {
     if geometry.cell_width <= 0 || geometry.line_height <= 0 {
         return None;
     }
@@ -200,32 +261,84 @@ pub fn desired_grid_size(panel_id: &str) -> Option<(u16, u16)> {
     ))
 }
 
-/// Paints the terminal cell grid for `panel_id` into `rect` (the dock body
-/// below the panel header row; the caller has already filled it with the
-/// surface background). Returns `false` when no snapshot is stored yet so
-/// the caller can fall back to body-text rendering; grid geometry is
-/// recorded either way so [`desired_grid_size`] tracks the panel rect from
-/// the first paint on.
-pub(super) fn draw_panel_grid(hdc: HDC, panel_id: &str, rect: RECT) -> bool {
-    let grid_rect = inset_rect(rect, GRID_PADDING, GRID_PADDING);
-    if rect_width(&grid_rect) == 0 || rect_height(&grid_rect) == 0 {
+/// Paints every pane of `panel_id`'s active tab into `body` (the dock body
+/// below the panel header row). Sibling panes are separated by divider
+/// gaps and the focused pane gets a focus ring when a tab has more than one
+/// pane. Returns `false` when no pane has a snapshot yet so the caller can
+/// fall back to body-text rendering; pane geometry is recorded either way
+/// so the facade can size each PTY from the first paint on.
+pub(super) fn draw_panel_panes(hdc: HDC, panel_id: &str, body: RECT) -> bool {
+    panel_grids().entry(panel_id.to_string()).or_default().body = Some(body);
+
+    let frames = super::terminal_panel::active_pane_frames(panel_id, body);
+    if frames.is_empty() {
         return false;
+    }
+    let multi = frames.len() > 1;
+
+    // Divider gaps show through as dark lines between panes.
+    if multi {
+        fill_rect(hdc, body, PANE_DIVIDER_COLOR);
     }
 
     let mut fonts = GridFonts::new(hdc);
-    // SaveDC/RestoreDC bracket all font/clip/color changes; the fonts are
-    // deleted (on drop) only after the DC stopped referencing them.
-    let saved = unsafe { SaveDC(hdc) };
-    let drew = draw_panel_grid_clipped(hdc, panel_id, grid_rect, &mut fonts);
-    unsafe {
-        let _ = RestoreDC(hdc, saved);
+    let mut drew_any = false;
+    for frame in &frames {
+        // Each pane fills its own surface background so panes with distinct
+        // backgrounds (and the divider gaps) stay correct.
+        let surface =
+            session_surface_background(frame.session_id).unwrap_or(GRID_DEFAULT_BACKGROUND);
+        fill_rect(hdc, frame.rect, surface);
+
+        let grid_rect = inset_rect(frame.rect, GRID_PADDING, GRID_PADDING);
+        if rect_width(&grid_rect) > 0 && rect_height(&grid_rect) > 0 {
+            // SaveDC/RestoreDC bracket all font/clip/color changes; the
+            // fonts are deleted (on drop) only after the DC stopped
+            // referencing them.
+            let saved = unsafe { SaveDC(hdc) };
+            drew_any |=
+                draw_pane_grid_clipped(hdc, panel_id, frame.session_id, grid_rect, &mut fonts);
+            unsafe {
+                let _ = RestoreDC(hdc, saved);
+            }
+        }
+
+        if multi && frame.focused {
+            draw_focus_border(hdc, frame.rect);
+        }
     }
-    drew
+    drew_any
 }
 
-fn draw_panel_grid_clipped(
+/// Draws a focus ring just inside `rect`.
+fn draw_focus_border(hdc: HDC, rect: RECT) {
+    let t = PANE_FOCUS_BORDER_THICKNESS;
+    for edge in [
+        RECT {
+            bottom: (rect.top + t).min(rect.bottom),
+            ..rect
+        },
+        RECT {
+            top: (rect.bottom - t).max(rect.top),
+            ..rect
+        },
+        RECT {
+            right: (rect.left + t).min(rect.right),
+            ..rect
+        },
+        RECT {
+            left: (rect.right - t).max(rect.left),
+            ..rect
+        },
+    ] {
+        fill_rect(hdc, edge, PANE_FOCUS_BORDER);
+    }
+}
+
+fn draw_pane_grid_clipped(
     hdc: HDC,
     panel_id: &str,
+    session_id: u64,
     grid_rect: RECT,
     fonts: &mut GridFonts,
 ) -> bool {
@@ -239,15 +352,19 @@ fn draw_panel_grid_clipped(
     let cell_width = text_metrics.tmAveCharWidth.max(1);
     let line_height = (text_metrics.tmHeight + text_metrics.tmExternalLeading).max(1);
 
-    let mut grids = panel_grids();
-    let state = grids.entry(panel_id.to_string()).or_default();
+    panel_grids().entry(panel_id.to_string()).or_default().cell = Some((cell_width, line_height));
+
+    // Hold the session store lock while drawing this pane (the snapshot is
+    // not `Clone`); the lock is released between panes.
+    let mut grids = session_grids();
+    let state = grids.entry(session_id).or_default();
     state.geometry = Some(GridGeometry {
         cell_width,
         line_height,
         grid_width: rect_width(&grid_rect),
         grid_height: rect_height(&grid_rect),
     });
-    let Some(snapshot) = &state.snapshot else {
+    let Some(snapshot) = state.snapshot.as_ref() else {
         return false;
     };
 
@@ -314,7 +431,7 @@ fn draw_panel_grid_clipped(
     );
 
     // Exited sessions are closed by the facade as soon as their snapshot
-    // reports `exited` (the tab closes; the last tab closes the panel), so
+    // reports `exited` (the pane closes; the last pane closes the tab), so
     // no `[process exited]` overlay is drawn; at most one repaint shows
     // the final screen without a cursor.
     if !snapshot.exited && snapshot.cursor_visible {
