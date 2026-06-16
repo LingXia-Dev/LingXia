@@ -20,6 +20,7 @@ members = [
     "crates/lingxia-windows-sdk",
     "crates/lingxia-windows-build",
     "crates/lingxia-platform",
+    "crates/lingxia-surface",
     "crates/lingxia-logic",
     "crates/lingxia-messaging",
     "crates/lingxia",

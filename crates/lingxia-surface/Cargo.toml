@@ -1,0 +1,12 @@
+[package]
+name = "lingxia-surface"
+version.workspace = true
+edition.workspace = true
+repository.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
