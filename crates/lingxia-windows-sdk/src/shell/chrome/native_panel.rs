@@ -305,9 +305,10 @@ pub(super) fn draw_terminal_panel_content(
                 .unwrap_or(header.right - TERMINAL_HEADER_PADDING),
             bottom: header.bottom,
         });
+        let fallback_title = lingxia_logic::i18n::t(lingxia_logic::I18nKey::TerminalTitle);
         draw_text(
             hdc,
-            native.title.as_deref().unwrap_or("Terminal"),
+            native.title.as_deref().unwrap_or(&fallback_title),
             title_rect,
             TERMINAL_HEADER_TEXT,
             DT_LEFT,

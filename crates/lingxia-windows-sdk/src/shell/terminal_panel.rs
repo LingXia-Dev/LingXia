@@ -248,10 +248,12 @@ pub(super) fn show_terminal_context_menu(
             return;
         };
         let panel_key = panel_id.to_string();
+        use lingxia_logic::I18nKey;
+        use lingxia_logic::i18n::t;
         super::context_menu::show_context_menu(
             window,
             (screen_x, screen_y),
-            vec!["Copy".to_string(), "Paste".to_string()],
+            vec![t(I18nKey::TerminalCopy), t(I18nKey::TerminalPaste)],
             Arc::new(move |index| match index {
                 0 => copy_panel_screen_to_clipboard(&panel_key),
                 1 => paste_clipboard_into_panel(&panel_key),

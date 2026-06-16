@@ -97,3 +97,19 @@ update:
   confirm: "Download & Install"
   downloading: "Downloading Update"
   download_failed: "Download failed. Please try again."
+
+# Terminal panel (native Windows shell terminal)
+terminal:
+  title: "Terminal"
+  copy: "Copy"
+  paste: "Paste"
+  split_right: "Split Right"
+  split_left: "Split Left"
+  split_down: "Split Down"
+  split_up: "Split Up"
+  new_tab: "New Tab"
+  close_pane: "Close Pane"
+  close_tab: "Close Tab"
+  change_title: "Change Tab Title…"
+  reset: "Reset Terminal"
+  read_only: "Terminal Read-only"
