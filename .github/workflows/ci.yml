@@ -412,6 +412,31 @@ jobs:
       # Generate the gitignored apple SDK assets (resources + swift bindings).
       - uses: ./.github/actions/bootstrap-apple-sdk
 
+      # Restore the Apple credential store so `lingxia build` signs + notarizes
+      # directly from it — same code path as a local signed build, no env
+      # plumbing. The two secrets are base64 of the local store files:
+      #   APPLE_CREDENTIALS_JSON_BASE64    base64 -i ~/.lingxia/apple/credentials.json
+      #   APPLE_DEVELOPER_ID_JSON_BASE64   base64 -i ~/.lingxia/apple/developer-id.json
+      # (the latter is produced by `lingxia auth apple import-developer-id`).
+      # Without the secrets (forks / PRs / unset) the CLI leaves the app ad-hoc
+      # signed and the build still succeeds.
+      - name: Restore Apple credential store (if secrets present)
+        env:
+          CREDS_B64: ${{ secrets.APPLE_CREDENTIALS_JSON_BASE64 }}
+          DEVID_B64: ${{ secrets.APPLE_DEVELOPER_ID_JSON_BASE64 }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CREDS_B64:-}" ] || [ -z "${DEVID_B64:-}" ]; then
+            echo "ℹ️ Apple signing store not configured — runner will be ad-hoc signed."
+            exit 0
+          fi
+          umask 077
+          mkdir -p "$HOME/.lingxia/apple"
+          printf '%s' "$CREDS_B64" | base64 -d > "$HOME/.lingxia/apple/credentials.json"
+          printf '%s' "$DEVID_B64" | base64 -d > "$HOME/.lingxia/apple/developer-id.json"
+          chmod 600 "$HOME/.lingxia/apple/credentials.json" "$HOME/.lingxia/apple/developer-id.json"
+          echo "✅ Apple credential store restored — lingxia build will Developer-ID sign + notarize."
+
       - name: Build macOS Runner (arm64)
         run: bash scripts/release/runner.sh --macos-arch arm64 --out dist/runner-release
 

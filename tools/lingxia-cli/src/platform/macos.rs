@@ -514,6 +514,8 @@ impl Platform for MacosPlatform {
         sync_primary_spm_resources_to_app_root(&bin_dir, &app_path)?;
         ensure_sdk_resource_bundles_at_app_root(&bin_dir, &app_path)?;
 
+        apple::notarize::maybe_sign_and_notarize(&app_path)?;
+
         let update_zip_path = if config.package {
             Some(create_update_zip(
                 &app_path,
