@@ -42,6 +42,7 @@ fn generated_app_json_excludes_ui_fields() {
             "surfaces": [],
             "activators": []
         })),
+        surfaces: None,
         app_links: None,
         storage: None,
         resources: None,
@@ -76,6 +77,7 @@ fn generated_app_json_includes_dev_ws_url_when_configured() {
         capabilities: None,
         shell: None,
         ui: None,
+        surfaces: None,
         app_links: None,
         storage: None,
         resources: None,
@@ -115,6 +117,7 @@ fn generated_app_json_includes_app_link_hosts() {
         capabilities: None,
         shell: None,
         ui: None,
+        surfaces: None,
         app_links: Some(crate::config::AppLinksConfig {
             hosts: vec!["www.example.com".into()],
         }),
@@ -150,9 +153,11 @@ fn generated_app_json_includes_capabilities() {
         capabilities: Some(crate::config::CapabilitiesConfig {
             notifications: true,
             terminal: true,
+            terminal_edge: None,
         }),
         shell: None,
         ui: None,
+        surfaces: None,
         app_links: None,
         storage: None,
         resources: None,
@@ -187,6 +192,7 @@ fn generated_ui_json_matches_ui_section() {
         capabilities: None,
         shell: None,
         ui: Some(ui.clone()),
+        surfaces: None,
         app_links: None,
         storage: None,
         resources: None,
@@ -223,6 +229,7 @@ fn generated_ui_json_rewrites_app_ui_icons() {
         capabilities: None,
         shell: None,
         ui: Some(ui),
+        surfaces: None,
         app_links: None,
         storage: None,
         resources: None,
@@ -265,6 +272,7 @@ fn generated_windows_ui_json_rewrites_app_ui_icons_to_png() {
         capabilities: None,
         shell: None,
         ui: Some(ui),
+        surfaces: None,
         app_links: None,
         storage: None,
         resources: None,
@@ -299,6 +307,7 @@ fn generated_ui_json_adds_terminal_for_capability() {
         capabilities: Some(crate::config::CapabilitiesConfig {
             notifications: false,
             terminal: true,
+            terminal_edge: None,
         }),
         shell: None,
         ui: Some(serde_json::json!({
@@ -310,6 +319,7 @@ fn generated_ui_json_adds_terminal_for_capability() {
             }],
             "activators": []
         })),
+        surfaces: None,
         app_links: None,
         storage: None,
         resources: None,
@@ -337,6 +347,92 @@ fn generated_ui_json_adds_terminal_for_capability() {
 }
 
 #[test]
+fn surfaces_v2_end_to_end_maps_and_does_not_double_inject_terminal() {
+    // Mirrors the migrated showcase: main lxapp + aside lxapp (right) + native
+    // terminal (bottom). Loading must map v2 `surfaces:` into the internal ui,
+    // and the terminal auto-inject must be a no-op (no second terminal surface).
+    let temp = TempDir::new().unwrap();
+    fs::write(
+        temp.path().join("lingxia.yaml"),
+        r#"
+app:
+  projectName: demo
+  productName: Demo
+  productVersion: 0.1.0
+  platforms: [macos]
+  homeAppId: home
+macos:
+  bundleId: app.demo
+capabilities:
+  terminal: true
+surfaces:
+  - id: home
+    render: lxapp
+    role: main
+    launch: true
+  - id: chat
+    render: lxapp
+    role: aside
+    edge: right
+    sidebar:
+      icon: icons/chat.svg
+      label: AI Chat
+  - id: terminal
+    render: native
+    role: aside
+    edge: bottom
+    sidebar:
+      icon: __lingxia_builtin__/terminal.svg
+"#,
+    )
+    .unwrap();
+    fs::create_dir_all(temp.path().join("icons")).unwrap();
+    fs::write(
+        temp.path().join("icons/chat.svg"),
+        r##"<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><rect x="8" y="8" width="48" height="48" rx="8" fill="#000"/></svg>"##,
+    )
+    .unwrap();
+
+    let config = LingXiaConfig::load(temp.path()).unwrap();
+    let icons = prepare_app_ui_icons(temp.path(), &config).unwrap();
+    let ui_json = build_ui_json_from_config(&config, &icons).unwrap().unwrap();
+    let value: serde_json::Value = serde_json::from_str(&ui_json).unwrap();
+
+    assert_eq!(value["launch"]["initialSurface"], "home");
+
+    let surfaces = value["surfaces"].as_array().unwrap();
+    // Exactly 3 surfaces (main + chat + terminal) — no double-injected terminal.
+    assert_eq!(surfaces.len(), 3);
+    let terminal_count = surfaces
+        .iter()
+        .filter(|s| s["content"]["kind"] == "terminal")
+        .count();
+    assert_eq!(terminal_count, 1, "terminal must not be injected twice");
+
+    // main -> window/lxapp(home)
+    assert_eq!(surfaces[0]["id"], "home");
+    assert_eq!(surfaces[0]["presentation"]["kind"], "window");
+    assert_eq!(surfaces[0]["content"]["appId"], "home");
+    // aside right -> attachPanel trailing
+    assert_eq!(surfaces[1]["id"], "chat");
+    assert_eq!(surfaces[1]["presentation"]["kind"], "attachPanel");
+    assert_eq!(surfaces[1]["presentation"]["attachTo"], "home");
+    assert_eq!(surfaces[1]["presentation"]["edge"], "trailing");
+    // native terminal -> terminal surface, bottom, with size
+    assert_eq!(surfaces[2]["id"], "terminal");
+    assert_eq!(surfaces[2]["presentation"]["edge"], "bottom");
+    assert_eq!(surfaces[2]["presentation"]["size"]["height"], 320);
+
+    let activators = value["activators"].as_array().unwrap();
+    assert_eq!(activators.len(), 2);
+    assert_eq!(activators[0]["id"], "chatSidebar");
+    assert_eq!(activators[0]["label"], "AI Chat");
+    assert_eq!(activators[0]["action"]["surface"], "chat");
+    assert_eq!(activators[1]["id"], "terminalSidebar");
+    assert_eq!(activators[1]["action"]["surface"], "terminal");
+}
+
+#[test]
 fn generated_ui_json_rejects_terminal_when_capability_disabled() {
     let config = LingXiaConfig {
         app: None,
@@ -349,6 +445,7 @@ fn generated_ui_json_rejects_terminal_when_capability_disabled() {
         capabilities: Some(crate::config::CapabilitiesConfig {
             notifications: false,
             terminal: false,
+            terminal_edge: None,
         }),
         shell: None,
         ui: Some(serde_json::json!({
@@ -368,6 +465,7 @@ fn generated_ui_json_rejects_terminal_when_capability_disabled() {
             }],
             "activators": []
         })),
+        surfaces: None,
         app_links: None,
         storage: None,
         resources: None,
@@ -392,6 +490,7 @@ fn generated_ui_json_adds_terminal_activators_when_missing() {
         capabilities: Some(crate::config::CapabilitiesConfig {
             notifications: false,
             terminal: true,
+            terminal_edge: None,
         }),
         shell: None,
         ui: Some(serde_json::json!({
@@ -402,6 +501,7 @@ fn generated_ui_json_adds_terminal_activators_when_missing() {
                 "content": { "kind": "lxapp", "appId": "demo-home" }
             }]
         })),
+        surfaces: None,
         app_links: None,
         storage: None,
         resources: None,
@@ -429,6 +529,7 @@ fn generated_ui_json_attaches_terminal_to_initial_root_surface() {
         capabilities: Some(crate::config::CapabilitiesConfig {
             notifications: false,
             terminal: true,
+            terminal_edge: None,
         }),
         shell: None,
         ui: Some(serde_json::json!({
@@ -444,6 +545,7 @@ fn generated_ui_json_attaches_terminal_to_initial_root_surface() {
             }],
             "activators": []
         })),
+        surfaces: None,
         app_links: None,
         storage: None,
         resources: None,
@@ -497,6 +599,7 @@ fn app_ui_icon_preparation_requires_svg() {
                 "action": { "kind": "toggleSurface", "surface": "main" }
             }]
         })),
+        surfaces: None,
         app_links: None,
         storage: None,
         resources: None,

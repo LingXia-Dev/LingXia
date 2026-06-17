@@ -221,6 +221,7 @@ mod tests {
             capabilities: None,
             shell: None,
             ui: None,
+            surfaces: None,
             app_links: None,
             storage: None,
             resources: None,

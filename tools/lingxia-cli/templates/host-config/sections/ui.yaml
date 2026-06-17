@@ -1,106 +1,45 @@
 
-# App UI model: windows, panels, menu bar items, toolbar/sidebar/titlebar actions.
-# Supported presentation kinds today: window, panel, attachPanel.
-# Supported activators today: menuBarItem, appActivation, sidebarItem, toolbarItem, titlebarItem.
-# Use menuBarItem + panel + launch.openOnLaunch: false for menu-bar apps.
-# Settings and Downloads are built-in shell entries; do not duplicate them here.
-ui:
-  # Startup behavior for App UI.
-  launch:
-    # Surface id opened first. Must reference ui.surfaces[].id.
-    initialSurface: main
-    # Set false for menu-bar style apps that open only from a menuBarItem.
-    # openOnLaunch: false
-  # Visible app containers. On macOS, exactly one root window/panel is currently supported.
-  surfaces:
-  - id: main
-    presentation:
-      # window = normal window; panel = floating panel; attachPanel = panel attached to root.
-      kind: window
-      # Optional initial size. Omit to use native defaults.
-      # size:
-      #   width: 960
-      #   height: 640
-      # resizable: true
-      # showTrafficLights: true
-    content:
-      # Current supported content kind is lxapp.
-      kind: lxapp
-      # LxApp appId opened inside this surface.
-      appId: {{HOME_APP_ID}}
-      # Optional initial route/path.
-      # path: pages/home/index
-  #
-  # Optional attach panel example. The referenced lxapp must be provided by runtime/update flow.
+# UI declaration: one surface per entry. You declare "what + relationship";
+# the Host derives the platform form (window/panel/sidebar/tab/tray) by screen
+# size — no macos: / windows: blocks.
+#   id      unique id; equals the appId when render: lxapp (opened by id)
+#   render  lxapp (web page) | native (host-native, e.g. the built-in terminal)
+#   role    main (switchable primary) | aside (docked companion) | float (popup)
+#   edge    aside dock edge: left | right | top | bottom (default right)
+#   launch  open on start; at most one main has launch (none = launch from tray)
+#   entry   sidebar (sidebar item) / tray (menu bar · tray); icon is a
+#           repo-relative path, converted to the native format at build
+surfaces:
+  - id: {{HOME_APP_ID}}      # main screen: your lxapp
+    render: lxapp
+    role: main
+    launch: true
+
+  # Right-edge companion example (e.g. an AI assistant). The referenced lxapp
+  # must be provided by the runtime / update flow.
   # - id: assistant
-  #   presentation:
-  #     kind: attachPanel
-  #     attachTo: main
-  #     edge: trailing # leading | trailing | bottom
-  #   content:
-  #     kind: lxapp
-  #     appId: assistant-lxapp
-  #
-  # Optional menu-bar/status-panel app shape:
-  # - set ui.launch.openOnLaunch: false
-  # - change the root surface presentation.kind to panel
-  # - add a menuBarItem activator below
-  #
-  # panel presentation options:
-  # presentation:
-  #   kind: panel
-  #   anchor: activator
-  #   resizable: false
-  #   showTrafficLights: false
-  #   size:
-  #     width: 360
-  #     height: 480
-  # Native entry points that act on surfaces.
-  # menuBarItem is app-level and must not set hostSurface.
-  # sidebarItem/toolbarItem/titlebarItem render inside the hostSurface chrome.
-  # Actions: toggleSurface, openSurface, closeSurface, focusSurface.
-  activators: []
-  #
-  # Optional menu bar item. Use with panel or a window you want to toggle from the menu bar.
-  # - id: statusMenu
-  #   kind: menuBarItem
-  #   label: {{SWIFT_TARGET_LABEL}}
-  #   icon: icons/status.svg # host-root-relative SVG, converted to native PDF during build
-  #   action:
-  #     kind: toggleSurface
-  #     surface: main
-  #
-  # Optional Dock/app activation behavior.
-  # - id: activateMain
-  #   kind: appActivation
-  #   action:
-  #     kind: openSurface
-  #     surface: main
-  #
-  # Optional sidebar item shown inside a host surface.
-  # - id: assistantSidebar
-  #   kind: sidebarItem
-  #   hostSurface: main
-  #   label: Assistant
-  #   icon: assistant/icon.svg
-  #   action:
-  #     kind: toggleSurface
-  #     surface: assistant
-  #
-  # Optional toolbar/titlebar actions.
-  # - id: refreshToolbar
-  #   kind: toolbarItem
-  #   hostSurface: main
-  #   label: Refresh
-  #   icon: icons/refresh.svg
-  #   action:
-  #     kind: focusSurface
-  #     surface: main
-  # - id: compactTitlebar
-  #   kind: titlebarItem
-  #   hostSurface: main
-  #   label: Compact
-  #   icon: icons/compact.svg
-  #   action:
-  #     kind: toggleSurface
-  #     surface: main
+  #   render: lxapp
+  #   role: aside
+  #   edge: right            # left | right | top | bottom
+  #   sidebar:               # sidebar entry; click toggles this panel
+  #     icon: icons/chat.svg
+  #     # section: bottom     # pin to the sidebar footer (system/utility entries)
+
+  # Built-in terminal (requires capabilities.terminal: true). The icon uses the
+  # host default — omit `icon`.
+  # - id: terminal
+  #   render: native
+  #   role: aside
+  #   edge: bottom           # top | bottom
+  #   sidebar: {}
+
+  # Menu-bar / tray app (tray = macOS menu bar / Windows·Linux tray icon):
+  #   Case 1 "launch to the tray icon only, click reveals the main": drop
+  #     launch: true from the main above and add
+  #       tray: { icon: icons/status.svg }              # default action: toggle
+  #   Case 2 "launch with the main shown, click brings it to front": keep
+  #     launch: true on the main and add
+  #       tray: { icon: icons/status.svg, action: activate }
+
+# Note: capabilities (feature/permission gates) and resources (local bundles)
+# are independent top-level blocks — never put them inside a surface.

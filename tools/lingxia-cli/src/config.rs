@@ -1,7 +1,7 @@
 use anyhow::{Context, Result, anyhow};
 use semver::Version;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Map, Value, json};
 use serde_yaml_ng as yaml;
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -36,6 +36,11 @@ pub struct LingXiaConfig {
     /// App-level UI config used to generate `ui.json` at build time.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ui: Option<Value>,
+    /// Declaration layer v2: top-level `surfaces:` authoring format. When
+    /// present, it is mapped into the internal `ui` structure during `load`
+    /// (the macOS runtime consumes the same generated JSON as before).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub surfaces: Option<Vec<SurfaceDecl>>,
     #[serde(rename = "appLinks", skip_serializing_if = "Option::is_none")]
     pub app_links: Option<AppLinksConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -151,6 +156,313 @@ pub struct ResourceBundleConfig {
 pub enum ResourceBundleType {
     #[default]
     Lxapp,
+}
+
+// ---------------------------------------------------------------------------
+// Declaration layer v2: top-level `surfaces:` authoring format.
+//
+// This is INPUT schema only. `surfaces_to_ui` maps it into the existing
+// internal `ui` JSON structure (`launch`/`surfaces`/`activators`) that the
+// macOS runtime already consumes, so no runtime/Swift code changes.
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum SurfaceRender {
+    #[default]
+    Lxapp,
+    Native,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum SurfaceRole {
+    Main,
+    Aside,
+    Float,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SurfaceDecl {
+    /// Surface id. For `render: lxapp` this doubles as the lxapp `appId`.
+    pub id: String,
+    #[serde(default)]
+    pub render: SurfaceRender,
+    pub role: SurfaceRole,
+    /// At most one `role: main` may set `launch: true` (the initial surface).
+    #[serde(default)]
+    pub launch: bool,
+    /// Required for `role: aside`. One of left|right|top|bottom.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub edge: Option<String>,
+    /// Inline sidebar entry; clicking it toggles this surface.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sidebar: Option<SurfaceSidebar>,
+    /// Inline tray/menubar entry.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tray: Option<SurfaceTray>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SurfaceSidebar {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+    /// Placement within the sidebar: `top` (default) or `bottom`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub section: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SurfaceTray {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub action: Option<String>,
+}
+
+/// Map the v2 `surfaces:` declaration into the internal `ui` JSON structure
+/// the runtime consumes. Produces the SAME shape the `ui:` block does.
+///
+/// Mapping:
+/// - `role: main` + `render: lxapp` -> presentation.kind `window`,
+///   content `{ kind: lxapp, appId: <id> }`. `launch: true` ->
+///   `launch.initialSurface = <id>`.
+/// - `role: aside` + `render: lxapp` -> presentation.kind `attachPanel`,
+///   `attachTo: <main>`, edge mapped left->leading / right->trailing /
+///   top->top / bottom->bottom.
+/// - `role: aside` + `render: native` (id `terminal`) -> the terminal surface,
+///   emitted in the EXACT shape `assets/ui.rs::add_terminal_ui` produces so
+///   the auto-inject guard skips it (no double inject) and output is identical.
+/// - `sidebar` -> a `sidebarItem` activator toggling the surface.
+/// - `tray` -> a `menuBarItem` activator (closest existing kind).
+fn surfaces_to_ui(surfaces: &[SurfaceDecl], terminal_enabled: bool) -> Result<Value> {
+    // `role: float` is out of scope for declaration v2. Reject it up front with
+    // a clear message rather than mis-mapping it.
+    if let Some(float) = surfaces.iter().find(|s| s.role == SurfaceRole::Float) {
+        return Err(anyhow!(
+            "surface '{}' uses role: float which is not yet supported in declaration v2",
+            float.id.trim()
+        ));
+    }
+    // Identify the launch main.
+    let mains: Vec<&SurfaceDecl> = surfaces
+        .iter()
+        .filter(|s| s.role == SurfaceRole::Main)
+        .collect();
+    let launch_mains: Vec<&SurfaceDecl> = mains.iter().copied().filter(|s| s.launch).collect();
+    if launch_mains.len() > 1 {
+        return Err(anyhow!(
+            "surfaces: at most one main surface may set launch: true"
+        ));
+    }
+    let launch_main = launch_mains
+        .first()
+        .copied()
+        .or_else(|| mains.first().copied())
+        .ok_or_else(|| anyhow!("surfaces: requires exactly one main surface"))?;
+    let launch_id = launch_main.id.trim().to_string();
+    if launch_id.is_empty() {
+        return Err(anyhow!("surfaces[].id must not be empty"));
+    }
+
+    let mut out_surfaces: Vec<Value> = Vec::new();
+    let mut out_activators: Vec<Value> = Vec::new();
+
+    for surface in surfaces {
+        let id = surface.id.trim();
+        if id.is_empty() {
+            return Err(anyhow!("surfaces[].id must not be empty"));
+        }
+        match surface.role {
+            SurfaceRole::Float => {
+                return Err(anyhow!(
+                    "surface '{id}' uses role: float which is not yet supported in declaration v2"
+                ));
+            }
+            SurfaceRole::Main => {
+                if surface.render == SurfaceRender::Native {
+                    return Err(anyhow!(
+                        "surface '{id}': role: main with render: native is not supported"
+                    ));
+                }
+                out_surfaces.push(json!({
+                    "id": id,
+                    "presentation": { "kind": "window" },
+                    "content": { "kind": "lxapp", "appId": id }
+                }));
+            }
+            SurfaceRole::Aside => {
+                let edge = surface
+                    .edge
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|e| !e.is_empty())
+                    .ok_or_else(|| anyhow!("aside surface '{id}' requires an edge"))?;
+                match surface.render {
+                    SurfaceRender::Lxapp => {
+                        let mapped_edge = map_edge(edge, id)?;
+                        out_surfaces.push(json!({
+                            "id": id,
+                            "presentation": {
+                                "kind": "attachPanel",
+                                "attachTo": launch_id,
+                                "edge": mapped_edge
+                            },
+                            "content": { "kind": "lxapp", "appId": id }
+                        }));
+                    }
+                    SurfaceRender::Native => {
+                        // The only native surface currently supported is the
+                        // built-in terminal. Emit it in the EXACT shape that
+                        // `assets/ui.rs::add_terminal_ui` produces so the
+                        // downstream auto-inject is a no-op (double-inject guard)
+                        // and the generated JSON is byte-identical to today's.
+                        if id != "terminal" {
+                            return Err(anyhow!(
+                                "native surface '{id}' is not supported; only the built-in 'terminal' surface is available in declaration v2"
+                            ));
+                        }
+                        if !terminal_enabled {
+                            return Err(anyhow!(
+                                "surface '{id}' uses render: native (terminal) but capabilities.terminal is not enabled"
+                            ));
+                        }
+                        if edge != "bottom" && edge != "top" {
+                            return Err(anyhow!(
+                                "terminal surface '{id}' must use edge 'top' or 'bottom'"
+                            ));
+                        }
+                        out_surfaces.push(json!({
+                            "id": "terminal",
+                            "presentation": {
+                                "kind": "attachPanel",
+                                "attachTo": launch_id,
+                                "edge": edge,
+                                "size": { "height": 320 }
+                            },
+                            "content": { "kind": "terminal" }
+                        }));
+                        // The terminal's sidebar entry. Its icon defaults to the
+                        // host-provided built-in when omitted, so authors never
+                        // write an internal sentinel; a supplied icon is a normal
+                        // repo-relative path. The auto-inject guard is id-based
+                        // (`terminalSidebar`), so a custom icon still wins.
+                        let terminal_icon = surface
+                            .sidebar
+                            .as_ref()
+                            .and_then(|s| s.icon.as_deref())
+                            .unwrap_or("__lingxia_builtin__/terminal.svg");
+                        out_activators.push(json!({
+                            "id": "terminalSidebar",
+                            "kind": "sidebarItem",
+                            "hostSurface": launch_id,
+                            "label": "Terminal",
+                            "icon": terminal_icon,
+                            "action": { "kind": "toggleSurface", "surface": "terminal" }
+                        }));
+                        // A native terminal carries its sidebar implicitly; skip
+                        // the generic sidebar/tray emission below for it.
+                        continue;
+                    }
+                }
+            }
+        }
+
+        if let Some(sidebar) = &surface.sidebar {
+            let mut activator = Map::new();
+            activator.insert("id".into(), json!(format!("{id}Sidebar")));
+            activator.insert("kind".into(), json!("sidebarItem"));
+            activator.insert("hostSurface".into(), json!(launch_id));
+            let label = sidebar
+                .label
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .unwrap_or(id);
+            activator.insert("label".into(), json!(label));
+            if let Some(icon) = sidebar
+                .icon
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+            {
+                activator.insert("icon".into(), json!(icon));
+            }
+            if let Some(section) = sidebar
+                .section
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+            {
+                if section != "top" && section != "bottom" {
+                    return Err(anyhow!(
+                        "surface '{id}' sidebar.section must be 'top' or 'bottom'"
+                    ));
+                }
+                // The internal activator schema has no first-class placement
+                // field today; carry `section` through verbatim (runtime ignores
+                // unknown keys, defaulting to top).
+                activator.insert("section".into(), json!(section));
+            }
+            activator.insert(
+                "action".into(),
+                json!({ "kind": "toggleSurface", "surface": id }),
+            );
+            out_activators.push(Value::Object(activator));
+        }
+
+        if let Some(tray) = &surface.tray {
+            // The internal schema's closest existing kind is `menuBarItem`.
+            // (There is no dedicated status/tray runtime kind today.)
+            let mut activator = Map::new();
+            activator.insert("id".into(), json!(format!("{id}Tray")));
+            activator.insert("kind".into(), json!("menuBarItem"));
+            if let Some(icon) = tray
+                .icon
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+            {
+                activator.insert("icon".into(), json!(icon));
+            }
+            let action_kind = tray
+                .action
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .unwrap_or("toggleSurface");
+            activator.insert(
+                "action".into(),
+                json!({ "kind": action_kind, "surface": id }),
+            );
+            out_activators.push(Value::Object(activator));
+        }
+    }
+
+    Ok(json!({
+        "launch": { "initialSurface": launch_id },
+        "surfaces": out_surfaces,
+        "activators": out_activators
+    }))
+}
+
+fn map_edge(edge: &str, id: &str) -> Result<&'static str> {
+    Ok(match edge {
+        "left" => "leading",
+        "right" => "trailing",
+        "top" => "top",
+        "bottom" => "bottom",
+        other => {
+            return Err(anyhow!(
+                "aside surface '{id}' has invalid edge '{other}'; expected left|right|top|bottom"
+            ));
+        }
+    })
 }
 
 /// Host app settings (checked into git via `lingxia.yaml`).
@@ -512,8 +824,9 @@ impl LingXiaConfig {
         let content = fs::read_to_string(&config_path)
             .with_context(|| format!("Failed to read {}", config_path.display()))?;
 
-        let config: LingXiaConfig = yaml::from_str(&content)
+        let mut config: LingXiaConfig = yaml::from_str(&content)
             .with_context(|| format!("Failed to parse {}", config_path.display()))?;
+        config.apply_surfaces_v2()?;
         config.validate()?;
 
         Ok(config)
@@ -562,6 +875,7 @@ impl LingXiaConfig {
             capabilities: Some(CapabilitiesConfig::default()),
             shell: None,
             ui: None,
+            surfaces: None,
             app_links: None,
             storage: None,
             resources: Some(ResourcesConfig {
@@ -574,6 +888,33 @@ impl LingXiaConfig {
                 }],
             }),
         }
+    }
+
+    /// Declaration layer v2: if the top-level `surfaces:` block is present,
+    /// map it into the internal `ui` structure consumed by the runtime. The
+    /// legacy `ui:` block remains a fallback when `surfaces:` is absent.
+    fn apply_surfaces_v2(&mut self) -> Result<()> {
+        let Some(surfaces) = self.surfaces.as_ref() else {
+            return Ok(());
+        };
+        if self.ui.is_some() {
+            return Err(anyhow!(
+                "lingxia.yaml declares both top-level `surfaces:` (v2) and `ui:` (legacy); use one or the other"
+            ));
+        }
+        if surfaces.is_empty() {
+            return Err(anyhow!("surfaces: must contain at least one surface"));
+        }
+        // `surfaces` is independent of `capabilities`; terminal availability is
+        // gated by `capabilities.terminal` (any-platform truthiness here, the
+        // per-platform gating stays in `terminal_enabled`).
+        let terminal_enabled = self
+            .capabilities
+            .as_ref()
+            .map(|capabilities| capabilities.terminal)
+            .unwrap_or(false);
+        self.ui = Some(surfaces_to_ui(surfaces, terminal_enabled)?);
+        Ok(())
     }
 
     fn validate(&self) -> Result<()> {
@@ -1620,7 +1961,7 @@ android:
         }));
 
         let err = config.validate().unwrap_err().to_string();
-        assert!(err.contains("must use presentation.edge 'bottom'"));
+        assert!(err.contains("must use presentation.edge 'top' or 'bottom'"));
     }
 
     #[test]
@@ -1828,6 +2169,173 @@ android:
     }
 
     #[test]
+    fn surfaces_v2_maps_showcase_to_internal_ui() {
+        let surfaces = vec![
+            SurfaceDecl {
+                id: "lingxia-showcase".into(),
+                render: SurfaceRender::Lxapp,
+                role: SurfaceRole::Main,
+                launch: true,
+                edge: None,
+                sidebar: None,
+                tray: None,
+            },
+            SurfaceDecl {
+                id: "lingxia-chat".into(),
+                render: SurfaceRender::Lxapp,
+                role: SurfaceRole::Aside,
+                launch: false,
+                edge: Some("right".into()),
+                sidebar: Some(SurfaceSidebar {
+                    icon: Some("icons/chat.svg".into()),
+                    label: Some("AI Chat".into()),
+                    section: None,
+                }),
+                tray: None,
+            },
+            SurfaceDecl {
+                id: "terminal".into(),
+                render: SurfaceRender::Native,
+                role: SurfaceRole::Aside,
+                launch: false,
+                edge: Some("bottom".into()),
+                sidebar: Some(SurfaceSidebar {
+                    icon: Some("__lingxia_builtin__/terminal.svg".into()),
+                    label: None,
+                    section: None,
+                }),
+                tray: None,
+            },
+        ];
+
+        let ui = surfaces_to_ui(&surfaces, true).unwrap();
+        let expected = serde_json::json!({
+            "launch": { "initialSurface": "lingxia-showcase" },
+            "surfaces": [
+                {
+                    "id": "lingxia-showcase",
+                    "presentation": { "kind": "window" },
+                    "content": { "kind": "lxapp", "appId": "lingxia-showcase" }
+                },
+                {
+                    "id": "lingxia-chat",
+                    "presentation": {
+                        "kind": "attachPanel",
+                        "attachTo": "lingxia-showcase",
+                        "edge": "trailing"
+                    },
+                    "content": { "kind": "lxapp", "appId": "lingxia-chat" }
+                },
+                {
+                    "id": "terminal",
+                    "presentation": {
+                        "kind": "attachPanel",
+                        "attachTo": "lingxia-showcase",
+                        "edge": "bottom",
+                        "size": { "height": 320 }
+                    },
+                    "content": { "kind": "terminal" }
+                }
+            ],
+            "activators": [
+                {
+                    "id": "lingxia-chatSidebar",
+                    "kind": "sidebarItem",
+                    "hostSurface": "lingxia-showcase",
+                    "label": "AI Chat",
+                    "icon": "icons/chat.svg",
+                    "action": { "kind": "toggleSurface", "surface": "lingxia-chat" }
+                },
+                {
+                    "id": "terminalSidebar",
+                    "kind": "sidebarItem",
+                    "hostSurface": "lingxia-showcase",
+                    "label": "Terminal",
+                    "icon": "__lingxia_builtin__/terminal.svg",
+                    "action": { "kind": "toggleSurface", "surface": "terminal" }
+                }
+            ]
+        });
+        assert_eq!(ui, expected);
+
+        // Full config round-trip: apply_surfaces_v2 + validate must accept it.
+        let mut config = LingXiaConfig::new_android("lingxia", "com.example", "lingxia-showcase");
+        config.app.as_mut().unwrap().platforms = vec!["macos".to_string()];
+        config.capabilities.as_mut().unwrap().terminal = true;
+        config.ui = None;
+        config.surfaces = Some(surfaces);
+        config.apply_surfaces_v2().unwrap();
+        config.validate().unwrap();
+    }
+
+    #[test]
+    fn surfaces_v2_rejects_float_role() {
+        let surfaces = vec![SurfaceDecl {
+            id: "popup".into(),
+            render: SurfaceRender::Lxapp,
+            role: SurfaceRole::Float,
+            launch: false,
+            edge: None,
+            sidebar: None,
+            tray: None,
+        }];
+        let err = surfaces_to_ui(&surfaces, false).unwrap_err().to_string();
+        assert!(err.contains("not yet supported"), "{err}");
+    }
+
+    #[test]
+    fn surfaces_v2_rejects_native_terminal_without_capability() {
+        let surfaces = vec![
+            SurfaceDecl {
+                id: "home".into(),
+                render: SurfaceRender::Lxapp,
+                role: SurfaceRole::Main,
+                launch: true,
+                edge: None,
+                sidebar: None,
+                tray: None,
+            },
+            SurfaceDecl {
+                id: "terminal".into(),
+                render: SurfaceRender::Native,
+                role: SurfaceRole::Aside,
+                launch: false,
+                edge: Some("bottom".into()),
+                sidebar: None,
+                tray: None,
+            },
+        ];
+        let err = surfaces_to_ui(&surfaces, false).unwrap_err().to_string();
+        assert!(err.contains("capabilities.terminal"), "{err}");
+    }
+
+    #[test]
+    fn surfaces_v2_rejects_two_launch_mains() {
+        let surfaces = vec![
+            SurfaceDecl {
+                id: "a".into(),
+                render: SurfaceRender::Lxapp,
+                role: SurfaceRole::Main,
+                launch: true,
+                edge: None,
+                sidebar: None,
+                tray: None,
+            },
+            SurfaceDecl {
+                id: "b".into(),
+                render: SurfaceRender::Lxapp,
+                role: SurfaceRole::Main,
+                launch: true,
+                edge: None,
+                sidebar: None,
+                tray: None,
+            },
+        ];
+        let err = surfaces_to_ui(&surfaces, false).unwrap_err().to_string();
+        assert!(err.contains("at most one"), "{err}");
+    }
+
+    #[test]
     fn macos_ui_rejects_unsupported_panel_edge() {
         let mut config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
         let app = config.app.as_mut().unwrap();
@@ -1850,7 +2358,7 @@ android:
                 "presentation": {
                     "kind": "attachPanel",
                     "attachTo": "main",
-                    "edge": "top"
+                    "edge": "diagonal"
                 },
                 "content": {
                     "kind": "lxapp",
@@ -1861,6 +2369,6 @@ android:
         }));
 
         let err = config.validate().unwrap_err().to_string();
-        assert!(err.contains("attachPanel.edge: top"));
+        assert!(err.contains("unknown presentation.edge 'diagonal'"));
     }
 }
