@@ -11,6 +11,10 @@ use std::time::Duration;
 
 const SURFACE_DISPOSE_TTL_MS: u64 = 30_000;
 static SURFACE_CLOSE_OBSERVER: OnceLock<fn(&str, &str) -> bool> = OnceLock::new();
+/// Observer fired when a window's adaptive context (sizeClass/bottomOwner)
+/// changes, so the logic layer can push `lx.surface.onChange` to subscribers.
+/// Receives the window id whose context flipped.
+static SURFACE_CONTEXT_OBSERVER: OnceLock<fn(&str)> = OnceLock::new();
 
 /// The surface graph is per-WINDOW, not per-lxapp. The graph and its single
 /// commit point live on a controller keyed by `window_id`; macOS/mobile are
@@ -165,6 +169,9 @@ impl WindowSurfaceController {
         };
         if changed {
             self.commit();
+            // The sizeClass flip changed this window's derived adaptive context;
+            // notify so `lx.surface.onChange` subscribers see the new context.
+            notify_surface_context_observer(&self.window_id);
         }
         changed
     }
@@ -181,6 +188,16 @@ pub fn register_surface_close_observer(observer: fn(&str, &str) -> bool) {
 fn notify_surface_close_observer(id: &str, reason: &str) {
     if let Some(observer) = SURFACE_CLOSE_OBSERVER.get() {
         let _ = observer(id, reason);
+    }
+}
+
+pub fn register_surface_context_observer(observer: fn(&str)) {
+    let _ = SURFACE_CONTEXT_OBSERVER.set(observer);
+}
+
+fn notify_surface_context_observer(window_id: &str) {
+    if let Some(observer) = SURFACE_CONTEXT_OBSERVER.get() {
+        observer(window_id);
     }
 }
 

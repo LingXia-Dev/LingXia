@@ -1,6 +1,9 @@
 use futures::channel::oneshot;
 use lingxia_platform::traits::ui::{SurfaceKind, SurfacePosition};
-use lxapp::{LxApp, PageQueryInput, PageSurfaceRequest, PageSurfaceTarget, PageTarget};
+use lxapp::{
+    LxApp, PageQueryInput, PageSurfaceRequest, PageSurfaceTarget, PageTarget, list_lxapps,
+    publish_app_event, register_app_handler, try_get, unregister_app_handler,
+};
 use rong::{
     Class, HostError, IntoJSObj, JSContext, JSFunc, JSObject, JSResult, JSValue, Promise,
     function::{Optional, Rest, This},
@@ -148,8 +151,46 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     // role is expressed by the verb; the Host arbitrates the final placement.
     surface.set("aside", JSFunc::new(ctx, open_aside)?)?;
     surface.set("float", JSFunc::new(ctx, open_float)?)?;
+    // onChange(handler): subscribe to adaptive-context changes; returns an
+    // unsubscribe fn. Reactive alternative to polling current().
+    surface.set("onChange", JSFunc::new(ctx, surface_on_change)?)?;
     lx.set("surface", surface)?;
     Ok(())
+}
+
+/// Event name on the per-app bus carrying `{ sizeClass, bottomOwner }`.
+const SURFACE_CONTEXT_EVENT: &str = "SurfaceContextChange";
+
+/// `lx.surface.onChange(handler)` — register a JS callback (scoped to this
+/// lxapp's JS context) invoked with the same object `current()` returns whenever
+/// the window's adaptive context flips. Returns an unsubscribe fn.
+fn surface_on_change(ctx: JSContext, handler: JSFunc) -> JSResult<JSFunc> {
+    register_app_handler(&ctx, SURFACE_CONTEXT_EVENT, handler.clone())?;
+    let off_ctx = ctx.clone();
+    let off_handler = handler;
+    JSFunc::new(&ctx, move || {
+        unregister_app_handler(&off_ctx, SURFACE_CONTEXT_EVENT, Some(off_handler.clone()));
+    })
+}
+
+/// lxapp-side observer handler (registered at runtime init): a window's adaptive
+/// context flipped, so push the new context to every active lxapp's
+/// `onChange` subscribers via the per-app event bus (same dispatch as
+/// onNetworkChange). The surface graph is window-global today, so all lxapps
+/// share this window's derived context; each is recomputed from its own LxApp.
+pub(crate) fn notify_surface_context_changed(_window_id: &str) {
+    for info in list_lxapps() {
+        let Some(lxapp) = try_get(&info.appid) else {
+            continue;
+        };
+        let context = surface_context_for(&lxapp);
+        let payload = serde_json::json!({
+            "sizeClass": context.size_class,
+            "bottomOwner": context.bottom_owner,
+        })
+        .to_string();
+        publish_app_event(&info.appid, SURFACE_CONTEXT_EVENT, Some(payload));
+    }
 }
 
 #[derive(Debug, Clone, IntoJSObj)]
@@ -240,8 +281,15 @@ struct JSSurfaceContext {
 }
 
 fn surface_current(ctx: JSContext) -> JSResult<JSSurfaceContext> {
-    use lingxia_surface::{BottomOwner, SizeClass};
     let lxapp = LxApp::from_ctx(&ctx)?;
+    Ok(surface_context_for(&lxapp))
+}
+
+/// Adaptive context (`{ sizeClass, bottomOwner }`) derived from an lxapp's
+/// window layout. Shared by `current()` and the onChange dispatch so both
+/// report the exact same shape.
+fn surface_context_for(lxapp: &LxApp) -> JSSurfaceContext {
+    use lingxia_surface::{BottomOwner, SizeClass};
     let layout = lxapp.surface_derived_layout();
     let size_class = match layout.as_ref().map(|l| l.size_class) {
         Some(SizeClass::Compact) => "compact",
@@ -252,10 +300,10 @@ fn surface_current(ctx: JSContext) -> JSResult<JSSurfaceContext> {
         Some(BottomOwner::Host) => "host",
         _ => "app",
     };
-    Ok(JSSurfaceContext {
+    JSSurfaceContext {
         size_class: size_class.to_string(),
         bottom_owner: bottom_owner.to_string(),
-    })
+    }
 }
 
 async fn open_surface(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
