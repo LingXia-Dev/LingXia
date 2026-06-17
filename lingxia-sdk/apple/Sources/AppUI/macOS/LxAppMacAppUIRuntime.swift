@@ -98,6 +98,14 @@ final class LxAppMacAppUIRuntime: NSObject {
         shell.onManagedWindowCloseRequested = { [weak self] in
             self?.handleRootWindowCloseRequest()
         }
+        // A companion lxapp's sidebar entry shows + focuses its aside surface
+        // (never closes it, never switches the main). Closing stays the
+        // activator's job.
+        shell.onAsideActivateRequested = { [weak self] surfaceId in
+            guard let self else { return }
+            self.openManagedSurface(id: surfaceId)
+            self.focusSurface(id: surfaceId)
+        }
         shell.setSidebarHostActionHandler { [weak self] actionID in
             self?.performActivator(id: actionID)
         }
@@ -509,6 +517,13 @@ final class LxAppMacAppUIRuntime: NSObject {
             return
         }
 
+        // A companion (aside) lxapp appears in the sidebar whenever it is shown —
+        // registered here (idempotent) so it re-appears on re-open, not only on
+        // the first open. Its entry shows/focuses the aside, never the main.
+        if surface.content.kind == .lxapp, let appId = surface.content.appId {
+            shell.registerAsideLxApp(appId: appId, surfaceId: surface.id)
+        }
+
         if openedSurfaceIDs.contains(surface.id) {
             shell.show()
             shell.showPanel(id: surface.id)
@@ -676,6 +691,10 @@ final class LxAppMacAppUIRuntime: NSObject {
             }
         case .attachPanel:
             logTerminal("runtime.closeAttachPanel surface=\(id)")
+            // A companion lxapp's sidebar entry is removed when its panel closes.
+            if surface.content.kind == .lxapp, let appId = surface.content.appId {
+                shell.unregisterAsideLxApp(appId: appId)
+            }
             shell.setPanelFullscreen(id: id, enabled: false)
             terminalWorkspaces[id]?.setSurfaceZoomEnabled(false, notifyRuntime: false)
             terminalWorkspaces[id]?.disarmInput()

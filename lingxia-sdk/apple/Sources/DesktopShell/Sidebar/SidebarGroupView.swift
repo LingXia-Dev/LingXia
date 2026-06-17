@@ -156,6 +156,9 @@ class SidebarGroupView: NSView {
     private var isCloseHovered = false
 
     var onPageSelected: ((String, Int) -> Void)?
+    /// Fired when the group header (the lxapp's name) is clicked — switches the
+    /// main to this lxapp, so an lxapp with no tabBar items is still switchable.
+    var onAppSelected: ((String) -> Void)?
     var onCloseRequested: ((String) -> Void)?
     var onLayoutChanged: (() -> Void)?
 
@@ -202,7 +205,12 @@ class SidebarGroupView: NSView {
         headerView.wantsLayer = true
         headerView.layer?.cornerRadius = Layout.headerCornerRadius
         headerView.onHeaderClicked = { [weak self] in
-            self?.toggleExpanded()
+            guard let self else { return }
+            // Clicking the lxapp's name switches the main to it (works even with
+            // no tabBar items) and ensures its page list is expanded — it never
+            // collapses on click, so switching apps never hides their items.
+            self.onAppSelected?(self.appId)
+            if !self.isExpanded { self.toggleExpanded() }
         }
         headerView.onRightClick = { [weak self] event in
             self?.showContextMenu(with: event)

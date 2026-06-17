@@ -188,6 +188,9 @@ class SidebarView: NSView {
 
     /// Called when user selects a page: (appId, itemIndex)
     var onAppPageSelected: ((String, Int) -> Void)?
+    /// Called when user clicks an lxapp's name (group header): (appId) — switch
+    /// the main to that lxapp even if it has no tabBar pages.
+    var onAppSelected: ((String) -> Void)?
     /// Called when user requests to close an app: (appId)
     var onAppCloseRequested: ((String) -> Void)?
     /// Called when the bottom hide button is clicked
@@ -738,6 +741,9 @@ class SidebarView: NSView {
                 groupView = SidebarGroupView(appId: tab.appId)
                 groupView.onPageSelected = { [weak self] appId, itemIndex in
                     self?.onAppPageSelected?(appId, itemIndex)
+                }
+                groupView.onAppSelected = { [weak self] appId in
+                    self?.onAppSelected?(appId)
                 }
                 groupView.onCloseRequested = { [weak self] appId in
                     self?.onAppCloseRequested?(appId)

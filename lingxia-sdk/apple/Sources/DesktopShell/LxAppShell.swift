@@ -435,6 +435,9 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         sidebar.onAppPageSelected = { [weak self] appId, itemIndex in
             self?.handleSidebarPageSelection(appId: appId, itemIndex: itemIndex)
         }
+        sidebar.onAppSelected = { [weak self] appId in
+            self?.handleSidebarAppSelection(appId: appId)
+        }
         sidebar.onAppCloseRequested = { [weak self] appId in
             self?.closeTab(appId)
         }
@@ -617,6 +620,38 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     }
 
     // MARK: - Sidebar Actions
+
+    /// Activate (show/focus) a companion (aside) lxapp's surface — its sidebar
+    /// entry must not switch the main, and must not close the aside. Wired by the
+    /// AppUI runtime to show the managed surface. Closing stays the activator's job.
+    var onAsideActivateRequested: ((String) -> Void)?
+
+    /// Add a companion (aside) lxapp to the sidebar without making it the active
+    /// main — so an activator/shell-opened lxapp appears like any lxapp.
+    func registerAsideLxApp(appId: String, surfaceId: String) {
+        tabManager.addTab(appId: appId, asideSurfaceId: surfaceId, activate: false)
+    }
+
+    func unregisterAsideLxApp(appId: String) {
+        tabManager.closeTab(appId: appId)
+    }
+
+    /// Switch the main to an lxapp from its sidebar group header — no specific
+    /// page, so an lxapp with no tabBar items is still switchable. A companion
+    /// (aside) lxapp instead toggles its surface and never takes the main.
+    func handleSidebarAppSelection(appId: String) {
+        if let tab = tabManager.tabs.first(where: { $0.appId == appId }),
+           let surfaceId = tab.asideSurfaceId {
+            onAsideActivateRequested?(surfaceId)
+            return
+        }
+        if browserCoordinator.isActive {
+            switchToTab(appId)
+        } else if tabManager.activeTab?.appId != appId {
+            tabManager.selectTab(appId: appId)
+        }
+        sidebarView?.setActiveHighlight(appId: appId)
+    }
 
     func handleSidebarPageSelection(appId: String, itemIndex: Int) {
         if browserCoordinator.isActive {
