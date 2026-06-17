@@ -218,7 +218,7 @@ impl LxApp {
         }
 
         // §11.2 Phase 3: reconcile aside docking from the (now-mutated) core graph.
-        self.present_derived_layout();
+        self.commit_window_mutation();
 
         Ok(PageSurface {
             id,
@@ -362,7 +362,7 @@ impl LxApp {
             let _ = manager.open(node);
         }
         // §11.2 Phase 3: reconcile aside docking from the core graph.
-        self.present_derived_layout();
+        self.commit_window_mutation();
     }
 
     /// Remove a host-declared aside from the surface graph (§11.2 Phase 1).
@@ -373,7 +373,7 @@ impl LxApp {
         }
         let _ = window_surface_manager().lock().unwrap().close(surface_id);
         // §11.2 Phase 3: reconcile aside docking from the core graph.
-        self.present_derived_layout();
+        self.commit_window_mutation();
     }
 
     /// `lx.shell.toggle`: flip a host-declared top-level surface's visibility.
@@ -404,7 +404,7 @@ impl LxApp {
             .is_some();
         if removed {
             // §11.2 Phase 3: reconcile aside docking from the core graph.
-            self.present_derived_layout();
+            self.commit_window_mutation();
         }
         removed
     }
@@ -429,7 +429,7 @@ impl LxApp {
         // — not just the core state. The manager lock is dropped above before
         // present_derived_layout() re-derives.
         if changed {
-            self.present_derived_layout();
+            self.commit_window_mutation();
         }
         changed
     }
@@ -456,11 +456,14 @@ impl LxApp {
         Some(window_surface_manager().lock().unwrap().derive())
     }
 
-    /// §11.2 Phase 3: after the window graph mutates, re-derive the layout and
-    /// hand it to the platform skin so it can reconcile aside docking from the
-    /// core (the single source of truth). Platforms without `present_layout`
-    /// return `NotSupported`, which is ignored here.
-    fn present_derived_layout(&self) {
+    /// THE single commit point for window-graph mutations: every mutator
+    /// (open/close surface, register/unregister host aside, forget, width/size
+    /// class change) must call this after writing the graph, so state→render is
+    /// one transaction — re-derive the `DerivedLayout` and hand it to the
+    /// platform skin to reconcile. Platforms without `present_layout` return
+    /// `NotSupported`, ignored here. (Re-derives under its own lock, so callers
+    /// must drop the manager lock first.)
+    fn commit_window_mutation(&self) {
         let derived = window_surface_manager().lock().unwrap().derive();
         let _ = self.runtime.present_layout(&self.appid, &derived);
     }
