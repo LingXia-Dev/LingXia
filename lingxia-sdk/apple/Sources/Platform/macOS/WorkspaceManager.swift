@@ -398,6 +398,59 @@ class WorkspaceManager: NSObject {
 
     func isPanelVisible(id: String) -> Bool { panels[id]?.isVisible ?? false }
 
+    /// The edge a registered panel is currently docked to, or `nil` if unknown.
+    /// The aside-layout reconciler reads this to decide whether a panel needs to
+    /// be re-placed at the core tree's edge.
+    func panelPosition(id: String) -> PanelPosition? { panels[id]?.config.position }
+
+    /// Move a registered panel to a different edge, preserving its attached
+    /// content view. No-op when the panel is already at `position`. Used by the
+    /// aside-layout reconciler (the sole placement authority) when the core's
+    /// tree edge differs from the edge the content path registered the panel at.
+    /// The panel is left hidden after a move; the caller re-shows it.
+    func repositionPanel(id: String, to position: PanelPosition) {
+        guard let old = panels[id] else {
+            lxWorkspaceStdoutLog("repositionPanel missing id=\(id)")
+            return
+        }
+        guard old.config.position != position else { return }
+        lxWorkspaceStdoutLog(
+            "repositionPanel id=\(id) from=\(old.config.position.rawValue) to=\(position.rawValue)"
+        )
+
+        // Detach the panel's content view so it survives the slot swap.
+        let content = old.containerView.subviews
+        for view in content { view.removeFromSuperview() }
+
+        // Tear the old slot's cards out of the dock and forget it.
+        if old.isVisible {
+            hidePanelInternal(id: id, duration: 0, updateCardEdges: true)
+        }
+        old.shadowWrapper.removeFromSuperview()
+        old.resizeHandle.removeFromSuperview()
+        panels.removeValue(forKey: id)
+        if activeByPosition[old.config.position] == id {
+            activeByPosition.removeValue(forKey: old.config.position)
+        }
+
+        // Re-register at the new edge, preserving the prior size, and re-attach
+        // the content into the fresh container.
+        let config = PanelConfig(id: id, position: position, defaultSize: old.config.defaultSize)
+        let container = registerPanel(config)
+        panels[id]?.currentSize = old.currentSize
+        panels[id]?.sizeConstraint?.constant = old.currentSize
+        for view in content {
+            view.translatesAutoresizingMaskIntoConstraints = false
+            container.addSubview(view)
+            NSLayoutConstraint.activate([
+                view.topAnchor.constraint(equalTo: container.topAnchor),
+                view.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+                view.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+                view.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            ])
+        }
+    }
+
     func panelContainer(id: String) -> NSView? {
         guard let slot = panels[id] else {
             lxWorkspaceStdoutLog("panelContainer missing id=\(id)")

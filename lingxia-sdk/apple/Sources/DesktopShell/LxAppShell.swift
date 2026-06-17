@@ -416,16 +416,17 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     private func reportSurfaceWidth() {
         guard let appId = currentViewController?.appId,
               let windowWidth = window?.contentView?.frame.width, windowWidth > 0 else { return }
-        // Report the content card's width (what the lxapp actually gets), not the
-        // whole window — so when a left/right dock panel shrinks the card the
-        // core re-resolves the sizeClass and the content adapts. Derive it from
-        // the edge constraints rather than the frame, which lags during the
-        // panel open/close animation.
-        let leading = contentLeadingConstraint?.constant ?? Layout.sidebarWidth
-        let trailingInset = -(cardTrailingConstraint?.constant ?? 0)
-        let cardWidth = max(0, windowWidth - leading - trailingInset)
-        guard cardWidth > 0 else { return }
-        _ = setSurfaceWidth(appId, Double(cardWidth))
+        // The sizeClass that drives arbitration (how many asides fit, split vs
+        // fallback) must reflect the stable WORKSPACE — the window minus the
+        // fixed sidebar chrome — NOT the residual main-pane width. Subtracting
+        // docked aside panels here would shrink the reported width as asides
+        // open, dropping the sizeClass and so capping further asides: opening a
+        // second aside would evict the first. Content that needs its own pane
+        // width reads the webview's actual width (CSS), not sizeClass.
+        let sidebar = sidebarWidthConstraint?.constant ?? Layout.sidebarWidth
+        let workspaceWidth = max(0, windowWidth - sidebar)
+        guard workspaceWidth > 0 else { return }
+        _ = setSurfaceWidth(appId, Double(workspaceWidth))
     }
 
     // MARK: - Sidebar Interface Setup
@@ -1480,6 +1481,38 @@ extension LxAppShell {
                 "showPanelWithNativeContent afterAttachAsync id=\(id) containerFrame=\(lxShellFormatRect(container?.frame ?? .zero)) containerBounds=\(lxShellFormatRect(container?.bounds ?? .zero)) contentFrame=\(lxShellFormatRect(contentView?.frame ?? .zero)) contentBounds=\(lxShellFormatRect(contentView?.bounds ?? .zero)) windowFrame=\(lxShellFormatRect(self?.window?.frame ?? .zero)) contentViewBounds=\(lxShellFormatRect(self?.window?.contentView?.bounds ?? .zero))"
             )
         }
+    }
+
+    /// Adaptive Surface Layout (Phase 4): register an aside panel and attach its
+    /// native content WITHOUT showing or placing it. The aside-layout reconciler
+    /// (driven by the core's `present_layout`) is the sole authority for an
+    /// aside's edge + visibility, so the per-surface / host-aside content paths
+    /// only build + register content here; the reconciler shows and places it.
+    func registerPanelWithNativeContent(
+        id: String,
+        position: PanelPosition,
+        contentView: NSView,
+        defaultSize: CGFloat = 320
+    ) {
+        if !workspaceManager.isPanelRegistered(id: id) {
+            let config = PanelConfig(id: id, position: position, defaultSize: defaultSize)
+            workspaceManager.registerPanel(config)
+        }
+        guard let container = workspaceManager.panelContainer(id: id) else {
+            lxShellStdoutLog("registerPanelWithNativeContent missingContainer id=\(id)")
+            return
+        }
+        attachPanelContentView(contentView, container: container)
+    }
+
+    /// Register an aside panel and attach an lxapp webview WITHOUT showing or
+    /// placing it (Phase 4 — placement is owned by the reconciler).
+    func registerPanelWithContent(id: String, position: PanelPosition, appId: String, path: String) {
+        if !workspaceManager.isPanelRegistered(id: id) {
+            let config = PanelConfig(id: id, position: position)
+            workspaceManager.registerPanel(config)
+        }
+        attachPanelWebViewWhenReady(panelId: id, appId: appId, path: path, attempt: 0)
     }
 
     func hidePanel(id: String) {

@@ -282,7 +282,14 @@ final class LxAppMacAppUIRuntime: NSObject {
         }
 
         shell.storeSession(sessionId, for: appId)
-        shell.showPanelWithContent(id: panelId, position: position, appId: appId, path: path)
+        // §11.2 Phase 4: register the aside lxapp content (hidden); the
+        // aside-layout reconciler owns its edge + visibility. registerHostAside
+        // (in openAttachPanelSurface) fired present_layout before the content
+        // existed, so re-run the reconciler now that the panel is registered.
+        shell.registerPanelWithContent(id: panelId, position: position, appId: appId, path: path)
+        if let primaryAppId = rootSurface.content.appId {
+            LxAppLayoutReconciler.reconcileNow(appId: primaryAppId)
+        }
         openedSurfaceIDs.insert(panelId)
         visibleSurfaceIDs.insert(panelId)
         refreshChromeActivators()
@@ -531,7 +538,9 @@ final class LxAppMacAppUIRuntime: NSObject {
 
         if openedSurfaceIDs.contains(surface.id) {
             shell.show()
-            shell.showPanel(id: surface.id)
+            // §11.2 Phase 4: the panel is already registered, so registerHostAside
+            // above already drove the aside-layout reconciler to (re-)place and
+            // show it at the core tree's edge. Don't show the panel directly here.
             visibleSurfaceIDs.insert(surface.id)
             refreshChromeActivators()
             return
@@ -610,12 +619,20 @@ final class LxAppMacAppUIRuntime: NSObject {
         logTerminal(
             "runtime.beforeShowPanel surface=\(surface.id) workspaceFrame=\(lxTerminalRuntimeFormatRect(workspace.frame)) workspaceBounds=\(lxTerminalRuntimeFormatRect(workspace.bounds)) windowFrame=\(lxTerminalRuntimeFormatRect(shell.hostWindow?.frame ?? .zero))"
         )
-        shell.showPanelWithNativeContent(
+        // §11.2 Phase 4: register the terminal content (hidden); the aside-layout
+        // reconciler is the sole authority for its edge + visibility. The host
+        // aside was mirrored into the core graph above (registerHostAside), which
+        // fires present_layout before the content exists, so re-run the
+        // reconciler now that the panel is registered.
+        shell.registerPanelWithNativeContent(
             id: surface.id,
             position: position,
             contentView: workspace,
             defaultSize: defaultHeight
         )
+        if let primaryAppId = rootSurface.content.appId {
+            LxAppLayoutReconciler.reconcileNow(appId: primaryAppId)
+        }
         logTerminal(
             "runtime.afterShowPanel surface=\(surface.id) workspaceFrame=\(lxTerminalRuntimeFormatRect(workspace.frame)) workspaceBounds=\(lxTerminalRuntimeFormatRect(workspace.bounds)) windowFrame=\(lxTerminalRuntimeFormatRect(shell.hostWindow?.frame ?? .zero))"
         )
@@ -640,6 +657,12 @@ final class LxAppMacAppUIRuntime: NSObject {
         terminalWorkspaces.removeValue(forKey: id)
         openedSurfaceIDs.remove(id)
         visibleSurfaceIDs.remove(id)
+        // §11.2 Phase 4: drop the terminal from the core graph so the aside-layout
+        // reconciler (sole authority) undocks it and never re-shows it on a later
+        // present_layout. The direct hidePanel below is a redundant immediate hide.
+        if let primaryAppId = rootSurface.content.appId {
+            _ = unregisterHostAside(primaryAppId, id)
+        }
         shell.hidePanel(id: id)
         updateIndependentPanelOutsideClickMonitors()
         refreshChromeActivators()
