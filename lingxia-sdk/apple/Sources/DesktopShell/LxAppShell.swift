@@ -1224,7 +1224,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         title: String?,
         size: CGSize?,
         resizable: Bool,
-        kind: LxAppUIConfig.Presentation.Kind,
+        role: LxAppUIConfig.Role,
         showTrafficLights: Bool
     ) {
         guard let window else { return }
@@ -1233,7 +1233,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
             window.title = title
         }
 
-        usesPanelPresentation = kind == .panel
+        usesPanelPresentation = role == .float
 
         if let size {
             window.setContentSize(size)
@@ -1243,7 +1243,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
             }
         }
 
-        if resizable && kind == .window {
+        if resizable && role == .main {
             window.styleMask.insert(.resizable)
             let minSize = minimumManagedWindowSize(for: size)
             window.contentMinSize = minSize
@@ -1264,7 +1264,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
             }
         }
 
-        if kind == .panel {
+        if role == .float {
             window.level = .floating
             window.isMovableByWindowBackground = true
             window.collectionBehavior.insert(.transient)

@@ -229,12 +229,11 @@ pub struct SurfaceTray {
 /// the runtime consumes. Produces the SAME shape the `ui:` block does.
 ///
 /// Mapping:
-/// - `role: main` + `render: lxapp` -> presentation.kind `window`,
+/// - `role: main` + `render: lxapp` -> surface `role: main`,
 ///   content `{ kind: lxapp, appId: <id> }`. `launch: true` ->
 ///   `launch.initialSurface = <id>`.
-/// - `role: aside` + `render: lxapp` -> presentation.kind `attachPanel`,
-///   `attachTo: <main>`, edge mapped left->leading / right->trailing /
-///   top->top / bottom->bottom.
+/// - `role: aside` + `render: lxapp` -> surface `role: aside`,
+///   `attachTo: <main>`, edge `left|right|top|bottom` carried through verbatim.
 /// - `role: aside` + `render: native` (id `terminal`) -> the terminal surface,
 ///   emitted in the EXACT shape `assets/ui.rs::add_terminal_ui` produces so
 ///   the auto-inject guard skips it (no double inject) and output is identical.
@@ -315,7 +314,7 @@ fn surfaces_to_ui(surfaces: &[SurfaceDecl], terminal_enabled: bool) -> Result<Va
                 }
                 out_surfaces.push(json!({
                     "id": id,
-                    "presentation": { "kind": "window" },
+                    "role": "main",
                     "content": { "kind": "lxapp", "appId": id }
                 }));
             }
@@ -331,11 +330,9 @@ fn surfaces_to_ui(surfaces: &[SurfaceDecl], terminal_enabled: bool) -> Result<Va
                         let mapped_edge = map_edge(edge, id)?;
                         out_surfaces.push(json!({
                             "id": id,
-                            "presentation": {
-                                "kind": "attachPanel",
-                                "attachTo": launch_id,
-                                "edge": mapped_edge
-                            },
+                            "role": "aside",
+                            "attachTo": launch_id,
+                            "edge": mapped_edge,
                             "content": { "kind": "lxapp", "appId": id }
                         }));
                     }
@@ -362,12 +359,10 @@ fn surfaces_to_ui(surfaces: &[SurfaceDecl], terminal_enabled: bool) -> Result<Va
                         }
                         out_surfaces.push(json!({
                             "id": "terminal",
-                            "presentation": {
-                                "kind": "attachPanel",
-                                "attachTo": launch_id,
-                                "edge": edge,
-                                "size": { "height": 320 }
-                            },
+                            "role": "aside",
+                            "attachTo": launch_id,
+                            "edge": edge,
+                            "size": { "height": 320 },
                             "content": { "kind": "terminal" }
                         }));
                         // The terminal's sidebar entry. Its icon defaults to the
@@ -476,8 +471,8 @@ fn surfaces_to_ui(surfaces: &[SurfaceDecl], terminal_enabled: bool) -> Result<Va
 
 fn map_edge(edge: &str, id: &str) -> Result<&'static str> {
     Ok(match edge {
-        "left" => "leading",
-        "right" => "trailing",
+        "left" => "left",
+        "right" => "right",
         "top" => "top",
         "bottom" => "bottom",
         other => {
@@ -1094,10 +1089,10 @@ impl LingXiaConfig {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum MacosUiSurfaceKind {
-    Window,
-    Panel,
-    AttachPanel,
+enum MacosUiSurfaceRole {
+    Main,
+    Aside,
+    Float,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1108,7 +1103,7 @@ enum MacosUiContentKind {
 
 #[derive(Debug, Clone)]
 struct MacosUiSurface {
-    kind: MacosUiSurfaceKind,
+    role: MacosUiSurfaceRole,
     content_kind: MacosUiContentKind,
     attach_to: Option<String>,
     edge: Option<String>,
@@ -1213,48 +1208,15 @@ fn validate_macos_ui_config(ui: &Value, terminal_enabled: bool) -> Result<()> {
             return Err(anyhow!("duplicate ui surface id '{id}'"));
         }
 
-        let presentation = obj
-            .get("presentation")
-            .and_then(Value::as_object)
-            .ok_or_else(|| anyhow!("ui.surfaces[{index}].presentation must be an object"))?;
-        let presentation_kind = non_empty_str(
-            presentation.get("kind"),
-            &format!("ui.surfaces[{index}].presentation.kind"),
-        )?;
-        let presentation_kind = match presentation_kind {
-            "window" => MacosUiSurfaceKind::Window,
-            "panel" => MacosUiSurfaceKind::Panel,
-            "attachPanel" => MacosUiSurfaceKind::AttachPanel,
-            "sheet" | "embedded" => {
-                return Err(anyhow!(
-                    "ui surface '{id}' uses unsupported macOS presentation.kind '{presentation_kind}'"
-                ));
-            }
+        let role = non_empty_str(obj.get("role"), &format!("ui.surfaces[{index}].role"))?;
+        let role = match role {
+            "main" => MacosUiSurfaceRole::Main,
+            "aside" => MacosUiSurfaceRole::Aside,
+            "float" => MacosUiSurfaceRole::Float,
             other => {
-                return Err(anyhow!(
-                    "ui surface '{id}' has unknown presentation.kind '{other}'"
-                ));
+                return Err(anyhow!("ui surface '{id}' has unknown role '{other}'"));
             }
         };
-        let anchor = optional_non_empty_str(presentation.get("anchor"));
-        if let Some(anchor) = anchor.as_deref()
-            && anchor != "activator"
-        {
-            return Err(anyhow!(
-                "ui surface '{id}' has unsupported presentation.anchor '{anchor}'"
-            ));
-        }
-        if anchor.is_some() && presentation_kind != MacosUiSurfaceKind::Panel {
-            return Err(anyhow!(
-                "ui surface '{id}' can set presentation.anchor only when presentation.kind is panel"
-            ));
-        }
-        if presentation_kind == MacosUiSurfaceKind::Panel && anchor.as_deref() != Some("activator")
-        {
-            return Err(anyhow!(
-                "ui surface '{id}' with presentation.kind panel requires presentation.anchor: activator"
-            ));
-        }
         let content = obj
             .get("content")
             .and_then(Value::as_object)
@@ -1299,10 +1261,10 @@ fn validate_macos_ui_config(ui: &Value, terminal_enabled: bool) -> Result<()> {
         surface_by_id.insert(
             id.to_string(),
             MacosUiSurface {
-                kind: presentation_kind,
+                role,
                 content_kind,
-                attach_to: optional_non_empty_str(presentation.get("attachTo")),
-                edge: optional_non_empty_str(presentation.get("edge")),
+                attach_to: optional_non_empty_str(obj.get("attachTo")),
+                edge: optional_non_empty_str(obj.get("edge")),
             },
         );
     }
@@ -1313,8 +1275,8 @@ fn validate_macos_ui_config(ui: &Value, terminal_enabled: bool) -> Result<()> {
         ));
     };
     if !matches!(
-        initial.kind,
-        MacosUiSurfaceKind::Window | MacosUiSurfaceKind::Panel | MacosUiSurfaceKind::AttachPanel
+        initial.role,
+        MacosUiSurfaceRole::Main | MacosUiSurfaceRole::Float | MacosUiSurfaceRole::Aside
     ) {
         return Err(anyhow!(
             "ui.launch.initialSurface must reference a supported macOS surface"
@@ -1325,71 +1287,71 @@ fn validate_macos_ui_config(ui: &Value, terminal_enabled: bool) -> Result<()> {
         .iter()
         .filter_map(|(id, surface)| {
             matches!(
-                surface.kind,
-                MacosUiSurfaceKind::Window | MacosUiSurfaceKind::Panel
+                surface.role,
+                MacosUiSurfaceRole::Main | MacosUiSurfaceRole::Float
             )
             .then_some(id.as_str())
         })
         .collect::<Vec<_>>();
     if root_ids.len() != 1 {
         return Err(anyhow!(
-            "macOS app UI currently requires exactly one root window or panel surface"
+            "macOS app UI currently requires exactly one root main or float surface"
         ));
     }
     let root_id = root_ids[0];
 
     for (id, surface) in &surface_by_id {
         if surface.content_kind == MacosUiContentKind::Terminal {
-            if surface.kind != MacosUiSurfaceKind::AttachPanel {
-                return Err(anyhow!(
-                    "terminal ui surface '{id}' must use presentation.kind 'attachPanel'"
-                ));
+            if surface.role != MacosUiSurfaceRole::Aside {
+                return Err(anyhow!("terminal ui surface '{id}' must use role 'aside'"));
             }
             let edge = surface
                 .edge
                 .as_deref()
-                .ok_or_else(|| anyhow!("terminal ui surface '{id}' requires presentation.edge"))?;
+                .ok_or_else(|| anyhow!("terminal ui surface '{id}' requires edge"))?;
             if edge != "bottom" && edge != "top" {
                 return Err(anyhow!(
-                    "terminal ui surface '{id}' must use presentation.edge 'top' or 'bottom'"
+                    "terminal ui surface '{id}' must use edge 'top' or 'bottom'"
                 ));
             }
         }
 
-        match surface.kind {
-            MacosUiSurfaceKind::Window | MacosUiSurfaceKind::Panel => {
+        match surface.role {
+            MacosUiSurfaceRole::Main | MacosUiSurfaceRole::Float => {
                 if surface.attach_to.is_some() {
                     return Err(anyhow!("root ui surface '{id}' cannot set attachTo"));
                 }
             }
-            MacosUiSurfaceKind::AttachPanel => {
-                let parent_id = surface.attach_to.as_deref().ok_or_else(|| {
-                    anyhow!("attachPanel ui surface '{id}' requires presentation.attachTo")
-                })?;
+            MacosUiSurfaceRole::Aside => {
+                let parent_id = surface
+                    .attach_to
+                    .as_deref()
+                    .ok_or_else(|| anyhow!("aside ui surface '{id}' requires attachTo"))?;
                 let parent = surface_by_id.get(parent_id).ok_or_else(|| {
                     anyhow!("ui surface '{id}' attaches to unknown surface '{parent_id}'")
                 })?;
                 if !matches!(
-                    parent.kind,
-                    MacosUiSurfaceKind::Window | MacosUiSurfaceKind::Panel
+                    parent.role,
+                    MacosUiSurfaceRole::Main | MacosUiSurfaceRole::Float
                 ) {
                     return Err(anyhow!(
-                        "macOS app UI currently does not support attachPanel -> attachPanel; surface '{id}' attaches to '{parent_id}'"
+                        "macOS app UI currently does not support aside -> aside; surface '{id}' attaches to '{parent_id}'"
                     ));
                 }
                 if parent_id != root_id {
                     return Err(anyhow!(
-                        "macOS app UI currently supports panels attached only to the root surface"
+                        "macOS app UI currently supports asides attached only to the root surface"
                     ));
                 }
-                let edge = surface.edge.as_deref().ok_or_else(|| {
-                    anyhow!("attachPanel ui surface '{id}' requires presentation.edge")
-                })?;
+                let edge = surface
+                    .edge
+                    .as_deref()
+                    .ok_or_else(|| anyhow!("aside ui surface '{id}' requires edge"))?;
                 match edge {
-                    "leading" | "trailing" | "bottom" | "top" => {}
+                    "left" | "right" | "bottom" | "top" => {}
                     other => {
                         return Err(anyhow!(
-                            "attachPanel ui surface '{id}' has unknown presentation.edge '{other}'"
+                            "aside ui surface '{id}' has unknown edge '{other}'"
                         ));
                     }
                 }
@@ -1838,20 +1800,16 @@ android:
             },
             "surfaces": [{
                 "id": "main",
-                "presentation": {
-                    "kind": "window"
-                },
+                "role": "main",
                 "content": {
                     "kind": "lxapp",
                     "appId": "my-app"
                 }
             }, {
                 "id": "side",
-                "presentation": {
-                    "kind": "attachPanel",
-                    "attachTo": "main",
-                    "edge": "trailing"
-                },
+                "role": "aside",
+                "attachTo": "main",
+                "edge": "right",
                 "content": {
                     "kind": "lxapp",
                     "appId": "my-side-app"
@@ -1883,20 +1841,16 @@ android:
             },
             "surfaces": [{
                 "id": "main",
-                "presentation": {
-                    "kind": "window"
-                },
+                "role": "main",
                 "content": {
                     "kind": "lxapp",
                     "appId": "my-app"
                 }
             }, {
                 "id": "terminal",
-                "presentation": {
-                    "kind": "attachPanel",
-                    "attachTo": "main",
-                    "edge": "bottom"
-                },
+                "role": "aside",
+                "attachTo": "main",
+                "edge": "bottom",
                 "content": {
                     "kind": "terminal"
                 }
@@ -1926,20 +1880,16 @@ android:
             },
             "surfaces": [{
                 "id": "main",
-                "presentation": {
-                    "kind": "window"
-                },
+                "role": "main",
                 "content": {
                     "kind": "lxapp",
                     "appId": "my-app"
                 }
             }, {
                 "id": "terminal",
-                "presentation": {
-                    "kind": "attachPanel",
-                    "attachTo": "main",
-                    "edge": "bottom"
-                },
+                "role": "aside",
+                "attachTo": "main",
+                "edge": "bottom",
                 "content": {
                     "kind": "terminal"
                 }
@@ -1971,20 +1921,16 @@ android:
             },
             "surfaces": [{
                 "id": "main",
-                "presentation": {
-                    "kind": "window"
-                },
+                "role": "main",
                 "content": {
                     "kind": "lxapp",
                     "appId": "main"
                 }
             }, {
                 "id": "terminal",
-                "presentation": {
-                    "kind": "attachPanel",
-                    "attachTo": "main",
-                    "edge": "trailing"
-                },
+                "role": "aside",
+                "attachTo": "main",
+                "edge": "right",
                 "content": {
                     "kind": "terminal"
                 }
@@ -1993,7 +1939,7 @@ android:
         }));
 
         let err = config.validate().unwrap_err().to_string();
-        assert!(err.contains("must use presentation.edge 'top' or 'bottom'"));
+        assert!(err.contains("must use edge 'top' or 'bottom'"));
     }
 
     #[test]
@@ -2008,20 +1954,16 @@ android:
             },
             "surfaces": [{
                 "id": "main",
-                "presentation": {
-                    "kind": "window"
-                },
+                "role": "main",
                 "content": {
                     "kind": "lxapp",
                     "appId": "main"
                 }
             }, {
                 "id": "terminal",
-                "presentation": {
-                    "kind": "attachPanel",
-                    "attachTo": "main",
-                    "edge": "bottom"
-                },
+                "role": "aside",
+                "attachTo": "main",
+                "edge": "bottom",
                 "content": {
                     "kind": "terminal",
                     "backend": "xterm"
@@ -2045,9 +1987,7 @@ android:
             },
             "surfaces": [{
                 "id": "main",
-                "presentation": {
-                    "kind": "window"
-                },
+                "role": "main",
                 "content": {
                     "kind": "lxapp",
                     "appId": "main"
@@ -2079,9 +2019,7 @@ android:
                 },
                 "surfaces": [{
                     "id": "main",
-                    "presentation": {
-                        "kind": "window"
-                    },
+                    "role": "main",
                     "content": {
                         "kind": "lxapp",
                         "appId": "main"
@@ -2112,9 +2050,7 @@ android:
             },
             "surfaces": [{
                 "id": "main",
-                "presentation": {
-                    "kind": "window"
-                },
+                "role": "main",
                 "content": {
                     "kind": "lxapp",
                     "appId": "main"
@@ -2141,9 +2077,7 @@ android:
             },
             "surfaces": [{
                 "id": "main",
-                "presentation": {
-                    "kind": "window"
-                },
+                "role": "main",
                 "content": {
                     "kind": "lxapp",
                     "appId": "main"
@@ -2174,20 +2108,16 @@ android:
             },
             "surfaces": [{
                 "id": "main",
-                "presentation": {
-                    "kind": "window"
-                },
+                "role": "main",
                 "content": {
                     "kind": "lxapp",
                     "appId": "shared"
                 }
             }, {
                 "id": "panel",
-                "presentation": {
-                    "kind": "attachPanel",
-                    "attachTo": "main",
-                    "edge": "trailing"
-                },
+                "role": "aside",
+                "attachTo": "main",
+                "edge": "right",
                 "content": {
                     "kind": "lxapp",
                     "appId": "shared"
@@ -2246,26 +2176,22 @@ android:
             "surfaces": [
                 {
                     "id": "lingxia-showcase",
-                    "presentation": { "kind": "window" },
+                    "role": "main",
                     "content": { "kind": "lxapp", "appId": "lingxia-showcase" }
                 },
                 {
                     "id": "lingxia-chat",
-                    "presentation": {
-                        "kind": "attachPanel",
-                        "attachTo": "lingxia-showcase",
-                        "edge": "trailing"
-                    },
+                    "role": "aside",
+                    "attachTo": "lingxia-showcase",
+                    "edge": "right",
                     "content": { "kind": "lxapp", "appId": "lingxia-chat" }
                 },
                 {
                     "id": "terminal",
-                    "presentation": {
-                        "kind": "attachPanel",
-                        "attachTo": "lingxia-showcase",
-                        "edge": "bottom",
-                        "size": { "height": 320 }
-                    },
+                    "role": "aside",
+                    "attachTo": "lingxia-showcase",
+                    "edge": "bottom",
+                    "size": { "height": 320 },
                     "content": { "kind": "terminal" }
                 }
             ],
@@ -2445,20 +2371,16 @@ android:
             },
             "surfaces": [{
                 "id": "main",
-                "presentation": {
-                    "kind": "window"
-                },
+                "role": "main",
                 "content": {
                     "kind": "lxapp",
                     "appId": "main"
                 }
             }, {
                 "id": "panel",
-                "presentation": {
-                    "kind": "attachPanel",
-                    "attachTo": "main",
-                    "edge": "diagonal"
-                },
+                "role": "aside",
+                "attachTo": "main",
+                "edge": "diagonal",
                 "content": {
                     "kind": "lxapp",
                     "appId": "panel"
@@ -2468,6 +2390,6 @@ android:
         }));
 
         let err = config.validate().unwrap_err().to_string();
-        assert!(err.contains("unknown presentation.edge 'diagonal'"));
+        assert!(err.contains("unknown edge 'diagonal'"));
     }
 }

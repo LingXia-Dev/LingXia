@@ -115,7 +115,7 @@ final class LxAppMacAppUIRuntime: NSObject {
         shell.setTitlebarHostActionHandler { [weak self] actionID in
             self?.performActivator(id: actionID)
         }
-        shell.setSidebarChromeEnabled(rootSurface.presentation.kind != .panel)
+        shell.setSidebarChromeEnabled(rootSurface.role != .float)
 
         Self.active = self
     }
@@ -276,7 +276,7 @@ final class LxAppMacAppUIRuntime: NSObject {
             return true
         }
 
-        guard surface.presentation.kind == .attachPanel,
+        guard surface.role == .aside,
               let position = panelPosition(for: surface) else {
             return false
         }
@@ -384,17 +384,15 @@ final class LxAppMacAppUIRuntime: NSObject {
             throw LxAppUIError.invalidConfig("unknown surface id \(id)")
         }
 
-        switch surface.presentation.kind {
-        case .window, .panel:
+        switch surface.role {
+        case .main, .float:
             if isIndependentPanelSurface(surface) {
                 try openIndependentPanelSurface(surface, sourceActivatorID: sourceActivatorID)
             } else {
                 try openWindowSurface(surface, sourceActivatorID: sourceActivatorID)
             }
-        case .attachPanel:
+        case .aside:
             try openAttachPanelSurface(surface)
-        case .sheet, .embedded:
-            throw LxAppUIError.unsupported("surface \(surface.id) uses unsupported presentation.kind \(surface.presentation.kind.rawValue) on macOS")
         }
     }
 
@@ -403,7 +401,7 @@ final class LxAppMacAppUIRuntime: NSObject {
         sourceActivatorID: String? = nil
     ) throws {
         applyWindowPresentation(for: surface)
-        if surface.presentation.kind == .panel {
+        if surface.role == .float {
             positionPanelWindow(for: sourceActivatorID)
         }
 
@@ -513,14 +511,14 @@ final class LxAppMacAppUIRuntime: NSObject {
     }
 
     private func openAttachPanelSurface(_ surface: LxAppUIConfig.Surface) throws {
-        if let parentID = surface.presentation.attachTo, !visibleSurfaceIDs.contains(parentID) {
+        if let parentID = surface.attachTo, !visibleSurfaceIDs.contains(parentID) {
             try openSurface(id: parentID)
         }
 
         // Reflect this host-declared aside in the core surface graph so
         // lx.surface.derivedLayout() includes host surfaces.
         if let primaryAppId = rootSurface.content.appId {
-            _ = registerHostAside(primaryAppId, surface.id, surface.presentation.edge?.rawValue ?? "right")
+            _ = registerHostAside(primaryAppId, surface.id, surface.edge?.rawValue ?? "right")
         }
 
         if surface.content.kind == .terminal {
@@ -549,8 +547,8 @@ final class LxAppMacAppUIRuntime: NSObject {
     }
 
     private func requestAttachPanelOpenThroughRuntime(_ surface: LxAppUIConfig.Surface) throws {
-        guard surface.presentation.kind == .attachPanel else {
-            throw LxAppUIError.invalidConfig("surface \(surface.id) is not an attachPanel")
+        guard surface.role == .aside else {
+            throw LxAppUIError.invalidConfig("surface \(surface.id) is not an aside")
         }
         switch surface.content.kind {
         case .lxapp:
@@ -597,7 +595,7 @@ final class LxAppMacAppUIRuntime: NSObject {
             throw LxAppUIError.invalidConfig("surface \(surface.id) terminal panel requires a valid attachPanel edge")
         }
         let reused = terminalWorkspaces[surface.id] != nil
-        let defaultHeight = CGFloat(surface.presentation.size?.height ?? 320)
+        let defaultHeight = CGFloat(surface.size?.height ?? 320)
         logTerminal(
             "runtime.openTerminal surface=\(surface.id) position=\(position.rawValue) reused=\(reused) defaultHeight=\(String(format: "%.1f", defaultHeight)) windowFrameBefore=\(lxTerminalRuntimeFormatRect(shell.hostWindow?.frame ?? .zero))"
         )
@@ -671,8 +669,8 @@ final class LxAppMacAppUIRuntime: NSObject {
         guard visibleSurfaceIDs.contains(id),
               let surface = surfaceById[id] else { return }
 
-        switch surface.presentation.kind {
-        case .window, .panel:
+        switch surface.role {
+        case .main, .float:
             if isIndependentPanelSurface(surface) {
                 if let panel = independentPanelWindows[id] {
                     panel.orderFrontRegardless()
@@ -682,11 +680,9 @@ final class LxAppMacAppUIRuntime: NSObject {
             } else {
                 shell.show()
             }
-        case .attachPanel:
+        case .aside:
             shell.show()
             shell.showPanel(id: id)
-        case .sheet, .embedded:
-            return
         }
     }
 
@@ -697,8 +693,8 @@ final class LxAppMacAppUIRuntime: NSObject {
             closeSurface(id: childID)
         }
 
-        switch surface.presentation.kind {
-        case .window, .panel:
+        switch surface.role {
+        case .main, .float:
             if isIndependentPanelSurface(surface) {
                 independentPanelOpenTasks[id]?.cancel()
                 independentPanelOpenTasks[id] = nil
@@ -716,7 +712,7 @@ final class LxAppMacAppUIRuntime: NSObject {
                     discardOpenedSubtree(rootID: id)
                 }
             }
-        case .attachPanel:
+        case .aside:
             logTerminal("runtime.closeAttachPanel surface=\(id)")
             // A companion lxapp's sidebar entry is removed when its panel closes.
             if surface.content.kind == .lxapp, let appId = surface.content.appId {
@@ -730,8 +726,6 @@ final class LxAppMacAppUIRuntime: NSObject {
             terminalWorkspaces[id]?.setSurfaceZoomEnabled(false, notifyRuntime: false)
             terminalWorkspaces[id]?.disarmInput()
             shell.hidePanel(id: id)
-        case .sheet, .embedded:
-            break
         }
 
         visibleSurfaceIDs.remove(id)
@@ -825,13 +819,13 @@ final class LxAppMacAppUIRuntime: NSObject {
 
     private func applyWindowPresentation(for surface: LxAppUIConfig.Surface) {
         let size = resolvedWindowSize(for: surface)
-        let isResizable = surface.presentation.resizable ?? true
-        let showTrafficLights = surface.presentation.showTrafficLights ?? (surface.presentation.kind == .window)
+        let isResizable = surface.resizable ?? true
+        let showTrafficLights = surface.showTrafficLights ?? (surface.role == .main)
         shell.applyManagedWindowPresentation(
             title: appConfig.productName,
             size: size,
             resizable: isResizable,
-            kind: surface.presentation.kind,
+            role: surface.role,
             showTrafficLights: showTrafficLights
         )
     }
@@ -956,7 +950,7 @@ final class LxAppMacAppUIRuntime: NSObject {
 
     private func applyIndependentPanelPresentation(_ panel: NSPanel, for surface: LxAppUIConfig.Surface) {
         let size = resolvedWindowSize(for: surface) ?? CGSize(width: 360, height: 420)
-        let resizable = surface.presentation.resizable ?? true
+        let resizable = surface.resizable ?? true
         panel.styleMask = resizable
             ? [.borderless, .nonactivatingPanel, .resizable]
             : [.borderless, .nonactivatingPanel]
@@ -992,7 +986,7 @@ final class LxAppMacAppUIRuntime: NSObject {
     }
 
     private func isIndependentPanelSurface(_ surface: LxAppUIConfig.Surface) -> Bool {
-        surface.presentation.kind == .panel && surface.presentation.anchor == .activator
+        surface.role == .float && surface.anchor == .activator
     }
 
     private func resolveSurfacePageInstanceId(
@@ -1018,7 +1012,7 @@ final class LxAppMacAppUIRuntime: NSObject {
     }
 
     private func resolvedWindowSize(for surface: LxAppUIConfig.Surface) -> CGSize? {
-        guard let size = surface.presentation.size,
+        guard let size = surface.size,
               let width = size.width,
               let height = size.height,
               width > 0,
@@ -1038,11 +1032,11 @@ final class LxAppMacAppUIRuntime: NSObject {
     }
 
     private func panelPosition(for surface: LxAppUIConfig.Surface) -> PanelPosition? {
-        guard surface.presentation.kind == .attachPanel else { return nil }
-        switch surface.presentation.edge {
-        case .leading:
+        guard surface.role == .aside else { return nil }
+        switch surface.edge {
+        case .left:
             return .left
-        case .trailing:
+        case .right:
             return .right
         case .bottom:
             return .bottom
@@ -1086,11 +1080,11 @@ final class LxAppMacAppUIRuntime: NSObject {
                 break
             }
 
-            if surface.presentation.anchor != nil && surface.presentation.kind != .panel {
-                throw LxAppUIError.invalidConfig("surface \(surface.id) can set anchor only when presentation.kind is panel")
+            if surface.anchor != nil && surface.role != .float {
+                throw LxAppUIError.invalidConfig("surface \(surface.id) can set anchor only when role is float")
             }
-            if surface.presentation.kind == .panel && surface.presentation.anchor != .activator {
-                throw LxAppUIError.invalidConfig("surface \(surface.id) with presentation.kind panel requires anchor: activator")
+            if surface.role == .float && surface.anchor != .activator {
+                throw LxAppUIError.invalidConfig("surface \(surface.id) with role float requires anchor: activator")
             }
 
             surfaceById[surface.id] = surface
@@ -1099,14 +1093,14 @@ final class LxAppMacAppUIRuntime: NSObject {
         guard let initialSurface = surfaceById[ui.launch.initialSurface] else {
             throw LxAppUIError.invalidConfig("launch.initialSurface references unknown surface \(ui.launch.initialSurface)")
         }
-        guard initialSurface.presentation.kind == .window
-            || initialSurface.presentation.kind == .panel
-            || initialSurface.presentation.kind == .attachPanel else {
+        guard initialSurface.role == .main
+            || initialSurface.role == .float
+            || initialSurface.role == .aside else {
             throw LxAppUIError.unsupported("launch.initialSurface must reference a supported macOS surface")
         }
 
         let windowSurfaces = ui.surfaces.filter {
-            $0.presentation.kind == .window || $0.presentation.kind == .panel
+            $0.role == .main || $0.role == .float
         }
         guard windowSurfaces.count == 1, let rootSurface = windowSurfaces.first else {
             throw LxAppUIError.unsupported("macOS app UI currently requires exactly one root window surface")
@@ -1116,38 +1110,36 @@ final class LxAppMacAppUIRuntime: NSObject {
 
         for surface in ui.surfaces {
             if surface.content.kind == .terminal {
-                guard surface.presentation.kind == .attachPanel else {
-                    throw LxAppUIError.unsupported("terminal surface \(surface.id) must use presentation.kind attachPanel")
+                guard surface.role == .aside else {
+                    throw LxAppUIError.unsupported("terminal surface \(surface.id) must use role aside")
                 }
-                guard surface.presentation.edge == .bottom || surface.presentation.edge == .top else {
-                    throw LxAppUIError.unsupported("terminal surface \(surface.id) must use presentation.edge top or bottom")
+                guard surface.edge == .bottom || surface.edge == .top else {
+                    throw LxAppUIError.unsupported("terminal surface \(surface.id) must use edge top or bottom")
                 }
             }
 
-            switch surface.presentation.kind {
-            case .window, .panel:
-                if surface.presentation.attachTo != nil {
+            switch surface.role {
+            case .main, .float:
+                if surface.attachTo != nil {
                     throw LxAppUIError.invalidConfig("root window surface \(surface.id) cannot set attachTo")
                 }
-            case .attachPanel:
-                guard let parentID = surface.presentation.attachTo, !parentID.isEmpty else {
-                    throw LxAppUIError.invalidConfig("attachPanel surface \(surface.id) requires attachTo")
+            case .aside:
+                guard let parentID = surface.attachTo, !parentID.isEmpty else {
+                    throw LxAppUIError.invalidConfig("aside surface \(surface.id) requires attachTo")
                 }
                 guard let parent = surfaceById[parentID] else {
                     throw LxAppUIError.invalidConfig("surface \(surface.id) attaches to unknown surface \(parentID)")
                 }
-                guard parent.presentation.kind == .window || parent.presentation.kind == .panel else {
-                    throw LxAppUIError.unsupported("macOS v1 does not support attachPanel -> attachPanel; surface \(surface.id) attaches to \(parentID)")
+                guard parent.role == .main || parent.role == .float else {
+                    throw LxAppUIError.unsupported("macOS v1 does not support aside -> aside; surface \(surface.id) attaches to \(parentID)")
                 }
                 guard parent.id == rootSurface.id else {
-                    throw LxAppUIError.unsupported("macOS v1 only supports panels attached to the root window surface")
+                    throw LxAppUIError.unsupported("macOS v1 only supports asides attached to the root window surface")
                 }
-                guard surface.presentation.edge != nil else {
-                    throw LxAppUIError.invalidConfig("attachPanel surface \(surface.id) requires edge")
+                guard surface.edge != nil else {
+                    throw LxAppUIError.invalidConfig("aside surface \(surface.id) requires edge")
                 }
                 childrenByParentId[parentID, default: []].append(surface.id)
-            case .sheet, .embedded:
-                throw LxAppUIError.unsupported("surface \(surface.id) uses unsupported presentation.kind \(surface.presentation.kind.rawValue) on macOS")
             }
         }
 

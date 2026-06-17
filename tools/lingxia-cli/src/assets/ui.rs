@@ -49,12 +49,10 @@ fn add_terminal_ui(ui: &mut Value, edge: &str) -> Result<()> {
     if !contains_id(surfaces, TERMINAL_SURFACE_ID) {
         surfaces.push(json!({
             "id": TERMINAL_SURFACE_ID,
-            "presentation": {
-                "kind": "attachPanel",
-                "attachTo": root_surface,
-                "edge": edge,
-                "size": { "height": 320 }
-            },
+            "role": "aside",
+            "attachTo": root_surface,
+            "edge": edge,
+            "size": { "height": 320 },
             "content": {
                 "kind": "terminal"
             }
@@ -148,11 +146,9 @@ fn surface_is_root(surfaces: &[Value], id: &str) -> bool {
 fn surface_is_root_value(surface: &Value) -> bool {
     surface
         .as_object()
-        .and_then(|surface| surface.get("presentation"))
-        .and_then(Value::as_object)
-        .and_then(|presentation| presentation.get("kind"))
+        .and_then(|surface| surface.get("role"))
         .and_then(Value::as_str)
-        .is_some_and(|kind| matches!(kind, "window" | "panel"))
+        .is_some_and(|role| matches!(role, "main" | "float"))
 }
 
 fn contains_id(items: &[Value], id: &str) -> bool {

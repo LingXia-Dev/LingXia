@@ -176,7 +176,7 @@ fn generated_ui_json_matches_ui_section() {
         "launch": { "initialSurface": "main" },
         "surfaces": [{
             "id": "main",
-            "presentation": { "style": "window" },
+            "role": "main",
             "content": { "kind": "lxapp", "appId": "demo-home" }
         }],
         "activators": []
@@ -314,7 +314,7 @@ fn generated_ui_json_adds_terminal_for_capability() {
             "launch": { "initialSurface": "main" },
             "surfaces": [{
                 "id": "main",
-                "presentation": { "kind": "window" },
+                "role": "main",
                 "content": { "kind": "lxapp", "appId": "demo-home" }
             }],
             "activators": []
@@ -331,8 +331,8 @@ fn generated_ui_json_adds_terminal_for_capability() {
     let value: serde_json::Value = serde_json::from_str(&ui_json).unwrap();
 
     assert_eq!(value["surfaces"][1]["id"], "terminal");
-    assert_eq!(value["surfaces"][1]["presentation"]["attachTo"], "main");
-    assert_eq!(value["surfaces"][1]["presentation"]["edge"], "bottom");
+    assert_eq!(value["surfaces"][1]["attachTo"], "main");
+    assert_eq!(value["surfaces"][1]["edge"], "bottom");
     assert_eq!(value["surfaces"][1]["content"]["kind"], "terminal");
     assert!(value["surfaces"][1]["content"].get("backend").is_none());
     assert_eq!(value["activators"][0]["id"], "terminalSidebar");
@@ -409,19 +409,19 @@ surfaces:
         .count();
     assert_eq!(terminal_count, 1, "terminal must not be injected twice");
 
-    // main -> window/lxapp(home)
+    // main -> role main / lxapp(home)
     assert_eq!(surfaces[0]["id"], "home");
-    assert_eq!(surfaces[0]["presentation"]["kind"], "window");
+    assert_eq!(surfaces[0]["role"], "main");
     assert_eq!(surfaces[0]["content"]["appId"], "home");
-    // aside right -> attachPanel trailing
+    // aside right -> role aside / edge right
     assert_eq!(surfaces[1]["id"], "chat");
-    assert_eq!(surfaces[1]["presentation"]["kind"], "attachPanel");
-    assert_eq!(surfaces[1]["presentation"]["attachTo"], "home");
-    assert_eq!(surfaces[1]["presentation"]["edge"], "trailing");
+    assert_eq!(surfaces[1]["role"], "aside");
+    assert_eq!(surfaces[1]["attachTo"], "home");
+    assert_eq!(surfaces[1]["edge"], "right");
     // native terminal -> terminal surface, bottom, with size
     assert_eq!(surfaces[2]["id"], "terminal");
-    assert_eq!(surfaces[2]["presentation"]["edge"], "bottom");
-    assert_eq!(surfaces[2]["presentation"]["size"]["height"], 320);
+    assert_eq!(surfaces[2]["edge"], "bottom");
+    assert_eq!(surfaces[2]["size"]["height"], 320);
 
     let activators = value["activators"].as_array().unwrap();
     assert_eq!(activators.len(), 2);
@@ -452,15 +452,13 @@ fn generated_ui_json_rejects_terminal_when_capability_disabled() {
             "launch": { "initialSurface": "main" },
             "surfaces": [{
                 "id": "main",
-                "presentation": { "kind": "window" },
+                "role": "main",
                 "content": { "kind": "lxapp", "appId": "demo-home" }
             }, {
                 "id": "terminal",
-                "presentation": {
-                    "kind": "attachPanel",
-                    "attachTo": "main",
-                    "edge": "bottom"
-                },
+                "role": "aside",
+                "attachTo": "main",
+                "edge": "bottom",
                 "content": { "kind": "terminal" }
             }],
             "activators": []
@@ -497,7 +495,7 @@ fn generated_ui_json_adds_terminal_activators_when_missing() {
             "launch": { "initialSurface": "main" },
             "surfaces": [{
                 "id": "main",
-                "presentation": { "kind": "window" },
+                "role": "main",
                 "content": { "kind": "lxapp", "appId": "demo-home" }
             }]
         })),
@@ -536,11 +534,11 @@ fn generated_ui_json_attaches_terminal_to_initial_root_surface() {
             "launch": { "initialSurface": "mainPanel" },
             "surfaces": [{
                 "id": "secondary",
-                "presentation": { "kind": "window" },
+                "role": "main",
                 "content": { "kind": "lxapp", "appId": "secondary-home" }
             }, {
                 "id": "mainPanel",
-                "presentation": { "kind": "panel", "anchor": "activator" },
+                "role": "float", "anchor": "activator",
                 "content": { "kind": "lxapp", "appId": "main-home" }
             }],
             "activators": []
@@ -556,10 +554,7 @@ fn generated_ui_json_attaches_terminal_to_initial_root_surface() {
     let ui_json = build_ui_json_from_config(&config, &icons).unwrap().unwrap();
     let value: serde_json::Value = serde_json::from_str(&ui_json).unwrap();
 
-    assert_eq!(
-        value["surfaces"][2]["presentation"]["attachTo"],
-        "mainPanel"
-    );
+    assert_eq!(value["surfaces"][2]["attachTo"], "mainPanel");
     assert_eq!(value["activators"][0]["hostSurface"], "mainPanel");
 }
 
