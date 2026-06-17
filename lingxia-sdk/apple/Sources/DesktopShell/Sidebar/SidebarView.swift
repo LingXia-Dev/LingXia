@@ -64,6 +64,52 @@ struct PanelIconItem {
     let label: String
 }
 
+// MARK: - SidebarModel
+
+/// Immutable description of everything the sidebar displays. The four public
+/// `update*`/`setActiveHighlight` methods are thin mutators over the pieces of
+/// this model; `render()` is the single place that turns it into AppKit views.
+///
+/// Contract: nothing outside the mutators writes `model`, and every mutator ends
+/// with a `render()` call. `render()` never reads transient view state to decide
+/// *what* to show — it reads only `model` — so selection truth lives in exactly
+/// one place (`selection`).
+private struct SidebarModel {
+    /// One lxapp group entry. Carries only what `render()` needs; per-group page
+    /// contents are still pulled from Rust by SidebarGroupView itself.
+    struct AppGroupVM {
+        let appId: String
+        let asideSurfaceId: String?
+    }
+
+    /// One browser tab row.
+    struct BrowserTabVM {
+        let id: String
+        let title: String
+        let favicon: NSImage?
+    }
+
+    /// The single source of selection truth, shared by both the expanded list
+    /// and the collapsed rail.
+    enum Selection: Equatable {
+        case none
+        /// `pageIndex == nil` means "highlight the app, page index from Rust".
+        case app(appId: String, pageIndex: Int?)
+        case browser(id: String)
+    }
+
+    var appGroups: [AppGroupVM] = []
+    var browserTabs: [BrowserTabVM] = []
+    var panelItems: [PanelIconItem] = []
+    var selection: Selection = .none
+}
+
+extension PanelIconItem: Equatable {
+    static func == (lhs: PanelIconItem, rhs: PanelIconItem) -> Bool {
+        lhs.id == rhs.id && lhs.iconURL == rhs.iconURL && lhs.label == rhs.label
+    }
+}
+
 // MARK: - SidebarView
 
 /// The main sidebar container view, modeled after Chrome vertical tab groups.
@@ -116,6 +162,10 @@ class SidebarView: NSView {
     private let hideButton = NSButton()
     private var hideButtonTrackingArea: NSTrackingArea?
     private var panelButtons: [NSButton] = []
+    /// The panel items currently materialized as footer buttons. Lets
+    /// renderPanelItems() skip a rebuild when render() runs for an unrelated
+    /// change — so `updatePanelIcon`'s resolved icons aren't wiped out.
+    private var renderedPanelItems: [PanelIconItem] = []
     private var appUIOnlyMode = false
 
     // MARK: Icon-rail (collapsed) state
@@ -138,10 +188,6 @@ class SidebarView: NSView {
     private let railStack = NSStackView()
     /// Rail buttons keyed by a composite id ("app:<appId>" / "web:<tabId>").
     private var railButtons: [String: NSButton] = [:]
-    /// Latest browser items, cached so the rail can be rebuilt without a tab refresh.
-    private var currentBrowserItems: [(id: String, title: String, favicon: NSImage?)] = []
-    /// The active selection ("app:<appId>" / "web:<tabId>") for rail highlighting.
-    private var activeRailKey: String?
 
     /// The bundled default LingXia mark, used when an lxapp declares no icon.
     private static let defaultAppIcon: NSImage? = {
@@ -161,13 +207,17 @@ class SidebarView: NSView {
     /// The transient "ready to update" callout shown above the footer dock.
     private var updateReadyCallout: UpdateReadyCallout?
 
+    /// The single immutable model that drives the whole sidebar. Mutated only by
+    /// the public `update*`/`setActiveHighlight`/`clearAllHighlights` methods,
+    /// each of which calls `render()` afterwards.
+    private var model = SidebarModel()
+
+    // MARK: Render-side view caches (rebuilt/diffed from `model` by render()).
     private var groupViews: [String: SidebarGroupView] = [:]
-    private var currentTabs: [LxAppTab] = []
 
     // Browser tab views
     private var browserItemViews: [String: SidebarBrowserItemView] = [:]
     private var browserItemTopConstraints: [String: NSLayoutConstraint] = [:]
-    private var browserTabOrder: [String] = []
     private let addButton = NSButton()
     private var addButtonTopConstraint: NSLayoutConstraint?
     private var groupTopConstraints: [String: NSLayoutConstraint] = [:]
@@ -477,6 +527,16 @@ class SidebarView: NSView {
         updateVisibilityState()
     }
 
+    /// The composite rail/selection key ("app:<appId>" / "web:<tabId>") derived
+    /// from the single `model.selection`, so rail and list agree by construction.
+    private var activeRailKey: String? {
+        switch model.selection {
+        case .none: return nil
+        case .app(let appId, _): return "app:\(appId)"
+        case .browser(let id): return "web:\(id)"
+        }
+    }
+
     /// Rebuild the rail's icon buttons from the current lxapps + browser tabs.
     private func rebuildRail() {
         railStack.arrangedSubviews.forEach {
@@ -485,8 +545,8 @@ class SidebarView: NSView {
         }
         railButtons.removeAll()
 
-        for tab in currentTabs {
-            let info = getLxAppInfo(tab.appId)
+        for group in model.appGroups {
+            let info = getLxAppInfo(group.appId)
             let iconPath = info.icon.toString()
             let image: NSImage?
             if !iconPath.isEmpty, let img = NSImage(contentsOfFile: iconPath) {
@@ -494,14 +554,14 @@ class SidebarView: NSView {
             } else {
                 image = Self.defaultAppIcon
             }
-            let key = "app:\(tab.appId)"
+            let key = "app:\(group.appId)"
             let btn = makeRailButton(key: key, tooltip: info.app_name.toString(), image: image, isTemplate: false)
             btn.action = #selector(railAppClicked(_:))
             railStack.addArrangedSubview(btn)
             railButtons[key] = btn
         }
 
-        for item in currentBrowserItems {
+        for item in model.browserTabs {
             let key = "web:\(item.id)"
             let image = item.favicon ?? NSImage(systemSymbolName: "globe", accessibilityDescription: item.title)
             let btn = makeRailButton(key: key, tooltip: item.title, image: image, isTemplate: item.favicon == nil)
@@ -586,19 +646,26 @@ class SidebarView: NSView {
 
     func setAppUIOnlyMode(_ enabled: Bool) {
         appUIOnlyMode = enabled
-
-        guard enabled else {
-            updateVisibilityState()
-            return
+        // appUIOnlyMode is enforced in one place — render() empties the list/rail
+        // sections when it's on. The footer panel survives, so panelItems is kept.
+        if enabled {
+            model.appGroups = []
+            model.browserTabs = []
+            model.selection = .none
         }
+        render()
+        updateVisibilityState()
+    }
 
-        currentTabs.removeAll()
+    /// Tear down the list/rail/browser views when entering app-UI-only mode (or
+    /// whenever the model has no list content). The footer panel is rendered
+    /// separately and is not affected here.
+    private func teardownListSections() {
         groupViews.values.forEach { $0.removeFromSuperview() }
         groupViews.removeAll()
         groupTopConstraints.removeAll()
 
         isCompact = false
-        currentBrowserItems.removeAll()
         railStack.arrangedSubviews.forEach {
             railStack.removeArrangedSubview($0)
             $0.removeFromSuperview()
@@ -608,7 +675,6 @@ class SidebarView: NSView {
         browserItemViews.values.forEach { $0.removeFromSuperview() }
         browserItemViews.removeAll()
         browserItemTopConstraints.removeAll()
-        browserTabOrder.removeAll()
         addButton.removeFromSuperview()
         addButtonTopConstraint = nil
 
@@ -616,14 +682,25 @@ class SidebarView: NSView {
             docView.subviews.forEach { $0.removeFromSuperview() }
             docView.frame = .zero
         }
-
-        updateVisibilityState()
     }
 
     /// Populate panel icon buttons in the footer.
     /// `PanelIconItem` only carries what the UI needs — id, icon, label.
     /// Routing details (appId, path, position) stay in Panel.swift.
     func updatePanelItems(_ items: [PanelIconItem]) {
+        model.panelItems = items
+        renderPanelItems()
+    }
+
+    /// Build the footer panel buttons from `model.panelItems`. Called by render()
+    /// and the `updatePanelItems` mutator. Unaffected by appUIOnlyMode.
+    private func renderPanelItems() {
+        let items = model.panelItems
+        // Skip when the button set is unchanged so render()'s frequent calls don't
+        // clobber icons resolved later via updatePanelIcon.
+        guard items != renderedPanelItems else { return }
+        renderedPanelItems = items
+
         // Remove existing panel buttons.
         panelButtons.forEach {
             panelStack.removeArrangedSubview($0)
@@ -712,33 +789,112 @@ class SidebarView: NSView {
         onPanelItemToggled?(panelId)
     }
 
-    // MARK: - Public API
+    // MARK: - Public API (thin model mutators)
+    //
+    // Each method below updates one part of `model` and calls `render()`. They
+    // hold no layout or appUIOnlyMode logic — that all lives in render().
 
-    /// Rebuild all groups based on current tabs
+    /// Rebuild all groups based on current tabs.
     func updateForTabs(_ tabs: [LxAppTab], activeTab: LxAppTab?) {
+        model.appGroups = tabs.map {
+            SidebarModel.AppGroupVM(appId: $0.appId, asideSurfaceId: $0.asideSurfaceId)
+        }
+        // A provided active tab updates the selection; nil leaves it untouched,
+        // matching the original (which only highlighted when activeTab existed).
+        if let activeAppId = activeTab?.appId {
+            model.selection = .app(appId: activeAppId, pageIndex: nil)
+        }
+        render()
+    }
+
+    /// Refresh a specific app group from Rust data
+    func refreshAppGroup(appId: String) {
         guard !appUIOnlyMode else { return }
-        guard let docView = scrollView.documentView else { return }
+        groupViews[appId]?.refreshFromRust()
+    }
 
-        currentTabs = tabs
+    /// Set active highlight on the appropriate group and item.
+    func setActiveHighlight(appId: String, pageIndex: Int? = nil) {
+        model.selection = .app(appId: appId, pageIndex: pageIndex)
+        render()
+    }
 
-        // Remove groups for apps no longer in tabs
-        let currentAppIds = Set(tabs.map { $0.appId })
-        for (appId, groupView) in groupViews {
-            if !currentAppIds.contains(appId) {
-                groupView.removeFromSuperview()
-                groupViews.removeValue(forKey: appId)
-                groupTopConstraints.removeValue(forKey: appId)
-            }
+    /// Clear all highlights (both lxapp and browser)
+    func clearAllHighlights() {
+        model.selection = .none
+        render()
+    }
+
+    // MARK: - Browser Items
+
+    /// Update browser tab items in the sidebar
+    func updateBrowserItems(_ items: [(id: String, title: String, favicon: NSImage?)], activeId: String?) {
+        model.browserTabs = items.map {
+            SidebarModel.BrowserTabVM(id: $0.id, title: $0.title, favicon: $0.favicon)
+        }
+        if let activeId {
+            model.selection = .browser(id: activeId)
+        } else if case .browser = model.selection {
+            // No active browser tab and we were on one — drop the selection so the
+            // list/rail render unselected (the original cleared item selection
+            // whenever activeId was nil).
+            model.selection = .none
+        }
+        render()
+    }
+
+    // MARK: - Render (single model-driven entry point)
+
+    /// The ONE place that turns `model` into views. appUIOnlyMode is checked here
+    /// and nowhere else: when on, the list/rail/browser sections are emptied while
+    /// the footer panel still renders. Otherwise it diffs the app groups + browser
+    /// section, applies `model.selection`, and refreshes the rail when compact.
+    ///
+    /// render() delegates to per-section helpers (`renderAppGroups`,
+    /// `layoutBrowserSection`, `applySelection`, `renderPanelItems`); keeping the
+    /// existing constraint/animation code intact rather than rebuilding it.
+    private func render() {
+        // Footer panel is independent of appUIOnlyMode.
+        renderPanelItems()
+
+        guard !appUIOnlyMode else {
+            teardownListSections()
+            updateVisibilityState()
+            return
         }
 
-        // Add/update groups
+        guard let docView = scrollView.documentView else { return }
+
+        renderBrowserItems()
+        let yOffset = renderAppGroups(in: docView)
+        let finalY = layoutBrowserSection(in: docView, yOffset: yOffset)
+        docView.frame = NSRect(x: 0, y: 0, width: docView.frame.width, height: finalY)
+
+        applySelection()
+
+        if isCompact { rebuildRail() }
+    }
+
+    /// Diff app group views against `model.appGroups`, position them, and return
+    /// the Y offset where the browser section begins.
+    private func renderAppGroups(in docView: NSView) -> CGFloat {
+        // Remove groups for apps no longer present.
+        let currentAppIds = Set(model.appGroups.map { $0.appId })
+        for (appId, groupView) in groupViews where !currentAppIds.contains(appId) {
+            groupView.removeFromSuperview()
+            groupViews.removeValue(forKey: appId)
+            groupTopConstraints.removeValue(forKey: appId)
+        }
+
+        // Add/update groups.
         var yOffset: CGFloat = 4
-        for (tabIndex, tab) in tabs.enumerated() {
+        for (index, group) in model.appGroups.enumerated() {
+            let appId = group.appId
             let groupView: SidebarGroupView
-            if let existing = groupViews[tab.appId] {
+            if let existing = groupViews[appId] {
                 groupView = existing
             } else {
-                groupView = SidebarGroupView(appId: tab.appId)
+                groupView = SidebarGroupView(appId: appId)
                 groupView.onPageSelected = { [weak self] appId, itemIndex in
                     self?.onAppPageSelected?(appId, itemIndex)
                 }
@@ -751,10 +907,10 @@ class SidebarView: NSView {
                 groupView.onLayoutChanged = { [weak self] in
                     self?.relayoutAfterGroupToggle()
                 }
-                groupViews[tab.appId] = groupView
+                groupViews[appId] = groupView
             }
 
-            groupView.setColorIndex(tabIndex)
+            groupView.setColorIndex(index)
 
             if groupView.superview !== docView {
                 groupView.removeFromSuperview()
@@ -765,106 +921,74 @@ class SidebarView: NSView {
                 ])
             }
 
-            if let tc = groupTopConstraints[tab.appId] {
+            if let tc = groupTopConstraints[appId] {
                 tc.constant = yOffset
             } else {
                 let tc = groupView.topAnchor.constraint(equalTo: docView.topAnchor, constant: yOffset)
                 tc.isActive = true
-                groupTopConstraints[tab.appId] = tc
+                groupTopConstraints[appId] = tc
             }
 
             groupView.layoutSubtreeIfNeeded()
             yOffset += groupView.fittingSize.height + 8
         }
-
-        // Layout browser separator, browser items, and "+" button after groups
-        yOffset = layoutBrowserSection(in: docView, yOffset: yOffset)
-
-        // Update document view height
-        if let docView = scrollView.documentView {
-            docView.frame = NSRect(x: 0, y: 0, width: docView.frame.width, height: yOffset)
-        }
-
-        if let activeAppId = activeTab?.appId {
-            setActiveHighlight(appId: activeAppId)
-        }
-
-        if isCompact { rebuildRail() }
+        return yOffset
     }
 
-    /// Refresh a specific app group from Rust data
-    func refreshAppGroup(appId: String) {
-        guard !appUIOnlyMode else { return }
-        groupViews[appId]?.refreshFromRust()
-    }
-
-    /// Set active highlight on the appropriate group and item
-    func setActiveHighlight(appId: String, pageIndex: Int? = nil) {
-        guard !appUIOnlyMode else { return }
-        activeRailKey = "app:\(appId)"
-        refreshRailHighlight()
-        // Clear browser selections when an lxapp is selected
-        for (_, itemView) in browserItemViews {
-            itemView.isSelected = false
+    /// Apply `model.selection` to the group views, browser item views, and rail.
+    /// This is the single place selection truth is turned into highlight state.
+    private func applySelection() {
+        // Browser item selection.
+        for (id, itemView) in browserItemViews {
+            if case .browser(let activeId) = model.selection {
+                itemView.isSelected = (id == activeId)
+            } else {
+                itemView.isSelected = false
+            }
         }
 
+        // App group selection.
         for (id, group) in groupViews {
-            if id == appId {
+            if case .app(let appId, let pageIndex) = model.selection, id == appId {
                 if let idx = pageIndex {
                     group.setActiveHighlight(pageIndex: idx)
-                } else {
-                    if let tabBar = getTabBar(appId) {
-                        group.setActiveHighlight(pageIndex: Int(tabBar.selected_index))
-                    }
+                } else if let tabBar = getTabBar(appId) {
+                    group.setActiveHighlight(pageIndex: Int(tabBar.selected_index))
                 }
             } else {
                 group.clearHighlight()
             }
         }
-    }
 
-    /// Clear all highlights (both lxapp and browser)
-    func clearAllHighlights() {
-        guard !appUIOnlyMode else { return }
-        activeRailKey = nil
         refreshRailHighlight()
-        for (_, group) in groupViews {
-            group.clearHighlight()
-        }
-        for (_, itemView) in browserItemViews {
-            itemView.isSelected = false
-        }
     }
 
-    // MARK: - Browser Items
+    /// Whether a browser tab id is the current selection (used to configure new
+    /// item views; final highlight state is reasserted by applySelection()).
+    private func isBrowserSelected(_ id: String) -> Bool {
+        if case .browser(let activeId) = model.selection { return id == activeId }
+        return false
+    }
 
-    /// Update browser tab items in the sidebar
-    func updateBrowserItems(_ items: [(id: String, title: String, favicon: NSImage?)], activeId: String?) {
-        guard !appUIOnlyMode else { return }
-        guard let docView = scrollView.documentView else { return }
-
-        // Store ordering + cache for the rail
-        browserTabOrder = items.map { $0.id }
-        currentBrowserItems = items
-        if let activeId { activeRailKey = "web:\(activeId)" }
-
-        // Remove browser items no longer present
-        let currentIds = Set(items.map { $0.id })
-        for (id, itemView) in browserItemViews {
-            if !currentIds.contains(id) {
-                if let topConstraint = browserItemTopConstraints[id] {
-                    topConstraint.isActive = false
-                    browserItemTopConstraints.removeValue(forKey: id)
-                }
-                itemView.removeFromSuperview()
-                browserItemViews.removeValue(forKey: id)
+    /// Diff `model.browserTabs` into `browserItemViews`: remove dropped tabs,
+    /// create new item views (wiring their click/close callbacks), and configure
+    /// existing ones with the latest title/favicon. Positioning happens in
+    /// layoutBrowserSection; selection state is finalized in applySelection.
+    private func renderBrowserItems() {
+        let currentIds = Set(model.browserTabs.map { $0.id })
+        for (id, itemView) in browserItemViews where !currentIds.contains(id) {
+            if let topConstraint = browserItemTopConstraints[id] {
+                topConstraint.isActive = false
+                browserItemTopConstraints.removeValue(forKey: id)
             }
+            itemView.removeFromSuperview()
+            browserItemViews.removeValue(forKey: id)
         }
 
-        // Add/update browser items
-        for item in items {
+        for item in model.browserTabs {
+            let selected = isBrowserSelected(item.id)
             if let existing = browserItemViews[item.id] {
-                existing.configure(title: item.title, isSelected: item.id == activeId, favicon: item.favicon)
+                existing.configure(title: item.title, isSelected: selected, favicon: item.favicon)
             } else {
                 let itemView = SidebarBrowserItemView(id: item.id)
                 itemView.translatesAutoresizingMaskIntoConstraints = false
@@ -874,15 +998,10 @@ class SidebarView: NSView {
                 itemView.onClose = { [weak self] id in
                     self?.onBrowserTabCloseRequested?(id)
                 }
-                itemView.configure(title: item.title, isSelected: item.id == activeId, favicon: item.favicon)
+                itemView.configure(title: item.title, isSelected: selected, favicon: item.favicon)
                 browserItemViews[item.id] = itemView
             }
         }
-
-        // Re-layout browser section
-        relayoutBrowserSection(in: docView)
-
-        if isCompact { rebuildRail() }
     }
 
     /// Layout browser items and add button after lxapp groups
@@ -890,8 +1009,9 @@ class SidebarView: NSView {
         let groupInset: CGFloat = SidebarGroupView.Layout.groupInset
         var yOffset = startY
 
-        // Browser item views (ordered by browserTabOrder)
-        for tabId in browserTabOrder {
+        // Browser item views (ordered by model.browserTabs)
+        for tab in model.browserTabs {
+            let tabId = tab.id
             guard let itemView = browserItemViews[tabId] else { continue }
             ensureSubview(itemView, in: docView) {
                 NSLayoutConstraint.activate([
@@ -950,27 +1070,15 @@ class SidebarView: NSView {
         }
     }
 
-    /// Calculate Y offset after all groups (using tab order)
-    private func yOffsetAfterGroups() -> CGFloat {
-        var yOffset: CGFloat = 4
-        for tab in currentTabs {
-            if let groupView = groupViews[tab.appId] {
-                groupView.layoutSubtreeIfNeeded()
-                yOffset += groupView.fittingSize.height + 8
-            }
-        }
-        return yOffset
-    }
-
     /// Re-layout after a group expands/collapses — repositions groups + browser section
     private func relayoutAfterGroupToggle() {
         guard let docView = scrollView.documentView else { return }
 
         // Reposition all groups using stored top constraints
         var yOffset: CGFloat = 4
-        for tab in currentTabs {
-            guard let groupView = groupViews[tab.appId] else { continue }
-            groupTopConstraints[tab.appId]?.constant = yOffset
+        for group in model.appGroups {
+            guard let groupView = groupViews[group.appId] else { continue }
+            groupTopConstraints[group.appId]?.constant = yOffset
             groupView.layoutSubtreeIfNeeded()
             yOffset += groupView.fittingSize.height + 8
         }
@@ -978,12 +1086,6 @@ class SidebarView: NSView {
         // Re-layout browser section below groups
         yOffset = layoutBrowserSection(in: docView, yOffset: yOffset)
 
-        docView.frame = NSRect(x: 0, y: 0, width: docView.frame.width, height: yOffset)
-    }
-
-    /// Re-layout just the browser section (for title updates without full tab rebuild)
-    private func relayoutBrowserSection(in docView: NSView) {
-        let yOffset = layoutBrowserSection(in: docView, yOffset: yOffsetAfterGroups())
         docView.frame = NSRect(x: 0, y: 0, width: docView.frame.width, height: yOffset)
     }
 
