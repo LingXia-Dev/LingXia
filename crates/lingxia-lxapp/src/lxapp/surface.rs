@@ -196,8 +196,25 @@ impl LxApp {
         }
 
         // Now that the replacement is up, close the surfaces the core evicted.
+        // The graph is window-global, so a victim may belong to the host or
+        // another lxapp; `close_surface` no-ops for those. For a non-local
+        // victim fire the global close observer (routes onClose to the owner by
+        // id) and clear any host-managed visibility; the native aside undock is
+        // handled by present_derived_layout() below (the reconciler drops
+        // surfaces no longer in the tree).
         for victim in &evicted {
-            let _ = self.close_surface(victim, "programmatic");
+            let owned = self
+                .state
+                .lock()
+                .ok()
+                .map(|state| state.surfaces.lock().unwrap().contains_key(victim.as_str()))
+                .unwrap_or(false);
+            if owned {
+                let _ = self.close_surface(victim, "programmatic");
+            } else {
+                notify_surface_close_observer(victim, "programmatic");
+                let _ = self.runtime.set_managed_surface_visible(victim, false);
+            }
         }
 
         // §11.2 Phase 3: reconcile aside docking from the (now-mutated) core graph.
@@ -400,11 +417,21 @@ impl LxApp {
     /// primary to dock to and arbitration promotes them.
     pub fn set_surface_width(&self, width: f64) -> bool {
         let root = self.root_main_node();
-        let mut manager = window_surface_manager().lock().unwrap();
-        if manager.graph().mains().is_empty() {
-            manager.open(root);
+        let changed = {
+            let mut manager = window_surface_manager().lock().unwrap();
+            if manager.graph().mains().is_empty() {
+                manager.open(root);
+            }
+            manager.set_width(width)
+        };
+        // A sizeClass flip changes the DerivedLayout (e.g. compact folds asides
+        // into mainFallback), so on resize the native layout must be reconciled
+        // — not just the core state. The manager lock is dropped above before
+        // present_derived_layout() re-derives.
+        if changed {
+            self.present_derived_layout();
         }
-        manager.set_width(width)
+        changed
     }
 
     /// The app's root primary, represented as a `main` surface (id = appid).
