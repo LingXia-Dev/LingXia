@@ -11,6 +11,14 @@ use std::time::Duration;
 const SURFACE_DISPOSE_TTL_MS: u64 = 30_000;
 static SURFACE_CLOSE_OBSERVER: OnceLock<fn(&str, &str) -> bool> = OnceLock::new();
 
+/// §11.2 Phase 2: the surface graph is per-WINDOW, not per-lxapp. macOS/mobile
+/// are single-window today, so this process-global manager IS the window's
+/// graph; multi-window (§8) will key this by window id.
+static WINDOW_SURFACE: OnceLock<std::sync::Mutex<lingxia_surface::SurfaceManager>> = OnceLock::new();
+pub(crate) fn window_surface_manager() -> &'static std::sync::Mutex<lingxia_surface::SurfaceManager> {
+    WINDOW_SURFACE.get_or_init(|| std::sync::Mutex::new(lingxia_surface::SurfaceManager::new(700.0)))
+}
+
 pub fn register_surface_close_observer(observer: fn(&str, &str) -> bool) {
     let _ = SURFACE_CLOSE_OBSERVER.set(observer);
 }
@@ -147,7 +155,7 @@ impl LxApp {
                 owner_pid.as_deref(),
                 request.prefer_aside,
             );
-            let mut manager = state.surface_manager.lock().unwrap();
+            let mut manager = window_surface_manager().lock().unwrap();
             let before: HashSet<String> =
                 manager.graph().surfaces().iter().map(|s| s.id.clone()).collect();
             let _decision = manager.open(node);
@@ -326,13 +334,11 @@ impl LxApp {
             float: None,
         };
         let root = self.root_main_node();
-        if let Ok(state) = self.state.lock() {
-            let mut manager = state.surface_manager.lock().unwrap();
-            if manager.graph().mains().is_empty() {
-                manager.open(root);
-            }
-            let _ = manager.open(node);
+        let mut manager = window_surface_manager().lock().unwrap();
+        if manager.graph().mains().is_empty() {
+            manager.open(root);
         }
+        let _ = manager.open(node);
     }
 
     /// Remove a host-declared aside from the surface graph (§11.2 Phase 1).
@@ -341,9 +347,7 @@ impl LxApp {
         if surface_id.is_empty() {
             return;
         }
-        if let Ok(state) = self.state.lock() {
-            let _ = state.surface_manager.lock().unwrap().close(surface_id);
-        }
+        let _ = window_surface_manager().lock().unwrap().close(surface_id);
     }
 
     /// `lx.shell.toggle`: flip a host-declared top-level surface's visibility.
@@ -367,7 +371,7 @@ impl LxApp {
             .ok()
             .and_then(|state| {
                 // Keep the Adaptive Surface Layout core in sync with removals.
-                let _ = state.surface_manager.lock().unwrap().close(id);
+                let _ = window_surface_manager().lock().unwrap().close(id);
                 state.surfaces.lock().unwrap().remove(id)
             })
             .is_some()
@@ -381,17 +385,11 @@ impl LxApp {
     /// primary to dock to and arbitration promotes them.
     pub fn set_surface_width(&self, width: f64) -> bool {
         let root = self.root_main_node();
-        self.state
-            .lock()
-            .ok()
-            .map(|state| {
-                let mut manager = state.surface_manager.lock().unwrap();
-                if manager.graph().mains().is_empty() {
-                    manager.open(root);
-                }
-                manager.set_width(width)
-            })
-            .unwrap_or(false)
+        let mut manager = window_surface_manager().lock().unwrap();
+        if manager.graph().mains().is_empty() {
+            manager.open(root);
+        }
+        manager.set_width(width)
     }
 
     /// The app's root primary, represented as a `main` surface (id = appid).
@@ -413,10 +411,7 @@ impl LxApp {
 
     /// Snapshot the core's `DerivedLayout` for this app's window (new model).
     pub fn surface_derived_layout(&self) -> Option<lingxia_surface::DerivedLayout> {
-        self.state
-            .lock()
-            .ok()
-            .map(|state| state.surface_manager.lock().unwrap().derive())
+        Some(window_surface_manager().lock().unwrap().derive())
     }
 
     /// Map a legacy surface request into an Adaptive Surface Layout node

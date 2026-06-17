@@ -445,11 +445,6 @@ pub(crate) struct LxAppState {
     /// Dynamic page surfaces created by lx.surface.open.
     pub(crate) surfaces: Mutex<SurfaceRecords>,
 
-    /// Adaptive Surface Layout core: per-app Surface Graph + arbitration +
-    /// `DerivedLayout`. The authoritative model the new surface API drives;
-    /// legacy `surfaces`/`present_surface` are migrated onto it (B-series).
-    pub(crate) surface_manager: Mutex<lingxia_surface::SurfaceManager>,
-
     /// App-level orientation override (runtime + persisted)
     pub(crate) orientation_override: Option<OrientationConfig>,
 }
@@ -467,10 +462,6 @@ impl LxAppState {
             tabbar: None,
             startup_options: LxAppStartupOptions::default(),
             surfaces: Mutex::new(SurfaceRecords::new()),
-            // Neutral "unmeasured" default (medium band); the platform reports
-            // the real container width via `set_surface_width` once a window
-            // exists (e.g. macOS windowDidResize → reportSurfaceWidth).
-            surface_manager: Mutex::new(lingxia_surface::SurfaceManager::new(700.0)),
             orientation_override: None,
         }
     }
