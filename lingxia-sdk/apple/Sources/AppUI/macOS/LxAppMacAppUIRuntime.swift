@@ -217,8 +217,7 @@ final class LxAppMacAppUIRuntime: NSObject {
                 return false
             }
             surfacePageInstanceIDs[panelId] = pageInstanceId
-            shell.appSessions[appId] = sessionId
-            LxAppCore.setSessionId(sessionId, for: appId)
+            shell.storeSession(sessionId, for: appId)
             let session = LxAppSession(
                 id: LxAppSessionID(rawValue: sessionId),
                 appId: appId,
@@ -282,8 +281,7 @@ final class LxAppMacAppUIRuntime: NSObject {
             return false
         }
 
-        shell.appSessions[appId] = sessionId
-        LxAppCore.setSessionId(sessionId, for: appId)
+        shell.storeSession(sessionId, for: appId)
         shell.showPanelWithContent(id: panelId, position: position, appId: appId, path: path)
         openedSurfaceIDs.insert(panelId)
         visibleSurfaceIDs.insert(panelId)
@@ -976,10 +974,7 @@ final class LxAppMacAppUIRuntime: NSObject {
         guard !appId.isEmpty else { return nil }
 
         let normalized = normalizedPath(pathHint ?? surface.content.path)
-        let sessionId = sessionIdHint
-            ?? shell.appSessions[appId]
-            ?? LxAppCore.sessionId(for: appId)
-            ?? getLxAppSessionId(appId)
+        let sessionId = sessionIdHint ?? shell.resolvedSessionId(for: appId) ?? 0
         guard sessionId > 0 else { return nil }
 
         return WebViewManager.resolvePageInstanceId(

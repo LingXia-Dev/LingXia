@@ -221,27 +221,30 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         return nil
     }
 
+    /// Single resolver for an app's session id: live shell dict → core →
+    /// runtime FFI fallback. The one place this ladder lives.
+    func resolvedSessionId(for appId: String) -> UInt64? {
+        if let sessionId = appSessions[appId], sessionId > 0 { return sessionId }
+        if let sessionId = LxAppCore.sessionId(for: appId), sessionId > 0 { return sessionId }
+        let sessionId = getLxAppSessionId(appId)
+        return sessionId > 0 ? sessionId : nil
+    }
+
+    /// Single writer: keep the shell's session map and the core in sync.
+    func storeSession(_ sessionId: UInt64, for appId: String) {
+        appSessions[appId] = sessionId
+        LxAppCore.setSessionId(sessionId, for: appId)
+    }
+
     func ensureViewController(for appId: String, path: String) -> macOSLxAppViewController? {
         if let viewController = getViewController(for: appId) {
             return viewController
         }
-        let resolvedSessionId: UInt64? = {
-            if let sessionId = appSessions[appId], sessionId > 0 {
-                return sessionId
-            }
-            if let sessionId = LxAppCore.sessionId(for: appId), sessionId > 0 {
-                return sessionId
-            }
-            let sessionId = getLxAppSessionId(appId)
-            return sessionId > 0 ? sessionId : nil
-        }()
-
-        guard let sessionId = resolvedSessionId else {
+        guard let sessionId = resolvedSessionId(for: appId) else {
             return nil
         }
 
-        appSessions[appId] = sessionId
-        LxAppCore.setSessionId(sessionId, for: appId)
+        storeSession(sessionId, for: appId)
         let viewController = macOSLxAppViewController(
             appId: appId,
             path: path,
@@ -816,15 +819,13 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
             )
             return
         }
-        appSessions[homeLxAppId] = sessionId
-        LxAppCore.setSessionId(sessionId, for: homeLxAppId)
+        storeSession(sessionId, for: homeLxAppId)
         LxAppCore.setCurrentApp(appId: homeLxAppId, path: resolvedPath)
         tabManager.addTab(appId: homeLxAppId)
     }
 
     func openLxApp(appId: String, path: String, sessionId: UInt64) {
-        appSessions[appId] = sessionId
-        LxAppCore.setSessionId(sessionId, for: appId)
+        storeSession(sessionId, for: appId)
         LxAppCore.setCurrentApp(appId: appId, path: path)
         tabManager.addTab(appId: appId)
         macOSLxApp.navigate(appId: appId, path: path, animationType: .none)
@@ -1337,8 +1338,7 @@ extension LxAppShell: BrowserCoordinatorHost {
 
     func browserOwnerForNewTab() -> (appId: String, sessionId: UInt64)? {
         if let appId = tabManager.activeTab?.appId {
-            let sessionId = appSessions[appId] ?? getLxAppSessionId(appId)
-            if sessionId > 0 {
+            if let sessionId = resolvedSessionId(for: appId) {
                 return (appId, sessionId)
             }
         }
