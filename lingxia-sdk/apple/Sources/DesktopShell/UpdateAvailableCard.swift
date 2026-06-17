@@ -130,17 +130,23 @@ final class UpdateAvailableCard: NSObject {
         if let window, window.isVisible {
             let f = window.frame
             panel.setFrameOrigin(NSPoint(x: f.midX - size.width / 2, y: f.midY - size.height / 2))
+            // Attach as a child window so the prompt tracks the app: it follows
+            // when the window is dragged and hides/miniaturizes with it, rather
+            // than floating free over the whole screen.
+            window.addChildWindow(panel, ordered: .above)
         } else {
+            // No host window (shouldn't happen for the card path): fall back to a
+            // centered floating panel.
             panel.center()
+            panel.level = .floating
+            panel.isFloatingPanel = true
         }
-        panel.level = .floating
-        panel.isFloatingPanel = true
-        panel.hidesOnDeactivate = false
         NSApp.activate(ignoringOtherApps: true)
         panel.makeKeyAndOrderFront(nil)
     }
 
     private func close() {
+        panel.parent?.removeChildWindow(panel)
         panel.orderOut(nil)
         if UpdateAvailableCard.current === self {
             UpdateAvailableCard.current = nil
