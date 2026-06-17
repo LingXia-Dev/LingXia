@@ -169,9 +169,13 @@ extension LxApp {
         return executeOnMain {
             #if os(macOS)
             guard let runtime = LxAppMacAppUIRuntime.active else { return false }
-            return visible
-                ? runtime.openManagedSurface(id: idString)
-                : runtime.closeManagedSurface(id: idString)
+            if visible {
+                // Declared surfaces first; else fall back to built-in browser
+                // routes (downloads/settings) opened as main browser tabs.
+                if runtime.openManagedSurface(id: idString) { return true }
+                return runtime.shell.openBuiltinShellSurface(id: idString)
+            }
+            return runtime.closeManagedSurface(id: idString)
             #else
             _ = visible
             return false

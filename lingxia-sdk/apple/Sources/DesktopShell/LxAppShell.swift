@@ -1085,6 +1085,23 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         }
     }
 
+    /// Open a built-in browser surface (downloads / settings) as a main browser
+    /// tab via the unified switcher — same path as the sidebar buttons, so it
+    /// detaches the lxapp cleanly. Returns `false` for ids that aren't built-in
+    /// routes so the caller can fall through.
+    func openBuiltinShellSurface(id: String) -> Bool {
+        switch id {
+        case "downloads":
+            browserCoordinator.openDownloads()
+            return true
+        case "settings":
+            browserCoordinator.openSettings()
+            return true
+        default:
+            return false
+        }
+    }
+
 
     /// Present the centered "update available" card (Stage 1). The card then
     /// drives the whole flow: Download & Install → live progress → Restart Now.
@@ -1302,6 +1319,11 @@ extension LxAppShell: BrowserCoordinatorHost {
         currentViewController?.pauseNativeComponents()
         currentViewController?.view.removeFromSuperview()
         currentViewController = nil
+        // The browser tab has its own toolbar (address bar); hide the shell's
+        // lxapp nav toolbar so it doesn't sit on top of the browser view (the
+        // "API" bar that showed over settings/downloads).
+        navigationToolbar?.forceHide(true)
+        navigationToolbar?.isHidden = true
     }
 
     func switchToLxAppTab(_ appId: String) {
