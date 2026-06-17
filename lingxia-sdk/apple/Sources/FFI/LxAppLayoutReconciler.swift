@@ -22,19 +22,26 @@ import CLingXiaRustAPI
 /// content (so the reconciler can find a registered, hidden panel by id); they
 /// no longer place or show it. Placement is owned exclusively here.
 ///
-/// Scope is strictly the aside dock. The reconciler only ever shows/hides/places
-/// ids that are (or were) asides in the core tree, so it never disturbs
-/// non-aside panels — main content, browser tabs, settings, downloads, float
-/// popups, the sidebar, the update callout, or terminal fullscreen state.
+/// ## Single source of truth
+///
+/// The reconciler keeps NO private mirror of which asides it placed. The
+/// WorkspaceManager view-registry IS that state: every registered panel is an
+/// aside under this reconciler's authority (main content lives in the content
+/// container, not the panel registry), and the reconciler is the sole code path
+/// that shows/hides asides — so the set of "currently-placed asides" is exactly
+/// the registered panels that are visible. Reconcile = make the registry match
+/// `plan.asides`: show + position registered-and-desired panels, hide visible
+/// panels no longer desired. A desired aside whose panel is not yet registered
+/// is simply skipped; the content path re-enters `reconcile(appId:)` once it has
+/// registered the panel, so the next pass places it.
+///
+/// Scope is strictly the aside dock. Because the reconciler only ever touches
+/// the panel registry (all asides), it never disturbs non-aside surfaces — main
+/// content, browser tabs, settings, downloads, float popups, the sidebar, the
+/// update callout, or terminal fullscreen state.
 @MainActor
 enum LxAppLayoutReconciler {
     private static let log = OSLog(subsystem: "LingXia", category: "LayoutReconciler")
-
-    /// Ids this reconciler has placed as asides (across both the dynamic and the
-    /// host-aside paths). Bounds undock to surfaces we actually placed, so a
-    /// panel owned by some other path is never hidden even if it briefly shares
-    /// the workspace dock.
-    private static var placedAsideIds: Set<String> = []
 
     /// The stable, fully-typed render contract the shared core emits (the same
     /// `LayoutPresentationPlan` JSON returned by `surfaceDerivedLayout`). The
@@ -57,21 +64,22 @@ enum LxAppLayoutReconciler {
         let preferredSize: Double?
     }
 
-    /// Re-derive the core layout for `appId` and reconcile. Called by the content
-    /// paths AFTER they register aside content, so the reconciler runs once the
-    /// panel exists and can be placed (the core's own `present_layout` may have
-    /// fired before the content was registered).
-    static func reconcileNow(appId: String) {
+    /// Re-derive the latest core layout for `appId` and reconcile. The content
+    /// paths call this AFTER they register aside content, so the reconciler runs
+    /// once the panel exists and can be placed (the core's own `present_layout`
+    /// may have fired before the content was registered). It is the same single
+    /// reconcile implementation the core's `present_layout` drives — it just
+    /// pulls the current plan instead of receiving a pushed one.
+    @discardableResult
+    static func reconcile(appId: String) -> Bool {
         let json = surfaceDerivedLayout(appId).toString()
-        guard !json.isEmpty else { return }
-        _ = reconcile(appId: appId, json: json)
+        guard !json.isEmpty else { return false }
+        return reconcile(appId: appId, json: json)
     }
 
     static func reconcile(appId: String, json: String) -> Bool {
         guard let shell = LxAppActiveHost.activeShell else {
-            // Headless / no desktop shell: nothing to dock. Drop the placed set
-            // so a later shell starts from a clean slate.
-            placedAsideIds.removeAll()
+            // Headless / no desktop shell: nothing to dock.
             return false
         }
         guard let data = json.data(using: .utf8),
@@ -89,21 +97,20 @@ enum LxAppLayoutReconciler {
         }
         let desiredIds = Set(desired.keys)
 
-        // Undock asides the core removed. Only ones we ourselves placed, so we
-        // never disturb panels owned by other paths.
-        for id in placedAsideIds.subtracting(desiredIds)
-        where workspace.isPanelRegistered(id: id) {
-            if workspace.isPanelVisible(id: id) {
-                shell.hidePanel(id: id)
-            }
-            placedAsideIds.remove(id)
+        // Undock asides the core removed. The placed-aside set is derived from
+        // the view-registry itself: a visible registered panel is, by
+        // construction, one the reconciler placed (every registered panel is an
+        // aside, and the reconciler is the sole code that shows asides). Hide
+        // any such panel that the core no longer wants.
+        for id in workspace.visiblePanelIds().subtracting(desiredIds) {
+            shell.hidePanel(id: id)
         }
 
         // Place each desired aside at the tree's edge and show it. The content
         // path created + registered the panel (hidden) for ids the core knows;
         // until that registration lands there is nothing to place yet (the
-        // content path calls reconcileNow once it has registered, so this runs
-        // again with the panel present).
+        // content path re-enters reconcile(appId:) once it has registered, so
+        // this runs again with the panel present).
         for (id, edge) in desired {
             guard workspace.isPanelRegistered(id: id) else { continue }
 
@@ -113,7 +120,6 @@ enum LxAppLayoutReconciler {
             // Idempotent fast path: already shown at the right edge — leave it
             // exactly as is (no hide/show/re-place → no flicker, no empty paint).
             if atCorrectEdge && visible {
-                placedAsideIds.insert(id)
                 continue
             }
 
@@ -126,7 +132,6 @@ enum LxAppLayoutReconciler {
             if !workspace.isPanelVisible(id: id) {
                 shell.showPanel(id: id)
             }
-            placedAsideIds.insert(id)
         }
 
         return true

@@ -398,6 +398,15 @@ class WorkspaceManager: NSObject {
 
     func isPanelVisible(id: String) -> Bool { panels[id]?.isVisible ?? false }
 
+    /// Ids of registered panels that are currently visible. Every registered
+    /// panel is an aside under the aside-layout reconciler's authority (main
+    /// content lives in `contentContainer`, not the panel registry), so this is
+    /// the reconciler's "currently-placed asides" set — derived from the
+    /// view-registry rather than a private mirror.
+    func visiblePanelIds() -> Set<String> {
+        Set(panels.compactMap { $0.value.isVisible ? $0.key : nil })
+    }
+
     /// The edge a registered panel is currently docked to, or `nil` if unknown.
     /// The aside-layout reconciler reads this to decide whether a panel needs to
     /// be re-placed at the core tree's edge.

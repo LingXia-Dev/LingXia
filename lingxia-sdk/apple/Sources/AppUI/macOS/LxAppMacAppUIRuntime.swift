@@ -288,7 +288,7 @@ final class LxAppMacAppUIRuntime: NSObject {
         // existed, so re-run the reconciler now that the panel is registered.
         shell.registerPanelWithContent(id: panelId, position: position, appId: appId, path: path)
         if let primaryAppId = rootSurface.content.appId {
-            LxAppLayoutReconciler.reconcileNow(appId: primaryAppId)
+            LxAppLayoutReconciler.reconcile(appId: primaryAppId)
         }
         openedSurfaceIDs.insert(panelId)
         visibleSurfaceIDs.insert(panelId)
@@ -631,7 +631,7 @@ final class LxAppMacAppUIRuntime: NSObject {
             defaultSize: defaultHeight
         )
         if let primaryAppId = rootSurface.content.appId {
-            LxAppLayoutReconciler.reconcileNow(appId: primaryAppId)
+            LxAppLayoutReconciler.reconcile(appId: primaryAppId)
         }
         logTerminal(
             "runtime.afterShowPanel surface=\(surface.id) workspaceFrame=\(lxTerminalRuntimeFormatRect(workspace.frame)) workspaceBounds=\(lxTerminalRuntimeFormatRect(workspace.bounds)) windowFrame=\(lxTerminalRuntimeFormatRect(shell.hostWindow?.frame ?? .zero))"
