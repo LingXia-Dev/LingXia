@@ -52,7 +52,7 @@ pub use lxapp::{
     CloseReason, CreatePageInstanceRequest, CreatedPageInstance, LxApp, LxAppRuntimeInfo,
     LxAppRuntimePageInfo, LxAppSecurityPrivilege, PageDefinition, PageInstanceEvent, PageOwner,
     PageQueryInput, PageSurface, PageSurfaceRequest, PageSurfaceTarget, PageTarget,
-    PresentationKind, ResolvedPage, SceneId, SurfaceKind, SurfacePosition, close_lxapp,
+    PresentationKind, ResolvedPage, SceneId, SurfaceKind, SurfacePosition, SurfaceRole, close_lxapp,
     config::LxAppInfo, create_page_instance, dispose_page_instance, dispose_page_instance_by_id,
     ensure_builtin_lxapp, ensure_lxapp, find_page_by_instance_id, get_current_lxapp, get_locale,
     get_platform, init, installed_lxapp_path, is_pull_down_refresh_enabled, list_lxapps,

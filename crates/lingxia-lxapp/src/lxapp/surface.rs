@@ -195,9 +195,11 @@ pub struct PageSurfaceRequest {
     pub width_ratio: Option<f64>,
     pub height_ratio: Option<f64>,
     pub position: SurfacePosition,
-    /// True only for the explicit `lx.surface.aside()` verb — the one path that
-    /// docks (splits the main). Legacy `open()` and `float()` are popups.
-    pub prefer_aside: bool,
+    /// Authoritative core role for this surface. `Aside` (the explicit
+    /// `lx.surface.aside()` verb) is the one path that docks (splits the main);
+    /// `Float` is a popup (legacy `open()` / `float()`); `Main` is a window.
+    /// `kind` still drives the dispose-TTL and legacy-present distinction.
+    pub role: lingxia_surface::Role,
 }
 
 #[derive(Debug, Clone)]
@@ -304,12 +306,11 @@ impl LxApp {
             let node = self.build_surface_node(
                 &id,
                 content,
-                request.kind,
                 request.position,
                 &path,
                 &page_path,
                 owner_pid.as_deref(),
-                request.prefer_aside,
+                request.role,
             );
             (present_kind, present_position, present_role, evicted) =
                 controller.open_node(node, request.position);
@@ -551,29 +552,22 @@ impl LxApp {
         Some(window_controller(PRIMARY_WINDOW, &self.runtime).presentation_plan())
     }
 
-    /// Map a legacy surface request into an Adaptive Surface Layout node:
-    /// Window→main, Overlay+Center→float, Overlay+edge→aside.
+    /// Build an Adaptive Surface Layout node from the request's authoritative
+    /// `role` (the core relationship) and `kind` (content/owner shaping).
+    #[allow(clippy::too_many_arguments)]
     fn build_surface_node(
         &self,
         id: &str,
         content: SurfaceContent,
-        kind: SurfaceKind,
         position: SurfacePosition,
         path_or_url: &str,
         page_path: &Option<String>,
         owner_page_instance_id: Option<&str>,
-        prefer_aside: bool,
+        role: lingxia_surface::Role,
     ) -> lingxia_surface::Surface {
         use lingxia_surface::{
             Edge as LxEdge, FloatSpec, Placement, Role as LxRole, Surface as LxSurface,
             SurfaceContent as LxContent, SurfaceOwner as LxOwner, SurfaceState as LxState,
-        };
-        // Only the explicit aside() verb docks (splits the main). A window is a
-        // top-level main; every other overlay (legacy open / float) is a popup.
-        let role = match kind {
-            SurfaceKind::Window => LxRole::Main,
-            SurfaceKind::Overlay if prefer_aside => LxRole::Aside,
-            SurfaceKind::Overlay => LxRole::Float,
         };
         // Edge only matters for a docked aside; a float popup is unanchored.
         let edge = if role == LxRole::Aside {

@@ -55,6 +55,7 @@ use crate::page::runtime::{
     PageInstanceLifecycleState, PageInstanceRuntimeRecord, transition_page_instance_lifecycle,
 };
 pub use lingxia_platform::traits::ui::{SurfaceKind, SurfacePosition};
+pub use lingxia_surface::Role as SurfaceRole;
 pub use lingxia_update::ReleaseType;
 use lingxia_webview::WebTag;
 use lingxia_webview::runtime::destroy_webview;

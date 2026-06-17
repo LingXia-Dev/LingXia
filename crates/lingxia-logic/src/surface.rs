@@ -682,9 +682,17 @@ fn parse_surface_options(lxapp: &LxApp, options: &JSValue) -> JSResult<PageSurfa
     let kind = parse_surface_kind(&obj)?;
     let position = parse_position(&obj, kind)?;
     let (width, height, width_ratio, height_ratio) = parse_size(&obj, kind)?;
-    // `role: "aside"` (set by lx.surface.aside) is the only thing that docks;
-    // legacy open() and float() have no role / "float" → popup.
-    let prefer_aside = read_optional_string(&obj, "role")?.as_deref() == Some("aside");
+    // Resolve the authoritative core role. A window is always the top-level
+    // main; for an overlay, `role: "aside"` (set by lx.surface.aside) is the
+    // only thing that docks, every other overlay (legacy open() / float()) is a
+    // float popup.
+    let role = match kind {
+        SurfaceKind::Window => lingxia_surface::Role::Main,
+        SurfaceKind::Overlay => match read_optional_string(&obj, "role")?.as_deref() {
+            Some("aside") => lingxia_surface::Role::Aside,
+            _ => lingxia_surface::Role::Float,
+        },
+    };
 
     Ok(PageSurfaceRequest {
         id: String::new(),
@@ -696,7 +704,7 @@ fn parse_surface_options(lxapp: &LxApp, options: &JSValue) -> JSResult<PageSurfa
         width_ratio,
         height_ratio,
         position,
-        prefer_aside,
+        role,
     })
 }
 
