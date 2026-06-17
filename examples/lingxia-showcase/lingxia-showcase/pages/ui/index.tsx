@@ -58,32 +58,10 @@ export default function UIPage() {
   const surfaceMessage = (surfaceDemo && surfaceDemo.message) || '';
   const surfaceActive = surfaceDemo?.active === true;
   const surfaceVisible = surfaceDemo?.visible === true;
-  const supportsSurfaceWindow =
-    (typeof window !== 'undefined' &&
-      (window as any).LingXiaBridge?.platform?.isDesktop?.() === true) ||
-    surfaceDemo?.supportsWindow === true;
-  const [surfaceKind, setSurfaceKind] = React.useState<'overlay' | 'window'>('overlay');
-  const [surfaceWidthRatio, setSurfaceWidthRatio] = React.useState(1);
-  const [surfaceHeightRatio, setSurfaceHeightRatio] = React.useState(0.6);
-  const [surfacePosition, setSurfacePosition] = React.useState<'center' | 'bottom' | 'left' | 'right' | 'top'>('bottom');
-  const surfacePositions: Array<'center' | 'bottom' | 'left' | 'right' | 'top'> = ['bottom', 'center', 'left', 'right', 'top'];
-  const surfaceKinds: Array<'overlay' | 'window'> = supportsSurfaceWindow ? ['overlay', 'window'] : ['overlay'];
-  const surfaceDescription = surfaceKind === 'window'
-    ? 'Desktop-only independent window surface. Mobile runtimes reject this kind.'
-    : 'Overlay surface composited on top of the host activity content. Cross-platform.';
-
-  React.useEffect(() => {
-    if (!supportsSurfaceWindow && surfaceKind === 'window') {
-      setSurfaceKind('overlay');
-    }
-  }, [supportsSurfaceWindow, surfaceKind]);
-
-  const clampRatio = React.useCallback((value: number, fallback: number) => {
-    if (!Number.isFinite(value)) {
-      return fallback;
-    }
-    return Math.min(1, Math.max(0.1, value));
-  }, []);
+  const [surfaceEdge, setSurfaceEdge] = React.useState<'left' | 'right' | 'top' | 'bottom'>('right');
+  const surfaceEdges: Array<'left' | 'right' | 'top' | 'bottom'> = ['left', 'right', 'top', 'bottom'];
+  const [surfaceFloatPosition, setSurfaceFloatPosition] = React.useState<'center' | 'top' | 'bottom' | 'left' | 'right'>('center');
+  const surfaceFloatPositions: Array<'center' | 'top' | 'bottom' | 'left' | 'right'> = ['center', 'top', 'bottom', 'left', 'right'];
 
   // Local state for toast parameters
   const [toastTitle, setToastTitle] = React.useState('Hello Toast!');
@@ -155,7 +133,7 @@ export default function UIPage() {
         {currentType === 'surface' && (
           <>
             <div className="mt-4 mb-6 px-4 text-center">
-              <h1 className="text-2xl font-light text-gray-800 mb-2">lx.surface.open</h1>
+              <h1 className="text-2xl font-light text-gray-800 mb-2">lx.surface.aside / float</h1>
               <div className="w-16 h-0.5 bg-gray-400 mx-auto"></div>
             </div>
 
@@ -163,128 +141,82 @@ export default function UIPage() {
               <div className="px-4 py-4 space-y-4">
                 <div className="space-y-3">
                   <div className="text-xs text-gray-500 leading-5 bg-gray-50 rounded-lg px-3 py-2">
-                    Overlay is cross-platform. Window is shown only on desktop runtimes.
+                    Aside docks beside the main and splits it; a compact window folds it into a switchable tab. Float presents a popup above the main without taking layout space.
                   </div>
 
                   <div>
-                    <div className="text-xs uppercase text-gray-500 tracking-wide mb-2">Kind</div>
-                    {/* Segmented control. Visually distinct from the blue CTA
-                        below so the selected item doesn't look like it's the
-                        same affordance as "Open overlay". */}
-                    <div className={`grid ${supportsSurfaceWindow ? 'grid-cols-2' : 'grid-cols-1'} gap-1 bg-gray-100 rounded-lg p-1`}>
-                      {surfaceKinds.map((kind) => {
-                        const active = surfaceKind === kind;
-                        const className = active
-                          ? 'py-1.5 px-2 text-sm font-medium rounded-md bg-white text-gray-900 shadow-sm transition-colors'
-                          : 'py-1.5 px-2 text-sm font-medium rounded-md text-gray-500 hover:text-gray-700 transition-colors';
-                        return (
-                          <button
-                            key={kind}
-                            type="button"
-                            className={className}
-                            onClick={() => setSurfaceKind(kind)}
-                          >
-                            {kind.charAt(0).toUpperCase() + kind.slice(1)}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {surfaceKind === 'overlay' ? (
-                  <>
-                    <div>
-                    <div className="text-xs uppercase text-gray-500 tracking-wide mb-2">Overlay Size</div>
-                    <div className="flex items-center justify-between text-xs text-gray-500 tracking-wide">
-                      <span>Width</span>
-                      <span className="text-gray-700 font-mono">{surfaceWidthRatio.toFixed(2)}</span>
-                    </div>
-                    <input
-                      type="range"
-                      min={0.1}
-                      max={1}
-                      step={0.05}
-                      value={surfaceWidthRatio}
-                      onChange={(event) =>
-                        setSurfaceWidthRatio(clampRatio(parseFloat(event.target.value), 0.9))
-                      }
-                      className="w-full mt-2"
-                    />
-                    </div>
-
-                    <div>
-                    <div className="flex items-center justify-between text-xs text-gray-500 tracking-wide">
-                      <span>Height</span>
-                      <span className="text-gray-700 font-mono">{surfaceHeightRatio.toFixed(2)}</span>
-                    </div>
-                    <input
-                      type="range"
-                      min={0.1}
-                      max={1}
-                      step={0.05}
-                      value={surfaceHeightRatio}
-                      onChange={(event) =>
-                        setSurfaceHeightRatio(clampRatio(parseFloat(event.target.value), 0.6))
-                      }
-                      className="w-full mt-2"
-                    />
-                    </div>
-                  </>
-                  ) : (
-                    <div className="text-xs text-gray-500 leading-5 bg-gray-50 rounded-lg px-3 py-2">
-                      Window demo uses a fixed 960 x 720 size. Percent sizes are intentionally not supported for window.
-                    </div>
-                  )}
-
-                  <div className="text-xs text-gray-500 leading-5">
-                    {surfaceDescription}
-                  </div>
-
-                  {surfaceKind === 'overlay' && (
-                  <div>
-                    <div className="text-xs uppercase text-gray-500 tracking-wide mb-2">
-                      Position
-                    </div>
+                    <div className="text-xs uppercase text-gray-500 tracking-wide mb-2">Aside edge</div>
+                    {/* Edge picker for aside: which side the surface docks to. */}
                     <div className="grid grid-cols-2 gap-2">
-                      {surfacePositions.map((pos) => {
-                        const active = surfacePosition === pos;
+                      {surfaceEdges.map((edge) => {
+                        const active = surfaceEdge === edge;
                         const baseClass = 'py-2 text-sm rounded-lg transition-colors border';
                         const className = active
                           ? `${baseClass} bg-blue-500 border-blue-500 text-white`
                           : `${baseClass} bg-white border-gray-200 text-gray-600 hover:bg-gray-50`;
                         return (
                           <button
-                            key={pos}
+                            key={edge}
                             type="button"
                             className={className}
-                            onClick={() => setSurfacePosition(pos)}
+                            onClick={() => setSurfaceEdge(edge)}
                           >
-                            {pos.charAt(0).toUpperCase() + pos.slice(1)}
+                            {edge.charAt(0).toUpperCase() + edge.slice(1)}
                           </button>
                         );
                       })}
                     </div>
                   </div>
-                  )}
+
+                  <div>
+                    <div className="text-xs uppercase text-gray-500 tracking-wide mb-2">Float position</div>
+                    {/* Position picker for float: where the popup sits above the main. */}
+                    <div className="grid grid-cols-2 gap-2">
+                      {surfaceFloatPositions.map((position) => {
+                        const active = surfaceFloatPosition === position;
+                        const baseClass = 'py-2 text-sm rounded-lg transition-colors border';
+                        const className = active
+                          ? `${baseClass} bg-indigo-500 border-indigo-500 text-white`
+                          : `${baseClass} bg-white border-gray-200 text-gray-600 hover:bg-gray-50`;
+                        return (
+                          <button
+                            key={position}
+                            type="button"
+                            className={className}
+                            onClick={() => setSurfaceFloatPosition(position)}
+                          >
+                            {position.charAt(0).toUpperCase() + position.slice(1)}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
                 </div>
 
-                <button
-                  type="button"
-                  disabled={surfaceActive}
-                  onClick={() =>
-                    openSurfaceDemo({
-                      kind: surfaceKind,
-                      widthRatio: surfaceWidthRatio,
-                      heightRatio: surfaceHeightRatio,
-                      position: surfacePosition,
-                      width: 960,
-                      height: 720,
-                    })
-                  }
-                  className="w-full bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white py-2 px-4 rounded-lg text-sm font-medium transition-colors"
-                >
-                  {surfaceActive ? `Open ${surfaceKind} (already open)` : `Open ${surfaceKind}`}
-                </button>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    disabled={surfaceActive}
+                    onClick={() => openSurfaceDemo({ verb: 'aside', edge: surfaceEdge })}
+                    className="bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white py-2 px-4 rounded-lg text-sm font-medium transition-colors"
+                  >
+                    {surfaceActive ? 'Open aside (already open)' : 'Open aside'}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={surfaceActive}
+                    onClick={() => openSurfaceDemo({ verb: 'float', position: surfaceFloatPosition })}
+                    className="bg-indigo-500 hover:bg-indigo-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white py-2 px-4 rounded-lg text-sm font-medium transition-colors"
+                  >
+                    {surfaceActive ? 'Open float (already open)' : 'Open float'}
+                  </button>
+                </div>
+
+                <p className="text-xs text-gray-500">
+                  Edge / position is applied when the surface opens. Changing it
+                  while a surface is open — or across hide → show — has no effect;
+                  close and re-open to apply a new value.
+                </p>
 
                 {surfaceActive && (
                   <div className="grid grid-cols-3 gap-2">
