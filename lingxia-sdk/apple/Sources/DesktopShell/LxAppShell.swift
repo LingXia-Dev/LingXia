@@ -251,7 +251,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
             sessionId: sessionId
         )
         viewControllers[appId] = viewController
-        updateContentView(with: viewController)
+        presentMain(.lxapp(viewController))
         return viewController
     }
 
@@ -832,12 +832,10 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     }
 
     private func switchToTab(_ appId: String) {
-        guard let sessionId = appSessions[appId], sessionId > 0 else {
+        guard let sessionId = resolvedSessionId(for: appId) else {
             os_log("switchToTab missing session for %@", log: Self.log, type: .error, appId)
             return
         }
-
-        browserCoordinator.deactivate()
 
         let isNewViewController = viewControllers[appId] == nil
 
@@ -866,13 +864,45 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
             }
         }
 
-        updateContentView(with: viewController)
+        presentMain(.lxapp(viewController))
         sidebarView?.setActiveHighlight(appId: appId)
     }
 
-    private func updateContentView(with viewController: macOSLxAppViewController) {
+    /// What can fill the single main content area (`workspaceManager.contentContainer`).
+    private enum MainContent {
+        case lxapp(macOSLxAppViewController)
+        case browser
+    }
+
+    /// The single entry point for what occupies the main content area. It
+    /// detaches the *other* content type, attaches the target, and applies the
+    /// matching chrome — so lxapp and browser activation no longer each
+    /// hand-roll their own detach/attach against the shared container.
+    private func presentMain(_ content: MainContent) {
+        switch content {
+        case .lxapp(let viewController):
+            browserCoordinator.deactivate()
+            attachLxAppToMain(viewController)
+        case .browser:
+            // The browser view is attached by BrowserTabCoordinator.showBrowserView;
+            // here we only detach the lxapp and drop its nav toolbar so the
+            // toolbar can't sit on top of the browser view.
+            detachCurrentLxApp()
+            navigationToolbar?.forceHide(true)
+            navigationToolbar?.isHidden = true
+        }
+    }
+
+    /// Remove the current lxapp view controller from the main area (pause + detach).
+    /// The single place this teardown lives.
+    private func detachCurrentLxApp() {
         currentViewController?.pauseNativeComponents()
         currentViewController?.view.removeFromSuperview()
+        currentViewController = nil
+    }
+
+    private func attachLxAppToMain(_ viewController: macOSLxAppViewController) {
+        detachCurrentLxApp()
         currentViewController = viewController
         navigationToolbar?.forceHide(false)
 
@@ -1351,14 +1381,10 @@ extension LxAppShell: BrowserCoordinatorHost {
     }
 
     func browserWillActivateTab() {
-        currentViewController?.pauseNativeComponents()
-        currentViewController?.view.removeFromSuperview()
-        currentViewController = nil
-        // The browser tab has its own toolbar (address bar); hide the shell's
-        // lxapp nav toolbar so it doesn't sit on top of the browser view (the
-        // "API" bar that showed over settings/downloads).
-        navigationToolbar?.forceHide(true)
-        navigationToolbar?.isHidden = true
+        // A browser tab is taking the main area: detach the lxapp + hide its nav
+        // toolbar (the browser has its own address bar). The browser view itself
+        // is attached by BrowserTabCoordinator after this returns.
+        presentMain(.browser)
     }
 
     func switchToLxAppTab(_ appId: String) {
