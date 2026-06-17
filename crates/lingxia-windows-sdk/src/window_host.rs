@@ -2,7 +2,6 @@
 
 use std::collections::{HashMap, HashSet};
 use std::ffi::c_void;
-#[cfg(feature = "shell-runtime")]
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
@@ -34,6 +33,7 @@ use windows::Win32::Graphics::Gdi::{
     PAINTSTRUCT, PS_SOLID, RestoreDC, SaveDC, ScreenToClient, SelectObject,
 };
 use windows::Win32::System::LibraryLoader;
+use windows::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     GetKeyState, ReleaseCapture, SetCapture, SetFocus, VK_CONTROL, VK_MENU, VK_SHIFT,
 };
@@ -2278,6 +2278,19 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                     );
                 }
                 handle_window_position_changed(hwnd, lparam);
+                // First time a main window becomes visible after a post-update
+                // relaunch, (re-)center it and force it to the foreground, then
+                // end the promote. The app is started by a detached helper (no
+                // granted focus); it is shown via SetWindowPos/SWP_SHOWWINDOW
+                // which never sends WM_SHOWWINDOW, so this is the reliable hook.
+                if relaunch_promote_active()
+                    && is_window_visible(hwnd)
+                    && !is_minimized(hwnd)
+                    && is_top_level_window(hwnd)
+                {
+                    center_and_foreground_window(hwnd);
+                    deactivate_relaunch_promote();
+                }
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }
             WindowsAndMessaging::WM_ERASEBKGND => {
@@ -2411,13 +2424,22 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
         } else {
             WS_OVERLAPPEDWINDOW
         };
+        // Create centered on the primary work area — the WS_POPUP default is
+        // (0, 0)/top-left, which looks broken. This applies to every launch (so
+        // a normal start and a post-update relaunch are consistent); the
+        // relaunch additionally force-foregrounds, since a normal launch already
+        // gets focus from the shell.
+        let (origin_x, origin_y) = primary_centered_origin(width, height).unwrap_or((
+            WindowsAndMessaging::CW_USEDEFAULT,
+            WindowsAndMessaging::CW_USEDEFAULT,
+        ));
         let result = WindowsAndMessaging::CreateWindowExW(
             WINDOW_EX_STYLE::default(),
             w!("LingXiaWebViewParent"),
             w!("LingXia WebView"),
             style,
-            WindowsAndMessaging::CW_USEDEFAULT,
-            WindowsAndMessaging::CW_USEDEFAULT,
+            origin_x,
+            origin_y,
             width,
             height,
             None,
@@ -2585,6 +2607,110 @@ fn is_top_level_window(hwnd: HWND) -> bool {
         WindowsAndMessaging::GetParent(hwnd)
             .map(|parent| parent.0.is_null())
             .unwrap_or(true)
+    }
+}
+
+static RELAUNCH_PROMOTE: OnceLock<AtomicBool> = OnceLock::new();
+
+/// True for the duration of a post-update relaunch's startup. The update helper
+/// drops a `.lx-update-relaunch` marker next to the exe; we read and delete it
+/// once (so normal launches are unaffected) and keep the flag set until the
+/// first main window has been centered + foregrounded. While set, every
+/// preloaded host window is created already centered, so whichever one becomes
+/// visible lands centered regardless of the show order — no window race.
+fn relaunch_promote_active() -> bool {
+    RELAUNCH_PROMOTE
+        .get_or_init(|| AtomicBool::new(consume_update_relaunch_marker()))
+        .load(Ordering::SeqCst)
+}
+
+fn deactivate_relaunch_promote() {
+    if let Some(flag) = RELAUNCH_PROMOTE.get() {
+        flag.store(false, Ordering::SeqCst);
+    }
+}
+
+fn consume_update_relaunch_marker() -> bool {
+    let Some(marker) = std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(|dir| dir.join(".lx-update-relaunch")))
+    else {
+        return false;
+    };
+    if marker.exists() {
+        let _ = std::fs::remove_file(&marker);
+        true
+    } else {
+        false
+    }
+}
+
+/// Top-left origin that centers a `width`x`height` window on the primary
+/// monitor's work area. Used at window-creation time so the window is born
+/// centered instead of at the WS_POPUP default of (0, 0).
+fn primary_centered_origin(width: i32, height: i32) -> Option<(i32, i32)> {
+    let mut work = RECT::default();
+    let ok = unsafe {
+        WindowsAndMessaging::SystemParametersInfoW(
+            WindowsAndMessaging::SPI_GETWORKAREA,
+            0,
+            Some(&mut work as *mut _ as *mut c_void),
+            WindowsAndMessaging::SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS(0),
+        )
+        .is_ok()
+    };
+    if !ok {
+        return None;
+    }
+    let x = work.left + (((work.right - work.left) - width) / 2).max(0);
+    let y = work.top + (((work.bottom - work.top) - height) / 2).max(0);
+    Some((x, y))
+}
+
+/// Center `hwnd` on its monitor's work area and pull it to the foreground. Uses
+/// the `AttachThreadInput` trick — attach to the current foreground thread's
+/// input queue so `SetForegroundWindow` is honored even though this process was
+/// launched in the background by the update helper. Runs on the window's own UI
+/// thread (from `WM_SHOWWINDOW`), so it doesn't race the app's own layout.
+fn center_and_foreground_window(hwnd: HWND) {
+    unsafe {
+        let monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+        let mut mi = MONITORINFO {
+            cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+            ..Default::default()
+        };
+        let mut rc = RECT::default();
+        if GetMonitorInfoW(monitor, &mut mi).as_bool()
+            && WindowsAndMessaging::GetWindowRect(hwnd, &mut rc).is_ok()
+        {
+            let work = mi.rcWork;
+            let w = rc.right - rc.left;
+            let h = rc.bottom - rc.top;
+            let x = work.left + (((work.right - work.left) - w) / 2).max(0);
+            let y = work.top + (((work.bottom - work.top) - h) / 2).max(0);
+            let _ = WindowsAndMessaging::SetWindowPos(
+                hwnd,
+                None,
+                x,
+                y,
+                0,
+                0,
+                WindowsAndMessaging::SWP_NOSIZE | WindowsAndMessaging::SWP_NOZORDER,
+            );
+        }
+
+        let foreground = WindowsAndMessaging::GetForegroundWindow();
+        let fg_thread = WindowsAndMessaging::GetWindowThreadProcessId(foreground, None);
+        let this_thread = GetCurrentThreadId();
+        let attached = fg_thread != 0
+            && fg_thread != this_thread
+            && AttachThreadInput(this_thread, fg_thread, true).as_bool();
+        let _ = WindowsAndMessaging::BringWindowToTop(hwnd);
+        let _ = WindowsAndMessaging::SetForegroundWindow(hwnd);
+        let _ = SetFocus(Some(hwnd));
+        if attached {
+            let _ = AttachThreadInput(this_thread, fg_thread, false);
+        }
     }
 }
 

@@ -383,7 +383,7 @@ fn render_helper_script(
         .unwrap_or_else(|| "''".to_string());
     let self_path = ps_single_quote(&script_path.to_string_lossy());
 
-    format!(
+    let mut head = format!(
         r#"$ErrorActionPreference = 'Continue'
 $procId = {pid}
 $target = {target}
@@ -401,7 +401,7 @@ while (Get-Process -Id $procId -ErrorAction SilentlyContinue) {{
   if ((Get-Date) -gt $deadline) {{ Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue; break }}
   Start-Sleep -Milliseconds 300
 }}
-Start-Sleep -Milliseconds 800
+Start-Sleep -Milliseconds 400
 L "app exited"
 
 # Elevate if the install directory is not writable (e.g. Program Files).
@@ -429,18 +429,6 @@ L "robocopy start: $source -> $target"
 $rc = $LASTEXITCODE
 L "robocopy exit=$rc"
 if ($rc -ge 8) {{ L "robocopy FAILED"; exit 1 }}
-
-# Relaunch the updated app via the shell (explorer) so it gets foreground.
-# A background helper can't grant foreground itself, which otherwise leaves
-# the new window stuck (unactivated) in the taskbar.
-L "relaunching $exe"
-Start-Process -FilePath 'explorer.exe' -ArgumentList ('"' + $exe + '"')
-L "relaunched"
-
-# Clean up staging and the helper itself.
-if ($cleanup -and (Test-Path $cleanup)) {{ Remove-Item -Recurse -Force $cleanup -ErrorAction SilentlyContinue }}
-L "done"
-Remove-Item -Force $self -ErrorAction SilentlyContinue
 "#,
         pid = pid,
         target = target,
@@ -448,8 +436,36 @@ Remove-Item -Force $self -ErrorAction SilentlyContinue
         exe = exe,
         cleanup = cleanup,
         self_path = self_path,
-    )
+    );
+    // Appended as a raw string so the C# `Add-Type` block's braces don't need
+    // `format!` escaping. It references PowerShell vars set in `head`.
+    head.push_str(RELAUNCH_AND_PROMOTE);
+    head
 }
+
+/// PowerShell appended to the swap helper: relaunch the updated app. A
+/// background helper can't grant the freshly launched window foreground, and the
+/// app would otherwise open inert in the taskbar at the default cascade
+/// position. Rather than race the app from outside, we tag the relaunch with
+/// `LINGXIA_UPDATE_RELAUNCH` (inherited by the child) so the app centers and
+/// force-foregrounds its own main window from its UI thread as it is shown.
+const RELAUNCH_AND_PROMOTE: &str = r#"
+# Drop a marker next to the exe so the relaunched app centers + foregrounds its
+# own main window. A marker file is used instead of an env var or argument: a
+# detached, console-less helper can't reliably hand a child its modified
+# environment block, and the app's arg parsing is not ours to extend. The app
+# deletes the marker as it reads it. Written after robocopy so /MIR won't wipe it.
+L "relaunching $exe"
+$marker = Join-Path $target '.lx-update-relaunch'
+Set-Content -Path $marker -Value '1' -ErrorAction SilentlyContinue
+Start-Process -FilePath $exe -WorkingDirectory $target
+L "relaunched"
+
+# Clean up staging and the helper itself.
+if ($cleanup -and (Test-Path $cleanup)) { Remove-Item -Recurse -Force $cleanup -ErrorAction SilentlyContinue }
+L "done"
+Remove-Item -Force $self -ErrorAction SilentlyContinue
+"#;
 
 fn spawn_windows_update_helper(helper: &WindowsUpdateHelper) -> Result<(), PlatformError> {
     // `CREATE_BREAKAWAY_FROM_JOB`: if a launcher placed the app in a
