@@ -54,6 +54,10 @@ pub struct WindowsShellTabBarLayout {
     pub position: WindowsShellTabBarPosition,
     pub dimension: i32,
     pub app_name: String,
+    /// Absolute path to the lxapp's own icon (resolved via the app-info API),
+    /// shown in the group header and the icon rail. Empty falls back to the
+    /// bundled LingXia mark.
+    pub app_icon_path: String,
     pub group_id: String,
     pub color: u32,
     pub selected_color: u32,
@@ -61,7 +65,11 @@ pub struct WindowsShellTabBarLayout {
     pub border_color: u32,
     pub selected_index: i32,
     pub items: Vec<WindowsShellTabBarItemLayout>,
+    /// Sidebar fully hidden (width 0).
     pub collapsed: bool,
+    /// Sidebar collapsed to an icon-only rail (the macOS first-collapse
+    /// state). Ignored when `collapsed` is set.
+    pub icon_rail: bool,
     pub items_collapsed: bool,
     pub auxiliary_items: Vec<WindowsShellAuxiliaryItemLayout>,
     pub show_auxiliary_add: bool,

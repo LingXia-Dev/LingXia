@@ -276,10 +276,28 @@ pub(super) fn prepare_windows_assets_root(
         &windows_design_icons,
         prev.as_ref().map(|s| &s.windows_design_icon_hashes),
     )?;
+    changed |= sync_windows_lingxia_icon(assets_root)?;
 
     if changed {
         cache.destinations.insert(dest_key, desired);
     }
 
     Ok(())
+}
+
+/// The LingXia mark (single design source), copied next to the Windows app as
+/// `icons/lingxia.png`. The shell loads it as the default sidebar icon for
+/// lxapp items / browser tabs that have no icon of their own.
+const LINGXIA_DEFAULT_ICON: &[u8] =
+    include_bytes!("../../../../design/app-icon/appicon-glyph-1024.png");
+
+fn sync_windows_lingxia_icon(assets_root: &Path) -> Result<bool> {
+    let icons_dir = assets_root.join("icons");
+    fs::create_dir_all(&icons_dir)?;
+    let path = icons_dir.join("lingxia.png");
+    let wrote = write_if_changed(&path, LINGXIA_DEFAULT_ICON)?;
+    if wrote {
+        println!("  {} lingxia.png -> {}", "ok".green(), path.display());
+    }
+    Ok(wrote)
 }

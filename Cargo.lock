@@ -3376,9 +3376,12 @@ dependencies = [
  "lingxia-webview",
  "lingxia-windows-host",
  "log",
+ "resvg",
  "serde_json",
  "thiserror 2.0.18",
+ "tiny-skia",
  "tokio",
+ "usvg",
  "windows",
  "windows-core",
 ]

@@ -60,14 +60,35 @@ pub(super) fn draw_sidebar_tab_bar(hdc: HDC, rect: RECT, tabbar: &WindowsShellTa
     }
     fill_rect(hdc, rect, SHELL_SIDEBAR_BACKGROUND);
 
+    // Icon-only rail (the macOS first-collapse state): just the item icons,
+    // centered, no header/labels/footer.
+    if tabbar.icon_rail {
+        draw_sidebar_rail(hdc, rect, tabbar);
+        return;
+    }
+
     let title = if tabbar.app_name.trim().is_empty() {
         "LXAPP".to_string()
     } else {
         tabbar.app_name.to_ascii_uppercase()
     };
     let chevron_rect = sidebar_group_chevron_rect(rect);
-    let header_rect = RECT {
+    // The lxapp's own icon (via the app-info API) leads the group header.
+    let icon_top = rect.top + 22 + (SIDEBAR_HEADER_HEIGHT - 22 - SIDEBAR_ICON_SIZE).max(0) / 2;
+    let icon_rect = RECT {
         left: rect.left + SIDEBAR_ITEM_INSET + 2,
+        top: icon_top,
+        right: rect.left + SIDEBAR_ITEM_INSET + 2 + SIDEBAR_ICON_SIZE,
+        bottom: icon_top + SIDEBAR_ICON_SIZE,
+    };
+    draw_icon_or_default(
+        hdc,
+        &tabbar.app_icon_path,
+        icon_rect,
+        SIDEBAR_ICON_SIZE as u32,
+    );
+    let header_rect = RECT {
+        left: icon_rect.right + 8,
         top: rect.top + 22,
         right: chevron_rect.left - 4,
         bottom: rect.top + SIDEBAR_HEADER_HEIGHT,
@@ -162,20 +183,16 @@ fn draw_sidebar_items(hdc: HDC, rect: RECT, tabbar: &WindowsShellTabBarLayout) {
         } else {
             &item.icon_path
         };
-        if !icon_path.trim().is_empty() {
-            let icon_rect = centered_icon_rect(
-                RECT {
-                    left: item_rect.left + 18,
-                    top: item_rect.top,
-                    right: item_rect.left + 18 + SIDEBAR_ICON_SIZE,
-                    bottom: item_rect.bottom,
-                },
-                SIDEBAR_ICON_SIZE,
-            );
-            if !draw_icon_from_path(hdc, icon_path, icon_rect, SIDEBAR_ICON_SIZE as u32) {
-                draw_text(hdc, "?", icon_rect, text_color, DT_CENTER);
-            }
-        }
+        let icon_rect = centered_icon_rect(
+            RECT {
+                left: item_rect.left + 18,
+                top: item_rect.top,
+                right: item_rect.left + 18 + SIDEBAR_ICON_SIZE,
+                bottom: item_rect.bottom,
+            },
+            SIDEBAR_ICON_SIZE,
+        );
+        draw_icon_or_default(hdc, icon_path, icon_rect, SIDEBAR_ICON_SIZE as u32);
         draw_text(hdc, &item.text, label_rect, text_color, DT_LEFT);
 
         if let Some(badge) = item.badge.as_ref().filter(|badge| !badge.is_empty()) {
@@ -184,6 +201,56 @@ fn draw_sidebar_items(hdc: HDC, rect: RECT, tabbar: &WindowsShellTabBarLayout) {
             draw_red_dot(hdc, item_rect);
         }
     }
+}
+
+/// Draws the icon-only rail: the FIRST-LEVEL entries only — the lxapp's app
+/// icon, then each open browser tab's favicon — as centered icons. The
+/// current app's tabbar pages, the header, and the footer activators are all
+/// hidden here (mirroring the macOS compact rail).
+fn draw_sidebar_rail(hdc: HDC, rect: RECT, tabbar: &WindowsShellTabBarLayout) {
+    // Row 0: the current lxapp's own icon (always the active first-level item).
+    let app_rect = sidebar_rail_item_rect(rect, 0);
+    fill_round_rect_aa(hdc, app_rect, 8, 0xffffff);
+    let app_icon_rect = centered_icon_rect(app_rect, SIDEBAR_RAIL_ICON_SIZE);
+    draw_icon_or_default(
+        hdc,
+        &tabbar.app_icon_path,
+        app_icon_rect,
+        SIDEBAR_RAIL_ICON_SIZE as u32,
+    );
+
+    // Rows 1..: each open browser tab's favicon (internal pages fall back to
+    // the LingXia mark).
+    for (index, item) in tabbar.auxiliary_items.iter().enumerate() {
+        let item_rect = sidebar_rail_item_rect(rect, 1 + index);
+        if item.active {
+            fill_round_rect_aa(hdc, item_rect, 8, 0xffffff);
+        }
+        let icon_rect = centered_icon_rect(item_rect, SIDEBAR_RAIL_ICON_SIZE);
+        let drew = match item.icon_png.as_deref() {
+            Some(png) => draw_icon_from_png_bytes(hdc, &item.id, png, icon_rect),
+            None => false,
+        };
+        if !drew {
+            draw_default_app_icon(hdc, icon_rect);
+        }
+    }
+}
+
+/// Centered square cell of a rail item, stacked below the top caption strip.
+pub(super) fn sidebar_rail_item_rect(rect: RECT, index: usize) -> RECT {
+    let cell = SIDEBAR_RAIL_ITEM_SIZE;
+    let top = rect.top
+        + SHELL_TOP_BAR_HEIGHT
+        + SIDEBAR_ITEM_GAP
+        + index as i32 * (cell + SIDEBAR_ITEM_GAP);
+    let left = rect.left + (rect_width(&rect) - cell).max(0) / 2;
+    normalize_rect(RECT {
+        left,
+        top,
+        right: left + cell,
+        bottom: top + cell,
+    })
 }
 
 /// Chevron hit/draw rect at the trailing edge of the sidebar group header
