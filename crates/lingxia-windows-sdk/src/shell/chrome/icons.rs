@@ -24,7 +24,7 @@ pub(super) fn cached_png_icon_handle(path: &str, size: u32) -> Option<isize> {
         if let Some(handle) = handles.get(&key) {
             return *handle;
         }
-        let handle = create_icon_from_png(&path, size).ok();
+        let handle = create_icon_from_path(&path, size).ok();
         if let Some(Some(previous)) = handles.insert(key, handle)
             && Some(previous) != handle
         {
@@ -32,7 +32,7 @@ pub(super) fn cached_png_icon_handle(path: &str, size: u32) -> Option<isize> {
         }
         return handle;
     }
-    create_icon_from_png(&path, size).ok()
+    create_icon_from_path(&path, size).ok()
 }
 
 pub(super) fn cached_png_bytes_icon_handle(
@@ -60,7 +60,21 @@ pub(super) fn cached_png_bytes_icon_handle(
     create_icon_from_png_bytes(png, size).ok()
 }
 
-fn create_icon_from_png(path: &Path, size: u32) -> Result<isize, String> {
+fn create_icon_from_path(path: &Path, size: u32) -> Result<isize, String> {
+    let is_svg = path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("svg"));
+    if is_svg {
+        let data = std::fs::read(path)
+            .map_err(|err| format!("Failed to read SVG icon {}: {err}", path.display()))?;
+        let image = rasterize_svg(&data, size)?;
+        return create_icon_from_image(
+            image::DynamicImage::ImageRgba8(image),
+            size,
+            &path.display().to_string(),
+        );
+    }
     let image = image::open(path).map_err(|err| {
         format!(
             "Failed to load Windows shell icon {}: {err}",
@@ -68,6 +82,33 @@ fn create_icon_from_png(path: &Path, size: u32) -> Result<isize, String> {
         )
     })?;
     create_icon_from_image(image, size, &path.display().to_string())
+}
+
+/// Rasterizes an SVG (icons may be SVG, as on macOS) to an `size`x`size`
+/// straight-alpha RGBA image, fit to the square and centered.
+fn rasterize_svg(svg: &[u8], size: u32) -> Result<image::RgbaImage, String> {
+    let svg = std::str::from_utf8(svg).map_err(|err| format!("SVG icon is not UTF-8: {err}"))?;
+    let tree = usvg::Tree::from_str(svg, &usvg::Options::default())
+        .map_err(|err| format!("Failed to parse SVG icon: {err}"))?;
+    let svg_size = tree.size();
+    let max_side = svg_size.width().max(svg_size.height());
+    if max_side <= 0.0 {
+        return Err("SVG icon has an empty viewport".to_string());
+    }
+    let scale = size as f32 / max_side;
+    let offset_x = (size as f32 - svg_size.width() * scale) / 2.0;
+    let offset_y = (size as f32 - svg_size.height() * scale) / 2.0;
+    let mut pixmap = tiny_skia::Pixmap::new(size, size)
+        .ok_or_else(|| "Failed to allocate SVG pixmap".to_string())?;
+    let transform = tiny_skia::Transform::from_row(scale, 0.0, 0.0, scale, offset_x, offset_y);
+    resvg::render(&tree, transform, &mut pixmap.as_mut());
+
+    let mut image = image::RgbaImage::new(size, size);
+    for (pixel, out) in pixmap.pixels().iter().zip(image.pixels_mut()) {
+        let color = pixel.demultiply();
+        *out = image::Rgba([color.red(), color.green(), color.blue(), color.alpha()]);
+    }
+    Ok(image)
 }
 
 fn create_icon_from_png_bytes(png: &[u8], size: u32) -> Result<isize, String> {

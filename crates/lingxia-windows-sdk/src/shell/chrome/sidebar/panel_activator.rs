@@ -19,6 +19,10 @@ pub(in crate::shell::chrome) fn panel_activator_rects(
             WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right
         )
     {
+        // The icon rail hides footer activators (mirroring macOS compact).
+        if tabbar.icon_rail {
+            return Vec::new();
+        }
         let footer_top = tabbar_rect.bottom - SIDEBAR_FOOTER_HEIGHT;
         let top = footer_top + (SIDEBAR_FOOTER_HEIGHT - PANEL_ACTIVATOR_SIZE) / 2;
         let mut right = tabbar_rect.right - PANEL_ACTIVATOR_MARGIN;
@@ -109,16 +113,12 @@ pub(in crate::shell::chrome) fn draw_panel_activators(
             );
         }
         let icon_rect = centered_icon_rect(rect, PANEL_ACTIVATOR_ICON_SIZE);
-        let icon_drawn = activator
-            .filter(|item| !item.icon_path.trim().is_empty())
-            .is_some_and(|item| {
-                draw_icon_from_path(
-                    hdc,
-                    &item.icon_path,
-                    icon_rect,
-                    PANEL_ACTIVATOR_ICON_SIZE as u32,
-                )
-            });
+        let icon_path = activator
+            .map(|item| item.icon_path.as_str())
+            .unwrap_or_default();
+        // Resolved lxapp icon (or static path); falls back to the LingXia mark.
+        let icon_drawn =
+            draw_icon_or_default(hdc, icon_path, icon_rect, PANEL_ACTIVATOR_ICON_SIZE as u32);
         if !icon_drawn {
             draw_text(hdc, &text, rect, text_color, DT_CENTER);
         }

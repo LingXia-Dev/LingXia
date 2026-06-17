@@ -1,7 +1,7 @@
 //! Low-level GDI/GDI+ drawing helpers for shell chrome.
 
 use std::ffi::c_void;
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
 
 use windows::Win32::Foundation::{COLORREF, RECT};
 use windows::Win32::Graphics::Gdi::{
@@ -320,6 +320,47 @@ pub(in crate::shell) fn draw_icon_from_path(hdc: HDC, path: &str, rect: RECT, si
         return false;
     };
     draw_icon_handle(hdc, handle, rect)
+}
+
+/// Absolute path to the LingXia icon, copied next to the app by the CLI
+/// (`<asset_dir>/icons/lingxia.png`) and loaded from disk like every other
+/// sidebar icon — set once the shell knows its asset dir.
+static DEFAULT_ICON_PATH: OnceLock<Mutex<Option<String>>> = OnceLock::new();
+
+/// Records the resolved path of the LingXia icon (from the runtime, which
+/// knows the app's asset dir).
+pub(in crate::shell) fn set_default_icon_path(path: String) {
+    let slot = DEFAULT_ICON_PATH.get_or_init(|| Mutex::new(None));
+    if let Ok(mut slot) = slot.lock() {
+        *slot = Some(path);
+    }
+}
+
+fn default_icon_path() -> Option<String> {
+    DEFAULT_ICON_PATH
+        .get()
+        .and_then(|slot| slot.lock().ok())
+        .and_then(|slot| slot.clone())
+}
+
+/// Draws the LingXia icon into `rect` — the default icon for sidebar entries
+/// with no icon of their own (lxapp items / browser tabs that report none,
+/// built-in/internal pages). Loaded from the CLI-copied asset path; returns
+/// `false` when no asset dir is known yet or the file is missing.
+pub(in crate::shell) fn draw_default_app_icon(hdc: HDC, rect: RECT) -> bool {
+    let Some(path) = default_icon_path() else {
+        return false;
+    };
+    draw_icon_from_path(hdc, &path, rect, rect_width(&rect).max(1) as u32)
+}
+
+/// Draws `path`'s icon (PNG or SVG), falling back to the default LingXia mark
+/// when the path is empty or fails to load.
+pub(in crate::shell) fn draw_icon_or_default(hdc: HDC, path: &str, rect: RECT, size: u32) -> bool {
+    if !path.trim().is_empty() && draw_icon_from_path(hdc, path, rect, size) {
+        return true;
+    }
+    draw_default_app_icon(hdc, rect)
 }
 
 /// Draws a PNG supplied as in-memory bytes (e.g. a tab favicon) into

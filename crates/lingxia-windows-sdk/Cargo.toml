@@ -40,7 +40,10 @@ shell-runtime = [
     "dep:lingxia-logic",
     "dep:lingxia-shell",
     "dep:lingxia-terminal",
+    "dep:resvg",
+    "dep:tiny-skia",
     "dep:tokio",
+    "dep:usvg",
     "lingxia/shell-runtime",
 ]
 terminal-runtime = ["runtime", "dep:lingxia-terminal", "lingxia/terminal-runtime"]
@@ -60,6 +63,10 @@ tokio = { workspace = true, optional = true }
 [target.'cfg(target_os = "windows")'.dependencies]
 image = { version = "0.25.10", default-features = false, features = ["png"], optional = true }
 log = { workspace = true, optional = true }
+# SVG sidebar/app icons (lxapp icons may be SVG, as on macOS).
+resvg = { version = "0.45.1", optional = true }
+tiny-skia = { version = "0.11.4", optional = true }
+usvg = { version = "0.45.1", optional = true }
 lxapp = { workspace = true, default-features = false, optional = true }
 lingxia-messaging = { workspace = true, optional = true }
 lingxia-platform = { workspace = true, optional = true }

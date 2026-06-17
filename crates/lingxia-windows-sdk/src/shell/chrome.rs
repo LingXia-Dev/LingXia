@@ -76,6 +76,21 @@ pub(super) const SIDEBAR_HEADER_ACTION_GAP: i32 = 4;
 
 pub(super) const SHELL_SIDEBAR_WIDTH: i32 = 180;
 
+/// Width of the icon-only rail (the macOS first-collapse state).
+pub(super) const SHELL_SIDEBAR_RAIL_WIDTH: i32 = 56;
+
+/// Column width for a sidebar in its current collapse state: 0 hidden, the
+/// rail width when collapsed to icons, else the expanded width.
+pub(super) fn sidebar_column_width(tabbar: &WindowsShellTabBarLayout) -> i32 {
+    if tabbar.collapsed {
+        0
+    } else if tabbar.icon_rail {
+        SHELL_SIDEBAR_RAIL_WIDTH
+    } else {
+        tabbar.dimension.max(SHELL_SIDEBAR_WIDTH)
+    }
+}
+
 pub(super) const SIDEBAR_HEADER_HEIGHT: i32 = 66;
 
 pub(super) const SIDEBAR_ITEM_HEIGHT: i32 = 34;
@@ -96,6 +111,12 @@ pub(super) const SIDEBAR_BROWSER_CLOSE_SIZE: i32 = 22;
 pub(super) const GLYPH_TAB_CLOSE: &str = "\u{2715}";
 
 pub(super) const SIDEBAR_ICON_SIZE: i32 = 16;
+
+/// Square cell size for an item in the icon-only rail.
+pub(super) const SIDEBAR_RAIL_ITEM_SIZE: i32 = 40;
+
+/// Icon size drawn inside a rail cell.
+pub(super) const SIDEBAR_RAIL_ICON_SIZE: i32 = 20;
 
 /// Edge length of the favicon drawn on a sidebar browser-tab row.
 pub(super) const SIDEBAR_FAVICON_SIZE: i32 = 16;
@@ -312,6 +333,7 @@ fn tabbar_requires_full_repaint(
         || old_tabbar.border_color != new_tabbar.border_color
         || old_tabbar.items != new_tabbar.items
         || old_tabbar.collapsed != new_tabbar.collapsed
+        || old_tabbar.icon_rail != new_tabbar.icon_rail
         || old_tabbar.items_collapsed != new_tabbar.items_collapsed
         || old_tabbar.show_auxiliary_add != new_tabbar.show_auxiliary_add
         || old_tabbar.header_actions != new_tabbar.header_actions
@@ -477,11 +499,7 @@ pub(super) fn compute_chrome_rects(client: RECT, layout: &WindowsShellWindowLayo
             WindowsShellTabBarPosition::Left => {
                 // A collapsed sidebar keeps the side-card layout (insets,
                 // top bar) at width 0; the top-bar toggle re-expands it.
-                let width = if tabbar.collapsed {
-                    0
-                } else {
-                    tabbar.dimension.max(SHELL_SIDEBAR_WIDTH)
-                };
+                let width = sidebar_column_width(tabbar);
                 let right = (content.left + width).min(content.right);
                 let rect = RECT {
                     left: content.left,
@@ -498,11 +516,7 @@ pub(super) fn compute_chrome_rects(client: RECT, layout: &WindowsShellWindowLayo
                 rect
             }
             WindowsShellTabBarPosition::Right => {
-                let width = if tabbar.collapsed {
-                    0
-                } else {
-                    tabbar.dimension.max(SHELL_SIDEBAR_WIDTH)
-                };
+                let width = sidebar_column_width(tabbar);
                 let left = (content.right - width).max(content.left);
                 let rect = RECT {
                     left,
@@ -872,6 +886,28 @@ pub(super) fn chrome_hit_test(
             tabbar.position,
             WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right
         );
+        // Icon rail: first-level entries only. Row 0 is the lxapp icon
+        // (clicking it switches to the lxapp — returning from a presented
+        // browser tab — and keeps the rail collapsed); rows 1.. are browser
+        // tab favicons.
+        if sidebar && tabbar.icon_rail {
+            if rect_contains(&sidebar_rail_item_rect(tabbar_rect, 0), point) {
+                let index = tabbar.selected_index.max(0) as usize;
+                return Some(chrome_command(
+                    command_id::TAB_BAR_CLICK,
+                    json!({ "index": index }),
+                ));
+            }
+            for (index, item) in tabbar.auxiliary_items.iter().enumerate() {
+                if rect_contains(&sidebar_rail_item_rect(tabbar_rect, 1 + index), point) {
+                    return Some(chrome_command(
+                        command_id::BROWSER_TAB_CLICK,
+                        json!({ "tab_id": item.id.clone() }),
+                    ));
+                }
+            }
+            return Some(WindowsChromeHit::Chrome);
+        }
         if sidebar {
             if rect_contains(&sidebar_group_chevron_rect(tabbar_rect), point) {
                 return Some(chrome_command(
