@@ -197,8 +197,8 @@ pub struct PageSurfaceRequest {
     pub position: SurfacePosition,
     /// Authoritative core role for this surface. `Aside` (the explicit
     /// `lx.surface.aside()` verb) is the one path that docks (splits the main);
-    /// `Float` is a popup (legacy `open()` / `float()`); `Main` is a window.
-    /// `kind` still drives the dispose-TTL and legacy-present distinction.
+    /// `Float` is a popup; `Main` is a window. `kind` still drives the
+    /// dispose-TTL distinction.
     pub role: lingxia_surface::Role,
 }
 

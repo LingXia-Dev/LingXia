@@ -98,10 +98,9 @@ pub struct SurfaceRequest {
 }
 
 pub trait SurfacePresenter: Send + Sync + 'static {
-    /// New (Adaptive Surface Layout) contract: the shared core resolves a
-    /// `LayoutPresentationPlan` for one window/graph and the platform skin binds
-    /// it. This supersedes the per-request `present_surface` path (the legacy
-    /// methods below are migrated away in the B-series and then removed).
+    /// The shared core resolves a `LayoutPresentationPlan` for one window/graph
+    /// and the platform skin binds it. The per-surface methods below present a
+    /// single surface at a time.
     fn present_layout(
         &self,
         _window_id: &str,

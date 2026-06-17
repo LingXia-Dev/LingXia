@@ -5,11 +5,17 @@ use jni::objects::{JClass, JObject, JValue};
 use jni::{jni_sig, jni_str};
 
 impl SurfacePresenter for Platform {
-    fn present_surface(&self, request: SurfaceRequest) -> Result<(), PlatformError> {
-        if request.kind != SurfaceKind::Overlay {
-            return Err(PlatformError::NotSupported(
-                "window surface is not supported on Android".to_string(),
-            ));
+    fn present_surface(&self, mut request: SurfaceRequest) -> Result<(), PlatformError> {
+        // Windows aren't a native form on Android. Rather than reject (which
+        // would make an aside() arbitrated into a main on a compact window
+        // fail outright), fall back to a fullscreen overlay so the content
+        // still shows. The float/edge-aside overlay path is unchanged.
+        if request.kind == SurfaceKind::Window {
+            request.kind = SurfaceKind::Overlay;
+            request.width = f64::NAN;
+            request.height = f64::NAN;
+            request.width_ratio = 1.0;
+            request.height_ratio = 1.0;
         }
 
         let surface_class: &JClass = super::get_cached_class(super::CachedClass::LxAppSurface)

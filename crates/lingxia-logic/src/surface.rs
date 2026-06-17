@@ -141,10 +141,6 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     ctx.register_hidden_class::<JSSurface>()?;
     let lx = ctx.global().get::<_, JSObject>("lx")?;
     let surface = JSObject::new(ctx);
-    surface.set("open", JSFunc::new(ctx, open_surface)?)?;
-    // Adaptive Surface Layout (new model): read the core's resolved layout for
-    // this app's window. Returns a JSON string (JS-side `JSON.parse`).
-    surface.set("derivedLayout", JSFunc::new(ctx, surface_derived_layout)?)?;
     // current(): this window's adaptive context, so an lxapp can self-adapt
     // (e.g. switch columns by sizeClass). Returns an object.
     surface.set("current", JSFunc::new(ctx, surface_current)?)?;
@@ -233,12 +229,6 @@ fn build_open_options(
     Err(invalid_surface_target(
         "target must be a page path string or { url }",
     ))
-}
-
-fn surface_derived_layout(ctx: JSContext) -> JSResult<String> {
-    let lxapp = LxApp::from_ctx(&ctx)?;
-    Ok(serde_json::to_string(&lxapp.surface_derived_layout())
-        .unwrap_or_else(|_| "null".to_string()))
 }
 
 #[derive(Debug, Clone, IntoJSObj)]
@@ -683,9 +673,8 @@ fn parse_surface_options(lxapp: &LxApp, options: &JSValue) -> JSResult<PageSurfa
     let position = parse_position(&obj, kind)?;
     let (width, height, width_ratio, height_ratio) = parse_size(&obj, kind)?;
     // Resolve the authoritative core role. A window is always the top-level
-    // main; for an overlay, `role: "aside"` (set by lx.surface.aside) is the
-    // only thing that docks, every other overlay (legacy open() / float()) is a
-    // float popup.
+    // main; for an overlay, `role: "aside"` (set by lx.surface.aside) docks
+    // (splits the main); any other overlay is a float popup.
     let role = match kind {
         SurfaceKind::Window => lingxia_surface::Role::Main,
         SurfaceKind::Overlay => match read_optional_string(&obj, "role")?.as_deref() {
