@@ -218,8 +218,13 @@ async fn open_aside(ctx: JSContext, target: JSValue, edge: Optional<String>) -> 
 }
 
 /// `lx.surface.float(target)` — float a surface (popup) above the main content.
-async fn open_float(ctx: JSContext, target: JSValue) -> JSResult<JSObject> {
-    let options = build_open_options(&ctx, &target, "overlay", "center", "float")?;
+async fn open_float(
+    ctx: JSContext,
+    target: JSValue,
+    position: Optional<String>,
+) -> JSResult<JSObject> {
+    let position = position.0.unwrap_or_else(|| "center".to_string());
+    let options = build_open_options(&ctx, &target, "overlay", &position, "float")?;
     open_surface(ctx, options).await
 }
 
