@@ -12,10 +12,10 @@ use std::time::Duration;
 const SURFACE_DISPOSE_TTL_MS: u64 = 30_000;
 static SURFACE_CLOSE_OBSERVER: OnceLock<fn(&str, &str) -> bool> = OnceLock::new();
 
-/// §11.2 Phase 2: the surface graph is per-WINDOW, not per-lxapp. The graph and
-/// its single commit point now live on a dedicated controller keyed by
-/// `window_id`; macOS/mobile are single-window today (the `PRIMARY_WINDOW`
-/// entry), multi-window (§8) just adds more entries to the registry.
+/// The surface graph is per-WINDOW, not per-lxapp. The graph and its single
+/// commit point live on a controller keyed by `window_id`; macOS/mobile are
+/// single-window today (the `PRIMARY_WINDOW` entry), multi-window just adds more
+/// entries to the registry.
 pub(crate) struct WindowSurfaceController {
     window_id: String,
     manager: std::sync::Mutex<lingxia_surface::SurfaceManager>,
@@ -93,8 +93,6 @@ impl WindowSurfaceController {
         (present_kind, present_position, present_role, evicted)
     }
 
-    /// Close a surface in the core graph and commit. Returns whether anything
-    /// was removed.
     fn close(&self, id: &str) -> bool {
         let removed = {
             let mut manager = self.manager.lock().unwrap();
@@ -104,9 +102,8 @@ impl WindowSurfaceController {
         removed
     }
 
-    /// §11.2 Phase 1 — mirror a host-declared aside into the core graph (seeding
-    /// the root `main` if absent so the aside has a primary to dock to) and
-    /// commit.
+    /// Mirror a host-declared aside into the core graph, seeding the root `main`
+    /// if absent so the aside has a primary to dock to, and commit.
     fn register_host_aside(
         &self,
         surface_id: &str,
@@ -148,7 +145,6 @@ impl WindowSurfaceController {
         self.commit();
     }
 
-    /// Remove a host-declared aside from the core graph and commit.
     fn unregister_host_aside(&self, surface_id: &str) {
         {
             let _ = self.manager.lock().unwrap().close(surface_id);
@@ -173,7 +169,6 @@ impl WindowSurfaceController {
         changed
     }
 
-    /// Snapshot the core's `LayoutPresentationPlan` for this window.
     fn presentation_plan(&self) -> lingxia_surface::LayoutPresentationPlan {
         self.manager.lock().unwrap().presentation_plan()
     }
@@ -348,8 +343,8 @@ impl LxApp {
         // another lxapp; `close_surface` no-ops for those. For a non-local
         // victim fire the global close observer (routes onClose to the owner by
         // id) and clear any host-managed visibility; the native aside undock is
-        // handled by present_derived_layout() below (the reconciler drops
-        // surfaces no longer in the tree).
+        // handled by the commit below (the reconciler drops surfaces no longer
+        // in the tree).
         for victim in &evicted {
             let owned = self
                 .state
@@ -365,7 +360,7 @@ impl LxApp {
             }
         }
 
-        // §11.2 Phase 3: reconcile aside docking from the (now-mutated) core graph.
+        // Reconcile aside docking from the (now-mutated) core graph.
         controller.commit();
 
         Ok(PageSurface {
@@ -465,12 +460,10 @@ impl LxApp {
             .map_err(Into::into)
     }
 
-    /// §11.2 Phase 1 — mirror a host-declared aside (e.g. the assistant/terminal
-    /// attach-panel) into this lxapp's surface graph so the core's DerivedLayout
-    /// reflects it. Owner is `Host` (window-scoped, not page/lxapp). This does NOT
-    /// drive rendering yet; it makes the core the state source of truth so
-    /// `lx.surface.derivedLayout()` includes host surfaces. Interim ownership is
-    /// the primary lxapp's manager until the graph is promoted to per-window.
+    /// Mirror a host-declared aside (e.g. the assistant/terminal attach-panel)
+    /// into the window's surface graph so the core's DerivedLayout reflects it
+    /// and `lx.surface.derivedLayout()` includes host surfaces. Owner is `Host`
+    /// (window-scoped, not page/lxapp).
     pub fn register_host_aside(&self, surface_id: &str, edge: &str) {
         let surface_id = surface_id.trim();
         if surface_id.is_empty() {
@@ -483,7 +476,7 @@ impl LxApp {
         );
     }
 
-    /// Remove a host-declared aside from the surface graph (§11.2 Phase 1).
+    /// Remove a host-declared aside from the surface graph.
     pub fn unregister_host_aside(&self, surface_id: &str) {
         let surface_id = surface_id.trim();
         if surface_id.is_empty() {
@@ -515,7 +508,7 @@ impl LxApp {
             .and_then(|state| state.surfaces.lock().unwrap().remove(id))
             .is_some();
         // Keep the Adaptive Surface Layout core in sync with removals; the
-        // controller re-derives and reconciles aside docking (§11.2 Phase 3).
+        // controller re-derives and reconciles aside docking.
         window_controller(PRIMARY_WINDOW, &self.runtime).close(id);
         removed
     }
@@ -558,8 +551,8 @@ impl LxApp {
         Some(window_controller(PRIMARY_WINDOW, &self.runtime).presentation_plan())
     }
 
-    /// Map a legacy surface request into an Adaptive Surface Layout node
-    /// (§10.1 migration: Window→main, Overlay+Center→float, Overlay+edge→aside).
+    /// Map a legacy surface request into an Adaptive Surface Layout node:
+    /// Window→main, Overlay+Center→float, Overlay+edge→aside.
     fn build_surface_node(
         &self,
         id: &str,

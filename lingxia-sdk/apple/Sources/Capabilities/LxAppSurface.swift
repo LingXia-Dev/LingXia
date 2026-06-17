@@ -442,10 +442,10 @@ enum LxAppSurface {
             dockedPosition: panelPosition,
             dockedContainer: container
         )
-        // §11.2 Phase 4: only CREATE + REGISTER the aside content here (hidden).
-        // The core's `present_layout` (fired right after this present_surface
-        // returns) drives the aside-layout reconciler, which is the sole
-        // authority for the aside's edge + visibility.
+        // Only CREATE + REGISTER the aside content here (hidden). The core's
+        // `present_layout` (fired right after this present_surface returns)
+        // drives the aside-layout reconciler, which is the sole authority for the
+        // aside's edge + visibility.
         shell.registerPanelWithNativeContent(
             id: id,
             position: panelPosition,

@@ -282,9 +282,9 @@ final class LxAppMacAppUIRuntime: NSObject {
         }
 
         shell.storeSession(sessionId, for: appId)
-        // §11.2 Phase 4: register the aside lxapp content (hidden); the
-        // aside-layout reconciler owns its edge + visibility. registerHostAside
-        // (in openAttachPanelSurface) fired present_layout before the content
+        // Register the aside lxapp content (hidden); the aside-layout reconciler
+        // owns its edge + visibility. registerHostAside (in
+        // openAttachPanelSurface) fired present_layout before the content
         // existed, so re-run the reconciler now that the panel is registered.
         shell.registerPanelWithContent(id: panelId, position: position, appId: appId, path: path)
         if let primaryAppId = rootSurface.content.appId {
@@ -517,9 +517,8 @@ final class LxAppMacAppUIRuntime: NSObject {
             try openSurface(id: parentID)
         }
 
-        // §11.2 Phase 1: reflect this host-declared aside in the core surface
-        // graph (state-only; no rendering change) so lx.surface.derivedLayout()
-        // includes host surfaces. Mirrored into the primary lxapp's graph.
+        // Reflect this host-declared aside in the core surface graph so
+        // lx.surface.derivedLayout() includes host surfaces.
         if let primaryAppId = rootSurface.content.appId {
             _ = registerHostAside(primaryAppId, surface.id, surface.presentation.edge?.rawValue ?? "right")
         }
@@ -538,9 +537,9 @@ final class LxAppMacAppUIRuntime: NSObject {
 
         if openedSurfaceIDs.contains(surface.id) {
             shell.show()
-            // §11.2 Phase 4: the panel is already registered, so registerHostAside
-            // above already drove the aside-layout reconciler to (re-)place and
-            // show it at the core tree's edge. Don't show the panel directly here.
+            // The panel is already registered, so registerHostAside above already
+            // drove the aside-layout reconciler to (re-)place and show it at the
+            // core tree's edge. Don't show the panel directly here.
             visibleSurfaceIDs.insert(surface.id)
             refreshChromeActivators()
             return
@@ -619,11 +618,11 @@ final class LxAppMacAppUIRuntime: NSObject {
         logTerminal(
             "runtime.beforeShowPanel surface=\(surface.id) workspaceFrame=\(lxTerminalRuntimeFormatRect(workspace.frame)) workspaceBounds=\(lxTerminalRuntimeFormatRect(workspace.bounds)) windowFrame=\(lxTerminalRuntimeFormatRect(shell.hostWindow?.frame ?? .zero))"
         )
-        // §11.2 Phase 4: register the terminal content (hidden); the aside-layout
-        // reconciler is the sole authority for its edge + visibility. The host
-        // aside was mirrored into the core graph above (registerHostAside), which
-        // fires present_layout before the content exists, so re-run the
-        // reconciler now that the panel is registered.
+        // Register the terminal content (hidden); the aside-layout reconciler is
+        // the sole authority for its edge + visibility. The host aside was
+        // mirrored into the core graph above (registerHostAside), which fires
+        // present_layout before the content exists, so re-run the reconciler now
+        // that the panel is registered.
         shell.registerPanelWithNativeContent(
             id: surface.id,
             position: position,
@@ -657,9 +656,9 @@ final class LxAppMacAppUIRuntime: NSObject {
         terminalWorkspaces.removeValue(forKey: id)
         openedSurfaceIDs.remove(id)
         visibleSurfaceIDs.remove(id)
-        // §11.2 Phase 4: drop the terminal from the core graph so the aside-layout
-        // reconciler (sole authority) undocks it and never re-shows it on a later
-        // present_layout. The direct hidePanel below is a redundant immediate hide.
+        // Drop the terminal from the core graph so the aside-layout reconciler
+        // (sole authority) undocks it and never re-shows it on a later
+        // present_layout.
         if let primaryAppId = rootSurface.content.appId {
             _ = unregisterHostAside(primaryAppId, id)
         }
@@ -723,7 +722,7 @@ final class LxAppMacAppUIRuntime: NSObject {
             if surface.content.kind == .lxapp, let appId = surface.content.appId {
                 shell.unregisterAsideLxApp(appId: appId)
             }
-            // §11.2 Phase 1: drop it from the core surface graph too.
+            // Drop it from the core surface graph too.
             if let primaryAppId = rootSurface.content.appId {
                 _ = unregisterHostAside(primaryAppId, id)
             }

@@ -5,7 +5,7 @@ import OSLog
 import AppKit
 import CLingXiaRustAPI
 
-/// Adaptive Surface Layout (§11.2 Phase 4) — macOS aside-dock reconciler.
+/// Adaptive Surface Layout — macOS aside-dock reconciler.
 ///
 /// The shared Rust core owns the surface graph and, after every mutation,
 /// re-derives a `LayoutPresentationPlan` and hands it here. This reconciler is the SOLE

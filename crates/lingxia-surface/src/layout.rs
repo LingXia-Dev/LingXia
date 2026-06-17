@@ -1,12 +1,12 @@
 //! Layout output types: sizeClass, LayoutTree, and the per-platform
-//! `DerivedLayout` that skins bind to (§2 and §6 of the spec).
+//! `DerivedLayout` that skins bind to.
 
 use serde::{Deserialize, Serialize};
 
 use crate::model::SurfaceId;
 
-/// Available-width band. Aligned to Material breakpoints (§6.1) and computed
-/// from the *container* width, not the physical screen.
+/// Available-width band. Aligned to Material breakpoints and computed from the
+/// *container* width, not the physical screen.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum SizeClass {
@@ -18,7 +18,7 @@ pub enum SizeClass {
 /// Compact `< 600`, Medium `600..=840`, Expanded `> 840`.
 pub const COMPACT_MAX: f64 = 600.0;
 pub const MEDIUM_MAX: f64 = 840.0;
-/// Default hysteresis margin to avoid breakpoint thrashing (§6.1).
+/// Default hysteresis margin to avoid breakpoint thrashing.
 pub const DEFAULT_HYSTERESIS: f64 = 24.0;
 
 impl SizeClass {
@@ -82,7 +82,7 @@ pub enum LayoutTree {
 }
 
 impl LayoutTree {
-    /// Collect every `surfaceId` referenced by the tree (for invariant checks).
+    /// Collect every `surfaceId` referenced by the tree.
     pub fn surface_ids(&self) -> Vec<SurfaceId> {
         let mut out = Vec::new();
         self.collect_ids(&mut out);
@@ -103,7 +103,7 @@ impl LayoutTree {
         }
     }
 
-    /// Structural invariants (§2): tabs.activeId ∈ children, split weights match
+    /// Structural invariants: tabs.activeId ∈ children, split weights match
     /// children and are positive, splits have ≥2 children.
     pub fn validate(&self) -> Result<(), String> {
         match self {
@@ -159,7 +159,7 @@ pub enum SplitForm {
     PeerFallback,
 }
 
-/// Who owns the bottom bar in compact (§6.2).
+/// Who owns the bottom bar in compact.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum BottomOwner {
@@ -167,8 +167,8 @@ pub enum BottomOwner {
     App,
 }
 
-/// Shared-core output bound by each platform skin (§6). The pure core view:
-/// the resolved `sizeClass`/forms/`bottomOwner` and the authoritative
+/// Shared-core output bound by each platform skin. The pure core view: the
+/// resolved `sizeClass`/forms/`bottomOwner` and the authoritative
 /// `layoutTree`. The renderable, skin-bindable contract is
 /// [`LayoutPresentationPlan`] (derived from this graph), not this type.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -198,8 +198,8 @@ pub struct PlanAside {
     pub preferred_size: Option<f64>,
 }
 
-/// The stable, complete render contract a skin binds (§6, Finding 5). Unlike
-/// the pure-core [`DerivedLayout`], this flattens the graph into the renderable
+/// The stable, complete render contract a skin binds. Unlike the pure-core
+/// [`DerivedLayout`], this flattens the graph into the renderable
 /// view any skin needs: the switcher-ordered `mains`, docked `asides` (with
 /// edge + preferred size), `floats`, and the full id-only `tree`. Derived from
 /// the graph so the shared core output isn't bound to one skin's needs.

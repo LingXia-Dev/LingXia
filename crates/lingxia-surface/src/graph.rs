@@ -1,5 +1,5 @@
-//! The Surface Graph: single source of truth, invariants (§1.3), state
-//! transitions (§1.5), and the two-axis derivation into `DerivedLayout` (§2/§6).
+//! The Surface Graph: single source of truth, invariants, state transitions,
+//! and the two-axis derivation into `DerivedLayout`.
 
 use serde::{Deserialize, Serialize};
 
@@ -63,7 +63,7 @@ impl SurfaceGraph {
             .collect()
     }
 
-    /// Insert (or replace by id) a surface, then re-converge invariants (§1.5).
+    /// Insert (or replace by id) a surface, then re-converge invariants.
     pub fn insert(&mut self, surface: Surface) {
         let modal = surface.is_modal_float();
         if modal {
@@ -95,7 +95,7 @@ impl SurfaceGraph {
         }
     }
 
-    /// Remove a surface and re-converge per the §1.5 transition rules.
+    /// Remove a surface and re-converge per the transition rules.
     /// Returns the ids actually removed (the target, plus cascaded asides).
     pub fn remove(&mut self, id: &str) -> Vec<SurfaceId> {
         let Some(pos) = self.surfaces.iter().position(|s| s.id == id) else {
@@ -169,7 +169,7 @@ impl SurfaceGraph {
         }
     }
 
-    /// Check the §1.3 invariants. Returns the list of violations (empty = ok).
+    /// Check the invariants. Returns the list of violations (empty = ok).
     pub fn check_invariants(&self) -> Vec<String> {
         let mut v = Vec::new();
         let mains = self.mains().len();
@@ -203,7 +203,7 @@ impl SurfaceGraph {
         self.check_invariants().is_empty()
     }
 
-    /// Two-axis derivation (§2/§6): produce the platform-agnostic `DerivedLayout`.
+    /// Two-axis derivation: produce the platform-agnostic `DerivedLayout`.
     pub fn derive_layout(&self, size_class: SizeClass) -> DerivedLayout {
         let main_count = self.mains().len();
         let aside_count = self.asides().len();
@@ -229,7 +229,7 @@ impl SurfaceGraph {
             match size_class {
                 SizeClass::Expanded => SplitForm::Split,
                 SizeClass::Medium => SplitForm::Collapsible,
-                // compact has no side-by-side: asides fall back to mains (§3.4/§6).
+                // compact has no side-by-side: asides fall back to mains.
                 SizeClass::Compact => SplitForm::PeerFallback,
             }
         } else {
@@ -237,7 +237,7 @@ impl SurfaceGraph {
         };
 
         // Bottom belongs to the Host switcher only when there's a switcher in
-        // compact; a lone switchable item gives the bottom back to the app (§6.2).
+        // compact; a lone switchable item gives the bottom back to the app.
         let bottom_owner = if size_class == SizeClass::Compact && switchable > 1 {
             BottomOwner::Host
         } else {
@@ -254,8 +254,8 @@ impl SurfaceGraph {
     }
 
     /// Flatten the graph + derivation into the stable, skin-bindable
-    /// [`LayoutPresentationPlan`] (§6, Finding 5): the switcher-ordered mains,
-    /// docked asides (with edge + preferred size), floats, and the full tree.
+    /// [`LayoutPresentationPlan`]: the switcher-ordered mains, docked asides
+    /// (with edge + preferred size), floats, and the full tree.
     pub fn presentation_plan(&self, size_class: SizeClass) -> LayoutPresentationPlan {
         let derived = self.derive_layout(size_class);
 

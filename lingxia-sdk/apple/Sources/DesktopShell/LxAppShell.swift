@@ -1483,8 +1483,8 @@ extension LxAppShell {
         }
     }
 
-    /// Adaptive Surface Layout (Phase 4): register an aside panel and attach its
-    /// native content WITHOUT showing or placing it. The aside-layout reconciler
+    /// Register an aside panel and attach its native content WITHOUT showing or
+    /// placing it. The aside-layout reconciler
     /// (driven by the core's `present_layout`) is the sole authority for an
     /// aside's edge + visibility, so the per-surface / host-aside content paths
     /// only build + register content here; the reconciler shows and places it.
@@ -1506,7 +1506,7 @@ extension LxAppShell {
     }
 
     /// Register an aside panel and attach an lxapp webview WITHOUT showing or
-    /// placing it (Phase 4 — placement is owned by the reconciler).
+    /// placing it (placement is owned by the reconciler).
     func registerPanelWithContent(id: String, position: PanelPosition, appId: String, path: String) {
         if !workspaceManager.isPanelRegistered(id: id) {
             let config = PanelConfig(id: id, position: position)
