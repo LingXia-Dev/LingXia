@@ -114,6 +114,7 @@ mod chrome_command {
     pub(super) const NATIVE_PANEL_MAXIMIZE: &str = "native-panel.maximize";
     pub(super) const NATIVE_PANEL_TAB_RENAME: &str = "native-panel.tab.rename";
     pub(super) const NATIVE_PANEL_RIGHT_CLICK: &str = "native-panel.right-click";
+    pub(super) const NATIVE_PANEL_PANE_FOCUS: &str = "native-panel.pane-focus";
     pub(super) const BROWSER_NAV_BACK: &str = "browser.nav.back";
     pub(super) const BROWSER_NAV_FORWARD: &str = "browser.nav.forward";
     pub(super) const BROWSER_NAV_RELOAD: &str = "browser.nav.reload";
@@ -773,6 +774,21 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
             super::terminal_panel::show_terminal_context_menu(appid, &panel_id, screen_x, screen_y);
             return;
         }
+        chrome_command::NATIVE_PANEL_PANE_FOCUS => {
+            let Some(panel_id) = payload_string(&event, "panel_id") else {
+                return;
+            };
+            let Some(screen_x) = payload_i32(&event, "screen_x") else {
+                return;
+            };
+            let Some(screen_y) = payload_i32(&event, "screen_y") else {
+                return;
+            };
+            if let Some((cx, cy)) = screen_to_panel_client(appid, screen_x, screen_y) {
+                super::terminal_panel::focus_pane_at(&panel_id, cx, cy);
+            }
+            return;
+        }
         // Address-bar navigation targets the presented browser tab; URL and
         // title updates flow back through the tabs-changed observer.
         chrome_command::BROWSER_NAV_BACK => {
@@ -1033,6 +1049,32 @@ pub(super) fn owner_window_handle(appid: &str) -> Option<isize> {
             None
         }
     }
+}
+
+/// Converts a screen point to `appid`'s shell-window client coordinates,
+/// matching the coordinate space the chrome paints panels in (used to
+/// focus the terminal pane under the cursor on right-click). `None` when
+/// the window handle is unavailable or the point is off-window.
+#[cfg(feature = "shell-runtime")]
+pub(super) fn screen_to_panel_client(
+    appid: &str,
+    screen_x: i32,
+    screen_y: i32,
+) -> Option<(i32, i32)> {
+    use windows::Win32::Foundation::POINT;
+    use windows::Win32::Graphics::Gdi::ScreenToClient;
+    let hwnd = owner_window_handle(appid)?;
+    let mut point = POINT {
+        x: screen_x,
+        y: screen_y,
+    };
+    let ok = unsafe {
+        ScreenToClient(
+            windows::Win32::Foundation::HWND(hwnd as *mut core::ffi::c_void),
+            &mut point,
+        )
+    };
+    ok.as_bool().then_some((point.x, point.y))
 }
 
 #[cfg(feature = "shell-runtime")]

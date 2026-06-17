@@ -88,7 +88,7 @@ pub(super) fn terminal_header_rects(
             - (TERMINAL_HEADER_BUTTON_SIZE + TERMINAL_TAB_GAP)
             - (count - 1) * TERMINAL_TAB_GAP)
             .max(0);
-        let tab_width = (avail / count).min(TERMINAL_TAB_MAX_WIDTH).max(24);
+        let tab_width = (avail / count).clamp(24, TERMINAL_TAB_MAX_WIDTH);
         for item in &native.tabs {
             let tab_rect = normalize_rect(RECT {
                 left,
@@ -213,7 +213,8 @@ pub(super) fn draw_terminal_panel_content(
     if rect_width(&rect) == 0 || rect_height(&rect) == 0 {
         return;
     }
-    let surface = super::super::terminal_grid::panel_surface_background(&panel.panel_id)
+    let surface = super::super::terminal_panel::focused_session(&panel.panel_id)
+        .and_then(super::super::terminal_grid::session_surface_background)
         .unwrap_or(TERMINAL_SURFACE_BACKGROUND);
     let square_top = panel.docked && !native.maximized;
 
@@ -305,9 +306,10 @@ pub(super) fn draw_terminal_panel_content(
                 .unwrap_or(header.right - TERMINAL_HEADER_PADDING),
             bottom: header.bottom,
         });
+        let fallback_title = lingxia_logic::i18n::t(lingxia_logic::I18nKey::TerminalTitle);
         draw_text(
             hdc,
-            native.title.as_deref().unwrap_or("Terminal"),
+            native.title.as_deref().unwrap_or(&fallback_title),
             title_rect,
             TERMINAL_HEADER_TEXT,
             DT_LEFT,
@@ -351,7 +353,7 @@ pub(super) fn draw_terminal_panel_content(
     // Live sessions are drawn as a cell grid from the snapshot store; the
     // body-text path below remains for pre-session states ("Starting
     // terminal...", runtime-unavailable, failures).
-    if super::super::terminal_grid::draw_panel_grid(hdc, &panel.panel_id, body) {
+    if super::super::terminal_grid::draw_panel_panes(hdc, &panel.panel_id, body) {
         return;
     }
 

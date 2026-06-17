@@ -143,6 +143,7 @@ pub(super) mod command_id {
     pub(super) const NATIVE_PANEL_MAXIMIZE: &str = "native-panel.maximize";
     pub(super) const NATIVE_PANEL_TAB_RENAME: &str = "native-panel.tab.rename";
     pub(super) const NATIVE_PANEL_RIGHT_CLICK: &str = "native-panel.right-click";
+    pub(super) const NATIVE_PANEL_PANE_FOCUS: &str = "native-panel.pane-focus";
     pub(super) const BROWSER_NAV_BACK: &str = "browser.nav.back";
     pub(super) const BROWSER_NAV_FORWARD: &str = "browser.nav.forward";
     pub(super) const BROWSER_NAV_RELOAD: &str = "browser.nav.reload";
@@ -436,7 +437,7 @@ fn push_dirty_rect(dirty: &mut Vec<RECT>, rect: RECT, client: RECT) {
     let Some(rect) = clip_dirty_rect(rect, client) else {
         return;
     };
-    if !dirty.iter().any(|candidate| *candidate == rect) {
+    if !dirty.contains(&rect) {
         dirty.push(rect);
     }
 }
@@ -947,6 +948,12 @@ fn native_panel_hit_by(
                 id: panel.panel_id.clone(),
                 context_menu: Some(
                     WindowsChromeCommand::new(command_id::NATIVE_PANEL_RIGHT_CLICK)
+                        .with_payload(json!({ "panel_id": panel.panel_id.clone() }))
+                        .with_screen_position(),
+                ),
+                // Left-clicking the body focuses the pane under the cursor.
+                click_command: Some(
+                    WindowsChromeCommand::new(command_id::NATIVE_PANEL_PANE_FOCUS)
                         .with_payload(json!({ "panel_id": panel.panel_id.clone() }))
                         .with_screen_position(),
                 ),
