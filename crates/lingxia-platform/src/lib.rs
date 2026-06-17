@@ -91,3 +91,5 @@ pub use unsupported::Platform;
 
 pub mod error;
 pub use error::*;
+
+pub mod i18n;
