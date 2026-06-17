@@ -1,6 +1,6 @@
 use std::future::Future;
 
-use lingxia_surface::DerivedLayout;
+use lingxia_surface::LayoutPresentationPlan;
 
 use crate::error::PlatformError;
 
@@ -99,10 +99,14 @@ pub struct SurfaceRequest {
 
 pub trait SurfacePresenter: Send + Sync + 'static {
     /// New (Adaptive Surface Layout) contract: the shared core resolves a
-    /// `DerivedLayout` for one window/graph and the platform skin binds it.
-    /// This supersedes the per-request `present_surface` path (the legacy
+    /// `LayoutPresentationPlan` for one window/graph and the platform skin binds
+    /// it. This supersedes the per-request `present_surface` path (the legacy
     /// methods below are migrated away in the B-series and then removed).
-    fn present_layout(&self, _app_id: &str, _layout: &DerivedLayout) -> Result<(), PlatformError> {
+    fn present_layout(
+        &self,
+        _window_id: &str,
+        _plan: &LayoutPresentationPlan,
+    ) -> Result<(), PlatformError> {
         Err(PlatformError::NotSupported(
             "present_layout is not supported on this platform".to_string(),
         ))

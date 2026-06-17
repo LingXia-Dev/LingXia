@@ -191,7 +191,8 @@ mod bridge {
 
         // Adaptive Surface Layout (Phase 3): the shared core drives aside
         // docking. The skin reconciles its dock panels to match `layout_json`
-        // (a serialized `DerivedLayout`, identical to `surfaceDerivedLayout`).
+        // (a serialized `LayoutPresentationPlan`, identical to
+        // `surfaceDerivedLayout`).
         #[swift_bridge(swift_name = "LxApp.presentLayout")]
         fn present_layout(appid: &str, layout_json: &str) -> bool;
 

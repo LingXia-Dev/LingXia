@@ -195,7 +195,7 @@ mod bridge {
         // Adaptive Surface Layout (new model): report the window's container
         // width so the shared core resolves the sizeClass (with hysteresis);
         // returns true when the sizeClass flipped. And read the resolved
-        // DerivedLayout as a JSON string for the skin to bind.
+        // LayoutPresentationPlan as a JSON string for the skin to bind.
         #[swift_bridge(swift_name = "setSurfaceWidth")]
         fn set_surface_width(appid: &str, width: f64) -> bool;
 

@@ -167,19 +167,10 @@ pub enum BottomOwner {
     App,
 }
 
-/// An aside leaf flattened out of the `LayoutTree` with the edge it docks to.
-/// The tree references surfaces by id only, so platform skins that bind asides
-/// to native dock panels need this companion list to map each aside id → edge.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AsideEntry {
-    pub id: SurfaceId,
-    /// Edge the aside docks to; `None` when no edge was placed (skin default).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub edge: Option<crate::model::Edge>,
-}
-
-/// Shared-core output bound by each platform skin (§6).
+/// Shared-core output bound by each platform skin (§6). The pure core view:
+/// the resolved `sizeClass`/forms/`bottomOwner` and the authoritative
+/// `layoutTree`. The renderable, skin-bindable contract is
+/// [`LayoutPresentationPlan`] (derived from this graph), not this type.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DerivedLayout {
@@ -189,8 +180,44 @@ pub struct DerivedLayout {
     pub bottom_owner: BottomOwner,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub layout_tree: Option<LayoutTree>,
+}
+
+/// One aside in the [`LayoutPresentationPlan`]: the surface id, the edge it
+/// docks to, and its preferred size. The tree references surfaces by id only,
+/// so skins that bind asides to native dock panels read this list to map each
+/// aside id → edge.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlanAside {
+    pub id: SurfaceId,
+    /// Edge the aside docks to; `None` when no edge was placed (skin default).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub edge: Option<crate::model::Edge>,
+    /// Preferred dock size in logical px; `None` lets the skin pick a default.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub preferred_size: Option<f64>,
+}
+
+/// The stable, complete render contract a skin binds (§6, Finding 5). Unlike
+/// the pure-core [`DerivedLayout`], this flattens the graph into the renderable
+/// view any skin needs: the switcher-ordered `mains`, docked `asides` (with
+/// edge + preferred size), `floats`, and the full id-only `tree`. Derived from
+/// the graph so the shared core output isn't bound to one skin's needs.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LayoutPresentationPlan {
+    pub size_class: SizeClass,
+    pub bottom_owner: BottomOwner,
+    pub switcher_form: SwitcherForm,
+    pub split_form: SplitForm,
+    /// Main surface ids, in switcher order.
+    pub mains: Vec<SurfaceId>,
     /// Asides currently docked beside the main (empty on compact, where asides
     /// peer-fall-back into the switcher and are not separately docked).
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub asides: Vec<AsideEntry>,
+    pub asides: Vec<PlanAside>,
+    /// Float surface ids (popups above the layout; never in the tree).
+    pub floats: Vec<SurfaceId>,
+    /// The full authoritative layout tree (ids only).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tree: Option<LayoutTree>,
 }

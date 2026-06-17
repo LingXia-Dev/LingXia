@@ -8,7 +8,7 @@ import CLingXiaRustAPI
 /// Adaptive Surface Layout (§11.2 Phase 4) — macOS aside-dock reconciler.
 ///
 /// The shared Rust core owns the surface graph and, after every mutation,
-/// re-derives a `DerivedLayout` and hands it here. This reconciler is the SOLE
+/// re-derives a `LayoutPresentationPlan` and hands it here. This reconciler is the SOLE
 /// authority for aside PLACEMENT — edge, position, and visibility:
 ///
 ///   * each aside leaf in the tree is placed at the tree's `edge` and shown;
@@ -36,14 +36,25 @@ enum LxAppLayoutReconciler {
     /// the workspace dock.
     private static var placedAsideIds: Set<String> = []
 
-    /// Decoded view of the parts of `DerivedLayout` the dock needs.
-    private struct Layout: Decodable {
-        let asides: [Aside]?
+    /// The stable, fully-typed render contract the shared core emits (the same
+    /// `LayoutPresentationPlan` JSON returned by `surfaceDerivedLayout`). The
+    /// reconciler acts on `asides` for now, but decodes the complete contract so
+    /// any future skin binding has the full typed view.
+    private struct LayoutPresentationPlan: Decodable {
+        let sizeClass: String
+        let bottomOwner: String
+        let switcherForm: String
+        let splitForm: String
+        let mains: [String]
+        let asides: [PlanAside]
+        let floats: [String]
+        let tree: LxAppJSONValue?
     }
 
-    private struct Aside: Decodable {
+    private struct PlanAside: Decodable {
         let id: String
         let edge: String?
+        let preferredSize: Double?
     }
 
     /// Re-derive the core layout for `appId` and reconcile. Called by the content
@@ -64,7 +75,7 @@ enum LxAppLayoutReconciler {
             return false
         }
         guard let data = json.data(using: .utf8),
-              let layout = try? JSONDecoder().decode(Layout.self, from: data) else {
+              let plan = try? JSONDecoder().decode(LayoutPresentationPlan.self, from: data) else {
             os_log("presentLayout: failed to parse layout json app=%{public}@", log: log, type: .error, appId)
             return false
         }
@@ -73,7 +84,7 @@ enum LxAppLayoutReconciler {
 
         // Desired aside set from the core (id -> edge).
         var desired: [String: PanelPosition] = [:]
-        for aside in layout.asides ?? [] {
+        for aside in plan.asides {
             desired[aside.id] = panelPosition(for: aside.edge)
         }
         let desiredIds = Set(desired.keys)

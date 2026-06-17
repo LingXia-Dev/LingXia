@@ -4,7 +4,8 @@
 use serde::{Deserialize, Serialize};
 
 use crate::layout::{
-    Axis, BottomOwner, DerivedLayout, LayoutTree, SizeClass, SplitForm, SwitcherForm,
+    Axis, BottomOwner, DerivedLayout, LayoutPresentationPlan, LayoutTree, PlanAside, SizeClass,
+    SplitForm, SwitcherForm,
 };
 use crate::model::{Role, Surface, SurfaceId};
 
@@ -243,6 +244,21 @@ impl SurfaceGraph {
             BottomOwner::App
         };
 
+        DerivedLayout {
+            size_class,
+            switcher_form,
+            split_form,
+            bottom_owner,
+            layout_tree: self.canonical_layout(size_class),
+        }
+    }
+
+    /// Flatten the graph + derivation into the stable, skin-bindable
+    /// [`LayoutPresentationPlan`] (§6, Finding 5): the switcher-ordered mains,
+    /// docked asides (with edge + preferred size), floats, and the full tree.
+    pub fn presentation_plan(&self, size_class: SizeClass) -> LayoutPresentationPlan {
+        let derived = self.derive_layout(size_class);
+
         // Asides are docked beside the main only outside compact; on compact
         // they peer-fall-back into the switcher (see `canonical_layout`) and are
         // not separately docked, so the dock list is empty there.
@@ -251,20 +267,23 @@ impl SurfaceGraph {
         } else {
             self.asides()
                 .iter()
-                .map(|s| crate::layout::AsideEntry {
+                .map(|s| PlanAside {
                     id: s.id.clone(),
                     edge: s.placement.edge,
+                    preferred_size: s.placement.preferred_size,
                 })
                 .collect()
         };
 
-        DerivedLayout {
-            size_class,
-            switcher_form,
-            split_form,
-            bottom_owner,
-            layout_tree: self.canonical_layout(size_class),
+        LayoutPresentationPlan {
+            size_class: derived.size_class,
+            bottom_owner: derived.bottom_owner,
+            switcher_form: derived.switcher_form,
+            split_form: derived.split_form,
+            mains: self.main_ids(),
             asides,
+            floats: self.floats().iter().map(|s| s.id.clone()).collect(),
+            tree: derived.layout_tree,
         }
     }
 

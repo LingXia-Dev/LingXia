@@ -8,7 +8,7 @@
 
 use crate::arbitrate::{Decision, Policy, arbitrate};
 use crate::graph::SurfaceGraph;
-use crate::layout::{DEFAULT_HYSTERESIS, DerivedLayout, SizeClass};
+use crate::layout::{DEFAULT_HYSTERESIS, DerivedLayout, LayoutPresentationPlan, SizeClass};
 use crate::model::{Surface, SurfaceId};
 
 /// One window's stateful surface driver.
@@ -80,6 +80,12 @@ impl SurfaceManager {
     /// Derive the platform-agnostic layout output at the current size.
     pub fn derive(&self) -> DerivedLayout {
         self.graph.derive_layout(self.size_class)
+    }
+
+    /// Build the stable, skin-bindable [`LayoutPresentationPlan`] at the current
+    /// size — the renderable contract platforms reconcile against.
+    pub fn presentation_plan(&self) -> LayoutPresentationPlan {
+        self.graph.presentation_plan(self.size_class)
     }
 }
 

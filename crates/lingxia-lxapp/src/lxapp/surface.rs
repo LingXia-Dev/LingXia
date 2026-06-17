@@ -54,8 +54,8 @@ impl WindowSurfaceController {
     /// lock is scoped to the `derive` call and dropped before `present_layout`,
     /// so the lock is never held across the outbound call.
     fn commit(&self) {
-        let derived = self.manager.lock().unwrap().derive();
-        let _ = self.runtime.present_layout(&self.window_id, &derived);
+        let plan = self.manager.lock().unwrap().presentation_plan();
+        let _ = self.runtime.present_layout(&self.window_id, &plan);
     }
 
     /// Mirror an opened surface into the core graph and read back the arbitrated
@@ -173,9 +173,9 @@ impl WindowSurfaceController {
         changed
     }
 
-    /// Snapshot the core's `DerivedLayout` for this window.
-    fn derive(&self) -> lingxia_surface::DerivedLayout {
-        self.manager.lock().unwrap().derive()
+    /// Snapshot the core's `LayoutPresentationPlan` for this window.
+    fn presentation_plan(&self) -> lingxia_surface::LayoutPresentationPlan {
+        self.manager.lock().unwrap().presentation_plan()
     }
 }
 
@@ -551,9 +551,11 @@ impl LxApp {
         }
     }
 
-    /// Snapshot the core's `DerivedLayout` for this app's window (new model).
-    pub fn surface_derived_layout(&self) -> Option<lingxia_surface::DerivedLayout> {
-        Some(window_controller(PRIMARY_WINDOW, &self.runtime).derive())
+    /// Snapshot the core's `LayoutPresentationPlan` for this app's window — the
+    /// stable, renderable contract `lx.surface.derivedLayout()` returns (the
+    /// same plan the skin reconciler binds via `present_layout`).
+    pub fn surface_derived_layout(&self) -> Option<lingxia_surface::LayoutPresentationPlan> {
+        Some(window_controller(PRIMARY_WINDOW, &self.runtime).presentation_plan())
     }
 
     /// Map a legacy surface request into an Adaptive Surface Layout node

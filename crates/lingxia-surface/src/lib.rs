@@ -15,8 +15,8 @@ pub use arbitrate::{Decision, Policy, arbitrate};
 pub use graph::SurfaceGraph;
 pub use manager::SurfaceManager;
 pub use layout::{
-    Axis, BottomOwner, DEFAULT_HYSTERESIS, DerivedLayout, LayoutTree, SizeClass, SplitForm,
-    SwitcherForm,
+    Axis, BottomOwner, DEFAULT_HYSTERESIS, DerivedLayout, LayoutPresentationPlan, LayoutTree,
+    PlanAside, SizeClass, SplitForm, SwitcherForm,
 };
 pub use model::{
     Edge, FloatAnchor, FloatDismiss, FloatSpec, Placement, Role, Surface, SurfaceContent, SurfaceId,
