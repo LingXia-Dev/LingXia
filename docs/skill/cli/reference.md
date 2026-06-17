@@ -467,6 +467,38 @@ otherwise the app is left ad-hoc signed (local builds/tests stay green):
 
 ---
 
+### `lingxia store`
+
+Submit a built installable to an **OS app store** (Microsoft Store, App Store,
+AppGallery). Talks to stores only — never the LingXia server (that's `publish`)
+and never builds (run `build` first). Store identity lives in `lingxia.yaml`
+(`windows.store` / `ios.store` / `macos.store` / `harmony.store`); credentials
+live in `~/.lingxia/store/credentials.toml`, with **env vars overriding the file**.
+
+```bash
+lingxia store login   --platform <p>          # prompt + write credentials.toml
+lingxia store logout  --platform <p>          # clear cached creds
+lingxia store submit  --platform <p> [--draft] [--release-notes <text>] [--track <t>]
+lingxia store status  --platform <p>          # poll submission / processing state
+```
+
+`<p>` is `windows` (Microsoft Store), `ios` / `macos` (App Store), or `harmony`
+(AppGallery). `submit` consumes `dist/<platform>/` from a prior `build` and fails
+clearly if the artifact is missing; `--draft` creates the submission without
+committing it for review. App Store upload uses `xcrun altool` (macOS + Xcode).
+
+**Per-store credentials** (`store login` writes these; env overrides shown):
+
+| Platform | `credentials.toml` table | env overrides |
+|---|---|---|
+| `windows` | `[msstore]` tenant, client_id, client_secret | `LINGXIA_MSSTORE_TENANT` / `_CLIENT_ID` / `_CLIENT_SECRET` |
+| `ios` / `macos` | `[appstore]` issuer_id, key_id, key_path (`.p8`) | `LINGXIA_ASC_ISSUER_ID` / `_KEY_ID` / `_KEY_PATH` |
+| `harmony` | `[appgallery]` client_id, client_secret | `LINGXIA_AGC_CLIENT_ID` / `_CLIENT_SECRET` |
+
+In CI, set the env vars (no file on disk) — they transparently override the cache.
+
+---
+
 ### `lingxia ds`
 
 Interact with developer services (Apple, Harmony, etc.).
