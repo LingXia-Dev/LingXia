@@ -160,6 +160,25 @@ extension LxApp {
         }
     }
 
+    /// Adaptive Surface Layout (Phase 3): the shared core derived a new layout
+    /// for this window; reconcile the aside dock so it matches the tree. The
+    /// payload is a serialized `DerivedLayout` (identical to the JSON the JS API
+    /// `lx.surface.derivedLayout()` returns). Aside-dock only — main/browser/
+    /// float/terminal-fullscreen presentation is untouched.
+    nonisolated static func presentLayout(appid: RustStr, layout_json: RustStr) -> Bool {
+        let appIdString = appid.toString()
+        let json = layout_json.toString()
+        guard !appIdString.isEmpty, !json.isEmpty else { return false }
+        return executeOnMain {
+            #if os(macOS)
+            return LxAppLayoutReconciler.reconcile(appId: appIdString, json: json)
+            #else
+            _ = json
+            return false
+            #endif
+        }
+    }
+
     /// Show or hide a host-declared top-level surface (e.g. the AI-chat panel or
     /// terminal). Returns `false` when there is no host shell to manage the
     /// surface, or when `id` is not a declared surface.

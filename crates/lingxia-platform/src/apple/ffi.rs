@@ -189,6 +189,12 @@ mod bridge {
             role: i32,
         ) -> bool;
 
+        // Adaptive Surface Layout (Phase 3): the shared core drives aside
+        // docking. The skin reconciles its dock panels to match `layout_json`
+        // (a serialized `DerivedLayout`, identical to `surfaceDerivedLayout`).
+        #[swift_bridge(swift_name = "LxApp.presentLayout")]
+        fn present_layout(appid: &str, layout_json: &str) -> bool;
+
         #[swift_bridge(swift_name = "LxApp.closeSurface")]
         fn close_surface(id: &str, appid: &str, reason: &str) -> bool;
 
@@ -379,8 +385,9 @@ pub use bridge::reveal_in_file_manager;
 pub use bridge::{
     ActionSheetOptions, ModalOptions, ToastIcon, ToastOptions, ToastPosition, cancel_preview_media,
     close_lxapp, close_surface, exit_app, hide_surface, hide_toast, navigate,
-    notify_app_update_ready, open_document_external, open_lxapp, open_url, present_surface,
-    present_update_card, preview_media, review_document, set_managed_surface_visible, share,
+    notify_app_update_ready, open_document_external, open_lxapp, open_url, present_layout,
+    present_surface, present_update_card, preview_media, review_document,
+    set_managed_surface_visible, share,
     show_action_sheet, show_modal, show_surface, show_toast, toggle_managed_surface,
     update_download_progress, update_navbar_ui, update_orientation_ui, update_tabbar_ui,
 };

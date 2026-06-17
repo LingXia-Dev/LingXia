@@ -1,12 +1,28 @@
 use super::app::Platform;
 use super::ffi::{
-    close_surface, hide_surface, present_surface, set_managed_surface_visible, show_surface,
-    toggle_managed_surface,
+    close_surface, hide_surface, present_layout, present_surface, set_managed_surface_visible,
+    show_surface, toggle_managed_surface,
 };
 use crate::error::PlatformError;
 use crate::traits::ui::{SurfacePosition, SurfacePresenter, SurfaceRequest};
+use lingxia_surface::DerivedLayout;
 
 impl SurfacePresenter for Platform {
+    fn present_layout(&self, app_id: &str, layout: &DerivedLayout) -> Result<(), PlatformError> {
+        // Serialize exactly as the JS API (`surfaceDerivedLayout`) does so the
+        // skin reconciler and `lx.surface.derivedLayout()` see identical JSON.
+        let layout_json = serde_json::to_string(layout).map_err(|e| {
+            PlatformError::Platform(format!("failed to serialize derived layout: {e}"))
+        })?;
+        if present_layout(app_id, &layout_json) {
+            Ok(())
+        } else {
+            Err(PlatformError::Platform(format!(
+                "Failed to present layout: appid={app_id}"
+            )))
+        }
+    }
+
     fn present_surface(&self, request: SurfaceRequest) -> Result<(), PlatformError> {
         if present_surface(
             &request.id,

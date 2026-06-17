@@ -243,12 +243,28 @@ impl SurfaceGraph {
             BottomOwner::App
         };
 
+        // Asides are docked beside the main only outside compact; on compact
+        // they peer-fall-back into the switcher (see `canonical_layout`) and are
+        // not separately docked, so the dock list is empty there.
+        let asides = if size_class == SizeClass::Compact {
+            Vec::new()
+        } else {
+            self.asides()
+                .iter()
+                .map(|s| crate::layout::AsideEntry {
+                    id: s.id.clone(),
+                    edge: s.placement.edge,
+                })
+                .collect()
+        };
+
         DerivedLayout {
             size_class,
             switcher_form,
             split_form,
             bottom_owner,
             layout_tree: self.canonical_layout(size_class),
+            asides,
         }
     }
 

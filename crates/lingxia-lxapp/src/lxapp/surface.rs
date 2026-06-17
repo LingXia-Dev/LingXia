@@ -200,6 +200,9 @@ impl LxApp {
             let _ = self.close_surface(victim, "programmatic");
         }
 
+        // §11.2 Phase 3: reconcile aside docking from the (now-mutated) core graph.
+        self.present_derived_layout();
+
         Ok(PageSurface {
             id,
             page_path,
@@ -334,11 +337,15 @@ impl LxApp {
             float: None,
         };
         let root = self.root_main_node();
-        let mut manager = window_surface_manager().lock().unwrap();
-        if manager.graph().mains().is_empty() {
-            manager.open(root);
+        {
+            let mut manager = window_surface_manager().lock().unwrap();
+            if manager.graph().mains().is_empty() {
+                manager.open(root);
+            }
+            let _ = manager.open(node);
         }
-        let _ = manager.open(node);
+        // §11.2 Phase 3: reconcile aside docking from the core graph.
+        self.present_derived_layout();
     }
 
     /// Remove a host-declared aside from the surface graph (§11.2 Phase 1).
@@ -348,6 +355,8 @@ impl LxApp {
             return;
         }
         let _ = window_surface_manager().lock().unwrap().close(surface_id);
+        // §11.2 Phase 3: reconcile aside docking from the core graph.
+        self.present_derived_layout();
     }
 
     /// `lx.shell.toggle`: flip a host-declared top-level surface's visibility.
@@ -366,7 +375,8 @@ impl LxApp {
         if id.is_empty() {
             return false;
         }
-        self.state
+        let removed = self
+            .state
             .lock()
             .ok()
             .and_then(|state| {
@@ -374,7 +384,12 @@ impl LxApp {
                 let _ = window_surface_manager().lock().unwrap().close(id);
                 state.surfaces.lock().unwrap().remove(id)
             })
-            .is_some()
+            .is_some();
+        if removed {
+            // §11.2 Phase 3: reconcile aside docking from the core graph.
+            self.present_derived_layout();
+        }
+        removed
     }
 
     /// Report the container width so the core resolves the right `sizeClass`
@@ -412,6 +427,15 @@ impl LxApp {
     /// Snapshot the core's `DerivedLayout` for this app's window (new model).
     pub fn surface_derived_layout(&self) -> Option<lingxia_surface::DerivedLayout> {
         Some(window_surface_manager().lock().unwrap().derive())
+    }
+
+    /// §11.2 Phase 3: after the window graph mutates, re-derive the layout and
+    /// hand it to the platform skin so it can reconcile aside docking from the
+    /// core (the single source of truth). Platforms without `present_layout`
+    /// return `NotSupported`, which is ignored here.
+    fn present_derived_layout(&self) {
+        let derived = window_surface_manager().lock().unwrap().derive();
+        let _ = self.runtime.present_layout(&self.appid, &derived);
     }
 
     /// Map a legacy surface request into an Adaptive Surface Layout node

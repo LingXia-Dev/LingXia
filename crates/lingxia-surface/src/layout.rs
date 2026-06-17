@@ -167,6 +167,18 @@ pub enum BottomOwner {
     App,
 }
 
+/// An aside leaf flattened out of the `LayoutTree` with the edge it docks to.
+/// The tree references surfaces by id only, so platform skins that bind asides
+/// to native dock panels need this companion list to map each aside id → edge.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AsideEntry {
+    pub id: SurfaceId,
+    /// Edge the aside docks to; `None` when no edge was placed (skin default).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub edge: Option<crate::model::Edge>,
+}
+
 /// Shared-core output bound by each platform skin (§6).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -177,4 +189,8 @@ pub struct DerivedLayout {
     pub bottom_owner: BottomOwner,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub layout_tree: Option<LayoutTree>,
+    /// Asides currently docked beside the main (empty on compact, where asides
+    /// peer-fall-back into the switcher and are not separately docked).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub asides: Vec<AsideEntry>,
 }
