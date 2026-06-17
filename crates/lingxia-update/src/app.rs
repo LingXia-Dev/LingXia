@@ -153,7 +153,14 @@ pub trait AppUpdateHost: Clone + Send + Sync + 'static {
         update: &'a UpdatePackageInfo,
         progress: AppUpdateProgressReporter,
     ) -> BoxFuture<'a, Result<PathBuf, UpdateError>>;
-    fn install_app_update(&self, package_path: &Path) -> Result<(), UpdateError>;
+    /// Hand off the downloaded package to the platform installer. `is_force_update`
+    /// lets the platform present a blocking "must update" prompt instead of the
+    /// dismissible "ready to update" reminder.
+    fn install_app_update(
+        &self,
+        package_path: &Path,
+        is_force_update: bool,
+    ) -> Result<(), UpdateError>;
     fn log_app_update_warning(&self, detail: &str);
 }
 

@@ -19,8 +19,13 @@ update:
   install_incompatible: "Update is not compatible with this device"
   install_invalid: "Update package is invalid"
   install_no_ui: "This device does not provide an install screen"
+  install_now: "Install Now"
   install_permission_required: "Please allow installing unknown apps in settings, then retry"
   install_storage: "Insufficient storage"
   notification_body: "Tap to install the downloaded update"
   notification_channel: "App updates"
   notification_title: "Update ready to install"
+  # Post-download "ready to install" prompt: shown after a silent background
+  # download; the system installer fires only when the user confirms.
+  ready_message: "A new version has been downloaded. Install it now?"
+  ready_title: "Update ready"

@@ -42,34 +42,13 @@ unsafe impl Send for Platform {}
 unsafe impl Sync for Platform {}
 
 impl crate::traits::update::UpdateService for Platform {
-    fn show_download_progress(&self) -> Result<(), PlatformError> {
-        super::update::show_download_progress().map_err(|e| {
-            PlatformError::Platform(format!("Failed to show download progress: {}", e))
-        })
+    fn self_update_supported(&self) -> bool {
+        // Android ships as a sideloaded APK (GitHub Releases) and installs via
+        // PackageInstaller.
+        true
     }
 
-    fn update_download_progress(&self, progress: i32) -> Result<(), PlatformError> {
-        super::update::update_download_progress(progress).map_err(|e| {
-            PlatformError::Platform(format!("Failed to update download progress: {}", e))
-        })
-    }
-
-    fn dismiss_download_progress(&self) -> Result<(), PlatformError> {
-        super::update::dismiss_download_progress().map_err(|e| {
-            PlatformError::Platform(format!("Failed to dismiss download progress: {}", e))
-        })
-    }
-
-    fn show_update_prompt(
-        &self,
-        callback_id: u64,
-        update_info_json: Option<&str>,
-    ) -> Result<(), PlatformError> {
-        super::update::show_update_prompt(callback_id, update_info_json)
-            .map_err(|e| PlatformError::Platform(format!("Failed to show update prompt: {}", e)))
-    }
-
-    fn install_update(&self, apk_path: &Path) -> Result<(), PlatformError> {
+    fn install_update(&self, apk_path: &Path, is_force_update: bool) -> Result<(), PlatformError> {
         let update_manager_class: &JClass =
             super::get_cached_class(super::CachedClass::UpdateManager)
                 .map_err(|e| PlatformError::Platform(e.to_string()))?;
@@ -83,8 +62,11 @@ impl crate::traits::update::UpdateService for Platform {
             let result = env.call_static_method(
                 update_manager_class,
                 jni_str!("installUpdate"),
-                jni_sig!("(Ljava/lang/String;)Z"),
-                &[JValue::Object(&path_jstring)],
+                jni_sig!("(Ljava/lang/String;Z)Z"),
+                &[
+                    JValue::Object(&path_jstring),
+                    JValue::Bool(is_force_update),
+                ],
             )?;
             if !result.z()? {
                 return Err(PlatformError::Platform(

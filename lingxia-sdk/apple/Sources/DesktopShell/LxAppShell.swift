@@ -1011,21 +1011,12 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         sidebarView?.presentUpdateReadyCallout(appName: appName, state: state)
     }
 
-    /// Present the centered "update available" card (Stage 1). The card then
-    /// drives the whole flow: Download & Install → live progress → Restart Now.
-    func presentUpdateCard(appName: String, infoJSON: String, callbackId: UInt64) {
-        UpdateAvailableCard.present(
-            appName: appName,
-            infoJSON: infoJSON,
+    /// Present a blocking "ready to restart" card for a forced update. The
+    /// package already downloaded silently; there is no dismiss — clicking
+    /// Restart Now applies the staged update.
+    func presentUpdateReadyCard() {
+        UpdateAvailableCard.presentReady(
             over: window,
-            onDownload: {
-                _ = onCallback(callbackId, true, "{\"confirm\":true}")
-            },
-            onLater: { [weak self] in
-                _ = onCallback(callbackId, false, "2000")
-                // Drop to the quiet sidebar reminder.
-                self?.presentUpdateReadyCallout(appName: appName, state: .available)
-            },
             onRestart: {
                 _ = onAppEvent(AppEvent.updateRestartClick, "")
             })

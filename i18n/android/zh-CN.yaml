@@ -11,8 +11,12 @@ update:
   install_incompatible: "更新包与此设备不兼容"
   install_invalid: "更新包无效"
   install_no_ui: "此设备未提供系统安装界面"
+  install_now: "立即安装"
   install_permission_required: "请到设置中允许安装未知应用后重试"
   install_storage: "存储空间不足"
   notification_body: "点击进行安装"
   notification_channel: "应用更新"
   notification_title: "更新已就绪"
+  # 后台静默下载完成后的“可安装”提示；仅在用户确认后才拉起系统安装器。
+  ready_message: "新版本已下载完成，现在安装？"
+  ready_title: "更新已就绪"

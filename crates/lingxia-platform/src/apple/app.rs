@@ -38,57 +38,24 @@ unsafe impl Send for Platform {}
 unsafe impl Sync for Platform {}
 
 impl crate::traits::update::UpdateService for Platform {
-    fn update_download_progress(&self, progress: i32) -> Result<(), PlatformError> {
-        #[cfg(target_os = "macos")]
-        {
-            let percent = progress.clamp(0, 100) as u8;
-            ffi::update_download_progress(percent);
-        }
-        #[cfg(not(target_os = "macos"))]
-        {
-            let _ = progress;
-        }
-        Ok(())
+    fn self_update_supported(&self) -> bool {
+        // macOS ships outside the App Store and swaps its own bundle; iOS must
+        // update through the App Store.
+        cfg!(target_os = "macos")
     }
 
-    fn show_update_prompt(
+    fn install_update(
         &self,
-        callback_id: u64,
-        update_info_json: Option<&str>,
+        package_path: &Path,
+        is_force_update: bool,
     ) -> Result<(), PlatformError> {
         #[cfg(target_os = "macos")]
         {
-            // Present the centered "update available" card. The card resolves
-            // the callback (confirm / 2000-cancel). With no shell (headless),
-            // auto-confirm so the update still proceeds unattended.
-            let info = update_info_json.unwrap_or("{}");
-            let presented = ffi::present_update_card(info, callback_id);
-            if !presented {
-                let _ = lingxia_messaging::invoke_callback(
-                    callback_id,
-                    Ok(r#"{"confirm":true}"#.to_string()),
-                );
-            }
-            Ok(())
+            install_update_on_macos(self, package_path, is_force_update)
         }
         #[cfg(not(target_os = "macos"))]
         {
-            let _ = callback_id;
-            let _ = update_info_json;
-            Err(PlatformError::NotSupported(
-                "show_update_prompt is only supported on macOS".to_string(),
-            ))
-        }
-    }
-
-    fn install_update(&self, package_path: &Path) -> Result<(), PlatformError> {
-        #[cfg(target_os = "macos")]
-        {
-            install_update_on_macos(self, package_path)
-        }
-        #[cfg(not(target_os = "macos"))]
-        {
-            let _ = package_path;
+            let _ = (package_path, is_force_update);
             Err(PlatformError::NotSupported(
                 "install_update is only supported on macOS".to_string(),
             ))
@@ -323,7 +290,11 @@ impl Platform {
 }
 
 #[cfg(target_os = "macos")]
-fn install_update_on_macos(platform: &Platform, package_path: &Path) -> Result<(), PlatformError> {
+fn install_update_on_macos(
+    platform: &Platform,
+    package_path: &Path,
+    is_force_update: bool,
+) -> Result<(), PlatformError> {
     if !package_path.exists() {
         return Err(PlatformError::InvalidParameter(format!(
             "Update package does not exist: {}",
@@ -340,10 +311,13 @@ fn install_update_on_macos(platform: &Platform, package_path: &Path) -> Result<(
         bundle_id: platform.get_app_identifier().ok(),
     };
 
-    // Ask the shell to show the "ready to update" callout and wait for the
-    // user to click it before swapping the bundle. If there is no shell
-    // (headless run), restart immediately — the old behavior.
-    let has_ui = ffi::notify_app_update_ready("ready");
+    // The download already finished silently. Ask the shell to surface the
+    // post-download prompt and wait for the user to click before swapping the
+    // bundle: a dismissible "ready to update" callout for normal updates, or a
+    // blocking "must update" modal when the update is forced. If there is no
+    // shell (headless run), restart immediately.
+    let state = if is_force_update { "ready-force" } else { "ready" };
+    let has_ui = ffi::notify_app_update_ready(state);
     if has_ui {
         if let Ok(mut slot) = staged_macos_update_slot().lock() {
             *slot = Some(staged);

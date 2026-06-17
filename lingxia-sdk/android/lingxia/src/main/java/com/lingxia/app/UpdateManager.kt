@@ -32,8 +32,6 @@ import android.view.ViewGroup
 import android.widget.Button
 import android.widget.ImageView
 import android.widget.LinearLayout
-import android.widget.ProgressBar
-import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import java.io.File
@@ -42,7 +40,6 @@ import java.lang.ref.WeakReference
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
-import org.json.JSONObject
 
 /**
  * Manages application updates with progress tracking
@@ -58,14 +55,16 @@ internal object UpdateManager {
     // Stable per-process ID; reusing replaces any previous confirm notification.
     private const val NOTIFICATION_ID_INSTALL_CONFIRM = 0x4C58_5550 // "LXUP"
 
-    private var progressDialog: Dialog? = null
-    private var progressBar: ProgressBar? = null
-    private var progressText: TextView? = null
-    private var pendingUpdatePromptCallbackId: Long? = null
     private var activityRef: WeakReference<LxAppActivity>? = null
     // AtomicReference so check-and-clear in tryInstallPendingUpdate doesn't
     // race with the LxUpdateInstaller worker thread writing a new pending path.
     private val pendingInstallPath = AtomicReference<String?>(null)
+    // A downloaded-and-staged update awaiting the "ready to install" prompt,
+    // remembered when the download finishes with no foreground activity. Shown
+    // when an activity returns. Distinct from pendingInstallPath, which is the
+    // post-permission-grant re-install that proceeds without re-prompting.
+    private val pendingReadyInstallPath = AtomicReference<String?>(null)
+    @Volatile private var pendingReadyInstallForce = false
     @Volatile private var installReceiver: BroadcastReceiver? = null
 
     /**
@@ -75,182 +74,13 @@ internal object UpdateManager {
     fun init(activity: LxAppActivity?) {
         activityRef = if (activity == null) null else WeakReference(activity)
         if (activity != null) {
-            tryShowPendingPrompt()
+            tryShowPendingReadyInstall()
             tryInstallPendingUpdate()
         }
     }
 
     private fun resolveActivity(): LxAppActivity? {
         return activityRef?.get() ?: LxApp.getCurrentActivity()
-    }
-
-    /**
-     * Show download progress dialog
-     */
-    @JvmStatic
-    fun showDownloadProgress() {
-        val activity = resolveActivity() ?: run {
-            Log.e(TAG, "No current activity to show progress dialog")
-            return
-        }
-
-        activity.runOnUiThread {
-            if (progressDialog?.isShowing == true) {
-                return@runOnUiThread
-            }
-            dismissDownloadProgressInternal()
-
-            val metrics = metricsFor(activity)
-            val title = activity.getString(R.string.lx_update_downloading)
-
-            val dialog = Dialog(activity)
-            dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
-            dialog.setCancelable(false)
-
-            val container = LinearLayout(activity).apply {
-                orientation = LinearLayout.VERTICAL
-                val p = dp(activity, metrics.outerPaddingDp)
-                setPadding(p, p, p, p)
-
-                background = GradientDrawable().apply {
-                    setColor(Color.WHITE)
-                    cornerRadius = dp(activity, metrics.cornerDp).toFloat()
-                }
-
-                layoutParams = ViewGroup.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
-                )
-            }
-
-            val titleView = TextView(activity).apply {
-                text = title
-                setTextColor(Color.parseColor("#1F2937"))
-                textSize = metrics.progressTitleSp
-                setTypeface(null, android.graphics.Typeface.BOLD)
-                gravity = Gravity.CENTER
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply {
-                    bottomMargin = dp(activity, metrics.gapDp)
-                }
-            }
-
-            progressText = TextView(activity).apply {
-                text = "0%"
-                textSize = metrics.progressTextSp
-                setTextColor(Color.parseColor("#6B7280"))
-                gravity = Gravity.CENTER
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply {
-                    bottomMargin = dp(activity, if (metrics.isTv) 12 else 8)
-                }
-            }
-
-            progressBar = ProgressBar(activity, null, android.R.attr.progressBarStyleHorizontal).apply {
-                max = 100
-                progress = 0
-                isIndeterminate = true
-                layoutParams = LinearLayout.LayoutParams(
-                    dp(activity, metrics.progressBarWidthDp),
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                )
-            }
-
-            container.addView(titleView)
-            container.addView(progressText)
-            container.addView(progressBar)
-
-            dialog.setContentView(container)
-            progressDialog = dialog
-            progressDialog?.show()
-        }
-    }
-
-    /**
-     * Update download progress
-     * Called from Rust layer during download
-     *
-     * @param progress Progress percentage (0-100)
-     */
-    @JvmStatic
-    fun updateDownloadProgress(progress: Int) {
-        val activity = resolveActivity() ?: return
-
-        activity.runOnUiThread {
-            progressBar?.isIndeterminate = false
-            progressBar?.progress = progress
-            progressText?.text = "$progress%"
-        }
-    }
-
-    /**
-     * Dismiss download progress dialog
-     */
-    @JvmStatic
-    fun dismissDownloadProgress() {
-        if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) {
-            dismissDownloadProgressInternal()
-            return
-        }
-
-        android.os.Handler(android.os.Looper.getMainLooper()).post {
-            dismissDownloadProgressInternal()
-        }
-    }
-
-    private fun dismissDownloadProgressInternal() {
-        try {
-            progressDialog?.dismiss()
-        } catch (e: Exception) {
-            Log.w(TAG, "Failed to dismiss progress dialog: ${e.message}")
-        } finally {
-            progressDialog = null
-            progressBar = null
-            progressText = null
-        }
-    }
-
-    private var pendingUpdateInfo: UpdateInfo? = null
-
-    data class UpdateInfo(
-        val version: String,
-        val sizeBytes: Long,
-        val releaseNotes: List<String>?,
-        val isForceUpdate: Boolean = false
-    )
-
-    /**
-     * Prompt the user to confirm update installation.
-     *
-     * @param callbackId Callback ID for result
-     * @param updateInfoJson Optional JSON with update details:
-     * {"version":"1.2.0","size":15728640,"releaseNotes":["..."],"isForceUpdate":true}
-     */
-    @JvmStatic
-    fun showUpdatePrompt(callbackId: Long, updateInfoJson: String? = null) {
-        val updateInfo = parseUpdateInfo(updateInfoJson)
-        val activity = resolveActivity()
-        if (activity == null) {
-            Log.w(TAG, "No current activity; deferring update prompt")
-            pendingUpdatePromptCallbackId = callbackId
-            pendingUpdateInfo = updateInfo
-            return
-        }
-        showUpdatePromptInternal(activity, callbackId, updateInfo)
-    }
-
-    @JvmStatic
-    fun tryShowPendingPrompt() {
-        val callbackId = pendingUpdatePromptCallbackId ?: return
-        val activity = resolveActivity() ?: return
-        val info = pendingUpdateInfo
-        pendingUpdatePromptCallbackId = null
-        pendingUpdateInfo = null
-        showUpdatePromptInternal(activity, callbackId, info)
     }
 
     @JvmStatic
@@ -285,42 +115,6 @@ internal object UpdateManager {
         startInstall(activity, apkPath)
     }
 
-    private fun parseUpdateInfo(json: String?): UpdateInfo? {
-        if (json.isNullOrEmpty()) return null
-        return try {
-            val obj = JSONObject(json)
-            val version = obj.optString("version", "")
-            val size = obj.optLong("size", 0L)
-            val notesArray = obj.optJSONArray("releaseNotes")
-            val isForceUpdate = obj.optBoolean("isForceUpdate", false)
-            val notes = if (notesArray != null) {
-                (0 until notesArray.length()).map { notesArray.getString(it) }
-            } else null
-
-            UpdateInfo(version, size, notes, isForceUpdate)
-        } catch (e: Exception) {
-            Log.w(TAG, "Failed to parse update info JSON", e)
-            null
-        }
-    }
-
-    private fun showUpdatePromptInternal(
-        activity: LxAppActivity,
-        callbackId: Long,
-        updateInfo: UpdateInfo?
-    ) {
-        activity.runOnUiThread {
-            if (activity.isFinishing || activity.isDestroyed) {
-                Log.w(TAG, "Activity not ready for update prompt dialog")
-                NativeApi.onCallback(callbackId, false, "1000")
-                return@runOnUiThread
-            }
-
-            val dialog = createUpdateDialog(activity, callbackId, updateInfo)
-            dialog.show()
-        }
-    }
-
     private fun dp(context: Context, value: Int): Int {
         return TypedValue.applyDimension(
             TypedValue.COMPLEX_UNIT_DIP,
@@ -353,16 +147,10 @@ internal object UpdateManager {
         val cornerDp: Int,
         val gapDp: Int,
         val titleSp: Float,
-        val versionSp: Float,
         val bodySp: Float,
-        val sizeSp: Float,
         val buttonHeightDp: Int,
         val buttonSp: Float,
-        val notesMaxHeightDp: Int,
         val closeSizeDp: Int,
-        val progressBarWidthDp: Int,
-        val progressTitleSp: Float,
-        val progressTextSp: Float,
     )
 
     private fun metricsFor(context: Context): DialogMetrics {
@@ -374,16 +162,10 @@ internal object UpdateManager {
                 cornerDp = 20,
                 gapDp = 24,
                 titleSp = 28f,
-                versionSp = 18f,
                 bodySp = 20f,
-                sizeSp = 16f,
                 buttonHeightDp = 64,
                 buttonSp = 22f,
-                notesMaxHeightDp = 200,
                 closeSizeDp = 48,
-                progressBarWidthDp = 360,
-                progressTitleSp = 26f,
-                progressTextSp = 22f,
             )
         } else {
             DialogMetrics(
@@ -393,16 +175,10 @@ internal object UpdateManager {
                 cornerDp = 16,
                 gapDp = 16,
                 titleSp = 20f,
-                versionSp = 14f,
                 bodySp = 14f,
-                sizeSp = 13f,
                 buttonHeightDp = 52,
                 buttonSp = 16f,
-                notesMaxHeightDp = 120,
                 closeSizeDp = 36,
-                progressBarWidthDp = 200,
-                progressTitleSp = 18f,
-                progressTextSp = 16f,
             )
         }
     }
@@ -478,23 +254,26 @@ internal object UpdateManager {
         }
     }
 
-    private fun createUpdateDialog(
+    /**
+     * Post-download "ready to install" prompt. Lightweight by design: the
+     * package is already downloaded, so the only decision left is *when* to
+     * install. Confirm fires the system installer; a non-forced update can be
+     * dismissed and re-offered on the next update check.
+     */
+    private fun createReadyToInstallDialog(
         activity: LxAppActivity,
-        callbackId: Long,
-        updateInfo: UpdateInfo?
+        apkPath: String,
+        isForce: Boolean
     ): Dialog {
-        val isForceUpdate = updateInfo?.isForceUpdate == true
         val metrics = metricsFor(activity)
         val dialog = Dialog(activity)
         dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
         dialog.setCancelable(false)
 
-        // Main container with gradient background
         val container = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
             val p = dp(activity, metrics.outerPaddingDp)
             setPadding(p, p, p, p)
-
             background = GradientDrawable().apply {
                 colors = intArrayOf(
                     Color.parseColor("#F8F9FA"),
@@ -504,56 +283,36 @@ internal object UpdateManager {
                 orientation = GradientDrawable.Orientation.TOP_BOTTOM
                 cornerRadius = dp(activity, metrics.cornerDp).toFloat()
             }
-
             layoutParams = ViewGroup.LayoutParams(
                 dp(activity, metrics.containerWidthDp),
                 ViewGroup.LayoutParams.WRAP_CONTENT
             )
         }
 
-        // Header with title and close button
         val header = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply {
-                bottomMargin = dp(activity, metrics.gapDp)
-            }
+            ).apply { bottomMargin = dp(activity, metrics.gapDp) }
         }
 
-        // Title and version
-        val titleContainer = LinearLayout(activity).apply {
-            orientation = LinearLayout.VERTICAL
+        val titleView = TextView(activity).apply {
+            text = activity.getString(R.string.lx_update_ready_title)
+            setTextColor(Color.parseColor("#1F2937"))
+            textSize = metrics.titleSp
+            setTypeface(null, android.graphics.Typeface.BOLD)
             layoutParams = LinearLayout.LayoutParams(
                 0,
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 1f
             )
         }
+        header.addView(titleView)
 
-        val titleView = TextView(activity).apply {
-            text = activity.getString(R.string.lx_update_title)
-            setTextColor(Color.parseColor("#1F2937"))
-            textSize = metrics.titleSp
-            setTypeface(null, android.graphics.Typeface.BOLD)
-        }
-
-        val versionView = TextView(activity).apply {
-            text = updateInfo?.let { "v${it.version}" } ?: ""
-            setTextColor(Color.parseColor("#6B7280"))
-            textSize = metrics.versionSp
-            visibility = if (updateInfo != null) View.VISIBLE else View.GONE
-        }
-
-        titleContainer.addView(titleView)
-        titleContainer.addView(versionView)
-
-        header.addView(titleContainer)
         var closeButton: ImageView? = null
-        if (!isForceUpdate) {
-            // Non-forced updates can be dismissed by user choice.
+        if (!isForce) {
             closeButton = ImageView(activity).apply {
                 id = View.generateViewId()
                 layoutParams = LinearLayout.LayoutParams(
@@ -570,98 +329,26 @@ internal object UpdateManager {
                 isClickable = true
                 isFocusable = true
                 isFocusableInTouchMode = true
-                setOnClickListener {
-                    dialog.dismiss()
-                    NativeApi.onCallback(callbackId, false, "2000")
-                }
+                setOnClickListener { dialog.dismiss() }
             }
             header.addView(closeButton)
         }
         container.addView(header)
 
-        // Release notes (if available)
-        if (updateInfo?.releaseNotes != null && updateInfo.releaseNotes.isNotEmpty()) {
-            val notesScroll = ScrollView(activity).apply {
-                // ScrollView needs to be focusable on TV so D-pad can scroll it
-                // when the notes overflow.
-                if (metrics.isTv) {
-                    isFocusable = true
-                    isFocusableInTouchMode = true
-                }
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    dp(activity, metrics.notesMaxHeightDp)
-                ).apply {
-                    bottomMargin = dp(activity, metrics.gapDp)
-                }
-            }
-
-            val notesContainer = LinearLayout(activity).apply {
-                orientation = LinearLayout.VERTICAL
-                val p = dp(activity, if (metrics.isTv) 20 else 12)
-                setPadding(p, p, p, p)
-
-                background = GradientDrawable().apply {
-                    setColor(Color.parseColor("#F3F4F6"))
-                    cornerRadius = dp(activity, if (metrics.isTv) 12 else 8).toFloat()
-                }
-            }
-
-            updateInfo.releaseNotes.forEach { note ->
-                val noteView = TextView(activity).apply {
-                    text = "• $note"
-                    setTextColor(Color.parseColor("#4B5563"))
-                    textSize = metrics.bodySp
-                    layoutParams = LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.MATCH_PARENT,
-                        LinearLayout.LayoutParams.WRAP_CONTENT
-                    ).apply {
-                        bottomMargin = dp(activity, if (metrics.isTv) 8 else 4)
-                    }
-                }
-                notesContainer.addView(noteView)
-            }
-
-            notesScroll.addView(notesContainer)
-            container.addView(notesScroll)
-        } else {
-            // Message when no release notes
-            val messageView = TextView(activity).apply {
-                text = activity.getString(R.string.lx_update_message)
-                setTextColor(Color.parseColor("#6B7280"))
-                textSize = metrics.bodySp
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply {
-                    bottomMargin = dp(activity, metrics.gapDp)
-                }
-            }
-            container.addView(messageView)
+        val messageView = TextView(activity).apply {
+            text = activity.getString(R.string.lx_update_ready_message)
+            setTextColor(Color.parseColor("#6B7280"))
+            textSize = metrics.bodySp
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = dp(activity, metrics.gapDp) }
         }
+        container.addView(messageView)
 
-        // Size info (if available)
-        if (updateInfo != null && updateInfo.sizeBytes > 0) {
-            val sizeView = TextView(activity).apply {
-                val sizeMB = updateInfo.sizeBytes / (1024.0 * 1024.0)
-                text = String.format("%.1f MB", sizeMB)
-                setTextColor(Color.parseColor("#9CA3AF"))
-                textSize = metrics.sizeSp
-                gravity = Gravity.END
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply {
-                    bottomMargin = dp(activity, metrics.gapDp)
-                }
-            }
-            container.addView(sizeView)
-        }
-
-        // Confirm button
         val confirmButton = Button(activity).apply {
             id = View.generateViewId()
-            text = activity.getString(R.string.lx_update_confirm)
+            text = activity.getString(R.string.lx_update_install_now)
             setTextColor(Color.WHITE)
             textSize = metrics.buttonSp
             setTypeface(null, android.graphics.Typeface.BOLD)
@@ -669,20 +356,13 @@ internal object UpdateManager {
             isFocusable = true
             isFocusableInTouchMode = true
             background = confirmButtonBackground(activity, metrics)
-
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 dp(activity, metrics.buttonHeightDp)
             )
-
             setOnClickListener {
-                showDownloadProgress()
                 dialog.dismiss()
-                val result = JSONObject().apply {
-                    put("confirm", true)
-                    put("cancel", false)
-                }
-                NativeApi.onCallback(callbackId, true, result.toString())
+                proceedInstall(activity, apkPath)
             }
         }
 
@@ -694,41 +374,77 @@ internal object UpdateManager {
 
         container.addView(confirmButton)
         dialog.setContentView(container)
-        dialog.setOnShowListener {
-            confirmButton.requestFocus()
-        }
-
+        dialog.setOnShowListener { confirmButton.requestFocus() }
         return dialog
     }
 
     /**
-     * Install an application update from the given APK file path.
-     * Opens the system installer, or schedules the install work when the
-     * caller is on the UI thread.
+     * Hand off a downloaded-and-verified update for installation.
+     *
+     * The package was downloaded silently in the background. Rather than pop the
+     * system installer unprompted, present a lightweight "ready to install"
+     * prompt; the system installer fires only when the user confirms. A forced
+     * update shows a non-dismissible prompt. When no activity is in the
+     * foreground the update is remembered and the prompt is shown on return.
      *
      * @param apkPath Absolute file path to the downloaded APK file
-     * @return true if the request was accepted or a system UI was launched,
-     * false if it was rejected synchronously
+     * @param isForceUpdate When true the prompt cannot be dismissed
+     * @return true once the request has been accepted (prompt shown or deferred)
      */
     @JvmStatic
-    fun installUpdate(apkPath: String): Boolean {
+    fun installUpdate(apkPath: String, isForceUpdate: Boolean): Boolean {
         val activity = resolveActivity()
         if (activity == null) {
-            Log.w(TAG, "No current activity; deferring update install")
-            pendingInstallPath.set(apkPath)
+            Log.w(TAG, "No current activity; deferring ready-to-install prompt")
+            pendingReadyInstallPath.set(apkPath)
+            pendingReadyInstallForce = isForceUpdate
             return true
         }
-        if (Looper.myLooper() == Looper.getMainLooper()) {
-            if (!validateInstallRequest(activity, apkPath)) {
-                return false
-            }
-            if (needsInstallPermission(activity)) {
-                return requestInstallPermission(activity, apkPath)
-            }
-            startInstall(activity, apkPath)
-            return true
+        showReadyToInstallPrompt(activity, apkPath, isForceUpdate)
+        return true
+    }
+
+    @JvmStatic
+    fun tryShowPendingReadyInstall() {
+        val apkPath = pendingReadyInstallPath.getAndSet(null) ?: return
+        val activity = resolveActivity()
+        if (activity == null) {
+            // No activity yet — keep it for the next onResume / init.
+            pendingReadyInstallPath.set(apkPath)
+            return
         }
-        return launchInstaller(activity, apkPath)
+        showReadyToInstallPrompt(activity, apkPath, pendingReadyInstallForce)
+    }
+
+    private fun showReadyToInstallPrompt(
+        activity: LxAppActivity,
+        apkPath: String,
+        isForce: Boolean
+    ) {
+        activity.runOnUiThread {
+            if (activity.isFinishing || activity.isDestroyed) {
+                pendingReadyInstallPath.set(apkPath)
+                pendingReadyInstallForce = isForce
+                return@runOnUiThread
+            }
+            createReadyToInstallDialog(activity, apkPath, isForce).show()
+        }
+    }
+
+    /**
+     * Run the actual install: validate, request the unknown-sources permission
+     * if needed, then launch the system installer. Always invoked from the
+     * "ready to install" prompt confirm handler (UI thread).
+     */
+    private fun proceedInstall(activity: LxAppActivity, apkPath: String) {
+        if (!validateInstallRequest(activity, apkPath)) {
+            return
+        }
+        if (needsInstallPermission(activity)) {
+            requestInstallPermission(activity, apkPath)
+            return
+        }
+        startInstall(activity, apkPath)
     }
 
     private fun validateInstallRequest(activity: LxAppActivity, apkPath: String): Boolean {

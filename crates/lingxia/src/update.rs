@@ -222,43 +222,36 @@ pub mod host_app {
         let Some(update) = update else {
             return Ok(Outcome::UpToDate);
         };
-        // Stage 1: present the centered "update available" card and wait for
-        // the user's decision. Headless / non-desktop auto-confirms so the
-        // update still proceeds. "Later" defers (the shell shows the quiet
-        // sidebar reminder).
-        if !present_update_prompt(&service, &update).await {
+        // Store-delivered platforms (iOS App Store, HarmonyOS AppGallery) never
+        // self-download or self-install: the store owns updates. Point the user
+        // at the store when possible, then stop — no background download.
+        if !service.self_update_supported() {
+            let info = update_info_json(&update);
+            let opened = service.open_update_store(&info);
+            log::info!(
+                "[lingxia] host app update {} available; store-delivered platform (opened store: {opened})",
+                update.version
+            );
             return Ok(Outcome::Deferred {
                 version: update.version,
             });
         }
+        // No pre-download prompt: the package downloads silently in the
+        // background. The only user-facing moment is the post-download
+        // "ready to update" prompt, which each platform presents from its
+        // install hand-off (a dismissible reminder, or a blocking modal when
+        // the update is forced). Headless / non-desktop applies unattended.
         apply(service, update).await
     }
 
-    /// Returns true to proceed with download+install, false if the user
-    /// deferred. Falls back to true (auto-install) when no prompt UI exists.
-    async fn present_update_prompt(
-        service: &HostAppUpdateService,
-        update: &UpdatePackageInfo,
-    ) -> bool {
-        let info = serde_json::json!({
+    fn update_info_json(update: &UpdatePackageInfo) -> String {
+        serde_json::json!({
             "version": update.version,
             "size": update.size,
             "releaseNotes": update.release_notes,
             "isForceUpdate": update.is_force_update,
         })
-        .to_string();
-
-        let (callback_id, receiver) = lingxia_messaging::get_callback();
-        if let Err(error) = service.show_update_prompt(callback_id, &info) {
-            lingxia_messaging::remove_callback(callback_id);
-            log::debug!("[lingxia] update prompt unavailable, auto-installing: {error}");
-            return true;
-        }
-        match receiver.await {
-            Ok(lingxia_messaging::CallbackResult::Success(_)) => true,
-            // Error 2000 = user chose "Later".
-            Ok(lingxia_messaging::CallbackResult::Error(_)) | Err(_) => false,
-        }
+        .to_string()
     }
 
     async fn apply(
@@ -279,9 +272,8 @@ pub mod host_app {
                     total_bytes,
                     progress,
                 } => {
-                    if let Some(percent) = progress {
-                        service.notify_download_progress(percent);
-                    }
+                    // Download is silent — progress is surfaced only to the
+                    // registered handler (logging), not to a native UI.
                     emit(Progress::Downloading {
                         version,
                         downloaded_bytes,
