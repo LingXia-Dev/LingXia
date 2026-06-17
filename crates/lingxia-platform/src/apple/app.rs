@@ -298,6 +298,11 @@ fn install_update_on_macos(
         )));
     }
 
+    // Clear staged bundles / helper scripts left by earlier updates the user
+    // never applied, so they don't accumulate. The new ones are created below
+    // with fresh names; any previously-staged update is being superseded.
+    prune_old_macos_update_artifacts(platform);
+
     let current_app = current_macos_app_bundle_path()?;
     let prepared = prepare_macos_update_source(platform, package_path, &current_app)?;
     let helper = write_macos_update_helper(platform, &current_app, &prepared)?;
@@ -336,6 +341,26 @@ fn install_update_on_macos(
 /// A prepared host-app update awaiting the user's confirmation click. Held in
 /// `STAGED_MACOS_UPDATE` between `install_update` (which stages it and shows
 /// the sidebar callout) and `apply_staged_macos_update` (the click handler).
+/// Remove leftover `staged/` bundles and `helper/` scripts from earlier update
+/// attempts the user never applied, so they don't accumulate in the cache.
+#[cfg(target_os = "macos")]
+fn prune_old_macos_update_artifacts(platform: &Platform) {
+    let base = platform.app_cache_dir().join("LingXia").join("app_updates");
+    for sub in ["staged", "helper"] {
+        let Ok(entries) = fs::read_dir(base.join(sub)) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                let _ = fs::remove_dir_all(&path);
+            } else {
+                let _ = fs::remove_file(&path);
+            }
+        }
+    }
+}
+
 #[cfg(target_os = "macos")]
 struct StagedMacosUpdate {
     helper: MacosUpdateHelper,

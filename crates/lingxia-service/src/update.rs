@@ -257,6 +257,29 @@ impl BodySink for ProgressSink {
     }
 }
 
+/// Remove downloaded update packages other than the current target so the
+/// cache never accumulates one file per skipped version. Keeps the target's
+/// package and its in-progress `.part` resume file (both share the `keep`
+/// filename prefix); only touches `app_*` package files, not the `staged/` or
+/// `helper/` subdirs the installer manages.
+fn prune_stale_app_update_packages(dir: &Path, keep: &str) {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        if name.starts_with("app_") && !name.starts_with(keep) {
+            let _ = fs::remove_file(&path);
+        }
+    }
+}
+
 async fn download_host_app_update_package(
     runtime: Arc<Platform>,
     url: &str,
@@ -271,6 +294,13 @@ async fn download_host_app_update_package(
 
     let dest = dest_dir.join(app_update_filename(url, version));
     log::info!("App update download dest: {}", dest.display());
+
+    // Drop previously-downloaded packages for other versions so the cache holds
+    // at most one package. Without this, ignoring successive updates (each a new
+    // version) accumulates a package file per version (~tens of MB each).
+    if let Some(keep) = dest.file_name().and_then(|name| name.to_str()) {
+        prune_stale_app_update_packages(&dest_dir, keep);
+    }
 
     if dest.exists() {
         if checksum_sha256.is_empty() {
