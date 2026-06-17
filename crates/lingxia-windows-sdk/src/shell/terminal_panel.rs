@@ -51,10 +51,10 @@ pub(super) enum SplitDir {
     Down,
 }
 
-/// Pixel thickness of the gap between two sibling panes (the visible
-/// divider lives in this gap; see the grid painter).
+/// Pixel thickness of the gap between two sibling panes — a thin hairline
+/// divider like ghostty's (the grab area is widened separately for drag).
 #[cfg(all(feature = "terminal-runtime", feature = "shell-runtime"))]
-pub(super) const PANE_DIVIDER: i32 = 6;
+pub(super) const PANE_DIVIDER: i32 = 1;
 
 /// How a split node arranges its two children.
 #[cfg(feature = "terminal-runtime")]

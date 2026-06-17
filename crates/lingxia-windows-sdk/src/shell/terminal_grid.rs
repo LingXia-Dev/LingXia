@@ -52,14 +52,14 @@ const GRID_MIN_COLS: i32 = 20;
 
 const GRID_MIN_ROWS: i32 = 4;
 
-/// Divider gaps between panes are filled with this color so split borders
-/// read as thin dark lines on the terminal surface.
-const PANE_DIVIDER_COLOR: u32 = 0x1b1e24;
+/// Hairline divider between panes — a soft gray line on the terminal
+/// surface, à la ghostty's split divider.
+const PANE_DIVIDER_COLOR: u32 = 0x3a3f4a;
 
-/// Focus ring drawn around the active pane when a tab has more than one.
-const PANE_FOCUS_BORDER: u32 = 0x4a9eff;
-
-const PANE_FOCUS_BORDER_THICKNESS: i32 = 2;
+/// Unfocused panes keep this fraction of their colors (the remainder blends
+/// toward the surface background); the focused pane reads as active without
+/// an obtrusive border, closer to ghostty's split focus treatment.
+const UNFOCUSED_KEEP_PERCENT: u32 = 62;
 
 /// Cell metrics and grid area recorded at the last paint of a pane.
 #[derive(Clone, Copy)]
@@ -262,11 +262,12 @@ fn grid_size_from_geometry(geometry: GridGeometry) -> Option<(u16, u16)> {
 }
 
 /// Paints every pane of `panel_id`'s active tab into `body` (the dock body
-/// below the panel header row). Sibling panes are separated by divider
-/// gaps and the focused pane gets a focus ring when a tab has more than one
-/// pane. Returns `false` when no pane has a snapshot yet so the caller can
-/// fall back to body-text rendering; pane geometry is recorded either way
-/// so the facade can size each PTY from the first paint on.
+/// below the panel header row). Sibling panes are separated by a hairline
+/// divider and, when a tab has more than one pane, the unfocused panes are
+/// dimmed so the focused one reads as active (no border). Returns `false`
+/// when no pane has a snapshot yet so the caller can fall back to body-text
+/// rendering; pane geometry is recorded either way so the facade can size
+/// each PTY from the first paint on.
 pub(super) fn draw_panel_panes(hdc: HDC, panel_id: &str, body: RECT) -> bool {
     panel_grids().entry(panel_id.to_string()).or_default().body = Some(body);
 
@@ -296,43 +297,16 @@ pub(super) fn draw_panel_panes(hdc: HDC, panel_id: &str, body: RECT) -> bool {
             // fonts are deleted (on drop) only after the DC stopped
             // referencing them.
             let saved = unsafe { SaveDC(hdc) };
+            // Dim every pane except the focused one (only when split).
+            let dim = multi && !frame.focused;
             drew_any |=
-                draw_pane_grid_clipped(hdc, panel_id, frame.session_id, grid_rect, &mut fonts);
+                draw_pane_grid_clipped(hdc, panel_id, frame.session_id, grid_rect, dim, &mut fonts);
             unsafe {
                 let _ = RestoreDC(hdc, saved);
             }
         }
-
-        if multi && frame.focused {
-            draw_focus_border(hdc, frame.rect);
-        }
     }
     drew_any
-}
-
-/// Draws a focus ring just inside `rect`.
-fn draw_focus_border(hdc: HDC, rect: RECT) {
-    let t = PANE_FOCUS_BORDER_THICKNESS;
-    for edge in [
-        RECT {
-            bottom: (rect.top + t).min(rect.bottom),
-            ..rect
-        },
-        RECT {
-            top: (rect.bottom - t).max(rect.top),
-            ..rect
-        },
-        RECT {
-            right: (rect.left + t).min(rect.right),
-            ..rect
-        },
-        RECT {
-            left: (rect.right - t).max(rect.left),
-            ..rect
-        },
-    ] {
-        fill_rect(hdc, edge, PANE_FOCUS_BORDER);
-    }
 }
 
 fn draw_pane_grid_clipped(
@@ -340,6 +314,7 @@ fn draw_pane_grid_clipped(
     panel_id: &str,
     session_id: u64,
     grid_rect: RECT,
+    dim: bool,
     fonts: &mut GridFonts,
 ) -> bool {
     if !fonts.select(hdc, false, false, false) {
@@ -398,9 +373,12 @@ fn draw_pane_grid_clipped(
         } else {
             cell.bg.as_deref()
         };
-        let Some(cell_background) = token.and_then(parse_hex_color) else {
+        let Some(mut cell_background) = token.and_then(parse_hex_color) else {
             continue;
         };
+        if dim {
+            cell_background = dim_unfocused(cell_background, background);
+        }
         let left = grid_rect.left + i32::from(cell.col) * cell_width;
         let top = grid_rect.top + i32::from(cell.row) * line_height;
         if left >= grid_rect.right || top >= grid_rect.bottom {
@@ -427,13 +405,15 @@ fn draw_pane_grid_clipped(
         line_height,
         background,
         foreground,
+        dim,
         fonts,
     );
 
     // Exited sessions are closed by the facade as soon as their snapshot
     // reports `exited` (the pane closes; the last pane closes the tab), so
     // no `[process exited]` overlay is drawn; at most one repaint shows
-    // the final screen without a cursor.
+    // the final screen without a cursor. Unfocused panes show a hollow
+    // cursor (drawn dimmed) like a conventional inactive terminal.
     if !snapshot.exited && snapshot.cursor_visible {
         draw_cursor(
             hdc,
@@ -443,6 +423,7 @@ fn draw_pane_grid_clipped(
             line_height,
             background,
             foreground,
+            dim,
             fonts,
         );
     }
@@ -458,7 +439,7 @@ struct RunStyle {
     underline: bool,
 }
 
-fn cell_style(cell: &TerminalCell, background: u32, foreground: u32) -> RunStyle {
+fn cell_style(cell: &TerminalCell, background: u32, foreground: u32, dim: bool) -> RunStyle {
     let token = if cell.inverse {
         cell.bg.as_deref()
     } else {
@@ -467,6 +448,10 @@ fn cell_style(cell: &TerminalCell, background: u32, foreground: u32) -> RunStyle
     let mut color = token.and_then(parse_hex_color).unwrap_or(foreground);
     if cell.dim {
         color = blend_rgb(color, background, GRID_DIM_FOREGROUND_PERCENT);
+    }
+    // Unfocused split pane: fade the text toward the surface background.
+    if dim {
+        color = dim_unfocused(color, background);
     }
     RunStyle {
         color,
@@ -497,6 +482,7 @@ fn draw_cell_runs(
     line_height: i32,
     background: u32,
     foreground: u32,
+    dim: bool,
     fonts: &mut GridFonts,
 ) {
     let mut run: Option<GridRun> = None;
@@ -505,7 +491,7 @@ fn draw_cell_runs(
         if cell.text.is_empty() {
             continue;
         }
-        let style = cell_style(cell, background, foreground);
+        let style = cell_style(cell, background, foreground, dim);
         let continues = run.as_ref().is_some_and(|run| {
             run.row == cell.row && run.next_col == cell.col && run.style == style
         });
@@ -578,6 +564,7 @@ fn draw_cursor(
     line_height: i32,
     background: u32,
     foreground: u32,
+    dim: bool,
     fonts: &mut GridFonts,
 ) {
     let left = grid_rect.left + i32::from(snapshot.cursor_col) * cell_width;
@@ -591,6 +578,32 @@ fn draw_cursor(
         right: left + cell_width,
         bottom: top + line_height,
     };
+    // Unfocused split pane: a dimmed hollow cursor (conventional inactive
+    // terminal look), regardless of the session's cursor style.
+    if dim {
+        let color = dim_unfocused(foreground, background);
+        for edge in [
+            RECT {
+                bottom: top + 1,
+                ..cell_rect
+            },
+            RECT {
+                top: cell_rect.bottom - 1,
+                ..cell_rect
+            },
+            RECT {
+                right: left + 1,
+                ..cell_rect
+            },
+            RECT {
+                left: cell_rect.right - 1,
+                ..cell_rect
+            },
+        ] {
+            fill_rect(hdc, edge, color);
+        }
+        return;
+    }
     match snapshot.cursor_style {
         "bar" => fill_rect(
             hdc,
@@ -763,6 +776,11 @@ fn parse_hex_color(token: &str) -> Option<u32> {
         return None;
     }
     u32::from_str_radix(hex, 16).ok()
+}
+
+/// Fades `color` toward `background` for an unfocused split pane.
+fn dim_unfocused(color: u32, background: u32) -> u32 {
+    blend_rgb(color, background, UNFOCUSED_KEEP_PERCENT)
 }
 
 /// Blends `fg_percent`% of `fg` with the remainder of `bg`, per channel.
