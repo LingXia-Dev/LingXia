@@ -289,6 +289,63 @@ impl LxApp {
             .map_err(Into::into)
     }
 
+    /// §11.2 Phase 1 — mirror a host-declared aside (e.g. the assistant/terminal
+    /// attach-panel) into this lxapp's surface graph so the core's DerivedLayout
+    /// reflects it. Owner is `Host` (window-scoped, not page/lxapp). This does NOT
+    /// drive rendering yet; it makes the core the state source of truth so
+    /// `lx.surface.derivedLayout()` includes host surfaces. Interim ownership is
+    /// the primary lxapp's manager until the graph is promoted to per-window.
+    pub fn register_host_aside(&self, surface_id: &str, edge: &str) {
+        use lingxia_surface::{
+            Edge as LxEdge, Placement, Role as LxRole, Surface as LxSurface,
+            SurfaceContent as LxContent, SurfaceOwner as LxOwner, SurfaceState as LxState,
+        };
+        let surface_id = surface_id.trim();
+        if surface_id.is_empty() {
+            return;
+        }
+        let edge = match edge {
+            "left" | "leading" => LxEdge::Left,
+            "top" => LxEdge::Top,
+            "bottom" => LxEdge::Bottom,
+            _ => LxEdge::Right,
+        };
+        let node = LxSurface {
+            id: surface_id.to_string(),
+            role: LxRole::Aside,
+            content: LxContent::Entry {
+                id: surface_id.to_string(),
+                path: None,
+            },
+            owner: LxOwner::Host,
+            placement: Placement {
+                edge: Some(edge),
+                preferred_size: None,
+            },
+            state: LxState::Mounted,
+            float: None,
+        };
+        let root = self.root_main_node();
+        if let Ok(state) = self.state.lock() {
+            let mut manager = state.surface_manager.lock().unwrap();
+            if manager.graph().mains().is_empty() {
+                manager.open(root);
+            }
+            let _ = manager.open(node);
+        }
+    }
+
+    /// Remove a host-declared aside from the surface graph (§11.2 Phase 1).
+    pub fn unregister_host_aside(&self, surface_id: &str) {
+        let surface_id = surface_id.trim();
+        if surface_id.is_empty() {
+            return;
+        }
+        if let Ok(state) = self.state.lock() {
+            let _ = state.surface_manager.lock().unwrap().close(surface_id);
+        }
+    }
+
     /// `lx.shell.toggle`: flip a host-declared top-level surface's visibility.
     pub fn toggle_shell_surface(&self, id: &str) -> Result<(), LxAppError> {
         let id = id.trim();

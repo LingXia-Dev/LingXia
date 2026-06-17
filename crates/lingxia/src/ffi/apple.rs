@@ -202,6 +202,14 @@ mod bridge {
         #[swift_bridge(swift_name = "surfaceDerivedLayout")]
         fn surface_derived_layout(appid: &str) -> String;
 
+        // §11.2 Phase 1: mirror a host-declared aside into the primary lxapp's
+        // surface graph so the core's DerivedLayout reflects host surfaces.
+        #[swift_bridge(swift_name = "registerHostAside")]
+        fn register_host_aside(appid: &str, surface_id: &str, edge: &str) -> bool;
+
+        #[swift_bridge(swift_name = "unregisterHostAside")]
+        fn unregister_host_aside(appid: &str, surface_id: &str) -> bool;
+
         #[swift_bridge(swift_name = "openBrowserTab")]
         fn open_browser_tab(appid: &str, session_id: u64, url: &str) -> Option<String>;
 
@@ -624,6 +632,28 @@ pub fn surface_derived_layout(appid: &str) -> String {
             .and_then(|lxapp| lxapp.surface_derived_layout())
             .and_then(|layout| serde_json::to_string(&layout).ok())
             .unwrap_or_else(|| "null".to_string())
+    })
+}
+
+pub fn register_host_aside(appid: &str, surface_id: &str, edge: &str) -> bool {
+    ffi_catch_unwind!("register_host_aside", false, || {
+        if let Some(lxapp) = lxapp::try_get(appid) {
+            lxapp.register_host_aside(surface_id, edge);
+            true
+        } else {
+            false
+        }
+    })
+}
+
+pub fn unregister_host_aside(appid: &str, surface_id: &str) -> bool {
+    ffi_catch_unwind!("unregister_host_aside", false, || {
+        if let Some(lxapp) = lxapp::try_get(appid) {
+            lxapp.unregister_host_aside(surface_id);
+            true
+        } else {
+            false
+        }
     })
 }
 

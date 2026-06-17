@@ -510,6 +510,13 @@ final class LxAppMacAppUIRuntime: NSObject {
             try openSurface(id: parentID)
         }
 
+        // §11.2 Phase 1: reflect this host-declared aside in the core surface
+        // graph (state-only; no rendering change) so lx.surface.derivedLayout()
+        // includes host surfaces. Mirrored into the primary lxapp's graph.
+        if let primaryAppId = rootSurface.content.appId {
+            _ = registerHostAside(primaryAppId, surface.id, surface.presentation.edge?.rawValue ?? "right")
+        }
+
         if surface.content.kind == .terminal {
             try openTerminalAttachPanelSurface(surface)
             return
@@ -692,6 +699,10 @@ final class LxAppMacAppUIRuntime: NSObject {
             // A companion lxapp's sidebar entry is removed when its panel closes.
             if surface.content.kind == .lxapp, let appId = surface.content.appId {
                 shell.unregisterAsideLxApp(appId: appId)
+            }
+            // §11.2 Phase 1: drop it from the core surface graph too.
+            if let primaryAppId = rootSurface.content.appId {
+                _ = unregisterHostAside(primaryAppId, id)
             }
             shell.setPanelFullscreen(id: id, enabled: false)
             terminalWorkspaces[id]?.setSurfaceZoomEnabled(false, notifyRuntime: false)
