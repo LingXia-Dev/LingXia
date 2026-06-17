@@ -270,6 +270,29 @@ fn surfaces_to_ui(surfaces: &[SurfaceDecl], terminal_enabled: bool) -> Result<Va
         return Err(anyhow!("surfaces[].id must not be empty"));
     }
 
+    // Structural validation: unique ids, and fields that only make sense on a
+    // given role.
+    let mut seen_ids = std::collections::HashSet::new();
+    for surface in surfaces {
+        let id = surface.id.trim();
+        if id.is_empty() {
+            return Err(anyhow!("surfaces[].id must not be empty"));
+        }
+        if !seen_ids.insert(id) {
+            return Err(anyhow!("surfaces: duplicate surface id '{id}'"));
+        }
+        if surface.launch && surface.role != SurfaceRole::Main {
+            return Err(anyhow!(
+                "surface '{id}': launch: true is only valid on a main surface"
+            ));
+        }
+        if surface.edge.is_some() && surface.role != SurfaceRole::Aside {
+            return Err(anyhow!(
+                "surface '{id}': edge is only valid on an aside surface"
+            ));
+        }
+    }
+
     let mut out_surfaces: Vec<Value> = Vec::new();
     let mut out_activators: Vec<Value> = Vec::new();
 
@@ -2333,6 +2356,73 @@ android:
         ];
         let err = surfaces_to_ui(&surfaces, false).unwrap_err().to_string();
         assert!(err.contains("at most one"), "{err}");
+    }
+
+    #[test]
+    fn surfaces_v2_rejects_duplicate_id() {
+        let surfaces = vec![
+            SurfaceDecl {
+                id: "dup".into(),
+                render: SurfaceRender::Lxapp,
+                role: SurfaceRole::Main,
+                launch: true,
+                edge: None,
+                sidebar: None,
+                tray: None,
+            },
+            SurfaceDecl {
+                id: "dup".into(),
+                render: SurfaceRender::Lxapp,
+                role: SurfaceRole::Aside,
+                launch: false,
+                edge: Some("right".into()),
+                sidebar: None,
+                tray: None,
+            },
+        ];
+        let err = surfaces_to_ui(&surfaces, false).unwrap_err().to_string();
+        assert!(err.contains("duplicate surface id"), "{err}");
+    }
+
+    #[test]
+    fn surfaces_v2_rejects_launch_on_aside() {
+        let surfaces = vec![
+            SurfaceDecl {
+                id: "a".into(),
+                render: SurfaceRender::Lxapp,
+                role: SurfaceRole::Main,
+                launch: true,
+                edge: None,
+                sidebar: None,
+                tray: None,
+            },
+            SurfaceDecl {
+                id: "b".into(),
+                render: SurfaceRender::Lxapp,
+                role: SurfaceRole::Aside,
+                launch: true,
+                edge: Some("right".into()),
+                sidebar: None,
+                tray: None,
+            },
+        ];
+        let err = surfaces_to_ui(&surfaces, false).unwrap_err().to_string();
+        assert!(err.contains("launch: true is only valid on a main"), "{err}");
+    }
+
+    #[test]
+    fn surfaces_v2_rejects_edge_on_main() {
+        let surfaces = vec![SurfaceDecl {
+            id: "a".into(),
+            render: SurfaceRender::Lxapp,
+            role: SurfaceRole::Main,
+            launch: true,
+            edge: Some("right".into()),
+            sidebar: None,
+            tray: None,
+        }];
+        let err = surfaces_to_ui(&surfaces, false).unwrap_err().to_string();
+        assert!(err.contains("edge is only valid on an aside"), "{err}");
     }
 
     #[test]
