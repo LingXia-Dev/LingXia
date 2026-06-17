@@ -153,7 +153,12 @@ pub trait AppUpdateHost: Clone + Send + Sync + 'static {
         update: &'a UpdatePackageInfo,
         progress: AppUpdateProgressReporter,
     ) -> BoxFuture<'a, Result<PathBuf, UpdateError>>;
-    fn install_app_update(&self, package_path: &Path) -> Result<(), UpdateError>;
+    /// Hand off the downloaded package to the platform installer. `info_json`
+    /// carries the prompt metadata `{version, releaseNotes, isForceUpdate}`:
+    /// the platform shows release notes in the "ready to update" prompt and,
+    /// when `isForceUpdate` is true, presents a blocking "must update" prompt
+    /// instead of the dismissible reminder.
+    fn install_app_update(&self, package_path: &Path, info_json: &str) -> Result<(), UpdateError>;
     fn log_app_update_warning(&self, detail: &str);
 }
 
@@ -177,7 +182,29 @@ pub async fn check_app_update<H: AppUpdateHost>(
     host: &H,
 ) -> Result<Option<UpdatePackageInfo>, UpdateError> {
     let current_version = host.current_app_version()?;
-    host.check_app_update(&current_version).await
+    let candidate = host.check_app_update(&current_version).await?;
+    // Only surface a strictly-newer candidate. A provider that re-offers the
+    // installed version (or the same version after a successful update) would
+    // otherwise make the app re-download and re-prompt on every check — an
+    // endless "update available" loop. Unparseable versions fall through to the
+    // apply-time downgrade guard.
+    if let Some(package) = &candidate
+        && !app_update_candidate_is_newer(&package.version, &current_version)
+    {
+        return Ok(None);
+    }
+    Ok(candidate)
+}
+
+fn app_update_candidate_is_newer(candidate: &str, current: &str) -> bool {
+    match (
+        Version::parse(candidate.trim()),
+        Version::parse(current.trim()),
+    ) {
+        (Ok(candidate), Ok(current)) => candidate > current,
+        // Can't compare — let the apply-time guard decide rather than hiding it.
+        _ => true,
+    }
 }
 
 pub fn ensure_app_update_candidate_version(
