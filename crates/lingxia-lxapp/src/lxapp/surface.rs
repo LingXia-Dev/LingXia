@@ -1,4 +1,5 @@
 use super::*;
+use lingxia_platform::Platform;
 use lingxia_platform::traits::ui::{
     SurfaceContent, SurfaceKind, SurfacePosition, SurfacePresenter, SurfaceRole,
     SurfaceRequest as PlatformSurfaceRequest,
@@ -11,12 +12,171 @@ use std::time::Duration;
 const SURFACE_DISPOSE_TTL_MS: u64 = 30_000;
 static SURFACE_CLOSE_OBSERVER: OnceLock<fn(&str, &str) -> bool> = OnceLock::new();
 
-/// §11.2 Phase 2: the surface graph is per-WINDOW, not per-lxapp. macOS/mobile
-/// are single-window today, so this process-global manager IS the window's
-/// graph; multi-window (§8) will key this by window id.
-static WINDOW_SURFACE: OnceLock<std::sync::Mutex<lingxia_surface::SurfaceManager>> = OnceLock::new();
-pub(crate) fn window_surface_manager() -> &'static std::sync::Mutex<lingxia_surface::SurfaceManager> {
-    WINDOW_SURFACE.get_or_init(|| std::sync::Mutex::new(lingxia_surface::SurfaceManager::new(700.0)))
+/// §11.2 Phase 2: the surface graph is per-WINDOW, not per-lxapp. The graph and
+/// its single commit point now live on a dedicated controller keyed by
+/// `window_id`; macOS/mobile are single-window today (the `PRIMARY_WINDOW`
+/// entry), multi-window (§8) just adds more entries to the registry.
+pub(crate) struct WindowSurfaceController {
+    window_id: String,
+    manager: std::sync::Mutex<lingxia_surface::SurfaceManager>,
+    runtime: std::sync::Arc<Platform>,
+}
+
+static WINDOW_CONTROLLERS: OnceLock<
+    std::sync::Mutex<HashMap<String, std::sync::Arc<WindowSurfaceController>>>,
+> = OnceLock::new();
+pub(crate) const PRIMARY_WINDOW: &str = "primary";
+
+/// Get-or-create the controller for a window. On first use of a window id we
+/// clone the runtime handle and seed a fresh `SurfaceManager` for that window's
+/// graph.
+pub(crate) fn window_controller(
+    window_id: &str,
+    runtime: &std::sync::Arc<Platform>,
+) -> std::sync::Arc<WindowSurfaceController> {
+    let registry = WINDOW_CONTROLLERS.get_or_init(|| std::sync::Mutex::new(HashMap::new()));
+    let mut map = registry.lock().unwrap();
+    map.entry(window_id.to_string())
+        .or_insert_with(|| {
+            std::sync::Arc::new(WindowSurfaceController {
+                window_id: window_id.to_string(),
+                manager: std::sync::Mutex::new(lingxia_surface::SurfaceManager::new(700.0)),
+                runtime: runtime.clone(),
+            })
+        })
+        .clone()
+}
+
+impl WindowSurfaceController {
+    /// THE single commit point for this window's graph mutations: re-derive the
+    /// `DerivedLayout` and hand it to the platform skin to reconcile. Platforms
+    /// without `present_layout` return `NotSupported`, ignored here. The manager
+    /// lock is scoped to the `derive` call and dropped before `present_layout`,
+    /// so the lock is never held across the outbound call.
+    fn commit(&self) {
+        let derived = self.manager.lock().unwrap().derive();
+        let _ = self.runtime.present_layout(&self.window_id, &derived);
+    }
+
+    /// Mirror an opened surface into the core graph and read back the arbitrated
+    /// presentation params + the set of surfaces the core evicted to make room.
+    /// Does NOT commit: `open_surface` must render the new content between this
+    /// mutation and the commit. Returns
+    /// `(present_kind, present_position, present_role, evicted)`.
+    fn open_node(
+        &self,
+        node: lingxia_surface::Surface,
+        requested_position: SurfacePosition,
+    ) -> (SurfaceKind, SurfacePosition, SurfaceRole, Vec<String>) {
+        let id = node.id.clone();
+        let mut present_kind = match node.role {
+            lingxia_surface::Role::Main => SurfaceKind::Window,
+            _ => SurfaceKind::Overlay,
+        };
+        let mut present_position = requested_position;
+        let mut present_role = SurfaceRole::default();
+        let mut manager = self.manager.lock().unwrap();
+        let before: HashSet<String> =
+            manager.graph().surfaces().iter().map(|s| s.id.clone()).collect();
+        let _decision = manager.open(node);
+        if let Some(role) = manager.graph().role_of(&id) {
+            let edge = manager.graph().get(&id).and_then(|s| s.placement.edge);
+            (present_kind, present_position, present_role) =
+                present_params_for_role(role, edge, requested_position);
+        }
+        let after: HashSet<String> =
+            manager.graph().surfaces().iter().map(|s| s.id.clone()).collect();
+        let evicted = before
+            .into_iter()
+            .filter(|prev| prev != &id && !after.contains(prev))
+            .collect();
+        (present_kind, present_position, present_role, evicted)
+    }
+
+    /// Close a surface in the core graph and commit. Returns whether anything
+    /// was removed.
+    fn close(&self, id: &str) -> bool {
+        let removed = {
+            let mut manager = self.manager.lock().unwrap();
+            !manager.close(id).is_empty()
+        };
+        self.commit();
+        removed
+    }
+
+    /// §11.2 Phase 1 — mirror a host-declared aside into the core graph (seeding
+    /// the root `main` if absent so the aside has a primary to dock to) and
+    /// commit.
+    fn register_host_aside(
+        &self,
+        surface_id: &str,
+        edge: &str,
+        root_main: lingxia_surface::Surface,
+    ) {
+        use lingxia_surface::{
+            Edge as LxEdge, Placement, Role as LxRole, Surface as LxSurface,
+            SurfaceContent as LxContent, SurfaceOwner as LxOwner, SurfaceState as LxState,
+        };
+        let edge = match edge {
+            "left" | "leading" => LxEdge::Left,
+            "top" => LxEdge::Top,
+            "bottom" => LxEdge::Bottom,
+            _ => LxEdge::Right,
+        };
+        let node = LxSurface {
+            id: surface_id.to_string(),
+            role: LxRole::Aside,
+            content: LxContent::Entry {
+                id: surface_id.to_string(),
+                path: None,
+            },
+            owner: LxOwner::Host,
+            placement: Placement {
+                edge: Some(edge),
+                preferred_size: None,
+            },
+            state: LxState::Mounted,
+            float: None,
+        };
+        {
+            let mut manager = self.manager.lock().unwrap();
+            if manager.graph().mains().is_empty() {
+                manager.open(root_main);
+            }
+            let _ = manager.open(node);
+        }
+        self.commit();
+    }
+
+    /// Remove a host-declared aside from the core graph and commit.
+    fn unregister_host_aside(&self, surface_id: &str) {
+        {
+            let _ = self.manager.lock().unwrap().close(surface_id);
+        }
+        self.commit();
+    }
+
+    /// Report the container width so the core resolves the right `sizeClass`
+    /// (with hysteresis), seeding the root `main` if absent. Commits (and
+    /// returns `true`) only when the `sizeClass` flipped.
+    fn set_width(&self, width: f64, root_main: lingxia_surface::Surface) -> bool {
+        let changed = {
+            let mut manager = self.manager.lock().unwrap();
+            if manager.graph().mains().is_empty() {
+                manager.open(root_main);
+            }
+            manager.set_width(width)
+        };
+        if changed {
+            self.commit();
+        }
+        changed
+    }
+
+    /// Snapshot the core's `DerivedLayout` for this window.
+    fn derive(&self) -> lingxia_surface::DerivedLayout {
+        self.manager.lock().unwrap().derive()
+    }
 }
 
 pub fn register_surface_close_observer(observer: fn(&str, &str) -> bool) {
@@ -125,6 +285,7 @@ impl LxApp {
             Some(page_instance_id.clone())
         };
         let owner_pid = owner_page_instance_id.map(|id| id.to_string());
+        let controller = window_controller(PRIMARY_WINDOW, &self.runtime);
         // Default to the requested kind/position; the core may arbitrate a
         // different role (e.g. an aside downgraded to a main on a compact
         // window), in which case the native presentation must follow the
@@ -155,21 +316,8 @@ impl LxApp {
                 owner_pid.as_deref(),
                 request.prefer_aside,
             );
-            let mut manager = window_surface_manager().lock().unwrap();
-            let before: HashSet<String> =
-                manager.graph().surfaces().iter().map(|s| s.id.clone()).collect();
-            let _decision = manager.open(node);
-            if let Some(role) = manager.graph().role_of(&id) {
-                let edge = manager.graph().get(&id).and_then(|s| s.placement.edge);
-                (present_kind, present_position, present_role) =
-                    present_params_for_role(role, edge, request.position);
-            }
-            let after: HashSet<String> =
-                manager.graph().surfaces().iter().map(|s| s.id.clone()).collect();
-            evicted = before
-                .into_iter()
-                .filter(|prev| prev != &id && !after.contains(prev))
-                .collect();
+            (present_kind, present_position, present_role, evicted) =
+                controller.open_node(node, request.position);
         }
 
         let present_result = self.runtime.present_surface(PlatformSurfaceRequest {
@@ -218,7 +366,7 @@ impl LxApp {
         }
 
         // §11.2 Phase 3: reconcile aside docking from the (now-mutated) core graph.
-        self.commit_window_mutation();
+        controller.commit();
 
         Ok(PageSurface {
             id,
@@ -324,45 +472,15 @@ impl LxApp {
     /// `lx.surface.derivedLayout()` includes host surfaces. Interim ownership is
     /// the primary lxapp's manager until the graph is promoted to per-window.
     pub fn register_host_aside(&self, surface_id: &str, edge: &str) {
-        use lingxia_surface::{
-            Edge as LxEdge, Placement, Role as LxRole, Surface as LxSurface,
-            SurfaceContent as LxContent, SurfaceOwner as LxOwner, SurfaceState as LxState,
-        };
         let surface_id = surface_id.trim();
         if surface_id.is_empty() {
             return;
         }
-        let edge = match edge {
-            "left" | "leading" => LxEdge::Left,
-            "top" => LxEdge::Top,
-            "bottom" => LxEdge::Bottom,
-            _ => LxEdge::Right,
-        };
-        let node = LxSurface {
-            id: surface_id.to_string(),
-            role: LxRole::Aside,
-            content: LxContent::Entry {
-                id: surface_id.to_string(),
-                path: None,
-            },
-            owner: LxOwner::Host,
-            placement: Placement {
-                edge: Some(edge),
-                preferred_size: None,
-            },
-            state: LxState::Mounted,
-            float: None,
-        };
-        let root = self.root_main_node();
-        {
-            let mut manager = window_surface_manager().lock().unwrap();
-            if manager.graph().mains().is_empty() {
-                manager.open(root);
-            }
-            let _ = manager.open(node);
-        }
-        // §11.2 Phase 3: reconcile aside docking from the core graph.
-        self.commit_window_mutation();
+        window_controller(PRIMARY_WINDOW, &self.runtime).register_host_aside(
+            surface_id,
+            edge,
+            self.root_main_node(),
+        );
     }
 
     /// Remove a host-declared aside from the surface graph (§11.2 Phase 1).
@@ -371,9 +489,7 @@ impl LxApp {
         if surface_id.is_empty() {
             return;
         }
-        let _ = window_surface_manager().lock().unwrap().close(surface_id);
-        // §11.2 Phase 3: reconcile aside docking from the core graph.
-        self.commit_window_mutation();
+        window_controller(PRIMARY_WINDOW, &self.runtime).unregister_host_aside(surface_id);
     }
 
     /// `lx.shell.toggle`: flip a host-declared top-level surface's visibility.
@@ -396,16 +512,11 @@ impl LxApp {
             .state
             .lock()
             .ok()
-            .and_then(|state| {
-                // Keep the Adaptive Surface Layout core in sync with removals.
-                let _ = window_surface_manager().lock().unwrap().close(id);
-                state.surfaces.lock().unwrap().remove(id)
-            })
+            .and_then(|state| state.surfaces.lock().unwrap().remove(id))
             .is_some();
-        if removed {
-            // §11.2 Phase 3: reconcile aside docking from the core graph.
-            self.commit_window_mutation();
-        }
+        // Keep the Adaptive Surface Layout core in sync with removals; the
+        // controller re-derives and reconciles aside docking (§11.2 Phase 3).
+        window_controller(PRIMARY_WINDOW, &self.runtime).close(id);
         removed
     }
 
@@ -416,22 +527,11 @@ impl LxApp {
     /// app's own primary content must be the `main`, otherwise asides have no
     /// primary to dock to and arbitration promotes them.
     pub fn set_surface_width(&self, width: f64) -> bool {
-        let root = self.root_main_node();
-        let changed = {
-            let mut manager = window_surface_manager().lock().unwrap();
-            if manager.graph().mains().is_empty() {
-                manager.open(root);
-            }
-            manager.set_width(width)
-        };
         // A sizeClass flip changes the DerivedLayout (e.g. compact folds asides
         // into mainFallback), so on resize the native layout must be reconciled
-        // — not just the core state. The manager lock is dropped above before
-        // present_derived_layout() re-derives.
-        if changed {
-            self.commit_window_mutation();
-        }
-        changed
+        // — not just the core state. The controller commits internally only when
+        // the sizeClass flips.
+        window_controller(PRIMARY_WINDOW, &self.runtime).set_width(width, self.root_main_node())
     }
 
     /// The app's root primary, represented as a `main` surface (id = appid).
@@ -453,19 +553,7 @@ impl LxApp {
 
     /// Snapshot the core's `DerivedLayout` for this app's window (new model).
     pub fn surface_derived_layout(&self) -> Option<lingxia_surface::DerivedLayout> {
-        Some(window_surface_manager().lock().unwrap().derive())
-    }
-
-    /// THE single commit point for window-graph mutations: every mutator
-    /// (open/close surface, register/unregister host aside, forget, width/size
-    /// class change) must call this after writing the graph, so state→render is
-    /// one transaction — re-derive the `DerivedLayout` and hand it to the
-    /// platform skin to reconcile. Platforms without `present_layout` return
-    /// `NotSupported`, ignored here. (Re-derives under its own lock, so callers
-    /// must drop the manager lock first.)
-    fn commit_window_mutation(&self) {
-        let derived = window_surface_manager().lock().unwrap().derive();
-        let _ = self.runtime.present_layout(&self.appid, &derived);
+        Some(window_controller(PRIMARY_WINDOW, &self.runtime).derive())
     }
 
     /// Map a legacy surface request into an Adaptive Surface Layout node
