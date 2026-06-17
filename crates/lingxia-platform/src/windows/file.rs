@@ -40,7 +40,10 @@ impl Platform {
 
         let result = if request.allow_directories {
             self.choose_directory(ChooseDirectoryRequest {
-                title: Some("Select folder".to_string()),
+                title: Some(crate::i18n::dialog_title(
+                    "file_chooser.select_folder",
+                    "Select folder",
+                )),
                 default_path: None,
             })
             .await
@@ -48,7 +51,10 @@ impl Platform {
             self.choose_file(ChooseFileRequest {
                 multiple: request.allow_multiple,
                 filters: filters_from_accept_types(&request.accept_types),
-                title: Some("Select file".to_string()),
+                title: Some(crate::i18n::dialog_title(
+                    "file_chooser.select_file",
+                    "Select file",
+                )),
                 default_path: None,
             })
             .await
