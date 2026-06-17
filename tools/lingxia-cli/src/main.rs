@@ -318,8 +318,8 @@ enum Commands {
         #[arg(long = "package-path")]
         package_path: Option<String>,
 
-        /// App platform to publish: android, macos
-        #[arg(long, value_parser = ["android", "macos"])]
+        /// App platform to publish: android, macos, windows
+        #[arg(long, value_parser = ["android", "macos", "windows"])]
         platform: Option<String>,
 
         /// Release channel for lxapp/lxplugin publishing: release, preview, developer.
