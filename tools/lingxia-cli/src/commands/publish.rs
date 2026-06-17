@@ -822,23 +822,11 @@ android:
   packageId: app.example.demo
 macos:
   bundleId: app.example.demo
-ui:
-  launch:
-    initialSurface: main
-  surfaces:
-    - id: main
-      presentation:
-        kind: window
-      content:
-        kind: lxapp
-        appId: demo.home
-  activators:
-    - id: main
-      kind: titlebarItem
-      hostSurface: main
-      action:
-        kind: focusSurface
-        surface: main
+surfaces:
+  - id: demo.home
+    render: lxapp
+    role: main
+    launch: true
 "#,
         )
         .unwrap();

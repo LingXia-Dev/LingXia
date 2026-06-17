@@ -913,16 +913,25 @@ impl LingXiaConfig {
         }
     }
 
-    /// Declaration layer v2: if the top-level `surfaces:` block is present,
-    /// map it into the internal `ui` structure consumed by the runtime. The
-    /// legacy `ui:` block remains a fallback when `surfaces:` is absent.
+    /// Declaration layer v2: the top-level `surfaces:` block is the only
+    /// accepted UI authoring input. It is mapped into the internal `ui`
+    /// structure consumed by the runtime. A raw legacy `ui:` block in the
+    /// yaml is rejected.
+    ///
+    /// This runs before `surfaces_to_ui` writes `self.ui`, so any `self.ui`
+    /// seen here is the deserialized raw `ui:` block (not generated output).
     fn apply_surfaces_v2(&mut self) -> Result<()> {
         let Some(surfaces) = self.surfaces.as_ref() else {
+            if self.ui.is_some() {
+                return Err(anyhow!(
+                    "lingxia.yaml: the top-level 'ui:' block is no longer supported; declare 'surfaces:' instead (see docs)"
+                ));
+            }
             return Ok(());
         };
         if self.ui.is_some() {
             return Err(anyhow!(
-                "lingxia.yaml declares both top-level `surfaces:` (v2) and `ui:` (legacy); use one or the other"
+                "lingxia.yaml: the top-level 'ui:' block is no longer supported; declare 'surfaces:' instead (see docs)"
             ));
         }
         if surfaces.is_empty() {
