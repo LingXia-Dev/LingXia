@@ -28,24 +28,20 @@ pub trait UpdateService: Send + Sync + 'static {
     ///
     /// # Arguments
     /// * `package_path` - Local, readable update package path (e.g. .apk on Android)
-    /// * `is_force_update` - When true the platform should present a blocking
-    ///   "must update" prompt (no dismiss) instead of the dismissible
-    ///   "ready to update" reminder.
+    /// * `info_json` - Prompt metadata `{version, releaseNotes, isForceUpdate}`.
+    ///   Release notes are shown in the "ready to update" prompt; when
+    ///   `isForceUpdate` is true the prompt is blocking (no dismiss).
     ///
     /// # Platform Support / Notes
-    /// - Android: Shows the post-download "ready to install" prompt, then
-    ///   launches the system installer on confirm. Requires
-    ///   `REQUEST_INSTALL_PACKAGES` and a `FileProvider` for APK sharing.
+    /// - Android: Shows the post-download "ready to install" prompt (with
+    ///   release notes), then launches the system installer on confirm.
+    ///   Requires `REQUEST_INSTALL_PACKAGES` and a `FileProvider` for APK sharing.
     /// - macOS: Stages a prepared `.zip` or `.app` update, shows the
     ///   "ready to update" callout, and relaunches on the user's click.
     /// - iOS: Not supported (App Store only).
     /// - HarmonyOS: Not implemented (returns error).
-    fn install_update(
-        &self,
-        package_path: &Path,
-        is_force_update: bool,
-    ) -> Result<(), PlatformError> {
-        let _ = (package_path, is_force_update);
+    fn install_update(&self, package_path: &Path, info_json: &str) -> Result<(), PlatformError> {
+        let _ = (package_path, info_json);
         Err(PlatformError::NotSupported(
             "install_update not implemented for this platform".to_string(),
         ))

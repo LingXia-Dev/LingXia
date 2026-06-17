@@ -134,13 +134,13 @@ mod bridge {
         #[swift_bridge(swift_name = "LxApp.exitApp")]
         fn exit_app() -> bool;
 
-        // Ask the macOS shell to show the "ready to update" callout above the
-        // sidebar icon. `state` is "ready" (downloaded, click to restart) or
-        // "available" (deferred, click to install). The shell resolves the
-        // product name itself. Returns true if a UI was available to present
-        // it; false means there is no shell (headless).
+        // Ask the macOS shell to surface the post-download update prompt.
+        // `state` is "ready" (downloaded → minimal sidebar callout, click opens
+        // the notes card) or "ready-force" (forced → blocking notes card).
+        // `info_json` carries {version, releaseNotes, isForceUpdate} the prompt
+        // renders. Returns true if a UI was available; false means headless.
         #[swift_bridge(swift_name = "LxApp.notifyAppUpdateReady")]
-        fn notify_app_update_ready(state: &str) -> bool;
+        fn notify_app_update_ready(state: &str, info_json: &str) -> bool;
 
         #[swift_bridge(swift_name = "LxApp.isPushEnabled")]
         fn is_push_enabled() -> bool;

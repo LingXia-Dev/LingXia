@@ -32,6 +32,7 @@ import android.view.ViewGroup
 import android.widget.Button
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import java.io.File
@@ -40,6 +41,7 @@ import java.lang.ref.WeakReference
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
+import org.json.JSONObject
 
 /**
  * Manages application updates with progress tracking
@@ -64,8 +66,41 @@ internal object UpdateManager {
     // when an activity returns. Distinct from pendingInstallPath, which is the
     // post-permission-grant re-install that proceeds without re-prompting.
     private val pendingReadyInstallPath = AtomicReference<String?>(null)
-    @Volatile private var pendingReadyInstallForce = false
+    @Volatile private var pendingReadyInstallInfo: ReadyInfo = ReadyInfo.EMPTY
     @Volatile private var installReceiver: BroadcastReceiver? = null
+
+    /** Version + release notes shown in the "ready to install" prompt. */
+    data class ReadyInfo(
+        val version: String,
+        val releaseNotes: List<String>,
+        val isForce: Boolean
+    ) {
+        companion object {
+            val EMPTY = ReadyInfo("", emptyList(), false)
+
+            fun parse(json: String?): ReadyInfo {
+                if (json.isNullOrEmpty()) return EMPTY
+                return try {
+                    val obj = JSONObject(json)
+                    val notesArray = obj.optJSONArray("releaseNotes")
+                    val notes = if (notesArray != null) {
+                        (0 until notesArray.length()).map { notesArray.getString(it) }
+                            .filter { it.isNotBlank() }
+                    } else {
+                        emptyList()
+                    }
+                    ReadyInfo(
+                        obj.optString("version", ""),
+                        notes,
+                        obj.optBoolean("isForceUpdate", false)
+                    )
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to parse update info JSON", e)
+                    EMPTY
+                }
+            }
+        }
+    }
 
     /**
      * Initialize UpdateManager with the current activity.
@@ -260,11 +295,54 @@ internal object UpdateManager {
      * install. Confirm fires the system installer; a non-forced update can be
      * dismissed and re-offered on the next update check.
      */
+    /** Scrollable bulleted release-notes block, capped so the dialog stays compact. */
+    private fun buildReleaseNotesView(
+        activity: LxAppActivity,
+        metrics: DialogMetrics,
+        notes: List<String>
+    ): View {
+        val maxHeightDp = if (metrics.isTv) 200 else 120
+        val scroll = ScrollView(activity).apply {
+            if (metrics.isTv) {
+                isFocusable = true
+                isFocusableInTouchMode = true
+            }
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(activity, maxHeightDp)
+            ).apply { bottomMargin = dp(activity, metrics.gapDp) }
+        }
+        val notesContainer = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            val p = dp(activity, if (metrics.isTv) 20 else 12)
+            setPadding(p, p, p, p)
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor("#F3F4F6"))
+                cornerRadius = dp(activity, if (metrics.isTv) 12 else 8).toFloat()
+            }
+        }
+        notes.forEach { note ->
+            val noteView = TextView(activity).apply {
+                text = "• $note"
+                setTextColor(Color.parseColor("#4B5563"))
+                textSize = metrics.bodySp
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { bottomMargin = dp(activity, if (metrics.isTv) 8 else 4) }
+            }
+            notesContainer.addView(noteView)
+        }
+        scroll.addView(notesContainer)
+        return scroll
+    }
+
     private fun createReadyToInstallDialog(
         activity: LxAppActivity,
         apkPath: String,
-        isForce: Boolean
+        info: ReadyInfo
     ): Dialog {
+        val isForce = info.isForce
         val metrics = metricsFor(activity)
         val dialog = Dialog(activity)
         dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
@@ -335,16 +413,33 @@ internal object UpdateManager {
         }
         container.addView(header)
 
-        val messageView = TextView(activity).apply {
-            text = activity.getString(R.string.lx_update_ready_message)
-            setTextColor(Color.parseColor("#6B7280"))
-            textSize = metrics.bodySp
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = dp(activity, metrics.gapDp) }
+        if (info.version.isNotBlank()) {
+            val versionView = TextView(activity).apply {
+                text = "v${info.version}"
+                setTextColor(Color.parseColor("#9CA3AF"))
+                textSize = metrics.bodySp
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { bottomMargin = dp(activity, if (metrics.isTv) 12 else 8) }
+            }
+            container.addView(versionView)
         }
-        container.addView(messageView)
+
+        if (info.releaseNotes.isNotEmpty()) {
+            container.addView(buildReleaseNotesView(activity, metrics, info.releaseNotes))
+        } else {
+            val messageView = TextView(activity).apply {
+                text = activity.getString(R.string.lx_update_ready_message)
+                setTextColor(Color.parseColor("#6B7280"))
+                textSize = metrics.bodySp
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { bottomMargin = dp(activity, metrics.gapDp) }
+            }
+            container.addView(messageView)
+        }
 
         val confirmButton = Button(activity).apply {
             id = View.generateViewId()
@@ -388,19 +483,20 @@ internal object UpdateManager {
      * foreground the update is remembered and the prompt is shown on return.
      *
      * @param apkPath Absolute file path to the downloaded APK file
-     * @param isForceUpdate When true the prompt cannot be dismissed
+     * @param infoJson `{version, releaseNotes, isForceUpdate}` shown in the prompt
      * @return true once the request has been accepted (prompt shown or deferred)
      */
     @JvmStatic
-    fun installUpdate(apkPath: String, isForceUpdate: Boolean): Boolean {
+    fun installUpdate(apkPath: String, infoJson: String?): Boolean {
+        val info = ReadyInfo.parse(infoJson)
         val activity = resolveActivity()
         if (activity == null) {
             Log.w(TAG, "No current activity; deferring ready-to-install prompt")
             pendingReadyInstallPath.set(apkPath)
-            pendingReadyInstallForce = isForceUpdate
+            pendingReadyInstallInfo = info
             return true
         }
-        showReadyToInstallPrompt(activity, apkPath, isForceUpdate)
+        showReadyToInstallPrompt(activity, apkPath, info)
         return true
     }
 
@@ -413,21 +509,21 @@ internal object UpdateManager {
             pendingReadyInstallPath.set(apkPath)
             return
         }
-        showReadyToInstallPrompt(activity, apkPath, pendingReadyInstallForce)
+        showReadyToInstallPrompt(activity, apkPath, pendingReadyInstallInfo)
     }
 
     private fun showReadyToInstallPrompt(
         activity: LxAppActivity,
         apkPath: String,
-        isForce: Boolean
+        info: ReadyInfo
     ) {
         activity.runOnUiThread {
             if (activity.isFinishing || activity.isDestroyed) {
                 pendingReadyInstallPath.set(apkPath)
-                pendingReadyInstallForce = isForce
+                pendingReadyInstallInfo = info
                 return@runOnUiThread
             }
-            createReadyToInstallDialog(activity, apkPath, isForce).show()
+            createReadyToInstallDialog(activity, apkPath, info).show()
         }
     }
 

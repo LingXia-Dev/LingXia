@@ -205,27 +205,30 @@ extension LxApp {
         }
     }
 
-    /// Show the post-download update prompt. `state` is "ready" (downloaded,
-    /// dismissible sidebar callout, click to restart), "ready-force" (forced
-    /// update, blocking restart card with no dismiss), or "available" (deferred,
-    /// click to re-open the install flow). Returns `true` only when a macOS
-    /// shell is present — `false` tells Rust to fall back (restart when
-    /// headless).
-    nonisolated static func notifyAppUpdateReady(state: RustStr) -> Bool {
+    /// Show the post-download update prompt. `state` is "ready" (downloaded →
+    /// minimal sidebar callout; clicking it opens the notes card) or
+    /// "ready-force" (forced → blocking notes card, no dismiss). `info_json`
+    /// carries {version, releaseNotes, isForceUpdate} the card renders. Returns
+    /// `true` only when a macOS shell is present — `false` tells Rust to fall
+    /// back (restart when headless).
+    nonisolated static func notifyAppUpdateReady(state: RustStr, info_json: RustStr) -> Bool {
         let stateString = state.toString()
+        let infoJSON = info_json.toString()
         return executeOnMain {
             #if os(macOS)
             guard let runtime = LxAppMacAppUIRuntime.active else { return false }
             if stateString == "ready-force" {
-                runtime.shell.presentUpdateReadyCard()
+                runtime.shell.presentUpdateReadyCard(infoJSON: infoJSON)
                 return true
             }
-            let calloutState: UpdateCalloutState = (stateString == "available") ? .available : .ready
+            // Normal update: remember the notes, show the minimal callout. The
+            // notes card opens when the user clicks the callout.
+            runtime.shell.setPendingUpdateInfo(infoJSON)
             runtime.shell.presentUpdateReadyCallout(
-                appName: runtime.appConfig.productName, state: calloutState)
+                appName: runtime.appConfig.productName, state: .ready)
             return true
             #else
-            _ = stateString
+            _ = (stateString, infoJSON)
             return false
             #endif
         }

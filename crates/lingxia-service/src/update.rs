@@ -133,8 +133,14 @@ impl HostAppUpdateService {
                     &update.version,
                 )
                 .map_err(|error| (AppUpdateStage::Install, error))?;
+                let info_json = serde_json::json!({
+                    "version": update.version,
+                    "releaseNotes": update.release_notes,
+                    "isForceUpdate": update.is_force_update,
+                })
+                .to_string();
                 runner
-                    .install_app_update(&path, update.is_force_update)
+                    .install_app_update(&path, &info_json)
                     .map_err(|error| (AppUpdateStage::Install, error))?;
                 lingxia_update::send_app_update_event(
                     &sender,
@@ -196,11 +202,7 @@ impl lingxia_update::AppUpdateHost for HostAppUpdateService {
         })
     }
 
-    fn install_app_update(
-        &self,
-        package_path: &Path,
-        is_force_update: bool,
-    ) -> Result<(), UpdateError> {
+    fn install_app_update(&self, package_path: &Path, info_json: &str) -> Result<(), UpdateError> {
         if let Some(installer) = host_app_installer_slot()
             .read()
             .ok()
@@ -210,7 +212,7 @@ impl lingxia_update::AppUpdateHost for HostAppUpdateService {
         }
 
         self.runtime
-            .install_update(package_path, is_force_update)
+            .install_update(package_path, info_json)
             .map_err(|error| {
                 UpdateError::runtime(format!("failed to request app update install: {error}"))
             })

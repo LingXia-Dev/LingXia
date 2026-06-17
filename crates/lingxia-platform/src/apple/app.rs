@@ -44,18 +44,14 @@ impl crate::traits::update::UpdateService for Platform {
         cfg!(target_os = "macos")
     }
 
-    fn install_update(
-        &self,
-        package_path: &Path,
-        is_force_update: bool,
-    ) -> Result<(), PlatformError> {
+    fn install_update(&self, package_path: &Path, info_json: &str) -> Result<(), PlatformError> {
         #[cfg(target_os = "macos")]
         {
-            install_update_on_macos(self, package_path, is_force_update)
+            install_update_on_macos(self, package_path, info_json)
         }
         #[cfg(not(target_os = "macos"))]
         {
-            let _ = (package_path, is_force_update);
+            let _ = (package_path, info_json);
             Err(PlatformError::NotSupported(
                 "install_update is only supported on macOS".to_string(),
             ))
@@ -293,7 +289,7 @@ impl Platform {
 fn install_update_on_macos(
     platform: &Platform,
     package_path: &Path,
-    is_force_update: bool,
+    info_json: &str,
 ) -> Result<(), PlatformError> {
     if !package_path.exists() {
         return Err(PlatformError::InvalidParameter(format!(
@@ -314,10 +310,19 @@ fn install_update_on_macos(
     // The download already finished silently. Ask the shell to surface the
     // post-download prompt and wait for the user to click before swapping the
     // bundle: a dismissible "ready to update" callout for normal updates, or a
-    // blocking "must update" modal when the update is forced. If there is no
+    // blocking "must update" modal when the update is forced. `info_json`
+    // carries the version + release notes the prompt renders. If there is no
     // shell (headless run), restart immediately.
-    let state = if is_force_update { "ready-force" } else { "ready" };
-    let has_ui = ffi::notify_app_update_ready(state);
+    let is_force_update = serde_json::from_str::<serde_json::Value>(info_json)
+        .ok()
+        .and_then(|value| value.get("isForceUpdate").and_then(|v| v.as_bool()))
+        .unwrap_or(false);
+    let state = if is_force_update {
+        "ready-force"
+    } else {
+        "ready"
+    };
+    let has_ui = ffi::notify_app_update_ready(state, info_json);
     if has_ui {
         if let Ok(mut slot) = staged_macos_update_slot().lock() {
             *slot = Some(staged);

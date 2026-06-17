@@ -48,7 +48,7 @@ impl crate::traits::update::UpdateService for Platform {
         true
     }
 
-    fn install_update(&self, apk_path: &Path, is_force_update: bool) -> Result<(), PlatformError> {
+    fn install_update(&self, apk_path: &Path, info_json: &str) -> Result<(), PlatformError> {
         let update_manager_class: &JClass =
             super::get_cached_class(super::CachedClass::UpdateManager)
                 .map_err(|e| PlatformError::Platform(e.to_string()))?;
@@ -58,15 +58,13 @@ impl crate::traits::update::UpdateService for Platform {
                 .to_str()
                 .ok_or_else(|| PlatformError::Platform("Invalid APK path".to_string()))?;
             let path_jstring = env.new_string(path_str)?;
+            let info_jstring = env.new_string(info_json)?;
 
             let result = env.call_static_method(
                 update_manager_class,
                 jni_str!("installUpdate"),
-                jni_sig!("(Ljava/lang/String;Z)Z"),
-                &[
-                    JValue::Object(&path_jstring),
-                    JValue::Bool(is_force_update),
-                ],
+                jni_sig!("(Ljava/lang/String;Ljava/lang/String;)Z"),
+                &[JValue::Object(&path_jstring), JValue::Object(&info_jstring)],
             )?;
             if !result.z()? {
                 return Err(PlatformError::Platform(
