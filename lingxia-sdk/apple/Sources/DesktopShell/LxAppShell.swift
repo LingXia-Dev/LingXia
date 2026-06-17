@@ -540,7 +540,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
             self.cardTopConstraint?.constant = topInset
             self.cardLeadingPanelInset = leadingInset
             let sidebarBase = self.sidebarWidthConstraint?.constant ?? Layout.sidebarWidth
-            self.contentLeadingConstraint?.constant = sidebarBase + leadingInset
+            self.contentLeadingConstraint?.constant = self.contentLeading(forSidebarWidth: sidebarBase)
             // The card width changed; re-report so the lxapp re-adapts its layout.
             self.reportSurfaceWidth()
         }
@@ -691,6 +691,15 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         return maxX <= 0 ? Layout.trafficLightClearanceFallback : ceil(maxX + 12)
     }
 
+    /// Leading inset for the content card: the sidebar width, or — when the
+    /// sidebar is collapsed — the same edge margin the card keeps on its other
+    /// three sides, so it never butts against the window edge. Plus any left
+    /// dock-panel inset. Single source for every site that positions the card.
+    private func contentLeading(forSidebarWidth width: CGFloat) -> CGFloat {
+        let base = width < Layout.sidebarHiddenThreshold ? Layout.contentPanelPadding : width
+        return base + cardLeadingPanelInset
+    }
+
     private func hideSidebar() {
         setSidebarVisible(false, animated: true)
     }
@@ -727,7 +736,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
 
         let targetWidth: CGFloat = visible ? lastExpandedSidebarWidth : 0
         let sidebarHidden = !visible
-        let targetContentLeading = targetWidth + cardLeadingPanelInset
+        let targetContentLeading = contentLeading(forSidebarWidth: targetWidth)
 
         if animated {
             NSAnimationContext.runAnimationGroup({ context in
@@ -760,7 +769,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         }
 
         let sidebarHidden = width < Layout.sidebarHiddenThreshold
-        let targetContentLeading = max(0, width)
+        let targetContentLeading = contentLeading(forSidebarWidth: width)
 
         if animated {
             NSAnimationContext.runAnimationGroup({ context in
@@ -785,7 +794,9 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     private func refreshSidebarVisibilityUI() {
         sidebarView?.updateVisibilityState()
         let sidebarHidden = (sidebarWidthConstraint?.constant ?? 0) < Layout.sidebarHiddenThreshold
-        contentLeadingConstraint?.constant = sidebarHidden ? 0 : max(0, sidebarWidthConstraint?.constant ?? Layout.sidebarWidth)
+        contentLeadingConstraint?.constant = sidebarChromeEnabled
+            ? contentLeading(forSidebarWidth: max(0, sidebarWidthConstraint?.constant ?? Layout.sidebarWidth))
+            : cardLeadingPanelInset
         sidebarRevealButton.isHidden = !sidebarChromeEnabled || !sidebarHidden
         browserCoordinator.syncToolbarLeading(collapsed: sidebarHidden, animated: false)
         syncSidebarHeaderButtonAlignment()
