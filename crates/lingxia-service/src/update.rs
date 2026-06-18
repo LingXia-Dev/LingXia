@@ -73,18 +73,22 @@ impl HostAppUpdateService {
         lingxia_update::check_app_update(self).await
     }
 
-    /// Ask the platform to present the "update available" prompt and resolve
-    /// `callback_id` with the user's choice ({"confirm":true} or error 2000).
-    /// Errors if the platform has no prompt (e.g. non-desktop).
-    pub fn show_update_prompt(&self, callback_id: u64, info_json: &str) -> Result<(), UpdateError> {
-        self.runtime
-            .show_update_prompt(callback_id, Some(info_json))
-            .map_err(|error| UpdateError::runtime(error.to_string()))
+    /// Whether this platform self-installs updates. Store-delivered platforms
+    /// (iOS, HarmonyOS) return `false` — the update must go through the store.
+    pub fn self_update_supported(&self) -> bool {
+        self.runtime.self_update_supported()
     }
 
-    /// Report download progress (0-100) to the platform's update UI.
-    pub fn notify_download_progress(&self, percent: u8) {
-        let _ = self.runtime.update_download_progress(percent as i32);
+    /// Open the platform store page so the user can update through the store.
+    /// Returns `true` if a store page was opened.
+    pub fn open_update_store(&self, info_json: &str) -> bool {
+        match self.runtime.open_update_store(info_json) {
+            Ok(opened) => opened,
+            Err(error) => {
+                log::debug!("[lingxia] open_update_store unavailable: {error}");
+                false
+            }
+        }
     }
 
     pub fn apply(&self, update: UpdatePackageInfo) -> AppUpdateApply {
@@ -129,8 +133,14 @@ impl HostAppUpdateService {
                     &update.version,
                 )
                 .map_err(|error| (AppUpdateStage::Install, error))?;
+                let info_json = serde_json::json!({
+                    "version": update.version,
+                    "releaseNotes": update.release_notes,
+                    "isForceUpdate": update.is_force_update,
+                })
+                .to_string();
                 runner
-                    .install_app_update(&path)
+                    .install_app_update(&path, &info_json)
                     .map_err(|error| (AppUpdateStage::Install, error))?;
                 lingxia_update::send_app_update_event(
                     &sender,
@@ -192,7 +202,7 @@ impl lingxia_update::AppUpdateHost for HostAppUpdateService {
         })
     }
 
-    fn install_app_update(&self, package_path: &Path) -> Result<(), UpdateError> {
+    fn install_app_update(&self, package_path: &Path, info_json: &str) -> Result<(), UpdateError> {
         if let Some(installer) = host_app_installer_slot()
             .read()
             .ok()
@@ -201,9 +211,11 @@ impl lingxia_update::AppUpdateHost for HostAppUpdateService {
             return installer(package_path);
         }
 
-        self.runtime.install_update(package_path).map_err(|error| {
-            UpdateError::runtime(format!("failed to request app update install: {error}"))
-        })
+        self.runtime
+            .install_update(package_path, info_json)
+            .map_err(|error| {
+                UpdateError::runtime(format!("failed to request app update install: {error}"))
+            })
     }
 
     fn log_app_update_warning(&self, detail: &str) {
@@ -245,6 +257,29 @@ impl BodySink for ProgressSink {
     }
 }
 
+/// Remove downloaded update packages other than the current target so the
+/// cache never accumulates one file per skipped version. Keeps the target's
+/// package and its in-progress `.part` resume file (both share the `keep`
+/// filename prefix); only touches `app_*` package files, not the `staged/` or
+/// `helper/` subdirs the installer manages.
+fn prune_stale_app_update_packages(dir: &Path, keep: &str) {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        if name.starts_with("app_") && !name.starts_with(keep) {
+            let _ = fs::remove_file(&path);
+        }
+    }
+}
+
 async fn download_host_app_update_package(
     runtime: Arc<Platform>,
     url: &str,
@@ -259,6 +294,13 @@ async fn download_host_app_update_package(
 
     let dest = dest_dir.join(app_update_filename(url, version));
     log::info!("App update download dest: {}", dest.display());
+
+    // Drop previously-downloaded packages for other versions so the cache holds
+    // at most one package. Without this, ignoring successive updates (each a new
+    // version) accumulates a package file per version (~tens of MB each).
+    if let Some(keep) = dest.file_name().and_then(|name| name.to_str()) {
+        prune_stale_app_update_packages(&dest_dir, keep);
+    }
 
     if dest.exists() {
         if checksum_sha256.is_empty() {

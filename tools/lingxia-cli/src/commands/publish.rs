@@ -287,8 +287,16 @@ fn read_app_package_metadata(path: &Path) -> Result<AppPackageMetadata> {
         .is_some_and(|name| name.ends_with("-macos.zip"))
     {
         read_macos_zip_app_json(path)?
+    } else if path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.ends_with("-windows.zip"))
+    {
+        read_windows_zip_app_json(path)?
     } else {
-        bail!("unsupported app package type; expected Android .apk or macOS *-macos.zip");
+        bail!(
+            "unsupported app package type; expected Android .apk, macOS *-macos.zip, or Windows *-windows.zip"
+        );
     };
     let value: serde_json::Value =
         serde_json::from_slice(&app_json).context("Failed to parse app.json in package")?;
@@ -351,6 +359,35 @@ fn read_macos_zip_app_json(path: &Path) -> Result<Vec<u8>> {
         }
     }
     bail!("app.json not found in macOS app package {}", path.display())
+}
+
+fn read_windows_zip_app_json(path: &Path) -> Result<Vec<u8>> {
+    let file =
+        fs::File::open(path).with_context(|| format!("Failed to open {}", path.display()))?;
+    let mut archive = zip::ZipArchive::new(file)
+        .with_context(|| format!("Failed to read zip archive {}", path.display()))?;
+    // The Windows update package zips the install directory (exe + assets/),
+    // so app.json sits at `assets/app.json`, optionally under a top folder.
+    // Normalize separators: zips built by PowerShell `Compress-Archive` store
+    // entry names with backslashes.
+    for index in 0..archive.len() {
+        let mut entry = match archive.by_index(index) {
+            Ok(entry) => entry,
+            Err(_) => continue,
+        };
+        let name = entry.name().replace('\\', "/");
+        if name.ends_with("assets/app.json") {
+            let mut data = Vec::new();
+            entry
+                .read_to_end(&mut data)
+                .with_context(|| format!("Failed to read {name} from {}", path.display()))?;
+            return Ok(data);
+        }
+    }
+    bail!(
+        "app.json not found in Windows app package {}",
+        path.display()
+    )
 }
 
 fn read_lxapp_json(cwd: &Path) -> Result<(String, String)> {
@@ -544,18 +581,21 @@ fn resolve_publish_platform(
 fn normalize_platform(value: &str) -> Result<String> {
     let platform: PlatformType = value.parse()?;
     match platform {
-        PlatformType::Android | PlatformType::MacOs => Ok(platform.as_str().to_string()),
+        PlatformType::Android | PlatformType::MacOs | PlatformType::Windows => {
+            Ok(platform.as_str().to_string())
+        }
         PlatformType::Ios => bail!("iOS host app publishing uses App Store."),
         PlatformType::Harmony => bail!("Harmony host app publishing uses app marketplace."),
-        PlatformType::Windows => bail!("Windows host app publishing is not supported yet."),
     }
 }
 
 fn normalize_config_platform(value: &str) -> Result<Option<String>> {
     let platform: PlatformType = value.parse()?;
     Ok(match platform {
-        PlatformType::Android | PlatformType::MacOs => Some(platform.as_str().to_string()),
-        PlatformType::Ios | PlatformType::Harmony | PlatformType::Windows => None,
+        PlatformType::Android | PlatformType::MacOs | PlatformType::Windows => {
+            Some(platform.as_str().to_string())
+        }
+        PlatformType::Ios | PlatformType::Harmony => None,
     })
 }
 
@@ -596,7 +636,7 @@ fn missing_package_message(target: &str, platform: Option<&str>) -> String {
         return format!(
             "No package found for target '{target}'{platform_suffix}.\n\
              Run `lingxia package --platform <platform>` first, then retry `lingxia publish`.\n\
-             Searched ./dist for Android APKs and macOS update zips, plus common Android release outputs.\n\
+             Searched ./dist for Android APKs, macOS update zips, and Windows update zips, plus common Android release outputs.\n\
              If the package is elsewhere, pass `--package-path <PATH>`."
         );
     }
@@ -657,6 +697,9 @@ fn package_platform(file_name: &str, path: &Path, dist_dir: &Path) -> Option<&'s
     }
     if file_name.ends_with("-macos.zip") && path.starts_with(dist_dir.join("macos")) {
         return Some("macos");
+    }
+    if file_name.ends_with("-windows.zip") && path.starts_with(dist_dir.join("windows")) {
+        return Some("windows");
     }
     None
 }

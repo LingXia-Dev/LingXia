@@ -396,6 +396,109 @@ lingxia doctor --platform harmony
 
 ---
 
+### `lingxia auth`
+
+Store developer credentials so `lingxia build` can sign and notarize without
+interactive prompts. Credentials live under `~/.lingxia/` (mode `0600`); CI
+restores them from secrets (see [Signing & notarization](#signing--notarization)).
+
+```bash
+lingxia auth apple <command>
+```
+
+#### `lingxia auth apple login`
+
+Store App Store Connect API credentials, used for **notarization**.
+
+```bash
+lingxia auth apple login --mode key \
+  --key-id <KEY_ID> --issuer-id <ISSUER_ID> \
+  --private-key-path AuthKey_XXXX.p8 --team-id <TEAM_ID>
+```
+
+| Option | Description |
+|--------|-------------|
+| `-m, --mode key\|password` | `key` = App Store Connect API key (recommended); `password` = Apple ID |
+| `--key-id` / `--issuer-id` / `--private-key-path` / `--team-id` | API key fields (for `--mode key`) |
+| `-u, --username` / `-p, --password` | Apple ID fields (for `--mode password`) |
+| `-y, --yes` | Replace existing credentials without confirmation |
+
+Written to `~/.lingxia/apple/credentials.json`. Env equivalents:
+`LINGXIA_APPLE_NOTARY_KEY` (`.p8` path) / `_KEY_ID` / `_ISSUER_ID`.
+
+#### `lingxia auth apple import-developer-id <p12>`
+
+Store a **Developer ID Application** certificate for code-signing. `<p12>` is a
+**path** to an exported `.p12`; its bytes and password are saved to
+`~/.lingxia/apple/developer-id.json`.
+
+```bash
+lingxia auth apple import-developer-id ~/Desktop/DeveloperID.p12
+```
+
+| Option | Description |
+|--------|-------------|
+| `--password <pw>` | `.p12` password (prompts if omitted) |
+| `--identity <name>` | codesign identity name (auto-detected otherwise) |
+
+> Needed mainly for **CI**. On a local macOS machine you don't need it — signing
+> uses the "Developer ID Application" identity already in your **login keychain**.
+> Env equivalents: `LINGXIA_APPLE_DEVELOPER_ID_P12` / `_P12_PASSWORD` / `_IDENTITY`.
+
+#### `lingxia auth apple logout` / `status`
+
+Clear stored credentials, or show the current authentication status.
+
+#### Signing & notarization
+
+Building a macOS app signs + notarizes automatically once credentials resolve;
+otherwise the app is left ad-hoc signed (local builds/tests stay green):
+
+1. **Notary creds** — `auth apple login --mode key` (store) or the `LINGXIA_APPLE_NOTARY_KEY`/… env vars.
+2. **Signing identity** — local: the Developer ID identity in your login keychain; CI: the `.p12` from `import-developer-id` (or `LINGXIA_APPLE_DEVELOPER_ID_P12`), imported into a throwaway keychain.
+3. codesign (hardened runtime + timestamp) → `notarytool submit --wait` → `stapler staple`. On rejection the `notarytool log` is fetched so the cause is visible.
+
+**CI setup** — base64 the two store files into repo secrets; the runner restores them, gated (forks/PRs without secrets build ad-hoc):
+
+| Secret | Value |
+|--------|-------|
+| `APPLE_CREDENTIALS_JSON_BASE64` | `base64 -i ~/.lingxia/apple/credentials.json` |
+| `APPLE_DEVELOPER_ID_JSON_BASE64` | `base64 -i ~/.lingxia/apple/developer-id.json` |
+
+---
+
+### `lingxia store`
+
+Submit a built installable to an **OS app store** (Microsoft Store, App Store,
+AppGallery). Talks to stores only — never the LingXia server (that's `publish`)
+and never builds (run `build` first). Store identity lives in `lingxia.yaml`
+(`windows.store` / `ios.store` / `macos.store` / `harmony.store`); credentials
+live in `~/.lingxia/store/credentials.toml`, with **env vars overriding the file**.
+
+```bash
+lingxia store login   --platform <p>          # prompt + write credentials.toml
+lingxia store logout  --platform <p>          # clear cached creds
+lingxia store submit  --platform <p> [--draft] [--release-notes <text>] [--track <t>]
+lingxia store status  --platform <p>          # poll submission / processing state
+```
+
+`<p>` is `windows` (Microsoft Store), `ios` / `macos` (App Store), or `harmony`
+(AppGallery). `submit` consumes `dist/<platform>/` from a prior `build` and fails
+clearly if the artifact is missing; `--draft` creates the submission without
+committing it for review. App Store upload uses `xcrun altool` (macOS + Xcode).
+
+**Per-store credentials** (`store login` writes these; env overrides shown):
+
+| Platform | `credentials.toml` table | env overrides |
+|---|---|---|
+| `windows` | `[msstore]` tenant, client_id, client_secret | `LINGXIA_MSSTORE_TENANT` / `_CLIENT_ID` / `_CLIENT_SECRET` |
+| `ios` / `macos` | `[appstore]` issuer_id, key_id, key_path (`.p8`) | `LINGXIA_ASC_ISSUER_ID` / `_KEY_ID` / `_KEY_PATH` |
+| `harmony` | `[appgallery]` client_id, client_secret | `LINGXIA_AGC_CLIENT_ID` / `_CLIENT_SECRET` |
+
+In CI, set the env vars (no file on disk) — they transparently override the cache.
+
+---
+
 ### `lingxia ds`
 
 Interact with developer services (Apple, Harmony, etc.).

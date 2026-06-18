@@ -54,6 +54,25 @@ pub fn register_logic_runtime() {
     ::lxapp::register_surface_close_observer(notify_surface_closed);
     ::lxapp::register_surface_context_observer(surface::notify_surface_context_changed);
     register_logic_extension(Box::new(LxLogicRuntime));
+    register_platform_dialog_i18n();
+}
+
+/// Installs the locale-aware translator the platform layer uses for native
+/// dialog titles (file/media choosers). `lingxia-platform` can't reach the
+/// i18n table directly (it sits below it), so the logic layer maps its keys
+/// to [`I18nKey`] here.
+fn register_platform_dialog_i18n() {
+    lingxia_platform::i18n::set_dialog_translator(|key| {
+        let i18n_key = match key {
+            "file_chooser.select_folder" => I18nKey::FileChooserSelectFolder,
+            "file_chooser.select_file" => I18nKey::FileChooserSelectFile,
+            "file_chooser.choose_images" => I18nKey::FileChooserChooseImages,
+            "file_chooser.choose_videos" => I18nKey::FileChooserChooseVideos,
+            "file_chooser.choose_media" => I18nKey::FileChooserChooseMedia,
+            _ => return None,
+        };
+        Some(i18n::t(i18n_key))
+    });
 }
 
 pub fn notify_surface_closed(id: &str, reason: &str) -> bool {

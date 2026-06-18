@@ -291,6 +291,12 @@ enum Commands {
         platform: commands::ds::DsPlatform,
     },
 
+    /// Submit installables to OS app stores (Microsoft Store, App Store, AppGallery)
+    Store {
+        #[command(subcommand)]
+        action: commands::store::StoreAction,
+    },
+
     /// Internal resource generation helpers
     #[command(hide = true)]
     Gen {
@@ -312,8 +318,8 @@ enum Commands {
         #[arg(long = "package-path")]
         package_path: Option<String>,
 
-        /// App platform to publish: android, macos
-        #[arg(long, value_parser = ["android", "macos"])]
+        /// App platform to publish: android, macos, windows
+        #[arg(long, value_parser = ["android", "macos", "windows"])]
         platform: Option<String>,
 
         /// Release channel for lxapp/lxplugin publishing: release, preview, developer.
@@ -387,6 +393,19 @@ enum AppleAuthAction {
         /// Replace existing credentials without interactive confirmation
         #[arg(short = 'y', long)]
         yes: bool,
+    },
+    /// Import a Developer ID Application .p12 for macOS signing/notarization
+    ImportDeveloperId {
+        /// Path to the Developer ID Application .p12 certificate
+        p12: String,
+
+        /// Certificate password (will prompt if not provided)
+        #[arg(long)]
+        password: Option<String>,
+
+        /// codesign identity name (auto-detected if not provided)
+        #[arg(long)]
+        identity: Option<String>,
     },
     /// Logout and clear stored credentials
     Logout,
@@ -569,6 +588,13 @@ fn main() -> Result<()> {
                         yes,
                     })?;
                 }
+                AppleAuthAction::ImportDeveloperId {
+                    p12,
+                    password,
+                    identity,
+                } => {
+                    commands::auth::apple_import_developer_id(p12, password, identity)?;
+                }
                 AppleAuthAction::Logout => {
                     commands::auth::apple_logout()?;
                 }
@@ -600,6 +626,9 @@ fn main() -> Result<()> {
         },
         Commands::Ds { platform } => {
             commands::ds::execute(platform)?;
+        }
+        Commands::Store { action } => {
+            commands::store::run(action)?;
         }
         Commands::Gen { command } => match command {
             GenCommand::I18n(config) => {

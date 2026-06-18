@@ -114,6 +114,7 @@ mod chrome_command {
     pub(super) const NATIVE_PANEL_MAXIMIZE: &str = "native-panel.maximize";
     pub(super) const NATIVE_PANEL_TAB_RENAME: &str = "native-panel.tab.rename";
     pub(super) const NATIVE_PANEL_RIGHT_CLICK: &str = "native-panel.right-click";
+    pub(super) const NATIVE_PANEL_PANE_FOCUS: &str = "native-panel.pane-focus";
     pub(super) const BROWSER_NAV_BACK: &str = "browser.nav.back";
     pub(super) const BROWSER_NAV_FORWARD: &str = "browser.nav.forward";
     pub(super) const BROWSER_NAV_RELOAD: &str = "browser.nav.reload";
@@ -127,7 +128,10 @@ mod chrome_command {
 /// session: whole-sidebar collapse and the lxapp items-group collapse.
 #[derive(Debug, Clone, Copy, Default)]
 struct SidebarUiState {
+    /// Sidebar fully hidden.
     collapsed: bool,
+    /// Sidebar shown as an icon-only rail (the macOS first-collapse state).
+    icon_rail: bool,
     items_collapsed: bool,
 }
 
@@ -541,13 +545,26 @@ fn build_navigation_bar_layout(app: &LxApp, path: &str) -> WindowsShellNavigatio
 fn build_tab_bar_layout(app: &LxApp) -> Option<WindowsShellTabBarLayout> {
     let tabbar = app.get_tabbar()?;
     let ui_state = sidebar_ui_state(&app.appid);
+    // The LingXia icon is copied next to the app by the CLI; record its path so
+    // the chrome can load it as the default icon (lxapp items / browser tabs
+    // with no icon of their own).
+    super::chrome::set_default_icon_path(
+        app.runtime
+            .asset_dir()
+            .join("icons")
+            .join("lingxia.png")
+            .to_string_lossy()
+            .into_owned(),
+    );
     Some(WindowsShellTabBarLayout {
         visible: !tabbar.list.is_empty(),
         position: WindowsShellTabBarPosition::Left,
         dimension: tabbar.dimension.max(MIN_SIDEBAR_WIDTH),
         app_name: app.runtime_info().app_name,
+        app_icon_path: app.get_lxapp_info().icon,
         group_id: app.appid.clone(),
         collapsed: ui_state.collapsed,
+        icon_rail: ui_state.icon_rail,
         items_collapsed: ui_state.items_collapsed,
         color: parse_css_color(&tabbar.color, 0x666666),
         selected_color: parse_css_color(&tabbar.selectedColor, 0x1677ff),
@@ -644,14 +661,30 @@ fn build_panel_activators(app: &LxApp) -> Vec<WindowsShellPanelActivatorLayout> 
             panels
                 .items
                 .into_iter()
-                .map(|item| WindowsShellPanelActivatorLayout {
-                    id: item.id.clone(),
-                    label: item.label,
-                    icon_path: resolve_asset_path(asset_dir, &item.icon)
-                        .map(|path| path.to_string_lossy().to_string())
-                        .unwrap_or(item.icon),
-                    position: panel_position(item.position),
-                    active: is_panel_visible(&item.id),
+                .map(|item| {
+                    // Prefer the activator's own declared icon; when it has
+                    // none, fall back to the target lxapp's app icon (via the
+                    // app-info API, like macOS). The renderer then falls back
+                    // to the default LingXia mark if neither resolves.
+                    let icon_path = if !item.icon.trim().is_empty() {
+                        resolve_asset_path(asset_dir, &item.icon)
+                            .map(|path| path.to_string_lossy().to_string())
+                            .unwrap_or_else(|| item.icon.clone())
+                    } else if item.content.kind.is_lxapp() {
+                        lxapp::try_get(&item.content.app_id)
+                            .map(|app| app.get_lxapp_info().icon)
+                            .filter(|icon| !icon.trim().is_empty())
+                            .unwrap_or_default()
+                    } else {
+                        String::new()
+                    };
+                    WindowsShellPanelActivatorLayout {
+                        id: item.id.clone(),
+                        label: item.label,
+                        icon_path,
+                        position: panel_position(item.position),
+                        active: is_panel_visible(&item.id),
+                    }
                 })
                 .collect()
         })
@@ -773,6 +806,21 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
             super::terminal_panel::show_terminal_context_menu(appid, &panel_id, screen_x, screen_y);
             return;
         }
+        chrome_command::NATIVE_PANEL_PANE_FOCUS => {
+            let Some(panel_id) = payload_string(&event, "panel_id") else {
+                return;
+            };
+            let Some(screen_x) = payload_i32(&event, "screen_x") else {
+                return;
+            };
+            let Some(screen_y) = payload_i32(&event, "screen_y") else {
+                return;
+            };
+            if let Some((cx, cy)) = screen_to_panel_client(appid, screen_x, screen_y) {
+                super::terminal_panel::focus_pane_at(&panel_id, cx, cy);
+            }
+            return;
+        }
         // Address-bar navigation targets the presented browser tab; URL and
         // title updates flow back through the tabs-changed observer.
         chrome_command::BROWSER_NAV_BACK => {
@@ -804,7 +852,18 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
             return;
         }
         chrome_command::SIDEBAR_TOGGLE => {
-            update_sidebar_ui_state(appid, |state| state.collapsed = !state.collapsed);
+            // Cycle like macOS: expanded → icon rail → fully hidden → expanded.
+            update_sidebar_ui_state(appid, |state| {
+                if state.collapsed {
+                    state.collapsed = false;
+                    state.icon_rail = false;
+                } else if state.icon_rail {
+                    state.icon_rail = false;
+                    state.collapsed = true;
+                } else {
+                    state.icon_rail = true;
+                }
+            });
             sync_shell_layout(appid);
             return;
         }
@@ -1033,6 +1092,32 @@ pub(super) fn owner_window_handle(appid: &str) -> Option<isize> {
             None
         }
     }
+}
+
+/// Converts a screen point to `appid`'s shell-window client coordinates,
+/// matching the coordinate space the chrome paints panels in (used to
+/// focus the terminal pane under the cursor on right-click). `None` when
+/// the window handle is unavailable or the point is off-window.
+#[cfg(feature = "shell-runtime")]
+pub(super) fn screen_to_panel_client(
+    appid: &str,
+    screen_x: i32,
+    screen_y: i32,
+) -> Option<(i32, i32)> {
+    use windows::Win32::Foundation::POINT;
+    use windows::Win32::Graphics::Gdi::ScreenToClient;
+    let hwnd = owner_window_handle(appid)?;
+    let mut point = POINT {
+        x: screen_x,
+        y: screen_y,
+    };
+    let ok = unsafe {
+        ScreenToClient(
+            windows::Win32::Foundation::HWND(hwnd as *mut core::ffi::c_void),
+            &mut point,
+        )
+    };
+    ok.as_bool().then_some((point.x, point.y))
 }
 
 #[cfg(feature = "shell-runtime")]

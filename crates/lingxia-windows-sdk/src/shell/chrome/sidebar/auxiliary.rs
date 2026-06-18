@@ -143,20 +143,23 @@ pub(in crate::shell::chrome) fn draw_sidebar_auxiliary_section(
         }
 
         let close_rect = sidebar_auxiliary_close_rect(item_rect);
-        // 16px icon left of the title when supplied by the product layer;
-        // text-only row otherwise (the title keeps its original left edge).
+        // 16px icon left of the title: the page favicon when supplied, else
+        // the default LingXia mark (internal pages like Downloads/Settings
+        // report no favicon, mirroring the macOS bundled fallback).
         let mut label_left = item_rect.left + 16;
-        if let Some(png) = item.icon_png.as_deref() {
-            let icon_top = item_rect.top + (rect_height(&item_rect) - SIDEBAR_FAVICON_SIZE) / 2;
-            let icon_rect = normalize_rect(RECT {
-                left: label_left,
-                top: icon_top,
-                right: label_left + SIDEBAR_FAVICON_SIZE,
-                bottom: icon_top + SIDEBAR_FAVICON_SIZE,
-            });
-            if draw_icon_from_png_bytes(hdc, &item.id, png, icon_rect) {
-                label_left = icon_rect.right + SIDEBAR_FAVICON_TEXT_GAP;
-            }
+        let icon_top = item_rect.top + (rect_height(&item_rect) - SIDEBAR_FAVICON_SIZE) / 2;
+        let icon_rect = normalize_rect(RECT {
+            left: label_left,
+            top: icon_top,
+            right: label_left + SIDEBAR_FAVICON_SIZE,
+            bottom: icon_top + SIDEBAR_FAVICON_SIZE,
+        });
+        let icon_drawn = match item.icon_png.as_deref() {
+            Some(png) => draw_icon_from_png_bytes(hdc, &item.id, png, icon_rect),
+            None => draw_default_app_icon(hdc, icon_rect),
+        };
+        if icon_drawn {
+            label_left = icon_rect.right + SIDEBAR_FAVICON_TEXT_GAP;
         }
         let label_rect = normalize_rect(RECT {
             left: label_left,

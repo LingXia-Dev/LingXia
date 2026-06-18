@@ -1,30 +1,24 @@
 #if os(macOS)
 import AppKit
 
-/// The centered "update" card. A small state machine that floats over the
-/// screen and walks the host-app update through its stages:
+/// The centered "ready to update" card. Shown once the package has downloaded
+/// silently — its job is to surface *what's new* and let the user restart to
+/// apply. Reached two ways:
+///   - normal update: clicking the bottom-left "ready" sidebar callout
+///   - forced update: presented directly (blocking, no Later)
 ///
-///   prompt        → version + release notes + [Later] [Download & Install]
-///   downloading   → live progress bar + "Downloading… N%"
-///   ready         → "Update ready" + [Restart Now]
-///
-/// Force updates omit "Later". When release notes are absent the card stays
-/// compact (no empty section).
+/// It attaches as a child window of the app so it follows the window on drag
+/// and hides/miniaturizes with it.
 @MainActor
 final class UpdateAvailableCard: NSObject {
     private static var current: UpdateAvailableCard?
 
     private let panel: NSPanel
-    private let appName: String
-    private let onDownload: () -> Void
-    private let onLater: () -> Void
+    private let info: UpdateReadyInfo
     private let onRestart: () -> Void
+    private let onLater: () -> Void
     private var didChoose = false
-
     private let root = NSStackView()
-    private let actionContainer = NSView()
-    private let progressBar = NSProgressIndicator()
-    private let statusLabel: NSTextField
 
     private enum Style {
         static let width: CGFloat = 380
@@ -33,61 +27,36 @@ final class UpdateAvailableCard: NSObject {
         static let notesMaxHeight: CGFloat = 150
     }
 
-    // MARK: - Presentation
-
-    static func present(
-        appName: String,
-        infoJSON: String,
+    /// Present the "ready to update" card with release notes. A forced update
+    /// omits the Later button (blocking).
+    static func presentReady(
+        info: UpdateReadyInfo,
         over window: NSWindow?,
-        onDownload: @escaping () -> Void,
-        onLater: @escaping () -> Void,
-        onRestart: @escaping () -> Void
+        onRestart: @escaping () -> Void,
+        onLater: @escaping () -> Void
     ) {
         current?.close()
-        let card = UpdateAvailableCard(
-            appName: appName,
-            info: UpdateCardInfo(json: infoJSON),
-            onDownload: onDownload, onLater: onLater, onRestart: onRestart)
+        let card = UpdateAvailableCard(info: info, onRestart: onRestart, onLater: onLater)
         current = card
+        card.build()
         card.show(over: window)
     }
 
-    /// Push download progress (0-100) into an open card. No-op if none is open.
-    static func reportProgress(_ percent: Int) {
-        current?.setDownloading(percent: percent)
-    }
-
-    /// If a card is open, switch it to the "ready / restart" state and return
-    /// true. Returns false when no card is open (caller falls back to the
-    /// sidebar callout).
-    static func handleReady() -> Bool {
-        guard let card = current else { return false }
-        card.enterReady()
-        return true
-    }
-
     private init(
-        appName: String,
-        info: UpdateCardInfo,
-        onDownload: @escaping () -> Void,
-        onLater: @escaping () -> Void,
-        onRestart: @escaping () -> Void
+        info: UpdateReadyInfo,
+        onRestart: @escaping () -> Void,
+        onLater: @escaping () -> Void
     ) {
-        self.appName = appName
-        self.onDownload = onDownload
-        self.onLater = onLater
+        self.info = info
         self.onRestart = onRestart
-        self.statusLabel = UpdateAvailableCard.label("", size: 12, weight: .regular)
+        self.onLater = onLater
         self.panel = NSPanel(
             contentRect: NSRect(x: 0, y: 0, width: Style.width, height: 200),
             styleMask: [.titled, .fullSizeContentView],
             backing: .buffered, defer: true)
         super.init()
         buildChrome()
-        enterPrompt(info: info)
     }
-
-    // MARK: - Chrome (constant header + swappable action area)
 
     private func buildChrome() {
         panel.titlebarAppearsTransparent = true
@@ -98,7 +67,7 @@ final class UpdateAvailableCard: NSObject {
         panel.standardWindowButton(.zoomButton)?.isHidden = true
 
         root.orientation = .vertical
-        root.alignment = .width  // arranged subviews stretch to the card width
+        root.alignment = .width
         root.spacing = Style.sectionGap
         root.translatesAutoresizingMaskIntoConstraints = false
         root.edgeInsets = NSEdgeInsets(
@@ -115,79 +84,35 @@ final class UpdateAvailableCard: NSObject {
             root.widthAnchor.constraint(equalToConstant: Style.width),
         ])
         panel.contentView = container
-
-        actionContainer.translatesAutoresizingMaskIntoConstraints = false
-
-        progressBar.translatesAutoresizingMaskIntoConstraints = false
-        progressBar.style = .bar
-        progressBar.isIndeterminate = false
-        progressBar.minValue = 0
-        progressBar.maxValue = 100
     }
 
-    private func header(info: UpdateCardInfo?) -> NSView {
-        let icon = NSImageView()
-        icon.image = NSApp.applicationIconImage
-        icon.imageScaling = .scaleProportionallyUpOrDown
-        icon.translatesAutoresizingMaskIntoConstraints = false
-        icon.setContentHuggingPriority(.required, for: .horizontal)
-        icon.widthAnchor.constraint(equalToConstant: 52).isActive = true
-        icon.heightAnchor.constraint(equalToConstant: 52).isActive = true
-
-        let title = Self.label(Self.string("lx_update_card_title"), size: 16, weight: .semibold)
-        title.lineBreakMode = .byTruncatingTail
-        let stack = NSStackView(views: [title])
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 3
-
-        if let info {
-            var parts: [String] = []
-            if !info.version.isEmpty {
-                parts.append(Self.string("lx_update_card_version", info.version))
-            }
-            if let size = info.humanSize { parts.append(size) }
-            if !parts.isEmpty {
-                let subtitle = Self.label(parts.joined(separator: " · "), size: 12, weight: .regular)
-                subtitle.textColor = .secondaryLabelColor
-                stack.addArrangedSubview(subtitle)
-            }
-        }
-
-        let row = NSStackView(views: [icon, stack])
-        row.orientation = .horizontal
-        row.alignment = .centerY
-        row.spacing = 14
-        row.distribution = .fill
-        row.translatesAutoresizingMaskIntoConstraints = false
-        return row
-    }
-
-    private func divider() -> NSBox {
-        let box = NSBox()
-        box.boxType = .separator
-        box.translatesAutoresizingMaskIntoConstraints = false
-        return box
-    }
-
-    // MARK: - States
-
-    private func enterPrompt(info: UpdateCardInfo) {
+    private func build() {
         root.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        root.addArrangedSubview(header(info: info))
+        root.addArrangedSubview(header())
 
-        // Release notes — only when present, so the card stays compact otherwise.
         if !info.releaseNotes.isEmpty {
             root.addArrangedSubview(divider())
-            root.addArrangedSubview(notesView(info.releaseNotes))
+            // Added directly to the (width-aligned) root so the notes fill the
+            // card and stay left-aligned — not boxed inside a nested container.
+            let notesTitle = Self.label(
+                Self.string("lx_update_card_notes_title"), size: 11, weight: .semibold)
+            notesTitle.textColor = .secondaryLabelColor
+            root.addArrangedSubview(notesTitle)
+
+            let body = NSTextField(labelWithAttributedString: Self.notesAttributed(info.releaseNotes))
+            body.lineBreakMode = .byWordWrapping
+            body.maximumNumberOfLines = 0
+            body.preferredMaxLayoutWidth = Style.width - 2 * Style.padding
+            body.setContentHuggingPriority(.defaultLow, for: .horizontal)
+            root.addArrangedSubview(body)
         }
         root.addArrangedSubview(divider())
 
-        let install = NSButton(
-            title: Self.string("lx_update_card_install"), target: self,
-            action: #selector(downloadClicked))
-        install.bezelStyle = .rounded
-        install.keyEquivalent = "\r"
+        let restart = NSButton(
+            title: Self.string("lx_update_card_restart"), target: self,
+            action: #selector(restartClicked))
+        restart.bezelStyle = .rounded
+        restart.keyEquivalent = "\r"
 
         let row = NSStackView()
         row.orientation = .horizontal
@@ -204,62 +129,46 @@ final class UpdateAvailableCard: NSObject {
             later.keyEquivalent = "\u{1b}"
             row.addArrangedSubview(later)
         }
-        row.addArrangedSubview(install)
-        root.addArrangedSubview(row)
-        relayout()
-    }
-
-    private func enterDownloading() {
-        root.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        root.addArrangedSubview(header(info: nil))
-        root.addArrangedSubview(divider())
-
-        statusLabel.stringValue = Self.string("lx_update_card_downloading", "0%")
-        statusLabel.textColor = .secondaryLabelColor
-
-        progressBar.doubleValue = 0
-
-        let stack = NSStackView(views: [statusLabel, progressBar])
-        stack.orientation = .vertical
-        stack.alignment = .width
-        stack.spacing = 10
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        root.addArrangedSubview(stack)
-        relayout()
-    }
-
-    private func setDownloading(percent: Int) {
-        let clamped = max(0, min(100, percent))
-        if root.arrangedSubviews.count < 2 || progressBar.superview == nil {
-            enterDownloading()
-        }
-        progressBar.doubleValue = Double(clamped)
-        statusLabel.stringValue = Self.string("lx_update_card_downloading", "\(clamped)%")
-    }
-
-    private func enterReady() {
-        root.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        root.addArrangedSubview(header(info: nil))
-        root.addArrangedSubview(divider())
-
-        let ready = Self.label(Self.string("lx_update_card_ready"), size: 13, weight: .regular)
-        ready.textColor = .secondaryLabelColor
-        root.addArrangedSubview(ready)
-
-        let restart = NSButton(
-            title: Self.string("lx_update_card_restart"), target: self,
-            action: #selector(restartClicked))
-        restart.bezelStyle = .rounded
-        restart.keyEquivalent = "\r"
-
-        let row = NSStackView()
-        row.orientation = .horizontal
-        row.translatesAutoresizingMaskIntoConstraints = false
-        let spacer = NSView()
-        row.addArrangedSubview(spacer)
         row.addArrangedSubview(restart)
         root.addArrangedSubview(row)
-        relayout()
+    }
+
+    private func header() -> NSView {
+        let icon = NSImageView()
+        icon.image = NSApp.applicationIconImage
+        icon.imageScaling = .scaleProportionallyUpOrDown
+        icon.translatesAutoresizingMaskIntoConstraints = false
+        icon.setContentHuggingPriority(.required, for: .horizontal)
+        icon.widthAnchor.constraint(equalToConstant: 52).isActive = true
+        icon.heightAnchor.constraint(equalToConstant: 52).isActive = true
+
+        let title = Self.label(Self.string("lx_update_card_title"), size: 16, weight: .semibold)
+        title.lineBreakMode = .byTruncatingTail
+        let stack = NSStackView(views: [title])
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 3
+        if !info.version.isEmpty {
+            let subtitle = Self.label(
+                Self.string("lx_update_card_version", info.version), size: 12, weight: .regular)
+            subtitle.textColor = .secondaryLabelColor
+            stack.addArrangedSubview(subtitle)
+        }
+
+        let row = NSStackView(views: [icon, stack])
+        row.orientation = .horizontal
+        row.alignment = .centerY
+        row.spacing = 14
+        row.distribution = .fill
+        row.translatesAutoresizingMaskIntoConstraints = false
+        return row
+    }
+
+    private func divider() -> NSBox {
+        let box = NSBox()
+        box.boxType = .separator
+        box.translatesAutoresizingMaskIntoConstraints = false
+        return box
     }
 
     private func notesView(_ notes: [String]) -> NSView {
@@ -299,8 +208,7 @@ final class UpdateAvailableCard: NSObject {
         return scroll
     }
 
-    /// Build the release-notes text with hanging-indent bullets (wrapped lines
-    /// align under the text, not the bullet) and comfortable line spacing.
+    /// Release-notes text with hanging-indent bullets and comfortable spacing.
     private static func notesAttributed(_ notes: [String]) -> NSAttributedString {
         let indent: CGFloat = 16
         let para = NSMutableParagraphStyle()
@@ -323,13 +231,11 @@ final class UpdateAvailableCard: NSObject {
         return result
     }
 
-    // MARK: - Actions
-
-    @objc private func downloadClicked() {
+    @objc private func restartClicked() {
         guard !didChoose else { return }
         didChoose = true
-        onDownload()
-        enterDownloading()
+        onRestart()
+        // The app quits / relaunches; nothing more to do.
     }
 
     @objc private func laterClicked() {
@@ -339,50 +245,32 @@ final class UpdateAvailableCard: NSObject {
         close()
     }
 
-    @objc private func restartClicked() {
-        onRestart()
-        // The app quits / relaunches; nothing more to do.
-    }
-
-    // MARK: - Window plumbing
-
     private func show(over window: NSWindow?) {
-        relayout(center: true, over: window)
-        panel.level = .floating
-        panel.isFloatingPanel = true
-        panel.hidesOnDeactivate = false
+        root.layoutSubtreeIfNeeded()
+        let size = NSSize(width: Style.width, height: root.fittingSize.height)
+        panel.setContentSize(size)
+        if let window, window.isVisible {
+            let f = window.frame
+            panel.setFrameOrigin(NSPoint(x: f.midX - size.width / 2, y: f.midY - size.height / 2))
+            // Attach as a child window so the card follows the app on drag and
+            // hides/miniaturizes with it instead of floating free.
+            window.addChildWindow(panel, ordered: .above)
+        } else {
+            panel.center()
+            panel.level = .floating
+            panel.isFloatingPanel = true
+        }
         NSApp.activate(ignoringOtherApps: true)
         panel.makeKeyAndOrderFront(nil)
     }
 
-    private func relayout(center: Bool = false, over window: NSWindow? = nil) {
-        root.layoutSubtreeIfNeeded()
-        let size = NSSize(width: Style.width, height: root.fittingSize.height)
-        let previousTop = panel.frame.maxY
-        panel.setContentSize(size)
-        if center {
-            if let window, window.isVisible {
-                let f = window.frame
-                panel.setFrameOrigin(NSPoint(x: f.midX - size.width / 2, y: f.midY - size.height / 2))
-            } else {
-                panel.center()
-            }
-        } else {
-            // Keep the top edge pinned while the height changes between states.
-            var origin = panel.frame.origin
-            origin.y = previousTop - panel.frame.height
-            panel.setFrameOrigin(origin)
-        }
-    }
-
     private func close() {
+        panel.parent?.removeChildWindow(panel)
         panel.orderOut(nil)
         if UpdateAvailableCard.current === self {
             UpdateAvailableCard.current = nil
         }
     }
-
-    // MARK: - Helpers
 
     private static func label(_ text: String, size: CGFloat, weight: NSFont.Weight) -> NSTextField {
         let field = NSTextField(labelWithString: text)
@@ -397,22 +285,20 @@ final class UpdateAvailableCard: NSObject {
     }
 }
 
-/// Parsed fields from the update-info JSON the Rust side passes.
-private struct UpdateCardInfo {
+/// Parsed fields from the `{version, releaseNotes, isForceUpdate}` JSON the Rust
+/// side passes to the ready prompt.
+struct UpdateReadyInfo {
     let version: String
-    let sizeBytes: UInt64?
     let releaseNotes: [String]
     let isForceUpdate: Bool
 
     init(json: String) {
         var version = ""
-        var sizeBytes: UInt64?
         var notes: [String] = []
         var force = false
         if let data = json.data(using: .utf8),
            let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
             version = (obj["version"] as? String) ?? ""
-            if let n = obj["size"] as? NSNumber { sizeBytes = n.uint64Value }
             if let arr = obj["releaseNotes"] as? [Any] {
                 notes = arr.compactMap { ($0 as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) }
                     .filter { !$0.isEmpty }
@@ -420,14 +306,8 @@ private struct UpdateCardInfo {
             force = (obj["isForceUpdate"] as? Bool) ?? false
         }
         self.version = version
-        self.sizeBytes = sizeBytes
         self.releaseNotes = notes
         self.isForceUpdate = force
-    }
-
-    var humanSize: String? {
-        guard let sizeBytes else { return nil }
-        return ByteCountFormatter.string(fromByteCount: Int64(sizeBytes), countStyle: .file)
     }
 }
 #endif

@@ -708,6 +708,22 @@ pub struct IosConfig {
     /// If omitted, CLI will try app.projectName or infer from Sources/ when unambiguous.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub target_name: Option<String>,
+    /// App Store Connect identity for `lingxia store`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub store: Option<AppStoreConfig>,
+}
+
+/// App Store Connect submission identity. Lives in `lingxia.yaml` under
+/// `ios.store` / `macos.store`; credentials live in
+/// `~/.lingxia/store/credentials.toml` (`[appstore]`).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct AppStoreConfig {
+    /// The app's bundle identifier (must match the App Store Connect record).
+    pub bundle_id: String,
+    /// The App Store Connect numeric app id (the "Apple ID" of the app).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub app_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -730,6 +746,10 @@ pub struct MacosConfig {
     /// If omitted, CLI will try app.projectName or infer from Sources/ when unambiguous.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub target_name: Option<String>,
+
+    /// App Store Connect identity for `lingxia store`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub store: Option<AppStoreConfig>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -744,6 +764,19 @@ pub struct HarmonyConfig {
     /// Equivalent to Android targetSdk
     #[serde(skip_serializing_if = "Option::is_none")]
     pub target_sdk_version: Option<String>,
+    /// Huawei AppGallery Connect identity for `lingxia store`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub store: Option<AppGalleryConfig>,
+}
+
+/// Huawei AppGallery Connect submission identity. Lives in `lingxia.yaml`
+/// under `harmony.store`; credentials live in
+/// `~/.lingxia/store/credentials.toml` (`[appgallery]`).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct AppGalleryConfig {
+    /// AppGallery Connect app id.
+    pub app_id: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -761,6 +794,22 @@ pub struct WindowsConfig {
     /// `CN=<productName>` when omitted.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub publisher: Option<String>,
+    /// Microsoft Store (Partner Center) identity for `lingxia store`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub store: Option<MsStoreConfig>,
+}
+
+/// Microsoft Store (Partner Center) submission identity. Lives in
+/// `lingxia.yaml` under `windows.store`; credentials live in
+/// `~/.lingxia/store/credentials.toml` (`[msstore]`).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct MsStoreConfig {
+    /// Partner-Center-reserved Store ID (app id) for the application.
+    pub app_id: String,
+    /// Optional reserved package name (display only).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub package_name: Option<String>,
 }
 
 impl LingXiaConfig {

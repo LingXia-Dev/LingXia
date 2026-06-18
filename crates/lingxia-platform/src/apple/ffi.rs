@@ -134,25 +134,13 @@ mod bridge {
         #[swift_bridge(swift_name = "LxApp.exitApp")]
         fn exit_app() -> bool;
 
-        // Ask the macOS shell to show the "ready to update" callout above the
-        // sidebar icon. `state` is "ready" (downloaded, click to restart) or
-        // "available" (deferred, click to install). The shell resolves the
-        // product name itself. Returns true if a UI was available to present
-        // it; false means there is no shell (headless).
+        // Ask the macOS shell to surface the post-download update prompt.
+        // `state` is "ready" (downloaded → minimal sidebar callout, click opens
+        // the notes card) or "ready-force" (forced → blocking notes card).
+        // `info_json` carries {version, releaseNotes, isForceUpdate} the prompt
+        // renders. Returns true if a UI was available; false means headless.
         #[swift_bridge(swift_name = "LxApp.notifyAppUpdateReady")]
-        fn notify_app_update_ready(state: &str) -> bool;
-
-        // Present the centered "update available" card (Stage 1) with version,
-        // size and release notes parsed from `info_json`. The card resolves
-        // `callback_id` via onCallback: {"confirm":true} to download & install,
-        // error 2000 on "Later". Returns false if no shell is present.
-        #[swift_bridge(swift_name = "LxApp.presentUpdateCard")]
-        fn present_update_card(info_json: &str, callback_id: u64) -> bool;
-
-        // Report host-app update download progress (0-100) to the open card so
-        // it can show a live progress bar.
-        #[swift_bridge(swift_name = "LxApp.updateDownloadProgress")]
-        fn update_download_progress(percent: u8);
+        fn notify_app_update_ready(state: &str, info_json: &str) -> bool;
 
         #[swift_bridge(swift_name = "LxApp.isPushEnabled")]
         fn is_push_enabled() -> bool;
@@ -387,10 +375,10 @@ pub use bridge::{
     ActionSheetOptions, ModalOptions, ToastIcon, ToastOptions, ToastPosition, cancel_preview_media,
     close_lxapp, close_surface, exit_app, hide_surface, hide_toast, navigate,
     notify_app_update_ready, open_document_external, open_lxapp, open_url, present_layout,
-    present_surface, present_update_card, preview_media, review_document,
+    present_surface, preview_media, review_document,
     set_managed_surface_visible, share,
     show_action_sheet, show_modal, show_surface, show_toast, toggle_managed_surface,
-    update_download_progress, update_navbar_ui, update_orientation_ui, update_tabbar_ui,
+    update_navbar_ui, update_orientation_ui, update_tabbar_ui,
 };
 
 #[cfg(any(target_os = "ios", target_os = "macos"))]

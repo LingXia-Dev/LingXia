@@ -174,6 +174,13 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     private let tabManager = LxAppTabManager.shared
     let browserCoordinator = BrowserTabCoordinator()
     internal var sidebarView: SidebarView?
+    /// Version + release notes for the staged update, set when the "ready"
+    /// callout is shown so clicking it can open the notes card.
+    private var pendingUpdateInfoJSON: String = "{}"
+    /// The "ready to update" callout — pinned bottom-left within the sidebar
+    /// column (above the footer dock), on the window's top layer so it stays
+    /// visible above any dock panel.
+    private var updateReadyCallout: UpdateReadyCallout?
     private var navigationToolbar: MacNavigationToolbar?
     private var sidebarWidthConstraint: NSLayoutConstraint?
     private var contentLeadingConstraint: NSLayoutConstraint?
@@ -182,9 +189,6 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     /// left panel and the two never overlap. Kept separate from the sidebar base
     /// because sidebar reveal/hide also drives the leading constraint.
     private var cardLeadingPanelInset: CGFloat = 0
-    /// The transient update callout, pinned to the window's bottom-left corner on
-    /// the top layer (independent of the sidebar).
-    private var updateReadyCallout: UpdateReadyCallout?
     private var cardTrailingConstraint: NSLayoutConstraint?
     private var cardBottomConstraint: NSLayoutConstraint?
     private var cardTopConstraint: NSLayoutConstraint?
@@ -480,10 +484,11 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         sidebar.onPanelItemToggled = { [weak self] actionID in
             self?.sidebarHostActionHandler?(actionID)
         }
-        sidebar.onUpdateActionRequested = { state in
+        sidebar.onUpdateActionRequested = { [weak self] state in
             switch state {
             case .ready:
-                _ = onAppEvent(AppEvent.updateRestartClick, "")
+                // Open the notes card; its Restart button applies the update.
+                self?.presentUpdateReadyCard(infoJSON: self?.pendingUpdateInfoJSON ?? "{}")
             case .available:
                 _ = onAppEvent(AppEvent.updateInstallClick, "")
             }
@@ -1201,7 +1206,14 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         updateReadyCallout?.removeFromSuperview()
 
         let callout = UpdateReadyCallout(appName: appName, state: state) { [weak self] in
-            self?.handleUpdateAction(state)
+            guard let self else { return }
+            switch state {
+            case .ready:
+                // Open the notes card; its Restart button applies the update.
+                self.presentUpdateReadyCard(infoJSON: self.pendingUpdateInfoJSON)
+            case .available:
+                _ = onAppEvent(AppEvent.updateInstallClick, "")
+            }
         }
         callout.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(callout, positioned: .above, relativeTo: nil)
@@ -1226,15 +1238,6 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         updateReadyCallout = nil
     }
 
-    private func handleUpdateAction(_ state: UpdateCalloutState) {
-        switch state {
-        case .ready:
-            _ = onAppEvent(AppEvent.updateRestartClick, "")
-        case .available:
-            _ = onAppEvent(AppEvent.updateInstallClick, "")
-        }
-    }
-
     /// Open a built-in browser surface (downloads / settings) as a main browser
     /// tab via the unified switcher — same path as the sidebar buttons, so it
     /// detaches the lxapp cleanly. Returns `false` for ids that aren't built-in
@@ -1252,25 +1255,24 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         }
     }
 
-
-    /// Present the centered "update available" card (Stage 1). The card then
-    /// drives the whole flow: Download & Install → live progress → Restart Now.
-    func presentUpdateCard(appName: String, infoJSON: String, callbackId: UInt64) {
-        UpdateAvailableCard.present(
-            appName: appName,
-            infoJSON: infoJSON,
+    /// Present the "ready to update" card with release notes. Clicking Restart
+    /// Now applies the staged update; Later dismisses (omitted for forced
+    /// updates, which are blocking). Reached directly for forced updates, or by
+    /// clicking the bottom-left "ready" sidebar callout for normal updates.
+    func presentUpdateReadyCard(infoJSON: String) {
+        UpdateAvailableCard.presentReady(
+            info: UpdateReadyInfo(json: infoJSON),
             over: window,
-            onDownload: {
-                _ = onCallback(callbackId, true, "{\"confirm\":true}")
-            },
-            onLater: { [weak self] in
-                _ = onCallback(callbackId, false, "2000")
-                // Drop to the quiet sidebar reminder.
-                self?.presentUpdateReadyCallout(appName: appName, state: .available)
-            },
             onRestart: {
                 _ = onAppEvent(AppEvent.updateRestartClick, "")
-            })
+            },
+            onLater: {})
+    }
+
+    /// Remember the version + release notes for the staged update so clicking
+    /// the "ready" callout can open the notes card.
+    func setPendingUpdateInfo(_ infoJSON: String) {
+        pendingUpdateInfoJSON = infoJSON
     }
 
     func updateToolbarHostActions(_ items: [LxAppUIActionItem]) {

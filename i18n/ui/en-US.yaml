@@ -71,6 +71,11 @@ document:
 # File Chooser
 file_chooser:
   default_title: "Choose File"
+  select_folder: "Select folder"
+  select_file: "Select file"
+  choose_images: "Choose Images"
+  choose_videos: "Choose Videos"
+  choose_media: "Choose Media"
   filter_label: "Showing %1$s"
   filter_images: "Images"
   filter_videos: "Videos"
@@ -97,3 +102,19 @@ update:
   confirm: "Download & Install"
   downloading: "Downloading Update"
   download_failed: "Download failed. Please try again."
+
+# Terminal panel (native Windows shell terminal)
+terminal:
+  title: "Terminal"
+  copy: "Copy"
+  paste: "Paste"
+  split_right: "Split Right"
+  split_left: "Split Left"
+  split_down: "Split Down"
+  split_up: "Split Up"
+  new_tab: "New Tab"
+  close_pane: "Close Pane"
+  close_tab: "Close Tab"
+  change_title: "Change Tab Title…"
+  reset: "Reset Terminal"
+  read_only: "Terminal Read-only"

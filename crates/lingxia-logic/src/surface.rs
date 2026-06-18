@@ -497,14 +497,13 @@ fn build_open_options(
         attach_size(&options, size)?;
         return Ok(options);
     }
-    if let Some(obj) = target.clone().into_object() {
-        if read_optional_string(&obj, "url")?.is_some()
-            || read_optional_string(&obj, "browser")?.is_some()
-        {
-            return Err(invalid_surface_target(
-                "a page surface hosts this lxapp's own pages; open external web with a { url } spec",
-            ));
-        }
+    if let Some(obj) = target.clone().into_object()
+        && (read_optional_string(&obj, "url")?.is_some()
+            || read_optional_string(&obj, "browser")?.is_some())
+    {
+        return Err(invalid_surface_target(
+            "a page surface hosts this lxapp's own pages; open external web with a { url } spec",
+        ));
     }
     Err(invalid_surface_target(
         "target must be a page path of this lxapp",
@@ -546,12 +545,13 @@ fn build_window_options(
         attach_size(&options, size)?;
         return Ok(options);
     }
-    if let Some(obj) = target.clone().into_object() {
-        if read_optional_string(&obj, "browser")?.is_some() || read_optional_string(&obj, "url")?.is_some() {
-            return Err(invalid_surface_target(
-                "a window surface hosts this lxapp's own pages; open external web with a { url } spec",
-            ));
-        }
+    if let Some(obj) = target.clone().into_object()
+        && (read_optional_string(&obj, "browser")?.is_some()
+            || read_optional_string(&obj, "url")?.is_some())
+    {
+        return Err(invalid_surface_target(
+            "a window surface hosts this lxapp's own pages; open external web with a { url } spec",
+        ));
     }
     Err(invalid_surface_target(
         "a window surface target must be a page path of this lxapp",

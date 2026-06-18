@@ -104,6 +104,9 @@ pub enum I18nKey {
     ErrorUnauthorized,
     ErrorUnknown,
     ErrorVideoTooShort,
+    FileChooserChooseImages,
+    FileChooserChooseMedia,
+    FileChooserChooseVideos,
     FileChooserDefaultTitle,
     FileChooserEmptySubtitle,
     FileChooserEmptyTitle,
@@ -114,6 +117,8 @@ pub enum I18nKey {
     FileChooserFilteredEmptySubtitle,
     FileChooserFilteredEmptyTitle,
     FileChooserFolderSubtitle,
+    FileChooserSelectFile,
+    FileChooserSelectFolder,
     PermissionLimitedAccessAddMoreMedia,
     PermissionLimitedAccessAddMorePhotos,
     PermissionLimitedAccessAddMoreVideos,
@@ -122,6 +127,19 @@ pub enum I18nKey {
     PermissionMediaReason,
     PermissionNetworkReason,
     PermissionWifiReason,
+    TerminalChangeTitle,
+    TerminalClosePane,
+    TerminalCloseTab,
+    TerminalCopy,
+    TerminalNewTab,
+    TerminalPaste,
+    TerminalReadOnly,
+    TerminalReset,
+    TerminalSplitDown,
+    TerminalSplitLeft,
+    TerminalSplitRight,
+    TerminalSplitUp,
+    TerminalTitle,
     UpdateConfirm,
     UpdateDownloadFailed,
     UpdateDownloading,
@@ -256,6 +274,9 @@ accessible videos"
             (I18nKey::ErrorUnauthorized, "en") => "Unauthorized",
             (I18nKey::ErrorUnknown, "en") => "Unknown Error",
             (I18nKey::ErrorVideoTooShort, "en") => "Video too short",
+            (I18nKey::FileChooserChooseImages, "en") => "Choose Images",
+            (I18nKey::FileChooserChooseMedia, "en") => "Choose Media",
+            (I18nKey::FileChooserChooseVideos, "en") => "Choose Videos",
             (I18nKey::FileChooserDefaultTitle, "en") => "Choose File",
             (I18nKey::FileChooserEmptySubtitle, "en") => {
                 "This folder does not contain any files or subfolders yet."
@@ -270,6 +291,8 @@ accessible videos"
             }
             (I18nKey::FileChooserFilteredEmptyTitle, "en") => "No matching files",
             (I18nKey::FileChooserFolderSubtitle, "en") => "Folder",
+            (I18nKey::FileChooserSelectFile, "en") => "Select file",
+            (I18nKey::FileChooserSelectFolder, "en") => "Select folder",
             (I18nKey::PermissionLimitedAccessAddMoreMedia, "en") => {
                 "Add more
 accessible items"
@@ -297,6 +320,19 @@ accessible videos"
             (I18nKey::PermissionWifiReason, "en") => {
                 "WiFi permission required to scan and connect to WiFi networks"
             }
+            (I18nKey::TerminalChangeTitle, "en") => "Change Tab Title…",
+            (I18nKey::TerminalClosePane, "en") => "Close Pane",
+            (I18nKey::TerminalCloseTab, "en") => "Close Tab",
+            (I18nKey::TerminalCopy, "en") => "Copy",
+            (I18nKey::TerminalNewTab, "en") => "New Tab",
+            (I18nKey::TerminalPaste, "en") => "Paste",
+            (I18nKey::TerminalReadOnly, "en") => "Terminal Read-only",
+            (I18nKey::TerminalReset, "en") => "Reset Terminal",
+            (I18nKey::TerminalSplitDown, "en") => "Split Down",
+            (I18nKey::TerminalSplitLeft, "en") => "Split Left",
+            (I18nKey::TerminalSplitRight, "en") => "Split Right",
+            (I18nKey::TerminalSplitUp, "en") => "Split Up",
+            (I18nKey::TerminalTitle, "en") => "Terminal",
             (I18nKey::UpdateConfirm, "en") => "Download & Install",
             (I18nKey::UpdateDownloadFailed, "en") => "Download failed. Please try again.",
             (I18nKey::UpdateDownloading, "en") => "Downloading Update",
@@ -415,6 +451,9 @@ accessible videos"
             (I18nKey::ErrorUnauthorized, "zh") => "未授权",
             (I18nKey::ErrorUnknown, "zh") => "未知错误",
             (I18nKey::ErrorVideoTooShort, "zh") => "拍摄时间过短",
+            (I18nKey::FileChooserChooseImages, "zh") => "选择图片",
+            (I18nKey::FileChooserChooseMedia, "zh") => "选择媒体",
+            (I18nKey::FileChooserChooseVideos, "zh") => "选择视频",
             (I18nKey::FileChooserDefaultTitle, "zh") => "选择文件",
             (I18nKey::FileChooserEmptySubtitle, "zh") => {
                 "这个文件夹里还没有可显示的文件或子文件夹。"
@@ -429,6 +468,8 @@ accessible videos"
             }
             (I18nKey::FileChooserFilteredEmptyTitle, "zh") => "没有匹配的文件",
             (I18nKey::FileChooserFolderSubtitle, "zh") => "文件夹",
+            (I18nKey::FileChooserSelectFile, "zh") => "选择文件",
+            (I18nKey::FileChooserSelectFolder, "zh") => "选择文件夹",
             (I18nKey::PermissionLimitedAccessAddMoreMedia, "zh") => {
                 "添加更多
 可访问内容"
@@ -448,6 +489,19 @@ accessible videos"
             (I18nKey::PermissionMediaReason, "zh") => "LingXia需要相册权限保存图片和视频",
             (I18nKey::PermissionNetworkReason, "zh") => "LingXia需要网络权限来检测网络状态",
             (I18nKey::PermissionWifiReason, "zh") => "LingXia需要WiFi权限来扫描和连接WiFi网络",
+            (I18nKey::TerminalChangeTitle, "zh") => "修改标题…",
+            (I18nKey::TerminalClosePane, "zh") => "关闭窗格",
+            (I18nKey::TerminalCloseTab, "zh") => "关闭标签页",
+            (I18nKey::TerminalCopy, "zh") => "复制",
+            (I18nKey::TerminalNewTab, "zh") => "新建标签页",
+            (I18nKey::TerminalPaste, "zh") => "粘贴",
+            (I18nKey::TerminalReadOnly, "zh") => "终端只读",
+            (I18nKey::TerminalReset, "zh") => "重置终端",
+            (I18nKey::TerminalSplitDown, "zh") => "向下拆分",
+            (I18nKey::TerminalSplitLeft, "zh") => "向左拆分",
+            (I18nKey::TerminalSplitRight, "zh") => "向右拆分",
+            (I18nKey::TerminalSplitUp, "zh") => "向上拆分",
+            (I18nKey::TerminalTitle, "zh") => "终端",
             (I18nKey::UpdateConfirm, "zh") => "下载并安装",
             (I18nKey::UpdateDownloadFailed, "zh") => "下载失败，请重试",
             (I18nKey::UpdateDownloading, "zh") => "正在下载更新",

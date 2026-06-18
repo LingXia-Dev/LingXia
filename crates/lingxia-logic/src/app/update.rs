@@ -123,17 +123,21 @@ fn create_update_object(ctx: &JSContext, update: UpdatePackageInfo) -> JSResult<
 }
 
 fn create_apply_task(ctx: &JSContext, package: UpdatePackageInfo) -> JSResult<JSObject> {
-    if !can_apply_host_app_update() {
-        return Err(js_error_from_business_code_with_detail(
-            6000,
-            "host app update apply is only supported on Android and macOS",
-        ));
-    }
-
     let lxapp = LxApp::from_ctx(ctx)?;
     ensure_home_lxapp(&lxapp, "lx.app.checkUpdate")?;
 
-    let apply = host_update_service_from(&lxapp).apply(package);
+    let service = host_update_service_from(&lxapp);
+    // Store-delivered platforms (iOS/HarmonyOS) update through the store and
+    // never self-install; only platforms that report `self_update_supported`
+    // can apply a downloaded package in place.
+    if !service.self_update_supported() {
+        return Err(js_error_from_business_code_with_detail(
+            6000,
+            "host app self-update is not supported on this platform",
+        ));
+    }
+
+    let apply = service.apply(package);
     let (tx, rx) = watch::channel::<Option<AppUpdateEvent>>(None);
     let (completion_tx, completion_rx) = oneshot::channel::<AppUpdateCompletion>();
     spawn_app_update_forwarder(apply, tx, completion_tx);
@@ -282,10 +286,6 @@ fn completion_from_event(event: &AppUpdateEvent) -> AppUpdateCompletion {
 
 fn host_update_service_from(lxapp: &LxApp) -> HostAppUpdateService {
     HostAppUpdateService::new(lxapp.runtime.clone(), lxapp::provider::update_provider())
-}
-
-fn can_apply_host_app_update() -> bool {
-    cfg!(any(target_os = "android", target_os = "macos"))
 }
 
 pub(super) fn ensure_home_lxapp(lxapp: &LxApp, api_name: &str) -> JSResult<()> {

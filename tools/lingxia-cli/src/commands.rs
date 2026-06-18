@@ -11,3 +11,4 @@ pub mod new;
 pub mod package;
 pub mod publish;
 pub mod rust;
+pub mod store;
