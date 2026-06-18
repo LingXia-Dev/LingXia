@@ -154,6 +154,7 @@ fn generated_app_json_includes_capabilities() {
             notifications: true,
             terminal: true,
             terminal_edge: None,
+            proxy: false,
         }),
         shell: None,
         ui: None,
@@ -308,6 +309,7 @@ fn generated_ui_json_adds_terminal_for_capability() {
             notifications: false,
             terminal: true,
             terminal_edge: None,
+            proxy: false,
         }),
         shell: None,
         ui: Some(serde_json::json!({
@@ -440,6 +442,7 @@ fn generated_ui_json_rejects_terminal_when_capability_disabled() {
             notifications: false,
             terminal: false,
             terminal_edge: None,
+            proxy: false,
         }),
         shell: None,
         ui: Some(serde_json::json!({
@@ -483,6 +486,7 @@ fn generated_ui_json_adds_terminal_surface_without_forcing_activator() {
             notifications: false,
             terminal: true,
             terminal_edge: None,
+            proxy: false,
         }),
         shell: None,
         ui: Some(serde_json::json!({
@@ -530,6 +534,7 @@ fn generated_ui_json_attaches_terminal_to_initial_root_surface() {
             notifications: false,
             terminal: true,
             terminal_edge: None,
+            proxy: false,
         }),
         shell: None,
         ui: Some(serde_json::json!({

@@ -49,8 +49,6 @@ features:
   # true -> compile the standard runtime/lingxia-logic and support logic-enabled lxapps.
   # false -> native-only host; bundled/home lxapps must use logic: false.
   appService: {{APP_SERVICE}}
-  # Enable product shell/browser chrome: browser, downloads, settings, panels.
-  shell: false
   # Compile devtools bridge/hooks into the host app.
   # lingxia dev may temporarily enable this without changing this file.
   devtools: false

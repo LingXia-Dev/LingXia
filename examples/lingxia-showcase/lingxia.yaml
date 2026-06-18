@@ -41,7 +41,6 @@ windows:
 
 features:
   appService: true
-  shell: true
   devtools: false
 
 shell:

@@ -14,6 +14,7 @@ standard = ["lxapp/standard", "dep:lingxia-logic", "browser-runtime"]
 devtool = []
 browser-runtime = ["dep:lingxia-browser"]
 shell-runtime = ["browser-runtime", "dep:lingxia-shell"]
+proxy = ["shell-runtime", "lingxia-shell/proxy"]
 terminal-runtime = ["dep:lingxia-terminal"]
 webview-input = ["lingxia-webview/webview-input"]
 

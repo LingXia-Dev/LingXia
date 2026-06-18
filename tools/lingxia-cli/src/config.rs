@@ -55,8 +55,6 @@ pub struct FeaturesConfig {
     #[serde(default = "default_true")]
     pub app_service: bool,
     #[serde(default)]
-    pub shell: bool,
-    #[serde(default)]
     pub devtools: bool,
 }
 
@@ -64,7 +62,6 @@ impl Default for FeaturesConfig {
     fn default() -> Self {
         Self {
             app_service: true,
-            shell: false,
             devtools: false,
         }
     }
@@ -81,6 +78,10 @@ pub struct CapabilitiesConfig {
     /// (default) or `top`. Only meaningful when `terminal` is enabled.
     #[serde(default)]
     pub terminal_edge: Option<String>,
+    /// Opt-in HTTP proxy for the in-app browser (desktop). Independent of the
+    /// browser itself, which is part of the desktop baseline.
+    #[serde(default)]
+    pub proxy: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -780,14 +781,11 @@ impl LingXiaConfig {
             .unwrap_or(true)
     }
 
-    pub fn shell_enabled(&self, platform: &str) -> bool {
-        let shell_requested = self
-            .features
-            .as_ref()
-            .map(|features| features.shell)
-            .unwrap_or(false);
-        (shell_requested || self.terminal_enabled(platform))
-            && matches!(platform, "macos" | "windows")
+    /// The adaptive-layout host (window + sidebar + browser + settings +
+    /// downloads) and webview input are the desktop baseline — always present on
+    /// macOS and Windows, independent of any opt-in capability.
+    pub fn desktop_runtime_enabled(&self, platform: &str) -> bool {
+        matches!(platform, "macos" | "windows")
     }
 
     pub fn terminal_enabled(&self, platform: &str) -> bool {
@@ -797,6 +795,15 @@ impl LingXiaConfig {
             .map(|capabilities| capabilities.terminal)
             .unwrap_or(false);
         terminal_requested && matches!(platform, "macos" | "windows")
+    }
+
+    pub fn proxy_enabled(&self, platform: &str) -> bool {
+        let proxy_requested = self
+            .capabilities
+            .as_ref()
+            .map(|capabilities| capabilities.proxy)
+            .unwrap_or(false);
+        proxy_requested && matches!(platform, "macos" | "windows")
     }
 
     pub fn devtools_enabled(&self) -> bool {
@@ -811,14 +818,17 @@ impl LingXiaConfig {
         if self.app_service_enabled() {
             features.push("standard".to_string());
         }
-        if self.shell_enabled(platform) {
+        if self.desktop_runtime_enabled(platform) {
             features.push("shell-runtime".to_string());
         }
         if self.terminal_enabled(platform) {
             features.push("terminal-runtime".to_string());
         }
-        if self.shell_enabled(platform) {
+        if self.desktop_runtime_enabled(platform) {
             features.push("webview-input".to_string());
+        }
+        if self.proxy_enabled(platform) {
+            features.push("proxy".to_string());
         }
         if self.devtools_enabled() {
             features.push("devtools".to_string());
@@ -1645,14 +1655,16 @@ android:
     }
 
     #[test]
-    fn shell_feature_is_only_effective_on_macos() {
-        let mut config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
-        config.features.as_mut().unwrap().shell = true;
+    fn desktop_runtime_is_baseline_on_desktop_only() {
+        let config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
 
-        assert!(config.shell_enabled("macos"));
-        assert!(!config.shell_enabled("android"));
-        assert!(!config.shell_enabled("ios"));
-        assert!(!config.shell_enabled("harmony"));
+        // The layout host + webview input are baseline on desktop, with no
+        // opt-in flag required.
+        assert!(config.desktop_runtime_enabled("macos"));
+        assert!(config.desktop_runtime_enabled("windows"));
+        assert!(!config.desktop_runtime_enabled("android"));
+        assert!(!config.desktop_runtime_enabled("ios"));
+        assert!(!config.desktop_runtime_enabled("harmony"));
 
         assert_eq!(
             config.native_features_for_platform("macos"),
@@ -1669,13 +1681,31 @@ android:
     }
 
     #[test]
+    fn proxy_capability_adds_proxy_feature_on_desktop() {
+        let mut config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
+        config.capabilities.as_mut().unwrap().proxy = true;
+
+        assert!(config.proxy_enabled("macos"));
+        assert!(!config.proxy_enabled("android"));
+        assert_eq!(
+            config.native_features_for_platform("macos"),
+            vec![
+                "standard".to_string(),
+                "shell-runtime".to_string(),
+                "webview-input".to_string(),
+                "proxy".to_string(),
+            ]
+        );
+    }
+
+    #[test]
     fn terminal_capability_enables_macos_and_windows_runtime() {
         let mut config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
         config.capabilities.as_mut().unwrap().terminal = true;
 
-        assert!(config.shell_enabled("macos"));
+        assert!(config.desktop_runtime_enabled("macos"));
         assert!(config.terminal_enabled("windows"));
-        assert!(!config.shell_enabled("android"));
+        assert!(!config.desktop_runtime_enabled("android"));
         assert_eq!(
             config.native_features_for_platform("macos"),
             vec![

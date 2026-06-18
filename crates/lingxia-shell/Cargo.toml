@@ -11,6 +11,11 @@ repository.workspace = true
 keywords = ["lingxia", "shell", "lxapp", "webview"]
 categories = ["web-programming", "api-bindings"]
 
+[features]
+# Opt-in HTTP proxy for the in-app browser (macOS). The browser itself is part
+# of the desktop baseline; the proxy is independent.
+proxy = []
+
 [dependencies]
 lxapp = { workspace = true, default-features = false }
 lingxia-app-context = { workspace = true }
