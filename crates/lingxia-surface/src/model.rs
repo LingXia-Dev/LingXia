@@ -55,7 +55,6 @@ pub enum SurfaceContent {
 pub enum SurfaceOwner {
     Page { page_instance_id: String },
     Lxapp { app_id: String },
-    Window { window_id: String },
     Host,
 }
 

@@ -444,7 +444,7 @@ pub(crate) struct LxAppState {
     /// Startup options for the app
     pub(crate) startup_options: LxAppStartupOptions,
 
-    /// Dynamic page surfaces created by lx.surface.open.
+    /// Dynamic page surfaces created by lx.openSurface.
     pub(crate) surfaces: Mutex<SurfaceRecords>,
 
     /// App-level orientation override (runtime + persisted)

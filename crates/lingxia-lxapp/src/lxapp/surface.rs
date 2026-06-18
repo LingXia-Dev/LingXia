@@ -12,7 +12,7 @@ use std::time::Duration;
 const SURFACE_DISPOSE_TTL_MS: u64 = 30_000;
 static SURFACE_CLOSE_OBSERVER: OnceLock<fn(&str, &str) -> bool> = OnceLock::new();
 /// Observer fired when a window's adaptive context (sizeClass/bottomOwner)
-/// changes, so the logic layer can push `lx.surface.onChange` to subscribers.
+/// changes, so the logic layer can push `lx.onSurfaceContext` to subscribers.
 /// Receives the window id whose context flipped.
 static SURFACE_CONTEXT_OBSERVER: OnceLock<fn(&str)> = OnceLock::new();
 
@@ -170,7 +170,7 @@ impl WindowSurfaceController {
         if changed {
             self.commit();
             // The sizeClass flip changed this window's derived adaptive context;
-            // notify so `lx.surface.onChange` subscribers see the new context.
+            // notify so `lx.onSurfaceContext` subscribers see the new context.
             notify_surface_context_observer(&self.window_id);
         }
         changed
@@ -212,10 +212,9 @@ pub struct PageSurfaceRequest {
     pub width_ratio: Option<f64>,
     pub height_ratio: Option<f64>,
     pub position: SurfacePosition,
-    /// Authoritative core role for this surface. `Aside` (the explicit
-    /// `lx.surface.aside()` verb) is the one path that docks (splits the main);
-    /// `Float` is a popup; `Main` is a window. `kind` still drives the
-    /// dispose-TTL distinction.
+    /// Authoritative core role for this surface. `Aside` is the one path that
+    /// docks (splits the main); `Float` is a popup; `Main` is a window. `kind`
+    /// still drives the dispose-TTL distinction.
     pub role: lingxia_surface::Role,
 }
 
@@ -396,7 +395,7 @@ impl LxApp {
         })
     }
 
-    /// Present a bare standalone window surface (`lx.surface.window`). Unlike
+    /// Present a bare standalone window surface. Unlike
     /// `open_surface`, this does NOT mirror into the per-window surface graph or
     /// run the layout reconciler — a standalone window lives outside the main
     /// window's adaptive layout. It still reuses the page-instance creation and
@@ -564,9 +563,9 @@ impl LxApp {
             .map_err(Into::into)
     }
 
-    /// `lx.shell.open` / `close`: show or hide a host-declared top-level
-    /// surface (e.g. the AI-chat panel or terminal). Delegates to the platform
-    /// host shell; platforms without one return an error.
+    /// Show or hide a host-declared top-level surface (e.g. the AI-chat panel
+    /// or terminal) by its `ui` id. Delegates to the platform host shell;
+    /// platforms without one return an error.
     pub fn set_shell_surface_visible(&self, id: &str, visible: bool) -> Result<(), LxAppError> {
         let id = id.trim();
         if id.is_empty() {
@@ -581,7 +580,7 @@ impl LxApp {
 
     /// Mirror a host-declared aside (e.g. the assistant/terminal attach-panel)
     /// into the window's surface graph so the core's DerivedLayout reflects it
-    /// and `lx.surface.derivedLayout()` includes host surfaces. Owner is `Host`
+    /// and the derived layout includes host surfaces. Owner is `Host`
     /// (window-scoped, not page/lxapp).
     pub fn register_host_aside(&self, surface_id: &str, edge: &str) {
         let surface_id = surface_id.trim();
@@ -604,7 +603,7 @@ impl LxApp {
         window_controller(PRIMARY_WINDOW, &self.runtime).unregister_host_aside(surface_id);
     }
 
-    /// `lx.shell.toggle`: flip a host-declared top-level surface's visibility.
+    /// Flip a host-declared top-level surface's visibility by its `ui` id.
     pub fn toggle_shell_surface(&self, id: &str) -> Result<(), LxAppError> {
         let id = id.trim();
         if id.is_empty() {
@@ -613,6 +612,19 @@ impl LxApp {
             ));
         }
         self.runtime.toggle_managed_surface(id).map_err(Into::into)
+    }
+
+    /// Whether a surface with this runtime id is currently tracked.
+    pub fn has_surface(&self, id: &str) -> bool {
+        let id = id.trim();
+        if id.is_empty() {
+            return false;
+        }
+        self.state
+            .lock()
+            .ok()
+            .map(|state| state.surfaces.lock().unwrap().contains_key(id))
+            .unwrap_or(false)
     }
 
     pub fn forget_surface(&self, id: &str) -> bool {

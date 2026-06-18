@@ -191,29 +191,24 @@ Page({
 
     try {
       const cfg = config || {};
-      const path = "pages/surface/index";
-      // Three verbs express the surface's role: aside(path, edge) docks beside
-      // the main and splits it (a compact Host folds it into a tab); float(path)
-      // presents a popup above the main; window(path) opens a bare desktop
-      // window. `size` is an optional preferred-size hint.
-      const verb =
+      // `as` picks the form: aside docks beside the main and splits it (a compact
+      // Host folds it into a tab); float is a popup above the main; window opens a
+      // bare desktop window. The target is this app's own page by name.
+      const as =
         cfg.verb === "float" ? "float" : cfg.verb === "window" ? "window" : "aside";
-      let size;
+      const spec = { page: "surface", as };
+      if (as === "aside") spec.edge = cfg.edge ?? "right";
+      if (as === "float") spec.position = cfg.position ?? "center";
       if (cfg.width || cfg.height) {
-        size = {};
-        if (cfg.width) size.width = cfg.width;
-        if (cfg.height) size.height = cfg.height;
+        spec.size = {};
+        if (cfg.width) spec.size.width = cfg.width;
+        if (cfg.height) spec.size.height = cfg.height;
       }
-      const surface =
-        verb === "float"
-          ? await lx.surface.float(path, cfg.position ?? "center", size)
-          : verb === "window"
-            ? await lx.surface.window(path, size)
-            : await lx.surface.aside(path, cfg.edge ?? "right", size);
+      const surface = await lx.openSurface(spec);
       this._activeSurface = surface;
 
       this.setData({
-        "surfaceDemo.message": `Opened ${verb}: ${surface.id}`,
+        "surfaceDemo.message": `Opened ${as}: ${surface.id}`,
         "surfaceDemo.active": true,
         "surfaceDemo.visible": true,
       });
