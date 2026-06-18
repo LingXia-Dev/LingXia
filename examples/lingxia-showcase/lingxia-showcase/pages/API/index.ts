@@ -107,7 +107,7 @@ Page({
   },
 
   openDeepSeek: async function() {
-    const targets: Array<"self" | "external"> = ["self", "external"];
+    const targets: Array<"self" | "aside" | "external"> = ["self", "aside", "external"];
 
     try {
       const { tapIndex } = await lx.showActionSheet({
@@ -120,6 +120,8 @@ Page({
       const url = "https://www.deepseek.com/";
       if (targets[tapIndex] === "external") {
         lx.openExternal(url);
+      } else if (targets[tapIndex] === "aside") {
+        await lx.openSurface({ url, as: "aside" });
       } else {
         await lx.openSurface({ url });
       }

@@ -192,6 +192,14 @@ struct PageSurfaceOptions {
     role: String,
 }
 
+#[derive(Debug, Clone, IntoJSObj)]
+struct WebSurfaceOptions {
+    url: String,
+    kind: String,
+    position: String,
+    role: String,
+}
+
 /// `lx.openSurface(spec)` — unified surface entry point. The spec is a
 /// discriminated union keyed by exactly one of `page`, `surface`, or `url`:
 ///
@@ -214,7 +222,7 @@ async fn open_surface_spec(ctx: JSContext, spec: JSValue) -> JSResult<JSValue> {
     match (has_page, has_surface, has_url) {
         (true, false, false) => open_page_spec(ctx, &obj).await.map(JSObject::into_js_value),
         (false, true, false) => open_declared_surface_spec(&ctx, &obj).map(JSObject::into_js_value),
-        (false, false, true) => open_url_spec(&ctx, &obj),
+        (false, false, true) => open_url_spec(ctx, &obj).await,
         _ => Err(surface_error(
             rong::error::E_INVALID_ARG,
             "invalid_surface_spec",
@@ -299,26 +307,58 @@ fn open_declared_surface_spec(ctx: &JSContext, spec: &JSObject) -> JSResult<JSOb
     declared_surface_handle(ctx, lxapp, id.trim().to_string())
 }
 
-/// `{ url }` branch of `lx.openSurface`. Opens the url in the in-app chromed
-/// browser, in contrast to `lx.openExternal` which hands off to the OS browser.
-fn open_url_spec(ctx: &JSContext, spec: &JSObject) -> JSResult<JSValue> {
+/// `{ url, as?, edge? }` branch of `lx.openSurface`. Without `as`, the url opens
+/// as a full in-app browser tab in the main content (host-owned chrome, no
+/// handle), in contrast to `lx.openExternal` which hands off to the OS browser.
+/// With `as: 'aside'` the url is docked beside the main as a closable browser
+/// surface with its own chrome (address bar + close), driven through the surface
+/// graph exactly like a page aside.
+async fn open_url_spec(ctx: JSContext, spec: &JSObject) -> JSResult<JSValue> {
     let url = read_required_string(spec, "url")?;
-    let lxapp = LxApp::from_ctx(ctx)?;
+    let lxapp = LxApp::from_ctx(&ctx)?;
     let url = lxapp_url(&lxapp, url.trim())?;
-    lxapp
-        .runtime
-        .open_url(OpenUrlRequest {
-            owner_appid: lxapp.appid.clone(),
-            owner_session_id: lxapp.session_id(),
-            url,
-            target: OpenUrlTarget::SelfTarget,
-        })
-        .map_err(|err| {
-            surface_error(rong::error::E_INTERNAL, "open_url_failed", err)
-        })?;
-    // The in-app browser is presented by the host as its own chrome and is not
-    // tracked as a closable surface here, so there is no handle to return.
-    Ok(JSValue::null(ctx))
+
+    match read_optional_string(spec, "as")?.as_deref().map(str::trim) {
+        Some("aside") => {
+            let position = read_optional_string(spec, "edge")?
+                .unwrap_or_else(|| "right".to_string());
+            let size = get_property(spec, "size");
+            let options = JSValue::from_rust(
+                &ctx,
+                WebSurfaceOptions {
+                    url,
+                    kind: "overlay".to_string(),
+                    position,
+                    role: "aside".to_string(),
+                },
+            );
+            attach_size(&options, size.as_ref())?;
+            open_surface(ctx, options).await.map(JSObject::into_js_value)
+        }
+        None => {
+            lxapp
+                .runtime
+                .open_url(OpenUrlRequest {
+                    owner_appid: lxapp.appid.clone(),
+                    owner_session_id: lxapp.session_id(),
+                    url,
+                    target: OpenUrlTarget::SelfTarget,
+                })
+                .map_err(|err| {
+                    surface_error(rong::error::E_INTERNAL, "open_url_failed", err)
+                })?;
+            // The in-app browser tab is host chrome, not tracked as a closable
+            // surface here, so there is no handle to return.
+            Ok(JSValue::null(&ctx))
+        }
+        Some(other) => Err(surface_error(
+            rong::error::E_INVALID_ARG,
+            "invalid_surface_spec",
+            format!(
+                "a url surface supports as: 'aside' (or omit `as` for a browser tab); got {other}"
+            ),
+        )),
+    }
 }
 
 /// `lx.openExternal(url)` — hand the url off to the OS default browser.

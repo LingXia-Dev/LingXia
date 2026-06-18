@@ -52,6 +52,23 @@ pub(crate) fn open_for_app(
     }
 }
 
+/// Open a standalone (no-tab-strip) browser tab for a docked aside browser.
+/// New-window requests load inline in the same WebView.
+pub(crate) fn open_standalone_for_app(
+    appid: &str,
+    session_id: u64,
+    url: &str,
+    tab_id: Option<&str>,
+) -> Result<String, lxapp::LxAppError> {
+    #[cfg(feature = "browser-runtime")]
+    return lingxia_browser::open_standalone_for_app(appid, session_id, url, tab_id);
+    #[cfg(not(feature = "browser-runtime"))]
+    {
+        let _ = (appid, session_id, url, tab_id);
+        unavailable()
+    }
+}
+
 /// Whether the optional browser runtime is compiled in.
 #[cfg(target_os = "windows")]
 pub(crate) fn runtime_enabled() -> bool {

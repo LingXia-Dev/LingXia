@@ -42,6 +42,10 @@ enum LxAppSurface {
         /// registered hidden here; the reconciler is the single authority for
         /// its visibility, showing/dismissing it from `plan.floats`.
         let isFloat: Bool
+        /// Set when the docked aside hosts a browser (a `{ url, as: 'aside' }`
+        /// surface). Owns the browser tab + chrome; close() tears it down so the
+        /// underlying Rust browser tab is destroyed with the aside.
+        let dockedBrowser: DockedBrowser?
 
         init(
             id: String,
@@ -55,7 +59,8 @@ enum LxAppSurface {
             delegate: WindowDelegate,
             dockedPosition: PanelPosition? = nil,
             dockedContainer: NSView? = nil,
-            isFloat: Bool = false
+            isFloat: Bool = false,
+            dockedBrowser: DockedBrowser? = nil
         ) {
             self.id = id
             self.appId = appId
@@ -69,6 +74,7 @@ enum LxAppSurface {
             self.dockedPosition = dockedPosition
             self.dockedContainer = dockedContainer
             self.isFloat = isFloat
+            self.dockedBrowser = dockedBrowser
         }
     }
 
@@ -378,6 +384,7 @@ enum LxAppSurface {
         let hostView: LxAppHostView?
         let webView: WKWebView?
         let navigationDelegate: WKNavigationDelegate?
+        let dockedBrowser: DockedBrowser?
 
         switch content {
         case contentPage:
@@ -410,6 +417,7 @@ enum LxAppSurface {
             hostView = lxHostView
             webView = nil
             navigationDelegate = nil
+            dockedBrowser = nil
             Task { @MainActor in
                 do {
                     try await lxHostView.mount(session, notifyVisibleOnMount: true)
@@ -427,18 +435,35 @@ enum LxAppSurface {
                 os_log("invalid web aside url id=%{public}@ url=%{public}@", log: log, type: .error, id, path)
                 return false
             }
+            // Singleton boundary: at most one browser aside per window. A new
+            // browser aside REPLACES any existing one — the docked browser is a
+            // single companion pane, not an unbounded set. Snapshot first:
+            // close() mutates `entries`, so don't iterate it live.
+            let staleBrowserAsides = entries.filter { $0.value.dockedBrowser != nil }
+            for (existingId, existingEntry) in staleBrowserAsides {
+                _ = close(id: existingId, appId: existingEntry.appId, reason: "reclaimed")
+            }
+            // A docked browser aside is a real browser: its webview is created
+            // through the Rust browser path (like a main browser tab) so it
+            // receives native input and drives back/forward, and it carries its
+            // own chrome (back/forward/refresh/address/close). The bare WKWebView
+            // it replaces could not take native input. The tab is independent of
+            // the singleton tab coordinator — no sidebar entry, no main tab.
+            guard let browser = shell.browserCoordinator.createDockedBrowser(
+                url: url.absoluteString,
+                onClose: { _ = LxAppSurface.close(id: id, appId: appId, reason: "user") }
+            ) else {
+                os_log("failed to create docked browser id=%{public}@ url=%{public}@", log: log, type: .error, id, path)
+                return false
+            }
             pageInstanceId = ""
             hostView = nil
-            let configuration = WKWebViewConfiguration()
-            let wkWebView = WKWebView(frame: .zero, configuration: configuration)
-            let navDelegate = WebNavigationDelegate(initialURL: url)
-            wkWebView.navigationDelegate = navDelegate
-            wkWebView.translatesAutoresizingMaskIntoConstraints = false
-            container.addSubview(wkWebView)
-            pinToEdges(wkWebView, in: container)
-            wkWebView.load(URLRequest(url: url))
-            webView = wkWebView
-            navigationDelegate = navDelegate
+            webView = nil
+            navigationDelegate = nil
+            dockedBrowser = browser
+            container.addSubview(browser.containerView)
+            browser.containerView.translatesAutoresizingMaskIntoConstraints = false
+            pinToEdges(browser.containerView, in: container)
 
         default:
             os_log("unsupported aside content=%{public}d id=%{public}@ app=%{public}@", log: log, type: .error, content, id, appId)
@@ -463,7 +488,8 @@ enum LxAppSurface {
             parentWindow: nil,
             delegate: WindowDelegate(id: id, appId: appId),
             dockedPosition: panelPosition,
-            dockedContainer: container
+            dockedContainer: container,
+            dockedBrowser: dockedBrowser
         )
         // Only CREATE + REGISTER the aside content here (hidden). The core's
         // `present_layout` (fired right after this present_surface returns)
@@ -523,6 +549,9 @@ enum LxAppSurface {
         entry.hostView?.unmount(reason: closeReason(reason))
         entry.webView?.stopLoading()
         entry.webView?.navigationDelegate = nil
+        // Destroy the docked browser's tab + chrome (idempotent — the close
+        // button routes back through here too).
+        entry.dockedBrowser?.tearDown()
         if entry.dockedPosition != nil {
             // In-window aside: hide the panel slot and detach its content.
             LxAppActiveHost.activeShell?.hidePanel(id: id)

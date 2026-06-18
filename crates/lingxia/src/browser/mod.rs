@@ -7,7 +7,10 @@
 mod runtime;
 mod shell;
 
-pub(crate) use runtime::{APP_ID, close, discard, mark_active, open_for_app, reactivate, tab_path};
+pub(crate) use runtime::{
+    APP_ID, close, discard, mark_active, open_for_app, open_standalone_for_app, reactivate,
+    tab_path,
+};
 #[cfg(target_os = "windows")]
 pub(crate) use runtime::{
     BrowserTabSummary, activate, go_back, go_forward, navigate, reload, runtime_enabled,

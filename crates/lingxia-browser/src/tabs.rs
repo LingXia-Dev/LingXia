@@ -44,6 +44,11 @@ pub(crate) struct BrowserTabState {
     /// (Chrome-style discard); the entry/metadata is kept and the WebView is
     /// recreated from `current_url` on reactivation.
     pub(crate) discarded: bool,
+    /// When true this tab is a standalone browser with no tab strip (e.g. a
+    /// docked aside browser). New-window requests (`target=_blank`,
+    /// `window.open`) load in the same WebView instead of spawning a new
+    /// main-area tab, since there is no tab UI to surface them in.
+    pub(crate) standalone: bool,
 }
 
 pub(crate) struct BrowserState {
@@ -515,6 +520,7 @@ fn open_internal_browser_tab_with_scope(
     url: &str,
     requested_tab_key: Option<&str>,
     scope: BrowserTabScope<'_>,
+    standalone: bool,
 ) -> Result<String, LxAppError> {
     let browser = ensure_browser_lxapp()?;
     let browser_session_id = browser.session_id();
@@ -563,6 +569,7 @@ fn open_internal_browser_tab_with_scope(
                     title: None,
                     favicon_png: None,
                     discarded: false,
+                    standalone,
                 },
             );
         }
@@ -574,7 +581,12 @@ fn open_internal_browser_tab_with_scope(
             lock_state().tabs.remove(&tab_id);
             return Err(e);
         }
-        let _ = set_active_browser_tab(&tab_id);
+        // A standalone (docked aside) browser is independent of the main tab
+        // model — it must not become the process-wide active browser tab, which
+        // drives the main coordinator's active-tab and memory policy.
+        if !standalone {
+            let _ = set_active_browser_tab(&tab_id);
+        }
         notify_tabs_changed();
         return Ok(tab_id);
     }
@@ -628,7 +640,7 @@ pub(crate) fn open_internal_browser_tab(
     url: &str,
     tab_id: Option<&str>,
 ) -> Result<String, LxAppError> {
-    open_internal_browser_tab_with_scope(url, tab_id, BrowserTabScope::Global)
+    open_internal_browser_tab_with_scope(url, tab_id, BrowserTabScope::Global, false)
 }
 
 pub(crate) fn open_internal_browser_tab_for_owner(
@@ -636,6 +648,7 @@ pub(crate) fn open_internal_browser_tab_for_owner(
     owner_session_id: u64,
     url: &str,
     tab_id: Option<&str>,
+    standalone: bool,
 ) -> Result<String, LxAppError> {
     let _owner = resolve_owner_lxapp(owner_appid, owner_session_id)?;
     open_internal_browser_tab_with_scope(
@@ -645,7 +658,21 @@ pub(crate) fn open_internal_browser_tab_for_owner(
             owner_appid,
             owner_session_id,
         },
+        standalone,
     )
+}
+
+/// Whether `tab_id` is a standalone (no-tab-strip) browser tab whose new-window
+/// requests should load inline rather than spawn a new main-area tab.
+pub(crate) fn is_standalone_tab(tab_id: &str) -> bool {
+    let Some(normalized) = normalize_runtime_tab_id(tab_id) else {
+        return false;
+    };
+    lock_state()
+        .tabs
+        .get(&normalized)
+        .map(|tab| tab.standalone)
+        .unwrap_or(false)
 }
 
 pub fn browser_tab_exists(tab_id: &str) -> bool {

@@ -67,7 +67,19 @@ pub fn open_for_app(
     url: &str,
     tab_id: Option<&str>,
 ) -> Result<String, LxAppError> {
-    tabs::open_internal_browser_tab_for_owner(appid, session_id, url, tab_id)
+    tabs::open_internal_browser_tab_for_owner(appid, session_id, url, tab_id, false)
+}
+
+/// Open a standalone browser tab (no tab strip) for a docked aside browser.
+/// New-window requests from this tab load inline in the same WebView rather
+/// than spawning a new main-area tab.
+pub fn open_standalone_for_app(
+    appid: &str,
+    session_id: u64,
+    url: &str,
+    tab_id: Option<&str>,
+) -> Result<String, LxAppError> {
+    tabs::open_internal_browser_tab_for_owner(appid, session_id, url, tab_id, true)
 }
 
 pub fn close(tab_id: &str) -> Result<(), LxAppError> {

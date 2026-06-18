@@ -219,6 +219,9 @@ mod bridge {
         #[swift_bridge(swift_name = "openBrowserTab")]
         fn open_browser_tab(appid: &str, session_id: u64, url: &str) -> Option<String>;
 
+        #[swift_bridge(swift_name = "openStandaloneBrowserTab")]
+        fn open_standalone_browser_tab(appid: &str, session_id: u64, url: &str) -> Option<String>;
+
         #[swift_bridge(swift_name = "openBrowserTabWithId")]
         fn open_browser_tab_with_id(
             appid: &str,
@@ -563,6 +566,17 @@ pub fn open_browser_tab(appid: &str, session_id: u64, url: &str) -> Option<Strin
             Ok(tab_id) => Some(tab_id),
             Err(e) => {
                 log::error!("open_browser_tab failed: {}", e);
+                None
+            }
+        }
+    })
+}
+pub fn open_standalone_browser_tab(appid: &str, session_id: u64, url: &str) -> Option<String> {
+    ffi_catch_unwind!("open_standalone_browser_tab", None, || {
+        match crate::browser::open_standalone_for_app(appid, session_id, url, None) {
+            Ok(tab_id) => Some(tab_id),
+            Err(e) => {
+                log::error!("open_standalone_browser_tab failed: {}", e);
                 None
             }
         }
