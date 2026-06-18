@@ -38,6 +38,10 @@ enum LxAppSurface {
         /// The container view handed to the shell's panel dock; held so close()
         /// can detach it from the panel slot.
         let dockedContainer: NSView?
+        /// Set for float popups (popups above the layout). A float is created +
+        /// registered hidden here; the reconciler is the single authority for
+        /// its visibility, showing/dismissing it from `plan.floats`.
+        let isFloat: Bool
 
         init(
             id: String,
@@ -50,7 +54,8 @@ enum LxAppSurface {
             parentWindow: NSWindow?,
             delegate: WindowDelegate,
             dockedPosition: PanelPosition? = nil,
-            dockedContainer: NSView? = nil
+            dockedContainer: NSView? = nil,
+            isFloat: Bool = false
         ) {
             self.id = id
             self.appId = appId
@@ -63,6 +68,7 @@ enum LxAppSurface {
             self.delegate = delegate
             self.dockedPosition = dockedPosition
             self.dockedContainer = dockedContainer
+            self.isFloat = isFloat
         }
     }
 
@@ -147,6 +153,10 @@ enum LxAppSurface {
         if let existing = entries[id] {
             if existing.dockedPosition != nil {
                 LxAppActiveHost.activeShell?.showPanel(id: id)
+            } else if existing.isFloat {
+                // A float's visibility is owned by the reconciler (plan.floats);
+                // present_surface only re-asserts existence. The commit firing
+                // present_layout right after will show it.
             } else {
                 existing.window?.makeKeyAndOrderFront(nil)
             }
@@ -309,6 +319,11 @@ enum LxAppSurface {
             return false
         }
 
+        // A popup (kind == kindPopup, non-aside) is a float: created + registered
+        // hidden here, then shown/positioned/dismissed by the reconciler from
+        // plan.floats — the single authority for float visibility. A bare window
+        // (kind == kindWindow) is shown immediately, as before.
+        let isFloat = kind == kindPopup
         entries[id] = Entry(
             id: id,
             appId: appId,
@@ -318,8 +333,16 @@ enum LxAppSurface {
             navigationDelegate: navigationDelegate,
             window: window,
             parentWindow: context.parentWindow,
-            delegate: delegate
+            delegate: delegate,
+            isFloat: isFloat
         )
+
+        if isFloat {
+            // Do NOT order the popup front at create time. The commit firing
+            // present_layout right after this present_surface returns drives the
+            // reconciler, which shows the float (showFloat) from plan.floats.
+            return true
+        }
 
         if kind != kindWindow, let parentWindow = context.parentWindow, let window {
             parentWindow.addChildWindow(window, ordered: .above)
@@ -590,6 +613,42 @@ enum LxAppSurface {
             _ = notifyPageInstanceHidden(entry.pageInstanceId, "hidden")
         }
         return true
+    }
+
+    /// Float popups currently shown. A float is created + registered hidden by
+    /// `present`; this is the set the reconciler already brought on-screen, so it
+    /// can leave them untouched (idempotent) and dismiss any no longer desired.
+    static func visibleFloatIds() -> Set<String> {
+        Set(
+            entries.values
+                .filter { $0.isFloat && ($0.window?.isVisible ?? false) }
+                .map { $0.id }
+        )
+    }
+
+    /// Order a registered (hidden) float popup on-screen. Idempotent: a float
+    /// already visible is left exactly as is (no flicker). Driven solely by the
+    /// reconciler from `plan.floats`.
+    @discardableResult
+    static func showFloat(id: String) -> Bool {
+        guard let entry = entries[id], entry.isFloat, let window = entry.window else {
+            return false
+        }
+        if window.isVisible { return true }
+        if let parentWindow = entry.parentWindow, window.parent == nil {
+            parentWindow.addChildWindow(window, ordered: .above)
+        }
+        window.makeKeyAndOrderFront(nil)
+        return true
+    }
+
+    /// Dismiss a float popup the core no longer lists in `plan.floats`. This is
+    /// the existing popup teardown (close), which unmounts the page, detaches the
+    /// child window, and fires the close observer so the modal-focus stack pops.
+    @discardableResult
+    static func dismissFloat(id: String, appId: String) -> Bool {
+        guard let entry = entries[id], entry.isFloat else { return false }
+        return close(id: id, appId: appId, reason: "programmatic")
     }
 
     private static func pinToEdges(_ child: NSView, in parent: NSView) {

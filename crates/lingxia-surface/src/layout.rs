@@ -198,6 +198,23 @@ pub struct PlanAside {
     pub preferred_size: Option<f64>,
 }
 
+/// One float in the [`LayoutPresentationPlan`]: the surface id plus the
+/// render-relevant `FloatSpec` semantics (anchor, dismiss, modal). Floats are
+/// popups above the layout and are never in the tree, so the skin reads this
+/// list to know which popups to show and how each behaves. The reconciler is
+/// the single authority for float visibility.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlanFloat {
+    pub id: SurfaceId,
+    /// Where the popup anchors (screen vs. another surface).
+    pub anchor: crate::model::FloatAnchor,
+    /// How the popup is dismissed (tap-outside vs. manual).
+    pub dismiss: crate::model::FloatDismiss,
+    /// Whether the popup blocks input to layers below.
+    pub modal: bool,
+}
+
 /// The stable, complete render contract a skin binds. Unlike the pure-core
 /// [`DerivedLayout`], this flattens the graph into the renderable
 /// view any skin needs: the switcher-ordered `mains`, docked `asides` (with
@@ -215,8 +232,9 @@ pub struct LayoutPresentationPlan {
     /// Asides currently docked beside the main (empty on compact, where asides
     /// peer-fall-back into the switcher and are not separately docked).
     pub asides: Vec<PlanAside>,
-    /// Float surface ids (popups above the layout; never in the tree).
-    pub floats: Vec<SurfaceId>,
+    /// Floats currently open: popups above the layout (never in the tree),
+    /// each carrying its render-relevant `FloatSpec` semantics.
+    pub floats: Vec<PlanFloat>,
     /// The full authoritative layout tree (ids only).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tree: Option<LayoutTree>,

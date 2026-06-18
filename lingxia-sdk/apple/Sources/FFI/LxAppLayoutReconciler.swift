@@ -54,7 +54,7 @@ enum LxAppLayoutReconciler {
         let splitForm: String
         let mains: [String]
         let asides: [PlanAside]
-        let floats: [String]
+        let floats: [PlanFloat]
         let tree: LxAppJSONValue?
     }
 
@@ -62,6 +62,10 @@ enum LxAppLayoutReconciler {
         let id: String
         let edge: String?
         let preferredSize: Double?
+    }
+
+    private struct PlanFloat: Decodable {
+        let id: String
     }
 
     /// Re-derive the latest core layout for `appId` and reconcile. The content
@@ -132,6 +136,26 @@ enum LxAppLayoutReconciler {
             if !workspace.isPanelVisible(id: id) {
                 shell.showPanel(id: id)
             }
+        }
+
+        // Float pass — popups above the layout. The reconciler is the single
+        // authority for float visibility, mirroring the aside pass above: the
+        // content path (LxAppSurface.present) created + registered each float
+        // hidden, and this is the only code that shows/dismisses them.
+        //
+        //   * dismiss any float currently on-screen that the core no longer
+        //     lists in plan.floats (the float teardown pops the modal-focus
+        //     stack via the close observer);
+        //   * show/order-front any desired float not yet visible (idempotent —
+        //     a float already visible is left untouched, no flicker). A desired
+        //     float whose popup is not yet registered is skipped; the content
+        //     path re-enters reconcile once it has registered it.
+        let desiredFloatIds = Set(plan.floats.map { $0.id })
+        for id in LxAppSurface.visibleFloatIds().subtracting(desiredFloatIds) {
+            _ = LxAppSurface.dismissFloat(id: id, appId: appId)
+        }
+        for id in desiredFloatIds {
+            LxAppSurface.showFloat(id: id)
         }
 
         return true

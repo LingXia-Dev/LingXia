@@ -282,7 +282,23 @@ impl SurfaceGraph {
             split_form: derived.split_form,
             mains: self.main_ids(),
             asides,
-            floats: self.floats().iter().map(|s| s.id.clone()).collect(),
+            // Floats are popups above the layout and are valid at every size
+            // class (no compact gating), so they always appear in the plan. Each
+            // carries the float's render-relevant `FloatSpec`; a float surface
+            // missing its spec falls back to the default behavior.
+            floats: self
+                .floats()
+                .iter()
+                .map(|s| {
+                    let spec = s.float.clone().unwrap_or_default();
+                    crate::layout::PlanFloat {
+                        id: s.id.clone(),
+                        anchor: spec.anchor,
+                        dismiss: spec.dismiss,
+                        modal: spec.modal,
+                    }
+                })
+                .collect(),
             tree: derived.layout_tree,
         }
     }

@@ -16,7 +16,7 @@ pub use graph::SurfaceGraph;
 pub use manager::SurfaceManager;
 pub use layout::{
     Axis, BottomOwner, DEFAULT_HYSTERESIS, DerivedLayout, LayoutPresentationPlan, LayoutTree,
-    PlanAside, SizeClass, SplitForm, SwitcherForm,
+    PlanAside, PlanFloat, SizeClass, SplitForm, SwitcherForm,
 };
 pub use model::{
     Edge, FloatAnchor, FloatDismiss, FloatSpec, Placement, Role, Surface, SurfaceContent, SurfaceId,
