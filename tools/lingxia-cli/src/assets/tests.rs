@@ -335,15 +335,9 @@ fn generated_ui_json_adds_terminal_for_capability() {
     assert_eq!(value["surfaces"][1]["edge"], "bottom");
     assert_eq!(value["surfaces"][1]["content"]["kind"], "terminal");
     assert!(value["surfaces"][1]["content"].get("backend").is_none());
-    assert_eq!(value["activators"][0]["id"], "terminalSidebar");
-    assert_eq!(value["activators"][0]["hostSurface"], "main");
-    assert!(
-        value["activators"][0]["icon"]
-            .as_str()
-            .unwrap()
-            .starts_with("icons/terminal-")
-    );
-    assert_eq!(value["activators"][0]["action"]["surface"], "terminal");
+    // The capability makes the terminal available but does not force a sidebar
+    // entry; with no `sidebar:` opt-in the activators stay empty.
+    assert_eq!(value["activators"].as_array().unwrap().len(), 0);
 }
 
 #[test]
@@ -476,7 +470,7 @@ fn generated_ui_json_rejects_terminal_when_capability_disabled() {
 }
 
 #[test]
-fn generated_ui_json_adds_terminal_activators_when_missing() {
+fn generated_ui_json_adds_terminal_surface_without_forcing_activator() {
     let config = LingXiaConfig {
         app: None,
         android: None,
@@ -510,8 +504,16 @@ fn generated_ui_json_adds_terminal_activators_when_missing() {
     let ui_json = build_ui_json_from_config(&config, &icons).unwrap().unwrap();
     let value: serde_json::Value = serde_json::from_str(&ui_json).unwrap();
 
-    assert_eq!(value["activators"][0]["id"], "terminalSidebar");
-    assert_eq!(value["activators"][0]["hostSurface"], "main");
+    // The terminal surface is injected so the capability is usable, but no
+    // sidebar activator is forced — that stays opt-in.
+    let terminal_count = value["surfaces"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|s| s["content"]["kind"] == "terminal")
+        .count();
+    assert_eq!(terminal_count, 1);
+    assert_eq!(value["activators"].as_array().unwrap().len(), 0);
 }
 
 #[test]
@@ -554,8 +556,10 @@ fn generated_ui_json_attaches_terminal_to_initial_root_surface() {
     let ui_json = build_ui_json_from_config(&config, &icons).unwrap().unwrap();
     let value: serde_json::Value = serde_json::from_str(&ui_json).unwrap();
 
+    // The terminal surface attaches to the initial root surface; no sidebar
+    // activator is forced.
     assert_eq!(value["surfaces"][2]["attachTo"], "mainPanel");
-    assert_eq!(value["activators"][0]["hostSurface"], "mainPanel");
+    assert_eq!(value["activators"].as_array().unwrap().len(), 0);
 }
 
 #[test]

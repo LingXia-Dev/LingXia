@@ -3,7 +3,6 @@ use anyhow::{Result, anyhow};
 use serde_json::{Map, Value, json};
 
 const TERMINAL_SURFACE_ID: &str = "terminal";
-const TERMINAL_ACTIVATOR_ID: &str = "terminalSidebar";
 pub(super) const TERMINAL_ICON_SOURCE: &str = "__lingxia_builtin__/terminal.svg";
 
 pub(super) fn effective_ui_config(config: &LingXiaConfig) -> Result<Option<Value>> {
@@ -59,20 +58,11 @@ fn add_terminal_ui(ui: &mut Value, edge: &str) -> Result<()> {
         }));
     }
 
-    let activators = ensure_array_field(obj, "activators")?;
-    if !contains_id(activators, TERMINAL_ACTIVATOR_ID) {
-        activators.push(json!({
-            "id": TERMINAL_ACTIVATOR_ID,
-            "kind": "sidebarItem",
-            "hostSurface": root_surface,
-            "label": "Terminal",
-            "icon": TERMINAL_ICON_SOURCE,
-            "action": {
-                "kind": "toggleSurface",
-                "surface": TERMINAL_SURFACE_ID
-            }
-        }));
-    }
+    // The terminal surface is made available by the capability, but a sidebar
+    // entry is never forced: it is opt-in via an explicit `sidebar:` declaration
+    // (or a hand-authored activator). Ensure the activators array exists so the
+    // generated config keeps a stable shape.
+    ensure_array_field(obj, "activators")?;
 
     Ok(())
 }

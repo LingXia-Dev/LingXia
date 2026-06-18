@@ -159,8 +159,15 @@ class SidebarView: NSView {
     private let footerSeparator = NSView()
     /// Horizontal stack that holds trailing product/action buttons.
     private let panelStack = NSStackView()
+    /// The expanded-state collapse toggle. Lives in the header, next to the
+    /// traffic lights; clicking it collapses the sidebar to the icon rail.
     private let hideButton = NSButton()
     private var hideButtonTrackingArea: NSTrackingArea?
+    /// Leading inset of the header toggle, kept clear of the traffic lights.
+    private var headerToggleLeadingConstraint: NSLayoutConstraint?
+    /// The rail-state expand toggle — the first icon in the collapsed rail,
+    /// above the lxapp icons; clicking it restores the expanded sidebar.
+    private let railExpandButton = NSButton()
     private var panelButtons: [NSButton] = []
     /// The panel items currently materialized as footer buttons. Lets
     /// renderPanelItems() skip a rebuild when render() runs for an unrelated
@@ -368,7 +375,10 @@ class SidebarView: NSView {
         // Hairline separator between scroll content and footer
         footerSeparator.translatesAutoresizingMaskIntoConstraints = false
         footerSeparator.wantsLayer = true
-        footerSeparator.layer?.backgroundColor = NSColor.separatorColor.cgColor
+        // A subtle divider grouping the activator dock. `separatorColor` washes
+        // out on the sidebar material, so use a low-alpha label tint that keeps a
+        // little contrast in both light and dark without being prominent.
+        footerSeparator.layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(0.12).cgColor
         footerView.addSubview(footerSeparator)
 
         panelStack.translatesAutoresizingMaskIntoConstraints = false
@@ -380,7 +390,9 @@ class SidebarView: NSView {
 
         hideButton.translatesAutoresizingMaskIntoConstraints = false
         hideButton.title = ""
-        hideButton.image = NSImage(systemSymbolName: "chevron.left", accessibilityDescription: "Hide sidebar")
+        hideButton.image = LxIcon.image(
+            named: "icon_sidebar_collapse",
+            size: NSSize(width: 18, height: 18))
         hideButton.imagePosition = .imageOnly
         hideButton.isBordered = false
         hideButton.bezelStyle = .regularSquare
@@ -388,10 +400,32 @@ class SidebarView: NSView {
         hideButton.wantsLayer = true
         hideButton.layer?.cornerRadius = 6
         hideButton.layer?.backgroundColor = NSColor.clear.cgColor
-        hideButton.toolTip = "Hide sidebar"
+        hideButton.toolTip = "Collapse sidebar"
         hideButton.target = self
         hideButton.action = #selector(hideButtonClicked)
-        footerView.addSubview(hideButton)
+        headerView.addSubview(hideButton)
+
+        // Rail expand toggle: configured once, inserted at the top of the rail
+        // whenever the rail is rebuilt.
+        railExpandButton.translatesAutoresizingMaskIntoConstraints = false
+        railExpandButton.isBordered = false
+        railExpandButton.bezelStyle = .regularSquare
+        railExpandButton.imagePosition = .imageOnly
+        railExpandButton.imageScaling = .scaleProportionallyDown
+        railExpandButton.wantsLayer = true
+        railExpandButton.layer?.cornerRadius = 8
+        railExpandButton.layer?.backgroundColor = NSColor.clear.cgColor
+        railExpandButton.toolTip = "Expand sidebar"
+        railExpandButton.contentTintColor = NSColor.secondaryLabelColor
+        railExpandButton.image = LxIcon.image(
+            named: "icon_sidebar_expand",
+            size: NSSize(width: Layout.railIconSize, height: Layout.railIconSize))
+        railExpandButton.target = self
+        railExpandButton.action = #selector(railExpandClicked)
+        NSLayoutConstraint.activate([
+            railExpandButton.widthAnchor.constraint(equalToConstant: Layout.railButtonSize),
+            railExpandButton.heightAnchor.constraint(equalToConstant: Layout.railButtonSize),
+        ])
 
         // Resize handle on right edge
         resizeHandle.translatesAutoresizingMaskIntoConstraints = false
@@ -432,17 +466,14 @@ class SidebarView: NSView {
             footerSeparator.topAnchor.constraint(equalTo: footerView.topAnchor),
             footerSeparator.leadingAnchor.constraint(equalTo: footerView.leadingAnchor),
             footerSeparator.trailingAnchor.constraint(equalTo: footerView.trailingAnchor),
-            footerSeparator.heightAnchor.constraint(equalToConstant: 0.5),
+            footerSeparator.heightAnchor.constraint(equalToConstant: 1.0),
 
-            hideButton.leadingAnchor.constraint(equalTo: footerView.leadingAnchor, constant: Layout.footerInset),
-            hideButton.centerYAnchor.constraint(equalTo: footerView.centerYAnchor),
+            hideButton.widthAnchor.constraint(equalToConstant: Layout.actionButtonSize),
+            hideButton.heightAnchor.constraint(equalToConstant: Layout.actionButtonSize),
 
-            hideButton.widthAnchor.constraint(equalToConstant: Layout.footerButtonSize),
-            hideButton.heightAnchor.constraint(equalToConstant: Layout.footerButtonSize),
-
-            panelStack.trailingAnchor.constraint(equalTo: footerView.trailingAnchor, constant: -Layout.footerInset),
+            panelStack.leadingAnchor.constraint(equalTo: footerView.leadingAnchor, constant: Layout.footerInset),
+            panelStack.trailingAnchor.constraint(lessThanOrEqualTo: footerView.trailingAnchor, constant: -Layout.footerInset),
             panelStack.centerYAnchor.constraint(equalTo: footerView.centerYAnchor),
-            panelStack.leadingAnchor.constraint(greaterThanOrEqualTo: hideButton.trailingAnchor, constant: 4),
 
             // Resize handle: right edge, full height
             resizeHandle.topAnchor.constraint(equalTo: topAnchor),
@@ -455,8 +486,16 @@ class SidebarView: NSView {
         let centerY = buttonCenterYFromTop
         let downloadCenter = downloadButton.centerYAnchor.constraint(equalTo: headerView.topAnchor, constant: centerY)
         let settingsCenter = settingsButton.centerYAnchor.constraint(equalTo: headerView.topAnchor, constant: centerY)
-        buttonCenterYConstraints = [downloadCenter, settingsCenter]
+        let toggleCenter = hideButton.centerYAnchor.constraint(equalTo: headerView.topAnchor, constant: centerY)
+        buttonCenterYConstraints = [downloadCenter, settingsCenter, toggleCenter]
         NSLayoutConstraint.activate(buttonCenterYConstraints)
+
+        // The header toggle sits just to the right of the traffic lights.
+        let toggleLeading = hideButton.leadingAnchor.constraint(
+            equalTo: headerView.leadingAnchor, constant: Layout.railWidth)
+        headerToggleLeadingConstraint = toggleLeading
+        NSLayoutConstraint.activate([toggleLeading])
+        refreshHeaderTogglePosition()
 
         // Document view fills scroll view width
         if let docView = scrollView.documentView {
@@ -544,6 +583,9 @@ class SidebarView: NSView {
             $0.removeFromSuperview()
         }
         railButtons.removeAll()
+
+        // The expand toggle is always the first icon in the rail, above the apps.
+        railStack.addArrangedSubview(railExpandButton)
 
         for group in model.appGroups {
             let info = getLxAppInfo(group.appId)
@@ -639,9 +681,21 @@ class SidebarView: NSView {
         // The header action buttons and footer panel icons don't fit the rail.
         settingsButton.isHidden = hidden || !shellEnabled || appUIOnlyMode || compact
         downloadButton.isHidden = hidden || !shellEnabled || appUIOnlyMode || compact
+        // The header collapse toggle shows only in the expanded layout; the rail
+        // carries its own expand toggle as the first icon when compact.
+        hideButton.isHidden = hidden || appUIOnlyMode || compact
         panelStack.isHidden = compact
-        footerView.isHidden = hidden
+        // The footer only carries panel icons now; collapse it when empty so an
+        // expanded sidebar with no panel actions has no dangling bottom bar.
+        footerView.isHidden = hidden || compact || model.panelItems.isEmpty
         resizeHandle.isHidden = hidden
+        refreshHeaderTogglePosition()
+    }
+
+    /// Keep the header toggle just to the right of the macOS traffic lights.
+    private func refreshHeaderTogglePosition() {
+        let clearance = trafficLightClearanceProvider?() ?? Layout.railWidth
+        headerToggleLeadingConstraint?.constant = max(Layout.railWidth, clearance)
     }
 
     func setAppUIOnlyMode(_ enabled: Bool) {
@@ -690,6 +744,7 @@ class SidebarView: NSView {
     func updatePanelItems(_ items: [PanelIconItem]) {
         model.panelItems = items
         renderPanelItems()
+        updateVisibilityState()
     }
 
     /// Build the footer panel buttons from `model.panelItems`. Called by render()
@@ -1109,16 +1164,17 @@ class SidebarView: NSView {
     }
 
     @objc private func hideButtonClicked() {
-        // Progressive collapse: expanded → icon rail → fully hidden.
-        if isCompact {
-            // Hide straight from the rail — keep the rail showing as it shrinks
-            // to zero so the expanded items never flash. The expanded layout is
-            // restored (invisibly, at width 0) on the next reveal.
-            onHideRequested?()
-        } else {
-            setCompactMode(true)
-            onWidthChanged?(effectiveRailWidth, true)
-        }
+        // Collapse the expanded sidebar to the icon rail. Fully hiding an empty
+        // sidebar is automatic (auto-hide); this toggle only moves between the
+        // expanded and rail layouts.
+        setCompactMode(true)
+        onWidthChanged?(effectiveRailWidth, true)
+    }
+
+    @objc private func railExpandClicked() {
+        // Restore the expanded sidebar from the icon rail.
+        setCompactMode(false)
+        onWidthChanged?(Layout.expandedWidth, true)
     }
 
     @objc private func settingsClicked() {

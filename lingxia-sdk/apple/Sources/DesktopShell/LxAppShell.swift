@@ -206,6 +206,12 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     private var titlebarAccessoryController: NSTitlebarAccessoryViewController?
     private var usesPanelPresentation = false
     private var sidebarChromeEnabled = true
+    /// When set, the sidebar chrome stays off regardless of content (a float
+    /// root never shows the sidebar). Content-emptiness governs the rest.
+    private var sidebarSuppressed = false
+    /// Latest declared sidebar host actions, cached so the auto-hide recompute
+    /// can read them without re-querying the runtime.
+    private var lastSidebarHostActions: [LxAppUIActionItem] = []
 
     var onManagedWindowCloseRequested: (() -> Void)?
 
@@ -361,11 +367,13 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         tabManager.onTabChanged = { [weak self] tab in
             guard let self else { return }
             self.switchToTab(tab.appId)
+            self.recomputeSidebarAutoHide()
         }
 
         tabManager.onTabsChanged = { [weak self] tabs in
             guard let self else { return }
             self.sidebarView?.updateForTabs(tabs, activeTab: self.tabManager.activeTab)
+            self.recomputeSidebarAutoHide()
         }
 
         setupSidebarInterface()
@@ -794,9 +802,13 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     private func refreshSidebarVisibilityUI() {
         sidebarView?.updateVisibilityState()
         let sidebarHidden = (sidebarWidthConstraint?.constant ?? 0) < Layout.sidebarHiddenThreshold
+        // When the chrome is off (auto-hidden / suppressed), the content keeps the
+        // same edge margin on the left as it does on the other three sides, so a
+        // fully collapsed sidebar leaves a symmetric inset rather than butting the
+        // window edge.
         contentLeadingConstraint?.constant = sidebarChromeEnabled
             ? contentLeading(forSidebarWidth: max(0, sidebarWidthConstraint?.constant ?? Layout.sidebarWidth))
-            : cardLeadingPanelInset
+            : contentLeading(forSidebarWidth: 0)
         sidebarRevealButton.isHidden = !sidebarChromeEnabled || !sidebarHidden
         browserCoordinator.syncToolbarLeading(collapsed: sidebarHidden, animated: false)
         syncSidebarHeaderButtonAlignment()
@@ -1162,8 +1174,10 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     }
 
     func updateSidebarHostActions(_ items: [LxAppUIActionItem]) {
+        lastSidebarHostActions = items
         let sidebarItems = items.map { PanelIconItem(id: $0.id, iconURL: $0.iconURL, label: $0.label) }
         sidebarView?.updatePanelItems(sidebarItems)
+        recomputeSidebarAutoHide()
     }
 
     /// Show the update callout pinned to the window's bottom-left corner on the
@@ -1335,6 +1349,40 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         appUIRuntimeRef = runtime
     }
 
+    /// When `true`, the sidebar chrome stays off no matter what content exists
+    /// (a float root never shows the sidebar). Content-emptiness governs the
+    /// rest. Recomputes immediately so the new rule takes effect.
+    func setSidebarSuppressed(_ suppressed: Bool) {
+        sidebarSuppressed = suppressed
+        recomputeSidebarAutoHide()
+    }
+
+    /// Show the sidebar chrome only when it has something to show. Content comes
+    /// from three sources: an open-lxapp switcher (more than one open main), the
+    /// active lxapp's own tabBar, and declared sidebar host actions. When all
+    /// three are empty the chrome hides; when any has content it returns, and the
+    /// enable path restores the user's last expanded width. A suppressed root
+    /// (e.g. a float window) keeps the chrome off regardless of content.
+    func recomputeSidebarAutoHide() {
+        if sidebarSuppressed {
+            setSidebarChromeEnabled(false)
+            return
+        }
+
+        let hasSwitcher = tabManager.tabs.count > 1
+
+        var activeLxAppTabBarHasItems = false
+        if let activeAppId = tabManager.activeTab?.appId,
+           let tabBar = getTabBar(activeAppId) {
+            activeLxAppTabBarHasItems = tabBar.items_count > 0
+        }
+
+        let hasDeclaredSidebarEntries = !lastSidebarHostActions.isEmpty
+
+        let hasContent = hasSwitcher || activeLxAppTabBarHasItems || hasDeclaredSidebarEntries
+        setSidebarChromeEnabled(hasContent)
+    }
+
     func setSidebarChromeEnabled(_ enabled: Bool) {
         sidebarChromeEnabled = enabled
         guard let constraint = sidebarWidthConstraint else {
@@ -1348,7 +1396,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
             }
         } else {
             constraint.constant = 0
-            contentLeadingConstraint?.constant = 0
+            contentLeadingConstraint?.constant = contentLeading(forSidebarWidth: 0)
         }
         refreshSidebarVisibilityUI()
     }

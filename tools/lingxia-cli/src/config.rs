@@ -365,24 +365,26 @@ fn surfaces_to_ui(surfaces: &[SurfaceDecl], terminal_enabled: bool) -> Result<Va
                             "size": { "height": 320 },
                             "content": { "kind": "terminal" }
                         }));
-                        // The terminal's sidebar entry. Its icon defaults to the
-                        // host-provided built-in when omitted, so authors never
-                        // write an internal sentinel; a supplied icon is a normal
-                        // repo-relative path. The auto-inject guard is id-based
-                        // (`terminalSidebar`), so a custom icon still wins.
-                        let terminal_icon = surface
-                            .sidebar
-                            .as_ref()
-                            .and_then(|s| s.icon.as_deref())
-                            .unwrap_or("__lingxia_builtin__/terminal.svg");
-                        out_activators.push(json!({
-                            "id": "terminalSidebar",
-                            "kind": "sidebarItem",
-                            "hostSurface": launch_id,
-                            "label": "Terminal",
-                            "icon": terminal_icon,
-                            "action": { "kind": "toggleSurface", "surface": "terminal" }
-                        }));
+                        // The terminal surface is always available once declared
+                        // (openable programmatically); a sidebar entry is opt-in.
+                        // Emit `terminalSidebar` only when the surface declares a
+                        // `sidebar:` block. Its icon defaults to the host-provided
+                        // built-in when omitted, so authors never write an internal
+                        // sentinel; a supplied icon is a normal repo-relative path.
+                        if let Some(sidebar) = &surface.sidebar {
+                            let terminal_icon = sidebar
+                                .icon
+                                .as_deref()
+                                .unwrap_or("__lingxia_builtin__/terminal.svg");
+                            out_activators.push(json!({
+                                "id": "terminalSidebar",
+                                "kind": "sidebarItem",
+                                "hostSurface": launch_id,
+                                "label": "Terminal",
+                                "icon": terminal_icon,
+                                "action": { "kind": "toggleSurface", "surface": "terminal" }
+                            }));
+                        }
                         // A native terminal carries its sidebar implicitly; skip
                         // the generic sidebar/tray emission below for it.
                         continue;

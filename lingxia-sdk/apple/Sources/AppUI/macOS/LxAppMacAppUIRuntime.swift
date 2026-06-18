@@ -115,7 +115,9 @@ final class LxAppMacAppUIRuntime: NSObject {
         shell.setTitlebarHostActionHandler { [weak self] actionID in
             self?.performActivator(id: actionID)
         }
-        shell.setSidebarChromeEnabled(rootSurface.role != .float)
+        // A float root never shows the sidebar; for other roots, content drives
+        // visibility via the shell's auto-hide recompute.
+        shell.setSidebarSuppressed(rootSurface.role == .float)
 
         Self.active = self
     }
