@@ -149,6 +149,28 @@ impl WindowSurfaceController {
         self.commit();
     }
 
+    /// Make `app_id`'s main the active (primary) main, seeding its root `main`
+    /// into the graph first if it isn't a node yet, then commit. The commit
+    /// rebuilds the plan with the new `activeMainId` and pushes `present_layout`,
+    /// so the skin reconciler drives the actual switch. Idempotent: when the
+    /// node already exists and is already active, `set_active_main` does not
+    /// change state, but we still commit so a reconciler that missed the
+    /// (already-correct) plan can re-converge — the reconciler is itself a no-op
+    /// when the target main is already attached.
+    fn set_active_main(&self, app_id: &str, root_main: lingxia_surface::Surface) {
+        {
+            let mut manager = self.manager.lock().unwrap();
+            // A tab's appid may not be a graph node yet (the main is seeded lazily
+            // by set_width / register_host_aside). Seed it before switching, else
+            // set_active_main silently no-ops on an unknown id.
+            if manager.graph().role_of(app_id).is_none() {
+                manager.open(root_main);
+            }
+            manager.set_active_main(app_id);
+        }
+        self.commit();
+    }
+
     fn unregister_host_aside(&self, surface_id: &str) {
         {
             let _ = self.manager.lock().unwrap().close(surface_id);
@@ -592,6 +614,17 @@ impl LxApp {
             edge,
             self.root_main_node(),
         );
+    }
+
+    /// Make this lxapp's main the active (primary) main in the window graph,
+    /// seeding its root `main` node if absent, then commit. The commit pushes a
+    /// `present_layout` carrying the new `activeMainId`, which the skin reconciler
+    /// uses to attach this lxapp's content to the primary area. The skin must NOT
+    /// drive the switch imperatively — it routes the switch through here so the
+    /// graph stays the single source of truth.
+    pub fn set_active_main(&self) {
+        window_controller(PRIMARY_WINDOW, &self.runtime)
+            .set_active_main(&self.appid, self.root_main_node());
     }
 
     /// Remove a host-declared aside from the surface graph.

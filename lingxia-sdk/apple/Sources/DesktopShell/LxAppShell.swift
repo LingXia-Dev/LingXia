@@ -876,8 +876,53 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
             }
         }
 
-        presentMain(.lxapp(viewController))
+        // The VC + page instance are ready; drive the actual main attach through
+        // the surface graph: setActiveMain makes this lxapp the active main, then
+        // commits a present_layout whose activeMainId is this appId. That fires
+        // the layout reconciler synchronously, which calls reconcileActiveMain to
+        // attach this VC. We no longer call presentMain(.lxapp:) here — the graph
+        // is the single source of truth for the active-main switch. The reconcile
+        // is idempotent, so a redundant plan never re-attaches.
+        _ = setActiveMain(appId)
+        // The sidebar highlight stays imperative: it is not part of the surface
+        // graph, and the selection that originated this switch is the source of
+        // truth for what to highlight.
         sidebarView?.setActiveHighlight(appId: appId)
+    }
+
+    /// Attach `appId`'s lxapp as the active main, driven by the layout
+    /// reconciler from the core's `activeMainId`. Reuses the same
+    /// `ensureViewController` / `attachLxAppToMain` machinery `switchToTab` uses,
+    /// but never calls back into `tabManager` — the tab/sidebar selection that
+    /// originated the switch already ran; routing through the tab manager here
+    /// would loop. Idempotent: a no-op when this lxapp is already the attached
+    /// main and the browser is not occupying the content area (mirrors the aside
+    /// reconciler's idempotent fast path — no detach/re-attach, no flicker).
+    /// The lxapp id currently attached to the primary content area, or `nil`
+    /// when the browser occupies it (the browser is not a graph main). The layout
+    /// reconciler reads this to decide whether the core's `activeMainId` differs
+    /// from what is on screen.
+    var attachedMainAppId: String? {
+        browserCoordinator.isActive ? nil : currentViewController?.appId
+    }
+
+    func reconcileActiveMain(appId: String) {
+        // Idempotent fast path: this lxapp is already the attached main and the
+        // browser is not occupying the content area. Skip — no detach/re-attach,
+        // no flicker (mirrors the aside reconciler's already-placed fast path).
+        if currentViewController?.appId == appId, !browserCoordinator.isActive {
+            return
+        }
+        // Attach via the shared presentMain machinery. switchToTab created the VC
+        // (and its page instance) before driving setActiveMain, so the common
+        // case finds it ready; fall back to ensureViewController for any
+        // reconcile that reaches an appId whose VC was not yet created.
+        if let viewController = viewControllers[appId] {
+            presentMain(.lxapp(viewController))
+        } else {
+            let path = LxAppCore.getCurrentPath()
+            _ = ensureViewController(for: appId, path: path)
+        }
     }
 
     /// What can fill the single main content area (`workspaceManager.contentContainer`).

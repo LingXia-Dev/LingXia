@@ -204,6 +204,12 @@ mod bridge {
 
         // §11.2 Phase 1: mirror a host-declared aside into the primary lxapp's
         // surface graph so the core's DerivedLayout reflects host surfaces.
+        // Drive the active-main switch through the surface graph: makes this
+        // lxapp's main the active main, then commits a `present_layout` carrying
+        // the new `activeMainId` for the skin reconciler to attach.
+        #[swift_bridge(swift_name = "setActiveMain")]
+        fn set_active_main(appid: &str) -> bool;
+
         #[swift_bridge(swift_name = "registerHostAside")]
         fn register_host_aside(appid: &str, surface_id: &str, edge: &str) -> bool;
 
@@ -632,6 +638,17 @@ pub fn surface_derived_layout(appid: &str) -> String {
             .and_then(|lxapp| lxapp.surface_derived_layout())
             .and_then(|layout| serde_json::to_string(&layout).ok())
             .unwrap_or_else(|| "null".to_string())
+    })
+}
+
+pub fn set_active_main(appid: &str) -> bool {
+    ffi_catch_unwind!("set_active_main", false, || {
+        if let Some(lxapp) = lxapp::try_get(appid) {
+            lxapp.set_active_main();
+            true
+        } else {
+            false
+        }
     })
 }
 

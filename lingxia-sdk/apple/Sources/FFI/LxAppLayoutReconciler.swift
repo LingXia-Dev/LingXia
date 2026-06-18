@@ -53,6 +53,7 @@ enum LxAppLayoutReconciler {
         let switcherForm: String
         let splitForm: String
         let mains: [String]
+        let activeMainId: String?
         let asides: [PlanAside]
         let floats: [PlanFloat]
         let tree: LxAppJSONValue?
@@ -156,6 +157,17 @@ enum LxAppLayoutReconciler {
         }
         for id in desiredFloatIds {
             LxAppSurface.showFloat(id: id)
+        }
+
+        // Main pass — the active-main switch. The core's activeMainId is the
+        // single source of truth for which lxapp occupies the primary content
+        // area; when it differs from what the shell currently has attached, drive
+        // the switch through the shell. reconcileActiveMain reuses the existing
+        // attach machinery and is itself idempotent, and the browser is not a
+        // graph main (attachedMainAppId is nil while the browser is active), so a
+        // plan whose activeMainId already matches the on-screen main is a no-op.
+        if let activeMainId = plan.activeMainId, activeMainId != shell.attachedMainAppId {
+            shell.reconcileActiveMain(appId: activeMainId)
         }
 
         return true

@@ -281,6 +281,13 @@ impl SurfaceGraph {
             switcher_form: derived.switcher_form,
             split_form: derived.split_form,
             mains: self.main_ids(),
+            // The active main the skin should attach to the primary content
+            // area. Mirrors `canonical_layout`'s `Tabs.activeId` fallback so the
+            // plan and the tree always agree on which main is primary.
+            active_main_id: self
+                .active_main_id
+                .clone()
+                .or_else(|| self.main_ids().first().cloned()),
             asides,
             // Floats are popups above the layout and are valid at every size
             // class (no compact gating), so they always appear in the plan. Each

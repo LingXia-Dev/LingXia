@@ -229,6 +229,11 @@ pub struct LayoutPresentationPlan {
     pub split_form: SplitForm,
     /// Main surface ids, in switcher order.
     pub mains: Vec<SurfaceId>,
+    /// The currently-active main (the one occupying the primary content area).
+    /// Skins drive the active-main switch from this rather than inferring it
+    /// from the tree's `Tabs.activeId`. `None` only when there are no mains.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub active_main_id: Option<SurfaceId>,
     /// Asides currently docked beside the main (empty on compact, where asides
     /// peer-fall-back into the switcher and are not separately docked).
     pub asides: Vec<PlanAside>,
