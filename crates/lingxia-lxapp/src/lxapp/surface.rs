@@ -647,19 +647,6 @@ impl LxApp {
         self.runtime.toggle_managed_surface(id).map_err(Into::into)
     }
 
-    /// Whether a surface with this runtime id is currently tracked.
-    pub fn has_surface(&self, id: &str) -> bool {
-        let id = id.trim();
-        if id.is_empty() {
-            return false;
-        }
-        self.state
-            .lock()
-            .ok()
-            .map(|state| state.surfaces.lock().unwrap().contains_key(id))
-            .unwrap_or(false)
-    }
-
     pub fn forget_surface(&self, id: &str) -> bool {
         let id = id.trim();
         if id.is_empty() {

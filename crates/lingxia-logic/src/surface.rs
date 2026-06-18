@@ -144,7 +144,6 @@ impl Emitter for JSSurface {
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     ctx.register_hidden_class::<JSSurface>()?;
     lx::register_js_api(ctx, "openSurface", JSFunc::new(ctx, open_surface_spec)?)?;
-    lx::register_js_api(ctx, "getSurface", JSFunc::new(ctx, get_surface)?)?;
     lx::register_js_api(ctx, "openExternal", JSFunc::new(ctx, open_external)?)?;
     lx::register_js_api(ctx, "onSurfaceContext", JSFunc::new(ctx, surface_on_change)?)?;
     Ok(())
@@ -320,17 +319,6 @@ fn open_url_spec(ctx: &JSContext, spec: &JSObject) -> JSResult<JSValue> {
     // The in-app browser is presented by the host as its own chrome and is not
     // tracked as a closable surface here, so there is no handle to return.
     Ok(JSValue::null(ctx))
-}
-
-/// `lx.getSurface(id)` — a handle to an already-open surface by its runtime id,
-/// or `null` if no such surface is tracked. The returned handle drives the
-/// surface through the lxapp surface APIs (`show`/`hide`/`close`).
-fn get_surface(ctx: JSContext, id: String) -> JSResult<JSValue> {
-    let lxapp = LxApp::from_ctx(&ctx)?;
-    if !lxapp.has_surface(id.trim()) {
-        return Ok(JSValue::null(&ctx));
-    }
-    declared_surface_handle(&ctx, lxapp, id.trim().to_string()).map(JSObject::into_js_value)
 }
 
 /// `lx.openExternal(url)` — hand the url off to the OS default browser.

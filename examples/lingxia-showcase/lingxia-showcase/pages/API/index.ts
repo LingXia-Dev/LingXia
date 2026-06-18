@@ -117,10 +117,12 @@ Page({
       if (tapIndex < 0 || tapIndex >= targets.length) {
         return;
       }
-      await lx.openURL({
-        url: "https://www.deepseek.com/",
-        target: targets[tapIndex],
-      });
+      const url = "https://www.deepseek.com/";
+      if (targets[tapIndex] === "external") {
+        lx.openExternal(url);
+      } else {
+        await lx.openSurface({ url });
+      }
     } catch (error) {
       if (error.message.toLowerCase().includes("cancel")) {
         return;
