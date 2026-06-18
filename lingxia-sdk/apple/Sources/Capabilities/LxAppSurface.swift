@@ -1008,8 +1008,13 @@ enum LxAppSurface {
         height: Double,
         widthRatio: Double,
         heightRatio: Double,
-        position: Int32
+        position: Int32,
+        role: Int32
     ) -> Bool {
+        // role is accepted for FFI signature parity with macOS; the iOS skin
+        // does not yet consume the arbitrated role (surfaces still fall back to
+        // a full-screen overlay).
+        _ = role
         guard kind == kindPopup else {
             os_log("unsupported mobile surface kind=%{public}d id=%{public}@ app=%{public}@", log: log, type: .error, kind, id, appId)
             return false
@@ -1305,7 +1310,8 @@ enum LxAppSurface {
         height: Double,
         widthRatio: Double,
         heightRatio: Double,
-        position: Int32
+        position: Int32,
+        role: Int32
     ) -> Bool {
         _ = id
         _ = appId
@@ -1319,6 +1325,7 @@ enum LxAppSurface {
         _ = widthRatio
         _ = heightRatio
         _ = position
+        _ = role
         return false
     }
 
