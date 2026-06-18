@@ -475,6 +475,11 @@ class WorkspaceManager: NSObject {
         layoutFrameDrivenPanels()
     }
 
+    /// Whether `id`'s panel is currently expanded fullscreen over the main area.
+    func isPanelFullscreen(id: String) -> Bool {
+        panels[id]?.isFullscreen ?? false
+    }
+
     func setPanelFullscreen(id: String, enabled: Bool) {
         guard let slot = panels[id] else {
             lxWorkspaceStdoutLog("setPanelFullscreen missing id=\(id)")
@@ -703,13 +708,16 @@ class WorkspaceManager: NSObject {
     private func layoutBottomPanel(_ slot: PanelSlot, in parent: NSView, sidebar: NSView) {
         let p = padding
         if slot.isFullscreen {
-            let width = max(0, parent.bounds.width - (p * 2))
-            let height = max(0, parent.bounds.height - (p * 2))
+            // Expand fills the CONTENT pane exactly — flush against the sidebar,
+            // matching its vertical extent, no padding — so it fully covers the
+            // webview (no sliver) while the sidebar/switcher stays reachable
+            // (switching mains then collapses the aside).
+            let leading = max(0, sidebar.frame.maxX)
             slot.shadowWrapper.frame = NSRect(
-                x: p,
-                y: p,
-                width: width,
-                height: height
+                x: leading,
+                y: sidebar.frame.minY,
+                width: max(0, parent.bounds.width - leading),
+                height: sidebar.frame.height
             )
             slot.resizeHandle.frame = .zero
             slot.resizeHandle.isHidden = true
@@ -744,9 +752,16 @@ class WorkspaceManager: NSObject {
     private func layoutTopPanel(_ slot: PanelSlot, in parent: NSView, sidebar: NSView) {
         let p = padding
         if slot.isFullscreen {
-            let width = max(0, parent.bounds.width - (p * 2))
-            let height = max(0, parent.bounds.height - (p * 2))
-            slot.shadowWrapper.frame = NSRect(x: p, y: p, width: width, height: height)
+            // Expand fills the CONTENT pane exactly — flush against the sidebar,
+            // matching its vertical extent, no padding — so it fully covers the
+            // webview (no sliver) while the sidebar/switcher stays reachable.
+            let leading = max(0, sidebar.frame.maxX)
+            slot.shadowWrapper.frame = NSRect(
+                x: leading,
+                y: sidebar.frame.minY,
+                width: max(0, parent.bounds.width - leading),
+                height: sidebar.frame.height
+            )
             slot.resizeHandle.frame = .zero
             slot.resizeHandle.isHidden = true
             slot.shadowWrapper.layoutSubtreeIfNeeded()

@@ -638,6 +638,15 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     /// AppUI runtime to show the managed surface. Closing stays the activator's job.
     var onAsideActivateRequested: ((String) -> Void)?
 
+    /// Fired right before the active main changes (lxapp/browser switch), so the
+    /// AppUI runtime can collapse any fullscreen-expanded aside back to docked.
+    var onMainWillSwitch: (() -> Void)?
+
+    /// Whether `id`'s aside panel is currently expanded fullscreen.
+    func isPanelFullscreen(id: String) -> Bool {
+        workspaceManager.isPanelFullscreen(id: id)
+    }
+
     /// Add a companion (aside) lxapp to the sidebar without making it the active
     /// main — so an activator/shell-opened lxapp appears like any lxapp.
     func registerAsideLxApp(appId: String, surfaceId: String) {
@@ -948,6 +957,10 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     /// matching chrome — so lxapp and browser activation no longer each
     /// hand-roll their own detach/attach against the shared container.
     private func presentMain(_ content: MainContent) {
+        // Switching the active main collapses any fullscreen-expanded aside back
+        // to its docked edge — an expanded aside is a temporary maximize, not a
+        // new main, so it must not float over the newly-shown main.
+        onMainWillSwitch?()
         switch content {
         case .lxapp(let viewController):
             browserCoordinator.deactivate()

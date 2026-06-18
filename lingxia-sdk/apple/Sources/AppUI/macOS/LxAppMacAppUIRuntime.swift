@@ -98,13 +98,21 @@ final class LxAppMacAppUIRuntime: NSObject {
         shell.onManagedWindowCloseRequested = { [weak self] in
             self?.handleRootWindowCloseRequest()
         }
-        // A companion lxapp's sidebar entry shows + focuses its aside surface
-        // (never closes it, never switches the main). Closing stays the
-        // activator's job.
+        // A companion lxapp's sidebar entry TOGGLES its aside surface (never
+        // switches the main): hidden → show + focus; already showing → close. A
+        // single entry with one obvious behavior, so clicking it again closes
+        // the aside the user opened.
         shell.onAsideActivateRequested = { [weak self] surfaceId in
             guard let self else { return }
-            self.openManagedSurface(id: surfaceId)
-            self.focusSurface(id: surfaceId)
+            if self.visibleSurfaceIDs.contains(surfaceId) {
+                self.closeManagedSurface(id: surfaceId)
+            } else {
+                self.openManagedSurface(id: surfaceId)
+                self.focusSurface(id: surfaceId)
+            }
+        }
+        shell.onMainWillSwitch = { [weak self] in
+            self?.collapseExpandedAsides()
         }
         shell.setSidebarHostActionHandler { [weak self] actionID in
             self?.performActivator(id: actionID)
@@ -364,6 +372,18 @@ final class LxAppMacAppUIRuntime: NSObject {
             closeSurface(id: id)
         }
         return true
+    }
+
+    /// Collapse any fullscreen-expanded aside back to its docked edge (keeps it
+    /// visible). Called on a main switch — an expanded aside is a temporary
+    /// maximize, not a new main, so it un-maximizes rather than floating over the
+    /// newly-shown main. Mirrors the expand teardown in close/hide so the
+    /// terminal's own zoom state stays in sync.
+    private func collapseExpandedAsides() {
+        for id in visibleSurfaceIDs where shell.isPanelFullscreen(id: id) {
+            terminalWorkspaces[id]?.setSurfaceZoomEnabled(false, notifyRuntime: false)
+            shell.setPanelFullscreen(id: id, enabled: false)
+        }
     }
 
     private func openSurfaceHandlingError(id: String, sourceActivatorID: String? = nil) {

@@ -1005,12 +1005,14 @@ class SidebarView: NSView {
         // App group selection.
         for (id, group) in groupViews {
             if case .app(let appId, let pageIndex) = model.selection, id == appId {
+                group.isActiveGroup = true
                 if let idx = pageIndex {
                     group.setActiveHighlight(pageIndex: idx)
                 } else if let tabBar = getTabBar(appId) {
                     group.setActiveHighlight(pageIndex: Int(tabBar.selected_index))
                 }
             } else {
+                group.isActiveGroup = false
                 group.clearHighlight()
             }
         }
