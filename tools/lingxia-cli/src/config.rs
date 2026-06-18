@@ -33,12 +33,12 @@ pub struct LingXiaConfig {
     pub capabilities: Option<CapabilitiesConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub shell: Option<ShellConfig>,
-    /// App-level UI config used to generate `ui.json` at build time.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Generated UI structure (`ui.json`). Built from `surfaces` at load time;
+    /// never authored directly, so it is not read from the yaml.
+    #[serde(skip_deserializing, skip_serializing_if = "Option::is_none")]
     pub ui: Option<Value>,
-    /// Declaration layer v2: top-level `surfaces:` authoring format. When
-    /// present, it is mapped into the internal `ui` structure during `load`
-    /// (the macOS runtime consumes the same generated JSON as before).
+    /// Top-level `surfaces:` — the UI authoring format. Mapped into `ui` during
+    /// `load`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub surfaces: Option<Vec<SurfaceDecl>>,
     #[serde(rename = "appLinks", skip_serializing_if = "Option::is_none")]
@@ -159,7 +159,7 @@ pub enum ResourceBundleType {
 }
 
 // ---------------------------------------------------------------------------
-// Declaration layer v2: top-level `surfaces:` authoring format.
+// Top-level `surfaces:` authoring format.
 //
 // This is INPUT schema only. `surfaces_to_ui` maps it into the existing
 // internal `ui` JSON structure (`launch`/`surfaces`/`activators`) that the
@@ -225,7 +225,7 @@ pub struct SurfaceTray {
     pub action: Option<String>,
 }
 
-/// Map the v2 `surfaces:` declaration into the internal `ui` JSON structure
+/// Map the `surfaces:` declaration into the internal `ui` JSON structure
 /// the runtime consumes. Produces the SAME shape the `ui:` block does.
 ///
 /// Mapping:
@@ -240,11 +240,11 @@ pub struct SurfaceTray {
 /// - `sidebar` -> a `sidebarItem` activator toggling the surface.
 /// - `tray` -> a `menuBarItem` activator (closest existing kind).
 fn surfaces_to_ui(surfaces: &[SurfaceDecl], terminal_enabled: bool) -> Result<Value> {
-    // `role: float` is out of scope for declaration v2. Reject it up front with
+    // `role: float` is not supported. Reject it up front with
     // a clear message rather than mis-mapping it.
     if let Some(float) = surfaces.iter().find(|s| s.role == SurfaceRole::Float) {
         return Err(anyhow!(
-            "surface '{}' uses role: float which is not yet supported in declaration v2",
+            "surface '{}' uses role: float which is not supported",
             float.id.trim()
         ));
     }
@@ -303,7 +303,7 @@ fn surfaces_to_ui(surfaces: &[SurfaceDecl], terminal_enabled: bool) -> Result<Va
         match surface.role {
             SurfaceRole::Float => {
                 return Err(anyhow!(
-                    "surface '{id}' uses role: float which is not yet supported in declaration v2"
+                    "surface '{id}' uses role: float which is not supported"
                 ));
             }
             SurfaceRole::Main => {
@@ -344,7 +344,7 @@ fn surfaces_to_ui(surfaces: &[SurfaceDecl], terminal_enabled: bool) -> Result<Va
                         // and the generated JSON is byte-identical to today's.
                         if id != "terminal" {
                             return Err(anyhow!(
-                                "native surface '{id}' is not supported; only the built-in 'terminal' surface is available in declaration v2"
+                                "native surface '{id}' is not supported; only the built-in 'terminal' surface is available"
                             ));
                         }
                         if !terminal_enabled {
@@ -844,7 +844,7 @@ impl LingXiaConfig {
 
         let mut config: LingXiaConfig = yaml::from_str(&content)
             .with_context(|| format!("Failed to parse {}", config_path.display()))?;
-        config.apply_surfaces_v2()?;
+        config.apply_surfaces()?;
         config.validate()?;
 
         Ok(config)
@@ -908,27 +908,12 @@ impl LingXiaConfig {
         }
     }
 
-    /// Declaration layer v2: the top-level `surfaces:` block is the only
-    /// accepted UI authoring input. It is mapped into the internal `ui`
-    /// structure consumed by the runtime. A raw legacy `ui:` block in the
-    /// yaml is rejected.
-    ///
-    /// This runs before `surfaces_to_ui` writes `self.ui`, so any `self.ui`
-    /// seen here is the deserialized raw `ui:` block (not generated output).
-    fn apply_surfaces_v2(&mut self) -> Result<()> {
+    /// Map the top-level `surfaces:` block into the generated `ui` structure
+    /// consumed by the runtime.
+    fn apply_surfaces(&mut self) -> Result<()> {
         let Some(surfaces) = self.surfaces.as_ref() else {
-            if self.ui.is_some() {
-                return Err(anyhow!(
-                    "lingxia.yaml: the top-level 'ui:' block is no longer supported; declare 'surfaces:' instead (see docs)"
-                ));
-            }
             return Ok(());
         };
-        if self.ui.is_some() {
-            return Err(anyhow!(
-                "lingxia.yaml: the top-level 'ui:' block is no longer supported; declare 'surfaces:' instead (see docs)"
-            ));
-        }
         if surfaces.is_empty() {
             return Err(anyhow!("surfaces: must contain at least one surface"));
         }
@@ -2131,7 +2116,7 @@ android:
     }
 
     #[test]
-    fn surfaces_v2_maps_showcase_to_internal_ui() {
+    fn surfaces_maps_showcase_to_internal_ui() {
         let surfaces = vec![
             SurfaceDecl {
                 id: "lingxia-showcase".into(),
@@ -2216,18 +2201,18 @@ android:
         });
         assert_eq!(ui, expected);
 
-        // Full config round-trip: apply_surfaces_v2 + validate must accept it.
+        // Full config round-trip: apply_surfaces + validate must accept it.
         let mut config = LingXiaConfig::new_android("lingxia", "com.example", "lingxia-showcase");
         config.app.as_mut().unwrap().platforms = vec!["macos".to_string()];
         config.capabilities.as_mut().unwrap().terminal = true;
         config.ui = None;
         config.surfaces = Some(surfaces);
-        config.apply_surfaces_v2().unwrap();
+        config.apply_surfaces().unwrap();
         config.validate().unwrap();
     }
 
     #[test]
-    fn surfaces_v2_rejects_float_role() {
+    fn surfaces_rejects_float_role() {
         let surfaces = vec![SurfaceDecl {
             id: "popup".into(),
             render: SurfaceRender::Lxapp,
@@ -2238,11 +2223,11 @@ android:
             tray: None,
         }];
         let err = surfaces_to_ui(&surfaces, false).unwrap_err().to_string();
-        assert!(err.contains("not yet supported"), "{err}");
+        assert!(err.contains("not supported"), "{err}");
     }
 
     #[test]
-    fn surfaces_v2_rejects_native_terminal_without_capability() {
+    fn surfaces_rejects_native_terminal_without_capability() {
         let surfaces = vec![
             SurfaceDecl {
                 id: "home".into(),
@@ -2268,7 +2253,7 @@ android:
     }
 
     #[test]
-    fn surfaces_v2_rejects_two_launch_mains() {
+    fn surfaces_rejects_two_launch_mains() {
         let surfaces = vec![
             SurfaceDecl {
                 id: "a".into(),
@@ -2294,7 +2279,7 @@ android:
     }
 
     #[test]
-    fn surfaces_v2_rejects_duplicate_id() {
+    fn surfaces_rejects_duplicate_id() {
         let surfaces = vec![
             SurfaceDecl {
                 id: "dup".into(),
@@ -2320,7 +2305,7 @@ android:
     }
 
     #[test]
-    fn surfaces_v2_rejects_launch_on_aside() {
+    fn surfaces_rejects_launch_on_aside() {
         let surfaces = vec![
             SurfaceDecl {
                 id: "a".into(),
@@ -2346,7 +2331,7 @@ android:
     }
 
     #[test]
-    fn surfaces_v2_rejects_edge_on_main() {
+    fn surfaces_rejects_edge_on_main() {
         let surfaces = vec![SurfaceDecl {
             id: "a".into(),
             render: SurfaceRender::Lxapp,

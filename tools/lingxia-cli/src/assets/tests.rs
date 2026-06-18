@@ -347,7 +347,7 @@ fn generated_ui_json_adds_terminal_for_capability() {
 }
 
 #[test]
-fn surfaces_v2_end_to_end_maps_and_does_not_double_inject_terminal() {
+fn surfaces_end_to_end_maps_and_does_not_double_inject_terminal() {
     // Mirrors the migrated showcase: main lxapp + aside lxapp (right) + native
     // terminal (bottom). Loading must map v2 `surfaces:` into the internal ui,
     // and the terminal auto-inject must be a no-op (no second terminal surface).

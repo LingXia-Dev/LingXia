@@ -258,6 +258,13 @@ impl LxApp {
             ));
         }
 
+        // A window-kind surface is a bare standalone window (no sidebar / shell
+        // chrome). It is NOT part of the main window's adaptive layout, so it
+        // must bypass the per-window surface graph / reconciler entirely.
+        if request.kind == SurfaceKind::Window {
+            return self.open_window_surface(id, request);
+        }
+
         let owner_page_instance_id = self.current_page().ok().map(|page| page.instance_id());
         let owner = owner_page_instance_id
             .clone()
@@ -386,6 +393,100 @@ impl LxApp {
             page_path,
             page_instance_id: (!page_instance_id.is_empty()).then_some(page_instance_id),
             kind: present_kind,
+        })
+    }
+
+    /// Present a bare standalone window surface (`lx.surface.window`). Unlike
+    /// `open_surface`, this does NOT mirror into the per-window surface graph or
+    /// run the layout reconciler — a standalone window lives outside the main
+    /// window's adaptive layout. It still reuses the page-instance creation and
+    /// the `SurfaceRecord` bookkeeping so close()/dispose work, and presents
+    /// directly with `kind: Window` / `role: Main` so macOS routes it to the
+    /// bare-window (kindWindow) path in `LxAppSurface`.
+    fn open_window_surface(
+        &self,
+        id: String,
+        request: PageSurfaceRequest,
+    ) -> Result<PageSurface, LxAppError> {
+        let owner_page_instance_id = self.current_page().ok().map(|page| page.instance_id());
+        let owner = owner_page_instance_id
+            .clone()
+            .map(PageOwner::Page)
+            .unwrap_or_else(|| PageOwner::Scene(SceneId("system".to_string())));
+        let (path, page_instance_id, content, page_path) = match request.target {
+            PageSurfaceTarget::Page(target) => {
+                // A standalone window is persistent (lives until explicitly
+                // closed): no dispose TTL, like the window branch in open_surface.
+                let created = self.create_page_instance(
+                    owner,
+                    target,
+                    request.query,
+                    PresentationKind::Window,
+                    None,
+                )?;
+                (
+                    created.resolved_path.clone(),
+                    created.page_instance_id.to_string(),
+                    SurfaceContent::Page,
+                    Some(created.resolved_path),
+                )
+            }
+            PageSurfaceTarget::Url(_) => {
+                return Err(LxAppError::InvalidParameter(
+                    "a window hosts this lxapp's own page, not external web".to_string(),
+                ));
+            }
+        };
+
+        let content_page_instance_id = if page_instance_id.is_empty() {
+            None
+        } else {
+            Some(page_instance_id.clone())
+        };
+        let owner_pid = owner_page_instance_id.map(|id| id.to_string());
+        if let Ok(state) = self.state.lock() {
+            state.surfaces.lock().unwrap().insert(
+                id.clone(),
+                SurfaceRecord {
+                    owner_page_instance_id: owner_pid,
+                    content_page_instance_id,
+                },
+            );
+        }
+
+        // Present directly with the authoritative window mapping; do NOT consult
+        // the graph (no open_node / present_params_for_role / commit).
+        let present_result = self.runtime.present_surface(PlatformSurfaceRequest {
+            id: id.clone(),
+            app_id: self.appid.clone(),
+            path,
+            session_id: self.session_id(),
+            page_instance_id: page_instance_id.clone(),
+            content,
+            kind: SurfaceKind::Window,
+            width: finite_or_nan(request.width),
+            height: finite_or_nan(request.height),
+            width_ratio: finite_or_nan(request.width_ratio),
+            height_ratio: finite_or_nan(request.height_ratio),
+            position: SurfacePosition::Center,
+            role: SurfaceRole::Main,
+        });
+        if let Err(err) = present_result {
+            // Remove only our bookkeeping; there is no graph node to close.
+            if let Ok(state) = self.state.lock() {
+                state.surfaces.lock().unwrap().remove(&id);
+            }
+            if !page_instance_id.is_empty() {
+                let _ = dispose_page_instance_by_id(&page_instance_id, CloseReason::Programmatic);
+            }
+            return Err(err.into());
+        }
+
+        Ok(PageSurface {
+            id,
+            page_path,
+            page_instance_id: (!page_instance_id.is_empty()).then_some(page_instance_id),
+            kind: SurfaceKind::Window,
         })
     }
 

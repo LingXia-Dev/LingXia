@@ -192,14 +192,24 @@ Page({
     try {
       const cfg = config || {};
       const path = "pages/surface/index";
-      // Two creation verbs express the surface's role: aside(path, edge) docks
-      // beside the main and splits it (a compact Host folds it into a tab);
-      // float(path) presents a popup above the main without taking layout space.
-      const verb = cfg.verb === "float" ? "float" : "aside";
+      // Three verbs express the surface's role: aside(path, edge) docks beside
+      // the main and splits it (a compact Host folds it into a tab); float(path)
+      // presents a popup above the main; window(path) opens a bare desktop
+      // window. `size` is an optional preferred-size hint.
+      const verb =
+        cfg.verb === "float" ? "float" : cfg.verb === "window" ? "window" : "aside";
+      let size;
+      if (cfg.width || cfg.height) {
+        size = {};
+        if (cfg.width) size.width = cfg.width;
+        if (cfg.height) size.height = cfg.height;
+      }
       const surface =
         verb === "float"
-          ? await lx.surface.float(path, cfg.position ?? "center")
-          : await lx.surface.aside(path, cfg.edge ?? "right");
+          ? await lx.surface.float(path, cfg.position ?? "center", size)
+          : verb === "window"
+            ? await lx.surface.window(path, size)
+            : await lx.surface.aside(path, cfg.edge ?? "right", size);
       this._activeSurface = surface;
 
       this.setData({
