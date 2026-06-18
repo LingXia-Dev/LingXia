@@ -738,7 +738,6 @@ impl LxApp {
             },
             SurfaceContent::Url => LxContent::Web {
                 url: path_or_url.to_string(),
-                chrome: false,
             },
         };
         // A surface opened dynamically by an lxapp is caller-scoped: owned by the

@@ -435,14 +435,11 @@ enum LxAppSurface {
                 os_log("invalid web aside url id=%{public}@ url=%{public}@", log: log, type: .error, id, path)
                 return false
             }
-            // Singleton boundary: at most one browser aside per window. A new
-            // browser aside REPLACES any existing one — the docked browser is a
-            // single companion pane, not an unbounded set. Snapshot first:
-            // close() mutates `entries`, so don't iterate it live.
-            let staleBrowserAsides = entries.filter { $0.value.dockedBrowser != nil }
-            for (existingId, existingEntry) in staleBrowserAsides {
-                _ = close(id: existingId, appId: existingEntry.appId, reason: "reclaimed")
-            }
+            // Singleton boundary (at most one browser aside per window, new
+            // replaces old) is enforced by the core arbitration as a web-aside
+            // eviction, which closes the previous one through the normal close
+            // path before this present runs — no SDK-side dedup needed.
+            //
             // A docked browser aside is a real browser: its webview is created
             // through the Rust browser path (like a main browser tab) so it
             // receives native input and drives back/forward, and it carries its

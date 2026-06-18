@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::graph::SurfaceGraph;
 use crate::layout::SizeClass;
-use crate::model::{Edge, Role, Surface};
+use crate::model::{Edge, Role, Surface, SurfaceContent};
 
 /// Structured outcome of a request (§3.1). A subset of the spec's full set;
 /// `mergedIntoTabs` lands when tab-grouping is implemented.
@@ -84,6 +84,18 @@ pub fn arbitrate(
                 return (next, decision);
             }
 
+            // A web-content (in-app browser) aside is a per-window singleton: a
+            // new browser aside replaces any existing one, independent of the
+            // generic aside cap. The browser aside is a single companion pane,
+            // not an unbounded set.
+            if is_web(&request)
+                && let Some(victim) = existing_web_aside_id(&next, &request.id)
+            {
+                next.remove(&victim);
+                next.insert(request);
+                return (next, Decision::ReplacedExisting);
+            }
+
             // Under the limit: accept as-is.
             if next.asides().len() < max {
                 next.insert(request);
@@ -107,6 +119,19 @@ fn promote_to_main(mut request: Surface) -> Surface {
     request.role = Role::Main;
     request.placement.edge = None;
     request
+}
+
+fn is_web(surface: &Surface) -> bool {
+    matches!(surface.content, SurfaceContent::Web { .. })
+}
+
+/// The existing web-content aside (if any) other than `exclude_id`.
+fn existing_web_aside_id(graph: &SurfaceGraph, exclude_id: &str) -> Option<String> {
+    graph
+        .surfaces()
+        .iter()
+        .find(|s| s.id != exclude_id && s.role == Role::Aside && is_web(s))
+        .map(|s| s.id.clone())
 }
 
 /// Oldest (insertion-order-first) aside, preferring the same edge if given.

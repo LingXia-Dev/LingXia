@@ -35,6 +35,13 @@ mod tests {
         s.placement.edge = Some(edge);
         s
     }
+    fn web_aside_s(id: &str, url: &str, edge: Edge) -> Surface {
+        let mut s = aside_s(id, edge);
+        s.content = SurfaceContent::Web {
+            url: url.to_string(),
+        };
+        s
+    }
 
     // ---- invariants & state transitions (§1.3 / §1.5) ----
 
@@ -214,6 +221,53 @@ mod tests {
         assert_eq!(decision, Decision::ReplacedExisting);
         assert!(next.get("a1").is_none());
         assert!(next.get("a3").is_some());
+        assert_eq!(next.asides().len(), 2);
+        assert!(next.is_valid());
+    }
+
+    #[test]
+    fn web_aside_is_singleton_replacing_existing() {
+        let mut g = SurfaceGraph::new();
+        g.insert(main_s("home"));
+        g.insert(web_aside_s("browser-1", "https://a.example", Edge::Right));
+        // A second browser aside replaces the first regardless of the generic
+        // cap (expanded allows 2 asides), and only on a different edge too.
+        let (next, decision) = arbitrate(
+            &g,
+            web_aside_s("browser-2", "https://b.example", Edge::Left),
+            &Policy::default(),
+            SizeClass::Expanded,
+        );
+        assert_eq!(decision, Decision::ReplacedExisting);
+        assert!(next.get("browser-1").is_none());
+        assert!(next.get("browser-2").is_some());
+        // exactly one web aside survives.
+        assert_eq!(
+            next.asides()
+                .iter()
+                .filter(|s| matches!(s.content, SurfaceContent::Web { .. }))
+                .count(),
+            1
+        );
+        assert!(next.is_valid());
+    }
+
+    #[test]
+    fn web_aside_coexists_with_a_page_aside() {
+        let mut g = SurfaceGraph::new();
+        g.insert(main_s("home"));
+        g.insert(aside_s("assistant", Edge::Right));
+        // A browser aside does NOT evict a non-web (declared/page) aside; both
+        // coexist under the expanded cap of 2.
+        let (next, decision) = arbitrate(
+            &g,
+            web_aside_s("browser-1", "https://a.example", Edge::Left),
+            &Policy::default(),
+            SizeClass::Expanded,
+        );
+        assert_eq!(decision, Decision::Accepted);
+        assert!(next.get("assistant").is_some());
+        assert!(next.get("browser-1").is_some());
         assert_eq!(next.asides().len(), 2);
         assert!(next.is_valid());
     }

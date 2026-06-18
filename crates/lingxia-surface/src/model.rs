@@ -44,9 +44,10 @@ pub enum SurfaceContent {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
     },
-    /// An ad-hoc web page / PDF (webview-rendered). `chrome=true` is a full
-    /// browser tab; that lives in `main` via shell, not aside/float.
-    Web { url: String, chrome: bool },
+    /// An ad-hoc web page / PDF rendered by the in-app chromed browser. Whether
+    /// it presents as a main browser tab or a docked browser aside is decided by
+    /// `role`, not by the content — the browser always carries its own chrome.
+    Web { url: String },
 }
 
 /// Owner scope: decides when the surface is closed (§5).
