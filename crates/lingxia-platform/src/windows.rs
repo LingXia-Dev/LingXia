@@ -15,6 +15,9 @@ mod screenshot;
 mod secure_store;
 mod surface;
 mod ui_update;
+mod update;
+mod update_callout;
+mod update_card;
 mod user_feedback;
 mod video_compress;
 mod video_info;
@@ -32,6 +35,7 @@ pub use surface::{
     set_windows_surface_dispose_handler,
 };
 pub use ui_update::set_windows_ui_update_handler;
+pub use update::apply_staged_windows_update;
 pub use video_player::{WindowsVideoCommandDispatcher, register_windows_video_command_dispatcher};
 
 use crate::error::PlatformError;

@@ -114,6 +114,10 @@ impl Platform {
         &self.app_identifier
     }
 
+    pub(super) fn product_name(&self) -> &str {
+        &self.product_name
+    }
+
     pub(super) fn data_dir(&self) -> &Path {
         &self.data_dir
     }
@@ -257,9 +261,6 @@ impl crate::traits::ui::SurfacePresenter for Platform {
         surface::hide_surface(app_id, id)
     }
 }
-// Stubbed: in-app update prompt/install flows have no Windows updater helper
-// yet; trait defaults report not_supported for prompt/install.
-impl crate::traits::update::UpdateService for Platform {}
 impl ShareService for Platform {
     // Stubbed: the Windows share sheet (DataTransferManager) must be obtained
     // through IDataTransferManagerInterop with an owning HWND, and the
