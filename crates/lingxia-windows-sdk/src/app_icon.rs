@@ -24,6 +24,7 @@ struct AppIconHandles {
 }
 
 static APP_ICON_HANDLES: OnceLock<Mutex<Option<AppIconHandles>>> = OnceLock::new();
+static APP_ICON_PATH: OnceLock<Mutex<Option<std::path::PathBuf>>> = OnceLock::new();
 static ICON_HOOK_INSTALLED: OnceLock<()> = OnceLock::new();
 
 pub(crate) fn set_app_icon_from_path(path: &Path) -> Result<(), String> {
@@ -40,7 +41,37 @@ pub(crate) fn set_app_icon_from_path(path: &Path) -> Result<(), String> {
         destroy_icon_handle(old.small);
         destroy_icon_handle(old.large);
     }
+    // Remember the source PNG (the resolved product/launcher icon) so the
+    // shell can render it in the top-bar app-menu button and the About box.
+    if let Ok(mut slot) = APP_ICON_PATH.get_or_init(|| Mutex::new(None)).lock() {
+        *slot = Some(path.to_path_buf());
+    }
     Ok(())
+}
+
+/// The source PNG path of the applied product/app icon (the launcher icon
+/// resolved at startup), if one was set. This is the application's icon, not
+/// any single lxapp's icon.
+pub(crate) fn current_app_icon_path() -> Option<std::path::PathBuf> {
+    APP_ICON_PATH
+        .get()
+        .and_then(|path| path.lock().ok())
+        .and_then(|path| path.clone())
+}
+
+/// Creates a fresh `HICON` (as a raw handle) from a PNG file at `size`px, for
+/// callers that need an owned icon to pass to Win32 dialogs (e.g. the shell's
+/// About box). The caller owns the handle and must `DestroyIcon` it. Returns
+/// `None` when the file cannot be decoded.
+pub(crate) fn create_icon_handle_from_path(path: &Path, size: u32) -> Option<isize> {
+    create_icon_from_png(path, size).ok()
+}
+
+/// The process's current large (32px) app-icon handle, if one has been
+/// applied. A shared, caller-must-not-destroy handle usable as a fallback
+/// when no app-specific icon path is available.
+pub(crate) fn current_large_icon_handle() -> Option<isize> {
+    current_app_icon_handles().map(|handles| handles.large)
 }
 
 fn install_icon_hook() {

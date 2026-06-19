@@ -201,8 +201,7 @@ pub(super) fn terminal_header_hit_test(
 /// Draws a terminal panel as a compact dock: full-bleed surface card, a
 /// 34px header strip (tabs + new-tab + maximize), and the cell grid below.
 /// Docked panels keep square top corners (flush seam with the main card);
-/// while maximized the panel is the whole content area and is rounded all
-/// around.
+/// while maximized the panel fills the content area with square corners.
 pub(super) fn draw_terminal_panel_content(
     hdc: HDC,
     hwnd: HWND,
@@ -218,12 +217,14 @@ pub(super) fn draw_terminal_panel_content(
         .unwrap_or(TERMINAL_SURFACE_BACKGROUND);
     let square_top = panel.docked && !native.maximized;
 
-    // Surface card: dark terminal surface on the light window background.
-    // the rounded corners (bottom while docked; all four when maximized or
-    // floating) need anti-aliasing. Docked panels then square their top
-    // corners with the overpaint below.
-    fill_round_rect_aa(hdc, rect, SHELL_PANEL_RADIUS, surface);
-    if square_top {
+    // Surface card: maximized panels are flush with the content pane, so avoid
+    // rounded anti-aliased edges there.
+    if native.maximized {
+        fill_rect(hdc, rect, surface);
+    } else {
+        fill_round_rect_aa(hdc, rect, SHELL_PANEL_RADIUS, surface);
+    }
+    if square_top || native.maximized {
         fill_rect(
             hdc,
             RECT {
@@ -240,7 +241,7 @@ pub(super) fn draw_terminal_panel_content(
     // top corners follow the card's corner shape.
     let header_rects = terminal_header_rects(rect, native);
     let header = header_rects.header;
-    if square_top {
+    if square_top || native.maximized {
         fill_rect(hdc, header, TERMINAL_HEADER_BACKGROUND);
     } else {
         fill_round_rect_aa(hdc, header, SHELL_PANEL_RADIUS, TERMINAL_HEADER_BACKGROUND);

@@ -60,9 +60,8 @@ pub(super) fn draw_sidebar_tab_bar(hdc: HDC, rect: RECT, tabbar: &WindowsShellTa
     }
     fill_rect(hdc, rect, SHELL_SIDEBAR_BACKGROUND);
 
-    // Icon-only rail (the macOS first-collapse state): just the item icons,
-    // centered, no header/labels/footer.
-    if tabbar.icon_rail {
+    // Icon-only rail: first-level entries only, centered in a compact column.
+    if tabbar.collapsed || tabbar.icon_rail {
         draw_sidebar_rail(hdc, rect, tabbar);
         return;
     }
@@ -203,12 +202,7 @@ fn draw_sidebar_items(hdc: HDC, rect: RECT, tabbar: &WindowsShellTabBarLayout) {
     }
 }
 
-/// Draws the icon-only rail: the FIRST-LEVEL entries only — the lxapp's app
-/// icon, then each open browser tab's favicon — as centered icons. The
-/// current app's tabbar pages, the header, and the footer activators are all
-/// hidden here (mirroring the macOS compact rail).
 fn draw_sidebar_rail(hdc: HDC, rect: RECT, tabbar: &WindowsShellTabBarLayout) {
-    // Row 0: the current lxapp's own icon (always the active first-level item).
     let app_rect = sidebar_rail_item_rect(rect, 0);
     fill_round_rect_aa(hdc, app_rect, 8, 0xffffff);
     let app_icon_rect = centered_icon_rect(app_rect, SIDEBAR_RAIL_ICON_SIZE);
@@ -219,8 +213,6 @@ fn draw_sidebar_rail(hdc: HDC, rect: RECT, tabbar: &WindowsShellTabBarLayout) {
         SIDEBAR_RAIL_ICON_SIZE as u32,
     );
 
-    // Rows 1..: each open browser tab's favicon (internal pages fall back to
-    // the LingXia mark).
     for (index, item) in tabbar.auxiliary_items.iter().enumerate() {
         let item_rect = sidebar_rail_item_rect(rect, 1 + index);
         if item.active {
@@ -237,7 +229,6 @@ fn draw_sidebar_rail(hdc: HDC, rect: RECT, tabbar: &WindowsShellTabBarLayout) {
     }
 }
 
-/// Centered square cell of a rail item, stacked below the top caption strip.
 pub(super) fn sidebar_rail_item_rect(rect: RECT, index: usize) -> RECT {
     let cell = SIDEBAR_RAIL_ITEM_SIZE;
     let top = rect.top
@@ -279,9 +270,13 @@ pub(super) fn sidebar_header_action_rects(
         return Vec::new();
     }
     let top = sidebar_rect.top + (SHELL_TOP_BAR_HEIGHT - SIDEBAR_HEADER_ACTION_SIZE).max(0) / 2;
-    // Start right of the sidebar toggle at the window's leading edge.
-    let mut left =
-        sidebar_rect.left + TOP_BAR_PADDING + TOP_BAR_BUTTON_SIZE + SIDEBAR_HEADER_ACTION_GAP;
+    // Start right of the two leading-edge buttons at the window's leading
+    // edge: the app-menu icon followed by the sidebar toggle.
+    let mut left = sidebar_rect.left
+        + TOP_BAR_PADDING
+        + 2 * TOP_BAR_BUTTON_SIZE
+        + TOP_BAR_BUTTON_GAP
+        + SIDEBAR_HEADER_ACTION_GAP;
     let mut out = Vec::with_capacity(tabbar.header_actions.len());
     for action in &tabbar.header_actions {
         let right = left + SIDEBAR_HEADER_ACTION_SIZE;

@@ -22,6 +22,10 @@ pub(super) fn address_bar_visible(layout: &WindowsShellWindowLayout) -> bool {
 /// forward/reload cluster left of the centered URL capsule. Shared between
 /// drawing and hit-testing so both always agree.
 pub(super) struct TopBarControls {
+    /// The app-menu button at the window's leading edge (left of the sidebar
+    /// toggle). Hidden in the compact sidebar rail so the rail is only the
+    /// expand affordance.
+    pub(super) app_icon: Option<RECT>,
     pub(super) sidebar_toggle: Option<RECT>,
     pub(super) nav_back: Option<RECT>,
     pub(super) nav_forward: Option<RECT>,
@@ -45,29 +49,59 @@ pub(super) fn top_bar_controls(
         })
     };
 
-    // Sidebar toggle: only products with a sidebar tab bar get one. It is
+    // Whether this product shows a sidebar (and therefore a sidebar toggle):
+    // only left/right tab bars get one.
+    let tabbar = layout.tab_bar.as_ref();
+    let has_sidebar_toggle = tabbar.is_some_and(|tabbar| {
+        tabbar.visible
+            && matches!(
+                tabbar.position,
+                WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right
+            )
+    });
+    let compact_sidebar = tabbar.is_some_and(|tabbar| tabbar.collapsed || tabbar.icon_rail);
+
+    // App-menu button: always shown at the window's leading edge. When a
+    // sidebar exists it shares the sidebar header's leading edge with the
+    // toggle (which moves to its right); otherwise it anchors the top bar.
+    let app_icon_left = if has_sidebar_toggle {
+        client.left + TOP_BAR_PADDING
+    } else {
+        top_bar.left + TOP_BAR_PADDING
+    };
+    let app_icon = (!compact_sidebar).then(|| square_button(app_icon_left));
+
+    // Sidebar toggle: sits just right of the app-menu button. It is
     // intentionally independent of the collapsed flag (it must stay
-    // clickable to re-expand a collapsed sidebar) and sits at the window's
-    // leading edge: inside the sidebar column while the sidebar is
-    // expanded, over the top bar's leading edge while it is collapsed
-    // (`navbar_buttons_left` shifts the lxapp navbar buttons clear of it).
-    let sidebar_toggle = layout
-        .tab_bar
-        .as_ref()
-        .filter(|tabbar| {
-            tabbar.visible
-                && matches!(
-                    tabbar.position,
-                    WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right
-                )
-        })
-        .map(|_| square_button(client.left + TOP_BAR_PADDING));
+    // clickable to re-expand a collapsed sidebar) and shares the leading
+    // edge: inside the sidebar column while the sidebar is expanded, over
+    // the top bar's leading edge while it is collapsed (`navbar_buttons_left`
+    // shifts the lxapp navbar buttons clear of it).
+    let sidebar_toggle = has_sidebar_toggle.then(|| {
+        if compact_sidebar {
+            let left = match tabbar.map(|tabbar| tabbar.position) {
+                Some(WindowsShellTabBarPosition::Right) => {
+                    client.right - SHELL_SIDEBAR_RAIL_WIDTH
+                        + (SHELL_SIDEBAR_RAIL_WIDTH - TOP_BAR_BUTTON_SIZE).max(0) / 2
+                }
+                _ => client.left + (SHELL_SIDEBAR_RAIL_WIDTH - TOP_BAR_BUTTON_SIZE).max(0) / 2,
+            };
+            square_button(left)
+        } else {
+            let app_right = app_icon.map(|rect| rect.right).unwrap_or(app_icon_left);
+            square_button(app_right + TOP_BAR_BUTTON_GAP)
+        }
+    });
     let mut left_edge = top_bar.left + TOP_BAR_PADDING;
+    if let Some(app_icon) = app_icon {
+        left_edge = left_edge.max(app_icon.right + TOP_BAR_BUTTON_GAP);
+    }
     if let Some(toggle) = &sidebar_toggle {
         left_edge = left_edge.max(toggle.right + TOP_BAR_BUTTON_GAP);
     }
 
     let mut controls = TopBarControls {
+        app_icon,
         sidebar_toggle,
         nav_back: None,
         nav_forward: None,
@@ -192,8 +226,22 @@ pub(super) fn draw_top_bar_controls(
     layout: &WindowsShellWindowLayout,
 ) {
     let controls = top_bar_controls(state.client, rects.top_bar, layout);
+    if let Some(app_icon) = controls.app_icon {
+        draw_app_menu_icon(hdc, app_icon, &layout.app_icon_path);
+    }
     if let Some(toggle) = controls.sidebar_toggle {
-        draw_frame_button_glyph(hdc, GLYPH_SIDEBAR_TOGGLE, toggle, SHELL_FRAME_BUTTON_ICON);
+        let icon = layout
+            .tab_bar
+            .as_ref()
+            .map(|tabbar| {
+                if tabbar.collapsed || tabbar.icon_rail {
+                    WindowsDesignIcon::SidebarExpand
+                } else {
+                    WindowsDesignIcon::SidebarCollapse
+                }
+            })
+            .unwrap_or(WindowsDesignIcon::SidebarCollapse);
+        draw_design_icon_button(hdc, toggle, icon, SHELL_FRAME_BUTTON_ICON, 18);
     }
     if let Some(back) = controls.nav_back {
         draw_design_icon_button(
@@ -285,6 +333,21 @@ pub(super) fn draw_navigation_bar(
     }
 }
 
+/// Draws the app-menu button: the app's own (clean) icon when it declares
+/// one — the brand mark at the window's leading edge, like Arc — else a
+/// subtle monochrome glyph matching the rest of the caption row. Clicking the
+/// button opens the About/Exit menu.
+fn draw_app_menu_icon(hdc: HDC, rect: RECT, icon_path: &str) {
+    if !icon_path.trim().is_empty() {
+        let icon_rect = centered_square(rect, 18);
+        let size = rect_width(&icon_rect).max(1) as u32;
+        if draw_icon_from_path(hdc, icon_path, icon_rect, size) {
+            return;
+        }
+    }
+    draw_frame_button_glyph(hdc, GLYPH_APP_MENU, rect, SHELL_FRAME_BUTTON_ICON);
+}
+
 fn draw_design_icon_button(hdc: HDC, rect: RECT, icon: WindowsDesignIcon, rgb: u32, size: i32) {
     let icon_rect = centered_square(rect, size);
     if !draw_windows_design_icon_with_color(hdc, icon, icon_rect, rgb) {
@@ -293,6 +356,8 @@ fn draw_design_icon_button(hdc: HDC, rect: RECT, icon: WindowsDesignIcon, rgb: u
             WindowsDesignIcon::Forward => Some(GLYPH_NAV_FORWARD),
             WindowsDesignIcon::BrowserRefresh => Some(GLYPH_NAV_RELOAD),
             WindowsDesignIcon::Home => Some(GLYPH_NAV_HOME),
+            WindowsDesignIcon::SidebarCollapse => Some(GLYPH_SIDEBAR_TOGGLE),
+            WindowsDesignIcon::SidebarExpand => Some(GLYPH_PANEL_EXPAND),
             _ => None,
         };
         if let Some(glyph) = fallback {
@@ -495,10 +560,18 @@ pub(super) fn navbar_buttons_left(
     layout: &WindowsShellWindowLayout,
     navbar_rect: RECT,
 ) -> i32 {
-    match top_bar_controls(client, top_bar, layout).sidebar_toggle {
-        Some(toggle) => (navbar_rect.left + 8).max(toggle.right + TOP_BAR_BUTTON_GAP),
-        None => navbar_rect.left + 8,
+    let controls = top_bar_controls(client, top_bar, layout);
+    // Clear the leading-edge app-menu button, when visible, and the sidebar
+    // toggle. Both are off in the sidebar column when a sidebar is expanded,
+    // so the `max` is a no-op there.
+    let mut left = navbar_rect.left + 8;
+    if let Some(app_icon) = controls.app_icon {
+        left = left.max(app_icon.right + TOP_BAR_BUTTON_GAP);
     }
+    if let Some(toggle) = controls.sidebar_toggle {
+        left = left.max(toggle.right + TOP_BAR_BUTTON_GAP);
+    }
+    left
 }
 
 pub(super) fn nav_button_rect(navbar: RECT, buttons_left: i32, index: i32) -> RECT {

@@ -25,10 +25,11 @@ pub(in crate::shell::chrome) fn panel_activator_rects(
         }
         let footer_top = tabbar_rect.bottom - SIDEBAR_FOOTER_HEIGHT;
         let top = footer_top + (SIDEBAR_FOOTER_HEIGHT - PANEL_ACTIVATOR_SIZE) / 2;
-        let mut right = tabbar_rect.right - PANEL_ACTIVATOR_MARGIN;
+        let mut left = tabbar_rect.left + PANEL_ACTIVATOR_MARGIN;
+        let right_limit = tabbar_rect.right - PANEL_ACTIVATOR_MARGIN;
         for activator in &layout.panel_activators {
-            let left = right - PANEL_ACTIVATOR_SIZE;
-            if left < tabbar_rect.left + PANEL_ACTIVATOR_MARGIN {
+            let right = left + PANEL_ACTIVATOR_SIZE;
+            if right > right_limit {
                 break;
             }
             out.push((
@@ -40,7 +41,7 @@ pub(in crate::shell::chrome) fn panel_activator_rects(
                     bottom: top + PANEL_ACTIVATOR_SIZE,
                 }),
             ));
-            right = left - PANEL_ACTIVATOR_GAP;
+            left = right + PANEL_ACTIVATOR_GAP;
         }
         return out;
     }

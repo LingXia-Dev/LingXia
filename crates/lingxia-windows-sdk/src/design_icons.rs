@@ -35,6 +35,8 @@ pub enum WindowsDesignIcon {
     VolumeOff,
     FullscreenEnter,
     FullscreenExit,
+    SidebarCollapse,
+    SidebarExpand,
 }
 
 impl WindowsDesignIcon {
@@ -54,6 +56,8 @@ impl WindowsDesignIcon {
             Self::VolumeOff => "icon_volume_off.png",
             Self::FullscreenEnter => "icon_fullscreen_enter.png",
             Self::FullscreenExit => "icon_fullscreen_exit.png",
+            Self::SidebarCollapse => "icon_sidebar_collapse.png",
+            Self::SidebarExpand => "icon_sidebar_expand.png",
         }
     }
 }
