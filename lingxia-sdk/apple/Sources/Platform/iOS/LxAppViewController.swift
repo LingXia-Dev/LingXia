@@ -107,6 +107,22 @@ final class LxAppViewController: UIViewController, ObservableObject {
         }
     }
 
+    public override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        reportSurfaceWidth()
+    }
+
+    /// Seed the adaptive surface graph with the current container width so the
+    /// core can derive the adaptive context (sizeClass) and drive present_layout.
+    /// macOS does this from the desktop shell; the phone host does it here, on
+    /// every layout pass (covers first layout, rotation, and size changes).
+    private func reportSurfaceWidth() {
+        guard let appId = LxAppCore.currentAppId, !appId.isEmpty else { return }
+        let width = view.bounds.width
+        guard width > 0 else { return }
+        _ = setSurfaceWidth(appId, Double(width))
+    }
+
     public override var supportedInterfaceOrientations: UIInterfaceOrientationMask {
         return runtimeOrientationMask
     }
