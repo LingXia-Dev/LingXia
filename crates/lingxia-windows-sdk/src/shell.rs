@@ -37,7 +37,7 @@ pub(crate) fn refresh_system_theme() -> bool {
     theme::refresh()
 }
 
-pub(crate) use runtime::open_home_app;
+pub(crate) use runtime::{open_home_app, update_surface_width};
 pub(crate) use terminal_panel::{
     begin_divider_drag, divider_orientation_at, end_divider_drag, update_divider_drag,
 };

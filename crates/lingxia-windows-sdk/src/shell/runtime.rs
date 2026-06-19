@@ -198,6 +198,21 @@ fn shell_owner_appid() -> Option<String> {
         .and_then(|slot| slot.clone())
 }
 
+/// Push the host window's logical (DIP) content width into the shell-owner
+/// app's adaptive surface graph so the size class — and therefore the aside
+/// cap (Compact 0 / Medium 1 / Expanded 2) — tracks the real window. Without
+/// this the graph stays at its seed width (permanently Medium), so a second
+/// aside evicts the first even on a wide window. Called from the host's
+/// `WM_SIZE`.
+pub(crate) fn update_surface_width(logical_width: f64) {
+    if logical_width <= 0.0 {
+        return;
+    }
+    if let Some(appid) = shell_owner_appid() {
+        lingxia::windows::set_surface_width(&appid, logical_width);
+    }
+}
+
 /// Re-syncs the shell-owner app's layout (panel activator states etc.)
 /// after a panel changed visibility outside a chrome event, e.g. the
 /// terminal panel closing itself because its last session exited (the

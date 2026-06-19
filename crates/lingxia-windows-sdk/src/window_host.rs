@@ -2353,6 +2353,21 @@ fn handle_chrome_right_up(hwnd: HWND, point: (i32, i32)) -> bool {
     false
 }
 
+/// The host window's client width in logical (DIP) units — the value the
+/// adaptive surface graph's size class expects (thresholds are DIP: Compact
+/// `<600`, Medium `600..=840`, Expanded `>840`).
+#[cfg(feature = "shell-runtime")]
+fn window_logical_client_width(hwnd: HWND) -> f64 {
+    let mut client = RECT::default();
+    if unsafe { WindowsAndMessaging::GetClientRect(hwnd, &mut client) }.is_err() {
+        return 0.0;
+    }
+    let physical = (client.right - client.left).max(0) as f64;
+    let dpi = unsafe { windows::Win32::UI::HiDpi::GetDpiForWindow(hwnd) };
+    let scale = if dpi == 0 { 1.0 } else { dpi as f64 / 96.0 };
+    physical / scale
+}
+
 pub fn find_webview_content_window(webtag: &WebTag) -> Option<WindowsWebViewContentWindow> {
     let hwnd = window_handle_for_key(webtag.key())?;
     let client = content_rect_for_window(hwnd, webtag.key());
@@ -2724,6 +2739,10 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                             && is_window_visible(hwnd),
                     );
                 }
+                // Keep the adaptive surface graph's size class tracking the
+                // real window width (see `update_surface_width`).
+                #[cfg(feature = "shell-runtime")]
+                crate::shell::update_surface_width(window_logical_client_width(hwnd));
                 sync_window_layout(hwnd);
                 if windows_chrome_renderer().is_some() && !is_native_framed_window(hwnd) {
                     invalidate_window(hwnd);

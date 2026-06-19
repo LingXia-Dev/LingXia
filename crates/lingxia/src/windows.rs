@@ -56,6 +56,18 @@ pub fn resize_app_window_content(appid: &str, width: i32, height: i32) -> Result
         .map_err(|err| err.to_string())
 }
 
+/// Feed the host window's logical (DIP) width to `appid`'s adaptive surface
+/// graph so the size class (and therefore the aside cap) tracks the real
+/// window. Without this the graph stays at its seed width — permanently
+/// `Medium` (max 1 aside) — so a second aside evicts the first even on a wide
+/// window. Called on window create/resize. Returns `false` if the app is not
+/// active (e.g. during teardown).
+pub fn set_surface_width(appid: &str, width: f64) -> bool {
+    lxapp::try_get(appid)
+        .map(|app| app.set_surface_width(width))
+        .unwrap_or(false)
+}
+
 fn current_page_webview(appid: &str) -> Result<std::sync::Arc<lingxia_webview::WebView>, String> {
     let app = lxapp::try_get(appid).ok_or_else(|| format!("lxapp is not active: {appid}"))?;
     let page = app.current_page().map_err(|err| err.to_string())?;
