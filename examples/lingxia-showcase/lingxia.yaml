@@ -78,6 +78,7 @@ surfaces:
     render: native
     role: aside
     edge: bottom
+    platforms: [macos, windows]   # terminal is desktop-only
     sidebar: {}          # built-in terminal icon comes from the host; omit to use it
 
 appLinks:

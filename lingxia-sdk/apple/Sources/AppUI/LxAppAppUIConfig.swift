@@ -30,6 +30,9 @@ struct LxAppUIConfig: Decodable, Sendable {
         let resizable: Bool?
         let showTrafficLights: Bool?
         let content: Content
+        /// Availability filter. nil/empty = every platform; otherwise the concrete
+        /// platforms it's available on (macos/windows/ios/android/harmony).
+        let platforms: [String]?
     }
 
     enum Role: String, Decodable, Sendable {

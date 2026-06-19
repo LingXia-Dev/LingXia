@@ -203,6 +203,12 @@ pub struct SurfaceDecl {
     /// Inline tray/menubar entry.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tray: Option<SurfaceTray>,
+    /// Availability filter. Empty = every platform. Lists the concrete
+    /// platforms a surface is available on — `macos`, `windows`, `ios`, `android`,
+    /// `harmony`. A surface (and its activators) is dropped from a target's
+    /// generated `ui.json` when its `platforms` excludes that target.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub platforms: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -462,6 +468,23 @@ fn surfaces_to_ui(surfaces: &[SurfaceDecl], terminal_enabled: bool) -> Result<Va
                 json!({ "kind": action_kind, "surface": id }),
             );
             out_activators.push(Value::Object(activator));
+        }
+    }
+
+    // Carry surface-level `platforms` onto the generated surfaces so each
+    // platform's runtime can drop surfaces (and their activators) not meant for
+    // it — e.g. terminal is `platforms: [macos, windows]`, hidden on iOS.
+    for surface in surfaces {
+        if surface.platforms.is_empty() {
+            continue;
+        }
+        let sid = surface.id.trim();
+        if let Some(obj) = out_surfaces
+            .iter_mut()
+            .find(|s| s.get("id").and_then(Value::as_str) == Some(sid))
+            .and_then(Value::as_object_mut)
+        {
+            obj.insert("platforms".into(), json!(surface.platforms));
         }
     }
 
