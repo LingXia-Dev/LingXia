@@ -443,25 +443,12 @@ fn panel_activator_dirty_rects(
         return Vec::new();
     }
 
-    let activator_rects = panel_activator_rects(client, rects, new_layout);
     let mut dirty = Vec::new();
-    for (index, (old_activator, new_activator)) in old_layout
-        .panel_activators
-        .iter()
-        .zip(&new_layout.panel_activators)
-        .enumerate()
+    for (_, rect) in panel_activator_rects(client, rects, old_layout)
+        .into_iter()
+        .chain(panel_activator_rects(client, rects, new_layout))
     {
-        if old_activator == new_activator {
-            continue;
-        }
-        if let Some((_, rect)) = activator_rects.get(index) {
-            push_dirty_rect(&mut dirty, *rect, client);
-        }
-    }
-    if old_layout.panel_activators.len() != new_layout.panel_activators.len() {
-        for (_, rect) in activator_rects {
-            push_dirty_rect(&mut dirty, rect, client);
-        }
+        push_dirty_rect(&mut dirty, rect, client);
     }
     dirty
 }
@@ -604,7 +591,10 @@ fn compute_attached_layout(
     let mut main = compute_chrome_rects(client, layout).content;
     let mut out = Vec::new();
 
-    if let Some(maximized) = panels.iter().find(|panel| panel.docked && panel.maximized) {
+    let mut ordered = panels.iter().collect::<Vec<_>>();
+    ordered.sort_by(|left, right| attached_panel_order(left).cmp(&attached_panel_order(right)));
+
+    if let Some(&maximized) = ordered.iter().find(|panel| panel.docked && panel.maximized) {
         out.push(WindowsChromePanelLayout {
             panel_id: maximized.panel_id.clone(),
             webtag_key: maximized.webtag_key.clone(),
@@ -614,12 +604,6 @@ fn compute_attached_layout(
         main.bottom = main.top;
         return WindowsChromeAttachedLayout { main, panels: out };
     }
-
-    let mut ordered = panels.iter().collect::<Vec<_>>();
-    ordered.sort_by_key(|panel| match panel.position {
-        WindowsPanelPosition::Left | WindowsPanelPosition::Right => 0,
-        WindowsPanelPosition::Top | WindowsPanelPosition::Bottom => 1,
-    });
 
     for panel in ordered {
         let (rect, resize_handle) = match panel.position {
@@ -743,6 +727,22 @@ fn compute_attached_layout(
         main: normalize_rect(main),
         panels: out,
     }
+}
+
+fn attached_panel_order(panel: &WindowsChromePanelLayoutInput) -> (u8, u8, &str) {
+    (
+        match panel.position {
+            WindowsPanelPosition::Left | WindowsPanelPosition::Right => 0,
+            WindowsPanelPosition::Top | WindowsPanelPosition::Bottom => 1,
+        },
+        match panel.position {
+            WindowsPanelPosition::Left => 0,
+            WindowsPanelPosition::Right => 1,
+            WindowsPanelPosition::Top => 2,
+            WindowsPanelPosition::Bottom => 3,
+        },
+        panel.panel_id.as_str(),
+    )
 }
 
 fn attached_panel_size(

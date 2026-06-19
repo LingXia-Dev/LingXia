@@ -965,34 +965,22 @@ fn reconcile_host_webview_visibility(hwnd: HWND, visible_webtags: &HashSet<Strin
         let Some(handler) = find_webview_handler(&webtag) else {
             continue;
         };
-        let surface = hwnd_from_handle(handler.native_view().window);
         let should_show = host_visible && visible_webtags.contains(&key);
         match (should_show, webtag_is_visible(&key)) {
-            (true, false) => to_show.push((key, handler, surface)),
-            (false, true) => to_hide.push((key, handler, surface)),
+            (true, false) => to_show.push((key, handler)),
+            (false, true) => to_hide.push((key, handler)),
             _ => {}
         }
     }
 
-    let host_surface_incoming = to_show.iter().any(|(_, _, surface)| *surface == hwnd);
-    if host_surface_incoming {
-        for (key, handler, _) in to_hide {
-            hide_reconciled_webview(&key, &handler);
-        }
-        for (key, handler, _) in to_show {
-            show_reconciled_webview(&key, &handler);
-        }
-    } else {
-        // Show the incoming child surface before hiding the outgoing one.
-        // WebView2 controller visibility changes are not atomic across
-        // controllers; hiding first exposes the host background for a frame
-        // and reads as flicker.
-        for (key, handler, _) in to_show {
-            show_reconciled_webview(&key, &handler);
-        }
-        for (key, handler, _) in to_hide {
-            hide_reconciled_webview(&key, &handler);
-        }
+    // WebView2 controller visibility changes are not atomic across
+    // controllers. Showing incoming surfaces first avoids exposing the host
+    // background for a frame during host/child surface transitions.
+    for (key, handler) in to_show {
+        show_reconciled_webview(&key, &handler);
+    }
+    for (key, handler) in to_hide {
+        hide_reconciled_webview(&key, &handler);
     }
 }
 
