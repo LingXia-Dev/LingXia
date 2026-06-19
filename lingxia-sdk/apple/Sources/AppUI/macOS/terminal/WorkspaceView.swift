@@ -11,6 +11,50 @@ extension NSColor {
     static let lxTerminalChromeRaised = NSColor(red: 0.173, green: 0.192, blue: 0.227, alpha: 1)
     static let lxTerminalBorder = NSColor(red: 0.243, green: 0.267, blue: 0.318, alpha: 1)
     static let lxTerminalAccent = NSColor(red: 0.773, green: 0.784, blue: 0.776, alpha: 1)
+    /// Split divider — deliberately lighter than the pane background so it reads
+    /// clearly between two dark terminal panes.
+    static let lxTerminalDivider = NSColor(red: 0.36, green: 0.39, blue: 0.44, alpha: 1)
+}
+
+/// Container for a terminal pane split: a visible, draggable divider between the
+/// two panes. (The previous NSStackView had neither — no rendered divider line
+/// and no drag-to-resize.) Panes start at an even 50/50 and the divider can be
+/// dragged to rebalance them.
+@MainActor
+final class LingXiaTerminalSplitView: NSSplitView {
+    private var didEqualize = false
+
+    /// A roomy grab zone for comfortable dragging, but only a thin hairline is
+    /// painted — the rest blends into the pane background, so the divider reads
+    /// as a subtle 1pt line rather than a heavy bar.
+    override var dividerThickness: CGFloat { 5 }
+    private static let lineThickness: CGFloat = 1
+
+    override func drawDivider(in rect: NSRect) {
+        NSColor.lxTerminalBackground.setFill()
+        rect.fill()
+        var line = rect
+        let t = Self.lineThickness
+        if isVertical {
+            line.origin.x += (rect.width - t) / 2
+            line.size.width = t
+        } else {
+            line.origin.y += (rect.height - t) / 2
+            line.size.height = t
+        }
+        NSColor.lxTerminalDivider.setFill()
+        line.fill()
+    }
+
+    override func layout() {
+        super.layout()
+        guard !didEqualize,
+              arrangedSubviews.count == 2,
+              bounds.width > 1, bounds.height > 1 else { return }
+        didEqualize = true
+        let total = isVertical ? bounds.width : bounds.height
+        setPosition((total - dividerThickness) / 2, ofDividerAt: 0)
+    }
 }
 
 enum LingXiaTerminalFont {
@@ -653,15 +697,14 @@ final class LingXiaTerminalWorkspaceView: NSView {
         lxTerminalLog("workspace.split start surface=\(surfaceID) direction=\(direction) activePane=\(activePane.paneID.uuidString)")
 
         let newPane = makePane(for: tab)
-        let stack = NSStackView()
-        stack.orientation = (direction == .left || direction == .right) ? .horizontal : .vertical
-        stack.distribution = .fillEqually
-        stack.spacing = 0
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        stack.wantsLayer = true
-        stack.layer?.backgroundColor = NSColor.separatorColor.withAlphaComponent(0.6).cgColor
+        newPane.translatesAutoresizingMaskIntoConstraints = false
+        activePane.translatesAutoresizingMaskIntoConstraints = false
+        let split = LingXiaTerminalSplitView()
+        // left/right → panes side by side (vertical divider); up/down → stacked.
+        split.isVertical = (direction == .left || direction == .right)
+        split.translatesAutoresizingMaskIntoConstraints = false
 
-        guard replaceNodeView(activePane, with: stack, in: tab.rootContainer) else {
+        guard replaceNodeView(activePane, with: split, in: tab.rootContainer) else {
             os_log(
                 "terminal split failed: cannot replace pane surface=%{public}@",
                 log: Self.log,
@@ -673,11 +716,11 @@ final class LingXiaTerminalWorkspaceView: NSView {
         }
 
         if direction == .left || direction == .up {
-            stack.addArrangedSubview(newPane)
-            stack.addArrangedSubview(activePane)
+            split.addArrangedSubview(newPane)
+            split.addArrangedSubview(activePane)
         } else {
-            stack.addArrangedSubview(activePane)
-            stack.addArrangedSubview(newPane)
+            split.addArrangedSubview(activePane)
+            split.addArrangedSubview(newPane)
         }
 
         tab.panes[newPane.paneID] = newPane
@@ -691,13 +734,13 @@ final class LingXiaTerminalWorkspaceView: NSView {
 
     private func replaceNodeView(_ target: NSView, with replacement: NSView, in root: NSView) -> Bool {
         guard let parent = target.superview else { return false }
-        if let stack = parent as? NSStackView {
-            guard let index = stack.arrangedSubviews.firstIndex(of: target) else {
+        if let split = parent as? NSSplitView {
+            guard let index = split.arrangedSubviews.firstIndex(of: target) else {
                 return false
             }
-            stack.removeArrangedSubview(target)
+            split.removeArrangedSubview(target)
             target.removeFromSuperview()
-            stack.insertArrangedSubview(replacement, at: index)
+            split.insertArrangedSubview(replacement, at: index)
             return true
         }
 
@@ -813,10 +856,10 @@ final class LingXiaTerminalWorkspaceView: NSView {
         }
 
         tab.panes.removeValue(forKey: paneID)
-        if let stack = pane.superview as? NSStackView {
-            stack.removeArrangedSubview(pane)
+        if let split = pane.superview as? NSSplitView {
+            split.removeArrangedSubview(pane)
             pane.removeFromSuperview()
-            collapseSingleChildStack(stack, in: tab.rootContainer)
+            collapseSingleChildSplit(split, in: tab.rootContainer)
         } else {
             pane.removeFromSuperview()
         }
@@ -834,34 +877,34 @@ final class LingXiaTerminalWorkspaceView: NSView {
         }
     }
 
-    private func collapseSingleChildStack(_ stack: NSStackView, in root: NSView) {
-        guard stack.arrangedSubviews.count == 1,
-              let survivor = stack.arrangedSubviews.first else {
+    private func collapseSingleChildSplit(_ split: NSSplitView, in root: NSView) {
+        guard split.arrangedSubviews.count == 1,
+              let survivor = split.arrangedSubviews.first else {
             return
         }
 
-        stack.removeArrangedSubview(survivor)
+        split.removeArrangedSubview(survivor)
         survivor.removeFromSuperview()
 
-        if let parentStack = stack.superview as? NSStackView,
-           let index = parentStack.arrangedSubviews.firstIndex(of: stack) {
-            parentStack.removeArrangedSubview(stack)
-            stack.removeFromSuperview()
-            parentStack.insertArrangedSubview(survivor, at: index)
-            collapseSingleChildStack(parentStack, in: root)
+        if let parentSplit = split.superview as? NSSplitView,
+           let index = parentSplit.arrangedSubviews.firstIndex(of: split) {
+            parentSplit.removeArrangedSubview(split)
+            split.removeFromSuperview()
+            parentSplit.insertArrangedSubview(survivor, at: index)
+            collapseSingleChildSplit(parentSplit, in: root)
             return
         }
 
-        if stack.superview === root {
-            stack.removeFromSuperview()
+        if split.superview === root {
+            split.removeFromSuperview()
             installRootView(survivor, into: root)
             return
         }
 
-        guard let parent = stack.superview else {
+        guard let parent = split.superview else {
             return
         }
-        stack.removeFromSuperview()
+        split.removeFromSuperview()
         survivor.translatesAutoresizingMaskIntoConstraints = false
         parent.addSubview(survivor)
         NSLayoutConstraint.activate([
