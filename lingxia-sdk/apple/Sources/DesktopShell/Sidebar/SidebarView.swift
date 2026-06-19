@@ -204,6 +204,17 @@ class SidebarView: NSView {
         return NSImage(contentsOf: url)
     }()
 
+    /// A shared design icon (bundled PDF) as a tintable template image, so the
+    /// header affordances match their iOS counterparts.
+    private static func designIcon(_ name: String) -> NSImage? {
+        guard let url = Bundle.module.url(forResource: name, withExtension: "pdf", subdirectory: "icons")
+        else { return nil }
+        let image = NSImage(contentsOf: url)
+        image?.isTemplate = true
+        image?.size = NSSize(width: 16, height: 16)
+        return image
+    }
+
     /// Called when a panel icon button is clicked: (panelId)
     var onPanelItemToggled: ((String) -> Void)?
 
@@ -290,7 +301,7 @@ class SidebarView: NSView {
 
         // Settings and download buttons — top-right in header
         settingsButton.translatesAutoresizingMaskIntoConstraints = false
-        settingsButton.image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: nil)
+        settingsButton.image = Self.designIcon("icon_settings") ?? NSImage(systemSymbolName: "gearshape", accessibilityDescription: nil)
         settingsButton.isBordered = false
         settingsButton.bezelStyle = .regularSquare
         settingsButton.imagePosition = .imageOnly
@@ -300,7 +311,7 @@ class SidebarView: NSView {
         headerView.addSubview(settingsButton)
 
         downloadButton.translatesAutoresizingMaskIntoConstraints = false
-        downloadButton.image = NSImage(systemSymbolName: "arrow.down.circle", accessibilityDescription: nil)
+        downloadButton.image = Self.designIcon("icon_download") ?? NSImage(systemSymbolName: "arrow.down.circle", accessibilityDescription: nil)
         downloadButton.isBordered = false
         downloadButton.bezelStyle = .regularSquare
         downloadButton.imagePosition = .imageOnly

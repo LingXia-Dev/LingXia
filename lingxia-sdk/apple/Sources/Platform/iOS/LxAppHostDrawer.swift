@@ -153,9 +153,9 @@ final class LxAppHostDrawer: UIView {
         // Utility (bottom)
         let botSep = makeSeparator(); panel.addSubview(botSep)
         let util = UIStackView(arrangedSubviews: [
-            utilButton(systemName: "gearshape", title: "Settings") { [weak self] in self?.onHostEntry?(.settings); self?.close() },
-            utilButton(systemName: "arrow.down.circle", title: "Downloads") { [weak self] in self?.onHostEntry?(.downloads); self?.close() },
-            utilButton(systemName: "sidebar.leading", title: "Close") { [weak self] in self?.close() },
+            utilButton(image: bundledIcon("icon_settings"), systemName: "gearshape", title: "Settings") { [weak self] in self?.onHostEntry?(.settings); self?.close() },
+            utilButton(image: bundledIcon("icon_download"), systemName: "arrow.down.circle", title: "Downloads") { [weak self] in self?.onHostEntry?(.downloads); self?.close() },
+            utilButton(image: bundledIcon("icon_sidebar_collapse"), systemName: "sidebar.leading", title: "Close") { [weak self] in self?.close() },
         ])
         util.axis = .horizontal; util.distribution = .fillEqually
         util.translatesAutoresizingMaskIntoConstraints = false
@@ -259,6 +259,17 @@ final class LxAppHostDrawer: UIView {
         return UIImage(contentsOfFile: url.path)?.withRenderingMode(.alwaysTemplate)
     }
 
+    /// A bundled design icon (PDF) from the SDK's `icons/` resources, tintable.
+    private func bundledIcon(_ name: String) -> UIImage? {
+        #if SWIFT_PACKAGE
+        let bundle = Bundle.module
+        #else
+        let bundle = Bundle(for: LxAppHostDrawer.self)
+        #endif
+        guard let url = bundle.url(forResource: name, withExtension: "pdf", subdirectory: "icons") else { return nil }
+        return pdfImage(url, height: 20)
+    }
+
     private func pdfImage(_ url: URL, height: CGFloat) -> UIImage? {
         guard let doc = CGPDFDocument(url as CFURL), let page = doc.page(at: 1) else { return nil }
         let box = page.getBoxRect(.cropBox)
@@ -330,9 +341,9 @@ final class LxAppHostDrawer: UIView {
         return container
     }
 
-    private func utilButton(systemName: String, title: String, action: @escaping () -> Void) -> UIButton {
+    private func utilButton(image: UIImage? = nil, systemName: String, title: String, action: @escaping () -> Void) -> UIButton {
         var cfg = UIButton.Configuration.plain()
-        cfg.image = UIImage(systemName: systemName, withConfiguration: UIImage.SymbolConfiguration(pointSize: 18, weight: .regular))
+        cfg.image = image ?? UIImage(systemName: systemName, withConfiguration: UIImage.SymbolConfiguration(pointSize: 18, weight: .regular))
         cfg.title = title
         cfg.imagePlacement = .top
         cfg.imagePadding = 3
