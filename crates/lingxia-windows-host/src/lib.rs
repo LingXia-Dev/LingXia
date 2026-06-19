@@ -204,6 +204,9 @@ pub struct WindowsChromePanel {
     pub webtag_key: String,
     pub title: String,
     pub rect: RECT,
+    /// Top-band slice (aligned with the main navbar baseline) where a browser
+    /// aside paints its address bar; `None` for panels with no band header.
+    pub header_rect: Option<RECT>,
     pub host_content: Option<WindowsHostPanelContent>,
     pub docked: bool,
 }
@@ -223,6 +226,9 @@ pub struct WindowsChromePanelLayout {
     pub panel_id: String,
     pub webtag_key: String,
     pub rect: RECT,
+    /// Top-band slice for a browser aside's address bar (see
+    /// [`WindowsChromePanel::header_rect`]); `None` when the panel has none.
+    pub header_rect: Option<RECT>,
     pub resize_handle: Option<RECT>,
 }
 

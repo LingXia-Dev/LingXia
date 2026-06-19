@@ -822,11 +822,10 @@ fn base_content_rect_for_window(hwnd: HWND, webtag_key: &str) -> RECT {
             .iter()
             .find(|panel| panel.webtag_key == webtag_key)
         {
-            let mut rect = normalize_rect(panel.rect);
-            if is_browser_webtag_key(webtag_key) {
-                rect.top = (rect.top + BROWSER_PANEL_HEADER_HEIGHT).min(rect.bottom);
-            }
-            return normalize_rect(rect);
+            // The browser aside's address bar now lives in the shared top band
+            // (above the panel), so the webview fills the whole panel rect and
+            // top-aligns with the main content card.
+            return normalize_rect(panel.rect);
         }
     }
     normalize_rect(renderer.content_rect(client, &current_window_layout(webtag_key)))
@@ -1079,6 +1078,7 @@ fn attached_state_for_window(
                 webtag_key: panel.webtag_key.clone(),
                 title: webview_panel_title(&panel_id),
                 rect: panel.rect,
+                header_rect: panel.header_rect,
                 host_content: host_panel_content(&panel_id),
                 docked: panel_is_docked(&panel_id),
             }
@@ -1088,10 +1088,6 @@ fn attached_state_for_window(
         main: layout.main,
         panels,
     })
-}
-
-fn is_browser_webtag_key(webtag_key: &str) -> bool {
-    webtag_key.starts_with("app.lingxia.browser:")
 }
 
 fn webview_panel_title(panel_id: &str) -> String {

@@ -135,7 +135,6 @@ pub(super) const PANEL_ACTIVATOR_GAP: i32 = 4;
 
 pub(super) const PANEL_ACTIVATOR_MARGIN: i32 = 6;
 
-pub(super) const BROWSER_PANEL_HEADER_HEIGHT: i32 = 42;
 pub(super) const BROWSER_PANEL_HEADER_PADDING: i32 = 8;
 pub(super) const BROWSER_PANEL_BUTTON_SIZE: i32 = 28;
 pub(super) const BROWSER_PANEL_BUTTON_GAP: i32 = 4;
@@ -599,6 +598,7 @@ fn compute_attached_layout(
             panel_id: maximized.panel_id.clone(),
             webtag_key: maximized.webtag_key.clone(),
             rect: shell_maximized_panel_rect(main),
+            header_rect: None,
             resize_handle: None,
         });
         main.bottom = main.top;
@@ -715,10 +715,22 @@ fn compute_attached_layout(
             }
         };
 
+        // A browser aside hoists its address bar into the shared top band so
+        // it lands on the same baseline as the main lxapp navbar (which is
+        // clipped to `attached.main`). The webview then fills the whole panel
+        // rect, top-aligned with the main content card. Side panels only:
+        // terminal asides (top/bottom) keep their own in-panel header.
+        let header_rect = (matches!(
+            panel.position,
+            WindowsPanelPosition::Left | WindowsPanelPosition::Right
+        ) && panel.webtag_key.starts_with("app.lingxia.browser:"))
+        .then(|| browser_panel_band_header_rect(client, rect));
+
         out.push(WindowsChromePanelLayout {
             panel_id: panel.panel_id.clone(),
             webtag_key: panel.webtag_key.clone(),
             rect: normalize_rect(rect),
+            header_rect,
             resize_handle,
         });
     }
@@ -727,6 +739,21 @@ fn compute_attached_layout(
         main: normalize_rect(main),
         panels: out,
     }
+}
+
+/// The top-band slice (aligned with the main navbar baseline) over a side
+/// panel's column. The trailing edge reserves room for the window frame
+/// buttons so the address bar's controls never run under the caption.
+fn browser_panel_band_header_rect(client: RECT, panel_rect: RECT) -> RECT {
+    let right = panel_rect
+        .right
+        .min(client.right - window_frame_buttons_width() - TOP_BAR_PADDING);
+    normalize_rect(RECT {
+        left: panel_rect.left,
+        top: client.top,
+        right,
+        bottom: (client.top + SHELL_TOP_BAR_HEIGHT).min(client.bottom),
+    })
 }
 
 fn attached_panel_order(panel: &WindowsChromePanelLayoutInput) -> (u8, u8, &str) {
@@ -1102,12 +1129,9 @@ fn browser_panel_header_visible(panel: &WindowsChromePanel) -> bool {
 }
 
 fn browser_panel_header_rect(panel: &WindowsChromePanel) -> RECT {
-    normalize_rect(RECT {
-        left: panel.rect.left,
-        top: panel.rect.top,
-        right: panel.rect.right,
-        bottom: (panel.rect.top + BROWSER_PANEL_HEADER_HEIGHT).min(panel.rect.bottom),
-    })
+    // The address bar lives in the shared top band (computed at layout time);
+    // an empty rect makes the draw/hit-test paths no-op for panels without one.
+    panel.header_rect.map(normalize_rect).unwrap_or_default()
 }
 
 fn browser_panel_close_rect(panel: &WindowsChromePanel) -> RECT {
