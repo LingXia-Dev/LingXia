@@ -348,10 +348,27 @@ fn draw_app_menu_icon(hdc: HDC, rect: RECT, icon_path: &str) {
     draw_frame_button_glyph(hdc, GLYPH_APP_MENU, rect, SHELL_FRAME_BUTTON_ICON);
 }
 
-fn draw_design_icon_button(hdc: HDC, rect: RECT, icon: WindowsDesignIcon, rgb: u32, size: i32) {
+pub(super) fn draw_design_icon_button(
+    hdc: HDC,
+    rect: RECT,
+    icon: WindowsDesignIcon,
+    rgb: u32,
+    size: i32,
+) {
+    draw_design_icon_button_with_fallback(hdc, rect, icon, rgb, size, None);
+}
+
+pub(super) fn draw_design_icon_button_with_fallback(
+    hdc: HDC,
+    rect: RECT,
+    icon: WindowsDesignIcon,
+    rgb: u32,
+    size: i32,
+    fallback: Option<&str>,
+) {
     let icon_rect = centered_square(rect, size);
     if !draw_windows_design_icon_with_color(hdc, icon, icon_rect, rgb) {
-        let fallback = match icon {
+        let fallback = fallback.or_else(|| match icon {
             WindowsDesignIcon::Back => Some(GLYPH_NAV_BACK),
             WindowsDesignIcon::Forward => Some(GLYPH_NAV_FORWARD),
             WindowsDesignIcon::BrowserRefresh => Some(GLYPH_NAV_RELOAD),
@@ -359,7 +376,7 @@ fn draw_design_icon_button(hdc: HDC, rect: RECT, icon: WindowsDesignIcon, rgb: u
             WindowsDesignIcon::SidebarCollapse => Some(GLYPH_SIDEBAR_TOGGLE),
             WindowsDesignIcon::SidebarExpand => Some(GLYPH_PANEL_EXPAND),
             _ => None,
-        };
+        });
         if let Some(glyph) = fallback {
             draw_frame_button_glyph(hdc, glyph, rect, rgb);
         }

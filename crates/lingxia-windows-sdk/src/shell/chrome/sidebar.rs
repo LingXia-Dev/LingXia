@@ -1,5 +1,7 @@
 //! Sidebar and tab bar chrome.
 
+use crate::WindowsDesignIcon;
+
 use super::*;
 
 mod auxiliary;
@@ -118,14 +120,35 @@ pub(super) fn draw_sidebar_tab_bar(hdc: HDC, rect: RECT, tabbar: &WindowsShellTa
         SHELL_DIVIDER,
     );
     for (action_id, action_rect) in sidebar_header_action_rects(rect, tabbar) {
-        let glyph = tabbar
+        let Some(action) = tabbar
             .header_actions
             .iter()
             .find(|action| action.id == action_id)
-            .map(|action| action.glyph.as_str())
-            .unwrap_or_default();
-        draw_frame_button_glyph(hdc, glyph, action_rect, SHELL_TEXT_MUTED);
+        else {
+            continue;
+        };
+        draw_sidebar_header_action(hdc, &action.id, &action.glyph, action_rect);
     }
+}
+
+fn draw_sidebar_header_action(hdc: HDC, action_id: &str, fallback_glyph: &str, rect: RECT) {
+    let icon = match action_id {
+        "settings" => Some(WindowsDesignIcon::Settings),
+        "downloads" => Some(WindowsDesignIcon::Downloads),
+        _ => None,
+    };
+    if let Some(icon) = icon {
+        draw_design_icon_button_with_fallback(
+            hdc,
+            rect,
+            icon,
+            SHELL_FRAME_BUTTON_ICON,
+            18,
+            Some(fallback_glyph),
+        );
+        return;
+    }
+    draw_frame_button_glyph(hdc, fallback_glyph, rect, SHELL_FRAME_BUTTON_ICON);
 }
 
 /// Draws the lxapp item rows plus the macOS-parity connector line: a thin
