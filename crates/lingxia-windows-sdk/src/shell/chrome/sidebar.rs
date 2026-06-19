@@ -33,7 +33,7 @@ pub(super) fn draw_tab_bar(hdc: HDC, rect: RECT, tabbar: &WindowsShellTabBarLayo
             fill_rect(
                 hdc,
                 inset_rect(item_rect, 4, 5),
-                SHELL_TAB_SELECTED_BACKGROUND,
+                shell_palette().tab_selected_background,
             );
         }
 
@@ -60,7 +60,7 @@ pub(super) fn draw_sidebar_tab_bar(hdc: HDC, rect: RECT, tabbar: &WindowsShellTa
     if rect_width(&rect) == 0 {
         return;
     }
-    fill_rect(hdc, rect, SHELL_SIDEBAR_BACKGROUND);
+    fill_rect(hdc, rect, shell_palette().sidebar_background);
 
     // Icon-only rail: first-level entries only, centered in a compact column.
     if tabbar.collapsed || tabbar.icon_rail {
@@ -94,13 +94,24 @@ pub(super) fn draw_sidebar_tab_bar(hdc: HDC, rect: RECT, tabbar: &WindowsShellTa
         right: chevron_rect.left - 4,
         bottom: rect.top + SIDEBAR_HEADER_HEIGHT,
     };
-    draw_text(hdc, &title, header_rect, SHELL_SIDEBAR_HEADER_TEXT, DT_LEFT);
+    draw_text(
+        hdc,
+        &title,
+        header_rect,
+        shell_palette().sidebar_header_text,
+        DT_LEFT,
+    );
     let chevron = if tabbar.items_collapsed {
         GLYPH_CHEVRON_RIGHT
     } else {
         GLYPH_CHEVRON_DOWN
     };
-    draw_frame_button_glyph(hdc, chevron, chevron_rect, SHELL_SIDEBAR_HEADER_TEXT);
+    draw_frame_button_glyph(
+        hdc,
+        chevron,
+        chevron_rect,
+        shell_palette().sidebar_header_text,
+    );
 
     if !tabbar.items_collapsed {
         draw_sidebar_items(hdc, rect, tabbar);
@@ -117,7 +128,7 @@ pub(super) fn draw_sidebar_tab_bar(hdc: HDC, rect: RECT, tabbar: &WindowsShellTa
             right: rect.right - SIDEBAR_ITEM_INSET,
             bottom: rect.bottom,
         },
-        SHELL_DIVIDER,
+        shell_palette().divider,
     );
     for (action_id, action_rect) in sidebar_header_action_rects(rect, tabbar) {
         let Some(action) = tabbar
@@ -137,18 +148,21 @@ fn draw_sidebar_header_action(hdc: HDC, action_id: &str, fallback_glyph: &str, r
         "downloads" => Some(WindowsDesignIcon::Downloads),
         _ => None,
     };
+    // Settings/downloads are secondary chrome actions: drawn muted (like
+    // macOS `secondaryLabelColor`) so they don't compete with content or the
+    // primary caption buttons.
     if let Some(icon) = icon {
         draw_design_icon_button_with_fallback(
             hdc,
             rect,
             icon,
-            SHELL_FRAME_BUTTON_ICON,
+            shell_palette().text_muted,
             18,
             Some(fallback_glyph),
         );
         return;
     }
-    draw_frame_button_glyph(hdc, fallback_glyph, rect, SHELL_FRAME_BUTTON_ICON);
+    draw_frame_button_glyph(hdc, fallback_glyph, rect, shell_palette().text_muted);
 }
 
 /// Draws the lxapp item rows plus the macOS-parity connector line: a thin
@@ -166,7 +180,7 @@ fn draw_sidebar_items(hdc: HDC, rect: RECT, tabbar: &WindowsShellTabBarLayout) {
                 right: first.left + 8,
                 bottom: (last.bottom - 8).max(first.top + 8),
             },
-            SHELL_DIVIDER,
+            shell_palette().divider,
         );
     }
 
@@ -175,7 +189,7 @@ fn draw_sidebar_items(hdc: HDC, rect: RECT, tabbar: &WindowsShellTabBarLayout) {
         let selected = tabbar.selected_index == index as i32;
         if selected {
             // White item card on the gray sidebar, accent bar on white.
-            fill_round_rect_aa(hdc, item_rect, 8, 0xffffff);
+            fill_round_rect_aa(hdc, item_rect, 8, shell_palette().panel_background);
             fill_round_rect_aa(
                 hdc,
                 RECT {
@@ -196,9 +210,9 @@ fn draw_sidebar_items(hdc: HDC, rect: RECT, tabbar: &WindowsShellTabBarLayout) {
             bottom: item_rect.bottom,
         };
         let text_color = if selected {
-            SHELL_TEXT_PRIMARY
+            shell_palette().text_primary
         } else {
-            SHELL_TEXT_MUTED
+            shell_palette().text_muted
         };
         let icon_path = if selected && !item.selected_icon_path.trim().is_empty() {
             &item.selected_icon_path
@@ -227,7 +241,7 @@ fn draw_sidebar_items(hdc: HDC, rect: RECT, tabbar: &WindowsShellTabBarLayout) {
 
 fn draw_sidebar_rail(hdc: HDC, rect: RECT, tabbar: &WindowsShellTabBarLayout) {
     let app_rect = sidebar_rail_item_rect(rect, 0);
-    fill_round_rect_aa(hdc, app_rect, 8, 0xffffff);
+    fill_round_rect_aa(hdc, app_rect, 8, shell_palette().panel_background);
     let app_icon_rect = centered_icon_rect(app_rect, SIDEBAR_RAIL_ICON_SIZE);
     draw_icon_or_default(
         hdc,
@@ -239,7 +253,7 @@ fn draw_sidebar_rail(hdc: HDC, rect: RECT, tabbar: &WindowsShellTabBarLayout) {
     for (index, item) in tabbar.auxiliary_items.iter().enumerate() {
         let item_rect = sidebar_rail_item_rect(rect, 1 + index);
         if item.active {
-            fill_round_rect_aa(hdc, item_rect, 8, 0xffffff);
+            fill_round_rect_aa(hdc, item_rect, 8, shell_palette().panel_background);
         }
         let icon_rect = centered_icon_rect(item_rect, SIDEBAR_RAIL_ICON_SIZE);
         let drew = match item.icon_png.as_deref() {

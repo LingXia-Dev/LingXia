@@ -116,6 +116,7 @@ mod chrome_command {
     pub(super) const BROWSER_PANEL_NAV_BACK: &str = "browser-panel.nav.back";
     pub(super) const BROWSER_PANEL_NAV_FORWARD: &str = "browser-panel.nav.forward";
     pub(super) const BROWSER_PANEL_NAV_RELOAD: &str = "browser-panel.nav.reload";
+    pub(super) const BROWSER_PANEL_ADDRESS_BAR: &str = "browser-panel.address-bar";
     pub(super) const NATIVE_PANEL_TAB_CLICK: &str = "native-panel.tab.click";
     pub(super) const NATIVE_PANEL_TAB_CLOSE: &str = "native-panel.tab.close";
     pub(super) const NATIVE_PANEL_NEW_TAB: &str = "native-panel.new-tab";
@@ -895,6 +896,16 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
             }
             return;
         }
+        chrome_command::BROWSER_PANEL_ADDRESS_BAR => {
+            let Some(webtag_key) = payload_string(&event, "webtag_key") else {
+                return;
+            };
+            let Some(tab_id) = payload_browser_panel_tab_id(&event) else {
+                return;
+            };
+            begin_browser_panel_address_edit(appid, &webtag_key, &tab_id);
+            return;
+        }
         // Native-panel header events (terminal dock): pure terminal policy,
         // interpreted by the terminal panel facade. Tab/panel closes may
         // change panel visibility; those paths re-sync the layout
@@ -1518,6 +1529,29 @@ fn begin_presented_tab_address_edit(app: &LxApp) {
 fn begin_presented_tab_address_edit(_app: &LxApp) {
     // Without the shell chrome no address bar is drawn (plain OS frame),
     // so there is nothing to edit.
+}
+
+/// Starts an inline URL edit over a browser aside's address capsule, prefilled
+/// with the tab's current URL. The commit reuses `commit_address_input`, so the
+/// aside navigates through the same address-input engine as the main bar.
+#[cfg(feature = "shell-runtime")]
+fn begin_browser_panel_address_edit(appid: &str, webtag_key: &str, tab_id: &str) {
+    let Some(window) = owner_window_handle(appid) else {
+        return;
+    };
+    let initial = browser_tab_summary(tab_id)
+        .and_then(|tab| tab.current_url.clone())
+        .unwrap_or_default();
+    let owner_appid = appid.to_string();
+    let tab_id = tab_id.to_string();
+    super::begin_panel_address_edit(
+        window,
+        webtag_key,
+        &initial,
+        Arc::new(move |text: String| {
+            commit_address_input(&owner_appid, &tab_id, &text);
+        }),
+    );
 }
 
 /// Resolves a committed address input and navigates the presented tab.

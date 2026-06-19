@@ -211,8 +211,8 @@ pub fn begin_address_edit(
 }
 
 pub(super) fn draw_shell_top_bar(hdc: HDC, rects: &ChromeRects) {
-    fill_rect(hdc, rects.top_bar, SHELL_WINDOW_BACKGROUND);
-    draw_bottom_border(hdc, rects.top_bar, SHELL_DIVIDER);
+    fill_rect(hdc, rects.top_bar, shell_palette().window_background);
+    draw_bottom_border(hdc, rects.top_bar, shell_palette().divider);
 }
 
 /// Draws the interactive top-bar controls (sidebar toggle, browser nav
@@ -241,14 +241,16 @@ pub(super) fn draw_top_bar_controls(
                 }
             })
             .unwrap_or(WindowsDesignIcon::SidebarCollapse);
-        draw_design_icon_button(hdc, toggle, icon, SHELL_FRAME_BUTTON_ICON, 18);
+        // Muted like the sidebar header actions — it's a secondary control,
+        // not a primary caption button.
+        draw_design_icon_button(hdc, toggle, icon, shell_palette().text_muted, 18);
     }
     if let Some(back) = controls.nav_back {
         draw_design_icon_button(
             hdc,
             back,
             WindowsDesignIcon::Back,
-            SHELL_FRAME_BUTTON_ICON,
+            shell_palette().frame_button_icon,
             18,
         );
     }
@@ -257,7 +259,7 @@ pub(super) fn draw_top_bar_controls(
             hdc,
             forward,
             WindowsDesignIcon::Forward,
-            SHELL_FRAME_BUTTON_ICON,
+            shell_palette().frame_button_icon,
             18,
         );
     }
@@ -266,7 +268,7 @@ pub(super) fn draw_top_bar_controls(
             hdc,
             reload,
             WindowsDesignIcon::BrowserRefresh,
-            SHELL_FRAME_BUTTON_ICON,
+            shell_palette().frame_button_icon,
             18,
         );
     }
@@ -276,7 +278,7 @@ pub(super) fn draw_top_bar_controls(
             hdc,
             address,
             rect_height(&address) / 2,
-            SHELL_PANEL_BACKGROUND,
+            shell_palette().panel_background,
         );
         let text = layout
             .address_bar
@@ -287,7 +289,7 @@ pub(super) fn draw_top_bar_controls(
             hdc,
             text,
             inset_rect(address, ADDRESS_CAPSULE_HEIGHT / 2, 0),
-            SHELL_TEXT_PRIMARY,
+            shell_palette().text_primary,
             DT_CENTER,
         );
     }
@@ -301,7 +303,7 @@ pub(super) fn draw_navigation_bar(
     navbar: &WindowsShellNavigationBarLayout,
 ) {
     fill_rect(hdc, rect, navbar.background_color);
-    draw_bottom_border(hdc, rect, 0xe6e6e6);
+    draw_bottom_border(hdc, rect, shell_palette().divider);
 
     let text_color = navbar.text_color;
     let mut left_controls_width = 0;
@@ -345,7 +347,7 @@ fn draw_app_menu_icon(hdc: HDC, rect: RECT, icon_path: &str) {
             return;
         }
     }
-    draw_frame_button_glyph(hdc, GLYPH_APP_MENU, rect, SHELL_FRAME_BUTTON_ICON);
+    draw_frame_button_glyph(hdc, GLYPH_APP_MENU, rect, shell_palette().frame_button_icon);
 }
 
 pub(super) fn draw_design_icon_button(
@@ -420,12 +422,12 @@ pub(super) fn draw_window_frame_buttons(hdc: HDC, state: &WindowsChromeState) {
             }
         } else if show_pressed {
             Some(darken_rgb(
-                SHELL_WINDOW_BACKGROUND,
+                shell_palette().window_background,
                 FRAME_BUTTON_PRESSED_OVERLAY,
             ))
         } else if show_hover {
             Some(darken_rgb(
-                SHELL_WINDOW_BACKGROUND,
+                shell_palette().window_background,
                 FRAME_BUTTON_HOVER_OVERLAY,
             ))
         } else {
@@ -449,7 +451,7 @@ pub(super) fn draw_window_frame_buttons(hdc: HDC, state: &WindowsChromeState) {
         let glyph_color = if button == WindowsFrameButton::Close && (show_hover || show_pressed) {
             0xffffff
         } else {
-            SHELL_FRAME_BUTTON_ICON
+            shell_palette().frame_button_icon
         };
         draw_frame_button_glyph(hdc, glyph, rect, glyph_color);
     }

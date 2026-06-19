@@ -12,15 +12,24 @@ mod style;
 pub mod terminal_grid;
 mod terminal_panel;
 pub mod text_input;
+mod theme;
 
 pub use chrome::{
     WindowsShellAddressBarLayout, WindowsShellAuxiliaryItemLayout, WindowsShellHeaderActionLayout,
     WindowsShellNavigationBarLayout, WindowsShellPanelActivatorLayout,
     WindowsShellTabBarItemLayout, WindowsShellTabBarLayout, WindowsShellTabBarPosition,
-    WindowsShellWindowLayout, begin_address_edit,
+    WindowsShellWindowLayout, begin_address_edit, begin_panel_address_edit,
 };
 
 pub(crate) use chrome::shell_chrome_dirty_rects;
+
+/// Re-read the Win11 light/dark + system-accent theme into the shell palette
+/// cache. Returns `true` when the values changed, so the window proc can
+/// repaint only on a real theme change.
+pub(crate) fn refresh_system_theme() -> bool {
+    theme::refresh()
+}
+
 pub(crate) use runtime::open_home_app;
 pub(crate) use terminal_panel::{
     begin_divider_drag, divider_orientation_at, end_divider_drag, update_divider_drag,

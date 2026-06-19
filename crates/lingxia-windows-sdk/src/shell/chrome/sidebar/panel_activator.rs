@@ -93,14 +93,14 @@ pub(in crate::shell::chrome) fn draw_panel_activators(
             .map(|item| panel_activator_label(&item.label))
             .unwrap_or_else(|| panel_activator_label(&panel_id));
         let text_color = if active {
-            SHELL_ACCENT
+            shell_palette().accent
         } else {
-            SHELL_TEXT_MUTED
+            shell_palette().text_muted
         };
 
         if active {
             // White activator pill on the gray sidebar footer.
-            fill_round_rect_aa(hdc, rect, 6, 0xffffff);
+            fill_round_rect_aa(hdc, rect, 6, shell_palette().panel_background);
             fill_round_rect_aa(
                 hdc,
                 RECT {
@@ -110,7 +110,7 @@ pub(in crate::shell::chrome) fn draw_panel_activators(
                     bottom: rect.bottom - 3,
                 },
                 2,
-                SHELL_ACCENT,
+                shell_palette().accent,
             );
         }
         let icon_rect = centered_icon_rect(rect, PANEL_ACTIVATOR_ICON_SIZE);

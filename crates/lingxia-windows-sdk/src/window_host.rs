@@ -71,8 +71,11 @@ const PULL_REFRESH_TIMER_MS: u32 = 120;
 const PULL_REFRESH_SLOT_HEIGHT: i32 = 42;
 const PULL_REFRESH_INDICATOR_WIDTH: i32 = 64;
 const PULL_REFRESH_INDICATOR_HEIGHT: i32 = 32;
-const BROWSER_PANEL_HEADER_HEIGHT: i32 = 42;
 const OVERLAY_MARGIN: i32 = 24;
+
+/// `WM_DWMCOLORIZATIONCOLORCHANGED` (dwmapi.h) — sent on a system accent change.
+/// Not surfaced by the `windows` crate's message constants, so define it here.
+const WM_DWMCOLORIZATIONCOLORCHANGED: u32 = 0x0320;
 const OVERLAY_MIN_WIDTH: i32 = 280;
 const OVERLAY_MIN_HEIGHT: i32 = 220;
 const OVERLAY_DEFAULT_WIDTH: i32 = 460;
@@ -2731,6 +2734,20 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
             WindowsAndMessaging::WM_ERASEBKGND => {
                 if windows_chrome_renderer().is_some() && !is_native_framed_window(hwnd) {
                     return LRESULT(1);
+                }
+                unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
+            }
+            // A Win11 light/dark toggle broadcasts WM_SETTINGCHANGE (lParam
+            // "ImmersiveColorSet"); an accent change sends
+            // WM_DWMCOLORIZATIONCOLORCHANGED. Re-read the system theme and, only
+            // when it actually changed, repaint the whole shell in the new palette.
+            WindowsAndMessaging::WM_SETTINGCHANGE | WM_DWMCOLORIZATIONCOLORCHANGED => {
+                #[cfg(feature = "shell-runtime")]
+                if crate::shell::refresh_system_theme()
+                    && windows_chrome_renderer().is_some()
+                    && !is_native_framed_window(hwnd)
+                {
+                    invalidate_window(hwnd);
                 }
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }

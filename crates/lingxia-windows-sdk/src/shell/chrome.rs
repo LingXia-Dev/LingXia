@@ -5,7 +5,8 @@
 //! file is pure product policy registered through the
 //! [`WindowsChromeRenderer`] seam.
 
-use std::sync::{Arc, OnceLock};
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex, OnceLock};
 
 use lingxia_windows_host::post_to_window_thread;
 use lingxia_windows_host::{
@@ -169,6 +170,7 @@ pub(super) mod command_id {
     pub(super) const BROWSER_PANEL_NAV_BACK: &str = "browser-panel.nav.back";
     pub(super) const BROWSER_PANEL_NAV_FORWARD: &str = "browser-panel.nav.forward";
     pub(super) const BROWSER_PANEL_NAV_RELOAD: &str = "browser-panel.nav.reload";
+    pub(super) const BROWSER_PANEL_ADDRESS_BAR: &str = "browser-panel.address-bar";
     pub(super) const NATIVE_PANEL_TAB_CLICK: &str = "native-panel.tab.click";
     pub(super) const NATIVE_PANEL_TAB_CLOSE: &str = "native-panel.tab.close";
     pub(super) const NATIVE_PANEL_NEW_TAB: &str = "native-panel.new-tab";
@@ -838,7 +840,7 @@ pub(super) fn draw_window_chrome(
     let client = state.client;
     let rects = chrome_rects_for_state(state, layout);
 
-    fill_rect(hdc, client, SHELL_WINDOW_BACKGROUND);
+    fill_rect(hdc, client, shell_palette().window_background);
     draw_shell_top_bar(hdc, &rects);
     draw_content_cards(hdc, state, &rects);
 
@@ -1119,6 +1121,12 @@ fn browser_panel_hit_test(
                 json!({ "panel_id": panel.panel_id.clone() }),
             ));
         }
+        if rect_contains(&browser_panel_address_rect(panel), point) {
+            return Some(chrome_command(
+                command_id::BROWSER_PANEL_ADDRESS_BAR,
+                json!({ "webtag_key": panel.webtag_key.clone() }),
+            ));
+        }
         return Some(WindowsChromeHit::Chrome);
     }
     None
@@ -1166,13 +1174,88 @@ fn browser_panel_nav_button_rects(panel: &WindowsChromePanel) -> [(&'static str,
     ]
 }
 
-fn draw_browser_panel_header(hdc: HDC, panel: &WindowsChromePanel) {
+/// The URL capsule rect inside a browser aside's header (between the nav
+/// cluster and the close button). Shared by the painter and hit-test so the
+/// inline editor lands exactly on the painted pill.
+fn browser_panel_address_rect(panel: &WindowsChromePanel) -> RECT {
+    let header = browser_panel_header_rect(panel);
+    let close = browser_panel_close_rect(panel);
+    let address_left = browser_panel_nav_button_rects(panel)
+        .last()
+        .map(|(_, rect)| rect.right + BROWSER_PANEL_HEADER_PADDING)
+        .unwrap_or(header.left + BROWSER_PANEL_HEADER_PADDING);
+    normalize_rect(RECT {
+        left: address_left,
+        top: header.top + 8,
+        right: close.left - BROWSER_PANEL_HEADER_PADDING,
+        bottom: header.bottom - 8,
+    })
+}
+
+/// Last painted URL-capsule rect for a browser aside, keyed by host window +
+/// webtag, so a click can start an inline edit over the exact pill (mirrors the
+/// main top bar's `ADDRESS_CAPSULE_RECTS`).
+static PANEL_ADDRESS_RECTS: OnceLock<Mutex<HashMap<(isize, String), RECT>>> = OnceLock::new();
+
+fn remember_panel_address_rect(hwnd: HWND, webtag_key: &str, rect: Option<RECT>) {
+    let map = PANEL_ADDRESS_RECTS.get_or_init(|| Mutex::new(HashMap::new()));
+    let Ok(mut map) = map.lock() else {
+        return;
+    };
+    let key = (hwnd.0 as isize, webtag_key.to_string());
+    match rect {
+        Some(rect) => {
+            map.insert(key, rect);
+        }
+        None => {
+            map.remove(&key);
+        }
+    }
+}
+
+/// Starts an inline URL edit over a browser aside's address capsule, prefilled
+/// with `initial_text`. Returns `false` when no capsule was painted for
+/// `(window, webtag_key)`. Mirrors [`top_bar::begin_address_edit`] for the aside.
+pub fn begin_panel_address_edit(
+    window: isize,
+    webtag_key: &str,
+    initial_text: &str,
+    on_commit: super::text_input::InlineEditCommit,
+) -> bool {
+    let rect = PANEL_ADDRESS_RECTS
+        .get()
+        .and_then(|map| map.lock().ok())
+        .and_then(|map| map.get(&(window, webtag_key.to_string())).copied());
+    let Some(rect) = rect else {
+        return false;
+    };
+    let edit_rect = inset_rect(rect, 10, 1);
+    if rect_width(&edit_rect) == 0 || rect_height(&edit_rect) == 0 {
+        return false;
+    }
+    let initial = initial_text.to_string();
+    post_to_window_thread(
+        window,
+        Box::new(move || {
+            super::text_input::begin_inline_edit(
+                HWND(window as *mut core::ffi::c_void),
+                edit_rect,
+                &initial,
+                on_commit,
+            );
+        }),
+    )
+}
+
+fn draw_browser_panel_header(hdc: HDC, hwnd: HWND, panel: &WindowsChromePanel) {
     let header = browser_panel_header_rect(panel);
     if rect_width(&header) == 0 || rect_height(&header) == 0 {
+        remember_panel_address_rect(hwnd, &panel.webtag_key, None);
         return;
     }
+    let pal = shell_palette();
 
-    fill_rect(hdc, header, SHELL_PANEL_BACKGROUND);
+    fill_rect(hdc, header, pal.panel_background);
     fill_rect(
         hdc,
         RECT {
@@ -1181,7 +1264,7 @@ fn draw_browser_panel_header(hdc: HDC, panel: &WindowsChromePanel) {
             right: header.right,
             bottom: header.bottom,
         },
-        SHELL_DIVIDER,
+        pal.divider,
     );
 
     let close = browser_panel_close_rect(panel);
@@ -1192,29 +1275,25 @@ fn draw_browser_panel_header(hdc: HDC, panel: &WindowsChromePanel) {
             command_id::BROWSER_PANEL_NAV_RELOAD => GLYPH_NAV_RELOAD,
             _ => "",
         };
-        draw_frame_button_glyph(hdc, glyph, rect, SHELL_TEXT_MUTED);
+        draw_frame_button_glyph(hdc, glyph, rect, pal.text_muted);
     }
-    let address_left = browser_panel_nav_button_rects(panel)
-        .last()
-        .map(|(_, rect)| rect.right + BROWSER_PANEL_HEADER_PADDING)
-        .unwrap_or(header.left + BROWSER_PANEL_HEADER_PADDING);
-    let address = normalize_rect(RECT {
-        left: address_left,
-        top: header.top + 8,
-        right: close.left - BROWSER_PANEL_HEADER_PADDING,
-        bottom: header.bottom - 8,
-    });
-    if rect_width(&address) > 0 && rect_height(&address) > 0 {
-        fill_round_rect_aa(hdc, address, 10, 0xf3f4f6);
+
+    let address = browser_panel_address_rect(panel);
+    let address_visible = rect_width(&address) > 0 && rect_height(&address) > 0;
+    if address_visible {
+        fill_round_rect_aa(hdc, address, 10, pal.control_surface);
         draw_text(
             hdc,
             browser_panel_title(panel).as_str(),
             inset_rect(address, 10, 0),
-            SHELL_TEXT_MUTED,
+            pal.text_muted,
             DT_LEFT,
         );
     }
-    draw_frame_button_glyph(hdc, GLYPH_CLOSE, close, SHELL_TEXT_MUTED);
+    // Record the painted pill so a click can open the inline editor over it.
+    remember_panel_address_rect(hwnd, &panel.webtag_key, address_visible.then_some(address));
+
+    draw_frame_button_glyph(hdc, GLYPH_CLOSE, close, pal.text_muted);
 }
 
 fn browser_panel_title(panel: &WindowsChromePanel) -> String {
@@ -1241,7 +1320,7 @@ pub(super) fn draw_content_cards(hdc: HDC, state: &WindowsChromeState, rects: &C
             }
             draw_content_card(hdc, panel.rect);
             if browser_panel_header_visible(panel) {
-                draw_browser_panel_header(hdc, panel);
+                draw_browser_panel_header(hdc, state.hwnd, panel);
             }
         }
         for panel in &attached.panels {
@@ -1274,7 +1353,7 @@ pub(super) fn square_card_bottom_corners(hdc: HDC, rect: RECT) {
             right: rect.right,
             bottom: rect.bottom,
         },
-        SHELL_PANEL_BACKGROUND,
+        shell_palette().panel_background,
     );
 }
 
@@ -1282,7 +1361,12 @@ pub(super) fn draw_content_card(hdc: HDC, rect: RECT) {
     if rect_width(&rect) > 0 && rect_height(&rect) > 0 {
         // White card on the gray window background: the arc must be
         // anti-aliased (and match the corner-cap radius of webview cards).
-        fill_round_rect_aa(hdc, rect, SHELL_PANEL_RADIUS, SHELL_PANEL_BACKGROUND);
+        fill_round_rect_aa(
+            hdc,
+            rect,
+            SHELL_PANEL_RADIUS,
+            shell_palette().panel_background,
+        );
     }
 }
 

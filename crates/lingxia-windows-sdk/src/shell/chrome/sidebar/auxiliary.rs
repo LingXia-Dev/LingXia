@@ -122,13 +122,13 @@ pub(in crate::shell::chrome) fn draw_sidebar_auxiliary_section(
         return;
     };
 
-    fill_rect(hdc, auxiliary.separator, SHELL_DIVIDER);
+    fill_rect(hdc, auxiliary.separator, shell_palette().divider);
 
     for (item, item_rect) in tabbar.auxiliary_items.iter().zip(&auxiliary.items) {
         let item_rect = *item_rect;
         if item.active {
             // White row card on the gray sidebar, accent bar on white.
-            fill_round_rect_aa(hdc, item_rect, 8, 0xffffff);
+            fill_round_rect_aa(hdc, item_rect, 8, shell_palette().panel_background);
             fill_round_rect_aa(
                 hdc,
                 RECT {
@@ -168,22 +168,22 @@ pub(in crate::shell::chrome) fn draw_sidebar_auxiliary_section(
             bottom: item_rect.bottom,
         });
         let text_color = if item.active {
-            SHELL_TEXT_PRIMARY
+            shell_palette().text_primary
         } else {
-            SHELL_TEXT_MUTED
+            shell_palette().text_muted
         };
         draw_text(hdc, &item.title, label_rect, text_color, DT_LEFT);
         draw_text(
             hdc,
             GLYPH_TAB_CLOSE,
             close_rect,
-            SHELL_TEXT_MUTED,
+            shell_palette().text_muted,
             DT_CENTER,
         );
     }
 
     if let Some(add_rect) = auxiliary.add {
         // Add row: a centered "+" glyph only, no label.
-        draw_frame_button_glyph(hdc, GLYPH_ADD, add_rect, SHELL_TEXT_MUTED);
+        draw_frame_button_glyph(hdc, GLYPH_ADD, add_rect, shell_palette().text_muted);
     }
 }
