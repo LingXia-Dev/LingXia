@@ -77,6 +77,14 @@ pub trait WindowsHostBackend: Send + Sync {
     fn find_webview_content_window(&self, webtag: &WebTag) -> Option<WindowsWebViewContentWindow>;
     fn webview_window_snapshot(&self, webtag: &WebTag) -> StdResult<WindowsWebViewWindowSnapshot>;
     fn show_webview_window(&self, webtag: &WebTag, title: &str, activate: bool) -> StdResult<()>;
+    fn show_webview_window_with_content_size(
+        &self,
+        webtag: &WebTag,
+        title: &str,
+        activate: bool,
+        width: Option<i32>,
+        height: Option<i32>,
+    ) -> StdResult<()>;
     fn navigate_webview_window(
         &self,
         webtag: &WebTag,
@@ -623,6 +631,16 @@ pub fn webview_window_snapshot(webtag: &WebTag) -> StdResult<WindowsWebViewWindo
 
 pub fn show_webview_window(webtag: &WebTag, title: &str, activate: bool) -> StdResult<()> {
     backend()?.show_webview_window(webtag, title, activate)
+}
+
+pub fn show_webview_window_with_content_size(
+    webtag: &WebTag,
+    title: &str,
+    activate: bool,
+    width: Option<i32>,
+    height: Option<i32>,
+) -> StdResult<()> {
+    backend()?.show_webview_window_with_content_size(webtag, title, activate, width, height)
 }
 
 pub fn navigate_webview_window(webtag: &WebTag, title: &str, activate: bool) -> StdResult<()> {

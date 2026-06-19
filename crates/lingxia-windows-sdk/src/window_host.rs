@@ -57,6 +57,7 @@ static HOST_ACTIVE_WEBTAG: OnceLock<Mutex<HashMap<isize, String>>> = OnceLock::n
 static PRESENTED_GROUP_MAIN: OnceLock<Mutex<HashMap<isize, String>>> = OnceLock::new();
 static PRIMARY_HOST_WINDOW: OnceLock<Mutex<Option<isize>>> = OnceLock::new();
 static FOCUSED_HOST_PANEL: OnceLock<Mutex<Option<String>>> = OnceLock::new();
+static NATIVE_FRAMED_WINDOWS: OnceLock<Mutex<HashSet<isize>>> = OnceLock::new();
 #[cfg(feature = "browser-shell")]
 static HOST_CHROME_SNAPSHOTS: OnceLock<Mutex<HashMap<isize, HostChromeSnapshot>>> = OnceLock::new();
 static CHROME_INTERACTIONS: OnceLock<Mutex<HashMap<isize, ChromeInteraction>>> = OnceLock::new();
@@ -252,6 +253,17 @@ impl WindowsHostBackend for WindowsHostBackendImpl {
 
     fn show_webview_window(&self, webtag: &WebTag, title: &str, activate: bool) -> StdResult<()> {
         show_webview_window(webtag, title, activate)
+    }
+
+    fn show_webview_window_with_content_size(
+        &self,
+        webtag: &WebTag,
+        title: &str,
+        activate: bool,
+        width: Option<i32>,
+        height: Option<i32>,
+    ) -> StdResult<()> {
+        show_webview_window_with_content_size(webtag, title, activate, width, height)
     }
 
     fn navigate_webview_window(
@@ -1678,6 +1690,73 @@ fn clear_focused_host_panel(panel_id: &str) {
     }
 }
 
+fn set_native_framed_window(hwnd: HWND, native: bool) {
+    let windows = NATIVE_FRAMED_WINDOWS.get_or_init(|| Mutex::new(HashSet::new()));
+    if let Ok(mut windows) = windows.lock() {
+        if native {
+            windows.insert(hwnd_handle(hwnd));
+        } else {
+            windows.remove(&hwnd_handle(hwnd));
+        }
+    }
+}
+
+fn is_native_framed_window(hwnd: HWND) -> bool {
+    NATIVE_FRAMED_WINDOWS
+        .get()
+        .and_then(|windows| windows.lock().ok())
+        .is_some_and(|windows| windows.contains(&hwnd_handle(hwnd)))
+}
+
+fn clear_native_framed_window(hwnd: HWND) {
+    if let Some(windows) = NATIVE_FRAMED_WINDOWS.get()
+        && let Ok(mut windows) = windows.lock()
+    {
+        windows.remove(&hwnd_handle(hwnd));
+    }
+}
+
+fn apply_native_window_frame(hwnd: HWND) -> StdResult<()> {
+    apply_window_style(hwnd, WS_OVERLAPPEDWINDOW)
+}
+
+fn apply_shell_window_frame(hwnd: HWND) -> StdResult<()> {
+    if windows_chrome_renderer().is_none() {
+        return Ok(());
+    }
+    apply_window_style(
+        hwnd,
+        WINDOW_STYLE(
+            WS_POPUP.0 | WS_SIZEBOX.0 | WS_SYSMENU.0 | WS_MINIMIZEBOX.0 | WS_MAXIMIZEBOX.0,
+        ),
+    )
+}
+
+fn apply_window_style(hwnd: HWND, style: WINDOW_STYLE) -> StdResult<()> {
+    unsafe {
+        let _ = WindowsAndMessaging::SetWindowLongPtrW(
+            hwnd,
+            WindowsAndMessaging::GWL_STYLE,
+            style.0 as isize,
+        );
+        WindowsAndMessaging::SetWindowPos(
+            hwnd,
+            None,
+            0,
+            0,
+            0,
+            0,
+            WindowsAndMessaging::SWP_NOMOVE
+                | WindowsAndMessaging::SWP_NOSIZE
+                | WindowsAndMessaging::SWP_NOZORDER
+                | WindowsAndMessaging::SWP_NOACTIVATE
+                | WindowsAndMessaging::SWP_FRAMECHANGED,
+        )
+        .map_err(|err| WebViewError::WebView(format!("SetWindowPos failed: {err}")))?;
+    }
+    Ok(())
+}
+
 fn chrome_interaction(hwnd: HWND) -> ChromeInteraction {
     CHROME_INTERACTIONS
         .get()
@@ -2344,14 +2423,44 @@ fn set_webtag_pull_down_refreshing_on_window(webtag_key: &str, refreshing: bool)
 
 pub fn show_webview_window(webtag: &WebTag, title: &str, activate: bool) -> StdResult<()> {
     let handler = find_webview_handler(webtag).ok_or_else(|| handler_not_ready(webtag))?;
+    let hwnd = hwnd_from_handle(handler.native_view().window);
+    set_native_framed_window(hwnd, false);
+    apply_shell_window_frame(hwnd)?;
     show_native_view(handler.native_view(), title, activate)?;
     handler.set_content_visible(true)?;
-    let hwnd = hwnd_from_handle(handler.native_view().window);
     set_host_active_webtag(hwnd, webtag.key());
     set_window_handle(webtag.key(), hwnd);
     set_primary_host_window(hwnd);
     mark_active(webtag);
     notify_webtag_visibility(webtag.key(), true);
+    Ok(())
+}
+
+pub fn show_webview_window_with_content_size(
+    webtag: &WebTag,
+    title: &str,
+    activate: bool,
+    width: Option<i32>,
+    height: Option<i32>,
+) -> StdResult<()> {
+    let handler = find_webview_handler(webtag).ok_or_else(|| handler_not_ready(webtag))?;
+    let hwnd = hwnd_from_handle(handler.native_view().window);
+    set_native_framed_window(hwnd, true);
+    apply_native_window_frame(hwnd)?;
+    show_native_view(handler.native_view(), title, activate)?;
+    handler.set_content_visible(true)?;
+    set_host_active_webtag(hwnd, webtag.key());
+    set_window_handle(webtag.key(), hwnd);
+    set_primary_host_window(hwnd);
+    mark_active(webtag);
+    notify_webtag_visibility(webtag.key(), true);
+    if width.is_some() || height.is_some() {
+        let snapshot = webview_window_snapshot(webtag)?;
+        let target_width = width.unwrap_or(snapshot.content_width as i32);
+        let target_height = height.unwrap_or(snapshot.content_height as i32);
+        resize_host_window_content(webtag, target_width, target_height)?;
+        sync_window_layout(hwnd);
+    }
     Ok(())
 }
 
@@ -2364,6 +2473,8 @@ fn show_webview_window_replacing(
     let handler = find_webview_handler(webtag).ok_or_else(|| handler_not_ready(webtag))?;
     let target = stable_host_for_replacement(webtag, &hide_webtags)
         .unwrap_or_else(|| hwnd_from_handle(handler.native_view().window));
+    set_native_framed_window(target, false);
+    apply_shell_window_frame(target)?;
     let title = to_wide(title);
     unsafe {
         let _ = WindowsAndMessaging::SetWindowTextW(target, PCWSTR(title.as_ptr()));
@@ -2605,7 +2716,7 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                     );
                 }
                 sync_window_layout(hwnd);
-                if windows_chrome_renderer().is_some() {
+                if windows_chrome_renderer().is_some() && !is_native_framed_window(hwnd) {
                     invalidate_window(hwnd);
                 }
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
@@ -2634,13 +2745,13 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }
             WindowsAndMessaging::WM_ERASEBKGND => {
-                if windows_chrome_renderer().is_some() {
+                if windows_chrome_renderer().is_some() && !is_native_framed_window(hwnd) {
                     return LRESULT(1);
                 }
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }
             WindowsAndMessaging::WM_PAINT => {
-                if windows_chrome_renderer().is_some() {
+                if windows_chrome_renderer().is_some() && !is_native_framed_window(hwnd) {
                     paint_window_chrome(hwnd);
                     return LRESULT(0);
                 }
@@ -2652,13 +2763,14 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 LRESULT(0)
             }
             WindowsAndMessaging::WM_NCHITTEST => {
-                if windows_chrome_renderer().is_some() {
+                if windows_chrome_renderer().is_some() && !is_native_framed_window(hwnd) {
                     return hit_test_window(hwnd, lparam);
                 }
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }
             WindowsAndMessaging::WM_MOUSEMOVE => {
                 if windows_chrome_renderer().is_some()
+                    && !is_native_framed_window(hwnd)
                     && handle_chrome_mouse_move(hwnd, lparam_client_point(lparam))
                 {
                     return LRESULT(0);
@@ -2667,6 +2779,7 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
             }
             WindowsAndMessaging::WM_LBUTTONDOWN => {
                 if windows_chrome_renderer().is_some()
+                    && !is_native_framed_window(hwnd)
                     && handle_chrome_left_down(hwnd, lparam_client_point(lparam))
                 {
                     return LRESULT(0);
@@ -2675,6 +2788,7 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
             }
             WindowsAndMessaging::WM_LBUTTONUP => {
                 if windows_chrome_renderer().is_some()
+                    && !is_native_framed_window(hwnd)
                     && handle_chrome_left_up(hwnd, lparam_client_point(lparam))
                 {
                     return LRESULT(0);
@@ -2683,6 +2797,7 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
             }
             WindowsAndMessaging::WM_LBUTTONDBLCLK => {
                 if windows_chrome_renderer().is_some()
+                    && !is_native_framed_window(hwnd)
                     && handle_chrome_left_double_click(hwnd, lparam_client_point(lparam))
                 {
                     return LRESULT(0);
@@ -2691,6 +2806,7 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
             }
             WindowsAndMessaging::WM_RBUTTONUP => {
                 if windows_chrome_renderer().is_some()
+                    && !is_native_framed_window(hwnd)
                     && handle_chrome_right_up(hwnd, lparam_client_point(lparam))
                 {
                     return LRESULT(0);
@@ -2713,6 +2829,7 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                         );
                     }
                 }
+                clear_native_framed_window(hwnd);
                 if let Some(webtag_key) = webtag_key {
                     cleanup_window_state(&webtag_key);
                 }

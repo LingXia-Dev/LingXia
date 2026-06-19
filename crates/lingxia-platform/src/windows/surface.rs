@@ -11,7 +11,7 @@ use lingxia_webview::runtime as webview_runtime;
 use lingxia_windows_host::{
     WindowsPanelPosition, hide_webview_window, navigate_webview_window, present_webview_as_overlay,
     present_webview_in_active_group, set_webview_close_handler, show_webview_as_adaptive_panel,
-    show_webview_as_panel, show_webview_window,
+    show_webview_as_panel, show_webview_window, show_webview_window_with_content_size,
 };
 
 use super::request_windows_app_exit;
@@ -480,10 +480,20 @@ fn present_entry(id: &str, entry: &SurfaceEntry, target: PresentationTarget) -> 
         }
         (SurfaceRole::Main, _) => match entry.kind {
             SurfaceKind::Overlay => present_webview_in_active_group(&entry.webtag),
-            SurfaceKind::Window => show_webview_window(&entry.webtag, &entry.title, true),
+            SurfaceKind::Window => show_webview_window_with_content_size(
+                &entry.webtag,
+                &entry.title,
+                true,
+                window_dimension(entry.placement.width),
+                window_dimension(entry.placement.height),
+            ),
         },
     };
     result.map_err(|err| err.to_string())
+}
+
+fn window_dimension(value: f64) -> Option<i32> {
+    (value.is_finite() && value > 0.0).then(|| value.round().clamp(1.0, i32::MAX as f64) as i32)
 }
 
 fn panel_position_for(edge: Option<Edge>, fallback_position: u8) -> WindowsPanelPosition {
