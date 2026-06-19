@@ -72,6 +72,11 @@ impl Default for FeaturesConfig {
 pub struct CapabilitiesConfig {
     #[serde(default)]
     pub notifications: bool,
+    /// The in-app browser, with its newtab / settings / downloads pages and the
+    /// downloads + settings runtime. Opt-in and cross-platform — not a desktop
+    /// trait. When off, no browser code or assets ship on any platform.
+    #[serde(default)]
+    pub browser: bool,
     #[serde(default)]
     pub terminal: bool,
     /// Which window edge the built-in terminal panel docks to: `bottom`
@@ -853,11 +858,20 @@ impl LingXiaConfig {
             .unwrap_or(true)
     }
 
-    /// The adaptive-layout host (window + sidebar + browser + settings +
-    /// downloads) and webview input are the desktop baseline — always present on
-    /// macOS and Windows, independent of any opt-in capability.
+    /// The adaptive-layout host shell (window + sidebar chrome) and webview input
+    /// are the desktop baseline — always present on macOS and Windows. The
+    /// browser it can dock is a separate opt-in capability (`browser_enabled`).
     pub fn desktop_runtime_enabled(&self, platform: &str) -> bool {
         matches!(platform, "macos" | "windows")
+    }
+
+    /// The in-app browser capability — cross-platform and opt-in. Gates the
+    /// browser runtime/feature and the bundling of its webui pages everywhere.
+    pub fn browser_enabled(&self) -> bool {
+        self.capabilities
+            .as_ref()
+            .map(|capabilities| capabilities.browser)
+            .unwrap_or(false)
     }
 
     pub fn terminal_enabled(&self, platform: &str) -> bool {
@@ -875,7 +889,7 @@ impl LingXiaConfig {
             .as_ref()
             .map(|capabilities| capabilities.proxy)
             .unwrap_or(false);
-        proxy_requested && matches!(platform, "macos" | "windows")
+        proxy_requested && self.browser_enabled() && matches!(platform, "macos" | "windows")
     }
 
     pub fn devtools_enabled(&self) -> bool {
@@ -890,7 +904,9 @@ impl LingXiaConfig {
         if self.app_service_enabled() {
             features.push("standard".to_string());
         }
-        if self.desktop_runtime_enabled(platform) {
+        // The browser capability brings its runtime and webui pages (newtab /
+        // settings / downloads) on every platform it is enabled for.
+        if self.browser_enabled() {
             features.push("shell-runtime".to_string());
         }
         if self.terminal_enabled(platform) {
@@ -1731,7 +1747,8 @@ android:
         let config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
 
         // The layout host + webview input are baseline on desktop, with no
-        // opt-in flag required.
+        // opt-in flag required. The browser is NOT baseline — without the
+        // `browser` capability there is no shell-runtime anywhere.
         assert!(config.desktop_runtime_enabled("macos"));
         assert!(config.desktop_runtime_enabled("windows"));
         assert!(!config.desktop_runtime_enabled("android"));
@@ -1740,11 +1757,7 @@ android:
 
         assert_eq!(
             config.native_features_for_platform("macos"),
-            vec![
-                "standard".to_string(),
-                "shell-runtime".to_string(),
-                "webview-input".to_string(),
-            ]
+            vec!["standard".to_string(), "webview-input".to_string()]
         );
         assert_eq!(
             config.native_features_for_platform("harmony"),
@@ -1753,8 +1766,30 @@ android:
     }
 
     #[test]
+    fn browser_capability_enables_runtime_cross_platform() {
+        let mut config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
+
+        // Off by default — no browser runtime on any platform.
+        assert!(!config.browser_enabled());
+        assert!(!config.native_features_for_platform("ios").contains(&"shell-runtime".to_string()));
+        assert!(!config.native_features_for_platform("macos").contains(&"shell-runtime".to_string()));
+
+        // Opt in: the browser runtime ships everywhere, mobile included.
+        config.capabilities.as_mut().unwrap().browser = true;
+        assert!(config.browser_enabled());
+        for platform in ["ios", "android", "macos", "windows", "harmony"] {
+            assert!(
+                config.native_features_for_platform(platform).contains(&"shell-runtime".to_string()),
+                "browser runtime missing on {platform}"
+            );
+        }
+    }
+
+    #[test]
     fn proxy_capability_adds_proxy_feature_on_desktop() {
         let mut config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
+        // Proxy serves the browser, so it requires the browser capability.
+        config.capabilities.as_mut().unwrap().browser = true;
         config.capabilities.as_mut().unwrap().proxy = true;
 
         assert!(config.proxy_enabled("macos"));
@@ -1771,6 +1806,14 @@ android:
     }
 
     #[test]
+    fn proxy_requires_browser_capability() {
+        let mut config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
+        config.capabilities.as_mut().unwrap().proxy = true;
+        // Browser off: proxy has nothing to serve, so it stays disabled.
+        assert!(!config.proxy_enabled("macos"));
+    }
+
+    #[test]
     fn terminal_capability_enables_macos_and_windows_runtime() {
         let mut config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
         config.capabilities.as_mut().unwrap().terminal = true;
@@ -1782,7 +1825,6 @@ android:
             config.native_features_for_platform("macos"),
             vec![
                 "standard".to_string(),
-                "shell-runtime".to_string(),
                 "terminal-runtime".to_string(),
                 "webview-input".to_string(),
             ]
@@ -1791,7 +1833,6 @@ android:
             config.native_features_for_platform("windows"),
             vec![
                 "standard".to_string(),
-                "shell-runtime".to_string(),
                 "terminal-runtime".to_string(),
                 "webview-input".to_string(),
             ]
@@ -2230,6 +2271,7 @@ android:
                 edge: None,
                 sidebar: None,
                 tray: None,
+                platforms: Vec::new(),
             },
             SurfaceDecl {
                 id: "lingxia-chat".into(),
@@ -2243,6 +2285,7 @@ android:
                     section: None,
                 }),
                 tray: None,
+                platforms: Vec::new(),
             },
             SurfaceDecl {
                 id: "terminal".into(),
@@ -2256,6 +2299,7 @@ android:
                     section: None,
                 }),
                 tray: None,
+                platforms: Vec::new(),
             },
         ];
 
@@ -2325,6 +2369,7 @@ android:
             edge: None,
             sidebar: None,
             tray: None,
+            platforms: Vec::new(),
         }];
         let err = surfaces_to_ui(&surfaces, false).unwrap_err().to_string();
         assert!(err.contains("not supported"), "{err}");
@@ -2341,6 +2386,7 @@ android:
                 edge: None,
                 sidebar: None,
                 tray: None,
+                platforms: Vec::new(),
             },
             SurfaceDecl {
                 id: "terminal".into(),
@@ -2350,6 +2396,7 @@ android:
                 edge: Some("bottom".into()),
                 sidebar: None,
                 tray: None,
+                platforms: Vec::new(),
             },
         ];
         let err = surfaces_to_ui(&surfaces, false).unwrap_err().to_string();
@@ -2367,6 +2414,7 @@ android:
                 edge: None,
                 sidebar: None,
                 tray: None,
+                platforms: Vec::new(),
             },
             SurfaceDecl {
                 id: "b".into(),
@@ -2376,6 +2424,7 @@ android:
                 edge: None,
                 sidebar: None,
                 tray: None,
+                platforms: Vec::new(),
             },
         ];
         let err = surfaces_to_ui(&surfaces, false).unwrap_err().to_string();
@@ -2393,6 +2442,7 @@ android:
                 edge: None,
                 sidebar: None,
                 tray: None,
+                platforms: Vec::new(),
             },
             SurfaceDecl {
                 id: "dup".into(),
@@ -2402,6 +2452,7 @@ android:
                 edge: Some("right".into()),
                 sidebar: None,
                 tray: None,
+                platforms: Vec::new(),
             },
         ];
         let err = surfaces_to_ui(&surfaces, false).unwrap_err().to_string();
@@ -2419,6 +2470,7 @@ android:
                 edge: None,
                 sidebar: None,
                 tray: None,
+                platforms: Vec::new(),
             },
             SurfaceDecl {
                 id: "b".into(),
@@ -2428,6 +2480,7 @@ android:
                 edge: Some("right".into()),
                 sidebar: None,
                 tray: None,
+                platforms: Vec::new(),
             },
         ];
         let err = surfaces_to_ui(&surfaces, false).unwrap_err().to_string();
@@ -2444,6 +2497,7 @@ android:
             edge: Some("right".into()),
             sidebar: None,
             tray: None,
+            platforms: Vec::new(),
         }];
         let err = surfaces_to_ui(&surfaces, false).unwrap_err().to_string();
         assert!(err.contains("edge is only valid on an aside"), "{err}");

@@ -152,6 +152,7 @@ fn generated_app_json_includes_capabilities() {
         features: None,
         capabilities: Some(crate::config::CapabilitiesConfig {
             notifications: true,
+            browser: false,
             terminal: true,
             terminal_edge: None,
             proxy: false,
@@ -307,6 +308,7 @@ fn generated_ui_json_adds_terminal_for_capability() {
         features: None,
         capabilities: Some(crate::config::CapabilitiesConfig {
             notifications: false,
+            browser: false,
             terminal: true,
             terminal_edge: None,
             proxy: false,
@@ -440,6 +442,7 @@ fn generated_ui_json_rejects_terminal_when_capability_disabled() {
         features: None,
         capabilities: Some(crate::config::CapabilitiesConfig {
             notifications: false,
+            browser: false,
             terminal: false,
             terminal_edge: None,
             proxy: false,
@@ -484,6 +487,7 @@ fn generated_ui_json_adds_terminal_surface_without_forcing_activator() {
         features: None,
         capabilities: Some(crate::config::CapabilitiesConfig {
             notifications: false,
+            browser: false,
             terminal: true,
             terminal_edge: None,
             proxy: false,
@@ -532,6 +536,7 @@ fn generated_ui_json_attaches_terminal_to_initial_root_surface() {
         features: None,
         capabilities: Some(crate::config::CapabilitiesConfig {
             notifications: false,
+            browser: false,
             terminal: true,
             terminal_edge: None,
             proxy: false,

@@ -197,7 +197,7 @@ pub(crate) fn prepare_configured_host_assets(
         progress_override,
         &mut cache,
     )?);
-    if platforms.iter().any(|p| config.desktop_runtime_enabled(p.as_str())) {
+    if config.browser_enabled() {
         prepared_bundles.push(prepare_shell_webui_bundle(
             project_root,
             config,
