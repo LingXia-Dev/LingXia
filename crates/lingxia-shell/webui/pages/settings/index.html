@@ -248,6 +248,40 @@
       .settings-content .row, .about-content .row, .proxy-block-head { align-items: flex-start; flex-direction: column; }
       .row-control, .row-control.compact, .row-actions { width: 100%; }
     }
+
+    @media (max-width: 600px) {
+      body { display: block; }
+      .sidebar {
+        display: flex; flex-direction: row; align-items: center; gap: 4px;
+        width: auto; height: auto; position: static;
+        border-right: none; border-bottom: 1px solid #e5e5ea;
+        padding: 8px 10px; white-space: nowrap; overflow-x: auto;
+      }
+      .sidebar-title { display: none; }
+      .nav-item {
+        flex: 0 0 auto; padding: 8px 12px; border-left: none;
+        border-bottom: 2px solid transparent; border-radius: 10px;
+      }
+      .nav-item.active { border-left-color: transparent; border-bottom-color: #007AFF; }
+      .main { width: 100%; }
+      .main-header { padding: 12px 14px; }
+      .settings-content, .about-content { padding: 12px 14px 20px; }
+      .settings-content .row, .about-content .row, .proxy-block-head, .proxy-mini .row {
+        align-items: flex-start; flex-direction: column;
+      }
+      .row-control, .row-control.compact, .row-actions { width: 100%; }
+      .row-actions { flex-wrap: wrap; }
+      .row-action { width: 100%; text-align: center; }
+      .proxy-mode-group { grid-template-columns: 1fr; }
+      .proxy-block { border-radius: 14px; }
+      .proxy-block-head { padding: 14px 14px 12px; }
+      .proxy-title { font-size: 18px; }
+      .proxy-block-body { padding: 14px 14px 16px; }
+      .autoswitch-card { padding: 14px; }
+      .autoswitch-table { display: block; overflow-x: auto; }
+      .autoswitch-card-actions { flex-wrap: wrap; }
+      .autoswitch-rule-cell { flex-wrap: wrap; gap: 8px; }
+    }
   </style>
 </head>
 <body>
@@ -538,6 +572,7 @@
       var settingsState = {
         downloadSettings: null,
         proxySettings: null,
+        proxyHidden: false,
         proxyBusy: false,
         serverDirty: false,
         autoSwitchDirty: false,
@@ -592,6 +627,27 @@
         navItems.forEach(function (n) { n.classList.toggle('active', n.dataset.panel === name); });
         document.querySelectorAll('.panel').forEach(function (p) { p.classList.toggle('active', p.id === 'panel-' + name); });
         history.replaceState(null, '', '#' + name);
+      }
+
+      function isRouteUnavailableError(err) {
+        if (!err) return false;
+        var code = typeof err === 'object' ? err.code : null;
+        if (code === 'BRIDGE_METHOD_NOT_FOUND' || code === 'BRIDGE_TOPIC_NOT_FOUND') return true;
+        var message = typeof err === 'string' ? err : (err && err.message) || '';
+        return /method not found|channel not found/i.test(message);
+      }
+
+      function hideProxyPanel() {
+        if (settingsState.proxyHidden) return;
+        settingsState.proxyHidden = true;
+        var proxyNav = document.querySelector('.nav-item[data-panel="proxy"]');
+        if (proxyNav) proxyNav.style.display = 'none';
+        var proxyPanel = document.getElementById('panel-proxy');
+        var wasActive = proxyPanel && proxyPanel.classList.contains('active');
+        if (proxyPanel) proxyPanel.style.display = 'none';
+        if (wasActive || (proxyNav && proxyNav.classList.contains('active'))) {
+          switchPanel('downloads');
+        }
       }
 
       function proxyField(id) {
@@ -879,7 +935,7 @@
       }
 
       function ensureProxyWatch() {
-        if (proxyWatchHandle) return;
+        if (proxyWatchHandle || settingsState.proxyHidden) return;
         proxyWatchHandle = proxyApi().watch();
         proxyWatchHandle.onEvent(function (event) {
           console.info('[Settings] proxy.watch event:', event);
@@ -1121,12 +1177,18 @@
       proxyApi().getSettings().then(function (s) {
         settingsState.proxySettings = s;
         renderProxySettings();
+        ensureProxyWatch();
       }, function (err) {
+        if (isRouteUnavailableError(err)) {
+          console.info('[Settings] proxy capability unavailable; hiding Proxy panel.');
+          hideProxyPanel();
+          return;
+        }
         console.error('[Settings] proxy.getSettings error:', err);
         setProxyStatus('error', proxyErrorMessage(err), null);
+        ensureProxyWatch();
       });
 
-      ensureProxyWatch();
       renderDownloadSettings();
       renderProxySettings();
     })();

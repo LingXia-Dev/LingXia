@@ -6,8 +6,7 @@
   "security": {
     "network": {
       "trustedDomains": [
-        "cn.bing.com",
-        "raw.githubusercontent.com"
+        "*"
       ]
     },
     "privileges": []
