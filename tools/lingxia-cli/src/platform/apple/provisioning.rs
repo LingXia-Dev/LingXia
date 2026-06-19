@@ -301,6 +301,44 @@ impl ProvisioningContext {
         }
     }
 
+    /// Fallback when the provisioning API is blocked (e.g. Apple has not accepted
+    /// the updated Program License Agreement, so device/profile calls 403). If a
+    /// still-valid provisioning profile for this device already exists on disk and
+    /// a signing identity is cached, reuse them to sign without touching the API.
+    /// Returns `None` when no reusable profile or cached identity is available.
+    fn reuse_existing_profile(
+        &self,
+        app_path: &Path,
+        original_bundle_id: &str,
+    ) -> Result<Option<ProvisioningResult>> {
+        // Signing without the API requires a cached certificate + key.
+        let cached = match self.credentials.load()? {
+            Some(AuthCredentials::AppStoreConnect {
+                cached_signing_identity: Some(identity),
+                ..
+            }) => identity,
+            _ => return Ok(None),
+        };
+
+        let Some(profile_data) = find_reusable_profile(app_path, &self.target_device_udid) else {
+            return Ok(None);
+        };
+
+        let entitlements = extract_entitlements_from_profile(&profile_data)?;
+        let cert_data = base64_decode(&cached.cert_data_b64)?;
+
+        Ok(Some(ProvisioningResult {
+            signing_identity: cached.signing_identity,
+            profile_data,
+            bundle_id: original_bundle_id.to_string(),
+            entitlements,
+            identity_material: Some(IdentityMaterial {
+                cert_data,
+                private_key: cached.private_key,
+            }),
+        }))
+    }
+
     /// Provision using Apple ID (free or paid account via GrandSlam)
     fn provision_with_apple_id(
         &self,
@@ -1163,6 +1201,105 @@ fn decode_mobileprovision_plist(profile_data: &[u8]) -> Result<plist::Value> {
     plist::from_bytes(&output.stdout).context("Failed to parse provisioning profile plist")
 }
 
+/// True when the error chain indicates Apple's Program License Agreement has not
+/// been accepted (the provisioning API returns 403 `PLA_NOT_ACCEPTED`).
+fn is_pla_blocked(err: &anyhow::Error) -> bool {
+    let msg = format!("{err:#}");
+    msg.contains("PLA_NOT_ACCEPTED") || msg.contains("PLA Update")
+}
+
+/// Wrap a PLA-blocked error with actionable resolution steps.
+fn pla_actionable_error(err: anyhow::Error) -> anyhow::Error {
+    anyhow!(
+        "Apple Developer Program License Agreement not accepted, and no reusable \
+         provisioning profile for this device was found.\n  \
+         The team's Account Holder must sign in at https://developer.apple.com/account \
+         and accept the updated agreement, then re-run.\n  \
+         Underlying error: {err:#}"
+    )
+}
+
+/// `~/.lingxia/apple/profiles` — where successful profiles are cached for reuse.
+fn profiles_cache_dir() -> Option<PathBuf> {
+    Some(dirs::home_dir()?.join(".lingxia").join("apple").join("profiles"))
+}
+
+/// Cache a freshly minted profile (keyed by its UUID) so it can be reused if the
+/// provisioning API later goes dark.
+fn cache_profile_for_reuse(profile_data: &[u8]) {
+    let Some(dir) = profiles_cache_dir() else {
+        return;
+    };
+    if std::fs::create_dir_all(&dir).is_err() {
+        return;
+    }
+    let name = decode_mobileprovision_plist(profile_data)
+        .ok()
+        .and_then(|p| {
+            p.as_dictionary()
+                .and_then(|d| d.get("UUID"))
+                .and_then(|v| v.as_string())
+                .map(str::to_string)
+        })
+        .unwrap_or_else(|| "profile".to_string());
+    let _ = std::fs::write(dir.join(format!("{name}.mobileprovision")), profile_data);
+}
+
+/// Find a still-valid provisioning profile that covers `udid`, checking the
+/// lingxia cache and any sibling `.app/embedded.mobileprovision` left by previous
+/// builds. Returns the raw profile bytes.
+fn find_reusable_profile(app_path: &Path, udid: &str) -> Option<Vec<u8>> {
+    let mut candidates: Vec<PathBuf> = Vec::new();
+    if let Some(dir) = profiles_cache_dir()
+        && let Ok(entries) = std::fs::read_dir(&dir)
+    {
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if p.extension().and_then(|x| x.to_str()) == Some("mobileprovision") {
+                candidates.push(p);
+            }
+        }
+    }
+    if let Some(parent) = app_path.parent()
+        && let Ok(entries) = std::fs::read_dir(parent)
+    {
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if p.extension().and_then(|x| x.to_str()) == Some("app") {
+                candidates.push(p.join("embedded.mobileprovision"));
+            }
+        }
+    }
+    candidates.into_iter().find_map(|c| {
+        let data = std::fs::read(&c).ok()?;
+        profile_covers_device(&data, udid).then_some(data)
+    })
+}
+
+/// True when the profile is unexpired and lists `udid` among its provisioned devices.
+fn profile_covers_device(profile_data: &[u8], udid: &str) -> bool {
+    let Ok(plist) = decode_mobileprovision_plist(profile_data) else {
+        return false;
+    };
+    let Some(dict) = plist.as_dictionary() else {
+        return false;
+    };
+    let covers = dict
+        .get("ProvisionedDevices")
+        .and_then(|v| v.as_array())
+        .is_some_and(|arr| arr.iter().any(|d| d.as_string() == Some(udid)));
+    if !covers {
+        return false;
+    }
+    if let Some(exp) = dict.get("ExpirationDate").and_then(|v| v.as_date()) {
+        let exp_time: std::time::SystemTime = exp.into();
+        if exp_time <= std::time::SystemTime::now() {
+            return false;
+        }
+    }
+    true
+}
+
 /// High-level function to sign an app with automatic provisioning
 pub fn sign_app(
     app_path: &Path,
@@ -1186,8 +1323,32 @@ pub fn sign_app(
     // Create provisioning context
     let ctx = ProvisioningContext::new(&device)?;
 
-    // Run provisioning
-    let result = ctx.provision(&bundle_id)?;
+    // Run provisioning. If the API is blocked by an unaccepted Apple PLA, fall
+    // back to a still-valid profile already on disk so the build still installs.
+    let result = match ctx.provision(&bundle_id) {
+        Ok(result) => {
+            cache_profile_for_reuse(&result.profile_data);
+            result
+        }
+        Err(err) if is_pla_blocked(&err) => {
+            match ctx.reuse_existing_profile(app_path, &bundle_id)? {
+                Some(reused) => {
+                    println!(
+                        "  {} Apple PLA not accepted — reusing an existing valid provisioning profile to sign.",
+                        "⚠".yellow()
+                    );
+                    println!(
+                        "    {}",
+                        "Provisioning won't refresh until the Account Holder accepts the agreement at https://developer.apple.com/account."
+                            .dimmed()
+                    );
+                    reused
+                }
+                None => return Err(pla_actionable_error(err)),
+            }
+        }
+        Err(err) => return Err(err),
+    };
     let signing_entitlements =
         apply_capability_entitlement_policy(&result.entitlements, &bundle_id, app_link_hosts)?;
 
