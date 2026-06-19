@@ -13,4 +13,13 @@
       <supportedOS Id="{4a2f28e3-53b9-4441-ba9c-d69d4a4a6e38}"/>
     </application>
   </compatibility>
+  <!-- Common Controls v6: enables themed controls and TaskDialogIndirect
+       (used by the shell's About dialog). -->
+  <dependency>
+    <dependentAssembly>
+      <assemblyIdentity type="win32" name="Microsoft.Windows.Common-Controls"
+        version="6.0.0.0" processorArchitecture="*"
+        publicKeyToken="6595b64144ccf1df" language="*"/>
+    </dependentAssembly>
+  </dependency>
 </assembly>

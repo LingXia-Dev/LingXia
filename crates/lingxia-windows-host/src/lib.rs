@@ -39,6 +39,14 @@ static WINDOWS_CHROME_RENDERER: OnceLock<Mutex<Option<Arc<dyn WindowsChromeRende
 
 pub trait WindowsHostBackend: Send + Sync {
     fn show_webview_as_panel(&self, webtag: &WebTag, title: &str, panel_id: &str) -> StdResult<()>;
+    fn show_webview_as_adaptive_panel(
+        &self,
+        webtag: &WebTag,
+        title: &str,
+        panel_id: &str,
+        position: WindowsPanelPosition,
+        preferred_size: Option<i32>,
+    ) -> StdResult<()>;
     fn present_webview_in_active_group(&self, webtag: &WebTag) -> StdResult<()>;
     fn present_webview_as_group_main(&self, webtag: &WebTag, group_key: String) -> StdResult<()>;
     fn present_webview_as_overlay(
@@ -124,6 +132,7 @@ pub enum WindowsPanelPosition {
     Left,
     #[default]
     Right,
+    Top,
     Bottom,
 }
 
@@ -184,6 +193,8 @@ pub struct WindowsHostPanelContent {
 #[derive(Debug, Clone, PartialEq)]
 pub struct WindowsChromePanel {
     pub panel_id: String,
+    pub webtag_key: String,
+    pub title: String,
     pub rect: RECT,
     pub host_content: Option<WindowsHostPanelContent>,
     pub docked: bool,
@@ -492,6 +503,16 @@ pub fn cleanup_webview_state(webtag_key: &str) {
 
 pub fn show_webview_as_panel(webtag: &WebTag, title: &str, panel_id: &str) -> StdResult<()> {
     backend()?.show_webview_as_panel(webtag, title, panel_id)
+}
+
+pub fn show_webview_as_adaptive_panel(
+    webtag: &WebTag,
+    title: &str,
+    panel_id: &str,
+    position: WindowsPanelPosition,
+    preferred_size: Option<i32>,
+) -> StdResult<()> {
+    backend()?.show_webview_as_adaptive_panel(webtag, title, panel_id, position, preferred_size)
 }
 
 pub fn present_webview_in_active_group(webtag: &WebTag) -> StdResult<()> {

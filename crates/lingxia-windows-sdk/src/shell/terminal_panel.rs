@@ -315,6 +315,32 @@ pub(super) fn close_windows_terminal_panel(panel_id: &str) -> Result<(), String>
     lingxia_windows_host::hide_host_panel(panel_id).map_err(|err| err.to_string())
 }
 
+pub(super) fn show_existing_windows_terminal_panel(
+    panel_id: &str,
+    title: &str,
+    position: WindowsPanelPosition,
+) -> Result<bool, String> {
+    #[cfg(feature = "terminal-runtime")]
+    {
+        if !windows_terminal_panels().contains_key(panel_id) {
+            return Ok(false);
+        }
+        let body = super::terminal_grid::panel_snapshot_text(panel_id)
+            .filter(|body| !body.trim().is_empty())
+            .unwrap_or_else(|| "Terminal session started".to_string());
+        lingxia_windows_host::show_interactive_host_panel(panel_id, title, &body, position)
+            .map_err(|err| err.to_string())?;
+        publish_tab_strip(panel_id);
+        publish_active_snapshot(panel_id);
+        return Ok(true);
+    }
+    #[cfg(not(feature = "terminal-runtime"))]
+    {
+        let _ = (panel_id, title, position);
+        Ok(false)
+    }
+}
+
 fn terminal_panel_status_text() -> &'static str {
     #[cfg(feature = "terminal-runtime")]
     {

@@ -301,4 +301,48 @@ mod tests {
         );
         assert!(panels.items[0].content.app_id.is_empty());
     }
+
+    #[test]
+    fn derives_adaptive_aside_panels_from_ui_config() {
+        let ui = serde_json::json!({
+            "surfaces": [{
+                "id": "lingxia-chat",
+                "role": "aside",
+                "edge": "right",
+                "content": { "kind": "lxapp", "appId": "lingxia-chat" }
+            }, {
+                "id": "terminal",
+                "role": "aside",
+                "edge": "bottom",
+                "content": { "kind": "terminal" }
+            }],
+            "activators": [{
+                "id": "lingxia-chatSidebar",
+                "kind": "sidebarItem",
+                "label": "AI Chat",
+                "icon": "icons/chat-8f2cc4f0240a.png",
+                "action": { "kind": "toggleSurface", "surface": "lingxia-chat" }
+            }, {
+                "id": "terminalSidebar",
+                "kind": "sidebarItem",
+                "label": "Terminal",
+                "icon": "icons/terminal-00c8810c398d.png",
+                "action": { "kind": "toggleSurface", "surface": "terminal" }
+            }]
+        });
+
+        let panels = panels_from_ui_config(&ui).expect("panel config");
+        assert_eq!(panels.items.len(), 2);
+        assert_eq!(panels.items[0].id, "lingxia-chatSidebar");
+        assert_eq!(panels.items[0].icon, "icons/chat-8f2cc4f0240a.png");
+        assert_eq!(panels.items[0].position, PanelPosition::Right);
+        assert_eq!(panels.items[0].content.app_id, "lingxia-chat");
+        assert_eq!(panels.items[1].id, "terminalSidebar");
+        assert_eq!(panels.items[1].icon, "icons/terminal-00c8810c398d.png");
+        assert_eq!(panels.items[1].position, PanelPosition::Bottom);
+        assert_eq!(
+            panels.items[1].content.kind,
+            lingxia_app_context::PanelContentKind::Terminal
+        );
+    }
 }
