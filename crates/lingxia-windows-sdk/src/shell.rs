@@ -23,6 +23,13 @@ pub use chrome::{
 
 pub(crate) use chrome::shell_chrome_dirty_rects;
 
+/// Height of the shell's top caption strip (where the lxapp navbar and browser
+/// asides' address bars live). Exposed so the host's invalidation can repaint
+/// the whole top band when the attached panel layout changes.
+pub(crate) fn shell_top_bar_height() -> i32 {
+    style::SHELL_TOP_BAR_HEIGHT
+}
+
 /// Re-read the Win11 light/dark + system-accent theme into the shell palette
 /// cache. Returns `true` when the values changed, so the window proc can
 /// repaint only on a real theme change.

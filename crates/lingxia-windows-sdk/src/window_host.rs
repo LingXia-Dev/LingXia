@@ -1893,6 +1893,28 @@ fn invalidate_precise_shell_chrome(
     for rect in attached_dirty {
         invalidate_rect_if_non_empty(hwnd, rect);
     }
+    // The lxapp navbar is clipped to the main column and browser asides paint
+    // their address bar in the shared top band — both track the main column's
+    // width, which only changes when a panel opens/closes/resizes.
+    // `shell_chrome_dirty_rects` diffs only the lxapp layout (unchanged on those
+    // events), so repaint the top strip here when the *main rect* changes.
+    // Gating on the main rect (not on full attached equality) is deliberate: a
+    // live aside's frequent re-syncs leave the main width unchanged, so the top
+    // strip is not repainted on every tick — which would flicker the navbar,
+    // sidebar header, and address bar.
+    let previous_main = previous.attached.as_ref().map(|attached| attached.main);
+    let current_main = attached.map(|attached| attached.main);
+    if previous_main != current_main {
+        invalidate_rect_if_non_empty(
+            hwnd,
+            RECT {
+                left: client.left,
+                top: client.top,
+                right: client.right,
+                bottom: (client.top + crate::shell::shell_top_bar_height()).min(client.bottom),
+            },
+        );
+    }
     let Some(dirty) = crate::shell::shell_chrome_dirty_rects(client, &previous.layout, layout)
     else {
         return false;
