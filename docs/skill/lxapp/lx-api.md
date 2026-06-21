@@ -278,7 +278,7 @@ lx.getScreenInfo() -> ScreenInfo
 lx.getSystemSetting() -> SystemSettingInfo
 lx.vibrateShort() / vibrateLong()
 lx.makePhoneCall(options)
-lx.openURL(options)                                   // hand off to OS browser/app
+lx.openExternal(url)                                  // hand off to OS browser/app
 ```
 
 ### Networking
@@ -401,42 +401,39 @@ const shot = await lx.app.screenshot();
 
 `windowId` targets a specific desktop window (platform-specific id); omit it to capture the key/main window (desktop) or the sole window (mobile).
 
-### `lx.surface` — dynamic surfaces (`SurfaceApi`)
+### `lx.openSurface` — dynamic surfaces
 
-This is the JS API for **opening surfaces dynamically at runtime** — distinct from the **declarative** `lingxia.yaml.ui.surfaces` in host config. Use this when you need to pop an overlay or open a secondary window from Logic.
+This is the JS API for opening dynamic surfaces at runtime or showing host-declared surfaces from `lingxia.yaml`.
 
 ```ts
-interface SurfaceApi {
-  open(options: SurfaceOpenOptions): Promise<Surface>;
-}
+lx.openSurface(spec) -> Promise<Surface | SurfaceHandle | null>
 ```
 
-**Two kinds:**
+**Spec forms:**
 
-| `kind` | Where | Notes |
+| Spec | Result | Notes |
 |---|---|---|
-| `'overlay'` | **all platforms** | A webview composited on top of the host activity. Use `position` + `size` for placement. |
-| `'window'` | **macOS only** | A new native window. Mobile platforms reject with `surface_open_failed`. |
-
-**Target — open a page from this lxapp, a page from another path, or an external URL:**
+| `{ page, as: 'aside' | 'float' | 'window' }` | `Surface` | Opens one of this lxapp's declared pages. `window` is desktop-only. |
+| `{ surface }` | `SurfaceHandle` | Shows a surface declared in `lingxia.yaml`; shape and position come from the declaration. |
+| `{ url }` | `null` | Opens a host browser tab with address bar chrome. Supports `http(s)://` and `lingxia://`. |
+| `{ url, as: 'aside' }` | `Surface` | Opens an `http(s)://` browser aside with its own chrome and close control. |
 
 ```ts
-// open a registered page of this lxapp
-await lx.surface.open({ kind: 'overlay', page: 'detail', query: { id: '42' } });
+await lx.openSurface({ page: 'detail', as: 'aside', query: { id: '42' } });
 
-// open by raw path
-await lx.surface.open({ kind: 'overlay', path: 'pages/detail/index', position: 'bottom', size: { height: '60%' } });
+await lx.openSurface({ surface: 'terminal' });
 
-// open an external HTTPS URL (subject to trustedDomains)
-await lx.surface.open({ kind: 'overlay', url: 'https://example.com/help' });
+await lx.openSurface({ url: 'lingxia://downloads' }); // browser tab, no handle
 
-// open a window on macOS (rejected on mobile)
-await lx.surface.open({ kind: 'window', page: 'settings', size: { width: 600, height: 400 } });
+const docs = await lx.openSurface({ url: 'https://example.com/help', as: 'aside' });
+await docs.close();
 ```
 
-`OverlaySurfaceOptions.position`: `'center' | 'bottom' | 'left' | 'right' | 'top'`. `OverlaySurfaceSizeValue`: a positive number (absolute) or a `"N%"` template string (0 < N ≤ 100).
+`edge` applies to `aside` and browser aside: `'left' | 'right' | 'top' | 'bottom'`. `position` applies to `float`: `'center' | 'top' | 'bottom' | 'left' | 'right'`. For `aside` / `float`, `size` is a positive number or a `"N%"` template string (0 < N ≤ 100), treated as a host-clamped preferred size. For `as: 'window'`, `size.width` / `size.height` are logical pixels.
 
-**Surface returned**: a stable handle for the opened page. The opener and the opened page can talk to each other:
+**Surface returned**: page surfaces and browser asides return a full `Surface`. Declared host surfaces return a smaller `SurfaceHandle` with `id`, `show()`, `hide()`, and `close()`.
+
+For page surfaces, the opener and the opened page can talk to each other:
 
 ```ts
 interface Surface {

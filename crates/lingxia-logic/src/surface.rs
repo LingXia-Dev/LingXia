@@ -1,6 +1,6 @@
 use futures::channel::oneshot;
-use lingxia_platform::traits::ui::{SurfaceKind, SurfacePosition};
 use lingxia_platform::traits::app_runtime::{AppRuntime, OpenUrlRequest, OpenUrlTarget};
+use lingxia_platform::traits::ui::{SurfaceKind, SurfacePosition};
 use lxapp::{
     LxApp, PageQueryInput, PageSurfaceRequest, PageSurfaceTarget, PageTarget, list_lxapps, lx,
     publish_app_event, register_app_handler, try_get, unregister_app_handler,
@@ -145,7 +145,11 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     ctx.register_hidden_class::<JSSurface>()?;
     lx::register_js_api(ctx, "openSurface", JSFunc::new(ctx, open_surface_spec)?)?;
     lx::register_js_api(ctx, "openExternal", JSFunc::new(ctx, open_external)?)?;
-    lx::register_js_api(ctx, "onSurfaceContext", JSFunc::new(ctx, surface_on_change)?)?;
+    lx::register_js_api(
+        ctx,
+        "onSurfaceContext",
+        JSFunc::new(ctx, surface_on_change)?,
+    )?;
     Ok(())
 }
 
@@ -253,13 +257,25 @@ async fn open_page_spec(ctx: JSContext, spec: &JSObject) -> JSResult<JSObject> {
     let options = match as_role.trim() {
         "aside" => {
             let position = edge.unwrap_or_else(|| "right".to_string());
-            build_open_options(&ctx, &path_value, "overlay", &position, "aside", size.as_ref())?
+            build_open_options(
+                &ctx,
+                &path_value,
+                "overlay",
+                &position,
+                "aside",
+                size.as_ref(),
+            )?
         }
         "float" => {
-            let position = position
-                .or(edge)
-                .unwrap_or_else(|| "center".to_string());
-            build_open_options(&ctx, &path_value, "overlay", &position, "float", size.as_ref())?
+            let position = position.or(edge).unwrap_or_else(|| "center".to_string());
+            build_open_options(
+                &ctx,
+                &path_value,
+                "overlay",
+                &position,
+                "float",
+                size.as_ref(),
+            )?
         }
         "window" => {
             #[cfg(any(target_os = "ios", target_os = "android", target_env = "ohos"))]
@@ -291,19 +307,16 @@ async fn open_page_spec(ctx: JSContext, spec: &JSObject) -> JSResult<JSObject> {
     open_surface(ctx, options).await
 }
 
-/// `{ surface, edge?, query? }` branch of `lx.openSurface`. Shows a
+/// `{ surface }` branch of `lx.openSurface`. Shows a
 /// host-declared top-level surface by its `ui` id and returns a handle whose
-/// `show`/`hide`/`close` drive the host shell's visibility. `edge` and `query`
-/// are accepted for forward shape compatibility but the host shell positions a
-/// declared surface itself, so they are not threaded through here.
+/// `show`/`hide`/`close` drive the host shell's visibility. The host shell
+/// positions declared surfaces from `lingxia.yaml`.
 fn open_declared_surface_spec(ctx: &JSContext, spec: &JSObject) -> JSResult<JSObject> {
     let id = read_required_string(spec, "surface")?;
     let lxapp = LxApp::from_ctx(ctx)?;
     lxapp
         .set_shell_surface_visible(id.trim(), true)
-        .map_err(|err| {
-            surface_error(rong::error::E_INTERNAL, "shell_surface_failed", err)
-        })?;
+        .map_err(|err| surface_error(rong::error::E_INTERNAL, "shell_surface_failed", err))?;
     declared_surface_handle(ctx, lxapp, id.trim().to_string())
 }
 
@@ -314,14 +327,14 @@ fn open_declared_surface_spec(ctx: &JSContext, spec: &JSObject) -> JSResult<JSOb
 /// surface with its own chrome (address bar + close), driven through the surface
 /// graph exactly like a page aside.
 async fn open_url_spec(ctx: JSContext, spec: &JSObject) -> JSResult<JSValue> {
-    let url = read_required_string(spec, "url")?;
+    let raw_url = read_required_string(spec, "url")?;
     let lxapp = LxApp::from_ctx(&ctx)?;
-    let url = lxapp_url(&lxapp, url.trim())?;
 
     match read_optional_string(spec, "as")?.as_deref().map(str::trim) {
         Some("aside") => {
-            let position = read_optional_string(spec, "edge")?
-                .unwrap_or_else(|| "right".to_string());
+            let url = validate_url_target(&lxapp, raw_url.trim())?;
+            let position =
+                read_optional_string(spec, "edge")?.unwrap_or_else(|| "right".to_string());
             let size = get_property(spec, "size");
             let options = JSValue::from_rust(
                 &ctx,
@@ -333,9 +346,12 @@ async fn open_url_spec(ctx: JSContext, spec: &JSObject) -> JSResult<JSValue> {
                 },
             );
             attach_size(&options, size.as_ref())?;
-            open_surface(ctx, options).await.map(JSObject::into_js_value)
+            open_surface(ctx, options)
+                .await
+                .map(JSObject::into_js_value)
         }
         None => {
+            let url = lxapp_url(&lxapp, raw_url.trim())?;
             lxapp
                 .runtime
                 .open_url(OpenUrlRequest {
@@ -344,9 +360,7 @@ async fn open_url_spec(ctx: JSContext, spec: &JSObject) -> JSResult<JSValue> {
                     url,
                     target: OpenUrlTarget::SelfTarget,
                 })
-                .map_err(|err| {
-                    surface_error(rong::error::E_INTERNAL, "open_url_failed", err)
-                })?;
+                .map_err(|err| surface_error(rong::error::E_INTERNAL, "open_url_failed", err))?;
             // The in-app browser tab is host chrome, not tracked as a closable
             // surface here, so there is no handle to return.
             Ok(JSValue::null(&ctx))
@@ -385,11 +399,7 @@ fn open_external(ctx: JSContext, url: String) -> JSResult<()> {
 /// Build a minimal handle bound to a surface id (host-declared or already-open).
 /// `show`/`hide` drive the lxapp surface visibility APIs and `close` hides the
 /// surface; messaging/lifecycle events are not wired for these ids.
-fn declared_surface_handle(
-    ctx: &JSContext,
-    lxapp: Arc<LxApp>,
-    id: String,
-) -> JSResult<JSObject> {
+fn declared_surface_handle(ctx: &JSContext, lxapp: Arc<LxApp>, id: String) -> JSResult<JSObject> {
     let handle = JSObject::new(ctx);
     handle.set("id", id.clone())?;
 
@@ -569,20 +579,16 @@ struct JSSurfaceContext {
 /// Adaptive context (`{ sizeClass, bottomOwner }`) derived from an lxapp's
 /// window layout, reported by the `onSurfaceContext` dispatch.
 fn surface_context_for(lxapp: &LxApp) -> JSSurfaceContext {
-    use lingxia_surface::{BottomOwner, SizeClass};
+    use lingxia_surface::SizeClass;
     let layout = lxapp.surface_derived_layout();
     let size_class = match layout.as_ref().map(|l| l.size_class) {
         Some(SizeClass::Compact) => "compact",
         Some(SizeClass::Medium) => "medium",
         _ => "expanded",
     };
-    let bottom_owner = match layout.as_ref().map(|l| l.bottom_owner) {
-        Some(BottomOwner::Host) => "host",
-        _ => "app",
-    };
     JSSurfaceContext {
         size_class: size_class.to_string(),
-        bottom_owner: bottom_owner.to_string(),
+        bottom_owner: "app".to_string(),
     }
 }
 

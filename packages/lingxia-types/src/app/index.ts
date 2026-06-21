@@ -246,8 +246,24 @@ export interface SurfaceVisibilityEvent {
   source: 'opener' | 'page';
 }
 
-export interface Surface {
+export interface SurfaceHandle {
   readonly id: string;
+  /**
+   * Show a host-managed surface. Dynamic page/url surfaces return a Promise;
+   * host-declared surfaces may complete synchronously.
+   */
+  show(): void | Promise<void>;
+  /**
+   * Hide without destroying user-visible state when the platform supports it.
+   */
+  hide(): void | Promise<void>;
+  /**
+   * Close or hide the surface depending on how it is managed by the host.
+   */
+  close(): void | Promise<void>;
+}
+
+export interface Surface extends SurfaceHandle {
   readonly kind: 'overlay' | 'window';
   /**
    * Last-known visibility, kept in sync with the native side via show/hide
@@ -309,7 +325,7 @@ export interface PageInstance<TData extends Record<string, unknown> = Record<str
   data: TData;
   route: string;
   /**
-   * Available when this page was opened by `lx.surface.open(...)`.
+   * Available when this page was opened as a surface via `lx.openSurface(...)`.
    */
   surface?: Surface;
   /**
