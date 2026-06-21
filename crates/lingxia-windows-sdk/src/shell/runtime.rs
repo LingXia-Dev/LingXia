@@ -177,6 +177,10 @@ fn set_shell_owner_appid(appid: &str) {
     }
 }
 
+pub(crate) fn set_home_app_id(appid: &str) {
+    set_shell_owner_appid(appid);
+}
+
 fn is_shell_owner_appid(appid: &str) -> bool {
     shell_owner_appid()
         .as_deref()
@@ -1549,7 +1553,7 @@ fn begin_presented_tab_address_edit(_app: &LxApp) {
 /// Starts an inline URL edit over a browser aside's address capsule, prefilled
 /// with the tab's current URL. The commit reuses `commit_address_input`, so the
 /// aside navigates through the same address-input engine as the main bar.
-#[cfg(feature = "shell-runtime")]
+#[cfg(feature = "browser-shell")]
 fn begin_browser_panel_address_edit(appid: &str, webtag_key: &str, tab_id: &str) {
     let Some(window) = owner_window_handle(appid) else {
         return;
@@ -1630,6 +1634,46 @@ fn toggle_managed_surface(panel_id: &str) -> bool {
     }
     handle_panel_activator(&owner_appid, panel_id.to_string());
     true
+}
+
+pub(crate) fn handle_menu_bar_surface_action(surface_id: &str, action_kind: &str) -> bool {
+    if panel_target_for_id(surface_id).is_some() {
+        return match action_kind {
+            "openSurface" | "focusSurface" => set_managed_surface_visible(surface_id, true),
+            "closeSurface" => set_managed_surface_visible(surface_id, false),
+            _ => toggle_managed_surface(surface_id),
+        };
+    }
+
+    let Some(owner_appid) = shell_owner_appid() else {
+        return false;
+    };
+    if surface_id != owner_appid {
+        return false;
+    }
+
+    if action_kind == "closeSurface" {
+        if let Some(window) = owner_window_handle(&owner_appid) {
+            return crate::window_host::hide_host_window(window);
+        }
+        return false;
+    }
+    if action_kind == "focusSurface" {
+        return owner_window_handle(&owner_appid)
+            .is_some_and(crate::window_host::restore_and_focus_host_window);
+    }
+    if action_kind == "toggleSurface"
+        && let Some(window) = owner_window_handle(&owner_appid)
+        && crate::window_host::host_window_is_visible(window)
+    {
+        return crate::window_host::hide_host_window(window);
+    }
+
+    let opened = open_home_app(&owner_appid).is_ok();
+    if let Some(window) = owner_window_handle(&owner_appid) {
+        return crate::window_host::restore_and_focus_host_window(window) || opened;
+    }
+    opened
 }
 
 fn handle_panel_activator(appid: &str, panel_id: String) {

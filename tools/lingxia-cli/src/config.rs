@@ -276,6 +276,13 @@ fn surfaces_to_ui(surfaces: &[SurfaceDecl], terminal_enabled: bool) -> Result<Va
             "surfaces: at most one main surface may set launch: true"
         ));
     }
+    let tray_surfaces = surfaces
+        .iter()
+        .filter(|surface| surface.tray.is_some())
+        .count();
+    if tray_surfaces > 1 {
+        return Err(anyhow!("surfaces: at most one surface may declare tray"));
+    }
     let open_on_launch = !launch_mains.is_empty();
     let launch_main = launch_mains
         .first()
@@ -2929,6 +2936,46 @@ surfaces:
             .to_string();
         assert!(err.contains("unknown variant"), "{err}");
         assert!(err.contains("toggle") && err.contains("activate"), "{err}");
+    }
+
+    #[test]
+    fn surfaces_rejects_multiple_tray_entries() {
+        let surfaces = vec![
+            SurfaceDecl {
+                id: "home".into(),
+                render: SurfaceRender::Lxapp,
+                role: SurfaceRole::Main,
+                launch: false,
+                edge: None,
+                sidebar: None,
+                tray: Some(SurfaceTray {
+                    icon: None,
+                    label: None,
+                    action: None,
+                }),
+                platforms: Vec::new(),
+            },
+            SurfaceDecl {
+                id: "chat".into(),
+                render: SurfaceRender::Lxapp,
+                role: SurfaceRole::Aside,
+                launch: false,
+                edge: Some("right".into()),
+                sidebar: None,
+                tray: Some(SurfaceTray {
+                    icon: None,
+                    label: None,
+                    action: None,
+                }),
+                platforms: Vec::new(),
+            },
+        ];
+
+        let err = surfaces_to_ui(&surfaces, false).unwrap_err().to_string();
+        assert!(
+            err.contains("at most one surface may declare tray"),
+            "{err}"
+        );
     }
 
     #[test]

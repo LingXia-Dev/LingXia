@@ -32,6 +32,8 @@ mod native_components;
 mod pull_to_refresh;
 #[cfg(all(target_os = "windows", feature = "browser-shell"))]
 mod shell;
+#[cfg(all(target_os = "windows", feature = "browser-shell"))]
+mod tray_icon;
 #[cfg(all(target_os = "windows", feature = "runtime"))]
 mod video_controls;
 #[cfg(all(target_os = "windows", feature = "runtime"))]
@@ -139,6 +141,8 @@ pub fn init(app: WindowsApp) -> Result<String> {
     let asset_dir = platform.asset_dir().to_path_buf();
     set_windows_design_icon_dir(asset_dir.join("icons").join("design"));
     let home_app_id = lingxia::windows::init(platform).ok_or(WindowsHostError::MissingHomeApp)?;
+    #[cfg(feature = "browser-shell")]
+    shell::set_home_app_id(&home_app_id);
     if let Some(icon_path) = resolve_app_icon_path(&asset_dir, &home_app_id) {
         app_icon::set_app_icon_from_path(&icon_path).map_err(|message| {
             WindowsHostError::AppIcon {
@@ -147,7 +151,13 @@ pub fn init(app: WindowsApp) -> Result<String> {
             }
         })?;
     }
-    open_home_app(&home_app_id).map_err(WindowsHostError::OpenHomeApp)?;
+    if should_open_on_launch(&asset_dir) {
+        open_home_app(&home_app_id).map_err(WindowsHostError::OpenHomeApp)?;
+    }
+    #[cfg(feature = "browser-shell")]
+    if let Err(message) = tray_icon::install_from_ui(&asset_dir) {
+        log::warn!("failed to install Windows tray icon: {message}");
+    }
     Ok(home_app_id)
 }
 
@@ -192,8 +202,16 @@ pub fn run_message_loop() -> i32 {
     loop {
         let result = unsafe { GetMessageW(&mut msg, None, 0, 0) };
         match result.0 {
-            -1 => return 1,
-            0 => return msg.wParam.0 as i32,
+            -1 => {
+                #[cfg(feature = "browser-shell")]
+                tray_icon::uninstall();
+                return 1;
+            }
+            0 => {
+                #[cfg(feature = "browser-shell")]
+                tray_icon::uninstall();
+                return msg.wParam.0 as i32;
+            }
             _ => unsafe {
                 let _ = TranslateMessage(&msg);
                 DispatchMessageW(&msg);
@@ -269,4 +287,18 @@ fn resolve_app_icon_path(asset_dir: &Path, home_app_id: &str) -> Option<PathBuf>
     ]
     .into_iter()
     .find(|path| path.is_file())
+}
+
+#[cfg(feature = "runtime")]
+fn should_open_on_launch(asset_dir: &Path) -> bool {
+    let Ok(text) = std::fs::read_to_string(asset_dir.join("ui.json")) else {
+        return true;
+    };
+    let Ok(ui) = serde_json::from_str::<serde_json::Value>(&text) else {
+        return true;
+    };
+    ui.get("launch")
+        .and_then(|launch| launch.get("openOnLaunch"))
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(true)
 }

@@ -1656,6 +1656,42 @@ fn focus_active_host_window() {
     }
 }
 
+pub fn restore_and_focus_host_window(window: isize) -> bool {
+    post_to_window_thread(
+        window,
+        Box::new(move || unsafe {
+            let hwnd = hwnd_from_handle(window);
+            let show_command = if WindowsAndMessaging::IsIconic(hwnd).as_bool() {
+                WindowsAndMessaging::SW_RESTORE
+            } else {
+                WindowsAndMessaging::SW_SHOW
+            };
+            let _ = WindowsAndMessaging::ShowWindow(hwnd, show_command);
+            let _ = WindowsAndMessaging::BringWindowToTop(hwnd);
+            let _ = WindowsAndMessaging::SetForegroundWindow(hwnd);
+            let _ = SetFocus(Some(hwnd));
+        }),
+    )
+}
+
+pub fn hide_host_window(window: isize) -> bool {
+    post_to_window_thread(
+        window,
+        Box::new(move || unsafe {
+            let hwnd = hwnd_from_handle(window);
+            let _ = WindowsAndMessaging::ShowWindow(hwnd, WindowsAndMessaging::SW_HIDE);
+        }),
+    )
+}
+
+pub fn host_window_is_visible(window: isize) -> bool {
+    let hwnd = hwnd_from_handle(window);
+    unsafe {
+        WindowsAndMessaging::IsWindowVisible(hwnd).as_bool()
+            && !WindowsAndMessaging::IsIconic(hwnd).as_bool()
+    }
+}
+
 fn focus_host_window(hwnd: HWND) {
     let window = hwnd_handle(hwnd);
     let _ = post_to_window_thread(
@@ -2356,7 +2392,7 @@ fn handle_chrome_right_up(hwnd: HWND, point: (i32, i32)) -> bool {
 /// The host window's client width in logical (DIP) units — the value the
 /// adaptive surface graph's size class expects (thresholds are DIP: Compact
 /// `<600`, Medium `600..=840`, Expanded `>840`).
-#[cfg(feature = "shell-runtime")]
+#[cfg(feature = "browser-shell")]
 fn window_logical_client_width(hwnd: HWND) -> f64 {
     let mut client = RECT::default();
     if unsafe { WindowsAndMessaging::GetClientRect(hwnd, &mut client) }.is_err() {
@@ -2708,6 +2744,13 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }
             WindowsAndMessaging::WM_CLOSE => {
+                #[cfg(feature = "browser-shell")]
+                if should_hide_window_on_close(hwnd) {
+                    unsafe {
+                        let _ = WindowsAndMessaging::ShowWindow(hwnd, WindowsAndMessaging::SW_HIDE);
+                    }
+                    return LRESULT(0);
+                }
                 if invoke_window_close_handler(hwnd) {
                     return LRESULT(0);
                 }
@@ -2741,7 +2784,7 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 }
                 // Keep the adaptive surface graph's size class tracking the
                 // real window width (see `update_surface_width`).
-                #[cfg(feature = "shell-runtime")]
+                #[cfg(feature = "browser-shell")]
                 crate::shell::update_surface_width(window_logical_client_width(hwnd));
                 sync_window_layout(hwnd);
                 if windows_chrome_renderer().is_some() && !is_native_framed_window(hwnd) {
@@ -2783,7 +2826,7 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
             // WM_DWMCOLORIZATIONCOLORCHANGED. Re-read the system theme and, only
             // when it actually changed, repaint the whole shell in the new palette.
             WindowsAndMessaging::WM_SETTINGCHANGE | WM_DWMCOLORIZATIONCOLORCHANGED => {
-                #[cfg(feature = "shell-runtime")]
+                #[cfg(feature = "browser-shell")]
                 if crate::shell::refresh_system_theme()
                     && windows_chrome_renderer().is_some()
                     && !is_native_framed_window(hwnd)
@@ -3005,6 +3048,11 @@ fn invoke_close_handler(webtag_key: &str) -> bool {
     } else {
         false
     }
+}
+
+#[cfg(feature = "browser-shell")]
+fn should_hide_window_on_close(_hwnd: HWND) -> bool {
+    crate::tray_icon::is_installed()
 }
 
 fn invoke_window_close_handler(hwnd: HWND) -> bool {
