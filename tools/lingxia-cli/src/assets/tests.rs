@@ -368,6 +368,10 @@ surfaces:
     render: lxapp
     role: main
     launch: true
+    tray:
+      icon: icons/tray.svg
+      label: Demo
+      action: activate
   - id: chat
     render: lxapp
     role: aside
@@ -388,6 +392,11 @@ surfaces:
     fs::write(
         temp.path().join("icons/chat.svg"),
         r##"<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><rect x="8" y="8" width="48" height="48" rx="8" fill="#000"/></svg>"##,
+    )
+    .unwrap();
+    fs::write(
+        temp.path().join("icons/tray.svg"),
+        r##"<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><circle cx="32" cy="32" r="22" fill="#000"/></svg>"##,
     )
     .unwrap();
 
@@ -422,12 +431,17 @@ surfaces:
     assert_eq!(surfaces[2]["size"]["height"], 320);
 
     let activators = value["activators"].as_array().unwrap();
-    assert_eq!(activators.len(), 2);
-    assert_eq!(activators[0]["id"], "chatSidebar");
-    assert_eq!(activators[0]["label"], "AI Chat");
-    assert_eq!(activators[0]["action"]["surface"], "chat");
-    assert_eq!(activators[1]["id"], "terminalSidebar");
-    assert_eq!(activators[1]["action"]["surface"], "terminal");
+    assert_eq!(activators.len(), 3);
+    assert_eq!(activators[0]["id"], "homeTray");
+    assert_eq!(activators[0]["kind"], "menuBarItem");
+    assert_eq!(activators[0]["label"], "Demo");
+    assert_eq!(activators[0]["action"]["kind"], "openSurface");
+    assert_eq!(activators[0]["action"]["surface"], "home");
+    assert_eq!(activators[1]["id"], "chatSidebar");
+    assert_eq!(activators[1]["label"], "AI Chat");
+    assert_eq!(activators[1]["action"]["surface"], "chat");
+    assert_eq!(activators[2]["id"], "terminalSidebar");
+    assert_eq!(activators[2]["action"]["surface"], "terminal");
 }
 
 #[test]

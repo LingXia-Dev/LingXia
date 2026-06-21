@@ -14,6 +14,10 @@ surfaces:
     render: lxapp
     role: main
     launch: true
+    # tray:
+    #   label: {{PRODUCT_NAME}}
+    #   # icon: icons/status.svg
+    #   action: activate
 
   # Right-edge companion example (e.g. an AI assistant). The referenced lxapp
   # must be provided by the runtime / update flow.
@@ -33,13 +37,10 @@ surfaces:
   #   edge: bottom           # top | bottom
   #   sidebar: {}
 
-  # Menu-bar / tray app (tray = macOS menu bar / Windows·Linux tray icon):
-  #   Case 1 "launch to the tray icon only, click reveals the main": drop
-  #     launch: true from the main above and add
-  #       tray: { icon: icons/status.svg }              # default action: toggle
-  #   Case 2 "launch with the main shown, click brings it to front": keep
-  #     launch: true on the main and add
-  #       tray: { icon: icons/status.svg, action: activate }
+  # Menu-bar / tray app (tray = macOS menu bar / Windows tray icon):
+  #   action: toggle    visible -> hide, hidden -> show
+  #   action: activate  show and bring to front
+  #   icon is optional; label is used for tooltip / text-only status items.
 
 # Note: capabilities (feature/permission gates) and resources (local bundles)
 # are independent top-level blocks — never put them inside a surface.

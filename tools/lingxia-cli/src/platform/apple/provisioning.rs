@@ -1221,7 +1221,12 @@ fn pla_actionable_error(err: anyhow::Error) -> anyhow::Error {
 
 /// `~/.lingxia/apple/profiles` — where successful profiles are cached for reuse.
 fn profiles_cache_dir() -> Option<PathBuf> {
-    Some(dirs::home_dir()?.join(".lingxia").join("apple").join("profiles"))
+    Some(
+        dirs::home_dir()?
+            .join(".lingxia")
+            .join("apple")
+            .join("profiles"),
+    )
 }
 
 /// Cache a freshly minted profile (keyed by its UUID) so it can be reused if the

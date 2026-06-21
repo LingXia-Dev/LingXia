@@ -332,6 +332,11 @@ ui:
 
 For menu-bar apps, use `openOnLaunch: false` and add a `menuBarItem` activator that toggles a panel anchored to the activator.
 
+For cross-platform product config, prefer top-level `surfaces[].tray` instead
+of writing `ui.activators` directly. `surfaces[].tray.action` accepts only
+`toggle` and `activate`; the CLI maps those authoring actions to the macOS App
+UI runtime contract.
+
 ### `surfaces`
 
 A surface is a visible macOS container.
@@ -413,14 +418,17 @@ Supported macOS activator kinds:
 
 `trayItem` is not a macOS App UI activator.
 
+For tray/status-bar entry points declared through top-level `surfaces[].tray`,
+write `action: toggle` or `action: activate`. The `toggleSurface` /
+`openSurface` names below are the low-level macOS App UI action names generated
+by the CLI or used by hand-written `ui.activators`.
+
 Supported action kinds:
 
 | Action | Description |
 |---|---|
-| `toggleSurface` | If the surface is visible, close it; otherwise open it. |
-| `openSurface` | Open the surface; if it already exists, focus/show it. |
-| `closeSurface` | Hide the surface. Does not destroy the lxapp session or WebView. |
-| `focusSurface` | Bring an already-visible surface to the front. Does not open it. |
+| `toggleSurface` | If the surface is visible, hide it; otherwise show it. |
+| `openSurface` | Open the surface; if it already exists, show it and bring it to front. |
 
 All current App UI actions require:
 
@@ -440,7 +448,7 @@ activators:
     label: Home
     icon: icons/home.svg
     action:
-      kind: focusSurface
+      kind: openSurface
       surface: main
 ```
 
@@ -529,7 +537,7 @@ Target behavior:
 - Terminal surface is attached to the main window with `attachPanel.edge: bottom`.
 - The terminal workspace supports multi-tab sessions.
 - Each tab supports pane split in `left`, `right`, `up`, and `down` directions.
-- Hiding the surface should preserve terminal sessions (same lifecycle expectation as `closeSurface`).
+- Hiding the surface should preserve terminal sessions.
 
 Example shape:
 
@@ -734,7 +742,7 @@ If `--skip-native` is used, SwiftPM links an existing Rust static library. That 
 - Using `attachPanel` without `attachTo` or `edge`.
 - Attaching a panel to another panel instead of the root surface.
 - Using `attachPanel.edge: top`, which is not supported yet.
-- Expecting `closeSurface` to destroy WebViews; it hides the surface.
+- Expecting hidden surfaces to destroy WebViews.
 - Using PNG or generated lxapp runtime images for `ui.activators[].icon`; App UI icons must be host-root-relative SVG source files.
 - Defining `content.kind: terminal` outside `attachPanel` or with non-`bottom` edge; current terminal surfaces are bottom attach panels only.
 - Adding terminal backend selectors to product config; the runtime owns backend selection.

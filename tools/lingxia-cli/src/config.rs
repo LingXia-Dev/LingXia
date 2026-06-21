@@ -210,8 +210,8 @@ pub struct SurfaceDecl {
     pub tray: Option<SurfaceTray>,
     /// Availability filter. Empty = every platform. Lists the concrete
     /// platforms a surface is available on — `macos`, `windows`, `ios`, `android`,
-    /// `harmony`. A surface (and its activators) is dropped from a target's
-    /// generated `ui.json` when its `platforms` excludes that target.
+    /// `harmony`. The value is carried into generated `ui.json`; target-specific
+    /// pruning happens in platform packaging/runtime code.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub platforms: Vec<String>,
 }
@@ -234,7 +234,17 @@ pub struct SurfaceTray {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub icon: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub action: Option<String>,
+    pub label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub action: Option<SurfaceTrayAction>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub enum SurfaceTrayAction {
+    #[default]
+    Toggle,
+    Activate,
 }
 
 /// Map the `surfaces:` declaration into the internal `ui` JSON structure
@@ -271,6 +281,7 @@ fn surfaces_to_ui(surfaces: &[SurfaceDecl], terminal_enabled: bool) -> Result<Va
             "surfaces: at most one main surface may set launch: true"
         ));
     }
+    let open_on_launch = !launch_mains.is_empty();
     let launch_main = launch_mains
         .first()
         .copied()
@@ -462,12 +473,18 @@ fn surfaces_to_ui(surfaces: &[SurfaceDecl], terminal_enabled: bool) -> Result<Va
             {
                 activator.insert("icon".into(), json!(icon));
             }
-            let action_kind = tray
-                .action
+            if let Some(label) = tray
+                .label
                 .as_deref()
                 .map(str::trim)
                 .filter(|s| !s.is_empty())
-                .unwrap_or("toggleSurface");
+            {
+                activator.insert("label".into(), json!(label));
+            }
+            let action_kind = match tray.action.unwrap_or_default() {
+                SurfaceTrayAction::Toggle => "toggleSurface",
+                SurfaceTrayAction::Activate => "openSurface",
+            };
             activator.insert(
                 "action".into(),
                 json!({ "kind": action_kind, "surface": id }),
@@ -476,9 +493,8 @@ fn surfaces_to_ui(surfaces: &[SurfaceDecl], terminal_enabled: bool) -> Result<Va
         }
     }
 
-    // Carry surface-level `platforms` onto the generated surfaces so each
-    // platform's runtime can drop surfaces (and their activators) not meant for
-    // it — e.g. terminal is `platforms: [macos, windows]`, hidden on iOS.
+    // Carry surface-level `platforms` onto generated surfaces so platform
+    // packaging/runtime code can hide surfaces not meant for that target.
     for surface in surfaces {
         if surface.platforms.is_empty() {
             continue;
@@ -493,8 +509,14 @@ fn surfaces_to_ui(surfaces: &[SurfaceDecl], terminal_enabled: bool) -> Result<Va
         }
     }
 
+    let mut launch = Map::new();
+    launch.insert("initialSurface".into(), json!(launch_id));
+    if !open_on_launch {
+        launch.insert("openOnLaunch".into(), json!(false));
+    }
+
     Ok(json!({
-        "launch": { "initialSurface": launch_id },
+        "launch": launch,
         "surfaces": out_surfaces,
         "activators": out_activators
     }))
@@ -1268,6 +1290,11 @@ fn validate_macos_ui_config(ui: &Value, terminal_enabled: bool) -> Result<()> {
         .and_then(Value::as_object)
         .ok_or_else(|| anyhow!("ui.launch must be an object"))?;
     let initial_surface = non_empty_str(launch.get("initialSurface"), "ui.launch.initialSurface")?;
+    if let Some(open_on_launch) = launch.get("openOnLaunch")
+        && open_on_launch.as_bool().is_none()
+    {
+        return Err(anyhow!("ui.launch.openOnLaunch must be a boolean"));
+    }
     let surfaces = ui_obj
         .get("surfaces")
         .and_then(Value::as_array)
@@ -1463,7 +1490,7 @@ fn validate_macos_ui_config(ui: &Value, terminal_enabled: bool) -> Result<()> {
             &format!("ui.activators[{index}].action.kind"),
         )?;
         match action_kind {
-            "toggleSurface" | "openSurface" | "closeSurface" | "focusSurface" => {}
+            "toggleSurface" | "openSurface" => {}
             other => {
                 return Err(anyhow!(
                     "ui activator '{id}' has unknown action.kind '{other}'"
@@ -1771,15 +1798,25 @@ android:
 
         // Off by default — no browser runtime on any platform.
         assert!(!config.browser_enabled());
-        assert!(!config.native_features_for_platform("ios").contains(&"shell-runtime".to_string()));
-        assert!(!config.native_features_for_platform("macos").contains(&"shell-runtime".to_string()));
+        assert!(
+            !config
+                .native_features_for_platform("ios")
+                .contains(&"shell-runtime".to_string())
+        );
+        assert!(
+            !config
+                .native_features_for_platform("macos")
+                .contains(&"shell-runtime".to_string())
+        );
 
         // Opt in: the browser runtime ships everywhere, mobile included.
         config.capabilities.as_mut().unwrap().browser = true;
         assert!(config.browser_enabled());
         for platform in ["ios", "android", "macos", "windows", "harmony"] {
             assert!(
-                config.native_features_for_platform(platform).contains(&"shell-runtime".to_string()),
+                config
+                    .native_features_for_platform(platform)
+                    .contains(&"shell-runtime".to_string()),
                 "browser runtime missing on {platform}"
             );
         }
@@ -2128,13 +2165,46 @@ android:
                 "kind": "titlebarItem",
                 "hostSurface": "main",
                 "action": {
-                    "kind": "focusSurface",
+                    "kind": "openSurface",
                     "surface": "main"
                 }
             }]
         }));
 
         config.validate().unwrap();
+    }
+
+    #[test]
+    fn macos_ui_rejects_removed_surface_actions() {
+        for action_kind in ["closeSurface", "focusSurface"] {
+            let mut config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
+            config.app.as_mut().unwrap().platforms = vec!["macos".to_string()];
+            config.ui = Some(serde_json::json!({
+                "launch": {
+                    "initialSurface": "main"
+                },
+                "surfaces": [{
+                    "id": "main",
+                    "role": "main",
+                    "content": {
+                        "kind": "lxapp",
+                        "appId": "main"
+                    }
+                }],
+                "activators": [{
+                    "id": "titlebarAction",
+                    "kind": "titlebarItem",
+                    "hostSurface": "main",
+                    "action": {
+                        "kind": action_kind,
+                        "surface": "main"
+                    }
+                }]
+            }));
+
+            let err = config.validate().unwrap_err().to_string();
+            assert!(err.contains("unknown action.kind"), "{action_kind}: {err}");
+        }
     }
 
     #[test]
@@ -2159,7 +2229,7 @@ android:
                     "id": kind,
                     "kind": kind,
                     "action": {
-                        "kind": "focusSurface",
+                        "kind": "openSurface",
                         "surface": "main"
                     }
                 }]
@@ -2190,7 +2260,7 @@ android:
                 "id": "sidebar",
                 "kind": "sidebarItem",
                 "action": {
-                    "kind": "focusSurface",
+                    "kind": "openSurface",
                     "surface": "main"
                 }
             }]
@@ -2218,7 +2288,7 @@ android:
                 "kind": "appActivation",
                 "hostSurface": "main",
                 "action": {
-                    "kind": "focusSurface",
+                    "kind": "openSurface",
                     "surface": "main"
                 }
             }]
@@ -2360,6 +2430,69 @@ android:
     }
 
     #[test]
+    fn surfaces_maps_tray_to_menubar_item_and_no_launch() {
+        let surfaces = vec![SurfaceDecl {
+            id: "home".into(),
+            render: SurfaceRender::Lxapp,
+            role: SurfaceRole::Main,
+            launch: false,
+            edge: None,
+            sidebar: None,
+            tray: Some(SurfaceTray {
+                icon: Some("icons/tray.svg".into()),
+                label: Some("Demo".into()),
+                action: Some(SurfaceTrayAction::Activate),
+            }),
+            platforms: Vec::new(),
+        }];
+
+        let ui = surfaces_to_ui(&surfaces, false).unwrap();
+        let expected = serde_json::json!({
+            "launch": {
+                "initialSurface": "home",
+                "openOnLaunch": false
+            },
+            "surfaces": [{
+                "id": "home",
+                "role": "main",
+                "content": { "kind": "lxapp", "appId": "home" }
+            }],
+            "activators": [{
+                "id": "homeTray",
+                "kind": "menuBarItem",
+                "icon": "icons/tray.svg",
+                "label": "Demo",
+                "action": { "kind": "openSurface", "surface": "home" }
+            }]
+        });
+        assert_eq!(ui, expected);
+
+        let mut config = LingXiaConfig::new_android("demo", "com.example", "home");
+        config.app.as_mut().unwrap().platforms = vec!["macos".to_string()];
+        config.ui = None;
+        config.surfaces = Some(surfaces);
+        config.apply_surfaces().unwrap();
+        config.validate().unwrap();
+    }
+
+    #[test]
+    fn surfaces_rejects_unsupported_tray_action() {
+        let yaml = r#"
+surfaces:
+  - id: home
+    role: main
+    tray:
+      action: open
+"#;
+
+        let err = yaml::from_str::<LingXiaConfig>(yaml)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("unknown variant"), "{err}");
+        assert!(err.contains("toggle") && err.contains("activate"), "{err}");
+    }
+
+    #[test]
     fn surfaces_rejects_float_role() {
         let surfaces = vec![SurfaceDecl {
             id: "popup".into(),
@@ -2484,7 +2617,10 @@ android:
             },
         ];
         let err = surfaces_to_ui(&surfaces, false).unwrap_err().to_string();
-        assert!(err.contains("launch: true is only valid on a main"), "{err}");
+        assert!(
+            err.contains("launch: true is only valid on a main"),
+            "{err}"
+        );
     }
 
     #[test]

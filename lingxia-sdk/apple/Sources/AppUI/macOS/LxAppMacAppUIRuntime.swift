@@ -65,6 +65,7 @@ final class LxAppMacAppUIRuntime: NSObject {
     private var independentPanelHostViews: [String: LxAppHostView] = [:]
     private var independentPanelOpenTasks: [String: Task<Void, Never>] = [:]
     private var independentPanelDisplayTasks: [String: Task<Void, Never>] = [:]
+    private var independentPanelSourceActivatorIDs: [String: String] = [:]
     private var surfacePageInstanceIDs: [String: String] = [:]
     private var terminalWorkspaces: [String: LingXiaTerminalWorkspaceView] = [:]
     nonisolated(unsafe) private var independentPanelOutsideClickGlobalMonitor: Any?
@@ -108,7 +109,7 @@ final class LxAppMacAppUIRuntime: NSObject {
                 self.closeManagedSurface(id: surfaceId)
             } else {
                 self.openManagedSurface(id: surfaceId)
-                self.focusSurface(id: surfaceId)
+                self.bringSurfaceToFront(id: surfaceId)
             }
         }
         shell.onMainWillSwitch = { [weak self] in
@@ -228,6 +229,7 @@ final class LxAppMacAppUIRuntime: NSObject {
             }
             surfacePageInstanceIDs[panelId] = pageInstanceId
             shell.storeSession(sessionId, for: appId)
+            let displayActivatorID = independentPanelSourceActivatorIDs[panelId]
             let session = LxAppSession(
                 id: LxAppSessionID(rawValue: sessionId),
                 appId: appId,
@@ -243,6 +245,9 @@ final class LxAppMacAppUIRuntime: NSObject {
             independentPanelDisplayTasks[panelId] = Task { @MainActor [weak hostView] in
                 defer {
                     independentPanelDisplayTasks[panelId] = nil
+                    if independentPanelSourceActivatorIDs[panelId] == displayActivatorID {
+                        independentPanelSourceActivatorIDs.removeValue(forKey: panelId)
+                    }
                 }
                 do {
                     try await hostView?.mount(session, notifyVisibleOnMount: false)
@@ -258,7 +263,7 @@ final class LxAppMacAppUIRuntime: NSObject {
                         }
                     }
                     try Task.checkCancellation()
-                    positionIndependentPanel(panel, for: trayController.defaultActivatorID)
+                    positionIndependentPanel(panel, for: displayActivatorID)
                     panel.orderFrontRegardless()
                     _ = notifyPageInstanceVisible(pageInstanceId)
                     openedSurfaceIDs.insert(panelId)
@@ -328,10 +333,6 @@ final class LxAppMacAppUIRuntime: NSObject {
             toggleSurface(id: activator.action.surface, sourceActivatorID: activator.id)
         case .openSurface:
             openSurfaceHandlingError(id: activator.action.surface, sourceActivatorID: activator.id)
-        case .closeSurface:
-            closeSurface(id: activator.action.surface)
-        case .focusSurface:
-            focusSurface(id: activator.action.surface)
         }
     }
 
@@ -454,6 +455,11 @@ final class LxAppMacAppUIRuntime: NSObject {
         let panel = independentPanelWindows[surface.id] ?? makeIndependentPanel(for: surface)
         independentPanelWindows[surface.id] = panel
         applyIndependentPanelPresentation(panel, for: surface)
+        if let sourceActivatorID {
+            independentPanelSourceActivatorIDs[surface.id] = sourceActivatorID
+        } else {
+            independentPanelSourceActivatorIDs.removeValue(forKey: surface.id)
+        }
 
         let hostView = independentPanelHostViews[surface.id] ?? LxAppHostView(controller: controller)
         independentPanelHostViews[surface.id] = hostView
@@ -494,6 +500,7 @@ final class LxAppMacAppUIRuntime: NSObject {
 
         let path = normalizedPath(surface.content.path)
         let surfaceID = surface.id
+        let requestedSourceActivatorID = sourceActivatorID
         independentPanelDisplayTasks[surface.id]?.cancel()
         independentPanelOpenTasks[surface.id]?.cancel()
         independentPanelOpenTasks[surface.id] = Task { @MainActor [weak self, weak panel] in
@@ -515,6 +522,9 @@ final class LxAppMacAppUIRuntime: NSObject {
             } catch is CancellationError {
                 return
             } catch {
+                if independentPanelSourceActivatorIDs[surfaceID] == requestedSourceActivatorID {
+                    independentPanelSourceActivatorIDs.removeValue(forKey: surfaceID)
+                }
                 surfacePageInstanceIDs.removeValue(forKey: surfaceID)
                 openedSurfaceIDs.remove(surfaceID)
                 os_log(
@@ -687,7 +697,7 @@ final class LxAppMacAppUIRuntime: NSObject {
         refreshChromeActivators()
     }
 
-    private func focusSurface(id: String) {
+    private func bringSurfaceToFront(id: String) {
         guard visibleSurfaceIDs.contains(id),
               let surface = surfaceById[id] else { return }
 
@@ -722,6 +732,7 @@ final class LxAppMacAppUIRuntime: NSObject {
                 independentPanelOpenTasks[id] = nil
                 independentPanelDisplayTasks[id]?.cancel()
                 independentPanelDisplayTasks[id] = nil
+                independentPanelSourceActivatorIDs.removeValue(forKey: id)
                 if let pageInstanceId = surfacePageInstanceIDs[id]
                     ?? resolveSurfacePageInstanceId(surface)
                 {
@@ -769,6 +780,7 @@ final class LxAppMacAppUIRuntime: NSObject {
         independentPanelOpenTasks[rootID] = nil
         independentPanelDisplayTasks[rootID]?.cancel()
         independentPanelDisplayTasks[rootID] = nil
+        independentPanelSourceActivatorIDs.removeValue(forKey: rootID)
         openedSurfaceIDs.remove(rootID)
         surfacePageInstanceIDs.removeValue(forKey: rootID)
         for childID in childrenByParentId[rootID] ?? [] {

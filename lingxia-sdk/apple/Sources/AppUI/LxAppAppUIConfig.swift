@@ -93,8 +93,6 @@ struct LxAppUIConfig: Decodable, Sendable {
         enum Kind: String, Decodable, Sendable {
             case toggleSurface
             case openSurface
-            case closeSurface
-            case focusSurface
         }
     }
 }
