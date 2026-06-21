@@ -1,5 +1,6 @@
 use crate::traits::{
     FileChooserRequest, FileChooserResponse, LoadError, LoadErrorKind, NavigationPolicy,
+    NewWindowPolicy,
 };
 use crate::webview::{
     WebTag, WebViewCreateStage, find_webview, find_webview_delegate, register_webview,
@@ -642,6 +643,38 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_handleNavigationP
         }
 
         Ok(false)
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_handleNewWindowPolicy(
+    mut env: EnvUnowned,
+    _this: JObject,
+    appid: JString,
+    path: JString,
+    session_id: jlong,
+    url: JString,
+) -> jint {
+    env.with_env(|env| -> Result<jint, jni::errors::Error> {
+        let appid: String = appid.try_to_string(env)?;
+        let path: String = path.try_to_string(env)?;
+        let url: String = url.try_to_string(env)?;
+        let session_id = if session_id > 0 {
+            Some(session_id as u64)
+        } else {
+            None
+        };
+
+        let webtag = WebTag::new(&appid, &path, session_id);
+        if let Some(webview) = find_webview(&webtag) {
+            return Ok(match webview.handle_new_window(&url) {
+                NewWindowPolicy::LoadInSelf => 1,
+                NewWindowPolicy::Cancel => 0,
+            });
+        }
+
+        Ok(0)
     })
     .resolve::<ThrowRuntimeExAndDefault>()
 }

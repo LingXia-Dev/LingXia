@@ -7,21 +7,26 @@ import android.net.Uri
 import android.os.Build
 import android.util.Log
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebViewClient
 import android.widget.FrameLayout
+import android.widget.ImageView
 import com.lingxia.app.Lingxia
 import com.lingxia.lxapp.LxApp
 import com.lingxia.lxapp.LxAppActivity
+import com.lingxia.lxapp.R
 import com.lingxia.app.NativeApi
 import com.lingxia.lxapp.NativeComponents.NativeBridge
 import com.lingxia.lxapp.APIs.media.ImmersiveWindowUi
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import kotlin.math.abs
 import kotlin.math.roundToInt
+import org.json.JSONObject
 
 internal enum class SurfacePosition(val value: Int) {
     CENTER(0),
@@ -45,7 +50,11 @@ internal object LxAppSurface {
     private const val TAG = "LingXia.Surface"
     private const val CONTENT_PAGE = 0
     private const val CONTENT_URL = 1
+    private const val KIND_WINDOW = 0
     private const val KIND_POPUP = 1
+    private const val ROLE_MAIN = 0
+    private const val ROLE_ASIDE = 1
+    private const val ROLE_FLOAT = 2
     private const val MOUNT_RETRY_COUNT = 40
     private const val MOUNT_RETRY_DELAY_MS = 50L
 
@@ -59,12 +68,11 @@ internal object LxAppSurface {
         val pageInstanceId: String?,
         val overlay: FrameLayout,
         val webView: android.webkit.WebView,
+        val fullScreen: Boolean,
         /**
-         * True when the surface was opened with widthRatio≈1 AND heightRatio≈1.
-         * In that case we apply ImmersiveWindowUi so the surface visually
-         * extends behind the status bar / navigation bar / display cutout —
-         * matching what `lx.previewMedia` does. Sub-full-screen surfaces keep
-         * the system bars visible.
+         * True only for explicitly immersive full-screen floats. Adaptive asides
+         * use full-screen layout too, but keep Android system chrome visible and
+         * present as a page-like drill-in.
          */
         val immersive: Boolean,
         var windowSnapshot: ImmersiveWindowUi.Snapshot? = null,
@@ -82,7 +90,8 @@ internal object LxAppSurface {
         val height: Double,
         val widthRatio: Double,
         val heightRatio: Double,
-        val position: SurfacePosition
+        val position: SurfacePosition,
+        val role: Int
     )
 
     private enum class PendingVisibility {
@@ -107,10 +116,11 @@ internal object LxAppSurface {
         height: Double,
         widthRatio: Double,
         heightRatio: Double,
-        position: Int
+        position: Int,
+        role: Int
     ): Boolean {
         if (id.isBlank() || appId.isBlank() || sessionId <= 0L) return false
-        if (kind != KIND_POPUP) return false
+        if (kind != KIND_POPUP && kind != KIND_WINDOW) return false
         if (content == CONTENT_PAGE && pageInstanceId.isBlank()) return false
         if (content == CONTENT_URL && !isHttpUrl(path)) return false
         if (content != CONTENT_PAGE && content != CONTENT_URL) return false
@@ -132,7 +142,8 @@ internal object LxAppSurface {
             height = height,
             widthRatio = widthRatio,
             heightRatio = heightRatio,
-            position = SurfacePosition.fromInt(position)
+            position = SurfacePosition.fromInt(position),
+            role = role
         )
         pendingRequests[request.id] = request
         activity.runOnUiThread {
@@ -140,6 +151,47 @@ internal object LxAppSurface {
                 mount(activity, request, createExternalWebView(activity, request.path))
             } else {
                 mountWhenReady(activity, request, 0)
+            }
+        }
+        return true
+    }
+
+    @JvmStatic
+    fun presentLayout(windowId: String, layoutJson: String): Boolean {
+        if (windowId.isBlank() || layoutJson.isBlank()) return false
+        val plan = try {
+            JSONObject(layoutJson)
+        } catch (error: Throwable) {
+            Log.e(TAG, "presentLayout failed to parse windowId=$windowId", error)
+            return false
+        }
+
+        val desiredIds = LinkedHashSet<String>()
+        collectStringIds(plan, "mains", desiredIds)
+        collectObjectIds(plan, "asides", desiredIds)
+        collectObjectIds(plan, "floats", desiredIds)
+
+        val activity = LxApp.getCurrentActivity() ?: return false
+        activity.runOnUiThread {
+            val entriesToClose = entries.values
+                .filter { entry ->
+                    entry.fullScreen &&
+                        entry.overlay.visibility == View.VISIBLE &&
+                        !desiredIds.contains(entry.id)
+                }
+                .map { it.id to it.appId }
+            entriesToClose.forEach { (id, ownerAppId) ->
+                closeEntry(id, ownerAppId, "programmatic")
+            }
+
+            val pendingToClose = pendingRequests.values
+                .filter { request ->
+                    isFullScreenRequest(request) &&
+                        !desiredIds.contains(request.id)
+                }
+                .map { it.id to it.appId }
+            pendingToClose.forEach { (id, ownerAppId) ->
+                closePendingRequest(id, ownerAppId, "programmatic")
             }
         }
         return true
@@ -244,8 +296,10 @@ internal object LxAppSurface {
         }
         (webView.parent as? ViewGroup)?.removeView(webView)
 
-        val immersive = isFullScreenRequest(request)
-        val cornerRadiusPx = if (immersive) 0f else dp(activity, 12).toFloat()
+        val fillsScreen = isFullScreenRequest(request)
+        val usesDrillInChrome = usesDrillInChrome(request)
+        val immersive = fillsScreen && !usesDrillInChrome
+        val cornerRadiusPx = if (fillsScreen) 0f else dp(activity, 12).toFloat()
 
         val overlay = FrameLayout(activity).apply {
             layoutParams = FrameLayout.LayoutParams(
@@ -254,11 +308,9 @@ internal object LxAppSurface {
             )
             isClickable = true
             isFocusable = false
-            // No backdrop for full-screen surfaces — they cover the whole window
-            // including system bar areas, so a translucent backdrop would only
-            // be visible behind the rounded edges and corners which don't exist
-            // when immersive.
-            setBackgroundColor(if (immersive) Color.TRANSPARENT else Color.parseColor("#80000000"))
+            // No backdrop for full-screen surfaces: drill-in asides should feel
+            // like a page, and immersive floats cover every edge by definition.
+            setBackgroundColor(if (fillsScreen) Color.TRANSPARENT else Color.parseColor("#80000000"))
         }
         overlay.setOnClickListener {
             close(request.id, request.appId, "user")
@@ -270,7 +322,10 @@ internal object LxAppSurface {
                 cornerRadius = cornerRadiusPx
             }
             clipToOutline = Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP
-            elevation = dp(activity, 12).toFloat()
+            // Full-screen drill-in surfaces are page-like, not cards. Keeping a
+            // card elevation here can place the WebView above the back affordance
+            // in Android's z ordering even when the button is added later.
+            elevation = if (fillsScreen) 0f else dp(activity, 12).toFloat()
             isClickable = true
         }
 
@@ -284,6 +339,14 @@ internal object LxAppSurface {
             FrameLayout.LayoutParams.MATCH_PARENT
         ))
         overlay.addView(surface)
+        if (fillsScreen) {
+            if (usesDrillInChrome) {
+                overlay.addView(createFullScreenEdgeSwipeView(activity, request))
+            }
+            val actionButton = createFullScreenActionButton(activity, request)
+            overlay.addView(actionButton)
+            actionButton.bringToFront()
+        }
         rootView.addView(overlay)
         ViewCompat.requestApplyInsets(overlay)
 
@@ -306,6 +369,7 @@ internal object LxAppSurface {
             pageInstanceId = request.pageInstanceId.takeIf { request.content == CONTENT_PAGE },
             overlay = overlay,
             webView = webView,
+            fullScreen = fillsScreen,
             immersive = immersive,
         )
         entries[request.id] = entry
@@ -323,7 +387,7 @@ internal object LxAppSurface {
             ImmersiveWindowUi.apply(activity.window, keepScreenOn = false)
         }
 
-        Log.d(TAG, "presented id=${request.id} appId=${request.appId} path=${request.path} immersive=$immersive")
+        Log.d(TAG, "presented id=${request.id} appId=${request.appId} path=${request.path} fillsScreen=$fillsScreen immersive=$immersive role=${request.role}")
     }
 
     /**
@@ -332,9 +396,107 @@ internal object LxAppSurface {
      * percent strings that round-trip with float noise.
      */
     private fun isFullScreenRequest(request: Request): Boolean {
+        if (request.kind == KIND_WINDOW || request.role == ROLE_ASIDE) return true
         val w = request.widthRatio
         val h = request.heightRatio
         return w.isFinite() && h.isFinite() && w >= 0.999 && h >= 0.999
+    }
+
+    private fun usesDrillInChrome(request: Request): Boolean =
+        request.kind == KIND_WINDOW || request.role == ROLE_ASIDE
+
+    private fun collectStringIds(plan: JSONObject, key: String, output: MutableSet<String>) {
+        val array = plan.optJSONArray(key) ?: return
+        for (index in 0 until array.length()) {
+            val id = array.optString(index).trim()
+            if (id.isNotEmpty()) {
+                output.add(id)
+            }
+        }
+    }
+
+    private fun collectObjectIds(plan: JSONObject, key: String, output: MutableSet<String>) {
+        val array = plan.optJSONArray(key) ?: return
+        for (index in 0 until array.length()) {
+            val id = array.optJSONObject(index)?.optString("id")?.trim().orEmpty()
+            if (id.isNotEmpty()) {
+                output.add(id)
+            }
+        }
+    }
+
+    private fun createFullScreenActionButton(activity: Activity, request: Request): ImageView {
+        val density = activity.resources.displayMetrics.density
+        val drillIn = usesDrillInChrome(request)
+        val size = (32 * density).roundToInt()
+        val iconInset = if (drillIn) (8 * density).roundToInt() else (9 * density).roundToInt()
+        val top = LxAppActivity.getStatusBarHeight(activity) + (10 * density).roundToInt()
+        val left = (12 * density).roundToInt()
+        return ImageView(activity).apply {
+            layoutParams = FrameLayout.LayoutParams(size, size).apply {
+                gravity = Gravity.TOP or Gravity.START
+                topMargin = top
+                leftMargin = left
+            }
+            scaleType = ImageView.ScaleType.CENTER
+            setPadding(iconInset, iconInset, iconInset, iconInset)
+            setImageResource(if (drillIn) R.drawable.icon_back else R.drawable.icon_close_x)
+            setColorFilter(if (drillIn) Color.parseColor("#1A1A1A") else Color.WHITE)
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(if (drillIn) Color.parseColor("#E6FFFFFF") else Color.parseColor("#66000000"))
+            }
+            elevation = if (drillIn) 8f * density else 0f
+            translationZ = if (drillIn) 24f * density else 12f * density
+            contentDescription = if (drillIn) "Back" else "Close"
+            isClickable = true
+            isFocusable = true
+            setOnClickListener {
+                close(request.id, request.appId, "user")
+            }
+        }
+    }
+
+    private fun createFullScreenEdgeSwipeView(activity: Activity, request: Request): View {
+        val density = activity.resources.displayMetrics.density
+        val edgeWidth = (24 * density).roundToInt()
+        val minDistance = (80 * density).roundToInt()
+        var downX = 0f
+        var downY = 0f
+        return View(activity).apply {
+            layoutParams = FrameLayout.LayoutParams(edgeWidth, FrameLayout.LayoutParams.MATCH_PARENT).apply {
+                gravity = Gravity.START
+            }
+            setBackgroundColor(Color.TRANSPARENT)
+            isClickable = true
+            elevation = 20f * density
+            translationZ = 20f * density
+            setOnTouchListener { _, event ->
+                when (event.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> {
+                        downX = event.rawX
+                        downY = event.rawY
+                        true
+                    }
+                    MotionEvent.ACTION_UP -> {
+                        val deltaX = event.rawX - downX
+                        val deltaY = abs(event.rawY - downY)
+                        if (deltaX > minDistance && deltaX > deltaY * 1.5f) {
+                            close(request.id, request.appId, "user")
+                        }
+                        true
+                    }
+                    MotionEvent.ACTION_CANCEL -> true
+                    else -> true
+                }
+            }
+        }
+    }
+
+    @JvmStatic
+    fun closeTopUser(): Boolean {
+        val entry = entries.values.lastOrNull { it.overlay.visibility == View.VISIBLE } ?: return false
+        return close(entry.id, entry.appId, "user")
     }
 
     private fun closeEntry(id: String, appId: String, reason: String, notifyNative: Boolean = true): Boolean {
@@ -489,7 +651,10 @@ internal object LxAppSurface {
         // ImmersiveWindowUi expands the decor). Sub-full surfaces keep the
         // 16dp inset that gives the card a visible gap from screen edges.
         val isFull = isFullScreenRequest(request)
-        return FrameLayout.LayoutParams(width, height).apply {
+        return FrameLayout.LayoutParams(
+            if (isFull) FrameLayout.LayoutParams.MATCH_PARENT else width,
+            if (isFull) FrameLayout.LayoutParams.MATCH_PARENT else height
+        ).apply {
             gravity = when (request.position) {
                 SurfacePosition.BOTTOM -> Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
                 SurfacePosition.LEFT -> Gravity.START or Gravity.CENTER_VERTICAL

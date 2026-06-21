@@ -20,7 +20,7 @@ import { NavigationBar, NavigationBarState, NAVBAR_TOTAL_HEIGHT } from './Naviga
 import { NavigationButton, CapsuleButton } from './LxAppDrawables';
 import { TabBar } from './TabBar';
 import { TabBarPosition, TabBarItem, UiEventType } from 'liblingxia.so';
-import liblingxia, { TabBarState, getNavigationBarState, isPullDownRefreshEnabled, onPageShow, onLxappEvent } from 'liblingxia.so';
+import liblingxia, { TabBarState, getNavigationBarState, isPullDownRefreshEnabled, onPageShow, onLxappEvent, setSurfaceWidth } from 'liblingxia.so';
 import { NAVIGATION_ACTION_BACK, NAVIGATION_ACTION_HOME, CAPSULE_ACTION_CLOSE } from '../app/NativeBridge';
 import { AnimationType } from './LxAppNavigation';
 import { LxNativeVideoPlayer } from './APIs/media/player/LxNativeVideoPlayer';
@@ -106,9 +106,10 @@ export struct LxAppContainer {
   private webViewUiCallback = (action: string, info: WebViewInfo) => {
     this.handleWebViewUiEvent(action, info);
   }
-  private keyboardMonitorTimer: number | null = null;
-  private keyboardMonitorActive: boolean = false;
-  private keyboardWindow: window.Window | null = null;
+	  private keyboardMonitorTimer: number | null = null;
+	  private keyboardMonitorActive: boolean = false;
+	  private keyboardWindow: window.Window | null = null;
+  private lastReportedSurfaceWidthVp: number = 0;
 
   /**
    * Trigger onPageShow if WebView hasn't triggered it yet
@@ -613,11 +614,14 @@ export struct LxAppContainer {
 
       // Capsule menu bottom sheet - renders on top of everything
       CapsuleMenuBottomSheetComponent()
-    }
-    .width('100%')
-    .height('100%')
-    .expandSafeArea(this.shouldExpandSafeAreaForContainer() || this.fullscreenComponentId.length > 0 ? [SafeAreaType.SYSTEM] : [], this.shouldExpandSafeAreaForContainer() || this.fullscreenComponentId.length > 0 ? [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM] : [])
-  }
+	    }
+	    .width('100%')
+	    .height('100%')
+    .onAreaChange((_, newValue) => {
+      this.reportSurfaceWidth(Number(newValue.width) || 0);
+    })
+	    .expandSafeArea(this.shouldExpandSafeAreaForContainer() || this.fullscreenComponentId.length > 0 ? [SafeAreaType.SYSTEM] : [], this.shouldExpandSafeAreaForContainer() || this.fullscreenComponentId.length > 0 ? [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM] : [])
+	  }
 
   private isHomeApp(): boolean {
     const miniApp = LxApp.getInstance();
@@ -1434,15 +1438,27 @@ export struct LxAppContainer {
     return this.getLogicalWebTag(webTag) === this.getLogicalWebTag(this.presentationOverlayWebTag);
   }
 
-  private isActiveSurfaceWebView(webTag: string): boolean {
-    const layout = LxAppSurface.getActiveLayout();
-    if (layout && layout.appId === this.appId && layout.pageInstanceId) {
-      const exactTag = `${toWebTag(layout.appId, layout.path)}#${layout.pageInstanceId}`;
-      if (webTag === exactTag || webTag.startsWith(`${exactTag}#`)) {
-        return true;
-      }
+	  private isActiveSurfaceWebView(webTag: string): boolean {
+    if (LxAppSurface.isSurfacePageWebView(this.appId, webTag)) {
+      return true;
     }
-    return this.isIsolatedPageInstanceWebView(webTag);
+	    return this.isIsolatedPageInstanceWebView(webTag);
+	  }
+
+  private reportSurfaceWidth(widthVp: number): void {
+    if (!Number.isFinite(widthVp) || widthVp <= 0) {
+      return;
+    }
+    const rounded = Math.round(widthVp);
+    if (Math.abs(rounded - this.lastReportedSurfaceWidthVp) < 1) {
+      return;
+    }
+    this.lastReportedSurfaceWidthVp = rounded;
+    try {
+      setSurfaceWidth(this.appId, rounded);
+    } catch (error) {
+      hilog.warn(DOMAIN, TAG, `setSurfaceWidth failed appId=${this.appId}: ${error}`);
+    }
   }
 
   private isIsolatedPageInstanceWebView(webTag: string): boolean {

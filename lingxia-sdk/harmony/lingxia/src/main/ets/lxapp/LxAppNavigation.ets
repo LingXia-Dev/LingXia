@@ -8,12 +8,12 @@ import { ModalManager } from './APIs/LxAppModal';
 import { PickerManager } from './APIs/LxAppPicker';
 import { DatePickerManager } from './APIs/LxAppDatePicker';
 import { ActionSheetManager } from './APIs/LxAppActionSheet';
-import { SurfaceManager } from './APIs/LxAppSurface';
+import { LxAppSurface, SurfaceManager } from './APIs/LxAppSurface';
 import { MediaPreviewOverlay, MediaPreviewOverlayManager } from './APIs/media/MediaPreviewOverlay';
 import { CameraCaptureOverlay, CameraCaptureOverlayManager } from './APIs/media/CameraCaptureOverlay';
 import { PdfSinglePageViewerOverlay, PdfSingleViewerOverlayManager } from './APIs/document/PdfSinglePageViewerOverlay';
 import { LocalFileChooserOverlay, LocalFileChooserOverlayManager } from './APIs/file/LocalFileChooserOverlay';
-import { BrowserOverlay, BrowserOverlayManager } from './LxAppBrowserOverlay';
+import { LxAppBrowser, LxAppBrowserManager } from './LxAppBrowser';
 
 const DOMAIN = 0xA000;
 const TAG = 'LingXia.Navigation';
@@ -82,13 +82,13 @@ export struct LxAppNavigation {
   private closeActiveOverlayIfAny(): boolean {
     // Keep ordering aligned with zIndex (topmost first).
     try {
-      if (BrowserOverlayManager.isShowing()) {
-        hilog.info(DOMAIN, TAG, 'BackPress: closing overlay BrowserOverlay');
-        BrowserOverlayManager.hide();
+      if (LxAppBrowserManager.isShowing()) {
+        hilog.info(DOMAIN, TAG, 'BackPress: closing LxAppBrowser');
+        LxAppBrowserManager.hide();
         return true;
       }
     } catch (error) {
-      hilog.error(DOMAIN, TAG, `Error closing overlay BrowserOverlay: ${error}`);
+      hilog.error(DOMAIN, TAG, `Error closing LxAppBrowser: ${error}`);
     }
 
     try {
@@ -121,18 +121,27 @@ export struct LxAppNavigation {
       hilog.error(DOMAIN, TAG, `Error closing overlay CameraCaptureOverlay: ${error}`);
     }
 
+	    try {
+	      if (MediaPreviewOverlayManager.isOverlayShowing()) {
+	        hilog.info(DOMAIN, TAG, 'BackPress: closing overlay MediaPreviewOverlay');
+	        MediaPreviewOverlayManager.closeOverlay();
+	        return true;
+	      }
+	    } catch (error) {
+	      hilog.error(DOMAIN, TAG, `Error closing overlay MediaPreviewOverlay: ${error}`);
+	    }
+
     try {
-      if (MediaPreviewOverlayManager.isOverlayShowing()) {
-        hilog.info(DOMAIN, TAG, 'BackPress: closing overlay MediaPreviewOverlay');
-        MediaPreviewOverlayManager.closeOverlay();
+      if (LxAppSurface.closeTopmostVisible('user')) {
+        hilog.info(DOMAIN, TAG, 'BackPress: closing overlay LxAppSurface');
         return true;
       }
     } catch (error) {
-      hilog.error(DOMAIN, TAG, `Error closing overlay MediaPreviewOverlay: ${error}`);
+      hilog.error(DOMAIN, TAG, `Error closing overlay LxAppSurface: ${error}`);
     }
 
-    return false;
-  }
+	    return false;
+	  }
 
   private handleSystemBackPress(): boolean {
     const now = Date.now();
@@ -582,8 +591,8 @@ export struct LxAppNavigation {
       LocalFileChooserOverlay()
         .zIndex(10008)
 
-      // In-app browser overlay
-      BrowserOverlay()
+      // In-app browser
+      LxAppBrowser()
         .zIndex(10009)
 
       // Custom edge-swipe back gesture zone

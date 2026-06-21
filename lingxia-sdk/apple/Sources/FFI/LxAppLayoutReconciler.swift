@@ -79,26 +79,35 @@ enum LxAppLayoutReconciler {
     static func reconcile(appId: String) -> Bool {
         let json = surfaceDerivedLayout(appId).toString()
         guard !json.isEmpty else { return false }
-        return reconcile(appId: appId, json: json)
+        return reconcile(label: "app=\(appId)", json: json)
     }
 
-    static func reconcile(appId: String, json: String) -> Bool {
+    static func reconcile(windowId: String, json: String) -> Bool {
+        return reconcile(label: "window=\(windowId)", json: json)
+    }
+
+    private static func reconcile(label: String, json: String) -> Bool {
         guard let shell = LxAppActiveHost.activeShell else {
             // Headless / no desktop shell: nothing to dock.
             return false
         }
         guard let data = json.data(using: .utf8),
               let plan = try? JSONDecoder().decode(LayoutPresentationPlan.self, from: data) else {
-            os_log("presentLayout: failed to parse layout json app=%{public}@", log: log, type: .error, appId)
+            os_log("presentLayout: failed to parse layout json %{public}@", log: log, type: .error, label)
             return false
         }
 
         let workspace = shell.workspaceManager
 
-        // Desired aside set from the core (id -> edge).
+        // Desired docked aside set from the core (id -> edge). `plan.asides`
+        // also lists compact full-screen asides so mobile skins can keep them
+        // in their desired set; macOS only docks them when the split form says
+        // there is a side-by-side container.
         var desired: [String: PanelPosition] = [:]
-        for aside in plan.asides {
-            desired[aside.id] = panelPosition(for: aside.edge)
+        if plan.splitForm != "fullScreen" {
+            for aside in plan.asides {
+                desired[aside.id] = panelPosition(for: aside.edge)
+            }
         }
         let desiredIds = Set(desired.keys)
 
@@ -153,7 +162,7 @@ enum LxAppLayoutReconciler {
         //     path re-enters reconcile once it has registered it.
         let desiredFloatIds = Set(plan.floats.map { $0.id })
         for id in LxAppSurface.visibleFloatIds().subtracting(desiredFloatIds) {
-            _ = LxAppSurface.dismissFloat(id: id, appId: appId)
+            _ = LxAppSurface.dismissFloat(id: id)
         }
         for id in desiredFloatIds {
             LxAppSurface.showFloat(id: id)

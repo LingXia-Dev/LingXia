@@ -7,20 +7,25 @@
 mod runtime;
 mod shell;
 
-pub(crate) use runtime::{
-    APP_ID, close, discard, mark_active, open_for_app, open_standalone_for_app, reactivate,
-    tab_path,
-};
+#[cfg(target_os = "android")]
+pub(crate) use runtime::navigate;
+#[cfg(all(target_env = "ohos", not(any(target_os = "ios", target_os = "macos"))))]
+pub(crate) use runtime::navigate;
+pub(crate) use runtime::{APP_ID, close, mark_active, open_for_app, tab_path};
 #[cfg(target_os = "windows")]
 pub(crate) use runtime::{
     BrowserTabSummary, activate, go_back, go_forward, navigate, reload, runtime_enabled,
     set_tabs_changed_handler, tab_summary, tabs,
 };
 #[cfg(any(target_os = "ios", target_os = "macos"))]
-pub(crate) use runtime::{download, update_tab};
+pub(crate) use runtime::{discard, open_standalone_for_app, reactivate};
+#[cfg(any(target_os = "ios", target_os = "macos"))]
+pub(crate) use runtime::{download, navigate, update_tab};
+#[cfg(any(target_os = "ios", target_os = "macos", target_env = "ohos"))]
+pub(crate) use shell::should_hide_url;
 #[cfg(any(target_os = "ios", target_os = "macos"))]
 pub(crate) use shell::{
-    open_panel_lxapp, panel_item_for_id, panels_config_json, resolve_input_json, should_hide_url,
+    open_panel_lxapp, panel_item_for_id, panels_config_json, resolve_input_json,
 };
 
 pub(crate) fn register_bundled_app() {

@@ -181,6 +181,17 @@ declare module 'liblingxia.so' {
   export function browserTabClose(tabId: string): boolean;
 
   /**
+   * Navigate an existing managed internal browser tab to a URL through the
+   * browser runtime, which swaps the lxapp start page for a web view as needed.
+   */
+  export function browserTabNavigate(tabId: string, url: string): boolean;
+
+  /**
+   * Sync the Rust-side active browser tab when switching to an already-live tab.
+   */
+  export function browserTabActivate(tabId: string): void;
+
+  /**
    * Get the built-in browser lxapp id.
    */
   export function getBuiltinBrowserAppId(): string;
@@ -189,6 +200,21 @@ declare module 'liblingxia.so' {
    * Resolve managed browser tab path from tabId.
    */
   export function browserTabPathForId(tabId: string): string;
+
+  /**
+   * Whether browser chrome should hide a raw URL from the address field.
+   */
+  export function browserUrlIsHidden(rawUrl: string): boolean;
+
+  /**
+   * Update the shared surface arbiter with the current host width in vp.
+   */
+  export function setSurfaceWidth(appid: string, width: number): boolean;
+
+  /**
+   * Return the current derived surface layout plan as JSON, or "null".
+   */
+  export function surfaceDerivedLayout(appid: string): string;
 
   /**
    * Get TabBar state for a specific LxApp with complete items array

@@ -79,12 +79,12 @@ enum RunnerBridge {
         guard let openedTab = openBrowserTab(ownerAppId, ownerSessionId, url) else {
             return nil
         }
-        let tabId = openedTab.toString().lowercased()
+        let tabId = openedTab.toString().trimmingCharacters(in: .whitespacesAndNewlines)
         return tabId.isEmpty ? nil : tabId
     }
 
     static func browserTabWebView(tabId: String) -> WKWebView? {
-        let normalized = tabId.lowercased()
+        let normalized = tabId.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalized.isEmpty else { return nil }
 
         let appId = getBuiltinBrowserAppId().toString()
@@ -97,7 +97,7 @@ enum RunnerBridge {
     }
 
     static func closeBrowserTab(tabId: String) -> Bool {
-        let normalized = tabId.lowercased()
+        let normalized = tabId.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalized.isEmpty else { return false }
         return browserTabClose(normalized)
     }

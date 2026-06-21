@@ -198,7 +198,7 @@ extension macOSLxApp {
 
     @MainActor
     internal static func presentInternalBrowserTab(tabId: String) -> Bool {
-        let normalized = tabId.lowercased()
+        let normalized = tabId.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalized.isEmpty else {
             os_log("presentInternalBrowserTab invalid tab id: %{public}@", log: log, type: .error, tabId)
             return false
@@ -216,7 +216,7 @@ extension macOSLxApp {
 
     @MainActor
     internal static func prepareInternalBrowserTabForInput(tabId: String) -> Bool {
-        let normalized = tabId.lowercased()
+        let normalized = tabId.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalized.isEmpty else { return false }
         if activeShell() == nil {
             openShellWindow()

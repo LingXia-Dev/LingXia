@@ -26,8 +26,6 @@ final class LxAppViewController: UIViewController, ObservableObject {
     var currentTabBar: LingXiaTabBar?
     private var cancellables = Set<AnyCancellable>()
     private var backEdgePanGesture: UIScreenEdgePanGestureRecognizer?
-    private var hostDrawer: LxAppHostDrawer?
-    private var hostDrawerHandle: UIView?
     private var pullToRefreshHelper: PullToRefreshHelper?
     private var currentSessionId: UInt64 = 0
     private var runtimeOrientationMask: UIInterfaceOrientationMask = .allButUpsideDown
@@ -153,75 +151,6 @@ final class LxAppViewController: UIViewController, ObservableObject {
         setupWebViewContainer()
         setupGlobalNavigationBar()
         setupBackGestureRecognizer()
-        setupHostDrawer()
-    }
-
-    /// The host drawer — the phone skin of the desktop sidebar. The left edge
-    /// itself is reserved for the back swipe, so the drawer is pulled out by a
-    /// slim left-edge handle.
-    private func setupHostDrawer() {
-        let drawer = LxAppHostDrawer()
-        drawer.onActivator = { tap in
-            os_log("host drawer: activator %{public}@ → %{public}@ %{public}@ (surface open wiring pending)", log: Self.log, type: .info, tap.id, tap.action, tap.surface)
-        }
-        drawer.onOpenBrowser = {
-            os_log("host drawer: open in-app browser (browser surface wiring pending)", log: Self.log, type: .info)
-        }
-        drawer.onHostEntry = { entry in
-            os_log("host drawer: host entry %{public}@ (settings/downloads H5 wiring pending)", log: Self.log, type: .info, String(describing: entry))
-        }
-        view.addSubview(drawer)
-        NSLayoutConstraint.activate([
-            drawer.topAnchor.constraint(equalTo: view.topAnchor),
-            drawer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            drawer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            drawer.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-        ])
-        hostDrawer = drawer
-
-        // Left-edge handle: a wide invisible hit strip with a visible grab pill,
-        // opening on tap or a rightward pull. (The left edge proper stays the back
-        // swipe; the handle is the host's single drawer entry.)
-        let handle = UIView()
-        handle.translatesAutoresizingMaskIntoConstraints = false
-        handle.backgroundColor = .clear
-        handle.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(hostDrawerHandleTapped)))
-        handle.addGestureRecognizer(UIPanGestureRecognizer(target: self, action: #selector(hostDrawerHandlePanned(_:))))
-        let pill = UIView()
-        pill.translatesAutoresizingMaskIntoConstraints = false
-        pill.backgroundColor = UIColor.secondaryLabel.withAlphaComponent(0.55)
-        pill.layer.cornerRadius = 2.5
-        pill.isUserInteractionEnabled = false
-        handle.addSubview(pill)
-        view.addSubview(handle)
-        NSLayoutConstraint.activate([
-            handle.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            handle.centerYAnchor.constraint(equalTo: view.centerYAnchor),
-            handle.widthAnchor.constraint(equalToConstant: 22),
-            handle.heightAnchor.constraint(equalToConstant: 96),
-            pill.leadingAnchor.constraint(equalTo: handle.leadingAnchor),
-            pill.centerYAnchor.constraint(equalTo: handle.centerYAnchor),
-            pill.widthAnchor.constraint(equalToConstant: 5),
-            pill.heightAnchor.constraint(equalToConstant: 52),
-        ])
-        hostDrawerHandle = handle
-    }
-
-    private func presentHostDrawer() {
-        guard let drawer = hostDrawer else { return }
-        view.bringSubviewToFront(drawer)
-        drawer.open()
-    }
-
-    @objc private func hostDrawerHandleTapped() {
-        presentHostDrawer()
-    }
-
-    @objc private func hostDrawerHandlePanned(_ gesture: UIPanGestureRecognizer) {
-        guard let drawer = hostDrawer, !drawer.isOpen else { return }
-        if gesture.translation(in: view).x > 24 {
-            presentHostDrawer()
-        }
     }
 
     private func setupRootContainer() {

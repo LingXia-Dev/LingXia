@@ -251,7 +251,8 @@ final class BrowserTabCoordinator: NSObject {
     }
 
     private func attachedWebViewForNativeInput(tabId: String) -> WKWebView? {
-        let id = tabId.lowercased()
+        let id = tabIdString(tabId)
+        guard !id.isEmpty else { return nil }
         if activeTabId != id {
             presentInternalBrowserTab(id: id)
         }
@@ -597,7 +598,6 @@ final class BrowserTabCoordinator: NSObject {
 
         let normalizedStableTabId = stableTabId?
             .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased()
         let requestedStableTabId = normalizedStableTabId?.isEmpty == false ? normalizedStableTabId : nil
 
         let openedTab = if let requestedStableTabId {
@@ -619,7 +619,7 @@ final class BrowserTabCoordinator: NSObject {
             return
         }
 
-        let tabId = openedTab.toString().lowercased()
+        let tabId = tabIdString(openedTab.toString())
         guard !tabId.isEmpty else {
             os_log("openBrowserTab returned empty tab id", log: Self.log, type: .error)
             return
@@ -985,7 +985,7 @@ final class BrowserTabCoordinator: NSObject {
     // MARK: - Data Helpers
 
     private func tabIdString(_ id: String) -> String {
-        id.lowercased()
+        id.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private func displayableURL(_ raw: String?) -> String {

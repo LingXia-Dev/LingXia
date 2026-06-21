@@ -54,6 +54,7 @@ pub(crate) fn open_for_app(
 
 /// Open a standalone (no-tab-strip) browser tab for a docked aside browser.
 /// New-window requests load inline in the same WebView.
+#[cfg(any(target_os = "ios", target_os = "macos"))]
 pub(crate) fn open_standalone_for_app(
     appid: &str,
     session_id: u64,
@@ -150,7 +151,13 @@ pub(crate) fn set_tabs_changed_handler(handler: std::sync::Arc<dyn Fn() + Send +
 
 /// Navigates an existing browser tab to `url`. Uses the global tab scope so
 /// the runtime tab id is kept as-is (owner scoping would derive a new id).
-#[cfg(target_os = "windows")]
+#[cfg(any(
+    target_os = "windows",
+    target_os = "macos",
+    target_os = "ios",
+    target_os = "android",
+    target_env = "ohos"
+))]
 pub(crate) fn navigate(tab_id: &str, url: &str) -> Result<(), lxapp::LxAppError> {
     #[cfg(feature = "browser-runtime")]
     return lingxia_browser::open(url, Some(tab_id)).map(|_| ());
@@ -208,6 +215,7 @@ pub(crate) fn close(tab_id: &str) -> Result<(), lxapp::LxAppError> {
     }
 }
 
+#[cfg(any(target_os = "ios", target_os = "macos"))]
 pub(crate) fn discard(tab_id: &str) -> Result<(), lxapp::LxAppError> {
     #[cfg(feature = "browser-runtime")]
     return lingxia_browser::discard(tab_id);
@@ -218,6 +226,7 @@ pub(crate) fn discard(tab_id: &str) -> Result<(), lxapp::LxAppError> {
     }
 }
 
+#[cfg(any(target_os = "ios", target_os = "macos"))]
 pub(crate) fn reactivate(tab_id: &str) -> Result<(), lxapp::LxAppError> {
     #[cfg(feature = "browser-runtime")]
     return lingxia_browser::reactivate(tab_id);

@@ -59,7 +59,9 @@ final class DockedBrowser: NSObject {
 
     /// The live docked browser hosting `tabId`, if any.
     static func forTab(_ tabId: String) -> DockedBrowser? {
-        registry[tabId.lowercased()]?.value
+        let normalized = tabId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty else { return nil }
+        return registry[normalized]?.value
     }
 
     nonisolated(unsafe) private var urlObservation: NSKeyValueObservation?
@@ -75,7 +77,7 @@ final class DockedBrowser: NSObject {
             os_log("openStandaloneBrowserTab failed for docked browser url=%{public}@", log: Self.log, type: .error, url)
             return nil
         }
-        let resolvedTabId = opened.toString().lowercased()
+        let resolvedTabId = opened.toString().trimmingCharacters(in: .whitespacesAndNewlines)
         guard !resolvedTabId.isEmpty else {
             os_log("openBrowserTab returned empty tab id for docked browser", log: Self.log, type: .error)
             return nil
@@ -342,9 +344,8 @@ final class DockedBrowser: NSObject {
     }
 
     /// Turn raw address-bar text into a URL: honor an explicit scheme, treat a
-    /// dotted token as a host (https), otherwise fall back to a web search. The
-    /// visible address bar is the safety affordance for unrestricted navigation —
-    /// it is a browser, so it is not locked to the opener's origin.
+    /// dotted token as a host (https), otherwise leave free text to the start
+    /// page/search-provider flow instead of hardcoding a native provider.
     static func resolveAddress(_ raw: String) -> URL? {
         let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         if text.isEmpty { return nil }
@@ -352,8 +353,7 @@ final class DockedBrowser: NSObject {
         if text.contains(".") && !text.contains(" ") {
             return URL(string: "https://\(text)")
         }
-        let query = text.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? text
-        return URL(string: "https://www.google.com/search?q=\(query)")
+        return nil
     }
 }
 #endif

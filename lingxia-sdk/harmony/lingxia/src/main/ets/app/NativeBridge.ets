@@ -10,7 +10,7 @@ import { LxAppMedia } from '../lxapp/APIs/LxAppMedia';
 import { LxAppScan } from '../lxapp/APIs/LxAppScan';
 import { LxAppContainer } from '../lxapp/LxAppContainer';
 import { LxAppSurface } from '../lxapp/APIs/LxAppSurface';
-import { BrowserOverlayManager } from '../lxapp/LxAppBrowserOverlay';
+import { LxAppBrowserManager } from '../lxapp/LxAppBrowser';
 import { LxAppFile } from '../lxapp/APIs/LxAppFile';
 import { LxAppShare } from '../lxapp/APIs/LxAppShare';
 import { LxAppWifi } from '../lxapp/APIs/LxAppWifi';
@@ -156,8 +156,8 @@ class NativeBridge {
       ownerAppId?: string,
       ownerSessionIdRaw?: Object
     ) => {
-      // Mobile currently uses a single in-app browser experience:
-      // treat "new_browser_tab" the same as "self" for now.
+      // Both "self" and "new_browser_tab" open inside the in-app browser; a
+      // new-tab request opens a fresh managed tab and switches to it (below).
       const inAppBrowserTarget = target === 'self' || target === 'new_browser_tab';
       if (!inAppBrowserTarget) {
         LxApp.launchWithUrl(url);
@@ -203,7 +203,7 @@ class NativeBridge {
         return false;
       }
 
-      return BrowserOverlayManager.show(tabId, normalizedUrl);
+      return LxAppBrowserManager.show(tabId, normalizedUrl);
     });
 
     // WebView management
@@ -316,30 +316,36 @@ class NativeBridge {
       pageInstanceId: string,
       source: string,
       form: string,
-      width: string,
-      height: string,
-      widthRatio: string,
-      heightRatio: string,
-      position: string
-    ): boolean => {
-      return LxAppSurface.present(
-        id,
-        appId,
+	      width: string,
+	      height: string,
+	      widthRatio: string,
+	      heightRatio: string,
+	      position: string,
+	      role: string
+	    ): boolean => {
+	      return LxAppSurface.present(
+	        id,
+	        appId,
         path,
         sessionId,
         pageInstanceId,
         source,
         form,
         width,
-        height,
-        widthRatio,
-        heightRatio,
-        position
-      );
+	        height,
+	        widthRatio,
+	        heightRatio,
+	        position,
+	        role
+	      );
+	    });
+
+    this.register('presentLayout', (windowId: string, layoutJson: string): boolean => {
+      return LxAppSurface.presentLayout(windowId, layoutJson);
     });
 
-    this.register('closeSurface', (id: string, appId: string, reason: string): boolean => {
-      return LxAppSurface.close(id, appId, reason);
+	    this.register('closeSurface', (id: string, appId: string, reason: string): boolean => {
+	      return LxAppSurface.close(id, appId, reason);
     });
 
     this.register('showSurface', (id: string, appId: string): boolean => {

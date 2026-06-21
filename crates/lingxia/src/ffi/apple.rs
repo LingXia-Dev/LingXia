@@ -233,6 +233,11 @@ mod bridge {
         #[swift_bridge(swift_name = "browserTabClose")]
         fn browser_tab_close(tab_id: &str) -> bool;
 
+        // Navigate an existing browser tab to a URL through the browser runtime,
+        // which swaps the lxapp start page for a web view as needed.
+        #[swift_bridge(swift_name = "browserTabNavigate")]
+        fn browser_tab_navigate(tab_id: &str, url: &str) -> bool;
+
         // Discard a background tab's WebView to free memory; keeps the entry.
         #[swift_bridge(swift_name = "browserTabDiscard")]
         fn browser_tab_discard(tab_id: &str) -> bool;
@@ -603,6 +608,12 @@ pub fn open_browser_tab_with_id(
 pub fn browser_tab_close(tab_id: &str) -> bool {
     ffi_catch_unwind!("browser_tab_close", false, || {
         crate::browser::close(tab_id).is_ok()
+    })
+}
+
+pub fn browser_tab_navigate(tab_id: &str, url: &str) -> bool {
+    ffi_catch_unwind!("browser_tab_navigate", false, || {
+        crate::browser::navigate(tab_id, url).is_ok()
     })
 }
 

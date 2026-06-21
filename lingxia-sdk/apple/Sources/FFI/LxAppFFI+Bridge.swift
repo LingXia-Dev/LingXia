@@ -160,18 +160,16 @@ extension LxApp {
         }
     }
 
-    /// Adaptive Surface Layout (Phase 3): the shared core derived a new layout
-    /// for this window; reconcile the aside dock so it matches the tree. The
-    /// payload is a serialized `DerivedLayout` (identical to the JSON the JS API
-    /// `lx.surface.derivedLayout()` returns). Aside-dock only — main/browser/
-    /// float/terminal-fullscreen presentation is untouched.
-    nonisolated static func presentLayout(appid: RustStr, layout_json: RustStr) -> Bool {
-        let appIdString = appid.toString()
+    /// Adaptive Surface Layout: the shared core derived a new window layout.
+    nonisolated static func presentLayout(window_id: RustStr, layout_json: RustStr) -> Bool {
+        let windowIdString = window_id.toString()
         let json = layout_json.toString()
-        guard !appIdString.isEmpty, !json.isEmpty else { return false }
+        guard !windowIdString.isEmpty, !json.isEmpty else { return false }
         return executeOnMain {
             #if os(macOS)
-            return LxAppLayoutReconciler.reconcile(appId: appIdString, json: json)
+            return LxAppLayoutReconciler.reconcile(windowId: windowIdString, json: json)
+            #elseif os(iOS)
+            return LxAppLayoutReconcileriOS.reconcile(windowId: windowIdString, json: json)
             #else
             _ = json
             return false
@@ -410,7 +408,7 @@ extension LxApp {
         #if os(macOS)
         return executeOnMain { macOSLxApp.presentInternalBrowserTab(tabId: tabId) }
         #elseif os(iOS)
-        return executeOnMain { LxAppBrowserOverlay.show(tabId: tabId) }
+        return executeOnMain { LxAppBrowser.show(tabId: tabId) }
         #else
         return false
         #endif
@@ -420,6 +418,10 @@ extension LxApp {
         let tabId = tab_id.toString()
         #if os(macOS)
         return executeOnMain { macOSLxApp.presentInternalBrowserTab(tabId: tabId) }
+        #elseif os(iOS)
+        // A runtime-opened tab (e.g. a link that opens a new tab) must switch to
+        // and display the new tab, same as a directly opened one.
+        return executeOnMain { LxAppBrowser.show(tabId: tabId) }
         #else
         _ = tabId
         return false

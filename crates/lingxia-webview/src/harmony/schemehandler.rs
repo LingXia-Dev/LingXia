@@ -298,13 +298,23 @@ pub unsafe fn cleanup_scheme_handler(scheme_handler: *mut ArkWeb_SchemeHandler) 
 /// Register custom schemes globally (called once during lxapp_init)
 pub fn register_custom_schemes() -> NapiResult<()> {
     unsafe {
-        // Register lx:// scheme globally with more comprehensive options
-        let lx_scheme_cstr = CString::new("lx").unwrap();
-        // Try more flags: STANDARD | SECURE | CORS_ENABLED | CSP_BYPASSING | FETCH_API
+        // STANDARD | SECURE | CORS_ENABLED | CSP_BYPASSING | FETCH_API
         let options = 1 | 2 | 16 | 32 | 64;
-        OH_ArkWeb_RegisterCustomSchemes(lx_scheme_cstr.as_ptr(), options);
 
-        log::info!("Successfully registered custom scheme: lx with extended options");
+        // ArkWeb only recognizes a non-standard scheme as navigable once it has
+        // been registered globally here, before any Web component is created; the
+        // per-webview handler in set_webview_scheme_handler can only intercept a
+        // scheme that is already registered. Register every custom scheme the
+        // webviews serve: `lx` for lxapp bundles and `lingxia` for the browser's
+        // own start/settings/downloads pages.
+        for scheme in ["lx", "lingxia"] {
+            let scheme_cstr = CString::new(scheme).unwrap();
+            OH_ArkWeb_RegisterCustomSchemes(scheme_cstr.as_ptr(), options);
+            log::info!(
+                "Successfully registered custom scheme: {} with extended options",
+                scheme
+            );
+        }
         Ok(())
     }
 }

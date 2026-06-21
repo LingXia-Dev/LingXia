@@ -14,7 +14,7 @@ import android.util.Log
 import androidx.appcompat.app.AppCompatActivity
 import com.lingxia.lxapp.LxAppActivity
 import com.lingxia.lxapp.LxApp
-import com.lingxia.lxapp.LxAppBrowserOverlay
+import com.lingxia.lxapp.LxAppBrowser
 import java.net.URISyntaxException
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -218,7 +218,7 @@ object Lingxia {
                         )
                         return@runOnUiThread
                     }
-                    LxAppBrowserOverlay.show(activity, tabId, uri)
+                    LxAppBrowser.show(activity, tabId, uri)
                 }
                 return
             }

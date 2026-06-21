@@ -672,9 +672,9 @@ enum LxAppSurface {
     /// the existing popup teardown (close), which unmounts the page, detaches the
     /// child window, and fires the close observer so the modal-focus stack pops.
     @discardableResult
-    static func dismissFloat(id: String, appId: String) -> Bool {
+    static func dismissFloat(id: String) -> Bool {
         guard let entry = entries[id], entry.isFloat else { return false }
-        return close(id: id, appId: appId, reason: "programmatic")
+        return close(id: id, appId: entry.appId, reason: "programmatic")
     }
 
     private static func pinToEdges(_ child: NSView, in parent: NSView) {
@@ -882,9 +882,18 @@ import WebKit
 @MainActor
 enum LxAppSurface {
     private static let log = OSLog(subsystem: "LingXia", category: "Surface")
+    private static let kindWindow: Int32 = 0
     private static let kindPopup: Int32 = 1
     private static let contentPage: Int32 = 0
     private static let contentUrl: Int32 = 1
+    // Arbitrated role (mirrors lingxia_platform SurfaceRole). On a phone there is
+    // no docking: an aside has no side-by-side room, so the core promotes it to a
+    // main (kind Window) and an aside that survives as such (kind Overlay) is
+    // still shown full-screen — the same way the primary lxapp page is shown. A
+    // float keeps the positioned-popup treatment.
+    private static let roleMain: Int32 = 0
+    private static let roleAside: Int32 = 1
+    private static let roleFloat: Int32 = 2
     private static let transientCornerRadius: CGFloat = 12
     private static var entries: [String: Entry] = [:]
 
@@ -892,6 +901,11 @@ enum LxAppSurface {
         let id: String
         let appId: String
         let pageInstanceId: String
+        /// True when the surface presents full-screen (an aside, or a main the
+        /// core promoted from an aside) rather than a positioned float popup.
+        /// The layout reconciler tracks the full-screen set to dismiss asides the
+        /// core dropped from the plan.
+        let isFullScreenSurface: Bool
         let hostView: LxAppHostView?
         let webView: WKWebView?
         let navigationDelegate: WKNavigationDelegate?
@@ -901,6 +915,7 @@ enum LxAppSurface {
             id: String,
             appId: String,
             pageInstanceId: String,
+            isFullScreenSurface: Bool,
             hostView: LxAppHostView?,
             webView: WKWebView?,
             navigationDelegate: WKNavigationDelegate?,
@@ -909,6 +924,7 @@ enum LxAppSurface {
             self.id = id
             self.appId = appId
             self.pageInstanceId = pageInstanceId
+            self.isFullScreenSurface = isFullScreenSurface
             self.hostView = hostView
             self.webView = webView
             self.navigationDelegate = navigationDelegate
@@ -937,17 +953,26 @@ enum LxAppSurface {
         let appId: String
         let contentView = UIView()
         private let contentFrame: CGRect
-        /// True when the surface was opened with both ratios ≈ 1.0. Drives
-        /// status-bar hiding + corner-radius / backdrop adjustments so the
-        /// surface visually covers the system status area, matching the
-        /// Android immersive treatment.
-        private let isFullScreen: Bool
+        /// True when the surface fills the whole window. This can be an adaptive
+        /// aside/main drill-in or an explicitly full-screen float.
+        private let fillsScreen: Bool
+        /// True for adaptive asides (including asides promoted to mains on
+        /// compact width). These should feel like an iOS drill-in page, not an
+        /// immersive popup.
+        private let usesDrillInChrome: Bool
 
-        init(id: String, appId: String, contentFrame: CGRect, isFullScreen: Bool) {
+        init(
+            id: String,
+            appId: String,
+            contentFrame: CGRect,
+            fillsScreen: Bool,
+            usesDrillInChrome: Bool
+        ) {
             self.id = id
             self.appId = appId
             self.contentFrame = contentFrame
-            self.isFullScreen = isFullScreen
+            self.fillsScreen = fillsScreen
+            self.usesDrillInChrome = usesDrillInChrome
             super.init(nibName: nil, bundle: nil)
             modalPresentationStyle = .overFullScreen
         }
@@ -956,38 +981,87 @@ enum LxAppSurface {
             nil
         }
 
-        // Hide the iOS status bar (time, signal, battery) when the surface
-        // is full-screen so its content actually covers the area, instead of
-        // showing through behind the system glyphs.
-        override var prefersStatusBarHidden: Bool { isFullScreen }
-        override var prefersHomeIndicatorAutoHidden: Bool { isFullScreen }
+        // Adaptive asides are page-like drill-ins, so keep system chrome visible.
+        // Only explicitly immersive full-screen floats hide/deflect system UI.
+        override var prefersStatusBarHidden: Bool { fillsScreen && !usesDrillInChrome }
+        override var prefersHomeIndicatorAutoHidden: Bool { fillsScreen && !usesDrillInChrome }
         override var preferredScreenEdgesDeferringSystemGestures: UIRectEdge {
-            isFullScreen ? .all : []
+            fillsScreen && !usesDrillInChrome ? .all : []
         }
 
         override func viewDidLoad() {
             super.viewDidLoad()
-            view.backgroundColor = isFullScreen
-                ? UIColor.clear
+            view.backgroundColor = fillsScreen
+                ? (usesDrillInChrome ? UIColor.systemBackground : UIColor.clear)
                 : UIColor.black.withAlphaComponent(0.45)
             let tap = UITapGestureRecognizer(target: self, action: #selector(closeFromBackdrop))
             tap.delegate = self
             view.addGestureRecognizer(tap)
 
+            // A drill-in aside should have an iOS-style way back, so support a
+            // left-edge swipe in addition to the visible back affordance.
+            if usesDrillInChrome {
+                let edge = UIScreenEdgePanGestureRecognizer(target: self, action: #selector(closeFromEdgeSwipe(_:)))
+                edge.edges = .left
+                view.addGestureRecognizer(edge)
+            }
+
             contentView.frame = contentFrame
             contentView.backgroundColor = .white
-            contentView.layer.cornerRadius = isFullScreen ? 0 : LxAppSurface.transientCornerRadius
+            contentView.layer.cornerRadius = fillsScreen ? 0 : LxAppSurface.transientCornerRadius
             contentView.layer.masksToBounds = true
             contentView.isUserInteractionEnabled = true
             view.addSubview(contentView)
+
+            // Full-screen surfaces have no host chrome. Adaptive asides get a
+            // page-like Back affordance; immersive floats keep explicit Close.
+            if fillsScreen {
+                let action = UIButton(type: .system)
+                action.translatesAutoresizingMaskIntoConstraints = false
+                action.setImage(
+                    UIImage(systemName: usesDrillInChrome ? "chevron.left" : "xmark"),
+                    for: .normal
+                )
+                action.tintColor = usesDrillInChrome ? UIColor.label : UIColor.white
+                action.backgroundColor = usesDrillInChrome
+                    ? UIColor.systemBackground.withAlphaComponent(0.86)
+                    : UIColor.black.withAlphaComponent(0.4)
+                action.layer.cornerRadius = 18
+                action.layer.shadowColor = UIColor.black.cgColor
+                action.layer.shadowOpacity = usesDrillInChrome ? 0.12 : 0
+                action.layer.shadowRadius = 8
+                action.layer.shadowOffset = CGSize(width: 0, height: 2)
+                action.accessibilityLabel = usesDrillInChrome ? "Back" : "Close"
+                action.addTarget(self, action: #selector(closeFullScreen), for: .touchUpInside)
+                view.addSubview(action)
+                NSLayoutConstraint.activate([
+                    action.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 10),
+                    action.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 12),
+                    action.widthAnchor.constraint(equalToConstant: 36),
+                    action.heightAnchor.constraint(equalToConstant: 36),
+                ])
+            }
+        }
+
+        @objc private func closeFullScreen() {
+            _ = LxAppSurface.close(id: id, appId: appId, reason: "user")
         }
 
         @objc private func closeFromBackdrop() {
             // Full-screen surfaces have no exposed backdrop — disable the
             // tap-to-close affordance so users don't accidentally dismiss by
             // tapping anywhere on the page.
-            if isFullScreen { return }
+            if fillsScreen { return }
             _ = LxAppSurface.close(id: id, appId: appId, reason: "user")
+        }
+
+        @objc private func closeFromEdgeSwipe(_ gesture: UIScreenEdgePanGestureRecognizer) {
+            guard gesture.state == .ended else { return }
+            let translation = gesture.translation(in: view).x
+            let velocity = gesture.velocity(in: view).x
+            if translation > max(view.bounds.width * 0.2, 80) || velocity > 700 {
+                _ = LxAppSurface.close(id: id, appId: appId, reason: "user")
+            }
         }
 
         func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
@@ -1011,11 +1085,12 @@ enum LxAppSurface {
         position: Int32,
         role: Int32
     ) -> Bool {
-        // role is accepted for FFI signature parity with macOS; the iOS skin
-        // does not yet consume the arbitrated role (surfaces still fall back to
-        // a full-screen overlay).
-        _ = role
-        guard kind == kindPopup else {
+        // A phone has no side-by-side room, so the core promotes an aside to a
+        // main and presents it as a window (kind Window); an aside that survives
+        // the arbitration (kind Overlay, role Aside) is likewise shown
+        // full-screen — the same way the primary lxapp page is shown. A float
+        // (kind Overlay, role Float) keeps the positioned-popup treatment below.
+        guard kind == kindPopup || kind == kindWindow else {
             os_log("unsupported mobile surface kind=%{public}d id=%{public}@ app=%{public}@", log: log, type: .error, kind, id, appId)
             return false
         }
@@ -1033,26 +1108,35 @@ enum LxAppSurface {
             return true
         }
 
+        // An aside (or an aside the core promoted to a main) covers the whole
+        // screen, pushed over the primary page like any other full-screen
+        // surface. A float popup keeps its requested size/position, and still
+        // fills the screen when both ratios reach ~1.0 (matching Android).
+        let usesDrillInChrome = kind == kindWindow || role == roleAside
+        let isFullScreenSurface = kind == kindWindow
+            || role == roleAside
+            || (widthRatio.isFinite
+                && heightRatio.isFinite
+                && widthRatio >= 0.999
+                && heightRatio >= 0.999)
+
         let containerFrame = windowScene.screen.bounds
-        let contentFrame = popupFrame(
-            width: width,
-            height: height,
-            widthRatio: widthRatio,
-            heightRatio: heightRatio,
-            position: position,
-            containerFrame: containerFrame
-        )
-        // Same criterion as Android: both ratios at (near) 1.0 means "fill the
-        // whole screen including the status bar area".
-        let isFullScreen = widthRatio.isFinite
-            && heightRatio.isFinite
-            && widthRatio >= 0.999
-            && heightRatio >= 0.999
+        let contentFrame = isFullScreenSurface
+            ? containerFrame
+            : popupFrame(
+                width: width,
+                height: height,
+                widthRatio: widthRatio,
+                heightRatio: heightRatio,
+                position: position,
+                containerFrame: containerFrame
+            )
         let controller = PopupViewController(
             id: id,
             appId: appId,
             contentFrame: contentFrame,
-            isFullScreen: isFullScreen
+            fillsScreen: isFullScreenSurface,
+            usesDrillInChrome: usesDrillInChrome
         )
         let window = UIWindow(windowScene: windowScene)
         window.frame = containerFrame
@@ -1126,6 +1210,7 @@ enum LxAppSurface {
             id: id,
             appId: appId,
             pageInstanceId: pageInstanceId,
+            isFullScreenSurface: isFullScreenSurface,
             hostView: hostView,
             webView: webView,
             navigationDelegate: navigationDelegate,
@@ -1133,6 +1218,24 @@ enum LxAppSurface {
         )
         window.makeKeyAndVisible()
         return true
+    }
+
+    /// Surfaces presented full-screen (asides, and asides the core promoted to a
+    /// main) that are currently on-screen. The layout reconciler reads this to
+    /// dismiss any full-screen surface the core dropped from the plan — mirroring
+    /// the macOS reconciler's desired-set vs presented-set contract.
+    static func presentedFullScreenIds() -> Set<String> {
+        Set(
+            entries.values
+                .filter { $0.isFullScreenSurface && !$0.window.isHidden }
+                .map { $0.id }
+        )
+    }
+
+    @discardableResult
+    static func dismissFullScreen(id: String) -> Bool {
+        guard let entry = entries[id], entry.isFullScreenSurface else { return false }
+        return close(id: id, appId: entry.appId, reason: "programmatic")
     }
 
     static func close(id: String, appId: String, reason: String) -> Bool {
