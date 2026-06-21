@@ -1,23 +1,48 @@
 use super::app::Platform;
 use crate::error::PlatformError;
-use crate::traits::ui::{SurfaceKind, SurfacePresenter, SurfaceRequest};
+use crate::traits::ui::{SurfacePresenter, SurfaceRequest};
 use jni::objects::{JClass, JObject, JValue};
 use jni::{jni_sig, jni_str};
+use lingxia_surface::LayoutPresentationPlan;
 
 impl SurfacePresenter for Platform {
-    fn present_surface(&self, mut request: SurfaceRequest) -> Result<(), PlatformError> {
-        // Windows aren't a native form on Android. Rather than reject (which
-        // would make an aside() arbitrated into a main on a compact window
-        // fail outright), fall back to a fullscreen overlay so the content
-        // still shows. The float/edge-aside overlay path is unchanged.
-        if request.kind == SurfaceKind::Window {
-            request.kind = SurfaceKind::Overlay;
-            request.width = f64::NAN;
-            request.height = f64::NAN;
-            request.width_ratio = 1.0;
-            request.height_ratio = 1.0;
-        }
+    fn present_layout(
+        &self,
+        window_id: &str,
+        plan: &LayoutPresentationPlan,
+    ) -> Result<(), PlatformError> {
+        let surface_class: &JClass = super::get_cached_class(super::CachedClass::LxAppSurface)
+            .map_err(|e| PlatformError::Platform(e.to_string()))?;
+        let plan_json = serde_json::to_string(plan).map_err(|e| {
+            PlatformError::Platform(format!("failed to serialize layout plan: {e}"))
+        })?;
 
+        super::with_env(|env| -> Result<(), PlatformError> {
+            let window_id = env.new_string(window_id)?;
+            let plan_json = env.new_string(&plan_json)?;
+            let ok = env
+                .call_static_method(
+                    surface_class,
+                    jni_str!("presentLayout"),
+                    jni_sig!("(Ljava/lang/String;Ljava/lang/String;)Z"),
+                    &[
+                        JValue::Object(&JObject::from(window_id)),
+                        JValue::Object(&JObject::from(plan_json)),
+                    ],
+                )?
+                .z()?;
+            if ok {
+                Ok(())
+            } else {
+                Err(PlatformError::Platform(
+                    "Failed to present layout".to_string(),
+                ))
+            }
+        })
+        .map_err(|e| PlatformError::Platform(format!("Failed to present layout: {e}")))
+    }
+
+    fn present_surface(&self, request: SurfaceRequest) -> Result<(), PlatformError> {
         let surface_class: &JClass = super::get_cached_class(super::CachedClass::LxAppSurface)
             .map_err(|e| PlatformError::Platform(e.to_string()))?;
 
@@ -31,7 +56,7 @@ impl SurfacePresenter for Platform {
                 .call_static_method(
                     surface_class,
                     jni_str!("present"),
-                    jni_sig!("(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;JLjava/lang/String;IIDDDDI)Z"),
+                    jni_sig!("(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;JLjava/lang/String;IIDDDDII)Z"),
                     &[
                         JValue::Object(&JObject::from(id)),
                         JValue::Object(&JObject::from(app_id)),
@@ -45,6 +70,7 @@ impl SurfacePresenter for Platform {
                         JValue::Double(request.width_ratio),
                         JValue::Double(request.height_ratio),
                         JValue::Int(request.position as i32),
+                        JValue::Int(request.role as i32),
                     ],
                 )?
                 .z()?;

@@ -20,7 +20,7 @@ pub enum Decision {
     Accepted,
     DowngradedRole,
     ReplacedExisting,
-    PeerFallback,
+    FullScreenFallback,
 }
 
 /// Tunable arbitration policy. Defaults are the spec's cross-platform defaults.
@@ -76,11 +76,14 @@ pub fn arbitrate(
             // compact (max==0): in both cases promote to a main.
             if !has_main || max == 0 {
                 let decision = if max == 0 {
-                    Decision::PeerFallback
+                    Decision::FullScreenFallback
                 } else {
                     Decision::DowngradedRole
                 };
+                let promoted_id = request.id.clone();
                 next.insert(promote_to_main(request));
+                next.set_active_main(&promoted_id);
+                next.set_focus(&promoted_id);
                 return (next, decision);
             }
 

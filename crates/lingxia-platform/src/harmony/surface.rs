@@ -1,21 +1,25 @@
 use super::app::Platform;
 use crate::error::PlatformError;
-use crate::traits::ui::{SurfaceKind, SurfacePresenter, SurfaceRequest};
+use crate::traits::ui::{SurfacePresenter, SurfaceRequest};
+use lingxia_surface::LayoutPresentationPlan;
 
 impl SurfacePresenter for Platform {
-    fn present_surface(&self, mut request: SurfaceRequest) -> Result<(), PlatformError> {
-        // Windows aren't a native form on Harmony. Rather than reject (which
-        // would make an aside() arbitrated into a main on a compact window
-        // fail outright), fall back to a fullscreen overlay so the content
-        // still shows. The float/edge-aside overlay path is unchanged.
-        if request.kind == SurfaceKind::Window {
-            request.kind = SurfaceKind::Overlay;
-            request.width = f64::NAN;
-            request.height = f64::NAN;
-            request.width_ratio = 1.0;
-            request.height_ratio = 1.0;
-        }
+    fn present_layout(
+        &self,
+        window_id: &str,
+        plan: &LayoutPresentationPlan,
+    ) -> Result<(), PlatformError> {
+        let plan_json = serde_json::to_string(plan).map_err(|e| {
+            PlatformError::Platform(format!("failed to serialize layout plan: {e}"))
+        })?;
+        lingxia_webview::platform::harmony::tsfn::call_arkts(
+            "presentLayout",
+            &[window_id, &plan_json],
+        )
+        .map_err(|e| PlatformError::Platform(format!("Failed to present layout: {e}")))
+    }
 
+    fn present_surface(&self, request: SurfaceRequest) -> Result<(), PlatformError> {
         let args = vec![
             request.id,
             request.app_id,
@@ -29,6 +33,7 @@ impl SurfacePresenter for Platform {
             double_arg(request.width_ratio),
             double_arg(request.height_ratio),
             (request.position as i32).to_string(),
+            (request.role as i32).to_string(),
         ];
         let arg_refs = args.iter().map(String::as_str).collect::<Vec<_>>();
 

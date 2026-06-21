@@ -207,19 +207,11 @@ impl SurfaceGraph {
     pub fn derive_layout(&self, size_class: SizeClass) -> DerivedLayout {
         let main_count = self.mains().len();
         let aside_count = self.asides().len();
-        // On compact, asides peer-fall-back into the switcher, so they count as
-        // switchable items; elsewhere only mains drive the switcher.
-        let switchable = if size_class == SizeClass::Compact {
-            main_count + aside_count
-        } else {
-            main_count
-        };
-
-        let switcher_form = if switchable > 1 {
+        let switcher_form = if size_class != SizeClass::Compact && main_count > 1 {
             match size_class {
                 SizeClass::Expanded => SwitcherForm::Sidebar,
                 SizeClass::Medium => SwitcherForm::Rail,
-                SizeClass::Compact => SwitcherForm::Drawer,
+                SizeClass::Compact => SwitcherForm::None,
             }
         } else {
             SwitcherForm::None
@@ -229,51 +221,37 @@ impl SurfaceGraph {
             match size_class {
                 SizeClass::Expanded => SplitForm::Split,
                 SizeClass::Medium => SplitForm::Collapsible,
-                // compact has no side-by-side: asides fall back to mains.
-                SizeClass::Compact => SplitForm::PeerFallback,
+                // compact has no side-by-side: asides present full-screen.
+                SizeClass::Compact => SplitForm::FullScreen,
             }
         } else {
             SplitForm::None
-        };
-
-        // Bottom belongs to the Host switcher only when there's a switcher in
-        // compact; a lone switchable item gives the bottom back to the app.
-        let bottom_owner = if size_class == SizeClass::Compact && switchable > 1 {
-            BottomOwner::Host
-        } else {
-            BottomOwner::App
         };
 
         DerivedLayout {
             size_class,
             switcher_form,
             split_form,
-            bottom_owner,
+            bottom_owner: BottomOwner::App,
             layout_tree: self.canonical_layout(size_class),
         }
     }
 
     /// Flatten the graph + derivation into the stable, skin-bindable
-    /// [`LayoutPresentationPlan`]: the switcher-ordered mains, docked asides
-    /// (with edge + preferred size), floats, and the full tree.
+    /// [`LayoutPresentationPlan`]: the primary mains, asides (with edge +
+    /// preferred size), floats, and the full tree.
     pub fn presentation_plan(&self, size_class: SizeClass) -> LayoutPresentationPlan {
         let derived = self.derive_layout(size_class);
 
-        // Asides are docked beside the main only outside compact; on compact
-        // they peer-fall-back into the switcher (see `canonical_layout`) and are
-        // not separately docked, so the dock list is empty there.
-        let asides = if size_class == SizeClass::Compact {
-            Vec::new()
-        } else {
-            self.asides()
-                .iter()
-                .map(|s| PlanAside {
-                    id: s.id.clone(),
-                    edge: s.placement.edge,
-                    preferred_size: s.placement.preferred_size,
-                })
-                .collect()
-        };
+        let asides = self
+            .asides()
+            .iter()
+            .map(|s| PlanAside {
+                id: s.id.clone(),
+                edge: s.placement.edge,
+                preferred_size: s.placement.preferred_size,
+            })
+            .collect();
 
         LayoutPresentationPlan {
             size_class: derived.size_class,
@@ -311,8 +289,8 @@ impl SurfaceGraph {
     }
 
     /// Build the canonical authoritative `LayoutTree` from current state:
-    /// mains → switcher (tabs), asides → split. On compact asides fold into the
-    /// switcher (peer-fall-back). Floats are never in the tree.
+    /// mains → tabs when needed, asides → split. Compact has no side-by-side
+    /// dock; asides share the main tree. Floats are never in the tree.
     pub fn canonical_layout(&self, size_class: SizeClass) -> Option<LayoutTree> {
         let main_ids = self.main_ids();
         if main_ids.is_empty() {
@@ -337,7 +315,7 @@ impl SurfaceGraph {
             }
         };
 
-        // Compact: asides fold into the main switcher (peer-fall-back), one tree.
+        // Compact: no split; asides share one full-screen tree with mains.
         if size_class == SizeClass::Compact {
             let mut ids = main_ids;
             ids.extend(aside_ids);
@@ -349,7 +327,11 @@ impl SurfaceGraph {
             return Some(main_node);
         }
         let mut children = vec![main_node];
-        children.extend(aside_ids.into_iter().map(|id| LayoutTree::Leaf { surface_id: id }));
+        children.extend(
+            aside_ids
+                .into_iter()
+                .map(|id| LayoutTree::Leaf { surface_id: id }),
+        );
         let n = children.len();
         Some(LayoutTree::Split {
             axis: Axis::Horizontal,
@@ -366,6 +348,12 @@ fn pick_successor_main(surfaces: &[Surface], removed_pos: usize) -> Option<Surfa
         .iter()
         .skip(removed_pos)
         .find(|s| s.role == Role::Main)
-        .or_else(|| surfaces.iter().take(removed_pos).rev().find(|s| s.role == Role::Main))
+        .or_else(|| {
+            surfaces
+                .iter()
+                .take(removed_pos)
+                .rev()
+                .find(|s| s.role == Role::Main)
+        })
         .map(|s| s.id.clone())
 }

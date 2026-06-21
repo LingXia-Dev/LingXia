@@ -109,23 +109,28 @@ mod tests {
         let mut m = SurfaceManager::new(1200.0);
         assert_eq!(m.size_class(), SizeClass::Expanded);
         assert_eq!(m.open(main_s("home")), Decision::Accepted);
-        assert_eq!(m.open(aside_s("assistant", Edge::Right)), Decision::Accepted);
+        assert_eq!(
+            m.open(aside_s("assistant", Edge::Right)),
+            Decision::Accepted
+        );
         let d = m.derive();
         assert_eq!(d.split_form, SplitForm::Split);
         assert!(m.graph().is_valid());
     }
 
     #[test]
-    fn aside_on_compact_peer_falls_back_into_switcher() {
+    fn aside_on_compact_promotes_without_host_switcher() {
         let mut m = SurfaceManager::new(390.0); // phone width
         assert_eq!(m.size_class(), SizeClass::Compact);
         m.open(main_s("home"));
         // arbitration promotes the aside to a main on compact.
-        assert_eq!(m.open(aside_s("assistant", Edge::Right)), Decision::PeerFallback);
+        assert_eq!(
+            m.open(aside_s("assistant", Edge::Right)),
+            Decision::FullScreenFallback
+        );
         let d = m.derive();
-        // two switchable items now → a drawer switcher owns the bottom.
-        assert_eq!(d.switcher_form, SwitcherForm::Drawer);
-        assert_eq!(d.bottom_owner, crate::BottomOwner::Host);
+        assert_eq!(d.switcher_form, SwitcherForm::None);
+        assert_eq!(d.bottom_owner, crate::BottomOwner::App);
         assert!(m.graph().is_valid());
     }
 
@@ -151,11 +156,11 @@ mod tests {
         // expanded: real split, aside stays an aside.
         assert_eq!(m.derive().split_form, SplitForm::Split);
         assert_eq!(m.graph().role_of("assistant"), Some(Role::Aside));
-        // shrink to compact: same graph, layout re-flows to peer-fall-back.
+        // shrink to compact: same graph, layout re-flows to full-screen.
         m.set_width(390.0);
         let d = m.derive();
-        assert_eq!(d.split_form, SplitForm::PeerFallback);
-        assert_eq!(d.switcher_form, SwitcherForm::Drawer);
+        assert_eq!(d.split_form, SplitForm::FullScreen);
+        assert_eq!(d.switcher_form, SwitcherForm::None);
         // role unchanged → widening back restores the split (reversible).
         assert_eq!(m.graph().role_of("assistant"), Some(Role::Aside));
         m.set_width(1200.0);

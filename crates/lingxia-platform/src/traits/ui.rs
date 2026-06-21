@@ -139,11 +139,7 @@ pub trait SurfacePresenter: Send + Sync + 'static {
     /// panel or terminal in `ui` config). Only platforms with a host shell that
     /// manages declared surfaces (currently macOS) support it; others have no
     /// such shell and return `NotSupported`.
-    fn set_managed_surface_visible(
-        &self,
-        _id: &str,
-        _visible: bool,
-    ) -> Result<(), PlatformError> {
+    fn set_managed_surface_visible(&self, _id: &str, _visible: bool) -> Result<(), PlatformError> {
         Err(PlatformError::NotSupported(
             "managed surfaces are not supported on this platform".to_string(),
         ))

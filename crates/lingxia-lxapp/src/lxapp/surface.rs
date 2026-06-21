@@ -1,8 +1,8 @@
 use super::*;
 use lingxia_platform::Platform;
 use lingxia_platform::traits::ui::{
-    SurfaceContent, SurfaceKind, SurfacePosition, SurfacePresenter, SurfaceRole,
-    SurfaceRequest as PlatformSurfaceRequest,
+    SurfaceContent, SurfaceKind, SurfacePosition, SurfacePresenter,
+    SurfaceRequest as PlatformSurfaceRequest, SurfaceRole,
 };
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -80,16 +80,24 @@ impl WindowSurfaceController {
         let mut present_position = requested_position;
         let mut present_role = SurfaceRole::default();
         let mut manager = self.manager.lock().unwrap();
-        let before: HashSet<String> =
-            manager.graph().surfaces().iter().map(|s| s.id.clone()).collect();
+        let before: HashSet<String> = manager
+            .graph()
+            .surfaces()
+            .iter()
+            .map(|s| s.id.clone())
+            .collect();
         let _decision = manager.open(node);
         if let Some(role) = manager.graph().role_of(&id) {
             let edge = manager.graph().get(&id).and_then(|s| s.placement.edge);
             (present_kind, present_position, present_role) =
                 present_params_for_role(role, edge, requested_position);
         }
-        let after: HashSet<String> =
-            manager.graph().surfaces().iter().map(|s| s.id.clone()).collect();
+        let after: HashSet<String> = manager
+            .graph()
+            .surfaces()
+            .iter()
+            .map(|s| s.id.clone())
+            .collect();
         let evicted = before
             .into_iter()
             .filter(|prev| prev != &id && !after.contains(prev))
@@ -680,7 +688,9 @@ impl LxApp {
 
     /// The app's root primary, represented as a `main` surface (id = appid).
     fn root_main_node(&self) -> lingxia_surface::Surface {
-        use lingxia_surface::{Role, Surface as LxSurface, SurfaceContent, SurfaceOwner, SurfaceState};
+        use lingxia_surface::{
+            Role, Surface as LxSurface, SurfaceContent, SurfaceOwner, SurfaceState,
+        };
         LxSurface {
             id: self.appid.clone(),
             role: Role::Main,
@@ -835,7 +845,11 @@ fn present_params_for_role(
 ) -> (SurfaceKind, SurfacePosition, SurfaceRole) {
     use lingxia_surface::{Edge as LxEdge, Role as LxRole};
     match role {
-        LxRole::Main => (SurfaceKind::Window, SurfacePosition::Center, SurfaceRole::Main),
+        LxRole::Main => (
+            SurfaceKind::Window,
+            SurfacePosition::Center,
+            SurfaceRole::Main,
+        ),
         LxRole::Float => (SurfaceKind::Overlay, requested_position, SurfaceRole::Float),
         LxRole::Aside => {
             let position = match edge {

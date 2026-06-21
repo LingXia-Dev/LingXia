@@ -13,14 +13,14 @@ mod model;
 
 pub use arbitrate::{Decision, Policy, arbitrate};
 pub use graph::SurfaceGraph;
-pub use manager::SurfaceManager;
 pub use layout::{
     Axis, BottomOwner, DEFAULT_HYSTERESIS, DerivedLayout, LayoutPresentationPlan, LayoutTree,
     PlanAside, PlanFloat, SizeClass, SplitForm, SwitcherForm,
 };
+pub use manager::SurfaceManager;
 pub use model::{
-    Edge, FloatAnchor, FloatDismiss, FloatSpec, Placement, Role, Surface, SurfaceContent, SurfaceId,
-    SurfaceOwner, SurfaceState,
+    Edge, FloatAnchor, FloatDismiss, FloatSpec, Placement, Role, Surface, SurfaceContent,
+    SurfaceId, SurfaceOwner, SurfaceState,
 };
 
 #[cfg(test)]
@@ -135,7 +135,7 @@ mod tests {
     }
 
     #[test]
-    fn aside_splits_on_expanded_peer_fallback_on_compact() {
+    fn aside_splits_on_expanded_fullscreen_on_compact() {
         let mut g = SurfaceGraph::new();
         g.insert(main_s("home"));
         g.insert(aside_s("assistant", Edge::Right));
@@ -145,12 +145,28 @@ mod tests {
         );
         assert_eq!(
             g.derive_layout(SizeClass::Compact).split_form,
-            SplitForm::PeerFallback
+            SplitForm::FullScreen
         );
     }
 
     #[test]
-    fn compact_bottom_owner() {
+    fn compact_plan_keeps_existing_aside_desired() {
+        let mut g = SurfaceGraph::new();
+        g.insert(main_s("home"));
+        g.insert(aside_s("assistant", Edge::Right));
+
+        let plan = g.presentation_plan(SizeClass::Compact);
+        assert_eq!(plan.split_form, SplitForm::FullScreen);
+        assert!(plan.asides.iter().any(|aside| aside.id == "assistant"));
+        assert!(
+            plan.tree
+                .as_ref()
+                .is_some_and(|tree| tree.surface_ids().iter().any(|id| id == "assistant"))
+        );
+    }
+
+    #[test]
+    fn compact_bottom_owner_stays_app() {
         let mut g = SurfaceGraph::new();
         g.insert(main_s("a"));
         // single main → app owns bottom
@@ -159,10 +175,10 @@ mod tests {
             BottomOwner::App
         );
         g.insert(main_s("b"));
-        // multiple mains → host switcher owns bottom
+        // compact has no separate switcher.
         assert_eq!(
             g.derive_layout(SizeClass::Compact).bottom_owner,
-            BottomOwner::Host
+            BottomOwner::App
         );
     }
 
@@ -273,7 +289,7 @@ mod tests {
     }
 
     #[test]
-    fn aside_peer_fallback_on_compact() {
+    fn aside_fullscreen_fallback_on_compact() {
         let mut g = SurfaceGraph::new();
         g.insert(main_s("home"));
         let (next, decision) = arbitrate(
@@ -282,9 +298,16 @@ mod tests {
             &Policy::default(),
             SizeClass::Compact,
         );
-        assert_eq!(decision, Decision::PeerFallback);
+        assert_eq!(decision, Decision::FullScreenFallback);
         // promoted to a main, no longer an aside.
         assert_eq!(next.role_of("assistant"), Some(Role::Main));
+        assert_eq!(next.active_main_id.as_deref(), Some("assistant"));
+        assert_eq!(
+            next.presentation_plan(SizeClass::Compact)
+                .active_main_id
+                .as_deref(),
+            Some("assistant")
+        );
         assert!(next.is_valid());
     }
 

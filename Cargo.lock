@@ -3036,6 +3036,7 @@ dependencies = [
  "lingxia-messaging",
  "lingxia-platform",
  "lingxia-service",
+ "lingxia-surface",
  "lingxia-transfer",
  "log",
  "rong",
@@ -3069,6 +3070,7 @@ dependencies = [
  "lingxia-provider",
  "lingxia-service",
  "lingxia-settings",
+ "lingxia-surface",
  "lingxia-transfer",
  "lingxia-update",
  "lingxia-webview",
@@ -3141,6 +3143,7 @@ dependencies = [
  "jni",
  "libc",
  "lingxia-messaging",
+ "lingxia-surface",
  "lingxia-webview",
  "lingxia-windows-host",
  "log",
@@ -3268,6 +3271,15 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.18",
  "tokio",
+]
+
+[[package]]
+name = "lingxia-surface"
+version = "0.9.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
 ]
 
 [[package]]

@@ -11,8 +11,10 @@
 //! that thread's message queue. [`quick_start`] performs both steps in order
 //! on the calling thread.
 
+#[cfg(all(target_os = "windows", feature = "runtime"))]
+use std::path::Path;
 #[cfg(feature = "runtime")]
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 #[cfg(all(target_os = "windows", feature = "runtime"))]
 mod app_icon;
@@ -245,7 +247,7 @@ pub fn quick_start() -> Result<i32> {
     Ok(run_message_loop())
 }
 
-#[cfg(feature = "runtime")]
+#[cfg(all(target_os = "windows", feature = "runtime"))]
 fn resolve_app_icon_path(asset_dir: &Path, home_app_id: &str) -> Option<PathBuf> {
     // `lingxia dev` stages a badged copy of the launcher icon and points this
     // env var at it, so dev/preview builds show the env badge without the CLI

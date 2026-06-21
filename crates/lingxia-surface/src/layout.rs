@@ -43,11 +43,7 @@ impl SizeClass {
         // Within the hysteresis band around a boundary, stick with prev.
         let near_lower = (width - COMPACT_MAX).abs() < margin;
         let near_upper = (width - MEDIUM_MAX).abs() < margin;
-        if near_lower || near_upper {
-            prev
-        } else {
-            raw
-        }
+        if near_lower || near_upper { prev } else { raw }
     }
 }
 
@@ -108,7 +104,10 @@ impl LayoutTree {
     pub fn validate(&self) -> Result<(), String> {
         match self {
             LayoutTree::Leaf { .. } | LayoutTree::Freeform { .. } => Ok(()),
-            LayoutTree::Tabs { active_id, children } => {
+            LayoutTree::Tabs {
+                active_id,
+                children,
+            } => {
                 if children.is_empty() {
                     return Err("tabs node has no children".into());
                 }
@@ -145,8 +144,6 @@ pub enum SwitcherForm {
     None,
     Sidebar,
     Rail,
-    Drawer,
-    Chip,
 }
 
 /// How asides (the split axis) render. `sheet` belongs to `float`, not here.
@@ -156,14 +153,13 @@ pub enum SplitForm {
     None,
     Split,
     Collapsible,
-    PeerFallback,
+    FullScreen,
 }
 
 /// Who owns the bottom bar in compact.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum BottomOwner {
-    Host,
     App,
 }
 
@@ -182,10 +178,9 @@ pub struct DerivedLayout {
     pub layout_tree: Option<LayoutTree>,
 }
 
-/// One aside in the [`LayoutPresentationPlan`]: the surface id, the edge it
-/// docks to, and its preferred size. The tree references surfaces by id only,
-/// so skins that bind asides to native dock panels read this list to map each
-/// aside id → edge.
+/// One aside in the [`LayoutPresentationPlan`]: the surface id, the requested
+/// edge, and its preferred size. Skins read `split_form` to decide whether
+/// these asides dock beside the main or present full-screen on compact.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlanAside {
@@ -217,8 +212,8 @@ pub struct PlanFloat {
 
 /// The stable, complete render contract a skin binds. Unlike the pure-core
 /// [`DerivedLayout`], this flattens the graph into the renderable
-/// view any skin needs: the switcher-ordered `mains`, docked `asides` (with
-/// edge + preferred size), `floats`, and the full id-only `tree`. Derived from
+/// view any skin needs: ordered `mains`, `asides` (with edge + preferred size),
+/// `floats`, and the full id-only `tree`. Derived from
 /// the graph so the shared core output isn't bound to one skin's needs.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -227,15 +222,15 @@ pub struct LayoutPresentationPlan {
     pub bottom_owner: BottomOwner,
     pub switcher_form: SwitcherForm,
     pub split_form: SplitForm,
-    /// Main surface ids, in switcher order.
+    /// Main surface ids, in stable order.
     pub mains: Vec<SurfaceId>,
     /// The currently-active main (the one occupying the primary content area).
     /// Skins drive the active-main switch from this rather than inferring it
     /// from the tree's `Tabs.activeId`. `None` only when there are no mains.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub active_main_id: Option<SurfaceId>,
-    /// Asides currently docked beside the main (empty on compact, where asides
-    /// peer-fall-back into the switcher and are not separately docked).
+    /// Asides currently in the layout. `split_form` decides whether they dock
+    /// beside the main or present full-screen on compact.
     pub asides: Vec<PlanAside>,
     /// Floats currently open: popups above the layout (never in the tree),
     /// each carrying its render-relevant `FloatSpec` semantics.
