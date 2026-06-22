@@ -245,6 +245,27 @@ public class RunnerApp {
         surfaceShellHost = nil
     }
 
+    public func restartRunner() {
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.activates = true
+        configuration.createsNewApplicationInstance = true
+        configuration.environment = ProcessInfo.processInfo.environment
+        let log = Self.log
+
+        NSWorkspace.shared.openApplication(
+            at: Bundle.main.bundleURL,
+            configuration: configuration
+        ) { _, error in
+            Task { @MainActor in
+                if let error {
+                    os_log("Failed to restart LingXia Runner: %@", log: log, type: .error, error.localizedDescription)
+                    return
+                }
+                NSApp.terminate(nil)
+            }
+        }
+    }
+
     func handleWindowClosed(_ controller: SimulatorWindowController) {
         if windowController === controller {
             windowController = nil
