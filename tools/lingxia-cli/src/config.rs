@@ -9,6 +9,8 @@ use std::path::Path;
 
 pub const HOST_CONFIG_FILE: &str = "lingxia.yaml";
 pub const LXAPP_BUILD_CONFIG_FILE: &str = "lxapp.config.ts";
+const AUTHORING_PLATFORMS: &[&str] = &["macos", "windows", "ios", "android", "harmony"];
+const TERMINAL_SURFACE_PLATFORMS: &[&str] = &["macos", "windows"];
 
 /// Host project configuration (native app project)
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -202,12 +204,11 @@ pub struct SurfaceDecl {
     /// Inline tray/menubar entry.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tray: Option<SurfaceTray>,
-    /// Availability filter. Empty = every platform. Lists the concrete
-    /// platforms a surface is available on — `macos`, `windows`, `ios`, `android`,
-    /// `harmony`. Target-specific packaging writes a pruned `ui.json` for each
-    /// platform, so native runtimes only see applicable surfaces.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub platforms: Vec<String>,
+    /// Availability filter. Omitted = follows `app.platforms`. When present,
+    /// it must be a non-empty subset of `app.platforms` using canonical tokens:
+    /// `macos`, `windows`, `ios`, `android`, `harmony`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub platforms: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -305,6 +306,11 @@ fn surfaces_to_ui(surfaces: &[SurfaceDecl], terminal_enabled: bool) -> Result<Va
         if surface.edge.is_some() && surface.role != SurfaceRole::Aside {
             return Err(anyhow!(
                 "surface '{id}': edge is only valid on an aside surface"
+            ));
+        }
+        if surface.platforms.as_ref().is_some_and(Vec::is_empty) {
+            return Err(anyhow!(
+                "surface '{id}': platforms must not be empty; omit platforms to follow app.platforms"
             ));
         }
     }
@@ -487,16 +493,16 @@ fn surfaces_to_ui(surfaces: &[SurfaceDecl], terminal_enabled: bool) -> Result<Va
     // Carry surface-level `platforms` onto generated surfaces so platform
     // packaging/runtime code can hide surfaces not meant for that target.
     for surface in surfaces {
-        if surface.platforms.is_empty() {
+        let Some(platforms) = surface.platforms.as_ref() else {
             continue;
-        }
+        };
         let sid = surface.id.trim();
         if let Some(obj) = out_surfaces
             .iter_mut()
             .find(|s| s.get("id").and_then(Value::as_str) == Some(sid))
             .and_then(Value::as_object_mut)
         {
-            obj.insert("platforms".into(), json!(surface.platforms));
+            obj.insert("platforms".into(), json!(platforms));
         }
     }
 
@@ -525,6 +531,96 @@ fn map_edge(edge: &str, id: &str) -> Result<&'static str> {
             ));
         }
     })
+}
+
+fn is_authoring_platform(value: &str) -> bool {
+    AUTHORING_PLATFORMS.contains(&value)
+}
+
+fn validate_app_platforms(app: &HostAppConfig) -> Result<Vec<String>> {
+    if app.platforms.is_empty() {
+        return Err(anyhow!("app.platforms must include at least one platform"));
+    }
+
+    let mut seen = HashSet::new();
+    let mut platforms = Vec::new();
+    for (index, raw) in app.platforms.iter().enumerate() {
+        let platform = raw.as_str();
+        if !is_authoring_platform(platform) {
+            return Err(anyhow!(
+                "app.platforms[{index}] has unsupported platform '{raw}'; expected one of: {}",
+                AUTHORING_PLATFORMS.join(", ")
+            ));
+        }
+        if !seen.insert(platform.to_string()) {
+            return Err(anyhow!(
+                "app.platforms contains duplicate platform '{platform}'"
+            ));
+        }
+        platforms.push(platform.to_string());
+    }
+    Ok(platforms)
+}
+
+fn validate_surface_platforms(surfaces: &[SurfaceDecl], app_platforms: &[String]) -> Result<()> {
+    let app_platform_set: HashSet<&str> = app_platforms.iter().map(String::as_str).collect();
+
+    for surface in surfaces {
+        let id = surface.id.trim();
+        let Some(platforms) = surface.platforms.as_ref() else {
+            validate_surface_intrinsic_platforms(surface, id, app_platforms)?;
+            continue;
+        };
+
+        if platforms.is_empty() {
+            return Err(anyhow!(
+                "surface '{id}': platforms must not be empty; omit platforms to follow app.platforms"
+            ));
+        }
+
+        let mut seen = HashSet::new();
+        let mut effective = Vec::new();
+        for (index, raw) in platforms.iter().enumerate() {
+            let platform = raw.as_str();
+            if !is_authoring_platform(platform) {
+                return Err(anyhow!(
+                    "surface '{id}': platforms[{index}] has unsupported platform '{raw}'; expected one of: {}",
+                    AUTHORING_PLATFORMS.join(", ")
+                ));
+            }
+            if !app_platform_set.contains(platform) {
+                return Err(anyhow!(
+                    "surface '{id}': platform '{platform}' is not listed in app.platforms"
+                ));
+            }
+            if !seen.insert(platform.to_string()) {
+                return Err(anyhow!(
+                    "surface '{id}': platforms contains duplicate platform '{platform}'"
+                ));
+            }
+            effective.push(platform.to_string());
+        }
+        validate_surface_intrinsic_platforms(surface, id, &effective)?;
+    }
+    Ok(())
+}
+
+fn validate_surface_intrinsic_platforms(
+    surface: &SurfaceDecl,
+    id: &str,
+    effective_platforms: &[String],
+) -> Result<()> {
+    if surface.render == SurfaceRender::Native && id == "terminal" {
+        for platform in effective_platforms {
+            if !TERMINAL_SURFACE_PLATFORMS.contains(&platform.as_str()) {
+                return Err(anyhow!(
+                    "surface '{id}' is a terminal surface and only supports platforms: {}",
+                    TERMINAL_SURFACE_PLATFORMS.join(", ")
+                ));
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Host app settings (checked into git via `lingxia.yaml`).
@@ -1040,6 +1136,12 @@ impl LingXiaConfig {
         if surfaces.is_empty() {
             return Err(anyhow!("surfaces: must contain at least one surface"));
         }
+        let app = self
+            .app
+            .as_ref()
+            .ok_or_else(|| anyhow!("surfaces requires app.platforms"))?;
+        let app_platforms = validate_app_platforms(app)?;
+        validate_surface_platforms(surfaces, &app_platforms)?;
         // `surfaces` is independent of `capabilities`; terminal availability is
         // gated by `capabilities.terminal` (any-platform truthiness here, the
         // per-platform gating stays in `terminal_enabled`).
@@ -1063,9 +1165,7 @@ impl LingXiaConfig {
             Version::parse(app.product_version.trim()).map_err(|_| {
                 anyhow!("app.productVersion must be a semantic version (major.minor.patch)")
             })?;
-            if app.platforms.is_empty() {
-                return Err(anyhow!("app.platforms must include at least one platform"));
-            }
+            validate_app_platforms(app)?;
             let home_app_id = app.home_app_id.trim();
             if home_app_id.is_empty() {
                 return Err(anyhow!("app.homeAppId must not be empty"));
@@ -1727,6 +1827,13 @@ mod tests {
     use super::*;
     use tempfile::TempDir;
 
+    fn load_config_yaml(source: &str) -> Result<LingXiaConfig> {
+        let mut config: LingXiaConfig = yaml::from_str(source)?;
+        config.apply_surfaces()?;
+        config.validate()?;
+        Ok(config)
+    }
+
     #[test]
     fn test_android_api_level_derivation() {
         let config = AndroidConfig {
@@ -2062,6 +2169,147 @@ capabilities:
             .unwrap_err()
             .to_string();
         assert!(err.contains("terminalEdge"));
+    }
+
+    #[test]
+    fn rejects_unknown_app_platform_token() {
+        let yaml = r#"
+app:
+  projectName: demo
+  productName: Demo
+  productVersion: 0.1.0
+  platforms: [mac]
+  homeAppId: home
+surfaces:
+  - id: home
+    role: main
+    launch: true
+"#;
+
+        let err = load_config_yaml(yaml).unwrap_err().to_string();
+        assert!(err.contains("app.platforms[0]"), "{err}");
+        assert!(err.contains("mac"), "{err}");
+    }
+
+    #[test]
+    fn rejects_unknown_surface_platform_token() {
+        let yaml = r#"
+app:
+  projectName: demo
+  productName: Demo
+  productVersion: 0.1.0
+  platforms: [macos, android]
+  homeAppId: home
+surfaces:
+  - id: home
+    role: main
+    launch: true
+    platforms: [andriod]
+"#;
+
+        let err = load_config_yaml(yaml).unwrap_err().to_string();
+        assert!(err.contains("surface 'home'"), "{err}");
+        assert!(err.contains("unsupported platform 'andriod'"), "{err}");
+    }
+
+    #[test]
+    fn rejects_empty_surface_platforms() {
+        let yaml = r#"
+app:
+  projectName: demo
+  productName: Demo
+  productVersion: 0.1.0
+  platforms: [macos]
+  homeAppId: home
+surfaces:
+  - id: home
+    role: main
+    launch: true
+    platforms: []
+"#;
+
+        let err = load_config_yaml(yaml).unwrap_err().to_string();
+        assert!(err.contains("platforms must not be empty"), "{err}");
+    }
+
+    #[test]
+    fn rejects_surface_platform_outside_app_platforms() {
+        let yaml = r#"
+app:
+  projectName: demo
+  productName: Demo
+  productVersion: 0.1.0
+  platforms: [ios]
+  homeAppId: home
+surfaces:
+  - id: home
+    role: main
+    launch: true
+    platforms: [macos]
+"#;
+
+        let err = load_config_yaml(yaml).unwrap_err().to_string();
+        assert!(err.contains("surface 'home'"), "{err}");
+        assert!(err.contains("not listed in app.platforms"), "{err}");
+    }
+
+    #[test]
+    fn rejects_terminal_surface_on_mobile_platforms() {
+        let yaml = r#"
+app:
+  projectName: demo
+  productName: Demo
+  productVersion: 0.1.0
+  platforms: [ios, macos]
+  homeAppId: home
+capabilities:
+  terminal: true
+surfaces:
+  - id: home
+    role: main
+    launch: true
+  - id: terminal
+    render: native
+    role: aside
+    edge: bottom
+    platforms: [ios]
+"#;
+
+        let err = load_config_yaml(yaml).unwrap_err().to_string();
+        assert!(err.contains("surface 'terminal'"), "{err}");
+        assert!(
+            err.contains("only supports platforms: macos, windows"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn omitted_terminal_surface_platforms_follow_app_platforms() {
+        let yaml = r#"
+app:
+  projectName: demo
+  productName: Demo
+  productVersion: 0.1.0
+  platforms: [ios, macos]
+  homeAppId: home
+capabilities:
+  terminal: true
+surfaces:
+  - id: home
+    role: main
+    launch: true
+  - id: terminal
+    render: native
+    role: aside
+    edge: bottom
+"#;
+
+        let err = load_config_yaml(yaml).unwrap_err().to_string();
+        assert!(err.contains("surface 'terminal'"), "{err}");
+        assert!(
+            err.contains("only supports platforms: macos, windows"),
+            "{err}"
+        );
     }
 
     #[test]
@@ -2532,7 +2780,7 @@ capabilities:
                 edge: None,
                 sidebar: None,
                 tray: None,
-                platforms: Vec::new(),
+                platforms: None,
             },
             SurfaceDecl {
                 id: "lingxia-chat".into(),
@@ -2546,7 +2794,7 @@ capabilities:
                     section: None,
                 }),
                 tray: None,
-                platforms: Vec::new(),
+                platforms: None,
             },
             SurfaceDecl {
                 id: "terminal".into(),
@@ -2560,7 +2808,7 @@ capabilities:
                     section: None,
                 }),
                 tray: None,
-                platforms: Vec::new(),
+                platforms: None,
             },
         ];
 
@@ -2634,7 +2882,7 @@ capabilities:
                 label: Some("Demo".into()),
                 action: Some(SurfaceTrayAction::Activate),
             }),
-            platforms: Vec::new(),
+            platforms: None,
         }];
 
         let ui = surfaces_to_ui(&surfaces, false).unwrap();
@@ -2693,7 +2941,7 @@ surfaces:
             edge: None,
             sidebar: None,
             tray: None,
-            platforms: Vec::new(),
+            platforms: None,
         }];
         let err = surfaces_to_ui(&surfaces, false).unwrap_err().to_string();
         assert!(err.contains("not supported"), "{err}");
@@ -2710,7 +2958,7 @@ surfaces:
                 edge: None,
                 sidebar: None,
                 tray: None,
-                platforms: Vec::new(),
+                platforms: None,
             },
             SurfaceDecl {
                 id: "terminal".into(),
@@ -2720,7 +2968,7 @@ surfaces:
                 edge: Some("bottom".into()),
                 sidebar: None,
                 tray: None,
-                platforms: Vec::new(),
+                platforms: None,
             },
         ];
         let err = surfaces_to_ui(&surfaces, false).unwrap_err().to_string();
@@ -2738,7 +2986,7 @@ surfaces:
                 edge: None,
                 sidebar: None,
                 tray: None,
-                platforms: Vec::new(),
+                platforms: None,
             },
             SurfaceDecl {
                 id: "b".into(),
@@ -2748,7 +2996,7 @@ surfaces:
                 edge: None,
                 sidebar: None,
                 tray: None,
-                platforms: Vec::new(),
+                platforms: None,
             },
         ];
         let err = surfaces_to_ui(&surfaces, false).unwrap_err().to_string();
@@ -2766,7 +3014,7 @@ surfaces:
                 edge: None,
                 sidebar: None,
                 tray: None,
-                platforms: Vec::new(),
+                platforms: None,
             },
             SurfaceDecl {
                 id: "dup".into(),
@@ -2776,7 +3024,7 @@ surfaces:
                 edge: Some("right".into()),
                 sidebar: None,
                 tray: None,
-                platforms: Vec::new(),
+                platforms: None,
             },
         ];
         let err = surfaces_to_ui(&surfaces, false).unwrap_err().to_string();
@@ -2794,7 +3042,7 @@ surfaces:
                 edge: None,
                 sidebar: None,
                 tray: None,
-                platforms: Vec::new(),
+                platforms: None,
             },
             SurfaceDecl {
                 id: "b".into(),
@@ -2804,7 +3052,7 @@ surfaces:
                 edge: Some("right".into()),
                 sidebar: None,
                 tray: None,
-                platforms: Vec::new(),
+                platforms: None,
             },
         ];
         let err = surfaces_to_ui(&surfaces, false).unwrap_err().to_string();
@@ -2824,7 +3072,7 @@ surfaces:
             edge: Some("right".into()),
             sidebar: None,
             tray: None,
-            platforms: Vec::new(),
+            platforms: None,
         }];
         let err = surfaces_to_ui(&surfaces, false).unwrap_err().to_string();
         assert!(err.contains("edge is only valid on an aside"), "{err}");
