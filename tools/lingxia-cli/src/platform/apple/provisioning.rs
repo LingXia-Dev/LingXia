@@ -11,7 +11,7 @@
 
 use anyhow::{Context, Result, anyhow};
 use colored::Colorize;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use tempfile::NamedTempFile;
@@ -1501,11 +1501,7 @@ fn apply_associated_domains_policy(
         .map(|host| format!("applinks:{host}"))
         .collect::<Vec<_>>();
 
-    if requested.is_empty() {
-        return;
-    }
-
-    let granted = entitlements
+    let Some(granted) = entitlements
         .get(ASSOCIATED_DOMAINS)
         .and_then(plist::Value::as_array)
         .map(|values| {
@@ -1514,17 +1510,28 @@ fn apply_associated_domains_policy(
                 .filter_map(plist::Value::as_string)
                 .map(str::to_string)
                 .collect::<Vec<_>>()
-        });
-
-    let Some(granted) = granted else {
+        })
+    else {
         entitlements.remove(ASSOCIATED_DOMAINS);
-        eprintln!(
-            "  {} Associated Domains not enabled by provisioning profile; AppLinks hosts will not be signed: {}",
-            "!".yellow(),
-            app_link_hosts.join(", ")
-        );
+        if !requested.is_empty() {
+            eprintln!(
+                "  {} Associated Domains not enabled by provisioning profile; AppLinks hosts will not be signed: {}",
+                "!".yellow(),
+                app_link_hosts.join(", ")
+            );
+        }
         return;
     };
+
+    let preserved = granted
+        .iter()
+        .filter(|domain| !domain.starts_with("applinks:"))
+        .cloned()
+        .collect::<Vec<_>>();
+    if requested.is_empty() {
+        write_associated_domains(entitlements, ASSOCIATED_DOMAINS, preserved);
+        return;
+    }
 
     let missing = requested
         .iter()
@@ -1532,24 +1539,27 @@ fn apply_associated_domains_policy(
         .cloned()
         .collect::<Vec<_>>();
     if !missing.is_empty() {
-        let requested_set = requested.iter().map(String::as_str).collect::<HashSet<_>>();
-        let preserved = granted
-            .into_iter()
-            .filter(|domain| !requested_set.contains(domain.as_str()))
-            .map(plist::Value::String)
-            .collect::<Vec<_>>();
-        if preserved.is_empty() {
-            entitlements.remove(ASSOCIATED_DOMAINS);
-        } else {
-            entitlements.insert(
-                ASSOCIATED_DOMAINS.to_string(),
-                plist::Value::Array(preserved),
-            );
-        }
+        write_associated_domains(entitlements, ASSOCIATED_DOMAINS, preserved);
         eprintln!(
             "  {} Associated Domains profile mismatch; disabling AppLinks for this build. Missing: {}",
             "!".yellow(),
             missing.join(", ")
+        );
+        return;
+    }
+
+    let mut domains = preserved;
+    domains.extend(requested);
+    write_associated_domains(entitlements, ASSOCIATED_DOMAINS, domains);
+}
+
+fn write_associated_domains(entitlements: &mut plist::Dictionary, key: &str, domains: Vec<String>) {
+    if domains.is_empty() {
+        entitlements.remove(key);
+    } else {
+        entitlements.insert(
+            key.to_string(),
+            plist::Value::Array(domains.into_iter().map(plist::Value::String).collect()),
         );
     }
 }
@@ -1628,11 +1638,12 @@ mod tests {
     }
 
     #[test]
-    fn test_capability_policy_preserves_matching_associated_domains() {
+    fn test_capability_policy_keeps_only_requested_associated_domains() {
         let mut entitlements = plist::Dictionary::new();
         entitlements.insert(
             "com.apple.developer.associated-domains".to_string(),
             plist::Value::Array(vec![
+                plist::Value::String("webcredentials:example.com".to_string()),
                 plist::Value::String("applinks:www.example.com".to_string()),
                 plist::Value::String("applinks:other.example.com".to_string()),
             ]),
@@ -1653,7 +1664,61 @@ mod tests {
             .and_then(plist::Value::as_array)
             .unwrap();
         assert_eq!(domains.len(), 2);
-        assert_eq!(domains[0].as_string(), Some("applinks:www.example.com"));
-        assert_eq!(domains[1].as_string(), Some("applinks:other.example.com"));
+        assert_eq!(domains[0].as_string(), Some("webcredentials:example.com"));
+        assert_eq!(domains[1].as_string(), Some("applinks:www.example.com"));
+    }
+
+    #[test]
+    fn test_capability_policy_removes_applinks_without_hosts() {
+        let mut entitlements = plist::Dictionary::new();
+        entitlements.insert(
+            "com.apple.developer.associated-domains".to_string(),
+            plist::Value::Array(vec![
+                plist::Value::String("webcredentials:example.com".to_string()),
+                plist::Value::String("applinks:www.example.com".to_string()),
+            ]),
+        );
+        let mut source = Vec::new();
+        plist::to_writer_xml(&mut source, &entitlements).unwrap();
+
+        let filtered =
+            apply_capability_entitlement_policy(&source, "app.lingxia.test", &[]).unwrap();
+        let parsed = plist::from_bytes::<plist::Value>(&filtered).unwrap();
+        let dict = parsed.as_dictionary().unwrap();
+        let domains = dict
+            .get("com.apple.developer.associated-domains")
+            .and_then(plist::Value::as_array)
+            .unwrap();
+        assert_eq!(domains.len(), 1);
+        assert_eq!(domains[0].as_string(), Some("webcredentials:example.com"));
+    }
+
+    #[test]
+    fn test_capability_policy_preserves_non_applinks_on_profile_mismatch() {
+        let mut entitlements = plist::Dictionary::new();
+        entitlements.insert(
+            "com.apple.developer.associated-domains".to_string(),
+            plist::Value::Array(vec![
+                plist::Value::String("webcredentials:example.com".to_string()),
+                plist::Value::String("applinks:old.example.com".to_string()),
+            ]),
+        );
+        let mut source = Vec::new();
+        plist::to_writer_xml(&mut source, &entitlements).unwrap();
+
+        let filtered = apply_capability_entitlement_policy(
+            &source,
+            "app.lingxia.test",
+            &["new.example.com".to_string()],
+        )
+        .unwrap();
+        let parsed = plist::from_bytes::<plist::Value>(&filtered).unwrap();
+        let dict = parsed.as_dictionary().unwrap();
+        let domains = dict
+            .get("com.apple.developer.associated-domains")
+            .and_then(plist::Value::as_array)
+            .unwrap();
+        assert_eq!(domains.len(), 1);
+        assert_eq!(domains[0].as_string(), Some("webcredentials:example.com"));
     }
 }

@@ -248,8 +248,8 @@ fn resolve_owner_lxapp(owner_appid: &str, owner_session_id: u64) -> Result<Arc<L
 }
 
 pub(crate) fn register_builtin_browser_host() {
-    // Synthetic host: just owns tab session_id + page lifecycle. shell-runtime
-    // upgrades this to a real asset bundle later (see lingxia-shell).
+    // Synthetic host: just owns tab session_id + page lifecycle. browser-shell
+    // upgrades this to a real asset bundle later (see lingxia-browser-shell).
     lxapp::register_synthetic_lxapp(BUILTIN_BROWSER_APPID);
 }
 
