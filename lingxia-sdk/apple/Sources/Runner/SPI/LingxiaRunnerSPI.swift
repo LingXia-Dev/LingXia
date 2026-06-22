@@ -166,13 +166,6 @@ import WebKit
     }
 
     @MainActor
-    public enum CapsuleMenu {
-        public static func show(appId: String) {
-            RunnerBridge.showCapsuleMenu(appId: appId)
-        }
-    }
-
-    @MainActor
     public enum SurfaceShell {
         public static func make(controller: LxAppController) -> LxAppShell {
             RunnerBridge.makeSurfaceShell(controller: controller)

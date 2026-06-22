@@ -14,6 +14,7 @@ public class RunnerApp {
     private var controller: LxAppController?
     private var controllerEventsTask: Task<Void, Never>?
     private let deviceMenu = RunnerDeviceMenu()
+    private var pendingPhoneLifecycleReopens: [String: (appId: String, path: String, sessionId: UInt64)] = [:]
     private(set) var deviceSize: MobileDeviceSize = .defaultDevice
     
     private init() {}
@@ -55,13 +56,28 @@ public class RunnerApp {
                     )
                 case .didClose(let session):
                     RunnerSupport.Runtime.removeSessionId(for: session.appId)
-                    if self.windowController?.appId == session.appId {
-                        self.windowController?.closeFromRuntime()
+                    if let phoneHost = self.windowController, phoneHost.appId == session.appId {
+                        phoneHost.closeFromRuntime()
+                        if let pending = self.pendingPhoneLifecycleReopens.removeValue(forKey: session.appId) {
+                            self.reopenCurrentAppAfterLifecycleAction(pending)
+                        } else {
+                            self.reopenHomeAfterRuntimeClose(appId: session.appId, controller: controller)
+                        }
+                    } else if self.surfaceShellHost?.appId == session.appId {
+                        self.reopenHomeAfterRuntimeClose(appId: session.appId, controller: controller)
                     }
                 default:
                     continue
                 }
             }
+        }
+    }
+
+    private func reopenHomeAfterRuntimeClose(appId: String, controller: LxAppController) {
+        os_log("Runner reopening home after runtime close appId=%@", log: Self.log, type: .info, appId)
+        Task { @MainActor [weak self, controller] in
+            guard self != nil else { return }
+            _ = try? await controller.openHomeApp()
         }
     }
 
@@ -100,6 +116,9 @@ public class RunnerApp {
 
         RunnerSupport.Runtime.setSessionId(sessionId, for: appId)
         RunnerSupport.Runtime.setCurrentApp(appId: appId, path: resolvedPath)
+        if pendingPhoneLifecycleReopens[appId]?.sessionId != sessionId {
+            pendingPhoneLifecycleReopens.removeValue(forKey: appId)
+        }
 
         if deviceSize.usesSurfaceShell {
             openInSurfaceShell(appId: appId, path: resolvedPath, sessionId: sessionId)
@@ -243,6 +262,74 @@ public class RunnerApp {
         windowController = nil
         surfaceShellHost?.shell.window?.close()
         surfaceShellHost = nil
+    }
+
+    public func restartCurrentLxApp() {
+        triggerCurrentLxAppAction("restart", reopenAfterAction: true)
+    }
+
+    public func cleanCacheAndRestartCurrentLxApp() {
+        triggerCurrentLxAppAction("clean_cache_restart", reopenAfterAction: true)
+    }
+
+    public func closeCurrentLxAppFromCapsule() {
+        triggerCurrentLxAppAction("close", reopenAfterAction: false)
+    }
+
+    private func triggerCurrentLxAppAction(_ action: String, reopenAfterAction: Bool) {
+        guard let current = currentOpenApp() else {
+            os_log("Runner ignored lxapp action without current app: %@", log: Self.log, type: .info, action)
+            return
+        }
+
+        let shouldReopenPhoneHost = reopenAfterAction && windowController?.appId == current.appId
+        if shouldReopenPhoneHost {
+            pendingPhoneLifecycleReopens[current.appId] = current
+        }
+
+        let handled = onLxappEvent(current.appId, LxAppUiEventType.CapsuleClick, action)
+        os_log(
+            "Runner lxapp action=%@ appId=%@ handled=%{public}@",
+            log: Self.log,
+            type: .info,
+            action,
+            current.appId,
+            handled ? "true" : "false"
+        )
+
+        if !handled {
+            pendingPhoneLifecycleReopens.removeValue(forKey: current.appId)
+        }
+
+        if reopenAfterAction && !shouldReopenPhoneHost {
+            reopenCurrentAppAfterLifecycleAction(current)
+        }
+    }
+
+    private func reopenCurrentAppAfterLifecycleAction(
+        _ current: (appId: String, path: String, sessionId: UInt64)
+    ) {
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let deadline = Date().addingTimeInterval(3.0)
+            while Date() < deadline {
+                if let activeSession = RunnerSupport.Runtime.sessionId(for: current.appId),
+                   activeSession > 0,
+                   activeSession != current.sessionId,
+                   (self.windowController?.appId == current.appId || self.surfaceShellHost?.appId == current.appId) {
+                    return
+                }
+
+                let sessionId = getLxAppSessionId(current.appId)
+                if sessionId > 0, sessionId != current.sessionId {
+                    self.openLxApp(appId: current.appId, path: "")
+                    return
+                }
+
+                try? await Task.sleep(nanoseconds: 50_000_000)
+            }
+            self.openLxApp(appId: current.appId, path: "")
+        }
     }
 
     public func restartRunner() {
