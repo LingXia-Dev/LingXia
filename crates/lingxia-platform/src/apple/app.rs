@@ -161,6 +161,38 @@ impl AppRuntime for Platform {
         }
     }
 
+    fn set_tray_badge(&self, text: &str) -> Result<(), PlatformError> {
+        if ffi::set_tray_badge(text) {
+            Ok(())
+        } else {
+            Err(PlatformError::Platform("Failed to set tray badge".to_string()))
+        }
+    }
+
+    fn set_tray_icon(&self, icon: &str) -> Result<(), PlatformError> {
+        if ffi::set_tray_icon(icon) {
+            Ok(())
+        } else {
+            Err(PlatformError::Platform("Failed to set tray icon".to_string()))
+        }
+    }
+
+    fn set_tray_title(&self, text: &str) -> Result<(), PlatformError> {
+        if ffi::set_tray_title(text) {
+            Ok(())
+        } else {
+            Err(PlatformError::Platform("Failed to set tray title".to_string()))
+        }
+    }
+
+    fn set_app_badge(&self, text: &str) -> Result<(), PlatformError> {
+        if ffi::set_app_badge(text) {
+            Ok(())
+        } else {
+            Err(PlatformError::Platform("Failed to set app badge".to_string()))
+        }
+    }
+
     fn navigate(
         &self,
         appid: String,

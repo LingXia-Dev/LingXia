@@ -161,6 +161,12 @@ export interface HostAppApi {
    * home lxapp; other lxapps receive a permission error.
    */
   screenshot(options?: AppScreenshotOptions): Promise<AppScreenshotResult>;
+
+  /**
+   * Set the dock (macOS) / taskbar (Windows) badge — e.g. an unread count.
+   * Pass `null` or an empty string to clear it.
+   */
+  setBadge(value: string | number | null): void;
 }
 
 export interface AppLifecycleEventArgs {

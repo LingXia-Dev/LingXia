@@ -262,6 +262,54 @@ extension LxApp {
         }
     }
 
+    nonisolated static func setTrayBadge(text: RustStr) -> Bool {
+        let value = text.toString()
+        return executeOnMain {
+            #if os(macOS)
+            LxAppMacAppUIRuntime.active?.setTrayBadge(value.isEmpty ? nil : value)
+            return true
+            #else
+            return false
+            #endif
+        }
+    }
+
+    nonisolated static func setTrayIcon(icon: RustStr) -> Bool {
+        let value = icon.toString()
+        return executeOnMain {
+            #if os(macOS)
+            LxAppMacAppUIRuntime.active?.setTrayIcon(value)
+            return true
+            #else
+            return false
+            #endif
+        }
+    }
+
+    nonisolated static func setTrayTitle(text: RustStr) -> Bool {
+        let value = text.toString()
+        return executeOnMain {
+            #if os(macOS)
+            LxAppMacAppUIRuntime.active?.setTrayTitle(value.isEmpty ? nil : value)
+            return true
+            #else
+            return false
+            #endif
+        }
+    }
+
+    nonisolated static func setAppBadge(text: RustStr) -> Bool {
+        let value = text.toString()
+        return executeOnMain {
+            #if os(macOS)
+            NSApp.dockTile.badgeLabel = value.isEmpty ? nil : value
+            return true
+            #else
+            return false
+            #endif
+        }
+    }
+
     /// Show the post-download update prompt. `state` is "ready" (downloaded →
     /// minimal sidebar callout; clicking it opens the notes card) or
     /// "ready-force" (forced → blocking notes card, no dismiss). `info_json`

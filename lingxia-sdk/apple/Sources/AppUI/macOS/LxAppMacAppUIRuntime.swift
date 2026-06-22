@@ -182,6 +182,12 @@ final class LxAppMacAppUIRuntime: NSObject {
         return !active.appActivationActivators.isEmpty
     }
 
+    // MARK: - Tray runtime updates (lx.tray.*)
+
+    func setTrayBadge(_ text: String?) { trayController.setBadge(text) }
+    func setTrayIcon(_ icon: String) { trayController.setIcon(icon) }
+    func setTrayTitle(_ text: String?) { trayController.setTitle(text) }
+
     private func handleOpenedPanel(
         appId: String,
         path: String,

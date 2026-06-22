@@ -72,6 +72,44 @@ final class LxAppMacTrayController: NSObject {
         statusItems[activatorID]?.button
     }
 
+    // Runtime updates (lx.tray.*). They target the single tray's status item.
+    private var trayTitle: String?
+    private var trayBadge: String?
+
+    func setBadge(_ text: String?) {
+        trayBadge = (text?.isEmpty ?? true) ? nil : text
+        refreshTrayText()
+    }
+
+    func setTitle(_ text: String?) {
+        trayTitle = (text?.isEmpty ?? true) ? nil : text
+        refreshTrayText()
+    }
+
+    func setIcon(_ iconPath: String) {
+        guard let id = defaultActivatorID, let button = statusItems[id]?.button else { return }
+        guard let url = LxAppAppUIBundleLoader.resolveRelativeResource(iconPath, baseURL: uiConfigURL),
+              let image = NSImage(contentsOf: url) else { return }
+        image.size = NSSize(width: 18, height: 18)
+        image.isTemplate = isTemplateMenuBarIcon(url)
+        button.image = image
+        refreshTrayText()
+    }
+
+    /// macOS status items have no native count badge, so the title and badge are
+    /// composited as text beside the icon (idiomatic, like the menu-bar clock).
+    private func refreshTrayText() {
+        guard let id = defaultActivatorID, let button = statusItems[id]?.button else { return }
+        let text = [trayTitle, trayBadge].compactMap { $0 }.joined(separator: " ")
+        if text.isEmpty {
+            button.title = ""
+            button.imagePosition = button.image != nil ? .imageOnly : .noImage
+        } else {
+            button.title = button.image != nil ? " \(text)" : text
+            button.imagePosition = button.image != nil ? .imageLeading : .noImage
+        }
+    }
+
     func anyButtonContains(screenPoint point: NSPoint) -> Bool {
         statusItems.values.contains { item in
             guard let button = item.button, let window = button.window else {

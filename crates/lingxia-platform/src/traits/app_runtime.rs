@@ -137,6 +137,26 @@ pub trait AppRuntime:
     /// Exits the host app.
     fn exit(&self) -> Result<(), PlatformError>;
 
+    /// Set the tray (menu-bar / system-tray) badge. Empty clears it.
+    fn set_tray_badge(&self, _text: &str) -> Result<(), PlatformError> {
+        Err(PlatformError::NotSupported("set_tray_badge".to_string()))
+    }
+
+    /// Set the tray icon (a resource path resolved against the app's assets).
+    fn set_tray_icon(&self, _icon: &str) -> Result<(), PlatformError> {
+        Err(PlatformError::NotSupported("set_tray_icon".to_string()))
+    }
+
+    /// Set the tray title text (shown beside the icon on macOS). Empty clears it.
+    fn set_tray_title(&self, _text: &str) -> Result<(), PlatformError> {
+        Err(PlatformError::NotSupported("set_tray_title".to_string()))
+    }
+
+    /// Set the app (dock / taskbar) badge. Empty clears it.
+    fn set_app_badge(&self, _text: &str) -> Result<(), PlatformError> {
+        Err(PlatformError::NotSupported("set_app_badge".to_string()))
+    }
+
     /// Navigates within the given LxApp using an animation.
     fn navigate(
         &self,

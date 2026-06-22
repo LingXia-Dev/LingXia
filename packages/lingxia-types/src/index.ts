@@ -255,9 +255,24 @@ export type OpenSurfaceSpec =
   | OpenUrlTabSpec
   | OpenUrlAsideSpec;
 
+/**
+ * Runtime control of the menu-bar (macOS) / system-tray (Windows) status item.
+ * The tray is declared in `lingxia.yaml` (`tray:`); these update its dynamic
+ * content at runtime.
+ */
+export interface TrayApi {
+  /** Replace the status-item icon (a resource path). */
+  setIcon(icon: string): void;
+  /** Set the text shown beside the icon (macOS). Pass `null`/empty to clear. */
+  setTitle(text: string | null): void;
+  /** Set the badge — e.g. an unread count. Pass `null`/empty to clear. */
+  setBadge(value: string | number | null): void;
+}
+
 export interface Lx {
   env: LxEnv;
   app: HostAppApi;
+  tray: TrayApi;
 
   /**
    * Open a surface.

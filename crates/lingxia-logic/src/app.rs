@@ -40,6 +40,15 @@ fn exit_app(ctx: JSContext) -> JSResult<()> {
         .map_err(|e| js_error_from_platform_error(&e))
 }
 
+/// lx.app.setBadge(value) — the dock (macOS) / taskbar (Windows) badge. Null/empty clears it.
+fn set_app_badge(ctx: JSContext, text: Option<String>) -> JSResult<()> {
+    let lxapp = LxApp::from_ctx(&ctx)?;
+    lxapp
+        .runtime
+        .set_app_badge(text.as_deref().unwrap_or(""))
+        .map_err(|e| js_error_from_platform_error(&e))
+}
+
 fn app_namespace(ctx: &JSContext) -> JSResult<JSObject> {
     let lx = ctx.global().get::<_, JSObject>("lx")?;
     match lx.get::<_, JSObject>("app") {
@@ -59,6 +68,7 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     app.set("envVersion", env_version().as_str())?;
     app.set("getBaseInfo", JSFunc::new(ctx, get_app_base_info)?)?;
     app.set("exit", JSFunc::new(ctx, exit_app)?)?;
+    app.set("setBadge", JSFunc::new(ctx, set_app_badge)?)?;
     screenshot::init(ctx, &app)?;
     update::init(ctx, &app)?;
 
