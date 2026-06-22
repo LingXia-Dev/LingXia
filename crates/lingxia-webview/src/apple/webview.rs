@@ -1873,9 +1873,12 @@ impl WebViewInner {
                 },
             };
 
-            // Get WKWebView class
+            // Get WKWebView class.
+            // All macOS webviews use the LingXia context-menu subclass: browser tabs get the
+            // download menu, lxapp pages get reload stripped and an optional pull-down refresh
+            // entry. The subclass branches on its currentPath ("/tabs/" => browser).
             #[cfg(target_os = "macos")]
-            let webview_class = if effective_options.profile == SecurityProfile::BrowserRelaxed {
+            let webview_class = {
                 let class_name = "LingXiaBrowserContextMenuWebView";
                 match CString::new(class_name)
                     .ok()
@@ -1883,23 +1886,22 @@ impl WebViewInner {
                 {
                     Some(class) => {
                         log::info!(
-                            "Using browser context menu webview subclass webtag={} class={}",
+                            "Using LingXia context menu webview subclass webtag={} class={} profile={:?}",
                             webtag.as_str(),
-                            class_name
+                            class_name,
+                            effective_options.profile
                         );
                         class
                     }
                     None => {
                         log::warn!(
-                            "Browser context menu webview subclass unavailable; falling back to WKWebView webtag={} class={}",
+                            "LingXia context menu webview subclass unavailable; falling back to WKWebView webtag={} class={}",
                             webtag.as_str(),
                             class_name
                         );
                         objc2::class!(WKWebView)
                     }
                 }
-            } else {
-                objc2::class!(WKWebView)
             };
             #[cfg(not(target_os = "macos"))]
             let webview_class = objc2::class!(WKWebView);
