@@ -52,6 +52,7 @@ pub(crate) fn set_app_icon_from_path(path: &Path) -> Result<(), String> {
 /// The source PNG path of the applied product/app icon (the launcher icon
 /// resolved at startup), if one was set. This is the application's icon, not
 /// any single lxapp's icon.
+#[cfg(feature = "browser-shell")]
 pub(crate) fn current_app_icon_path() -> Option<std::path::PathBuf> {
     APP_ICON_PATH
         .get()
@@ -63,6 +64,7 @@ pub(crate) fn current_app_icon_path() -> Option<std::path::PathBuf> {
 /// callers that need an owned icon to pass to Win32 dialogs (e.g. the shell's
 /// About box). The caller owns the handle and must `DestroyIcon` it. Returns
 /// `None` when the file cannot be decoded.
+#[cfg(feature = "browser-shell")]
 pub(crate) fn create_icon_handle_from_path(path: &Path, size: u32) -> Option<isize> {
     create_icon_from_png(path, size).ok()
 }
@@ -70,6 +72,7 @@ pub(crate) fn create_icon_handle_from_path(path: &Path, size: u32) -> Option<isi
 /// The process's current large (32px) app-icon handle, if one has been
 /// applied. A shared, caller-must-not-destroy handle usable as a fallback
 /// when no app-specific icon path is available.
+#[cfg(feature = "browser-shell")]
 pub(crate) fn current_large_icon_handle() -> Option<isize> {
     current_app_icon_handles().map(|handles| handles.large)
 }

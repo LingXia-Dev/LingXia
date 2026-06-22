@@ -1551,6 +1551,7 @@ fn register_webview_panel(
     }
 }
 
+#[cfg(feature = "browser-shell")]
 pub(crate) fn close_webview_panel(panel_id: &str) {
     let Some(webtag_key) = WEBVIEW_PANELS
         .get()
