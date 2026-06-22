@@ -1977,7 +1977,15 @@ impl WebViewInner {
             };
 
             // Set up message handler for bridge communication
-            let message_handler = Self::setup_message_handler(webview, appid, path, session_id)?;
+            let inject_platform_baseline =
+                effective_options.profile != SecurityProfile::BrowserRelaxed;
+            let message_handler = Self::setup_message_handler(
+                webview,
+                appid,
+                path,
+                session_id,
+                inject_platform_baseline,
+            )?;
 
             // Create WebViewInner instance with navigation delegate and message handler
             let webview_inner = WebViewInner {
@@ -1999,6 +2007,7 @@ impl WebViewInner {
         appid: &str,
         path: &str,
         session_id: Option<u64>,
+        inject_platform_baseline: bool,
     ) -> Result<Retained<LingXiaMessageHandler>, WebViewError> {
         unsafe {
             // Get the configuration from the WebView
@@ -2072,6 +2081,49 @@ impl WebViewInner {
                     forMainFrameOnly: false];
 
                 let _: () = msg_send![user_content_controller, addUserScript: input_helper_script];
+            }
+
+            // LingXia platform/selection baseline. lxapp pages only: browser tabs render
+            // arbitrary external pages and must not be restyled. The runtime owns the
+            // selection/copy policy per platform (desktop = selectable, touch = native-app
+            // no-select) so apps don't bake a build-time assumption into their CSS.
+            if inject_platform_baseline {
+                #[cfg(target_os = "macos")]
+                let (lx_class, lx_platform, baseline_css) = (
+                    "lx-desktop",
+                    "macos",
+                    concat!(
+                        "html.lx-desktop,html.lx-desktop body{-webkit-user-select:text;user-select:text;}",
+                        "html.lx-desktop .no-select,html.lx-desktop [data-lx-no-select]{-webkit-user-select:none;user-select:none;}"
+                    ),
+                );
+                #[cfg(not(target_os = "macos"))]
+                let (lx_class, lx_platform, baseline_css) = (
+                    "lx-touch",
+                    "ios",
+                    concat!(
+                        "html.lx-touch,html.lx-touch body{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;}",
+                        "html.lx-touch [selectable],html.lx-touch .selectable,html.lx-touch input,html.lx-touch textarea,html.lx-touch [contenteditable=\"true\"]{-webkit-user-select:text;user-select:text;-webkit-touch-callout:default;}"
+                    ),
+                );
+
+                // CSS contains no single quotes or newlines, so single-quoting is safe.
+                let platform_script = String::from(
+                    "(function(){try{var el=document.documentElement;el.classList.add('",
+                ) + lx_class
+                    + "');el.setAttribute('data-lx-platform','"
+                    + lx_platform
+                    + "');var s=document.createElement('style');s.setAttribute('data-lingxia-base','');s.textContent='"
+                    + baseline_css
+                    + "';(document.head||el).appendChild(s);}catch(e){}})();";
+
+                let platform_js_string = NSString::from_str(&platform_script);
+                let platform_user_script: *mut AnyObject = msg_send![user_script_class, alloc];
+                let platform_user_script: *mut AnyObject = msg_send![platform_user_script,
+                    initWithSource: &*platform_js_string,
+                    injectionTime: injection_time,
+                    forMainFrameOnly: true];
+                let _: () = msg_send![user_content_controller, addUserScript: platform_user_script];
             }
 
             let message_handler = LingXiaMessageHandler::new(
