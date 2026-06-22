@@ -54,6 +54,141 @@ private final class SidebarScrollView: NSScrollView {
     override var mouseDownCanMoveWindow: Bool { false }
 }
 
+@MainActor
+private final class SidebarRailButton: NSButton {
+    var onHoverChanged: ((Bool) -> Void)?
+    private var trackingArea: NSTrackingArea?
+
+    override var mouseDownCanMoveWindow: Bool { false }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let existing = trackingArea {
+            removeTrackingArea(existing)
+        }
+        let area = NSTrackingArea(
+            rect: bounds,
+            options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(area)
+        trackingArea = area
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        onHoverChanged?(true)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        onHoverChanged?(false)
+    }
+}
+
+@MainActor
+private final class SidebarPopoverHoverView: NSView {
+    var onHoverChanged: ((Bool) -> Void)?
+    private var trackingArea: NSTrackingArea?
+
+    override var mouseDownCanMoveWindow: Bool { false }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let existing = trackingArea {
+            removeTrackingArea(existing)
+        }
+        let area = NSTrackingArea(
+            rect: bounds,
+            options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(area)
+        trackingArea = area
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        onHoverChanged?(true)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        onHoverChanged?(false)
+    }
+}
+
+@MainActor
+private final class SidebarRailTabPopoverViewController: NSViewController {
+    private enum Layout {
+        static let width: CGFloat = 188
+        static let inset: CGFloat = 8
+        static let spacing: CGFloat = 2
+    }
+
+    private let appId: String
+    private let items: [TabBarItem]
+    private let selectedIndex: Int
+
+    var onPageSelected: ((String, Int) -> Void)?
+    var onDismissRequested: (() -> Void)?
+    var onHoverChanged: ((Bool) -> Void)?
+
+    init(appId: String, items: [TabBarItem], selectedIndex: Int) {
+        self.appId = appId
+        self.items = items
+        self.selectedIndex = selectedIndex
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func loadView() {
+        let rootView = SidebarPopoverHoverView()
+        rootView.wantsLayer = true
+        rootView.layer?.cornerRadius = 8
+        rootView.onHoverChanged = { [weak self] hovering in
+            self?.onHoverChanged?(hovering)
+        }
+
+        let stack = NSStackView()
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = Layout.spacing
+        rootView.addSubview(stack)
+
+        for (index, item) in items.enumerated() {
+            let itemView = SidebarItemView(appId: appId, itemIndex: index)
+            itemView.translatesAutoresizingMaskIntoConstraints = false
+            itemView.configure(item: item)
+            itemView.isSelected = (index == selectedIndex)
+            itemView.onClick = { [weak self] selectedIndex in
+                guard let self else { return }
+                self.onPageSelected?(self.appId, selectedIndex)
+                self.onDismissRequested?()
+            }
+            stack.addArrangedSubview(itemView)
+            itemView.widthAnchor.constraint(equalToConstant: Layout.width - (Layout.inset * 2)).isActive = true
+        }
+
+        NSLayoutConstraint.activate([
+            stack.leadingAnchor.constraint(equalTo: rootView.leadingAnchor, constant: Layout.inset),
+            stack.trailingAnchor.constraint(equalTo: rootView.trailingAnchor, constant: -Layout.inset),
+            stack.topAnchor.constraint(equalTo: rootView.topAnchor, constant: Layout.inset),
+            stack.bottomAnchor.constraint(equalTo: rootView.bottomAnchor, constant: -Layout.inset),
+        ])
+
+        let itemHeight = CGFloat(items.count) * SidebarItemView.Layout.height
+        let spacingHeight = CGFloat(max(0, items.count - 1)) * Layout.spacing
+        preferredContentSize = NSSize(
+            width: Layout.width,
+            height: itemHeight + spacingHeight + (Layout.inset * 2)
+        )
+        view = rootView
+    }
+}
+
 // MARK: - PanelIconItem
 
 /// Minimal display info for a panel icon in the sidebar footer.
@@ -115,7 +250,7 @@ extension PanelIconItem: Equatable {
 /// The main sidebar container view, modeled after Chrome vertical tab groups.
 /// Supports drag-to-resize and a fully hidden state.
 @MainActor
-class SidebarView: NSView {
+class SidebarView: NSView, NSPopoverDelegate {
     private static let log = OSLog(subsystem: "LingXia", category: "Sidebar")
 
     struct Layout {
@@ -160,11 +295,9 @@ class SidebarView: NSView {
     /// Horizontal stack that holds trailing product/action buttons.
     private let panelStack = NSStackView()
     /// The expanded-state collapse toggle. Lives in the header, next to the
-    /// traffic lights; clicking it collapses the sidebar to the icon rail.
+    /// sidebar actions; clicking it collapses the sidebar to the icon rail.
     private let hideButton = NSButton()
     private var hideButtonTrackingArea: NSTrackingArea?
-    /// Leading inset of the header toggle, kept clear of the traffic lights.
-    private var headerToggleLeadingConstraint: NSLayoutConstraint?
     /// The rail-state expand toggle — the first icon in the collapsed rail,
     /// above the lxapp icons; clicking it restores the expanded sidebar.
     private let railExpandButton = NSButton()
@@ -198,6 +331,11 @@ class SidebarView: NSView {
     private let railStack = NSStackView()
     /// Rail buttons keyed by a composite id ("app:<appId>" / "web:<tabId>").
     private var railButtons: [String: NSButton] = [:]
+    private var railTabPopover: NSPopover?
+    private weak var railTabPopoverButton: NSButton?
+    private var railTabPopoverAppId: String?
+    private var railTabPopoverDismissTask: Task<Void, Never>?
+    private var isRailTabPopoverHovered = false
 
     /// The bundled default LingXia mark, used when an lxapp declares no icon.
     private static let defaultAppIcon: NSImage? = {
@@ -452,7 +590,9 @@ class SidebarView: NSView {
             headerView.trailingAnchor.constraint(equalTo: trailingAnchor),
             headerView.heightAnchor.constraint(equalToConstant: Layout.trafficLightsHeight),
 
-            downloadButton.trailingAnchor.constraint(equalTo: headerView.trailingAnchor, constant: -12),
+            hideButton.trailingAnchor.constraint(equalTo: headerView.trailingAnchor, constant: -8),
+
+            downloadButton.trailingAnchor.constraint(equalTo: hideButton.leadingAnchor, constant: -4),
             downloadButton.widthAnchor.constraint(equalToConstant: Layout.actionButtonSize),
             downloadButton.heightAnchor.constraint(equalToConstant: Layout.actionButtonSize),
 
@@ -503,13 +643,6 @@ class SidebarView: NSView {
         let toggleCenter = hideButton.centerYAnchor.constraint(equalTo: headerView.topAnchor, constant: centerY)
         buttonCenterYConstraints = [downloadCenter, settingsCenter, toggleCenter]
         NSLayoutConstraint.activate(buttonCenterYConstraints)
-
-        // The header toggle sits just to the right of the traffic lights.
-        let toggleLeading = hideButton.leadingAnchor.constraint(
-            equalTo: headerView.leadingAnchor, constant: Layout.railWidth)
-        headerToggleLeadingConstraint = toggleLeading
-        NSLayoutConstraint.activate([toggleLeading])
-        refreshHeaderTogglePosition()
 
         // Document view fills scroll view width
         if let docView = scrollView.documentView {
@@ -576,6 +709,8 @@ class SidebarView: NSView {
         isCompact = compact
         if compact {
             rebuildRail()
+        } else {
+            closeRailTabPopover()
         }
         updateVisibilityState()
     }
@@ -592,6 +727,7 @@ class SidebarView: NSView {
 
     /// Rebuild the rail's icon buttons from the current lxapps + browser tabs.
     private func rebuildRail() {
+        closeRailTabPopover()
         railStack.arrangedSubviews.forEach {
             railStack.removeArrangedSubview($0)
             $0.removeFromSuperview()
@@ -613,6 +749,16 @@ class SidebarView: NSView {
             let key = "app:\(group.appId)"
             let btn = makeRailButton(key: key, tooltip: info.app_name.toString(), image: image, isTemplate: false)
             btn.action = #selector(railAppClicked(_:))
+            if let railButton = btn as? SidebarRailButton {
+                railButton.onHoverChanged = { [weak self, weak railButton] hovering in
+                    guard let self, let railButton else { return }
+                    if hovering {
+                        self.showRailTabPopover(appId: group.appId, relativeTo: railButton)
+                    } else {
+                        self.scheduleRailTabPopoverDismiss()
+                    }
+                }
+            }
             railStack.addArrangedSubview(btn)
             railButtons[key] = btn
         }
@@ -622,6 +768,11 @@ class SidebarView: NSView {
             let image = item.favicon ?? NSImage(systemSymbolName: "globe", accessibilityDescription: item.title)
             let btn = makeRailButton(key: key, tooltip: item.title, image: image, isTemplate: item.favicon == nil)
             btn.action = #selector(railBrowserClicked(_:))
+            if let railButton = btn as? SidebarRailButton {
+                railButton.onHoverChanged = { [weak self] hovering in
+                    if hovering { self?.closeRailTabPopover() }
+                }
+            }
             railStack.addArrangedSubview(btn)
             railButtons[key] = btn
         }
@@ -630,7 +781,7 @@ class SidebarView: NSView {
     }
 
     private func makeRailButton(key: String, tooltip: String, image: NSImage?, isTemplate: Bool) -> NSButton {
-        let btn = NSButton()
+        let btn = SidebarRailButton()
         btn.translatesAutoresizingMaskIntoConstraints = false
         btn.isBordered = false
         btn.bezelStyle = .regularSquare
@@ -674,8 +825,100 @@ class SidebarView: NSView {
     }
 
     @objc private func railBrowserClicked(_ sender: NSButton) {
+        closeRailTabPopover()
         guard let key = sender.identifier?.rawValue, key.hasPrefix("web:") else { return }
         onBrowserTabSelected?(String(key.dropFirst(4)))
+    }
+
+    private func showRailTabPopover(appId: String, relativeTo button: NSButton) {
+        guard isCompact, !button.isHidden, let tabBar = getTabBar(appId) else {
+            closeRailTabPopover()
+            return
+        }
+        let items = tabBar.getItems(appId: appId)
+        guard !items.isEmpty else {
+            closeRailTabPopover()
+            return
+        }
+
+        railTabPopoverDismissTask?.cancel()
+        if railTabPopoverAppId == appId, railTabPopover?.isShown == true {
+            railTabPopoverButton = button
+            return
+        }
+
+        closeRailTabPopover()
+
+        let content = SidebarRailTabPopoverViewController(
+            appId: appId,
+            items: items,
+            selectedIndex: Int(tabBar.selected_index)
+        )
+        content.onPageSelected = { [weak self] appId, index in
+            self?.onAppPageSelected?(appId, index)
+        }
+        content.onDismissRequested = { [weak self] in
+            self?.closeRailTabPopover()
+        }
+        content.onHoverChanged = { [weak self] hovering in
+            guard let self else { return }
+            self.isRailTabPopoverHovered = hovering
+            if hovering {
+                self.railTabPopoverDismissTask?.cancel()
+            } else {
+                self.scheduleRailTabPopoverDismiss()
+            }
+        }
+
+        let popover = NSPopover()
+        popover.behavior = .semitransient
+        popover.animates = true
+        popover.contentViewController = content
+        popover.delegate = self
+
+        railTabPopover = popover
+        railTabPopoverAppId = appId
+        railTabPopoverButton = button
+        isRailTabPopoverHovered = false
+        popover.show(relativeTo: button.bounds.insetBy(dx: -4, dy: -4), of: button, preferredEdge: .maxX)
+    }
+
+    private func scheduleRailTabPopoverDismiss() {
+        railTabPopoverDismissTask?.cancel()
+        railTabPopoverDismissTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            guard !Task.isCancelled, let self else { return }
+            guard !self.isRailTabPopoverHovered, !self.isMouseInsideRailTabPopoverButton() else { return }
+            self.closeRailTabPopover()
+        }
+    }
+
+    private func isMouseInsideRailTabPopoverButton() -> Bool {
+        guard let button = railTabPopoverButton, let window = button.window else { return false }
+        let windowPoint = window.mouseLocationOutsideOfEventStream
+        let buttonPoint = button.convert(windowPoint, from: nil)
+        return button.bounds.insetBy(dx: -6, dy: -6).contains(buttonPoint)
+    }
+
+    private func closeRailTabPopover() {
+        railTabPopoverDismissTask?.cancel()
+        railTabPopoverDismissTask = nil
+        isRailTabPopoverHovered = false
+        railTabPopoverAppId = nil
+        railTabPopoverButton = nil
+        railTabPopover?.delegate = nil
+        railTabPopover?.close()
+        railTabPopover = nil
+    }
+
+    func popoverDidClose(_ notification: Notification) {
+        guard notification.object as? NSPopover === railTabPopover else { return }
+        railTabPopoverDismissTask?.cancel()
+        railTabPopoverDismissTask = nil
+        isRailTabPopoverHovered = false
+        railTabPopoverAppId = nil
+        railTabPopoverButton = nil
+        railTabPopover = nil
     }
 
     func updateVisibilityState() {
@@ -703,13 +946,6 @@ class SidebarView: NSView {
         // expanded sidebar with no panel actions has no dangling bottom bar.
         footerView.isHidden = hidden || compact || model.panelItems.isEmpty
         resizeHandle.isHidden = hidden
-        refreshHeaderTogglePosition()
-    }
-
-    /// Keep the header toggle just to the right of the macOS traffic lights.
-    private func refreshHeaderTogglePosition() {
-        let clearance = trafficLightClearanceProvider?() ?? Layout.railWidth
-        headerToggleLeadingConstraint?.constant = max(Layout.railWidth, clearance)
     }
 
     func setAppUIOnlyMode(_ enabled: Bool) {
@@ -729,6 +965,7 @@ class SidebarView: NSView {
     /// whenever the model has no list content). The footer panel is rendered
     /// separately and is not affected here.
     private func teardownListSections() {
+        closeRailTabPopover()
         groupViews.values.forEach { $0.removeFromSuperview() }
         groupViews.removeAll()
         groupTopConstraints.removeAll()
