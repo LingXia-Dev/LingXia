@@ -62,8 +62,12 @@ pub(crate) fn configure_settings(
             .map_err(|err| {
                 WebViewError::WebView(format!("SetAreDefaultScriptDialogsEnabled failed: {err}"))
             })?;
+        // Keep the default context menu available for every profile. lxapp pages
+        // (non-relaxed) get it trimmed to the editing items by
+        // `configure_context_menu`; browser tabs (relaxed) keep the full menu.
+        // (Previously lxapp pages had no menu at all, so users could not even copy.)
         settings
-            .SetAreDefaultContextMenusEnabled(relaxed_profile)
+            .SetAreDefaultContextMenusEnabled(true)
             .map_err(|err| {
                 WebViewError::WebView(format!("SetAreDefaultContextMenusEnabled failed: {err}"))
             })?;
@@ -78,4 +82,123 @@ pub(crate) fn configure_settings(
             .map_err(|err| WebViewError::WebView(format!("SetAreDevToolsEnabled failed: {err}")))?;
     }
     Ok(())
+}
+
+/// Standard editing commands kept on the trimmed lxapp context menu, matched by
+/// WebView2's locale-independent `ICoreWebView2ContextMenuItem::Name`. Everything
+/// else (back/forward/reload, save, print, share, inspect element, …) is removed.
+const EDITING_ITEM_NAMES: &[&str] = &[
+    "cut",
+    "copy",
+    "paste",
+    "pasteAsPlainText",
+    "selectAll",
+    "undo",
+    "redo",
+];
+
+/// Trim the WebView2 context menu for lxapp pages.
+///
+/// lxapp pages are not a browser, so WebView2's default right-click menu is
+/// inappropriate — the macOS SDK strips it down to Copy plus the standard editing
+/// commands. We do the same here by handling `ContextMenuRequested` and removing
+/// every non-editing item from the menu before it is shown. Browser tabs (the
+/// relaxed profile) keep the full default menu.
+pub(crate) fn configure_context_menu(
+    webview: &ICoreWebView2,
+    effective_options: &EffectiveWebViewCreateOptions,
+) -> StdResult<()> {
+    if effective_options.profile == SecurityProfile::BrowserRelaxed {
+        return Ok(());
+    }
+
+    // The ContextMenuRequested event needs ICoreWebView2_11. On older runtimes
+    // lxapp pages simply keep the default menu rather than failing creation.
+    let webview11 = match webview.cast::<ICoreWebView2_11>() {
+        Ok(webview11) => webview11,
+        Err(err) => {
+            log::warn!("ContextMenuRequested unavailable; lxapp keeps default menu: {err}");
+            return Ok(());
+        }
+    };
+
+    let handler = ContextMenuRequestedEventHandler::create(Box::new(move |_sender, args| {
+        let Some(args) = args else {
+            return Ok(());
+        };
+        unsafe {
+            let items = args.MenuItems()?;
+            trim_to_editing_items(&items)?;
+        }
+        Ok(())
+    }));
+
+    let mut token = 0;
+    unsafe {
+        webview11
+            .add_ContextMenuRequested(&handler, &mut token)
+            .map_err(|err| {
+                WebViewError::WebView(format!("add_ContextMenuRequested failed: {err}"))
+            })?;
+    }
+    Ok(())
+}
+
+fn trim_to_editing_items(items: &ICoreWebView2ContextMenuItemCollection) -> WinResult<()> {
+    unsafe {
+        // Remove disallowed command items back-to-front so indices stay valid.
+        let mut count = 0u32;
+        items.Count(&mut count)?;
+        for index in (0..count).rev() {
+            let item = items.GetValueAtIndex(index)?;
+            let mut kind = COREWEBVIEW2_CONTEXT_MENU_ITEM_KIND_SEPARATOR;
+            item.Kind(&mut kind)?;
+            if kind == COREWEBVIEW2_CONTEXT_MENU_ITEM_KIND_SEPARATOR {
+                continue;
+            }
+            let mut name = PWSTR::null();
+            item.Name(&mut name)?;
+            let name = CoTaskMemPWSTR::from(name).to_string();
+            if !EDITING_ITEM_NAMES.contains(&name.as_str()) {
+                items.RemoveValueAtIndex(index)?;
+            }
+        }
+        tidy_separators(items)
+    }
+}
+
+/// Drop leading/trailing separators and collapse consecutive ones left behind by
+/// the removals above. Menus are tiny, so the repeated rescan is cheap.
+fn tidy_separators(items: &ICoreWebView2ContextMenuItemCollection) -> WinResult<()> {
+    unsafe {
+        loop {
+            let mut count = 0u32;
+            items.Count(&mut count)?;
+
+            let mut removed_at: Option<u32> = None;
+            // `prev_separator` starts true so a leading separator is dropped.
+            let mut prev_separator = true;
+            for index in 0..count {
+                let item = items.GetValueAtIndex(index)?;
+                let mut kind = COREWEBVIEW2_CONTEXT_MENU_ITEM_KIND_SEPARATOR;
+                item.Kind(&mut kind)?;
+                let is_separator = kind == COREWEBVIEW2_CONTEXT_MENU_ITEM_KIND_SEPARATOR;
+                if is_separator && prev_separator {
+                    removed_at = Some(index);
+                    break;
+                }
+                prev_separator = is_separator;
+            }
+            // A trailing separator survives the loop (nothing follows it).
+            if removed_at.is_none() && prev_separator && count > 0 {
+                removed_at = Some(count - 1);
+            }
+
+            match removed_at {
+                Some(index) => items.RemoveValueAtIndex(index)?,
+                None => break,
+            }
+        }
+        Ok(())
+    }
 }
