@@ -2,7 +2,32 @@
 
 use super::*;
 
-pub(crate) fn install_document_scripts(webview: &ICoreWebView2) -> StdResult<()> {
+/// Platform/selection baseline injected for lxapp pages (not browser tabs).
+///
+/// The runtime owns the selection/copy policy per platform so apps don't bake
+/// a build-time assumption into their CSS. Windows is a desktop platform, so the
+/// baseline mirrors the macOS desktop policy: text is selectable by default and
+/// apps opt out per element with `.no-select` / `[data-lx-no-select]`. Tags the
+/// document with `lx-desktop` + `data-lx-platform="windows"` at document-start.
+/// The CSS contains no single quotes or newlines, so single-quoting is safe.
+const PLATFORM_BASELINE_SCRIPT: &str = concat!(
+    "(function(){try{",
+    "var el=document.documentElement;",
+    "el.classList.add('lx-desktop');",
+    "el.setAttribute('data-lx-platform','windows');",
+    "var s=document.createElement('style');",
+    "s.setAttribute('data-lingxia-base','');",
+    "s.textContent='",
+    "html.lx-desktop,html.lx-desktop body{-webkit-user-select:text;user-select:text;}",
+    "html.lx-desktop .no-select,html.lx-desktop [data-lx-no-select]{-webkit-user-select:none;user-select:none;}",
+    "';(document.head||el).appendChild(s);",
+    "}catch(e){}})();"
+);
+
+pub(crate) fn install_document_scripts(
+    webview: &ICoreWebView2,
+    inject_platform_baseline: bool,
+) -> StdResult<()> {
     let script = r#"
         (function() {
             if (window.__LingXiaWindowsInjected) return;
@@ -100,7 +125,13 @@ pub(crate) fn install_document_scripts(webview: &ICoreWebView2) -> StdResult<()>
     "#;
 
     let webview = webview.clone();
-    let script = script.to_string();
+    // Prepend the selection baseline (its own IIFE) for lxapp pages so it runs
+    // at document-start ahead of the bridge plumbing below.
+    let script = if inject_platform_baseline {
+        format!("{PLATFORM_BASELINE_SCRIPT}{script}")
+    } else {
+        script.to_string()
+    };
     AddScriptToExecuteOnDocumentCreatedCompletedHandler::wait_for_async_operation(
         Box::new(move |handler| unsafe {
             let script = CoTaskMemPWSTR::from(script.as_str());

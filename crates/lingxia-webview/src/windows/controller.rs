@@ -494,7 +494,12 @@ pub(crate) fn run_ui_thread_inner(
         }
         configure_controller(&controller)?;
         configure_settings(&webview, &effective_options)?;
-        install_document_scripts(&webview)?;
+        configure_context_menu(&webview, &effective_options)?;
+        // lxapp pages (non-relaxed) get the runtime-owned selection/copy baseline;
+        // browser tabs render arbitrary external pages and must not be restyled.
+        let inject_platform_baseline =
+            effective_options.profile != SecurityProfile::BrowserRelaxed;
+        install_document_scripts(&webview, inject_platform_baseline)?;
         let memory_pages = Arc::new(Mutex::new(HashMap::new()));
         register_event_handlers(
             &env,
