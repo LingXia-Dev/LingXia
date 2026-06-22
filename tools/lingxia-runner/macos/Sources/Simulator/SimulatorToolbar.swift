@@ -20,12 +20,14 @@ public class SimulatorToolbar: NSView {
     private var deviceSelector: NSPopUpButton!
     private var closeButton: NSButton!
     private var minimizeButton: NSButton!
+    private var rotateButton: NSButton!
     private var inspectButton: NSButton!
 
     // MARK: - State
 
     public var onDeviceSelected: ((MobileDeviceSize) -> Void)?
     public var onCloseClicked: (() -> Void)?
+    public var onRotateClicked: (() -> Void)?
     public var onInspectClicked: (() -> Void)?
 
     private var currentDevice: MobileDeviceSize = .defaultDevice
@@ -57,6 +59,7 @@ public class SimulatorToolbar: NSView {
         
         setupWindowButtons()
         setupDeviceSelector()
+        setupRotateButton()
         setupInspectButton()
     }
     
@@ -153,13 +156,39 @@ public class SimulatorToolbar: NSView {
         NSLayoutConstraint.activate([
             inspectButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Layout.sideMargin),
             inspectButton.centerYAnchor.constraint(equalTo: centerYAnchor),
+            rotateButton.trailingAnchor.constraint(equalTo: inspectButton.leadingAnchor, constant: -6),
+            rotateButton.centerYAnchor.constraint(equalTo: centerYAnchor),
+            rotateButton.widthAnchor.constraint(equalToConstant: 24),
+            rotateButton.heightAnchor.constraint(equalToConstant: 24),
         ])
+    }
+
+    private func setupRotateButton() {
+        rotateButton = NSButton()
+        let config = NSImage.SymbolConfiguration(pointSize: 13, weight: .semibold)
+        let image = NSImage(systemSymbolName: "rotate.right", accessibilityDescription: "Rotate")?
+            .withSymbolConfiguration(config)
+        rotateButton.image = image
+        rotateButton.imagePosition = .imageOnly
+        rotateButton.title = ""
+        rotateButton.isBordered = false
+        rotateButton.bezelStyle = .regularSquare
+        rotateButton.target = self
+        rotateButton.action = #selector(rotateClicked)
+        rotateButton.contentTintColor = NSColor.white.withAlphaComponent(0.7)
+        rotateButton.toolTip = "Rotate device"
+        rotateButton.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(rotateButton)
     }
 
     // MARK: - Actions
 
     @objc private func inspectClicked() {
         onInspectClicked?()
+    }
+
+    @objc private func rotateClicked() {
+        onRotateClicked?()
     }
 
     @objc private func closeClicked() {
@@ -183,11 +212,15 @@ public class SimulatorToolbar: NSView {
     public func setCurrentDevice(_ device: MobileDeviceSize) {
         currentDevice = device
         selectDevice(device)
+        rotateButton?.isEnabled = device.supportsOrientation
+        rotateButton?.contentTintColor = device.supportsOrientation
+            ? NSColor.white.withAlphaComponent(0.7)
+            : NSColor.white.withAlphaComponent(0.25)
     }
 
     private func selectDevice(_ device: MobileDeviceSize) {
         guard let item = deviceSelector.itemArray.first(where: {
-            ($0.representedObject as? MobileDeviceSize) == device
+            ($0.representedObject as? MobileDeviceSize)?.id == device.id
         }) else {
             return
         }

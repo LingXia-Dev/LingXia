@@ -7,6 +7,7 @@ final class RunnerDeviceMenu: NSObject {
     private static let menuTag = 0x4C58_4456
 
     private weak var deviceMenu: NSMenu?
+    private var selectedOrientation: RunnerDeviceOrientation = .portrait
 
     func installIfNeeded() {
         let mainMenu = NSApp.mainMenu ?? makeBaseMainMenu()
@@ -28,11 +29,17 @@ final class RunnerDeviceMenu: NSObject {
         NSApp.mainMenu = mainMenu
     }
 
-    func updateSelectedDevice(_ device: MobileDeviceSize) {
+    func updateSelectedDevice(_ device: MobileDeviceSize, orientation: RunnerDeviceOrientation) {
         installIfNeeded()
+        selectedOrientation = device.supportsOrientation ? orientation : .portrait
         deviceMenu?.items.forEach { item in
-            guard let id = item.representedObject as? String else { return }
-            item.state = id == device.id ? .on : .off
+            guard let value = item.representedObject as? String else { return }
+            if let id = Self.deviceId(from: value) {
+                item.state = id == device.id ? .on : .off
+            } else if let orientation = Self.orientation(from: value) {
+                item.isEnabled = device.supportsOrientation
+                item.state = device.supportsOrientation && orientation == selectedOrientation ? .on : .off
+            }
         }
     }
 
@@ -56,6 +63,18 @@ final class RunnerDeviceMenu: NSObject {
         menu.addItem(restart)
         menu.addItem(.separator())
 
+        for orientation in RunnerDeviceOrientation.allCases {
+            let item = NSMenuItem(
+                title: orientation.displayName,
+                action: #selector(orientationSelected(_:)),
+                keyEquivalent: ""
+            )
+            item.target = self
+            item.representedObject = Self.orientationValue(orientation)
+            menu.addItem(item)
+        }
+        menu.addItem(.separator())
+
         var previousShape: RunnerDeviceShape?
         for device in MobileDeviceSize.allCases {
             if let previousShape, previousShape != device.shape {
@@ -67,7 +86,7 @@ final class RunnerDeviceMenu: NSObject {
                 keyEquivalent: ""
             )
             item.target = self
-            item.representedObject = device.id
+            item.representedObject = Self.deviceValue(device.id)
             menu.addItem(item)
             previousShape = device.shape
         }
@@ -135,11 +154,20 @@ final class RunnerDeviceMenu: NSObject {
     }
 
     @objc private func deviceSelected(_ sender: NSMenuItem) {
-        guard let id = sender.representedObject as? String,
+        guard let value = sender.representedObject as? String,
+              let id = Self.deviceId(from: value),
               let device = MobileDeviceSize.allCases.first(where: { $0.id == id }) else {
             return
         }
         RunnerApp.shared.setDeviceSize(device)
+    }
+
+    @objc private func orientationSelected(_ sender: NSMenuItem) {
+        guard let value = sender.representedObject as? String,
+              let orientation = Self.orientation(from: value) else {
+            return
+        }
+        RunnerApp.shared.setDeviceOrientation(orientation)
     }
 
     @objc private func cleanCacheAndRestartLxApp(_ sender: NSMenuItem) {
@@ -152,5 +180,23 @@ final class RunnerDeviceMenu: NSObject {
 
     @objc private func restartRunner(_ sender: NSMenuItem) {
         RunnerApp.shared.restartRunner()
+    }
+
+    private static func deviceValue(_ id: String) -> String {
+        "device:\(id)"
+    }
+
+    private static func orientationValue(_ orientation: RunnerDeviceOrientation) -> String {
+        "orientation:\(orientation.rawValue)"
+    }
+
+    private static func deviceId(from value: String) -> String? {
+        guard value.hasPrefix("device:") else { return nil }
+        return String(value.dropFirst("device:".count))
+    }
+
+    private static func orientation(from value: String) -> RunnerDeviceOrientation? {
+        guard value.hasPrefix("orientation:") else { return nil }
+        return RunnerDeviceOrientation(rawValue: String(value.dropFirst("orientation:".count)))
     }
 }

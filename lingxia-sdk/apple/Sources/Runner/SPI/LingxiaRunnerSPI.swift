@@ -175,6 +175,10 @@ import WebKit
             RunnerBridge.activateSurfaceShell(shell)
         }
 
+        public static func setTrafficLightsVisible(_ shell: LxAppShell, visible: Bool) {
+            RunnerBridge.setSurfaceShellTrafficLightsVisible(shell, visible: visible)
+        }
+
         public static func open(
             _ shell: LxAppShell,
             appId: String,
