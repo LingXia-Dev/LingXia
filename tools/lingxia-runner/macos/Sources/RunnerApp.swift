@@ -66,15 +66,11 @@ public class RunnerApp {
     }
 
     private func configureOpenURLHandlingForCurrentShape() {
-        if deviceSize.usesSurfaceShell {
-            RunnerSupport.Runtime.useDefaultOpenUrlHandling()
-            return
-        }
-        installPhoneOpenURLHandler()
+        installRunnerOpenURLHandler()
     }
 
-    private func installPhoneOpenURLHandler() {
-        os_log("Installing Runner phone openURL self handler", log: Self.log, type: .info)
+    private func installRunnerOpenURLHandler() {
+        os_log("Installing Runner openURL self handler", log: Self.log, type: .info)
         RunnerSupport.Runtime.setOpenUrlHandler { [weak self] ownerAppId, ownerSessionId, url in
             self?.handleOpenURL(
                 ownerAppId: ownerAppId,
@@ -117,7 +113,7 @@ public class RunnerApp {
         if let controller {
             Lingxia.activate(controller: controller)
         }
-        installPhoneOpenURLHandler()
+        installRunnerOpenURLHandler()
         RunnerSupport.Runtime.setSessionId(sessionId, for: appId)
         RunnerSupport.Runtime.setCurrentApp(appId: appId, path: path)
 
@@ -204,7 +200,9 @@ public class RunnerApp {
         ownerSessionId: UInt64,
         url rawURL: String
     ) -> Bool {
-        guard windowController?.appId == ownerAppId else {
+        let phoneHost = windowController?.appId == ownerAppId ? windowController : nil
+        let surfaceHost = surfaceShellHost?.appId == ownerAppId ? surfaceShellHost : nil
+        guard phoneHost != nil || surfaceHost != nil else {
             os_log("Runner rejected self openURL for non-active appId=%@", log: Self.log, type: .info, ownerAppId)
             return false
         }
@@ -222,7 +220,11 @@ public class RunnerApp {
         }
 
         os_log("Runner presenting browser tab appId=%@ tab=%@ url=%@", log: Self.log, type: .info, ownerAppId, tabId, rawURL)
-        windowController?.presentBrowserTab(id: tabId)
+        if let phoneHost {
+            phoneHost.presentBrowserTab(id: tabId)
+        } else {
+            surfaceHost?.presentBrowserTab(id: tabId)
+        }
         return true
     }
     
@@ -271,7 +273,7 @@ public class RunnerApp {
             if let controller {
                 Lingxia.activate(controller: controller)
             }
-            installPhoneOpenURLHandler()
+            installRunnerOpenURLHandler()
             return
         }
 

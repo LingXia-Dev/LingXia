@@ -200,6 +200,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     internal var appSessions: [String: UInt64] = [:]
     internal let workspaceManager = WorkspaceManager()
     nonisolated(unsafe) private var sidebarRefreshObserver: NSObjectProtocol?
+    nonisolated(unsafe) private var tabBarStateObserver: NSObjectProtocol?
     private var controllerEventsTask: Task<Void, Never>?
     private var didRequestHomeOpen = false
     private let startupBehavior: LxAppShellStartupBehavior
@@ -217,6 +218,10 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     /// Latest declared sidebar host actions, cached so the auto-hide recompute
     /// can read them without re-querying the runtime.
     private var lastSidebarHostActions: [LxAppUIActionItem] = []
+    /// Latest browser entries rendered in the sidebar. Browser tabs are sidebar
+    /// content too, so the shell can auto-show when they exist and auto-hide
+    /// again when they are gone.
+    private var sidebarBrowserItemCount = 0
 
     var onManagedWindowCloseRequested: (() -> Void)?
 
@@ -303,6 +308,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
 
     deinit {
         sidebarRefreshObserver.map(NotificationCenter.default.removeObserver)
+        tabBarStateObserver.map(NotificationCenter.default.removeObserver)
         controllerEventsTask?.cancel()
         browserCoordinator.cleanup()
     }
@@ -372,13 +378,13 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         tabManager.onTabChanged = { [weak self] tab in
             guard let self else { return }
             self.switchToTab(tab.appId)
-            self.recomputeSidebarAutoHide()
+            self.reconcileSidebarAutoHide()
         }
 
         tabManager.onTabsChanged = { [weak self] tabs in
             guard let self else { return }
             self.sidebarView?.updateForTabs(tabs, activeTab: self.tabManager.activeTab)
-            self.recomputeSidebarAutoHide()
+            self.reconcileSidebarAutoHide()
         }
 
         setupSidebarInterface()
@@ -635,6 +641,21 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
                 }
             }
         }
+        tabBarStateObserver = NotificationCenter.default.addObserver(
+            forName: .tabBarStateChanged,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            let appId = notification.object as? String
+            Task { @MainActor in
+                guard let self, let appId else { return }
+                self.sidebarView?.refreshAppGroup(appId: appId)
+                if let activeAppId = self.tabManager.activeTab?.appId, activeAppId == appId {
+                    self.sidebarView?.setActiveHighlight(appId: appId)
+                }
+                self.reconcileSidebarAutoHide()
+            }
+        }
     }
 
     // MARK: - Sidebar Actions
@@ -724,16 +745,33 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     }
 
     private func hideSidebar() {
-        setSidebarVisible(false, animated: true)
+        collapseSidebarToRail(animated: true)
     }
 
     private func showSidebar() {
         setSidebarVisible(true, animated: true)
     }
 
+    private func collapseSidebarToRail(animated: Bool) {
+        guard sidebarChromeEnabled, let sidebarView else {
+            setSidebarVisible(false, animated: animated)
+            return
+        }
+
+        if let width = sidebarWidthConstraint?.constant,
+           width > Layout.sidebarHiddenThreshold,
+           !sidebarView.isCompact {
+            lastExpandedSidebarWidth = width
+        }
+
+        sidebarView.setCompactMode(true)
+        updateSidebarWidth(sidebarView.compactWidth, animated: animated)
+    }
+
     private func setSidebarVisible(_ visible: Bool, animated: Bool) {
         guard let constraint = sidebarWidthConstraint else { return }
         guard sidebarChromeEnabled else {
+            sidebarView?.setCompactMode(false)
             constraint.constant = 0
             contentLeadingConstraint?.constant = cardLeadingPanelInset
             refreshSidebarVisibilityUI()
@@ -742,7 +780,12 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
 
         let isVisible = constraint.constant >= Layout.sidebarHiddenThreshold
         if isVisible == visible {
-            refreshSidebarVisibilityUI()
+            if visible, sidebarView?.isCompact == true {
+                sidebarView?.setCompactMode(false)
+                updateSidebarWidth(lastExpandedSidebarWidth, animated: animated)
+            } else {
+                refreshSidebarVisibilityUI()
+            }
             return
         }
 
@@ -1196,7 +1239,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         lastSidebarHostActions = items
         let sidebarItems = items.map { PanelIconItem(id: $0.id, iconURL: $0.iconURL, label: $0.label) }
         sidebarView?.updatePanelItems(sidebarItems)
-        recomputeSidebarAutoHide()
+        reconcileSidebarAutoHide()
     }
 
     /// Show the update callout pinned to the window's bottom-left corner on the
@@ -1370,16 +1413,17 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     /// rest. Recomputes immediately so the new rule takes effect.
     func setSidebarSuppressed(_ suppressed: Bool) {
         sidebarSuppressed = suppressed
-        recomputeSidebarAutoHide()
+        reconcileSidebarAutoHide()
     }
 
     /// Show the sidebar chrome only when it has something to show. Content comes
-    /// from three sources: an open-lxapp switcher (more than one open main), the
-    /// active lxapp's own tabBar, and declared sidebar host actions. When all
-    /// three are empty the chrome hides; when any has content it returns, and the
-    /// enable path restores the user's last expanded width. A suppressed root
-    /// (e.g. a float window) keeps the chrome off regardless of content.
-    func recomputeSidebarAutoHide() {
+    /// from four sources: an open-lxapp switcher (more than one open main), the
+    /// active lxapp's own tabBar, browser tabs, and declared sidebar host
+    /// actions. When all four are empty the chrome hides; when any has content
+    /// it returns, and the enable path restores the user's last expanded width.
+    /// A suppressed root (e.g. a float window) keeps the chrome off regardless
+    /// of content.
+    func reconcileSidebarAutoHide() {
         if sidebarSuppressed {
             setSidebarChromeEnabled(false)
             return
@@ -1394,8 +1438,12 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         }
 
         let hasDeclaredSidebarEntries = !lastSidebarHostActions.isEmpty
+        let hasBrowserEntries = sidebarBrowserItemCount > 0
 
-        let hasContent = hasSwitcher || activeLxAppTabBarHasItems || hasDeclaredSidebarEntries
+        let hasContent = hasSwitcher
+            || activeLxAppTabBarHasItems
+            || hasBrowserEntries
+            || hasDeclaredSidebarEntries
         setSidebarChromeEnabled(hasContent)
     }
 
@@ -1407,12 +1455,16 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         }
         if enabled {
             if constraint.constant < Layout.sidebarHiddenThreshold {
+                sidebarView?.setCompactMode(false)
                 constraint.constant = lastExpandedSidebarWidth
-                contentLeadingConstraint?.constant = 0
+                contentLeadingConstraint?.constant = contentLeading(forSidebarWidth: lastExpandedSidebarWidth)
+                browserCoordinator.syncToolbarLeading(collapsed: false, animated: false)
             }
         } else {
+            sidebarView?.setCompactMode(false)
             constraint.constant = 0
             contentLeadingConstraint?.constant = contentLeading(forSidebarWidth: 0)
+            browserCoordinator.syncToolbarLeading(collapsed: true, animated: false)
         }
         refreshSidebarVisibilityUI()
     }
@@ -1517,7 +1569,9 @@ extension LxAppShell: BrowserCoordinatorHost {
     }
 
     func updateSidebarBrowserItems(_ items: [(id: String, title: String, favicon: NSImage?)], activeId: String?) {
+        sidebarBrowserItemCount = items.count
         sidebarView?.updateBrowserItems(items, activeId: activeId)
+        reconcileSidebarAutoHide()
     }
 
     func clearSidebarHighlights() {

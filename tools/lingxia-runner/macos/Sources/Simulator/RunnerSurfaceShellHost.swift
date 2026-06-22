@@ -7,6 +7,96 @@ import AppKit
 /// adaptive surface layout to the SDK desktop shell. The runner only owns device
 /// selection and window sizing policy here.
 @MainActor
+private final class RunnerSurfaceDeviceSelector: NSView {
+    private let button = NSButton()
+    private var selectedDevice: MobileDeviceSize?
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        setup()
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    func updateDevice(_ device: MobileDeviceSize) {
+        selectedDevice = device
+        button.image = Self.symbol(for: device)
+        button.toolTip = "Device: \(device.displayName)"
+    }
+
+    private func setup() {
+        translatesAutoresizingMaskIntoConstraints = false
+
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.title = ""
+        button.imagePosition = .imageOnly
+        button.bezelStyle = .regularSquare
+        button.isBordered = false
+        button.setButtonType(.momentaryChange)
+        button.target = self
+        button.action = #selector(showDeviceMenu)
+        button.contentTintColor = .secondaryLabelColor
+
+        addSubview(button)
+        NSLayoutConstraint.activate([
+            button.leadingAnchor.constraint(equalTo: leadingAnchor),
+            button.trailingAnchor.constraint(equalTo: trailingAnchor),
+            button.topAnchor.constraint(equalTo: topAnchor),
+            button.bottomAnchor.constraint(equalTo: bottomAnchor),
+            widthAnchor.constraint(equalToConstant: 30),
+            heightAnchor.constraint(equalToConstant: 24),
+        ])
+    }
+
+    @objc private func showDeviceMenu() {
+        let menu = NSMenu(title: "Device")
+        var selectedItem: NSMenuItem?
+        var previousShape: RunnerDeviceShape?
+        for device in MobileDeviceSize.allCases {
+            if let previousShape, previousShape != device.shape {
+                menu.addItem(.separator())
+            }
+            let item = NSMenuItem(
+                title: device.displayName,
+                action: #selector(deviceSelectionChanged(_:)),
+                keyEquivalent: ""
+            )
+            item.target = self
+            item.representedObject = device
+            item.state = device == selectedDevice ? .on : .off
+            menu.addItem(item)
+            if item.state == .on {
+                selectedItem = item
+            }
+            previousShape = device.shape
+        }
+        menu.popUp(positioning: selectedItem, at: NSPoint(x: 0, y: bounds.maxY + 2), in: self)
+    }
+
+    @objc private func deviceSelectionChanged(_ sender: NSMenuItem) {
+        guard let device = sender.representedObject as? MobileDeviceSize else {
+            return
+        }
+        RunnerApp.shared.setDeviceSize(device)
+    }
+
+    private static func symbol(for device: MobileDeviceSize) -> NSImage? {
+        let name: String
+        switch device.shape {
+        case .phone:
+            name = "iphone"
+        case .pad:
+            name = "ipad"
+        case .desktop:
+            name = "desktopcomputer"
+        }
+        return NSImage(systemSymbolName: name, accessibilityDescription: "Device")
+    }
+}
+
+@MainActor
 final class RunnerSurfaceShellHost {
     let shell: LxAppShell
 
@@ -14,6 +104,8 @@ final class RunnerSurfaceShellHost {
     private(set) var currentPath: String
     private(set) var device: MobileDeviceSize
 
+    private let deviceSelector = RunnerSurfaceDeviceSelector()
+    private var deviceAccessoryController: NSTitlebarAccessoryViewController?
     nonisolated(unsafe) private var closeObserver: NSObjectProtocol?
     private var isHiddenForHostSwitch = false
     var onClose: ((RunnerSurfaceShellHost) -> Void)?
@@ -30,6 +122,7 @@ final class RunnerSurfaceShellHost {
         self.currentPath = path
         self.device = device
         observeClose()
+        installDeviceSelector()
         configureWindow(for: device, center: true)
         open(appId: appId, path: path, sessionId: sessionId)
     }
@@ -42,7 +135,6 @@ final class RunnerSurfaceShellHost {
 
     func activate() {
         isHiddenForHostSwitch = false
-        RunnerSupport.Runtime.useDefaultOpenUrlHandling()
         RunnerSupport.SurfaceShell.activate(shell)
         shell.window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
@@ -68,8 +160,15 @@ final class RunnerSurfaceShellHost {
         )
     }
 
+    func presentBrowserTab(id tabId: String) {
+        RunnerSupport.SurfaceShell.presentBrowserTab(shell, tabId: tabId)
+        shell.window?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
     func applyDevice(_ newDevice: MobileDeviceSize) {
         device = newDevice
+        deviceSelector.updateDevice(newDevice)
         configureWindow(for: newDevice, center: false)
         DevToolsLogger.shared.log("Device -> \(newDevice.displayName) (\(newDevice.sizeDescription))", level: .debug)
     }
@@ -99,6 +198,16 @@ final class RunnerSurfaceShellHost {
                 self.onClose?(self)
             }
         }
+    }
+
+    private func installDeviceSelector() {
+        guard deviceAccessoryController == nil, let window = shell.window else { return }
+        let controller = NSTitlebarAccessoryViewController()
+        controller.layoutAttribute = .left
+        controller.view = deviceSelector
+        deviceSelector.updateDevice(device)
+        window.addTitlebarAccessoryViewController(controller)
+        deviceAccessoryController = controller
     }
 
     private func configureWindow(for device: MobileDeviceSize, center: Bool) {

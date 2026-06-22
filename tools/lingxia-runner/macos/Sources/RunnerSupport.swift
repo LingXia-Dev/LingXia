@@ -12,10 +12,6 @@ enum RunnerSupport {
             LingxiaRunnerSPI.Runtime.setOpenUrlHandler(handler)
         }
 
-        static func useDefaultOpenUrlHandling() {
-            LingxiaRunnerSPI.Runtime.useDefaultOpenUrlHandling()
-        }
-
         static func sessionId(for appId: String) -> UInt64? {
             LingxiaRunnerSPI.Runtime.sessionId(for: appId)
         }
@@ -198,6 +194,10 @@ enum RunnerSupport {
                 path: path,
                 animationType: animationType
             )
+        }
+
+        static func presentBrowserTab(_ shell: LxAppShell, tabId: String) {
+            LingxiaRunnerSPI.SurfaceShell.presentBrowserTab(shell, tabId: tabId)
         }
     }
 }

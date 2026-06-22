@@ -12,10 +12,6 @@ import WebKit
             RunnerBridge.setOpenUrlHandler(handler)
         }
 
-        public static func useDefaultOpenUrlHandling() {
-            RunnerBridge.useDefaultOpenUrlHandling()
-        }
-
         public static func sessionId(for appId: String) -> UInt64? {
             RunnerBridge.sessionId(for: appId)
         }
@@ -212,6 +208,10 @@ import WebKit
                 path: path,
                 animationType: animationType
             )
+        }
+
+        public static func presentBrowserTab(_ shell: LxAppShell, tabId: String) {
+            RunnerBridge.presentBrowserTabInSurfaceShell(shell, tabId: tabId)
         }
     }
 }

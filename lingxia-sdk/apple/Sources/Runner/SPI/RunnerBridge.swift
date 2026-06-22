@@ -25,10 +25,6 @@ enum RunnerBridge {
         }
     }
 
-    static func useDefaultOpenUrlHandling() {
-        LxApp.openUrlHandler = nil
-    }
-
     static func sessionId(for appId: String) -> UInt64? {
         LxAppCore.sessionId(for: appId)
     }
@@ -188,11 +184,13 @@ enum RunnerBridge {
             capabilities: LxAppCapabilities(rawValue: LxAppCore.capabilities),
             homeAppId: LxAppCore.getHomeLxAppId()
         )
-        return LxAppShell(
+        let shell = LxAppShell(
             controller: controller,
             configuration: configuration,
             startupBehavior: .manual
         )
+        shell.reconcileSidebarAutoHide()
+        return shell
     }
 
     static func activateSurfaceShell(_ shell: LxAppShell) {
@@ -206,6 +204,7 @@ enum RunnerBridge {
         sessionId: UInt64
     ) {
         shell.openLxApp(appId: appId, path: path, sessionId: sessionId)
+        shell.reconcileSidebarAutoHide()
     }
 
     static func navigateSurfaceShell(
@@ -217,6 +216,13 @@ enum RunnerBridge {
         shell.browserCoordinator.deactivate()
         shell.ensureViewController(for: appId, path: path)?
             .navigate(appId: appId, to: path, with: animationType)
+        shell.reconcileSidebarAutoHide()
+    }
+
+    static func presentBrowserTabInSurfaceShell(_ shell: LxAppShell, tabId: String) {
+        shell.presentInternalBrowserTab(id: tabId)
+        shell.reconcileSidebarAutoHide()
+        shell.window?.makeKeyAndOrderFront(nil)
     }
 }
 #endif
