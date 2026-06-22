@@ -237,6 +237,21 @@ pub struct SurfaceTray {
     /// the dock / taskbar icon alongside the tray.
     #[serde(default)]
     pub exclusive: bool,
+    /// Size of the popover this tray opens (its content area, in points). Applies
+    /// when the surface is a tray-anchored popover (`role: float`). Omit for the
+    /// default size.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size: Option<SurfaceSize>,
+}
+
+/// Content-area size in points. On a tray popover it is the popover size.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SurfaceSize {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub width: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub height: Option<u32>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -262,11 +277,14 @@ pub enum SurfaceTrayAction {
 /// - `sidebar` -> a `sidebarItem` activator toggling the surface.
 /// - `tray` -> a `menuBarItem` activator (closest existing kind).
 fn surfaces_to_ui(surfaces: &[SurfaceDecl], terminal_enabled: bool) -> Result<Value> {
-    // `role: float` is not supported. Reject it up front with
-    // a clear message rather than mis-mapping it.
-    if let Some(float) = surfaces.iter().find(|s| s.role == SurfaceRole::Float) {
+    // `role: float` is only supported as a tray-anchored popover (it carries a
+    // `tray:`). Reject a bare float up front rather than mis-mapping it.
+    if let Some(float) = surfaces
+        .iter()
+        .find(|s| s.role == SurfaceRole::Float && s.tray.is_none())
+    {
         return Err(anyhow!(
-            "surface '{}' uses role: float which is not supported",
+            "surface '{}' uses role: float, which is only supported as a tray-anchored popover (add a tray:)",
             float.id.trim()
         ));
     }
@@ -289,12 +307,22 @@ fn surfaces_to_ui(surfaces: &[SurfaceDecl], terminal_enabled: bool) -> Result<Va
         return Err(anyhow!("surfaces: at most one surface may declare tray"));
     }
     let open_on_launch = !launch_mains.is_empty();
-    let launch_main = launch_mains
+    // A pure tray-popover app has no main window; it launches into the tray and
+    // the menu-bar / tray entry opens the popover. Fall back to the popover surface
+    // as the initial surface when there is no main.
+    let launch_surface = launch_mains
         .first()
         .copied()
         .or_else(|| mains.first().copied())
-        .ok_or_else(|| anyhow!("surfaces: requires exactly one main surface"))?;
-    let launch_id = launch_main.id.trim().to_string();
+        .or_else(|| {
+            surfaces
+                .iter()
+                .find(|s| s.role == SurfaceRole::Float && s.tray.is_some())
+        })
+        .ok_or_else(|| {
+            anyhow!("surfaces: requires a main surface or a tray-anchored popover surface")
+        })?;
+    let launch_id = launch_surface.id.trim().to_string();
     if launch_id.is_empty() {
         return Err(anyhow!("surfaces[].id must not be empty"));
     }
@@ -337,9 +365,40 @@ fn surfaces_to_ui(surfaces: &[SurfaceDecl], terminal_enabled: bool) -> Result<Va
         }
         match surface.role {
             SurfaceRole::Float => {
-                return Err(anyhow!(
-                    "surface '{id}' uses role: float which is not supported"
-                ));
+                // A float surface is only valid as a tray-anchored popover: it must
+                // carry a `tray:`. Emit it anchored to the tray activator so the
+                // runtime presents it as an auto-dismissing panel under the icon.
+                if surface.tray.is_none() {
+                    return Err(anyhow!(
+                        "surface '{id}' uses role: float, which is only supported as a tray-anchored popover (add a tray:)"
+                    ));
+                }
+                if surface.render == SurfaceRender::Native {
+                    return Err(anyhow!(
+                        "surface '{id}': role: float with render: native is not supported"
+                    ));
+                }
+                let mut float_surface = Map::new();
+                float_surface.insert("id".into(), json!(id));
+                float_surface.insert("role".into(), json!("float"));
+                float_surface.insert("anchor".into(), json!("activator"));
+                float_surface.insert(
+                    "content".into(),
+                    json!({ "kind": "lxapp", "appId": id }),
+                );
+                if let Some(size) = surface.tray.as_ref().and_then(|t| t.size.as_ref()) {
+                    let mut size_obj = Map::new();
+                    if let Some(w) = size.width {
+                        size_obj.insert("width".into(), json!(w));
+                    }
+                    if let Some(h) = size.height {
+                        size_obj.insert("height".into(), json!(h));
+                    }
+                    if !size_obj.is_empty() {
+                        float_surface.insert("size".into(), Value::Object(size_obj));
+                    }
+                }
+                out_surfaces.push(Value::Object(float_surface));
             }
             SurfaceRole::Main => {
                 if surface.render == SurfaceRender::Native {
@@ -2925,6 +2984,8 @@ surfaces:
                 icon: Some("icons/tray.svg".into()),
                 label: Some("Demo".into()),
                 action: Some(SurfaceTrayAction::Activate),
+                exclusive: false,
+                size: None,
             }),
             platforms: None,
         }];
@@ -2959,6 +3020,72 @@ surfaces:
     }
 
     #[test]
+    fn surfaces_maps_float_tray_to_anchored_popover() {
+        // A pure tray-popover app: one float surface with a tray, no main. It must
+        // emit role: float + anchor: activator (the runtime's anchored panel) and
+        // launch into the tray with no dock icon.
+        let surfaces = vec![SurfaceDecl {
+            id: "panel".into(),
+            render: SurfaceRender::Lxapp,
+            role: SurfaceRole::Float,
+            launch: false,
+            edge: None,
+            sidebar: None,
+            tray: Some(SurfaceTray {
+                icon: Some("icons/tray.svg".into()),
+                label: Some("Panel".into()),
+                action: None,
+                exclusive: true,
+                size: Some(SurfaceSize {
+                    width: Some(320),
+                    height: Some(480),
+                }),
+            }),
+            platforms: None,
+        }];
+
+        let ui = surfaces_to_ui(&surfaces, false).unwrap();
+        let expected = serde_json::json!({
+            "launch": {
+                "initialSurface": "panel",
+                "openOnLaunch": false,
+                "hideDockIcon": true
+            },
+            "surfaces": [{
+                "id": "panel",
+                "role": "float",
+                "anchor": "activator",
+                "content": { "kind": "lxapp", "appId": "panel" },
+                "size": { "width": 320, "height": 480 }
+            }],
+            "activators": [{
+                "id": "panelTray",
+                "kind": "menuBarItem",
+                "icon": "icons/tray.svg",
+                "label": "Panel",
+                "action": { "kind": "toggleSurface", "surface": "panel" }
+            }]
+        });
+        assert_eq!(ui, expected);
+    }
+
+    #[test]
+    fn surfaces_rejects_float_without_tray() {
+        let surfaces = vec![SurfaceDecl {
+            id: "panel".into(),
+            render: SurfaceRender::Lxapp,
+            role: SurfaceRole::Float,
+            launch: false,
+            edge: None,
+            sidebar: None,
+            tray: None,
+            platforms: None,
+        }];
+        let err = surfaces_to_ui(&surfaces, false).unwrap_err().to_string();
+        assert!(err.contains("tray-anchored popover"), "got: {err}");
+    }
+
+    #[test]
     fn surfaces_rejects_unsupported_tray_action() {
         let yaml = r#"
 surfaces:
@@ -2989,6 +3116,8 @@ surfaces:
                     icon: None,
                     label: None,
                     action: None,
+                    exclusive: false,
+                    size: None,
                 }),
                 platforms: None,
             },
@@ -3003,6 +3132,8 @@ surfaces:
                     icon: None,
                     label: None,
                     action: None,
+                    exclusive: false,
+                    size: None,
                 }),
                 platforms: None,
             },
@@ -3013,22 +3144,6 @@ surfaces:
             err.contains("at most one surface may declare tray"),
             "{err}"
         );
-    }
-
-    #[test]
-    fn surfaces_rejects_float_role() {
-        let surfaces = vec![SurfaceDecl {
-            id: "popup".into(),
-            render: SurfaceRender::Lxapp,
-            role: SurfaceRole::Float,
-            launch: false,
-            edge: None,
-            sidebar: None,
-            tray: None,
-            platforms: None,
-        }];
-        let err = surfaces_to_ui(&surfaces, false).unwrap_err().to_string();
-        assert!(err.contains("not supported"), "{err}");
     }
 
     #[test]
