@@ -13,7 +13,7 @@ It provides:
 
 This crate is a low-level runtime component. It does not define product UI,
 settings pages, or JS host APIs. In the current workspace those are owned by
-`lingxia-shell`.
+`lingxia-browser-shell`.
 
 The main public types exported by this crate are:
 

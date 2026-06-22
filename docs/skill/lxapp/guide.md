@@ -5,9 +5,9 @@ This guide covers how to write lxapp pages — project layout, the View + Logic 
 Companion pages in this skill:
 
 - [Components](./components.md) — `LxPicker`, `LxVideo`, `LxMediaSwiper`, `LxNavigator` — every attribute and event; text input is plain `<input>` / `<textarea>`.
-- [Logic-side `lx.*` API](./lx-api.md) — full Logic API surface map + how to install `@lingxia/types` for typing.
+- [Logic-side `lx.*` API](./lx-api.md) — capability map + behavioral notes; signatures live in `@lingxia/types` (install steps here too).
 - [Bridge Guide](./bridge.md) — `setData`, stream, channel mechanics in depth.
-- [App Project](../app/project.md) — host app setup (`lingxia.yaml`, macOS App UI).
+- [App Project](../app/project.md) — host app setup (`lingxia.yaml`, adaptive `surfaces`).
 
 For first-time CLI install and platform toolchains (one-time, human onramp), the LingXia repo has `docs/quick-start.md`.
 
@@ -90,7 +90,7 @@ Rules:
 - Domain matching is host-only and normalized to lowercase.
 - The policy is a host allowlist. It does not distinguish `http` and `https`; prefer HTTPS in production.
 - The policy applies to Logic network requests, `lx.downloadFile`, `lx.uploadFile`, and WebView HTTPS resources resolved by LingXia.
-- `security.privileges` is for high-risk host-defined capabilities such as automation or devtools. Ordinary APIs like media, camera, or location remain guarded by host and platform permission flows.
+- `security.privileges` is for host-defined capabilities such as `downloads` (`lx.downloadFile({ destination: "downloads" })`). Ordinary APIs like media, camera, or location remain guarded by host and platform permission flows.
 
 Example:
 
@@ -100,7 +100,7 @@ Example:
     "network": {
       "trustedDomains": ["api.example.com", "cdn.example.com"]
     },
-    "privileges": ["agent.automation"]
+    "privileges": ["downloads"]
   }
 }
 ```
@@ -448,7 +448,7 @@ App({
     // Called once when the lxapp boots.
     // `options`: AppLaunchOptions — { path?, query?, scene?, referrerInfo? }
     //   referrerInfo is populated when this lxapp was opened by another lxapp.
-    const stored = await lx.getStorage().get<string>('userId');
+    const stored = lx.getStorage().get('userId') as string | undefined; // synchronous, untyped
     if (stored) this.globalData.userId = stored;
   },
 
@@ -555,7 +555,7 @@ export default function InputPage() {
 
 A **tab bar** is a persistent navigation strip — typically at the bottom of the screen — that shows the lxapp's primary pages. Tapping a tab switches the active page **without** push/pop semantics: the tab bar stays visible across all tab pages, and tab pages do not stack on each other.
 
-> **Scope.** Tab bar is an **lxapp-internal navigation concept** declared in `lxapp.json`. It has nothing to do with host App UI surfaces — `lingxia.yaml.ui.surfaces` / `activators` live one layer up and describe the native shell (windows, panels, menu bars). A host shell renders an lxapp; that lxapp may have its own tab bar inside.
+> **Scope.** Tab bar is an **lxapp-internal navigation concept** declared in `lxapp.json`. It has nothing to do with host surfaces — `lingxia.yaml` `surfaces` live one layer up and describe the native shell (windows, asides, sidebar/tray). A host shell renders an lxapp; that lxapp may have its own tab bar inside.
 
 ### Declaring the tab bar in `lxapp.json`
 
@@ -651,7 +651,7 @@ Full option shapes: [`./lx-api.md#page-chrome--ui`](./lx-api.md#page-chrome--ui)
 - Forgetting that only public `Page({})` methods become actions; lifecycle hooks and `_`-prefixed helpers are not exposed.
 - Mutating `App({}).globalData` and expecting page views to re-render — `globalData` is not reactive. Propagate to a page's `data` via `setData`.
 - Calling `lx.navigateTo` / `lx.redirectTo` on a tab page — rejected by the runtime. Use `lx.switchTab` for tab-page entry; `navigateBack` for non-tab stack pops.
-- Treating the tab bar as a host UI surface — it is an lxapp-internal feature declared in `lxapp.json`, orthogonal to `lingxia.yaml.ui` surfaces/activators.
+- Treating the tab bar as a host UI surface — it is an lxapp-internal feature declared in `lxapp.json`, orthogonal to top-level `surfaces:` in `lingxia.yaml`.
 
 ---
 

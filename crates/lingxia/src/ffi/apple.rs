@@ -4,7 +4,7 @@ use lxapp::{
     PageInstanceEvent, PageInstanceId, PageOrientation, PageOwner, PageQueryInput, PageTarget,
     PresentationKind, SceneId,
 };
-#[cfg(all(target_os = "macos", feature = "shell-runtime"))]
+#[cfg(all(target_os = "macos", feature = "browser-shell"))]
 use std::sync::Arc;
 
 /// Parses a color string (e.g., "#RRGGBB" or "transparent") into a u32 ARGB value.
@@ -192,8 +192,35 @@ mod bridge {
         #[swift_bridge(swift_name = "onSurfaceClosed")]
         fn on_surface_closed(appid: &str, id: &str, reason: &str) -> bool;
 
+        // Adaptive Surface Layout (new model): report the window's container
+        // width so the shared core resolves the sizeClass (with hysteresis);
+        // returns true when the sizeClass flipped. And read the resolved
+        // LayoutPresentationPlan as a JSON string for the skin to bind.
+        #[swift_bridge(swift_name = "setSurfaceWidth")]
+        fn set_surface_width(appid: &str, width: f64) -> bool;
+
+        #[swift_bridge(swift_name = "surfaceDerivedLayout")]
+        fn surface_derived_layout(appid: &str) -> String;
+
+        // §11.2 Phase 1: mirror a host-declared aside into the primary lxapp's
+        // surface graph so the core's DerivedLayout reflects host surfaces.
+        // Drive the active-main switch through the surface graph: makes this
+        // lxapp's main the active main, then commits a `present_layout` carrying
+        // the new `activeMainId` for the skin reconciler to attach.
+        #[swift_bridge(swift_name = "setActiveMain")]
+        fn set_active_main(appid: &str) -> bool;
+
+        #[swift_bridge(swift_name = "registerHostAside")]
+        fn register_host_aside(appid: &str, surface_id: &str, edge: &str) -> bool;
+
+        #[swift_bridge(swift_name = "unregisterHostAside")]
+        fn unregister_host_aside(appid: &str, surface_id: &str) -> bool;
+
         #[swift_bridge(swift_name = "openBrowserTab")]
         fn open_browser_tab(appid: &str, session_id: u64, url: &str) -> Option<String>;
+
+        #[swift_bridge(swift_name = "openStandaloneBrowserTab")]
+        fn open_standalone_browser_tab(appid: &str, session_id: u64, url: &str) -> Option<String>;
 
         #[swift_bridge(swift_name = "openBrowserTabWithId")]
         fn open_browser_tab_with_id(
@@ -205,6 +232,11 @@ mod bridge {
 
         #[swift_bridge(swift_name = "browserTabClose")]
         fn browser_tab_close(tab_id: &str) -> bool;
+
+        // Navigate an existing browser tab to a URL through the browser runtime,
+        // which swaps the lxapp start page for a web view as needed.
+        #[swift_bridge(swift_name = "browserTabNavigate")]
+        fn browser_tab_navigate(tab_id: &str, url: &str) -> bool;
 
         // Discard a background tab's WebView to free memory; keeps the entry.
         #[swift_bridge(swift_name = "browserTabDiscard")]
@@ -290,7 +322,7 @@ mod bridge {
         fn on_user_capture_screen(lxappid: &str);
 
         // Returns a bitmask of enabled SDK capabilities (compile-time constant).
-        // Bit 0 (0x1) = shell (browser, downloads, settings, panels).
+        // Bit 0 (0x1) = browser (tabs, downloads, settings, panels).
         #[swift_bridge(swift_name = "getAppCapabilities")]
         fn get_app_capabilities() -> u32;
 
@@ -337,10 +369,10 @@ mod bridge {
     }
 }
 
-#[cfg(all(target_os = "macos", feature = "shell-runtime"))]
+#[cfg(all(target_os = "macos", feature = "browser-shell"))]
 struct AppleBrowserNativeInputHost;
 
-#[cfg(all(target_os = "macos", feature = "shell-runtime"))]
+#[cfg(all(target_os = "macos", feature = "browser-shell"))]
 impl lingxia_browser::BrowserNativeInputHost for AppleBrowserNativeInputHost {
     fn prepare_for_input(&self, tab_id: &str) -> Result<(), String> {
         if self::bridge::prepare_internal_browser_tab_for_input(tab_id) {
@@ -351,12 +383,12 @@ impl lingxia_browser::BrowserNativeInputHost for AppleBrowserNativeInputHost {
     }
 }
 
-#[cfg(all(target_os = "macos", feature = "shell-runtime"))]
+#[cfg(all(target_os = "macos", feature = "browser-shell"))]
 fn install_browser_native_input_host() {
     let _ = lingxia_browser::register_native_input_host(Arc::new(AppleBrowserNativeInputHost));
 }
 
-#[cfg(not(all(target_os = "macos", feature = "shell-runtime")))]
+#[cfg(not(all(target_os = "macos", feature = "browser-shell")))]
 fn install_browser_native_input_host() {}
 
 /// Initialize the Lingxia SDK for iOS/macOS
@@ -544,6 +576,17 @@ pub fn open_browser_tab(appid: &str, session_id: u64, url: &str) -> Option<Strin
         }
     })
 }
+pub fn open_standalone_browser_tab(appid: &str, session_id: u64, url: &str) -> Option<String> {
+    ffi_catch_unwind!("open_standalone_browser_tab", None, || {
+        match crate::browser::open_standalone_for_app(appid, session_id, url, None) {
+            Ok(tab_id) => Some(tab_id),
+            Err(e) => {
+                log::error!("open_standalone_browser_tab failed: {}", e);
+                None
+            }
+        }
+    })
+}
 
 pub fn open_browser_tab_with_id(
     appid: &str,
@@ -565,6 +608,12 @@ pub fn open_browser_tab_with_id(
 pub fn browser_tab_close(tab_id: &str) -> bool {
     ffi_catch_unwind!("browser_tab_close", false, || {
         crate::browser::close(tab_id).is_ok()
+    })
+}
+
+pub fn browser_tab_navigate(tab_id: &str, url: &str) -> bool {
+    ffi_catch_unwind!("browser_tab_navigate", false, || {
+        crate::browser::navigate(tab_id, url).is_ok()
     })
 }
 
@@ -597,6 +646,56 @@ pub fn browser_tab_path_for_id(tab_id: &str) -> String {
 pub fn present_internal_browser_tab(tab_id: &str) -> bool {
     ffi_catch_unwind!("present_internal_browser_tab", false, || {
         self::bridge::present_internal_browser_tab(tab_id)
+    })
+}
+
+pub fn set_surface_width(appid: &str, width: f64) -> bool {
+    ffi_catch_unwind!("set_surface_width", false, || {
+        lxapp::try_get(appid)
+            .map(|lxapp| lxapp.set_surface_width(width))
+            .unwrap_or(false)
+    })
+}
+
+pub fn surface_derived_layout(appid: &str) -> String {
+    ffi_catch_unwind!("surface_derived_layout", "null".to_string(), || {
+        lxapp::try_get(appid)
+            .and_then(|lxapp| lxapp.surface_derived_layout())
+            .and_then(|layout| serde_json::to_string(&layout).ok())
+            .unwrap_or_else(|| "null".to_string())
+    })
+}
+
+pub fn set_active_main(appid: &str) -> bool {
+    ffi_catch_unwind!("set_active_main", false, || {
+        if let Some(lxapp) = lxapp::try_get(appid) {
+            lxapp.set_active_main();
+            true
+        } else {
+            false
+        }
+    })
+}
+
+pub fn register_host_aside(appid: &str, surface_id: &str, edge: &str) -> bool {
+    ffi_catch_unwind!("register_host_aside", false, || {
+        if let Some(lxapp) = lxapp::try_get(appid) {
+            lxapp.register_host_aside(surface_id, edge);
+            true
+        } else {
+            false
+        }
+    })
+}
+
+pub fn unregister_host_aside(appid: &str, surface_id: &str) -> bool {
+    ffi_catch_unwind!("unregister_host_aside", false, || {
+        if let Some(lxapp) = lxapp::try_get(appid) {
+            lxapp.unregister_host_aside(surface_id);
+            true
+        } else {
+            false
+        }
     })
 }
 

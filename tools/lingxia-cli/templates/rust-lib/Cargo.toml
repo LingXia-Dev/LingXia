@@ -13,7 +13,7 @@ crate-type = ["cdylib", "staticlib", "rlib"]
 [features]
 default = {{HOST_DEFAULT_FEATURES}}
 standard = ["lingxia/standard"]
-shell-runtime = ["lingxia/shell-runtime", "webview-input", "standard"]
+browser-shell = ["lingxia/browser-shell", "webview-input", "standard"]
 terminal-runtime = ["lingxia/terminal-runtime"]
 devtools = ["dep:lingxia_devtool", "lingxia_devtool/browser"]
 webview-input = ["lingxia/webview-input"]

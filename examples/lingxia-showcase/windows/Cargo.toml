@@ -8,9 +8,9 @@ name = "LingXiaDemo"
 path = "src/main.rs"
 
 [features]
-default = ["standard", "shell-runtime", "terminal-runtime", "webview-input"]
+default = ["standard"]
 standard = ["host/standard", "lingxia-windows-sdk/standard"]
-shell-runtime = ["host/shell-runtime", "lingxia-windows-sdk/shell-runtime"]
+browser-shell = ["host/browser-shell", "lingxia-windows-sdk/browser-shell"]
 terminal-runtime = ["host/terminal-runtime", "lingxia-windows-sdk/terminal-runtime"]
 devtools = ["host/devtools"]
 webview-input = ["host/webview-input", "lingxia-windows-sdk/webview-input"]
@@ -39,7 +39,7 @@ lingxia-provider = { path = "../../../crates/lingxia-provider" }
 lingxia-proxy = { path = "../../../crates/lingxia-proxy" }
 lingxia-service = { path = "../../../crates/lingxia-service" }
 lingxia-settings = { path = "../../../crates/lingxia-settings" }
-lingxia-shell = { path = "../../../crates/lingxia-shell" }
+lingxia-browser-shell = { path = "../../../crates/lingxia-browser-shell" }
 lingxia-terminal = { path = "../../../crates/lingxia-terminal" }
 lingxia-transfer = { path = "../../../crates/lingxia-transfer" }
 lingxia-update = { path = "../../../crates/lingxia-update" }

@@ -31,6 +31,16 @@ pub struct PackageOptions {
     /// Environment (developer | preview | release; alias `dev`).
     #[arg(long = "env", value_parser = ["developer", "dev", "preview", "release"])]
     pub env_version: Option<String>,
+
+    /// Extra Cargo feature(s) for the native Rust library. Can be repeated or
+    /// comma-separated; also reads LINGXIA_NATIVE_FEATURES.
+    #[arg(
+        long = "native-feature",
+        alias = "native-features",
+        value_delimiter = ',',
+        env = "LINGXIA_NATIVE_FEATURES"
+    )]
+    pub native_features: Vec<String>,
 }
 
 pub struct PackageExecuteOptions {
@@ -42,6 +52,7 @@ pub struct PackageExecuteOptions {
     pub platforms: Vec<String>,
     pub all_platforms: bool,
     pub env_version: Option<String>,
+    pub extra_native_features: Vec<String>,
 }
 
 pub fn execute(options: PackageExecuteOptions) -> Result<()> {
@@ -65,5 +76,6 @@ pub fn execute(options: PackageExecuteOptions) -> Result<()> {
         // Packaging needs the full platform artifact, not just the native lib.
         native_only: false,
         env_version,
+        extra_native_features: options.extra_native_features,
     })
 }

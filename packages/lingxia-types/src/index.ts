@@ -32,6 +32,7 @@ import type {
   PageConfig,
   PageInstance,
   Surface,
+  SurfaceHandle,
 } from './app';
 
 import type {
@@ -65,8 +66,14 @@ import type {
 } from './file';
 
 import type {
+  AppDownloadOptions,
+  AppDownloadResult,
+  DownloadDestination,
   DownloadOptions,
+  DownloadResultForDestination,
   DownloadTask,
+  DownloadsDownloadOptions,
+  DownloadsDownloadResult,
   UploadOptions,
   UploadTask,
 } from './transfer';
@@ -83,7 +90,6 @@ import type {
 
 import type {
   SystemSettingInfo,
-  OpenURLOptions,
 } from './system';
 
 import type { NavigateToLxAppOptions } from './navigator';
@@ -134,24 +140,146 @@ import type {
   RemoveTabBarBadgeOptions,
   SetTabBarStyleOptions,
   SetTabBarItemOptions,
-  SurfaceOpenOptions,
+  SurfaceEdge,
+  SurfaceFloatPosition,
+  OverlaySurfaceSize,
+  SurfaceContext,
   CapsuleRect,
 } from './ui';
 
-export interface SurfaceApi {
-  /**
-   * Dynamically opens a page or URL in a runtime-managed surface.
-   *
-   * `overlay` is cross-platform. `window` is a desktop capability and rejects
-   * on mobile platforms.
-   */
-  open(options: SurfaceOpenOptions): Promise<Surface>;
+interface WindowSurfaceSize {
+  /** Initial window width in logical pixels. */
+  width?: number;
+  /** Initial window height in logical pixels. */
+  height?: number;
 }
+
+/**
+ * Spec for {@link Lx.openSurface}. A discriminated union keyed by source so a
+ * page name and a declared surface id never collide (each is its own string
+ * space, separately type-checkable).
+ *
+ * - `{ page }` — one of this lxapp's own pages, by name, arranged as `as`
+ *   (`aside` is a companion of the main; `float` is a popup; `window` is a bare
+ *   desktop window, which rejects on mobile). `edge` applies to `aside`,
+ *   `position` applies to `float`, and `size` is a Host-clamped hint. They are
+ *   fixed at open (re-open to change).
+ *
+ *   `aside` is **size-class adaptive**, not a fixed form: only on `medium` /
+ *   `expanded` (room to sit alongside) does it dock and split beside the main at
+ *   `edge` as a sidebar/split panel. On `compact` (phone, or a folded foldable)
+ *   there is no room to dock, so the same surface presents **full-screen** —
+ *   pushed over the main and dismissed by the host back affordance / edge swipe
+ *   (a drill-in), never a docked panel. So one declaration reads as a side panel
+ *   on large screens and a full-screen drill-in on small ones. For a destination
+ *   that should stay switchable on phones, declare it `role: main` instead.
+ * - `{ surface }` — a surface declared in `lingxia.yaml` `surfaces:`, by id
+ *   (e.g. `'terminal'`, `'ai-assistant'`). Form, position, and startup data come
+ *   from the declaration.
+ * - `{ url }` — an `http(s)://` or `lingxia://` url, shown in the in-app chromed
+ *   browser (always with an address bar — never a chromeless embed). Without
+ *   `as` it opens as a main browser tab (host chrome, no handle). With
+ *   `as: 'aside'` it docks an `http(s)://` page beside the main as a single
+ *   browser aside (its own chrome + close, returns a closable handle); `edge`
+ *   defaults to `'right'` and `size` is a host-clamped preferred size. At most
+ *   one browser aside per window — a new one replaces the existing one.
+ */
+export type OpenPageSurfaceSpec =
+  | {
+      page: string;
+      as: 'aside';
+      edge?: SurfaceEdge;
+      size?: OverlaySurfaceSize;
+      query?: Record<string, unknown>;
+      position?: never;
+      surface?: never;
+      url?: never;
+    }
+  | {
+      page: string;
+      as: 'float';
+      position?: SurfaceFloatPosition;
+      size?: OverlaySurfaceSize;
+      query?: Record<string, unknown>;
+      edge?: never;
+      surface?: never;
+      url?: never;
+    }
+  | {
+      page: string;
+      as: 'window';
+      size?: WindowSurfaceSize;
+      query?: Record<string, unknown>;
+      edge?: never;
+      position?: never;
+      surface?: never;
+      url?: never;
+    };
+
+export interface OpenDeclaredSurfaceSpec {
+  surface: string;
+  page?: never;
+  url?: never;
+  as?: never;
+  edge?: never;
+  position?: never;
+  size?: never;
+  query?: never;
+}
+
+export interface OpenUrlTabSpec {
+  url: string;
+  as?: never;
+  page?: never;
+  surface?: never;
+  edge?: never;
+  position?: never;
+  size?: never;
+  query?: never;
+}
+
+export interface OpenUrlAsideSpec {
+  url: string;
+  as: 'aside';
+  edge?: SurfaceEdge;
+  size?: OverlaySurfaceSize;
+  page?: never;
+  surface?: never;
+  position?: never;
+  query?: never;
+}
+
+export type OpenSurfaceSpec =
+  | OpenPageSurfaceSpec
+  | OpenDeclaredSurfaceSpec
+  | OpenUrlTabSpec
+  | OpenUrlAsideSpec;
 
 export interface Lx {
   env: LxEnv;
   app: HostAppApi;
-  surface: SurfaceApi;
+
+  /**
+   * Open a surface.
+   *
+   * - `{ url }` without `as` opens a host browser tab and resolves to `null`.
+   * - `{ surface }` resolves to a host-managed handle with show/hide/close.
+   * - page surfaces and `{ url, as: 'aside' }` resolve to a full Surface handle.
+   *
+   * `as: 'window'` is desktop-only and rejects on mobile. See
+   * {@link OpenSurfaceSpec}.
+   */
+  openSurface(spec: OpenUrlTabSpec): Promise<null>;
+  openSurface(spec: OpenDeclaredSurfaceSpec): Promise<SurfaceHandle>;
+  openSurface(spec: OpenPageSurfaceSpec | OpenUrlAsideSpec): Promise<Surface>;
+  openSurface(spec: OpenSurfaceSpec): Promise<Surface | SurfaceHandle | null>;
+  /** Hand a url off to the OS default browser (leaves the app). */
+  openExternal(url: string): void;
+  /**
+   * Subscribe to adaptive-context changes ({@link SurfaceContext}); the handler
+   * fires with the new context. Returns an unsubscribe function.
+   */
+  onSurfaceContext(handler: (context: SurfaceContext) => void): () => void;
 
   getDeviceInfo(): DeviceInfo;
   getScreenInfo(): ScreenInfo;
@@ -180,7 +308,11 @@ export interface Lx {
    * otherwise prefer `mode: 'auto'`.
    */
   openFile(options: OpenFileOptions): void;
-  downloadFile(options: DownloadOptions): DownloadTask;
+  downloadFile(options: DownloadsDownloadOptions): DownloadTask<DownloadsDownloadResult>;
+  downloadFile(options: AppDownloadOptions): DownloadTask<AppDownloadResult>;
+  downloadFile<TDestination extends DownloadDestination = 'app'>(
+    options: DownloadOptions<TDestination>,
+  ): DownloadTask<DownloadResultForDestination<TDestination>>;
   uploadFile(options: UploadOptions): UploadTask;
   getFileManager(): FileManager;
 
@@ -193,7 +325,6 @@ export interface Lx {
 
   getLxAppInfo(): LxAppInfo;
   getSystemSetting(): SystemSettingInfo;
-  openURL(options: OpenURLOptions): void;
 
   getUpdateManager(): UpdateManager;
 

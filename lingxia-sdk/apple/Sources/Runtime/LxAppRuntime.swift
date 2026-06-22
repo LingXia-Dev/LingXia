@@ -84,12 +84,12 @@ public final class LxAppRuntime {
         LxAppCore.capabilities = caps.rawValue
 
         os_log(
-            "LxAppRuntime initialized — home: %{public}@ capabilities=%{public}u shell=%{public}@",
+            "LxAppRuntime initialized — home: %{public}@ capabilities=%{public}u browser=%{public}@",
             log: Self.log,
             type: .info,
             homeAppId,
             caps.rawValue,
-            caps.contains(.shell) ? "true" : "false"
+            caps.contains(.browser) ? "true" : "false"
         )
 
         return runtimeInfo

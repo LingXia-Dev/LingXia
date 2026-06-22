@@ -21,7 +21,7 @@ types-version = "0.9.0"
 rong-version = "0.4.0"
 rust-crate-version = "0.9.0"
 sdk-version = "0.9.0"
-shell-webui-version = "0.9.0"
+browser-shell-webui-version = "0.9.0"
 resource-bundle-version = "0.9.0"
 
 [[bin]]

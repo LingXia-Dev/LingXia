@@ -378,7 +378,7 @@ Creation:
 2. `WebViewBuilder::browser(tag)`, delegate `BrowserTabDelegate`.
 3. Register handlers:
    - `lx://` — routes back to the owning LxApp context.
-   - `lingxia://` — serves browser internal pages from the shell webui bundle.
+   - `lingxia://` — serves browser internal pages from the browser shell webui bundle.
    - navigation — normal web URLs stay in-WebView; external schemes are forwarded
      to the host via `open_url(..., External)`.
    - new-window — creates a new managed browser tab.
@@ -388,7 +388,7 @@ Creation:
    - External URL → `webview.load_url(url)`; **no** LxApp page lifecycle.
    - Internal browser page (`lingxia://`) **and** the no-URL startup case → bind a
      headless `Page` and load HTML with the bridge. This headless page gets full
-     page lifecycle so the shell webui can use the LxApp bridge and appservice
+     page lifecycle so the browser shell webui can use the LxApp bridge and appservice
      APIs.
 
 > **Shared startup page.** All tabs share a single headless startup

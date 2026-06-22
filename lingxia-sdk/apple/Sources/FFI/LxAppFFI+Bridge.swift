@@ -122,7 +122,8 @@ extension LxApp {
         height: Double,
         width_ratio: Double,
         height_ratio: Double,
-        position: Int32
+        position: Int32,
+        role: Int32
     ) -> Bool {
         let idString = id.toString()
         let appIdString = appid.toString()
@@ -153,8 +154,64 @@ extension LxApp {
                 height: height,
                 widthRatio: width_ratio,
                 heightRatio: height_ratio,
-                position: position
+                position: position,
+                role: role
             )
+        }
+    }
+
+    /// Adaptive Surface Layout: the shared core derived a new window layout.
+    nonisolated static func presentLayout(window_id: RustStr, layout_json: RustStr) -> Bool {
+        let windowIdString = window_id.toString()
+        let json = layout_json.toString()
+        guard !windowIdString.isEmpty, !json.isEmpty else { return false }
+        return executeOnMain {
+            #if os(macOS)
+            return LxAppLayoutReconciler.reconcile(windowId: windowIdString, json: json)
+            #elseif os(iOS)
+            return LxAppLayoutReconcileriOS.reconcile(windowId: windowIdString, json: json)
+            #else
+            _ = json
+            return false
+            #endif
+        }
+    }
+
+    /// Show or hide a host-declared top-level surface (e.g. the AI-chat panel or
+    /// terminal). Returns `false` when there is no host shell to manage the
+    /// surface, or when `id` is not a declared surface.
+    nonisolated static func setManagedSurfaceVisible(id: RustStr, visible: Bool) -> Bool {
+        let idString = id.toString()
+        guard !idString.isEmpty else { return false }
+        return executeOnMain {
+            #if os(macOS)
+            guard let runtime = LxAppMacAppUIRuntime.active else { return false }
+            if visible {
+                // Declared surfaces first; else fall back to built-in browser
+                // routes (downloads/settings) opened as main browser tabs.
+                if runtime.openManagedSurface(id: idString) { return true }
+                return runtime.shell.openBuiltinShellSurface(id: idString)
+            }
+            return runtime.closeManagedSurface(id: idString)
+            #else
+            _ = visible
+            return false
+            #endif
+        }
+    }
+
+    /// Flip a host-declared top-level surface's visibility. Returns `false` when
+    /// there is no host shell, or when `id` is not a declared surface.
+    nonisolated static func toggleManagedSurface(id: RustStr) -> Bool {
+        let idString = id.toString()
+        guard !idString.isEmpty else { return false }
+        return executeOnMain {
+            #if os(macOS)
+            guard let runtime = LxAppMacAppUIRuntime.active else { return false }
+            return runtime.toggleManagedSurface(id: idString)
+            #else
+            return false
+            #endif
         }
     }
 
@@ -325,6 +382,13 @@ extension LxApp {
             return openExternalUrlString(urlString)
         }
 
+        let browserEnabled = executeOnMain {
+            (LxAppCore.capabilities & LxAppCore.capBrowser) != 0
+        }
+        guard browserEnabled else {
+            return openExternalUrlString(urlString)
+        }
+
         guard !ownerAppId.isEmpty, owner_session_id > 0 else { return false }
 
         #if os(macOS)
@@ -351,7 +415,7 @@ extension LxApp {
         #if os(macOS)
         return executeOnMain { macOSLxApp.presentInternalBrowserTab(tabId: tabId) }
         #elseif os(iOS)
-        return executeOnMain { LxAppBrowserOverlay.show(tabId: tabId) }
+        return executeOnMain { LxAppBrowser.show(tabId: tabId) }
         #else
         return false
         #endif
@@ -361,6 +425,10 @@ extension LxApp {
         let tabId = tab_id.toString()
         #if os(macOS)
         return executeOnMain { macOSLxApp.presentInternalBrowserTab(tabId: tabId) }
+        #elseif os(iOS)
+        // A runtime-opened tab (e.g. a link that opens a new tab) must switch to
+        // and display the new tab, same as a directly opened one.
+        return executeOnMain { LxAppBrowser.show(tabId: tabId) }
         #else
         _ = tabId
         return false

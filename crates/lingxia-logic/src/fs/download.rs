@@ -13,7 +13,7 @@ use lingxia_transfer::user_cache::{
     self, DownloadBehavior, DownloadEvent as TransferDownloadEvent, DownloadFailure,
     DownloadFailureKind,
 };
-use lxapp::{LxApp, lx};
+use lxapp::{LxApp, LxAppSecurityPrivilege, lx};
 use rong::{
     HostError, IntoJSObj, JSContext, JSFunc, JSObject, JSResult, JSSymbol, JSValue, Promise,
     function::Optional,
@@ -31,6 +31,7 @@ struct ParsedDownloadOptions {
     headers: Vec<(String, String)>,
     timeout_ms: Option<u64>,
     file_path: Option<String>,
+    destination: DownloadDestination,
     signal: Option<JSObject>,
 }
 
@@ -69,6 +70,12 @@ enum DownloadTaskStatus {
     Canceled,
     Succeeded,
     Failed,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DownloadDestination {
+    App,
+    Downloads,
 }
 
 impl DownloadTaskStatus {
@@ -117,6 +124,7 @@ struct DownloadCompletion {
 enum DownloadPathKind {
     Temp,
     UserData,
+    Downloads,
 }
 
 struct DownloadIteratorState {
@@ -310,6 +318,14 @@ fn release_output_reservation(key: Option<String>) {
     }
 }
 
+fn is_output_path_reserved(path: &Path) -> JSResult<bool> {
+    let key = path.to_string_lossy().into_owned();
+    let guard = output_reservations()
+        .lock()
+        .map_err(|_| js_internal_error("download output reservation lock poisoned"))?;
+    Ok(guard.contains(&key))
+}
+
 fn progress_value(
     downloaded_bytes: u64,
     total_bytes: Option<u64>,
@@ -387,7 +403,7 @@ fn to_js_download_result(
     let path = path_to_result_string(&lxapp, &result.path);
     let (temp_file_path, file_path) = match result.path_kind {
         DownloadPathKind::Temp => (Some(path), None),
-        DownloadPathKind::UserData => (None, Some(path)),
+        DownloadPathKind::UserData | DownloadPathKind::Downloads => (None, Some(path)),
     };
     Ok(JSDownloadResult {
         temp_file_path,
@@ -480,6 +496,31 @@ fn read_optional_signal(obj: &JSObject) -> JSResult<Option<JSObject>> {
         .ok_or_else(|| js_invalid_parameter_error("downloadFile signal must be an AbortSignal"))
 }
 
+fn read_optional_destination(obj: &JSObject) -> JSResult<DownloadDestination> {
+    let Some(value) = get_present_property(obj, "destination") else {
+        return Ok(DownloadDestination::App);
+    };
+    if !value.is_string() {
+        return Err(js_invalid_parameter_error(
+            "downloadFile destination must be 'app' or 'downloads'",
+        ));
+    }
+    let destination = value.to_rust::<String>().map_err(|_| {
+        js_invalid_parameter_error("downloadFile destination must be 'app' or 'downloads'")
+    })?;
+    parse_download_destination(&destination)
+}
+
+fn parse_download_destination(destination: &str) -> JSResult<DownloadDestination> {
+    match destination.trim() {
+        "app" => Ok(DownloadDestination::App),
+        "downloads" => Ok(DownloadDestination::Downloads),
+        _ => Err(js_invalid_parameter_error(
+            "downloadFile destination must be 'app' or 'downloads'",
+        )),
+    }
+}
+
 fn read_header_entries(obj: &JSObject, field: &str) -> JSResult<Vec<(String, String)>> {
     let Some(value) = get_present_property(obj, field) else {
         return Ok(Vec::new());
@@ -519,6 +560,7 @@ fn parse_download_options(options: JSValue) -> JSResult<ParsedDownloadOptions> {
         headers: read_header_entries(&obj, "headers")?,
         timeout_ms: read_optional_timeout_field(&obj)?,
         file_path: read_optional_string_field(&obj, "filePath", "downloadFile")?,
+        destination: read_optional_destination(&obj)?,
         signal: read_optional_signal(&obj)?,
     })
 }
@@ -559,6 +601,147 @@ fn resolve_output_path(
         lxapp.user_data_dir.join(relative),
         DownloadPathKind::UserData,
     )))
+}
+
+fn ensure_downloads_privilege(lxapp: &LxApp) -> JSResult<()> {
+    let privilege =
+        LxAppSecurityPrivilege::new("downloads").map_err(|err| js_error_from_lxapp_error(&err))?;
+    if lxapp.has_security_privilege(&privilege) {
+        Ok(())
+    } else {
+        Err(js_error_from_business_code_with_detail(
+            3005,
+            "downloadFile destination 'downloads' requires security.privileges to include 'downloads'",
+        ))
+    }
+}
+
+fn file_name_hint(raw: Option<&str>) -> Option<String> {
+    let raw = raw?.trim();
+    if raw.is_empty() {
+        return None;
+    }
+    let last = raw
+        .rsplit(['/', '\\'])
+        .next()
+        .unwrap_or(raw)
+        .trim()
+        .trim_matches('.');
+    if last.is_empty() || last == "." || last == ".." {
+        None
+    } else {
+        Some(last.to_string())
+    }
+}
+
+fn sanitize_downloads_filename(raw: &str) -> String {
+    let mut sanitized = raw
+        .trim()
+        .chars()
+        .map(|ch| {
+            if ch.is_control() || matches!(ch, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|')
+            {
+                '_'
+            } else {
+                ch
+            }
+        })
+        .collect::<String>();
+    while sanitized.ends_with('.') {
+        sanitized.pop();
+    }
+    if sanitized.is_empty() || sanitized == "." || sanitized == ".." {
+        "download.bin".to_string()
+    } else {
+        sanitized
+    }
+}
+
+fn percent_decode_lossy(input: &str) -> String {
+    let bytes = input.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0usize;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            let hex = [bytes[i + 1], bytes[i + 2]];
+            if let Ok(hex_str) = std::str::from_utf8(&hex)
+                && let Ok(value) = u8::from_str_radix(hex_str, 16)
+            {
+                out.push(value);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).to_string()
+}
+
+fn file_name_from_url(url: &str) -> Option<String> {
+    let without_query = url.split(['?', '#']).next().unwrap_or(url);
+    let last = without_query.rsplit('/').next()?.trim();
+    if last.is_empty() {
+        return None;
+    }
+    Some(sanitize_downloads_filename(&percent_decode_lossy(last)))
+}
+
+fn split_filename(filename: &str) -> (String, Option<String>) {
+    if let Some((stem, ext)) = filename.rsplit_once('.')
+        && !stem.is_empty()
+        && !ext.is_empty()
+    {
+        return (stem.to_string(), Some(ext.to_string()));
+    }
+    (filename.to_string(), None)
+}
+
+fn unique_downloads_path(root: &Path, filename: &str) -> JSResult<PathBuf> {
+    let sanitized = sanitize_downloads_filename(filename);
+    let (stem, ext) = split_filename(&sanitized);
+    let mut index = 0u32;
+    loop {
+        let candidate_name = if index == 0 {
+            sanitized.clone()
+        } else if let Some(ext) = ext.as_ref() {
+            format!("{stem} ({index}).{ext}")
+        } else {
+            format!("{stem} ({index})")
+        };
+        let candidate = root.join(candidate_name);
+        if !candidate.exists()
+            && !candidate.with_extension("part").exists()
+            && !is_output_path_reserved(&candidate)?
+        {
+            return Ok(candidate);
+        }
+        index += 1;
+    }
+}
+
+fn resolve_downloads_output_path(
+    lxapp: &LxApp,
+    file_path: Option<&str>,
+    url: &str,
+) -> JSResult<(PathBuf, DownloadPathKind)> {
+    ensure_downloads_privilege(lxapp)?;
+    let root = lingxia_service::downloads::dir(&lxapp.app_data_dir());
+    if let Ok(metadata) = std::fs::symlink_metadata(&root)
+        && metadata.file_type().is_symlink()
+    {
+        return Err(js_error_from_business_code_with_detail(
+            3005,
+            "download directory must not be a symlink",
+        ));
+    }
+    let filename = file_name_hint(file_path)
+        .or_else(|| file_name_from_url(url))
+        .unwrap_or_else(|| "download.bin".to_string());
+    Ok((
+        unique_downloads_path(&root, &filename)?,
+        DownloadPathKind::Downloads,
+    ))
 }
 
 fn ensure_no_symlink_ancestors(
@@ -661,7 +844,7 @@ async fn finalize_download_result(
                 DownloadFailureReason::Quota(err)
             })?;
         }
-        DownloadPathKind::Temp => {}
+        DownloadPathKind::Downloads | DownloadPathKind::Temp => {}
     }
 
     if let Some(parent) = output_path.parent() {
@@ -691,6 +874,30 @@ async fn finalize_download_result(
 fn cleanup_staging_file(path: &Path) {
     let _ = std::fs::remove_file(path);
     let _ = std::fs::remove_file(path.with_extension("part"));
+}
+
+fn cleanup_canceled_download_files(
+    output_path: Option<&(PathBuf, DownloadPathKind)>,
+    staging_path: &Path,
+) {
+    if matches!(output_path, Some((_, DownloadPathKind::Downloads))) {
+        let _ = std::fs::remove_file(staging_path.with_extension("part"));
+    } else {
+        cleanup_staging_file(staging_path);
+    }
+}
+
+fn cleanup_completed_canceled_download(
+    output_path: Option<&(PathBuf, DownloadPathKind)>,
+    success_path: &Path,
+    staging_path: &Path,
+) {
+    let _ = std::fs::remove_file(success_path);
+    cleanup_canceled_download_files(output_path, staging_path);
+}
+
+fn should_cleanup_staging_file(output_path: Option<&(PathBuf, DownloadPathKind)>) -> bool {
+    !matches!(output_path, Some((_, DownloadPathKind::Downloads)))
 }
 
 fn unique_temp_download_name(source_url: &str, staging_path: &Path, size: u64) -> String {
@@ -740,13 +947,19 @@ fn spawn_download_worker(state: Arc<Mutex<DownloadIteratorState>>) {
             }
             (guard.sender.clone(), guard.config.clone())
         };
-        let download_target = config.staging_path.clone();
+        let downloads_target = config
+            .output_path
+            .as_ref()
+            .and_then(|(path, kind)| (*kind == DownloadPathKind::Downloads).then(|| path.clone()));
+        let download_target = downloads_target
+            .clone()
+            .unwrap_or_else(|| config.staging_path.clone());
 
         let persistence = user_cache::DownloadPersistence::new(
             config.app_data_dir.clone(),
             config.task_id.clone(),
             config.owner.clone(),
-            false,
+            downloads_target.is_some(),
         );
         let mut event_tx = progress_tx.clone();
         let on_event = move |event| match event {
@@ -803,16 +1016,42 @@ fn spawn_download_worker(state: Arc<Mutex<DownloadIteratorState>>) {
 
         match result {
             Ok(success) => {
-                let completion = {
+                let (completion, cancel_event) = {
                     let mut guard = state.lock().await;
-                    guard.stop_requested = None;
-                    if guard.status.is_terminal() {
-                        return;
+                    let cancel_wins = matches!(guard.stop_requested, Some(RequestedStop::Cancel))
+                        || guard.status == DownloadTaskStatus::Canceled;
+                    if cancel_wins {
+                        let should_emit_cancel = guard.status != DownloadTaskStatus::Canceled;
+                        cleanup_completed_canceled_download(
+                            guard.config.output_path.as_ref(),
+                            &success.path,
+                            &guard.config.staging_path,
+                        );
+                        release_output_reservation(guard.config.reservation_key.take());
+                        guard.stop_requested = None;
+                        guard.status = DownloadTaskStatus::Canceled;
+                        guard.terminal_seen = false;
+                        (guard.completion.take(), Some(should_emit_cancel))
+                    } else {
+                        guard.stop_requested = None;
+                        if guard.status.is_terminal() {
+                            release_output_reservation(guard.config.reservation_key.take());
+                            return;
+                        }
+                        guard.status = DownloadTaskStatus::Succeeded;
+                        release_output_reservation(guard.config.reservation_key.take());
+                        (guard.completion.take(), None)
                     }
-                    guard.status = DownloadTaskStatus::Succeeded;
-                    release_output_reservation(guard.config.reservation_key.take());
-                    guard.completion.take()
                 };
+                if let Some(should_emit_cancel) = cancel_event {
+                    if let Some(completion) = completion {
+                        let _ = completion.send(DownloadCompletionOutcome::Canceled);
+                    }
+                    if should_emit_cancel {
+                        let _ = progress_tx.send(DownloadIteratorMessage::Canceled).await;
+                    }
+                    return;
+                }
                 if let Some(completion) = completion {
                     let _ = completion.send(DownloadCompletionOutcome::Success(success.clone()));
                 }
@@ -832,7 +1071,10 @@ fn spawn_download_worker(state: Arc<Mutex<DownloadIteratorState>>) {
                         Some(RequestedStop::Cancel) | None
                             if guard.status == DownloadTaskStatus::Canceled =>
                         {
-                            cleanup_staging_file(&guard.config.staging_path);
+                            cleanup_canceled_download_files(
+                                guard.config.output_path.as_ref(),
+                                &guard.config.staging_path,
+                            );
                             release_output_reservation(guard.config.reservation_key.take());
                             guard.stop_requested = None;
                             return;
@@ -840,27 +1082,26 @@ fn spawn_download_worker(state: Arc<Mutex<DownloadIteratorState>>) {
                         _ => {
                             guard.stop_requested = None;
                             guard.status = DownloadTaskStatus::Failed;
-                            cleanup_staging_file(&guard.config.staging_path);
+                            if should_cleanup_staging_file(guard.config.output_path.as_ref()) {
+                                cleanup_staging_file(&guard.config.staging_path);
+                            }
                             release_output_reservation(guard.config.reservation_key.take());
                             (Some(error.clone()), guard.completion.take(), None)
                         }
                     }
                 };
-
-                if let Some(pause_event) = pause_event {
-                    let _ = progress_tx.send(pause_event).await;
+                if let Some(event) = pause_event {
+                    let _ = progress_tx.send(event).await;
                     return;
                 }
-
-                let Some(message) = message else {
-                    return;
-                };
-                if let Some(completion) = completion {
-                    let _ = completion.send(DownloadCompletionOutcome::Failed(message.clone()));
+                if let Some(error) = message {
+                    if let Some(completion) = completion {
+                        let _ = completion.send(DownloadCompletionOutcome::Failed(error.clone()));
+                    }
+                    let _ = progress_tx
+                        .send(DownloadIteratorMessage::Error(error))
+                        .await;
                 }
-                let _ = progress_tx
-                    .send(DownloadIteratorMessage::Error(message))
-                    .await;
             }
         }
     }));
@@ -949,7 +1190,14 @@ fn download_file(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
         behavior.request_timeout = Duration::from_millis(timeout_ms);
     }
 
-    let output_path = resolve_output_path(&lxapp, options.file_path.as_deref())?;
+    let output_path = match options.destination {
+        DownloadDestination::App => resolve_output_path(&lxapp, options.file_path.as_deref())?,
+        DownloadDestination::Downloads => Some(resolve_downloads_output_path(
+            &lxapp,
+            options.file_path.as_deref(),
+            &url,
+        )?),
+    };
     if let Some((path, DownloadPathKind::UserData)) = output_path.as_ref()
         && std::fs::symlink_metadata(path).is_ok()
     {
@@ -972,7 +1220,10 @@ fn download_file(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
         release_output_reservation(reservation_key.clone());
         js_internal_error(format!("download staging dir failed: {err}"))
     })?;
-    let staging_path = staging_dir.join(&task_id);
+    let staging_path = output_path
+        .as_ref()
+        .and_then(|(path, kind)| (*kind == DownloadPathKind::Downloads).then(|| path.clone()))
+        .unwrap_or_else(|| staging_dir.join(&task_id));
     let (tx, rx) = mpsc::channel::<DownloadIteratorMessage>(64);
     let (completion_tx, completion_rx) = oneshot::channel::<DownloadCompletionOutcome>();
     let promise_ctx = ctx.clone();
@@ -1254,10 +1505,11 @@ async fn download_cancel_task(state: &Arc<Mutex<DownloadIteratorState>>) -> JSRe
         if guard.status == DownloadTaskStatus::Paused {
             let completion = guard.completion.take();
             let staging_path = guard.config.staging_path.clone();
+            let output_path = guard.config.output_path.clone();
             guard.stop_requested = None;
             guard.status = DownloadTaskStatus::Canceled;
             guard.terminal_seen = false;
-            cleanup_staging_file(&staging_path);
+            cleanup_canceled_download_files(output_path.as_ref(), &staging_path);
             release_output_reservation(guard.config.reservation_key.take());
             if guard
                 .sender
@@ -1283,6 +1535,10 @@ async fn download_cancel_task(state: &Arc<Mutex<DownloadIteratorState>>) -> JSRe
         Ok(()) => {
             let completion = {
                 let mut guard = state.lock().await;
+                if guard.status.is_terminal() {
+                    guard.stop_requested = None;
+                    return Ok(());
+                }
                 guard.status = DownloadTaskStatus::Canceled;
                 guard.terminal_seen = false;
                 if guard
@@ -1311,4 +1567,98 @@ pub(super) fn init(ctx: &JSContext) -> JSResult<()> {
     let download_file_func = JSFunc::new(ctx, download_file)?;
     lx::register_js_api(ctx, "downloadFile", download_file_func)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_temp_dir(name: &str) -> PathBuf {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|duration| duration.as_nanos())
+            .unwrap_or(0);
+        std::env::temp_dir().join(format!(
+            "lingxia-logic-download-{name}-{}-{nonce}",
+            std::process::id()
+        ))
+    }
+
+    #[test]
+    fn downloads_file_name_hint_uses_last_segment() {
+        assert_eq!(
+            file_name_hint(Some("../nested/report.pdf")),
+            Some("report.pdf".to_string())
+        );
+        assert_eq!(
+            file_name_hint(Some(r"..\nested\report.pdf")),
+            Some("report.pdf".to_string())
+        );
+        assert_eq!(file_name_hint(Some(" . ")), None);
+        assert_eq!(file_name_hint(Some(" .. ")), None);
+    }
+
+    #[test]
+    fn downloads_file_name_from_url_decodes_and_sanitizes() {
+        assert_eq!(
+            file_name_from_url("https://example.com/files/a%20b.pdf?token=1#frag"),
+            Some("a b.pdf".to_string())
+        );
+        assert_eq!(
+            file_name_from_url("https://example.com/files/a%2Fb.txt"),
+            Some("a_b.txt".to_string())
+        );
+        assert_eq!(file_name_from_url("https://example.com/files/"), None);
+    }
+
+    #[test]
+    fn download_destination_rejects_empty_string() {
+        assert!(matches!(
+            parse_download_destination("app"),
+            Ok(DownloadDestination::App)
+        ));
+        assert!(matches!(
+            parse_download_destination("downloads"),
+            Ok(DownloadDestination::Downloads)
+        ));
+        assert!(parse_download_destination("").is_err());
+        assert!(parse_download_destination("   ").is_err());
+    }
+
+    #[test]
+    fn unique_downloads_path_avoids_existing_part_and_reserved_paths() {
+        let root = test_temp_dir("unique-path");
+        std::fs::create_dir_all(&root).expect("create test dir");
+        std::fs::write(root.join("report.pdf"), b"done").expect("write existing file");
+        std::fs::write(root.join("report (1).part"), b"partial").expect("write part file");
+
+        let reserved_path = root.join("report (2).pdf");
+        let reserved = (reserved_path.clone(), DownloadPathKind::Downloads);
+        let reservation = reserve_output_path(Some(&reserved)).expect("reserve output path");
+
+        let result = unique_downloads_path(&root, "report.pdf").expect("resolve unique path");
+        release_output_reservation(reservation);
+        let _ = std::fs::remove_dir_all(&root);
+
+        assert_eq!(result, root.join("report (3).pdf"));
+    }
+
+    #[test]
+    fn cancel_cleanup_for_downloads_removes_part_without_deleting_target_name() {
+        let root = test_temp_dir("cancel-cleanup");
+        std::fs::create_dir_all(&root).expect("create test dir");
+        let target = root.join("report.pdf");
+        let part = target.with_extension("part");
+        std::fs::write(&target, b"done").expect("write target file");
+        std::fs::write(&part, b"partial").expect("write part file");
+
+        cleanup_canceled_download_files(
+            Some(&(target.clone(), DownloadPathKind::Downloads)),
+            &target,
+        );
+
+        assert!(!part.exists());
+        assert_eq!(std::fs::read(&target).expect("target remains"), b"done");
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }

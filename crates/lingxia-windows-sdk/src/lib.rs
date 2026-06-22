@@ -11,8 +11,10 @@
 //! that thread's message queue. [`quick_start`] performs both steps in order
 //! on the calling thread.
 
+#[cfg(all(target_os = "windows", feature = "runtime"))]
+use std::path::Path;
 #[cfg(feature = "runtime")]
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 #[cfg(all(target_os = "windows", feature = "runtime"))]
 mod app_icon;
@@ -28,7 +30,7 @@ mod media_preview;
 mod native_components;
 #[cfg(all(target_os = "windows", feature = "runtime"))]
 mod pull_to_refresh;
-#[cfg(all(target_os = "windows", feature = "shell-runtime"))]
+#[cfg(all(target_os = "windows", feature = "browser-shell"))]
 mod shell;
 #[cfg(all(target_os = "windows", feature = "runtime"))]
 mod video_controls;
@@ -125,7 +127,7 @@ pub fn init(app: WindowsApp) -> Result<String> {
     window_host::install_native_view_host();
     native_components::install();
     pull_to_refresh::install();
-    #[cfg(feature = "shell-runtime")]
+    #[cfg(feature = "browser-shell")]
     shell::install();
     app_menu::install_host_window_menu_support();
     install_current_thread_exit_handler();
@@ -149,7 +151,7 @@ pub fn init(app: WindowsApp) -> Result<String> {
     Ok(home_app_id)
 }
 
-#[cfg(all(target_os = "windows", feature = "shell-runtime"))]
+#[cfg(all(target_os = "windows", feature = "browser-shell"))]
 fn open_home_app(appid: &str) -> std::result::Result<(), String> {
     shell::open_home_app(appid)
 }
@@ -157,7 +159,7 @@ fn open_home_app(appid: &str) -> std::result::Result<(), String> {
 #[cfg(all(
     target_os = "windows",
     feature = "runtime",
-    not(feature = "shell-runtime")
+    not(feature = "browser-shell")
 ))]
 fn open_home_app(appid: &str) -> std::result::Result<(), String> {
     lingxia::windows::open_home_app(appid)
@@ -245,7 +247,7 @@ pub fn quick_start() -> Result<i32> {
     Ok(run_message_loop())
 }
 
-#[cfg(feature = "runtime")]
+#[cfg(all(target_os = "windows", feature = "runtime"))]
 fn resolve_app_icon_path(asset_dir: &Path, home_app_id: &str) -> Option<PathBuf> {
     // `lingxia dev` stages a badged copy of the launcher icon and points this
     // env var at it, so dev/preview builds show the env badge without the CLI

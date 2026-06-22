@@ -9,7 +9,10 @@ class SidebarBrowserItemView: NSView {
     struct Layout {
         static let height: CGFloat = 28
         static let iconSize: CGFloat = 16
-        static let leadingPadding: CGFloat = 16
+        // Matches SidebarGroupView.Layout.headerHPadding so an lxapp group's
+        // icon and a browser tab's icon line up in the same column (both sit
+        // groupInset + this from the sidebar edge).
+        static let leadingPadding: CGFloat = 8
         static let trailingPadding: CGFloat = 8
         static let iconTitleSpacing: CGFloat = 8
         static let cornerRadius: CGFloat = 6

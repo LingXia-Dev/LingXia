@@ -235,6 +235,21 @@ impl LxAppWorkers {
             | ServiceMessage::Eval { lxapp, .. } => Some(lxapp.as_ref() as *const _ as usize),
         };
 
+        // Logic-disabled lxapps (e.g. the built-in browser) never start a worker,
+        // so they legitimately have no instance mapping — dispatching to them is a
+        // no-op, not an error.
+        let logic_enabled = match &message {
+            ServiceMessage::CreateAppSvc { lxapp, .. }
+            | ServiceMessage::TerminateAppSvc { lxapp, .. }
+            | ServiceMessage::TerminatePage { lxapp, .. }
+            | ServiceMessage::CallAppSvcEvent { lxapp, .. }
+            | ServiceMessage::CallPageSvc { lxapp, .. }
+            | ServiceMessage::CreatePage { lxapp, .. }
+            | ServiceMessage::CallPageSvcEvent { lxapp, .. }
+            | ServiceMessage::DispatchAppBusEvent { lxapp, .. }
+            | ServiceMessage::Eval { lxapp, .. } => lxapp.logic_enabled(),
+        };
+
         let target_worker_id =
             instance_key.and_then(|k| instance_assignments.lock().unwrap().get(&k).copied());
 
@@ -257,13 +272,15 @@ impl LxAppWorkers {
                     worker_id, appid
                 );
             }
-        } else {
-            // No instance mapping found; drop message to avoid misrouting.
+        } else if logic_enabled {
+            // No instance mapping found for a logic-enabled app; drop the message
+            // to avoid misrouting (a real anomaly worth surfacing).
             error!(
                 "No worker mapping for LxApp instance (appid: {}) while dispatching message",
                 appid
             );
         }
+        // Logic-disabled app: no worker by design — silently drop.
     }
 
     /// Create a new lxapp service (worker reads session id from LxApp state).

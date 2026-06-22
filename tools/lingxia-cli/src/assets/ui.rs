@@ -1,13 +1,14 @@
 use crate::config::LingXiaConfig;
 use anyhow::{Result, anyhow};
-use serde_json::{Map, Value, json};
+use serde_json::{Map, Value};
 
-const TERMINAL_SURFACE_ID: &str = "terminal";
-const TERMINAL_ACTIVATOR_ID: &str = "terminalSidebar";
 pub(super) const TERMINAL_ICON_SOURCE: &str = "__lingxia_builtin__/terminal.svg";
 
-pub(super) fn effective_ui_config(config: &LingXiaConfig) -> Result<Option<Value>> {
-    let Some(ui) = config.ui.as_ref() else {
+pub(super) fn effective_ui_config(
+    config: &LingXiaConfig,
+    platform: Option<&str>,
+) -> Result<Option<Value>> {
+    let Some(ui) = config.generated_ui.as_ref() else {
         return Ok(None);
     };
     let mut ui = ui.clone();
@@ -16,142 +17,129 @@ pub(super) fn effective_ui_config(config: &LingXiaConfig) -> Result<Option<Value
         .as_ref()
         .map(|capabilities| capabilities.terminal)
         .unwrap_or(false);
-    if terminal_enabled {
-        add_terminal_ui(&mut ui)?;
-    } else if contains_terminal_surface(&ui) {
+    if contains_terminal_surface(&ui) && !terminal_enabled {
         return Err(anyhow!(
             "ui contains terminal content but capabilities.terminal is not enabled"
         ));
     }
+    if let Some(platform) = platform {
+        filter_ui_for_platform(&mut ui, platform)?;
+    }
     Ok(Some(ui))
 }
 
-fn add_terminal_ui(ui: &mut Value) -> Result<()> {
+fn filter_ui_for_platform(ui: &mut Value, platform: &str) -> Result<()> {
     let obj = ui
         .as_object_mut()
         .ok_or_else(|| anyhow!("ui must be a JSON object"))?;
-    let root_surface = root_surface_id(obj)?;
+    let launch = obj
+        .get("launch")
+        .and_then(Value::as_object)
+        .ok_or_else(|| anyhow!("ui.launch must be an object"))?;
+    let initial_surface = launch
+        .get("initialSurface")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| anyhow!("ui.launch.initialSurface must be a non-empty string"))?
+        .to_string();
 
     let surfaces = obj
         .get_mut("surfaces")
         .and_then(Value::as_array_mut)
         .ok_or_else(|| anyhow!("ui.surfaces must be an array"))?;
-    if !contains_id(surfaces, TERMINAL_SURFACE_ID) {
-        surfaces.push(json!({
-            "id": TERMINAL_SURFACE_ID,
-            "presentation": {
-                "kind": "attachPanel",
-                "attachTo": root_surface,
-                "edge": "bottom",
-                "size": { "height": 320 }
-            },
-            "content": {
-                "kind": "terminal"
-            }
-        }));
+    let mut kept_surface_ids = std::collections::HashSet::new();
+    let mut filtered_surfaces = Vec::with_capacity(surfaces.len());
+    for (index, surface) in surfaces.iter().enumerate() {
+        let mut surface = surface.clone();
+        let surface_obj = surface
+            .as_object_mut()
+            .ok_or_else(|| anyhow!("ui.surfaces[{index}] must be an object"))?;
+        let id = surface_obj
+            .get("id")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| anyhow!("ui.surfaces[{index}].id must be a non-empty string"))?
+            .to_string();
+        if surface_available_on_platform(surface_obj, platform, &format!("ui.surfaces[{index}]"))? {
+            surface_obj.remove("platforms");
+            kept_surface_ids.insert(id);
+            filtered_surfaces.push(surface);
+        }
     }
+    if filtered_surfaces.is_empty() {
+        return Err(anyhow!(
+            "ui.surfaces must contain at least one surface available on {platform}"
+        ));
+    }
+    if !kept_surface_ids.contains(initial_surface.as_str()) {
+        return Err(anyhow!(
+            "ui.launch.initialSurface '{initial_surface}' is not available on {platform}"
+        ));
+    }
+    *surfaces = filtered_surfaces;
 
-    let activators = ensure_array_field(obj, "activators")?;
-    if !contains_id(activators, TERMINAL_ACTIVATOR_ID) {
-        activators.push(json!({
-            "id": TERMINAL_ACTIVATOR_ID,
-            "kind": "sidebarItem",
-            "hostSurface": root_surface,
-            "label": "Terminal",
-            "icon": TERMINAL_ICON_SOURCE,
-            "action": {
-                "kind": "toggleSurface",
-                "surface": TERMINAL_SURFACE_ID
-            }
-        }));
+    let activators = obj
+        .get_mut("activators")
+        .and_then(Value::as_array_mut)
+        .ok_or_else(|| anyhow!("ui.activators must be an array"))?;
+    let mut filtered_activators = Vec::with_capacity(activators.len());
+    for (index, activator) in activators.iter().enumerate() {
+        let activator_obj = activator
+            .as_object()
+            .ok_or_else(|| anyhow!("ui.activators[{index}] must be an object"))?;
+        let Some(action_surface) = activator_obj
+            .get("action")
+            .and_then(Value::as_object)
+            .and_then(|action| action.get("surface"))
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        else {
+            continue;
+        };
+        if !kept_surface_ids.contains(action_surface) {
+            continue;
+        }
+        if let Some(host_surface) = activator_obj
+            .get("hostSurface")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            && !kept_surface_ids.contains(host_surface)
+        {
+            continue;
+        }
+        filtered_activators.push(activator.clone());
     }
+    *activators = filtered_activators;
 
     Ok(())
 }
-
-fn root_surface_id(ui: &Map<String, Value>) -> Result<String> {
-    let surfaces = ui
-        .get("surfaces")
-        .and_then(Value::as_array)
-        .ok_or_else(|| anyhow!("ui.surfaces must be an array"))?;
-
-    let initial_surface = ui
-        .get("launch")
-        .and_then(Value::as_object)
-        .and_then(|launch| launch.get("initialSurface"))
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|id| !id.is_empty());
-    if let Some(initial_surface) = initial_surface
-        && surface_is_root(surfaces, initial_surface)
-    {
-        return Ok(initial_surface.to_string());
+fn surface_available_on_platform(
+    surface: &Map<String, Value>,
+    platform: &str,
+    context: &str,
+) -> Result<bool> {
+    let Some(platforms) = surface.get("platforms") else {
+        return Ok(true);
+    };
+    let platforms = platforms
+        .as_array()
+        .ok_or_else(|| anyhow!("{context}.platforms must be an array"))?;
+    if platforms.is_empty() {
+        return Ok(true);
     }
-
-    for surface in surfaces {
-        if surface_is_root_value(surface)
-            && let Some(id) = surface
-                .as_object()
-                .and_then(|surface| surface.get("id"))
-                .and_then(Value::as_str)
-                .map(str::trim)
-                .filter(|id| !id.is_empty())
-        {
-            return Ok(id.to_string());
+    for (index, value) in platforms.iter().enumerate() {
+        let value = value
+            .as_str()
+            .ok_or_else(|| anyhow!("{context}.platforms[{index}] must be a string"))?;
+        if value.eq_ignore_ascii_case(platform) {
+            return Ok(true);
         }
     }
-
-    ui.get("launch")
-        .and_then(Value::as_object)
-        .and_then(|launch| launch.get("initialSurface"))
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|id| !id.is_empty())
-        .map(ToOwned::to_owned)
-        .ok_or_else(|| anyhow!("ui.launch.initialSurface must be a non-empty string"))
-}
-
-fn ensure_array_field<'a>(
-    obj: &'a mut Map<String, Value>,
-    key: &str,
-) -> Result<&'a mut Vec<Value>> {
-    if !obj.contains_key(key) {
-        obj.insert(key.to_string(), Value::Array(Vec::new()));
-    }
-    obj.get_mut(key)
-        .and_then(Value::as_array_mut)
-        .ok_or_else(|| anyhow!("ui.{key} must be an array"))
-}
-
-fn surface_is_root(surfaces: &[Value], id: &str) -> bool {
-    surfaces.iter().any(|surface| {
-        surface
-            .as_object()
-            .and_then(|surface| surface.get("id"))
-            .and_then(Value::as_str)
-            .map(str::trim)
-            == Some(id)
-            && surface_is_root_value(surface)
-    })
-}
-
-fn surface_is_root_value(surface: &Value) -> bool {
-    surface
-        .as_object()
-        .and_then(|surface| surface.get("presentation"))
-        .and_then(Value::as_object)
-        .and_then(|presentation| presentation.get("kind"))
-        .and_then(Value::as_str)
-        .is_some_and(|kind| matches!(kind, "window" | "panel"))
-}
-
-fn contains_id(items: &[Value], id: &str) -> bool {
-    items.iter().any(|item| {
-        item.get("id")
-            .and_then(Value::as_str)
-            .map(|value| value == id)
-            .unwrap_or(false)
-    })
+    Ok(false)
 }
 
 fn contains_terminal_surface(ui: &Value) -> bool {

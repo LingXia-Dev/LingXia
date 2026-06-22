@@ -18,6 +18,7 @@ lingxia-transfer = { workspace = true }
 lingxia-media = { workspace = true }
 lingxia-app-context = { workspace = true }
 lingxia-platform = { workspace = true }
+lingxia-surface = { workspace = true }
 lingxia-messaging = { workspace = true }
 futures = { workspace = true }
 tokio = { workspace = true }

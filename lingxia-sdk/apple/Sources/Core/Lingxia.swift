@@ -10,7 +10,7 @@ public enum Lingxia {
     ) -> LxAppShellConfiguration {
         var config = configuration
         guard case .hidden = config.sidebar,
-              capabilities.contains(.shell),
+              capabilities.contains(.browser),
               let homeAppId,
               !homeAppId.isEmpty else {
             return config

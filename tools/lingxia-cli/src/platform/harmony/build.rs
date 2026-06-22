@@ -1,8 +1,8 @@
 use super::{HarmonyPlatform, OHOS_TARGET, deploy::ensure_command};
 use crate::commands::rust::run_cargo_build_for_target;
 use crate::platform::{
-    BuildArtifacts, BuildConfig, BuildProfile, native_client_out_for_host_project,
-    resolve_cargo_target_dir, set_native_client_codegen_env,
+    BuildArtifacts, BuildConfig, BuildProfile, lingxia_workspace_root,
+    native_client_out_for_host_project, resolve_cargo_target_dir, set_native_client_codegen_env,
 };
 use anyhow::{Context, Result, anyhow};
 use colored::Colorize;
@@ -63,11 +63,22 @@ impl HarmonyPlatform {
         // RELATIVE `file:` deps — an absolute path injected here is left
         // untouched. Inside the workspace the committed oh-package.json5 already
         // references the local Harmony SDK source.
-        if !crate::platform::is_inside_lingxia_workspace(&config.project_root) {
-            let version = crate::sdk_cache::sdk_version();
-            let har =
-                crate::sdk_cache::ensure_sdk(crate::sdk_cache::SdkPlatform::Harmony, &version)?;
-            inject_harmony_har_dependency(&staging, &har)?;
+        match lingxia_workspace_root(&config.project_root) {
+            // External user projects don't have the SDK in their tree: wire in
+            // the published HAR, whose rawfile icons were generated at release.
+            None => {
+                let version = crate::sdk_cache::sdk_version();
+                let har =
+                    crate::sdk_cache::ensure_sdk(crate::sdk_cache::SdkPlatform::Harmony, &version)?;
+                inject_harmony_har_dependency(&staging, &har)?;
+            }
+            // In-workspace builds compile the SDK source module in place. Its
+            // `resources/rawfile/icons` are generated (gitignored), so without a
+            // prior release-script run they can be stale or missing. Regenerate
+            // the design icons into the source module before hvigor packages it.
+            Some(workspace_root) => {
+                stage_sdk_design_icons(&workspace_root)?;
+            }
         }
 
         if config.build_native {
@@ -462,6 +473,37 @@ fn inject_harmony_har_dependency(staging: &Path, har: &Path) -> Result<()> {
             .with_context(|| format!("Failed to write {}", pkg_path.display()))?;
     }
     Ok(())
+}
+
+/// Regenerate the SDK source module's HarmonyOS design icons from
+/// `design/icons/svg` into `lingxia-sdk/harmony/lingxia/src/main/resources/
+/// rawfile/icons`. That rawfile tree is gitignored and generated (the release
+/// script does this via `gen icons --harmony-out`), so an in-workspace build
+/// that hasn't run the release script would otherwise package stale/missing
+/// icons. The SDK's `.ets` reference `$rawfile('icons/...')` resolves against
+/// this module's own rawfile, so this is where the shipped icons must live.
+fn stage_sdk_design_icons(workspace_root: &Path) -> Result<()> {
+    let svg_dir = workspace_root.join("design/icons/svg");
+    if !svg_dir.is_dir() {
+        // No design source in this checkout: leave whatever icons are present.
+        return Ok(());
+    }
+    let harmony_icons_dir =
+        workspace_root.join("lingxia-sdk/harmony/lingxia/src/main/resources/rawfile/icons");
+    println!(
+        "  {} Staging SDK design icons → {}",
+        "🎨".dimmed(),
+        harmony_icons_dir.display()
+    );
+    crate::r#gen::icons::run(crate::r#gen::icons::IconsConfig {
+        input: svg_dir,
+        ios_out: None,
+        android_out: None,
+        harmony_out: Some(harmony_icons_dir),
+        windows_out: None,
+        windows_png_size: 64,
+    })
+    .context("Failed to stage SDK HarmonyOS design icons")
 }
 
 /// Insert or replace the `"lingxia"` entry in the `dependencies` object of a

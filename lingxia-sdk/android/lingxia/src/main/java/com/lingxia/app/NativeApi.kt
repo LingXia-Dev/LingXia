@@ -179,6 +179,18 @@ internal object NativeApi {
     external fun browserTabClose(tabId: String): Boolean
 
     /**
+     * Navigate an existing managed internal browser tab.
+     */
+    @JvmStatic
+    external fun browserTabNavigate(tabId: String, url: String): Boolean
+
+    /**
+     * Sync Rust-side active browser tab after switching native chrome.
+     */
+    @JvmStatic
+    external fun browserTabActivate(tabId: String)
+
+    /**
      * Get built-in browser appId.
      */
     @JvmStatic
@@ -260,6 +272,12 @@ internal object NativeApi {
 
     @JvmStatic
     external fun disposePageInstance(pageInstanceId: String, reason: String): Boolean
+
+    @JvmStatic
+    external fun setSurfaceWidth(appId: String, width: Double): Boolean
+
+    @JvmStatic
+    external fun surfaceDerivedLayout(appId: String): String?
 
     @JvmStatic
     external fun onSurfaceClosed(appId: String, id: String, reason: String): Boolean

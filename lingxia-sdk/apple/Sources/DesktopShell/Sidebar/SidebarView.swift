@@ -64,6 +64,52 @@ struct PanelIconItem {
     let label: String
 }
 
+// MARK: - SidebarModel
+
+/// Immutable description of everything the sidebar displays. The four public
+/// `update*`/`setActiveHighlight` methods are thin mutators over the pieces of
+/// this model; `render()` is the single place that turns it into AppKit views.
+///
+/// Contract: nothing outside the mutators writes `model`, and every mutator ends
+/// with a `render()` call. `render()` never reads transient view state to decide
+/// *what* to show — it reads only `model` — so selection truth lives in exactly
+/// one place (`selection`).
+private struct SidebarModel {
+    /// One lxapp group entry. Carries only what `render()` needs; per-group page
+    /// contents are still pulled from Rust by SidebarGroupView itself.
+    struct AppGroupVM {
+        let appId: String
+        let asideSurfaceId: String?
+    }
+
+    /// One browser tab row.
+    struct BrowserTabVM {
+        let id: String
+        let title: String
+        let favicon: NSImage?
+    }
+
+    /// The single source of selection truth, shared by both the expanded list
+    /// and the collapsed rail.
+    enum Selection: Equatable {
+        case none
+        /// `pageIndex == nil` means "highlight the app, page index from Rust".
+        case app(appId: String, pageIndex: Int?)
+        case browser(id: String)
+    }
+
+    var appGroups: [AppGroupVM] = []
+    var browserTabs: [BrowserTabVM] = []
+    var panelItems: [PanelIconItem] = []
+    var selection: Selection = .none
+}
+
+extension PanelIconItem: Equatable {
+    static func == (lhs: PanelIconItem, rhs: PanelIconItem) -> Bool {
+        lhs.id == rhs.id && lhs.iconURL == rhs.iconURL && lhs.label == rhs.label
+    }
+}
+
 // MARK: - SidebarView
 
 /// The main sidebar container view, modeled after Chrome vertical tab groups.
@@ -113,9 +159,20 @@ class SidebarView: NSView {
     private let footerSeparator = NSView()
     /// Horizontal stack that holds trailing product/action buttons.
     private let panelStack = NSStackView()
+    /// The expanded-state collapse toggle. Lives in the header, next to the
+    /// traffic lights; clicking it collapses the sidebar to the icon rail.
     private let hideButton = NSButton()
     private var hideButtonTrackingArea: NSTrackingArea?
+    /// Leading inset of the header toggle, kept clear of the traffic lights.
+    private var headerToggleLeadingConstraint: NSLayoutConstraint?
+    /// The rail-state expand toggle — the first icon in the collapsed rail,
+    /// above the lxapp icons; clicking it restores the expanded sidebar.
+    private let railExpandButton = NSButton()
     private var panelButtons: [NSButton] = []
+    /// The panel items currently materialized as footer buttons. Lets
+    /// renderPanelItems() skip a rebuild when render() runs for an unrelated
+    /// change — so `updatePanelIcon`'s resolved icons aren't wiped out.
+    private var renderedPanelItems: [PanelIconItem] = []
     private var appUIOnlyMode = false
 
     // MARK: Icon-rail (collapsed) state
@@ -138,10 +195,6 @@ class SidebarView: NSView {
     private let railStack = NSStackView()
     /// Rail buttons keyed by a composite id ("app:<appId>" / "web:<tabId>").
     private var railButtons: [String: NSButton] = [:]
-    /// Latest browser items, cached so the rail can be rebuilt without a tab refresh.
-    private var currentBrowserItems: [(id: String, title: String, favicon: NSImage?)] = []
-    /// The active selection ("app:<appId>" / "web:<tabId>") for rail highlighting.
-    private var activeRailKey: String?
 
     /// The bundled default LingXia mark, used when an lxapp declares no icon.
     private static let defaultAppIcon: NSImage? = {
@@ -150,6 +203,17 @@ class SidebarView: NSView {
         else { return nil }
         return NSImage(contentsOf: url)
     }()
+
+    /// A shared design icon (bundled PDF) as a tintable template image, so the
+    /// header affordances match their iOS counterparts.
+    private static func designIcon(_ name: String) -> NSImage? {
+        guard let url = Bundle.module.url(forResource: name, withExtension: "pdf", subdirectory: "icons")
+        else { return nil }
+        let image = NSImage(contentsOf: url)
+        image?.isTemplate = true
+        image?.size = NSSize(width: 16, height: 16)
+        return image
+    }
 
     /// Called when a panel icon button is clicked: (panelId)
     var onPanelItemToggled: ((String) -> Void)?
@@ -161,13 +225,17 @@ class SidebarView: NSView {
     /// The transient "ready to update" callout shown above the footer dock.
     private var updateReadyCallout: UpdateReadyCallout?
 
+    /// The single immutable model that drives the whole sidebar. Mutated only by
+    /// the public `update*`/`setActiveHighlight`/`clearAllHighlights` methods,
+    /// each of which calls `render()` afterwards.
+    private var model = SidebarModel()
+
+    // MARK: Render-side view caches (rebuilt/diffed from `model` by render()).
     private var groupViews: [String: SidebarGroupView] = [:]
-    private var currentTabs: [LxAppTab] = []
 
     // Browser tab views
     private var browserItemViews: [String: SidebarBrowserItemView] = [:]
     private var browserItemTopConstraints: [String: NSLayoutConstraint] = [:]
-    private var browserTabOrder: [String] = []
     private let addButton = NSButton()
     private var addButtonTopConstraint: NSLayoutConstraint?
     private var groupTopConstraints: [String: NSLayoutConstraint] = [:]
@@ -188,6 +256,9 @@ class SidebarView: NSView {
 
     /// Called when user selects a page: (appId, itemIndex)
     var onAppPageSelected: ((String, Int) -> Void)?
+    /// Called when user clicks an lxapp's name (group header): (appId) — switch
+    /// the main to that lxapp even if it has no tabBar pages.
+    var onAppSelected: ((String) -> Void)?
     /// Called when user requests to close an app: (appId)
     var onAppCloseRequested: ((String) -> Void)?
     /// Called when the bottom hide button is clicked
@@ -230,7 +301,7 @@ class SidebarView: NSView {
 
         // Settings and download buttons — top-right in header
         settingsButton.translatesAutoresizingMaskIntoConstraints = false
-        settingsButton.image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: nil)
+        settingsButton.image = Self.designIcon("icon_settings") ?? NSImage(systemSymbolName: "gearshape", accessibilityDescription: nil)
         settingsButton.isBordered = false
         settingsButton.bezelStyle = .regularSquare
         settingsButton.imagePosition = .imageOnly
@@ -240,7 +311,7 @@ class SidebarView: NSView {
         headerView.addSubview(settingsButton)
 
         downloadButton.translatesAutoresizingMaskIntoConstraints = false
-        downloadButton.image = NSImage(systemSymbolName: "arrow.down.circle", accessibilityDescription: nil)
+        downloadButton.image = Self.designIcon("icon_download") ?? NSImage(systemSymbolName: "arrow.down.circle", accessibilityDescription: nil)
         downloadButton.isBordered = false
         downloadButton.bezelStyle = .regularSquare
         downloadButton.imagePosition = .imageOnly
@@ -249,16 +320,16 @@ class SidebarView: NSView {
         downloadButton.action = #selector(downloadClicked)
         headerView.addSubview(downloadButton)
 
-        let shellEnabled = (LxAppCore.capabilities & LxAppCore.capShell) != 0
+        let browserEnabled = (LxAppCore.capabilities & LxAppCore.capBrowser) != 0
         os_log(
-            "Sidebar setup shellEnabled=%{public}@ capabilities=%{public}u",
+            "Sidebar setup browserEnabled=%{public}@ capabilities=%{public}u",
             log: Self.log,
             type: .info,
-            shellEnabled ? "true" : "false",
+            browserEnabled ? "true" : "false",
             LxAppCore.capabilities
         )
-        settingsButton.isHidden = !shellEnabled
-        downloadButton.isHidden = !shellEnabled
+        settingsButton.isHidden = !browserEnabled
+        downloadButton.isHidden = !browserEnabled
 
         // Scroll view (trailing inset to leave room for resize handle)
         scrollView.translatesAutoresizingMaskIntoConstraints = false
@@ -315,7 +386,10 @@ class SidebarView: NSView {
         // Hairline separator between scroll content and footer
         footerSeparator.translatesAutoresizingMaskIntoConstraints = false
         footerSeparator.wantsLayer = true
-        footerSeparator.layer?.backgroundColor = NSColor.separatorColor.cgColor
+        // A subtle divider grouping the activator dock. `separatorColor` washes
+        // out on the sidebar material, so use a low-alpha label tint that keeps a
+        // little contrast in both light and dark without being prominent.
+        footerSeparator.layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(0.12).cgColor
         footerView.addSubview(footerSeparator)
 
         panelStack.translatesAutoresizingMaskIntoConstraints = false
@@ -327,7 +401,9 @@ class SidebarView: NSView {
 
         hideButton.translatesAutoresizingMaskIntoConstraints = false
         hideButton.title = ""
-        hideButton.image = NSImage(systemSymbolName: "chevron.left", accessibilityDescription: "Hide sidebar")
+        hideButton.image = LxIcon.image(
+            named: "icon_sidebar_collapse",
+            size: NSSize(width: 18, height: 18))
         hideButton.imagePosition = .imageOnly
         hideButton.isBordered = false
         hideButton.bezelStyle = .regularSquare
@@ -335,10 +411,32 @@ class SidebarView: NSView {
         hideButton.wantsLayer = true
         hideButton.layer?.cornerRadius = 6
         hideButton.layer?.backgroundColor = NSColor.clear.cgColor
-        hideButton.toolTip = "Hide sidebar"
+        hideButton.toolTip = "Collapse sidebar"
         hideButton.target = self
         hideButton.action = #selector(hideButtonClicked)
-        footerView.addSubview(hideButton)
+        headerView.addSubview(hideButton)
+
+        // Rail expand toggle: configured once, inserted at the top of the rail
+        // whenever the rail is rebuilt.
+        railExpandButton.translatesAutoresizingMaskIntoConstraints = false
+        railExpandButton.isBordered = false
+        railExpandButton.bezelStyle = .regularSquare
+        railExpandButton.imagePosition = .imageOnly
+        railExpandButton.imageScaling = .scaleProportionallyDown
+        railExpandButton.wantsLayer = true
+        railExpandButton.layer?.cornerRadius = 8
+        railExpandButton.layer?.backgroundColor = NSColor.clear.cgColor
+        railExpandButton.toolTip = "Expand sidebar"
+        railExpandButton.contentTintColor = NSColor.secondaryLabelColor
+        railExpandButton.image = LxIcon.image(
+            named: "icon_sidebar_expand",
+            size: NSSize(width: Layout.railIconSize, height: Layout.railIconSize))
+        railExpandButton.target = self
+        railExpandButton.action = #selector(railExpandClicked)
+        NSLayoutConstraint.activate([
+            railExpandButton.widthAnchor.constraint(equalToConstant: Layout.railButtonSize),
+            railExpandButton.heightAnchor.constraint(equalToConstant: Layout.railButtonSize),
+        ])
 
         // Resize handle on right edge
         resizeHandle.translatesAutoresizingMaskIntoConstraints = false
@@ -379,17 +477,14 @@ class SidebarView: NSView {
             footerSeparator.topAnchor.constraint(equalTo: footerView.topAnchor),
             footerSeparator.leadingAnchor.constraint(equalTo: footerView.leadingAnchor),
             footerSeparator.trailingAnchor.constraint(equalTo: footerView.trailingAnchor),
-            footerSeparator.heightAnchor.constraint(equalToConstant: 0.5),
+            footerSeparator.heightAnchor.constraint(equalToConstant: 1.0),
 
-            hideButton.leadingAnchor.constraint(equalTo: footerView.leadingAnchor, constant: Layout.footerInset),
-            hideButton.centerYAnchor.constraint(equalTo: footerView.centerYAnchor),
+            hideButton.widthAnchor.constraint(equalToConstant: Layout.actionButtonSize),
+            hideButton.heightAnchor.constraint(equalToConstant: Layout.actionButtonSize),
 
-            hideButton.widthAnchor.constraint(equalToConstant: Layout.footerButtonSize),
-            hideButton.heightAnchor.constraint(equalToConstant: Layout.footerButtonSize),
-
-            panelStack.trailingAnchor.constraint(equalTo: footerView.trailingAnchor, constant: -Layout.footerInset),
+            panelStack.leadingAnchor.constraint(equalTo: footerView.leadingAnchor, constant: Layout.footerInset),
+            panelStack.trailingAnchor.constraint(lessThanOrEqualTo: footerView.trailingAnchor, constant: -Layout.footerInset),
             panelStack.centerYAnchor.constraint(equalTo: footerView.centerYAnchor),
-            panelStack.leadingAnchor.constraint(greaterThanOrEqualTo: hideButton.trailingAnchor, constant: 4),
 
             // Resize handle: right edge, full height
             resizeHandle.topAnchor.constraint(equalTo: topAnchor),
@@ -402,8 +497,16 @@ class SidebarView: NSView {
         let centerY = buttonCenterYFromTop
         let downloadCenter = downloadButton.centerYAnchor.constraint(equalTo: headerView.topAnchor, constant: centerY)
         let settingsCenter = settingsButton.centerYAnchor.constraint(equalTo: headerView.topAnchor, constant: centerY)
-        buttonCenterYConstraints = [downloadCenter, settingsCenter]
+        let toggleCenter = hideButton.centerYAnchor.constraint(equalTo: headerView.topAnchor, constant: centerY)
+        buttonCenterYConstraints = [downloadCenter, settingsCenter, toggleCenter]
         NSLayoutConstraint.activate(buttonCenterYConstraints)
+
+        // The header toggle sits just to the right of the traffic lights.
+        let toggleLeading = hideButton.leadingAnchor.constraint(
+            equalTo: headerView.leadingAnchor, constant: Layout.railWidth)
+        headerToggleLeadingConstraint = toggleLeading
+        NSLayoutConstraint.activate([toggleLeading])
+        refreshHeaderTogglePosition()
 
         // Document view fills scroll view width
         if let docView = scrollView.documentView {
@@ -474,6 +577,16 @@ class SidebarView: NSView {
         updateVisibilityState()
     }
 
+    /// The composite rail/selection key ("app:<appId>" / "web:<tabId>") derived
+    /// from the single `model.selection`, so rail and list agree by construction.
+    private var activeRailKey: String? {
+        switch model.selection {
+        case .none: return nil
+        case .app(let appId, _): return "app:\(appId)"
+        case .browser(let id): return "web:\(id)"
+        }
+    }
+
     /// Rebuild the rail's icon buttons from the current lxapps + browser tabs.
     private func rebuildRail() {
         railStack.arrangedSubviews.forEach {
@@ -482,8 +595,11 @@ class SidebarView: NSView {
         }
         railButtons.removeAll()
 
-        for tab in currentTabs {
-            let info = getLxAppInfo(tab.appId)
+        // The expand toggle is always the first icon in the rail, above the apps.
+        railStack.addArrangedSubview(railExpandButton)
+
+        for group in model.appGroups {
+            let info = getLxAppInfo(group.appId)
             let iconPath = info.icon.toString()
             let image: NSImage?
             if !iconPath.isEmpty, let img = NSImage(contentsOfFile: iconPath) {
@@ -491,14 +607,14 @@ class SidebarView: NSView {
             } else {
                 image = Self.defaultAppIcon
             }
-            let key = "app:\(tab.appId)"
+            let key = "app:\(group.appId)"
             let btn = makeRailButton(key: key, tooltip: info.app_name.toString(), image: image, isTemplate: false)
             btn.action = #selector(railAppClicked(_:))
             railStack.addArrangedSubview(btn)
             railButtons[key] = btn
         }
 
-        for item in currentBrowserItems {
+        for item in model.browserTabs {
             let key = "web:\(item.id)"
             let image = item.favicon ?? NSImage(systemSymbolName: "globe", accessibilityDescription: item.title)
             let btn = makeRailButton(key: key, tooltip: item.title, image: image, isTemplate: item.favicon == nil)
@@ -561,41 +677,60 @@ class SidebarView: NSView {
 
     func updateVisibilityState() {
         let hidden = isFullyHidden
-        let shellEnabled = (LxAppCore.capabilities & LxAppCore.capShell) != 0
+        let browserEnabled = (LxAppCore.capabilities & LxAppCore.capBrowser) != 0
         os_log(
-            "Sidebar visibility hidden=%{public}@ shellEnabled=%{public}@ capabilities=%{public}u",
+            "Sidebar visibility hidden=%{public}@ browserEnabled=%{public}@ capabilities=%{public}u",
             log: Self.log,
             type: .debug,
             hidden ? "true" : "false",
-            shellEnabled ? "true" : "false",
+            browserEnabled ? "true" : "false",
             LxAppCore.capabilities
         )
         let compact = isCompact && !hidden && !appUIOnlyMode
         scrollView.isHidden = hidden || appUIOnlyMode || compact
         railScrollView.isHidden = hidden || appUIOnlyMode || !compact
         // The header action buttons and footer panel icons don't fit the rail.
-        settingsButton.isHidden = hidden || !shellEnabled || appUIOnlyMode || compact
-        downloadButton.isHidden = hidden || !shellEnabled || appUIOnlyMode || compact
+        settingsButton.isHidden = hidden || !browserEnabled || appUIOnlyMode || compact
+        downloadButton.isHidden = hidden || !browserEnabled || appUIOnlyMode || compact
+        // The header collapse toggle shows only in the expanded layout; the rail
+        // carries its own expand toggle as the first icon when compact.
+        hideButton.isHidden = hidden || appUIOnlyMode || compact
         panelStack.isHidden = compact
-        footerView.isHidden = hidden
+        // The footer only carries panel icons now; collapse it when empty so an
+        // expanded sidebar with no panel actions has no dangling bottom bar.
+        footerView.isHidden = hidden || compact || model.panelItems.isEmpty
         resizeHandle.isHidden = hidden
+        refreshHeaderTogglePosition()
+    }
+
+    /// Keep the header toggle just to the right of the macOS traffic lights.
+    private func refreshHeaderTogglePosition() {
+        let clearance = trafficLightClearanceProvider?() ?? Layout.railWidth
+        headerToggleLeadingConstraint?.constant = max(Layout.railWidth, clearance)
     }
 
     func setAppUIOnlyMode(_ enabled: Bool) {
         appUIOnlyMode = enabled
-
-        guard enabled else {
-            updateVisibilityState()
-            return
+        // appUIOnlyMode is enforced in one place — render() empties the list/rail
+        // sections when it's on. The footer panel survives, so panelItems is kept.
+        if enabled {
+            model.appGroups = []
+            model.browserTabs = []
+            model.selection = .none
         }
+        render()
+        updateVisibilityState()
+    }
 
-        currentTabs.removeAll()
+    /// Tear down the list/rail/browser views when entering app-UI-only mode (or
+    /// whenever the model has no list content). The footer panel is rendered
+    /// separately and is not affected here.
+    private func teardownListSections() {
         groupViews.values.forEach { $0.removeFromSuperview() }
         groupViews.removeAll()
         groupTopConstraints.removeAll()
 
         isCompact = false
-        currentBrowserItems.removeAll()
         railStack.arrangedSubviews.forEach {
             railStack.removeArrangedSubview($0)
             $0.removeFromSuperview()
@@ -605,7 +740,6 @@ class SidebarView: NSView {
         browserItemViews.values.forEach { $0.removeFromSuperview() }
         browserItemViews.removeAll()
         browserItemTopConstraints.removeAll()
-        browserTabOrder.removeAll()
         addButton.removeFromSuperview()
         addButtonTopConstraint = nil
 
@@ -613,14 +747,26 @@ class SidebarView: NSView {
             docView.subviews.forEach { $0.removeFromSuperview() }
             docView.frame = .zero
         }
-
-        updateVisibilityState()
     }
 
     /// Populate panel icon buttons in the footer.
     /// `PanelIconItem` only carries what the UI needs — id, icon, label.
     /// Routing details (appId, path, position) stay in Panel.swift.
     func updatePanelItems(_ items: [PanelIconItem]) {
+        model.panelItems = items
+        renderPanelItems()
+        updateVisibilityState()
+    }
+
+    /// Build the footer panel buttons from `model.panelItems`. Called by render()
+    /// and the `updatePanelItems` mutator. Unaffected by appUIOnlyMode.
+    private func renderPanelItems() {
+        let items = model.panelItems
+        // Skip when the button set is unchanged so render()'s frequent calls don't
+        // clobber icons resolved later via updatePanelIcon.
+        guard items != renderedPanelItems else { return }
+        renderedPanelItems = items
+
         // Remove existing panel buttons.
         panelButtons.forEach {
             panelStack.removeArrangedSubview($0)
@@ -709,35 +855,117 @@ class SidebarView: NSView {
         onPanelItemToggled?(panelId)
     }
 
-    // MARK: - Public API
+    // MARK: - Public API (thin model mutators)
+    //
+    // Each method below updates one part of `model` and calls `render()`. They
+    // hold no layout or appUIOnlyMode logic — that all lives in render().
 
-    /// Rebuild all groups based on current tabs
+    /// Rebuild all groups based on current tabs.
     func updateForTabs(_ tabs: [LxAppTab], activeTab: LxAppTab?) {
+        model.appGroups = tabs.map {
+            SidebarModel.AppGroupVM(appId: $0.appId, asideSurfaceId: $0.asideSurfaceId)
+        }
+        // A provided active tab updates the selection; nil leaves it untouched,
+        // matching the original (which only highlighted when activeTab existed).
+        if let activeAppId = activeTab?.appId {
+            model.selection = .app(appId: activeAppId, pageIndex: nil)
+        }
+        render()
+    }
+
+    /// Refresh a specific app group from Rust data
+    func refreshAppGroup(appId: String) {
         guard !appUIOnlyMode else { return }
-        guard let docView = scrollView.documentView else { return }
+        groupViews[appId]?.refreshFromRust()
+    }
 
-        currentTabs = tabs
+    /// Set active highlight on the appropriate group and item.
+    func setActiveHighlight(appId: String, pageIndex: Int? = nil) {
+        model.selection = .app(appId: appId, pageIndex: pageIndex)
+        render()
+    }
 
-        // Remove groups for apps no longer in tabs
-        let currentAppIds = Set(tabs.map { $0.appId })
-        for (appId, groupView) in groupViews {
-            if !currentAppIds.contains(appId) {
-                groupView.removeFromSuperview()
-                groupViews.removeValue(forKey: appId)
-                groupTopConstraints.removeValue(forKey: appId)
-            }
+    /// Clear all highlights (both lxapp and browser)
+    func clearAllHighlights() {
+        model.selection = .none
+        render()
+    }
+
+    // MARK: - Browser Items
+
+    /// Update browser tab items in the sidebar
+    func updateBrowserItems(_ items: [(id: String, title: String, favicon: NSImage?)], activeId: String?) {
+        model.browserTabs = items.map {
+            SidebarModel.BrowserTabVM(id: $0.id, title: $0.title, favicon: $0.favicon)
+        }
+        if let activeId {
+            model.selection = .browser(id: activeId)
+        } else if case .browser = model.selection {
+            // No active browser tab and we were on one — drop the selection so the
+            // list/rail render unselected (the original cleared item selection
+            // whenever activeId was nil).
+            model.selection = .none
+        }
+        render()
+    }
+
+    // MARK: - Render (single model-driven entry point)
+
+    /// The ONE place that turns `model` into views. appUIOnlyMode is checked here
+    /// and nowhere else: when on, the list/rail/browser sections are emptied while
+    /// the footer panel still renders. Otherwise it diffs the app groups + browser
+    /// section, applies `model.selection`, and refreshes the rail when compact.
+    ///
+    /// render() delegates to per-section helpers (`renderAppGroups`,
+    /// `layoutBrowserSection`, `applySelection`, `renderPanelItems`); keeping the
+    /// existing constraint/animation code intact rather than rebuilding it.
+    private func render() {
+        // Footer panel is independent of appUIOnlyMode.
+        renderPanelItems()
+
+        guard !appUIOnlyMode else {
+            teardownListSections()
+            updateVisibilityState()
+            return
         }
 
-        // Add/update groups
+        guard let docView = scrollView.documentView else { return }
+
+        renderBrowserItems()
+        let yOffset = renderAppGroups(in: docView)
+        let finalY = layoutBrowserSection(in: docView, yOffset: yOffset)
+        docView.frame = NSRect(x: 0, y: 0, width: docView.frame.width, height: finalY)
+
+        applySelection()
+
+        if isCompact { rebuildRail() }
+    }
+
+    /// Diff app group views against `model.appGroups`, position them, and return
+    /// the Y offset where the browser section begins.
+    private func renderAppGroups(in docView: NSView) -> CGFloat {
+        // Remove groups for apps no longer present.
+        let currentAppIds = Set(model.appGroups.map { $0.appId })
+        for (appId, groupView) in groupViews where !currentAppIds.contains(appId) {
+            groupView.removeFromSuperview()
+            groupViews.removeValue(forKey: appId)
+            groupTopConstraints.removeValue(forKey: appId)
+        }
+
+        // Add/update groups.
         var yOffset: CGFloat = 4
-        for (tabIndex, tab) in tabs.enumerated() {
+        for (index, group) in model.appGroups.enumerated() {
+            let appId = group.appId
             let groupView: SidebarGroupView
-            if let existing = groupViews[tab.appId] {
+            if let existing = groupViews[appId] {
                 groupView = existing
             } else {
-                groupView = SidebarGroupView(appId: tab.appId)
+                groupView = SidebarGroupView(appId: appId)
                 groupView.onPageSelected = { [weak self] appId, itemIndex in
                     self?.onAppPageSelected?(appId, itemIndex)
+                }
+                groupView.onAppSelected = { [weak self] appId in
+                    self?.onAppSelected?(appId)
                 }
                 groupView.onCloseRequested = { [weak self] appId in
                     self?.onAppCloseRequested?(appId)
@@ -745,10 +973,10 @@ class SidebarView: NSView {
                 groupView.onLayoutChanged = { [weak self] in
                     self?.relayoutAfterGroupToggle()
                 }
-                groupViews[tab.appId] = groupView
+                groupViews[appId] = groupView
             }
 
-            groupView.setColorIndex(tabIndex)
+            groupView.setColorIndex(index)
 
             if groupView.superview !== docView {
                 groupView.removeFromSuperview()
@@ -759,106 +987,76 @@ class SidebarView: NSView {
                 ])
             }
 
-            if let tc = groupTopConstraints[tab.appId] {
+            if let tc = groupTopConstraints[appId] {
                 tc.constant = yOffset
             } else {
                 let tc = groupView.topAnchor.constraint(equalTo: docView.topAnchor, constant: yOffset)
                 tc.isActive = true
-                groupTopConstraints[tab.appId] = tc
+                groupTopConstraints[appId] = tc
             }
 
             groupView.layoutSubtreeIfNeeded()
             yOffset += groupView.fittingSize.height + 8
         }
-
-        // Layout browser separator, browser items, and "+" button after groups
-        yOffset = layoutBrowserSection(in: docView, yOffset: yOffset)
-
-        // Update document view height
-        if let docView = scrollView.documentView {
-            docView.frame = NSRect(x: 0, y: 0, width: docView.frame.width, height: yOffset)
-        }
-
-        if let activeAppId = activeTab?.appId {
-            setActiveHighlight(appId: activeAppId)
-        }
-
-        if isCompact { rebuildRail() }
+        return yOffset
     }
 
-    /// Refresh a specific app group from Rust data
-    func refreshAppGroup(appId: String) {
-        guard !appUIOnlyMode else { return }
-        groupViews[appId]?.refreshFromRust()
-    }
-
-    /// Set active highlight on the appropriate group and item
-    func setActiveHighlight(appId: String, pageIndex: Int? = nil) {
-        guard !appUIOnlyMode else { return }
-        activeRailKey = "app:\(appId)"
-        refreshRailHighlight()
-        // Clear browser selections when an lxapp is selected
-        for (_, itemView) in browserItemViews {
-            itemView.isSelected = false
+    /// Apply `model.selection` to the group views, browser item views, and rail.
+    /// This is the single place selection truth is turned into highlight state.
+    private func applySelection() {
+        // Browser item selection.
+        for (id, itemView) in browserItemViews {
+            if case .browser(let activeId) = model.selection {
+                itemView.isSelected = (id == activeId)
+            } else {
+                itemView.isSelected = false
+            }
         }
 
+        // App group selection.
         for (id, group) in groupViews {
-            if id == appId {
+            if case .app(let appId, let pageIndex) = model.selection, id == appId {
+                group.isActiveGroup = true
                 if let idx = pageIndex {
                     group.setActiveHighlight(pageIndex: idx)
-                } else {
-                    if let tabBar = getTabBar(appId) {
-                        group.setActiveHighlight(pageIndex: Int(tabBar.selected_index))
-                    }
+                } else if let tabBar = getTabBar(appId) {
+                    group.setActiveHighlight(pageIndex: Int(tabBar.selected_index))
                 }
             } else {
+                group.isActiveGroup = false
                 group.clearHighlight()
             }
         }
-    }
 
-    /// Clear all highlights (both lxapp and browser)
-    func clearAllHighlights() {
-        guard !appUIOnlyMode else { return }
-        activeRailKey = nil
         refreshRailHighlight()
-        for (_, group) in groupViews {
-            group.clearHighlight()
-        }
-        for (_, itemView) in browserItemViews {
-            itemView.isSelected = false
-        }
     }
 
-    // MARK: - Browser Items
+    /// Whether a browser tab id is the current selection (used to configure new
+    /// item views; final highlight state is reasserted by applySelection()).
+    private func isBrowserSelected(_ id: String) -> Bool {
+        if case .browser(let activeId) = model.selection { return id == activeId }
+        return false
+    }
 
-    /// Update browser tab items in the sidebar
-    func updateBrowserItems(_ items: [(id: String, title: String, favicon: NSImage?)], activeId: String?) {
-        guard !appUIOnlyMode else { return }
-        guard let docView = scrollView.documentView else { return }
-
-        // Store ordering + cache for the rail
-        browserTabOrder = items.map { $0.id }
-        currentBrowserItems = items
-        if let activeId { activeRailKey = "web:\(activeId)" }
-
-        // Remove browser items no longer present
-        let currentIds = Set(items.map { $0.id })
-        for (id, itemView) in browserItemViews {
-            if !currentIds.contains(id) {
-                if let topConstraint = browserItemTopConstraints[id] {
-                    topConstraint.isActive = false
-                    browserItemTopConstraints.removeValue(forKey: id)
-                }
-                itemView.removeFromSuperview()
-                browserItemViews.removeValue(forKey: id)
+    /// Diff `model.browserTabs` into `browserItemViews`: remove dropped tabs,
+    /// create new item views (wiring their click/close callbacks), and configure
+    /// existing ones with the latest title/favicon. Positioning happens in
+    /// layoutBrowserSection; selection state is finalized in applySelection.
+    private func renderBrowserItems() {
+        let currentIds = Set(model.browserTabs.map { $0.id })
+        for (id, itemView) in browserItemViews where !currentIds.contains(id) {
+            if let topConstraint = browserItemTopConstraints[id] {
+                topConstraint.isActive = false
+                browserItemTopConstraints.removeValue(forKey: id)
             }
+            itemView.removeFromSuperview()
+            browserItemViews.removeValue(forKey: id)
         }
 
-        // Add/update browser items
-        for item in items {
+        for item in model.browserTabs {
+            let selected = isBrowserSelected(item.id)
             if let existing = browserItemViews[item.id] {
-                existing.configure(title: item.title, isSelected: item.id == activeId, favicon: item.favicon)
+                existing.configure(title: item.title, isSelected: selected, favicon: item.favicon)
             } else {
                 let itemView = SidebarBrowserItemView(id: item.id)
                 itemView.translatesAutoresizingMaskIntoConstraints = false
@@ -868,15 +1066,10 @@ class SidebarView: NSView {
                 itemView.onClose = { [weak self] id in
                     self?.onBrowserTabCloseRequested?(id)
                 }
-                itemView.configure(title: item.title, isSelected: item.id == activeId, favicon: item.favicon)
+                itemView.configure(title: item.title, isSelected: selected, favicon: item.favicon)
                 browserItemViews[item.id] = itemView
             }
         }
-
-        // Re-layout browser section
-        relayoutBrowserSection(in: docView)
-
-        if isCompact { rebuildRail() }
     }
 
     /// Layout browser items and add button after lxapp groups
@@ -884,8 +1077,9 @@ class SidebarView: NSView {
         let groupInset: CGFloat = SidebarGroupView.Layout.groupInset
         var yOffset = startY
 
-        // Browser item views (ordered by browserTabOrder)
-        for tabId in browserTabOrder {
+        // Browser item views (ordered by model.browserTabs)
+        for tab in model.browserTabs {
+            let tabId = tab.id
             guard let itemView = browserItemViews[tabId] else { continue }
             ensureSubview(itemView, in: docView) {
                 NSLayoutConstraint.activate([
@@ -904,8 +1098,8 @@ class SidebarView: NSView {
             yOffset += SidebarBrowserItemView.Layout.height + 2
         }
 
-        // "+" button — only shown when shell (browser) capability is available
-        if (LxAppCore.capabilities & LxAppCore.capShell) != 0 {
+        // "+" button — only shown when the browser capability is available
+        if (LxAppCore.capabilities & LxAppCore.capBrowser) != 0 {
             ensureSubview(addButton, in: docView) {
                 setupAddButton()
                 NSLayoutConstraint.activate([
@@ -944,27 +1138,15 @@ class SidebarView: NSView {
         }
     }
 
-    /// Calculate Y offset after all groups (using tab order)
-    private func yOffsetAfterGroups() -> CGFloat {
-        var yOffset: CGFloat = 4
-        for tab in currentTabs {
-            if let groupView = groupViews[tab.appId] {
-                groupView.layoutSubtreeIfNeeded()
-                yOffset += groupView.fittingSize.height + 8
-            }
-        }
-        return yOffset
-    }
-
     /// Re-layout after a group expands/collapses — repositions groups + browser section
     private func relayoutAfterGroupToggle() {
         guard let docView = scrollView.documentView else { return }
 
         // Reposition all groups using stored top constraints
         var yOffset: CGFloat = 4
-        for tab in currentTabs {
-            guard let groupView = groupViews[tab.appId] else { continue }
-            groupTopConstraints[tab.appId]?.constant = yOffset
+        for group in model.appGroups {
+            guard let groupView = groupViews[group.appId] else { continue }
+            groupTopConstraints[group.appId]?.constant = yOffset
             groupView.layoutSubtreeIfNeeded()
             yOffset += groupView.fittingSize.height + 8
         }
@@ -972,12 +1154,6 @@ class SidebarView: NSView {
         // Re-layout browser section below groups
         yOffset = layoutBrowserSection(in: docView, yOffset: yOffset)
 
-        docView.frame = NSRect(x: 0, y: 0, width: docView.frame.width, height: yOffset)
-    }
-
-    /// Re-layout just the browser section (for title updates without full tab rebuild)
-    private func relayoutBrowserSection(in docView: NSView) {
-        let yOffset = layoutBrowserSection(in: docView, yOffset: yOffsetAfterGroups())
         docView.frame = NSRect(x: 0, y: 0, width: docView.frame.width, height: yOffset)
     }
 
@@ -1001,16 +1177,17 @@ class SidebarView: NSView {
     }
 
     @objc private func hideButtonClicked() {
-        // Progressive collapse: expanded → icon rail → fully hidden.
-        if isCompact {
-            // Hide straight from the rail — keep the rail showing as it shrinks
-            // to zero so the expanded items never flash. The expanded layout is
-            // restored (invisibly, at width 0) on the next reveal.
-            onHideRequested?()
-        } else {
-            setCompactMode(true)
-            onWidthChanged?(effectiveRailWidth, true)
-        }
+        // Collapse the expanded sidebar to the icon rail. Fully hiding an empty
+        // sidebar is automatic (auto-hide); this toggle only moves between the
+        // expanded and rail layouts.
+        setCompactMode(true)
+        onWidthChanged?(effectiveRailWidth, true)
+    }
+
+    @objc private func railExpandClicked() {
+        // Restore the expanded sidebar from the icon rail.
+        setCompactMode(false)
+        onWidthChanged?(Layout.expandedWidth, true)
     }
 
     @objc private func settingsClicked() {

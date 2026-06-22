@@ -11,7 +11,7 @@
 
 use anyhow::{Context, Result, anyhow};
 use colored::Colorize;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use tempfile::NamedTempFile;
@@ -141,6 +141,7 @@ impl TempKeychain {
             .suffix(".pem")
             .tempfile()
             .context("Failed to create key temp file")?;
+        let key_pem = keychain_importable_private_key_pem(key_pem)?;
         key_file
             .write_all(key_pem.as_bytes())
             .context("Failed to write private key")?;
@@ -191,6 +192,26 @@ impl TempKeychain {
             ])
             .output();
     }
+}
+
+fn keychain_importable_private_key_pem(key_pem: &str) -> Result<String> {
+    if key_pem.contains("-----BEGIN RSA PRIVATE KEY-----") {
+        return Ok(key_pem.to_string());
+    }
+
+    if key_pem.contains("-----BEGIN PRIVATE KEY-----") {
+        use rsa::pkcs1::EncodeRsaPrivateKey;
+        use rsa::pkcs8::DecodePrivateKey;
+
+        let key = rsa::RsaPrivateKey::from_pkcs8_pem(key_pem)
+            .context("Failed to parse cached PKCS#8 private key")?;
+        let pem = key
+            .to_pkcs1_pem(rsa::pkcs1::LineEnding::LF)
+            .context("Failed to convert private key for keychain import")?;
+        return Ok(pem.to_string());
+    }
+
+    Ok(key_pem.to_string())
 }
 
 impl Drop for TempKeychain {
@@ -299,6 +320,44 @@ impl ProvisioningContext {
                 original_bundle_id,
             ),
         }
+    }
+
+    /// Fallback when the provisioning API is blocked (e.g. Apple has not accepted
+    /// the updated Program License Agreement, so device/profile calls 403). If a
+    /// still-valid provisioning profile for this device already exists on disk and
+    /// a signing identity is cached, reuse them to sign without touching the API.
+    /// Returns `None` when no reusable profile or cached identity is available.
+    fn reuse_existing_profile(
+        &self,
+        app_path: &Path,
+        original_bundle_id: &str,
+    ) -> Result<Option<ProvisioningResult>> {
+        // Signing without the API requires a cached certificate + key.
+        let cached = match self.credentials.load()? {
+            Some(AuthCredentials::AppStoreConnect {
+                cached_signing_identity: Some(identity),
+                ..
+            }) => identity,
+            _ => return Ok(None),
+        };
+
+        let Some(profile_data) = find_reusable_profile(app_path, &self.target_device_udid) else {
+            return Ok(None);
+        };
+
+        let entitlements = extract_entitlements_from_profile(&profile_data)?;
+        let cert_data = base64_decode(&cached.cert_data_b64)?;
+
+        Ok(Some(ProvisioningResult {
+            signing_identity: cached.signing_identity,
+            profile_data,
+            bundle_id: original_bundle_id.to_string(),
+            entitlements,
+            identity_material: Some(IdentityMaterial {
+                cert_data,
+                private_key: cached.private_key,
+            }),
+        }))
     }
 
     /// Provision using Apple ID (free or paid account via GrandSlam)
@@ -1163,6 +1222,110 @@ fn decode_mobileprovision_plist(profile_data: &[u8]) -> Result<plist::Value> {
     plist::from_bytes(&output.stdout).context("Failed to parse provisioning profile plist")
 }
 
+/// True when the error chain indicates Apple's Program License Agreement has not
+/// been accepted (the provisioning API returns 403 `PLA_NOT_ACCEPTED`).
+fn is_pla_blocked(err: &anyhow::Error) -> bool {
+    let msg = format!("{err:#}");
+    msg.contains("PLA_NOT_ACCEPTED") || msg.contains("PLA Update")
+}
+
+/// Wrap a PLA-blocked error with actionable resolution steps.
+fn pla_actionable_error(err: anyhow::Error) -> anyhow::Error {
+    anyhow!(
+        "Apple Developer Program License Agreement not accepted, and no reusable \
+         provisioning profile for this device was found.\n  \
+         The team's Account Holder must sign in at https://developer.apple.com/account \
+         and accept the updated agreement, then re-run.\n  \
+         Underlying error: {err:#}"
+    )
+}
+
+/// `~/.lingxia/apple/profiles` — where successful profiles are cached for reuse.
+fn profiles_cache_dir() -> Option<PathBuf> {
+    Some(
+        dirs::home_dir()?
+            .join(".lingxia")
+            .join("apple")
+            .join("profiles"),
+    )
+}
+
+/// Cache a freshly minted profile (keyed by its UUID) so it can be reused if the
+/// provisioning API later goes dark.
+fn cache_profile_for_reuse(profile_data: &[u8]) {
+    let Some(dir) = profiles_cache_dir() else {
+        return;
+    };
+    if std::fs::create_dir_all(&dir).is_err() {
+        return;
+    }
+    let name = decode_mobileprovision_plist(profile_data)
+        .ok()
+        .and_then(|p| {
+            p.as_dictionary()
+                .and_then(|d| d.get("UUID"))
+                .and_then(|v| v.as_string())
+                .map(str::to_string)
+        })
+        .unwrap_or_else(|| "profile".to_string());
+    let _ = std::fs::write(dir.join(format!("{name}.mobileprovision")), profile_data);
+}
+
+/// Find a still-valid provisioning profile that covers `udid`, checking the
+/// lingxia cache and any sibling `.app/embedded.mobileprovision` left by previous
+/// builds. Returns the raw profile bytes.
+fn find_reusable_profile(app_path: &Path, udid: &str) -> Option<Vec<u8>> {
+    let mut candidates: Vec<PathBuf> = Vec::new();
+    if let Some(dir) = profiles_cache_dir()
+        && let Ok(entries) = std::fs::read_dir(&dir)
+    {
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if p.extension().and_then(|x| x.to_str()) == Some("mobileprovision") {
+                candidates.push(p);
+            }
+        }
+    }
+    if let Some(parent) = app_path.parent()
+        && let Ok(entries) = std::fs::read_dir(parent)
+    {
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if p.extension().and_then(|x| x.to_str()) == Some("app") {
+                candidates.push(p.join("embedded.mobileprovision"));
+            }
+        }
+    }
+    candidates.into_iter().find_map(|c| {
+        let data = std::fs::read(&c).ok()?;
+        profile_covers_device(&data, udid).then_some(data)
+    })
+}
+
+/// True when the profile is unexpired and lists `udid` among its provisioned devices.
+fn profile_covers_device(profile_data: &[u8], udid: &str) -> bool {
+    let Ok(plist) = decode_mobileprovision_plist(profile_data) else {
+        return false;
+    };
+    let Some(dict) = plist.as_dictionary() else {
+        return false;
+    };
+    let covers = dict
+        .get("ProvisionedDevices")
+        .and_then(|v| v.as_array())
+        .is_some_and(|arr| arr.iter().any(|d| d.as_string() == Some(udid)));
+    if !covers {
+        return false;
+    }
+    if let Some(exp) = dict.get("ExpirationDate").and_then(|v| v.as_date()) {
+        let exp_time: std::time::SystemTime = exp.into();
+        if exp_time <= std::time::SystemTime::now() {
+            return false;
+        }
+    }
+    true
+}
+
 /// High-level function to sign an app with automatic provisioning
 pub fn sign_app(
     app_path: &Path,
@@ -1186,8 +1349,32 @@ pub fn sign_app(
     // Create provisioning context
     let ctx = ProvisioningContext::new(&device)?;
 
-    // Run provisioning
-    let result = ctx.provision(&bundle_id)?;
+    // Run provisioning. If the API is blocked by an unaccepted Apple PLA, fall
+    // back to a still-valid profile already on disk so the build still installs.
+    let result = match ctx.provision(&bundle_id) {
+        Ok(result) => {
+            cache_profile_for_reuse(&result.profile_data);
+            result
+        }
+        Err(err) if is_pla_blocked(&err) => {
+            match ctx.reuse_existing_profile(app_path, &bundle_id)? {
+                Some(reused) => {
+                    println!(
+                        "  {} Apple PLA not accepted — reusing an existing valid provisioning profile to sign.",
+                        "⚠".yellow()
+                    );
+                    println!(
+                        "    {}",
+                        "Provisioning won't refresh until the Account Holder accepts the agreement at https://developer.apple.com/account."
+                            .dimmed()
+                    );
+                    reused
+                }
+                None => return Err(pla_actionable_error(err)),
+            }
+        }
+        Err(err) => return Err(err),
+    };
     let signing_entitlements =
         apply_capability_entitlement_policy(&result.entitlements, &bundle_id, app_link_hosts)?;
 
@@ -1335,11 +1522,7 @@ fn apply_associated_domains_policy(
         .map(|host| format!("applinks:{host}"))
         .collect::<Vec<_>>();
 
-    if requested.is_empty() {
-        return;
-    }
-
-    let granted = entitlements
+    let Some(granted) = entitlements
         .get(ASSOCIATED_DOMAINS)
         .and_then(plist::Value::as_array)
         .map(|values| {
@@ -1348,17 +1531,28 @@ fn apply_associated_domains_policy(
                 .filter_map(plist::Value::as_string)
                 .map(str::to_string)
                 .collect::<Vec<_>>()
-        });
-
-    let Some(granted) = granted else {
+        })
+    else {
         entitlements.remove(ASSOCIATED_DOMAINS);
-        eprintln!(
-            "  {} Associated Domains not enabled by provisioning profile; AppLinks hosts will not be signed: {}",
-            "!".yellow(),
-            app_link_hosts.join(", ")
-        );
+        if !requested.is_empty() {
+            eprintln!(
+                "  {} Associated Domains not enabled by provisioning profile; AppLinks hosts will not be signed: {}",
+                "!".yellow(),
+                app_link_hosts.join(", ")
+            );
+        }
         return;
     };
+
+    let preserved = granted
+        .iter()
+        .filter(|domain| !domain.starts_with("applinks:"))
+        .cloned()
+        .collect::<Vec<_>>();
+    if requested.is_empty() {
+        write_associated_domains(entitlements, ASSOCIATED_DOMAINS, preserved);
+        return;
+    }
 
     let missing = requested
         .iter()
@@ -1366,24 +1560,27 @@ fn apply_associated_domains_policy(
         .cloned()
         .collect::<Vec<_>>();
     if !missing.is_empty() {
-        let requested_set = requested.iter().map(String::as_str).collect::<HashSet<_>>();
-        let preserved = granted
-            .into_iter()
-            .filter(|domain| !requested_set.contains(domain.as_str()))
-            .map(plist::Value::String)
-            .collect::<Vec<_>>();
-        if preserved.is_empty() {
-            entitlements.remove(ASSOCIATED_DOMAINS);
-        } else {
-            entitlements.insert(
-                ASSOCIATED_DOMAINS.to_string(),
-                plist::Value::Array(preserved),
-            );
-        }
+        write_associated_domains(entitlements, ASSOCIATED_DOMAINS, preserved);
         eprintln!(
             "  {} Associated Domains profile mismatch; disabling AppLinks for this build. Missing: {}",
             "!".yellow(),
             missing.join(", ")
+        );
+        return;
+    }
+
+    let mut domains = preserved;
+    domains.extend(requested);
+    write_associated_domains(entitlements, ASSOCIATED_DOMAINS, domains);
+}
+
+fn write_associated_domains(entitlements: &mut plist::Dictionary, key: &str, domains: Vec<String>) {
+    if domains.is_empty() {
+        entitlements.remove(key);
+    } else {
+        entitlements.insert(
+            key.to_string(),
+            plist::Value::Array(domains.into_iter().map(plist::Value::String).collect()),
         );
     }
 }
@@ -1462,11 +1659,12 @@ mod tests {
     }
 
     #[test]
-    fn test_capability_policy_preserves_matching_associated_domains() {
+    fn test_capability_policy_keeps_only_requested_associated_domains() {
         let mut entitlements = plist::Dictionary::new();
         entitlements.insert(
             "com.apple.developer.associated-domains".to_string(),
             plist::Value::Array(vec![
+                plist::Value::String("webcredentials:example.com".to_string()),
                 plist::Value::String("applinks:www.example.com".to_string()),
                 plist::Value::String("applinks:other.example.com".to_string()),
             ]),
@@ -1487,7 +1685,61 @@ mod tests {
             .and_then(plist::Value::as_array)
             .unwrap();
         assert_eq!(domains.len(), 2);
-        assert_eq!(domains[0].as_string(), Some("applinks:www.example.com"));
-        assert_eq!(domains[1].as_string(), Some("applinks:other.example.com"));
+        assert_eq!(domains[0].as_string(), Some("webcredentials:example.com"));
+        assert_eq!(domains[1].as_string(), Some("applinks:www.example.com"));
+    }
+
+    #[test]
+    fn test_capability_policy_removes_applinks_without_hosts() {
+        let mut entitlements = plist::Dictionary::new();
+        entitlements.insert(
+            "com.apple.developer.associated-domains".to_string(),
+            plist::Value::Array(vec![
+                plist::Value::String("webcredentials:example.com".to_string()),
+                plist::Value::String("applinks:www.example.com".to_string()),
+            ]),
+        );
+        let mut source = Vec::new();
+        plist::to_writer_xml(&mut source, &entitlements).unwrap();
+
+        let filtered =
+            apply_capability_entitlement_policy(&source, "app.lingxia.test", &[]).unwrap();
+        let parsed = plist::from_bytes::<plist::Value>(&filtered).unwrap();
+        let dict = parsed.as_dictionary().unwrap();
+        let domains = dict
+            .get("com.apple.developer.associated-domains")
+            .and_then(plist::Value::as_array)
+            .unwrap();
+        assert_eq!(domains.len(), 1);
+        assert_eq!(domains[0].as_string(), Some("webcredentials:example.com"));
+    }
+
+    #[test]
+    fn test_capability_policy_preserves_non_applinks_on_profile_mismatch() {
+        let mut entitlements = plist::Dictionary::new();
+        entitlements.insert(
+            "com.apple.developer.associated-domains".to_string(),
+            plist::Value::Array(vec![
+                plist::Value::String("webcredentials:example.com".to_string()),
+                plist::Value::String("applinks:old.example.com".to_string()),
+            ]),
+        );
+        let mut source = Vec::new();
+        plist::to_writer_xml(&mut source, &entitlements).unwrap();
+
+        let filtered = apply_capability_entitlement_policy(
+            &source,
+            "app.lingxia.test",
+            &["new.example.com".to_string()],
+        )
+        .unwrap();
+        let parsed = plist::from_bytes::<plist::Value>(&filtered).unwrap();
+        let dict = parsed.as_dictionary().unwrap();
+        let domains = dict
+            .get("com.apple.developer.associated-domains")
+            .and_then(plist::Value::as_array)
+            .unwrap();
+        assert_eq!(domains.len(), 1);
+        assert_eq!(domains[0].as_string(), Some("webcredentials:example.com"));
     }
 }

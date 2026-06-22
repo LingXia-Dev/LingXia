@@ -36,12 +36,13 @@ fn generated_app_json_excludes_ui_fields() {
         windows: None,
         features: None,
         capabilities: None,
-        shell: None,
-        ui: Some(serde_json::json!({
+        browser: None,
+        generated_ui: Some(serde_json::json!({
             "launch": { "initialSurface": "main" },
             "surfaces": [],
             "activators": []
         })),
+        surfaces: None,
         app_links: None,
         storage: None,
         resources: None,
@@ -74,8 +75,9 @@ fn generated_app_json_includes_dev_ws_url_when_configured() {
         windows: None,
         features: None,
         capabilities: None,
-        shell: None,
-        ui: None,
+        browser: None,
+        generated_ui: None,
+        surfaces: None,
         app_links: None,
         storage: None,
         resources: None,
@@ -113,8 +115,9 @@ fn generated_app_json_includes_app_link_hosts() {
         windows: None,
         features: None,
         capabilities: None,
-        shell: None,
-        ui: None,
+        browser: None,
+        generated_ui: None,
+        surfaces: None,
         app_links: Some(crate::config::AppLinksConfig {
             hosts: vec!["www.example.com".into()],
         }),
@@ -149,10 +152,13 @@ fn generated_app_json_includes_capabilities() {
         features: None,
         capabilities: Some(crate::config::CapabilitiesConfig {
             notifications: true,
+            browser: false,
             terminal: true,
+            proxy: false,
         }),
-        shell: None,
-        ui: None,
+        browser: None,
+        generated_ui: None,
+        surfaces: None,
         app_links: None,
         storage: None,
         resources: None,
@@ -166,12 +172,12 @@ fn generated_app_json_includes_capabilities() {
 }
 
 #[test]
-fn generated_ui_json_matches_ui_section() {
+fn generated_ui_json_preserves_generated_ui_config() {
     let ui = serde_json::json!({
         "launch": { "initialSurface": "main" },
         "surfaces": [{
             "id": "main",
-            "presentation": { "style": "window" },
+            "role": "main",
             "content": { "kind": "lxapp", "appId": "demo-home" }
         }],
         "activators": []
@@ -185,8 +191,9 @@ fn generated_ui_json_matches_ui_section() {
         windows: None,
         features: None,
         capabilities: None,
-        shell: None,
-        ui: Some(ui.clone()),
+        browser: None,
+        generated_ui: Some(ui.clone()),
+        surfaces: None,
         app_links: None,
         storage: None,
         resources: None,
@@ -194,7 +201,9 @@ fn generated_ui_json_matches_ui_section() {
 
     let temp = TempDir::new().unwrap();
     let icons = prepare_app_ui_icons(temp.path(), &config).unwrap();
-    let ui_json = build_ui_json_from_config(&config, &icons).unwrap().unwrap();
+    let ui_json = build_ui_json_from_config(&config, &icons, "macos")
+        .unwrap()
+        .unwrap();
     let value: serde_json::Value = serde_json::from_str(&ui_json).unwrap();
     println!("{}", serde_json::to_string_pretty(&value).unwrap());
     assert_eq!(value, ui);
@@ -204,7 +213,11 @@ fn generated_ui_json_matches_ui_section() {
 fn generated_ui_json_rewrites_app_ui_icons() {
     let ui = serde_json::json!({
         "launch": { "initialSurface": "main" },
-        "surfaces": [],
+        "surfaces": [{
+            "id": "main",
+            "role": "main",
+            "content": { "kind": "lxapp", "appId": "demo-home" }
+        }],
         "activators": [{
             "id": "browser",
             "kind": "sidebarItem",
@@ -221,8 +234,9 @@ fn generated_ui_json_rewrites_app_ui_icons() {
         windows: None,
         features: None,
         capabilities: None,
-        shell: None,
-        ui: Some(ui),
+        browser: None,
+        generated_ui: Some(ui),
+        surfaces: None,
         app_links: None,
         storage: None,
         resources: None,
@@ -237,7 +251,9 @@ fn generated_ui_json_rewrites_app_ui_icons() {
         windows_hash: "deadbeef".to_string(),
     }];
 
-    let ui_json = build_ui_json_from_config(&config, &icons).unwrap().unwrap();
+    let ui_json = build_ui_json_from_config(&config, &icons, "macos")
+        .unwrap()
+        .unwrap();
     let value: serde_json::Value = serde_json::from_str(&ui_json).unwrap();
     assert_eq!(value["activators"][0]["icon"], "icons/browser-deadbeef.pdf");
 }
@@ -246,7 +262,11 @@ fn generated_ui_json_rewrites_app_ui_icons() {
 fn generated_windows_ui_json_rewrites_app_ui_icons_to_png() {
     let ui = serde_json::json!({
         "launch": { "initialSurface": "main" },
-        "surfaces": [],
+        "surfaces": [{
+            "id": "main",
+            "role": "main",
+            "content": { "kind": "lxapp", "appId": "demo-home" }
+        }],
         "activators": [{
             "id": "browser",
             "kind": "sidebarItem",
@@ -263,8 +283,9 @@ fn generated_windows_ui_json_rewrites_app_ui_icons_to_png() {
         windows: None,
         features: None,
         capabilities: None,
-        shell: None,
-        ui: Some(ui),
+        browser: None,
+        generated_ui: Some(ui),
+        surfaces: None,
         app_links: None,
         storage: None,
         resources: None,
@@ -287,53 +308,105 @@ fn generated_windows_ui_json_rewrites_app_ui_icons_to_png() {
 }
 
 #[test]
-fn generated_ui_json_adds_terminal_for_capability() {
-    let config = LingXiaConfig {
-        app: None,
-        android: None,
-        ios: None,
-        macos: None,
-        harmony: None,
-        windows: None,
-        features: None,
-        capabilities: Some(crate::config::CapabilitiesConfig {
-            notifications: false,
-            terminal: true,
-        }),
-        shell: None,
-        ui: Some(serde_json::json!({
-            "launch": { "initialSurface": "main" },
-            "surfaces": [{
-                "id": "main",
-                "presentation": { "kind": "window" },
-                "content": { "kind": "lxapp", "appId": "demo-home" }
-            }],
-            "activators": []
-        })),
-        app_links: None,
-        storage: None,
-        resources: None,
-    };
-
+fn surfaces_end_to_end_maps_terminal_when_explicitly_declared() {
+    // Mirrors the migrated showcase: main lxapp + aside lxapp (right) + native
+    // terminal (bottom). Loading must map `surfaces:` into the internal ui;
+    // capabilities.terminal only enables the runtime, it does not inject UI.
     let temp = TempDir::new().unwrap();
+    fs::write(
+        temp.path().join("lingxia.yaml"),
+        r#"
+app:
+  projectName: demo
+  productName: Demo
+  productVersion: 0.1.0
+  platforms: [macos]
+  homeAppId: home
+macos:
+  bundleId: app.demo
+capabilities:
+  terminal: true
+surfaces:
+  - id: home
+    render: lxapp
+    role: main
+    launch: true
+    tray:
+      icon: icons/tray.svg
+      label: Demo
+      action: activate
+  - id: chat
+    render: lxapp
+    role: aside
+    edge: right
+    sidebar:
+      icon: icons/chat.svg
+      label: AI Chat
+  - id: terminal
+    render: native
+    role: aside
+    edge: bottom
+    sidebar:
+      icon: __lingxia_builtin__/terminal.svg
+"#,
+    )
+    .unwrap();
+    fs::create_dir_all(temp.path().join("icons")).unwrap();
+    fs::write(
+        temp.path().join("icons/chat.svg"),
+        r##"<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><rect x="8" y="8" width="48" height="48" rx="8" fill="#000"/></svg>"##,
+    )
+    .unwrap();
+    fs::write(
+        temp.path().join("icons/tray.svg"),
+        r##"<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><circle cx="32" cy="32" r="22" fill="#000"/></svg>"##,
+    )
+    .unwrap();
+
+    let config = LingXiaConfig::load(temp.path()).unwrap();
     let icons = prepare_app_ui_icons(temp.path(), &config).unwrap();
-    let ui_json = build_ui_json_from_config(&config, &icons).unwrap().unwrap();
+    let ui_json = build_ui_json_from_config(&config, &icons, "macos")
+        .unwrap()
+        .unwrap();
     let value: serde_json::Value = serde_json::from_str(&ui_json).unwrap();
 
-    assert_eq!(value["surfaces"][1]["id"], "terminal");
-    assert_eq!(value["surfaces"][1]["presentation"]["attachTo"], "main");
-    assert_eq!(value["surfaces"][1]["presentation"]["edge"], "bottom");
-    assert_eq!(value["surfaces"][1]["content"]["kind"], "terminal");
-    assert!(value["surfaces"][1]["content"].get("backend").is_none());
-    assert_eq!(value["activators"][0]["id"], "terminalSidebar");
-    assert_eq!(value["activators"][0]["hostSurface"], "main");
-    assert!(
-        value["activators"][0]["icon"]
-            .as_str()
-            .unwrap()
-            .starts_with("icons/terminal-")
-    );
-    assert_eq!(value["activators"][0]["action"]["surface"], "terminal");
+    assert_eq!(value["launch"]["initialSurface"], "home");
+
+    let surfaces = value["surfaces"].as_array().unwrap();
+    // Exactly 3 explicit surfaces (main + chat + terminal).
+    assert_eq!(surfaces.len(), 3);
+    let terminal_count = surfaces
+        .iter()
+        .filter(|s| s["content"]["kind"] == "terminal")
+        .count();
+    assert_eq!(terminal_count, 1);
+
+    // main -> role main / lxapp(home)
+    assert_eq!(surfaces[0]["id"], "home");
+    assert_eq!(surfaces[0]["role"], "main");
+    assert_eq!(surfaces[0]["content"]["appId"], "home");
+    // aside right -> role aside / edge right
+    assert_eq!(surfaces[1]["id"], "chat");
+    assert_eq!(surfaces[1]["role"], "aside");
+    assert_eq!(surfaces[1]["attachTo"], "home");
+    assert_eq!(surfaces[1]["edge"], "right");
+    // native terminal -> terminal surface, bottom, with size
+    assert_eq!(surfaces[2]["id"], "terminal");
+    assert_eq!(surfaces[2]["edge"], "bottom");
+    assert_eq!(surfaces[2]["size"]["height"], 320);
+
+    let activators = value["activators"].as_array().unwrap();
+    assert_eq!(activators.len(), 3);
+    assert_eq!(activators[0]["id"], "homeTray");
+    assert_eq!(activators[0]["kind"], "menuBarItem");
+    assert_eq!(activators[0]["label"], "Demo");
+    assert_eq!(activators[0]["action"]["kind"], "openSurface");
+    assert_eq!(activators[0]["action"]["surface"], "home");
+    assert_eq!(activators[1]["id"], "chatSidebar");
+    assert_eq!(activators[1]["label"], "AI Chat");
+    assert_eq!(activators[1]["action"]["surface"], "chat");
+    assert_eq!(activators[2]["id"], "terminalSidebar");
+    assert_eq!(activators[2]["action"]["surface"], "terminal");
 }
 
 #[test]
@@ -348,39 +421,40 @@ fn generated_ui_json_rejects_terminal_when_capability_disabled() {
         features: None,
         capabilities: Some(crate::config::CapabilitiesConfig {
             notifications: false,
+            browser: false,
             terminal: false,
+            proxy: false,
         }),
-        shell: None,
-        ui: Some(serde_json::json!({
+        browser: None,
+        generated_ui: Some(serde_json::json!({
             "launch": { "initialSurface": "main" },
             "surfaces": [{
                 "id": "main",
-                "presentation": { "kind": "window" },
+                "role": "main",
                 "content": { "kind": "lxapp", "appId": "demo-home" }
             }, {
                 "id": "terminal",
-                "presentation": {
-                    "kind": "attachPanel",
-                    "attachTo": "main",
-                    "edge": "bottom"
-                },
+                "role": "aside",
+                "attachTo": "main",
+                "edge": "bottom",
                 "content": { "kind": "terminal" }
             }],
             "activators": []
         })),
+        surfaces: None,
         app_links: None,
         storage: None,
         resources: None,
     };
 
-    let err = build_ui_json_from_config(&config, &[])
+    let err = build_ui_json_from_config(&config, &[], "macos")
         .unwrap_err()
         .to_string();
     assert!(err.contains("capabilities.terminal is not enabled"));
 }
 
 #[test]
-fn generated_ui_json_adds_terminal_activators_when_missing() {
+fn generated_ui_json_prunes_surfaces_for_target_platform() {
     let config = LingXiaConfig {
         app: None,
         android: None,
@@ -389,19 +463,31 @@ fn generated_ui_json_adds_terminal_activators_when_missing() {
         harmony: None,
         windows: None,
         features: None,
-        capabilities: Some(crate::config::CapabilitiesConfig {
-            notifications: false,
-            terminal: true,
-        }),
-        shell: None,
-        ui: Some(serde_json::json!({
+        capabilities: None,
+        browser: None,
+        generated_ui: Some(serde_json::json!({
             "launch": { "initialSurface": "main" },
             "surfaces": [{
                 "id": "main",
-                "presentation": { "kind": "window" },
-                "content": { "kind": "lxapp", "appId": "demo-home" }
+                "role": "main",
+                "platforms": ["macos"],
+                "content": { "kind": "lxapp", "appId": "main-home" }
+            }, {
+                "id": "windowsSide",
+                "role": "aside",
+                "attachTo": "main",
+                "edge": "right",
+                "platforms": ["windows"],
+                "content": { "kind": "lxapp", "appId": "win-side" }
+            }],
+            "activators": [{
+                "id": "windowsSideButton",
+                "kind": "sidebarItem",
+                "hostSurface": "main",
+                "action": { "kind": "toggleSurface", "surface": "windowsSide" }
             }]
         })),
+        surfaces: None,
         app_links: None,
         storage: None,
         resources: None,
@@ -409,56 +495,16 @@ fn generated_ui_json_adds_terminal_activators_when_missing() {
 
     let temp = TempDir::new().unwrap();
     let icons = prepare_app_ui_icons(temp.path(), &config).unwrap();
-    let ui_json = build_ui_json_from_config(&config, &icons).unwrap().unwrap();
+    let ui_json = build_ui_json_from_config(&config, &icons, "macos")
+        .unwrap()
+        .unwrap();
     let value: serde_json::Value = serde_json::from_str(&ui_json).unwrap();
 
-    assert_eq!(value["activators"][0]["id"], "terminalSidebar");
-    assert_eq!(value["activators"][0]["hostSurface"], "main");
-}
-
-#[test]
-fn generated_ui_json_attaches_terminal_to_initial_root_surface() {
-    let config = LingXiaConfig {
-        app: None,
-        android: None,
-        ios: None,
-        macos: None,
-        harmony: None,
-        windows: None,
-        features: None,
-        capabilities: Some(crate::config::CapabilitiesConfig {
-            notifications: false,
-            terminal: true,
-        }),
-        shell: None,
-        ui: Some(serde_json::json!({
-            "launch": { "initialSurface": "mainPanel" },
-            "surfaces": [{
-                "id": "secondary",
-                "presentation": { "kind": "window" },
-                "content": { "kind": "lxapp", "appId": "secondary-home" }
-            }, {
-                "id": "mainPanel",
-                "presentation": { "kind": "panel", "anchor": "activator" },
-                "content": { "kind": "lxapp", "appId": "main-home" }
-            }],
-            "activators": []
-        })),
-        app_links: None,
-        storage: None,
-        resources: None,
-    };
-
-    let temp = TempDir::new().unwrap();
-    let icons = prepare_app_ui_icons(temp.path(), &config).unwrap();
-    let ui_json = build_ui_json_from_config(&config, &icons).unwrap().unwrap();
-    let value: serde_json::Value = serde_json::from_str(&ui_json).unwrap();
-
-    assert_eq!(
-        value["surfaces"][2]["presentation"]["attachTo"],
-        "mainPanel"
-    );
-    assert_eq!(value["activators"][0]["hostSurface"], "mainPanel");
+    let surfaces = value["surfaces"].as_array().unwrap();
+    assert_eq!(surfaces.len(), 1);
+    assert_eq!(surfaces[0]["id"], "main");
+    assert!(surfaces[0].get("platforms").is_none());
+    assert_eq!(value["activators"].as_array().unwrap().len(), 0);
 }
 
 #[test]
@@ -486,8 +532,8 @@ fn app_ui_icon_preparation_requires_svg() {
         windows: None,
         features: None,
         capabilities: None,
-        shell: None,
-        ui: Some(serde_json::json!({
+        browser: None,
+        generated_ui: Some(serde_json::json!({
             "launch": { "initialSurface": "main" },
             "surfaces": [],
             "activators": [{
@@ -497,6 +543,7 @@ fn app_ui_icon_preparation_requires_svg() {
                 "action": { "kind": "toggleSurface", "surface": "main" }
             }]
         })),
+        surfaces: None,
         app_links: None,
         storage: None,
         resources: None,

@@ -11,8 +11,11 @@ crate-type = ["cdylib", "staticlib", "rlib"]
 
 [features]
 default = ["standard"]
+# Keep the example host self-contained by default. Projects that own an
+# external cloud/update provider can declare their own feature and enable it
+# with `lingxia build --native-feature <feature>` or LINGXIA_NATIVE_FEATURES.
 standard = ["lingxia/standard"]
-shell-runtime = ["lingxia/shell-runtime", "webview-input", "standard"]
+browser-shell = ["lingxia/browser-shell", "webview-input", "standard"]
 terminal-runtime = ["lingxia/terminal-runtime"]
 devtools = ["dep:lingxia_devtool", "lingxia_devtool/browser"]
 webview-input = ["lingxia/webview-input"]
@@ -55,7 +58,7 @@ lingxia-provider = { path = "../../../crates/lingxia-provider" }
 lingxia-proxy = { path = "../../../crates/lingxia-proxy" }
 lingxia-service = { path = "../../../crates/lingxia-service" }
 lingxia-settings = { path = "../../../crates/lingxia-settings" }
-lingxia-shell = { path = "../../../crates/lingxia-shell" }
+lingxia-browser-shell = { path = "../../../crates/lingxia-browser-shell" }
 lingxia-terminal = { path = "../../../crates/lingxia-terminal" }
 lingxia-transfer = { path = "../../../crates/lingxia-transfer" }
 lingxia-update = { path = "../../../crates/lingxia-update" }

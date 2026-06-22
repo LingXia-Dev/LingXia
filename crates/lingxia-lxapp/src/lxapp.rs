@@ -55,6 +55,7 @@ use crate::page::runtime::{
     PageInstanceLifecycleState, PageInstanceRuntimeRecord, transition_page_instance_lifecycle,
 };
 pub use lingxia_platform::traits::ui::{SurfaceKind, SurfacePosition};
+pub use lingxia_surface::Role as SurfaceRole;
 pub use lingxia_update::ReleaseType;
 use lingxia_webview::WebTag;
 use lingxia_webview::runtime::destroy_webview;
@@ -71,6 +72,7 @@ pub(crate) use runtime_registry::{get, get_lxapps_manager};
 pub(crate) use surface::SurfaceRecords;
 pub use surface::{
     PageSurface, PageSurfaceRequest, PageSurfaceTarget, register_surface_close_observer,
+    register_surface_context_observer,
 };
 use version::Version;
 
@@ -163,8 +165,8 @@ pub fn register_builtin_asset_bundle(appid: impl Into<String>) {
 
 /// Register a content-less builtin lxapp host. The LxApp is created with default
 /// empty config (no pages/plugins/logic). A later [`register_builtin_asset_bundle`]
-/// call for the same appid upgrades to a disk-backed bundle — used by shell-runtime
-/// to swap in the real shell webui on macOS.
+/// call for the same appid upgrades to a disk-backed bundle — used by browser-shell
+/// to swap in the real browser shell webui on macOS.
 pub fn register_synthetic_lxapp(appid: impl Into<String>) {
     register_lxapp_bundle_source(appid, LxAppBundleSource::Synthetic);
 }
@@ -442,7 +444,7 @@ pub(crate) struct LxAppState {
     /// Startup options for the app
     pub(crate) startup_options: LxAppStartupOptions,
 
-    /// Dynamic page surfaces created by lx.surface.open.
+    /// Dynamic page surfaces created by lx.openSurface.
     pub(crate) surfaces: Mutex<SurfaceRecords>,
 
     /// App-level orientation override (runtime + persisted)

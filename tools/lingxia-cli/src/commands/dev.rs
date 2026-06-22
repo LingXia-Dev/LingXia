@@ -1,5 +1,5 @@
 use crate::commands::rust::resolve_build_profile;
-use crate::config::{LingXiaConfig, has_host_config};
+use crate::config::{LingXiaConfig, append_native_features, has_host_config};
 use crate::host_assets::{prepare_configured_host_assets, prepare_windows_design_icon_assets};
 use crate::lxapp::ProjectFramework;
 use crate::platform::detector::PlatformType;
@@ -35,11 +35,26 @@ const RUNNER_WINDOWS_BIN_NAME: &str = "lingxia-runner";
 const RUNNER_WINDOWS_PRODUCT_NAME: &str = "LingXia Runner";
 const RUNNER_WINDOWS_APP_ID: &str = "app.lingxia.runner";
 
-fn dev_native_features(config: &LingXiaConfig, platform: &str) -> Vec<String> {
+fn dev_native_features(
+    config: &LingXiaConfig,
+    platform: &str,
+    extra_features: &[String],
+) -> Vec<String> {
     let mut features = config.native_features_for_platform(platform);
+    append_native_features(&mut features, extra_features);
     if !features.iter().any(|feature| feature == "devtools") {
         features.push("devtools".to_string());
     }
+    println!(
+        "  {} Native features ({}): {}",
+        "•".cyan(),
+        platform,
+        if features.is_empty() {
+            "<none>".to_string()
+        } else {
+            features.join(",")
+        }
+    );
     features
 }
 
@@ -54,6 +69,7 @@ pub struct DevExecuteOptions {
     pub platform_arg: Option<String>,
     pub reinstall: bool,
     pub env_version: Option<String>,
+    pub extra_native_features: Vec<String>,
     pub parallel: bool,
 }
 
@@ -68,6 +84,7 @@ struct DevContext {
     device: Option<String>,
     reinstall: bool,
     resolved_env: crate::config::ResolvedEnv,
+    extra_native_features: Vec<String>,
     parallel: bool,
 }
 
@@ -196,6 +213,12 @@ pub fn execute(options: DevExecuteOptions) -> Result<()> {
 
     let resolved_env =
         crate::commands::build::resolve_build_env(&config, options.env_version.as_deref())?;
+    crate::commands::build::validate_extra_native_features(
+        &project_root,
+        &config,
+        std::slice::from_ref(&platform_type),
+        &options.extra_native_features,
+    )?;
 
     let ctx = DevContext {
         project_root,
@@ -211,6 +234,7 @@ pub fn execute(options: DevExecuteOptions) -> Result<()> {
         device: options.device,
         reinstall: options.reinstall,
         resolved_env,
+        extra_native_features: options.extra_native_features,
         parallel: options.parallel,
     };
 
@@ -262,7 +286,11 @@ fn execute_android(ctx: DevContext, abis: Vec<String>) -> Result<()> {
             dmg: false,
             macos_arch: None,
             framework: ctx.framework,
-            native_features: dev_native_features(&ctx.config, "android"),
+            native_features: dev_native_features(
+                &ctx.config,
+                "android",
+                &ctx.extra_native_features,
+            ),
             native_default_features: ctx.config.native_default_features_enabled(),
             resolved_env: ctx.resolved_env.clone(),
             skip_native_build: false,
@@ -369,7 +397,7 @@ fn execute_ios(ctx: DevContext) -> Result<()> {
             dmg: false,
             macos_arch: None,
             framework: ctx.framework,
-            native_features: dev_native_features(&ctx.config, "ios"),
+            native_features: dev_native_features(&ctx.config, "ios", &ctx.extra_native_features),
             native_default_features: ctx.config.native_default_features_enabled(),
             resolved_env: ctx.resolved_env.clone(),
             skip_native_build: false,
@@ -478,7 +506,7 @@ Use `lingxia build --platform macos --macos-arch {}` for cross-arch builds.",
         dmg: false,
         macos_arch,
         framework: ctx.framework,
-        native_features: dev_native_features(&ctx.config, "macos"),
+        native_features: dev_native_features(&ctx.config, "macos", &ctx.extra_native_features),
         native_default_features: ctx.config.native_default_features_enabled(),
         resolved_env: ctx.resolved_env.clone(),
         skip_native_build: false,
@@ -581,7 +609,11 @@ fn execute_harmony(ctx: DevContext) -> Result<()> {
             dmg: false,
             macos_arch: None,
             framework: ctx.framework,
-            native_features: dev_native_features(&ctx.config, "harmony"),
+            native_features: dev_native_features(
+                &ctx.config,
+                "harmony",
+                &ctx.extra_native_features,
+            ),
             native_default_features: ctx.config.native_default_features_enabled(),
             resolved_env: ctx.resolved_env.clone(),
             skip_native_build: false,
@@ -685,7 +717,11 @@ fn execute_windows(ctx: DevContext) -> Result<()> {
             dmg: false,
             macos_arch: None,
             framework: ctx.framework,
-            native_features: dev_native_features(&ctx.config, "windows"),
+            native_features: dev_native_features(
+                &ctx.config,
+                "windows",
+                &ctx.extra_native_features,
+            ),
             native_default_features: ctx.config.native_default_features_enabled(),
             resolved_env: ctx.resolved_env.clone(),
             skip_native_build: false,

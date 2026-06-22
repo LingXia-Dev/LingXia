@@ -49,6 +49,7 @@ import android.webkit.WebChromeClient
 import com.lingxia.app.NativeApi
 import com.lingxia.app.PermissionManager
 import com.lingxia.app.UpdateManager
+import com.lingxia.lxapp.APIs.LxAppSurface
 import com.lingxia.lxapp.NativeComponents.NativeBridge
 
 /**
@@ -301,6 +302,7 @@ class LxAppActivity : AppCompatActivity() {
     private var pendingNavBarVisibility: Int? = null
     private var shouldRestoreOverlayOrder = false
     private var lastDispatchedDeviceOrientation: String? = null
+    private var lastReportedSurfaceWidthDp: Int = -1
     private var pendingFileChooserCallback: ValueCallback<Array<Uri>>? = null
     private var pendingHostFileDialogCallback: ((List<String>?) -> Unit)? = null
     private val fileChooserLauncher = registerForActivityResult(
@@ -443,6 +445,7 @@ class LxAppActivity : AppCompatActivity() {
         // Defer capsule button creation to post-layout
         rootContainer.post {
             addCapsuleButton()
+            reportSurfaceWidthIfNeeded()
         }
 
         // Setup window insets listener
@@ -470,6 +473,7 @@ class LxAppActivity : AppCompatActivity() {
             tabBar?.config?.let { cfg ->
                 tabBar?.let { tb -> applyTabBarLayoutParams(tb, cfg) }
             }
+            reportSurfaceWidthIfNeeded()
             insets
         }
 
@@ -498,9 +502,13 @@ class LxAppActivity : AppCompatActivity() {
                 override fun handleOnBackPressed() {
                     try {
                         // Close browser overlay first if showing (aligned with Harmony behavior)
-                        if (LxAppBrowserOverlay.isShowing()) {
-                            Log.d(TAG, "BackPress: closing LxAppBrowserOverlay")
-                            LxAppBrowserOverlay.dismiss()
+                        if (LxAppBrowser.isShowing()) {
+                            Log.d(TAG, "BackPress: dispatching to LxAppBrowser")
+                            LxAppBrowser.handleBack()
+                            return
+                        }
+                        if (LxAppSurface.closeTopUser()) {
+                            Log.d(TAG, "BackPress: closing top surface")
                             return
                         }
                         currentWebView?.visibility = View.VISIBLE
@@ -641,6 +649,21 @@ class LxAppActivity : AppCompatActivity() {
      * Gesture nav -> 0, 3-button visible -> visible bottom inset, others -> 0.
      */
     fun getContentBottomInset(): Int = systemBottomInset
+
+    private fun reportSurfaceWidthIfNeeded() {
+        if (!::rootContainer.isInitialized || !::appId.isInitialized || appId.isBlank()) return
+        val rawWidth = rootContainer.width
+        if (rawWidth <= 0) return
+        val contentWidthPx = (rawWidth - rootContainer.paddingLeft - rootContainer.paddingRight).coerceAtLeast(0)
+        val widthDp = (contentWidthPx / resources.displayMetrics.density).toInt()
+        if (widthDp <= 0 || widthDp == lastReportedSurfaceWidthDp) return
+        lastReportedSurfaceWidthDp = widthDp
+        runCatching {
+            NativeApi.setSurfaceWidth(appId, widthDp.toDouble())
+        }.onFailure { error ->
+            Log.w(TAG, "Failed to report surface width: ${error.message}")
+        }
+    }
 
     private fun resolveContentBottomInset(insets: WindowInsetsCompat): Int {
         val navVisible = insets.isVisible(WindowInsetsCompat.Type.navigationBars())
@@ -2145,6 +2168,7 @@ class LxAppActivity : AppCompatActivity() {
         if (::webViewContainer.isInitialized) {
             updateLayoutMargins()
         }
+        rootContainer.post { reportSurfaceWidthIfNeeded() }
         dispatchUiOrientationChangeIfNeeded()
     }
 

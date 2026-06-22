@@ -174,10 +174,24 @@ mod bridge {
             width_ratio: f64,
             height_ratio: f64,
             position: i32,
+            role: i32,
         ) -> bool;
+
+        // Adaptive Surface Layout (Phase 3): the shared core drives aside
+        // docking. The skin reconciles its dock panels to match `layout_json`
+        // (a serialized `LayoutPresentationPlan`, identical to
+        // `surfaceDerivedLayout`).
+        #[swift_bridge(swift_name = "LxApp.presentLayout")]
+        fn present_layout(window_id: &str, layout_json: &str) -> bool;
 
         #[swift_bridge(swift_name = "LxApp.closeSurface")]
         fn close_surface(id: &str, appid: &str, reason: &str) -> bool;
+
+        #[swift_bridge(swift_name = "LxApp.setManagedSurfaceVisible")]
+        fn set_managed_surface_visible(id: &str, visible: bool) -> bool;
+
+        #[swift_bridge(swift_name = "LxApp.toggleManagedSurface")]
+        fn toggle_managed_surface(id: &str) -> bool;
 
         #[swift_bridge(swift_name = "LxApp.showSurface")]
         fn show_surface(id: &str, appid: &str) -> bool;
@@ -360,8 +374,9 @@ pub use bridge::reveal_in_file_manager;
 pub use bridge::{
     ActionSheetOptions, ModalOptions, ToastIcon, ToastOptions, ToastPosition, cancel_preview_media,
     close_lxapp, close_surface, exit_app, hide_surface, hide_toast, navigate,
-    notify_app_update_ready, open_document_external, open_lxapp, open_url, present_surface,
-    preview_media, review_document, share, show_action_sheet, show_modal, show_surface, show_toast,
+    notify_app_update_ready, open_document_external, open_lxapp, open_url, present_layout,
+    present_surface, preview_media, review_document, set_managed_surface_visible, share,
+    show_action_sheet, show_modal, show_surface, show_toast, toggle_managed_surface,
     update_navbar_ui, update_orientation_ui, update_tabbar_ui,
 };
 

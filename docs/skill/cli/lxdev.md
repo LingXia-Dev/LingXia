@@ -55,7 +55,7 @@ A selector that matches **zero** sessions errors out (`No dev session matches th
 ## Output conventions
 
 - Human-readable text is the default for most commands (aligned tables for `sessions`, `browser tabs`, `app windows`; a bare id for `open`/`current`).
-- `--json` switches a command to compact machine output. `--pretty` (on the `lxapp`, `sessions`, and `cookies list` families) prints indented JSON instead.
+- `--json` switches a command to compact machine output. `--pretty` (on the `lxapp` and `cookies list` families) prints indented JSON instead. (`sessions` takes only `--json`, which is already indented.)
 - A few read commands **always** emit JSON regardless of flags: `browser eval`, `browser query`, `lxapp eval`, `lxapp page eval`, `lxapp page query`. The `--json`/`--pretty` flag there only toggles compact vs pretty (and `eval` prints just the returned `value`, or nothing when it is `null`).
 - Mutating commands (`click`, `type`, `fill`, `press`, `scroll`, `activate`, `close`, …) print nothing on success unless you pass `--json`.
 - Exit code is `0` on success, non-zero with a message on stderr otherwise.

@@ -139,10 +139,18 @@ fn manifest_declares_workspace(path: &Path) -> bool {
 /// directory next to it, so an unrelated Cargo workspace that happens to
 /// contain a LingXia app does not get misclassified.
 pub(crate) fn is_inside_lingxia_workspace(project_root: &Path) -> bool {
-    let Some(workspace_root) = find_workspace_root(project_root) else {
-        return false;
-    };
-    workspace_root.join("lingxia-sdk").is_dir()
+    lingxia_workspace_root(project_root).is_some()
+}
+
+/// The LingXia monorepo root for an in-workspace project, or `None` for an
+/// external project. Requires both a `[workspace]` manifest and a sibling
+/// `lingxia-sdk/` directory (see `is_inside_lingxia_workspace`).
+pub(crate) fn lingxia_workspace_root(project_root: &Path) -> Option<PathBuf> {
+    let workspace_root = find_workspace_root(project_root)?;
+    workspace_root
+        .join("lingxia-sdk")
+        .is_dir()
+        .then_some(workspace_root)
 }
 
 /// Platform-specific build configuration

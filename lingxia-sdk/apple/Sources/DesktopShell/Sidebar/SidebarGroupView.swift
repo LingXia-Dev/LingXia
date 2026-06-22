@@ -76,6 +76,10 @@ enum SidebarGroupColor {
 @MainActor
 private class SidebarGroupHeaderView: NSView {
     var closeButton: NSButton?
+    /// The collapse/expand chevron toggle. Like `closeButton`, it must receive
+    /// its own clicks — otherwise the header swallows them and the chevron can
+    /// never toggle the group.
+    var chevronButton: NSButton?
     var onHeaderClicked: (() -> Void)?
     var onRightClick: ((NSEvent) -> Void)?
 
@@ -86,6 +90,12 @@ private class SidebarGroupHeaderView: NSView {
             let closePoint = convert(localPoint, to: close)
             if close.bounds.contains(closePoint) {
                 return close
+            }
+        }
+        if let chevron = chevronButton, !chevron.isHidden {
+            let chevronPoint = convert(localPoint, to: chevron)
+            if chevron.bounds.contains(chevronPoint) {
+                return chevron
             }
         }
         return self
@@ -141,13 +151,17 @@ class SidebarGroupView: NSView {
         else { return nil }
         return NSImage(contentsOf: url)
     }()
-    private let chevronIndicator = NSImageView()
+    private let chevronIndicator = NSButton()
     private let closeButton = NSButton()
     private let itemsContainer = NSView()
     private let connectorLine = NSView()
     private var itemViews: [SidebarItemView] = []
 
     private var isExpanded = true
+    /// True when this group's lxapp is the active main — set by SidebarView.
+    /// Clicking the active group's header toggles collapse; a non-active group's
+    /// header switches to it instead.
+    var isActiveGroup = false
     private var itemsHeightConstraint: NSLayoutConstraint?
     private var connectorHeightConstraint: NSLayoutConstraint?
     private var headerTrackingArea: NSTrackingArea?
@@ -156,6 +170,9 @@ class SidebarGroupView: NSView {
     private var isCloseHovered = false
 
     var onPageSelected: ((String, Int) -> Void)?
+    /// Fired when the group header (the lxapp's name) is clicked — switches the
+    /// main to this lxapp, so an lxapp with no tabBar items is still switchable.
+    var onAppSelected: ((String) -> Void)?
     var onCloseRequested: ((String) -> Void)?
     var onLayoutChanged: (() -> Void)?
 
@@ -202,7 +219,17 @@ class SidebarGroupView: NSView {
         headerView.wantsLayer = true
         headerView.layer?.cornerRadius = Layout.headerCornerRadius
         headerView.onHeaderClicked = { [weak self] in
-            self?.toggleExpanded()
+            guard let self else { return }
+            // The ACTIVE app's header toggles its page list (collapse/expand) —
+            // so clicking the group you're on retracts its items, not only the
+            // small chevron. A DIFFERENT app's header switches to it and ensures
+            // its list is shown (switching never hides another app's items).
+            if self.isActiveGroup && !self.itemViews.isEmpty {
+                self.toggleExpanded()
+            } else {
+                self.onAppSelected?(self.appId)
+                if !self.isExpanded { self.toggleExpanded() }
+            }
         }
         headerView.onRightClick = { [weak self] event in
             self?.showContextMenu(with: event)
@@ -224,11 +251,20 @@ class SidebarGroupView: NSView {
         appNameLabel.maximumNumberOfLines = 1
         headerView.addSubview(appNameLabel)
 
-        // Chevron on right side of header
+        // Chevron on right side of header — a real collapse/expand toggle
+        // (clicking the app name switches + expands; the chevron collapses too).
+        // Hidden when the lxapp has no tabBar items (nothing to collapse).
         chevronIndicator.translatesAutoresizingMaskIntoConstraints = false
-        chevronIndicator.image = NSImage(systemSymbolName: "chevron.down", accessibilityDescription: nil)
+        chevronIndicator.image = NSImage(systemSymbolName: "chevron.down", accessibilityDescription: "Collapse")
         chevronIndicator.imageScaling = .scaleProportionallyDown
+        chevronIndicator.isBordered = false
+        chevronIndicator.bezelStyle = .regularSquare
+        chevronIndicator.imagePosition = .imageOnly
+        chevronIndicator.target = self
+        chevronIndicator.action = #selector(chevronClicked)
+        chevronIndicator.isHidden = true
         headerView.addSubview(chevronIndicator)
+        headerView.chevronButton = chevronIndicator
 
         // Close button (hidden by default, shown on hover)
         closeButton.translatesAutoresizingMaskIntoConstraints = false
@@ -372,6 +408,9 @@ class SidebarGroupView: NSView {
         }
 
         let totalHeight = yOffset
+        // The chevron is a collapse/expand affordance — only meaningful when the
+        // group actually has items. No tabBar items → no chevron.
+        chevronIndicator.isHidden = items.isEmpty
         connectorLine.isHidden = items.count <= 1
         if isExpanded {
             itemsHeightConstraint?.constant = totalHeight
@@ -435,6 +474,10 @@ class SidebarGroupView: NSView {
         }
 
         connectorLine.isHidden = !isExpanded || itemViews.count <= 1
+    }
+
+    @objc private func chevronClicked() {
+        toggleExpanded()
     }
 
     @objc private func closeClicked() {

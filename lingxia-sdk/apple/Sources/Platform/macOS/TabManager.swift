@@ -5,15 +5,21 @@ import Foundation
 /// Represents a single tab in the tab-style tab bar
 struct LxAppTab: Equatable, Identifiable {
     let appId: String
+    /// When set, this lxapp is a companion (aside) opened via an activator/shell,
+    /// not a main. Its sidebar entry toggles this surface instead of switching
+    /// the main; `nil` means a normal main lxapp.
+    var asideSurfaceId: String?
     var id: String { appId }
 
     var currentPath: String { "/" }
     var title: String { appId }
+    var isMain: Bool { asideSurfaceId == nil }
     // Rust decides if tab is closable, Swift doesn't need to judge
     var isClosable: Bool { true }
 
-    init(appId: String) {
+    init(appId: String, asideSurfaceId: String? = nil) {
         self.appId = appId
+        self.asideSurfaceId = asideSurfaceId
     }
 }
 
@@ -31,16 +37,20 @@ class LxAppTabManager: ObservableObject {
 
     var hasTabs: Bool { !tabs.isEmpty }
 
-    func addTab(appId: String) {
+    func addTab(appId: String, asideSurfaceId: String? = nil, activate: Bool = true) {
         if tabs.contains(where: { $0.appId == appId }) {
-            selectTab(appId: appId)
+            if activate { selectTab(appId: appId) }
             return
         }
 
-        let newTab = LxAppTab(appId: appId)
+        let newTab = LxAppTab(appId: appId, asideSurfaceId: asideSurfaceId)
         tabs.append(newTab)
-        activeTab = newTab
-        onTabChanged?(newTab)
+        // Aside companions (activate == false) appear in the sidebar without
+        // becoming the active main.
+        if activate {
+            activeTab = newTab
+            onTabChanged?(newTab)
+        }
         onTabsChanged?(tabs)
     }
 

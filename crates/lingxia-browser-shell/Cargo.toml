@@ -1,0 +1,35 @@
+[package]
+name = "lingxia-browser-shell"
+version.workspace = true
+edition.workspace = true
+description = "Browser shell product module and host registrations for LingXia"
+license = "MIT"
+readme = "README.md"
+homepage = "https://github.com/LingXia-Dev/LingXia"
+documentation = "https://docs.rs/lingxia-browser-shell"
+repository.workspace = true
+keywords = ["lingxia", "browser", "shell", "webview"]
+categories = ["web-programming", "api-bindings"]
+
+[features]
+# Opt-in HTTP proxy for the in-app browser (macOS).
+proxy = ["dep:lingxia-proxy"]
+
+[dependencies]
+lxapp = { workspace = true, default-features = false }
+lingxia-app-context = { workspace = true }
+lingxia-browser = { workspace = true }
+lingxia-service = { workspace = true }
+lingxia-webview = { workspace = true }
+lingxia-native-macros = { workspace = true }
+lingxia-platform = { workspace = true }
+futures = { workspace = true }
+serde = { workspace = true }
+tokio = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+log = { workspace = true }
+rong = { workspace = true, default-features = false }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+lingxia-proxy = { workspace = true, features = ["rule-list-routing"], optional = true }

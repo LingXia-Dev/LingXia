@@ -14,7 +14,7 @@ import android.util.Log
 import androidx.appcompat.app.AppCompatActivity
 import com.lingxia.lxapp.LxAppActivity
 import com.lingxia.lxapp.LxApp
-import com.lingxia.lxapp.LxAppBrowserOverlay
+import com.lingxia.lxapp.LxAppBrowser
 import java.net.URISyntaxException
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -29,8 +29,10 @@ object Lingxia {
     // in the same tick races with ATM and the system relaunches the LAUNCHER.
     private const val EXIT_KILL_DELAY_MS = 150L
 
-    const val CAP_SHELL: Int = 0x1
+    const val CAP_BROWSER: Int = 0x1
     const val CAP_NOTIFICATIONS: Int = 0x2
+    const val CAP_TERMINAL: Int = 0x4
+    const val CAP_PROXY: Int = 0x8
 
     @JvmField var capabilities: Int = 0
 
@@ -184,7 +186,7 @@ object Lingxia {
         // Mobile currently uses a single in-app browser experience:
         // treat "new_browser_tab" the same as "self" for now.
         val inAppBrowserTarget = target == "self" || target == "new_browser_tab"
-        if (inAppBrowserTarget) {
+        if (inAppBrowserTarget && (capabilities and CAP_BROWSER) != 0) {
             val activity = LxApp.getCurrentActivity()
             if (activity != null) {
                 activity.runOnUiThread {
@@ -204,6 +206,9 @@ object Lingxia {
                             TAG,
                             "launchWithUrl target=in_app: invalid owner appId=$resolvedOwnerAppId session=$resolvedOwnerSessionId"
                         )
+                        if (!launchExternalUrl(activity, uri, 0)) {
+                            Log.w(TAG, "No external handler for URL: $uri")
+                        }
                         return@runOnUiThread
                     }
                     val tabId = NativeApi.openBrowserTab(
@@ -216,14 +221,19 @@ object Lingxia {
                             TAG,
                             "launchWithUrl target=in_app: openBrowserTab failed appId=$resolvedOwnerAppId session=$resolvedOwnerSessionId"
                         )
+                        if (!launchExternalUrl(activity, uri, 0)) {
+                            Log.w(TAG, "No external handler for URL: $uri")
+                        }
                         return@runOnUiThread
                     }
-                    LxAppBrowserOverlay.show(activity, tabId, uri)
+                    LxAppBrowser.show(activity, tabId, uri)
                 }
                 return
             }
             Log.w(TAG, "launchWithUrl target=in_app: no current activity")
-            return
+        }
+        if (inAppBrowserTarget && (capabilities and CAP_BROWSER) == 0) {
+            Log.d(TAG, "launchWithUrl target=in_app: browser capability disabled; opening externally")
         }
         val activity = LxApp.getCurrentActivity()
         if (activity != null) {

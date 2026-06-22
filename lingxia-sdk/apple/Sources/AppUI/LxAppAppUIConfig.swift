@@ -22,42 +22,44 @@ struct LxAppUIConfig: Decodable, Sendable {
 
     struct Surface: Decodable, Sendable {
         let id: String
-        let presentation: Presentation
+        let role: Role
+        let edge: Edge?
+        let attachTo: String?
+        let size: Size?
+        let anchor: Anchor?
+        let resizable: Bool?
+        let showTrafficLights: Bool?
         let content: Content
+        /// Availability filter. nil/empty = every platform; otherwise the concrete
+        /// platforms it's available on (macos/windows/ios/android/harmony).
+        let platforms: [String]?
+
+        func isAvailable(on platform: String) -> Bool {
+            guard let platforms, !platforms.isEmpty else { return true }
+            return platforms.contains { $0.caseInsensitiveCompare(platform) == .orderedSame }
+        }
     }
 
-    struct Presentation: Decodable, Sendable {
-        let kind: Kind
-        let anchor: Anchor?
-        let size: Size?
-        let resizable: Bool?
-        let attachTo: String?
-        let edge: Edge?
-        let showTrafficLights: Bool?
+    enum Role: String, Decodable, Sendable {
+        case main
+        case aside
+        case float
+    }
 
-        enum Kind: String, Decodable, Sendable {
-            case window
-            case panel
-            case attachPanel
-            case sheet
-            case embedded
-        }
+    enum Edge: String, Decodable, Sendable {
+        case left
+        case right
+        case top
+        case bottom
+    }
 
-        enum Anchor: String, Decodable, Sendable {
-            case activator
-        }
+    enum Anchor: String, Decodable, Sendable {
+        case activator
+    }
 
-        enum Edge: String, Decodable, Sendable {
-            case leading
-            case trailing
-            case top
-            case bottom
-        }
-
-        struct Size: Decodable, Sendable {
-            let width: Double?
-            let height: Double?
-        }
+    struct Size: Decodable, Sendable {
+        let width: Double?
+        let height: Double?
     }
 
     struct Content: Decodable, Sendable {
@@ -96,8 +98,6 @@ struct LxAppUIConfig: Decodable, Sendable {
         enum Kind: String, Decodable, Sendable {
             case toggleSurface
             case openSurface
-            case closeSurface
-            case focusSurface
         }
     }
 }

@@ -230,6 +230,19 @@ pub fn browser_tab_close(tab_id: String) -> bool {
     crate::browser::close(&tab_id).is_ok()
 }
 
+/// Navigate an existing browser tab to a URL through the browser runtime,
+/// which swaps the lxapp start page for a web view as needed.
+#[napi]
+pub fn browser_tab_navigate(tab_id: String, url: String) -> bool {
+    crate::browser::navigate(&tab_id, &url).is_ok()
+}
+
+/// Sync the Rust-side active tab when switching to an already-live tab.
+#[napi]
+pub fn browser_tab_activate(tab_id: String) {
+    crate::browser::mark_active(&tab_id);
+}
+
 #[napi]
 pub fn get_builtin_browser_app_id() -> String {
     crate::browser::APP_ID.to_string()
@@ -238,6 +251,26 @@ pub fn get_builtin_browser_app_id() -> String {
 #[napi]
 pub fn browser_tab_path_for_id(tab_id: String) -> String {
     crate::browser::tab_path(&tab_id)
+}
+
+#[napi]
+pub fn browser_url_is_hidden(raw: String) -> bool {
+    crate::browser::should_hide_url(&raw)
+}
+
+#[napi]
+pub fn set_surface_width(appid: String, width: f64) -> bool {
+    lxapp::try_get(&appid)
+        .map(|lxapp| lxapp.set_surface_width(width))
+        .unwrap_or(false)
+}
+
+#[napi]
+pub fn surface_derived_layout(appid: String) -> String {
+    lxapp::try_get(&appid)
+        .and_then(|lxapp| lxapp.surface_derived_layout())
+        .and_then(|layout| serde_json::to_string(&layout).ok())
+        .unwrap_or_else(|| "null".to_string())
 }
 
 /// Get complete TabBar state with items array

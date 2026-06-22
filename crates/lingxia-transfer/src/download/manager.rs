@@ -9,7 +9,7 @@ use ring::digest::{SHA256, digest};
 use rong_rt::http::{self as host_http, HttpBody, RequestOptions};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::io::Error as IoError;
+use std::io::{Error as IoError, ErrorKind};
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
@@ -48,6 +48,7 @@ pub struct DownloadTask {
     persistence: Option<DownloadPersistence>,
     behavior: DownloadBehavior,
     reuse_existing_target: bool,
+    overwrite_existing_target: bool,
 }
 
 /// Tuning knobs for how a single `DownloadTask` behaves under weak-network
@@ -352,6 +353,7 @@ impl DownloadTask {
             persistence: None,
             behavior: DownloadBehavior::default(),
             reuse_existing_target: true,
+            overwrite_existing_target: true,
         }
     }
 
@@ -389,6 +391,11 @@ impl DownloadTask {
 
     fn with_reuse_existing_target(mut self, reuse_existing_target: bool) -> Self {
         self.reuse_existing_target = reuse_existing_target;
+        self
+    }
+
+    fn with_overwrite_existing_target(mut self, overwrite_existing_target: bool) -> Self {
+        self.overwrite_existing_target = overwrite_existing_target;
         self
     }
 }
@@ -751,6 +758,37 @@ fn resolve_unique_download_path(root: &Path, filename: &str) -> PathBuf {
 
 fn part_path_for(target: &Path) -> PathBuf {
     target.with_extension("part")
+}
+
+fn link_part_file_no_overwrite(part_path: &Path, target_path: &Path) -> std::io::Result<()> {
+    std::fs::hard_link(part_path, target_path)?;
+    if let Err(err) = std::fs::remove_file(part_path) {
+        let _ = std::fs::remove_file(target_path);
+        return Err(err);
+    }
+    Ok(())
+}
+
+async fn commit_part_file(
+    part_path: &Path,
+    target_path: &Path,
+    overwrite_existing_target: bool,
+) -> std::io::Result<()> {
+    let part_path = part_path.to_path_buf();
+    let target_path = target_path.to_path_buf();
+    tokio::task::spawn_blocking(move || {
+        if overwrite_existing_target {
+            std::fs::rename(part_path, target_path)
+        } else {
+            link_part_file_no_overwrite(&part_path, &target_path)
+        }
+    })
+    .await
+    .unwrap_or_else(|err| {
+        Err(IoError::other(format!(
+            "commit download task failed: {err}"
+        )))
+    })
 }
 
 fn parse_content_range_total(value: &str) -> Option<u64> {
@@ -1362,6 +1400,7 @@ async fn run_download_attempt(
     drop(file);
 
     if !task.reuse_existing_target
+        && task.overwrite_existing_target
         && fs::try_exists(target_path).await.unwrap_or(false)
         && let Err(e) = fs::remove_file(target_path).await
         && e.kind() != std::io::ErrorKind::NotFound
@@ -1376,11 +1415,16 @@ async fn run_download_attempt(
         });
     }
 
-    if let Err(e) = fs::rename(part_path, target_path).await {
+    if let Err(e) = commit_part_file(part_path, target_path, task.overwrite_existing_target).await {
+        let error = if !task.overwrite_existing_target && e.kind() == ErrorKind::AlreadyExists {
+            "target already exists".to_string()
+        } else {
+            format!("commit failed: {}", e)
+        };
         save_resume_metadata(task, &resume_meta).await;
         return Err(DownloadAttemptFailure {
             kind: DownloadFailureKind::Internal,
-            error: format!("rename failed: {}", e),
+            error,
             downloaded_bytes: progress.downloaded,
             total_bytes,
             retryable: false,
@@ -1975,10 +2019,18 @@ pub async fn download_to_path_with_behavior(
     }
 
     let mut leader_guard = Some(SharedTargetPathDownloadLeaderGuard::new(path_key.clone()));
-    let request = build_user_cache_download_request(url.clone());
+    let mut request = build_user_cache_download_request(url.clone());
+    request.suggested_filename = target_path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .map(ToOwned::to_owned);
+    let overwrite_existing_target = !persistence
+        .as_ref()
+        .is_some_and(|persistence| persistence.track_record);
     let mut task = DownloadTask::for_browser(request, root_dir, fallback_user_agent)
         .with_target_path(target_path)
-        .with_reuse_existing_target(false);
+        .with_reuse_existing_target(false)
+        .with_overwrite_existing_target(overwrite_existing_target);
     task.request_headers = sanitize_header_list(user_request.headers);
     task = task.with_behavior(behavior);
     let persistence_task_id = persistence.as_ref().map(|value| value.task_id.clone());
@@ -2026,6 +2078,18 @@ pub async fn download_to_path_with_behavior(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn test_temp_dir(name: &str) -> PathBuf {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|duration| duration.as_nanos())
+            .unwrap_or(0);
+        std::env::temp_dir().join(format!(
+            "lingxia-transfer-download-{name}-{}-{nonce}",
+            std::process::id()
+        ))
+    }
 
     #[test]
     fn sanitize_filename_rejects_dot_names() {
@@ -2033,6 +2097,38 @@ mod tests {
         assert_eq!(sanitize_filename("."), "download.bin");
         assert_eq!(sanitize_filename(".."), "download.bin");
         assert_eq!(sanitize_filename("a/b:c"), "a_b_c");
+    }
+
+    #[test]
+    fn no_overwrite_commit_preserves_existing_target() {
+        let root = test_temp_dir("no-overwrite-existing");
+        std::fs::create_dir_all(&root).expect("create test dir");
+        let part = root.join("report.part");
+        let target = root.join("report.pdf");
+        std::fs::write(&part, b"partial").expect("write part");
+        std::fs::write(&target, b"existing").expect("write target");
+
+        let error = link_part_file_no_overwrite(&part, &target).expect_err("target exists");
+
+        assert_eq!(error.kind(), ErrorKind::AlreadyExists);
+        assert_eq!(std::fs::read(&target).expect("target remains"), b"existing");
+        assert_eq!(std::fs::read(&part).expect("part remains"), b"partial");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn no_overwrite_commit_moves_part_to_missing_target() {
+        let root = test_temp_dir("no-overwrite-missing");
+        std::fs::create_dir_all(&root).expect("create test dir");
+        let part = root.join("report.part");
+        let target = root.join("report.pdf");
+        std::fs::write(&part, b"partial").expect("write part");
+
+        link_part_file_no_overwrite(&part, &target).expect("commit part");
+
+        assert_eq!(std::fs::read(&target).expect("target written"), b"partial");
+        assert!(!part.exists());
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

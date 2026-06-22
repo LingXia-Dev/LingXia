@@ -12,6 +12,9 @@ See [`src/extension.rs`](./src/extension.rs) for an example.
 const greeting = lx.hello.sayHello("LingXia"); // "Hello, LingXia!"
 ```
 
-## Optional Cloud Runtime
+## Optional Native Features
 
-Enable the `cloud` feature to opt into `lingxia-device-cloud`.
+This example keeps external providers out of its default dependency graph. Apps
+that own a cloud or update provider should declare that provider as an optional
+dependency in their host crate, then enable the corresponding Cargo feature with
+`lingxia build --native-feature <feature>` or `LINGXIA_NATIVE_FEATURES`.

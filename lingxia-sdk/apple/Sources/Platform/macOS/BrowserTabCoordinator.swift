@@ -236,8 +236,23 @@ final class BrowserTabCoordinator: NSObject {
         switchToTab(id: id)
     }
 
+    /// Create a standalone browser docked beside the main content as an aside.
+    /// The returned `DockedBrowser` owns its own tab + chrome and is NOT entered
+    /// into `tabIds` / the sidebar — it never becomes a switchable main tab. The
+    /// owner (appId/sessionId) for the new tab is taken from the active lxapp
+    /// session, exactly like a regular tab. Returns nil if there is no active
+    /// session or the tab could not be created.
+    func createDockedBrowser(url: String, onClose: @escaping () -> Void) -> DockedBrowser? {
+        guard let owner = host?.browserOwnerForNewTab() else {
+            os_log("Cannot create docked browser without active lxapp session", log: Self.log, type: .error)
+            return nil
+        }
+        return DockedBrowser(owner: owner, url: url, onClose: onClose)
+    }
+
     private func attachedWebViewForNativeInput(tabId: String) -> WKWebView? {
-        let id = tabId.lowercased()
+        let id = tabIdString(tabId)
+        guard !id.isEmpty else { return nil }
         if activeTabId != id {
             presentInternalBrowserTab(id: id)
         }
@@ -256,7 +271,13 @@ final class BrowserTabCoordinator: NSObject {
     }
 
     func prepareNativeInput(tabId: String) -> Bool {
-        attachedWebViewForNativeInput(tabId: tabId) != nil
+        // A docked aside browser owns its webview in the aside panel. Focus it in
+        // place rather than relocating the tab into the main browser area (which
+        // would empty the aside).
+        if let docked = DockedBrowser.forTab(tabId) {
+            return docked.focusForInput()
+        }
+        return attachedWebViewForNativeInput(tabId: tabId) != nil
     }
 
     @MainActor
@@ -577,7 +598,6 @@ final class BrowserTabCoordinator: NSObject {
 
         let normalizedStableTabId = stableTabId?
             .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased()
         let requestedStableTabId = normalizedStableTabId?.isEmpty == false ? normalizedStableTabId : nil
 
         let openedTab = if let requestedStableTabId {
@@ -599,7 +619,7 @@ final class BrowserTabCoordinator: NSObject {
             return
         }
 
-        let tabId = openedTab.toString().lowercased()
+        let tabId = tabIdString(openedTab.toString())
         guard !tabId.isEmpty else {
             os_log("openBrowserTab returned empty tab id", log: Self.log, type: .error)
             return
@@ -965,7 +985,7 @@ final class BrowserTabCoordinator: NSObject {
     // MARK: - Data Helpers
 
     private func tabIdString(_ id: String) -> String {
-        id.lowercased()
+        id.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private func displayableURL(_ raw: String?) -> String {

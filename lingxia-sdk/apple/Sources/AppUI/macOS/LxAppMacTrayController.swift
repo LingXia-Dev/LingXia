@@ -45,7 +45,7 @@ final class LxAppMacTrayController: NSObject {
             if let iconURL = resolvedIconURL(for: activator),
                let image = NSImage(contentsOf: iconURL) {
                 image.size = NSSize(width: 18, height: 18)
-                image.isTemplate = iconURL.pathExtension.lowercased() == "pdf"
+                image.isTemplate = isTemplateMenuBarIcon(iconURL)
                 button.image = image
                 button.imagePosition = .imageOnly
             } else {
@@ -106,6 +106,15 @@ final class LxAppMacTrayController: NSObject {
     private func resolvedIconURL(for activator: LxAppUIConfig.Activator) -> URL? {
         guard let icon = activator.icon else { return nil }
         return LxAppAppUIBundleLoader.resolveRelativeResource(icon, baseURL: uiConfigURL)
+    }
+
+    private func isTemplateMenuBarIcon(_ url: URL) -> Bool {
+        switch url.pathExtension.lowercased() {
+        case "pdf", "svg", "svgz":
+            return true
+        default:
+            return false
+        }
     }
 }
 #endif

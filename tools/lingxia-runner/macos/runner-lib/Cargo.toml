@@ -16,5 +16,5 @@ crate-type = ["staticlib"]
 # The macOS Runner ships the full shell chrome. The Windows dev runner lives
 # in tools/lingxia-runner/windows so platform entry crates stay separated.
 [dependencies]
-lingxia = { workspace = true, features = ["standard", "shell-runtime", "webview-input"] }
+lingxia = { workspace = true, features = ["standard", "browser-shell", "webview-input"] }
 lingxia_devtool = { workspace = true, features = ["browser"] }

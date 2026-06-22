@@ -1,9 +1,32 @@
 use super::app::Platform;
-use super::ffi::{close_surface, hide_surface, present_surface, show_surface};
+use super::ffi::{
+    close_surface, hide_surface, present_layout, present_surface, set_managed_surface_visible,
+    show_surface, toggle_managed_surface,
+};
 use crate::error::PlatformError;
 use crate::traits::ui::{SurfacePosition, SurfacePresenter, SurfaceRequest};
+use lingxia_surface::LayoutPresentationPlan;
 
 impl SurfacePresenter for Platform {
+    fn present_layout(
+        &self,
+        window_id: &str,
+        plan: &LayoutPresentationPlan,
+    ) -> Result<(), PlatformError> {
+        // Serialize exactly as the JS API (`surfaceDerivedLayout`) does so the
+        // skin reconciler and `lx.surface.derivedLayout()` see identical JSON.
+        let plan_json = serde_json::to_string(plan).map_err(|e| {
+            PlatformError::Platform(format!("failed to serialize layout plan: {e}"))
+        })?;
+        if present_layout(window_id, &plan_json) {
+            Ok(())
+        } else {
+            Err(PlatformError::Platform(format!(
+                "Failed to present layout: window_id={window_id}"
+            )))
+        }
+    }
+
     fn present_surface(&self, request: SurfaceRequest) -> Result<(), PlatformError> {
         if present_surface(
             &request.id,
@@ -24,6 +47,7 @@ impl SurfacePresenter for Platform {
                 SurfacePosition::Right => 3,
                 SurfacePosition::Top => 4,
             },
+            request.role as i32,
         ) {
             Ok(())
         } else {
@@ -63,6 +87,26 @@ impl SurfacePresenter for Platform {
             Err(PlatformError::Platform(format!(
                 "Failed to hide surface: id={}, appid={}",
                 id, app_id
+            )))
+        }
+    }
+
+    fn set_managed_surface_visible(&self, id: &str, visible: bool) -> Result<(), PlatformError> {
+        if set_managed_surface_visible(id, visible) {
+            Ok(())
+        } else {
+            Err(PlatformError::Platform(format!(
+                "cannot manage surface (no host shell or unknown surface): id={id} (visible={visible})"
+            )))
+        }
+    }
+
+    fn toggle_managed_surface(&self, id: &str) -> Result<(), PlatformError> {
+        if toggle_managed_surface(id) {
+            Ok(())
+        } else {
+            Err(PlatformError::Platform(format!(
+                "cannot manage surface (no host shell or unknown surface): id={id}"
             )))
         }
     }

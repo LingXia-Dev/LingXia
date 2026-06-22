@@ -101,7 +101,7 @@ fn panel_item_from_activator(
     activator: &serde_json::Value,
     surfaces_by_id: &std::collections::HashMap<&str, &serde_json::Value>,
 ) -> Option<lingxia_app_context::PanelItem> {
-    use lingxia_app_context::{PanelContent, PanelContentKind, PanelItem, PanelPosition};
+    use lingxia_app_context::{PanelContent, PanelContentKind, PanelItem};
 
     if activator.get("kind").and_then(serde_json::Value::as_str) != Some("sidebarItem") {
         return None;
@@ -124,22 +124,17 @@ fn panel_item_from_activator(
         .map(str::trim)
         .filter(|surface_id| !surface_id.is_empty())?;
     let surface = surfaces_by_id.get(surface_id)?;
-    if surface
-        .get("presentation")
-        .and_then(|presentation| presentation.get("kind"))
-        .and_then(serde_json::Value::as_str)
-        != Some("attachPanel")
-    {
+    if surface.get("role").and_then(serde_json::Value::as_str) != Some("aside") {
         return None;
     }
     let content = surface.get("content")?;
     let content_kind = match content
         .get("kind")
         .and_then(serde_json::Value::as_str)
-        .unwrap_or("lxapp")
+        .map(str::trim)
     {
-        "terminal" => PanelContentKind::Terminal,
-        "lxapp" => PanelContentKind::LxApp,
+        Some("terminal") => PanelContentKind::Terminal,
+        Some("lxapp") => PanelContentKind::LxApp,
         _ => return None,
     };
     let app_id = content
@@ -164,11 +159,9 @@ fn panel_item_from_activator(
         .unwrap_or_default()
         .to_string();
     let position = surface
-        .get("presentation")
-        .and_then(|presentation| presentation.get("edge"))
+        .get("edge")
         .and_then(serde_json::Value::as_str)
-        .map(panel_position_from_edge)
-        .unwrap_or(PanelPosition::Right);
+        .and_then(panel_position_from_edge)?;
     let path = content
         .get("path")
         .and_then(serde_json::Value::as_str)
@@ -189,11 +182,12 @@ fn panel_item_from_activator(
     })
 }
 
-fn panel_position_from_edge(edge: &str) -> lingxia_app_context::PanelPosition {
-    match edge {
-        "leading" | "left" => lingxia_app_context::PanelPosition::Left,
-        "bottom" => lingxia_app_context::PanelPosition::Bottom,
-        _ => lingxia_app_context::PanelPosition::Right,
+fn panel_position_from_edge(edge: &str) -> Option<lingxia_app_context::PanelPosition> {
+    match edge.trim() {
+        "left" => Some(lingxia_app_context::PanelPosition::Left),
+        "bottom" => Some(lingxia_app_context::PanelPosition::Bottom),
+        "right" => Some(lingxia_app_context::PanelPosition::Right),
+        _ => None,
     }
 }
 
@@ -242,20 +236,18 @@ mod tests {
     use lingxia_app_context::PanelPosition;
 
     #[test]
-    fn derives_lxapp_attach_panels_from_ui_config() {
+    fn derives_lxapp_aside_panels_from_ui_config() {
         let ui = serde_json::json!({
             "launch": { "initialSurface": "main" },
             "surfaces": [{
                 "id": "main",
-                "presentation": { "kind": "window" },
+                "role": "main",
                 "content": { "kind": "lxapp", "appId": "home" }
             }, {
                 "id": "assistant",
-                "presentation": {
-                    "kind": "attachPanel",
-                    "attachTo": "main",
-                    "edge": "trailing"
-                },
+                "role": "aside",
+                "attachTo": "main",
+                "edge": "right",
                 "content": { "kind": "lxapp", "appId": "lingxia-chat", "path": "pages/chat/index" }
             }],
             "activators": [{
@@ -282,14 +274,12 @@ mod tests {
     }
 
     #[test]
-    fn derives_terminal_attach_panels_from_ui_config() {
+    fn derives_terminal_aside_panels_from_ui_config() {
         let ui = serde_json::json!({
             "surfaces": [{
                 "id": "terminal",
-                "presentation": {
-                    "kind": "attachPanel",
-                    "edge": "bottom"
-                },
+                "role": "aside",
+                "edge": "bottom",
                 "content": { "kind": "terminal" }
             }],
             "activators": [{

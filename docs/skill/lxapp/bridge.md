@@ -185,7 +185,7 @@ The real chat example optionally probes an app-installed AI extension before fal
 
 ### Logic side — explicit handle form
 
-Use this when your async source uses callbacks rather than an async iterator, or when you need to react to cancellation explicitly. You do not import `StreamHandle` — the runtime creates and injects it as the second parameter automatically for methods listed in the page's `stream_handlers` metadata.
+Use this when your async source is callback-based rather than an async iterator. You do not import `StreamHandle` — the runtime creates and injects it as the second parameter automatically for methods listed in the page's `stream_handlers` metadata.
 
 ```ts
 Page({
@@ -195,8 +195,6 @@ Page({
     job.on('progress', (pct) => stream.send({ type: 'progress', pct }));
     job.on('done',     (out) => stream.end(out));
     job.on('error',    (err) => stream.error('PROCESS_FAILED', err.message));
-
-    stream.on('cancel', () => job.abort());
   },
 });
 ```
@@ -208,9 +206,10 @@ interface StreamHandle {
   send(payload: unknown): void;          // send a chunk to View
   end(result?: unknown): void;           // end the stream with an optional final value
   error(code: string, msg?: string): void; // end with an error
-  on(event: 'cancel', handler: () => void): this; // fires when View cancels
 }
 ```
+
+The explicit handle has **no cancellation callback**: when the View cancels, the runtime resolves the call with `BRIDGE_CANCELED` and drops the handle — your handler is not notified. If you need to clean up on cancel (abort a job, close a file), use the generator form and a `finally` block instead; that is the only form that observes cancellation.
 
 The runtime distinguishes the two forms automatically. You declare which methods use explicit handles in the page metadata (`stream_handlers`); everything else that returns an `AsyncGenerator` uses the generator path.
 
@@ -535,11 +534,10 @@ async *onStream(params) {
   // return → stream ends
 }
 
-// Stream — explicit handle
+// Stream — explicit handle (callback sources; no cancel hook — use the generator form for cleanup)
 async onStream(params, stream: StreamHandle) {
   stream.send(chunk);
   stream.end(finalValue);
-  stream.on('cancel', () => { /* cleanup */ });
 }
 
 // Channel

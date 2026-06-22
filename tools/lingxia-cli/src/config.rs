@@ -1,7 +1,7 @@
 use anyhow::{Context, Result, anyhow};
 use semver::Version;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Map, Value, json};
 use serde_yaml_ng as yaml;
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -9,10 +9,12 @@ use std::path::Path;
 
 pub const HOST_CONFIG_FILE: &str = "lingxia.yaml";
 pub const LXAPP_BUILD_CONFIG_FILE: &str = "lxapp.config.ts";
+const AUTHORING_PLATFORMS: &[&str] = &["macos", "windows", "ios", "android", "harmony"];
+const TERMINAL_SURFACE_PLATFORMS: &[&str] = &["macos", "windows"];
 
 /// Host project configuration (native app project)
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct LingXiaConfig {
     /// Host app settings used to generate `app.json` at build time.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -32,10 +34,15 @@ pub struct LingXiaConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub capabilities: Option<CapabilitiesConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub shell: Option<ShellConfig>,
-    /// App-level UI config used to generate `ui.json` at build time.
+    pub browser: Option<BrowserConfig>,
+    /// Generated UI structure (`ui.json`). Built from `surfaces` at load time;
+    /// never authored directly.
+    #[serde(skip)]
+    pub generated_ui: Option<Value>,
+    /// Top-level `surfaces:` — the UI authoring format. Mapped into `ui` during
+    /// `load`.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub ui: Option<Value>,
+    pub surfaces: Option<Vec<SurfaceDecl>>,
     #[serde(rename = "appLinks", skip_serializing_if = "Option::is_none")]
     pub app_links: Option<AppLinksConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -50,8 +57,6 @@ pub struct FeaturesConfig {
     #[serde(default = "default_true")]
     pub app_service: bool,
     #[serde(default)]
-    pub shell: bool,
-    #[serde(default)]
     pub devtools: bool,
 }
 
@@ -59,31 +64,37 @@ impl Default for FeaturesConfig {
     fn default() -> Self {
         Self {
             app_service: true,
-            shell: false,
             devtools: false,
         }
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CapabilitiesConfig {
     #[serde(default)]
     pub notifications: bool,
+    /// The product in-app browser, with its newtab / settings / downloads pages
+    /// and browser shell runtime. Opt-in and cross-platform.
+    #[serde(default)]
+    pub browser: bool,
     #[serde(default)]
     pub terminal: bool,
+    /// Opt-in HTTP proxy for the in-app browser (desktop). Requires browser.
+    #[serde(default)]
+    pub proxy: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct ShellConfig {
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BrowserConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub webui: Option<ShellWebUiConfig>,
+    pub webui: Option<BrowserWebUiConfig>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct ShellWebUiConfig {
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BrowserWebUiConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -147,6 +158,469 @@ pub struct ResourceBundleConfig {
 pub enum ResourceBundleType {
     #[default]
     Lxapp,
+}
+
+// ---------------------------------------------------------------------------
+// Top-level `surfaces:` authoring format.
+//
+// This is INPUT schema only. `surfaces_to_ui` maps it into the internal
+// generated `ui.json` structure (`launch`/`surfaces`/`activators`) consumed by
+// native runtimes.
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum SurfaceRender {
+    #[default]
+    Lxapp,
+    Native,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum SurfaceRole {
+    Main,
+    Aside,
+    Float,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SurfaceDecl {
+    /// Surface id. For `render: lxapp` this doubles as the lxapp `appId`.
+    pub id: String,
+    #[serde(default)]
+    pub render: SurfaceRender,
+    pub role: SurfaceRole,
+    /// At most one `role: main` may set `launch: true` (the initial surface).
+    #[serde(default)]
+    pub launch: bool,
+    /// Required for `role: aside`. One of left|right|top|bottom.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub edge: Option<String>,
+    /// Inline sidebar entry; clicking it toggles this surface.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sidebar: Option<SurfaceSidebar>,
+    /// Inline tray/menubar entry.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tray: Option<SurfaceTray>,
+    /// Availability filter. Omitted = follows `app.platforms`. When present,
+    /// it must be a non-empty subset of `app.platforms` using canonical tokens:
+    /// `macos`, `windows`, `ios`, `android`, `harmony`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub platforms: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SurfaceSidebar {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+    /// Placement within the sidebar: `top` (default) or `bottom`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub section: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SurfaceTray {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub action: Option<SurfaceTrayAction>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub enum SurfaceTrayAction {
+    #[default]
+    Toggle,
+    Activate,
+}
+
+/// Map the `surfaces:` declaration into the internal `ui.json` structure
+/// consumed by native runtimes.
+///
+/// Mapping:
+/// - `role: main` + `render: lxapp` -> surface `role: main`,
+///   content `{ kind: lxapp, appId: <id> }`. `launch: true` ->
+///   `launch.initialSurface = <id>`.
+/// - `role: aside` + `render: lxapp` -> surface `role: aside`,
+///   `attachTo: <main>`, edge `left|right|top|bottom` carried through verbatim.
+/// - `role: aside` + `render: native` (id `terminal`) -> an explicit terminal
+///   surface. `capabilities.terminal` only enables the runtime; it does not add
+///   UI by itself.
+/// - `sidebar` -> a `sidebarItem` activator toggling the surface.
+/// - `tray` -> a `menuBarItem` activator (closest existing kind).
+fn surfaces_to_ui(surfaces: &[SurfaceDecl], terminal_enabled: bool) -> Result<Value> {
+    // `role: float` is not supported. Reject it up front with
+    // a clear message rather than mis-mapping it.
+    if let Some(float) = surfaces.iter().find(|s| s.role == SurfaceRole::Float) {
+        return Err(anyhow!(
+            "surface '{}' uses role: float which is not supported",
+            float.id.trim()
+        ));
+    }
+    // Identify the launch main.
+    let mains: Vec<&SurfaceDecl> = surfaces
+        .iter()
+        .filter(|s| s.role == SurfaceRole::Main)
+        .collect();
+    let launch_mains: Vec<&SurfaceDecl> = mains.iter().copied().filter(|s| s.launch).collect();
+    if launch_mains.len() > 1 {
+        return Err(anyhow!(
+            "surfaces: at most one main surface may set launch: true"
+        ));
+    }
+    let open_on_launch = !launch_mains.is_empty();
+    let launch_main = launch_mains
+        .first()
+        .copied()
+        .or_else(|| mains.first().copied())
+        .ok_or_else(|| anyhow!("surfaces: requires exactly one main surface"))?;
+    let launch_id = launch_main.id.trim().to_string();
+    if launch_id.is_empty() {
+        return Err(anyhow!("surfaces[].id must not be empty"));
+    }
+
+    // Structural validation: unique ids, and fields that only make sense on a
+    // given role.
+    let mut seen_ids = std::collections::HashSet::new();
+    for surface in surfaces {
+        let id = surface.id.trim();
+        if id.is_empty() {
+            return Err(anyhow!("surfaces[].id must not be empty"));
+        }
+        if !seen_ids.insert(id) {
+            return Err(anyhow!("surfaces: duplicate surface id '{id}'"));
+        }
+        if surface.launch && surface.role != SurfaceRole::Main {
+            return Err(anyhow!(
+                "surface '{id}': launch: true is only valid on a main surface"
+            ));
+        }
+        if surface.edge.is_some() && surface.role != SurfaceRole::Aside {
+            return Err(anyhow!(
+                "surface '{id}': edge is only valid on an aside surface"
+            ));
+        }
+        if surface.platforms.as_ref().is_some_and(Vec::is_empty) {
+            return Err(anyhow!(
+                "surface '{id}': platforms must not be empty; omit platforms to follow app.platforms"
+            ));
+        }
+    }
+
+    let mut out_surfaces: Vec<Value> = Vec::new();
+    let mut out_activators: Vec<Value> = Vec::new();
+
+    for surface in surfaces {
+        let id = surface.id.trim();
+        if id.is_empty() {
+            return Err(anyhow!("surfaces[].id must not be empty"));
+        }
+        match surface.role {
+            SurfaceRole::Float => {
+                return Err(anyhow!(
+                    "surface '{id}' uses role: float which is not supported"
+                ));
+            }
+            SurfaceRole::Main => {
+                if surface.render == SurfaceRender::Native {
+                    return Err(anyhow!(
+                        "surface '{id}': role: main with render: native is not supported"
+                    ));
+                }
+                out_surfaces.push(json!({
+                    "id": id,
+                    "role": "main",
+                    "content": { "kind": "lxapp", "appId": id }
+                }));
+            }
+            SurfaceRole::Aside => {
+                let edge = surface
+                    .edge
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|e| !e.is_empty())
+                    .ok_or_else(|| anyhow!("aside surface '{id}' requires an edge"))?;
+                match surface.render {
+                    SurfaceRender::Lxapp => {
+                        let mapped_edge = map_edge(edge, id)?;
+                        out_surfaces.push(json!({
+                            "id": id,
+                            "role": "aside",
+                            "attachTo": launch_id,
+                            "edge": mapped_edge,
+                            "content": { "kind": "lxapp", "appId": id }
+                        }));
+                    }
+                    SurfaceRender::Native => {
+                        // The only native surface currently supported is the
+                        // built-in terminal.
+                        if id != "terminal" {
+                            return Err(anyhow!(
+                                "native surface '{id}' is not supported; only the built-in 'terminal' surface is available"
+                            ));
+                        }
+                        if !terminal_enabled {
+                            return Err(anyhow!(
+                                "surface '{id}' uses render: native (terminal) but capabilities.terminal is not enabled"
+                            ));
+                        }
+                        if edge != "bottom" && edge != "top" {
+                            return Err(anyhow!(
+                                "terminal surface '{id}' must use edge 'top' or 'bottom'"
+                            ));
+                        }
+                        out_surfaces.push(json!({
+                            "id": "terminal",
+                            "role": "aside",
+                            "attachTo": launch_id,
+                            "edge": edge,
+                            "size": { "height": 320 },
+                            "content": { "kind": "terminal" }
+                        }));
+                        // The terminal surface is always available once declared
+                        // (openable programmatically); a sidebar entry is opt-in.
+                        // Emit `terminalSidebar` only when the surface declares a
+                        // `sidebar:` block. Its icon defaults to the host-provided
+                        // built-in when omitted, so authors never write an internal
+                        // sentinel; a supplied icon is a normal repo-relative path.
+                        if let Some(sidebar) = &surface.sidebar {
+                            let terminal_icon = sidebar
+                                .icon
+                                .as_deref()
+                                .unwrap_or("__lingxia_builtin__/terminal.svg");
+                            out_activators.push(json!({
+                                "id": "terminalSidebar",
+                                "kind": "sidebarItem",
+                                "hostSurface": launch_id,
+                                "label": "Terminal",
+                                "icon": terminal_icon,
+                                "action": { "kind": "toggleSurface", "surface": "terminal" }
+                            }));
+                        }
+                        // A native terminal carries its sidebar implicitly; skip
+                        // the generic sidebar/tray emission below for it.
+                        continue;
+                    }
+                }
+            }
+        }
+
+        if let Some(sidebar) = &surface.sidebar {
+            let mut activator = Map::new();
+            activator.insert("id".into(), json!(format!("{id}Sidebar")));
+            activator.insert("kind".into(), json!("sidebarItem"));
+            activator.insert("hostSurface".into(), json!(launch_id));
+            let label = sidebar
+                .label
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .unwrap_or(id);
+            activator.insert("label".into(), json!(label));
+            if let Some(icon) = sidebar
+                .icon
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+            {
+                activator.insert("icon".into(), json!(icon));
+            }
+            if let Some(section) = sidebar
+                .section
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+            {
+                if section != "top" && section != "bottom" {
+                    return Err(anyhow!(
+                        "surface '{id}' sidebar.section must be 'top' or 'bottom'"
+                    ));
+                }
+                // The internal activator schema has no first-class placement
+                // field today; carry `section` through verbatim (runtime ignores
+                // unknown keys, defaulting to top).
+                activator.insert("section".into(), json!(section));
+            }
+            activator.insert(
+                "action".into(),
+                json!({ "kind": "toggleSurface", "surface": id }),
+            );
+            out_activators.push(Value::Object(activator));
+        }
+
+        if let Some(tray) = &surface.tray {
+            // The internal schema's closest existing kind is `menuBarItem`.
+            // (There is no dedicated status/tray runtime kind today.)
+            let mut activator = Map::new();
+            activator.insert("id".into(), json!(format!("{id}Tray")));
+            activator.insert("kind".into(), json!("menuBarItem"));
+            if let Some(icon) = tray
+                .icon
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+            {
+                activator.insert("icon".into(), json!(icon));
+            }
+            if let Some(label) = tray
+                .label
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+            {
+                activator.insert("label".into(), json!(label));
+            }
+            let action_kind = match tray.action.unwrap_or_default() {
+                SurfaceTrayAction::Toggle => "toggleSurface",
+                SurfaceTrayAction::Activate => "openSurface",
+            };
+            activator.insert(
+                "action".into(),
+                json!({ "kind": action_kind, "surface": id }),
+            );
+            out_activators.push(Value::Object(activator));
+        }
+    }
+
+    // Carry surface-level `platforms` onto generated surfaces so platform
+    // packaging/runtime code can hide surfaces not meant for that target.
+    for surface in surfaces {
+        let Some(platforms) = surface.platforms.as_ref() else {
+            continue;
+        };
+        let sid = surface.id.trim();
+        if let Some(obj) = out_surfaces
+            .iter_mut()
+            .find(|s| s.get("id").and_then(Value::as_str) == Some(sid))
+            .and_then(Value::as_object_mut)
+        {
+            obj.insert("platforms".into(), json!(platforms));
+        }
+    }
+
+    let mut launch = Map::new();
+    launch.insert("initialSurface".into(), json!(launch_id));
+    if !open_on_launch {
+        launch.insert("openOnLaunch".into(), json!(false));
+    }
+
+    Ok(json!({
+        "launch": launch,
+        "surfaces": out_surfaces,
+        "activators": out_activators
+    }))
+}
+
+fn map_edge(edge: &str, id: &str) -> Result<&'static str> {
+    Ok(match edge {
+        "left" => "left",
+        "right" => "right",
+        "top" => "top",
+        "bottom" => "bottom",
+        other => {
+            return Err(anyhow!(
+                "aside surface '{id}' has invalid edge '{other}'; expected left|right|top|bottom"
+            ));
+        }
+    })
+}
+
+fn is_authoring_platform(value: &str) -> bool {
+    AUTHORING_PLATFORMS.contains(&value)
+}
+
+fn validate_app_platforms(app: &HostAppConfig) -> Result<Vec<String>> {
+    if app.platforms.is_empty() {
+        return Err(anyhow!("app.platforms must include at least one platform"));
+    }
+
+    let mut seen = HashSet::new();
+    let mut platforms = Vec::new();
+    for (index, raw) in app.platforms.iter().enumerate() {
+        let platform = raw.as_str();
+        if !is_authoring_platform(platform) {
+            return Err(anyhow!(
+                "app.platforms[{index}] has unsupported platform '{raw}'; expected one of: {}",
+                AUTHORING_PLATFORMS.join(", ")
+            ));
+        }
+        if !seen.insert(platform.to_string()) {
+            return Err(anyhow!(
+                "app.platforms contains duplicate platform '{platform}'"
+            ));
+        }
+        platforms.push(platform.to_string());
+    }
+    Ok(platforms)
+}
+
+fn validate_surface_platforms(surfaces: &[SurfaceDecl], app_platforms: &[String]) -> Result<()> {
+    let app_platform_set: HashSet<&str> = app_platforms.iter().map(String::as_str).collect();
+
+    for surface in surfaces {
+        let id = surface.id.trim();
+        let Some(platforms) = surface.platforms.as_ref() else {
+            validate_surface_intrinsic_platforms(surface, id, app_platforms)?;
+            continue;
+        };
+
+        if platforms.is_empty() {
+            return Err(anyhow!(
+                "surface '{id}': platforms must not be empty; omit platforms to follow app.platforms"
+            ));
+        }
+
+        let mut seen = HashSet::new();
+        let mut effective = Vec::new();
+        for (index, raw) in platforms.iter().enumerate() {
+            let platform = raw.as_str();
+            if !is_authoring_platform(platform) {
+                return Err(anyhow!(
+                    "surface '{id}': platforms[{index}] has unsupported platform '{raw}'; expected one of: {}",
+                    AUTHORING_PLATFORMS.join(", ")
+                ));
+            }
+            if !app_platform_set.contains(platform) {
+                return Err(anyhow!(
+                    "surface '{id}': platform '{platform}' is not listed in app.platforms"
+                ));
+            }
+            if !seen.insert(platform.to_string()) {
+                return Err(anyhow!(
+                    "surface '{id}': platforms contains duplicate platform '{platform}'"
+                ));
+            }
+            effective.push(platform.to_string());
+        }
+        validate_surface_intrinsic_platforms(surface, id, &effective)?;
+    }
+    Ok(())
+}
+
+fn validate_surface_intrinsic_platforms(
+    surface: &SurfaceDecl,
+    id: &str,
+    effective_platforms: &[String],
+) -> Result<()> {
+    if surface.render == SurfaceRender::Native && id == "terminal" {
+        for platform in effective_platforms {
+            if !TERMINAL_SURFACE_PLATFORMS.contains(&platform.as_str()) {
+                return Err(anyhow!(
+                    "surface '{id}' is a terminal surface and only supports platforms: {}",
+                    TERMINAL_SURFACE_PLATFORMS.join(", ")
+                ));
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Host app settings (checked into git via `lingxia.yaml`).
@@ -493,14 +967,20 @@ impl LingXiaConfig {
             .unwrap_or(true)
     }
 
-    pub fn shell_enabled(&self, platform: &str) -> bool {
-        let shell_requested = self
-            .features
+    /// The adaptive-layout host shell (window + sidebar chrome) and webview input
+    /// are the desktop baseline — always present on macOS and Windows. The
+    /// browser it can dock is a separate opt-in capability (`browser_enabled`).
+    pub fn desktop_runtime_enabled(&self, platform: &str) -> bool {
+        matches!(platform, "macos" | "windows")
+    }
+
+    /// The in-app browser capability — cross-platform and opt-in. Gates the
+    /// browser runtime/feature and the bundling of its webui pages everywhere.
+    pub fn browser_enabled(&self) -> bool {
+        self.capabilities
             .as_ref()
-            .map(|features| features.shell)
-            .unwrap_or(false);
-        (shell_requested || self.terminal_enabled(platform))
-            && matches!(platform, "macos" | "windows")
+            .map(|capabilities| capabilities.browser)
+            .unwrap_or(false)
     }
 
     pub fn terminal_enabled(&self, platform: &str) -> bool {
@@ -510,6 +990,15 @@ impl LingXiaConfig {
             .map(|capabilities| capabilities.terminal)
             .unwrap_or(false);
         terminal_requested && matches!(platform, "macos" | "windows")
+    }
+
+    pub fn proxy_enabled(&self, platform: &str) -> bool {
+        let proxy_requested = self
+            .capabilities
+            .as_ref()
+            .map(|capabilities| capabilities.proxy)
+            .unwrap_or(false);
+        proxy_requested && self.browser_enabled() && matches!(platform, "macos" | "windows")
     }
 
     pub fn devtools_enabled(&self) -> bool {
@@ -524,18 +1013,33 @@ impl LingXiaConfig {
         if self.app_service_enabled() {
             features.push("standard".to_string());
         }
-        if self.shell_enabled(platform) {
-            features.push("shell-runtime".to_string());
+        // The browser capability brings its runtime and webui pages (newtab /
+        // settings / downloads) on every platform it is enabled for.
+        if self.browser_enabled() {
+            features.push("browser-shell".to_string());
         }
         if self.terminal_enabled(platform) {
             features.push("terminal-runtime".to_string());
         }
-        if self.shell_enabled(platform) {
+        if self.desktop_runtime_enabled(platform) {
             features.push("webview-input".to_string());
+        }
+        if self.proxy_enabled(platform) {
+            features.push("proxy".to_string());
         }
         if self.devtools_enabled() {
             features.push("devtools".to_string());
         }
+        features
+    }
+
+    pub fn native_features_for_platform_with_extra(
+        &self,
+        platform: &str,
+        extra_features: &[String],
+    ) -> Vec<String> {
+        let mut features = self.native_features_for_platform(platform);
+        append_native_features(&mut features, extra_features);
         features
     }
 
@@ -557,8 +1061,9 @@ impl LingXiaConfig {
         let content = fs::read_to_string(&config_path)
             .with_context(|| format!("Failed to read {}", config_path.display()))?;
 
-        let config: LingXiaConfig = yaml::from_str(&content)
+        let mut config: LingXiaConfig = yaml::from_str(&content)
             .with_context(|| format!("Failed to parse {}", config_path.display()))?;
+        config.apply_surfaces()?;
         config.validate()?;
 
         Ok(config)
@@ -605,8 +1110,9 @@ impl LingXiaConfig {
             windows: None,
             features: Some(FeaturesConfig::default()),
             capabilities: Some(CapabilitiesConfig::default()),
-            shell: None,
-            ui: None,
+            browser: None,
+            generated_ui: None,
+            surfaces: None,
             app_links: None,
             storage: None,
             resources: Some(ResourcesConfig {
@@ -621,6 +1127,33 @@ impl LingXiaConfig {
         }
     }
 
+    /// Map the top-level `surfaces:` block into the generated `ui` structure
+    /// consumed by the runtime.
+    fn apply_surfaces(&mut self) -> Result<()> {
+        let Some(surfaces) = self.surfaces.as_ref() else {
+            return Ok(());
+        };
+        if surfaces.is_empty() {
+            return Err(anyhow!("surfaces: must contain at least one surface"));
+        }
+        let app = self
+            .app
+            .as_ref()
+            .ok_or_else(|| anyhow!("surfaces requires app.platforms"))?;
+        let app_platforms = validate_app_platforms(app)?;
+        validate_surface_platforms(surfaces, &app_platforms)?;
+        // `surfaces` is independent of `capabilities`; terminal availability is
+        // gated by `capabilities.terminal` (any-platform truthiness here, the
+        // per-platform gating stays in `terminal_enabled`).
+        let terminal_enabled = self
+            .capabilities
+            .as_ref()
+            .map(|capabilities| capabilities.terminal)
+            .unwrap_or(false);
+        self.generated_ui = Some(surfaces_to_ui(surfaces, terminal_enabled)?);
+        Ok(())
+    }
+
     fn validate(&self) -> Result<()> {
         if let Some(app) = &self.app {
             if app.project_name.trim().is_empty() {
@@ -632,9 +1165,7 @@ impl LingXiaConfig {
             Version::parse(app.product_version.trim()).map_err(|_| {
                 anyhow!("app.productVersion must be a semantic version (major.minor.patch)")
             })?;
-            if app.platforms.is_empty() {
-                return Err(anyhow!("app.platforms must include at least one platform"));
-            }
+            validate_app_platforms(app)?;
             let home_app_id = app.home_app_id.trim();
             if home_app_id.is_empty() {
                 return Err(anyhow!("app.homeAppId must not be empty"));
@@ -657,9 +1188,9 @@ impl LingXiaConfig {
                 .iter()
                 .any(|platform| platform.eq_ignore_ascii_case("macos"));
             if has_macos {
-                let Some(ui) = &self.ui else {
+                let Some(ui) = &self.generated_ui else {
                     return Err(anyhow!(
-                        "ui is required for macOS host app projects; define ui.launch, ui.surfaces, and ui.activators"
+                        "surfaces is required for macOS host app projects; define top-level surfaces:"
                     ));
                 };
                 validate_macos_ui_config(ui, self.terminal_enabled("macos"))?;
@@ -696,8 +1227,8 @@ impl LingXiaConfig {
                 if is_sdk_reserved_app_id(app_id) {
                     return Err(anyhow!(
                         "resources.bundles[{app_id}] uses an SDK-reserved appId. \
-                         To customize the in-app browser webui, use `shell.webui.path` \
-                         (or `shell.webui.package`) instead of declaring \
+                         To customize the in-app browser webui, use `browser.webui.path` \
+                         (or `browser.webui.package`) instead of declaring \
                          `{app_id}` as a resource bundle."
                     ));
                 }
@@ -731,7 +1262,11 @@ impl LingXiaConfig {
                 }
             }
         }
-        if let Some(webui) = self.shell.as_ref().and_then(|shell| shell.webui.as_ref()) {
+        if let Some(webui) = self
+            .browser
+            .as_ref()
+            .and_then(|browser| browser.webui.as_ref())
+        {
             let has_path = webui
                 .path
                 .as_deref()
@@ -744,7 +1279,7 @@ impl LingXiaConfig {
                 .is_some_and(|value| !value.is_empty());
             if has_path && has_package {
                 return Err(anyhow!(
-                    "shell.webui must use either path or package, not both"
+                    "browser.webui must use either path or package, not both"
                 ));
             }
             if webui
@@ -753,10 +1288,10 @@ impl LingXiaConfig {
                 .map(str::trim)
                 .is_some_and(|value| value.is_empty())
             {
-                return Err(anyhow!("shell.webui.version must not be empty"));
+                return Err(anyhow!("browser.webui.version must not be empty"));
             }
         }
-        if let Some(ui) = &self.ui
+        if let Some(ui) = &self.generated_ui
             && !ui.is_object()
         {
             return Err(anyhow!("ui must be a JSON object"));
@@ -765,11 +1300,21 @@ impl LingXiaConfig {
     }
 }
 
+pub fn append_native_features(features: &mut Vec<String>, extra_features: &[String]) {
+    for feature in extra_features {
+        let feature = feature.trim();
+        if feature.is_empty() || features.iter().any(|existing| existing == feature) {
+            continue;
+        }
+        features.push(feature.to_string());
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum MacosUiSurfaceKind {
-    Window,
-    Panel,
-    AttachPanel,
+enum MacosUiSurfaceRole {
+    Main,
+    Aside,
+    Float,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -780,7 +1325,7 @@ enum MacosUiContentKind {
 
 #[derive(Debug, Clone)]
 struct MacosUiSurface {
-    kind: MacosUiSurfaceKind,
+    role: MacosUiSurfaceRole,
     content_kind: MacosUiContentKind,
     attach_to: Option<String>,
     edge: Option<String>,
@@ -804,12 +1349,12 @@ fn optional_non_empty_str(value: Option<&Value>) -> Option<String> {
 
 /// App IDs reserved for SDK-internal hosts that ship their own customization API.
 /// These must not appear in `resources.bundles` or `app.homeAppId`; the SDK provides
-/// dedicated config keys (e.g. `shell.webui.*` for the in-app browser webui).
+/// dedicated config keys (e.g. `browser.webui.*` for the in-app browser webui).
 ///
 /// Source of truth for each entry (kept in sync manually to avoid pulling the
 /// full browser runtime into the CLI build):
-/// - `crate::host_assets::SHELL_WEBUI_APP_ID` mirrors `lingxia_browser::BUILTIN_BROWSER_APPID`.
-const SDK_RESERVED_APP_IDS: &[&str] = &[crate::host_assets::SHELL_WEBUI_APP_ID];
+/// - `crate::host_assets::BROWSER_SHELL_WEBUI_APP_ID` mirrors `lingxia_browser::BUILTIN_BROWSER_APPID`.
+const SDK_RESERVED_APP_IDS: &[&str] = &[crate::host_assets::BROWSER_SHELL_WEBUI_APP_ID];
 
 fn is_sdk_reserved_app_id(app_id: &str) -> bool {
     SDK_RESERVED_APP_IDS.contains(&app_id)
@@ -860,6 +1405,11 @@ fn validate_macos_ui_config(ui: &Value, terminal_enabled: bool) -> Result<()> {
         .and_then(Value::as_object)
         .ok_or_else(|| anyhow!("ui.launch must be an object"))?;
     let initial_surface = non_empty_str(launch.get("initialSurface"), "ui.launch.initialSurface")?;
+    if let Some(open_on_launch) = launch.get("openOnLaunch")
+        && open_on_launch.as_bool().is_none()
+    {
+        return Err(anyhow!("ui.launch.openOnLaunch must be a boolean"));
+    }
     let surfaces = ui_obj
         .get("surfaces")
         .and_then(Value::as_array)
@@ -873,7 +1423,9 @@ fn validate_macos_ui_config(ui: &Value, terminal_enabled: bool) -> Result<()> {
         .ok_or_else(|| anyhow!("ui.activators must be an array"));
     let activators = activators?;
 
+    let mut all_surface_ids = HashSet::<String>::new();
     let mut surface_by_id = HashMap::<String, MacosUiSurface>::new();
+    let mut skipped_surface_ids = HashSet::<String>::new();
     let mut seen_app_ids = HashSet::<String>::new();
 
     for (index, surface) in surfaces.iter().enumerate() {
@@ -881,52 +1433,23 @@ fn validate_macos_ui_config(ui: &Value, terminal_enabled: bool) -> Result<()> {
             .as_object()
             .ok_or_else(|| anyhow!("ui.surfaces[{index}] must be an object"))?;
         let id = non_empty_str(obj.get("id"), &format!("ui.surfaces[{index}].id"))?;
-        if surface_by_id.contains_key(id) {
+        if !all_surface_ids.insert(id.to_string()) {
             return Err(anyhow!("duplicate ui surface id '{id}'"));
         }
+        if !ui_surface_available_on_platform(obj, "macos", &format!("ui.surfaces[{index}]"))? {
+            skipped_surface_ids.insert(id.to_string());
+            continue;
+        }
 
-        let presentation = obj
-            .get("presentation")
-            .and_then(Value::as_object)
-            .ok_or_else(|| anyhow!("ui.surfaces[{index}].presentation must be an object"))?;
-        let presentation_kind = non_empty_str(
-            presentation.get("kind"),
-            &format!("ui.surfaces[{index}].presentation.kind"),
-        )?;
-        let presentation_kind = match presentation_kind {
-            "window" => MacosUiSurfaceKind::Window,
-            "panel" => MacosUiSurfaceKind::Panel,
-            "attachPanel" => MacosUiSurfaceKind::AttachPanel,
-            "sheet" | "embedded" => {
-                return Err(anyhow!(
-                    "ui surface '{id}' uses unsupported macOS presentation.kind '{presentation_kind}'"
-                ));
-            }
+        let role = non_empty_str(obj.get("role"), &format!("ui.surfaces[{index}].role"))?;
+        let role = match role {
+            "main" => MacosUiSurfaceRole::Main,
+            "aside" => MacosUiSurfaceRole::Aside,
+            "float" => MacosUiSurfaceRole::Float,
             other => {
-                return Err(anyhow!(
-                    "ui surface '{id}' has unknown presentation.kind '{other}'"
-                ));
+                return Err(anyhow!("ui surface '{id}' has unknown role '{other}'"));
             }
         };
-        let anchor = optional_non_empty_str(presentation.get("anchor"));
-        if let Some(anchor) = anchor.as_deref()
-            && anchor != "activator"
-        {
-            return Err(anyhow!(
-                "ui surface '{id}' has unsupported presentation.anchor '{anchor}'"
-            ));
-        }
-        if anchor.is_some() && presentation_kind != MacosUiSurfaceKind::Panel {
-            return Err(anyhow!(
-                "ui surface '{id}' can set presentation.anchor only when presentation.kind is panel"
-            ));
-        }
-        if presentation_kind == MacosUiSurfaceKind::Panel && anchor.as_deref() != Some("activator")
-        {
-            return Err(anyhow!(
-                "ui surface '{id}' with presentation.kind panel requires presentation.anchor: activator"
-            ));
-        }
         let content = obj
             .get("content")
             .and_then(Value::as_object)
@@ -971,22 +1494,33 @@ fn validate_macos_ui_config(ui: &Value, terminal_enabled: bool) -> Result<()> {
         surface_by_id.insert(
             id.to_string(),
             MacosUiSurface {
-                kind: presentation_kind,
+                role,
                 content_kind,
-                attach_to: optional_non_empty_str(presentation.get("attachTo")),
-                edge: optional_non_empty_str(presentation.get("edge")),
+                attach_to: optional_non_empty_str(obj.get("attachTo")),
+                edge: optional_non_empty_str(obj.get("edge")),
             },
         );
     }
 
+    if surface_by_id.is_empty() {
+        return Err(anyhow!(
+            "ui.surfaces must contain at least one surface available on macOS"
+        ));
+    }
+
     let Some(initial) = surface_by_id.get(initial_surface) else {
+        if skipped_surface_ids.contains(initial_surface) {
+            return Err(anyhow!(
+                "ui.launch.initialSurface '{initial_surface}' is not available on macOS"
+            ));
+        }
         return Err(anyhow!(
             "ui.launch.initialSurface references unknown surface '{initial_surface}'"
         ));
     };
     if !matches!(
-        initial.kind,
-        MacosUiSurfaceKind::Window | MacosUiSurfaceKind::Panel | MacosUiSurfaceKind::AttachPanel
+        initial.role,
+        MacosUiSurfaceRole::Main | MacosUiSurfaceRole::Float | MacosUiSurfaceRole::Aside
     ) {
         return Err(anyhow!(
             "ui.launch.initialSurface must reference a supported macOS surface"
@@ -997,76 +1531,71 @@ fn validate_macos_ui_config(ui: &Value, terminal_enabled: bool) -> Result<()> {
         .iter()
         .filter_map(|(id, surface)| {
             matches!(
-                surface.kind,
-                MacosUiSurfaceKind::Window | MacosUiSurfaceKind::Panel
+                surface.role,
+                MacosUiSurfaceRole::Main | MacosUiSurfaceRole::Float
             )
             .then_some(id.as_str())
         })
         .collect::<Vec<_>>();
     if root_ids.len() != 1 {
         return Err(anyhow!(
-            "macOS app UI currently requires exactly one root window or panel surface"
+            "macOS app UI currently requires exactly one root main or float surface"
         ));
     }
     let root_id = root_ids[0];
 
     for (id, surface) in &surface_by_id {
         if surface.content_kind == MacosUiContentKind::Terminal {
-            if surface.kind != MacosUiSurfaceKind::AttachPanel {
-                return Err(anyhow!(
-                    "terminal ui surface '{id}' must use presentation.kind 'attachPanel'"
-                ));
+            if surface.role != MacosUiSurfaceRole::Aside {
+                return Err(anyhow!("terminal ui surface '{id}' must use role 'aside'"));
             }
             let edge = surface
                 .edge
                 .as_deref()
-                .ok_or_else(|| anyhow!("terminal ui surface '{id}' requires presentation.edge"))?;
-            if edge != "bottom" {
+                .ok_or_else(|| anyhow!("terminal ui surface '{id}' requires edge"))?;
+            if edge != "bottom" && edge != "top" {
                 return Err(anyhow!(
-                    "terminal ui surface '{id}' must use presentation.edge 'bottom'"
+                    "terminal ui surface '{id}' must use edge 'top' or 'bottom'"
                 ));
             }
         }
 
-        match surface.kind {
-            MacosUiSurfaceKind::Window | MacosUiSurfaceKind::Panel => {
+        match surface.role {
+            MacosUiSurfaceRole::Main | MacosUiSurfaceRole::Float => {
                 if surface.attach_to.is_some() {
                     return Err(anyhow!("root ui surface '{id}' cannot set attachTo"));
                 }
             }
-            MacosUiSurfaceKind::AttachPanel => {
-                let parent_id = surface.attach_to.as_deref().ok_or_else(|| {
-                    anyhow!("attachPanel ui surface '{id}' requires presentation.attachTo")
-                })?;
+            MacosUiSurfaceRole::Aside => {
+                let parent_id = surface
+                    .attach_to
+                    .as_deref()
+                    .ok_or_else(|| anyhow!("aside ui surface '{id}' requires attachTo"))?;
                 let parent = surface_by_id.get(parent_id).ok_or_else(|| {
                     anyhow!("ui surface '{id}' attaches to unknown surface '{parent_id}'")
                 })?;
                 if !matches!(
-                    parent.kind,
-                    MacosUiSurfaceKind::Window | MacosUiSurfaceKind::Panel
+                    parent.role,
+                    MacosUiSurfaceRole::Main | MacosUiSurfaceRole::Float
                 ) {
                     return Err(anyhow!(
-                        "macOS app UI currently does not support attachPanel -> attachPanel; surface '{id}' attaches to '{parent_id}'"
+                        "macOS app UI currently does not support aside -> aside; surface '{id}' attaches to '{parent_id}'"
                     ));
                 }
                 if parent_id != root_id {
                     return Err(anyhow!(
-                        "macOS app UI currently supports panels attached only to the root surface"
+                        "macOS app UI currently supports asides attached only to the root surface"
                     ));
                 }
-                let edge = surface.edge.as_deref().ok_or_else(|| {
-                    anyhow!("attachPanel ui surface '{id}' requires presentation.edge")
-                })?;
+                let edge = surface
+                    .edge
+                    .as_deref()
+                    .ok_or_else(|| anyhow!("aside ui surface '{id}' requires edge"))?;
                 match edge {
-                    "leading" | "trailing" | "bottom" => {}
-                    "top" => {
-                        return Err(anyhow!(
-                            "macOS app UI currently does not support attachPanel.edge: top"
-                        ));
-                    }
+                    "left" | "right" | "bottom" | "top" => {}
                     other => {
                         return Err(anyhow!(
-                            "attachPanel ui surface '{id}' has unknown presentation.edge '{other}'"
+                            "aside ui surface '{id}' has unknown edge '{other}'"
                         ));
                     }
                 }
@@ -1080,9 +1609,6 @@ fn validate_macos_ui_config(ui: &Value, terminal_enabled: bool) -> Result<()> {
             .as_object()
             .ok_or_else(|| anyhow!("ui.activators[{index}] must be an object"))?;
         let id = non_empty_str(obj.get("id"), &format!("ui.activators[{index}].id"))?;
-        if !seen_activator_ids.insert(id.to_string()) {
-            return Err(anyhow!("duplicate ui activator id '{id}'"));
-        }
         let kind = non_empty_str(obj.get("kind"), &format!("ui.activators[{index}].kind"))?;
         let action = obj
             .get("action")
@@ -1093,7 +1619,7 @@ fn validate_macos_ui_config(ui: &Value, terminal_enabled: bool) -> Result<()> {
             &format!("ui.activators[{index}].action.kind"),
         )?;
         match action_kind {
-            "toggleSurface" | "openSurface" | "closeSurface" | "focusSurface" => {}
+            "toggleSurface" | "openSurface" => {}
             other => {
                 return Err(anyhow!(
                     "ui activator '{id}' has unknown action.kind '{other}'"
@@ -1104,12 +1630,16 @@ fn validate_macos_ui_config(ui: &Value, terminal_enabled: bool) -> Result<()> {
             action.get("surface"),
             &format!("ui.activators[{index}].action.surface"),
         )?;
+        if skipped_surface_ids.contains(action_surface) {
+            continue;
+        }
         if !surface_by_id.contains_key(action_surface) {
             return Err(anyhow!(
                 "ui activator '{id}' references unknown surface '{action_surface}'"
             ));
         }
 
+        let mut keep_activator = true;
         match kind {
             "menuBarItem" | "appActivation" => {
                 if obj.get("hostSurface").is_some() {
@@ -1123,7 +1653,9 @@ fn validate_macos_ui_config(ui: &Value, terminal_enabled: bool) -> Result<()> {
                     obj.get("hostSurface"),
                     &format!("ui.activators[{index}].hostSurface"),
                 )?;
-                if !surface_by_id.contains_key(host_surface) {
+                if skipped_surface_ids.contains(host_surface) {
+                    keep_activator = false;
+                } else if !surface_by_id.contains_key(host_surface) {
                     return Err(anyhow!(
                         "ui activator '{id}' references unknown hostSurface '{host_surface}'"
                     ));
@@ -1133,9 +1665,40 @@ fn validate_macos_ui_config(ui: &Value, terminal_enabled: bool) -> Result<()> {
                 return Err(anyhow!("ui activator '{id}' has unknown kind '{other}'"));
             }
         }
+        if !keep_activator {
+            continue;
+        }
+        if !seen_activator_ids.insert(id.to_string()) {
+            return Err(anyhow!("duplicate ui activator id '{id}'"));
+        }
     }
 
     Ok(())
+}
+
+fn ui_surface_available_on_platform(
+    surface: &Map<String, Value>,
+    platform: &str,
+    context: &str,
+) -> Result<bool> {
+    let Some(platforms) = surface.get("platforms") else {
+        return Ok(true);
+    };
+    let platforms = platforms
+        .as_array()
+        .ok_or_else(|| anyhow!("{context}.platforms must be an array"))?;
+    if platforms.is_empty() {
+        return Ok(true);
+    }
+    for (index, platform_value) in platforms.iter().enumerate() {
+        let value = platform_value
+            .as_str()
+            .ok_or_else(|| anyhow!("{context}.platforms[{index}] must be a string"))?;
+        if value.eq_ignore_ascii_case(platform) {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 pub fn has_host_config(project_root: &Path) -> bool {
@@ -1264,6 +1827,13 @@ mod tests {
     use super::*;
     use tempfile::TempDir;
 
+    fn load_config_yaml(source: &str) -> Result<LingXiaConfig> {
+        let mut config: LingXiaConfig = yaml::from_str(source)?;
+        config.apply_surfaces()?;
+        config.validate()?;
+        Ok(config)
+    }
+
     #[test]
     fn test_android_api_level_derivation() {
         let config = AndroidConfig {
@@ -1314,7 +1884,7 @@ mod tests {
             .push(ResourceBundleConfig {
                 bundle_type: ResourceBundleType::Lxapp,
                 app_id: "app.lingxia.browser".to_string(),
-                path: Some("./my-shell-webui".to_string()),
+                path: Some("./my-browser-shell-webui".to_string()),
                 package: None,
                 version: None,
             });
@@ -1324,7 +1894,7 @@ mod tests {
             .expect_err("validate must reject reserved appId");
         let msg = err.to_string();
         assert!(
-            msg.contains("app.lingxia.browser") && msg.contains("shell.webui"),
+            msg.contains("app.lingxia.browser") && msg.contains("browser.webui"),
             "error must point at the new customization API; got: {msg}"
         );
     }
@@ -1373,22 +1943,21 @@ android:
     }
 
     #[test]
-    fn shell_feature_is_only_effective_on_macos() {
-        let mut config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
-        config.features.as_mut().unwrap().shell = true;
+    fn desktop_runtime_is_baseline_on_desktop_only() {
+        let config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
 
-        assert!(config.shell_enabled("macos"));
-        assert!(!config.shell_enabled("android"));
-        assert!(!config.shell_enabled("ios"));
-        assert!(!config.shell_enabled("harmony"));
+        // The layout host + webview input are baseline on desktop, with no
+        // opt-in flag required. The browser is NOT baseline — without the
+        // `browser` capability there is no browser-shell anywhere.
+        assert!(config.desktop_runtime_enabled("macos"));
+        assert!(config.desktop_runtime_enabled("windows"));
+        assert!(!config.desktop_runtime_enabled("android"));
+        assert!(!config.desktop_runtime_enabled("ios"));
+        assert!(!config.desktop_runtime_enabled("harmony"));
 
         assert_eq!(
             config.native_features_for_platform("macos"),
-            vec![
-                "standard".to_string(),
-                "shell-runtime".to_string(),
-                "webview-input".to_string(),
-            ]
+            vec!["standard".to_string(), "webview-input".to_string()]
         );
         assert_eq!(
             config.native_features_for_platform("harmony"),
@@ -1397,18 +1966,75 @@ android:
     }
 
     #[test]
-    fn terminal_capability_enables_macos_and_windows_runtime() {
+    fn browser_capability_enables_runtime_cross_platform() {
         let mut config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
-        config.capabilities.as_mut().unwrap().terminal = true;
 
-        assert!(config.shell_enabled("macos"));
-        assert!(config.terminal_enabled("windows"));
-        assert!(!config.shell_enabled("android"));
+        // Off by default — no browser runtime on any platform.
+        assert!(!config.browser_enabled());
+        assert!(
+            !config
+                .native_features_for_platform("ios")
+                .contains(&"browser-shell".to_string())
+        );
+        assert!(
+            !config
+                .native_features_for_platform("macos")
+                .contains(&"browser-shell".to_string())
+        );
+
+        // Opt in: the browser runtime ships everywhere, mobile included.
+        config.capabilities.as_mut().unwrap().browser = true;
+        assert!(config.browser_enabled());
+        for platform in ["ios", "android", "macos", "windows", "harmony"] {
+            assert!(
+                config
+                    .native_features_for_platform(platform)
+                    .contains(&"browser-shell".to_string()),
+                "browser runtime missing on {platform}"
+            );
+        }
+    }
+
+    #[test]
+    fn proxy_capability_adds_proxy_feature_on_desktop() {
+        let mut config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
+        // Proxy serves the browser, so it requires the browser capability.
+        config.capabilities.as_mut().unwrap().browser = true;
+        config.capabilities.as_mut().unwrap().proxy = true;
+
+        assert!(config.proxy_enabled("macos"));
+        assert!(!config.proxy_enabled("android"));
         assert_eq!(
             config.native_features_for_platform("macos"),
             vec![
                 "standard".to_string(),
-                "shell-runtime".to_string(),
+                "browser-shell".to_string(),
+                "webview-input".to_string(),
+                "proxy".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn proxy_requires_browser_capability() {
+        let mut config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
+        config.capabilities.as_mut().unwrap().proxy = true;
+        // Browser off: proxy has nothing to serve, so it stays disabled.
+        assert!(!config.proxy_enabled("macos"));
+    }
+
+    #[test]
+    fn terminal_capability_enables_macos_and_windows_runtime() {
+        let mut config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
+        config.capabilities.as_mut().unwrap().terminal = true;
+
+        assert!(config.desktop_runtime_enabled("macos"));
+        assert!(config.terminal_enabled("windows"));
+        assert!(!config.desktop_runtime_enabled("android"));
+        assert_eq!(
+            config.native_features_for_platform("macos"),
+            vec![
+                "standard".to_string(),
                 "terminal-runtime".to_string(),
                 "webview-input".to_string(),
             ]
@@ -1417,7 +2043,6 @@ android:
             config.native_features_for_platform("windows"),
             vec![
                 "standard".to_string(),
-                "shell-runtime".to_string(),
                 "terminal-runtime".to_string(),
                 "webview-input".to_string(),
             ]
@@ -1495,13 +2120,196 @@ android:
     }
 
     #[test]
-    fn macos_host_requires_ui() {
+    fn macos_host_requires_surfaces() {
         let mut config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
         let app = config.app.as_mut().unwrap();
         app.platforms = vec!["macos".to_string()];
 
         let err = config.validate().unwrap_err().to_string();
-        assert!(err.contains("ui is required for macOS host app projects"));
+        assert!(err.contains("surfaces is required for macOS host app projects"));
+    }
+
+    #[test]
+    fn rejects_root_ui_schema() {
+        let yaml = r#"
+app:
+  projectName: demo
+  productName: Demo
+  productVersion: 0.1.0
+  platforms: [macos]
+  homeAppId: demo-home
+ui:
+  launch:
+    initialSurface: main
+  surfaces: []
+  activators: []
+"#;
+
+        let err = yaml::from_str::<LingXiaConfig>(yaml)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("unknown field `ui`"));
+    }
+
+    #[test]
+    fn rejects_removed_terminal_edge_capability() {
+        let yaml = r#"
+app:
+  projectName: demo
+  productName: Demo
+  productVersion: 0.1.0
+  platforms: [macos]
+  homeAppId: demo-home
+capabilities:
+  terminal: true
+  terminalEdge: bottom
+"#;
+
+        let err = yaml::from_str::<LingXiaConfig>(yaml)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("terminalEdge"));
+    }
+
+    #[test]
+    fn rejects_unknown_app_platform_token() {
+        let yaml = r#"
+app:
+  projectName: demo
+  productName: Demo
+  productVersion: 0.1.0
+  platforms: [mac]
+  homeAppId: home
+surfaces:
+  - id: home
+    role: main
+    launch: true
+"#;
+
+        let err = load_config_yaml(yaml).unwrap_err().to_string();
+        assert!(err.contains("app.platforms[0]"), "{err}");
+        assert!(err.contains("mac"), "{err}");
+    }
+
+    #[test]
+    fn rejects_unknown_surface_platform_token() {
+        let yaml = r#"
+app:
+  projectName: demo
+  productName: Demo
+  productVersion: 0.1.0
+  platforms: [macos, android]
+  homeAppId: home
+surfaces:
+  - id: home
+    role: main
+    launch: true
+    platforms: [andriod]
+"#;
+
+        let err = load_config_yaml(yaml).unwrap_err().to_string();
+        assert!(err.contains("surface 'home'"), "{err}");
+        assert!(err.contains("unsupported platform 'andriod'"), "{err}");
+    }
+
+    #[test]
+    fn rejects_empty_surface_platforms() {
+        let yaml = r#"
+app:
+  projectName: demo
+  productName: Demo
+  productVersion: 0.1.0
+  platforms: [macos]
+  homeAppId: home
+surfaces:
+  - id: home
+    role: main
+    launch: true
+    platforms: []
+"#;
+
+        let err = load_config_yaml(yaml).unwrap_err().to_string();
+        assert!(err.contains("platforms must not be empty"), "{err}");
+    }
+
+    #[test]
+    fn rejects_surface_platform_outside_app_platforms() {
+        let yaml = r#"
+app:
+  projectName: demo
+  productName: Demo
+  productVersion: 0.1.0
+  platforms: [ios]
+  homeAppId: home
+surfaces:
+  - id: home
+    role: main
+    launch: true
+    platforms: [macos]
+"#;
+
+        let err = load_config_yaml(yaml).unwrap_err().to_string();
+        assert!(err.contains("surface 'home'"), "{err}");
+        assert!(err.contains("not listed in app.platforms"), "{err}");
+    }
+
+    #[test]
+    fn rejects_terminal_surface_on_mobile_platforms() {
+        let yaml = r#"
+app:
+  projectName: demo
+  productName: Demo
+  productVersion: 0.1.0
+  platforms: [ios, macos]
+  homeAppId: home
+capabilities:
+  terminal: true
+surfaces:
+  - id: home
+    role: main
+    launch: true
+  - id: terminal
+    render: native
+    role: aside
+    edge: bottom
+    platforms: [ios]
+"#;
+
+        let err = load_config_yaml(yaml).unwrap_err().to_string();
+        assert!(err.contains("surface 'terminal'"), "{err}");
+        assert!(
+            err.contains("only supports platforms: macos, windows"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn omitted_terminal_surface_platforms_follow_app_platforms() {
+        let yaml = r#"
+app:
+  projectName: demo
+  productName: Demo
+  productVersion: 0.1.0
+  platforms: [ios, macos]
+  homeAppId: home
+capabilities:
+  terminal: true
+surfaces:
+  - id: home
+    role: main
+    launch: true
+  - id: terminal
+    render: native
+    role: aside
+    edge: bottom
+"#;
+
+        let err = load_config_yaml(yaml).unwrap_err().to_string();
+        assert!(err.contains("surface 'terminal'"), "{err}");
+        assert!(
+            err.contains("only supports platforms: macos, windows"),
+            "{err}"
+        );
     }
 
     #[test]
@@ -1509,26 +2317,22 @@ android:
         let mut config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
         let app = config.app.as_mut().unwrap();
         app.platforms = vec!["macos".to_string()];
-        config.ui = Some(serde_json::json!({
+        config.generated_ui = Some(serde_json::json!({
             "launch": {
                 "initialSurface": "main"
             },
             "surfaces": [{
                 "id": "main",
-                "presentation": {
-                    "kind": "window"
-                },
+                "role": "main",
                 "content": {
                     "kind": "lxapp",
                     "appId": "my-app"
                 }
             }, {
                 "id": "side",
-                "presentation": {
-                    "kind": "attachPanel",
-                    "attachTo": "main",
-                    "edge": "trailing"
-                },
+                "role": "aside",
+                "attachTo": "main",
+                "edge": "right",
                 "content": {
                     "kind": "lxapp",
                     "appId": "my-side-app"
@@ -1549,31 +2353,110 @@ android:
     }
 
     #[test]
-    fn macos_ui_accepts_terminal_attach_panel_bottom() {
+    fn macos_ui_filters_non_macos_platform_surfaces() {
         let mut config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
         let app = config.app.as_mut().unwrap();
         app.platforms = vec!["macos".to_string()];
-        config.capabilities.as_mut().unwrap().terminal = true;
-        config.ui = Some(serde_json::json!({
+        config.generated_ui = Some(serde_json::json!({
             "launch": {
                 "initialSurface": "main"
             },
             "surfaces": [{
                 "id": "main",
-                "presentation": {
-                    "kind": "window"
-                },
+                "role": "main",
+                "platforms": ["macos"],
+                "content": {
+                    "kind": "lxapp",
+                    "appId": "my-app"
+                }
+            }, {
+                "id": "windowsMain",
+                "role": "main",
+                "platforms": ["windows"],
+                "content": {
+                    "kind": "lxapp",
+                    "appId": "win-app"
+                }
+            }, {
+                "id": "windowsSide",
+                "role": "aside",
+                "attachTo": "windowsMain",
+                "edge": "right",
+                "platforms": ["windows"],
+                "content": {
+                    "kind": "lxapp",
+                    "appId": "win-side"
+                }
+            }],
+            "activators": [{
+                "id": "windowsSideButton",
+                "kind": "sidebarItem",
+                "hostSurface": "windowsMain",
+                "action": {
+                    "kind": "toggleSurface",
+                    "surface": "windowsSide"
+                }
+            }]
+        }));
+
+        config.validate().unwrap();
+    }
+
+    #[test]
+    fn macos_ui_rejects_duplicate_surface_id_before_platform_filter() {
+        let mut config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
+        let app = config.app.as_mut().unwrap();
+        app.platforms = vec!["macos".to_string()];
+        config.generated_ui = Some(serde_json::json!({
+            "launch": {
+                "initialSurface": "main"
+            },
+            "surfaces": [{
+                "id": "main",
+                "role": "main",
+                "platforms": ["macos"],
+                "content": {
+                    "kind": "lxapp",
+                    "appId": "my-app"
+                }
+            }, {
+                "id": "main",
+                "role": "main",
+                "platforms": ["windows"],
+                "content": {
+                    "kind": "lxapp",
+                    "appId": "win-app"
+                }
+            }],
+            "activators": []
+        }));
+
+        let err = config.validate().unwrap_err().to_string();
+        assert!(err.contains("duplicate ui surface id 'main'"), "{err}");
+    }
+
+    #[test]
+    fn macos_ui_accepts_terminal_aside_panel_bottom() {
+        let mut config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
+        let app = config.app.as_mut().unwrap();
+        app.platforms = vec!["macos".to_string()];
+        config.capabilities.as_mut().unwrap().terminal = true;
+        config.generated_ui = Some(serde_json::json!({
+            "launch": {
+                "initialSurface": "main"
+            },
+            "surfaces": [{
+                "id": "main",
+                "role": "main",
                 "content": {
                     "kind": "lxapp",
                     "appId": "my-app"
                 }
             }, {
                 "id": "terminal",
-                "presentation": {
-                    "kind": "attachPanel",
-                    "attachTo": "main",
-                    "edge": "bottom"
-                },
+                "role": "aside",
+                "attachTo": "main",
+                "edge": "bottom",
                 "content": {
                     "kind": "terminal"
                 }
@@ -1597,26 +2480,22 @@ android:
         let mut config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
         let app = config.app.as_mut().unwrap();
         app.platforms = vec!["macos".to_string()];
-        config.ui = Some(serde_json::json!({
+        config.generated_ui = Some(serde_json::json!({
             "launch": {
                 "initialSurface": "main"
             },
             "surfaces": [{
                 "id": "main",
-                "presentation": {
-                    "kind": "window"
-                },
+                "role": "main",
                 "content": {
                     "kind": "lxapp",
                     "appId": "my-app"
                 }
             }, {
                 "id": "terminal",
-                "presentation": {
-                    "kind": "attachPanel",
-                    "attachTo": "main",
-                    "edge": "bottom"
-                },
+                "role": "aside",
+                "attachTo": "main",
+                "edge": "bottom",
                 "content": {
                     "kind": "terminal"
                 }
@@ -1642,26 +2521,22 @@ android:
         let app = config.app.as_mut().unwrap();
         app.platforms = vec!["macos".to_string()];
         config.capabilities.as_mut().unwrap().terminal = true;
-        config.ui = Some(serde_json::json!({
+        config.generated_ui = Some(serde_json::json!({
             "launch": {
                 "initialSurface": "main"
             },
             "surfaces": [{
                 "id": "main",
-                "presentation": {
-                    "kind": "window"
-                },
+                "role": "main",
                 "content": {
                     "kind": "lxapp",
                     "appId": "main"
                 }
             }, {
                 "id": "terminal",
-                "presentation": {
-                    "kind": "attachPanel",
-                    "attachTo": "main",
-                    "edge": "trailing"
-                },
+                "role": "aside",
+                "attachTo": "main",
+                "edge": "right",
                 "content": {
                     "kind": "terminal"
                 }
@@ -1670,7 +2545,7 @@ android:
         }));
 
         let err = config.validate().unwrap_err().to_string();
-        assert!(err.contains("must use presentation.edge 'bottom'"));
+        assert!(err.contains("must use edge 'top' or 'bottom'"));
     }
 
     #[test]
@@ -1679,26 +2554,22 @@ android:
         let app = config.app.as_mut().unwrap();
         app.platforms = vec!["macos".to_string()];
         config.capabilities.as_mut().unwrap().terminal = true;
-        config.ui = Some(serde_json::json!({
+        config.generated_ui = Some(serde_json::json!({
             "launch": {
                 "initialSurface": "main"
             },
             "surfaces": [{
                 "id": "main",
-                "presentation": {
-                    "kind": "window"
-                },
+                "role": "main",
                 "content": {
                     "kind": "lxapp",
                     "appId": "main"
                 }
             }, {
                 "id": "terminal",
-                "presentation": {
-                    "kind": "attachPanel",
-                    "attachTo": "main",
-                    "edge": "bottom"
-                },
+                "role": "aside",
+                "attachTo": "main",
+                "edge": "bottom",
                 "content": {
                     "kind": "terminal",
                     "backend": "xterm"
@@ -1716,15 +2587,13 @@ android:
         let mut config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
         let app = config.app.as_mut().unwrap();
         app.platforms = vec!["macos".to_string()];
-        config.ui = Some(serde_json::json!({
+        config.generated_ui = Some(serde_json::json!({
             "launch": {
                 "initialSurface": "main"
             },
             "surfaces": [{
                 "id": "main",
-                "presentation": {
-                    "kind": "window"
-                },
+                "role": "main",
                 "content": {
                     "kind": "lxapp",
                     "appId": "main"
@@ -1735,7 +2604,7 @@ android:
                 "kind": "titlebarItem",
                 "hostSurface": "main",
                 "action": {
-                    "kind": "focusSurface",
+                    "kind": "openSurface",
                     "surface": "main"
                 }
             }]
@@ -1745,20 +2614,51 @@ android:
     }
 
     #[test]
-    fn macos_ui_rejects_non_macos_activators() {
-        for kind in ["trayItem", "deepLink"] {
+    fn macos_ui_rejects_removed_surface_actions() {
+        for action_kind in ["closeSurface", "focusSurface"] {
             let mut config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
-            let app = config.app.as_mut().unwrap();
-            app.platforms = vec!["macos".to_string()];
-            config.ui = Some(serde_json::json!({
+            config.app.as_mut().unwrap().platforms = vec!["macos".to_string()];
+            config.generated_ui = Some(serde_json::json!({
                 "launch": {
                     "initialSurface": "main"
                 },
                 "surfaces": [{
                     "id": "main",
-                    "presentation": {
-                        "kind": "window"
-                    },
+                    "role": "main",
+                    "content": {
+                        "kind": "lxapp",
+                        "appId": "main"
+                    }
+                }],
+                "activators": [{
+                    "id": "titlebarAction",
+                    "kind": "titlebarItem",
+                    "hostSurface": "main",
+                    "action": {
+                        "kind": action_kind,
+                        "surface": "main"
+                    }
+                }]
+            }));
+
+            let err = config.validate().unwrap_err().to_string();
+            assert!(err.contains("unknown action.kind"), "{action_kind}: {err}");
+        }
+    }
+
+    #[test]
+    fn macos_ui_rejects_non_macos_activators() {
+        for kind in ["trayItem", "deepLink"] {
+            let mut config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
+            let app = config.app.as_mut().unwrap();
+            app.platforms = vec!["macos".to_string()];
+            config.generated_ui = Some(serde_json::json!({
+                "launch": {
+                    "initialSurface": "main"
+                },
+                "surfaces": [{
+                    "id": "main",
+                    "role": "main",
                     "content": {
                         "kind": "lxapp",
                         "appId": "main"
@@ -1768,7 +2668,7 @@ android:
                     "id": kind,
                     "kind": kind,
                     "action": {
-                        "kind": "focusSurface",
+                        "kind": "openSurface",
                         "surface": "main"
                     }
                 }]
@@ -1783,15 +2683,13 @@ android:
     fn macos_ui_rejects_invalid_host_surface_usage() {
         let mut missing_host = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
         missing_host.app.as_mut().unwrap().platforms = vec!["macos".to_string()];
-        missing_host.ui = Some(serde_json::json!({
+        missing_host.generated_ui = Some(serde_json::json!({
             "launch": {
                 "initialSurface": "main"
             },
             "surfaces": [{
                 "id": "main",
-                "presentation": {
-                    "kind": "window"
-                },
+                "role": "main",
                 "content": {
                     "kind": "lxapp",
                     "appId": "main"
@@ -1801,7 +2699,7 @@ android:
                 "id": "sidebar",
                 "kind": "sidebarItem",
                 "action": {
-                    "kind": "focusSurface",
+                    "kind": "openSurface",
                     "surface": "main"
                 }
             }]
@@ -1812,15 +2710,13 @@ android:
         let mut app_level_host =
             LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
         app_level_host.app.as_mut().unwrap().platforms = vec!["macos".to_string()];
-        app_level_host.ui = Some(serde_json::json!({
+        app_level_host.generated_ui = Some(serde_json::json!({
             "launch": {
                 "initialSurface": "main"
             },
             "surfaces": [{
                 "id": "main",
-                "presentation": {
-                    "kind": "window"
-                },
+                "role": "main",
                 "content": {
                     "kind": "lxapp",
                     "appId": "main"
@@ -1831,7 +2727,7 @@ android:
                 "kind": "appActivation",
                 "hostSurface": "main",
                 "action": {
-                    "kind": "focusSurface",
+                    "kind": "openSurface",
                     "surface": "main"
                 }
             }]
@@ -1845,26 +2741,22 @@ android:
         let mut config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
         let app = config.app.as_mut().unwrap();
         app.platforms = vec!["macos".to_string()];
-        config.ui = Some(serde_json::json!({
+        config.generated_ui = Some(serde_json::json!({
             "launch": {
                 "initialSurface": "main"
             },
             "surfaces": [{
                 "id": "main",
-                "presentation": {
-                    "kind": "window"
-                },
+                "role": "main",
                 "content": {
                     "kind": "lxapp",
                     "appId": "shared"
                 }
             }, {
                 "id": "panel",
-                "presentation": {
-                    "kind": "attachPanel",
-                    "attachTo": "main",
-                    "edge": "trailing"
-                },
+                "role": "aside",
+                "attachTo": "main",
+                "edge": "right",
                 "content": {
                     "kind": "lxapp",
                     "appId": "shared"
@@ -1878,30 +2770,335 @@ android:
     }
 
     #[test]
+    fn surfaces_maps_showcase_to_internal_ui() {
+        let surfaces = vec![
+            SurfaceDecl {
+                id: "lingxia-showcase".into(),
+                render: SurfaceRender::Lxapp,
+                role: SurfaceRole::Main,
+                launch: true,
+                edge: None,
+                sidebar: None,
+                tray: None,
+                platforms: None,
+            },
+            SurfaceDecl {
+                id: "lingxia-chat".into(),
+                render: SurfaceRender::Lxapp,
+                role: SurfaceRole::Aside,
+                launch: false,
+                edge: Some("right".into()),
+                sidebar: Some(SurfaceSidebar {
+                    icon: Some("icons/chat.svg".into()),
+                    label: Some("AI Chat".into()),
+                    section: None,
+                }),
+                tray: None,
+                platforms: None,
+            },
+            SurfaceDecl {
+                id: "terminal".into(),
+                render: SurfaceRender::Native,
+                role: SurfaceRole::Aside,
+                launch: false,
+                edge: Some("bottom".into()),
+                sidebar: Some(SurfaceSidebar {
+                    icon: Some("__lingxia_builtin__/terminal.svg".into()),
+                    label: None,
+                    section: None,
+                }),
+                tray: None,
+                platforms: None,
+            },
+        ];
+
+        let ui = surfaces_to_ui(&surfaces, true).unwrap();
+        let expected = serde_json::json!({
+            "launch": { "initialSurface": "lingxia-showcase" },
+            "surfaces": [
+                {
+                    "id": "lingxia-showcase",
+                    "role": "main",
+                    "content": { "kind": "lxapp", "appId": "lingxia-showcase" }
+                },
+                {
+                    "id": "lingxia-chat",
+                    "role": "aside",
+                    "attachTo": "lingxia-showcase",
+                    "edge": "right",
+                    "content": { "kind": "lxapp", "appId": "lingxia-chat" }
+                },
+                {
+                    "id": "terminal",
+                    "role": "aside",
+                    "attachTo": "lingxia-showcase",
+                    "edge": "bottom",
+                    "size": { "height": 320 },
+                    "content": { "kind": "terminal" }
+                }
+            ],
+            "activators": [
+                {
+                    "id": "lingxia-chatSidebar",
+                    "kind": "sidebarItem",
+                    "hostSurface": "lingxia-showcase",
+                    "label": "AI Chat",
+                    "icon": "icons/chat.svg",
+                    "action": { "kind": "toggleSurface", "surface": "lingxia-chat" }
+                },
+                {
+                    "id": "terminalSidebar",
+                    "kind": "sidebarItem",
+                    "hostSurface": "lingxia-showcase",
+                    "label": "Terminal",
+                    "icon": "__lingxia_builtin__/terminal.svg",
+                    "action": { "kind": "toggleSurface", "surface": "terminal" }
+                }
+            ]
+        });
+        assert_eq!(ui, expected);
+
+        // Full config round-trip: apply_surfaces + validate must accept it.
+        let mut config = LingXiaConfig::new_android("lingxia", "com.example", "lingxia-showcase");
+        config.app.as_mut().unwrap().platforms = vec!["macos".to_string()];
+        config.capabilities.as_mut().unwrap().terminal = true;
+        config.generated_ui = None;
+        config.surfaces = Some(surfaces);
+        config.apply_surfaces().unwrap();
+        config.validate().unwrap();
+    }
+
+    #[test]
+    fn surfaces_maps_tray_to_menubar_item_and_no_launch() {
+        let surfaces = vec![SurfaceDecl {
+            id: "home".into(),
+            render: SurfaceRender::Lxapp,
+            role: SurfaceRole::Main,
+            launch: false,
+            edge: None,
+            sidebar: None,
+            tray: Some(SurfaceTray {
+                icon: Some("icons/tray.svg".into()),
+                label: Some("Demo".into()),
+                action: Some(SurfaceTrayAction::Activate),
+            }),
+            platforms: None,
+        }];
+
+        let ui = surfaces_to_ui(&surfaces, false).unwrap();
+        let expected = serde_json::json!({
+            "launch": {
+                "initialSurface": "home",
+                "openOnLaunch": false
+            },
+            "surfaces": [{
+                "id": "home",
+                "role": "main",
+                "content": { "kind": "lxapp", "appId": "home" }
+            }],
+            "activators": [{
+                "id": "homeTray",
+                "kind": "menuBarItem",
+                "icon": "icons/tray.svg",
+                "label": "Demo",
+                "action": { "kind": "openSurface", "surface": "home" }
+            }]
+        });
+        assert_eq!(ui, expected);
+
+        let mut config = LingXiaConfig::new_android("demo", "com.example", "home");
+        config.app.as_mut().unwrap().platforms = vec!["macos".to_string()];
+        config.generated_ui = None;
+        config.surfaces = Some(surfaces);
+        config.apply_surfaces().unwrap();
+        config.validate().unwrap();
+    }
+
+    #[test]
+    fn surfaces_rejects_unsupported_tray_action() {
+        let yaml = r#"
+surfaces:
+  - id: home
+    role: main
+    tray:
+      action: open
+"#;
+
+        let err = yaml::from_str::<LingXiaConfig>(yaml)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("unknown variant"), "{err}");
+        assert!(err.contains("toggle") && err.contains("activate"), "{err}");
+    }
+
+    #[test]
+    fn surfaces_rejects_float_role() {
+        let surfaces = vec![SurfaceDecl {
+            id: "popup".into(),
+            render: SurfaceRender::Lxapp,
+            role: SurfaceRole::Float,
+            launch: false,
+            edge: None,
+            sidebar: None,
+            tray: None,
+            platforms: None,
+        }];
+        let err = surfaces_to_ui(&surfaces, false).unwrap_err().to_string();
+        assert!(err.contains("not supported"), "{err}");
+    }
+
+    #[test]
+    fn surfaces_rejects_native_terminal_without_capability() {
+        let surfaces = vec![
+            SurfaceDecl {
+                id: "home".into(),
+                render: SurfaceRender::Lxapp,
+                role: SurfaceRole::Main,
+                launch: true,
+                edge: None,
+                sidebar: None,
+                tray: None,
+                platforms: None,
+            },
+            SurfaceDecl {
+                id: "terminal".into(),
+                render: SurfaceRender::Native,
+                role: SurfaceRole::Aside,
+                launch: false,
+                edge: Some("bottom".into()),
+                sidebar: None,
+                tray: None,
+                platforms: None,
+            },
+        ];
+        let err = surfaces_to_ui(&surfaces, false).unwrap_err().to_string();
+        assert!(err.contains("capabilities.terminal"), "{err}");
+    }
+
+    #[test]
+    fn surfaces_rejects_two_launch_mains() {
+        let surfaces = vec![
+            SurfaceDecl {
+                id: "a".into(),
+                render: SurfaceRender::Lxapp,
+                role: SurfaceRole::Main,
+                launch: true,
+                edge: None,
+                sidebar: None,
+                tray: None,
+                platforms: None,
+            },
+            SurfaceDecl {
+                id: "b".into(),
+                render: SurfaceRender::Lxapp,
+                role: SurfaceRole::Main,
+                launch: true,
+                edge: None,
+                sidebar: None,
+                tray: None,
+                platforms: None,
+            },
+        ];
+        let err = surfaces_to_ui(&surfaces, false).unwrap_err().to_string();
+        assert!(err.contains("at most one"), "{err}");
+    }
+
+    #[test]
+    fn surfaces_rejects_duplicate_id() {
+        let surfaces = vec![
+            SurfaceDecl {
+                id: "dup".into(),
+                render: SurfaceRender::Lxapp,
+                role: SurfaceRole::Main,
+                launch: true,
+                edge: None,
+                sidebar: None,
+                tray: None,
+                platforms: None,
+            },
+            SurfaceDecl {
+                id: "dup".into(),
+                render: SurfaceRender::Lxapp,
+                role: SurfaceRole::Aside,
+                launch: false,
+                edge: Some("right".into()),
+                sidebar: None,
+                tray: None,
+                platforms: None,
+            },
+        ];
+        let err = surfaces_to_ui(&surfaces, false).unwrap_err().to_string();
+        assert!(err.contains("duplicate surface id"), "{err}");
+    }
+
+    #[test]
+    fn surfaces_rejects_launch_on_aside() {
+        let surfaces = vec![
+            SurfaceDecl {
+                id: "a".into(),
+                render: SurfaceRender::Lxapp,
+                role: SurfaceRole::Main,
+                launch: true,
+                edge: None,
+                sidebar: None,
+                tray: None,
+                platforms: None,
+            },
+            SurfaceDecl {
+                id: "b".into(),
+                render: SurfaceRender::Lxapp,
+                role: SurfaceRole::Aside,
+                launch: true,
+                edge: Some("right".into()),
+                sidebar: None,
+                tray: None,
+                platforms: None,
+            },
+        ];
+        let err = surfaces_to_ui(&surfaces, false).unwrap_err().to_string();
+        assert!(
+            err.contains("launch: true is only valid on a main"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn surfaces_rejects_edge_on_main() {
+        let surfaces = vec![SurfaceDecl {
+            id: "a".into(),
+            render: SurfaceRender::Lxapp,
+            role: SurfaceRole::Main,
+            launch: true,
+            edge: Some("right".into()),
+            sidebar: None,
+            tray: None,
+            platforms: None,
+        }];
+        let err = surfaces_to_ui(&surfaces, false).unwrap_err().to_string();
+        assert!(err.contains("edge is only valid on an aside"), "{err}");
+    }
+
+    #[test]
     fn macos_ui_rejects_unsupported_panel_edge() {
         let mut config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
         let app = config.app.as_mut().unwrap();
         app.platforms = vec!["macos".to_string()];
-        config.ui = Some(serde_json::json!({
+        config.generated_ui = Some(serde_json::json!({
             "launch": {
                 "initialSurface": "main"
             },
             "surfaces": [{
                 "id": "main",
-                "presentation": {
-                    "kind": "window"
-                },
+                "role": "main",
                 "content": {
                     "kind": "lxapp",
                     "appId": "main"
                 }
             }, {
                 "id": "panel",
-                "presentation": {
-                    "kind": "attachPanel",
-                    "attachTo": "main",
-                    "edge": "top"
-                },
+                "role": "aside",
+                "attachTo": "main",
+                "edge": "diagonal",
                 "content": {
                     "kind": "lxapp",
                     "appId": "panel"
@@ -1911,6 +3108,6 @@ android:
         }));
 
         let err = config.validate().unwrap_err().to_string();
-        assert!(err.contains("attachPanel.edge: top"));
+        assert!(err.contains("unknown edge 'diagonal'"));
     }
 }

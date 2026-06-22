@@ -56,25 +56,22 @@ app.delegate = delegate
 app.run()
 ```
 
-`quickStart()` loads bundled `app.json` and `ui.json`, initializes the runtime,
-creates the host shell, installs configured activators, and opens
-`ui.launch.initialSurface` when `openOnLaunch` is true.
-
-`handleAppActivation()` forwards Dock/app activation to `ui.activators` entries
-with `kind: appActivation`.
+`quickStart()` loads the bundled `app.json` and generated `ui.json`, initializes
+the runtime, creates the host shell, and opens the launch `main` surface (the
+one with `launch: true`).
 
 ## UI Configuration
 
-Host UI belongs in `lingxia.yaml`, not in Swift code.
+Host UI belongs in `lingxia.yaml`, not in Swift code — declare it with the
+adaptive `surfaces:` list.
 
 Examples:
 
-- Hide sidebar and toolbar by omitting `sidebarItem` and `toolbarItem`.
-- Create a normal window with a `window` surface.
-- Create a menu bar monitor app with `statusPanel`, `menuBarItem`, and `openOnLaunch: false`.
-- Add sidebar, toolbar, or titlebar actions with `sidebarItem`, `toolbarItem`, and `titlebarItem`.
+- A normal window: a `role: main` surface (with `launch: true`).
+- A docked companion (sidebar/panel): a `role: aside` surface with an `edge` and a `sidebar:` entry.
+- A menu-bar app: a `role: main` surface with a `tray:` entry and no `launch: true` (starts hidden, opened from the tray).
 
-See [macOS App UI](./project.md#macos-app-ui) for the full configuration model.
+See [Surfaces (adaptive UI)](./project.md#surfaces-adaptive-ui) for the full configuration model.
 
 ## Advanced Embedding
 
@@ -296,17 +293,11 @@ _ = try Lingxia.quickStart(configuration: config)
 Equivalent product configuration:
 
 ```yaml
-ui:
-  launch:
-    initialSurface: main
-  surfaces:
-    - id: main
-      presentation:
-        style: window
-      content:
-        kind: lxapp
-        appId: myapp
-  activators: []
+surfaces:
+  - id: myapp
+    render: lxapp
+    role: main
+    launch: true
 ```
 
-Prefer the YAML form for new apps.
+Prefer the YAML form for new apps. See [App Project Configuration → Surfaces](./project.md#surfaces-adaptive-ui) for the full schema.

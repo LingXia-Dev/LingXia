@@ -2837,6 +2837,7 @@ dependencies = [
  "jni",
  "lingxia-app-context",
  "lingxia-browser",
+ "lingxia-browser-shell",
  "lingxia-log",
  "lingxia-logic",
  "lingxia-lxapp",
@@ -2846,7 +2847,6 @@ dependencies = [
  "lingxia-platform",
  "lingxia-provider",
  "lingxia-service",
- "lingxia-shell",
  "lingxia-terminal",
  "lingxia-transfer",
  "lingxia-update",
@@ -2895,6 +2895,27 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "uuid",
+]
+
+[[package]]
+name = "lingxia-browser-shell"
+version = "0.9.0"
+dependencies = [
+ "futures",
+ "lingxia-app-context",
+ "lingxia-browser",
+ "lingxia-lxapp",
+ "lingxia-native-macros",
+ "lingxia-platform",
+ "lingxia-proxy",
+ "lingxia-service",
+ "lingxia-webview",
+ "log",
+ "rong",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
 ]
 
 [[package]]
@@ -3036,6 +3057,7 @@ dependencies = [
  "lingxia-messaging",
  "lingxia-platform",
  "lingxia-service",
+ "lingxia-surface",
  "lingxia-transfer",
  "log",
  "rong",
@@ -3069,6 +3091,7 @@ dependencies = [
  "lingxia-provider",
  "lingxia-service",
  "lingxia-settings",
+ "lingxia-surface",
  "lingxia-transfer",
  "lingxia-update",
  "lingxia-webview",
@@ -3141,6 +3164,7 @@ dependencies = [
  "jni",
  "libc",
  "lingxia-messaging",
+ "lingxia-surface",
  "lingxia-webview",
  "lingxia-windows-host",
  "log",
@@ -3249,25 +3273,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "lingxia-shell"
+name = "lingxia-surface"
 version = "0.9.0"
 dependencies = [
- "futures",
- "lingxia-app-context",
- "lingxia-browser",
- "lingxia-lxapp",
- "lingxia-native-macros",
- "lingxia-platform",
- "lingxia-proxy",
- "lingxia-service",
- "lingxia-terminal",
- "lingxia-webview",
- "log",
- "rong",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
- "tokio",
 ]
 
 [[package]]
@@ -3367,11 +3378,11 @@ dependencies = [
  "lingxia",
  "lingxia-app-context",
  "lingxia-browser",
+ "lingxia-browser-shell",
  "lingxia-logic",
  "lingxia-lxapp",
  "lingxia-messaging",
  "lingxia-platform",
- "lingxia-shell",
  "lingxia-terminal",
  "lingxia-webview",
  "lingxia-windows-host",

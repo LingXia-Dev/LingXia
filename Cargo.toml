@@ -4,7 +4,7 @@ members = [
     "crates/lingxia-devtool",
     "crates/lingxia-devtool-protocol",
     "crates/lingxia-media",
-    "crates/lingxia-shell",
+    "crates/lingxia-browser-shell",
     "crates/lingxia-browser",
     "crates/lingxia-service",
     "crates/lingxia-transfer",
@@ -20,6 +20,7 @@ members = [
     "crates/lingxia-windows-sdk",
     "crates/lingxia-windows-build",
     "crates/lingxia-platform",
+    "crates/lingxia-surface",
     "crates/lingxia-logic",
     "crates/lingxia-messaging",
     "crates/lingxia",
@@ -33,6 +34,7 @@ members = [
 exclude = [
     "examples/lingxia-showcase/lingxia-lib",
     "examples/lingxia-showcase/windows",
+    "examples/lingxia-codex/lingxia-codex-lib",
 ]
 resolver = "2"
 
@@ -75,6 +77,7 @@ lingxia-windows-host = { path = "crates/lingxia-windows-host", version = "0.9.0"
 lingxia-windows-sdk = { path = "crates/lingxia-windows-sdk", version = "0.9.0", default-features = false }
 lingxia-windows-build = { path = "crates/lingxia-windows-build", version = "0.9.0" }
 lingxia-platform = { path = "crates/lingxia-platform", version = "0.9.0" }
+lingxia-surface = { path = "crates/lingxia-surface", version = "0.9.0" }
 lingxia-messaging = { path = "crates/lingxia-messaging", version = "0.9.0" }
 lingxia-logic = { path = "crates/lingxia-logic", version = "0.9.0" }
 lingxia = { path = "crates/lingxia", version = "0.9.0", default-features = false }
@@ -86,7 +89,7 @@ lingxia-service = { path = "crates/lingxia-service", version = "0.9.0" }
 lingxia-transfer = { path = "crates/lingxia-transfer", version = "0.9.0" }
 lingxia-terminal = { path = "crates/lingxia-terminal", version = "0.9.0" }
 lingxia-settings = { path = "crates/lingxia-settings", version = "0.9.0" }
-lingxia-shell = { path = "crates/lingxia-shell", version = "0.9.0" }
+lingxia-browser-shell = { path = "crates/lingxia-browser-shell", version = "0.9.0" }
 
 # Harmony NAPI bindings
 napi-ohos = "1.1.0"

@@ -1,0 +1,359 @@
+//! The Surface Graph: single source of truth, invariants, state transitions,
+//! and the two-axis derivation into `DerivedLayout`.
+
+use serde::{Deserialize, Serialize};
+
+use crate::layout::{
+    Axis, BottomOwner, DerivedLayout, LayoutPresentationPlan, LayoutTree, PlanAside, SizeClass,
+    SplitForm, SwitcherForm,
+};
+use crate::model::{Role, Surface, SurfaceId};
+
+/// One window's graph. Surfaces are kept in insertion order so that
+/// "adjacent main" succession and "oldest aside" replacement are deterministic.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SurfaceGraph {
+    surfaces: Vec<Surface>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub active_main_id: Option<SurfaceId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub focused_surface_id: Option<SurfaceId>,
+    /// Focus snapshots pushed when a modal float opens, popped on its close.
+    #[serde(default, skip)]
+    modal_focus_stack: Vec<Option<SurfaceId>>,
+}
+
+impl SurfaceGraph {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn surfaces(&self) -> &[Surface] {
+        &self.surfaces
+    }
+
+    pub fn get(&self, id: &str) -> Option<&Surface> {
+        self.surfaces.iter().find(|s| s.id == id)
+    }
+
+    pub fn role_of(&self, id: &str) -> Option<Role> {
+        self.get(id).map(|s| s.role)
+    }
+
+    pub fn mains(&self) -> Vec<&Surface> {
+        self.by_role(Role::Main)
+    }
+    pub fn asides(&self) -> Vec<&Surface> {
+        self.by_role(Role::Aside)
+    }
+    pub fn floats(&self) -> Vec<&Surface> {
+        self.by_role(Role::Float)
+    }
+
+    fn by_role(&self, role: Role) -> Vec<&Surface> {
+        self.surfaces.iter().filter(|s| s.role == role).collect()
+    }
+
+    fn main_ids(&self) -> Vec<SurfaceId> {
+        self.surfaces
+            .iter()
+            .filter(|s| s.role == Role::Main)
+            .map(|s| s.id.clone())
+            .collect()
+    }
+
+    /// Insert (or replace by id) a surface, then re-converge invariants.
+    pub fn insert(&mut self, surface: Surface) {
+        let modal = surface.is_modal_float();
+        if modal {
+            self.modal_focus_stack.push(self.focused_surface_id.clone());
+        }
+        if let Some(existing) = self.surfaces.iter_mut().find(|s| s.id == surface.id) {
+            *existing = surface;
+        } else {
+            self.surfaces.push(surface);
+        }
+        self.converge_after_insert();
+    }
+
+    fn converge_after_insert(&mut self) {
+        // First main becomes active + focused.
+        if self.active_main_id.is_none()
+            && let Some(first) = self.main_ids().first().cloned()
+        {
+            self.active_main_id = Some(first.clone());
+            if self.focused_surface_id.is_none() {
+                self.focused_surface_id = Some(first);
+            }
+        }
+        // A freshly inserted last surface still focuses if nothing else did.
+        if self.focused_surface_id.is_none()
+            && let Some(s) = self.surfaces.last()
+        {
+            self.focused_surface_id = Some(s.id.clone());
+        }
+    }
+
+    /// Remove a surface and re-converge per the transition rules.
+    /// Returns the ids actually removed (the target, plus cascaded asides).
+    pub fn remove(&mut self, id: &str) -> Vec<SurfaceId> {
+        let Some(pos) = self.surfaces.iter().position(|s| s.id == id) else {
+            return Vec::new();
+        };
+        let removed = self.surfaces.remove(pos);
+        let mut removed_ids = vec![removed.id.clone()];
+
+        // Succession for active main.
+        if self.active_main_id.as_deref() == Some(id) {
+            self.active_main_id = pick_successor_main(&self.surfaces, pos);
+        }
+
+        // Last main gone ⇒ all asides close (no primary, no companion).
+        if self.mains().is_empty() {
+            let aside_ids: Vec<SurfaceId> = self
+                .surfaces
+                .iter()
+                .filter(|s| s.role == Role::Aside)
+                .map(|s| s.id.clone())
+                .collect();
+            self.surfaces.retain(|s| s.role != Role::Aside);
+            removed_ids.extend(aside_ids);
+        }
+
+        // Modal float closing: restore the pre-popup focus snapshot.
+        if removed.is_modal_float()
+            && let Some(snapshot) = self.modal_focus_stack.pop()
+        {
+            self.focused_surface_id = snapshot;
+        }
+
+        // Focus fallback if the focused surface is gone.
+        if self
+            .focused_surface_id
+            .as_deref()
+            .is_none_or(|f| self.get(f).is_none())
+        {
+            self.focused_surface_id = self.focus_fallback();
+        }
+        removed_ids
+    }
+
+    /// Focus fallback order: active main → an aside owned by it → none.
+    fn focus_fallback(&self) -> Option<SurfaceId> {
+        if let Some(active) = &self.active_main_id
+            && self.get(active).is_some()
+        {
+            return Some(active.clone());
+        }
+        self.asides().first().map(|s| s.id.clone())
+    }
+
+    /// Switch which main is primary. No-op if `id` is not an existing main.
+    pub fn set_active_main(&mut self, id: &str) -> bool {
+        if self.role_of(id) == Some(Role::Main) {
+            self.active_main_id = Some(id.to_string());
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Focus any surface (any role).
+    pub fn set_focus(&mut self, id: &str) -> bool {
+        if self.get(id).is_some() {
+            self.focused_surface_id = Some(id.to_string());
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Check the invariants. Returns the list of violations (empty = ok).
+    pub fn check_invariants(&self) -> Vec<String> {
+        let mut v = Vec::new();
+        let mains = self.mains().len();
+        let asides = self.asides().len();
+        if asides > 0 && mains == 0 {
+            v.push("asides>0 but mains==0 (no primary, no companion)".into());
+        }
+        match &self.active_main_id {
+            Some(id) if self.role_of(id) != Some(Role::Main) => {
+                v.push(format!("activeMainId '{id}' is not a main"));
+            }
+            None if mains > 0 => v.push("mains exist but activeMainId is None".into()),
+            _ => {}
+        }
+        if let Some(f) = &self.focused_surface_id
+            && self.get(f).is_none()
+        {
+            v.push(format!("focusedSurfaceId '{f}' does not exist"));
+        }
+        // Unique ids.
+        let mut seen = std::collections::HashSet::new();
+        for s in &self.surfaces {
+            if !seen.insert(&s.id) {
+                v.push(format!("duplicate surface id '{}'", s.id));
+            }
+        }
+        v
+    }
+
+    pub fn is_valid(&self) -> bool {
+        self.check_invariants().is_empty()
+    }
+
+    /// Two-axis derivation: produce the platform-agnostic `DerivedLayout`.
+    pub fn derive_layout(&self, size_class: SizeClass) -> DerivedLayout {
+        let main_count = self.mains().len();
+        let aside_count = self.asides().len();
+        let switcher_form = if size_class != SizeClass::Compact && main_count > 1 {
+            match size_class {
+                SizeClass::Expanded => SwitcherForm::Sidebar,
+                SizeClass::Medium => SwitcherForm::Rail,
+                SizeClass::Compact => SwitcherForm::None,
+            }
+        } else {
+            SwitcherForm::None
+        };
+
+        let split_form = if aside_count > 0 {
+            match size_class {
+                SizeClass::Expanded => SplitForm::Split,
+                SizeClass::Medium => SplitForm::Collapsible,
+                // compact has no side-by-side: asides present full-screen.
+                SizeClass::Compact => SplitForm::FullScreen,
+            }
+        } else {
+            SplitForm::None
+        };
+
+        DerivedLayout {
+            size_class,
+            switcher_form,
+            split_form,
+            bottom_owner: BottomOwner::App,
+            layout_tree: self.canonical_layout(size_class),
+        }
+    }
+
+    /// Flatten the graph + derivation into the stable, skin-bindable
+    /// [`LayoutPresentationPlan`]: the primary mains, asides (with edge +
+    /// preferred size), floats, and the full tree.
+    pub fn presentation_plan(&self, size_class: SizeClass) -> LayoutPresentationPlan {
+        let derived = self.derive_layout(size_class);
+
+        let asides = self
+            .asides()
+            .iter()
+            .map(|s| PlanAside {
+                id: s.id.clone(),
+                edge: s.placement.edge,
+                preferred_size: s.placement.preferred_size,
+            })
+            .collect();
+
+        LayoutPresentationPlan {
+            size_class: derived.size_class,
+            bottom_owner: derived.bottom_owner,
+            switcher_form: derived.switcher_form,
+            split_form: derived.split_form,
+            mains: self.main_ids(),
+            // The active main the skin should attach to the primary content
+            // area. Mirrors `canonical_layout`'s `Tabs.activeId` fallback so the
+            // plan and the tree always agree on which main is primary.
+            active_main_id: self
+                .active_main_id
+                .clone()
+                .or_else(|| self.main_ids().first().cloned()),
+            asides,
+            // Floats are popups above the layout and are valid at every size
+            // class (no compact gating), so they always appear in the plan. Each
+            // carries the float's render-relevant `FloatSpec`; a float surface
+            // missing its spec falls back to the default behavior.
+            floats: self
+                .floats()
+                .iter()
+                .map(|s| {
+                    let spec = s.float.clone().unwrap_or_default();
+                    crate::layout::PlanFloat {
+                        id: s.id.clone(),
+                        anchor: spec.anchor,
+                        dismiss: spec.dismiss,
+                        modal: spec.modal,
+                    }
+                })
+                .collect(),
+            tree: derived.layout_tree,
+        }
+    }
+
+    /// Build the canonical authoritative `LayoutTree` from current state:
+    /// mains → tabs when needed, asides → split. Compact has no side-by-side
+    /// dock; asides share the main tree. Floats are never in the tree.
+    pub fn canonical_layout(&self, size_class: SizeClass) -> Option<LayoutTree> {
+        let main_ids = self.main_ids();
+        if main_ids.is_empty() {
+            return None;
+        }
+        let aside_ids: Vec<SurfaceId> = self.asides().iter().map(|s| s.id.clone()).collect();
+        let active = self
+            .active_main_id
+            .clone()
+            .unwrap_or_else(|| main_ids[0].clone());
+
+        let tabs_of = |ids: Vec<SurfaceId>| {
+            if ids.len() == 1 {
+                LayoutTree::Leaf {
+                    surface_id: ids[0].clone(),
+                }
+            } else {
+                LayoutTree::Tabs {
+                    active_id: active.clone(),
+                    children: ids,
+                }
+            }
+        };
+
+        // Compact: no split; asides share one full-screen tree with mains.
+        if size_class == SizeClass::Compact {
+            let mut ids = main_ids;
+            ids.extend(aside_ids);
+            return Some(tabs_of(ids));
+        }
+
+        let main_node = tabs_of(main_ids);
+        if aside_ids.is_empty() {
+            return Some(main_node);
+        }
+        let mut children = vec![main_node];
+        children.extend(
+            aside_ids
+                .into_iter()
+                .map(|id| LayoutTree::Leaf { surface_id: id }),
+        );
+        let n = children.len();
+        Some(LayoutTree::Split {
+            axis: Axis::Horizontal,
+            weights: vec![1.0 / n as f64; n],
+            children,
+        })
+    }
+}
+
+/// Pick the main that should become active after the one at `removed_pos` is
+/// gone: prefer the next main, else the previous, else none.
+fn pick_successor_main(surfaces: &[Surface], removed_pos: usize) -> Option<SurfaceId> {
+    surfaces
+        .iter()
+        .skip(removed_pos)
+        .find(|s| s.role == Role::Main)
+        .or_else(|| {
+            surfaces
+                .iter()
+                .take(removed_pos)
+                .rev()
+                .find(|s| s.role == Role::Main)
+        })
+        .map(|s| s.id.clone())
+}

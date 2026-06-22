@@ -94,25 +94,28 @@ Every published package and what to import from each. Don't guess imports from t
 | **Native components: `LxInput`, `LxVideo`, `LxMediaSwiper`, `LxPicker`, `LxNavigator`, `LxTextarea`** | [`./lxapp/components.md`](./lxapp/components.md) |
 | **Logic-side `lx.*` API surface map** | [`./lxapp/lx-api.md`](./lxapp/lx-api.md) |
 | Bridge mechanics: `setData`, stream, channel | [`./lxapp/bridge.md`](./lxapp/bridge.md) |
-| Host project: `lingxia.yaml` reference, macOS App UI | [`./app/project.md`](./app/project.md) |
+| Host project: `lingxia.yaml` reference, adaptive `surfaces` | [`./app/project.md`](./app/project.md) |
 | Native Rust: `HostAddon`, `#[lingxia::native]`, facades, JS extensions | [`./native/development.md`](./native/development.md) |
 | iOS/macOS SDK embedding, public startup APIs | [`./app/apple-sdk.md`](./app/apple-sdk.md) |
 | Universal links / app links setup | [`./app/applinks.md`](./app/applinks.md) |
 | File API lifecycle (storage classes, downloadFile, FileManager) | [`./reference/file-lifecycle.md`](./reference/file-lifecycle.md) |
 
-## Bundled hello-world examples
+## See a real layout — scaffold one
 
-Three minimal end-to-end shapes ship with this skill — one per shape. Read them to see the exact file layout, then scaffold a real project with `lingxia new` (they are layout references, not buildable starters).
+Don't reach for a frozen example tree. The CLI emits a working, version-matched project per shape — generate one in a scratch dir and read it:
 
-| Example | Shape | Logic in | What it shows |
-|---|---|---|---|
-| [`./examples/hello-lxapp/`](./examples/hello-lxapp/README.md) | A — standalone lxapp | JS | `Page({})` Logic + React `useLxPage` View + `lxapp.json` security policy |
-| [`./examples/hello-host-js/`](./examples/hello-host-js/README.md) | B — host + JS lxapp | JS | minimal macOS `lingxia.yaml` + embedded JS-Logic lxapp |
-| [`./examples/hello-host-rust/`](./examples/hello-host-rust/README.md) | C — host + Rust Logic | **Rust** | `features.appService: false` + `lxapp.json` `"logic": false` + HTML view calling `window.native.*` |
+```bash
+lingxia new hello -t lxapp -y                                   # Shape A — standalone lxapp
+lingxia new hello -t native-app -p macos --package-id com.example.hello -y   # Shape B/C — host app
+```
 
-`hello-host-js` and `hello-host-rust` share the host shell wiring (`lingxia.yaml` `ui`, `resources.bundles`, FFI export) — the diff is entirely on the Logic side: who owns state and how the View talks to it. Read both side-by-side when picking B vs C.
+The output is the authoritative layout for the `lingxia` on your `PATH`; it can't drift the way a hand-written sample does. What to look at per shape:
 
-For a real, buildable starter, run `lingxia new` — the CLI emits a working project that matches the version on `PATH` and is regenerated per release.
+- **A — standalone lxapp** (JS). `pages/home/`: `index.ts` is **Logic** (`Page({ data, …actions })`, runs in the JS runtime), `index.tsx` is **View** (React + `useLxPage`, runs in the WebView), `index.json` is page config. Type View `PageData`/`PageActions` fields as **required**. A `_`-prefixed method stays private to Logic. `lxapp.json` `security.network.trustedDomains` starts `[]` (all `fetch` denied) — set real hostnames before networking.
+- **B — host + JS lxapp** (most product apps). Adds a `lingxia.yaml` with `features.appService: true`. Three ids must line up or the wrong app launches: `app.homeAppId` = a `resources.bundles[].appId` = that bundle's `lxapp.json.appId`. The launch `main` surface renders the lxapp whose appId equals the surface `id` (for `render: lxapp`), so point it at that same home app. View talks to Logic via `actions.foo()` from `useLxPage()`.
+- **C — host + Rust Logic.** Same host shell as B, opposite Logic side: `features.appService: false` (JS runtime not compiled in), `lxapp.json` `"logic": false`, an HTML-only view calling `window.native.*` (CLI-generated browser global), and `#[lingxia::native]` routes in the Rust crate. Flip `appService` and `logic` together — a logic-enabled lxapp under `appService: false` is rejected at startup. Don't add `@lingxia/react|vue|html` (they assume the `Page({})` bridge).
+
+Run any shape with `lingxia dev`. Full recipes: [LxApp page](./lxapp/guide.md#logic-layer--page) · [host `lingxia.yaml`](./app/project.md#minimal-macos-example) · [Rust route](./native/development.md#native-routes).
 
 ---
 
@@ -127,11 +130,11 @@ Jump straight here when the user reports a concrete failure:
 | "Is `fetch` / `setTimeout` / `URL` available in Logic?" | [`./lxapp/lx-api.md`](./lxapp/lx-api.md#standard-web-apis-built-in-globals) — yes, full Rong runtime |
 | Need to read/write files (not just `lx.downloadFile`) | [`./lxapp/lx-api.md`](./lxapp/lx-api.md#file-and-transfer) → `lx.getFileManager()` |
 | Need a scheduled task running across pages | [`./lxapp/lx-api.md`](./lxapp/lx-api.md#appservice-only-extras) → AppService `cron` |
-| `attachPanel` validation rejected | [`./app/project.md`](./app/project.md) → "surfaces" rules |
+| Surface config rejected (`aside` needs `edge`, one `main`, terminal needs capability) | [`./app/project.md`](./app/project.md#surfaces-adaptive-ui) → Rules |
 | `setData` not reflecting in View | [`./lxapp/bridge.md`](./lxapp/bridge.md) → "How replication works" |
 | Native route returns `BRIDGE_METHOD_NOT_FOUND` | [`./native/development.md`](./native/development.md) → Host Addon registration |
 | `#[lingxia::native]` compiles but View can't call it | [`./native/development.md`](./native/development.md) → "Generated Native Client" |
-| Stream cancels never trigger cleanup | [`./lxapp/bridge.md`](./lxapp/bridge.md) → `finally` block / `stream.on('cancel')` |
+| Stream cancels never trigger cleanup | [`./lxapp/bridge.md`](./lxapp/bridge.md) → use the generator form + `finally` (the explicit handle has no cancel hook) |
 | `lingxia.yaml` change ignored after rebuild | [`./cli/reference.md`](./cli/reference.md) → `lingxia clean`, then rebuild |
 | iOS dev app can't reach Mac dev server | [`./cli/reference.md`](./cli/reference.md) → `lingxia dev` (LAN reachability) |
 | `Lingxia.initialize(...)` not found | [`./app/apple-sdk.md`](./app/apple-sdk.md) → use `Lingxia.quickStart()` (legacy removed) |
@@ -145,11 +148,11 @@ Jump straight here when the user reports a concrete failure:
 
 Each recipe lives in full in its reference file — open the one matching the task:
 
-| Task | Full recipe | Working layout |
+| Task | Full recipe | Scaffold |
 |---|---|---|
-| Standalone lxapp page — `Page({})` Logic, `useLxPage` View, page config, `lxapp.json` registration | [`./lxapp/guide.md` → Logic Layer](./lxapp/guide.md#logic-layer--page) | [`./examples/hello-lxapp/`](./examples/hello-lxapp/README.md) |
-| macOS host-app window — minimal `lingxia.yaml` (`app` / `macos` / `features` / `resources` / `ui`) | [`./app/project.md` → Minimal macOS Example](./app/project.md#minimal-macos-example) | [`./examples/hello-host-js/`](./examples/hello-host-js/README.md) |
-| Rust native route called from the View — `#[lingxia::native]`, `HostAddon`, `@lingxia/native` client | [`./native/development.md` → Native Routes](./native/development.md#native-routes) | [`./examples/hello-host-rust/`](./examples/hello-host-rust/README.md) |
+| Standalone lxapp page — `Page({})` Logic, `useLxPage` View, page config, `lxapp.json` registration | [`./lxapp/guide.md` → Logic Layer](./lxapp/guide.md#logic-layer--page) | `lingxia new hello -t lxapp -y` |
+| macOS host-app window — minimal `lingxia.yaml` (`app` / `macos` / `features` / `resources` / `surfaces`) | [`./app/project.md` → Minimal macOS Example](./app/project.md#minimal-macos-example) | `lingxia new hello -t native-app -p macos --package-id com.example.hello -y` |
+| Rust native route called from the View — `#[lingxia::native]`, `HostAddon`, `@lingxia/native` client | [`./native/development.md` → Native Routes](./native/development.md#native-routes) | (Shape C — `-t native-app`, then `features.appService: false`) |
 
 Run any shape with `lingxia dev`. Two rules worth knowing before opening anything:
 
@@ -168,7 +171,7 @@ Run any shape with `lingxia dev`. Two rules worth knowing before opening anythin
 | Page-scoped native UI (file/media picker, native browser) | host Rust crate | `#[lingxia::native]` route |
 | Background services (devtool, push, ipc) | host Rust crate | `HostAddon::start_services` |
 | Platform integrations needing predeclaration | `lingxia.yaml` | `capabilities`, `features` |
-| Surfaces, panels, activators (macOS) | `lingxia.yaml` | `ui` |
+| Surfaces (windows, asides, sidebar/tray, terminal) | `lingxia.yaml` | `surfaces` |
 | Bundled lxapp sources | folder + `resources.bundles` | `lingxia.yaml` |
 
 ---

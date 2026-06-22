@@ -1,6 +1,6 @@
 use jni::objects::{JClass, JObject, JString};
 use jni::strings::JNIString;
-use jni::sys::{jboolean, jint, jlong};
+use jni::sys::{jboolean, jdouble, jint, jlong};
 use jni::{
     Env, EnvUnowned, JavaVM,
     errors::{LogErrorAndDefault, ThrowRuntimeExAndDefault},
@@ -1242,6 +1242,41 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_browserTabClose(
 }
 
 #[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_app_NativeApi_browserTabNavigate(
+    mut env: EnvUnowned,
+    _class: JClass,
+    tab_id: JString,
+    url: JString,
+) -> jboolean {
+    env.with_env(|env| -> Result<jboolean, jni::errors::Error> {
+        let tab_id: String = match tab_id.try_to_string(env) {
+            Ok(s) => s.to_string(),
+            Err(_) => return Ok(false),
+        };
+        let url: String = match url.try_to_string(env) {
+            Ok(s) => s.to_string(),
+            Err(_) => return Ok(false),
+        };
+        Ok(crate::browser::navigate(&tab_id, &url).is_ok())
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_app_NativeApi_browserTabActivate(
+    mut env: EnvUnowned,
+    _class: JClass,
+    tab_id: JString,
+) {
+    env.with_env(|env| -> Result<(), jni::errors::Error> {
+        let tab_id: String = tab_id.try_to_string(env)?.to_string();
+        crate::browser::mark_active(&tab_id);
+        Ok(())
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+#[unsafe(no_mangle)]
 pub extern "system" fn Java_com_lingxia_app_NativeApi_getBuiltinBrowserAppId<'a>(
     mut env: EnvUnowned<'a>,
     _class: JClass<'a>,
@@ -1266,6 +1301,45 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_browserTabPathForId<'a>(
         };
         let path = crate::browser::tab_path(&tab_id);
         env.new_string(path).or_else(|_| Ok(JString::null()))
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_app_NativeApi_setSurfaceWidth(
+    mut env: EnvUnowned,
+    _class: JClass,
+    appid: JString,
+    width: jdouble,
+) -> jboolean {
+    env.with_env(|env| -> Result<jboolean, jni::errors::Error> {
+        let appid: String = match appid.try_to_string(env) {
+            Ok(s) => s.to_string(),
+            Err(_) => return Ok(false),
+        };
+        Ok(lxapp::try_get(&appid)
+            .map(|lxapp| lxapp.set_surface_width(width))
+            .unwrap_or(false) as jboolean)
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_app_NativeApi_surfaceDerivedLayout<'a>(
+    mut env: EnvUnowned<'a>,
+    _class: JClass<'a>,
+    appid: JString<'a>,
+) -> JString<'a> {
+    env.with_env(|env| -> Result<JString, jni::errors::Error> {
+        let appid: String = match appid.try_to_string(env) {
+            Ok(s) => s.to_string(),
+            Err(_) => return Ok(JString::null()),
+        };
+        let json = lxapp::try_get(&appid)
+            .and_then(|lxapp| lxapp.surface_derived_layout())
+            .and_then(|layout| serde_json::to_string(&layout).ok())
+            .unwrap_or_else(|| "null".to_string());
+        env.new_string(json).or_else(|_| Ok(JString::null()))
     })
     .resolve::<ThrowRuntimeExAndDefault>()
 }

@@ -180,6 +180,8 @@ pub(crate) fn browser_create_webview(
     let runtime_for_new_window = browser_owner.runtime.clone();
     let owner_appid_for_new_window = browser_owner.appid.clone();
     let owner_session_for_new_window = browser_owner.session_id();
+    let tab_id_for_new_window = tab_id_owned.clone();
+    let tab_path_for_new_window = tab_path_owned.clone();
     let tab_id_for_download = tab_id_owned.clone();
     let owner_for_download = browser_owner.clone();
     let owner_for_file_chooser = browser_owner.clone();
@@ -241,6 +243,20 @@ pub(crate) fn browser_create_webview(
         })
         .on_new_window(move |url| {
             let normalized = normalize_browser_target_url(url);
+            // A standalone (docked aside) browser has no tab strip, so a
+            // new-window request (`target=_blank`, `window.open`) has nowhere to
+            // surface as a tab. Navigate the aside's own WebView to the target
+            // instead — the tabless-browser behavior. The load is deferred onto
+            // the executor (which marshals back to the main thread async) so we
+            // never call loadRequest re-entrantly inside the createWebView
+            // delegate, which aborts the process.
+            if crate::tabs::is_standalone_tab(&tab_id_for_new_window) {
+                let path = tab_path_for_new_window.clone();
+                rong::RongExecutor::global().spawn(async move {
+                    let _ = browser_load_url(&path, session_id, &normalized);
+                });
+                return NewWindowPolicy::Cancel;
+            }
             let _ = runtime_for_new_window.open_url(OpenUrlRequest {
                 owner_appid: owner_appid_for_new_window.clone(),
                 owner_session_id: owner_session_for_new_window,

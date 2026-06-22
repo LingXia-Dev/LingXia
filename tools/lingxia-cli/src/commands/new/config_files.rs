@@ -195,7 +195,7 @@ mod tests {
     }
 
     #[test]
-    fn build_lingxia_config_adds_default_ui_for_macos() {
+    fn build_lingxia_config_adds_default_surfaces_for_macos() {
         let config = ProjectConfig {
             name: "demo".to_string(),
             product_name: "Demo".to_string(),
@@ -210,15 +210,17 @@ mod tests {
         };
 
         let yaml = render_host_config(&config, &lxapp, AppServiceMode::Enabled);
-        assert!(yaml.contains("Optional menu bar item"));
-        assert!(yaml.contains("kind: titlebarItem"));
+        // v2 single-declaration template.
+        assert!(yaml.contains("surfaces:"));
+        assert!(yaml.contains("render: lxapp"));
+        assert!(yaml.contains("role: main"));
+        assert!(yaml.contains("launch: true"));
         let lingxia: LingXiaConfig = serde_yaml_ng::from_str(&yaml).unwrap();
-        let ui = lingxia.ui.expect("macOS config should include default ui");
-
-        assert_eq!(ui["launch"]["initialSurface"], "main");
-        assert_eq!(ui["surfaces"][0]["id"], "main");
-        assert_eq!(ui["surfaces"][0]["content"]["appId"], "demo-home");
-        assert!(ui["surfaces"][0]["presentation"].get("size").is_none());
-        assert_eq!(ui["activators"].as_array().unwrap().len(), 0);
+        let surfaces = lingxia
+            .surfaces
+            .expect("macOS config should include default surfaces");
+        assert_eq!(surfaces.len(), 1);
+        assert_eq!(surfaces[0].id, "demo-home");
+        assert!(surfaces[0].launch);
     }
 }

@@ -25,7 +25,7 @@ final class RunnerBrowserOverlay {
     }
 
     func present(tabId: String, in phoneContent: NSView, window: NSWindow?) {
-        let normalized = tabId.lowercased()
+        let normalized = tabId.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalized.isEmpty else { return }
 
         if let activeTabId, activeTabId != normalized {

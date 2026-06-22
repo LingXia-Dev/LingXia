@@ -25,4 +25,4 @@ multipart file upload primitives.
 
 This crate owns the transfer state machines and persistence layer. UI-facing
 host APIs are registered or wrapped from higher-level crates such as
-`lingxia-shell` and `lingxia`.
+`lingxia-browser-shell` and `lingxia`.

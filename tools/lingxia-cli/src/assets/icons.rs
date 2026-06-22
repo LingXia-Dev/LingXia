@@ -46,7 +46,7 @@ pub(super) fn prepare_app_ui_icons(
     project_root: &Path,
     config: &LingXiaConfig,
 ) -> Result<Vec<PreparedAppUiIcon>> {
-    let Some(ui) = effective_ui_config(config)? else {
+    let Some(ui) = effective_ui_config(config, None)? else {
         return Ok(Vec::new());
     };
 

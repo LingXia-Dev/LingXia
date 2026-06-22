@@ -12,6 +12,10 @@ enum LxAppSurface {
     private static let log = OSLog(subsystem: "LingXia", category: "Surface")
     private static let kindWindow: Int32 = 0
     private static let kindPopup: Int32 = 1
+    // Arbitrated role (mirrors lingxia_platform SurfaceRole): only an aside docks.
+    private static let roleMain: Int32 = 0
+    private static let roleAside: Int32 = 1
+    private static let roleFloat: Int32 = 2
     private static let contentPage: Int32 = 0
     private static let contentUrl: Int32 = 1
     private static let transientCornerRadius: CGFloat = 12
@@ -27,6 +31,21 @@ enum LxAppSurface {
         let window: NSWindow?
         weak var parentWindow: NSWindow?
         let delegate: WindowDelegate
+        /// Set when the surface is an edge-aside docked in-window via the shell's
+        /// workspace panels (Adaptive Surface Layout split pane) rather than a
+        /// standalone window. `nil` for window/float surfaces.
+        let dockedPosition: PanelPosition?
+        /// The container view handed to the shell's panel dock; held so close()
+        /// can detach it from the panel slot.
+        let dockedContainer: NSView?
+        /// Set for float popups (popups above the layout). A float is created +
+        /// registered hidden here; the reconciler is the single authority for
+        /// its visibility, showing/dismissing it from `plan.floats`.
+        let isFloat: Bool
+        /// Set when the docked aside hosts a browser (a `{ url, as: 'aside' }`
+        /// surface). Owns the browser tab + chrome; close() tears it down so the
+        /// underlying Rust browser tab is destroyed with the aside.
+        let dockedBrowser: DockedBrowser?
 
         init(
             id: String,
@@ -37,7 +56,11 @@ enum LxAppSurface {
             navigationDelegate: WKNavigationDelegate?,
             window: NSWindow?,
             parentWindow: NSWindow?,
-            delegate: WindowDelegate
+            delegate: WindowDelegate,
+            dockedPosition: PanelPosition? = nil,
+            dockedContainer: NSView? = nil,
+            isFloat: Bool = false,
+            dockedBrowser: DockedBrowser? = nil
         ) {
             self.id = id
             self.appId = appId
@@ -48,6 +71,10 @@ enum LxAppSurface {
             self.window = window
             self.parentWindow = parentWindow
             self.delegate = delegate
+            self.dockedPosition = dockedPosition
+            self.dockedContainer = dockedContainer
+            self.isFloat = isFloat
+            self.dockedBrowser = dockedBrowser
         }
     }
 
@@ -126,11 +153,44 @@ enum LxAppSurface {
         height: Double,
         widthRatio: Double,
         heightRatio: Double,
-        position: Int32
+        position: Int32,
+        role: Int32
     ) -> Bool {
         if let existing = entries[id] {
-            existing.window?.makeKeyAndOrderFront(nil)
+            if existing.dockedPosition != nil {
+                // A docked aside's visibility is owned by the layout plan
+                // reconciler; present only re-asserts that content exists.
+            } else if existing.isFloat {
+                // A float's visibility is owned by the layout plan reconciler;
+                // present only re-asserts that content exists.
+            } else {
+                existing.window?.makeKeyAndOrderFront(nil)
+            }
             return true
+        }
+
+        // Adaptive Surface Layout: only an arbitrated aside (overlay on a
+        // dockable edge) renders as an in-window split pane via the shell's
+        // workspace dock — the same mechanism the terminal uses. Floats (and any
+        // other overlay) stay on the positioned popup path below.
+        if kind == kindPopup,
+           role == roleAside,
+           let panelPosition = panelPosition(for: position),
+           let shell = LxAppActiveHost.activeShell {
+            return presentDockedAside(
+                id: id,
+                appId: appId,
+                path: path,
+                sessionId: sessionId,
+                pageInstanceId: rawPageInstanceId,
+                content: content,
+                panelPosition: panelPosition,
+                width: width,
+                height: height,
+                widthRatio: widthRatio,
+                heightRatio: heightRatio,
+                shell: shell
+            )
         }
 
         let context = surfaceContext(kind: kind)
@@ -265,6 +325,11 @@ enum LxAppSurface {
             return false
         }
 
+        // A popup (kind == kindPopup, non-aside) is a float: created + registered
+        // hidden here, then shown/positioned/dismissed by the reconciler from
+        // plan.floats — the single authority for float visibility. A bare window
+        // (kind == kindWindow) is shown immediately, as before.
+        let isFloat = kind == kindPopup
         entries[id] = Entry(
             id: id,
             appId: appId,
@@ -274,14 +339,196 @@ enum LxAppSurface {
             navigationDelegate: navigationDelegate,
             window: window,
             parentWindow: context.parentWindow,
-            delegate: delegate
+            delegate: delegate,
+            isFloat: isFloat
         )
+
+        if isFloat {
+            // Do NOT order the popup front directly. Visibility is owned by the
+            // layout plan commit that follows this content registration.
+            return true
+        }
 
         if kind != kindWindow, let parentWindow = context.parentWindow, let window {
             parentWindow.addChildWindow(window, ordered: .above)
         }
         window?.makeKeyAndOrderFront(nil)
         return true
+    }
+
+    /// Render an edge-aside as an in-window split pane docked into the shell's
+    /// workspace. The aside's content (page host or web view) is mounted into a
+    /// plain container that the shell pins inside a panel slot; the main content
+    /// card shrinks to make room, producing a real split rather than a floating
+    /// window.
+    private static func presentDockedAside(
+        id: String,
+        appId: String,
+        path: String,
+        sessionId: UInt64,
+        pageInstanceId rawPageInstanceId: String,
+        content: Int32,
+        panelPosition: PanelPosition,
+        width: Double,
+        height: Double,
+        widthRatio: Double,
+        heightRatio: Double,
+        shell: LxAppShell
+    ) -> Bool {
+        let container = NSView()
+        container.wantsLayer = true
+        container.layer?.backgroundColor = NSColor.clear.cgColor
+
+        let pageInstanceId: String
+        let hostView: LxAppHostView?
+        let webView: WKWebView?
+        let navigationDelegate: WKNavigationDelegate?
+        let dockedBrowser: DockedBrowser?
+
+        switch content {
+        case contentPage:
+            pageInstanceId = rawPageInstanceId.trimmingCharacters(in: .whitespacesAndNewlines)
+            if path.isEmpty || pageInstanceId.isEmpty {
+                os_log(
+                    "aside page requires path and pageInstanceId id=%{public}@ app=%{public}@ path=%{public}@ pageInstanceId=%{public}@",
+                    log: log, type: .error, id, appId, path, pageInstanceId
+                )
+                return false
+            }
+            let controller = LxAppActiveHost.activeController ?? LxAppController()
+            let lxHostView = LxAppHostView(controller: controller)
+            lxHostView.translatesAutoresizingMaskIntoConstraints = false
+            lxHostView.wantsLayer = true
+            lxHostView.layer?.backgroundColor = NSColor.clear.cgColor
+            container.addSubview(lxHostView)
+            pinToEdges(lxHostView, in: container)
+
+            let session = LxAppSession(
+                id: LxAppSessionID(rawValue: sessionId),
+                appId: appId,
+                path: path,
+                presentation: .normal,
+                userInfo: [
+                    "pageInstanceId": .string(pageInstanceId),
+                    "dynamicSurfaceId": .string(id),
+                ]
+            )
+            hostView = lxHostView
+            webView = nil
+            navigationDelegate = nil
+            dockedBrowser = nil
+            Task { @MainActor in
+                do {
+                    try await lxHostView.mount(session, notifyVisibleOnMount: true)
+                } catch {
+                    os_log(
+                        "aside mount failed id=%{public}@ app=%{public}@ path=%{public}@ error=%{public}@",
+                        log: log, type: .error, id, appId, path, String(describing: error)
+                    )
+                    _ = close(id: id, appId: appId, reason: "failed")
+                }
+            }
+
+        case contentUrl:
+            guard let url = URL(string: path), let scheme = url.scheme?.lowercased(), scheme == "https" || scheme == "http" else {
+                os_log("invalid web aside url id=%{public}@ url=%{public}@", log: log, type: .error, id, path)
+                return false
+            }
+            // Singleton boundary (at most one browser aside per window, new
+            // replaces old) is enforced by the core arbitration as a web-aside
+            // eviction, which closes the previous one through the normal close
+            // path before this present runs — no SDK-side dedup needed.
+            //
+            // A docked browser aside is a real browser: its webview is created
+            // through the Rust browser path (like a main browser tab) so it
+            // receives native input and drives back/forward, and it carries its
+            // own chrome (back/forward/refresh/address/close). The bare WKWebView
+            // it replaces could not take native input. The tab is independent of
+            // the singleton tab coordinator — no sidebar entry, no main tab.
+            guard let browser = shell.browserCoordinator.createDockedBrowser(
+                url: url.absoluteString,
+                onClose: { _ = LxAppSurface.close(id: id, appId: appId, reason: "user") }
+            ) else {
+                os_log("failed to create docked browser id=%{public}@ url=%{public}@", log: log, type: .error, id, path)
+                return false
+            }
+            pageInstanceId = ""
+            hostView = nil
+            webView = nil
+            navigationDelegate = nil
+            dockedBrowser = browser
+            container.addSubview(browser.containerView)
+            browser.containerView.translatesAutoresizingMaskIntoConstraints = false
+            pinToEdges(browser.containerView, in: container)
+
+        default:
+            os_log("unsupported aside content=%{public}d id=%{public}@ app=%{public}@", log: log, type: .error, content, id, appId)
+            return false
+        }
+
+        let defaultSize = dockDefaultSize(
+            position: panelPosition,
+            width: width,
+            height: height,
+            widthRatio: widthRatio,
+            heightRatio: heightRatio
+        )
+        entries[id] = Entry(
+            id: id,
+            appId: appId,
+            pageInstanceId: pageInstanceId,
+            hostView: hostView,
+            webView: webView,
+            navigationDelegate: navigationDelegate,
+            window: nil,
+            parentWindow: nil,
+            delegate: WindowDelegate(id: id, appId: appId),
+            dockedPosition: panelPosition,
+            dockedContainer: container,
+            dockedBrowser: dockedBrowser
+        )
+        // Only CREATE + REGISTER the aside content here (hidden). The Rust graph
+        // commit that follows `present_surface` pushes the layout plan; the
+        // reconciler is the sole authority for the aside's edge + visibility.
+        shell.registerPanelWithNativeContent(
+            id: id,
+            position: panelPosition,
+            contentView: container,
+            defaultSize: defaultSize
+        )
+        return true
+    }
+
+    /// Map a `SurfacePosition` integer to a dockable workspace edge. Center (0)
+    /// is a float and has no dock slot — returns nil so the caller treats it as
+    /// a popup.
+    private static func panelPosition(for position: Int32) -> PanelPosition? {
+        switch position {
+        case 1: return .bottom
+        case 2: return .left
+        case 3: return .right
+        case 4: return .top
+        default: return nil
+        }
+    }
+
+    private static func dockDefaultSize(
+        position: PanelPosition,
+        width: Double,
+        height: Double,
+        widthRatio: Double,
+        heightRatio: Double
+    ) -> CGFloat {
+        switch position {
+        case .left, .right:
+            return finitePositive(width)
+                ?? ratioSize(widthRatio, base: NSScreen.main?.visibleFrame.width ?? 1280)
+                ?? 360
+        case .bottom, .top:
+            return finitePositive(height)
+                ?? ratioSize(heightRatio, base: NSScreen.main?.visibleFrame.height ?? 800)
+                ?? 320
+        }
     }
 
     static func close(id: String, appId: String, reason: String) -> Bool {
@@ -297,6 +544,14 @@ enum LxAppSurface {
         entry.hostView?.unmount(reason: closeReason(reason))
         entry.webView?.stopLoading()
         entry.webView?.navigationDelegate = nil
+        // Destroy the docked browser's tab + chrome (idempotent — the close
+        // button routes back through here too).
+        entry.dockedBrowser?.tearDown()
+        if entry.dockedPosition != nil {
+            // In-window aside: hide the panel slot and detach its content.
+            LxAppActiveHost.activeShell?.hidePanel(id: id)
+            entry.dockedContainer?.removeFromSuperview()
+        }
         entry.window?.delegate = nil
         if let window = entry.window {
             entry.parentWindow?.removeChildWindow(window)
@@ -308,8 +563,22 @@ enum LxAppSurface {
     }
 
     static func show(id: String, appId: String) -> Bool {
-        guard let entry = entries[id], entry.appId == appId, let window = entry.window else {
+        guard let entry = entries[id], entry.appId == appId else {
             os_log("show: surface not found id=%{public}@ app=%{public}@", log: log, type: .error, id, appId)
+            return false
+        }
+        if entry.dockedPosition != nil {
+            LxAppActiveHost.activeShell?.showPanel(id: id)
+            if let webView = entry.hostView?.webView {
+                MacNativeBridge.notifyPageActive(for: webView)
+            }
+            if !entry.pageInstanceId.isEmpty {
+                _ = notifyPageInstanceVisible(entry.pageInstanceId)
+            }
+            return true
+        }
+        guard let window = entry.window else {
+            os_log("show: surface has no window id=%{public}@ app=%{public}@", log: log, type: .error, id, appId)
             return false
         }
         // Defense in depth — JS-side already short-circuits on no-op.
@@ -334,8 +603,22 @@ enum LxAppSurface {
     }
 
     static func hide(id: String, appId: String) -> Bool {
-        guard let entry = entries[id], entry.appId == appId, let window = entry.window else {
+        guard let entry = entries[id], entry.appId == appId else {
             os_log("hide: surface not found id=%{public}@ app=%{public}@", log: log, type: .error, id, appId)
+            return false
+        }
+        if entry.dockedPosition != nil {
+            LxAppActiveHost.activeShell?.hidePanel(id: id)
+            if let webView = entry.hostView?.webView {
+                MacNativeBridge.notifyPageInactive(for: webView)
+            }
+            if !entry.pageInstanceId.isEmpty {
+                _ = notifyPageInstanceHidden(entry.pageInstanceId, "hidden")
+            }
+            return true
+        }
+        guard let window = entry.window else {
+            os_log("hide: surface has no window id=%{public}@ app=%{public}@", log: log, type: .error, id, appId)
             return false
         }
         if !window.isVisible { return true }
@@ -354,6 +637,42 @@ enum LxAppSurface {
             _ = notifyPageInstanceHidden(entry.pageInstanceId, "hidden")
         }
         return true
+    }
+
+    /// Float popups currently shown. A float is created + registered hidden by
+    /// `present`; this is the set the reconciler already brought on-screen, so it
+    /// can leave them untouched (idempotent) and dismiss any no longer desired.
+    static func visibleFloatIds() -> Set<String> {
+        Set(
+            entries.values
+                .filter { $0.isFloat && ($0.window?.isVisible ?? false) }
+                .map { $0.id }
+        )
+    }
+
+    /// Order a registered (hidden) float popup on-screen. Idempotent: a float
+    /// already visible is left exactly as is (no flicker). Driven solely by the
+    /// reconciler from `plan.floats`.
+    @discardableResult
+    static func showFloat(id: String) -> Bool {
+        guard let entry = entries[id], entry.isFloat, let window = entry.window else {
+            return false
+        }
+        if window.isVisible { return true }
+        if let parentWindow = entry.parentWindow, window.parent == nil {
+            parentWindow.addChildWindow(window, ordered: .above)
+        }
+        window.makeKeyAndOrderFront(nil)
+        return true
+    }
+
+    /// Dismiss a float popup the core no longer lists in `plan.floats`. This is
+    /// the existing popup teardown (close), which unmounts the page, detaches the
+    /// child window, and fires the close observer so the modal-focus stack pops.
+    @discardableResult
+    static func dismissFloat(id: String) -> Bool {
+        guard let entry = entries[id], entry.isFloat else { return false }
+        return close(id: id, appId: entry.appId, reason: "programmatic")
     }
 
     private static func pinToEdges(_ child: NSView, in parent: NSView) {
@@ -561,9 +880,18 @@ import WebKit
 @MainActor
 enum LxAppSurface {
     private static let log = OSLog(subsystem: "LingXia", category: "Surface")
+    private static let kindWindow: Int32 = 0
     private static let kindPopup: Int32 = 1
     private static let contentPage: Int32 = 0
     private static let contentUrl: Int32 = 1
+    // Arbitrated role (mirrors lingxia_platform SurfaceRole). On a phone there is
+    // no docking: an aside has no side-by-side room, so the core promotes it to a
+    // main (kind Window) and an aside that survives as such (kind Overlay) is
+    // still shown full-screen — the same way the primary lxapp page is shown. A
+    // float keeps the positioned-popup treatment.
+    private static let roleMain: Int32 = 0
+    private static let roleAside: Int32 = 1
+    private static let roleFloat: Int32 = 2
     private static let transientCornerRadius: CGFloat = 12
     private static var entries: [String: Entry] = [:]
 
@@ -571,6 +899,11 @@ enum LxAppSurface {
         let id: String
         let appId: String
         let pageInstanceId: String
+        /// True when the surface presents full-screen (an aside, or a main the
+        /// core promoted from an aside) rather than a positioned float popup.
+        /// The layout reconciler tracks the full-screen set to dismiss asides the
+        /// core dropped from the plan.
+        let isFullScreenSurface: Bool
         let hostView: LxAppHostView?
         let webView: WKWebView?
         let navigationDelegate: WKNavigationDelegate?
@@ -580,6 +913,7 @@ enum LxAppSurface {
             id: String,
             appId: String,
             pageInstanceId: String,
+            isFullScreenSurface: Bool,
             hostView: LxAppHostView?,
             webView: WKWebView?,
             navigationDelegate: WKNavigationDelegate?,
@@ -588,6 +922,7 @@ enum LxAppSurface {
             self.id = id
             self.appId = appId
             self.pageInstanceId = pageInstanceId
+            self.isFullScreenSurface = isFullScreenSurface
             self.hostView = hostView
             self.webView = webView
             self.navigationDelegate = navigationDelegate
@@ -616,17 +951,26 @@ enum LxAppSurface {
         let appId: String
         let contentView = UIView()
         private let contentFrame: CGRect
-        /// True when the surface was opened with both ratios ≈ 1.0. Drives
-        /// status-bar hiding + corner-radius / backdrop adjustments so the
-        /// surface visually covers the system status area, matching the
-        /// Android immersive treatment.
-        private let isFullScreen: Bool
+        /// True when the surface fills the whole window. This can be an adaptive
+        /// aside/main drill-in or an explicitly full-screen float.
+        private let fillsScreen: Bool
+        /// True for adaptive asides (including asides promoted to mains on
+        /// compact width). These should feel like an iOS drill-in page, not an
+        /// immersive popup.
+        private let usesDrillInChrome: Bool
 
-        init(id: String, appId: String, contentFrame: CGRect, isFullScreen: Bool) {
+        init(
+            id: String,
+            appId: String,
+            contentFrame: CGRect,
+            fillsScreen: Bool,
+            usesDrillInChrome: Bool
+        ) {
             self.id = id
             self.appId = appId
             self.contentFrame = contentFrame
-            self.isFullScreen = isFullScreen
+            self.fillsScreen = fillsScreen
+            self.usesDrillInChrome = usesDrillInChrome
             super.init(nibName: nil, bundle: nil)
             modalPresentationStyle = .overFullScreen
         }
@@ -635,38 +979,87 @@ enum LxAppSurface {
             nil
         }
 
-        // Hide the iOS status bar (time, signal, battery) when the surface
-        // is full-screen so its content actually covers the area, instead of
-        // showing through behind the system glyphs.
-        override var prefersStatusBarHidden: Bool { isFullScreen }
-        override var prefersHomeIndicatorAutoHidden: Bool { isFullScreen }
+        // Adaptive asides are page-like drill-ins, so keep system chrome visible.
+        // Only explicitly immersive full-screen floats hide/deflect system UI.
+        override var prefersStatusBarHidden: Bool { fillsScreen && !usesDrillInChrome }
+        override var prefersHomeIndicatorAutoHidden: Bool { fillsScreen && !usesDrillInChrome }
         override var preferredScreenEdgesDeferringSystemGestures: UIRectEdge {
-            isFullScreen ? .all : []
+            fillsScreen && !usesDrillInChrome ? .all : []
         }
 
         override func viewDidLoad() {
             super.viewDidLoad()
-            view.backgroundColor = isFullScreen
-                ? UIColor.clear
+            view.backgroundColor = fillsScreen
+                ? (usesDrillInChrome ? UIColor.systemBackground : UIColor.clear)
                 : UIColor.black.withAlphaComponent(0.45)
             let tap = UITapGestureRecognizer(target: self, action: #selector(closeFromBackdrop))
             tap.delegate = self
             view.addGestureRecognizer(tap)
 
+            // A drill-in aside should have an iOS-style way back, so support a
+            // left-edge swipe in addition to the visible back affordance.
+            if usesDrillInChrome {
+                let edge = UIScreenEdgePanGestureRecognizer(target: self, action: #selector(closeFromEdgeSwipe(_:)))
+                edge.edges = .left
+                view.addGestureRecognizer(edge)
+            }
+
             contentView.frame = contentFrame
             contentView.backgroundColor = .white
-            contentView.layer.cornerRadius = isFullScreen ? 0 : LxAppSurface.transientCornerRadius
+            contentView.layer.cornerRadius = fillsScreen ? 0 : LxAppSurface.transientCornerRadius
             contentView.layer.masksToBounds = true
             contentView.isUserInteractionEnabled = true
             view.addSubview(contentView)
+
+            // Full-screen surfaces have no host chrome. Adaptive asides get a
+            // page-like Back affordance; immersive floats keep explicit Close.
+            if fillsScreen {
+                let action = UIButton(type: .system)
+                action.translatesAutoresizingMaskIntoConstraints = false
+                action.setImage(
+                    UIImage(systemName: usesDrillInChrome ? "chevron.left" : "xmark"),
+                    for: .normal
+                )
+                action.tintColor = usesDrillInChrome ? UIColor.label : UIColor.white
+                action.backgroundColor = usesDrillInChrome
+                    ? UIColor.systemBackground.withAlphaComponent(0.86)
+                    : UIColor.black.withAlphaComponent(0.4)
+                action.layer.cornerRadius = 18
+                action.layer.shadowColor = UIColor.black.cgColor
+                action.layer.shadowOpacity = usesDrillInChrome ? 0.12 : 0
+                action.layer.shadowRadius = 8
+                action.layer.shadowOffset = CGSize(width: 0, height: 2)
+                action.accessibilityLabel = usesDrillInChrome ? "Back" : "Close"
+                action.addTarget(self, action: #selector(closeFullScreen), for: .touchUpInside)
+                view.addSubview(action)
+                NSLayoutConstraint.activate([
+                    action.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 10),
+                    action.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 12),
+                    action.widthAnchor.constraint(equalToConstant: 36),
+                    action.heightAnchor.constraint(equalToConstant: 36),
+                ])
+            }
+        }
+
+        @objc private func closeFullScreen() {
+            _ = LxAppSurface.close(id: id, appId: appId, reason: "user")
         }
 
         @objc private func closeFromBackdrop() {
             // Full-screen surfaces have no exposed backdrop — disable the
             // tap-to-close affordance so users don't accidentally dismiss by
             // tapping anywhere on the page.
-            if isFullScreen { return }
+            if fillsScreen { return }
             _ = LxAppSurface.close(id: id, appId: appId, reason: "user")
+        }
+
+        @objc private func closeFromEdgeSwipe(_ gesture: UIScreenEdgePanGestureRecognizer) {
+            guard gesture.state == .ended else { return }
+            let translation = gesture.translation(in: view).x
+            let velocity = gesture.velocity(in: view).x
+            if translation > max(view.bounds.width * 0.2, 80) || velocity > 700 {
+                _ = LxAppSurface.close(id: id, appId: appId, reason: "user")
+            }
         }
 
         func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
@@ -687,9 +1080,15 @@ enum LxAppSurface {
         height: Double,
         widthRatio: Double,
         heightRatio: Double,
-        position: Int32
+        position: Int32,
+        role: Int32
     ) -> Bool {
-        guard kind == kindPopup else {
+        // A phone has no side-by-side room, so the core promotes an aside to a
+        // main and presents it as a window (kind Window); an aside that survives
+        // the arbitration (kind Overlay, role Aside) is likewise shown
+        // full-screen — the same way the primary lxapp page is shown. A float
+        // (kind Overlay, role Float) keeps the positioned-popup treatment below.
+        guard kind == kindPopup || kind == kindWindow else {
             os_log("unsupported mobile surface kind=%{public}d id=%{public}@ app=%{public}@", log: log, type: .error, kind, id, appId)
             return false
         }
@@ -707,26 +1106,35 @@ enum LxAppSurface {
             return true
         }
 
+        // An aside (or an aside the core promoted to a main) covers the whole
+        // screen, pushed over the primary page like any other full-screen
+        // surface. A float popup keeps its requested size/position, and still
+        // fills the screen when both ratios reach ~1.0 (matching Android).
+        let usesDrillInChrome = kind == kindWindow || role == roleAside
+        let isFullScreenSurface = kind == kindWindow
+            || role == roleAside
+            || (widthRatio.isFinite
+                && heightRatio.isFinite
+                && widthRatio >= 0.999
+                && heightRatio >= 0.999)
+
         let containerFrame = windowScene.screen.bounds
-        let contentFrame = popupFrame(
-            width: width,
-            height: height,
-            widthRatio: widthRatio,
-            heightRatio: heightRatio,
-            position: position,
-            containerFrame: containerFrame
-        )
-        // Same criterion as Android: both ratios at (near) 1.0 means "fill the
-        // whole screen including the status bar area".
-        let isFullScreen = widthRatio.isFinite
-            && heightRatio.isFinite
-            && widthRatio >= 0.999
-            && heightRatio >= 0.999
+        let contentFrame = isFullScreenSurface
+            ? containerFrame
+            : popupFrame(
+                width: width,
+                height: height,
+                widthRatio: widthRatio,
+                heightRatio: heightRatio,
+                position: position,
+                containerFrame: containerFrame
+            )
         let controller = PopupViewController(
             id: id,
             appId: appId,
             contentFrame: contentFrame,
-            isFullScreen: isFullScreen
+            fillsScreen: isFullScreenSurface,
+            usesDrillInChrome: usesDrillInChrome
         )
         let window = UIWindow(windowScene: windowScene)
         window.frame = containerFrame
@@ -800,6 +1208,7 @@ enum LxAppSurface {
             id: id,
             appId: appId,
             pageInstanceId: pageInstanceId,
+            isFullScreenSurface: isFullScreenSurface,
             hostView: hostView,
             webView: webView,
             navigationDelegate: navigationDelegate,
@@ -807,6 +1216,24 @@ enum LxAppSurface {
         )
         window.makeKeyAndVisible()
         return true
+    }
+
+    /// Surfaces presented full-screen (asides, and asides the core promoted to a
+    /// main) that are currently on-screen. The layout reconciler reads this to
+    /// dismiss any full-screen surface the core dropped from the plan — mirroring
+    /// the macOS reconciler's desired-set vs presented-set contract.
+    static func presentedFullScreenIds() -> Set<String> {
+        Set(
+            entries.values
+                .filter { $0.isFullScreenSurface && !$0.window.isHidden }
+                .map { $0.id }
+        )
+    }
+
+    @discardableResult
+    static func dismissFullScreen(id: String) -> Bool {
+        guard let entry = entries[id], entry.isFullScreenSurface else { return false }
+        return close(id: id, appId: entry.appId, reason: "programmatic")
     }
 
     static func close(id: String, appId: String, reason: String) -> Bool {
@@ -984,7 +1411,8 @@ enum LxAppSurface {
         height: Double,
         widthRatio: Double,
         heightRatio: Double,
-        position: Int32
+        position: Int32,
+        role: Int32
     ) -> Bool {
         _ = id
         _ = appId
@@ -998,6 +1426,7 @@ enum LxAppSurface {
         _ = widthRatio
         _ = heightRatio
         _ = position
+        _ = role
         return false
     }
 

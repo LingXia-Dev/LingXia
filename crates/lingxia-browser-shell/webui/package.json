@@ -1,0 +1,14 @@
+{
+  "name": "@lingxia/browser-shell-webui",
+  "version": "0.5.1",
+  "private": false,
+  "description": "Prebuilt LingXia browser shell webui lxapp bundle",
+  "type": "module",
+  "files": [
+    "dist",
+    "lxapp.json"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}

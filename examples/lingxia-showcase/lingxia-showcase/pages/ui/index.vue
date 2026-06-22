@@ -52,67 +52,53 @@
         <!-- Surface Demo -->
         <template v-if="currentType === 'surface'">
           <div class="mt-4 mb-6 px-4 text-center">
-            <h1 class="text-2xl font-light text-gray-800 mb-2">lx.surface.open</h1>
+            <h1 class="text-2xl font-light text-gray-800 mb-2">lx.surface.aside / float</h1>
             <div class="w-16 h-0.5 bg-gray-400 mx-auto"></div>
           </div>
           <div class="mx-1 mb-4 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
             <div class="px-4 py-4 space-y-4">
               <div class="space-y-3">
                 <div class="text-xs text-gray-500 leading-5 bg-gray-50 rounded-lg px-3 py-2">
-                  Overlay is cross-platform. Window is shown only on desktop runtimes.
+                  Aside docks beside the main and splits it; a compact window folds it into a switchable tab. Float presents a popup above the main without taking layout space.
                 </div>
                 <div>
-                  <div class="text-xs uppercase text-gray-500 tracking-wide mb-2">Kind</div>
-                  <!-- Segmented control: neutral pill background so the active
-                       state doesn't compete visually with the blue CTA below. -->
-                  <div :class="['grid gap-1 bg-gray-100 rounded-lg p-1', supportsSurfaceWindow ? 'grid-cols-2' : 'grid-cols-1']">
-                    <button v-for="kind in surfaceKinds" :key="kind" type="button"
-                      :class="['py-1.5 px-2 text-sm font-medium rounded-md transition-colors', surfaceKind === kind ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700']"
-                      @click="surfaceKind = kind">
-                      {{ kind.charAt(0).toUpperCase() + kind.slice(1) }}
+                  <div class="text-xs uppercase text-gray-500 tracking-wide mb-2">Aside edge</div>
+                  <!-- Edge picker for aside: which side the surface docks to. -->
+                  <div class="grid grid-cols-2 gap-2">
+                    <button v-for="edge in surfaceEdges" :key="edge" type="button"
+                      :class="['py-2 text-sm rounded-lg transition-colors border', surfaceEdge === edge ? 'bg-blue-500 border-blue-500 text-white' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50']"
+                      @click="surfaceEdge = edge">
+                      {{ edge.charAt(0).toUpperCase() + edge.slice(1) }}
                     </button>
                   </div>
                 </div>
-                <template v-if="surfaceKind === 'overlay'">
                 <div>
-                  <div class="text-xs uppercase text-gray-500 tracking-wide mb-2">Overlay Size</div>
-                  <div class="flex items-center justify-between text-xs text-gray-500 tracking-wide">
-                    <span>Width</span>
-                    <span class="text-gray-700 font-mono">{{ surfaceWidthRatio.toFixed(2) }}</span>
-                  </div>
-                  <input type="range" min="0.1" max="1" step="0.05" v-model.number="surfaceWidthRatio" class="w-full mt-2" />
-                </div>
-                <div>
-                  <div class="flex items-center justify-between text-xs text-gray-500 tracking-wide">
-                    <span>Height</span>
-                    <span class="text-gray-700 font-mono">{{ surfaceHeightRatio.toFixed(2) }}</span>
-                  </div>
-                  <input type="range" min="0.1" max="1" step="0.05" v-model.number="surfaceHeightRatio" class="w-full mt-2" />
-                </div>
-                </template>
-                <div v-else class="text-xs text-gray-500 leading-5 bg-gray-50 rounded-lg px-3 py-2">
-                  Window demo uses a fixed 960 x 720 size. Percent sizes are intentionally not supported for window.
-                </div>
-                <div class="text-xs text-gray-500 leading-5">
-                  {{ surfaceDescription }}
-                </div>
-                <div v-if="surfaceKind === 'overlay'">
-                  <div class="text-xs uppercase text-gray-500 tracking-wide mb-2">
-                    Position
-                  </div>
+                  <div class="text-xs uppercase text-gray-500 tracking-wide mb-2">Float position</div>
+                  <!-- Position picker for float: where the popup sits above the main. -->
                   <div class="grid grid-cols-2 gap-2">
-                    <button v-for="pos in surfacePositions" :key="pos" type="button"
-                      :class="['py-2 text-sm rounded-lg transition-colors border', surfacePosition === pos ? 'bg-blue-500 border-blue-500 text-white' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50']"
-                      @click="surfacePosition = pos">
-                      {{ pos.charAt(0).toUpperCase() + pos.slice(1) }}
+                    <button v-for="position in surfaceFloatPositions" :key="position" type="button"
+                      :class="['py-2 text-sm rounded-lg transition-colors border', surfaceFloatPosition === position ? 'bg-indigo-500 border-indigo-500 text-white' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50']"
+                      @click="surfaceFloatPosition = position">
+                      {{ position.charAt(0).toUpperCase() + position.slice(1) }}
                     </button>
                   </div>
                 </div>
               </div>
-              <button type="button" :disabled="surfaceActive" @click="openSurfaceDemo({ kind: surfaceKind, widthRatio: surfaceWidthRatio, heightRatio: surfaceHeightRatio, position: surfacePosition, width: 960, height: 720 })"
-                class="w-full bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white py-2 px-4 rounded-lg text-sm font-medium transition-colors">
-                {{ surfaceActive ? `Open ${surfaceKind} (already open)` : `Open ${surfaceKind}` }}
-              </button>
+              <div class="grid grid-cols-2 gap-2">
+                <button type="button" :disabled="surfaceActive" @click="openSurfaceDemo({ verb: 'aside', edge: surfaceEdge })"
+                  class="bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white py-2 px-4 rounded-lg text-sm font-medium transition-colors">
+                  {{ surfaceActive ? 'Open aside (already open)' : 'Open aside' }}
+                </button>
+                <button type="button" :disabled="surfaceActive" @click="openSurfaceDemo({ verb: 'float', position: surfaceFloatPosition })"
+                  class="bg-indigo-500 hover:bg-indigo-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white py-2 px-4 rounded-lg text-sm font-medium transition-colors">
+                  {{ surfaceActive ? 'Open float (already open)' : 'Open float' }}
+                </button>
+              </div>
+              <p class="text-xs text-gray-500">
+                Edge / position is applied when the surface opens. Changing it
+                while a surface is open — or across hide → show — has no effect;
+                close and re-open to apply a new value.
+              </p>
               <div v-if="surfaceActive" class="grid grid-cols-3 gap-2">
                 <button type="button" :disabled="surfaceVisible" @click="showActiveSurface()"
                   class="bg-emerald-500 hover:bg-emerald-600 disabled:bg-gray-200 disabled:text-gray-500 text-white py-2 px-3 rounded-lg text-sm font-medium transition-colors">
@@ -387,7 +373,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
+import { ref, computed } from 'vue';
 import { useLxPage } from '@lingxia/vue';
 import '../../tailwind.css';
 
@@ -434,10 +420,6 @@ const toastPositionOptions = computed(() => data.toastPositionOptions ?? []);
 const surfaceMessage = computed(() => data.surfaceDemo?.message ?? '');
 const surfaceActive = computed(() => data.surfaceDemo?.active === true);
 const surfaceVisible = computed(() => data.surfaceDemo?.visible === true);
-const supportsSurfaceWindow = computed(() => {
-  const bridge = typeof window !== 'undefined' ? (window as any).LingXiaBridge : null;
-  return bridge?.platform?.isDesktop?.() === true || data.surfaceDemo?.supportsWindow === true;
-});
 
 const toastIconDisplay = computed(() => {
   const match = toastIconOptions.value.find((o: any) => o.value === toastIcon.value);
@@ -467,21 +449,10 @@ const tabColor = ref('#666666');
 const tabSelectedColor = ref('#007AFF');
 const tabBgColor = ref('#FFFFFF');
 const tabBorderStyle = ref('#EEEEEE');
-const surfaceWidthRatio = ref(1);
-const surfaceHeightRatio = ref(0.6);
-const surfacePosition = ref<'center' | 'bottom' | 'left' | 'right' | 'top'>('bottom');
-const surfacePositions = ['bottom', 'center', 'left', 'right', 'top'] as const;
-const surfaceKind = ref<'overlay' | 'window'>('overlay');
-const surfaceKinds = computed(() => supportsSurfaceWindow.value ? ['overlay', 'window'] as const : ['overlay'] as const);
-const surfaceDescription = computed(() => surfaceKind.value === 'window'
-  ? 'Desktop-only independent window surface. Mobile runtimes reject this kind.'
-  : 'Transient overlay surface composited on top of the current app. Use it for lightweight local UI.');
-
-watch(supportsSurfaceWindow, (supports) => {
-  if (!supports && surfaceKind.value === 'window') {
-    surfaceKind.value = 'overlay';
-  }
-}, { immediate: true });
+const surfaceEdge = ref<'left' | 'right' | 'top' | 'bottom'>('right');
+const surfaceEdges = ['left', 'right', 'top', 'bottom'] as const;
+const surfaceFloatPosition = ref<'center' | 'top' | 'bottom' | 'left' | 'right'>('center');
+const surfaceFloatPositions = ['center', 'top', 'bottom', 'left', 'right'] as const;
 
 function applyTheme(theme: { color: string; selectedColor: string; backgroundColor: string; borderStyle: string }) {
   tabColor.value = theme.color;

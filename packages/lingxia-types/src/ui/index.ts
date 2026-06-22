@@ -98,77 +98,42 @@ export interface SetTabBarItemOptions {
   selectedIconPath?: string;
 }
 
-export type SurfaceQueryValue = PageQueryValue;
-export type SurfaceQuery = PageQuery;
-
-export type SurfacePageTargetOptions =
-  | {
-      page: string;
-      path?: never;
-      url?: never;
-      query?: SurfaceQuery;
-    }
-  | {
-      path: string;
-      page?: never;
-      url?: never;
-      query?: SurfaceQuery;
-    };
-
-export type SurfaceUrlTargetOptions = {
-  url: string;
-  page?: never;
-  path?: never;
-  query?: never;
-};
-
-export type SurfaceTargetOptions = SurfacePageTargetOptions | SurfaceUrlTargetOptions;
+// ── Adaptive Surface Layout ─────────────────────────────────────────────────
+// The form is expressed by the `as` field on `lx.openSurface({ page, as })`; the
+// Host arbitrates the realized platform form (split pane on larger screens,
+// full-screen drill-in on compact screens).
 
 /**
- * Overlay surface size value.
+ * Size hint for an overlay surface (aside / float).
  *
- * - number: absolute size, must be > 0
- * - `${number}%`: percentage size, must be > 0% and <= 100%
+ * - number: absolute px, must be > 0
+ * - `${number}%`: percentage of the container, 0 < N ≤ 100
  */
 export type OverlaySurfaceSizeValue = number | `${number}%`;
 
 export interface OverlaySurfaceSize {
-  /** Width for overlay surface. */
+  /** Width hint. */
   width?: OverlaySurfaceSizeValue;
-  /** Height for overlay surface. */
+  /** Height hint. */
   height?: OverlaySurfaceSizeValue;
 }
 
-/**
- * Overlay surface: a webview composited on top of the host activity's
- * content. Cross-platform. Covers the screen (or a fraction of it) until
- * closed; coexists with native media preview at the same z-tier — the
- * later-added overlay or preview wins compositing order.
- */
-export type OverlaySurfaceOptions = SurfaceTargetOptions & {
-  kind: 'overlay';
-  position?: 'center' | 'bottom' | 'left' | 'right' | 'top';
-  size?: OverlaySurfaceSize;
-};
+/** Edge an aside docks to; the Host decides the realized form by screen size. */
+export type SurfaceEdge = 'left' | 'right' | 'top' | 'bottom';
 
-export interface WindowSurfaceSize {
-  /** Window width, must be a positive number. */
-  width?: number;
-  /** Window height, must be a positive number. */
-  height?: number;
+/** Where a float popup anchors (default `center`). */
+export type SurfaceFloatPosition = 'center' | 'top' | 'bottom' | 'left' | 'right';
+
+/**
+ * The window's adaptive context, delivered to `lx.onSurfaceContext()` so an
+ * lxapp can self-adapt (e.g. switch column count by `sizeClass`).
+ */
+export interface SurfaceContext {
+  /** compact (<600) / medium (600–840) / expanded (>840), with hysteresis. */
+  sizeClass: 'compact' | 'medium' | 'expanded';
+  /** In compact, the bottom region belongs to the app content. */
+  bottomOwner: 'app';
 }
-
-/**
- * Window-kind surfaces are macOS-only. Android, iOS, and Harmony reject
- * `kind: 'window'` at open() and surface a `surface_open_failed` error;
- * use `OverlaySurfaceOptions` for cross-platform code.
- */
-export type WindowSurfaceOptions = SurfaceTargetOptions & {
-  kind: 'window';
-  size?: WindowSurfaceSize;
-};
-
-export type SurfaceOpenOptions = OverlaySurfaceOptions | WindowSurfaceOptions;
 
 export interface CapsuleRect {
   width?: number;

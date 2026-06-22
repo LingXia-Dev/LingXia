@@ -10,7 +10,11 @@ const DOMAIN = 0x0000;
 const TAG = 'LingXia.Surface';
 const CONTENT_PAGE = 0;
 const CONTENT_URL = 1;
+const KIND_WINDOW = 0;
 const KIND_POPUP = 1;
+const ROLE_MAIN = 0;
+const ROLE_ASIDE = 1;
+const ROLE_FLOAT = 2;
 const SURFACE_NOTIFY_RETRY_DELAY_MS = 32;
 const SURFACE_NOTIFY_RETRY_LIMIT = 20;
 const SURFACE_CLOSE_FINALIZE_DELAY_MS = 32;
@@ -50,6 +54,8 @@ export interface SurfaceLayoutConfig {
   path: string;
   pageInstanceId: string;
   content: number;
+  kind: number;
+  role: number;
   screenWidthVp: number;
   screenHeightVp: number;
   widthVp: number;
@@ -62,9 +68,24 @@ export interface SurfaceLayoutConfig {
   fullHeight: boolean;
 }
 
+interface SurfacePlanAside {
+  id: string;
+}
+
+interface SurfacePlanFloat {
+  id: string;
+}
+
+interface SurfaceLayoutPlan {
+  mains?: string[];
+  asides?: SurfacePlanAside[];
+  floats?: SurfacePlanFloat[];
+}
+
 export class LxAppSurface {
   private static managerRef: SurfaceManager | null = null;
-  private static activeLayout: SurfaceLayoutConfig | null = null;
+  private static layouts: Map<string, SurfaceLayoutConfig> = new Map();
+  private static visibleSurfaceKeys: Set<string> = new Set();
 
   public static setManagerRef(manager: SurfaceManager): void {
     LxAppSurface.managerRef = manager;
@@ -85,20 +106,22 @@ export class LxAppSurface {
     contentValue: string,
     kindValue: string,
     widthValue: string,
-    heightValue: string,
-    widthRatioValue: string,
-    heightRatioValue: string,
-    positionValue: string
-  ): boolean {
-    const content = parseInt(contentValue, 10);
-    const kind = parseInt(kindValue, 10);
-    if (!id || !appId || !path || parseInt(sessionId, 10) <= 0) {
-      return false;
-    }
-    if (kind !== KIND_POPUP) {
-      return false;
-    }
-    if (content === CONTENT_PAGE && !pageInstanceId) {
+	    heightValue: string,
+	    widthRatioValue: string,
+	    heightRatioValue: string,
+	    positionValue: string,
+	    roleValue: string
+	  ): boolean {
+	    const content = parseInt(contentValue, 10);
+	    const kind = parseInt(kindValue, 10);
+    const role = normalizeRole(roleValue);
+	    if (!id || !appId || !path || parseInt(sessionId, 10) <= 0) {
+	      return false;
+	    }
+	    if (kind !== KIND_POPUP && kind !== KIND_WINDOW) {
+	      return false;
+	    }
+	    if (content === CONTENT_PAGE && !pageInstanceId) {
       return false;
     }
     if (content === CONTENT_URL && !isHttpUrl(path)) {
@@ -118,118 +141,174 @@ export class LxAppSurface {
       parseSize(heightValue),
       parseRatio(widthRatioValue),
       parseRatio(heightRatioValue),
-      position
+      position,
+      kind,
+      role
     );
 
     const layout: SurfaceLayoutConfig = {
       id,
       appId,
-      path,
-      pageInstanceId,
-      content,
-      screenWidthVp: dimensions.screenWidthVp,
-      screenHeightVp: dimensions.screenHeightVp,
-      widthVp: dimensions.widthVp,
+	      path,
+	      pageInstanceId,
+	      content,
+      kind,
+      role,
+	      screenWidthVp: dimensions.screenWidthVp,
+	      screenHeightVp: dimensions.screenHeightVp,
+	      widthVp: dimensions.widthVp,
       heightVp: dimensions.heightVp,
       leftVp: dimensions.leftVp,
       topVp: dimensions.topVp,
       position,
       bottomInset: dimensions.bottomInset,
       fullWidth: dimensions.fullWidth,
-      fullHeight: dimensions.fullHeight
-    };
+	      fullHeight: dimensions.fullHeight
+	    };
 
-    const previous = LxAppSurface.activeLayout;
-    if (previous) {
-      if (previous.content === CONTENT_PAGE) {
-        notifyPageInstanceHidden(previous.pageInstanceId, 'programmatic');
-      }
-      onSurfaceClosed(previous.appId, previous.id, 'programmatic');
-    }
-    LxAppSurface.activeLayout = layout;
+    const key = LxAppSurface.surfaceKey(id, appId);
+    LxAppSurface.layouts.delete(key);
+    LxAppSurface.layouts.set(key, layout);
+    LxAppSurface.visibleSurfaceKeys.add(key);
 
-    const success = LxAppSurface.managerRef.present(layout);
-    if (success) {
+	    const success = LxAppSurface.managerRef.present(layout);
+	    if (success) {
       if (content === CONTENT_PAGE) {
-        LxAppSurface.showPageSurfaceWhenReady(layout);
-      }
-    } else {
-      LxAppSurface.activeLayout = null;
-      if (content === CONTENT_PAGE) {
-        disposePageInstance(pageInstanceId, 'failed');
-      }
+	        LxAppSurface.showPageSurfaceWhenReady(layout);
+	      }
+	    } else {
+      LxAppSurface.layouts.delete(key);
+      LxAppSurface.visibleSurfaceKeys.delete(key);
+	      if (content === CONTENT_PAGE) {
+	        disposePageInstance(pageInstanceId, 'failed');
+	      }
       onSurfaceClosed(appId, id, 'failed');
     }
-    return success;
-  }
+	    return success;
+	  }
 
-  public static close(id: string, appId: string, reason: string): boolean {
-    hilog.info(DOMAIN, TAG, `close requested id=${id} appId=${appId} reason=${reason}`);
-    if (!id || !appId) {
-      hilog.warn(DOMAIN, TAG, 'close rejected: empty id or appId');
+  public static presentLayout(windowId: string, layoutJson: string): boolean {
+    if (!windowId || !layoutJson) {
       return false;
     }
-    const normalizedReason = normalizeReason(reason);
-    const layout = LxAppSurface.activeLayout;
-    const manager = LxAppSurface.managerRef;
-    if (!layout || layout.id !== id || layout.appId !== appId) {
-      hilog.warn(DOMAIN, TAG, `close without matching active layout id=${id} appId=${appId}`);
-      if (manager && manager.hasSurface(id, appId)) {
-        manager.close(appId);
-        LxAppSurface.activeLayout = null;
-        setTimeout(() => {
-          manager.finishClose(id, appId);
-          onSurfaceClosed(appId, id, normalizedReason);
+    let plan: SurfaceLayoutPlan;
+    try {
+      plan = JSON.parse(layoutJson) as SurfaceLayoutPlan;
+    } catch (error) {
+      hilog.error(DOMAIN, TAG, `presentLayout failed to parse windowId=${windowId}: ${error}`);
+      return false;
+    }
+
+    const desiredIds: Set<string> = new Set();
+    const mains = plan.mains ?? [];
+    mains.forEach((id: string) => desiredIds.add(id));
+    const asides = plan.asides ?? [];
+    asides.forEach((aside: SurfacePlanAside) => desiredIds.add(aside.id));
+    const floats = plan.floats ?? [];
+    floats.forEach((surface: SurfacePlanFloat) => desiredIds.add(surface.id));
+
+    const toDismiss: SurfaceLayoutConfig[] = [];
+    LxAppSurface.layouts.forEach((layout: SurfaceLayoutConfig) => {
+      const key = LxAppSurface.surfaceKey(layout.id, layout.appId);
+      if (
+        layout.fullWidth &&
+        layout.fullHeight &&
+        LxAppSurface.visibleSurfaceKeys.has(key) &&
+        !desiredIds.has(layout.id)
+      ) {
+        toDismiss.push(layout);
+      }
+    });
+    toDismiss.forEach((layout: SurfaceLayoutConfig) => {
+      LxAppSurface.close(layout.id, layout.appId, 'programmatic');
+    });
+    return true;
+  }
+
+	  public static close(id: string, appId: string, reason: string): boolean {
+	    hilog.info(DOMAIN, TAG, `close requested id=${id} appId=${appId} reason=${reason}`);
+	    if (!id || !appId) {
+      hilog.warn(DOMAIN, TAG, 'close rejected: empty id or appId');
+	      return false;
+	    }
+	    const normalizedReason = normalizeReason(reason);
+    const key = LxAppSurface.surfaceKey(id, appId);
+	    const layout = LxAppSurface.layouts.get(key) ?? null;
+	    const manager = LxAppSurface.managerRef;
+	    if (!layout) {
+	      hilog.warn(DOMAIN, TAG, `close without matching active layout id=${id} appId=${appId}`);
+	      if (manager && manager.hasSurface(id, appId)) {
+	        manager.close(id, appId);
+        LxAppSurface.visibleSurfaceKeys.delete(key);
+	        setTimeout(() => {
+	          manager.finishClose(id, appId);
+	          onSurfaceClosed(appId, id, normalizedReason);
         }, SURFACE_CLOSE_FINALIZE_DELAY_MS);
         return true;
       }
-      onSurfaceClosed(appId, id, normalizedReason);
-      return true;
-    }
-    const result = manager ? manager.close(appId) : true;
-    if (result) {
-      if (layout.content === CONTENT_PAGE) {
-        notifyPageInstanceHidden(layout.pageInstanceId, normalizedReason);
-      }
-      LxAppSurface.activeLayout = null;
-      setTimeout(() => {
-        if (manager) {
-          manager.finishClose(layout.id, layout.appId);
+	      onSurfaceClosed(appId, id, normalizedReason);
+	      return true;
+	    }
+	    const result = manager ? manager.close(id, appId) : true;
+	    if (result) {
+	      if (layout.content === CONTENT_PAGE) {
+	        notifyPageInstanceHidden(layout.pageInstanceId, normalizedReason);
+	      }
+      LxAppSurface.layouts.delete(key);
+      LxAppSurface.visibleSurfaceKeys.delete(key);
+	      setTimeout(() => {
+	        if (manager) {
+	          manager.finishClose(layout.id, layout.appId);
         }
         onSurfaceClosed(layout.appId, layout.id, normalizedReason);
       }, SURFACE_CLOSE_FINALIZE_DELAY_MS);
+	    }
+	    return result;
+	  }
+
+  public static closeTopmostVisible(reason: string): boolean {
+    const layout = LxAppSurface.getActiveLayout();
+    if (!layout) {
+      return false;
     }
-    return result;
+    return LxAppSurface.close(layout.id, layout.appId, reason);
   }
 
-  /**
-   * Toggle the active surface to visible without tearing it down. Layout state
+	  /**
+	   * Toggle the active surface to visible without tearing it down. Layout state
    * stays cached in the SurfaceManager so re-show restores the same frame,
    * URL, and page instance. Fires the page-side onShow lifecycle so JS
    * observes the visibility transition.
    */
   public static show(id: string, appId: string): boolean {
     hilog.info(DOMAIN, TAG, `show requested id=${id} appId=${appId}`);
-    if (!id || !appId) {
-      return false;
-    }
-    const layout = LxAppSurface.activeLayout;
-    if (!layout || layout.id !== id || layout.appId !== appId) {
-      hilog.warn(DOMAIN, TAG, `show: surface not found id=${id} appId=${appId}`);
-      return false;
-    }
-    if (layout.content === CONTENT_URL) {
-      if (!LxAppSurface.managerRef) {
-        return false;
+	    if (!id || !appId) {
+	      return false;
+	    }
+    const key = LxAppSurface.surfaceKey(id, appId);
+	    const layout = LxAppSurface.layouts.get(key) ?? null;
+	    if (!layout) {
+	      hilog.warn(DOMAIN, TAG, `show: surface not found id=${id} appId=${appId}`);
+	      return false;
+	    }
+    const manager = LxAppSurface.managerRef;
+	    if (layout.content === CONTENT_URL) {
+	      if (!manager) {
+	        return false;
+	      }
+      const success = manager.setVisible(appId, true, id);
+      if (success) {
+        LxAppSurface.visibleSurfaceKeys.add(key);
       }
-      return LxAppSurface.managerRef.setVisible(appId, true);
-    } else {
-      if (!LxAppSurface.managerRef || !LxAppSurface.managerRef.setVisible(appId, true)) {
-        return false;
-      }
-      LxAppSurface.showPageSurfaceWhenReady(layout);
-      if (layout.pageInstanceId) {
-        notifyPageInstanceVisible(layout.pageInstanceId);
+	      return success;
+	    } else {
+	      if (!manager || !manager.setVisible(appId, true, id)) {
+	        return false;
+	      }
+      LxAppSurface.visibleSurfaceKeys.add(key);
+	      LxAppSurface.showPageSurfaceWhenReady(layout);
+	      if (layout.pageInstanceId) {
+	        notifyPageInstanceVisible(layout.pageInstanceId);
       }
     }
     return true;
@@ -243,44 +322,75 @@ export class LxAppSurface {
    */
   public static hide(id: string, appId: string): boolean {
     hilog.info(DOMAIN, TAG, `hide requested id=${id} appId=${appId}`);
-    if (!id || !appId) {
-      return false;
-    }
-    const layout = LxAppSurface.activeLayout;
-    const manager = LxAppSurface.managerRef;
-    if (!layout || layout.id !== id || layout.appId !== appId) {
-      hilog.warn(DOMAIN, TAG, `hide: surface not found id=${id} appId=${appId}`);
-      return manager ? manager.setVisible(appId, false, id) : false;
-    }
-    if (layout.content === CONTENT_URL) {
-      if (!manager) {
-        return false;
+	    if (!id || !appId) {
+	      return false;
+	    }
+    const key = LxAppSurface.surfaceKey(id, appId);
+	    const layout = LxAppSurface.layouts.get(key) ?? null;
+	    const manager = LxAppSurface.managerRef;
+	    if (!layout) {
+	      hilog.warn(DOMAIN, TAG, `hide: surface not found id=${id} appId=${appId}`);
+	      return manager ? manager.setVisible(appId, false, id) : false;
+	    }
+	    if (layout.content === CONTENT_URL) {
+	      if (!manager) {
+	        return false;
+	      }
+      const success = manager.setVisible(appId, false, id);
+      if (success) {
+        LxAppSurface.visibleSurfaceKeys.delete(key);
       }
-      return manager.setVisible(appId, false, id);
-    } else {
-      if (!manager || !manager.setVisible(appId, false, id)) {
-        return false;
-      }
-      if (layout.pageInstanceId) {
-        notifyPageInstanceHidden(layout.pageInstanceId, 'hidden');
-      }
+	      return success;
+	    } else {
+	      if (!manager || !manager.setVisible(appId, false, id)) {
+	        return false;
+	      }
+      LxAppSurface.visibleSurfaceKeys.delete(key);
+	      if (layout.pageInstanceId) {
+	        notifyPageInstanceHidden(layout.pageInstanceId, 'hidden');
+	      }
     }
     return true;
+	  }
+
+	  public static getActiveLayout(): SurfaceLayoutConfig | null {
+    let active: SurfaceLayoutConfig | null = null;
+    LxAppSurface.layouts.forEach((layout: SurfaceLayoutConfig) => {
+      if (LxAppSurface.visibleSurfaceKeys.has(LxAppSurface.surfaceKey(layout.id, layout.appId))) {
+        active = layout;
+      }
+    });
+	    return active;
+	  }
+
+  public static isSurfacePageWebView(appId: string, webTag: string): boolean {
+    let matched = false;
+    LxAppSurface.layouts.forEach((layout: SurfaceLayoutConfig) => {
+      if (!matched && layout.appId === appId && layout.pageInstanceId && LxAppSurface.matchesPageSurface(layout, webTag)) {
+        matched = true;
+      }
+    });
+    return matched;
   }
 
-  public static getActiveLayout(): SurfaceLayoutConfig | null {
-    return LxAppSurface.activeLayout;
+  private static surfaceKey(id: string, appId: string): string {
+    return `${appId}::${id}`;
   }
 
-  private static showPageSurfaceWhenReady(layout: SurfaceLayoutConfig, attempt: number = 0): boolean {
-    if (layout.content !== CONTENT_PAGE) {
-      return true;
-    }
-    const current = LxAppSurface.activeLayout;
-    if (!current || current.id !== layout.id || current.appId !== layout.appId) {
-      return false;
-    }
-    if (LxAppSurface.managerRef && LxAppSurface.managerRef.attachPageSurface(layout)) {
+  private static matchesPageSurface(layout: SurfaceLayoutConfig, webTag: string): boolean {
+    const exactTag = `${toWebTag(layout.appId, layout.path)}#${layout.pageInstanceId}`;
+    return webTag === exactTag || webTag.startsWith(`${exactTag}#`);
+  }
+
+	  private static showPageSurfaceWhenReady(layout: SurfaceLayoutConfig, attempt: number = 0): boolean {
+	    if (layout.content !== CONTENT_PAGE) {
+	      return true;
+	    }
+    const current = LxAppSurface.layouts.get(LxAppSurface.surfaceKey(layout.id, layout.appId)) ?? null;
+	    if (!current) {
+	      return false;
+	    }
+	    if (LxAppSurface.managerRef && LxAppSurface.managerRef.attachPageSurface(layout)) {
       return true;
     }
     if (attempt < SURFACE_NOTIFY_RETRY_LIMIT) {
@@ -292,25 +402,27 @@ export class LxAppSurface {
     hilog.error(DOMAIN, TAG, `showPageSurfaceWhenReady failed id=${layout.id} appId=${layout.appId} path=${layout.path} pageInstanceId=${layout.pageInstanceId}`);
     LxAppSurface.failPageSurface(layout);
     return false;
-  }
+	  }
 
-  private static failPageSurface(layout: SurfaceLayoutConfig): void {
-    const current = LxAppSurface.activeLayout;
-    if (!current || current.id !== layout.id || current.appId !== layout.appId) {
-      return;
-    }
-    const manager = LxAppSurface.managerRef;
-    if (manager) {
-      manager.close(layout.appId);
-    }
-    if (layout.content === CONTENT_PAGE && layout.pageInstanceId) {
-      notifyPageInstanceHidden(layout.pageInstanceId, 'failed');
-      disposePageInstance(layout.pageInstanceId, 'failed');
-    }
-    LxAppSurface.activeLayout = null;
-    if (manager) {
-      manager.finishClose(layout.id, layout.appId);
-    }
+	  private static failPageSurface(layout: SurfaceLayoutConfig): void {
+    const key = LxAppSurface.surfaceKey(layout.id, layout.appId);
+	    const current = LxAppSurface.layouts.get(key) ?? null;
+	    if (!current) {
+	      return;
+	    }
+	    const manager = LxAppSurface.managerRef;
+	    if (manager) {
+	      manager.close(layout.id, layout.appId);
+	    }
+	    if (layout.content === CONTENT_PAGE && layout.pageInstanceId) {
+	      notifyPageInstanceHidden(layout.pageInstanceId, 'failed');
+	      disposePageInstance(layout.pageInstanceId, 'failed');
+	    }
+    LxAppSurface.layouts.delete(key);
+    LxAppSurface.visibleSurfaceKeys.delete(key);
+	    if (manager) {
+	      manager.finishClose(layout.id, layout.appId);
+	    }
     onSurfaceClosed(layout.appId, layout.id, 'failed');
   }
 }
@@ -344,12 +456,22 @@ function normalizePosition(value: string): SurfacePosition {
   return SurfacePosition.Center;
 }
 
+function normalizeRole(value: string): number {
+  const parsed = parseInt(value, 10);
+  if (parsed === ROLE_MAIN || parsed === ROLE_ASIDE || parsed === ROLE_FLOAT) {
+    return parsed;
+  }
+  return ROLE_FLOAT;
+}
+
 function computeDimensions(
   widthValue: number,
   heightValue: number,
   widthRatio: number,
   heightRatio: number,
-  position: SurfacePosition
+  position: SurfacePosition,
+  kind: number,
+  role: number
 ): SurfaceDimensions {
   let screenWidth = 360;
   let screenHeight = 640;
@@ -360,6 +482,19 @@ function computeDimensions(
     screenHeight = Math.max(1, displayInfo.height / density);
   } catch (error) {
     hilog.warn(DOMAIN, TAG, `failed to read display metrics: ${error}`);
+  }
+  if (kind === KIND_WINDOW || role === ROLE_ASIDE) {
+    return {
+      screenWidthVp: screenWidth,
+      screenHeightVp: screenHeight,
+      widthVp: screenWidth,
+      heightVp: screenHeight,
+      leftVp: 0,
+      topVp: 0,
+      bottomInset: 0,
+      fullWidth: true,
+      fullHeight: true
+    };
   }
   const defaultWidthRatio = 0.90;
   const defaultHeightRatio = 0.55;
@@ -531,34 +666,52 @@ struct SurfaceCornerMask {
   }
 }
 
+interface SurfaceRenderState extends SurfaceLayoutConfig {
+  isVisible: boolean;
+  pageWebTag: string;
+}
+
+function surfaceRenderState(layout: SurfaceLayoutConfig, isVisible: boolean, pageWebTag: string): SurfaceRenderState {
+  return {
+    id: layout.id,
+    appId: layout.appId,
+    path: layout.path,
+    pageInstanceId: layout.pageInstanceId,
+    content: layout.content,
+    kind: layout.kind,
+    role: layout.role,
+    screenWidthVp: layout.screenWidthVp,
+    screenHeightVp: layout.screenHeightVp,
+    widthVp: layout.widthVp,
+    heightVp: layout.heightVp,
+    leftVp: layout.leftVp,
+    topVp: layout.topVp,
+    position: layout.position,
+    bottomInset: layout.bottomInset,
+    fullWidth: layout.fullWidth,
+    fullHeight: layout.fullHeight,
+    isVisible,
+    pageWebTag
+  };
+}
+
 @Component
 export struct SurfaceManager {
-  @State private isVisible: boolean = false;
-  @State private surfaceId: string = '';
-  @State private appId: string = '';
-  @State private path: string = '';
-  @State private content: number = CONTENT_PAGE;
-  @State private screenWidthVp: number = 0;
-  @State private screenHeightVp: number = 0;
-  @State private widthVp: number = 0;
-  @State private heightVp: number = 0;
-  @State private leftVp: number = 0;
-  @State private topVp: number = 0;
-  @State private fullWidth: boolean = false;
-  @State private fullHeight: boolean = false;
-  @State private surfacePosition: SurfacePosition = SurfacePosition.Center;
-  @State private pageWebTag: string = '';
-  @State private pageController: webview.WebviewController = new webview.WebviewController();
-  private webController: webview.WebviewController = new webview.WebviewController();
+  @State private surfaces: SurfaceRenderState[] = [];
+  private pageControllers: Map<string, webview.WebviewController> = new Map();
+  private webControllers: Map<string, webview.WebviewController> = new Map();
   private windowOpVersion: number = 0;
   private fullscreenWindowActive: boolean = false;
   private webViewUiCallback = (action: string, info: WebViewInfo): void => {
     if (action !== 'create') {
       return;
     }
-    const layout = LxAppSurface.getActiveLayout();
-    if (layout && layout.content === CONTENT_PAGE && this.matchesPageSurface(layout, info.webtag)) {
-      this.attachPageSurface(layout);
+    for (let i = 0; i < this.surfaces.length; i++) {
+      const surface = this.surfaces[i];
+      if (surface.content === CONTENT_PAGE && this.matchesPageSurface(surface, info.webtag)) {
+        this.attachPageSurface(surface);
+        return;
+      }
     }
   }
 
@@ -570,47 +723,53 @@ export struct SurfaceManager {
   aboutToDisappear() {
     LxAppSurface.clearManagerRef(this);
     removeWebViewUiCallback(this.webViewUiCallback);
+    this.surfaces = [];
+    this.pageControllers.clear();
+    this.webControllers.clear();
     this.exitFullscreenMode();
   }
 
   public present(state: SurfaceLayoutConfig): boolean {
-    this.surfaceId = state.id;
-    this.appId = state.appId;
-    this.path = state.path;
-    this.content = state.content;
-    this.screenWidthVp = state.screenWidthVp;
-    this.screenHeightVp = state.screenHeightVp;
-    this.widthVp = state.widthVp;
-    this.heightVp = state.heightVp;
-    this.leftVp = state.leftVp;
-    this.topVp = state.topVp;
-    this.fullWidth = state.fullWidth;
-    this.fullHeight = state.fullHeight;
-    this.surfacePosition = state.position;
-    this.pageWebTag = '';
-    this.isVisible = true;
-    if (this.shouldUseFullscreenWindow()) {
-      this.enterFullscreenMode();
-    } else {
-      this.exitFullscreenMode();
+    const key = this.surfaceKey(state.id, state.appId);
+    if (state.content === CONTENT_URL && !this.webControllers.has(key)) {
+      this.webControllers.set(key, new webview.WebviewController());
     }
-    hilog.info(DOMAIN, TAG, `present surface id=${state.id} content=${state.content} pos=${state.position} url=${state.path} frame=${state.leftVp},${state.topVp},${state.widthVp},${state.heightVp}`);
+
+    const existing = this.findSurface(state.id, state.appId);
+    const pageWebTag = existing ? existing.pageWebTag : '';
+    const nextSurface = surfaceRenderState(state, true, pageWebTag);
+    const next: SurfaceRenderState[] = [];
+    for (let i = 0; i < this.surfaces.length; i++) {
+      const surface = this.surfaces[i];
+      if (this.surfaceKey(surface.id, surface.appId) !== key) {
+        next.push(surface);
+      }
+    }
+    next.push(nextSurface);
+    this.surfaces = next;
+    this.syncFullscreenMode();
+    hilog.info(DOMAIN, TAG, `present surface id=${state.id} role=${state.role} content=${state.content} pos=${state.position} url=${state.path} frame=${state.leftVp},${state.topVp},${state.widthVp},${state.heightVp}`);
     return true;
   }
 
   public attachPageSurface(layout: SurfaceLayoutConfig): boolean {
+    const key = this.surfaceKey(layout.id, layout.appId);
+    const current = this.findSurface(layout.id, layout.appId);
+    if (!current) {
+      return false;
+    }
     const infos = WebViewManager.getAllWebViewInfos();
     for (let i = 0; i < infos.length; i++) {
       const info = infos[i];
       if (this.matchesPageSurface(layout, info.webtag)) {
-        const alreadyAttached = this.pageWebTag === info.webtag;
-        this.pageWebTag = info.webtag;
-        this.pageController = info.controller;
-        this.isVisible = true;
+        const alreadyAttached = current.pageWebTag === info.webtag;
+        this.pageControllers.set(key, info.controller);
+        this.replaceSurface(surfaceRenderState(current, true, info.webtag));
+        this.syncFullscreenMode();
         if (!alreadyAttached) {
           notifyPageInstanceMounted(layout.pageInstanceId);
           notifyPageInstanceVisible(layout.pageInstanceId);
-          hilog.info(DOMAIN, TAG, `attached page surface webtag=${info.webtag}`);
+          hilog.info(DOMAIN, TAG, `attached page surface id=${layout.id} webtag=${info.webtag}`);
         }
         return true;
       }
@@ -619,89 +778,86 @@ export struct SurfaceManager {
     return false;
   }
 
-  private matchesPageSurface(layout: SurfaceLayoutConfig, webTag: string): boolean {
-    const exactTag = `${toWebTag(layout.appId, layout.path)}#${layout.pageInstanceId}`;
-    return webTag === exactTag || webTag.startsWith(`${exactTag}#`);
+  public hasSurface(id: string, appId: string): boolean {
+    return this.findSurface(id, appId) !== null;
   }
 
-  public hasSurface(id: string, appId: string): boolean {
-    if (!this.surfaceId || !this.appId) {
+  public close(id: string, appId: string): boolean {
+    const surface = this.findSurface(id, appId);
+    if (!surface) {
+      hilog.warn(DOMAIN, TAG, `close: surface not found id=${id} appId=${appId}`);
       return false;
     }
-    return this.surfaceId === id && this.appId === appId;
-  }
-
-  public close(appId: string): boolean {
-    if (this.appId && this.appId !== appId) {
-      hilog.warn(DOMAIN, TAG, `close mismatch: expected ${this.appId}, got ${appId}`);
-    }
-    this.isVisible = false;
-    if (this.shouldUseFullscreenWindow()) {
-      this.exitFullscreenMode();
-    }
+    this.replaceSurface(surfaceRenderState(surface, false, surface.pageWebTag));
+    this.syncFullscreenMode();
     return true;
   }
 
   public finishClose(id: string, appId: string): void {
-    if (this.surfaceId && this.surfaceId !== id) {
-      return;
+    const key = this.surfaceKey(id, appId);
+    const next: SurfaceRenderState[] = [];
+    for (let i = 0; i < this.surfaces.length; i++) {
+      const surface = this.surfaces[i];
+      if (this.surfaceKey(surface.id, surface.appId) !== key) {
+        next.push(surface);
+      }
     }
-    if (this.appId && this.appId !== appId) {
-      return;
-    }
-    this.surfaceId = '';
-    this.appId = '';
-    this.path = '';
-    this.content = CONTENT_PAGE;
-    this.screenWidthVp = 0;
-    this.screenHeightVp = 0;
-    this.widthVp = 0;
-    this.heightVp = 0;
-    this.leftVp = 0;
-    this.topVp = 0;
-    this.fullWidth = false;
-    this.fullHeight = false;
-    this.surfacePosition = SurfacePosition.Center;
-    this.pageWebTag = '';
-    this.pageController = new webview.WebviewController();
-    this.exitFullscreenMode();
+    this.surfaces = next;
+    this.pageControllers.delete(key);
+    this.webControllers.delete(key);
+    this.syncFullscreenMode();
   }
 
-  /**
-   * Toggle visibility without resetting cached layout state. show() restores
-   * the same frame the previous present() configured.
-   */
   public setVisible(appId: string, visible: boolean, surfaceId?: string): boolean {
-    if (surfaceId && this.surfaceId && this.surfaceId !== surfaceId) {
-      hilog.warn(DOMAIN, TAG, `setVisible mismatch: expected id ${this.surfaceId}, got ${surfaceId}`);
+    let found = false;
+    const next: SurfaceRenderState[] = [];
+    for (let i = 0; i < this.surfaces.length; i++) {
+      const surface = this.surfaces[i];
+      if (surface.appId === appId && (!surfaceId || surface.id === surfaceId)) {
+        next.push(surfaceRenderState(surface, visible, surface.pageWebTag));
+        found = true;
+      } else {
+        next.push(surface);
+      }
+    }
+    if (!found) {
+      hilog.warn(DOMAIN, TAG, `setVisible: surface not found appId=${appId} id=${surfaceId ?? ''}`);
       return false;
     }
-    if (this.appId && this.appId !== appId) {
-      hilog.warn(DOMAIN, TAG, `setVisible mismatch: expected ${this.appId}, got ${appId}`);
-      return false;
-    }
-    if (!this.appId) {
-      hilog.warn(DOMAIN, TAG, `setVisible: no active surface for ${appId}`);
-      return false;
-    }
-    this.isVisible = visible;
-    if (visible && this.shouldUseFullscreenWindow()) {
-      this.enterFullscreenMode();
-    } else if (!visible) {
-      this.exitFullscreenMode();
-    }
+    this.surfaces = next;
+    this.syncFullscreenMode();
     return true;
   }
 
   build() {
-    if ((this.content === CONTENT_URL && this.isVisible) || (this.content === CONTENT_PAGE && this.pageWebTag.length > 0)) {
+    if (this.surfaces.length > 0) {
       Stack() {
-        if (this.isVisible) {
-          this.buildMaskLayer()
+        ForEach(this.surfaces, (surface: SurfaceRenderState) => {
+          this.SurfaceLayer(surface)
+        }, (surface: SurfaceRenderState) => this.surfaceKey(surface.id, surface.appId))
+      }
+      .width('100%')
+      .height('100%')
+      .position({ x: 0, y: 0 })
+      .hitTestBehavior(this.hasVisibleSurface() ? HitTestMode.Default : HitTestMode.Transparent)
+    } else {
+      Column()
+        .width(0)
+        .height(0)
+        .hitTestBehavior(HitTestMode.Transparent)
+    }
+  }
+
+  @Builder
+  private SurfaceLayer(surface: SurfaceRenderState): void {
+    if ((surface.content === CONTENT_URL && surface.isVisible) || (surface.content === CONTENT_PAGE && surface.pageWebTag.length > 0)) {
+      Stack() {
+        if (surface.isVisible) {
+          this.buildMaskLayer(surface)
         }
         Column() {
-          if (this.content === CONTENT_URL) {
-            Web({ src: '', controller: this.webController })
+          if (surface.content === CONTENT_URL) {
+            Web({ src: '', controller: this.getWebController(surface) })
               .domStorageAccess(true)
               .javaScriptAccess(true)
               .fileAccess(false)
@@ -711,7 +867,7 @@ export struct SurfaceManager {
                   return false;
                 }
                 const targetUrl = event.data.getRequestUrl();
-                if (!targetUrl || isSameOrigin(this.path, targetUrl)) {
+                if (!targetUrl || isSameOrigin(surface.path, targetUrl)) {
                   return false;
                 }
                 hilog.warn(DOMAIN, TAG, `blocked surface navigation: ${targetUrl}`);
@@ -720,11 +876,12 @@ export struct SurfaceManager {
               .width('100%')
               .height('100%')
               .onAppear(() => {
-                const url = this.path;
+                const url = surface.path;
+                const controller = this.getWebController(surface);
                 setTimeout(() => {
                   try {
                     hilog.info(DOMAIN, TAG, `load surface url=${url}`);
-                    this.webController.loadUrl(url);
+                    controller.loadUrl(url);
                   } catch (error) {
                     hilog.error(DOMAIN, TAG, `failed to load surface URL: ${error}`);
                   }
@@ -736,57 +893,55 @@ export struct SurfaceManager {
               .onPageEnd((event) => {
                 hilog.info(DOMAIN, TAG, `surface page end: ${event?.url ?? ''}`);
               })
-              .hitTestBehavior(this.isVisible ? HitTestMode.Block : HitTestMode.None)
-          } else if (this.pageWebTag.length > 0) {
+              .hitTestBehavior(surface.isVisible ? HitTestMode.Block : HitTestMode.None)
+          } else if (surface.pageWebTag.length > 0) {
             LingXiaWebView({
-              webTag: this.pageWebTag,
-              controller: this.pageController,
+              webTag: surface.pageWebTag,
+              controller: this.getPageController(surface),
               renderVisibility: Visibility.Visible,
               renderWidth: '100%',
               renderHeight: '100%',
-              renderBorderRadius: this.getBorderRadius(),
+              renderBorderRadius: this.getBorderRadius(surface),
               renderClip: true,
               renderZIndex: 0,
-              renderHitTest: this.isVisible ? HitTestMode.Block : HitTestMode.None
+              renderHitTest: surface.isVisible ? HitTestMode.Block : HitTestMode.None
             })
           }
         }
-        .width(this.isVisible ? (this.widthVp > 0 ? `${this.widthVp}vp` : '90%') : 1)
-        .height(this.isVisible ? (this.heightVp > 0 ? `${this.heightVp}vp` : '60%') : 1)
-        .backgroundColor(this.content === CONTENT_URL ? Color.White : Color.Transparent)
-        .borderRadius(this.getBorderRadius())
-        .clip(!this.shouldUseFullscreenWindow())
+        .width(surface.isVisible ? (surface.widthVp > 0 ? `${surface.widthVp}vp` : '90%') : 1)
+        .height(surface.isVisible ? (surface.heightVp > 0 ? `${surface.heightVp}vp` : '60%') : 1)
+        .backgroundColor(surface.content === CONTENT_URL ? Color.White : Color.Transparent)
+        .borderRadius(this.getBorderRadius(surface))
+        .clip(!this.shouldUseFullscreenWindow(surface))
         .visibility(Visibility.Visible)
-        .hitTestBehavior(this.isVisible ? HitTestMode.Default : HitTestMode.None)
-        .position({ x: this.isVisible ? this.leftVp : -10000, y: this.isVisible ? this.topVp : -10000 })
+        .hitTestBehavior(surface.isVisible ? HitTestMode.Default : HitTestMode.None)
+        .position({ x: surface.isVisible ? surface.leftVp : -10000, y: surface.isVisible ? surface.topVp : -10000 })
         .zIndex(1)
-        if (this.isVisible && !this.shouldUseFullscreenWindow()) {
-          this.buildCornerMaskLayer()
+        if (surface.isVisible && !this.shouldUseFullscreenWindow(surface)) {
+          this.buildCornerMaskLayer(surface)
+        }
+        if (surface.isVisible && this.shouldUseFullscreenWindow(surface)) {
+          this.buildFullscreenCloseButton(surface)
         }
       }
-      .width(this.isVisible ? '100%' : 1)
-      .height(this.isVisible ? '100%' : 1)
+      .width(surface.isVisible ? '100%' : 1)
+      .height(surface.isVisible ? '100%' : 1)
       .position({ x: 0, y: 0 })
-      .hitTestBehavior(this.isVisible ? HitTestMode.Default : HitTestMode.Transparent)
+      .hitTestBehavior(surface.isVisible ? HitTestMode.Default : HitTestMode.Transparent)
       .expandSafeArea(
-        this.shouldUseFullscreenWindow() ? [SafeAreaType.SYSTEM] : [],
-        this.shouldUseFullscreenWindow() ? [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM] : []
+        this.shouldUseFullscreenWindow(surface) ? [SafeAreaType.SYSTEM] : [],
+        this.shouldUseFullscreenWindow(surface) ? [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM] : []
       )
-    } else {
-      Column()
-        .width(0)
-        .height(0)
-        .hitTestBehavior(HitTestMode.Transparent)
     }
   }
 
   @Builder
-  private buildMaskLayer(): void {
+  private buildMaskLayer(surface: SurfaceRenderState): void {
     Stack() {
-      this.buildMaskBlock(0, 0, this.screenWidthVp, this.topVp)
-      this.buildMaskBlock(0, this.topVp + this.heightVp, this.screenWidthVp, this.getBottomMaskHeight())
-      this.buildMaskBlock(0, this.topVp, this.leftVp, this.heightVp)
-      this.buildMaskBlock(this.leftVp + this.widthVp, this.topVp, this.getRightMaskWidth(), this.heightVp)
+      this.buildMaskBlock(surface, 0, 0, surface.screenWidthVp, surface.topVp)
+      this.buildMaskBlock(surface, 0, surface.topVp + surface.heightVp, surface.screenWidthVp, this.getBottomMaskHeight(surface))
+      this.buildMaskBlock(surface, 0, surface.topVp, surface.leftVp, surface.heightVp)
+      this.buildMaskBlock(surface, surface.leftVp + surface.widthVp, surface.topVp, this.getRightMaskWidth(surface), surface.heightVp)
     }
     .width('100%')
     .height('100%')
@@ -795,7 +950,7 @@ export struct SurfaceManager {
   }
 
   @Builder
-  private buildMaskBlock(x: number, y: number, width: number, height: number): void {
+  private buildMaskBlock(surface: SurfaceRenderState, x: number, y: number, width: number, height: number): void {
     if (width > 0 && height > 0) {
       Column()
         .width(`${width}vp`)
@@ -804,27 +959,24 @@ export struct SurfaceManager {
         .position({ x, y })
         .hitTestBehavior(HitTestMode.Default)
         .onClick(() => {
-          const layout = LxAppSurface.getActiveLayout();
-          if (layout) {
-            LxAppSurface.close(layout.id, layout.appId, 'user');
-          }
+          LxAppSurface.close(surface.id, surface.appId, 'user');
         })
     }
   }
 
   @Builder
-  private buildCornerMaskLayer(): void {
-    if (this.shouldMaskTopLeftCorner()) {
-      this.buildCornerMaskBlock(this.leftVp, this.topVp, CornerMaskPosition.TopLeft)
+  private buildCornerMaskLayer(surface: SurfaceRenderState): void {
+    if (this.shouldMaskTopLeftCorner(surface)) {
+      this.buildCornerMaskBlock(surface.leftVp, surface.topVp, CornerMaskPosition.TopLeft)
     }
-    if (this.shouldMaskTopRightCorner()) {
-      this.buildCornerMaskBlock(this.getCornerMaskRight(), this.topVp, CornerMaskPosition.TopRight)
+    if (this.shouldMaskTopRightCorner(surface)) {
+      this.buildCornerMaskBlock(this.getCornerMaskRight(surface), surface.topVp, CornerMaskPosition.TopRight)
     }
-    if (this.shouldMaskBottomLeftCorner()) {
-      this.buildCornerMaskBlock(this.leftVp, this.getCornerMaskBottom(), CornerMaskPosition.BottomLeft)
+    if (this.shouldMaskBottomLeftCorner(surface)) {
+      this.buildCornerMaskBlock(surface.leftVp, this.getCornerMaskBottom(surface), CornerMaskPosition.BottomLeft)
     }
-    if (this.shouldMaskBottomRightCorner()) {
-      this.buildCornerMaskBlock(this.getCornerMaskRight(), this.getCornerMaskBottom(), CornerMaskPosition.BottomRight)
+    if (this.shouldMaskBottomRightCorner(surface)) {
+      this.buildCornerMaskBlock(this.getCornerMaskRight(surface), this.getCornerMaskBottom(surface), CornerMaskPosition.BottomRight)
     }
   }
 
@@ -836,44 +988,119 @@ export struct SurfaceManager {
     .zIndex(2)
   }
 
-  private getCornerMaskRight(): number {
-    return this.leftVp + this.widthVp - SURFACE_CORNER_RADIUS;
+  @Builder
+  private buildFullscreenCloseButton(surface: SurfaceRenderState): void {
+    Image($rawfile(surface.role === ROLE_FLOAT ? 'icons/icon_close_x.svg' : 'icons/icon_back.svg'))
+      .width(18)
+      .height(18)
+      .fillColor('#1A1A1A')
+      .padding(9)
+      .width(36)
+      .height(36)
+      .backgroundColor('rgba(255,255,255,0.88)')
+      .borderRadius(18)
+      .position({ x: 12, y: 10 })
+      .zIndex(3)
+      .hitTestBehavior(HitTestMode.Default)
+      .onClick(() => {
+        LxAppSurface.close(surface.id, surface.appId, 'user');
+      })
   }
 
-  private getCornerMaskBottom(): number {
-    return this.topVp + this.heightVp - SURFACE_CORNER_RADIUS;
+  private findSurface(id: string, appId: string): SurfaceRenderState | null {
+    for (let i = 0; i < this.surfaces.length; i++) {
+      const surface = this.surfaces[i];
+      if (surface.id === id && surface.appId === appId) {
+        return surface;
+      }
+    }
+    return null;
   }
 
-  private shouldMaskTopLeftCorner(): boolean {
-    return this.surfacePosition === SurfacePosition.Center || this.surfacePosition === SurfacePosition.Bottom || this.surfacePosition === SurfacePosition.Right;
+  private replaceSurface(nextSurface: SurfaceRenderState): void {
+    const key = this.surfaceKey(nextSurface.id, nextSurface.appId);
+    const next: SurfaceRenderState[] = [];
+    for (let i = 0; i < this.surfaces.length; i++) {
+      const surface = this.surfaces[i];
+      if (this.surfaceKey(surface.id, surface.appId) === key) {
+        next.push(nextSurface);
+      } else {
+        next.push(surface);
+      }
+    }
+    this.surfaces = next;
   }
 
-  private shouldMaskTopRightCorner(): boolean {
-    return this.surfacePosition === SurfacePosition.Center || this.surfacePosition === SurfacePosition.Bottom || this.surfacePosition === SurfacePosition.Left;
+  private getWebController(surface: SurfaceRenderState): webview.WebviewController {
+    const key = this.surfaceKey(surface.id, surface.appId);
+    let controller = this.webControllers.get(key) ?? null;
+    if (!controller) {
+      controller = new webview.WebviewController();
+      this.webControllers.set(key, controller);
+    }
+    return controller;
   }
 
-  private shouldMaskBottomLeftCorner(): boolean {
-    return this.surfacePosition === SurfacePosition.Center || this.surfacePosition === SurfacePosition.Top || this.surfacePosition === SurfacePosition.Right;
+  private getPageController(surface: SurfaceRenderState): webview.WebviewController {
+    return this.pageControllers.get(this.surfaceKey(surface.id, surface.appId)) ?? new webview.WebviewController();
   }
 
-  private shouldMaskBottomRightCorner(): boolean {
-    return this.surfacePosition === SurfacePosition.Center || this.surfacePosition === SurfacePosition.Top || this.surfacePosition === SurfacePosition.Left;
+  private matchesPageSurface(layout: SurfaceLayoutConfig, webTag: string): boolean {
+    const exactTag = `${toWebTag(layout.appId, layout.path)}#${layout.pageInstanceId}`;
+    return webTag === exactTag || webTag.startsWith(`${exactTag}#`);
   }
 
-  private getRightMaskWidth(): number {
-    return Math.max(0, this.screenWidthVp - this.leftVp - this.widthVp);
+  private surfaceKey(id: string, appId: string): string {
+    return `${appId}::${id}`;
   }
 
-  private getBottomMaskHeight(): number {
-    return Math.max(0, this.screenHeightVp - this.topVp - this.heightVp);
+  private hasVisibleSurface(): boolean {
+    for (let i = 0; i < this.surfaces.length; i++) {
+      if (this.surfaces[i].isVisible) {
+        return true;
+      }
+    }
+    return false;
   }
 
-  private getBorderRadius(): BorderRadiuses {
-    if (this.shouldUseFullscreenWindow()) {
+  private getCornerMaskRight(surface: SurfaceRenderState): number {
+    return surface.leftVp + surface.widthVp - SURFACE_CORNER_RADIUS;
+  }
+
+  private getCornerMaskBottom(surface: SurfaceRenderState): number {
+    return surface.topVp + surface.heightVp - SURFACE_CORNER_RADIUS;
+  }
+
+  private shouldMaskTopLeftCorner(surface: SurfaceRenderState): boolean {
+    return surface.position === SurfacePosition.Center || surface.position === SurfacePosition.Bottom || surface.position === SurfacePosition.Right;
+  }
+
+  private shouldMaskTopRightCorner(surface: SurfaceRenderState): boolean {
+    return surface.position === SurfacePosition.Center || surface.position === SurfacePosition.Bottom || surface.position === SurfacePosition.Left;
+  }
+
+  private shouldMaskBottomLeftCorner(surface: SurfaceRenderState): boolean {
+    return surface.position === SurfacePosition.Center || surface.position === SurfacePosition.Top || surface.position === SurfacePosition.Right;
+  }
+
+  private shouldMaskBottomRightCorner(surface: SurfaceRenderState): boolean {
+    return surface.position === SurfacePosition.Center || surface.position === SurfacePosition.Top || surface.position === SurfacePosition.Left;
+  }
+
+  private getRightMaskWidth(surface: SurfaceRenderState): number {
+    return Math.max(0, surface.screenWidthVp - surface.leftVp - surface.widthVp);
+  }
+
+  private getBottomMaskHeight(surface: SurfaceRenderState): number {
+    return Math.max(0, surface.screenHeightVp - surface.topVp - surface.heightVp);
+  }
+
+  private getBorderRadius(surface: SurfaceRenderState): BorderRadiuses {
+    if (this.shouldUseFullscreenWindow(surface)) {
       return { topLeft: 0, topRight: 0, bottomLeft: 0, bottomRight: 0 };
     }
-    if (this.widthVp > 0 && this.heightVp > 0) {
-      switch (this.surfacePosition) {
+    if (surface.widthVp > 0 && surface.heightVp > 0) {
+      switch (surface.position) {
         case SurfacePosition.Bottom:
           return { topLeft: SURFACE_CORNER_RADIUS, topRight: SURFACE_CORNER_RADIUS, bottomLeft: 0, bottomRight: 0 };
         case SurfacePosition.Left:
@@ -894,8 +1121,26 @@ export struct SurfaceManager {
     };
   }
 
-  private shouldUseFullscreenWindow(): boolean {
-    return this.fullWidth && this.fullHeight;
+  private shouldUseFullscreenWindow(surface: SurfaceRenderState): boolean {
+    return surface.fullWidth && surface.fullHeight;
+  }
+
+  private hasVisibleFullscreenSurface(): boolean {
+    for (let i = 0; i < this.surfaces.length; i++) {
+      const surface = this.surfaces[i];
+      if (surface.isVisible && this.shouldUseFullscreenWindow(surface)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private syncFullscreenMode(): void {
+    if (this.hasVisibleFullscreenSurface()) {
+      this.enterFullscreenMode();
+    } else {
+      this.exitFullscreenMode();
+    }
   }
 
   private enterFullscreenMode(): void {
@@ -921,15 +1166,18 @@ export struct SurfaceManager {
             if (opVersion !== this.windowOpVersion) {
               return;
             }
+            this.fullscreenWindowActive = false;
             hilog.error(DOMAIN, TAG, 'Failed to apply fullscreen surface bars');
           });
       }).catch(() => {
         if (opVersion !== this.windowOpVersion) {
           return;
         }
+        this.fullscreenWindowActive = false;
         hilog.error(DOMAIN, TAG, 'Failed to get main window for fullscreen surface');
       });
     } catch {
+      this.fullscreenWindowActive = false;
       hilog.error(DOMAIN, TAG, 'Failed to enter fullscreen surface mode');
     }
   }
@@ -975,5 +1223,4 @@ export struct SurfaceManager {
       hilog.error(DOMAIN, TAG, 'Failed to exit fullscreen surface mode');
     }
   }
-
 }

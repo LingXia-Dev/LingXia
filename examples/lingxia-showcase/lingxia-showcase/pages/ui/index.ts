@@ -10,6 +10,32 @@ const NAV_TITLE_MAP = {
   surface: "Surface Demo",
 };
 
+function surfaceErrorObject(error: unknown): Record<string, unknown> | null {
+  return typeof error === "object" && error !== null
+    ? (error as Record<string, unknown>)
+    : null;
+}
+
+function surfaceErrorMessage(error: unknown): string {
+  const object = surfaceErrorObject(error);
+  return typeof object?.message === "string"
+    ? object.message
+    : String(error || "unknown error");
+}
+
+function isExpectedWindowSurfaceUnsupported(error: unknown): boolean {
+  const object = surfaceErrorObject(error);
+  const data = surfaceErrorObject(object?.data);
+  const dataCode = data?.code;
+  const message = surfaceErrorMessage(error).toLowerCase();
+  return (
+    object?.code === "E_NOT_SUPPORTED" &&
+    (dataCode === "window_unsupported_platform" ||
+      message.includes("desktop window") ||
+      message.includes("not available on this platform"))
+  );
+}
+
 Page({
   data: {
     currentType: "",
@@ -32,7 +58,6 @@ Page({
     ],
     surfaceDemo: {
       message: "",
-      supportsWindow: false,
       // True when a surface is currently open (visible or hidden). The hide/show
       // buttons are only meaningful while a surface exists; closing tears it
       // down and resets this flag.
@@ -57,31 +82,12 @@ Page({
 
     // Update page stack immediately
     this._updatePageStack();
-    this._updateSurfaceCapabilities();
   },
 
   onShow: function () {
     console.log("UI page onShow");
     // Update page stack every time page shows
     this._updatePageStack();
-    this._updateSurfaceCapabilities();
-  },
-
-  _updateSurfaceCapabilities: function () {
-    let supportsWindow = false;
-    try {
-      const info = lx.getDeviceInfo();
-      const osName = String(info?.osName || "").toLowerCase();
-      supportsWindow =
-        osName.includes("mac") ||
-        osName.includes("windows") ||
-        osName.includes("linux");
-    } catch (error) {
-      console.warn("Failed to detect surface capabilities:", error);
-    }
-    this.setData({
-      "surfaceDemo.supportsWindow": supportsWindow,
-    });
   },
 
   // Update current page stack
@@ -211,29 +217,24 @@ Page({
 
     try {
       const cfg = config || {};
-      const supportsWindow = this.data.surfaceDemo?.supportsWindow === true;
-      const requestedKind = cfg.kind === "window" ? "window" : "overlay";
-      const kind = requestedKind === "window" && supportsWindow ? "window" : "overlay";
-      const isWindow = kind === "window";
-      const options = {
-        kind,
-        path: "pages/surface/index",
-        query: { source: "ui-page", kind, time: Date.now() },
-        size: isWindow
-          ? { width: cfg.width || 960, height: cfg.height || 720 }
-          : {
-              width: `${Math.round((cfg.widthRatio || 0.9) * 100)}%`,
-              height: `${Math.round((cfg.heightRatio || 0.6) * 100)}%`,
-            },
-      };
-      if (!isWindow) {
-        options.position = cfg.position || "bottom";
+      // `as` picks the form: aside docks beside the main and splits it (a compact
+      // Host folds it into a tab); float is a popup above the main; window opens a
+      // bare desktop window. The target is this app's own page by name.
+      const as =
+        cfg.verb === "float" ? "float" : cfg.verb === "window" ? "window" : "aside";
+      const spec = { page: "surface", as };
+      if (as === "aside") spec.edge = cfg.edge ?? "right";
+      if (as === "float") spec.position = cfg.position ?? "center";
+      if (cfg.width || cfg.height) {
+        spec.size = {};
+        if (cfg.width) spec.size.width = cfg.width;
+        if (cfg.height) spec.size.height = cfg.height;
       }
-      const surface = await lx.surface.open(options);
+      const surface = await lx.openSurface(spec);
       this._activeSurface = surface;
 
       this.setData({
-        "surfaceDemo.message": `Opened ${kind}: ${surface.id}`,
+        "surfaceDemo.message": `Opened ${as}: ${surface.id}`,
         "surfaceDemo.active": true,
         "surfaceDemo.visible": true,
       });
@@ -252,7 +253,7 @@ Page({
       });
       // Subscribe to surface-driven visibility transitions. Both opener-side
       // and page-side toggles flow through these events, so the parent UI
-      // stays in sync even when the overlay hides itself via this.surface.hide().
+      // stays in sync even when the surface hides itself via this.surface.hide().
       surface.onShow((event) => {
         this.setData({
           "surfaceDemo.visible": true,
@@ -279,14 +280,17 @@ Page({
         });
       });
     } catch (error) {
-      console.error("lx.surface.open failed:", error);
+      const message = surfaceErrorMessage(error);
+      if (!isExpectedWindowSurfaceUnsupported(error)) {
+        console.error("lx.surface open failed:", error);
+      }
       this.setData({
-        "surfaceDemo.message": `Failed: ${error.message}`,
+        "surfaceDemo.message": `Failed: ${message}`,
         "surfaceDemo.active": false,
         "surfaceDemo.visible": false,
       });
       lx.showToast({
-        title: `open failed: ${error.message}`,
+        title: `open failed: ${message}`,
         icon: "none",
       });
     }

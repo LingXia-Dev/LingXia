@@ -332,6 +332,7 @@ fn parse_identity_line(line: &str) -> Result<SigningIdentity> {
 /// Returns (CSR content as PEM string, private key as PEM string)
 pub fn generate_csr(common_name: &str) -> Result<(String, String)> {
     use rcgen::{CertificateParams, DistinguishedName, DnType, KeyPair};
+    use rsa::pkcs1::EncodeRsaPrivateKey;
     use rsa::pkcs8::EncodePrivateKey;
     use rsa::rand_core::OsRng;
 
@@ -339,14 +340,18 @@ pub fn generate_csr(common_name: &str) -> Result<(String, String)> {
     let rsa_key =
         rsa::RsaPrivateKey::new(&mut OsRng, 2048).context("Failed to generate RSA key")?;
 
-    // Export private key as PEM
-    let key_pem = rsa_key
+    // rcgen expects PKCS#8 here, but macOS `security import` accepts the
+    // traditional PKCS#1 RSA PEM more reliably when importing the private key.
+    let key_pkcs8_pem = rsa_key
         .to_pkcs8_pem(rsa::pkcs8::LineEnding::LF)
         .context("Failed to encode private key")?;
+    let key_pkcs1_pem = rsa_key
+        .to_pkcs1_pem(rsa::pkcs1::LineEnding::LF)
+        .context("Failed to encode RSA private key")?;
 
     // Create KeyPair for rcgen from the PEM
-    let key_pair =
-        KeyPair::from_pem(&key_pem).map_err(|e| anyhow!("Failed to create key pair: {}", e))?;
+    let key_pair = KeyPair::from_pem(&key_pkcs8_pem)
+        .map_err(|e| anyhow!("Failed to create key pair: {}", e))?;
 
     // Build distinguished name
     let mut dn = DistinguishedName::new();
@@ -365,7 +370,7 @@ pub fn generate_csr(common_name: &str) -> Result<(String, String)> {
     let csr_pem = csr
         .pem()
         .map_err(|e| anyhow!("Failed to encode CSR: {}", e))?;
-    Ok((csr_pem, key_pem.to_string()))
+    Ok((csr_pem, key_pkcs1_pem.to_string()))
 }
 
 #[cfg(test)]
@@ -383,6 +388,12 @@ mod tests {
         );
         assert_eq!(identity.team_id(), Some("ABCD1234EF"));
         assert!(identity.is_development());
+    }
+
+    #[test]
+    fn generated_csr_returns_security_importable_rsa_key() {
+        let (_csr, private_key) = generate_csr("LingXia Development").unwrap();
+        assert!(private_key.starts_with("-----BEGIN RSA PRIVATE KEY-----"));
     }
 
     #[test]

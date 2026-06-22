@@ -49,6 +49,8 @@ public class LingXiaWebView extends WebView {
     private static final long PROXY_CALLBACK_TIMEOUT_MS = 5000L;
     private static final long PROXY_TOTAL_TIMEOUT_MS =
             PROXY_MAIN_THREAD_HOP_TIMEOUT_MS + PROXY_CALLBACK_TIMEOUT_MS + 1000L;
+    private static final int NEW_WINDOW_POLICY_CANCEL = 0;
+    private static final int NEW_WINDOW_POLICY_LOAD_IN_SELF = 1;
     private static final AtomicLong sProxyRequestRevision = new AtomicLong(0L);
     private static final AtomicLong sFileChooserRequestSeq = new AtomicLong(0L);
 
@@ -105,6 +107,7 @@ public class LingXiaWebView extends WebView {
         public String profile;
         public boolean domStorageEnabled;
         public boolean databaseEnabled;
+        public boolean hasNewWindowHandler;
         public boolean hasDownloadHandler;
         public boolean hasFileChooserHandler;
 
@@ -113,6 +116,7 @@ public class LingXiaWebView extends WebView {
             options.profile = "strict_default";
             options.domStorageEnabled = false;
             options.databaseEnabled = false;
+            options.hasNewWindowHandler = false;
             options.hasDownloadHandler = false;
             options.hasFileChooserHandler = false;
             return options;
@@ -123,6 +127,7 @@ public class LingXiaWebView extends WebView {
             options.profile = "browser_relaxed";
             options.domStorageEnabled = true;
             options.databaseEnabled = true;
+            options.hasNewWindowHandler = false;
             options.hasDownloadHandler = false;
             options.hasFileChooserHandler = false;
             return options;
@@ -153,6 +158,7 @@ public class LingXiaWebView extends WebView {
                     profile = "strict_default";
                 }
                 CreateOptions options = fromProfile(profile);
+                options.hasNewWindowHandler = obj.optBoolean("has_new_window_handler", false);
                 options.hasDownloadHandler = obj.optBoolean("has_download_handler", false);
                 options.hasFileChooserHandler = obj.optBoolean("has_file_chooser_handler", false);
                 return options;
@@ -252,6 +258,33 @@ public class LingXiaWebView extends WebView {
 
     private boolean hasDownloadHandler() {
         return createOptions != null && createOptions.hasDownloadHandler;
+    }
+
+    public boolean supportsNewWindows() {
+        return createOptions != null &&
+                (isBrowserProfile() || createOptions.hasNewWindowHandler);
+    }
+
+    public boolean handleNewWindowRequest(String url) {
+        if (url == null || url.trim().isEmpty() || !supportsNewWindows()) {
+            return false;
+        }
+        String target = url.trim();
+        try {
+            int policy = handleNewWindowPolicy(
+                    getAppId() != null ? getAppId() : "",
+                    getCurrentPath() != null ? getCurrentPath() : "",
+                    getSessionId(),
+                    target
+            );
+            if (policy == NEW_WINDOW_POLICY_LOAD_IN_SELF) {
+                loadUrl(target);
+            }
+            return true;
+        } catch (Throwable t) {
+            Log.e(TAG, "Failed to dispatch new-window request: " + target, t);
+            return false;
+        }
     }
 
     public boolean shouldSkipRustIntercept(String url) {
@@ -382,6 +415,7 @@ public class LingXiaWebView extends WebView {
             "Apply create options: profile=" + this.createOptions.profile
                 + ", domStorage=" + this.createOptions.domStorageEnabled
                 + ", database=" + this.createOptions.databaseEnabled
+                + ", hasNewWindowHandler=" + this.createOptions.hasNewWindowHandler
                 + ", hasDownloadHandler=" + this.createOptions.hasDownloadHandler
                 + ", hasFileChooserHandler=" + this.createOptions.hasFileChooserHandler
         );
@@ -513,8 +547,11 @@ public class LingXiaWebView extends WebView {
             settings.setJavaScriptEnabled(true);
             // Profile policy on Android:
             // - strict_default: disable JS popup windows
-            // - browser_relaxed: enable JS popup windows
-            settings.setJavaScriptCanOpenWindowsAutomatically("browser_relaxed".equals(options.profile));
+            // - browser_relaxed or explicit new-window handler: enable JS popup windows
+            boolean supportsNewWindows =
+                    "browser_relaxed".equals(options.profile) || options.hasNewWindowHandler;
+            settings.setJavaScriptCanOpenWindowsAutomatically(supportsNewWindows);
+            settings.setSupportMultipleWindows(supportsNewWindows);
 
             // Disable media
             settings.setMediaPlaybackRequiresUserGesture(true);
@@ -978,6 +1015,7 @@ public class LingXiaWebView extends WebView {
     native void onLoadError(String appId, String path, long sessionId, String url, int errorCode, String description);
     native WebResourceResponseData handleRequest(String appId, String path, long sessionId, String url, String method, String[] headerKeysAndValues);
     native boolean handleNavigationPolicy(String appId, String path, long sessionId, String url);
+    native int handleNewWindowPolicy(String appId, String path, long sessionId, String url);
     native void onFileChooserRequested(
         String appId,
         String path,
