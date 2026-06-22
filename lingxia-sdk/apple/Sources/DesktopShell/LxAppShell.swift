@@ -724,6 +724,9 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
               let contentView = window.contentView else {
             return Layout.trafficLightClearanceFallback
         }
+        if (window as? LxAppWindow)?.trafficLightsHidden == true {
+            return SidebarView.Layout.railWidth
+        }
 
         var maxX: CGFloat = 0
         for type: NSWindow.ButtonType in [.closeButton, .miniaturizeButton, .zoomButton] {
@@ -1221,6 +1224,18 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         if let shadowWrapper = contentPanelView?.superview {
             shadowWrapper.layer?.shadowOpacity = style.hasShadow ? 0.15 : 0
         }
+    }
+
+    func setTrafficLightsVisible(_ visible: Bool) {
+        if let lxWindow = window as? LxAppWindow {
+            lxWindow.setTrafficLightsHidden(!visible)
+        } else {
+            for type: NSWindow.ButtonType in [.closeButton, .miniaturizeButton, .zoomButton] {
+                window?.standardWindowButton(type)?.isHidden = !visible
+            }
+        }
+        syncSidebarHeaderButtonAlignment()
+        sidebarView?.updateVisibilityState()
     }
 
     func setSidebarHostActionHandler(_ handler: @escaping (String) -> Void) {

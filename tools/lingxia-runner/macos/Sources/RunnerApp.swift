@@ -15,6 +15,8 @@ public class RunnerApp {
     private var controllerEventsTask: Task<Void, Never>?
     private let deviceMenu = RunnerDeviceMenu()
     private var pendingPhoneLifecycleReopens: [String: (appId: String, path: String, sessionId: UInt64)] = [:]
+    private(set) var selectedDeviceSize: MobileDeviceSize = .defaultDevice
+    private(set) var deviceOrientation: RunnerDeviceOrientation = .portrait
     private(set) var deviceSize: MobileDeviceSize = .defaultDevice
     
     private init() {}
@@ -24,23 +26,48 @@ public class RunnerApp {
     /// Set device size for the Runner window
     /// This can be called to change device while running
     public func setDeviceSize(_ size: MobileDeviceSize) {
-        self.deviceSize = size
-        SimulatorWindowController.setWindowSize(size)
-        configureOpenURLHandlingForCurrentShape()
-        deviceMenu.updateSelectedDevice(size)
-        os_log("Device size changed to: %@", log: Self.log, type: .info, size.displayName)
+        selectedDeviceSize = size
+        if !size.supportsOrientation {
+            deviceOrientation = .portrait
+        }
+        applyDeviceConfiguration()
+    }
 
-        if size.usesSurfaceShell {
-            switchToSurfaceShellHost(device: size)
+    public func setDeviceOrientation(_ orientation: RunnerDeviceOrientation) {
+        guard selectedDeviceSize.supportsOrientation else { return }
+        deviceOrientation = orientation
+        applyDeviceConfiguration()
+    }
+
+    public func toggleDeviceOrientation() {
+        setDeviceOrientation(deviceOrientation.toggled)
+    }
+
+    private func applyDeviceConfiguration() {
+        let effectiveDevice = selectedDeviceSize.oriented(deviceOrientation)
+        deviceSize = effectiveDevice
+        SimulatorWindowController.setWindowSize(effectiveDevice)
+        configureOpenURLHandlingForCurrentShape()
+        deviceMenu.updateSelectedDevice(selectedDeviceSize, orientation: deviceOrientation)
+        os_log(
+            "Device size changed to: %@ %@",
+            log: Self.log,
+            type: .info,
+            selectedDeviceSize.displayName,
+            effectiveDevice.supportsOrientation ? deviceOrientation.displayName : ""
+        )
+
+        if effectiveDevice.usesSurfaceShell {
+            switchToSurfaceShellHost(device: effectiveDevice)
         } else {
-            switchToPhoneSimulatorHost(device: size)
+            switchToPhoneSimulatorHost(device: effectiveDevice)
         }
     }
 
     public func bind(controller: LxAppController) {
         self.controller = controller
         deviceMenu.installIfNeeded()
-        deviceMenu.updateSelectedDevice(deviceSize)
+        deviceMenu.updateSelectedDevice(selectedDeviceSize, orientation: deviceOrientation)
         configureOpenURLHandlingForCurrentShape()
         controllerEventsTask?.cancel()
         controllerEventsTask = Task { [weak self, controller] in

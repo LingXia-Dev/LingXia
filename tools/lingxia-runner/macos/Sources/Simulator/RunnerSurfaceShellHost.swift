@@ -10,6 +10,7 @@ import AppKit
 private final class RunnerSurfaceDeviceSelector: NSView {
     private let button = NSButton()
     private var selectedDevice: MobileDeviceSize?
+    private var selectedOrientation: RunnerDeviceOrientation = .portrait
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -22,8 +23,13 @@ private final class RunnerSurfaceDeviceSelector: NSView {
 
     func updateDevice(_ device: MobileDeviceSize) {
         selectedDevice = device
+        selectedOrientation = device.orientation
         button.image = Self.symbol(for: device)
-        button.toolTip = "Device: \(device.displayName)"
+        if device.supportsOrientation {
+            button.toolTip = "Device: \(device.displayName) \(device.orientation.displayName)"
+        } else {
+            button.toolTip = "Device: \(device.displayName)"
+        }
     }
 
     private func setup() {
@@ -73,6 +79,21 @@ private final class RunnerSurfaceDeviceSelector: NSView {
         menu.addItem(restart)
         menu.addItem(.separator())
 
+        if selectedDevice?.supportsOrientation == true {
+            for orientation in RunnerDeviceOrientation.allCases {
+                let item = NSMenuItem(
+                    title: orientation.displayName,
+                    action: #selector(orientationSelectionChanged(_:)),
+                    keyEquivalent: ""
+                )
+                item.target = self
+                item.representedObject = orientation.rawValue
+                item.state = orientation == selectedOrientation ? .on : .off
+                menu.addItem(item)
+            }
+            menu.addItem(.separator())
+        }
+
         var previousShape: RunnerDeviceShape?
         for device in MobileDeviceSize.allCases {
             if let previousShape, previousShape != device.shape {
@@ -85,9 +106,9 @@ private final class RunnerSurfaceDeviceSelector: NSView {
             )
             item.target = self
             item.representedObject = device
-            item.state = device == selectedDevice ? .on : .off
+            item.state = device.id == selectedDevice?.id ? .on : .off
             menu.addItem(item)
-            if item.state == .on {
+            if selectedItem == nil, item.state == .on {
                 selectedItem = item
             }
             previousShape = device.shape
@@ -100,6 +121,14 @@ private final class RunnerSurfaceDeviceSelector: NSView {
             return
         }
         RunnerApp.shared.setDeviceSize(device)
+    }
+
+    @objc private func orientationSelectionChanged(_ sender: NSMenuItem) {
+        guard let rawValue = sender.representedObject as? String,
+              let orientation = RunnerDeviceOrientation(rawValue: rawValue) else {
+            return
+        }
+        RunnerApp.shared.setDeviceOrientation(orientation)
     }
 
     @objc private func cleanCacheAndRestartLxApp(_ sender: NSMenuItem) {
@@ -242,7 +271,8 @@ final class RunnerSurfaceShellHost {
         guard let window = shell.window else { return }
 
         let contentSize = NSSize(width: device.width, height: device.height)
-        window.title = "LingXia Runner - \(device.displayName)"
+        window.title = "LingXia Runner - \(device.orientedDisplayName)"
+        RunnerSupport.SurfaceShell.setTrafficLightsVisible(shell, visible: device.shape == .desktop)
         window.maxSize = NSSize(
             width: CGFloat.greatestFiniteMagnitude,
             height: CGFloat.greatestFiniteMagnitude

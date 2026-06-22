@@ -193,6 +193,10 @@ enum RunnerBridge {
         LxAppActiveHost.activate(shell: shell)
     }
 
+    static func setSurfaceShellTrafficLightsVisible(_ shell: LxAppShell, visible: Bool) {
+        shell.setTrafficLightsVisible(visible)
+    }
+
     static func openInSurfaceShell(
         _ shell: LxAppShell,
         appId: String,

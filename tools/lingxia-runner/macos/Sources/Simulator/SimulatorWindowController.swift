@@ -186,6 +186,10 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
             RunnerApp.shared.setDeviceSize(device)
         }
 
+        toolbar.onRotateClicked = {
+            RunnerApp.shared.toggleDeviceOrientation()
+        }
+
         toolbar.onInspectClicked = { [weak self] in
             self?.openInspector()
         }

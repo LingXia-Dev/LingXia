@@ -14,6 +14,32 @@ public enum RunnerDeviceShape: Equatable, Hashable, Sendable {
     case desktop
 }
 
+public enum RunnerDeviceOrientation: String, Equatable, Hashable, CaseIterable, Sendable {
+    case portrait
+    case landscape
+
+    public var displayName: String {
+        switch self {
+        case .portrait: return "Portrait"
+        case .landscape: return "Landscape"
+        }
+    }
+
+    public var systemImageName: String {
+        switch self {
+        case .portrait: return "rectangle.portrait"
+        case .landscape: return "rectangle"
+        }
+    }
+
+    public var toggled: RunnerDeviceOrientation {
+        switch self {
+        case .portrait: return .landscape
+        case .landscape: return .portrait
+        }
+    }
+}
+
 /// Predefined device sizes for Runner window sizing.
 public struct MobileDeviceSize: Equatable, Hashable, Decodable, Sendable {
     public let id: String
@@ -78,8 +104,20 @@ public struct MobileDeviceSize: Equatable, Hashable, Decodable, Sendable {
         shape == .desktop
     }
 
+    public var supportsOrientation: Bool {
+        shape == .phone || shape == .pad
+    }
+
+    public var orientation: RunnerDeviceOrientation {
+        supportsOrientation && width > height ? .landscape : .portrait
+    }
+
     public var displayName: String {
         name
+    }
+
+    public var orientedDisplayName: String {
+        supportsOrientation ? "\(name) \(orientation.displayName)" : name
     }
 
     public var sizeDescription: String {
@@ -88,6 +126,29 @@ public struct MobileDeviceSize: Equatable, Hashable, Decodable, Sendable {
 
     public var size: CGSize {
         CGSize(width: width, height: height)
+    }
+
+    public func oriented(_ orientation: RunnerDeviceOrientation) -> MobileDeviceSize {
+        guard supportsOrientation else { return self }
+
+        let portraitWidth = min(width, height)
+        let portraitHeight = max(width, height)
+        let targetWidth = orientation == .portrait ? portraitWidth : portraitHeight
+        let targetHeight = orientation == .portrait ? portraitHeight : portraitWidth
+        let targetNotchSpec: iPhoneNotchSpec =
+            shape == .phone && orientation == .landscape ? .landscapePhone : notchSpec
+
+        return MobileDeviceSize(
+            id: id,
+            group: group,
+            name: name,
+            width: targetWidth,
+            height: targetHeight,
+            bezelWidth: bezelWidth,
+            outerRadius: outerRadius,
+            screenRadius: screenRadius,
+            notchSpec: targetNotchSpec
+        )
     }
 
     private static func device(id: String) -> MobileDeviceSize {
@@ -128,5 +189,12 @@ public struct iPhoneNotchSpec: Equatable, Hashable, Decodable, Sendable {
         height: 0,
         cornerRadius: 0,
         statusBarHeight: 20
+    )
+
+    public static let landscapePhone = iPhoneNotchSpec(
+        width: 0,
+        height: 0,
+        cornerRadius: 0,
+        statusBarHeight: 0
     )
 }

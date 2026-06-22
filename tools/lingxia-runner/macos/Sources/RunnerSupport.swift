@@ -161,6 +161,10 @@ enum RunnerSupport {
             LingxiaRunnerSPI.SurfaceShell.activate(shell)
         }
 
+        static func setTrafficLightsVisible(_ shell: LxAppShell, visible: Bool) {
+            LingxiaRunnerSPI.SurfaceShell.setTrafficLightsVisible(shell, visible: visible)
+        }
+
         static func open(
             _ shell: LxAppShell,
             appId: String,
