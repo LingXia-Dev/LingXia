@@ -21,7 +21,7 @@ const WINDOWS_APP_UI_ICON_PNG_SIZE: u32 = 64;
 const TERMINAL_ICON_SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><rect x="7" y="11" width="50" height="42" rx="8" fill="none" stroke="#000000" stroke-width="5"/><path d="M17 25l8 7-8 7" fill="none" stroke="#000000" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/><path d="M31 40h15" fill="none" stroke="#000000" stroke-width="5" stroke-linecap="round"/></svg>"##;
 
 static WINDOWS_DESIGN_ICON_SVGS: Dir<'_> =
-    include_dir!("$CARGO_MANIFEST_DIR/assets/design-icons/svg");
+    include_dir!("$CARGO_MANIFEST_DIR/../../design/icons/svg");
 
 #[derive(Clone, Debug)]
 pub(super) struct PreparedAppUiIcon {

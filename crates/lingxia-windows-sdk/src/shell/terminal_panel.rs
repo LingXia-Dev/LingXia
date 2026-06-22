@@ -309,10 +309,30 @@ pub(super) fn open_windows_terminal_panel(
     .map_err(|err| err.to_string())
 }
 
-pub(super) fn close_windows_terminal_panel(panel_id: &str) -> Result<(), String> {
+pub(super) fn show_existing_windows_terminal_panel(
+    panel_id: &str,
+    title: &str,
+    position: WindowsPanelPosition,
+) -> Result<bool, String> {
     #[cfg(feature = "terminal-runtime")]
-    shutdown_windows_terminal_panel_state(panel_id);
-    lingxia_windows_host::hide_host_panel(panel_id).map_err(|err| err.to_string())
+    {
+        if !windows_terminal_panels().contains_key(panel_id) {
+            return Ok(false);
+        }
+        let body = super::terminal_grid::panel_snapshot_text(panel_id)
+            .filter(|body| !body.trim().is_empty())
+            .unwrap_or_else(|| "Terminal session started".to_string());
+        lingxia_windows_host::show_interactive_host_panel(panel_id, title, &body, position)
+            .map_err(|err| err.to_string())?;
+        publish_tab_strip(panel_id);
+        publish_active_snapshot(panel_id);
+        Ok(true)
+    }
+    #[cfg(not(feature = "terminal-runtime"))]
+    {
+        let _ = (panel_id, title, position);
+        Ok(false)
+    }
 }
 
 fn terminal_panel_status_text() -> &'static str {
@@ -1158,7 +1178,10 @@ fn close_pane_session(panel_id: &str, session_id: u64) -> bool {
 
     match outcome {
         CloseOutcome::Panel => {
-            if let Err(err) = close_windows_terminal_panel(panel_id) {
+            shutdown_windows_terminal_panel_state(panel_id);
+            if let Err(err) =
+                lingxia_windows_host::hide_host_panel(panel_id).map_err(|err| err.to_string())
+            {
                 log::warn!("failed to close Windows terminal panel {panel_id}: {err}");
             }
             super::runtime::sync_owner_shell_layout();
@@ -1196,8 +1219,7 @@ fn close_terminal_tab_by_sessions(panel_id: &str, session_ids: &[u64]) {
 }
 
 /// Stops the poll thread, terminates all sessions, and clears the panel's
-/// input handler and grid store. The panel window itself is hidden by the
-/// caller (`close_windows_terminal_panel`).
+/// input handler and grid store. The caller hides the panel window.
 #[cfg(feature = "terminal-runtime")]
 fn shutdown_windows_terminal_panel_state(panel_id: &str) {
     lingxia_windows_host::clear_host_panel_input_handler(panel_id);

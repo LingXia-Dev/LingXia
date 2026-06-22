@@ -52,6 +52,7 @@ browser:
 capabilities:
   notifications: true
   browser: true
+  proxy: true
   terminal: true
 
 resources:
@@ -67,7 +68,7 @@ surfaces:
   - id: lingxia-showcase
     render: lxapp
     role: main
-    launch: true
+    launch: false
     tray:
       icon: icons/tray.svg
       label: LingXia

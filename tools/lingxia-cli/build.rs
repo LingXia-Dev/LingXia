@@ -36,7 +36,7 @@ fn run() -> Result<(), String> {
     let polyfills_package_json = polyfills_dir.join("package.json");
     let component_versions = read_component_versions(&manifest_dir.join("Cargo.toml"))?;
 
-    emit_rerun_markers(&manifest_dir, &bridge_dir, &polyfills_dir)?;
+    emit_rerun_markers(&manifest_dir, repo_root, &bridge_dir, &polyfills_dir)?;
     emit_component_version_env(&component_versions);
 
     let actual_bridge_version = read_npm_package_version(&bridge_package_json)?;
@@ -251,6 +251,7 @@ fn read_npm_package_version(package_json: &Path) -> Result<String, String> {
 
 fn emit_rerun_markers(
     manifest_dir: &Path,
+    repo_root: &Path,
     bridge_dir: &Path,
     polyfills_dir: &Path,
 ) -> Result<(), String> {
@@ -263,6 +264,7 @@ fn emit_rerun_markers(
         manifest_dir.join("Cargo.toml").display()
     );
     emit_rerun_for_dir(&manifest_dir.join("templates"))?;
+    emit_rerun_for_dir(&repo_root.join("design").join("icons").join("svg"))?;
 
     for path in [
         bridge_dir.join("package.json"),

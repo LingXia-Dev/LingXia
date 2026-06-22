@@ -133,6 +133,7 @@ pub struct PanelsConfig {
 pub enum PanelPosition {
     Left,
     Right,
+    Top,
     Bottom,
 }
 
@@ -418,6 +419,7 @@ fn panel_position_name(position: PanelPosition) -> &'static str {
     match position {
         PanelPosition::Left => "left",
         PanelPosition::Right => "right",
+        PanelPosition::Top => "top",
         PanelPosition::Bottom => "bottom",
     }
 }

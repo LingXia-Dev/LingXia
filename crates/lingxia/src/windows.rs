@@ -4,6 +4,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, LazyLock, Mutex};
 
 use lingxia_platform::traits::app_runtime::AppRuntime;
+use lingxia_platform::traits::ui::SurfaceContent;
 pub use lingxia_platform::{Platform, PlatformError, set_windows_app_exit_handler};
 use lingxia_webview::WebTag;
 
@@ -20,6 +21,7 @@ pub fn init(platform: Platform) -> Option<String> {
         platform.app_cache_dir().join("webview2"),
     );
     install_lifecycle_bridge();
+    install_url_surface_bridge();
     crate::init_with_platform(platform)
 }
 
@@ -54,6 +56,18 @@ pub fn resize_app_window_content(appid: &str, width: i32, height: i32) -> Result
         .map_err(|err| err.to_string())
 }
 
+/// Feed the host window's logical (DIP) width to `appid`'s adaptive surface
+/// graph so the size class (and therefore the aside cap) tracks the real
+/// window. Without this the graph stays at its seed width — permanently
+/// `Medium` (max 1 aside) — so a second aside evicts the first even on a wide
+/// window. Called on window create/resize. Returns `false` if the app is not
+/// active (e.g. during teardown).
+pub fn set_surface_width(appid: &str, width: f64) -> bool {
+    lxapp::try_get(appid)
+        .map(|app| app.set_surface_width(width))
+        .unwrap_or(false)
+}
+
 fn current_page_webview(appid: &str) -> Result<std::sync::Arc<lingxia_webview::WebView>, String> {
     let app = lxapp::try_get(appid).ok_or_else(|| format!("lxapp is not active: {appid}"))?;
     let page = app.current_page().map_err(|err| err.to_string())?;
@@ -64,6 +78,43 @@ fn current_page_webview(appid: &str) -> Result<std::sync::Arc<lingxia_webview::W
 fn install_lifecycle_bridge() {
     lingxia_windows_host::set_webview_visibility_handler(Arc::new(|webtag, visible| {
         on_webview_visibility_changed(webtag, visible);
+    }));
+}
+
+fn install_url_surface_bridge() {
+    lingxia_platform::set_windows_url_surface_handler(Arc::new(|request| {
+        if request.content != SurfaceContent::Url {
+            return None;
+        }
+        let tab_id = match crate::browser::open_standalone_for_app(
+            &request.app_id,
+            request.session_id,
+            &request.path,
+            None,
+        ) {
+            Ok(tab_id) => tab_id,
+            Err(err) => {
+                log::error!(
+                    "failed to open Windows URL surface browser tab for {}: {}",
+                    request.path,
+                    err
+                );
+                return None;
+            }
+        };
+        let Some(tab) = crate::browser::tab_summary(&tab_id) else {
+            log::error!("Windows URL surface browser tab missing after open: {tab_id}");
+            return None;
+        };
+        let cleanup_tab_id = tab_id.clone();
+        Some(lingxia_platform::WindowsUrlSurfaceWebTag {
+            app_id: crate::browser::APP_ID.to_string(),
+            path: tab.path,
+            session_id: tab.session_id,
+            cleanup: Some(Arc::new(move || {
+                let _ = crate::browser::close(&cleanup_tab_id);
+            })),
+        })
     }));
 }
 

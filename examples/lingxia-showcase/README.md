@@ -1,7 +1,7 @@
 # lingxia-showcase
 
 The kitchen-sink LingXia example: one host app (Android / iOS / macOS /
-HarmonyOS) embedding the `lingxia-showcase` lxapp, which demos pages, the
+HarmonyOS / Windows) embedding the `lingxia-showcase` lxapp, which demos pages, the
 `lx.*` API surface, native components, media, file transfer, and the terminal.
 
 > Unlike a real product, the home pages ship React **and** Vue
@@ -28,6 +28,22 @@ show both views exist.
 `lingxia doctor` checks platform toolchains. Once a dev session is live, drive
 it with `lxdev` (tabs, eval, screenshots, logs) — see the skill's
 `cli/lxdev.md`.
+
+## Build
+
+```bash
+# From this directory; pick react | vue
+lingxia build --platform windows --framework react --release
+```
+
+When working inside the monorepo without an installed `lingxia` CLI, run the
+same build through Cargo:
+
+```bash
+cargo run -p lingxia-cli -- build --platform windows --framework react --release
+```
+
+The Windows executable is written to `../../target/release/LingXiaDemo.exe`.
 
 ## Credits
 

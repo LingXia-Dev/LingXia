@@ -25,10 +25,11 @@ pub(in crate::shell::chrome) fn panel_activator_rects(
         }
         let footer_top = tabbar_rect.bottom - SIDEBAR_FOOTER_HEIGHT;
         let top = footer_top + (SIDEBAR_FOOTER_HEIGHT - PANEL_ACTIVATOR_SIZE) / 2;
-        let mut right = tabbar_rect.right - PANEL_ACTIVATOR_MARGIN;
+        let mut left = tabbar_rect.left + PANEL_ACTIVATOR_MARGIN;
+        let right_limit = tabbar_rect.right - PANEL_ACTIVATOR_MARGIN;
         for activator in &layout.panel_activators {
-            let left = right - PANEL_ACTIVATOR_SIZE;
-            if left < tabbar_rect.left + PANEL_ACTIVATOR_MARGIN {
+            let right = left + PANEL_ACTIVATOR_SIZE;
+            if right > right_limit {
                 break;
             }
             out.push((
@@ -40,7 +41,7 @@ pub(in crate::shell::chrome) fn panel_activator_rects(
                     bottom: top + PANEL_ACTIVATOR_SIZE,
                 }),
             ));
-            right = left - PANEL_ACTIVATOR_GAP;
+            left = right + PANEL_ACTIVATOR_GAP;
         }
         return out;
     }
@@ -92,14 +93,14 @@ pub(in crate::shell::chrome) fn draw_panel_activators(
             .map(|item| panel_activator_label(&item.label))
             .unwrap_or_else(|| panel_activator_label(&panel_id));
         let text_color = if active {
-            SHELL_ACCENT
+            shell_palette().accent
         } else {
-            SHELL_TEXT_MUTED
+            shell_palette().text_muted
         };
 
         if active {
             // White activator pill on the gray sidebar footer.
-            fill_round_rect_aa(hdc, rect, 6, 0xffffff);
+            fill_round_rect_aa(hdc, rect, 6, shell_palette().panel_background);
             fill_round_rect_aa(
                 hdc,
                 RECT {
@@ -109,7 +110,7 @@ pub(in crate::shell::chrome) fn draw_panel_activators(
                     bottom: rect.bottom - 3,
                 },
                 2,
-                SHELL_ACCENT,
+                shell_palette().accent,
             );
         }
         let icon_rect = centered_icon_rect(rect, PANEL_ACTIVATOR_ICON_SIZE);

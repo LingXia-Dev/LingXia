@@ -27,6 +27,7 @@ pub enum WindowsDesignIcon {
     CloseX,
     Home,
     Settings,
+    Downloads,
     Lock,
     Warning,
     Play,
@@ -35,6 +36,8 @@ pub enum WindowsDesignIcon {
     VolumeOff,
     FullscreenEnter,
     FullscreenExit,
+    SidebarCollapse,
+    SidebarExpand,
 }
 
 impl WindowsDesignIcon {
@@ -46,6 +49,7 @@ impl WindowsDesignIcon {
             Self::CloseX => "icon_close_x.png",
             Self::Home => "icon_home.png",
             Self::Settings => "icon_settings.png",
+            Self::Downloads => "icon_download.png",
             Self::Lock => "icon_lock.png",
             Self::Warning => "icon_warning.png",
             Self::Play => "icon_play.png",
@@ -54,6 +58,8 @@ impl WindowsDesignIcon {
             Self::VolumeOff => "icon_volume_off.png",
             Self::FullscreenEnter => "icon_fullscreen_enter.png",
             Self::FullscreenExit => "icon_fullscreen_exit.png",
+            Self::SidebarCollapse => "icon_sidebar_collapse.png",
+            Self::SidebarExpand => "icon_sidebar_expand.png",
         }
     }
 }

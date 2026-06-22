@@ -31,8 +31,10 @@ pub use media_preview::{
 };
 pub use pull_to_refresh::set_windows_pull_to_refresh_handler;
 pub use surface::{
-    set_windows_page_visibility_handler, set_windows_surface_closed_handler,
-    set_windows_surface_dispose_handler,
+    WindowsUrlSurfaceWebTag, set_windows_managed_surface_toggle_handler,
+    set_windows_managed_surface_visible_handler, set_windows_page_visibility_handler,
+    set_windows_surface_closed_handler, set_windows_surface_dispose_handler,
+    set_windows_url_surface_handler,
 };
 pub use ui_update::set_windows_ui_update_handler;
 pub use update::apply_staged_windows_update;

@@ -39,6 +39,14 @@ static WINDOWS_CHROME_RENDERER: OnceLock<Mutex<Option<Arc<dyn WindowsChromeRende
 
 pub trait WindowsHostBackend: Send + Sync {
     fn show_webview_as_panel(&self, webtag: &WebTag, title: &str, panel_id: &str) -> StdResult<()>;
+    fn show_webview_as_adaptive_panel(
+        &self,
+        webtag: &WebTag,
+        title: &str,
+        panel_id: &str,
+        position: WindowsPanelPosition,
+        preferred_size: Option<i32>,
+    ) -> StdResult<()>;
     fn present_webview_in_active_group(&self, webtag: &WebTag) -> StdResult<()>;
     fn present_webview_as_group_main(&self, webtag: &WebTag, group_key: String) -> StdResult<()>;
     fn present_webview_as_overlay(
@@ -69,6 +77,14 @@ pub trait WindowsHostBackend: Send + Sync {
     fn find_webview_content_window(&self, webtag: &WebTag) -> Option<WindowsWebViewContentWindow>;
     fn webview_window_snapshot(&self, webtag: &WebTag) -> StdResult<WindowsWebViewWindowSnapshot>;
     fn show_webview_window(&self, webtag: &WebTag, title: &str, activate: bool) -> StdResult<()>;
+    fn show_webview_window_with_content_size(
+        &self,
+        webtag: &WebTag,
+        title: &str,
+        activate: bool,
+        width: Option<i32>,
+        height: Option<i32>,
+    ) -> StdResult<()>;
     fn navigate_webview_window(
         &self,
         webtag: &WebTag,
@@ -124,6 +140,7 @@ pub enum WindowsPanelPosition {
     Left,
     #[default]
     Right,
+    Top,
     Bottom,
 }
 
@@ -184,7 +201,12 @@ pub struct WindowsHostPanelContent {
 #[derive(Debug, Clone, PartialEq)]
 pub struct WindowsChromePanel {
     pub panel_id: String,
+    pub webtag_key: String,
+    pub title: String,
     pub rect: RECT,
+    /// Top-band slice (aligned with the main navbar baseline) where a browser
+    /// aside paints its address bar; `None` for panels with no band header.
+    pub header_rect: Option<RECT>,
     pub host_content: Option<WindowsHostPanelContent>,
     pub docked: bool,
 }
@@ -204,6 +226,9 @@ pub struct WindowsChromePanelLayout {
     pub panel_id: String,
     pub webtag_key: String,
     pub rect: RECT,
+    /// Top-band slice for a browser aside's address bar (see
+    /// [`WindowsChromePanel::header_rect`]); `None` when the panel has none.
+    pub header_rect: Option<RECT>,
     pub resize_handle: Option<RECT>,
 }
 
@@ -494,6 +519,16 @@ pub fn show_webview_as_panel(webtag: &WebTag, title: &str, panel_id: &str) -> St
     backend()?.show_webview_as_panel(webtag, title, panel_id)
 }
 
+pub fn show_webview_as_adaptive_panel(
+    webtag: &WebTag,
+    title: &str,
+    panel_id: &str,
+    position: WindowsPanelPosition,
+    preferred_size: Option<i32>,
+) -> StdResult<()> {
+    backend()?.show_webview_as_adaptive_panel(webtag, title, panel_id, position, preferred_size)
+}
+
 pub fn present_webview_in_active_group(webtag: &WebTag) -> StdResult<()> {
     backend()?.present_webview_in_active_group(webtag)
 }
@@ -602,6 +637,16 @@ pub fn webview_window_snapshot(webtag: &WebTag) -> StdResult<WindowsWebViewWindo
 
 pub fn show_webview_window(webtag: &WebTag, title: &str, activate: bool) -> StdResult<()> {
     backend()?.show_webview_window(webtag, title, activate)
+}
+
+pub fn show_webview_window_with_content_size(
+    webtag: &WebTag,
+    title: &str,
+    activate: bool,
+    width: Option<i32>,
+    height: Option<i32>,
+) -> StdResult<()> {
+    backend()?.show_webview_window_with_content_size(webtag, title, activate, width, height)
 }
 
 pub fn navigate_webview_window(webtag: &WebTag, title: &str, activate: bool) -> StdResult<()> {

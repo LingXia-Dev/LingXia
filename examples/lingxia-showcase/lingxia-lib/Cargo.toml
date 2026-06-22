@@ -16,6 +16,7 @@ default = ["standard"]
 # with `lingxia build --native-feature <feature>` or LINGXIA_NATIVE_FEATURES.
 standard = ["lingxia/standard"]
 browser-shell = ["lingxia/browser-shell", "webview-input", "standard"]
+proxy = ["lingxia/proxy", "browser-shell"]
 terminal-runtime = ["lingxia/terminal-runtime"]
 devtools = ["dep:lingxia_devtool", "lingxia_devtool/browser"]
 webview-input = ["lingxia/webview-input"]

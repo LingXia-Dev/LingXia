@@ -2,23 +2,62 @@ pub(super) const SHELL_PANEL_PADDING: i32 = 6;
 
 pub(super) const SHELL_PANEL_RADIUS: i32 = 14;
 
-pub(super) const SHELL_WINDOW_BACKGROUND: u32 = 0xe7e8eb;
-
-pub(super) const SHELL_PANEL_BACKGROUND: u32 = 0xffffff;
-
-pub(super) const SHELL_SIDEBAR_BACKGROUND: u32 = 0xe7e8eb;
-
-pub(super) const SHELL_TEXT_PRIMARY: u32 = 0x111827;
-
-pub(super) const SHELL_TEXT_MUTED: u32 = 0x667085;
-
-pub(super) const SHELL_ACCENT: u32 = 0x1677ff;
-
-pub(super) const SHELL_DIVIDER: u32 = 0xd6d9de;
-
 pub(super) const SHELL_BADGE_RED: u32 = 0xff3b30;
 
-pub(super) const SHELL_FRAME_BUTTON_ICON: u32 = 0x1f2937;
+/// Themed shell palette, derived at paint time from the Win11 light/dark
+/// setting and the system accent (see [`super::theme`]). All fields are
+/// `0xRRGGBB` — the format `rgb_to_colorref` expects.
+#[derive(Clone, Copy)]
+pub(super) struct ShellPalette {
+    pub window_background: u32,
+    pub panel_background: u32,
+    pub sidebar_background: u32,
+    pub text_primary: u32,
+    pub text_muted: u32,
+    pub accent: u32,
+    pub divider: u32,
+    /// Inset control surface (URL pill / input field) that must read against a
+    /// `panel_background` card.
+    pub control_surface: u32,
+    pub frame_button_icon: u32,
+    pub sidebar_header_text: u32,
+    pub tab_selected_background: u32,
+}
+
+/// The active palette for the current system theme. Cheap (two atomic reads +
+/// a literal), so call sites can read it per-draw without caching.
+pub(super) fn shell_palette() -> ShellPalette {
+    let accent = super::theme::system_accent();
+    if super::theme::is_dark() {
+        ShellPalette {
+            window_background: 0x202020,
+            panel_background: 0x2b2b2b,
+            sidebar_background: 0x202020,
+            text_primary: 0xf3f3f3,
+            text_muted: 0x9aa0a6,
+            accent,
+            divider: 0x383838,
+            control_surface: 0x3a3a3a,
+            frame_button_icon: 0xe6e6e6,
+            sidebar_header_text: 0xb0b4ba,
+            tab_selected_background: 0x2d3340,
+        }
+    } else {
+        ShellPalette {
+            window_background: 0xe7e8eb,
+            panel_background: 0xffffff,
+            sidebar_background: 0xe7e8eb,
+            text_primary: 0x111827,
+            text_muted: 0x667085,
+            accent,
+            divider: 0xd6d9de,
+            control_surface: 0xf3f4f6,
+            frame_button_icon: 0x1f2937,
+            sidebar_header_text: 0x4f5661,
+            tab_selected_background: 0xf3f7ff,
+        }
+    }
+}
 
 /// System red of the Win11 close button when hovered (#C42B1C).
 pub(super) const SHELL_CLOSE_HOVER: u32 = 0xc42b1c;
@@ -70,10 +109,6 @@ pub(super) const TERMINAL_HEADER_PADDING: i32 = 8;
 
 /// Segoe Fluent Icons "Add" glyph for the new-tab button.
 pub(super) const GLYPH_ADD: &str = "\u{e710}";
-
-pub(super) const SHELL_SIDEBAR_HEADER_TEXT: u32 = 0x4f5661;
-
-pub(super) const SHELL_TAB_SELECTED_BACKGROUND: u32 = 0xf3f7ff;
 
 /// Compact Arc-style caption strip.
 pub(super) const SHELL_TOP_BAR_HEIGHT: i32 = 32;

@@ -54,7 +54,7 @@ pub(crate) fn open_for_app(
 
 /// Open a standalone (no-tab-strip) browser tab for a docked aside browser.
 /// New-window requests load inline in the same WebView.
-#[cfg(any(target_os = "ios", target_os = "macos"))]
+#[cfg(any(target_os = "ios", target_os = "macos", target_os = "windows"))]
 pub(crate) fn open_standalone_for_app(
     appid: &str,
     session_id: u64,

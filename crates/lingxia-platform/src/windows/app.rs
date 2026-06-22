@@ -242,6 +242,14 @@ impl AppRuntime for Platform {
 // layer through the callback the `lingxia` facade registers (see
 // surface::set_windows_surface_closed_handler).
 impl crate::traits::ui::SurfacePresenter for Platform {
+    fn present_layout(
+        &self,
+        window_id: &str,
+        plan: &lingxia_surface::LayoutPresentationPlan,
+    ) -> Result<(), PlatformError> {
+        surface::present_layout(window_id, plan, &self.product_name)
+    }
+
     fn present_surface(
         &self,
         request: crate::traits::ui::SurfaceRequest,
@@ -259,6 +267,14 @@ impl crate::traits::ui::SurfacePresenter for Platform {
 
     fn hide_surface(&self, app_id: &str, id: &str) -> Result<(), PlatformError> {
         surface::hide_surface(app_id, id)
+    }
+
+    fn set_managed_surface_visible(&self, id: &str, visible: bool) -> Result<(), PlatformError> {
+        surface::set_managed_surface_visible(id, visible)
+    }
+
+    fn toggle_managed_surface(&self, id: &str) -> Result<(), PlatformError> {
+        surface::toggle_managed_surface(id)
     }
 }
 impl ShareService for Platform {
