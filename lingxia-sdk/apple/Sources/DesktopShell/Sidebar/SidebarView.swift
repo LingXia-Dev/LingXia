@@ -190,6 +190,9 @@ class SidebarView: NSView {
         let clearance = trafficLightClearanceProvider?() ?? Layout.railWidth
         return max(Layout.railWidth, clearance - 8)
     }
+    var compactWidth: CGFloat {
+        effectiveRailWidth
+    }
     /// Container hosting the rail; shown only in compact mode.
     private let railScrollView = SidebarScrollView()
     private let railStack = NSStackView()
@@ -1177,11 +1180,7 @@ class SidebarView: NSView {
     }
 
     @objc private func hideButtonClicked() {
-        // Collapse the expanded sidebar to the icon rail. Fully hiding an empty
-        // sidebar is automatic (auto-hide); this toggle only moves between the
-        // expanded and rail layouts.
-        setCompactMode(true)
-        onWidthChanged?(effectiveRailWidth, true)
+        onHideRequested?()
     }
 
     @objc private func railExpandClicked() {
