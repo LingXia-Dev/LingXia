@@ -149,6 +149,9 @@ pub fn init(app: WindowsApp) -> Result<String> {
             }
         })?;
     }
+    // Tray-exclusive apps live only in the system tray, so their windows
+    // must be created without a taskbar button. Apply before any window opens.
+    window_host::set_hide_from_taskbar(should_hide_taskbar(&asset_dir));
     if should_open_on_launch(&asset_dir) {
         open_home_app(&home_app_id).map_err(WindowsHostError::OpenHomeApp)?;
     }
@@ -299,4 +302,18 @@ fn should_open_on_launch(asset_dir: &Path) -> bool {
         .and_then(|launch| launch.get("openOnLaunch"))
         .and_then(serde_json::Value::as_bool)
         .unwrap_or(true)
+}
+
+#[cfg(feature = "runtime")]
+fn should_hide_taskbar(asset_dir: &Path) -> bool {
+    let Ok(text) = std::fs::read_to_string(asset_dir.join("ui.json")) else {
+        return false;
+    };
+    let Ok(ui) = serde_json::from_str::<serde_json::Value>(&text) else {
+        return false;
+    };
+    ui.get("launch")
+        .and_then(|launch| launch.get("hideDockIcon"))
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false)
 }
