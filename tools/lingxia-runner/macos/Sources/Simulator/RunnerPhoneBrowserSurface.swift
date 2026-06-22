@@ -3,8 +3,8 @@ import WebKit
 import os.log
 
 @MainActor
-final class RunnerBrowserOverlay {
-    private static let log = OSLog(subsystem: "LingXiaRunner", category: "BrowserOverlay")
+final class RunnerPhoneBrowserSurface {
+    private static let log = OSLog(subsystem: "LingXiaRunner", category: "PhoneBrowserSurface")
 
     private var overlayView: NSView?
     private var webContainer: NSView?
