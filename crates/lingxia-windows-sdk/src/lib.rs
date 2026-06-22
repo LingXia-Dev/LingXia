@@ -11,10 +11,8 @@
 //! that thread's message queue. [`quick_start`] performs both steps in order
 //! on the calling thread.
 
-#[cfg(all(target_os = "windows", feature = "runtime"))]
-use std::path::Path;
 #[cfg(feature = "runtime")]
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[cfg(all(target_os = "windows", feature = "runtime"))]
 mod app_icon;
