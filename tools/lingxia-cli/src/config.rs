@@ -12,7 +12,7 @@ pub const LXAPP_BUILD_CONFIG_FILE: &str = "lxapp.config.ts";
 
 /// Host project configuration (native app project)
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct LingXiaConfig {
     /// Host app settings used to generate `app.json` at build time.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -32,11 +32,11 @@ pub struct LingXiaConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub capabilities: Option<CapabilitiesConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub shell: Option<ShellConfig>,
+    pub browser: Option<BrowserConfig>,
     /// Generated UI structure (`ui.json`). Built from `surfaces` at load time;
-    /// never authored directly, so it is not read from the yaml.
-    #[serde(skip_deserializing, skip_serializing_if = "Option::is_none")]
-    pub ui: Option<Value>,
+    /// never authored directly.
+    #[serde(skip)]
+    pub generated_ui: Option<Value>,
     /// Top-level `surfaces:` — the UI authoring format. Mapped into `ui` during
     /// `load`.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -68,37 +68,31 @@ impl Default for FeaturesConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CapabilitiesConfig {
     #[serde(default)]
     pub notifications: bool,
-    /// The in-app browser, with its newtab / settings / downloads pages and the
-    /// downloads + settings runtime. Opt-in and cross-platform — not a desktop
-    /// trait. When off, no browser code or assets ship on any platform.
+    /// The product in-app browser, with its newtab / settings / downloads pages
+    /// and browser shell runtime. Opt-in and cross-platform.
     #[serde(default)]
     pub browser: bool,
     #[serde(default)]
     pub terminal: bool,
-    /// Which window edge the built-in terminal panel docks to: `bottom`
-    /// (default) or `top`. Only meaningful when `terminal` is enabled.
-    #[serde(default)]
-    pub terminal_edge: Option<String>,
-    /// Opt-in HTTP proxy for the in-app browser (desktop). Independent of the
-    /// browser itself, which is part of the desktop baseline.
+    /// Opt-in HTTP proxy for the in-app browser (desktop). Requires browser.
     #[serde(default)]
     pub proxy: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct ShellConfig {
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BrowserConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub webui: Option<ShellWebUiConfig>,
+    pub webui: Option<BrowserWebUiConfig>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct ShellWebUiConfig {
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BrowserWebUiConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -167,9 +161,9 @@ pub enum ResourceBundleType {
 // ---------------------------------------------------------------------------
 // Top-level `surfaces:` authoring format.
 //
-// This is INPUT schema only. `surfaces_to_ui` maps it into the existing
-// internal `ui` JSON structure (`launch`/`surfaces`/`activators`) that the
-// macOS runtime already consumes, so no runtime/Swift code changes.
+// This is INPUT schema only. `surfaces_to_ui` maps it into the internal
+// generated `ui.json` structure (`launch`/`surfaces`/`activators`) consumed by
+// native runtimes.
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -210,8 +204,8 @@ pub struct SurfaceDecl {
     pub tray: Option<SurfaceTray>,
     /// Availability filter. Empty = every platform. Lists the concrete
     /// platforms a surface is available on — `macos`, `windows`, `ios`, `android`,
-    /// `harmony`. The value is carried into generated `ui.json`; target-specific
-    /// pruning happens in platform packaging/runtime code.
+    /// `harmony`. Target-specific packaging writes a pruned `ui.json` for each
+    /// platform, so native runtimes only see applicable surfaces.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub platforms: Vec<String>,
 }
@@ -247,8 +241,8 @@ pub enum SurfaceTrayAction {
     Activate,
 }
 
-/// Map the `surfaces:` declaration into the internal `ui` JSON structure
-/// the runtime consumes. Produces the SAME shape the `ui:` block does.
+/// Map the `surfaces:` declaration into the internal `ui.json` structure
+/// consumed by native runtimes.
 ///
 /// Mapping:
 /// - `role: main` + `render: lxapp` -> surface `role: main`,
@@ -256,9 +250,9 @@ pub enum SurfaceTrayAction {
 ///   `launch.initialSurface = <id>`.
 /// - `role: aside` + `render: lxapp` -> surface `role: aside`,
 ///   `attachTo: <main>`, edge `left|right|top|bottom` carried through verbatim.
-/// - `role: aside` + `render: native` (id `terminal`) -> the terminal surface,
-///   emitted in the EXACT shape `assets/ui.rs::add_terminal_ui` produces so
-///   the auto-inject guard skips it (no double inject) and output is identical.
+/// - `role: aside` + `render: native` (id `terminal`) -> an explicit terminal
+///   surface. `capabilities.terminal` only enables the runtime; it does not add
+///   UI by itself.
 /// - `sidebar` -> a `sidebarItem` activator toggling the surface.
 /// - `tray` -> a `menuBarItem` activator (closest existing kind).
 fn surfaces_to_ui(surfaces: &[SurfaceDecl], terminal_enabled: bool) -> Result<Value> {
@@ -361,10 +355,7 @@ fn surfaces_to_ui(surfaces: &[SurfaceDecl], terminal_enabled: bool) -> Result<Va
                     }
                     SurfaceRender::Native => {
                         // The only native surface currently supported is the
-                        // built-in terminal. Emit it in the EXACT shape that
-                        // `assets/ui.rs::add_terminal_ui` produces so the
-                        // downstream auto-inject is a no-op (double-inject guard)
-                        // and the generated JSON is byte-identical to today's.
+                        // built-in terminal.
                         if id != "terminal" {
                             return Err(anyhow!(
                                 "native surface '{id}' is not supported; only the built-in 'terminal' surface is available"
@@ -929,7 +920,7 @@ impl LingXiaConfig {
         // The browser capability brings its runtime and webui pages (newtab /
         // settings / downloads) on every platform it is enabled for.
         if self.browser_enabled() {
-            features.push("shell-runtime".to_string());
+            features.push("browser-shell".to_string());
         }
         if self.terminal_enabled(platform) {
             features.push("terminal-runtime".to_string());
@@ -943,6 +934,16 @@ impl LingXiaConfig {
         if self.devtools_enabled() {
             features.push("devtools".to_string());
         }
+        features
+    }
+
+    pub fn native_features_for_platform_with_extra(
+        &self,
+        platform: &str,
+        extra_features: &[String],
+    ) -> Vec<String> {
+        let mut features = self.native_features_for_platform(platform);
+        append_native_features(&mut features, extra_features);
         features
     }
 
@@ -1013,8 +1014,8 @@ impl LingXiaConfig {
             windows: None,
             features: Some(FeaturesConfig::default()),
             capabilities: Some(CapabilitiesConfig::default()),
-            shell: None,
-            ui: None,
+            browser: None,
+            generated_ui: None,
             surfaces: None,
             app_links: None,
             storage: None,
@@ -1047,7 +1048,7 @@ impl LingXiaConfig {
             .as_ref()
             .map(|capabilities| capabilities.terminal)
             .unwrap_or(false);
-        self.ui = Some(surfaces_to_ui(surfaces, terminal_enabled)?);
+        self.generated_ui = Some(surfaces_to_ui(surfaces, terminal_enabled)?);
         Ok(())
     }
 
@@ -1087,9 +1088,9 @@ impl LingXiaConfig {
                 .iter()
                 .any(|platform| platform.eq_ignore_ascii_case("macos"));
             if has_macos {
-                let Some(ui) = &self.ui else {
+                let Some(ui) = &self.generated_ui else {
                     return Err(anyhow!(
-                        "ui is required for macOS host app projects; define ui.launch, ui.surfaces, and ui.activators"
+                        "surfaces is required for macOS host app projects; define top-level surfaces:"
                     ));
                 };
                 validate_macos_ui_config(ui, self.terminal_enabled("macos"))?;
@@ -1126,8 +1127,8 @@ impl LingXiaConfig {
                 if is_sdk_reserved_app_id(app_id) {
                     return Err(anyhow!(
                         "resources.bundles[{app_id}] uses an SDK-reserved appId. \
-                         To customize the in-app browser webui, use `shell.webui.path` \
-                         (or `shell.webui.package`) instead of declaring \
+                         To customize the in-app browser webui, use `browser.webui.path` \
+                         (or `browser.webui.package`) instead of declaring \
                          `{app_id}` as a resource bundle."
                     ));
                 }
@@ -1161,7 +1162,11 @@ impl LingXiaConfig {
                 }
             }
         }
-        if let Some(webui) = self.shell.as_ref().and_then(|shell| shell.webui.as_ref()) {
+        if let Some(webui) = self
+            .browser
+            .as_ref()
+            .and_then(|browser| browser.webui.as_ref())
+        {
             let has_path = webui
                 .path
                 .as_deref()
@@ -1174,7 +1179,7 @@ impl LingXiaConfig {
                 .is_some_and(|value| !value.is_empty());
             if has_path && has_package {
                 return Err(anyhow!(
-                    "shell.webui must use either path or package, not both"
+                    "browser.webui must use either path or package, not both"
                 ));
             }
             if webui
@@ -1183,15 +1188,25 @@ impl LingXiaConfig {
                 .map(str::trim)
                 .is_some_and(|value| value.is_empty())
             {
-                return Err(anyhow!("shell.webui.version must not be empty"));
+                return Err(anyhow!("browser.webui.version must not be empty"));
             }
         }
-        if let Some(ui) = &self.ui
+        if let Some(ui) = &self.generated_ui
             && !ui.is_object()
         {
             return Err(anyhow!("ui must be a JSON object"));
         }
         Ok(())
+    }
+}
+
+pub fn append_native_features(features: &mut Vec<String>, extra_features: &[String]) {
+    for feature in extra_features {
+        let feature = feature.trim();
+        if feature.is_empty() || features.iter().any(|existing| existing == feature) {
+            continue;
+        }
+        features.push(feature.to_string());
     }
 }
 
@@ -1234,12 +1249,12 @@ fn optional_non_empty_str(value: Option<&Value>) -> Option<String> {
 
 /// App IDs reserved for SDK-internal hosts that ship their own customization API.
 /// These must not appear in `resources.bundles` or `app.homeAppId`; the SDK provides
-/// dedicated config keys (e.g. `shell.webui.*` for the in-app browser webui).
+/// dedicated config keys (e.g. `browser.webui.*` for the in-app browser webui).
 ///
 /// Source of truth for each entry (kept in sync manually to avoid pulling the
 /// full browser runtime into the CLI build):
-/// - `crate::host_assets::SHELL_WEBUI_APP_ID` mirrors `lingxia_browser::BUILTIN_BROWSER_APPID`.
-const SDK_RESERVED_APP_IDS: &[&str] = &[crate::host_assets::SHELL_WEBUI_APP_ID];
+/// - `crate::host_assets::BROWSER_SHELL_WEBUI_APP_ID` mirrors `lingxia_browser::BUILTIN_BROWSER_APPID`.
+const SDK_RESERVED_APP_IDS: &[&str] = &[crate::host_assets::BROWSER_SHELL_WEBUI_APP_ID];
 
 fn is_sdk_reserved_app_id(app_id: &str) -> bool {
     SDK_RESERVED_APP_IDS.contains(&app_id)
@@ -1308,7 +1323,9 @@ fn validate_macos_ui_config(ui: &Value, terminal_enabled: bool) -> Result<()> {
         .ok_or_else(|| anyhow!("ui.activators must be an array"));
     let activators = activators?;
 
+    let mut all_surface_ids = HashSet::<String>::new();
     let mut surface_by_id = HashMap::<String, MacosUiSurface>::new();
+    let mut skipped_surface_ids = HashSet::<String>::new();
     let mut seen_app_ids = HashSet::<String>::new();
 
     for (index, surface) in surfaces.iter().enumerate() {
@@ -1316,8 +1333,12 @@ fn validate_macos_ui_config(ui: &Value, terminal_enabled: bool) -> Result<()> {
             .as_object()
             .ok_or_else(|| anyhow!("ui.surfaces[{index}] must be an object"))?;
         let id = non_empty_str(obj.get("id"), &format!("ui.surfaces[{index}].id"))?;
-        if surface_by_id.contains_key(id) {
+        if !all_surface_ids.insert(id.to_string()) {
             return Err(anyhow!("duplicate ui surface id '{id}'"));
+        }
+        if !ui_surface_available_on_platform(obj, "macos", &format!("ui.surfaces[{index}]"))? {
+            skipped_surface_ids.insert(id.to_string());
+            continue;
         }
 
         let role = non_empty_str(obj.get("role"), &format!("ui.surfaces[{index}].role"))?;
@@ -1381,7 +1402,18 @@ fn validate_macos_ui_config(ui: &Value, terminal_enabled: bool) -> Result<()> {
         );
     }
 
+    if surface_by_id.is_empty() {
+        return Err(anyhow!(
+            "ui.surfaces must contain at least one surface available on macOS"
+        ));
+    }
+
     let Some(initial) = surface_by_id.get(initial_surface) else {
+        if skipped_surface_ids.contains(initial_surface) {
+            return Err(anyhow!(
+                "ui.launch.initialSurface '{initial_surface}' is not available on macOS"
+            ));
+        }
         return Err(anyhow!(
             "ui.launch.initialSurface references unknown surface '{initial_surface}'"
         ));
@@ -1477,9 +1509,6 @@ fn validate_macos_ui_config(ui: &Value, terminal_enabled: bool) -> Result<()> {
             .as_object()
             .ok_or_else(|| anyhow!("ui.activators[{index}] must be an object"))?;
         let id = non_empty_str(obj.get("id"), &format!("ui.activators[{index}].id"))?;
-        if !seen_activator_ids.insert(id.to_string()) {
-            return Err(anyhow!("duplicate ui activator id '{id}'"));
-        }
         let kind = non_empty_str(obj.get("kind"), &format!("ui.activators[{index}].kind"))?;
         let action = obj
             .get("action")
@@ -1501,12 +1530,16 @@ fn validate_macos_ui_config(ui: &Value, terminal_enabled: bool) -> Result<()> {
             action.get("surface"),
             &format!("ui.activators[{index}].action.surface"),
         )?;
+        if skipped_surface_ids.contains(action_surface) {
+            continue;
+        }
         if !surface_by_id.contains_key(action_surface) {
             return Err(anyhow!(
                 "ui activator '{id}' references unknown surface '{action_surface}'"
             ));
         }
 
+        let mut keep_activator = true;
         match kind {
             "menuBarItem" | "appActivation" => {
                 if obj.get("hostSurface").is_some() {
@@ -1520,7 +1553,9 @@ fn validate_macos_ui_config(ui: &Value, terminal_enabled: bool) -> Result<()> {
                     obj.get("hostSurface"),
                     &format!("ui.activators[{index}].hostSurface"),
                 )?;
-                if !surface_by_id.contains_key(host_surface) {
+                if skipped_surface_ids.contains(host_surface) {
+                    keep_activator = false;
+                } else if !surface_by_id.contains_key(host_surface) {
                     return Err(anyhow!(
                         "ui activator '{id}' references unknown hostSurface '{host_surface}'"
                     ));
@@ -1530,9 +1565,40 @@ fn validate_macos_ui_config(ui: &Value, terminal_enabled: bool) -> Result<()> {
                 return Err(anyhow!("ui activator '{id}' has unknown kind '{other}'"));
             }
         }
+        if !keep_activator {
+            continue;
+        }
+        if !seen_activator_ids.insert(id.to_string()) {
+            return Err(anyhow!("duplicate ui activator id '{id}'"));
+        }
     }
 
     Ok(())
+}
+
+fn ui_surface_available_on_platform(
+    surface: &Map<String, Value>,
+    platform: &str,
+    context: &str,
+) -> Result<bool> {
+    let Some(platforms) = surface.get("platforms") else {
+        return Ok(true);
+    };
+    let platforms = platforms
+        .as_array()
+        .ok_or_else(|| anyhow!("{context}.platforms must be an array"))?;
+    if platforms.is_empty() {
+        return Ok(true);
+    }
+    for (index, platform_value) in platforms.iter().enumerate() {
+        let value = platform_value
+            .as_str()
+            .ok_or_else(|| anyhow!("{context}.platforms[{index}] must be a string"))?;
+        if value.eq_ignore_ascii_case(platform) {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 pub fn has_host_config(project_root: &Path) -> bool {
@@ -1711,7 +1777,7 @@ mod tests {
             .push(ResourceBundleConfig {
                 bundle_type: ResourceBundleType::Lxapp,
                 app_id: "app.lingxia.browser".to_string(),
-                path: Some("./my-shell-webui".to_string()),
+                path: Some("./my-browser-shell-webui".to_string()),
                 package: None,
                 version: None,
             });
@@ -1721,7 +1787,7 @@ mod tests {
             .expect_err("validate must reject reserved appId");
         let msg = err.to_string();
         assert!(
-            msg.contains("app.lingxia.browser") && msg.contains("shell.webui"),
+            msg.contains("app.lingxia.browser") && msg.contains("browser.webui"),
             "error must point at the new customization API; got: {msg}"
         );
     }
@@ -1775,7 +1841,7 @@ android:
 
         // The layout host + webview input are baseline on desktop, with no
         // opt-in flag required. The browser is NOT baseline — without the
-        // `browser` capability there is no shell-runtime anywhere.
+        // `browser` capability there is no browser-shell anywhere.
         assert!(config.desktop_runtime_enabled("macos"));
         assert!(config.desktop_runtime_enabled("windows"));
         assert!(!config.desktop_runtime_enabled("android"));
@@ -1801,12 +1867,12 @@ android:
         assert!(
             !config
                 .native_features_for_platform("ios")
-                .contains(&"shell-runtime".to_string())
+                .contains(&"browser-shell".to_string())
         );
         assert!(
             !config
                 .native_features_for_platform("macos")
-                .contains(&"shell-runtime".to_string())
+                .contains(&"browser-shell".to_string())
         );
 
         // Opt in: the browser runtime ships everywhere, mobile included.
@@ -1816,7 +1882,7 @@ android:
             assert!(
                 config
                     .native_features_for_platform(platform)
-                    .contains(&"shell-runtime".to_string()),
+                    .contains(&"browser-shell".to_string()),
                 "browser runtime missing on {platform}"
             );
         }
@@ -1835,7 +1901,7 @@ android:
             config.native_features_for_platform("macos"),
             vec![
                 "standard".to_string(),
-                "shell-runtime".to_string(),
+                "browser-shell".to_string(),
                 "webview-input".to_string(),
                 "proxy".to_string(),
             ]
@@ -1947,13 +2013,55 @@ android:
     }
 
     #[test]
-    fn macos_host_requires_ui() {
+    fn macos_host_requires_surfaces() {
         let mut config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
         let app = config.app.as_mut().unwrap();
         app.platforms = vec!["macos".to_string()];
 
         let err = config.validate().unwrap_err().to_string();
-        assert!(err.contains("ui is required for macOS host app projects"));
+        assert!(err.contains("surfaces is required for macOS host app projects"));
+    }
+
+    #[test]
+    fn rejects_root_ui_schema() {
+        let yaml = r#"
+app:
+  projectName: demo
+  productName: Demo
+  productVersion: 0.1.0
+  platforms: [macos]
+  homeAppId: demo-home
+ui:
+  launch:
+    initialSurface: main
+  surfaces: []
+  activators: []
+"#;
+
+        let err = yaml::from_str::<LingXiaConfig>(yaml)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("unknown field `ui`"));
+    }
+
+    #[test]
+    fn rejects_removed_terminal_edge_capability() {
+        let yaml = r#"
+app:
+  projectName: demo
+  productName: Demo
+  productVersion: 0.1.0
+  platforms: [macos]
+  homeAppId: demo-home
+capabilities:
+  terminal: true
+  terminalEdge: bottom
+"#;
+
+        let err = yaml::from_str::<LingXiaConfig>(yaml)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("terminalEdge"));
     }
 
     #[test]
@@ -1961,7 +2069,7 @@ android:
         let mut config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
         let app = config.app.as_mut().unwrap();
         app.platforms = vec!["macos".to_string()];
-        config.ui = Some(serde_json::json!({
+        config.generated_ui = Some(serde_json::json!({
             "launch": {
                 "initialSurface": "main"
             },
@@ -1997,12 +2105,95 @@ android:
     }
 
     #[test]
-    fn macos_ui_accepts_terminal_attach_panel_bottom() {
+    fn macos_ui_filters_non_macos_platform_surfaces() {
+        let mut config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
+        let app = config.app.as_mut().unwrap();
+        app.platforms = vec!["macos".to_string()];
+        config.generated_ui = Some(serde_json::json!({
+            "launch": {
+                "initialSurface": "main"
+            },
+            "surfaces": [{
+                "id": "main",
+                "role": "main",
+                "platforms": ["macos"],
+                "content": {
+                    "kind": "lxapp",
+                    "appId": "my-app"
+                }
+            }, {
+                "id": "windowsMain",
+                "role": "main",
+                "platforms": ["windows"],
+                "content": {
+                    "kind": "lxapp",
+                    "appId": "win-app"
+                }
+            }, {
+                "id": "windowsSide",
+                "role": "aside",
+                "attachTo": "windowsMain",
+                "edge": "right",
+                "platforms": ["windows"],
+                "content": {
+                    "kind": "lxapp",
+                    "appId": "win-side"
+                }
+            }],
+            "activators": [{
+                "id": "windowsSideButton",
+                "kind": "sidebarItem",
+                "hostSurface": "windowsMain",
+                "action": {
+                    "kind": "toggleSurface",
+                    "surface": "windowsSide"
+                }
+            }]
+        }));
+
+        config.validate().unwrap();
+    }
+
+    #[test]
+    fn macos_ui_rejects_duplicate_surface_id_before_platform_filter() {
+        let mut config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
+        let app = config.app.as_mut().unwrap();
+        app.platforms = vec!["macos".to_string()];
+        config.generated_ui = Some(serde_json::json!({
+            "launch": {
+                "initialSurface": "main"
+            },
+            "surfaces": [{
+                "id": "main",
+                "role": "main",
+                "platforms": ["macos"],
+                "content": {
+                    "kind": "lxapp",
+                    "appId": "my-app"
+                }
+            }, {
+                "id": "main",
+                "role": "main",
+                "platforms": ["windows"],
+                "content": {
+                    "kind": "lxapp",
+                    "appId": "win-app"
+                }
+            }],
+            "activators": []
+        }));
+
+        let err = config.validate().unwrap_err().to_string();
+        assert!(err.contains("duplicate ui surface id 'main'"), "{err}");
+    }
+
+    #[test]
+    fn macos_ui_accepts_terminal_aside_panel_bottom() {
         let mut config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
         let app = config.app.as_mut().unwrap();
         app.platforms = vec!["macos".to_string()];
         config.capabilities.as_mut().unwrap().terminal = true;
-        config.ui = Some(serde_json::json!({
+        config.generated_ui = Some(serde_json::json!({
             "launch": {
                 "initialSurface": "main"
             },
@@ -2041,7 +2232,7 @@ android:
         let mut config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
         let app = config.app.as_mut().unwrap();
         app.platforms = vec!["macos".to_string()];
-        config.ui = Some(serde_json::json!({
+        config.generated_ui = Some(serde_json::json!({
             "launch": {
                 "initialSurface": "main"
             },
@@ -2082,7 +2273,7 @@ android:
         let app = config.app.as_mut().unwrap();
         app.platforms = vec!["macos".to_string()];
         config.capabilities.as_mut().unwrap().terminal = true;
-        config.ui = Some(serde_json::json!({
+        config.generated_ui = Some(serde_json::json!({
             "launch": {
                 "initialSurface": "main"
             },
@@ -2115,7 +2306,7 @@ android:
         let app = config.app.as_mut().unwrap();
         app.platforms = vec!["macos".to_string()];
         config.capabilities.as_mut().unwrap().terminal = true;
-        config.ui = Some(serde_json::json!({
+        config.generated_ui = Some(serde_json::json!({
             "launch": {
                 "initialSurface": "main"
             },
@@ -2148,7 +2339,7 @@ android:
         let mut config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
         let app = config.app.as_mut().unwrap();
         app.platforms = vec!["macos".to_string()];
-        config.ui = Some(serde_json::json!({
+        config.generated_ui = Some(serde_json::json!({
             "launch": {
                 "initialSurface": "main"
             },
@@ -2179,7 +2370,7 @@ android:
         for action_kind in ["closeSurface", "focusSurface"] {
             let mut config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
             config.app.as_mut().unwrap().platforms = vec!["macos".to_string()];
-            config.ui = Some(serde_json::json!({
+            config.generated_ui = Some(serde_json::json!({
                 "launch": {
                     "initialSurface": "main"
                 },
@@ -2213,7 +2404,7 @@ android:
             let mut config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
             let app = config.app.as_mut().unwrap();
             app.platforms = vec!["macos".to_string()];
-            config.ui = Some(serde_json::json!({
+            config.generated_ui = Some(serde_json::json!({
                 "launch": {
                     "initialSurface": "main"
                 },
@@ -2244,7 +2435,7 @@ android:
     fn macos_ui_rejects_invalid_host_surface_usage() {
         let mut missing_host = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
         missing_host.app.as_mut().unwrap().platforms = vec!["macos".to_string()];
-        missing_host.ui = Some(serde_json::json!({
+        missing_host.generated_ui = Some(serde_json::json!({
             "launch": {
                 "initialSurface": "main"
             },
@@ -2271,7 +2462,7 @@ android:
         let mut app_level_host =
             LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
         app_level_host.app.as_mut().unwrap().platforms = vec!["macos".to_string()];
-        app_level_host.ui = Some(serde_json::json!({
+        app_level_host.generated_ui = Some(serde_json::json!({
             "launch": {
                 "initialSurface": "main"
             },
@@ -2302,7 +2493,7 @@ android:
         let mut config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
         let app = config.app.as_mut().unwrap();
         app.platforms = vec!["macos".to_string()];
-        config.ui = Some(serde_json::json!({
+        config.generated_ui = Some(serde_json::json!({
             "launch": {
                 "initialSurface": "main"
             },
@@ -2423,7 +2614,7 @@ android:
         let mut config = LingXiaConfig::new_android("lingxia", "com.example", "lingxia-showcase");
         config.app.as_mut().unwrap().platforms = vec!["macos".to_string()];
         config.capabilities.as_mut().unwrap().terminal = true;
-        config.ui = None;
+        config.generated_ui = None;
         config.surfaces = Some(surfaces);
         config.apply_surfaces().unwrap();
         config.validate().unwrap();
@@ -2469,7 +2660,7 @@ android:
 
         let mut config = LingXiaConfig::new_android("demo", "com.example", "home");
         config.app.as_mut().unwrap().platforms = vec!["macos".to_string()];
-        config.ui = None;
+        config.generated_ui = None;
         config.surfaces = Some(surfaces);
         config.apply_surfaces().unwrap();
         config.validate().unwrap();
@@ -2644,7 +2835,7 @@ surfaces:
         let mut config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
         let app = config.app.as_mut().unwrap();
         app.platforms = vec!["macos".to_string()];
-        config.ui = Some(serde_json::json!({
+        config.generated_ui = Some(serde_json::json!({
             "launch": {
                 "initialSurface": "main"
             },

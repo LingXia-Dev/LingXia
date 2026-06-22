@@ -238,7 +238,7 @@ fn sync_app_entitlements(
             changed = true;
         }
     }
-    changed |= merge_associated_domains(&mut dict, app_link_hosts)?;
+    changed |= sync_associated_domains(&mut dict, app_link_hosts)?;
 
     if changed || !entitlements_path.exists() {
         plist::to_file_xml(entitlements_path, &dict)
@@ -305,16 +305,12 @@ fn desired_applink_domains(app_link_hosts: &[String]) -> Vec<String> {
         .collect()
 }
 
-fn merge_associated_domains(
+fn sync_associated_domains(
     dict: &mut plist::Dictionary,
     app_link_hosts: &[String],
 ) -> Result<bool> {
     let desired = desired_applink_domains(app_link_hosts);
-    if desired.is_empty() {
-        return Ok(false);
-    }
-
-    let mut domains = match dict.remove(ASSOCIATED_DOMAINS_ENTITLEMENT) {
+    let existing = match dict.remove(ASSOCIATED_DOMAINS_ENTITLEMENT) {
         Some(Value::Array(values)) => values,
         Some(_) => {
             return Err(anyhow!(
@@ -325,23 +321,22 @@ fn merge_associated_domains(
         None => Vec::new(),
     };
 
-    let mut existing = domains
+    let keep = existing
         .iter()
         .filter_map(Value::as_string)
-        .map(ToOwned::to_owned)
-        .collect::<HashSet<_>>();
-    let mut changed = false;
-    for domain in desired {
-        if existing.insert(domain.clone()) {
-            domains.push(Value::String(domain));
-            changed = true;
-        }
-    }
+        .filter(|domain| !domain.starts_with("applinks:"))
+        .map(|domain| Value::String(domain.to_string()));
+    let domains = keep
+        .chain(desired.iter().map(|domain| Value::String(domain.clone())))
+        .collect::<Vec<_>>();
 
-    dict.insert(
-        ASSOCIATED_DOMAINS_ENTITLEMENT.to_string(),
-        Value::Array(domains),
-    );
+    if !domains.is_empty() {
+        dict.insert(
+            ASSOCIATED_DOMAINS_ENTITLEMENT.to_string(),
+            Value::Array(domains.clone()),
+        );
+    }
+    let changed = existing != domains;
     Ok(changed)
 }
 
@@ -359,7 +354,7 @@ fn escape_strings_value(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{ASSOCIATED_DOMAINS_ENTITLEMENT, Value, merge_associated_domains};
+    use super::{ASSOCIATED_DOMAINS_ENTITLEMENT, Value, sync_associated_domains};
 
     fn associated_domains(dict: &plist::Dictionary) -> Vec<String> {
         dict.get(ASSOCIATED_DOMAINS_ENTITLEMENT)
@@ -372,7 +367,7 @@ mod tests {
     }
 
     #[test]
-    fn associated_domain_sync_preserves_existing_domains() {
+    fn associated_domain_sync_replaces_existing_applinks() {
         let mut dict = plist::Dictionary::new();
         dict.insert(
             ASSOCIATED_DOMAINS_ENTITLEMENT.to_string(),
@@ -382,33 +377,30 @@ mod tests {
             ]),
         );
 
-        let changed = merge_associated_domains(&mut dict, &["new.example.com".to_string()])
+        let changed = sync_associated_domains(&mut dict, &["new.example.com".to_string()])
             .expect("merge associated domains");
 
         assert!(changed);
         assert_eq!(
             associated_domains(&dict),
-            vec![
-                "webcredentials:example.com",
-                "applinks:old.example.com",
-                "applinks:new.example.com",
-            ]
+            vec!["webcredentials:example.com", "applinks:new.example.com"]
         );
     }
 
     #[test]
-    fn associated_domain_sync_is_noop_without_hosts() {
+    fn associated_domain_sync_removes_applinks_without_hosts() {
         let mut dict = plist::Dictionary::new();
         dict.insert(
             ASSOCIATED_DOMAINS_ENTITLEMENT.to_string(),
-            Value::Array(vec![Value::String(
-                "webcredentials:example.com".to_string(),
-            )]),
+            Value::Array(vec![
+                Value::String("webcredentials:example.com".to_string()),
+                Value::String("applinks:old.example.com".to_string()),
+            ]),
         );
 
-        let changed = merge_associated_domains(&mut dict, &[]).expect("merge associated domains");
+        let changed = sync_associated_domains(&mut dict, &[]).expect("sync associated domains");
 
-        assert!(!changed);
+        assert!(changed);
         assert_eq!(
             associated_domains(&dict),
             vec!["webcredentials:example.com"]

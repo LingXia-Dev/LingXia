@@ -187,10 +187,10 @@ mod tests {
 
     #[test]
     fn creates_producer_defined_security_privilege() {
-        let privilege = LxAppSecurityPrivilege::new("agent.automation").unwrap();
-        assert_eq!(privilege.as_str(), "agent.automation");
-        assert_eq!(privilege.to_string(), "agent.automation");
-        assert_eq!(privilege.as_ref(), "agent.automation");
+        let privilege = LxAppSecurityPrivilege::new("downloads").unwrap();
+        assert_eq!(privilege.as_str(), "downloads");
+        assert_eq!(privilege.to_string(), "downloads");
+        assert_eq!(privilege.as_ref(), "downloads");
     }
 
     #[test]

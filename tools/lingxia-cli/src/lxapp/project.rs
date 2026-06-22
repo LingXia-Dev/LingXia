@@ -680,7 +680,7 @@ mod tests {
                 "network": {
                   "trustedDomains": ["api.example.com", "LOCALHOST"]
                 },
-                "privileges": ["agent.automation", "vendor_devtools"]
+                "privileges": ["downloads", "vendor_devtools"]
               },
               "pages": [{"name":"home","path":"pages/home/index"}]
             }"#,

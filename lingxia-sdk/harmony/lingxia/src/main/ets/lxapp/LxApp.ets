@@ -31,8 +31,10 @@ interface NavigationInstance {
 export class LxApp {
   private static instance: LxApp | null = null;
   public static capabilities: number = 0;
-  public static readonly CAP_SHELL: number = 0x1;
+  public static readonly CAP_BROWSER: number = 0x1;
   public static readonly CAP_NOTIFICATIONS: number = 0x2;
+  public static readonly CAP_TERMINAL: number = 0x4;
+  public static readonly CAP_PROXY: number = 0x8;
   public static managerInstance: LxAppManager | null = null;
   public static context: common.UIAbilityContext | null = null;
   public static windowStage: window.WindowStage | null = null;

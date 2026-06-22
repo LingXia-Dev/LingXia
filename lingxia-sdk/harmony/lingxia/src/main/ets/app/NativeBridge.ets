@@ -164,6 +164,12 @@ class NativeBridge {
         return true;
       }
 
+      if ((LxApp.capabilities & LxApp.CAP_BROWSER) === 0) {
+        hilog.info(DOMAIN, TAG, 'launchWithUrl target=in_app: browser capability disabled; opening externally');
+        LxApp.launchWithUrl(url);
+        return true;
+      }
+
       const normalizedUrl = String(url ?? '').trim();
       if (!normalizedUrl) {
         hilog.error(DOMAIN, TAG, 'launchWithUrl target=in_app failed: empty url');

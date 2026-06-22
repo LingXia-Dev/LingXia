@@ -59,13 +59,16 @@ capabilities:
   # Enable push/notification integration where supported.
   # When true, iOS/Harmony SDK initialization may request notification permission and fetch a push token.
   notifications: false
-  # Enable a macOS terminal attach panel. The CLI auto-generates the bottom terminal UI surface.
+  # Enable the built-in browser (newtab/settings/downloads webui and browser runtime).
+  browser: false
+  # Enable the built-in terminal runtime. Declare a native terminal surface under `surfaces:`
+  # when you want it to appear in host UI.
   terminal: false
 
 # Resource bundle sources copied into native app assets.
 # app.homeAppId and ui surfaces reference appId; resources.bundles says where local/package
 # assets come from. SDK-reserved appIds (e.g. `app.lingxia.browser`) are not allowed here —
-# use the dedicated `shell.webui.*` keys below instead.
+# use the dedicated `browser.webui.*` keys below instead.
 resources:
   bundles:
     # Home lxapp bundled with the native app.
@@ -77,11 +80,12 @@ resources:
     #   appId: assistant-lxapp
     #   path: assistant-lxapp
 
-# Optional: override the SDK's default in-app browser webui (used only when features.shell
-# is true). Omit to use the npm-published default `@lingxia/shell-webui`.
-# shell:
+# Optional: override the SDK's default in-app browser webui (used only when
+# capabilities.browser is true). Omit to use the npm-published default
+# `@lingxia/browser-shell-webui`.
+# browser:
 #   webui:
-#     package: '@lingxia/shell-webui'
+#     package: '@lingxia/browser-shell-webui'
 #     version: '0.5.1'
 {{SHELL_SECTION}}
 {{APP_LINKS_SECTION}}

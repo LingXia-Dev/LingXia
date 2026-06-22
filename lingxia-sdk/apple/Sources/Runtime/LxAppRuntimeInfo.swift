@@ -3,7 +3,7 @@ public struct LxAppRuntimeInfo: Codable, Sendable, Hashable {
     /// The app-id of the home LxApp configured in `lingxia.config.json`.
     public let homeAppId: String
 
-    /// Bitmask of host-app capabilities (e.g. `.shell`).
+    /// Bitmask of host-app capabilities (e.g. `.browser`).
     public let capabilities: LxAppCapabilities
 
     /// Absolute path to the data directory used by this runtime.

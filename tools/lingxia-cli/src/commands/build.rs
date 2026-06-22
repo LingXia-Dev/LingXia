@@ -1,11 +1,14 @@
 use crate::commands::rust::resolve_build_profile;
-use crate::config::{HOST_CONFIG_FILE, LXAPP_BUILD_CONFIG_FILE, LingXiaConfig};
+use crate::config::{
+    HOST_CONFIG_FILE, LXAPP_BUILD_CONFIG_FILE, LingXiaConfig, append_native_features,
+};
 use crate::host_assets::prepare_configured_host_assets;
 use crate::lxapp;
 use crate::platform::detector::PlatformType;
 use crate::platform::{self, BuildArtifacts, BuildConfig};
 use anyhow::{Context, Result, anyhow};
 use colored::Colorize;
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::{env, fs};
 
@@ -28,6 +31,8 @@ pub struct BuildExecuteOptions {
     pub native_only: bool,
     /// Raw `--env` value from CLI.
     pub env_version: Option<String>,
+    /// Extra native Cargo features requested by CLI/env.
+    pub extra_native_features: Vec<String>,
 }
 
 /// Execute the build command
@@ -50,6 +55,7 @@ pub fn execute(options: BuildExecuteOptions) -> Result<()> {
         package,
         native_only,
         env_version,
+        extra_native_features,
     } = options;
 
     // Detect project root (current directory)
@@ -183,6 +189,7 @@ pub fn execute(options: BuildExecuteOptions) -> Result<()> {
             ipa,
             dmg,
             package,
+            extra_native_features,
         );
     }
 
@@ -309,6 +316,12 @@ Specify one with `--platform <name>` or build all with `--all-platforms`."
     };
 
     let framework_override = lxapp::parse_framework_override(framework.as_deref())?;
+    validate_extra_native_features(
+        &project_root,
+        &config,
+        &platforms_to_build,
+        &extra_native_features,
+    )?;
 
     // Create platforms and build configs once.
     let mut platform_builds: Vec<(Box<dyn platform::Platform>, BuildConfig, PlatformType)> =
@@ -348,12 +361,25 @@ Specify one with `--platform <name>` or build all with `--all-platforms`."
                 None
             },
             framework: framework_override,
-            native_features: config.native_features_for_platform(platform_type.as_str()),
+            native_features: config.native_features_for_platform_with_extra(
+                platform_type.as_str(),
+                &extra_native_features,
+            ),
             native_default_features: config.native_default_features_enabled(),
             resolved_env: resolved_env.clone(),
             skip_native_build: false,
             native_only,
         };
+        println!(
+            "  {} Native features ({}): {}",
+            "•".cyan(),
+            platform_type.as_str(),
+            if build_config.native_features.is_empty() {
+                "<none>".to_string()
+            } else {
+                build_config.native_features.join(",")
+            }
+        );
         platform_builds.push((platform, build_config, platform_type.clone()));
     }
 
@@ -418,6 +444,76 @@ Specify one with `--platform <name>` or build all with `--all-platforms`."
     }
 
     Ok(())
+}
+
+pub(crate) fn validate_extra_native_features(
+    project_root: &Path,
+    config: &LingXiaConfig,
+    platforms: &[PlatformType],
+    extra_features: &[String],
+) -> Result<()> {
+    let requested = extra_features
+        .iter()
+        .map(|feature| feature.trim())
+        .filter(|feature| !feature.is_empty())
+        .collect::<BTreeSet<_>>();
+    if requested.is_empty() {
+        return Ok(());
+    }
+
+    let rust_lib_name = config
+        .get_rust_lib_name()
+        .ok_or_else(|| anyhow!("app.projectName is required in lingxia.yaml"))?;
+    validate_manifest_features(
+        &project_root.join(rust_lib_name).join("Cargo.toml"),
+        &requested,
+        "host native crate",
+    )?;
+
+    if platforms
+        .iter()
+        .any(|platform| matches!(platform, PlatformType::Windows))
+    {
+        let windows_dir = crate::platform::windows::resolve_windows_dir(project_root)?;
+        validate_manifest_features(
+            &windows_dir.join("Cargo.toml"),
+            &requested,
+            "Windows native wrapper crate",
+        )?;
+    }
+
+    Ok(())
+}
+
+fn validate_manifest_features(
+    manifest_path: &Path,
+    requested: &BTreeSet<&str>,
+    label: &str,
+) -> Result<()> {
+    let content = fs::read_to_string(manifest_path)
+        .with_context(|| format!("Failed to read {}", manifest_path.display()))?;
+    let value = toml::from_str::<toml::Value>(&content)
+        .with_context(|| format!("Failed to parse {}", manifest_path.display()))?;
+    let declared = value
+        .get("features")
+        .and_then(toml::Value::as_table)
+        .map(|features| features.keys().map(String::as_str).collect::<BTreeSet<_>>())
+        .unwrap_or_default();
+    let missing = requested
+        .iter()
+        .copied()
+        .filter(|feature| !declared.contains(feature))
+        .collect::<Vec<_>>();
+    if missing.is_empty() {
+        return Ok(());
+    }
+
+    Err(anyhow!(
+        "{} does not declare native feature(s): {}. Add them to `[features]` in {} or remove `--native-feature` / LINGXIA_NATIVE_FEATURES.",
+        label,
+        missing.join(", "),
+        manifest_path.display()
+    ))
 }
 
 /// Assembles the self-contained Windows app directory — the Windows
@@ -547,6 +643,7 @@ fn build_standalone_apple_swift_package(
     ipa: bool,
     dmg: bool,
     package: bool,
+    extra_native_features: Vec<String>,
 ) -> Result<()> {
     if package && !release {
         return Err(anyhow!(
@@ -604,9 +701,13 @@ fn build_standalone_apple_swift_package(
             },
             framework: None,
             native_features: if matches!(platform_type, PlatformType::MacOs) {
-                vec!["shell-runtime".to_string(), "webview-input".to_string()]
+                let mut features = vec!["webview-input".to_string()];
+                append_native_features(&mut features, &extra_native_features);
+                features
             } else {
-                Vec::new()
+                let mut features = Vec::new();
+                append_native_features(&mut features, &extra_native_features);
+                features
             },
             native_default_features: true,
             // Standalone Apple SwiftPM builds have no `lingxia.yaml` to draw

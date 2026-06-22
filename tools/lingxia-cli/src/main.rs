@@ -68,6 +68,16 @@ struct BuildOptions {
     /// profile.
     #[arg(long = "env", value_parser = ["developer", "dev", "preview", "release"])]
     env_version: Option<String>,
+
+    /// Extra Cargo feature(s) for the native Rust library. Can be repeated or
+    /// comma-separated; also reads LINGXIA_NATIVE_FEATURES.
+    #[arg(
+        long = "native-feature",
+        alias = "native-features",
+        value_delimiter = ',',
+        env = "LINGXIA_NATIVE_FEATURES"
+    )]
+    native_features: Vec<String>,
 }
 
 #[derive(clap::Args, Clone)]
@@ -499,6 +509,7 @@ fn main() -> Result<()> {
                 package: false,
                 native_only,
                 env_version: build_options.env_version,
+                extra_native_features: build_options.native_features,
             })?;
         }
         Commands::Clean => {
@@ -518,6 +529,7 @@ fn main() -> Result<()> {
                 platforms: platform,
                 all_platforms,
                 env_version: package_options.env_version,
+                extra_native_features: package_options.native_features,
             })?;
         }
         Commands::Devices { platform } => {
@@ -559,6 +571,7 @@ fn main() -> Result<()> {
                 platform_arg: dev_options.platform,
                 reinstall: dev_options.reinstall,
                 env_version: dev_options.build_options.env_version,
+                extra_native_features: dev_options.build_options.native_features,
                 parallel: dev_options.parallel,
             })?;
         }
