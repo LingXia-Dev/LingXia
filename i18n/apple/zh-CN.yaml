@@ -15,7 +15,13 @@ update:
   card_version: "版本 %@"
   card_notes_title: "更新内容"
   card_later: "稍后"
-  card_install: "下载并安装"
-  card_downloading: "正在下载… %@"
-  card_ready: "更新已下载，可立即安装。"
   card_restart: "立即重启"
+
+# lxapp 页面右键菜单（macOS）。refresh 仅当页面开启下拉刷新时出现；编辑项
+# 覆盖 WebKit 默认标题，使精简后的菜单完全本地化。
+menu:
+  refresh: "刷新"
+  copy: "复制"
+  cut: "剪切"
+  paste: "粘贴"
+  select_all: "全选"

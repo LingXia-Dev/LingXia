@@ -433,5 +433,121 @@ final class BrowserContextMenuWebView: WKWebView {
             }
         }
     }
+
+    // MARK: - lxapp page context menu
+
+    /// WebKit's default context menu offers Reload/Back/Forward. In lxapp mode a full webview
+    /// reload re-fetches the page bundle and drops runtime state, so it is wrong. Strip those
+    /// navigation items and, only when the page opted into pull-down refresh, surface a "refresh"
+    /// entry that routes through the pull-down refresh pipeline (firing onPullDownRefresh) instead.
+    /// Text items such as Copy / Look Up are left intact.
+    override func willOpenMenu(_ menu: NSMenu, with event: NSEvent) {
+        // Browser tabs keep the default WebKit menu (reload/back/forward are meaningful there).
+        guard let path = currentPath, !path.hasPrefix("/tabs/") else {
+            super.willOpenMenu(menu, with: event)
+            return
+        }
+
+        keepOnlyEditingItems(in: menu)
+        localizeEditingTitles(in: menu)
+        tidySeparators(in: menu)
+
+        if let appId, !appId.isEmpty, isPullDownRefreshEnabled(appId, path) {
+            let title = L10n.string("lx_menu_refresh")
+            let item = NSMenuItem(
+                title: title,
+                action: #selector(handleLxAppPullDownRefresh(_:)),
+                keyEquivalent: ""
+            )
+            item.target = self
+            menu.insertItem(item, at: 0)
+            if menu.items.count > 1 {
+                menu.insertItem(NSMenuItem.separator(), at: 1)
+            }
+            Self.logger.info("lxapp context menu refresh offered path=\(path, privacy: .public)")
+        }
+
+        super.willOpenMenu(menu, with: event)
+    }
+
+    @objc private func handleLxAppPullDownRefresh(_ sender: Any?) {
+        _ = sender
+        guard let appId, !appId.isEmpty else { return }
+        macOSLxApp.getViewController(for: appId)?.startPullDownRefreshProgrammatically()
+    }
+
+    /// AppKit appends a "Services" submenu to context menus after `willOpenMenu`, based on the
+    /// selection's valid service requestors. Neither lxapp pages nor browser tabs want it, so
+    /// decline to act as a service requestor for both.
+    override func validRequestor(
+        forSendType sendType: NSPasteboard.PasteboardType?,
+        returnType: NSPasteboard.PasteboardType?
+    ) -> Any? {
+        return nil
+    }
+
+    /// lxapp pages are not a browser, so WebKit's default menu (Look Up, Translate, Search Web,
+    /// Share, Speech, Services, Inspect Element, navigation…) is inappropriate. Keep only Copy and
+    /// the standard editing commands; everything else is removed.
+    private static let allowedEditingActions: Set<Selector> = [
+        Selector(("copy:")),
+        Selector(("cut:")),
+        Selector(("paste:")),
+        Selector(("selectAll:")),
+        Selector(("delete:")),
+    ]
+    private static let allowedItemIdentifierSuffixes = ["Copy", "Cut", "Paste", "SelectAll"]
+
+    private func keepOnlyEditingItems(in menu: NSMenu) {
+        for item in menu.items where !item.isSeparatorItem {
+            if let action = item.action, Self.allowedEditingActions.contains(action) {
+                continue
+            }
+            if let identifier = item.identifier?.rawValue,
+               Self.allowedItemIdentifierSuffixes.contains(where: { identifier.hasSuffix($0) }) {
+                continue
+            }
+            menu.removeItem(item)
+        }
+    }
+
+    /// Relabel the surviving editing items with our own localized titles so the trimmed menu
+    /// follows the SDK i18n bundle rather than WebKit's built-in (OS-locale) strings.
+    private func localizeEditingTitles(in menu: NSMenu) {
+        for item in menu.items where !item.isSeparatorItem {
+            guard let key = Self.editingTitleKey(for: item) else { continue }
+            item.title = L10n.string(key)
+        }
+    }
+
+    private static func editingTitleKey(for item: NSMenuItem) -> String? {
+        let identifier = item.identifier?.rawValue ?? ""
+        if item.action == Selector(("copy:")) || identifier.hasSuffix("Copy") { return "lx_menu_copy" }
+        if item.action == Selector(("cut:")) || identifier.hasSuffix("Cut") { return "lx_menu_cut" }
+        if item.action == Selector(("paste:")) || identifier.hasSuffix("Paste") { return "lx_menu_paste" }
+        if item.action == Selector(("selectAll:")) || identifier.hasSuffix("SelectAll") {
+            return "lx_menu_select_all"
+        }
+        return nil
+    }
+
+    /// Drop leading/trailing separators and collapse consecutive ones left behind after removal.
+    private func tidySeparators(in menu: NSMenu) {
+        while let first = menu.items.first, first.isSeparatorItem {
+            menu.removeItem(first)
+        }
+        while let last = menu.items.last, last.isSeparatorItem {
+            menu.removeItem(last)
+        }
+        var previousWasSeparator = false
+        for item in menu.items {
+            if item.isSeparatorItem {
+                if previousWasSeparator { menu.removeItem(item) }
+                previousWasSeparator = true
+            } else {
+                previousWasSeparator = false
+            }
+        }
+    }
 }
 #endif

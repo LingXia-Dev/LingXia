@@ -4,7 +4,4 @@ permission:
   limited_access_add_more_media: "添加更多\n可访问内容"
   limited_access_add_more_videos: "添加更多\n可访问视频"
   limited_access_add_more_photos: "添加更多\n可访问照片"
-  location_reason: "LingXia需要位置权限为你提供服务"
   media_reason: "LingXia需要相册权限保存图片和视频"
-  wifi_reason: "LingXia需要WiFi权限来扫描和连接WiFi网络"
-  network_reason: "LingXia需要网络权限来检测网络状态"

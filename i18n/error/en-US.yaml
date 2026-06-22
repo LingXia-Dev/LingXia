@@ -1,11 +1,5 @@
 # Errors
 error:
-  unknown: "Unknown Error"
-  network_error: "Network Error"
-  timeout: "Request Timeout"
-  server_error: "Server Error"
-  unauthorized: "Unauthorized"
-  save_failed: "Save failed. Please check permissions or available space."
   video_too_short: "Video too short"
 
 # Error Codes (4-digit: Xyyy where X=category, yyy=specific)

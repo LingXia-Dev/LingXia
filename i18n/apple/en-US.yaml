@@ -17,7 +17,14 @@ update:
   card_version: "Version %@"
   card_notes_title: "What's new"
   card_later: "Later"
-  card_install: "Download & Install"
-  card_downloading: "Downloading… %@"
-  card_ready: "Update downloaded and ready to install."
   card_restart: "Restart Now"
+
+# lxapp page context menu (macOS right-click). `refresh` is shown only when
+# the page enabled pull-down refresh; the editing items relabel the WebKit
+# defaults so the trimmed menu is fully localized.
+menu:
+  refresh: "Refresh"
+  copy: "Copy"
+  cut: "Cut"
+  paste: "Paste"
+  select_all: "Select All"
