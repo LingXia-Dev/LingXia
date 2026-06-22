@@ -60,7 +60,7 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
     private var statusBarHeightConstraint: NSLayoutConstraint?
     private var navigationBar: NSView?
     private var floatingCapsuleContainer: NSView?
-    private let browserOverlay = RunnerBrowserOverlay()
+    private let phoneBrowserSurface = RunnerPhoneBrowserSurface()
 
     // Status bar components
     private var timeLabel: NSTextField?
@@ -296,7 +296,7 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func currentInspectableWebView() -> WKWebView? {
-        browserOverlay.activeWebView
+        phoneBrowserSurface.activeWebView
             ?? RunnerSupport.WebView.current()
             ?? RunnerSupport.WebView.resolve(appId: appId, path: currentPath)
     }
@@ -822,7 +822,7 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
     // MARK: - NSWindowDelegate
     
     public func windowWillClose(_ notification: Notification) {
-        browserOverlay.dismiss(closeTab: true)
+        phoneBrowserSurface.dismiss(closeTab: true)
         if let sessionId = RunnerSupport.Runtime.sessionId(for: appId), sessionId > 0 {
             if !suppressRuntimeCloseNotification {
                 let _ = onLxappClosed(appId, sessionId)
@@ -848,7 +848,7 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
 
     func presentBrowserTab(id tabId: String) {
         guard let phoneContentView else { return }
-        browserOverlay.present(tabId: tabId, in: phoneContentView, window: window)
+        phoneBrowserSurface.present(tabId: tabId, in: phoneContentView, window: window)
         window?.makeKeyAndOrderFront(nil)
     }
     
