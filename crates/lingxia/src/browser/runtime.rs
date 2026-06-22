@@ -18,21 +18,21 @@ pub(crate) fn register_bundled_app() {
     lingxia_browser::register_bundled_app();
 }
 
-#[cfg(all(feature = "browser-runtime", not(feature = "shell-runtime")))]
+#[cfg(all(feature = "browser-runtime", not(feature = "browser-shell")))]
 pub(crate) fn install_runtime_once() {
     use std::sync::OnceLock;
     static REGISTERED: OnceLock<()> = OnceLock::new();
     REGISTERED.get_or_init(lingxia_browser::install_runtime);
 }
 
-#[cfg(all(feature = "browser-runtime", not(feature = "shell-runtime")))]
+#[cfg(all(feature = "browser-runtime", not(feature = "browser-shell")))]
 pub(crate) fn register_bundled_app_once() {
     use std::sync::OnceLock;
     static REGISTERED: OnceLock<()> = OnceLock::new();
     REGISTERED.get_or_init(lingxia_browser::register_bundled_app);
 }
 
-#[cfg(all(feature = "browser-runtime", not(feature = "shell-runtime")))]
+#[cfg(all(feature = "browser-runtime", not(feature = "browser-shell")))]
 pub(crate) fn warmup() {
     lingxia_browser::warmup();
 }

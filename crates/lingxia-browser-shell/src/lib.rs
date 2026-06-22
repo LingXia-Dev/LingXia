@@ -121,11 +121,10 @@ pub fn register_bundled_assets() {
             }
         }
         Err(err) => {
-            lxapp::info!(
-                "[InternalBrowser] bundled browser manifest unavailable; skipping bundled browser pages: {}",
-                err
+            panic!(
+                "browser-shell requires bundled browser webui manifest at {}: {}",
+                BROWSER_WEBUI_MANIFEST_ASSET_PATH, err
             );
-            return;
         }
     }
 

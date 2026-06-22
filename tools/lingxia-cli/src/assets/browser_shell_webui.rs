@@ -8,24 +8,27 @@ use std::process::Command;
 use tar::Archive;
 
 pub(crate) const APP_ID: &str = "app.lingxia.browser";
-const DEFAULT_PACKAGE: &str = "@lingxia/shell-webui";
+const DEFAULT_PACKAGE: &str = "@lingxia/browser-shell-webui";
 
-pub(super) struct ShellWebUiSource {
+pub(super) struct BrowserShellWebUiSource {
     pub(super) bundle_dir: PathBuf,
     pub(super) build: bool,
 }
 
-pub(super) fn resolve_shell_webui_dir(
+pub(super) fn resolve_browser_shell_webui_dir(
     project_root: &Path,
     config: &LingXiaConfig,
-) -> Result<ShellWebUiSource> {
-    let webui = config.shell.as_ref().and_then(|shell| shell.webui.as_ref());
+) -> Result<BrowserShellWebUiSource> {
+    let webui = config
+        .browser
+        .as_ref()
+        .and_then(|browser| browser.webui.as_ref());
     if let Some(path) = webui
         .and_then(|webui| webui.path.as_deref())
         .map(str::trim)
         .filter(|path| !path.is_empty())
     {
-        return Ok(ShellWebUiSource {
+        return Ok(BrowserShellWebUiSource {
             bundle_dir: project_root.join(path),
             build: true,
         });
@@ -38,25 +41,25 @@ pub(super) fn resolve_shell_webui_dir(
     {
         let version = webui
             .and_then(|webui| webui.version.as_deref())
-            .unwrap_or(env!("LINGXIA_SHELL_WEBUI_VERSION"));
-        return Ok(ShellWebUiSource {
+            .unwrap_or(env!("LINGXIA_BROWSER_SHELL_WEBUI_VERSION"));
+        return Ok(BrowserShellWebUiSource {
             bundle_dir: resolve_lxapp_package(project_root, package, version)?,
             build: false,
         });
     }
 
     // Fall back to the SDK's default npm package, pinned to the SDK package set.
-    Ok(ShellWebUiSource {
+    Ok(BrowserShellWebUiSource {
         bundle_dir: resolve_lxapp_package(
             project_root,
             DEFAULT_PACKAGE,
-            env!("LINGXIA_SHELL_WEBUI_VERSION"),
+            env!("LINGXIA_BROWSER_SHELL_WEBUI_VERSION"),
         )
         .with_context(|| {
             format!(
-                "Failed to resolve default shell webui package {}@{}. Set `shell.webui.path` to point at a local checkout, or `shell.webui.package`/`version` to pin a fork.",
+                "Failed to resolve default browser webui package {}@{}. Set `browser.webui.path` to point at a local checkout, or `browser.webui.package`/`version` to pin a fork.",
                 DEFAULT_PACKAGE,
-                env!("LINGXIA_SHELL_WEBUI_VERSION")
+                env!("LINGXIA_BROWSER_SHELL_WEBUI_VERSION")
             )
         })?,
         build: false,
@@ -76,15 +79,15 @@ pub(super) fn resolve_lxapp_package(
     let package = package.trim();
     let version = version.trim();
     if package.is_empty() {
-        return Err(anyhow!("shell.webui.package must not be empty"));
+        return Err(anyhow!("browser.webui.package must not be empty"));
     }
     if version.is_empty() {
-        return Err(anyhow!("shell.webui.version must not be empty"));
+        return Err(anyhow!("browser.webui.version must not be empty"));
     }
 
     let package_dir = project_root
         .join(".lingxia")
-        .join("shell-webui")
+        .join("browser-shell-webui")
         .join(sanitize_package_name(package))
         .join(version)
         .join("package");
@@ -92,13 +95,16 @@ pub(super) fn resolve_lxapp_package(
         return Ok(package_dir);
     }
 
-    let cache_dir = package_dir
-        .parent()
-        .ok_or_else(|| anyhow!("Invalid shell webui cache path: {}", package_dir.display()))?;
+    let cache_dir = package_dir.parent().ok_or_else(|| {
+        anyhow!(
+            "Invalid browser shell webui cache path: {}",
+            package_dir.display()
+        )
+    })?;
     fs::create_dir_all(cache_dir)?;
 
     let temp_dir = tempfile::Builder::new()
-        .prefix("shell-webui-")
+        .prefix("browser-shell-webui-")
         .tempdir_in(cache_dir)
         .with_context(|| format!("Failed to create temp dir in {}", cache_dir.display()))?;
     let spec = format!("{package}@{version}");
@@ -157,7 +163,7 @@ pub(super) fn resolve_lxapp_package(
     }
     fs::rename(&unpacked_package, &package_dir).with_context(|| {
         format!(
-            "Failed to move shell webui package into cache: {}",
+            "Failed to move browser shell webui package into cache: {}",
             package_dir.display()
         )
     })?;

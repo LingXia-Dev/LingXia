@@ -4,7 +4,7 @@ members = [
     "crates/lingxia-devtool",
     "crates/lingxia-devtool-protocol",
     "crates/lingxia-media",
-    "crates/lingxia-shell",
+    "crates/lingxia-browser-shell",
     "crates/lingxia-browser",
     "crates/lingxia-service",
     "crates/lingxia-transfer",
@@ -89,7 +89,7 @@ lingxia-service = { path = "crates/lingxia-service", version = "0.9.0" }
 lingxia-transfer = { path = "crates/lingxia-transfer", version = "0.9.0" }
 lingxia-terminal = { path = "crates/lingxia-terminal", version = "0.9.0" }
 lingxia-settings = { path = "crates/lingxia-settings", version = "0.9.0" }
-lingxia-shell = { path = "crates/lingxia-shell", version = "0.9.0" }
+lingxia-browser-shell = { path = "crates/lingxia-browser-shell", version = "0.9.0" }
 
 # Harmony NAPI bindings
 napi-ohos = "1.1.0"

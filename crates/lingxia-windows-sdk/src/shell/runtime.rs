@@ -9,12 +9,12 @@ use super::{
     WindowsShellWindowLayout,
 };
 use lingxia_browser::BrowserTabInfo;
-use lingxia_platform::traits::app_runtime::{
-    AppRuntime, LxAppOpenMode, OpenUrlRequest, OpenUrlTarget,
-};
-use lingxia_shell::{
+use lingxia_browser_shell::{
     BrowserAddressInputContext, BrowserAddressInputRequest, BrowserAddressInputTrigger,
     resolve_input,
+};
+use lingxia_platform::traits::app_runtime::{
+    AppRuntime, LxAppOpenMode, OpenUrlRequest, OpenUrlTarget,
 };
 use lingxia_webview::WebTag;
 use lingxia_windows_host::{
@@ -1073,7 +1073,7 @@ fn open_or_present_browser_page(appid: &str, session_id: u64, url: &str) {
 /// Host-window handle of `appid`'s shell window (the window whose chrome
 /// painted the sidebar/top bar), for product UI that needs a real HWND
 /// (inline edits, context menus).
-#[cfg(feature = "shell-runtime")]
+#[cfg(feature = "browser-shell")]
 pub(super) fn owner_window_handle(appid: &str) -> Option<isize> {
     let app = lxapp::try_get(appid)?;
     let path = app
@@ -1098,7 +1098,7 @@ pub(super) fn owner_window_handle(appid: &str) -> Option<isize> {
 /// matching the coordinate space the chrome paints panels in (used to
 /// focus the terminal pane under the cursor on right-click). `None` when
 /// the window handle is unavailable or the point is off-window.
-#[cfg(feature = "shell-runtime")]
+#[cfg(feature = "browser-shell")]
 pub(super) fn screen_to_panel_client(
     appid: &str,
     screen_x: i32,
@@ -1120,7 +1120,7 @@ pub(super) fn screen_to_panel_client(
     ok.as_bool().then_some((point.x, point.y))
 }
 
-#[cfg(feature = "shell-runtime")]
+#[cfg(feature = "browser-shell")]
 fn begin_presented_tab_address_edit(app: &LxApp) {
     let Some(tab_id) = presented_browser_tab() else {
         return;
@@ -1145,7 +1145,7 @@ fn begin_presented_tab_address_edit(app: &LxApp) {
     );
 }
 
-#[cfg(not(feature = "shell-runtime"))]
+#[cfg(not(feature = "browser-shell"))]
 fn begin_presented_tab_address_edit(_app: &LxApp) {
     // Without the shell chrome no address bar is drawn (plain OS frame),
     // so there is nothing to edit.
@@ -1155,7 +1155,7 @@ fn begin_presented_tab_address_edit(_app: &LxApp) {
 /// Runs on the host window's UI thread (inline-edit commit); the actual
 /// navigation hops onto the executor so webview work never blocks that
 /// thread.
-#[cfg(feature = "shell-runtime")]
+#[cfg(feature = "browser-shell")]
 fn commit_address_input(appid: &str, tab_id: &str, raw_input: &str) {
     if raw_input.trim().is_empty() {
         return;

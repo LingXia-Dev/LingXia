@@ -478,14 +478,14 @@ fn start_local_proxy() -> Result<RunningProxy, LxAppError> {
         let state = lock_state();
         if let Some(running) = state.running.clone() {
             log::info!(
-                "[ShellProxy] reusing local proxy listener at {}",
+                "[BrowserShellProxy] reusing local proxy listener at {}",
                 running.local_addr
             );
             return Ok(running);
         }
     }
 
-    log::info!("[ShellProxy] starting local proxy listener on 127.0.0.1:0");
+    log::info!("[BrowserShellProxy] starting local proxy listener on 127.0.0.1:0");
     let (tx, rx) = mpsc::sync_channel(1);
     std::thread::Builder::new()
         .name("lingxia-local-proxy".to_string())
@@ -517,7 +517,7 @@ fn start_local_proxy() -> Result<RunningProxy, LxAppError> {
                 proxy: proxy.clone(),
             };
             log::info!(
-                "[ShellProxy] local proxy listener started at {}",
+                "[BrowserShellProxy] local proxy listener started at {}",
                 running.local_addr
             );
             let _ = tx.send(Ok(running));
@@ -543,7 +543,7 @@ fn apply_local_proxy_router(
 ) -> Result<ProxyRuntimeSnapshot, LxAppError> {
     let running = start_local_proxy()?;
     log::info!(
-        "[ShellProxy] applying {} via local endpoint {}",
+        "[BrowserShellProxy] applying {} via local endpoint {}",
         mode_label,
         running.local_addr
     );
@@ -556,7 +556,7 @@ fn apply_local_proxy_router(
     .map_err(map_webview_error)?;
     webview_runtime::configure_proxy_for_new_webviews(Some(local_proxy))
         .map_err(map_webview_error)?;
-    log::info!("[ShellProxy] configured desired webview proxy for new WebViews");
+    log::info!("[BrowserShellProxy] configured desired webview proxy for new WebViews");
     Ok(snapshot_from_apply_report(
         ProxyApplyReport::applied(ProxyActivation::NewWebViewsOnly),
         Some(running.local_addr),
@@ -565,9 +565,9 @@ fn apply_local_proxy_router(
 }
 
 fn clear_webview_proxy() -> Result<ProxyRuntimeSnapshot, LxAppError> {
-    log::info!("[ShellProxy] clearing desired webview proxy");
+    log::info!("[BrowserShellProxy] clearing desired webview proxy");
     webview_runtime::configure_proxy_for_new_webviews(None).map_err(map_webview_error)?;
-    log::info!("[ShellProxy] cleared desired webview proxy for new WebViews");
+    log::info!("[BrowserShellProxy] cleared desired webview proxy for new WebViews");
     Ok(snapshot_from_apply_report(
         ProxyApplyReport::cleared(ProxyActivation::NewWebViewsOnly),
         None,
@@ -580,7 +580,7 @@ fn apply_proxy_settings(
     gfwlist_cache: Option<&GfwListCache>,
 ) -> Result<ProxyRuntimeSnapshot, LxAppError> {
     log::info!(
-        "[ShellProxy] apply_proxy_settings mode={} host={} port={} gfwlist_source={}",
+        "[BrowserShellProxy] apply_proxy_settings mode={} host={} port={} gfwlist_source={}",
         mode_label(settings.mode),
         settings.socks_host,
         settings.socks_port,
@@ -598,7 +598,7 @@ fn apply_proxy_settings(
         ProxyMode::GfwList => {
             if gfwlist_cache.is_none() && settings.auto_switch_rules.is_empty() {
                 log::warn!(
-                    "[ShellProxy] Auto Switch selected but neither cached rule list nor custom rules are available"
+                    "[BrowserShellProxy] Auto Switch selected but neither cached rule list nor custom rules are available"
                 );
                 let _ = clear_webview_proxy();
                 return Ok(ProxyRuntimeSnapshot {
@@ -612,12 +612,12 @@ fn apply_proxy_settings(
             }
             if let Some(cache) = gfwlist_cache {
                 log::info!(
-                    "[ShellProxy] applying GFW List router with cached rules updated_at_ms={}",
+                    "[BrowserShellProxy] applying GFW List router with cached rules updated_at_ms={}",
                     cache.updated_at_ms
                 );
             } else {
                 log::warn!(
-                    "[ShellProxy] GFW List mode selected but no cached rule list is available"
+                    "[BrowserShellProxy] GFW List mode selected but no cached rule list is available"
                 );
             }
             let router: Arc<dyn ProxyRouter> = Arc::new(AutoSwitchRouter::new(
@@ -722,7 +722,7 @@ fn save_proxy_settings_and_schedule_apply(
 ) -> Result<ProxySettingsResult, LxAppError> {
     let settings = normalized_proxy_settings(input);
     log::info!(
-        "[ShellProxy] updateSettings requested: mode={} host={} port={} gfwlist_source={}",
+        "[BrowserShellProxy] updateSettings requested: mode={} host={} port={} gfwlist_source={}",
         mode_label(settings.mode),
         settings.socks_host,
         settings.socks_port,
@@ -732,7 +732,10 @@ fn save_proxy_settings_and_schedule_apply(
         gfwlist_meta_from_cache_result(load_gfwlist_cache(&app_data_dir));
 
     if let Err(error) = validate_proxy_settings(&settings) {
-        log::warn!("[ShellProxy] updateSettings validation failed: {}", error);
+        log::warn!(
+            "[BrowserShellProxy] updateSettings validation failed: {}",
+            error
+        );
         return Ok(settings_result(
             settings,
             snapshot_from_error(error.to_string()),
@@ -747,7 +750,10 @@ fn save_proxy_settings_and_schedule_apply(
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         if let Err(error) = crate::proxy_settings::save_proxy_settings(&app_data_dir, &settings) {
-            log::warn!("[ShellProxy] failed to persist proxy settings: {}", error);
+            log::warn!(
+                "[BrowserShellProxy] failed to persist proxy settings: {}",
+                error
+            );
             return Ok(settings_result(
                 settings,
                 snapshot_from_error(error.to_string()),
@@ -765,7 +771,7 @@ fn save_proxy_settings_and_schedule_apply(
     std::mem::drop(rong::RongExecutor::global().spawn_blocking(move || {
         if PROXY_APPLY_GENERATION.load(Ordering::SeqCst) != apply_generation {
             log::info!(
-                "[ShellProxy] skipping stale background apply (generation {})",
+                "[BrowserShellProxy] skipping stale background apply (generation {})",
                 apply_generation
             );
             return;
@@ -776,21 +782,21 @@ fn save_proxy_settings_and_schedule_apply(
             Ok(snapshot) => snapshot,
             Err(error) => {
                 log::warn!(
-                    "[ShellProxy] background apply_proxy_settings failed: {}",
+                    "[BrowserShellProxy] background apply_proxy_settings failed: {}",
                     error
                 );
                 snapshot_from_error(error.to_string())
             }
         };
         log::info!(
-            "[ShellProxy] background apply completed: mode={} status={} active={}",
+            "[BrowserShellProxy] background apply completed: mode={} status={} active={}",
             mode_label(settings_for_apply.mode),
             snapshot.status,
             snapshot.is_active
         );
         if PROXY_APPLY_GENERATION.load(Ordering::SeqCst) != apply_generation {
             log::info!(
-                "[ShellProxy] discarding stale background apply result (generation {})",
+                "[BrowserShellProxy] discarding stale background apply result (generation {})",
                 apply_generation
             );
             return;
@@ -799,7 +805,7 @@ fn save_proxy_settings_and_schedule_apply(
         match get_proxy_settings_result(&app_data_dir_for_apply) {
             Ok(result) => publish_proxy_state(&result),
             Err(error) => log::warn!(
-                "[ShellProxy] failed to publish proxy state after background apply: {}",
+                "[BrowserShellProxy] failed to publish proxy state after background apply: {}",
                 error
             ),
         }
@@ -813,7 +819,7 @@ fn save_proxy_settings_and_schedule_apply(
 async fn refresh_gfwlist_result(app_data_dir: &Path) -> Result<ProxySettingsResult, LxAppError> {
     let settings = load_proxy_settings(app_data_dir)?;
     log::info!(
-        "[ShellProxy] refreshGfwList requested: source={} host={} port={}",
+        "[BrowserShellProxy] refreshGfwList requested: source={} host={} port={}",
         settings.gfwlist_source_url,
         settings.socks_host,
         settings.socks_port
@@ -825,7 +831,10 @@ async fn refresh_gfwlist_result(app_data_dir: &Path) -> Result<ProxySettingsResu
     let encoded = fetch_encoded_from_url(&settings.gfwlist_source_url, &upstream)
         .await
         .map_err(|error| {
-            log::warn!("[ShellProxy] refreshGfwList download failed: {}", error);
+            log::warn!(
+                "[BrowserShellProxy] refreshGfwList download failed: {}",
+                error
+            );
             LxAppError::Runtime(error.to_string())
         })?;
     let cache = GfwListCache {
@@ -833,7 +842,7 @@ async fn refresh_gfwlist_result(app_data_dir: &Path) -> Result<ProxySettingsResu
         updated_at_ms: now_ms(),
     };
     log::info!(
-        "[ShellProxy] refreshGfwList downloaded rules successfully updated_at_ms={}",
+        "[BrowserShellProxy] refreshGfwList downloaded rules successfully updated_at_ms={}",
         cache.updated_at_ms
     );
     save_gfwlist_cache(app_data_dir, &cache)?;
@@ -847,14 +856,14 @@ async fn refresh_gfwlist_result(app_data_dir: &Path) -> Result<ProxySettingsResu
             Ok(Ok(snapshot)) => snapshot,
             Ok(Err(error)) => {
                 log::warn!(
-                    "[ShellProxy] failed to apply GFW List immediately after refresh: {}",
+                    "[BrowserShellProxy] failed to apply GFW List immediately after refresh: {}",
                     error
                 );
                 snapshot_from_error(error.to_string())
             }
             Err(error) => {
                 log::warn!(
-                    "[ShellProxy] GFW List apply task failed after refresh: {}",
+                    "[BrowserShellProxy] GFW List apply task failed after refresh: {}",
                     error
                 );
                 snapshot_from_error(error.to_string())
@@ -885,7 +894,7 @@ async fn update_proxy_settings(
         Ok(result) => {
             match &result {
                 Ok(output) => log::info!(
-                    "[ShellProxy] proxy.updateSettings completed: mode={} status={} active={} gfwlist_ready={}",
+                    "[BrowserShellProxy] proxy.updateSettings completed: mode={} status={} active={} gfwlist_ready={}",
                     mode_label(output.mode),
                     output.status,
                     output.is_active,
@@ -893,7 +902,7 @@ async fn update_proxy_settings(
                 ),
                 Err(error) => {
                     log::warn!(
-                        "[ShellProxy] proxy.updateSettings returned error: {}",
+                        "[BrowserShellProxy] proxy.updateSettings returned error: {}",
                         error
                     )
                 }
@@ -901,7 +910,10 @@ async fn update_proxy_settings(
             result
         }
         Err(error) => {
-            log::warn!("[ShellProxy] proxy.updateSettings task failed: {}", error);
+            log::warn!(
+                "[BrowserShellProxy] proxy.updateSettings task failed: {}",
+                error
+            );
             Err(LxAppError::Runtime(format!(
                 "proxy.updateSettings task failed: {}",
                 error
@@ -915,14 +927,14 @@ async fn refresh_gfwlist(app: Arc<LxApp>) -> HostResult<ProxySettingsResult> {
     let result = refresh_gfwlist_result(&app.app_data_dir()).await;
     match &result {
         Ok(output) => log::info!(
-            "[ShellProxy] proxy.refreshGfwList completed: mode={} status={} gfwlist_ready={} updated_at_ms={:?}",
+            "[BrowserShellProxy] proxy.refreshGfwList completed: mode={} status={} gfwlist_ready={} updated_at_ms={:?}",
             mode_label(output.mode),
             output.status,
             output.gfwlist_ready,
             output.gfwlist_updated_at_ms
         ),
         Err(error) => log::warn!(
-            "[ShellProxy] proxy.refreshGfwList returned error: {}",
+            "[BrowserShellProxy] proxy.refreshGfwList returned error: {}",
             error
         ),
     }
@@ -973,13 +985,16 @@ pub(crate) fn warmup() {
     let settings = match load_proxy_settings(&app_data_dir) {
         Ok(settings) => settings,
         Err(error) => {
-            log::warn!("[ShellProxy] failed to load proxy settings: {}", error);
+            log::warn!(
+                "[BrowserShellProxy] failed to load proxy settings: {}",
+                error
+            );
             update_runtime_snapshot(snapshot_from_error(error.to_string()));
             return;
         }
     };
     log::info!(
-        "[ShellProxy] warmup with mode={} host={} port={} gfwlist_source={}",
+        "[BrowserShellProxy] warmup with mode={} host={} port={} gfwlist_source={}",
         mode_label(settings.mode),
         settings.socks_host,
         settings.socks_port,

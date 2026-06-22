@@ -17,4 +17,4 @@ Procedural macros for registering LingXia native APIs.
 ## Notes
 
 This crate is internal infrastructure for LingXia native extensions. Most users
-consume it indirectly through the top-level `lingxia` or `lingxia-shell` crates.
+consume it indirectly through the top-level `lingxia` or `lingxia-browser-shell` crates.

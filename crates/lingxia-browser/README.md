@@ -34,5 +34,5 @@ Per-tab automation helpers for driving live browser tabs (used by devtools):
 ## Notes
 
 This crate is an internal runtime layer, not a standalone end-user browser.
-The higher-level `lingxia-shell` crate wires it into host registrations and the
+The higher-level `lingxia-browser-shell` crate wires it into host registrations and the
 bundled browser Web UI.

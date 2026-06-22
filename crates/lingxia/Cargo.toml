@@ -10,11 +10,16 @@ categories = ["web-programming", "api-bindings"]
 
 [features]
 default = ["standard"]
-standard = ["lxapp/standard", "dep:lingxia-logic", "browser-runtime"]
+standard = ["lxapp/standard", "dep:lingxia-logic"]
 devtool = []
+# Low-level managed browser tabs. Advanced hosts may provide their own native
+# browser UI/chrome on top of this.
 browser-runtime = ["dep:lingxia-browser"]
-shell-runtime = ["browser-runtime", "dep:lingxia-shell"]
-proxy = ["shell-runtime", "lingxia-shell/proxy"]
+browser-core = ["browser-runtime"]
+# Product browser shell: browser core + browser shell webui/settings/downloads/address
+# bar support.
+browser-shell = ["browser-runtime", "dep:lingxia-browser-shell"]
+proxy = ["browser-shell", "lingxia-browser-shell/proxy"]
 terminal-runtime = ["dep:lingxia-terminal"]
 webview-input = ["lingxia-webview/webview-input"]
 
@@ -31,7 +36,7 @@ lingxia-transfer = { workspace = true }
 lingxia-terminal = { workspace = true, optional = true }
 lingxia-browser = { workspace = true, optional = true }
 lingxia-logic = { workspace = true, optional = true }
-lingxia-shell = { workspace = true, optional = true }
+lingxia-browser-shell = { workspace = true, optional = true }
 lingxia-platform = { workspace = true }
 lingxia-webview = { workspace = true }
 lingxia-windows-host = { workspace = true }

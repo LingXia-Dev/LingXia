@@ -28,7 +28,7 @@ CRATES=(
   "lingxia-native-macros"
   "lingxia-native-codegen"
   "lingxia-browser"
-  "lingxia-shell"
+  "lingxia-browser-shell"
   "lingxia-terminal"
 
   # Devtool protocol is consumed by SDK/tools and by lingxia-devtool.

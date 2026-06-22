@@ -33,18 +33,18 @@ runtime = [
     "dep:windows-core",
 ]
 standard = ["runtime", "lingxia/standard"]
-shell-runtime = [
+browser-shell = [
     "runtime",
     "dep:lingxia-app-context",
     "dep:lingxia-browser",
     "dep:lingxia-logic",
-    "dep:lingxia-shell",
+    "dep:lingxia-browser-shell",
     "dep:lingxia-terminal",
     "dep:resvg",
     "dep:tiny-skia",
     "dep:tokio",
     "dep:usvg",
-    "lingxia/shell-runtime",
+    "lingxia/browser-shell",
 ]
 terminal-runtime = ["runtime", "dep:lingxia-terminal", "lingxia/terminal-runtime"]
 webview-input = ["host-api", "lingxia?/webview-input"]
@@ -54,7 +54,7 @@ lingxia = { workspace = true, default-features = false, optional = true }
 lingxia-app-context = { workspace = true, optional = true }
 lingxia-browser = { workspace = true, optional = true }
 lingxia-logic = { workspace = true, optional = true }
-lingxia-shell = { workspace = true, optional = true }
+lingxia-browser-shell = { workspace = true, optional = true }
 lingxia-terminal = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
 thiserror = { workspace = true, optional = true }

@@ -38,22 +38,22 @@ pub(crate) fn classify_navigation_json(request_json: &str) -> Option<String> {
 }
 
 pub(crate) fn register_builtin_runtime() {
-    #[cfg(feature = "shell-runtime")]
+    #[cfg(feature = "browser-shell")]
     shell::register_runtime();
-    #[cfg(all(feature = "browser-runtime", not(feature = "shell-runtime")))]
+    #[cfg(all(feature = "browser-runtime", not(feature = "browser-shell")))]
     runtime::install_runtime_once();
 }
 
 pub(crate) fn register_builtin_assets() {
-    #[cfg(feature = "shell-runtime")]
+    #[cfg(feature = "browser-shell")]
     shell::register_bundled_assets();
-    #[cfg(all(feature = "browser-runtime", not(feature = "shell-runtime")))]
+    #[cfg(all(feature = "browser-runtime", not(feature = "browser-shell")))]
     runtime::register_bundled_app_once();
 }
 
 pub(crate) fn warmup() {
-    #[cfg(feature = "shell-runtime")]
+    #[cfg(feature = "browser-shell")]
     shell::warmup();
-    #[cfg(all(feature = "browser-runtime", not(feature = "shell-runtime")))]
+    #[cfg(all(feature = "browser-runtime", not(feature = "browser-shell")))]
     runtime::warmup();
 }

@@ -256,7 +256,7 @@ if component == "all":
         "types-version",
         "rust-crate-version",
         "sdk-version",
-        "shell-webui-version",
+        "browser-shell-webui-version",
         "resource-bundle-version",
     ]:
         pattern = rf'(^\s*{re.escape(key)}\s*=\s*")[^"]+(")'

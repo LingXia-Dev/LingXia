@@ -4,7 +4,7 @@ use crate::platform::{self, BuildProfile};
 use crate::runtime;
 use anyhow::{Result, anyhow};
 use bundles::{
-    prepare_home_app_bundle, prepare_resource_lxapp_bundles, prepare_shell_webui_bundle,
+    prepare_browser_shell_webui_bundle, prepare_home_app_bundle, prepare_resource_lxapp_bundles,
 };
 use cache::HostAssetsCache;
 pub(crate) use clean::clean_configured_host_assets;
@@ -26,6 +26,8 @@ use runtime_asset::{prepare_polyfills_es5_asset, prepare_runtime_asset};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
+#[path = "assets/browser_shell_webui.rs"]
+mod browser_shell_webui;
 #[path = "assets/bundles.rs"]
 mod bundles;
 #[path = "assets/cache.rs"]
@@ -42,9 +44,7 @@ mod icons;
 mod json;
 #[path = "assets/runtime.rs"]
 mod runtime_asset;
-#[path = "assets/shell_webui.rs"]
-mod shell_webui;
-pub(crate) use shell_webui::APP_ID as SHELL_WEBUI_APP_ID;
+pub(crate) use browser_shell_webui::APP_ID as BROWSER_SHELL_WEBUI_APP_ID;
 #[path = "assets/sync.rs"]
 mod sync;
 #[cfg(test)]
@@ -198,7 +198,7 @@ pub(crate) fn prepare_configured_host_assets(
         &mut cache,
     )?);
     if config.browser_enabled() {
-        prepared_bundles.push(prepare_shell_webui_bundle(
+        prepared_bundles.push(prepare_browser_shell_webui_bundle(
             project_root,
             config,
             build_profile,
@@ -209,12 +209,6 @@ pub(crate) fn prepare_configured_host_assets(
         build_app_json_from_config(config, prepared_bundles.first(), dev_ws_url, resolved_env)?;
     let app_json_hash = sha256_hex(app_json.as_bytes());
     let prepared_app_ui_icons = prepare_app_ui_icons(project_root, config)?;
-    let ui_json = build_ui_json_from_config(config, &prepared_app_ui_icons)?;
-    let ui_json_hash = ui_json.as_ref().map(|json| sha256_hex(json.as_bytes()));
-    let windows_ui_json = build_windows_ui_json_from_config(config, &prepared_app_ui_icons)?;
-    let windows_ui_json_hash = windows_ui_json
-        .as_ref()
-        .map(|json| sha256_hex(json.as_bytes()));
 
     let has_android = platforms
         .iter()
@@ -260,6 +254,9 @@ pub(crate) fn prepare_configured_host_assets(
     for platform in platforms {
         match platform {
             platform::detector::PlatformType::Android => {
+                let ui_json =
+                    build_ui_json_from_config(config, &prepared_app_ui_icons, platform.as_str())?;
+                let ui_json_hash = ui_json.as_ref().map(|json| sha256_hex(json.as_bytes()));
                 let assets_root = platform::detector::resolve_android_assets_dir(project_root);
                 prepare_android_assets_root(
                     &assets_root,
@@ -280,6 +277,9 @@ pub(crate) fn prepare_configured_host_assets(
                     // Keep parity with platform detection: iOS builds are skipped on non-macOS hosts.
                     continue;
                 }
+                let ui_json =
+                    build_ui_json_from_config(config, &prepared_app_ui_icons, platform.as_str())?;
+                let ui_json_hash = ui_json.as_ref().map(|json| sha256_hex(json.as_bytes()));
                 let ios_dir =
                     crate::platform::ios::resolve_ios_dir(project_root, config.ios.as_ref())?;
                 let resources_dir = crate::platform::ios::get_resources_dir(
@@ -305,6 +305,9 @@ pub(crate) fn prepare_configured_host_assets(
                     // Keep parity with platform detection: macOS builds are skipped on non-macOS hosts.
                     continue;
                 }
+                let ui_json =
+                    build_ui_json_from_config(config, &prepared_app_ui_icons, platform.as_str())?;
+                let ui_json_hash = ui_json.as_ref().map(|json| sha256_hex(json.as_bytes()));
                 let macos_dir =
                     crate::platform::macos::resolve_macos_dir(project_root, config.macos.as_ref())?;
                 let resources_dir = crate::platform::macos::get_resources_dir(
@@ -326,6 +329,9 @@ pub(crate) fn prepare_configured_host_assets(
                 )?;
             }
             platform::detector::PlatformType::Harmony => {
+                let ui_json =
+                    build_ui_json_from_config(config, &prepared_app_ui_icons, platform.as_str())?;
+                let ui_json_hash = ui_json.as_ref().map(|json| sha256_hex(json.as_bytes()));
                 let rawfile_root =
                     crate::platform::harmony::resolve_harmony_rawfile_dir(project_root)?;
                 prepare_harmony_rawfile_root(
@@ -340,6 +346,11 @@ pub(crate) fn prepare_configured_host_assets(
                 )?;
             }
             platform::detector::PlatformType::Windows => {
+                let windows_ui_json =
+                    build_windows_ui_json_from_config(config, &prepared_app_ui_icons)?;
+                let windows_ui_json_hash = windows_ui_json
+                    .as_ref()
+                    .map(|json| sha256_hex(json.as_bytes()));
                 let assets_root =
                     crate::platform::windows::resolve_windows_assets_dir(project_root)?;
                 prepare_windows_assets_root(

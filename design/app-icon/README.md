@@ -62,7 +62,7 @@ lingxia icon design/app-icon/appicon-1024.png -b "#FAFAF7" \
 | `lingxia new` template | `tools/lingxia-cli/templates/AppIcon.png` | copy `appicon-1024.png` |
 | LingXia Runner (macOS) | `tools/lingxia-runner/Sources/Resources/Assets.xcassets/AppIcon.appiconset/` | `sips -z <s> <s> appicon-macos-1024.png --out icon_<s>.png` per size |
 | Apple SDK browser-tab favicon | `lingxia-sdk/apple/Sources/Resources/favicon.ico` | pack `appicon-favicon-1024.png` downscales into PNG-in-ICO (16/32/64/256) |
-| Shell webui (settings page) | `crates/lingxia-shell/webui/public/LingXia.png` | copy `appicon-1024.png` |
+| Browser shell webui (settings page) | `crates/lingxia-browser-shell/webui/public/LingXia.png` | copy `appicon-1024.png` |
 | Website favicon / touch icon | `website/public/favicon.svg`, `website/public/app-icon.png` | favicon is hand-kept in sync; app-icon is a copy of `appicon-1024.png` |
 | Website og:image | `website/public/og.png` | render `design/og/og-source.html` at 1200×630 |
 | Showcase example | `examples/lingxia-showcase/AppIcon.png` + platform dirs | the `lingxia icon` commands above |
