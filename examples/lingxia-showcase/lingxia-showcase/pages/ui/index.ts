@@ -10,6 +10,32 @@ const NAV_TITLE_MAP = {
   surface: "Surface Demo",
 };
 
+function surfaceErrorObject(error: unknown): Record<string, unknown> | null {
+  return typeof error === "object" && error !== null
+    ? (error as Record<string, unknown>)
+    : null;
+}
+
+function surfaceErrorMessage(error: unknown): string {
+  const object = surfaceErrorObject(error);
+  return typeof object?.message === "string"
+    ? object.message
+    : String(error || "unknown error");
+}
+
+function isExpectedWindowSurfaceUnsupported(error: unknown): boolean {
+  const object = surfaceErrorObject(error);
+  const data = surfaceErrorObject(object?.data);
+  const dataCode = data?.code;
+  const message = surfaceErrorMessage(error).toLowerCase();
+  return (
+    object?.code === "E_NOT_SUPPORTED" &&
+    (dataCode === "window_unsupported_platform" ||
+      message.includes("desktop window") ||
+      message.includes("not available on this platform"))
+  );
+}
+
 Page({
   data: {
     currentType: "",
@@ -254,14 +280,17 @@ Page({
         });
       });
     } catch (error) {
-      console.error("lx.surface open failed:", error);
+      const message = surfaceErrorMessage(error);
+      if (!isExpectedWindowSurfaceUnsupported(error)) {
+        console.error("lx.surface open failed:", error);
+      }
       this.setData({
-        "surfaceDemo.message": `Failed: ${error.message}`,
+        "surfaceDemo.message": `Failed: ${message}`,
         "surfaceDemo.active": false,
         "surfaceDemo.visible": false,
       });
       lx.showToast({
-        title: `open failed: ${error.message}`,
+        title: `open failed: ${message}`,
         icon: "none",
       });
     }

@@ -41,12 +41,12 @@
             "uris": [
               {
                 "scheme": "https",
-                "host": "www.lingxia.app"
+                "host": "applink.lingxia.app"
               }
             ]
           }
         ]
       }
-    ],
+    ]
   }
 }

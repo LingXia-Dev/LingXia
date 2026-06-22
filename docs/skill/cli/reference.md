@@ -34,7 +34,7 @@ lingxia new [name] [options]
 | Option | Description | Default |
 |--------|-------------|---------|
 | `-t, --project-type <type>` | Project type: `native-app` or `lxapp` | prompted |
-| `-p, --platform <platforms>` | Target platforms (comma-separated): android, ios, harmony, all | prompted |
+| `-p, --platform <platforms>` | Target platforms (comma-separated): android, ios, macos, harmony, windows, all | prompted |
 | `--package-id <id>` | Package identifier (e.g., com.example.app) | prompted |
 | `--icon <path>` | Path to app icon (PNG, recommended 1024x1024) | none |
 | `-y, --yes` | Skip confirmation prompts | false |
@@ -76,6 +76,7 @@ lingxia build [options]
 | `--platform <platforms>` | Platforms to build (comma-separated) | all detected |
 | `--all-platforms` | Build every configured platform (mutually exclusive with `--platform`) | false |
 | `--skip-native` | Skip native Rust library compilation | false |
+| `--native-feature <feature>` | Extra Cargo feature(s) for the native Rust library; repeatable or comma-separated. Env: `LINGXIA_NATIVE_FEATURES` | none |
 
 > **`--env` vs `--release`** — independent: `--env` picks the environment slot, `--release` the compiler profile; `lingxia build --env release --release` is the shippable combination. Defaults, package-id suffixing, and per-env server config: [App Project → Environment versions](../app/project.md#environment-versions).
 
@@ -96,6 +97,9 @@ lingxia build --platform android
 
 # Skip native compilation (use existing binaries)
 lingxia build --skip-native
+
+# Enable an app-owned optional native provider
+LINGXIA_NATIVE_FEATURES=cloud lingxia build
 ```
 
 When a host project has `lingxia.yaml`, `lingxia build` also prepares configured host assets. LxApp builds generate the Native client automatically when `lxapp.config.ts` contains `native`.
@@ -141,6 +145,7 @@ For native host projects, publishable Android artifacts are staged under
 | `--platform <platforms>` | Platforms to package (comma-separated) | all detected |
 | `--all-platforms` | Package every configured platform (mutually exclusive with `--platform`) | false |
 | `--skip-native` | Skip native Rust library compilation | false |
+| `--native-feature <feature>` | Extra Cargo feature(s) for the native Rust library; repeatable or comma-separated. Env: `LINGXIA_NATIVE_FEATURES` | none |
 | `--framework <framework>` | Override lxapp view framework detection: `react`, `vue`, `html` | auto-detect |
 | `--progress <mode>` | LxApp progress output mode: `task`, `plain` | default CLI output |
 
@@ -180,6 +185,7 @@ Behavior depends on the current project:
 | `--release` | Release build (optimized) | false (debug) |
 | `--env <env>` | Build environment: `developer` (or `dev`), `preview`, `release` | `developer` |
 | `--skip-native` | Skip native Rust library compilation | false |
+| `--native-feature <feature>` | Extra Cargo feature(s) for the native Rust library; repeatable or comma-separated. Env: `LINGXIA_NATIVE_FEATURES` | none |
 | `--abis <abis>` | Android ABIs (comma-separated): `arm64-v8a`, `armeabi-v7a` | auto (`arm64-v8a`) |
 | `--macos-arch <arch>` | macOS build architecture: `arm64`, `x86_64` (must match host for local app dev) | host arch |
 | `--framework <framework>` | Override lxapp view framework detection: `react`, `vue`, `html` | auto-detect |
@@ -223,6 +229,7 @@ lingxia install [options]
 |--------|-------------|---------|
 | `-a, --artifact <path>` | Path to artifact file (APK/HAP) | auto-detected |
 | `-d, --device <id>` | Target device ID | auto-detect |
+| `--platform <platform>` | Target platform (android, ios, harmony) | auto-detect |
 | `--reinstall` | Reinstall app by uninstalling existing one first (best effort) | false |
 | `--quiet` | Suppress progress UI output (useful for automation) | false |
 
@@ -359,10 +366,10 @@ lingxia publish --token <token> [options]
 export LINGXIA_AUTH_TOKEN=lx_dev_your_token
 
 # Publish lxapp (auto-detected from lxapp.json; packages current project automatically)
-lingxia publish --release-type developer
+lingxia publish --env developer
 
 # Publish preview build
-lingxia publish --release-type preview
+lingxia publish --env preview
 
 # Publish lxplugin (auto-detected from lxplugin.json)
 lingxia publish --lingxia-server http://localhost:8080

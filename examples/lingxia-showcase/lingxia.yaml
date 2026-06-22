@@ -43,11 +43,11 @@ features:
   appService: true
   devtools: false
 
-shell:
+browser:
   # In-monorepo dev — point at SDK source.
   # External apps omit this to use the npm default.
   webui:
-    path: ../../crates/lingxia-shell/webui
+    path: ../../crates/lingxia-browser-shell/webui
 
 capabilities:
   notifications: true
@@ -68,6 +68,10 @@ surfaces:
     render: lxapp
     role: main
     launch: true
+    tray:
+      icon: icons/tray.svg
+      label: LingXia
+      action: activate
   - id: lingxia-chat
     render: lxapp
     role: aside
@@ -79,8 +83,8 @@ surfaces:
     render: native
     role: aside
     edge: bottom
-    platforms: [macos, windows]   # terminal is desktop-only
-    sidebar: {}          # built-in terminal icon comes from the host; omit to use it
+    platforms: [macos, windows] # terminal is desktop-only
+    sidebar: {} # built-in terminal icon comes from the host; omit to use it
 
 appLinks:
   hosts:

@@ -1,8 +1,8 @@
 # App Project Configuration
 
-A LingXia app project is a native host app that embeds one home lxapp and can open bundled or runtime lxapps.
+A LingXia app project is a native host app that embeds one home lxapp and can open bundled or runtime lxapps. Its build-time config lives in `lingxia.yaml`.
 
-This page focuses on the macOS host app path because that is the current product App UI runtime. Android, iOS, and Harmony still use their platform host scaffolding, but the `ui` section below is implemented for macOS first.
+The UI is described by a flat, adaptive `surfaces:` list (see [Surfaces](#surfaces-adaptive-ui)) — you declare *what* each surface is and the Host derives the realized platform form (window / panel / sidebar / tab / tray) by screen size. macOS is the most complete runtime today; the same `surfaces:` schema feeds every platform.
 
 For lxapp page development, see [LxApp Development Guide](../lxapp/guide.md).
 For quick onboarding, see `docs/quick-start.md` (outside this skill).
@@ -34,7 +34,7 @@ my-app/
 └── lingxia-showcase/             # embedded home lxapp source
 ```
 
-- `lingxia.yaml` is the source of truth for host build metadata and macOS App UI.
+- `lingxia.yaml` is the source of truth for host build metadata and UI.
 - `lingxia build` generates runtime `app.json` and `ui.json` from `lingxia.yaml`.
 - Do not edit generated `app.json` or `ui.json` directly.
 - `app.homeAppId` controls the home app opened by default; `resources.bundles` controls bundled asset sources.
@@ -79,41 +79,33 @@ macos:
   targetName: MyApp
   executableName: MyApp
 
-ui:
-  launch:
-    initialSurface: main
-  surfaces:
-    - id: main
-      presentation:
-        kind: window
-      content:
-        kind: lxapp
-        appId: my-home
-  activators: []
-
+surfaces:
+  - id: my-home          # main screen; equals its lxapp appId
+    render: lxapp
+    role: main
+    launch: true
 ```
 
-For a native-only menu bar app, see `examples/menubar`. It uses
-`features.appService: false`, a `menuBarItem` activator, a panel root surface,
-and a `logic: false` HTML home lxapp.
+For a native-only menu-bar app, omit `launch: true` and give the main surface a
+`tray:` entry, set `features.appService: false`, and use a `logic: false` HTML
+home lxapp.
 
 ---
 
 ## Root Sections
 
-| Section | Required | macOS Status | Description |
-|---|---:|---|---|
-| `app` | Yes | Required | Host metadata used to generate runtime `app.json` |
-| `macos` | For macOS | Required for macOS builds | macOS bundle and SwiftPM target settings |
-| `ui` | For macOS product hosts | Required | App UI model used to generate `ui.json` |
-| `android` | For Android | Supported | Android host settings |
-| `ios` | For iOS | Supported | iOS host settings |
-| `harmony` | For Harmony | Supported | Harmony host settings |
-| `features` | Recommended | Supported | Native Rust compile-time feature switches |
-| `capabilities` | Recommended | Supported | Platform/runtime integrations that may initialize SDK capability flows |
-| `resources` | Recommended | Supported | Bundle asset sources copied into native app resources |
-| `shell` | When `features.shell` is true | Supported | Shell webui source configuration |
-| `storage` | Recommended | Supported | Explicit host temp/cache/data size limits |
+| Section | Required | Description |
+|---|---:|---|
+| `app` | Yes | Host metadata used to generate runtime `app.json` |
+| `macos` | For macOS | macOS bundle and SwiftPM target settings |
+| `android` / `ios` / `harmony` | Per platform | Platform host settings |
+| `surfaces` | For product hosts | Adaptive UI surface list (generates `ui.json`) |
+| `features` | Recommended | Native Rust compile-time feature switches |
+| `capabilities` | Recommended | Platform/runtime integrations that may initialize SDK capability flows |
+| `resources` | Recommended | Bundle asset sources copied into native app resources |
+| `browser` | Optional | Override the in-app browser webui (only used when `capabilities.browser: true`) |
+| `appLinks` | Optional | Universal-link / app-link hosts (see [App Links](./applinks.md)) |
+| `storage` | Recommended | Explicit host temp/cache/data size limits |
 
 ---
 
@@ -124,7 +116,7 @@ and a `logic: false` HTML home lxapp.
 | `projectName` | string | Yes | Technical project identifier. Used by native build tooling and Rust host library naming. |
 | `productName` | string | Yes | User-facing app name. |
 | `productVersion` | string | Yes | Host app version. |
-| `platforms` | string[] | Yes | Enabled platforms, for example `macos`, `android`, `ios`, `harmony`. |
+| `platforms` | string[] | Yes | Enabled platforms, for example `macos`, `android`, `ios`, `harmony`, `windows`. |
 | `homeAppId` | string | Yes | Home app id opened by default. |
 | `lingxiaId` | string | No | Logical publishing ID, used by app publishing flows. |
 | `lingxiaServer` | string \| map | No | LingXia server base URL paired with `lingxiaId`. Single string applies to every env, or per-env map (see Environment versions). |
@@ -202,48 +194,51 @@ The build-time plumbing per platform (Android Gradle properties, iOS bundle id r
 | Field | Type | Default | Description |
 |---|---|---:|---|
 | `appService` | bool | `true` | Enables JS/TS AppService runtime support. Set `false` for native-only hosts; logic-enabled lxapps will be rejected. |
-| `shell` | bool | `false` | Enables product shell/browser chrome: browser, downloads, settings, panels. This can be used by native-only hosts. |
 | `devtools` | bool | `false` | Compiles devtools hooks into the host. `lingxia dev` may temporarily enable it without editing YAML. |
 
 `-t lxapp` projects always require an AppService-capable host. `-t native-app` projects may set `appService: false` when they only need native-hosted UI and host APIs.
+
+The browser, terminal, and HTTP-proxy runtime features are **not** set here — they are derived from the [`capabilities`](#capabilities-section) below.
 
 ---
 
 ## `capabilities` Section
 
-`capabilities` is for platform/runtime integrations that must be predeclared before the SDK auto-enables them. Do not list ordinary SDK APIs such as camera here; those should request permission only when called.
+`capabilities` is for platform/runtime integrations that must be predeclared before the SDK auto-enables them. Each one toggles the corresponding native runtime feature at build. Do not list ordinary SDK APIs such as camera here; those request permission only when called.
 
 | Field | Type | Default | Description |
 |---|---|---:|---|
 | `notifications` | bool | `false` | Enables push/notification integration where supported. iOS/Harmony SDK startup may request notification permission and fetch a push token. |
-| `terminal` | bool | `false` | Enables the macOS terminal runtime. When true, the CLI auto-generates a bottom `terminal` App UI attach panel and sidebar activator if they are not already declared. |
+| `browser` | bool | `false` | Enables the in-app browser — its newtab / settings / downloads pages and browser shell runtime. Cross-platform. Bundles the browser webui (override it via the [`browser`](#browser-section) section). |
+| `terminal` | bool | `false` | Enables the built-in terminal runtime. Required before a `render: native` `terminal` surface can be declared. |
+| `proxy` | bool | `false` | Enables the in-app browser's HTTP proxy (desktop). Requires `browser`. |
 
 ---
 
-## `shell` Section
+## `browser` Section
 
-`shell` is used only when `features.shell: true`. Normal apps can omit it and use the SDK default shell webui. Repo development can point to a local checkout; external apps should use the package form.
+`browser` overrides the in-app browser webui, used only when `capabilities.browser: true`. Normal apps omit it and use the SDK default. Repo development can point at a local checkout; external apps use the package form.
 
 ```yaml
-shell:
+browser:
   webui:
-    package: '@lingxia/shell-webui'
+    package: '@lingxia/browser-shell-webui'
     version: '0.5.1'
 ```
 
 | Field | Type | Required | Description |
 |---|---|---:|---|
-| `webui.path` | string | One of path/package | Project-relative path to a shell webui lxapp source tree. The CLI builds it. |
-| `webui.package` | string | One of path/package | npm package containing prebuilt shell webui `lxapp.json` and `dist/`. |
+| `webui.path` | string | One of path/package | Project-relative path to a browser shell webui lxapp source tree. The CLI builds it. |
+| `webui.package` | string | One of path/package | npm package containing prebuilt browser shell webui `lxapp.json` and `dist/`. |
 | `webui.version` | string | With package | npm package version. If omitted, the CLI version is used. |
 
-Do not use `app.homeAppId` for shell internals. `app.homeAppId` is the product home app; `shell.webui` is the shell/browser UI asset.
+Do not use `app.homeAppId` for browser internals. `app.homeAppId` is the product home app; `browser.webui` is the browser UI asset.
 
 ---
 
 ## `resources` Section
 
-`resources.bundles` declares lxapp asset sources bundled into the native host. It does not decide what the app opens; `app.homeAppId` and `ui.surfaces[].content.appId` do that.
+`resources.bundles` declares lxapp asset sources bundled into the native host. It does not decide what the app opens; `app.homeAppId` and the `surfaces[]` ids do that.
 
 | Field | Type | Required | Description |
 |---|---|---:|---|
@@ -262,14 +257,11 @@ resources:
       appId: lingxia-showcase
       path: lingxia-showcase
     - type: lxapp
-      appId: app.lingxia.browser
-      package: '@lingxia/shell-webui'
-      version: '0.5.1'
-    - type: lxapp
       appId: lingxia-chat
+      path: ../lingxia-chat
 ```
 
-If a bundle entry has only `type` and `appId`, it declares the appId but does not bundle local assets; the runtime/update provider must make it available.
+If a bundle entry has only `type` and `appId`, it declares the appId but does not bundle local assets; the runtime/update provider must make it available. SDK-reserved appIds (e.g. `app.lingxia.browser`) are not listed here — use `browser.webui.*` instead.
 
 ---
 
@@ -299,375 +291,93 @@ If `targetName` or `executableName` are omitted, the CLI tries reasonable defaul
 
 ---
 
-## macOS App UI
+## Surfaces (adaptive UI)
 
-The `ui` section describes product-level macOS UI: windows, panels, and native chrome entry points.
+A host app's UI is a flat list under top-level `surfaces:`. You declare *what* each surface is and *how it relates* to the others; the Host derives the realized platform form (window / panel / sidebar / tab / tray) from screen size at runtime — there are **no** per-platform `macos:` / `windows:` UI blocks.
 
-`Lingxia.quickStart()` loads bundled `app.json` and `ui.json`, initializes the runtime, creates the macOS shell window, and then applies this App UI model.
+`lingxia build` compiles `surfaces:` into the internal `ui.json` the runtime consumes. Do not hand-write `ui.json`.
 
-The model has three parts:
-
-- `launch`: startup behavior.
-- `surfaces`: UI containers.
-- `activators`: native entry points that operate on surfaces.
-
-### Important Boundary
-
-Settings and Downloads are built-in shell/browser entries. Do not duplicate them in `ui.activators`.
-
-When the macOS native host is built with the `shell` feature, the shell provides built-in Settings and Downloads chrome. The example app should configure only product-specific entries such as Browser/Assistant panels.
-
-### `launch`
-
-```yaml
-ui:
-  launch:
-    initialSurface: main
-```
+### Surface fields
 
 | Field | Type | Required | Description |
 |---|---|---:|---|
-| `initialSurface` | string | Yes | Surface opened first. Must reference `ui.surfaces[].id`. |
-| `openOnLaunch` | bool | No | Defaults to open-on-launch behavior. Set `false` for menu-bar style apps. |
+| `id` | string | Yes | Unique surface id. For `render: lxapp` it doubles as the lxapp `appId` (the surface is opened by id). |
+| `render` | `lxapp` \| `native` | No (`lxapp`) | `lxapp` = a web page surface; `native` = a host-native surface (only the built-in `terminal` today). |
+| `role` | `main` \| `aside` | Yes | `main` = a switchable primary surface; `aside` = a docked companion. (`float` is reserved, not yet supported.) |
+| `launch` | bool | No | Open on start. At most one `main` may set `launch: true` (the initial surface). Omit on all mains for a tray-launched app. |
+| `edge` | `left`\|`right`\|`top`\|`bottom` | For `aside` | Which edge the aside docks to. |
+| `sidebar` | object | No | Adds a sidebar entry that toggles this surface: `{ icon?, label?, section? }`. `section`: `top` (default) or `bottom` (footer / utility entries). |
+| `tray` | object | No | Adds a tray / menu-bar entry: `{ icon?, label?, action? }`. `action`: `toggle` (visible→hide, hidden→show) or `activate` (show + bring to front). |
+| `platforms` | string[] | No | Availability filter — `macos`, `windows`, `ios`, `android`, `harmony`. Empty = all platforms. |
 
-For menu-bar apps, use `openOnLaunch: false` and add a `menuBarItem` activator that toggles a panel anchored to the activator.
+Icons (`sidebar.icon`, `tray.icon`) are host-root-relative SVG source paths — see [Icon Paths](#icon-paths).
 
-For cross-platform product config, prefer top-level `surfaces[].tray` instead
-of writing `ui.activators` directly. `surfaces[].tray.action` accepts only
-`toggle` and `activate`; the CLI maps those authoring actions to the macOS App
-UI runtime contract.
+### Rules (enforced at build)
 
-### `surfaces`
+- Exactly one `main` surface is required.
+- At most one `main` may set `launch: true`; `launch` is invalid on a non-main surface.
+- `edge` is required on `aside` and invalid on `main`.
+- `role: main` cannot use `render: native`.
+- `render: native` supports only `id: terminal`, requires `capabilities.terminal: true`, and its `edge` must be `top` or `bottom`.
+- Surface ids must be unique.
+- `role: float` is rejected (reserved).
 
-A surface is a visible macOS container.
-
-One sentence model: **a surface defines what can be shown, presentation defines
-how it is shown, and activators define who opens it.**
-
-Current macOS supported presentation kinds:
-
-| Kind | Status | Description |
-|---|---|---|
-| `window` | Supported | Normal app window. |
-| `panel` | Supported | Floating panel. Use `anchor: activator` to position it from the entry point that opened it. |
-| `attachPanel` | Supported | Panel attached to the single root window/panel. |
-| `embedded` | Rejected | Not implemented in macOS runtime. |
-
-Current macOS rules:
-
-- Exactly one root surface is required.
-- The root surface must be `window` or `panel`.
-- Menu-bar panels use `presentation.kind: panel` and `presentation.anchor: activator`; when opened by a `menuBarItem`, the activator is the menu-bar icon.
-- `attachPanel` must set `presentation.attachTo`.
-- `attachPanel.attachTo` must reference the root surface.
-- `attachPanel.edge` must be `leading`, `trailing`, or `bottom`.
-- `attachPanel.edge: top` is rejected.
-- The stable `content.kind` today is `lxapp`.
-- Each `lxapp` surface must currently use a unique `content.appId`.
-
-Common presentation fields:
-
-| Field | Applies To | Description |
-|---|---|---|
-| `kind` | all surfaces | `window`, `panel`, or `attachPanel` in the product model. Current runtime may still map this to platform-specific styles internally. |
-| `anchor` | `panel` | Optional anchor. Use `activator` to position the panel from the native entry point that opened it. |
-| `size.width` | `window`, `panel` | Optional initial width. Omit it to use the shell's native default. |
-| `size.height` | `window`, `panel` | Optional initial height. Omit it to use the shell's native default. |
-| `resizable` | `window`, `panel` | Whether the native window can resize. Defaults to `true`. |
-| `showTrafficLights` | `window`, `panel` | Whether macOS traffic lights are shown. Defaults to `true` for `window` and `false` for menu-bar panels. |
-| `attachTo` | `attachPanel` | Parent/root surface id. |
-| `edge` | `attachPanel` | `leading`, `trailing`, or `bottom`. |
-
-Content fields:
-
-| Field | Required | Description |
-|---|---:|---|
-| `kind` | Yes | Use `lxapp` or `terminal`. `terminal` is currently macOS-only and must be used as a bottom `attachPanel`. |
-| `appId` | For `lxapp` | Lxapp appId to open in this surface. |
-| `path` | No | Initial route/path for `lxapp` content. |
-
-Example root window:
+### Example — main + assistant aside + terminal
 
 ```yaml
+capabilities:
+  browser: true
+  terminal: true
+
 surfaces:
-  - id: main
-    presentation:
-      kind: window
-    content:
-      kind: lxapp
-      appId: my-home
-```
-
-`attachPanel` is supported by the macOS runtime. If the panel uses another lxapp, list it in `resources.bundles` for local bundling, or let the runtime/update provider fetch it.
-
-Do not define separate `settings` or `downloads` surfaces for the built-in browser app. Those pages are opened by built-in shell controls.
-
-### `activators`
-
-An activator is a native entry point that performs an action on a surface.
-
-Supported macOS activator kinds:
-
-| Kind | Scope | Status | Rules |
-|---|---|---|---|
-| `menuBarItem` | App-level | Supported | Must not set `hostSurface`. |
-| `appActivation` | App-level | Supported | Must not set `hostSurface`. Runs when the app becomes active. |
-| `sidebarItem` | Surface-owned | Supported | Must set `hostSurface`. Rendered in shell sidebar chrome. |
-| `toolbarItem` | Surface-owned | Supported | Must set `hostSurface`. Rendered in navigation toolbar chrome. |
-| `titlebarItem` | Surface-owned | Supported | Must set `hostSurface`. Rendered as a titlebar accessory action strip. |
-
-`trayItem` is not a macOS App UI activator.
-
-For tray/status-bar entry points declared through top-level `surfaces[].tray`,
-write `action: toggle` or `action: activate`. The `toggleSurface` /
-`openSurface` names below are the low-level macOS App UI action names generated
-by the CLI or used by hand-written `ui.activators`.
-
-Supported action kinds:
-
-| Action | Description |
-|---|---|
-| `toggleSurface` | If the surface is visible, hide it; otherwise show it. |
-| `openSurface` | Open the surface; if it already exists, show it and bring it to front. |
-
-All current App UI actions require:
-
-```yaml
-action:
-  kind: toggleSurface
-  surface: someSurfaceId
-```
-
-Examples:
-
-```yaml
-activators:
-  - id: homeSidebar
-    kind: sidebarItem
-    hostSurface: main
-    label: Home
-    icon: icons/home.svg
-    action:
-      kind: openSurface
-      surface: main
-```
-
-
-```yaml
-activators:
-  - id: menuBar
-    kind: menuBarItem
-    label: My App
-    icon: icons/menu.svg
-    action:
-      kind: toggleSurface
-      surface: main
-```
-
-Surface-owned activators are visible only while their `hostSurface` is visible.
-
-### Assistant Panel Example
-
-This shape uses one main app window plus an attached AI assistant panel. Settings and Downloads remain shell built-ins. `lingxia-chat` can be bundled locally through `resources.bundles`, or omitted there and fetched by runtime/update flow.
-
-```yaml
-ui:
-  launch:
-    initialSurface: main
-  surfaces:
-    - id: main
-      presentation:
-        kind: window
-      content:
-        kind: lxapp
-        appId: lingxia-showcase
-    - id: assistant
-      presentation:
-        kind: attachPanel
-        attachTo: main
-        edge: trailing
-      content:
-        kind: lxapp
-        appId: lingxia-chat
-  activators:
-    - id: assistantSidebar
-      kind: sidebarItem
-      hostSurface: main
+  - id: my-home          # main screen; equals its lxapp appId
+    render: lxapp
+    role: main
+    launch: true
+    tray:
+      icon: icons/tray.svg
+      label: My App
+      action: activate
+  - id: assistant        # right-docked companion lxapp
+    render: lxapp
+    role: aside
+    edge: right
+    sidebar:
+      icon: icons/chat.svg
       label: AI Chat
-      icon: lingxia-chat/chat.svg
-      action:
-        kind: toggleSurface
-        surface: assistant
-
+  - id: terminal         # built-in native terminal (needs capabilities.terminal)
+    render: native
+    role: aside
+    edge: bottom
+    platforms: [macos, windows]   # desktop-only
+    sidebar: {}                   # built-in terminal icon — omit `icon` to use it
 ```
 
-### Terminal Panel (Native Host, Shared Rust Engine)
+Each `render: lxapp` surface needs its assets bundled — list its `id` (= appId) in `resources.bundles`, or let the runtime/update flow provide it.
 
-The App UI runtime supports a native terminal surface that can be opened from product chrome and shown as a bottom panel. macOS is the first host, but the runtime boundary is designed for Windows to reuse the same Rust terminal engine.
+### Menu-bar / tray-only app
 
-Current scope and limits:
+Omit `launch: true` on the main surface and give it a `tray:` entry. The app starts without opening a window; the tray / menu-bar entry opens it. Use `action: toggle` to hide on re-click, or `action: activate` to always show and focus. A tray-only app can run as an accessory-style menu-bar app.
 
-- macOS first; Windows should attach to the same Rust session/snapshot API instead of reimplementing terminal semantics.
-- `content.kind: terminal` only.
-- `presentation.kind: attachPanel` only.
-- `presentation.edge: bottom` only.
-- `content.backend` is not product config. If present, validation rejects it.
-- Rust owns terminal sessions, PTY/conpty transport, `libghostty-vt` terminal semantics, themes, and the stable snapshot/input protocol.
-- Platform SDKs own only native view rendering, focus/input event capture, clipboard/menu integration, and host UX such as tabs/splits/panel lifecycle.
+### Terminal surface
 
-Ghostty preparation is handled by `crates/lingxia-terminal/build.rs`. Terminal builds use a pinned Ghostty git checkout and build `libghostty-vt`; the build script does not fetch release tarballs.
+The built-in terminal is a native aside (`render: native`, `id: terminal`, `edge: top | bottom`) gated by `capabilities.terminal`. A bare `sidebar: {}` gives it the host's built-in terminal icon (you don't supply one).
 
-```bash
-cargo build -p lingxia --features shell-runtime
-```
-
-Supported build-time inputs:
-
-| Environment | Description |
-|---|---|
-| `LINGXIA_GHOSTTY_SOURCE_DIR=/path/to/ghostty` | Uses an existing local checkout/source tree. |
-| `LINGXIA_GHOSTTY_REV=<rev>` | Overrides the pinned Ghostty git revision. If omitted, LingXia uses the pinned revision in `crates/lingxia-terminal/build.rs`. |
-| `LINGXIA_GHOSTTY_REPO=<url>` | Overrides the git repo used with `LINGXIA_GHOSTTY_REV`. |
-| `LINGXIA_GHOSTTY_ZIG=/path/to/zig` | Overrides the `zig` executable. |
-| `LINGXIA_GHOSTTY_ZIG_ARGS="..."` | Appends extra `zig build` arguments. |
-
-Target behavior:
-
-- A terminal icon in product chrome toggles the terminal surface.
-- Terminal surface is attached to the main window with `attachPanel.edge: bottom`.
-- The terminal workspace supports multi-tab sessions.
-- Each tab supports pane split in `left`, `right`, `up`, and `down` directions.
-- Hiding the surface should preserve terminal sessions.
-
-Example shape:
-
-```yaml
-ui:
-  launch:
-    initialSurface: main
-  surfaces:
-    - id: main
-      presentation:
-        kind: window
-      content:
-        kind: lxapp
-        appId: lingxia-showcase
-    - id: terminal
-      presentation:
-        kind: attachPanel
-        attachTo: main
-        edge: bottom
-        size:
-          height: 320
-      content:
-        kind: terminal
-  activators:
-    - id: terminalSidebar
-      kind: sidebarItem
-      hostSurface: main
-      label: Terminal
-      icon: icons/terminal.svg
-      action:
-        kind: toggleSurface
-        surface: terminal
-```
-
-Engine/platform boundary:
-
-- `crates/lingxia-terminal` is the product terminal engine. Public APIs use `terminal_*` naming; `portable-pty` is an internal transport detail.
-- The engine emits JSON snapshots containing grid size, cells, grapheme text, colors, attributes, cursor state, title, alternate-screen state, and lifecycle state.
-- macOS renders snapshots into `NSView`; Windows should render the same snapshots into its native view while sharing session create/write/resize/close behavior.
-- Do not add backend selectors to `lingxia.yaml`; backend choice is owned by the runtime.
-
-Implementation notes for native hosts:
-
-- Terminal content is mounted as the platform-native terminal view (`NSView` on macOS, Windows-native view later) into the attachPanel container.
-- Keep terminal runtime state in native host scope: `surface -> tabs -> split tree -> panes`.
-- Drive split layouts with native split containers and map each pane to one terminal session.
-- Add native terminal commands for: new tab, close tab, split left/right/up/down, and focus movement between panes.
-
-Future phases:
-
-1. Phase 1: bottom terminal surface with single tab/single pane.
-2. Phase 2: multi-tab support with stable session lifecycle.
-3. Phase 3: four-direction split and pane focus/resize behavior.
-
-### Menu Bar Panel Example
-
-This example uses a single declarative `panel` surface opened by the native
-menu-bar icon. The current macOS runtime supports exactly one root
-`window`/`panel` surface, so this example does not also declare a separate main
-window.
-
-`menuBarItem` is the native entry point. `presentation.kind: panel` describes
-how the `menu` surface is displayed. `presentation.anchor: activator` means the
-panel is positioned from whichever native entry point opened it; in this example
-that entry point is the menu-bar icon.
-
-```yaml
-ui:
-  launch:
-    initialSurface: menu
-    openOnLaunch: false
-  surfaces:
-    - id: menu
-      presentation:
-        kind: panel
-        anchor: activator
-        resizable: false
-        showTrafficLights: false
-        size:
-          width: 360
-          height: 480
-      content:
-        kind: lxapp
-        appId: monitor-home
-        path: pages/menubar/index
-  activators:
-    - id: status
-      kind: menuBarItem
-      label: Monitor
-      icon: icons/monitor.svg
-      action:
-        kind: toggleSurface
-        surface: menu
-```
-
-Runtime behavior:
-
-- If the app only has menu-bar activators and no app-activation activator, it can run as an accessory-style menu-bar app.
-- Clicking the menu-bar icon toggles the `menu` surface.
-- The `menu` surface renders `monitor-home/pages/menubar/index`.
-- The string `menu` is a surface ID, not a page path.
-- A menu-bar anchored panel is positioned from the source menu-bar item.
-
-### App Activation Example
-
-Use `appActivation` when clicking the Dock icon or activating the app should focus/open a known surface.
-
-```yaml
-activators:
-  - id: activateMain
-    kind: appActivation
-    action:
-      kind: openSurface
-      surface: main
-```
-
-If an app has `appActivation` activators, the macOS runtime uses regular app activation behavior.
+It shares a single cross-platform Rust engine (`crates/lingxia-terminal`, `libghostty-vt`) that owns sessions, PTY transport, terminal semantics, and the snapshot/input protocol; platform SDKs only render snapshots into a native view and capture input. Backend selection is owned by the runtime — there is no backend selector in `lingxia.yaml`. Engine build internals (Ghostty pinning, `LINGXIA_GHOSTTY_*` env vars in `crates/lingxia-terminal/build.rs`) are framework-contributor territory.
 
 ---
 
 ## Icon Paths
 
-`ui.activators[].icon` is a source icon path relative to the host project root.
+Surface `sidebar.icon` / `tray.icon` are source icon paths relative to the host project root.
 
-Current macOS App UI supports SVG source icons only. During `lingxia build`, the CLI validates each source icon, converts it to a PDF resource, copies it into generated `icons/`, and rewrites the generated `ui.json` to reference that generated resource path.
+The current UI supports SVG source icons only. During `lingxia build`, the CLI validates each source icon, converts it to a platform resource, copies it into generated `icons/`, and rewrites the generated `ui.json` to reference that generated resource path.
 
 Example:
 
 ```yaml
-icon: icons/browser.svg
+sidebar:
+  icon: icons/browser.svg
 ```
 
 Validation rules:
@@ -680,13 +390,7 @@ Validation rules:
 | SVG viewport size | 16x16 px through 512x512 px |
 | Aspect ratio | Must be square, within a small tolerance |
 
-Generated macOS resource paths look like:
-
-```text
-icons/browser-<hash>.pdf
-```
-
-Do not reference generated lxapp runtime assets such as `app.lingxia.browser/public/LingXia.png` for native chrome icons. Use a host-root-relative SVG source file instead; it is fine for that source file to live inside the home lxapp project, because the CLI converts and copies it into native host resources.
+Do not reference generated lxapp runtime assets such as `app.lingxia.browser/public/LingXia.png`. Use a host-root-relative SVG source file instead; it is fine for that file to live inside the home lxapp project, because the CLI converts and copies it into native host resources.
 
 ---
 
@@ -695,10 +399,10 @@ Do not reference generated lxapp runtime assets such as `app.lingxia.browser/pub
 During `lingxia build`, the CLI generates platform resources:
 
 - `app.json`: runtime app metadata.
-- `ui.json`: macOS App UI structure.
-- `icons/*.pdf`: generated macOS native chrome icons.
+- `ui.json`: the UI structure compiled from `surfaces:`.
+- `icons/*`: generated native chrome icons.
 - bundled lxapp directories from `resources.bundles`.
-- bundled shell webui directory when `features.shell: true`.
+- bundled browser webui directory when `capabilities.browser: true`.
 - `bridge-runtime.js`.
 
 For macOS, these are copied into the SwiftPM target resource directory, usually `macos/Sources/<targetName>/Resources` unless the target declares a custom `path`.
@@ -718,9 +422,8 @@ lingxia build --platform macos --framework vue
 The macOS host build does the following:
 
 - Builds the configured home lxapp resource bundle.
-- Generates `app.json` and `ui.json`.
-- Builds the Rust host static library.
-- Enables the native `shell` feature for macOS builds by default.
+- Generates `app.json` and `ui.json` from `surfaces:`.
+- Builds the Rust host static library with the native features derived from `features` + `capabilities` (e.g. `capabilities.browser` adds the browser/shell runtime, `capabilities.terminal` the terminal runtime).
 - Builds the SwiftPM macOS app.
 - Packages the `.app` under `macos/.lingxia/`.
 
@@ -730,23 +433,23 @@ Example output:
 macos/.lingxia/My App.app
 ```
 
-If `--skip-native` is used, SwiftPM links an existing Rust static library. That can leave runtime capabilities stale, including shell/browser capability bits. For App UI debugging, prefer a normal build without `--skip-native`.
+If `--skip-native` is used, SwiftPM links an existing Rust static library. That can leave runtime capability bits stale (including browser/terminal). For UI debugging, prefer a normal build without `--skip-native`.
 
 ---
 
 ## Common Pitfalls
 
-- Adding Settings or Downloads to `ui.activators`: these are built-in shell entries, not product UI activators.
-- Adding `trayItem` to macOS `ui.activators`: it is not a macOS App UI activator.
-- Defining multiple surfaces with the same `content.appId`: current macOS runtime rejects this.
-- Using `attachPanel` without `attachTo` or `edge`.
-- Attaching a panel to another panel instead of the root surface.
-- Using `attachPanel.edge: top`, which is not supported yet.
-- Expecting hidden surfaces to destroy WebViews.
-- Using PNG or generated lxapp runtime images for `ui.activators[].icon`; App UI icons must be host-root-relative SVG source files.
-- Defining `content.kind: terminal` outside `attachPanel` or with non-`bottom` edge; current terminal surfaces are bottom attach panels only.
-- Adding terminal backend selectors to product config; the runtime owns backend selection.
-- Editing generated `app.json` or `ui.json`.
+- Hand-writing `ui.json` or editing generated `app.json` / `ui.json` — author `surfaces:` in `lingxia.yaml`; they are regenerated every build.
+- `homeAppId` not matching any `resources.bundles[].appId` — build fails or the wrong app launches.
+- Declaring more than one `main` with `launch: true`, or `launch: true` on an `aside`.
+- An `aside` without an `edge`, or an `edge` on a `main`.
+- `render: native` on anything but `id: terminal`, or a terminal surface without `capabilities.terminal: true`, or a terminal `edge` other than `top`/`bottom`.
+- Using `role: float` — reserved, not yet supported.
+- Reusing one lxapp `appId` across multiple surfaces.
+- Adding Settings or Downloads as their own surfaces — those are built-in browser pages, opened by built-in chrome when `capabilities.browser` is on.
+- Expecting browser chrome without `capabilities.browser: true` — browser shell UI is opt-in.
+- Using PNG or generated lxapp runtime images for surface icons; icons must be host-root-relative SVG source files.
+- Expecting hidden surfaces to destroy WebViews — hiding preserves state.
 - Running an older `lingxia` binary from `PATH` after changing config schema or CLI validation.
 
 ---
@@ -754,21 +457,20 @@ If `--skip-native` is used, SwiftPM links an existing Rust static library. That 
 ## Pre-ship checklist
 
 - [ ] `lingxia.yaml` validates: every required platform section present; `homeAppId` resolvable to a `resources.bundles[].appId`.
+- [ ] Exactly one `main` surface; every `aside` has an `edge`; terminal surfaces have `capabilities.terminal: true`.
 - [ ] `features.appService` matches the embedded lxapp's logic mode.
 - [ ] All native routes return `lingxia::Result<T>` with `Serialize` outputs.
 - [ ] `HostAddon` registers every route and extension; FFI exports present for each target platform.
 - [ ] `lingxia doctor` passes; `lingxia dev` boots on a real/simulated device.
 
-## Out Of Scope / Not Implemented In macOS App UI
+## Out Of Scope / Not Implemented Yet
 
-This page intentionally does not define product behavior for:
+The surface model intentionally does not yet define:
 
 - splash / launch screens — LingXia does not provide them; host apps own their launch UX
-- multiple root windows
-- embedded native host surfaces
-- attach panels nested under other panels
-- top-attach panels
-- reusing one lxapp appId across multiple surfaces
-- page-owned App UI APIs for toggling or closing surfaces from lxapp content
-- terminal surfaces outside macOS `attachPanel` bottom shape
-- terminal backend selection in App UI config
+- multiple `main` surfaces open as separate top-level windows simultaneously
+- `role: float` popups
+- asides nested under other asides
+- reusing one lxapp `appId` across multiple surfaces
+- native (`render: native`) surfaces other than the built-in `terminal`
+- terminal backend selection in config

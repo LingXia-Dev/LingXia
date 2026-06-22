@@ -14,7 +14,7 @@
         "www.deepseek.com"
       ]
     },
-    "privileges": []
+    "privileges": ["downloads"]
   },
   "pages": [
     {
