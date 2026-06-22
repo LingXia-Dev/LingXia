@@ -141,6 +141,7 @@ impl TempKeychain {
             .suffix(".pem")
             .tempfile()
             .context("Failed to create key temp file")?;
+        let key_pem = keychain_importable_private_key_pem(key_pem)?;
         key_file
             .write_all(key_pem.as_bytes())
             .context("Failed to write private key")?;
@@ -191,6 +192,26 @@ impl TempKeychain {
             ])
             .output();
     }
+}
+
+fn keychain_importable_private_key_pem(key_pem: &str) -> Result<String> {
+    if key_pem.contains("-----BEGIN RSA PRIVATE KEY-----") {
+        return Ok(key_pem.to_string());
+    }
+
+    if key_pem.contains("-----BEGIN PRIVATE KEY-----") {
+        use rsa::pkcs1::EncodeRsaPrivateKey;
+        use rsa::pkcs8::DecodePrivateKey;
+
+        let key = rsa::RsaPrivateKey::from_pkcs8_pem(key_pem)
+            .context("Failed to parse cached PKCS#8 private key")?;
+        let pem = key
+            .to_pkcs1_pem(rsa::pkcs1::LineEnding::LF)
+            .context("Failed to convert private key for keychain import")?;
+        return Ok(pem.to_string());
+    }
+
+    Ok(key_pem.to_string())
 }
 
 impl Drop for TempKeychain {
