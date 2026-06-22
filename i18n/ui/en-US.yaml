@@ -4,19 +4,10 @@ common:
   cancel: "Cancel"
   ok: "OK"
   loading: "Loading..."
-  retry: "Retry"
   back: "Back"
-  save: "Save"
   delete: "Delete"
-  edit: "Edit"
-  settings: "Settings"
-  success: "Success"
-  warning: "Warning"
   done: "Done"
   close: "Close"
-  share: "Share"
-  home: "Home"
-  auto: "Auto"
 
 # Capsule Menu
 capsule:
@@ -36,8 +27,6 @@ camera:
   switch_failed: "Failed to switch camera"
   access_denied: "Cannot access camera"
   init_failed: "Camera initialization failed"
-  tap_to_record: "Tap to record"
-  tap_to_stop: "Tap to stop"
   cancelling: "Cancelling..."
   max_duration_reached: "Maximum recording time reached"
   record_video: "Record video"
@@ -63,10 +52,6 @@ album:
 video:
   quality: "Quality"
   speed: "Speed"
-
-# Document
-document:
-  pdf_page_preview: "PDF page preview"
 
 # File Chooser
 file_chooser:
@@ -97,11 +82,7 @@ date:
 
 # App Update
 update:
-  title: "New Version Available"
-  message: "A new version is ready. Install now?"
-  confirm: "Download & Install"
   downloading: "Downloading Update"
-  download_failed: "Download failed. Please try again."
 
 # Terminal panel (native Windows shell terminal)
 terminal:
@@ -114,7 +95,6 @@ terminal:
   split_up: "Split Up"
   new_tab: "New Tab"
   close_pane: "Close Pane"
-  close_tab: "Close Tab"
   change_title: "Change Tab Title…"
   reset: "Reset Terminal"
   read_only: "Terminal Read-only"
