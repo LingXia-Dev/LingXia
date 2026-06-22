@@ -2953,7 +2953,7 @@ surfaces:
                     label: None,
                     action: None,
                 }),
-                platforms: Vec::new(),
+                platforms: None,
             },
             SurfaceDecl {
                 id: "chat".into(),
@@ -2967,7 +2967,7 @@ surfaces:
                     label: None,
                     action: None,
                 }),
-                platforms: Vec::new(),
+                platforms: None,
             },
         ];
 
