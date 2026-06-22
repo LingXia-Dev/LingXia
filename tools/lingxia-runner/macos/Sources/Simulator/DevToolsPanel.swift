@@ -252,7 +252,15 @@ class DevToolsPanel: NSView {
     // MARK: - Info tab
 
     func updateInfo(device: MobileDeviceSize, path: String?) {
-        let typeLabel = device.isDesktop ? "Desktop / Tablet" : "Phone"
+        let typeLabel: String
+        switch device.shape {
+        case .phone:
+            typeLabel = "Phone"
+        case .pad:
+            typeLabel = "Pad"
+        case .desktop:
+            typeLabel = "Desktop"
+        }
         let info = """
         Device    \(device.displayName)
         Type      \(typeLabel)

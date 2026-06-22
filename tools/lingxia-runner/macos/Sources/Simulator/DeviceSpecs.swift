@@ -6,6 +6,14 @@ private struct RunnerDevicesManifest: Decodable {
     let devices: [MobileDeviceSize]
 }
 
+/// High-level runner host shape. This is intentionally not a raw mirror of the
+/// manifest group: the UI host changes by shape, not by arbitrary device ids.
+public enum RunnerDeviceShape: Equatable, Hashable, Sendable {
+    case phone
+    case pad
+    case desktop
+}
+
 /// Predefined device sizes for Runner window sizing.
 public struct MobileDeviceSize: Equatable, Hashable, Decodable, Sendable {
     public let id: String
@@ -45,9 +53,29 @@ public struct MobileDeviceSize: Equatable, Hashable, Decodable, Sendable {
         device(id: manifest.default)
     }
 
-    /// True for iPad and desktop sizes; skips phone-shell UI overlay.
-    public var isDesktop: Bool {
-        group != "phone"
+    public var shape: RunnerDeviceShape {
+        switch group {
+        case "phone":
+            return .phone
+        case "tablet", "pad":
+            return .pad
+        case "desktop":
+            return .desktop
+        default:
+            return .desktop
+        }
+    }
+
+    public var usesPhoneChrome: Bool {
+        shape == .phone
+    }
+
+    public var usesSurfaceShell: Bool {
+        shape == .pad || shape == .desktop
+    }
+
+    public var isResizableDesktop: Bool {
+        shape == .desktop
     }
 
     public var displayName: String {

@@ -10,8 +10,10 @@ public class RunnerApp {
     private static let log = OSLog(subsystem: "LingXiaRunner", category: "RunnerApp")
     
     private var windowController: SimulatorWindowController?
+    private var surfaceShellHost: RunnerSurfaceShellHost?
     private var controller: LxAppController?
     private var controllerEventsTask: Task<Void, Never>?
+    private let deviceMenu = RunnerDeviceMenu()
     private(set) var deviceSize: MobileDeviceSize = .defaultDevice
     
     private init() {}
@@ -23,19 +25,22 @@ public class RunnerApp {
     public func setDeviceSize(_ size: MobileDeviceSize) {
         self.deviceSize = size
         SimulatorWindowController.setWindowSize(size)
+        configureOpenURLHandlingForCurrentShape()
+        deviceMenu.updateSelectedDevice(size)
         os_log("Device size changed to: %@", log: Self.log, type: .info, size.displayName)
+
+        if size.usesSurfaceShell {
+            switchToSurfaceShellHost(device: size)
+        } else {
+            switchToPhoneSimulatorHost(device: size)
+        }
     }
 
     public func bind(controller: LxAppController) {
         self.controller = controller
-        os_log("Installing Runner openURL self handler", log: Self.log, type: .info)
-        RunnerSupport.Runtime.setOpenUrlHandler { [weak self] ownerAppId, ownerSessionId, url in
-            self?.handleOpenURL(
-                ownerAppId: ownerAppId,
-                ownerSessionId: ownerSessionId,
-                url: url
-            ) ?? false
-        }
+        deviceMenu.installIfNeeded()
+        deviceMenu.updateSelectedDevice(deviceSize)
+        configureOpenURLHandlingForCurrentShape()
         controllerEventsTask?.cancel()
         controllerEventsTask = Task { [weak self, controller] in
             for await event in controller.events {
@@ -59,6 +64,25 @@ public class RunnerApp {
             }
         }
     }
+
+    private func configureOpenURLHandlingForCurrentShape() {
+        if deviceSize.usesSurfaceShell {
+            RunnerSupport.Runtime.useDefaultOpenUrlHandling()
+            return
+        }
+        installPhoneOpenURLHandler()
+    }
+
+    private func installPhoneOpenURLHandler() {
+        os_log("Installing Runner phone openURL self handler", log: Self.log, type: .info)
+        RunnerSupport.Runtime.setOpenUrlHandler { [weak self] ownerAppId, ownerSessionId, url in
+            self?.handleOpenURL(
+                ownerAppId: ownerAppId,
+                ownerSessionId: ownerSessionId,
+                url: url
+            ) ?? false
+        }
+    }
     
     // MARK: - LxApp Management
     
@@ -72,18 +96,6 @@ public class RunnerApp {
             return
         }
 
-        // Check if window already exists
-        if let existingController = windowController, existingController.appId == appId {
-            let targetPath = path.isEmpty ? existingController.currentPath : path
-            RunnerSupport.Runtime.setSessionId(sessionId, for: appId)
-            RunnerSupport.Runtime.setCurrentApp(appId: appId, path: targetPath)
-            existingController.window?.makeKeyAndOrderFront(nil)
-            if !targetPath.isEmpty {
-                existingController.navigate(to: targetPath)
-            }
-            return
-        }
-
         let resolvedPath = resolveOpenPath(appId: appId, requestedPath: path, sessionId: sessionId)
         guard !resolvedPath.isEmpty else {
             os_log("Runner openLxApp rejected by Rust for %@", log: Self.log, type: .info, appId)
@@ -92,14 +104,65 @@ public class RunnerApp {
 
         RunnerSupport.Runtime.setSessionId(sessionId, for: appId)
         RunnerSupport.Runtime.setCurrentApp(appId: appId, path: resolvedPath)
-        
-        // Create new window controller
-        let controller = SimulatorWindowController(appId: appId, path: resolvedPath)
+
+        if deviceSize.usesSurfaceShell {
+            openInSurfaceShell(appId: appId, path: resolvedPath, sessionId: sessionId)
+        } else {
+            openInPhoneSimulator(appId: appId, path: resolvedPath, sessionId: sessionId)
+        }
+    }
+
+    private func openInPhoneSimulator(appId: String, path: String, sessionId: UInt64) {
+        surfaceShellHost?.hideForHostSwitch()
+        if let controller {
+            Lingxia.activate(controller: controller)
+        }
+        installPhoneOpenURLHandler()
+        RunnerSupport.Runtime.setSessionId(sessionId, for: appId)
+        RunnerSupport.Runtime.setCurrentApp(appId: appId, path: path)
+
+        if let existingController = windowController, existingController.appId == appId {
+            existingController.applyDeviceChange(deviceSize)
+            existingController.window?.makeKeyAndOrderFront(nil)
+            existingController.navigate(to: path)
+            return
+        }
+
+        let controller = SimulatorWindowController(appId: appId, path: path)
         controller.showWindow(self)
         controller.window?.makeKeyAndOrderFront(self)
         NSApp.activate(ignoringOtherApps: true)
         
         windowController = controller
+    }
+
+    private func openInSurfaceShell(appId: String, path: String, sessionId: UInt64) {
+        guard let controller else {
+            os_log("Runner controller not configured", log: Self.log, type: .error)
+            return
+        }
+
+        windowController?.detachForHostSwitch()
+        windowController = nil
+
+        if let host = surfaceShellHost {
+            host.applyDevice(deviceSize)
+            host.open(appId: appId, path: path, sessionId: sessionId)
+            return
+        }
+
+        let host = RunnerSurfaceShellHost(
+            controller: controller,
+            appId: appId,
+            path: path,
+            sessionId: sessionId,
+            device: deviceSize
+        )
+        host.onClose = { [weak self] closedHost in
+            guard self?.surfaceShellHost === closedHost else { return }
+            self?.surfaceShellHost = nil
+        }
+        surfaceShellHost = host
     }
 
     private func resolveOpenPath(appId: String, requestedPath: String, sessionId: UInt64) -> String {
@@ -129,7 +192,11 @@ public class RunnerApp {
     
     /// Navigate to path in current LxApp
     public func navigate(to path: String) {
-        windowController?.navigate(to: path)
+        handleNavigation(
+            appId: windowController?.appId ?? surfaceShellHost?.appId ?? "",
+            path: path,
+            animationType: .none
+        )
     }
 
     private func handleOpenURL(
@@ -163,6 +230,8 @@ public class RunnerApp {
     public func handleNavigation(appId: String, path: String, animationType: LxAppAnimation) {
         if windowController?.appId == appId {
             windowController?.navigate(to: path, animationType: animationType)
+        } else if let host = surfaceShellHost, host.appId == appId {
+            host.navigate(to: path, animationType: animationType)
         }
     }
     
@@ -170,6 +239,8 @@ public class RunnerApp {
     public func closeLxApp() {
         windowController?.window?.close()
         windowController = nil
+        surfaceShellHost?.shell.window?.close()
+        surfaceShellHost = nil
     }
 
     func handleWindowClosed(_ controller: SimulatorWindowController) {
@@ -180,5 +251,59 @@ public class RunnerApp {
 
     func discardSession(appId: String, sessionId: UInt64) {
         _ = controller?.discardSession(appId: appId, sessionId: sessionId)
+    }
+
+    private func switchToSurfaceShellHost(device: MobileDeviceSize) {
+        guard let current = currentOpenApp() else {
+            surfaceShellHost?.applyDevice(device)
+            return
+        }
+        openInSurfaceShell(
+            appId: current.appId,
+            path: current.path,
+            sessionId: current.sessionId
+        )
+    }
+
+    private func switchToPhoneSimulatorHost(device: MobileDeviceSize) {
+        guard let current = currentOpenApp() else {
+            windowController?.applyDeviceChange(device)
+            if let controller {
+                Lingxia.activate(controller: controller)
+            }
+            installPhoneOpenURLHandler()
+            return
+        }
+
+        surfaceShellHost?.hideForHostSwitch()
+        openInPhoneSimulator(
+            appId: current.appId,
+            path: current.path,
+            sessionId: current.sessionId
+        )
+    }
+
+    private func currentOpenApp() -> (appId: String, path: String, sessionId: UInt64)? {
+        if let windowController,
+           let sessionId = RunnerSupport.Runtime.sessionId(for: windowController.appId),
+           sessionId > 0 {
+            return (windowController.appId, windowController.currentPath, sessionId)
+        }
+
+        if let surfaceShellHost {
+            surfaceShellHost.refreshCurrentPathFromRuntime()
+            if let sessionId = RunnerSupport.Runtime.sessionId(for: surfaceShellHost.appId),
+               sessionId > 0 {
+                return (surfaceShellHost.appId, surfaceShellHost.currentPath, sessionId)
+            }
+        }
+
+        if let appId = RunnerSupport.Runtime.currentAppId(),
+           let sessionId = RunnerSupport.Runtime.sessionId(for: appId),
+           sessionId > 0 {
+            return (appId, RunnerSupport.Runtime.currentPath(), sessionId)
+        }
+
+        return nil
     }
 }
