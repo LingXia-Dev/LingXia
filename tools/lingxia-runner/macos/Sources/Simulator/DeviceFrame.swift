@@ -122,7 +122,7 @@ public class DeviceFrame: NSView {
     public func setDeviceSize(_ size: MobileDeviceSize) {
         deviceSize = size
 
-        if size.isDesktop {
+        if !size.usesPhoneChrome {
             // Browser-window style: thin light border
             deviceBezel.layer?.backgroundColor = NSColor(white: 0.22, alpha: 1.0).cgColor
             deviceBezel.layer?.shadowOpacity = 0.25

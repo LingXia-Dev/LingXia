@@ -12,8 +12,20 @@ enum RunnerSupport {
             LingxiaRunnerSPI.Runtime.setOpenUrlHandler(handler)
         }
 
+        static func useDefaultOpenUrlHandling() {
+            LingxiaRunnerSPI.Runtime.useDefaultOpenUrlHandling()
+        }
+
         static func sessionId(for appId: String) -> UInt64? {
             LingxiaRunnerSPI.Runtime.sessionId(for: appId)
+        }
+
+        static func currentAppId() -> String? {
+            LingxiaRunnerSPI.Runtime.currentAppId()
+        }
+
+        static func currentPath() -> String {
+            LingxiaRunnerSPI.Runtime.currentPath()
         }
 
         static func setSessionId(_ sessionId: UInt64, for appId: String) {
@@ -147,6 +159,45 @@ enum RunnerSupport {
     enum CapsuleMenu {
         static func show(appId: String) {
             LingxiaRunnerSPI.CapsuleMenu.show(appId: appId)
+        }
+    }
+
+    @MainActor
+    enum SurfaceShell {
+        static func make(controller: LxAppController) -> LxAppShell {
+            LingxiaRunnerSPI.SurfaceShell.make(controller: controller)
+        }
+
+        static func activate(_ shell: LxAppShell) {
+            LingxiaRunnerSPI.SurfaceShell.activate(shell)
+        }
+
+        static func open(
+            _ shell: LxAppShell,
+            appId: String,
+            path: String,
+            sessionId: UInt64
+        ) {
+            LingxiaRunnerSPI.SurfaceShell.open(
+                shell,
+                appId: appId,
+                path: path,
+                sessionId: sessionId
+            )
+        }
+
+        static func navigate(
+            _ shell: LxAppShell,
+            appId: String,
+            path: String,
+            animationType: LxAppAnimation
+        ) {
+            LingxiaRunnerSPI.SurfaceShell.navigate(
+                shell,
+                appId: appId,
+                path: path,
+                animationType: animationType
+            )
         }
     }
 }

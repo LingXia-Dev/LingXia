@@ -75,6 +75,7 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
     // Observers
     nonisolated(unsafe) private var navigationBarObserver: NSObjectProtocol?
     private var suppressRuntimeCloseNotification = false
+    private var preserveRuntimeSessionOnClose = false
     
     // MARK: - Initialization
     
@@ -181,8 +182,8 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         toolbar.translatesAutoresizingMaskIntoConstraints = false
         toolbar.setCurrentDevice(Self.currentDeviceSize)
         
-        toolbar.onDeviceSelected = { [weak self] device in
-            self?.handleDeviceChange(device)
+        toolbar.onDeviceSelected = { device in
+            RunnerApp.shared.setDeviceSize(device)
         }
 
         toolbar.onInspectClicked = { [weak self] in
@@ -337,7 +338,7 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         ])
         
         // Phone UI overlay (status bar, nav bar, floating buttons) — phone only
-        if !Self.currentDeviceSize.isDesktop {
+        if Self.currentDeviceSize.usesPhoneChrome {
             Task { @MainActor [weak self] in
                 self?.setupPhoneUIOverlay()
             }
@@ -589,9 +590,10 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
     
     // MARK: - Device Change Handling
     
-    private func handleDeviceChange(_ newDevice: MobileDeviceSize) {
+    func applyDeviceChange(_ newDevice: MobileDeviceSize) {
         Self.currentDeviceSize = newDevice
         Layout.currentNotchSpec = newDevice.notchSpec
+        toolbar?.setCurrentDevice(newDevice)
 
         DevToolsLogger.shared.log("Device → \(newDevice.displayName) (\(newDevice.sizeDescription))", level: .debug)
 
@@ -626,9 +628,6 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         
         // Update status bar height constraint
         updateStatusBarConstraints()
-        
-        // Notify RunnerApp about device change
-        RunnerApp.shared.setDeviceSize(newDevice)
     }
     
     private func updateDeviceFrameSize(for device: MobileDeviceSize) {
@@ -644,8 +643,8 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         // Refresh devtools info panel
         devToolsPanel?.updateInfo(device: device, path: currentPath)
 
-        // Phone UI overlay: show for phones, hide for desktop
-        if device.isDesktop {
+        // Phone UI overlay: show for phones, hide for larger shell-backed shapes.
+        if !device.usesPhoneChrome {
             systemStatusBar?.isHidden = true
             navigationBar?.isHidden   = true
             floatingCapsuleContainer?.isHidden = true
@@ -829,13 +828,21 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
                 let _ = onLxappClosed(appId, sessionId)
                 RunnerApp.shared.discardSession(appId: appId, sessionId: sessionId)
             }
-            RunnerSupport.Runtime.removeSessionId(for: appId)
+            if !preserveRuntimeSessionOnClose {
+                RunnerSupport.Runtime.removeSessionId(for: appId)
+            }
         }
         RunnerApp.shared.handleWindowClosed(self)
     }
 
     func closeFromRuntime() {
         suppressRuntimeCloseNotification = true
+        window?.close()
+    }
+
+    func detachForHostSwitch() {
+        suppressRuntimeCloseNotification = true
+        preserveRuntimeSessionOnClose = true
         window?.close()
     }
 

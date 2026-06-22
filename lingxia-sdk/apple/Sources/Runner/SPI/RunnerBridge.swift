@@ -25,8 +25,20 @@ enum RunnerBridge {
         }
     }
 
+    static func useDefaultOpenUrlHandling() {
+        LxApp.openUrlHandler = nil
+    }
+
     static func sessionId(for appId: String) -> UInt64? {
         LxAppCore.sessionId(for: appId)
+    }
+
+    static func currentAppId() -> String? {
+        LxAppCore.currentAppId
+    }
+
+    static func currentPath() -> String {
+        LxAppCore.getCurrentPath()
     }
 
     static func setSessionId(_ sessionId: UInt64, for appId: String) {
@@ -168,6 +180,43 @@ enum RunnerBridge {
 
     static func showCapsuleMenu(appId: String) {
         LxAppCapsuleMenu.show(appId: appId)
+    }
+
+    static func makeSurfaceShell(controller: LxAppController) -> LxAppShell {
+        let configuration = Lingxia.resolvedShellConfiguration(
+            from: LxAppShellConfiguration(),
+            capabilities: LxAppCapabilities(rawValue: LxAppCore.capabilities),
+            homeAppId: LxAppCore.getHomeLxAppId()
+        )
+        return LxAppShell(
+            controller: controller,
+            configuration: configuration,
+            startupBehavior: .manual
+        )
+    }
+
+    static func activateSurfaceShell(_ shell: LxAppShell) {
+        LxAppActiveHost.activate(shell: shell)
+    }
+
+    static func openInSurfaceShell(
+        _ shell: LxAppShell,
+        appId: String,
+        path: String,
+        sessionId: UInt64
+    ) {
+        shell.openLxApp(appId: appId, path: path, sessionId: sessionId)
+    }
+
+    static func navigateSurfaceShell(
+        _ shell: LxAppShell,
+        appId: String,
+        path: String,
+        animationType: LxAppAnimation
+    ) {
+        shell.browserCoordinator.deactivate()
+        shell.ensureViewController(for: appId, path: path)?
+            .navigate(appId: appId, to: path, with: animationType)
     }
 }
 #endif

@@ -38,6 +38,7 @@ private func lxShellFormatRect(_ rect: NSRect) -> String {
 enum LxAppShellStartupBehavior {
     case automaticHome
     case managedByAppUI
+    case manual
 }
 
 @MainActor

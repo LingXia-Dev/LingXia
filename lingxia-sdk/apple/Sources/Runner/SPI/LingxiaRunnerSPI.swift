@@ -12,8 +12,20 @@ import WebKit
             RunnerBridge.setOpenUrlHandler(handler)
         }
 
+        public static func useDefaultOpenUrlHandling() {
+            RunnerBridge.useDefaultOpenUrlHandling()
+        }
+
         public static func sessionId(for appId: String) -> UInt64? {
             RunnerBridge.sessionId(for: appId)
+        }
+
+        public static func currentAppId() -> String? {
+            RunnerBridge.currentAppId()
+        }
+
+        public static func currentPath() -> String {
+            RunnerBridge.currentPath()
         }
 
         public static func setSessionId(_ sessionId: UInt64, for appId: String) {
@@ -161,6 +173,45 @@ import WebKit
     public enum CapsuleMenu {
         public static func show(appId: String) {
             RunnerBridge.showCapsuleMenu(appId: appId)
+        }
+    }
+
+    @MainActor
+    public enum SurfaceShell {
+        public static func make(controller: LxAppController) -> LxAppShell {
+            RunnerBridge.makeSurfaceShell(controller: controller)
+        }
+
+        public static func activate(_ shell: LxAppShell) {
+            RunnerBridge.activateSurfaceShell(shell)
+        }
+
+        public static func open(
+            _ shell: LxAppShell,
+            appId: String,
+            path: String,
+            sessionId: UInt64
+        ) {
+            RunnerBridge.openInSurfaceShell(
+                shell,
+                appId: appId,
+                path: path,
+                sessionId: sessionId
+            )
+        }
+
+        public static func navigate(
+            _ shell: LxAppShell,
+            appId: String,
+            path: String,
+            animationType: LxAppAnimation
+        ) {
+            RunnerBridge.navigateSurfaceShell(
+                shell,
+                appId: appId,
+                path: path,
+                animationType: animationType
+            )
         }
     }
 }

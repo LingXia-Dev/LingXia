@@ -1,0 +1,192 @@
+{
+  "default": "iphone-15-pro",
+  "devices": [
+    {
+      "id": "iphone-se",
+      "group": "phone",
+      "name": "iPhone SE",
+      "width": 375,
+      "height": 667,
+      "bezelWidth": 4,
+      "bezelColor": 1315860,
+      "outerRadius": 8,
+      "screenRadius": 0,
+      "notch": {
+        "width": 0,
+        "height": 0,
+        "cornerRadius": 0,
+        "statusBarHeight": 20
+      }
+    },
+    {
+      "id": "iphone-13-mini",
+      "group": "phone",
+      "name": "iPhone 13 mini",
+      "width": 375,
+      "height": 812,
+      "bezelWidth": 4,
+      "bezelColor": 1315860,
+      "outerRadius": 48,
+      "screenRadius": 44,
+      "notch": {
+        "width": 210,
+        "height": 30,
+        "cornerRadius": 15,
+        "statusBarHeight": 44
+      }
+    },
+    {
+      "id": "iphone-13-pro",
+      "group": "phone",
+      "name": "iPhone 13 Pro",
+      "width": 390,
+      "height": 844,
+      "bezelWidth": 4,
+      "bezelColor": 1315860,
+      "outerRadius": 48,
+      "screenRadius": 44,
+      "notch": {
+        "width": 210,
+        "height": 30,
+        "cornerRadius": 15,
+        "statusBarHeight": 47
+      }
+    },
+    {
+      "id": "iphone-15-pro",
+      "group": "phone",
+      "name": "iPhone 15 Pro",
+      "width": 393,
+      "height": 852,
+      "bezelWidth": 4,
+      "bezelColor": 1315860,
+      "outerRadius": 58,
+      "screenRadius": 54,
+      "notch": {
+        "width": 126,
+        "height": 37,
+        "cornerRadius": 18.5,
+        "statusBarHeight": 54
+      }
+    },
+    {
+      "id": "iphone-11",
+      "group": "phone",
+      "name": "iPhone 11",
+      "width": 414,
+      "height": 896,
+      "bezelWidth": 4,
+      "bezelColor": 1315860,
+      "outerRadius": 48,
+      "screenRadius": 44,
+      "notch": {
+        "width": 210,
+        "height": 30,
+        "cornerRadius": 15,
+        "statusBarHeight": 44
+      }
+    },
+    {
+      "id": "iphone-15-pro-max",
+      "group": "phone",
+      "name": "iPhone 15 Pro Max",
+      "width": 430,
+      "height": 932,
+      "bezelWidth": 4,
+      "bezelColor": 1315860,
+      "outerRadius": 58,
+      "screenRadius": 54,
+      "notch": {
+        "width": 126,
+        "height": 37,
+        "cornerRadius": 18.5,
+        "statusBarHeight": 54
+      }
+    },
+    {
+      "id": "ipad",
+      "group": "tablet",
+      "name": "iPad",
+      "width": 768,
+      "height": 1024,
+      "bezelWidth": 1,
+      "bezelColor": 3684408,
+      "outerRadius": 8,
+      "screenRadius": 6,
+      "notch": {
+        "width": 0,
+        "height": 0,
+        "cornerRadius": 0,
+        "statusBarHeight": 20
+      }
+    },
+    {
+      "id": "ipad-pro-12-9",
+      "group": "tablet",
+      "name": "iPad Pro 12.9\"",
+      "width": 1024,
+      "height": 1366,
+      "bezelWidth": 1,
+      "bezelColor": 3684408,
+      "outerRadius": 8,
+      "screenRadius": 6,
+      "notch": {
+        "width": 0,
+        "height": 0,
+        "cornerRadius": 0,
+        "statusBarHeight": 20
+      }
+    },
+    {
+      "id": "desktop-1280",
+      "group": "desktop",
+      "name": "Desktop 1280",
+      "width": 1280,
+      "height": 800,
+      "bezelWidth": 1,
+      "bezelColor": 3684408,
+      "outerRadius": 8,
+      "screenRadius": 6,
+      "notch": {
+        "width": 0,
+        "height": 0,
+        "cornerRadius": 0,
+        "statusBarHeight": 20
+      }
+    },
+    {
+      "id": "desktop-1440",
+      "group": "desktop",
+      "name": "Desktop 1440",
+      "width": 1440,
+      "height": 900,
+      "bezelWidth": 1,
+      "bezelColor": 3684408,
+      "outerRadius": 8,
+      "screenRadius": 6,
+      "notch": {
+        "width": 0,
+        "height": 0,
+        "cornerRadius": 0,
+        "statusBarHeight": 20
+      }
+    },
+    {
+      "id": "desktop-1920",
+      "group": "desktop",
+      "name": "Desktop 1920",
+      "width": 1920,
+      "height": 1080,
+      "bezelWidth": 1,
+      "bezelColor": 3684408,
+      "outerRadius": 8,
+      "screenRadius": 6,
+      "notch": {
+        "width": 0,
+        "height": 0,
+        "cornerRadius": 0,
+        "statusBarHeight": 20
+      }
+    }
+  ]
+}

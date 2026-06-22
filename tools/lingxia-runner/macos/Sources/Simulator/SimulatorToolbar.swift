@@ -111,16 +111,19 @@ public class SimulatorToolbar: NSView {
         }
         
         let devices = MobileDeviceSize.allCases
+        var previousShape: RunnerDeviceShape?
         for device in devices {
+            if let previousShape, previousShape != device.shape {
+                deviceSelector.menu?.addItem(.separator())
+            }
             let menuItem = NSMenuItem()
             menuItem.title = device.displayName
             menuItem.representedObject = device
             deviceSelector.menu?.addItem(menuItem)
+            previousShape = device.shape
         }
         
-        if let index = devices.firstIndex(where: { $0 == currentDevice }) {
-            deviceSelector.selectItem(at: index)
-        }
+        selectDevice(currentDevice)
         
         addSubview(deviceSelector)
         
@@ -179,9 +182,15 @@ public class SimulatorToolbar: NSView {
     
     public func setCurrentDevice(_ device: MobileDeviceSize) {
         currentDevice = device
-        let devices = MobileDeviceSize.allCases
-        if let index = devices.firstIndex(where: { $0 == device }) {
-            deviceSelector.selectItem(at: index)
+        selectDevice(device)
+    }
+
+    private func selectDevice(_ device: MobileDeviceSize) {
+        guard let item = deviceSelector.itemArray.first(where: {
+            ($0.representedObject as? MobileDeviceSize) == device
+        }) else {
+            return
         }
+        deviceSelector.select(item)
     }
 }
