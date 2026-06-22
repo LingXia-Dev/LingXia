@@ -165,8 +165,8 @@ pub fn register_builtin_asset_bundle(appid: impl Into<String>) {
 
 /// Register a content-less builtin lxapp host. The LxApp is created with default
 /// empty config (no pages/plugins/logic). A later [`register_builtin_asset_bundle`]
-/// call for the same appid upgrades to a disk-backed bundle — used by shell-runtime
-/// to swap in the real shell webui on macOS.
+/// call for the same appid upgrades to a disk-backed bundle — used by browser-shell
+/// to swap in the real browser shell webui on macOS.
 pub fn register_synthetic_lxapp(appid: impl Into<String>) {
     register_lxapp_bundle_source(appid, LxAppBundleSource::Synthetic);
 }

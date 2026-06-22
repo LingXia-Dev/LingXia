@@ -382,6 +382,13 @@ extension LxApp {
             return openExternalUrlString(urlString)
         }
 
+        let browserEnabled = executeOnMain {
+            (LxAppCore.capabilities & LxAppCore.capBrowser) != 0
+        }
+        guard browserEnabled else {
+            return openExternalUrlString(urlString)
+        }
+
         guard !ownerAppId.isEmpty, owner_session_id > 0 else { return false }
 
         #if os(macOS)

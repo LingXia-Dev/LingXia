@@ -30,7 +30,7 @@ mod media_preview;
 mod native_components;
 #[cfg(all(target_os = "windows", feature = "runtime"))]
 mod pull_to_refresh;
-#[cfg(all(target_os = "windows", feature = "shell-runtime"))]
+#[cfg(all(target_os = "windows", feature = "browser-shell"))]
 mod shell;
 #[cfg(all(target_os = "windows", feature = "runtime"))]
 mod video_controls;
@@ -127,7 +127,7 @@ pub fn init(app: WindowsApp) -> Result<String> {
     window_host::install_native_view_host();
     native_components::install();
     pull_to_refresh::install();
-    #[cfg(feature = "shell-runtime")]
+    #[cfg(feature = "browser-shell")]
     shell::install();
     app_menu::install_host_window_menu_support();
     install_current_thread_exit_handler();
@@ -151,7 +151,7 @@ pub fn init(app: WindowsApp) -> Result<String> {
     Ok(home_app_id)
 }
 
-#[cfg(all(target_os = "windows", feature = "shell-runtime"))]
+#[cfg(all(target_os = "windows", feature = "browser-shell"))]
 fn open_home_app(appid: &str) -> std::result::Result<(), String> {
     shell::open_home_app(appid)
 }
@@ -159,7 +159,7 @@ fn open_home_app(appid: &str) -> std::result::Result<(), String> {
 #[cfg(all(
     target_os = "windows",
     feature = "runtime",
-    not(feature = "shell-runtime")
+    not(feature = "browser-shell")
 ))]
 fn open_home_app(appid: &str) -> std::result::Result<(), String> {
     lingxia::windows::open_home_app(appid)

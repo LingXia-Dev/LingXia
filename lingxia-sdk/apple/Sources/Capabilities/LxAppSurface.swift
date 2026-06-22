@@ -158,11 +158,11 @@ enum LxAppSurface {
     ) -> Bool {
         if let existing = entries[id] {
             if existing.dockedPosition != nil {
-                LxAppActiveHost.activeShell?.showPanel(id: id)
+                // A docked aside's visibility is owned by the layout plan
+                // reconciler; present only re-asserts that content exists.
             } else if existing.isFloat {
-                // A float's visibility is owned by the reconciler (plan.floats);
-                // present_surface only re-asserts existence. The commit firing
-                // present_layout right after will show it.
+                // A float's visibility is owned by the layout plan reconciler;
+                // present only re-asserts that content exists.
             } else {
                 existing.window?.makeKeyAndOrderFront(nil)
             }
@@ -344,9 +344,8 @@ enum LxAppSurface {
         )
 
         if isFloat {
-            // Do NOT order the popup front at create time. The commit firing
-            // present_layout right after this present_surface returns drives the
-            // reconciler, which shows the float (showFloat) from plan.floats.
+            // Do NOT order the popup front directly. Visibility is owned by the
+            // layout plan commit that follows this content registration.
             return true
         }
 
@@ -488,10 +487,9 @@ enum LxAppSurface {
             dockedContainer: container,
             dockedBrowser: dockedBrowser
         )
-        // Only CREATE + REGISTER the aside content here (hidden). The core's
-        // `present_layout` (fired right after this present_surface returns)
-        // drives the aside-layout reconciler, which is the sole authority for the
-        // aside's edge + visibility.
+        // Only CREATE + REGISTER the aside content here (hidden). The Rust graph
+        // commit that follows `present_surface` pushes the layout plan; the
+        // reconciler is the sole authority for the aside's edge + visibility.
         shell.registerPanelWithNativeContent(
             id: id,
             position: panelPosition,

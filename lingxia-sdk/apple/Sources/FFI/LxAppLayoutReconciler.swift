@@ -3,7 +3,6 @@ import OSLog
 
 #if os(macOS)
 import AppKit
-import CLingXiaRustAPI
 
 /// Adaptive Surface Layout — macOS aside-dock reconciler.
 ///
@@ -31,9 +30,9 @@ import CLingXiaRustAPI
 /// that shows/hides asides — so the set of "currently-placed asides" is exactly
 /// the registered panels that are visible. Reconcile = make the registry match
 /// `plan.asides`: show + position registered-and-desired panels, hide visible
-/// panels no longer desired. A desired aside whose panel is not yet registered
-/// is simply skipped; the content path re-enters `reconcile(appId:)` once it has
-/// registered the panel, so the next pass places it.
+/// panels no longer desired. A desired aside whose panel is not yet registered is
+/// skipped as a defensive no-op; expected content paths register the panel before
+/// the Rust graph commit pushes this plan.
 ///
 /// Scope is strictly the aside dock. Because the reconciler only ever touches
 /// the panel registry (all asides), it never disturbs non-aside surfaces — main
@@ -67,19 +66,6 @@ enum LxAppLayoutReconciler {
 
     private struct PlanFloat: Decodable {
         let id: String
-    }
-
-    /// Re-derive the latest core layout for `appId` and reconcile. The content
-    /// paths call this AFTER they register aside content, so the reconciler runs
-    /// once the panel exists and can be placed (the core's own `present_layout`
-    /// may have fired before the content was registered). It is the same single
-    /// reconcile implementation the core's `present_layout` drives — it just
-    /// pulls the current plan instead of receiving a pushed one.
-    @discardableResult
-    static func reconcile(appId: String) -> Bool {
-        let json = surfaceDerivedLayout(appId).toString()
-        guard !json.isEmpty else { return false }
-        return reconcile(label: "app=\(appId)", json: json)
     }
 
     static func reconcile(windowId: String, json: String) -> Bool {
@@ -120,11 +106,9 @@ enum LxAppLayoutReconciler {
             shell.hidePanel(id: id)
         }
 
-        // Place each desired aside at the tree's edge and show it. The content
-        // path created + registered the panel (hidden) for ids the core knows;
-        // until that registration lands there is nothing to place yet (the
-        // content path re-enters reconcile(appId:) once it has registered, so
-        // this runs again with the panel present).
+        // Place each desired aside at the tree's edge and show it. Content paths
+        // should have already registered the panel (hidden) before the graph
+        // commit. If not, skip defensively; a later plan push can converge it.
         for (id, edge) in desired {
             guard workspace.isPanelRegistered(id: id) else { continue }
 
@@ -158,8 +142,7 @@ enum LxAppLayoutReconciler {
         //     stack via the close observer);
         //   * show/order-front any desired float not yet visible (idempotent —
         //     a float already visible is left untouched, no flicker). A desired
-        //     float whose popup is not yet registered is skipped; the content
-        //     path re-enters reconcile once it has registered it.
+        //     float whose popup is not yet registered is skipped defensively.
         let desiredFloatIds = Set(plan.floats.map { $0.id })
         for id in LxAppSurface.visibleFloatIds().subtracting(desiredFloatIds) {
             _ = LxAppSurface.dismissFloat(id: id)

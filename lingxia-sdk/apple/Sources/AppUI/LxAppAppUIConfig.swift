@@ -33,6 +33,11 @@ struct LxAppUIConfig: Decodable, Sendable {
         /// Availability filter. nil/empty = every platform; otherwise the concrete
         /// platforms it's available on (macos/windows/ios/android/harmony).
         let platforms: [String]?
+
+        func isAvailable(on platform: String) -> Bool {
+            guard let platforms, !platforms.isEmpty else { return true }
+            return platforms.contains { $0.caseInsensitiveCompare(platform) == .orderedSame }
+        }
     }
 
     enum Role: String, Decodable, Sendable {

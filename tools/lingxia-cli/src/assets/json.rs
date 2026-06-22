@@ -103,8 +103,9 @@ pub(super) fn build_app_json_from_config(
 pub(super) fn build_ui_json_from_config(
     config: &LingXiaConfig,
     app_ui_icons: &[PreparedAppUiIcon],
+    platform: &str,
 ) -> Result<Option<String>> {
-    let Some(ui) = effective_ui_config(config)? else {
+    let Some(ui) = effective_ui_config(config, Some(platform))? else {
         return Ok(None);
     };
     let mut rewritten = ui;
@@ -122,7 +123,7 @@ pub(super) fn build_windows_ui_json_from_config(
     config: &LingXiaConfig,
     app_ui_icons: &[PreparedAppUiIcon],
 ) -> Result<Option<String>> {
-    let Some(ui) = effective_ui_config(config)? else {
+    let Some(ui) = effective_ui_config(config, Some("windows"))? else {
         return Ok(None);
     };
     let mut rewritten = ui;

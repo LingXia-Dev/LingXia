@@ -297,14 +297,11 @@ final class LxAppMacAppUIRuntime: NSObject {
         }
 
         shell.storeSession(sessionId, for: appId)
-        // Register the aside lxapp content (hidden); the aside-layout reconciler
-        // owns its edge + visibility. registerHostAside (in
-        // openAttachPanelSurface) fired present_layout before the content
-        // existed, so re-run the reconciler now that the panel is registered.
+        // Register the aside lxapp panel slot/content (hidden) before mutating
+        // the Rust surface graph. The registerHostAside commit below is the only
+        // layout-plan delivery that places and shows it.
         shell.registerPanelWithContent(id: panelId, position: position, appId: appId, path: path)
-        if let primaryAppId = rootSurface.content.appId {
-            LxAppLayoutReconciler.reconcile(appId: primaryAppId)
-        }
+        registerHostAsideForSurface(surface)
         openedSurfaceIDs.insert(panelId)
         visibleSurfaceIDs.insert(panelId)
         refreshChromeActivators()
@@ -547,12 +544,6 @@ final class LxAppMacAppUIRuntime: NSObject {
             try openSurface(id: parentID)
         }
 
-        // Reflect this host-declared aside in the core surface graph so
-        // lx.surface.derivedLayout() includes host surfaces.
-        if let primaryAppId = rootSurface.content.appId {
-            _ = registerHostAside(primaryAppId, surface.id, surface.edge?.rawValue ?? "right")
-        }
-
         if surface.content.kind == .terminal {
             try openTerminalAttachPanelSurface(surface)
             return
@@ -567,9 +558,9 @@ final class LxAppMacAppUIRuntime: NSObject {
 
         if openedSurfaceIDs.contains(surface.id) {
             shell.show()
-            // The panel is already registered, so registerHostAside above already
-            // drove the aside-layout reconciler to (re-)place and show it at the
-            // core tree's edge. Don't show the panel directly here.
+            // The panel is already registered. Re-enter the graph through the
+            // commit path so the layout plan places/shows it at the core edge.
+            registerHostAsideForSurface(surface)
             visibleSurfaceIDs.insert(surface.id)
             refreshChromeActivators()
             return
@@ -624,7 +615,7 @@ final class LxAppMacAppUIRuntime: NSObject {
 
     private func openTerminalAttachPanelSurface(_ surface: LxAppUIConfig.Surface) throws {
         guard let position = panelPosition(for: surface) else {
-            throw LxAppUIError.invalidConfig("surface \(surface.id) terminal panel requires a valid attachPanel edge")
+            throw LxAppUIError.invalidConfig("surface \(surface.id) terminal panel requires a valid aside edge")
         }
         let reused = terminalWorkspaces[surface.id] != nil
         let defaultHeight = CGFloat(surface.size?.height ?? 320)
@@ -648,20 +639,16 @@ final class LxAppMacAppUIRuntime: NSObject {
         logTerminal(
             "runtime.beforeShowPanel surface=\(surface.id) workspaceFrame=\(lxTerminalRuntimeFormatRect(workspace.frame)) workspaceBounds=\(lxTerminalRuntimeFormatRect(workspace.bounds)) windowFrame=\(lxTerminalRuntimeFormatRect(shell.hostWindow?.frame ?? .zero))"
         )
-        // Register the terminal content (hidden); the aside-layout reconciler is
-        // the sole authority for its edge + visibility. The host aside was
-        // mirrored into the core graph above (registerHostAside), which fires
-        // present_layout before the content exists, so re-run the reconciler now
-        // that the panel is registered.
+        // Register the terminal content (hidden) before mutating the Rust surface
+        // graph. registerHostAside below pushes the layout plan that places and
+        // shows it.
         shell.registerPanelWithNativeContent(
             id: surface.id,
             position: position,
             contentView: workspace,
             defaultSize: defaultHeight
         )
-        if let primaryAppId = rootSurface.content.appId {
-            LxAppLayoutReconciler.reconcile(appId: primaryAppId)
-        }
+        registerHostAsideForSurface(surface)
         logTerminal(
             "runtime.afterShowPanel surface=\(surface.id) workspaceFrame=\(lxTerminalRuntimeFormatRect(workspace.frame)) workspaceBounds=\(lxTerminalRuntimeFormatRect(workspace.bounds)) windowFrame=\(lxTerminalRuntimeFormatRect(shell.hostWindow?.frame ?? .zero))"
         )
@@ -676,6 +663,11 @@ final class LxAppMacAppUIRuntime: NSObject {
         visibleSurfaceIDs.insert(surface.id)
         logTerminal("runtime.openTerminal markedVisible surface=\(surface.id) opened=\(openedSurfaceIDs.contains(surface.id)) visible=\(visibleSurfaceIDs.contains(surface.id))")
         refreshChromeActivators()
+    }
+
+    private func registerHostAsideForSurface(_ surface: LxAppUIConfig.Surface) {
+        guard let primaryAppId = rootSurface.content.appId else { return }
+        _ = registerHostAside(primaryAppId, surface.id, surface.edge?.rawValue ?? "right")
     }
 
     private func closeTerminalWorkspaceSurface(id: String) {
@@ -1090,17 +1082,27 @@ final class LxAppMacAppUIRuntime: NSObject {
             throw LxAppUIError.invalidConfig("launch.initialSurface cannot be empty")
         }
 
-        var surfaceById: [String: LxAppUIConfig.Surface] = [:]
-        var seenAppIDs = Set<String>()
-
+        var allSurfaceIDs = Set<String>()
         for surface in ui.surfaces {
             guard !surface.id.isEmpty else {
                 throw LxAppUIError.invalidConfig("surface id cannot be empty")
             }
-            guard surfaceById[surface.id] == nil else {
+            guard allSurfaceIDs.insert(surface.id).inserted else {
                 throw LxAppUIError.invalidConfig("duplicate surface id \(surface.id)")
             }
+        }
 
+        let availableSurfaces = ui.surfaces.filter { $0.isAvailable(on: "macos") }
+        let skippedSurfaceIds = Set(
+            ui.surfaces
+                .filter { !$0.isAvailable(on: "macos") }
+                .map(\.id)
+        )
+
+        var surfaceById: [String: LxAppUIConfig.Surface] = [:]
+        var seenAppIDs = Set<String>()
+
+        for surface in availableSurfaces {
             switch surface.content.kind {
             case .lxapp:
                 guard let appId = surface.content.appId, !appId.isEmpty else {
@@ -1124,7 +1126,14 @@ final class LxAppMacAppUIRuntime: NSObject {
             surfaceById[surface.id] = surface
         }
 
+        guard !surfaceById.isEmpty else {
+            throw LxAppUIError.invalidConfig("surfaces must include at least one surface available on macOS")
+        }
+
         guard let initialSurface = surfaceById[ui.launch.initialSurface] else {
+            if skippedSurfaceIds.contains(ui.launch.initialSurface) {
+                throw LxAppUIError.invalidConfig("launch.initialSurface \(ui.launch.initialSurface) is not available on macOS")
+            }
             throw LxAppUIError.invalidConfig("launch.initialSurface references unknown surface \(ui.launch.initialSurface)")
         }
         guard initialSurface.role == .main
@@ -1133,7 +1142,7 @@ final class LxAppMacAppUIRuntime: NSObject {
             throw LxAppUIError.unsupported("launch.initialSurface must reference a supported macOS surface")
         }
 
-        let windowSurfaces = ui.surfaces.filter {
+        let windowSurfaces = availableSurfaces.filter {
             $0.role == .main || $0.role == .float
         }
         guard windowSurfaces.count == 1, let rootSurface = windowSurfaces.first else {
@@ -1142,7 +1151,7 @@ final class LxAppMacAppUIRuntime: NSObject {
 
         var childrenByParentId: [String: [String]] = [:]
 
-        for surface in ui.surfaces {
+        for surface in availableSurfaces {
             if surface.content.kind == .terminal {
                 guard surface.role == .aside else {
                     throw LxAppUIError.unsupported("terminal surface \(surface.id) must use role aside")
@@ -1188,8 +1197,8 @@ final class LxAppMacAppUIRuntime: NSObject {
             guard !activator.id.isEmpty else {
                 throw LxAppUIError.invalidConfig("activator id cannot be empty")
             }
-            guard seenActivatorIDs.insert(activator.id).inserted else {
-                throw LxAppUIError.invalidConfig("duplicate activator id \(activator.id)")
+            if skippedSurfaceIds.contains(activator.action.surface) {
+                continue
             }
             guard surfaceById[activator.action.surface] != nil else {
                 throw LxAppUIError.invalidConfig("activator \(activator.id) references unknown surface \(activator.action.surface)")
@@ -1200,26 +1209,55 @@ final class LxAppMacAppUIRuntime: NSObject {
                 if activator.hostSurface != nil {
                     throw LxAppUIError.invalidConfig("menuBarItem activator \(activator.id) cannot set hostSurface")
                 }
-                menuBarActivators.append(activator)
             case .appActivation:
                 if activator.hostSurface != nil {
                     throw LxAppUIError.invalidConfig("appActivation activator \(activator.id) cannot set hostSurface")
                 }
-                appActivationActivators.append(activator)
             case .sidebarItem:
-                guard let hostSurface = activator.hostSurface, surfaceById[hostSurface] != nil else {
+                guard let hostSurface = activator.hostSurface else {
                     throw LxAppUIError.invalidConfig("sidebarItem activator \(activator.id) requires a valid hostSurface")
                 }
-                sidebarActivators.append(activator)
+                if skippedSurfaceIds.contains(hostSurface) {
+                    continue
+                }
+                guard surfaceById[hostSurface] != nil else {
+                    throw LxAppUIError.invalidConfig("sidebarItem activator \(activator.id) requires a valid hostSurface")
+                }
             case .toolbarItem:
-                guard let hostSurface = activator.hostSurface, surfaceById[hostSurface] != nil else {
+                guard let hostSurface = activator.hostSurface else {
                     throw LxAppUIError.invalidConfig("toolbarItem activator \(activator.id) requires a valid hostSurface")
                 }
-                toolbarActivators.append(activator)
+                if skippedSurfaceIds.contains(hostSurface) {
+                    continue
+                }
+                guard surfaceById[hostSurface] != nil else {
+                    throw LxAppUIError.invalidConfig("toolbarItem activator \(activator.id) requires a valid hostSurface")
+                }
             case .titlebarItem:
-                guard let hostSurface = activator.hostSurface, surfaceById[hostSurface] != nil else {
+                guard let hostSurface = activator.hostSurface else {
                     throw LxAppUIError.invalidConfig("titlebarItem activator \(activator.id) requires a valid hostSurface")
                 }
+                if skippedSurfaceIds.contains(hostSurface) {
+                    continue
+                }
+                guard surfaceById[hostSurface] != nil else {
+                    throw LxAppUIError.invalidConfig("titlebarItem activator \(activator.id) requires a valid hostSurface")
+                }
+            }
+            guard seenActivatorIDs.insert(activator.id).inserted else {
+                throw LxAppUIError.invalidConfig("duplicate activator id \(activator.id)")
+            }
+
+            switch activator.kind {
+            case .menuBarItem:
+                menuBarActivators.append(activator)
+            case .appActivation:
+                appActivationActivators.append(activator)
+            case .sidebarItem:
+                sidebarActivators.append(activator)
+            case .toolbarItem:
+                toolbarActivators.append(activator)
+            case .titlebarItem:
                 titlebarActivators.append(activator)
             }
         }

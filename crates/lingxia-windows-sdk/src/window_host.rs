@@ -56,7 +56,7 @@ static WEBTAG_CONTENT_BOUNDS: OnceLock<Mutex<HashMap<String, ContentBounds>>> = 
 static HOST_ACTIVE_WEBTAG: OnceLock<Mutex<HashMap<isize, String>>> = OnceLock::new();
 static PRESENTED_GROUP_MAIN: OnceLock<Mutex<HashMap<isize, String>>> = OnceLock::new();
 static FOCUSED_HOST_PANEL: OnceLock<Mutex<Option<String>>> = OnceLock::new();
-#[cfg(feature = "shell-runtime")]
+#[cfg(feature = "browser-shell")]
 static HOST_CHROME_SNAPSHOTS: OnceLock<Mutex<HashMap<isize, HostChromeSnapshot>>> = OnceLock::new();
 static CHROME_INTERACTIONS: OnceLock<Mutex<HashMap<isize, ChromeInteraction>>> = OnceLock::new();
 static PULL_REFRESH_WEBTAGS: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
@@ -110,7 +110,7 @@ struct ContentBounds {
     height: i32,
 }
 
-#[cfg(feature = "shell-runtime")]
+#[cfg(feature = "browser-shell")]
 #[derive(Clone)]
 struct HostChromeSnapshot {
     layout: WindowsWindowLayout,
@@ -1298,7 +1298,7 @@ fn host_panel_is_maximized(panel_id: &str) -> bool {
         .unwrap_or(false)
 }
 
-#[cfg(feature = "shell-runtime")]
+#[cfg(feature = "browser-shell")]
 fn panel_position_for_id(panel_id: &str) -> WindowsPanelPosition {
     lingxia_app_context::app_config()
         .and_then(|config| config.panels.as_ref().cloned())
@@ -1311,7 +1311,7 @@ fn panel_position_for_id(panel_id: &str) -> WindowsPanelPosition {
         .unwrap_or(WindowsPanelPosition::Right)
 }
 
-#[cfg(not(feature = "shell-runtime"))]
+#[cfg(not(feature = "browser-shell"))]
 fn panel_position_for_id(_panel_id: &str) -> WindowsPanelPosition {
     WindowsPanelPosition::Right
 }
@@ -1490,7 +1490,7 @@ fn invalidate_window_chrome(hwnd: HWND) {
     }
 }
 
-#[cfg(feature = "shell-runtime")]
+#[cfg(feature = "browser-shell")]
 fn invalidate_precise_shell_chrome(
     hwnd: HWND,
     client: RECT,
@@ -1523,7 +1523,7 @@ fn invalidate_precise_shell_chrome(
     true
 }
 
-#[cfg(not(feature = "shell-runtime"))]
+#[cfg(not(feature = "browser-shell"))]
 fn invalidate_precise_shell_chrome(
     _hwnd: HWND,
     _client: RECT,
@@ -1533,7 +1533,7 @@ fn invalidate_precise_shell_chrome(
     false
 }
 
-#[cfg(feature = "shell-runtime")]
+#[cfg(feature = "browser-shell")]
 fn attached_chrome_dirty_rects(
     previous: Option<&WindowsChromeAttachedLayout>,
     current: Option<&WindowsChromeAttachedLayout>,
@@ -1552,7 +1552,7 @@ fn attached_chrome_dirty_rects(
     dirty
 }
 
-#[cfg(feature = "shell-runtime")]
+#[cfg(feature = "browser-shell")]
 fn push_attached_layout_dirty_rects(dirty: &mut Vec<RECT>, attached: &WindowsChromeAttachedLayout) {
     for panel in &attached.panels {
         push_unique_dirty_rect(dirty, panel.rect);
@@ -1562,7 +1562,7 @@ fn push_attached_layout_dirty_rects(dirty: &mut Vec<RECT>, attached: &WindowsChr
     }
 }
 
-#[cfg(feature = "shell-runtime")]
+#[cfg(feature = "browser-shell")]
 fn push_unique_dirty_rect(dirty: &mut Vec<RECT>, rect: RECT) {
     let rect = normalize_rect(RECT {
         left: rect.left.saturating_sub(2),
@@ -1737,13 +1737,13 @@ fn handle_frame_button(hwnd: HWND, button: WindowsFrameButton) {
 /// True while a terminal pane divider is being dragged (a capture loop owned
 /// by the shell window proc). `DIVIDER_DRAG_VERTICAL` records its orientation
 /// for the resize cursor.
-#[cfg(feature = "shell-runtime")]
+#[cfg(feature = "browser-shell")]
 static DIVIDER_DRAG: AtomicBool = AtomicBool::new(false);
-#[cfg(feature = "shell-runtime")]
+#[cfg(feature = "browser-shell")]
 static DIVIDER_DRAG_VERTICAL: AtomicBool = AtomicBool::new(false);
 
 /// Sets the east-west / north-south resize cursor for a pane divider.
-#[cfg(feature = "shell-runtime")]
+#[cfg(feature = "browser-shell")]
 fn set_divider_cursor(vertical: bool) {
     let id = if vertical {
         WindowsAndMessaging::IDC_SIZEWE
@@ -1759,7 +1759,7 @@ fn set_divider_cursor(vertical: bool) {
 
 fn handle_chrome_mouse_move(hwnd: HWND, point: (i32, i32)) -> bool {
     let hit = chrome_hit_for_window(hwnd, point);
-    #[cfg(feature = "shell-runtime")]
+    #[cfg(feature = "browser-shell")]
     {
         if DIVIDER_DRAG.load(Ordering::Acquire) {
             crate::shell::update_divider_drag(point.0, point.1);
@@ -1821,7 +1821,7 @@ fn handle_chrome_left_down(hwnd: HWND, point: (i32, i32)) -> bool {
         } => {
             // A press on a pane divider starts a resize drag instead of
             // focusing/clicking the pane.
-            #[cfg(feature = "shell-runtime")]
+            #[cfg(feature = "browser-shell")]
             if let Some(vertical) = crate::shell::begin_divider_drag(&id, point.0, point.1) {
                 DIVIDER_DRAG.store(true, Ordering::Release);
                 DIVIDER_DRAG_VERTICAL.store(vertical, Ordering::Release);
@@ -1845,7 +1845,7 @@ fn handle_chrome_left_down(hwnd: HWND, point: (i32, i32)) -> bool {
 }
 
 fn handle_chrome_left_up(hwnd: HWND, point: (i32, i32)) -> bool {
-    #[cfg(feature = "shell-runtime")]
+    #[cfg(feature = "browser-shell")]
     if DIVIDER_DRAG.swap(false, Ordering::AcqRel) {
         unsafe {
             let _ = ReleaseCapture();

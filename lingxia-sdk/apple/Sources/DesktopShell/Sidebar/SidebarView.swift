@@ -320,16 +320,16 @@ class SidebarView: NSView {
         downloadButton.action = #selector(downloadClicked)
         headerView.addSubview(downloadButton)
 
-        let shellEnabled = (LxAppCore.capabilities & LxAppCore.capShell) != 0
+        let browserEnabled = (LxAppCore.capabilities & LxAppCore.capBrowser) != 0
         os_log(
-            "Sidebar setup shellEnabled=%{public}@ capabilities=%{public}u",
+            "Sidebar setup browserEnabled=%{public}@ capabilities=%{public}u",
             log: Self.log,
             type: .info,
-            shellEnabled ? "true" : "false",
+            browserEnabled ? "true" : "false",
             LxAppCore.capabilities
         )
-        settingsButton.isHidden = !shellEnabled
-        downloadButton.isHidden = !shellEnabled
+        settingsButton.isHidden = !browserEnabled
+        downloadButton.isHidden = !browserEnabled
 
         // Scroll view (trailing inset to leave room for resize handle)
         scrollView.translatesAutoresizingMaskIntoConstraints = false
@@ -677,21 +677,21 @@ class SidebarView: NSView {
 
     func updateVisibilityState() {
         let hidden = isFullyHidden
-        let shellEnabled = (LxAppCore.capabilities & LxAppCore.capShell) != 0
+        let browserEnabled = (LxAppCore.capabilities & LxAppCore.capBrowser) != 0
         os_log(
-            "Sidebar visibility hidden=%{public}@ shellEnabled=%{public}@ capabilities=%{public}u",
+            "Sidebar visibility hidden=%{public}@ browserEnabled=%{public}@ capabilities=%{public}u",
             log: Self.log,
             type: .debug,
             hidden ? "true" : "false",
-            shellEnabled ? "true" : "false",
+            browserEnabled ? "true" : "false",
             LxAppCore.capabilities
         )
         let compact = isCompact && !hidden && !appUIOnlyMode
         scrollView.isHidden = hidden || appUIOnlyMode || compact
         railScrollView.isHidden = hidden || appUIOnlyMode || !compact
         // The header action buttons and footer panel icons don't fit the rail.
-        settingsButton.isHidden = hidden || !shellEnabled || appUIOnlyMode || compact
-        downloadButton.isHidden = hidden || !shellEnabled || appUIOnlyMode || compact
+        settingsButton.isHidden = hidden || !browserEnabled || appUIOnlyMode || compact
+        downloadButton.isHidden = hidden || !browserEnabled || appUIOnlyMode || compact
         // The header collapse toggle shows only in the expanded layout; the rail
         // carries its own expand toggle as the first icon when compact.
         hideButton.isHidden = hidden || appUIOnlyMode || compact
@@ -1098,8 +1098,8 @@ class SidebarView: NSView {
             yOffset += SidebarBrowserItemView.Layout.height + 2
         }
 
-        // "+" button — only shown when shell (browser) capability is available
-        if (LxAppCore.capabilities & LxAppCore.capShell) != 0 {
+        // "+" button — only shown when the browser capability is available
+        if (LxAppCore.capabilities & LxAppCore.capBrowser) != 0 {
             ensureSubview(addButton, in: docView) {
                 setupAddButton()
                 NSLayoutConstraint.activate([
