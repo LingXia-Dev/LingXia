@@ -366,9 +366,9 @@ fn handle_open_url_request(req: &OpenUrlRequest) -> bool {
             let url = req.url.clone();
             // May be called on a webview UI thread (NewWindowRequested);
             // hop onto the executor before touching tab/window state.
-            let _ = lingxia::task::spawn(async move {
+            std::mem::drop(lingxia::task::spawn(async move {
                 open_browser_tab_for_open_url(&owner_appid, &url, present);
-            });
+            }));
             true
         }
     }
@@ -391,7 +391,7 @@ fn open_browser_tab_for_open_url(owner_appid: &str, url: &str, present: bool) {
 
 fn schedule_browser_tabs_changed_sync() {
     let epoch = BROWSER_TAB_SYNC_EPOCH.fetch_add(1, Ordering::Relaxed) + 1;
-    let _ = lingxia::task::spawn(async move {
+    std::mem::drop(lingxia::task::spawn(async move {
         tokio::time::sleep(std::time::Duration::from_millis(
             BROWSER_TAB_SYNC_DEBOUNCE_MS,
         ))
@@ -399,7 +399,7 @@ fn schedule_browser_tabs_changed_sync() {
         if BROWSER_TAB_SYNC_EPOCH.load(Ordering::Relaxed) == epoch {
             on_browser_tabs_changed();
         }
-    });
+    }));
 }
 
 /// Re-syncs the shell after any browser tab change: drops a stale
@@ -1247,7 +1247,7 @@ fn handle_lxapp_auxiliary_close(owner_appid: &str, target_appid: &str) {
 /// webview asynchronously).
 fn present_browser_tab_when_ready(appid: &str, tab_id: String) {
     let owner_appid = appid.to_string();
-    let _ = lingxia::task::spawn(async move {
+    std::mem::drop(lingxia::task::spawn(async move {
         for attempt in 0..PRESENT_BROWSER_TAB_MAX_RETRY {
             let Some(tab) = browser_tab_summary(&tab_id) else {
                 // Tab was closed while waiting.
@@ -1277,7 +1277,7 @@ fn present_browser_tab_when_ready(appid: &str, tab_id: String) {
             ))
             .await;
         }
-    });
+    }));
 }
 
 /// Opens the browser page behind a sidebar header action (settings /
@@ -1600,14 +1600,14 @@ fn commit_address_input(appid: &str, tab_id: &str, raw_input: &str) {
 
     let appid = appid.to_string();
     let tab_id = tab_id.to_string();
-    let _ = lingxia::task::spawn(async move {
+    std::mem::drop(lingxia::task::spawn(async move {
         if let Err(err) = navigate_browser_tab(&tab_id, &navigation.url) {
             log::error!("failed to navigate browser tab {tab_id}: {err}");
         }
         // The tabs-changed observer re-syncs as well; sync directly so the
         // capsule reflects the committed URL even without an observer.
         sync_shell_layout(&appid);
-    });
+    }));
 }
 
 fn set_managed_surface_visible(panel_id: &str, visible: bool) -> bool {
@@ -1713,7 +1713,7 @@ fn handle_panel_activator(appid: &str, panel_id: String) {
 
     let owner_appid = appid.to_string();
     register_managed_aside(&owner_appid, &panel_id);
-    let _ = lingxia::task::spawn(async move {
+    std::mem::drop(lingxia::task::spawn(async move {
         let result = open_panel_lxapp(&panel_id, &panel_appid, &path).await;
         pending_panel_opens().remove(&panel_id);
         if let Err(err) = result {
@@ -1722,7 +1722,7 @@ fn handle_panel_activator(appid: &str, panel_id: String) {
             return;
         }
         sync_shell_layout(&owner_appid);
-    });
+    }));
 }
 
 fn panel_target_for_id(panel_id: &str) -> Option<PanelTarget> {

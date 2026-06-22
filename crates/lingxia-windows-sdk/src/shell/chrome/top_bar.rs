@@ -370,7 +370,7 @@ pub(super) fn draw_design_icon_button_with_fallback(
 ) {
     let icon_rect = centered_square(rect, size);
     if !draw_windows_design_icon_with_color(hdc, icon, icon_rect, rgb) {
-        let fallback = fallback.or_else(|| match icon {
+        let fallback = fallback.or(match icon {
             WindowsDesignIcon::Back => Some(GLYPH_NAV_BACK),
             WindowsDesignIcon::Forward => Some(GLYPH_NAV_FORWARD),
             WindowsDesignIcon::BrowserRefresh => Some(GLYPH_NAV_RELOAD),

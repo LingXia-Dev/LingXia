@@ -326,7 +326,7 @@ pub(super) fn show_existing_windows_terminal_panel(
             .map_err(|err| err.to_string())?;
         publish_tab_strip(panel_id);
         publish_active_snapshot(panel_id);
-        return Ok(true);
+        Ok(true)
     }
     #[cfg(not(feature = "terminal-runtime"))]
     {
