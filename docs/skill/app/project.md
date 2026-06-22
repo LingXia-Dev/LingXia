@@ -303,24 +303,25 @@ A host app's UI is a flat list under top-level `surfaces:`. You declare *what* e
 |---|---|---:|---|
 | `id` | string | Yes | Unique surface id. For `render: lxapp` it doubles as the lxapp `appId` (the surface is opened by id). |
 | `render` | `lxapp` \| `native` | No (`lxapp`) | `lxapp` = a web page surface; `native` = a host-native surface (only the built-in `terminal` today). |
-| `role` | `main` \| `aside` | Yes | `main` = a switchable primary surface; `aside` = a docked companion. (`float` is reserved, not yet supported.) |
+| `role` | `main` \| `aside` \| `float` | Yes | `main` = a switchable primary surface; `aside` = a docked companion; `float` = a tray-anchored popover (requires a `tray:`). |
 | `launch` | bool | No | Open on start. At most one `main` may set `launch: true` (the initial surface). Omit on all mains for a tray-launched app. |
 | `edge` | `left`\|`right`\|`top`\|`bottom` | For `aside` | Which edge the aside docks to. |
 | `sidebar` | object | No | Adds a sidebar entry that toggles this surface: `{ icon?, label?, section? }`. `section`: `top` (default) or `bottom` (footer / utility entries). |
-| `tray` | object | No | Adds a tray / menu-bar entry: `{ icon?, label?, action? }`. `action`: `toggle` (visible→hide, hidden→show) or `activate` (show + bring to front). |
+| `tray` | object | No | Adds a menu-bar (macOS) / system-tray (Windows) entry: `{ icon?, label?, action?, exclusive?, size? }`. `action`: `toggle` (visible→hide, hidden→show) or `activate` (show + bring to front). `exclusive: true` → no dock / taskbar icon. `size: { width, height }` (on a `role: float` popover) sets the popover content size. |
 | `platforms` | string[] | No | Availability filter — `macos`, `windows`, `ios`, `android`, `harmony`. Empty = all platforms. |
 
 Icons (`sidebar.icon`, `tray.icon`) are host-root-relative SVG source paths — see [Icon Paths](#icon-paths).
 
 ### Rules (enforced at build)
 
-- Exactly one `main` surface is required.
+- A config needs exactly one `main` surface — or, for a pure popover app, a `role: float` surface with a `tray:` and no `main`.
 - At most one `main` may set `launch: true`; `launch` is invalid on a non-main surface.
 - `edge` is required on `aside` and invalid on `main`.
 - `role: main` cannot use `render: native`.
 - `render: native` supports only `id: terminal`, requires `capabilities.terminal: true`, and its `edge` must be `top` or `bottom`.
 - Surface ids must be unique.
-- `role: float` is rejected (reserved).
+- `role: float` requires a `tray:` (it is a tray-anchored popover); a bare `role: float` is rejected.
+- At most one surface may declare `tray:`.
 
 ### Example — main + assistant aside + terminal
 
@@ -355,9 +356,32 @@ surfaces:
 
 Each `render: lxapp` surface needs its assets bundled — list its `id` (= appId) in `resources.bundles`, or let the runtime/update flow provide it.
 
-### Menu-bar / tray-only app
+### Menu-bar / system-tray apps
 
-Omit `launch: true` on the main surface and give it a `tray:` entry. The app starts without opening a window; the tray / menu-bar entry opens it. Use `action: toggle` to hide on re-click, or `action: activate` to always show and focus. A tray-only app can run as an accessory-style menu-bar app.
+A `tray:` entry adds a menu-bar item (macOS) / system-tray icon (Windows). The same declaration drives three shapes:
+
+- **Dock + tray** — `role: main` with a `tray:` (default `exclusive: false`). Keeps the dock / taskbar icon and full window UI; the tray entry summons the window (`action: activate` brings it to front, `toggle` hides on re-click).
+- **Tray only** — add `exclusive: true`. No dock / taskbar icon and no flash at launch (macOS sets `LSUIElement`; Windows uses `WS_EX_TOOLWINDOW`). The app lives only in the tray.
+- **Tray popover** — `role: float` + a `tray:`. Clicking the tray icon opens the surface as an auto-dismissing popover anchored under the icon. Set its size with `tray.size: { width, height }` (default 360×420). A pure popover app has no `main`.
+
+```yaml
+surfaces:
+  - id: my-panel
+    role: float            # tray-anchored popover
+    tray:
+      icon: icons/tray.svg
+      exclusive: true       # no dock / taskbar icon
+      size: { width: 320, height: 480 }
+```
+
+#### Runtime tray / dock APIs (JS)
+
+The tray's dynamic content is updated from page/app logic:
+
+- `lx.tray.setIcon(path)` / `lx.tray.setTitle(text)` / `lx.tray.setBadge(value)` — update the status item's icon, its text (macOS), and a badge (e.g. an unread count).
+- `lx.app.setBadge(value)` — the dock (macOS) / taskbar (Windows) badge.
+
+Pass `null` / empty to clear a badge or title. The tray *shape* is declared in `lingxia.yaml`; these APIs only change its runtime content.
 
 ### Terminal surface
 
@@ -444,7 +468,7 @@ If `--skip-native` is used, SwiftPM links an existing Rust static library. That 
 - Declaring more than one `main` with `launch: true`, or `launch: true` on an `aside`.
 - An `aside` without an `edge`, or an `edge` on a `main`.
 - `render: native` on anything but `id: terminal`, or a terminal surface without `capabilities.terminal: true`, or a terminal `edge` other than `top`/`bottom`.
-- Using `role: float` — reserved, not yet supported.
+- Using `role: float` without a `tray:` — a float surface is only valid as a tray-anchored popover.
 - Reusing one lxapp `appId` across multiple surfaces.
 - Adding Settings or Downloads as their own surfaces — those are built-in browser pages, opened by built-in chrome when `capabilities.browser` is on.
 - Expecting browser chrome without `capabilities.browser: true` — browser shell UI is opt-in.
@@ -457,7 +481,7 @@ If `--skip-native` is used, SwiftPM links an existing Rust static library. That 
 ## Pre-ship checklist
 
 - [ ] `lingxia.yaml` validates: every required platform section present; `homeAppId` resolvable to a `resources.bundles[].appId`.
-- [ ] Exactly one `main` surface; every `aside` has an `edge`; terminal surfaces have `capabilities.terminal: true`.
+- [ ] Exactly one `main` surface (or a `role: float` tray popover); every `aside` has an `edge`; terminal surfaces have `capabilities.terminal: true`.
 - [ ] `features.appService` matches the embedded lxapp's logic mode.
 - [ ] All native routes return `lingxia::Result<T>` with `Serialize` outputs.
 - [ ] `HostAddon` registers every route and extension; FFI exports present for each target platform.
@@ -469,7 +493,6 @@ The surface model intentionally does not yet define:
 
 - splash / launch screens — LingXia does not provide them; host apps own their launch UX
 - multiple `main` surfaces open as separate top-level windows simultaneously
-- `role: float` popups
 - asides nested under other asides
 - reusing one lxapp `appId` across multiple surfaces
 - native (`render: native`) surfaces other than the built-in `terminal`
