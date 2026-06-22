@@ -18,6 +18,9 @@ struct LxAppUIConfig: Decodable, Sendable {
     struct Launch: Decodable, Sendable {
         let initialSurface: String
         let openOnLaunch: Bool?
+        /// Tray-exclusive apps (no dock icon). Backed statically by LSUIElement in
+        /// Info.plist; this drives the matching .accessory activation policy.
+        let hideDockIcon: Bool?
     }
 
     struct Surface: Decodable, Sendable {

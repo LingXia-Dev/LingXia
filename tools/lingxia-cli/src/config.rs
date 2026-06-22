@@ -232,6 +232,11 @@ pub struct SurfaceTray {
     pub label: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub action: Option<SurfaceTrayAction>,
+    /// When true the app lives only in the menu bar (macOS) / system tray
+    /// (Windows) with no dock / taskbar icon (tray-only). Default false keeps
+    /// the dock / taskbar icon alongside the tray.
+    #[serde(default)]
+    pub exclusive: bool,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -517,6 +522,14 @@ fn surfaces_to_ui(surfaces: &[SurfaceDecl], terminal_enabled: bool) -> Result<Va
     launch.insert("initialSurface".into(), json!(launch_id));
     if !open_on_launch {
         launch.insert("openOnLaunch".into(), json!(false));
+    }
+    // An exclusive tray hides the dock / taskbar icon. Drives LSUIElement +
+    // .accessory on macOS and WS_EX_TOOLWINDOW on Windows.
+    let hide_dock_icon = surfaces
+        .iter()
+        .any(|s| s.tray.as_ref().is_some_and(|t| t.exclusive));
+    if hide_dock_icon {
+        launch.insert("hideDockIcon".into(), json!(true));
     }
 
     Ok(json!({

@@ -132,10 +132,13 @@ final class LxAppMacAppUIRuntime: NSObject {
     }
 
     func start() throws {
-        if menuBarActivators.isEmpty || !appActivationActivators.isEmpty {
-            NSApp.setActivationPolicy(.regular)
-        } else {
+        // A tray-exclusive app (hideDockIcon) is a menu-bar agent with no dock icon;
+        // everything else keeps the dock icon. Info.plist's LSUIElement already made
+        // the exclusive case an accessory before launch, so this only confirms it.
+        if uiConfig.launch.hideDockIcon == true {
             NSApp.setActivationPolicy(.accessory)
+        } else {
+            NSApp.setActivationPolicy(.regular)
         }
         trayController.installMenuBarActivators(menuBarActivators)
         installAppActivationActivators()

@@ -460,6 +460,17 @@ impl Platform for MacosPlatform {
             None
         };
 
+        // An exclusive tray hides the dock icon. Emit LSUIElement
+        // statically so the app starts as an accessory with no dock-icon flash.
+        let hide_dock_icon = config
+            .lingxia_config
+            .as_ref()
+            .and_then(|c| c.generated_ui.as_ref())
+            .and_then(|ui| ui.get("launch"))
+            .and_then(|launch| launch.get("hideDockIcon"))
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false);
+
         let app_path = create_macos_app_bundle(
             &macos_dir,
             &bin_dir,
@@ -469,6 +480,7 @@ impl Platform for MacosPlatform {
             &bundle_id,
             &deployment_target,
             info_plist.as_ref(),
+            hide_dock_icon,
         )?;
 
         // Mirror the iOS env-icon overlay so dev/preview macOS builds also
@@ -647,6 +659,7 @@ fn create_macos_app_bundle(
     bundle_id: &str,
     deployment_target: &str,
     info_plist_path: Option<&PathBuf>,
+    hide_dock_icon: bool,
 ) -> Result<PathBuf> {
     let app_name = format!("{}.app", product_name);
     let output_dir = macos_dir.join(".lingxia");
@@ -709,6 +722,7 @@ fn create_macos_app_bundle(
         deployment_target,
         executable_name,
         info_plist_path,
+        hide_dock_icon,
     )?;
 
     Ok(app_bundle)
@@ -1098,6 +1112,7 @@ fn generate_macos_info_plist(
     deployment_target: &str,
     executable_name: &str,
     info_plist_path: Option<&PathBuf>,
+    hide_dock_icon: bool,
 ) -> Result<()> {
     let mut info: std::collections::HashMap<String, plist::Value> =
         std::collections::HashMap::new();
@@ -1164,6 +1179,13 @@ fn generate_macos_info_plist(
         "LSMinimumSystemVersion".into(),
         deployment_target.to_string().into(),
     );
+
+    // Tray-exclusive apps run as a menu-bar agent with no dock icon.
+    // Setting this statically avoids the dock-icon flash a runtime activation-policy
+    // switch would cause.
+    if hide_dock_icon {
+        info.insert("LSUIElement".into(), true.into());
+    }
 
     let info_plist_path = contents_dir.join("Info.plist");
     let dict: plist::Dictionary = info.into_iter().collect();
