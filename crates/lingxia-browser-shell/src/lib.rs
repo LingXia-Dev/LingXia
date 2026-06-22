@@ -11,9 +11,9 @@ mod downloads;
 mod facade;
 mod panel;
 mod platform_error;
-#[cfg(all(target_os = "macos", feature = "proxy"))]
+#[cfg(all(any(target_os = "macos", target_os = "windows"), feature = "proxy"))]
 mod proxy;
-#[cfg(all(target_os = "macos", feature = "proxy"))]
+#[cfg(all(any(target_os = "macos", target_os = "windows"), feature = "proxy"))]
 mod proxy_settings;
 mod settings;
 
@@ -99,7 +99,7 @@ fn bundled_context_menu_script() -> Result<String, LxAppError> {
 pub fn register_runtime() {
     lingxia_browser::install_runtime();
     downloads::register();
-    #[cfg(all(target_os = "macos", feature = "proxy"))]
+    #[cfg(all(any(target_os = "macos", target_os = "windows"), feature = "proxy"))]
     proxy::register();
     settings::register();
 }
@@ -141,7 +141,7 @@ pub fn register_bundled_assets() {
 
 #[doc(hidden)]
 pub fn warmup() {
-    #[cfg(all(target_os = "macos", feature = "proxy"))]
+    #[cfg(all(any(target_os = "macos", target_os = "windows"), feature = "proxy"))]
     proxy::warmup();
     lingxia_browser::warmup();
 }
