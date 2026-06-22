@@ -2,7 +2,22 @@
  * Transfer task APIs.
  */
 
-export interface DownloadOptions {
+declare const appDownloadPathBrand: unique symbol;
+declare const systemDownloadsPathBrand: unique symbol;
+
+export type DownloadDestination = 'app' | 'downloads';
+
+/** Runtime-managed app download path, usually under `lx://userdata`. */
+export type AppDownloadFilePath = string & {
+  readonly [appDownloadPathBrand]: 'app-download-file-path';
+};
+
+/** Native system Downloads path. Do not pass this to `FileManager`. */
+export type SystemDownloadsPath = string & {
+  readonly [systemDownloadsPathBrand]: 'system-downloads-path';
+};
+
+export interface DownloadOptionsBase {
   /** HTTP(S) source URL. */
   url: string;
   /**
@@ -12,35 +27,66 @@ export interface DownloadOptions {
   headers?: Record<string, string>;
   /** Request timeout in milliseconds. */
   timeout?: number;
-  /**
-   * Optional durable destination.
-   *
-   * - Omit `filePath` to receive a temporary file in `tempFilePath`
-   * - Relative paths resolve under user data
-   * - `lx://` paths must target `lx://userdata`
-   *
-   * `lx://usercache` is not accepted here.
-   */
-  filePath?: string;
   /** Optional abort signal. */
   signal?: AbortSignal;
 }
 
-export interface DownloadProgressEvent {
+export interface AppDownloadOptions extends DownloadOptionsBase {
+  /**
+   * Optional app-owned durable output path.
+   *
+   * Omit `filePath` to receive a temporary result in `tempFilePath`. Relative
+   * paths resolve under user data. `lx://` paths must target `lx://userdata`;
+   * `lx://usercache` is not accepted here.
+   */
+  filePath?: string;
+  /**
+   * App-owned output. Omit to use a temporary output unless `filePath` is set.
+   */
+  destination?: 'app';
+}
+
+export interface DownloadsDownloadOptions extends DownloadOptionsBase {
+  /**
+   * Optional filename hint for the system Downloads destination.
+   * This is not an app-owned FileManager path.
+   */
+  filePath?: string;
+  /** Save into the user's system Downloads directory. */
+  destination: 'downloads';
+}
+
+/**
+ * Download options.
+ *
+ * - `app`: app-owned temporary output, or durable `lx://userdata` output when
+ *   `filePath` is set
+ * - `downloads`: user-visible system Downloads output, requiring
+ *   `security.privileges: ["downloads"]` in `lxapp.json`
+ *
+ * Default: `app`.
+ */
+export type DownloadOptions<TDestination extends DownloadDestination = DownloadDestination> =
+  TDestination extends 'downloads' ? DownloadsDownloadOptions : AppDownloadOptions;
+
+export type DownloadResultForDestination<TDestination extends DownloadDestination> =
+  TDestination extends 'downloads' ? DownloadsDownloadResult : AppDownloadResult;
+
+export interface DownloadProgressEvent<TResult extends DownloadResult = DownloadResult> {
   kind: 'progress' | 'paused' | 'resumed' | 'canceled' | 'completed';
   downloadedBytes?: number;
   totalBytes?: number;
   /** Present only when the total size is known. */
   progress?: number;
-  result?: DownloadResult;
+  result?: TResult;
 }
 
-export interface DownloadIteratorResult {
+export interface DownloadIteratorResult<TResult extends DownloadResult = DownloadResult> {
   done: boolean;
-  value?: DownloadProgressEvent;
+  value?: DownloadProgressEvent<TResult>;
 }
 
-export type DownloadResult =
+export type AppDownloadResult =
   | {
       /**
        * Temporary result.
@@ -57,26 +103,38 @@ export type DownloadResult =
     }
   | {
       /** Durable destination under `lx://userdata`. */
-      filePath: string;
+      filePath: AppDownloadFilePath;
       tempFilePath?: never;
       mimeType?: string;
       size: number;
     };
 
-export interface DownloadTask extends PromiseLike<DownloadResult>, AsyncIterable<DownloadProgressEvent> {
-  next(): Promise<DownloadIteratorResult>;
+export interface DownloadsDownloadResult {
+  /** Native system Downloads path. Do not pass this to `FileManager`. */
+  filePath: SystemDownloadsPath;
+  tempFilePath?: never;
+  mimeType?: string;
+  size: number;
+}
+
+export type DownloadResult = AppDownloadResult | DownloadsDownloadResult;
+
+export interface DownloadTask<TDownloadResult extends DownloadResult = DownloadResult>
+  extends PromiseLike<TDownloadResult>,
+    AsyncIterable<DownloadProgressEvent<TDownloadResult>> {
+  next(): Promise<DownloadIteratorResult<TDownloadResult>>;
   /** Stops iteration only. Does not cancel the underlying download task. */
-  return(): Promise<DownloadIteratorResult>;
-  catch<TResult = never>(
-    onrejected?: ((reason: unknown) => TResult | PromiseLike<TResult>) | null,
-  ): Promise<DownloadResult | TResult>;
-  finally(onfinally?: (() => void) | null): Promise<DownloadResult>;
+  return(): Promise<DownloadIteratorResult<TDownloadResult>>;
+  catch<TRejected = never>(
+    onrejected?: ((reason: unknown) => TRejected | PromiseLike<TRejected>) | null,
+  ): Promise<TDownloadResult | TRejected>;
+  finally(onfinally?: (() => void) | null): Promise<TDownloadResult>;
   pause(): Promise<void>;
   resume(): Promise<void>;
   cancel(): Promise<void>;
   /** Alias for cancel(), matching browser/mini-program abort naming. */
   abort(): Promise<void>;
-  wait(): Promise<DownloadResult>;
+  wait(): Promise<TDownloadResult>;
 }
 
 export interface UploadOptions {

@@ -14,7 +14,7 @@ LingXia exposes three LxApp-owned storage classes:
 | User Data | `lx://userdata/<path>` | one LxApp | durable, never auto-cleaned |
 | User Cache | `lx://usercache/<path>` | one LxApp | regenerable, auto-cleaned |
 
-Shell or desktop-visible downloads are host product behavior and are not exposed through `downloadFile.filePath`. A future Shell-managed download API should own progress records, permissions, and user-visible cleanup separately.
+User-visible downloads are exposed through `downloadFile({ destination: "downloads" })`. They are owned by the host downloads center, not by LxApp private storage.
 
 ## Physical Layout
 
@@ -45,7 +45,7 @@ LingXia identifies each LxApp storage owner by its fingermark.
 
 ### `downloadFile`
 
-`downloadFile` always stages internally first. Final output depends on `filePath`.
+`downloadFile` defaults to app-owned output. Final output depends on `destination` and `filePath`.
 
 Without `filePath`, the result is temp:
 
@@ -59,16 +59,27 @@ With `filePath`, the destination must be relative or `lx://userdata/...`:
 ```ts
 const result = await lx.downloadFile({
   url,
-  filePath: "downloads/video.mp4",
+  filePath: "videos/video.mp4",
 });
-result.filePath; // lx://userdata/downloads/video.mp4
+result.filePath; // lx://userdata/videos/video.mp4
 ```
+
+With `destination: "downloads"`, the file is saved into the user's Downloads directory and appears in the built-in downloads page. `filePath` is treated as a filename or relative-name hint only; the runtime sanitizes it, prevents directory traversal, and avoids overwriting existing files.
+
+```ts
+const task = lx.downloadFile({
+  url,
+  destination: "downloads",
+  filePath: "video.mp4",
+});
+```
+
+This requires `"downloads"` in `lxapp.json` `security.privileges`. App-owned output (`destination: "app"`, the default) does not require that privilege.
 
 Rejected destinations:
 
 - `lx://usercache/...`
 - native absolute paths
-- host download directories
 - drive-style paths containing `:`
 - backslash paths
 - empty path segments

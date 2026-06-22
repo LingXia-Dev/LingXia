@@ -66,8 +66,14 @@ import type {
 } from './file';
 
 import type {
+  AppDownloadOptions,
+  AppDownloadResult,
+  DownloadDestination,
   DownloadOptions,
+  DownloadResultForDestination,
   DownloadTask,
+  DownloadsDownloadOptions,
+  DownloadsDownloadResult,
   UploadOptions,
   UploadTask,
 } from './transfer';
@@ -302,7 +308,11 @@ export interface Lx {
    * otherwise prefer `mode: 'auto'`.
    */
   openFile(options: OpenFileOptions): void;
-  downloadFile(options: DownloadOptions): DownloadTask;
+  downloadFile(options: DownloadsDownloadOptions): DownloadTask<DownloadsDownloadResult>;
+  downloadFile(options: AppDownloadOptions): DownloadTask<AppDownloadResult>;
+  downloadFile<TDestination extends DownloadDestination = 'app'>(
+    options: DownloadOptions<TDestination>,
+  ): DownloadTask<DownloadResultForDestination<TDestination>>;
   uploadFile(options: UploadOptions): UploadTask;
   getFileManager(): FileManager;
 
