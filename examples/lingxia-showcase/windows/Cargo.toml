@@ -11,6 +11,7 @@ path = "src/main.rs"
 default = ["standard"]
 standard = ["host/standard", "lingxia-windows-sdk/standard"]
 browser-shell = ["host/browser-shell", "lingxia-windows-sdk/browser-shell"]
+proxy = ["host/proxy", "browser-shell"]
 terminal-runtime = ["host/terminal-runtime", "lingxia-windows-sdk/terminal-runtime"]
 devtools = ["host/devtools"]
 webview-input = ["host/webview-input", "lingxia-windows-sdk/webview-input"]

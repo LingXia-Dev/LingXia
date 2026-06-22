@@ -52,6 +52,7 @@ browser:
 capabilities:
   notifications: true
   browser: true
+  proxy: true
   terminal: true
 
 resources:
