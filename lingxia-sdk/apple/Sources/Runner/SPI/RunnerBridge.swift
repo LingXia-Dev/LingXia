@@ -174,10 +174,6 @@ enum RunnerBridge {
         LxIcon.image(named: name, size: size)
     }
 
-    static func showCapsuleMenu(appId: String) {
-        LxAppCapsuleMenu.show(appId: appId)
-    }
-
     static func makeSurfaceShell(controller: LxAppController) -> LxAppShell {
         let configuration = Lingxia.resolvedShellConfiguration(
             from: LxAppShellConfiguration(),

@@ -807,7 +807,7 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
     }
 
     @objc private func moreButtonClicked() {
-        RunnerSupport.CapsuleMenu.show(appId: appId)
+        showRunnerLxAppMenu()
     }
     
     @objc private func minimizeButtonClicked() {
@@ -815,8 +815,41 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
     }
     
     @objc private func closeButtonClicked() {
-        let _ = onLxappEvent(appId, LxAppUiEventType.CapsuleClick, "close")
-        window?.close()
+        RunnerApp.shared.closeCurrentLxAppFromCapsule()
+    }
+
+    private func showRunnerLxAppMenu() {
+        let menu = NSMenu(title: "LxApp")
+        menu.autoenablesItems = false
+
+        let clean = NSMenuItem(
+            title: "Clean Cache and Restart LxApp",
+            action: #selector(cleanCacheAndRestartClicked),
+            keyEquivalent: ""
+        )
+        clean.target = self
+        clean.image = NSImage(systemSymbolName: "trash", accessibilityDescription: nil)
+        menu.addItem(clean)
+
+        let restart = NSMenuItem(
+            title: "Restart LxApp",
+            action: #selector(restartLxAppClicked),
+            keyEquivalent: ""
+        )
+        restart.target = self
+        restart.image = NSImage(systemSymbolName: "arrow.clockwise", accessibilityDescription: nil)
+        menu.addItem(restart)
+
+        guard let anchor = floatingCapsuleContainer ?? window?.contentView else { return }
+        menu.popUp(positioning: nil, at: NSPoint(x: anchor.bounds.midX, y: anchor.bounds.minY), in: anchor)
+    }
+
+    @objc private func cleanCacheAndRestartClicked() {
+        RunnerApp.shared.cleanCacheAndRestartCurrentLxApp()
+    }
+
+    @objc private func restartLxAppClicked() {
+        RunnerApp.shared.restartCurrentLxApp()
     }
     
     // MARK: - NSWindowDelegate

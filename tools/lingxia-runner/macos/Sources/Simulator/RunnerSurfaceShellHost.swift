@@ -53,6 +53,26 @@ private final class RunnerSurfaceDeviceSelector: NSView {
     @objc private func showDeviceMenu() {
         let menu = NSMenu(title: "Device")
         var selectedItem: NSMenuItem?
+
+        let clean = NSMenuItem(
+            title: "Clean Cache and Restart LxApp",
+            action: #selector(cleanCacheAndRestartLxApp(_:)),
+            keyEquivalent: ""
+        )
+        clean.target = self
+        clean.image = NSImage(systemSymbolName: "trash", accessibilityDescription: nil)
+        menu.addItem(clean)
+
+        let restart = NSMenuItem(
+            title: "Restart LxApp",
+            action: #selector(restartLxApp(_:)),
+            keyEquivalent: ""
+        )
+        restart.target = self
+        restart.image = NSImage(systemSymbolName: "arrow.clockwise", accessibilityDescription: nil)
+        menu.addItem(restart)
+        menu.addItem(.separator())
+
         var previousShape: RunnerDeviceShape?
         for device in MobileDeviceSize.allCases {
             if let previousShape, previousShape != device.shape {
@@ -80,6 +100,14 @@ private final class RunnerSurfaceDeviceSelector: NSView {
             return
         }
         RunnerApp.shared.setDeviceSize(device)
+    }
+
+    @objc private func cleanCacheAndRestartLxApp(_ sender: NSMenuItem) {
+        RunnerApp.shared.cleanCacheAndRestartCurrentLxApp()
+    }
+
+    @objc private func restartLxApp(_ sender: NSMenuItem) {
+        RunnerApp.shared.restartCurrentLxApp()
     }
 
     private static func symbol(for device: MobileDeviceSize) -> NSImage? {

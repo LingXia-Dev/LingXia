@@ -152,13 +152,6 @@ enum RunnerSupport {
     }
 
     @MainActor
-    enum CapsuleMenu {
-        static func show(appId: String) {
-            LingxiaRunnerSPI.CapsuleMenu.show(appId: appId)
-        }
-    }
-
-    @MainActor
     enum SurfaceShell {
         static func make(controller: LxAppController) -> LxAppShell {
             LingxiaRunnerSPI.SurfaceShell.make(controller: controller)
