@@ -557,8 +557,9 @@ class SidebarView: NSView, NSPopoverDelegate {
         hideButton.action = #selector(hideButtonClicked)
         headerView.addSubview(hideButton)
 
-        // Rail expand toggle: configured once, inserted at the top of the rail
-        // whenever the rail is rebuilt.
+        // Rail expand toggle: pinned to the bottom of the rail (not in the
+        // scrolling icon stack) so it stays anchored as chrome below the
+        // activators, leaving the top free for a future branding header.
         railExpandButton.translatesAutoresizingMaskIntoConstraints = false
         railExpandButton.isBordered = false
         railExpandButton.bezelStyle = .regularSquare
@@ -574,9 +575,12 @@ class SidebarView: NSView, NSPopoverDelegate {
             size: NSSize(width: Layout.railIconSize, height: Layout.railIconSize))
         railExpandButton.target = self
         railExpandButton.action = #selector(railExpandClicked)
+        addSubview(railExpandButton)
         NSLayoutConstraint.activate([
             railExpandButton.widthAnchor.constraint(equalToConstant: Layout.railButtonSize),
             railExpandButton.heightAnchor.constraint(equalToConstant: Layout.railButtonSize),
+            railExpandButton.centerXAnchor.constraint(equalTo: railScrollView.centerXAnchor),
+            railExpandButton.bottomAnchor.constraint(equalTo: railScrollView.bottomAnchor, constant: -8),
         ])
 
         // Resize handle on right edge
@@ -734,9 +738,6 @@ class SidebarView: NSView, NSPopoverDelegate {
         }
         railButtons.removeAll()
 
-        // The expand toggle is always the first icon in the rail, above the apps.
-        railStack.addArrangedSubview(railExpandButton)
-
         for group in model.appGroups {
             let info = getLxAppInfo(group.appId)
             let iconPath = info.icon.toString()
@@ -776,6 +777,25 @@ class SidebarView: NSView, NSPopoverDelegate {
             railStack.addArrangedSubview(btn)
             railButtons[key] = btn
         }
+
+        // New-tab affordance for the collapsed rail — only when a full browser is
+        // available (e.g. the showcase desktop app). In hosts without browser-shell
+        // (e.g. the lxapp Runner) a "+" would just open a dead tab, so omit it.
+        let browserEnabled = (LxAppCore.capabilities & LxAppCore.capBrowser) != 0
+        if browserEnabled {
+            let addRailButton = makeRailButton(
+                key: "action:add-tab",
+                tooltip: "Add browser tab",
+                image: NSImage(systemSymbolName: "plus", accessibilityDescription: "Add browser tab"),
+                isTemplate: true
+            )
+            addRailButton.action = #selector(addButtonClicked)
+            railStack.addArrangedSubview(addRailButton)
+        }
+
+        // The expand toggle is not part of this stack — it's pinned to the rail's
+        // bottom in setup() so it always anchors the bottom regardless of how many
+        // activators are present.
 
         refreshRailHighlight()
     }
@@ -935,11 +955,14 @@ class SidebarView: NSView, NSPopoverDelegate {
         let compact = isCompact && !hidden && !appUIOnlyMode
         scrollView.isHidden = hidden || appUIOnlyMode || compact
         railScrollView.isHidden = hidden || appUIOnlyMode || !compact
+        // The rail's bottom-pinned expand toggle lives outside the scroll view, so
+        // toggle it with the rail.
+        railExpandButton.isHidden = hidden || appUIOnlyMode || !compact
         // The header action buttons and footer panel icons don't fit the rail.
         settingsButton.isHidden = hidden || !browserEnabled || appUIOnlyMode || compact
         downloadButton.isHidden = hidden || !browserEnabled || appUIOnlyMode || compact
         // The header collapse toggle shows only in the expanded layout; the rail
-        // carries its own expand toggle as the first icon when compact.
+        // carries its own expand toggle anchored at the bottom when compact.
         hideButton.isHidden = hidden || appUIOnlyMode || compact
         panelStack.isHidden = compact
         // The footer only carries panel icons now; collapse it when empty so an
