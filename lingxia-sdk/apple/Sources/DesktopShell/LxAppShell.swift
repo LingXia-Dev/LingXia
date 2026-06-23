@@ -193,6 +193,11 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     private var cardTrailingConstraint: NSLayoutConstraint?
     private var cardBottomConstraint: NSLayoutConstraint?
     private var cardTopConstraint: NSLayoutConstraint?
+    /// Optional full-width strip above all shell content (sidebar + card). Used by
+    /// the runner to mount a device-selector toolbar like the iPhone simulator's;
+    /// height 0 by default, so the shipping desktop product is unaffected.
+    private let topAccessoryContainer = NSView()
+    private var topAccessoryHeightConstraint: NSLayoutConstraint?
     private var lastExpandedSidebarWidth: CGFloat = Layout.sidebarWidth
     private let sidebarRevealButton = NSButton()
     private var currentViewController: macOSLxAppViewController?
@@ -583,16 +588,28 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         cardTrailingConstraint = cardTrailing
         let cardBottom = shadowWrapper.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -p)
         cardBottomConstraint = cardBottom
-        let cardTop = shadowWrapper.topAnchor.constraint(equalTo: contentView.topAnchor, constant: p)
+        let cardTop = shadowWrapper.topAnchor.constraint(equalTo: topAccessoryContainer.bottomAnchor, constant: p)
         cardTopConstraint = cardTop
 
+        // Full-width accessory strip above everything (height 0 unless a host sets
+        // one). Added last so it sits on top in z-order.
+        topAccessoryContainer.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(topAccessoryContainer)
+        let topAccessoryHeight = topAccessoryContainer.heightAnchor.constraint(equalToConstant: 0)
+        topAccessoryHeightConstraint = topAccessoryHeight
+
         NSLayoutConstraint.activate([
-            base.topAnchor.constraint(equalTo: contentView.topAnchor),
+            topAccessoryContainer.topAnchor.constraint(equalTo: contentView.topAnchor),
+            topAccessoryContainer.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            topAccessoryContainer.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            topAccessoryHeight,
+
+            base.topAnchor.constraint(equalTo: topAccessoryContainer.bottomAnchor),
             base.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
             base.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
             base.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
 
-            sidebar.topAnchor.constraint(equalTo: contentView.topAnchor),
+            sidebar.topAnchor.constraint(equalTo: topAccessoryContainer.bottomAnchor),
             sidebar.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
             sidebar.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
             sidebarWidth,
@@ -1236,6 +1253,28 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         }
         syncSidebarHeaderButtonAlignment()
         sidebarView?.updateVisibilityState()
+    }
+
+    /// Mount (or clear) a full-width strip above all shell content. The runner
+    /// uses this for a device-selector toolbar like the iPhone simulator's; the
+    /// content lays out beneath it, so it never overlaps the app UI. Pass `nil` to
+    /// remove it.
+    func setTopAccessory(_ view: NSView?, height: CGFloat) {
+        topAccessoryContainer.subviews.forEach { $0.removeFromSuperview() }
+        if let view, height > 0 {
+            view.translatesAutoresizingMaskIntoConstraints = false
+            topAccessoryContainer.addSubview(view)
+            NSLayoutConstraint.activate([
+                view.topAnchor.constraint(equalTo: topAccessoryContainer.topAnchor),
+                view.leadingAnchor.constraint(equalTo: topAccessoryContainer.leadingAnchor),
+                view.trailingAnchor.constraint(equalTo: topAccessoryContainer.trailingAnchor),
+                view.bottomAnchor.constraint(equalTo: topAccessoryContainer.bottomAnchor),
+            ])
+            topAccessoryHeightConstraint?.constant = height
+        } else {
+            topAccessoryHeightConstraint?.constant = 0
+        }
+        window?.contentView?.layoutSubtreeIfNeeded()
     }
 
     func setSidebarHostActionHandler(_ handler: @escaping (String) -> Void) {

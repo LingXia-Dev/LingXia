@@ -197,6 +197,10 @@ enum RunnerBridge {
         shell.setTrafficLightsVisible(visible)
     }
 
+    static func setSurfaceShellTopAccessory(_ shell: LxAppShell, view: NSView?, height: CGFloat) {
+        shell.setTopAccessory(view, height: height)
+    }
+
     static func openInSurfaceShell(
         _ shell: LxAppShell,
         appId: String,

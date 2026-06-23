@@ -179,6 +179,10 @@ import WebKit
             RunnerBridge.setSurfaceShellTrafficLightsVisible(shell, visible: visible)
         }
 
+        public static func setTopAccessory(_ shell: LxAppShell, view: NSView?, height: CGFloat) {
+            RunnerBridge.setSurfaceShellTopAccessory(shell, view: view, height: height)
+        }
+
         public static func open(
             _ shell: LxAppShell,
             appId: String,
