@@ -2,7 +2,7 @@
 name: lingxia
 description: Build apps on the LingXia cross-platform framework — standalone lxapps (page-based mini-apps with a View+Logic split), native host apps (Android/iOS/macOS/Harmony shells embedding an lxapp), and Rust native extensions. TRIGGER on `lingxia` CLI, `lxapp`, `lingxia.yaml`, `lxapp.json`, `#[lingxia::native]`, `HostAddon`, `useLxPage`, `LxAppController`, or an lxapp-flavored `Page({})`. SKIP if the project imports `@tarojs/*`, `wx.*`, `uni-app`, `@dcloudio/*`, or `@remax/*` — those share the `Page({})` shape but are different runtimes. **Always read §"Step 0" before generating any file.**
 license: MIT
-allowed-tools: Read, Grep, Glob, Edit, Write, Bash(lingxia:*), Bash(npm:*), Bash(npx:*), Bash(test:*), Bash(ls:*), Bash(cat:*), Bash(cargo:*)
+allowed-tools: Read, Grep, Glob, Edit, Write, Bash(lingxia:*), Bash(lxdev:*), Bash(npm:*), Bash(npx:*), Bash(test:*), Bash(ls:*), Bash(cat:*), Bash(cargo:*)
 ---
 
 # LingXia App Development
@@ -89,7 +89,7 @@ Every published package and what to import from each. Don't guess imports from t
 | Need | File |
 |---|---|
 | Every CLI command, flag, env var (daily use) | [`./cli/reference.md`](./cli/reference.md) |
-| Drive a running `lingxia dev` session (`lxdev`: browser/app/lxapp/logs automation) | [`./cli/lxdev.md`](./cli/lxdev.md) |
+| Drive a running `lingxia dev` session — `lxdev` (browser/app/lxapp/logs automation; run `lxdev <cmd> --help` for exact flags) | [`./cli/lxdev.md`](./cli/lxdev.md) |
 | Page authoring: `Page({})`, `useLxPage`, events | [`./lxapp/guide.md`](./lxapp/guide.md) |
 | **Native components: `LxInput`, `LxVideo`, `LxMediaSwiper`, `LxPicker`, `LxNavigator`, `LxTextarea`** | [`./lxapp/components.md`](./lxapp/components.md) |
 | **Logic-side `lx.*` API surface map** | [`./lxapp/lx-api.md`](./lxapp/lx-api.md) |
