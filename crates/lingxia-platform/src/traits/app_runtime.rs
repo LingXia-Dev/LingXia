@@ -137,24 +137,37 @@ pub trait AppRuntime:
     /// Exits the host app.
     fn exit(&self) -> Result<(), PlatformError>;
 
-    /// Set the tray (menu-bar / system-tray) badge. Empty clears it.
+    // Tray / badge chrome. These are cosmetic enhancements, so platforms that
+    // lack the chrome (e.g. no menu-bar tray on mobile) no-op rather than error —
+    // portable code can call them unconditionally. A supporting platform returns
+    // Err only on genuine failure.
+
+    /// Set the tray (menu-bar / system-tray) badge. Desktop only; no-op elsewhere.
     fn set_tray_badge(&self, _text: &str) -> Result<(), PlatformError> {
-        Err(PlatformError::NotSupported("set_tray_badge".to_string()))
+        Ok(())
     }
 
-    /// Set the tray icon (a resource path resolved against the app's assets).
+    /// Set the tray icon (a resource path). Desktop only; no-op elsewhere.
     fn set_tray_icon(&self, _icon: &str) -> Result<(), PlatformError> {
-        Err(PlatformError::NotSupported("set_tray_icon".to_string()))
+        Ok(())
     }
 
-    /// Set the tray title text (shown beside the icon on macOS). Empty clears it.
+    /// Set the tray title (text beside the icon, macOS). Desktop only; no-op elsewhere.
     fn set_tray_title(&self, _text: &str) -> Result<(), PlatformError> {
-        Err(PlatformError::NotSupported("set_tray_title".to_string()))
+        Ok(())
     }
 
-    /// Set the app (dock / taskbar) badge. Empty clears it.
+    /// Set the app-icon badge: dock (macOS) / taskbar (Windows) / launcher icon
+    /// (iOS, Android). No-op on platforms where it is not yet wired.
     fn set_app_badge(&self, _text: &str) -> Result<(), PlatformError> {
-        Err(PlatformError::NotSupported("set_app_badge".to_string()))
+        Ok(())
+    }
+
+    /// Replace the tray dropdown menu. `items_json` is a JSON array of
+    /// `{ label?, separator?, enabled?, checked? }`. Item clicks are delivered
+    /// back to JS by index. Desktop only; no-op elsewhere.
+    fn set_tray_menu(&self, _items_json: &str) -> Result<(), PlatformError> {
+        Ok(())
     }
 
     /// Navigates within the given LxApp using an animation.

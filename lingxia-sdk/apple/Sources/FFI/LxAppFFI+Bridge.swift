@@ -269,7 +269,7 @@ extension LxApp {
             LxAppMacAppUIRuntime.active?.setTrayBadge(value.isEmpty ? nil : value)
             return true
             #else
-            return false
+            return true
             #endif
         }
     }
@@ -281,7 +281,7 @@ extension LxApp {
             LxAppMacAppUIRuntime.active?.setTrayIcon(value)
             return true
             #else
-            return false
+            return true
             #endif
         }
     }
@@ -293,7 +293,19 @@ extension LxApp {
             LxAppMacAppUIRuntime.active?.setTrayTitle(value.isEmpty ? nil : value)
             return true
             #else
-            return false
+            return true
+            #endif
+        }
+    }
+
+    nonisolated static func setTrayMenu(items_json: RustStr) -> Bool {
+        let value = items_json.toString()
+        return executeOnMain {
+            #if os(macOS)
+            LxAppMacAppUIRuntime.active?.setTrayMenu(value)
+            return true
+            #else
+            return true
             #endif
         }
     }
@@ -303,6 +315,9 @@ extension LxApp {
         return executeOnMain {
             #if os(macOS)
             NSApp.dockTile.badgeLabel = value.isEmpty ? nil : value
+            return true
+            #elseif os(iOS)
+            UIApplication.shared.applicationIconBadgeNumber = Int(value) ?? 0
             return true
             #else
             return false

@@ -187,6 +187,7 @@ final class LxAppMacAppUIRuntime: NSObject {
     func setTrayBadge(_ text: String?) { trayController.setBadge(text) }
     func setTrayIcon(_ icon: String) { trayController.setIcon(icon) }
     func setTrayTitle(_ text: String?) { trayController.setTitle(text) }
+    func setTrayMenu(_ json: String) { trayController.setMenu(json) }
 
     private func handleOpenedPanel(
         appId: String,

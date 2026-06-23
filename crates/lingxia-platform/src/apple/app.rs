@@ -193,6 +193,14 @@ impl AppRuntime for Platform {
         }
     }
 
+    fn set_tray_menu(&self, items_json: &str) -> Result<(), PlatformError> {
+        if ffi::set_tray_menu(items_json) {
+            Ok(())
+        } else {
+            Err(PlatformError::Platform("Failed to set tray menu".to_string()))
+        }
+    }
+
     fn navigate(
         &self,
         appid: String,

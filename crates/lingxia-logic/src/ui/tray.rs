@@ -1,7 +1,15 @@
 use crate::i18n::js_error_from_platform_error;
 use lingxia_platform::traits::app_runtime::AppRuntime;
-use lxapp::LxApp;
+use lxapp::{LxApp, register_app_handler, unregister_app_handler};
 use rong::{JSContext, JSFunc, JSObject, JSResult};
+use serde_json::{Value, json};
+use std::collections::HashMap;
+use std::sync::{LazyLock, Mutex};
+
+/// Number of tray menu items each app currently has registered, so a later
+/// `setMenu` can unregister the previous items' click handlers.
+static MENU_COUNTS: LazyLock<Mutex<HashMap<String, usize>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
 fn tray_namespace(ctx: &JSContext) -> JSResult<JSObject> {
     let lx = ctx.global().get::<_, JSObject>("lx")?;
@@ -42,10 +50,65 @@ fn set_title(ctx: JSContext, text: Option<String>) -> JSResult<()> {
         .map_err(|e| js_error_from_platform_error(&e))
 }
 
+/// lx.tray.onClick(handler) — left-click on the tray icon. Returns an unsubscribe
+/// function.
+fn on_click(ctx: JSContext, handler: JSFunc) -> JSResult<JSFunc> {
+    register_app_handler(&ctx, "lx.tray.click", handler.clone())?;
+    let off_ctx = ctx.clone();
+    let off_handler = handler;
+    JSFunc::new(&ctx, move || {
+        unregister_app_handler(&off_ctx, "lx.tray.click", Some(off_handler.clone()));
+    })
+}
+
+/// lx.tray.setMenu(items) — replace the tray dropdown menu. Each item is
+/// `{ label, onClick?, enabled?, checked? }` or `{ separator: true }`. The native
+/// menu is built from labels; clicks are routed back to each item's `onClick` by
+/// index over the app event bus.
+fn set_menu(ctx: JSContext, items: Vec<JSObject>) -> JSResult<()> {
+    let lxapp = LxApp::from_ctx(&ctx)?;
+    let appid = lxapp.appid.clone();
+
+    // Drop the previous menu's per-index click handlers.
+    let previous = MENU_COUNTS.lock().ok().and_then(|m| m.get(&appid).copied());
+    if let Some(prev) = previous {
+        for i in 0..prev {
+            unregister_app_handler(&ctx, &format!("lx.tray.menu:{i}"), None);
+        }
+    }
+
+    let mut specs: Vec<Value> = Vec::with_capacity(items.len());
+    for (i, item) in items.iter().enumerate() {
+        if item.get::<_, bool>("separator").unwrap_or(false) {
+            specs.push(json!({ "separator": true }));
+            continue;
+        }
+        let label = item.get::<_, String>("label").unwrap_or_default();
+        let enabled = item.get::<_, bool>("enabled").unwrap_or(true);
+        let checked = item.get::<_, bool>("checked").unwrap_or(false);
+        specs.push(json!({ "label": label, "enabled": enabled, "checked": checked }));
+        if let Ok(on_click) = item.get::<_, JSFunc>("onClick") {
+            register_app_handler(&ctx, &format!("lx.tray.menu:{i}"), on_click)?;
+        }
+    }
+
+    if let Ok(mut counts) = MENU_COUNTS.lock() {
+        counts.insert(appid, items.len());
+    }
+
+    let json = serde_json::to_string(&specs).unwrap_or_else(|_| "[]".to_string());
+    lxapp
+        .runtime
+        .set_tray_menu(&json)
+        .map_err(|e| js_error_from_platform_error(&e))
+}
+
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     let tray = tray_namespace(ctx)?;
     tray.set("setBadge", JSFunc::new(ctx, set_badge)?)?;
     tray.set("setIcon", JSFunc::new(ctx, set_icon)?)?;
     tray.set("setTitle", JSFunc::new(ctx, set_title)?)?;
+    tray.set("setMenu", JSFunc::new(ctx, set_menu)?)?;
+    tray.set("onClick", JSFunc::new(ctx, on_click)?)?;
     Ok(())
 }

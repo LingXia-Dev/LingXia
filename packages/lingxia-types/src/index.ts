@@ -259,7 +259,24 @@ export type OpenSurfaceSpec =
  * Runtime control of the menu-bar (macOS) / system-tray (Windows) status item.
  * The tray is declared in `lingxia.yaml` (`tray:`); these update its dynamic
  * content at runtime.
+ *
+ * **Desktop only.** Mobile platforms have no tray, so every method here is a
+ * no-op there (it never throws) — safe to call from portable code. For an
+ * app-icon badge that *is* cross-platform (including mobile), use
+ * {@link HostAppApi.setBadge}.
  */
+export interface TrayMenuItem {
+  label: string;
+  /** Invoked when this item is clicked. */
+  onClick?: () => void;
+  enabled?: boolean;
+  checked?: boolean;
+}
+
+export interface TrayMenuSeparator {
+  separator: true;
+}
+
 export interface TrayApi {
   /** Replace the status-item icon (a resource path). */
   setIcon(icon: string): void;
@@ -267,6 +284,16 @@ export interface TrayApi {
   setTitle(text: string | null): void;
   /** Set the badge — e.g. an unread count. Pass `null`/empty to clear. */
   setBadge(value: string | number | null): void;
+  /**
+   * Replace the right-click dropdown menu. There is no default menu — provide
+   * your own items (e.g. `{ label: 'Quit', onClick: () => lx.app.exit() }`).
+   */
+  setMenu(items: Array<TrayMenuItem | TrayMenuSeparator>): void;
+  /**
+   * Left-click on the tray icon. Returns an unsubscribe function. Use this for
+   * tray apps whose click is an action rather than opening a fixed popover.
+   */
+  onClick(handler: () => void): () => void;
 }
 
 export interface Lx {

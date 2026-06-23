@@ -75,6 +75,49 @@ final class LxAppMacTrayController: NSObject {
     // Runtime updates (lx.tray.*). They target the single tray's status item.
     private var trayTitle: String?
     private var trayBadge: String?
+    private var jsMenu: NSMenu?
+
+    private struct TrayMenuItemSpec: Decodable {
+        let label: String?
+        let separator: Bool?
+        let enabled: Bool?
+        let checked: Bool?
+    }
+
+    /// lx.tray.setMenu — rebuild the right-click dropdown from a JSON spec. Item
+    /// clicks are reported back to JS by index via the app event bus.
+    func setMenu(_ json: String) {
+        guard let data = json.data(using: .utf8),
+              let specs = try? JSONDecoder().decode([TrayMenuItemSpec].self, from: data),
+              !specs.isEmpty
+        else {
+            jsMenu = nil
+            return
+        }
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+        for (index, spec) in specs.enumerated() {
+            if spec.separator == true {
+                menu.addItem(.separator())
+                continue
+            }
+            let item = NSMenuItem(
+                title: spec.label ?? "",
+                action: #selector(jsMenuItemClicked(_:)),
+                keyEquivalent: ""
+            )
+            item.target = self
+            item.tag = index
+            item.isEnabled = spec.enabled ?? true
+            item.state = (spec.checked ?? false) ? .on : .off
+            menu.addItem(item)
+        }
+        jsMenu = menu
+    }
+
+    @objc private func jsMenuItemClicked(_ sender: NSMenuItem) {
+        _ = onAppEvent(AppEvent.trayMenuClick, "\(sender.tag)")
+    }
 
     func setBadge(_ text: String?) {
         trayBadge = (text?.isEmpty ?? true) ? nil : text
@@ -128,7 +171,20 @@ final class LxAppMacTrayController: NSObject {
 
     @objc private func statusItemClicked(_ sender: NSStatusBarButton) {
         guard let actionID = sender.identifier?.rawValue else { return }
+        let event = NSApp.currentEvent
+        let isSecondaryClick =
+            event?.type == .rightMouseUp
+            || (event?.type == .leftMouseUp && event?.modifierFlags.contains(.control) == true)
+        // Right- / control-click shows the JS-provided menu (if any).
+        if isSecondaryClick, let menu = jsMenu, let statusItem = statusItems[actionID] {
+            statusItem.menu = menu
+            statusItem.button?.performClick(nil)
+            statusItem.menu = nil
+            return
+        }
+        // Left-click runs the configured surface action and notifies lx.tray.onClick.
         onActivate(actionID)
+        _ = onAppEvent(AppEvent.trayClick, "")
     }
 
     private func shortMenuBarTitle(for activator: LxAppUIConfig.Activator) -> String {

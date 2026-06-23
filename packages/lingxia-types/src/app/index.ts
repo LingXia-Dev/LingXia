@@ -163,8 +163,12 @@ export interface HostAppApi {
   screenshot(options?: AppScreenshotOptions): Promise<AppScreenshotResult>;
 
   /**
-   * Set the dock (macOS) / taskbar (Windows) badge — e.g. an unread count.
-   * Pass `null` or an empty string to clear it.
+   * Set the app-icon badge — e.g. an unread count.
+   *
+   * Cross-platform: the dock (macOS), the taskbar (Windows), and the home /
+   * launcher icon (iOS, Android). Pass `null` or an empty string to clear it.
+   * On platforms where it is not wired this is a no-op (it never throws), so it
+   * is safe to call from portable code.
    */
   setBadge(value: string | number | null): void;
 }
