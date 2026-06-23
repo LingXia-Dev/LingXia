@@ -13,7 +13,7 @@ public class RunnerApp {
     private var surfaceShellHost: RunnerSurfaceShellHost?
     private var controller: LxAppController?
     private var controllerEventsTask: Task<Void, Never>?
-    private let deviceMenu = RunnerDeviceMenu()
+    private let appMenu = RunnerAppMenu()
     private var pendingPhoneLifecycleReopens: [String: (appId: String, path: String, sessionId: UInt64)] = [:]
     private(set) var selectedDeviceSize: MobileDeviceSize = .defaultDevice
     private(set) var deviceOrientation: RunnerDeviceOrientation = .portrait
@@ -48,7 +48,6 @@ public class RunnerApp {
         deviceSize = effectiveDevice
         SimulatorWindowController.setWindowSize(effectiveDevice)
         configureOpenURLHandlingForCurrentShape()
-        deviceMenu.updateSelectedDevice(selectedDeviceSize, orientation: deviceOrientation)
         os_log(
             "Device size changed to: %@ %@",
             log: Self.log,
@@ -66,8 +65,7 @@ public class RunnerApp {
 
     public func bind(controller: LxAppController) {
         self.controller = controller
-        deviceMenu.installIfNeeded()
-        deviceMenu.updateSelectedDevice(selectedDeviceSize, orientation: deviceOrientation)
+        appMenu.installIfNeeded()
         configureOpenURLHandlingForCurrentShape()
         controllerEventsTask?.cancel()
         controllerEventsTask = Task { [weak self, controller] in

@@ -844,6 +844,19 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         restart.image = NSImage(systemSymbolName: "arrow.clockwise", accessibilityDescription: nil)
         menu.addItem(restart)
 
+        menu.addItem(.separator())
+
+        // Runner-level (not lxapp-scoped) action, also available as ⌘⇧R in the app
+        // menu — surfaced here so every lifecycle action has one home on the capsule.
+        let restartRunner = NSMenuItem(
+            title: "Restart LingXia Runner",
+            action: #selector(restartRunnerClicked),
+            keyEquivalent: ""
+        )
+        restartRunner.target = self
+        restartRunner.image = NSImage(systemSymbolName: "arrow.triangle.2.circlepath", accessibilityDescription: nil)
+        menu.addItem(restartRunner)
+
         guard let anchor = floatingCapsuleContainer ?? window?.contentView else { return }
         menu.popUp(positioning: nil, at: NSPoint(x: anchor.bounds.midX, y: anchor.bounds.minY), in: anchor)
     }
@@ -854,6 +867,10 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
 
     @objc private func restartLxAppClicked() {
         RunnerApp.shared.restartCurrentLxApp()
+    }
+
+    @objc private func restartRunnerClicked() {
+        RunnerApp.shared.restartRunner()
     }
     
     // MARK: - NSWindowDelegate

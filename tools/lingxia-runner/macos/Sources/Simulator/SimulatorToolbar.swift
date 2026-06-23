@@ -17,7 +17,7 @@ public class SimulatorToolbar: NSView {
     
     // MARK: - UI Components
 
-    private var deviceSelector: NSPopUpButton!
+    private var deviceSelector: RunnerDeviceSelectorControl!
     private var closeButton: NSButton!
     private var minimizeButton: NSButton!
     private var rotateButton: NSButton!
@@ -100,36 +100,16 @@ public class SimulatorToolbar: NSView {
     }
     
     private func setupDeviceSelector() {
-        deviceSelector = NSPopUpButton()
-        deviceSelector.translatesAutoresizingMaskIntoConstraints = false
-        deviceSelector.bezelStyle = .texturedRounded
-        deviceSelector.isBordered = false
-        deviceSelector.font = NSFont.systemFont(ofSize: 12, weight: .medium)
-        deviceSelector.target = self
-        deviceSelector.action = #selector(deviceSelectionChanged)
-        deviceSelector.contentTintColor = NSColor.white.withAlphaComponent(0.9)
-        
-        if let cell = deviceSelector.cell as? NSPopUpButtonCell {
-            cell.arrowPosition = .arrowAtBottom
+        deviceSelector = RunnerDeviceSelectorControl()
+        deviceSelector.onDeviceSelected = { [weak self] device in
+            guard let self else { return }
+            self.currentDevice = device
+            self.onDeviceSelected?(device)
         }
-        
-        let devices = MobileDeviceSize.allCases
-        var previousShape: RunnerDeviceShape?
-        for device in devices {
-            if let previousShape, previousShape != device.shape {
-                deviceSelector.menu?.addItem(.separator())
-            }
-            let menuItem = NSMenuItem()
-            menuItem.title = device.displayName
-            menuItem.representedObject = device
-            deviceSelector.menu?.addItem(menuItem)
-            previousShape = device.shape
-        }
-        
-        selectDevice(currentDevice)
-        
+        deviceSelector.setCurrentDevice(currentDevice)
+
         addSubview(deviceSelector)
-        
+
         NSLayoutConstraint.activate([
             deviceSelector.centerXAnchor.constraint(equalTo: centerXAnchor),
             deviceSelector.centerYAnchor.constraint(equalTo: centerYAnchor)
@@ -199,31 +179,14 @@ public class SimulatorToolbar: NSView {
         window?.miniaturize(nil)
     }
     
-    @objc private func deviceSelectionChanged() {
-        guard let selectedItem = deviceSelector.selectedItem,
-              let device = selectedItem.representedObject as? MobileDeviceSize else { return }
-        
-        currentDevice = device
-        onDeviceSelected?(device)
-    }
-    
     // MARK: - Public API
-    
+
     public func setCurrentDevice(_ device: MobileDeviceSize) {
         currentDevice = device
-        selectDevice(device)
+        deviceSelector.setCurrentDevice(device)
         rotateButton?.isEnabled = device.supportsOrientation
         rotateButton?.contentTintColor = device.supportsOrientation
             ? NSColor.white.withAlphaComponent(0.7)
             : NSColor.white.withAlphaComponent(0.25)
-    }
-
-    private func selectDevice(_ device: MobileDeviceSize) {
-        guard let item = deviceSelector.itemArray.first(where: {
-            ($0.representedObject as? MobileDeviceSize)?.id == device.id
-        }) else {
-            return
-        }
-        deviceSelector.select(item)
     }
 }
