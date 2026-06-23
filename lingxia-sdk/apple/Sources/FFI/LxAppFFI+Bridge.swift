@@ -310,6 +310,28 @@ extension LxApp {
         }
     }
 
+    nonisolated static func setTrayVisible(visible: Bool) -> Bool {
+        return executeOnMain {
+            #if os(macOS)
+            LxAppMacAppUIRuntime.active?.setTrayVisible(visible)
+            return true
+            #else
+            return true
+            #endif
+        }
+    }
+
+    nonisolated static func setTrayClickIntercept(intercept: Bool) -> Bool {
+        return executeOnMain {
+            #if os(macOS)
+            LxAppMacAppUIRuntime.active?.setTrayClickIntercept(intercept)
+            return true
+            #else
+            return true
+            #endif
+        }
+    }
+
     nonisolated static func setAppBadge(text: RustStr) -> Bool {
         let value = text.toString()
         return executeOnMain {

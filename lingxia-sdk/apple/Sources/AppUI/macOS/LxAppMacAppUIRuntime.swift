@@ -188,6 +188,8 @@ final class LxAppMacAppUIRuntime: NSObject {
     func setTrayIcon(_ icon: String) { trayController.setIcon(icon) }
     func setTrayTitle(_ text: String?) { trayController.setTitle(text) }
     func setTrayMenu(_ json: String) { trayController.setMenu(json) }
+    func setTrayVisible(_ visible: Bool) { trayController.setVisible(visible) }
+    func setTrayClickIntercept(_ intercept: Bool) { trayController.clickIntercepted = intercept }
 
     private func handleOpenedPanel(
         appId: String,

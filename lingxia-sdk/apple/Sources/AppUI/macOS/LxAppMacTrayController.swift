@@ -76,6 +76,16 @@ final class LxAppMacTrayController: NSObject {
     private var trayTitle: String?
     private var trayBadge: String?
     private var jsMenu: NSMenu?
+    /// When true (a JS `lx.tray.onClick` handler is registered), a left-click is
+    /// delivered to JS instead of running the tray's configured surface action.
+    var clickIntercepted = false
+
+    /// lx.tray.show()/hide() — toggle the status item's visibility.
+    func setVisible(_ visible: Bool) {
+        for item in statusItems.values {
+            item.isVisible = visible
+        }
+    }
 
     private struct TrayMenuItemSpec: Decodable {
         let label: String?
@@ -182,9 +192,13 @@ final class LxAppMacTrayController: NSObject {
             statusItem.menu = nil
             return
         }
-        // Left-click runs the configured surface action and notifies lx.tray.onClick.
-        onActivate(actionID)
-        _ = onAppEvent(AppEvent.trayClick, "")
+        // Left-click: when JS intercepts (lx.tray.onClick registered) deliver only
+        // to JS; otherwise run the configured surface action.
+        if clickIntercepted {
+            _ = onAppEvent(AppEvent.trayClick, "")
+        } else {
+            onActivate(actionID)
+        }
     }
 
     private func shortMenuBarTitle(for activator: LxAppUIConfig.Activator) -> String {

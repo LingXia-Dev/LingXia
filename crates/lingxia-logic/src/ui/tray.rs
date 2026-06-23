@@ -4,12 +4,18 @@ use lxapp::{LxApp, register_app_handler, unregister_app_handler};
 use rong::{JSContext, JSFunc, JSObject, JSResult};
 use serde_json::{Value, json};
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{LazyLock, Mutex};
 
 /// Number of tray menu items each app currently has registered, so a later
 /// `setMenu` can unregister the previous items' click handlers.
 static MENU_COUNTS: LazyLock<Mutex<HashMap<String, usize>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// Live `lx.tray.onClick` subscriptions (the tray is host-global). While any
+/// exist, the native tray intercepts left-clicks for JS instead of running the
+/// configured surface action.
+static CLICK_HANDLERS: AtomicUsize = AtomicUsize::new(0);
 
 fn tray_namespace(ctx: &JSContext) -> JSResult<JSObject> {
     let lx = ctx.global().get::<_, JSObject>("lx")?;
@@ -50,14 +56,42 @@ fn set_title(ctx: JSContext, text: Option<String>) -> JSResult<()> {
         .map_err(|e| js_error_from_platform_error(&e))
 }
 
-/// lx.tray.onClick(handler) — left-click on the tray icon. Returns an unsubscribe
-/// function.
+/// lx.tray.show() — show the tray status item.
+fn show(ctx: JSContext) -> JSResult<()> {
+    let lxapp = LxApp::from_ctx(&ctx)?;
+    lxapp
+        .runtime
+        .set_tray_visible(true)
+        .map_err(|e| js_error_from_platform_error(&e))
+}
+
+/// lx.tray.hide() — hide the tray status item.
+fn hide(ctx: JSContext) -> JSResult<()> {
+    let lxapp = LxApp::from_ctx(&ctx)?;
+    lxapp
+        .runtime
+        .set_tray_visible(false)
+        .map_err(|e| js_error_from_platform_error(&e))
+}
+
+/// lx.tray.onClick(handler) — left-click on the tray icon. While at least one
+/// handler is registered, the left-click runs only the handler(s); the tray's
+/// configured surface action is suppressed. Returns an unsubscribe function.
 fn on_click(ctx: JSContext, handler: JSFunc) -> JSResult<JSFunc> {
     register_app_handler(&ctx, "lx.tray.click", handler.clone())?;
+    if CLICK_HANDLERS.fetch_add(1, Ordering::SeqCst) == 0 {
+        let lxapp = LxApp::from_ctx(&ctx)?;
+        let _ = lxapp.runtime.set_tray_click_intercept(true);
+    }
     let off_ctx = ctx.clone();
     let off_handler = handler;
     JSFunc::new(&ctx, move || {
         unregister_app_handler(&off_ctx, "lx.tray.click", Some(off_handler.clone()));
+        if CLICK_HANDLERS.fetch_sub(1, Ordering::SeqCst) == 1
+            && let Ok(lxapp) = LxApp::from_ctx(&off_ctx)
+        {
+            let _ = lxapp.runtime.set_tray_click_intercept(false);
+        }
     })
 }
 
@@ -110,5 +144,7 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     tray.set("setTitle", JSFunc::new(ctx, set_title)?)?;
     tray.set("setMenu", JSFunc::new(ctx, set_menu)?)?;
     tray.set("onClick", JSFunc::new(ctx, on_click)?)?;
+    tray.set("show", JSFunc::new(ctx, show)?)?;
+    tray.set("hide", JSFunc::new(ctx, hide)?)?;
     Ok(())
 }

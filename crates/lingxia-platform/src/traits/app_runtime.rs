@@ -170,6 +170,18 @@ pub trait AppRuntime:
         Ok(())
     }
 
+    /// Show or hide the tray status item itself. Desktop only; no-op elsewhere.
+    fn set_tray_visible(&self, _visible: bool) -> Result<(), PlatformError> {
+        Ok(())
+    }
+
+    /// When intercepting, a left-click on the tray is delivered only to JS
+    /// (`lx.tray.onClick`) and does not run the tray's configured surface action.
+    /// Desktop only; no-op elsewhere.
+    fn set_tray_click_intercept(&self, _intercept: bool) -> Result<(), PlatformError> {
+        Ok(())
+    }
+
     /// Navigates within the given LxApp using an animation.
     fn navigate(
         &self,

@@ -211,6 +211,26 @@ impl AppRuntime for Platform {
         }
     }
 
+    fn set_tray_visible(&self, visible: bool) -> Result<(), PlatformError> {
+        if ffi::set_tray_visible(visible) {
+            Ok(())
+        } else {
+            Err(PlatformError::Platform(
+                "Failed to set tray visibility".to_string(),
+            ))
+        }
+    }
+
+    fn set_tray_click_intercept(&self, intercept: bool) -> Result<(), PlatformError> {
+        if ffi::set_tray_click_intercept(intercept) {
+            Ok(())
+        } else {
+            Err(PlatformError::Platform(
+                "Failed to set tray click intercept".to_string(),
+            ))
+        }
+    }
+
     fn navigate(
         &self,
         appid: String,

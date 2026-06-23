@@ -290,10 +290,16 @@ export interface TrayApi {
    */
   setMenu(items: Array<TrayMenuItem | TrayMenuSeparator>): void;
   /**
-   * Left-click on the tray icon. Returns an unsubscribe function. Use this for
-   * tray apps whose click is an action rather than opening a fixed popover.
+   * Handle a left-click on the tray icon yourself. While a handler is
+   * registered the click runs only the handler — the tray's configured surface
+   * `action` is suppressed, so the click is fully yours (e.g. toggle a state and
+   * `setIcon`). Returns an unsubscribe function.
    */
   onClick(handler: () => void): () => void;
+  /** Show the tray status item. */
+  show(): void;
+  /** Hide the tray status item (without removing the app). */
+  hide(): void;
 }
 
 export interface Lx {
