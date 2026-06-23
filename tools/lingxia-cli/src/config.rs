@@ -382,10 +382,7 @@ fn surfaces_to_ui(surfaces: &[SurfaceDecl], terminal_enabled: bool) -> Result<Va
                 float_surface.insert("id".into(), json!(id));
                 float_surface.insert("role".into(), json!("float"));
                 float_surface.insert("anchor".into(), json!("activator"));
-                float_surface.insert(
-                    "content".into(),
-                    json!({ "kind": "lxapp", "appId": id }),
-                );
+                float_surface.insert("content".into(), json!({ "kind": "lxapp", "appId": id }));
                 if let Some(size) = surface.tray.as_ref().and_then(|t| t.size.as_ref()) {
                     let mut size_obj = Map::new();
                     if let Some(w) = size.width {

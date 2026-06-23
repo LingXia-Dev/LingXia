@@ -388,12 +388,12 @@ mod bridge {
 pub use bridge::reveal_in_file_manager;
 pub use bridge::{
     ActionSheetOptions, ModalOptions, ToastIcon, ToastOptions, ToastPosition, cancel_preview_media,
-    close_lxapp, close_surface, exit_app, hide_surface, hide_toast, navigate, set_app_badge,
-    set_tray_badge, set_tray_icon, set_tray_menu, set_tray_title,
+    close_lxapp, close_surface, exit_app, hide_surface, hide_toast, navigate,
     notify_app_update_ready, open_document_external, open_lxapp, open_url, present_layout,
-    present_surface, preview_media, review_document, set_managed_surface_visible, share,
-    show_action_sheet, show_modal, show_surface, show_toast, toggle_managed_surface,
-    update_navbar_ui, update_orientation_ui, update_tabbar_ui,
+    present_surface, preview_media, review_document, set_app_badge, set_managed_surface_visible,
+    set_tray_badge, set_tray_icon, set_tray_menu, set_tray_title, share, show_action_sheet,
+    show_modal, show_surface, show_toast, toggle_managed_surface, update_navbar_ui,
+    update_orientation_ui, update_tabbar_ui,
 };
 
 #[cfg(any(target_os = "ios", target_os = "macos"))]

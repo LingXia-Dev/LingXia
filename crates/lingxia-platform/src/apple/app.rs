@@ -165,7 +165,9 @@ impl AppRuntime for Platform {
         if ffi::set_tray_badge(text) {
             Ok(())
         } else {
-            Err(PlatformError::Platform("Failed to set tray badge".to_string()))
+            Err(PlatformError::Platform(
+                "Failed to set tray badge".to_string(),
+            ))
         }
     }
 
@@ -173,7 +175,9 @@ impl AppRuntime for Platform {
         if ffi::set_tray_icon(icon) {
             Ok(())
         } else {
-            Err(PlatformError::Platform("Failed to set tray icon".to_string()))
+            Err(PlatformError::Platform(
+                "Failed to set tray icon".to_string(),
+            ))
         }
     }
 
@@ -181,7 +185,9 @@ impl AppRuntime for Platform {
         if ffi::set_tray_title(text) {
             Ok(())
         } else {
-            Err(PlatformError::Platform("Failed to set tray title".to_string()))
+            Err(PlatformError::Platform(
+                "Failed to set tray title".to_string(),
+            ))
         }
     }
 
@@ -189,7 +195,9 @@ impl AppRuntime for Platform {
         if ffi::set_app_badge(text) {
             Ok(())
         } else {
-            Err(PlatformError::Platform("Failed to set app badge".to_string()))
+            Err(PlatformError::Platform(
+                "Failed to set app badge".to_string(),
+            ))
         }
     }
 
@@ -197,7 +205,9 @@ impl AppRuntime for Platform {
         if ffi::set_tray_menu(items_json) {
             Ok(())
         } else {
-            Err(PlatformError::Platform("Failed to set tray menu".to_string()))
+            Err(PlatformError::Platform(
+                "Failed to set tray menu".to_string(),
+            ))
         }
     }
 
