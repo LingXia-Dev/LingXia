@@ -1,3 +1,4 @@
+use super::RUST_LIB_DIR_NAME;
 use super::types::{AppServiceMode, LxAppInfo, Platform, ProjectConfig};
 use super::validation::swift_target_name_from_project_name;
 use crate::config::HOST_CONFIG_FILE;
@@ -38,6 +39,7 @@ fn render_host_config(
     let swift_target_name = swift_target_name_from_project_name(&config.name);
     let mut vars = HashMap::new();
     vars.insert("PROJECT_NAME".to_string(), yaml_string(&config.name));
+    vars.insert("RUST_LIB_DIR".to_string(), yaml_string(RUST_LIB_DIR_NAME));
     vars.insert(
         "PRODUCT_NAME".to_string(),
         yaml_string(&config.product_name),

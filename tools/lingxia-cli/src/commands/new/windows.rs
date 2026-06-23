@@ -22,7 +22,8 @@ pub(super) fn create_windows_project(
         ));
     }
 
-    let host_crate_name = format!("{}-lib", config.name);
+    // The native lib crate's package name and directory are both `native`.
+    let host_crate_name = super::RUST_LIB_DIR_NAME.to_string();
     let windows_crate_name = format!("{}-windows", config.name);
 
     let mut vars = HashMap::new();

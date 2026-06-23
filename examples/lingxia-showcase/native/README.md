@@ -1,4 +1,4 @@
-# lingxia-lib
+# native
 
 Native library for your LingXia app. Re-exports LingXia SDK symbols and installs a host addon.
 

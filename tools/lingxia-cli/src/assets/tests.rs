@@ -21,6 +21,7 @@ fn generated_app_json_excludes_ui_fields() {
     let config = LingXiaConfig {
         app: Some(HostAppConfig {
             project_name: "demo".into(),
+            rust_lib_dir: None,
             product_name: "Demo".into(),
             product_version: "1.2.3".into(),
             lingxia_server: Some(LingxiaServer::Single("http://127.0.0.1:8080".into())),
@@ -60,6 +61,7 @@ fn generated_app_json_includes_dev_ws_url_when_configured() {
     let config = LingXiaConfig {
         app: Some(HostAppConfig {
             project_name: "demo".into(),
+            rust_lib_dir: None,
             product_name: "Demo".into(),
             product_version: "1.2.3".into(),
             lingxia_server: None,
@@ -100,6 +102,7 @@ fn generated_app_json_includes_app_link_hosts() {
     let config = LingXiaConfig {
         app: Some(HostAppConfig {
             project_name: "demo".into(),
+            rust_lib_dir: None,
             product_name: "Demo".into(),
             product_version: "1.2.3".into(),
             lingxia_server: None,
@@ -136,6 +139,7 @@ fn generated_app_json_includes_capabilities() {
     let config = LingXiaConfig {
         app: Some(HostAppConfig {
             project_name: "demo".into(),
+            rust_lib_dir: None,
             product_name: "Demo".into(),
             product_version: "1.2.3".into(),
             lingxia_server: None,

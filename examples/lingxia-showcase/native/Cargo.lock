@@ -1891,7 +1891,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "lingxia-example-host"
+name = "native"
 version = "0.1.0"
 dependencies = [
  "jni",

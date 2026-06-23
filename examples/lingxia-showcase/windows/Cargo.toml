@@ -18,7 +18,7 @@ webview-input = ["host/webview-input", "lingxia-windows-sdk/webview-input"]
 
 [dependencies]
 lingxia-windows-sdk = { path = "../../../crates/lingxia-windows-sdk", default-features = false }
-host = { package = "lingxia-example-host", path = "../lingxia-lib", default-features = false }
+host = { package = "native", path = "../native", default-features = false }
 
 [build-dependencies]
 lingxia-windows-build = { path = "../../../crates/lingxia-windows-build" }

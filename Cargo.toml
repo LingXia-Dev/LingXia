@@ -32,9 +32,8 @@ members = [
     "crates/lingxia-native-codegen",
 ]
 exclude = [
-    "examples/lingxia-showcase/lingxia-lib",
+    "examples/lingxia-showcase/native",
     "examples/lingxia-showcase/windows",
-    "examples/lingxia-codex/lingxia-codex-lib",
 ]
 resolver = "2"
 

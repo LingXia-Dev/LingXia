@@ -1,5 +1,6 @@
 app:
   projectName: lingxia
+  rustLibDir: native
   lingxiaId: lingxia-showcase
   productName: LingXia
   productVersion: 0.2.6
@@ -59,7 +60,7 @@ resources:
   bundles:
     - type: lxapp
       appId: lingxia-showcase
-      path: lingxia-showcase
+      path: lxapp
     - type: lxapp
       appId: lingxia-chat
       path: ../lingxia-chat

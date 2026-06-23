@@ -1,3 +1,4 @@
+use super::DEFAULT_LXAPP_DIR_NAME;
 use super::lxapp_scaffold;
 use super::types::{AppServiceMode, DEFAULT_PACKAGE_PREFIX, Platform, ProjectConfig, ProjectType};
 use super::validation::{validate_package_id, validate_product_name, validate_project_name};
@@ -163,8 +164,8 @@ pub(super) fn gather_native_project_info(
     })
 }
 
-pub(super) fn gather_lxapp_dir_name(project_name: &str, yes: bool) -> Result<String> {
-    let default_name = project_name.to_string();
+pub(super) fn gather_lxapp_dir_name(yes: bool) -> Result<String> {
+    let default_name = DEFAULT_LXAPP_DIR_NAME.to_string();
     if yes {
         return Ok(default_name);
     }
