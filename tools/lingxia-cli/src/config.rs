@@ -634,8 +634,17 @@ fn validate_surface_intrinsic_platforms(
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HostAppConfig {
-    /// Project name (technical identifier, used for Rust lib naming, e.g., "myapp" -> "myapp-lib")
+    /// Project name (technical identifier, used for native build paths, the
+    /// Swift target name, the default package-id base, etc.).
     pub project_name: String,
+
+    /// Directory name of the native Rust library crate, relative to the project
+    /// root. `lingxia new` writes `native`. Optional for backward compatibility:
+    /// when omitted, the legacy `<projectName>-lib` directory is assumed.
+    #[serde(default)]
+    #[serde(rename = "rustLibDir")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rust_lib_dir: Option<String>,
 
     /// Product name (user-facing display name)
     pub product_name: String,
@@ -962,9 +971,23 @@ impl LingXiaConfig {
         self.app.as_ref().map(|app| app.project_name.as_str())
     }
 
-    /// Get the Rust library directory name (e.g., "myproject-lib")
+    /// Get the Rust library directory name.
+    ///
+    /// Prefers the explicit `app.rustLibDir` (written as `native` by
+    /// `lingxia new`). Falls back to the legacy `<projectName>-lib` convention
+    /// for projects scaffolded before the field existed, so existing projects
+    /// keep building unchanged.
     pub fn get_rust_lib_name(&self) -> Option<String> {
-        self.get_project_name().map(|name| format!("{}-lib", name))
+        let configured = self
+            .app
+            .as_ref()
+            .and_then(|app| app.rust_lib_dir.as_deref())
+            .map(str::trim)
+            .filter(|dir| !dir.is_empty());
+        match configured {
+            Some(dir) => Some(dir.to_string()),
+            None => self.get_project_name().map(|name| format!("{}-lib", name)),
+        }
     }
 
     pub fn app_service_enabled(&self) -> bool {
@@ -1095,6 +1118,7 @@ impl LingXiaConfig {
         Self {
             app: Some(HostAppConfig {
                 project_name: project_name.to_string(),
+                rust_lib_dir: None,
                 product_name: project_name.to_string(),
                 product_version: "0.0.1".to_string(),
                 lingxia_server: Some(LingxiaServer::Single("https://api.example.com".to_string())),

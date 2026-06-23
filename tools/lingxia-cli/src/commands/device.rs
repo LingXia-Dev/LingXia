@@ -179,6 +179,7 @@ mod tests {
         LingXiaConfig {
             app: Some(HostAppConfig {
                 project_name: "demo".into(),
+                rust_lib_dir: None,
                 product_name: "Demo".into(),
                 product_version: "0.1.0".into(),
                 lingxia_server: None,

@@ -30,6 +30,17 @@ use self::prompts::{
 };
 use self::types::{AppServiceMode, ProjectType};
 
+/// Directory name for the native Rust library crate scaffolded by `lingxia new`.
+/// Named for the layer (native Rust) rather than the project; recorded in
+/// `lingxia.yaml` as `app.rustLibDir` so builds resolve it explicitly rather
+/// than re-deriving it.
+pub(super) const RUST_LIB_DIR_NAME: &str = "native";
+
+/// Default directory name for the scaffolded lxapp. Named for what it is (an
+/// lxapp), matching the `lxapp.json`/`lxapp.ts` it contains. The lxapp directory
+/// name doubles as its `appId`, so this is also the default home appId.
+pub(super) const DEFAULT_LXAPP_DIR_NAME: &str = "lxapp";
+
 /// Locate the extracted embedded template assets directory.
 pub(super) fn locate_templates_dir() -> Result<PathBuf> {
     template_assets::locate_templates_dir()
@@ -93,7 +104,7 @@ pub fn execute(
         gather_native_project_info(name, product_name, project_type, platforms, package_id, yes)?;
     let theme = ColorfulTheme::default();
 
-    let lxapp_dir_name = gather_lxapp_dir_name(&config.name, yes)?;
+    let lxapp_dir_name = gather_lxapp_dir_name(yes)?;
     let lxapp_framework = gather_lxapp_framework(yes)?;
     let app_service = gather_native_app_service_mode(yes)?;
 

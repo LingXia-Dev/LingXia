@@ -6,8 +6,10 @@
 
 # Host app metadata. This section is required for native app projects.
 app:
-  # Technical project name. Used for native build paths and the generated Rust lib name.
+  # Technical project name. Used for native build paths and the Rust lib's Cargo package name.
   projectName: {{PROJECT_NAME}}
+  # Directory of the native Rust library crate (relative to this file).
+  rustLibDir: {{RUST_LIB_DIR}}
   # User-facing display name for the host app.
   productName: {{PRODUCT_NAME}}
   # Host app version. Must be semantic version major.minor.patch.

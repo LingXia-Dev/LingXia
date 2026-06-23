@@ -1,3 +1,4 @@
+use super::RUST_LIB_DIR_NAME;
 use super::android;
 use super::harmony;
 use super::ios;
@@ -108,8 +109,14 @@ pub(super) fn create_rust_library(
     app_service: AppServiceMode,
 ) -> Result<()> {
     let project_root = &config.target_dir;
-    let lib_name = format!("{}-lib", config.name);
-    let lib_dir = project_root.join(&lib_name);
+    // Directory and Cargo package name are both `native`: named by layer, not
+    // the project, and symmetric with the lxapp side (folder == appId). A
+    // scaffolded project is its own crate, never a shared cargo workspace, so a
+    // bare name does not collide. The built artifact is always `liblingxia`
+    // (see rust-lib/Cargo.toml `[lib] name`), independent of the package name.
+    let lib_dir_name = RUST_LIB_DIR_NAME;
+    let package_name = lib_dir_name.to_string();
+    let lib_dir = project_root.join(lib_dir_name);
 
     // Create library directory
     fs::create_dir_all(&lib_dir)?;
@@ -127,7 +134,7 @@ pub(super) fn create_rust_library(
 
     // Build variable substitution map
     let mut vars = HashMap::new();
-    vars.insert("PROJECT_NAME".to_string(), lib_name.clone());
+    vars.insert("PROJECT_NAME".to_string(), package_name.clone());
     vars.insert("PACKAGE_ID".to_string(), config.package_id.clone());
 
     // Convert package ID to underscore format for JNI function names
@@ -230,10 +237,10 @@ pub(super) fn create_rust_library(
         },
     );
 
-    // Process all template files into {project}-lib/ directory
+    // Process all template files into the native/ directory
     process_template_dir(&template_dir, &lib_dir, &vars)?;
 
-    println!("  Created Rust library: {}", lib_name);
+    println!("  Created Rust library: {lib_dir_name}/ (package {package_name})");
 
     Ok(())
 }
