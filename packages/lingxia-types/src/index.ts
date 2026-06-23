@@ -287,6 +287,10 @@ export interface TrayApi {
   /**
    * Replace the right-click dropdown menu. There is no default menu — provide
    * your own items (e.g. `{ label: 'Quit', onClick: () => lx.app.exit() }`).
+   *
+   * The menu is a snapshot: to change an item's `checked`/`enabled`/`label`
+   * state, call `setMenu` again with the full updated array. There is no
+   * per-item mutation API.
    */
   setMenu(items: Array<TrayMenuItem | TrayMenuSeparator>): void;
   /**

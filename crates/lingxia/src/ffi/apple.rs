@@ -550,18 +550,22 @@ pub fn on_app_event(event_type: self::bridge::AppUiEventType, data: &str) -> boo
             true
         }
         self::bridge::AppUiEventType::TrayClick => {
-            // Tray icon left-clicked: deliver to `lx.tray.onClick` subscribers.
-            for info in lxapp::list_lxapps() {
-                lxapp::publish_app_event(&info.appid, "lx.tray.click", None);
+            // `data` is the tray-owning lxapp id. Deliver `lx.tray.onClick` only to
+            // that app, not every loaded lxapp.
+            if !data.is_empty() {
+                lxapp::publish_app_event(data, "lx.tray.click", None);
             }
             true
         }
         self::bridge::AppUiEventType::TrayMenuClick => {
-            // `data` is the clicked menu item index; deliver to the handler that
-            // `lx.tray.setMenu` registered for that index.
-            let event = format!("lx.tray.menu:{data}");
-            for info in lxapp::list_lxapps() {
-                lxapp::publish_app_event(&info.appid, &event, None);
+            // `data` is "<appid>:<index>" — deliver to the owning app's handler that
+            // `lx.tray.setMenu` registered for that index (split on the last ':' so
+            // an appid containing ':' is tolerated).
+            if let Some((appid, index)) = data.rsplit_once(':')
+                && !appid.is_empty()
+            {
+                let event = format!("lx.tray.menu:{index}");
+                lxapp::publish_app_event(appid, &event, None);
             }
             true
         }

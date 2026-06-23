@@ -59,6 +59,10 @@ final class LxAppMacAppUIRuntime: NSObject {
         appConfig: appConfig,
         uiConfigURL: uiConfigURL
     ) { [weak self] actionID in
+        // A status-item click does not activate the app, and the target window may
+        // be hidden to the tray or sitting behind another app — pull the app to the
+        // foreground so the click reliably brings it forward.
+        NSApp.activate(ignoringOtherApps: true)
         self?.performActivator(id: actionID)
     }
     private var independentPanelWindows: [String: NSPanel] = [:]
@@ -178,8 +182,7 @@ final class LxAppMacAppUIRuntime: NSObject {
 
     static func handleAppActivation() -> Bool {
         guard let active else { return false }
-        active.performAppActivation()
-        return !active.appActivationActivators.isEmpty
+        return active.performAppActivation()
     }
 
     // MARK: - Tray runtime updates (lx.tray.*)
@@ -833,13 +836,29 @@ final class LxAppMacAppUIRuntime: NSObject {
         }
     }
 
-    private func performAppActivation() {
-        guard !handlingAppActivation else { return }
+    /// Restore the app on reactivation (dock-icon click, `didBecomeActive`).
+    /// Returns whether it handled the activation, so `applicationShouldHandleReopen`
+    /// can tell AppKit to skip its own default (which cannot restore an ordered-out
+    /// window).
+    @discardableResult
+    private func performAppActivation() -> Bool {
+        guard !handlingAppActivation else { return true }
         handlingAppActivation = true
         defer { handlingAppActivation = false }
-        for activator in appActivationActivators {
-            performActivator(id: activator.id)
+        if !appActivationActivators.isEmpty {
+            for activator in appActivationActivators {
+                performActivator(id: activator.id)
+            }
+            return true
         }
+        // No explicit app-activation activator: for a tray app whose main window was
+        // closed to the menu bar, the dock icon must still bring it back. AppKit's
+        // default reopen can't re-show an ordered-out window, so restore it here.
+        if !menuBarActivators.isEmpty, !visibleSurfaceIDs.contains(rootSurface.id) {
+            openSurfaceHandlingError(id: rootSurface.id)
+            return true
+        }
+        return false
     }
 
     private func makeChromeActionItem(_ activator: LxAppUIConfig.Activator) -> LxAppUIActionItem {

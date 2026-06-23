@@ -11,6 +11,9 @@ final class LxAppMacTrayController: NSObject {
     private let onActivate: (String) -> Void
 
     private var statusItems: [String: NSStatusItem] = [:]
+    /// activator id → the lxapp id it targets, so tray click/menu events are
+    /// delivered only to the owning lxapp (not broadcast to every loaded app).
+    private var activatorSurface: [String: String] = [:]
     private(set) var defaultActivatorID: String?
 
     init(
@@ -27,10 +30,12 @@ final class LxAppMacTrayController: NSObject {
     func installMenuBarActivators(_ activators: [LxAppUIConfig.Activator]) {
         removeAllStatusItems()
         defaultActivatorID = nil
+        activatorSurface.removeAll()
 
         for activator in activators {
             let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
             statusItems[activator.id] = statusItem
+            activatorSurface[activator.id] = activator.action.surface
             if defaultActivatorID == nil {
                 defaultActivatorID = activator.id
             }
@@ -126,7 +131,8 @@ final class LxAppMacTrayController: NSObject {
     }
 
     @objc private func jsMenuItemClicked(_ sender: NSMenuItem) {
-        _ = onAppEvent(AppEvent.trayMenuClick, "\(sender.tag)")
+        let appId = activatorSurface[defaultActivatorID ?? ""] ?? ""
+        _ = onAppEvent(AppEvent.trayMenuClick, "\(appId):\(sender.tag)")
     }
 
     func setBadge(_ text: String?) {
@@ -195,7 +201,7 @@ final class LxAppMacTrayController: NSObject {
         // Left-click: when JS intercepts (lx.tray.onClick registered) deliver only
         // to JS; otherwise run the configured surface action.
         if clickIntercepted {
-            _ = onAppEvent(AppEvent.trayClick, "")
+            _ = onAppEvent(AppEvent.trayClick, activatorSurface[actionID] ?? "")
         } else {
             onActivate(actionID)
         }

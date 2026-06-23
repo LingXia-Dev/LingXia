@@ -266,7 +266,8 @@ extension LxApp {
         let value = text.toString()
         return executeOnMain {
             #if os(macOS)
-            LxAppMacAppUIRuntime.active?.setTrayBadge(value.isEmpty ? nil : value)
+            guard let runtime = LxAppMacAppUIRuntime.active else { return false }
+            runtime.setTrayBadge(value.isEmpty ? nil : value)
             return true
             #else
             return true
@@ -278,7 +279,8 @@ extension LxApp {
         let value = icon.toString()
         return executeOnMain {
             #if os(macOS)
-            LxAppMacAppUIRuntime.active?.setTrayIcon(value)
+            guard let runtime = LxAppMacAppUIRuntime.active else { return false }
+            runtime.setTrayIcon(value)
             return true
             #else
             return true
@@ -290,7 +292,8 @@ extension LxApp {
         let value = text.toString()
         return executeOnMain {
             #if os(macOS)
-            LxAppMacAppUIRuntime.active?.setTrayTitle(value.isEmpty ? nil : value)
+            guard let runtime = LxAppMacAppUIRuntime.active else { return false }
+            runtime.setTrayTitle(value.isEmpty ? nil : value)
             return true
             #else
             return true
@@ -302,7 +305,8 @@ extension LxApp {
         let value = items_json.toString()
         return executeOnMain {
             #if os(macOS)
-            LxAppMacAppUIRuntime.active?.setTrayMenu(value)
+            guard let runtime = LxAppMacAppUIRuntime.active else { return false }
+            runtime.setTrayMenu(value)
             return true
             #else
             return true
@@ -313,7 +317,8 @@ extension LxApp {
     nonisolated static func setTrayVisible(visible: Bool) -> Bool {
         return executeOnMain {
             #if os(macOS)
-            LxAppMacAppUIRuntime.active?.setTrayVisible(visible)
+            guard let runtime = LxAppMacAppUIRuntime.active else { return false }
+            runtime.setTrayVisible(visible)
             return true
             #else
             return true
@@ -324,7 +329,8 @@ extension LxApp {
     nonisolated static func setTrayClickIntercept(intercept: Bool) -> Bool {
         return executeOnMain {
             #if os(macOS)
-            LxAppMacAppUIRuntime.active?.setTrayClickIntercept(intercept)
+            guard let runtime = LxAppMacAppUIRuntime.active else { return false }
+            runtime.setTrayClickIntercept(intercept)
             return true
             #else
             return true

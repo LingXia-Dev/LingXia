@@ -85,7 +85,13 @@ fn on_click(ctx: JSContext, handler: JSFunc) -> JSResult<JSFunc> {
     }
     let off_ctx = ctx.clone();
     let off_handler = handler;
+    // Guard against a double `off()`: a second call must not decrement the count
+    // again (which would underflow and break future interception).
+    let unsubscribed = std::sync::atomic::AtomicBool::new(false);
     JSFunc::new(&ctx, move || {
+        if unsubscribed.swap(true, Ordering::SeqCst) {
+            return;
+        }
         unregister_app_handler(&off_ctx, "lx.tray.click", Some(off_handler.clone()));
         if CLICK_HANDLERS.fetch_sub(1, Ordering::SeqCst) == 1
             && let Ok(lxapp) = LxApp::from_ctx(&off_ctx)
