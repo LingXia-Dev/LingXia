@@ -61,6 +61,51 @@ fn invoke_windows_open_url_handler(req: &OpenUrlRequest) -> bool {
     handler.map(|handler| handler(req)).unwrap_or(false)
 }
 
+/// Process-wide handler that pushes the JS-registered tray menu spec
+/// (`items_json`, the array `lx.tray.setMenu` produced) to the native
+/// system-tray icon. Registered by the Windows host SDK; when absent (headless
+/// / non-shell builds) `set_tray_menu` no-ops, matching the trait contract.
+type WindowsTrayMenuHandler = Arc<dyn Fn(&str) + Send + Sync>;
+static WINDOWS_TRAY_MENU_HANDLER: Mutex<Option<WindowsTrayMenuHandler>> = Mutex::new(None);
+
+pub fn set_windows_tray_menu_handler(handler: WindowsTrayMenuHandler) {
+    if let Ok(mut slot) = WINDOWS_TRAY_MENU_HANDLER.lock() {
+        *slot = Some(handler);
+    }
+}
+
+fn invoke_windows_tray_menu_handler(items_json: &str) {
+    let handler = WINDOWS_TRAY_MENU_HANDLER
+        .lock()
+        .ok()
+        .and_then(|slot| slot.clone());
+    if let Some(handler) = handler {
+        handler(items_json);
+    }
+}
+
+/// Process-wide handler toggling whether a tray left-click is delivered to JS
+/// (`lx.tray.onClick`) instead of running the tray's configured surface action.
+type WindowsTrayClickInterceptHandler = Arc<dyn Fn(bool) + Send + Sync>;
+static WINDOWS_TRAY_CLICK_INTERCEPT_HANDLER: Mutex<Option<WindowsTrayClickInterceptHandler>> =
+    Mutex::new(None);
+
+pub fn set_windows_tray_click_intercept_handler(handler: WindowsTrayClickInterceptHandler) {
+    if let Ok(mut slot) = WINDOWS_TRAY_CLICK_INTERCEPT_HANDLER.lock() {
+        *slot = Some(handler);
+    }
+}
+
+fn invoke_windows_tray_click_intercept_handler(intercept: bool) {
+    let handler = WINDOWS_TRAY_CLICK_INTERCEPT_HANDLER
+        .lock()
+        .ok()
+        .and_then(|slot| slot.clone());
+    if let Some(handler) = handler {
+        handler(intercept);
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Platform {
     data_dir: PathBuf,
@@ -201,6 +246,21 @@ impl AppRuntime for Platform {
 
     fn exit(&self) -> Result<(), PlatformError> {
         request_windows_app_exit();
+        Ok(())
+    }
+
+    // Tray chrome. The system-tray icon and its menu live in the host SDK
+    // (lingxia-windows-sdk), which this layer cannot reference directly, so the
+    // SDK registers handlers we forward to. No registered handler => no-op,
+    // honoring the "tray APIs never throw off-support" contract.
+
+    fn set_tray_menu(&self, items_json: &str) -> Result<(), PlatformError> {
+        invoke_windows_tray_menu_handler(items_json);
+        Ok(())
+    }
+
+    fn set_tray_click_intercept(&self, intercept: bool) -> Result<(), PlatformError> {
+        invoke_windows_tray_click_intercept_handler(intercept);
         Ok(())
     }
 

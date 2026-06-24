@@ -156,8 +156,18 @@ pub fn init(app: WindowsApp) -> Result<String> {
         open_home_app(&home_app_id).map_err(WindowsHostError::OpenHomeApp)?;
     }
     #[cfg(feature = "browser-shell")]
-    if let Err(message) = tray_icon::install_from_ui(&asset_dir) {
-        log::warn!("failed to install Windows tray icon: {message}");
+    {
+        // Wire the cross-platform tray JS APIs to the native system-tray icon:
+        // `lx.tray.setMenu` builds the right-click menu (no default items) and
+        // `lx.tray.onClick` claims the left-click. The runtime layer cannot see
+        // this SDK, so it invokes these registered handlers.
+        lingxia_platform::set_windows_tray_menu_handler(std::sync::Arc::new(tray_icon::set_menu));
+        lingxia_platform::set_windows_tray_click_intercept_handler(std::sync::Arc::new(
+            tray_icon::set_click_intercept,
+        ));
+        if let Err(message) = tray_icon::install_from_ui(&asset_dir) {
+            log::warn!("failed to install Windows tray icon: {message}");
+        }
     }
     Ok(home_app_id)
 }

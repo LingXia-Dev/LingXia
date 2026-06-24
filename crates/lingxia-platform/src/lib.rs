@@ -79,6 +79,7 @@ pub use windows::{
     set_windows_managed_surface_visible_handler, set_windows_open_url_handler,
     set_windows_page_visibility_handler, set_windows_pull_to_refresh_handler,
     set_windows_surface_closed_handler, set_windows_surface_dispose_handler,
+    set_windows_tray_click_intercept_handler, set_windows_tray_menu_handler,
     set_windows_ui_update_handler, set_windows_url_surface_handler,
 };
 
