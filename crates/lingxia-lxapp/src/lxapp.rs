@@ -1617,6 +1617,54 @@ impl LxApp {
         self.executor.create_app_svc(self.clone_arc())
     }
 
+    /// Restart the app service without closing the host surface or recreating
+    /// the LxApp instance. Dev runners use this for an in-place lxapp restart:
+    /// logic is recreated, while the existing window/frame stays put.
+    pub fn restart_app_service_in_place(&self) -> Result<(), LxAppError> {
+        self.executor.terminate_app_svc(self.clone_arc())?;
+        self.executor.create_app_svc(self.clone_arc())
+    }
+
+    /// Reload the current page's WebView in place (without recreating the host
+    /// window), so a dev "restart" reloads the page rather than flashing the
+    /// screen. Errors when the page stack is empty or its WebView is not ready.
+    pub fn reload_current_page(&self) -> Result<(), LxAppError> {
+        self.current_page()?
+            .webview()
+            .ok_or_else(|| LxAppError::WebView("page WebView is not ready".to_string()))?
+            .reload()
+            .map_err(|err| LxAppError::WebView(err.to_string()))
+    }
+
+    /// In-place dev restart: recreate the JS app service, then reload the
+    /// current page against it — without closing/recreating the host window
+    /// (no screen flash). The two steps belong together: restarting the
+    /// service alone would leave the page bound to the terminated service.
+    pub fn restart_in_place(&self) -> Result<(), LxAppError> {
+        self.restart_app_service_in_place()?;
+        self.reload_current_page()
+    }
+
+    /// Clears this lxapp's user cache directory, recreating it empty. Dev
+    /// runners and the shell "clean cache" action use this before an in-place
+    /// restart.
+    pub fn clear_user_cache(&self) -> Result<(), LxAppError> {
+        if self.user_cache_dir.exists() {
+            std::fs::remove_dir_all(&self.user_cache_dir).map_err(|err| {
+                LxAppError::IoError(format!(
+                    "failed to remove {}: {err}",
+                    self.user_cache_dir.display()
+                ))
+            })?;
+        }
+        std::fs::create_dir_all(&self.user_cache_dir).map_err(|err| {
+            LxAppError::IoError(format!(
+                "failed to recreate {}: {err}",
+                self.user_cache_dir.display()
+            ))
+        })
+    }
+
     fn remove_registered_headless_page_if_current(&self, path: &str, page: &PageInstance) {
         if let Ok(state) = self.state.lock() {
             let id = page.instance_id_string();

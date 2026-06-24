@@ -312,21 +312,8 @@ impl LxApp {
                 // Clear cache directory and restart the LxApp
                 info!("Clean cache & restart requested").with_appid(self.appid.clone());
 
-                // Clear and recreate cache directory
-                let cache_dir = &self.user_cache_dir;
-                if cache_dir.exists() {
-                    if let Err(e) = std::fs::remove_dir_all(cache_dir) {
-                        error!("Failed to remove cache directory: {}", e)
-                            .with_appid(self.appid.clone());
-                    } else {
-                        info!("Cache directory cleared: {}", cache_dir.display())
-                            .with_appid(self.appid.clone());
-                    }
-                }
-                // Recreate the cache directory
-                if let Err(e) = std::fs::create_dir_all(cache_dir) {
-                    error!("Failed to recreate cache directory: {}", e)
-                        .with_appid(self.appid.clone());
+                if let Err(e) = self.clear_user_cache() {
+                    error!("Failed to clear user cache: {}", e).with_appid(self.appid.clone());
                 }
 
                 if let Err(e) = self.restart() {
