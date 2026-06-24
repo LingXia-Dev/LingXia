@@ -26,19 +26,18 @@ public class SimulatorToolbar: NSView {
     // MARK: - State
 
     public var onDeviceSelected: ((MobileDeviceSize) -> Void)?
-    public var onCloseClicked: (() -> Void)?
     public var onRotateClicked: (() -> Void)?
     public var onInspectClicked: (() -> Void)?
 
     private var currentDevice: MobileDeviceSize = .defaultDevice
-    
+
     // MARK: - Initialization
-    
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
+
+    init() {
+        super.init(frame: .zero)
         setupUI()
     }
-    
+
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
@@ -49,14 +48,14 @@ public class SimulatorToolbar: NSView {
         wantsLayer = true
         layer?.backgroundColor = NSColor(white: 0.18, alpha: 0.98).cgColor
         layer?.cornerRadius = Layout.cornerRadius
-        
+
         // Subtle shadow
         shadow = NSShadow()
         layer?.shadowColor = NSColor.black.cgColor
         layer?.shadowOpacity = 0.3
         layer?.shadowOffset = CGSize(width: 0, height: -1)
         layer?.shadowRadius = 4
-        
+
         setupWindowButtons()
         setupDeviceSelector()
         setupRotateButton()
@@ -164,6 +163,8 @@ public class SimulatorToolbar: NSView {
     // MARK: - Actions
 
     @objc private func inspectClicked() {
+        // The gear is just DevTools. Lxapp lifecycle lives on the capsule sheet;
+        // Restart Runner lives in the device selector.
         onInspectClicked?()
     }
 
@@ -172,9 +173,11 @@ public class SimulatorToolbar: NSView {
     }
 
     @objc private func closeClicked() {
-        window?.close()
+        // The simulator's red dot closes the simulator: quit the runner cleanly
+        // rather than just closing the window (which left it alive in the dock).
+        NSApp.terminate(nil)
     }
-    
+
     @objc private func minimizeClicked() {
         window?.miniaturize(nil)
     }

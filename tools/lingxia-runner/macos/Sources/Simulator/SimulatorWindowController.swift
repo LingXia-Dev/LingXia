@@ -10,6 +10,13 @@ extension Notification.Name {
     static let capsuleNavigationBarStateChanged = Notification.Name("CapsuleNavigationBarStateChanged")
 }
 
+/// Dimmed backdrop for the capsule sheet; a click dismisses it. Kept separate
+/// from the sheet so the sheet's buttons receive their own clicks.
+private final class CapsuleSheetDismissView: NSView {
+    var onMouseDown: (() -> Void)?
+    override func mouseDown(with event: NSEvent) { onMouseDown?() }
+}
+
 /// Window controller for Runner Simulator mode
 /// Provides Xcode-like simulator interface with toolbar and device frame
 @MainActor
@@ -26,8 +33,9 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
             return currentNotchSpec.statusBarHeight
         }
         public static let navBarHeight: CGFloat = 40
-        public static let capsuleContainerWidth: CGFloat = 88
-        public static let capsuleContainerHeight: CGFloat = 26
+        // Matches the iOS capsule (LxAppCapsuleButtons): 2 buttons, 32 tall.
+        public static let capsuleContainerWidth: CGFloat = 84
+        public static let capsuleContainerHeight: CGFloat = 32
         public static let capsuleTrailingMargin: CGFloat = 12
         public static let statusBarSideMargin: CGFloat = 12
 
@@ -535,27 +543,32 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
     private func setupFloatingCapsuleButtons(in contentView: NSView) {
         guard floatingCapsuleContainer == nil else { return }
         
+        // Mirrors the iOS LxAppUnifiedCapsuleView: white pill, hairline stroke, a
+        // 0.5pt divider between the two buttons (··· and close).
         let capsuleContainer = NSView()
         capsuleContainer.wantsLayer = true
-        capsuleContainer.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.92).cgColor
+        capsuleContainer.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.9).cgColor
         capsuleContainer.layer?.cornerRadius = Layout.capsuleContainerHeight / 2
+        capsuleContainer.layer?.borderWidth = 0.5
+        capsuleContainer.layer?.borderColor = NSColor.gray.withAlphaComponent(0.3).cgColor
         capsuleContainer.translatesAutoresizingMaskIntoConstraints = false
         capsuleContainer.shadow = NSShadow()
         capsuleContainer.layer?.shadowColor = NSColor.black.cgColor
-        capsuleContainer.layer?.shadowOpacity = 0.12
+        capsuleContainer.layer?.shadowOpacity = 0.1
         capsuleContainer.layer?.shadowOffset = CGSize(width: 0, height: 1)
-        capsuleContainer.layer?.shadowRadius = 4
-        
+        capsuleContainer.layer?.shadowRadius = 2
+
         contentView.addSubview(capsuleContainer)
-        
-        let buttons = [
-            makeButton(image: CapsuleButtonImages.createThreeDotsImage(), action: #selector(moreButtonClicked)),
-            makeButton(image: CapsuleButtonImages.createMinimizeButtonImage(), action: #selector(minimizeButtonClicked)),
-            makeButton(image: CapsuleButtonImages.createCloseButtonImage(), action: #selector(closeButtonClicked))
-        ]
-        
-        buttons.forEach { capsuleContainer.addSubview($0) }
-        
+
+        let moreButton = makeButton(image: CapsuleButtonImages.createThreeDotsImage(), action: #selector(moreButtonClicked))
+        let closeButton = makeButton(image: CapsuleButtonImages.createCloseButtonImage(), action: #selector(closeButtonClicked))
+        let divider = NSView()
+        divider.wantsLayer = true
+        divider.layer?.backgroundColor = NSColor.gray.withAlphaComponent(0.3).cgColor
+        capsuleContainer.addSubview(moreButton)
+        capsuleContainer.addSubview(divider)
+        capsuleContainer.addSubview(closeButton)
+
         let navBarCenterOffset = Layout.systemStatusBarHeight + (Layout.navBarHeight - Layout.capsuleContainerHeight) / 2
         NSLayoutConstraint.activate([
             capsuleContainer.topAnchor.constraint(equalTo: contentView.topAnchor, constant: navBarCenterOffset),
@@ -563,19 +576,15 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
             capsuleContainer.widthAnchor.constraint(equalToConstant: Layout.capsuleContainerWidth),
             capsuleContainer.heightAnchor.constraint(equalToConstant: Layout.capsuleContainerHeight)
         ])
-        
-        // Layout buttons
-        let buttonWidth: CGFloat = 20
-        let buttonHeight: CGFloat = 24
-        let edgeSpacing: CGFloat = 8
-        let buttonSpacing: CGFloat = 8
-        let buttonY = (Layout.capsuleContainerHeight - buttonHeight) / 2
-        
-        for (index, button) in buttons.enumerated() {
-            let buttonX = edgeSpacing + CGFloat(index) * (buttonWidth + buttonSpacing)
-            button.frame = NSRect(x: buttonX, y: buttonY, width: buttonWidth, height: buttonHeight)
-        }
-        
+
+        // iOS metrics: 38pt buttons, 4pt edge padding, 0.5×20 divider between them.
+        let buttonWidth: CGFloat = 38
+        let edge: CGFloat = 4
+        let h = Layout.capsuleContainerHeight
+        moreButton.frame = NSRect(x: edge, y: 0, width: buttonWidth, height: h)
+        divider.frame = NSRect(x: edge + buttonWidth, y: (h - 20) / 2, width: 0.5, height: 20)
+        closeButton.frame = NSRect(x: edge + buttonWidth + 0.5, y: 0, width: buttonWidth, height: h)
+
         self.floatingCapsuleContainer = capsuleContainer
     }
     
@@ -810,67 +819,118 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         let _ = onLxappEvent(appId, LxAppUiEventType.NavigationClick, "home")
     }
 
+    private var capsuleSheetOverlay: NSView?
+
     @objc private func moreButtonClicked() {
-        showRunnerLxAppMenu()
+        // Match iOS's "···" sheet: a dimmed backdrop with a white rounded bottom
+        // sheet — name + version header, then a clean/restart action row.
+        guard let contentView = window?.contentView, capsuleSheetOverlay == nil else { return }
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—"
+
+        let overlay = NSView(frame: contentView.bounds)
+        overlay.autoresizingMask = [.width, .height]
+        contentView.addSubview(overlay)
+
+        // Dimmed backdrop behind the sheet — a click on it (outside the sheet)
+        // dismisses; clicks on the sheet's buttons are not intercepted.
+        let dimmed = CapsuleSheetDismissView(frame: overlay.bounds)
+        dimmed.autoresizingMask = [.width, .height]
+        dimmed.wantsLayer = true
+        dimmed.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.4).cgColor
+        dimmed.onMouseDown = { [weak self] in self?.dismissCapsuleSheet() }
+        overlay.addSubview(dimmed)
+
+        let sheet = NSView()
+        sheet.translatesAutoresizingMaskIntoConstraints = false
+        sheet.wantsLayer = true
+        sheet.layer?.backgroundColor = NSColor.white.cgColor
+        sheet.layer?.cornerRadius = 16
+        sheet.layer?.maskedCorners = [.layerMinXMaxYCorner, .layerMaxXMaxYCorner]
+        overlay.addSubview(sheet)
+
+        let name = NSTextField(labelWithString: appId)
+        name.font = .boldSystemFont(ofSize: 16)
+        name.textColor = .black
+        name.translatesAutoresizingMaskIntoConstraints = false
+        let ver = NSTextField(labelWithString: "v\(version)")
+        ver.font = .systemFont(ofSize: 13)
+        ver.textColor = NSColor(white: 0.6, alpha: 1)
+        ver.translatesAutoresizingMaskIntoConstraints = false
+
+        let separator = NSView()
+        separator.translatesAutoresizingMaskIntoConstraints = false
+        separator.wantsLayer = true
+        separator.layer?.backgroundColor = NSColor(white: 0.9, alpha: 1).cgColor
+
+        let clean = makeCapsuleSheetButton(symbol: "trash", title: "Clean cache & Restart", action: #selector(capsuleCleanTapped))
+        let restart = makeCapsuleSheetButton(symbol: "arrow.clockwise", title: "Restart", action: #selector(capsuleRestartTapped))
+        let row = NSStackView(views: [clean, restart])
+        row.distribution = .fillEqually
+        row.spacing = 16
+        row.translatesAutoresizingMaskIntoConstraints = false
+
+        sheet.addSubview(name)
+        sheet.addSubview(ver)
+        sheet.addSubview(separator)
+        sheet.addSubview(row)
+
+        NSLayoutConstraint.activate([
+            sheet.leadingAnchor.constraint(equalTo: overlay.leadingAnchor),
+            sheet.trailingAnchor.constraint(equalTo: overlay.trailingAnchor),
+            sheet.bottomAnchor.constraint(equalTo: overlay.bottomAnchor),
+
+            name.topAnchor.constraint(equalTo: sheet.topAnchor, constant: 16),
+            name.leadingAnchor.constraint(equalTo: sheet.leadingAnchor, constant: 20),
+            ver.firstBaselineAnchor.constraint(equalTo: name.firstBaselineAnchor),
+            ver.leadingAnchor.constraint(equalTo: name.trailingAnchor, constant: 8),
+
+            separator.topAnchor.constraint(equalTo: name.bottomAnchor, constant: 12),
+            separator.leadingAnchor.constraint(equalTo: sheet.leadingAnchor),
+            separator.trailingAnchor.constraint(equalTo: sheet.trailingAnchor),
+            separator.heightAnchor.constraint(equalToConstant: 1),
+
+            row.topAnchor.constraint(equalTo: separator.bottomAnchor, constant: 14),
+            row.leadingAnchor.constraint(equalTo: sheet.leadingAnchor, constant: 20),
+            row.trailingAnchor.constraint(equalTo: sheet.trailingAnchor, constant: -20),
+            row.bottomAnchor.constraint(equalTo: sheet.bottomAnchor, constant: -20),
+        ])
+
+        capsuleSheetOverlay = overlay
     }
-    
-    @objc private func minimizeButtonClicked() {
-        window?.miniaturize(nil)
-    }
-    
-    @objc private func closeButtonClicked() {
-        RunnerApp.shared.closeCurrentLxAppFromCapsule()
-    }
 
-    private func showRunnerLxAppMenu() {
-        let menu = NSMenu(title: "LxApp")
-        menu.autoenablesItems = false
-
-        let clean = NSMenuItem(
-            title: "Clean Cache and Restart LxApp",
-            action: #selector(cleanCacheAndRestartClicked),
-            keyEquivalent: ""
-        )
-        clean.target = self
-        clean.image = NSImage(systemSymbolName: "trash", accessibilityDescription: nil)
-        menu.addItem(clean)
-
-        let restart = NSMenuItem(
-            title: "Restart LxApp",
-            action: #selector(restartLxAppClicked),
-            keyEquivalent: ""
-        )
-        restart.target = self
-        restart.image = NSImage(systemSymbolName: "arrow.clockwise", accessibilityDescription: nil)
-        menu.addItem(restart)
-
-        menu.addItem(.separator())
-
-        // Runner-level (not lxapp-scoped) action, also available as ⌘⇧R in the app
-        // menu — surfaced here so every lifecycle action has one home on the capsule.
-        let restartRunner = NSMenuItem(
-            title: "Restart LingXia Runner",
-            action: #selector(restartRunnerClicked),
-            keyEquivalent: ""
-        )
-        restartRunner.target = self
-        restartRunner.image = NSImage(systemSymbolName: "arrow.triangle.2.circlepath", accessibilityDescription: nil)
-        menu.addItem(restartRunner)
-
-        guard let anchor = floatingCapsuleContainer ?? window?.contentView else { return }
-        menu.popUp(positioning: nil, at: NSPoint(x: anchor.bounds.midX, y: anchor.bounds.minY), in: anchor)
+    private func makeCapsuleSheetButton(symbol: String, title: String, action: Selector) -> NSView {
+        let button = NSButton()
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.isBordered = false
+        button.imagePosition = .imageAbove
+        button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: title)?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 20, weight: .regular))
+        button.title = title
+        button.contentTintColor = NSColor(white: 0.2, alpha: 1)
+        button.font = .systemFont(ofSize: 11)
+        button.target = self
+        button.action = action
+        return button
     }
 
-    @objc private func cleanCacheAndRestartClicked() {
+    @objc private func capsuleCleanTapped() {
+        dismissCapsuleSheet()
         RunnerApp.shared.cleanCacheAndRestartCurrentLxApp()
     }
 
-    @objc private func restartLxAppClicked() {
+    @objc private func capsuleRestartTapped() {
+        dismissCapsuleSheet()
         RunnerApp.shared.restartCurrentLxApp()
     }
 
-    @objc private func restartRunnerClicked() {
-        RunnerApp.shared.restartRunner()
+    @objc private func dismissCapsuleSheet() {
+        capsuleSheetOverlay?.removeFromSuperview()
+        capsuleSheetOverlay = nil
+    }
+
+    @objc private func closeButtonClicked() {
+        // Match iOS: the close circle exits the lxapp (runner quit stays on the red dot).
+        RunnerApp.shared.closeCurrentLxAppFromCapsule()
     }
     
     // MARK: - NSWindowDelegate
@@ -892,6 +952,27 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
     func closeFromRuntime() {
         suppressRuntimeCloseNotification = true
         window?.close()
+    }
+
+    /// Swap in a fresh webview for the restarted session while keeping the device
+    /// frame on screen (no disappear/reappear), below the phone UI overlay.
+    func reloadContentForRestart(path: String) {
+        currentPath = path
+        viewController?.view.removeFromSuperview()
+        viewController = nil
+
+        guard let phoneContent = phoneContentView else { return }
+        let vc = SimulatorViewController(appId: appId, path: path)
+        viewController = vc
+        vc.view.translatesAutoresizingMaskIntoConstraints = false
+        phoneContent.addSubview(vc.view, positioned: .below, relativeTo: nil)
+        NSLayoutConstraint.activate([
+            vc.view.topAnchor.constraint(equalTo: phoneContent.topAnchor),
+            vc.view.leadingAnchor.constraint(equalTo: phoneContent.leadingAnchor),
+            vc.view.trailingAnchor.constraint(equalTo: phoneContent.trailingAnchor),
+            vc.view.bottomAnchor.constraint(equalTo: phoneContent.bottomAnchor),
+        ])
+        window?.makeKeyAndOrderFront(nil)
     }
 
     func detachForHostSwitch() {

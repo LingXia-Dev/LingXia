@@ -1,4 +1,5 @@
 import AppKit
+import WebKit
 @_spi(Runner) import lingxia
 
 /// Runner host for pad/desktop shapes.
@@ -14,32 +15,24 @@ final class RunnerSurfaceShellHost {
     private(set) var currentPath: String
     private(set) var device: MobileDeviceSize
 
-    // The same selector the iPhone toolbar uses. The pad/desktop strip has no
-    // rotate button or capsule, so orientation + lxapp lifecycle ride along as
-    // extras below the device list.
-    private lazy var deviceSelector: RunnerDeviceSelectorControl = {
-        let control = RunnerDeviceSelectorControl(extras: [
-            RunnerDeviceSelectorControl.ExtraItem(
-                title: "Rotate", systemImage: "rotate.right", separatorBefore: true
-            ) { RunnerApp.shared.toggleDeviceOrientation() },
-            RunnerDeviceSelectorControl.ExtraItem(
-                title: "Restart LxApp", systemImage: "arrow.clockwise", separatorBefore: true
-            ) { RunnerApp.shared.restartCurrentLxApp() },
-            RunnerDeviceSelectorControl.ExtraItem(
-                title: "Clean Cache and Restart LxApp", systemImage: "trash"
-            ) { RunnerApp.shared.cleanCacheAndRestartCurrentLxApp() },
-        ])
-        control.onDeviceSelected = { device in
-            RunnerApp.shared.setDeviceSize(device)
-        }
-        return control
-    }()
-    private lazy var toolbar: RunnerSurfaceToolbar = {
-        let bar = RunnerSurfaceToolbar(selector: deviceSelector)
-        bar.onClose = { [weak self] in self?.shell.window?.performClose(nil) }
-        bar.onMinimize = { [weak self] in self?.shell.window?.miniaturize(nil) }
+    // The same toolbar as the iPhone simulator, so phone and pad share one UI.
+    private lazy var toolbar: SimulatorToolbar = {
+        let bar = SimulatorToolbar()
+        bar.onDeviceSelected = { device in RunnerApp.shared.setDeviceSize(device) }
+        bar.onRotateClicked = { RunnerApp.shared.toggleDeviceOrientation() }
+        bar.onInspectClicked = { [weak self] in self?.openInspector() }
         return bar
     }()
+
+    /// Toggle the Safari Web Inspector for the shell's active webview (same as the
+    /// phone simulator's DevTools action).
+    private func openInspector() {
+        guard let webView = RunnerSupport.WebView.current() else { return }
+        let retained = Unmanaged.passRetained(webView)
+        let ptr = UInt(bitPattern: retained.toOpaque())
+        _ = toggleWebViewDevtoolsByPtr(ptr, true)
+        retained.release()
+    }
     nonisolated(unsafe) private var closeObserver: NSObjectProtocol?
     private var isHiddenForHostSwitch = false
     var onClose: ((RunnerSurfaceShellHost) -> Void)?
@@ -102,7 +95,7 @@ final class RunnerSurfaceShellHost {
 
     func applyDevice(_ newDevice: MobileDeviceSize) {
         device = newDevice
-        deviceSelector.setCurrentDevice(newDevice)
+        toolbar.setCurrentDevice(newDevice)
         configureWindow(for: newDevice, center: false)
         DevToolsLogger.shared.log("Device -> \(newDevice.displayName) (\(newDevice.sizeDescription))", level: .debug)
     }
@@ -135,12 +128,24 @@ final class RunnerSurfaceShellHost {
     }
 
     private func installDeviceSelector() {
-        // Mount the toolbar as a content-level strip ABOVE the shell content (the
-        // shell lays its sidebar/content out beneath it). This is what the iPhone
-        // simulator does — the selector lives in its own chrome bar, never over the
-        // app UI, and the bar's own dots replace the (hidden) traffic lights.
-        RunnerSupport.SurfaceShell.setTopAccessory(shell, view: toolbar, height: RunnerSurfaceToolbar.height)
-        deviceSelector.setCurrentDevice(device)
+        // Float the toolbar above the content with a gap (like the iPhone simulator),
+        // so the rounded toolbar never sits flush against the content.
+        let gap: CGFloat = 12
+        let host = NSView()
+        host.translatesAutoresizingMaskIntoConstraints = false
+        host.wantsLayer = true
+        host.layer?.backgroundColor = NSColor(white: 0.11, alpha: 1.0).cgColor
+        toolbar.translatesAutoresizingMaskIntoConstraints = false
+        host.addSubview(toolbar)
+        NSLayoutConstraint.activate([
+            toolbar.topAnchor.constraint(equalTo: host.topAnchor),
+            toolbar.leadingAnchor.constraint(equalTo: host.leadingAnchor),
+            toolbar.trailingAnchor.constraint(equalTo: host.trailingAnchor),
+            toolbar.heightAnchor.constraint(equalToConstant: SimulatorToolbar.Layout.height),
+        ])
+        RunnerSupport.SurfaceShell.setTopAccessory(
+            shell, view: host, height: SimulatorToolbar.Layout.height + gap)
+        toolbar.setCurrentDevice(device)
     }
 
     private func configureWindow(for device: MobileDeviceSize, center: Bool) {

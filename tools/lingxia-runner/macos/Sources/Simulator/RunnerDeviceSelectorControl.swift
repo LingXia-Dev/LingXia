@@ -1,39 +1,21 @@
 import AppKit
 
-/// The native device picker shared by both runner modes, so the selector looks
-/// and behaves identically whatever device frame is active: the iPhone simulator
-/// toolbar and the pad/desktop surface-shell strip both mount this same control.
+/// The device picker shared by both runner modes (iPhone simulator toolbar and
+/// the pad/desktop surface-shell toolbar), so the selector looks and behaves
+/// identically whatever device frame is active.
 ///
-/// It's a plain device popup (matching the iPhone toolbar). Hosts that have no
-/// other chrome for it — the pad/desktop strip has no rotate button or capsule —
-/// pass `extras` to append orientation / lxapp-lifecycle actions below the device
-/// list; the phone toolbar leaves them empty because it has both.
+/// A plain button (device name + chevron) that pops its menu **downward** below
+/// the button — unlike `NSPopUpButton`, which centers the selected item over the
+/// button and pushes the menu up off the top of the window. The menu lists
+/// devices only, grouped by shape (iPhone / iPad / Desktop).
 @MainActor
-final class RunnerDeviceSelectorControl: NSPopUpButton {
-    /// An action appended below the device list. Reference type so it can ride
-    /// along as a menu item's `representedObject`.
-    final class ExtraItem {
-        let title: String
-        let systemImage: String?
-        let separatorBefore: Bool
-        let handler: () -> Void
-
-        init(title: String, systemImage: String? = nil, separatorBefore: Bool = false, handler: @escaping () -> Void) {
-            self.title = title
-            self.systemImage = systemImage
-            self.separatorBefore = separatorBefore
-            self.handler = handler
-        }
-    }
-
+final class RunnerDeviceSelectorControl: NSButton {
     var onDeviceSelected: ((MobileDeviceSize) -> Void)?
 
-    private let extras: [ExtraItem]
     private var currentDevice: MobileDeviceSize?
 
-    init(extras: [ExtraItem] = []) {
-        self.extras = extras
-        super.init(frame: .zero, pullsDown: false)
+    init() {
+        super.init(frame: .zero)
         configure()
     }
 
@@ -43,58 +25,66 @@ final class RunnerDeviceSelectorControl: NSPopUpButton {
 
     private func configure() {
         translatesAutoresizingMaskIntoConstraints = false
-        bezelStyle = .texturedRounded
         isBordered = false
-        font = NSFont.systemFont(ofSize: 12, weight: .medium)
+        bezelStyle = .texturedRounded
+        setButtonType(.momentaryChange)
         contentTintColor = NSColor.white.withAlphaComponent(0.9)
-        (cell as? NSPopUpButtonCell)?.arrowPosition = .arrowAtBottom
-        autoenablesItems = false
+        // Chevron as a trailing SF Symbol so it baselines cleanly next to the name
+        // (a text "⌄" sits unevenly).
+        let config = NSImage.SymbolConfiguration(pointSize: 9, weight: .semibold)
+        image = NSImage(systemSymbolName: "chevron.down", accessibilityDescription: nil)?
+            .withSymbolConfiguration(config)
+        imagePosition = .imageTrailing
+        imageHugsTitle = true
         target = self
-        action = #selector(selectionChanged)
-
-        let menu = NSMenu()
-        var previousShape: RunnerDeviceShape?
-        for device in MobileDeviceSize.allCases {
-            if let previousShape, previousShape != device.shape {
-                menu.addItem(.separator())
-            }
-            let item = NSMenuItem()
-            item.title = device.displayName
-            item.representedObject = device
-            menu.addItem(item)
-            previousShape = device.shape
-        }
-        for extra in extras {
-            if extra.separatorBefore { menu.addItem(.separator()) }
-            let item = NSMenuItem()
-            item.title = extra.title
-            item.representedObject = extra
-            if let symbol = extra.systemImage {
-                item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
-            }
-            menu.addItem(item)
-        }
-        self.menu = menu
+        action = #selector(showMenu)
     }
 
     func setCurrentDevice(_ device: MobileDeviceSize) {
         currentDevice = device
-        if let item = itemArray.first(where: { ($0.representedObject as? MobileDeviceSize)?.id == device.id }) {
-            select(item)
-        }
+        attributedTitle = NSAttributedString(
+            string: device.displayName,
+            attributes: [
+                .foregroundColor: NSColor.white.withAlphaComponent(0.9),
+                .font: NSFont.systemFont(ofSize: 12, weight: .medium),
+            ]
+        )
     }
 
-    @objc private func selectionChanged() {
-        switch selectedItem?.representedObject {
-        case let device as MobileDeviceSize:
-            currentDevice = device
-            onDeviceSelected?(device)
-        case let extra as ExtraItem:
-            // Keep the popup titled with the device, not the action label.
-            if let currentDevice { setCurrentDevice(currentDevice) }
-            extra.handler()
-        default:
-            break
+    @objc private func showMenu() {
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+        var previousShape: RunnerDeviceShape?
+        for device in MobileDeviceSize.allCases {
+            if previousShape != device.shape {
+                if previousShape != nil { menu.addItem(.separator()) }
+                let header = NSMenuItem(title: Self.groupTitle(device.shape), action: nil, keyEquivalent: "")
+                header.isEnabled = false
+                menu.addItem(header)
+                previousShape = device.shape
+            }
+            let item = NSMenuItem(title: device.displayName, action: #selector(deviceSelected(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = device
+            item.indentationLevel = 1
+            item.state = device.id == currentDevice?.id ? .on : .off
+            menu.addItem(item)
+        }
+        // Pop downward: the menu's top-left lands at the button's bottom-left.
+        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: -2), in: self)
+    }
+
+    @objc private func deviceSelected(_ sender: NSMenuItem) {
+        guard let device = sender.representedObject as? MobileDeviceSize else { return }
+        setCurrentDevice(device)
+        onDeviceSelected?(device)
+    }
+
+    private static func groupTitle(_ shape: RunnerDeviceShape) -> String {
+        switch shape {
+        case .phone: return "iPhone"
+        case .pad: return "iPad"
+        case .desktop: return "Desktop"
         }
     }
 }
