@@ -27,7 +27,7 @@
       "bezelWidth": 4,
       "bezelColor": 1315860,
       "outerRadius": 48,
-      "screenRadius": 44,
+      "screenRadius": 0,
       "notch": {
         "width": 210,
         "height": 30,
@@ -44,7 +44,7 @@
       "bezelWidth": 4,
       "bezelColor": 1315860,
       "outerRadius": 48,
-      "screenRadius": 44,
+      "screenRadius": 0,
       "notch": {
         "width": 210,
         "height": 30,
@@ -61,7 +61,7 @@
       "bezelWidth": 4,
       "bezelColor": 1315860,
       "outerRadius": 58,
-      "screenRadius": 54,
+      "screenRadius": 0,
       "notch": {
         "width": 126,
         "height": 37,
@@ -78,7 +78,7 @@
       "bezelWidth": 4,
       "bezelColor": 1315860,
       "outerRadius": 48,
-      "screenRadius": 44,
+      "screenRadius": 0,
       "notch": {
         "width": 210,
         "height": 30,
@@ -95,7 +95,7 @@
       "bezelWidth": 4,
       "bezelColor": 1315860,
       "outerRadius": 58,
-      "screenRadius": 54,
+      "screenRadius": 0,
       "notch": {
         "width": 126,
         "height": 37,
@@ -112,7 +112,7 @@
       "bezelWidth": 1,
       "bezelColor": 3684408,
       "outerRadius": 8,
-      "screenRadius": 6,
+      "screenRadius": 0,
       "notch": {
         "width": 0,
         "height": 0,
@@ -129,7 +129,7 @@
       "bezelWidth": 1,
       "bezelColor": 3684408,
       "outerRadius": 8,
-      "screenRadius": 6,
+      "screenRadius": 0,
       "notch": {
         "width": 0,
         "height": 0,
@@ -146,7 +146,7 @@
       "bezelWidth": 1,
       "bezelColor": 3684408,
       "outerRadius": 8,
-      "screenRadius": 6,
+      "screenRadius": 0,
       "notch": {
         "width": 0,
         "height": 0,
@@ -163,7 +163,7 @@
       "bezelWidth": 1,
       "bezelColor": 3684408,
       "outerRadius": 8,
-      "screenRadius": 6,
+      "screenRadius": 0,
       "notch": {
         "width": 0,
         "height": 0,
@@ -180,7 +180,7 @@
       "bezelWidth": 1,
       "bezelColor": 3684408,
       "outerRadius": 8,
-      "screenRadius": 6,
+      "screenRadius": 0,
       "notch": {
         "width": 0,
         "height": 0,
