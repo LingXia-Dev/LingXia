@@ -144,9 +144,10 @@ public class SimulatorToolbar: NSView {
 
     private func setupRotateButton() {
         rotateButton = NSButton()
-        let config = NSImage.SymbolConfiguration(pointSize: 13, weight: .semibold)
-        let image = NSImage(systemSymbolName: "rotate.right", accessibilityDescription: "Rotate")?
-            .withSymbolConfiguration(config)
+        // Rotate uses the shared icon_rotate asset (single source for macOS + Windows),
+        // not a macOS-only SF Symbol; isTemplate lets contentTintColor recolor it.
+        let image = RunnerSupport.Assets.image(named: "icon_rotate", size: CGSize(width: 15, height: 15))
+        image?.isTemplate = true
         rotateButton.image = image
         rotateButton.imagePosition = .imageOnly
         rotateButton.title = ""
