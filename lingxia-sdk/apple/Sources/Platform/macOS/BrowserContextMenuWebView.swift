@@ -436,14 +436,27 @@ final class BrowserContextMenuWebView: WKWebView {
 
     // MARK: - lxapp page context menu
 
+    /// Browser surfaces keep the full menu and always get a Reload entry: tab
+    /// pages (`/tabs/...`), and the built-in browser app even when its page path
+    /// isn't `/tabs/` (a docked/aside browser, or a file:// page).
+    private var isBrowserSurface: Bool {
+        guard let path = currentPath else { return true }
+        if path.hasPrefix("/tabs/") { return true }
+        return appId == getBuiltinBrowserAppId().toString()
+    }
+
     /// WebKit's default context menu offers Reload/Back/Forward. In lxapp mode a full webview
     /// reload re-fetches the page bundle and drops runtime state, so it is wrong. Strip those
     /// navigation items and, only when the page opted into pull-down refresh, surface a "refresh"
     /// entry that routes through the pull-down refresh pipeline (firing onPullDownRefresh) instead.
     /// Text items such as Copy / Look Up are left intact.
     override func willOpenMenu(_ menu: NSMenu, with event: NSEvent) {
-        // Browser tabs keep the default WebKit menu (reload/back/forward are meaningful there).
-        guard let path = currentPath, !path.hasPrefix("/tabs/") else {
+        if isBrowserSurface {
+            super.willOpenMenu(menu, with: event)
+            ensureReloadItem(in: menu)
+            return
+        }
+        guard let path = currentPath else {
             super.willOpenMenu(menu, with: event)
             return
         }
@@ -468,6 +481,27 @@ final class BrowserContextMenuWebView: WKWebView {
         }
 
         super.willOpenMenu(menu, with: event)
+    }
+
+    /// WKWebView only offers Reload on an empty-page right-click; a file:// page
+    /// that fills the view never produces one, so guarantee a Reload entry.
+    private func ensureReloadItem(in menu: NSMenu) {
+        if menu.items.contains(where: { $0.action == Selector(("reload:")) }) { return }
+        let item = NSMenuItem(
+            title: L10n.string("lx_menu_refresh"),
+            action: #selector(reloadFromMenu(_:)),
+            keyEquivalent: ""
+        )
+        item.target = self
+        menu.insertItem(item, at: 0)
+        if menu.items.count > 1 {
+            menu.insertItem(NSMenuItem.separator(), at: 1)
+        }
+    }
+
+    @objc private func reloadFromMenu(_ sender: Any?) {
+        _ = sender
+        reload()
     }
 
     @objc private func handleLxAppPullDownRefresh(_ sender: Any?) {

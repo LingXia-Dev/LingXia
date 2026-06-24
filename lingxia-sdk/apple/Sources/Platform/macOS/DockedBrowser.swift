@@ -340,7 +340,13 @@ final class DockedBrowser: NSObject {
     @objc private func addressSubmitted(_ sender: NSTextField) {
         guard let url = Self.resolveAddress(sender.stringValue) else { return }
         addressField.stringValue = url.absoluteString
-        webView?.load(URLRequest(url: url))
+        // WKWebView refuses file:// via a normal request; grant read access to the
+        // file's directory so it (and adjacent resources) can load.
+        if url.isFileURL {
+            webView?.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
+        } else {
+            webView?.load(URLRequest(url: url))
+        }
     }
 
     /// Turn raw address-bar text into a URL: honor an explicit scheme, treat a

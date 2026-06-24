@@ -132,7 +132,11 @@ pub fn resolve_input(request: BrowserAddressInputRequest) -> BrowserAddressInput
         normalize_browser_preferred_scheme(request.context.preferred_scheme.as_deref());
     let trimmed = request.raw_input.trim();
 
-    if extract_url_scheme(trimmed).as_deref() == Some(LINGXIA_SCHEME) {
+    // `lingxia://` (in-app) and `file://` (local files) navigate as-is.
+    if matches!(
+        extract_url_scheme(trimmed).as_deref(),
+        Some(LINGXIA_SCHEME) | Some("file")
+    ) {
         let url = trimmed.to_string();
         let action = match request.trigger {
             BrowserAddressInputTrigger::Submit => BrowserAddressAction::Navigate,
@@ -367,6 +371,20 @@ mod tests {
         assert_eq!(
             response.navigation.as_ref().map(|n| n.url.as_str()),
             Some("lingxia://downloads")
+        );
+    }
+
+    #[test]
+    fn submit_file_url_navigates_as_is() {
+        let response = resolve_input(BrowserAddressInputRequest {
+            raw_input: "file:///Users/me/page.html".to_string(),
+            trigger: BrowserAddressInputTrigger::Submit,
+            context: BrowserAddressInputContext::default(),
+        });
+        assert_eq!(response.action, BrowserAddressAction::Navigate);
+        assert_eq!(
+            response.navigation.as_ref().map(|n| n.url.as_str()),
+            Some("file:///Users/me/page.html")
         );
     }
 }
