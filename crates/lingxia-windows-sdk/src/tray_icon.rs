@@ -5,6 +5,7 @@
 
 use std::ffi::c_void;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
 
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, WPARAM};
@@ -15,21 +16,40 @@ use windows::Win32::UI::Shell::{
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     self, AppendMenuW, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu,
-    DestroyWindow, GetCursorPos, HICON, MF_STRING, PostMessageW, SetForegroundWindow, TPM_NONOTIFY,
-    TPM_RETURNCMD, TPM_TOPALIGN, TrackPopupMenu, WINDOW_EX_STYLE, WINDOW_STYLE, WM_APP,
-    WM_CONTEXTMENU, WM_LBUTTONDBLCLK, WM_LBUTTONUP, WM_NULL, WM_RBUTTONUP, WNDCLASSW,
+    DestroyWindow, GetCursorPos, HICON, MF_CHECKED, MF_GRAYED, MF_SEPARATOR, MF_STRING,
+    PostMessageW, SetForegroundWindow, TPM_NONOTIFY, TPM_RETURNCMD, TPM_TOPALIGN, TrackPopupMenu,
+    WINDOW_EX_STYLE, WINDOW_STYLE, WM_APP, WM_CONTEXTMENU, WM_LBUTTONDBLCLK, WM_LBUTTONUP, WM_NULL,
+    WM_RBUTTONUP, WNDCLASSW,
 };
 use windows::core::{PCWSTR, w};
 
 const TRAY_CALLBACK_MESSAGE: u32 = WM_APP + 0x5b1;
 const TRAY_ICON_ID: u32 = 1;
-const TRAY_MENU_OPEN: usize = 1;
-const TRAY_MENU_QUIT: usize = 2;
 const NIN_KEYSELECT: u32 = NIN_SELECT | NINF_KEY;
+
+/// One entry in the JS-registered tray dropdown (`lx.tray.setMenu`). The native
+/// menu carries no default items; the developer supplies them (and their
+/// click handlers) — mirroring the macOS tray contract.
+#[derive(Debug, Clone, Default)]
+struct TrayMenuItem {
+    separator: bool,
+    label: String,
+    enabled: bool,
+    checked: bool,
+}
+
+/// The current JS-registered menu spec. Empty => a right-click shows nothing
+/// (no default Open/Quit). Replaced wholesale on each `lx.tray.setMenu`.
+static TRAY_MENU: Mutex<Vec<TrayMenuItem>> = Mutex::new(Vec::new());
+
+/// While set, a tray left-click is delivered to JS (`lx.tray.onClick`) instead
+/// of running the tray's configured surface action.
+static TRAY_CLICK_INTERCEPT: AtomicBool = AtomicBool::new(false);
 
 #[derive(Debug, Clone)]
 struct TrayItem {
     surface_id: String,
+    app_id: String,
     action_kind: String,
     tooltip: String,
     icon_path: Option<PathBuf>,
@@ -118,6 +138,54 @@ pub(crate) fn is_installed() -> bool {
         .is_some()
 }
 
+/// Replace the JS-registered tray dropdown. `items_json` is the array
+/// `lx.tray.setMenu` produced: each entry is `{ "separator": true }` or
+/// `{ "label", "enabled", "checked" }`. Invoked via the platform tray-menu
+/// handler; the menu is rebuilt on demand when the icon is right-clicked.
+pub(crate) fn set_menu(items_json: &str) {
+    let parsed: Vec<TrayMenuItem> = serde_json::from_str::<Vec<serde_json::Value>>(items_json)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|value| {
+            if value
+                .get("separator")
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or(false)
+            {
+                return TrayMenuItem {
+                    separator: true,
+                    ..Default::default()
+                };
+            }
+            TrayMenuItem {
+                separator: false,
+                label: value
+                    .get("label")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or_default()
+                    .to_string(),
+                enabled: value
+                    .get("enabled")
+                    .and_then(serde_json::Value::as_bool)
+                    .unwrap_or(true),
+                checked: value
+                    .get("checked")
+                    .and_then(serde_json::Value::as_bool)
+                    .unwrap_or(false),
+            }
+        })
+        .collect();
+    if let Ok(mut menu) = TRAY_MENU.lock() {
+        *menu = parsed;
+    }
+}
+
+/// Toggle whether a tray left-click is delivered to JS (`lx.tray.onClick`)
+/// instead of running the tray's configured surface action.
+pub(crate) fn set_click_intercept(intercept: bool) {
+    TRAY_CLICK_INTERCEPT.store(intercept, Ordering::Relaxed);
+}
+
 fn tray_item_from_ui(asset_dir: &Path) -> Result<Option<TrayItem>, String> {
     let ui_path = asset_dir.join("ui.json");
     let text = std::fs::read_to_string(&ui_path)
@@ -147,6 +215,11 @@ fn tray_item_from_ui(asset_dir: &Path) -> Result<Option<TrayItem>, String> {
         else {
             continue;
         };
+        // Menu / left-click events route to the lxapp backing the tray's
+        // surface. Resolve it from `surfaces[].content.appId`, falling back to
+        // the surface id (they coincide for a single-app tray surface).
+        let app_id =
+            resolve_surface_app_id(&ui, surface_id).unwrap_or_else(|| surface_id.to_string());
         let action_kind = action
             .get("kind")
             .and_then(serde_json::Value::as_str)
@@ -174,6 +247,7 @@ fn tray_item_from_ui(asset_dir: &Path) -> Result<Option<TrayItem>, String> {
 
         return Ok(Some(TrayItem {
             surface_id: surface_id.to_string(),
+            app_id,
             action_kind: action_kind.to_string(),
             tooltip,
             icon_path,
@@ -181,6 +255,20 @@ fn tray_item_from_ui(asset_dir: &Path) -> Result<Option<TrayItem>, String> {
     }
 
     Ok(None)
+}
+
+/// Resolve the lxapp id that backs `surface_id` from `ui.surfaces[].content`.
+fn resolve_surface_app_id(ui: &serde_json::Value, surface_id: &str) -> Option<String> {
+    ui.get("surfaces")
+        .and_then(serde_json::Value::as_array)?
+        .iter()
+        .find(|surface| surface.get("id").and_then(serde_json::Value::as_str) == Some(surface_id))
+        .and_then(|surface| surface.get("content"))
+        .and_then(|content| content.get("appId"))
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
 }
 
 fn resolve_asset_path(asset_dir: &Path, value: &str) -> PathBuf {
@@ -302,6 +390,12 @@ fn activate_tray_item() {
     let Some(item) = current_item() else {
         return;
     };
+    // While a JS `lx.tray.onClick` handler is registered, the left-click is the
+    // app's to handle: deliver it to that app and suppress the surface action.
+    if TRAY_CLICK_INTERCEPT.load(Ordering::Relaxed) {
+        lxapp::publish_app_event(&item.app_id, "lx.tray.click", None);
+        return;
+    }
     if !crate::shell::handle_menu_bar_surface_action(&item.surface_id, &item.action_kind) {
         log::warn!(
             "Windows tray activator could not handle {} for surface {}",
@@ -312,14 +406,41 @@ fn activate_tray_item() {
 }
 
 fn show_tray_menu(hwnd: HWND) {
+    // The menu is entirely developer-defined via `lx.tray.setMenu`. With no
+    // registered items there is no menu to show (no default Open/Quit).
+    let items = TRAY_MENU
+        .lock()
+        .map(|menu| menu.clone())
+        .unwrap_or_default();
+    if items.is_empty() {
+        return;
+    }
+    let Some(item) = current_item() else {
+        return;
+    };
+
     unsafe {
         let Ok(menu) = CreatePopupMenu() else {
             return;
         };
-        let open = to_wide("Open");
-        let quit = to_wide("Quit");
-        let _ = AppendMenuW(menu, MF_STRING, TRAY_MENU_OPEN, PCWSTR(open.as_ptr()));
-        let _ = AppendMenuW(menu, MF_STRING, TRAY_MENU_QUIT, PCWSTR(quit.as_ptr()));
+        for (index, entry) in items.iter().enumerate() {
+            if entry.separator {
+                let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
+                continue;
+            }
+            // Command id is the 1-based JS array index so the selection maps
+            // back to the handler registered at `lx.tray.menu:{index}`.
+            // AppendMenuW copies the label, so a local buffer is fine.
+            let mut flags = MF_STRING;
+            if entry.checked {
+                flags |= MF_CHECKED;
+            }
+            if !entry.enabled {
+                flags |= MF_GRAYED;
+            }
+            let label = to_wide(&entry.label);
+            let _ = AppendMenuW(menu, flags, index + 1, PCWSTR(label.as_ptr()));
+        }
 
         let mut point = POINT::default();
         if GetCursorPos(&mut point).is_err() {
@@ -339,27 +460,12 @@ fn show_tray_menu(hwnd: HWND) {
         let _ = DestroyMenu(menu);
         let _ = PostMessageW(Some(hwnd), WM_NULL, WPARAM(0), LPARAM(0));
 
-        match selected.0 as usize {
-            TRAY_MENU_OPEN => open_tray_surface(),
-            TRAY_MENU_QUIT => {
-                if let Err(err) = lingxia::app::exit() {
-                    log::warn!("failed to quit from Windows tray menu: {err}");
-                }
-            }
-            _ => {}
+        let command = selected.0 as usize;
+        if command >= 1 {
+            // Deliver to the owning app's handler for that menu index.
+            let event = format!("lx.tray.menu:{}", command - 1);
+            lxapp::publish_app_event(&item.app_id, &event, None);
         }
-    }
-}
-
-fn open_tray_surface() {
-    let Some(item) = current_item() else {
-        return;
-    };
-    if !crate::shell::handle_menu_bar_surface_action(&item.surface_id, "openSurface") {
-        log::warn!(
-            "Windows tray menu could not open surface {}",
-            item.surface_id
-        );
     }
 }
 

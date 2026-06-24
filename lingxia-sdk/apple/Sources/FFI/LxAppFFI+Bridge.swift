@@ -262,6 +262,97 @@ extension LxApp {
         }
     }
 
+    nonisolated static func setTrayBadge(text: RustStr) -> Bool {
+        let value = text.toString()
+        return executeOnMain {
+            #if os(macOS)
+            guard let runtime = LxAppMacAppUIRuntime.active else { return false }
+            runtime.setTrayBadge(value.isEmpty ? nil : value)
+            return true
+            #else
+            return true
+            #endif
+        }
+    }
+
+    nonisolated static func setTrayIcon(icon: RustStr) -> Bool {
+        let value = icon.toString()
+        return executeOnMain {
+            #if os(macOS)
+            guard let runtime = LxAppMacAppUIRuntime.active else { return false }
+            runtime.setTrayIcon(value)
+            return true
+            #else
+            return true
+            #endif
+        }
+    }
+
+    nonisolated static func setTrayTitle(text: RustStr) -> Bool {
+        let value = text.toString()
+        return executeOnMain {
+            #if os(macOS)
+            guard let runtime = LxAppMacAppUIRuntime.active else { return false }
+            runtime.setTrayTitle(value.isEmpty ? nil : value)
+            return true
+            #else
+            return true
+            #endif
+        }
+    }
+
+    nonisolated static func setTrayMenu(items_json: RustStr) -> Bool {
+        let value = items_json.toString()
+        return executeOnMain {
+            #if os(macOS)
+            guard let runtime = LxAppMacAppUIRuntime.active else { return false }
+            runtime.setTrayMenu(value)
+            return true
+            #else
+            return true
+            #endif
+        }
+    }
+
+    nonisolated static func setTrayVisible(visible: Bool) -> Bool {
+        return executeOnMain {
+            #if os(macOS)
+            guard let runtime = LxAppMacAppUIRuntime.active else { return false }
+            runtime.setTrayVisible(visible)
+            return true
+            #else
+            return true
+            #endif
+        }
+    }
+
+    nonisolated static func setTrayClickIntercept(intercept: Bool) -> Bool {
+        return executeOnMain {
+            #if os(macOS)
+            guard let runtime = LxAppMacAppUIRuntime.active else { return false }
+            runtime.setTrayClickIntercept(intercept)
+            return true
+            #else
+            return true
+            #endif
+        }
+    }
+
+    nonisolated static func setAppBadge(text: RustStr) -> Bool {
+        let value = text.toString()
+        return executeOnMain {
+            #if os(macOS)
+            NSApp.dockTile.badgeLabel = value.isEmpty ? nil : value
+            return true
+            #elseif os(iOS)
+            UIApplication.shared.applicationIconBadgeNumber = Int(value) ?? 0
+            return true
+            #else
+            return false
+            #endif
+        }
+    }
+
     /// Show the post-download update prompt. `state` is "ready" (downloaded →
     /// minimal sidebar callout; clicking it opens the notes card) or
     /// "ready-force" (forced → blocking notes card, no dismiss). `info_json`

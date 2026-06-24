@@ -161,6 +161,16 @@ export interface HostAppApi {
    * home lxapp; other lxapps receive a permission error.
    */
   screenshot(options?: AppScreenshotOptions): Promise<AppScreenshotResult>;
+
+  /**
+   * Set the app-icon badge — e.g. an unread count.
+   *
+   * Cross-platform: the dock (macOS), the taskbar (Windows), and the home /
+   * launcher icon (iOS, Android). Pass `null` or an empty string to clear it.
+   * On platforms where it is not wired this is a no-op (it never throws), so it
+   * is safe to call from portable code.
+   */
+  setBadge(value: string | number | null): void;
 }
 
 export interface AppLifecycleEventArgs {

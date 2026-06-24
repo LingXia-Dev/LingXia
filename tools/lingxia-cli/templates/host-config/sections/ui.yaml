@@ -14,10 +14,11 @@ surfaces:
     render: lxapp
     role: main
     launch: true
-    # tray:
+    # tray:                  # off by default; uncomment for a menu-bar / tray app
     #   label: {{PRODUCT_NAME}}
     #   # icon: icons/status.svg
     #   action: activate
+    #   # exclusive: true     # menu-bar / tray only, no dock / taskbar icon
 
   # Right-edge companion example (e.g. an AI assistant). The referenced lxapp
   # must be provided by the runtime / update flow.
@@ -38,8 +39,11 @@ surfaces:
   #   sidebar: {}
 
   # Menu-bar / tray app (tray = macOS menu bar / Windows tray icon):
-  #   action: toggle    visible -> hide, hidden -> show
-  #   action: activate  show and bring to front
+  #   action: toggle      visible -> hide, hidden -> show
+  #   action: activate    show and bring to front
+  #   exclusive: true     no dock / taskbar icon — the app lives only in the
+  #                       tray. Default false keeps the dock /
+  #                       taskbar icon alongside the tray.
   #   icon is optional; label is used for tooltip / text-only status items.
 
 # Note: capabilities (feature/permission gates) and resources (local bundles)

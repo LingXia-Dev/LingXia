@@ -255,9 +255,61 @@ export type OpenSurfaceSpec =
   | OpenUrlTabSpec
   | OpenUrlAsideSpec;
 
+/**
+ * Runtime control of the menu-bar (macOS) / system-tray (Windows) status item.
+ * The tray is declared in `lingxia.yaml` (`tray:`); these update its dynamic
+ * content at runtime.
+ *
+ * **Desktop only.** Mobile platforms have no tray, so every method here is a
+ * no-op there (it never throws) — safe to call from portable code. For an
+ * app-icon badge that *is* cross-platform (including mobile), use
+ * {@link HostAppApi.setBadge}.
+ */
+export interface TrayMenuItem {
+  label: string;
+  /** Invoked when this item is clicked. */
+  onClick?: () => void;
+  enabled?: boolean;
+  checked?: boolean;
+}
+
+export interface TrayMenuSeparator {
+  separator: true;
+}
+
+export interface TrayApi {
+  /** Replace the status-item icon (a resource path). */
+  setIcon(icon: string): void;
+  /** Set the text shown beside the icon (macOS). Pass `null`/empty to clear. */
+  setTitle(text: string | null): void;
+  /** Set the badge — e.g. an unread count. Pass `null`/empty to clear. */
+  setBadge(value: string | number | null): void;
+  /**
+   * Replace the right-click dropdown menu. There is no default menu — provide
+   * your own items (e.g. `{ label: 'Quit', onClick: () => lx.app.exit() }`).
+   *
+   * The menu is a snapshot: to change an item's `checked`/`enabled`/`label`
+   * state, call `setMenu` again with the full updated array. There is no
+   * per-item mutation API.
+   */
+  setMenu(items: Array<TrayMenuItem | TrayMenuSeparator>): void;
+  /**
+   * Handle a left-click on the tray icon yourself. While a handler is
+   * registered the click runs only the handler — the tray's configured surface
+   * `action` is suppressed, so the click is fully yours (e.g. toggle a state and
+   * `setIcon`). Returns an unsubscribe function.
+   */
+  onClick(handler: () => void): () => void;
+  /** Show the tray status item. */
+  show(): void;
+  /** Hide the tray status item (without removing the app). */
+  hide(): void;
+}
+
 export interface Lx {
   env: LxEnv;
   app: HostAppApi;
+  tray: TrayApi;
 
   /**
    * Open a surface.

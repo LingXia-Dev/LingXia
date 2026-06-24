@@ -96,6 +96,11 @@ mod bridge {
         UpdateRestartClick,
         /// "Click to install" callout clicked: re-open the host-app update flow
         UpdateInstallClick,
+        /// Tray icon left-clicked (delivered to `lx.tray.onClick`)
+        TrayClick,
+        /// Tray menu item clicked; `data` is the item index (delivered to the
+        /// item's `onClick` registered by `lx.tray.setMenu`)
+        TrayMenuClick,
     }
 
     // Current LxApp info from Rust stack
@@ -542,6 +547,26 @@ pub fn on_app_event(event_type: self::bridge::AppUiEventType, data: &str) -> boo
             crate::task::spawn(async {
                 let _ = crate::update::host_app::check().await;
             });
+            true
+        }
+        self::bridge::AppUiEventType::TrayClick => {
+            // `data` is the tray-owning lxapp id. Deliver `lx.tray.onClick` only to
+            // that app, not every loaded lxapp.
+            if !data.is_empty() {
+                lxapp::publish_app_event(data, "lx.tray.click", None);
+            }
+            true
+        }
+        self::bridge::AppUiEventType::TrayMenuClick => {
+            // `data` is "<appid>:<index>" — deliver to the owning app's handler that
+            // `lx.tray.setMenu` registered for that index (split on the last ':' so
+            // an appid containing ':' is tolerated).
+            if let Some((appid, index)) = data.rsplit_once(':')
+                && !appid.is_empty()
+            {
+                let event = format!("lx.tray.menu:{index}");
+                lxapp::publish_app_event(appid, &event, None);
+            }
             true
         }
     }

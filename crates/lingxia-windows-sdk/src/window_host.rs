@@ -2175,6 +2175,17 @@ fn handle_frame_button(hwnd: HWND, button: WindowsFrameButton) {
 
 /// True while a terminal pane divider is being dragged (a capture loop owned
 /// by the shell window proc). `DIVIDER_DRAG_VERTICAL` records its orientation
+/// When set (tray-exclusive), host windows are created with
+/// WS_EX_TOOLWINDOW so they have no taskbar button and are skipped in Alt-Tab —
+/// the app lives only in the system tray. Mirrors macOS LSUIElement / accessory.
+static HIDE_FROM_TASKBAR: AtomicBool = AtomicBool::new(false);
+
+/// Set whether host windows should be hidden from the taskbar (tray-only app).
+/// Read from `ui.json` `launch.hideDockIcon` at init.
+pub fn set_hide_from_taskbar(hide: bool) {
+    HIDE_FROM_TASKBAR.store(hide, Ordering::Relaxed);
+}
+
 /// for the resize cursor.
 #[cfg(feature = "browser-shell")]
 static DIVIDER_DRAG: AtomicBool = AtomicBool::new(false);
@@ -2976,8 +2987,13 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
             WindowsAndMessaging::CW_USEDEFAULT,
             WindowsAndMessaging::CW_USEDEFAULT,
         ));
+        let ex_style = if HIDE_FROM_TASKBAR.load(Ordering::Relaxed) {
+            WindowsAndMessaging::WS_EX_TOOLWINDOW
+        } else {
+            WINDOW_EX_STYLE::default()
+        };
         let result = WindowsAndMessaging::CreateWindowExW(
-            WINDOW_EX_STYLE::default(),
+            ex_style,
             w!("LingXiaWebViewParent"),
             w!("LingXia WebView"),
             style,

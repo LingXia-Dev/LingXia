@@ -69,8 +69,8 @@ surfaces:
   - id: lingxia-showcase
     render: lxapp
     role: main
-    launch: false
-    tray:
+    launch: true
+    tray: # dock + tray: dock icon stays, tray brings the window to front
       icon: icons/tray.svg
       label: LingXia
       action: activate

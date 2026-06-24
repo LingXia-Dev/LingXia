@@ -161,6 +161,76 @@ impl AppRuntime for Platform {
         }
     }
 
+    fn set_tray_badge(&self, text: &str) -> Result<(), PlatformError> {
+        if ffi::set_tray_badge(text) {
+            Ok(())
+        } else {
+            Err(PlatformError::Platform(
+                "Failed to set tray badge".to_string(),
+            ))
+        }
+    }
+
+    fn set_tray_icon(&self, icon: &str) -> Result<(), PlatformError> {
+        if ffi::set_tray_icon(icon) {
+            Ok(())
+        } else {
+            Err(PlatformError::Platform(
+                "Failed to set tray icon".to_string(),
+            ))
+        }
+    }
+
+    fn set_tray_title(&self, text: &str) -> Result<(), PlatformError> {
+        if ffi::set_tray_title(text) {
+            Ok(())
+        } else {
+            Err(PlatformError::Platform(
+                "Failed to set tray title".to_string(),
+            ))
+        }
+    }
+
+    fn set_app_badge(&self, text: &str) -> Result<(), PlatformError> {
+        if ffi::set_app_badge(text) {
+            Ok(())
+        } else {
+            Err(PlatformError::Platform(
+                "Failed to set app badge".to_string(),
+            ))
+        }
+    }
+
+    fn set_tray_menu(&self, items_json: &str) -> Result<(), PlatformError> {
+        if ffi::set_tray_menu(items_json) {
+            Ok(())
+        } else {
+            Err(PlatformError::Platform(
+                "Failed to set tray menu".to_string(),
+            ))
+        }
+    }
+
+    fn set_tray_visible(&self, visible: bool) -> Result<(), PlatformError> {
+        if ffi::set_tray_visible(visible) {
+            Ok(())
+        } else {
+            Err(PlatformError::Platform(
+                "Failed to set tray visibility".to_string(),
+            ))
+        }
+    }
+
+    fn set_tray_click_intercept(&self, intercept: bool) -> Result<(), PlatformError> {
+        if ffi::set_tray_click_intercept(intercept) {
+            Ok(())
+        } else {
+            Err(PlatformError::Platform(
+                "Failed to set tray click intercept".to_string(),
+            ))
+        }
+    }
+
     fn navigate(
         &self,
         appid: String,
