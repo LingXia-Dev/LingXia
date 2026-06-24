@@ -52,8 +52,8 @@ const GRID_MIN_COLS: i32 = 20;
 
 const GRID_MIN_ROWS: i32 = 4;
 
-/// Hairline divider between panes — a soft gray line on the terminal
-/// surface, à la ghostty's split divider.
+/// Hairline divider between panes - a soft gray line on the terminal
+/// surface, a la ghostty's split divider.
 const PANE_DIVIDER_COLOR: u32 = 0x3a3f4a;
 
 /// Unfocused panes keep this fraction of their colors (the remainder blends

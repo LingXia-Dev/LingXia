@@ -27,6 +27,8 @@ use lingxia_windows_host::{
     windows_chrome_renderer,
 };
 use windows::Win32::Foundation::{COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
+#[cfg(feature = "shell-chrome")]
+use windows::Win32::Graphics::Gdi::FillRect;
 use windows::Win32::Graphics::Gdi::{
     BeginPaint, CreatePen, CreateSolidBrush, DeleteObject, Ellipse, EndPaint, ExcludeClipRect,
     GetMonitorInfoW, HDC, HGDIOBJ, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromWindow,
@@ -34,6 +36,9 @@ use windows::Win32::Graphics::Gdi::{
 };
 use windows::Win32::System::LibraryLoader;
 use windows::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
+// Only the shell-chrome transparent-tabbar overlay cleanup needs the PID.
+#[cfg(feature = "shell-chrome")]
+use windows::Win32::System::Threading::GetCurrentProcessId;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     GetKeyState, ReleaseCapture, SetCapture, SetFocus, VK_CONTROL, VK_MENU, VK_SHIFT,
 };
@@ -58,13 +63,16 @@ static PRESENTED_GROUP_MAIN: OnceLock<Mutex<HashMap<isize, String>>> = OnceLock:
 static PRIMARY_HOST_WINDOW: OnceLock<Mutex<Option<isize>>> = OnceLock::new();
 static FOCUSED_HOST_PANEL: OnceLock<Mutex<Option<String>>> = OnceLock::new();
 static NATIVE_FRAMED_WINDOWS: OnceLock<Mutex<HashSet<isize>>> = OnceLock::new();
-#[cfg(feature = "browser-shell")]
+#[cfg(feature = "shell-chrome")]
 static HOST_CHROME_SNAPSHOTS: OnceLock<Mutex<HashMap<isize, HostChromeSnapshot>>> = OnceLock::new();
 static CHROME_INTERACTIONS: OnceLock<Mutex<HashMap<isize, ChromeInteraction>>> = OnceLock::new();
 static ATTACHED_PANEL_RESIZE_DRAG: OnceLock<Mutex<Option<AttachedPanelResizeDrag>>> =
     OnceLock::new();
 static PULL_REFRESH_WEBTAGS: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
 static PULL_REFRESH_TICKS: OnceLock<Mutex<HashMap<isize, u32>>> = OnceLock::new();
+#[cfg(feature = "shell-chrome")]
+static TRANSPARENT_TABBAR_OVERLAYS: OnceLock<Mutex<HashMap<isize, TransparentTabbarOverlay>>> =
+    OnceLock::new();
 const WM_LINGXIA_RUN_CALLBACK: u32 = WindowsAndMessaging::WM_APP + 0x158;
 const PULL_REFRESH_TIMER_ID: usize = 0x5A17;
 const PULL_REFRESH_TIMER_MS: u32 = 120;
@@ -72,8 +80,10 @@ const PULL_REFRESH_SLOT_HEIGHT: i32 = 42;
 const PULL_REFRESH_INDICATOR_WIDTH: i32 = 64;
 const PULL_REFRESH_INDICATOR_HEIGHT: i32 = 32;
 const OVERLAY_MARGIN: i32 = 24;
+#[cfg(feature = "shell-chrome")]
+const TRANSPARENT_TABBAR_COLOR_KEY: u32 = 0x00FF00FF;
 
-/// `WM_DWMCOLORIZATIONCOLORCHANGED` (dwmapi.h) — sent on a system accent change.
+/// `WM_DWMCOLORIZATIONCOLORCHANGED` (dwmapi.h) - sent on a system accent change.
 /// Not surfaced by the `windows` crate's message constants, so define it here.
 const WM_DWMCOLORIZATIONCOLORCHANGED: u32 = 0x0320;
 const OVERLAY_MIN_WIDTH: i32 = 280;
@@ -88,6 +98,13 @@ const RESIZE_BORDER: i32 = 8;
 struct ChromeInteraction {
     frame_button_hover: Option<WindowsFrameButton>,
     frame_button_pressed: Option<WindowsFrameButton>,
+}
+
+#[cfg(feature = "shell-chrome")]
+#[derive(Debug, Clone, Copy)]
+struct TransparentTabbarOverlay {
+    window: isize,
+    rect: RECT,
 }
 
 #[derive(Debug, Clone)]
@@ -127,7 +144,7 @@ struct AttachedPanelResizeDrag {
     origin_size: i32,
 }
 
-#[cfg(feature = "browser-shell")]
+#[cfg(feature = "shell-chrome")]
 #[derive(Clone)]
 struct HostChromeSnapshot {
     layout: WindowsWindowLayout,
@@ -843,6 +860,10 @@ fn refresh_adjusted_content_rect(webtag_key: &str, mut rect: RECT) -> RECT {
 
 fn sync_window_layout(hwnd: HWND) {
     let Some(webtag_key) = active_webtag_key_for_window(hwnd) else {
+        #[cfg(feature = "shell-chrome")]
+        sync_transparent_tabbar_overlay(hwnd, None);
+        #[cfg(feature = "device-frame")]
+        crate::device_frame::set_device_frame_overlays_visible(hwnd_handle(hwnd), false);
         return;
     };
     sync_webtag_content_bounds(hwnd, &webtag_key);
@@ -852,6 +873,7 @@ fn sync_window_layout(hwnd: HWND) {
     unsafe {
         let _ = WindowsAndMessaging::GetClientRect(hwnd, &mut client);
     }
+    let mut native_panel_takes_focus = focused_input_host_panel().is_some();
     if let Some(attached) = attached_layout_for_window(hwnd, &webtag_key, client) {
         let mut laid_out_panels = HashSet::new();
         for panel in attached
@@ -864,10 +886,348 @@ fn sync_window_layout(hwnd: HWND) {
             sync_webtag_content_bounds(hwnd, &panel.webtag_key);
         }
         if attached_has_maximized_native_panel(&attached) {
+            native_panel_takes_focus = true;
             collapse_obscured_webview_panels(hwnd, &laid_out_panels);
         }
     }
     reconcile_host_webview_visibility(hwnd, &visible_webtags);
+    #[cfg(feature = "device-frame")]
+    crate::device_frame::set_device_frame_overlays_visible(
+        hwnd_handle(hwnd),
+        visible_webtags.contains(&webtag_key) && !native_panel_takes_focus,
+    );
+    #[cfg(not(feature = "device-frame"))]
+    let _ = native_panel_takes_focus;
+    #[cfg(feature = "shell-chrome")]
+    sync_transparent_tabbar_overlay(hwnd, Some(&webtag_key));
+}
+
+#[cfg(feature = "shell-chrome")]
+fn sync_transparent_tabbar_overlay(hwnd: HWND, webtag_key: Option<&str>) {
+    let handle = hwnd_handle(hwnd);
+    let rect = webtag_key.and_then(|webtag_key| {
+        if !is_window_visible(hwnd) || is_minimized(hwnd) {
+            return None;
+        }
+        let mut client = RECT::default();
+        unsafe {
+            if WindowsAndMessaging::GetClientRect(hwnd, &mut client).is_err() {
+                return None;
+            }
+        }
+        let layout = current_window_layout(webtag_key);
+        crate::shell::transparent_tabbar_overlay_rect(client, &layout)
+    });
+    let Some(rect) = rect.filter(|rect| rect.right > rect.left && rect.bottom > rect.top) else {
+        destroy_transparent_tabbar_overlay(hwnd);
+        return;
+    };
+
+    let overlay = ensure_transparent_tabbar_overlay(hwnd, rect);
+    if overlay == 0 {
+        return;
+    }
+    let mut origin = POINT {
+        x: rect.left,
+        y: rect.top,
+    };
+    unsafe {
+        let _ = windows::Win32::Graphics::Gdi::ClientToScreen(hwnd, &mut origin);
+        let _ = WindowsAndMessaging::SetWindowPos(
+            hwnd_from_handle(overlay),
+            Some(WindowsAndMessaging::HWND_TOP),
+            origin.x,
+            origin.y,
+            rect.right - rect.left,
+            rect.bottom - rect.top,
+            WindowsAndMessaging::SWP_NOACTIVATE | WindowsAndMessaging::SWP_SHOWWINDOW,
+        );
+        let _ = windows::Win32::Graphics::Gdi::InvalidateRect(
+            Some(hwnd_from_handle(overlay)),
+            None,
+            true,
+        );
+    }
+
+    if let Ok(mut overlays) = TRANSPARENT_TABBAR_OVERLAYS
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+    {
+        overlays.insert(
+            handle,
+            TransparentTabbarOverlay {
+                window: overlay,
+                rect,
+            },
+        );
+    }
+    cleanup_transparent_tabbar_overlays(hwnd, Some(overlay));
+}
+
+#[cfg(feature = "shell-chrome")]
+fn transparent_tabbar_overlay_class() -> PCWSTR {
+    static REGISTERED: OnceLock<()> = OnceLock::new();
+    REGISTERED.get_or_init(|| {
+        let module = unsafe { LibraryLoader::GetModuleHandleW(None) }
+            .map(|module| HINSTANCE(module.0))
+            .unwrap_or_default();
+        let cursor =
+            unsafe { WindowsAndMessaging::LoadCursorW(None, WindowsAndMessaging::IDC_ARROW) }
+                .unwrap_or_default();
+        let class = WNDCLASSW {
+            lpfnWndProc: Some(transparent_tabbar_overlay_proc),
+            hInstance: module,
+            hCursor: cursor,
+            lpszClassName: w!("LingXiaTransparentTabbarOverlay"),
+            ..Default::default()
+        };
+        if unsafe { WindowsAndMessaging::RegisterClassW(&class) } == 0 {
+            log::error!(
+                "transparent tabbar overlay class registration failed: {}",
+                windows::core::Error::from_thread()
+            );
+        }
+    });
+    w!("LingXiaTransparentTabbarOverlay")
+}
+
+#[cfg(feature = "shell-chrome")]
+unsafe extern "system" fn transparent_tabbar_overlay_proc(
+    hwnd: HWND,
+    msg: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+) -> LRESULT {
+    match msg {
+        WindowsAndMessaging::WM_PAINT => {
+            paint_transparent_tabbar_overlay(hwnd);
+            LRESULT(0)
+        }
+        WindowsAndMessaging::WM_ERASEBKGND => LRESULT(1),
+        WindowsAndMessaging::WM_NCHITTEST => LRESULT(WindowsAndMessaging::HTCLIENT as isize),
+        WindowsAndMessaging::WM_MOUSEMOVE => {
+            if let Some((host, point)) = transparent_tabbar_overlay_host_point(hwnd, lparam) {
+                let _ = handle_chrome_mouse_move(host, point);
+            }
+            LRESULT(0)
+        }
+        WindowsAndMessaging::WM_LBUTTONDOWN => {
+            if let Some((host, point)) = transparent_tabbar_overlay_host_point(hwnd, lparam) {
+                unsafe {
+                    let _ = SetFocus(Some(host));
+                }
+                let _ = handle_chrome_left_down(host, point);
+            }
+            LRESULT(0)
+        }
+        WindowsAndMessaging::WM_LBUTTONUP => {
+            if let Some((host, point)) = transparent_tabbar_overlay_host_point(hwnd, lparam) {
+                let _ = handle_chrome_left_up(host, point);
+            }
+            LRESULT(0)
+        }
+        WindowsAndMessaging::WM_LBUTTONDBLCLK => {
+            if let Some((host, point)) = transparent_tabbar_overlay_host_point(hwnd, lparam) {
+                let _ = handle_chrome_left_double_click(host, point);
+            }
+            LRESULT(0)
+        }
+        WindowsAndMessaging::WM_RBUTTONUP => {
+            if let Some((host, point)) = transparent_tabbar_overlay_host_point(hwnd, lparam) {
+                let _ = handle_chrome_right_up(host, point);
+            }
+            LRESULT(0)
+        }
+        _ => unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) },
+    }
+}
+
+#[cfg(feature = "shell-chrome")]
+fn transparent_tabbar_overlay_host_point(hwnd: HWND, lparam: LPARAM) -> Option<(HWND, (i32, i32))> {
+    let (host, rect) = transparent_tabbar_overlay_entry(hwnd)?;
+    let local = lparam_client_point(lparam);
+    Some((host, (rect.left + local.0, rect.top + local.1)))
+}
+
+#[cfg(feature = "shell-chrome")]
+fn transparent_tabbar_overlay_entry(hwnd: HWND) -> Option<(HWND, RECT)> {
+    let overlay_handle = hwnd_handle(hwnd);
+    TRANSPARENT_TABBAR_OVERLAYS
+        .get()
+        .and_then(|overlays| overlays.lock().ok())
+        .and_then(|overlays| {
+            overlays
+                .iter()
+                .find(|(_, overlay)| overlay.window == overlay_handle)
+                .map(|(host, overlay)| (hwnd_from_handle(*host), overlay.rect))
+        })
+}
+
+#[cfg(feature = "shell-chrome")]
+fn paint_transparent_tabbar_overlay(hwnd: HWND) {
+    let Some((host, _)) = transparent_tabbar_overlay_entry(hwnd) else {
+        validate_empty_paint(hwnd);
+        return;
+    };
+    let layout =
+        active_webtag_key_for_window(host).map(|webtag_key| current_window_layout(&webtag_key));
+    let mut client = RECT::default();
+    unsafe {
+        let _ = WindowsAndMessaging::GetClientRect(hwnd, &mut client);
+        let mut ps = PAINTSTRUCT::default();
+        let hdc = BeginPaint(hwnd, &mut ps);
+        let key_brush = CreateSolidBrush(COLORREF(TRANSPARENT_TABBAR_COLOR_KEY));
+        let _ = FillRect(hdc, &client, key_brush);
+        let _ = DeleteObject(HGDIOBJ(key_brush.0));
+        if let Some(layout) = layout.as_ref() {
+            crate::shell::paint_transparent_tabbar_overlay(
+                hdc,
+                layout,
+                client.right - client.left,
+                client.bottom - client.top,
+            );
+        }
+        let _ = EndPaint(hwnd, &ps);
+    }
+}
+
+#[cfg(feature = "shell-chrome")]
+fn validate_empty_paint(hwnd: HWND) {
+    unsafe {
+        let mut ps = PAINTSTRUCT::default();
+        let _ = BeginPaint(hwnd, &mut ps);
+        let _ = EndPaint(hwnd, &ps);
+    }
+}
+
+#[cfg(feature = "shell-chrome")]
+fn ensure_transparent_tabbar_overlay(hwnd: HWND, rect: RECT) -> isize {
+    let handle = hwnd_handle(hwnd);
+    if let Some(existing) = TRANSPARENT_TABBAR_OVERLAYS
+        .get()
+        .and_then(|overlays| overlays.lock().ok())
+        .and_then(|overlays| overlays.get(&handle).copied())
+        && is_window_handle_valid(existing.window)
+    {
+        return existing.window;
+    }
+
+    let class = transparent_tabbar_overlay_class();
+    let instance = unsafe { LibraryLoader::GetModuleHandleW(None) }
+        .ok()
+        .map(|module| HINSTANCE(module.0));
+    let overlay = unsafe {
+        WindowsAndMessaging::CreateWindowExW(
+            WindowsAndMessaging::WS_EX_LAYERED
+                | WindowsAndMessaging::WS_EX_TOOLWINDOW
+                | WindowsAndMessaging::WS_EX_NOACTIVATE,
+            class,
+            PCWSTR::null(),
+            WindowsAndMessaging::WS_POPUP,
+            0,
+            0,
+            rect.right - rect.left,
+            rect.bottom - rect.top,
+            Some(hwnd),
+            None,
+            instance,
+            None,
+        )
+    };
+    let Ok(overlay) = overlay else {
+        return 0;
+    };
+    unsafe {
+        let _ = WindowsAndMessaging::SetLayeredWindowAttributes(
+            overlay,
+            COLORREF(TRANSPARENT_TABBAR_COLOR_KEY),
+            0,
+            WindowsAndMessaging::LWA_COLORKEY,
+        );
+    }
+    hwnd_handle(overlay)
+}
+
+#[cfg(feature = "shell-chrome")]
+fn destroy_transparent_tabbar_overlay(hwnd: HWND) {
+    let overlay = TRANSPARENT_TABBAR_OVERLAYS
+        .get()
+        .and_then(|overlays| overlays.lock().ok())
+        .and_then(|mut overlays| overlays.remove(&hwnd_handle(hwnd)));
+    if let Some(overlay) = overlay
+        && is_window_handle_valid(overlay.window)
+    {
+        unsafe {
+            let _ = WindowsAndMessaging::DestroyWindow(hwnd_from_handle(overlay.window));
+        }
+    }
+    cleanup_transparent_tabbar_overlays(hwnd, None);
+}
+
+#[cfg(feature = "shell-chrome")]
+fn cleanup_transparent_tabbar_overlays(owner: HWND, keep: Option<isize>) {
+    struct CleanupState {
+        owner: isize,
+        keep: Option<isize>,
+        pid: u32,
+        destroy: Vec<isize>,
+    }
+
+    unsafe extern "system" fn enum_proc(hwnd: HWND, lparam: LPARAM) -> windows::core::BOOL {
+        unsafe {
+            let state = &mut *(lparam.0 as *mut CleanupState);
+            let handle = hwnd_handle(hwnd);
+            if state.keep == Some(handle) {
+                return windows::core::BOOL(1);
+            }
+
+            let mut pid = 0u32;
+            let _ = WindowsAndMessaging::GetWindowThreadProcessId(hwnd, Some(&mut pid));
+            if pid != state.pid || window_class_name(hwnd) != "LingXiaTransparentTabbarOverlay" {
+                return windows::core::BOOL(1);
+            }
+
+            let overlay_owner = WindowsAndMessaging::GetWindow(hwnd, WindowsAndMessaging::GW_OWNER)
+                .unwrap_or_default();
+            let owner_handle = hwnd_handle(overlay_owner);
+            let owner_invalid = owner_handle == 0 || !is_window_handle_valid(owner_handle);
+            if owner_handle == state.owner || owner_invalid {
+                state.destroy.push(handle);
+            }
+            windows::core::BOOL(1)
+        }
+    }
+
+    let mut state = CleanupState {
+        owner: hwnd_handle(owner),
+        keep,
+        pid: unsafe { GetCurrentProcessId() },
+        destroy: Vec::new(),
+    };
+    let _ = unsafe {
+        WindowsAndMessaging::EnumWindows(
+            Some(enum_proc),
+            LPARAM(&mut state as *mut CleanupState as isize),
+        )
+    };
+    for handle in state.destroy {
+        if is_window_handle_valid(handle) {
+            unsafe {
+                let _ = WindowsAndMessaging::DestroyWindow(hwnd_from_handle(handle));
+            }
+        }
+    }
+}
+
+#[cfg(feature = "shell-chrome")]
+fn window_class_name(hwnd: HWND) -> String {
+    let mut buffer = [0u16; 96];
+    let copied = unsafe { WindowsAndMessaging::GetClassNameW(hwnd, &mut buffer) };
+    if copied <= 0 {
+        String::new()
+    } else {
+        String::from_utf16_lossy(&buffer[..copied as usize])
+    }
 }
 
 fn notify_window_position_changed(hwnd: HWND) {
@@ -1551,7 +1911,7 @@ fn register_webview_panel(
     }
 }
 
-#[cfg(feature = "browser-shell")]
+#[cfg(feature = "shell-chrome")]
 pub(crate) fn close_webview_panel(panel_id: &str) {
     let Some(webtag_key) = WEBVIEW_PANELS
         .get()
@@ -1604,7 +1964,7 @@ fn host_panel_is_maximized(panel_id: &str) -> bool {
         .unwrap_or(false)
 }
 
-#[cfg(feature = "browser-shell")]
+#[cfg(feature = "shell-chrome")]
 fn panel_position_for_id(panel_id: &str) -> WindowsPanelPosition {
     lingxia_app_context::app_config()
         .and_then(|config| config.panels.as_ref().cloned())
@@ -1618,7 +1978,7 @@ fn panel_position_for_id(panel_id: &str) -> WindowsPanelPosition {
         .unwrap_or(WindowsPanelPosition::Right)
 }
 
-#[cfg(not(feature = "browser-shell"))]
+#[cfg(not(feature = "shell-chrome"))]
 fn panel_position_for_id(_panel_id: &str) -> WindowsPanelPosition {
     WindowsPanelPosition::Right
 }
@@ -1907,7 +2267,7 @@ fn invalidate_window_chrome(hwnd: HWND) {
     }
 }
 
-#[cfg(feature = "browser-shell")]
+#[cfg(feature = "shell-chrome")]
 fn invalidate_precise_shell_chrome(
     hwnd: HWND,
     client: RECT,
@@ -1931,13 +2291,13 @@ fn invalidate_precise_shell_chrome(
         invalidate_rect_if_non_empty(hwnd, rect);
     }
     // The lxapp navbar is clipped to the main column and browser asides paint
-    // their address bar in the shared top band — both track the main column's
+    // their address bar in the shared top band - both track the main column's
     // width, which only changes when a panel opens/closes/resizes.
     // `shell_chrome_dirty_rects` diffs only the lxapp layout (unchanged on those
     // events), so repaint the top strip here when the *main rect* changes.
     // Gating on the main rect (not on full attached equality) is deliberate: a
     // live aside's frequent re-syncs leave the main width unchanged, so the top
-    // strip is not repainted on every tick — which would flicker the navbar,
+    // strip is not repainted on every tick - which would flicker the navbar,
     // sidebar header, and address bar.
     let previous_main = previous.attached.as_ref().map(|attached| attached.main);
     let current_main = attached.map(|attached| attached.main);
@@ -1962,7 +2322,7 @@ fn invalidate_precise_shell_chrome(
     true
 }
 
-#[cfg(not(feature = "browser-shell"))]
+#[cfg(not(feature = "shell-chrome"))]
 fn invalidate_precise_shell_chrome(
     _hwnd: HWND,
     _client: RECT,
@@ -1972,7 +2332,7 @@ fn invalidate_precise_shell_chrome(
     false
 }
 
-#[cfg(feature = "browser-shell")]
+#[cfg(feature = "shell-chrome")]
 fn attached_chrome_dirty_rects(
     previous: Option<&WindowsChromeAttachedLayout>,
     current: Option<&WindowsChromeAttachedLayout>,
@@ -1991,7 +2351,7 @@ fn attached_chrome_dirty_rects(
     dirty
 }
 
-#[cfg(feature = "browser-shell")]
+#[cfg(feature = "shell-chrome")]
 fn push_attached_layout_dirty_rects(dirty: &mut Vec<RECT>, attached: &WindowsChromeAttachedLayout) {
     for panel in &attached.panels {
         push_unique_dirty_rect(dirty, panel.rect);
@@ -2001,7 +2361,7 @@ fn push_attached_layout_dirty_rects(dirty: &mut Vec<RECT>, attached: &WindowsChr
     }
 }
 
-#[cfg(feature = "browser-shell")]
+#[cfg(feature = "shell-chrome")]
 fn push_unique_dirty_rect(dirty: &mut Vec<RECT>, rect: RECT) {
     let rect = normalize_rect(RECT {
         left: rect.left.saturating_sub(2),
@@ -2187,9 +2547,9 @@ pub fn set_hide_from_taskbar(hide: bool) {
 }
 
 /// for the resize cursor.
-#[cfg(feature = "browser-shell")]
+#[cfg(feature = "shell-chrome")]
 static DIVIDER_DRAG: AtomicBool = AtomicBool::new(false);
-#[cfg(feature = "browser-shell")]
+#[cfg(feature = "shell-chrome")]
 static DIVIDER_DRAG_VERTICAL: AtomicBool = AtomicBool::new(false);
 
 /// Sets the east-west / north-south resize cursor for a divider.
@@ -2218,7 +2578,7 @@ fn handle_chrome_mouse_move(hwnd: HWND, point: (i32, i32)) -> bool {
         set_divider_cursor(panel_resize_is_vertical(drag.position));
         return true;
     }
-    #[cfg(feature = "browser-shell")]
+    #[cfg(feature = "shell-chrome")]
     {
         if DIVIDER_DRAG.load(Ordering::Acquire) {
             crate::shell::update_divider_drag(point.0, point.1);
@@ -2246,6 +2606,7 @@ fn handle_chrome_mouse_move(hwnd: HWND, point: (i32, i32)) -> bool {
             WindowsChromeHit::Chrome
                 | WindowsChromeHit::FrameButton(_)
                 | WindowsChromeHit::Command(_)
+                | WindowsChromeHit::CommandWithContext { .. }
                 | WindowsChromeHit::Focusable { .. }
         )
     )
@@ -2287,7 +2648,7 @@ fn handle_chrome_left_down(hwnd: HWND, point: (i32, i32)) -> bool {
         } => {
             // A press on a pane divider starts a resize drag instead of
             // focusing/clicking the pane.
-            #[cfg(feature = "browser-shell")]
+            #[cfg(feature = "shell-chrome")]
             if let Some(vertical) = crate::shell::begin_divider_drag(&id, point.0, point.1) {
                 DIVIDER_DRAG.store(true, Ordering::Release);
                 DIVIDER_DRAG_VERTICAL.store(vertical, Ordering::Release);
@@ -2306,7 +2667,9 @@ fn handle_chrome_left_down(hwnd: HWND, point: (i32, i32)) -> bool {
             }
             true
         }
-        WindowsChromeHit::Chrome | WindowsChromeHit::Command(_) => true,
+        WindowsChromeHit::Chrome
+        | WindowsChromeHit::Command(_)
+        | WindowsChromeHit::CommandWithContext { .. } => true,
     }
 }
 
@@ -2319,7 +2682,7 @@ fn handle_chrome_left_up(hwnd: HWND, point: (i32, i32)) -> bool {
         }
         return true;
     }
-    #[cfg(feature = "browser-shell")]
+    #[cfg(feature = "shell-chrome")]
     if DIVIDER_DRAG.swap(false, Ordering::AcqRel) {
         unsafe {
             let _ = ReleaseCapture();
@@ -2347,7 +2710,11 @@ fn handle_chrome_left_up(hwnd: HWND, point: (i32, i32)) -> bool {
         return true;
     }
     match hit {
-        Some(WindowsChromeHit::Command(command)) => {
+        Some(WindowsChromeHit::Command(command))
+        | Some(WindowsChromeHit::CommandWithContext {
+            command,
+            context_menu: _,
+        }) => {
             if let Some(webtag_key) = webtag_key {
                 invoke_chrome_command(&webtag_key, hwnd, point, command);
             }
@@ -2363,7 +2730,11 @@ fn handle_chrome_left_double_click(hwnd: HWND, point: (i32, i32)) -> bool {
         return false;
     };
     match chrome_hit_for_window(hwnd, point) {
-        Some(WindowsChromeHit::Command(command)) => {
+        Some(WindowsChromeHit::Command(command))
+        | Some(WindowsChromeHit::CommandWithContext {
+            command,
+            context_menu: _,
+        }) => {
             let command = command.double_click.as_deref().cloned().unwrap_or(command);
             invoke_chrome_command(&webtag_key, hwnd, point, command);
             true
@@ -2398,13 +2769,21 @@ fn handle_chrome_right_up(hwnd: HWND, point: (i32, i32)) -> bool {
         invoke_chrome_command(&webtag_key, hwnd, point, command);
         return true;
     }
+    if let Some(WindowsChromeHit::CommandWithContext {
+        command: _,
+        context_menu,
+    }) = chrome_hit_for_window(hwnd, point)
+    {
+        invoke_chrome_command(&webtag_key, hwnd, point, context_menu);
+        return true;
+    }
     false
 }
 
-/// The host window's client width in logical (DIP) units — the value the
+/// The host window's client width in logical (DIP) units - the value the
 /// adaptive surface graph's size class expects (thresholds are DIP: Compact
 /// `<600`, Medium `600..=840`, Expanded `>840`).
-#[cfg(feature = "browser-shell")]
+#[cfg(feature = "shell-chrome")]
 fn window_logical_client_width(hwnd: HWND) -> f64 {
     let mut client = RECT::default();
     if unsafe { WindowsAndMessaging::GetClientRect(hwnd, &mut client) }.is_err() {
@@ -2775,6 +3154,11 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 if let Some(webtag_key) = active_webtag_key_for_window(hwnd) {
                     notify_webtag_visibility(&webtag_key, wparam.0 != 0 && !is_minimized(hwnd));
                 }
+                #[cfg(feature = "shell-chrome")]
+                sync_transparent_tabbar_overlay(
+                    hwnd,
+                    active_webtag_key_for_window(hwnd).as_deref(),
+                );
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }
             WindowsAndMessaging::WM_ACTIVATEAPP => {
@@ -2796,7 +3180,7 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 }
                 // Keep the adaptive surface graph's size class tracking the
                 // real window width (see `update_surface_width`).
-                #[cfg(feature = "browser-shell")]
+                #[cfg(feature = "shell-chrome")]
                 crate::shell::update_surface_width(window_logical_client_width(hwnd));
                 sync_window_layout(hwnd);
                 if windows_chrome_renderer().is_some() && !is_native_framed_window(hwnd) {
@@ -2825,6 +3209,11 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                     center_and_foreground_window(hwnd);
                     deactivate_relaunch_promote();
                 }
+                #[cfg(feature = "shell-chrome")]
+                sync_transparent_tabbar_overlay(
+                    hwnd,
+                    active_webtag_key_for_window(hwnd).as_deref(),
+                );
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }
             WindowsAndMessaging::WM_ERASEBKGND => {
@@ -2838,7 +3227,7 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
             // WM_DWMCOLORIZATIONCOLORCHANGED. Re-read the system theme and, only
             // when it actually changed, repaint the whole shell in the new palette.
             WindowsAndMessaging::WM_SETTINGCHANGE | WM_DWMCOLORIZATIONCOLORCHANGED => {
-                #[cfg(feature = "browser-shell")]
+                #[cfg(feature = "shell-chrome")]
                 if crate::shell::refresh_system_theme()
                     && windows_chrome_renderer().is_some()
                     && !is_native_framed_window(hwnd)
@@ -2910,8 +3299,14 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 }
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }
-            WindowsAndMessaging::WM_DESTROY => LRESULT(0),
+            WindowsAndMessaging::WM_DESTROY => {
+                #[cfg(feature = "shell-chrome")]
+                destroy_transparent_tabbar_overlay(hwnd);
+                LRESULT(0)
+            }
             WindowsAndMessaging::WM_NCDESTROY => {
+                #[cfg(feature = "shell-chrome")]
+                destroy_transparent_tabbar_overlay(hwnd);
                 let webtag_key = window_webtag_key(hwnd);
                 let raw = unsafe {
                     WindowsAndMessaging::GetWindowLongPtrW(hwnd, WindowsAndMessaging::GWLP_USERDATA)
@@ -2978,7 +3373,7 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
         } else {
             WS_OVERLAPPEDWINDOW
         };
-        // Create centered on the primary work area — the WS_POPUP default is
+        // Create centered on the primary work area - the WS_POPUP default is
         // (0, 0)/top-left, which looks broken. This applies to every launch (so
         // a normal start and a post-update relaunch are consistent); the
         // relaunch additionally force-foregrounds, since a normal launch already
@@ -3181,7 +3576,7 @@ static RELAUNCH_PROMOTE: OnceLock<AtomicBool> = OnceLock::new();
 /// once (so normal launches are unaffected) and keep the flag set until the
 /// first main window has been centered + foregrounded. While set, every
 /// preloaded host window is created already centered, so whichever one becomes
-/// visible lands centered regardless of the show order — no window race.
+/// visible lands centered regardless of the show order - no window race.
 fn relaunch_promote_active() -> bool {
     RELAUNCH_PROMOTE
         .get_or_init(|| AtomicBool::new(consume_update_relaunch_marker()))
@@ -3232,7 +3627,7 @@ fn primary_centered_origin(width: i32, height: i32) -> Option<(i32, i32)> {
 }
 
 /// Center `hwnd` on its monitor's work area and pull it to the foreground. Uses
-/// the `AttachThreadInput` trick — attach to the current foreground thread's
+/// the `AttachThreadInput` trick - attach to the current foreground thread's
 /// input queue so `SetForegroundWindow` is honored even though this process was
 /// launched in the background by the update helper. Runs on the window's own UI
 /// thread (from `WM_SHOWWINDOW`), so it doesn't race the app's own layout.
@@ -3537,6 +3932,11 @@ fn window_webtag_key(hwnd: HWND) -> Option<String> {
 
 fn hwnd_from_handle(handle: isize) -> HWND {
     HWND(handle as *mut c_void)
+}
+
+#[cfg(feature = "shell-chrome")]
+fn is_window_handle_valid(handle: isize) -> bool {
+    unsafe { WindowsAndMessaging::IsWindow(Some(hwnd_from_handle(handle))).as_bool() }
 }
 
 fn hwnd_handle(hwnd: HWND) -> isize {

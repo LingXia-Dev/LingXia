@@ -1,5 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+// Atomics here back the browser tab-sync debounce only.
+#[cfg(feature = "browser-runtime")]
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
@@ -9,7 +11,9 @@ use super::{
     WindowsShellTabBarItemLayout, WindowsShellTabBarLayout, WindowsShellTabBarPosition,
     WindowsShellWindowLayout,
 };
+#[cfg(feature = "browser-runtime")]
 use lingxia_browser::BrowserTabInfo;
+#[cfg(feature = "browser-runtime")]
 use lingxia_browser_shell::{
     BrowserAddressInputContext, BrowserAddressInputRequest, BrowserAddressInputTrigger,
     resolve_input,
@@ -20,18 +24,26 @@ use lingxia_platform::traits::app_runtime::{
 use lingxia_webview::WebTag;
 use lingxia_windows_host::{
     WindowsChromeCommand, WindowsPanelPosition, WindowsWindowLayout, hide_host_panel,
-    is_panel_visible, present_webview_in_active_group, restore_presented_group_main,
-    set_webview_chrome_event_handler, set_webview_window_layout,
+    is_panel_visible, restore_presented_group_main, set_webview_chrome_event_handler,
+    set_webview_window_layout,
 };
+// Presenting a browser tab over the main card is browser-only.
+#[cfg(feature = "browser-runtime")]
+use lingxia_windows_host::present_webview_in_active_group;
 use lxapp::{LxApp, LxAppDelegate, LxAppStartupOptions, LxAppUiEventType, ReleaseType};
 
 const DEFAULT_NAV_BAR_HEIGHT: i32 = 38;
 const MIN_SIDEBAR_WIDTH: i32 = 180;
+/// iPhone-style bottom tab bar: 49 px item strip plus a home-indicator safe area.
+const BOTTOM_TABBAR_HEIGHT: i32 = 83;
 
 /// How many times to retry presenting a freshly opened browser tab whose
 /// WebView creation is still in flight, and the delay between attempts.
+#[cfg(feature = "browser-runtime")]
 const PRESENT_BROWSER_TAB_MAX_RETRY: u32 = 30;
+#[cfg(feature = "browser-runtime")]
 const PRESENT_BROWSER_TAB_RETRY_DELAY_MS: u64 = 100;
+#[cfg(feature = "browser-runtime")]
 const BROWSER_TAB_SYNC_DEBOUNCE_MS: u64 = 180;
 
 /// Panel ids whose lxapp open is still in flight, used to ignore repeated
@@ -45,13 +57,20 @@ static SHELL_OWNER_APPID: OnceLock<Mutex<Option<String>>> = OnceLock::new();
 
 /// Browser tab currently presented over the main content card, if any.
 static PRESENTED_BROWSER_TAB: OnceLock<Mutex<Option<String>>> = OnceLock::new();
+#[cfg(feature = "browser-runtime")]
 static SUPPRESSED_BROWSER_TAB_SYNCS: OnceLock<Mutex<u32>> = OnceLock::new();
+#[cfg(feature = "browser-runtime")]
 static BROWSER_TAB_SYNC_EPOCH: AtomicU64 = AtomicU64::new(0);
+static DEFAULT_TABBAR_POSITION: OnceLock<Mutex<WindowsShellTabBarPosition>> = OnceLock::new();
+static TABBAR_POSITION_OVERRIDES: OnceLock<Mutex<HashMap<String, WindowsShellTabBarPosition>>> =
+    OnceLock::new();
 
 /// Sidebar header action ids and their browser targets.
 const SIDEBAR_ACTION_SETTINGS: &str = "settings";
 const SIDEBAR_ACTION_DOWNLOADS: &str = "downloads";
+#[cfg(feature = "browser-runtime")]
 const SETTINGS_PAGE_URL: &str = "lingxia://settings";
+#[cfg(feature = "browser-runtime")]
 const DOWNLOADS_PAGE_URL: &str = "lingxia://downloads";
 const AUX_LXAPP_PREFIX: &str = "lxapp:";
 
@@ -61,6 +80,9 @@ const GLYPH_SETTINGS: &str = "\u{e713}";
 const GLYPH_DOWNLOAD: &str = "\u{e896}";
 
 #[derive(Debug, Clone)]
+// The type is referenced by the no-browser stubs (empty collections), but its
+// fields are only read by the browser-runtime tab plumbing.
+#[cfg_attr(not(feature = "browser-runtime"), allow(dead_code))]
 struct BrowserTabSummary {
     tab_id: String,
     path: String,
@@ -71,9 +93,10 @@ struct BrowserTabSummary {
 }
 
 fn browser_runtime_enabled() -> bool {
-    true
+    cfg!(feature = "browser-runtime")
 }
 
+#[cfg(feature = "browser-runtime")]
 fn browser_tab_summary_from_info(info: BrowserTabInfo) -> BrowserTabSummary {
     let favicon_png = lingxia_browser::tab_favicon(&info.tab_id);
     BrowserTabSummary {
@@ -86,6 +109,7 @@ fn browser_tab_summary_from_info(info: BrowserTabInfo) -> BrowserTabSummary {
     }
 }
 
+#[cfg(feature = "browser-runtime")]
 fn browser_tabs() -> Vec<BrowserTabSummary> {
     lingxia_browser::tabs()
         .into_iter()
@@ -93,6 +117,13 @@ fn browser_tabs() -> Vec<BrowserTabSummary> {
         .collect()
 }
 
+/// No browser engine → no browser tabs in the shell.
+#[cfg(not(feature = "browser-runtime"))]
+fn browser_tabs() -> Vec<BrowserTabSummary> {
+    Vec::new()
+}
+
+#[cfg(feature = "browser-runtime")]
 fn browser_tab_summary(tab_id: &str) -> Option<BrowserTabSummary> {
     lingxia_browser::tabs()
         .into_iter()
@@ -100,6 +131,54 @@ fn browser_tab_summary(tab_id: &str) -> Option<BrowserTabSummary> {
         .map(browser_tab_summary_from_info)
 }
 
+#[cfg(not(feature = "browser-runtime"))]
+fn browser_tab_summary(_tab_id: &str) -> Option<BrowserTabSummary> {
+    None
+}
+
+// Browser-tab navigation, stubbed to no-ops without the browser engine so the
+// shell chrome's nav commands compile (they can never fire without a tab).
+#[cfg(feature = "browser-runtime")]
+fn browser_go_back(tab_id: &str) {
+    if let Err(err) = lingxia_browser::go_back(tab_id) {
+        log::warn!("browser back failed for tab {tab_id}: {err}");
+    }
+}
+
+#[cfg(feature = "browser-runtime")]
+fn browser_go_forward(tab_id: &str) {
+    if let Err(err) = lingxia_browser::go_forward(tab_id) {
+        log::warn!("browser forward failed for tab {tab_id}: {err}");
+    }
+}
+
+#[cfg(feature = "browser-runtime")]
+fn browser_reload(tab_id: &str) {
+    if let Err(err) = lingxia_browser::reload(tab_id) {
+        log::warn!("browser reload failed for tab {tab_id}: {err}");
+    }
+}
+
+#[cfg(not(feature = "browser-runtime"))]
+fn browser_go_back(_tab_id: &str) {}
+#[cfg(not(feature = "browser-runtime"))]
+fn browser_go_forward(_tab_id: &str) {}
+#[cfg(not(feature = "browser-runtime"))]
+fn browser_reload(_tab_id: &str) {}
+
+/// The built-in browser lxapp id is excluded from the sidebar's open-lxapp
+/// list. Without the browser engine there is no such id.
+#[cfg(feature = "browser-runtime")]
+fn is_builtin_browser_appid(appid: &str) -> bool {
+    appid == lingxia_browser::BUILTIN_BROWSER_APPID
+}
+
+#[cfg(not(feature = "browser-runtime"))]
+fn is_builtin_browser_appid(_appid: &str) -> bool {
+    false
+}
+
+#[cfg(feature = "browser-runtime")]
 fn navigate_browser_tab(tab_id: &str, url: &str) -> Result<(), lxapp::LxAppError> {
     lingxia_browser::open(url, Some(tab_id)).map(|_| ())
 }
@@ -112,6 +191,7 @@ mod chrome_command {
     pub(super) const BROWSER_NEW_TAB: &str = "browser.new-tab";
     pub(super) const BROWSER_TAB_CLICK: &str = "browser.tab.click";
     pub(super) const BROWSER_TAB_CLOSE: &str = "browser.tab.close";
+    pub(super) const SIDEBAR_AUXILIARY_CONTEXT_MENU: &str = "sidebar.auxiliary.context-menu";
     pub(super) const BROWSER_PANEL_CLOSE: &str = "browser-panel.close";
     pub(super) const BROWSER_PANEL_NAV_BACK: &str = "browser-panel.nav.back";
     pub(super) const BROWSER_PANEL_NAV_FORWARD: &str = "browser-panel.nav.forward";
@@ -203,8 +283,8 @@ fn shell_owner_appid() -> Option<String> {
 }
 
 /// Push the host window's logical (DIP) content width into the shell-owner
-/// app's adaptive surface graph so the size class — and therefore the aside
-/// cap (Compact 0 / Medium 1 / Expanded 2) — tracks the real window. Without
+/// app's adaptive surface graph so the size class - and therefore the aside
+/// cap (Compact 0 / Medium 1 / Expanded 2) - tracks the real window. Without
 /// this the graph stays at its seed width (permanently Medium), so a second
 /// aside evicts the first even on a wide window. Called from the host's
 /// `WM_SIZE`.
@@ -215,6 +295,38 @@ pub(crate) fn update_surface_width(logical_width: f64) {
     if let Some(appid) = shell_owner_appid() {
         lingxia::windows::set_surface_width(&appid, logical_width);
     }
+}
+
+pub(crate) fn set_default_tabbar_position(position: WindowsShellTabBarPosition) {
+    let state =
+        DEFAULT_TABBAR_POSITION.get_or_init(|| Mutex::new(WindowsShellTabBarPosition::Left));
+    if let Ok(mut state) = state.lock() {
+        *state = position;
+    }
+}
+
+pub(crate) fn set_tabbar_position(appid: &str, position: WindowsShellTabBarPosition) {
+    let overrides = TABBAR_POSITION_OVERRIDES.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Ok(mut overrides) = overrides.lock() {
+        overrides.insert(appid.to_string(), position);
+    }
+    sync_shell_layout(appid);
+}
+
+fn tabbar_position(appid: &str) -> WindowsShellTabBarPosition {
+    TABBAR_POSITION_OVERRIDES
+        .get()
+        .and_then(|overrides| overrides.lock().ok())
+        .and_then(|overrides| overrides.get(appid).copied())
+        .or_else(default_tabbar_position)
+        .unwrap_or(WindowsShellTabBarPosition::Left)
+}
+
+fn default_tabbar_position() -> Option<WindowsShellTabBarPosition> {
+    DEFAULT_TABBAR_POSITION
+        .get()
+        .and_then(|position| position.lock().ok())
+        .map(|position| *position)
 }
 
 /// Re-syncs the shell-owner app's layout (panel activator states etc.)
@@ -242,6 +354,7 @@ fn set_presented_browser_tab(tab_id: Option<String>) {
     }
 }
 
+#[cfg(feature = "browser-runtime")]
 fn suppress_next_browser_tab_sync() {
     let slot = SUPPRESSED_BROWSER_TAB_SYNCS.get_or_init(|| Mutex::new(0));
     if let Ok(mut count) = slot.lock() {
@@ -249,6 +362,7 @@ fn suppress_next_browser_tab_sync() {
     }
 }
 
+#[cfg(feature = "browser-runtime")]
 fn consume_suppressed_browser_tab_sync() -> bool {
     let Some(slot) = SUPPRESSED_BROWSER_TAB_SYNCS.get() else {
         return false;
@@ -295,6 +409,7 @@ pub(super) fn install() {
     // Mirror browser tab list/title changes into the sidebar. The handler
     // may fire from webview UI threads, so hop onto the executor before
     // touching window state (layout syncs block on those UI threads).
+    #[cfg(feature = "browser-runtime")]
     lingxia_browser::set_tabs_changed_handler(Arc::new(|| {
         schedule_browser_tabs_changed_sync();
     }));
@@ -364,10 +479,13 @@ pub(super) fn install() {
 fn handle_open_url_request(req: &OpenUrlRequest) -> bool {
     match req.target {
         OpenUrlTarget::External => false,
+        // In-app targets are routed into the internal browser; without the
+        // browser engine there is nowhere in-app to open them, so defer to the
+        // OS handler.
+        #[cfg(not(feature = "browser-runtime"))]
+        OpenUrlTarget::SelfTarget | OpenUrlTarget::NewBrowserTab => false,
+        #[cfg(feature = "browser-runtime")]
         OpenUrlTarget::SelfTarget | OpenUrlTarget::NewBrowserTab => {
-            if !browser_runtime_enabled() {
-                return false;
-            }
             let Some(owner_appid) = shell_owner_appid() else {
                 return false;
             };
@@ -390,6 +508,7 @@ fn handle_open_url_request(req: &OpenUrlRequest) -> bool {
 /// Opens `url` as a new in-app browser tab owned by the shell app and, when
 /// `present` is set, shows it over the main content card (same flow as the
 /// sidebar rows). The tabs-changed observer keeps the sidebar in sync.
+#[cfg(feature = "browser-runtime")]
 fn open_browser_tab_for_open_url(owner_appid: &str, url: &str, present: bool) {
     let Some(app) = lxapp::try_get(owner_appid) else {
         log::warn!("no shell owner app for in-app open-url of {url}");
@@ -402,6 +521,7 @@ fn open_browser_tab_for_open_url(owner_appid: &str, url: &str, present: bool) {
     }
 }
 
+#[cfg(feature = "browser-runtime")]
 fn schedule_browser_tabs_changed_sync() {
     let epoch = BROWSER_TAB_SYNC_EPOCH.fetch_add(1, Ordering::Relaxed) + 1;
     std::mem::drop(lingxia::task::spawn(async move {
@@ -418,6 +538,7 @@ fn schedule_browser_tabs_changed_sync() {
 /// Re-syncs the shell after any browser tab change: drops a stale
 /// presentation when the presented tab disappeared and refreshes the
 /// sidebar of the shell owner app.
+#[cfg(feature = "browser-runtime")]
 fn on_browser_tabs_changed() {
     if let Some(presented) = presented_browser_tab()
         && browser_tab_summary(&presented).is_none()
@@ -462,6 +583,8 @@ fn sync_shell_layout(appid: &str) {
             err
         );
     }
+    // A presented browser tab re-installs chrome handling on its own webtag.
+    #[cfg(feature = "browser-runtime")]
     if let Some(tab_id) = presented_browser_tab()
         && let Some(tab) = browser_tab_summary(&tab_id)
     {
@@ -505,6 +628,11 @@ fn build_window_layout(app: &LxApp, path: &str) -> WindowsShellWindowLayout {
         Some(build_navigation_bar_layout(app, path))
     };
     let panel_activators = build_panel_activators(app);
+    // A simulator-framed window (the runner) gets its window controls from the
+    // device-frame toolbar, so the shell drops its own caption on that screen.
+    let suppress_window_controls = owner_window_handle(&app.appid)
+        .map(window_has_device_frame)
+        .unwrap_or(false);
     WindowsShellWindowLayout {
         navigation_bar,
         address_bar,
@@ -515,6 +643,7 @@ fn build_window_layout(app: &LxApp, path: &str) -> WindowsShellWindowLayout {
         app_icon_path: crate::app_icon::current_app_icon_path()
             .map(|path| path.to_string_lossy().into_owned())
             .unwrap_or_default(),
+        suppress_window_controls,
     }
 }
 
@@ -630,7 +759,13 @@ fn build_tab_bar_layout(
         .unwrap_or_default();
     let mut auxiliary_items = build_open_lxapp_items(&app.appid);
     auxiliary_items.extend(build_browser_tab_items());
-    let show_auxiliary_add = browser_runtime_enabled();
+    // The "+" opens a new browser tab, so it belongs to the full browser
+    // environment only — not the device-framed dev runner, which hosts a
+    // single lxapp with no browser.
+    let device_framed = owner_window_handle(&app.appid)
+        .map(window_has_device_frame)
+        .unwrap_or(false);
+    let show_auxiliary_add = browser_runtime_enabled() && !device_framed;
     let header_actions = build_sidebar_header_actions();
     let sidebar_has_content =
         !items.is_empty() || !auxiliary_items.is_empty() || has_panel_activators;
@@ -648,13 +783,25 @@ fn build_tab_bar_layout(
             .to_string_lossy()
             .into_owned(),
     );
-    Some(WindowsShellTabBarLayout {
-        visible: true,
-        position: WindowsShellTabBarPosition::Left,
-        dimension: tabbar
+    let position = tabbar_position(&app.appid);
+    // `dimension` is the bar's cross-axis size: a sidebar's width, but a bottom
+    // bar's *height*. A bottom bar is a compact icon+label strip, so it must not
+    // borrow the (much taller) sidebar minimum width.
+    let dimension = match position {
+        WindowsShellTabBarPosition::Bottom => BOTTOM_TABBAR_HEIGHT,
+        WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right => tabbar
             .as_ref()
             .map(|tabbar| tabbar.dimension.max(MIN_SIDEBAR_WIDTH))
             .unwrap_or(MIN_SIDEBAR_WIDTH),
+    };
+    let tabbar_background = tabbar
+        .as_ref()
+        .map(|tabbar| tabbar.backgroundColor.as_str())
+        .unwrap_or("#ffffff");
+    Some(WindowsShellTabBarLayout {
+        visible: true,
+        position,
+        dimension,
         app_name: app.runtime_info().app_name,
         app_icon_path: app.get_lxapp_info().icon,
         group_id: app.appid.clone(),
@@ -675,13 +822,8 @@ fn build_tab_bar_layout(
                 .unwrap_or("#1677ff"),
             0x1677ff,
         ),
-        background_color: parse_css_color(
-            tabbar
-                .as_ref()
-                .map(|tabbar| tabbar.backgroundColor.as_str())
-                .unwrap_or("#ffffff"),
-            0xffffff,
-        ),
+        background_color: parse_css_color(tabbar_background, 0xffffff),
+        background_transparent: is_transparent_css_color(tabbar_background),
         border_color: parse_css_color(
             tabbar
                 .as_ref()
@@ -703,7 +845,7 @@ fn build_tab_bar_layout(
 /// Sidebar header actions (settings / downloads), shown only when the
 /// browser runtime backing their target pages is compiled in.
 fn build_sidebar_header_actions() -> Vec<WindowsShellHeaderActionLayout> {
-    if !browser_runtime_enabled() {
+    if !browser_runtime_enabled() || !cfg!(feature = "browser-shell") {
         return Vec::new();
     }
     vec![
@@ -741,7 +883,7 @@ fn build_open_lxapp_items(owner_appid: &str) -> Vec<WindowsShellAuxiliaryItemLay
         .into_iter()
         .filter(|info| !info.is_home)
         .filter(|info| info.appid != owner_appid)
-        .filter(|info| info.appid != lingxia_browser::BUILTIN_BROWSER_APPID)
+        .filter(|info| !is_builtin_browser_appid(&info.appid))
         .filter(|info| matches!(info.status.as_str(), "opening" | "opened"))
         .map(|info| {
             let title = if info.app_name.trim().is_empty() {
@@ -893,6 +1035,18 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
             handle_browser_tab_close(appid, &tab_id);
             return;
         }
+        chrome_command::SIDEBAR_AUXILIARY_CONTEXT_MENU => {
+            let Some(tab_id) = payload_string(&event, "tab_id") else {
+                return;
+            };
+            let Some(target_appid) = auxiliary_lxapp_id(&tab_id) else {
+                return;
+            };
+            let screen_x = payload_i32(&event, "screen_x").unwrap_or(0);
+            let screen_y = payload_i32(&event, "screen_y").unwrap_or(0);
+            show_lxapp_auxiliary_context_menu(appid, target_appid, screen_x, screen_y);
+            return;
+        }
         chrome_command::BROWSER_PANEL_CLOSE => {
             let Some(panel_id) = payload_string(&event, "panel_id") else {
                 return;
@@ -905,27 +1059,21 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
             let Some(tab_id) = payload_browser_panel_tab_id(&event) else {
                 return;
             };
-            if let Err(err) = lingxia_browser::go_back(&tab_id) {
-                log::warn!("browser aside back failed for tab {tab_id}: {err}");
-            }
+            browser_go_back(&tab_id);
             return;
         }
         chrome_command::BROWSER_PANEL_NAV_FORWARD => {
             let Some(tab_id) = payload_browser_panel_tab_id(&event) else {
                 return;
             };
-            if let Err(err) = lingxia_browser::go_forward(&tab_id) {
-                log::warn!("browser aside forward failed for tab {tab_id}: {err}");
-            }
+            browser_go_forward(&tab_id);
             return;
         }
         chrome_command::BROWSER_PANEL_NAV_RELOAD => {
             let Some(tab_id) = payload_browser_panel_tab_id(&event) else {
                 return;
             };
-            if let Err(err) = lingxia_browser::reload(&tab_id) {
-                log::warn!("browser aside reload failed for tab {tab_id}: {err}");
-            }
+            browser_reload(&tab_id);
             return;
         }
         chrome_command::BROWSER_PANEL_ADDRESS_BAR => {
@@ -935,7 +1083,11 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
             let Some(tab_id) = payload_browser_panel_tab_id(&event) else {
                 return;
             };
+            // Editing a browser aside's address bar is a browser-only action.
+            #[cfg(feature = "browser-runtime")]
             begin_browser_panel_address_edit(appid, &webtag_key, &tab_id);
+            #[cfg(not(feature = "browser-runtime"))]
+            let _ = (&webtag_key, &tab_id);
             return;
         }
         // Native-panel header events (terminal dock): pure terminal policy,
@@ -1017,26 +1169,20 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
         // Address-bar navigation targets the presented browser tab; URL and
         // title updates flow back through the tabs-changed observer.
         chrome_command::BROWSER_NAV_BACK => {
-            if let Some(tab_id) = presented_browser_tab()
-                && lingxia_browser::go_back(&tab_id).is_err()
-            {
-                log::warn!("browser back failed for tab {tab_id}");
+            if let Some(tab_id) = presented_browser_tab() {
+                browser_go_back(&tab_id);
             }
             return;
         }
         chrome_command::BROWSER_NAV_FORWARD => {
-            if let Some(tab_id) = presented_browser_tab()
-                && lingxia_browser::go_forward(&tab_id).is_err()
-            {
-                log::warn!("browser forward failed for tab {tab_id}");
+            if let Some(tab_id) = presented_browser_tab() {
+                browser_go_forward(&tab_id);
             }
             return;
         }
         chrome_command::BROWSER_NAV_RELOAD => {
-            if let Some(tab_id) = presented_browser_tab()
-                && lingxia_browser::reload(&tab_id).is_err()
-            {
-                log::warn!("browser reload failed for tab {tab_id}");
+            if let Some(tab_id) = presented_browser_tab() {
+                browser_reload(&tab_id);
             }
             return;
         }
@@ -1146,6 +1292,7 @@ fn payload_browser_panel_tab_id(command: &WindowsChromeCommand) -> Option<String
     })
 }
 
+#[cfg(feature = "browser-runtime")]
 fn browser_tab_id_for_webtag_key(webtag_key: &str) -> Option<String> {
     browser_tabs().into_iter().find_map(|tab| {
         let webtag = WebTag::new(
@@ -1155,6 +1302,11 @@ fn browser_tab_id_for_webtag_key(webtag_key: &str) -> Option<String> {
         );
         (webtag.key() == webtag_key).then_some(tab.tab_id)
     })
+}
+
+#[cfg(not(feature = "browser-runtime"))]
+fn browser_tab_id_for_webtag_key(_webtag_key: &str) -> Option<String> {
+    None
 }
 
 /// Ends a browser-tab presentation (if any), restoring the lxapp webview
@@ -1171,6 +1323,7 @@ fn return_to_lxapp_from_browser(appid: &str) {
 
 /// Opens a new browser tab at `lingxia://newtab` owned by the shell app
 /// and presents it once its webview is ready.
+#[cfg(feature = "browser-runtime")]
 fn handle_browser_new_tab(appid: &str, session_id: u64) {
     match lingxia_browser::open_for_app(appid, session_id, "lingxia://newtab", None) {
         Ok(tab_id) => present_browser_tab_when_ready(appid, tab_id),
@@ -1178,6 +1331,10 @@ fn handle_browser_new_tab(appid: &str, session_id: u64) {
     }
 }
 
+#[cfg(not(feature = "browser-runtime"))]
+fn handle_browser_new_tab(_appid: &str, _session_id: u64) {}
+
+#[cfg(feature = "browser-runtime")]
 fn handle_browser_tab_click(appid: &str, tab_id: &str) {
     let active_changed = lingxia_browser::current_tab()
         .map(|tab| tab.tab_id != tab_id)
@@ -1196,6 +1353,10 @@ fn handle_browser_tab_click(appid: &str, tab_id: &str) {
     present_browser_tab_when_ready(appid, tab_id.to_string());
 }
 
+#[cfg(not(feature = "browser-runtime"))]
+fn handle_browser_tab_click(_appid: &str, _tab_id: &str) {}
+
+#[cfg(feature = "browser-runtime")]
 fn handle_browser_tab_close(appid: &str, tab_id: &str) {
     if presented_browser_tab().as_deref() == Some(tab_id) {
         return_to_lxapp_from_browser(appid);
@@ -1207,6 +1368,9 @@ fn handle_browser_tab_close(appid: &str, tab_id: &str) {
     // disappears even if no observer is installed.
     sync_shell_layout(appid);
 }
+
+#[cfg(not(feature = "browser-runtime"))]
+fn handle_browser_tab_close(_appid: &str, _tab_id: &str) {}
 
 fn handle_lxapp_auxiliary_click(owner_appid: &str, target_appid: &str) {
     return_to_lxapp_from_browser(owner_appid);
@@ -1255,9 +1419,104 @@ fn handle_lxapp_auxiliary_close(owner_appid: &str, target_appid: &str) {
     sync_shell_layout(owner_appid);
 }
 
+fn show_lxapp_auxiliary_context_menu(
+    owner_appid: &str,
+    target_appid: &str,
+    screen_x: i32,
+    screen_y: i32,
+) {
+    let Some(window) = owner_window_handle(owner_appid) else {
+        return;
+    };
+    let Some(target) = lxapp::try_get(target_appid) else {
+        log::warn!("sidebar lxapp context menu ignored; lxapp is not active: {target_appid}");
+        return;
+    };
+    let info = target.get_lxapp_info();
+    let version = info.version.trim();
+    let version_item = if version.is_empty() {
+        "Version".to_string()
+    } else {
+        format!("Version {version}")
+    };
+    #[cfg(feature = "browser-shell")]
+    let about = AboutInfo {
+        title: "About".to_string(),
+        app_name: if info.app_name.trim().is_empty() {
+            target_appid.to_string()
+        } else {
+            info.app_name.clone()
+        },
+        version_line: version_item.clone(),
+        icon_path: info.icon.clone(),
+    };
+    let target_appid = target_appid.to_string();
+    let items = vec![
+        version_item,
+        String::new(),
+        "Restart".to_string(),
+        "Clean Cache && Restart".to_string(),
+    ];
+    super::context_menu::show_context_menu_checked(
+        window,
+        (screen_x, screen_y),
+        items,
+        Vec::new(),
+        Arc::new(move |index| match index {
+            0 => {
+                #[cfg(feature = "browser-shell")]
+                show_about_dialog(window, &about);
+            }
+            2 => {
+                if let Err(err) = restart_lxapp_in_place(&target_appid) {
+                    log::warn!("failed to restart sidebar lxapp {target_appid}: {err}");
+                }
+            }
+            3 => {
+                if let Err(err) = clear_lxapp_user_cache(&target_appid)
+                    .and_then(|_| restart_lxapp_in_place(&target_appid))
+                {
+                    log::warn!(
+                        "failed to clean cache + reload sidebar lxapp {target_appid}: {err}"
+                    );
+                }
+            }
+            _ => {}
+        }),
+    );
+}
+
+/// Whether `window` is wrapped in a simulator device frame. Always `false` when
+/// the `device-frame` feature is off — production shell hosts never are, so they
+/// don't compile (or depend on) the device-frame module.
+#[cfg(feature = "device-frame")]
+fn window_has_device_frame(window: isize) -> bool {
+    crate::device_frame::window_has_device_frame(window)
+}
+
+#[cfg(not(feature = "device-frame"))]
+fn window_has_device_frame(_window: isize) -> bool {
+    false
+}
+
+fn restart_lxapp_in_place(appid: &str) -> Result<(), String> {
+    lxapp::try_get(appid)
+        .ok_or_else(|| format!("lxapp is not active: {appid}"))?
+        .restart_in_place()
+        .map_err(|err| err.to_string())
+}
+
+fn clear_lxapp_user_cache(appid: &str) -> Result<(), String> {
+    lxapp::try_get(appid)
+        .ok_or_else(|| format!("lxapp is not active: {appid}"))?
+        .clear_user_cache()
+        .map_err(|err| err.to_string())
+}
+
 /// Presents `tab_id`'s webview over the main content card, retrying while
 /// the tab's WebView creation is still in flight (new tabs create their
 /// webview asynchronously).
+#[cfg(feature = "browser-runtime")]
 fn present_browser_tab_when_ready(appid: &str, tab_id: String) {
     let owner_appid = appid.to_string();
     std::mem::drop(lingxia::task::spawn(async move {
@@ -1295,6 +1554,7 @@ fn present_browser_tab_when_ready(appid: &str, tab_id: String) {
 
 /// Opens the browser page behind a sidebar header action (settings /
 /// downloads) as a presented browser tab.
+#[cfg(feature = "browser-runtime")]
 fn handle_sidebar_action(appid: &str, session_id: u64, action_id: &str) {
     let target = match action_id {
         SIDEBAR_ACTION_SETTINGS => SETTINGS_PAGE_URL,
@@ -1307,9 +1567,13 @@ fn handle_sidebar_action(appid: &str, session_id: u64, action_id: &str) {
     open_or_present_browser_page(appid, session_id, target);
 }
 
+#[cfg(not(feature = "browser-runtime"))]
+fn handle_sidebar_action(_appid: &str, _session_id: u64, _action_id: &str) {}
+
 /// Presents `url` as a browser page: when a tab already shows it, that tab
 /// is activated and presented; otherwise a new tab opens at `url` (same
 /// flow as the sidebar "New Tab" row, just with a target URL).
+#[cfg(feature = "browser-runtime")]
 fn open_or_present_browser_page(appid: &str, session_id: u64, url: &str) {
     let existing = browser_tabs()
         .into_iter()
@@ -1324,47 +1588,74 @@ fn open_or_present_browser_page(appid: &str, session_id: u64, url: &str) {
     }
 }
 
-/// Opens the app-menu popup under the top-bar app icon. About shows an info
-/// dialog with the app name and version; Exit quits the host app.
-#[cfg(feature = "browser-shell")]
+/// Opens the app-menu popup under the top-bar app icon. The product shell adds
+/// an About entry (app name + version) above Exit; the dev runner ships the
+/// shell chrome without a product identity, so it only offers Exit. Keeping
+/// About behind `browser-shell` also keeps `TaskDialogIndirect` (comctl32 v6)
+/// out of `browser-runtime`-only hosts, which do not embed that manifest.
+#[cfg(feature = "shell-chrome")]
 fn show_app_menu(appid: &str, app: &LxApp, screen_x: i32, screen_y: i32) {
     let Some(window) = owner_window_handle(appid) else {
         return;
     };
-    // About shows the *product* (app) identity from the app config —
-    // productName / productVersion and the launcher icon — NOT the home
-    // lxapp's name/version/icon. Falls back to the lxapp's values only when
-    // the app config is unavailable.
-    let lxapp_info = app.get_lxapp_info();
-    let app_name = non_empty(lingxia_app_context::product_name()).unwrap_or(lxapp_info.app_name);
-    let version = non_empty(lingxia_app_context::product_version()).unwrap_or(lxapp_info.version);
-    let icon_path = crate::app_icon::current_app_icon_path()
-        .map(|path| path.to_string_lossy().into_owned())
-        .filter(|path| !path.is_empty())
-        .unwrap_or(lxapp_info.icon);
-    let about = AboutInfo {
-        title: "About".to_string(),
-        app_name,
-        version_line: format!("Version {version}"),
-        icon_path,
-    };
-    let items = vec!["About".to_string(), "Exit".to_string()];
 
-    super::context_menu::show_context_menu_checked(
-        window,
-        (screen_x, screen_y),
-        items,
-        Vec::new(),
-        Arc::new(move |index| match index {
-            0 => show_about_dialog(window, &about),
-            1 => {
-                if let Err(err) = lingxia::app::exit() {
-                    log::warn!("failed to exit from Windows app menu: {err}");
+    let exit = || {
+        if let Err(err) = lingxia::app::exit() {
+            log::warn!("failed to exit from Windows app menu: {err}");
+        }
+    };
+
+    #[cfg(feature = "browser-shell")]
+    {
+        // About shows the *product* (app) identity from the app config -
+        // productName / productVersion and the launcher icon - NOT the home
+        // lxapp's name/version/icon. Falls back to the lxapp's values only when
+        // the app config is unavailable.
+        let lxapp_info = app.get_lxapp_info();
+        let app_name =
+            non_empty(lingxia_app_context::product_name()).unwrap_or(lxapp_info.app_name);
+        let version =
+            non_empty(lingxia_app_context::product_version()).unwrap_or(lxapp_info.version);
+        let icon_path = crate::app_icon::current_app_icon_path()
+            .map(|path| path.to_string_lossy().into_owned())
+            .filter(|path| !path.is_empty())
+            .unwrap_or(lxapp_info.icon);
+        let about = AboutInfo {
+            title: "About".to_string(),
+            app_name,
+            version_line: format!("Version {version}"),
+            icon_path,
+        };
+        let items = vec!["About".to_string(), "Exit".to_string()];
+        super::context_menu::show_context_menu_checked(
+            window,
+            (screen_x, screen_y),
+            items,
+            Vec::new(),
+            Arc::new(move |index| match index {
+                0 => show_about_dialog(window, &about),
+                1 => exit(),
+                _ => {}
+            }),
+        );
+    }
+
+    #[cfg(not(feature = "browser-shell"))]
+    {
+        let _ = app;
+        let items = vec!["Exit".to_string()];
+        super::context_menu::show_context_menu_checked(
+            window,
+            (screen_x, screen_y),
+            items,
+            Vec::new(),
+            Arc::new(move |index| {
+                if index == 0 {
+                    exit();
                 }
-            }
-            _ => {}
-        }),
-    );
+            }),
+        );
+    }
 }
 
 #[cfg(feature = "browser-shell")]
@@ -1477,7 +1768,7 @@ fn to_wide(value: &str) -> Vec<u16> {
 }
 
 /// Trims `value` and returns it owned only when non-empty.
-#[cfg(feature = "browser-shell")]
+#[cfg(feature = "shell-chrome")]
 fn non_empty(value: Option<&str>) -> Option<String> {
     value
         .map(str::trim)
@@ -1485,7 +1776,7 @@ fn non_empty(value: Option<&str>) -> Option<String> {
         .map(str::to_string)
 }
 
-#[cfg(feature = "browser-shell")]
+#[cfg(feature = "shell-chrome")]
 pub(super) fn owner_window_handle(appid: &str) -> Option<isize> {
     let app = lxapp::try_get(appid)?;
     let path = app
@@ -1510,7 +1801,7 @@ pub(super) fn owner_window_handle(appid: &str) -> Option<isize> {
 /// matching the coordinate space the chrome paints panels in (used to
 /// focus the terminal pane under the cursor on right-click). `None` when
 /// the window handle is unavailable or the point is off-window.
-#[cfg(feature = "browser-shell")]
+#[cfg(feature = "shell-chrome")]
 pub(super) fn screen_to_panel_client(
     appid: &str,
     screen_x: i32,
@@ -1532,7 +1823,7 @@ pub(super) fn screen_to_panel_client(
     ok.as_bool().then_some((point.x, point.y))
 }
 
-#[cfg(feature = "browser-shell")]
+#[cfg(feature = "browser-runtime")]
 fn begin_presented_tab_address_edit(app: &LxApp) {
     let Some(tab_id) = presented_browser_tab() else {
         return;
@@ -1557,7 +1848,7 @@ fn begin_presented_tab_address_edit(app: &LxApp) {
     );
 }
 
-#[cfg(not(feature = "browser-shell"))]
+#[cfg(not(feature = "browser-runtime"))]
 fn begin_presented_tab_address_edit(_app: &LxApp) {
     // Without the shell chrome no address bar is drawn (plain OS frame),
     // so there is nothing to edit.
@@ -1566,7 +1857,7 @@ fn begin_presented_tab_address_edit(_app: &LxApp) {
 /// Starts an inline URL edit over a browser aside's address capsule, prefilled
 /// with the tab's current URL. The commit reuses `commit_address_input`, so the
 /// aside navigates through the same address-input engine as the main bar.
-#[cfg(feature = "browser-shell")]
+#[cfg(feature = "browser-runtime")]
 fn begin_browser_panel_address_edit(appid: &str, webtag_key: &str, tab_id: &str) {
     let Some(window) = owner_window_handle(appid) else {
         return;
@@ -1590,7 +1881,7 @@ fn begin_browser_panel_address_edit(appid: &str, webtag_key: &str, tab_id: &str)
 /// Runs on the host window's UI thread (inline-edit commit); the actual
 /// navigation hops onto the executor so webview work never blocks that
 /// thread.
-#[cfg(feature = "browser-shell")]
+#[cfg(feature = "browser-runtime")]
 fn commit_address_input(appid: &str, tab_id: &str, raw_input: &str) {
     if raw_input.trim().is_empty() {
         return;
@@ -1649,6 +1940,7 @@ fn toggle_managed_surface(panel_id: &str) -> bool {
     true
 }
 
+#[cfg(feature = "browser-shell")]
 pub(crate) fn handle_menu_bar_surface_action(surface_id: &str, action_kind: &str) -> bool {
     if panel_target_for_id(surface_id).is_some() {
         return match action_kind {
@@ -1878,7 +2170,7 @@ fn resolve_asset_path(asset_dir: &Path, raw: &str) -> Option<PathBuf> {
 
 fn parse_css_color(raw: &str, fallback: u32) -> u32 {
     let value = raw.trim();
-    if value.is_empty() || value.eq_ignore_ascii_case("transparent") {
+    if value.is_empty() || is_transparent_css_color(value) {
         return fallback;
     }
     match value.to_ascii_lowercase().as_str() {
@@ -1905,4 +2197,8 @@ fn parse_css_color(raw: &str, fallback: u32) -> u32 {
         _ => None,
     };
     rgb.unwrap_or(fallback)
+}
+
+fn is_transparent_css_color(raw: &str) -> bool {
+    raw.trim().eq_ignore_ascii_case("transparent")
 }

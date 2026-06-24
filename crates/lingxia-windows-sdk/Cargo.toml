@@ -33,17 +33,27 @@ runtime = [
     "dep:windows-core",
 ]
 standard = ["runtime", "lingxia/standard"]
-browser-shell = [
+# Simulated-device frame (bezel/notch/capsule/toolbar + info sheet). Dev-runner
+# host chrome only; production hosts never wrap themselves in a device frame, so
+# it is opt-in and deliberately NOT implied by `browser-runtime`/`browser-shell`.
+device-frame = ["runtime"]
+shell-chrome = [
     "runtime",
     "dep:lingxia-app-context",
-    "dep:lingxia-browser",
     "dep:lingxia-logic",
-    "dep:lingxia-browser-shell",
-    "dep:lingxia-terminal",
     "dep:resvg",
     "dep:tiny-skia",
     "dep:tokio",
     "dep:usvg",
+]
+browser-runtime = [
+    "shell-chrome",
+    "dep:lingxia-browser",
+    "dep:lingxia-browser-shell",
+    "lingxia/browser-runtime",
+]
+browser-shell = [
+    "browser-runtime",
     "lingxia/browser-shell",
 ]
 terminal-runtime = ["runtime", "dep:lingxia-terminal", "lingxia/terminal-runtime"]

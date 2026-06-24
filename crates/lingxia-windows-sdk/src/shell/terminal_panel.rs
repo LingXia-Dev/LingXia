@@ -4,18 +4,18 @@
 //! mirroring the macOS terminal workspace UX:
 //!
 //! - Multi-tab model: each tab ([`TerminalTab`]) owns a *pane tree* of PTY
-//!   sessions ([`PaneNode`]); the panel shows the ACTIVE tab's panes laid
-//!   out side by side / stacked, inactive tabs keep running. The tab id
-//!   surfaced to the chrome is the tab's focused session id.
+//!  sessions ([`PaneNode`]); the panel shows the ACTIVE tab's panes laid
+//!  out side by side / stacked, inactive tabs keep running. The tab id
+//!  surfaced to the chrome is the tab's focused session id.
 //! - Split: the focused pane splits left/right/up/down into two panes
-//!   (a fresh PTY session), mirroring the macOS surface context menu.
+//!  (a fresh PTY session), mirroring the macOS surface context menu.
 //! - `exit` closes: a pane whose session exited is removed and its sibling
-//!   takes its place; the last pane of a tab closes the tab; closing the
-//!   last tab closes the whole panel.
+//!  takes its place; the last pane of a tab closes the tab; closing the
+//!  last tab closes the whole panel.
 //! - Rename: tab titles default to the focused session's reported title and
-//!   can be overridden per tab (inline rename via the shell's EDIT helper).
+//!  can be overridden per tab (inline rename via the shell's EDIT helper).
 //! - Maximize: the panel toggles between its dock height and the whole
-//!   content area (mechanics live in lingxia-webview's group layout).
+//!  content area (mechanics live in lingxia-webview's group layout).
 //!
 //! The webview layer supplies only generic mechanics (panel rects,
 //! tab-strip data, chrome events); the shell layer draws the dock, the pane
@@ -37,11 +37,11 @@ use lingxia_terminal::TerminalSnapshot;
 use lingxia_windows_host::WindowsPanelPosition;
 #[cfg(feature = "terminal-runtime")]
 use lingxia_windows_host::{WindowsHostPanelKeyEvent, WindowsHostPanelTab};
-#[cfg(feature = "browser-shell")]
+#[cfg(feature = "terminal-runtime")]
 use windows::Win32::Foundation::RECT;
 
 /// Direction a pane splits in, mirroring the macOS surface context menu.
-#[cfg(feature = "browser-shell")]
+#[cfg(feature = "shell-chrome")]
 #[cfg_attr(not(feature = "terminal-runtime"), allow(dead_code))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum SplitDir {
@@ -51,9 +51,9 @@ pub(super) enum SplitDir {
     Down,
 }
 
-/// Pixel thickness of the gap between two sibling panes — a thin hairline
+/// Pixel thickness of the gap between two sibling panes - a thin hairline
 /// divider like ghostty's (the grab area is widened separately for drag).
-#[cfg(all(feature = "terminal-runtime", feature = "browser-shell"))]
+#[cfg(all(feature = "terminal-runtime", feature = "shell-chrome"))]
 pub(super) const PANE_DIVIDER: i32 = 1;
 
 /// How a split node arranges its two children.
@@ -103,7 +103,7 @@ impl PaneNode {
 
     /// Replaces the leaf `target` with a split adding `new_id` on the
     /// `dir` side. Returns `true` once the target leaf was found.
-    #[cfg(feature = "browser-shell")]
+    #[cfg(feature = "shell-chrome")]
     fn split(&mut self, target: u64, new_id: u64, dir: SplitDir) -> bool {
         match self {
             PaneNode::Leaf(id) if *id == target => {
@@ -160,7 +160,7 @@ fn remove_leaf(node: PaneNode, target: u64) -> Option<PaneNode> {
 
 /// Lays `node` out within `rect`, pushing `(session_id, rect)` for each
 /// leaf. Sibling panes are separated by a [`PANE_DIVIDER`]-wide gap.
-#[cfg(all(feature = "terminal-runtime", feature = "browser-shell"))]
+#[cfg(all(feature = "terminal-runtime", feature = "shell-chrome"))]
 fn layout_node(node: &PaneNode, rect: RECT, out: &mut Vec<(u64, RECT)>) {
     match node {
         PaneNode::Leaf(id) => out.push((*id, rect)),
@@ -179,7 +179,7 @@ fn layout_node(node: &PaneNode, rect: RECT, out: &mut Vec<(u64, RECT)>) {
 
 /// Splits `rect` into the two child rects of a split node, reserving the
 /// divider gap between them.
-#[cfg(all(feature = "terminal-runtime", feature = "browser-shell"))]
+#[cfg(all(feature = "terminal-runtime", feature = "shell-chrome"))]
 fn split_rect(rect: RECT, orient: PaneOrientation, ratio: f32) -> (RECT, RECT) {
     let ratio = ratio.clamp(0.05, 0.95);
     match orient {
@@ -433,11 +433,11 @@ pub(super) fn open_terminal_tab(panel_id: &str) {
 /// Splits the active tab's focused pane in `dir`, creating a fresh session
 /// for the new pane and focusing it.
 #[cfg_attr(
-    not(all(feature = "terminal-runtime", feature = "browser-shell")),
+    not(all(feature = "terminal-runtime", feature = "shell-chrome")),
     allow(dead_code)
 )]
 pub(super) fn split_focused_pane(panel_id: &str, dir: SplitDir) {
-    #[cfg(all(feature = "terminal-runtime", feature = "browser-shell"))]
+    #[cfg(all(feature = "terminal-runtime", feature = "shell-chrome"))]
     {
         let session_id = create_panel_session(panel_id);
         if session_id == 0 {
@@ -468,18 +468,18 @@ pub(super) fn split_focused_pane(panel_id: &str, dir: SplitDir) {
             lingxia_terminal::terminal_close(session_id);
         }
     }
-    #[cfg(not(all(feature = "terminal-runtime", feature = "browser-shell")))]
+    #[cfg(not(all(feature = "terminal-runtime", feature = "shell-chrome")))]
     let _ = (panel_id, dir);
 }
 
 /// Closes the active tab's focused pane; its sibling takes the space. When
 /// it was the tab's last pane the tab closes (and the panel, if last tab).
 #[cfg_attr(
-    not(all(feature = "terminal-runtime", feature = "browser-shell")),
+    not(all(feature = "terminal-runtime", feature = "shell-chrome")),
     allow(dead_code)
 )]
 pub(super) fn close_focused_pane(panel_id: &str) {
-    #[cfg(all(feature = "terminal-runtime", feature = "browser-shell"))]
+    #[cfg(all(feature = "terminal-runtime", feature = "shell-chrome"))]
     {
         let focused = {
             let panels = windows_terminal_panels();
@@ -492,18 +492,18 @@ pub(super) fn close_focused_pane(panel_id: &str) {
             close_pane_session(panel_id, focused);
         }
     }
-    #[cfg(not(all(feature = "terminal-runtime", feature = "browser-shell")))]
+    #[cfg(not(all(feature = "terminal-runtime", feature = "shell-chrome")))]
     let _ = panel_id;
 }
 
 /// Focuses the pane under `(client_x, client_y)` (host-window client
 /// coordinates) in the active tab, if a pane covers that point.
 #[cfg_attr(
-    not(all(feature = "terminal-runtime", feature = "browser-shell")),
+    not(all(feature = "terminal-runtime", feature = "shell-chrome")),
     allow(dead_code)
 )]
 pub(super) fn focus_pane_at(panel_id: &str, client_x: i32, client_y: i32) {
-    #[cfg(all(feature = "terminal-runtime", feature = "browser-shell"))]
+    #[cfg(all(feature = "terminal-runtime", feature = "shell-chrome"))]
     {
         let changed = {
             let mut panels = windows_terminal_panels();
@@ -537,7 +537,7 @@ pub(super) fn focus_pane_at(panel_id: &str, client_x: i32, client_y: i32) {
             publish_active_snapshot(panel_id);
         }
     }
-    #[cfg(not(all(feature = "terminal-runtime", feature = "browser-shell")))]
+    #[cfg(not(all(feature = "terminal-runtime", feature = "shell-chrome")))]
     let _ = (panel_id, client_x, client_y);
 }
 
@@ -563,7 +563,7 @@ pub(super) fn toggle_terminal_panel_maximized(panel_id: &str) {
 /// painted title rect). Committing a non-empty text sets the tab's custom
 /// title; committing an empty text reverts to the automatic title.
 pub(super) fn begin_terminal_tab_rename(panel_id: &str, tab_id: u64) {
-    #[cfg(all(feature = "terminal-runtime", feature = "browser-shell"))]
+    #[cfg(all(feature = "terminal-runtime", feature = "shell-chrome"))]
     {
         let current = {
             let panels = windows_terminal_panels();
@@ -588,7 +588,7 @@ pub(super) fn begin_terminal_tab_rename(panel_id: &str, tab_id: u64) {
             }),
         );
     }
-    #[cfg(not(all(feature = "terminal-runtime", feature = "browser-shell")))]
+    #[cfg(not(all(feature = "terminal-runtime", feature = "shell-chrome")))]
     let _ = (panel_id, tab_id);
 }
 
@@ -601,7 +601,7 @@ pub(super) fn show_terminal_context_menu(
     screen_x: i32,
     screen_y: i32,
 ) {
-    #[cfg(all(feature = "terminal-runtime", feature = "browser-shell"))]
+    #[cfg(all(feature = "terminal-runtime", feature = "shell-chrome"))]
     {
         let Some(window) = super::runtime::owner_window_handle(owner_appid) else {
             return;
@@ -647,13 +647,13 @@ pub(super) fn show_terminal_context_menu(
             }),
         );
     }
-    #[cfg(not(all(feature = "terminal-runtime", feature = "browser-shell")))]
+    #[cfg(not(all(feature = "terminal-runtime", feature = "shell-chrome")))]
     let _ = (owner_appid, panel_id, screen_x, screen_y);
 }
 
 /// Dispatches a context-menu selection by matching the chosen label
 /// against the localized item list (separators are empty strings).
-#[cfg(all(feature = "terminal-runtime", feature = "browser-shell"))]
+#[cfg(all(feature = "terminal-runtime", feature = "shell-chrome"))]
 fn handle_context_menu_choice(panel_id: &str, items: &[String], index: usize) {
     use lingxia_logic::I18nKey;
     use lingxia_logic::i18n::t;
@@ -699,7 +699,7 @@ fn is_panel_read_only(panel_id: &str) -> bool {
 }
 
 /// Toggles the panel's read-only state (the menu's "Terminal Read-only").
-#[cfg(all(feature = "terminal-runtime", feature = "browser-shell"))]
+#[cfg(all(feature = "terminal-runtime", feature = "shell-chrome"))]
 fn toggle_read_only(panel_id: &str) {
     let mut panels = windows_terminal_panels();
     if let Some(panel) = panels.get_mut(panel_id) {
@@ -709,7 +709,7 @@ fn toggle_read_only(panel_id: &str) {
 
 /// Begins an inline rename of the active tab (the focused session id is the
 /// tab id surfaced to the chrome).
-#[cfg(all(feature = "terminal-runtime", feature = "browser-shell"))]
+#[cfg(all(feature = "terminal-runtime", feature = "shell-chrome"))]
 fn begin_focused_tab_rename(panel_id: &str) {
     let focused = {
         let panels = windows_terminal_panels();
@@ -725,7 +725,7 @@ fn begin_focused_tab_rename(panel_id: &str) {
 
 /// Replaces leaf `target` with `replacement` everywhere in the tree,
 /// keeping the pane layout (used by Reset Terminal).
-#[cfg(all(feature = "terminal-runtime", feature = "browser-shell"))]
+#[cfg(all(feature = "terminal-runtime", feature = "shell-chrome"))]
 fn replace_leaf(node: PaneNode, target: u64, replacement: u64) -> PaneNode {
     match node {
         PaneNode::Leaf(id) => PaneNode::Leaf(if id == target { replacement } else { id }),
@@ -745,7 +745,7 @@ fn replace_leaf(node: PaneNode, target: u64, replacement: u64) -> PaneNode {
 
 /// Restarts the focused pane's PTY session in place: the old session is
 /// closed and a fresh one takes its leaf, keeping the pane layout.
-#[cfg(all(feature = "terminal-runtime", feature = "browser-shell"))]
+#[cfg(all(feature = "terminal-runtime", feature = "shell-chrome"))]
 fn reset_focused_pane(panel_id: &str) {
     let old = {
         let panels = windows_terminal_panels();
@@ -791,7 +791,7 @@ fn reset_focused_pane(panel_id: &str) {
 
 /// Copies the active session's visible screen text to the clipboard
 /// No cell-level selection support yet; Copy takes the whole screen.
-#[cfg(all(feature = "terminal-runtime", feature = "browser-shell"))]
+#[cfg(all(feature = "terminal-runtime", feature = "shell-chrome"))]
 fn copy_panel_screen_to_clipboard(panel_id: &str) {
     let Some(session_id) = active_session_id(panel_id) else {
         return;
@@ -813,11 +813,11 @@ fn copy_panel_screen_to_clipboard(panel_id: &str) {
 /// menu's Paste). CRLF/LF normalize to CR, and the text is wrapped in
 /// bracketed-paste escapes when the session requests it.
 #[cfg_attr(
-    not(all(feature = "terminal-runtime", feature = "browser-shell")),
+    not(all(feature = "terminal-runtime", feature = "shell-chrome")),
     allow(dead_code)
 )]
 pub(super) fn paste_clipboard_into_panel(panel_id: &str) {
-    #[cfg(all(feature = "terminal-runtime", feature = "browser-shell"))]
+    #[cfg(all(feature = "terminal-runtime", feature = "shell-chrome"))]
     {
         let Some(session_id) = active_session_id(panel_id) else {
             return;
@@ -835,14 +835,14 @@ pub(super) fn paste_clipboard_into_panel(panel_id: &str) {
         };
         let _ = lingxia_terminal::terminal_write(session_id, &payload);
     }
-    #[cfg(not(all(feature = "terminal-runtime", feature = "browser-shell")))]
+    #[cfg(not(all(feature = "terminal-runtime", feature = "shell-chrome")))]
     let _ = panel_id;
 }
 
 /// Rename commit: a non-empty text becomes the tab's custom title; empty
 /// reverts to the automatic (session-reported) title. Only reachable from
 /// the inline rename editor, which needs the shell chrome.
-#[cfg(all(feature = "terminal-runtime", feature = "browser-shell"))]
+#[cfg(all(feature = "terminal-runtime", feature = "shell-chrome"))]
 fn set_terminal_tab_custom_title(panel_id: &str, tab_id: u64, text: &str) {
     {
         let mut panels = windows_terminal_panels();
@@ -867,9 +867,9 @@ fn set_terminal_tab_custom_title(panel_id: &str, tab_id: u64, text: &str) {
 #[cfg(feature = "terminal-runtime")]
 fn create_panel_session(panel_id: &str) -> u64 {
     let _ = panel_id;
-    #[cfg(feature = "browser-shell")]
+    #[cfg(feature = "shell-chrome")]
     let (cols, rows) = super::terminal_grid::desired_panel_grid_size(panel_id).unwrap_or((100, 24));
-    #[cfg(not(feature = "browser-shell"))]
+    #[cfg(not(feature = "shell-chrome"))]
     let (cols, rows) = (100, 24);
     lingxia_terminal::terminal_create(cols, rows)
 }
@@ -970,7 +970,7 @@ fn run_terminal_panel_poll_loop(panel_key: &str, stop: &AtomicBool) {
     let mut last_generations: HashMap<u64, (u64, u64)> = HashMap::new();
     let mut last_active_set: Vec<u64> = Vec::new();
     let mut refresh_tick: u32 = 0;
-    #[cfg(feature = "browser-shell")]
+    #[cfg(feature = "shell-chrome")]
     let mut pending_resize: HashMap<u64, (u16, u16)> = HashMap::new();
     loop {
         if stop.load(Ordering::Acquire) {
@@ -1027,7 +1027,7 @@ fn run_terminal_panel_poll_loop(panel_key: &str, stop: &AtomicBool) {
                 break;
             }
 
-            #[cfg(feature = "browser-shell")]
+            #[cfg(feature = "shell-chrome")]
             {
                 if switched {
                     pending_resize.remove(&session_id);
@@ -1115,7 +1115,7 @@ fn active_session_id(panel_id: &str) -> Option<u64> {
 }
 
 /// Number of panes in the active tab.
-#[cfg(all(feature = "terminal-runtime", feature = "browser-shell"))]
+#[cfg(all(feature = "terminal-runtime", feature = "shell-chrome"))]
 fn pane_count(panel_id: &str) -> usize {
     let panels = windows_terminal_panels();
     panels
@@ -1132,7 +1132,7 @@ fn pane_count(panel_id: &str) -> usize {
 #[cfg(feature = "terminal-runtime")]
 fn close_pane_session(panel_id: &str, session_id: u64) -> bool {
     lingxia_terminal::terminal_close(session_id);
-    #[cfg(feature = "browser-shell")]
+    #[cfg(feature = "shell-chrome")]
     super::terminal_grid::clear_session(session_id);
 
     let outcome = {
@@ -1223,13 +1223,13 @@ fn close_terminal_tab_by_sessions(panel_id: &str, session_ids: &[u64]) {
 #[cfg(feature = "terminal-runtime")]
 fn shutdown_windows_terminal_panel_state(panel_id: &str) {
     lingxia_windows_host::clear_host_panel_input_handler(panel_id);
-    #[cfg(feature = "browser-shell")]
+    #[cfg(feature = "shell-chrome")]
     super::terminal_grid::clear_panel(panel_id);
     if let Some(panel) = windows_terminal_panels().remove(panel_id) {
         panel.stop.store(true, Ordering::Release);
         for tab in panel.tabs {
             for session_id in tab.sessions() {
-                #[cfg(feature = "browser-shell")]
+                #[cfg(feature = "shell-chrome")]
                 super::terminal_grid::clear_session(session_id);
                 lingxia_terminal::terminal_close(session_id);
             }
@@ -1240,7 +1240,8 @@ fn shutdown_windows_terminal_panel_state(panel_id: &str) {
 // ---- Pane layout query (used by the grid painter) ----
 
 /// One pane's placement within the panel body, in host client coordinates.
-#[cfg(feature = "browser-shell")]
+/// Only the terminal-runtime grid painter consumes these.
+#[cfg(all(feature = "shell-chrome", feature = "terminal-runtime"))]
 pub(super) struct PaneFrame {
     pub(super) session_id: u64,
     pub(super) rect: RECT,
@@ -1250,7 +1251,7 @@ pub(super) struct PaneFrame {
 /// Lays out the active tab's panes within `body` (host client coordinates)
 /// and returns each pane's rect plus whether it is the focused pane. Empty
 /// when the panel has no terminal state yet.
-#[cfg(all(feature = "terminal-runtime", feature = "browser-shell"))]
+#[cfg(all(feature = "terminal-runtime", feature = "shell-chrome"))]
 pub(super) fn active_pane_frames(panel_id: &str, body: RECT) -> Vec<PaneFrame> {
     let panels = windows_terminal_panels();
     let Some(tab) = panels.get(panel_id).and_then(|panel| panel.active_tab()) else {
@@ -1268,15 +1269,9 @@ pub(super) fn active_pane_frames(panel_id: &str, body: RECT) -> Vec<PaneFrame> {
         .collect()
 }
 
-/// Without the terminal runtime there are no panes to lay out.
-#[cfg(all(not(feature = "terminal-runtime"), feature = "browser-shell"))]
-pub(super) fn active_pane_frames(_panel_id: &str, _body: RECT) -> Vec<PaneFrame> {
-    Vec::new()
-}
-
 /// Session id of the active tab's focused pane, used by the chrome painter
 /// to pick the card's surface background and fallback body text.
-#[cfg(all(feature = "terminal-runtime", feature = "browser-shell"))]
+#[cfg(all(feature = "terminal-runtime", feature = "shell-chrome"))]
 pub(super) fn focused_session(panel_id: &str) -> Option<u64> {
     let panels = windows_terminal_panels();
     panels
@@ -1286,7 +1281,7 @@ pub(super) fn focused_session(panel_id: &str) -> Option<u64> {
 }
 
 /// Without the terminal runtime there is no focused pane.
-#[cfg(all(not(feature = "terminal-runtime"), feature = "browser-shell"))]
+#[cfg(all(not(feature = "terminal-runtime"), feature = "shell-chrome"))]
 pub(super) fn focused_session(_panel_id: &str) -> Option<u64> {
     None
 }
@@ -1295,21 +1290,21 @@ pub(super) fn focused_session(_panel_id: &str) -> Option<u64> {
 
 /// The split divider currently being dragged via the window proc's capture
 /// loop.
-#[cfg(all(feature = "terminal-runtime", feature = "browser-shell"))]
+#[cfg(all(feature = "terminal-runtime", feature = "shell-chrome"))]
 struct ActiveDivider {
     panel_id: String,
     /// Descent path (false = first child, true = second) to the Split node.
     path: Vec<bool>,
     /// Rect of the split node being divided (for ratio math).
     bounds: RECT,
-    /// Whether the divider is vertical (a `Cols` split → horizontal drag).
+    /// Whether the divider is vertical (a `Cols` split 鈫?horizontal drag).
     vertical: bool,
 }
 
-#[cfg(all(feature = "terminal-runtime", feature = "browser-shell"))]
+#[cfg(all(feature = "terminal-runtime", feature = "shell-chrome"))]
 static ACTIVE_DIVIDER: OnceLock<Mutex<Option<ActiveDivider>>> = OnceLock::new();
 
-#[cfg(all(feature = "terminal-runtime", feature = "browser-shell"))]
+#[cfg(all(feature = "terminal-runtime", feature = "shell-chrome"))]
 fn active_divider() -> std::sync::MutexGuard<'static, Option<ActiveDivider>> {
     ACTIVE_DIVIDER
         .get_or_init(|| Mutex::new(None))
@@ -1318,12 +1313,12 @@ fn active_divider() -> std::sync::MutexGuard<'static, Option<ActiveDivider>> {
 }
 
 /// Extra grab tolerance (px) around the thin divider gap.
-#[cfg(all(feature = "terminal-runtime", feature = "browser-shell"))]
+#[cfg(all(feature = "terminal-runtime", feature = "shell-chrome"))]
 const DIVIDER_GRAB: i32 = 3;
 
 /// Collects each split's draggable divider as `(hit_rect, vertical, bounds,
 /// path)` over the laid-out tree.
-#[cfg(all(feature = "terminal-runtime", feature = "browser-shell"))]
+#[cfg(all(feature = "terminal-runtime", feature = "shell-chrome"))]
 fn collect_dividers(
     node: &PaneNode,
     rect: RECT,
@@ -1364,7 +1359,7 @@ fn collect_dividers(
     }
 }
 
-#[cfg(all(feature = "terminal-runtime", feature = "browser-shell"))]
+#[cfg(all(feature = "terminal-runtime", feature = "shell-chrome"))]
 fn divider_under(panel_id: &str, x: i32, y: i32) -> Option<(bool, RECT, Vec<bool>)> {
     let body = super::terminal_grid::panel_body_rect(panel_id)?;
     let panels = windows_terminal_panels();
@@ -1380,14 +1375,14 @@ fn divider_under(panel_id: &str, x: i32, y: i32) -> Option<(bool, RECT, Vec<bool
 /// Whether a divider sits under `(x, y)` in the active tab, and its
 /// orientation (`Some(true)` = vertical). The window proc uses this for the
 /// resize cursor.
-#[cfg(all(feature = "terminal-runtime", feature = "browser-shell"))]
+#[cfg(all(feature = "terminal-runtime", feature = "shell-chrome"))]
 pub(crate) fn divider_orientation_at(panel_id: &str, x: i32, y: i32) -> Option<bool> {
     divider_under(panel_id, x, y).map(|(vertical, ..)| vertical)
 }
 
 /// Begins dragging the divider under `(x, y)`. Returns `Some(vertical)` when
 /// one was hit (driven by the window proc's capture loop).
-#[cfg(all(feature = "terminal-runtime", feature = "browser-shell"))]
+#[cfg(all(feature = "terminal-runtime", feature = "shell-chrome"))]
 pub(crate) fn begin_divider_drag(panel_id: &str, x: i32, y: i32) -> Option<bool> {
     let (vertical, bounds, path) = divider_under(panel_id, x, y)?;
     *active_divider() = Some(ActiveDivider {
@@ -1400,7 +1395,7 @@ pub(crate) fn begin_divider_drag(panel_id: &str, x: i32, y: i32) -> Option<bool>
 }
 
 /// Updates the dragged divider's ratio from the cursor position and repaints.
-#[cfg(all(feature = "terminal-runtime", feature = "browser-shell"))]
+#[cfg(all(feature = "terminal-runtime", feature = "shell-chrome"))]
 pub(crate) fn update_divider_drag(x: i32, y: i32) {
     let (panel_id, path, ratio) = {
         let guard = active_divider();
@@ -1447,13 +1442,13 @@ pub(crate) fn update_divider_drag(x: i32, y: i32) {
 }
 
 /// Ends the divider drag.
-#[cfg(all(feature = "terminal-runtime", feature = "browser-shell"))]
+#[cfg(all(feature = "terminal-runtime", feature = "shell-chrome"))]
 pub(crate) fn end_divider_drag() {
     *active_divider() = None;
 }
 
 /// Navigates to the node at `path` (false = first child, true = second).
-#[cfg(all(feature = "terminal-runtime", feature = "browser-shell"))]
+#[cfg(all(feature = "terminal-runtime", feature = "shell-chrome"))]
 fn node_at_path_mut<'a>(mut node: &'a mut PaneNode, path: &[bool]) -> Option<&'a mut PaneNode> {
     for &second in path {
         match node {
@@ -1470,20 +1465,20 @@ fn node_at_path_mut<'a>(mut node: &'a mut PaneNode, path: &[bool]) -> Option<&'a
 
 // ---- Divider drag: no-op stubs without the terminal runtime ----
 
-#[cfg(all(not(feature = "terminal-runtime"), feature = "browser-shell"))]
+#[cfg(all(not(feature = "terminal-runtime"), feature = "shell-chrome"))]
 pub(crate) fn divider_orientation_at(_panel_id: &str, _x: i32, _y: i32) -> Option<bool> {
     None
 }
 
-#[cfg(all(not(feature = "terminal-runtime"), feature = "browser-shell"))]
+#[cfg(all(not(feature = "terminal-runtime"), feature = "shell-chrome"))]
 pub(crate) fn begin_divider_drag(_panel_id: &str, _x: i32, _y: i32) -> Option<bool> {
     None
 }
 
-#[cfg(all(not(feature = "terminal-runtime"), feature = "browser-shell"))]
+#[cfg(all(not(feature = "terminal-runtime"), feature = "shell-chrome"))]
 pub(crate) fn update_divider_drag(_x: i32, _y: i32) {}
 
-#[cfg(all(not(feature = "terminal-runtime"), feature = "browser-shell"))]
+#[cfg(all(not(feature = "terminal-runtime"), feature = "shell-chrome"))]
 pub(crate) fn end_divider_drag() {}
 
 // ---- Publishing to the webview/shell layers ----
@@ -1551,7 +1546,7 @@ fn invalidate_panel(panel_id: &str) {
 }
 
 /// Hands the snapshot to the shell chrome's grid store (keyed by session).
-#[cfg(all(feature = "terminal-runtime", feature = "browser-shell"))]
+#[cfg(all(feature = "terminal-runtime", feature = "shell-chrome"))]
 fn publish_windows_terminal_snapshot(panel_id: &str, session_id: u64, snapshot: TerminalSnapshot) {
     let _ = panel_id;
     super::terminal_grid::set_session_snapshot(session_id, snapshot);
@@ -1559,7 +1554,7 @@ fn publish_windows_terminal_snapshot(panel_id: &str, session_id: u64, snapshot: 
 
 /// Without the shell chrome there is no grid painter; flatten the focused
 /// pane's snapshot to the panel's plain body text as before.
-#[cfg(all(feature = "terminal-runtime", not(feature = "browser-shell")))]
+#[cfg(all(feature = "terminal-runtime", not(feature = "shell-chrome")))]
 fn publish_windows_terminal_snapshot(panel_id: &str, session_id: u64, snapshot: TerminalSnapshot) {
     // Only the focused session drives the (single) plain-text body.
     if active_session_id(panel_id) == Some(session_id) {

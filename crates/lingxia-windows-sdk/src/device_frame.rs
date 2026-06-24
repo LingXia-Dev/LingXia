@@ -4,7 +4,7 @@
 //! the public model here so Windows runners depend on `lingxia-windows-sdk`
 //! instead of reaching into the lower `lingxia::windows` facade directly.
 
-use crate::{WindowsAppMenuCommandHandler, WindowsAppMenuItem, app_menu};
+use crate::{WindowsAppMenuCommandHandler, WindowsAppMenuItem, WindowsDesignIcon, app_menu};
 
 mod native;
 
@@ -17,6 +17,58 @@ pub struct WindowsDeviceFrameToolbar {
     pub selector_items: Vec<WindowsAppMenuItem>,
     /// Command id dispatched by the trailing action glyph, when present.
     pub action_command: Option<u32>,
+    /// Command id dispatched by the rotate glyph (portrait/landscape toggle),
+    /// when present. Drawn just left of the action glyph.
+    pub rotate_command: Option<u32>,
+    /// Items for the floating capsule's menu button. The dev runner uses this
+    /// as a single About/info-sheet command. Empty hides the menu button.
+    pub capsule_items: Vec<WindowsAppMenuItem>,
+    /// Command id dispatched by the capsule's close (right) circle. The caller
+    /// owns the meaning — the dev runner maps it to "quit the emulator". `None`
+    /// leaves the circle inert.
+    pub capsule_close_command: Option<u32>,
+}
+
+/// Optional physical screen cutout rendered over the simulated screen.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WindowsDeviceFrameCutout {
+    pub width: i32,
+    pub height: i32,
+    pub corner_radius: i32,
+}
+
+/// A colored pill drawn at the trailing edge of the info-sheet header (for
+/// example a release-channel marker). The caller owns the text and colors so
+/// the device frame stays free of app/runner-specific semantics.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WindowsDeviceFrameBadge {
+    pub text: String,
+    /// Text color as `0xRRGGBB`.
+    pub foreground: u32,
+    /// Pill fill color as `0xRRGGBB`.
+    pub background: u32,
+}
+
+/// One action row in the info sheet. The caller supplies both the icon and the
+/// command id dispatched to the device-frame command handler when it is tapped,
+/// so the device frame never infers either from the label.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WindowsDeviceFrameSheetAction {
+    pub command: u32,
+    pub label: String,
+    pub icon: WindowsDesignIcon,
+}
+
+/// Generic info displayed by a device-frame bottom sheet.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WindowsDeviceFrameInfoSheet {
+    pub title: String,
+    pub version: String,
+    /// Optional trailing header badge (e.g. the release channel).
+    pub badge: Option<WindowsDeviceFrameBadge>,
+    /// Action rows. The device frame owns presentation only; command ids are
+    /// dispatched to the runner's device-frame command handler.
+    pub actions: Vec<WindowsDeviceFrameSheetAction>,
 }
 
 /// Visual description of one simulated device, in physical pixels.
@@ -32,6 +84,9 @@ pub struct WindowsDeviceFrame {
     pub outer_corner_radius: i32,
     /// Corner radius of the screen. `0` keeps square screen corners.
     pub screen_corner_radius: i32,
+    /// Optional top-centered screen cutout / Dynamic Island. `None` or empty
+    /// dimensions leave the screen uninterrupted.
+    pub cutout: Option<WindowsDeviceFrameCutout>,
     /// Bezel fill color as `0xRRGGBB`.
     pub bezel_color: u32,
     /// Simulator toolbar floating above the device, when present.
@@ -40,7 +95,6 @@ pub struct WindowsDeviceFrame {
 
 /// Presents or clears a simulated-device frame around the top-level window
 /// showing `appid`.
-#[cfg(target_os = "windows")]
 pub fn set_app_window_device_frame(
     appid: &str,
     frame: Option<WindowsDeviceFrame>,
@@ -60,7 +114,6 @@ pub fn set_app_window_device_frame(
 /// by this process. Intended for runners that know their initial device
 /// before the home lxapp is opened, so the first visible frame already has
 /// the target shape.
-#[cfg(target_os = "windows")]
 pub fn set_initial_app_window_device_frame(frame: WindowsDeviceFrame) {
     native::set_initial_device_frame(frame);
 }
@@ -69,8 +122,59 @@ pub(crate) fn set_device_frame_command_handler(handler: WindowsAppMenuCommandHan
     native::set_device_frame_command_handler(handler);
 }
 
+/// True while the top-level window `window` is wrapped in a simulator device
+/// frame (the runner). The shell drops its caption/app-menu on a framed screen.
+/// Only the shell chrome reads this, so it's dead code without `shell-chrome`.
+#[cfg_attr(not(feature = "shell-chrome"), allow(dead_code))]
+pub(crate) fn window_has_device_frame(window: isize) -> bool {
+    native::window_has_frame(window)
+}
+
+pub(crate) fn set_device_frame_overlays_visible(window: isize, visible: bool) {
+    native::set_frame_overlays_visible(window, visible);
+}
+
+/// Shows a generic bottom sheet over the active framed window for `appid`.
+/// The caller owns the meaning of the text; the device frame only owns the
+/// presentation.
+pub fn show_device_frame_info_sheet(
+    appid: &str,
+    info: WindowsDeviceFrameInfoSheet,
+) -> Result<(), String> {
+    let webview = current_page_webview(appid)?;
+    let host_window = crate::window_host::find_host_window_for_webview(&webview.webtag())
+        .map_err(|err| err.to_string())?;
+    let window = host_window.window;
+    let info = native::DeviceFrameInfoSheet {
+        title: info.title,
+        version: info.version,
+        badge: info.badge.map(|badge| native::InfoSheetBadge {
+            text: badge.text,
+            foreground: badge.foreground,
+            background: badge.background,
+        }),
+        actions: info
+            .actions
+            .into_iter()
+            .map(|action| native::SheetAction {
+                label: action.label,
+                command: action.command,
+                icon: action.icon,
+            })
+            .collect(),
+    };
+    let posted = crate::window_host::post_to_window_thread(
+        window,
+        Box::new(move || native::show_info_sheet(window, info)),
+    );
+    if posted {
+        Ok(())
+    } else {
+        Err("about sheet target window is not accepting messages".to_string())
+    }
+}
+
 /// Opens the WebView2 DevTools window for the current page of `appid`.
-#[cfg(target_os = "windows")]
 pub fn open_current_page_devtools(appid: &str) -> Result<(), String> {
     let webview = current_page_webview(appid)?;
     lingxia_webview::platform::windows::find_webview_handler(&webview.webtag())
@@ -79,7 +183,6 @@ pub fn open_current_page_devtools(appid: &str) -> Result<(), String> {
         .map_err(|err| err.to_string())
 }
 
-#[cfg(target_os = "windows")]
 fn current_page_webview(appid: &str) -> Result<std::sync::Arc<lingxia_webview::WebView>, String> {
     let app = lxapp::try_get(appid).ok_or_else(|| format!("lxapp is not active: {appid}"))?;
     let page = app.current_page().map_err(|err| err.to_string())?;
