@@ -12,7 +12,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  *
  * Scope note: this object is deliberately cross-cutting. A few methods are
  * host-scope (process init, capabilities, applink) while the majority are
- * tenant-scope (tab bar, nav bar, page-instance lifecycle, native components,
+ * lxapp-scope (tab bar, nav bar, page-instance lifecycle, native components,
  * surfaces, webview lookup), so `com.lingxia.lxapp` code imports it freely.
  *
  * It cannot move out of `com.lingxia.app`: the package is pinned by the JNI

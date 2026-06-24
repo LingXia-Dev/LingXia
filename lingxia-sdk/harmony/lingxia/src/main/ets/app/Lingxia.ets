@@ -24,8 +24,8 @@ const TAG = 'LingXia.Lingxia';
 /**
  * Top-level entry point for the LingXia host SDK. Operations scoped to the
  * host application (process, window, capabilities, runtime bootstrap, external
- * URL handoff, applink) live here. LxApp-scope (single mini-program / tenant)
- * operations live in [LxApp].
+ * URL handoff, applink) live here. LxApp-scope operations (a single lxapp)
+ * live in [LxApp].
  *
  * Counterpart of Android's `com.lingxia.app.Lingxia`.
  */
@@ -39,7 +39,7 @@ export class Lingxia {
 
   // Host UIAbility context + window stage, registered once during
   // initializeRuntime. Shared with LxApp-scope APIs that need a host context
-  // (file/share/scan/media/push) — tenant code reads these, never owns them.
+  // (file/share/scan/media/push) — lxapp code reads these, never owns them.
   public static context: common.UIAbilityContext | null = null;
   public static windowStage: window.WindowStage | null = null;
 

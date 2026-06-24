@@ -2,9 +2,9 @@ package com.lingxia.app
 
 /**
  * Snapshot of the currently active LxApp on the Rust stack — the host's
- * read-only view of "which tenant is foreground", produced by
+ * read-only view of "which lxapp is foreground", produced by
  * [NativeApi.getCurrentLxApp] and consumed by both host (`com.lingxia.app`)
- * and tenant (`com.lingxia.lxapp`) code.
+ * and lxapp (`com.lingxia.lxapp`) code.
  *
  * Like [NativeApi], its package is pinned by the JNI ABI: the Rust side
  * constructs it via `find_class("com/lingxia/app/CurrentLxApp")`

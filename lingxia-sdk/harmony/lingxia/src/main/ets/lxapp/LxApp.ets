@@ -21,7 +21,7 @@ interface NavigationInstance {
 }
 
 /**
- * LxApp-scope (single mini-program / tenant) facade. Owns the home app id,
+ * LxApp-scope facade (a single lxapp). Owns the home app id,
  * open/close/navigate, and session lookup for one LxApp inside the host
  * window. Host-scope concerns (runtime bootstrap, context/window, capabilities,
  * external URL handoff, applink, orientation) live in [Lingxia].
