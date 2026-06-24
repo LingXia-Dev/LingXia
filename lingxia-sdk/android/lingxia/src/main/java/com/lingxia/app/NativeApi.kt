@@ -8,11 +8,19 @@ import com.lingxia.lxapp.chrome.TabBarState
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * Centralized Native API declarations
+ * Centralized Native API declarations — the single JNI/FFI surface to the Rust layer.
  *
- * This object contains all JNI function declarations that interface with the Rust layer.
- * All native methods are organized by functionality and provide a single point of reference
- * for the FFI interface.
+ * Scope note: this object is deliberately cross-cutting. A few methods are
+ * host-scope (process init, capabilities, applink) while the majority are
+ * tenant-scope (tab bar, nav bar, page-instance lifecycle, native components,
+ * surfaces, webview lookup), so `com.lingxia.lxapp` code imports it freely.
+ *
+ * It cannot move out of `com.lingxia.app`: the package is pinned by the JNI
+ * ABI. The Rust side exports symbols mangled from this fully-qualified name
+ * (`Java_com_lingxia_app_NativeApi_*` in `crates/lingxia/src/ffi/android.rs`),
+ * so renaming the package would require renaming every native symbol there in
+ * lockstep. Treat the package as part of the native contract, not a
+ * boundary statement.
  */
 internal object NativeApi {
     private const val TAG = "NativeApi"
