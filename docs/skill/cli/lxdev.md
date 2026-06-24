@@ -87,6 +87,8 @@ So to read app state use `lxapp eval`; to inspect the rendered UI use `lxapp pag
 
 > Surface-opening calls (`lx.surface.*`, `navigateTo`) can deadlock when driven from `lxapp eval`; verify those via a real page interaction (`lxapp page click`) instead.
 
+> To navigate the runtime, prefer `lxdev lxapp nav to|relaunch|redirect|switch-tab <page-name>` (names + routes come from `lxdev lxapp pages`). The JS APIs (`navigateTo` / `redirectTo` / `switchTab` / `reLaunch`) take `{ page }` **or** `{ path }` — there is **no `url`** field.
+
 ---
 
 ## Visual checks — two screenshot scopes

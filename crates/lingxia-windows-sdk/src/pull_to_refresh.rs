@@ -8,6 +8,15 @@ pub(crate) fn install() {
     }));
 }
 
+/// Start a pull-down refresh for (appid, path) programmatically — e.g. from the
+/// lxapp right-click "Refresh" entry. Fires `onPullDownRefresh` like the gesture.
+/// Only the browser-shell context-menu provider calls this, so it is gated to
+/// that feature to stay dead-code-clean in a `runtime`-only (no-shell) build.
+#[cfg(feature = "browser-shell")]
+pub(crate) fn request_refresh(appid: &str, path: &str) {
+    let _ = handle_pull_to_refresh(appid.to_string(), path.to_string(), true);
+}
+
 fn handle_pull_to_refresh(appid: String, path: String, refreshing: bool) -> bool {
     let Some(app) = lxapp::try_get(&appid) else {
         log::warn!("pull-to-refresh ignored: lxapp is not active: {appid}");

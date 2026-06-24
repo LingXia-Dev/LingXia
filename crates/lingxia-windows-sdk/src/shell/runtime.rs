@@ -279,6 +279,19 @@ pub(super) fn install() {
     lingxia_platform::set_windows_ui_update_handler(Arc::new(|appid| {
         sync_shell_layout(&appid);
     }));
+    // A trimmed lxapp page that opted into pull-down refresh gets an app-level
+    // "Refresh" right-click entry (mirrors the macOS lxapp menu). The webview
+    // layer that builds the menu sits below lxapp / i18n / pull-refresh, so it
+    // calls back here for the label and the action.
+    lingxia_webview::platform::windows::set_windows_context_menu_refresh_provider(
+        Arc::new(|appid: &str, path: &str| {
+            lxapp::is_pull_down_refresh_enabled(appid, path)
+                .then(|| lingxia_logic::i18n::t(lingxia_logic::I18nKey::CommonRefresh))
+        }),
+        Arc::new(|appid: &str, path: &str| {
+            crate::pull_to_refresh::request_refresh(appid, path);
+        }),
+    );
     // Mirror browser tab list/title changes into the sidebar. The handler
     // may fire from webview UI threads, so hop onto the executor before
     // touching window state (layout syncs block on those UI threads).
