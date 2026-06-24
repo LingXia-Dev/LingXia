@@ -13,7 +13,6 @@ use std::time::Duration;
 use tungstenite::protocol::Message;
 use tungstenite::{Error as WsError, WebSocket, accept};
 
-const SERVER_BIND_ADDR: &str = "127.0.0.1:0";
 const DEFAULT_COMMAND_TIMEOUT: Duration = Duration::from_secs(120);
 const COMMAND_TIMEOUT_BUFFER: Duration = Duration::from_secs(5);
 
@@ -159,10 +158,6 @@ impl DevServerState {
     }
 }
 
-pub fn start_server(project_root: &Path) -> Result<DevServerHandle> {
-    start_server_on(project_root, SERVER_BIND_ADDR)
-}
-
 pub fn start_server_on(project_root: &Path, bind_addr: &str) -> Result<DevServerHandle> {
     let session = create_session(project_root)?;
     let listener = TcpListener::bind(bind_addr).context("Failed to bind dev websocket")?;
@@ -185,6 +180,46 @@ pub fn start_server_on(project_root: &Path, bind_addr: &str) -> Result<DevServer
         stop_flag,
         server_thread: Some(server_thread),
     })
+}
+
+/// Deterministic dev-server port derived from a stable per-app key + platform,
+/// so a restarted client reconnects to the same port (and the same adb/hdc
+/// forward) without the host re-publishing a fresh OS-assigned port. FNV-1a over
+/// `"{app_key}:{platform}"` mapped into a stable private range (39000–39999).
+/// `app_key` is any value stable across the host's dev restarts (the dev flow
+/// passes the project root path).
+pub fn dev_port(app_key: &str, platform: &str) -> u16 {
+    const FNV_OFFSET: u32 = 0x811c_9dc5;
+    const FNV_PRIME: u32 = 0x0100_0193;
+    let mut hash = FNV_OFFSET;
+    for byte in format!("{app_key}:{platform}").bytes() {
+        hash ^= u32::from(byte);
+        hash = hash.wrapping_mul(FNV_PRIME);
+    }
+    39_000 + (hash % 1000) as u16
+}
+
+/// Start the dev server on `host` at the deterministic [`dev_port`] for this
+/// project + platform. `host` is `127.0.0.1` for loopback platforms (adb/hdc
+/// forward, local runner) or `0.0.0.0` for a LAN device (real iOS). Falls back
+/// to an OS-assigned port on the same host if the fixed one can't be bound,
+/// trading restart-stable reconnection for a still-working session.
+pub fn start_server_fixed(
+    project_root: &Path,
+    host: &str,
+    platform: &str,
+) -> Result<DevServerHandle> {
+    let port = dev_port(&project_root.to_string_lossy(), platform);
+    match start_server_on(project_root, &format!("{host}:{port}")) {
+        Ok(handle) => Ok(handle),
+        Err(err) => {
+            eprintln!(
+                "⚠ dev port {port} unavailable ({err:#}); using an OS-assigned port — \
+                 reconnection after a client restart may need a re-forward."
+            );
+            start_server_on(project_root, &format!("{host}:0"))
+        }
+    }
 }
 
 fn run_server(
@@ -466,4 +501,24 @@ where
         .send(Message::Text(text.into()))
         .context("Failed to send websocket message")?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::dev_port;
+
+    #[test]
+    fn dev_port_is_stable_and_in_range() {
+        let port = dev_port("com.example.app", "android");
+        assert_eq!(port, dev_port("com.example.app", "android"));
+        assert!((39_000..40_000).contains(&port));
+    }
+
+    #[test]
+    fn dev_port_distinguishes_platforms() {
+        assert_ne!(
+            dev_port("com.example.app", "android"),
+            dev_port("com.example.app", "ios")
+        );
+    }
 }

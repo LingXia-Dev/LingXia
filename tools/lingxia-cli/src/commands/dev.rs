@@ -252,7 +252,7 @@ fn execute_android(ctx: DevContext, abis: Vec<String>) -> Result<()> {
     precheck_platform_session(&ctx.project_root, platform_name, ctx.parallel)?;
     let platform = platform::android::AndroidPlatform::new();
     let build_targets = crate::platform::android_abis::resolve_android_targets_from_abis(&abis)?;
-    let server = server::start_server(&ctx.project_root)?;
+    let server = server::start_server_fixed(&ctx.project_root, "127.0.0.1", platform_name)?;
     let host_ws_url = server.ws_url();
     let device_ws_url = loopback_ws_url(server.port());
     let session = server.session().clone();
@@ -363,7 +363,7 @@ fn execute_ios(ctx: DevContext) -> Result<()> {
     let platform_name = platform_session_name(PlatformType::Ios);
     precheck_platform_session(&ctx.project_root, platform_name, ctx.parallel)?;
     let platform = platform::ios::IosPlatform::new();
-    let server = server::start_server_on(&ctx.project_root, "0.0.0.0:0")?;
+    let server = server::start_server_fixed(&ctx.project_root, "0.0.0.0", platform_name)?;
     let host_ws_url = loopback_ws_url(server.port());
     let device_ws_url = lan_ws_url(server.port())?;
     let session = server.session().clone();
@@ -518,7 +518,7 @@ Use `lingxia build --platform macos --macos-arch {}` for cross-arch builds.",
     let exe = platform::macos::app_bundle_executable(&app_path)?;
     println!();
 
-    let server = server::start_server(&ctx.project_root)?;
+    let server = server::start_server_fixed(&ctx.project_root, "127.0.0.1", platform_name)?;
     let ws_url = server.ws_url();
     let session = server.session().clone();
 
@@ -575,7 +575,7 @@ fn execute_harmony(ctx: DevContext) -> Result<()> {
     let platform_name = platform_session_name(PlatformType::Harmony);
     precheck_platform_session(&ctx.project_root, platform_name, ctx.parallel)?;
     let harmony_platform = platform::harmony::HarmonyPlatform::new();
-    let server = server::start_server(&ctx.project_root)?;
+    let server = server::start_server_fixed(&ctx.project_root, "127.0.0.1", platform_name)?;
     let host_ws_url = server.ws_url();
     let device_ws_url = loopback_ws_url(server.port());
     let session = server.session().clone();
@@ -686,7 +686,7 @@ fn execute_windows(ctx: DevContext) -> Result<()> {
     let platform_name = platform_session_name(PlatformType::Windows);
     precheck_platform_session(&ctx.project_root, platform_name, ctx.parallel)?;
     let platform = platform::windows::WindowsPlatform::new();
-    let server = server::start_server(&ctx.project_root)?;
+    let server = server::start_server_fixed(&ctx.project_root, "127.0.0.1", platform_name)?;
     let ws_url = server.ws_url();
     let session = server.session().clone();
 
@@ -830,7 +830,7 @@ fn execute_lxapp_dev(project_root: PathBuf, options: DevExecuteOptions) -> Resul
     println!("{}", "Development Mode: LxApp -> Runner".bold().cyan());
     println!();
 
-    let server = server::start_server(&project_root)?;
+    let server = server::start_server_fixed(&project_root, "127.0.0.1", platform_name)?;
     let ws_url = server.ws_url();
     let session = server.session().clone();
 
