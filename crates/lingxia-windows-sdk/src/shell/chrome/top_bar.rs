@@ -1,6 +1,7 @@
 //! Shell top bar, address capsule, navigation bar, and caption buttons.
 
 use std::collections::HashMap;
+#[cfg(feature = "browser-runtime")]
 use std::ffi::c_void;
 use std::sync::Mutex;
 
@@ -72,25 +73,13 @@ pub(super) fn top_bar_controls(
     let app_icon = (!compact_sidebar).then(|| square_button(app_icon_left));
 
     // Sidebar toggle: sits just right of the app-menu button. It is
-    // intentionally independent of the collapsed flag (it must stay
-    // clickable to re-expand a collapsed sidebar) and shares the leading
-    // edge: inside the sidebar column while the sidebar is expanded, over
-    // the top bar's leading edge while it is collapsed (`navbar_buttons_left`
-    // shifts the lxapp navbar buttons clear of it).
-    let sidebar_toggle = has_sidebar_toggle.then(|| {
-        if compact_sidebar {
-            let left = match tabbar.map(|tabbar| tabbar.position) {
-                Some(WindowsShellTabBarPosition::Right) => {
-                    client.right - SHELL_SIDEBAR_RAIL_WIDTH
-                        + (SHELL_SIDEBAR_RAIL_WIDTH - TOP_BAR_BUTTON_SIZE).max(0) / 2
-                }
-                _ => client.left + (SHELL_SIDEBAR_RAIL_WIDTH - TOP_BAR_BUTTON_SIZE).max(0) / 2,
-            };
-            square_button(left)
-        } else {
-            let app_right = app_icon.map(|rect| rect.right).unwrap_or(app_icon_left);
-            square_button(app_right + TOP_BAR_BUTTON_GAP)
-        }
+    // The collapse toggle lives in the sidebar header while the sidebar is
+    // expanded. Once collapsed to a rail, the rail draws the *same* toggle
+    // icon pinned to its bottom (see `draw_sidebar_rail`), so the top bar
+    // shows none here — otherwise the rail would carry two expand affordances.
+    let sidebar_toggle = (has_sidebar_toggle && !compact_sidebar).then(|| {
+        let app_right = app_icon.map(|rect| rect.right).unwrap_or(app_icon_left);
+        square_button(app_right + TOP_BAR_BUTTON_GAP)
     });
     let mut left_edge = top_bar.left + TOP_BAR_PADDING;
     if let Some(app_icon) = app_icon {
@@ -178,6 +167,7 @@ fn remember_address_capsule_rect(hwnd: HWND, rect: Option<RECT>) {
 /// thread (see [`super::super::text_input`] for lifecycle). `on_commit`
 /// receives the submitted text on Enter/focus loss; Esc cancels. Returns
 /// `false` when no address capsule has been painted for `window`.
+#[cfg(feature = "browser-runtime")]
 pub fn begin_address_edit(
     window: isize,
     initial_text: &str,
@@ -226,7 +216,11 @@ pub(super) fn draw_top_bar_controls(
     layout: &WindowsShellWindowLayout,
 ) {
     let controls = top_bar_controls(state.client, rects.top_bar, layout);
-    if let Some(app_icon) = controls.app_icon {
+    // The leading app-menu button is a window control; a device-framed screen
+    // gets it from the simulator toolbar instead.
+    if !layout.suppress_window_controls
+        && let Some(app_icon) = controls.app_icon
+    {
         draw_app_menu_icon(hdc, app_icon, &layout.app_icon_path);
     }
     if let Some(toggle) = controls.sidebar_toggle {
@@ -241,7 +235,7 @@ pub(super) fn draw_top_bar_controls(
                 }
             })
             .unwrap_or(WindowsDesignIcon::SidebarCollapse);
-        // Muted like the sidebar header actions — it's a secondary control,
+        // Muted like the sidebar header actions - it's a secondary control,
         // not a primary caption button.
         draw_design_icon_button(hdc, toggle, icon, shell_palette().text_muted, 18);
     }
@@ -336,7 +330,7 @@ pub(super) fn draw_navigation_bar(
 }
 
 /// Draws the app-menu button: the app's own (clean) icon when it declares
-/// one — the brand mark at the window's leading edge, like Arc — else a
+/// one - the brand mark at the window's leading edge, like Arc - else a
 /// subtle monochrome glyph matching the rest of the caption row. Clicking the
 /// button opens the About/Exit menu.
 fn draw_app_menu_icon(hdc: HDC, rect: RECT, icon_path: &str) {
@@ -375,8 +369,6 @@ pub(super) fn draw_design_icon_button_with_fallback(
             WindowsDesignIcon::Forward => Some(GLYPH_NAV_FORWARD),
             WindowsDesignIcon::BrowserRefresh => Some(GLYPH_NAV_RELOAD),
             WindowsDesignIcon::Home => Some(GLYPH_NAV_HOME),
-            WindowsDesignIcon::SidebarCollapse => Some(GLYPH_SIDEBAR_TOGGLE),
-            WindowsDesignIcon::SidebarExpand => Some(GLYPH_PANEL_EXPAND),
             _ => None,
         });
         if let Some(glyph) = fallback {

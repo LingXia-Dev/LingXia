@@ -43,6 +43,9 @@ pub(super) fn paint_frame_window(frame: HWND, spec: &WindowsDeviceFrame, layout:
                     // alpha over the text it touched.
                     let dib = std::slice::from_raw_parts_mut(bits.cast::<u32>(), pixels.len());
                     fix_toolbar_alpha(dib, layout);
+                    if toolbar.rotate_command.is_some() {
+                        composite_rotate_icon(dib, layout);
+                    }
                     pixels.copy_from_slice(dib);
                 }
                 let size = SIZE {
@@ -172,6 +175,65 @@ fn draw_toolbar_text(dc: HDC, toolbar: &WindowsDeviceFrameToolbar, layout: &mut 
             let _ = DeleteObject(HGDIOBJ(icon_font.0));
         }
     }
+
+    // The rotate control is a shared design icon (design/icons/svg/icon_rotate),
+    // composited after the GDI text pass in `composite_rotate_icon`.
+}
+
+/// Width/height of the rotate design icon in the toolbar.
+const ROTATE_ICON_SIZE: i32 = 16;
+
+/// Composites the rotate design icon just left of the gear (or the trailing
+/// edge when there is no gear) and records `rotate_rect` for hit-testing.
+/// Runs after `fix_toolbar_alpha`, writing premultiplied ARGB straight into
+/// the layered DIB — `DrawIconEx` does not reliably set alpha on a per-pixel
+/// alpha surface.
+fn composite_rotate_icon(dib: &mut [u32], layout: &mut FrameLayout) {
+    let toolbar = layout.toolbar;
+    let center_y = (toolbar.top + toolbar.bottom) / 2;
+    let right_anchor = if layout.action_rect.right > layout.action_rect.left {
+        layout.action_rect.left - 4
+    } else {
+        toolbar.right - TOOLBAR_SIDE_MARGIN
+    };
+    let x = right_anchor - ROTATE_ICON_SIZE;
+    let y = center_y - ROTATE_ICON_SIZE / 2;
+    layout.rotate_rect = RECT {
+        left: x - 6,
+        top: toolbar.top,
+        right: right_anchor,
+        bottom: toolbar.bottom,
+    };
+    let Some(icon) = crate::design_icons::design_icon_argb_premultiplied(
+        crate::WindowsDesignIcon::Rotate,
+        ROTATE_ICON_SIZE as u32,
+        Some(0x00B4B4B4),
+    ) else {
+        return;
+    };
+    for iy in 0..ROTATE_ICON_SIZE {
+        for ix in 0..ROTATE_ICON_SIZE {
+            let src = icon[(iy * ROTATE_ICON_SIZE + ix) as usize];
+            let sa = src >> 24;
+            if sa == 0 {
+                continue;
+            }
+            let (px, py) = (x + ix, y + iy);
+            if px < 0 || py < 0 || px >= layout.width || py >= layout.height {
+                continue;
+            }
+            let di = (py * layout.width + px) as usize;
+            let dst = dib[di];
+            let inv = 255 - sa;
+            let ch = |shift: u32| {
+                let s = (src >> shift) & 0xff;
+                let d = (dst >> shift) & 0xff;
+                (s + d * inv / 255).min(255)
+            };
+            let a = (sa + ((dst >> 24) & 0xff) * inv / 255).min(255);
+            dib[di] = (a << 24) | (ch(16) << 16) | (ch(8) << 8) | ch(0);
+        }
+    }
 }
 
 /// GDI text output zeroes the alpha byte of every pixel it touches; inside
@@ -255,6 +317,11 @@ fn frame_pixels(spec: &WindowsDeviceFrame, layout: &FrameLayout) -> Vec<u32> {
         (&layout.close_rect, CLOSE_DOT_COLOR),
         (&layout.minimize_rect, MINIMIZE_DOT_COLOR),
     ];
+    // The screen cutout / Dynamic Island is rendered by the topmost floating
+    // `cutout` overlay window (see `cutout.rs`), which is the only surface that
+    // can paint above the opaque WebView2 content. The layered frame bitmap
+    // sits *behind* the content, so carving the notch here would never be
+    // visible — keep it out of the frame paint.
 
     let shadow_reach = FRAME_SHADOW_MARGIN as f32;
     let mut pixels = Vec::with_capacity((layout.width * layout.height) as usize);

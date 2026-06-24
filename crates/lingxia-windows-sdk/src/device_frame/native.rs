@@ -30,8 +30,8 @@ use windows::Win32::Graphics::Dwm::{
 };
 use windows::Win32::Graphics::Gdi::{
     AC_SRC_ALPHA, AC_SRC_OVER, BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BLENDFUNCTION, ClientToScreen,
-    CreateCompatibleDC, CreateDIBSection, CreateRoundRectRgn, DIB_RGB_COLORS, DeleteDC,
-    DeleteObject, GetDC, HDC, HGDIOBJ, ReleaseDC, SelectObject, SetWindowRgn,
+    CreateCompatibleDC, CreateDIBSection, DIB_RGB_COLORS, DeleteDC, DeleteObject, GetDC, HDC,
+    HGDIOBJ, ReleaseDC, SelectObject, SetWindowRgn,
 };
 use windows::Win32::System::LibraryLoader;
 use windows::Win32::UI::WindowsAndMessaging::{self, WNDCLASSW, WNDPROC};
@@ -39,13 +39,15 @@ use windows::core::{PCWSTR, w};
 
 use super::{WindowsDeviceFrame, WindowsDeviceFrameToolbar};
 
-mod corner_caps;
+mod about_sheet;
+mod capsule;
+mod cutout;
 mod frame_window;
 mod paint;
 
-use corner_caps::{
-    destroy_screen_corner_caps, raise_screen_corner_caps, update_screen_corner_caps,
-};
+pub(super) use about_sheet::{DeviceFrameInfoSheet, InfoSheetBadge, SheetAction};
+use capsule::{create_capsule_window, destroy_capsule, hide_capsule, reposition_capsule};
+use cutout::{create_cutout_window, destroy_cutout, hide_cutout, reposition_cutout};
 use frame_window::create_frame_window;
 
 pub(super) type WindowsDeviceFrameCommandHandler = Arc<dyn Fn(u32) + Send + Sync>;
@@ -68,6 +70,10 @@ pub(super) fn set_initial_device_frame(frame: WindowsDeviceFrame) {
         *slot = Some(frame);
     }
     INITIAL_DEVICE_FRAME_HOOK.get_or_init(|| {
+        // Consume the armed frame on the next host window only — framing every
+        // window the lxapp creates would leak a bezel + capsule per window. A
+        // runner re-arms this slot before a restart so the recreated window
+        // comes back framed.
         add_host_window_created_handler(Arc::new(|window| {
             let frame = INITIAL_DEVICE_FRAME
                 .get()
@@ -78,6 +84,10 @@ pub(super) fn set_initial_device_frame(frame: WindowsDeviceFrame) {
             }
         }));
     });
+}
+
+pub(super) fn show_info_sheet(window: isize, info: DeviceFrameInfoSheet) {
+    about_sheet::show_info_sheet(hwnd_from_handle(window), info);
 }
 
 /// Timer used while the content or shell window is in an interactive
@@ -140,6 +150,7 @@ struct FrameLayout {
     minimize_rect: RECT,
     selector_rect: RECT,
     action_rect: RECT,
+    rotate_rect: RECT,
 }
 
 fn compute_layout(spec: &WindowsDeviceFrame) -> FrameLayout {
@@ -195,6 +206,10 @@ fn compute_layout(spec: &WindowsDeviceFrame) -> FrameLayout {
 struct DeviceFrameState {
     /// The layered shell window glued behind the content window.
     frame: isize,
+    /// The floating capsule overlay pinned over the content (0 when absent).
+    capsule: isize,
+    /// The top-centered phone screen cutout overlay (0 when absent).
+    cutout: isize,
     spec: WindowsDeviceFrame,
     layout: FrameLayout,
     /// `GWL_STYLE` of the content window before the borderless restyle.
@@ -216,6 +231,29 @@ fn frame_state<T>(content: isize, read: impl FnOnce(&DeviceFrameState) -> T) -> 
         .get()
         .and_then(|frames| frames.lock().ok())
         .and_then(|frames| frames.get(&content).map(read))
+}
+
+/// True while `content` (a top-level host window handle) is wrapped in a
+/// simulator device frame. The shell drops its own window caption on a framed
+/// screen, since the frame's toolbar owns those controls.
+#[cfg_attr(not(feature = "browser-runtime"), allow(dead_code))]
+pub(super) fn window_has_frame(content: isize) -> bool {
+    frame_state(content, |_| ()).is_some()
+}
+
+pub(super) fn set_frame_overlays_visible(content: isize, visible: bool) {
+    if !window_has_frame(content) || !is_window_handle_valid(content) {
+        return;
+    }
+    let hwnd = hwnd_from_handle(content);
+    if visible {
+        reposition_capsule(hwnd);
+        reposition_cutout(hwnd);
+    } else {
+        about_sheet::dismiss_about_sheet_for_content(content);
+        hide_capsule(hwnd);
+        hide_cutout(hwnd);
+    }
 }
 
 fn frame_state_by_frame<T>(
@@ -275,9 +313,21 @@ fn apply_device_frame(content: HWND, spec: WindowsDeviceFrame) {
     // A different device: rebuild the shell window, but keep the originally
     // saved style so repeated device switches don't save the borderless
     // style as the restore target.
-    let saved_style = match frame_state(handle, |state| state.saved_style) {
-        Some(saved) => {
-            remove_frame_window(handle);
+    let saved_style = match frame_state(handle, |state| {
+        (state.saved_style, state.frame, state.capsule, state.cutout)
+    }) {
+        Some((saved, old_frame, old_capsule, old_cutout)) => {
+            // Destroy only the old bezel window; keep the registry entry so the
+            // window stays "framed" across the rebuild and the shell never
+            // briefly un-suppresses its caption (the entry is overwritten with
+            // the new frame below). A sync racing the stale frame handle is
+            // guarded by `is_window_handle_valid`.
+            about_sheet::dismiss_about_sheet_for_content(handle);
+            unsafe {
+                let _ = WindowsAndMessaging::DestroyWindow(hwnd_from_handle(old_frame));
+            }
+            destroy_capsule(old_capsule);
+            destroy_cutout(old_cutout);
             saved
         }
         None => unsafe {
@@ -344,66 +394,44 @@ fn apply_device_frame(content: HWND, spec: WindowsDeviceFrame) {
         );
     }
 
-    apply_screen_corners(content, &spec);
-
     let Some((frame, layout)) = create_frame_window(content, &spec, layout) else {
         return;
     };
+    let capsule = create_capsule_window(content, &spec).unwrap_or(0);
+    let cutout = create_cutout_window(content, &spec).unwrap_or(0);
     let frames = DEVICE_FRAMES.get_or_init(|| Mutex::new(HashMap::new()));
     if let Ok(mut frames) = frames.lock() {
         frames.insert(
             handle,
             DeviceFrameState {
                 frame: hwnd_handle(frame),
+                capsule,
+                cutout,
                 spec,
                 layout,
                 saved_style,
             },
         );
     }
-    sync_device_frame_for_content(content);
-}
-
-/// Rounds the screen window's corners: a `SetWindowRgn` rounded rect keeps
-/// the rectangular window inside the bezel silhouette, and the corner-cap
-/// overlays paint anti-aliased bezel-colored arcs over the staircase the
-/// region clips (the region edge itself sits bezel-on-bezel, so its
-/// aliasing is invisible).
-fn apply_screen_corners(content: HWND, spec: &WindowsDeviceFrame) {
-    let radius = spec.screen_corner_radius.max(0);
-    // COLORREF is 0x00BBGGRR; the spec color is 0xRRGGBB.
-    let bgr = ((spec.bezel_color & 0xff) << 16)
-        | (spec.bezel_color & 0xff00)
-        | ((spec.bezel_color >> 16) & 0xff);
-    destroy_screen_corner_caps(content);
-    if radius > 0 {
-        unsafe {
-            let region = CreateRoundRectRgn(
-                0,
-                0,
-                spec.screen_width + 1,
-                spec.screen_height + 1,
-                radius * 2,
-                radius * 2,
-            );
-            let _ = SetWindowRgn(content, Some(region), true);
-        }
-        update_screen_corner_caps(
-            content,
-            RECT {
-                left: 0,
-                top: 0,
-                right: spec.screen_width,
-                bottom: spec.screen_height,
-            },
-            radius,
-            COLORREF(bgr),
-        );
-    } else {
-        unsafe {
-            let _ = SetWindowRgn(content, None, true);
-        }
+    // A device switch or rotation changed the screen size; keep the window on
+    // screen and re-layout the shell chrome so the webview fills the new
+    // dimensions (the SWP resize alone leaves the old content width).
+    unsafe {
+        let _ = WindowsAndMessaging::ShowWindow(content, WindowsAndMessaging::SW_SHOWNA);
     }
+    request_host_window_layout(content);
+    sync_device_frame_for_content(content);
+    // The host layout pass resizes the WebView2 surface asynchronously, and a
+    // freshly-activated screen can re-composite it above the capsule; re-pin it
+    // once that work lands (same-thread FIFO).
+    post_to_window_thread(
+        handle,
+        Box::new(move || reposition_capsule(hwnd_from_handle(handle))),
+    );
+    post_to_window_thread(
+        handle,
+        Box::new(move || reposition_cutout(hwnd_from_handle(handle))),
+    );
 }
 
 /// Removes the device frame from `content` (on its UI thread) and restores
@@ -417,10 +445,12 @@ fn clear_device_frame(content: HWND) {
     let Some(state) = removed else {
         return;
     };
+    about_sheet::dismiss_about_sheet_for_content(handle);
     unsafe {
         let _ = WindowsAndMessaging::DestroyWindow(hwnd_from_handle(state.frame));
     }
-    destroy_screen_corner_caps(content);
+    destroy_capsule(state.capsule);
+    destroy_cutout(state.cutout);
     unsafe {
         let _ = SetWindowRgn(content, None, true);
         WindowsAndMessaging::SetWindowLongPtrW(
@@ -458,9 +488,12 @@ fn remove_frame_window(content: isize) {
         .and_then(|frames| frames.lock().ok())
         .and_then(|mut frames| frames.remove(&content));
     if let Some(state) = removed {
+        about_sheet::dismiss_about_sheet_for_content(content);
         unsafe {
             let _ = WindowsAndMessaging::DestroyWindow(hwnd_from_handle(state.frame));
         }
+        destroy_capsule(state.capsule);
+        destroy_cutout(state.cutout);
     }
 }
 
@@ -484,9 +517,12 @@ fn sync_device_frame_for_content(content: HWND) {
             && !WindowsAndMessaging::IsIconic(content).as_bool()
     };
     if !visible {
+        about_sheet::dismiss_about_sheet_for_content(handle);
         unsafe {
             let _ = WindowsAndMessaging::ShowWindow(frame, WindowsAndMessaging::SW_HIDE);
         }
+        hide_capsule(content);
+        hide_cutout(content);
         return;
     }
     let mut content_rect = RECT::default();
@@ -508,9 +544,11 @@ fn sync_device_frame_for_content(content: HWND) {
                 | WindowsAndMessaging::SWP_SHOWWINDOW,
         );
     }
-    // WebView2 child churn can bury the screen-corner caps; geometry passes
-    // come through here, so re-assert them alongside the shell.
-    raise_screen_corner_caps(content);
+    // The capsule is a top-level overlay owned by the screen window; re-pin it
+    // to the new top-right corner and keep it above the WebView2 surface.
+    reposition_capsule(content);
+    reposition_cutout(content);
+    about_sheet::reposition_about_sheet(content);
 }
 
 fn install_device_frame_subclass(hwnd: HWND) {
@@ -559,9 +597,41 @@ unsafe extern "system" fn device_frame_host_proc(
             let moved = !flags.contains(WindowsAndMessaging::SWP_NOMOVE);
             let z_order_only =
                 !sized && !moved && !flags.contains(WindowsAndMessaging::SWP_NOZORDER);
-            if sized || moved || z_order_only {
+            // A page switch can hide then re-show the content window (e.g. when
+            // a tab brings up a page hosting native component overlays). The
+            // glued bezel must track that visibility, or it stays hidden after
+            // the screen comes back.
+            let shown_or_hidden = flags.contains(WindowsAndMessaging::SWP_SHOWWINDOW)
+                || flags.contains(WindowsAndMessaging::SWP_HIDEWINDOW);
+            if sized || moved || z_order_only || shown_or_hidden {
                 sync_device_frame_for_content(hwnd);
             }
+        }
+    } else if msg == WindowsAndMessaging::WM_SIZE
+        && wparam.0 == WindowsAndMessaging::SIZE_MINIMIZED as usize
+    {
+        about_sheet::dismiss_about_sheet_for_content(hwnd_handle(hwnd));
+    } else if msg == WindowsAndMessaging::WM_SHOWWINDOW {
+        // `ShowWindow` reports visibility changes through `WM_SHOWWINDOW`, not
+        // always `WM_WINDOWPOSCHANGED`; re-glue (or hide) the bezel to match.
+        let result = original
+            .map(|original| unsafe { call_original(original, hwnd, msg, wparam, lparam) })
+            .unwrap_or_else(|| unsafe {
+                WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam)
+            });
+        sync_device_frame_for_content(hwnd);
+        return result;
+    } else if msg == WindowsAndMessaging::WM_ACTIVATE {
+        // The capsule is topmost; hide it while the screen is in the background
+        // (WA_INACTIVE == 0) so it never floats over another app, and re-pin it
+        // on return.
+        if (wparam.0 & 0xffff) == 0 {
+            hide_capsule(hwnd);
+            hide_cutout(hwnd);
+        } else {
+            reposition_capsule(hwnd);
+            reposition_cutout(hwnd);
+            about_sheet::reposition_about_sheet(hwnd);
         }
     } else if msg == WindowsAndMessaging::WM_ENTERSIZEMOVE {
         unsafe {
@@ -584,10 +654,8 @@ unsafe extern "system" fn device_frame_host_proc(
         }
     } else if msg == WindowsAndMessaging::WM_DESTROY {
         forget_device_frame(hwnd);
-        destroy_screen_corner_caps(hwnd);
     } else if msg == WindowsAndMessaging::WM_NCDESTROY {
         forget_device_frame(hwnd);
-        destroy_screen_corner_caps(hwnd);
         let result = original
             .map(|original| unsafe { call_original(original, hwnd, msg, wparam, lparam) })
             .unwrap_or_else(|| unsafe {

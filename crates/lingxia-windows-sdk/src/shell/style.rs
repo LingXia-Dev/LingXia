@@ -6,7 +6,7 @@ pub(super) const SHELL_BADGE_RED: u32 = 0xff3b30;
 
 /// Themed shell palette, derived at paint time from the Win11 light/dark
 /// setting and the system accent (see [`super::theme`]). All fields are
-/// `0xRRGGBB` — the format `rgb_to_colorref` expects.
+/// `0xRRGGBB` - the format `rgb_to_colorref` expects.
 #[derive(Clone, Copy)]
 pub(super) struct ShellPalette {
     pub window_background: u32,
@@ -21,7 +21,6 @@ pub(super) struct ShellPalette {
     pub control_surface: u32,
     pub frame_button_icon: u32,
     pub sidebar_header_text: u32,
-    pub tab_selected_background: u32,
 }
 
 /// The active palette for the current system theme. Cheap (two atomic reads +
@@ -40,7 +39,6 @@ pub(super) fn shell_palette() -> ShellPalette {
             control_surface: 0x3a3a3a,
             frame_button_icon: 0xe6e6e6,
             sidebar_header_text: 0xb0b4ba,
-            tab_selected_background: 0x2d3340,
         }
     } else {
         ShellPalette {
@@ -54,7 +52,6 @@ pub(super) fn shell_palette() -> ShellPalette {
             control_surface: 0xf3f4f6,
             frame_button_icon: 0x1f2937,
             sidebar_header_text: 0x4f5661,
-            tab_selected_background: 0xf3f7ff,
         }
     }
 }

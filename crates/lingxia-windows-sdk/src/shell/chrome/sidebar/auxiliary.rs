@@ -87,9 +87,12 @@ pub(in crate::shell::chrome) fn sidebar_auxiliary_hit_test(
                     serde_json::json!({ "tab_id": item.id.clone() }),
                 ));
             }
-            return Some(chrome_command(
+            let payload = serde_json::json!({ "tab_id": item.id.clone() });
+            return Some(chrome_command_with_context(
                 command_id::BROWSER_TAB_CLICK,
-                serde_json::json!({ "tab_id": item.id.clone() }),
+                payload.clone(),
+                command_id::SIDEBAR_AUXILIARY_CONTEXT_MENU,
+                payload,
             ));
         }
     }

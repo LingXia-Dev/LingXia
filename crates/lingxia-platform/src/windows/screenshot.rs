@@ -146,12 +146,16 @@ fn hwnd_from_window_id(raw: &str) -> Result<windows::Win32::Foundation::HWND, Pl
 }
 
 async fn capture_window_png(window_id: usize) -> Result<Vec<u8>, PlatformError> {
-    let hwnd = windows::Win32::Foundation::HWND(window_id as *mut c_void);
-    let (width, height, mut image) = capture_window_native_rgba(hwnd)?;
+    let (width, height, mut image) = capture_window_native_rgba(hwnd_from_usize(window_id))?;
     for (snapshot, webview_png) in visible_webview_screenshots_for_window(window_id).await {
         overlay_webview_screenshot(&mut image, &snapshot, &webview_png)?;
     }
+    overlay_window_screenshots(&mut image, hwnd_from_usize(window_id))?;
     encode_rgba_png(width, height, image)
+}
+
+fn hwnd_from_usize(window_id: usize) -> windows::Win32::Foundation::HWND {
+    windows::Win32::Foundation::HWND(window_id as *mut c_void)
 }
 
 fn capture_window_native_rgba(
@@ -338,6 +342,218 @@ fn overlay_webview_screenshot(
     );
     image::imageops::overlay(base, &webview, i64::from(left), i64::from(top));
     Ok(())
+}
+
+fn overlay_window_screenshots(
+    base: &mut image::RgbaImage,
+    hwnd: windows::Win32::Foundation::HWND,
+) -> Result<(), PlatformError> {
+    let base_rect = visible_window_rect(hwnd)?;
+    let mut overlays = overlay_windows_for_window(hwnd, base_rect)?;
+    overlays.reverse();
+    for overlay in overlays {
+        let Ok(overlay_image) = capture_screen_rect_rgba(overlay.rect) else {
+            continue;
+        };
+        let x = i64::from(overlay.rect.left - base_rect.left);
+        let y = i64::from(overlay.rect.top - base_rect.top);
+        image::imageops::overlay(base, &overlay_image, x, y);
+    }
+    Ok(())
+}
+
+struct OverlayWindow {
+    rect: windows::Win32::Foundation::RECT,
+}
+
+fn overlay_windows_for_window(
+    base_window: windows::Win32::Foundation::HWND,
+    base_rect: windows::Win32::Foundation::RECT,
+) -> Result<Vec<OverlayWindow>, PlatformError> {
+    use windows::Win32::Foundation::{HWND, LPARAM, RECT};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        EnumWindows, GW_OWNER, GetWindow, GetWindowRect, GetWindowThreadProcessId, IsIconic,
+        IsWindowVisible,
+    };
+    use windows::core::BOOL;
+
+    struct EnumState {
+        pid: u32,
+        base_window: HWND,
+        base_rect: RECT,
+        overlays: Vec<OverlayWindow>,
+    }
+
+    unsafe extern "system" fn enum_window(hwnd: HWND, lparam: LPARAM) -> BOOL {
+        let state = unsafe { &mut *(lparam.0 as *mut EnumState) };
+        let class_name = window_class_name(hwnd);
+        if !is_screenshot_overlay_class(&class_name) {
+            return BOOL(1);
+        }
+
+        let mut owner_pid = 0u32;
+        unsafe {
+            GetWindowThreadProcessId(hwnd, Some(&mut owner_pid));
+        }
+        if owner_pid != state.pid {
+            return BOOL(1);
+        }
+        let owner = unsafe { GetWindow(hwnd, GW_OWNER).unwrap_or_default() };
+        if owner != state.base_window {
+            return BOOL(1);
+        }
+        if unsafe { !IsWindowVisible(hwnd).as_bool() || IsIconic(hwnd).as_bool() } {
+            return BOOL(1);
+        }
+
+        let mut rect = RECT::default();
+        if unsafe { GetWindowRect(hwnd, &mut rect).is_err() }
+            || !rects_intersect(state.base_rect, rect)
+        {
+            return BOOL(1);
+        }
+
+        state.overlays.push(OverlayWindow { rect });
+        BOOL(1)
+    }
+
+    let mut state = EnumState {
+        pid: std::process::id(),
+        base_window,
+        base_rect,
+        overlays: Vec::new(),
+    };
+    unsafe {
+        EnumWindows(
+            Some(enum_window),
+            LPARAM((&mut state as *mut EnumState) as isize),
+        )
+    }
+    .map_err(|err| PlatformError::Platform(format!("EnumWindows failed: {err}")))?;
+    Ok(state.overlays)
+}
+
+fn capture_screen_rect_rgba(
+    rect: windows::Win32::Foundation::RECT,
+) -> Result<image::RgbaImage, PlatformError> {
+    use windows::Win32::Graphics::Gdi::{
+        BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BitBlt, CreateCompatibleDC, CreateDIBSection,
+        DIB_RGB_COLORS, DeleteDC, DeleteObject, GetDC, HGDIOBJ, ReleaseDC, SRCCOPY, SelectObject,
+    };
+
+    let width = rect.right - rect.left;
+    let height = rect.bottom - rect.top;
+    if width <= 0 || height <= 0 {
+        return Err(PlatformError::Platform(format!(
+            "screen rect has empty bounds: {width}x{height}"
+        )));
+    }
+
+    unsafe {
+        let screen_dc = GetDC(None);
+        if screen_dc.is_invalid() {
+            return Err(PlatformError::Platform("GetDC(None) failed".to_string()));
+        }
+        let memory_dc = CreateCompatibleDC(Some(screen_dc));
+        if memory_dc.is_invalid() {
+            let _ = ReleaseDC(None, screen_dc);
+            return Err(PlatformError::Platform(
+                "CreateCompatibleDC failed".to_string(),
+            ));
+        }
+
+        let bitmap_info = BITMAPINFO {
+            bmiHeader: BITMAPINFOHEADER {
+                biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+                biWidth: width,
+                biHeight: -height,
+                biPlanes: 1,
+                biBitCount: 32,
+                biCompression: BI_RGB.0,
+                biSizeImage: 0,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let mut bits_ptr: *mut c_void = std::ptr::null_mut();
+        let bitmap = match CreateDIBSection(
+            Some(screen_dc),
+            &bitmap_info,
+            DIB_RGB_COLORS,
+            &mut bits_ptr,
+            None,
+            0,
+        ) {
+            Ok(bitmap) => bitmap,
+            Err(err) => {
+                let _ = DeleteDC(memory_dc);
+                let _ = ReleaseDC(None, screen_dc);
+                return Err(PlatformError::Platform(format!(
+                    "CreateDIBSection failed: {err}"
+                )));
+            }
+        };
+        let old_bitmap = SelectObject(memory_dc, HGDIOBJ(bitmap.0));
+        let copied = BitBlt(
+            memory_dc,
+            0,
+            0,
+            width,
+            height,
+            Some(screen_dc),
+            rect.left,
+            rect.top,
+            SRCCOPY,
+        )
+        .is_ok();
+
+        let result = if !copied || bits_ptr.is_null() {
+            Err(PlatformError::Platform("BitBlt failed".to_string()))
+        } else {
+            let byte_len = (width as usize)
+                .saturating_mul(height as usize)
+                .saturating_mul(4);
+            let bgra = std::slice::from_raw_parts(bits_ptr.cast::<u8>(), byte_len);
+            bgra_top_down_image(width as u32, height as u32, bgra)
+        };
+
+        if !old_bitmap.is_invalid() {
+            let _ = SelectObject(memory_dc, old_bitmap);
+        }
+        let _ = DeleteObject(HGDIOBJ(bitmap.0));
+        let _ = DeleteDC(memory_dc);
+        let _ = ReleaseDC(None, screen_dc);
+        result
+    }
+}
+
+fn is_screenshot_overlay_class(class_name: &str) -> bool {
+    matches!(
+        class_name,
+        "LingXiaTransparentTabbarOverlay"
+            | "LingXiaDeviceCapsule"
+            | "LingXiaDeviceCutout"
+            | "LingXiaDeviceAboutMask"
+            | "LingXiaDeviceAboutSheet"
+    )
+}
+
+fn rects_intersect(
+    a: windows::Win32::Foundation::RECT,
+    b: windows::Win32::Foundation::RECT,
+) -> bool {
+    a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top
+}
+
+fn window_class_name(hwnd: windows::Win32::Foundation::HWND) -> String {
+    use windows::Win32::UI::WindowsAndMessaging::GetClassNameW;
+
+    let mut buffer = vec![0u16; 128];
+    let copied = unsafe { GetClassNameW(hwnd, &mut buffer) };
+    if copied <= 0 {
+        return String::new();
+    }
+    String::from_utf16_lossy(&buffer[..copied as usize])
 }
 
 fn bgra_top_down_image(

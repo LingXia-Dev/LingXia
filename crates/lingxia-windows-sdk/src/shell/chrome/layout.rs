@@ -62,6 +62,7 @@ pub struct WindowsShellTabBarLayout {
     pub color: u32,
     pub selected_color: u32,
     pub background_color: u32,
+    pub background_transparent: bool,
     pub border_color: u32,
     pub selected_index: i32,
     pub items: Vec<WindowsShellTabBarItemLayout>,
@@ -101,4 +102,8 @@ pub struct WindowsShellWindowLayout {
     /// as the leading-edge app-menu button. Empty when the app declares none
     /// (the button then falls back to a monochrome glyph).
     pub app_icon_path: String,
+    /// Hide the window caption buttons and app-menu icon. Set when the window
+    /// is wrapped in a simulator device frame (the runner), whose own toolbar
+    /// owns the window controls — the framed screen stays chrome-free.
+    pub suppress_window_controls: bool,
 }

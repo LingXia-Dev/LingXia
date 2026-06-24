@@ -38,6 +38,12 @@ pub enum WindowsDesignIcon {
     FullscreenExit,
     SidebarCollapse,
     SidebarExpand,
+    Rotate,
+    CapsuleMenu,
+    CapsuleClose,
+    CleanCache,
+    Restart,
+    Uninstall,
 }
 
 impl WindowsDesignIcon {
@@ -60,6 +66,12 @@ impl WindowsDesignIcon {
             Self::FullscreenExit => "icon_fullscreen_exit.png",
             Self::SidebarCollapse => "icon_sidebar_collapse.png",
             Self::SidebarExpand => "icon_sidebar_expand.png",
+            Self::Rotate => "icon_rotate.png",
+            Self::CapsuleMenu => "icon_capsule_menu.png",
+            Self::CapsuleClose => "icon_capsule_close.png",
+            Self::CleanCache => "icon_clean_cache.png",
+            Self::Restart => "icon_restart.png",
+            Self::Uninstall => "icon_uninstall.png",
         }
     }
 }
@@ -138,6 +150,37 @@ fn design_icon_path(icon: WindowsDesignIcon) -> Option<PathBuf> {
         );
     }
     None
+}
+
+/// Loads a design icon as premultiplied ARGB pixels (top-down, row-major,
+/// `size * size` entries) for compositing directly onto a per-pixel-alpha
+/// layered surface, where `DrawIconEx` does not reliably write the alpha
+/// channel. `tint` recolors the icon (the PNG is a black silhouette + alpha).
+///
+/// Only the device-frame capsule composites onto a per-pixel-alpha layered
+/// surface, so this helper is gated to that feature.
+#[cfg(feature = "device-frame")]
+pub fn design_icon_argb_premultiplied(
+    icon: WindowsDesignIcon,
+    size: u32,
+    tint: Option<u32>,
+) -> Option<Vec<u32>> {
+    let image = image::open(design_icon_path(icon)?)
+        .ok()?
+        .resize_exact(size, size, image::imageops::FilterType::Lanczos3)
+        .into_rgba8();
+    let mut out = Vec::with_capacity((size * size) as usize);
+    for pixel in image.pixels() {
+        let [mut r, mut g, mut b, a] = pixel.0;
+        if let Some(rgb) = tint {
+            r = ((rgb >> 16) & 0xff) as u8;
+            g = ((rgb >> 8) & 0xff) as u8;
+            b = (rgb & 0xff) as u8;
+        }
+        let pm = |c: u8| c as u32 * a as u32 / 255;
+        out.push(((a as u32) << 24) | (pm(r) << 16) | (pm(g) << 8) | pm(b));
+    }
+    Some(out)
 }
 
 fn create_icon_from_png(path: &Path, size: u32, tint: Option<u32>) -> Result<isize, String> {

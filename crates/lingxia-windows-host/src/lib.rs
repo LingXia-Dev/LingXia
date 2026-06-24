@@ -315,6 +315,10 @@ pub enum WindowsChromeHit {
         click_command: Option<WindowsChromeCommand>,
     },
     Command(WindowsChromeCommand),
+    CommandWithContext {
+        command: WindowsChromeCommand,
+        context_menu: WindowsChromeCommand,
+    },
     Chrome,
 }
 

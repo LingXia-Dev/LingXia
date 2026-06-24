@@ -19,6 +19,14 @@
 //! full chrome repaint would draw over the control. The chrome painter
 //! calls [`exclude_active_inline_edit`] to clip the control's rect out of
 //! its repaints while an edit is active.
+//!
+//! The inline editor itself is shell-chrome infrastructure, but its only entry
+//! points (`begin_inline_edit`) are reached through the browser address bar or
+//! a terminal tab rename — so it is dead code when neither capability is built.
+#![cfg_attr(
+    not(any(feature = "browser-runtime", feature = "terminal-runtime")),
+    allow(dead_code)
+)]
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};

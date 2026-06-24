@@ -9,6 +9,12 @@ mod panel_activator;
 pub(super) use auxiliary::*;
 pub(super) use panel_activator::*;
 
+/// Phone bottom tab bar: 49px item strip plus a lower safe-area hit region.
+const BOTTOM_TAB_ICON_SIZE: i32 = 22;
+const BOTTOM_TAB_ITEM_HEIGHT: i32 = 49;
+const BOTTOM_TAB_ICON_TOP: i32 = 5;
+const BOTTOM_TAB_LABEL_TOP_GAP: i32 = 1;
+
 pub(super) fn draw_tab_bar(hdc: HDC, rect: RECT, tabbar: &WindowsShellTabBarLayout) {
     if matches!(
         tabbar.position,
@@ -18,8 +24,10 @@ pub(super) fn draw_tab_bar(hdc: HDC, rect: RECT, tabbar: &WindowsShellTabBarLayo
         return;
     }
 
-    fill_rect(hdc, rect, tabbar.background_color);
-    draw_tabbar_border(hdc, rect, tabbar);
+    if !tabbar.background_transparent {
+        fill_rect(hdc, rect, tabbar.background_color);
+        draw_tabbar_border(hdc, rect, tabbar);
+    }
 
     let count = tabbar.items.len();
     if count == 0 {
@@ -29,29 +37,58 @@ pub(super) fn draw_tab_bar(hdc: HDC, rect: RECT, tabbar: &WindowsShellTabBarLayo
     for (index, item) in tabbar.items.iter().enumerate() {
         let item_rect = tab_item_rect(rect, tabbar.position, count, index);
         let selected = tabbar.selected_index == index as i32;
-        if selected {
-            fill_rect(
-                hdc,
-                inset_rect(item_rect, 4, 5),
-                shell_palette().tab_selected_background,
-            );
-        }
-
-        let text_color = if selected {
+        let color = if selected {
             tabbar.selected_color
         } else {
             tabbar.color
         };
-        let mut label_rect = inset_rect(item_rect, 6, 4);
-        if matches!(tabbar.position, WindowsShellTabBarPosition::Bottom) {
-            label_rect.top += 6;
-        }
-        draw_text(hdc, &item.text, label_rect, text_color, DT_CENTER);
 
+        // Phone tab cell: the lxapp's pre-tinted icon stacked over its label,
+        // both centered. The bundle ships separate normal/selected icons, so the
+        // PNG is drawn as-is and only the label tracks `selected_color`.
+        let icon_path = if selected && !item.selected_icon_path.trim().is_empty() {
+            item.selected_icon_path.as_str()
+        } else {
+            item.icon_path.as_str()
+        };
+        let item_top = item_rect.top;
+        let item_bottom = (item_rect.top + BOTTOM_TAB_ITEM_HEIGHT).min(item_rect.bottom);
+        let center_x = (item_rect.left + item_rect.right) / 2;
+        let icon_top = item_top + BOTTOM_TAB_ICON_TOP;
+        let icon_rect = RECT {
+            left: center_x - BOTTOM_TAB_ICON_SIZE / 2,
+            top: icon_top,
+            right: center_x + BOTTOM_TAB_ICON_SIZE / 2,
+            bottom: icon_top + BOTTOM_TAB_ICON_SIZE,
+        };
+        let drew_icon = !icon_path.trim().is_empty()
+            && draw_tinted_icon_from_path(
+                hdc,
+                icon_path,
+                icon_rect,
+                BOTTOM_TAB_ICON_SIZE as u32,
+                color,
+            );
+
+        // Icon-less bars keep the label vertically centred; otherwise it sits
+        // just under the icon.
+        let label_rect = RECT {
+            left: item_rect.left,
+            top: if drew_icon {
+                icon_rect.bottom + BOTTOM_TAB_LABEL_TOP_GAP
+            } else {
+                item_top + 6
+            },
+            right: item_rect.right,
+            bottom: item_bottom - 2,
+        };
+        draw_text(hdc, &item.text, label_rect, color, DT_CENTER);
+
+        let badge_anchor = if drew_icon { icon_rect } else { item_rect };
         if let Some(badge) = item.badge.as_ref().filter(|badge| !badge.is_empty()) {
-            draw_badge(hdc, item_rect, badge);
+            draw_badge(hdc, badge_anchor, badge);
         } else if item.has_red_dot {
-            draw_red_dot(hdc, item_rect);
+            draw_red_dot(hdc, badge_anchor);
         }
     }
 }
@@ -264,6 +301,46 @@ fn draw_sidebar_rail(hdc: HDC, rect: RECT, tabbar: &WindowsShellTabBarLayout) {
             draw_default_app_icon(hdc, icon_rect);
         }
     }
+
+    // The new-tab "+" stays reachable while collapsed, mirroring the expanded
+    // auxiliary section (full browser environment only).
+    if tabbar.show_auxiliary_add {
+        draw_frame_button_glyph(
+            hdc,
+            GLYPH_ADD,
+            sidebar_rail_add_rect(rect, tabbar),
+            shell_palette().text_muted,
+        );
+    }
+
+    // The collapse/expand toggle (same `SidebarExpand` design icon the top bar
+    // uses when expanded) pinned to the bottom of the rail, so a collapsed rail
+    // is never a dead end.
+    draw_design_icon_button(
+        hdc,
+        sidebar_rail_expand_rect(rect),
+        WindowsDesignIcon::SidebarExpand,
+        shell_palette().text_muted,
+        18,
+    );
+}
+
+/// The collapse/expand toggle cell, pinned to the bottom of an icon rail.
+pub(super) fn sidebar_rail_expand_rect(rect: RECT) -> RECT {
+    let cell = SIDEBAR_RAIL_ITEM_SIZE;
+    let left = rect.left + (rect_width(&rect) - cell).max(0) / 2;
+    let bottom = rect.bottom - SIDEBAR_ITEM_GAP;
+    normalize_rect(RECT {
+        left,
+        top: bottom - cell,
+        right: left + cell,
+        bottom,
+    })
+}
+
+/// The new-tab "+" cell, one slot past the app icon and auxiliary items.
+pub(super) fn sidebar_rail_add_rect(rect: RECT, tabbar: &WindowsShellTabBarLayout) -> RECT {
+    sidebar_rail_item_rect(rect, 1 + tabbar.auxiliary_items.len())
 }
 
 pub(super) fn sidebar_rail_item_rect(rect: RECT, index: usize) -> RECT {

@@ -8,6 +8,7 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
 
+#[cfg(feature = "browser-runtime")]
 use lingxia_windows_host::post_to_window_thread;
 use lingxia_windows_host::{
     WindowsChromeAttachedLayout, WindowsChromeCommand, WindowsChromeHit, WindowsChromePanel,
@@ -38,12 +39,9 @@ pub(super) use drawing::*;
 pub use layout::*;
 use native_panel::*;
 use sidebar::*;
+#[cfg(feature = "browser-runtime")]
 pub use top_bar::begin_address_edit;
 use top_bar::*;
-
-/// GlobalNavButton (hamburger): the closest Fluent match to Arc's
-/// sidebar collapse/expand toggle.
-pub(super) const GLYPH_SIDEBAR_TOGGLE: &str = "\u{e700}";
 
 /// More (horizontal ellipsis): the app-menu button at the leading edge.
 /// Drawn as a subtle monochrome glyph so it sits cohesively in the same
@@ -166,6 +164,7 @@ pub(super) mod command_id {
     pub(super) const BROWSER_NEW_TAB: &str = "browser.new-tab";
     pub(super) const BROWSER_TAB_CLICK: &str = "browser.tab.click";
     pub(super) const BROWSER_TAB_CLOSE: &str = "browser.tab.close";
+    pub(super) const SIDEBAR_AUXILIARY_CONTEXT_MENU: &str = "sidebar.auxiliary.context-menu";
     pub(super) const BROWSER_PANEL_CLOSE: &str = "browser-panel.close";
     pub(super) const BROWSER_PANEL_NAV_BACK: &str = "browser-panel.nav.back";
     pub(super) const BROWSER_PANEL_NAV_FORWARD: &str = "browser-panel.nav.forward";
@@ -193,6 +192,20 @@ pub(super) fn chrome_command(
     payload: serde_json::Value,
 ) -> WindowsChromeHit {
     WindowsChromeHit::Command(WindowsChromeCommand::new(id).with_payload(payload))
+}
+
+pub(super) fn chrome_command_with_context(
+    id: impl Into<String>,
+    payload: serde_json::Value,
+    context_id: impl Into<String>,
+    context_payload: serde_json::Value,
+) -> WindowsChromeHit {
+    WindowsChromeHit::CommandWithContext {
+        command: WindowsChromeCommand::new(id).with_payload(payload),
+        context_menu: WindowsChromeCommand::new(context_id)
+            .with_payload(context_payload)
+            .with_screen_position(),
+    }
 }
 
 /// The shell's window chrome renderer, registered into `lingxia-webview`.
@@ -344,6 +357,7 @@ fn tabbar_requires_full_repaint(
         || old_tabbar.group_id != new_tabbar.group_id
         || old_tabbar.color != new_tabbar.color
         || old_tabbar.background_color != new_tabbar.background_color
+        || old_tabbar.background_transparent != new_tabbar.background_transparent
         || old_tabbar.border_color != new_tabbar.border_color
         || old_tabbar.items != new_tabbar.items
         || old_tabbar.collapsed != new_tabbar.collapsed
@@ -546,7 +560,9 @@ pub(super) fn compute_chrome_rects(client: RECT, layout: &WindowsShellWindowLayo
                     right: content.right,
                     bottom: content.bottom,
                 };
-                content.bottom = top;
+                if !tabbar.background_transparent {
+                    content.bottom = top;
+                }
                 rect
             }
         });
@@ -582,6 +598,51 @@ pub(super) fn compute_chrome_rects(client: RECT, layout: &WindowsShellWindowLayo
         navigation_bar: navigation_bar.map(normalize_rect),
         tab_bar: tab_bar.map(normalize_rect),
     }
+}
+
+pub(crate) fn transparent_tabbar_overlay_rect(
+    client: RECT,
+    layout: &WindowsWindowLayout,
+) -> Option<RECT> {
+    let layout = shell_layout(layout)?;
+    let tabbar = layout.tab_bar.as_ref()?;
+    if !tabbar.visible
+        || !tabbar.background_transparent
+        || !matches!(tabbar.position, WindowsShellTabBarPosition::Bottom)
+    {
+        return None;
+    }
+    compute_chrome_rects(client, layout).tab_bar
+}
+
+pub(crate) fn paint_transparent_tabbar_overlay(
+    hdc: HDC,
+    layout: &WindowsWindowLayout,
+    width: i32,
+    height: i32,
+) {
+    let Some(layout) = shell_layout(layout) else {
+        return;
+    };
+    let Some(tabbar) = layout.tab_bar.as_ref() else {
+        return;
+    };
+    if !tabbar.visible
+        || !tabbar.background_transparent
+        || !matches!(tabbar.position, WindowsShellTabBarPosition::Bottom)
+    {
+        return;
+    }
+    draw_tab_bar(
+        hdc,
+        RECT {
+            left: 0,
+            top: 0,
+            right: width,
+            bottom: height,
+        },
+        tabbar,
+    );
 }
 
 fn compute_attached_layout(
@@ -860,7 +921,11 @@ pub(super) fn draw_window_chrome(
     draw_top_bar_controls(hdc, state, &rects, layout);
     draw_panel_activators(hdc, client, &rects, layout);
     draw_maximized_native_panels(hdc, state);
-    draw_window_frame_buttons(hdc, state);
+    // A device-framed window's caption lives on the simulator toolbar, not the
+    // shell screen.
+    if !layout.suppress_window_controls {
+        draw_window_frame_buttons(hdc, state);
+    }
 }
 
 fn paint_native_panel_region(hdc: HDC, state: &WindowsChromeState, invalid: RECT) -> bool {
@@ -889,9 +954,12 @@ pub(super) fn chrome_hit_test(
     let client = state.client;
     let rects = chrome_rects_for_state(state, layout);
 
-    if let Some((button, _)) = window_frame_button_rects(client)
-        .into_iter()
-        .find(|(_, rect)| rect_contains(rect, point))
+    // Device-framed screens have no shell caption / app-menu (the simulator
+    // toolbar owns them), so skip those hit regions entirely.
+    if !layout.suppress_window_controls
+        && let Some((button, _)) = window_frame_button_rects(client)
+            .into_iter()
+            .find(|(_, rect)| rect_contains(rect, point))
     {
         return Some(WindowsChromeHit::FrameButton(button));
     }
@@ -901,7 +969,8 @@ pub(super) fn chrome_hit_test(
     }
 
     let controls = top_bar_controls(client, rects.top_bar, layout);
-    if let Some(app_icon) = controls.app_icon
+    if !layout.suppress_window_controls
+        && let Some(app_icon) = controls.app_icon
         && rect_contains(&app_icon, point)
     {
         // Carries the click's screen position so the runtime can anchor the
@@ -979,13 +1048,7 @@ pub(super) fn chrome_hit_test(
             WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right
         );
         if sidebar && (tabbar.collapsed || tabbar.icon_rail) {
-            let rail_top_strip = normalize_rect(RECT {
-                left: tabbar_rect.left,
-                top: tabbar_rect.top,
-                right: tabbar_rect.right,
-                bottom: (tabbar_rect.top + SHELL_TOP_BAR_HEIGHT).min(tabbar_rect.bottom),
-            });
-            if rect_contains(&rail_top_strip, point) {
+            if rect_contains(&sidebar_rail_expand_rect(tabbar_rect), point) {
                 return Some(chrome_command(command_id::SIDEBAR_TOGGLE, json!({})));
             }
             if rect_contains(&sidebar_rail_item_rect(tabbar_rect, 0), point) {
@@ -997,11 +1060,19 @@ pub(super) fn chrome_hit_test(
             }
             for (index, item) in tabbar.auxiliary_items.iter().enumerate() {
                 if rect_contains(&sidebar_rail_item_rect(tabbar_rect, 1 + index), point) {
-                    return Some(chrome_command(
+                    let payload = json!({ "tab_id": item.id.clone() });
+                    return Some(chrome_command_with_context(
                         command_id::BROWSER_TAB_CLICK,
-                        json!({ "tab_id": item.id.clone() }),
+                        payload.clone(),
+                        command_id::SIDEBAR_AUXILIARY_CONTEXT_MENU,
+                        payload,
                     ));
                 }
+            }
+            if tabbar.show_auxiliary_add
+                && rect_contains(&sidebar_rail_add_rect(tabbar_rect, tabbar), point)
+            {
+                return Some(chrome_command(command_id::BROWSER_NEW_TAB, json!({})));
             }
             return Some(WindowsChromeHit::Chrome);
         }
@@ -1216,6 +1287,7 @@ fn remember_panel_address_rect(hwnd: HWND, webtag_key: &str, rect: Option<RECT>)
 /// Starts an inline URL edit over a browser aside's address capsule, prefilled
 /// with `initial_text`. Returns `false` when no capsule was painted for
 /// `(window, webtag_key)`. Mirrors [`top_bar::begin_address_edit`] for the aside.
+#[cfg(feature = "browser-runtime")]
 pub fn begin_panel_address_edit(
     window: isize,
     webtag_key: &str,

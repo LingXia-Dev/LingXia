@@ -56,9 +56,16 @@ pub fn set_windows_app_menu_command_handler(handler: WindowsAppMenuCommandHandle
     if let Ok(mut slot) = slot.lock() {
         *slot = Some(handler.clone());
     }
+    // The device-frame toolbar routes its command ids through the same handler.
+    #[cfg(feature = "device-frame")]
     crate::device_frame::set_device_frame_command_handler(handler);
+    #[cfg(not(feature = "device-frame"))]
+    let _ = handler;
 }
 
+/// Re-applies the app menu to a host window. Only the device-frame facade
+/// triggers a refresh, so it's gated to that feature.
+#[cfg(feature = "device-frame")]
 pub(crate) fn refresh_host_window_menu(window: isize) {
     let _ = post_to_window_thread(
         window,

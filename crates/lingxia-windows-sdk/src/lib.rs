@@ -20,7 +20,7 @@ mod app_icon;
 mod app_menu;
 #[cfg(all(target_os = "windows", feature = "runtime"))]
 mod design_icons;
-#[cfg(all(target_os = "windows", feature = "runtime"))]
+#[cfg(all(target_os = "windows", feature = "device-frame"))]
 mod device_frame;
 #[cfg(all(target_os = "windows", feature = "runtime"))]
 mod media_preview;
@@ -28,7 +28,7 @@ mod media_preview;
 mod native_components;
 #[cfg(all(target_os = "windows", feature = "runtime"))]
 mod pull_to_refresh;
-#[cfg(all(target_os = "windows", feature = "browser-shell"))]
+#[cfg(all(target_os = "windows", feature = "shell-chrome"))]
 mod shell;
 #[cfg(all(target_os = "windows", feature = "browser-shell"))]
 mod tray_icon;
@@ -49,10 +49,17 @@ pub use design_icons::{
     WindowsDesignIcon, draw_windows_design_icon, draw_windows_design_icon_with_color,
     set_windows_design_icon_dir,
 };
-#[cfg(all(target_os = "windows", feature = "runtime"))]
+#[cfg(all(target_os = "windows", feature = "device-frame"))]
 pub use device_frame::{
-    WindowsDeviceFrame, WindowsDeviceFrameToolbar, open_current_page_devtools,
-    set_app_window_device_frame, set_initial_app_window_device_frame,
+    WindowsDeviceFrame, WindowsDeviceFrameBadge, WindowsDeviceFrameCutout,
+    WindowsDeviceFrameInfoSheet, WindowsDeviceFrameSheetAction, WindowsDeviceFrameToolbar,
+    open_current_page_devtools, set_app_window_device_frame, set_initial_app_window_device_frame,
+    show_device_frame_info_sheet,
+};
+#[cfg(all(target_os = "windows", feature = "shell-chrome"))]
+pub use shell::{
+    WindowsShellTabBarPosition, set_windows_default_shell_tabbar_position,
+    set_windows_shell_tabbar_position,
 };
 
 /// Host process description used to initialize the LingXia runtime.
@@ -127,7 +134,7 @@ pub fn init(app: WindowsApp) -> Result<String> {
     window_host::install_native_view_host();
     native_components::install();
     pull_to_refresh::install();
-    #[cfg(feature = "browser-shell")]
+    #[cfg(feature = "shell-chrome")]
     shell::install();
     app_menu::install_host_window_menu_support();
     install_current_thread_exit_handler();
@@ -139,7 +146,7 @@ pub fn init(app: WindowsApp) -> Result<String> {
     let asset_dir = platform.asset_dir().to_path_buf();
     set_windows_design_icon_dir(asset_dir.join("icons").join("design"));
     let home_app_id = lingxia::windows::init(platform).ok_or(WindowsHostError::MissingHomeApp)?;
-    #[cfg(feature = "browser-shell")]
+    #[cfg(feature = "shell-chrome")]
     shell::set_home_app_id(&home_app_id);
     if let Some(icon_path) = resolve_app_icon_path(&asset_dir, &home_app_id) {
         app_icon::set_app_icon_from_path(&icon_path).map_err(|message| {
@@ -172,7 +179,7 @@ pub fn init(app: WindowsApp) -> Result<String> {
     Ok(home_app_id)
 }
 
-#[cfg(all(target_os = "windows", feature = "browser-shell"))]
+#[cfg(all(target_os = "windows", feature = "shell-chrome"))]
 fn open_home_app(appid: &str) -> std::result::Result<(), String> {
     shell::open_home_app(appid)
 }
@@ -180,7 +187,7 @@ fn open_home_app(appid: &str) -> std::result::Result<(), String> {
 #[cfg(all(
     target_os = "windows",
     feature = "runtime",
-    not(feature = "browser-shell")
+    not(feature = "shell-chrome")
 ))]
 fn open_home_app(appid: &str) -> std::result::Result<(), String> {
     lingxia::windows::open_home_app(appid)

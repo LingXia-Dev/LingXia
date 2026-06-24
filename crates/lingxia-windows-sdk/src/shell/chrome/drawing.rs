@@ -14,7 +14,9 @@ use windows::Win32::Graphics::GdiPlus;
 use windows::Win32::UI::WindowsAndMessaging::{self, HICON};
 use windows::core::w;
 
-use super::icons::{cached_png_bytes_icon_handle, cached_png_icon_handle};
+use super::icons::{
+    cached_png_bytes_icon_handle, cached_png_icon_handle, cached_tinted_png_icon_handle,
+};
 use super::*;
 
 /// Chrome text font ("Segoe UI" at the shell text size/weight) sized for
@@ -322,9 +324,22 @@ pub(in crate::shell) fn draw_icon_from_path(hdc: HDC, path: &str, rect: RECT, si
     draw_icon_handle(hdc, handle, rect)
 }
 
+pub(in crate::shell) fn draw_tinted_icon_from_path(
+    hdc: HDC,
+    path: &str,
+    rect: RECT,
+    size: u32,
+    rgb: u32,
+) -> bool {
+    let Some(handle) = cached_tinted_png_icon_handle(path, size, rgb) else {
+        return false;
+    };
+    draw_icon_handle(hdc, handle, rect)
+}
+
 /// Absolute path to the LingXia icon, copied next to the app by the CLI
 /// (`<asset_dir>/icons/lingxia.png`) and loaded from disk like every other
-/// sidebar icon — set once the shell knows its asset dir.
+/// sidebar icon - set once the shell knows its asset dir.
 static DEFAULT_ICON_PATH: OnceLock<Mutex<Option<String>>> = OnceLock::new();
 
 /// Records the resolved path of the LingXia icon (from the runtime, which
@@ -343,7 +358,7 @@ fn default_icon_path() -> Option<String> {
         .and_then(|slot| slot.clone())
 }
 
-/// Draws the LingXia icon into `rect` — the default icon for sidebar entries
+/// Draws the LingXia icon into `rect` - the default icon for sidebar entries
 /// with no icon of their own (lxapp items / browser tabs that report none,
 /// built-in/internal pages). Loaded from the CLI-copied asset path; returns
 /// `false` when no asset dir is known yet or the file is missing.

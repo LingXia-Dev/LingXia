@@ -72,6 +72,13 @@ fn handle_toolbar_click(frame: HWND, x: i32, y: i32) {
             return;
         };
         show_selector_menu(frame, content, &layout, &toolbar);
+    } else if point_in_rect(&layout.rotate_rect, x, y)
+        && let Some(command) = spec
+            .toolbar
+            .as_ref()
+            .and_then(|toolbar| toolbar.rotate_command)
+    {
+        dispatch_device_frame_command(command);
     } else if point_in_rect(&layout.action_rect, x, y)
         && let Some(command) = spec.toolbar.and_then(|toolbar| toolbar.action_command)
     {
@@ -91,6 +98,17 @@ fn show_selector_menu(
         return;
     };
     for item in &toolbar.selector_items {
+        if item.id == 0 {
+            unsafe {
+                let _ = WindowsAndMessaging::AppendMenuW(
+                    popup,
+                    WindowsAndMessaging::MF_SEPARATOR,
+                    0,
+                    PCWSTR::null(),
+                );
+            }
+            continue;
+        }
         let mut flags = WindowsAndMessaging::MF_STRING;
         if item.checked {
             flags |= WindowsAndMessaging::MF_CHECKED;
@@ -160,6 +178,7 @@ unsafe extern "system" fn frame_proc(
             if point_in_rect(&layout.close_rect, x, y)
                 || point_in_rect(&layout.minimize_rect, x, y)
                 || point_in_rect(&layout.selector_rect, x, y)
+                || point_in_rect(&layout.rotate_rect, x, y)
                 || point_in_rect(&layout.action_rect, x, y)
             {
                 WindowsAndMessaging::HTCLIENT
