@@ -217,7 +217,7 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_lingxiaInit<'a>(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_app_NativeApi_emitSdkLog(
+pub extern "system" fn Java_com_lingxia_app_NativeApi_writeLog(
     mut env: EnvUnowned,
     _class: JClass,
     level: jint,
@@ -231,7 +231,7 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_emitSdkLog(
         let appid: String = appid.try_to_string(env)?;
         let path: String = path.try_to_string(env)?;
         let message: String = message.try_to_string(env)?;
-        Ok(crate::logging::emit_sdk_log(
+        Ok(crate::logging::forward_host_log(
             level, &category, &appid, &path, &message,
         ))
     })

@@ -150,12 +150,12 @@ declare module 'liblingxia.so' {
   export function resolveLxUri(appid: string, input: string): string | null;
 
   /**
-   * Emit an SDK-side log entry into the Rust log pipeline.
+   * Forward a host-side log entry into the Rust log pipeline.
    *
    * level: 0=verbose, 1=debug, 2=info, 3=warn, 4=error.
    * Returns false when the native log pipeline is not initialized or level is invalid.
    */
-  export function emitSdkLog(
+  export function writeLog(
     level: number,
     category: string,
     appid: string,

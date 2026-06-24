@@ -60,12 +60,12 @@ pub fn register_downstream_logger(
         .map_err(|_| DownstreamLoggerError::AlreadyRegistered)
 }
 
-/// Emit a log entry from non-Rust SDK code through the Rust log pipeline.
+/// Forward a log record originating in host (non-Rust) code into the Rust log pipeline.
 ///
 /// The `level` value is the raw FFI contract: 0=verbose, 1=debug, 2=info,
 /// 3=warn, 4=error. SDK-facing wrappers should hide these integer values
 /// behind platform-native enums.
-pub(crate) fn emit_sdk_log(
+pub(crate) fn forward_host_log(
     level: i32,
     category: &str,
     appid: &str,

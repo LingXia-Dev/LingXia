@@ -149,14 +149,14 @@ pub fn lingxia_init(
 }
 
 #[napi]
-pub fn emit_sdk_log(
+pub fn write_log(
     level: i32,
     category: String,
     appid: String,
     path: String,
     message: String,
 ) -> bool {
-    crate::logging::emit_sdk_log(level, &category, &appid, &path, &message)
+    crate::logging::forward_host_log(level, &category, &appid, &path, &message)
 }
 
 /// Register custom schemes (must be called before WebEngine initialization)
