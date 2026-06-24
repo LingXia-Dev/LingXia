@@ -6,8 +6,10 @@ use crate::types::{
 };
 
 pub(crate) const LINGXIA_SCHEME: &str = "lingxia";
-const BROWSER_IN_WEBVIEW_SCHEMES: &[&str] = &["http", "https", "lx", "lingxia"];
-const BROWSER_NON_EXTERNAL_SCHEMES: &[&str] = &["about", "data", "blob", "javascript", "file"];
+// `file` loads in-webview so the user can open local files from the address bar
+// (the WKWebView still gates actual reads to the granted directory).
+const BROWSER_IN_WEBVIEW_SCHEMES: &[&str] = &["http", "https", "lx", "lingxia", "file"];
+const BROWSER_NON_EXTERNAL_SCHEMES: &[&str] = &["about", "data", "blob", "javascript"];
 
 /// Extract the (lowercased) scheme from a URL-like string, or `None` if the
 /// text before the first `:` is not a valid scheme.
@@ -306,5 +308,16 @@ mod tests {
         assert_eq!(is_lingxia_startup_url("lingxia://"), Some(true));
         assert_eq!(is_lingxia_startup_url("lingxia://downloads"), Some(false));
         assert_eq!(is_lingxia_startup_url("https://example.com"), None);
+    }
+
+    #[test]
+    fn browser_nav_policy_allows_file_in_webview() {
+        // Local files load in-webview (file is no longer a denied non-external scheme).
+        let response = handle_browser_navigation_policy(BrowserNavigationPolicyRequest {
+            raw_url: "file:///Users/me/page.html".to_string(),
+            has_user_gesture: false,
+            is_main_frame: true,
+        });
+        assert_eq!(response.decision, BrowserNavigationPolicyDecision::InWebview);
     }
 }

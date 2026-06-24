@@ -815,7 +815,13 @@ final class BrowserTabCoordinator: NSObject {
         guard let webView = activeWebView,
               let url = URL(string: urlString) else { return false }
         addressField.stringValue = urlString
-        webView.load(URLRequest(url: url))
+        // file:// needs loadFileURL (granting read access to its directory); a normal
+        // request is refused by WKWebView.
+        if url.isFileURL {
+            webView.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
+        } else {
+            webView.load(URLRequest(url: url))
+        }
         return true
     }
 
