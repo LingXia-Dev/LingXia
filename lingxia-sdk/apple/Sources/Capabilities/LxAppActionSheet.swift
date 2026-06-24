@@ -1,5 +1,4 @@
 import Foundation
-import os.log
 import CLingXiaSwiftAPI
 import CLingXiaRustAPI
 
@@ -8,8 +7,6 @@ import UIKit
 #endif
 
 class LxAppActionSheet {
-
-    private static let log = OSLog(subsystem: "LingXia", category: "ActionSheet")
 
     static func showActionSheet(options: ActionSheetOptions, callback_id: UInt64) {
         var optionsArray: [String] = []
@@ -55,7 +52,7 @@ class LxAppActionSheet {
         guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
               let window = windowScene.windows.first(where: { $0.isKeyWindow }) ?? windowScene.windows.first,
               let rootViewController = window.rootViewController else {
-            os_log("Could not find root view controller", log: log, type: .error)
+            LXLog.error("Could not find root view controller", category: "ActionSheet")
             return
         }
 

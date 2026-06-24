@@ -2,11 +2,8 @@
 import UIKit
 import CLingXiaSwiftAPI
 import CLingXiaRustAPI
-import os.log
 
 extension LxAppMedia {
-    nonisolated private static let previewLog = OSLog(subsystem: "LingXia", category: "MediaPreview")
-
     // Strong reference to keep preview window alive
     @MainActor fileprivate static var previewWindow: UIWindow?
     @MainActor fileprivate static var activePreviewController: MediaPreviewViewController?
@@ -29,7 +26,7 @@ extension LxAppMedia {
     nonisolated static func previewMedia(items_json: RustStr, callback_id: UInt64, presented_callback_id: UInt64, change_callback_id: UInt64) -> Bool {
         let itemsJson = items_json.toString()
         guard let jsonData = itemsJson.data(using: .utf8) else {
-            os_log(.error, log: previewLog, "Failed to convert items JSON to data")
+            LXLog.error("Failed to convert items JSON to data", category: "MediaPreview")
             return false
         }
 
@@ -37,11 +34,11 @@ extension LxAppMedia {
         do {
             request = try JSONDecoder().decode(PreviewMediaRequestPayload.self, from: jsonData)
         } catch {
-            os_log(.error, log: previewLog, "Failed to decode items JSON: %{public}@", error.localizedDescription)
+            LXLog.error("Failed to decode items JSON: \(error.localizedDescription)", category: "MediaPreview")
             return false
         }
         guard !request.sources.isEmpty else {
-            os_log(.error, log: previewLog, "previewMedia called with empty items")
+            LXLog.error("previewMedia called with empty items", category: "MediaPreview")
             return false
         }
 
@@ -64,7 +61,7 @@ extension LxAppMedia {
             .first(where: { $0.activationState == .foregroundActive })
             ?? UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first
         else {
-            os_log(.error, log: previewLog, "No active window scene for previewMedia")
+            LXLog.error("No active window scene for previewMedia", category: "MediaPreview")
             return false
         }
 
@@ -1082,7 +1079,6 @@ private final class MediaPreviewVideoController: UIViewController, IndexedPrevie
     private let endedHandler: () -> Void
     private let errorHandler: () -> Void
     private let scrubStateChanged: (Bool) -> Void
-    private let log = OSLog(subsystem: "LingXia", category: "MediaPreview")
 
     private var player: LxMediaPlayer?
     private let firstFrameImageView = UIImageView()
@@ -1228,7 +1224,7 @@ private final class MediaPreviewVideoController: UIViewController, IndexedPrevie
             switch event {
             case .play:
                 self?.hasStartedPlayback = true
-                os_log("MediaPreview player event: play", log: self?.log ?? .default, type: .info)
+                LXLog.info("MediaPreview player event: play", category: "MediaPreview")
             case .playing:
                 // .playing fires when AVPlayer actually starts rendering frames
                 // — that's the right moment to hand off from the still poster
@@ -1241,7 +1237,7 @@ private final class MediaPreviewVideoController: UIViewController, IndexedPrevie
             case .ended:
                 self?.endedHandler()
             case .error(let code, let message):
-                os_log("Error: %{public}@ - %{public}@", log: self?.log ?? .default, type: .error, code, message)
+                LXLog.error("Error: \(code) - \(message)", category: "MediaPreview")
                 self?.errorHandler()
             default:
                 break

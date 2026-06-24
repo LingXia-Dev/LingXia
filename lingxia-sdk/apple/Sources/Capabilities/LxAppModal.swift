@@ -1,5 +1,4 @@
 import Foundation
-import os.log
 import CLingXiaSwiftAPI
 import CLingXiaRustAPI
 
@@ -9,9 +8,6 @@ import UIKit
 
 /// Modal dialog management for LingXia applications
 class LxAppModal {
-
-    /// Shared logger for modal operations
-    private static let log = OSLog(subsystem: "LingXia", category: "Modal")
 
     /// Show modal with ModalOptions (FFI interface)
     static func showModal(options: ModalOptions, callback_id: UInt64) {
@@ -61,7 +57,7 @@ class LxAppModal {
     guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
           let window = windowScene.windows.first(where: { $0.isKeyWindow }) ?? windowScene.windows.first,
           let rootViewController = window.rootViewController else {
-        os_log("Could not find root view controller", log: LxAppModal.log, type: .error)
+        LXLog.error("Could not find root view controller", category: "Modal")
         return
     }
 

@@ -1,5 +1,4 @@
 import Foundation
-import os.log
 import CLingXiaSwiftAPI
 import CLingXiaRustAPI
 
@@ -17,7 +16,6 @@ import AVFoundation
 
 @MainActor
 final class LxAppMedia {
-    nonisolated static let log = OSLog(subsystem: "LingXia", category: "Media")
 }
 
 #if os(iOS)
@@ -479,7 +477,7 @@ extension LxAppMedia {
         outputURL: URL? = nil
     ) -> URL? {
         guard let image = UIImage(contentsOfFile: sourceURL.path) else {
-            os_log(.error, log: log, "Failed to load image from %@", sourceURL.path)
+            LXLog.error("Failed to load image from \(sourceURL.path)", category: "Media")
             return nil
         }
 
@@ -529,7 +527,7 @@ extension LxAppMedia {
         let compressionQuality = CGFloat(clampedQuality) / 100.0
 
         guard let jpegData = processedImage.jpegData(compressionQuality: compressionQuality) else {
-            os_log(.error, log: log, "Failed to compress image to JPEG")
+            LXLog.error("Failed to compress image to JPEG", category: "Media")
             return nil
         }
 
@@ -556,7 +554,7 @@ extension LxAppMedia {
             try jpegData.write(to: destinationURL, options: .atomic)
             return true
         } catch {
-            os_log(.error, log: log, "Failed to write compressed image: %@", error.localizedDescription)
+            LXLog.error("Failed to write compressed image: \(error.localizedDescription)", category: "Media")
             return false
         }
     }
@@ -1358,7 +1356,7 @@ extension LxAppMedia {
         only_from_camera: Bool,
         callback_id: UInt64
     ) -> Bool {
-        os_log("scanCode not implemented on macOS", log: log, type: .error)
+        LXLog.error("scanCode not implemented on macOS", category: "Media")
         return false
     }
 
@@ -1367,7 +1365,7 @@ extension LxAppMedia {
         destination_path: RustStr,
         media_type: Int32
     ) -> Bool {
-        os_log("copyAlbumMediaToFile not implemented on macOS", log: log, type: .error)
+        LXLog.error("copyAlbumMediaToFile not implemented on macOS", category: "Media")
         return false
     }
 }
