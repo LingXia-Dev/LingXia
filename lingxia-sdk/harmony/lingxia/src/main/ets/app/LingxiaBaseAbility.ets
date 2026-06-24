@@ -1,7 +1,7 @@
 import { AbilityConstant, UIAbility, Want } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { window, display } from '@kit.ArkUI';
-import { LxApp } from '../lxapp/LxApp';
+import { Lingxia } from './Lingxia';
 import {
   getCurrentLxapp,
   onLxappEvent,
@@ -337,12 +337,12 @@ export class LingxiaBaseAbility extends UIAbility {
 
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     super.onCreate(want, launchParam);
-    LxApp.handleWant(want);
+    Lingxia.handleWant(want);
   }
 
   onNewWant(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     super.onNewWant(want, launchParam);
-    LxApp.handleWant(want);
+    Lingxia.handleWant(want);
   }
 
   onDestroy(): void {

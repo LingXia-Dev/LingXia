@@ -1,6 +1,6 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { scanBarcode, scanCore } from '@kit.ScanKit';
-import { LxApp } from '../LxApp';
+import { Lingxia } from '../../app/Lingxia';
 import { onCallback } from 'liblingxia.so';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { PermissionManager } from '../../app/PermissionManager';
@@ -51,7 +51,7 @@ export class LxAppScan {
 
   private static async startScan(options: ScanCodePayload): Promise<void> {
     try {
-      if (!LxApp.context) {
+      if (!Lingxia.context) {
         onCallback(String(options.callbackId), false, '1000');
         return;
       }
@@ -73,7 +73,7 @@ export class LxAppScan {
 
       // Start scan and normalize to a single result without using 'any' or index access
       interface ScanResultLike { originalValue?: string; value?: string; text?: string; scanType?: scanCore.ScanType; }
-      const rawRes: scanBarcode.ScanResult | scanBarcode.ScanResult[] = await scanBarcode.startScanForResult(LxApp.context, scanOptions);
+      const rawRes: scanBarcode.ScanResult | scanBarcode.ScanResult[] = await scanBarcode.startScanForResult(Lingxia.context, scanOptions);
       let res: ScanResultLike | undefined;
       if (Array.isArray(rawRes)) {
         for (const item of (rawRes as Array<ScanResultLike>)) { res = item; break; }

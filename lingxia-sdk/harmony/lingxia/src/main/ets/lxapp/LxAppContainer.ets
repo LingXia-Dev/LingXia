@@ -3,6 +3,7 @@ import { webview } from '@kit.ArkWeb';
 import { window, display } from '@kit.ArkUI';
 import { common } from '@kit.AbilityKit';
 import { LxApp } from './LxApp';
+import { Lingxia } from '../app/Lingxia';
 import { LxAppSurface } from './APIs/LxAppSurface';
 import {
   findWebview,
@@ -131,13 +132,13 @@ export struct LxAppContainer {
           setTimeout(() => {
             hilog.info(DOMAIN, TAG, `Triggering onPageShow for first page: ${appId}:${actualPath}`);
             onPageShow(appId, actualPath);
-            LxApp.updateOrientationUI(appId, actualPath);
+            Lingxia.updateOrientationUI(appId, actualPath);
           }, 100);
         } else {
           // Subsequent pages without delay
           hilog.info(DOMAIN, TAG, `Triggering onPageShow for: ${appId}:${actualPath}`);
           onPageShow(appId, actualPath);
-          LxApp.updateOrientationUI(appId, actualPath);
+          Lingxia.updateOrientationUI(appId, actualPath);
         }
       }
     } else {
@@ -1253,7 +1254,7 @@ export struct LxAppContainer {
 
     this.pageShowTriggered.add(pageKey);
     onPageShow(appId, path);
-    LxApp.updateOrientationUI(appId, path);
+    Lingxia.updateOrientationUI(appId, path);
   }
 
   private handleNavigationBack(isHomeButton: boolean = false) {

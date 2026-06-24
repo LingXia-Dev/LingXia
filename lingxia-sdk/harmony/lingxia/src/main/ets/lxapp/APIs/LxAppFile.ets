@@ -3,7 +3,7 @@ import { Want } from '@kit.AbilityKit';
 import wantConstant from '@ohos.ability.wantConstant';
 import common from '@ohos.app.ability.common';
 import picker from '@ohos.file.picker';
-import { LxApp } from '../LxApp';
+import { Lingxia } from '../../app/Lingxia';
 import { PdfSingleViewerOverlayManager } from './document/PdfSinglePageViewerOverlay';
 import { LocalFileChooserOverlayManager, resolveLocalFileChooserRoot } from './file/LocalFileChooserOverlay';
 import { MediaPreviewOverlayManager, MediaPreviewPageParams, MediaPreviewItem } from './media/MediaPreviewOverlay';
@@ -32,7 +32,7 @@ export class LxAppFile {
       hilog.warn(DOMAIN, TAG, `${caller}: empty file path`);
       return undefined;
     }
-    const context = LxApp.context;
+    const context = Lingxia.context;
     if (!context) {
       hilog.warn(DOMAIN, TAG, `${caller}: UIAbility context unavailable`);
       return undefined;
@@ -99,7 +99,7 @@ export class LxAppFile {
     defaultPath: string,
     filtersJson: string
   ): boolean {
-    const context = LxApp.context;
+    const context = Lingxia.context;
     const id = String(callbackId ?? '').trim();
     if (!context || !id) {
       if (id) {
@@ -145,7 +145,7 @@ export class LxAppFile {
     title: string,
     defaultPath: string
   ): boolean {
-    const context = LxApp.context;
+    const context = Lingxia.context;
     const id = String(callbackId ?? '').trim();
     if (!context || !id) {
       if (id) {

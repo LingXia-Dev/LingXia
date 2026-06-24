@@ -8,7 +8,7 @@ import { image } from '@kit.ImageKit';
 import { systemShare } from '@kit.ShareKit';
 import util from '@ohos.util';
 import { onCallback } from 'liblingxia.so';
-import { LxApp } from '../LxApp';
+import { Lingxia } from '../../app/Lingxia';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.Share';
@@ -38,7 +38,7 @@ export class LxAppShare {
     filesJson: string,
     callbackId: string
   ): boolean {
-    const context = LxApp.context;
+    const context = Lingxia.context;
     const id = String(callbackId ?? '').trim();
     if (!context || !id) {
       if (id) {
