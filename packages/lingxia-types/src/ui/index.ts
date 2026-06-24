@@ -38,13 +38,33 @@ export interface ActionSheetResult {
 export type PageQueryValue = string | number | boolean | null | undefined;
 export type PageQuery = Record<string, PageQueryValue>;
 
+/**
+ * Target page for `navigateTo` / `redirectTo` / `switchTab` / `reLaunch`.
+ *
+ * Pass **exactly one** of `page` or `path` — there is **no `url` field**:
+ * - `page` — a configured page **name** from `lingxia.yaml` / `lxapp.json`
+ *   (e.g. `"pullToRefresh"`), resolved to its route by the page registry.
+ * - `path` — the full page **route**, e.g. `"/pages/pulltorefresh/index"`.
+ *
+ * Both are discoverable with `lxdev lxapp pages`, which lists every page's
+ * `name` and `path`; `lxdev lxapp nav to|relaunch|redirect|switch-tab <name>`
+ * drives navigation by name when automating.
+ */
 export type PageTargetOptions =
   | {
+      /**
+       * Configured page **name** from `lingxia.yaml` / `lxapp.json`
+       * (e.g. `"pullToRefresh"`). Mutually exclusive with `path`.
+       */
       page: string;
       path?: never;
       query?: PageQuery;
     }
   | {
+      /**
+       * Full page **route**, e.g. `"/pages/pulltorefresh/index"`.
+       * Mutually exclusive with `page`.
+       */
       path: string;
       page?: never;
       query?: PageQuery;

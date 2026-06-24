@@ -9,6 +9,7 @@ mod settings;
 
 pub(crate) use operations::*;
 pub(crate) use scripts::*;
+pub use settings::set_windows_context_menu_refresh_provider;
 pub(crate) use settings::*;
 
 /// Custom schemes registered on every WebView2 environment.

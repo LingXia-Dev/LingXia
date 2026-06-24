@@ -8,6 +8,7 @@ common:
   delete: "Delete"
   done: "Done"
   close: "Close"
+  refresh: "Refresh"
 
 # Capsule Menu
 capsule:

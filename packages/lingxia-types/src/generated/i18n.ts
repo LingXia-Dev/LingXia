@@ -39,6 +39,7 @@ export const I18N_KEYS = [
   "common_done",
   "common_loading",
   "common_ok",
+  "common_refresh",
   "date_last_30_days",
   "date_last_7_days",
   "date_last_month",

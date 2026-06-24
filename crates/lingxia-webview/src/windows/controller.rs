@@ -1,4 +1,4 @@
-﻿//! WebView controller: UI-thread lifecycle, command dispatch,
+//! WebView controller: UI-thread lifecycle, command dispatch,
 //! the message loop, and the `WebViewController` implementation.
 
 use super::*;
@@ -494,11 +494,12 @@ pub(crate) fn run_ui_thread_inner(
         }
         configure_controller(&controller)?;
         configure_settings(&webview, &effective_options)?;
-        configure_context_menu(&webview, &effective_options)?;
+        let menu_appid = webtag.extract_appid();
+        let menu_path = webtag.extract_parts().1;
+        configure_context_menu(&webview, &env, &menu_appid, &menu_path, &effective_options)?;
         // lxapp pages (non-relaxed) get the runtime-owned selection/copy baseline;
         // browser tabs render arbitrary external pages and must not be restyled.
-        let inject_platform_baseline =
-            effective_options.profile != SecurityProfile::BrowserRelaxed;
+        let inject_platform_baseline = effective_options.profile != SecurityProfile::BrowserRelaxed;
         install_document_scripts(&webview, inject_platform_baseline)?;
         let memory_pages = Arc::new(Mutex::new(HashMap::new()));
         register_event_handlers(

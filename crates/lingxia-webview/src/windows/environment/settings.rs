@@ -97,15 +97,57 @@ const EDITING_ITEM_NAMES: &[&str] = &[
     "redo",
 ];
 
+/// Supplies the lxapp page "Refresh" right-click entry. Registered by the host
+/// SDK, which knows pull-down-refresh state, i18n, and how to fire a refresh;
+/// lingxia-webview sits below that layer, so the context-menu handler calls back
+/// through this hook. `label` returns `Some(localized title)` for a page that
+/// opted into pull-down refresh (else `None`); `trigger` starts a refresh.
+type RefreshMenuLabelFn = Arc<dyn Fn(&str, &str) -> Option<String> + Send + Sync>;
+type RefreshMenuTriggerFn = Arc<dyn Fn(&str, &str) + Send + Sync>;
+static REFRESH_MENU_PROVIDER: Mutex<Option<(RefreshMenuLabelFn, RefreshMenuTriggerFn)>> =
+    Mutex::new(None);
+
+/// Register the pull-down-refresh context-menu provider (host SDK -> webview).
+pub fn set_windows_context_menu_refresh_provider(
+    label: RefreshMenuLabelFn,
+    trigger: RefreshMenuTriggerFn,
+) {
+    if let Ok(mut slot) = REFRESH_MENU_PROVIDER.lock() {
+        *slot = Some((label, trigger));
+    }
+}
+
+fn refresh_menu_label(appid: &str, path: &str) -> Option<String> {
+    let provider = REFRESH_MENU_PROVIDER
+        .lock()
+        .ok()
+        .and_then(|slot| slot.clone())?;
+    (provider.0)(appid, path)
+}
+
+fn trigger_refresh_menu(appid: &str, path: &str) {
+    let provider = REFRESH_MENU_PROVIDER
+        .lock()
+        .ok()
+        .and_then(|slot| slot.clone());
+    if let Some((_, trigger)) = provider {
+        trigger(appid, path);
+    }
+}
+
 /// Trim the WebView2 context menu for lxapp pages.
 ///
 /// lxapp pages are not a browser, so WebView2's default right-click menu is
 /// inappropriate — the macOS SDK strips it down to Copy plus the standard editing
 /// commands. We do the same here by handling `ContextMenuRequested` and removing
-/// every non-editing item from the menu before it is shown. Browser tabs (the
-/// relaxed profile) keep the full default menu.
+/// every non-editing item from the menu before it is shown. On a page that opted
+/// into pull-down refresh we then prepend an app-level "Refresh" entry (matching
+/// the macOS lxapp menu). Browser tabs (the relaxed profile) keep the full menu.
 pub(crate) fn configure_context_menu(
     webview: &ICoreWebView2,
+    env: &ICoreWebView2Environment,
+    appid: &str,
+    path: &str,
     effective_options: &EffectiveWebViewCreateOptions,
 ) -> StdResult<()> {
     if effective_options.profile == SecurityProfile::BrowserRelaxed {
@@ -122,6 +164,9 @@ pub(crate) fn configure_context_menu(
         }
     };
 
+    let env = env.clone();
+    let appid = appid.to_string();
+    let path = path.to_string();
     let handler = ContextMenuRequestedEventHandler::create(Box::new(move |_sender, args| {
         let Some(args) = args else {
             return Ok(());
@@ -129,6 +174,7 @@ pub(crate) fn configure_context_menu(
         unsafe {
             let items = args.MenuItems()?;
             trim_to_editing_items(&items)?;
+            insert_refresh_item(&env, &items, &appid, &path)?;
         }
         Ok(())
     }));
@@ -140,6 +186,56 @@ pub(crate) fn configure_context_menu(
             .map_err(|err| {
                 WebViewError::WebView(format!("add_ContextMenuRequested failed: {err}"))
             })?;
+    }
+    Ok(())
+}
+
+/// On a pull-down-refresh page, prepend an app-level "Refresh" item (plus a
+/// separator) that fires `onPullDownRefresh`, mirroring the macOS lxapp menu.
+/// We deliberately do NOT keep WebView2's native Reload: a real reload re-fetches
+/// the lxapp bundle and drops runtime state.
+fn insert_refresh_item(
+    env: &ICoreWebView2Environment,
+    items: &ICoreWebView2ContextMenuItemCollection,
+    appid: &str,
+    path: &str,
+) -> WinResult<()> {
+    let Some(label) = refresh_menu_label(appid, path) else {
+        return Ok(());
+    };
+    // CreateContextMenuItem needs ICoreWebView2Environment9; skip on older runtimes.
+    let Ok(env9) = env.cast::<ICoreWebView2Environment9>() else {
+        return Ok(());
+    };
+    let no_icon: Option<&IStream> = None;
+    let label_w: Vec<u16> = label.encode_utf16().chain(std::iter::once(0)).collect();
+    unsafe {
+        let item = env9.CreateContextMenuItem(
+            PCWSTR(label_w.as_ptr()),
+            no_icon,
+            COREWEBVIEW2_CONTEXT_MENU_ITEM_KIND_COMMAND,
+        )?;
+        let appid = appid.to_string();
+        let path = path.to_string();
+        let selected = CustomItemSelectedEventHandler::create(Box::new(move |_item, _args| {
+            trigger_refresh_menu(&appid, &path);
+            Ok(())
+        }));
+        let mut token = 0i64;
+        item.add_CustomItemSelected(&selected, &mut token)?;
+        items.InsertValueAtIndex(0, &item)?;
+
+        // Separate Refresh from the editing items only when some remain.
+        let mut count = 0u32;
+        items.Count(&mut count)?;
+        if count > 1 {
+            let separator = env9.CreateContextMenuItem(
+                PCWSTR::null(),
+                no_icon,
+                COREWEBVIEW2_CONTEXT_MENU_ITEM_KIND_SEPARATOR,
+            )?;
+            items.InsertValueAtIndex(1, &separator)?;
+        }
     }
     Ok(())
 }
