@@ -28,9 +28,8 @@ const RUNNER_DEV_WS_URL_ENV: &str = "LINGXIA_DEV_WS_URL";
 const WINDOWS_APP_ICON_PATH_ENV: &str = "LINGXIA_APP_ICON_PATH";
 const REQUIRED_RUNNER_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-/// Windows runner: standalone executable crate built from the LingXia
-/// workspace on demand (see `build_windows_runner`).
-const RUNNER_WINDOWS_PACKAGE: &str = "lingxia-runner-windows";
+/// Windows runner: standalone executable installed by
+/// `tools/lingxia-runner/windows/install-local-runner.ps1`.
 const RUNNER_WINDOWS_BIN_NAME: &str = "lingxia-runner";
 const RUNNER_WINDOWS_PRODUCT_NAME: &str = "LingXia Runner";
 const RUNNER_WINDOWS_APP_ID: &str = "app.lingxia.runner";
@@ -973,7 +972,7 @@ fn ensure_valid_lxapp_dir(path: &Path) -> Result<()> {
     ))
 }
 
-fn launch_runner_for_lxapp(lxapp_path: &Path, ws_url: &str) -> Result<Child> {
+fn launch_runner_for_lxapp(lxapp_path: &Path, ws_url: &str) -> Result<RunnerProcess> {
     platform::apple::ensure_macos()?;
     ensure_valid_lxapp_dir(lxapp_path)?;
     let app_path = installed_runner_app_path()?;
@@ -1017,7 +1016,7 @@ fn launch_runner_for_lxapp(lxapp_path: &Path, ws_url: &str) -> Result<Child> {
     })?;
 
     println!("{} Launched {}", "[runner]".cyan(), app_path.display());
-    Ok(child)
+    Ok(RunnerProcess::Child(child))
 }
 
 /// Identity of the lxapp the Windows runner hosts, read from the built
@@ -1083,6 +1082,11 @@ fn prepare_windows_runner_assets(
     std::fs::write(&app_json_path, serde_json::to_vec_pretty(&app_json)?)
         .with_context(|| format!("Failed to write {}", app_json_path.display()))?;
 
+    let ui_json = windows_runner_ui_json(identity);
+    let ui_json_path = assets_dir.join("ui.json");
+    std::fs::write(&ui_json_path, serde_json::to_vec_pretty(&ui_json)?)
+        .with_context(|| format!("Failed to write {}", ui_json_path.display()))?;
+
     let runtime = crate::runtime::embedded_runtime(crate::runtime::RuntimeEcmaTarget::Es2020);
     let runtime_path = assets_dir.join("bridge-runtime.js");
     std::fs::write(&runtime_path, runtime.bytes)
@@ -1111,66 +1115,37 @@ fn prepare_windows_runner_assets(
     Ok(assets_dir)
 }
 
-/// LingXia workspace the Windows runner sources are built from. The CLI is
-/// compiled inside that workspace, so `CARGO_MANIFEST_DIR` (= `<workspace>/
-/// tools/lingxia-cli` at build time) anchors the lookup.
-fn windows_runner_workspace_root() -> Result<PathBuf> {
-    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let workspace_root = manifest_dir
-        .ancestors()
-        .nth(2)
-        .ok_or_else(|| anyhow!("Failed to resolve the LingXia workspace root"))?;
-    let runner_manifest = workspace_root
-        .join("tools")
-        .join("lingxia-runner")
-        .join("windows")
-        .join("Cargo.toml");
-    if !runner_manifest.exists() {
-        return Err(anyhow!(
-            "LingXia Runner sources not found: {}\n\
-             The Windows runner is built from the LingXia workspace this CLI was compiled in;\n\
-             keep that checkout available (or rebuild the CLI from your checkout).",
-            runner_manifest.display()
-        ));
-    }
-    Ok(workspace_root.to_path_buf())
+fn windows_runner_ui_json(identity: &WindowsRunnerLxAppIdentity) -> serde_json::Value {
+    serde_json::json!({
+        "launch": {
+            "initialSurface": identity.app_id,
+            "openOnLaunch": true
+        },
+        "surfaces": [{
+            "id": identity.app_id,
+            "role": "main",
+            "content": {
+                "kind": "lxapp",
+                "appId": identity.app_id
+            }
+        }],
+        "activators": []
+    })
 }
 
-/// Builds the Windows runner bin in release mode from the LingXia workspace
-/// and returns the executable path. Respects `CARGO_TARGET_DIR` (and the
-/// workspace's `.cargo/config.toml`) through `resolve_cargo_target_dir`.
-fn build_windows_runner() -> Result<PathBuf> {
-    let workspace_root = windows_runner_workspace_root()?;
-    let cargo_target_dir = crate::platform::resolve_cargo_target_dir(&workspace_root);
-
-    println!(
-        "{} Building Windows Runner from {}",
-        "[runner]".cyan(),
-        workspace_root.display()
-    );
-    let status = Command::new("cargo")
-        .current_dir(&workspace_root)
-        .env("CARGO_TARGET_DIR", &cargo_target_dir)
-        .args([
-            "build",
-            "--release",
-            "--package",
-            RUNNER_WINDOWS_PACKAGE,
-            "--bin",
-            RUNNER_WINDOWS_BIN_NAME,
-        ])
-        .status()
-        .context("Failed to execute cargo build for the Windows Runner")?;
-    if !status.success() {
-        return Err(anyhow!("Windows Runner cargo build failed"));
-    }
-
-    let exe_path = cargo_target_dir
-        .join("release")
-        .join(format!("{RUNNER_WINDOWS_BIN_NAME}.exe"));
+fn installed_windows_runner_exe_path() -> Result<PathBuf> {
+    let home = dirs::home_dir().ok_or_else(|| anyhow!("Failed to resolve home directory"))?;
+    let runner_dir = home
+        .join(".lingxia")
+        .join("runner")
+        .join(REQUIRED_RUNNER_VERSION);
+    let exe_path = runner_dir.join(format!("{RUNNER_WINDOWS_BIN_NAME}.exe"));
     if !exe_path.exists() {
         return Err(anyhow!(
-            "Windows Runner executable not found after build: {}",
+            "Windows LingXia Runner {} is not installed at {}.\n\
+             Install it from the LingXia workspace with:\n  \
+             powershell -ExecutionPolicy Bypass -File tools\\lingxia-runner\\windows\\install-local-runner.ps1",
+            REQUIRED_RUNNER_VERSION,
             exe_path.display()
         ));
     }
@@ -1178,33 +1153,224 @@ fn build_windows_runner() -> Result<PathBuf> {
 }
 
 /// Windows counterpart of `launch_runner_for_lxapp`: prepares the runner
-/// asset layout, builds the runner bin, and spawns it against the dev
-/// server. Env contract: `LINGXIA_ASSET_DIR` (host assets),
+/// asset layout and spawns the installed runner against the dev server. Env
+/// contract: `LINGXIA_ASSET_DIR` (host assets),
 /// `LINGXIA_LXAPP_PATH` (live lxapp bundle), and `LINGXIA_DEV_WS_URL`
 /// (devtool bridge). Host identity is generated into `app.json`.
-fn launch_windows_runner_for_lxapp(lxapp_path: &Path, ws_url: &str) -> Result<Child> {
+fn launch_windows_runner_for_lxapp(lxapp_path: &Path, ws_url: &str) -> Result<RunnerProcess> {
     ensure_valid_lxapp_dir(lxapp_path)?;
     let identity = read_windows_runner_lxapp_identity(lxapp_path)?;
     let assets_dir = prepare_windows_runner_assets(lxapp_path, &identity, ws_url)?;
-    let exe_path = build_windows_runner()?;
+    let exe_path = installed_windows_runner_exe_path()?;
 
-    let mut command = Command::new(&exe_path);
-    command.env(RUNNER_LXAPP_PATH_ENV, lxapp_path);
-    command.env(RUNNER_DEV_WS_URL_ENV, ws_url);
-    command.env("LINGXIA_ASSET_DIR", &assets_dir);
-    command.stdin(Stdio::null());
-    command.stdout(Stdio::inherit());
-    command.stderr(Stdio::inherit());
+    #[cfg(target_os = "windows")]
+    let child = shell_execute_windows_runner(&exe_path, lxapp_path, &assets_dir, ws_url)?;
 
-    let child = command.spawn().with_context(|| {
+    #[cfg(not(target_os = "windows"))]
+    let child = {
+        let mut command = Command::new(&exe_path);
+        command.arg("--lxapp-path").arg(lxapp_path);
+        command.arg("--dev-ws-url").arg(ws_url);
+        command.arg("--asset-dir").arg(&assets_dir);
+        command.stdin(Stdio::null());
+        command.stdout(Stdio::inherit());
+        command.stderr(Stdio::inherit());
+
+        RunnerProcess::Child(command.spawn().with_context(|| {
+            format!(
+                "Failed to launch Windows Runner executable: {}",
+                exe_path.display()
+            )
+        })?)
+    };
+
+    println!("{} Launched {}", "[runner]".cyan(), exe_path.display());
+    Ok(child)
+}
+
+enum RunnerProcess {
+    Child(Child),
+    #[cfg(target_os = "windows")]
+    WindowsShell(WindowsShellRunnerProcess),
+}
+
+struct RunnerExitStatus {
+    success: bool,
+    code: Option<i32>,
+}
+
+impl RunnerProcess {
+    fn try_wait(&mut self) -> Result<Option<RunnerExitStatus>> {
+        match self {
+            RunnerProcess::Child(child) => child
+                .try_wait()
+                .context("Failed to poll LingXia Runner")
+                .map(|status| {
+                    status.map(|status| RunnerExitStatus {
+                        success: status.success(),
+                        code: status.code(),
+                    })
+                }),
+            #[cfg(target_os = "windows")]
+            RunnerProcess::WindowsShell(process) => process.try_wait(),
+        }
+    }
+
+    fn terminate(&mut self) -> Result<()> {
+        match self {
+            RunnerProcess::Child(child) => terminate_child(child, "LingXia Runner"),
+            #[cfg(target_os = "windows")]
+            RunnerProcess::WindowsShell(process) => process.terminate(),
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
+struct WindowsShellRunnerProcess {
+    handle: windows::Win32::Foundation::HANDLE,
+}
+
+#[cfg(target_os = "windows")]
+impl WindowsShellRunnerProcess {
+    fn try_wait(&self) -> Result<Option<RunnerExitStatus>> {
+        use windows::Win32::Foundation::{WAIT_OBJECT_0, WAIT_TIMEOUT};
+        use windows::Win32::System::Threading::{GetExitCodeProcess, WaitForSingleObject};
+
+        let wait = unsafe { WaitForSingleObject(self.handle, 0) };
+        if wait == WAIT_TIMEOUT {
+            return Ok(None);
+        }
+        if wait != WAIT_OBJECT_0 {
+            return Err(anyhow!("Failed to wait for LingXia Runner: {wait:?}"));
+        }
+
+        let mut code = 0u32;
+        unsafe { GetExitCodeProcess(self.handle, &mut code) }
+            .context("Failed to read LingXia Runner exit code")?;
+        Ok(Some(RunnerExitStatus {
+            success: code == 0,
+            code: Some(code as i32),
+        }))
+    }
+
+    fn terminate(&mut self) -> Result<()> {
+        use windows::Win32::System::Threading::TerminateProcess;
+
+        unsafe { TerminateProcess(self.handle, 1) }
+            .context("Failed to terminate LingXia Runner")?;
+        Ok(())
+    }
+}
+
+#[cfg(target_os = "windows")]
+impl Drop for WindowsShellRunnerProcess {
+    fn drop(&mut self) {
+        unsafe {
+            let _ = windows::Win32::Foundation::CloseHandle(self.handle);
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn shell_execute_windows_runner(
+    exe_path: &Path,
+    lxapp_path: &Path,
+    assets_dir: &Path,
+    ws_url: &str,
+) -> Result<RunnerProcess> {
+    use std::mem::size_of;
+    use windows::Win32::Foundation::HANDLE;
+    use windows::Win32::UI::Shell::{
+        SEE_MASK_NOASYNC, SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW, ShellExecuteExW,
+    };
+    use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+    use windows::core::PCWSTR;
+
+    let params = [
+        "--lxapp-path".to_string(),
+        lxapp_path.display().to_string(),
+        "--dev-ws-url".to_string(),
+        ws_url.to_string(),
+        "--asset-dir".to_string(),
+        assets_dir.display().to_string(),
+    ]
+    .into_iter()
+    .map(|arg| quote_windows_arg(&arg))
+    .collect::<Vec<_>>()
+    .join(" ");
+
+    let file = wide_null(&exe_path.display().to_string());
+    let parameters = wide_null(&params);
+    let directory = wide_null(
+        &lxapp_path
+            .canonicalize()
+            .unwrap_or_else(|_| lxapp_path.to_path_buf())
+            .display()
+            .to_string(),
+    );
+
+    let mut info = SHELLEXECUTEINFOW {
+        cbSize: size_of::<SHELLEXECUTEINFOW>() as u32,
+        fMask: SEE_MASK_NOCLOSEPROCESS | SEE_MASK_NOASYNC,
+        lpFile: PCWSTR(file.as_ptr()),
+        lpParameters: PCWSTR(parameters.as_ptr()),
+        lpDirectory: PCWSTR(directory.as_ptr()),
+        nShow: SW_SHOWNORMAL.0,
+        ..Default::default()
+    };
+
+    unsafe { ShellExecuteExW(&mut info) }.with_context(|| {
         format!(
             "Failed to launch Windows Runner executable: {}",
             exe_path.display()
         )
     })?;
+    if info.hProcess == HANDLE::default() {
+        return Err(anyhow!(
+            "Windows Runner launch did not return a process handle"
+        ));
+    }
 
-    println!("{} Launched {}", "[runner]".cyan(), exe_path.display());
-    Ok(child)
+    Ok(RunnerProcess::WindowsShell(WindowsShellRunnerProcess {
+        handle: info.hProcess,
+    }))
+}
+
+#[cfg(target_os = "windows")]
+fn wide_null(value: &str) -> Vec<u16> {
+    value.encode_utf16().chain(std::iter::once(0)).collect()
+}
+
+#[cfg(target_os = "windows")]
+fn quote_windows_arg(value: &str) -> String {
+    if !value.is_empty()
+        && !value
+            .chars()
+            .any(|ch| ch.is_whitespace() || matches!(ch, '"' | '\\'))
+    {
+        return value.to_string();
+    }
+
+    let mut quoted = String::from("\"");
+    let mut backslashes = 0usize;
+    for ch in value.chars() {
+        match ch {
+            '\\' => backslashes += 1,
+            '"' => {
+                quoted.push_str(&"\\".repeat(backslashes * 2 + 1));
+                quoted.push('"');
+                backslashes = 0;
+            }
+            _ => {
+                quoted.push_str(&"\\".repeat(backslashes));
+                backslashes = 0;
+                quoted.push(ch);
+            }
+        }
+    }
+    quoted.push_str(&"\\".repeat(backslashes * 2));
+    quoted.push('"');
+    quoted
 }
 
 fn install_ctrlc_handler(stop_requested: Arc<AtomicBool>) -> Result<()> {
@@ -1214,8 +1380,32 @@ fn install_ctrlc_handler(stop_requested: Arc<AtomicBool>) -> Result<()> {
     .context("Failed to install Ctrl+C handler for dev mode")
 }
 
-fn wait_for_runner_or_interrupt(runner: &mut Child, stop_requested: Arc<AtomicBool>) -> Result<()> {
-    wait_for_child_or_interrupt(runner, stop_requested, "LingXia Runner")
+fn wait_for_runner_or_interrupt(
+    runner: &mut RunnerProcess,
+    stop_requested: Arc<AtomicBool>,
+) -> Result<()> {
+    loop {
+        if stop_requested.load(Ordering::Acquire) {
+            runner.terminate()?;
+            println!();
+            println!("{}", "Dev workflow stopped.".yellow().bold());
+            return Ok(());
+        }
+
+        if let Some(status) = runner.try_wait()? {
+            println!();
+            println!("{}", "LingXia Runner exited.".yellow().bold());
+            if !status.success {
+                return Err(match status.code {
+                    Some(code) => anyhow!("LingXia Runner exited with non-zero status: {code}"),
+                    None => anyhow!("LingXia Runner exited with non-zero status"),
+                });
+            }
+            return Ok(());
+        }
+
+        thread::sleep(Duration::from_millis(150));
+    }
 }
 
 fn wait_for_child_or_interrupt(
@@ -1607,7 +1797,10 @@ fn install_signed_output_path(input_hap: &Path) -> PathBuf {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_standalone_lxapp_project, process_executable_matches};
+    use super::{
+        WindowsRunnerLxAppIdentity, is_standalone_lxapp_project, process_executable_matches,
+        windows_runner_ui_json,
+    };
     use crate::config::HOST_CONFIG_FILE;
     use std::fs;
     use std::path::Path;
@@ -1643,5 +1836,23 @@ mod tests {
             Path::new("/Applications/Other.app/Contents/MacOS/Demo"),
             exe
         ));
+    }
+
+    #[test]
+    fn windows_runner_ui_json_declares_home_surface_only() {
+        let identity = WindowsRunnerLxAppIdentity {
+            app_id: "com.example.demo".to_string(),
+            version: "1.0.0".to_string(),
+        };
+
+        let ui = windows_runner_ui_json(&identity);
+
+        assert_eq!(ui["launch"]["initialSurface"], "com.example.demo");
+        assert_eq!(ui["launch"]["openOnLaunch"], true);
+        assert_eq!(ui["surfaces"][0]["id"], "com.example.demo");
+        assert_eq!(ui["surfaces"][0]["role"], "main");
+        assert_eq!(ui["surfaces"][0]["content"]["kind"], "lxapp");
+        assert_eq!(ui["surfaces"][0]["content"]["appId"], "com.example.demo");
+        assert_eq!(ui["activators"].as_array().unwrap().len(), 0);
     }
 }
