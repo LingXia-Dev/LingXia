@@ -318,6 +318,9 @@ mod tests {
             has_user_gesture: false,
             is_main_frame: true,
         });
-        assert_eq!(response.decision, BrowserNavigationPolicyDecision::InWebview);
+        assert_eq!(
+            response.decision,
+            BrowserNavigationPolicyDecision::InWebview
+        );
     }
 }
