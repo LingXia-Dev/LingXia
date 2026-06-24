@@ -312,6 +312,11 @@ class SidebarView: NSView, NSPopoverDelegate {
 
     /// True when the sidebar is collapsed to the icon-only rail.
     private(set) var isCompact = false
+
+    /// Rail top inset. Normally clears the traffic lights; a host with no traffic
+    /// lights (the frameless runner) zeroes it so the first rail icon aligns with
+    /// the content/webview top instead of sitting a header-height below it.
+    private var railTopConstraint: NSLayoutConstraint?
     /// Supplies the minimum width that still clears the macOS traffic lights,
     /// so the rail can be as narrow as those controls allow.
     var trafficLightClearanceProvider: (() -> CGFloat)?
@@ -580,13 +585,18 @@ class SidebarView: NSView, NSPopoverDelegate {
             railExpandButton.widthAnchor.constraint(equalToConstant: Layout.railButtonSize),
             railExpandButton.heightAnchor.constraint(equalToConstant: Layout.railButtonSize),
             railExpandButton.centerXAnchor.constraint(equalTo: railScrollView.centerXAnchor),
-            railExpandButton.bottomAnchor.constraint(equalTo: railScrollView.bottomAnchor, constant: -8),
+            // Pin to the sidebar's true bottom (the footer is hidden in compact),
+            // not railScrollView.bottom which stops a footerHeight above it.
+            railExpandButton.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -10),
         ])
 
         // Resize handle on right edge
         resizeHandle.translatesAutoresizingMaskIntoConstraints = false
         resizeHandle.wantsLayer = true
         addSubview(resizeHandle)
+
+        railTopConstraint = railScrollView.topAnchor.constraint(
+            equalTo: topAnchor, constant: Layout.trafficLightsHeight)
 
         NSLayoutConstraint.activate([
             headerView.topAnchor.constraint(equalTo: topAnchor),
@@ -610,8 +620,10 @@ class SidebarView: NSView, NSPopoverDelegate {
             scrollView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Layout.resizeHandleWidth),
             scrollView.bottomAnchor.constraint(equalTo: footerView.topAnchor),
 
-            // Rail occupies the same region as the main scroll view.
-            railScrollView.topAnchor.constraint(equalTo: headerView.bottomAnchor),
+            // Rail occupies the same region as the main scroll view, but its top
+            // inset is adjustable (see railTopConstraint) — the rail's header is
+            // empty in compact mode, so a frameless host can pull it to the top.
+            railTopConstraint!,
             railScrollView.leadingAnchor.constraint(equalTo: leadingAnchor),
             railScrollView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Layout.resizeHandleWidth),
             railScrollView.bottomAnchor.constraint(equalTo: footerView.topAnchor),
@@ -708,6 +720,12 @@ class SidebarView: NSView, NSPopoverDelegate {
     // MARK: - Compact (icon-rail) mode
 
     /// Switch between the expanded sidebar and the collapsed icon rail.
+    /// When true (a frameless host with no traffic lights), the collapsed rail's
+    /// first icon aligns to the very top instead of clearing a traffic-light header.
+    func setRailAlignedToTop(_ alignedToTop: Bool) {
+        railTopConstraint?.constant = alignedToTop ? 0 : Layout.trafficLightsHeight
+    }
+
     func setCompactMode(_ compact: Bool) {
         guard compact != isCompact else { return }
         isCompact = compact
