@@ -5,3 +5,6 @@ permission:
   limited_access_add_more_videos: "Add more\naccessible videos"
   limited_access_add_more_photos: "Add more\naccessible photos"
   media_reason: "Media permission required to save images and videos to album"
+  location_reason: "Location permission required for location-based features"
+  wifi_reason: "Wi-Fi info permission required to read network status"
+  network_reason: "Network info permission required to read connection status"
