@@ -88,6 +88,19 @@ echo "==> Building Runner native staticlib ($RUST_TARGET)"
   "$CARGO_BIN" build -p lingxia-runner-lib --lib --target "$RUST_TARGET"
 )
 
+echo "==> Generating apple SDK resources (i18n + icons)"
+# Same step bootstrap-apple-sdk / scripts/release/sdk.sh run: without it a new or
+# changed design/icons/svg or i18n YAML never reaches the runner bundle.
+(
+  cd "$ROOT_DIR"
+  "$LINGXIA_BIN" gen i18n \
+    --input i18n --no-rust --no-ts --no-android --no-harmony \
+    --ios-out lingxia-sdk/apple/Sources/Resources
+  "$LINGXIA_BIN" gen icons \
+    --input design/icons/svg \
+    --ios-out lingxia-sdk/apple/Sources/Resources/icons
+)
+
 echo "==> Building Runner"
 (
   cd "$SCRIPT_DIR"
