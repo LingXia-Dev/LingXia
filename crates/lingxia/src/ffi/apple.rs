@@ -177,6 +177,9 @@ mod bridge {
             owner_page_instance_id: &str,
         ) -> CreatePageInstanceResult;
 
+        #[swift_bridge(swift_name = "isLxappRestartClosing")]
+        fn is_lxapp_restart_closing(appid: &str, session_id: u64) -> bool;
+
         #[swift_bridge(swift_name = "notifyPageInstanceMounted")]
         fn notify_page_instance_mounted(page_instance_id: &str) -> bool;
 
@@ -848,6 +851,14 @@ pub fn resolve_page_binding(
     }
 }
 
+/// True while `session_id` is being torn down for a restart — lets the shell skip
+/// its post-close "reveal next app" for a restart (the runtime reopens it itself).
+pub fn is_lxapp_restart_closing(appid: &str, session_id: u64) -> bool {
+    lxapp::try_get(appid)
+        .map(|app| app.is_restart_closing_session(session_id))
+        .unwrap_or(false)
+}
+
 fn parse_close_reason(reason: &str) -> CloseReason {
     match reason.trim().to_ascii_lowercase().as_str() {
         "user" => CloseReason::User,
@@ -904,6 +915,19 @@ pub fn create_page_instance_for_open(
             resolved_path: String::new(),
             query: String::new(),
             error: "stale session".to_string(),
+        };
+    }
+
+    // Reject page creation on the old session being restart-closed, so a premature
+    // reopen can't pre-create its pages on the dying worker (recreate's instance is unmarked).
+    if lxapp_instance.is_restart_closing_session(session_id) {
+        return self::bridge::CreatePageInstanceResult {
+            ok: false,
+            page_instance_id: String::new(),
+            appid: appid.to_string(),
+            resolved_path: String::new(),
+            query: String::new(),
+            error: "restart closing session".to_string(),
         };
     }
 

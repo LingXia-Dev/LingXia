@@ -228,6 +228,10 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
     func navigate(appId: String, to path: String, with animationType: LxAppAnimation) {
         guard !appId.isEmpty else { return }
 
+        // A restart can navigate before the view loads; force it so `webViewContainer`
+        // (built in viewDidLoad) isn't a nil IUO. (`loadViewIfNeeded()` is macOS 14+.)
+        _ = self.view
+
         self.currentPath = path
         updateNavigationBar(appId: appId, path: path)
         if let webView = findManagedWebView(path: path) {
