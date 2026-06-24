@@ -11,7 +11,7 @@ common:
 
 # Capsule Menu
 capsule:
-  clean_cache: "清理缓存"
+  clean_cache: "清理缓存并重启"
   restart: "重启"
   uninstall: "卸载"
 
