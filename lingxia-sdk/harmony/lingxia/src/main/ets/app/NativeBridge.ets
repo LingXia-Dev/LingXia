@@ -1,6 +1,7 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { setComponentCallback } from '../lxapp/NativeComponents/NativeCallbackRegistry';
 import { LxApp } from '../lxapp/LxApp';
+import { Lingxia } from './Lingxia';
 import { LxAppToast, ToastIcon, ToastPosition } from '../lxapp/APIs/LxAppToast';
 import { LxAppModal } from '../lxapp/APIs/LxAppModal';
 import { LxAppActionSheet } from '../lxapp/APIs/LxAppActionSheet';
@@ -123,7 +124,7 @@ class NativeBridge {
     });
 
     this.register('exitApp', () => {
-      const context = LxApp.context;
+      const context = Lingxia.context;
       if (!context) {
         hilog.error(DOMAIN, TAG, 'exitApp failed: UIAbility context not available');
         return false;
@@ -160,13 +161,13 @@ class NativeBridge {
       // new-tab request opens a fresh managed tab and switches to it (below).
       const inAppBrowserTarget = target === 'self' || target === 'new_browser_tab';
       if (!inAppBrowserTarget) {
-        LxApp.launchWithUrl(url);
+        Lingxia.launchWithUrl(url);
         return true;
       }
 
-      if ((LxApp.capabilities & LxApp.CAP_BROWSER) === 0) {
+      if ((Lingxia.capabilities & Lingxia.CAP_BROWSER) === 0) {
         hilog.info(DOMAIN, TAG, 'launchWithUrl target=in_app: browser capability disabled; opening externally');
-        LxApp.launchWithUrl(url);
+        Lingxia.launchWithUrl(url);
         return true;
       }
 
@@ -384,7 +385,7 @@ class NativeBridge {
     });
 
     this.register('updateOrientationUI', (appId: string): boolean => {
-      return LxApp.updateOrientationUI(appId);
+      return Lingxia.updateOrientationUI(appId);
     });
 
     this.register('getScreenInfo', (callbackId: string): void => {

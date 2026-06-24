@@ -1,20 +1,12 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
-import { webview } from '@kit.ArkWeb';
-import { window } from '@kit.ArkUI';
-import { resourceManager, i18n } from '@kit.LocalizationKit';
-import { Want } from '@kit.AbilityKit';
-import common from '@ohos.app.ability.common';
 import { LxAppContainer } from './LxAppContainer';
 import { ToastManager } from './APIs/LxAppToast';
-import { initNativeBridge, getNativeCallbackFunction } from '../app/NativeBridge';
-import { WebViewManager, toWebTag } from './WebViewBridge';
+import { WebViewManager } from './WebViewBridge';
 import { AnimationType } from './LxAppNavigation';
 import { CameraCaptureOverlay } from './APIs/media/CameraCaptureOverlay';
-import { LxAppPush } from './APIs/LxAppPush';
-import { PermissionManager } from '../app/PermissionManager';
 
 // Import native functions from Rust
-import { lingxiaInit, registerCustomSchemes, onLxappOpened, onLxappClosed, onPageShow, onApplinkReceived, getCurrentLxapp, getLxappSessionId, getPageOrientation, getAppCapabilities, CurrentLxApp } from 'liblingxia.so';
+import { onLxappOpened, getLxappSessionId } from 'liblingxia.so';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.LxApp';
@@ -28,16 +20,17 @@ interface NavigationInstance {
   isTabBarHidden(appId: string): boolean;
 }
 
+/**
+ * LxApp-scope facade (a single lxapp). Owns the home app id,
+ * open/close/navigate, and session lookup for one LxApp inside the host
+ * window. Host-scope concerns (runtime bootstrap, context/window, capabilities,
+ * external URL handoff, applink, orientation) live in [Lingxia].
+ *
+ * Counterpart of Android's `com.lingxia.lxapp.LxApp`.
+ */
 export class LxApp {
   private static instance: LxApp | null = null;
-  public static capabilities: number = 0;
-  public static readonly CAP_BROWSER: number = 0x1;
-  public static readonly CAP_NOTIFICATIONS: number = 0x2;
-  public static readonly CAP_TERMINAL: number = 0x4;
-  public static readonly CAP_PROXY: number = 0x8;
   public static managerInstance: LxAppManager | null = null;
-  public static context: common.UIAbilityContext | null = null;
-  public static windowStage: window.WindowStage | null = null;
 
   // Store navigation instance for Navigation-based architecture
   public static navigationInstance: NavigationInstance | null = null;
@@ -55,88 +48,12 @@ export class LxApp {
     return LxApp.instance;
   }
 
-  public static initializeRuntime(context?: common.UIAbilityContext, windowStage?: window.WindowStage): void {
-    const instance = LxApp.getInstance();
-    if (instance.homeAppId !== null) {
-      hilog.info(DOMAIN, TAG, 'LxApp already successfully initialized');
-      return;
-    }
-
-    // Check if native layer has already been initialized by checking homeAppId
-    if (instance.homeAppId !== null) {
-      hilog.warn(DOMAIN, TAG, 'Native layer already initialized, skipping native_lxapp_init');
-      return;
-    }
-
-    hilog.info(DOMAIN, TAG, `LxApp.initializeRuntime called with context: ${context ? 'provided' : 'null'}, windowStage: ${windowStage ? 'provided' : 'null'}`);
-
-    // Store context and windowStage for window operations
-    if (context) {
-      LxApp.context = context;
-      PermissionManager.initialize(context);
-    } else {
-      hilog.warn(DOMAIN, TAG, 'No context provided, skipping permission request');
-    }
-    if (windowStage) {
-      LxApp.windowStage = windowStage;
-      // Set window to full screen layout
-      const mainWindow = windowStage.getMainWindowSync();
-      mainWindow.setWindowLayoutFullScreen(true);
-    }
-
-    // Initialize native bridge
-    initNativeBridge();
-
-    // Get application-level file system paths (not module-specific)
-    const appContext = context!.getApplicationContext();
-    const dataDir = appContext.filesDir;
-    const cacheDir = appContext.cacheDir;
-    const resourceManager = context!.resourceManager;
-
-    hilog.info(DOMAIN, TAG, `Using application context - dataDir: ${dataDir}, cacheDir: ${cacheDir}`);
-
-    const callbackFunction = getNativeCallbackFunction();
-
-    // Register custom schemes BEFORE WebEngine initialization
-    const schemesRegistered: boolean = registerCustomSchemes();
-    if (!schemesRegistered) {
-      hilog.error(DOMAIN, TAG, 'Failed to register custom schemes');
-      return;
-    }
-
-    // Initialize WebEngine after schemes are registered
-    webview.WebviewController.initializeWebEngine();
-    webview.WebviewController.setWebDebuggingAccess(true);
-
-    hilog.info(DOMAIN, TAG, `Calling lingxiaInit with callback and file system paths (FIRST AND ONLY TIME)`);
-
-    // Get system locale using HarmonyOS i18n API
-    const systemLanguage = i18n.System.getSystemLanguage();
-    const systemRegion = i18n.System.getSystemRegion();
-
-    // Convert HarmonyOS locale format to standard format
-    // HarmonyOS returns "zh-Hans" but we want "zh"
-    const normalizedLanguage = systemLanguage.split('-')[0];
-    const locale = `${normalizedLanguage}-${systemRegion}`;
-
-    const appId: string | null = lingxiaInit(callbackFunction, dataDir, cacheDir, resourceManager, locale);
-
-    if (appId) {
-      hilog.info(DOMAIN, TAG, `LxApp initialized successfully with home app: ${appId}`);
-      instance.homeAppId = appId;
-      LxApp.capabilities = getAppCapabilities();
-    } else {
-      hilog.error(DOMAIN, TAG, 'Failed to get home app details from native init.');
-    }
-
-    if ((LxApp.capabilities & LxApp.CAP_NOTIFICATIONS) !== 0) {
-      try {
-        LxAppPush.requestEnableNotification();
-        LxAppPush.initToken();
-      } catch (e) {
-        hilog.error(DOMAIN, TAG, `Push init error: ${e}`);
-      }
-    }
+  /**
+   * Record the home LxApp id discovered by the native runtime. Called by
+   * [Lingxia.initializeRuntime] once the host bootstrap resolves it.
+   */
+  public static setHomeAppId(appId: string): void {
+    LxApp.getInstance().homeAppId = appId;
   }
 
   public static enableWebViewDebugging(): void {
@@ -242,52 +159,6 @@ export class LxApp {
     return 0;
   }
 
-  public static updateOrientationUI(appId: string, pathOverride?: string): boolean {
-    if (!LxApp.windowStage) {
-      hilog.warn(DOMAIN, TAG, `updateOrientationUI skipped: windowStage unavailable (${appId})`);
-      return false;
-    }
-
-    let path: string = '';
-    if (pathOverride && pathOverride.length > 0) {
-      path = pathOverride;
-    } else {
-      try {
-        const current: CurrentLxApp = getCurrentLxapp();
-        if (current && current.appid === appId) {
-          path = current.path;
-        }
-      } catch (error) {
-        hilog.warn(DOMAIN, TAG, `updateOrientationUI getCurrentLxapp failed: ${error}`);
-      }
-    }
-
-    const orientation: number = getPageOrientation(appId, path);
-    let targetOrientation: window.Orientation = window.Orientation.UNSPECIFIED;
-    if (orientation === 1 || orientation === 3) {
-      targetOrientation = window.Orientation.PORTRAIT;
-    } else if (orientation === 2 || orientation === 4) {
-      targetOrientation = window.Orientation.LANDSCAPE;
-    }
-
-    try {
-      const mainWindow = LxApp.windowStage.getMainWindowSync();
-      if (!mainWindow) {
-        hilog.warn(DOMAIN, TAG, `updateOrientationUI skipped: mainWindow unavailable (${appId})`);
-        return false;
-      }
-      mainWindow.setPreferredOrientation(targetOrientation)
-        .catch((error: Error) => {
-          const message: string = error?.message ?? String(error);
-          hilog.error(DOMAIN, TAG, `updateOrientationUI failed: ${message}`);
-        });
-      return true;
-    } catch (error) {
-      hilog.error(DOMAIN, TAG, `updateOrientationUI failed: ${error}`);
-      return false;
-    }
-  }
-
   public static openLxAppWithSession(appId: string, path: string, sessionId: number): void {
     if (!Number.isFinite(sessionId) || sessionId <= 0) {
       hilog.error(DOMAIN, TAG, `openLxAppWithSession requires valid session for ${appId}`);
@@ -310,58 +181,6 @@ export class LxApp {
       return;
     }
     hilog.error(DOMAIN, TAG, 'LxAppNavigation instance not available for closeLxAppWithSession');
-  }
-
-  /**
-   * Launch external URL with system default application
-   * @param url The URL to open
-   */
-  public static launchWithUrl(url: string): void {
-    if (!LxApp.context) {
-      hilog.error(DOMAIN, TAG, `Context not available for launching URL: ${url}`);
-      return;
-    }
-
-    LxApp.context.openLink(url)
-      .then(() => {
-        hilog.info(DOMAIN, TAG, `Successfully launched URL: ${url}`);
-      })
-      .catch((err: Error) => {
-        hilog.error(DOMAIN, TAG, `Failed to launch URL: ${url}, error: ${JSON.stringify(err)}`);
-      });
-  }
-
-  /**
-   * Internal applink handler - called by SDK infrastructure
-   * @param url The full applink URL (e.g., "https://www.lingxia.app/lxapp/shop/pages/detail?id=42")
-   */
-  private static handleAppLink(url: string): void {
-    try {
-      // Call native layer to handle the applink
-      const result: number = onApplinkReceived(url);
-      hilog.info(DOMAIN, TAG, `AppLink processed with result: ${result}`);
-    } catch (error) {
-      hilog.error(DOMAIN, TAG, `Error processing AppLink: ${url}, error: ${JSON.stringify(error)}`);
-    }
-  }
-
-  /**
-   * Handle Want from UIAbility - call this in your UIAbility onCreate/onNewWant methods
-   * This provides a simple one-line integration for applink handling
-   * @param want The Want object containing the applink URI
-   */
-  public static handleWant(want: Want): void {
-    try {
-      if (!want) { return; }
-      // Treat HTTPS Want.uri as push click (trigger=1), do not call AppLink
-      if (want.uri && typeof want.uri === 'string' && want.uri.startsWith('https://')) {
-        LxAppPush.handlePushLink(want.uri, 1);
-        return;
-      }
-    } catch (e) {
-      const err: Error = e as Error;
-      hilog.error(DOMAIN, TAG, `handleWant error: ${JSON.stringify(err)}`);
-    }
   }
 }
 

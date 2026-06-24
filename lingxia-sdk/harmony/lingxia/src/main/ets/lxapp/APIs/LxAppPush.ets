@@ -2,7 +2,7 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import { notificationManager } from '@kit.NotificationKit';
 import { pushService } from '@kit.PushKit';
 import { BusinessError } from '@kit.BasicServicesKit';
-import { LxApp } from '../LxApp';
+import { Lingxia } from '../../app/Lingxia';
 import { onPushTokenReceived, onPushlinkReceived } from 'liblingxia.so';
 import { UIAbility } from '@kit.AbilityKit';
 
@@ -32,7 +32,7 @@ export class LxAppPush {
    */
   public static requestEnableNotification(): boolean {
     try {
-      const ctx = LxApp.context;
+      const ctx = Lingxia.context;
       if (!ctx) {
         hilog.error(DOMAIN, TAG, 'requestEnableNotification: no context');
         return false;

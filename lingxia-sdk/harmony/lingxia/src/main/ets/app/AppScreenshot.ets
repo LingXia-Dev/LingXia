@@ -4,7 +4,7 @@ import { image } from '@kit.ImageKit';
 import { util } from '@kit.ArkTS';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { onCallback } from 'liblingxia.so';
-import { LxApp } from '../lxapp/LxApp';
+import { Lingxia } from './Lingxia';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.AppScreenshot';
@@ -46,7 +46,7 @@ export function captureAppScreenshot(callbackIdStr: string): boolean {
   };
 
   try {
-    const ctx = LxApp.context;
+    const ctx = Lingxia.context;
     if (!ctx) {
       return fail('LxApp UIAbility context is not available');
     }

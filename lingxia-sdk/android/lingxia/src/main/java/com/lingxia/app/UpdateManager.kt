@@ -1,9 +1,9 @@
 package com.lingxia.app
 
-import com.lingxia.lxapp.LxAppActivity
 import com.lingxia.lxapp.LxApp
 import com.lingxia.lxapp.R
 
+import android.app.Activity
 import android.app.Dialog
 import android.app.PendingIntent
 import android.app.UiModeManager
@@ -57,7 +57,7 @@ internal object UpdateManager {
     // Stable per-process ID; reusing replaces any previous confirm notification.
     private const val NOTIFICATION_ID_INSTALL_CONFIRM = 0x4C58_5550 // "LXUP"
 
-    private var activityRef: WeakReference<LxAppActivity>? = null
+    private var activityRef: WeakReference<Activity>? = null
     // AtomicReference so check-and-clear in tryInstallPendingUpdate doesn't
     // race with the LxUpdateInstaller worker thread writing a new pending path.
     private val pendingInstallPath = AtomicReference<String?>(null)
@@ -106,7 +106,7 @@ internal object UpdateManager {
      * Initialize UpdateManager with the current activity.
      */
     @JvmStatic
-    fun init(activity: LxAppActivity?) {
+    fun init(activity: Activity?) {
         activityRef = if (activity == null) null else WeakReference(activity)
         if (activity != null) {
             tryShowPendingReadyInstall()
@@ -114,7 +114,7 @@ internal object UpdateManager {
         }
     }
 
-    private fun resolveActivity(): LxAppActivity? {
+    private fun resolveActivity(): Activity? {
         return activityRef?.get() ?: LxApp.getCurrentActivity()
     }
 
@@ -297,7 +297,7 @@ internal object UpdateManager {
      */
     /** Scrollable bulleted release-notes block, capped so the dialog stays compact. */
     private fun buildReleaseNotesView(
-        activity: LxAppActivity,
+        activity: Activity,
         metrics: DialogMetrics,
         notes: List<String>
     ): View {
@@ -338,7 +338,7 @@ internal object UpdateManager {
     }
 
     private fun createReadyToInstallDialog(
-        activity: LxAppActivity,
+        activity: Activity,
         apkPath: String,
         info: ReadyInfo
     ): Dialog {
@@ -513,7 +513,7 @@ internal object UpdateManager {
     }
 
     private fun showReadyToInstallPrompt(
-        activity: LxAppActivity,
+        activity: Activity,
         apkPath: String,
         info: ReadyInfo
     ) {
@@ -532,7 +532,7 @@ internal object UpdateManager {
      * if needed, then launch the system installer. Always invoked from the
      * "ready to install" prompt confirm handler (UI thread).
      */
-    private fun proceedInstall(activity: LxAppActivity, apkPath: String) {
+    private fun proceedInstall(activity: Activity, apkPath: String) {
         if (!validateInstallRequest(activity, apkPath)) {
             return
         }
@@ -543,7 +543,7 @@ internal object UpdateManager {
         startInstall(activity, apkPath)
     }
 
-    private fun validateInstallRequest(activity: LxAppActivity, apkPath: String): Boolean {
+    private fun validateInstallRequest(activity: Activity, apkPath: String): Boolean {
         val apkFile = File(apkPath)
         if (!apkFile.exists() || apkFile.length() == 0L) {
             Log.e(TAG, "APK file missing or empty: $apkPath (len=${apkFile.length()})")
@@ -575,7 +575,7 @@ internal object UpdateManager {
         return true
     }
 
-    private fun needsInstallPermission(activity: LxAppActivity): Boolean {
+    private fun needsInstallPermission(activity: Activity): Boolean {
         return Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
             !activity.packageManager.canRequestPackageInstalls()
     }
@@ -583,11 +583,11 @@ internal object UpdateManager {
     // UI-thread callers must not copy an APK into a PackageInstaller session
     // inline; run that path on a worker. Non-UI callers use launchInstaller()
     // directly so Rust can observe "request failed" vs "request launched".
-    private fun startInstall(activity: LxAppActivity, apkPath: String) {
+    private fun startInstall(activity: Activity, apkPath: String) {
         Thread({ launchInstaller(activity, apkPath) }, "LxUpdateInstaller").start()
     }
 
-    private fun launchInstaller(activity: LxAppActivity, apkPath: String): Boolean {
+    private fun launchInstaller(activity: Activity, apkPath: String): Boolean {
         try {
             val apkFile = File(apkPath)
             if (!apkFile.exists() || apkFile.length() == 0L) {
@@ -638,7 +638,7 @@ internal object UpdateManager {
         }
     }
 
-    private fun requestInstallPermission(activity: LxAppActivity, apkPath: String): Boolean {
+    private fun requestInstallPermission(activity: Activity, apkPath: String): Boolean {
         Log.w(TAG, "Install permission not granted; opening settings")
         if (openUnknownSourcesSettings(activity)) {
             pendingInstallPath.set(apkPath)
@@ -654,7 +654,7 @@ internal object UpdateManager {
         return launchInstallerLegacy(activity, File(apkPath))
     }
 
-    private fun openUnknownSourcesSettings(activity: LxAppActivity): Boolean {
+    private fun openUnknownSourcesSettings(activity: Activity): Boolean {
         val resolved = resolveUnknownSourcesSettingsIntent(activity)
         if (resolved == null) {
             Log.e(TAG, "No settings activity available to grant install permission")
@@ -666,7 +666,7 @@ internal object UpdateManager {
         }
     }
 
-    private fun resolveUnknownSourcesSettingsIntent(activity: LxAppActivity): Intent? {
+    private fun resolveUnknownSourcesSettingsIntent(activity: Activity): Intent? {
         return listOf(
             Intent(
                 Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
@@ -682,7 +682,7 @@ internal object UpdateManager {
         }
     }
 
-    private fun installViaSession(activity: LxAppActivity, apkFile: File): Boolean {
+    private fun installViaSession(activity: Activity, apkFile: File): Boolean {
         return try {
             ensureInstallReceiver(activity.applicationContext)
             val packageInstaller = activity.packageManager.packageInstaller
@@ -731,7 +731,7 @@ internal object UpdateManager {
         }
     }
 
-    private fun launchInstallerLegacy(activity: LxAppActivity, apkFile: File): Boolean {
+    private fun launchInstallerLegacy(activity: Activity, apkFile: File): Boolean {
         val apkUri = resolveInstallUri(activity, apkFile)
 
         val intent = Intent(Intent.ACTION_VIEW).apply {
@@ -776,7 +776,7 @@ internal object UpdateManager {
     }
 
     private fun runOnUiThreadForResult(
-        activity: LxAppActivity,
+        activity: Activity,
         action: () -> Boolean
     ): Boolean {
         fun runAction(): Boolean = try {
@@ -869,7 +869,7 @@ internal object UpdateManager {
         }
     }
 
-    private fun tryStartActivity(activity: LxAppActivity, intent: Intent): Boolean {
+    private fun tryStartActivity(activity: Activity, intent: Intent): Boolean {
         return try {
             activity.startActivity(intent)
             true
@@ -964,7 +964,7 @@ internal object UpdateManager {
         }
     }
 
-    private fun resolveInstallUri(activity: LxAppActivity, apkFile: File): Uri {
+    private fun resolveInstallUri(activity: Activity, apkFile: File): Uri {
         if (!usesFileProviderUri()) {
             return Uri.fromFile(stageApkForLegacyInstaller(activity, apkFile))
         }
@@ -981,7 +981,7 @@ internal object UpdateManager {
         return android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N
     }
 
-    private fun fileProviderUri(activity: LxAppActivity, apkFile: File): Uri {
+    private fun fileProviderUri(activity: Activity, apkFile: File): Uri {
         return androidx.core.content.FileProvider.getUriForFile(
             activity,
             "${activity.packageName}$FILE_PROVIDER_SUFFIX",
@@ -989,7 +989,7 @@ internal object UpdateManager {
         )
     }
 
-    private fun stageApkForLegacyInstaller(activity: LxAppActivity, apkFile: File): File {
+    private fun stageApkForLegacyInstaller(activity: Activity, apkFile: File): File {
         val updateDir = activity.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
             ?: activity.externalCacheDir
             ?: throw IllegalStateException("No external directory available for legacy APK install")
@@ -1005,7 +1005,7 @@ internal object UpdateManager {
         return stagedFile
     }
 
-    private fun stageApkInCache(activity: LxAppActivity, apkFile: File): File {
+    private fun stageApkInCache(activity: Activity, apkFile: File): File {
         val updateDir = File(activity.cacheDir, UPDATE_CACHE_DIR)
         if (!updateDir.exists() && !updateDir.mkdirs()) {
             throw IllegalStateException("Failed to create update cache dir: ${updateDir.path}")
@@ -1019,7 +1019,7 @@ internal object UpdateManager {
         return stagedFile
     }
 
-    private fun grantInstallerReadPermissions(activity: LxAppActivity, intent: Intent, apkUri: Uri) {
+    private fun grantInstallerReadPermissions(activity: Activity, intent: Intent, apkUri: Uri) {
         val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
         val installers = activity.packageManager.queryIntentActivities(
             intent,

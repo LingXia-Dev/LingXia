@@ -4,7 +4,7 @@ import { photoAccessHelper } from '@kit.MediaLibraryKit';
 import { CameraCaptureOverlayManager, CameraCaptureOptions } from './media/CameraCaptureOverlay';
 import { media } from '@kit.MediaKit';
 import { fileIo } from '@kit.CoreFileKit';
-import { LxApp } from '../LxApp';
+import { Lingxia } from '../../app/Lingxia';
 import common from '@ohos.app.ability.common';
 import { onCallback } from 'liblingxia.so';
 import { PermissionManager } from '../../app/PermissionManager';
@@ -272,7 +272,7 @@ export class LxAppMedia {
       }
 
       // Use official system photo picker to avoid restricted READ_IMAGEVIDEO access.
-      const ctx = LxApp.context as common.UIAbilityContext | null;
+      const ctx = Lingxia.context as common.UIAbilityContext | null;
       if (!ctx) {
         onCallback(normalized.callbackId, false, "1000");
         return false;
@@ -347,7 +347,7 @@ export class LxAppMedia {
   }
 
   public static async saveMediaToAlbum(path: string, mediaType: number): Promise<boolean> {
-    if (!path || mediaType === undefined || mediaType === null || !LxApp.context) { return false; }
+    if (!path || mediaType === undefined || mediaType === null || !Lingxia.context) { return false; }
 
     // Deduplicate rapid duplicate requests for the same file/type (2s window)
     const now = Date.now();
@@ -357,7 +357,7 @@ export class LxAppMedia {
     LxAppMedia.lastSaveKey = key;
     LxAppMedia.lastSaveAt = now;
 
-    const helper = photoAccessHelper.getPhotoAccessHelper(LxApp.context as common.UIAbilityContext);
+    const helper = photoAccessHelper.getPhotoAccessHelper(Lingxia.context as common.UIAbilityContext);
     const type = mapType;
     const ext = LxAppMedia.getCreateExtension(path, type);
 

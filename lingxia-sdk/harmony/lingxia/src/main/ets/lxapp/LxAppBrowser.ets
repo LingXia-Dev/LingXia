@@ -1,7 +1,7 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { webview } from '@kit.ArkWeb';
 import { display, window } from '@kit.ArkUI';
-import { LxApp } from './LxApp';
+import { Lingxia } from '../app/Lingxia';
 import { requestWebFileChooser } from './WebFileChooserBridge';
 import {
   WebViewManager,
@@ -851,7 +851,7 @@ export struct LxAppBrowser {
           return false;
         }
         if (policy.decision === 'open_external') {
-          LxApp.launchWithUrl(targetUrl);
+          Lingxia.launchWithUrl(targetUrl);
         }
         return true;
       })
