@@ -328,8 +328,10 @@ public class RunnerApp {
     }
 
     public func closeCurrentLxAppFromCapsule() {
-        // Capsule close circle = iOS's standard `close` (home app: clears stack → home).
-        triggerCurrentLxAppAction("close", reopenAfterAction: false)
+        // The runner draws this capsule itself, so this only runs in runner mode:
+        // a single-app emulator where the close circle exits (quits) the app.
+        // Production's SDK-drawn capsule does the standard exit-to-host instead.
+        NSApp.terminate(nil)
     }
 
     private func triggerCurrentLxAppAction(_ action: String, reopenAfterAction: Bool) {
