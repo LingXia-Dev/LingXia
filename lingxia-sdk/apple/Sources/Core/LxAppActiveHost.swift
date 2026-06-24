@@ -15,7 +15,10 @@ enum LxAppActiveHost {
 
     static func activate(shell: LxAppShell) {
         activeShellRef = shell
-        activeControllerRef = nil
+        // Keep any active controller: a custom-controller host (the runner) mounts
+        // a shell as its content surface but still needs its controller to stay the
+        // open router, so reopens (e.g. lxapp restart) route back through it instead
+        // of falling to the standard window.
     }
 
     static func activate(controller: LxAppController) {

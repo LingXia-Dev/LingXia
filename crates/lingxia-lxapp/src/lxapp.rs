@@ -13,7 +13,7 @@ use std::hash::{DefaultHasher, Hash, Hasher};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
-use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use tokio::sync::oneshot;
@@ -500,6 +500,9 @@ pub struct LxApp {
     pub(crate) executor: Arc<LxAppWorkers>,
     home_update_check_dispatched: AtomicBool,
     pending_restart_request: AtomicBool,
+    /// Session being torn down for a restart, or 0. Page instances must not be
+    /// (re)created on it; the recreated instance starts fresh at 0.
+    restart_closing_session: AtomicU64,
 
     /// Current runtime session of this app (id + status)
     pub(crate) session: LxAppSession,
@@ -822,6 +825,11 @@ impl LxApp {
         self.pending_restart_request.load(Ordering::SeqCst)
     }
 
+    /// True while `session_id` is this instance's restart-closing session.
+    pub fn is_restart_closing_session(&self, session_id: u64) -> bool {
+        session_id != 0 && self.restart_closing_session.load(Ordering::SeqCst) == session_id
+    }
+
     fn cancel_page_instance_dispose_timer(&self, id: &PageInstanceId) {
         self.cancel_page_instance_dispose_timer_by_id(id.as_str());
     }
@@ -1016,6 +1024,7 @@ impl LxApp {
             executor,
             home_update_check_dispatched: AtomicBool::new(false),
             pending_restart_request: AtomicBool::new(false),
+            restart_closing_session: AtomicU64::new(0),
             session,
             state: Mutex::new(LxAppState::new()),
             page_creation_lock: Mutex::new(()),
@@ -1862,6 +1871,11 @@ impl LxApp {
             return Ok(());
         }
         self.pending_restart_request.store(false, Ordering::SeqCst);
+
+        // Mark the session restart-closing so a premature reopen can't pre-create
+        // its pages on the dying worker; the recreated instance starts clean.
+        self.restart_closing_session
+            .store(from_session, Ordering::SeqCst);
 
         if let Err(e) = self.runtime.hide_lxapp(self.appid.clone(), from_session) {
             error!(

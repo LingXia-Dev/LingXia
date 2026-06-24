@@ -193,6 +193,11 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     private var cardTrailingConstraint: NSLayoutConstraint?
     private var cardBottomConstraint: NSLayoutConstraint?
     private var cardTopConstraint: NSLayoutConstraint?
+    /// Optional full-width strip above all shell content (sidebar + card). Used by
+    /// the runner to mount a device-selector toolbar like the iPhone simulator's;
+    /// height 0 by default, so the shipping desktop product is unaffected.
+    private let topAccessoryContainer = NSView()
+    private var topAccessoryHeightConstraint: NSLayoutConstraint?
     private var lastExpandedSidebarWidth: CGFloat = Layout.sidebarWidth
     private let sidebarRevealButton = NSButton()
     private var currentViewController: macOSLxAppViewController?
@@ -583,16 +588,28 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         cardTrailingConstraint = cardTrailing
         let cardBottom = shadowWrapper.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -p)
         cardBottomConstraint = cardBottom
-        let cardTop = shadowWrapper.topAnchor.constraint(equalTo: contentView.topAnchor, constant: p)
+        let cardTop = shadowWrapper.topAnchor.constraint(equalTo: topAccessoryContainer.bottomAnchor, constant: p)
         cardTopConstraint = cardTop
 
+        // Full-width accessory strip above everything (height 0 unless a host sets
+        // one). Added last so it sits on top in z-order.
+        topAccessoryContainer.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(topAccessoryContainer)
+        let topAccessoryHeight = topAccessoryContainer.heightAnchor.constraint(equalToConstant: 0)
+        topAccessoryHeightConstraint = topAccessoryHeight
+
         NSLayoutConstraint.activate([
-            base.topAnchor.constraint(equalTo: contentView.topAnchor),
+            topAccessoryContainer.topAnchor.constraint(equalTo: contentView.topAnchor),
+            topAccessoryContainer.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            topAccessoryContainer.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            topAccessoryHeight,
+
+            base.topAnchor.constraint(equalTo: topAccessoryContainer.bottomAnchor),
             base.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
             base.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
             base.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
 
-            sidebar.topAnchor.constraint(equalTo: contentView.topAnchor),
+            sidebar.topAnchor.constraint(equalTo: topAccessoryContainer.bottomAnchor),
             sidebar.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
             sidebar.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
             sidebarWidth,
@@ -976,14 +993,21 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     /// reconciler reads this to decide whether the core's `activeMainId` differs
     /// from what is on screen.
     var attachedMainAppId: String? {
-        browserCoordinator.isActive ? nil : currentViewController?.appId
+        // "Attached" = the current VC's view is actually mounted, not just same app
+        // id — after a restart the rebuilt VC shares the id but the old view is gone.
+        guard !browserCoordinator.isActive,
+              let currentViewController,
+              currentViewController.isViewLoaded,
+              currentViewController.view.superview === workspaceManager.contentContainer
+        else {
+            return nil
+        }
+        return currentViewController.appId
     }
 
     func reconcileActiveMain(appId: String) {
-        // Idempotent fast path: this lxapp is already the attached main and the
-        // browser is not occupying the content area. Skip — no detach/re-attach,
-        // no flicker (mirrors the aside reconciler's already-placed fast path).
-        if currentViewController?.appId == appId, !browserCoordinator.isActive {
+        // Idempotent fast path: skip if this lxapp's view is already the mounted main.
+        if attachedMainAppId == appId {
             return
         }
         // Attach via the shared presentMain machinery. switchToTab created the VC
@@ -1142,22 +1166,42 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         closeSession(appId: appId, notifyRuntime: true)
     }
 
+    /// Runtime-driven close on production macOS (active shell, no controller to emit
+    /// `.didClose`). Routes through the shared close path.
+    func handleRuntimeClose(appId: String, sessionId: UInt64) {
+        guard appSessions[appId] == sessionId else { return }
+        closeSession(appId: appId, notifyRuntime: false)
+    }
+
     private func closeSession(appId: String, notifyRuntime: Bool) {
         guard let sessionId = appSessions[appId], sessionId > 0 else {
-            os_log("closeTab missing session for %@", log: Self.log, type: .error, appId)
+            os_log("closeSession missing session for %@", log: Self.log, type: .error, appId)
             return
         }
 
+        // A restart drives its own reopen; suppress ours only for it (any other
+        // runtime close still reveals the previous app).
+        let suppressAutoReopen = !notifyRuntime && isLxappRestartClosing(appId, sessionId)
+
         if notifyRuntime {
+            // User close: ack, honor a stale reject, discard the controller session.
             let accepted = onLxappClosed(appId, sessionId)
             guard accepted else {
                 os_log("Ignoring stale close callback for %@ (session=%{public}llu)", log: Self.log, type: .info, appId, sessionId)
                 return
             }
             _ = controller.discardSession(appId: appId, sessionId: sessionId)
+        } else {
+            // Runtime-driven close (e.g. restart): ack so the close-wait completes.
+            _ = onLxappClosed(appId, sessionId)
         }
 
         if let viewController = viewControllers[appId] {
+            // Clear the main ref too, else the rebuilt VC after a restart is treated
+            // as already-attached and never re-mounted → blank content.
+            if currentViewController === viewController {
+                currentViewController = nil
+            }
             viewController.destroyNativeComponents()
             viewController.view.removeFromSuperview()
             viewControllers.removeValue(forKey: appId)
@@ -1166,6 +1210,9 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         tabManager.closeTab(appId: appId)
         appSessions.removeValue(forKey: appId)
         LxAppCore.removeSessionId(for: appId)
+
+        // A restart drives its own reopen; everything else reveals the next app.
+        guard !suppressAutoReopen else { return }
 
         let currentLxApp = getCurrentLxApp()
         let appidStr = currentLxApp.appid.toString()
@@ -1183,6 +1230,9 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         controllerEventsTask = Task { [weak self, controller] in
             for await event in controller.events {
                 guard let self else { return }
+                // Only the active shell reacts. A pad shell hidden behind the phone
+                // simulator must not tear down the session the phone now owns.
+                guard LxAppActiveHost.activeShell === self else { continue }
                 switch event {
                 case .didClose(let session):
                     closeSession(appId: session.appId, notifyRuntime: false)
@@ -1234,8 +1284,33 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
                 window?.standardWindowButton(type)?.isHidden = !visible
             }
         }
+        // A frameless host (no traffic lights) shouldn't reserve a traffic-light
+        // header above the rail — align its first icon to the content top.
+        sidebarView?.setRailAlignedToTop(!visible)
         syncSidebarHeaderButtonAlignment()
         sidebarView?.updateVisibilityState()
+    }
+
+    /// Mount (or clear) a full-width strip above all shell content. The runner
+    /// uses this for a device-selector toolbar like the iPhone simulator's; the
+    /// content lays out beneath it, so it never overlaps the app UI. Pass `nil` to
+    /// remove it.
+    func setTopAccessory(_ view: NSView?, height: CGFloat) {
+        topAccessoryContainer.subviews.forEach { $0.removeFromSuperview() }
+        if let view, height > 0 {
+            view.translatesAutoresizingMaskIntoConstraints = false
+            topAccessoryContainer.addSubview(view)
+            NSLayoutConstraint.activate([
+                view.topAnchor.constraint(equalTo: topAccessoryContainer.topAnchor),
+                view.leadingAnchor.constraint(equalTo: topAccessoryContainer.leadingAnchor),
+                view.trailingAnchor.constraint(equalTo: topAccessoryContainer.trailingAnchor),
+                view.bottomAnchor.constraint(equalTo: topAccessoryContainer.bottomAnchor),
+            ])
+            topAccessoryHeightConstraint?.constant = height
+        } else {
+            topAccessoryHeightConstraint?.constant = 0
+        }
+        window?.contentView?.layoutSubtreeIfNeeded()
     }
 
     func setSidebarHostActionHandler(_ handler: @escaping (String) -> Void) {

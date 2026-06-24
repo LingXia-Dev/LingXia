@@ -17,7 +17,7 @@ public class SimulatorToolbar: NSView {
     
     // MARK: - UI Components
 
-    private var deviceSelector: NSPopUpButton!
+    private var deviceSelector: RunnerDeviceSelectorControl!
     private var closeButton: NSButton!
     private var minimizeButton: NSButton!
     private var rotateButton: NSButton!
@@ -26,19 +26,18 @@ public class SimulatorToolbar: NSView {
     // MARK: - State
 
     public var onDeviceSelected: ((MobileDeviceSize) -> Void)?
-    public var onCloseClicked: (() -> Void)?
     public var onRotateClicked: (() -> Void)?
     public var onInspectClicked: (() -> Void)?
 
     private var currentDevice: MobileDeviceSize = .defaultDevice
-    
+
     // MARK: - Initialization
-    
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
+
+    init() {
+        super.init(frame: .zero)
         setupUI()
     }
-    
+
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
@@ -49,14 +48,14 @@ public class SimulatorToolbar: NSView {
         wantsLayer = true
         layer?.backgroundColor = NSColor(white: 0.18, alpha: 0.98).cgColor
         layer?.cornerRadius = Layout.cornerRadius
-        
+
         // Subtle shadow
         shadow = NSShadow()
         layer?.shadowColor = NSColor.black.cgColor
         layer?.shadowOpacity = 0.3
         layer?.shadowOffset = CGSize(width: 0, height: -1)
         layer?.shadowRadius = 4
-        
+
         setupWindowButtons()
         setupDeviceSelector()
         setupRotateButton()
@@ -100,36 +99,16 @@ public class SimulatorToolbar: NSView {
     }
     
     private func setupDeviceSelector() {
-        deviceSelector = NSPopUpButton()
-        deviceSelector.translatesAutoresizingMaskIntoConstraints = false
-        deviceSelector.bezelStyle = .texturedRounded
-        deviceSelector.isBordered = false
-        deviceSelector.font = NSFont.systemFont(ofSize: 12, weight: .medium)
-        deviceSelector.target = self
-        deviceSelector.action = #selector(deviceSelectionChanged)
-        deviceSelector.contentTintColor = NSColor.white.withAlphaComponent(0.9)
-        
-        if let cell = deviceSelector.cell as? NSPopUpButtonCell {
-            cell.arrowPosition = .arrowAtBottom
+        deviceSelector = RunnerDeviceSelectorControl()
+        deviceSelector.onDeviceSelected = { [weak self] device in
+            guard let self else { return }
+            self.currentDevice = device
+            self.onDeviceSelected?(device)
         }
-        
-        let devices = MobileDeviceSize.allCases
-        var previousShape: RunnerDeviceShape?
-        for device in devices {
-            if let previousShape, previousShape != device.shape {
-                deviceSelector.menu?.addItem(.separator())
-            }
-            let menuItem = NSMenuItem()
-            menuItem.title = device.displayName
-            menuItem.representedObject = device
-            deviceSelector.menu?.addItem(menuItem)
-            previousShape = device.shape
-        }
-        
-        selectDevice(currentDevice)
-        
+        deviceSelector.setCurrentDevice(currentDevice)
+
         addSubview(deviceSelector)
-        
+
         NSLayoutConstraint.activate([
             deviceSelector.centerXAnchor.constraint(equalTo: centerXAnchor),
             deviceSelector.centerYAnchor.constraint(equalTo: centerYAnchor)
@@ -165,9 +144,10 @@ public class SimulatorToolbar: NSView {
 
     private func setupRotateButton() {
         rotateButton = NSButton()
-        let config = NSImage.SymbolConfiguration(pointSize: 13, weight: .semibold)
-        let image = NSImage(systemSymbolName: "rotate.right", accessibilityDescription: "Rotate")?
-            .withSymbolConfiguration(config)
+        // Rotate uses the shared icon_rotate asset (single source for macOS + Windows),
+        // not a macOS-only SF Symbol; isTemplate lets contentTintColor recolor it.
+        let image = RunnerSupport.Assets.image(named: "icon_rotate", size: CGSize(width: 15, height: 15))
+        image?.isTemplate = true
         rotateButton.image = image
         rotateButton.imagePosition = .imageOnly
         rotateButton.title = ""
@@ -184,6 +164,8 @@ public class SimulatorToolbar: NSView {
     // MARK: - Actions
 
     @objc private func inspectClicked() {
+        // The gear is just DevTools. Lxapp lifecycle lives on the capsule sheet;
+        // Restart Runner lives in the device selector.
         onInspectClicked?()
     }
 
@@ -192,38 +174,23 @@ public class SimulatorToolbar: NSView {
     }
 
     @objc private func closeClicked() {
-        window?.close()
+        // The simulator's red dot closes the simulator: quit the runner cleanly
+        // rather than just closing the window (which left it alive in the dock).
+        NSApp.terminate(nil)
     }
-    
+
     @objc private func minimizeClicked() {
         window?.miniaturize(nil)
     }
     
-    @objc private func deviceSelectionChanged() {
-        guard let selectedItem = deviceSelector.selectedItem,
-              let device = selectedItem.representedObject as? MobileDeviceSize else { return }
-        
-        currentDevice = device
-        onDeviceSelected?(device)
-    }
-    
     // MARK: - Public API
-    
+
     public func setCurrentDevice(_ device: MobileDeviceSize) {
         currentDevice = device
-        selectDevice(device)
+        deviceSelector.setCurrentDevice(device)
         rotateButton?.isEnabled = device.supportsOrientation
         rotateButton?.contentTintColor = device.supportsOrientation
             ? NSColor.white.withAlphaComponent(0.7)
             : NSColor.white.withAlphaComponent(0.25)
-    }
-
-    private func selectDevice(_ device: MobileDeviceSize) {
-        guard let item = deviceSelector.itemArray.first(where: {
-            ($0.representedObject as? MobileDeviceSize)?.id == device.id
-        }) else {
-            return
-        }
-        deviceSelector.select(item)
     }
 }

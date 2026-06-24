@@ -13,22 +13,39 @@ public class RunnerApp {
     private var surfaceShellHost: RunnerSurfaceShellHost?
     private var controller: LxAppController?
     private var controllerEventsTask: Task<Void, Never>?
-    private let deviceMenu = RunnerDeviceMenu()
+    private let appMenu = RunnerAppMenu()
     private var pendingPhoneLifecycleReopens: [String: (appId: String, path: String, sessionId: UInt64)] = [:]
+    /// App ids whose next phone reopen should reload the webview in place (restart),
+    /// keeping the device-frame window visible instead of rebuilding it.
+    private var phoneRestartReloadPending: Set<String> = []
+    /// App ids in a surface-shell (pad/desktop) restart — the runner stands down on
+    /// `.didClose` and lets the runtime's recreate re-attach the fresh session.
+    private var pendingSurfaceLifecycleReopens: Set<String> = []
     private(set) var selectedDeviceSize: MobileDeviceSize = .defaultDevice
     private(set) var deviceOrientation: RunnerDeviceOrientation = .portrait
     private(set) var deviceSize: MobileDeviceSize = .defaultDevice
     
-    private init() {}
+    private init() {
+        deviceOrientation = Self.defaultOrientation(for: selectedDeviceSize)
+    }
+
+    /// Pads and desktops read most naturally in landscape; phones in portrait.
+    private static func defaultOrientation(for device: MobileDeviceSize) -> RunnerDeviceOrientation {
+        guard device.supportsOrientation else { return .portrait }
+        return (device.shape == .pad || device.shape == .desktop) ? .landscape : .portrait
+    }
     
     // MARK: - Configuration
     
     /// Set device size for the Runner window
     /// This can be called to change device while running
     public func setDeviceSize(_ size: MobileDeviceSize) {
+        let shapeChanged = size.shape != selectedDeviceSize.shape
         selectedDeviceSize = size
-        if !size.supportsOrientation {
-            deviceOrientation = .portrait
+        // Reset to the shape's natural orientation on a device-family change; keep
+        // the user's rotation within the same family.
+        if shapeChanged || !size.supportsOrientation {
+            deviceOrientation = Self.defaultOrientation(for: size)
         }
         applyDeviceConfiguration()
     }
@@ -48,7 +65,6 @@ public class RunnerApp {
         deviceSize = effectiveDevice
         SimulatorWindowController.setWindowSize(effectiveDevice)
         configureOpenURLHandlingForCurrentShape()
-        deviceMenu.updateSelectedDevice(selectedDeviceSize, orientation: deviceOrientation)
         os_log(
             "Device size changed to: %@ %@",
             log: Self.log,
@@ -66,8 +82,7 @@ public class RunnerApp {
 
     public func bind(controller: LxAppController) {
         self.controller = controller
-        deviceMenu.installIfNeeded()
-        deviceMenu.updateSelectedDevice(selectedDeviceSize, orientation: deviceOrientation)
+        appMenu.installIfNeeded()
         configureOpenURLHandlingForCurrentShape()
         controllerEventsTask?.cancel()
         controllerEventsTask = Task { [weak self, controller] in
@@ -84,14 +99,22 @@ public class RunnerApp {
                 case .didClose(let session):
                     RunnerSupport.Runtime.removeSessionId(for: session.appId)
                     if let phoneHost = self.windowController, phoneHost.appId == session.appId {
-                        phoneHost.closeFromRuntime()
                         if let pending = self.pendingPhoneLifecycleReopens.removeValue(forKey: session.appId) {
+                            // Restart: reload the webview in place so the device frame
+                            // never disappears.
+                            self.phoneRestartReloadPending.insert(session.appId)
                             self.reopenCurrentAppAfterLifecycleAction(pending)
                         } else {
+                            phoneHost.closeFromRuntime()
                             self.reopenHomeAfterRuntimeClose(appId: session.appId, controller: controller)
                         }
                     } else if self.surfaceShellHost?.appId == session.appId {
-                        self.reopenHomeAfterRuntimeClose(appId: session.appId, controller: controller)
+                        if self.pendingSurfaceLifecycleReopens.remove(session.appId) != nil {
+                            // Restart: the runtime's recreate re-attaches the fresh
+                            // session through the shell; the runner stands down.
+                        } else {
+                            self.reopenHomeAfterRuntimeClose(appId: session.appId, controller: controller)
+                        }
                     }
                 default:
                     continue
@@ -166,7 +189,12 @@ public class RunnerApp {
         if let existingController = windowController, existingController.appId == appId {
             existingController.applyDeviceChange(deviceSize)
             existingController.window?.makeKeyAndOrderFront(nil)
-            existingController.navigate(to: path)
+            if phoneRestartReloadPending.remove(appId) != nil {
+                // Fresh session after a restart: swap the inner webview in place.
+                existingController.reloadContentForRestart(path: path)
+            } else {
+                existingController.navigate(to: path)
+            }
             return
         }
 
@@ -300,7 +328,10 @@ public class RunnerApp {
     }
 
     public func closeCurrentLxAppFromCapsule() {
-        triggerCurrentLxAppAction("close", reopenAfterAction: false)
+        // The runner draws this capsule itself, so this only runs in runner mode:
+        // a single-app emulator where the close circle exits (quits) the app.
+        // Production's SDK-drawn capsule does the standard exit-to-host instead.
+        NSApp.terminate(nil)
     }
 
     private func triggerCurrentLxAppAction(_ action: String, reopenAfterAction: Bool) {
@@ -324,12 +355,17 @@ public class RunnerApp {
             handled ? "true" : "false"
         )
 
-        if !handled {
+        guard handled else {
+            // The runtime rejected the action: drop any pending markers so a later
+            // real close isn't mistaken for this (never-happened) restart.
             pendingPhoneLifecycleReopens.removeValue(forKey: current.appId)
+            return
         }
 
         if reopenAfterAction && !shouldReopenPhoneHost {
-            reopenCurrentAppAfterLifecycleAction(current)
+            // Surface-shell restart: stand down (the runtime's recreate re-attaches);
+            // mark it so `.didClose` stands down too.
+            pendingSurfaceLifecycleReopens.insert(current.appId)
         }
     }
 
@@ -343,7 +379,8 @@ public class RunnerApp {
                 if let activeSession = RunnerSupport.Runtime.sessionId(for: current.appId),
                    activeSession > 0,
                    activeSession != current.sessionId,
-                   (self.windowController?.appId == current.appId || self.surfaceShellHost?.appId == current.appId) {
+                   (self.windowController?.appId == current.appId || self.surfaceShellHost?.appId == current.appId),
+                   !self.phoneRestartReloadPending.contains(current.appId) {
                     return
                 }
 

@@ -1,4 +1,5 @@
 import AppKit
+import WebKit
 @_spi(Runner) import lingxia
 
 /// Runner host for pad/desktop shapes.
@@ -7,153 +8,6 @@ import AppKit
 /// adaptive surface layout to the SDK desktop shell. The runner only owns device
 /// selection and window sizing policy here.
 @MainActor
-private final class RunnerSurfaceDeviceSelector: NSView {
-    private let button = NSButton()
-    private var selectedDevice: MobileDeviceSize?
-    private var selectedOrientation: RunnerDeviceOrientation = .portrait
-
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
-        setup()
-    }
-
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
-
-    func updateDevice(_ device: MobileDeviceSize) {
-        selectedDevice = device
-        selectedOrientation = device.orientation
-        button.image = Self.symbol(for: device)
-        if device.supportsOrientation {
-            button.toolTip = "Device: \(device.displayName) \(device.orientation.displayName)"
-        } else {
-            button.toolTip = "Device: \(device.displayName)"
-        }
-    }
-
-    private func setup() {
-        translatesAutoresizingMaskIntoConstraints = false
-
-        button.translatesAutoresizingMaskIntoConstraints = false
-        button.title = ""
-        button.imagePosition = .imageOnly
-        button.bezelStyle = .regularSquare
-        button.isBordered = false
-        button.setButtonType(.momentaryChange)
-        button.target = self
-        button.action = #selector(showDeviceMenu)
-        button.contentTintColor = .secondaryLabelColor
-
-        addSubview(button)
-        NSLayoutConstraint.activate([
-            button.leadingAnchor.constraint(equalTo: leadingAnchor),
-            button.trailingAnchor.constraint(equalTo: trailingAnchor),
-            button.topAnchor.constraint(equalTo: topAnchor),
-            button.bottomAnchor.constraint(equalTo: bottomAnchor),
-            widthAnchor.constraint(equalToConstant: 30),
-            heightAnchor.constraint(equalToConstant: 24),
-        ])
-    }
-
-    @objc private func showDeviceMenu() {
-        let menu = NSMenu(title: "Device")
-        var selectedItem: NSMenuItem?
-
-        let clean = NSMenuItem(
-            title: "Clean Cache and Restart LxApp",
-            action: #selector(cleanCacheAndRestartLxApp(_:)),
-            keyEquivalent: ""
-        )
-        clean.target = self
-        clean.image = NSImage(systemSymbolName: "trash", accessibilityDescription: nil)
-        menu.addItem(clean)
-
-        let restart = NSMenuItem(
-            title: "Restart LxApp",
-            action: #selector(restartLxApp(_:)),
-            keyEquivalent: ""
-        )
-        restart.target = self
-        restart.image = NSImage(systemSymbolName: "arrow.clockwise", accessibilityDescription: nil)
-        menu.addItem(restart)
-        menu.addItem(.separator())
-
-        if selectedDevice?.supportsOrientation == true {
-            for orientation in RunnerDeviceOrientation.allCases {
-                let item = NSMenuItem(
-                    title: orientation.displayName,
-                    action: #selector(orientationSelectionChanged(_:)),
-                    keyEquivalent: ""
-                )
-                item.target = self
-                item.representedObject = orientation.rawValue
-                item.state = orientation == selectedOrientation ? .on : .off
-                menu.addItem(item)
-            }
-            menu.addItem(.separator())
-        }
-
-        var previousShape: RunnerDeviceShape?
-        for device in MobileDeviceSize.allCases {
-            if let previousShape, previousShape != device.shape {
-                menu.addItem(.separator())
-            }
-            let item = NSMenuItem(
-                title: device.displayName,
-                action: #selector(deviceSelectionChanged(_:)),
-                keyEquivalent: ""
-            )
-            item.target = self
-            item.representedObject = device
-            item.state = device.id == selectedDevice?.id ? .on : .off
-            menu.addItem(item)
-            if selectedItem == nil, item.state == .on {
-                selectedItem = item
-            }
-            previousShape = device.shape
-        }
-        menu.popUp(positioning: selectedItem, at: NSPoint(x: 0, y: bounds.maxY + 2), in: self)
-    }
-
-    @objc private func deviceSelectionChanged(_ sender: NSMenuItem) {
-        guard let device = sender.representedObject as? MobileDeviceSize else {
-            return
-        }
-        RunnerApp.shared.setDeviceSize(device)
-    }
-
-    @objc private func orientationSelectionChanged(_ sender: NSMenuItem) {
-        guard let rawValue = sender.representedObject as? String,
-              let orientation = RunnerDeviceOrientation(rawValue: rawValue) else {
-            return
-        }
-        RunnerApp.shared.setDeviceOrientation(orientation)
-    }
-
-    @objc private func cleanCacheAndRestartLxApp(_ sender: NSMenuItem) {
-        RunnerApp.shared.cleanCacheAndRestartCurrentLxApp()
-    }
-
-    @objc private func restartLxApp(_ sender: NSMenuItem) {
-        RunnerApp.shared.restartCurrentLxApp()
-    }
-
-    private static func symbol(for device: MobileDeviceSize) -> NSImage? {
-        let name: String
-        switch device.shape {
-        case .phone:
-            name = "iphone"
-        case .pad:
-            name = "ipad"
-        case .desktop:
-            name = "desktopcomputer"
-        }
-        return NSImage(systemSymbolName: name, accessibilityDescription: "Device")
-    }
-}
-
-@MainActor
 final class RunnerSurfaceShellHost {
     let shell: LxAppShell
 
@@ -161,8 +15,24 @@ final class RunnerSurfaceShellHost {
     private(set) var currentPath: String
     private(set) var device: MobileDeviceSize
 
-    private let deviceSelector = RunnerSurfaceDeviceSelector()
-    private var deviceAccessoryController: NSTitlebarAccessoryViewController?
+    // The same toolbar as the iPhone simulator, so phone and pad share one UI.
+    private lazy var toolbar: SimulatorToolbar = {
+        let bar = SimulatorToolbar()
+        bar.onDeviceSelected = { device in RunnerApp.shared.setDeviceSize(device) }
+        bar.onRotateClicked = { RunnerApp.shared.toggleDeviceOrientation() }
+        bar.onInspectClicked = { [weak self] in self?.openInspector() }
+        return bar
+    }()
+
+    /// Toggle the Safari Web Inspector for the shell's active webview (same as the
+    /// phone simulator's DevTools action).
+    private func openInspector() {
+        guard let webView = RunnerSupport.WebView.current() else { return }
+        let retained = Unmanaged.passRetained(webView)
+        let ptr = UInt(bitPattern: retained.toOpaque())
+        _ = toggleWebViewDevtoolsByPtr(ptr, true)
+        retained.release()
+    }
     nonisolated(unsafe) private var closeObserver: NSObjectProtocol?
     private var isHiddenForHostSwitch = false
     var onClose: ((RunnerSurfaceShellHost) -> Void)?
@@ -225,7 +95,7 @@ final class RunnerSurfaceShellHost {
 
     func applyDevice(_ newDevice: MobileDeviceSize) {
         device = newDevice
-        deviceSelector.updateDevice(newDevice)
+        toolbar.setCurrentDevice(newDevice)
         configureWindow(for: newDevice, center: false)
         DevToolsLogger.shared.log("Device -> \(newDevice.displayName) (\(newDevice.sizeDescription))", level: .debug)
     }
@@ -258,13 +128,24 @@ final class RunnerSurfaceShellHost {
     }
 
     private func installDeviceSelector() {
-        guard deviceAccessoryController == nil, let window = shell.window else { return }
-        let controller = NSTitlebarAccessoryViewController()
-        controller.layoutAttribute = .left
-        controller.view = deviceSelector
-        deviceSelector.updateDevice(device)
-        window.addTitlebarAccessoryViewController(controller)
-        deviceAccessoryController = controller
+        // Float the toolbar above the content with a gap (like the iPhone simulator),
+        // so the rounded toolbar never sits flush against the content.
+        let gap: CGFloat = 12
+        let host = NSView()
+        host.translatesAutoresizingMaskIntoConstraints = false
+        host.wantsLayer = true
+        host.layer?.backgroundColor = NSColor(white: 0.11, alpha: 1.0).cgColor
+        toolbar.translatesAutoresizingMaskIntoConstraints = false
+        host.addSubview(toolbar)
+        NSLayoutConstraint.activate([
+            toolbar.topAnchor.constraint(equalTo: host.topAnchor),
+            toolbar.leadingAnchor.constraint(equalTo: host.leadingAnchor),
+            toolbar.trailingAnchor.constraint(equalTo: host.trailingAnchor),
+            toolbar.heightAnchor.constraint(equalToConstant: SimulatorToolbar.Layout.height),
+        ])
+        RunnerSupport.SurfaceShell.setTopAccessory(
+            shell, view: host, height: SimulatorToolbar.Layout.height + gap)
+        toolbar.setCurrentDevice(device)
     }
 
     private func configureWindow(for device: MobileDeviceSize, center: Bool) {
@@ -272,7 +153,9 @@ final class RunnerSurfaceShellHost {
 
         let contentSize = NSSize(width: device.width, height: device.height)
         window.title = "LingXia Runner - \(device.orientedDisplayName)"
-        RunnerSupport.SurfaceShell.setTrafficLightsVisible(shell, visible: device.shape == .desktop)
+        // Frameless: no real macOS traffic lights. The toolbar strip above the
+        // content carries its own close/minimize dots (like the iPhone simulator).
+        RunnerSupport.SurfaceShell.setTrafficLightsVisible(shell, visible: false)
         window.maxSize = NSSize(
             width: CGFloat.greatestFiniteMagnitude,
             height: CGFloat.greatestFiniteMagnitude

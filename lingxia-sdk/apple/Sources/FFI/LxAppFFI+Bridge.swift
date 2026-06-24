@@ -104,6 +104,12 @@ extension LxApp {
             } else {
                 #if os(iOS)
                 iOSLxApp.closeLxApp(appId: appIdString, sessionId: session_id)
+                #elseif os(macOS)
+                // Production macOS hosts activate a shell but no controller, so the
+                // runtime-driven close must route to the active shell — otherwise an
+                // lxapp restart's close-wait times out and the shell keeps stale state.
+                LxAppActiveHost.activeShell?.handleRuntimeClose(
+                    appId: appIdString, sessionId: session_id)
                 #endif
             }
             return true

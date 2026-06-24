@@ -312,6 +312,11 @@ class SidebarView: NSView, NSPopoverDelegate {
 
     /// True when the sidebar is collapsed to the icon-only rail.
     private(set) var isCompact = false
+
+    /// Rail top inset. Normally clears the traffic lights; a host with no traffic
+    /// lights (the frameless runner) zeroes it so the first rail icon aligns with
+    /// the content/webview top instead of sitting a header-height below it.
+    private var railTopConstraint: NSLayoutConstraint?
     /// Supplies the minimum width that still clears the macOS traffic lights,
     /// so the rail can be as narrow as those controls allow.
     var trafficLightClearanceProvider: (() -> CGFloat)?
@@ -557,8 +562,9 @@ class SidebarView: NSView, NSPopoverDelegate {
         hideButton.action = #selector(hideButtonClicked)
         headerView.addSubview(hideButton)
 
-        // Rail expand toggle: configured once, inserted at the top of the rail
-        // whenever the rail is rebuilt.
+        // Rail expand toggle: pinned to the bottom of the rail (not in the
+        // scrolling icon stack) so it stays anchored as chrome below the
+        // activators, leaving the top free for a future branding header.
         railExpandButton.translatesAutoresizingMaskIntoConstraints = false
         railExpandButton.isBordered = false
         railExpandButton.bezelStyle = .regularSquare
@@ -574,15 +580,23 @@ class SidebarView: NSView, NSPopoverDelegate {
             size: NSSize(width: Layout.railIconSize, height: Layout.railIconSize))
         railExpandButton.target = self
         railExpandButton.action = #selector(railExpandClicked)
+        addSubview(railExpandButton)
         NSLayoutConstraint.activate([
             railExpandButton.widthAnchor.constraint(equalToConstant: Layout.railButtonSize),
             railExpandButton.heightAnchor.constraint(equalToConstant: Layout.railButtonSize),
+            railExpandButton.centerXAnchor.constraint(equalTo: railScrollView.centerXAnchor),
+            // Pin to the sidebar's true bottom (the footer is hidden in compact),
+            // not railScrollView.bottom which stops a footerHeight above it.
+            railExpandButton.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -10),
         ])
 
         // Resize handle on right edge
         resizeHandle.translatesAutoresizingMaskIntoConstraints = false
         resizeHandle.wantsLayer = true
         addSubview(resizeHandle)
+
+        railTopConstraint = railScrollView.topAnchor.constraint(
+            equalTo: topAnchor, constant: Layout.trafficLightsHeight)
 
         NSLayoutConstraint.activate([
             headerView.topAnchor.constraint(equalTo: topAnchor),
@@ -606,8 +620,10 @@ class SidebarView: NSView, NSPopoverDelegate {
             scrollView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Layout.resizeHandleWidth),
             scrollView.bottomAnchor.constraint(equalTo: footerView.topAnchor),
 
-            // Rail occupies the same region as the main scroll view.
-            railScrollView.topAnchor.constraint(equalTo: headerView.bottomAnchor),
+            // Rail occupies the same region as the main scroll view, but its top
+            // inset is adjustable (see railTopConstraint) — the rail's header is
+            // empty in compact mode, so a frameless host can pull it to the top.
+            railTopConstraint!,
             railScrollView.leadingAnchor.constraint(equalTo: leadingAnchor),
             railScrollView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Layout.resizeHandleWidth),
             railScrollView.bottomAnchor.constraint(equalTo: footerView.topAnchor),
@@ -704,6 +720,12 @@ class SidebarView: NSView, NSPopoverDelegate {
     // MARK: - Compact (icon-rail) mode
 
     /// Switch between the expanded sidebar and the collapsed icon rail.
+    /// When true (a frameless host with no traffic lights), the collapsed rail's
+    /// first icon aligns to the very top instead of clearing a traffic-light header.
+    func setRailAlignedToTop(_ alignedToTop: Bool) {
+        railTopConstraint?.constant = alignedToTop ? 0 : Layout.trafficLightsHeight
+    }
+
     func setCompactMode(_ compact: Bool) {
         guard compact != isCompact else { return }
         isCompact = compact
@@ -733,9 +755,6 @@ class SidebarView: NSView, NSPopoverDelegate {
             $0.removeFromSuperview()
         }
         railButtons.removeAll()
-
-        // The expand toggle is always the first icon in the rail, above the apps.
-        railStack.addArrangedSubview(railExpandButton)
 
         for group in model.appGroups {
             let info = getLxAppInfo(group.appId)
@@ -776,6 +795,25 @@ class SidebarView: NSView, NSPopoverDelegate {
             railStack.addArrangedSubview(btn)
             railButtons[key] = btn
         }
+
+        // New-tab affordance for the collapsed rail — only when a full browser is
+        // available (e.g. the showcase desktop app). In hosts without browser-shell
+        // (e.g. the lxapp Runner) a "+" would just open a dead tab, so omit it.
+        let browserEnabled = (LxAppCore.capabilities & LxAppCore.capBrowser) != 0
+        if browserEnabled {
+            let addRailButton = makeRailButton(
+                key: "action:add-tab",
+                tooltip: "Add browser tab",
+                image: NSImage(systemSymbolName: "plus", accessibilityDescription: "Add browser tab"),
+                isTemplate: true
+            )
+            addRailButton.action = #selector(addButtonClicked)
+            railStack.addArrangedSubview(addRailButton)
+        }
+
+        // The expand toggle is not part of this stack — it's pinned to the rail's
+        // bottom in setup() so it always anchors the bottom regardless of how many
+        // activators are present.
 
         refreshRailHighlight()
     }
@@ -935,11 +973,14 @@ class SidebarView: NSView, NSPopoverDelegate {
         let compact = isCompact && !hidden && !appUIOnlyMode
         scrollView.isHidden = hidden || appUIOnlyMode || compact
         railScrollView.isHidden = hidden || appUIOnlyMode || !compact
+        // The rail's bottom-pinned expand toggle lives outside the scroll view, so
+        // toggle it with the rail.
+        railExpandButton.isHidden = hidden || appUIOnlyMode || !compact
         // The header action buttons and footer panel icons don't fit the rail.
         settingsButton.isHidden = hidden || !browserEnabled || appUIOnlyMode || compact
         downloadButton.isHidden = hidden || !browserEnabled || appUIOnlyMode || compact
         // The header collapse toggle shows only in the expanded layout; the rail
-        // carries its own expand toggle as the first icon when compact.
+        // carries its own expand toggle anchored at the bottom when compact.
         hideButton.isHidden = hidden || appUIOnlyMode || compact
         panelStack.isHidden = compact
         // The footer only carries panel icons now; collapse it when empty so an

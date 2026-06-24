@@ -105,7 +105,7 @@ public struct MobileDeviceSize: Equatable, Hashable, Decodable, Sendable {
     }
 
     public var supportsOrientation: Bool {
-        shape == .phone || shape == .pad
+        shape == .phone || shape == .pad || shape == .desktop
     }
 
     public var orientation: RunnerDeviceOrientation {

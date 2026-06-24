@@ -394,10 +394,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Match the dev toolchain (Xcode 26 = Swift 6.2) used by the example apps.
+      # Pin Xcode 26.0 (Swift 6.2) to match the dev toolchain; latest-stable
+      # drifts (currently 26.5) and tightens concurrency checks unpredictably.
       - uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: latest-stable
+          xcode-version: "26.0"
 
       - uses: dtolnay/rust-toolchain@master
         with:
@@ -455,12 +456,11 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
-      # Use the newest Xcode (26 = Swift 6.2) to match the dev toolchain; the
-      # iOS media SDK relies on Swift 6.2 concurrency inference that the default
-      # Xcode 16 (Swift 6.0/6.1) lacks.
+      # Pin Xcode 26.0 (Swift 6.2): the media SDK needs 6.2 concurrency inference
+      # the default Xcode 16 lacks, but latest-stable (26.5) is too strict.
       - uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: latest-stable
+          xcode-version: "26.0"
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
@@ -492,12 +492,12 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
-      # The iOS SDK (media subsystem) compiles under Swift 6.2 but not the
-      # default Xcode 16's Swift 6.0/6.1 strict concurrency. Select the newest
-      # Xcode (26 = Swift 6.2) to match the dev toolchain.
+      # Pin Xcode 26.0 (Swift 6.2): the iOS media SDK needs 6.2 inference the
+      # default Xcode 16 lacks, but latest-stable drifted to 26.5 whose stricter
+      # sending-checks reject it. 26.0 is below the 26.3 dev toolchain (builds clean).
       - uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: latest-stable
+          xcode-version: "26.0"
       - name: Show active Xcode/Swift
         run: xcodebuild -version && swift --version
       - uses: dtolnay/rust-toolchain@master
@@ -629,7 +629,7 @@ jobs:
 
       - uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: latest-stable
+          xcode-version: "26.0"
 
       - uses: dtolnay/rust-toolchain@master
         with:

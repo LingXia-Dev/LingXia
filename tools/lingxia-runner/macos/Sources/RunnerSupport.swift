@@ -165,6 +165,10 @@ enum RunnerSupport {
             LingxiaRunnerSPI.SurfaceShell.setTrafficLightsVisible(shell, visible: visible)
         }
 
+        static func setTopAccessory(_ shell: LxAppShell, view: NSView?, height: CGFloat) {
+            LingxiaRunnerSPI.SurfaceShell.setTopAccessory(shell, view: view, height: height)
+        }
+
         static func open(
             _ shell: LxAppShell,
             appId: String,
