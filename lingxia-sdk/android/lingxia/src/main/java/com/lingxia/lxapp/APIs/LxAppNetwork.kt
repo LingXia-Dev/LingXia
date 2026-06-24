@@ -12,8 +12,8 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.telephony.SubscriptionManager
 import android.telephony.TelephonyManager
-import android.util.Log
 import com.lingxia.app.Lingxia
+import com.lingxia.app.LxLog
 import com.lingxia.lxapp.LxApp
 import com.lingxia.app.NativeApi
 import org.json.JSONArray
@@ -160,7 +160,7 @@ object LxAppNetwork {
                     connMgr.registerNetworkCallback(request, callback)
                 }
             } catch (e: Exception) {
-                Log.w(TAG, "Failed to register network callback", e)
+                LxLog.w(TAG, "Failed to register network callback", e)
                 networkCallback = null
             }
         }
@@ -183,7 +183,7 @@ object LxAppNetwork {
             try {
                 connMgr.unregisterNetworkCallback(callback)
             } catch (e: Exception) {
-                Log.w(TAG, "Failed to unregister network callback", e)
+                LxLog.w(TAG, "Failed to unregister network callback", e)
             }
         }
     }
@@ -455,12 +455,12 @@ object LxAppNetwork {
                 ctx.checkCallingOrSelfPermission("android.permission.READ_PHONE_STATE") == PackageManager.PERMISSION_GRANTED
             val hasReadBasicPhoneState =
                 ctx.checkCallingOrSelfPermission("android.permission.READ_BASIC_PHONE_STATE") == PackageManager.PERMISSION_GRANTED
-            Log.w(
+            LxLog.w(
                 TAG,
                 "Cellular network type unknown; dataType=$dataType netType=$netType voiceType=$voiceType chosen=$networkType overrideType=$overrideType readPhoneState=$hasReadPhoneState readBasicPhoneState=$hasReadBasicPhoneState",
             )
         } else {
-            Log.d(
+            LxLog.d(
                 TAG,
                 "Cellular network type resolved=$mapped source=$source dataType=$dataType netType=$netType voiceType=$voiceType overrideType=$overrideType",
             )
@@ -561,7 +561,7 @@ object LxAppNetwork {
                 }
             }
         } catch (error: Throwable) {
-            Log.w(TAG, "Failed to enumerate local IP addresses", error)
+            LxLog.w(TAG, "Failed to enumerate local IP addresses", error)
         }
 
         return LocalIpAddresses(

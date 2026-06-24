@@ -9,7 +9,6 @@ import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.os.Handler
 import android.os.Looper
-import android.util.Log
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -21,6 +20,7 @@ import android.widget.ProgressBar
 import android.widget.TextView
 import java.io.File
 import com.lingxia.app.Lingxia
+import com.lingxia.app.LxLog
 import com.lingxia.lxapp.LxApp
 
 /**
@@ -96,7 +96,7 @@ internal object LxAppToast {
     ) {
         val activity = LxApp.getCurrentActivity()
         if (activity == null) {
-            Log.w(TAG, "showToast: current activity is null")
+            LxLog.w(TAG, "showToast: current activity is null")
             return
         }
         activity.runOnUiThread {
@@ -308,19 +308,19 @@ internal object LxAppToast {
         return try {
             // Only support absolute paths
             if (!File(imagePath).isAbsolute) {
-                Log.w(TAG, "Image path must be absolute: $imagePath")
+                LxLog.w(TAG, "Image path must be absolute: $imagePath")
                 return null
             }
 
             val file = File(imagePath)
             if (!file.exists() || !file.isFile) {
-                Log.w(TAG, "Image file does not exist: $imagePath")
+                LxLog.w(TAG, "Image file does not exist: $imagePath")
                 return null
             }
 
             val bitmap = BitmapFactory.decodeFile(imagePath)
             if (bitmap == null) {
-                Log.w(TAG, "Failed to decode image: $imagePath")
+                LxLog.w(TAG, "Failed to decode image: $imagePath")
                 return null
             }
 
@@ -330,7 +330,7 @@ internal object LxAppToast {
                 setImageBitmap(bitmap)
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error loading image: $imagePath", e)
+            LxLog.e(TAG, "Error loading image: $imagePath", e)
             null
         }
     }

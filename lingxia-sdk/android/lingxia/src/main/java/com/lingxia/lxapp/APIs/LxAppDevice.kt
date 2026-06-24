@@ -3,13 +3,13 @@ package com.lingxia.lxapp.APIs
 import android.app.Activity
 import android.Manifest
 import android.content.Context
-import android.util.Log
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import org.json.JSONObject
 import com.lingxia.app.Lingxia
+import com.lingxia.app.LxLog
 import com.lingxia.lxapp.LxApp
 import androidx.core.content.ContextCompat
 import java.io.File
@@ -24,7 +24,7 @@ internal object LxAppDevice {
     fun getScreenInfo(callbackId: Long) {
         val activity = LxApp.getCurrentActivity()
         if (activity == null) {
-            Log.e(TAG, "getScreenInfo: current activity is null")
+            LxLog.e(TAG, "getScreenInfo: current activity is null")
             val errorData = JSONObject().apply {
                 put("width", 0)
                 put("height", 0)
@@ -43,14 +43,14 @@ internal object LxAppDevice {
     fun vibrate(longVibration: Boolean) {
         val activity = LxApp.getCurrentActivity()
         if (activity == null) {
-            Log.w(TAG, "vibrate: current activity is null")
+            LxLog.w(TAG, "vibrate: current activity is null")
             return
         }
         activity.runOnUiThread {
             try {
                 vibrate(activity, longVibration)
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to vibrate", e)
+                LxLog.e(TAG, "Failed to vibrate", e)
             }
         }
     }
@@ -59,14 +59,14 @@ internal object LxAppDevice {
     fun makePhoneCall(phoneNumber: String) {
         val activity = LxApp.getCurrentActivity()
         if (activity == null) {
-            Log.w(TAG, "makePhoneCall: current activity is null")
+            LxLog.w(TAG, "makePhoneCall: current activity is null")
             return
         }
         activity.runOnUiThread {
             try {
                 makePhoneCall(activity, phoneNumber)
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to make phone call", e)
+                LxLog.e(TAG, "Failed to make phone call", e)
             }
         }
     }
@@ -83,7 +83,7 @@ internal object LxAppDevice {
                 file.readText(Charsets.UTF_8)
             }
         } catch (e: Exception) {
-            Log.w(TAG, "readExternalStorageText failed: ${file.absolutePath}", e)
+            LxLog.w(TAG, "readExternalStorageText failed: ${file.absolutePath}", e)
             null
         }
     }
@@ -98,7 +98,7 @@ internal object LxAppDevice {
             file.writeText(value, Charsets.UTF_8)
             true
         } catch (e: Exception) {
-            Log.w(TAG, "writeExternalStorageText failed: ${file.absolutePath}", e)
+            LxLog.w(TAG, "writeExternalStorageText failed: ${file.absolutePath}", e)
             false
         }
     }
@@ -134,10 +134,10 @@ internal object LxAppDevice {
 
             val success = com.lingxia.app.NativeApi.onCallback(callbackId, true, screenInfo.toString())
             if (!success) {
-                Log.e(TAG, "Failed to send screen info callback for ID: $callbackId")
+                LxLog.e(TAG, "Failed to send screen info callback for ID: $callbackId")
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to get screen info", e)
+            LxLog.e(TAG, "Failed to get screen info", e)
             val errorData = JSONObject().apply {
                 put("width", 0)
                 put("height", 0)
@@ -163,7 +163,7 @@ internal object LxAppDevice {
             }
 
             if (!vibrator.hasVibrator()) {
-                Log.w(TAG, "Device does not support vibration")
+                LxLog.w(TAG, "Device does not support vibration")
                 return
             }
 
@@ -187,7 +187,7 @@ internal object LxAppDevice {
                 vibrator.vibrate(duration)
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to vibrate", e)
+            LxLog.e(TAG, "Failed to vibrate", e)
             throw e
         }
     }
@@ -200,7 +200,7 @@ internal object LxAppDevice {
             }
             activity.startActivity(intent)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to make phone call", e)
+            LxLog.e(TAG, "Failed to make phone call", e)
             throw e
         }
     }
@@ -208,14 +208,14 @@ internal object LxAppDevice {
     private fun resolveExternalFile(storageKey: String): File? {
         val key = storageKey.trim()
         if (key.isEmpty() || key.contains('/') || key.contains('\\') || key.contains("..")) {
-            Log.w(TAG, "Invalid external storage key: $storageKey")
+            LxLog.w(TAG, "Invalid external storage key: $storageKey")
             return null
         }
 
         @Suppress("DEPRECATION")
         val root = Environment.getExternalStorageDirectory()
         if (root == null) {
-            Log.w(TAG, "External storage directory unavailable")
+            LxLog.w(TAG, "External storage directory unavailable")
             return null
         }
 
@@ -229,14 +229,14 @@ internal object LxAppDevice {
             return packageName
         }
 
-        Log.w(TAG, "External storage appId unavailable")
+        LxLog.w(TAG, "External storage appId unavailable")
         return null
     }
 
     private fun ensureExternalStorageAccess(): Boolean {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             // Android 11+: fingerprint path should use ANDROID_ID instead.
-            Log.w(TAG, "External storage access disabled on API ${Build.VERSION.SDK_INT} (use ANDROID_ID path)")
+            LxLog.w(TAG, "External storage access disabled on API ${Build.VERSION.SDK_INT} (use ANDROID_ID path)")
             return false
         }
 
@@ -248,7 +248,7 @@ internal object LxAppDevice {
         val permissions = buildStoragePermissions()
         val context = Lingxia.applicationContext() ?: LxApp.getCurrentActivity()
         if (context == null) {
-            Log.w(TAG, "External storage access denied: context unavailable")
+            LxLog.w(TAG, "External storage access denied: context unavailable")
             return false
         }
         return hasAllPermissions(context, permissions)

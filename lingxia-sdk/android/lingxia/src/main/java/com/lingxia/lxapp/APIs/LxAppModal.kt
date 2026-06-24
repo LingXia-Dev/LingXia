@@ -5,12 +5,12 @@ import android.content.Context
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 
-import android.util.Log
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.*
 import androidx.core.view.setPadding
+import com.lingxia.app.LxLog
 import com.lingxia.app.NativeApi
 import org.json.JSONObject
 import com.lingxia.app.Lingxia
@@ -58,7 +58,7 @@ internal object LxAppModal {
     ) {
         val activity = LxApp.getCurrentActivity()
         if (activity == null) {
-            Log.e(TAG, "showModal: current activity is null")
+            LxLog.e(TAG, "showModal: current activity is null")
             val result = JSONObject().apply {
                 put("confirm", false)
                 put("cancel", true)
@@ -133,7 +133,7 @@ internal object LxAppModal {
             if (allowCancel) {
                 setOnClickListener {
                     if (allowCancel) {
-                        Log.i(TAG, "Modal cancelled by mask click")
+                        LxLog.i(TAG, "Modal cancelled by mask click")
                         // TODO: Add callback for mask click cancel
                         hideModalInternal()
                     }

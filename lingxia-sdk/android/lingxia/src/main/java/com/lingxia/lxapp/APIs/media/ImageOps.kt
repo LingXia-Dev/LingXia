@@ -8,8 +8,8 @@ import android.graphics.Matrix
 import android.media.ExifInterface
 import android.net.Uri
 import android.os.Build
-import android.util.Log
 import androidx.annotation.WorkerThread
+import com.lingxia.app.LxLog
 import java.io.File
 import kotlin.math.max
 import kotlin.math.roundToInt
@@ -112,7 +112,7 @@ internal object ImageOps {
             val mime = resolver.getType(uri)
             Info(opts.outWidth, opts.outHeight, mime)
         } catch (e: Exception) {
-            Log.e(TAG, "readInfo failed: ${e.message}", e)
+            LxLog.e(TAG, "readInfo failed: ${e.message}", e)
             null
         }
     }
@@ -136,7 +136,7 @@ internal object ImageOps {
         return try {
             resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, opts) }
         } catch (oom: OutOfMemoryError) {
-            Log.e(TAG, "decodeBitmap OOM for $uri", oom)
+            LxLog.e(TAG, "decodeBitmap OOM for $uri", oom)
             null
         }
     }

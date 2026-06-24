@@ -14,9 +14,9 @@ import android.net.wifi.WifiConfiguration
 import android.net.wifi.WifiManager
 import android.net.wifi.WifiNetworkSpecifier
 import android.os.Build
-import android.util.Log
 import androidx.core.content.ContextCompat
 import com.lingxia.app.Lingxia
+import com.lingxia.app.LxLog
 import com.lingxia.lxapp.LxApp
 import com.lingxia.app.NativeApi
 import com.lingxia.app.PermissionManager
@@ -73,7 +73,7 @@ internal object LxAppWifi {
     fun startWifi(callbackId: Long) {
         try {
             val context = Lingxia.applicationContext() ?: run {
-                Log.e(TAG, "Context not available")
+                LxLog.e(TAG, "Context not available")
                 NativeApi.onCallback(callbackId, false, "12001") // System error
                 return
             }
@@ -81,7 +81,7 @@ internal object LxAppWifi {
             // Check basic WiFi permissions
             if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_WIFI_STATE)
                 != PackageManager.PERMISSION_GRANTED) {
-                Log.e(TAG, "Missing ACCESS_WIFI_STATE permission")
+                LxLog.e(TAG, "Missing ACCESS_WIFI_STATE permission")
                 NativeApi.onCallback(callbackId, false, "12006") // Permission denied
                 return
             }
@@ -92,16 +92,16 @@ internal object LxAppWifi {
                     != PackageManager.PERMISSION_GRANTED) {
                     val activity = LxApp.getCurrentActivity()
                     if (activity == null) {
-                        Log.w(TAG, "Cannot request ACCESS_FINE_LOCATION permission (no activity)")
+                        LxLog.w(TAG, "Cannot request ACCESS_FINE_LOCATION permission (no activity)")
                         // Continue anyway - WiFi will work but with limited info (no frequency)
                         initializeWifiModule(callbackId, context)
                         return
                     }
                     PermissionManager.ensurePermissions(activity, LOCATION_PERMISSIONS) { granted ->
                         if (granted) {
-                            Log.i(TAG, "Location permission granted for WiFi details")
+                            LxLog.i(TAG, "Location permission granted for WiFi details")
                         } else {
-                            Log.w(TAG, "Location permission denied - WiFi info will be limited (no frequency)")
+                            LxLog.w(TAG, "Location permission denied - WiFi info will be limited (no frequency)")
                         }
                         // Initialize WiFi module regardless of location permission
                         initializeWifiModule(callbackId, context)
@@ -113,7 +113,7 @@ internal object LxAppWifi {
             // Permission already granted or not needed
             initializeWifiModule(callbackId, context)
         } catch (e: Exception) {
-            Log.e(TAG, "startWifi error", e)
+            LxLog.e(TAG, "startWifi error", e)
             NativeApi.onCallback(callbackId, false, "12001") // System error
         }
     }
@@ -125,15 +125,15 @@ internal object LxAppWifi {
             connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
 
             if (wifiManager == null) {
-                Log.e(TAG, "WiFi manager not available")
+                LxLog.e(TAG, "WiFi manager not available")
                 NativeApi.onCallback(callbackId, false, "12001") // System error
                 return
             }
 
-            Log.i(TAG, "WiFi module initialized")
+            LxLog.i(TAG, "WiFi module initialized")
             NativeApi.onCallback(callbackId, true, "{}")
         } catch (e: Exception) {
-            Log.e(TAG, "initializeWifiModule error", e)
+            LxLog.e(TAG, "initializeWifiModule error", e)
             NativeApi.onCallback(callbackId, false, "12001") // System error
         }
     }
@@ -150,7 +150,7 @@ internal object LxAppWifi {
                 try {
                     Lingxia.applicationContext()?.unregisterReceiver(receiver)
                 } catch (e: Exception) {
-                    Log.w(TAG, "Failed to unregister scan receiver", e)
+                    LxLog.w(TAG, "Failed to unregister scan receiver", e)
                 }
             }
             scanResultsReceiver = null
@@ -162,17 +162,17 @@ internal object LxAppWifi {
             activeNetworkCallback?.let { callback ->
                 try {
                     connectivityManager?.unregisterNetworkCallback(callback)
-                    Log.i(TAG, "Unregistered active network connection")
+                    LxLog.i(TAG, "Unregistered active network connection")
                 } catch (e: Exception) {
-                    Log.w(TAG, "Failed to unregister active network callback", e)
+                    LxLog.w(TAG, "Failed to unregister active network callback", e)
                 }
             }
             activeNetworkCallback = null
 
-            Log.i(TAG, "WiFi module stopped")
+            LxLog.i(TAG, "WiFi module stopped")
             NativeApi.onCallback(callbackId, true, "{}")
         } catch (e: Exception) {
-            Log.e(TAG, "stopWifi error", e)
+            LxLog.e(TAG, "stopWifi error", e)
             NativeApi.onCallback(callbackId, false, "12001") // System error
         }
     }
@@ -182,10 +182,10 @@ internal object LxAppWifi {
      */
     @JvmStatic
     fun addWifiStateListener(callbackId: Long) {
-        Log.i(TAG, "addWifiStateListener: callbackId=$callbackId")
+        LxLog.i(TAG, "addWifiStateListener: callbackId=$callbackId")
 
         if (stateCallbacks.add(callbackId)) {
-            Log.i(TAG, "Added WiFi state listener: $callbackId (total=${stateCallbacks.size})")
+            LxLog.i(TAG, "Added WiFi state listener: $callbackId (total=${stateCallbacks.size})")
 
             val context = Lingxia.applicationContext() ?: return
             val connMgr = connectivityManager
@@ -201,7 +201,7 @@ internal object LxAppWifi {
                     val callback = object : ConnectivityManager.NetworkCallback() {
                         override fun onAvailable(network: Network) {
                             super.onAvailable(network)
-                            Log.i(TAG, "WiFi network available")
+                            LxLog.i(TAG, "WiFi network available")
                             emitWifiConnectedToAll(null, null, true)
                         }
 
@@ -211,14 +211,14 @@ internal object LxAppWifi {
                         ) {
                             super.onCapabilitiesChanged(network, networkCapabilities)
                             if (networkCapabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) {
-                                Log.i(TAG, "WiFi capabilities changed (TRANSPORT_WIFI)")
+                                LxLog.i(TAG, "WiFi capabilities changed (TRANSPORT_WIFI)")
                                 emitWifiConnectedToAll(null, null, true)
                             }
                         }
 
                         override fun onLost(network: Network) {
                             super.onLost(network)
-                            Log.i(TAG, "WiFi network lost")
+                            LxLog.i(TAG, "WiFi network lost")
                             emitWifiConnectedToAll(null, null, false)
                         }
                     }
@@ -228,9 +228,9 @@ internal object LxAppWifi {
                             .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
                             .build()
                         connMgr.registerNetworkCallback(request, callback)
-                        Log.i(TAG, "Registered system WiFi network callback")
+                        LxLog.i(TAG, "Registered system WiFi network callback")
                     } catch (e: Exception) {
-                        Log.w(TAG, "Failed to register wifi network callback", e)
+                        LxLog.w(TAG, "Failed to register wifi network callback", e)
                     }
                 }
             }
@@ -238,7 +238,7 @@ internal object LxAppWifi {
             // Send current state to new subscriber
             emitWifiConnected(callbackId, null, null, isWifiConnected(connMgr))
         } else {
-            Log.w(TAG, "WiFi state listener already exists: $callbackId")
+            LxLog.w(TAG, "WiFi state listener already exists: $callbackId")
         }
     }
 
@@ -247,19 +247,19 @@ internal object LxAppWifi {
      */
     @JvmStatic
     fun removeWifiStateListener(callbackId: Long) {
-        Log.i(TAG, "removeWifiStateListener: callbackId=$callbackId")
+        LxLog.i(TAG, "removeWifiStateListener: callbackId=$callbackId")
 
         if (stateCallbacks.remove(callbackId)) {
-            Log.i(TAG, "Removed WiFi state listener: $callbackId (remaining=${stateCallbacks.size})")
+            LxLog.i(TAG, "Removed WiFi state listener: $callbackId (remaining=${stateCallbacks.size})")
 
             // Last subscriber: stop system WiFi monitoring
             if (stateCallbacks.isEmpty()) {
                 wifiNetworkCallback?.let { existing ->
                     try {
                         connectivityManager?.unregisterNetworkCallback(existing)
-                        Log.i(TAG, "Unregistered system WiFi network callback")
+                        LxLog.i(TAG, "Unregistered system WiFi network callback")
                     } catch (e: Exception) {
-                        Log.w(TAG, "Failed to unregister wifi network callback", e)
+                        LxLog.w(TAG, "Failed to unregister wifi network callback", e)
                     }
                 }
                 wifiNetworkCallback = null
@@ -267,7 +267,7 @@ internal object LxAppWifi {
                 lastKnownConnected = null
             }
         } else {
-            Log.w(TAG, "WiFi state listener not found: $callbackId")
+            LxLog.w(TAG, "WiFi state listener not found: $callbackId")
         }
     }
 
@@ -278,13 +278,13 @@ internal object LxAppWifi {
     fun connectWifi(callbackId: Long, ssid: String, password: String?) {
         try {
             val context = Lingxia.applicationContext() ?: run {
-                Log.e(TAG, "Context not available")
+                LxLog.e(TAG, "Context not available")
                 NativeApi.onCallback(callbackId, false, "12001") // System error
                 return
             }
 
             val wifiMgr = wifiManager ?: run {
-                Log.e(TAG, "WiFi manager not available")
+                LxLog.e(TAG, "WiFi manager not available")
                 NativeApi.onCallback(callbackId, false, "12001") // System error
                 return
             }
@@ -295,7 +295,7 @@ internal object LxAppWifi {
                 connectWifiLegacy(wifiMgr, callbackId, ssid, password)
             }
         } catch (e: Exception) {
-            Log.e(TAG, "connectWifi error", e)
+            LxLog.e(TAG, "connectWifi error", e)
             NativeApi.onCallback(callbackId, false, "12001") // System error
         }
     }
@@ -338,7 +338,7 @@ internal object LxAppWifi {
     ) {
         try {
             if (isAlreadyConnectedToSsid(wifiMgr, ssid)) {
-                Log.i(TAG, "Already connected to WiFi: $ssid")
+                LxLog.i(TAG, "Already connected to WiFi: $ssid")
                 NativeApi.onCallback(callbackId, true, "{}")
                 emitWifiConnectedToAll(ssid, password, true)
                 return
@@ -349,7 +349,7 @@ internal object LxAppWifi {
                 val disconnected = wifiMgr.disconnect()
                 val enabled = wifiMgr.enableNetwork(existingNetworkId, true)
                 val reconnected = wifiMgr.reconnect()
-                Log.i(
+                LxLog.i(
                     TAG,
                     "Try reuse configured network id=$existingNetworkId ssid=$ssid disconnect=$disconnected enable=$enabled reconnect=$reconnected",
                 )
@@ -376,12 +376,12 @@ internal object LxAppWifi {
             val networkId = try {
                 wifiMgr.addNetwork(config)
             } catch (security: SecurityException) {
-                Log.e(TAG, "Permission denied while adding network", security)
+                LxLog.e(TAG, "Permission denied while adding network", security)
                 NativeApi.onCallback(callbackId, false, "12006")
                 return
             }
             if (networkId == -1) {
-                Log.e(TAG, "Failed to add network configuration")
+                LxLog.e(TAG, "Failed to add network configuration")
                 NativeApi.onCallback(callbackId, false, "12006")
                 return
             }
@@ -390,16 +390,16 @@ internal object LxAppWifi {
             val enabled = wifiMgr.enableNetwork(networkId, true)
             val reconnected = wifiMgr.reconnect()
             if (!enabled || !reconnected) {
-                Log.e(TAG, "Failed to enable network")
+                LxLog.e(TAG, "Failed to enable network")
                 NativeApi.onCallback(callbackId, false, "12003") // Connection timeout
                 return
             }
 
-            Log.i(TAG, "Successfully connected to WiFi: $ssid disconnect=$disconnected enable=$enabled reconnect=$reconnected")
+            LxLog.i(TAG, "Successfully connected to WiFi: $ssid disconnect=$disconnected enable=$enabled reconnect=$reconnected")
             NativeApi.onCallback(callbackId, true, "{}")
             emitWifiConnectedToAll(ssid, password, null)
         } catch (e: Exception) {
-            Log.e(TAG, "connectWifiLegacy error", e)
+            LxLog.e(TAG, "connectWifiLegacy error", e)
             NativeApi.onCallback(callbackId, false, "12001") // System error
         }
     }
@@ -414,7 +414,7 @@ internal object LxAppWifi {
 
         try {
             val connMgr = connectivityManager ?: run {
-                Log.e(TAG, "Connectivity manager not available")
+                LxLog.e(TAG, "Connectivity manager not available")
                 NativeApi.onCallback(callbackId, false, "12001") // System error
                 return
             }
@@ -423,9 +423,9 @@ internal object LxAppWifi {
             activeNetworkCallback?.let { existing ->
                 try {
                     connMgr.unregisterNetworkCallback(existing)
-                    Log.i(TAG, "Unregistered previous network connection")
+                    LxLog.i(TAG, "Unregistered previous network connection")
                 } catch (e: Exception) {
-                    Log.w(TAG, "Failed to unregister previous network callback", e)
+                    LxLog.w(TAG, "Failed to unregister previous network callback", e)
                 }
             }
 
@@ -449,7 +449,7 @@ internal object LxAppWifi {
             val networkCallback = object : ConnectivityManager.NetworkCallback() {
                 override fun onAvailable(network: Network) {
                     super.onAvailable(network)
-                    Log.i(TAG, "WiFi network became available: $ssid")
+                    LxLog.i(TAG, "WiFi network became available: $ssid")
                     // Emit actual connection state via event listener
                     emitWifiConnectedToAll(ssid, password, true)
                     // DON'T unregister - keep the callback active to maintain connection
@@ -457,20 +457,20 @@ internal object LxAppWifi {
 
                 override fun onUnavailable() {
                     super.onUnavailable()
-                    Log.e(TAG, "Failed to connect to WiFi (timeout): $ssid")
+                    LxLog.e(TAG, "Failed to connect to WiFi (timeout): $ssid")
                     // Emit failure via event listener
                     emitWifiConnectedToAll(ssid, password, false)
                     try {
                         connMgr.unregisterNetworkCallback(this)
                     } catch (e: Exception) {
-                        Log.w(TAG, "Failed to unregister connect callback", e)
+                        LxLog.w(TAG, "Failed to unregister connect callback", e)
                     }
                     activeNetworkCallback = null
                 }
 
                 override fun onLost(network: Network) {
                     super.onLost(network)
-                    Log.i(TAG, "Lost connection to WiFi: $ssid")
+                    LxLog.i(TAG, "Lost connection to WiFi: $ssid")
                     activeNetworkCallback = null
                 }
             }
@@ -480,10 +480,10 @@ internal object LxAppWifi {
             activeNetworkCallback = networkCallback
 
             // Return success immediately - connection request submitted
-            Log.i(TAG, "WiFi connection request submitted: $ssid")
+            LxLog.i(TAG, "WiFi connection request submitted: $ssid")
             NativeApi.onCallback(callbackId, true, "{}")
         } catch (e: Exception) {
-            Log.e(TAG, "connectWifiAndroid10Plus error", e)
+            LxLog.e(TAG, "connectWifiAndroid10Plus error", e)
             NativeApi.onCallback(callbackId, false, "12001") // System error
         }
     }
@@ -493,16 +493,16 @@ internal object LxAppWifi {
      */
     private fun emitWifiConnected(callbackId: Long, ssidHint: String?, password: String?, connectedHint: Boolean? = null) {
         val context = Lingxia.applicationContext() ?: run {
-            Log.e(TAG, "Context not available for wifi connected event")
+            LxLog.e(TAG, "Context not available for wifi connected event")
             return
         }
 
         val wifiInfo = buildWifiInfoJson(context, ssidHint, password, connectedHint) ?: return
 
-        Log.i(TAG, "emitWifiConnected: callbackId=$callbackId")
+        LxLog.i(TAG, "emitWifiConnected: callbackId=$callbackId")
         val success = NativeApi.onCallback(callbackId, true, wifiInfo)
         if (!success) {
-            Log.w(TAG, "Failed to dispatch wifi connected event to callback $callbackId")
+            LxLog.w(TAG, "Failed to dispatch wifi connected event to callback $callbackId")
         }
     }
 
@@ -515,17 +515,17 @@ internal object LxAppWifi {
         }
 
         val context = Lingxia.applicationContext() ?: run {
-            Log.e(TAG, "Context not available for wifi connected event")
+            LxLog.e(TAG, "Context not available for wifi connected event")
             return
         }
 
         val wifiInfo = buildWifiInfoJson(context, ssidHint, password, connectedHint) ?: return
 
-        Log.i(TAG, "emitWifiConnectedToAll: ${stateCallbacks.size} subscribers")
+        LxLog.i(TAG, "emitWifiConnectedToAll: ${stateCallbacks.size} subscribers")
         for (callbackId in stateCallbacks.toList()) {  // toList() to avoid concurrent modification
             val success = NativeApi.onCallback(callbackId, true, wifiInfo)
             if (!success) {
-                Log.w(TAG, "Failed to dispatch wifi connected event to callback $callbackId")
+                LxLog.w(TAG, "Failed to dispatch wifi connected event to callback $callbackId")
             }
         }
     }
@@ -565,7 +565,7 @@ internal object LxAppWifi {
 
         // Skip initial disconnected state
         if (!connected && lastKnownConnected == null && resolvedSsid.isEmpty() && connectedHint != true) {
-            Log.i(TAG, "WiFi connected event skipped (initial disconnected)")
+            LxLog.i(TAG, "WiFi connected event skipped (initial disconnected)")
             return null
         }
 
@@ -581,7 +581,7 @@ internal object LxAppWifi {
         val frequencyKey = if (frequency != null && frequency > 0) frequency.toString() else ""
         val signature = "${if (connected) 1 else 0}|$ssid|${bssid ?: ""}|$frequencyKey"
         if (signature == lastConnectedSignature) {
-            Log.i(TAG, "WiFi connected event deduped (signature=$signature)")
+            LxLog.i(TAG, "WiFi connected event deduped (signature=$signature)")
             return null
         }
         lastConnectedSignature = signature
@@ -625,13 +625,13 @@ internal object LxAppWifi {
     fun getWifiList(callbackId: Long) {
         try {
             val context = Lingxia.applicationContext() ?: run {
-                Log.e(TAG, "Context not available")
+                LxLog.e(TAG, "Context not available")
                 NativeApi.onCallback(callbackId, false, "12001") // System error
                 return
             }
 
             val wifiMgr = wifiManager ?: run {
-                Log.e(TAG, "WiFi manager not available")
+                LxLog.e(TAG, "WiFi manager not available")
                 NativeApi.onCallback(callbackId, false, "12001") // System error
                 return
             }
@@ -642,7 +642,7 @@ internal object LxAppWifi {
                     != PackageManager.PERMISSION_GRANTED) {
                     val activity = LxApp.getCurrentActivity()
                     if (activity == null) {
-                        Log.e(TAG, "Missing ACCESS_FINE_LOCATION permission for WiFi scanning")
+                        LxLog.e(TAG, "Missing ACCESS_FINE_LOCATION permission for WiFi scanning")
                         NativeApi.onCallback(callbackId, false, "12006") // Permission denied
                         return
                     }
@@ -650,7 +650,7 @@ internal object LxAppWifi {
                         if (granted) {
                             getWifiList(callbackId)
                         } else {
-                            Log.e(TAG, "Missing ACCESS_FINE_LOCATION permission for WiFi scanning")
+                            LxLog.e(TAG, "Missing ACCESS_FINE_LOCATION permission for WiFi scanning")
                             NativeApi.onCallback(callbackId, false, "12006") // Permission denied
                         }
                     }
@@ -667,7 +667,7 @@ internal object LxAppWifi {
                         try {
                             context?.unregisterReceiver(this)
                         } catch (e: Exception) {
-                            Log.w(TAG, "Failed to unregister receiver", e)
+                            LxLog.w(TAG, "Failed to unregister receiver", e)
                         }
                         scanResultsReceiver = null
                         pendingScanCallbackId = null
@@ -683,21 +683,21 @@ internal object LxAppWifi {
             // Start scan
             val scanStarted = wifiMgr.startScan()
             if (!scanStarted) {
-                Log.w(TAG, "WiFi scan may be throttled (Android 9+)")
+                LxLog.w(TAG, "WiFi scan may be throttled (Android 9+)")
                 // Try to get cached results
                 handleScanResults(wifiMgr, callbackId)
                 scanResultsReceiver?.let { receiver ->
                     try {
                         context.unregisterReceiver(receiver)
                     } catch (e: Exception) {
-                        Log.w(TAG, "Failed to unregister receiver", e)
+                        LxLog.w(TAG, "Failed to unregister receiver", e)
                     }
                 }
                 scanResultsReceiver = null
                 pendingScanCallbackId = null
             }
         } catch (e: Exception) {
-            Log.e(TAG, "getWifiList error", e)
+            LxLog.e(TAG, "getWifiList error", e)
             NativeApi.onCallback(callbackId, false, "12001") // System error
         }
     }
@@ -730,10 +730,10 @@ internal object LxAppWifi {
                 wifiList.put(wifiInfo)
             }
 
-            Log.i(TAG, "Found ${wifiList.length()} WiFi networks")
+            LxLog.i(TAG, "Found ${wifiList.length()} WiFi networks")
             NativeApi.onCallback(callbackId, true, wifiList.toString())
         } catch (e: Exception) {
-            Log.e(TAG, "handleScanResults error", e)
+            LxLog.e(TAG, "handleScanResults error", e)
             NativeApi.onCallback(callbackId, false, "12001") // System error
         }
     }
@@ -748,7 +748,7 @@ internal object LxAppWifi {
             val wifiMgr = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
             wifiMgr?.isWifiEnabled ?: false
         } catch (e: Exception) {
-            Log.e(TAG, "isWifiEnabled error", e)
+            LxLog.e(TAG, "isWifiEnabled error", e)
             false
         }
     }
@@ -761,7 +761,7 @@ internal object LxAppWifi {
     fun getConnectedWifi(callbackId: Long) {
         try {
             val context = Lingxia.applicationContext() ?: run {
-                Log.e(TAG, "Context not available")
+                LxLog.e(TAG, "Context not available")
                 NativeApi.onCallback(callbackId, false, "12001") // System error
                 return
             }
@@ -770,7 +770,7 @@ internal object LxAppWifi {
                 ?: context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager)
                 ?.also { wifiManager = it }
                 ?: run {
-                Log.e(TAG, "WiFi manager not available")
+                LxLog.e(TAG, "WiFi manager not available")
                 NativeApi.onCallback(callbackId, false, "12001") // System error
                 return
             }
@@ -782,17 +782,17 @@ internal object LxAppWifi {
             val connectionInfo = try {
                 wifiMgr.connectionInfo
             } catch (e: SecurityException) {
-                Log.w(TAG, "getConnectedWifi: permission restricted, fallback to empty SSID", e)
+                LxLog.w(TAG, "getConnectedWifi: permission restricted, fallback to empty SSID", e)
                 null
             } catch (e: Throwable) {
-                Log.w(TAG, "getConnectedWifi: failed to read WifiInfo", e)
+                LxLog.w(TAG, "getConnectedWifi: failed to read WifiInfo", e)
                 null
             }
 
             val rawSsid = try {
                 connectionInfo?.ssid
             } catch (e: Throwable) {
-                Log.w(TAG, "getConnectedWifi: failed to read SSID", e)
+                LxLog.w(TAG, "getConnectedWifi: failed to read SSID", e)
                 null
             }
             val ssid = rawSsid
@@ -802,7 +802,7 @@ internal object LxAppWifi {
             val bssid = try {
                 connectionInfo?.bssid
             } catch (e: Throwable) {
-                Log.w(TAG, "getConnectedWifi: failed to read BSSID", e)
+                LxLog.w(TAG, "getConnectedWifi: failed to read BSSID", e)
                 null
             }?.takeIf { it.isNotEmpty() && it != "02:00:00:00:00:00" }
 
@@ -843,10 +843,10 @@ internal object LxAppWifi {
                 }
             }
 
-            Log.i(TAG, "getConnectedWifi resolved: connected=$connected ssid=${if (ssid.isEmpty()) "<empty>" else ssid}")
+            LxLog.i(TAG, "getConnectedWifi resolved: connected=$connected ssid=${if (ssid.isEmpty()) "<empty>" else ssid}")
             NativeApi.onCallback(callbackId, true, result.toString())
         } catch (e: Throwable) {
-            Log.e(TAG, "getConnectedWifi error", e)
+            LxLog.e(TAG, "getConnectedWifi error", e)
             NativeApi.onCallback(callbackId, false, "12001") // System error
         }
     }

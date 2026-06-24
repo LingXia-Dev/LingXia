@@ -18,7 +18,6 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.util.Log
 import android.util.TypedValue
 import android.util.LruCache
 import android.view.Gravity
@@ -39,6 +38,7 @@ import androidx.fragment.app.FragmentManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.viewpager2.widget.ViewPager2
 import com.lingxia.app.Lingxia
+import com.lingxia.app.LxLog
 import com.lingxia.lxapp.LxApp
 import com.lingxia.app.NativeApi
 import com.lingxia.lxapp.R
@@ -987,7 +987,7 @@ internal class MediaPreviewFragment : Fragment() {
             if (bitmap != null && replaceCurrentImageInPlace(targetPagerPosition, targetIndex, target, bitmap)) {
                 return@prefetchItemVisual
             }
-            Log.i(
+            LxLog.i(
                 LOG_TAG,
                 "auto_image_inplace_fallback_pager success=$success cacheHit=${bitmap != null} " +
                     "targetIndex=$targetIndex uri=${target.uri}"
@@ -1005,7 +1005,7 @@ internal class MediaPreviewFragment : Fragment() {
         val replaceResult = previewAdapter?.replaceCurrentImage(target, targetBitmap)
             ?: InPlaceImageReplaceResult.NO_ADAPTER
         if (replaceResult != InPlaceImageReplaceResult.APPLIED) {
-            Log.i(
+            LxLog.i(
                 LOG_TAG,
                 "auto_image_inplace_replace_failed reason=$replaceResult " +
                     "targetIndex=$targetIndex pager=$targetPagerPosition uri=${target.uri}"
@@ -1296,7 +1296,7 @@ internal class MediaPreviewFragment : Fragment() {
 
         val timeoutRunnable = Runnable {
             if (finished || pendingPrewarmGen != prewarmGen) return@Runnable
-            Log.w(TAG, "Prewarm timed out; falling back to immediate swap")
+            LxLog.w(TAG, "Prewarm timed out; falling back to immediate swap")
             clearPendingPrewarm()
             switchToPagerPositionWithVisualOverlay(targetPagerPosition, target)
         }
@@ -1488,7 +1488,7 @@ internal class MediaPreviewFragment : Fragment() {
                 append(' ').append(extra)
             }
         }
-        Log.i(LOG_TAG, details)
+        LxLog.i(LOG_TAG, details)
     }
 
     private fun logSharedPlayerEvent(payload: Map<String, Any>) {

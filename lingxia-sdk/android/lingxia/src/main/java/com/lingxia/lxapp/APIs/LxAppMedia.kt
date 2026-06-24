@@ -12,7 +12,6 @@ import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.provider.MediaStore
-import android.util.Log
 import android.view.Gravity
 import android.view.TextureView
 import android.view.View
@@ -47,6 +46,7 @@ import com.lingxia.lxapp.APIs.media.PreviewMediaPayload
 import com.lingxia.lxapp.APIs.media.ScanCodeFragment
 import com.lingxia.app.Lingxia
 import com.lingxia.lxapp.LxApp
+import com.lingxia.app.LxLog
 import com.lingxia.app.NativeApi
 import org.json.JSONObject
 import java.io.File
@@ -87,14 +87,14 @@ internal object LxAppMedia {
     ) {
         val activity = LxApp.getCurrentActivity()
         if (activity == null) {
-            Log.w(TAG, "previewMedia: current activity is null")
+            LxLog.w(TAG, "previewMedia: current activity is null")
             if (callbackId > 0L) {
                 NativeApi.onCallback(callbackId, false, "1000")
             }
             return
         }
         if (items.isEmpty()) {
-            Log.w(TAG, "previewMedia: invalid media payload")
+            LxLog.w(TAG, "previewMedia: invalid media payload")
             if (callbackId > 0L) {
                 NativeApi.onCallback(callbackId, false, "1000")
             }
@@ -102,7 +102,7 @@ internal object LxAppMedia {
         }
         val appCompat = activity as? AppCompatActivity
         if (appCompat == null) {
-            Log.w(TAG, "previewMedia: activity is not AppCompatActivity")
+            LxLog.w(TAG, "previewMedia: activity is not AppCompatActivity")
             if (callbackId > 0L) {
                 NativeApi.onCallback(callbackId, false, "1000")
             }
@@ -189,18 +189,18 @@ internal object LxAppMedia {
                 if (ImageOps.transcodeToJpeg(contentResolver, parsed, outFile)) {
                     true
                 } else {
-                    Log.w(TAG, "transcodeToJpeg failed, streaming fallback for $uri")
+                    LxLog.w(TAG, "transcodeToJpeg failed, streaming fallback for $uri")
                     streamCopy(contentResolver, parsed, outFile)
                 }
             } else {
                 streamCopy(contentResolver, parsed, outFile)
             }
         } catch (oom: OutOfMemoryError) {
-            Log.e(TAG, "copyAlbumMediaToFile OOM for $uri, falling back to stream", oom)
+            LxLog.e(TAG, "copyAlbumMediaToFile OOM for $uri, falling back to stream", oom)
             val ctx = Lingxia.getApplicationContext()
             streamCopy(ctx.contentResolver, android.net.Uri.parse(uri), File(destPath))
         } catch (e: Exception) {
-            Log.e(TAG, "copyAlbumMediaToFile failed: ${e.message}", e)
+            LxLog.e(TAG, "copyAlbumMediaToFile failed: ${e.message}", e)
             false
         }
     }
@@ -214,7 +214,7 @@ internal object LxAppMedia {
                 true
             } ?: false
         } catch (e: Exception) {
-            Log.e(TAG, "streamCopy failed: ${e.message}", e)
+            LxLog.e(TAG, "streamCopy failed: ${e.message}", e)
             false
         }
     }
@@ -245,7 +245,7 @@ internal object LxAppMedia {
             val outputFile = File(outputPath)
             outputFile.parentFile?.let { parent ->
                 if (!parent.exists() && !parent.mkdirs()) {
-                    Log.e(TAG, "compressImage: failed to create parent for $outputPath")
+                    LxLog.e(TAG, "compressImage: failed to create parent for $outputPath")
                     return ""
                 }
             }
@@ -265,10 +265,10 @@ internal object LxAppMedia {
                 errorResult("Transcode failed")
             }
         } catch (oom: OutOfMemoryError) {
-            Log.e(TAG, "compressImage OOM for $uri", oom)
+            LxLog.e(TAG, "compressImage OOM for $uri", oom)
             errorResult("Out of memory during compression")
         } catch (e: Exception) {
-            Log.e(TAG, "compressImage failed: ${e.message}", e)
+            LxLog.e(TAG, "compressImage failed: ${e.message}", e)
             errorResult(e.message ?: "compressImage failed")
         }
     }
@@ -400,7 +400,7 @@ internal object LxAppMedia {
             }
         } catch (e: Exception) {
             decodeError = e
-            Log.w(TAG, "MediaMetadataRetriever thumbnail failed: ${e.message}")
+            LxLog.w(TAG, "MediaMetadataRetriever thumbnail failed: ${e.message}")
         } finally {
             try {
                 inputStream?.close()
@@ -426,10 +426,10 @@ internal object LxAppMedia {
                 }.toString()
             } catch (e: Exception) {
                 if (decodeError == null) decodeError = e
-                Log.w(TAG, "ThumbnailUtils thumbnail failed: ${e.message}")
+                LxLog.w(TAG, "ThumbnailUtils thumbnail failed: ${e.message}")
             } catch (t: Throwable) {
                 if (decodeError == null) decodeError = t
-                Log.w(TAG, "ThumbnailUtils thumbnail failed: ${t.message}")
+                LxLog.w(TAG, "ThumbnailUtils thumbnail failed: ${t.message}")
             }
         }
 
@@ -449,7 +449,7 @@ internal object LxAppMedia {
                 }.toString()
             } catch (t: Throwable) {
                 if (decodeError == null) decodeError = t
-                Log.w(TAG, "ExoPlayer thumbnail fallback failed: ${t.message}")
+                LxLog.w(TAG, "ExoPlayer thumbnail fallback failed: ${t.message}")
             }
         }
 
@@ -513,14 +513,14 @@ internal object LxAppMedia {
             }.toString()
         } catch (e: Exception) {
             outputFile.delete()
-            Log.w(TAG, "extractVideoThumbnail encode failed: ${e.message}")
+            LxLog.w(TAG, "extractVideoThumbnail encode failed: ${e.message}")
             JSONObject().apply {
                 put("success", false)
                 put("error", e.message ?: "extractVideoThumbnail failed")
             }.toString()
         } catch (t: Throwable) {
             outputFile.delete()
-            Log.w(TAG, "extractVideoThumbnail encode failed: ${t.message}")
+            LxLog.w(TAG, "extractVideoThumbnail encode failed: ${t.message}")
             JSONObject().apply {
                 put("success", false)
                 put("error", t.message ?: "extractVideoThumbnail failed")
@@ -535,18 +535,18 @@ internal object LxAppMedia {
         timeMs: Long
     ): Bitmap? {
         if (Looper.myLooper() == Looper.getMainLooper()) {
-            Log.w(TAG, "ExoPlayer thumbnail fallback skipped on main thread")
+            LxLog.w(TAG, "ExoPlayer thumbnail fallback skipped on main thread")
             return null
         }
         if (!playerThumbnailSemaphore.tryAcquire()) {
-            Log.w(TAG, "ExoPlayer thumbnail fallback skipped because another extraction is running")
+            LxLog.w(TAG, "ExoPlayer thumbnail fallback skipped because another extraction is running")
             return null
         }
 
         val activity = Lingxia.getLastResumedActivity()
         if (activity == null) {
             playerThumbnailSemaphore.release()
-            Log.w(TAG, "ExoPlayer thumbnail fallback skipped: no foreground activity")
+            LxLog.w(TAG, "ExoPlayer thumbnail fallback skipped: no foreground activity")
             return null
         }
 
@@ -587,7 +587,7 @@ internal object LxAppMedia {
             }
             timeoutRef.getAndSet(null)?.let { mainHandler.removeCallbacks(it) }
             if (message != null) {
-                Log.w(TAG, "ExoPlayer thumbnail fallback failed: $message")
+                LxLog.w(TAG, "ExoPlayer thumbnail fallback failed: $message")
             }
             bitmapRef.set(bitmap)
             mainHandler.post { cleanupOnMain() }
@@ -717,7 +717,7 @@ internal object LxAppMedia {
             )
             if (!completed && done.compareAndSet(false, true)) {
                 timeoutRef.getAndSet(null)?.let { mainHandler.removeCallbacks(it) }
-                Log.w(TAG, "ExoPlayer thumbnail fallback failed: wait timed out")
+                LxLog.w(TAG, "ExoPlayer thumbnail fallback failed: wait timed out")
                 mainHandler.post { cleanupOnMain() }
             }
             bitmapRef.get()
@@ -1028,7 +1028,7 @@ internal object LxAppMedia {
                 SourceVideoMetadata(width = width, height = height, bitrate = bitrate)
             }
         } catch (e: Exception) {
-            Log.w(TAG, "Failed to read source video metadata: ${e.message}")
+            LxLog.w(TAG, "Failed to read source video metadata: ${e.message}")
             null
         } finally {
             try {
@@ -1129,7 +1129,7 @@ internal object LxAppMedia {
             }
             true
         } catch (e: IOException) {
-            Log.e(TAG, "Failed to fallback to source video: ${e.message}", e)
+            LxLog.e(TAG, "Failed to fallback to source video: ${e.message}", e)
             false
         }
     }
@@ -1213,7 +1213,7 @@ internal object LxAppMedia {
             } catch (sec: SecurityException) {
                 "3004"
             } catch (e: Exception) {
-                Log.e(TAG, "Error saving media to gallery: ${e.message}", e)
+                LxLog.e(TAG, "Error saving media to gallery: ${e.message}", e)
                 "1000"
             }
 
@@ -1240,7 +1240,7 @@ internal object LxAppMedia {
         }
 
         if (!sourceFile.exists()) {
-            Log.e(TAG, "Source file does not exist: $uriString")
+            LxLog.e(TAG, "Source file does not exist: $uriString")
             return "1001"
         }
 
@@ -1281,7 +1281,7 @@ internal object LxAppMedia {
             }
             null
         } catch (io: IOException) {
-            Log.e(TAG, "Failed to copy file to MediaStore: ${io.message}")
+            LxLog.e(TAG, "Failed to copy file to MediaStore: ${io.message}")
             contentResolver.delete(uri, null, null)
             "1001"
         }
@@ -1294,7 +1294,7 @@ internal object LxAppMedia {
             }
             true
         } catch (e: IOException) {
-            Log.e(TAG, "Error copying file: ${e.message}", e)
+            LxLog.e(TAG, "Error copying file: ${e.message}", e)
             false
         }
     }
@@ -1319,7 +1319,7 @@ internal object LxAppMedia {
     ) {
         val activity = LxApp.getCurrentActivity()
         if (activity == null) {
-            Log.w(TAG, "chooseMedia: current activity is null")
+            LxLog.w(TAG, "chooseMedia: current activity is null")
             com.lingxia.app.NativeApi.onCallback(callbackId, false, "1000")
             return
         }
@@ -1383,7 +1383,7 @@ internal object LxAppMedia {
                 val normalizedTypes = if (scanTypes.isNotEmpty()) scanTypes else intArrayOf()
                 ScanCodeFragment.start(appCompat, normalizedTypes, onlyFromCamera, callbackId)
             } catch (e: Exception) {
-                Log.e(TAG, "scanCode failed", e)
+                LxLog.e(TAG, "scanCode failed", e)
                 NativeApi.onCallback(callbackId, false, "1001")
             }
         }

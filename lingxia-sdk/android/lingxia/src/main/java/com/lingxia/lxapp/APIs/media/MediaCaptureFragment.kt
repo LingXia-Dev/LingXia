@@ -17,7 +17,6 @@ import android.os.Handler
 import android.os.Looper
 import android.os.ParcelFileDescriptor
 import android.os.SystemClock
-import android.util.Log
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -50,6 +49,7 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.core.content.ContextCompat
 import com.lingxia.lxapp.ActivityInsets
 import androidx.fragment.app.Fragment
+import com.lingxia.app.LxLog
 import com.lingxia.app.NativeApi
 import com.lingxia.lxapp.R
 import android.text.SpannableString
@@ -445,7 +445,7 @@ internal class MediaCaptureFragment : Fragment() {
                 bindUseCases(provider, previewView)
                 resetToIdle()
             } catch (e: Exception) {
-                Log.e(TAG, "startCamera: failed to bind use cases", e)
+                LxLog.e(TAG, "startCamera: failed to bind use cases", e)
                 cancelCapture(1000)
             }
         }, mainExecutor)
@@ -559,7 +559,7 @@ internal class MediaCaptureFragment : Fragment() {
             }
 
             override fun onError(exception: ImageCaptureException) {
-                Log.e(TAG, "capturePhoto: failed", exception)
+                LxLog.e(TAG, "capturePhoto: failed", exception)
                 cancelCapture(1000)
             }
         })
@@ -644,7 +644,7 @@ internal class MediaCaptureFragment : Fragment() {
                         timerText?.visibility = View.GONE
                         activeRecording = null
                         if (event.hasError()) {
-                            Log.e(TAG, "startRecording: finalize error ${event.error}", event.cause)
+                            LxLog.e(TAG, "startRecording: finalize error ${event.error}", event.cause)
                             cancelCapture(1000) // Unknown error
                         } else {
                             onCaptureSuccess(file, "video")
@@ -768,7 +768,7 @@ internal class MediaCaptureFragment : Fragment() {
             finishButton?.visibility = View.GONE
             removeSelf()
         } catch (e: Exception) {
-            Log.e(TAG, "completeCapture: failed", e)
+            LxLog.e(TAG, "completeCapture: failed", e)
             updateFinishButtonEnabled(true)
             cancelCapture(1000) // Unknown error
         }
@@ -1098,7 +1098,7 @@ internal class MediaCaptureFragment : Fragment() {
                 ?.remove(this)
                 ?.commitAllowingStateLoss()
         } catch (e: Exception) {
-            Log.w(TAG, "removeSelf: failed", e)
+            LxLog.w(TAG, "removeSelf: failed", e)
         }
     }
 
@@ -1123,7 +1123,7 @@ internal class MediaCaptureFragment : Fragment() {
             pfd.close()
             fd
         } catch (e: Exception) {
-            Log.e(TAG, "openFileDescriptor: failed", e)
+            LxLog.e(TAG, "openFileDescriptor: failed", e)
             null
         }
     }
