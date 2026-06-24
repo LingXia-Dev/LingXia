@@ -5,6 +5,10 @@ dist/
 *.tar.zst
 .lingxia/
 
+# Local dev scratch (runner/devtool logs + screenshots, build cache)
+.codex/
+.rustc_info.json
+
 # Gradle/Kotlin local build dirs
 **/.gradle/
 **/.kotlin/
