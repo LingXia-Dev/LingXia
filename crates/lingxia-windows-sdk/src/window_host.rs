@@ -2104,16 +2104,35 @@ fn apply_native_window_frame(hwnd: HWND) -> StdResult<()> {
     apply_window_style(hwnd, WS_OVERLAPPEDWINDOW)
 }
 
+/// True when `hwnd` presents a fixed-size simulated device frame. Such a window
+/// must never get a resize border or maximize box — dragging it would break the
+/// device's fixed bezel/screen/tab-bar layout (the screen scales but the bezel
+/// and corner overlays do not).
+fn window_is_device_framed(hwnd: HWND) -> bool {
+    #[cfg(feature = "device-frame")]
+    {
+        crate::device_frame::window_has_device_frame(hwnd_handle(hwnd))
+    }
+    #[cfg(not(feature = "device-frame"))]
+    {
+        let _ = hwnd;
+        false
+    }
+}
+
 fn apply_shell_window_frame(hwnd: HWND) -> StdResult<()> {
     if windows_chrome_renderer().is_none() {
         return Ok(());
     }
-    apply_window_style(
-        hwnd,
-        WINDOW_STYLE(
-            WS_POPUP.0 | WS_SIZEBOX.0 | WS_SYSMENU.0 | WS_MINIMIZEBOX.0 | WS_MAXIMIZEBOX.0,
-        ),
-    )
+    // A device frame owns a fixed-size borderless silhouette: drop WS_SIZEBOX
+    // and WS_MAXIMIZEBOX so it cannot be drag-resized or maximized. Otherwise a
+    // normal shell window stays resizable.
+    let style = if window_is_device_framed(hwnd) {
+        WS_POPUP.0 | WS_SYSMENU.0 | WS_MINIMIZEBOX.0
+    } else {
+        WS_POPUP.0 | WS_SIZEBOX.0 | WS_SYSMENU.0 | WS_MINIMIZEBOX.0 | WS_MAXIMIZEBOX.0
+    };
+    apply_window_style(hwnd, WINDOW_STYLE(style))
 }
 
 fn apply_window_style(hwnd: HWND, style: WINDOW_STYLE) -> StdResult<()> {
