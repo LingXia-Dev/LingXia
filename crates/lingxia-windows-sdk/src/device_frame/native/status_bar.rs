@@ -21,7 +21,7 @@
 use super::*;
 
 use windows::Win32::Graphics::Gdi::{
-    ANTIALIASED_QUALITY, CreateFontW, DEFAULT_QUALITY, FONT_QUALITY, FW_SEMIBOLD,
+    ANTIALIASED_QUALITY, CLEARTYPE_QUALITY, CreateFontW, FONT_QUALITY, FW_BOLD,
     GetTextExtentPoint32W, SetBkMode, SetTextColor, TRANSPARENT, TextOutW,
 };
 use windows::Win32::System::SystemInformation::GetLocalTime;
@@ -109,7 +109,7 @@ pub(super) fn create_status_bar(content: HWND, spec: &WindowsDeviceFrame) -> isi
     };
     match window {
         Ok(window) => {
-            paint_status_bar(window, spec.screen_width, &bar);
+            paint_status_bar(window, spec.screen_width, spec_cutout_width(spec), &bar);
             hwnd_handle(window)
         }
         Err(err) => {
@@ -122,11 +122,12 @@ pub(super) fn create_status_bar(content: HWND, spec: &WindowsDeviceFrame) -> isi
 /// Repaints the status bar from the (possibly updated) spec — used when the
 /// shell changes the bar's colors for a new page.
 pub(super) fn repaint_status_bar(content: HWND) {
-    let Some((handle, bar, width)) = frame_state(hwnd_handle(content), |state| {
+    let Some((handle, bar, width, cutout_width)) = frame_state(hwnd_handle(content), |state| {
         (
             state.status_bar,
             state.spec.status_bar.clone(),
             state.spec.screen_width,
+            spec_cutout_width(&state.spec),
         )
     }) else {
         return;
@@ -137,7 +138,17 @@ pub(super) fn repaint_status_bar(content: HWND) {
     if handle == 0 || !is_window_handle_valid(handle) {
         return;
     }
-    paint_status_bar(hwnd_from_handle(handle), width, &bar);
+    paint_status_bar(hwnd_from_handle(handle), width, cutout_width, &bar);
+}
+
+/// Width of the screen cutout (Dynamic Island / notch), or 0 when the device has
+/// none — used to size the clock's leading ear.
+fn spec_cutout_width(spec: &WindowsDeviceFrame) -> i32 {
+    spec.cutout
+        .as_ref()
+        .filter(|cutout| cutout.width > 0 && cutout.height > 0)
+        .map(|cutout| cutout.width)
+        .unwrap_or(0)
 }
 
 /// Re-pins the status bar to the top edge of the screen and keeps it topmost.
@@ -199,9 +210,13 @@ pub(super) fn destroy_status_bar(status_bar: isize) {
     }
 }
 
-fn paint_status_bar(window: HWND, width: i32, bar: &WindowsDeviceFrameStatusBar) {
+fn paint_status_bar(window: HWND, width: i32, cutout_width: i32, bar: &WindowsDeviceFrameStatusBar) {
     let width = width.max(1);
     let height = bar.height.max(1);
+    // The clock is centered in the leading "ear" — the space between the screen
+    // edge and the (top-centered) cutout, matching the device's real status bar.
+    // With no cutout the ear is the leading half of the bar.
+    let clock_slot_right = (width - cutout_width.max(0)) / 2;
     // Opaque strip fill (or fully transparent for an immersive page) + analytic
     // signal/battery glyphs on the trailing edge.
     let pixels = if bar.transparent {
@@ -241,10 +256,10 @@ fn paint_status_bar(window: HWND, width: i32, bar: &WindowsDeviceFrameStatusBar)
                     // luminance is its coverage, then recolor to the foreground
                     // with that coverage as the (premultiplied) alpha. The
                     // already-opaque indicators keep their alpha and are skipped.
-                    draw_time(memory_dc, height, 0xff_ffff, true);
+                    draw_time(memory_dc, height, 0xff_ffff, true, clock_slot_right);
                     premultiply_glyph_pixels(dib, bar.foreground);
                 } else {
-                    draw_time(memory_dc, height, bar.foreground, false);
+                    draw_time(memory_dc, height, bar.foreground, false, clock_slot_right);
                     // GDI text zeroes the alpha byte of every pixel it touches;
                     // the strip is opaque, so restore full alpha across it (the
                     // RGB it wrote already blends the foreground over the fill).
@@ -283,15 +298,16 @@ fn paint_status_bar(window: HWND, width: i32, bar: &WindowsDeviceFrameStatusBar)
     }
 }
 
-fn draw_time(dc: HDC, height: i32, color: u32, antialiased: bool) {
+fn draw_time(dc: HDC, height: i32, color: u32, antialiased: bool, slot_right: i32) {
     let time = current_time_string();
     let font_height = -(height * 5 / 16).clamp(13, 22);
-    // A transparent strip derives per-pixel alpha from text coverage, so force
-    // grayscale anti-aliasing (ClearType's colored sub-pixels would fringe).
+    // A transparent strip derives per-pixel alpha from text coverage, so it must
+    // use grayscale AA (ClearType's colored sub-pixels would fringe once
+    // recolored). An opaque strip can use ClearType for the crispest text.
     let quality: FONT_QUALITY = if antialiased {
         ANTIALIASED_QUALITY
     } else {
-        DEFAULT_QUALITY
+        CLEARTYPE_QUALITY
     };
     let font = unsafe {
         CreateFontW(
@@ -299,7 +315,7 @@ fn draw_time(dc: HDC, height: i32, color: u32, antialiased: bool) {
             0,
             0,
             0,
-            FW_SEMIBOLD.0 as i32,
+            FW_BOLD.0 as i32,
             0,
             0,
             0,
@@ -322,7 +338,10 @@ fn draw_time(dc: HDC, height: i32, color: u32, antialiased: bool) {
         let mut extent = SIZE::default();
         let _ = GetTextExtentPoint32W(dc, chars, &mut extent);
         let y = (height - extent.cy) / 2;
-        let _ = TextOutW(dc, SIDE_MARGIN, y, chars);
+        // Center the clock within the leading ear [0, slot_right]; never let it
+        // cross the side margin against the edge.
+        let x = ((slot_right - extent.cx) / 2).max(SIDE_MARGIN);
+        let _ = TextOutW(dc, x, y, chars);
         if !old_font.is_invalid() {
             let _ = SelectObject(dc, old_font);
         }
