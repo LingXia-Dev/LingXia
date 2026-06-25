@@ -46,16 +46,16 @@ There is **no daemon**. The `lingxia dev` process that started a session owns it
 
 ## Selecting a session (and why it refuses to guess)
 
-Invoked **without** `--session` / `--platform`:
+Invoked **without** `--session`:
 
 - **One session in the project** → use it directly.
 - **Multiple sessions** → probe each, drop stale ones, then: exactly one live → use it; still more than one → **refuse** and list candidates.
 
-It refuses rather than defaulting to "most recent" because a human and an agent may both be running dev sessions in the same project, and a silent guess routes commands to the wrong target. Disambiguate with a **global** selector — these go *before* the subcommand (everything else follows it):
+It refuses rather than defaulting to "most recent" because a human and an agent may both be running dev sessions in the same project, and a silent guess routes commands to the wrong target. Disambiguate with the single **global** `--session` selector — it goes *before* the subcommand (everything else follows it) and accepts either a platform name or a session-id prefix:
 
 ```bash
-lxdev --session <id-prefix> browser tabs    # prefix match on session_id
-lxdev --platform ios browser tabs           # exact, case-insensitive platform
+lxdev --session ios browser tabs            # platform name (exact, case-insensitive)
+lxdev --session <id-prefix> browser tabs    # or a session_id prefix
 ```
 
 ---
@@ -107,7 +107,7 @@ To verify a layout against an on-screen IME, capture from the device's own tooli
 The whole design assumes a human and one or more agents may do dev in parallel:
 
 1. **`lingxia dev` refuses a second same-platform session** unless `--parallel` is passed — the primary defense against ambiguity.
-2. **`lxdev` refuses to act when ambiguity exists** — it lists candidates and asks for `--session` / `--platform` rather than guessing.
+2. **`lxdev` refuses to act when ambiguity exists** — it lists candidates and asks for `--session` rather than guessing.
 3. **Stale sessions don't count.** Pruning happens at `lingxia dev` startup, on `lxdev sessions prune`, and inside `lxdev` when ambiguity forces a liveness probe — so a hard-crashed `lingxia dev` won't keep blocking future runs.
 4. **`--parallel` is per-launch** — it does not persist; each `lingxia dev` for that platform must opt in again.
 
@@ -134,7 +134,7 @@ lxdev app screenshot                             # full app window
 lxdev browser screenshot                         # just the tab's web content
 
 # Two sessions running → disambiguate
-lxdev --platform ios browser tabs
+lxdev --session ios browser tabs
 lxdev sessions prune                             # after a hard crash leaves residue
 ```
 
@@ -147,8 +147,8 @@ Use `lxdev <family> <cmd> --help` whenever you need the exact flags for one of t
 | Symptom | Fix |
 |---|---|
 | `No active dev session found` | Run `lingxia dev` in this project. |
-| `No dev session matches the given selector` | Check `lxdev sessions`; fix the `--session` prefix / `--platform` name. |
-| `Multiple active dev sessions match` | Add `--session <prefix>` or `--platform <name>`. |
+| `No dev session matches the given selector` | Check `lxdev sessions`; fix the `--session` value (id prefix or platform name). |
+| `Multiple active dev sessions match` | Add `--session <id-prefix\|platform>`. |
 | `All matching dev sessions are unreachable` | `lxdev sessions prune`, then start a fresh `lingxia dev`. |
 | `Existing <platform> dev session is already running` (from `lingxia dev`) | Stop the other one, or pass `--parallel` to run two. |
 | `pass exactly one wait condition` / `pass exactly one of --url or --contains` | A `wait` / `wait-url` got zero or several conditions — give exactly one (`lxdev browser wait --help`). |
