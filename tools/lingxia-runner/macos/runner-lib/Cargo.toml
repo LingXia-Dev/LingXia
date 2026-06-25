@@ -13,9 +13,23 @@ publish = false
 name = "lingxia"
 crate-type = ["staticlib"]
 
+[features]
+# Cloud provider. Inert by default; `lingxia package/build --with-provider cloud`
+# injects the provider crate + (runner-lib is a workspace member) the root
+# crates.io->local patches it needs.
+cloud = []
+
+# The runner is a dev container, so it asks the cloud provider for `dev` — the
+# runtime lingxiaServer/lingxiaId overrides + mock switch. The CLI reads this to
+# decide which provider features to enable; it hardcodes no provider knowledge.
+[package.metadata.lingxia.providers.cloud]
+features = ["dev"]
+
 # The macOS Runner is a development container: it needs browser runtime support
 # for lx.surface URL/browser surfaces, but it must not require the product
 # browser shell webui bundle.
 [dependencies]
 lingxia = { workspace = true, features = ["standard", "devtool", "browser-runtime", "webview-input"] }
 lingxia_devtool = { workspace = true, features = ["browser"] }
+# Reads ~/.lingxia/runner/config.toml for the runtime lingxiaServer override.
+toml = "1.1.2"

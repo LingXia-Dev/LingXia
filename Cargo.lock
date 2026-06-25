@@ -3226,6 +3226,7 @@ version = "0.9.1"
 dependencies = [
  "lingxia",
  "lingxia-devtool",
+ "toml",
 ]
 
 [[package]]
