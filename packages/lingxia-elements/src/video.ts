@@ -5,7 +5,7 @@ import {
 } from "./nativecomponent.js";
 import { measureElement } from "./dom.js";
 import { ensureComponentId, NativeComponentUpdateState, iOSNativeComponentHelper } from "./component.js";
-import { isAndroid, isHarmony, isIOS } from "./platform.js";
+import { isAndroid, isHarmony, isIOS, isWindows } from "./platform.js";
 
 const HARMONY_PROPS_PREFIX = "data:application/json,";
 
@@ -85,6 +85,7 @@ export class LxVideoElement extends HTMLElement {
   private updateState = new NativeComponentUpdateState();
   private unregister?: () => void;
   private resizeObserver?: ResizeObserver;
+  private winSettleFrame: number | null = null;
   private pendingLayoutFrame: number | null = null;
   private boundUpdatePosition = this.updatePosition.bind(this);
   private _handlers: Record<string, EventListenerOrEventListenerObject> = {};
@@ -268,6 +269,17 @@ export class LxVideoElement extends HTMLElement {
     } else {
       this.mountOrUpdate();
       this.startTracking();
+      // Windows only: the WebView2 surface is created at an intermediate size
+      // and resized to its final content bounds shortly after this element
+      // mounts, which reflows the page and moves the element. Unlike the other
+      // platforms' webviews, WebView2 doesn't reliably fire the resize /
+      // ResizeObserver that would make us re-report, and an early update can be
+      // lost in the bridge transport during page load — so the native overlay
+      // can stay pinned at the mount-time rect. Re-measure + re-report across the
+      // settle window to land the final position. No-op on every other platform.
+      if (isWindows()) {
+        this.scheduleWindowsMountSettle();
+      }
     }
   }
 
@@ -645,6 +657,10 @@ export class LxVideoElement extends HTMLElement {
     this.removeLayoutInvalidationListener?.();
     this.removeLayoutInvalidationListener = undefined;
     this.stopSizeObserver();
+    if (this.winSettleFrame !== null) {
+      cancelAnimationFrame(this.winSettleFrame);
+      this.winSettleFrame = null;
+    }
     if (this.pendingLayoutFrame !== null) {
       cancelAnimationFrame(this.pendingLayoutFrame);
       this.pendingLayoutFrame = null;
@@ -697,6 +713,42 @@ export class LxVideoElement extends HTMLElement {
       this.pendingLayoutFrame = null;
       this.mountOrUpdate();
     });
+  }
+
+  private scheduleWindowsMountSettle(): void {
+    if (typeof requestAnimationFrame === "undefined") return;
+    if (this.winSettleFrame !== null) return;
+    // Re-measure across the page-load / WebView2-resize settle window. The
+    // reflow that moves this element can land well after mount, so keep checking
+    // until the rect has been stable for a while; decide() dedups, so updates
+    // only fire when the rect changes.
+    let lastKey = "";
+    let stable = 0;
+    let elapsed = 0;
+    const tick = () => {
+      this.winSettleFrame = null;
+      if (!this.isConnected) return;
+      // Force the re-send (don't dedup): an early update can be lost in the
+      // bridge transport during page load, and once the element has settled a
+      // dedup'd re-measure sees "no change" and never re-delivers it. Forcing
+      // each frame re-delivers the current rect until it lands.
+      this.mountOrUpdate(true);
+      const r = this.getBoundingClientRect();
+      const key = `${Math.round(r.top)}:${Math.round(r.width)}`;
+      if (key === lastKey) {
+        stable += 1;
+      } else {
+        stable = 0;
+        lastKey = key;
+      }
+      elapsed += 1;
+      // Keep re-sending until the layout has held steady for a while (so a late
+      // settle is still caught), capped so it never runs unbounded.
+      if (stable < 12 && elapsed < 180) {
+        this.winSettleFrame = requestAnimationFrame(tick);
+      }
+    };
+    this.winSettleFrame = requestAnimationFrame(tick);
   }
 
   private scheduleIOSBootstrapFrames(): void {
