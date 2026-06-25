@@ -52,14 +52,14 @@ pub use design_icons::{
 #[cfg(all(target_os = "windows", feature = "device-frame"))]
 pub use device_frame::{
     WindowsDeviceFrame, WindowsDeviceFrameBadge, WindowsDeviceFrameCutout,
-    WindowsDeviceFrameInfoSheet, WindowsDeviceFrameSheetAction, WindowsDeviceFrameToolbar,
-    open_current_page_devtools, set_app_window_device_frame, set_initial_app_window_device_frame,
-    show_device_frame_info_sheet,
+    WindowsDeviceFrameInfoSheet, WindowsDeviceFrameSheetAction, WindowsDeviceFrameStatusBar,
+    WindowsDeviceFrameToolbar, open_current_page_devtools, set_app_window_device_frame,
+    set_initial_app_window_device_frame, show_device_frame_info_sheet,
 };
 #[cfg(all(target_os = "windows", feature = "shell-chrome"))]
 pub use shell::{
     WindowsShellTabBarPosition, set_windows_default_shell_tabbar_position,
-    set_windows_shell_tabbar_position,
+    set_windows_shell_tabbar_position, windows_shell_background_color,
 };
 
 /// Host process description used to initialize the LingXia runtime.

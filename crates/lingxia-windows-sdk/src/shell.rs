@@ -79,6 +79,14 @@ pub fn set_windows_default_shell_tabbar_position(position: WindowsShellTabBarPos
 pub fn set_windows_shell_tabbar_position(appid: &str, position: WindowsShellTabBarPosition) {
     runtime::set_tabbar_position(appid, position);
 }
+
+/// The shell window/chrome background color (`0xRRGGBB`), adapting to the
+/// system light/dark theme. Runners use it to tint the device frame's rounded
+/// screen corners so they blend with the surrounding chrome (status-bar area +
+/// tab bar) instead of reading as hard dark wedges.
+pub fn windows_shell_background_color() -> u32 {
+    style::shell_palette().window_background
+}
 pub(crate) use terminal_panel::{
     begin_divider_drag, divider_orientation_at, end_divider_drag, update_divider_drag,
 };

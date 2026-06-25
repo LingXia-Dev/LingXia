@@ -35,7 +35,11 @@ use lxapp::{LxApp, LxAppDelegate, LxAppStartupOptions, LxAppUiEventType, Release
 const DEFAULT_NAV_BAR_HEIGHT: i32 = 38;
 const MIN_SIDEBAR_WIDTH: i32 = 180;
 /// iPhone-style bottom tab bar: 49 px item strip plus a home-indicator safe area.
-const BOTTOM_TABBAR_HEIGHT: i32 = 83;
+/// Bottom tab bar content height (icons + labels). Face-ID-style devices add a
+/// home-indicator safe area below it; home-button devices (e.g. iPhone SE) do
+/// not, so their bar is shorter (no tall blank strip under the labels).
+const BOTTOM_TABBAR_CONTENT_HEIGHT: i32 = 49;
+const HOME_INDICATOR_HEIGHT: i32 = 34;
 
 /// How many times to retry presenting a freshly opened browser tab whose
 /// WebView creation is still in flight, and the delay between attempts.
@@ -575,6 +579,26 @@ fn sync_shell_layout(appid: &str) {
     let layout = build_window_layout(&app, &path);
     install_shell_chrome_event_handler(&webtag, &app.appid);
 
+    // Drive the device frame's status bar to match the active page: a visible
+    // navigation bar extends its color up over the status bar (with its text
+    // color); a plain page keeps the chrome-colored strip with contrasting text.
+    if let Some(window) = owner_window_handle(appid) {
+        let (foreground, background) = match layout.navigation_bar.as_ref().filter(|nav| nav.visible)
+        {
+            Some(nav) => (nav.text_color, nav.background_color),
+            None => {
+                let chrome = super::style::shell_palette().window_background;
+                let luminance = (((chrome >> 16) & 0xff) * 299
+                    + ((chrome >> 8) & 0xff) * 587
+                    + (chrome & 0xff) * 114)
+                    / 1000;
+                let foreground = if luminance > 140 { 0x111111 } else { 0xf2f2f7 };
+                (foreground, chrome)
+            }
+        };
+        set_device_frame_status_bar_style(window, foreground, background);
+    }
+
     if let Err(err) = set_webview_window_layout(&webtag, WindowsWindowLayout::new(layout)) {
         log::warn!(
             "failed to sync Windows shell layout for {}:{}: {}",
@@ -630,14 +654,18 @@ fn build_window_layout(app: &LxApp, path: &str) -> WindowsShellWindowLayout {
     let panel_activators = build_panel_activators(app);
     // A simulator-framed window (the runner) gets its window controls from the
     // device-frame toolbar, so the shell drops its own caption on that screen.
-    let suppress_window_controls = owner_window_handle(&app.appid)
-        .map(window_has_device_frame)
-        .unwrap_or(false);
+    let owner_window = owner_window_handle(&app.appid);
+    let suppress_window_controls = owner_window.map(window_has_device_frame).unwrap_or(false);
+    // Reserve the device frame's status-bar strip so the nav bar + content stack
+    // below it (the status bar overlay owns the top strip), matching the macOS
+    // runner's status-bar + nav-bar layout.
+    let top_inset = owner_window.map(device_frame_status_bar_height).unwrap_or(0);
     WindowsShellWindowLayout {
         navigation_bar,
         address_bar,
         tab_bar: build_tab_bar_layout(app, !panel_activators.is_empty()),
         panel_activators,
+        top_inset,
         // The product/app launcher icon (NOT the home lxapp's icon) for the
         // leading-edge app-menu button.
         app_icon_path: crate::app_icon::current_app_icon_path()
@@ -762,9 +790,16 @@ fn build_tab_bar_layout(
     // The "+" opens a new browser tab, so it belongs to the full browser
     // environment only — not the device-framed dev runner, which hosts a
     // single lxapp with no browser.
-    let device_framed = owner_window_handle(&app.appid)
-        .map(window_has_device_frame)
-        .unwrap_or(false);
+    let owner_window = owner_window_handle(&app.appid);
+    let device_framed = owner_window.map(window_has_device_frame).unwrap_or(false);
+    // A home-indicator safe area is reserved below the bar only on devices that
+    // have one (a tall status bar ⇒ Face-ID notch/island). Home-button devices
+    // (short status bar, e.g. SE) and un-framed windows keep the legacy height.
+    let has_home_indicator = if device_framed {
+        owner_window.map(device_frame_status_bar_height).unwrap_or(0) > 30
+    } else {
+        true
+    };
     let show_auxiliary_add = browser_runtime_enabled() && !device_framed;
     let header_actions = build_sidebar_header_actions();
     let sidebar_has_content =
@@ -788,7 +823,14 @@ fn build_tab_bar_layout(
     // bar's *height*. A bottom bar is a compact icon+label strip, so it must not
     // borrow the (much taller) sidebar minimum width.
     let dimension = match position {
-        WindowsShellTabBarPosition::Bottom => BOTTOM_TABBAR_HEIGHT,
+        WindowsShellTabBarPosition::Bottom => {
+            BOTTOM_TABBAR_CONTENT_HEIGHT
+                + if has_home_indicator {
+                    HOME_INDICATOR_HEIGHT
+                } else {
+                    0
+                }
+        }
         WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right => tabbar
             .as_ref()
             .map(|tabbar| tabbar.dimension.max(MIN_SIDEBAR_WIDTH))
@@ -822,8 +864,16 @@ fn build_tab_bar_layout(
                 .unwrap_or("#1677ff"),
             0x1677ff,
         ),
-        background_color: parse_css_color(tabbar_background, 0xffffff),
-        background_transparent: is_transparent_css_color(tabbar_background),
+        // A "transparent" bottom bar can't truly composite over the opaque
+        // WebView2 surface on Windows, and a color-key overlay fringes its
+        // anti-aliased icons/labels (pink halos). Blend the strip into the
+        // ambient shell background instead — a clean, opaque bar.
+        background_color: if is_transparent_css_color(tabbar_background) {
+            super::style::shell_palette().window_background
+        } else {
+            parse_css_color(tabbar_background, 0xffffff)
+        },
+        background_transparent: false,
         border_color: parse_css_color(
             tabbar
                 .as_ref()
@@ -1498,6 +1548,28 @@ fn window_has_device_frame(window: isize) -> bool {
 fn window_has_device_frame(_window: isize) -> bool {
     false
 }
+
+/// Height of the device frame's simulated status bar for `window` (0 when the
+/// window is not framed or the device has no status bar). The shell reserves
+/// this strip at the top so the navigation bar + content sit below the status
+/// bar instead of under it.
+#[cfg(feature = "device-frame")]
+fn device_frame_status_bar_height(window: isize) -> i32 {
+    crate::device_frame::device_frame_status_bar_height(window)
+}
+
+#[cfg(not(feature = "device-frame"))]
+fn device_frame_status_bar_height(_window: isize) -> i32 {
+    0
+}
+
+#[cfg(feature = "device-frame")]
+fn set_device_frame_status_bar_style(window: isize, foreground: u32, background: u32) {
+    crate::device_frame::set_device_frame_status_bar_style(window, foreground, background);
+}
+
+#[cfg(not(feature = "device-frame"))]
+fn set_device_frame_status_bar_style(_window: isize, _foreground: u32, _background: u32) {}
 
 fn restart_lxapp_in_place(appid: &str) -> Result<(), String> {
     lxapp::try_get(appid)

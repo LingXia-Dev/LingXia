@@ -37,6 +37,23 @@ pub struct WindowsDeviceFrameCutout {
     pub corner_radius: i32,
 }
 
+/// Simulated iOS status bar across the top of the device screen: the time on
+/// the leading edge and the signal/battery glyphs on the trailing edge,
+/// flanking the cutout. The device frame draws it as an overlay above the
+/// WebView2 content (the app's top safe-area sits beneath it).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WindowsDeviceFrameStatusBar {
+    /// Status bar height in pixels (the device's top safe-area inset).
+    pub height: i32,
+    /// Text/glyph color as `0xRRGGBB`, chosen to contrast `background`. The
+    /// device frame draws the real current time on the leading edge.
+    pub foreground: u32,
+    /// Opaque strip fill as `0xRRGGBB`. The shell sets this to the page's
+    /// navigation-bar color so the bar color extends up over the status bar
+    /// (matching the macOS runner), or the chrome color for a plain page.
+    pub background: u32,
+}
+
 /// A colored pill drawn at the trailing edge of the info-sheet header (for
 /// example a release-channel marker). The caller owns the text and colors so
 /// the device frame stays free of app/runner-specific semantics.
@@ -87,8 +104,17 @@ pub struct WindowsDeviceFrame {
     /// Optional top-centered screen cutout / Dynamic Island. `None` or empty
     /// dimensions leave the screen uninterrupted.
     pub cutout: Option<WindowsDeviceFrameCutout>,
+    /// Optional simulated status bar (time + signal/battery) across the top.
+    /// `None` leaves the screen's top edge bare.
+    pub status_bar: Option<WindowsDeviceFrameStatusBar>,
     /// Bezel fill color as `0xRRGGBB`.
     pub bezel_color: u32,
+    /// Fill color of the masked area outside the rounded screen corners, as
+    /// `0xRRGGBB`. A windowed WebView2 paints square corners that can't be
+    /// clipped, so this color is painted over them to fake the rounding. Set it
+    /// to the surrounding chrome color (not the dark bezel) so the rounded
+    /// corners read as a soft, barely-visible cut rather than hard black wedges.
+    pub screen_corner_color: u32,
     /// Simulator toolbar floating above the device, when present.
     pub toolbar: Option<WindowsDeviceFrameToolbar>,
 }
@@ -128,6 +154,24 @@ pub(crate) fn set_device_frame_command_handler(handler: WindowsAppMenuCommandHan
 #[cfg_attr(not(feature = "shell-chrome"), allow(dead_code))]
 pub(crate) fn window_has_device_frame(window: isize) -> bool {
     native::window_has_frame(window)
+}
+
+/// Height of the simulated status bar for `window`, so the shell can reserve a
+/// top inset and stack its nav bar + content below the status bar overlay.
+#[cfg_attr(not(feature = "shell-chrome"), allow(dead_code))]
+pub(crate) fn device_frame_status_bar_height(window: isize) -> i32 {
+    native::status_bar_height(window)
+}
+
+/// Sets the simulated status bar's foreground + background colors for `window`
+/// (on its UI thread). The shell drives this from the active page's navigation
+/// bar so the bar color covers the status bar and the time/signal stay legible.
+#[cfg_attr(not(feature = "shell-chrome"), allow(dead_code))]
+pub(crate) fn set_device_frame_status_bar_style(window: isize, foreground: u32, background: u32) {
+    let _ = crate::window_host::post_to_window_thread(
+        window,
+        Box::new(move || native::set_status_bar_style(window, foreground, background)),
+    );
 }
 
 pub(crate) fn set_device_frame_overlays_visible(window: isize, visible: bool) {
