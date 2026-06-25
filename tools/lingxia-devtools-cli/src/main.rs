@@ -18,13 +18,10 @@ use project::SessionSelector;
 #[command(about = "LingXia devtools client", long_about = None)]
 #[command(version)]
 struct Cli {
-    /// Select a specific dev session by id (prefix match).
+    /// Select the dev session by id prefix or platform name (android, ios,
+    /// macos, harmony, windows, lxapp). Optional when only one session is live.
     #[arg(long, global = true)]
     session: Option<String>,
-
-    /// Select a dev session by platform (android, ios, macos, harmony, lxapp).
-    #[arg(long, global = true)]
-    platform: Option<String>,
 
     #[command(subcommand)]
     command: Commands,
@@ -63,10 +60,7 @@ enum SessionsAction {
 fn main() -> Result<()> {
     let cli = Cli::parse();
     let project_root = std::env::current_dir()?;
-    let selector = SessionSelector {
-        session: cli.session,
-        platform: cli.platform,
-    };
+    let selector = SessionSelector { query: cli.session };
 
     match cli.command {
         Commands::Browser(options) => {

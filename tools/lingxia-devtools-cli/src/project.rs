@@ -26,13 +26,13 @@ pub struct SessionInfo {
 
 #[derive(Debug, Default, Clone)]
 pub struct SessionSelector {
-    pub session: Option<String>,
-    pub platform: Option<String>,
+    /// Session id prefix or platform name. `None` auto-selects when unambiguous.
+    pub query: Option<String>,
 }
 
 impl SessionSelector {
     pub fn is_empty(&self) -> bool {
-        self.session.is_none() && self.platform.is_none()
+        self.query.is_none()
     }
 }
 
@@ -121,16 +121,15 @@ pub fn resolve_session(project_root: &Path, selector: &SessionSelector) -> Resul
         return Ok(all.into_iter().next().unwrap());
     }
 
-    // Match against selector. We only filter on values the user provided;
-    // ambiguity in the surviving set is what triggers the explicit error.
+    // Match against the selector: one value, tried as a platform name first
+    // (exact, case-insensitive) then as a session-id prefix. Ambiguity in the
+    // surviving set is what triggers the explicit error.
     let mut candidates: Vec<SessionInfo> = all
         .into_iter()
-        .filter(|s| match &selector.session {
-            Some(needle) => s.session_id.starts_with(needle),
-            None => true,
-        })
-        .filter(|s| match &selector.platform {
-            Some(needle) => s.platform.eq_ignore_ascii_case(needle),
+        .filter(|s| match &selector.query {
+            Some(needle) => {
+                s.platform.eq_ignore_ascii_case(needle) || s.session_id.starts_with(needle)
+            }
             None => true,
         })
         .collect();
@@ -157,7 +156,7 @@ pub fn resolve_session(project_root: &Path, selector: &SessionSelector) -> Resul
         1 => Ok(candidates.into_iter().next().unwrap()),
         _ => {
             let mut msg = String::from(
-                "Multiple active dev sessions match. Add --session <id> or --platform <name> to choose:\n",
+                "Multiple active dev sessions match. Add --session <id-prefix|platform> to choose:\n",
             );
             for s in &candidates {
                 msg.push_str(&format!(
