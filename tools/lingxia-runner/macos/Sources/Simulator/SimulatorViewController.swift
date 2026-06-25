@@ -62,7 +62,10 @@ public class SimulatorViewController: NSViewController, WKNavigationDelegate {
     public override func loadView() {
         view = NSView()
         view.wantsLayer = true
-        view.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
+        // Clear, not windowBackgroundColor: this host fills the square phone area
+        // behind the rounded device shape, so an opaque bg leaks (cream in Light
+        // Mode) outside the rounded corners. The lxapp paints its own background.
+        view.layer?.backgroundColor = NSColor.clear.cgColor
     }
     
     public override func viewDidLoad() {
@@ -77,7 +80,10 @@ public class SimulatorViewController: NSViewController, WKNavigationDelegate {
     
     private func setupLayout() {
         view.wantsLayer = true
-        view.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
+        // Clear, not windowBackgroundColor: this host fills the square phone area
+        // behind the rounded device shape, so an opaque bg leaks (cream in Light
+        // Mode) outside the rounded corners. The lxapp paints its own background.
+        view.layer?.backgroundColor = NSColor.clear.cgColor
         
         setupWebViewContainer()
         setupWebViewConstraintsWithoutTabBar()
