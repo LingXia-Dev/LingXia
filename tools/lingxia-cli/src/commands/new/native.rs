@@ -113,7 +113,7 @@ pub(super) fn create_rust_library(
     // the project, and symmetric with the lxapp side (folder == appId). A
     // scaffolded project is its own crate, never a shared cargo workspace, so a
     // bare name does not collide. The built artifact is always `liblingxia`
-    // (see rust-lib/Cargo.toml `[lib] name`), independent of the package name.
+    // (see native/Cargo.toml `[lib] name`), independent of the package name.
     let lib_dir_name = RUST_LIB_DIR_NAME;
     let package_name = lib_dir_name.to_string();
     let lib_dir = project_root.join(lib_dir_name);
@@ -123,7 +123,7 @@ pub(super) fn create_rust_library(
 
     // Locate templates directory
     let templates_base = locate_templates_dir()?;
-    let template_dir = templates_base.join("rust-lib");
+    let template_dir = templates_base.join("native");
 
     if !template_dir.exists() {
         return Err(anyhow!(

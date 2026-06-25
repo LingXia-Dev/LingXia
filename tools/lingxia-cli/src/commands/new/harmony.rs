@@ -11,7 +11,7 @@ pub fn create_harmony_project(config: &ProjectConfig) -> Result<()> {
 
     // Locate templates directory
     let templates_base = locate_templates_dir()?;
-    let template_dir = templates_base.join("harmony-native");
+    let template_dir = templates_base.join("harmony");
 
     if !template_dir.exists() {
         return Err(anyhow!(

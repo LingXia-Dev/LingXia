@@ -18,7 +18,7 @@ pub fn create_android_project(config: &ProjectConfig, versions: &LingXiaVersions
 
     // Locate templates directory
     let templates_base = locate_templates_dir()?;
-    let template_dir = templates_base.join("android-native");
+    let template_dir = templates_base.join("android");
 
     if !template_dir.exists() {
         return Err(anyhow!(
