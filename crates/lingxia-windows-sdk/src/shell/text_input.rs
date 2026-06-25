@@ -12,7 +12,7 @@
 //! Threading: `begin_inline_edit` MUST run on the UI thread that owns
 //! `host_hwnd` (a child window pumps messages on its creator's thread).
 //! Callers on other threads marshal via
-//! `lingxia_windows_host::post_to_window_thread`; the commit
+//! `lingxia_windows_contract::post_to_window_thread`; the commit
 //! callback then also runs on that UI thread.
 //!
 //! Painting: the shell host windows do not use `WS_CLIPCHILDREN`, so a

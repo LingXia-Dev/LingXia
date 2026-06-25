@@ -15,7 +15,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 };
 use windows::core::BOOL;
 
-use lingxia_windows_host::add_host_window_created_handler;
+use lingxia_windows_contract::add_host_window_created_handler;
 
 #[derive(Debug, Clone, Copy)]
 struct AppIconHandles {

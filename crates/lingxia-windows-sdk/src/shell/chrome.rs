@@ -9,8 +9,8 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
 
 #[cfg(feature = "browser-runtime")]
-use lingxia_windows_host::post_to_window_thread;
-use lingxia_windows_host::{
+use lingxia_windows_contract::post_to_window_thread;
+use lingxia_windows_contract::{
     WindowsChromeAttachedLayout, WindowsChromeCommand, WindowsChromeHit, WindowsChromePanel,
     WindowsChromePanelLayout, WindowsChromePanelLayoutInput, WindowsChromeRenderer,
     WindowsChromeState, WindowsFrameButton, WindowsHostPanelContent, WindowsPanelPosition,

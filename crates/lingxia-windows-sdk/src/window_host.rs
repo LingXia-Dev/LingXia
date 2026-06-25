@@ -14,8 +14,8 @@ use lingxia_webview::{WebTag, WebViewError};
 // Contract types/handlers are consumed straight from the contract crate. This
 // module is the host-window *implementation*; it does not re-export the
 // contract (so other SDK modules import contract symbols from
-// `lingxia_windows_host` directly, not via `crate::window_host`).
-use lingxia_windows_host::{
+// `lingxia_windows_contract` directly, not via `crate::window_host`).
+use lingxia_windows_contract::{
     WindowsChromeAttachedLayout, WindowsChromeAttachedState, WindowsChromeCommand,
     WindowsChromeHit, WindowsChromePanel, WindowsChromePanelLayoutInput, WindowsChromeState,
     WindowsContentRect, WindowsFrameButton, WindowsHostBackend, WindowsHostPanelContent,

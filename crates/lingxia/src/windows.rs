@@ -41,7 +41,7 @@ pub fn open_home_app(appid: &str) -> Result<(), String> {
 /// opens). The first call wins; later calls and non-positive dimensions are
 /// ignored. Without an override windows open at the built-in 1024x768.
 pub fn set_default_window_size(width: i32, height: i32) {
-    lingxia_windows_host::set_default_window_size(width, height);
+    lingxia_windows_contract::set_default_window_size(width, height);
 }
 
 /// Resizes the top-level window of `appid` so its content (client) area is
@@ -52,7 +52,7 @@ pub fn set_default_window_size(width: i32, height: i32) {
 /// presenting it (attached surfaces resolve to their group host window).
 pub fn resize_app_window_content(appid: &str, width: i32, height: i32) -> Result<(), String> {
     let webview = current_page_webview(appid)?;
-    lingxia_windows_host::resize_host_window_content(&webview.webtag(), width, height)
+    lingxia_windows_contract::resize_host_window_content(&webview.webtag(), width, height)
         .map_err(|err| err.to_string())
 }
 
@@ -76,7 +76,7 @@ fn current_page_webview(appid: &str) -> Result<std::sync::Arc<lingxia_webview::W
 }
 
 fn install_lifecycle_bridge() {
-    lingxia_windows_host::set_webview_visibility_handler(Arc::new(|webtag, visible| {
+    lingxia_windows_contract::set_webview_visibility_handler(Arc::new(|webtag, visible| {
         on_webview_visibility_changed(webtag, visible);
     }));
 }

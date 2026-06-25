@@ -27,7 +27,7 @@ rfd = { version = "0.17.2", default-features = false }
 serde_json = { workspace = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]
-lingxia-windows-host = { workspace = true }
+lingxia-windows-contract = { workspace = true }
 lingxia-webview = { workspace = true }
 windows = { workspace = true, features = [
     "Devices_Geolocation",

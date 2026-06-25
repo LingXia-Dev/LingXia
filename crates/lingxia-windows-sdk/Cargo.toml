@@ -14,7 +14,7 @@ default = []
 host-api = [
     "dep:lingxia-platform",
     "dep:lingxia-webview",
-    "dep:lingxia-windows-host",
+    "dep:lingxia-windows-contract",
     "dep:log",
     "dep:serde_json",
     "dep:windows",
@@ -81,7 +81,7 @@ lxapp = { workspace = true, default-features = false, optional = true }
 lingxia-messaging = { workspace = true, optional = true }
 lingxia-platform = { workspace = true, optional = true }
 lingxia-webview = { workspace = true, optional = true }
-lingxia-windows-host = { workspace = true, optional = true }
+lingxia-windows-contract = { workspace = true, optional = true }
 # proc-macros: the `#[implement]` attribute (MFPlay callback in video_player).
 windows-core = { workspace = true, features = ["proc-macros"], optional = true }
 windows = { workspace = true, features = [
