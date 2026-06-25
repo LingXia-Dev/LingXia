@@ -180,7 +180,7 @@ struct RunnerBuildTool {
 
         while true {
             let candidate = currentURL.path
-            let runnerLibCargo = pathJoin(candidate, "tools/lingxia-runner/macos/runner-lib/Cargo.toml")
+            let runnerLibCargo = pathJoin(candidate, "tools/lingxia-runner/macos/native/Cargo.toml")
             let sdkPackage = pathJoin(candidate, "lingxia-sdk/apple/Package.swift")
 
             if fileManager.fileExists(atPath: runnerLibCargo)

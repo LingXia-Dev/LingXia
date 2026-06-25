@@ -11,7 +11,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 # The Runner is versioned with the CLI (tools version), independent of the SDK
 # crates' [workspace.package] version — so read the Runner's own package version.
-RUNNER_CARGO_TOML="$SCRIPT_DIR/runner-lib/Cargo.toml"
+RUNNER_CARGO_TOML="$SCRIPT_DIR/native/Cargo.toml"
 
 read_tools_version() {
   awk -F'"' '/^version = "/ { print $2; exit }' "$RUNNER_CARGO_TOML"

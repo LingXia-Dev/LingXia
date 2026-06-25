@@ -665,7 +665,7 @@ pub(crate) fn resolve_build_env(
 }
 
 /// The single Rust crate directly under a standalone SPM project (the native
-/// crate to inject a provider into, e.g. the runner's `runner-lib`).
+/// crate to inject a provider into, e.g. the runner's `native`).
 fn find_standalone_native_crate(project_root: &std::path::Path) -> Result<std::path::PathBuf> {
     let mut found = None;
     for entry in std::fs::read_dir(project_root)?.flatten() {
@@ -741,7 +741,7 @@ fn build_standalone_apple_swift_package(
     crate::platform::apple::ensure_macos()?;
 
     // Inject requested provider crate(s) into the SPM's native crate (e.g. the
-    // runner-lib). The guard restores manifest + lockfile on drop.
+    // native). The guard restores manifest + lockfile on drop.
     let provider_guard = if with_provider.is_empty() {
         None
     } else {
@@ -779,7 +779,7 @@ fn build_standalone_apple_swift_package(
                 None
             },
             framework: None,
-            // The standalone SPM's native crate (e.g. runner-lib) only exposes
+            // The standalone SPM's native crate (e.g. native) only exposes
             // injected provider features; webview-input etc. live on its lingxia
             // dependency, not as crate features.
             native_features: {

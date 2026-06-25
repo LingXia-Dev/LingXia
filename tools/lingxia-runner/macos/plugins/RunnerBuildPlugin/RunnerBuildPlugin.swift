@@ -92,7 +92,7 @@ struct RunnerBuildPlugin: BuildToolPlugin {
 
         appendFile(packageDir.appending(path: "Package.swift"))
         appendFiles(in: packageDir.appending(path: "plugins"))
-        appendFiles(in: packageDir.appending(path: "runner-lib"))
+        appendFiles(in: packageDir.appending(path: "native"))
         appendFile(projectRoot.appending(path: "tools/lingxia-runner/devices.json"))
         appendFile(projectRoot.appending(path: "packages/lingxia-bridge/dist/bridge-runtime.es2020.js"))
         appendFile(projectRoot.appending(path: "Cargo.toml"))
