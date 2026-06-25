@@ -927,7 +927,13 @@ pub(super) fn draw_window_chrome(
         && let (Some(navbar), Some(navbar_rect)) = (&layout.navigation_bar, rects.navigation_bar)
     {
         let buttons_left = navbar_buttons_left(client, rects.top_bar, layout, navbar_rect);
-        draw_navigation_bar(hdc, navbar_rect, buttons_left, navbar);
+        draw_navigation_bar(
+            hdc,
+            navbar_rect,
+            buttons_left,
+            navbar,
+            layout.suppress_window_controls,
+        );
     }
     if let (Some(tabbar), Some(tabbar_rect)) = (&layout.tab_bar, rects.tab_bar) {
         draw_tab_bar(hdc, tabbar_rect, tabbar);
