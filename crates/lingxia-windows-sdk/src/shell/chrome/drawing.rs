@@ -14,9 +14,7 @@ use windows::Win32::Graphics::GdiPlus;
 use windows::Win32::UI::WindowsAndMessaging::{self, HICON};
 use windows::core::w;
 
-use super::icons::{
-    cached_png_bytes_icon_handle, cached_png_icon_handle, cached_tinted_png_icon_handle,
-};
+use super::icons::{cached_png_bytes_icon_handle, cached_png_icon_handle};
 use super::*;
 
 /// Chrome text font ("Segoe UI" at the shell text size/weight) sized for
@@ -319,19 +317,6 @@ pub(in crate::shell) fn centered_icon_rect(rect: RECT, size: i32) -> RECT {
 
 pub(in crate::shell) fn draw_icon_from_path(hdc: HDC, path: &str, rect: RECT, size: u32) -> bool {
     let Some(handle) = cached_png_icon_handle(path, size) else {
-        return false;
-    };
-    draw_icon_handle(hdc, handle, rect)
-}
-
-pub(in crate::shell) fn draw_tinted_icon_from_path(
-    hdc: HDC,
-    path: &str,
-    rect: RECT,
-    size: u32,
-    rgb: u32,
-) -> bool {
-    let Some(handle) = cached_tinted_png_icon_handle(path, size, rgb) else {
         return false;
     };
     draw_icon_handle(hdc, handle, rect)
