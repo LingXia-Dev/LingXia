@@ -35,7 +35,7 @@ export default function HomePage() {
 
         <div style={S.footer}>
           <LxNavigator url="https://www.lingxia.app" style={S.link}>
-            Documentation →
+            lingxia.app →
           </LxNavigator>
         </div>
       </div>
