@@ -68,6 +68,9 @@ import WebKit
         }
 
         public static func attachLxApp(_ webView: WKWebView, to container: NSView) {
+            // Bound floating surfaces (e.g. the cloud login sheet) to the lxapp's
+            // render container so they stay within the device frame.
+            LxAppSurface.hostAnchorView = container
             RunnerBridge.attachLxAppWebView(webView, to: container)
         }
 

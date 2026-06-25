@@ -10,6 +10,10 @@ import WebKit
 @MainActor
 enum LxAppSurface {
     private static let log = OSLog(subsystem: "LingXia", category: "Surface")
+    /// View a controller-hosted host (the Runner's phone simulator) renders the
+    /// lxapp into. Floats are bounded to it when there is no desktop shell, so they
+    /// don't spill past the device frame. Weak — owned by the host view tree.
+    static weak var hostAnchorView: NSView?
     private static let kindWindow: Int32 = 0
     private static let kindPopup: Int32 = 1
     // Arbitrated role (mirrors lingxia_platform SurfaceRole): only an aside docks.
@@ -230,6 +234,13 @@ enum LxAppSurface {
             configureContentChrome(card, kind: kind)
             windowContent.addSubview(card)
             contentHost = card
+            // Match the controller host's rounded screen (the Runner's phone
+            // simulator) so the popup's bottom lands inside the device shape.
+            let hostRadius = hostScreenCornerRadius()
+            if hostRadius > 0 {
+                windowContent.layer?.cornerRadius = hostRadius
+                windowContent.layer?.masksToBounds = true
+            }
         } else {
             configureContentChrome(windowContent, kind: kind)
             contentHost = windowContent
@@ -749,6 +760,22 @@ enum LxAppSurface {
         ]
     }
 
+    /// Rounded-screen corner radius of a controller host (the Runner's phone
+    /// simulator), found by walking up from the lxapp render view. Returns 0 for a
+    /// desktop shell or a square device shape, so the popup is clipped only when the
+    /// host actually has rounded corners.
+    private static func hostScreenCornerRadius() -> CGFloat {
+        guard LxAppActiveHost.activeShell == nil else { return 0 }
+        var view: NSView? = hostAnchorView
+        while let current = view {
+            if let layer = current.layer, layer.masksToBounds, layer.cornerRadius > 0 {
+                return layer.cornerRadius
+            }
+            view = current.superview
+        }
+        return 0
+    }
+
     private static func surfaceContext(kind: Int32) -> SurfaceContext {
         let screenFrame = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1280, height: 800)
         guard kind != kindWindow else {
@@ -757,6 +784,12 @@ enum LxAppSurface {
 
         if let shell = LxAppActiveHost.activeShell,
            let context = contextFrame(for: shell.contentPanelView ?? shell.window?.contentView) {
+            return context
+        }
+
+        // Controller-hosted host (e.g. the Runner's phone simulator): bound floats
+        // to the lxapp render view so they stay within the device frame.
+        if let context = contextFrame(for: hostAnchorView) {
             return context
         }
 
