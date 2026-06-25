@@ -5,8 +5,9 @@ import AppKit
 public class SimulatorWindow: NSWindow {
     
     override init(contentRect: NSRect, styleMask style: NSWindow.StyleMask, backing backingStoreType: NSWindow.BackingStoreType, defer flag: Bool) {
-        // Borderless window
-        super.init(contentRect: contentRect, styleMask: [.borderless], backing: backingStoreType, defer: flag)
+        // Borderless, but miniaturizable so the toolbar's yellow button can
+        // programmatically minimize to the Dock (plain `.borderless` can't).
+        super.init(contentRect: contentRect, styleMask: [.borderless, .miniaturizable], backing: backingStoreType, defer: flag)
         configureSimulatorStyle()
     }
     
