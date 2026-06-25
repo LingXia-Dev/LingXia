@@ -164,6 +164,12 @@ static READY_KEYS: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
 /// EDIT handles whose `EN_CHANGE` stems from a programmatic value sync;
 /// those changes update the cache without echoing an `input` event.
 static SUPPRESSED_EDITS: OnceLock<Mutex<HashSet<isize>>> = OnceLock::new();
+/// Latest document rect for a component whose `component.update` arrived before
+/// its `component.mount` finished registering (the mount runs on the UI thread,
+/// which can be busy during page load, so an update can race ahead). The mount
+/// applies the stashed rect instead of its own stale mount-time rect, so the
+/// overlay lands at the element's settled position.
+static PENDING_RECTS: OnceLock<Mutex<HashMap<String, DocRect>>> = OnceLock::new();
 
 fn components() -> std::sync::MutexGuard<'static, HashMap<String, ComponentEntry>> {
     lock_registry(COMPONENTS.get_or_init(|| Mutex::new(HashMap::new())))
@@ -183,6 +189,10 @@ fn ready_keys() -> std::sync::MutexGuard<'static, HashSet<String>> {
 
 fn suppressed_edits() -> std::sync::MutexGuard<'static, HashSet<isize>> {
     lock_registry(SUPPRESSED_EDITS.get_or_init(|| Mutex::new(HashSet::new())))
+}
+
+fn pending_rects() -> std::sync::MutexGuard<'static, HashMap<String, DocRect>> {
+    lock_registry(PENDING_RECTS.get_or_init(|| Mutex::new(HashMap::new())))
 }
 
 fn lock_registry<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
@@ -385,7 +395,14 @@ fn handle_update(context: &PageContext, message: &Value) {
     }
 
     let Some(parent) = components().get(&key).map(|entry| entry.parent) else {
-        log::debug!("component.update for unknown component {component_id}; ignoring");
+        // The mount hasn't registered yet — its UI-thread closure is still
+        // queued (the thread is busy during page load). Stash the latest rect so
+        // the mount applies it instead of its stale mount-time rect, otherwise
+        // the overlay lands at the position the element had mid-load.
+        if let Some(rect) = doc_rect {
+            pending_rects().insert(key, rect);
+        }
+        log::debug!("component.update for unmounted component {component_id}; stashed rect");
         return;
     };
 
@@ -601,6 +618,12 @@ fn teardown_page(page_key: &str) {
             !key.starts_with(page_key) || !key[page_key.len()..].starts_with('\u{1}')
         });
     }
+    {
+        let mut pending = pending_rects();
+        pending.retain(|key, _| {
+            !key.starts_with(page_key) || !key[page_key.len()..].starts_with('\u{1}')
+        });
+    }
     let targets: Vec<(String, isize)> = components()
         .iter()
         .filter(|(_, entry)| entry.context.page_key == page_key)
@@ -656,6 +679,10 @@ fn mount_on_ui(
     props: ComponentProps,
 ) {
     let key = component_key(&context.page_key, &component_id);
+    // An update can race ahead of this (UI-thread) mount and stash the element's
+    // latest rect; prefer it over our mount-time rect so the overlay lands where
+    // the element actually settled rather than where it was mid page-load.
+    let doc_rect = pending_rects().remove(&key).unwrap_or(doc_rect);
     // Remount of a live id replaces the previous control.
     destroy_component(&key);
 
