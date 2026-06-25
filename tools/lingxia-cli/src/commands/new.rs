@@ -53,6 +53,7 @@ pub fn execute(
     platforms: Vec<String>,
     package_id: Option<String>,
     icon: Option<String>,
+    cloud_functions: bool,
     yes: bool,
 ) -> Result<()> {
     println!("{}", "Create a new LingXia project".bold());
@@ -88,6 +89,9 @@ pub fn execute(
             &scaffold_versions.bridge,
             &scaffold_versions.types,
         )?;
+        if cloud_functions {
+            scaffold_cloud_functions(&target_dir)?;
+        }
 
         println!();
         println!("{}", "Project created successfully!".green().bold());
@@ -193,3 +197,31 @@ fn print_ai_skill_tip() {
 }
 
 // Platform-specific helpers are in `commands/new/*`.
+
+/// `--cloud`: drop the `cloud/functions/` folder (copied from the `lxapp-cloud`
+/// template overlay) into a freshly scaffolded lxapp — a sample `lx.fn` with the
+/// deliberately-tiny `import`, plus a README. It does not touch the home page;
+/// the README shows how to call `lx.cloud.invoke` from a page.
+fn scaffold_cloud_functions(target_dir: &std::path::Path) -> Result<()> {
+    let overlay = locate_templates_dir()?.join("lxapp-cloud");
+    copy_dir_all(&overlay.join("cloud"), &target_dir.join("cloud"))?;
+    println!(
+        "  {} Cloud functions: cloud/functions/ (sample + README)",
+        "✓".green()
+    );
+    Ok(())
+}
+
+/// Recursively copy `src` into `dst` (creating `dst`).
+fn copy_dir_all(src: &std::path::Path, dst: &std::path::Path) -> Result<()> {
+    std::fs::create_dir_all(dst)?;
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        if entry.file_type()?.is_dir() {
+            copy_dir_all(&entry.path(), &dst.join(entry.file_name()))?;
+        } else {
+            std::fs::copy(entry.path(), dst.join(entry.file_name()))?;
+        }
+    }
+    Ok(())
+}
