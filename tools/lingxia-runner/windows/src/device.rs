@@ -122,8 +122,13 @@ pub(crate) fn device_label(preset: &DevicePreset) -> String {
 /// the time + signal stay legible in both light and dark themes.
 fn status_bar_foreground() -> u32 {
     let bg = lingxia_windows_sdk::windows_shell_background_color();
-    let luminance = (((bg >> 16) & 0xff) * 299 + ((bg >> 8) & 0xff) * 587 + (bg & 0xff) * 114) / 1000;
-    if luminance > 140 { 0x1C_1C1E } else { 0xF2_F2F7 }
+    let luminance =
+        (((bg >> 16) & 0xff) * 299 + ((bg >> 8) & 0xff) * 587 + (bg & 0xff) * 114) / 1000;
+    if luminance > 140 {
+        0x1C_1C1E
+    } else {
+        0xF2_F2F7
+    }
 }
 
 pub(crate) fn frame_spec(index: usize, landscape: bool) -> WindowsDeviceFrame {

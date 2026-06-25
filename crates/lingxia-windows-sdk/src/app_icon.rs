@@ -180,8 +180,7 @@ fn create_icon_from_image(
     size: u32,
     path: &Path,
 ) -> Result<isize, String> {
-    let image =
-        image::imageops::resize(source, size, size, image::imageops::FilterType::Lanczos3);
+    let image = image::imageops::resize(source, size, size, image::imageops::FilterType::Lanczos3);
 
     let mut bgra = Vec::with_capacity(image.len());
     for pixel in image.pixels() {

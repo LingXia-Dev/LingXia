@@ -158,8 +158,10 @@ pub(super) fn hide_corner_mask(content: HWND) {
         frame_state(hwnd_handle(content), |state| state.corner_mask).filter(|mask| *mask != 0)
     {
         unsafe {
-            let _ =
-                WindowsAndMessaging::ShowWindow(hwnd_from_handle(mask), WindowsAndMessaging::SW_HIDE);
+            let _ = WindowsAndMessaging::ShowWindow(
+                hwnd_from_handle(mask),
+                WindowsAndMessaging::SW_HIDE,
+            );
         }
     }
 }
@@ -250,7 +252,12 @@ fn upload_corner_mask_pixels(window: HWND, width: i32, height: i32, pixels: &[u3
 /// transparent inside (the WebView2 surface shows through). The silhouette is
 /// the `screen_width`x`screen_height` rounded rect inset by `MASK_BLEED`.
 /// `fill_color` is `0xRRGGBB`; output is premultiplied.
-fn corner_mask_pixels(screen_width: i32, screen_height: i32, radius: f32, fill_color: u32) -> Vec<u32> {
+fn corner_mask_pixels(
+    screen_width: i32,
+    screen_height: i32,
+    radius: f32,
+    fill_color: u32,
+) -> Vec<u32> {
     let width = screen_width + 2 * MASK_BLEED;
     let height = screen_height + 2 * MASK_BLEED;
     // Screen silhouette centered in the overlay (inset by the bleed).
