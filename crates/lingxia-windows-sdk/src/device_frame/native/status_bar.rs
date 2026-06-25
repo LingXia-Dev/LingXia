@@ -413,7 +413,7 @@ fn status_bar_pixels_transparent(width: i32, height: i32, fg: u32) -> Vec<u32> {
 /// Fills the trailing signal bars + battery into `pixels` as premultiplied
 /// opaque `fg`, vertically centered and inset by `SIDE_MARGIN` from the right
 /// edge. Shared by the opaque and transparent strip builders.
-fn draw_indicators(mut pixels: &mut [u32], width: i32, height: i32, fg: u32) {
+fn draw_indicators(pixels: &mut [u32], width: i32, height: i32, fg: u32) {
     let fg_opaque = 0xff00_0000 | (fg & 0x00ff_ffff);
     let center_y = height / 2;
 
@@ -435,13 +435,13 @@ fn draw_indicators(mut pixels: &mut [u32], width: i32, height: i32, fg: u32) {
     let body_top = center_y - body_h / 2;
     let body_bottom = body_top + body_h;
     // Outline (1px border).
-    fill(&mut pixels, body_left, body_top, body_right, body_top + 1);
-    fill(&mut pixels, body_left, body_bottom - 1, body_right, body_bottom);
-    fill(&mut pixels, body_left, body_top, body_left + 1, body_bottom);
-    fill(&mut pixels, body_right - 1, body_top, body_right, body_bottom);
+    fill(pixels, body_left, body_top, body_right, body_top + 1);
+    fill(pixels, body_left, body_bottom - 1, body_right, body_bottom);
+    fill(pixels, body_left, body_top, body_left + 1, body_bottom);
+    fill(pixels, body_right - 1, body_top, body_right, body_bottom);
     // Inner fill (full battery), inset 2px.
     fill(
-        &mut pixels,
+        pixels,
         body_left + 2,
         body_top + 2,
         body_right - 2,
@@ -449,7 +449,7 @@ fn draw_indicators(mut pixels: &mut [u32], width: i32, height: i32, fg: u32) {
     );
     // Tip.
     fill(
-        &mut pixels,
+        pixels,
         body_right,
         center_y - tip_h / 2,
         body_right + tip_w,
@@ -467,6 +467,6 @@ fn draw_indicators(mut pixels: &mut [u32], width: i32, height: i32, fg: u32) {
     for index in 0..bars {
         let bar_h = 3 + index * (bar_max_h - 3) / (bars - 1);
         let x0 = signal_left + index * (bar_w + bar_gap);
-        fill(&mut pixels, x0, baseline - bar_h, x0 + bar_w, baseline);
+        fill(pixels, x0, baseline - bar_h, x0 + bar_w, baseline);
     }
 }

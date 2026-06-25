@@ -4,18 +4,18 @@
 //! mirroring the macOS terminal workspace UX:
 //!
 //! - Multi-tab model: each tab ([`TerminalTab`]) owns a *pane tree* of PTY
-//!  sessions ([`PaneNode`]); the panel shows the ACTIVE tab's panes laid
-//!  out side by side / stacked, inactive tabs keep running. The tab id
-//!  surfaced to the chrome is the tab's focused session id.
+//!   sessions ([`PaneNode`]); the panel shows the ACTIVE tab's panes laid
+//!   out side by side / stacked, inactive tabs keep running. The tab id
+//!   surfaced to the chrome is the tab's focused session id.
 //! - Split: the focused pane splits left/right/up/down into two panes
-//!  (a fresh PTY session), mirroring the macOS surface context menu.
+//!   (a fresh PTY session), mirroring the macOS surface context menu.
 //! - `exit` closes: a pane whose session exited is removed and its sibling
-//!  takes its place; the last pane of a tab closes the tab; closing the
-//!  last tab closes the whole panel.
+//!   takes its place; the last pane of a tab closes the tab; closing the
+//!   last tab closes the whole panel.
 //! - Rename: tab titles default to the focused session's reported title and
-//!  can be overridden per tab (inline rename via the shell's EDIT helper).
+//!   can be overridden per tab (inline rename via the shell's EDIT helper).
 //! - Maximize: the panel toggles between its dock height and the whole
-//!  content area (mechanics live in lingxia-webview's group layout).
+//!   content area (mechanics live in lingxia-webview's group layout).
 //!
 //! The webview layer supplies only generic mechanics (panel rects,
 //! tab-strip data, chrome events); the shell layer draws the dock, the pane
