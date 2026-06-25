@@ -321,6 +321,14 @@ struct RunnerBuildTool {
         if buildConfig == "release" {
             args.insert("--release", at: 5)
         }
+        // Cargo features for the native lib (e.g. an injected provider), set by
+        // the CLI in LINGXIA_NATIVE_FEATURES.
+        if let features = baseEnvironment["LINGXIA_NATIVE_FEATURES"]?
+            .trimmingCharacters(in: .whitespaces), !features.isEmpty
+        {
+            args.append("--features")
+            args.append(features)
+        }
 
         let libDir = pathJoin(projectRoot, "target/\(targetTriple)/\(buildConfig)")
         let prebuiltLib = try? resolveBuiltStaticLibrary(libDir: libDir)
