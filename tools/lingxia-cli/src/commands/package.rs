@@ -87,6 +87,7 @@ pub fn execute(options: PackageExecuteOptions) -> Result<()> {
         ipa: false,
         dmg: false,
         msix: false,
+        self_signed: false,
         package: true,
         // Packaging needs the full platform artifact, not just the native lib.
         native_only: false,

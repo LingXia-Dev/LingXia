@@ -30,7 +30,12 @@ const LOGOS: &[(&str, u32)] = &[
 
 /// Pack the assembled `dist_dir` (`windows/.lingxia/dist/<Product>/`) into an
 /// unsigned `<project>/dist/windows/<Product>.msix`. Returns the `.msix` path.
-pub fn package(project_root: &Path, config: &LingXiaConfig, dist_dir: &Path) -> Result<PathBuf> {
+pub fn package(
+    project_root: &Path,
+    config: &LingXiaConfig,
+    dist_dir: &Path,
+    signing: super::signing::WindowsSigning,
+) -> Result<PathBuf> {
     let makeappx = find_makeappx()?;
 
     let app = config
@@ -109,11 +114,16 @@ pub fn package(project_root: &Path, config: &LingXiaConfig, dist_dir: &Path) -> 
         "[Windows]".cyan(),
         msix_path.display()
     );
-    println!(
-        "  {} unsigned — Windows won't install it until signed, e.g.\n     signtool sign /fd SHA256 /a /f <cert.pfx> /p <password> \"{}\"",
-        "note:".yellow(),
-        msix_path.display()
-    );
+
+    if matches!(signing, super::signing::WindowsSigning::None) {
+        println!(
+            "  {} unsigned — Windows won't install it until signed, e.g.\n     signtool sign /fd SHA256 /a /f <cert.pfx> /p <password> \"{}\"\n     (or pass --self-signed to sign + trust automatically)",
+            "note:".yellow(),
+            msix_path.display()
+        );
+    } else {
+        super::signing::sign_msix(&msix_path, &publisher, signing)?;
+    }
     Ok(msix_path)
 }
 

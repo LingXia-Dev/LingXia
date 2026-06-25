@@ -206,6 +206,12 @@ enum Commands {
         #[arg(long)]
         msix: bool,
 
+        /// Self-sign the Windows MSIX: generate/reuse a self-signed cert
+        /// (subject = the package Publisher), sign with signtool, and trust it
+        /// so the package installs locally. Implies --msix.
+        #[arg(long)]
+        self_signed: bool,
+
         /// Build only the native library, skipping platform packaging. Harmony
         /// stops after the .so (no ohpm/hvigor/.hap) — useful for CI to verify
         /// the cross-compile without the gated API-21 HarmonyOS SDK.
@@ -521,6 +527,7 @@ fn main() -> Result<()> {
             ipa,
             dmg,
             msix,
+            self_signed,
             native_only,
         } => {
             commands::build::execute(commands::build::BuildExecuteOptions {
@@ -534,7 +541,8 @@ fn main() -> Result<()> {
                 all_platforms,
                 ipa,
                 dmg,
-                msix,
+                msix: msix || self_signed,
+                self_signed,
                 package: false,
                 native_only,
                 env_version: build_options.env_version,

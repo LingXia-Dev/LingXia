@@ -25,6 +25,8 @@ pub struct BuildExecuteOptions {
     pub dmg: bool,
     /// Package the Windows build as an (unsigned) MSIX installer.
     pub msix: bool,
+    /// Self-sign the Windows MSIX (generate/reuse a self-signed cert, sign + trust).
+    pub self_signed: bool,
     pub package: bool,
     /// Build only the native library, skipping platform packaging (harmony
     /// stops after the `.so`, no ohpm/hvigor).
@@ -56,6 +58,7 @@ pub fn execute(options: BuildExecuteOptions) -> Result<()> {
         ipa,
         dmg,
         msix,
+        self_signed,
         package,
         native_only,
         env_version,
@@ -451,7 +454,12 @@ Specify one with `--platform <name>` or build all with `--all-platforms`."
             artifacts =
                 assemble_windows_dist(&project_root, &config, resolved_env.version, artifacts)?;
             if msix && let Some(dist_dir) = artifacts.path().parent() {
-                crate::platform::windows::msix::package(&project_root, &config, dist_dir)?;
+                let signing = if self_signed {
+                    crate::platform::windows::signing::WindowsSigning::SelfSigned
+                } else {
+                    crate::platform::windows::signing::WindowsSigning::None
+                };
+                crate::platform::windows::msix::package(&project_root, &config, dist_dir, signing)?;
             }
         }
         if package {
