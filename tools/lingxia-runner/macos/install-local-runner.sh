@@ -3,7 +3,7 @@ set -euo pipefail
 
 if [[ $# -ne 0 ]]; then
   echo "Usage: $0" >&2
-  echo "Environment: RUNNER_VERSION, RUNNER_TARGET_DIR, LINGXIA_BIN, CARGO_BIN, NPM_BIN, MACOS_ARCH" >&2
+  echo "Environment: RUNNER_VERSION, RUNNER_TARGET_DIR, LINGXIA_BIN, CARGO_BIN, NPM_BIN" >&2
   exit 2
 fi
 
@@ -29,20 +29,10 @@ BACKUP_TARGET_DIR="$TARGET_PARENT/.prev-runner-$RUNNER_VERSION-$$"
 LINGXIA_BIN="${LINGXIA_BIN:-lingxia}"
 CARGO_BIN="${CARGO_BIN:-cargo}"
 NPM_BIN="${NPM_BIN:-npm}"
-MACOS_ARCH="${MACOS_ARCH:-$(uname -m)}"
 APP_NAME="LingXia Runner.app"
 APP_SRC="$SCRIPT_DIR/.lingxia/$APP_NAME"
 BRIDGE_DIR="$ROOT_DIR/packages/lingxia-bridge"
 BRIDGE_RUNTIME="$BRIDGE_DIR/dist/bridge-runtime.es2020.js"
-
-case "$MACOS_ARCH" in
-  arm64|aarch64) RUST_TARGET="aarch64-apple-darwin" ;;
-  x86_64|amd64) RUST_TARGET="x86_64-apple-darwin" ;;
-  *)
-    echo "ERROR: unsupported macOS architecture: $MACOS_ARCH" >&2
-    exit 2
-    ;;
-esac
 
 case "$TARGET_DIR" in
   "$HOME/.lingxia/runner/"*) ;;
@@ -51,12 +41,6 @@ case "$TARGET_DIR" in
     exit 2
     ;;
 esac
-
-if ! command -v "$LINGXIA_BIN" >/dev/null 2>&1; then
-  echo "ERROR: missing lingxia CLI: $LINGXIA_BIN" >&2
-  echo "Set LINGXIA_BIN=/path/to/lingxia if it is not on PATH." >&2
-  exit 1
-fi
 
 if ! command -v "$CARGO_BIN" >/dev/null 2>&1; then
   echo "ERROR: missing cargo: $CARGO_BIN" >&2
@@ -67,6 +51,12 @@ if ! command -v "$NPM_BIN" >/dev/null 2>&1; then
   echo "ERROR: missing npm: $NPM_BIN" >&2
   exit 1
 fi
+
+# Build + use the CLI from this repo so the Runner is built by the matching
+# toolchain and `--with-provider` (LINGXIA_WITH_PROVIDERS) injection applies.
+# shellcheck source=/dev/null
+source "$ROOT_DIR/scripts/lib/lingxia.sh"
+ensure_lingxia "$ROOT_DIR"
 
 echo "==> Cleaning Runner build outputs"
 rm -rf "$SCRIPT_DIR/.build" "$SCRIPT_DIR/.lingxia"
@@ -82,12 +72,6 @@ if [[ ! -f "$BRIDGE_RUNTIME" ]]; then
   exit 1
 fi
 
-echo "==> Building Runner native staticlib ($RUST_TARGET)"
-(
-  cd "$ROOT_DIR"
-  "$CARGO_BIN" build -p lingxia-runner-lib --lib --target "$RUST_TARGET"
-)
-
 echo "==> Generating apple SDK resources (i18n + icons)"
 # Same step bootstrap-apple-sdk / scripts/release/sdk.sh run: without it a new or
 # changed design/icons/svg or i18n YAML never reaches the runner bundle.
@@ -102,6 +86,8 @@ echo "==> Generating apple SDK resources (i18n + icons)"
 )
 
 echo "==> Building Runner"
+# Standalone Swift Package: one `lingxia build` runs the Swift build whose plugin
+# compiles the native lib, picking up LINGXIA_WITH_PROVIDERS injection.
 (
   cd "$SCRIPT_DIR"
   "$LINGXIA_BIN" build
