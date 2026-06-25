@@ -41,6 +41,19 @@ pub struct PackageOptions {
         env = "LINGXIA_NATIVE_FEATURES"
     )]
     pub native_features: Vec<String>,
+
+    /// Build with an optional private provider crate (e.g. `cloud`). Repeatable
+    /// or comma-separated; also reads LINGXIA_WITH_PROVIDERS.
+    #[arg(
+        long = "with-provider",
+        value_delimiter = ',',
+        env = "LINGXIA_WITH_PROVIDERS"
+    )]
+    pub with_provider: Vec<String>,
+
+    /// Local checkout path for the provider crate (else resolved from env).
+    #[arg(long = "provider-path")]
+    pub provider_path: Option<String>,
 }
 
 pub struct PackageExecuteOptions {
@@ -53,6 +66,8 @@ pub struct PackageExecuteOptions {
     pub all_platforms: bool,
     pub env_version: Option<String>,
     pub extra_native_features: Vec<String>,
+    pub with_provider: Vec<String>,
+    pub provider_path: Option<String>,
 }
 
 pub fn execute(options: PackageExecuteOptions) -> Result<()> {
@@ -77,5 +92,7 @@ pub fn execute(options: PackageExecuteOptions) -> Result<()> {
         native_only: false,
         env_version,
         extra_native_features: options.extra_native_features,
+        with_provider: options.with_provider,
+        provider_path: options.provider_path,
     })
 }

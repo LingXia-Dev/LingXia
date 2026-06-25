@@ -154,6 +154,7 @@ impl MacosPlatform {
         profile: BuildProfile,
         arch: &str,
         deployment_target: &str,
+        native_features: &[String],
     ) -> Result<PathBuf> {
         println!("{}", "Building Swift Package for macOS...".cyan());
 
@@ -168,6 +169,7 @@ impl MacosPlatform {
             .env("LINGXIA_PROJECT_ROOT", project_root)
             .env("LINGXIA_CARGO_TARGET_DIR", &cargo_target_dir)
             .env("LINGXIA_BUILD_CONFIG", build_config)
+            .env("LINGXIA_NATIVE_FEATURES", native_features.join(","))
             .env("RUNNER_TARGET_TRIPLE", &triple)
             .args(["build", "--disable-sandbox", "--triple", &triple]);
 
@@ -187,6 +189,7 @@ impl MacosPlatform {
             .env("LINGXIA_PROJECT_ROOT", project_root)
             .env("LINGXIA_CARGO_TARGET_DIR", &cargo_target_dir)
             .env("LINGXIA_BUILD_CONFIG", build_config)
+            .env("LINGXIA_NATIVE_FEATURES", native_features.join(","))
             .env("RUNNER_TARGET_TRIPLE", &triple)
             .args(["build", "--disable-sandbox", "--show-bin-path"]);
         cmd.args(["--triple", &triple]);
@@ -386,6 +389,7 @@ impl Platform for MacosPlatform {
             config.profile,
             arch,
             &deployment_target,
+            &config.native_features,
         )?;
 
         let mut preferred = Vec::new();
@@ -417,6 +421,7 @@ impl Platform for MacosPlatform {
                 config.profile,
                 arch,
                 &deployment_target,
+                &config.native_features,
             )?;
             executable_path = self.find_executable_in_bin_dir(&bin_dir, &preferred)?;
         }
