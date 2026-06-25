@@ -581,11 +581,15 @@ pub(super) fn compute_chrome_rects(client: RECT, layout: &WindowsShellWindowLayo
         layout.tab_bar.as_ref().map(|tabbar| tabbar.position),
         Some(WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right)
     ) {
-        // Without a status-bar inset (the browser shell) the top bar is always
-        // reserved. With one (a device frame), reserve the nav-bar row only when
-        // the page actually shows a nav bar, so plain pages stay full-height
-        // below the status bar.
-        if top_inset == 0 || navbar_visible {
+        // The browser shell (no device frame) always reserves its top bar. A
+        // device frame reserves the nav-bar row only when the page shows a nav
+        // bar: a plain framed page keeps top_inset for the status bar and no
+        // nav row, and an immersive (custom-nav) framed page has top_inset 0
+        // AND no nav bar, so it must NOT reserve the row — content bleeds up to
+        // the top edge under the transparent status-bar overlay. Distinguish the
+        // immersive frame (top_inset 0 + device frame) from the browser shell
+        // (top_inset 0, no device frame) via suppress_window_controls.
+        if (top_inset == 0 && !layout.suppress_window_controls) || navbar_visible {
             content.top += SHELL_TOP_BAR_HEIGHT;
         }
         top_bar_left = content.left;

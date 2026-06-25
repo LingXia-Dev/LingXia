@@ -416,13 +416,29 @@ pub(super) fn set_webview_device_frame(
 /// Applies `spec` to `content` (on its UI thread): restyles the window
 /// borderless at screen size, rounds its corners, and creates/updates the
 /// layered shell window behind it.
-fn apply_device_frame(content: HWND, spec: WindowsDeviceFrame) {
+fn apply_device_frame(content: HWND, mut spec: WindowsDeviceFrame) {
     if spec.screen_width <= 0 || spec.screen_height <= 0 {
         log::warn!("ignoring device frame with empty screen: {spec:?}");
         return;
     }
     install_device_frame_subclass(content);
     let handle = hwnd_handle(content);
+    // The status bar's transparent/foreground/background are page-driven — the
+    // shell sets them per active page (e.g. an immersive `custom` page floats a
+    // transparent strip). The device frame only owns the bar's geometry, so
+    // carry the live style across a re-apply. Otherwise re-framing (a device
+    // switch, or the window-created hook re-firing) rebuilds with the opaque
+    // `frame_spec` default and clobbers the immersive page's transparent strip.
+    // Merging before the equality check also makes a same-device re-apply
+    // compare equal, downgrading it to a reposition-only sync (no rebuild).
+    if let (Some(old_sb), Some(new_sb)) = (
+        frame_state(handle, |state| state.spec.status_bar.clone()).flatten(),
+        spec.status_bar.as_mut(),
+    ) {
+        new_sb.transparent = old_sb.transparent;
+        new_sb.foreground = old_sb.foreground;
+        new_sb.background = old_sb.background;
+    }
     if frame_state(handle, |state| state.spec.clone()) == Some(spec.clone()) {
         sync_device_frame_for_content(content);
         return;
