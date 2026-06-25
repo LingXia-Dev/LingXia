@@ -14,7 +14,7 @@ pub(super) fn create_windows_project(
     fs::create_dir_all(&windows_dir)?;
 
     let templates_base = locate_templates_dir()?;
-    let template_dir = templates_base.join("windows-native");
+    let template_dir = templates_base.join("windows");
     if !template_dir.exists() {
         return Err(anyhow!(
             "Windows template not found at: {}",

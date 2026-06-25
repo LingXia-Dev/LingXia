@@ -116,7 +116,7 @@ mod tests {
         let path = locate_templates_dir().unwrap();
         assert!(path.join("AppIcon.png").exists());
         assert!(path.join("lxapp-create").exists());
-        assert!(path.join("android-native").exists());
+        assert!(path.join("android").exists());
     }
 
     #[test]

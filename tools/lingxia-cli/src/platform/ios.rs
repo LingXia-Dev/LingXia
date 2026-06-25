@@ -516,7 +516,7 @@ const SDK_PACKAGE_MARKER: &str = "// lingxia-sdk: managed by `lingxia build`";
 ///   2. the app target's `dependencies:` gets
 ///      `.product(name: "lingxia", package: "lingxia")`.
 ///
-/// The template (`templates/ios-native/Package.swift`) ships commented-out TODO
+/// The template (`templates/ios/Package.swift`) ships commented-out TODO
 /// placeholders for both; we replace those on the first build and replace our
 /// own previously-written line on subsequent builds (handles version/path drift).
 fn inject_sdk_package_dependency(ios_dir: &Path, sdk_dir: &Path) -> Result<()> {
