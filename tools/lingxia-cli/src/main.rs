@@ -78,6 +78,21 @@ struct BuildOptions {
         env = "LINGXIA_NATIVE_FEATURES"
     )]
     native_features: Vec<String>,
+
+    /// Build with an optional private provider crate (e.g. `cloud`). Repeatable
+    /// or comma-separated; also reads LINGXIA_WITH_PROVIDERS. The provider crate
+    /// is injected only for this build, never committed. See --provider-path.
+    #[arg(
+        long = "with-provider",
+        value_delimiter = ',',
+        env = "LINGXIA_WITH_PROVIDERS"
+    )]
+    with_provider: Vec<String>,
+
+    /// Local checkout path for the provider crate (used with --with-provider).
+    /// Falls back to LINGXIA_PROVIDER_<NAME>_PATH / _GIT env when omitted.
+    #[arg(long = "provider-path")]
+    provider_path: Option<String>,
 }
 
 #[derive(clap::Args, Clone)]
@@ -510,6 +525,8 @@ fn main() -> Result<()> {
                 native_only,
                 env_version: build_options.env_version,
                 extra_native_features: build_options.native_features,
+                with_provider: build_options.with_provider,
+                provider_path: build_options.provider_path,
             })?;
         }
         Commands::Clean => {
@@ -530,6 +547,8 @@ fn main() -> Result<()> {
                 all_platforms,
                 env_version: package_options.env_version,
                 extra_native_features: package_options.native_features,
+                with_provider: package_options.with_provider,
+                provider_path: package_options.provider_path,
             })?;
         }
         Commands::Devices { platform } => {
@@ -572,6 +591,8 @@ fn main() -> Result<()> {
                 reinstall: dev_options.reinstall,
                 env_version: dev_options.build_options.env_version,
                 extra_native_features: dev_options.build_options.native_features,
+                with_provider: dev_options.build_options.with_provider,
+                provider_path: dev_options.build_options.provider_path,
                 parallel: dev_options.parallel,
             })?;
         }

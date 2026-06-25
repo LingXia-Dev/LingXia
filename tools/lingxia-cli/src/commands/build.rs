@@ -33,6 +33,10 @@ pub struct BuildExecuteOptions {
     pub env_version: Option<String>,
     /// Extra native Cargo features requested by CLI/env.
     pub extra_native_features: Vec<String>,
+    /// Optional private provider crate(s) to inject for this build (e.g. `cloud`).
+    pub with_provider: Vec<String>,
+    /// Local checkout path for the provider crate (else resolved from env).
+    pub provider_path: Option<String>,
 }
 
 /// Execute the build command
@@ -56,7 +60,10 @@ pub fn execute(options: BuildExecuteOptions) -> Result<()> {
         native_only,
         env_version,
         extra_native_features,
+        with_provider,
+        provider_path,
     } = options;
+    let mut extra_native_features = extra_native_features;
 
     // Detect project root (current directory)
     let current_dir = env::current_dir()?;
@@ -190,6 +197,8 @@ pub fn execute(options: BuildExecuteOptions) -> Result<()> {
             dmg,
             package,
             extra_native_features,
+            with_provider,
+            provider_path,
         );
     }
 
@@ -322,6 +331,29 @@ Specify one with `--platform <name>` or build all with `--all-platforms`."
         &platforms_to_build,
         &extra_native_features,
     )?;
+
+    // Inject requested provider crate(s) into the native manifest; guard restores
+    // manifest + lockfile on drop (end of fn, after all build phases).
+    let provider_guard = if with_provider.is_empty() {
+        None
+    } else {
+        let rust_lib_name = config.get_rust_lib_name().ok_or_else(|| {
+            anyhow!("app.projectName or app.rustLibDir is required to inject a provider")
+        })?;
+        let native_crate_dir = project_root.join(&rust_lib_name);
+        crate::commands::provider::inject(
+            &native_crate_dir,
+            &with_provider,
+            provider_path.as_deref(),
+        )?
+    };
+    if let Some(guard) = &provider_guard {
+        for feature in guard.features() {
+            if !extra_native_features.contains(feature) {
+                extra_native_features.push(feature.clone());
+            }
+        }
+    }
 
     // Create platforms and build configs once.
     let mut platform_builds: Vec<(Box<dyn platform::Platform>, BuildConfig, PlatformType)> =
@@ -632,6 +664,30 @@ pub(crate) fn resolve_build_env(
     config.resolve_env(version)
 }
 
+/// The single Rust crate directly under a standalone SPM project (the native
+/// crate to inject a provider into, e.g. the runner's `runner-lib`).
+fn find_standalone_native_crate(project_root: &std::path::Path) -> Result<std::path::PathBuf> {
+    let mut found = None;
+    for entry in std::fs::read_dir(project_root)?.flatten() {
+        let dir = entry.path();
+        if dir.is_dir() && dir.join("Cargo.toml").is_file() {
+            if found.is_some() {
+                return Err(anyhow!(
+                    "multiple native crates under {}; cannot pick one for provider injection",
+                    project_root.display()
+                ));
+            }
+            found = Some(dir);
+        }
+    }
+    found.ok_or_else(|| {
+        anyhow!(
+            "no native crate found under {} for provider injection",
+            project_root.display()
+        )
+    })
+}
+
 fn build_standalone_apple_swift_package(
     project_root: &std::path::Path,
     inferred_platform: Option<PlatformType>,
@@ -644,6 +700,8 @@ fn build_standalone_apple_swift_package(
     dmg: bool,
     package: bool,
     extra_native_features: Vec<String>,
+    with_provider: Vec<String>,
+    provider_path: Option<String>,
 ) -> Result<()> {
     if package && !release {
         return Err(anyhow!(
@@ -682,6 +740,27 @@ fn build_standalone_apple_swift_package(
 
     crate::platform::apple::ensure_macos()?;
 
+    // Inject requested provider crate(s) into the SPM's native crate (e.g. the
+    // runner-lib). The guard restores manifest + lockfile on drop.
+    let provider_guard = if with_provider.is_empty() {
+        None
+    } else {
+        let native_crate_dir = find_standalone_native_crate(project_root)?;
+        crate::commands::provider::inject(
+            &native_crate_dir,
+            &with_provider,
+            provider_path.as_deref(),
+        )?
+    };
+    let mut extra_native_features = extra_native_features;
+    if let Some(guard) = &provider_guard {
+        for feature in guard.features() {
+            if !extra_native_features.contains(feature) {
+                extra_native_features.push(feature.clone());
+            }
+        }
+    }
+
     let mut all_artifacts = Vec::new();
     for platform_type in platforms_to_build {
         let platform = platform::detector::create_platform(&platform_type)?;
@@ -700,11 +779,10 @@ fn build_standalone_apple_swift_package(
                 None
             },
             framework: None,
-            native_features: if matches!(platform_type, PlatformType::MacOs) {
-                let mut features = vec!["webview-input".to_string()];
-                append_native_features(&mut features, &extra_native_features);
-                features
-            } else {
+            // The standalone SPM's native crate (e.g. runner-lib) only exposes
+            // injected provider features; webview-input etc. live on its lingxia
+            // dependency, not as crate features.
+            native_features: {
                 let mut features = Vec::new();
                 append_native_features(&mut features, &extra_native_features);
                 features

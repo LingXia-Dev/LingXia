@@ -70,6 +70,8 @@ pub struct DevExecuteOptions {
     pub reinstall: bool,
     pub env_version: Option<String>,
     pub extra_native_features: Vec<String>,
+    pub with_provider: Vec<String>,
+    pub provider_path: Option<String>,
     pub parallel: bool,
 }
 
@@ -220,6 +222,30 @@ pub fn execute(options: DevExecuteOptions) -> Result<()> {
         &options.extra_native_features,
     )?;
 
+    // Inject requested provider crate(s); guard restores on drop after serving
+    // stops (ctrlc-driven graceful return).
+    let provider_guard = if options.with_provider.is_empty() {
+        None
+    } else {
+        let rust_lib_name = config.get_rust_lib_name().ok_or_else(|| {
+            anyhow!("app.projectName or app.rustLibDir is required to inject a provider")
+        })?;
+        let native_crate_dir = project_root.join(&rust_lib_name);
+        crate::commands::provider::inject(
+            &native_crate_dir,
+            &options.with_provider,
+            options.provider_path.as_deref(),
+        )?
+    };
+    let mut extra_native_features = options.extra_native_features;
+    if let Some(guard) = &provider_guard {
+        for feature in guard.features() {
+            if !extra_native_features.contains(feature) {
+                extra_native_features.push(feature.clone());
+            }
+        }
+    }
+
     let ctx = DevContext {
         project_root,
         config,
@@ -234,17 +260,19 @@ pub fn execute(options: DevExecuteOptions) -> Result<()> {
         device: options.device,
         reinstall: options.reinstall,
         resolved_env,
-        extra_native_features: options.extra_native_features,
+        extra_native_features,
         parallel: options.parallel,
     };
 
-    match platform_type {
+    let result = match platform_type {
         PlatformType::Android => execute_android(ctx, options.abis),
         PlatformType::Ios => execute_ios(ctx),
         PlatformType::MacOs => execute_macos(ctx, options.macos_arch),
         PlatformType::Harmony => execute_harmony(ctx),
         PlatformType::Windows => execute_windows(ctx),
-    }
+    };
+    drop(provider_guard);
+    result
 }
 
 fn execute_android(ctx: DevContext, abis: Vec<String>) -> Result<()> {

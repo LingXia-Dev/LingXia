@@ -9,6 +9,7 @@ pub mod icon;
 pub mod install;
 pub mod new;
 pub mod package;
+pub mod provider;
 pub mod publish;
 pub mod rust;
 pub mod store;
