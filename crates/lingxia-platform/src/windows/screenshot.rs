@@ -103,9 +103,28 @@ pub(super) fn resolve_screenshot_window(
     }
 
     let windows = list_app_windows()?;
+    // Prefer the window actually presenting app content (a WebView host). The
+    // device frame adds borderless companion windows (the bezel, overlays) that
+    // are visible but untitled; one of those would otherwise win the default
+    // pick and screenshot as an empty/black surface (no WebView2 to composite).
+    let hosts = webview_host_window_ids();
     let selected = windows
         .iter()
-        .find(|window| window.focused && window.visible && window.width > 0 && window.height > 0)
+        .find(|window| {
+            window.visible
+                && window.width > 0
+                && window.height > 0
+                && window
+                    .id
+                    .parse::<usize>()
+                    .map(|id| hosts.contains(&id))
+                    .unwrap_or(false)
+        })
+        .or_else(|| {
+            windows
+                .iter()
+                .find(|window| window.focused && window.visible && window.width > 0 && window.height > 0)
+        })
         .or_else(|| {
             windows
                 .iter()
@@ -115,6 +134,22 @@ pub(super) fn resolve_screenshot_window(
             PlatformError::Platform("no visible Windows app window available to screenshot".into())
         })?;
     hwnd_from_window_id(&selected.id)
+}
+
+/// Window ids that currently host a visible WebView surface — the real app
+/// content windows, as opposed to the device frame's companion windows.
+fn webview_host_window_ids() -> std::collections::HashSet<usize> {
+    let mut ids = std::collections::HashSet::new();
+    for webtag in webview_runtime::list_webviews() {
+        if let Ok(snapshot) = lingxia_windows_host::webview_window_snapshot(&webtag)
+            && snapshot.visible
+            && snapshot.content_width > 0
+            && snapshot.content_height > 0
+        {
+            ids.insert(snapshot.window_id);
+        }
+    }
+    ids
 }
 
 fn hwnd_from_window_id(raw: &str) -> Result<windows::Win32::Foundation::HWND, PlatformError> {
@@ -533,6 +568,8 @@ fn is_screenshot_overlay_class(class_name: &str) -> bool {
         "LingXiaTransparentTabbarOverlay"
             | "LingXiaDeviceCapsule"
             | "LingXiaDeviceCutout"
+            | "LingXiaDeviceCornerMask"
+            | "LingXiaDeviceStatusBar"
             | "LingXiaDeviceAboutMask"
             | "LingXiaDeviceAboutSheet"
     )
