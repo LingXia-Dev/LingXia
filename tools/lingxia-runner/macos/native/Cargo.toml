@@ -15,7 +15,7 @@ crate-type = ["staticlib"]
 
 [features]
 # Cloud provider. Inert by default; `lingxia package/build --with-provider cloud`
-# injects the provider crate + (runner-lib is a workspace member) the root
+# injects the provider crate + (this crate is a workspace member) the root
 # crates.io->local patches it needs.
 cloud = []
 
