@@ -48,10 +48,30 @@ mod advanced {
     };
 
     pub fn run() {
-        // Register the host-owned backend. From here LingXia presents WebViews
-        // and panels into the host's own window via these callbacks.
+        // Register the host-owned backend *instead of* the SDK default. From
+        // here LingXia presents WebViews and panels into the host's own window
+        // via these callbacks. (Skipping `install_default_windows_host`.)
         set_windows_host_backend(Arc::new(MyHostBackend));
-        println!("registered a custom WindowsHostBackend; wire it to your own window + loop");
+        boot_and_run();
+    }
+
+    // Booting the lxapp runtime needs the `runtime` feature. `init_runtime` is
+    // host-agnostic — it opens no window — so the host owns the window and loop.
+    #[cfg(feature = "runtime")]
+    fn boot_and_run() {
+        match lingxia_windows_sdk::init_runtime(lingxia_windows_sdk::WindowsApp::from_env()) {
+            Ok(home_app_id) => {
+                println!("runtime booted for {home_app_id}; open your own window + pump your own loop");
+                // Create your Win32 window for `home_app_id`, then drive messages —
+                // e.g. `let _code = lingxia_windows_sdk::run_message_loop();`
+            }
+            Err(error) => eprintln!("init_runtime failed: {error}"),
+        }
+    }
+
+    #[cfg(not(feature = "runtime"))]
+    fn boot_and_run() {
+        println!("registered a custom WindowsHostBackend; enable `runtime` to boot the lxapp runtime");
     }
 
     /// A skeleton backend. A real host routes each call to its own window —

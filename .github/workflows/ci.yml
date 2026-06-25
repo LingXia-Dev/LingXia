@@ -305,6 +305,7 @@ jobs:
           cargo check -p lingxia-windows-sdk --no-default-features --features components
           cargo check -p lingxia-windows-sdk --no-default-features --features browser-shell
           cargo build --example advanced_host -p lingxia-windows-sdk --no-default-features --features host-api
+          cargo build --example advanced_host -p lingxia-windows-sdk --no-default-features --features runtime
 
   cli:
     needs: changes

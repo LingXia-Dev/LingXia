@@ -134,34 +134,58 @@ pub enum WindowsHostError {
 #[cfg(feature = "runtime")]
 pub type Result<T> = std::result::Result<T, WindowsHostError>;
 
-/// Initializes the LingXia runtime and opens the home lxapp.
+/// Boots the LingXia runtime and opens the home lxapp. **Host-agnostic**: it
+/// installs no Windows host backend and opens no window.
 ///
-/// Returns the home app id on success. Must run on the thread that will later
-/// call [`run_message_loop`].
+/// For the batteries-included host call [`start_default_host`] (or
+/// [`quick_start`]). For a custom host, register your own
+/// `lingxia_windows_contract::WindowsHostBackend` (optionally alongside
+/// [`install_default_windows_host`]) before calling this, then drive your own
+/// Win32 message loop.
+///
+/// Returns the home app id. Must run on the thread that will later pump
+/// messages.
 #[cfg(all(target_os = "windows", feature = "runtime"))]
 pub fn init_runtime(app: WindowsApp) -> Result<String> {
-    // Embedded native components (input/textarea/video overlays) are part
-    // of the host SDK. Every Windows host gets them, like the managers in
-    // the Android/iOS SDK layers. Must register before the first page can
-    // mount a component.
+    if let Some((width, height)) = app.window_size {
+        lingxia::windows::set_default_window_size(width, height);
+    }
+    let platform = lingxia::windows::Platform::from_env()?;
+    lingxia::windows::init(platform).ok_or(WindowsHostError::MissingHomeApp)
+}
+
+/// Installs the SDK's default Windows host: the built-in `WindowsHostBackend`,
+/// the embedded native components (input/textarea/video overlays),
+/// pull-to-refresh, the app menu, and — under `browser-shell` — the native
+/// shell. Registrations must happen before the first page mounts a component.
+///
+/// Call this for the batteries-included host; skip it and register your own
+/// `WindowsHostBackend` for a custom host. [`start_default_host`] /
+/// [`quick_start`] call it for you.
+#[cfg(all(target_os = "windows", feature = "runtime"))]
+pub fn install_default_windows_host() {
     window_host::install_native_view_host();
     native_components::install();
     pull_to_refresh::install();
     #[cfg(feature = "shell-chrome")]
     shell::install();
     app_menu::install_host_window_menu_support();
-    install_current_thread_exit_handler();
+}
 
-    if let Some((width, height)) = app.window_size {
-        lingxia::windows::set_default_window_size(width, height);
-    }
-    let platform = lingxia::windows::Platform::from_env()?;
-    let asset_dir = platform.asset_dir().to_path_buf();
+/// Default-host post-boot wiring: design-icon directory, window icon, taskbar
+/// policy, opening the home window, and — under `browser-shell` — the tray.
+#[cfg(all(target_os = "windows", feature = "runtime"))]
+fn present_default_home(home_app_id: &str) -> Result<()> {
+    // `Platform::from_env` only re-reads generated config (the runtime was
+    // already initialized in `init_runtime`), so it is safe to rebuild here to
+    // recover the asset dir without threading it through the public boot API.
+    let asset_dir = lingxia::windows::Platform::from_env()?
+        .asset_dir()
+        .to_path_buf();
     set_windows_design_icon_dir(asset_dir.join("icons").join("design"));
-    let home_app_id = lingxia::windows::init(platform).ok_or(WindowsHostError::MissingHomeApp)?;
     #[cfg(feature = "shell-chrome")]
-    shell::set_home_app_id(&home_app_id);
-    if let Some(icon_path) = resolve_app_icon_path(&asset_dir, &home_app_id) {
+    shell::set_home_app_id(home_app_id);
+    if let Some(icon_path) = resolve_app_icon_path(&asset_dir, home_app_id) {
         app_icon::set_app_icon_from_path(&icon_path).map_err(|message| {
             WindowsHostError::AppIcon {
                 path: icon_path,
@@ -173,7 +197,7 @@ pub fn init_runtime(app: WindowsApp) -> Result<String> {
     // must be created without a taskbar button. Apply before any window opens.
     window_host::set_hide_from_taskbar(should_hide_taskbar(&asset_dir));
     if should_open_on_launch(&asset_dir) {
-        open_home_app(&home_app_id).map_err(WindowsHostError::OpenHomeApp)?;
+        open_home_app(home_app_id).map_err(WindowsHostError::OpenHomeApp)?;
     }
     #[cfg(feature = "browser-shell")]
     {
@@ -189,6 +213,21 @@ pub fn init_runtime(app: WindowsApp) -> Result<String> {
             log::warn!("failed to install Windows tray icon: {message}");
         }
     }
+    Ok(())
+}
+
+/// Brings up the batteries-included default Windows host *without* pumping the
+/// message loop: installs the default host, boots the runtime, and opens the
+/// home window. Returns the home app id so the caller can do further setup
+/// (menus, device frame, …) before calling [`run_message_loop`] itself.
+/// [`quick_start`] wraps this.
+#[cfg(all(target_os = "windows", feature = "runtime"))]
+pub fn start_default_host(app: WindowsApp) -> Result<String> {
+    install_default_windows_host();
+    // Own a message queue before any page can request exit from a WebView UI thread.
+    install_current_thread_exit_handler();
+    let home_app_id = init_runtime(app)?;
+    present_default_home(&home_app_id)?;
     Ok(home_app_id)
 }
 
@@ -216,11 +255,21 @@ pub fn init_runtime(_app: WindowsApp) -> Result<String> {
     ))
 }
 
+/// Brings up the default Windows host.
+///
+/// This non-Windows stub always fails with [`WindowsHostError::Platform`].
+#[cfg(all(not(target_os = "windows"), feature = "runtime"))]
+pub fn start_default_host(_app: WindowsApp) -> Result<String> {
+    Err(WindowsHostError::Platform(
+        "lingxia-windows-sdk can only initialize on target_os = \"windows\"".to_string(),
+    ))
+}
+
 /// Runs the Win32 message loop until the application quits.
 ///
 /// Installs the LingXia app exit handler for the calling thread and pumps
 /// messages until `WM_QUIT`, returning the loop exit code. Must run on the
-/// same thread that called [`init`].
+/// same thread that called [`init_runtime`] / [`start_default_host`].
 #[cfg(all(target_os = "windows", feature = "runtime"))]
 pub fn run_message_loop() -> i32 {
     use windows::Win32::UI::WindowsAndMessaging::{
@@ -285,14 +334,14 @@ fn install_current_thread_exit_handler() {
     }));
 }
 
-/// Boots the host from the environment and blocks until the app exits.
+/// Boots the default host from the environment and blocks until the app exits.
 ///
-/// Equivalent to [`init_runtime`] with [`WindowsApp::from_env`] followed by
-/// [`run_message_loop`] on the calling thread. Returns the message-loop exit
+/// Equivalent to [`start_default_host`] with [`WindowsApp::from_env`] followed
+/// by [`run_message_loop`] on the calling thread. Returns the message-loop exit
 /// code once the application quits.
 #[cfg(feature = "runtime")]
 pub fn quick_start() -> Result<i32> {
-    init_runtime(WindowsApp::from_env())?;
+    start_default_host(WindowsApp::from_env())?;
     Ok(run_message_loop())
 }
 
