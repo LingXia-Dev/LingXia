@@ -20,6 +20,12 @@ impl lingxia::HostAddon for RunnerDevtoolAddon {
                 options = options.lingxia_id(id);
             }
         }
+        // Mock the LingXiao functions service from a local JS dir, when `lingxia
+        // dev` points us at the lxapp's `mock/functions`. The mock vs real default
+        // is the cloud client's own LINGXIAO_MOCK env; this only supplies the dir.
+        if let Some(dir) = std::env::var_os("LINGXIAO_MOCK_DIR").filter(|d| !d.is_empty()) {
+            options = options.lingxiao_mock(std::path::PathBuf::from(dir));
+        }
         if let Err(err) = lingxia_cloud_client::init(options) {
             eprintln!("[cloud] provider init failed: {err}");
         }

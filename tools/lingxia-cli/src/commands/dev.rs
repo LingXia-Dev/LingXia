@@ -994,6 +994,18 @@ fn launch_runner_for_lxapp(lxapp_path: &Path, ws_url: &str) -> Result<Child> {
     let mut command = Command::new(&executable_path);
     command.env(RUNNER_LXAPP_PATH_ENV, lxapp_path);
     command.env(RUNNER_DEV_WS_URL_ENV, ws_url);
+    // If the lxapp ships `cloud/functions`, point the cloud provider at it so
+    // `lx.cloud.invoke` is served from that local JS. The mock-vs-real default is
+    // the runner's own LINGXIAO_MOCK env; this only supplies the dir.
+    let cloud_functions = lxapp_path.join("cloud/functions");
+    if cloud_functions.is_dir() {
+        command.env("LINGXIAO_MOCK_DIR", &cloud_functions);
+        println!(
+            "  {} Cloud functions (mock): {}",
+            "*".cyan(),
+            cloud_functions.display()
+        );
+    }
     command.stdin(Stdio::null());
     command.stdout(Stdio::null());
     command.stderr(Stdio::null());
