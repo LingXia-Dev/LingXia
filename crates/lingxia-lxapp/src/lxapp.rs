@@ -1622,7 +1622,13 @@ impl LxApp {
     /// logic is recreated, while the existing window/frame stays put.
     pub fn restart_app_service_in_place(&self) -> Result<(), LxAppError> {
         self.executor.terminate_app_svc(self.clone_arc())?;
-        self.executor.create_app_svc(self.clone_arc())
+        self.executor.create_app_svc(self.clone_arc())?;
+        // Re-run onLaunch so app-service state (globalData, network init) is
+        // rebuilt. onLaunch normally fires only during open(); an in-place
+        // restart skips that lifecycle, so fire it explicitly. It is enqueued
+        // before the page reload, so the reloaded page's first globalData read
+        // (which arrives only after the page re-loads) observes the fresh state.
+        self.appservice_notify(AppServiceEvent::OnLaunch, None)
     }
 
     /// Reload the current page's WebView in place (without recreating the host
@@ -1636,13 +1642,46 @@ impl LxApp {
             .map_err(|err| LxAppError::WebView(err.to_string()))
     }
 
-    /// In-place dev restart: recreate the JS app service, then reload the
-    /// current page against it — without closing/recreating the host window
-    /// (no screen flash). The two steps belong together: restarting the
-    /// service alone would leave the page bound to the terminated service.
+    /// In-place dev restart: recreate the JS app service, rebuild the live page
+    /// services, then reload the current page against them — without closing or
+    /// recreating the host window (no flash / no app disappear-then-reappear).
+    /// The steps belong together: restarting the app service alone leaves the
+    /// page bound to the terminated worker, and reloading without rebuilding the
+    /// page services drops the page's bridge messages ("page service not
+    /// loaded"). The app service's `OnLaunch` and the page services are enqueued
+    /// before the reload, so the reloaded page observes the fresh state.
     pub fn restart_in_place(&self) -> Result<(), LxAppError> {
         self.restart_app_service_in_place()?;
+        self.recreate_live_page_services();
         self.reload_current_page()
+    }
+
+    /// Recreates the worker-side page service for every live page. The app
+    /// service restart kills the worker (dropping all page services); the page
+    /// instances survive, so `get_or_create_page` would skip them. Recreate the
+    /// services directly so the existing pages keep working after the reload.
+    fn recreate_live_page_services(&self) {
+        let pages: Vec<(String, String)> = {
+            let Ok(state) = self.state.lock() else {
+                return;
+            };
+            let Ok(pages) = state.pages.lock() else {
+                return;
+            };
+            pages
+                .values()
+                .map(|page| (page.path().to_string(), page.instance_id_string()))
+                .collect()
+        };
+        for (path, instance_id) in pages {
+            let (ack_tx, _ack_rx) = oneshot::channel::<Result<(), String>>();
+            let _ = self.executor.create_page_svc_with_ack(
+                self.clone_arc(),
+                path,
+                Some(instance_id),
+                ack_tx,
+            );
+        }
     }
 
     /// Clears this lxapp's user cache directory, recreating it empty. Dev
