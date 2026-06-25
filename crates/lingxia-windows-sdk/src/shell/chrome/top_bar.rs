@@ -290,6 +290,12 @@ pub(super) fn draw_top_bar_controls(
     remember_address_capsule_rect(state.hwnd, controls.address);
 }
 
+/// Rendered size of the back/home navigation glyphs.
+const NAV_ICON_SIZE: i32 = 22;
+
+/// Leading inset of the navigation bar's back/home button from the screen edge.
+const NAV_LEADING_MARGIN: i32 = 8;
+
 pub(super) fn draw_navigation_bar(
     hdc: HDC,
     rect: RECT,
@@ -308,7 +314,13 @@ pub(super) fn draw_navigation_bar(
         // Left-align the chevron near the leading edge instead of centering it
         // in the 44px tap target, so it sits close to the screen edge. The tap
         // target keeps its full width for title clearance below.
-        draw_design_icon_button(hdc, leading_icon_slot(back_rect), WindowsDesignIcon::Back, text_color, 22);
+        draw_design_icon_button(
+            hdc,
+            leading_icon_slot(back_rect),
+            WindowsDesignIcon::Back,
+            text_color,
+            NAV_ICON_SIZE,
+        );
         left_controls_width = back_rect.right - rect.left;
     }
     if navbar.show_home_button {
@@ -317,7 +329,13 @@ pub(super) fn draw_navigation_bar(
             buttons_left,
             if navbar.show_back_button { 1 } else { 0 },
         );
-        draw_design_icon_button(hdc, leading_icon_slot(home_rect), WindowsDesignIcon::Home, text_color, 22);
+        draw_design_icon_button(
+            hdc,
+            leading_icon_slot(home_rect),
+            WindowsDesignIcon::Home,
+            text_color,
+            NAV_ICON_SIZE,
+        );
         left_controls_width = home_rect.right - rect.left;
     }
 
@@ -341,11 +359,11 @@ pub(super) fn draw_navigation_bar(
     }
 }
 
-/// A leading-edge, left-aligned square slot for a navigation icon inside its
-/// (wider) tap-target rect, so the chevron sits near the screen edge rather
-/// than floating in the middle of a 44px button.
+/// A leading-edge, left-aligned slot (the icon's own width) at the start of a
+/// navigation icon's wider tap-target rect, so the chevron sits right at the
+/// screen edge rather than floating in the middle of the 44px button.
 fn leading_icon_slot(button: RECT) -> RECT {
-    let slot = 28;
+    let slot = NAV_ICON_SIZE;
     normalize_rect(RECT {
         left: button.left,
         top: button.top,
@@ -597,12 +615,16 @@ pub(super) fn navbar_buttons_left(
     navbar_rect: RECT,
 ) -> i32 {
     let controls = top_bar_controls(client, top_bar, layout);
-    // Clear the leading-edge app-menu button, when visible, and the sidebar
-    // toggle. Both are off in the sidebar column when a sidebar is expanded,
-    // so the `max` is a no-op there. The base inset is tight so the back chevron
-    // sits near the leading edge rather than indented.
-    let mut left = navbar_rect.left + 2;
-    if let Some(app_icon) = controls.app_icon {
+    // Small leading margin so the back chevron sits just in from the edge rather
+    // than flush against it. Clear the leading-edge app-menu button and the
+    // sidebar toggle only when they are actually drawn: the app-menu icon is
+    // suppressed on a device-framed window (its menu lives on the frame's
+    // capsule), so reserving its slot there would needlessly push the back
+    // chevron further in from the edge.
+    let mut left = navbar_rect.left + NAV_LEADING_MARGIN;
+    if !layout.suppress_window_controls
+        && let Some(app_icon) = controls.app_icon
+    {
         left = left.max(app_icon.right + TOP_BAR_BUTTON_GAP);
     }
     if let Some(toggle) = controls.sidebar_toggle {
