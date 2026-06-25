@@ -74,6 +74,8 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
     private var timeLabel: NSTextField?
     private var batteryView: NSView?
     private var notchView: NSView?
+    // nonisolated(unsafe): invalidated from the nonisolated deinit, like the observer below.
+    nonisolated(unsafe) private var clockTimer: Timer?
 
     // MARK: - State
 
@@ -104,6 +106,7 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
     
     deinit {
         navigationBarObserver.map(NotificationCenter.default.removeObserver)
+        clockTimer?.invalidate()
     }
     
     private func setupNotificationObservers() {
@@ -404,6 +407,7 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         let time = createTimeLabel()
         statusBar.addSubview(time)
         self.timeLabel = time
+        startClock()
         
         // Battery view
         let battery = createBatteryView()
@@ -449,8 +453,34 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         label.textColor = NSColor.labelColor
         label.alignment = .left
         label.translatesAutoresizingMaskIntoConstraints = false
-        label.stringValue = "9:41"
+        label.stringValue = Self.clockString()
         return label
+    }
+
+    /// iPhone-style clock, honoring the system 12/24-hour setting (no AM/PM).
+    private static func clockString() -> String {
+        let is24h = (DateFormatter.dateFormat(fromTemplate: "j", options: 0, locale: .current) ?? "")
+            .contains("H")
+        let formatter = DateFormatter()
+        formatter.locale = .current
+        formatter.dateFormat = is24h ? "H:mm" : "h:mm"
+        return formatter.string(from: Date())
+    }
+
+    private func startClock() {
+        clockTimer?.invalidate()
+        updateClock()
+        // Tick each second; the label only re-renders when the minute rolls over.
+        clockTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in self?.updateClock() }
+        }
+    }
+
+    private func updateClock() {
+        let now = Self.clockString()
+        if timeLabel?.stringValue != now {
+            timeLabel?.stringValue = now
+        }
     }
     
     private func createBatteryView() -> NSView {
