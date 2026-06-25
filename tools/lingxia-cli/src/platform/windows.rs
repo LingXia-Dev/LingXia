@@ -11,6 +11,7 @@ use std::process::Command;
 
 pub mod env_icon;
 pub mod msix;
+pub mod signing;
 
 pub struct WindowsPlatform;
 
