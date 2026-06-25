@@ -10,13 +10,10 @@ use windows::Win32::UI::WindowsAndMessaging::{self, HICON, ICONINFO};
 use windows::core::BOOL;
 
 type IconCacheKey = (PathBuf, u32);
-type TintedIconCacheKey = (PathBuf, u32, u32);
 type IconHandleCache = HashMap<IconCacheKey, Option<isize>>;
-type TintedIconHandleCache = HashMap<TintedIconCacheKey, Option<isize>>;
 type BytesIconCache = HashMap<(String, u32), (u64, Option<isize>)>;
 
 static PANEL_ICON_HANDLES: OnceLock<Mutex<IconHandleCache>> = OnceLock::new();
-static TINTED_ICON_HANDLES: OnceLock<Mutex<TintedIconHandleCache>> = OnceLock::new();
 static BYTES_ICON_HANDLES: OnceLock<Mutex<BytesIconCache>> = OnceLock::new();
 
 pub(super) fn cached_png_icon_handle(path: &str, size: u32) -> Option<isize> {
@@ -38,24 +35,6 @@ pub(super) fn cached_png_icon_handle(path: &str, size: u32) -> Option<isize> {
     create_icon_from_path(&path, size).ok()
 }
 
-pub(super) fn cached_tinted_png_icon_handle(path: &str, size: u32, rgb: u32) -> Option<isize> {
-    let path = PathBuf::from(path);
-    let key = (path.clone(), size, rgb);
-    let handles = TINTED_ICON_HANDLES.get_or_init(|| Mutex::new(HashMap::new()));
-    if let Ok(mut handles) = handles.lock() {
-        if let Some(handle) = handles.get(&key) {
-            return *handle;
-        }
-        let handle = create_tinted_icon_from_path(&path, size, rgb).ok();
-        if let Some(Some(previous)) = handles.insert(key, handle)
-            && Some(previous) != handle
-        {
-            destroy_icon_handle(previous);
-        }
-        return handle;
-    }
-    create_tinted_icon_from_path(&path, size, rgb).ok()
-}
 
 pub(super) fn cached_png_bytes_icon_handle(
     cache_key: &str,
@@ -104,26 +83,6 @@ fn create_icon_from_path(path: &Path, size: u32) -> Result<isize, String> {
         )
     })?;
     create_icon_from_image(image, size, &path.display().to_string())
-}
-
-fn create_tinted_icon_from_path(path: &Path, size: u32, rgb: u32) -> Result<isize, String> {
-    let is_svg = path
-        .extension()
-        .and_then(|ext| ext.to_str())
-        .is_some_and(|ext| ext.eq_ignore_ascii_case("svg"));
-    let image = if is_svg {
-        let data = std::fs::read(path)
-            .map_err(|err| format!("Failed to read SVG icon {}: {err}", path.display()))?;
-        image::DynamicImage::ImageRgba8(rasterize_svg(&data, size)?)
-    } else {
-        image::open(path).map_err(|err| {
-            format!(
-                "Failed to load Windows shell icon {}: {err}",
-                path.display()
-            )
-        })?
-    };
-    create_tinted_icon_from_image(image, size, rgb, &path.display().to_string())
 }
 
 /// Rasterizes an SVG (icons may be SVG, as on macOS) to an `size`x`size`
@@ -207,28 +166,6 @@ fn create_icon_from_image(
     }
 }
 
-fn create_tinted_icon_from_image(
-    image: image::DynamicImage,
-    size: u32,
-    rgb: u32,
-    source: &str,
-) -> Result<isize, String> {
-    let mut image = image
-        .resize_exact(size, size, image::imageops::FilterType::Lanczos3)
-        .into_rgba8();
-    let r = ((rgb >> 16) & 0xff) as u8;
-    let g = ((rgb >> 8) & 0xff) as u8;
-    let b = (rgb & 0xff) as u8;
-    for pixel in image.pixels_mut() {
-        let alpha = pixel.0[3];
-        pixel.0 = [r, g, b, alpha];
-    }
-    create_icon_from_image(
-        image::DynamicImage::ImageRgba8(image),
-        size,
-        &format!("tinted {source}"),
-    )
-}
 
 fn destroy_icon_handle(handle: isize) {
     if handle != 0 {

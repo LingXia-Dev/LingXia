@@ -62,13 +62,7 @@ pub(super) fn draw_tab_bar(hdc: HDC, rect: RECT, tabbar: &WindowsShellTabBarLayo
             bottom: icon_top + BOTTOM_TAB_ICON_SIZE,
         };
         let drew_icon = !icon_path.trim().is_empty()
-            && draw_tinted_icon_from_path(
-                hdc,
-                icon_path,
-                icon_rect,
-                BOTTOM_TAB_ICON_SIZE as u32,
-                color,
-            );
+            && draw_icon_from_path(hdc, icon_path, icon_rect, BOTTOM_TAB_ICON_SIZE as u32);
 
         // Icon-less bars keep the label vertically centred; otherwise it sits
         // just under the icon.
