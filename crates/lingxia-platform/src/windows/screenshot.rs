@@ -121,9 +121,9 @@ pub(super) fn resolve_screenshot_window(
                     .unwrap_or(false)
         })
         .or_else(|| {
-            windows
-                .iter()
-                .find(|window| window.focused && window.visible && window.width > 0 && window.height > 0)
+            windows.iter().find(|window| {
+                window.focused && window.visible && window.width > 0 && window.height > 0
+            })
         })
         .or_else(|| {
             windows

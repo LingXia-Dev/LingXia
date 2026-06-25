@@ -210,7 +210,12 @@ pub(super) fn destroy_status_bar(status_bar: isize) {
     }
 }
 
-fn paint_status_bar(window: HWND, width: i32, cutout_width: i32, bar: &WindowsDeviceFrameStatusBar) {
+fn paint_status_bar(
+    window: HWND,
+    width: i32,
+    cutout_width: i32,
+    bar: &WindowsDeviceFrameStatusBar,
+) {
     let width = width.max(1);
     let height = bar.height.max(1);
     // The clock is centered in the leading "ear" — the space between the screen
@@ -256,10 +261,24 @@ fn paint_status_bar(window: HWND, width: i32, cutout_width: i32, bar: &WindowsDe
                     // luminance is its coverage, then recolor to the foreground
                     // with that coverage as the (premultiplied) alpha. The
                     // already-opaque indicators keep their alpha and are skipped.
-                    draw_time(memory_dc, height, 0xff_ffff, true, clock_slot_right, cutout_width > 0);
+                    draw_time(
+                        memory_dc,
+                        height,
+                        0xff_ffff,
+                        true,
+                        clock_slot_right,
+                        cutout_width > 0,
+                    );
                     premultiply_glyph_pixels(dib, bar.foreground);
                 } else {
-                    draw_time(memory_dc, height, bar.foreground, false, clock_slot_right, cutout_width > 0);
+                    draw_time(
+                        memory_dc,
+                        height,
+                        bar.foreground,
+                        false,
+                        clock_slot_right,
+                        cutout_width > 0,
+                    );
                     // GDI text zeroes the alpha byte of every pixel it touches;
                     // the strip is opaque, so restore full alpha across it (the
                     // RGB it wrote already blends the foreground over the fill).
@@ -298,7 +317,14 @@ fn paint_status_bar(window: HWND, width: i32, cutout_width: i32, bar: &WindowsDe
     }
 }
 
-fn draw_time(dc: HDC, height: i32, color: u32, antialiased: bool, slot_right: i32, has_cutout: bool) {
+fn draw_time(
+    dc: HDC,
+    height: i32,
+    color: u32,
+    antialiased: bool,
+    slot_right: i32,
+    has_cutout: bool,
+) {
     let time = current_time_string();
     let font_height = -(height * 5 / 16).clamp(13, 22);
     // A transparent strip derives per-pixel alpha from text coverage, so it must

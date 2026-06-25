@@ -180,9 +180,7 @@ pub(crate) fn set_device_frame_status_bar_style(
 ) {
     let _ = crate::window_host::post_to_window_thread(
         window,
-        Box::new(move || {
-            native::set_status_bar_style(window, foreground, background, transparent)
-        }),
+        Box::new(move || native::set_status_bar_style(window, foreground, background, transparent)),
     );
 }
 

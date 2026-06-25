@@ -55,8 +55,8 @@ use corner_mask::{
 use cutout::{create_cutout_window, destroy_cutout, hide_cutout, reposition_cutout};
 use frame_window::create_frame_window;
 use status_bar::{
-    create_status_bar, destroy_status_bar, hide_status_bar, reposition_status_bar,
-    repaint_status_bar,
+    create_status_bar, destroy_status_bar, hide_status_bar, repaint_status_bar,
+    reposition_status_bar,
 };
 
 pub(super) type WindowsDeviceFrameCommandHandler = Arc<dyn Fn(u32) + Send + Sync>;

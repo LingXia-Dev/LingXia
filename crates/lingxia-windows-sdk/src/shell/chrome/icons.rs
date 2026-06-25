@@ -35,7 +35,6 @@ pub(super) fn cached_png_icon_handle(path: &str, size: u32) -> Option<isize> {
     create_icon_from_path(&path, size).ok()
 }
 
-
 pub(super) fn cached_png_bytes_icon_handle(
     cache_key: &str,
     png: &[u8],
@@ -165,7 +164,6 @@ fn create_icon_from_image(
         Ok(icon.0 as isize)
     }
 }
-
 
 fn destroy_icon_handle(handle: isize) {
     if handle != 0 {

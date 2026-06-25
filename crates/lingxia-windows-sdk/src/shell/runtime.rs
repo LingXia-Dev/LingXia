@@ -677,7 +677,9 @@ fn build_window_layout(app: &LxApp, path: &str) -> WindowsShellWindowLayout {
     let top_inset = if immersive {
         0
     } else {
-        owner_window.map(device_frame_status_bar_height).unwrap_or(0)
+        owner_window
+            .map(device_frame_status_bar_height)
+            .unwrap_or(0)
     };
     WindowsShellWindowLayout {
         navigation_bar,
@@ -842,7 +844,10 @@ fn build_tab_bar_layout(
     // have one (a tall status bar ⇒ Face-ID notch/island). Home-button devices
     // (short status bar, e.g. SE) and un-framed windows keep the legacy height.
     let has_home_indicator = if device_framed {
-        owner_window.map(device_frame_status_bar_height).unwrap_or(0) > 30
+        owner_window
+            .map(device_frame_status_bar_height)
+            .unwrap_or(0)
+            > 30
     } else {
         true
     };
