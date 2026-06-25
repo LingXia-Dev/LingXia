@@ -13,6 +13,13 @@ impl lingxia::HostAddon for ExampleHostAddon {
     #[cfg(feature = "standard")]
     fn install_logic_extensions(&self) {
         lingxia::js::register_logic_extension(Box::new(extension::HelloExtension));
+        // Cloud provider (lx.cloud/auth + update/fingerprint/push). Must register in
+        // this hook — the logic context is built before `start_services`. Injected via
+        // `--with-provider cloud`.
+        #[cfg(feature = "cloud")]
+        if let Err(err) = lingxia_cloud_client::init(lingxia_cloud_client::CloudOptions::default()) {
+            log::error!("[cloud] provider init failed: {err}");
+        }
     }
 
     fn start_services(&self) {
