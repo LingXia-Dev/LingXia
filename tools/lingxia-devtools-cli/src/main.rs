@@ -4,6 +4,7 @@ use std::path::Path;
 
 mod app;
 mod browser;
+mod build;
 mod client;
 mod logs;
 mod lxapp;
@@ -39,6 +40,8 @@ enum Commands {
     Sessions(SessionsCmd),
     /// Operate on the host app as a whole (window-level screenshot, etc.)
     App(app::AppOptions),
+    /// Build the lxapp front-end bundle for the selected session's project
+    Build(build::BuildOptions),
 }
 
 #[derive(Args, Clone)]
@@ -82,6 +85,10 @@ fn main() -> Result<()> {
         Commands::App(options) => {
             let info = project::resolve_session(&project_root, &selector)?;
             app::execute(&info, options)
+        }
+        Commands::Build(options) => {
+            let info = project::resolve_session(&project_root, &selector)?;
+            build::execute(&info, options)
         }
     }
 }
