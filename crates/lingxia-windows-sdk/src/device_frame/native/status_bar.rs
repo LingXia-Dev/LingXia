@@ -256,10 +256,10 @@ fn paint_status_bar(window: HWND, width: i32, cutout_width: i32, bar: &WindowsDe
                     // luminance is its coverage, then recolor to the foreground
                     // with that coverage as the (premultiplied) alpha. The
                     // already-opaque indicators keep their alpha and are skipped.
-                    draw_time(memory_dc, height, 0xff_ffff, true, clock_slot_right);
+                    draw_time(memory_dc, height, 0xff_ffff, true, clock_slot_right, cutout_width > 0);
                     premultiply_glyph_pixels(dib, bar.foreground);
                 } else {
-                    draw_time(memory_dc, height, bar.foreground, false, clock_slot_right);
+                    draw_time(memory_dc, height, bar.foreground, false, clock_slot_right, cutout_width > 0);
                     // GDI text zeroes the alpha byte of every pixel it touches;
                     // the strip is opaque, so restore full alpha across it (the
                     // RGB it wrote already blends the foreground over the fill).
@@ -298,7 +298,7 @@ fn paint_status_bar(window: HWND, width: i32, cutout_width: i32, bar: &WindowsDe
     }
 }
 
-fn draw_time(dc: HDC, height: i32, color: u32, antialiased: bool, slot_right: i32) {
+fn draw_time(dc: HDC, height: i32, color: u32, antialiased: bool, slot_right: i32, has_cutout: bool) {
     let time = current_time_string();
     let font_height = -(height * 5 / 16).clamp(13, 22);
     // A transparent strip derives per-pixel alpha from text coverage, so it must
@@ -338,9 +338,15 @@ fn draw_time(dc: HDC, height: i32, color: u32, antialiased: bool, slot_right: i3
         let mut extent = SIZE::default();
         let _ = GetTextExtentPoint32W(dc, chars, &mut extent);
         let y = (height - extent.cy) / 2;
-        // Center the clock within the leading ear [0, slot_right]; never let it
-        // cross the side margin against the edge.
-        let x = ((slot_right - extent.cx) / 2).max(SIDE_MARGIN);
+        // With a cutout (notch / Dynamic Island), center the clock within the
+        // leading "ear" [0, slot_right] left of it. With no cutout the device has
+        // a flat pre-notch status bar, so left-align the clock at the side margin
+        // (matching iOS on an iPhone SE) instead of floating it mid-left.
+        let x = if has_cutout {
+            ((slot_right - extent.cx) / 2).max(SIDE_MARGIN)
+        } else {
+            SIDE_MARGIN
+        };
         let _ = TextOutW(dc, x, y, chars);
         if !old_font.is_invalid() {
             let _ = SelectObject(dc, old_font);
