@@ -72,10 +72,31 @@ enum LxAppLayoutReconciler {
         return reconcile(label: "window=\(windowId)", json: json)
     }
 
+    /// Reconcile float popups (modal sheets above the layout). Shell-independent:
+    /// each float is its own popup window registered hidden by LxAppSurface.present,
+    /// so this works with or without an active desktop shell. Single authority for
+    /// float visibility — dismiss what the core dropped, show what it wants.
+    private static func presentFloats(_ ids: [String]) {
+        let desiredFloatIds = Set(ids)
+        for id in LxAppSurface.visibleFloatIds().subtracting(desiredFloatIds) {
+            _ = LxAppSurface.dismissFloat(id: id)
+        }
+        for id in desiredFloatIds {
+            _ = LxAppSurface.showFloat(id: id)
+        }
+    }
+
     private static func reconcile(label: String, json: String) -> Bool {
         guard let shell = LxAppActiveHost.activeShell else {
-            // Headless / no desktop shell: nothing to dock.
-            return false
+            // No desktop shell (e.g. the Runner's phone simulator hosts the lxapp
+            // via a controller, not a shell). Floats are shell-independent popup
+            // windows, so still present them; asides/main are owned by the
+            // controller-hosted layout, so there is nothing to dock here.
+            if let data = json.data(using: .utf8),
+               let plan = try? JSONDecoder().decode(LayoutPresentationPlan.self, from: data) {
+                presentFloats(plan.floats.map { $0.id })
+            }
+            return true
         }
         guard let data = json.data(using: .utf8),
               let plan = try? JSONDecoder().decode(LayoutPresentationPlan.self, from: data) else {
@@ -143,13 +164,7 @@ enum LxAppLayoutReconciler {
         //   * show/order-front any desired float not yet visible (idempotent —
         //     a float already visible is left untouched, no flicker). A desired
         //     float whose popup is not yet registered is skipped defensively.
-        let desiredFloatIds = Set(plan.floats.map { $0.id })
-        for id in LxAppSurface.visibleFloatIds().subtracting(desiredFloatIds) {
-            _ = LxAppSurface.dismissFloat(id: id)
-        }
-        for id in desiredFloatIds {
-            LxAppSurface.showFloat(id: id)
-        }
+        presentFloats(plan.floats.map { $0.id })
 
         // Main pass — the active-main switch. The core's activeMainId is the
         // single source of truth for which lxapp occupies the primary content
