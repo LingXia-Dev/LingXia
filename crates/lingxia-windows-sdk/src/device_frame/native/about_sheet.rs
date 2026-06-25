@@ -49,6 +49,10 @@ pub(in crate::device_frame) struct InfoSheetBadge {
 struct AboutSheetWindows {
     mask: isize,
     sheet: isize,
+    /// The capsule opens the sheet on mouse-*down*, so the opening click's
+    /// mouse-*up* lands on the just-created (topmost) mask/sheet and would
+    /// instantly dismiss it. Swallow that first up.
+    ignore_next_mouse_up: bool,
 }
 
 /// Caller-supplied action row: explicit icon + command, no inference.
@@ -147,6 +151,7 @@ pub(super) fn show_info_sheet(content: HWND, info: DeviceFrameInfoSheet) {
             AboutSheetWindows {
                 mask: hwnd_handle(mask),
                 sheet: hwnd_handle(sheet),
+                ignore_next_mouse_up: true,
             },
         );
     }
@@ -217,6 +222,9 @@ unsafe extern "system" fn mask_proc(
     lparam: LPARAM,
 ) -> LRESULT {
     if msg == WindowsAndMessaging::WM_LBUTTONUP {
+        if consume_initial_mouse_up_for_window(hwnd) {
+            return LRESULT(0);
+        }
         dismiss_about_sheet_for_window(hwnd);
         return LRESULT(0);
     }
@@ -238,6 +246,9 @@ unsafe extern "system" fn sheet_proc(
             return LRESULT(0);
         }
         WindowsAndMessaging::WM_LBUTTONUP => {
+            if consume_initial_mouse_up_for_window(hwnd) {
+                return LRESULT(0);
+            }
             let x = (lparam.0 & 0xffff) as i16 as i32;
             let y = ((lparam.0 >> 16) & 0xffff) as i16 as i32;
             match sheet_hit_at(hwnd, x, y) {
@@ -588,6 +599,28 @@ pub(super) fn reposition_about_sheet(content: HWND) {
     }
 }
 
+/// Returns true (and clears the flag) for the first mouse-up after the sheet
+/// opens — the release of the capsule click that opened it, which must not
+/// dismiss or trigger an action.
+fn consume_initial_mouse_up_for_window(window: HWND) -> bool {
+    let handle = hwnd_handle(window);
+    ABOUT_SHEETS
+        .get()
+        .and_then(|sheets| sheets.lock().ok())
+        .and_then(|mut sheets| {
+            let (_, windows) = sheets
+                .iter_mut()
+                .find(|(_, windows)| windows.mask == handle || windows.sheet == handle)?;
+            if windows.ignore_next_mouse_up {
+                windows.ignore_next_mouse_up = false;
+                Some(true)
+            } else {
+                Some(false)
+            }
+        })
+        .unwrap_or(false)
+}
+
 fn apply_sheet_region(sheet: HWND, width: i32, height: i32) {
     if width <= 0 || height <= 0 {
         return;
@@ -691,7 +724,9 @@ fn destroy_about_windows(windows: AboutSheetWindows) {
 fn restore_frame_overlays(content: isize) {
     if content != 0 && is_window_handle_valid(content) {
         let hwnd = hwnd_from_handle(content);
-        reposition_capsule(hwnd);
+        reposition_status_bar(hwnd);
         reposition_cutout(hwnd);
+        reposition_corner_mask(hwnd);
+        reposition_capsule(hwnd);
     }
 }

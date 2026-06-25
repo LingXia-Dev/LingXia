@@ -1,8 +1,15 @@
 use lingxia_windows_sdk::{
-    WindowsAppMenuItem, WindowsDeviceFrame, WindowsDeviceFrameCutout, WindowsDeviceFrameToolbar,
+    WindowsAppMenuItem, WindowsDeviceFrame, WindowsDeviceFrameCutout, WindowsDeviceFrameStatusBar,
+    WindowsDeviceFrameToolbar,
 };
 use serde::Deserialize;
 use std::sync::OnceLock;
+
+/// Soft gray painted over the (unclippable) square WebView2 screen corners to
+/// fake the rounding. Mid-gray reads as a visible-but-soft rounded cut on both
+/// light and dark content — darker than the chrome (so the corner is visible),
+/// far softer than the near-black device bezel.
+const SCREEN_CORNER_COLOR: u32 = 0x8E8E93;
 
 pub(crate) const DEVICE_COMMAND_BASE: u32 = 0x0100;
 
@@ -70,6 +77,8 @@ struct DeviceNotch {
     height: i32,
     #[serde(rename = "cornerRadius")]
     corner_radius: f32,
+    #[serde(rename = "statusBarHeight")]
+    status_bar_height: i32,
 }
 
 fn runner_devices() -> &'static RunnerDevices {
@@ -109,6 +118,14 @@ pub(crate) fn device_label(preset: &DevicePreset) -> String {
     format!("{}\t{} x {}", preset.name, preset.width, preset.height)
 }
 
+/// Status-bar text/glyph color, contrasting the shell chrome it sits over so
+/// the time + signal stay legible in both light and dark themes.
+fn status_bar_foreground() -> u32 {
+    let bg = lingxia_windows_sdk::windows_shell_background_color();
+    let luminance = (((bg >> 16) & 0xff) * 299 + ((bg >> 8) & 0xff) * 587 + (bg & 0xff) * 114) / 1000;
+    if luminance > 140 { 0x1C_1C1E } else { 0xF2_F2F7 }
+}
+
 pub(crate) fn frame_spec(index: usize, landscape: bool) -> WindowsDeviceFrame {
     let preset = &presets()[index];
     // Landscape swaps the screen's long and short edges; the bezel, radii, and
@@ -131,7 +148,20 @@ pub(crate) fn frame_spec(index: usize, landscape: bool) -> WindowsDeviceFrame {
                 corner_radius: preset.notch.corner_radius.round() as i32,
             }
         }),
+        status_bar: (is_phone(index) && !landscape && preset.notch.status_bar_height > 0).then(
+            || WindowsDeviceFrameStatusBar {
+                height: preset.notch.status_bar_height,
+                // Initial colors; the shell overrides these per page from the
+                // active page's navigation-bar style. The real current time is
+                // drawn by the device frame.
+                foreground: status_bar_foreground(),
+                background: lingxia_windows_sdk::windows_shell_background_color(),
+            },
+        ),
         bezel_color: preset.bezel_color,
+        // Soft gray over the square WebView2 corners: visible enough to show the
+        // rounding, far softer than the near-black bezel (see SCREEN_CORNER_COLOR).
+        screen_corner_color: SCREEN_CORNER_COLOR,
         toolbar: Some(WindowsDeviceFrameToolbar {
             selector_label: preset.name.clone(),
             selector_items: device_selector_items(index),

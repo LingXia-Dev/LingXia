@@ -16,6 +16,12 @@ const CAPSULE_H: i32 = 30;
 const CAPSULE_SHADOW: i32 = 7;
 /// Inset from the content's top-right corner.
 const CAPSULE_INSET: i32 = 12;
+/// Nav-bar row height the shell reserves below the status bar (matches the
+/// shell `SHELL_TOP_BAR_HEIGHT`); the capsule centers in it.
+const NAV_BAR_ROW_HEIGHT: i32 = 32;
+/// Lift the capsule a few px above the nav-bar center so it sits a touch higher
+/// (toward the status bar) without reaching the status bar's signal/battery.
+const CAPSULE_NAV_LIFT: i32 = 6;
 const CAPSULE_RADIUS: f32 = 15.0;
 /// Pill fill: white at ~95% (straight alpha, premultiplied below).
 const CAPSULE_FILL_ALPHA: f32 = 0.95;
@@ -329,10 +335,28 @@ pub(super) fn reposition_capsule(content: HWND) {
     unsafe {
         let _ = WindowsAndMessaging::GetWindowRect(content, &mut rect);
     }
+    // Sit in the nav-bar row, just below the simulated status bar, vertically
+    // centered so the capsule aligns with the nav bar's title/buttons (mirrors
+    // the macOS runner, which floats the capsule in the nav-bar region under the
+    // status bar). The nav-bar row matches the shell's top bar height.
+    let status_bar_height = frame_state(handle, |state| {
+        state
+            .spec
+            .status_bar
+            .as_ref()
+            .map(|bar| bar.height)
+            .unwrap_or(0)
+    })
+    .unwrap_or(0);
     let geometry = capsule_geometry();
     let pill_w = geometry.pill.right - geometry.pill.left;
     let x = rect.right - CAPSULE_INSET - pill_w - CAPSULE_SHADOW;
-    let y = rect.top + CAPSULE_INSET - CAPSULE_SHADOW;
+    let y = if status_bar_height > 0 {
+        let nav_center = ((NAV_BAR_ROW_HEIGHT - CAPSULE_H).max(0)) / 2;
+        rect.top + status_bar_height + nav_center - CAPSULE_NAV_LIFT - CAPSULE_SHADOW
+    } else {
+        rect.top + CAPSULE_INSET - CAPSULE_SHADOW
+    };
     unsafe {
         let _ = WindowsAndMessaging::SetWindowPos(
             capsule,

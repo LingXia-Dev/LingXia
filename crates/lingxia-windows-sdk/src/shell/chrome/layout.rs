@@ -106,4 +106,7 @@ pub struct WindowsShellWindowLayout {
     /// is wrapped in a simulator device frame (the runner), whose own toolbar
     /// owns the window controls — the framed screen stays chrome-free.
     pub suppress_window_controls: bool,
+    /// Pixels reserved at the top for a device frame's simulated status bar, so
+    /// the navigation bar + content sit below it. 0 for un-framed windows.
+    pub top_inset: i32,
 }

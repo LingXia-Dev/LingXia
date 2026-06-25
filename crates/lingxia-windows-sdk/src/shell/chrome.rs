@@ -501,7 +501,17 @@ pub(super) struct ChromeRects {
 }
 
 pub(super) fn compute_chrome_rects(client: RECT, layout: &WindowsShellWindowLayout) -> ChromeRects {
+    // Reserve the device frame's status-bar strip at the very top; the nav bar +
+    // content stack below it (the device frame's status-bar overlay paints the
+    // strip's time/signal). 0 for un-framed windows, so the browser shell is
+    // unchanged.
+    let top_inset = layout.top_inset.max(0);
+    let navbar_visible = layout
+        .navigation_bar
+        .as_ref()
+        .is_some_and(|navbar| navbar.visible && navbar.height > 0);
     let mut content = client;
+    content.top += top_inset;
     let mut top_bar_left = client.left;
     let mut top_bar_right = client.right;
     let tab_bar = layout
@@ -571,7 +581,13 @@ pub(super) fn compute_chrome_rects(client: RECT, layout: &WindowsShellWindowLayo
         layout.tab_bar.as_ref().map(|tabbar| tabbar.position),
         Some(WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right)
     ) {
-        content.top += SHELL_TOP_BAR_HEIGHT;
+        // Without a status-bar inset (the browser shell) the top bar is always
+        // reserved. With one (a device frame), reserve the nav-bar row only when
+        // the page actually shows a nav bar, so plain pages stay full-height
+        // below the status bar.
+        if top_inset == 0 || navbar_visible {
+            content.top += SHELL_TOP_BAR_HEIGHT;
+        }
         top_bar_left = content.left;
         top_bar_right = content.right;
     }
@@ -580,9 +596,9 @@ pub(super) fn compute_chrome_rects(client: RECT, layout: &WindowsShellWindowLayo
     let panel = content;
     let top_bar = normalize_rect(RECT {
         left: top_bar_left,
-        top: client.top,
+        top: client.top + top_inset,
         right: top_bar_right,
-        bottom: (client.top + SHELL_TOP_BAR_HEIGHT).min(client.bottom),
+        bottom: (client.top + top_inset + SHELL_TOP_BAR_HEIGHT).min(client.bottom),
     });
 
     let navigation_bar = layout
