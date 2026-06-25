@@ -93,12 +93,18 @@ pub(crate) struct PageInstanceInner {
 
 #[derive(Clone, Debug)]
 pub struct PageState {
-    // PageInstance(webview) reander status
+    // PageInstance(webview) render status
     render_status: PageRenderStatus,
     // page lifecycle event
     event: PageLifecycleEvent,
     /// Tracks if the UI has requested to show this page. Handles onShow arriving before onLoad.
     show_requested: bool,
+    /// Tracks whether the current logical navigation still needs onLoad.
+    load_requested: bool,
+    /// Tracks whether the current WebView document has completed its bridge handshake.
+    bridge_ready: bool,
+    /// Logic-enabled pages must wait for AppService bridge readiness before onLoad.
+    requires_bridge_ready: bool,
     /// Tracks if the onLoad JavaScript event has been fired to prevent duplicates.
     on_load_fired: bool,
     /// Tracks if the onShow JavaScript event has been fired. Reset on hide to allow re-entry.
@@ -286,6 +292,9 @@ impl PageInstance {
             event: PageLifecycleEvent::Unknown,
             render_status: PageRenderStatus::Unstarted,
             show_requested: false,
+            load_requested: false,
+            bridge_ready: false,
+            requires_bridge_ready: lxapp.logic_enabled(),
             on_load_fired: false,
             on_show_fired: false,
             on_ready_fired: false,
@@ -502,8 +511,16 @@ impl PageInstance {
 
     /// Attach WebView to this page (called when WebView is ready)
     pub fn attach_webview(&self, webview: Arc<WebView>) {
+        let mut attached_new_webview = false;
         if let Ok(mut webview_guard) = self.inner.webview.lock() {
+            attached_new_webview = match webview_guard.as_ref() {
+                Some(current) => !Arc::ptr_eq(current, &webview),
+                None => true,
+            };
             *webview_guard = Some(webview);
+        }
+        if attached_new_webview && let Ok(mut state) = self.inner.state.lock() {
+            Self::reset_webview_lifecycle_state(&mut state);
         }
     }
 
@@ -518,19 +535,157 @@ impl PageInstance {
         self.inner.state.lock().ok().map(|state| state.clone())
     }
 
-    /// Set page reander status
-    fn set_render_status(&self, status: PageRenderStatus) {
-        if let Ok(mut state) = self.inner.state.lock() {
-            state.render_status = status;
+    fn request_on_load(state: &mut PageState) {
+        state.load_requested = true;
+        state.on_load_fired = false;
+        state.on_show_fired = false;
+        state.on_ready_fired = false;
+    }
+
+    fn reset_webview_lifecycle_state(state: &mut PageState) {
+        let is_currently_visible = state.event == PageLifecycleEvent::OnShow;
+        state.render_status = PageRenderStatus::Unstarted;
+        state.show_requested = is_currently_visible;
+        state.load_requested = false;
+        state.bridge_ready = false;
+        state.on_load_fired = false;
+        state.on_show_fired = false;
+        state.on_ready_fired = false;
+    }
+
+    fn collect_ready_lifecycle_events(
+        state: &mut PageState,
+        events_to_fire: &mut Vec<(PageLifecycleEvent, Option<String>)>,
+    ) {
+        if state.load_requested
+            && (!state.requires_bridge_ready || state.bridge_ready)
+            && !state.on_load_fired
+            && !matches!(state.render_status, PageRenderStatus::Unstarted)
+        {
+            let query = serde_json::to_string(&state.query).ok();
+            events_to_fire.push((PageLifecycleEvent::OnLoad, query));
+            state.load_requested = false;
+            state.on_load_fired = true;
+            state.on_show_fired = false;
+            state.on_ready_fired = false;
         }
+
+        // Weixin ordering for the first visible load is Load -> Show -> Ready.
+        if state.on_load_fired && state.show_requested && !state.on_show_fired {
+            events_to_fire.push((PageLifecycleEvent::OnShow, None));
+            state.on_show_fired = true;
+            state.event = PageLifecycleEvent::OnShow;
+        }
+
+        if state.on_load_fired
+            && state.render_status == PageRenderStatus::Finished
+            && !state.on_ready_fired
+        {
+            events_to_fire.push((PageLifecycleEvent::OnReady, None));
+            state.on_ready_fired = true;
+        }
+    }
+
+    fn fire_lifecycle_events(&self, events_to_fire: Vec<(PageLifecycleEvent, Option<String>)>) {
+        if events_to_fire.is_empty() {
+            return;
+        }
+
+        let lxapp = lxapp::get(self.inner.appid.clone());
+        let appid = self.appid();
+        let path = self.path();
+
+        for (event, query) in events_to_fire {
+            // Keep the in-process native-component host in sync with
+            // the page lifecycle: hidden AND unloaded pages hide their
+            // overlays and pause playback (an unloaded page's webview
+            // may stay cached and be revived by a later navigation, so
+            // its components only pause here — they are torn down with
+            // the page instance through `on_page_destroyed` when it is
+            // disposed). Mirrors the platform managers' inactive/
+            // active/destroyed handling.
+            match event {
+                PageLifecycleEvent::OnShow => {
+                    crate::native_component::notify_page_visibility(self.webtag().key(), true);
+                }
+                PageLifecycleEvent::OnHide | PageLifecycleEvent::OnUnload => {
+                    crate::native_component::notify_page_visibility(self.webtag().key(), false);
+                }
+                _ => {}
+            }
+
+            let page_event = match event {
+                PageLifecycleEvent::OnLoad => crate::lifecycle::PageServiceEvent::OnLoad,
+                PageLifecycleEvent::OnShow => crate::lifecycle::PageServiceEvent::OnShow,
+                PageLifecycleEvent::OnReady => crate::lifecycle::PageServiceEvent::OnReady,
+                PageLifecycleEvent::OnHide => crate::lifecycle::PageServiceEvent::OnHide,
+                PageLifecycleEvent::OnUnload => crate::lifecycle::PageServiceEvent::OnUnload,
+                PageLifecycleEvent::OnPullDownRefresh => {
+                    crate::lifecycle::PageServiceEvent::OnPullDownRefresh
+                }
+                PageLifecycleEvent::Unknown => {
+                    // Skip unknown
+                    continue;
+                }
+            };
+
+            if let Err(e) = lxapp.executor.call_page_service_event(
+                lxapp.clone(),
+                path.clone(),
+                Some(self.instance_id_string()),
+                page_event,
+                query,
+            ) {
+                error!("Failed to call {}: {}", String::from(event), e)
+                    .with_appid(appid.clone())
+                    .with_path(path.clone());
+            }
+        }
+    }
+
+    pub(crate) fn notify_bridge_ready(&self) {
+        let mut events_to_fire: Vec<(PageLifecycleEvent, Option<String>)> = Vec::new();
+        {
+            let mut state = self.inner.state.lock().unwrap();
+            if state.bridge_ready {
+                return;
+            }
+
+            state.bridge_ready = true;
+            if !state.load_requested && !state.on_load_fired {
+                Self::request_on_load(&mut state);
+            }
+            Self::collect_ready_lifecycle_events(&mut state, &mut events_to_fire);
+        }
+        self.fire_lifecycle_events(events_to_fire);
+    }
+
+    fn notify_render_started_inner(&self) {
+        let mut events_to_fire: Vec<(PageLifecycleEvent, Option<String>)> = Vec::new();
+        {
+            let mut state = self.inner.state.lock().unwrap();
+            state.render_status = PageRenderStatus::Started;
+            Self::collect_ready_lifecycle_events(&mut state, &mut events_to_fire);
+        }
+        self.fire_lifecycle_events(events_to_fire);
+    }
+
+    fn notify_render_finished_after_scripts(&self) {
+        let mut events_to_fire: Vec<(PageLifecycleEvent, Option<String>)> = Vec::new();
+        {
+            let mut state = self.inner.state.lock().unwrap();
+            state.render_status = PageRenderStatus::Finished;
+            Self::collect_ready_lifecycle_events(&mut state, &mut events_to_fire);
+        }
+        self.fire_lifecycle_events(events_to_fire);
     }
 
     pub(crate) fn dispatch_lifecycle_event(&self, event: PageLifecycleEvent) {
         // Central lifecycle state machine for a single WebView-backed PageInstance.
         // Sources of events:
-        // - First-time creation: WebView/LXPort ready triggers onLoad (AppService side)
-        // - Re-navigation with new query (navigateTo): native manually triggers onLoad
-        // - Render completion: WebView delegate triggers onReady
+        // - First-time creation: WebView/LXPort ready requests onLoad (AppService side)
+        // - Re-navigation with new query (navigateTo): native manually requests onLoad
+        // - Render completion: WebView delegate triggers onReady after page scripts are injected
         // - Visibility changes: native triggers onShow/onHide
         // Goals (Weixin semantics adapted to a single WebView instance):
         // - onLoad carries query and may occur multiple times across logical navigations
@@ -553,6 +708,11 @@ impl PageInstance {
             }
             // OnHide and OnUnload are handled exclusively and do not trigger the main event cascade.
             else if event == PageLifecycleEvent::OnHide || event == PageLifecycleEvent::OnUnload {
+                state.show_requested = false;
+                if event == PageLifecycleEvent::OnUnload {
+                    state.load_requested = false;
+                    state.bridge_ready = false;
+                }
                 if state.event != event {
                     events_to_fire.push((event, None));
                     state.event = event;
@@ -567,98 +727,16 @@ impl PageInstance {
                     state.show_requested = true;
                 }
 
-                // Guard: only honor a manual OnLoad after render has started.
-                // Bridge-ready path typically arrives after on_page_started, so it passes.
-                if event == PageLifecycleEvent::OnLoad
-                    && matches!(state.render_status, PageRenderStatus::Unstarted)
-                {
-                    // Ignore early OnLoad until WebView render actually begins.
-                    // Caller can invoke again later; bridge-ready path will also dispatch.
-                    return;
-                }
-
-                // Handle onLoad (can occur multiple times for navigateTo with new params)
                 if event == PageLifecycleEvent::OnLoad {
-                    let query = serde_json::to_string(&state.query).ok();
-                    events_to_fire.push((PageLifecycleEvent::OnLoad, query));
-                    state.on_load_fired = true;
-                    state.on_show_fired = false;
-                    state.on_ready_fired = false;
+                    Self::request_on_load(&mut state);
                 }
 
-                // Desired order (Weixin semantics): Load -> Show -> Ready (first load)
-                // 1) Ready: after Load and render finished; only once per lifecycle
-                if state.on_load_fired
-                    && state.render_status == PageRenderStatus::Finished
-                    && !state.on_ready_fired
-                {
-                    events_to_fire.push((PageLifecycleEvent::OnReady, None));
-                    state.on_ready_fired = true;
-                }
-
-                // 2) Show: each time the page becomes visible after hide
-                // Do not require Ready; allow Show before Ready on first load.
-                if state.on_load_fired && state.show_requested && !state.on_show_fired {
-                    events_to_fire.push((PageLifecycleEvent::OnShow, None));
-                    state.on_show_fired = true;
-                    state.event = PageLifecycleEvent::OnShow;
-                }
+                Self::collect_ready_lifecycle_events(&mut state, &mut events_to_fire);
             }
         }
 
         //  Fire the collected events outside of the lock to prevent deadlocks.
-        if !events_to_fire.is_empty() {
-            let lxapp = lxapp::get(self.inner.appid.clone());
-            let appid = self.appid();
-            let path = self.path();
-
-            for (event, query) in events_to_fire {
-                // Keep the in-process native-component host in sync with
-                // the page lifecycle: hidden AND unloaded pages hide their
-                // overlays and pause playback (an unloaded page's webview
-                // may stay cached and be revived by a later navigation, so
-                // its components only pause here — they are torn down with
-                // the page instance through `on_page_destroyed` when it is
-                // disposed). Mirrors the platform managers' inactive/
-                // active/destroyed handling.
-                match event {
-                    PageLifecycleEvent::OnShow => {
-                        crate::native_component::notify_page_visibility(self.webtag().key(), true);
-                    }
-                    PageLifecycleEvent::OnHide | PageLifecycleEvent::OnUnload => {
-                        crate::native_component::notify_page_visibility(self.webtag().key(), false);
-                    }
-                    _ => {}
-                }
-
-                let page_event = match event {
-                    PageLifecycleEvent::OnLoad => crate::lifecycle::PageServiceEvent::OnLoad,
-                    PageLifecycleEvent::OnShow => crate::lifecycle::PageServiceEvent::OnShow,
-                    PageLifecycleEvent::OnReady => crate::lifecycle::PageServiceEvent::OnReady,
-                    PageLifecycleEvent::OnHide => crate::lifecycle::PageServiceEvent::OnHide,
-                    PageLifecycleEvent::OnUnload => crate::lifecycle::PageServiceEvent::OnUnload,
-                    PageLifecycleEvent::OnPullDownRefresh => {
-                        crate::lifecycle::PageServiceEvent::OnPullDownRefresh
-                    }
-                    PageLifecycleEvent::Unknown => {
-                        // Skip unknown
-                        continue;
-                    }
-                };
-
-                if let Err(e) = lxapp.executor.call_page_service_event(
-                    lxapp.clone(),
-                    path.clone(),
-                    Some(self.instance_id_string()),
-                    page_event,
-                    query,
-                ) {
-                    error!("Failed to call {}: {}", String::from(event), e)
-                        .with_appid(appid.clone())
-                        .with_path(path.clone());
-                }
-            }
-        }
+        self.fire_lifecycle_events(events_to_fire);
     }
 
     /// Get navbar state (read-only)
@@ -708,7 +786,7 @@ impl PageInstance {
     /// Notify that the page's WebView started loading (mirrors WebViewDelegate::on_page_started).
     /// Used by external delegates to forward events to a shared page.
     pub fn notify_page_started(&self) {
-        self.set_render_status(PageRenderStatus::Started);
+        self.notify_render_started_inner();
     }
 
     pub async fn wait_webview_ready(&self) -> Result<(), String> {
@@ -737,7 +815,6 @@ impl PageInstance {
     }
 
     async fn handle_loaded_async(&self) {
-        self.set_render_status(PageRenderStatus::Finished);
         if !self.inner.page_scripts.is_empty()
             && let Some(webview) = self.webview()
         {
@@ -750,7 +827,7 @@ impl PageInstance {
             }
         }
 
-        self.dispatch_lifecycle_event(PageLifecycleEvent::OnReady);
+        self.notify_render_finished_after_scripts();
         self.inner.loaded_tx.send_modify(|v| *v = v.wrapping_add(1));
     }
 
@@ -780,6 +857,9 @@ impl PageInstance {
         if let Ok(mut webview_guard) = self.inner.webview.lock() {
             // Drop the Arc by taking it out
             let _ = webview_guard.take();
+        }
+        if let Ok(mut state) = self.inner.state.lock() {
+            Self::reset_webview_lifecycle_state(&mut state);
         }
     }
 
@@ -960,9 +1040,9 @@ impl PageInstance {
             }
         }
 
-        // Request onLoad for the target page; dispatch_lifecycle_event will gate:
-        // - If first-time render hasn't started yet, the early OnLoad is ignored; bridge-ready path will dispatch.
-        // - If the WebView has rendered before (re-navigation), OnLoad will be accepted and ordered correctly.
+        // Request onLoad for the target page; the lifecycle state machine will gate:
+        // - If first-time render hasn't started yet, the request is kept until render starts.
+        // - If the WebView has rendered before (re-navigation), OnLoad is accepted immediately.
         target_page.dispatch_lifecycle_event(PageLifecycleEvent::OnLoad);
 
         // 6. Perform the native navigation
@@ -1174,7 +1254,7 @@ impl PageInstance {
 impl WebViewDelegate for PageInstance {
     /// Called when the page starts loading
     fn on_page_started(&self) {
-        self.set_render_status(PageRenderStatus::Started);
+        self.notify_render_started_inner();
     }
 
     /// Called when the page finishes loading
@@ -1286,6 +1366,24 @@ mod tests {
         ok: bool,
     }
 
+    fn test_page_state() -> PageState {
+        PageState {
+            event: PageLifecycleEvent::Unknown,
+            render_status: PageRenderStatus::Unstarted,
+            show_requested: false,
+            load_requested: false,
+            bridge_ready: false,
+            requires_bridge_ready: true,
+            on_load_fired: false,
+            on_show_fired: false,
+            on_ready_fired: false,
+            navbar_state: NavigationBarState::default(),
+            enable_pull_down_refresh: false,
+            orientation_override: OrientationOverride::default(),
+            query: serde_json::Value::Null,
+        }
+    }
+
     #[test]
     fn serialize_view_call_params_skips_null() {
         assert_eq!(serialize_view_call_params(&()).unwrap(), None);
@@ -1318,5 +1416,105 @@ mod tests {
     #[test]
     fn view_call_options_default_timeout_is_positive() {
         assert!(ViewCallOptions::default().timeout() > Duration::ZERO);
+    }
+
+    #[test]
+    fn lifecycle_cascade_waits_for_bridge_ready_before_on_load() {
+        let mut state = test_page_state();
+        let mut events = Vec::new();
+
+        PageInstance::request_on_load(&mut state);
+        state.render_status = PageRenderStatus::Started;
+        PageInstance::collect_ready_lifecycle_events(&mut state, &mut events);
+
+        assert!(events.is_empty());
+        assert!(state.load_requested);
+        assert!(!state.on_load_fired);
+
+        state.bridge_ready = true;
+        PageInstance::collect_ready_lifecycle_events(&mut state, &mut events);
+
+        assert_eq!(
+            events,
+            vec![(PageLifecycleEvent::OnLoad, Some("null".to_string()))]
+        );
+        assert!(!state.load_requested);
+        assert!(state.on_load_fired);
+    }
+
+    #[test]
+    fn lifecycle_cascade_allows_on_load_without_bridge_for_native_only_pages() {
+        let mut state = test_page_state();
+        let mut events = Vec::new();
+
+        state.requires_bridge_ready = false;
+        PageInstance::request_on_load(&mut state);
+        state.render_status = PageRenderStatus::Started;
+        PageInstance::collect_ready_lifecycle_events(&mut state, &mut events);
+
+        assert_eq!(
+            events,
+            vec![(PageLifecycleEvent::OnLoad, Some("null".to_string()))]
+        );
+        assert!(!state.load_requested);
+        assert!(state.on_load_fired);
+    }
+
+    #[test]
+    fn lifecycle_cascade_orders_load_show_ready() {
+        let mut state = test_page_state();
+        let mut events = Vec::new();
+
+        state.load_requested = true;
+        state.bridge_ready = true;
+        state.show_requested = true;
+        state.render_status = PageRenderStatus::Finished;
+        PageInstance::collect_ready_lifecycle_events(&mut state, &mut events);
+
+        assert_eq!(
+            events,
+            vec![
+                (PageLifecycleEvent::OnLoad, Some("null".to_string())),
+                (PageLifecycleEvent::OnShow, None),
+                (PageLifecycleEvent::OnReady, None),
+            ]
+        );
+        assert!(!state.load_requested);
+        assert!(state.on_load_fired);
+        assert!(state.on_show_fired);
+        assert!(state.on_ready_fired);
+    }
+
+    #[test]
+    fn reset_webview_lifecycle_state_does_not_keep_stale_hidden_show_request() {
+        let mut state = test_page_state();
+        state.event = PageLifecycleEvent::OnHide;
+        state.show_requested = true;
+        state.load_requested = true;
+        state.bridge_ready = true;
+        state.on_load_fired = true;
+        state.on_show_fired = true;
+        state.on_ready_fired = true;
+        state.render_status = PageRenderStatus::Finished;
+
+        PageInstance::reset_webview_lifecycle_state(&mut state);
+
+        assert!(!state.show_requested);
+        assert!(!state.load_requested);
+        assert!(!state.bridge_ready);
+        assert!(!state.on_load_fired);
+        assert!(!state.on_show_fired);
+        assert!(!state.on_ready_fired);
+        assert_eq!(state.render_status, PageRenderStatus::Unstarted);
+    }
+
+    #[test]
+    fn reset_webview_lifecycle_state_preserves_current_visible_intent() {
+        let mut state = test_page_state();
+        state.event = PageLifecycleEvent::OnShow;
+
+        PageInstance::reset_webview_lifecycle_state(&mut state);
+
+        assert!(state.show_requested);
     }
 }

@@ -944,8 +944,7 @@ impl PageSvc {
             drop(state);
         }
 
-        self.page
-            .dispatch_lifecycle_event(crate::PageLifecycleEvent::OnLoad);
+        self.page.notify_bridge_ready();
         Ok(())
     }
 

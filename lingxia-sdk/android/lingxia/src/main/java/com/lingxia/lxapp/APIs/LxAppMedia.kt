@@ -2,8 +2,10 @@ package com.lingxia.lxapp.APIs
 
 import android.content.ContentResolver
 import android.content.ContentValues
+import android.graphics.Color
 import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
+import android.media.ThumbnailUtils
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
@@ -11,13 +13,22 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.MediaStore
 import android.util.Log
+import android.view.Gravity
+import android.view.TextureView
+import android.view.View
+import android.view.ViewGroup
+import android.widget.FrameLayout
 import androidx.annotation.OptIn
 import androidx.appcompat.app.AppCompatActivity
 import androidx.media3.common.Effect
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
+import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.effect.Presentation
+import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.transformer.Composition
 import androidx.media3.transformer.DefaultEncoderFactory
 import androidx.media3.transformer.EditedMediaItem
@@ -39,17 +50,30 @@ import com.lingxia.lxapp.LxApp
 import com.lingxia.app.NativeApi
 import org.json.JSONObject
 import java.io.File
+import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.IOException
 import java.io.OutputStream
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
+import java.util.concurrent.Semaphore
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
 import java.util.Locale
 import kotlin.math.roundToInt
 
 internal object LxAppMedia {
     private const val TAG = "LingXia.LxAppMedia"
+    private const val PLAYER_THUMBNAIL_TIMEOUT_MS = 3_500L
+    private const val PLAYER_THUMBNAIL_WAIT_GRACE_MS = 1_000L
+    private const val PLAYER_THUMBNAIL_CAPTURE_DELAY_MS = 80L
+    private const val PLAYER_THUMBNAIL_DEFAULT_WIDTH = 640
+    private const val PLAYER_THUMBNAIL_DEFAULT_HEIGHT = 360
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val playerThumbnailSemaphore = Semaphore(1, true)
 
     @JvmStatic
     fun previewMedia(
@@ -347,11 +371,24 @@ internal object LxAppMedia {
             }
         }
 
+        var bitmap: Bitmap? = null
+        var decodeError: Throwable? = null
         val retriever = MediaMetadataRetriever()
-        return try {
-            retriever.setDataSource(sourceFile.absolutePath)
+        var inputStream: FileInputStream? = null
+        try {
+            try {
+                retriever.setDataSource(sourceFile.absolutePath)
+            } catch (_: Exception) {
+                try {
+                    val context = Lingxia.getApplicationContext()
+                    retriever.setDataSource(context, Uri.fromFile(sourceFile))
+                } catch (_: Exception) {
+                    inputStream = FileInputStream(sourceFile)
+                    retriever.setDataSource(inputStream.fd)
+                }
+            }
             val frameTimeUs = if (timeMs >= 0) timeMs * 1000L else 0L
-            var bitmap: Bitmap? = retriever.getFrameAtTime(
+            bitmap = retriever.getFrameAtTime(
                 frameTimeUs,
                 MediaMetadataRetriever.OPTION_CLOSEST
             )
@@ -361,12 +398,79 @@ internal object LxAppMedia {
                     MediaMetadataRetriever.OPTION_CLOSEST_SYNC
                 )
             }
+        } catch (e: Exception) {
+            decodeError = e
+            Log.w(TAG, "MediaMetadataRetriever thumbnail failed: ${e.message}")
+        } finally {
+            try {
+                inputStream?.close()
+            } catch (_: Exception) {
+            }
+            try {
+                retriever.release()
+            } catch (_: Exception) {
+            }
+        }
 
-            if (bitmap == null) {
+        if (bitmap == null) {
+            try {
+                bitmap = ThumbnailUtils.createVideoThumbnail(
+                    sourceFile.absolutePath,
+                    MediaStore.Images.Thumbnails.MINI_KIND
+                )
+            } catch (oom: OutOfMemoryError) {
+                outputFile.delete()
                 return JSONObject().apply {
                     put("success", false)
-                    put("error", "Failed to decode video frame")
+                    put("error", "Out of memory during thumbnail generation")
                 }.toString()
+            } catch (e: Exception) {
+                if (decodeError == null) decodeError = e
+                Log.w(TAG, "ThumbnailUtils thumbnail failed: ${e.message}")
+            } catch (t: Throwable) {
+                if (decodeError == null) decodeError = t
+                Log.w(TAG, "ThumbnailUtils thumbnail failed: ${t.message}")
+            }
+        }
+
+        if (bitmap == null) {
+            try {
+                bitmap = extractVideoThumbnailViaPlayer(
+                    sourceFile = sourceFile,
+                    targetWidth = targetWidth,
+                    targetHeight = targetHeight,
+                    timeMs = timeMs
+                )
+            } catch (oom: OutOfMemoryError) {
+                outputFile.delete()
+                return JSONObject().apply {
+                    put("success", false)
+                    put("error", "Out of memory during player thumbnail generation")
+                }.toString()
+            } catch (t: Throwable) {
+                if (decodeError == null) decodeError = t
+                Log.w(TAG, "ExoPlayer thumbnail fallback failed: ${t.message}")
+            }
+        }
+
+        if (bitmap == null) {
+            val detail = decodeError?.message?.takeIf { it.isNotBlank() }
+            return JSONObject().apply {
+                put("success", false)
+                put("error", if (detail != null) "Failed to decode video frame: $detail" else "Failed to decode video frame")
+            }.toString()
+        }
+
+        return try {
+            val decodedBitmap = bitmap
+            if (
+                decodedBitmap.config == null
+                || (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && decodedBitmap.config == Bitmap.Config.HARDWARE)
+            ) {
+                val softwareBitmap = decodedBitmap.copy(Bitmap.Config.ARGB_8888, false)
+                if (softwareBitmap != null) {
+                    bitmap = softwareBitmap
+                }
             }
 
             val maxWidth = targetWidth.takeIf { it > 0 }
@@ -409,16 +513,252 @@ internal object LxAppMedia {
             }.toString()
         } catch (e: Exception) {
             outputFile.delete()
+            Log.w(TAG, "extractVideoThumbnail encode failed: ${e.message}")
             JSONObject().apply {
                 put("success", false)
                 put("error", e.message ?: "extractVideoThumbnail failed")
             }.toString()
-        } finally {
-            try {
-                retriever.release()
-            } catch (_: Exception) {
+        } catch (t: Throwable) {
+            outputFile.delete()
+            Log.w(TAG, "extractVideoThumbnail encode failed: ${t.message}")
+            JSONObject().apply {
+                put("success", false)
+                put("error", t.message ?: "extractVideoThumbnail failed")
+            }.toString()
+        }
+    }
+
+    private fun extractVideoThumbnailViaPlayer(
+        sourceFile: File,
+        targetWidth: Int,
+        targetHeight: Int,
+        timeMs: Long
+    ): Bitmap? {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            Log.w(TAG, "ExoPlayer thumbnail fallback skipped on main thread")
+            return null
+        }
+        if (!playerThumbnailSemaphore.tryAcquire()) {
+            Log.w(TAG, "ExoPlayer thumbnail fallback skipped because another extraction is running")
+            return null
+        }
+
+        val activity = Lingxia.getLastResumedActivity()
+        if (activity == null) {
+            playerThumbnailSemaphore.release()
+            Log.w(TAG, "ExoPlayer thumbnail fallback skipped: no foreground activity")
+            return null
+        }
+
+        val done = AtomicBoolean(false)
+        val latch = CountDownLatch(1)
+        val bitmapRef = AtomicReference<Bitmap?>()
+        val playerRef = AtomicReference<ExoPlayer?>()
+        val containerRef = AtomicReference<FrameLayout?>()
+        val timeoutRef = AtomicReference<Runnable?>()
+        val videoWidthRef = AtomicInteger(0)
+        val videoHeightRef = AtomicInteger(0)
+
+        fun cleanupOnMain() {
+            val player = playerRef.getAndSet(null)
+            if (player != null) {
+                try {
+                    player.stop()
+                } catch (_: Throwable) {
+                }
+                try {
+                    player.release()
+                } catch (_: Throwable) {
+                }
+            }
+            val container = containerRef.getAndSet(null)
+            if (container != null) {
+                try {
+                    (container.parent as? ViewGroup)?.removeView(container)
+                } catch (_: Throwable) {
+                }
             }
         }
+
+        fun finish(bitmap: Bitmap?, message: String?) {
+            if (!done.compareAndSet(false, true)) {
+                bitmap?.recycle()
+                return
+            }
+            timeoutRef.getAndSet(null)?.let { mainHandler.removeCallbacks(it) }
+            if (message != null) {
+                Log.w(TAG, "ExoPlayer thumbnail fallback failed: $message")
+            }
+            bitmapRef.set(bitmap)
+            mainHandler.post { cleanupOnMain() }
+            latch.countDown()
+        }
+
+        fun captureFrame(textureView: TextureView) {
+            textureView.postDelayed({
+                if (done.get()) return@postDelayed
+                val (captureWidth, captureHeight) = resolvePlayerThumbnailCaptureSize(
+                    targetWidth = targetWidth,
+                    targetHeight = targetHeight,
+                    videoWidth = videoWidthRef.get(),
+                    videoHeight = videoHeightRef.get()
+                )
+                try {
+                    val bitmap = textureView.getBitmap(captureWidth, captureHeight)
+                    if (bitmap == null || bitmap.width <= 0 || bitmap.height <= 0) {
+                        finish(bitmap, "TextureView returned empty bitmap")
+                    } else {
+                        finish(bitmap, null)
+                    }
+                } catch (oom: OutOfMemoryError) {
+                    finish(null, "out of memory while reading TextureView bitmap")
+                } catch (t: Throwable) {
+                    finish(null, t.message ?: t.toString())
+                }
+            }, PLAYER_THUMBNAIL_CAPTURE_DELAY_MS)
+        }
+
+        mainHandler.post {
+            if (done.get()) return@post
+            try {
+                val currentActivity = Lingxia.getLastResumedActivity() ?: activity
+                val (initialWidth, initialHeight) = resolvePlayerThumbnailCaptureSize(
+                    targetWidth = targetWidth,
+                    targetHeight = targetHeight,
+                    videoWidth = 0,
+                    videoHeight = 0
+                )
+                val container = FrameLayout(currentActivity).apply {
+                    alpha = 0.01f
+                    visibility = View.VISIBLE
+                    isClickable = false
+                    isFocusable = false
+                    setBackgroundColor(Color.TRANSPARENT)
+                }
+                val textureView = TextureView(currentActivity).apply {
+                    setOpaque(false)
+                    layoutParams = FrameLayout.LayoutParams(
+                        FrameLayout.LayoutParams.MATCH_PARENT,
+                        FrameLayout.LayoutParams.MATCH_PARENT
+                    )
+                }
+                container.addView(textureView)
+                containerRef.set(container)
+
+                val layoutParams = FrameLayout.LayoutParams(initialWidth, initialHeight).apply {
+                    gravity = Gravity.START or Gravity.TOP
+                }
+                currentActivity.addContentView(container, layoutParams)
+
+                fun updateContainerSize(width: Int, height: Int) {
+                    val params = (container.layoutParams as? FrameLayout.LayoutParams)
+                        ?: FrameLayout.LayoutParams(width, height)
+                    params.width = width
+                    params.height = height
+                    params.gravity = Gravity.START or Gravity.TOP
+                    container.layoutParams = params
+                    container.requestLayout()
+                }
+
+                val player = ExoPlayer.Builder(currentActivity).build()
+                playerRef.set(player)
+                player.addListener(object : Player.Listener {
+                    override fun onVideoSizeChanged(videoSize: VideoSize) {
+                        videoWidthRef.set(videoSize.width)
+                        videoHeightRef.set(videoSize.height)
+                        val (width, height) = resolvePlayerThumbnailCaptureSize(
+                            targetWidth = targetWidth,
+                            targetHeight = targetHeight,
+                            videoWidth = videoSize.width,
+                            videoHeight = videoSize.height
+                        )
+                        updateContainerSize(width, height)
+                    }
+
+                    override fun onRenderedFirstFrame() {
+                        captureFrame(textureView)
+                    }
+
+                    override fun onPlayerError(error: PlaybackException) {
+                        finish(null, "${error.errorCodeName}: ${error.message}")
+                    }
+
+                    override fun onPlaybackStateChanged(playbackState: Int) {
+                        if (playbackState == Player.STATE_ENDED && !done.get()) {
+                            finish(null, "playback ended before first frame")
+                        }
+                    }
+                })
+
+                player.volume = 0f
+                player.repeatMode = Player.REPEAT_MODE_OFF
+                player.setVideoTextureView(textureView)
+                player.setMediaItem(MediaItem.fromUri(Uri.fromFile(sourceFile)))
+                if (timeMs > 0L) {
+                    player.seekTo(timeMs)
+                }
+                player.prepare()
+                player.playWhenReady = true
+
+                val timeoutRunnable = Runnable {
+                    finish(null, "timeout after ${PLAYER_THUMBNAIL_TIMEOUT_MS}ms")
+                }
+                timeoutRef.set(timeoutRunnable)
+                mainHandler.postDelayed(timeoutRunnable, PLAYER_THUMBNAIL_TIMEOUT_MS)
+            } catch (t: Throwable) {
+                finish(null, t.message ?: t.toString())
+            }
+        }
+
+        return try {
+            val completed = latch.await(
+                PLAYER_THUMBNAIL_TIMEOUT_MS + PLAYER_THUMBNAIL_WAIT_GRACE_MS,
+                TimeUnit.MILLISECONDS
+            )
+            if (!completed && done.compareAndSet(false, true)) {
+                timeoutRef.getAndSet(null)?.let { mainHandler.removeCallbacks(it) }
+                Log.w(TAG, "ExoPlayer thumbnail fallback failed: wait timed out")
+                mainHandler.post { cleanupOnMain() }
+            }
+            bitmapRef.get()
+        } catch (e: InterruptedException) {
+            Thread.currentThread().interrupt()
+            if (done.compareAndSet(false, true)) {
+                timeoutRef.getAndSet(null)?.let { mainHandler.removeCallbacks(it) }
+                mainHandler.post { cleanupOnMain() }
+            }
+            null
+        } finally {
+            playerThumbnailSemaphore.release()
+        }
+    }
+
+    private fun resolvePlayerThumbnailCaptureSize(
+        targetWidth: Int,
+        targetHeight: Int,
+        videoWidth: Int,
+        videoHeight: Int
+    ): Pair<Int, Int> {
+        val baseWidth = when {
+            videoWidth > 0 -> videoWidth
+            targetWidth > 0 -> targetWidth
+            targetHeight > 0 -> (targetHeight * 16) / 9
+            else -> PLAYER_THUMBNAIL_DEFAULT_WIDTH
+        }.coerceAtLeast(1)
+        val baseHeight = when {
+            videoHeight > 0 -> videoHeight
+            targetHeight > 0 -> targetHeight
+            targetWidth > 0 -> (targetWidth * 9) / 16
+            else -> PLAYER_THUMBNAIL_DEFAULT_HEIGHT
+        }.coerceAtLeast(1)
+
+        val maxWidth = targetWidth.takeIf { it > 0 } ?: PLAYER_THUMBNAIL_DEFAULT_WIDTH
+        val maxHeight = targetHeight.takeIf { it > 0 }
+        val (width, height) = calculateTargetSize(baseWidth, baseHeight, maxWidth, maxHeight)
+        return Pair(
+            width.takeIf { it > 0 } ?: PLAYER_THUMBNAIL_DEFAULT_WIDTH,
+            height.takeIf { it > 0 } ?: PLAYER_THUMBNAIL_DEFAULT_HEIGHT
+        )
     }
 
     // Running transcodes keyed by completion callback id so cancelCompressVideo
