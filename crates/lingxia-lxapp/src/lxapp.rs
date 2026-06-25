@@ -1653,6 +1653,17 @@ impl LxApp {
     pub fn restart_in_place(&self) -> Result<(), LxAppError> {
         self.restart_app_service_in_place()?;
         self.recreate_live_page_services();
+        // Relaunch to the initial route (clearing the page stack) so restarting
+        // the lxapp resets it to its home page — restarting the app restarts the
+        // app, not just whatever page happens to be showing. If the navigation
+        // can't resolve, fall back to reloading the current page.
+        let initial = self.initial_route();
+        if let Ok(current) = self.current_page()
+            && self.ensure_page_exists(&initial).is_ok()
+        {
+            let target = self.get_or_create_page(&initial);
+            let _ = current.navigate_to(target, crate::page::NavigationType::Launch);
+        }
         self.reload_current_page()
     }
 
