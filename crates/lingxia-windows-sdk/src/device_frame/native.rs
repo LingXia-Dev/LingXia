@@ -792,20 +792,24 @@ unsafe extern "system" fn device_frame_host_proc(
         sync_device_frame_for_content(hwnd);
         return result;
     } else if msg == WindowsAndMessaging::WM_ACTIVATE {
-        // The capsule is topmost; hide it while the screen is in the background
-        // (WA_INACTIVE == 0) so it never floats over another app, and re-pin it
-        // on return.
+        // The topmost overlays (capsule/cutout/corner mask/status bar) float over
+        // whatever is in front, so hide them while the screen is in the
+        // background (WA_INACTIVE == 0) so they never sit over another app.
         if (wparam.0 & 0xffff) == 0 {
             hide_capsule(hwnd);
             hide_cutout(hwnd);
             hide_corner_mask(hwnd);
             hide_status_bar(hwnd);
         } else {
-            reposition_status_bar(hwnd);
-            reposition_cutout(hwnd);
-            reposition_corner_mask(hwnd);
-            reposition_capsule(hwnd);
-            about_sheet::reposition_about_sheet(hwnd);
+            // On return, re-pin everything — *including* the bezel frame, which
+            // is z-glued directly below the content window (not topmost) and so
+            // gets stranded behind whatever was in front while we were in the
+            // background. Reactivation doesn't move the window, so the rect cache
+            // would short-circuit the sync; clear it to force a full re-pin
+            // (frame SetWindowPos + every overlay), otherwise the device-frame
+            // toolbar stays hidden until the next move/resize.
+            clear_last_sync_rect(hwnd_handle(hwnd));
+            sync_device_frame_for_content(hwnd);
         }
     } else if msg == WindowsAndMessaging::WM_ENTERSIZEMOVE {
         unsafe {
