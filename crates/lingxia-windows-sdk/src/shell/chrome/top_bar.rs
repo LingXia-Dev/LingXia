@@ -295,6 +295,7 @@ pub(super) fn draw_navigation_bar(
     rect: RECT,
     buttons_left: i32,
     navbar: &WindowsShellNavigationBarLayout,
+    suppress_window_controls: bool,
 ) {
     fill_rect(hdc, rect, navbar.background_color);
     draw_bottom_border(hdc, rect, shell_palette().divider);
@@ -304,7 +305,10 @@ pub(super) fn draw_navigation_bar(
 
     if navbar.show_back_button {
         let back_rect = nav_button_rect(rect, buttons_left, 0);
-        draw_design_icon_button(hdc, back_rect, WindowsDesignIcon::Back, text_color, 22);
+        // Left-align the chevron near the leading edge (iOS-style) instead of
+        // centering it in the 44px tap target, so it sits close to the screen
+        // edge. The tap target keeps its full width for title clearance below.
+        draw_design_icon_button(hdc, leading_icon_slot(back_rect), WindowsDesignIcon::Back, text_color, 22);
         left_controls_width = back_rect.right - rect.left;
     }
     if navbar.show_home_button {
@@ -313,12 +317,20 @@ pub(super) fn draw_navigation_bar(
             buttons_left,
             if navbar.show_back_button { 1 } else { 0 },
         );
-        draw_design_icon_button(hdc, home_rect, WindowsDesignIcon::Home, text_color, 22);
+        draw_design_icon_button(hdc, leading_icon_slot(home_rect), WindowsDesignIcon::Home, text_color, 22);
         left_controls_width = home_rect.right - rect.left;
     }
 
     if !navbar.title.trim().is_empty() {
-        let title_inset = (left_controls_width + 8).max(window_frame_buttons_width() + 8);
+        // The window controls (min/max/close) only inset the title when they are
+        // actually drawn; the device-frame runner suppresses them, so reserving
+        // their width here would needlessly squeeze and truncate the page title.
+        let right_controls_width = if suppress_window_controls {
+            0
+        } else {
+            window_frame_buttons_width()
+        };
+        let title_inset = (left_controls_width + 8).max(right_controls_width + 8);
         let title_rect = normalize_rect(RECT {
             left: rect.left + title_inset,
             top: rect.top,
@@ -327,6 +339,19 @@ pub(super) fn draw_navigation_bar(
         });
         draw_text(hdc, &navbar.title, title_rect, text_color, DT_CENTER);
     }
+}
+
+/// A leading-edge, left-aligned square slot for a navigation icon inside its
+/// (wider) tap-target rect, so the chevron sits near the screen edge like iOS
+/// rather than floating in the middle of a 44px button.
+fn leading_icon_slot(button: RECT) -> RECT {
+    let slot = 28;
+    normalize_rect(RECT {
+        left: button.left,
+        top: button.top,
+        right: (button.left + slot).min(button.right),
+        bottom: button.bottom,
+    })
 }
 
 /// Draws the app-menu button: the app's own (clean) icon when it declares
