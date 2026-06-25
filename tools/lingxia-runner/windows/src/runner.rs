@@ -4,7 +4,6 @@ use crate::device::{
     presets,
 };
 use lingxia_windows_sdk::WindowsShellTabBarPosition;
-use lxapp::LxAppDelegate;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 /// The device + orientation the simulator currently shows. The toolbar's
@@ -212,70 +211,21 @@ fn release_badge(release_type: &str) -> Option<lingxia_windows_sdk::WindowsDevic
     }
 }
 
-/// Canonical lxapp restart, matching the macOS runner. The full lifecycle
-/// recreates the lxapp and reopens it to its initial route as a *fresh session*,
-/// so `onLaunch` re-runs and app-service state (globalData, network fetches)
-/// is rebuilt. The previous in-place path only recreated the JS service and
-/// reloaded the current page on the same session, so the page rendered before
-/// the service re-initialized — leaving the screen with empty global state.
+/// In-place lxapp restart: recreate the JS app service (re-running `onLaunch`,
+/// so globalData/network state is rebuilt) and reload the page WebView in the
+/// existing window. The device-frame window and its overlays stay put — no
+/// teardown or flash, unlike the full-lifecycle restart which recreates the
+/// host window and makes the whole app vanish and reappear.
 ///
 /// `clean_cache` first clears the lxapp's user cache (the capsule sheet's
-/// "Clean Cache && Restart"). The device frame is re-armed so the recreated
-/// host window is framed from first paint, and the active device + tab-bar are
-/// re-applied once the fresh session's page WebView is ready.
+/// "Clean Cache && Restart").
 fn restart_lxapp(home_app_id: &str, clean_cache: bool) -> Result<(), String> {
     let app =
         lxapp::try_get(home_app_id).ok_or_else(|| format!("lxapp is not active: {home_app_id}"))?;
     if clean_cache {
         app.clear_user_cache().map_err(|err| err.to_string())?;
     }
-    let index = CURRENT_DEVICE.load(Ordering::Acquire);
-    let landscape = LANDSCAPE.load(Ordering::Acquire);
-    let old_session = app.session_id();
-    // Arm the frame + tab-bar shape for the next host window the runtime creates
-    // (the recreated session) so it comes up framed with no unframed flash.
-    lingxia_windows_sdk::set_windows_default_shell_tabbar_position(tabbar_position_for_device(index));
-    lingxia_windows_sdk::set_initial_app_window_device_frame(frame_spec(index, landscape));
-    app.restart().map_err(|err| err.to_string())?;
-    // `restart()` waits for the old session to report `Closed` before it
-    // recreates. On Windows the host hides the lxapp window but never reports
-    // that close (macOS reports it from the window-close path via FFI), so the
-    // wait hits its ~1.5s fallback. Drive the close ourselves so the recreate
-    // happens immediately. The call is session-guarded (no-op once the fresh
-    // session is live), so it only ends the dying session's wait.
-    app.on_lxapp_closed(old_session);
-    reapply_device_after_restart(home_app_id.to_string(), old_session, index, landscape);
-    Ok(())
-}
-
-/// Waits (off the UI thread) for the restarted lxapp to reach a fresh opened
-/// session whose page WebView is ready, then re-applies the active device frame
-/// and tab-bar position to the recreated host window. Mirrors the macOS runner's
-/// `reopenCurrentAppAfterLifecycleAction` wait loop.
-fn reapply_device_after_restart(
-    home_app_id: String,
-    old_session: u64,
-    index: usize,
-    landscape: bool,
-) {
-    std::thread::spawn(move || {
-        for attempt in 0..200 {
-            if attempt > 0 {
-                std::thread::sleep(std::time::Duration::from_millis(50));
-            }
-            let Some(app) = lxapp::try_get(&home_app_id) else {
-                continue;
-            };
-            // Only re-frame the fresh session, never the dying one.
-            if app.session_id() == old_session || !app.is_opened() {
-                continue;
-            }
-            if apply_device(&home_app_id, index, landscape).is_ok() {
-                return;
-            }
-        }
-        eprintln!("lingxia-runner: restarted home page never became ready for the device frame");
-    });
+    app.restart_in_place().map_err(|err| err.to_string())
 }
 
 fn apply_default_device(home_app_id: String, default_device: usize) {
