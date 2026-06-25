@@ -14,8 +14,8 @@ shell product UI.
 This crate owns Windows host functionality that should be available to any
 Rust Windows host:
 
-- runtime bootstrap through `WindowsApp`, `init`, `run_message_loop`, and
-  `quick_start`
+- runtime bootstrap through `WindowsApp`, `init_runtime`, `run_message_loop`,
+  and `quick_start`
 - generated `app.json` host identity loading (`productName`, `windowsAppId`),
   plus derived state directories, locale, bundled icon, and initial
   window-size configuration
@@ -49,7 +49,22 @@ If a feature is needed by every Windows host regardless of product shell, it is
 a candidate for this crate. If it is a visual/product policy decision, keep it
 in the runner or shell layer.
 
-## Minimal Host
+## Modes
+
+Two usage modes, selected by Cargo features:
+
+- **quick-start** (`standard` — the default, or `browser-shell` for the native
+  shell): batteries included. `quick_start` boots the runtime and pumps the
+  Win32 message loop until the app exits.
+- **advanced** (`components`): the SDK provides only the embeddable view
+  components + native capabilities. The host brings its own window and message
+  loop, registers its own `WindowsHostBackend` (from `lingxia-windows-contract`),
+  and drives the components itself. This tier does not pull the `lingxia`
+  runtime facade. See `examples/advanced_host.rs`.
+
+Feature tiers: `host-api` ⊂ `components` ⊂ `runtime` ⊂ `standard`/`browser-shell`.
+
+## Minimal Host (quick-start)
 
 ```rust
 fn main() -> lingxia_windows_sdk::Result<i32> {
@@ -61,4 +76,4 @@ fn main() -> lingxia_windows_sdk::Result<i32> {
 Apple SDK pattern where host metadata comes from bundled config rather than
 from the application entry point.
 
-`init` and `run_message_loop` must run on the same thread.
+`init_runtime` and `run_message_loop` must run on the same thread.

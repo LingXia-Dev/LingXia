@@ -39,7 +39,7 @@ pub(crate) fn run() -> lingxia_windows_sdk::Result<()> {
     lingxia_windows_sdk::set_initial_app_window_device_frame(initial_frame.clone());
     let app = lingxia_windows_sdk::WindowsApp::from_env()
         .with_window_size(initial_frame.screen_width, initial_frame.screen_height);
-    let home_app_id = lingxia_windows_sdk::init(app)?;
+    let home_app_id = lingxia_windows_sdk::init_runtime(app)?;
     install_runner_commands(home_app_id.clone());
     apply_default_device(home_app_id, default_device);
     std::process::exit(lingxia_windows_sdk::run_message_loop());
