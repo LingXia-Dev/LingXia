@@ -29,9 +29,13 @@ static ICON_HOOK_INSTALLED: OnceLock<()> = OnceLock::new();
 
 pub(crate) fn set_app_icon_from_path(path: &Path) -> Result<(), String> {
     install_icon_hook();
+    // Decode + tighten once, then rasterize to each size. The large icon is
+    // rendered at 48px (not 32px) so the taskbar/alt-tab downscale it crisply on
+    // high-DPI displays instead of upscaling a 32px icon.
+    let image = prepare_app_icon_image(path)?;
     let handles = AppIconHandles {
-        small: create_icon_from_png(path, 16)?,
-        large: create_icon_from_png(path, 32)?,
+        small: create_icon_from_image(&image, 16, path)?,
+        large: create_icon_from_image(&image, 48, path)?,
     };
     let icon_state = APP_ICON_HANDLES.get_or_init(|| Mutex::new(None));
     let mut icon_state = icon_state
@@ -69,7 +73,8 @@ pub(crate) fn current_app_icon_path() -> Option<std::path::PathBuf> {
 #[cfg(feature = "browser-runtime")]
 #[cfg_attr(not(feature = "browser-shell"), allow(dead_code))]
 pub(crate) fn create_icon_handle_from_path(path: &Path, size: u32) -> Option<isize> {
-    create_icon_from_png(path, size).ok()
+    let image = prepare_app_icon_image(path).ok()?;
+    create_icon_from_image(&image, size, path).ok()
 }
 
 /// The process's current large (32px) app-icon handle, if one has been
@@ -97,12 +102,86 @@ fn current_app_icon_handles() -> Option<AppIconHandles> {
         .and_then(|icons| icons.lock().ok().and_then(|icons| *icons))
 }
 
-fn create_icon_from_png(path: &Path, size: u32) -> Result<isize, String> {
+/// Decodes the app-icon PNG and tightens it for the small Windows taskbar /
+/// alt-tab cell: a mobile launcher icon centers its glyph inside a wide safe-
+/// area margin, which reads as a tiny logo lost in padding once scaled to
+/// 16-48px. When the icon has a uniform background (the four corners agree), the
+/// padding is cropped to the glyph plus a small margin (kept square so the logo
+/// is never stretched), so it fills the cell. Icons without a uniform border are
+/// returned unchanged.
+fn prepare_app_icon_image(path: &Path) -> Result<image::RgbaImage, String> {
     let image = image::open(path)
-        .map_err(|err| format!("Failed to load Windows app icon {}: {err}", path.display()))?;
-    let image = image
-        .resize_exact(size, size, image::imageops::FilterType::Lanczos3)
+        .map_err(|err| format!("Failed to load Windows app icon {}: {err}", path.display()))?
         .into_rgba8();
+    Ok(tighten_icon(image))
+}
+
+fn tighten_icon(image: image::RgbaImage) -> image::RgbaImage {
+    let (w, h) = image.dimensions();
+    if w == 0 || h == 0 {
+        return image;
+    }
+    // Only trim when the border is a single flat color (the corners agree); a
+    // full-bleed / photographic icon must be left as-is.
+    let bg = image.get_pixel(0, 0).0;
+    let corners = [
+        image.get_pixel(w - 1, 0).0,
+        image.get_pixel(0, h - 1).0,
+        image.get_pixel(w - 1, h - 1).0,
+    ];
+    if corners.iter().any(|c| !color_close(*c, bg, 12)) {
+        return image;
+    }
+    // Bounding box of everything that isn't the background (transparent counts
+    // as background too).
+    let (mut min_x, mut min_y, mut max_x, mut max_y) = (w, h, 0u32, 0u32);
+    let mut found = false;
+    for (x, y, pixel) in image.enumerate_pixels() {
+        let p = pixel.0;
+        if p[3] < 16 || color_close(p, bg, 32) {
+            continue;
+        }
+        found = true;
+        min_x = min_x.min(x);
+        min_y = min_y.min(y);
+        max_x = max_x.max(x);
+        max_y = max_y.max(y);
+    }
+    if !found {
+        return image;
+    }
+    // Square crop centered on the glyph with ~12% breathing room, clamped to the
+    // image and back-filled with the background where it would overrun an edge.
+    let content = (max_x - min_x + 1).max(max_y - min_y + 1);
+    let side = content + content / 4; // glyph + ~12% margin each side
+    let cx = (min_x + max_x) / 2;
+    let cy = (min_y + max_y) / 2;
+    let half = (side / 2) as i64;
+    let mut out = image::RgbaImage::from_pixel(side, side, image::Rgba(bg));
+    for oy in 0..side {
+        for ox in 0..side {
+            let sx = cx as i64 - half + ox as i64;
+            let sy = cy as i64 - half + oy as i64;
+            if sx >= 0 && sy >= 0 && (sx as u32) < w && (sy as u32) < h {
+                out.put_pixel(ox, oy, *image.get_pixel(sx as u32, sy as u32));
+            }
+        }
+    }
+    out
+}
+
+/// Whether two RGBA colors are within `tol` per channel (ignoring alpha).
+fn color_close(a: [u8; 4], b: [u8; 4], tol: u8) -> bool {
+    a[0].abs_diff(b[0]) <= tol && a[1].abs_diff(b[1]) <= tol && a[2].abs_diff(b[2]) <= tol
+}
+
+fn create_icon_from_image(
+    source: &image::RgbaImage,
+    size: u32,
+    path: &Path,
+) -> Result<isize, String> {
+    let image =
+        image::imageops::resize(source, size, size, image::imageops::FilterType::Lanczos3);
 
     let mut bgra = Vec::with_capacity(image.len());
     for pixel in image.pixels() {
