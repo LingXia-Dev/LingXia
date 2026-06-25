@@ -4,7 +4,7 @@ use lingxia_devtool_protocol::{DevtoolsLogMessage, DevtoolsPeerRole, DevtoolsWir
 use std::fs::{File, OpenOptions};
 use std::io::Write;
 use std::net::{SocketAddr, TcpListener, TcpStream};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
@@ -80,6 +80,7 @@ impl SessionLogWriter {
 }
 
 struct DevServerState {
+    project_root: PathBuf,
     runtime_sender: Mutex<Option<(u64, Sender<DevtoolsWireMessage>)>>,
     next_runtime_id: AtomicU64,
     pending_results: Mutex<std::collections::HashMap<String, Sender<DevtoolsWireMessage>>>,
@@ -87,8 +88,9 @@ struct DevServerState {
 }
 
 impl DevServerState {
-    fn new() -> Self {
+    fn new(project_root: PathBuf) -> Self {
         Self {
+            project_root,
             runtime_sender: Mutex::new(None),
             next_runtime_id: AtomicU64::new(1),
             pending_results: Mutex::new(std::collections::HashMap::new()),
@@ -168,7 +170,7 @@ pub fn start_server_on(project_root: &Path, bind_addr: &str) -> Result<DevServer
         .local_addr()
         .context("Failed to resolve dev websocket address")?;
     let writer = Arc::new(SessionLogWriter::new(&session)?);
-    let state = Arc::new(DevServerState::new());
+    let state = Arc::new(DevServerState::new(project_root.to_path_buf()));
     let stop_flag = Arc::new(AtomicBool::new(false));
     let thread_stop_flag = stop_flag.clone();
     let server_thread =
@@ -373,6 +375,29 @@ fn handle_client_connection(
         return Err(anyhow!("Client websocket must send exactly one command"));
     };
 
+    // `lxapp.build` is an orchestrator-level operation: the dev server owns the
+    // project + build pipeline, so it builds in-process rather than forwarding to
+    // the runtime (which has no build toolchain). Works even with no app attached.
+    if handler.as_str() == lingxia_devtool_protocol::handlers::lxapp::BUILD {
+        let payload = match run_lxapp_build(&state.project_root, args.as_ref()) {
+            Ok(()) => DevtoolsWireMessage::Result {
+                command_id,
+                ok: true,
+                data: None,
+                error: None,
+            },
+            Err(err) => DevtoolsWireMessage::Result {
+                command_id,
+                ok: false,
+                data: None,
+                error: Some(format!("{err:#}")),
+            },
+        };
+        send_wire_message(&mut websocket, &payload)?;
+        let _ = websocket.close(None);
+        return Ok(());
+    }
+
     let Some(runtime_sender) = state.runtime_sender() else {
         send_wire_message(
             &mut websocket,
@@ -443,6 +468,29 @@ fn command_timeout(args: Option<&serde_json::Value>) -> Duration {
         return DEFAULT_COMMAND_TIMEOUT;
     };
     Duration::from_millis(timeout_ms).saturating_add(COMMAND_TIMEOUT_BUFFER)
+}
+
+/// Build the lxapp front-end bundle in-process. The dev orchestrator owns the
+/// project + build pipeline; this mirrors `lingxia build` run in a standalone
+/// lxapp dir. Output streams to the `lingxia dev` terminal; the client receives
+/// only ok/error.
+fn run_lxapp_build(project_root: &Path, args: Option<&serde_json::Value>) -> Result<()> {
+    let release = args
+        .and_then(|value| value.get("release"))
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false);
+    let framework = args
+        .and_then(|value| value.get("framework"))
+        .and_then(serde_json::Value::as_str);
+    let mut build_args = vec!["build".to_string()];
+    if release {
+        build_args.push("--release".to_string());
+    }
+    if let Some(framework) = framework {
+        build_args.push("--framework".to_string());
+        build_args.push(framework.to_string());
+    }
+    crate::lxapp::run_in_dir(&build_args, project_root)
 }
 
 fn drain_outgoing_messages(

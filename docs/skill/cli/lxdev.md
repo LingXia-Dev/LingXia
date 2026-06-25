@@ -34,6 +34,8 @@ The command set is also **dynamic** — e.g. a standalone lxapp project exposes 
 
 Run `lxdev <family> --help` for the commands and flags within each.
 
+Plus a top-level **`build`** command (not a family): `lxdev build [--release]` builds the session's lxapp front-end bundle. It is handled by the `lingxia dev` **orchestrator** (which owns the build pipeline), not the runtime — so it works even with no app attached, and reuses the same `--session` selector. Build output streams to the `lingxia dev` terminal (see `lxdev logs`); the command itself reports only success/failure.
+
 ---
 
 ## How it finds the session
@@ -123,6 +125,7 @@ lxdev browser open https://example.com
 lxdev browser eval --js "document.title"
 lxdev browser wait --visible "#app .ready"
 lxdev browser click --css "#login"
+lxdev build                                      # rebuild the session's lxapp bundle
 lxdev logs -f --level warn
 
 # Inspect an lxapp without a UI round-trip

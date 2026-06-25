@@ -27,6 +27,8 @@ lxdev <family> <cmd> --help  # exact flags, defaults, and which are required
 
 The five families and what each targets: **`browser`** (the host app's browser tabs), **`app`** (the host windows), **`lxapp`** (the lxapps and their pages), **`logs`** (the dev log stream), **`sessions`** (the dev-session files).
 
+Plus a top-level **`build`** command: `lxdev build` builds the session's lxapp front-end bundle, handled by the `lingxia dev` orchestrator (works even with no app attached).
+
 ## Conceptual guide
 
 For the model behind the tool — how sessions are discovered, why it refuses to act under ambiguity, the output contract, the two `eval` targets (Logic runtime vs page WebView), the concurrency rules, and a symptom router — see the agent skill doc:
