@@ -781,11 +781,38 @@ fn build_navigation_bar_layout(app: &LxApp, path: &str) -> WindowsShellNavigatio
     }
 }
 
+/// Strips a leading `/` and a framework file extension so a page route
+/// (`pages/home/index.tsx`) compares equal to a tab-bar `pagePath`
+/// (`pages/home/index`).
+fn normalize_tab_path(path: &str) -> &str {
+    let path = path.strip_prefix('/').unwrap_or(path);
+    for ext in [".tsx", ".ts", ".jsx", ".js", ".vue", ".html"] {
+        if let Some(stripped) = path.strip_suffix(ext) {
+            return stripped;
+        }
+    }
+    path
+}
+
 fn build_tab_bar_layout(
     app: &LxApp,
     has_panel_activators: bool,
 ) -> Option<WindowsShellTabBarLayout> {
     let tabbar = app.get_tabbar();
+    // The tab matching the page currently shown, if any. Standard mini-app
+    // behavior derives the highlighted tab from the current page (not a stored
+    // index) and shows the bottom bar only on tab pages — a navigated-to
+    // sub-page is not a tab page.
+    let current_path = app
+        .peek_current_page()
+        .unwrap_or_else(|| app.initial_route());
+    let current_tab_index = tabbar.as_ref().and_then(|tabbar| {
+        let target = normalize_tab_path(&current_path);
+        tabbar
+            .list
+            .iter()
+            .position(|item| normalize_tab_path(&item.pagePath) == target)
+    });
     let ui_state = sidebar_ui_state(&app.appid);
     let items = tabbar
         .as_ref()
@@ -838,6 +865,16 @@ fn build_tab_bar_layout(
             .into_owned(),
     );
     let position = tabbar_position(&app.appid);
+    // A bottom tab bar shows only on tab pages; a navigated-to sub-page hides it
+    // so its content gets the full height (standard mini-app behavior). A side
+    // bar is persistent navigation and stays. Auxiliary items (open lxapps /
+    // browser tabs) keep the bar regardless.
+    if position == WindowsShellTabBarPosition::Bottom
+        && current_tab_index.is_none()
+        && auxiliary_items.is_empty()
+    {
+        return None;
+    }
     // `dimension` is the bar's cross-axis size: a sidebar's width, but a bottom
     // bar's *height*. A bottom bar is a compact icon+label strip, so it must not
     // borrow the (much taller) sidebar minimum width.
@@ -900,9 +937,11 @@ fn build_tab_bar_layout(
                 .unwrap_or("#f0f0f0"),
             0xf0f0f0,
         ),
-        selected_index: tabbar
-            .as_ref()
-            .map(|tabbar| tabbar.get_selected_index())
+        // Highlight the tab of the page currently shown; fall back to the
+        // stored index (e.g. a sub-page kept on a persistent side bar).
+        selected_index: current_tab_index
+            .map(|index| index as i32)
+            .or_else(|| tabbar.as_ref().map(|tabbar| tabbar.get_selected_index()))
             .unwrap_or(0),
         items,
         auxiliary_items,
