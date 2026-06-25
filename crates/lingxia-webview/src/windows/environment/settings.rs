@@ -29,7 +29,19 @@ pub(crate) fn create_controller(
 }
 
 pub(crate) fn configure_controller(controller: &ICoreWebView2Controller) -> StdResult<()> {
+    use windows::core::Interface as _;
     unsafe {
+        // White default background so a resize or reload (device rotate, lxapp
+        // restart, navigation) shows white instead of a black flash before the
+        // page repaints. Best-effort: older WebView2 runtimes lack Controller2.
+        if let Ok(controller2) = controller.cast::<ICoreWebView2Controller2>() {
+            let _ = controller2.SetDefaultBackgroundColor(COREWEBVIEW2_COLOR {
+                A: 255,
+                R: 255,
+                G: 255,
+                B: 255,
+            });
+        }
         controller
             .SetBounds(RECT {
                 left: 0,
