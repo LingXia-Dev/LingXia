@@ -296,7 +296,12 @@ pub(super) fn window_has_frame(content: isize) -> bool {
 /// repaints it (on the window thread). The shell calls this per page so the bar
 /// color extends the page's navigation-bar color and the text stays legible.
 #[cfg_attr(not(feature = "shell-chrome"), allow(dead_code))]
-pub(super) fn set_status_bar_style(content: isize, foreground: u32, background: u32) {
+pub(super) fn set_status_bar_style(
+    content: isize,
+    foreground: u32,
+    background: u32,
+    transparent: bool,
+) {
     let changed = DEVICE_FRAMES
         .get()
         .and_then(|frames| frames.lock().ok())
@@ -307,11 +312,15 @@ pub(super) fn set_status_bar_style(content: isize, foreground: u32, background: 
             let Some(bar) = state.spec.status_bar.as_mut() else {
                 return false;
             };
-            if bar.foreground == foreground && bar.background == background {
+            if bar.foreground == foreground
+                && bar.background == background
+                && bar.transparent == transparent
+            {
                 return false;
             }
             bar.foreground = foreground;
             bar.background = background;
+            bar.transparent = transparent;
             true
         })
         .unwrap_or(false);

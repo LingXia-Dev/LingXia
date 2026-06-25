@@ -151,11 +151,13 @@ pub(crate) fn frame_spec(index: usize, landscape: bool) -> WindowsDeviceFrame {
         status_bar: (is_phone(index) && !landscape && preset.notch.status_bar_height > 0).then(
             || WindowsDeviceFrameStatusBar {
                 height: preset.notch.status_bar_height,
-                // Initial colors; the shell overrides these per page from the
-                // active page's navigation-bar style. The real current time is
-                // drawn by the device frame.
+                // Initial colors + opacity; the shell overrides these per page
+                // from the active page's navigation-bar style (and switches the
+                // strip transparent for immersive custom-navigation pages). The
+                // real current time is drawn by the device frame.
                 foreground: status_bar_foreground(),
                 background: lingxia_windows_sdk::windows_shell_background_color(),
+                transparent: false,
             },
         ),
         bezel_color: preset.bezel_color,
