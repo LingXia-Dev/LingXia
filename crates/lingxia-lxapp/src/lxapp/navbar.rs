@@ -78,6 +78,14 @@ impl NavigationBarState {
         }
     }
 
+    /// Whether the page uses a custom (immersive) navigation style: the native
+    /// navigation bar is hidden and the page draws its own header, so the host
+    /// should let WebView content bleed up under the status bar / navbar strip
+    /// instead of reserving a top inset for them.
+    pub fn is_custom_navigation(&self) -> bool {
+        matches!(self.navigationStyle, NavigationStyle::Custom)
+    }
+
     /// Set back button visibility
     pub fn set_back_button_visibility(&mut self, show: bool) {
         self.show_back_button = show;

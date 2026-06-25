@@ -51,7 +51,12 @@ pub struct WindowsDeviceFrameStatusBar {
     /// Opaque strip fill as `0xRRGGBB`. The shell sets this to the page's
     /// navigation-bar color so the bar color extends up over the status bar
     /// (matching the macOS runner), or the chrome color for a plain page.
+    /// Ignored when `transparent` is set.
     pub background: u32,
+    /// When set, the strip is painted with no fill — only the clock + indicators
+    /// float over the WebView content (premultiplied alpha). Used for immersive
+    /// (custom navigation-style) pages whose content bleeds up under the bar.
+    pub transparent: bool,
 }
 
 /// A colored pill drawn at the trailing edge of the info-sheet header (for
@@ -167,10 +172,17 @@ pub(crate) fn device_frame_status_bar_height(window: isize) -> i32 {
 /// (on its UI thread). The shell drives this from the active page's navigation
 /// bar so the bar color covers the status bar and the time/signal stay legible.
 #[cfg_attr(not(feature = "shell-chrome"), allow(dead_code))]
-pub(crate) fn set_device_frame_status_bar_style(window: isize, foreground: u32, background: u32) {
+pub(crate) fn set_device_frame_status_bar_style(
+    window: isize,
+    foreground: u32,
+    background: u32,
+    transparent: bool,
+) {
     let _ = crate::window_host::post_to_window_thread(
         window,
-        Box::new(move || native::set_status_bar_style(window, foreground, background)),
+        Box::new(move || {
+            native::set_status_bar_style(window, foreground, background, transparent)
+        }),
     );
 }
 

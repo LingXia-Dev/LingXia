@@ -4,17 +4,25 @@
 //! alpha layered window, so it composites above the windowed WebView2 surface
 //! (which can't be clipped). The hosted app's top safe-area sits beneath it.
 //!
-//! The strip is painted as an *opaque* fill (the page navigation-bar color, set
-//! by the shell, or the chrome color for a plain page) so the bar color extends
-//! up over the status bar like the macOS runner. The time + signal/battery are
-//! drawn in the foreground color directly over that opaque fill — GDI text
-//! anti-aliases cleanly against it, so the alpha is simply restored to full
-//! afterwards (no transparent-text fringing to work around).
+//! A normal page paints the strip as an *opaque* fill (the page navigation-bar
+//! color, set by the shell, or the chrome color for a plain page) so the bar
+//! color extends up over the status bar like the macOS runner. The time +
+//! signal/battery are drawn in the foreground color directly over that opaque
+//! fill — GDI text anti-aliases cleanly against it, so the alpha is simply
+//! restored to full afterwards (no transparent-text fringing to work around).
+//!
+//! An immersive (custom navigation-style) page instead bleeds its WebView
+//! content up under the bar, so the strip is painted *transparent*: only the
+//! clock + indicators show, floating over the page. GDI can't write alpha, so
+//! the clock is drawn in white with grayscale anti-aliasing and then recolored
+//! to the foreground with per-pixel coverage as the alpha (premultiplied), and
+//! the indicators are filled as already-premultiplied opaque foreground.
 
 use super::*;
 
 use windows::Win32::Graphics::Gdi::{
-    CreateFontW, FW_SEMIBOLD, GetTextExtentPoint32W, SetBkMode, SetTextColor, TRANSPARENT, TextOutW,
+    ANTIALIASED_QUALITY, CreateFontW, DEFAULT_QUALITY, FONT_QUALITY, FW_SEMIBOLD,
+    GetTextExtentPoint32W, SetBkMode, SetTextColor, TRANSPARENT, TextOutW,
 };
 use windows::Win32::System::SystemInformation::GetLocalTime;
 
@@ -194,8 +202,13 @@ pub(super) fn destroy_status_bar(status_bar: isize) {
 fn paint_status_bar(window: HWND, width: i32, bar: &WindowsDeviceFrameStatusBar) {
     let width = width.max(1);
     let height = bar.height.max(1);
-    // Opaque strip fill + analytic signal/battery glyphs on the trailing edge.
-    let pixels = status_bar_pixels(width, height, bar.foreground, bar.background);
+    // Opaque strip fill (or fully transparent for an immersive page) + analytic
+    // signal/battery glyphs on the trailing edge.
+    let pixels = if bar.transparent {
+        status_bar_pixels_transparent(width, height, bar.foreground)
+    } else {
+        status_bar_pixels(width, height, bar.foreground, bar.background)
+    };
     unsafe {
         let screen_dc = GetDC(None);
         if screen_dc.is_invalid() {
@@ -222,12 +235,21 @@ fn paint_status_bar(window: HWND, width: i32, bar: &WindowsDeviceFrameStatusBar)
             {
                 std::ptr::copy_nonoverlapping(pixels.as_ptr(), bits.cast::<u32>(), pixels.len());
                 let old_bitmap = SelectObject(memory_dc, HGDIOBJ(bitmap.0));
-                draw_time(memory_dc, height, bar.foreground);
-                // GDI text zeroes the alpha byte of every pixel it touches; the
-                // strip is opaque, so restore full alpha across it (the RGB it
-                // wrote already blends the foreground over the opaque fill).
                 let dib = std::slice::from_raw_parts_mut(bits.cast::<u32>(), pixels.len());
-                force_opaque(dib);
+                if bar.transparent {
+                    // Draw the clock in white with grayscale AA so each pixel's
+                    // luminance is its coverage, then recolor to the foreground
+                    // with that coverage as the (premultiplied) alpha. The
+                    // already-opaque indicators keep their alpha and are skipped.
+                    draw_time(memory_dc, height, 0xff_ffff, true);
+                    premultiply_glyph_pixels(dib, bar.foreground);
+                } else {
+                    draw_time(memory_dc, height, bar.foreground, false);
+                    // GDI text zeroes the alpha byte of every pixel it touches;
+                    // the strip is opaque, so restore full alpha across it (the
+                    // RGB it wrote already blends the foreground over the fill).
+                    force_opaque(dib);
+                }
                 let size = SIZE {
                     cx: width,
                     cy: height,
@@ -261,9 +283,16 @@ fn paint_status_bar(window: HWND, width: i32, bar: &WindowsDeviceFrameStatusBar)
     }
 }
 
-fn draw_time(dc: HDC, height: i32, foreground: u32) {
+fn draw_time(dc: HDC, height: i32, color: u32, antialiased: bool) {
     let time = current_time_string();
     let font_height = -(height * 5 / 16).clamp(13, 22);
+    // A transparent strip derives per-pixel alpha from text coverage, so force
+    // grayscale anti-aliasing (ClearType's colored sub-pixels would fringe).
+    let quality: FONT_QUALITY = if antialiased {
+        ANTIALIASED_QUALITY
+    } else {
+        DEFAULT_QUALITY
+    };
     let font = unsafe {
         CreateFontW(
             font_height,
@@ -277,7 +306,7 @@ fn draw_time(dc: HDC, height: i32, foreground: u32) {
             Default::default(),
             Default::default(),
             Default::default(),
-            Default::default(),
+            quality,
             Default::default(),
             w!("Segoe UI"),
         )
@@ -287,8 +316,8 @@ fn draw_time(dc: HDC, height: i32, foreground: u32) {
     unsafe {
         SetBkMode(dc, TRANSPARENT);
         let old_font = SelectObject(dc, HGDIOBJ(font.0));
-        // GDI COLORREF is 0x00BBGGRR; convert from the 0xRRGGBB foreground.
-        let bgr = ((foreground & 0xff) << 16) | (foreground & 0xff00) | ((foreground >> 16) & 0xff);
+        // GDI COLORREF is 0x00BBGGRR; convert from the 0xRRGGBB color.
+        let bgr = ((color & 0xff) << 16) | (color & 0xff00) | ((color >> 16) & 0xff);
         SetTextColor(dc, COLORREF(bgr));
         let mut extent = SIZE::default();
         let _ = GetTextExtentPoint32W(dc, chars, &mut extent);
@@ -310,11 +339,56 @@ fn force_opaque(dib: &mut [u32]) {
     }
 }
 
+/// Recolors the white grayscale-AA clock GDI drew over a transparent strip into
+/// premultiplied `fg`, using each touched pixel's coverage as its alpha. Pixels
+/// that already carry alpha (the indicators) and untouched transparent pixels
+/// are left as-is.
+fn premultiply_glyph_pixels(dib: &mut [u32], fg: u32) {
+    let fr = (fg >> 16) & 0xff;
+    let fg_g = (fg >> 8) & 0xff;
+    let fb = fg & 0xff;
+    for pixel in dib.iter_mut() {
+        if (*pixel >> 24) != 0 {
+            continue; // already-opaque indicator pixel
+        }
+        // White-on-(transparent-)black text: max channel is the coverage.
+        let r = (*pixel >> 16) & 0xff;
+        let g = (*pixel >> 8) & 0xff;
+        let b = *pixel & 0xff;
+        let coverage = r.max(g).max(b);
+        if coverage == 0 {
+            continue; // untouched transparent pixel
+        }
+        let pr = fr * coverage / 255;
+        let pg = fg_g * coverage / 255;
+        let pb = fb * coverage / 255;
+        *pixel = (coverage << 24) | (pr << 16) | (pg << 8) | pb;
+    }
+}
+
 /// Opaque ARGB strip: `bg` fill plus the trailing signal bars + battery (in
 /// `fg`), vertically centered and inset by `SIDE_MARGIN` from the right edge.
 fn status_bar_pixels(width: i32, height: i32, fg: u32, bg: u32) -> Vec<u32> {
     let bg_opaque = 0xff00_0000 | (bg & 0x00ff_ffff);
     let mut pixels = vec![bg_opaque; (width * height).max(0) as usize];
+    draw_indicators(&mut pixels, width, height, fg);
+    pixels
+}
+
+/// Transparent ARGB strip: no fill, just the trailing signal bars + battery in
+/// (premultiplied-opaque) `fg`. The clock is added later by [`draw_time`] +
+/// [`premultiply_glyph_pixels`]. Used for immersive pages so WebView content
+/// shows through.
+fn status_bar_pixels_transparent(width: i32, height: i32, fg: u32) -> Vec<u32> {
+    let mut pixels = vec![0u32; (width * height).max(0) as usize];
+    draw_indicators(&mut pixels, width, height, fg);
+    pixels
+}
+
+/// Fills the trailing signal bars + battery into `pixels` as premultiplied
+/// opaque `fg`, vertically centered and inset by `SIDE_MARGIN` from the right
+/// edge. Shared by the opaque and transparent strip builders.
+fn draw_indicators(mut pixels: &mut [u32], width: i32, height: i32, fg: u32) {
     let fg_opaque = 0xff00_0000 | (fg & 0x00ff_ffff);
     let center_y = height / 2;
 
@@ -370,6 +444,4 @@ fn status_bar_pixels(width: i32, height: i32, fg: u32, bg: u32) -> Vec<u32> {
         let x0 = signal_left + index * (bar_w + bar_gap);
         fill(&mut pixels, x0, baseline - bar_h, x0 + bar_w, baseline);
     }
-
-    pixels
 }

@@ -583,20 +583,31 @@ fn sync_shell_layout(appid: &str) {
     // navigation bar extends its color up over the status bar (with its text
     // color); a plain page keeps the chrome-colored strip with contrasting text.
     if let Some(window) = owner_window_handle(appid) {
-        let (foreground, background) = match layout.navigation_bar.as_ref().filter(|nav| nav.visible)
-        {
-            Some(nav) => (nav.text_color, nav.background_color),
-            None => {
-                let chrome = super::style::shell_palette().window_background;
-                let luminance = (((chrome >> 16) & 0xff) * 299
-                    + ((chrome >> 8) & 0xff) * 587
-                    + (chrome & 0xff) * 114)
-                    / 1000;
-                let foreground = if luminance > 140 { 0x111111 } else { 0xf2f2f7 };
-                (foreground, chrome)
+        let navbar = app.get_navbar_state(&path);
+        let immersive = navbar.is_custom_navigation();
+        let (foreground, background) = if immersive {
+            // Content bleeds under the bar; float the clock/indicators in the
+            // page's status-bar text color over a transparent strip.
+            let foreground = match navbar.navigationBarTextStyle.as_str() {
+                "white" => 0xffffff,
+                _ => 0x111111,
+            };
+            (foreground, 0)
+        } else {
+            match layout.navigation_bar.as_ref().filter(|nav| nav.visible) {
+                Some(nav) => (nav.text_color, nav.background_color),
+                None => {
+                    let chrome = super::style::shell_palette().window_background;
+                    let luminance = (((chrome >> 16) & 0xff) * 299
+                        + ((chrome >> 8) & 0xff) * 587
+                        + (chrome & 0xff) * 114)
+                        / 1000;
+                    let foreground = if luminance > 140 { 0x111111 } else { 0xf2f2f7 };
+                    (foreground, chrome)
+                }
             }
         };
-        set_device_frame_status_bar_style(window, foreground, background);
+        set_device_frame_status_bar_style(window, foreground, background, immersive);
     }
 
     if let Err(err) = set_webview_window_layout(&webtag, WindowsWindowLayout::new(layout)) {
@@ -658,8 +669,16 @@ fn build_window_layout(app: &LxApp, path: &str) -> WindowsShellWindowLayout {
     let suppress_window_controls = owner_window.map(window_has_device_frame).unwrap_or(false);
     // Reserve the device frame's status-bar strip so the nav bar + content stack
     // below it (the status bar overlay owns the top strip), matching the macOS
-    // runner's status-bar + nav-bar layout.
-    let top_inset = owner_window.map(device_frame_status_bar_height).unwrap_or(0);
+    // runner's status-bar + nav-bar layout. An immersive (custom navigation-
+    // style) page draws its own header and bleeds content up under the status
+    // bar, so it reserves no top inset — the transparent status-bar overlay just
+    // floats the clock/indicators over the page.
+    let immersive = app.get_navbar_state(path).is_custom_navigation();
+    let top_inset = if immersive {
+        0
+    } else {
+        owner_window.map(device_frame_status_bar_height).unwrap_or(0)
+    };
     WindowsShellWindowLayout {
         navigation_bar,
         address_bar,
@@ -1564,12 +1583,28 @@ fn device_frame_status_bar_height(_window: isize) -> i32 {
 }
 
 #[cfg(feature = "device-frame")]
-fn set_device_frame_status_bar_style(window: isize, foreground: u32, background: u32) {
-    crate::device_frame::set_device_frame_status_bar_style(window, foreground, background);
+fn set_device_frame_status_bar_style(
+    window: isize,
+    foreground: u32,
+    background: u32,
+    transparent: bool,
+) {
+    crate::device_frame::set_device_frame_status_bar_style(
+        window,
+        foreground,
+        background,
+        transparent,
+    );
 }
 
 #[cfg(not(feature = "device-frame"))]
-fn set_device_frame_status_bar_style(_window: isize, _foreground: u32, _background: u32) {}
+fn set_device_frame_status_bar_style(
+    _window: isize,
+    _foreground: u32,
+    _background: u32,
+    _transparent: bool,
+) {
+}
 
 fn restart_lxapp_in_place(appid: &str) -> Result<(), String> {
     lxapp::try_get(appid)
