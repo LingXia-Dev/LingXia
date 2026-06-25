@@ -120,3 +120,8 @@ windows = { workspace = true, features = [
     "Win32_UI_Shell_PropertiesSystem",
     "Win32_UI_WindowsAndMessaging",
 ], optional = true }
+
+[[example]]
+name = "advanced_host"
+# Advanced (bring-your-own-host) mode needs only the contract surface.
+required-features = ["host-api"]

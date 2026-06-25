@@ -293,6 +293,19 @@ jobs:
         shell: bash
         run: cargo clippy --workspace --exclude lingxia-terminal -- -D warnings -A clippy::let_underscore_future
 
+      # `--workspace` above only builds each crate's default features, i.e.
+      # windows-sdk's `standard`. Exercise the other tiers standalone too — in
+      # particular `components` (advanced / bring-your-own-host mode, without the
+      # lingxia runtime facade) and the advanced_host example, which the macOS
+      # host can't compile (C deps like zstd/quickjs need the Windows SDK).
+      - name: Check Windows SDK feature tiers
+        shell: bash
+        run: |
+          cargo check -p lingxia-windows-sdk --no-default-features --features host-api
+          cargo check -p lingxia-windows-sdk --no-default-features --features components
+          cargo check -p lingxia-windows-sdk --no-default-features --features browser-shell
+          cargo build --example advanced_host -p lingxia-windows-sdk --no-default-features --features host-api
+
   cli:
     needs: changes
     if: ${{ needs.changes.outputs.rust == 'true' }}
