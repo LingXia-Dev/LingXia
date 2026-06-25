@@ -34,7 +34,7 @@ function handleSubmit() {
 
       <div class="footer">
         <LxNavigator url="https://www.lingxia.app" class="link">
-          Documentation →
+          lingxia.app →
         </LxNavigator>
       </div>
     </div>
