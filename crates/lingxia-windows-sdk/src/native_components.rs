@@ -406,6 +406,18 @@ fn handle_update(context: &PageContext, message: &Value) {
         return;
     };
 
+    // Record the latest rect eagerly, off the UI thread. The layout pass below is
+    // posted to the UI thread, which can be busy during page load / native player
+    // setup and may run late or coalesce — but the stored rect is then already
+    // current, so the next apply_layout that does run (the video sink re-applies
+    // on play/load, page scroll, etc.) positions the overlay where the element
+    // settled rather than where it was mid-load.
+    if let Some(rect) = doc_rect
+        && let Some(entry) = components().get_mut(&key)
+    {
+        entry.doc_rect = rect;
+    }
+
     run_on_window_thread(parent, move || {
         {
             let mut components = components();
