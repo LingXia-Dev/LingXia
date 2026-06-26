@@ -2,8 +2,8 @@ use crate::lxapp::project::Project;
 use anyhow::{Context, Result, anyhow};
 use dirs::cache_dir;
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 pub fn package_dist(project: &Project) -> Result<PathBuf> {
     if !project.output_dir.exists() {
@@ -33,22 +33,73 @@ pub fn package_dist(project: &Project) -> Result<PathBuf> {
             .with_context(|| format!("Failed to remove {}", archive_path.display()))?;
     }
 
-    run_tar(
-        &[
-            "--exclude=._*",
-            "--exclude=.DS_Store",
-            "--use-compress-program",
-            "zstd -T1",
-            "-cf",
-            archive_path
-                .to_str()
-                .ok_or_else(|| anyhow!("Invalid archive path"))?,
-            ".",
-        ],
-        &project.output_dir,
-    )?;
+    write_tar_zst(&project.output_dir, &archive_path)?;
 
     Ok(archive_path)
+}
+
+/// Build `src_dir` into `archive_path` (`.tar.zst`) via the tar + zstd crates —
+/// no external `zstd`, which Windows lacks.
+fn write_tar_zst(src_dir: &Path, archive_path: &Path) -> Result<()> {
+    let file = fs::File::create(archive_path)
+        .with_context(|| format!("Failed to create {}", archive_path.display()))?;
+    // Level 0 = zstd's default; single-threaded, matching the prior `zstd -T1`.
+    let encoder =
+        zstd::stream::write::Encoder::new(file, 0).context("Failed to create zstd encoder")?;
+    let mut builder = tar::Builder::new(encoder);
+
+    append_dir_filtered(&mut builder, src_dir, "")?;
+
+    let encoder = builder
+        .into_inner()
+        .context("Failed to finalize tar archive")?;
+    encoder.finish().context("Failed to finalize zstd stream")?;
+    Ok(())
+}
+
+/// Forward-slash entry paths; skips macOS `._*` / `.DS_Store`.
+fn append_dir_filtered(
+    builder: &mut tar::Builder<impl Write>,
+    src_root: &Path,
+    rel: &str,
+) -> Result<()> {
+    let dir = if rel.is_empty() {
+        src_root.to_path_buf()
+    } else {
+        src_root.join(rel)
+    };
+    let mut entries = fs::read_dir(&dir)
+        .with_context(|| format!("Failed to read {}", dir.display()))?
+        .collect::<std::io::Result<Vec<_>>>()?;
+    entries.sort_by_key(|entry| entry.file_name());
+
+    for entry in entries {
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if name.starts_with("._") || name == ".DS_Store" {
+            continue;
+        }
+        let entry_rel = if rel.is_empty() {
+            name.to_string()
+        } else {
+            format!("{rel}/{name}")
+        };
+        let path = entry.path();
+        let file_type = entry.file_type()?;
+        if file_type.is_dir() {
+            builder
+                .append_dir(&entry_rel, &path)
+                .with_context(|| format!("Failed to add dir {}", path.display()))?;
+            append_dir_filtered(builder, src_root, &entry_rel)?;
+        } else if file_type.is_file() {
+            let mut file = fs::File::open(&path)
+                .with_context(|| format!("Failed to open {}", path.display()))?;
+            builder
+                .append_file(&entry_rel, &mut file)
+                .with_context(|| format!("Failed to add file {}", path.display()))?;
+        }
+    }
+    Ok(())
 }
 
 fn sanitize_name(name: Option<&str>, fallback: &str) -> String {
@@ -84,21 +135,4 @@ fn sanitize_version(version: &str) -> String {
     } else {
         cleaned
     }
-}
-
-fn run_tar(args: &[&str], cwd: &Path) -> Result<()> {
-    let status = Command::new("tar")
-        .args(args)
-        .current_dir(cwd)
-        .env("COPYFILE_DISABLE", "1")
-        .env("ZSTD_NBTHREADS", "1")
-        .env("ZSTD_DEFAULT_NBTHREADS", "1")
-        .status()
-        .with_context(|| format!("Failed to execute tar in {}", cwd.display()))?;
-
-    if !status.success() {
-        return Err(anyhow!("tar exited with status {status}"));
-    }
-
-    Ok(())
 }
