@@ -511,15 +511,16 @@ impl PageInstance {
 
     /// Attach WebView to this page (called when WebView is ready)
     pub fn attach_webview(&self, webview: Arc<WebView>) {
-        let mut attached_new_webview = false;
+        let mut should_reset_lifecycle = false;
         if let Ok(mut webview_guard) = self.inner.webview.lock() {
-            attached_new_webview = match webview_guard.as_ref() {
-                Some(current) => !Arc::ptr_eq(current, &webview),
-                None => true,
-            };
+            let current_webview_is_same = webview_guard
+                .as_ref()
+                .map(|current| Arc::ptr_eq(current, &webview));
+            should_reset_lifecycle =
+                Self::should_reset_lifecycle_on_attach(current_webview_is_same);
             *webview_guard = Some(webview);
         }
-        if attached_new_webview && let Ok(mut state) = self.inner.state.lock() {
+        if should_reset_lifecycle && let Ok(mut state) = self.inner.state.lock() {
             Self::reset_webview_lifecycle_state(&mut state);
         }
     }
@@ -540,6 +541,10 @@ impl PageInstance {
         state.on_load_fired = false;
         state.on_show_fired = false;
         state.on_ready_fired = false;
+    }
+
+    fn should_reset_lifecycle_on_attach(current_webview_is_same: Option<bool>) -> bool {
+        matches!(current_webview_is_same, Some(false))
     }
 
     fn reset_webview_lifecycle_state(state: &mut PageState) {
@@ -583,6 +588,30 @@ impl PageInstance {
         {
             events_to_fire.push((PageLifecycleEvent::OnReady, None));
             state.on_ready_fired = true;
+        }
+    }
+
+    fn collect_hidden_or_unloaded_lifecycle_event(
+        state: &mut PageState,
+        event: PageLifecycleEvent,
+        events_to_fire: &mut Vec<(PageLifecycleEvent, Option<String>)>,
+    ) {
+        debug_assert!(matches!(
+            event,
+            PageLifecycleEvent::OnHide | PageLifecycleEvent::OnUnload
+        ));
+
+        state.show_requested = false;
+        if event == PageLifecycleEvent::OnUnload {
+            state.load_requested = false;
+            // PageInstance can be reused after OnUnload without a fresh bridge-ready.
+            // Real WebView/document teardown still clears this through reset.
+        }
+        if state.event != event {
+            events_to_fire.push((event, None));
+            state.event = event;
+            // Reset on_show_fired when the page is hidden, to allow onShow to fire again on re-entry.
+            state.on_show_fired = false;
         }
     }
 
@@ -708,17 +737,11 @@ impl PageInstance {
             }
             // OnHide and OnUnload are handled exclusively and do not trigger the main event cascade.
             else if event == PageLifecycleEvent::OnHide || event == PageLifecycleEvent::OnUnload {
-                state.show_requested = false;
-                if event == PageLifecycleEvent::OnUnload {
-                    state.load_requested = false;
-                    state.bridge_ready = false;
-                }
-                if state.event != event {
-                    events_to_fire.push((event, None));
-                    state.event = event;
-                    // Reset on_show_fired when the page is hidden, to allow onShow to fire again on re-entry.
-                    state.on_show_fired = false;
-                }
+                Self::collect_hidden_or_unloaded_lifecycle_event(
+                    &mut state,
+                    event,
+                    &mut events_to_fire,
+                );
             } else {
                 // This logic handles the Load -> Show -> Ready cascade.
 
@@ -1516,5 +1539,78 @@ mod tests {
         PageInstance::reset_webview_lifecycle_state(&mut state);
 
         assert!(state.show_requested);
+    }
+
+    #[test]
+    fn on_unload_preserves_bridge_ready_for_reusable_page_instance() {
+        let mut state = test_page_state();
+        let mut events = Vec::new();
+
+        state.show_requested = true;
+        state.load_requested = true;
+        state.bridge_ready = true;
+
+        PageInstance::collect_hidden_or_unloaded_lifecycle_event(
+            &mut state,
+            PageLifecycleEvent::OnUnload,
+            &mut events,
+        );
+
+        assert_eq!(events, vec![(PageLifecycleEvent::OnUnload, None)]);
+        assert!(!state.show_requested);
+        assert!(!state.load_requested);
+        assert!(state.bridge_ready);
+    }
+
+    #[test]
+    fn attach_reset_boundary_only_resets_real_replacement() {
+        assert!(!PageInstance::should_reset_lifecycle_on_attach(None));
+        assert!(!PageInstance::should_reset_lifecycle_on_attach(Some(true)));
+        assert!(PageInstance::should_reset_lifecycle_on_attach(Some(false)));
+    }
+
+    #[test]
+    fn first_attach_must_not_drop_bridge_ready_load_request() {
+        let mut state = test_page_state();
+        let mut events = Vec::new();
+
+        state.bridge_ready = true;
+        PageInstance::request_on_load(&mut state);
+        state.render_status = PageRenderStatus::Started;
+
+        // First None -> Some attach must not reset; otherwise this state would
+        // lose bridge_ready/load_requested before render-start can complete onLoad.
+        PageInstance::collect_ready_lifecycle_events(&mut state, &mut events);
+
+        assert_eq!(
+            events,
+            vec![(PageLifecycleEvent::OnLoad, Some("null".to_string()))]
+        );
+        assert!(state.on_load_fired);
+    }
+
+    #[test]
+    fn first_attach_must_not_drop_pending_show_request() {
+        let mut state = test_page_state();
+        let mut events = Vec::new();
+
+        state.show_requested = true;
+        state.bridge_ready = true;
+        PageInstance::request_on_load(&mut state);
+        state.render_status = PageRenderStatus::Started;
+
+        // OnShow can arrive before onLoad; first attach must preserve that
+        // intent so onShow is emitted immediately after onLoad.
+        PageInstance::collect_ready_lifecycle_events(&mut state, &mut events);
+
+        assert_eq!(
+            events,
+            vec![
+                (PageLifecycleEvent::OnLoad, Some("null".to_string())),
+                (PageLifecycleEvent::OnShow, None),
+            ]
+        );
+        assert!(state.on_load_fired);
+        assert!(state.on_show_fired);
     }
 }
