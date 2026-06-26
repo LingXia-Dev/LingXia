@@ -1,0 +1,7 @@
+{
+  "worker": "./server",
+  "dev": {
+    "default": "mock",
+    "overrides": {}
+  }
+}
