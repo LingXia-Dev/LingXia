@@ -9,3 +9,7 @@ keywords = ["lingxia", "windows", "build-script"]
 categories = ["development-tools::build-utils"]
 
 [dependencies]
+# Compiles the `.exe` icon (+ manifest + version info) into a Windows resource
+# via the platform resource compiler (rc.exe / llvm-rc). Used by
+# `configure_windows_app_with_icon`; a no-op on non-Windows targets.
+winresource = "0.1"
