@@ -50,7 +50,7 @@ struct AboutSheetWindows {
     mask: isize,
     sheet: isize,
     /// The capsule opens the sheet on mouse-*down*, so the opening click's
-    /// mouse-*up* lands on the just-created (topmost) mask/sheet and would
+    /// mouse-*up* lands on the just-created mask and would
     /// instantly dismiss it. Swallow that first up.
     ignore_next_mouse_up: bool,
 }
@@ -70,7 +70,7 @@ pub(super) fn show_info_sheet(content: HWND, info: DeviceFrameInfoSheet) {
         return;
     }
 
-    dismiss_about_sheet_for_content(hwnd_handle(content));
+    dismiss_info_sheet_for_content(hwnd_handle(content));
 
     let Some(rect) = content_rect(content) else {
         return;
@@ -85,9 +85,8 @@ pub(super) fn show_info_sheet(content: HWND, info: DeviceFrameInfoSheet) {
         WindowsAndMessaging::CreateWindowExW(
             WindowsAndMessaging::WS_EX_LAYERED
                 | WindowsAndMessaging::WS_EX_TOOLWINDOW
-                | WindowsAndMessaging::WS_EX_NOACTIVATE
-                | WindowsAndMessaging::WS_EX_TOPMOST,
-            about_mask_class(),
+                | WindowsAndMessaging::WS_EX_NOACTIVATE,
+            info_mask_class(),
             PCWSTR::null(),
             WindowsAndMessaging::WS_POPUP,
             rect.left,
@@ -107,10 +106,8 @@ pub(super) fn show_info_sheet(content: HWND, info: DeviceFrameInfoSheet) {
     let sheet_height = sheet_height().min(height.max(1));
     let sheet = unsafe {
         WindowsAndMessaging::CreateWindowExW(
-            WindowsAndMessaging::WS_EX_TOOLWINDOW
-                | WindowsAndMessaging::WS_EX_NOACTIVATE
-                | WindowsAndMessaging::WS_EX_TOPMOST,
-            about_sheet_class(),
+            WindowsAndMessaging::WS_EX_TOOLWINDOW | WindowsAndMessaging::WS_EX_NOACTIVATE,
+            info_sheet_class(),
             PCWSTR::null(),
             WindowsAndMessaging::WS_POPUP,
             rect.left,
@@ -156,10 +153,10 @@ pub(super) fn show_info_sheet(content: HWND, info: DeviceFrameInfoSheet) {
         );
     }
 
-    reposition_about_sheet(content);
+    reposition_info_sheet(content);
 }
 
-fn about_mask_class() -> PCWSTR {
+fn info_mask_class() -> PCWSTR {
     static REGISTERED: OnceLock<()> = OnceLock::new();
     REGISTERED.get_or_init(|| {
         let module = unsafe { LibraryLoader::GetModuleHandleW(None) }
@@ -189,7 +186,7 @@ fn about_mask_class() -> PCWSTR {
     w!("LingXiaDeviceAboutMask")
 }
 
-fn about_sheet_class() -> PCWSTR {
+fn info_sheet_class() -> PCWSTR {
     static REGISTERED: OnceLock<()> = OnceLock::new();
     REGISTERED.get_or_init(|| {
         let module = unsafe { LibraryLoader::GetModuleHandleW(None) }
@@ -225,7 +222,7 @@ unsafe extern "system" fn mask_proc(
         if consume_initial_mouse_up_for_window(hwnd) {
             return LRESULT(0);
         }
-        dismiss_about_sheet_for_window(hwnd);
+        dismiss_info_sheet_for_window(hwnd);
         return LRESULT(0);
     }
     unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
@@ -246,17 +243,16 @@ unsafe extern "system" fn sheet_proc(
             return LRESULT(0);
         }
         WindowsAndMessaging::WM_LBUTTONUP => {
-            if consume_initial_mouse_up_for_window(hwnd) {
-                return LRESULT(0);
-            }
             let x = (lparam.0 & 0xffff) as i16 as i32;
             let y = ((lparam.0 >> 16) & 0xffff) as i16 as i32;
             match sheet_hit_at(hwnd, x, y) {
                 Some(SheetHit::Action(id)) => {
-                    dismiss_about_sheet_for_window(hwnd);
+                    dismiss_info_sheet_for_window(hwnd);
                     dispatch_device_frame_command(id);
                 }
-                None => {}
+                None => {
+                    let _ = consume_initial_mouse_up_for_window(hwnd);
+                }
             }
             return LRESULT(0);
         }
@@ -551,7 +547,7 @@ fn sheet_info<'a>(hwnd: HWND) -> Option<&'a DeviceFrameInfoSheet> {
     }
 }
 
-pub(super) fn reposition_about_sheet(content: HWND) {
+pub(super) fn reposition_info_sheet(content: HWND) {
     let handle = hwnd_handle(content);
     let Some(windows) = ABOUT_SHEETS
         .get()
@@ -570,28 +566,24 @@ pub(super) fn reposition_about_sheet(content: HWND) {
         if is_window_handle_valid(windows.mask) {
             let _ = WindowsAndMessaging::SetWindowPos(
                 hwnd_from_handle(windows.mask),
-                Some(WindowsAndMessaging::HWND_TOPMOST),
+                Some(WindowsAndMessaging::HWND_TOP),
                 rect.left,
                 rect.top,
                 width,
                 height,
-                WindowsAndMessaging::SWP_NOACTIVATE
-                    | WindowsAndMessaging::SWP_NOOWNERZORDER
-                    | WindowsAndMessaging::SWP_SHOWWINDOW,
+                WindowsAndMessaging::SWP_NOACTIVATE | WindowsAndMessaging::SWP_SHOWWINDOW,
             );
         }
         if is_window_handle_valid(windows.sheet) {
             let sheet_hwnd = hwnd_from_handle(windows.sheet);
             let _ = WindowsAndMessaging::SetWindowPos(
                 sheet_hwnd,
-                Some(WindowsAndMessaging::HWND_TOPMOST),
+                Some(WindowsAndMessaging::HWND_TOP),
                 rect.left,
                 rect.bottom - sheet_height,
                 width,
                 sheet_height,
-                WindowsAndMessaging::SWP_NOACTIVATE
-                    | WindowsAndMessaging::SWP_NOOWNERZORDER
-                    | WindowsAndMessaging::SWP_SHOWWINDOW,
+                WindowsAndMessaging::SWP_NOACTIVATE | WindowsAndMessaging::SWP_SHOWWINDOW,
             );
             apply_sheet_region(sheet_hwnd, width, sheet_height);
             let _ = windows::Win32::Graphics::Gdi::InvalidateRect(Some(sheet_hwnd), None, true);
@@ -680,7 +672,7 @@ fn rgb_to_colorref(rgb: u32) -> COLORREF {
     COLORREF((r >> 16) | g | (b << 16))
 }
 
-fn dismiss_about_sheet_for_window(window: HWND) {
+fn dismiss_info_sheet_for_window(window: HWND) {
     let handle = hwnd_handle(window);
     let Some((content, windows)) = ABOUT_SHEETS
         .get()
@@ -699,7 +691,7 @@ fn dismiss_about_sheet_for_window(window: HWND) {
     restore_frame_overlays(content);
 }
 
-pub(super) fn dismiss_about_sheet_for_content(content: isize) {
+pub(super) fn dismiss_info_sheet_for_content(content: isize) {
     let Some(windows) = ABOUT_SHEETS
         .get()
         .and_then(|sheets| sheets.lock().ok())

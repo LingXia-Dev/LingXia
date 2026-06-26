@@ -317,10 +317,10 @@ fn frame_pixels(spec: &WindowsDeviceFrame, layout: &FrameLayout) -> Vec<u32> {
         (&layout.close_rect, CLOSE_DOT_COLOR),
         (&layout.minimize_rect, MINIMIZE_DOT_COLOR),
     ];
-    // The screen cutout / Dynamic Island is rendered by the topmost floating
-    // `cutout` overlay window (see `cutout.rs`), which is the only surface that
-    // can paint above the opaque WebView2 content. The layered frame bitmap
-    // sits *behind* the content, so carving the notch here would never be
+    // The screen cutout / Dynamic Island is rendered by a floating `cutout`
+    // overlay window (see `cutout.rs`), which is the only surface that can
+    // paint above the opaque WebView2 content. The layered frame bitmap sits
+    // *behind* the content, so carving the notch here would never be
     // visible — keep it out of the frame paint.
 
     let shadow_reach = FRAME_SHADOW_MARGIN as f32;

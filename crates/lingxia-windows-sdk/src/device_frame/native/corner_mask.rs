@@ -4,7 +4,8 @@
 //! `SetWindowRgn` on its host window and the z-order of sibling child windows,
 //! so the screen corners can be rounded only by a layered window that
 //! composites *above* the WebView2 surface. The [`cutout`](super::cutout)
-//! overlay proves a topmost owned-popup layered window does exactly that.
+//! overlay proves a layered popup window can do that while the content window
+//! is active.
 //!
 //! Rather than four separate corner windows (which update independently and can
 //! show a half-rounded "ghost" corner mid-drag, and risk a one-pixel seam at
@@ -17,15 +18,23 @@
 
 use super::*;
 
+use windows::Win32::Graphics::Gdi::{CombineRgn, CreateRectRgn, RGN_OR, SetWindowRgn};
+
 /// Outward bleed (px) so the painted wedges meet the bezel with no seam. The
 /// overlay extends this far past the screen on every side; the ring it adds
 /// sits over the real bezel (same color), so it is invisible.
 const MASK_BLEED: i32 = 1;
 
-/// Opacity of the corner wedges (0..1). Below 1 gives a soft, frosted-glass
-/// rounding that tints what's behind rather than a solid block — the corner is
-/// present but easy to overlook, which is what the device wants.
-const GLASS_OPACITY: f32 = 0.5;
+/// Visual-only radius cap for the WebView2 mask. Current iPhone presets use
+/// very large physical screen radii; covering that full area with an overlay
+/// reads as a patch. A smaller visual radius still removes the square corner
+/// while keeping the hosted page dominant.
+const MAX_VISUAL_MASK_RADIUS: f32 = 28.0;
+
+/// Opacity of the cut-away corner wedges. The WebView2 surface is windowed, so
+/// a translucent wedge lets the square WebView corner leak through. Keep the
+/// exterior opaque and use anti-aliasing only on the rounded edge.
+const MASK_OPACITY: f32 = 1.0;
 
 fn corner_mask_class() -> PCWSTR {
     static REGISTERED: OnceLock<()> = OnceLock::new();
@@ -61,12 +70,15 @@ unsafe extern "system" fn corner_mask_proc(
     unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
 }
 
-/// Creates the corner-mask overlay as a topmost layered popup owned by
-/// `content`. Returns `0` when the device keeps square screen corners (no
+/// Creates the corner-mask overlay as a layered popup. Returns `0` when the
+/// device keeps square screen corners (no
 /// radius) or the screen is too small to round. Created hidden;
 /// [`reposition_corner_mask`] places and shows it.
 pub(super) fn create_corner_mask(content: HWND, spec: &WindowsDeviceFrame) -> isize {
-    let radius = spec.screen_corner_radius.max(0);
+    let radius = spec
+        .screen_corner_radius
+        .max(0)
+        .min(MAX_VISUAL_MASK_RADIUS as i32);
     if radius <= 0 || spec.screen_width < radius * 2 || spec.screen_height < radius * 2 {
         return 0;
     }
@@ -77,8 +89,7 @@ pub(super) fn create_corner_mask(content: HWND, spec: &WindowsDeviceFrame) -> is
             WindowsAndMessaging::WS_EX_LAYERED
                 | WindowsAndMessaging::WS_EX_TOOLWINDOW
                 | WindowsAndMessaging::WS_EX_TRANSPARENT
-                | WindowsAndMessaging::WS_EX_NOACTIVATE
-                | WindowsAndMessaging::WS_EX_TOPMOST,
+                | WindowsAndMessaging::WS_EX_NOACTIVATE,
             corner_mask_class(),
             PCWSTR::null(),
             WindowsAndMessaging::WS_POPUP,
@@ -101,6 +112,7 @@ pub(super) fn create_corner_mask(content: HWND, spec: &WindowsDeviceFrame) -> is
             return 0;
         }
     };
+    apply_corner_mask_region(mask, width, height, radius);
     if !upload_corner_mask_pixels(
         mask,
         width,
@@ -120,8 +132,33 @@ pub(super) fn create_corner_mask(content: HWND, spec: &WindowsDeviceFrame) -> is
     hwnd_handle(mask)
 }
 
+fn apply_corner_mask_region(mask: HWND, width: i32, height: i32, radius: i32) {
+    let extent = (radius + MASK_BLEED + 2)
+        .min(width / 2)
+        .min(height / 2)
+        .max(1);
+    unsafe {
+        let region = CreateRectRgn(0, 0, extent, extent);
+        let top_right = CreateRectRgn(width - extent, 0, width, extent);
+        let bottom_left = CreateRectRgn(0, height - extent, extent, height);
+        let bottom_right = CreateRectRgn(width - extent, height - extent, width, height);
+
+        let _ = CombineRgn(Some(region), Some(region), Some(top_right), RGN_OR);
+        let _ = CombineRgn(Some(region), Some(region), Some(bottom_left), RGN_OR);
+        let _ = CombineRgn(Some(region), Some(region), Some(bottom_right), RGN_OR);
+
+        let applied = SetWindowRgn(mask, Some(region), true);
+        let _ = DeleteObject(HGDIOBJ(top_right.0));
+        let _ = DeleteObject(HGDIOBJ(bottom_left.0));
+        let _ = DeleteObject(HGDIOBJ(bottom_right.0));
+        if applied == 0 {
+            let _ = DeleteObject(HGDIOBJ(region.0));
+        }
+    }
+}
+
 /// Re-pins the overlay over the screen (in screen coordinates, offset outward
-/// by the bleed) and keeps it topmost. Runs on every content geometry change,
+/// by the bleed) above the content. Runs on every content geometry change,
 /// so a moving or re-activated screen keeps rounded corners.
 pub(super) fn reposition_corner_mask(content: HWND) {
     let Some(mask) =
@@ -139,7 +176,7 @@ pub(super) fn reposition_corner_mask(content: HWND) {
     unsafe {
         let _ = WindowsAndMessaging::SetWindowPos(
             hwnd_from_handle(mask),
-            Some(WindowsAndMessaging::HWND_TOPMOST),
+            Some(WindowsAndMessaging::HWND_TOP),
             rect.left - MASK_BLEED,
             rect.top - MASK_BLEED,
             0,
@@ -152,7 +189,7 @@ pub(super) fn reposition_corner_mask(content: HWND) {
 }
 
 /// Hides the overlay while the screen is minimized, hidden, or in the
-/// background (it is topmost and would otherwise float over another app).
+/// background.
 pub(super) fn hide_corner_mask(content: HWND) {
     if let Some(mask) =
         frame_state(hwnd_handle(content), |state| state.corner_mask).filter(|mask| *mask != 0)
@@ -280,10 +317,10 @@ fn corner_mask_pixels(
         for x in 0..width {
             let distance = rounded_distance(x as f32 + 0.5, y as f32 + 0.5);
             // Coverage of the area *outside* the screen silhouette, anti-aliased
-            // across the one-pixel boundary band, scaled to a translucent
-            // frosted-glass opacity.
+            // across the one-pixel boundary band. Interior pixels stay
+            // transparent; exterior pixels hide the square WebView corner.
             let coverage = (distance + 0.5).clamp(0.0, 1.0);
-            let alpha = (coverage * 255.0 * GLASS_OPACITY).round() as u32;
+            let alpha = (coverage * 255.0 * MASK_OPACITY).round() as u32;
             let premultiply = |channel: u32| channel * alpha / 255;
             pixels.push(
                 (alpha << 24)

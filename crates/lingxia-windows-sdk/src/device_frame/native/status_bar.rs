@@ -1,8 +1,8 @@
 //! Simulated iOS status bar overlay: time (leading) + signal/battery (trailing).
 //!
-//! Like the [`cutout`](super::cutout), this is a topmost owned-popup per-pixel
-//! alpha layered window, so it composites above the windowed WebView2 surface
-//! (which can't be clipped). The hosted app's top safe-area sits beneath it.
+//! Like the [`cutout`](super::cutout), this is a per-pixel alpha layered
+//! window, so it composites above the windowed WebView2 surface while the
+//! content window is active. The hosted app's top safe-area sits beneath it.
 //!
 //! A normal page paints the strip as an *opaque* fill (the page navigation-bar
 //! color, set by the shell, or the chrome color for a plain page) so the bar
@@ -73,7 +73,7 @@ unsafe extern "system" fn status_bar_proc(
     unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
 }
 
-/// Creates the status bar overlay (topmost layered popup owned by `content`).
+/// Creates the status bar overlay.
 /// Returns `0` when the device has no status bar. Created hidden;
 /// [`reposition_status_bar`] places and shows it.
 pub(super) fn create_status_bar(content: HWND, spec: &WindowsDeviceFrame) -> isize {
@@ -90,8 +90,7 @@ pub(super) fn create_status_bar(content: HWND, spec: &WindowsDeviceFrame) -> isi
             WindowsAndMessaging::WS_EX_LAYERED
                 | WindowsAndMessaging::WS_EX_TOOLWINDOW
                 | WindowsAndMessaging::WS_EX_TRANSPARENT
-                | WindowsAndMessaging::WS_EX_NOACTIVATE
-                | WindowsAndMessaging::WS_EX_TOPMOST,
+                | WindowsAndMessaging::WS_EX_NOACTIVATE,
             status_bar_class(),
             PCWSTR::null(),
             WindowsAndMessaging::WS_POPUP,
@@ -151,7 +150,7 @@ fn spec_cutout_width(spec: &WindowsDeviceFrame) -> i32 {
         .unwrap_or(0)
 }
 
-/// Re-pins the status bar to the top edge of the screen and keeps it topmost.
+/// Re-pins the status bar to the top edge of the screen above the content.
 pub(super) fn reposition_status_bar(content: HWND) {
     let Some((status_bar, height)) = frame_state(hwnd_handle(content), |state| {
         (
@@ -177,14 +176,12 @@ pub(super) fn reposition_status_bar(content: HWND) {
     unsafe {
         let _ = WindowsAndMessaging::SetWindowPos(
             hwnd_from_handle(status_bar),
-            Some(WindowsAndMessaging::HWND_TOPMOST),
+            Some(WindowsAndMessaging::HWND_TOP),
             rect.left,
             rect.top,
             rect.right - rect.left,
             height,
-            WindowsAndMessaging::SWP_NOACTIVATE
-                | WindowsAndMessaging::SWP_NOOWNERZORDER
-                | WindowsAndMessaging::SWP_SHOWWINDOW,
+            WindowsAndMessaging::SWP_NOACTIVATE | WindowsAndMessaging::SWP_SHOWWINDOW,
         );
     }
 }

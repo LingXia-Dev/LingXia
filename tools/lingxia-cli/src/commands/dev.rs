@@ -1280,10 +1280,11 @@ fn shell_execute_windows_runner(
 ) -> Result<RunnerProcess> {
     use std::mem::size_of;
     use windows::Win32::Foundation::HANDLE;
+    use windows::Win32::System::Threading::GetProcessId;
     use windows::Win32::UI::Shell::{
         SEE_MASK_NOASYNC, SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW, ShellExecuteExW,
     };
-    use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+    use windows::Win32::UI::WindowsAndMessaging::{AllowSetForegroundWindow, SW_SHOWNORMAL};
     use windows::core::PCWSTR;
 
     let params = [
@@ -1329,6 +1330,12 @@ fn shell_execute_windows_runner(
         return Err(anyhow!(
             "Windows Runner launch did not return a process handle"
         ));
+    }
+    let runner_pid = unsafe { GetProcessId(info.hProcess) };
+    if runner_pid != 0 {
+        unsafe {
+            let _ = AllowSetForegroundWindow(runner_pid);
+        }
     }
 
     Ok(RunnerProcess::WindowsShell(WindowsShellRunnerProcess {

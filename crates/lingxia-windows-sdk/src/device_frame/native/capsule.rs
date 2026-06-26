@@ -1,7 +1,7 @@
-//! Floating iOS-style lxapp capsule: a topmost, layered pill pinned over the
+//! Floating iOS-style lxapp capsule: a layered pill pinned over the
 //! content's top-right corner with a "…" menu button (lxapp info) and a
-//! close button. Like the corner overlays, it must be topmost to sit above the
-//! focused WebView2 surface, and is hidden while the screen is in the
+//! close button. It is pinned above the focused WebView2 surface while the
+//! content window is active, and is hidden while the screen is in the
 //! background so it never floats over another app.
 
 use super::*;
@@ -118,8 +118,7 @@ pub(super) fn create_capsule_window(content: HWND, spec: &WindowsDeviceFrame) ->
         WindowsAndMessaging::CreateWindowExW(
             WindowsAndMessaging::WS_EX_LAYERED
                 | WindowsAndMessaging::WS_EX_TOOLWINDOW
-                | WindowsAndMessaging::WS_EX_NOACTIVATE
-                | WindowsAndMessaging::WS_EX_TOPMOST,
+                | WindowsAndMessaging::WS_EX_NOACTIVATE,
             capsule_class(),
             PCWSTR::null(),
             WindowsAndMessaging::WS_POPUP,
@@ -320,8 +319,8 @@ fn blit_premultiplied(pixels: &mut [u32], width: i32, dst: RECT, icon: &[u32], i
     }
 }
 
-/// Moves the capsule to the content's top-right corner and pins it topmost
-/// above the (focused) WebView2 surface.
+/// Moves the capsule to the content's top-right corner and pins it above the
+/// focused WebView2 surface.
 pub(super) fn reposition_capsule(content: HWND) {
     let handle = hwnd_handle(content);
     let Some(capsule) = frame_state(handle, |state| state.capsule).filter(|c| *c != 0) else {
@@ -360,14 +359,13 @@ pub(super) fn reposition_capsule(content: HWND) {
     unsafe {
         let _ = WindowsAndMessaging::SetWindowPos(
             capsule,
-            Some(WindowsAndMessaging::HWND_TOPMOST),
+            Some(WindowsAndMessaging::HWND_TOP),
             x,
             y,
             0,
             0,
             WindowsAndMessaging::SWP_NOSIZE
                 | WindowsAndMessaging::SWP_NOACTIVATE
-                | WindowsAndMessaging::SWP_NOOWNERZORDER
                 | WindowsAndMessaging::SWP_SHOWWINDOW,
         );
     }

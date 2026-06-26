@@ -5,11 +5,10 @@ use lingxia_windows_sdk::{
 use serde::Deserialize;
 use std::sync::OnceLock;
 
-/// Soft gray painted over the (unclippable) square WebView2 screen corners to
-/// fake the rounding. Mid-gray reads as a visible-but-soft rounded cut on both
-/// light and dark content — darker than the chrome (so the corner is visible),
-/// far softer than the near-black device bezel.
-const SCREEN_CORNER_COLOR: u32 = 0x8E8E93;
+/// Neutral mask color for the unclippable WebView2 screen corners. It tracks the
+/// light shell background, avoiding the heavy black wedges that appear if the
+/// mask uses the phone bezel color at high corner radii.
+const SCREEN_CORNER_MASK_COLOR: u32 = 0xE7E8EB;
 
 pub(crate) const DEVICE_COMMAND_BASE: u32 = 0x0100;
 
@@ -166,9 +165,10 @@ pub(crate) fn frame_spec(index: usize, landscape: bool) -> WindowsDeviceFrame {
             },
         ),
         bezel_color: preset.bezel_color,
-        // Soft gray over the square WebView2 corners: visible enough to show the
-        // rounding, far softer than the near-black bezel (see SCREEN_CORNER_COLOR).
-        screen_corner_color: SCREEN_CORNER_COLOR,
+        // Mask the cut-away square WebView2 corners with a quiet neutral. Using
+        // the black bezel is technically realistic, but too prominent at the
+        // large phone corner radii.
+        screen_corner_color: SCREEN_CORNER_MASK_COLOR,
         toolbar: Some(WindowsDeviceFrameToolbar {
             selector_label: preset.name.clone(),
             selector_items: device_selector_items(index),
