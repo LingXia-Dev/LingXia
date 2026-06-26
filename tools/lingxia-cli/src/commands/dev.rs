@@ -993,15 +993,14 @@ fn launch_runner_for_lxapp(lxapp_path: &Path, ws_url: &str) -> Result<RunnerProc
     let mut command = Command::new(&executable_path);
     command.env(RUNNER_LXAPP_PATH_ENV, lxapp_path);
     command.env(RUNNER_DEV_WS_URL_ENV, ws_url);
-    // If the lxapp ships `cloud/functions`, serve `lx.cloud.invoke` from it.
-    // (Mock-vs-real is the runner's own LINGXIAO_MOCK; this only sets the dir.)
-    let cloud_functions = lxapp_path.join("cloud/functions");
-    if cloud_functions.is_dir() {
-        command.env("LINGXIAO_MOCK_DIR", &cloud_functions);
+    // Cloud functions: transpile mocks + generate typed `lx.cloud.invoke`, then
+    // point the runner at the loadable mock dir (it reads routing from functions.json).
+    if let Some(mock_dir) = crate::lxapp::functions::prepare_dev(lxapp_path) {
+        command.env("LINGXIAO_MOCK_DIR", &mock_dir);
         println!(
             "  {} Cloud functions (mock): {}",
             "*".cyan(),
-            cloud_functions.display()
+            mock_dir.display()
         );
     }
     command.stdin(Stdio::null());

@@ -33,3 +33,5 @@ lingxia = { workspace = true, features = ["standard", "devtool", "browser-runtim
 lingxia_devtool = { workspace = true, features = ["browser"] }
 # Reads ~/.lingxia/runner/config.toml for the runtime lingxiaServer override.
 toml = "1.1.2"
+# Reads the lxapp's cloud.json for per-function mock/live routing.
+serde_json = "1"

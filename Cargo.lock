@@ -3219,6 +3219,7 @@ version = "0.9.1"
 dependencies = [
  "lingxia",
  "lingxia-devtool",
+ "serde_json",
  "toml",
 ]
 
