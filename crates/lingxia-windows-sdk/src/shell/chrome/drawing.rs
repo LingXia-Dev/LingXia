@@ -5,10 +5,11 @@ use std::sync::{Mutex, OnceLock};
 
 use windows::Win32::Foundation::{COLORREF, RECT};
 use windows::Win32::Graphics::Gdi::{
-    CLEARTYPE_QUALITY, CLIP_DEFAULT_PRECIS, CreateFontW, CreateSolidBrush, DEFAULT_CHARSET,
-    DEFAULT_PITCH, DT_CENTER, DT_END_ELLIPSIS, DT_SINGLELINE, DT_VCENTER, DeleteObject, DrawTextW,
-    FF_SWISS, FillRect, GetDeviceCaps, GetStockObject, HDC, HFONT, HGDIOBJ, LOGPIXELSY, NULL_PEN,
-    OUT_DEFAULT_PRECIS, RoundRect, SelectObject, SetBkMode, SetTextColor, TRANSPARENT,
+    ANTIALIASED_QUALITY, CLEARTYPE_QUALITY, CLIP_DEFAULT_PRECIS, CreateFontW, CreateSolidBrush,
+    DEFAULT_CHARSET, DEFAULT_PITCH, DT_CENTER, DT_END_ELLIPSIS, DT_SINGLELINE, DT_VCENTER,
+    DeleteObject, DrawTextW, FF_SWISS, FONT_QUALITY, FillRect, GetDeviceCaps, GetStockObject, HDC,
+    HFONT, HGDIOBJ, LOGPIXELSY, NULL_PEN, OUT_DEFAULT_PRECIS, RoundRect, SelectObject, SetBkMode,
+    SetTextColor, TRANSPARENT,
 };
 use windows::Win32::Graphics::GdiPlus;
 use windows::Win32::UI::WindowsAndMessaging::{self, HICON};
@@ -20,6 +21,10 @@ use super::*;
 /// Chrome text font ("Segoe UI" at the shell text size/weight) sized for
 /// `hdc`'s DPI. The caller owns the returned font and deletes it after use.
 pub(in crate::shell) fn create_chrome_text_font(hdc: HDC) -> HFONT {
+    create_chrome_text_font_with_quality(hdc, CLEARTYPE_QUALITY)
+}
+
+fn create_chrome_text_font_with_quality(hdc: HDC, quality: FONT_QUALITY) -> HFONT {
     unsafe {
         CreateFontW(
             -logical_font_height(hdc, SHELL_TEXT_POINT_SIZE),
@@ -33,7 +38,7 @@ pub(in crate::shell) fn create_chrome_text_font(hdc: HDC) -> HFONT {
             DEFAULT_CHARSET,
             OUT_DEFAULT_PRECIS,
             CLIP_DEFAULT_PRECIS,
-            CLEARTYPE_QUALITY,
+            quality,
             DEFAULT_PITCH.0 as u32 | FF_SWISS.0 as u32,
             w!("Segoe UI"),
         )
@@ -47,13 +52,34 @@ pub(in crate::shell) fn draw_text(
     rgb: u32,
     horizontal: windows::Win32::Graphics::Gdi::DRAW_TEXT_FORMAT,
 ) {
+    draw_text_with_quality(hdc, text, rect, rgb, horizontal, CLEARTYPE_QUALITY)
+}
+
+pub(in crate::shell) fn draw_text_antialiased(
+    hdc: HDC,
+    text: &str,
+    rect: RECT,
+    rgb: u32,
+    horizontal: windows::Win32::Graphics::Gdi::DRAW_TEXT_FORMAT,
+) {
+    draw_text_with_quality(hdc, text, rect, rgb, horizontal, ANTIALIASED_QUALITY)
+}
+
+fn draw_text_with_quality(
+    hdc: HDC,
+    text: &str,
+    rect: RECT,
+    rgb: u32,
+    horizontal: windows::Win32::Graphics::Gdi::DRAW_TEXT_FORMAT,
+    quality: FONT_QUALITY,
+) {
     if text.is_empty() || rect_width(&rect) == 0 || rect_height(&rect) == 0 {
         return;
     }
 
     let mut wide: Vec<u16> = text.encode_utf16().collect();
     let mut rect = rect;
-    let font = create_chrome_text_font(hdc);
+    let font = create_chrome_text_font_with_quality(hdc, quality);
     unsafe {
         let old_font = if font.is_invalid() {
             HGDIOBJ::default()
