@@ -28,21 +28,22 @@ brand renders identically from 16 px favicon to 1024 px App Store art.
 | File | What | Use |
 | --- | --- | --- |
 | `icon-vessel-light.svg` | Full-bleed, paper bg | Master for `lingxia icon` — all platforms |
-| `icon-vessel-dark.svg` | Full-bleed, ink bg | Dark UI / marketing contexts |
+| `icon-vessel-runner.svg` | Deep-indigo rounded plate, transparent corners | Dev Runner identity (kept distinct from the light app icons) |
 | `icon-vessel-glyph.svg` | Colored mark only, transparent | Android/Harmony layered foreground (`--foreground`) |
 | `icon-vessel-macos.svg` | Squircle plate (824/1024 grid) + margin, transparent | Hand-built macOS art (Runner appiconset); the CLI normalizes full-bleed sources itself |
-| `icon-vessel-favicon.svg` | Full-canvas rounded plate, transparent corners | SDK `favicon.ico` for `lingxia://` browser tabs |
+| `icon-vessel-favicon.svg` | Full-canvas rounded plate, transparent corners | SDK `favicon.ico` (`lingxia://` tabs) + the Windows dev-Runner icon (Windows draws app icons unmasked, so it needs a pre-rounded plate) |
 | `appicon-*-1024.png` | 1024 renders of each master | What the CLI / scripts actually consume |
 | `icon-preview.html` | Visual check at 32–256 px, every mask/appearance | Open in a browser |
 
-Regenerate the PNGs after editing an SVG (headless Chrome, exact 1024):
+Regenerate the 1024 master PNGs after editing an SVG — the CLI renders them with
+its own engine (resvg), no browser needed. The output format follows the
+extension (`.png` here, `.ico` below); transparency is preserved automatically:
 
 ```sh
-CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-"$CHROME" --headless --force-device-scale-factor=1 --window-size=1024,1024 \
-  --screenshot=appicon-1024.png icon-vessel-light.svg
-# transparent masters (glyph / macos / favicon) additionally need:
-#   --default-background-color=00000000
+lingxia icon icon-vessel-light.svg   --output appicon-1024.png         --size 1024
+lingxia icon icon-vessel-glyph.svg   --output appicon-glyph-1024.png   --size 1024
+lingxia icon icon-vessel-macos.svg   --output appicon-macos-1024.png   --size 1024
+lingxia icon icon-vessel-favicon.svg --output appicon-favicon-1024.png --size 1024
 ```
 
 ## Generating app icons in a project
@@ -60,8 +61,9 @@ lingxia icon design/app-icon/appicon-1024.png -b "#FAFAF7" \
 | Consumer | Path | How to update |
 | --- | --- | --- |
 | `lingxia new` template | `tools/lingxia-cli/templates/AppIcon.png` | copy `appicon-1024.png` |
-| LingXia Runner (macOS) | `tools/lingxia-runner/Sources/Resources/Assets.xcassets/AppIcon.appiconset/` | `sips -z <s> <s> appicon-macos-1024.png --out icon_<s>.png` per size |
-| Apple SDK browser-tab favicon | `lingxia-sdk/apple/Sources/Resources/favicon.ico` | pack `appicon-favicon-1024.png` downscales into PNG-in-ICO (16/32/64/256) |
+| LingXia Runner (macOS) | `tools/lingxia-runner/Sources/Resources/Assets.xcassets/AppIcon.appiconset/` | `lingxia icon design/app-icon/appicon-1024.png --platform macos` (run in the Runner project; the CLI normalizes to the macOS squircle) |
+| LingXia Runner (Windows) | `tools/lingxia-runner/windows/runner.ico` + `tools/lingxia-cli/assets/runner-icon.png` | `lingxia icon design/app-icon/icon-vessel-runner.svg --output …/runner.ico` and `… --output …/runner-icon.png --size 256` |
+| Apple SDK browser-tab favicon | `lingxia-sdk/apple/Sources/Resources/favicon.ico` | `lingxia icon design/app-icon/icon-vessel-favicon.svg --output …/favicon.ico` |
 | Browser shell webui (settings page) | `crates/lingxia-browser-shell/webui/public/LingXia.png` | copy `appicon-1024.png` |
 | Website favicon / touch icon | `website/public/favicon.svg`, `website/public/app-icon.png` | favicon is hand-kept in sync; app-icon is a copy of `appicon-1024.png` |
 | Website og:image | `website/public/og.png` | render `design/og/og-source.html` at 1200×630 |
