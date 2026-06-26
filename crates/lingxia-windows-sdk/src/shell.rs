@@ -84,6 +84,13 @@ pub fn set_windows_shell_tabbar_position(appid: &str, position: WindowsShellTabB
     runtime::set_tabbar_position(appid, position);
 }
 
+pub(crate) fn set_windows_shell_tabbar_position_on_window_thread(
+    appid: &str,
+    position: WindowsShellTabBarPosition,
+) {
+    runtime::set_tabbar_position_on_window_thread(appid, position);
+}
+
 /// The shell window/chrome background color (`0xRRGGBB`), adapting to the
 /// system light/dark theme. Runners use it to tint the device frame's rounded
 /// screen corners so they blend with the surrounding chrome (status-bar area +

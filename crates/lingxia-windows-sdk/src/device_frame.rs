@@ -4,6 +4,8 @@
 //! the public model here so Windows runners depend on `lingxia-windows-sdk`
 //! instead of reaching into the lower `lingxia::windows` facade directly.
 
+#[cfg(feature = "shell-chrome")]
+use crate::shell::WindowsShellTabBarPosition;
 use crate::{WindowsAppMenuCommandHandler, WindowsAppMenuItem, WindowsDesignIcon, app_menu};
 
 mod native;
@@ -139,6 +141,24 @@ pub fn set_app_window_device_frame(
         app_menu::refresh_host_window_menu(host_window.window);
     }
     Ok(())
+}
+
+/// Applies a simulated-device frame and shell tabbar position as one UI-thread
+/// transaction. The Windows runner uses this for device switches so layout
+/// does not briefly sync against the previous device frame.
+#[cfg(feature = "shell-chrome")]
+pub fn set_app_window_device_frame_and_tabbar_position(
+    appid: &str,
+    frame: WindowsDeviceFrame,
+    tabbar_position: WindowsShellTabBarPosition,
+) -> Result<(), String> {
+    let webview = current_page_webview(appid)?;
+    native::set_webview_device_frame_and_tabbar_position(
+        &webview.webtag(),
+        appid.to_string(),
+        frame,
+        tabbar_position,
+    )
 }
 
 /// Applies a simulated-device frame to the next WebView host window created
