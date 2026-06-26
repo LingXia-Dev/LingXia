@@ -236,9 +236,72 @@ jobs:
           path: dist/runner-release/*.zip
           if-no-files-found: error
 
+  # The Windows runner is a plain cargo binary (no Swift/Apple steps). It gets
+  # its host assets from `lingxia dev` at launch, so we ship just the exe; users
+  # unzip it into ~/.lingxia/runner/<version>/ (or run install-local-runner.ps1).
+  build-runner-windows:
+    name: Windows runner / x64
+    needs: guard
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          targets: x86_64-pc-windows-msvc
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: release-runner-windows-x64
+
+      # lingxia / lingxia-platform build.rs embed the bridge/polyfills JS runtime.
+      - uses: ./.github/actions/build-web-runtime
+
+      - name: Verify tag matches CLI package version
+        shell: bash
+        run: |
+          tag="${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}"
+          expected="${tag#lingxia-cli-v}"
+          cli_version="$(awk '
+            /^\[package\]/ {in_section=1; next}
+            /^\[/ {in_section=0}
+            in_section && $1 == "version" { gsub(/"/, "", $3); print $3; exit }' tools/lingxia-cli/Cargo.toml)"
+          [ -n "$cli_version" ] || { echo "Failed to read lingxia-cli version" >&2; exit 1; }
+          [ "$expected" = "$cli_version" ] || { echo "Tag ($expected) != lingxia-cli ($cli_version)" >&2; exit 1; }
+
+      # Static CRT so the released runner has no MSVC runtime DLL dependency
+      # (matches install-local-runner.ps1).
+      - name: Build Windows Runner
+        shell: bash
+        env:
+          RUSTFLAGS: "-C target-feature=+crt-static"
+        run: cargo build --release --package lingxia-runner-windows --bin lingxia-runner --target x86_64-pc-windows-msvc
+
+      - name: Package Runner zip
+        shell: pwsh
+        run: |
+          $version = (Get-Content tools/lingxia-cli/Cargo.toml |
+            Where-Object { $_ -match '^version\s*=\s*"([^"]+)"' } |
+            Select-Object -First 1) -replace '^version\s*=\s*"([^"]+)".*', '$1'
+          New-Item -ItemType Directory -Force dist/runner-release, stage | Out-Null
+          Copy-Item "target/x86_64-pc-windows-msvc/release/lingxia-runner.exe" stage/lingxia-runner.exe
+          Set-Content -Path stage/VERSION -Value $version -NoNewline
+          Compress-Archive -Path stage/lingxia-runner.exe, stage/VERSION -DestinationPath dist/runner-release/lingxia-runner-windows-x64.zip -Force
+
+      - name: Upload Runner zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: lingxia-runner-windows-x64
+          path: dist/runner-release/*.zip
+          if-no-files-found: error
+
   publish:
     name: Release / Publish CLI assets
-    needs: [build, build-runner]
+    needs: [build, build-runner, build-runner-windows]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -278,8 +341,9 @@ jobs:
           cp "artifacts/lingxia-windows-x86_64/lingxia-windows-x86_64.exe"   "release-assets/lingxia-windows-x86_64.exe"
           cp "artifacts/lingxia-windows-aarch64/lingxia-windows-aarch64.exe" "release-assets/lingxia-windows-aarch64.exe"
 
-          # Runner zips (one per macOS arch).
+          # Runner zips (one per macOS arch + the Windows x64 runner).
           cp artifacts/lingxia-runner-macos-*/*.zip release-assets/
+          cp artifacts/lingxia-runner-windows-*/*.zip release-assets/
 
           # Combined checksum file over every release asset. `lingxia-*` covers
           # the darwin binaries and the windows `.exe` assets;
