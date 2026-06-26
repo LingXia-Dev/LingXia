@@ -339,13 +339,15 @@ internal object LxAppSurface {
             FrameLayout.LayoutParams.MATCH_PARENT
         ))
         overlay.addView(surface)
-        if (fillsScreen) {
-            if (usesDrillInChrome) {
-                overlay.addView(createFullScreenEdgeSwipeView(activity, request))
-            }
-            val actionButton = createFullScreenActionButton(activity, request)
-            overlay.addView(actionButton)
-            actionButton.bringToFront()
+        // Drill-in asides/windows are page-like, so they get a Back affordance
+        // (button + left-edge swipe). A full-screen float draws no SDK chrome —
+        // the lxapp owns its own close UI; the system back gesture is the escape
+        // hatch (handleOnBackPressed -> closeTopUser), so we inject nothing.
+        if (fillsScreen && usesDrillInChrome) {
+            overlay.addView(createFullScreenEdgeSwipeView(activity, request))
+            val backButton = createFullScreenBackButton(activity, request)
+            overlay.addView(backButton)
+            backButton.bringToFront()
         }
         rootView.addView(overlay)
         ViewCompat.requestApplyInsets(overlay)
@@ -425,11 +427,10 @@ internal object LxAppSurface {
         }
     }
 
-    private fun createFullScreenActionButton(activity: Activity, request: Request): ImageView {
+    private fun createFullScreenBackButton(activity: Activity, request: Request): ImageView {
         val density = activity.resources.displayMetrics.density
-        val drillIn = usesDrillInChrome(request)
         val size = (32 * density).roundToInt()
-        val iconInset = if (drillIn) (8 * density).roundToInt() else (9 * density).roundToInt()
+        val iconInset = (8 * density).roundToInt()
         val top = LxAppActivity.getStatusBarHeight(activity) + (10 * density).roundToInt()
         val left = (12 * density).roundToInt()
         return ImageView(activity).apply {
@@ -440,15 +441,15 @@ internal object LxAppSurface {
             }
             scaleType = ImageView.ScaleType.CENTER
             setPadding(iconInset, iconInset, iconInset, iconInset)
-            setImageResource(if (drillIn) R.drawable.icon_back else R.drawable.icon_close_x)
-            setColorFilter(if (drillIn) Color.parseColor("#1A1A1A") else Color.WHITE)
+            setImageResource(R.drawable.icon_back)
+            setColorFilter(Color.parseColor("#1A1A1A"))
             background = GradientDrawable().apply {
                 shape = GradientDrawable.OVAL
-                setColor(if (drillIn) Color.parseColor("#E6FFFFFF") else Color.parseColor("#66000000"))
+                setColor(Color.parseColor("#E6FFFFFF"))
             }
-            elevation = if (drillIn) 8f * density else 0f
-            translationZ = if (drillIn) 24f * density else 12f * density
-            contentDescription = if (drillIn) "Back" else "Close"
+            elevation = 8f * density
+            translationZ = 24f * density
+            contentDescription = "Back"
             isClickable = true
             isFocusable = true
             setOnClickListener {

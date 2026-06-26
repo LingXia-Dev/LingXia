@@ -920,8 +920,11 @@ export struct SurfaceManager {
         if (surface.isVisible && !this.shouldUseFullscreenWindow(surface)) {
           this.buildCornerMaskLayer(surface)
         }
-        if (surface.isVisible && this.shouldUseFullscreenWindow(surface)) {
-          this.buildFullscreenCloseButton(surface)
+        // Drill-in asides/windows get a page-like Back affordance. A full-screen
+        // float draws no SDK chrome — the lxapp owns its own close UI and the
+        // system back gesture (closeTopmostVisible) is the escape hatch.
+        if (surface.isVisible && this.shouldUseFullscreenWindow(surface) && surface.role !== ROLE_FLOAT) {
+          this.buildFullscreenBackButton(surface)
         }
       }
       .width(surface.isVisible ? '100%' : 1)
@@ -989,8 +992,8 @@ export struct SurfaceManager {
   }
 
   @Builder
-  private buildFullscreenCloseButton(surface: SurfaceRenderState): void {
-    Image($rawfile(surface.role === ROLE_FLOAT ? 'icons/icon_close_x.svg' : 'icons/icon_back.svg'))
+  private buildFullscreenBackButton(surface: SurfaceRenderState): void {
+    Image($rawfile('icons/icon_back.svg'))
       .width(18)
       .height(18)
       .fillColor('#1A1A1A')
