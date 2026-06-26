@@ -35,8 +35,7 @@ pub(super) fn create_cutout_window(content: HWND, spec: &WindowsDeviceFrame) -> 
         WindowsAndMessaging::CreateWindowExW(
             WindowsAndMessaging::WS_EX_LAYERED
                 | WindowsAndMessaging::WS_EX_TOOLWINDOW
-                | WindowsAndMessaging::WS_EX_NOACTIVATE
-                | WindowsAndMessaging::WS_EX_TOPMOST,
+                | WindowsAndMessaging::WS_EX_NOACTIVATE,
             cutout_class(),
             PCWSTR::null(),
             WindowsAndMessaging::WS_POPUP,
@@ -172,14 +171,12 @@ pub(super) fn reposition_cutout(content: HWND) {
     unsafe {
         let _ = WindowsAndMessaging::SetWindowPos(
             hwnd_from_handle(cutout),
-            Some(WindowsAndMessaging::HWND_TOPMOST),
+            Some(WindowsAndMessaging::HWND_TOP),
             x,
             y,
             cutout_spec.width,
             cutout_spec.height,
-            WindowsAndMessaging::SWP_NOACTIVATE
-                | WindowsAndMessaging::SWP_NOOWNERZORDER
-                | WindowsAndMessaging::SWP_SHOWWINDOW,
+            WindowsAndMessaging::SWP_NOACTIVATE | WindowsAndMessaging::SWP_SHOWWINDOW,
         );
     }
 }

@@ -787,6 +787,13 @@ pub fn request_host_window_layout(window: WindowsHostWindow) -> bool {
     request_host_layout_sync(hwnd_from_handle(window.window))
 }
 
+pub(crate) fn request_host_window_layout_forced(window: WindowsHostWindow) -> bool {
+    if window.window == 0 {
+        return false;
+    }
+    request_host_layout_sync_forced(hwnd_from_handle(window.window))
+}
+
 pub fn active_content_screen_rect() -> Option<WindowsContentRect> {
     let webtag = ACTIVE_WEBTAG
         .get()
@@ -1737,20 +1744,42 @@ fn sync_active_host_layout() {
 }
 
 fn request_host_layout_sync(hwnd: HWND) -> bool {
+    request_host_layout_sync_inner(hwnd, false)
+}
+
+fn request_host_layout_sync_forced(hwnd: HWND) -> bool {
+    request_host_layout_sync_inner(hwnd, true)
+}
+
+fn request_host_layout_sync_inner(hwnd: HWND, force_bounds: bool) -> bool {
     let window = hwnd_handle(hwnd);
     if post_to_window_thread(
         window,
         Box::new(move || {
             let hwnd = hwnd_from_handle(window);
+            if force_bounds {
+                clear_webtag_content_bounds_for_window(window);
+            }
             sync_window_layout(hwnd);
             invalidate_window_chrome(hwnd);
         }),
     ) {
         return true;
     }
+    if force_bounds {
+        clear_webtag_content_bounds_for_window(window);
+    }
     sync_window_layout(hwnd);
     invalidate_window_chrome(hwnd);
     true
+}
+
+fn clear_webtag_content_bounds_for_window(window: isize) {
+    if let Some(bounds) = WEBTAG_CONTENT_BOUNDS.get()
+        && let Ok(mut bounds) = bounds.lock()
+    {
+        bounds.retain(|_, cached| cached.hwnd != window);
+    }
 }
 
 fn repaint_active_host() {
