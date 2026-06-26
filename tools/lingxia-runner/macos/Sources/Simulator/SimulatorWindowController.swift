@@ -17,6 +17,23 @@ private final class CapsuleSheetDismissView: NSView {
     override func mouseDown(with event: NSEvent) { onMouseDown?() }
 }
 
+/// Presents a large logical device frame inside a smaller visual frame. Keeping
+/// the child view's bounds at device size preserves WebView layout and hit tests.
+@MainActor
+private final class ScaledDeviceFrameHost: NSView {
+    weak var deviceFrame: DeviceFrame?
+    var contentSize: CGSize = .zero {
+        didSet { needsLayout = true }
+    }
+
+    override func layout() {
+        super.layout()
+        guard let deviceFrame else { return }
+        deviceFrame.frame = bounds
+        deviceFrame.bounds = NSRect(origin: .zero, size: contentSize)
+    }
+}
+
 /// Window controller for Runner Simulator mode
 /// Provides Xcode-like simulator interface with toolbar and device frame
 @MainActor
@@ -41,6 +58,8 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
 
         // Simulator layout - borderless window
         public static let toolbarToDeviceGap: CGFloat = 12  // Gap between toolbar and device
+        public static let screenFitMargin: CGFloat = 24
+        public static let minimumPreviewScale: CGFloat = 0.35
     }
 
     // MARK: - Device Configuration
@@ -50,9 +69,10 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
     // MARK: - UI Components - Simulator Shell
 
     private var toolbar: SimulatorToolbar?
+    private var deviceFrameHost: ScaledDeviceFrameHost?
     private var deviceFrame: DeviceFrame?
-    private var deviceFrameWidthConstraint: NSLayoutConstraint?
-    private var deviceFrameHeightConstraint: NSLayoutConstraint?
+    private var deviceFrameHostWidthConstraint: NSLayoutConstraint?
+    private var deviceFrameHostHeightConstraint: NSLayoutConstraint?
     private var phoneContentView: NSView?  // The view that contains the phone screen content
 
     // MARK: - DevTools
@@ -151,16 +171,41 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
     }
     
     /// Calculate total window size including toolbar, device frame, and optional DevTools panel
-    private static func calculateWindowSize(for device: MobileDeviceSize, devToolsWidth: CGFloat = 0) -> CGSize {
+    private static func calculateWindowSize(
+        for device: MobileDeviceSize,
+        devToolsWidth: CGFloat = 0,
+        screen: NSScreen? = nil
+    ) -> CGSize {
         let frameSize = DeviceFrame.frameSize(for: device)
+        let scale = previewScale(for: device, devToolsWidth: devToolsWidth, screen: screen)
 
-        let width = frameSize.width + devToolsWidth
+        let width = frameSize.width * scale + devToolsWidth
 
         let height = SimulatorToolbar.Layout.height
             + Layout.toolbarToDeviceGap
-            + frameSize.height
+            + frameSize.height * scale
 
         return CGSize(width: width, height: height)
+    }
+
+    private static func previewScale(
+        for device: MobileDeviceSize,
+        devToolsWidth: CGFloat = 0,
+        screen: NSScreen? = nil
+    ) -> CGFloat {
+        let frameSize = DeviceFrame.frameSize(for: device)
+        let visibleFrame = (screen ?? NSScreen.main)?.visibleFrame
+        guard let visibleFrame else { return 1 }
+
+        let availableWidth = max(1, visibleFrame.width - Layout.screenFitMargin * 2)
+        let availableHeight = max(1, visibleFrame.height - Layout.screenFitMargin * 2)
+        let availableDeviceWidth = max(1, availableWidth - devToolsWidth)
+        let availableDeviceHeight = max(
+            1,
+            availableHeight - SimulatorToolbar.Layout.height - Layout.toolbarToDeviceGap
+        )
+        let scale = min(1, availableDeviceWidth / frameSize.width, availableDeviceHeight / frameSize.height)
+        return max(Layout.minimumPreviewScale, scale)
     }
     
     // MARK: - Setup
@@ -221,33 +266,66 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
     // MARK: - Device Frame Setup
 
     private func setupDeviceFrame(in contentView: NSView) {
+        let host = ScaledDeviceFrameHost()
+        host.wantsLayer = true
+        host.layer?.masksToBounds = false
+        host.translatesAutoresizingMaskIntoConstraints = false
+
         let frame = DeviceFrame()
-        frame.translatesAutoresizingMaskIntoConstraints = false
+        frame.translatesAutoresizingMaskIntoConstraints = true
+        frame.autoresizingMask = [.width, .height]
         frame.setDeviceSize(Self.currentDeviceSize)
 
-        contentView.addSubview(frame)
+        contentView.addSubview(host)
+        host.addSubview(frame)
 
         let frameSize = DeviceFrame.frameSize(for: Self.currentDeviceSize)
-        let widthConstraint = frame.widthAnchor.constraint(equalToConstant: frameSize.width)
-        let heightConstraint = frame.heightAnchor.constraint(equalToConstant: frameSize.height)
+        let scale = Self.previewScale(for: Self.currentDeviceSize, screen: window?.screen)
+        host.deviceFrame = frame
+        host.contentSize = frameSize
+
+        let hostWidthConstraint = host.widthAnchor.constraint(equalToConstant: frameSize.width * scale)
+        let hostHeightConstraint = host.heightAnchor.constraint(equalToConstant: frameSize.height * scale)
 
         // Left-aligned so devtools panel can appear on the right without shifting the phone
         NSLayoutConstraint.activate([
-            frame.topAnchor.constraint(equalTo: toolbar!.bottomAnchor, constant: Layout.toolbarToDeviceGap),
-            frame.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-            widthConstraint,
-            heightConstraint,
+            host.topAnchor.constraint(equalTo: toolbar!.bottomAnchor, constant: Layout.toolbarToDeviceGap),
+            host.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            hostWidthConstraint,
+            hostHeightConstraint,
         ])
 
+        self.deviceFrameHost = host
         self.deviceFrame = frame
-        self.deviceFrameWidthConstraint = widthConstraint
-        self.deviceFrameHeightConstraint = heightConstraint
+        self.deviceFrameHostWidthConstraint = hostWidthConstraint
+        self.deviceFrameHostHeightConstraint = hostHeightConstraint
+    }
+
+    private func currentPreviewScale(for device: MobileDeviceSize) -> CGFloat {
+        Self.previewScale(
+            for: device,
+            devToolsWidth: isDevToolsVisible ? Self.devToolsPanelWidth : 0,
+            screen: window?.screen
+        )
+    }
+
+    private func updateDevicePreviewScale(for device: MobileDeviceSize) {
+        guard let host = deviceFrameHost else { return }
+
+        let frameSize = DeviceFrame.frameSize(for: device)
+        let scale = currentPreviewScale(for: device)
+
+        host.contentSize = frameSize
+        deviceFrameHostWidthConstraint?.constant = frameSize.width * scale
+        deviceFrameHostHeightConstraint?.constant = frameSize.height * scale
+        host.needsLayout = true
+        host.superview?.layoutSubtreeIfNeeded()
     }
 
     // MARK: - DevTools Panel Setup
 
     private func setupDevToolsPanel(in contentView: NSView) {
-        guard let toolbar = toolbar, let deviceFrame = deviceFrame else { return }
+        guard let toolbar = toolbar, let deviceFrameHost = deviceFrameHost else { return }
 
         let panel = DevToolsPanel()
         panel.translatesAutoresizingMaskIntoConstraints = false
@@ -256,7 +334,7 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
 
         NSLayoutConstraint.activate([
             panel.topAnchor.constraint(equalTo: toolbar.bottomAnchor),
-            panel.leadingAnchor.constraint(equalTo: deviceFrame.trailingAnchor),
+            panel.leadingAnchor.constraint(equalTo: deviceFrameHost.trailingAnchor),
             panel.widthAnchor.constraint(equalToConstant: Self.devToolsPanelWidth),
             panel.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
         ])
@@ -270,12 +348,14 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
     private func toggleDevTools(show: Bool) {
         isDevToolsVisible = show
         devToolsPanel?.isHidden = !show
+        updateDevicePreviewScale(for: Self.currentDeviceSize)
 
+        guard let window = self.window else { return }
         let newSize = Self.calculateWindowSize(
             for: Self.currentDeviceSize,
-            devToolsWidth: show ? Self.devToolsPanelWidth : 0
+            devToolsWidth: show ? Self.devToolsPanelWidth : 0,
+            screen: window.screen
         )
-        guard let window = self.window else { return }
 
         let cur = window.frame
         let newOrigin = NSPoint(x: cur.midX - newSize.width / 2, y: cur.midY - newSize.height / 2)
@@ -640,14 +720,18 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
 
         DevToolsLogger.shared.log("Device → \(newDevice.displayName) (\(newDevice.sizeDescription))", level: .debug)
 
+        // Update device frame size before resizing so host constraints match the new window size.
+        updateDeviceFrameSize(for: newDevice)
+
         // Resize window (preserve devtools panel if open)
+        guard let window = self.window else { return }
+
         let newWindowSize = Self.calculateWindowSize(
             for: newDevice,
-            devToolsWidth: isDevToolsVisible ? Self.devToolsPanelWidth : 0
+            devToolsWidth: isDevToolsVisible ? Self.devToolsPanelWidth : 0,
+            screen: window.screen
         )
-        
-        guard let window = self.window else { return }
-        
+
         // Calculate new frame centered on current position
         let currentFrame = window.frame
         let newOrigin = NSPoint(
@@ -662,10 +746,7 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
             context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
             window.animator().setFrame(newFrame, display: true)
         }
-        
-        // Update device frame size
-        updateDeviceFrameSize(for: newDevice)
-        
+
         // Update notch view
         updateNotchView()
         
@@ -678,10 +759,7 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
 
         deviceFrame.setDeviceSize(device)
 
-        let frameSize = DeviceFrame.frameSize(for: device)
-        deviceFrameWidthConstraint?.constant = frameSize.width
-        deviceFrameHeightConstraint?.constant = frameSize.height
-        deviceFrame.needsLayout = true
+        updateDevicePreviewScale(for: device)
 
         // Refresh devtools info panel
         devToolsPanel?.updateInfo(device: device, path: currentPath)
@@ -964,6 +1042,24 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
     }
     
     // MARK: - NSWindowDelegate
+
+    public func windowDidChangeScreen(_ notification: Notification) {
+        let device = Self.currentDeviceSize
+        updateDevicePreviewScale(for: device)
+
+        guard let window = self.window else { return }
+        let newSize = Self.calculateWindowSize(
+            for: device,
+            devToolsWidth: isDevToolsVisible ? Self.devToolsPanelWidth : 0,
+            screen: window.screen
+        )
+        let currentFrame = window.frame
+        let newOrigin = NSPoint(
+            x: currentFrame.midX - newSize.width / 2,
+            y: currentFrame.midY - newSize.height / 2
+        )
+        window.setFrame(NSRect(origin: newOrigin, size: newSize), display: true)
+    }
     
     public func windowWillClose(_ notification: Notification) {
         phoneBrowserSurface.dismiss(closeTab: true)
