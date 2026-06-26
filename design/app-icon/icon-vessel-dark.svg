@@ -1,7 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
-  <!-- Dark variant: same glyph, paper-white vessel on warm ink. -->
-  <rect width="1024" height="1024" fill="#15181D"/>
-  <path d="M 288 430 L 288 588 Q 288 692 392 692 L 632 692 Q 736 692 736 588 L 736 430"
-        fill="none" stroke="#F4F5F2" stroke-width="96" stroke-linecap="round"/>
-  <circle cx="512" cy="410" r="102" fill="#1FDDA4"/>
-</svg>
