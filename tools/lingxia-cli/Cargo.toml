@@ -79,6 +79,7 @@ which = "8.0"
 urlencoding = "2.1"
 
 image = { version = "0.25.10", default-features = false, features = ["png", "webp"] }
+ico = "0.4"
 
 # Resource-generation deps (i18n/icons), absorbed from the former
 # standalone `lingxia-gen` crate; see src/gen/.
