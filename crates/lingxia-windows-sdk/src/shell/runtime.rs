@@ -317,6 +317,17 @@ pub(crate) fn set_tabbar_position(appid: &str, position: WindowsShellTabBarPosit
     sync_shell_layout(appid);
 }
 
+pub(crate) fn set_tabbar_position_on_window_thread(
+    appid: &str,
+    position: WindowsShellTabBarPosition,
+) {
+    let overrides = TABBAR_POSITION_OVERRIDES.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Ok(mut overrides) = overrides.lock() {
+        overrides.insert(appid.to_string(), position);
+    }
+    sync_shell_layout(appid);
+}
+
 fn tabbar_position(appid: &str) -> WindowsShellTabBarPosition {
     TABBAR_POSITION_OVERRIDES
         .get()

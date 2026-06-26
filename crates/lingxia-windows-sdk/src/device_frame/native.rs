@@ -16,6 +16,8 @@ use std::collections::HashMap;
 use std::ffi::c_void;
 use std::sync::{Arc, Mutex, OnceLock};
 
+#[cfg(feature = "shell-chrome")]
+use crate::shell::WindowsShellTabBarPosition;
 use crate::window_host::{
     find_host_window_for_webview, post_to_window_thread,
     request_host_window_layout_forced as request_sdk_host_window_layout,
@@ -435,10 +437,47 @@ pub(super) fn set_webview_device_frame(
     }
 }
 
+#[cfg(feature = "shell-chrome")]
+pub(super) fn set_webview_device_frame_and_tabbar_position(
+    webtag: &WebTag,
+    appid: String,
+    frame: WindowsDeviceFrame,
+    tabbar_position: WindowsShellTabBarPosition,
+) -> Result<(), String> {
+    let host_window = find_host_window_for_webview(webtag).map_err(|err| err.to_string())?;
+    let handle = host_window.window;
+    let posted = post_to_window_thread(
+        handle,
+        Box::new(move || {
+            let content = hwnd_from_handle(handle);
+            apply_device_frame_deferred_layout(content, frame);
+            crate::shell::set_windows_shell_tabbar_position_on_window_thread(
+                &appid,
+                tabbar_position,
+            );
+            request_host_window_layout(content);
+        }),
+    );
+    if posted {
+        Ok(())
+    } else {
+        Err("device frame target window is not accepting messages".to_string())
+    }
+}
+
 /// Applies `spec` to `content` (on its UI thread): restyles the window
 /// borderless at screen size, rounds its corners, and creates/updates the
 /// layered shell window behind it.
-fn apply_device_frame(content: HWND, mut spec: WindowsDeviceFrame) {
+fn apply_device_frame(content: HWND, spec: WindowsDeviceFrame) {
+    apply_device_frame_inner(content, spec, true);
+}
+
+#[cfg(feature = "shell-chrome")]
+fn apply_device_frame_deferred_layout(content: HWND, spec: WindowsDeviceFrame) {
+    apply_device_frame_inner(content, spec, false);
+}
+
+fn apply_device_frame_inner(content: HWND, mut spec: WindowsDeviceFrame, sync_host_layout: bool) {
     if spec.screen_width <= 0 || spec.screen_height <= 0 {
         log::warn!("ignoring device frame with empty screen: {spec:?}");
         return;
@@ -462,7 +501,9 @@ fn apply_device_frame(content: HWND, mut spec: WindowsDeviceFrame) {
         new_sb.background = old_sb.background;
     }
     if frame_state(handle, |state| state.spec.clone()) == Some(spec.clone()) {
-        sync_device_frame_for_content(content);
+        if sync_host_layout {
+            sync_device_frame_for_content(content);
+        }
         return;
     }
     // A different device: rebuild the shell window, but keep the originally
@@ -598,7 +639,9 @@ fn apply_device_frame(content: HWND, mut spec: WindowsDeviceFrame) {
     // layered frame can appear first, leaving a transparent phone shell until
     // the user clicks the taskbar icon and Windows activates the content window.
     foreground_content_window(content);
-    request_host_window_layout(content);
+    if sync_host_layout {
+        request_host_window_layout(content);
+    }
     sync_device_frame_for_content(content);
     // The host layout pass resizes the WebView2 surface asynchronously, and a
     // freshly-activated screen can re-composite it above the capsule; re-pin it

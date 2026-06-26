@@ -49,6 +49,12 @@ pub use design_icons::{
     WindowsDesignIcon, draw_windows_design_icon, draw_windows_design_icon_with_color,
     set_windows_design_icon_dir,
 };
+#[cfg(all(
+    target_os = "windows",
+    feature = "device-frame",
+    feature = "shell-chrome"
+))]
+pub use device_frame::set_app_window_device_frame_and_tabbar_position;
 #[cfg(all(target_os = "windows", feature = "device-frame"))]
 pub use device_frame::{
     WindowsDeviceFrame, WindowsDeviceFrameBadge, WindowsDeviceFrameCutout,
