@@ -26,13 +26,15 @@ use lingxia_windows_host::{
     webview_chrome_event_handler, webview_close_handler, webview_visibility_handler,
     windows_chrome_renderer,
 };
-use windows::Win32::Foundation::{COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
-#[cfg(feature = "shell-chrome")]
-use windows::Win32::Graphics::Gdi::FillRect;
+use windows::Win32::Foundation::{
+    COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, SIZE, WPARAM,
+};
 use windows::Win32::Graphics::Gdi::{
-    BeginPaint, CreatePen, CreateSolidBrush, DeleteObject, Ellipse, EndPaint, ExcludeClipRect,
-    GetMonitorInfoW, HDC, HGDIOBJ, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromWindow,
-    PAINTSTRUCT, PS_SOLID, RestoreDC, SaveDC, ScreenToClient, SelectObject,
+    AC_SRC_ALPHA, AC_SRC_OVER, BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BLENDFUNCTION, BeginPaint,
+    CreateCompatibleDC, CreateDIBSection, CreatePen, CreateSolidBrush, DIB_RGB_COLORS, DeleteDC,
+    DeleteObject, Ellipse, EndPaint, ExcludeClipRect, GetDC, GetMonitorInfoW, HDC, HGDIOBJ,
+    MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromWindow, PAINTSTRUCT, PS_SOLID, ReleaseDC,
+    RestoreDC, SaveDC, ScreenToClient, SelectObject,
 };
 #[cfg(feature = "shell-chrome")]
 use windows::Win32::Graphics::Gdi::{CreateRoundRectRgn, SetWindowRgn};
@@ -84,8 +86,6 @@ const PULL_REFRESH_SLOT_HEIGHT: i32 = 42;
 const PULL_REFRESH_INDICATOR_WIDTH: i32 = 64;
 const PULL_REFRESH_INDICATOR_HEIGHT: i32 = 32;
 const OVERLAY_MARGIN: i32 = 24;
-#[cfg(feature = "shell-chrome")]
-const TRANSPARENT_TABBAR_COLOR_KEY: u32 = 0x00FF00FF;
 #[cfg(feature = "shell-chrome")]
 const SIDEBAR_TABBAR_POPUP_TIMER_ID: usize = 0x5A18;
 #[cfg(feature = "shell-chrome")]
@@ -932,7 +932,7 @@ fn sync_window_layout(hwnd: HWND) {
 #[cfg(feature = "shell-chrome")]
 fn sync_transparent_tabbar_overlay(hwnd: HWND, webtag_key: Option<&str>) {
     let handle = hwnd_handle(hwnd);
-    let rect = webtag_key.and_then(|webtag_key| {
+    let overlay_layout = webtag_key.and_then(|webtag_key| {
         if !is_window_visible(hwnd) || is_minimized(hwnd) {
             return None;
         }
@@ -943,9 +943,11 @@ fn sync_transparent_tabbar_overlay(hwnd: HWND, webtag_key: Option<&str>) {
             }
         }
         let layout = current_window_layout(webtag_key);
-        crate::shell::transparent_tabbar_overlay_rect(client, &layout)
+        crate::shell::transparent_tabbar_overlay_rect(client, &layout).map(|rect| (layout, rect))
     });
-    let Some(rect) = rect.filter(|rect| rect.right > rect.left && rect.bottom > rect.top) else {
+    let Some((layout, rect)) =
+        overlay_layout.filter(|(_, rect)| rect.right > rect.left && rect.bottom > rect.top)
+    else {
         destroy_transparent_tabbar_overlay(hwnd);
         return;
     };
@@ -969,12 +971,8 @@ fn sync_transparent_tabbar_overlay(hwnd: HWND, webtag_key: Option<&str>) {
             rect.bottom - rect.top,
             WindowsAndMessaging::SWP_NOACTIVATE | WindowsAndMessaging::SWP_SHOWWINDOW,
         );
-        let _ = windows::Win32::Graphics::Gdi::InvalidateRect(
-            Some(hwnd_from_handle(overlay)),
-            None,
-            true,
-        );
     }
+    upload_transparent_tabbar_overlay(hwnd_from_handle(overlay), &layout);
 
     if let Ok(mut overlays) = TRANSPARENT_TABBAR_OVERLAYS
         .get_or_init(|| Mutex::new(HashMap::new()))
@@ -1098,23 +1096,120 @@ fn paint_transparent_tabbar_overlay(hwnd: HWND) {
     };
     let layout =
         active_webtag_key_for_window(host).map(|webtag_key| current_window_layout(&webtag_key));
+    unsafe {
+        let mut ps = PAINTSTRUCT::default();
+        let _ = BeginPaint(hwnd, &mut ps);
+        let _ = EndPaint(hwnd, &ps);
+    }
+    if let Some(layout) = layout.as_ref() {
+        upload_transparent_tabbar_overlay(hwnd, layout);
+    }
+}
+
+#[cfg(feature = "shell-chrome")]
+fn upload_transparent_tabbar_overlay(hwnd: HWND, layout: &WindowsWindowLayout) {
     let mut client = RECT::default();
     unsafe {
-        let _ = WindowsAndMessaging::GetClientRect(hwnd, &mut client);
-        let mut ps = PAINTSTRUCT::default();
-        let hdc = BeginPaint(hwnd, &mut ps);
-        let key_brush = CreateSolidBrush(COLORREF(TRANSPARENT_TABBAR_COLOR_KEY));
-        let _ = FillRect(hdc, &client, key_brush);
-        let _ = DeleteObject(HGDIOBJ(key_brush.0));
-        if let Some(layout) = layout.as_ref() {
-            crate::shell::paint_transparent_tabbar_overlay(
-                hdc,
-                layout,
-                client.right - client.left,
-                client.bottom - client.top,
-            );
+        if WindowsAndMessaging::GetClientRect(hwnd, &mut client).is_err() {
+            return;
         }
-        let _ = EndPaint(hwnd, &ps);
+    }
+    let width = (client.right - client.left).max(1);
+    let height = (client.bottom - client.top).max(1);
+    unsafe {
+        let screen = GetDC(None);
+        if screen.is_invalid() {
+            return;
+        }
+        let dc = CreateCompatibleDC(Some(screen));
+        if dc.is_invalid() {
+            let _ = ReleaseDC(None, screen);
+            return;
+        }
+        let info = BITMAPINFO {
+            bmiHeader: BITMAPINFOHEADER {
+                biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+                biWidth: width,
+                biHeight: -height,
+                biPlanes: 1,
+                biBitCount: 32,
+                biCompression: BI_RGB.0,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let mut bits: *mut c_void = std::ptr::null_mut();
+        let Ok(bitmap) = CreateDIBSection(Some(screen), &info, DIB_RGB_COLORS, &mut bits, None, 0)
+        else {
+            let _ = DeleteDC(dc);
+            let _ = ReleaseDC(None, screen);
+            return;
+        };
+        if bits.is_null() {
+            let _ = DeleteObject(HGDIOBJ(bitmap.0));
+            let _ = DeleteDC(dc);
+            let _ = ReleaseDC(None, screen);
+            return;
+        }
+        let old_bitmap = SelectObject(dc, HGDIOBJ(bitmap.0));
+        let pixel_count = (width * height) as usize;
+        std::ptr::write_bytes(
+            bits.cast::<u8>(),
+            0,
+            pixel_count * std::mem::size_of::<u32>(),
+        );
+        crate::shell::paint_transparent_tabbar_overlay(dc, layout, width, height);
+        let pixels = std::slice::from_raw_parts_mut(bits.cast::<u32>(), pixel_count);
+        for pixel in pixels {
+            if (*pixel >> 24) == 0 && (*pixel & 0x00ff_ffff) != 0 {
+                let r = (*pixel >> 16) & 0xff;
+                let g = (*pixel >> 8) & 0xff;
+                let b = *pixel & 0xff;
+                let max = r.max(g).max(b);
+                let min = r.min(g).min(b);
+                if max <= 180 && max.saturating_sub(min) <= 8 {
+                    let alpha = ((max * 255 + 76) / 153).clamp(1, 255);
+                    let gray = 153 * alpha / 255;
+                    *pixel = (alpha << 24) | (gray << 16) | (gray << 8) | gray;
+                } else {
+                    *pixel |= max << 24;
+                }
+            } else if *pixel == 0 {
+                // Per-pixel-alpha layered windows let fully transparent pixels
+                // fall through to the WebView. Keep the visual transparent but
+                // give the whole tabbar strip a 1/255 alpha hit surface so
+                // clicks anywhere in a tab cell reach chrome hit-testing.
+                *pixel = 0x0100_0000;
+            }
+        }
+        let size = SIZE {
+            cx: width,
+            cy: height,
+        };
+        let origin = POINT { x: 0, y: 0 };
+        let blend = BLENDFUNCTION {
+            BlendOp: AC_SRC_OVER as u8,
+            BlendFlags: 0,
+            SourceConstantAlpha: 255,
+            AlphaFormat: AC_SRC_ALPHA as u8,
+        };
+        let _ = WindowsAndMessaging::UpdateLayeredWindow(
+            hwnd,
+            Some(screen),
+            None,
+            Some(&size),
+            Some(dc),
+            Some(&origin),
+            COLORREF(0),
+            Some(&blend),
+            WindowsAndMessaging::ULW_ALPHA,
+        );
+        if !old_bitmap.is_invalid() {
+            let _ = SelectObject(dc, old_bitmap);
+        }
+        let _ = DeleteObject(HGDIOBJ(bitmap.0));
+        let _ = DeleteDC(dc);
+        let _ = ReleaseDC(None, screen);
     }
 }
 
@@ -1164,14 +1259,6 @@ fn ensure_transparent_tabbar_overlay(hwnd: HWND, rect: RECT) -> isize {
     let Ok(overlay) = overlay else {
         return 0;
     };
-    unsafe {
-        let _ = WindowsAndMessaging::SetLayeredWindowAttributes(
-            overlay,
-            COLORREF(TRANSPARENT_TABBAR_COLOR_KEY),
-            0,
-            WindowsAndMessaging::LWA_COLORKEY,
-        );
-    }
     hwnd_handle(overlay)
 }
 

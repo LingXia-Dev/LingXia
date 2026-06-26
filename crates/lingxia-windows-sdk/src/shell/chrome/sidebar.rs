@@ -76,7 +76,11 @@ pub(super) fn draw_tab_bar(hdc: HDC, rect: RECT, tabbar: &WindowsShellTabBarLayo
             right: item_rect.right,
             bottom: item_bottom - 2,
         };
-        draw_text(hdc, &item.text, label_rect, color, DT_CENTER);
+        if tabbar.background_transparent {
+            draw_text_antialiased(hdc, &item.text, label_rect, color, DT_CENTER);
+        } else {
+            draw_text(hdc, &item.text, label_rect, color, DT_CENTER);
+        }
 
         let badge_anchor = if drew_icon { icon_rect } else { item_rect };
         if let Some(badge) = item.badge.as_ref().filter(|badge| !badge.is_empty()) {
