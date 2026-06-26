@@ -221,7 +221,7 @@ pub(super) fn draw_top_bar_controls(
     if !layout.suppress_window_controls
         && let Some(app_icon) = controls.app_icon
     {
-        draw_app_menu_icon(hdc, app_icon, &layout.app_icon_path);
+        draw_app_menu_icon(hdc, app_icon);
     }
     if let Some(toggle) = controls.sidebar_toggle {
         let icon = layout
@@ -372,17 +372,16 @@ fn leading_icon_slot(button: RECT) -> RECT {
     })
 }
 
-/// Draws the app-menu button: the app's own (clean) icon when it declares
-/// one - the brand mark at the window's leading edge, like Arc - else a
-/// subtle monochrome glyph matching the rest of the caption row. Clicking the
-/// button opens the About/Exit menu.
-fn draw_app_menu_icon(hdc: HDC, rect: RECT, icon_path: &str) {
-    if !icon_path.trim().is_empty() {
-        let icon_rect = centered_square(rect, 18);
-        let size = rect_width(&icon_rect).max(1) as u32;
-        if draw_icon_from_path(hdc, icon_path, icon_rect, size) {
-            return;
-        }
+/// Draws the app-menu button at the window's leading edge, like Arc: the
+/// LingXia brand mark (the bare vessel glyph on transparency,
+/// `<asset_dir>/icons/lingxia.png`) rather than the app's launcher icon, whose
+/// full plate reads as a white box in the caption row. Falls back to a subtle
+/// monochrome glyph matching the rest of the caption row before the asset dir
+/// is known. Clicking the button opens the About/Exit menu.
+fn draw_app_menu_icon(hdc: HDC, rect: RECT) {
+    let icon_rect = centered_square(rect, 18);
+    if draw_default_app_icon(hdc, icon_rect) {
+        return;
     }
     draw_frame_button_glyph(hdc, GLYPH_APP_MENU, rect, shell_palette().frame_button_icon);
 }

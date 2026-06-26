@@ -698,11 +698,6 @@ fn build_window_layout(app: &LxApp, path: &str) -> WindowsShellWindowLayout {
         tab_bar: build_tab_bar_layout(app, !panel_activators.is_empty()),
         panel_activators,
         top_inset,
-        // The product/app launcher icon (NOT the home lxapp's icon) for the
-        // leading-edge app-menu button.
-        app_icon_path: crate::app_icon::current_app_icon_path()
-            .map(|path| path.to_string_lossy().into_owned())
-            .unwrap_or_default(),
         suppress_window_controls,
     }
 }

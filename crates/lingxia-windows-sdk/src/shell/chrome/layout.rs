@@ -98,10 +98,6 @@ pub struct WindowsShellWindowLayout {
     pub address_bar: Option<WindowsShellAddressBarLayout>,
     pub tab_bar: Option<WindowsShellTabBarLayout>,
     pub panel_activators: Vec<WindowsShellPanelActivatorLayout>,
-    /// Resolved absolute path to the owning app's declared (clean) icon, drawn
-    /// as the leading-edge app-menu button. Empty when the app declares none
-    /// (the button then falls back to a monochrome glyph).
-    pub app_icon_path: String,
     /// Hide the window caption buttons and app-menu icon. Set when the window
     /// is wrapped in a simulator device frame (the runner), whose own toolbar
     /// owns the window controls — the framed screen stays chrome-free.
