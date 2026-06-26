@@ -55,8 +55,10 @@ pub(crate) fn set_app_icon_from_path(path: &Path) -> Result<(), String> {
 
 /// The source PNG path of the applied product/app icon (the launcher icon
 /// resolved at startup), if one was set. This is the application's icon, not
-/// any single lxapp's icon.
-#[cfg(feature = "shell-chrome")]
+/// any single lxapp's icon. Only the product shell's About box and tray icon
+/// read it (the app-menu button draws the brand glyph), so it is gated to
+/// `browser-shell`.
+#[cfg(feature = "browser-shell")]
 pub(crate) fn current_app_icon_path() -> Option<std::path::PathBuf> {
     APP_ICON_PATH
         .get()
