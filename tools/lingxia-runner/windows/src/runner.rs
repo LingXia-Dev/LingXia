@@ -84,6 +84,13 @@ fn apply_device(home_app_id: &str, index: usize, landscape: bool) -> Result<(), 
         home_app_id,
         Some(frame_spec(index, landscape)),
     )?;
+    // Re-sync after the frame is attached as well. The first layout can run
+    // before the window is known as device-framed, leaving the WebView content
+    // at the old sidebar rect until another activation/layout event occurs.
+    lingxia_windows_sdk::set_windows_shell_tabbar_position(
+        home_app_id,
+        tabbar_position_for_device(index),
+    );
     CURRENT_DEVICE.store(index, Ordering::Release);
     LANDSCAPE.store(landscape, Ordering::Release);
     Ok(())

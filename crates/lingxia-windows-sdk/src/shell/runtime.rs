@@ -840,14 +840,14 @@ fn build_tab_bar_layout(
     // single lxapp with no browser.
     let owner_window = owner_window_handle(&app.appid);
     let device_framed = owner_window.map(window_has_device_frame).unwrap_or(false);
+    let frame_status_bar_height = owner_window
+        .map(device_frame_status_bar_height)
+        .unwrap_or(0);
     // A home-indicator safe area is reserved below the bar only on devices that
     // have one (a tall status bar ⇒ Face-ID notch/island). Home-button devices
     // (short status bar, e.g. SE) and un-framed windows keep the legacy height.
     let has_home_indicator = if device_framed {
-        owner_window
-            .map(device_frame_status_bar_height)
-            .unwrap_or(0)
-            > 30
+        frame_status_bar_height > 30
     } else {
         true
     };
@@ -869,7 +869,11 @@ fn build_tab_bar_layout(
             .to_string_lossy()
             .into_owned(),
     );
-    let position = tabbar_position(&app.appid);
+    let position = if device_framed && frame_status_bar_height > 0 {
+        WindowsShellTabBarPosition::Bottom
+    } else {
+        tabbar_position(&app.appid)
+    };
     // A bottom tab bar shows only on tab pages; a navigated-to sub-page hides it
     // so its content gets the full height (standard mini-app behavior). A side
     // bar is persistent navigation and stays. Auxiliary items (open lxapps /
