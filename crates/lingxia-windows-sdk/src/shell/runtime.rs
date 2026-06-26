@@ -869,10 +869,14 @@ fn build_tab_bar_layout(
             .to_string_lossy()
             .into_owned(),
     );
-    let position = if device_framed && frame_status_bar_height > 0 {
+    let requested_position = tabbar_position(&app.appid);
+    let position = if requested_position == WindowsShellTabBarPosition::Bottom
+        && device_framed
+        && frame_status_bar_height > 0
+    {
         WindowsShellTabBarPosition::Bottom
     } else {
-        tabbar_position(&app.appid)
+        requested_position
     };
     // A bottom tab bar shows only on tab pages; a navigated-to sub-page hides it
     // so its content gets the full height (standard mini-app behavior). A side
@@ -905,6 +909,7 @@ fn build_tab_bar_layout(
         .as_ref()
         .map(|tabbar| tabbar.backgroundColor.as_str())
         .unwrap_or("#ffffff");
+    let tabbar_background_transparent = is_transparent_css_color(tabbar_background);
     Some(WindowsShellTabBarLayout {
         visible: true,
         position,
@@ -929,16 +934,10 @@ fn build_tab_bar_layout(
                 .unwrap_or("#1677ff"),
             0x1677ff,
         ),
-        // A "transparent" bottom bar can't truly composite over the opaque
-        // WebView2 surface on Windows, and a color-key overlay fringes its
-        // anti-aliased icons/labels (pink halos). Blend the strip into the
-        // ambient shell background instead — a clean, opaque bar.
-        background_color: if is_transparent_css_color(tabbar_background) {
-            super::style::shell_palette().window_background
-        } else {
-            parse_css_color(tabbar_background, 0xffffff)
-        },
-        background_transparent: false,
+        // Transparent bottom bars keep the WebView laid out underneath; a
+        // small overlay window draws only the tab items above that content.
+        background_color: parse_css_color(tabbar_background, 0xffffff),
+        background_transparent: tabbar_background_transparent,
         border_color: parse_css_color(
             tabbar
                 .as_ref()
