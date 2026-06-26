@@ -356,7 +356,7 @@ pub(super) fn analyze_script_bindings(
 ) -> Result<ViewBindingAnalyzer> {
     let allocator = Allocator::default();
     let parse_result = Parser::new(&allocator, source, source_type).parse();
-    if !parse_result.errors.is_empty() {
+    if !parse_result.diagnostics.is_empty() {
         bail!("Failed to parse view source");
     }
 
@@ -494,7 +494,7 @@ pub(crate) fn extract_page_actions(logic_path: Option<&Path>) -> Result<Vec<Page
         .map_err(|_| anyhow!("Unsupported page logic file {}", logic_path.display()))?;
     let allocator = Allocator::default();
     let parse_result = Parser::new(&allocator, &source, source_type).parse();
-    if !parse_result.errors.is_empty() {
+    if !parse_result.diagnostics.is_empty() {
         bail!("Failed to parse page logic {}", logic_path.display());
     }
     let function_bindings = collect_top_level_function_bindings(&parse_result.program);

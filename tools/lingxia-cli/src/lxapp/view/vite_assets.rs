@@ -235,12 +235,12 @@ fn load_lxapp_build_config(project_root: &Path) -> Result<LxAppBuildConfig> {
     let source_type = SourceType::from_path(&config_path)
         .map_err(|_| anyhow!("Unsupported lxapp build config {}", config_path.display()))?;
     let parse_result = Parser::new(&allocator, &source, source_type).parse();
-    if !parse_result.errors.is_empty() {
+    if !parse_result.diagnostics.is_empty() {
         bail!(
             "Failed to parse {}: {}",
             config_path.display(),
             parse_result
-                .errors
+                .diagnostics
                 .iter()
                 .map(|error| format!("{error:?}"))
                 .collect::<Vec<_>>()
