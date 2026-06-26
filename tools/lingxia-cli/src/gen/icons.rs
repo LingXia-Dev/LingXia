@@ -152,6 +152,112 @@ pub fn svg_to_png_bytes(svg_content: &str, target_size: u32) -> Result<Vec<u8>> 
         .context("Failed to encode rendered SVG as PNG")
 }
 
+/// Standard sizes packed into a Windows `.exe` icon: 16/32 for the title bar and
+/// small taskbar cell, 48 for the large taskbar/alt-tab cell, 256 for the
+/// Explorer "large/extra-large icons" view and high-DPI downscaling.
+pub const WINDOWS_ICO_SIZES: &[u32] = &[16, 24, 32, 48, 64, 128, 256];
+
+/// Pack an SVG into a multi-size Windows ICO for embedding as an `.exe` resource
+/// (via the resource compiler in `lingxia-windows-build`). The `ico` crate stores
+/// the 256px entry as PNG and the rest as BMP, which every resource compiler
+/// (rc.exe / llvm-rc / windres) accepts.
+pub fn svg_to_ico_bytes(svg_content: &str, sizes: &[u32]) -> Result<Vec<u8>> {
+    let mut dir = ico::IconDir::new(ico::ResourceType::Icon);
+    for &size in sizes {
+        let png = svg_to_png_bytes(svg_content, size)?;
+        let image = ico::IconImage::read_png(png.as_slice())
+            .with_context(|| format!("Failed to decode {size}px PNG for ICO entry"))?;
+        let entry = ico::IconDirEntry::encode(&image)
+            .with_context(|| format!("Failed to encode {size}px ICO entry"))?;
+        dir.add_entry(entry);
+    }
+    let mut buf = Vec::new();
+    dir.write(&mut buf).context("Failed to write ICO")?;
+    Ok(buf)
+}
+
+/// Pack a source app-icon PNG (e.g. a 1024px `AppIcon.png`) into a multi-size
+/// Windows ICO, first cropping uniform launcher padding so the small taskbar /
+/// Explorer cell is filled — matching the runtime `app_icon` look on Windows.
+pub fn png_to_ico_bytes(png: &[u8], sizes: &[u32]) -> Result<Vec<u8>> {
+    let source = image::load_from_memory_with_format(png, image::ImageFormat::Png)
+        .context("Failed to decode app icon PNG")?
+        .into_rgba8();
+    let source = tighten_icon(source);
+    let mut dir = ico::IconDir::new(ico::ResourceType::Icon);
+    for &size in sizes {
+        let resized =
+            image::imageops::resize(&source, size, size, image::imageops::FilterType::Lanczos3);
+        let entry = ico::IconImage::from_rgba_data(size, size, resized.into_raw());
+        dir.add_entry(
+            ico::IconDirEntry::encode(&entry)
+                .with_context(|| format!("Failed to encode {size}px ICO entry"))?,
+        );
+    }
+    let mut buf = Vec::new();
+    dir.write(&mut buf).context("Failed to write ICO")?;
+    Ok(buf)
+}
+
+/// Crop uniform launcher padding so the glyph fills the small icon cell. A
+/// mobile launcher icon centers its glyph in a wide safe-area margin, which
+/// reads as a tiny logo lost in padding at 16–48px. When the border is one flat
+/// color (the four corners agree), crop to the glyph plus a small square margin;
+/// full-bleed / photographic icons are returned unchanged. Mirrors the runtime
+/// `lingxia-windows-sdk::app_icon` tightening so the embedded `.exe` icon and
+/// the running window icon match.
+fn tighten_icon(img: image::RgbaImage) -> image::RgbaImage {
+    let (w, h) = img.dimensions();
+    if w == 0 || h == 0 {
+        return img;
+    }
+    let bg = img.get_pixel(0, 0).0;
+    let corners = [
+        img.get_pixel(w - 1, 0).0,
+        img.get_pixel(0, h - 1).0,
+        img.get_pixel(w - 1, h - 1).0,
+    ];
+    if corners.iter().any(|c| !color_close(*c, bg, 12)) {
+        return img;
+    }
+    let (mut min_x, mut min_y, mut max_x, mut max_y) = (w, h, 0u32, 0u32);
+    let mut found = false;
+    for (x, y, pixel) in img.enumerate_pixels() {
+        let p = pixel.0;
+        if p[3] < 16 || color_close(p, bg, 32) {
+            continue;
+        }
+        found = true;
+        min_x = min_x.min(x);
+        min_y = min_y.min(y);
+        max_x = max_x.max(x);
+        max_y = max_y.max(y);
+    }
+    if !found {
+        return img;
+    }
+    let content = (max_x - min_x + 1).max(max_y - min_y + 1);
+    let side = content + content / 4; // glyph + ~12% margin each side
+    let cx = (min_x + max_x) / 2;
+    let cy = (min_y + max_y) / 2;
+    let half = (side / 2) as i64;
+    let mut out = image::RgbaImage::from_pixel(side, side, image::Rgba(bg));
+    for oy in 0..side {
+        for ox in 0..side {
+            let sx = cx as i64 - half + ox as i64;
+            let sy = cy as i64 - half + oy as i64;
+            if sx >= 0 && sy >= 0 && (sx as u32) < w && (sy as u32) < h {
+                out.put_pixel(ox, oy, *img.get_pixel(sx as u32, sy as u32));
+            }
+        }
+    }
+    out
+}
+
+fn color_close(a: [u8; 4], b: [u8; 4], tol: u8) -> bool {
+    a[0].abs_diff(b[0]) <= tol && a[1].abs_diff(b[1]) <= tol && a[2].abs_diff(b[2]) <= tol
+}
+
 pub fn svg_size(svg_content: &str) -> Result<(f32, f32)> {
     let tree = parse_svg_tree(svg_content)?;
     let size = tree.size();
@@ -679,4 +785,19 @@ fn parse_dimension(s: Option<&str>) -> Option<f64> {
             .parse()
             .ok()
     })
+}
+
+#[cfg(test)]
+mod ico_tests {
+    use super::*;
+
+    #[test]
+    fn svg_to_ico_packs_all_sizes() {
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" fill="#15181D"/><circle cx="32" cy="32" r="16" fill="#1FDDA4"/></svg>"##;
+        let ico = svg_to_ico_bytes(svg, WINDOWS_ICO_SIZES).unwrap();
+        // ICONDIR header: reserved=0, type=1 (icon), count = number of sizes.
+        assert_eq!(&ico[0..4], &[0, 0, 1, 0]);
+        let count = u16::from_le_bytes([ico[4], ico[5]]) as usize;
+        assert_eq!(count, WINDOWS_ICO_SIZES.len());
+    }
 }

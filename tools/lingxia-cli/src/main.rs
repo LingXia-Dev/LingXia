@@ -175,6 +175,17 @@ enum Commands {
         /// (defaults to the main icon, which embeds its own background)
         #[arg(long)]
         foreground: Option<String>,
+
+        /// Standalone conversion: write the source icon to this path instead of
+        /// into a project. The extension picks the format — `.ico` (multi-size
+        /// Windows icon) or `.png`. Used to (re)generate committed design assets
+        /// (e.g. the dev-runner icon, favicon.ico, the appicon masters).
+        #[arg(long)]
+        output: Option<String>,
+
+        /// Output size in px for `--output *.png` (default 1024). Ignored for `.ico`.
+        #[arg(long)]
+        size: Option<u32>,
     },
 
     /// Build the project
@@ -517,8 +528,18 @@ fn main() -> Result<()> {
             background_color,
             legacy,
             foreground,
+            output,
+            size,
         } => {
-            commands::icon::execute(icon_path, platform, background_color, legacy, foreground)?;
+            commands::icon::execute(
+                icon_path,
+                platform,
+                background_color,
+                legacy,
+                foreground,
+                output,
+                size,
+            )?;
         }
         Commands::Build {
             build_options,

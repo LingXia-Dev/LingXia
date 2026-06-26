@@ -21,6 +21,32 @@ impl WindowsPlatform {
     }
 }
 
+/// Generate the Windows app icon as a committed `windows/AppIcon.ico` (the
+/// Windows-native exe-icon format), the same way `lingxia icon` emits per-platform
+/// resources elsewhere. `lingxia-windows-build::configure_windows_app` embeds it
+/// at build time. Source may be SVG (rendered with resvg) or a raster PNG.
+pub fn generate_icons(project_root: &Path, source_icon: &Path) -> Result<()> {
+    let windows_dir = resolve_windows_dir(project_root)?;
+    let out = windows_dir.join("AppIcon.ico");
+
+    let is_svg = source_icon
+        .extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| e.eq_ignore_ascii_case("svg"));
+    let ico = if is_svg {
+        let svg = fs::read_to_string(source_icon)
+            .with_context(|| format!("Failed to read {}", source_icon.display()))?;
+        crate::r#gen::icons::svg_to_ico_bytes(&svg, crate::r#gen::icons::WINDOWS_ICO_SIZES)?
+    } else {
+        let png = fs::read(source_icon)
+            .with_context(|| format!("Failed to read {}", source_icon.display()))?;
+        crate::r#gen::icons::png_to_ico_bytes(&png, crate::r#gen::icons::WINDOWS_ICO_SIZES)?
+    };
+    fs::write(&out, &ico).with_context(|| format!("Failed to write {}", out.display()))?;
+    println!("  Generated {} ({} bytes)", out.display(), ico.len());
+    Ok(())
+}
+
 impl Platform for WindowsPlatform {
     fn build(&self, config: &BuildConfig) -> Result<BuildArtifacts> {
         let windows_dir = resolve_windows_dir(&config.project_root)?;
