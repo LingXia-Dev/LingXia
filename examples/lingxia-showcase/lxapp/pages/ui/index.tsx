@@ -2,6 +2,22 @@ import React from 'react';
 import { useLxPage } from '@lingxia/react';
 import '../../tailwind.css';
 
+// Parse a surface size input: a bare number is absolute px ("320"); a value
+// suffixed with `%` is a percentage of the container ("80%"). The overlay size
+// hint accepts both forms (`number | `${number}%``), so pass the percentage
+// through as a string instead of coercing it to NaN. Blank / non-positive input
+// is dropped so the Host falls back to its default size.
+function parseSurfaceSize(raw: string): number | string | undefined {
+  const value = raw.trim();
+  if (!value) return undefined;
+  if (value.endsWith('%')) {
+    const pct = Number(value.slice(0, -1).trim());
+    return Number.isFinite(pct) && pct > 0 ? `${pct}%` : undefined;
+  }
+  const px = Number(value);
+  return Number.isFinite(px) && px > 0 ? px : undefined;
+}
+
 export default function UIPage() {
   // Use LingXia hook to get data and functions
   const { data, actions } = useLxPage();
@@ -229,21 +245,23 @@ export default function UIPage() {
                     </div>
                   )}
                   <div>
-                    <div className="text-xs uppercase text-gray-500 tracking-wide mb-2">Size (optional, px)</div>
-                    {/* Preferred-size hint; the Host may clamp/override it. */}
+                    <div className="text-xs uppercase text-gray-500 tracking-wide mb-2">Size (optional — px or %)</div>
+                    {/* Preferred-size hint; the Host may clamp/override it. A
+                        percentage (e.g. 80%) is relative to the container; a
+                        bare number is absolute px. */}
                     <div className="grid grid-cols-2 gap-2">
                       <input
-                        type="number"
-                        inputMode="numeric"
-                        placeholder="width"
+                        type="text"
+                        inputMode="text"
+                        placeholder="width (px or %)"
                         value={surfaceWidth}
                         onChange={(e) => setSurfaceWidth(e.target.value)}
                         className="py-2 px-3 text-sm rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-400"
                       />
                       <input
-                        type="number"
-                        inputMode="numeric"
-                        placeholder="height"
+                        type="text"
+                        inputMode="text"
+                        placeholder="height (px or %)"
                         value={surfaceHeight}
                         onChange={(e) => setSurfaceHeight(e.target.value)}
                         className="py-2 px-3 text-sm rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-400"
@@ -261,8 +279,8 @@ export default function UIPage() {
                       verb: surfaceKind,
                       edge: surfaceEdge,
                       position: surfaceFloatPosition,
-                      width: surfaceWidth ? Number(surfaceWidth) : undefined,
-                      height: surfaceHeight ? Number(surfaceHeight) : undefined,
+                      width: parseSurfaceSize(surfaceWidth),
+                      height: parseSurfaceSize(surfaceHeight),
                     })
                   }
                   className="w-full bg-gray-800 hover:bg-gray-900 disabled:bg-gray-300 disabled:cursor-not-allowed text-white py-2 px-4 rounded-lg text-sm font-medium transition-colors"

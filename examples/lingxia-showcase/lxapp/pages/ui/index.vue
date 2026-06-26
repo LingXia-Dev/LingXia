@@ -52,18 +52,30 @@
         <!-- Surface Demo -->
         <template v-if="currentType === 'surface'">
           <div class="mt-4 mb-6 px-4 text-center">
-            <h1 class="text-2xl font-light text-gray-800 mb-2">lx.surface.aside / float</h1>
+            <h1 class="text-2xl font-light text-gray-800 mb-2">lx.surface</h1>
             <div class="w-16 h-0.5 bg-gray-400 mx-auto"></div>
           </div>
           <div class="mx-1 mb-4 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
             <div class="px-4 py-4 space-y-4">
               <div class="space-y-3">
-                <div class="text-xs text-gray-500 leading-5 bg-gray-50 rounded-lg px-3 py-2">
-                  Aside docks beside the main and splits it; a compact window folds it into a switchable tab. Float presents a popup above the main without taking layout space.
-                </div>
+                <!-- Pick the surface kind first; the relevant placement control
+                     (edge / position) appears for that kind. -->
                 <div>
-                  <div class="text-xs uppercase text-gray-500 tracking-wide mb-2">Aside edge</div>
-                  <!-- Edge picker for aside: which side the surface docks to. -->
+                  <div class="text-xs uppercase text-gray-500 tracking-wide mb-2">Kind</div>
+                  <div class="grid grid-cols-3 gap-2">
+                    <button v-for="kind in surfaceKinds" :key="kind.id" type="button" :disabled="surfaceActive"
+                      :class="['py-2 text-sm rounded-lg transition-colors border disabled:opacity-50 disabled:cursor-not-allowed', surfaceKind === kind.id ? 'bg-gray-800 border-gray-800 text-white' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50']"
+                      @click="surfaceKind = kind.id">
+                      {{ kind.label }}
+                    </button>
+                  </div>
+                  <div class="mt-2 text-xs text-gray-500 leading-5 bg-gray-50 rounded-lg px-3 py-2">
+                    {{ surfaceKinds.find((k) => k.id === surfaceKind)?.hint }}
+                  </div>
+                </div>
+                <div v-if="surfaceKind === 'aside'">
+                  <div class="text-xs uppercase text-gray-500 tracking-wide mb-2">Edge</div>
+                  <!-- Which side the aside docks to. -->
                   <div class="grid grid-cols-2 gap-2">
                     <button v-for="edge in surfaceEdges" :key="edge" type="button"
                       :class="['py-2 text-sm rounded-lg transition-colors border', surfaceEdge === edge ? 'bg-blue-500 border-blue-500 text-white' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50']"
@@ -72,9 +84,9 @@
                     </button>
                   </div>
                 </div>
-                <div>
-                  <div class="text-xs uppercase text-gray-500 tracking-wide mb-2">Float position</div>
-                  <!-- Position picker for float: where the popup sits above the main. -->
+                <div v-if="surfaceKind === 'float'">
+                  <div class="text-xs uppercase text-gray-500 tracking-wide mb-2">Position</div>
+                  <!-- Where the float popup sits above the main. -->
                   <div class="grid grid-cols-2 gap-2">
                     <button v-for="position in surfaceFloatPositions" :key="position" type="button"
                       :class="['py-2 text-sm rounded-lg transition-colors border', surfaceFloatPosition === position ? 'bg-indigo-500 border-indigo-500 text-white' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50']"
@@ -83,17 +95,24 @@
                     </button>
                   </div>
                 </div>
+                <div>
+                  <div class="text-xs uppercase text-gray-500 tracking-wide mb-2">Size (optional — px or %)</div>
+                  <!-- Preferred-size hint; the Host may clamp/override it. A
+                       percentage (e.g. 80%) is relative to the container; a bare
+                       number is absolute px. -->
+                  <div class="grid grid-cols-2 gap-2">
+                    <input type="text" inputmode="text" placeholder="width (px or %)" v-model="surfaceWidth"
+                      class="py-2 px-3 text-sm rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-400" />
+                    <input type="text" inputmode="text" placeholder="height (px or %)" v-model="surfaceHeight"
+                      class="py-2 px-3 text-sm rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-400" />
+                  </div>
+                </div>
               </div>
-              <div class="grid grid-cols-2 gap-2">
-                <button type="button" :disabled="surfaceActive" @click="openSurfaceDemo({ verb: 'aside', edge: surfaceEdge })"
-                  class="bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white py-2 px-4 rounded-lg text-sm font-medium transition-colors">
-                  {{ surfaceActive ? 'Open aside (already open)' : 'Open aside' }}
-                </button>
-                <button type="button" :disabled="surfaceActive" @click="openSurfaceDemo({ verb: 'float', position: surfaceFloatPosition })"
-                  class="bg-indigo-500 hover:bg-indigo-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white py-2 px-4 rounded-lg text-sm font-medium transition-colors">
-                  {{ surfaceActive ? 'Open float (already open)' : 'Open float' }}
-                </button>
-              </div>
+              <button type="button" data-testid="open-surface" :disabled="surfaceActive"
+                @click="openSurfaceDemo({ verb: surfaceKind, edge: surfaceEdge, position: surfaceFloatPosition, width: parseSurfaceSize(surfaceWidth), height: parseSurfaceSize(surfaceHeight) })"
+                class="w-full bg-gray-800 hover:bg-gray-900 disabled:bg-gray-300 disabled:cursor-not-allowed text-white py-2 px-4 rounded-lg text-sm font-medium transition-colors">
+                {{ surfaceActive ? `Open ${surfaceKind} (already open)` : `Open ${surfaceKind}` }}
+              </button>
               <p class="text-xs text-gray-500">
                 Edge / position is applied when the surface opens. Changing it
                 while a surface is open — or across hide → show — has no effect;
@@ -449,10 +468,34 @@ const tabColor = ref('#666666');
 const tabSelectedColor = ref('#007AFF');
 const tabBgColor = ref('#FFFFFF');
 const tabBorderStyle = ref('#EEEEEE');
+const surfaceKind = ref<'aside' | 'float' | 'window'>('aside');
+const surfaceKinds = [
+  { id: 'aside', label: 'Aside', hint: 'Docks beside the main and splits it; a compact window folds it into a switchable tab.' },
+  { id: 'float', label: 'Float', hint: 'A popup above the main; it does not take layout space (like a dialog).' },
+  { id: 'window', label: 'Window', hint: 'A bare standalone window — no sidebar, no shell. Desktop only.' },
+] as const;
 const surfaceEdge = ref<'left' | 'right' | 'top' | 'bottom'>('right');
 const surfaceEdges = ['left', 'right', 'top', 'bottom'] as const;
 const surfaceFloatPosition = ref<'center' | 'top' | 'bottom' | 'left' | 'right'>('center');
 const surfaceFloatPositions = ['center', 'top', 'bottom', 'left', 'right'] as const;
+const surfaceWidth = ref('');
+const surfaceHeight = ref('');
+
+// Parse a surface size input: a bare number is absolute px ("320"); a `%`
+// suffix is a percentage of the container ("80%"). The overlay size hint
+// accepts both forms (`number | `${number}%``), so pass a percentage through as
+// a string instead of coercing it to NaN. Blank / non-positive input is dropped
+// so the Host falls back to its default size.
+function parseSurfaceSize(raw: string): number | string | undefined {
+  const value = raw.trim();
+  if (!value) return undefined;
+  if (value.endsWith('%')) {
+    const pct = Number(value.slice(0, -1).trim());
+    return Number.isFinite(pct) && pct > 0 ? `${pct}%` : undefined;
+  }
+  const px = Number(value);
+  return Number.isFinite(px) && px > 0 ? px : undefined;
+}
 
 function applyTheme(theme: { color: string; selectedColor: string; backgroundColor: string; borderStyle: string }) {
   tabColor.value = theme.color;
