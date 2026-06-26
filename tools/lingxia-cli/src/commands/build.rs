@@ -461,6 +461,11 @@ Specify one with `--platform <name>` or build all with `--all-platforms`."
                 };
                 crate::platform::windows::msix::package(&project_root, &config, dist_dir, signing)?;
             }
+            // Portable zip (runnable, no signing) for non-MSIX distribution.
+            if package && let Some(dist_dir) = artifacts.path().parent() {
+                let zip = create_windows_zip(&project_root, &config, dist_dir)?;
+                println!("{} package → {}", "✓".green(), zip.display());
+            }
         }
         if package {
             stage_package_artifact(&project_root, &platform_type, &artifacts)?;
@@ -654,6 +659,73 @@ fn stage_package_artifact(
 
     println!("{} package → {}", "✓".green(), dest.display());
     Ok(Some(dest))
+}
+
+/// Zip the assembled Windows app into `dist/windows/<Product>-<version>-windows.zip`
+/// — the runnable, no-signing artifact for non-MSIX distribution.
+fn create_windows_zip(
+    project_root: &Path,
+    config: &LingXiaConfig,
+    dist_dir: &Path,
+) -> Result<PathBuf> {
+    let app = config
+        .app
+        .as_ref()
+        .ok_or_else(|| anyhow!("Missing [app] config for Windows packaging"))?;
+    let product = app.product_name.trim();
+    let version = app.product_version.trim();
+    let out_dir = project_root.join("dist").join("windows");
+    fs::create_dir_all(&out_dir)
+        .with_context(|| format!("Failed to create {}", out_dir.display()))?;
+    let zip_path = out_dir.join(format!("{product}-{version}-windows.zip"));
+    if zip_path.exists() {
+        fs::remove_file(&zip_path)?;
+    }
+    let file = fs::File::create(&zip_path)
+        .with_context(|| format!("Failed to create {}", zip_path.display()))?;
+    let mut writer = zip::ZipWriter::new(file);
+    let options = zip::write::SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Deflated);
+    add_zip_dir(&mut writer, dist_dir, "", options)?;
+    writer.finish().context("Failed to finalize Windows zip")?;
+    Ok(zip_path)
+}
+
+fn add_zip_dir<W: std::io::Write + std::io::Seek>(
+    writer: &mut zip::ZipWriter<W>,
+    src_root: &Path,
+    rel: &str,
+    options: zip::write::SimpleFileOptions,
+) -> Result<()> {
+    use std::io::Write as _;
+    let dir = if rel.is_empty() {
+        src_root.to_path_buf()
+    } else {
+        src_root.join(rel)
+    };
+    let mut entries = fs::read_dir(&dir)
+        .with_context(|| format!("Failed to read {}", dir.display()))?
+        .collect::<std::io::Result<Vec<_>>>()?;
+    entries.sort_by_key(|entry| entry.file_name());
+    for entry in entries {
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        let entry_rel = if rel.is_empty() {
+            name.to_string()
+        } else {
+            format!("{rel}/{name}")
+        };
+        let file_type = entry.file_type()?;
+        if file_type.is_dir() {
+            writer.add_directory(format!("{entry_rel}/"), options)?;
+            add_zip_dir(writer, src_root, &entry_rel, options)?;
+        } else if file_type.is_file() {
+            writer.start_file(entry_rel, options)?;
+            let bytes = fs::read(entry.path())?;
+            writer.write_all(&bytes)?;
+        }
+    }
+    Ok(())
 }
 
 /// Resolve the active environment for a build/dev/package invocation.
