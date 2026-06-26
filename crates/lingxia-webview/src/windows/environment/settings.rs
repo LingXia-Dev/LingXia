@@ -42,6 +42,16 @@ pub(crate) fn configure_controller(controller: &ICoreWebView2Controller) -> StdR
                 B: 255,
             });
         }
+        // LingXia host windows author their content rectangles in physical
+        // pixels. In a DPI-aware process WebView2 otherwise applies the monitor
+        // scale, shrinking the CSS viewport (393px becomes 262px at 150%).
+        // Keeping the controller on raw pixels preserves the same viewport
+        // contract as the rest of the Windows host.
+        if let Ok(controller3) = controller.cast::<ICoreWebView2Controller3>() {
+            let _ = controller3.SetShouldDetectMonitorScaleChanges(false);
+            let _ = controller3.SetBoundsMode(COREWEBVIEW2_BOUNDS_MODE_USE_RAW_PIXELS);
+            let _ = controller3.SetRasterizationScale(1.0);
+        }
         controller
             .SetBounds(RECT {
                 left: 0,
