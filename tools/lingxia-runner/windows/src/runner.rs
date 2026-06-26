@@ -71,26 +71,15 @@ fn apply_device(home_app_id: &str, index: usize, landscape: bool) -> Result<(), 
     // toolbar (built in `frame_spec`), so the runner attaches no native menu
     // bar — the phone screen stays chrome-free like the macOS runner.
     //
-    // Set the tab-bar position *before* applying the frame: a phone uses a
-    // bottom bar while a tablet/desktop uses a left sidebar, which changes the
-    // content rect. Applying the frame last means its layout pass (which
-    // resizes the webview) uses the final tab-bar shape, so switching e.g.
-    // iPad -> iPhone re-renders the page at the right size immediately.
-    lingxia_windows_sdk::set_windows_shell_tabbar_position(
+    // Apply the frame and tab-bar shape together on the window thread. Splitting
+    // these into separate immediate + posted updates lets layout briefly sync
+    // against the previous device (e.g. iPhone status bar forcing bottom tabs
+    // while switching to iPad).
+    lingxia_windows_sdk::set_app_window_device_frame_and_tabbar_position(
         home_app_id,
+        frame_spec(index, landscape),
         tabbar_position_for_device(index),
-    );
-    lingxia_windows_sdk::set_app_window_device_frame(
-        home_app_id,
-        Some(frame_spec(index, landscape)),
     )?;
-    // Re-sync after the frame is attached as well. The first layout can run
-    // before the window is known as device-framed, leaving the WebView content
-    // at the old sidebar rect until another activation/layout event occurs.
-    lingxia_windows_sdk::set_windows_shell_tabbar_position(
-        home_app_id,
-        tabbar_position_for_device(index),
-    );
     CURRENT_DEVICE.store(index, Ordering::Release);
     LANDSCAPE.store(landscape, Ordering::Release);
     Ok(())
