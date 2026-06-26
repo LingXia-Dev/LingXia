@@ -199,7 +199,7 @@ fn draw_sidebar_header_action(hdc: HDC, action_id: &str, fallback_glyph: &str, r
 /// Draws the lxapp item rows plus the macOS-parity connector line: a thin
 /// vertical line along the items' leading edge linking them, drawn first so
 /// it sits behind the item cards and accent bars.
-fn draw_sidebar_items(hdc: HDC, rect: RECT, tabbar: &WindowsShellTabBarLayout) {
+pub(super) fn draw_sidebar_items(hdc: HDC, rect: RECT, tabbar: &WindowsShellTabBarLayout) {
     if !tabbar.items.is_empty() {
         let first = sidebar_item_rect(rect, 0);
         let last = sidebar_item_rect(rect, tabbar.items.len() - 1);
