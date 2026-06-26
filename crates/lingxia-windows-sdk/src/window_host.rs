@@ -34,6 +34,8 @@ use windows::Win32::Graphics::Gdi::{
     GetMonitorInfoW, HDC, HGDIOBJ, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromWindow,
     PAINTSTRUCT, PS_SOLID, RestoreDC, SaveDC, ScreenToClient, SelectObject,
 };
+#[cfg(feature = "shell-chrome")]
+use windows::Win32::Graphics::Gdi::{CreateRoundRectRgn, SetWindowRgn};
 use windows::Win32::System::LibraryLoader;
 use windows::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
 // Only the shell-chrome transparent-tabbar overlay cleanup needs the PID.
@@ -73,6 +75,8 @@ static PULL_REFRESH_TICKS: OnceLock<Mutex<HashMap<isize, u32>>> = OnceLock::new(
 #[cfg(feature = "shell-chrome")]
 static TRANSPARENT_TABBAR_OVERLAYS: OnceLock<Mutex<HashMap<isize, TransparentTabbarOverlay>>> =
     OnceLock::new();
+#[cfg(feature = "shell-chrome")]
+static SIDEBAR_TABBAR_POPUPS: OnceLock<Mutex<HashMap<isize, SidebarTabbarPopup>>> = OnceLock::new();
 const WM_LINGXIA_RUN_CALLBACK: u32 = WindowsAndMessaging::WM_APP + 0x158;
 const PULL_REFRESH_TIMER_ID: usize = 0x5A17;
 const PULL_REFRESH_TIMER_MS: u32 = 120;
@@ -82,6 +86,12 @@ const PULL_REFRESH_INDICATOR_HEIGHT: i32 = 32;
 const OVERLAY_MARGIN: i32 = 24;
 #[cfg(feature = "shell-chrome")]
 const TRANSPARENT_TABBAR_COLOR_KEY: u32 = 0x00FF00FF;
+#[cfg(feature = "shell-chrome")]
+const SIDEBAR_TABBAR_POPUP_TIMER_ID: usize = 0x5A18;
+#[cfg(feature = "shell-chrome")]
+const SIDEBAR_TABBAR_POPUP_TIMER_MS: u32 = 80;
+#[cfg(feature = "shell-chrome")]
+const SIDEBAR_TABBAR_POPUP_CORNER_RADIUS: i32 = 10;
 
 /// `WM_DWMCOLORIZATIONCOLORCHANGED` (dwmapi.h) - sent on a system accent change.
 /// Not surfaced by the `windows` crate's message constants, so define it here.
@@ -105,6 +115,16 @@ struct ChromeInteraction {
 struct TransparentTabbarOverlay {
     window: isize,
     rect: RECT,
+}
+
+#[cfg(feature = "shell-chrome")]
+#[derive(Debug, Clone)]
+struct SidebarTabbarPopup {
+    window: isize,
+    owner: isize,
+    anchor: RECT,
+    rect: RECT,
+    tabbar: crate::shell::WindowsShellTabBarLayout,
 }
 
 #[derive(Debug, Clone)]
@@ -1223,6 +1243,332 @@ fn cleanup_transparent_tabbar_overlays(owner: HWND, keep: Option<isize>) {
                 let _ = WindowsAndMessaging::DestroyWindow(hwnd_from_handle(handle));
             }
         }
+    }
+}
+
+#[cfg(feature = "shell-chrome")]
+fn sync_sidebar_tabbar_popup(hwnd: HWND, point: (i32, i32)) {
+    let Some(webtag_key) = active_webtag_key_for_window(hwnd) else {
+        destroy_sidebar_tabbar_popup(hwnd);
+        return;
+    };
+    let mut client = RECT::default();
+    unsafe {
+        if WindowsAndMessaging::GetClientRect(hwnd, &mut client).is_err() {
+            destroy_sidebar_tabbar_popup(hwnd);
+            return;
+        }
+    }
+    let layout = current_window_layout(&webtag_key);
+    let Some(popup) = crate::shell::collapsed_sidebar_tabbar_popup(client, &layout, point) else {
+        maybe_destroy_sidebar_tabbar_popup(hwnd);
+        return;
+    };
+
+    let mut origin = POINT {
+        x: popup.popup.left,
+        y: popup.popup.top,
+    };
+    let mut anchor_left_top = POINT {
+        x: popup.anchor.left,
+        y: popup.anchor.top,
+    };
+    let mut anchor_right_bottom = POINT {
+        x: popup.anchor.right,
+        y: popup.anchor.bottom,
+    };
+    unsafe {
+        let _ = windows::Win32::Graphics::Gdi::ClientToScreen(hwnd, &mut origin);
+        let _ = windows::Win32::Graphics::Gdi::ClientToScreen(hwnd, &mut anchor_left_top);
+        let _ = windows::Win32::Graphics::Gdi::ClientToScreen(hwnd, &mut anchor_right_bottom);
+    }
+    let width = popup.popup.right - popup.popup.left;
+    let height = popup.popup.bottom - popup.popup.top;
+    let popup_rect = RECT {
+        left: origin.x,
+        top: origin.y,
+        right: origin.x + width,
+        bottom: origin.y + height,
+    };
+    let anchor = RECT {
+        left: anchor_left_top.x,
+        top: anchor_left_top.y,
+        right: anchor_right_bottom.x,
+        bottom: anchor_right_bottom.y,
+    };
+    let window = ensure_sidebar_tabbar_popup(hwnd);
+    if window == 0 {
+        return;
+    }
+    if let Ok(mut popups) = SIDEBAR_TABBAR_POPUPS
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+    {
+        popups.insert(
+            hwnd_handle(hwnd),
+            SidebarTabbarPopup {
+                window,
+                owner: hwnd_handle(hwnd),
+                anchor,
+                rect: popup_rect,
+                tabbar: popup.tabbar,
+            },
+        );
+    }
+    unsafe {
+        let _ = WindowsAndMessaging::SetWindowPos(
+            hwnd_from_handle(window),
+            Some(WindowsAndMessaging::HWND_TOP),
+            popup_rect.left,
+            popup_rect.top,
+            width,
+            height,
+            WindowsAndMessaging::SWP_NOACTIVATE | WindowsAndMessaging::SWP_SHOWWINDOW,
+        );
+        apply_sidebar_tabbar_popup_region(hwnd_from_handle(window), width, height);
+        let _ = WindowsAndMessaging::SetTimer(
+            Some(hwnd_from_handle(window)),
+            SIDEBAR_TABBAR_POPUP_TIMER_ID,
+            SIDEBAR_TABBAR_POPUP_TIMER_MS,
+            None,
+        );
+        let _ = windows::Win32::Graphics::Gdi::InvalidateRect(
+            Some(hwnd_from_handle(window)),
+            None,
+            false,
+        );
+    }
+}
+
+#[cfg(feature = "shell-chrome")]
+fn apply_sidebar_tabbar_popup_region(window: HWND, width: i32, height: i32) {
+    if width <= 0 || height <= 0 {
+        return;
+    }
+    unsafe {
+        let region = CreateRoundRectRgn(
+            0,
+            0,
+            width + 1,
+            height + 1,
+            SIDEBAR_TABBAR_POPUP_CORNER_RADIUS * 2,
+            SIDEBAR_TABBAR_POPUP_CORNER_RADIUS * 2,
+        );
+        if region.is_invalid() {
+            return;
+        }
+        let applied = SetWindowRgn(window, Some(region), true);
+        if applied == 0 {
+            let _ = DeleteObject(HGDIOBJ(region.0));
+        }
+    }
+}
+
+#[cfg(feature = "shell-chrome")]
+fn maybe_destroy_sidebar_tabbar_popup(owner: HWND) {
+    let Some(popup) = sidebar_tabbar_popup_for_owner(owner) else {
+        return;
+    };
+    let mut cursor = POINT::default();
+    unsafe {
+        if WindowsAndMessaging::GetCursorPos(&mut cursor).is_err() {
+            destroy_sidebar_tabbar_popup(owner);
+            return;
+        }
+    }
+    if !point_in_screen_rect(cursor, popup.anchor) && !point_in_screen_rect(cursor, popup.rect) {
+        destroy_sidebar_tabbar_popup(owner);
+    }
+}
+
+#[cfg(feature = "shell-chrome")]
+fn point_in_screen_rect(point: POINT, rect: RECT) -> bool {
+    point.x >= rect.left && point.x < rect.right && point.y >= rect.top && point.y < rect.bottom
+}
+
+#[cfg(feature = "shell-chrome")]
+fn ensure_sidebar_tabbar_popup(owner: HWND) -> isize {
+    if let Some(existing) = sidebar_tabbar_popup_for_owner(owner)
+        && is_window_handle_valid(existing.window)
+    {
+        return existing.window;
+    }
+    let result = unsafe {
+        WindowsAndMessaging::CreateWindowExW(
+            WindowsAndMessaging::WS_EX_TOOLWINDOW | WindowsAndMessaging::WS_EX_NOACTIVATE,
+            sidebar_tabbar_popup_class(),
+            PCWSTR::null(),
+            WS_POPUP,
+            0,
+            0,
+            1,
+            1,
+            Some(owner),
+            None,
+            LibraryLoader::GetModuleHandleW(None)
+                .ok()
+                .map(|module| HINSTANCE(module.0)),
+            None,
+        )
+    };
+    match result {
+        Ok(window) => hwnd_handle(window),
+        Err(err) => {
+            log::warn!("collapsed sidebar tabbar popup creation failed: {err}");
+            0
+        }
+    }
+}
+
+#[cfg(feature = "shell-chrome")]
+fn sidebar_tabbar_popup_class() -> PCWSTR {
+    static REGISTERED: OnceLock<()> = OnceLock::new();
+    REGISTERED.get_or_init(|| {
+        let module = unsafe { LibraryLoader::GetModuleHandleW(None) }
+            .map(|module| HINSTANCE(module.0))
+            .unwrap_or_default();
+        let cursor =
+            unsafe { WindowsAndMessaging::LoadCursorW(None, WindowsAndMessaging::IDC_ARROW) }
+                .unwrap_or_default();
+        let class = WNDCLASSW {
+            lpfnWndProc: Some(sidebar_tabbar_popup_proc),
+            hInstance: module,
+            hCursor: cursor,
+            lpszClassName: w!("LingXiaSidebarTabbarPopup"),
+            ..Default::default()
+        };
+        if unsafe { WindowsAndMessaging::RegisterClassW(&class) } == 0 {
+            log::error!(
+                "sidebar tabbar popup class registration failed: {}",
+                windows::core::Error::from_thread()
+            );
+        }
+    });
+    w!("LingXiaSidebarTabbarPopup")
+}
+
+#[cfg(feature = "shell-chrome")]
+unsafe extern "system" fn sidebar_tabbar_popup_proc(
+    hwnd: HWND,
+    msg: u32,
+    _wparam: WPARAM,
+    lparam: LPARAM,
+) -> LRESULT {
+    match msg {
+        WindowsAndMessaging::WM_MOUSEACTIVATE => {
+            return LRESULT(WindowsAndMessaging::MA_NOACTIVATE as isize);
+        }
+        WindowsAndMessaging::WM_PAINT => {
+            paint_sidebar_tabbar_popup(hwnd);
+            return LRESULT(0);
+        }
+        WindowsAndMessaging::WM_ERASEBKGND => {
+            return LRESULT(1);
+        }
+        WindowsAndMessaging::WM_LBUTTONUP => {
+            if let Some(popup) = sidebar_tabbar_popup_for_window(hwnd) {
+                let point = lparam_client_point(lparam);
+                if let Some(index) =
+                    crate::shell::collapsed_sidebar_tabbar_popup_hit(&popup.tabbar, point)
+                    && let Some(webtag_key) =
+                        active_webtag_key_for_window(hwnd_from_handle(popup.owner))
+                {
+                    let command = crate::shell::collapsed_sidebar_tabbar_click_command(index);
+                    invoke_chrome_command(
+                        &webtag_key,
+                        hwnd_from_handle(popup.owner),
+                        (0, 0),
+                        command,
+                    );
+                }
+                destroy_sidebar_tabbar_popup(hwnd_from_handle(popup.owner));
+            }
+            return LRESULT(0);
+        }
+        WindowsAndMessaging::WM_TIMER if _wparam.0 == SIDEBAR_TABBAR_POPUP_TIMER_ID => {
+            if let Some(popup) = sidebar_tabbar_popup_for_window(hwnd) {
+                maybe_destroy_sidebar_tabbar_popup(hwnd_from_handle(popup.owner));
+            }
+            return LRESULT(0);
+        }
+        WindowsAndMessaging::WM_DESTROY | WindowsAndMessaging::WM_NCDESTROY => {
+            remove_sidebar_tabbar_popup_window(hwnd);
+        }
+        _ => {}
+    }
+    unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, _wparam, lparam) }
+}
+
+#[cfg(feature = "shell-chrome")]
+fn paint_sidebar_tabbar_popup(hwnd: HWND) {
+    let Some(popup) = sidebar_tabbar_popup_for_window(hwnd) else {
+        return;
+    };
+    let mut ps = PAINTSTRUCT::default();
+    let hdc = unsafe { BeginPaint(hwnd, &mut ps) };
+    if hdc.is_invalid() {
+        return;
+    }
+    let width = popup.rect.right - popup.rect.left;
+    let height = popup.rect.bottom - popup.rect.top;
+    crate::shell::paint_collapsed_sidebar_tabbar_popup(hdc, &popup.tabbar, width, height);
+    unsafe {
+        let _ = EndPaint(hwnd, &ps);
+    }
+}
+
+#[cfg(feature = "shell-chrome")]
+fn sidebar_tabbar_popup_for_owner(owner: HWND) -> Option<SidebarTabbarPopup> {
+    SIDEBAR_TABBAR_POPUPS
+        .get()
+        .and_then(|popups| popups.lock().ok())
+        .and_then(|popups| popups.get(&hwnd_handle(owner)).cloned())
+}
+
+#[cfg(feature = "shell-chrome")]
+fn sidebar_tabbar_popup_for_window(window: HWND) -> Option<SidebarTabbarPopup> {
+    let handle = hwnd_handle(window);
+    SIDEBAR_TABBAR_POPUPS
+        .get()
+        .and_then(|popups| popups.lock().ok())
+        .and_then(|popups| {
+            popups
+                .values()
+                .find(|popup| popup.window == handle)
+                .cloned()
+        })
+}
+
+#[cfg(feature = "shell-chrome")]
+fn destroy_sidebar_tabbar_popup(owner: HWND) {
+    let removed = SIDEBAR_TABBAR_POPUPS
+        .get()
+        .and_then(|popups| popups.lock().ok())
+        .and_then(|mut popups| popups.remove(&hwnd_handle(owner)));
+    if let Some(popup) = removed
+        && is_window_handle_valid(popup.window)
+    {
+        unsafe {
+            let _ = WindowsAndMessaging::KillTimer(
+                Some(hwnd_from_handle(popup.window)),
+                SIDEBAR_TABBAR_POPUP_TIMER_ID,
+            );
+            let _ = WindowsAndMessaging::DestroyWindow(hwnd_from_handle(popup.window));
+        }
+    }
+}
+
+#[cfg(feature = "shell-chrome")]
+fn remove_sidebar_tabbar_popup_window(window: HWND) {
+    let handle = hwnd_handle(window);
+    if let Some(popups) = SIDEBAR_TABBAR_POPUPS.get()
+        && let Ok(mut popups) = popups.lock()
+        && let Some(owner) = popups
+            .iter()
+            .find(|(_, popup)| popup.window == handle)
+            .map(|(owner, _)| *owner)
+    {
+        popups.remove(&owner);
     }
 }
 
@@ -2640,6 +2986,8 @@ fn handle_chrome_mouse_move(hwnd: HWND, point: (i32, i32)) -> bool {
             return true;
         }
     }
+    #[cfg(feature = "shell-chrome")]
+    sync_sidebar_tabbar_popup(hwnd, point);
     let hover = match hit {
         Some(WindowsChromeHit::FrameButton(button)) => Some(button),
         _ => None,
@@ -3350,11 +3698,15 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
             WindowsAndMessaging::WM_DESTROY => {
                 #[cfg(feature = "shell-chrome")]
                 destroy_transparent_tabbar_overlay(hwnd);
+                #[cfg(feature = "shell-chrome")]
+                destroy_sidebar_tabbar_popup(hwnd);
                 LRESULT(0)
             }
             WindowsAndMessaging::WM_NCDESTROY => {
                 #[cfg(feature = "shell-chrome")]
                 destroy_transparent_tabbar_overlay(hwnd);
+                #[cfg(feature = "shell-chrome")]
+                destroy_sidebar_tabbar_popup(hwnd);
                 let webtag_key = window_webtag_key(hwnd);
                 let raw = unsafe {
                     WindowsAndMessaging::GetWindowLongPtrW(hwnd, WindowsAndMessaging::GWLP_USERDATA)

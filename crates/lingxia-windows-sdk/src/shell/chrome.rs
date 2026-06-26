@@ -120,6 +120,9 @@ pub(super) const SIDEBAR_RAIL_ITEM_SIZE: i32 = 34;
 
 pub(super) const SIDEBAR_RAIL_ICON_SIZE: i32 = 18;
 
+pub(super) const SIDEBAR_TABBAR_POPUP_WIDTH: i32 = 220;
+pub(super) const SIDEBAR_TABBAR_POPUP_PADDING: i32 = 8;
+
 /// Edge length of the favicon drawn on a sidebar browser-tab row.
 pub(super) const SIDEBAR_FAVICON_SIZE: i32 = 16;
 
@@ -185,6 +188,13 @@ pub(super) mod command_id {
     pub(super) const SIDEBAR_GROUP_TOGGLE: &str = "sidebar.group.toggle";
     pub(super) const SIDEBAR_ACTION: &str = "sidebar.action";
     pub(super) const APP_MENU_CLICK: &str = "app-menu.click";
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct CollapsedSidebarTabbarPopup {
+    pub(crate) anchor: RECT,
+    pub(crate) popup: RECT,
+    pub(crate) tabbar: WindowsShellTabBarLayout,
 }
 
 pub(super) fn chrome_command(
@@ -633,6 +643,112 @@ pub(crate) fn transparent_tabbar_overlay_rect(
         return None;
     }
     compute_chrome_rects(client, layout).tab_bar
+}
+
+pub(crate) fn collapsed_sidebar_tabbar_popup(
+    client: RECT,
+    layout: &WindowsWindowLayout,
+    point: (i32, i32),
+) -> Option<CollapsedSidebarTabbarPopup> {
+    let layout = shell_layout(layout)?;
+    let tabbar = layout.tab_bar.as_ref()?;
+    if tabbar.items.is_empty()
+        || !matches!(
+            tabbar.position,
+            WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right
+        )
+        || !(tabbar.collapsed || tabbar.icon_rail)
+    {
+        return None;
+    }
+    let tabbar_rect = compute_chrome_rects(client, layout).tab_bar?;
+    let anchor = sidebar_rail_item_rect(tabbar_rect, 0);
+    if !rect_contains(&anchor, point) {
+        return None;
+    }
+    let (width, height) = collapsed_sidebar_tabbar_popup_size(tabbar);
+    let top = anchor.top.min(client.bottom - height).max(client.top);
+    let left = match tabbar.position {
+        WindowsShellTabBarPosition::Left => tabbar_rect.right - 2,
+        WindowsShellTabBarPosition::Right => tabbar_rect.left - width + 2,
+        WindowsShellTabBarPosition::Bottom => return None,
+    };
+    Some(CollapsedSidebarTabbarPopup {
+        anchor,
+        popup: normalize_rect(RECT {
+            left,
+            top,
+            right: left + width,
+            bottom: top + height,
+        }),
+        tabbar: tabbar.clone(),
+    })
+}
+
+pub(crate) fn collapsed_sidebar_tabbar_popup_size(tabbar: &WindowsShellTabBarLayout) -> (i32, i32) {
+    let rows = tabbar.items.len().max(1) as i32;
+    (
+        SIDEBAR_TABBAR_POPUP_WIDTH,
+        SIDEBAR_TABBAR_POPUP_PADDING * 2
+            + rows * SIDEBAR_ITEM_HEIGHT
+            + (rows - 1).max(0) * SIDEBAR_ITEM_GAP,
+    )
+}
+
+pub(crate) fn collapsed_sidebar_tabbar_popup_hit(
+    tabbar: &WindowsShellTabBarLayout,
+    point: (i32, i32),
+) -> Option<usize> {
+    let bounds = normalize_rect(RECT {
+        left: 0,
+        top: 0,
+        right: SIDEBAR_TABBAR_POPUP_WIDTH,
+        bottom: collapsed_sidebar_tabbar_popup_size(tabbar).1,
+    });
+    let item_bounds = collapsed_sidebar_tabbar_popup_item_bounds(bounds);
+    (0..tabbar.items.len())
+        .find(|&index| rect_contains(&sidebar_item_rect(item_bounds, index), point))
+}
+
+pub(crate) fn collapsed_sidebar_tabbar_click_command(index: usize) -> WindowsChromeCommand {
+    WindowsChromeCommand::new(command_id::TAB_BAR_CLICK).with_payload(json!({ "index": index }))
+}
+
+pub(crate) fn paint_collapsed_sidebar_tabbar_popup(
+    hdc: HDC,
+    tabbar: &WindowsShellTabBarLayout,
+    width: i32,
+    height: i32,
+) {
+    let bounds = normalize_rect(RECT {
+        left: 0,
+        top: 0,
+        right: width,
+        bottom: height,
+    });
+    let mut popup_tabbar = tabbar.clone();
+    popup_tabbar.collapsed = false;
+    popup_tabbar.icon_rail = false;
+    popup_tabbar.items_collapsed = false;
+    popup_tabbar.dimension = width;
+    popup_tabbar.header_actions.clear();
+    popup_tabbar.auxiliary_items.clear();
+    popup_tabbar.show_auxiliary_add = false;
+    fill_round_rect_aa(hdc, bounds, 10, shell_palette().sidebar_background);
+    draw_sidebar_items(
+        hdc,
+        collapsed_sidebar_tabbar_popup_item_bounds(bounds),
+        &popup_tabbar,
+    );
+}
+
+fn collapsed_sidebar_tabbar_popup_item_bounds(bounds: RECT) -> RECT {
+    normalize_rect(RECT {
+        left: bounds.left,
+        top: bounds.top + SIDEBAR_TABBAR_POPUP_PADDING - SIDEBAR_HEADER_HEIGHT,
+        right: bounds.right,
+        bottom: bounds.bottom,
+    })
 }
 
 pub(crate) fn paint_transparent_tabbar_overlay(
