@@ -169,11 +169,11 @@ impl<'a> LogicBundler<'a> {
             .map_err(|_| anyhow!("Unsupported logic file {}", path.display()))?;
         let allocator = Allocator::default();
         let parse_result = Parser::new(&allocator, &source, source_type).parse();
-        if !parse_result.errors.is_empty() {
+        if !parse_result.diagnostics.is_empty() {
             bail!(
                 "Failed to parse logic module {}: {}",
                 path.display(),
-                format_diagnostics(&parse_result.errors)
+                format_diagnostics(&parse_result.diagnostics)
             );
         }
         let program = parse_result.program;
@@ -867,11 +867,11 @@ fn transpile_module(path: &Path, source: &str) -> Result<String> {
     let source_type = SourceType::from_path(path)
         .map_err(|_| anyhow!("Unsupported logic file {}", path.display()))?;
     let parse_result = Parser::new(&allocator, source, source_type).parse();
-    if !parse_result.errors.is_empty() {
+    if !parse_result.diagnostics.is_empty() {
         bail!(
             "Failed to parse rewritten logic module {}: {}",
             path.display(),
-            format_diagnostics(&parse_result.errors)
+            format_diagnostics(&parse_result.diagnostics)
         );
     }
 
@@ -879,21 +879,21 @@ fn transpile_module(path: &Path, source: &str) -> Result<String> {
     let semantic = SemanticBuilder::new()
         .with_check_syntax_error(true)
         .build(&program);
-    if !semantic.errors.is_empty() {
+    if !semantic.diagnostics.is_empty() {
         bail!(
             "Semantic analysis failed for {}: {}",
             path.display(),
-            format_diagnostics(&semantic.errors)
+            format_diagnostics(&semantic.diagnostics)
         );
     }
 
     let transformer_return = Transformer::new(&allocator, path, &TransformOptions::default())
         .build_with_scoping(semantic.semantic.into_scoping(), &mut program);
-    if !transformer_return.errors.is_empty() {
+    if !transformer_return.diagnostics.is_empty() {
         bail!(
             "Failed to transform {}: {}",
             path.display(),
-            format_diagnostics(&transformer_return.errors)
+            format_diagnostics(&transformer_return.diagnostics)
         );
     }
 
@@ -1081,9 +1081,9 @@ mod tests {
         let source_type = SourceType::from_path(path).unwrap();
         let parse_result = Parser::new(allocator, source, source_type).parse();
         assert!(
-            parse_result.errors.is_empty(),
+            parse_result.diagnostics.is_empty(),
             "parse errors: {}",
-            format_diagnostics(&parse_result.errors)
+            format_diagnostics(&parse_result.diagnostics)
         );
         parse_result.program
     }
