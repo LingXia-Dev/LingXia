@@ -20,10 +20,11 @@ impl lingxia::HostAddon for RunnerDevtoolAddon {
             }
         }
         // Mock the LingXiao functions service from a local JS dir, when `lingxia
-        // dev` points us at the lxapp's `mock/functions`. The mock vs real default
-        // is the cloud client's own LINGXIAO_MOCK env; this only supplies the dir.
+        // dev` points us at the worker's transpiled `mocks/`. Per-function
+        // mock/live routing is read from the lxapp's own `functions.json`.
         if let Some(dir) = std::env::var_os("LINGXIAO_MOCK_DIR").filter(|d| !d.is_empty()) {
             options = options.lingxiao_mock(std::path::PathBuf::from(dir));
+            options = options.lingxiao_routing(read_cloud_routing());
         }
         if let Err(err) = lingxia_cloud_client::init(options) {
             eprintln!("[cloud] provider init failed: {err}");
@@ -62,6 +63,47 @@ fn parse_runner_config(home: &std::path::Path) -> RunnerOverrides {
 fn str_field(value: &toml::Value, key: &str) -> Option<String> {
     let s = value.get(key)?.as_str()?.trim();
     (!s.is_empty()).then(|| s.to_string())
+}
+
+/// Read per-function mock/live routing from the lxapp's `functions.json` (`dev`
+/// section), located via `LINGXIA_LXAPP_PATH`. Missing/invalid → all mock.
+#[cfg(feature = "cloud")]
+fn read_cloud_routing() -> lingxia_cloud_client::MockRouting {
+    use lingxia_cloud_client::{MockRouting, Provider};
+    let provider = |s: &str| {
+        if s.eq_ignore_ascii_case("live") {
+            Provider::Live
+        } else {
+            Provider::Mock
+        }
+    };
+    let Some(lxapp) = std::env::var_os("LINGXIA_LXAPP_PATH") else {
+        return MockRouting::default();
+    };
+    let Ok(text) = std::fs::read_to_string(std::path::Path::new(&lxapp).join("functions.json"))
+    else {
+        return MockRouting::default();
+    };
+    let Ok(config) = serde_json::from_str::<serde_json::Value>(&text) else {
+        return MockRouting::default();
+    };
+    let dev = config.get("dev");
+    let default = dev
+        .and_then(|d| d.get("default"))
+        .and_then(serde_json::Value::as_str)
+        .map_or(Provider::Mock, provider);
+    let mut overrides = std::collections::HashMap::new();
+    if let Some(map) = dev
+        .and_then(|d| d.get("overrides"))
+        .and_then(serde_json::Value::as_object)
+    {
+        for (name, value) in map {
+            if let Some(p) = value.as_str() {
+                overrides.insert(name.clone(), provider(p));
+            }
+        }
+    }
+    MockRouting { default, overrides }
 }
 
 #[unsafe(no_mangle)]

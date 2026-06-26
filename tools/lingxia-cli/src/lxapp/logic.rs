@@ -862,7 +862,7 @@ fn unwrap_expression<'a>(expression: &'a Expression<'a>) -> &'a Expression<'a> {
     }
 }
 
-fn transpile_module(path: &Path, source: &str) -> Result<String> {
+pub(crate) fn transpile_module(path: &Path, source: &str) -> Result<String> {
     let allocator = Allocator::default();
     let source_type = SourceType::from_path(path)
         .map_err(|_| anyhow!("Unsupported logic file {}", path.display()))?;
