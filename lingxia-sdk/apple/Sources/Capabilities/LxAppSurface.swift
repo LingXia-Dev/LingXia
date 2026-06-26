@@ -1220,9 +1220,13 @@ enum LxAppSurface {
             tap.delegate = self
             view.addGestureRecognizer(tap)
 
-            // A drill-in aside should have an iOS-style way back, so support a
-            // left-edge swipe in addition to the visible back affordance.
-            if usesDrillInChrome {
+            // A drill-in aside has an iOS-style way back (the visible Back
+            // affordance below, plus this left-edge swipe). An immersive
+            // full-screen float draws no SDK chrome, but keeps the same silent
+            // left-edge swipe as a last-resort escape — iOS has no system Back
+            // and backdrop tap is disabled when full-screen, so without it a
+            // float that forgot to draw its own close would trap the user.
+            if fillsScreen {
                 let edge = UIScreenEdgePanGestureRecognizer(target: self, action: #selector(closeFromEdgeSwipe(_:)))
                 edge.edges = .left
                 view.addGestureRecognizer(edge)
@@ -1236,24 +1240,20 @@ enum LxAppSurface {
             view.addSubview(contentView)
 
             // Full-screen surfaces have no host chrome. Adaptive asides get a
-            // page-like Back affordance; immersive floats keep explicit Close.
-            if fillsScreen {
+            // page-like Back affordance; immersive floats draw their own close
+            // (the SDK injects none — see the left-edge swipe safety net above).
+            if usesDrillInChrome {
                 let action = UIButton(type: .system)
                 action.translatesAutoresizingMaskIntoConstraints = false
-                action.setImage(
-                    UIImage(systemName: usesDrillInChrome ? "chevron.left" : "xmark"),
-                    for: .normal
-                )
-                action.tintColor = usesDrillInChrome ? UIColor.label : UIColor.white
-                action.backgroundColor = usesDrillInChrome
-                    ? UIColor.systemBackground.withAlphaComponent(0.86)
-                    : UIColor.black.withAlphaComponent(0.4)
+                action.setImage(UIImage(systemName: "chevron.left"), for: .normal)
+                action.tintColor = UIColor.label
+                action.backgroundColor = UIColor.systemBackground.withAlphaComponent(0.86)
                 action.layer.cornerRadius = 18
                 action.layer.shadowColor = UIColor.black.cgColor
-                action.layer.shadowOpacity = usesDrillInChrome ? 0.12 : 0
+                action.layer.shadowOpacity = 0.12
                 action.layer.shadowRadius = 8
                 action.layer.shadowOffset = CGSize(width: 0, height: 2)
-                action.accessibilityLabel = usesDrillInChrome ? "Back" : "Close"
+                action.accessibilityLabel = "Back"
                 action.addTarget(self, action: #selector(closeFullScreen), for: .touchUpInside)
                 view.addSubview(action)
                 NSLayoutConstraint.activate([
