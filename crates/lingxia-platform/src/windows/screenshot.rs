@@ -21,10 +21,9 @@ impl AppScreenshot for Platform {
 }
 
 fn list_app_windows() -> Result<Vec<WindowInfo>, PlatformError> {
-    use windows::Win32::Foundation::{HWND, LPARAM, RECT};
+    use windows::Win32::Foundation::{HWND, LPARAM};
     use windows::Win32::UI::WindowsAndMessaging::{
-        EnumWindows, GetForegroundWindow, GetWindowRect, GetWindowThreadProcessId, IsIconic,
-        IsWindowVisible,
+        EnumWindows, GetForegroundWindow, GetWindowThreadProcessId, IsIconic, IsWindowVisible,
     };
     use windows::core::BOOL;
 
@@ -44,16 +43,15 @@ fn list_app_windows() -> Result<Vec<WindowInfo>, PlatformError> {
             return BOOL(1);
         }
 
-        let mut rect = RECT::default();
-        let has_rect = unsafe { GetWindowRect(hwnd, &mut rect).is_ok() };
+        let rect = visible_window_rect(hwnd).ok();
         let visible = unsafe { IsWindowVisible(hwnd).as_bool() && !IsIconic(hwnd).as_bool() };
         let title = window_title(hwnd);
-        let width = if has_rect {
+        let width = if let Some(rect) = rect {
             (rect.right - rect.left).max(0) as u32
         } else {
             0
         };
-        let height = if has_rect {
+        let height = if let Some(rect) = rect {
             (rect.bottom - rect.top).max(0) as u32
         } else {
             0
@@ -211,6 +209,10 @@ fn capture_window_native_rgba(
         )));
     }
 
+    if is_screen_capture_window_class(&window_class_name(hwnd)) {
+        return capture_screen_rect_rgba(rect).map(|image| (width as u32, height as u32, image));
+    }
+
     unsafe {
         let window_dc = GetWindowDC(Some(hwnd));
         if window_dc.is_invalid() {
@@ -298,10 +300,23 @@ fn visible_window_rect(
     hwnd: windows::Win32::Foundation::HWND,
 ) -> Result<windows::Win32::Foundation::RECT, PlatformError> {
     use windows::Win32::Foundation::RECT;
+    use windows::Win32::Graphics::Dwm::{DWMWA_EXTENDED_FRAME_BOUNDS, DwmGetWindowAttribute};
     use windows::Win32::UI::WindowsAndMessaging::GetWindowRect;
 
     let mut rect = RECT::default();
     unsafe {
+        if DwmGetWindowAttribute(
+            hwnd,
+            DWMWA_EXTENDED_FRAME_BOUNDS,
+            &mut rect as *mut _ as *mut c_void,
+            std::mem::size_of::<RECT>() as u32,
+        )
+        .is_ok()
+            && rect.right > rect.left
+            && rect.bottom > rect.top
+        {
+            return Ok(rect);
+        }
         GetWindowRect(hwnd, &mut rect)
             .map_err(|err| PlatformError::Platform(format!("GetWindowRect failed: {err}")))?;
     }
@@ -407,8 +422,7 @@ fn overlay_windows_for_window(
 ) -> Result<Vec<OverlayWindow>, PlatformError> {
     use windows::Win32::Foundation::{HWND, LPARAM, RECT};
     use windows::Win32::UI::WindowsAndMessaging::{
-        EnumWindows, GW_OWNER, GetWindow, GetWindowRect, GetWindowThreadProcessId, IsIconic,
-        IsWindowVisible,
+        EnumWindows, GW_OWNER, GetWindow, GetWindowThreadProcessId, IsIconic, IsWindowVisible,
     };
     use windows::core::BOOL;
 
@@ -441,10 +455,10 @@ fn overlay_windows_for_window(
             return BOOL(1);
         }
 
-        let mut rect = RECT::default();
-        if unsafe { GetWindowRect(hwnd, &mut rect).is_err() }
-            || !rects_intersect(state.base_rect, rect)
-        {
+        let Ok(rect) = visible_window_rect(hwnd) else {
+            return BOOL(1);
+        };
+        if !rects_intersect(state.base_rect, rect) {
             return BOOL(1);
         }
 
@@ -573,6 +587,10 @@ fn is_screenshot_overlay_class(class_name: &str) -> bool {
             | "LingXiaDeviceAboutMask"
             | "LingXiaDeviceAboutSheet"
     )
+}
+
+fn is_screen_capture_window_class(class_name: &str) -> bool {
+    class_name == "LingXiaDeviceFrame" || is_screenshot_overlay_class(class_name)
 }
 
 fn rects_intersect(
