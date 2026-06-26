@@ -16,7 +16,7 @@ mod windows;
 
 use crate::runtime;
 use crate::versions::current_versions;
-use anyhow::Result;
+use anyhow::{Context, Result, anyhow, bail};
 use colored::Colorize;
 use dialoguer::{Confirm, theme::ColorfulTheme};
 use std::path::PathBuf;
@@ -53,7 +53,7 @@ pub fn execute(
     platforms: Vec<String>,
     package_id: Option<String>,
     icon: Option<String>,
-    cloud_functions: bool,
+    functions: bool,
     yes: bool,
 ) -> Result<()> {
     println!("{}", "Create a new LingXia project".bold());
@@ -77,6 +77,14 @@ pub fn execute(
     let product_name = gather_product_name(&name, yes)?;
 
     if matches!(project_type, ProjectType::LxApp) {
+        // --functions needs the lingxiao CLI (it scaffolds + builds the worker).
+        // Fail fast before creating anything — no half-worker fallback.
+        if functions && !lingxiao_available() {
+            return Err(anyhow!(
+                "`lingxia new --functions` requires the `lingxiao` CLI on PATH — it scaffolds \
+                 and builds the cloud worker.\nInstall lingxiao and retry, or omit --functions."
+            ));
+        }
         let framework = gather_lxapp_framework(yes)?;
         let target_dir = std::env::current_dir()?.join(&name);
         create_lxapp_from_template(
@@ -89,8 +97,8 @@ pub fn execute(
             &scaffold_versions.bridge,
             &scaffold_versions.types,
         )?;
-        if cloud_functions {
-            scaffold_cloud_functions(&target_dir)?;
+        if functions {
+            scaffold_functions(&target_dir)?;
         }
 
         println!();
@@ -198,16 +206,64 @@ fn print_ai_skill_tip() {
 
 // Platform-specific helpers are in `commands/new/*`.
 
-/// `--cloud-functions`: copy the `lxapp-cloud` overlay's `cloud/functions/`
-/// folder — a sample `lx.fn` plus a README — into a freshly scaffolded lxapp.
-/// The home page is untouched; the README shows how to call `lx.cloud.invoke`.
-fn scaffold_cloud_functions(target_dir: &std::path::Path) -> Result<()> {
-    let overlay = locate_templates_dir()?.join("lxapp-cloud");
-    copy_dir_all(&overlay.join("cloud"), &target_dir.join("cloud"))?;
+/// `--functions`: lay the typed-cloud-functions overlay onto a fresh lxapp.
+/// lingxia owns the contract + sample impl + mock + `functions.json` + home
+/// variant; the worker *structure* (lingxiao.toml / tsconfig / src/index.ts /
+/// package.json) is scaffolded by `lingxiao new` — which is required (the caller
+/// checks availability first, so this only fails if the run itself errors).
+fn scaffold_functions(target_dir: &std::path::Path) -> Result<()> {
+    let overlay = locate_templates_dir()?.join("lxapp-functions");
+    let server = target_dir.join("server");
+
+    // Worker structure: lingxiao owns it (never hand-mirror its scaffold).
+    run_lingxiao_new(&server)?;
+    // Drop lingxiao's placeholder fn; we ship a coherent `hello` sample.
+    let _ = std::fs::remove_file(server.join("src/functions/main.ts"));
+
+    // lingxia's overlay: build-ready sample + mock + config + home variant.
+    copy_dir_all(&overlay.join("server"), &server)?;
+    std::fs::copy(
+        overlay.join("functions.json"),
+        target_dir.join("functions.json"),
+    )?;
+    // Home variant: swap the `greet` action body to call the cloud function
+    // (the View is untouched).
+    std::fs::copy(
+        overlay.join("pages/home/index.ts"),
+        target_dir.join("pages/home/index.ts"),
+    )?;
+
     println!(
-        "  {} Cloud functions: cloud/functions/ (sample + README)",
+        "  {} Cloud functions: server/ worker (via lingxiao new) + functions.json",
         "✓".green()
     );
+    Ok(())
+}
+
+/// Whether the `lingxiao` CLI is on PATH (it scaffolds + builds the worker).
+fn lingxiao_available() -> bool {
+    std::process::Command::new("lingxiao")
+        .arg("--help")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_ok()
+}
+
+/// Scaffold the worker structure via `lingxiao new <server>`.
+fn run_lingxiao_new(server: &std::path::Path) -> Result<()> {
+    let status = std::process::Command::new("lingxiao")
+        .arg("new")
+        .arg(server)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .context("failed to run `lingxiao new` (is the lingxiao CLI installed?)")?;
+    if !status.success() {
+        bail!("`lingxiao new {}` failed", server.display());
+    }
     Ok(())
 }
 

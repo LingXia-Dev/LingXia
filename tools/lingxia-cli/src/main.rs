@@ -144,10 +144,10 @@ enum Commands {
         #[arg(long)]
         icon: Option<String>,
 
-        /// (lxapp) Scaffold a `cloud/functions/` folder with a sample mockable
-        /// cloud function + README
+        /// (lxapp) Scaffold typed cloud functions: a `server/` worker (mock +
+        /// live), `functions.json` routing, and a home page wired to `lx.cloud`
         #[arg(long)]
-        cloud_functions: bool,
+        functions: bool,
 
         /// Skip confirmation prompt
         #[arg(short = 'y', long)]
@@ -498,7 +498,7 @@ fn main() -> Result<()> {
             platform,
             package_id,
             icon,
-            cloud_functions,
+            functions,
             yes,
         } => {
             commands::new::execute(
@@ -507,7 +507,7 @@ fn main() -> Result<()> {
                 platform,
                 package_id,
                 icon,
-                cloud_functions,
+                functions,
                 yes,
             )?;
         }
