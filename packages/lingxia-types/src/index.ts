@@ -173,6 +173,16 @@ interface WindowSurfaceSize {
  *   (a drill-in), never a docked panel. So one declaration reads as a side panel
  *   on large screens and a full-screen drill-in on small ones. For a destination
  *   that should stay switchable on phones, declare it `role: main` instead.
+ *
+ *   `float` is a popup layered above the main at `position` (like a dialog); it
+ *   takes no layout space. The SDK gives it **no chrome of its own — there is no
+ *   built-in close button**: the lxapp owns the popup UI and dismisses it by
+ *   calling `surface.close()` (or `.hide()`). A float sized to the full container
+ *   (`size: { width: '100%', height: '100%' }`) presents immersively on mobile
+ *   (system bars hidden) and is likewise chrome-less — draw your own close
+ *   affordance. (iOS retains a silent left-edge swipe as a last-resort escape so a
+ *   full-screen float can never trap the user; don't rely on it as the primary
+ *   dismissal.)
  * - `{ surface }` — a surface declared in `lingxia.yaml` `surfaces:`, by id
  *   (e.g. `'terminal'`, `'ai-assistant'`). Form, position, and startup data come
  *   from the declaration.
@@ -197,6 +207,11 @@ export type OpenPageSurfaceSpec =
     }
   | {
       page: string;
+      /**
+       * A chrome-less popup above the main: the lxapp draws its own UI and close
+       * affordance — there is no SDK-provided close button (see
+       * {@link OpenPageSurfaceSpec}).
+       */
       as: 'float';
       position?: SurfaceFloatPosition;
       size?: OverlaySurfaceSize;
