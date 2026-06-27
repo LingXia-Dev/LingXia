@@ -1,8 +1,9 @@
 use super::app::Platform;
 use crate::error::PlatformError;
-use crate::traits::mouse::{
-    AppMouse, AppMouseAction, AppMouseButton, AppMouseRequest, AppMouseResult,
-};
+use crate::traits::mouse::{AppMouse, AppMouseRequest, AppMouseResult};
+// Mouse synthesis is macOS-only; iOS has no pointer to drive.
+#[cfg(target_os = "macos")]
+use crate::traits::mouse::{AppMouseAction, AppMouseButton};
 use async_trait::async_trait;
 
 #[cfg(target_os = "macos")]

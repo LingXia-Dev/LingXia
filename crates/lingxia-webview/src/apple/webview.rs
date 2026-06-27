@@ -1577,6 +1577,10 @@ pub(crate) fn toggle_devtools_by_swift_ptr(swift_ptr: usize, detached: bool) -> 
 /// from `NSUserDefaults` when creating the inspector frontend; setting it false
 /// makes the inspector open in its own window regardless of the inspected
 /// view's size.
+///
+/// macOS-only: called solely from `toggle_devtools_by_swift_ptr` (the Web
+/// Inspector isn't available on iOS).
+#[cfg(target_os = "macos")]
 unsafe fn set_inspector_starts_attached_false() {
     let defaults: *mut AnyObject = msg_send![objc2::class!(NSUserDefaults), standardUserDefaults];
     if defaults.is_null() {
