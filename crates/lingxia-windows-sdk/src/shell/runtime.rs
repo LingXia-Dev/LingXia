@@ -29,7 +29,7 @@ use lingxia_windows_contract::{
 };
 // Presenting a browser tab over the main card is browser-only.
 #[cfg(feature = "browser-runtime")]
-use lingxia_windows_host::present_webview_in_active_group;
+use lingxia_windows_contract::present_webview_in_active_group;
 use lxapp::{LxApp, LxAppDelegate, LxAppStartupOptions, LxAppUiEventType, ReleaseType};
 
 const DEFAULT_NAV_BAR_HEIGHT: i32 = 38;

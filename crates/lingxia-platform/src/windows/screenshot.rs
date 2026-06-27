@@ -139,7 +139,7 @@ pub(super) fn resolve_screenshot_window(
 fn webview_host_window_ids() -> std::collections::HashSet<usize> {
     let mut ids = std::collections::HashSet::new();
     for webtag in webview_runtime::list_webviews() {
-        if let Ok(snapshot) = lingxia_windows_host::webview_window_snapshot(&webtag)
+        if let Ok(snapshot) = lingxia_windows_contract::webview_window_snapshot(&webtag)
             && snapshot.visible
             && snapshot.content_width > 0
             && snapshot.content_height > 0

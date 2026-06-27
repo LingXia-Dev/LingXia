@@ -58,18 +58,22 @@ Two usage modes, selected by Cargo features:
   Win32 message loop until the app exits.
 - **advanced**: the host brings its own window and message loop and registers
   its own `WindowsHostBackend` (from `lingxia-windows-contract`). It boots the
-  runtime with the host-agnostic `init_runtime` (which opens no window),
-  optionally enabling the `components` tier for the SDK's view overlays. See
+  runtime with the host-agnostic `init_runtime` (which presents no window),
+  optionally enabling the `components` tier and calling
+  `install_windows_components` for the SDK's view overlays. See
   `examples/advanced_host.rs`.
 
 Feature tiers: `host-api` ⊂ `components` ⊂ `runtime` ⊂ `standard`/`browser-shell`.
 
 Boot API:
 
-- `init_runtime(app) -> home_app_id` — host-agnostic: boots the runtime, opens
-  no window, installs no backend.
-- `install_default_windows_host()` — installs the SDK's default backend +
-  components + app menu (+ shell under `browser-shell`).
+- `init_runtime(app) -> home_app_id` — host-agnostic: boots the runtime,
+  presents no window, installs no backend.
+- `install_windows_components()` — installs SDK-managed native component
+  integrations without installing the default backend.
+- `install_default_windows_host()` — installs the SDK's default WebView
+  parent-window host + backend + components + app menu (+ shell under
+  `browser-shell`).
 - `start_default_host(app) -> home_app_id` — `install_default_windows_host` +
   `init_runtime` + opens the home window, *without* pumping the loop (for hosts
   that want the default UI but their own post-boot setup, e.g. the runner).

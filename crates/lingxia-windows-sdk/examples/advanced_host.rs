@@ -42,8 +42,8 @@ mod advanced {
 
     use lingxia_webview::{WebTag, WebViewError};
     use lingxia_windows_contract::{
-        WindowsContentRect, WindowsHostPanelTab, WindowsHostWindow, WindowsPanelPosition,
-        WindowsWebViewContentWindow, WindowsWebViewWindowSnapshot, WindowsHostBackend,
+        WindowsContentRect, WindowsHostBackend, WindowsHostPanelTab, WindowsHostWindow,
+        WindowsPanelPosition, WindowsWebViewContentWindow, WindowsWebViewWindowSnapshot,
         set_windows_host_backend,
     };
 
@@ -52,16 +52,22 @@ mod advanced {
         // here LingXia presents WebViews and panels into the host's own window
         // via these callbacks. (Skipping `install_default_windows_host`.)
         set_windows_host_backend(Arc::new(MyHostBackend));
+        // Optional SDK-managed component integrations (input/video overlays,
+        // media preview, pull-to-refresh) without installing the default backend.
+        #[cfg(feature = "components")]
+        lingxia_windows_sdk::install_windows_components();
         boot_and_run();
     }
 
     // Booting the lxapp runtime needs the `runtime` feature. `init_runtime` is
-    // host-agnostic — it opens no window — so the host owns the window and loop.
+    // host-agnostic — it presents no window — so the host owns the window and loop.
     #[cfg(feature = "runtime")]
     fn boot_and_run() {
         match lingxia_windows_sdk::init_runtime(lingxia_windows_sdk::WindowsApp::from_env()) {
             Ok(home_app_id) => {
-                println!("runtime booted for {home_app_id}; open your own window + pump your own loop");
+                println!(
+                    "runtime booted for {home_app_id}; open your own window + pump your own loop"
+                );
                 // Create your Win32 window for `home_app_id`, then drive messages —
                 // e.g. `let _code = lingxia_windows_sdk::run_message_loop();`
             }
@@ -71,7 +77,9 @@ mod advanced {
 
     #[cfg(not(feature = "runtime"))]
     fn boot_and_run() {
-        println!("registered a custom WindowsHostBackend; enable `runtime` to boot the lxapp runtime");
+        println!(
+            "registered a custom WindowsHostBackend; enable `runtime` to boot the lxapp runtime"
+        );
     }
 
     /// A skeleton backend. A real host routes each call to its own window —
@@ -154,7 +162,9 @@ mod advanced {
             &self,
             _webtag: &WebTag,
         ) -> Result<WindowsWebViewWindowSnapshot, WebViewError> {
-            Err(WebViewError::WebView("no window in the skeleton backend".to_string()))
+            Err(WebViewError::WebView(
+                "no window in the skeleton backend".to_string(),
+            ))
         }
         fn show_webview_window(&self, _webtag: &WebTag, _title: &str, _activate: bool) -> R {
             Ok(())
@@ -169,12 +179,7 @@ mod advanced {
         ) -> R {
             Ok(())
         }
-        fn navigate_webview_window(
-            &self,
-            _webtag: &WebTag,
-            _title: &str,
-            _activate: bool,
-        ) -> R {
+        fn navigate_webview_window(&self, _webtag: &WebTag, _title: &str, _activate: bool) -> R {
             Ok(())
         }
         fn hide_webview_window(&self, _webtag: &WebTag) -> R {

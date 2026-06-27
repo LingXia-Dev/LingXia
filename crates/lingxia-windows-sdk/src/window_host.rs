@@ -193,8 +193,12 @@ impl WindowsWebViewNativeViewHost for PlatformNativeViewHost {
     }
 }
 
-pub fn install_native_view_host() {
+pub fn install_default_webview_native_view_host() {
     set_webview_native_view_host(Arc::new(PlatformNativeViewHost));
+}
+
+pub fn install_default_windows_backend() {
+    install_default_webview_native_view_host();
     set_windows_host_backend(Arc::new(WindowsHostBackendImpl));
 }
 
