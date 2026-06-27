@@ -15,6 +15,7 @@ proxy = ["host/proxy", "browser-shell"]
 terminal-runtime = ["host/terminal-runtime", "lingxia-windows-sdk/terminal-runtime"]
 devtools = ["host/devtools"]
 webview-input = ["host/webview-input", "lingxia-windows-sdk/webview-input"]
+cloud = ["host/cloud"]  # activated by `--with-provider cloud`
 
 [dependencies]
 lingxia-windows-sdk = { path = "../../../crates/lingxia-windows-sdk", default-features = false }

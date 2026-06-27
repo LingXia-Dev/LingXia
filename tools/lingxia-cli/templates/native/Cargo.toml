@@ -17,6 +17,7 @@ browser-shell = ["lingxia/browser-shell", "webview-input", "standard"]
 terminal-runtime = ["lingxia/terminal-runtime"]
 devtools = ["dep:lingxia_devtool", "lingxia_devtool/browser"]
 webview-input = ["lingxia/webview-input"]
+cloud = []  # activated by `--with-provider cloud`
 
 [dependencies]
 lingxia = { version = "{{LINGXIA_VERSION}}", default-features = false, features = {{LINGXIA_DEP_FEATURES}} }
