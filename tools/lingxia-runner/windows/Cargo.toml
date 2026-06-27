@@ -9,6 +9,18 @@ publish = false
 name = "lingxia-runner"
 path = "src/main.rs"
 
+[features]
+# Cloud provider. Off by default; `lingxia package/build --with-provider cloud`
+# injects the provider crate (+ the root crates.io->local patches it needs) and
+# activates this feature, which pulls in the shared runner-config resolver.
+cloud = ["dep:lingxia-runner-config"]
+
+# The runner is a dev container, so it asks the cloud provider for `dev` — the
+# runtime lingxiaServer/lingxiaId overrides + mock switch. The CLI reads this to
+# decide which provider features to enable; it hardcodes no provider knowledge.
+[package.metadata.lingxia.providers.cloud]
+features = ["dev"]
+
 [dependencies]
 # The device-frame runner hosts a single lxapp in the shell (phone tabbar / lxapp
 # navbar), with no browser tabs — so it takes the shell substrate (`shell-chrome`)
@@ -19,6 +31,10 @@ lingxia-windows-sdk = { workspace = true, features = ["standard", "shell-chrome"
 lxapp = { workspace = true, default-features = false }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+# Shared resolver for the dev runner's config (config.toml overrides, mock dir,
+# lxapp routing); mapped onto the provider's types in runner.rs. Only needed when
+# the provider is injected. Shared with the macOS runner.
+lingxia-runner-config = { workspace = true, optional = true }
 
 [build-dependencies]
 lingxia-windows-build = { workspace = true }
