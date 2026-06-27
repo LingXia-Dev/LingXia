@@ -3214,6 +3214,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "lingxia-runner-config"
+version = "0.9.1"
+dependencies = [
+ "serde_json",
+ "toml",
+]
+
+[[package]]
 name = "lingxia-runner-lib"
 version = "0.9.1"
 dependencies = [
