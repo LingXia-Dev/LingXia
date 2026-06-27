@@ -359,10 +359,21 @@ fn dep_table_toml(provider: &ResolvedProvider) -> Result<String> {
         .collect::<Vec<_>>()
         .join(", ");
     Ok(format!(
-        "\n[dependencies.{}]\npath = \"{}\"\noptional = true\nfeatures = [{feats}]\n",
+        "\n[dependencies.{}]\npath = {}\noptional = true\nfeatures = [{feats}]\n",
         provider.crate_name,
-        provider.dir.display()
+        toml_path(&provider.dir)
     ))
+}
+
+/// Quote a path as a TOML string — a literal (single-quoted) string so Windows
+/// backslashes aren't read as escapes; basic-string fallback if it has a quote.
+fn toml_path(path: &Path) -> String {
+    let s = path.to_string_lossy();
+    if s.contains('\'') {
+        format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""))
+    } else {
+        format!("'{s}'")
+    }
 }
 
 /// Workspace root if `dir` is a member of an enclosing workspace; `None` for a
@@ -414,7 +425,7 @@ fn patch_workspace_root(
         {
             continue;
         }
-        insert.push_str(&format!("{name} = {{ path = \"{}\" }}\n", path.display()));
+        insert.push_str(&format!("{name} = {{ path = {} }}\n", toml_path(path)));
     }
     if insert.is_empty() {
         return Ok(());
@@ -435,5 +446,30 @@ fn backup_lock(workspace_dir: &Path, guard: &mut ProviderInjection) {
     let lock = workspace_dir.join("Cargo.lock");
     if let Ok(content) = fs::read(&lock) {
         guard.backups.push((lock, content));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::toml_path;
+    use std::path::Path;
+
+    /// A Windows-style path must produce a TOML value that parses back to the same
+    /// string — the old basic-string form turned `\s`/`\c` into invalid escapes.
+    #[test]
+    fn windows_path_round_trips_through_toml() {
+        let rendered = format!("path = {}", toml_path(Path::new(r"C:\src\cloud")));
+        let value: toml::Value = toml::from_str(&rendered).expect("valid TOML");
+        assert_eq!(value["path"].as_str(), Some(r"C:\src\cloud"));
+    }
+
+    /// A path containing a single quote can't be a literal string, so it falls
+    /// back to an escaped basic string — still round-trips.
+    #[test]
+    fn path_with_single_quote_falls_back_to_basic_string() {
+        let weird = r"/tmp/it's \here";
+        let rendered = format!("path = {}", toml_path(Path::new(weird)));
+        let value: toml::Value = toml::from_str(&rendered).expect("valid TOML");
+        assert_eq!(value["path"].as_str(), Some(weird));
     }
 }
