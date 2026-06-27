@@ -151,6 +151,25 @@ public struct MobileDeviceSize: Equatable, Hashable, Decodable, Sendable {
         )
     }
 
+    /// Uniformly shrink the device so a tall phone fits a short screen while
+    /// everything still lays out 1:1 (no view transform → input stays correct).
+    public func scaled(by scale: CGFloat) -> MobileDeviceSize {
+        guard scale < 1 else { return self }
+        return MobileDeviceSize(
+            id: id,
+            group: group,
+            name: name,
+            // Round the size-bearing dimensions together so the frame lands on
+            // whole pixels (radii are cosmetic curves — leave them exact).
+            width: (width * scale).rounded(),
+            height: (height * scale).rounded(),
+            bezelWidth: (bezelWidth * scale).rounded(),
+            outerRadius: outerRadius * scale,
+            screenRadius: screenRadius * scale,
+            notchSpec: notchSpec.scaled(by: scale)
+        )
+    }
+
     private static func device(id: String) -> MobileDeviceSize {
         guard let device = allCases.first(where: { $0.id == id }) else {
             fatalError("Missing runner device preset: \(id)")
@@ -183,6 +202,15 @@ public struct iPhoneNotchSpec: Equatable, Hashable, Decodable, Sendable {
     public let height: CGFloat
     public let cornerRadius: CGFloat
     public let statusBarHeight: CGFloat
+
+    public func scaled(by scale: CGFloat) -> iPhoneNotchSpec {
+        iPhoneNotchSpec(
+            width: width * scale,
+            height: height * scale,
+            cornerRadius: cornerRadius * scale,
+            statusBarHeight: statusBarHeight * scale
+        )
+    }
 
     public static let iPhoneSE = iPhoneNotchSpec(
         width: 0,

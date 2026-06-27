@@ -41,10 +41,22 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
 
         // Simulator layout - borderless window
         public static let toolbarToDeviceGap: CGFloat = 12  // Gap between toolbar and device
+
+        // Chrome stacked above the device frame (toolbar + its gap). Both
+        // `calculateWindowSize` (adds it) and `fitScale` (subtracts it) read from
+        // here so the two never drift apart.
+        public static var chromeHeight: CGFloat {
+            SimulatorToolbar.Layout.height + toolbarToDeviceGap
+        }
+        // Breathing room kept around the device when fitting it to the screen.
+        public static let screenFitMargin: CGFloat = 24
+        // Never scale below this; a tiny frame stays usable even if it overflows.
+        public static let minFitScale: CGFloat = 0.4
     }
 
     // MARK: - Device Configuration
 
+    // Selected device (identity). `layoutDevice` shrinks it to fit a short screen.
     private static var currentDeviceSize: MobileDeviceSize = .defaultDevice
 
     // MARK: - UI Components - Simulator Shell
@@ -54,6 +66,11 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
     private var deviceFrameWidthConstraint: NSLayoutConstraint?
     private var deviceFrameHeightConstraint: NSLayoutConstraint?
     private var phoneContentView: NSView?  // The view that contains the phone screen content
+
+    // Scale currently applied to the device frame for the window's screen. Gates
+    // `windowDidChangeScreen` so a spurious screen notification (or the resize
+    // itself crossing a screen edge) doesn't re-fit when the scale is unchanged.
+    private var appliedScale: CGFloat = 1
 
     // MARK: - DevTools
 
@@ -130,14 +147,20 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
     
     public static func setWindowSize(_ deviceSize: MobileDeviceSize) {
         currentDeviceSize = deviceSize
-        Layout.currentNotchSpec = deviceSize.notchSpec
+        Layout.currentNotchSpec = layoutDevice().notchSpec
     }
-    
+
+    /// The selected device shrunk to fit the screen; everything lays out 1:1 at
+    /// this size, so taps stay correct (no view transform).
+    private static func layoutDevice(screen: NSScreen? = nil) -> MobileDeviceSize {
+        currentDeviceSize.scaled(by: fitScale(for: currentDeviceSize, screen: screen))
+    }
+
     // MARK: - Window Creation
-    
+
     private static func createSimulatorWindow() -> SimulatorWindow {
-        let windowSize = calculateWindowSize(for: currentDeviceSize, devToolsWidth: 0)
-        
+        let windowSize = calculateWindowSize(for: layoutDevice())
+
         let window = SimulatorWindow(
             contentRect: NSRect(x: 0, y: 0, width: windowSize.width, height: windowSize.height),
             styleMask: [.borderless],
@@ -150,17 +173,24 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         return window
     }
     
-    /// Calculate total window size including toolbar, device frame, and optional DevTools panel
+    /// Toolbar + device frame + optional DevTools panel.
     private static func calculateWindowSize(for device: MobileDeviceSize, devToolsWidth: CGFloat = 0) -> CGSize {
         let frameSize = DeviceFrame.frameSize(for: device)
-
         let width = frameSize.width + devToolsWidth
-
-        let height = SimulatorToolbar.Layout.height
-            + Layout.toolbarToDeviceGap
-            + frameSize.height
-
+        let height = Layout.chromeHeight + frameSize.height
         return CGSize(width: width, height: height)
+    }
+
+    /// Largest scale (≤1) that fits the full-size device frame inside the screen
+    /// height, so a tall phone doesn't overflow a short laptop display. Fits
+    /// height only — width (e.g. an open DevTools panel) is not constrained here.
+    static func fitScale(for device: MobileDeviceSize, screen: NSScreen? = nil) -> CGFloat {
+        guard let visible = (screen ?? NSScreen.main)?.visibleFrame else { return 1 }
+
+        let frameSize = DeviceFrame.frameSize(for: device)
+        let available = visible.height - Layout.chromeHeight - Layout.screenFitMargin
+        let scale = available / frameSize.height
+        return min(1.0, max(Layout.minFitScale, scale))  // never upscale; floor keeps a tiny screen usable
     }
     
     // MARK: - Setup
@@ -221,13 +251,16 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
     // MARK: - Device Frame Setup
 
     private func setupDeviceFrame(in contentView: NSView) {
+        // Seed `appliedScale` from the initial fit so the first screen change
+        // only re-fits if it actually differs.
+        appliedScale = Self.fitScale(for: Self.currentDeviceSize, screen: window?.screen)
+        let device = Self.currentDeviceSize.scaled(by: appliedScale)
         let frame = DeviceFrame()
         frame.translatesAutoresizingMaskIntoConstraints = false
-        frame.setDeviceSize(Self.currentDeviceSize)
-
+        frame.setDeviceSize(device)
         contentView.addSubview(frame)
 
-        let frameSize = DeviceFrame.frameSize(for: Self.currentDeviceSize)
+        let frameSize = DeviceFrame.frameSize(for: device)
         let widthConstraint = frame.widthAnchor.constraint(equalToConstant: frameSize.width)
         let heightConstraint = frame.heightAnchor.constraint(equalToConstant: frameSize.height)
 
@@ -271,9 +304,10 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         isDevToolsVisible = show
         devToolsPanel?.isHidden = !show
 
+        let devToolsWidth = show ? Self.devToolsPanelWidth : 0
         let newSize = Self.calculateWindowSize(
-            for: Self.currentDeviceSize,
-            devToolsWidth: show ? Self.devToolsPanelWidth : 0
+            for: Self.layoutDevice(screen: window?.screen),
+            devToolsWidth: devToolsWidth
         )
         guard let window = self.window else { return }
 
@@ -635,56 +669,56 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
     
     func applyDeviceChange(_ newDevice: MobileDeviceSize) {
         Self.currentDeviceSize = newDevice
-        Layout.currentNotchSpec = newDevice.notchSpec
         toolbar?.setCurrentDevice(newDevice)
-
         DevToolsLogger.shared.log("Device → \(newDevice.displayName) (\(newDevice.sizeDescription))", level: .debug)
+        refitToCurrentScreen()
+    }
 
-        // Resize window (preserve devtools panel if open)
-        let newWindowSize = Self.calculateWindowSize(
-            for: newDevice,
-            devToolsWidth: isDevToolsVisible ? Self.devToolsPanelWidth : 0
-        )
-        
+    /// Re-fit the selected device to the window's current screen and resize. Runs
+    /// on a device switch and when the window moves to another display (a shorter
+    /// screen needs a smaller scale). The device identity is unchanged; only the
+    /// scaled layout differs.
+    private func refitToCurrentScreen() {
+        let scale = Self.fitScale(for: Self.currentDeviceSize, screen: window?.screen)
+        appliedScale = scale
+        let layout = Self.currentDeviceSize.scaled(by: scale)
+        Layout.currentNotchSpec = layout.notchSpec
+
+        // Resize window (preserve devtools panel if open).
+        let devToolsWidth = isDevToolsVisible ? Self.devToolsPanelWidth : 0
+        let newWindowSize = Self.calculateWindowSize(for: layout, devToolsWidth: devToolsWidth)
+
         guard let window = self.window else { return }
-        
-        // Calculate new frame centered on current position
+
+        // Centered on the current position.
         let currentFrame = window.frame
         let newOrigin = NSPoint(
             x: currentFrame.midX - newWindowSize.width / 2,
             y: currentFrame.midY - newWindowSize.height / 2
         )
         let newFrame = NSRect(origin: newOrigin, size: newWindowSize)
-        
-        // Animate window resize
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.3
             context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
             window.animator().setFrame(newFrame, display: true)
         }
-        
-        // Update device frame size
-        updateDeviceFrameSize(for: newDevice)
-        
-        // Update notch view
+
+        updateDeviceFrameSize(for: layout)
         updateNotchView()
-        
-        // Update status bar height constraint
         updateStatusBarConstraints()
     }
-    
+
     private func updateDeviceFrameSize(for device: MobileDeviceSize) {
         guard let deviceFrame = deviceFrame else { return }
 
         deviceFrame.setDeviceSize(device)
-
         let frameSize = DeviceFrame.frameSize(for: device)
         deviceFrameWidthConstraint?.constant = frameSize.width
         deviceFrameHeightConstraint?.constant = frameSize.height
         deviceFrame.needsLayout = true
 
-        // Refresh devtools info panel
-        devToolsPanel?.updateInfo(device: device, path: currentPath)
+        // Refresh devtools info panel (selected device identity, not the scaled size)
+        devToolsPanel?.updateInfo(device: Self.currentDeviceSize, path: currentPath)
 
         // Phone UI overlay: show for phones, hide for larger shell-backed shapes.
         if !device.usesPhoneChrome {
@@ -700,7 +734,7 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
             }
         }
     }
-    
+
     private func updateNotchView() {
         guard let systemStatusBar = systemStatusBar else { return }
         
@@ -977,6 +1011,15 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
             }
         }
         RunnerApp.shared.handleWindowClosed(self)
+    }
+
+    public func windowDidChangeScreen(_ notification: Notification) {
+        // Moving to a shorter display needs a smaller scale (a taller one frees it
+        // back up). Only re-fit when the scale actually changes — skips the notch
+        // backing-scale notifications and avoids feedback from our own resize.
+        let scale = Self.fitScale(for: Self.currentDeviceSize, screen: window?.screen)
+        guard abs(scale - appliedScale) > 0.001 else { return }
+        refitToCurrentScreen()
     }
 
     func closeFromRuntime() {
