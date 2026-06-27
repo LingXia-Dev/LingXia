@@ -370,14 +370,7 @@ fn execute_android(ctx: DevContext, abis: Vec<String>) -> Result<()> {
 
         platform.run(&run_config)?;
 
-        print_mobile_dev_started(
-            "Android",
-            artifacts.path(),
-            &host_ws_url,
-            &device_ws_url,
-            &ctx.project_root,
-            &session,
-        );
+        print_mobile_dev_started("Android", &[]);
         wait_for_interrupt(stop_requested)?;
         Ok(())
     })();
@@ -466,15 +459,7 @@ fn execute_ios(ctx: DevContext) -> Result<()> {
         };
         platform.run(&run_config)?;
 
-        print_mobile_dev_started(
-            "iOS",
-            app_path,
-            &host_ws_url,
-            &device_ws_url,
-            &ctx.project_root,
-            &session,
-        );
-        println!("  {} Bundle ID: {}", "*".bold(), bundle_id);
+        print_mobile_dev_started("iOS", &[("Bundle ID", bundle_id.as_str())]);
         wait_for_interrupt(stop_requested)?;
         Ok(())
     })();
@@ -565,20 +550,7 @@ Use `lingxia build --platform macos --macos-arch {}` for cross-arch builds.",
             .spawn()
             .with_context(|| format!("Failed to run {}", exe.display()))?;
 
-        println!();
-        println!("{}", "Dev workflow started.".green().bold());
-        println!("  {} Platform: {}", "*".bold(), "macOS".cyan());
-        println!("  {} Artifact: {}", "*".bold(), app_path.display());
-        println!(
-            "  {} Session file: {}",
-            "*".bold(),
-            log_store::session_file_path(&ctx.project_root, &session.session_id).display()
-        );
-        println!("  {} WS: {}", "*".bold(), ws_url);
-        println!("  {} Log file: {}", "*".bold(), session.log_file.display());
-        println!("  {} Session: {}", "*".bold(), session.session_id);
-        println!("  {} Stop: {}", "*".bold(), "Ctrl+C or close app".cyan());
-        println!();
+        print_dev_banner("macOS", "Ctrl+C or close app", &[]);
 
         wait_for_child_or_interrupt(&mut child, stop_requested, "macOS app")?;
         Ok(())
@@ -666,7 +638,6 @@ fn execute_harmony(ctx: DevContext) -> Result<()> {
         };
 
         harmony_platform.install(&install_config)?;
-        let installed_hap_path = resolve_installed_harmony_hap(&built_hap_path);
 
         println!();
 
@@ -692,15 +663,7 @@ fn execute_harmony(ctx: DevContext) -> Result<()> {
 
         harmony_platform.run(&run_config)?;
 
-        print_mobile_dev_started(
-            "HarmonyOS",
-            &installed_hap_path,
-            &host_ws_url,
-            &device_ws_url,
-            &ctx.project_root,
-            &session,
-        );
-        println!("  {} Bundle: {}", "*".bold(), bundle_name);
+        print_mobile_dev_started("HarmonyOS", &[("Bundle", bundle_name.as_str())]);
         wait_for_interrupt(stop_requested)?;
         Ok(())
     })();
@@ -795,20 +758,7 @@ fn execute_windows(ctx: DevContext) -> Result<()> {
             .spawn()
             .with_context(|| format!("Failed to run {}", exe_path.display()))?;
 
-        println!();
-        println!("{}", "Dev workflow started.".green().bold());
-        println!("  {} Platform: {}", "*".bold(), "Windows".cyan());
-        println!("  {} Artifact: {}", "*".bold(), exe_path.display());
-        println!(
-            "  {} Session file: {}",
-            "*".bold(),
-            log_store::session_file_path(&ctx.project_root, &session.session_id).display()
-        );
-        println!("  {} WS: {}", "*".bold(), ws_url);
-        println!("  {} Log file: {}", "*".bold(), session.log_file.display());
-        println!("  {} Session: {}", "*".bold(), session.session_id);
-        println!("  {} Stop: {}", "*".bold(), "Ctrl+C or close app".cyan());
-        println!();
+        print_dev_banner("Windows", "Ctrl+C or close app", &[]);
 
         wait_for_child_or_interrupt(&mut child, stop_requested, "Windows app")?;
         Ok(())
@@ -889,20 +839,7 @@ fn execute_lxapp_dev(project_root: PathBuf, options: DevExecuteOptions) -> Resul
             LxAppRunnerHost::Windows => launch_windows_runner_for_lxapp(&project_root, &ws_url)?,
         };
 
-        println!();
-        println!("{}", "Dev workflow started.".green().bold());
-        println!("  {} Mode: {}", "*".bold(), "LxApp Runner".cyan());
-        println!("  {} Project: {}", "*".bold(), project_root.display());
-        println!(
-            "  {} Session file: {}",
-            "*".bold(),
-            log_store::session_file_path(&project_root, &session.session_id).display()
-        );
-        println!("  {} WS: {}", "*".bold(), ws_url);
-        println!("  {} Log file: {}", "*".bold(), session.log_file.display());
-        println!("  {} Session: {}", "*".bold(), session.session_id);
-        println!("  {} Stop: {}", "*".bold(), "Ctrl+C or close Runner".cyan());
-        println!();
+        print_dev_banner("LxApp Runner", "Ctrl+C or close Runner", &[]);
 
         wait_for_runner_or_interrupt(&mut runner, stop_requested)?;
         Ok(())
@@ -1494,29 +1431,30 @@ fn lan_ws_url(port: u16) -> Result<String> {
     }
 }
 
-fn print_mobile_dev_started(
-    platform: &str,
-    artifact: &Path,
-    host_ws_url: &str,
-    device_ws_url: &str,
-    project_root: &Path,
-    session: &log_store::DevLogSession,
-) {
+/// Concise "dev started" banner. Session machinery (WS URLs, session id/file, log
+/// path) is omitted on purpose — `lxdev` auto-discovers the running session from
+/// `.lingxia/sessions/`, so the only thing the user needs is how to drive it.
+fn print_dev_banner(label: &str, stop_hint: &str, extra: &[(&str, &str)]) {
     println!();
-    println!("{}", "Dev workflow started.".green().bold());
-    println!("  {} Platform: {}", "*".bold(), platform.cyan());
-    println!("  {} Artifact: {}", "*".bold(), artifact.display());
     println!(
-        "  {} Session file: {}",
-        "*".bold(),
-        log_store::session_file_path(project_root, &session.session_id).display()
+        "{}   {}",
+        "Dev workflow started.".green().bold(),
+        label.cyan()
     );
-    println!("  {} Host WS: {}", "*".bold(), host_ws_url);
-    println!("  {} Device WS: {}", "*".bold(), device_ws_url);
-    println!("  {} Log file: {}", "*".bold(), session.log_file.display());
-    println!("  {} Session: {}", "*".bold(), session.session_id);
-    println!("  {} Stop: {}", "*".bold(), "Ctrl+C".cyan());
+    for (key, value) in extra {
+        println!("  {}  {}", format!("{key}:").bold(), value.cyan());
+    }
+    println!(
+        "  {}  {}   (run from the project root; --session to pick one)",
+        "Control:".bold(),
+        "lxdev <logs | lxapp | app | browser>".cyan(),
+    );
+    println!("  {}  {}", "Stop:".bold(), stop_hint.cyan());
     println!();
+}
+
+fn print_mobile_dev_started(platform: &str, extra: &[(&str, &str)]) {
+    print_dev_banner(platform, "Ctrl+C", extra);
 }
 
 struct DevPortForward {
@@ -1763,42 +1701,6 @@ fn parse_lxapp_framework(value: &str) -> Result<ProjectFramework> {
             "Unsupported framework {value:?}; expected react, vue, or html"
         )),
     }
-}
-
-fn resolve_installed_harmony_hap(built_hap: &Path) -> PathBuf {
-    for candidate in harmony_install_signed_candidates(built_hap) {
-        if candidate.exists() {
-            return candidate;
-        }
-    }
-    built_hap.to_path_buf()
-}
-
-fn harmony_install_signed_candidates(input_hap: &Path) -> Vec<PathBuf> {
-    let mut candidates = Vec::new();
-    candidates.push(install_signed_output_path(input_hap));
-
-    let stem = input_hap
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or_default();
-    if let Some(base) = stem.strip_suffix("-unsigned") {
-        let signed_source = input_hap.with_file_name(format!("{base}-signed.hap"));
-        candidates.push(install_signed_output_path(&signed_source));
-    }
-
-    candidates
-}
-
-fn install_signed_output_path(input_hap: &Path) -> PathBuf {
-    let stem = input_hap
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("app")
-        .trim_end_matches("-unsigned")
-        .trim_end_matches("-signed")
-        .trim_end_matches("-install-signed");
-    input_hap.with_file_name(format!("{stem}-install-signed.hap"))
 }
 
 #[cfg(test)]
