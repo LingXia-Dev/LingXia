@@ -27,6 +27,7 @@ members = [
     "crates/lingxia-proxy",
     "tools/lingxia-runner/macos/native",
     "tools/lingxia-runner/windows",
+    "tools/lingxia-runner/config",
     "tools/lingxia-cli",
     "tools/lingxia-devtools-cli",
     "crates/lingxia-native-codegen",
@@ -89,6 +90,7 @@ lingxia-transfer = { path = "crates/lingxia-transfer", version = "0.9.0" }
 lingxia-terminal = { path = "crates/lingxia-terminal", version = "0.9.0" }
 lingxia-settings = { path = "crates/lingxia-settings", version = "0.9.0" }
 lingxia-browser-shell = { path = "crates/lingxia-browser-shell", version = "0.9.0" }
+lingxia-runner-config = { path = "tools/lingxia-runner/config", version = "0.9.1" }
 
 # Harmony NAPI bindings
 napi-ohos = "1.1.0"

@@ -1,0 +1,13 @@
+[package]
+name = "lingxia-runner-config"
+# Tools version — keep in sync with the runners that consume it.
+version = "0.9.1"
+edition.workspace = true
+publish = false
+
+# Resolves the dev runner's config (config.toml + env + lxapp routing) into plain
+# data. Dependency-light on purpose: the provider's option/routing types live
+# only in the runner crates (injected at build time), which map this onto them.
+[dependencies]
+serde_json = { workspace = true }
+toml = "1.1.2"
