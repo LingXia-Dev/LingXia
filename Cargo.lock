@@ -3237,6 +3237,7 @@ dependencies = [
  "lingxia",
  "lingxia-devtool",
  "lingxia-lxapp",
+ "lingxia-runner-config",
  "lingxia-windows-build",
  "lingxia-windows-sdk",
  "serde",
