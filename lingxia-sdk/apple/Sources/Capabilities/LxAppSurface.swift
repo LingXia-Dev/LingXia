@@ -1128,6 +1128,10 @@ enum LxAppSurface {
         /// The layout reconciler tracks the full-screen set to dismiss asides the
         /// core dropped from the plan.
         let isFullScreenSurface: Bool
+        /// A float popup (role Float). Floats are lxapp-owned overlays, never
+        /// layout-plan members, so the full-screen reconciler must skip them even
+        /// when a float fills the screen (size 100%) and so reads as full-screen.
+        let isFloat: Bool
         let hostView: LxAppHostView?
         let webView: WKWebView?
         let navigationDelegate: WKNavigationDelegate?
@@ -1138,6 +1142,7 @@ enum LxAppSurface {
             appId: String,
             pageInstanceId: String,
             isFullScreenSurface: Bool,
+            isFloat: Bool,
             hostView: LxAppHostView?,
             webView: WKWebView?,
             navigationDelegate: WKNavigationDelegate?,
@@ -1147,6 +1152,7 @@ enum LxAppSurface {
             self.appId = appId
             self.pageInstanceId = pageInstanceId
             self.isFullScreenSurface = isFullScreenSurface
+            self.isFloat = isFloat
             self.hostView = hostView
             self.webView = webView
             self.navigationDelegate = navigationDelegate
@@ -1433,6 +1439,7 @@ enum LxAppSurface {
             appId: appId,
             pageInstanceId: pageInstanceId,
             isFullScreenSurface: isFullScreenSurface,
+            isFloat: role == roleFloat,
             hostView: hostView,
             webView: webView,
             navigationDelegate: navigationDelegate,
@@ -1449,7 +1456,7 @@ enum LxAppSurface {
     static func presentedFullScreenIds() -> Set<String> {
         Set(
             entries.values
-                .filter { $0.isFullScreenSurface && !$0.window.isHidden }
+                .filter { $0.isFullScreenSurface && !$0.isFloat && !$0.window.isHidden }
                 .map { $0.id }
         )
     }
