@@ -1,6 +1,6 @@
 use super::app::Platform;
 use crate::error::PlatformError;
-use crate::traits::ui::{SurfacePresenter, SurfaceRequest};
+use crate::traits::ui::{SurfaceKind, SurfacePresenter, SurfaceRequest};
 use jni::objects::{JClass, JObject, JValue};
 use jni::{jni_sig, jni_str};
 use lingxia_surface::LayoutPresentationPlan;
@@ -43,6 +43,12 @@ impl SurfacePresenter for Platform {
     }
 
     fn present_surface(&self, request: SurfaceRequest) -> Result<(), PlatformError> {
+        if request.kind == SurfaceKind::Window {
+            return Err(PlatformError::NotSupported(
+                "lx.surface window is not supported on this platform".to_string(),
+            ));
+        }
+
         let surface_class: &JClass = super::get_cached_class(super::CachedClass::LxAppSurface)
             .map_err(|e| PlatformError::Platform(e.to_string()))?;
 

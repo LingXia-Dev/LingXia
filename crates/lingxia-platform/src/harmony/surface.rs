@@ -1,6 +1,6 @@
 use super::app::Platform;
 use crate::error::PlatformError;
-use crate::traits::ui::{SurfacePresenter, SurfaceRequest};
+use crate::traits::ui::{SurfaceKind, SurfacePresenter, SurfaceRequest};
 use lingxia_surface::LayoutPresentationPlan;
 
 impl SurfacePresenter for Platform {
@@ -20,6 +20,12 @@ impl SurfacePresenter for Platform {
     }
 
     fn present_surface(&self, request: SurfaceRequest) -> Result<(), PlatformError> {
+        if request.kind == SurfaceKind::Window {
+            return Err(PlatformError::NotSupported(
+                "lx.surface window is not supported on this platform".to_string(),
+            ));
+        }
+
         let args = vec![
             request.id,
             request.app_id,

@@ -4,6 +4,8 @@ use super::ffi::{
     show_surface, toggle_managed_surface,
 };
 use crate::error::PlatformError;
+#[cfg(target_os = "ios")]
+use crate::traits::ui::SurfaceKind;
 use crate::traits::ui::{SurfacePosition, SurfacePresenter, SurfaceRequest};
 use lingxia_surface::LayoutPresentationPlan;
 
@@ -28,6 +30,13 @@ impl SurfacePresenter for Platform {
     }
 
     fn present_surface(&self, request: SurfaceRequest) -> Result<(), PlatformError> {
+        #[cfg(target_os = "ios")]
+        if request.kind == SurfaceKind::Window {
+            return Err(PlatformError::NotSupported(
+                "lx.surface window is not supported on this platform".to_string(),
+            ));
+        }
+
         if present_surface(
             &request.id,
             &request.app_id,

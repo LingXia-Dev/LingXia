@@ -23,7 +23,7 @@ function surfaceErrorMessage(error: unknown): string {
     : String(error || "unknown error");
 }
 
-function isExpectedWindowSurfaceUnsupported(error: unknown): boolean {
+function isSurfaceNotSupported(error: unknown): boolean {
   const object = surfaceErrorObject(error);
   const data = surfaceErrorObject(object?.data);
   const dataCode = data?.code;
@@ -31,6 +31,8 @@ function isExpectedWindowSurfaceUnsupported(error: unknown): boolean {
   return (
     object?.code === "E_NOT_SUPPORTED" &&
     (dataCode === "window_unsupported_platform" ||
+      dataCode === "surface_not_supported" ||
+      message.includes("not supported") ||
       message.includes("desktop window") ||
       message.includes("not available on this platform"))
   );
@@ -281,16 +283,17 @@ Page({
       });
     } catch (error) {
       const message = surfaceErrorMessage(error);
-      if (!isExpectedWindowSurfaceUnsupported(error)) {
+      const notSupported = isSurfaceNotSupported(error);
+      if (!notSupported) {
         console.error("lx.surface open failed:", error);
       }
       this.setData({
-        "surfaceDemo.message": `Failed: ${message}`,
+        "surfaceDemo.message": notSupported ? "not supported" : `Failed: ${message}`,
         "surfaceDemo.active": false,
         "surfaceDemo.visible": false,
       });
       lx.showToast({
-        title: `open failed: ${message}`,
+        title: notSupported ? "not supported" : `open failed: ${message}`,
         icon: "none",
       });
     }
