@@ -100,8 +100,6 @@ const OVERLAY_MIN_WIDTH: i32 = 280;
 const OVERLAY_MIN_HEIGHT: i32 = 220;
 const OVERLAY_DEFAULT_WIDTH: i32 = 460;
 const OVERLAY_DEFAULT_HEIGHT: i32 = 560;
-const OVERLAY_MAX_WIDTH: i32 = 560;
-const OVERLAY_MAX_HEIGHT: i32 = 720;
 const RESIZE_BORDER: i32 = 8;
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -496,6 +494,20 @@ pub fn present_webview_as_overlay(
 ) -> StdResult<()> {
     let handler = find_webview_handler(webtag).ok_or_else(|| handler_not_ready(webtag))?;
     let hwnd = hwnd_from_handle(handler.native_view().window);
+    // Own the overlay by the active host window so it tracks the host on
+    // minimize/restore and stays above it in z-order — contained within the host
+    // (e.g. the device frame) instead of floating as an independent top-level
+    // window that lingers when the host is minimized. Applies to every overlay
+    // surface (page or URL), mirroring the macOS surface sheet.
+    if let Some(owner) = active_host_window_except(Some(hwnd)) {
+        unsafe {
+            let _ = WindowsAndMessaging::SetWindowLongPtrW(
+                hwnd,
+                WindowsAndMessaging::GWLP_HWNDPARENT,
+                owner.0 as isize,
+            );
+        }
+    }
     let bounds = overlay_reference_rect(hwnd);
     let rect = overlay_rect(bounds, width, height, width_ratio, height_ratio, position);
 
@@ -523,16 +535,32 @@ pub fn present_webview_as_overlay(
 }
 
 fn overlay_reference_rect(hwnd: HWND) -> RECT {
-    if let Some(content) = active_content_screen_rect()
-        && content.width > OVERLAY_MIN_WIDTH
-        && content.height > OVERLAY_MIN_HEIGHT
+    // Size/place the overlay against the HOST (the device-frame content window),
+    // never the active webtag: once an overlay is presented it *becomes* the
+    // active webtag, so referencing the active content here would measure the
+    // overlay against itself and let its size drift on every hide/show. Excluding
+    // the overlay (`hwnd`) pins it to the device-frame content instead.
+    if let Some(host) = active_host_window_except(Some(hwnd))
+        && let Some(host_key) = active_webtag_key_for_window(host)
     {
-        return RECT {
-            left: content.left,
-            top: content.top,
-            right: content.left + content.width,
-            bottom: content.top + content.height,
-        };
+        let client = content_rect_for_window(host, &host_key);
+        let width = client.right - client.left;
+        let height = client.bottom - client.top;
+        if width > OVERLAY_MIN_WIDTH && height > OVERLAY_MIN_HEIGHT {
+            let mut origin = windows::Win32::Foundation::POINT {
+                x: client.left,
+                y: client.top,
+            };
+            unsafe {
+                let _ = windows::Win32::Graphics::Gdi::ClientToScreen(host, &mut origin);
+            }
+            return RECT {
+                left: origin.x,
+                top: origin.y,
+                right: origin.x + width,
+                bottom: origin.y + height,
+            };
+        }
     }
 
     unsafe {
@@ -562,18 +590,19 @@ fn overlay_rect(
     height_ratio: f64,
     position: u8,
 ) -> RECT {
-    let bounds_width = (bounds.right - bounds.left).max(OVERLAY_MIN_WIDTH);
-    let bounds_height = (bounds.bottom - bounds.top).max(OVERLAY_MIN_HEIGHT);
-    let max_width = (bounds_width - OVERLAY_MARGIN * 2).clamp(OVERLAY_MIN_WIDTH, OVERLAY_MAX_WIDTH);
-    let max_height =
-        (bounds_height - OVERLAY_MARGIN * 2).clamp(OVERLAY_MIN_HEIGHT, OVERLAY_MAX_HEIGHT);
+    let bounds_width = (bounds.right - bounds.left).max(1);
+    let bounds_height = (bounds.bottom - bounds.top).max(1);
+    // Honor the caller's extent — an absolute size, else a fraction of the host
+    // content (`*_ratio`), else the floating-card default — always clamped to the
+    // host content so the surface fits inside it (e.g. the device frame). A ratio
+    // is a fraction of the content, so `width_ratio = 1.0` is a full-width sheet;
+    // this matches the cross-platform surface contract honored on macOS/iOS.
     let overlay_width = resolve_overlay_extent(
         width,
         width_ratio,
         bounds_width,
         OVERLAY_DEFAULT_WIDTH,
         OVERLAY_MIN_WIDTH,
-        max_width,
     );
     let overlay_height = resolve_overlay_extent(
         height,
@@ -581,21 +610,37 @@ fn overlay_rect(
         bounds_height,
         OVERLAY_DEFAULT_HEIGHT,
         OVERLAY_MIN_HEIGHT,
-        max_height,
     );
 
+    // A surface that fills the cross axis is a sheet: flush to its anchored edge
+    // and the cross edges (no margin). A smaller one is a floating card: inset by
+    // a margin and centered on the free axis.
+    let full_w = overlay_width >= bounds_width;
+    let full_h = overlay_height >= bounds_height;
     let center_x = bounds.left + (bounds_width - overlay_width) / 2;
     let center_y = bounds.top + (bounds_height - overlay_height) / 2;
     let (x, y) = match position {
-        1 => (center_x, bounds.bottom - overlay_height - OVERLAY_MARGIN),
-        2 => (bounds.left + OVERLAY_MARGIN, center_y),
-        3 => (bounds.right - overlay_width - OVERLAY_MARGIN, center_y),
-        4 => (center_x, bounds.top + OVERLAY_MARGIN),
+        1 => (
+            if full_w { bounds.left } else { center_x },
+            bounds.bottom - overlay_height - if full_w { 0 } else { OVERLAY_MARGIN },
+        ),
+        2 => (
+            bounds.left + if full_h { 0 } else { OVERLAY_MARGIN },
+            if full_h { bounds.top } else { center_y },
+        ),
+        3 => (
+            bounds.right - overlay_width - if full_h { 0 } else { OVERLAY_MARGIN },
+            if full_h { bounds.top } else { center_y },
+        ),
+        4 => (
+            if full_w { bounds.left } else { center_x },
+            bounds.top + if full_w { 0 } else { OVERLAY_MARGIN },
+        ),
         _ => (center_x, center_y),
     };
 
-    let left = x.clamp(bounds.left + OVERLAY_MARGIN, bounds.right - overlay_width);
-    let top = y.clamp(bounds.top + OVERLAY_MARGIN, bounds.bottom - overlay_height);
+    let left = x.clamp(bounds.left, (bounds.right - overlay_width).max(bounds.left));
+    let top = y.clamp(bounds.top, (bounds.bottom - overlay_height).max(bounds.top));
     RECT {
         left,
         top,
@@ -604,22 +649,17 @@ fn overlay_rect(
     }
 }
 
-fn resolve_overlay_extent(
-    absolute: f64,
-    ratio: f64,
-    reference: i32,
-    fallback: i32,
-    min: i32,
-    max: i32,
-) -> i32 {
+fn resolve_overlay_extent(absolute: f64, ratio: f64, reference: i32, fallback: i32, min: i32) -> i32 {
     let value = if absolute.is_finite() && absolute > 0.0 {
         absolute.round() as i32
     } else if ratio.is_finite() && ratio > 0.0 {
-        (reference as f64 * ratio.clamp(0.1, 1.0)).round() as i32
+        (reference as f64 * ratio.clamp(0.0, 1.0)).round() as i32
     } else {
         fallback
     };
-    value.clamp(min.min(max), max)
+    // Never exceed the host content; floor at the min capped to the content so a
+    // frame narrower than the min can still host a (full-bleed) surface.
+    value.clamp(min.min(reference), reference)
 }
 
 pub fn resize_host_window_content(webtag: &WebTag, width: i32, height: i32) -> StdResult<()> {
