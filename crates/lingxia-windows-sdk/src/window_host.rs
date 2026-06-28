@@ -508,6 +508,19 @@ pub fn present_webview_as_overlay(
             );
         }
     }
+    // A managed overlay is not user-resizable. The shared webview-parent window
+    // carries WS_SIZEBOX, whose non-client frame insets the WebView2 client a few
+    // px from the window rect — and we size the *window* to the content rect, so
+    // the *client* (what paints) ends up narrower, leaving a strip of the webview
+    // beneath showing at the surface edges. Strip the sizing border so the client
+    // fills the window and the overlay covers the content exactly.
+    unsafe {
+        let style = WindowsAndMessaging::GetWindowLongPtrW(hwnd, WindowsAndMessaging::GWL_STYLE);
+        let stripped = style & !(WS_SIZEBOX.0 as isize);
+        if stripped != style {
+            WindowsAndMessaging::SetWindowLongPtrW(hwnd, WindowsAndMessaging::GWL_STYLE, stripped);
+        }
+    }
     let bounds = overlay_reference_rect(hwnd);
     let rect = overlay_rect(bounds, width, height, width_ratio, height_ratio, position);
 
@@ -519,7 +532,7 @@ pub fn present_webview_as_overlay(
             rect.top,
             rect.right - rect.left,
             rect.bottom - rect.top,
-            WindowsAndMessaging::SWP_SHOWWINDOW,
+            WindowsAndMessaging::SWP_SHOWWINDOW | WindowsAndMessaging::SWP_FRAMECHANGED,
         )
         .map_err(|err| WebViewError::WebView(format!("SetWindowPos failed: {err}")))?;
         let _ = WindowsAndMessaging::BringWindowToTop(hwnd);
@@ -649,7 +662,13 @@ fn overlay_rect(
     }
 }
 
-fn resolve_overlay_extent(absolute: f64, ratio: f64, reference: i32, fallback: i32, min: i32) -> i32 {
+fn resolve_overlay_extent(
+    absolute: f64,
+    ratio: f64,
+    reference: i32,
+    fallback: i32,
+    min: i32,
+) -> i32 {
     let value = if absolute.is_finite() && absolute > 0.0 {
         absolute.round() as i32
     } else if ratio.is_finite() && ratio > 0.0 {
