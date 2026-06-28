@@ -260,7 +260,7 @@ jobs:
       - name: Check Rust compiles for Android target
         run: cargo check --target aarch64-linux-android -p lingxia --lib
 
-  # The Windows host stack (lingxia-windows-sdk / -host / -build and the Windows
+  # The Windows host stack (lingxia-windows-sdk / -contract / -build and the Windows
   # backends of lingxia-platform / lingxia-webview / lingxia-shell) is
   # cfg(target_os = "windows"), so the macOS clippy job never compiles it (and
   # excludes those crates). Clippy the full workspace on a Windows runner so the
@@ -292,6 +292,20 @@ jobs:
       - name: Clippy Windows host stack
         shell: bash
         run: cargo clippy --workspace --exclude lingxia-terminal -- -D warnings -A clippy::let_underscore_future
+
+      # `--workspace` above only builds each crate's default features, i.e.
+      # windows-sdk's `standard`. Exercise the other tiers standalone too — in
+      # particular `components` (advanced / bring-your-own-host mode, without the
+      # lingxia runtime facade) and the advanced_host example, which the macOS
+      # host can't compile (C deps like zstd/quickjs need the Windows SDK).
+      - name: Check Windows SDK feature tiers
+        shell: bash
+        run: |
+          cargo check -p lingxia-windows-sdk --no-default-features --features host-api
+          cargo check -p lingxia-windows-sdk --no-default-features --features components
+          cargo check -p lingxia-windows-sdk --no-default-features --features browser-shell
+          cargo build --example advanced_host -p lingxia-windows-sdk --no-default-features --features host-api
+          cargo build --example advanced_host -p lingxia-windows-sdk --no-default-features --features runtime
 
   cli:
     needs: changes
@@ -383,7 +397,7 @@ jobs:
       # cfg'd out, leaving helpers dead), so they are linted by the Windows
       # clippy job instead — exclude them here.
       - name: Clippy (all workspace crates)
-        run: cargo clippy --workspace --exclude lingxia-terminal --exclude lingxia-windows-sdk --exclude lingxia-windows-host --exclude lingxia-windows-build --exclude lingxia-runner-windows -- -D warnings -A clippy::let_underscore_future
+        run: cargo clippy --workspace --exclude lingxia-terminal --exclude lingxia-windows-sdk --exclude lingxia-windows-contract --exclude lingxia-windows-build --exclude lingxia-runner-windows -- -D warnings -A clippy::let_underscore_future
 
   runner:
     needs: changes

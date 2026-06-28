@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use lingxia_windows_host::WindowsPanelPosition;
+use lingxia_windows_contract::WindowsPanelPosition;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[allow(dead_code)]

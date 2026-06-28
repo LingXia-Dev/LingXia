@@ -1,11 +1,11 @@
 [package]
-name = "lingxia-windows-host"
+name = "lingxia-windows-contract"
 version.workspace = true
 edition.workspace = true
-description = "Shared Windows host UI contracts for LingXia"
+description = "Windows host UI contracts (traits, types, registry) shared between the LingXia logic layer and the Windows SDK implementation"
 license = "MIT"
 repository.workspace = true
-keywords = ["lingxia", "windows", "host", "ui"]
+keywords = ["lingxia", "windows", "contract", "ui"]
 categories = ["gui", "os::windows-apis"]
 
 [dependencies]

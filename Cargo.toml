@@ -16,7 +16,7 @@ members = [
     "crates/lingxia-provider",
     "crates/lingxia-update",
     "crates/lingxia-webview",
-    "crates/lingxia-windows-host",
+    "crates/lingxia-windows-contract",
     "crates/lingxia-windows-sdk",
     "crates/lingxia-windows-build",
     "crates/lingxia-platform",
@@ -73,7 +73,7 @@ lingxia-update = { path = "crates/lingxia-update", version = "0.9.0" }
 lingxia-app-context = { path = "crates/lingxia-app-context", version = "0.9.0" }
 lingxia-media = { path = "crates/lingxia-media", version = "0.9.0" }
 lingxia-webview = { path = "crates/lingxia-webview", version = "0.9.0" }
-lingxia-windows-host = { path = "crates/lingxia-windows-host", version = "0.9.0" }
+lingxia-windows-contract = { path = "crates/lingxia-windows-contract", version = "0.9.0" }
 lingxia-windows-sdk = { path = "crates/lingxia-windows-sdk", version = "0.9.0", default-features = false }
 lingxia-windows-build = { path = "crates/lingxia-windows-build", version = "0.9.0" }
 lingxia-platform = { path = "crates/lingxia-platform", version = "0.9.0" }

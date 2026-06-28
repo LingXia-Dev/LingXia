@@ -10,29 +10,43 @@ keywords = ["lingxia", "windows", "webview2", "lxapp"]
 categories = ["gui", "os::windows-apis"]
 
 [features]
-default = []
+# Batteries-included by default so `cargo add lingxia-windows-sdk` just works.
+default = ["standard"]
+
+# Tier 0 — implement your own `WindowsHostBackend` against the contracts.
+# No view components, no runtime facade, no default shell.
 host-api = [
     "dep:lingxia-platform",
     "dep:lingxia-webview",
-    "dep:lingxia-windows-host",
+    "dep:lingxia-windows-contract",
     "dep:log",
     "dep:serde_json",
     "dep:windows",
 ]
-runtime = [
+
+# Tier 1 (advanced mode) — embeddable view components + native capabilities,
+# mounted into a caller-provided `WindowsHostBackend`. Deliberately does NOT
+# pull the `lingxia` runtime facade, the default shell, or the message loop, so
+# a host that brings its own window/loop can use the components on their own.
+components = [
     "host-api",
     "dep:image",
-    "dep:lingxia",
     "dep:lingxia-messaging",
-    "dep:lingxia-platform",
-    "dep:log",
     "dep:lxapp",
-    "dep:serde_json",
-    "dep:thiserror",
-    "dep:windows",
     "dep:windows-core",
 ]
+
+# Tier 2 — boots the LingXia runtime (`init_runtime` / `quick_start`) on top of
+# the components.
+runtime = [
+    "components",
+    "dep:lingxia",
+    "dep:thiserror",
+]
+
+# Tier 3 (quick-start default) — runtime opened in plain webview windows.
 standard = ["runtime", "lingxia/standard"]
+
 # Simulated-device frame (bezel/notch/capsule/toolbar + info sheet). Dev-runner
 # host chrome only; production hosts never wrap themselves in a device frame, so
 # it is opt-in and deliberately NOT implied by `browser-runtime`/`browser-shell`.
@@ -56,6 +70,7 @@ browser-shell = [
     "browser-runtime",
     "lingxia/browser-shell",
 ]
+
 terminal-runtime = ["runtime", "dep:lingxia-terminal", "lingxia/terminal-runtime"]
 webview-input = ["host-api", "lingxia?/webview-input"]
 
@@ -81,7 +96,7 @@ lxapp = { workspace = true, default-features = false, optional = true }
 lingxia-messaging = { workspace = true, optional = true }
 lingxia-platform = { workspace = true, optional = true }
 lingxia-webview = { workspace = true, optional = true }
-lingxia-windows-host = { workspace = true, optional = true }
+lingxia-windows-contract = { workspace = true, optional = true }
 # proc-macros: the `#[implement]` attribute (MFPlay callback in video_player).
 windows-core = { workspace = true, features = ["proc-macros"], optional = true }
 windows = { workspace = true, features = [
@@ -105,3 +120,8 @@ windows = { workspace = true, features = [
     "Win32_UI_Shell_PropertiesSystem",
     "Win32_UI_WindowsAndMessaging",
 ], optional = true }
+
+[[example]]
+name = "advanced_host"
+# Advanced (bring-your-own-host) mode needs only the contract surface.
+required-features = ["host-api"]

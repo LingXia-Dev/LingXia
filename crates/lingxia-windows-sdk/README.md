@@ -14,8 +14,8 @@ shell product UI.
 This crate owns Windows host functionality that should be available to any
 Rust Windows host:
 
-- runtime bootstrap through `WindowsApp`, `init`, `run_message_loop`, and
-  `quick_start`
+- runtime bootstrap through `WindowsApp`, `init_runtime`, `run_message_loop`,
+  and `quick_start`
 - generated `app.json` host identity loading (`productName`, `windowsAppId`),
   plus derived state directories, locale, bundled icon, and initial
   window-size configuration
@@ -49,7 +49,37 @@ If a feature is needed by every Windows host regardless of product shell, it is
 a candidate for this crate. If it is a visual/product policy decision, keep it
 in the runner or shell layer.
 
-## Minimal Host
+## Modes
+
+Two usage modes, selected by Cargo features:
+
+- **quick-start** (`standard` — the default, or `browser-shell` for the native
+  shell): batteries included. `quick_start` boots the runtime and pumps the
+  Win32 message loop until the app exits.
+- **advanced**: the host brings its own window and message loop and registers
+  its own `WindowsHostBackend` (from `lingxia-windows-contract`). It boots the
+  runtime with the host-agnostic `init_runtime` (which presents no window),
+  optionally enabling the `components` tier and calling
+  `install_windows_components` for the SDK's view overlays. See
+  `examples/advanced_host.rs`.
+
+Feature tiers: `host-api` ⊂ `components` ⊂ `runtime` ⊂ `standard`/`browser-shell`.
+
+Boot API:
+
+- `init_runtime(app) -> home_app_id` — host-agnostic: boots the runtime,
+  presents no window, installs no backend.
+- `install_windows_components()` — installs SDK-managed native component
+  integrations without installing the default backend.
+- `install_default_windows_host()` — installs the SDK's default WebView
+  parent-window host + backend + components + app menu (+ shell under
+  `browser-shell`).
+- `start_default_host(app) -> home_app_id` — `install_default_windows_host` +
+  `init_runtime` + opens the home window, *without* pumping the loop (for hosts
+  that want the default UI but their own post-boot setup, e.g. the runner).
+- `quick_start()` — `start_default_host` + `run_message_loop`.
+
+## Minimal Host (quick-start)
 
 ```rust
 fn main() -> lingxia_windows_sdk::Result<i32> {
@@ -61,4 +91,4 @@ fn main() -> lingxia_windows_sdk::Result<i32> {
 Apple SDK pattern where host metadata comes from bundled config rather than
 from the application entry point.
 
-`init` and `run_message_loop` must run on the same thread.
+`init_runtime` and `run_message_loop` must run on the same thread.

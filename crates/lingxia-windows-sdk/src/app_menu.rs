@@ -11,6 +11,7 @@ pub use model::{
 };
 pub use native::{set_windows_app_menu, set_windows_app_menu_command_handler};
 
+#[cfg(feature = "runtime")]
 pub(crate) use native::install_host_window_menu_support;
 #[cfg(feature = "device-frame")]
 pub(crate) use native::refresh_host_window_menu;

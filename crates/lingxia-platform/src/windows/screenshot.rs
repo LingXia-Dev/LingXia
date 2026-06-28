@@ -139,7 +139,7 @@ pub(super) fn resolve_screenshot_window(
 fn webview_host_window_ids() -> std::collections::HashSet<usize> {
     let mut ids = std::collections::HashSet::new();
     for webtag in webview_runtime::list_webviews() {
-        if let Ok(snapshot) = lingxia_windows_host::webview_window_snapshot(&webtag)
+        if let Ok(snapshot) = lingxia_windows_contract::webview_window_snapshot(&webtag)
             && snapshot.visible
             && snapshot.content_width > 0
             && snapshot.content_height > 0
@@ -325,10 +325,13 @@ fn visible_window_rect(
 
 async fn visible_webview_screenshots_for_window(
     window_id: usize,
-) -> Vec<(lingxia_windows_host::WindowsWebViewWindowSnapshot, Vec<u8>)> {
+) -> Vec<(
+    lingxia_windows_contract::WindowsWebViewWindowSnapshot,
+    Vec<u8>,
+)> {
     let mut captures = Vec::new();
     for webtag in webview_runtime::list_webviews() {
-        let snapshot = match lingxia_windows_host::webview_window_snapshot(&webtag) {
+        let snapshot = match lingxia_windows_contract::webview_window_snapshot(&webtag) {
             Ok(snapshot)
                 if snapshot.window_id == window_id
                     && snapshot.visible
@@ -364,7 +367,7 @@ async fn visible_webview_screenshots_for_window(
 
 fn overlay_webview_screenshot(
     base: &mut image::RgbaImage,
-    snapshot: &lingxia_windows_host::WindowsWebViewWindowSnapshot,
+    snapshot: &lingxia_windows_contract::WindowsWebViewWindowSnapshot,
     webview_png: &[u8],
 ) -> Result<(), PlatformError> {
     if snapshot.content_left < 0 || snapshot.content_top < 0 {

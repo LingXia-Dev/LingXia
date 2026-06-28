@@ -14,7 +14,7 @@ CRATES=(
   "lingxia-webview"
   "lingxia-settings"
   "lingxia-transfer"
-  "lingxia-windows-host"
+  "lingxia-windows-contract"
   "lingxia-platform"
   "lingxia-media"
   "lingxia-service"

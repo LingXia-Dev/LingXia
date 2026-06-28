@@ -9,7 +9,7 @@ use windows::Win32::UI::WindowsAndMessaging::{self, WNDPROC};
 use windows::core::{PCWSTR, Result as WinResult};
 
 use crate::window_host::{post_to_window_thread, request_host_window_layout};
-use lingxia_windows_host::{WindowsHostWindow, add_host_window_created_handler};
+use lingxia_windows_contract::{WindowsHostWindow, add_host_window_created_handler};
 
 use super::{WindowsAppMenu, WindowsAppMenuCommandHandler, WindowsAppMenuEntry};
 

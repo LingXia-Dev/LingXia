@@ -212,7 +212,7 @@ pub fn begin_tab_rename(
     };
     let hwnd = header.hwnd;
     let initial = initial_text.to_string();
-    lingxia_windows_host::post_to_window_thread(
+    lingxia_windows_contract::post_to_window_thread(
         hwnd,
         Box::new(move || {
             super::text_input::begin_inline_edit(

@@ -22,14 +22,14 @@ use lingxia_platform::traits::app_runtime::{
     AppRuntime, LxAppOpenMode, OpenUrlRequest, OpenUrlTarget,
 };
 use lingxia_webview::WebTag;
-use lingxia_windows_host::{
+use lingxia_windows_contract::{
     WindowsChromeCommand, WindowsPanelPosition, WindowsWindowLayout, hide_host_panel,
     is_panel_visible, restore_presented_group_main, set_webview_chrome_event_handler,
     set_webview_window_layout,
 };
 // Presenting a browser tab over the main card is browser-only.
 #[cfg(feature = "browser-runtime")]
-use lingxia_windows_host::present_webview_in_active_group;
+use lingxia_windows_contract::present_webview_in_active_group;
 use lxapp::{LxApp, LxAppDelegate, LxAppStartupOptions, LxAppUiEventType, ReleaseType};
 
 const DEFAULT_NAV_BAR_HEIGHT: i32 = 38;
@@ -1943,7 +1943,7 @@ pub(super) fn owner_window_handle(appid: &str) -> Option<isize> {
         .peek_current_page()
         .unwrap_or_else(|| app.initial_route());
     let webtag = WebTag::new(&app.appid, &path, Some(app.session_id()));
-    let snapshot = Some(lingxia_windows_host::webview_window_snapshot(&webtag));
+    let snapshot = Some(lingxia_windows_contract::webview_window_snapshot(&webtag));
     match snapshot {
         Some(Ok(snapshot)) => Some(snapshot.window_id as isize),
         Some(Err(err)) => {

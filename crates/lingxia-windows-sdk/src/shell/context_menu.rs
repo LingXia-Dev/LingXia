@@ -4,7 +4,7 @@
 
 use std::sync::Arc;
 
-use lingxia_windows_host::post_to_window_thread;
+use lingxia_windows_contract::post_to_window_thread;
 use windows::Win32::Foundation::HWND;
 use windows::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CreatePopupMenu, DestroyMenu, MF_CHECKED, MF_SEPARATOR, MF_STRING,

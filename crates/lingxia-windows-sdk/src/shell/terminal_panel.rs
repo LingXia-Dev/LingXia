@@ -34,9 +34,9 @@ use std::time::Duration;
 
 #[cfg(feature = "terminal-runtime")]
 use lingxia_terminal::TerminalSnapshot;
-use lingxia_windows_host::WindowsPanelPosition;
+use lingxia_windows_contract::WindowsPanelPosition;
 #[cfg(feature = "terminal-runtime")]
-use lingxia_windows_host::{WindowsHostPanelKeyEvent, WindowsHostPanelTab};
+use lingxia_windows_contract::{WindowsHostPanelKeyEvent, WindowsHostPanelTab};
 #[cfg(feature = "terminal-runtime")]
 use windows::Win32::Foundation::RECT;
 
@@ -300,7 +300,7 @@ pub(super) fn open_windows_terminal_panel(
     if lingxia_terminal::ghostty_available() {
         return open_windows_terminal_session_panel(panel_id, title, position);
     }
-    lingxia_windows_host::show_interactive_host_panel(
+    lingxia_windows_contract::show_interactive_host_panel(
         panel_id,
         title,
         terminal_panel_status_text(),
@@ -322,7 +322,7 @@ pub(super) fn show_existing_windows_terminal_panel(
         let body = super::terminal_grid::panel_snapshot_text(panel_id)
             .filter(|body| !body.trim().is_empty())
             .unwrap_or_else(|| "Terminal session started".to_string());
-        lingxia_windows_host::show_interactive_host_panel(panel_id, title, &body, position)
+        lingxia_windows_contract::show_interactive_host_panel(panel_id, title, &body, position)
             .map_err(|err| err.to_string())?;
         publish_tab_strip(panel_id);
         publish_active_snapshot(panel_id);
@@ -553,7 +553,7 @@ pub(super) fn toggle_terminal_panel_maximized(panel_id: &str) {
             panel.maximized = !panel.maximized;
             panel.maximized
         };
-        lingxia_windows_host::set_host_panel_maximized(panel_id, maximized);
+        lingxia_windows_contract::set_host_panel_maximized(panel_id, maximized);
     }
     #[cfg(not(feature = "terminal-runtime"))]
     let _ = panel_id;
@@ -883,7 +883,7 @@ fn open_windows_terminal_session_panel(
     shutdown_windows_terminal_panel_state(panel_id);
     let session_id = create_panel_session(panel_id);
     if session_id == 0 {
-        return lingxia_windows_host::show_interactive_host_panel(
+        return lingxia_windows_contract::show_interactive_host_panel(
             panel_id,
             title,
             "Terminal failed to start",
@@ -899,9 +899,12 @@ fn open_windows_terminal_session_panel(
         .filter(|body| !body.trim().is_empty())
         .unwrap_or_else(|| "Terminal session started".to_string());
 
-    if let Err(err) =
-        lingxia_windows_host::show_interactive_host_panel(panel_id, title, &initial_body, position)
-    {
+    if let Err(err) = lingxia_windows_contract::show_interactive_host_panel(
+        panel_id,
+        title,
+        &initial_body,
+        position,
+    ) {
         lingxia_terminal::terminal_close(session_id);
         return Err(err.to_string());
     }
@@ -910,7 +913,7 @@ fn open_windows_terminal_session_panel(
     // sequence knowledge lives in lingxia-terminal's encoder. Input always
     // routes to the active tab's FOCUSED pane session at event time.
     let input_panel_key = panel_id.to_string();
-    lingxia_windows_host::set_host_panel_input_handler(
+    lingxia_windows_contract::set_host_panel_input_handler(
         panel_id,
         Arc::new(move |event: WindowsHostPanelKeyEvent| {
             if is_panel_read_only(&input_panel_key) {
@@ -1180,7 +1183,7 @@ fn close_pane_session(panel_id: &str, session_id: u64) -> bool {
         CloseOutcome::Panel => {
             shutdown_windows_terminal_panel_state(panel_id);
             if let Err(err) =
-                lingxia_windows_host::hide_host_panel(panel_id).map_err(|err| err.to_string())
+                lingxia_windows_contract::hide_host_panel(panel_id).map_err(|err| err.to_string())
             {
                 log::warn!("failed to close Windows terminal panel {panel_id}: {err}");
             }
@@ -1222,7 +1225,7 @@ fn close_terminal_tab_by_sessions(panel_id: &str, session_ids: &[u64]) {
 /// input handler and grid store. The caller hides the panel window.
 #[cfg(feature = "terminal-runtime")]
 fn shutdown_windows_terminal_panel_state(panel_id: &str) {
-    lingxia_windows_host::clear_host_panel_input_handler(panel_id);
+    lingxia_windows_contract::clear_host_panel_input_handler(panel_id);
     #[cfg(feature = "shell-chrome")]
     super::terminal_grid::clear_panel(panel_id);
     if let Some(panel) = windows_terminal_panels().remove(panel_id) {
@@ -1510,7 +1513,7 @@ fn publish_tab_strip(panel_id: &str) {
         panel.published_tabs = strip.clone();
         strip
     };
-    lingxia_windows_host::set_host_panel_tabs(panel_id, strip);
+    lingxia_windows_contract::set_host_panel_tabs(panel_id, strip);
 }
 
 /// Publishes the active tab's pane snapshots immediately (tab switches and
@@ -1542,7 +1545,7 @@ fn store_session_snapshot(panel_id: &str, session_id: u64, snapshot: TerminalSna
 /// Repaints the panel window (the chrome redraws every active pane).
 #[cfg(feature = "terminal-runtime")]
 fn invalidate_panel(panel_id: &str) {
-    lingxia_windows_host::invalidate_host_panel(panel_id);
+    lingxia_windows_contract::invalidate_host_panel(panel_id);
 }
 
 /// Hands the snapshot to the shell chrome's grid store (keyed by session).
@@ -1558,7 +1561,7 @@ fn publish_windows_terminal_snapshot(panel_id: &str, session_id: u64, snapshot: 
 fn publish_windows_terminal_snapshot(panel_id: &str, session_id: u64, snapshot: TerminalSnapshot) {
     // Only the focused session drives the (single) plain-text body.
     if active_session_id(panel_id) == Some(session_id) {
-        let _ = lingxia_windows_host::update_host_panel_body(
+        let _ = lingxia_windows_contract::update_host_panel_body(
             panel_id,
             &windows_terminal_snapshot_body(&snapshot),
         );

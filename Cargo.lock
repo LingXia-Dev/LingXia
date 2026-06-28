@@ -2841,7 +2841,7 @@ dependencies = [
  "lingxia-transfer",
  "lingxia-update",
  "lingxia-webview",
- "lingxia-windows-host",
+ "lingxia-windows-contract",
  "log",
  "napi-build-ohos",
  "napi-derive-ohos",
@@ -3159,7 +3159,7 @@ dependencies = [
  "lingxia-messaging",
  "lingxia-surface",
  "lingxia-webview",
- "lingxia-windows-host",
+ "lingxia-windows-contract",
  "log",
  "napi-build-ohos",
  "napi-derive-ohos",
@@ -3368,7 +3368,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "lingxia-windows-host"
+name = "lingxia-windows-contract"
 version = "0.9.0"
 dependencies = [
  "lingxia-webview",
@@ -3392,7 +3392,7 @@ dependencies = [
  "lingxia-platform",
  "lingxia-terminal",
  "lingxia-webview",
- "lingxia-windows-host",
+ "lingxia-windows-contract",
  "log",
  "resvg",
  "serde_json",

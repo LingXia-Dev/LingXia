@@ -8,7 +8,7 @@ use lingxia_surface::{Edge, LayoutPresentationPlan};
 use lingxia_webview::WebTag;
 use lingxia_webview::platform::windows::{WindowsWebViewHandler, find_webview_handler};
 use lingxia_webview::runtime as webview_runtime;
-use lingxia_windows_host::{
+use lingxia_windows_contract::{
     WindowsPanelPosition, hide_webview_window, navigate_webview_window, present_webview_as_overlay,
     present_webview_in_active_group, set_webview_close_handler, show_webview_as_adaptive_panel,
     show_webview_as_panel, show_webview_window, show_webview_window_with_content_size,

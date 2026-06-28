@@ -37,65 +37,161 @@ static WINDOW_LAYOUTS: OnceLock<Mutex<HashMap<String, WindowsWindowLayout>>> = O
 static WINDOWS_CHROME_RENDERER: OnceLock<Mutex<Option<Arc<dyn WindowsChromeRenderer>>>> =
     OnceLock::new();
 
+fn unsupported_operation<T>(operation: &str) -> StdResult<T> {
+    Err(WebViewError::WebView(format!(
+        "Windows host backend does not support {operation}"
+    )))
+}
+
+/// Host callbacks implemented by the window owner.
+///
+/// Every hook has a conservative default so a custom host can opt into only the
+/// capabilities it actually orchestrates. For example, a host that wants the
+/// SDK-managed native view components usually starts with
+/// `find_webview_content_window` and `post_to_window_thread`, then adds panel or
+/// shell integration as needed.
 pub trait WindowsHostBackend: Send + Sync {
-    fn show_webview_as_panel(&self, webtag: &WebTag, title: &str, panel_id: &str) -> StdResult<()>;
+    fn show_webview_as_panel(
+        &self,
+        _webtag: &WebTag,
+        _title: &str,
+        _panel_id: &str,
+    ) -> StdResult<()> {
+        unsupported_operation("show_webview_as_panel")
+    }
+
     fn show_webview_as_adaptive_panel(
         &self,
-        webtag: &WebTag,
-        title: &str,
-        panel_id: &str,
-        position: WindowsPanelPosition,
-        preferred_size: Option<i32>,
-    ) -> StdResult<()>;
-    fn present_webview_in_active_group(&self, webtag: &WebTag) -> StdResult<()>;
-    fn present_webview_as_group_main(&self, webtag: &WebTag, group_key: String) -> StdResult<()>;
+        _webtag: &WebTag,
+        _title: &str,
+        _panel_id: &str,
+        _position: WindowsPanelPosition,
+        _preferred_size: Option<i32>,
+    ) -> StdResult<()> {
+        unsupported_operation("show_webview_as_adaptive_panel")
+    }
+
+    fn present_webview_in_active_group(&self, _webtag: &WebTag) -> StdResult<()> {
+        unsupported_operation("present_webview_in_active_group")
+    }
+
+    fn present_webview_as_group_main(&self, _webtag: &WebTag, _group_key: String) -> StdResult<()> {
+        unsupported_operation("present_webview_as_group_main")
+    }
+
     fn present_webview_as_overlay(
         &self,
-        webtag: &WebTag,
-        width: f64,
-        height: f64,
-        width_ratio: f64,
-        height_ratio: f64,
-        position: u8,
-    ) -> StdResult<()>;
-    fn resize_host_window_content(&self, webtag: &WebTag, width: i32, height: i32)
-    -> StdResult<()>;
-    fn restore_presented_group_main(&self) -> StdResult<()>;
+        _webtag: &WebTag,
+        _width: f64,
+        _height: f64,
+        _width_ratio: f64,
+        _height_ratio: f64,
+        _position: u8,
+    ) -> StdResult<()> {
+        unsupported_operation("present_webview_as_overlay")
+    }
+
+    fn resize_host_window_content(
+        &self,
+        _webtag: &WebTag,
+        _width: i32,
+        _height: i32,
+    ) -> StdResult<()> {
+        unsupported_operation("resize_host_window_content")
+    }
+
+    fn restore_presented_group_main(&self) -> StdResult<()> {
+        unsupported_operation("restore_presented_group_main")
+    }
+
     fn show_interactive_host_panel(
         &self,
-        panel_id: &str,
-        title: &str,
-        body: &str,
-        position: WindowsPanelPosition,
-    ) -> StdResult<()>;
-    fn hide_host_panel(&self, panel_id: &str) -> StdResult<()>;
-    fn update_host_panel_body(&self, panel_id: &str, body: &str) -> StdResult<()>;
-    fn set_host_panel_tabs(&self, panel_id: &str, tabs: Vec<WindowsHostPanelTab>) -> bool;
-    fn set_host_panel_maximized(&self, panel_id: &str, maximized: bool) -> bool;
-    fn invalidate_host_panel(&self, panel_id: &str) -> bool;
-    fn is_panel_visible(&self, panel_id: &str) -> bool;
-    fn find_webview_content_window(&self, webtag: &WebTag) -> Option<WindowsWebViewContentWindow>;
-    fn webview_window_snapshot(&self, webtag: &WebTag) -> StdResult<WindowsWebViewWindowSnapshot>;
-    fn show_webview_window(&self, webtag: &WebTag, title: &str, activate: bool) -> StdResult<()>;
+        _panel_id: &str,
+        _title: &str,
+        _body: &str,
+        _position: WindowsPanelPosition,
+    ) -> StdResult<()> {
+        unsupported_operation("show_interactive_host_panel")
+    }
+
+    fn hide_host_panel(&self, _panel_id: &str) -> StdResult<()> {
+        unsupported_operation("hide_host_panel")
+    }
+
+    fn update_host_panel_body(&self, _panel_id: &str, _body: &str) -> StdResult<()> {
+        unsupported_operation("update_host_panel_body")
+    }
+
+    fn set_host_panel_tabs(&self, _panel_id: &str, _tabs: Vec<WindowsHostPanelTab>) -> bool {
+        false
+    }
+
+    fn set_host_panel_maximized(&self, _panel_id: &str, _maximized: bool) -> bool {
+        false
+    }
+
+    fn invalidate_host_panel(&self, _panel_id: &str) -> bool {
+        false
+    }
+
+    fn is_panel_visible(&self, _panel_id: &str) -> bool {
+        false
+    }
+
+    fn find_webview_content_window(&self, _webtag: &WebTag) -> Option<WindowsWebViewContentWindow> {
+        None
+    }
+
+    fn webview_window_snapshot(&self, _webtag: &WebTag) -> StdResult<WindowsWebViewWindowSnapshot> {
+        unsupported_operation("webview_window_snapshot")
+    }
+
+    fn show_webview_window(
+        &self,
+        _webtag: &WebTag,
+        _title: &str,
+        _activate: bool,
+    ) -> StdResult<()> {
+        unsupported_operation("show_webview_window")
+    }
+
     fn show_webview_window_with_content_size(
         &self,
-        webtag: &WebTag,
-        title: &str,
-        activate: bool,
-        width: Option<i32>,
-        height: Option<i32>,
-    ) -> StdResult<()>;
+        _webtag: &WebTag,
+        _title: &str,
+        _activate: bool,
+        _width: Option<i32>,
+        _height: Option<i32>,
+    ) -> StdResult<()> {
+        unsupported_operation("show_webview_window_with_content_size")
+    }
+
     fn navigate_webview_window(
         &self,
-        webtag: &WebTag,
-        title: &str,
-        activate: bool,
-    ) -> StdResult<()>;
-    fn hide_webview_window(&self, webtag: &WebTag) -> StdResult<()>;
-    fn request_host_window_layout(&self, window: WindowsHostWindow) -> bool;
-    fn active_content_screen_rect(&self) -> Option<WindowsContentRect>;
-    fn post_to_window_thread(&self, window: isize, callback: Box<dyn FnOnce() + Send>) -> bool;
-    fn sync_webview_window_layout(&self, webtag: &WebTag);
+        _webtag: &WebTag,
+        _title: &str,
+        _activate: bool,
+    ) -> StdResult<()> {
+        unsupported_operation("navigate_webview_window")
+    }
+
+    fn hide_webview_window(&self, _webtag: &WebTag) -> StdResult<()> {
+        unsupported_operation("hide_webview_window")
+    }
+
+    fn request_host_window_layout(&self, _window: WindowsHostWindow) -> bool {
+        false
+    }
+
+    fn active_content_screen_rect(&self) -> Option<WindowsContentRect> {
+        None
+    }
+
+    fn post_to_window_thread(&self, _window: isize, _callback: Box<dyn FnOnce() + Send>) -> bool {
+        false
+    }
+
+    fn sync_webview_window_layout(&self, _webtag: &WebTag) {}
 }
 
 pub fn set_windows_host_backend(backend: Arc<dyn WindowsHostBackend>) {
