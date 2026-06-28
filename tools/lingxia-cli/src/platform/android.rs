@@ -216,14 +216,19 @@ gradle.settingsEvaluated {{ settings ->
             .map(|a| a.get_api_level())
             .unwrap_or(default_api_level);
 
+        // On Windows the NDK clang wrappers are `.cmd` batch files; the
+        // extension-less siblings are POSIX shell scripts that rustc cannot exec
+        // as a linker (os error 193). llvm-ar needs no suffix (CreateProcess
+        // appends `.exe`).
+        let clang_ext = if cfg!(windows) { ".cmd" } else { "" };
         let (cc_bin, cxx_bin) = match target {
             "aarch64-linux-android" => (
-                format!("aarch64-linux-android{}-clang", api_level),
-                format!("aarch64-linux-android{}-clang++", api_level),
+                format!("aarch64-linux-android{}-clang{}", api_level, clang_ext),
+                format!("aarch64-linux-android{}-clang++{}", api_level, clang_ext),
             ),
             "armv7-linux-androideabi" => (
-                format!("armv7a-linux-androideabi{}-clang", api_level),
-                format!("armv7a-linux-androideabi{}-clang++", api_level),
+                format!("armv7a-linux-androideabi{}-clang{}", api_level, clang_ext),
+                format!("armv7a-linux-androideabi{}-clang++{}", api_level, clang_ext),
             ),
             _ => return Err(Self::unsupported_target_error(target)),
         };
