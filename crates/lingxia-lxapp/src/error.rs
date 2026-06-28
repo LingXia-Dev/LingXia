@@ -103,7 +103,10 @@ impl From<RongJSError> for LxAppError {
 
 impl From<PlatformError> for LxAppError {
     fn from(error: PlatformError) -> Self {
-        LxAppError::Runtime(error.to_string())
+        match error {
+            PlatformError::NotSupported(message) => LxAppError::UnsupportedOperation(message),
+            other => LxAppError::Runtime(other.to_string()),
+        }
     }
 }
 

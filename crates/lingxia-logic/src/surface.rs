@@ -2,8 +2,8 @@ use futures::channel::oneshot;
 use lingxia_platform::traits::app_runtime::{AppRuntime, OpenUrlRequest, OpenUrlTarget};
 use lingxia_platform::traits::ui::{SurfaceKind, SurfacePosition};
 use lxapp::{
-    LxApp, PageQueryInput, PageSurfaceRequest, PageSurfaceTarget, PageTarget, list_lxapps, lx,
-    publish_app_event, register_app_handler, try_get, unregister_app_handler,
+    LxApp, LxAppError, PageQueryInput, PageSurfaceRequest, PageSurfaceTarget, PageTarget,
+    list_lxapps, lx, publish_app_event, register_app_handler, try_get, unregister_app_handler,
 };
 use rong::{
     Class, HostError, IntoJSObj, JSContext, JSFunc, JSObject, JSResult, JSValue, Promise,
@@ -283,7 +283,7 @@ async fn open_page_spec(ctx: JSContext, spec: &JSObject) -> JSResult<JSObject> {
                 return Err(surface_error(
                     rong::error::E_NOT_SUPPORTED,
                     "window_unsupported_platform",
-                    "as: 'window' opens a separate desktop window and is not available on this platform",
+                    "lx.surface window is not supported on this platform",
                 ));
             }
             #[cfg(not(any(target_os = "ios", target_os = "android", target_env = "ohos")))]
@@ -605,7 +605,14 @@ async fn open_surface(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
     register_closed_sender(surface_id.clone(), kind.clone(), closed_tx);
     let opened_surface = lxapp.open_surface(request).map_err(|err| {
         unregister_closed_sender(&surface_id);
-        surface_error(rong::error::E_INTERNAL, "surface_open_failed", err)
+        match err {
+            LxAppError::UnsupportedOperation(detail) => surface_error(
+                rong::error::E_NOT_SUPPORTED,
+                "surface_not_supported",
+                detail,
+            ),
+            other => surface_error(rong::error::E_INTERNAL, "surface_open_failed", other),
+        }
     })?;
     let page_svc = match opened_surface.page_instance_id.as_deref() {
         Some(page_instance_id) => Some(
