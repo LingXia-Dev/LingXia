@@ -101,15 +101,16 @@
                        percentage (e.g. 80%) is relative to the container; a bare
                        number is absolute px. -->
                   <div class="grid grid-cols-2 gap-2">
-                    <input type="text" inputmode="text" placeholder="width (px or %)" v-model="surfaceWidth"
+                    <input type="text" inputmode="text" placeholder="width (px or %)" v-model="surfaceWidth" @input="sizeError = ''"
                       class="py-2 px-3 text-sm rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-400" />
-                    <input type="text" inputmode="text" placeholder="height (px or %)" v-model="surfaceHeight"
+                    <input type="text" inputmode="text" placeholder="height (px or %)" v-model="surfaceHeight" @input="sizeError = ''"
                       class="py-2 px-3 text-sm rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-400" />
                   </div>
+                  <p v-if="sizeError" data-testid="size-error" class="mt-2 text-xs text-rose-600">{{ sizeError }}</p>
                 </div>
               </div>
               <button type="button" data-testid="open-surface" :disabled="surfaceActive"
-                @click="openSurfaceDemo({ verb: surfaceKind, edge: surfaceEdge, position: surfaceFloatPosition, width: parseSurfaceSize(surfaceWidth), height: parseSurfaceSize(surfaceHeight) })"
+                @click="handleOpenSurface"
                 class="w-full bg-gray-800 hover:bg-gray-900 disabled:bg-gray-300 disabled:cursor-not-allowed text-white py-2 px-4 rounded-lg text-sm font-medium transition-colors">
                 {{ surfaceActive ? `Open ${surfaceKind} (already open)` : `Open ${surfaceKind}` }}
               </button>
@@ -480,21 +481,51 @@ const surfaceFloatPosition = ref<'center' | 'top' | 'bottom' | 'left' | 'right'>
 const surfaceFloatPositions = ['center', 'top', 'bottom', 'left', 'right'] as const;
 const surfaceWidth = ref('');
 const surfaceHeight = ref('');
+// Shown when an entered width/height can't be parsed (so a typo like a
+// full-width "％" surfaces instead of silently opening at the wrong size).
+const sizeError = ref('');
 
-// Parse a surface size input: a bare number is absolute px ("320"); a `%`
-// suffix is a percentage of the container ("80%"). The overlay size hint
-// accepts both forms (`number | `${number}%``), so pass a percentage through as
-// a string instead of coercing it to NaN. Blank / non-positive input is dropped
-// so the Host falls back to its default size.
-function parseSurfaceSize(raw: string): number | string | undefined {
+// Parse a surface size input. Blank means "let the Host pick the default size";
+// a bare number is absolute px ("320"); a `%` suffix is a percentage of the
+// container ("80%"). Non-blank but unparseable input — a stray letter, a
+// full-width "％", a non-positive or out-of-range value — throws so the demo
+// reports the mistake instead of silently dropping the dimension (which would
+// e.g. quietly turn a 100%/100% float into a centered, default-size one).
+function parseSurfaceSize(raw: string, label: string): number | string | undefined {
   const value = raw.trim();
   if (!value) return undefined;
   if (value.endsWith('%')) {
     const pct = Number(value.slice(0, -1).trim());
-    return Number.isFinite(pct) && pct > 0 ? `${pct}%` : undefined;
+    if (!Number.isFinite(pct) || pct <= 0 || pct > 100) {
+      throw new Error(`${label} must be a percentage between 1% and 100% (got "${value}")`);
+    }
+    return `${pct}%`;
   }
   const px = Number(value);
-  return Number.isFinite(px) && px > 0 ? px : undefined;
+  if (!Number.isFinite(px) || px <= 0) {
+    throw new Error(`${label} must be a positive px value or a percentage like "80%" (got "${value}")`);
+  }
+  return px;
+}
+
+function handleOpenSurface() {
+  let width: number | string | undefined;
+  let height: number | string | undefined;
+  try {
+    width = parseSurfaceSize(surfaceWidth.value, 'Width');
+    height = parseSurfaceSize(surfaceHeight.value, 'Height');
+  } catch (error) {
+    sizeError.value = error instanceof Error ? error.message : String(error);
+    return;
+  }
+  sizeError.value = '';
+  openSurfaceDemo({
+    verb: surfaceKind.value,
+    edge: surfaceEdge.value,
+    position: surfaceFloatPosition.value,
+    width,
+    height,
+  });
 }
 
 function applyTheme(theme: { color: string; selectedColor: string; backgroundColor: string; borderStyle: string }) {

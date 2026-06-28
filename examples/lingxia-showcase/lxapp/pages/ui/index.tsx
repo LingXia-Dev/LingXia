@@ -2,20 +2,27 @@ import React from 'react';
 import { useLxPage } from '@lingxia/react';
 import '../../tailwind.css';
 
-// Parse a surface size input: a bare number is absolute px ("320"); a value
-// suffixed with `%` is a percentage of the container ("80%"). The overlay size
-// hint accepts both forms (`number | `${number}%``), so pass the percentage
-// through as a string instead of coercing it to NaN. Blank / non-positive input
-// is dropped so the Host falls back to its default size.
-function parseSurfaceSize(raw: string): number | string | undefined {
+// Parse a surface size input. Blank means "let the Host pick the default size";
+// a bare number is absolute px ("320"); a `%` suffix is a percentage of the
+// container ("80%"). Non-blank but unparseable input — a stray letter, a
+// full-width "％", a non-positive or out-of-range value — throws so the demo
+// reports the mistake instead of silently dropping the dimension (which would
+// e.g. quietly turn a 100%/100% float into a centered, default-size one).
+function parseSurfaceSize(raw: string, label: string): number | string | undefined {
   const value = raw.trim();
   if (!value) return undefined;
   if (value.endsWith('%')) {
     const pct = Number(value.slice(0, -1).trim());
-    return Number.isFinite(pct) && pct > 0 ? `${pct}%` : undefined;
+    if (!Number.isFinite(pct) || pct <= 0 || pct > 100) {
+      throw new Error(`${label} must be a percentage between 1% and 100% (got "${value}")`);
+    }
+    return `${pct}%`;
   }
   const px = Number(value);
-  return Number.isFinite(px) && px > 0 ? px : undefined;
+  if (!Number.isFinite(px) || px <= 0) {
+    throw new Error(`${label} must be a positive px value or a percentage like "80%" (got "${value}")`);
+  }
+  return px;
 }
 
 export default function UIPage() {
@@ -86,6 +93,9 @@ export default function UIPage() {
   const surfaceFloatPositions: Array<'center' | 'top' | 'bottom' | 'left' | 'right'> = ['center', 'top', 'bottom', 'left', 'right'];
   const [surfaceWidth, setSurfaceWidth] = React.useState('');
   const [surfaceHeight, setSurfaceHeight] = React.useState('');
+  // Shown when an entered width/height can't be parsed (so a typo like a
+  // full-width "％" surfaces instead of silently opening at the wrong size).
+  const [sizeError, setSizeError] = React.useState('');
 
   // Local state for toast parameters
   const [toastTitle, setToastTitle] = React.useState('Hello Toast!');
@@ -255,7 +265,10 @@ export default function UIPage() {
                         inputMode="text"
                         placeholder="width (px or %)"
                         value={surfaceWidth}
-                        onChange={(e) => setSurfaceWidth(e.target.value)}
+                        onChange={(e) => {
+                          setSurfaceWidth(e.target.value);
+                          setSizeError('');
+                        }}
                         className="py-2 px-3 text-sm rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-400"
                       />
                       <input
@@ -263,10 +276,18 @@ export default function UIPage() {
                         inputMode="text"
                         placeholder="height (px or %)"
                         value={surfaceHeight}
-                        onChange={(e) => setSurfaceHeight(e.target.value)}
+                        onChange={(e) => {
+                          setSurfaceHeight(e.target.value);
+                          setSizeError('');
+                        }}
                         className="py-2 px-3 text-sm rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-400"
                       />
                     </div>
+                    {sizeError && (
+                      <div data-testid="size-error" className="mt-2 text-xs text-rose-600">
+                        {sizeError}
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -274,15 +295,25 @@ export default function UIPage() {
                   type="button"
                   data-testid="open-surface"
                   disabled={surfaceActive}
-                  onClick={() =>
+                  onClick={() => {
+                    let width: number | string | undefined;
+                    let height: number | string | undefined;
+                    try {
+                      width = parseSurfaceSize(surfaceWidth, 'Width');
+                      height = parseSurfaceSize(surfaceHeight, 'Height');
+                    } catch (error) {
+                      setSizeError(error instanceof Error ? error.message : String(error));
+                      return;
+                    }
+                    setSizeError('');
                     openSurfaceDemo({
                       verb: surfaceKind,
                       edge: surfaceEdge,
                       position: surfaceFloatPosition,
-                      width: parseSurfaceSize(surfaceWidth),
-                      height: parseSurfaceSize(surfaceHeight),
-                    })
-                  }
+                      width,
+                      height,
+                    });
+                  }}
                   className="w-full bg-gray-800 hover:bg-gray-900 disabled:bg-gray-300 disabled:cursor-not-allowed text-white py-2 px-4 rounded-lg text-sm font-medium transition-colors"
                 >
                   {surfaceActive
