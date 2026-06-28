@@ -26,15 +26,18 @@ use lingxia_windows_contract::{
     webview_chrome_event_handler, webview_close_handler, webview_visibility_handler,
     windows_chrome_renderer,
 };
-use windows::Win32::Foundation::{
-    COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, SIZE, WPARAM,
+#[cfg(feature = "shell-chrome")]
+use windows::Win32::Foundation::SIZE;
+use windows::Win32::Foundation::{COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
+#[cfg(feature = "shell-chrome")]
+use windows::Win32::Graphics::Gdi::{
+    AC_SRC_ALPHA, AC_SRC_OVER, BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BLENDFUNCTION,
+    CreateCompatibleDC, CreateDIBSection, DIB_RGB_COLORS, DeleteDC, GetDC, ReleaseDC,
 };
 use windows::Win32::Graphics::Gdi::{
-    AC_SRC_ALPHA, AC_SRC_OVER, BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BLENDFUNCTION, BeginPaint,
-    CreateCompatibleDC, CreateDIBSection, CreatePen, CreateSolidBrush, DIB_RGB_COLORS, DeleteDC,
-    DeleteObject, Ellipse, EndPaint, ExcludeClipRect, GetDC, GetMonitorInfoW, HDC, HGDIOBJ,
-    MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromWindow, PAINTSTRUCT, PS_SOLID, ReleaseDC,
-    RestoreDC, SaveDC, ScreenToClient, SelectObject,
+    BeginPaint, CreatePen, CreateSolidBrush, DeleteObject, Ellipse, EndPaint, ExcludeClipRect,
+    GetMonitorInfoW, HDC, HGDIOBJ, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromWindow,
+    PAINTSTRUCT, PS_SOLID, RestoreDC, SaveDC, ScreenToClient, SelectObject,
 };
 #[cfg(feature = "shell-chrome")]
 use windows::Win32::Graphics::Gdi::{CreateRoundRectRgn, SetWindowRgn};
@@ -811,6 +814,7 @@ pub fn request_host_window_layout(window: WindowsHostWindow) -> bool {
     request_host_layout_sync(hwnd_from_handle(window.window))
 }
 
+#[cfg(feature = "device-frame")]
 pub(crate) fn request_host_window_layout_forced(window: WindowsHostWindow) -> bool {
     if window.window == 0 {
         return false;
@@ -2184,6 +2188,7 @@ fn request_host_layout_sync(hwnd: HWND) -> bool {
     request_host_layout_sync_inner(hwnd, false)
 }
 
+#[cfg(feature = "device-frame")]
 fn request_host_layout_sync_forced(hwnd: HWND) -> bool {
     request_host_layout_sync_inner(hwnd, true)
 }

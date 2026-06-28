@@ -325,7 +325,10 @@ fn visible_window_rect(
 
 async fn visible_webview_screenshots_for_window(
     window_id: usize,
-) -> Vec<(lingxia_windows_contract::WindowsWebViewWindowSnapshot, Vec<u8>)> {
+) -> Vec<(
+    lingxia_windows_contract::WindowsWebViewWindowSnapshot,
+    Vec<u8>,
+)> {
     let mut captures = Vec::new();
     for webtag in webview_runtime::list_webviews() {
         let snapshot = match lingxia_windows_contract::webview_window_snapshot(&webtag) {

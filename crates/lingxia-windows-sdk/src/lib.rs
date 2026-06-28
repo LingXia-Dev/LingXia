@@ -22,7 +22,7 @@ use std::path::Path;
 #[cfg(feature = "runtime")]
 use std::path::PathBuf;
 
-#[cfg(all(target_os = "windows", feature = "components"))]
+#[cfg(all(target_os = "windows", feature = "runtime"))]
 mod app_icon;
 #[cfg(all(target_os = "windows", feature = "components"))]
 mod app_menu;
