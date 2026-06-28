@@ -6,7 +6,7 @@ use std::sync::{Arc, LazyLock, Mutex};
 use lingxia_platform::traits::app_runtime::AppRuntime;
 use lingxia_platform::traits::ui::SurfaceContent;
 pub use lingxia_platform::{Platform, PlatformError, set_windows_app_exit_handler};
-use lingxia_webview::WebTag;
+use lingxia_webview::{WebTag, WebViewController};
 
 static WINDOWS_APP_VISIBLE_WEBTAGS: LazyLock<Mutex<HashMap<String, HashSet<String>>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
@@ -86,34 +86,29 @@ fn install_url_surface_bridge() {
         if request.content != SurfaceContent::Url {
             return None;
         }
-        let tab_id = match crate::browser::open_standalone_for_app(
-            &request.app_id,
-            request.session_id,
-            &request.path,
-            None,
-        ) {
-            Ok(tab_id) => tab_id,
-            Err(err) => {
-                log::error!(
-                    "failed to open Windows URL surface browser tab for {}: {}",
-                    request.path,
-                    err
-                );
-                return None;
+        // The device-frame runner ships no browser engine, so a URL surface (e.g.
+        // the cloud interactive-login page) renders in a plain browser-profile
+        // WebView2 via lingxia-webview — mirroring the macOS URL surface — rather
+        // than a browser tab (`crate::browser`, which needs `browser-runtime`).
+        // `teardown_surface` destroys this webview by its webtag, so no cleanup hook.
+        let webtag = WebTag::new(&request.app_id, &request.path, Some(request.session_id));
+        let url = request.path.clone();
+        let session = lingxia_webview::WebViewBuilder::browser(webtag).create();
+        std::mem::drop(crate::task::spawn(async move {
+            match session.wait_ready().await {
+                Ok(webview) => {
+                    if let Err(err) = webview.load_url(&url) {
+                        log::error!("URL surface failed to load {url}: {err}");
+                    }
+                }
+                Err(err) => log::error!("URL surface webview create failed for {url}: {err}"),
             }
-        };
-        let Some(tab) = crate::browser::tab_summary(&tab_id) else {
-            log::error!("Windows URL surface browser tab missing after open: {tab_id}");
-            return None;
-        };
-        let cleanup_tab_id = tab_id.clone();
+        }));
         Some(lingxia_platform::WindowsUrlSurfaceWebTag {
-            app_id: crate::browser::APP_ID.to_string(),
-            path: tab.path,
-            session_id: tab.session_id,
-            cleanup: Some(Arc::new(move || {
-                let _ = crate::browser::close(&cleanup_tab_id);
-            })),
+            app_id: request.app_id.clone(),
+            path: request.path.clone(),
+            session_id: request.session_id,
+            cleanup: None,
         })
     }));
 }
