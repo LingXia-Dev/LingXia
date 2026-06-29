@@ -15,6 +15,7 @@ CRATES=(
   "lingxia-settings"
   "lingxia-transfer"
   "lingxia-windows-contract"
+  "lingxia-surface"
   "lingxia-platform"
   "lingxia-media"
   "lingxia-service"
@@ -253,24 +254,44 @@ for crate in "${SELECTED_CRATES[@]}"; do
   echo "Publishing $crate@$workspace_version"
   echo "=========================================="
 
-  set +e
   publish_args=(-p "$crate")
   [[ "$ALLOW_DIRTY" -eq 1 ]] && publish_args+=(--allow-dirty)
   [[ "$NO_VERIFY" -eq 1 ]] && publish_args+=(--no-verify)
-  output="$(cargo publish "${publish_args[@]}" 2>&1)"
-  status=$?
-  set -e
 
-  echo "$output"
+  # Retry on crates.io rate limits (HTTP 429). Publishing a brand-new crate
+  # name (e.g. lingxia-surface) can trip the per-account "new crate" limit, and
+  # the index/CDN occasionally 429s under load. `already uploaded|already
+  # exists` stays a clean skip so reruns are idempotent.
+  publish_attempts=5
+  publish_backoff=30
+  status=0
+  for attempt in $(seq 1 "$publish_attempts"); do
+    set +e
+    output="$(cargo publish "${publish_args[@]}" 2>&1)"
+    status=$?
+    set -e
+    echo "$output"
 
-  if [[ $status -ne 0 ]]; then
+    [[ $status -eq 0 ]] && break
+
     if echo "$output" | grep -Eq "already uploaded|already exists"; then
       echo "✓ $crate already published, skipping"
-    else
-      echo "✗ Failed to publish $crate" >&2
-      exit 1
+      status=0
+      break
     fi
-  fi
+
+    if echo "$output" | grep -Eiq "429|too many requests|rate limit|published too many"; then
+      if [[ "$attempt" -lt "$publish_attempts" ]]; then
+        echo "Rate limited publishing $crate (attempt ${attempt}/${publish_attempts}); retrying in ${publish_backoff}s..." >&2
+        sleep "$publish_backoff"
+        publish_backoff=$((publish_backoff * 2))
+        continue
+      fi
+    fi
+
+    echo "✗ Failed to publish $crate" >&2
+    exit 1
+  done
 
   wait_for_index "$crate" "$workspace_version"
 done
