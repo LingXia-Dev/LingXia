@@ -58,6 +58,11 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         loadWebViewContent()
     }
 
+    // Deliberately NOT reporting setSurfaceWidth here: as the desktop shell's main
+    // content this view's width is the residual main pane (it shrinks as asides
+    // dock), which would override the shell's stable workspace report and drop the
+    // sizeClass. The shell owns width on desktop; SimulatorViewController on phone.
+
     // MARK: - UI Setup
 
     private func setupLayout() {

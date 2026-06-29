@@ -46,6 +46,10 @@ enum LxAppSurface {
         /// registered hidden here; the reconciler is the single authority for
         /// its visibility, showing/dismissing it from `plan.floats`.
         let isFloat: Bool
+        /// Set for a phone-simulator full-screen surface (the runner's iPhone
+        /// shape): an aside/window drilled in over the device screen, mirroring
+        /// the real iOS phone. The reconciler dismisses it when the core drops it.
+        let isFullScreen: Bool
         /// Set when the docked aside hosts a browser (a `{ url, as: 'aside' }`
         /// surface). Owns the browser tab + chrome; close() tears it down so the
         /// underlying Rust browser tab is destroyed with the aside.
@@ -64,6 +68,7 @@ enum LxAppSurface {
             dockedPosition: PanelPosition? = nil,
             dockedContainer: NSView? = nil,
             isFloat: Bool = false,
+            isFullScreen: Bool = false,
             dockedBrowser: DockedBrowser? = nil
         ) {
             self.id = id
@@ -78,6 +83,7 @@ enum LxAppSurface {
             self.dockedPosition = dockedPosition
             self.dockedContainer = dockedContainer
             self.isFloat = isFloat
+            self.isFullScreen = isFullScreen
             self.dockedBrowser = dockedBrowser
         }
     }
@@ -129,6 +135,28 @@ enum LxAppSurface {
         }
     }
 
+    /// Back button for a phone full-screen surface; closes the surface (the
+    /// drill-in "return to the page beneath" affordance).
+    private final class SurfaceActionButton: NSButton {
+        let id: String
+        let appId: String
+
+        init(id: String, appId: String) {
+            self.id = id
+            self.appId = appId
+            super.init(frame: .zero)
+            title = ""
+            target = self
+            action = #selector(closeSurface)
+        }
+
+        required init?(coder: NSCoder) { nil }
+
+        @objc private func closeSurface() {
+            _ = LxAppSurface.close(id: id, appId: appId, reason: "user")
+        }
+    }
+
     private final class WebNavigationDelegate: NSObject, WKNavigationDelegate {
         let initialURL: URL
 
@@ -171,6 +199,25 @@ enum LxAppSurface {
                 existing.window?.makeKeyAndOrderFront(nil)
             }
             return true
+        }
+
+        // Runner iPhone shape (controller host, no shell): a phone has no
+        // side-by-side room, so a page aside/window drills in full-screen over the
+        // device screen, mirroring a real iOS phone. URL asides degrade to the
+        // in-app browser upstream, so only pages reach here; desktop is untouched.
+        if LxAppActiveHost.activeShell == nil,
+           content == contentPage,
+           kind == kindWindow || (kind == kindPopup && role == roleAside),
+           let context = phoneDeviceScreenContext() {
+            return presentPhoneFullScreen(
+                id: id,
+                appId: appId,
+                path: path,
+                sessionId: sessionId,
+                pageInstanceId: rawPageInstanceId,
+                content: content,
+                context: context
+            )
         }
 
         // Adaptive Surface Layout: only an arbitrated aside (overlay on a
@@ -365,6 +412,135 @@ enum LxAppSurface {
         }
         window?.makeKeyAndOrderFront(nil)
         return true
+    }
+
+    /// Drill a page aside/window in full-screen over the runner's phone-simulator
+    /// device screen, mirroring how a real iOS phone presents it. The surface is a
+    /// borderless child window pinned to the whole device frame, clipped to the
+    /// device's rounded corners, with a back affordance so the user can return.
+    /// Shown eagerly (like iOS); the reconciler is the sole authority for dismiss.
+    /// URL asides degrade to the in-app browser upstream, so this is page-only.
+    private static func presentPhoneFullScreen(
+        id: String,
+        appId: String,
+        path: String,
+        sessionId: UInt64,
+        pageInstanceId rawPageInstanceId: String,
+        content: Int32,
+        context: SurfaceContext
+    ) -> Bool {
+        let pageInstanceId = rawPageInstanceId.trimmingCharacters(in: .whitespacesAndNewlines)
+        if path.isEmpty || pageInstanceId.isEmpty {
+            os_log(
+                "fullscreen page requires path and pageInstanceId id=%{public}@ app=%{public}@ path=%{public}@ pageInstanceId=%{public}@",
+                log: log, type: .error, id, appId, path, pageInstanceId
+            )
+            return false
+        }
+
+        let window = makeWindow(kind: kindPopup, frame: context.frame)
+        let windowContent = NSView(frame: NSRect(origin: .zero, size: context.frame.size))
+        windowContent.wantsLayer = true
+        windowContent.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
+        let hostRadius = hostScreenCornerRadius()
+        if hostRadius > 0 {
+            windowContent.layer?.cornerRadius = hostRadius
+            windowContent.layer?.masksToBounds = true
+        }
+
+        let controller = LxAppActiveHost.activeController ?? LxAppController()
+        let lxHostView = LxAppHostView(controller: controller)
+        lxHostView.translatesAutoresizingMaskIntoConstraints = false
+        lxHostView.wantsLayer = true
+        lxHostView.layer?.backgroundColor = NSColor.clear.cgColor
+        windowContent.addSubview(lxHostView)
+        pinToEdges(lxHostView, in: windowContent)
+
+        let session = LxAppSession(
+            id: LxAppSessionID(rawValue: sessionId),
+            appId: appId,
+            path: path,
+            presentation: .normal,
+            userInfo: [
+                "pageInstanceId": .string(pageInstanceId),
+                "dynamicSurfaceId": .string(id),
+            ]
+        )
+        Task { @MainActor in
+            do {
+                try await lxHostView.mount(session, notifyVisibleOnMount: true)
+            } catch {
+                os_log(
+                    "fullscreen mount failed id=%{public}@ app=%{public}@ path=%{public}@ error=%{public}@",
+                    log: log, type: .error, id, appId, path, String(describing: error)
+                )
+                _ = close(id: id, appId: appId, reason: "failed")
+            }
+        }
+
+        addBackAffordance(to: windowContent, id: id, appId: appId)
+
+        let delegate = WindowDelegate(id: id, appId: appId)
+        window.contentView = windowContent
+        window.delegate = delegate
+        entries[id] = Entry(
+            id: id,
+            appId: appId,
+            pageInstanceId: pageInstanceId,
+            hostView: lxHostView,
+            webView: nil,
+            navigationDelegate: nil,
+            window: window,
+            parentWindow: context.parentWindow,
+            delegate: delegate,
+            isFullScreen: true
+        )
+        if let parentWindow = context.parentWindow {
+            parentWindow.addChildWindow(window, ordered: .above)
+        }
+        window.makeKeyAndOrderFront(nil)
+        return true
+    }
+
+    /// A drill-in back chevron pinned top-left, the phone affordance to dismiss a
+    /// full-screen surface and return to the page beneath it.
+    private static func addBackAffordance(to content: NSView, id: String, appId: String) {
+        let button = SurfaceActionButton(id: id, appId: appId)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.bezelStyle = .circular
+        button.isBordered = false
+        button.wantsLayer = true
+        button.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.35).cgColor
+        button.layer?.cornerRadius = 14
+        button.image = NSImage(
+            systemSymbolName: "chevron.left",
+            accessibilityDescription: "Back"
+        )
+        button.contentTintColor = .white
+        button.imageScaling = .scaleProportionallyDown
+        content.addSubview(button)
+        NSLayoutConstraint.activate([
+            button.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 12),
+            button.topAnchor.constraint(equalTo: content.topAnchor, constant: 12),
+            button.widthAnchor.constraint(equalToConstant: 28),
+            button.heightAnchor.constraint(equalToConstant: 28),
+        ])
+    }
+
+    /// Phone full-screen surfaces currently on-screen. The reconciler reads this
+    /// to dismiss any the core dropped, mirroring the iOS full-screen contract.
+    static func presentedFullScreenIds() -> Set<String> {
+        Set(
+            entries.values
+                .filter { $0.isFullScreen && ($0.window?.isVisible ?? false) }
+                .map { $0.id }
+        )
+    }
+
+    @discardableResult
+    static func dismissFullScreen(id: String) -> Bool {
+        guard let entry = entries[id], entry.isFullScreen else { return false }
+        return close(id: id, appId: entry.appId, reason: "programmatic")
     }
 
     /// Render an edge-aside as an in-window split pane docked into the shell's
@@ -774,6 +950,21 @@ enum LxAppSurface {
             view = current.superview
         }
         return 0
+    }
+
+    /// Frame of the runner's whole device screen — the rounded screen container,
+    /// the nearest masks-to-bounds rounded ancestor of the lxapp render view — so a
+    /// phone full-screen surface covers the ENTIRE device frame (under the status /
+    /// nav bars), not just the inset render view. Falls back to the render view.
+    private static func phoneDeviceScreenContext() -> SurfaceContext? {
+        var view: NSView? = hostAnchorView
+        while let current = view {
+            if let layer = current.layer, layer.masksToBounds, layer.cornerRadius > 0 {
+                return contextFrame(for: current)
+            }
+            view = current.superview
+        }
+        return contextFrame(for: hostAnchorView)
     }
 
     private static func surfaceContext(kind: Int32) -> SurfaceContext {

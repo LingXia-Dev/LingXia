@@ -288,6 +288,16 @@ async fn open_page_spec(ctx: JSContext, spec: &JSObject) -> JSResult<JSObject> {
             }
             #[cfg(not(any(target_os = "ios", target_os = "android", target_env = "ohos")))]
             {
+                // A compact (phone-shaped) layout — e.g. the macOS runner emulating
+                // an iPhone — has no room for a separate desktop window, so reject
+                // it exactly as a real phone does instead of spawning one.
+                if is_compact_layout(&lxapp) {
+                    return Err(surface_error(
+                        rong::error::E_NOT_SUPPORTED,
+                        "window_unsupported_platform",
+                        "as: 'window' opens a separate desktop window and is not available on this platform",
+                    ));
+                }
                 build_window_options(&ctx, &path_value, size.as_ref())?
             }
         }
@@ -332,6 +342,12 @@ async fn open_url_spec(ctx: JSContext, spec: &JSObject) -> JSResult<JSValue> {
 
     match read_optional_string(spec, "as")?.as_deref().map(str::trim) {
         Some("aside") => {
+            // A compact (phone-shaped) layout has no side-by-side room, so a URL
+            // aside degrades to the full-screen in-app browser — with its address
+            // bar / chrome — the same as omitting `as`, mirroring a real phone.
+            if url_aside_degrades_to_browser(&lxapp) {
+                return open_url_in_browser(&ctx, &lxapp, raw_url.trim());
+            }
             let url = validate_url_target(&lxapp, raw_url.trim())?;
             let position =
                 read_optional_string(spec, "edge")?.unwrap_or_else(|| "right".to_string());
@@ -350,21 +366,7 @@ async fn open_url_spec(ctx: JSContext, spec: &JSObject) -> JSResult<JSValue> {
                 .await
                 .map(JSObject::into_js_value)
         }
-        None => {
-            let url = lxapp_url(&lxapp, raw_url.trim())?;
-            lxapp
-                .runtime
-                .open_url(OpenUrlRequest {
-                    owner_appid: lxapp.appid.clone(),
-                    owner_session_id: lxapp.session_id(),
-                    url,
-                    target: OpenUrlTarget::SelfTarget,
-                })
-                .map_err(|err| surface_error(rong::error::E_INTERNAL, "open_url_failed", err))?;
-            // The in-app browser tab is host chrome, not tracked as a closable
-            // surface here, so there is no handle to return.
-            Ok(JSValue::null(&ctx))
-        }
+        None => open_url_in_browser(&ctx, &lxapp, raw_url.trim()),
         Some(other) => Err(surface_error(
             rong::error::E_INVALID_ARG,
             "invalid_surface_spec",
@@ -590,6 +592,51 @@ fn surface_context_for(lxapp: &LxApp) -> JSSurfaceContext {
         size_class: size_class.to_string(),
         bottom_owner: "app".to_string(),
     }
+}
+
+/// Whether the lxapp's window currently renders at a compact (phone) width.
+/// Drives the desktop `as: 'window'` gate so the macOS runner's iPhone shape
+/// rejects windows like a real phone. Only the desktop build consults this.
+#[cfg(not(any(target_os = "ios", target_os = "android", target_env = "ohos")))]
+fn is_compact_layout(lxapp: &LxApp) -> bool {
+    use lingxia_surface::SizeClass;
+    matches!(
+        lxapp
+            .surface_derived_layout()
+            .as_ref()
+            .map(|l| l.size_class),
+        Some(SizeClass::Compact)
+    )
+}
+
+/// Open a url as an in-app browser tab (host chrome with an address bar). Shared
+/// by `{ url }` and the compact `{ url, as: 'aside' }` degrade path. Returns null
+/// — the tab is host chrome, not a closable surface, so there is no handle.
+fn open_url_in_browser(ctx: &JSContext, lxapp: &LxApp, raw_url: &str) -> JSResult<JSValue> {
+    let url = lxapp_url(lxapp, raw_url)?;
+    lxapp
+        .runtime
+        .open_url(OpenUrlRequest {
+            owner_appid: lxapp.appid.clone(),
+            owner_session_id: lxapp.session_id(),
+            url,
+            target: OpenUrlTarget::SelfTarget,
+        })
+        .map_err(|err| surface_error(rong::error::E_INTERNAL, "open_url_failed", err))?;
+    Ok(JSValue::null(ctx))
+}
+
+/// On a desktop host shrunk to a compact (phone) width — the macOS runner's
+/// iPhone shape — a URL aside has no dock room, so it becomes the full-screen
+/// in-app browser. Real mobile keeps its own URL-aside presentation.
+#[cfg(not(any(target_os = "ios", target_os = "android", target_env = "ohos")))]
+fn url_aside_degrades_to_browser(lxapp: &LxApp) -> bool {
+    is_compact_layout(lxapp)
+}
+
+#[cfg(any(target_os = "ios", target_os = "android", target_env = "ohos"))]
+fn url_aside_degrades_to_browser(_lxapp: &LxApp) -> bool {
+    false
 }
 
 async fn open_surface(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {

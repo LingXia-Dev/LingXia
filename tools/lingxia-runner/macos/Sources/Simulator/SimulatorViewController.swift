@@ -70,12 +70,27 @@ public class SimulatorViewController: NSViewController, WKNavigationDelegate {
     
     public override func viewDidLoad() {
         super.viewDidLoad()
-        
+
         setupLayout()
         setupNotificationObservers()
         loadWebViewContent()
     }
-    
+
+    public override func viewDidLayout() {
+        super.viewDidLayout()
+        reportSurfaceWidth()
+    }
+
+    /// Report the device-screen width so the core derives the sizeClass: the
+    /// iPhone shape resolves to compact, which makes `as: 'window'` unsupported and
+    /// degrades URL asides to the in-app browser — exactly like a real phone.
+    private func reportSurfaceWidth() {
+        guard !appId.isEmpty else { return }
+        let width = view.bounds.width
+        guard width > 0 else { return }
+        _ = setSurfaceWidth(appId, Double(width))
+    }
+
     // MARK: - UI Setup
     
     private func setupLayout() {

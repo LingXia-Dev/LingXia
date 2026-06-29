@@ -88,12 +88,17 @@ enum LxAppLayoutReconciler {
 
     private static func reconcile(label: String, json: String) -> Bool {
         guard let shell = LxAppActiveHost.activeShell else {
-            // No desktop shell (e.g. the Runner's phone simulator hosts the lxapp
-            // via a controller, not a shell). Floats are shell-independent popup
-            // windows, so still present them; asides/main are owned by the
-            // controller-hosted layout, so there is nothing to dock here.
+            // No desktop shell (the Runner's iPhone shape hosts the lxapp via a
+            // controller, not a shell). Asides/windows drill in full-screen over
+            // the device screen like a real phone, so — mirroring the iOS
+            // reconciler — dismiss any full-screen surface the core dropped.
+            // Floats are shell-independent popup windows, so still present them.
             if let data = json.data(using: .utf8),
                let plan = try? JSONDecoder().decode(LayoutPresentationPlan.self, from: data) {
+                let desiredFullScreen = Set(plan.asides.map { $0.id }).union(plan.mains)
+                for id in LxAppSurface.presentedFullScreenIds().subtracting(desiredFullScreen) {
+                    LxAppSurface.dismissFullScreen(id: id)
+                }
                 presentFloats(plan.floats.map { $0.id })
             }
             return true
