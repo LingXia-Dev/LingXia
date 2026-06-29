@@ -86,6 +86,7 @@ pub fn execute(options: PackageExecuteOptions) -> Result<()> {
         all_platforms: options.all_platforms,
         ipa: false,
         dmg: false,
+        android_dist: None,
         msix: false,
         self_signed: false,
         package: true,
