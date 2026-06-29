@@ -36,7 +36,17 @@ surfaces:
   #   render: native
   #   role: aside
   #   edge: bottom           # top | bottom
+  #   platforms: [macos, windows]   # availability filter: desktop only
   #   sidebar: {}
+
+  # Tray popover (role: float requires a tray; clicking the tray icon opens it
+  # as an auto-dismissing popover anchored under the icon).
+  # - id: panel
+  #   role: float
+  #   tray:
+  #     # icon: icons/status.svg
+  #     action: toggle
+  #     size: { width: 320, height: 480 }
 
   # Menu-bar / tray app (tray = macOS menu bar / Windows tray icon):
   #   action: toggle      visible -> hide, hidden -> show
