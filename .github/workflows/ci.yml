@@ -460,6 +460,11 @@ jobs:
           provider-cloud-git: ${{ secrets.LINGXIA_PROVIDER_CLOUD_GIT }}
 
       - name: Build macOS Runner (arm64)
+        # Notarization here is a build check, not a release: if Apple's service
+        # stalls, the bounded wait warns and continues with a signed (un-stapled)
+        # app instead of hanging until the job timeout. Release builds omit this.
+        env:
+          LINGXIA_NOTARIZE_BEST_EFFORT: "1"
         run: bash scripts/release/runner.sh --macos-arch arm64 --out dist/runner-release
 
       - name: Upload Runner zip
