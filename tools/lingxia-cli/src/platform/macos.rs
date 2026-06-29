@@ -528,8 +528,16 @@ impl Platform for MacosPlatform {
                 err
             );
         }
+
+        // actool leaves build intermediates (assetcatalog_dependencies +
+        // assetcatalog_generated_info.plist) in Contents/; the generated plist
+        // was already merged into Info.plist above. Drop both so they never ship
+        // inside the signed/notarized bundle.
+        for stale in ["assetcatalog_dependencies", "assetcatalog_generated_info.plist"] {
+            let _ = fs::remove_file(app_path.join("Contents").join(stale));
+        }
+
         sync_primary_spm_resources_to_app_root(&bin_dir, &app_path)?;
-        ensure_sdk_resource_bundles_at_app_root(&bin_dir, &app_path)?;
 
         apple::notarize::maybe_sign_and_notarize(&app_path)?;
 
@@ -751,29 +759,6 @@ fn remove_stale_macos_app_bundles(output_dir: &Path, current_app_name: &str) -> 
         fs::remove_dir_all(&path)
             .with_context(|| format!("Failed to remove stale app bundle {}", path.display()))?;
         println!("  Removed stale macOS app bundle → {}", path.display());
-    }
-    Ok(())
-}
-
-fn ensure_sdk_resource_bundles_at_app_root(bin_dir: &Path, app_bundle: &Path) -> Result<()> {
-    for entry in fs::read_dir(bin_dir)? {
-        let entry = entry?;
-        let path = entry.path();
-        if path.extension().is_none_or(|e| e != "bundle") {
-            continue;
-        }
-        let Some(bundle_name) = path.file_name() else {
-            return Err(anyhow!("Invalid bundle path: {}", path.display()));
-        };
-        let bundle_name_str = bundle_name.to_string_lossy();
-        if bundle_name_str != "lingxia_lingxia.bundle"
-            && bundle_name_str != "LingXia_LingXia.bundle"
-        {
-            continue;
-        }
-        let dest = app_bundle.join(bundle_name);
-        let _ = fs::remove_dir_all(&dest);
-        apple::copy_dir_recursive(&path, &dest)?;
     }
     Ok(())
 }
