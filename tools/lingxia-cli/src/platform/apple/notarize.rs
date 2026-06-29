@@ -256,11 +256,11 @@ fn sign_and_notarize(app_path: &Path, config: &NotarizeConfig) -> Result<()> {
         )?;
         println!("  {} codesigned (Developer ID)", "✓".green());
 
-        notarize(app_path, &config.notary)?;
-        println!("  {} notarized", "✓".green());
-
-        staple(app_path)?;
-        println!("  {} stapled", "✓".green());
+        if notarize(app_path, &config.notary)? {
+            println!("  {} notarized", "✓".green());
+            staple(app_path)?;
+            println!("  {} stapled", "✓".green());
+        }
 
         Ok(())
     })();
@@ -286,11 +286,11 @@ fn sign_and_notarize_local(
         "✓".green()
     );
 
-    notarize(app_path, notary)?;
-    println!("  {} notarized", "✓".green());
-
-    staple(app_path)?;
-    println!("  {} stapled", "✓".green());
+    if notarize(app_path, notary)? {
+        println!("  {} notarized", "✓".green());
+        staple(app_path)?;
+        println!("  {} stapled", "✓".green());
+    }
 
     Ok(())
 }
@@ -536,8 +536,10 @@ fn codesign(
 }
 
 /// Zip the signed app and submit it to Apple's notary service, waiting for the
-/// result.
-fn notarize(app_path: &Path, notary: &NotaryMaterial) -> Result<()> {
+/// result. Returns `true` when notarization completed (the ticket exists and the
+/// app can be stapled), `false` when a best-effort wait timed out with the
+/// submission still in flight (no ticket yet — caller must skip stapling).
+fn notarize(app_path: &Path, notary: &NotaryMaterial) -> Result<bool> {
     if !Path::new(&notary.notary_key).exists() {
         return Err(anyhow!(
             "Notary key does not point to an existing file: {}",
@@ -617,7 +619,7 @@ fn notarize(app_path: &Path, notary: &NotaryMaterial) -> Result<()> {
                     stdout.trim(),
                     stderr.trim()
                 );
-                return Ok(());
+                return Ok(false);
             }
             return Err(anyhow!(
                 "notarytool submit failed:\n{}\n{}",
@@ -626,7 +628,7 @@ fn notarize(app_path: &Path, notary: &NotaryMaterial) -> Result<()> {
             ));
         }
 
-        Ok(())
+        Ok(true)
     })();
 
     let _ = std::fs::remove_file(&zip_path);
