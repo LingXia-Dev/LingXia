@@ -54,6 +54,11 @@ pub struct PackageOptions {
     /// Local checkout path for the provider crate (else resolved from env).
     #[arg(long = "provider-path")]
     pub provider_path: Option<String>,
+
+    /// Android distribution format: `sideload` (APK, default) or `play` (AAB,
+    /// for Google Play). Staged into `dist/android/` for `lingxia store submit`.
+    #[arg(long, value_parser = ["sideload", "play"])]
+    pub dist: Option<String>,
 }
 
 pub struct PackageExecuteOptions {
@@ -68,6 +73,7 @@ pub struct PackageExecuteOptions {
     pub extra_native_features: Vec<String>,
     pub with_provider: Vec<String>,
     pub provider_path: Option<String>,
+    pub android_dist: Option<String>,
 }
 
 pub fn execute(options: PackageExecuteOptions) -> Result<()> {
@@ -86,7 +92,7 @@ pub fn execute(options: PackageExecuteOptions) -> Result<()> {
         all_platforms: options.all_platforms,
         ipa: false,
         dmg: false,
-        android_dist: None,
+        android_dist: options.android_dist,
         msix: false,
         self_signed: false,
         package: true,

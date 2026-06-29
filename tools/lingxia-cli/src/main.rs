@@ -598,6 +598,7 @@ fn main() -> Result<()> {
                 extra_native_features: package_options.native_features,
                 with_provider: package_options.with_provider,
                 provider_path: package_options.provider_path,
+                android_dist: package_options.dist,
             })?;
         }
         Commands::Devices { platform } => {
