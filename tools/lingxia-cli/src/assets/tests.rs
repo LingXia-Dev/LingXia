@@ -571,6 +571,10 @@ mod view_target_warnings {
             compile_sdk: Some(35),
             ndk_version: None,
             api_level: None,
+            google_play_store: None,
+            xiaomi_store: None,
+            oppo_store: None,
+            honor_store: None,
         }
     }
 

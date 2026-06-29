@@ -893,6 +893,68 @@ pub struct AndroidConfig {
     /// If not specified, will be derived from minSdk, then targetSdk
     #[serde(skip_serializing_if = "Option::is_none")]
     pub api_level: Option<u32>,
+    /// Google Play Console identity for `lingxia store --platform googleplay`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub google_play_store: Option<GooglePlayConfig>,
+    /// Xiaomi GetApps identity for `lingxia store --platform xiaomi`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub xiaomi_store: Option<XiaomiStoreConfig>,
+    /// OPPO open-platform identity for `lingxia store --platform oppo`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub oppo_store: Option<OppoStoreConfig>,
+    /// Honor AppGallery identity for `lingxia store --platform honor`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub honor_store: Option<HonorStoreConfig>,
+}
+
+/// Google Play submission identity. Lives in `lingxia.yaml` under
+/// `android.googlePlayStore`; credentials live in
+/// `~/.lingxia/store/credentials.toml` (`[googleplay]`).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GooglePlayConfig {
+    /// Play `applicationId` (the package name, e.g. `app.lingxia.example`).
+    pub package_name: String,
+    /// Default release track when `--track` is omitted (e.g. `internal`,
+    /// `alpha`, `beta`, `production`). Defaults to `internal`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default_track: Option<String>,
+}
+
+/// Xiaomi GetApps submission identity. Lives in `lingxia.yaml` under
+/// `android.xiaomiStore`; credentials live in
+/// `~/.lingxia/store/credentials.toml` (`[xiaomi]`).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct XiaomiStoreConfig {
+    /// Application package name (e.g. `app.lingxia.example`).
+    pub package_name: String,
+}
+
+/// OPPO software-store submission identity. Lives in `lingxia.yaml` under
+/// `android.oppoStore`; credentials live in
+/// `~/.lingxia/store/credentials.toml` (`[oppo]`).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct OppoStoreConfig {
+    /// Application package name (e.g. `app.lingxia.example`).
+    pub package_name: String,
+    /// OPPO numeric app id, if the open-platform API requires it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub app_id: Option<String>,
+}
+
+/// Honor AppGallery submission identity. Lives in `lingxia.yaml` under
+/// `android.honorStore`; credentials live in
+/// `~/.lingxia/store/credentials.toml` (`[honor]`).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct HonorStoreConfig {
+    /// Honor Developer numeric app id.
+    pub app_id: String,
+    /// Application package name (e.g. `app.lingxia.example`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub package_name: Option<String>,
 }
 
 impl AndroidConfig {
@@ -1203,6 +1265,10 @@ impl LingXiaConfig {
                 compile_sdk: Some(35),
                 ndk_version: None, // Auto-detect
                 api_level: None,   // Derive from minSdk/targetSdk
+                google_play_store: None,
+                xiaomi_store: None,
+                oppo_store: None,
+                honor_store: None,
             }),
             ios: None,
             macos: None,
@@ -1943,6 +2009,10 @@ mod tests {
             compile_sdk: Some(35),
             ndk_version: None,
             api_level: None,
+            google_play_store: None,
+            xiaomi_store: None,
+            oppo_store: None,
+            honor_store: None,
         };
         assert_eq!(config.get_api_level(), 28);
 
@@ -1953,6 +2023,10 @@ mod tests {
             compile_sdk: Some(35),
             ndk_version: None,
             api_level: Some(33),
+            google_play_store: None,
+            xiaomi_store: None,
+            oppo_store: None,
+            honor_store: None,
         };
         assert_eq!(config_explicit.get_api_level(), 33);
     }
