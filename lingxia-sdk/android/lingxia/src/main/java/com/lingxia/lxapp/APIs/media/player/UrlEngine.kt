@@ -10,6 +10,7 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.VideoSize as M3VideoSize
 import androidx.media3.exoplayer.DefaultLoadControl
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 
@@ -19,7 +20,7 @@ internal class UrlEngine(
 ) : PlayerEngine {
     private val tag = "LingXia.UrlEngine"
     private val memoryProfile = buildMemoryProfile(context)
-    internal val exoPlayer: ExoPlayer = ExoPlayer.Builder(context)
+    internal val exoPlayer: ExoPlayer = ExoPlayer.Builder(context, buildRenderersFactory(context))
         .setLoadControl(buildLoadControl(memoryProfile))
         .build()
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -298,9 +299,8 @@ internal class UrlEngine(
 
     private fun isRetryableError(error: PlaybackException): Boolean {
         return when (error.errorCode) {
-            PlaybackException.ERROR_CODE_DECODING_FAILED,
-            PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
-            PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED,
+            // Decoder failures are left to the renderer's fallback; re-preparing
+            // only re-picks the same bad hardware codec and spins.
             PlaybackException.ERROR_CODE_FAILED_RUNTIME_CHECK,
             PlaybackException.ERROR_CODE_UNSPECIFIED -> true
             else -> false
@@ -345,6 +345,12 @@ internal class UrlEngine(
                 targetBufferBytes = 48 * 1024 * 1024,
             )
         }
+    }
+
+    // Fall back to a software decoder when a device's hardware codec fails.
+    private fun buildRenderersFactory(context: Context): DefaultRenderersFactory {
+        return DefaultRenderersFactory(context)
+            .setEnableDecoderFallback(true)
     }
 
     private fun buildLoadControl(profile: MemoryProfile): DefaultLoadControl {
