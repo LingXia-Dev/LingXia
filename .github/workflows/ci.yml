@@ -739,12 +739,12 @@ jobs:
           path: examples/lingxia-showcase/harmony/.lingxia/**/libs/**/*.so
           if-no-files-found: warn
 
-  npm-bridge:
+  npm-packages:
     needs: changes
     if: ${{ needs.changes.outputs.npm == 'true' }}
-    name: Bridge
+    name: Packages (workspace build)
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -756,108 +756,19 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.npm
-          key: npm-bridge-${{ hashFiles('packages/lingxia-bridge/package.json') }}
-          restore-keys: npm-bridge-
+          key: npm-packages-${{ hashFiles('packages/*/package.json') }}
+          restore-keys: npm-packages-
 
-      - name: Install & Build (@lingxia/bridge)
-        working-directory: packages/lingxia-bridge
+      # packages/ is an npm workspace: a single install links every @lingxia/*
+      # member and hoists their dev tooling, and `npm run build --workspaces`
+      # then builds each member that has a build script (npm discovers them from
+      # the workspace — no per-package list). Mirrors what the lingxia CLI runs
+      # for an in-repo build.
+      - name: Install & build workspace
+        working-directory: packages
         run: |
           npm install
-          npm run build
-
-  npm-polyfills:
-    needs: changes
-    if: ${{ needs.changes.outputs.npm == 'true' }}
-    name: Polyfills
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-
-      - name: Cache npm
-        uses: actions/cache@v4
-        with:
-          path: ~/.npm
-          key: npm-polyfills-${{ hashFiles('packages/lingxia-polyfills/package.json') }}
-          restore-keys: npm-polyfills-
-
-      - name: Install & Build (@lingxia/polyfills)
-        working-directory: packages/lingxia-polyfills
-        run: |
-          npm install
-          npm run build
-
-  npm-types:
-    needs: changes
-    if: ${{ needs.changes.outputs.npm == 'true' }}
-    name: TypeScript Types
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-
-      - name: Cache npm
-        uses: actions/cache@v4
-        with:
-          path: ~/.npm
-          key: npm-types-${{ hashFiles('packages/lingxia-types/package.json') }}
-          restore-keys: npm-types-
-
-      - name: Install & Build (@lingxia/types)
-        working-directory: packages/lingxia-types
-        run: |
-          npm install
-          npm run build
-
-  npm-frontend:
-    needs: changes
-    if: ${{ needs.changes.outputs.npm == 'true' }}
-    name: Frontend (elements/page-runtime/html/react/vue)
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-
-      - name: Cache npm
-        uses: actions/cache@v4
-        with:
-          path: ~/.npm
-          key: npm-frontend-${{ hashFiles('packages/lingxia-*/package.json') }}
-          restore-keys: npm-frontend-
-
-      # Each package's build cascades to its siblings via `npm --prefix`, so a
-      # plain `npm install` per package + building the leaf libs (html, react,
-      # vue) also builds elements + page-runtime + bridge against the tree.
-      - name: Install web packages
-        run: |
-          set -euo pipefail
-          for pkg in lingxia-bridge lingxia-elements lingxia-page-runtime \
-                     lingxia-html lingxia-react lingxia-vue; do
-            echo "::group::npm install ($pkg)"
-            (cd "packages/$pkg" && npm install)
-            echo "::endgroup::"
-          done
-
-      - name: Build frontend packages
-        run: |
-          set -euo pipefail
-          for pkg in lingxia-html lingxia-react lingxia-vue; do
-            echo "::group::npm run build ($pkg)"
-            (cd "packages/$pkg" && npm run build)
-            echo "::endgroup::"
-          done
+          npm run build --workspaces --if-present
 
   npm-skill:
     needs: changes

@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
 import ts from "typescript";
+import { resolveBin } from "./resolve-bin.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const packageDir = path.resolve(__dirname, "..");
@@ -14,12 +15,7 @@ const runtimeShimFile = path.join(distDir, "__page_runtime_runtime__.js");
 const bundleFile = path.join(distDir, "global.bundle.js");
 const modernFile = path.join(distDir, "global.es2020.js");
 const legacyFile = path.join(distDir, "global.es5.js");
-const rolldownBin = path.join(
-  packageDir,
-  "node_modules",
-  ".bin",
-  process.platform === "win32" ? "rolldown.cmd" : "rolldown",
-);
+const rolldownBin = resolveBin(packageDir, "rolldown");
 
 await writeEntryFile();
 await runRolldown(entryFile, bundleFile, "iife", "LingXiaPage");
@@ -69,6 +65,9 @@ function runRolldown(inputFile, outputFile, format, globalName) {
     const child = spawn(rolldownBin, args, {
       cwd: packageDir,
       stdio: "inherit",
+      // On Windows the .bin entry is rolldown.cmd; route through the shell so
+      // it resolves (node's spawn can't exec a .cmd directly -> spawn EINVAL).
+      shell: process.platform === "win32",
       env: process.env,
     });
 

@@ -3,18 +3,14 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
 import { minify } from "terser";
+import { resolveBin } from "./resolve-bin.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const packageDir = path.resolve(__dirname, "..");
 const distDir = path.join(packageDir, "dist");
 const tempFile = path.join(distDir, "bridge-runtime.es2020.bundle.js");
 const outputFile = path.join(distDir, "bridge-runtime.es2020.js");
-const rolldownBin = path.join(
-  packageDir,
-  "node_modules",
-  ".bin",
-  process.platform === "win32" ? "rolldown.cmd" : "rolldown",
-);
+const rolldownBin = resolveBin(packageDir, "rolldown");
 
 await fs.mkdir(distDir, { recursive: true });
 await runRolldown();
