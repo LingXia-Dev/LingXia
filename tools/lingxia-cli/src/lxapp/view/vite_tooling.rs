@@ -217,7 +217,7 @@ pub(super) fn ensure_project_tooling(
 
     let node_modules_dir = project.root.join("node_modules");
     if node_modules_dir.exists() {
-        ensure_lingxia_workspace_transitive_deps(&project.root)?;
+        ensure_lingxia_workspace_built(&project.root)?;
         return Ok(None);
     }
 
@@ -263,62 +263,55 @@ For local debug builds, rerun without --release so LingXia can use npm install."
             node_modules_dir.display()
         ));
     }
-    ensure_lingxia_workspace_transitive_deps(&project.root)?;
+    ensure_lingxia_workspace_built(&project.root)?;
     Ok(Some(started.elapsed()))
 }
 
-fn ensure_lingxia_workspace_transitive_deps(project_root: &Path) -> Result<()> {
-    let Some(workspace_root) = find_lingxia_workspace_root(project_root) else {
+/// Bootstrap the in-repo `@lingxia/*` workspace on a clean checkout: `npm
+/// install` + `npm run build --workspaces` in `packages/` link and build every
+/// member (npm discovers them — no per-package list), producing the `dist` the
+/// view build needs. Kept under `packages/`, not the repo root, so `examples/`
+/// apps still install standalone like a `lingxia new` project. Runs once,
+/// gated on `bridge/dist`.
+fn ensure_lingxia_workspace_built(project_root: &Path) -> Result<()> {
+    let Some(repo_root) = find_lingxia_workspace_root(project_root) else {
         return Ok(());
     };
-    let scope_dir = project_root.join("node_modules").join("@lingxia");
-    if !scope_dir.is_dir() {
+    let packages_dir = repo_root.join("packages");
+    let bridge_dist = packages_dir.join("lingxia-bridge").join("dist");
+    let built = fs::read_dir(&bridge_dist)
+        .map(|mut entries| entries.next().is_some())
+        .unwrap_or(false);
+    if built {
         return Ok(());
     }
 
-    let mut specs = Vec::new();
-    for (package_name, workspace_dir) in [
-        ("@lingxia/elements", "lingxia-elements"),
-        ("@lingxia/page-runtime", "lingxia-page-runtime"),
-    ] {
-        let package_leaf = package_name
-            .rsplit_once('/')
-            .map(|(_, leaf)| leaf)
-            .unwrap_or(package_name);
-        if scope_dir.join(package_leaf).exists() {
-            continue;
-        }
-        let package_dir = workspace_root.join("packages").join(workspace_dir);
-        if package_dir.join("package.json").is_file() {
-            specs.push(npm_file_dependency_spec(
-                package_name,
-                project_root,
-                &package_dir,
-            ));
-        }
-    }
+    println!("  ▸ installing LingXia workspace packages");
+    run_workspace_npm(
+        &packages_dir,
+        &["install", "--no-audit", "--no-fund"],
+        "install LingXia workspace packages",
+    )?;
+    println!("  ▸ building LingXia workspace packages");
+    run_workspace_npm(
+        &packages_dir,
+        &["run", "build", "--workspaces", "--if-present"],
+        "build LingXia workspace packages",
+    )
+}
 
-    if specs.is_empty() {
-        return Ok(());
-    }
-
-    let status = Command::new(crate::npm::command())
-        .arg("install")
-        .arg("--no-save")
-        .arg("--package-lock=false")
-        .args(["--no-audit", "--no-fund"])
-        .args(&specs)
-        .current_dir(project_root)
+fn run_workspace_npm(packages_dir: &Path, args: &[&str], action: &str) -> Result<()> {
+    let ok = Command::new(crate::npm::command())
+        .args(args)
+        .current_dir(packages_dir)
         .status()
-        .with_context(|| {
-            format!(
-                "Failed to install LingXia workspace dependencies in {}",
-                project_root.display()
-            )
-        })?;
-    if !status.success() {
+        .with_context(|| format!("Failed to {action} in {}", packages_dir.display()))?
+        .success();
+    if !ok {
         return Err(anyhow!(
-            "Failed to install LingXia workspace dependencies with npm install --no-save"
+            "Failed to {action} (npm {}) in {}",
+            args.join(" "),
+            packages_dir.display()
         ));
     }
     Ok(())
@@ -339,53 +332,6 @@ fn find_lingxia_workspace_root(start_dir: &Path) -> Option<PathBuf> {
             return None;
         }
     }
-}
-
-fn npm_file_dependency_spec(package_name: &str, project_root: &Path, package_dir: &Path) -> String {
-    let dependency_path = relative_path(package_dir, project_root)
-        .unwrap_or_else(|| package_dir.to_path_buf())
-        .to_string_lossy()
-        .replace('\\', "/");
-    format!("{package_name}@file:{dependency_path}")
-}
-
-fn relative_path(path: &Path, base: &Path) -> Option<PathBuf> {
-    let path = path.canonicalize().ok()?;
-    let base = base.canonicalize().ok()?;
-    let path_components = path.components().collect::<Vec<_>>();
-    let base_components = base.components().collect::<Vec<_>>();
-
-    let mut common = 0;
-    while common < path_components.len()
-        && common < base_components.len()
-        && path_components[common] == base_components[common]
-    {
-        common += 1;
-    }
-
-    if common == 0 {
-        return None;
-    }
-
-    let mut out = PathBuf::new();
-    for component in &base_components[common..] {
-        match component {
-            std::path::Component::Normal(_) => out.push(".."),
-            std::path::Component::CurDir => {}
-            _ => return None,
-        }
-    }
-    for component in &path_components[common..] {
-        match component {
-            std::path::Component::Normal(part) => out.push(part),
-            std::path::Component::CurDir => {}
-            _ => return None,
-        }
-    }
-    if out.as_os_str().is_empty() {
-        out.push(".");
-    }
-    Some(out)
 }
 
 fn project_vite_bin(project_root: &Path) -> PathBuf {
@@ -460,22 +406,6 @@ mod tests {
         assert_eq!(
             find_lingxia_workspace_root(&app_dir),
             Some(temp.path().canonicalize().unwrap())
-        );
-    }
-
-    #[test]
-    fn npm_file_dependency_spec_uses_relative_forward_slash_path() {
-        let temp = tempdir().unwrap();
-        let project_root = temp.path().join("examples/app");
-        let package_dir = temp.path().join("packages/lingxia-elements");
-        fs::create_dir_all(&project_root).unwrap();
-        fs::create_dir_all(&package_dir).unwrap();
-
-        let spec = npm_file_dependency_spec("@lingxia/elements", &project_root, &package_dir);
-
-        assert_eq!(
-            spec,
-            "@lingxia/elements@file:../../packages/lingxia-elements"
         );
     }
 

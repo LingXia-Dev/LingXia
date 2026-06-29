@@ -213,27 +213,31 @@ fn npm_command() -> &'static str {
 }
 
 fn ensure_npm_bin_installed(package_dir: &Path, bin_name: &str) -> Result<(), String> {
-    let node_modules = package_dir.join("node_modules");
-    let bin_file = node_modules.join(".bin").join(if cfg!(windows) {
+    let bin_leaf = if cfg!(windows) {
         format!("{bin_name}.cmd")
     } else {
         bin_name.to_string()
-    });
+    };
 
-    if node_modules.is_dir() && bin_file.is_file() {
-        return Ok(());
+    // The bin may live in the package's own node_modules (a per-package install)
+    // or be hoisted to the npm-workspace root, so search upward for either.
+    let mut dir = Some(package_dir);
+    while let Some(current) = dir {
+        if current
+            .join("node_modules")
+            .join(".bin")
+            .join(&bin_leaf)
+            .is_file()
+        {
+            return Ok(());
+        }
+        dir = current.parent();
     }
 
-    let install_cmd = if package_dir.join("package-lock.json").is_file() {
-        "npm ci"
-    } else {
-        "npm install"
-    };
     Err(format!(
-        "npm build tooling (`{bin_name}`) is not installed in {}.\n\
-Run `cd {} && {install_cmd}` first, then retry `cargo build -p lingxia-cli`.",
-        node_modules.display(),
-        package_dir.display(),
+        "npm build tooling (`{bin_name}`) is not installed.\n\
+Run `npm install` in the `packages/` workspace (it links the in-repo @lingxia/* packages \
+and hoists their dev tooling), then retry `cargo build -p lingxia-cli`.",
     ))
 }
 

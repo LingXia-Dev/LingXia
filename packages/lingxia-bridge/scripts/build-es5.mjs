@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
 import { minify } from "terser";
+import { resolveBin } from "./resolve-bin.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const packageDir = path.resolve(__dirname, "..");
@@ -10,18 +11,8 @@ const distDir = path.join(packageDir, "dist");
 const tempFile = path.join(distDir, "bridge-runtime.es5.bundle.js");
 const transpiledFile = path.join(distDir, "bridge-runtime.es5.transpiled.js");
 const outputFile = path.join(distDir, "bridge-runtime.es5.js");
-const rolldownBin = path.join(
-  packageDir,
-  "node_modules",
-  ".bin",
-  process.platform === "win32" ? "rolldown.cmd" : "rolldown",
-);
-const tscBin = path.join(
-  packageDir,
-  "node_modules",
-  ".bin",
-  process.platform === "win32" ? "tsc.cmd" : "tsc",
-);
+const rolldownBin = resolveBin(packageDir, "rolldown");
+const tscBin = resolveBin(packageDir, "tsc");
 
 await fs.mkdir(distDir, { recursive: true });
 await runRolldown();
@@ -85,6 +76,9 @@ function runTsc() {
         "ES5",
         "--module",
         "none",
+        // Transpiling a self-contained bundle: ignore any ambient @types that an
+        // npm-workspace install may have hoisted into the root node_modules.
+        "--skipLibCheck",
         "--outFile",
         path.basename(transpiledFile),
         path.basename(tempFile),

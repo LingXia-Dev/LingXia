@@ -14,7 +14,7 @@
     "./package.json": "./package.json"
   },
   "scripts": {
-    "build": "npm run clean && npm --prefix ../lingxia-elements run build && npm --prefix ../lingxia-page-runtime run build && tsc -p tsconfig.json && mkdir -p dist && cp src/*.vue dist/ && cp src/shims-vue.d.ts dist/shims-vue.d.ts",
+    "build": "npm run clean && npm --prefix ../lingxia-elements run build && npm --prefix ../lingxia-page-runtime run build && tsc -p tsconfig.json && node scripts/copy-sfc-assets.mjs",
     "clean": "rm -rf dist",
     "prepublishOnly": "npm run build"
   },
