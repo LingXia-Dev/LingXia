@@ -14,11 +14,10 @@ name = "lingxia"
 crate-type = ["staticlib"]
 
 [features]
-# Cloud provider. Off by default; `lingxia package/build --with-provider cloud`
-# injects the provider crate (+ the root crates.io->local patches it needs, this
-# crate being a workspace member) and activates this feature, which pulls in the
-# shared runner-config resolver.
-cloud = ["dep:lingxia-runner-config"]
+# Cloud provider. Inert by default; `lingxia package/build --with-provider cloud`
+# injects the provider crate + (this crate is a workspace member) the root
+# crates.io->local patches it needs.
+cloud = []
 
 # The runner is a dev container, so it asks the cloud provider for `dev` — the
 # runtime lingxiaServer/lingxiaId overrides + mock switch. The CLI reads this to
@@ -32,7 +31,5 @@ features = ["dev"]
 [dependencies]
 lingxia = { workspace = true, features = ["standard", "devtool", "browser-runtime", "webview-input"] }
 lingxia_devtool = { workspace = true, features = ["browser"] }
-# Shared resolver for the dev runner's config (config.toml overrides, mock dir,
-# lxapp routing); mapped onto the provider's types in lib.rs. Only needed when
-# the provider is injected. Shared with the Windows runner.
-lingxia-runner-config = { workspace = true, optional = true }
+# Reads ~/.lingxia/runner/config.toml for the runtime lingxiaServer override.
+toml = "1.1.2"
