@@ -220,24 +220,54 @@ pub fn resolve_appgallery(file: &StoreCredentials) -> Result<AppGalleryCreds> {
 /// service-account JSON path, or an inline client_email + private_key.
 pub fn resolve_googleplay(file: &StoreCredentials) -> Result<GooglePlayCreds> {
     let f = file.googleplay.as_ref();
-    let service_account_json = env_nonempty("LINGXIA_GPLAY_SERVICE_ACCOUNT_JSON")
-        .or_else(|| f.and_then(|c| c.service_account_json.clone()));
-    let client_email = env_nonempty("LINGXIA_GPLAY_CLIENT_EMAIL")
-        .or_else(|| f.and_then(|c| c.client_email.clone()));
-    let private_key =
-        env_nonempty("LINGXIA_GPLAY_PRIVATE_KEY").or_else(|| f.and_then(|c| c.private_key.clone()));
-    if service_account_json.is_some() || (client_email.is_some() && private_key.is_some()) {
-        Ok(GooglePlayCreds {
-            service_account_json,
-            client_email,
-            private_key,
-        })
-    } else {
-        bail!(
-            "Google Play credentials not found. Run `lingxia store login --platform googleplay`, \
-             or set LINGXIA_GPLAY_SERVICE_ACCOUNT_JSON (or _CLIENT_EMAIL + _PRIVATE_KEY)."
-        )
+    // Resolve ONE credential mode, highest priority first, so the returned
+    // struct never mixes sources — otherwise a file `service_account_json` path
+    // would shadow an inline env pair in `service_account()`, violating
+    // env-over-file. Priority: env JSON path -> env inline -> file JSON path ->
+    // file inline.
+    if let Some(p) = env_nonempty("LINGXIA_GPLAY_SERVICE_ACCOUNT_JSON") {
+        return Ok(GooglePlayCreds {
+            service_account_json: Some(p),
+            client_email: None,
+            private_key: None,
+        });
     }
+    if let (Some(email), Some(key)) = (
+        env_nonempty("LINGXIA_GPLAY_CLIENT_EMAIL"),
+        env_nonempty("LINGXIA_GPLAY_PRIVATE_KEY"),
+    ) {
+        return Ok(GooglePlayCreds {
+            service_account_json: None,
+            client_email: Some(email),
+            private_key: Some(key),
+        });
+    }
+    if let Some(p) = f
+        .and_then(|c| c.service_account_json.clone())
+        .filter(|s| !s.is_empty())
+    {
+        return Ok(GooglePlayCreds {
+            service_account_json: Some(p),
+            client_email: None,
+            private_key: None,
+        });
+    }
+    if let (Some(email), Some(key)) = (
+        f.and_then(|c| c.client_email.clone())
+            .filter(|s| !s.is_empty()),
+        f.and_then(|c| c.private_key.clone())
+            .filter(|s| !s.is_empty()),
+    ) {
+        return Ok(GooglePlayCreds {
+            service_account_json: None,
+            client_email: Some(email),
+            private_key: Some(key),
+        });
+    }
+    bail!(
+        "Google Play credentials not found. Run `lingxia store login --platform googleplay`, \
+         or set LINGXIA_GPLAY_SERVICE_ACCOUNT_JSON (or _CLIENT_EMAIL + _PRIVATE_KEY)."
+    )
 }
 
 /// Resolve Xiaomi credentials: env (`LINGXIA_XIAOMI_*`) over file.
