@@ -40,10 +40,16 @@ With --component all (default), this updates:
   - workspace.package.version in Cargo.toml
   - workspace crate dependency versions in Cargo.toml
   - lingxia-cli package version and embedded LingXia component versions
+  - LingXia Runner crate versions + macOS Info.plist (tracks the CLI version)
   - example native host LingXia crate dependency versions
   - example native host Cargo.lock LingXia package versions
   - package versions under packages/*
+  - the @lingxia/skill manifest version (kept in lockstep with its package.json)
   - internal @lingxia/* package dependency versions in published package.json files
+
+On a patch bump, unchanged framework/tool npm packages keep their version (they
+are not republished). On a minor or major bump, every framework/tool package is
+moved to the new version too, so the release line advances in lockstep.
 
 With --component cli, this updates:
   - lingxia-cli package version only
@@ -325,6 +331,12 @@ if (dryRun) {
   console.log(`updated ${path}`);
 }
 NODE
+
+  # The skill manifest carries its own version; keep it in lockstep whenever the
+  # skill package itself is (re)versioned.
+  case "$package_json" in
+    */packages/lingxia-skill/package.json) sync_skill_manifest "$VERSION" ;;
+  esac
 }
 
 update_example_host_cargo() {
@@ -391,6 +403,90 @@ update_root_lock() {
     >/dev/null
 }
 
+# The LingXia Runner ships alongside the CLI: runner.sh names the release zip by
+# the CLI version, and the runner crate manifests carry "keep in sync with
+# tools/lingxia-cli" comments. So the runner tracks the CLI [package] version
+# (not the workspace version). This bumps all three runner crates, the workspace
+# dependency entry that points at the runner config crate (which update_workspace
+# _cargo skips because its path is under tools/, not crates/), and the macOS
+# app's Info.plist CFBundleShortVersionString.
+update_runner_version() {
+  local v="$1"
+  local plist="$ROOT_DIR/tools/lingxia-runner/macos/Info.plist"
+  local tomls=(
+    "$ROOT_DIR/tools/lingxia-runner/macos/native/Cargo.toml"
+    "$ROOT_DIR/tools/lingxia-runner/config/Cargo.toml"
+    "$ROOT_DIR/tools/lingxia-runner/windows/Cargo.toml"
+  )
+  python3 - "$v" "$DRY_RUN" "$WORKSPACE_CARGO_TOML" "$plist" "${tomls[@]}" <<'PY'
+import re, sys
+from pathlib import Path
+
+version = sys.argv[1]
+dry = sys.argv[2] == "1"
+workspace = Path(sys.argv[3])
+plist = Path(sys.argv[4])
+tomls = [Path(p) for p in sys.argv[5:]]
+
+pkg_re = re.compile(r'(^\[package\]\n(?:(?!^\[).*\n)*?^version\s*=\s*")[^"]+(")', re.MULTILINE)
+for t in tomls:
+    text = t.read_text()
+    new, n = pkg_re.subn(rf'\g<1>{version}\2', text, count=1)
+    if n != 1:
+        raise SystemExit(f"failed to set [package] version in {t}")
+    if dry:
+        print(f"would update {t} -> {version}")
+    else:
+        t.write_text(new)
+        print(f"updated {t} -> {version}")
+
+wtext = workspace.read_text()
+wnew, wn = re.subn(
+    r'(^lingxia-runner-config\s*=\s*\{[^}\n]*version\s*=\s*")[^"]+(")',
+    rf'\g<1>{version}\2', wtext, count=1, flags=re.MULTILINE)
+if wn == 1 and not dry:
+    workspace.write_text(wnew)
+print(f"{'would update' if dry else 'updated'} workspace dep lingxia-runner-config -> {version}" if wn == 1
+      else "warning: lingxia-runner-config workspace dep not found")
+
+ptext = plist.read_text()
+pnew, pn = re.subn(
+    r'(<key>CFBundleShortVersionString</key>\s*\n\s*<string>)[^<]*(</string>)',
+    rf'\g<1>{version}\2', ptext, count=1)
+if pn == 1 and not dry:
+    plist.write_text(pnew)
+print(f"{'would update' if dry else 'updated'} {plist} CFBundleShortVersionString -> {version}" if pn == 1
+      else f"warning: CFBundleShortVersionString not found in {plist}")
+PY
+}
+
+# The @lingxia/skill package ships a separate skill manifest with its own version
+# field; keep it in lockstep with packages/lingxia-skill/package.json so the two
+# never diverge. Called from update_package_json with the version being written,
+# so it stays accurate under --dry-run. Targeted rewrite avoids reformatting.
+sync_skill_manifest() {
+  local v="$1"
+  local manifest="$ROOT_DIR/packages/lingxia-skill/skill/skill-manifest.json"
+  [[ -f "$manifest" ]] || return 0
+  python3 - "$manifest" "$v" "$DRY_RUN" <<'PY'
+import re, sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+version = sys.argv[2]
+dry = sys.argv[3] == "1"
+text = path.read_text()
+new, n = re.subn(r'("version"\s*:\s*")[^"]+(")', rf'\g<1>{version}\2', text, count=1)
+if n != 1:
+    raise SystemExit(f"failed to set version in {path}")
+if dry:
+    print(f"would update {path} -> {version}")
+else:
+    path.write_text(new)
+    print(f"updated {path} -> {version}")
+PY
+}
+
 # npm packages locked to the workspace version (base runtime). These always
 # bump with --component all. Every other packages/* entry is framework/tools and
 # only bumps when its source changed since its last release tag — an unchanged
@@ -425,16 +521,24 @@ npm_pkg_changed() {
 
 if [[ "$COMPONENT" == "all" ]]; then
   update_workspace_cargo
-  update_cli_cargo "$(compute_cli_target "$VERSION")"
+  cli_version="$(compute_cli_target "$VERSION")"
+  update_cli_cargo "$cli_version"
+  update_runner_version "$cli_version"
   update_example_host_cargo
   update_example_host_lock
 
+  # Minor/major bump (0.x -> 0.(x+1), or X -> X+1): force EVERY framework/tool
+  # npm package to the new version too, so the line moves in lockstep and no
+  # package is left behind with unsatisfiable ^old caret deps. Patch bump: keep
+  # skip-unchanged (don't republish identical content under a new patch number).
+  target_mm="${VERSION%.*}"
   while IFS= read -r package_json; do
     short="$(npm_short_name "$package_json")"
-    if is_base_npm "$short" || npm_pkg_changed "$short"; then
+    cur="$(node -p "require('$package_json').version" 2>/dev/null || echo 0.0.0)"
+    if is_base_npm "$short" || [[ "${cur%.*}" != "$target_mm" ]] || npm_pkg_changed "$short"; then
       update_package_json "$package_json"
     else
-      echo "↳ skip lingxia-$short: unchanged since last release tag (stays at current version)"
+      echo "↳ skip lingxia-$short: unchanged patch-level package (stays at $cur)"
     fi
   done < <(find "$ROOT_DIR/packages" -mindepth 2 -maxdepth 2 -name package.json | sort)
 elif [[ -n "$NPM_PACKAGE" ]]; then
@@ -443,6 +547,7 @@ elif [[ -n "$NPM_PACKAGE" ]]; then
   update_package_json "$package_json" 0
 else
   update_cli_cargo
+  update_runner_version "$VERSION"
 fi
 
 if [[ -z "$NPM_PACKAGE" ]]; then
