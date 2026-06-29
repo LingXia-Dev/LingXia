@@ -406,8 +406,7 @@ lingxia doctor --platform harmony
 ### `lingxia auth`
 
 Store developer credentials so `lingxia build` can sign and notarize without
-interactive prompts. Credentials live under `~/.lingxia/` (mode `0600`); CI
-restores them from secrets (see [Signing & notarization](#signing--notarization)).
+interactive prompts. Credentials live under `~/.lingxia/` (mode `0600`).
 
 ```bash
 lingxia auth apple <command>
@@ -443,13 +442,16 @@ Store a **Developer ID Application** certificate for code-signing. `<p12>` is a
 lingxia auth apple import-developer-id ~/Desktop/DeveloperID.p12
 ```
 
+To create a `.p12` with Xcode, see
+[Apple signing and notarization](./apple-signing.md#get-a-developer-id-p12-with-xcode).
+
 | Option | Description |
 |--------|-------------|
 | `--password <pw>` | `.p12` password (prompts if omitted) |
 | `--identity <name>` | codesign identity name (auto-detected otherwise) |
 
-> Needed mainly for **CI**. On a local macOS machine you don't need it — signing
-> uses the "Developer ID Application" identity already in your **login keychain**.
+> On a local macOS machine this is optional when the "Developer ID Application"
+> identity is already available in your **login keychain**.
 > Env equivalents: `LINGXIA_APPLE_DEVELOPER_ID_P12` / `_P12_PASSWORD` / `_IDENTITY`.
 
 #### `lingxia auth apple logout` / `status`
@@ -462,15 +464,8 @@ Building a macOS app signs + notarizes automatically once credentials resolve;
 otherwise the app is left ad-hoc signed (local builds/tests stay green):
 
 1. **Notary creds** — `auth apple login --mode key` (store) or the `LINGXIA_APPLE_NOTARY_KEY`/… env vars.
-2. **Signing identity** — local: the Developer ID identity in your login keychain; CI: the `.p12` from `import-developer-id` (or `LINGXIA_APPLE_DEVELOPER_ID_P12`), imported into a throwaway keychain.
+2. **Signing identity** — the Developer ID identity in your login keychain, a `.p12` from `import-developer-id`, or `LINGXIA_APPLE_DEVELOPER_ID_P12`.
 3. codesign (hardened runtime + timestamp) → `notarytool submit --wait` → `stapler staple`. On rejection the `notarytool log` is fetched so the cause is visible.
-
-**CI setup** — base64 the two store files into repo secrets; the runner restores them, gated (forks/PRs without secrets build ad-hoc):
-
-| Secret | Value |
-|--------|-------|
-| `APPLE_CREDENTIALS_JSON_BASE64` | `base64 -i ~/.lingxia/apple/credentials.json` |
-| `APPLE_DEVELOPER_ID_JSON_BASE64` | `base64 -i ~/.lingxia/apple/developer-id.json` |
 
 ---
 
