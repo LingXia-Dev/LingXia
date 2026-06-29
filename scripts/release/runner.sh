@@ -208,7 +208,10 @@ for arch in "${ARCHES[@]}"; do
 
   if [[ "$SKIP_BUILD" -ne 1 ]]; then
     echo "[runner:$arch] Cleaning Runner build outputs"
-    rm -rf "$RUNNER_PACKAGE_DIR/.build" "$RUNNER_PACKAGE_DIR/.lingxia"
+    # Also wipe the raw dist dir: $RAW_ZIP_SRC lives there, and a stale zip from
+    # the previous arch would otherwise be copied into this arch's output,
+    # silently shipping the wrong architecture under the right name.
+    rm -rf "$RUNNER_PACKAGE_DIR/.build" "$RUNNER_PACKAGE_DIR/.lingxia" "$RUNNER_RAW_DIST_DIR"
     (
       cd "$RUNNER_PACKAGE_DIR"
       "$CLI_BIN" package --platform macos --macos-arch "$arch"
@@ -223,6 +226,24 @@ for arch in "${ARCHES[@]}"; do
     echo "ERROR: missing Runner release zip from lingxia build: $RAW_ZIP_SRC" >&2
     exit 1
   }
+
+  # Verify the built binary is actually the requested arch. This is host-agnostic
+  # (a correct cross-build passes; only a misconfigured one fails) and catches a
+  # silent mislabel — e.g. an x86_64 binary packaged into an arm64-named zip when
+  # cross-compilation is not wired up on this host ($(uname -m)).
+  require_command lipo
+  runner_exe="$(find "$RAW_APP_SRC/Contents/MacOS" -maxdepth 1 -type f -perm -u+x 2>/dev/null | head -n1)"
+  [[ -n "$runner_exe" ]] || {
+    echo "ERROR: no executable found in $RAW_APP_SRC/Contents/MacOS" >&2
+    exit 1
+  }
+  built_archs="$(lipo -archs "$runner_exe" 2>/dev/null || true)"
+  if [[ " $built_archs " != *" $arch "* ]]; then
+    echo "ERROR: Runner binary arch mismatch: requested '$arch', built '$built_archs'." >&2
+    echo "       Cross-compilation for '$arch' may not be configured on this host ($(uname -m))." >&2
+    exit 1
+  fi
+  echo "[runner:$arch] Verified binary arch: $built_archs"
 
   rm -rf "$APP_OUT"
   cp -R "$RAW_APP_SRC" "$APP_OUT"

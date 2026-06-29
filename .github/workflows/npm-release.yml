@@ -38,7 +38,10 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' && inputs.package || github.ref_name }}
-  cancel-in-progress: true
+  # Never cancel an in-flight publish: npm publishes are immutable, and the
+  # "all" set publishes packages sequentially. A mid-run cancel can leave some
+  # packages published and others not, with no way to re-publish that version.
+  cancel-in-progress: false
 
 env:
   NODE_VERSION: "24"
@@ -217,13 +220,27 @@ jobs:
 
       - name: Verify version matches package.json
         run: |
+          set -euo pipefail
           expected="${{ needs.determine-package.outputs.version }}"
 
+          # bridge/polyfills/types track the workspace version in lockstep; other
+          # packages are framework/tools and may legitimately stay at an older
+          # version when version.sh skipped their bump.
+          is_base_npm() {
+            case " lingxia-bridge lingxia-polyfills lingxia-types " in
+              *" $1 "*) return 0 ;;
+            esac
+            return 1
+          }
+
+          # Base packages must equal the release version; framework packages are
+          # published at whatever their package.json says (their own version).
           verify_package() {
-            local package_json="$1"
+            local package="$1"
+            local package_json="packages/$package/package.json"
             local actual
             actual="$(node -p "require('./$package_json').version")"
-            if [ "$expected" != "$actual" ]; then
+            if is_base_npm "$package" && [ "$expected" != "$actual" ]; then
               echo "Version mismatch: expected $expected, got $actual in $package_json" >&2
               exit 1
             fi
@@ -232,10 +249,16 @@ jobs:
 
           if [ "${{ needs.determine-package.outputs.package }}" = "all" ]; then
             for package in $NPM_PACKAGES; do
-              verify_package "packages/$package/package.json"
+              verify_package "$package"
             done
           else
-            verify_package "${{ needs.determine-package.outputs.directory }}/package.json"
+            # A single-package dispatch always targets $expected.
+            actual="$(node -p "require('./${{ needs.determine-package.outputs.directory }}/package.json').version")"
+            if [ "$expected" != "$actual" ]; then
+              echo "Version mismatch: expected $expected, got $actual" >&2
+              exit 1
+            fi
+            echo "Version verified: ${{ needs.determine-package.outputs.directory }} -> $actual"
           fi
 
       - name: Verify release tag exists
@@ -255,8 +278,12 @@ jobs:
           }
 
           if [ "${{ needs.determine-package.outputs.package }}" = "all" ]; then
+            # Tags are created at each package's own version (framework packages
+            # may lag the release version), so verify against package.json, not
+            # the single dispatched version.
             for package in $NPM_PACKAGES; do
-              verify_tag "${package}-v${{ needs.determine-package.outputs.version }}"
+              pkg_version="$(node -p "require('./packages/$package/package.json').version")"
+              verify_tag "${package}-v${pkg_version}"
             done
           else
             verify_tag "${{ needs.determine-package.outputs.tag }}"

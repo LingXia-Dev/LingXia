@@ -44,6 +44,12 @@ jobs:
   prepare:
     name: Prepare ${{ inputs.component }} v${{ inputs.version }}
     runs-on: ubuntu-latest
+    # Bind dispatch inputs as env so `run:` blocks reference shell variables
+    # instead of interpolating ${{ inputs.* }} directly — a free-text version
+    # string must never be spliced into a shell command (script injection).
+    env:
+      VERSION: ${{ inputs.version }}
+      COMPONENT: ${{ inputs.component }}
     steps:
       - uses: actions/checkout@v4
 
@@ -54,24 +60,25 @@ jobs:
 
       - name: Validate semver input
         run: |
-          if ! [[ "${{ inputs.version }}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "Invalid version: ${{ inputs.version }} (expected x.y.z)" >&2
+          set -euo pipefail
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid version: $VERSION (expected x.y.z)" >&2
             exit 1
           fi
-          case "${{ inputs.component }}" in
+          case "$COMPONENT" in
             all|cli|npm:*) ;;
-            *) echo "Invalid component: ${{ inputs.component }}" >&2; exit 1 ;;
+            *) echo "Invalid component: $COMPONENT" >&2; exit 1 ;;
           esac
 
       - name: Create release branch
         run: |
           set -euo pipefail
-          if [[ "${{ inputs.component }}" == "all" ]]; then
-            branch="release/v${{ inputs.version }}"
+          if [[ "$COMPONENT" == "all" ]]; then
+            branch="release/v${VERSION}"
           else
             # ":" is not allowed in git ref names (npm:react -> npm-react)
-            component_slug="$(echo "${{ inputs.component }}" | tr ':' '-')"
-            branch="release/${component_slug}/v${{ inputs.version }}"
+            component_slug="$(echo "$COMPONENT" | tr ':' '-')"
+            branch="release/${component_slug}/v${VERSION}"
           fi
           remote_sha="$(git ls-remote --heads origin "$branch" | awk '{print $1}')"
           git checkout -B "$branch"
@@ -80,16 +87,17 @@ jobs:
 
       - name: Bump version
         run: |
-          bash scripts/release/version.sh "${{ inputs.version }}" --component "${{ inputs.component }}"
+          set -euo pipefail
+          bash scripts/release/version.sh "$VERSION" --component "$COMPONENT"
 
       - name: Commit version bump
         run: |
           set -euo pipefail
           if git diff --quiet; then
-            echo "No version changes to commit. The selected component already appears to be at ${{ inputs.version }}." >&2
+            echo "No version changes to commit. The selected component already appears to be at ${VERSION}." >&2
             exit 1
           fi
-          git commit -am "chore(release): bump ${{ inputs.component }} version to ${{ inputs.version }}"
+          git commit -am "chore(release): bump ${COMPONENT} version to ${VERSION}"
 
       - name: Push branch
         run: |
@@ -118,8 +126,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          version="${{ inputs.version }}"
-          component="${{ inputs.component }}"
+          version="$VERSION"
+          component="$COMPONENT"
           if [[ "$component" == "all" ]]; then
             pr_title="Release v${version}"
             pr_body="$(cat <<EOF
