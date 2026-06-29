@@ -533,7 +533,10 @@ impl Platform for MacosPlatform {
         // assetcatalog_generated_info.plist) in Contents/; the generated plist
         // was already merged into Info.plist above. Drop both so they never ship
         // inside the signed/notarized bundle.
-        for stale in ["assetcatalog_dependencies", "assetcatalog_generated_info.plist"] {
+        for stale in [
+            "assetcatalog_dependencies",
+            "assetcatalog_generated_info.plist",
+        ] {
             let _ = fs::remove_file(app_path.join("Contents").join(stale));
         }
 
