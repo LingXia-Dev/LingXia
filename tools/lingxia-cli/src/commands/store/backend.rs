@@ -10,6 +10,10 @@ pub enum StorePlatform {
     Ios,
     Macos,
     Harmony,
+    GooglePlay,
+    Xiaomi,
+    Oppo,
+    Honor,
 }
 
 impl StorePlatform {
@@ -19,8 +23,13 @@ impl StorePlatform {
             "ios" => Self::Ios,
             "macos" => Self::Macos,
             "harmony" => Self::Harmony,
+            "googleplay" | "google-play" | "play" => Self::GooglePlay,
+            "xiaomi" => Self::Xiaomi,
+            "oppo" => Self::Oppo,
+            "honor" => Self::Honor,
             other => bail!(
-                "unsupported `--platform {other}` for store (expected: windows, ios, macos, harmony)"
+                "unsupported `--platform {other}` for store (expected: windows, ios, macos, \
+                 harmony, googleplay, xiaomi, oppo, honor)"
             ),
         })
     }
@@ -30,6 +39,10 @@ impl StorePlatform {
             Self::Windows => "Microsoft Store",
             Self::Ios | Self::Macos => "App Store",
             Self::Harmony => "AppGallery",
+            Self::GooglePlay => "Google Play",
+            Self::Xiaomi => "Xiaomi GetApps/小米应用商店",
+            Self::Oppo => "OPPO 软件商店",
+            Self::Honor => "Honor AppGallery/荣耀应用市场",
         }
     }
 
@@ -40,6 +53,8 @@ impl StorePlatform {
             Self::Ios => "ios",
             Self::Macos => "macos",
             Self::Harmony => "harmony",
+            // All Android stores consume the same `dist/android/` output.
+            Self::GooglePlay | Self::Xiaomi | Self::Oppo | Self::Honor => "android",
         }
     }
 
@@ -49,6 +64,9 @@ impl StorePlatform {
             Self::Windows => &["msixupload", "msix"],
             Self::Ios | Self::Macos => &["ipa", "pkg"],
             Self::Harmony => &["app", "hap"],
+            // Google Play prefers App Bundles; the Chinese stores take APKs.
+            Self::GooglePlay => &["aab", "apk"],
+            Self::Xiaomi | Self::Oppo | Self::Honor => &["apk"],
         }
     }
 }
@@ -59,9 +77,7 @@ pub struct SubmitOptions {
     /// Create the submission but do not commit it for review.
     pub draft: bool,
     pub release_notes: Option<String>,
-    /// Reserved `--track` flag (per-store release track). Accepted by the CLI;
-    /// no backend consumes it yet.
-    #[allow(dead_code)]
+    /// Per-store release track/channel (e.g. Google Play `internal`/`production`).
     pub track: Option<String>,
 }
 

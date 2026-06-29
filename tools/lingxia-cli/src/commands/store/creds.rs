@@ -23,6 +23,14 @@ pub struct StoreCredentials {
     pub appstore: Option<AppStoreCreds>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub appgallery: Option<AppGalleryCreds>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub googleplay: Option<GooglePlayCreds>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub xiaomi: Option<XiaomiCreds>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub oppo: Option<OppoCreds>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub honor: Option<HonorCreds>,
 }
 
 /// Microsoft Store (Partner Center) — Azure AD client credentials.
@@ -47,6 +55,43 @@ pub struct AppStoreCreds {
 /// Huawei AppGallery Connect — client credentials.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AppGalleryCreds {
+    pub client_id: String,
+    pub client_secret: String,
+}
+
+/// Google Play Developer API — service account. Either point at the JSON key
+/// file, or inline its `client_email` + `private_key` (PKCS#8 PEM).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GooglePlayCreds {
+    /// Path to the service-account JSON key file (`~` is expanded). When set,
+    /// `client_email`/`private_key` are loaded from it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub service_account_json: Option<String>,
+    /// Service-account email (`client_email` field of the JSON key).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_email: Option<String>,
+    /// Service-account RSA private key, PKCS#8 PEM (`private_key` field).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub private_key: Option<String>,
+}
+
+/// Xiaomi GetApps open platform — client id/key + secret.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct XiaomiCreds {
+    pub client_id: String,
+    pub client_secret: String,
+}
+
+/// OPPO open platform — client id/key + secret.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OppoCreds {
+    pub client_id: String,
+    pub client_secret: String,
+}
+
+/// Honor Developer open platform — client id/key + secret.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HonorCreds {
     pub client_id: String,
     pub client_secret: String,
 }
@@ -171,6 +216,87 @@ pub fn resolve_appgallery(file: &StoreCredentials) -> Result<AppGalleryCreds> {
     }
 }
 
+/// Resolve Google Play credentials: env (`LINGXIA_GPLAY_*`) over file. Either a
+/// service-account JSON path, or an inline client_email + private_key.
+pub fn resolve_googleplay(file: &StoreCredentials) -> Result<GooglePlayCreds> {
+    let f = file.googleplay.as_ref();
+    let service_account_json = env_nonempty("LINGXIA_GPLAY_SERVICE_ACCOUNT_JSON")
+        .or_else(|| f.and_then(|c| c.service_account_json.clone()));
+    let client_email = env_nonempty("LINGXIA_GPLAY_CLIENT_EMAIL")
+        .or_else(|| f.and_then(|c| c.client_email.clone()));
+    let private_key =
+        env_nonempty("LINGXIA_GPLAY_PRIVATE_KEY").or_else(|| f.and_then(|c| c.private_key.clone()));
+    if service_account_json.is_some() || (client_email.is_some() && private_key.is_some()) {
+        Ok(GooglePlayCreds {
+            service_account_json,
+            client_email,
+            private_key,
+        })
+    } else {
+        bail!(
+            "Google Play credentials not found. Run `lingxia store login --platform googleplay`, \
+             or set LINGXIA_GPLAY_SERVICE_ACCOUNT_JSON (or _CLIENT_EMAIL + _PRIVATE_KEY)."
+        )
+    }
+}
+
+/// Resolve Xiaomi credentials: env (`LINGXIA_XIAOMI_*`) over file.
+pub fn resolve_xiaomi(file: &StoreCredentials) -> Result<XiaomiCreds> {
+    let f = file.xiaomi.as_ref();
+    let client_id =
+        env_nonempty("LINGXIA_XIAOMI_CLIENT_ID").or_else(|| f.map(|c| c.client_id.clone()));
+    let client_secret =
+        env_nonempty("LINGXIA_XIAOMI_CLIENT_SECRET").or_else(|| f.map(|c| c.client_secret.clone()));
+    match (client_id, client_secret) {
+        (Some(client_id), Some(client_secret)) => Ok(XiaomiCreds {
+            client_id,
+            client_secret,
+        }),
+        _ => bail!(
+            "Xiaomi credentials not found. Run `lingxia store login --platform xiaomi`, \
+             or set LINGXIA_XIAOMI_CLIENT_ID / _CLIENT_SECRET."
+        ),
+    }
+}
+
+/// Resolve OPPO credentials: env (`LINGXIA_OPPO_*`) over file.
+pub fn resolve_oppo(file: &StoreCredentials) -> Result<OppoCreds> {
+    let f = file.oppo.as_ref();
+    let client_id =
+        env_nonempty("LINGXIA_OPPO_CLIENT_ID").or_else(|| f.map(|c| c.client_id.clone()));
+    let client_secret =
+        env_nonempty("LINGXIA_OPPO_CLIENT_SECRET").or_else(|| f.map(|c| c.client_secret.clone()));
+    match (client_id, client_secret) {
+        (Some(client_id), Some(client_secret)) => Ok(OppoCreds {
+            client_id,
+            client_secret,
+        }),
+        _ => bail!(
+            "OPPO credentials not found. Run `lingxia store login --platform oppo`, \
+             or set LINGXIA_OPPO_CLIENT_ID / _CLIENT_SECRET."
+        ),
+    }
+}
+
+/// Resolve Honor credentials: env (`LINGXIA_HONOR_*`) over file.
+pub fn resolve_honor(file: &StoreCredentials) -> Result<HonorCreds> {
+    let f = file.honor.as_ref();
+    let client_id =
+        env_nonempty("LINGXIA_HONOR_CLIENT_ID").or_else(|| f.map(|c| c.client_id.clone()));
+    let client_secret =
+        env_nonempty("LINGXIA_HONOR_CLIENT_SECRET").or_else(|| f.map(|c| c.client_secret.clone()));
+    match (client_id, client_secret) {
+        (Some(client_id), Some(client_secret)) => Ok(HonorCreds {
+            client_id,
+            client_secret,
+        }),
+        _ => bail!(
+            "Honor credentials not found. Run `lingxia store login --platform honor`, \
+             or set LINGXIA_HONOR_CLIENT_ID / _CLIENT_SECRET."
+        ),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -185,6 +311,10 @@ mod tests {
             }),
             appstore: None,
             appgallery: None,
+            googleplay: None,
+            xiaomi: None,
+            oppo: None,
+            honor: None,
         }
     }
 

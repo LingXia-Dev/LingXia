@@ -200,6 +200,10 @@ mod tests {
                 compile_sdk: None,
                 ndk_version: None,
                 api_level: None,
+                google_play_store: None,
+                xiaomi_store: None,
+                oppo_store: None,
+                honor_store: None,
             }),
             ios: Some(IosConfig {
                 bundle_id: "app.example.demo".into(),

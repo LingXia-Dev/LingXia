@@ -1,12 +1,17 @@
 //! `lingxia store` — submit installables to OS app stores (Microsoft Store,
-//! App Store, AppGallery). Talks to OS stores only; never the LingXia server
-//! (that's `publish`) and never builds (that's `build`).
+//! App Store, AppGallery, Google Play, Xiaomi, OPPO, Honor). Talks to OS stores
+//! only; never the LingXia server (that's `publish`) and never builds (that's
+//! `build`).
 
 mod appgallery;
 mod appstore;
 mod backend;
 mod creds;
+mod googleplay;
+mod honor;
 mod msstore;
+mod oppo;
+mod xiaomi;
 
 use anyhow::{Context, Result, bail};
 use clap::Subcommand;
@@ -17,15 +22,17 @@ use std::env;
 use crate::config::LingXiaConfig;
 use backend::{StorePlatform, SubmitOptions, find_artifact};
 use creds::{
-    AppGalleryCreds, AppStoreCreds, MsStoreCreds, StoreCredentials, resolve_appgallery,
-    resolve_appstore, resolve_msstore,
+    AppGalleryCreds, AppStoreCreds, GooglePlayCreds, HonorCreds, MsStoreCreds, OppoCreds,
+    StoreCredentials, XiaomiCreds, resolve_appgallery, resolve_appstore, resolve_googleplay,
+    resolve_honor, resolve_msstore, resolve_oppo, resolve_xiaomi,
 };
 
 #[derive(Subcommand)]
 pub enum StoreAction {
     /// Store API credentials in ~/.lingxia/store/credentials.toml
     Login {
-        /// Target platform: windows, ios, macos, harmony
+        /// Target platform: windows, ios, macos, harmony, googleplay, xiaomi,
+        /// oppo, honor
         #[arg(short, long)]
         platform: String,
     },
@@ -111,6 +118,32 @@ fn login(platform: StorePlatform) -> Result<()> {
                 client_secret: prompt_secret("Client secret")?,
             });
         }
+        StorePlatform::GooglePlay => {
+            let json = prompt("Path to service-account JSON key")?;
+            file.googleplay = Some(GooglePlayCreds {
+                service_account_json: Some(json),
+                client_email: None,
+                private_key: None,
+            });
+        }
+        StorePlatform::Xiaomi => {
+            file.xiaomi = Some(XiaomiCreds {
+                client_id: prompt("Xiaomi client ID")?,
+                client_secret: prompt_secret("Client secret")?,
+            });
+        }
+        StorePlatform::Oppo => {
+            file.oppo = Some(OppoCreds {
+                client_id: prompt("OPPO client ID")?,
+                client_secret: prompt_secret("Client secret")?,
+            });
+        }
+        StorePlatform::Honor => {
+            file.honor = Some(HonorCreds {
+                client_id: prompt("Honor client ID")?,
+                client_secret: prompt_secret("Client secret")?,
+            });
+        }
     }
     file.save()?;
     println!(
@@ -127,6 +160,10 @@ fn logout(platform: StorePlatform) -> Result<()> {
         StorePlatform::Windows => file.msstore = None,
         StorePlatform::Ios | StorePlatform::Macos => file.appstore = None,
         StorePlatform::Harmony => file.appgallery = None,
+        StorePlatform::GooglePlay => file.googleplay = None,
+        StorePlatform::Xiaomi => file.xiaomi = None,
+        StorePlatform::Oppo => file.oppo = None,
+        StorePlatform::Honor => file.honor = None,
     }
     file.save()?;
     println!(
@@ -172,6 +209,38 @@ fn submit(platform: StorePlatform, opts: SubmitOptions) -> Result<()> {
                 .context("missing `harmony.store` (appId) in lingxia.yaml")?;
             appgallery::submit(&resolve_appgallery(&file)?, cfg, &artifact, &opts)?;
         }
+        StorePlatform::GooglePlay => {
+            let cfg = config
+                .android
+                .as_ref()
+                .and_then(|a| a.google_play_store.as_ref())
+                .context("missing `android.googlePlayStore` (packageName) in lingxia.yaml")?;
+            googleplay::submit(&resolve_googleplay(&file)?, cfg, &artifact, &opts)?;
+        }
+        StorePlatform::Xiaomi => {
+            let cfg = config
+                .android
+                .as_ref()
+                .and_then(|a| a.xiaomi_store.as_ref())
+                .context("missing `android.xiaomiStore` (packageName) in lingxia.yaml")?;
+            xiaomi::submit(&resolve_xiaomi(&file)?, cfg, &artifact, &opts)?;
+        }
+        StorePlatform::Oppo => {
+            let cfg = config
+                .android
+                .as_ref()
+                .and_then(|a| a.oppo_store.as_ref())
+                .context("missing `android.oppoStore` (packageName) in lingxia.yaml")?;
+            oppo::submit(&resolve_oppo(&file)?, cfg, &artifact, &opts)?;
+        }
+        StorePlatform::Honor => {
+            let cfg = config
+                .android
+                .as_ref()
+                .and_then(|a| a.honor_store.as_ref())
+                .context("missing `android.honorStore` (appId) in lingxia.yaml")?;
+            honor::submit(&resolve_honor(&file)?, cfg, &artifact, &opts)?;
+        }
     }
     println!("{} submit flow complete", "✓".green());
     Ok(())
@@ -200,6 +269,38 @@ fn status(platform: StorePlatform) -> Result<()> {
                 .and_then(|h| h.store.as_ref())
                 .context("missing `harmony.store` (appId) in lingxia.yaml")?;
             appgallery::status(&resolve_appgallery(&file)?, cfg)?;
+        }
+        StorePlatform::GooglePlay => {
+            let cfg = config
+                .android
+                .as_ref()
+                .and_then(|a| a.google_play_store.as_ref())
+                .context("missing `android.googlePlayStore` (packageName) in lingxia.yaml")?;
+            googleplay::status(&resolve_googleplay(&file)?, cfg)?;
+        }
+        StorePlatform::Xiaomi => {
+            let cfg = config
+                .android
+                .as_ref()
+                .and_then(|a| a.xiaomi_store.as_ref())
+                .context("missing `android.xiaomiStore` (packageName) in lingxia.yaml")?;
+            xiaomi::status(&resolve_xiaomi(&file)?, cfg)?;
+        }
+        StorePlatform::Oppo => {
+            let cfg = config
+                .android
+                .as_ref()
+                .and_then(|a| a.oppo_store.as_ref())
+                .context("missing `android.oppoStore` (packageName) in lingxia.yaml")?;
+            oppo::status(&resolve_oppo(&file)?, cfg)?;
+        }
+        StorePlatform::Honor => {
+            let cfg = config
+                .android
+                .as_ref()
+                .and_then(|a| a.honor_store.as_ref())
+                .context("missing `android.honorStore` (appId) in lingxia.yaml")?;
+            honor::status(&resolve_honor(&file)?, cfg)?;
         }
     }
     Ok(())
