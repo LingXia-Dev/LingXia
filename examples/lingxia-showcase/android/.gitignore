@@ -10,3 +10,8 @@ local.properties
 assets
 app/src/main/assets/
 app/src/main/jniLibs/
+
+# Signing files
+keystore.properties
+*.jks
+*.keystore

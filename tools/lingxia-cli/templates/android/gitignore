@@ -28,5 +28,6 @@ local.properties
 captures/
 
 # Signing files
+keystore.properties
 *.jks
 *.keystore
