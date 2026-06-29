@@ -59,6 +59,11 @@ const ENV_NOTARIZE_BEST_EFFORT: &str = "LINGXIA_NOTARIZE_BEST_EFFORT";
 /// surface a clean warning (best-effort) or error (release) first.
 const NOTARY_WAIT_TIMEOUT: &str = "25m";
 
+/// Overrides [`NOTARY_WAIT_TIMEOUT`] (any `notarytool`-style duration, e.g.
+/// `10m`). CI sets a shorter wait so build + wait fits the job timeout; the
+/// best-effort path then continues on a stalled notary service.
+const ENV_NOTARIZE_WAIT_TIMEOUT: &str = "LINGXIA_NOTARIZE_WAIT_TIMEOUT";
+
 const DEVELOPER_ID_PREFIX: &str = "Developer ID Application";
 
 /// Resolved Developer-ID certificate material. The `.p12` lives at `p12_path`;
@@ -559,6 +564,11 @@ fn notarize(app_path: &Path, notary: &NotaryMaterial) -> Result<()> {
         let best_effort = std::env::var(ENV_NOTARIZE_BEST_EFFORT)
             .map(|v| !matches!(v.trim(), "" | "0"))
             .unwrap_or(false);
+        let wait_timeout = std::env::var(ENV_NOTARIZE_WAIT_TIMEOUT)
+            .ok()
+            .map(|v| v.trim().to_string())
+            .filter(|v| !v.is_empty())
+            .unwrap_or_else(|| NOTARY_WAIT_TIMEOUT.to_string());
 
         let output = Command::new("xcrun")
             .arg("notarytool")
@@ -568,7 +578,7 @@ fn notarize(app_path: &Path, notary: &NotaryMaterial) -> Result<()> {
             .args(["--key-id", &notary.notary_key_id])
             .args(["--issuer", &notary.notary_issuer_id])
             .arg("--wait")
-            .args(["--timeout", NOTARY_WAIT_TIMEOUT])
+            .args(["--timeout", &wait_timeout])
             .output()
             .context("Failed to execute xcrun notarytool submit")?;
 
@@ -594,13 +604,13 @@ fn notarize(app_path: &Path, notary: &NotaryMaterial) -> Result<()> {
         }
 
         if !output.status.success() {
-            // Non-zero without a rejection means the wait hit NOTARY_WAIT_TIMEOUT
-            // (or Apple is slow / unreachable) — the submission is still in
-            // flight, not refused. In best-effort mode (CI) keep going with an
+            // Non-zero without a rejection means the wait hit `wait_timeout` (or
+            // Apple is slow / unreachable) — the submission is still in flight,
+            // not refused. In best-effort mode (CI) keep going with an
             // un-stapled, signed app; release builds demand a completed ticket.
             if best_effort {
                 eprintln!(
-                    "  {} notarization did not finish within {NOTARY_WAIT_TIMEOUT} — the app is \
+                    "  {} notarization did not finish within {wait_timeout} — the app is \
                      Developer-ID signed and the submission is in flight; continuing un-stapled \
                      (best-effort).\n{}\n{}",
                     "⚠".yellow(),

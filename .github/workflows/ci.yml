@@ -463,8 +463,10 @@ jobs:
         # Notarization here is a build check, not a release: if Apple's service
         # stalls, the bounded wait warns and continues with a signed (un-stapled)
         # app instead of hanging until the job timeout. Release builds omit this.
+        # The short wait keeps build + wait well under the 45-min job timeout.
         env:
           LINGXIA_NOTARIZE_BEST_EFFORT: "1"
+          LINGXIA_NOTARIZE_WAIT_TIMEOUT: "10m"
         run: bash scripts/release/runner.sh --macos-arch arm64 --out dist/runner-release
 
       - name: Upload Runner zip
