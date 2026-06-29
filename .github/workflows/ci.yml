@@ -580,7 +580,11 @@ jobs:
         run: echo "ANDROID_NDK_HOME=${ANDROID_NDK_LATEST_HOME:-$ANDROID_NDK_ROOT}" >> "$GITHUB_ENV"
       - name: Build Android example app
         working-directory: examples/lingxia-showcase
-        run: cargo run -p lingxia-cli -- build --platform android --framework react
+        # Release build so CI exercises the release signing config (it falls back
+        # to debug-signing here since no keystore is configured — see the
+        # build.gradle.kts signing block). Use --env release --release locally
+        # with a keystore for a Play-ready artifact.
+        run: cargo run -p lingxia-cli -- build --platform android --framework react --release
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
