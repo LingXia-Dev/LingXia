@@ -452,6 +452,13 @@ jobs:
           chmod 600 "$HOME/.lingxia/apple/credentials.json" "$HOME/.lingxia/apple/developer-id.json"
           echo "✅ Apple credential store restored — lingxia build will Developer-ID sign + notarize."
 
+      # Inject the private cloud provider when its secrets are present (same-repo
+      # only); a no-op on forks, so the runner still builds without it.
+      - uses: ./.github/actions/cloud-provider-env
+        with:
+          gitea-token: ${{ secrets.GITEA_TOKEN }}
+          provider-cloud-git: ${{ secrets.LINGXIA_PROVIDER_CLOUD_GIT }}
+
       - name: Build macOS Runner (arm64)
         run: bash scripts/release/runner.sh --macos-arch arm64 --out dist/runner-release
 
@@ -488,6 +495,12 @@ jobs:
           version: 0.15.2
       - uses: ./.github/actions/build-web-packages
       - uses: ./.github/actions/bootstrap-apple-sdk
+      # Inject the private cloud provider when its secrets are present (same-repo
+      # only); a no-op on forks, so the showcase still builds without it.
+      - uses: ./.github/actions/cloud-provider-env
+        with:
+          gitea-token: ${{ secrets.GITEA_TOKEN }}
+          provider-cloud-git: ${{ secrets.LINGXIA_PROVIDER_CLOUD_GIT }}
       - name: Build macOS example app
         working-directory: examples/lingxia-showcase
         run: cargo run -p lingxia-cli -- build --platform macos --framework react
