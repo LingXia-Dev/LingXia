@@ -23,6 +23,8 @@ pub struct BuildExecuteOptions {
     pub all_platforms: bool,
     pub ipa: bool,
     pub dmg: bool,
+    /// Android distribution format: `Some("play")` builds an AAB; otherwise APK.
+    pub android_dist: Option<String>,
     /// Package the Windows build as an (unsigned) MSIX installer.
     pub msix: bool,
     /// Self-sign the Windows MSIX (generate/reuse a self-signed cert, sign + trust).
@@ -57,6 +59,7 @@ pub fn execute(options: BuildExecuteOptions) -> Result<()> {
         all_platforms,
         ipa,
         dmg,
+        android_dist,
         msix,
         self_signed,
         package,
@@ -390,6 +393,8 @@ Specify one with `--platform <name>` or build all with `--all-platforms`."
             ipa: ipa && matches!(platform_type, PlatformType::Ios),
             package: package && matches!(platform_type, PlatformType::MacOs),
             dmg: dmg && matches!(platform_type, PlatformType::MacOs),
+            android_aab: android_dist.as_deref() == Some("play")
+                && matches!(platform_type, PlatformType::Android),
             macos_arch: if matches!(platform_type, PlatformType::MacOs) {
                 macos_arch.clone()
             } else {
@@ -853,6 +858,7 @@ fn build_standalone_apple_swift_package(
             ipa: ipa && matches!(platform_type, PlatformType::Ios),
             package: package && matches!(platform_type, PlatformType::MacOs),
             dmg: dmg && matches!(platform_type, PlatformType::MacOs),
+            android_aab: false,
             macos_arch: if matches!(platform_type, PlatformType::MacOs) {
                 macos_arch.clone()
             } else {

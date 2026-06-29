@@ -169,6 +169,8 @@ pub struct BuildConfig {
     pub package: bool,
     /// Package macOS app bundle as DMG (macOS only)
     pub dmg: bool,
+    /// Android: produce an AAB (`bundleRelease`) instead of an APK (`--dist play`).
+    pub android_aab: bool,
     /// Requested macOS architecture for native build (`arm64` or `x86_64`)
     pub macos_arch: Option<String>,
     /// Optional `--framework` override forwarded to lxapp project discovery

@@ -213,6 +213,10 @@ enum Commands {
         #[arg(long)]
         dmg: bool,
 
+        /// Android distribution format: `sideload` (APK, default) or `play` (AAB for Google Play).
+        #[arg(long, value_parser = ["sideload", "play"])]
+        dist: Option<String>,
+
         /// Package Windows build as an (unsigned) MSIX installer
         #[arg(long)]
         msix: bool,
@@ -547,6 +551,7 @@ fn main() -> Result<()> {
             all_platforms,
             ipa,
             dmg,
+            dist,
             msix,
             self_signed,
             native_only,
@@ -562,6 +567,7 @@ fn main() -> Result<()> {
                 all_platforms,
                 ipa,
                 dmg,
+                android_dist: dist,
                 msix: msix || self_signed,
                 self_signed,
                 package: false,

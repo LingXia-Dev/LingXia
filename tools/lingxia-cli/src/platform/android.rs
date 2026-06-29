@@ -318,7 +318,8 @@ gradle.settingsEvaluated {{ settings ->
         icon_overlay: Option<&LauncherIconOverlay>,
         sdk_maven_repo: Option<&Path>,
     ) -> Result<PathBuf> {
-        println!("{}", "Building APK...".cyan());
+        let artifact_kind = if config.android_aab { "AAB" } else { "APK" };
+        println!("{}", format!("Building {artifact_kind}...").cyan());
 
         let gradlew = if cfg!(windows) {
             project_root.join("gradlew.bat")
@@ -333,9 +334,11 @@ gradle.settingsEvaluated {{ settings ->
             ));
         }
 
-        let task = match config.profile {
-            super::BuildProfile::Debug => "assembleDebug",
-            super::BuildProfile::Release => "assembleRelease",
+        let task = match (config.profile, config.android_aab) {
+            (super::BuildProfile::Debug, false) => "assembleDebug",
+            (super::BuildProfile::Release, false) => "assembleRelease",
+            (super::BuildProfile::Debug, true) => "bundleDebug",
+            (super::BuildProfile::Release, true) => "bundleRelease",
         };
 
         // Inject env-version overrides via Gradle project properties. Android
@@ -411,8 +414,24 @@ gradle.settingsEvaluated {{ settings ->
             return Err(anyhow!("Gradle build failed"));
         }
 
-        // Find the built APK
+        // Find the built artifact (AAB for Play, APK for sideload).
         let profile_name = config.profile.as_str();
+        if config.android_aab {
+            let aab_path = project_root
+                .join("app")
+                .join("build")
+                .join("outputs")
+                .join("bundle")
+                .join(profile_name)
+                .join(format!("app-{}.aab", profile_name));
+
+            if !aab_path.exists() {
+                return Err(anyhow!("AAB not found at: {}", aab_path.display()));
+            }
+
+            return Ok(aab_path);
+        }
+
         let apk_path = project_root
             .join("app")
             .join("build")
