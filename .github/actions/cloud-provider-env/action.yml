@@ -1,0 +1,37 @@
+name: Enable cloud provider (if configured)
+description: >
+  If the private Gitea cloud secrets are present, configure HTTPS token auth for
+  the cloud client and export LINGXIA_WITH_PROVIDERS=cloud so a following
+  `lingxia build`/`package` injects it. A no-op (build without the provider) when
+  the secrets are absent — i.e. on forks or an unconfigured repo. Both the clone
+  URL and the token come from secrets, so neither the Gitea host nor the token is
+  committed; the token is injected only for that host.
+inputs:
+  gitea-token:
+    description: Read-only Gitea access token (secret).
+    required: false
+  provider-cloud-git:
+    description: HTTPS clone URL for the private cloud client (secret).
+    required: false
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        GITEA_TOKEN: ${{ inputs.gitea-token }}
+        PROVIDER_CLOUD_GIT: ${{ inputs.provider-cloud-git }}
+      run: |
+        set -euo pipefail
+        if [ -z "${GITEA_TOKEN:-}" ] || [ -z "${PROVIDER_CLOUD_GIT:-}" ]; then
+          echo "ℹ️ cloud provider secrets absent — building without the provider."
+          exit 0
+        fi
+        host=$(printf '%s' "$PROVIDER_CLOUD_GIT" | sed -E 's#^[a-z]+://([^@]+@)?([^/:]+).*#\2#')
+        git config --global \
+          url."https://oauth2:${GITEA_TOKEN}@${host}/".insteadOf \
+          "https://${host}/"
+        {
+          echo "LINGXIA_WITH_PROVIDERS=cloud"
+          echo "LINGXIA_PROVIDER_CLOUD_GIT=$PROVIDER_CLOUD_GIT"
+        } >> "$GITHUB_ENV"
+        echo "✅ cloud provider enabled for $host."
