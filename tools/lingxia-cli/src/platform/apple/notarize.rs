@@ -46,6 +46,24 @@ const ENV_NOTARY_ISSUER_ID: &str = "LINGXIA_APPLE_NOTARY_ISSUER_ID";
 const ENV_IDENTITY: &str = "LINGXIA_APPLE_DEVELOPER_ID_IDENTITY";
 const ENV_ENTITLEMENTS: &str = "LINGXIA_APPLE_ENTITLEMENTS";
 
+/// Best-effort mode (set in CI). When the notarization wait times out without a
+/// rejection, warn and continue instead of failing the build: the app is already
+/// Developer-ID signed and the submission is in flight, so an un-stapled artifact
+/// is acceptable for a CI build check. Release builds leave this unset and demand
+/// completion. Empty / `0` counts as off.
+const ENV_NOTARIZE_BEST_EFFORT: &str = "LINGXIA_NOTARIZE_BEST_EFFORT";
+
+/// Bound on `notarytool submit --wait`. Apple notarization is normally minutes,
+/// but the service can stall; without a cap the wait blocks until the CI job's
+/// own timeout kills the orphaned process. Kept under typical job timeouts so we
+/// surface a clean warning (best-effort) or error (release) first.
+const NOTARY_WAIT_TIMEOUT: &str = "25m";
+
+/// Overrides [`NOTARY_WAIT_TIMEOUT`] (any `notarytool`-style duration, e.g.
+/// `10m`). CI sets a shorter wait so build + wait fits the job timeout; the
+/// best-effort path then continues on a stalled notary service.
+const ENV_NOTARIZE_WAIT_TIMEOUT: &str = "LINGXIA_NOTARIZE_WAIT_TIMEOUT";
+
 const DEVELOPER_ID_PREFIX: &str = "Developer ID Application";
 
 /// Resolved Developer-ID certificate material. The `.p12` lives at `p12_path`;
@@ -238,11 +256,11 @@ fn sign_and_notarize(app_path: &Path, config: &NotarizeConfig) -> Result<()> {
         )?;
         println!("  {} codesigned (Developer ID)", "✓".green());
 
-        notarize(app_path, &config.notary)?;
-        println!("  {} notarized", "✓".green());
-
-        staple(app_path)?;
-        println!("  {} stapled", "✓".green());
+        if notarize(app_path, &config.notary)? {
+            println!("  {} notarized", "✓".green());
+            staple(app_path)?;
+            println!("  {} stapled", "✓".green());
+        }
 
         Ok(())
     })();
@@ -268,11 +286,11 @@ fn sign_and_notarize_local(
         "✓".green()
     );
 
-    notarize(app_path, notary)?;
-    println!("  {} notarized", "✓".green());
-
-    staple(app_path)?;
-    println!("  {} stapled", "✓".green());
+    if notarize(app_path, notary)? {
+        println!("  {} notarized", "✓".green());
+        staple(app_path)?;
+        println!("  {} stapled", "✓".green());
+    }
 
     Ok(())
 }
@@ -518,8 +536,10 @@ fn codesign(
 }
 
 /// Zip the signed app and submit it to Apple's notary service, waiting for the
-/// result.
-fn notarize(app_path: &Path, notary: &NotaryMaterial) -> Result<()> {
+/// result. Returns `true` when notarization completed (the ticket exists and the
+/// app can be stapled), `false` when a best-effort wait timed out with the
+/// submission still in flight (no ticket yet — caller must skip stapling).
+fn notarize(app_path: &Path, notary: &NotaryMaterial) -> Result<bool> {
     if !Path::new(&notary.notary_key).exists() {
         return Err(anyhow!(
             "Notary key does not point to an existing file: {}",
@@ -543,6 +563,15 @@ fn notarize(app_path: &Path, notary: &NotaryMaterial) -> Result<()> {
             return Err(anyhow!("ditto failed to create notarization archive"));
         }
 
+        let best_effort = std::env::var(ENV_NOTARIZE_BEST_EFFORT)
+            .map(|v| !matches!(v.trim(), "" | "0"))
+            .unwrap_or(false);
+        let wait_timeout = std::env::var(ENV_NOTARIZE_WAIT_TIMEOUT)
+            .ok()
+            .map(|v| v.trim().to_string())
+            .filter(|v| !v.is_empty())
+            .unwrap_or_else(|| NOTARY_WAIT_TIMEOUT.to_string());
+
         let output = Command::new("xcrun")
             .arg("notarytool")
             .arg("submit")
@@ -551,24 +580,19 @@ fn notarize(app_path: &Path, notary: &NotaryMaterial) -> Result<()> {
             .args(["--key-id", &notary.notary_key_id])
             .args(["--issuer", &notary.notary_issuer_id])
             .arg("--wait")
+            .args(["--timeout", &wait_timeout])
             .output()
             .context("Failed to execute xcrun notarytool submit")?;
-        if !output.status.success() {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(anyhow!(
-                "notarytool submit failed:\n{}\n{}",
-                stdout.trim(),
-                stderr.trim()
-            ));
-        }
 
-        // notarytool exits 0 even when the submission status is "Invalid", so
-        // guard against that explicitly. On rejection, `submit` output says
-        // *that* it failed but not *why* — fetch the per-submission notary log,
-        // which lists the actual issues (unsigned nested code, missing hardened
-        // runtime, bad entitlements, …), so a failed run is diagnosable.
         let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+
+        // A real review rejection is always fatal. notarytool exits 0 even when
+        // the submission status is "Invalid", so check the status explicitly.
+        // On rejection, `submit` output says *that* it failed but not *why* —
+        // fetch the per-submission notary log, which lists the actual issues
+        // (unsigned nested code, missing hardened runtime, bad entitlements, …),
+        // so a failed run is diagnosable.
         if stdout.contains("status: Invalid") || stdout.contains("status: Rejected") {
             let detail = submission_id(&stdout)
                 .and_then(|id| fetch_notary_log(&id, notary))
@@ -581,7 +605,30 @@ fn notarize(app_path: &Path, notary: &NotaryMaterial) -> Result<()> {
             ));
         }
 
-        Ok(())
+        if !output.status.success() {
+            // Non-zero without a rejection means the wait hit `wait_timeout` (or
+            // Apple is slow / unreachable) — the submission is still in flight,
+            // not refused. In best-effort mode (CI) keep going with an
+            // un-stapled, signed app; release builds demand a completed ticket.
+            if best_effort {
+                eprintln!(
+                    "  {} notarization did not finish within {wait_timeout} — the app is \
+                     Developer-ID signed and the submission is in flight; continuing un-stapled \
+                     (best-effort).\n{}\n{}",
+                    "⚠".yellow(),
+                    stdout.trim(),
+                    stderr.trim()
+                );
+                return Ok(false);
+            }
+            return Err(anyhow!(
+                "notarytool submit failed:\n{}\n{}",
+                stdout.trim(),
+                stderr.trim()
+            ));
+        }
+
+        Ok(true)
     })();
 
     let _ = std::fs::remove_file(&zip_path);
