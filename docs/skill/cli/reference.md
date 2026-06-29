@@ -443,7 +443,7 @@ lingxia auth apple import-developer-id ~/Desktop/DeveloperID.p12
 ```
 
 To create a `.p12` with Xcode, see
-[Apple signing and notarization](./apple-signing.md#get-a-developer-id-p12-with-xcode).
+[App signing → Apple](./signing.md#get-a-developer-id-p12-with-xcode).
 
 | Option | Description |
 |--------|-------------|
