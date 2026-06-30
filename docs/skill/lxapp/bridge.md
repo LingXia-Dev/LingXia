@@ -123,7 +123,7 @@ Use streams when:
 
 ### Logic side — generator form
 
-The simplest form — no imports, no special API. Write a standard `async *` generator method on your `Page({})` and the runtime detects it automatically via `Symbol.asyncIterator`. Each `yield` becomes an event frame delivered to View; `return` ends the stream. The `examples/lingxia-showcase/lingxia-showcase/pages/stream` demo uses this pattern with `onSend`.
+The simplest form — no imports, no special API. Write a standard `async *` generator method on your `Page({})` and the runtime detects it automatically via `Symbol.asyncIterator`. Each `yield` becomes an event frame delivered to View; `return` ends the stream.
 
 ```ts
 type ChatChunk =
@@ -185,7 +185,7 @@ The real chat example optionally probes an app-installed AI extension before fal
 
 ### Logic side — explicit handle form
 
-Use this when your async source is callback-based rather than an async iterator. You do not import `StreamHandle` — the runtime creates and injects it as the second parameter automatically for methods listed in the page's `stream_handlers` metadata.
+Use this when your async source is callback-based rather than an async iterator. You do not import `StreamHandle` — the runtime creates and injects it as the second parameter automatically for methods the build classifies as streams.
 
 ```ts
 Page({
@@ -199,19 +199,11 @@ Page({
 });
 ```
 
-`StreamHandle` interface:
-
-```ts
-interface StreamHandle {
-  send(payload: unknown): void;          // send a chunk to View
-  end(result?: unknown): void;           // end the stream with an optional final value
-  error(code: string, msg?: string): void; // end with an error
-}
-```
+`StreamHandle` exposes `send` (a chunk), `end` (final value), and `error` (terminate with an error). For the exact signatures read the `StreamHandle` declaration in `@lingxia/types` — that is authoritative; don't re-copy it here.
 
 The explicit handle has **no cancellation callback**: when the View cancels, the runtime resolves the call with `BRIDGE_CANCELED` and drops the handle — your handler is not notified. If you need to clean up on cancel (abort a job, close a file), use the generator form and a `finally` block instead; that is the only form that observes cancellation.
 
-The runtime distinguishes the two forms automatically. You declare which methods use explicit handles in the page metadata (`stream_handlers`); everything else that returns an `AsyncGenerator` uses the generator path.
+The runtime distinguishes the two forms automatically — you never declare them by hand. At build time the CLI classifies each page action into a `BridgeMode` (`"notify" | "call" | "stream"`) and emits a `__modes` map onto `window.__pageBridge`; a method that returns an `AsyncGenerator` (or takes the injected handle) is tagged `"stream"`, everything else falls through. There is no author-facing metadata field to maintain.
 
 ### View side
 
@@ -266,18 +258,9 @@ export default function ChatPage() {
 }
 ```
 
-`useLxStream` state:
+`useLxStream` returns a `LxStreamState` — `data` (accumulated via `reduce`, or the latest chunk), `result` (final value), `error`, `streaming`, plus `start()` and `cancel()`. The exact field types live in `LxStreamState` / `LxStreamOptions` in `@lingxia/react`; that's the authoritative shape — read it rather than trusting a copy here.
 
-| Field | Type | Description |
-|---|---|---|
-| `data` | accumulated via `reduce`, or latest chunk | What to render while streaming |
-| `result` | final value | Returned by `stream.end(result)` or generator return |
-| `error` | `LxBridgeError \| undefined` | Set if stream ended with an error or was canceled |
-| `streaming` | `boolean` | `true` while stream is active |
-| `start()` | `() => void` | Start the stream (when `manual: true`) |
-| `cancel()` | `() => void` | Cancel and clean up |
-
-Options:
+The options worth knowing conceptually:
 - `manual: true` — stream doesn't start until you call `chat.start()`. With `manual: false` (default), it starts on mount and cancels on unmount.
 - `initial` — initial `data` value before the first chunk arrives.
 - `reduce` — accumulator function. If omitted, `data` is simply the latest chunk.
@@ -370,16 +353,7 @@ Page({
 
 The handler function receives `ChannelHandle` as its second parameter. Use `ch.send()` to push data to View, and `ch.on()` to register listeners for incoming data and close events. This is the same event-listener pattern used throughout LingXia.
 
-`ChannelHandle` interface (injected by runtime):
-
-```ts
-interface ChannelHandle<TSend = unknown, TReceive = unknown> {
-  send(payload: TSend): void;                                        // push to View
-  close(code?: string, reason?: string): void;                       // Logic closes the channel
-  on(event: 'data', handler: (payload: TReceive) => void): void;     // receive from View
-  on(event: 'close', handler: (info: { code: string; reason: string }) => void): void;
-}
-```
+`ChannelHandle` (injected by the runtime) exposes `send` (push to View), `close`, and `on('data' | 'close', …)` for receiving from View. For the precise generic signatures read the `ChannelHandle` declaration in `@lingxia/types` — authoritative, not re-listed here.
 
 ### View side
 
@@ -421,17 +395,7 @@ export default function EditorPage() {
 }
 ```
 
-`useLxChannel` state:
-
-| Field | Type | Description |
-|---|---|---|
-| `last` | latest received message | Updated on each `ch.data` from Logic |
-| `error` | `LxBridgeError \| undefined` | Set if channel establishment failed or closed with error |
-| `connecting` | `boolean` | `true` while the initial channel open is in flight |
-| `connected` | `boolean` | `true` after `ch.ack`, `false` after `ch.close` |
-| `send(payload)` | `(unknown) => void` | Send a message to Logic |
-| `close()` | `() => void` | Close the channel from View |
-| `reopen()` | `() => void` | Re-open (useful after error, or with `manual: true`) |
+`useLxChannel` returns a `LxChannelState` — `last` (latest received message), `error`, `connecting`, `connected`, plus `send(payload)`, `close()`, and `reopen()`. The authoritative field types are `LxChannelState` / `LxChannelOptions` in `@lingxia/react`; read those rather than a copy. `connected` flips `true` after the channel acks and `false` after it closes; `reopen()` is useful after an error or with `manual: true`.
 
 The channel re-opens automatically when `params` changes. Pass `{ manual: true }` to control open timing yourself and call `reopen()` manually.
 
@@ -496,14 +460,7 @@ Logic: ch.on('close') listener fires → cleanup
 
 ## Error Handling
 
-All three primitives surface errors via `LxBridgeError`:
-
-```ts
-interface LxBridgeError {
-  code: string;   // see error codes below
-  message?: string;
-}
-```
+All three primitives surface errors via `LxBridgeError` — `{ code: string | number; message?: string; data?: unknown }`, declared authoritatively in `@lingxia/bridge`. The `code` is the part you branch on; the common values are labeled below.
 
 Common error codes:
 

@@ -95,13 +95,13 @@ When the host has `features.appService: true`, the wider **AppService scope** (t
 - **`cron`** — scheduled-task module for app-lifetime jobs (heartbeat, badge refresh, polling) that should run as long as the lxapp is loaded, not tied to one page's lifecycle.
 - **App-wide `storage`** — durable key/value at the lxapp scope, via `lx.getStorage()` (values persist across pages and launches).
 
-The Rong `cron` surface **isn't declared in `@lingxia/types`** yet — inspect the runtime's live globals (`console.log(globalThis)` from `App({}).onLaunch`) or the repo's `crates/lingxia-lxapp/Cargo.toml` `rong_modules` feature list for the exact API.
+The Rong `cron` surface **isn't declared in `@lingxia/types`** yet — inspect the runtime's live globals (`console.log(globalThis)` from `App({}).onLaunch`) for the exact API.
 
 ---
 
 ## `lx` capability map
 
-The `lx` object is flat (no nested namespaces in code) but groups logically as below. These are method **names for discovery** — open `@lingxia/types` for the signatures and option/result types (the "Types" column shows the sub-module). The non-obvious behavior is in [Behavioral notes](#behavioral-notes) below.
+The `lx` object is mostly flat, with a few nested namespaces (`lx.app`, `lx.tray`, `lx.env`); the rest is grouped logically below. These are method **names for discovery** — open `@lingxia/types` for the signatures and option/result types (the "Types" column shows the sub-module). The non-obvious behavior is in [Behavioral notes](#behavioral-notes) below.
 
 | Capability | Methods | Types |
 |---|---|---|
@@ -115,6 +115,7 @@ The `lx` object is flat (no nested namespaces in code) but groups logically as b
 | **Keyboard / hardware** | `onKeyDown`/`off…` `onKeyUp`/`off…` (TV/desktop hosts) | — |
 | **Storage (k/v)** | `getStorage` → `{ get, set, remove, clear, keys, has, size }` | `storage` |
 | **Host app** (`lx.app`) | `envVersion` `getBaseInfo` `checkUpdate` `exit` `screenshot` | — |
+| **Tray** (`lx.tray`, desktop) | `setIcon` `setTitle` `setBadge` `setMenu` `onClick` `show` `hide` | — |
 | **Surfaces** | `openSurface` `onSurfaceContext` | `ui` |
 | **Runtime info** | `env` (`USER_DATA_PATH` / `USER_CACHE_PATH`) `getLxAppInfo` `getUpdateManager` | `update` |
 
