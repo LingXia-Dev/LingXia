@@ -159,9 +159,19 @@ async function install(args) {
 }
 
 async function writeAgentsMd(agentsMdPath, skillTarget) {
-  const skillRelative = skillTarget.startsWith(process.cwd() + "/")
-    ? skillTarget.slice(process.cwd().length + 1)
-    : skillTarget;
+  // Reference the skill portably so a committed AGENTS.md has no machine-specific
+  // absolute path: project-relative when the skill lives inside the project, or
+  // home-relative (`~`) for a global `--user` install (every user's `~` resolves
+  // locally), falling back to the absolute path only as a last resort.
+  const home = homedir();
+  let skillRef;
+  if (skillTarget.startsWith(process.cwd() + "/")) {
+    skillRef = skillTarget.slice(process.cwd().length + 1);
+  } else if (skillTarget === home || skillTarget.startsWith(home + "/")) {
+    skillRef = "~" + skillTarget.slice(home.length);
+  } else {
+    skillRef = skillTarget;
+  }
   const marker = "<!-- @lingxia/skill: AGENTS.md pointer -->";
   const block = `${marker}
 ## LingXia
@@ -170,7 +180,11 @@ This project uses the LingXia cross-platform app framework. The development
 skill — decision tree, recipes, CLI / component / native API references —
 lives at:
 
-    ${skillRelative}/SKILL.md
+    ${skillRef}/SKILL.md
+
+If that file is not present, install it once with:
+
+    npx @lingxia/skill install --user
 
 Start there. Sub-references are linked from that file using relative paths.
 ${marker}
