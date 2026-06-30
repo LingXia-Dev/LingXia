@@ -12,7 +12,7 @@ use super::ui::effective_ui_config;
 ///
 /// `resolved_env` is the single source of truth for the active environment:
 /// - `lingxiaServer` is taken from the resolved environment.
-/// - `lingxiaId` gets `package_id_suffix` appended when present.
+/// - `lingxiaId` is emitted verbatim (env-independent).
 /// - `envVersion` is always emitted (defaults to `release`).
 pub(super) fn build_app_json_from_config(
     config: &LingXiaConfig,
@@ -43,11 +43,8 @@ pub(super) fn build_app_json_from_config(
         );
     }
     if let Some(lingxia_id) = app.lingxia_id.as_deref().filter(|s| !s.is_empty()) {
-        let resolved_id = match resolved_env.effective_package_id_suffix() {
-            Some(suffix) => format!("{lingxia_id}{suffix}"),
-            None => lingxia_id.to_string(),
-        };
-        obj.insert("lingxiaId".to_string(), serde_json::json!(resolved_id));
+        // Verbatim: the env suffix is package-id only, never lingxiaId.
+        obj.insert("lingxiaId".to_string(), serde_json::json!(lingxia_id));
     }
     if let Some(windows_app_id) = config
         .windows
