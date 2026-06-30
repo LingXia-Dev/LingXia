@@ -7,6 +7,9 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 CLI_CARGO_TOML="$ROOT_DIR/tools/lingxia-cli/Cargo.toml"
 GH_REPO="${LINGXIA_RELEASE_REPO:-LingXia-Dev/LingXia}"
 ALL_TARGETS=(darwin-x64 darwin-arm64 windows-x64 windows-arm64)
+# Binaries shipped in the CLI release: the CLI (`lingxia`) and the devtools
+# client (`lxdev`). Both build from one cargo invocation per target.
+CLI_BINS=(lingxia lxdev)
 
 usage() {
   cat <<'EOF'
@@ -84,12 +87,14 @@ current_cli_target() {
   printf '%s-%s\n' "$os" "$arch"
 }
 
+# Echoes: <rust-target> <os-arch slug> [<bin ext>]. Asset/bin names are derived
+# per binary as `<bin>-<slug><ext>` / `<bin><ext>`.
 cli_target_info() {
   case "$1" in
-    darwin-x64)    echo "x86_64-apple-darwin lingxia-darwin-x86_64 lingxia" ;;
-    darwin-arm64)  echo "aarch64-apple-darwin lingxia-darwin-aarch64 lingxia" ;;
-    windows-x64)   echo "x86_64-pc-windows-msvc lingxia-windows-x86_64.exe lingxia.exe" ;;
-    windows-arm64) echo "aarch64-pc-windows-msvc lingxia-windows-aarch64.exe lingxia.exe" ;;
+    darwin-x64)    echo "x86_64-apple-darwin darwin-x86_64" ;;
+    darwin-arm64)  echo "aarch64-apple-darwin darwin-aarch64" ;;
+    windows-x64)   echo "x86_64-pc-windows-msvc windows-x86_64 .exe" ;;
+    windows-arm64) echo "aarch64-pc-windows-msvc windows-aarch64 .exe" ;;
     *) return 1 ;;
   esac
 }
@@ -191,7 +196,7 @@ fi
 BUILT_ASSETS=()
 
 for platform in "${TARGETS[@]}"; do
-  read -r rust_target asset_name bin_name <<< "$(cli_target_info "$platform")"
+  read -r rust_target slug ext <<< "$(cli_target_info "$platform")"
 
   echo ""
   echo "========================================"
@@ -199,22 +204,22 @@ for platform in "${TARGETS[@]}"; do
   echo "========================================"
 
   if [[ "$SKIP_BUILD" -eq 0 ]]; then
-    (cd "$ROOT_DIR" && cargo build -p lingxia-cli --release --target "$rust_target")
+    (cd "$ROOT_DIR" && cargo build -p lingxia-cli -p lingxia-devtools-cli --release --target "$rust_target")
   fi
 
-  bin_src="$ROOT_DIR/target/$rust_target/release/$bin_name"
-  asset_out="$OUT_DIR/$asset_name"
-  [[ -f "$bin_src" ]] || {
-    echo "ERROR: CLI binary not found: $bin_src" >&2
-    exit 1
-  }
+  for bin in "${CLI_BINS[@]}"; do
+    bin_src="$ROOT_DIR/target/$rust_target/release/${bin}${ext}"
+    asset_out="$OUT_DIR/${bin}-${slug}${ext}"
+    [[ -f "$bin_src" ]] || {
+      echo "ERROR: binary not found: $bin_src" >&2
+      exit 1
+    }
 
-  cp "$bin_src" "$asset_out"
-  if [[ "$asset_out" != *.exe ]]; then
-    chmod +x "$asset_out"
-  fi
-  BUILT_ASSETS+=("$asset_out")
-  echo "✅ CLI asset -> $asset_out"
+    cp "$bin_src" "$asset_out"
+    [[ "$asset_out" == *.exe ]] || chmod +x "$asset_out"
+    BUILT_ASSETS+=("$asset_out")
+    echo "✅ CLI asset -> $asset_out"
+  done
 done
 
 if [[ "$PUBLISH" -eq 1 ]]; then

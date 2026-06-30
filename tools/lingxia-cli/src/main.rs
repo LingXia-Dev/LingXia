@@ -18,6 +18,7 @@ mod npm;
 mod path_completion;
 mod permission_cache;
 mod platform;
+mod runner_cache;
 mod runtime;
 mod sdk_cache;
 mod update;

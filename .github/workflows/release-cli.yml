@@ -87,25 +87,25 @@ jobs:
             label: macOS arm64
             runner: macos-latest
             target: aarch64-apple-darwin
-            ext: ""
+            cli_target: darwin-arm64
           - os: darwin
             arch: x86_64
             label: macOS x64
             runner: macos-latest
             target: x86_64-apple-darwin
-            ext: ""
+            cli_target: darwin-x64
           - os: windows
             arch: x86_64
             label: Windows x64
             runner: windows-latest
             target: x86_64-pc-windows-msvc
-            ext: ".exe"
+            cli_target: windows-x64
           - os: windows
             arch: aarch64
             label: Windows arm64
             runner: windows-latest
             target: aarch64-pc-windows-msvc
-            ext: ".exe"
+            cli_target: windows-arm64
     steps:
       - uses: actions/checkout@v4
         with:
@@ -136,20 +136,17 @@ jobs:
           [ -n "$cli_version" ] || { echo "Failed to read lingxia-cli version" >&2; exit 1; }
           [ "$expected" = "$cli_version" ] || { echo "Tag ($expected) != lingxia-cli ($cli_version)" >&2; exit 1; }
 
-      - name: Build
-        run: cargo build -p lingxia-cli --release --target ${{ matrix.target }}
-
-      - name: Collect binary
-        # Force Git Bash so `cp` + POSIX paths work identically on Windows.
+      # Build + name the CLI and lxdev assets via the shared release script
+      # (same source of truth as a local `scripts/release/cli.sh` run).
+      - name: Build CLI assets
+        # Force Git Bash so the script's POSIX paths work identically on Windows.
         shell: bash
-        run: |
-          mkdir -p out
-          cp "target/${{ matrix.target }}/release/lingxia${{ matrix.ext }}" "out/lingxia-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.ext }}"
+        run: bash scripts/release/cli.sh --target ${{ matrix.cli_target }} --out dist/cli-release
 
       - uses: actions/upload-artifact@v4
         with:
-          name: lingxia-${{ matrix.os }}-${{ matrix.arch }}
-          path: out/lingxia-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.ext }}
+          name: cli-${{ matrix.os }}-${{ matrix.arch }}
+          path: dist/cli-release/*
           if-no-files-found: error
 
   build-runner:
@@ -333,26 +330,22 @@ jobs:
 
           mkdir -p release-assets
 
-          # CLI binaries. The download-artifact dir is the upload-artifact name
-          # (lingxia-<os>-<arch>); the file inside carries the platform ext
-          # (windows -> .exe). darwin has no ext.
-          cp "artifacts/lingxia-darwin-aarch64/lingxia-darwin-aarch64"       "release-assets/lingxia-darwin-aarch64"
-          cp "artifacts/lingxia-darwin-x86_64/lingxia-darwin-x86_64"         "release-assets/lingxia-darwin-x86_64"
-          cp "artifacts/lingxia-windows-x86_64/lingxia-windows-x86_64.exe"   "release-assets/lingxia-windows-x86_64.exe"
-          cp "artifacts/lingxia-windows-aarch64/lingxia-windows-aarch64.exe" "release-assets/lingxia-windows-aarch64.exe"
+          # CLI + lxdev binaries. Each `cli-<os>-<arch>` artifact holds both
+          # already-named assets (lingxia-* and lxdev-*) from cli.sh.
+          cp artifacts/cli-*/* release-assets/
 
           # Runner zips (one per macOS arch + the Windows x64 runner).
           cp artifacts/lingxia-runner-macos-*/*.zip release-assets/
           cp artifacts/lingxia-runner-windows-*/*.zip release-assets/
 
-          # Combined checksum file over every release asset. `lingxia-*` covers
-          # the darwin binaries and the windows `.exe` assets;
+          # Combined checksum file over every release asset. `lingxia-*` /
+          # `lxdev-*` cover the darwin binaries and the windows `.exe` assets;
           # `*.zip` covers the runner zips.
           # `--` stops option parsing so glob expansions starting with `-`
           # aren't mistaken for flags, while keeping plain filenames (no `./`
           # prefix) in the SHASUMS file so install.sh's grep matches.
           shasums="release-assets/SHASUMS256-$version.txt"
-          (cd release-assets && sha256sum -- lingxia-* *.zip > "SHASUMS256-$version.txt")
+          (cd release-assets && sha256sum -- lingxia-* lxdev-* *.zip > "SHASUMS256-$version.txt")
           echo "Release assets:"
           ls -la release-assets/
           echo "Checksums:"

@@ -53,9 +53,10 @@ $Arch = switch ($rawArch) {
     default { Stop-WithError "unsupported architecture '$rawArch'" }
 }
 
-# Asset name scheme matches .github/workflows/release-cli.yml exactly.
-$Asset   = "lingxia-windows-$Arch.exe"
-$BinName = "lingxia.exe"
+# Binaries shipped together in the lingxia-cli release, installed as peers:
+# the CLI (`lingxia`) and the devtools client (`lxdev`). Asset name scheme
+# matches .github/workflows/release-cli.yml exactly.
+$Binaries = @('lingxia', 'lxdev')
 
 # --- Resolve version ---------------------------------------------------------
 # The repo ships several components, each with its own tag prefix (e.g.
@@ -89,17 +90,9 @@ $TmpDir = Join-Path ([System.IO.Path]::GetTempPath()) ("lingxia-" + [System.IO.P
 New-Item -ItemType Directory -Path $TmpDir -Force | Out-Null
 
 try {
-    $AssetPath   = Join-Path $TmpDir $Asset
+    # The SHASUMS file covers every release asset; download it once and verify
+    # each binary against it.
     $ShasumsPath = Join-Path $TmpDir $Shasums
-
-    Write-Info "Downloading $Asset ..."
-    try {
-        Invoke-WebRequest -Uri "$BaseUrl/$Asset" -OutFile $AssetPath `
-            -Headers @{ 'User-Agent' = 'lingxia-installer' }
-    } catch {
-        Stop-WithError "failed to download $Asset from $BaseUrl : $($_.Exception.Message)"
-    }
-
     Write-Info "Downloading checksums ..."
     try {
         Invoke-WebRequest -Uri "$BaseUrl/$Shasums" -OutFile $ShasumsPath `
@@ -108,37 +101,46 @@ try {
         Stop-WithError "failed to download $Shasums from $BaseUrl : $($_.Exception.Message)"
     }
 
-    # --- Verify checksum -----------------------------------------------------
-    # The SHASUMS file covers every release asset; isolate the line for our
-    # binary so we do not fail on files we did not download. Lines look like
-    # "<hex>  <filename>" (the separator may be two spaces or " *").
-    Write-Info "Verifying checksum ..."
-    $line = Get-Content $ShasumsPath |
-        Where-Object { $_ -match "[\s\*]$([regex]::Escape($Asset))\s*$" } |
-        Select-Object -First 1
-    if (-not $line) { Stop-WithError "no checksum entry for $Asset in $Shasums" }
-
-    $ExpectedHash = ($line -split '\s+')[0]
-    $ActualHash   = (Get-FileHash -Path $AssetPath -Algorithm SHA256).Hash
-    # PowerShell string comparison is case-insensitive by default, so this works
-    # whether the SHASUMS file uses lower- or upper-case hex.
-    if ($ActualHash -ne $ExpectedHash) {
-        Stop-WithError "checksum verification failed for $Asset (expected $ExpectedHash, got $ActualHash)"
-    }
-
-    # --- Install -------------------------------------------------------------
     if (-not (Test-Path $InstallDir)) {
         New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
     }
-    $Dest = Join-Path $InstallDir $BinName
-    Move-Item -Path $AssetPath -Destination $Dest -Force
+
+    # Download, verify, and install each binary (the CLI and the devtools client).
+    foreach ($bin in $Binaries) {
+        $asset     = "$bin-windows-$Arch.exe"
+        $binName   = "$bin.exe"
+        $assetPath = Join-Path $TmpDir $asset
+
+        Write-Info "Downloading $asset ..."
+        try {
+            Invoke-WebRequest -Uri "$BaseUrl/$asset" -OutFile $assetPath `
+                -Headers @{ 'User-Agent' = 'lingxia-installer' }
+        } catch {
+            Stop-WithError "failed to download $asset from $BaseUrl : $($_.Exception.Message)"
+        }
+
+        # Isolate this asset's line (separator may be two spaces or " *").
+        $line = Get-Content $ShasumsPath |
+            Where-Object { $_ -match "[\s\*]$([regex]::Escape($asset))\s*$" } |
+            Select-Object -First 1
+        if (-not $line) { Stop-WithError "no checksum entry for $asset in $Shasums" }
+        $expectedHash = ($line -split '\s+')[0]
+        $actualHash   = (Get-FileHash -Path $assetPath -Algorithm SHA256).Hash
+        if ($actualHash -ne $expectedHash) {
+            Stop-WithError "checksum verification failed for $asset (expected $expectedHash, got $actualHash)"
+        }
+
+        $dest = Join-Path $InstallDir $binName
+        Move-Item -Path $assetPath -Destination $dest -Force
+        Write-Info "Installed $binName -> $dest"
+    }
 }
 finally {
     Remove-Item -Recurse -Force $TmpDir -ErrorAction SilentlyContinue
 }
 
 Write-Info ""
-Write-Info "Installed lingxia $Version to $Dest; run ``$BinName --version``"
+Write-Info "Installed lingxia + lxdev $Version to $InstallDir; run ``lingxia.exe --version``"
 
 # --- Ensure the install dir is on PATH ---------------------------------------
 # Persist to the *user* PATH (idempotent) and update the current session so the
