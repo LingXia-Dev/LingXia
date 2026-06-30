@@ -74,6 +74,12 @@ import WebKit
             RunnerBridge.attachLxAppWebView(webView, to: container)
         }
 
+        /// App id of the built-in browser, which owns in-page new-tab requests
+        /// (`target="_blank"` / `window.open`).
+        public static var builtinBrowserAppId: String {
+            RunnerBridge.builtinBrowserAppId()
+        }
+
         public static func openBrowserTab(
             ownerAppId: String,
             ownerSessionId: UInt64,
@@ -88,6 +94,12 @@ import WebKit
 
         public static func browserTabWebView(tabId: String) -> WKWebView? {
             RunnerBridge.browserTabWebView(tabId: tabId)
+        }
+
+        /// Navigate a browser tab via the managed browser runtime (tracks the
+        /// tab URL and applies navigation policy) — unlike a raw `WKWebView.load`.
+        public static func navigateBrowserTab(tabId: String, url: String) -> Bool {
+            RunnerBridge.navigateBrowserTab(tabId: tabId, url: url)
         }
 
         public static func closeBrowserTab(tabId: String) -> Bool {
