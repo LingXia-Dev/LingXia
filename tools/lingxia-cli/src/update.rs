@@ -10,6 +10,13 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 const UPDATE_CHECK_INTERVAL_SECS: u64 = 24 * 60 * 60;
 const INSTALL_META_NAME: &str = "lingxia-cli-install.json";
 const BIN_NAME: &str = "lingxia";
+/// Timeout for the lightweight npm registry version check (seconds).
+const SKILL_REGISTRY_TIMEOUT_SECS: u64 = 5;
+/// npm registry endpoint for the latest published `@lingxia/skill` version.
+const SKILL_LATEST_URL: &str = "https://registry.npmjs.org/@lingxia/skill/latest";
+/// Skill manifest under the home dir (the global `--user` install) recording the
+/// installed skill version. The skill body lives globally, not per project.
+const SKILL_MANIFEST_REL_PATH: &str = ".claude/skills/lingxia/skill-manifest.json";
 
 #[derive(Debug, Deserialize, Serialize)]
 struct InstallMetadata {
@@ -25,6 +32,9 @@ struct UpdateCheckCache {
     release_repo: String,
     latest_version: Option<String>,
     latest_tag: Option<String>,
+    /// Latest published `@lingxia/skill` version (cached in the same 24h window).
+    #[serde(default)]
+    latest_skill_version: Option<String>,
 }
 
 #[derive(Debug)]
@@ -34,6 +44,7 @@ struct UpdateStatus {
     latest_tag: String,
     release_repo: String,
     update_available: bool,
+    latest_skill_version: Option<String>,
 }
 
 pub fn maybe_auto_update() {
@@ -56,18 +67,67 @@ pub fn maybe_auto_update() {
     let Ok(status) = load_update_status(false) else {
         return;
     };
-    if !status.update_available {
-        return;
+
+    if status.update_available {
+        println!(
+            "Updating LingXia CLI {} -> {}...",
+            status.current_version, status.latest_version
+        );
+        if let Err(err) = install_update(&exe_path, &status) {
+            eprintln!("warning: automatic CLI update failed: {err}");
+            eprintln!("Continuing with the current CLI version.");
+        }
     }
 
-    println!(
-        "Updating LingXia CLI {} -> {}...",
-        status.current_version, status.latest_version
-    );
-    if let Err(err) = install_update(&exe_path, &status) {
-        eprintln!("warning: automatic CLI update failed: {err}");
-        eprintln!("Continuing with the current CLI version.");
+    notify_outdated_skill(status.latest_skill_version.as_deref());
+}
+
+/// If an installed project skill is older than the latest published one, print a
+/// one-line notice (best effort). No skill installed → no nag.
+fn notify_outdated_skill(latest_skill_version: Option<&str>) {
+    let Some(latest) = latest_skill_version else {
+        return;
+    };
+    let Some(installed) = installed_skill_version() else {
+        return;
+    };
+    let (Ok(latest_v), Ok(installed_v)) = (Version::parse(latest), Version::parse(&installed))
+    else {
+        return;
+    };
+    if latest_v > installed_v {
+        println!(
+            "A newer @lingxia/skill is available ({installed} -> {latest}). \
+             Run `npx @lingxia/skill install` to update."
+        );
     }
+}
+
+/// Installed skill version from the global `~/.claude/skills/lingxia/
+/// skill-manifest.json`, if present.
+fn installed_skill_version() -> Option<String> {
+    let manifest = dirs::home_dir()?.join(SKILL_MANIFEST_REL_PATH);
+    let text = fs::read_to_string(manifest).ok()?;
+    let value: serde_json::Value = serde_json::from_str(&text).ok()?;
+    value.get("version")?.as_str().map(str::to_string)
+}
+
+/// Latest published `@lingxia/skill` version from the npm registry (best effort;
+/// any network/parse error yields `None`).
+fn fetch_latest_skill_version() -> Option<String> {
+    let agent = crate::http_client::create_agent(SKILL_REGISTRY_TIMEOUT_SECS);
+    let mut response = agent
+        .get(SKILL_LATEST_URL)
+        .header("User-Agent", "lingxia-cli")
+        .header("Accept", "application/json")
+        .call()
+        .ok()?;
+    if response.status().as_u16() != 200 {
+        return None;
+    }
+    let body = response.body_mut().read_to_string().ok()?;
+    let value: serde_json::Value = serde_json::from_str(&body).ok()?;
+    value.get("version")?.as_str().map(str::to_string)
 }
 
 fn install_update(exe_path: &Path, status: &UpdateStatus) -> Result<()> {
@@ -180,35 +240,58 @@ fn load_update_status(force_refresh: bool) -> Result<UpdateStatus> {
     let release_repo = release_repo_for_current_install();
     let current_version =
         Version::parse(env!("CARGO_PKG_VERSION")).context("Failed to parse current CLI version")?;
-    let release = if force_refresh {
-        let release = github::latest_cli_release_from_repo(&release_repo)?;
-        persist_update_cache(&release_repo, Some(&release.version), Some(&release.tag));
-        release
-    } else if let Some(cache) = load_update_cache_if_fresh()? {
-        match (cache.latest_version, cache.latest_tag) {
-            (Some(latest_version), Some(latest_tag)) => github::CliReleaseTag {
-                tag: latest_tag,
-                version: latest_version,
-            },
-            _ => {
-                return Ok(UpdateStatus {
-                    current_version: current_version.clone(),
-                    latest_version: current_version,
-                    latest_tag: String::new(),
-                    release_repo,
-                    update_available: false,
-                });
+
+    let fresh_cache = if force_refresh {
+        None
+    } else {
+        load_update_cache_if_fresh()?
+    };
+
+    // CLI release + latest skill version share the same 24h cache window.
+    let (release, latest_skill_version) = match fresh_cache {
+        Some(cache) => {
+            let latest_skill_version = cache.latest_skill_version;
+            match (cache.latest_version, cache.latest_tag) {
+                (Some(latest_version), Some(latest_tag)) => (
+                    github::CliReleaseTag {
+                        tag: latest_tag,
+                        version: latest_version,
+                    },
+                    latest_skill_version,
+                ),
+                _ => {
+                    return Ok(UpdateStatus {
+                        current_version: current_version.clone(),
+                        latest_version: current_version,
+                        latest_tag: String::new(),
+                        release_repo,
+                        update_available: false,
+                        latest_skill_version,
+                    });
+                }
             }
         }
-    } else {
-        match github::latest_cli_release_from_repo(&release_repo) {
-            Ok(release) => {
-                persist_update_cache(&release_repo, Some(&release.version), Some(&release.tag));
-                release
-            }
-            Err(err) => {
-                persist_update_cache(&release_repo, None, None);
-                return Err(err);
+        None => {
+            let latest_skill_version = fetch_latest_skill_version();
+            match github::latest_cli_release_from_repo(&release_repo) {
+                Ok(release) => {
+                    persist_update_cache(
+                        &release_repo,
+                        Some(&release.version),
+                        Some(&release.tag),
+                        latest_skill_version.as_deref(),
+                    );
+                    (release, latest_skill_version)
+                }
+                Err(err) => {
+                    persist_update_cache(
+                        &release_repo,
+                        None,
+                        None,
+                        latest_skill_version.as_deref(),
+                    );
+                    return Err(err);
+                }
             }
         }
     };
@@ -222,6 +305,7 @@ fn load_update_status(force_refresh: bool) -> Result<UpdateStatus> {
         latest_tag: release.tag,
         release_repo,
         update_available,
+        latest_skill_version,
     })
 }
 
@@ -250,6 +334,7 @@ fn persist_update_cache(
     release_repo: &str,
     latest_version: Option<&str>,
     latest_tag: Option<&str>,
+    latest_skill_version: Option<&str>,
 ) {
     let Some(path) = update_cache_path() else {
         return;
@@ -264,6 +349,7 @@ fn persist_update_cache(
         release_repo: release_repo.to_string(),
         latest_version: latest_version.map(str::to_string),
         latest_tag: latest_tag.map(str::to_string),
+        latest_skill_version: latest_skill_version.map(str::to_string),
     };
     if let Ok(payload) = serde_json::to_vec_pretty(&cache) {
         let _ = fs::write(path, payload);
@@ -403,6 +489,7 @@ mod tests {
             release_repo: "LingXia-Dev/LingXia".to_string(),
             latest_version: Some("9.9.9".to_string()),
             latest_tag: Some("lingxia-cli-v9.9.9".to_string()),
+            latest_skill_version: Some("9.9.9".to_string()),
         };
         let age = current_unix_secs().saturating_sub(cache.checked_at_unix_secs);
         assert!(age > UPDATE_CHECK_INTERVAL_SECS);
