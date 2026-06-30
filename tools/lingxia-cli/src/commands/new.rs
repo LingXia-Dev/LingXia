@@ -25,7 +25,7 @@ use self::config_files::generate_config_file;
 use self::lxapp_scaffold::{create_lxapp_from_template, create_lxapp_project};
 use self::native::{create_project, create_rust_library};
 use self::prompts::{
-    gather_lxapp_dir_name, gather_lxapp_framework, gather_native_app_service_mode,
+    gather_lxapp_dir_name, gather_lxapp_framework, gather_lxapp_id, gather_native_app_service_mode,
     gather_native_project_info, gather_product_name, gather_project_name, gather_project_type,
 };
 use self::types::{AppServiceMode, ProjectType};
@@ -74,9 +74,11 @@ pub fn execute(
 
     let project_type = gather_project_type(project_type)?;
     let name = gather_project_name(name)?;
-    let product_name = gather_product_name(&name, yes)?;
 
     if matches!(project_type, ProjectType::LxApp) {
+        // A lightweight lxapp keeps a single name: the project name doubles as
+        // the display name. Only the appId is separately editable.
+        let product_name = name.clone();
         // --functions needs the lingxiao CLI (it scaffolds + builds the worker).
         // Fail fast before creating anything — no half-worker fallback.
         if functions && !lingxiao_available() {
@@ -85,11 +87,13 @@ pub fn execute(
                  and builds the cloud worker.\nInstall lingxiao and retry, or omit --functions."
             ));
         }
+        let app_id = gather_lxapp_id(&name, yes)?;
         let framework = gather_lxapp_framework(yes)?;
         let target_dir = std::env::current_dir()?.join(&name);
         create_lxapp_from_template(
             &target_dir,
             &name,
+            &app_id,
             &product_name,
             &framework,
             AppServiceMode::Enabled,
@@ -106,12 +110,13 @@ pub fn execute(
         println!();
         println!("{}", "Next steps:".bold());
         println!("  cd {}", name);
-        println!("  lingxia build");
+        println!("  lingxia dev");
         println!();
-        print_ai_skill_tip();
+        setup_ai_tooling(&target_dir, yes);
         return Ok(());
     }
 
+    let product_name = gather_product_name(&name, yes)?;
     let config =
         gather_native_project_info(name, product_name, project_type, platforms, package_id, yes)?;
     let theme = ColorfulTheme::default();
@@ -184,15 +189,65 @@ pub fn execute(
     println!();
     println!("{}", "Next steps:".bold());
     println!("  cd {}", config.name);
-    println!("  lingxia build");
+    println!("  lingxia dev");
     println!();
-    print_ai_skill_tip();
+    setup_ai_tooling(&config.target_dir, yes);
 
     Ok(())
 }
 
-fn print_ai_skill_tip() {
-    println!("{}", "AI tooling (optional):".bold());
+/// Set up AI tooling (the LingXia agent skill) in the freshly created project.
+/// Opt-out: installs by default, including in non-interactive/`--yes` mode. A
+/// declined prompt, a missing `npx`, or a failed install never fails
+/// `lingxia new` — we fall back to printing the manual one-liners.
+fn setup_ai_tooling(project_dir: &std::path::Path, yes: bool) {
+    let proceed = if yes {
+        true
+    } else {
+        Confirm::with_theme(&ColorfulTheme::default())
+            .with_prompt("Set up AI tooling (installs the LingXia agent skill)?")
+            .default(true)
+            .interact()
+            .unwrap_or(false)
+    };
+
+    if !proceed {
+        print_manual_skill_hint();
+        return;
+    }
+
+    if let Err(err) = run_skill_install(project_dir) {
+        eprintln!(
+            "{}",
+            format!("warning: AI tooling setup did not complete: {err}").yellow()
+        );
+        print_manual_skill_hint();
+    }
+}
+
+/// Run `npx @lingxia/skill install --user --agents-md` from the new project.
+/// `--user` puts the skill body in the global `~/.claude/skills/` (shared by
+/// every LingXia project, discovered by Claude Code) instead of vendoring a
+/// copy per repo; `--agents-md` writes a small, committable `AGENTS.md` pointer
+/// into the project for Codex (which only reads project-level AGENTS.md).
+fn run_skill_install(project_dir: &std::path::Path) -> Result<()> {
+    println!("{}", "Setting up AI tooling...".bold());
+    let status = std::process::Command::new("npx")
+        .arg("@lingxia/skill")
+        .arg("install")
+        .arg("--user")
+        .arg("--agents-md")
+        .current_dir(project_dir)
+        .status()
+        .context("failed to run `npx @lingxia/skill install` (is `npx` on PATH?)")?;
+    if !status.success() {
+        bail!("`npx @lingxia/skill install` exited with a non-zero status");
+    }
+    Ok(())
+}
+
+fn print_manual_skill_hint() {
+    println!("{}", "AI tooling (install later):".bold());
     println!(
         "  {}              # for Claude Code / Anthropic Skills",
         "npx @lingxia/skill install".cyan()

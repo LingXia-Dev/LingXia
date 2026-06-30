@@ -11,6 +11,7 @@ use std::path::Path;
 pub(super) fn create_lxapp_from_template(
     target_dir: &Path,
     project_name: &str,
+    app_id: &str,
     product_name: &str,
     framework: &str,
     app_service: AppServiceMode,
@@ -39,6 +40,7 @@ pub(super) fn create_lxapp_from_template(
     let vars = build_framework_vars(
         framework,
         project_name,
+        app_id,
         product_name,
         versions,
         lingxia_bridge_version,
@@ -71,6 +73,7 @@ pub(super) fn create_lxapp_from_template(
 pub(super) fn build_framework_vars(
     framework: &str,
     project_name: &str,
+    app_id: &str,
     product_name: &str,
     versions: &LingXiaVersions,
     lingxia_bridge_version: &str,
@@ -80,8 +83,9 @@ pub(super) fn build_framework_vars(
     let slug = slugify(project_name);
     let mut vars = HashMap::new();
 
-    vars.insert("APP_PACKAGE_NAME".to_string(), slug.clone());
-    vars.insert("APP_ID".to_string(), slug);
+    // Package name stays an npm-safe slug; appId is the caller's chosen id.
+    vars.insert("APP_PACKAGE_NAME".to_string(), slug);
+    vars.insert("APP_ID".to_string(), app_id.to_string());
     vars.insert("APP_DISPLAY_NAME".to_string(), product_name.to_string());
     vars.insert("RONG_VERSION".to_string(), versions.rong.clone());
     vars.insert(
@@ -195,6 +199,7 @@ pub(super) fn create_lxapp_project(
     println!("  Creating LxApp project...");
     create_lxapp_from_template(
         &lxapp_dir,
+        lxapp_dir_name,
         lxapp_dir_name,
         &config.product_name,
         framework,
@@ -384,6 +389,7 @@ mod tests {
         let vars = build_framework_vars(
             framework,
             "my-app",
+            "my-app",
             "My App",
             &dummy_versions(),
             "0.4.0",
@@ -426,6 +432,7 @@ mod tests {
         let vars = build_framework_vars(
             "react",
             "my-app",
+            "my-app",
             "My App",
             &dummy_versions(),
             "0.4.0",
@@ -451,6 +458,7 @@ mod tests {
         let vars = build_framework_vars(
             "vue",
             "my-app",
+            "my-app",
             "My App",
             &dummy_versions(),
             "0.4.0",
@@ -474,6 +482,7 @@ mod tests {
     fn html_vars_are_correct() {
         let vars = build_framework_vars(
             "html",
+            "my-app",
             "my-app",
             "My App",
             &dummy_versions(),
@@ -526,14 +535,23 @@ mod tests {
 
     #[test]
     fn unknown_framework_returns_error() {
-        let result = build_framework_vars("svelte", "x", "X", &dummy_versions(), "0.1.0", "0.1.0");
+        let result =
+            build_framework_vars("svelte", "x", "x", "X", &dummy_versions(), "0.1.0", "0.1.0");
         assert!(result.is_err());
     }
 
     #[test]
     fn version_vars_are_passed_through() {
-        let vars = build_framework_vars("react", "app", "App", &dummy_versions(), "1.2.3", "4.5.6")
-            .unwrap();
+        let vars = build_framework_vars(
+            "react",
+            "app",
+            "app",
+            "App",
+            &dummy_versions(),
+            "1.2.3",
+            "4.5.6",
+        )
+        .unwrap();
         assert_eq!(vars["LINGXIA_BRIDGE_VERSION"], "1.2.3");
         assert_eq!(vars["LINGXIA_TYPES_VERSION"], "4.5.6");
         assert_eq!(vars["RONG_VERSION"], "0.1.0");
