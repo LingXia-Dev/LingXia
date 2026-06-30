@@ -6,13 +6,14 @@ use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
+use crate::cli_config::CliConfig;
 use crate::config::{EnvVersion, HOST_CONFIG_FILE, LingXiaConfig, has_host_config};
 use crate::http_client;
 use crate::lxapp;
 use crate::platform::detector::PlatformType;
 
 pub struct PublishOptions {
-    pub token: String,
+    pub token: Option<String>,
     pub lingxia_server: Option<String>,
     pub package: Option<String>,
     pub platform: Option<String>,
@@ -64,18 +65,16 @@ pub fn execute(opts: PublishOptions) -> Result<()> {
             )
         })?;
         meta.channel = Some(metadata.env_version);
-        // The runtime uses the suffixed lingxiaId from the baked-in app.json
-        // for update checks. Mirror that on the server side so id matches,
-        // otherwise developer/preview packages would upload to the base id but
-        // clients would poll for the suffixed one.
+        // Match the lingxiaId baked into the package; env is carried by channel.
         if let Some(id) = metadata.lingxia_id {
             meta.target_id = id;
         }
     } else if meta.channel.is_none() {
         meta.channel = Some("release".to_string());
     }
-    // Resolve server *after* channel is known so app.lingxiaServer can route
-    // per-env maps to the package's envVersion.
+    // Resolve server and token *after* channel is known so per-env config
+    // routes to the package's envVersion.
+    let token = resolve_token(meta.channel.as_deref(), opts.token)?;
     let lingxia_server =
         resolve_lingxia_server(&cwd, meta.channel.as_deref(), opts.lingxia_server)?;
     let lingxia_server = lingxia_server.trim_end_matches('/').to_string();
@@ -127,7 +126,7 @@ pub fn execute(opts: PublishOptions) -> Result<()> {
     let agent = http_client::create_agent(120);
     let mut resp = agent
         .post(&upload_url)
-        .header("Authorization", &format!("Bearer {}", opts.token))
+        .header("Authorization", &format!("Bearer {token}"))
         .header("Content-Type", &content_type)
         .send(body.as_slice())
         .map_err(|err| upload_transport_error(&upload_url, file_data.len(), err))?;
@@ -440,6 +439,30 @@ fn non_empty_str(val: &serde_json::Value, label: &str) -> Result<String> {
     Ok(s)
 }
 
+/// Resolve the bearer token: `--token` flag → `[publish]` token in
+/// `~/.lingxia/cli/config.toml` (per-env `tokens.<env>`, else the section
+/// `token`), routed by `channel` (defaults to release) → error.
+fn resolve_token(channel: Option<&str>, token_arg: Option<String>) -> Result<String> {
+    if let Some(t) = token_arg {
+        let trimmed = t.trim();
+        if trimmed.is_empty() {
+            bail!("--token cannot be empty");
+        }
+        return Ok(trimmed.to_string());
+    }
+    let env_version = channel
+        .and_then(|c| EnvVersion::parse_cli(c).ok())
+        .unwrap_or(EnvVersion::Release);
+    if let Some(token) = CliConfig::load()
+        .ok()
+        .and_then(|c| c.publish)
+        .and_then(|p| p.token_for(env_version).map(str::to_string))
+    {
+        return Ok(token);
+    }
+    bail!("Provide --token, or set `[publish] token` in ~/.lingxia/cli/config.toml.");
+}
+
 fn resolve_lingxia_server(
     cwd: &Path,
     channel: Option<&str>,
@@ -452,17 +475,13 @@ fn resolve_lingxia_server(
         }
         return Ok(trimmed.to_string());
     }
+    // Project config wins next: route to the env-specific server when a
+    // host config exists and configures one. Channel comes from the
+    // package's envVersion.
     let config_path = cwd.join(HOST_CONFIG_FILE);
-    if !config_path.exists() {
-        bail!("Use --lingxia-server to specify the package upload server URL.");
-    }
-    let Ok(cfg) = LingXiaConfig::load(cwd) else {
-        bail!("Use --lingxia-server to specify the package upload server URL.");
-    };
-
-    // Channel comes from the package's envVersion; route to the env-specific
-    // server when configured.
-    if let Some(channel) = channel
+    if config_path.exists()
+        && let Ok(cfg) = LingXiaConfig::load(cwd)
+        && let Some(channel) = channel
         && let Ok(env_version) = EnvVersion::parse_cli(channel)
         && let Ok(resolved) = cfg.resolve_env(env_version)
         && !resolved.lingxia_server.is_empty()
@@ -470,7 +489,24 @@ fn resolve_lingxia_server(
         return Ok(resolved.lingxia_server);
     }
 
+    // Lowest precedence: the machine-wide default in ~/.lingxia/cli/config.toml,
+    // so lxapp projects (no lingxia.yaml) needn't repeat --lingxia-server.
+    if let Some(url) = global_lingxia_server(channel) {
+        return Ok(url);
+    }
+
     bail!("Use --lingxia-server to specify the package upload server URL.");
+}
+
+/// `[publish]` server from `~/.lingxia/cli/config.toml`, routed by `channel`
+/// (defaults to release when absent). Lowest precedence: flag and project
+/// config win first.
+fn global_lingxia_server(channel: Option<&str>) -> Option<String> {
+    let publish = CliConfig::load().ok()?.publish?;
+    let env_version = channel
+        .and_then(|c| EnvVersion::parse_cli(c).ok())
+        .unwrap_or(EnvVersion::Release);
+    publish.lingxia_server_for(env_version).map(str::to_string)
 }
 
 fn find_or_resolve_package(
