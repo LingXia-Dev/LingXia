@@ -5,7 +5,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(realpath "$SCRIPT_DIR/../..")"
 WORKSPACE_CARGO_TOML="$ROOT_DIR/Cargo.toml"
 CLI_CARGO_TOML="$ROOT_DIR/tools/lingxia-cli/Cargo.toml"
-EXAMPLE_HOST_CARGO_TOML="$ROOT_DIR/examples/lingxia-showcase/lingxia-lib/Cargo.toml"
+# Showcase native host crate. Its `lingxia`/`lingxia_devtool` deps pin a version
+# that the local path crates must satisfy, so a missed bump here breaks every
+# example build (the patch is dropped and cargo falls back to the registry).
+EXAMPLE_HOST_CARGO_TOML="$ROOT_DIR/examples/lingxia-showcase/native/Cargo.toml"
 
 usage() {
   cat <<'EOF'
