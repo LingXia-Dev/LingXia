@@ -112,7 +112,7 @@ pub fn execute(
         println!("  cd {}", name);
         println!("  lingxia dev");
         println!();
-        print_ai_skill_tip();
+        setup_ai_tooling(&target_dir, yes);
         return Ok(());
     }
 
@@ -191,13 +191,63 @@ pub fn execute(
     println!("  cd {}", config.name);
     println!("  lingxia dev");
     println!();
-    print_ai_skill_tip();
+    setup_ai_tooling(&config.target_dir, yes);
 
     Ok(())
 }
 
-fn print_ai_skill_tip() {
-    println!("{}", "AI tooling (optional):".bold());
+/// Set up AI tooling (the LingXia agent skill) in the freshly created project.
+/// Opt-out: installs by default, including in non-interactive/`--yes` mode. A
+/// declined prompt, a missing `npx`, or a failed install never fails
+/// `lingxia new` — we fall back to printing the manual one-liners.
+fn setup_ai_tooling(project_dir: &std::path::Path, yes: bool) {
+    let proceed = if yes {
+        true
+    } else {
+        Confirm::with_theme(&ColorfulTheme::default())
+            .with_prompt("Set up AI tooling (installs the LingXia agent skill)?")
+            .default(true)
+            .interact()
+            .unwrap_or(false)
+    };
+
+    if !proceed {
+        print_manual_skill_hint();
+        return;
+    }
+
+    if let Err(err) = run_skill_install(project_dir) {
+        eprintln!(
+            "{}",
+            format!("warning: AI tooling setup did not complete: {err}").yellow()
+        );
+        print_manual_skill_hint();
+    }
+}
+
+/// Run `npx @lingxia/skill install --user --agents-md` from the new project.
+/// `--user` puts the skill body in the global `~/.claude/skills/` (shared by
+/// every LingXia project, discovered by Claude Code) instead of vendoring a
+/// copy per repo; `--agents-md` writes a small, committable `AGENTS.md` pointer
+/// into the project for Codex (which only reads project-level AGENTS.md).
+fn run_skill_install(project_dir: &std::path::Path) -> Result<()> {
+    println!("{}", "Setting up AI tooling...".bold());
+    let status = std::process::Command::new("npx")
+        .arg("@lingxia/skill")
+        .arg("install")
+        .arg("--user")
+        .arg("--agents-md")
+        .current_dir(project_dir)
+        .status()
+        .context("failed to run `npx @lingxia/skill install` (is `npx` on PATH?)")?;
+    if !status.success() {
+        bail!("`npx @lingxia/skill install` exited with a non-zero status");
+    }
+    Ok(())
+}
+
+fn print_manual_skill_hint() {
+    println!("{}", "AI tooling (install later):".bold());
     println!(
         "  {}              # for Claude Code / Anthropic Skills",
         "npx @lingxia/skill install".cyan()
