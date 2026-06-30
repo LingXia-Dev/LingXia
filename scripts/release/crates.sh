@@ -41,9 +41,11 @@ CRATES=(
   # Devtool bridge depends on the public facade.
   "lingxia-devtool"
 
-  # Windows host SDK and build helper consumed by the windows app template.
+  # Windows build helper consumed by the windows app template.
+  # lingxia-windows-sdk is NOT published: it depends on a git-pinned windows-rs
+  # (proc-macros), and crates.io forbids git deps. It is consumed via a git ref
+  # in the windows app template instead.
   "lingxia-windows-build"
-  "lingxia-windows-sdk"
 )
 
 usage() {
