@@ -71,6 +71,12 @@ enum RunnerSupport {
 
     @MainActor
     enum Browser {
+        /// App id that owns in-page new-tab requests (`target="_blank"` /
+        /// `window.open`) from inside the in-app browser.
+        static var builtinAppId: String {
+            LingxiaRunnerSPI.WebView.builtinBrowserAppId
+        }
+
         static func openTab(ownerAppId: String, ownerSessionId: UInt64, url: String) -> String? {
             LingxiaRunnerSPI.WebView.openBrowserTab(
                 ownerAppId: ownerAppId,
@@ -81,6 +87,12 @@ enum RunnerSupport {
 
         static func webView(tabId: String) -> WKWebView? {
             LingxiaRunnerSPI.WebView.browserTabWebView(tabId: tabId)
+        }
+
+        /// Navigate a tab through the managed browser runtime (not a raw
+        /// `WKWebView.load`, which the browser's navigation policy ignores).
+        static func navigate(tabId: String, url: String) -> Bool {
+            LingxiaRunnerSPI.WebView.navigateBrowserTab(tabId: tabId, url: url)
         }
 
         static func closeTab(tabId: String) -> Bool {

@@ -274,15 +274,28 @@ public class RunnerApp {
         ownerSessionId: UInt64,
         url rawURL: String
     ) -> Bool {
-        let phoneHost = windowController?.appId == ownerAppId ? windowController : nil
+        var phoneHost = windowController?.appId == ownerAppId ? windowController : nil
         let surfaceHost = surfaceShellHost?.appId == ownerAppId ? surfaceShellHost : nil
+        // In-page new-tab requests (`target="_blank"` / `window.open`) are owned
+        // by the builtin browser app, not the lxapp, so they don't match either
+        // host's appId. Route them to the phone that is presenting the browser.
+        let isBuiltinBrowserTab = ownerAppId == RunnerSupport.Browser.builtinAppId
+        if phoneHost == nil, surfaceHost == nil, isBuiltinBrowserTab,
+           windowController?.isPresentingBrowser == true {
+            phoneHost = windowController
+        }
         guard phoneHost != nil || surfaceHost != nil else {
             os_log("Runner rejected self openURL for non-active appId=%@", log: Self.log, type: .info, ownerAppId)
             return false
         }
-        guard RunnerSupport.Runtime.sessionId(for: ownerAppId) == ownerSessionId else {
-            os_log("Runner rejected self openURL for stale session appId=%@ session=%{public}llu", log: Self.log, type: .info, ownerAppId, ownerSessionId)
-            return false
+        // The builtin browser's session isn't tracked in the lxapp session map,
+        // and a new-tab request from a live browser tab is inherently current —
+        // so only staleness-check lxapp-owned (`target="self"`) opens.
+        if !isBuiltinBrowserTab {
+            guard RunnerSupport.Runtime.sessionId(for: ownerAppId) == ownerSessionId else {
+                os_log("Runner rejected self openURL for stale session appId=%@ session=%{public}llu", log: Self.log, type: .info, ownerAppId, ownerSessionId)
+                return false
+            }
         }
         guard let tabId = RunnerSupport.Browser.openTab(
             ownerAppId: ownerAppId,
@@ -295,7 +308,7 @@ public class RunnerApp {
 
         os_log("Runner presenting browser tab appId=%@ tab=%@ url=%@", log: Self.log, type: .info, ownerAppId, tabId, rawURL)
         if let phoneHost {
-            phoneHost.presentBrowserTab(id: tabId)
+            phoneHost.presentBrowserTab(id: tabId, ownerAppId: ownerAppId, ownerSessionId: ownerSessionId)
         } else {
             surfaceHost?.presentBrowserTab(id: tabId)
         }

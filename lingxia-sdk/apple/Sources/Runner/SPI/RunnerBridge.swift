@@ -14,11 +14,11 @@ enum RunnerBridge {
     static func setOpenUrlHandler(_ handler: @escaping (String, UInt64, String) -> Bool) {
         LxApp.openUrlHandler = { ownerAppId, ownerSessionId, url, target in
             switch target {
-            case .selfTarget:
+            case .selfTarget, .newBrowserTab:
+                // The phone simulator has a single in-app browser surface, so an
+                // in-page new-tab request (target="_blank" / window.open) opens
+                // another tab in it, just like a `target="self"` navigation.
                 return .handled(handler(ownerAppId, ownerSessionId, url))
-            case .newBrowserTab:
-                os_log("Runner rejected openURL newBrowserTab owner=%{public}@ session=%{public}llu url=%{private}@", log: log, type: .info, ownerAppId, ownerSessionId, url)
-                return .handled(false)
             case .external:
                 return .useDefault
             }
@@ -91,6 +91,10 @@ enum RunnerBridge {
         return tabId.isEmpty ? nil : tabId
     }
 
+    static func builtinBrowserAppId() -> String {
+        getBuiltinBrowserAppId().toString()
+    }
+
     static func browserTabWebView(tabId: String) -> WKWebView? {
         let normalized = tabId.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalized.isEmpty else { return nil }
@@ -102,6 +106,12 @@ enum RunnerBridge {
         let path = browserTabPathForId(normalized).toString()
         guard !path.isEmpty else { return nil }
         return WebViewManager.resolveWebView(appId: appId, path: path, sessionId: sessionId)
+    }
+
+    static func navigateBrowserTab(tabId: String, url: String) -> Bool {
+        let normalized = tabId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty else { return false }
+        return browserTabNavigate(normalized, url)
     }
 
     static func closeBrowserTab(tabId: String) -> Bool {

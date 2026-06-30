@@ -1057,9 +1057,20 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         window?.close()
     }
 
-    func presentBrowserTab(id tabId: String) {
+    /// Whether the in-app browser overlay is currently presented in this phone.
+    var isPresentingBrowser: Bool {
+        phoneBrowserSurface.isPresenting
+    }
+
+    func presentBrowserTab(id tabId: String, ownerAppId: String, ownerSessionId: UInt64) {
         guard let phoneContentView else { return }
-        phoneBrowserSurface.present(tabId: tabId, in: phoneContentView, window: window)
+        phoneBrowserSurface.present(
+            tabId: tabId,
+            ownerAppId: ownerAppId,
+            ownerSessionId: ownerSessionId,
+            in: phoneContentView,
+            window: window
+        )
         window?.makeKeyAndOrderFront(nil)
     }
     

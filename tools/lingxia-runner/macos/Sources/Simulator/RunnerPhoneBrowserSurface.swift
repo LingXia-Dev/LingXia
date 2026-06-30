@@ -2,19 +2,37 @@ import AppKit
 import WebKit
 import os.log
 
+/// In-app browser chrome for the simulated phone (the `target="self"` browser).
+/// Mirrors the iOS `LxAppBrowser`: an ordered set of open tabs with a tabs
+/// entrypoint (new-tab / tabs switcher / overflow menu) rather than a single
+/// replace-in-place tab. Switching tabs swaps the displayed managed webview
+/// instead of closing the old one.
 @MainActor
 final class RunnerPhoneBrowserSurface {
     private static let log = OSLog(subsystem: "LingXiaRunner", category: "PhoneBrowserSurface")
 
     private var overlayView: NSView?
     private var webContainer: NSView?
-    private var activeTabId: String?
     private weak var hostWindow: NSWindow?
+    private weak var phoneContentView: NSView?
+
+    // Ordered tab model (mirrors iOS LxAppBrowser.openTabIds). Tabs are opened by
+    // the lxapp (each `target="self"` navigation calls present) and by the new-tab
+    // button; this surface switches, opens, and closes them.
+    private var openTabIds: [String] = []
+    private var activeTabId: String?
+    // Owner of the most recent presentation, used to open new tabs ("+").
+    private var ownerAppId: String?
+    private var ownerSessionId: UInt64 = 0
 
     private var addressField: NSTextField?
+    private var addressIcon: NSImageView?
     private var backButton: NSButton?
     private var forwardButton: NSButton?
     private var refreshButton: NSButton?
+    private var tabsButton: NSButton?
+    private var tabsBadge: NSTextField?
+    private var tabSwitcherOverlay: NSView?
     private var urlObservation: NSKeyValueObservation?
     private var canGoBackObservation: NSKeyValueObservation?
     private var canGoForwardObservation: NSKeyValueObservation?
@@ -24,30 +42,96 @@ final class RunnerPhoneBrowserSurface {
         return webContainer?.subviews.compactMap { $0 as? WKWebView }.first
     }
 
-    func present(tabId: String, in phoneContent: NSView, window: NSWindow?) {
+    /// Whether the browser overlay is currently on screen with at least one tab.
+    /// Used to route in-page new-tab requests (owned by the builtin browser app)
+    /// to the host that is presenting the browser.
+    var isPresenting: Bool {
+        overlayView?.isHidden == false && !openTabIds.isEmpty
+    }
+
+    /// Show `tabId`, registering it. Existing tabs stay open; the displayed
+    /// webview is swapped to this tab. `ownerAppId`/`ownerSessionId` are the
+    /// lxapp (or builtin browser) that owns the tab, reused to open new tabs.
+    func present(tabId: String, ownerAppId: String, ownerSessionId: UInt64, in phoneContent: NSView, window: NSWindow?) {
         let normalized = tabId.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalized.isEmpty else { return }
 
-        if let activeTabId, activeTabId != normalized {
-            clearWebViewAttachment()
-            _ = RunnerSupport.Browser.closeTab(tabId: activeTabId)
-        }
-
-        activeTabId = normalized
+        self.ownerAppId = ownerAppId
+        self.ownerSessionId = ownerSessionId
         hostWindow = window
+        phoneContentView = phoneContent
+        register(tabId: normalized)
         show(in: phoneContent)
-        attachWebView(tabId: normalized, attempt: 0)
+        activate(tabId: normalized)
     }
 
+    /// Tear the browser down: detach the webview, close every open tab, hide the
+    /// overlay. Called from the close button and on window close.
     func dismiss(closeTab: Bool) {
-        let tabId = activeTabId
-        activeTabId = nil
         clearWebViewAttachment()
+        dismissTabSwitcher()
         overlayView?.isHidden = true
 
-        if closeTab, let tabId {
-            _ = RunnerSupport.Browser.closeTab(tabId: tabId)
+        if closeTab {
+            for tabId in openTabIds {
+                _ = RunnerSupport.Browser.closeTab(tabId: tabId)
+            }
         }
+        openTabIds.removeAll()
+        activeTabId = nil
+    }
+
+    private func register(tabId: String) {
+        if !openTabIds.contains(tabId) {
+            openTabIds.append(tabId)
+        }
+    }
+
+    /// Make an open tab the active, displayed one. Detaches (without closing) the
+    /// previous tab's webview and attaches the new one.
+    private func activate(tabId: String) {
+        guard openTabIds.contains(tabId) else { return }
+        activeTabId = tabId
+        clearWebViewAttachment()
+        updateTabsBadge()
+        attachWebView(tabId: tabId, attempt: 0)
+    }
+
+    /// Close a single tab and move focus to a neighbor; tear the browser down when
+    /// the last tab goes away (mirrors iOS closeTab).
+    private func closeTab(_ tabId: String) {
+        guard let index = openTabIds.firstIndex(of: tabId) else { return }
+        let wasActive = activeTabId == tabId
+
+        _ = RunnerSupport.Browser.closeTab(tabId: tabId)
+        openTabIds.remove(at: index)
+        updateTabsBadge()
+
+        guard wasActive else { return }
+        if openTabIds.isEmpty {
+            dismiss(closeTab: false)
+            return
+        }
+        let neighbor = index > 0 ? index - 1 : 0
+        activate(tabId: openTabIds[neighbor])
+    }
+
+    /// Open a fresh blank tab against the presenting owner and switch to it.
+    /// The runner bundles no browser webui, so a new tab is `about:blank`
+    /// (a blank page) rather than the `lingxia://newtab` start page.
+    private func openNewTab() {
+        guard let ownerAppId, ownerSessionId > 0,
+              let newId = RunnerSupport.Browser.openTab(
+                ownerAppId: ownerAppId,
+                ownerSessionId: ownerSessionId,
+                url: "about:blank"
+              )?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !newId.isEmpty else {
+            os_log("Failed to open new browser tab", log: Self.log, type: .error)
+            return
+        }
+        register(tabId: newId)
+        activate(tabId: newId)
     }
 
     private func setupIfNeeded(in phoneContent: NSView) {
@@ -78,24 +162,19 @@ final class RunnerPhoneBrowserSurface {
         barBackground.layer?.masksToBounds = true
         bottomBar.addSubview(barBackground)
 
-        let controlRow = NSStackView()
-        controlRow.translatesAutoresizingMaskIntoConstraints = false
-        controlRow.orientation = .horizontal
-        controlRow.alignment = .centerY
-        controlRow.spacing = 6
-        barBackground.addSubview(controlRow)
-
-        let backButton = makeIconButton(named: "icon_back", action: #selector(backClicked))
-        let forwardButton = makeIconButton(named: "icon_forward", action: #selector(forwardClicked))
-        let refreshButton = makeIconButton(named: "icon_browser_refresh", action: #selector(refreshClicked))
-        let closeButton = makeIconButton(named: "icon_close_x", action: #selector(closeClicked))
-
+        // Address row: icon + editable URL field + refresh, in a pill.
         let addressPill = NSView()
         addressPill.translatesAutoresizingMaskIntoConstraints = false
         addressPill.wantsLayer = true
         addressPill.layer?.backgroundColor = NSColor.textBackgroundColor.withAlphaComponent(0.74).cgColor
-        addressPill.layer?.cornerRadius = 18
+        addressPill.layer?.cornerRadius = 16
         addressPill.layer?.masksToBounds = true
+        barBackground.addSubview(addressPill)
+
+        let addressIcon = NSImageView()
+        addressIcon.translatesAutoresizingMaskIntoConstraints = false
+        addressIcon.imageScaling = .scaleProportionallyDown
+        addressPill.addSubview(addressIcon)
 
         let addressField = NSTextField()
         addressField.translatesAutoresizingMaskIntoConstraints = false
@@ -109,16 +188,51 @@ final class RunnerPhoneBrowserSurface {
         addressField.action = #selector(addressSubmitted)
         addressPill.addSubview(addressField)
 
-        controlRow.addArrangedSubview(backButton)
-        controlRow.addArrangedSubview(forwardButton)
-        controlRow.addArrangedSubview(addressPill)
-        controlRow.addArrangedSubview(refreshButton)
-        controlRow.addArrangedSubview(closeButton)
+        let refreshButton = makeIconButton(named: "icon_browser_refresh", action: #selector(refreshClicked), side: 30)
+        addressPill.addSubview(refreshButton)
+
+        // Action row: back / forward — spacer — new-tab / tabs / close, matching
+        // the iOS browser. (No downloads/settings overflow menu: those are
+        // `lingxia://` pages and the runner bundles no browser webui for them.)
+        let actionRow = NSStackView()
+        actionRow.translatesAutoresizingMaskIntoConstraints = false
+        actionRow.orientation = .horizontal
+        actionRow.alignment = .centerY
+        actionRow.spacing = 4
+        barBackground.addSubview(actionRow)
+
+        let backButton = makeIconButton(named: "icon_back", action: #selector(backClicked))
+        let forwardButton = makeIconButton(named: "icon_forward", action: #selector(forwardClicked))
+        let newTabButton = makeIconButton(named: "icon_browser_plus", action: #selector(newTabClicked))
+        let tabsButton = makeIconButton(named: "icon_browser_tabs", action: #selector(tabsClicked))
+        let closeButton = makeIconButton(named: "icon_close_x", action: #selector(closeClicked))
+
+        let spacer = NSView()
+        spacer.translatesAutoresizingMaskIntoConstraints = false
+        spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+
+        // Open-tab count overlaid on the tabs glyph.
+        let tabsBadge = NSTextField(labelWithString: "0")
+        tabsBadge.translatesAutoresizingMaskIntoConstraints = false
+        tabsBadge.font = NSFont.systemFont(ofSize: 9, weight: .semibold)
+        tabsBadge.textColor = NSColor.labelColor
+        tabsBadge.alignment = .center
+        tabsButton.addSubview(tabsBadge)
+
+        actionRow.addArrangedSubview(backButton)
+        actionRow.addArrangedSubview(forwardButton)
+        actionRow.addArrangedSubview(spacer)
+        actionRow.addArrangedSubview(newTabButton)
+        actionRow.addArrangedSubview(tabsButton)
+        actionRow.addArrangedSubview(closeButton)
 
         self.backButton = backButton
         self.forwardButton = forwardButton
         self.refreshButton = refreshButton
+        self.tabsButton = tabsButton
+        self.tabsBadge = tabsBadge
         self.addressField = addressField
+        self.addressIcon = addressIcon
 
         phoneContent.addSubview(overlay, positioned: .above, relativeTo: nil)
         NSLayoutConstraint.activate([
@@ -135,29 +249,42 @@ final class RunnerPhoneBrowserSurface {
             bottomBar.leadingAnchor.constraint(equalTo: overlay.leadingAnchor),
             bottomBar.trailingAnchor.constraint(equalTo: overlay.trailingAnchor),
             bottomBar.bottomAnchor.constraint(equalTo: overlay.bottomAnchor, constant: -4),
-            bottomBar.heightAnchor.constraint(equalToConstant: 52),
+            bottomBar.heightAnchor.constraint(equalToConstant: 96),
 
             barBackground.leadingAnchor.constraint(equalTo: bottomBar.leadingAnchor, constant: 12),
             barBackground.trailingAnchor.constraint(equalTo: bottomBar.trailingAnchor, constant: -12),
             barBackground.topAnchor.constraint(equalTo: bottomBar.topAnchor),
             barBackground.bottomAnchor.constraint(equalTo: bottomBar.bottomAnchor),
 
-            controlRow.leadingAnchor.constraint(equalTo: barBackground.leadingAnchor, constant: 8),
-            controlRow.trailingAnchor.constraint(equalTo: barBackground.trailingAnchor, constant: -8),
-            controlRow.centerYAnchor.constraint(equalTo: barBackground.centerYAnchor),
+            addressPill.leadingAnchor.constraint(equalTo: barBackground.leadingAnchor, constant: 10),
+            addressPill.trailingAnchor.constraint(equalTo: barBackground.trailingAnchor, constant: -10),
+            addressPill.topAnchor.constraint(equalTo: barBackground.topAnchor, constant: 8),
+            addressPill.heightAnchor.constraint(equalToConstant: 34),
 
-            addressPill.heightAnchor.constraint(equalToConstant: 36),
-            addressPill.widthAnchor.constraint(greaterThanOrEqualToConstant: 120),
-            addressField.leadingAnchor.constraint(equalTo: addressPill.leadingAnchor, constant: 12),
-            addressField.trailingAnchor.constraint(equalTo: addressPill.trailingAnchor, constant: -12),
+            addressIcon.leadingAnchor.constraint(equalTo: addressPill.leadingAnchor, constant: 10),
+            addressIcon.centerYAnchor.constraint(equalTo: addressPill.centerYAnchor),
+            addressIcon.widthAnchor.constraint(equalToConstant: 14),
+            addressIcon.heightAnchor.constraint(equalToConstant: 14),
+
+            addressField.leadingAnchor.constraint(equalTo: addressIcon.trailingAnchor, constant: 6),
+            addressField.trailingAnchor.constraint(equalTo: refreshButton.leadingAnchor, constant: -4),
             addressField.centerYAnchor.constraint(equalTo: addressPill.centerYAnchor),
+
+            refreshButton.trailingAnchor.constraint(equalTo: addressPill.trailingAnchor, constant: -2),
+            refreshButton.centerYAnchor.constraint(equalTo: addressPill.centerYAnchor),
+
+            actionRow.leadingAnchor.constraint(equalTo: barBackground.leadingAnchor, constant: 6),
+            actionRow.trailingAnchor.constraint(equalTo: barBackground.trailingAnchor, constant: -6),
+            actionRow.topAnchor.constraint(equalTo: addressPill.bottomAnchor, constant: 4),
+
+            tabsBadge.centerXAnchor.constraint(equalTo: tabsButton.centerXAnchor, constant: 1),
+            tabsBadge.centerYAnchor.constraint(equalTo: tabsButton.centerYAnchor, constant: -1),
         ])
-        addressPill.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        addressPill.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
         overlayView = overlay
         self.webContainer = webContainer
         updateNavigationButtons()
+        updateTabsBadge()
     }
 
     private func show(in phoneContent: NSView) {
@@ -185,7 +312,7 @@ final class RunnerPhoneBrowserSurface {
 
         guard attempt < 20 else {
             os_log("Failed to attach browser webview after retries tab=%@", log: Self.log, type: .error, tabId)
-            dismiss(closeTab: true)
+            closeTab(tabId)
             return
         }
 
@@ -230,6 +357,13 @@ final class RunnerPhoneBrowserSurface {
 
     private func updateAddress(url: URL?) {
         guard addressField?.currentEditor() == nil else { return }
+        // A blank new tab (about:blank) reads as empty, like a fresh tab.
+        if url == nil || url?.absoluteString == "about:blank" {
+            addressField?.stringValue = ""
+            addressIcon?.isHidden = true
+            return
+        }
+        addressIcon?.isHidden = false
         addressField?.stringValue = url?.absoluteString ?? ""
     }
 
@@ -243,7 +377,19 @@ final class RunnerPhoneBrowserSurface {
         refreshButton?.alphaValue = webView == nil ? 0.35 : 1.0
     }
 
-    private func makeIconButton(named iconName: String, action: Selector) -> NSButton {
+    private func updateTabsBadge() {
+        tabsBadge?.stringValue = String(openTabIds.count)
+    }
+
+    private func tabLabel(forTabId tabId: String) -> String {
+        if let webView = RunnerSupport.Browser.webView(tabId: tabId) {
+            if let title = webView.title, !title.isEmpty { return title }
+            if let host = webView.url?.host, !host.isEmpty { return host }
+        }
+        return "New Tab"
+    }
+
+    private func makeIconButton(named iconName: String, action: Selector, side: CGFloat = 38) -> NSButton {
         let button = NSButton()
         button.translatesAutoresizingMaskIntoConstraints = false
         button.isBordered = false
@@ -252,14 +398,153 @@ final class RunnerPhoneBrowserSurface {
         button.target = self
         button.action = action
         NSLayoutConstraint.activate([
-            button.widthAnchor.constraint(equalToConstant: 40),
-            button.heightAnchor.constraint(equalToConstant: 40),
+            button.widthAnchor.constraint(equalToConstant: side),
+            button.heightAnchor.constraint(equalToConstant: side),
         ])
         return button
     }
 
+    // MARK: - Tab switcher
+
+    /// The switcher is an in-frame bottom sheet (a subview of the browser overlay)
+    /// rather than an NSPopover — a popover floats relative to the screen and
+    /// escapes the simulated phone's window. Mirrors the iOS tab-switcher sheet.
+    @objc private func tabsClicked() {
+        if tabSwitcherOverlay != nil {
+            dismissTabSwitcher()
+            return
+        }
+        guard let overlay = overlayView else { return }
+        presentTabSwitcher(in: overlay)
+    }
+
+    private func dismissTabSwitcher() {
+        tabSwitcherOverlay?.removeFromSuperview()
+        tabSwitcherOverlay = nil
+    }
+
+    private func presentTabSwitcher(in overlay: NSView) {
+        let dim = TapCatcherView()
+        dim.translatesAutoresizingMaskIntoConstraints = false
+        dim.wantsLayer = true
+        dim.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.35).cgColor
+        dim.onClick = { [weak self] in self?.dismissTabSwitcher() }
+        overlay.addSubview(dim, positioned: .above, relativeTo: nil)
+
+        let panel = SheetPanelView()
+        panel.translatesAutoresizingMaskIntoConstraints = false
+        panel.material = .hudWindow
+        panel.blendingMode = .withinWindow
+        panel.state = .active
+        panel.wantsLayer = true
+        panel.layer?.cornerRadius = 18
+        // Round only the top edge (maxY in the unflipped layer geometry).
+        panel.layer?.maskedCorners = [.layerMinXMaxYCorner, .layerMaxXMaxYCorner]
+        panel.layer?.masksToBounds = true
+        dim.addSubview(panel)
+
+        let title = NSTextField(labelWithString: "Tabs")
+        title.translatesAutoresizingMaskIntoConstraints = false
+        title.font = NSFont.systemFont(ofSize: 15, weight: .semibold)
+        panel.addSubview(title)
+
+        let list = NSStackView()
+        list.translatesAutoresizingMaskIntoConstraints = false
+        list.orientation = .vertical
+        list.alignment = .leading
+        list.spacing = 2
+        panel.addSubview(list)
+
+        NSLayoutConstraint.activate([
+            dim.topAnchor.constraint(equalTo: overlay.topAnchor),
+            dim.leadingAnchor.constraint(equalTo: overlay.leadingAnchor),
+            dim.trailingAnchor.constraint(equalTo: overlay.trailingAnchor),
+            dim.bottomAnchor.constraint(equalTo: overlay.bottomAnchor),
+
+            panel.leadingAnchor.constraint(equalTo: overlay.leadingAnchor),
+            panel.trailingAnchor.constraint(equalTo: overlay.trailingAnchor),
+            panel.bottomAnchor.constraint(equalTo: overlay.bottomAnchor),
+            panel.heightAnchor.constraint(lessThanOrEqualTo: overlay.heightAnchor, multiplier: 0.6),
+
+            title.topAnchor.constraint(equalTo: panel.topAnchor, constant: 14),
+            title.leadingAnchor.constraint(equalTo: panel.leadingAnchor, constant: 16),
+
+            list.topAnchor.constraint(equalTo: title.bottomAnchor, constant: 8),
+            list.leadingAnchor.constraint(equalTo: panel.leadingAnchor, constant: 8),
+            list.trailingAnchor.constraint(equalTo: panel.trailingAnchor, constant: -8),
+            list.bottomAnchor.constraint(equalTo: panel.bottomAnchor, constant: -16),
+        ])
+
+        tabSwitcherOverlay = dim
+        for tabId in openTabIds {
+            list.addArrangedSubview(makeTabSwitcherRow(tabId: tabId, width: overlay.bounds.width - 16))
+        }
+    }
+
+    private func makeTabSwitcherRow(tabId: String, width: CGFloat) -> NSView {
+        let row = TabRowView()
+        row.translatesAutoresizingMaskIntoConstraints = false
+        row.onSelect = { [weak self] in
+            self?.dismissTabSwitcher()
+            self?.activate(tabId: tabId)
+        }
+
+        let isActive = activeTabId == tabId
+        let label = NSTextField(labelWithString: tabLabel(forTabId: tabId))
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.font = NSFont.systemFont(ofSize: 13, weight: isActive ? .semibold : .regular)
+        label.textColor = isActive ? NSColor.labelColor : NSColor.secondaryLabelColor
+        label.lineBreakMode = .byTruncatingTail
+        label.isEditable = false
+        label.isSelectable = false
+        label.drawsBackground = false
+        label.isBordered = false
+        row.addSubview(label)
+
+        let close = NSButton()
+        close.translatesAutoresizingMaskIntoConstraints = false
+        close.isBordered = false
+        close.image = RunnerSupport.Assets.image(named: "icon_close_x", size: CGSize(width: 14, height: 14))
+        close.imageScaling = .scaleProportionallyDown
+        close.target = self
+        close.action = #selector(closeTabFromSwitcher(_:))
+        close.identifier = NSUserInterfaceItemIdentifier(tabId)
+        row.addSubview(close)
+
+        NSLayoutConstraint.activate([
+            row.heightAnchor.constraint(equalToConstant: 40),
+            row.widthAnchor.constraint(equalToConstant: max(width, 120)),
+            label.leadingAnchor.constraint(equalTo: row.leadingAnchor, constant: 10),
+            label.trailingAnchor.constraint(equalTo: close.leadingAnchor, constant: -8),
+            label.centerYAnchor.constraint(equalTo: row.centerYAnchor),
+            close.trailingAnchor.constraint(equalTo: row.trailingAnchor, constant: -8),
+            close.centerYAnchor.constraint(equalTo: row.centerYAnchor),
+            close.widthAnchor.constraint(equalToConstant: 28),
+            close.heightAnchor.constraint(equalToConstant: 28),
+        ])
+        return row
+    }
+
+    @objc private func closeTabFromSwitcher(_ sender: NSButton) {
+        guard let tabId = sender.identifier?.rawValue else { return }
+        closeTab(tabId)
+        if openTabIds.isEmpty {
+            dismissTabSwitcher()
+        } else {
+            // Rebuild the list to drop the closed row / refresh active styling.
+            dismissTabSwitcher()
+            if let overlay = overlayView { presentTabSwitcher(in: overlay) }
+        }
+    }
+
+    // MARK: - Actions
+
     @objc private func closeClicked() {
         dismiss(closeTab: true)
+    }
+
+    @objc private func newTabClicked() {
+        openNewTab()
     }
 
     @objc private func backClicked() {
@@ -282,12 +567,46 @@ final class RunnerPhoneBrowserSurface {
                 rawInput: addressField?.stringValue ?? "",
                 currentURL: activeWebView?.url?.absoluteString,
                 tabId: tabId
-              ),
-              let url = URL(string: result.url) else {
+              ) else {
             return
         }
         addressField?.stringValue = result.displayText
         hostWindow?.makeFirstResponder(nil)
-        activeWebView?.load(URLRequest(url: url))
+        // Navigate through the managed browser runtime (a raw WKWebView.load is
+        // ignored by the browser's navigation policy), then re-attach: leaving a
+        // blank tab can swap in a fresh webview, so the displayed one is stale.
+        if RunnerSupport.Browser.navigate(tabId: tabId, url: result.url) {
+            attachWebView(tabId: tabId, attempt: 0)
+        }
     }
+}
+
+/// A row for the tab switcher: clicking the row activates its tab. The trailing
+/// close button is a subview, so AppKit routes its clicks to it directly; only
+/// clicks on the rest of the row reach `mouseDown`.
+@MainActor
+private final class TabRowView: NSView {
+    var onSelect: (() -> Void)?
+
+    override func mouseDown(with event: NSEvent) {
+        onSelect?()
+    }
+}
+
+/// Full-bleed dim backdrop for the tab-switcher sheet: a click anywhere on it
+/// (outside the panel, which sits above and consumes its own clicks) dismisses.
+@MainActor
+private final class TapCatcherView: NSView {
+    var onClick: (() -> Void)?
+
+    override func mouseDown(with event: NSEvent) {
+        onClick?()
+    }
+}
+
+/// The sheet panel swallows clicks so a tap on its chrome (title / empty space)
+/// doesn't bubble up to the dim backdrop and dismiss the sheet.
+@MainActor
+private final class SheetPanelView: NSVisualEffectView {
+    override func mouseDown(with event: NSEvent) {}
 }
