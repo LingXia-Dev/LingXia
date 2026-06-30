@@ -25,7 +25,7 @@ use self::config_files::generate_config_file;
 use self::lxapp_scaffold::{create_lxapp_from_template, create_lxapp_project};
 use self::native::{create_project, create_rust_library};
 use self::prompts::{
-    gather_lxapp_dir_name, gather_lxapp_framework, gather_native_app_service_mode,
+    gather_lxapp_dir_name, gather_lxapp_framework, gather_lxapp_id, gather_native_app_service_mode,
     gather_native_project_info, gather_product_name, gather_project_name, gather_project_type,
 };
 use self::types::{AppServiceMode, ProjectType};
@@ -74,9 +74,11 @@ pub fn execute(
 
     let project_type = gather_project_type(project_type)?;
     let name = gather_project_name(name)?;
-    let product_name = gather_product_name(&name, yes)?;
 
     if matches!(project_type, ProjectType::LxApp) {
+        // A lightweight lxapp keeps a single name: the project name doubles as
+        // the display name. Only the appId is separately editable.
+        let product_name = name.clone();
         // --functions needs the lingxiao CLI (it scaffolds + builds the worker).
         // Fail fast before creating anything — no half-worker fallback.
         if functions && !lingxiao_available() {
@@ -85,11 +87,13 @@ pub fn execute(
                  and builds the cloud worker.\nInstall lingxiao and retry, or omit --functions."
             ));
         }
+        let app_id = gather_lxapp_id(&name, yes)?;
         let framework = gather_lxapp_framework(yes)?;
         let target_dir = std::env::current_dir()?.join(&name);
         create_lxapp_from_template(
             &target_dir,
             &name,
+            &app_id,
             &product_name,
             &framework,
             AppServiceMode::Enabled,
@@ -112,6 +116,7 @@ pub fn execute(
         return Ok(());
     }
 
+    let product_name = gather_product_name(&name, yes)?;
     let config =
         gather_native_project_info(name, product_name, project_type, platforms, package_id, yes)?;
     let theme = ColorfulTheme::default();

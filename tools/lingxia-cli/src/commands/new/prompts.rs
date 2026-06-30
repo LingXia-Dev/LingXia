@@ -38,6 +38,24 @@ pub(super) fn gather_product_name(project_name: &str, yes: bool) -> Result<Strin
     Ok(input.trim().to_string())
 }
 
+/// Editable appId for a standalone lxapp. Defaults to the project name and is
+/// validated like a project name (no spaces; alphanumeric/_/- only). In --yes
+/// mode the default is used unprompted.
+pub(super) fn gather_lxapp_id(default: &str, yes: bool) -> Result<String> {
+    if yes {
+        return Ok(default.to_string());
+    }
+
+    let id: String = Input::with_theme(&ColorfulTheme::default())
+        .with_prompt("LxApp ID")
+        .with_initial_text(default.to_string())
+        .validate_with(|input: &String| -> Result<(), String> {
+            validate_project_name(input.trim()).map_err(|e| e.to_string())
+        })
+        .interact_text()?;
+    Ok(id.trim().to_string())
+}
+
 pub(super) fn gather_project_type(project_type: Option<String>) -> Result<ProjectType> {
     Ok(match project_type.and_then(|t| ProjectType::from_str(&t)) {
         Some(t) => t,
