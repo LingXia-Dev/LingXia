@@ -917,6 +917,9 @@ fn ensure_valid_lxapp_dir(path: &Path) -> Result<()> {
 fn launch_runner_for_lxapp(lxapp_path: &Path, ws_url: &str) -> Result<RunnerProcess> {
     platform::apple::ensure_macos()?;
     ensure_valid_lxapp_dir(lxapp_path)?;
+    // Provision the runner from the matching release if it isn't installed yet
+    // (end users install only the CLI; this self-heals the first `lingxia dev`).
+    crate::runner_cache::ensure_runner(REQUIRED_RUNNER_VERSION, false)?;
     let app_path = installed_runner_app_path()?;
     ensure_runner_matches_cli(&app_path)?;
     terminate_existing_runner_processes()?;
@@ -1084,8 +1087,7 @@ fn installed_windows_runner_exe_path() -> Result<PathBuf> {
     if !exe_path.exists() {
         return Err(anyhow!(
             "Windows LingXia Runner {} is not installed at {}.\n\
-             Install it from the LingXia workspace with:\n  \
-             powershell -ExecutionPolicy Bypass -File tools\\lingxia-runner\\windows\\install-local-runner.ps1",
+             Install it with:\n  lingxia runner install",
             REQUIRED_RUNNER_VERSION,
             exe_path.display()
         ));
@@ -1100,6 +1102,8 @@ fn installed_windows_runner_exe_path() -> Result<PathBuf> {
 /// (devtool bridge). Host identity is generated into `app.json`.
 fn launch_windows_runner_for_lxapp(lxapp_path: &Path, ws_url: &str) -> Result<RunnerProcess> {
     ensure_valid_lxapp_dir(lxapp_path)?;
+    // Provision the runner from the matching release if it isn't installed yet.
+    crate::runner_cache::ensure_runner(REQUIRED_RUNNER_VERSION, false)?;
     let identity = read_windows_runner_lxapp_identity(lxapp_path)?;
     let assets_dir = prepare_windows_runner_assets(lxapp_path, &identity, ws_url)?;
     let exe_path = installed_windows_runner_exe_path()?;
@@ -1653,7 +1657,8 @@ fn installed_runner_app_path() -> Result<PathBuf> {
         .join(RUNNER_APP_NAME);
     if !path.exists() {
         return Err(anyhow!(
-            "LingXia Runner {} is not installed at {}.",
+            "LingXia Runner {} is not installed at {}.\n\
+             Install it with:\n  lingxia runner install",
             REQUIRED_RUNNER_VERSION,
             path.display()
         ));

@@ -122,7 +122,58 @@ fn install_update(exe_path: &Path, status: &UpdateStatus) -> Result<()> {
     }
 
     println!("Updated LingXia CLI to {}", status.latest_version);
+
+    // The CLI, lxdev, and the runner ship from one release, so update them
+    // together. Both are best-effort: a failure (e.g. offline, or an older
+    // release without the asset) must not fail the CLI update.
+
+    // lxdev: the devtools binary installed alongside the CLI.
+    update_sibling_binary(parent, "lxdev", &status.release_repo, &status.latest_tag);
+
+    // Runner: `lingxia dev` re-provisions if this misses.
+    let runner_version = status.latest_version.to_string();
+    if let Err(err) = crate::runner_cache::ensure_runner(&runner_version, true) {
+        eprintln!("warning: failed to update the LingXia Runner to {runner_version}: {err}");
+        eprintln!("It will be fetched on the next `lingxia dev`.");
+    }
     Ok(())
+}
+
+/// Best-effort refresh of a sibling release binary (e.g. `lxdev`) next to the
+/// CLI. Downloads the platform asset and atomically swaps it; warns and returns
+/// on any failure so the CLI update itself is never blocked. Reached only on
+/// platforms where auto-update runs (see `current_platform_asset_name`).
+fn update_sibling_binary(dir: &Path, name: &str, repo: &str, tag: &str) {
+    let suffix = match platform_suffix() {
+        Ok(suffix) => suffix,
+        Err(_) => return,
+    };
+    let asset = format!("{name}-{suffix}");
+    let bytes = match github::download_release_asset_from_repo(repo, tag, &asset) {
+        Ok(bytes) => bytes,
+        Err(err) => {
+            eprintln!("warning: failed to update {name}: {err}");
+            return;
+        }
+    };
+    let dest = dir.join(name);
+    let temp_path = dir.join(format!(".{name}-update-{}", std::process::id()));
+    let result = (|| -> Result<()> {
+        fs::write(&temp_path, &bytes)
+            .with_context(|| format!("Failed to write temp binary: {}", temp_path.display()))?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&temp_path, fs::Permissions::from_mode(0o755))
+                .with_context(|| format!("Failed to chmod {}", temp_path.display()))?;
+        }
+        fs::rename(&temp_path, &dest)
+            .with_context(|| format!("Failed to replace {}", dest.display()))
+    })();
+    if let Err(err) = result {
+        let _ = fs::remove_file(&temp_path);
+        eprintln!("warning: failed to update {name}: {err}");
+    }
 }
 
 fn load_update_status(force_refresh: bool) -> Result<UpdateStatus> {
@@ -301,6 +352,13 @@ fn update_install_metadata_version(exe_path: &Path, version: &str) -> Result<()>
 }
 
 fn current_platform_asset_name() -> Result<String> {
+    Ok(format!("lingxia-{}", platform_suffix()?))
+}
+
+/// The `<os>-<arch>` suffix shared by every release binary asset
+/// (`lingxia-<suffix>`, `lxdev-<suffix>`). Errors on platforms where
+/// auto-update isn't supported yet.
+fn platform_suffix() -> Result<String> {
     let os = match env::consts::OS {
         "macos" => "darwin",
         "linux" => "linux",
@@ -321,7 +379,7 @@ fn current_platform_asset_name() -> Result<String> {
             ));
         }
     };
-    Ok(format!("lingxia-{os}-{arch}"))
+    Ok(format!("{os}-{arch}"))
 }
 
 #[cfg(test)]

@@ -87,12 +87,13 @@ OS="$(detect_os)"
 ARCH="$(detect_arch)"
 # Asset name scheme matches .github/workflows/release-cli.yml exactly.
 if [ "$OS" = "windows" ]; then
-  ASSET="lingxia-${OS}-${ARCH}.exe"
-  BIN_NAME="lingxia.exe"
+  EXT=".exe"
 else
-  ASSET="lingxia-${OS}-${ARCH}"
-  BIN_NAME="lingxia"
+  EXT=""
 fi
+# Binaries shipped together in the lingxia-cli release, installed as peers:
+# the CLI (`lingxia`) and the devtools client (`lxdev`).
+BINARIES="lingxia lxdev"
 
 # --- Resolve version ---------------------------------------------------------
 # The repo ships several components, each with its own tag prefix (e.g.
@@ -125,43 +126,47 @@ info "Installing lingxia $VERSION ($OS/$ARCH) from $REPO"
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT INT TERM
 
-info "Downloading $ASSET ..."
-download "$BASE_URL/$ASSET" "$TMP_DIR/$ASSET" \
-  || err "failed to download $ASSET from $BASE_URL"
-
+# The SHASUMS file covers every release asset; download it once and verify each
+# binary against it.
 info "Downloading checksums ..."
 download "$BASE_URL/$SHASUMS" "$TMP_DIR/$SHASUMS" \
   || err "failed to download $SHASUMS from $BASE_URL"
 
-# --- Verify checksum ---------------------------------------------------------
-# The SHASUMS file covers every release asset; isolate the line for our binary
-# so `-c` does not fail on files we did not download.
-info "Verifying checksum ..."
-expected_line="$(grep -E "[[:space:]]${ASSET}\$" "$TMP_DIR/$SHASUMS" || true)"
-[ -n "$expected_line" ] || err "no checksum entry for $ASSET in $SHASUMS"
-echo "$expected_line" > "$TMP_DIR/$ASSET.sha256"
-
-(
-  cd "$TMP_DIR"
-  if command -v sha256sum >/dev/null 2>&1; then
-    sha256sum -c "$ASSET.sha256" >/dev/null
-  elif command -v shasum >/dev/null 2>&1; then
-    shasum -a 256 -c "$ASSET.sha256" >/dev/null
-  else
-    err "need sha256sum or shasum to verify the download"
-  fi
-) || err "checksum verification failed for $ASSET"
-
-# --- Install -----------------------------------------------------------------
-mkdir -p "$INSTALL_DIR"
-DEST="$INSTALL_DIR/$BIN_NAME"
-mv "$TMP_DIR/$ASSET" "$DEST"
-if [ "$OS" != "windows" ]; then
-  chmod +x "$DEST"
+# Pick the checksum tool once.
+if command -v sha256sum >/dev/null 2>&1; then
+  sha_check() { sha256sum -c "$1" >/dev/null; }
+elif command -v shasum >/dev/null 2>&1; then
+  sha_check() { shasum -a 256 -c "$1" >/dev/null; }
+else
+  err "need sha256sum or shasum to verify the download"
 fi
 
+mkdir -p "$INSTALL_DIR"
+
+# Download, verify, and install each binary (the CLI and the devtools client).
+for bin in $BINARIES; do
+  asset="${bin}-${OS}-${ARCH}${EXT}"
+  bin_name="${bin}${EXT}"
+
+  info "Downloading $asset ..."
+  download "$BASE_URL/$asset" "$TMP_DIR/$asset" \
+    || err "failed to download $asset from $BASE_URL"
+
+  # Isolate this asset's line so `-c` does not fail on files we did not download.
+  expected_line="$(grep -E "[[:space:]]\*?${asset}\$" "$TMP_DIR/$SHASUMS" || true)"
+  [ -n "$expected_line" ] || err "no checksum entry for $asset in $SHASUMS"
+  echo "$expected_line" > "$TMP_DIR/$asset.sha256"
+  ( cd "$TMP_DIR" && sha_check "$asset.sha256" ) \
+    || err "checksum verification failed for $asset"
+
+  dest="$INSTALL_DIR/$bin_name"
+  mv "$TMP_DIR/$asset" "$dest"
+  [ "$OS" = "windows" ] || chmod +x "$dest"
+  info "Installed $bin_name -> $dest"
+done
+
 info ""
-info "Installed lingxia $VERSION to $DEST; run \`$BIN_NAME --version\`"
+info "Installed lingxia + lxdev $VERSION to $INSTALL_DIR; run \`lingxia${EXT} --version\`"
 
 # Warn if the install dir is not on PATH.
 case ":$PATH:" in

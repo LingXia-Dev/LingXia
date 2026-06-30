@@ -82,7 +82,7 @@ fn shasums_candidates(platform: SdkPlatform, version: &str) -> Vec<String> {
 }
 
 /// Compute the lowercase hex SHA-256 of `bytes`. Mirrors `assets/hash.rs`.
-fn sha256_hex(bytes: &[u8]) -> String {
+pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
     let mut hasher = sha2::Sha256::new();
     hasher.update(bytes);
     let digest = hasher.finalize();
@@ -97,7 +97,7 @@ fn sha256_hex(bytes: &[u8]) -> String {
 /// Parse a SHASUMS file and return the recorded hash for `basename`.
 ///
 /// Format (one per line, GNU coreutils style): `<hex>␠␠<basename>`.
-fn shasum_for(shasums: &str, basename: &str) -> Option<String> {
+pub(crate) fn shasum_for(shasums: &str, basename: &str) -> Option<String> {
     for line in shasums.lines() {
         let line = line.trim();
         if line.is_empty() || line.starts_with('#') {
