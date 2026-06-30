@@ -17,6 +17,48 @@ fn test_resolved_env() -> ResolvedEnv {
 }
 
 #[test]
+fn lingxia_id_is_not_suffixed_by_env() {
+    let config = LingXiaConfig {
+        app: Some(HostAppConfig {
+            project_name: "demo".into(),
+            rust_lib_dir: None,
+            product_name: "Demo".into(),
+            product_version: "1.2.3".into(),
+            lingxia_server: None,
+            lingxia_id: Some("app.lingxia.demo".into()),
+            package_id_suffix: None,
+            platforms: vec!["macos".into()],
+            home_app_id: "demo-home".into(),
+        }),
+        android: None,
+        ios: None,
+        macos: None,
+        harmony: None,
+        windows: None,
+        features: None,
+        capabilities: None,
+        browser: None,
+        generated_ui: None,
+        surfaces: None,
+        app_links: None,
+        storage: None,
+        resources: None,
+    };
+    // An active package-id suffix must not leak into lingxiaId.
+    let dev_env = ResolvedEnv {
+        version: EnvVersion::Developer,
+        lingxia_server: String::new(),
+        package_id_suffix: Some(".dev".to_string()),
+    };
+    let app_json = build_app_json_from_config(&config, None, None, &dev_env).unwrap();
+    let value: serde_json::Value = serde_json::from_str(&app_json).unwrap();
+    assert_eq!(
+        value.get("lingxiaId").and_then(|v| v.as_str()),
+        Some("app.lingxia.demo")
+    );
+}
+
+#[test]
 fn generated_app_json_excludes_ui_fields() {
     let config = LingXiaConfig {
         app: Some(HostAppConfig {
