@@ -2,6 +2,7 @@ use anyhow::Result;
 use clap::{Parser, Subcommand, error::ErrorKind};
 
 mod appicon;
+mod cli_config;
 mod commands;
 mod config;
 // `gen` is a reserved keyword in Rust 2024 — escape it so the module name
@@ -357,9 +358,10 @@ enum Commands {
 
     /// Publish a package to the LingXia server
     Publish {
-        /// Bearer token for authentication (or set LINGXIA_AUTH_TOKEN env var)
-        #[arg(long, env = "LINGXIA_AUTH_TOKEN")]
-        token: String,
+        /// Bearer token for authentication. Falls back to `[publish] token` in
+        /// `~/.lingxia/cli/config.toml` when omitted.
+        #[arg(long)]
+        token: Option<String>,
 
         /// LingXia server URL
         #[arg(long)]
