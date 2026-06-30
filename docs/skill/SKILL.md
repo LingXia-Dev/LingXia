@@ -11,10 +11,10 @@ LingXia is a cross-platform app framework. This skill is the entry router — it
 
 This skill is installed via `npx @lingxia/skill install` (the `lingxia` CLI prints a hint pointing at that command after `lingxia new`, but does not install the skill itself). When you read this you can usually assume:
 
-- The `lingxia` CLI is on `PATH` (verify with `lingxia --version`); if not, point the human at `docs/quick-start.md` in the LingXia repo for the install steps.
+- The `lingxia` CLI is on `PATH` (verify with `lingxia --version`); if not, the human needs to install the CLI first — a one-time setup outside this skill's scope.
 - You are inside a LingXia project — but **confirm the shape** with the probe in Step 0 rather than guessing.
 
-For first-time CLI + platform-toolchain setup (one-time, human-facing onramp), the repo's `docs/quick-start.md` is the source. This skill does not duplicate it.
+First-time CLI + platform-toolchain setup is a one-time, human-facing onramp this skill assumes is already done; it is out of scope here.
 
 ---
 
@@ -35,9 +35,9 @@ If none match, you're about to scaffold a new project — continue to 0b. If one
 ### 0b. Pick the shape (ask the user or infer)
 
 1. **Standalone lxapp or host app?** (A vs B/C below)
-2. **If host app:** which platforms? `android`, `ios`, `macos`, `harmony`, any combination.
+2. **If host app:** which platforms? `android`, `ios`, `macos`, `windows`, `harmony`, any combination.
 3. **If host app:** JS Logic for the home lxapp, or native-only Rust? (B vs C)
-4. **View framework:** React **or** Vue **or** HTML — pick **one**. The LingXia repo's `lingxia-showcase` example deliberately mixes all three; real apps do not.
+4. **View framework:** React **or** Vue **or** HTML — pick **one**. Some demo apps deliberately mix all three to exercise each binding; real apps do not.
 
 Then scaffold:
 
@@ -47,7 +47,7 @@ lingxia new my-lxapp -t lxapp -y
 
 # Shape B/C — native host app
 lingxia new my-app -t native-app -p macos --package-id com.example.myapp -y
-# -p accepts: android, ios, macos, harmony, all  (comma-separated)
+# -p accepts: android, ios, macos, windows, harmony, all  (comma-separated)
 ```
 
 `lingxia doctor` verifies platform toolchains.

@@ -157,5 +157,3 @@ Use `lxdev <family> <cmd> --help` whenever you need the exact flags for one of t
 | `pass exactly one wait condition` / `pass exactly one of --url or --contains` | A `wait` / `wait-url` got zero or several conditions — give exactly one (`lxdev browser wait --help`). |
 | `eval` returns nothing / wrong scope | You likely targeted the wrong context — see [The two `eval` targets](#the-two-eval-targets--dont-conflate-them). |
 | `lxdev` connects but commands hang | The host app likely lost its bridge — restart `lingxia dev`. |
-
-For the underlying design rationale (why no daemon, the file layout), see the project draft `docs/draft/dev-session-multi.md` in the LingXia repo.

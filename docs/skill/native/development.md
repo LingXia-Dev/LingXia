@@ -116,8 +116,9 @@ Rules:
 ### The macro-generated `<fn>_host()` companion
 
 `#[lingxia::native(...)]` is an attribute macro. In addition to wrapping the
-function body, it generates a sibling `fn <name>_host() -> HostEntry` that
-returns the registration value the host addon hands to
+function body, it generates a sibling
+`fn <name>_host() -> lingxia::host::HostRegistrationEntry` that returns the
+registration value the host addon hands to
 `lingxia::host::register_host_entry`. You do not write this companion yourself
 and you cannot rename it.
 
@@ -239,41 +240,13 @@ Generate the View client from the native Rust crate's `build.rs` with
 that owns `#[lingxia::native]` handlers, and `cargo build` fails before the
 lxapp is packaged if the generated client drifts.
 
-Native host templates already include this wiring. For a custom native crate,
-add the build dependency:
-
-```toml
-[package]
-build = "build.rs"
-
-[build-dependencies]
-lingxia-native-codegen = "0.6.8"
-```
-
-Then generate to the lxapp's source tree:
-
-```rust
-// build.rs
-use std::path::PathBuf;
-
-fn main() {
-    println!("cargo:rerun-if-changed=build.rs");
-    println!("cargo:rerun-if-changed=src");
-    println!("cargo:rerun-if-env-changed=LINGXIA_NATIVE_CLIENT_OUT");
-
-    let Some(out) = std::env::var_os("LINGXIA_NATIVE_CLIENT_OUT") else {
-        return;
-    };
-
-    let manifest_dir = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
-    let rust_dir = manifest_dir.join("src");
-    let out = PathBuf::from(out);
-    let out = if out.is_absolute() { out } else { manifest_dir.join(out) };
-
-    lingxia_native_codegen::generate_native_client_from_paths(&rust_dir, &out)
-        .expect("generate LingXia native client");
-}
-```
+The `lingxia new` templates already ship this wiring: a `build = "build.rs"`
+manifest entry, a `lingxia-native-codegen` build-dependency (pinned to the
+matching SDK version), and a `build.rs` that invokes the codegen entrypoints.
+Start from a scaffolded native crate rather than reproducing the build script
+here. For a hand-rolled crate, copy the template's `build.rs` and add the
+build-dependency to your `Cargo.toml`; let the scaffolded template define the
+version so it stays in lockstep with the SDK.
 
 The generator scans `#[lingxia::native]` handlers and nearby struct DTOs. It
 supports TypeScript module output (`.ts`) and browser-global output (`.js`).
@@ -316,50 +289,33 @@ wrap stream/channel handles themselves.
 
 ## LingXia Facade Modules
 
-Native route handlers should use facade modules instead of internal crates:
+Native route handlers reach shared SDK capabilities through the `lingxia::*`
+facade modules — `lingxia::app`, `lingxia::file`, `lingxia::media`,
+`lingxia::task`, `lingxia::update`, and friends. Each facade re-exports the
+stable, supported surface for one capability area: app state and paths, file
+and media pickers/downloads, runtime task spawning, and host-app update.
+
+Import the facade, never the internal crates behind it (such as
+`lingxia_logic` or `rong`). The facades are the contract; the internals drift.
 
 ```rust
-let state_file = lingxia::app::state_file_for(&app, "editor.json")?;
-let downloaded = lingxia::file::download(&app, "https://example.com/report.pdf").await?;
-let media = lingxia::media::choose_media(&app, request).await?;
-let files = lingxia::file::choose_file(&app, request).await?;
-```
-
-Use `lingxia::task` for runtime helpers:
-
-```rust
-let value = lingxia::task::spawn_blocking(|| expensive_work()).await?;
-lingxia::task::spawn(async move {
-    // background work
-});
-```
-
-Host app update defaults to LingXia's built-in UX. Native apps that need full
-custom UI should opt into custom mode and drive the returned update task:
-
-```rust
-lingxia::update::use_custom_host_app_update();
-
-if let Some(update) = lingxia::update::check_host_app_update().await? {
-    let info = update.info();
-    println!(
-        "update {} size {:?}",
-        info.version(),
-        info.package_size_bytes()
-    );
-
-    let mut apply = update.apply();
-    while let Some(event) = apply.next().await {
-        println!("update event: {event:?}");
-    }
+#[lingxia::native("editor.cacheState")]
+async fn cache_state(app: Arc<lingxia::LxApp>) -> lingxia::Result<String> {
+    // Capability calls live behind the facade modules, e.g. lingxia::app::*.
+    let state_file = lingxia::app::state_file_for(&app, "editor.json")?;
+    Ok(state_file.to_string_lossy().into_owned())
 }
 ```
 
-The checked update owns the package metadata. App code should not pass versions,
-package paths, or raw provider results back into the update API.
+For exact function names, parameters, and return types, read the crate docs
+rather than relying on a list here — they track the code:
 
-Provider authors should import provider traits through `lingxia::provider`.
-Media stream providers should import stream traits through `lingxia::media`.
+```sh
+cargo doc -p lingxia --open
+```
+
+Provider authors should likewise import provider traits through
+`lingxia::provider`, and media stream providers through `lingxia::media`.
 
 ## JS AppService Extensions
 

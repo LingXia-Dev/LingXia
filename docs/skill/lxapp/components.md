@@ -2,7 +2,7 @@
 
 LingXia ships native-backed components for lxapp views: `LxPicker`, `LxVideo`, `LxMediaSwiper`, `LxNavigator` — reserved for capabilities the web platform cannot deliver. Text input is deliberately **not** a component: use plain `<input>` / `<textarea>` (see [Text inputs](#text-inputs--use-plain-input--textarea)).
 
-The components live in `@lingxia/elements` (the pure-JS custom elements) and are re-exported as framework-friendly wrappers from `@lingxia/react`, `@lingxia/vue`, and `@lingxia/html`. **Almost always import from the framework package**, not from `@lingxia/elements`.
+The components live in `@lingxia/elements` (the pure-JS custom elements) and are re-exported as framework-friendly wrappers from `@lingxia/react` and `@lingxia/vue`. **In React/Vue, almost always import from the framework package**, not from `@lingxia/elements`. HTML views skip the wrappers and use the raw custom-element tags (`<lx-video>`, …) once `@lingxia/elements` has registered them; `@lingxia/html` itself exports only page-runtime utilities (`getActions` / `subscribe`).
 
 For framework wiring (event short-path vs. View DOM path, `useLxPage` shape) see [`./guide.md`](./guide.md).
 
@@ -17,7 +17,7 @@ import { LxVideo, LxPicker, LxMediaSwiper, LxNavigator } from '@lingxia/react';
 // Vue
 import { LxVideo, LxPicker, LxMediaSwiper, LxNavigator } from '@lingxia/vue';
 
-// HTML (custom-element registration runs automatically when @lingxia/html is loaded)
+// HTML — no wrapper import; the raw tags are registered by @lingxia/elements.
 // Use the tag names directly in markup: <lx-video>, <lx-picker>, <lx-media-swiper>, <lx-navigator>
 ```
 
@@ -85,40 +85,23 @@ visualViewport?.addEventListener('resize', onResize);
 
 ## `LxPicker`
 
-Native picker with several modes.
+Native picker — modal column/date/time selection the web platform can't render natively. Full attribute list is the exported `LxPickerAttributes` (+ `LxPickerColumn`, `LxPickerCascadingColumns`) from `@lingxia/elements`; the doc-only behavior is the `mode` → value-type mapping and the callback reshaping below.
 
-**Modes (`mode` attribute):**
+**Modes (`mode` attribute)** — the mode determines the confirm value type:
 
-| Mode | Columns shape | Confirm value type |
-|---|---|---|
-| `selector` (default) | `string[]` (one column) | `string` |
-| `multiSelector` | `string[][]` (parallel columns) | `string[]` |
-| `cascading` | `LxPickerCascadingColumns` (tree) | `string[]` |
-| `date` | configured via `fields`, `start`, `end` | `string` (`YYYY-MM-DD`) |
-| `time` | hours/minutes | `string` (`HH:mm`) |
+| Mode | Confirm value type |
+|---|---|
+| `selector` (default) | `string` |
+| `multiSelector` | `string[]` |
+| `cascading` | `string[]` |
+| `date` | `string` (`YYYY-MM-DD`) |
+| `time` | `string` (`HH:mm`) |
 
-**Key attributes:**
-
-| Attribute | Type | Notes |
-|---|---|---|
-| `mode` | one of above | |
-| `columns` | `LxPickerColumn[] \| LxPickerCascadingColumns` | Required for selector / multiSelector / cascading. |
-| `defaultIndex` | `number \| number[]` | Initial selected index(es). |
-| `value` | `string` | Initial date/time for `date`/`time` modes. |
-| `start` / `end` | `string` | Date/time range bounds. |
-| `fields` | `'year' \| 'month' \| 'day' \| 'range'` | Date mode granularity. |
-| `cancelText` / `confirmText` | `string` | Button labels. |
-| `cancelButtonColor` / `confirmButtonColor` / `cancelTextColor` / `confirmTextColor` | `string` (hex) | Styling. |
-
-**Event handler shapes** — all three callbacks receive the resolved **value**
-(the wrappers unwrap the raw event): a `string` for `selector` / `date` /
-`time`, a `string[]` for `multiSelector` / `cascading`.
-
-| Event prop (React) | Vue event | Fires on |
-|---|---|---|
-| `onConfirm(value)` | `@confirm` | confirm button |
-| `onCancel()` | `@cancel` | cancel button / dismiss |
-| `onColumnChange(value)` | `@column-change` | a column scrolled, before confirm |
+**Callback reshaping** — the wrappers unwrap the raw event, so `onConfirm` /
+`onColumnChange` receive the resolved **value** directly (a `string` for
+`selector` / `date` / `time`, a `string[]` for `multiSelector` / `cascading`).
+`onConfirm` fires on the confirm button, `onColumnChange` on each column scroll,
+`onCancel()` on cancel/dismiss (no argument).
 
 ```tsx
 <LxPicker
@@ -137,65 +120,38 @@ Native picker with several modes.
 
 ## `LxVideo`
 
-Native video player.
+Native video player with quality/rate switching, fullscreen, and live mode. The
+full attribute list (`src`, `poster`, `objectFit`, `controls`, `qualities`,
+`playbackRates`, …) is the exported `LxVideoAttributes` from `@lingxia/elements`;
+remote `src` must be under `security.network.trustedDomains`. Two pieces of
+behavior are doc-only: event reshaping and imperative control.
 
-**Attributes (`LxVideoAttributes`):**
-
-| Attribute | Type | Notes |
-|---|---|---|
-| `id` | `string` | Pass to `lx.createVideoContext(id)` in Logic to imperatively control the player. |
-| `src` | `string` | Video URL. Must be under `security.network.trustedDomains` if remote. |
-| `poster` | `string` | Cover image URL. |
-| `objectFit` | `'cover' \| 'contain' \| 'fill' \| 'fit'` | |
-| `contentRotate` | `0 \| 90 \| 180 \| 270` | |
-| `autoplay` / `loop` / `muted` | `boolean` | |
-| `controls` | `boolean` | Show native controls UI. |
-| `progressBar` | `boolean` | Show progress bar (subset of controls). |
-| `live` | `boolean` | Live-stream mode (disables seek). |
-| `volume` | `string \| number` | 0–1. |
-| `qualities` | `LxVideoQuality[]` (`{ label, url? }`) | First item is the default quality. |
-| `playbackRates` | `number[]` | First item is the default rate. |
-
-**Events** — every handler receives a **raw DOM `Event`**. The native player encodes data on `event.detail`.
-
-| Event prop | Meaning |
-|---|---|
-| `onPlayRequest` | user tapped play (before playback starts) |
-| `onPlay` | playback started |
-| `onPlaying` | playback resumed/buffering ended |
-| `onPause` | paused |
-| `onStop` | stopped |
-| `onEnded` | reached end |
-| `onTimeUpdate` | progress update — read `event.detail.currentTime` |
-| `onError` | playback failed — read `event.detail.code` / `event.detail.message` |
-| `onLoadedMetadata` | metadata available — `event.detail.duration`, `width`, `height` |
-| `onFullscreenChange` | entered/exited fullscreen — `event.detail.fullScreen` |
-| `onWaiting` | buffering |
-| `onQualityChange` | user picked a different quality entry |
-| `onRateChange` | user picked a different playback rate |
+**Events** — every handler receives a **raw DOM `Event`**; the native player
+encodes payloads on `event.detail` (e.g. `onTimeUpdate` →
+`event.detail.currentTime`, `onError` → `event.detail.code` / `.message`,
+`onLoadedMetadata` → `.duration` / `.width` / `.height`, `onFullscreenChange` →
+`.fullScreen`). Lifecycle events (`onPlayRequest`, `onPlay`, `onPlaying`,
+`onPause`, `onStop`, `onEnded`, `onWaiting`, `onQualityChange`, `onRateChange`)
+carry no required detail.
 
 ```tsx
 <LxVideo
   id="hero"
   src="https://cdn.example.com/intro.mp4"
-  poster="https://cdn.example.com/intro.jpg"
   controls
-  qualities={[
-    { label: '1080p', url: 'https://cdn.example.com/intro-1080.mp4' },
-    { label: '720p',  url: 'https://cdn.example.com/intro-720.mp4' },
-  ]}
-  playbackRates={[1.0, 1.5, 2.0]}
   onTimeUpdate={actions.onProgress}     // (event) => { event.detail.currentTime }
   onError={actions.onVideoError}
 />
 ```
 
-**Imperative control from Logic** (`pages/.../index.ts`):
+**Imperative control from Logic** (`pages/.../index.ts`) — give the element an
+`id`, then drive it via `lx.createVideoContext(id)` (`VideoContext`):
 
 ```ts
 const ctx = lx.createVideoContext('hero');
 ctx.play();
 ctx.pause();
+ctx.stop();
 ctx.seek(30);            // seconds
 ctx.requestFullScreen();
 ctx.exitFullScreen();
@@ -206,27 +162,9 @@ ctx.setStreamSource({ /* … */ });
 
 ## `LxMediaSwiper`
 
-Carousel for images and videos with native paging.
-
-**Attributes (`LxMediaSwiperAttributes`):**
-
-| Attribute | Type | Notes |
-|---|---|---|
-| `items` | `LxMediaSwiperItem[]` | See item shape below. |
-| `index` | `number` | Controlled current index. |
-| `initialIndex` | `number` | Uncontrolled initial index. |
-| `loop` | `boolean` | |
-| `autoplay` / `interval` | `boolean` / `number (ms)` | |
-| `animation` | `'slide' \| 'none'` | |
-| `animationDuration` | `number` | ms |
-| `direction` | `'horizontal' \| 'vertical'` | |
-| `contentRotate` / `objectFit` | same as `LxVideo` | |
-| `controls` / `muted` | `boolean` | Forwarded to video items. |
-| `dots` | `boolean \| { color?, activeColor? }` | Page indicator. |
-| `swipeEnabled` | `boolean` | |
-| `peek` | `LxMediaSwiperPeek` | Show adjacent items. |
-
-**Item shape:**
+Carousel for images and videos with native paging (loop, autoplay, dots, peek,
+vertical/horizontal). The full attribute list is the exported
+`LxMediaSwiperAttributes`, and items are `LxMediaSwiperItem` (`@lingxia/elements`):
 
 ```ts
 type LxMediaSwiperItem =
@@ -234,16 +172,12 @@ type LxMediaSwiperItem =
   | { id?: string; type: 'video'; src: string; poster?: string; controls?: boolean; muted?: boolean };
 ```
 
-**Events** — handler receives `CustomEvent<...EventDetail>`. Read `event.detail`.
-
-| Event | `event.detail` shape |
-|---|---|
-| `onChange` | `{ index, previousIndex, item, source: 'touch' \| 'autoplay' \| 'api' \| 'video' }` |
-| `onTransitionEnd` | same as `onChange` |
-| `onTap` | `{ index, item }` |
-| `onVideoEnded` | `{ index, item }` |
-| `onEndReached` | `{ index, item, source }` — fires when the user reaches the last item |
-| `onError` | `{ index, item, code: 'not_found' \| 'network' \| 'decode' \| … }` |
+**Events** — each handler receives a raw DOM `CustomEvent`; read `event.detail`,
+whose shape is the exported `*EventDetail` types (`LxMediaSwiperChangeEventDetail`,
+`LxMediaSwiperEndReachedEventDetail`, `LxMediaSwiperErrorEventDetail`, …).
+`onChange` / `onTransitionEnd` carry `{ index, previousIndex, item, source }`;
+`onTap` / `onVideoEnded` carry `{ index, item }`; `onEndReached` fires when the
+user reaches the last item; `onError` carries an error `code`.
 
 ```tsx
 <LxMediaSwiper
@@ -262,9 +196,13 @@ type LxMediaSwiperItem =
 
 ## `LxNavigator`
 
-Declarative navigation — wraps content that, when tapped, navigates inside or outside the lxapp.
+Declarative navigation — wraps content that, when tapped, navigates inside or
+outside the lxapp. The full attribute list (`url`, `page`, `path`, `query`,
+`delta`, `app-id`, `env-version`, `target-version`, `phone-number`, …) is the
+exported `LxNavigatorAttributes` from `@lingxia/elements`. The doc-only behavior
+is the routing it selects via `open-type` / `target`.
 
-**Open types** (`open-type`):
+**`open-type` routing:**
 
 | Value | Behavior |
 |---|---|
@@ -277,27 +215,11 @@ Declarative navigation — wraps content that, when tapped, navigates inside or 
 | `openUrl` | Open an external URL (or another lxapp) |
 | `tel` | Trigger a phone call (use with `phone-number`) |
 
-**Targets** (`target`): `self` (default), `lxapp`, `browser`.
+**`target`:** `self` (default), `lxapp`, `browser` — auto-inferred from
+`open-type` if omitted.
 
-**Attributes:**
-
-| Attribute | Use |
-|---|---|
-| `url` | Browser URL for `openUrl` / `browser` target |
-| `page` | Named page in `lxapp.json` |
-| `path` | Raw page path; supports query string |
-| `query` | JSON-encoded page query params |
-| `open-type` | one of the above |
-| `target` | one of the above (auto-inferred if omitted) |
-| `delta` | how many pages to pop for `navigateBack` |
-| `app-id` | target lxapp ID for cross-app navigation |
-| `env-version` | `'release' \| 'preview' \| 'develop'` |
-| `target-version` | exact target lxapp version |
-| `phone-number` | required for `open-type="tel"` |
-
-**Events:**
-
-- `onSuccess` / `onFail` / `onComplete` — `event.detail` is `{ success?: boolean; errMsg?: string }`.
+**Events:** `onSuccess` / `onFail` / `onComplete` — `event.detail` is
+`{ success?: boolean; errMsg?: string }`.
 
 ```tsx
 <LxNavigator page="detail" query='{"id":42}' onFail={actions.onNavFail}>

@@ -78,7 +78,13 @@ Provide the two credential stores as secrets and restore them before building
 | `APPLE_CREDENTIALS_JSON_BASE64` | `base64 -i ~/.lingxia/apple/credentials.json` |
 | `APPLE_DEVELOPER_ID_JSON_BASE64` | `base64 -i ~/.lingxia/apple/developer-id.json` |
 
-Without them the build leaves the app ad-hoc signed and still succeeds.
+The secret names above are **arbitrary** — they're just whatever you name them in
+your CI provider, restored to disk before the build. They are **not** env vars
+the CLI reads. The actual env overrides the build honors are
+`LINGXIA_APPLE_NOTARY_KEY` / `_KEY_ID` / `_ISSUER_ID` (notarization) and
+`LINGXIA_APPLE_DEVELOPER_ID_P12` / `_P12_PASSWORD` / `_IDENTITY` (signing); set
+those instead if you'd rather not write files. Either way, without resolvable
+credentials the build leaves the app ad-hoc signed and still succeeds.
 
 #### Verify a built macOS app
 
@@ -143,10 +149,12 @@ For **CI**, set the four `RELEASE_*` names as environment variables (decode a
 base64 keystore to a file and point `RELEASE_STORE_FILE` at it).
 
 **Distribution.** Sideload and Chinese app stores (Xiaomi, Huawei, OPPO, vivo,
-Tencent MyApp, …) take the **APK signed with your own key** — what `--release`
-produces. **Google Play** uses Play App Signing: you upload an **AAB** signed
-with an *upload key* (this same keystore works) and Google re-signs with the app
-signing key it holds. AAB output is not wired into the CLI yet.
+Tencent MyApp, …) take the **APK signed with your own key** — what the default
+`--dist sideload` produces. **Google Play** uses Play App Signing: you upload an
+**AAB** signed with an *upload key* (this same keystore works) and Google
+re-signs with the app signing key it holds. `lingxia build` / `lingxia package`
+emit the AAB with `--dist play` (vs the APK-producing `--dist sideload`); see
+`lingxia build --help` for specifics.
 
 #### Verify a built APK
 

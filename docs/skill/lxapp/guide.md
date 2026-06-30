@@ -4,12 +4,12 @@ This guide covers how to write lxapp pages — project layout, the View + Logic 
 
 Companion pages in this skill:
 
-- [Components](./components.md) — `LxPicker`, `LxVideo`, `LxMediaSwiper`, `LxNavigator` — every attribute and event; text input is plain `<input>` / `<textarea>`.
+- [Components](./components.md) — `LxPicker`, `LxVideo`, `LxMediaSwiper`, `LxNavigator` — capabilities, callback shapes, and imperative control (attribute lists live in the exported `@lingxia/elements` types); text input is plain `<input>` / `<textarea>`.
 - [Logic-side `lx.*` API](./lx-api.md) — capability map + behavioral notes; signatures live in `@lingxia/types` (install steps here too).
 - [Bridge Guide](./bridge.md) — `setData`, stream, channel mechanics in depth.
 - [App Project](../app/project.md) — host app setup (`lingxia.yaml`, adaptive `surfaces`).
 
-For first-time CLI install and platform toolchains (one-time, human onramp), the LingXia repo has `docs/quick-start.md`.
+First-time CLI install and platform toolchains are a one-time, human-facing onramp this skill assumes is already done.
 
 ---
 
@@ -337,19 +337,15 @@ State flows **one way**: Logic `setData()` → bridge replication → View `data
 
 ## Event Handling
 
-### Two event paths
-
-LingXia components support two event paths:
-
-1. **Logic short path** (native → Rust → Logic JS, 3 hops) — when the handler is a function from `actions`. The CLI auto-generates `pageFuncBindings` so the native layer routes the event directly to Logic, bypassing the WebView.
-
-2. **View DOM path** (native → WebView CustomEvent → handler, 2 hops) — when the handler is a local View function. Events arrive as standard DOM CustomEvents.
-
-As a developer, you don't need to choose between these paths. Use framework-native event syntax (`onX` in React, `@event` in Vue) and the system routes automatically.
+LingXia routes component events two ways automatically — a **Logic short path**
+(native → Rust → Logic JS) when the handler is an `actions.*` function, and a
+**View DOM path** (native → WebView `CustomEvent` → handler) when it's a local
+View function. You never choose: use framework-native syntax (`onX` in React,
+`@event` in Vue) and the system routes for you.
 
 ### Native component events
 
-LingXia ships native-backed components (`LxPicker`, `LxVideo`, `LxMediaSwiper`, `LxNavigator`) from `@lingxia/react`, `@lingxia/vue`, and `@lingxia/html`; text input is a plain `<input>` / `<textarea>`. Event handlers use standard framework-native syntax:
+LingXia ships native-backed components (`LxPicker`, `LxVideo`, `LxMediaSwiper`, `LxNavigator`) from `@lingxia/react` and `@lingxia/vue` (HTML views use the raw `<lx-*>` tags); text input is a plain `<input>` / `<textarea>`. Handlers use standard framework-native syntax:
 
 **React:**
 
@@ -358,8 +354,8 @@ import { useLxPage, LxPicker, LxVideo } from '@lingxia/react';
 
 const { actions } = useLxPage<PageData, PageActions>();
 
-// Input — handler receives unwrapped detail object
-<input onInput={(e) => actions.onInputChange?.({ value: e.currentTarget.value })} />
+// Input — read the value off the DOM event
+<input onInput={(e) => actions.onInputChange({ value: e.currentTarget.value })} />
 
 // Picker — handler receives resolved value directly
 <LxPicker
@@ -380,7 +376,7 @@ import { useLxPage, LxPicker, LxVideo } from '@lingxia/vue';
 const { actions } = useLxPage<PageData, PageActions>();
 </script>
 
-<LxInput @input="actions.onInputChange" />
+<input @input="(e) => actions.onInputChange({ value: e.currentTarget.value })" />
 
 <LxPicker
   :columns="[['A', 'B', 'C']]"
@@ -390,18 +386,7 @@ const { actions } = useLxPage<PageData, PageActions>();
 <LxVideo :src="url" @playing="actions.onPlaying" />
 ```
 
-### Callback signatures vary by component
-
-The framework wrappers unwrap or reshape some events; others come through as raw DOM `CustomEvent`. Quick reference:
-
-| Component | Callback receives | Example |
-| --- | --- | --- |
-| `LxPicker` | Resolved value directly (on `onConfirm`) | `onConfirm(value)` → `value` is `string \| string[]` |
-| `LxVideo` | Raw DOM Event | `onPlaying(event)` → `event.detail` |
-| `LxMediaSwiper` | Raw `CustomEvent` with typed `detail` | `onChange(e)` → `e.detail.index` |
-| `LxNavigator` | Raw `CustomEvent` | `onFail(e)` → `e.detail.errMsg` |
-
-**Full attribute, event, and behavior reference for every component — including imperative control of `LxVideo` via `lx.createVideoContext()` — lives in [`./components.md`](./components.md).**
+Callback payloads differ by component — some unwrapped, some raw DOM `CustomEvent`. See [Callback shapes by component](./components.md#callback-shapes-by-component) in [`./components.md`](./components.md) for the per-component table and the full attribute/behavior reference (including imperative `LxVideo` control via `lx.createVideoContext()`).
 
 ---
 
@@ -504,29 +489,29 @@ Page({
 
   onLoad: function () {},
 
-  onInputChange: function (detail) {
-    // detail is the unwrapped event.detail from LxInput
-    if (detail?.value === undefined) return;
-    console.log("input changed:", detail.value);
+  onInputChange: function (params) {
+    // params is { value } passed by the View from the DOM input event
+    if (params?.value === undefined) return;
+    console.log("input changed:", params.value);
   },
 
-  onSyncInput: function (detail) {
-    if (detail?.value === undefined) return;
+  onSyncInput: function (params) {
+    if (params?.value === undefined) return;
     // Write back to data → View re-renders with updated value
-    this.setData({ syncValue: String(detail.value) });
+    this.setData({ syncValue: String(params.value) });
   },
 });
 ```
 
-**View** (`pages/input/index.tsx`):
+**View** (`pages/input/index.tsx`) — text input is a plain `<input>` / `<textarea>`:
 
 ```tsx
-import { useLxPage, LxInput } from '@lingxia/react';
+import { useLxPage } from '@lingxia/react';
 
 type PageData = { syncValue: string };
 type PageActions = {
-  onInputChange: (detail: Record<string, unknown>) => void;
-  onSyncInput: (detail: Record<string, unknown>) => void;
+  onInputChange: (params: { value: string }) => void;
+  onSyncInput: (params: { value: string }) => void;
 };
 
 export default function InputPage() {
@@ -534,12 +519,15 @@ export default function InputPage() {
 
   return (
     <div>
-      <LxInput placeholder="Basic input" onInput={actions.onInputChange} />
+      <input
+        placeholder="Basic input"
+        onInput={(e) => actions.onInputChange({ value: e.currentTarget.value })}
+      />
 
-      <LxInput
+      <textarea
         value={data.syncValue}
         placeholder="Synced input"
-        onInput={actions.onSyncInput}
+        onInput={(e) => actions.onSyncInput({ value: e.currentTarget.value })}
       />
       <p>Current: {data.syncValue}</p>
     </div>
@@ -646,7 +634,7 @@ Full option shapes: [`./lx-api.md#page-chrome--ui`](./lx-api.md#page-chrome--ui)
 - Mixing view logic and page logic in one file; keep `index.tsx` and `index.ts` roles clear.
 - Mutating `data` directly in View instead of calling Logic actions.
 - Re-documenting bridge behavior inside page code instead of leaning on [Bridge Guide](./bridge.md) for stream/channel details.
-- Assuming every component's event handler receives the same shape — `LxInput` unwraps `event.detail`, `LxVideo` passes the raw DOM `Event`. See [Components](./components.md#callback-shapes-by-component).
+- Assuming every component's event handler receives the same shape — `LxPicker` hands you the resolved value, `LxVideo` passes the raw DOM `Event`. See [Components](./components.md#callback-shapes-by-component).
 - Skipping `@lingxia/types` in the lxapp's devDependencies and losing intellisense on the entire `lx.*` surface. See [Logic-side `lx.*` API](./lx-api.md).
 - Forgetting that only public `Page({})` methods become actions; lifecycle hooks and `_`-prefixed helpers are not exposed.
 - Mutating `App({}).globalData` and expecting page views to re-render — `globalData` is not reactive. Propagate to a page's `data` via `setData`.
