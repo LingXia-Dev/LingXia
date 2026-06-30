@@ -562,21 +562,37 @@ final class RunnerPhoneBrowserSurface {
     }
 
     @objc private func addressSubmitted() {
-        guard let tabId = activeTabId,
-              let result = RunnerSupport.Browser.handleAddressSubmission(
-                rawInput: addressField?.stringValue ?? "",
-                currentURL: activeWebView?.url?.absoluteString,
-                tabId: tabId
-              ) else {
+        guard let tabId = activeTabId else { return }
+        // Parse the typed address here (like iOS LxAppBrowser): the runner's
+        // native lib has no `browser-shell` feature, so the rust address-input
+        // resolver is unavailable. A full URL loads as-is; a bare host gets
+        // https; anything else is left to the page (no search provider here).
+        let input = (addressField?.stringValue ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !input.isEmpty else { return }
+        let target: URL?
+        if let url = URL(string: input),
+           let scheme = url.scheme?.lowercased(),
+           scheme == "http" || scheme == "https" || scheme == "lingxia" {
+            target = url
+        } else if !input.contains(" "), input.contains("."), let url = URL(string: "https://\(input)") {
+            target = url
+        } else {
+            target = nil
+        }
+        guard let target else {
+            updateAddress(url: activeWebView?.url)
             return
         }
-        addressField?.stringValue = result.displayText
         hostWindow?.makeFirstResponder(nil)
-        // Navigate through the managed browser runtime (a raw WKWebView.load is
-        // ignored by the browser's navigation policy), then re-attach: leaving a
-        // blank tab can swap in a fresh webview, so the displayed one is stale.
-        if RunnerSupport.Browser.navigate(tabId: tabId, url: result.url) {
+        // Navigate via the managed runtime (a raw WKWebView.load is ignored by
+        // the browser's navigation policy), then re-attach: leaving a blank tab
+        // can swap in a fresh webview, so the displayed one would be stale.
+        if RunnerSupport.Browser.navigate(tabId: tabId, url: target.absoluteString) {
+            updateAddress(url: target)
             attachWebView(tabId: tabId, attempt: 0)
+        } else {
+            updateAddress(url: activeWebView?.url)
         }
     }
 }
