@@ -10,19 +10,19 @@ name = "lingxia-cli"
 # (packages/lingxia-bridge), which is version-locked to the workspace, and
 # build.rs fails the build on a mismatch. A CLI release is "the CLI for base
 # runtime X.Y" — so bump to the workspace's major.minor whenever it moves.
-version = "0.9.1"
+version = "0.10.0"
 edition.workspace = true
 build = "build.rs"
 
 [package.metadata.lingxia]
-bridge-version = "0.9.0"
-polyfills-version = "0.9.0"
-types-version = "0.9.0"
+bridge-version = "0.10.0"
+polyfills-version = "0.10.0"
+types-version = "0.10.0"
 rong-version = "0.4.0"
-rust-crate-version = "0.9.0"
-sdk-version = "0.9.0"
-browser-shell-webui-version = "0.9.0"
-resource-bundle-version = "0.9.0"
+rust-crate-version = "0.10.0"
+sdk-version = "0.10.0"
+browser-shell-webui-version = "0.10.0"
+resource-bundle-version = "0.10.0"
 
 [[bin]]
 name = "lingxia"

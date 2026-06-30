@@ -4,7 +4,7 @@ name = "lingxia-runner-lib"
 # together). Only the PATCH is independent of the SDK crates; the major.minor
 # MUST track [workspace.package] because the Runner embeds the workspace-locked
 # base-runtime bridge. See tools/lingxia-cli/Cargo.toml for the full rationale.
-version = "0.9.1"
+version = "0.10.0"
 edition.workspace = true
 publish = false
 

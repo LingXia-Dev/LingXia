@@ -1,6 +1,6 @@
 {
   "name": "@lingxia/skill",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "private": false,
   "description": "Agent skill for the LingXia cross-platform app framework. Installs a markdown skill bundle into your project so AI coding tools — Claude Code, Claude Agent SDK, OpenAI Codex, Cursor, or any agent that reads project markdown — can build lxapps, host apps, and native Rust extensions on LingXia.",
   "type": "module",
