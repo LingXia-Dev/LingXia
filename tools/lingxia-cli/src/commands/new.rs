@@ -110,7 +110,7 @@ pub fn execute(
         println!();
         println!("{}", "Next steps:".bold());
         println!("  cd {}", name);
-        println!("  lingxia build");
+        println!("  lingxia dev");
         println!();
         print_ai_skill_tip();
         return Ok(());
@@ -189,7 +189,7 @@ pub fn execute(
     println!();
     println!("{}", "Next steps:".bold());
     println!("  cd {}", config.name);
-    println!("  lingxia build");
+    println!("  lingxia dev");
     println!();
     print_ai_skill_tip();
 
