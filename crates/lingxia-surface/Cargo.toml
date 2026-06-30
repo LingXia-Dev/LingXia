@@ -2,6 +2,8 @@
 name = "lingxia-surface"
 version.workspace = true
 edition.workspace = true
+description = "Core surface presentation primitives (roles, kinds, positions) for the LingXia framework"
+license = "MIT"
 repository.workspace = true
 
 [dependencies]
