@@ -72,6 +72,8 @@ pub struct DevExecuteOptions {
     pub with_provider: Vec<String>,
     pub provider_path: Option<String>,
     pub parallel: bool,
+    /// Runner simulator device (macOS lxapp runner only), e.g. `desktop-1440`.
+    pub runner_device: Option<String>,
 }
 
 #[derive(Clone)]
@@ -840,7 +842,9 @@ fn execute_lxapp_dev(project_root: PathBuf, options: DevExecuteOptions) -> Resul
         println!();
         println!("{}", "Step 2/2: Launching Runner...".bold());
         let mut runner = match runner_host {
-            LxAppRunnerHost::MacOs => launch_runner_for_lxapp(&project_root, &ws_url)?,
+            LxAppRunnerHost::MacOs => {
+                launch_runner_for_lxapp(&project_root, &ws_url, options.runner_device.as_deref())?
+            }
             LxAppRunnerHost::Windows => launch_windows_runner_for_lxapp(&project_root, &ws_url)?,
         };
 
@@ -914,7 +918,11 @@ fn ensure_valid_lxapp_dir(path: &Path) -> Result<()> {
     ))
 }
 
-fn launch_runner_for_lxapp(lxapp_path: &Path, ws_url: &str) -> Result<RunnerProcess> {
+fn launch_runner_for_lxapp(
+    lxapp_path: &Path,
+    ws_url: &str,
+    runner_device: Option<&str>,
+) -> Result<RunnerProcess> {
     platform::apple::ensure_macos()?;
     ensure_valid_lxapp_dir(lxapp_path)?;
     // Provision the runner from the matching release if it isn't installed yet
@@ -938,6 +946,9 @@ fn launch_runner_for_lxapp(lxapp_path: &Path, ws_url: &str) -> Result<RunnerProc
     let mut command = Command::new(&executable_path);
     command.env(RUNNER_LXAPP_PATH_ENV, lxapp_path);
     command.env(RUNNER_DEV_WS_URL_ENV, ws_url);
+    if let Some(device) = runner_device.map(str::trim).filter(|s| !s.is_empty()) {
+        command.env("LINGXIA_RUNNER_DEVICE", device);
+    }
     // Cloud functions: transpile mocks + generate typed `lx.cloud.invoke`, then
     // point the runner at the loadable mock dir (it reads routing from functions.json).
     if let Some(mock_dir) = crate::lxapp::functions::prepare_dev(lxapp_path) {

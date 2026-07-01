@@ -121,6 +121,12 @@ struct DevOptions {
     /// `lingxia dev -p ios`" footgun).
     #[arg(long)]
     parallel: bool,
+
+    /// Runner simulator device for `lingxia dev` on an lxapp (macOS runner):
+    /// e.g. `iphone-15-pro`, `ipad`, `desktop-1440`. Only affects the lxapp
+    /// runner window; ignored for native host apps and other platforms.
+    #[arg(long)]
+    runner: Option<String>,
 }
 
 #[derive(Subcommand)]
@@ -647,6 +653,7 @@ fn main() -> Result<()> {
                 with_provider: dev_options.build_options.with_provider,
                 provider_path: dev_options.build_options.provider_path,
                 parallel: dev_options.parallel,
+                runner_device: dev_options.runner,
             })?;
         }
         Commands::Doctor { platform } => {

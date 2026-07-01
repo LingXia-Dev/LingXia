@@ -295,6 +295,38 @@ mod tests {
     }
 
     #[test]
+    fn browser_asides_never_evict_a_declared_aside() {
+        let mut next = SurfaceGraph::new();
+        next.insert(main_s("home"));
+        next.insert(aside_s("chat", Edge::Right)); // declared lxapp aside
+        // Open browser tabs beyond the generic aside cap (expanded=2). The
+        // declared `chat` aside must survive — web + non-web budgets are
+        // independent (they coexist as separate side panels).
+        for (i, url) in ["https://a.example", "https://b.example", "https://c.example"]
+            .iter()
+            .enumerate()
+        {
+            let (n, d) = arbitrate(
+                &next,
+                web_aside_s(&format!("b{i}"), url, Edge::Right),
+                &Policy::default(),
+                SizeClass::Expanded,
+            );
+            assert_eq!(d, Decision::Accepted);
+            next = n;
+        }
+        assert!(next.get("chat").is_some(), "declared aside must survive");
+        assert_eq!(
+            next.asides()
+                .iter()
+                .filter(|s| matches!(s.content, SurfaceContent::Web { .. }))
+                .count(),
+            3
+        );
+        assert!(next.is_valid());
+    }
+
+    #[test]
     fn web_aside_coexists_with_a_page_aside() {
         let mut g = SurfaceGraph::new();
         g.insert(main_s("home"));
