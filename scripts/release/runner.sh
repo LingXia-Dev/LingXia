@@ -212,6 +212,18 @@ for arch in "${ARCHES[@]}"; do
     # the previous arch would otherwise be copied into this arch's output,
     # silently shipping the wrong architecture under the right name.
     rm -rf "$RUNNER_PACKAGE_DIR/.build" "$RUNNER_PACKAGE_DIR/.lingxia" "$RUNNER_RAW_DIST_DIR"
+
+    # Sources/Resources/bridge-runtime.js is gitignored and the build-tool plugin
+    # writes it too late for SwiftPM's plan-time `.copy("Resources")` on a clean
+    # checkout — so a released Runner would ship without it and every page's
+    # `lx://assets/bridge-runtime.js` would 404 (dead bridge). Stage it up front.
+    BRIDGE_DIST="$ROOT_DIR/packages/lingxia-bridge/dist/bridge-runtime.es2020.js"
+    if [[ ! -f "$BRIDGE_DIST" ]]; then
+      echo "[runner:$arch] Building bridge runtime (packages/lingxia-bridge)"
+      ( cd "$ROOT_DIR/packages/lingxia-bridge" && npm install && npm run build )
+    fi
+    cp "$BRIDGE_DIST" "$RUNNER_PACKAGE_DIR/Sources/Resources/bridge-runtime.js"
+
     (
       cd "$RUNNER_PACKAGE_DIR"
       "$CLI_BIN" package --platform macos --macos-arch "$arch"
