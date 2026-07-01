@@ -1008,6 +1008,14 @@ impl LxApp {
     ) -> Self {
         let session = LxAppSession::new();
         let bundle_source = lxapp_bundle_source_for(&appid).unwrap_or(LxAppBundleSource::Installed);
+        // A dev-sourced bundle is, by definition, a developer build: it's served
+        // live from a local `dist` and is never installed or OTA-updated. Derive
+        // the channel from the source so update gating (release-only) and scope
+        // keys stay consistent, whatever channel the caller requested.
+        let release_type = match bundle_source {
+            LxAppBundleSource::DevPath { .. } => ReleaseType::Developer,
+            _ => release_type,
+        };
         Self {
             appid,
             runtime,
