@@ -351,13 +351,11 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
         barContent.addSubview(actionRow)
 
         configureIconButton(backButton, iconName: "icon_back", iconSize: 20, tintColor: UIColor(white: 0.2, alpha: 1.0), action: #selector(backTapped))
-        backButton.isEnabled = false
-        backButton.alpha = 0.3
+        NavButtonState.apply(backButton, enabled: false)
         actionRow.addArrangedSubview(backButton)
 
         configureIconButton(forwardButton, iconName: "icon_forward", iconSize: 20, tintColor: UIColor(white: 0.2, alpha: 1.0), action: #selector(forwardTapped))
-        forwardButton.isEnabled = false
-        forwardButton.alpha = 0.3
+        NavButtonState.apply(forwardButton, enabled: false)
         actionRow.addArrangedSubview(forwardButton)
 
         let spacer = UIView()
@@ -690,13 +688,8 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
     }
 
     private func updateNavigationButtons() {
-        let canGoBack = activeBrowserWebView?.canGoBack ?? false
-        backButton.isEnabled = canGoBack
-        backButton.alpha = canGoBack ? 1.0 : 0.3
-
-        let canGoForward = activeBrowserWebView?.canGoForward ?? false
-        forwardButton.isEnabled = canGoForward
-        forwardButton.alpha = canGoForward ? 1.0 : 0.3
+        NavButtonState.apply(backButton, enabled: activeBrowserWebView?.canGoBack ?? false)
+        NavButtonState.apply(forwardButton, enabled: activeBrowserWebView?.canGoForward ?? false)
     }
 
     private func configureIconButton(

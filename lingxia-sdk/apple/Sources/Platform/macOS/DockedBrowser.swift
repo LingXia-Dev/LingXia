@@ -304,10 +304,8 @@ final class DockedBrowser: NSObject {
     }
 
     private func updateBackForward(canGoBack: Bool, canGoForward: Bool) {
-        backButton.isEnabled = canGoBack
-        backButton.alphaValue = canGoBack ? 1.0 : 0.4
-        forwardButton.isEnabled = canGoForward
-        forwardButton.alphaValue = canGoForward ? 1.0 : 0.4
+        NavButtonState.apply(backButton, enabled: canGoBack)
+        NavButtonState.apply(forwardButton, enabled: canGoForward)
     }
 
     private func displayURL(_ raw: String?) -> String {

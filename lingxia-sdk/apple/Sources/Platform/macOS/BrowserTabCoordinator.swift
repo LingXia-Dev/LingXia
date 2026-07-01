@@ -843,8 +843,7 @@ final class BrowserTabCoordinator: NSObject {
         toolbar.addSubview(backButton)
 
         configureButton(forwardButton, iconName: "icon_forward", action: #selector(forwardClicked))
-        forwardButton.isEnabled = false
-        forwardButton.alphaValue = 0.4
+        NavButtonState.apply(forwardButton, enabled: false)
         toolbar.addSubview(forwardButton)
 
         configureButton(refreshButton, iconName: "icon_browser_refresh", action: #selector(refreshClicked))
@@ -958,13 +957,11 @@ final class BrowserTabCoordinator: NSObject {
     // MARK: - UI Helpers
 
     private func updateBackButtonState(canGoBack: Bool) {
-        backButton.isEnabled = canGoBack
-        backButton.alphaValue = canGoBack ? 1.0 : 0.4
+        NavButtonState.apply(backButton, enabled: canGoBack)
     }
 
     private func updateForwardButtonState(canGoForward: Bool) {
-        forwardButton.isEnabled = canGoForward
-        forwardButton.alphaValue = canGoForward ? 1.0 : 0.4
+        NavButtonState.apply(forwardButton, enabled: canGoForward)
     }
 
     private func configureButton(_ button: NSButton, iconName: String, action: Selector) {
