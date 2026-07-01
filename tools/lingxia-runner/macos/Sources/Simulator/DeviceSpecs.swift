@@ -76,7 +76,17 @@ public struct MobileDeviceSize: Equatable, Hashable, Decodable, Sendable {
     }
 
     public static var defaultDevice: MobileDeviceSize {
-        device(id: manifest.default)
+        // Dev override: `LINGXIA_RUNNER_DEVICE=<id>` launches at that device (e.g.
+        // a Desktop size) instead of the manifest default — handy for exercising
+        // the expanded/docked layout without clicking the device selector.
+        if let override = ProcessInfo.processInfo.environment["LINGXIA_RUNNER_DEVICE"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+            !override.isEmpty,
+            allCases.contains(where: { $0.id == override })
+        {
+            return device(id: override)
+        }
+        return device(id: manifest.default)
     }
 
     public var shape: RunnerDeviceShape {

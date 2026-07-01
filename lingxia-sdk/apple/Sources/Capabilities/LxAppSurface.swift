@@ -617,36 +617,57 @@ enum LxAppSurface {
             }
 
         case contentUrl:
-            guard let url = URL(string: path), let scheme = url.scheme?.lowercased(), scheme == "https" || scheme == "http" else {
+            guard let url = URL(string: path), let scheme = url.scheme?.lowercased(),
+                  scheme == "https" || scheme == "http" || scheme == "file" else {
                 os_log("invalid web aside url id=%{public}@ url=%{public}@", log: log, type: .error, id, path)
                 return false
             }
-            // Singleton boundary (at most one browser aside per window, new
-            // replaces old) is enforced by the core arbitration as a web-aside
-            // eviction, which closes the previous one through the normal close
-            // path before this present runs — no SDK-side dedup needed.
-            //
-            // A docked browser aside is a real browser: its webview is created
-            // through the Rust browser path (like a main browser tab) so it
-            // receives native input and drives back/forward, and it carries its
-            // own chrome (back/forward/refresh/address/close). The bare WKWebView
-            // it replaces could not take native input. The tab is independent of
-            // the singleton tab coordinator — no sidebar entry, no main tab.
-            guard let browser = shell.browserCoordinator.createDockedBrowser(
+            // Every web-aside node is a tab in the single per-window browser
+            // panel. The FIRST node anchors the panel (docks its container +
+            // registers the shell slot); later nodes just add a tab (deduped by
+            // URL) — no second dock. onCloseTab(sid) closes that one tab/node;
+            // onCloseAside closes the anchor, which cascades to every tab.
+            let onCloseTab: (String) -> Void = { sid in
+                _ = LxAppSurface.close(id: sid, appId: appId, reason: "user")
+            }
+            let onCloseAside: () -> Void = {
+                _ = LxAppSurface.close(id: id, appId: appId, reason: "user")
+            }
+            guard let opened = shell.browserCoordinator.openDockedAsideTab(
+                surfaceId: id,
                 url: url.absoluteString,
-                onClose: { _ = LxAppSurface.close(id: id, appId: appId, reason: "user") }
+                onCloseTab: onCloseTab,
+                onCloseAside: onCloseAside
             ) else {
-                os_log("failed to create docked browser id=%{public}@ url=%{public}@", log: log, type: .error, id, path)
+                os_log("failed to open docked aside tab id=%{public}@ url=%{public}@", log: log, type: .error, id, path)
                 return false
+            }
+            guard opened.isNew else {
+                // Added as a tab to the existing panel — this node owns no dock
+                // of its own. Track a lightweight entry so close() removes just
+                // this tab (dockedContainer/position nil ⇒ no panel to hide).
+                entries[id] = Entry(
+                    id: id,
+                    appId: appId,
+                    pageInstanceId: "",
+                    hostView: nil,
+                    webView: nil,
+                    navigationDelegate: nil,
+                    window: nil,
+                    parentWindow: nil,
+                    delegate: WindowDelegate(id: id, appId: appId),
+                    dockedBrowser: opened.browser
+                )
+                return true
             }
             pageInstanceId = ""
             hostView = nil
             webView = nil
             navigationDelegate = nil
-            dockedBrowser = browser
-            container.addSubview(browser.containerView)
-            browser.containerView.translatesAutoresizingMaskIntoConstraints = false
-            pinToEdges(browser.containerView, in: container)
+            dockedBrowser = opened.browser
+            container.addSubview(opened.browser.containerView)
+            opened.browser.containerView.translatesAutoresizingMaskIntoConstraints = false
+            pinToEdges(opened.browser.containerView, in: container)
 
         default:
             os_log("unsupported aside content=%{public}d id=%{public}@ app=%{public}@", log: log, type: .error, content, id, appId)
@@ -731,9 +752,22 @@ enum LxAppSurface {
         entry.hostView?.unmount(reason: closeReason(reason))
         entry.webView?.stopLoading()
         entry.webView?.navigationDelegate = nil
-        // Destroy the docked browser's tab + chrome (idempotent — the close
-        // button routes back through here too).
-        entry.dockedBrowser?.tearDown()
+        // Multi-tab browser aside: an anchor node (dockedContainer set) owns the
+        // panel — closing it dismisses the whole aside (tear down every tab +
+        // close sibling tab nodes). A non-anchor tab just removes its own tab.
+        if let browser = entry.dockedBrowser {
+            if entry.dockedContainer != nil {
+                browser.tearDown()
+                LxAppActiveHost.activeShell?.browserCoordinator.clearDockedBrowser()
+                let siblings = entries.filter { $0.key != id && $0.value.dockedBrowser === browser }
+                for (siblingId, sibling) in siblings {
+                    entries.removeValue(forKey: siblingId)
+                    _ = onSurfaceClosed(sibling.appId, siblingId, closeReason(reason))
+                }
+            } else {
+                _ = browser.removeTab(surfaceId: id)
+            }
+        }
         if entry.dockedPosition != nil {
             // In-window aside: hide the panel slot and detach its content.
             LxAppActiveHost.activeShell?.hidePanel(id: id)

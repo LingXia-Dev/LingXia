@@ -219,26 +219,44 @@ Page({
 
     try {
       const cfg = config || {};
-      // `as` picks the form: aside docks beside the main and splits it (a compact
-      // Host folds it into a tab); float is a popup above the main; window opens a
-      // bare desktop window. The target is this app's own page by name.
+      // `as` picks the form: aside is a multi-tab external-content browser
+      // (https/file) docked beside the main (full-screen on a phone); float is a
+      // popup above the main; window opens a bare desktop window. float/window
+      // target this app's own page — an aside can only be a url.
       const as =
         cfg.verb === "float" ? "float" : cfg.verb === "window" ? "window" : "aside";
-      const spec = { page: "surface", as };
-      if (as === "aside") spec.edge = cfg.edge ?? "right";
-      if (as === "float") spec.position = cfg.position ?? "center";
+      let spec;
+      if (as === "aside") {
+        // Multi-tab demo: each click opens the next url as a tab in the one
+        // browser aside (deduped by url). Aside is external content only.
+        const demoUrls = [
+          "https://www.deepseek.com/",
+          "https://cn.bing.com/",
+          "https://opensource.adobe.com/",
+        ];
+        const idx = (this._asideTabIndex || 0) % demoUrls.length;
+        this._asideTabIndex = (this._asideTabIndex || 0) + 1;
+        spec = { url: cfg.url ?? demoUrls[idx], as: "aside", edge: cfg.edge ?? "right" };
+      } else {
+        spec = { page: "surface", as };
+        if (as === "float") spec.position = cfg.position ?? "center";
+      }
       if (cfg.width || cfg.height) {
         spec.size = {};
         if (cfg.width) spec.size.width = cfg.width;
         if (cfg.height) spec.size.height = cfg.height;
       }
       const surface = await lx.openSurface(spec);
-      this._activeSurface = surface;
+      // Aside tabs accumulate (multi-tab) — only float/window are single, tracked
+      // for the hide/show/close demo controls.
+      if (as !== "aside") this._activeSurface = surface;
 
       this.setData({
         "surfaceDemo.message": `Opened ${as}: ${surface.id}`,
-        "surfaceDemo.active": true,
-        "surfaceDemo.visible": true,
+        // Keep the button enabled for asides so repeated clicks add tabs; the
+        // hide/show/close controls only apply to a single float/window surface.
+        "surfaceDemo.active": as !== "aside",
+        "surfaceDemo.visible": as !== "aside",
       });
       surface.onMessage((payload) => {
         // Messages from the surface page no longer auto-close it — that

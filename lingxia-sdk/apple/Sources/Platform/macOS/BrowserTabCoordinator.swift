@@ -236,18 +236,48 @@ final class BrowserTabCoordinator: NSObject {
         switchToTab(id: id)
     }
 
-    /// Create a standalone browser docked beside the main content as an aside.
-    /// The returned `DockedBrowser` owns its own tab + chrome and is NOT entered
-    /// into `tabIds` / the sidebar — it never becomes a switchable main tab. The
-    /// owner (appId/sessionId) for the new tab is taken from the active lxapp
-    /// session, exactly like a regular tab. Returns nil if there is no active
-    /// session or the tab could not be created.
-    func createDockedBrowser(url: String, onClose: @escaping () -> Void) -> DockedBrowser? {
+    /// The single multi-tab browser aside panel for this window (nil when none is
+    /// open). Every web-aside surface node is a tab in here — the panel is NOT
+    /// entered into `tabIds` / the sidebar and never becomes a switchable main
+    /// tab. Owned here so a second `openSurface({url,as:'aside'})` adds a tab
+    /// rather than docking a second browser.
+    private var dockedBrowser: DockedBrowser?
+
+    /// Open `url` as a tab in the browser aside, creating the panel on first use.
+    /// Returns the panel plus `isNew` (true only when it was just created, so the
+    /// caller docks `panel.containerView`). `onCloseTab(surfaceId)` fires when a
+    /// tab's X is clicked; `onCloseAside` when the whole aside is dismissed.
+    /// Returns nil if there is no active session or the tab could not be created.
+    func openDockedAsideTab(
+        surfaceId: String,
+        url: String,
+        onCloseTab: @escaping (String) -> Void,
+        onCloseAside: @escaping () -> Void
+    ) -> (browser: DockedBrowser, isNew: Bool)? {
+        if let existing = dockedBrowser {
+            return existing.addOrFocusTab(surfaceId: surfaceId, url: url) ? (existing, false) : nil
+        }
         guard let owner = host?.browserOwnerForNewTab() else {
             os_log("Cannot create docked browser without active lxapp session", log: Self.log, type: .error)
             return nil
         }
-        return DockedBrowser(owner: owner, url: url, onClose: onClose)
+        guard let browser = DockedBrowser(
+            owner: owner,
+            surfaceId: surfaceId,
+            url: url,
+            onCloseTab: onCloseTab,
+            onCloseAside: onCloseAside
+        ) else { return nil }
+        dockedBrowser = browser
+        return (browser, true)
+    }
+
+    /// The live browser aside panel, if any (for tab removal / re-anchoring).
+    var activeDockedBrowser: DockedBrowser? { dockedBrowser }
+
+    /// Drop the panel reference after its last tab closed and it was torn down.
+    func clearDockedBrowser() {
+        dockedBrowser = nil
     }
 
     private func attachedWebViewForNativeInput(tabId: String) -> WKWebView? {
@@ -274,8 +304,8 @@ final class BrowserTabCoordinator: NSObject {
         // A docked aside browser owns its webview in the aside panel. Focus it in
         // place rather than relocating the tab into the main browser area (which
         // would empty the aside).
-        if let docked = DockedBrowser.forTab(tabId) {
-            return docked.focusForInput()
+        if let docked = dockedBrowser, docked.containsBrowserTab(tabIdString(tabId)) {
+            return docked.focusForInput(browserTabId: tabIdString(tabId))
         }
         return attachedWebViewForNativeInput(tabId: tabId) != nil
     }
