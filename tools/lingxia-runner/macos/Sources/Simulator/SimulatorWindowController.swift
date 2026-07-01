@@ -889,7 +889,15 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         // Match iOS's "···" sheet: a dimmed backdrop with a white rounded bottom
         // sheet — name + version header, then a clean/restart action row.
         guard let contentView = window?.contentView, capsuleSheetOverlay == nil else { return }
-        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—"
+        // Mirror iOS: show the lxapp's own name, version, and channel badge from
+        // release_type (a `lingxia dev` bundle pins itself to the Developer
+        // channel) — not the Runner's own Bundle.main version.
+        let info = getLxAppInfo(appId)
+        let appName = info.app_name.toString()
+        let displayName = appName.isEmpty ? appId : appName
+        let appVersion = info.version.toString()
+        let versionText = appVersion.isEmpty ? "—" : "v\(appVersion)"
+        let releaseType = info.release_type.toString().lowercased()
 
         let overlay = NSView(frame: contentView.bounds)
         overlay.autoresizingMask = [.width, .height]
@@ -912,11 +920,11 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         sheet.layer?.maskedCorners = [.layerMinXMaxYCorner, .layerMaxXMaxYCorner]
         overlay.addSubview(sheet)
 
-        let name = NSTextField(labelWithString: appId)
+        let name = NSTextField(labelWithString: displayName)
         name.font = .boldSystemFont(ofSize: 16)
         name.textColor = .black
         name.translatesAutoresizingMaskIntoConstraints = false
-        let ver = NSTextField(labelWithString: "v\(version)")
+        let ver = NSTextField(labelWithString: versionText)
         ver.font = .systemFont(ofSize: 13)
         ver.textColor = NSColor(white: 0.6, alpha: 1)
         ver.translatesAutoresizingMaskIntoConstraints = false
@@ -959,7 +967,53 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
             row.bottomAnchor.constraint(equalTo: sheet.bottomAnchor, constant: -20),
         ])
 
+        if let badge = Self.makeReleaseBadge(releaseType) {
+            sheet.addSubview(badge)
+            NSLayoutConstraint.activate([
+                badge.leadingAnchor.constraint(equalTo: ver.trailingAnchor, constant: 6),
+                badge.centerYAnchor.constraint(equalTo: ver.centerYAnchor),
+                badge.trailingAnchor.constraint(lessThanOrEqualTo: sheet.trailingAnchor, constant: -20),
+            ])
+        }
+
         capsuleSheetOverlay = overlay
+    }
+
+    /// A DEV/PRE channel pill for the capsule sheet, mirroring iOS's release
+    /// badge (colors match LxAppCapsuleMenu.releaseBadge). Nil for Release.
+    private static func makeReleaseBadge(_ releaseType: String) -> NSView? {
+        let style: (text: String, fg: NSColor, bg: NSColor)?
+        switch releaseType {
+        case "developer":
+            style = ("DEV", NSColor(srgbRed: 0.11, green: 0.31, blue: 0.85, alpha: 1),
+                     NSColor(srgbRed: 0.86, green: 0.92, blue: 0.99, alpha: 1))
+        case "preview":
+            style = ("PRE", NSColor(srgbRed: 0.71, green: 0.33, blue: 0.03, alpha: 1),
+                     NSColor(srgbRed: 1.0, green: 0.93, blue: 0.84, alpha: 1))
+        default:
+            style = nil
+        }
+        guard let style else { return nil }
+
+        let label = NSTextField(labelWithString: style.text)
+        label.font = .systemFont(ofSize: 10, weight: .semibold)
+        label.textColor = style.fg
+        label.alignment = .center
+        label.translatesAutoresizingMaskIntoConstraints = false
+
+        let pill = NSView()
+        pill.translatesAutoresizingMaskIntoConstraints = false
+        pill.wantsLayer = true
+        pill.layer?.backgroundColor = style.bg.cgColor
+        pill.layer?.cornerRadius = 4
+        pill.addSubview(label)
+        NSLayoutConstraint.activate([
+            label.leadingAnchor.constraint(equalTo: pill.leadingAnchor, constant: 5),
+            label.trailingAnchor.constraint(equalTo: pill.trailingAnchor, constant: -5),
+            label.topAnchor.constraint(equalTo: pill.topAnchor, constant: 2),
+            label.bottomAnchor.constraint(equalTo: pill.bottomAnchor, constant: -2),
+        ])
+        return pill
     }
 
     private func makeCapsuleSheetButton(symbol: String, title: String, action: Selector) -> NSView {
