@@ -245,9 +245,33 @@ for arch in "${ARCHES[@]}"; do
   fi
   echo "[runner:$arch] Verified binary arch: $built_archs"
 
+  # The Runner is a SwiftPM executable, so its generated `Bundle.module`
+  # accessor resolves resources via `Bundle.main.bundleURL` — which, once the
+  # binary is wrapped in a `.app`, is the `.app` root, NOT `Contents/Resources`
+  # where SwiftPM's module bundles actually land. A fetched release Runner (its
+  # baked `.build` fallback path gone) therefore fatal-errors on launch:
+  #   "could not load resource bundle: from <app>/LingXiaRunner_LingXiaRunner.bundle …"
+  # Mirror the SwiftPM module bundles (`<Pkg>_<Target>.bundle`) to the `.app`
+  # root so the accessor finds them. This runs AFTER `lingxia package` has
+  # signed + notarized + verified the clean bundle, and `lingxia dev`
+  # direct-execs the (still validly signed) binary — so the extra root copies
+  # don't affect launch. (Gatekeeper `open` would see an unsealed root, but the
+  # fetched Runner is only ever direct-exec'd, never opened.)
+  shopt -s nullglob
+  for _b in "$RAW_APP_SRC/Contents/Resources/"*_*.bundle; do
+    rm -rf "$RAW_APP_SRC/$(basename "$_b")"
+    cp -R "$_b" "$RAW_APP_SRC/$(basename "$_b")"
+  done
+  shopt -u nullglob
+
   rm -rf "$APP_OUT"
   cp -R "$RAW_APP_SRC" "$APP_OUT"
-  cp "$RAW_ZIP_SRC" "$ZIP_OUT"
+
+  # Re-zip the fixed `.app` (keeping the canonical "LingXia Runner.app" name
+  # that runner_cache expects) rather than shipping lingxia package's pre-fix zip.
+  require_command ditto
+  rm -f "$ZIP_OUT"
+  ditto -c -k --keepParent "$RAW_APP_SRC" "$ZIP_OUT"
   BUILT_ZIPS+=("$ZIP_OUT")
 
   echo "✅ Runner app  -> $APP_OUT"
