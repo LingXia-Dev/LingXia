@@ -160,19 +160,12 @@ interface WindowSurfaceSize {
  * space, separately type-checkable).
  *
  * - `{ page }` — one of this lxapp's own pages, by name, arranged as `as`
- *   (`aside` is a companion of the main; `float` is a popup; `window` is a bare
- *   desktop window, which rejects on mobile). `edge` applies to `aside`,
- *   `position` applies to `float`, and `size` is a Host-clamped hint. They are
- *   fixed at open (re-open to change).
- *
- *   `aside` is **size-class adaptive**, not a fixed form: only on `medium` /
- *   `expanded` (room to sit alongside) does it dock and split beside the main at
- *   `edge` as a sidebar/split panel. On `compact` (phone, or a folded foldable)
- *   there is no room to dock, so the same surface presents **full-screen** —
- *   pushed over the main and dismissed by the host back affordance / edge swipe
- *   (a drill-in), never a docked panel. So one declaration reads as a side panel
- *   on large screens and a full-screen drill-in on small ones. For a destination
- *   that should stay switchable on phones, declare it `role: main` instead.
+ *   (`float` is a popup; `window` is a bare desktop window, which rejects on
+ *   mobile). `position` applies to `float`, and `size` is a Host-clamped hint.
+ *   They are fixed at open (re-open to change). Your own pages **cannot** be
+ *   docked as an `aside` — an aside is external content only (see `{ url }`).
+ *   For a side panel of your own, use a declared `surface`, an in-page split
+ *   layout, or `role: main` for a switchable destination.
  *
  *   `float` is a popup layered above the main at `position` (like a dialog); it
  *   takes no layout space. The SDK gives it **no chrome of its own — there is no
@@ -186,25 +179,29 @@ interface WindowSurfaceSize {
  * - `{ surface }` — a surface declared in `lingxia.yaml` `surfaces:`, by id
  *   (e.g. `'terminal'`, `'ai-assistant'`). Form, position, and startup data come
  *   from the declaration.
- * - `{ url }` — an `http(s)://` or `lingxia://` url, shown in the in-app chromed
- *   browser (always with an address bar — never a chromeless embed). Without
- *   `as` it opens as a main browser tab (host chrome, no handle). With
- *   `as: 'aside'` it docks an `http(s)://` page beside the main as a single
- *   browser aside (its own chrome + close, returns a closable handle); `edge`
- *   defaults to `'right'` and `size` is a host-clamped preferred size. At most
- *   one browser aside per window — a new one replaces the existing one.
+ * - `{ url }` — external content in the in-app browser. Without `as` it opens as
+ *   a main browser tab (the **self** browser: full chrome **with an editable
+ *   address bar**, no handle). With `as: 'aside'` it opens in the **browser
+ *   aside** — a docked (large screen) / full-screen (phone) **multi-tab** browser
+ *   for external content only (`https://` or `file://`).
+ *
+ *   The aside is **API-only and has no address input** (its one difference from
+ *   the self browser): each `openSurface({ url, as: 'aside' })` call opens a tab;
+ *   there is no manual "new tab" affordance and the address is never editable.
+ *   Tabs are **deduped by URL** — reopening a URL focuses the existing tab and
+ *   returns its handle. The handle is **tab-scoped**: `close()` closes that tab,
+ *   and closing the last tab closes the aside. The tab strip shows page
+ *   **titles** (never the URL), plus per-tab close, back/forward, refresh, and a
+ *   close-aside control.
+ *
+ *   Presentation is the only large/small difference: on `medium` / `expanded`
+ *   the aside **docks** and splits beside the main at `edge` (default `'right'`)
+ *   with a horizontal title tab strip; on `compact` (phone / runner) it presents
+ *   **full-screen** with a **bottom** browser toolbar (tabs reached via a tab
+ *   switcher), dismissed by the host back affordance. `size` is a host-clamped
+ *   preferred size (large screen only).
  */
 export type OpenPageSurfaceSpec =
-  | {
-      page: string;
-      as: 'aside';
-      edge?: SurfaceEdge;
-      size?: OverlaySurfaceSize;
-      query?: Record<string, unknown>;
-      position?: never;
-      surface?: never;
-      url?: never;
-    }
   | {
       page: string;
       /**
@@ -253,6 +250,12 @@ export interface OpenUrlTabSpec {
   query?: never;
 }
 
+/**
+ * Open `url` in the multi-tab browser aside. `url` must be `https://` or
+ * `file://` (external content only). Repeated calls add/focus tabs (deduped by
+ * URL) in the single aside per window; the returned handle is scoped to that
+ * tab. See {@link OpenSurfaceSpec} for the full aside contract.
+ */
 export interface OpenUrlAsideSpec {
   url: string;
   as: 'aside';

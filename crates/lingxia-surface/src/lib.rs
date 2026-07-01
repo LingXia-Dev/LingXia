@@ -242,22 +242,48 @@ mod tests {
     }
 
     #[test]
-    fn web_aside_is_singleton_replacing_existing() {
+    fn web_asides_coexist_as_tabs() {
         let mut g = SurfaceGraph::new();
         g.insert(main_s("home"));
         g.insert(web_aside_s("browser-1", "https://a.example", Edge::Right));
-        // A second browser aside replaces the first regardless of the generic
-        // cap (expanded allows 2 asides), and only on a different edge too.
+        // A second browser aside for a DIFFERENT url coexists as another tab of
+        // the one multi-tab panel (exempt from the generic aside cap), not
+        // replacing the first.
         let (next, decision) = arbitrate(
             &g,
-            web_aside_s("browser-2", "https://b.example", Edge::Left),
+            web_aside_s("browser-2", "https://b.example", Edge::Right),
             &Policy::default(),
             SizeClass::Expanded,
         );
-        assert_eq!(decision, Decision::ReplacedExisting);
-        assert!(next.get("browser-1").is_none());
+        assert_eq!(decision, Decision::Accepted);
+        assert!(next.get("browser-1").is_some());
         assert!(next.get("browser-2").is_some());
-        // exactly one web aside survives.
+        assert_eq!(
+            next.asides()
+                .iter()
+                .filter(|s| matches!(s.content, SurfaceContent::Web { .. }))
+                .count(),
+            2
+        );
+        assert!(next.is_valid());
+    }
+
+    #[test]
+    fn web_aside_dedups_by_url() {
+        let mut g = SurfaceGraph::new();
+        g.insert(main_s("home"));
+        g.insert(web_aside_s("browser-1", "https://a.example", Edge::Right));
+        // Reopening the same url focuses the existing tab instead of adding a
+        // duplicate — no new surface is inserted.
+        let (next, decision) = arbitrate(
+            &g,
+            web_aside_s("browser-2", "https://a.example", Edge::Right),
+            &Policy::default(),
+            SizeClass::Expanded,
+        );
+        assert_eq!(decision, Decision::MergedIntoTabs);
+        assert!(next.get("browser-1").is_some());
+        assert!(next.get("browser-2").is_none());
         assert_eq!(
             next.asides()
                 .iter()
