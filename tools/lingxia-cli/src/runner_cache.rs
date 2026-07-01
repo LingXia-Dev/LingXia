@@ -5,8 +5,8 @@
 //! `install.sh` / `install.ps1`) don't have it, so this module downloads the
 //! per-platform runner zip published to the `lingxia-cli-v<version>` GitHub
 //! release, verifies its SHA-256 against `SHASUMS256-<version>.txt`, and unpacks
-//! it into the cache. A `.ready` sentinel marks a complete install so repeat
-//! launches short-circuit with no network (mirrors `sdk_cache.rs`).
+//! it into the cache. The unpacked app's existence marks the version installed,
+//! so repeat launches short-circuit with no network (mirrors `sdk_cache.rs`).
 
 use crate::github;
 use crate::sdk_cache::{sha256_hex, shasum_for};
@@ -15,7 +15,6 @@ use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
-const READY_SENTINEL: &str = ".ready";
 /// macOS app bundle name (matches `commands/dev.rs` `RUNNER_APP_NAME`).
 #[cfg(not(target_os = "windows"))]
 const RUNNER_APP_NAME: &str = "LingXia Runner.app";
@@ -74,13 +73,15 @@ fn runner_path(dir: &Path) -> PathBuf {
 }
 
 /// Ensure the runner for `version` is installed under
-/// `~/.lingxia/runner/<version>/` and return its path. On a cache hit (sentinel
-/// present) returns immediately with no network, unless `force`.
+/// `~/.lingxia/runner/<version>/` and return its path. On a cache hit (the app
+/// is present) returns immediately with no network, unless `force`.
 pub fn ensure_runner(version: &str, force: bool) -> Result<PathBuf> {
     let dir = runner_root()?.join(version);
-    let sentinel = dir.join(READY_SENTINEL);
     let path = runner_path(&dir);
-    if !force && sentinel.exists() && path.exists() {
+    // Published by an atomic rename below (and by install-local-runner.sh's
+    // atomic mv), so the app only ever appears fully-formed — its existence
+    // alone means this version is installed. No separate ready-marker needed.
+    if !force && path.exists() {
         return Ok(path);
     }
 
@@ -134,9 +135,6 @@ pub fn ensure_runner(version: &str, force: bool) -> Result<PathBuf> {
             dir.display()
         )
     })?;
-
-    fs::write(dir.join(READY_SENTINEL), version.as_bytes())
-        .with_context(|| format!("Failed to write {READY_SENTINEL} in {}", dir.display()))?;
 
     let path = runner_path(&dir);
     if !path.exists() {
