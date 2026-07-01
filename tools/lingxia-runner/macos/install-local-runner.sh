@@ -72,6 +72,11 @@ if [[ ! -f "$BRIDGE_RUNTIME" ]]; then
   exit 1
 fi
 
+# Stage it before the Swift build: the build plugin syncs it too late for
+# SwiftPM's plan-time `.copy("Resources")`, so on a clean checkout it would be
+# absent from the bundle and lx://assets/bridge-runtime.js would 404.
+cp "$BRIDGE_RUNTIME" "$SCRIPT_DIR/Sources/Resources/bridge-runtime.js"
+
 echo "==> Generating apple SDK resources (i18n + icons)"
 # Same step bootstrap-apple-sdk / scripts/release/sdk.sh run: without it a new or
 # changed design/icons/svg or i18n YAML never reaches the runner bundle.
