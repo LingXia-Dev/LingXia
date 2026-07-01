@@ -23,7 +23,7 @@ enum LxIcon {
 
     private static func loadImage(named name: String) -> UIImage? {
         #if SWIFT_PACKAGE
-        let bundle = Bundle.module
+        let bundle = Bundle.lingxiaResources
         #else
         let bundle = Bundle(for: MediaBundleToken.self)
         #endif
@@ -94,7 +94,7 @@ enum LxIcon {
 
     private static func loadImage(named name: String) -> NSImage? {
         #if SWIFT_PACKAGE
-        let bundle = Bundle.module
+        let bundle = Bundle.lingxiaResources
         #else
         let bundle = Bundle(for: MacOSBundleToken.self)
         #endif

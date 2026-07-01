@@ -178,8 +178,8 @@ public struct MobileDeviceSize: Equatable, Hashable, Decodable, Sendable {
     }
 
     private static let manifest: RunnerDevicesManifest = {
-        let url = Bundle.module.url(forResource: "devices", withExtension: "json")
-            ?? Bundle.module.url(
+        let url = Bundle.runnerResources.url(forResource: "devices", withExtension: "json")
+            ?? Bundle.runnerResources.url(
                 forResource: "devices",
                 withExtension: "json",
                 subdirectory: "Resources"

@@ -146,7 +146,7 @@ class SidebarGroupView: NSView {
 
     /// The bundled default LingXia mark, used when an lxapp declares no icon.
     private static let defaultAppIcon: NSImage? = {
-        guard let url = Bundle.module.url(
+        guard let url = Bundle.lingxiaResources.url(
             forResource: "lxapp_default", withExtension: "png", subdirectory: "icons")
         else { return nil }
         return NSImage(contentsOf: url)

@@ -344,7 +344,7 @@ class SidebarView: NSView, NSPopoverDelegate {
 
     /// The bundled default LingXia mark, used when an lxapp declares no icon.
     private static let defaultAppIcon: NSImage? = {
-        guard let url = Bundle.module.url(
+        guard let url = Bundle.lingxiaResources.url(
             forResource: "lxapp_default", withExtension: "png", subdirectory: "icons")
         else { return nil }
         return NSImage(contentsOf: url)
@@ -353,7 +353,7 @@ class SidebarView: NSView, NSPopoverDelegate {
     /// A shared design icon (bundled PDF) as a tintable template image, so the
     /// header affordances match their iOS counterparts.
     private static func designIcon(_ name: String) -> NSImage? {
-        guard let url = Bundle.module.url(forResource: name, withExtension: "pdf", subdirectory: "icons")
+        guard let url = Bundle.lingxiaResources.url(forResource: name, withExtension: "pdf", subdirectory: "icons")
         else { return nil }
         let image = NSImage(contentsOf: url)
         image?.isTemplate = true

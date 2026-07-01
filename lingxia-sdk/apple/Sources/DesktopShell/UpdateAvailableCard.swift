@@ -280,7 +280,7 @@ final class UpdateAvailableCard: NSObject {
     }
 
     private static func string(_ key: String, _ args: CVarArg...) -> String {
-        let format = NSLocalizedString(key, bundle: Bundle.module, comment: "")
+        let format = NSLocalizedString(key, bundle: Bundle.lingxiaResources, comment: "")
         return args.isEmpty ? format : String(format: format, arguments: args)
     }
 }
