@@ -255,17 +255,6 @@ async fn open_page_spec(ctx: JSContext, spec: &JSObject) -> JSResult<JSObject> {
     let position = read_optional_string(spec, "position")?;
 
     let options = match as_role.trim() {
-        "aside" => {
-            let position = edge.unwrap_or_else(|| "right".to_string());
-            build_open_options(
-                &ctx,
-                &path_value,
-                "overlay",
-                &position,
-                "aside",
-                size.as_ref(),
-            )?
-        }
         "float" => {
             let position = position.or(edge).unwrap_or_else(|| "center".to_string());
             build_open_options(
@@ -305,7 +294,9 @@ async fn open_page_spec(ctx: JSContext, spec: &JSObject) -> JSResult<JSObject> {
             return Err(surface_error(
                 rong::error::E_INVALID_ARG,
                 "invalid_surface_spec",
-                format!("as must be one of aside, float, or window; got {other}"),
+                format!(
+                    "as must be 'float' or 'window' (a page cannot be an aside — asides are external content only); got {other}"
+                ),
             ));
         }
     };
@@ -1344,13 +1335,18 @@ fn validate_url_target(lxapp: &LxApp, raw: &str) -> JSResult<String> {
     if url.is_empty() {
         return Err(invalid_surface_target("url must be non-empty"));
     }
+    // A local file has no host/domain to gate: it's external content the user
+    // pointed at, scoped by the host's filesystem access, not the domain policy.
+    if url.starts_with("file://") {
+        return Ok(url.to_string());
+    }
     let Some((scheme, host)) = split_url_scheme_host(url) else {
         return Err(invalid_surface_target(
-            "url must be an absolute http(s) URL",
+            "url must be an absolute https/http/file URL",
         ));
     };
     if scheme != "https" && scheme != "http" {
-        return Err(invalid_surface_target("url must use http(s)"));
+        return Err(invalid_surface_target("url must use https, http, or file"));
     }
     if !lxapp.is_domain_allowed(host) {
         return Err(surface_error(

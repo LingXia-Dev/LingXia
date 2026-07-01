@@ -12,8 +12,7 @@ use crate::graph::SurfaceGraph;
 use crate::layout::SizeClass;
 use crate::model::{Edge, Role, Surface, SurfaceContent};
 
-/// Structured outcome of a request (§3.1). A subset of the spec's full set;
-/// `mergedIntoTabs` lands when tab-grouping is implemented.
+/// Structured outcome of a request (§3.1).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum Decision {
@@ -21,6 +20,9 @@ pub enum Decision {
     DowngradedRole,
     ReplacedExisting,
     FullScreenFallback,
+    /// A repeat web aside for a URL already open: the existing tab is focused
+    /// instead of adding a duplicate (web asides form one multi-tab panel).
+    MergedIntoTabs,
 }
 
 /// Tunable arbitration policy. Defaults are the spec's cross-platform defaults.
@@ -87,19 +89,21 @@ pub fn arbitrate(
                 return (next, decision);
             }
 
-            // A web-content (in-app browser) aside is a per-window singleton: a
-            // new browser aside replaces any existing one, independent of the
-            // generic aside cap. The browser aside is a single companion pane,
-            // not an unbounded set.
-            if is_web(&request)
-                && let Some(victim) = existing_web_aside_id(&next, &request.id)
-            {
-                next.remove(&victim);
+            // Web-content asides form a single multi-tab browser panel: every
+            // web aside coexists as a tab (exempt from the generic aside cap),
+            // deduped by URL — reopening a URL focuses the existing tab instead
+            // of adding a duplicate. The platform groups all web asides of the
+            // window into one docked (large) / full-screen (compact) browser.
+            if let Some(url) = web_url(&request) {
+                if let Some(existing) = existing_web_aside_with_url(&next, &request.id, url) {
+                    next.set_focus(&existing);
+                    return (next, Decision::MergedIntoTabs);
+                }
                 next.insert(request);
-                return (next, Decision::ReplacedExisting);
+                return (next, Decision::Accepted);
             }
 
-            // Under the limit: accept as-is.
+            // Non-web aside (generic panel). Under the limit: accept as-is.
             if next.asides().len() < max {
                 next.insert(request);
                 return (next, Decision::Accepted);
@@ -124,16 +128,28 @@ fn promote_to_main(mut request: Surface) -> Surface {
     request
 }
 
-fn is_web(surface: &Surface) -> bool {
-    matches!(surface.content, SurfaceContent::Web { .. })
+/// The web URL of a surface, if it is web content.
+fn web_url(surface: &Surface) -> Option<&str> {
+    match &surface.content {
+        SurfaceContent::Web { url } => Some(url.as_str()),
+        _ => None,
+    }
 }
 
-/// The existing web-content aside (if any) other than `exclude_id`.
-fn existing_web_aside_id(graph: &SurfaceGraph, exclude_id: &str) -> Option<String> {
+/// An existing web-content aside serving `url` (other than `exclude_id`).
+fn existing_web_aside_with_url(
+    graph: &SurfaceGraph,
+    exclude_id: &str,
+    url: &str,
+) -> Option<String> {
     graph
         .surfaces()
         .iter()
-        .find(|s| s.id != exclude_id && s.role == Role::Aside && is_web(s))
+        .find(|s| {
+            s.id != exclude_id
+                && s.role == Role::Aside
+                && web_url(s) == Some(url)
+        })
         .map(|s| s.id.clone())
 }
 
