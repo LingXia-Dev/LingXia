@@ -1038,7 +1038,7 @@ final class BrowserTabCoordinator: NSObject {
 
     private func bundledFavicon() -> NSImage? {
         #if SWIFT_PACKAGE
-        let bundle = Bundle.module
+        let bundle = Bundle.lingxiaResources
         #else
         let bundle = Bundle(for: BrowserTabCoordinator.self)
         #endif

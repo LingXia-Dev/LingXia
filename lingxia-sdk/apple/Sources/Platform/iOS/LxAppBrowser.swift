@@ -1016,7 +1016,7 @@ private final class LxAppBrowserTabCell: UITableViewCell {
 @MainActor
 private func lxAppBrowserIconImage(named iconName: String, size: CGFloat) -> UIImage? {
     #if SWIFT_PACKAGE
-    let bundle = Bundle.module
+    let bundle = Bundle.lingxiaResources
     #else
     let bundle = Bundle(for: LxAppBrowserViewController.self)
     #endif

@@ -52,7 +52,7 @@ final class LxAppCore {
     private static let log = OSLog(subsystem: "LingXia", category: "LxAppCore")
     static var resourceBundle: Bundle {
 #if SWIFT_PACKAGE
-        return Bundle.module
+        return Bundle.lingxiaResources
 #else
         return Bundle(for: LxAppCore.self)
 #endif
