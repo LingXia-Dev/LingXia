@@ -103,14 +103,21 @@ pub fn arbitrate(
                 return (next, Decision::Accepted);
             }
 
-            // Non-web aside (generic panel). Under the limit: accept as-is.
-            if next.asides().len() < max {
+            // Non-web aside — a declared lxapp panel (e.g. `chat`). These are
+            // capped among themselves; the browser aside (web) is a separate,
+            // coexisting panel that neither consumes this budget nor is evicted
+            // to make room for a declared aside. So a browser aside and a `chat`
+            // aside sit side by side, and opening more browser tabs never pushes
+            // out `chat`.
+            let non_web_asides = next.asides().iter().filter(|s| web_url(s).is_none()).count();
+            if non_web_asides < max {
                 next.insert(request);
                 return (next, Decision::Accepted);
             }
 
-            // Over the limit: replace the oldest aside (preferring same edge).
-            if let Some(victim) = oldest_aside_id(&next, request.placement.edge) {
+            // Over the limit: replace the oldest non-web aside (preferring same
+            // edge) — never a browser aside.
+            if let Some(victim) = oldest_non_web_aside_id(&next, request.placement.edge) {
                 next.remove(&victim);
                 next.insert(request);
                 (next, Decision::ReplacedExisting)
@@ -153,19 +160,17 @@ fn existing_web_aside_with_url(
         .map(|s| s.id.clone())
 }
 
-/// Oldest (insertion-order-first) aside, preferring the same edge if given.
-fn oldest_aside_id(graph: &SurfaceGraph, edge: Option<Edge>) -> Option<String> {
+/// Oldest (insertion-order-first) NON-web aside, preferring the same edge if
+/// given. Web asides (the browser panel) are never evicted this way.
+fn oldest_non_web_aside_id(graph: &SurfaceGraph, edge: Option<Edge>) -> Option<String> {
+    let is_evictable = |s: &&Surface| s.role == Role::Aside && web_url(s).is_none();
     if let Some(edge) = edge
         && let Some(s) = graph
             .surfaces()
             .iter()
-            .find(|s| s.role == Role::Aside && s.placement.edge == Some(edge))
+            .find(|s| is_evictable(s) && s.placement.edge == Some(edge))
     {
         return Some(s.id.clone());
     }
-    graph
-        .surfaces()
-        .iter()
-        .find(|s| s.role == Role::Aside)
-        .map(|s| s.id.clone())
+    graph.surfaces().iter().find(is_evictable).map(|s| s.id.clone())
 }

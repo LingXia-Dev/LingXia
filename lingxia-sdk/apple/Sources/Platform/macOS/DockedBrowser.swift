@@ -354,13 +354,15 @@ final class DockedBrowser: NSObject {
             closeAsideButton.widthAnchor.constraint(equalToConstant: Layout.closeSize),
             closeAsideButton.heightAnchor.constraint(equalToConstant: Layout.closeSize),
 
-            tabScroll.topAnchor.constraint(equalTo: toolbar.bottomAnchor),
-            tabScroll.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: Layout.edge),
-            tabScroll.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -Layout.edge),
-            tabScroll.heightAnchor.constraint(equalToConstant: Layout.tabStripHeight),
+            // Tabs live in the SAME bar as back/forward/refresh (one row), filling
+            // the space between the nav buttons and the close-aside button.
+            tabScroll.leadingAnchor.constraint(equalTo: refreshButton.trailingAnchor, constant: Layout.edge),
+            tabScroll.trailingAnchor.constraint(equalTo: closeAsideButton.leadingAnchor, constant: -Layout.edge),
+            tabScroll.centerYAnchor.constraint(equalTo: toolbar.centerYAnchor),
+            tabScroll.heightAnchor.constraint(equalToConstant: Layout.buttonSize),
             tabStrip.heightAnchor.constraint(equalTo: tabScroll.heightAnchor),
 
-            separator.topAnchor.constraint(equalTo: tabScroll.bottomAnchor),
+            separator.topAnchor.constraint(equalTo: toolbar.bottomAnchor),
             separator.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
             separator.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
             separator.heightAnchor.constraint(equalToConstant: 1),
@@ -439,8 +441,7 @@ final class DockedBrowser: NSObject {
                 : NSColor.clear.cgColor
             tab.button.contentTintColor = selected ? .labelColor : .secondaryLabelColor
         }
-        // The tab strip only shows when there is more than one tab.
-        tabScroll.isHidden = tabs.count <= 1
+        tabScroll.isHidden = tabs.isEmpty
     }
 
     private enum AssociatedKeys { nonisolated(unsafe) static var surfaceId = 0 }
