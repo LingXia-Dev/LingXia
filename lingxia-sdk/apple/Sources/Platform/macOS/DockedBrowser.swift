@@ -4,15 +4,17 @@ import WebKit
 import OSLog
 import CLingXiaRustAPI
 
-/// A self-contained browser docked beside the main content as an aside.
+/// A multi-tab browser docked beside the main content as an aside. Hosts one or
+/// more external-content tabs (https/file) behind a Chrome-style title tab strip
+/// — there is **no address input** (that is the only thing distinguishing the
+/// aside from the self/main browser). Tabs are opened only through the API
+/// (`openSurface({ url, as: 'aside' })`), deduped by URL; each tab is a real
+/// LingXia browser webview (created via the Rust browser path) so it takes
+/// native input and drives back/forward.
 ///
-/// Unlike a bare `WKWebView`, the webview here is created through the Rust
-/// browser path (`openBrowserTab`) exactly like a main browser tab, so it is a
-/// real LingXia browser webview that receives native mouse/keyboard input and
-/// drives back/forward state. It carries its own chrome (back / forward /
-/// refresh / address bar / close) and its own KVO, fully independent of the
-/// singleton `BrowserTabCoordinator`: the docked tab is never registered as a
-/// switchable main tab or a sidebar item — it lives and dies with the aside.
+/// One panel per window: every web-aside surface node becomes a tab here. The
+/// panel is owned by `BrowserTabCoordinator`; `LxAppSurface` routes each node to
+/// `addOrFocusTab` / `removeTab`. Closing the last tab tears the panel down.
 @MainActor
 final class DockedBrowser: NSObject {
     private static let log = OSLog(subsystem: "LingXia", category: "DockedBrowser")
@@ -21,115 +23,271 @@ final class DockedBrowser: NSObject {
 
     private enum Layout {
         static let toolbarHeight: CGFloat = 38
+        static let tabStripHeight: CGFloat = 30
         static let buttonSize: CGFloat = 28
         static let closeSize: CGFloat = 24
         static let iconSize: CGFloat = 14
-        static let addressHeight: CGFloat = 26
         static let edge: CGFloat = 8
+        static let tabMaxWidth: CGFloat = 160
+    }
+
+    /// One open tab: a web-aside surface node backed by a Rust browser tab.
+    @MainActor
+    private final class Tab {
+        let surfaceId: String
+        let browserTabId: String
+        var url: String
+        var title: String = ""
+        var webView: WKWebView?
+        let button = NSButton()
+        let closeButton = NSButton()
+        let row = NSStackView()
+        nonisolated(unsafe) var urlObs: NSKeyValueObservation?
+        nonisolated(unsafe) var backObs: NSKeyValueObservation?
+        nonisolated(unsafe) var forwardObs: NSKeyValueObservation?
+        nonisolated(unsafe) var titleObs: NSKeyValueObservation?
+        init(surfaceId: String, browserTabId: String, url: String) {
+            self.surfaceId = surfaceId
+            self.browserTabId = browserTabId
+            self.url = url
+        }
+        func invalidate() {
+            urlObs?.invalidate(); backObs?.invalidate()
+            forwardObs?.invalidate(); titleObs?.invalidate()
+            urlObs = nil; backObs = nil; forwardObs = nil; titleObs = nil
+        }
     }
 
     /// Root view handed to the aside panel slot.
     let containerView = NSView()
 
-    private let tabId: String
-    private let onClose: () -> Void
+    private let owner: (appId: String, sessionId: UInt64)
+    /// A tab's X was clicked: close that surface node (routes back through the
+    /// core so the graph stays in sync).
+    private let onCloseTab: (String) -> Void
+    /// The close-aside affordance was clicked: close every tab/node.
+    private let onCloseAside: () -> Void
 
     private let toolbar = NSView()
     private let backButton = NSButton()
     private let forwardButton = NSButton()
     private let refreshButton = NSButton()
-    private let closeButton = NSButton()
-    private let addressBarContainer = NSView()
-    private let addressField = NSTextField()
+    private let closeAsideButton = NSButton()
+    private let tabStrip = NSStackView()
+    private let tabScroll = NSScrollView()
     private let separator = NSView()
     private let webContainer = NSView()
 
-    private var webView: WKWebView?
+    private var tabs: [Tab] = []
+    private var activeSurfaceId: String?
     private var torn = false
 
-    /// Registry of live docked browsers by their runtime tab id. Lets the tab
-    /// coordinator route native-input prep to the aside in place instead of
-    /// relocating the tab into the main browser area (which would empty the
-    /// aside). Weakly held so teardown is the single owner of lifetime.
-    private final class WeakRef {
-        weak var value: DockedBrowser?
-        init(_ value: DockedBrowser) { self.value = value }
-    }
-    private static var registry: [String: WeakRef] = [:]
-
-    /// The live docked browser hosting `tabId`, if any.
-    static func forTab(_ tabId: String) -> DockedBrowser? {
-        let normalized = tabId.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !normalized.isEmpty else { return nil }
-        return registry[normalized]?.value
-    }
-
-    nonisolated(unsafe) private var urlObservation: NSKeyValueObservation?
-    nonisolated(unsafe) private var backObservation: NSKeyValueObservation?
-    nonisolated(unsafe) private var forwardObservation: NSKeyValueObservation?
-
-    /// Create a browser tab for `url` owned by `owner` and start wiring it into a
-    /// docked container. Returns nil if the tab could not be created. The webview
-    /// itself is resolved asynchronously (browser webview creation is async), so
-    /// it is attached on a short retry once Rust reports it ready.
-    init?(owner: (appId: String, sessionId: UInt64), url: String, onClose: @escaping () -> Void) {
-        guard let opened = openStandaloneBrowserTab(owner.appId, owner.sessionId, url) else {
-            os_log("openStandaloneBrowserTab failed for docked browser url=%{public}@", log: Self.log, type: .error, url)
-            return nil
-        }
-        let resolvedTabId = opened.toString().trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !resolvedTabId.isEmpty else {
-            os_log("openBrowserTab returned empty tab id for docked browser", log: Self.log, type: .error)
-            return nil
-        }
-        self.tabId = resolvedTabId
-        self.onClose = onClose
+    /// Create the panel with an initial tab for `surfaceId` → `url`. Returns nil
+    /// if the first browser tab could not be created.
+    init?(
+        owner: (appId: String, sessionId: UInt64),
+        surfaceId: String,
+        url: String,
+        onCloseTab: @escaping (String) -> Void,
+        onCloseAside: @escaping () -> Void
+    ) {
+        self.owner = owner
+        self.onCloseTab = onCloseTab
+        self.onCloseAside = onCloseAside
         super.init()
-        Self.registry[resolvedTabId] = WeakRef(self)
-        buildChrome(initialURL: url)
-        attachWhenReady(attempt: 0)
+        buildChrome()
+        guard addOrFocusTab(surfaceId: surfaceId, url: url) else { return nil }
     }
 
-    /// Make this aside's own webview first responder for native input prep,
-    /// in place — so input-prep (e.g. browser automation) never relocates the
-    /// docked tab into the main browser area. Returns false until the webview
-    /// has been resolved/attached.
-    func focusForInput() -> Bool {
-        guard let webView, let window = webView.window else { return false }
+    /// The active tab's surface id, so the surface layer can re-anchor the shell
+    /// panel to a survivor when the anchor node closes.
+    var anchorSurfaceId: String? { tabs.first?.surfaceId }
+
+    func contains(surfaceId: String) -> Bool {
+        tabs.contains { $0.surfaceId == surfaceId }
+    }
+
+    // MARK: - Tab management
+
+    /// Add a tab for `url`, or focus an existing tab with the same URL (dedup).
+    /// Returns false only if the underlying browser tab could not be created.
+    @discardableResult
+    func addOrFocusTab(surfaceId: String, url: String) -> Bool {
+        if torn { return false }
+        if let existing = tabs.first(where: { Self.sameURL($0.url, url) }) {
+            activate(existing.surfaceId)
+            return true
+        }
+        guard let opened = openStandaloneBrowserTab(owner.appId, owner.sessionId, url) else {
+            os_log("openStandaloneBrowserTab failed url=%{public}@", log: Self.log, type: .error, url)
+            return false
+        }
+        let browserTabId = opened.toString().trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !browserTabId.isEmpty else { return false }
+        let tab = Tab(surfaceId: surfaceId, browserTabId: browserTabId, url: url)
+        tab.title = Self.shortTitle(for: url)
+        tabs.append(tab)
+        buildTabRow(tab)
+        attachWhenReady(tab: tab, attempt: 0)
+        activate(surfaceId)
+        return true
+    }
+
+    /// Remove the tab for `surfaceId`. Returns true if the panel is now empty
+    /// (the caller should tear it down).
+    @discardableResult
+    func removeTab(surfaceId: String) -> Bool {
+        guard let idx = tabs.firstIndex(where: { $0.surfaceId == surfaceId }) else {
+            return tabs.isEmpty
+        }
+        let tab = tabs.remove(at: idx)
+        teardownTab(tab)
+        if activeSurfaceId == surfaceId {
+            activeSurfaceId = nil
+            if let next = tabs.first { activate(next.surfaceId) }
+        }
+        updateTabStripSelection()
+        return tabs.isEmpty
+    }
+
+    func tearDown() {
+        guard !torn else { return }
+        torn = true
+        for tab in tabs { teardownTab(tab) }
+        tabs.removeAll()
+        activeSurfaceId = nil
+    }
+
+    func containsBrowserTab(_ browserTabId: String) -> Bool {
+        tabs.contains { $0.browserTabId == browserTabId }
+    }
+
+    /// Activate the tab backing `browserTabId` and make its webview first
+    /// responder in place (native input prep) — never relocates it out of the
+    /// aside. Returns false until the webview has attached.
+    func focusForInput(browserTabId: String) -> Bool {
+        guard let tab = tabs.first(where: { $0.browserTabId == browserTabId }) else { return false }
+        if tab.surfaceId != activeSurfaceId { activate(tab.surfaceId) }
+        guard let webView = tab.webView, let window = webView.window else { return false }
         window.makeFirstResponder(webView)
         return true
     }
 
-    /// Tear down the docked browser: stop KVO, detach the webview, and destroy
-    /// the underlying Rust tab. Idempotent — the surface close path and the close
-    /// button can both reach here. The tab is intentionally closed (not merely
-    /// discarded): it has no sidebar entry to reactivate from.
-    func tearDown() {
-        guard !torn else { return }
-        torn = true
-        Self.registry.removeValue(forKey: tabId)
-        urlObservation?.invalidate()
-        backObservation?.invalidate()
-        forwardObservation?.invalidate()
-        urlObservation = nil
-        backObservation = nil
-        forwardObservation = nil
-        if let webView {
-            webView.stopLoading()
-            webView.removeFromSuperview()
+    private func activeTab() -> Tab? {
+        guard let id = activeSurfaceId else { return nil }
+        return tabs.first { $0.surfaceId == id }
+    }
+
+    private func activate(_ surfaceId: String) {
+        guard let tab = tabs.first(where: { $0.surfaceId == surfaceId }) else { return }
+        activeSurfaceId = surfaceId
+        // Show only the active tab's webview.
+        for other in tabs where other.surfaceId != surfaceId {
+            other.webView?.isHidden = true
         }
-        webView = nil
-        _ = browserTabClose(tabId)
+        if let webView = tab.webView {
+            webView.isHidden = false
+            if webView.superview !== webContainer {
+                WebViewManager.attachWebViewToContainer(webView, container: webContainer)
+            }
+            webView.window?.makeFirstResponder(webView)
+            updateBackForward(canGoBack: webView.canGoBack, canGoForward: webView.canGoForward)
+        } else {
+            updateBackForward(canGoBack: false, canGoForward: false)
+        }
+        updateTabStripSelection()
+    }
+
+    private func teardownTab(_ tab: Tab) {
+        tab.invalidate()
+        tab.webView?.stopLoading()
+        tab.webView?.removeFromSuperview()
+        tab.webView = nil
+        tab.row.removeFromSuperview()
+        tabStrip.removeArrangedSubview(tab.row)
+        _ = browserTabClose(tab.browserTabId)
+    }
+
+    // MARK: - WebView wiring
+
+    private func attachWhenReady(tab: Tab, attempt: Int) {
+        guard !torn, tabs.contains(where: { $0 === tab }) else { return }
+        if let webView = resolveWebView(browserTabId: tab.browserTabId) {
+            attach(webView, to: tab)
+            return
+        }
+        guard attempt < Self.maxAttachRetry else {
+            os_log("docked tab webview never ready tab=%{public}@", log: Self.log, type: .error, tab.browserTabId)
+            onCloseTab(tab.surfaceId)
+            return
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.attachRetryDelay) { [weak self, weak tab] in
+            guard let self, let tab else { return }
+            self.attachWhenReady(tab: tab, attempt: attempt + 1)
+        }
+    }
+
+    private func resolveWebView(browserTabId: String) -> WKWebView? {
+        let appId = getBuiltinBrowserAppId().toString()
+        let sessionId = getLxAppSessionId(appId)
+        guard sessionId > 0 else { return nil }
+        let path = browserTabPathForId(browserTabId).toString()
+        return WebViewManager.resolveWebView(appId: appId, path: path, sessionId: sessionId)
+    }
+
+    private func attach(_ webView: WKWebView, to tab: Tab) {
+        if #available(macOS 13.3, *) { webView.isInspectable = true }
+        tab.webView = webView
+        observe(webView, tab: tab)
+        if tab.surfaceId == activeSurfaceId {
+            activate(tab.surfaceId)
+        } else {
+            webView.isHidden = true
+        }
+    }
+
+    private func observe(_ webView: WKWebView, tab: Tab) {
+        tab.urlObs = webView.observe(\.url, options: [.new]) { [weak self, weak tab] webView, _ in
+            Task { @MainActor in
+                guard let self, let tab, !self.torn else { return }
+                tab.url = webView.url?.absoluteString ?? tab.url
+                _ = updateBrowserTabInfo(tab.browserTabId, webView.url?.absoluteString ?? "", webView.title ?? "")
+            }
+        }
+        tab.titleObs = webView.observe(\.title, options: [.new]) { [weak self, weak tab] webView, _ in
+            Task { @MainActor in
+                guard let self, let tab, !self.torn else { return }
+                let t = (webView.title ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                tab.title = t.isEmpty ? Self.shortTitle(for: tab.url) : t
+                self.updateTabButtonTitle(tab)
+            }
+        }
+        tab.backObs = webView.observe(\.canGoBack, options: [.new]) { [weak self, weak tab] webView, _ in
+            Task { @MainActor in
+                guard let self, let tab, !self.torn, tab.surfaceId == self.activeSurfaceId else { return }
+                self.updateBackForward(canGoBack: webView.canGoBack, canGoForward: webView.canGoForward)
+            }
+        }
+        tab.forwardObs = webView.observe(\.canGoForward, options: [.new]) { [weak self, weak tab] webView, _ in
+            Task { @MainActor in
+                guard let self, let tab, !self.torn, tab.surfaceId == self.activeSurfaceId else { return }
+                self.updateBackForward(canGoBack: webView.canGoBack, canGoForward: webView.canGoForward)
+            }
+        }
+    }
+
+    private func updateBackForward(canGoBack: Bool, canGoForward: Bool) {
+        NavButtonState.apply(backButton, enabled: canGoBack)
+        NavButtonState.apply(forwardButton, enabled: canGoForward)
     }
 
     // MARK: - Chrome
 
-    private func buildChrome(initialURL: String) {
+    private func buildChrome() {
         containerView.wantsLayer = true
         containerView.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
 
         toolbar.translatesAutoresizingMaskIntoConstraints = false
-        toolbar.wantsLayer = true
         containerView.addSubview(toolbar)
 
         configureToolButton(backButton, iconName: "icon_back", action: #selector(backClicked))
@@ -139,37 +297,27 @@ final class DockedBrowser: NSObject {
         toolbar.addSubview(forwardButton)
         toolbar.addSubview(refreshButton)
 
-        addressBarContainer.translatesAutoresizingMaskIntoConstraints = false
-        addressBarContainer.wantsLayer = true
-        addressBarContainer.layer?.cornerRadius = 6
-        addressBarContainer.layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(0.06).cgColor
-        toolbar.addSubview(addressBarContainer)
+        closeAsideButton.translatesAutoresizingMaskIntoConstraints = false
+        closeAsideButton.isBordered = false
+        closeAsideButton.imagePosition = .imageOnly
+        closeAsideButton.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: "Close aside")
+        closeAsideButton.contentTintColor = NSColor.secondaryLabelColor
+        closeAsideButton.toolTip = "Close"
+        closeAsideButton.target = self
+        closeAsideButton.action = #selector(closeAsideClicked)
+        toolbar.addSubview(closeAsideButton)
 
-        addressField.translatesAutoresizingMaskIntoConstraints = false
-        addressField.font = NSFont.systemFont(ofSize: 13)
-        addressField.placeholderString = "Enter address"
-        addressField.isBordered = false
-        addressField.drawsBackground = false
-        addressField.focusRingType = .none
-        addressField.usesSingleLineMode = true
-        addressField.cell?.wraps = false
-        addressField.cell?.isScrollable = true
-        addressField.cell?.lineBreakMode = .byTruncatingTail
-        addressField.stringValue = initialURL
-        addressField.target = self
-        addressField.action = #selector(addressSubmitted(_:))
-        addressBarContainer.addSubview(addressField)
-
-        closeButton.translatesAutoresizingMaskIntoConstraints = false
-        closeButton.isBordered = false
-        closeButton.bezelStyle = .regularSquare
-        closeButton.imagePosition = .imageOnly
-        closeButton.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: "Close")
-        closeButton.contentTintColor = NSColor.secondaryLabelColor
-        closeButton.toolTip = "Close"
-        closeButton.target = self
-        closeButton.action = #selector(closeClicked)
-        toolbar.addSubview(closeButton)
+        // Title tab strip (horizontal, scrollable) below the toolbar.
+        tabStrip.orientation = .horizontal
+        tabStrip.spacing = 4
+        tabStrip.alignment = .centerY
+        tabStrip.translatesAutoresizingMaskIntoConstraints = false
+        tabScroll.translatesAutoresizingMaskIntoConstraints = false
+        tabScroll.drawsBackground = false
+        tabScroll.hasHorizontalScroller = false
+        tabScroll.hasVerticalScroller = false
+        tabScroll.documentView = tabStrip
+        containerView.addSubview(tabScroll)
 
         separator.translatesAutoresizingMaskIntoConstraints = false
         separator.wantsLayer = true
@@ -201,21 +349,18 @@ final class DockedBrowser: NSObject {
             refreshButton.widthAnchor.constraint(equalToConstant: Layout.buttonSize),
             refreshButton.heightAnchor.constraint(equalToConstant: Layout.buttonSize),
 
-            closeButton.trailingAnchor.constraint(equalTo: toolbar.trailingAnchor, constant: -Layout.edge),
-            closeButton.centerYAnchor.constraint(equalTo: toolbar.centerYAnchor),
-            closeButton.widthAnchor.constraint(equalToConstant: Layout.closeSize),
-            closeButton.heightAnchor.constraint(equalToConstant: Layout.closeSize),
+            closeAsideButton.trailingAnchor.constraint(equalTo: toolbar.trailingAnchor, constant: -Layout.edge),
+            closeAsideButton.centerYAnchor.constraint(equalTo: toolbar.centerYAnchor),
+            closeAsideButton.widthAnchor.constraint(equalToConstant: Layout.closeSize),
+            closeAsideButton.heightAnchor.constraint(equalToConstant: Layout.closeSize),
 
-            addressBarContainer.leadingAnchor.constraint(equalTo: refreshButton.trailingAnchor, constant: Layout.edge),
-            addressBarContainer.trailingAnchor.constraint(equalTo: closeButton.leadingAnchor, constant: -Layout.edge),
-            addressBarContainer.centerYAnchor.constraint(equalTo: toolbar.centerYAnchor),
-            addressBarContainer.heightAnchor.constraint(equalToConstant: Layout.addressHeight),
+            tabScroll.topAnchor.constraint(equalTo: toolbar.bottomAnchor),
+            tabScroll.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: Layout.edge),
+            tabScroll.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -Layout.edge),
+            tabScroll.heightAnchor.constraint(equalToConstant: Layout.tabStripHeight),
+            tabStrip.heightAnchor.constraint(equalTo: tabScroll.heightAnchor),
 
-            addressField.leadingAnchor.constraint(equalTo: addressBarContainer.leadingAnchor, constant: Layout.edge),
-            addressField.trailingAnchor.constraint(equalTo: addressBarContainer.trailingAnchor, constant: -Layout.edge),
-            addressField.centerYAnchor.constraint(equalTo: addressBarContainer.centerYAnchor),
-
-            separator.topAnchor.constraint(equalTo: toolbar.bottomAnchor),
+            separator.topAnchor.constraint(equalTo: tabScroll.bottomAnchor),
             separator.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
             separator.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
             separator.heightAnchor.constraint(equalToConstant: 1),
@@ -241,123 +386,113 @@ final class DockedBrowser: NSObject {
         button.contentTintColor = NSColor.labelColor.withAlphaComponent(0.8)
     }
 
-    // MARK: - WebView wiring
+    /// A tab chip: a title button (activates) + a small close button.
+    private func buildTabRow(_ tab: Tab) {
+        let title = tab.button
+        title.translatesAutoresizingMaskIntoConstraints = false
+        title.isBordered = false
+        title.bezelStyle = .regularSquare
+        title.font = .systemFont(ofSize: 12)
+        title.alignment = .left
+        title.lineBreakMode = .byTruncatingTail
+        title.title = tab.title
+        title.contentTintColor = .labelColor
+        title.target = self
+        title.action = #selector(tabButtonClicked(_:))
+        objc_setAssociatedObject(title, &AssociatedKeys.surfaceId, tab.surfaceId, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
 
-    private func attachWhenReady(attempt: Int) {
-        guard !torn else { return }
-        if let webView = resolveWebView() {
-            attach(webView)
-            return
-        }
-        guard attempt < Self.maxAttachRetry else {
-            os_log("docked browser webview never became ready tab=%{public}@", log: Self.log, type: .error, tabId)
-            onClose()
-            return
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.attachRetryDelay) { [weak self] in
-            self?.attachWhenReady(attempt: attempt + 1)
-        }
+        let close = tab.closeButton
+        close.translatesAutoresizingMaskIntoConstraints = false
+        close.isBordered = false
+        close.imagePosition = .imageOnly
+        close.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: "Close tab")
+        close.contentTintColor = .tertiaryLabelColor
+        close.target = self
+        close.action = #selector(tabCloseClicked(_:))
+        objc_setAssociatedObject(close, &AssociatedKeys.surfaceId, tab.surfaceId, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+
+        let row = tab.row
+        row.orientation = .horizontal
+        row.spacing = 2
+        row.alignment = .centerY
+        row.wantsLayer = true
+        row.layer?.cornerRadius = 6
+        row.edgeInsets = NSEdgeInsets(top: 2, left: 8, bottom: 2, right: 6)
+        row.addArrangedSubview(title)
+        row.addArrangedSubview(close)
+        row.translatesAutoresizingMaskIntoConstraints = false
+        title.widthAnchor.constraint(lessThanOrEqualToConstant: Layout.tabMaxWidth).isActive = true
+        close.widthAnchor.constraint(equalToConstant: 16).isActive = true
+        tabStrip.addArrangedSubview(row)
+        updateTabStripSelection()
     }
 
-    private func resolveWebView() -> WKWebView? {
-        let appId = getBuiltinBrowserAppId().toString()
-        let sessionId = getLxAppSessionId(appId)
-        guard sessionId > 0 else { return nil }
-        let path = browserTabPathForId(tabId).toString()
-        return WebViewManager.resolveWebView(appId: appId, path: path, sessionId: sessionId)
+    private func updateTabButtonTitle(_ tab: Tab) {
+        tab.button.title = tab.title
     }
 
-    private func attach(_ webView: WKWebView) {
-        if #available(macOS 13.3, *) {
-            webView.isInspectable = true
+    private func updateTabStripSelection() {
+        for tab in tabs {
+            let selected = tab.surfaceId == activeSurfaceId
+            tab.row.layer?.backgroundColor = selected
+                ? NSColor.labelColor.withAlphaComponent(0.10).cgColor
+                : NSColor.clear.cgColor
+            tab.button.contentTintColor = selected ? .labelColor : .secondaryLabelColor
         }
-        self.webView = webView
-        WebViewManager.attachWebViewToContainer(webView, container: webContainer)
-        addressField.stringValue = displayURL(webView.url?.absoluteString)
-        updateBackForward(canGoBack: webView.canGoBack, canGoForward: webView.canGoForward)
-        observe(webView)
-        webView.window?.makeFirstResponder(webView)
+        // The tab strip only shows when there is more than one tab.
+        tabScroll.isHidden = tabs.count <= 1
     }
 
-    private func observe(_ webView: WKWebView) {
-        urlObservation = webView.observe(\.url, options: [.new]) { [weak self] webView, _ in
-            Task { @MainActor in
-                guard let self, !self.torn else { return }
-                if self.addressField.currentEditor() == nil {
-                    self.addressField.stringValue = self.displayURL(webView.url?.absoluteString)
-                }
-                _ = updateBrowserTabInfo(self.tabId, webView.url?.absoluteString ?? "", webView.title ?? "")
-            }
-        }
-        backObservation = webView.observe(\.canGoBack, options: [.new]) { [weak self] webView, _ in
-            Task { @MainActor in
-                guard let self, !self.torn else { return }
-                self.updateBackForward(canGoBack: webView.canGoBack, canGoForward: webView.canGoForward)
-            }
-        }
-        forwardObservation = webView.observe(\.canGoForward, options: [.new]) { [weak self] webView, _ in
-            Task { @MainActor in
-                guard let self, !self.torn else { return }
-                self.updateBackForward(canGoBack: webView.canGoBack, canGoForward: webView.canGoForward)
-            }
-        }
-    }
-
-    private func updateBackForward(canGoBack: Bool, canGoForward: Bool) {
-        NavButtonState.apply(backButton, enabled: canGoBack)
-        NavButtonState.apply(forwardButton, enabled: canGoForward)
-    }
-
-    private func displayURL(_ raw: String?) -> String {
-        guard let raw else { return "" }
-        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return "" }
-        return browserUrlIsHidden(trimmed) ? "" : trimmed
-    }
+    private enum AssociatedKeys { nonisolated(unsafe) static var surfaceId = 0 }
 
     // MARK: - Actions
 
     @objc private func backClicked() {
-        guard let webView, webView.canGoBack else { return }
+        guard let webView = activeTab()?.webView, webView.canGoBack else { return }
         webView.goBack()
     }
 
     @objc private func forwardClicked() {
-        guard let webView, webView.canGoForward else { return }
+        guard let webView = activeTab()?.webView, webView.canGoForward else { return }
         webView.goForward()
     }
 
     @objc private func refreshClicked() {
-        webView?.reload()
+        activeTab()?.webView?.reload()
     }
 
-    @objc private func closeClicked() {
-        onClose()
+    @objc private func closeAsideClicked() {
+        onCloseAside()
     }
 
-    @objc private func addressSubmitted(_ sender: NSTextField) {
-        guard let url = Self.resolveAddress(sender.stringValue) else { return }
-        addressField.stringValue = url.absoluteString
-        // WKWebView refuses file:// via a normal request; grant read access to the
-        // file's directory so it (and adjacent resources) can load.
-        if url.isFileURL {
-            webView?.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
-        } else {
-            webView?.load(URLRequest(url: url))
-        }
+    @objc private func tabButtonClicked(_ sender: NSButton) {
+        guard let id = objc_getAssociatedObject(sender, &AssociatedKeys.surfaceId) as? String else { return }
+        activate(id)
     }
 
-    /// Turn raw address-bar text into a URL: honor an explicit scheme, treat a
-    /// dotted token as a host (https), otherwise leave free text to the start
-    /// page/search-provider flow instead of hardcoding a native provider.
-    static func resolveAddress(_ raw: String) -> URL? {
-        let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        if text.isEmpty { return nil }
-        if let url = URL(string: text), url.scheme != nil { return url }
-        if text.contains(".") && !text.contains(" ") {
-            return URL(string: "https://\(text)")
-        }
-        return nil
+    @objc private func tabCloseClicked(_ sender: NSButton) {
+        guard let id = objc_getAssociatedObject(sender, &AssociatedKeys.surfaceId) as? String else { return }
+        onCloseTab(id)
+    }
+
+    // MARK: - Helpers
+
+    /// Dedup key: compare normalized URLs (ignore trailing slash + fragment).
+    static func sameURL(_ a: String, _ b: String) -> Bool {
+        normalizeURL(a) == normalizeURL(b)
+    }
+
+    private static func normalizeURL(_ raw: String) -> String {
+        var s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let hash = s.firstIndex(of: "#") { s = String(s[..<hash]) }
+        if s.hasSuffix("/") { s.removeLast() }
+        return s.lowercased()
+    }
+
+    private static func shortTitle(for url: String) -> String {
+        if let host = URL(string: url)?.host { return host }
+        if let u = URL(string: url), u.isFileURL { return u.lastPathComponent }
+        return url
     }
 }
 #endif

@@ -1,7 +1,7 @@
 {
   "appId": "lingxia-showcase",
   "appName": "LingXia Showcase",
-  "version": "1.1.2",
+  "version": "1.1.6",
   "icon": "public/showcase-icon.png",
   "security": {
     "network": {
@@ -14,7 +14,9 @@
         "www.deepseek.com"
       ]
     },
-    "privileges": ["downloads"]
+    "privileges": [
+      "downloads"
+    ]
   },
   "pages": [
     {
