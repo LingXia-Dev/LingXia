@@ -9,7 +9,7 @@ let package = Package(
         .macOS(.v12)
     ],
     products: [
-        // An xtool project should contain exactly one library product,
+        // Exactly one library product,
         // representing the main app.
         .library(
             name: "lxapp",

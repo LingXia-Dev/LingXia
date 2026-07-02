@@ -6,7 +6,6 @@ DerivedData/
 .swiftpm
 .netrc
 
-xtool
 Sources/Resources/
 Sources/lxapp/Resources/*
 !Sources/lxapp/Resources/Assets.xcassets/
