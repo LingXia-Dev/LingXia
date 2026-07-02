@@ -33,7 +33,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
-    DeleteObject, ExcludeClipRect, GetDC, HDC, HFONT, HGDIOBJ, InvalidateRect, ReleaseDC,
+    ExcludeClipRect, GetDC, HDC, HFONT, InvalidateRect, ReleaseDC,
 };
 use windows::Win32::UI::Input::KeyboardAndMouse::{SetFocus, VK_ESCAPE, VK_RETURN};
 use windows::Win32::UI::WindowsAndMessaging::{
@@ -55,8 +55,6 @@ struct InlineEditState {
     original_proc: isize,
     /// Raw handle of the host (parent) window.
     host: isize,
-    /// Chrome text font selected into the control; deleted on destroy.
-    font: HFONT,
     on_commit: InlineEditCommit,
     /// Guards against double commit/cancel: destroying the control on
     /// Enter re-enters the proc with WM_KILLFOCUS.
@@ -165,7 +163,6 @@ pub fn begin_inline_edit(
     let state = Box::new(InlineEditState {
         original_proc,
         host: host_hwnd.0 as isize,
-        font,
         on_commit,
         finished: false,
     });
@@ -200,10 +197,11 @@ pub fn begin_inline_edit(
 }
 
 /// Chrome text font for the editor (same font `chrome::draw_text` uses).
+/// Shared cache entry - not owned by the control.
 fn create_inline_edit_font(edit: HWND) -> HFONT {
     unsafe {
         let hdc = GetDC(Some(edit));
-        let font = super::chrome::create_chrome_text_font(hdc);
+        let font = super::chrome::chrome_text_font(hdc);
         if !hdc.is_invalid() {
             let _ = ReleaseDC(Some(edit), hdc);
         }
@@ -293,9 +291,6 @@ unsafe extern "system" fn inline_edit_proc(
                     WindowsAndMessaging::GWLP_WNDPROC,
                     state.original_proc,
                 );
-                if !state.font.is_invalid() {
-                    let _ = DeleteObject(HGDIOBJ(state.font.0));
-                }
             }
             // Forget the edit (only if this control is still the host's
             // registered one) and repaint the chrome underneath it.

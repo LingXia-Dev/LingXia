@@ -501,7 +501,7 @@ pub(super) fn draw_frame_button_glyph(hdc: HDC, glyph: &str, rect: RECT, rgb: u3
     let mut wide: Vec<u16> = glyph.encode_utf16().collect();
     let mut rect = rect;
     unsafe {
-        let font = create_caption_icon_font(hdc);
+        let font = caption_icon_font(hdc);
         let old_font = if font.is_invalid() {
             HGDIOBJ::default()
         } else {
@@ -518,18 +518,22 @@ pub(super) fn draw_frame_button_glyph(hdc: HDC, glyph: &str, rect: RECT, rgb: u3
         if !old_font.is_invalid() {
             let _ = SelectObject(hdc, old_font);
         }
-        if !font.is_invalid() {
-            let _ = DeleteObject(HGDIOBJ(font.0));
-        }
     }
 }
 
 /// Caption icon font: Segoe Fluent Icons (Win11), falling back to Segoe
 /// MDL2 Assets (Win10). The GDI font mapper silently substitutes missing
 /// faces, so each candidate is verified via `GetTextFaceW` before its
-/// private-use glyphs are trusted.
-pub(super) fn create_caption_icon_font(hdc: HDC) -> HFONT {
-    let height = -logical_font_height(hdc, WINDOW_BUTTON_GLYPH_POINT_SIZE);
+/// private-use glyphs are trusted. The probe runs once per DPI height;
+/// the resolved font is a shared cache entry - do not delete.
+pub(super) fn caption_icon_font(hdc: HDC) -> HFONT {
+    let height = logical_font_height(hdc, WINDOW_BUTTON_GLYPH_POINT_SIZE);
+    cached_font_with("caption-icon", height, 400, CLEARTYPE_QUALITY, || {
+        create_caption_icon_font(hdc, -height)
+    })
+}
+
+fn create_caption_icon_font(hdc: HDC, height: i32) -> HFONT {
     for face in ["Segoe Fluent Icons", "Segoe MDL2 Assets"] {
         let face_wide: Vec<u16> = face.encode_utf16().chain(std::iter::once(0)).collect();
         unsafe {

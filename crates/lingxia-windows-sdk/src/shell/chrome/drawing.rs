@@ -1,5 +1,6 @@
 //! Low-level GDI/GDI+ drawing helpers for shell chrome.
 
+use std::collections::HashMap;
 use std::ffi::c_void;
 use std::sync::{Mutex, OnceLock};
 
@@ -18,16 +19,46 @@ use windows::core::w;
 use super::icons::{cached_png_bytes_icon_handle, cached_png_icon_handle};
 use super::*;
 
-/// Chrome text font ("Segoe UI" at the shell text size/weight) sized for
-/// `hdc`'s DPI. The caller owns the returned font and deletes it after use.
-pub(in crate::shell) fn create_chrome_text_font(hdc: HDC) -> HFONT {
-    create_chrome_text_font_with_quality(hdc, CLEARTYPE_QUALITY)
+/// Process-lifetime GDI font cache keyed by (face, pixel height, weight,
+/// quality). A chrome repaint draws dozens of strings and creating/destroying
+/// an HFONT per string is measurable GDI churn for what is only a handful of
+/// distinct fonts. Cached fonts are shared: callers select them into a DC and
+/// must NOT `DeleteObject` them (GDI reclaims them at process exit).
+pub(in crate::shell) fn cached_font_with(
+    face: &str,
+    height: i32,
+    weight: i32,
+    quality: FONT_QUALITY,
+    create: impl FnOnce() -> HFONT,
+) -> HFONT {
+    type FontKey = (String, i32, i32, u8);
+    static FONTS: OnceLock<Mutex<HashMap<FontKey, isize>>> = OnceLock::new();
+    let fonts = FONTS.get_or_init(|| Mutex::new(HashMap::new()));
+    let Ok(mut fonts) = fonts.lock() else {
+        return create();
+    };
+    let key = (face.to_string(), height, weight, quality.0);
+    if let Some(&handle) = fonts.get(&key) {
+        return HFONT(handle as *mut std::ffi::c_void);
+    }
+    let font = create();
+    if !font.is_invalid() {
+        fonts.insert(key, font.0 as isize);
+    }
+    font
 }
 
-fn create_chrome_text_font_with_quality(hdc: HDC, quality: FONT_QUALITY) -> HFONT {
-    unsafe {
+/// Chrome text font ("Segoe UI" at the shell text size/weight) sized for
+/// `hdc`'s DPI. Shared cache entry - do not delete.
+pub(in crate::shell) fn chrome_text_font(hdc: HDC) -> HFONT {
+    chrome_text_font_with_quality(hdc, CLEARTYPE_QUALITY)
+}
+
+fn chrome_text_font_with_quality(hdc: HDC, quality: FONT_QUALITY) -> HFONT {
+    let height = logical_font_height(hdc, SHELL_TEXT_POINT_SIZE);
+    cached_font_with("Segoe UI", height, SHELL_TEXT_WEIGHT, quality, || unsafe {
         CreateFontW(
-            -logical_font_height(hdc, SHELL_TEXT_POINT_SIZE),
+            -height,
             0,
             0,
             0,
@@ -42,7 +73,7 @@ fn create_chrome_text_font_with_quality(hdc: HDC, quality: FONT_QUALITY) -> HFON
             DEFAULT_PITCH.0 as u32 | FF_SWISS.0 as u32,
             w!("Segoe UI"),
         )
-    }
+    })
 }
 
 pub(in crate::shell) fn draw_text(
@@ -79,7 +110,7 @@ fn draw_text_with_quality(
 
     let mut wide: Vec<u16> = text.encode_utf16().collect();
     let mut rect = rect;
-    let font = create_chrome_text_font_with_quality(hdc, quality);
+    let font = chrome_text_font_with_quality(hdc, quality);
     unsafe {
         let old_font = if font.is_invalid() {
             HGDIOBJ::default()
@@ -96,9 +127,6 @@ fn draw_text_with_quality(
         );
         if !old_font.is_invalid() {
             let _ = SelectObject(hdc, old_font);
-        }
-        if !font.is_invalid() {
-            let _ = DeleteObject(HGDIOBJ(font.0));
         }
     }
 }

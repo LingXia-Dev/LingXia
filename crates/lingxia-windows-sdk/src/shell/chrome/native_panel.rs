@@ -376,22 +376,25 @@ pub(super) fn draw_terminal_panel_content(
         .unwrap_or("Terminal session is waiting for output");
 
     unsafe {
-        let font = CreateFontW(
-            -logical_font_height(hdc, 10),
-            0,
-            0,
-            0,
-            400,
-            0,
-            0,
-            0,
-            DEFAULT_CHARSET,
-            OUT_DEFAULT_PRECIS,
-            CLIP_DEFAULT_PRECIS,
-            CLEARTYPE_QUALITY,
-            DEFAULT_PITCH.0 as u32 | FF_SWISS.0 as u32,
-            w!("Cascadia Mono"),
-        );
+        let height = logical_font_height(hdc, 10);
+        let font = cached_font_with("Cascadia Mono", height, 400, CLEARTYPE_QUALITY, || {
+            CreateFontW(
+                -height,
+                0,
+                0,
+                0,
+                400,
+                0,
+                0,
+                0,
+                DEFAULT_CHARSET,
+                OUT_DEFAULT_PRECIS,
+                CLIP_DEFAULT_PRECIS,
+                CLEARTYPE_QUALITY,
+                DEFAULT_PITCH.0 as u32 | FF_SWISS.0 as u32,
+                w!("Cascadia Mono"),
+            )
+        });
         let old_font = if font.is_invalid() {
             HGDIOBJ::default()
         } else {
@@ -420,9 +423,6 @@ pub(super) fn draw_terminal_panel_content(
         }
         if !old_font.is_invalid() {
             let _ = SelectObject(hdc, old_font);
-        }
-        if !font.is_invalid() {
-            let _ = DeleteObject(HGDIOBJ(font.0));
         }
     }
 }
