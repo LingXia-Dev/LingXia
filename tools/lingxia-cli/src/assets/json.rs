@@ -76,6 +76,12 @@ pub(super) fn build_app_json_from_config(
     }
     if let Some(dev_ws_url) = dev_ws_url.map(str::trim).filter(|value| !value.is_empty()) {
         obj.insert("devWsUrl".to_string(), serde_json::json!(dev_ws_url));
+        if let Some(dev_bundle_base_url) = dev_bundle_base_url(dev_ws_url) {
+            obj.insert(
+                "devBundleBaseUrl".to_string(),
+                serde_json::json!(dev_bundle_base_url),
+            );
+        }
     }
     if let Some(app_links) = config.app_links.as_ref()
         && !app_links.hosts.is_empty()
@@ -95,6 +101,18 @@ pub(super) fn build_app_json_from_config(
     Ok(serde_json::to_string_pretty(&serde_json::Value::Object(
         obj,
     ))?)
+}
+
+fn dev_bundle_base_url(dev_ws_url: &str) -> Option<String> {
+    let rest = dev_ws_url
+        .strip_prefix("ws://")
+        .or_else(|| dev_ws_url.strip_prefix("wss://"))?;
+    let scheme = if dev_ws_url.starts_with("wss://") {
+        "https"
+    } else {
+        "http"
+    };
+    Some(format!("{scheme}://{rest}/__lingxia/dev"))
 }
 
 pub(super) fn build_ui_json_from_config(

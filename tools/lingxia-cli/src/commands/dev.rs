@@ -16,6 +16,7 @@ use std::time::Duration;
 use sysinfo::{ProcessesToUpdate, Signal, System};
 
 pub(crate) mod log_store;
+mod lxapp_manifest;
 mod server;
 
 const RUNNER_APP_NAME: &str = "LingXia Runner.app";
@@ -89,6 +90,39 @@ struct DevContext {
     resolved_env: crate::config::ResolvedEnv,
     extra_native_features: Vec<String>,
     parallel: bool,
+}
+
+fn prepare_dev_host_assets(
+    ctx: &DevContext,
+    platforms_to_build: &[PlatformType],
+    build_targets: &[String],
+    dev_ws_url: Option<&str>,
+) -> Result<()> {
+    prepare_configured_host_assets(
+        &ctx.project_root,
+        &ctx.config,
+        ctx.build_profile,
+        ctx.framework,
+        ctx.progress.as_deref(),
+        platforms_to_build,
+        build_targets,
+        true,
+        dev_ws_url,
+        &ctx.resolved_env,
+    )?;
+    if dev_ws_url.is_some() {
+        let dev_manifests =
+            lxapp_manifest::write_configured_manifests(&ctx.project_root, &ctx.config)?;
+        for manifest in &dev_manifests {
+            println!(
+                "  {} dev manifest {} ({})",
+                "*".cyan(),
+                manifest.app_id,
+                manifest.dist_hash
+            );
+        }
+    }
+    Ok(())
 }
 
 /// Stable string used for `SessionInfo.platform`. Same set advertised by `lxdev`'s
@@ -287,20 +321,8 @@ fn execute_android(ctx: DevContext, abis: Vec<String>) -> Result<()> {
     let session = server.session().clone();
 
     let run_result = (|| -> Result<()> {
-        // Generate app.json and embed LxApp assets
         let platforms_to_build = vec![PlatformType::Android];
-        prepare_configured_host_assets(
-            &ctx.project_root,
-            &ctx.config,
-            ctx.build_profile,
-            ctx.framework,
-            ctx.progress.as_deref(),
-            &platforms_to_build,
-            &build_targets,
-            true,
-            Some(&device_ws_url),
-            &ctx.resolved_env,
-        )?;
+        prepare_dev_host_assets(&ctx, &platforms_to_build, &build_targets, Some(&device_ws_url))?;
 
         // Step 1: Build
         println!("{}", "Step 1/4: Building...".bold());
@@ -365,7 +387,7 @@ fn execute_android(ctx: DevContext, abis: Vec<String>) -> Result<()> {
         log_store::write_session(&ctx.project_root, &session, platform_name, &host_ws_url)?;
 
         let run_config = RunConfig {
-            device_id: ctx.device,
+            device_id: ctx.device.clone(),
             package_id,
             main_activity: None,
             restart: false,
@@ -392,20 +414,8 @@ fn execute_ios(ctx: DevContext) -> Result<()> {
     let session = server.session().clone();
 
     let run_result = (|| -> Result<()> {
-        // Generate app.json and embed LxApp assets
         let platforms_to_build = vec![PlatformType::Ios];
-        prepare_configured_host_assets(
-            &ctx.project_root,
-            &ctx.config,
-            ctx.build_profile,
-            ctx.framework,
-            ctx.progress.as_deref(),
-            &platforms_to_build,
-            &[],
-            true,
-            Some(&device_ws_url),
-            &ctx.resolved_env,
-        )?;
+        prepare_dev_host_assets(&ctx, &platforms_to_build, &[], Some(&device_ws_url))?;
 
         // Step 1: Build
         println!("{}", "Step 1/3: Building...".bold());
@@ -458,7 +468,7 @@ fn execute_ios(ctx: DevContext) -> Result<()> {
         let run_config = RunConfig {
             package_id: bundle_id.clone(),
             main_activity: None,
-            device_id: ctx.device,
+            device_id: ctx.device.clone(),
             restart: false,
         };
         platform.run(&run_config)?;
@@ -494,52 +504,40 @@ Use `lingxia build --platform macos --macos-arch {}` for cross-arch builds.",
         ));
     }
 
-    // Generate app.json and embed LxApp assets (macOS build prepares resources itself)
-    let platforms_to_build = vec![PlatformType::MacOs];
-    prepare_configured_host_assets(
-        &ctx.project_root,
-        &ctx.config,
-        ctx.build_profile,
-        ctx.framework,
-        ctx.progress.as_deref(),
-        &platforms_to_build,
-        &[],
-        true,
-        None,
-        &ctx.resolved_env,
-    )?;
-
-    // Step 1: Build
-    println!("{}", "Step 1/2: Building...".bold());
-    let build_config = BuildConfig {
-        project_root: ctx.project_root.clone(),
-        profile: ctx.build_profile,
-        build_native: ctx.build_native,
-        targets: vec![],
-        lingxia_config: Some(ctx.config.clone()),
-        ipa: false,
-        package: false,
-        dmg: false,
-        android_aab: false,
-        macos_arch,
-        framework: ctx.framework,
-        native_features: dev_native_features(&ctx.config, "macos", &ctx.extra_native_features),
-        native_default_features: ctx.config.native_default_features_enabled(),
-        resolved_env: ctx.resolved_env.clone(),
-        skip_native_build: false,
-        native_only: false,
-    };
-
-    let artifacts = platform.build(&build_config)?;
-    let app_path = artifacts.path().to_path_buf();
-    let exe = platform::macos::app_bundle_executable(&app_path)?;
-    println!();
-
     let server = server::start_server_fixed(&ctx.project_root, "127.0.0.1", platform_name)?;
     let ws_url = server.ws_url();
     let session = server.session().clone();
 
     let run_result = (|| -> Result<()> {
+        let platforms_to_build = vec![PlatformType::MacOs];
+        prepare_dev_host_assets(&ctx, &platforms_to_build, &[], Some(&ws_url))?;
+
+        // Step 1: Build
+        println!("{}", "Step 1/2: Building...".bold());
+        let build_config = BuildConfig {
+            project_root: ctx.project_root.clone(),
+            profile: ctx.build_profile,
+            build_native: ctx.build_native,
+            targets: vec![],
+            lingxia_config: Some(ctx.config.clone()),
+            ipa: false,
+            package: false,
+            dmg: false,
+            android_aab: false,
+            macos_arch,
+            framework: ctx.framework,
+            native_features: dev_native_features(&ctx.config, "macos", &ctx.extra_native_features),
+            native_default_features: ctx.config.native_default_features_enabled(),
+            resolved_env: ctx.resolved_env.clone(),
+            skip_native_build: false,
+            native_only: false,
+        };
+
+        let artifacts = platform.build(&build_config)?;
+        let app_path = artifacts.path().to_path_buf();
+        let exe = platform::macos::app_bundle_executable(&app_path)?;
+        println!();
+
         let stop_requested = Arc::new(AtomicBool::new(false));
         install_ctrlc_handler(stop_requested.clone())?;
         log_store::write_session(&ctx.project_root, &session, platform_name, &ws_url)?;
@@ -585,20 +583,8 @@ fn execute_harmony(ctx: DevContext) -> Result<()> {
     let session = server.session().clone();
 
     let run_result = (|| -> Result<()> {
-        // Generate app.json and embed LxApp assets
         let platforms_to_build = vec![PlatformType::Harmony];
-        prepare_configured_host_assets(
-            &ctx.project_root,
-            &ctx.config,
-            ctx.build_profile,
-            ctx.framework,
-            ctx.progress.as_deref(),
-            &platforms_to_build,
-            &[],
-            true,
-            Some(&device_ws_url),
-            &ctx.resolved_env,
-        )?;
+        prepare_dev_host_assets(&ctx, &platforms_to_build, &[], Some(&device_ws_url))?;
 
         // Step 1: Build
         println!("{}", "Step 1/4: Building...".bold());
@@ -663,7 +649,7 @@ fn execute_harmony(ctx: DevContext) -> Result<()> {
         let run_config = RunConfig {
             package_id: bundle_name.clone(),
             main_activity: None, // defaults to "EntryAbility" in harmony platform
-            device_id: ctx.device,
+            device_id: ctx.device.clone(),
             restart: false,
         };
 
@@ -688,18 +674,7 @@ fn execute_windows(ctx: DevContext) -> Result<()> {
 
     let run_result = (|| -> Result<()> {
         let platforms_to_build = vec![PlatformType::Windows];
-        prepare_configured_host_assets(
-            &ctx.project_root,
-            &ctx.config,
-            ctx.build_profile,
-            ctx.framework,
-            ctx.progress.as_deref(),
-            &platforms_to_build,
-            &[],
-            true,
-            Some(&ws_url),
-            &ctx.resolved_env,
-        )?;
+        prepare_dev_host_assets(&ctx, &platforms_to_build, &[], Some(&ws_url))?;
 
         println!("{}", "Step 1/2: Building...".bold());
         let build_config = BuildConfig {

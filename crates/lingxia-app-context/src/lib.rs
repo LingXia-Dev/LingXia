@@ -80,6 +80,13 @@ pub struct AppConfig {
     #[serde(rename = "devWsUrl", default, skip_serializing_if = "Option::is_none")]
     pub dev_ws_url: Option<String>,
 
+    #[serde(
+        rename = "devBundleBaseUrl",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub dev_bundle_base_url: Option<String>,
+
     #[serde(rename = "appLinks", default, skip_serializing_if = "Option::is_none")]
     pub app_links: Option<AppLinksConfig>,
 
@@ -440,6 +447,7 @@ mod tests {
             cache_max_size_mb: 1024,
             storage: None,
             dev_ws_url: None,
+            dev_bundle_base_url: None,
             app_links: None,
             capabilities: None,
             panels: None,
