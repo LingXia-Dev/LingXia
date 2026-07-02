@@ -225,6 +225,22 @@ pub fn open_browser_tab(appid: String, session_id: i64, url: String) -> Option<S
     crate::browser::open_for_app(&appid, session_id as u64, &url, None).ok()
 }
 
+/// Open an aside tab in the shared in-app browser: self chrome minus the
+/// address bar (compact `{ url, as: 'aside' }`).
+#[napi]
+pub fn open_aside_browser_tab(appid: String, session_id: i64, url: String) -> Option<String> {
+    if session_id <= 0 {
+        return None;
+    }
+    crate::browser::open_aside_for_app(&appid, session_id as u64, &url, None).ok()
+}
+
+/// Whether the tab was opened as an aside (chrome hides its address bar).
+#[napi]
+pub fn browser_tab_is_aside(tab_id: String) -> bool {
+    crate::browser::tab_is_aside(&tab_id)
+}
+
 #[napi]
 pub fn browser_tab_close(tab_id: String) -> bool {
     crate::browser::close(&tab_id).is_ok()

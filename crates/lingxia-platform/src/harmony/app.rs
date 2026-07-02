@@ -567,8 +567,7 @@ impl AppRuntime for Platform {
         let target_str = match req.target {
             crate::traits::app_runtime::OpenUrlTarget::SelfTarget => "self",
             crate::traits::app_runtime::OpenUrlTarget::NewBrowserTab => "new_browser_tab",
-            // Aside chrome is not wired on Harmony yet; keep it in-app.
-            crate::traits::app_runtime::OpenUrlTarget::AsideBrowser => "self",
+            crate::traits::app_runtime::OpenUrlTarget::AsideBrowser => "aside",
             _ => "external",
         };
         let owner_session = req.owner_session_id.to_string();

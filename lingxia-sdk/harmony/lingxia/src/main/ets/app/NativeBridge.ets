@@ -31,7 +31,7 @@ import { PermissionManager } from './PermissionManager';
 import { LxNativeVideoPlayer } from '../lxapp/APIs/media/player/LxNativeVideoPlayer';
 import { updateNativeComponentProps } from '../lxapp/NativeComponents/NativeBridgeInternal';
 import { completeWebFileChooserRequest } from '../lxapp/WebFileChooserBridge';
-import { getCurrentLxapp, getLxappSessionId, openBrowserTab, type CurrentLxApp } from 'liblingxia.so';
+import { getCurrentLxapp, getLxappSessionId, openAsideBrowserTab, openBrowserTab, type CurrentLxApp } from 'liblingxia.so';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.NativeBridge';
@@ -157,9 +157,10 @@ class NativeBridge {
       ownerAppId?: string,
       ownerSessionIdRaw?: Object
     ) => {
-      // Both "self" and "new_browser_tab" open inside the in-app browser; a
-      // new-tab request opens a fresh managed tab and switches to it (below).
-      const inAppBrowserTarget = target === 'self' || target === 'new_browser_tab';
+      // "self", "new_browser_tab" and "aside" open inside the in-app browser;
+      // an aside tab carries the aside flag so the chrome hides its address bar.
+      const isAside = target === 'aside';
+      const inAppBrowserTarget = target === 'self' || target === 'new_browser_tab' || isAside;
       if (!inAppBrowserTarget) {
         Lingxia.launchWithUrl(url);
         return true;
@@ -200,11 +201,9 @@ class NativeBridge {
         return false;
       }
 
-      const tabId: string | null = openBrowserTab(
-        resolvedOwnerAppId,
-        Math.trunc(resolvedOwnerSessionId),
-        normalizedUrl
-      );
+      const tabId: string | null = isAside
+        ? openAsideBrowserTab(resolvedOwnerAppId, Math.trunc(resolvedOwnerSessionId), normalizedUrl)
+        : openBrowserTab(resolvedOwnerAppId, Math.trunc(resolvedOwnerSessionId), normalizedUrl);
       if (!tabId || tabId.trim().length === 0) {
         hilog.error(DOMAIN, TAG, 'launchWithUrl target=in_app failed: openBrowserTab returned empty tabId');
         return false;

@@ -176,6 +176,17 @@ declare module 'liblingxia.so' {
   export function openBrowserTab(appid: string, sessionId: number, url: string): string | null;
 
   /**
+   * Open an aside tab in the shared in-app browser: same as openBrowserTab
+   * except the chrome hides its address bar while this tab is active.
+   */
+  export function openAsideBrowserTab(appid: string, sessionId: number, url: string): string | null;
+
+  /**
+   * Whether the tab was opened as an aside (chrome hides its address bar).
+   */
+  export function browserTabIsAside(tabId: string): boolean;
+
+  /**
    * Close a managed internal browser tab.
    */
   export function browserTabClose(tabId: string): boolean;
