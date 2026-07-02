@@ -104,6 +104,9 @@ final class BrowserTabCoordinator: NSObject {
     private var activeWebView: WKWebView?
     private var backButtonLeadingConstraint: NSLayoutConstraint?
     private var toolbarCenterYConstraints: [NSLayoutConstraint] = []
+    /// Tabs the user has interacted with (page click or address navigation).
+    private var interactedTabs: Set<String> = []
+    private var interactionMonitor: Any?
 
     // KVO
     nonisolated(unsafe) private var titleObservation: NSKeyValueObservation?
@@ -183,6 +186,7 @@ final class BrowserTabCoordinator: NSObject {
         tabFavicons.removeValue(forKey: id)
         tabFaviconRequestOrigins.removeValue(forKey: id)
         lastObservedURLs.removeValue(forKey: id)
+        interactedTabs.remove(id)
         discardedTabs.remove(id)
         tabRecency.removeAll { $0 == id }
         backgroundedAt.removeValue(forKey: id)
@@ -255,7 +259,14 @@ final class BrowserTabCoordinator: NSObject {
         onCloseAside: @escaping () -> Void
     ) -> (browser: DockedBrowser, isNew: Bool)? {
         if let existing = dockedBrowser {
-            return existing.addOrFocusTab(surfaceId: surfaceId, url: url) ? (existing, false) : nil
+            if existing.addOrFocusTab(surfaceId: surfaceId, url: url) {
+                return (existing, false)
+            }
+            // Stale panel reference (e.g. torn down without clearing): drop it
+            // and rebuild below instead of failing every future aside.
+            os_log("docked browser reference was stale; rebuilding", log: Self.log, type: .error)
+            existing.tearDown()
+            dockedBrowser = nil
         }
         guard let owner = host?.browserOwnerForNewTab() else {
             os_log("Cannot create docked browser without active lxapp session", log: Self.log, type: .error)
@@ -550,7 +561,9 @@ final class BrowserTabCoordinator: NSObject {
         canGoBackObservation?.invalidate()
         canGoForwardObservation?.invalidate()
 
-        titleObservation = webView.observe(\.title, options: [.new]) { [weak self] webView, _ in
+        // .initial: by attach time the page often already has a title/URL —
+        // a change-only observation would leave the sidebar stuck on "New Tab".
+        titleObservation = webView.observe(\.title, options: [.initial, .new]) { [weak self] webView, _ in
             Task { @MainActor in
                 guard let self, let activeId = self.activeTabId else { return }
                 let title = (webView.title ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
@@ -561,7 +574,7 @@ final class BrowserTabCoordinator: NSObject {
             }
         }
 
-        urlObservation = webView.observe(\.url, options: [.new]) { [weak self] webView, _ in
+        urlObservation = webView.observe(\.url, options: [.initial, .new]) { [weak self] webView, _ in
             Task { @MainActor in
                 guard let self, let activeId = self.activeTabId else { return }
                 let rawURL = webView.url?.absoluteString ?? ""
@@ -698,6 +711,8 @@ final class BrowserTabCoordinator: NSObject {
 
         showBrowserView()
         addressField.stringValue = ""
+        // An aside tab hides the address bar (self chrome otherwise unchanged).
+        addressBarContainer.isHidden = browserTabIsAside(tabIdString(id))
         updateBackButtonState(canGoBack: false)
 
         attachWebView(for: id, attempt: 0)
@@ -845,10 +860,19 @@ final class BrowserTabCoordinator: NSObject {
         guard let webView = activeWebView,
               let url = URL(string: urlString) else { return false }
         addressField.stringValue = urlString
+        // An address-bar navigation is a user interaction.
+        markActiveTabInteracted()
         // file:// needs loadFileURL (granting read access to its directory); a normal
         // request is refused by WKWebView.
         if url.isFileURL {
             webView.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
+            return true
+        }
+        // Managed navigate: a raw WKWebView.load is ignored by the browser's
+        // navigation policy. On success re-attach (a blank tab can swap in a
+        // fresh webview). Fall back to raw load only if the managed path fails.
+        if let activeId = activeTabId, browserTabNavigate(tabIdString(activeId), urlString) {
+            attachWebView(for: activeId, attempt: 0)
         } else {
             webView.load(URLRequest(url: url))
         }
@@ -860,6 +884,23 @@ final class BrowserTabCoordinator: NSObject {
     private func setupBrowserViewIfNeeded() {
         guard browserView == nil else { return }
 
+        // First click inside the web area marks the active tab as interacted
+        // (observe-only; the event passes through untouched).
+        if interactionMonitor == nil {
+            interactionMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
+                MainActor.assumeIsolated {
+                    guard let self,
+                          let window = self.webContainer.window,
+                          event.window === window else { return }
+                    let point = self.webContainer.convert(event.locationInWindow, from: nil)
+                    if self.webContainer.bounds.contains(point) {
+                        self.markActiveTabInteracted()
+                    }
+                }
+                return event
+            }
+        }
+
         let bv = NSView()
         bv.translatesAutoresizingMaskIntoConstraints = false
         bv.wantsLayer = true
@@ -870,6 +911,7 @@ final class BrowserTabCoordinator: NSObject {
         bv.addSubview(toolbar)
 
         configureButton(backButton, iconName: "icon_back", action: #selector(backClicked))
+        NavButtonState.apply(backButton, enabled: false)
         toolbar.addSubview(backButton)
 
         configureButton(forwardButton, iconName: "icon_forward", action: #selector(forwardClicked))
@@ -987,11 +1029,28 @@ final class BrowserTabCoordinator: NSObject {
     // MARK: - UI Helpers
 
     private func updateBackButtonState(canGoBack: Bool) {
-        NavButtonState.apply(backButton, enabled: canGoBack)
+        NavButtonState.apply(backButton, enabled: canGoBack && activeTabInteracted())
     }
 
     private func updateForwardButtonState(canGoForward: Bool) {
-        NavButtonState.apply(forwardButton, enabled: canGoForward)
+        NavButtonState.apply(forwardButton, enabled: canGoForward && activeTabInteracted())
+    }
+
+    /// Chrome-style history intervention: until the user interacts with a
+    /// tab (click in its page or an address-bar navigation), auto-created
+    /// history (SPA pushState redirects) must not light back/forward.
+    private func activeTabInteracted() -> Bool {
+        guard let id = activeTabId else { return false }
+        return interactedTabs.contains(id)
+    }
+
+    func markActiveTabInteracted() {
+        guard let id = activeTabId, !interactedTabs.contains(id) else { return }
+        interactedTabs.insert(id)
+        if let webView = activeWebView {
+            updateBackButtonState(canGoBack: webView.canGoBack)
+            updateForwardButtonState(canGoForward: webView.canGoForward)
+        }
     }
 
     private func configureButton(_ button: NSButton, iconName: String, action: Selector) {
