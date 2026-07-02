@@ -183,9 +183,11 @@ object Lingxia {
         ownerSessionId: Long = 0L
     ) {
         Log.d(TAG, "launchWithUrl called with URI: $uri, target: $target")
-        // Mobile currently uses a single in-app browser experience:
-        // treat "new_browser_tab" the same as "self" for now.
-        val inAppBrowserTarget = target == "self" || target == "new_browser_tab"
+        // Mobile uses a single in-app browser experience: "self",
+        // "new_browser_tab" and "aside" all open there; an aside tab carries
+        // the aside flag so the chrome hides its address bar.
+        val isAside = target == "aside"
+        val inAppBrowserTarget = target == "self" || target == "new_browser_tab" || isAside
         if (inAppBrowserTarget && (capabilities and CAP_BROWSER) != 0) {
             val activity = LxApp.getCurrentActivity()
             if (activity != null) {
@@ -211,11 +213,11 @@ object Lingxia {
                         }
                         return@runOnUiThread
                     }
-                    val tabId = NativeApi.openBrowserTab(
-                        resolvedOwnerAppId,
-                        resolvedOwnerSessionId,
-                        uri
-                    )
+                    val tabId = if (isAside) {
+                        NativeApi.openAsideBrowserTab(resolvedOwnerAppId, resolvedOwnerSessionId, uri)
+                    } else {
+                        NativeApi.openBrowserTab(resolvedOwnerAppId, resolvedOwnerSessionId, uri)
+                    }
                     if (tabId.isNullOrBlank()) {
                         Log.w(
                             TAG,
