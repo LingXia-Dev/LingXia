@@ -120,6 +120,12 @@ private class PanelSlot {
     /// leading). Its constant shifts inward when siblings share the edge so
     /// panels sit side by side.
     var edgeConstraint: NSLayoutConstraint?
+    /// Side panels: the docked top/bottom anchors, deactivated while
+    /// fullscreen so the panel can cover the content pane exactly.
+    var sideDockConstraints: [NSLayoutConstraint] = []
+    /// Side panels: covers the content pane (flush against the sidebar, its
+    /// vertical extent, out to the window edge) while fullscreen.
+    var sideFullscreenConstraints: [NSLayoutConstraint] = []
 
     var isVisible: Bool = false
     var currentSize: CGFloat
@@ -508,10 +514,6 @@ class WorkspaceManager: NSObject {
             lxWorkspaceStdoutLog("setPanelFullscreen missing id=\(id)")
             return
         }
-        guard slot.config.position == .bottom || slot.config.position == .top else {
-            lxWorkspaceStdoutLog("setPanelFullscreen ignored id=\(id) position=\(slot.config.position.rawValue)")
-            return
-        }
         guard slot.isFullscreen != enabled else {
             lxWorkspaceStdoutLog("setPanelFullscreen no-op id=\(id) enabled=\(enabled)")
             return
@@ -519,6 +521,9 @@ class WorkspaceManager: NSObject {
 
         slot.isFullscreen = enabled
         lxWorkspaceStdoutLog("setPanelFullscreen id=\(id) enabled=\(enabled) visible=\(slot.isVisible)")
+        if slot.config.position == .left || slot.config.position == .right {
+            applySideFullscreen(slot, enabled: enabled)
+        }
         if enabled {
             bringPanelToFront(slot)
         }
@@ -528,13 +533,42 @@ class WorkspaceManager: NSObject {
                 ctx.duration = Self.animationDuration
                 ctx.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
                 ctx.allowsImplicitAnimation = true
+                relayoutSideChain(slot.config.position)
                 onCardEdgesChanged?(cardTrailingInset(), cardBottomInset(), cardTopInset(), cardLeadingInset())
                 overlayParent?.layoutSubtreeIfNeeded()
                 layoutFrameDrivenPanels()
             }
         } else {
+            relayoutSideChain(slot.config.position)
             onCardEdgesChanged?(cardTrailingInset(), cardBottomInset(), cardTopInset(), cardLeadingInset())
             layoutFrameDrivenPanels()
+        }
+    }
+
+    /// Swap a side panel between its docked constraints and covering the
+    /// content pane exactly (flush against the sidebar, its vertical extent,
+    /// out to the window edge — no sliver), matching bottom/top expand.
+    private func applySideFullscreen(_ slot: PanelSlot, enabled: Bool) {
+        guard let parent = overlayParent, let sidebar = sidebarRef else { return }
+        if enabled {
+            if slot.sideFullscreenConstraints.isEmpty {
+                let wrapper = slot.shadowWrapper
+                slot.sideFullscreenConstraints = [
+                    wrapper.leadingAnchor.constraint(equalTo: sidebar.trailingAnchor),
+                    wrapper.trailingAnchor.constraint(equalTo: parent.trailingAnchor),
+                    wrapper.topAnchor.constraint(equalTo: sidebar.topAnchor),
+                    wrapper.bottomAnchor.constraint(equalTo: sidebar.bottomAnchor),
+                ]
+            }
+            NSLayoutConstraint.deactivate(
+                slot.sideDockConstraints + [slot.sizeConstraint, slot.edgeConstraint].compactMap { $0 })
+            NSLayoutConstraint.activate(slot.sideFullscreenConstraints)
+            slot.resizeHandle.isHidden = true
+        } else {
+            NSLayoutConstraint.deactivate(slot.sideFullscreenConstraints)
+            NSLayoutConstraint.activate(
+                slot.sideDockConstraints + [slot.sizeConstraint, slot.edgeConstraint].compactMap { $0 })
+            slot.resizeHandle.isHidden = !slot.isVisible
         }
     }
 
@@ -585,9 +619,11 @@ class WorkspaceManager: NSObject {
             slot.sizeConstraint = wc
             let edge = wrapper.trailingAnchor.constraint(equalTo: parent.trailingAnchor, constant: -p)
             slot.edgeConstraint = edge
-            NSLayoutConstraint.activate([
+            slot.sideDockConstraints = [
                 wrapper.topAnchor.constraint(equalTo: topAnchor, constant: topInset),
                 wrapper.bottomAnchor.constraint(equalTo: parent.bottomAnchor, constant: -p),
+            ]
+            NSLayoutConstraint.activate(slot.sideDockConstraints + [
                 edge,
                 wc,
                 // Handle sits in the gap to the left of the panel card
@@ -602,9 +638,11 @@ class WorkspaceManager: NSObject {
             slot.sizeConstraint = wc
             let edge = wrapper.leadingAnchor.constraint(equalTo: sidebar.trailingAnchor, constant: p)
             slot.edgeConstraint = edge
-            NSLayoutConstraint.activate([
+            slot.sideDockConstraints = [
                 wrapper.topAnchor.constraint(equalTo: topAnchor, constant: topInset),
                 wrapper.bottomAnchor.constraint(equalTo: parent.bottomAnchor, constant: -p),
+            ]
+            NSLayoutConstraint.activate(slot.sideDockConstraints + [
                 edge,
                 wc,
                 // Handle sits in the gap to the right of the panel card
@@ -650,11 +688,9 @@ class WorkspaceManager: NSObject {
 
     private func cardInset(for position: PanelPosition) -> CGFloat {
         let p = padding
-        let slots = visibleSlots(at: position)
+        // A fullscreen panel overlays the card instead of pushing it.
+        let slots = visibleSlots(at: position).filter { !$0.isFullscreen }
         guard !slots.isEmpty else { return p }
-        if (position == .bottom || position == .top), slots.contains(where: \.isFullscreen) {
-            return p
-        }
         // Every visible panel on the edge pushes the card further in.
         return slots.reduce(p) { $0 + clampedPanelSize($1.currentSize, for: position, excluding: $1.config.id) + p }
     }
@@ -667,7 +703,7 @@ class WorkspaceManager: NSObject {
     /// against the sidebar), and `padding + panels + padding` when some are, so
     /// the card shrinks to exactly clear them.
     private func cardLeadingInset() -> CGFloat {
-        let slots = visibleSlots(at: .left)
+        let slots = visibleSlots(at: .left).filter { !$0.isFullscreen }
         guard !slots.isEmpty else { return 0 }
         return slots.reduce(padding) { $0 + clampedPanelSize($1.currentSize, for: .left, excluding: $1.config.id) + padding }
     }
@@ -679,6 +715,11 @@ class WorkspaceManager: NSObject {
         let p = padding
         var offset: CGFloat = p
         for slot in visibleSlots(at: position) {
+            // A fullscreen panel covers the pane (its dock constraints are
+            // swapped out) and consumes no chain room.
+            if slot.isFullscreen {
+                continue
+            }
             slot.edgeConstraint?.constant = position == .right ? -offset : offset
             offset += clampedPanelSize(slot.currentSize, for: position, excluding: slot.config.id) + p
         }
@@ -693,8 +734,16 @@ class WorkspaceManager: NSObject {
     private func exitOffset(for slot: PanelSlot) -> (x: CGFloat, y: CGFloat) {
         let size = clampedPanelSize(slot.currentSize, for: slot.config.position) + padding
         switch slot.config.position {
-        case .right:  return (x: size, y: 0)
-        case .left:   return (x: -size, y: 0)
+        case .right:
+            if slot.isFullscreen, let parent = overlayParent {
+                return (x: parent.bounds.width + padding, y: 0)
+            }
+            return (x: size, y: 0)
+        case .left:
+            if slot.isFullscreen, let parent = overlayParent {
+                return (x: -(parent.bounds.width + padding), y: 0)
+            }
+            return (x: -size, y: 0)
         case .bottom:
             if slot.isFullscreen, let parent = overlayParent {
                 return (x: 0, y: -(parent.bounds.height + padding))
