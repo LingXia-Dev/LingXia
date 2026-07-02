@@ -88,22 +88,41 @@ func handleBrowserAddressSubmission(
         )
     )
 
+    // The Rust resolver only navigates when built with the `browser-shell`
+    // feature (desktop app); this path wins whenever it yields a result.
     let encoder = JSONEncoder()
-    guard let requestData = try? encoder.encode(request),
-          let requestJson = String(data: requestData, encoding: .utf8),
-          let responseJson = handleBrowserAddressInput(requestJson),
-          let responseData = responseJson.toString().data(using: .utf8) else {
-        return nil
+    if let requestData = try? encoder.encode(request),
+       let requestJson = String(data: requestData, encoding: .utf8),
+       let responseJson = handleBrowserAddressInput(requestJson),
+       let responseData = responseJson.toString().data(using: .utf8),
+       let response = try? JSONDecoder().decode(BrowserAddressInputResponsePayload.self, from: responseData),
+       response.action == .navigate,
+       let url = response.navigation?.url {
+        return BrowserAddressSubmissionResult(
+            url: url,
+            displayText: response.state.display_text
+        )
     }
 
-    guard let response = try? JSONDecoder().decode(BrowserAddressInputResponsePayload.self, from: responseData),
-          response.action == .navigate,
-          let url = response.navigation?.url else {
-        return nil
+    // Fallback when the resolver yields nothing (e.g. the runner, built without
+    // `browser-shell`): mirror RunnerPhoneBrowserSurface — a full http/https/
+    // lingxia URL loads as-is, a bare host gets https, else give up (native
+    // chrome has no search provider).
+    let input = rawInput.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !input.isEmpty else { return nil }
+    let target: URL?
+    if let url = URL(string: input),
+       let scheme = url.scheme?.lowercased(),
+       scheme == "http" || scheme == "https" || scheme == "lingxia" {
+        target = url
+    } else if !input.contains(" "), input.contains("."), let url = URL(string: "https://\(input)") {
+        target = url
+    } else {
+        target = nil
     }
-
+    guard let target else { return nil }
     return BrowserAddressSubmissionResult(
-        url: url,
-        displayText: response.state.display_text
+        url: target.absoluteString,
+        displayText: target.absoluteString
     )
 }
