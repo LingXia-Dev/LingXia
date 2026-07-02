@@ -327,6 +327,7 @@ impl Platform for IosPlatform {
             &ios_dir,
             &resources_dir,
             config.resolved_env.version,
+            0.0,
         ) {
             Ok(Some(staging)) => staging,
             Ok(None) => resources_dir.clone(),

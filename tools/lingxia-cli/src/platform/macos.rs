@@ -489,11 +489,13 @@ impl Platform for MacosPlatform {
         )?;
 
         // Mirror the iOS env-icon overlay so dev/preview macOS builds also
-        // get the D/P badge on the dock icon.
+        // get the D/P badge on the dock icon. macOS icon artwork sits inside
+        // a ~10% transparent canvas margin — anchor the badge to the artwork.
         let resources_for_compile = match apple::env_icon::prepare_overlay_resources_dir(
             &macos_dir,
             &resources_dir,
             config.resolved_env.version,
+            0.10,
         ) {
             Ok(Some(staging)) => staging,
             Ok(None) => resources_dir.clone(),

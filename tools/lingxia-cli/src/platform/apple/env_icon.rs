@@ -14,16 +14,21 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::config::EnvVersion;
-use crate::platform::env_badge::{composite_badge, env_badge};
+use crate::platform::env_badge::{composite_badge_inset, env_badge};
 
 /// If the active env needs a badge, stage a copy of `Assets.xcassets` with a
 /// badged `AppIcon.appiconset` and return the staging *resources_dir*; the
 /// caller should pass that to `compile_asset_catalog` instead of the source
 /// dir. Returns `None` when no badge applies (release, or no source catalog).
+///
+/// `icon_margin_frac`: transparent canvas margin per side around the icon
+/// artwork — 0.0 for full-bleed iOS icons, ~0.10 for macOS (Apple's grid puts
+/// the rounded square at 824/1024), so the badge lands ON the icon.
 pub fn prepare_overlay_resources_dir(
     platform_dir: &Path,
     resources_dir: &Path,
     env: EnvVersion,
+    icon_margin_frac: f32,
 ) -> Result<Option<PathBuf>> {
     let Some((letter, accent)) = env_badge(env) else {
         return Ok(None);
@@ -47,7 +52,7 @@ pub fn prepare_overlay_resources_dir(
     copy_dir_recursive(&original_xcassets, &staging_xcassets)?;
 
     let staging_appicon = staging_xcassets.join("AppIcon.appiconset");
-    badge_appiconset(&staging_appicon, letter, accent)?;
+    badge_appiconset(&staging_appicon, letter, accent, icon_margin_frac)?;
 
     Ok(Some(staging_resources))
 }
@@ -69,7 +74,7 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<()> {
     Ok(())
 }
 
-fn badge_appiconset(dir: &Path, letter: char, accent: [u8; 4]) -> Result<()> {
+fn badge_appiconset(dir: &Path, letter: char, accent: [u8; 4], margin_frac: f32) -> Result<()> {
     for entry in fs::read_dir(dir).with_context(|| format!("Failed to read {}", dir.display()))? {
         let entry = entry?;
         let path = entry.path();
@@ -84,7 +89,7 @@ fn badge_appiconset(dir: &Path, letter: char, accent: [u8; 4]) -> Result<()> {
         if rgba.width() < 60 {
             continue;
         }
-        composite_badge(&mut rgba, letter, accent);
+        composite_badge_inset(&mut rgba, letter, accent, margin_frac);
         rgba.save_with_format(&path, ImageFormat::Png)
             .with_context(|| format!("Failed to write {}", path.display()))?;
     }

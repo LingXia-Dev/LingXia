@@ -47,9 +47,19 @@ pub fn badge_png_file(path: &Path, version: EnvVersion) -> Result<bool> {
 /// bottom-right of `img`. Sized relative to the icon so it stays readable
 /// from 60x60 home-screen icons up to the 1024x1024 marketing icon.
 pub fn composite_badge(img: &mut RgbaImage, letter: char, accent: [u8; 4]) {
+    composite_badge_inset(img, letter, accent, 0.0);
+}
+
+/// Like [`composite_badge`], but anchored to an artwork rect inset from the
+/// canvas by `margin_frac` per side. macOS launcher icons keep ~10% of the
+/// canvas transparent around the rounded square, so a canvas-anchored badge
+/// would float outside the visible icon.
+pub fn composite_badge_inset(img: &mut RgbaImage, letter: char, accent: [u8; 4], margin_frac: f32) {
     let (w, h) = img.dimensions();
-    let badge_diameter = ((w.min(h) as f32) * 0.35).round() as i32;
-    let inset = (badge_diameter / 8).max(2);
+    let margin = ((w.min(h) as f32) * margin_frac).round() as i32;
+    let artwork = (w.min(h) as i32 - 2 * margin).max(1);
+    let badge_diameter = ((artwork as f32) * 0.35).round() as i32;
+    let inset = (badge_diameter / 8).max(2) + margin;
     let center_x = w as i32 - badge_diameter / 2 - inset;
     let center_y = h as i32 - badge_diameter / 2 - inset;
     let outer_r = badge_diameter / 2;
