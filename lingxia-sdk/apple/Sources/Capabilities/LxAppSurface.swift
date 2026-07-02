@@ -165,7 +165,17 @@ enum LxAppSurface {
         }
 
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void) {
-            guard let url = navigationAction.request.url, LxAppSurface.isSameOrigin(initialURL, url) else {
+            guard let url = navigationAction.request.url else {
+                decisionHandler(.cancel)
+                return
+            }
+            // A registered URL-callback sentinel (e.g. an auth handoff) is
+            // consumed by the waiting Rust channel; cancel the load.
+            if urlCallbackDispatch(url.absoluteString) {
+                decisionHandler(.cancel)
+                return
+            }
+            guard LxAppSurface.isSameOrigin(initialURL, url) else {
                 decisionHandler(.cancel)
                 return
             }
@@ -1245,7 +1255,17 @@ enum LxAppSurface {
         }
 
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void) {
-            guard let url = navigationAction.request.url, LxAppSurface.isSameOrigin(initialURL, url) else {
+            guard let url = navigationAction.request.url else {
+                decisionHandler(.cancel)
+                return
+            }
+            // A registered URL-callback sentinel (e.g. an auth handoff) is
+            // consumed by the waiting Rust channel; cancel the load.
+            if urlCallbackDispatch(url.absoluteString) {
+                decisionHandler(.cancel)
+                return
+            }
+            guard LxAppSurface.isSameOrigin(initialURL, url) else {
                 decisionHandler(.cancel)
                 return
             }

@@ -171,6 +171,13 @@ declare module 'liblingxia.so' {
   export function handleBrowserNavigationPolicy(requestJson: string): string | null;
 
   /**
+   * Offer a navigation URL from a native (non-managed) Web component to the
+   * URL-callback registry. `true` means a channel consumed it and the caller
+   * must cancel the navigation.
+   */
+  export function urlCallbackDispatch(url: string): boolean;
+
+  /**
    * Open or navigate a managed internal browser tab and return tabId.
    */
   export function openBrowserTab(appid: string, sessionId: number, url: string): string | null;
