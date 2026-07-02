@@ -5,6 +5,8 @@ use lingxia_platform::traits::app_runtime::AppRuntime;
 
 const LXAPP_PATH_ENV: &str = "LINGXIA_LXAPP_PATH";
 
+mod sync;
+
 #[derive(Debug, serde::Deserialize)]
 #[allow(non_snake_case)]
 struct LxAppManifest {
@@ -175,18 +177,21 @@ fn build_host_app_config(
         cache_max_size_mb: 1024,
         storage: None,
         dev_ws_url: None,
+        dev_bundle_base_url: None,
         app_links: None,
         capabilities: None,
         panels: None,
     }
 }
 
-pub(crate) fn load_host_app_config(
+pub(crate) fn prepare_host_app_config(
     runtime: &std::sync::Arc<lingxia_platform::Platform>,
     load_bundled: impl FnOnce(
         &std::sync::Arc<lingxia_platform::Platform>,
     ) -> Option<lingxia_app_context::AppConfig>,
 ) -> Option<lingxia_app_context::AppConfig> {
+    let _ = install_lxapp_dev_config_from_env();
+
     let Some(dev_config) = lxapp_dev_config() else {
         return load_bundled(runtime);
     };
@@ -210,7 +215,14 @@ pub(crate) fn load_host_app_config(
     Some(app_config)
 }
 
-pub(crate) fn register_bundle_source_override() {
+pub(crate) fn prepare_bundle_sources(runtime: &std::sync::Arc<lingxia_platform::Platform>) {
+    if let Err(err) = sync::sync_dev_home_bundle(runtime.clone()) {
+        log::warn!("Failed to sync dev home lxapp bundle: {}", err);
+    }
+    register_bundle_source_override();
+}
+
+fn register_bundle_source_override() {
     let Some(dev_config) = lxapp_dev_config() else {
         return;
     };
