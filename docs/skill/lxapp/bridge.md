@@ -530,6 +530,13 @@ ch.send(msg); ch.close(); ch.reopen();
 
 ---
 
+## Platform Detection
+
+- **View**: `window.LingXiaBridge.platform` — `isIOS()`, `isMacOS()`, `isDesktop()`, `getOS()`, … (sync; read the global, never import).
+- **Logic**: `lx.device.getDeviceInfo()` → `osName` (async).
+
+---
+
 ## Appendix: Stream Data Flow
 
 Complete trace of a single `yield { type:'token', token:'H' }` in the chat example:

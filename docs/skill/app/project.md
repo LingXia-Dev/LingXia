@@ -279,6 +279,8 @@ A host app's UI is a flat list under top-level `surfaces:`. You declare *what* e
 
 Icons (`sidebar.icon`, `tray.icon`) are host-root-relative SVG source paths — see [Icon Paths](#icon-paths).
 
+The sidebar itself auto-hides when it has nothing to show and reappears when it does. It has content when any of: more than one open lxapp tab, the active lxapp declares a `tabBar`, browser entries exist, or any surface declares `sidebar:`. A config with `sidebar:` surfaces therefore always shows the sidebar.
+
 ### Rules (enforced at build)
 
 - A config needs exactly one `main` surface — or, for a pure popover app, a `role: float` surface with a `tray:` and no `main`.
