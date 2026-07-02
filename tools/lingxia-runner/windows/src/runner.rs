@@ -1,6 +1,6 @@
 use crate::device::{
     ABOUT_COMMAND, CLEAN_CACHE_COMMAND, DEVICE_COMMAND_BASE, OPEN_DEVTOOLS_COMMAND, QUIT_COMMAND,
-    RESTART_LXAPP_COMMAND, ROTATE_COMMAND, default_device_index, frame_spec, is_phone, is_tablet,
+    RESTART_LXAPP_COMMAND, ROTATE_COMMAND, frame_spec, initial_device_index, is_phone, is_tablet,
     presets,
 };
 use lingxia_windows_sdk::WindowsShellTabBarPosition;
@@ -16,10 +16,12 @@ const ARG_ASSET_DIR: &str = "--asset-dir";
 const ARG_LXAPP_PATH: &str = "--lxapp-path";
 const ARG_DEV_WS_URL: &str = "--dev-ws-url";
 const ARG_LINGXIAO_MOCK_DIR: &str = "--lingxiao-mock-dir";
+const ARG_RUNNER_DEVICE: &str = "--runner-device";
 const ENV_ASSET_DIR: &str = "LINGXIA_ASSET_DIR";
 const ENV_LXAPP_PATH: &str = "LINGXIA_LXAPP_PATH";
 const ENV_DEV_WS_URL: &str = "LINGXIA_DEV_WS_URL";
 const ENV_LINGXIAO_MOCK_DIR: &str = "LINGXIAO_MOCK_DIR";
+const ENV_RUNNER_DEVICE: &str = "LINGXIA_RUNNER_DEVICE";
 
 struct RunnerDevtoolAddon;
 
@@ -73,8 +75,11 @@ pub(crate) fn run() -> lingxia_windows_sdk::Result<()> {
     install_launch_args_env();
     lingxia::register_host_addon(Box::new(RunnerDevtoolAddon));
 
-    let default_device = default_device_index();
-    let initial_frame = frame_spec(default_device, false);
+    let default_device = initial_device_index();
+    // Same orientation rule as the toolbar selector: tablets land in
+    // landscape, phones/desktops in portrait.
+    let initial_landscape = is_tablet(default_device);
+    let initial_frame = frame_spec(default_device, initial_landscape);
     lingxia_windows_sdk::set_windows_default_shell_tabbar_position(tabbar_position_for_device(
         default_device,
     ));
@@ -83,7 +88,7 @@ pub(crate) fn run() -> lingxia_windows_sdk::Result<()> {
         .with_window_size(initial_frame.screen_width, initial_frame.screen_height);
     let home_app_id = lingxia_windows_sdk::start_default_host(app)?;
     install_runner_commands(home_app_id.clone());
-    apply_default_device(home_app_id, default_device);
+    apply_default_device(home_app_id, default_device, initial_landscape);
     std::process::exit(lingxia_windows_sdk::run_message_loop());
 }
 
@@ -98,6 +103,7 @@ fn install_launch_args_env() {
             ARG_LXAPP_PATH => Some(ENV_LXAPP_PATH),
             ARG_DEV_WS_URL => Some(ENV_DEV_WS_URL),
             ARG_LINGXIAO_MOCK_DIR => Some(ENV_LINGXIAO_MOCK_DIR),
+            ARG_RUNNER_DEVICE => Some(ENV_RUNNER_DEVICE),
             _ => None,
         };
         if let Some(env_key) = env_key {
@@ -267,13 +273,13 @@ fn restart_lxapp(home_app_id: &str, clean_cache: bool) -> Result<(), String> {
     app.restart_in_place().map_err(|err| err.to_string())
 }
 
-fn apply_default_device(home_app_id: String, default_device: usize) {
+fn apply_default_device(home_app_id: String, default_device: usize, landscape: bool) {
     std::thread::spawn(move || {
         for attempt in 0..80 {
             if attempt > 0 {
                 std::thread::sleep(std::time::Duration::from_millis(50));
             }
-            if apply_device(&home_app_id, default_device, false).is_ok() {
+            if apply_device(&home_app_id, default_device, landscape).is_ok() {
                 return;
             }
         }

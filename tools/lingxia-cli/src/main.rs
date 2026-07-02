@@ -122,9 +122,9 @@ struct DevOptions {
     #[arg(long)]
     parallel: bool,
 
-    /// Runner simulator device for `lingxia dev` on an lxapp (macOS runner):
-    /// e.g. `iphone-15-pro`, `ipad`, `desktop-1440`. Only affects the lxapp
-    /// runner window; ignored for native host apps and other platforms.
+    /// Runner simulator device for `lingxia dev` on an lxapp (macOS and
+    /// Windows runners): e.g. `iphone-15-pro`, `ipad`, `desktop-1440`. Only
+    /// affects the lxapp runner window; ignored for native host apps.
     #[arg(long)]
     runner: Option<String>,
 }
