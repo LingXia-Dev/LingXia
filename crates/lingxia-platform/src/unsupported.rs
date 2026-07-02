@@ -11,6 +11,7 @@ use crate::traits::file::{
     ChooseDirectoryRequest, ChooseFileRequest, FileDialogResult, FileService, OpenFileRequest,
     RevealInFileManagerRequest,
 };
+use crate::traits::keyboard::AppKeyboard;
 use crate::traits::location::{Location, LocationRequestConfig};
 use crate::traits::media_interaction::{
     ChooseMediaRequest, MediaInteraction, PreviewMediaRequest, SaveMediaRequest, ScanCodeRequest,
@@ -106,6 +107,7 @@ impl UpdateService for Platform {}
 impl Wifi for Platform {}
 impl AppScreenshot for Platform {}
 impl AppMouse for Platform {}
+impl AppKeyboard for Platform {}
 
 impl FileService for Platform {
     fn review_file(

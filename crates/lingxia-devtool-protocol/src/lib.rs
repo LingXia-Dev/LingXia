@@ -70,6 +70,11 @@ pub mod handlers {
         /// `{window_id?, action}` where action is a tagged object such as
         /// `{kind:"click", x, y, button?}`.
         pub const MOUSE: &str = "app.mouse";
+
+        /// Dispatch keyboard input to a host app window's focused control.
+        /// Accepts `{window_id?, action}` where action is a tagged object
+        /// such as `{kind:"type", text}` or `{kind:"press", key, modifiers?}`.
+        pub const KEYBOARD: &str = "app.keyboard";
     }
 
     pub mod lxapp_page {

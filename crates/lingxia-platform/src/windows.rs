@@ -5,6 +5,7 @@
 mod app;
 mod device;
 mod file;
+mod keyboard;
 mod location;
 mod media;
 mod media_preview;

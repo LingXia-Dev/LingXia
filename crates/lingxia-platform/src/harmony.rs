@@ -2,6 +2,7 @@ pub mod app;
 pub mod camera;
 mod device;
 mod file;
+mod keyboard;
 mod location;
 mod media;
 mod mouse;
