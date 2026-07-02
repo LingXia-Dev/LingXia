@@ -47,6 +47,7 @@ pub use lifecycle::{
 pub use lingxia_update::{
     ReleaseType, RuntimeCompatibilityError, SemanticVersion, Version, VersionError,
 };
+pub use lingxia_surface;
 pub use lxapp::set_num_workers;
 pub use lxapp::{
     CloseReason, CreatePageInstanceRequest, CreatedPageInstance, LxApp, LxAppRuntimeInfo,
