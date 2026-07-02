@@ -410,7 +410,9 @@ impl LxApp {
                 let _ = self.close_surface(victim, "programmatic");
             } else {
                 notify_surface_close_observer(victim, "programmatic");
-                let _ = self.runtime.set_managed_surface_visible(victim, false);
+                let _ = self
+                    .runtime
+                    .set_managed_surface_visible(victim, false, None);
             }
         }
 
@@ -594,9 +596,15 @@ impl LxApp {
     }
 
     /// Show or hide a host-declared top-level surface (e.g. the AI-chat panel
-    /// or terminal) by its `ui` id. Delegates to the platform host shell;
-    /// platforms without one return an error.
-    pub fn set_shell_surface_visible(&self, id: &str, visible: bool) -> Result<(), LxAppError> {
+    /// or terminal) by its `ui` id. `edge` overrides the declared edge for
+    /// this show; `None` keeps the current placement. Delegates to the
+    /// platform host shell; platforms without one return an error.
+    pub fn set_shell_surface_visible(
+        &self,
+        id: &str,
+        visible: bool,
+        edge: Option<&str>,
+    ) -> Result<(), LxAppError> {
         let id = id.trim();
         if id.is_empty() {
             return Err(LxAppError::InvalidParameter(
@@ -604,7 +612,7 @@ impl LxApp {
             ));
         }
         self.runtime
-            .set_managed_surface_visible(id, visible)
+            .set_managed_surface_visible(id, visible, edge)
             .map_err(Into::into)
     }
 

@@ -230,10 +230,15 @@ export type OpenPageSurfaceSpec =
 
 export interface OpenDeclaredSurfaceSpec {
   surface: string;
+  /**
+   * Docking edge override for this open. Without it the surface keeps its
+   * current placement (initially the `lingxia.yaml` edge); with it the panel
+   * opens there — or moves there if already visible.
+   */
+  edge?: SurfaceEdge;
   page?: never;
   url?: never;
   as?: never;
-  edge?: never;
   position?: never;
   size?: never;
   query?: never;

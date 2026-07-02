@@ -329,7 +329,13 @@ impl crate::traits::ui::SurfacePresenter for Platform {
         surface::hide_surface(app_id, id)
     }
 
-    fn set_managed_surface_visible(&self, id: &str, visible: bool) -> Result<(), PlatformError> {
+    fn set_managed_surface_visible(
+        &self,
+        id: &str,
+        visible: bool,
+        _edge: Option<&str>,
+    ) -> Result<(), PlatformError> {
+        // The Windows host handler has no per-open placement yet.
         surface::set_managed_surface_visible(id, visible)
     }
 

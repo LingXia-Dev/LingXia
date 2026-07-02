@@ -55,6 +55,9 @@ final class LxAppMacAppUIRuntime: NSObject {
 
     private var visibleSurfaceIDs = Set<String>()
     private var openedSurfaceIDs = Set<String>()
+    /// Runtime edge overrides from `lx.openSurface({surface, edge})`; the
+    /// declared `lingxia.yaml` edge applies when absent.
+    private var managedEdgeOverrides: [String: LxAppUIConfig.Edge] = [:]
     private lazy var trayController = LxAppMacTrayController(
         appConfig: appConfig,
         uiConfigURL: uiConfigURL
@@ -365,14 +368,25 @@ final class LxAppMacAppUIRuntime: NSObject {
         return true
     }
 
-    /// Show a host-declared surface (no-op if already visible). Returns `false`
-    /// for an unknown surface `id`.
+    /// Show a host-declared surface (no-op if already visible). `edge`
+    /// overrides the declared edge; an already-visible panel moves by
+    /// re-entering the open path. Returns `false` for an unknown surface `id`.
     @discardableResult
-    func openManagedSurface(id: String) -> Bool {
-        guard surfaceById[id] != nil else { return false }
-        if !visibleSurfaceIDs.contains(id) {
-            openSurfaceHandlingError(id: id)
+    func openManagedSurface(id: String, edge: String? = nil) -> Bool {
+        guard let surface = surfaceById[id] else { return false }
+        let previous = managedEdgeOverrides[id] ?? surface.edge
+        if let edge, let parsed = LxAppUIConfig.Edge(rawValue: edge) {
+            managedEdgeOverrides[id] = parsed
         }
+        let effective = managedEdgeOverrides[id] ?? surface.edge
+        if visibleSurfaceIDs.contains(id) {
+            if effective != previous {
+                closeManagedSurface(id: id)
+                openSurfaceHandlingError(id: id)
+            }
+            return true
+        }
+        openSurfaceHandlingError(id: id)
         return true
     }
 
@@ -682,7 +696,8 @@ final class LxAppMacAppUIRuntime: NSObject {
 
     private func registerHostAsideForSurface(_ surface: LxAppUIConfig.Surface) {
         guard let primaryAppId = rootSurface.content.appId else { return }
-        _ = registerHostAside(primaryAppId, surface.id, surface.edge?.rawValue ?? "right")
+        let edge = managedEdgeOverrides[surface.id] ?? surface.edge
+        _ = registerHostAside(primaryAppId, surface.id, edge?.rawValue ?? "right")
     }
 
     private func closeTerminalWorkspaceSurface(id: String) {
@@ -1090,7 +1105,7 @@ final class LxAppMacAppUIRuntime: NSObject {
 
     private func panelPosition(for surface: LxAppUIConfig.Surface) -> PanelPosition? {
         guard surface.role == .aside else { return nil }
-        switch surface.edge {
+        switch managedEdgeOverrides[surface.id] ?? surface.edge {
         case .left:
             return .left
         case .right:
