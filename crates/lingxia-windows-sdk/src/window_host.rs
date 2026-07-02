@@ -30,14 +30,13 @@ use lingxia_windows_contract::{
 use windows::Win32::Foundation::SIZE;
 use windows::Win32::Foundation::{COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
 #[cfg(feature = "shell-chrome")]
+use windows::Win32::Graphics::Gdi::{AC_SRC_ALPHA, AC_SRC_OVER, BLENDFUNCTION};
 use windows::Win32::Graphics::Gdi::{
-    AC_SRC_ALPHA, AC_SRC_OVER, BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BLENDFUNCTION,
-    CreateCompatibleDC, CreateDIBSection, DIB_RGB_COLORS, DeleteDC, GetDC, ReleaseDC,
-};
-use windows::Win32::Graphics::Gdi::{
-    BeginPaint, CreatePen, CreateSolidBrush, DeleteObject, Ellipse, EndPaint, ExcludeClipRect,
-    GetMonitorInfoW, HDC, HGDIOBJ, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromWindow,
-    PAINTSTRUCT, PS_SOLID, RestoreDC, SaveDC, ScreenToClient, SelectObject,
+    BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BeginPaint, BitBlt, CreateCompatibleDC,
+    CreateDIBSection, CreatePen, CreateSolidBrush, DIB_RGB_COLORS, DeleteDC, DeleteObject, Ellipse,
+    EndPaint, ExcludeClipRect, GetDC, GetMonitorInfoW, HDC, HGDIOBJ, IntersectClipRect,
+    MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromWindow, PAINTSTRUCT, PS_SOLID, ReleaseDC,
+    RestoreDC, SRCCOPY, SaveDC, ScreenToClient, SelectObject,
 };
 #[cfg(feature = "shell-chrome")]
 use windows::Win32::Graphics::Gdi::{CreateRoundRectRgn, SetWindowRgn};
@@ -47,7 +46,8 @@ use windows::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
 #[cfg(feature = "shell-chrome")]
 use windows::Win32::System::Threading::GetCurrentProcessId;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    GetKeyState, ReleaseCapture, SetCapture, SetFocus, VK_CONTROL, VK_MENU, VK_SHIFT,
+    GetKeyState, ReleaseCapture, SetCapture, SetFocus, TME_LEAVE, TRACKMOUSEEVENT,
+    TrackMouseEvent, VK_CONTROL, VK_MENU, VK_SHIFT,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     self, WINDOW_EX_STYLE, WINDOW_STYLE, WNDCLASSW, WS_MAXIMIZEBOX, WS_MINIMIZEBOX,
@@ -73,6 +73,7 @@ static NATIVE_FRAMED_WINDOWS: OnceLock<Mutex<HashSet<isize>>> = OnceLock::new();
 #[cfg(feature = "shell-chrome")]
 static HOST_CHROME_SNAPSHOTS: OnceLock<Mutex<HashMap<isize, HostChromeSnapshot>>> = OnceLock::new();
 static CHROME_INTERACTIONS: OnceLock<Mutex<HashMap<isize, ChromeInteraction>>> = OnceLock::new();
+static CHROME_BACK_BUFFERS: OnceLock<Mutex<HashMap<isize, ChromeBackBuffer>>> = OnceLock::new();
 static ATTACHED_PANEL_RESIZE_DRAG: OnceLock<Mutex<Option<AttachedPanelResizeDrag>>> =
     OnceLock::new();
 static PULL_REFRESH_WEBTAGS: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
@@ -99,6 +100,8 @@ const SIDEBAR_TABBAR_POPUP_CORNER_RADIUS: i32 = 10;
 /// `WM_DWMCOLORIZATIONCOLORCHANGED` (dwmapi.h) - sent on a system accent change.
 /// Not surfaced by the `windows` crate's message constants, so define it here.
 const WM_DWMCOLORIZATIONCOLORCHANGED: u32 = 0x0320;
+/// `WM_MOUSELEAVE` (winuser.h) - not surfaced by the pinned `windows` rev.
+const WM_MOUSELEAVE: u32 = 0x02a3;
 const OVERLAY_MIN_WIDTH: i32 = 280;
 const OVERLAY_MIN_HEIGHT: i32 = 220;
 const OVERLAY_DEFAULT_WIDTH: i32 = 460;
@@ -109,6 +112,108 @@ const RESIZE_BORDER: i32 = 8;
 struct ChromeInteraction {
     frame_button_hover: Option<WindowsFrameButton>,
     frame_button_pressed: Option<WindowsFrameButton>,
+}
+
+/// Per-window offscreen surface the chrome renders into. WM_PAINT draws the
+/// whole update region here first and blits it to the screen in one step, so
+/// the fill-background-then-draw-widgets sequence never reaches the screen
+/// mid-paint (DWM can compose between raw GDI calls, which reads as flicker).
+/// Raw handles (the DC and its selected DIB) are owned by this entry and
+/// released when the window is destroyed or the client size changes.
+struct ChromeBackBuffer {
+    dc: isize,
+    bitmap: isize,
+    width: i32,
+    height: i32,
+}
+
+impl ChromeBackBuffer {
+    fn release(&self) {
+        unsafe {
+            let _ = DeleteObject(HGDIOBJ(self.bitmap as *mut c_void));
+            let _ = DeleteDC(HDC(self.dc as *mut c_void));
+        }
+    }
+}
+
+/// The chrome back buffer for `hwnd`, recreated when the client size changes.
+/// Returns `None` when the surface cannot be created; the caller then paints
+/// directly to the window DC (correct, just not flicker-free).
+fn chrome_back_buffer_dc(hwnd: HWND, width: i32, height: i32) -> Option<HDC> {
+    if width <= 0 || height <= 0 {
+        return None;
+    }
+    let buffers = CHROME_BACK_BUFFERS.get_or_init(|| Mutex::new(HashMap::new()));
+    let mut buffers = buffers.lock().ok()?;
+    let key = hwnd_handle(hwnd);
+    if let Some(existing) = buffers.get(&key) {
+        if existing.width == width && existing.height == height {
+            return Some(HDC(existing.dc as *mut c_void));
+        }
+        existing.release();
+        buffers.remove(&key);
+    }
+
+    unsafe {
+        let window_dc = GetDC(Some(hwnd));
+        if window_dc.is_invalid() {
+            return None;
+        }
+        let dc = CreateCompatibleDC(Some(window_dc));
+        let _ = ReleaseDC(Some(hwnd), window_dc);
+        if dc.is_invalid() {
+            return None;
+        }
+        let info = BITMAPINFO {
+            bmiHeader: BITMAPINFOHEADER {
+                biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+                biWidth: width,
+                biHeight: -height,
+                biPlanes: 1,
+                biBitCount: 32,
+                biCompression: BI_RGB.0,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let mut bits: *mut c_void = std::ptr::null_mut();
+        let Ok(bitmap) = CreateDIBSection(None, &info, DIB_RGB_COLORS, &mut bits, None, 0) else {
+            let _ = DeleteDC(dc);
+            return None;
+        };
+        if bitmap.is_invalid() {
+            let _ = DeleteDC(dc);
+            return None;
+        }
+        let previous = SelectObject(dc, HGDIOBJ(bitmap.0));
+        if previous.is_invalid() {
+            let _ = DeleteObject(HGDIOBJ(bitmap.0));
+            let _ = DeleteDC(dc);
+            return None;
+        }
+        buffers.insert(
+            key,
+            ChromeBackBuffer {
+                dc: dc.0 as isize,
+                bitmap: bitmap.0 as isize,
+                width,
+                height,
+            },
+        );
+        Some(dc)
+    }
+}
+
+fn release_chrome_back_buffer(hwnd: HWND) {
+    let Some(buffers) = CHROME_BACK_BUFFERS.get() else {
+        return;
+    };
+    let Ok(mut buffers) = buffers.lock() else {
+        return;
+    };
+    if let Some(buffer) = buffers.remove(&hwnd_handle(hwnd)) {
+        buffer.release();
+    }
 }
 
 #[cfg(feature = "shell-chrome")]
@@ -1450,6 +1555,18 @@ fn sync_sidebar_tabbar_popup(hwnd: HWND, point: (i32, i32)) {
         right: anchor_right_bottom.x,
         bottom: anchor_right_bottom.y,
     };
+    // Called on every mouse move over the rail anchor; when the popup is
+    // already showing the same content at the same place there is nothing to
+    // do, and re-running SetWindowPos + InvalidateRect would repaint the
+    // popup continuously while the cursor moves.
+    if let Some(existing) = sidebar_tabbar_popup_for_owner(hwnd)
+        && is_window_handle_valid(existing.window)
+        && existing.rect == popup_rect
+        && existing.anchor == anchor
+        && existing.tabbar == popup.tabbar
+    {
+        return;
+    }
     let window = ensure_sidebar_tabbar_popup(hwnd);
     if window == 0 {
         return;
@@ -1646,6 +1763,7 @@ unsafe extern "system" fn sidebar_tabbar_popup_proc(
             return LRESULT(0);
         }
         WindowsAndMessaging::WM_DESTROY | WindowsAndMessaging::WM_NCDESTROY => {
+            release_chrome_back_buffer(hwnd);
             remove_sidebar_tabbar_popup_window(hwnd);
         }
         _ => {}
@@ -1665,7 +1783,15 @@ fn paint_sidebar_tabbar_popup(hwnd: HWND) {
     }
     let width = popup.rect.right - popup.rect.left;
     let height = popup.rect.bottom - popup.rect.top;
-    crate::shell::paint_collapsed_sidebar_tabbar_popup(hdc, &popup.tabbar, width, height);
+    match chrome_back_buffer_dc(hwnd, width, height) {
+        Some(buffer) => {
+            crate::shell::paint_collapsed_sidebar_tabbar_popup(buffer, &popup.tabbar, width, height);
+            unsafe {
+                let _ = BitBlt(hdc, 0, 0, width, height, Some(buffer), 0, 0, SRCCOPY);
+            }
+        }
+        None => crate::shell::paint_collapsed_sidebar_tabbar_popup(hdc, &popup.tabbar, width, height),
+    }
     unsafe {
         let _ = EndPaint(hwnd, &ps);
     }
@@ -2059,26 +2185,96 @@ fn paint_window_chrome(hwnd: HWND) {
     unsafe {
         let mut ps = PAINTSTRUCT::default();
         let hdc = BeginPaint(hwnd, &mut ps);
-        let saved = SaveDC(hdc);
-        exclude_host_webview_content_from_paint(hdc, hwnd, &webtag_key);
-        renderer.paint_region(hdc, &state, ps.rcPaint);
-        let _ = RestoreDC(hdc, saved);
-        paint_pull_refresh_indicator(hdc, hwnd, &webtag_key);
+        let invalid = ps.rcPaint;
+        if invalid.right > invalid.left && invalid.bottom > invalid.top {
+            let width = client.right - client.left;
+            let height = client.bottom - client.top;
+            match chrome_back_buffer_dc(hwnd, width, height) {
+                Some(buffer) => {
+                    let saved = SaveDC(buffer);
+                    let _ = IntersectClipRect(
+                        buffer,
+                        invalid.left,
+                        invalid.top,
+                        invalid.right,
+                        invalid.bottom,
+                    );
+                    paint_chrome_into(buffer, hwnd, &webtag_key, renderer.as_ref(), &state, invalid);
+                    let _ = RestoreDC(buffer, saved);
+                    // The hosts do not use WS_CLIPCHILDREN, so the blit gets the
+                    // same webview exclusions as the render: copying buffer
+                    // pixels over a live WebView2 child would flash it until the
+                    // child repaints.
+                    let saved = SaveDC(hdc);
+                    exclude_host_webview_content_from_paint(hdc, hwnd, &webtag_key);
+                    let _ = BitBlt(
+                        hdc,
+                        invalid.left,
+                        invalid.top,
+                        invalid.right - invalid.left,
+                        invalid.bottom - invalid.top,
+                        Some(buffer),
+                        invalid.left,
+                        invalid.top,
+                        SRCCOPY,
+                    );
+                    let _ = RestoreDC(hdc, saved);
+                }
+                None => paint_chrome_into(hdc, hwnd, &webtag_key, renderer.as_ref(), &state, invalid),
+            }
+        }
         let _ = EndPaint(hwnd, &ps);
     }
 }
 
-fn exclude_host_webview_content_from_paint(hdc: HDC, hwnd: HWND, webtag_key: &str) {
-    let Some(webtag) = webtag_for_key(webtag_key) else {
-        return;
-    };
-    let Some(handler) = find_webview_handler(&webtag) else {
-        return;
-    };
-    if hwnd_from_handle(handler.native_view().window) != hwnd {
-        return;
+fn paint_chrome_into(
+    hdc: HDC,
+    hwnd: HWND,
+    webtag_key: &str,
+    renderer: &dyn lingxia_windows_contract::WindowsChromeRenderer,
+    state: &WindowsChromeState,
+    invalid: RECT,
+) {
+    unsafe {
+        let saved = SaveDC(hdc);
+        exclude_host_webview_content_from_paint(hdc, hwnd, webtag_key);
+        renderer.paint_region(hdc, state, invalid);
+        let _ = RestoreDC(hdc, saved);
     }
-    let rect = content_rect_for_window(hwnd, webtag_key);
+    paint_pull_refresh_indicator(hdc, hwnd, webtag_key);
+}
+
+/// Clips every visible webview surface hosted by `hwnd` (the main content
+/// plus attached webview panels) out of `hdc`. The hosts do not use
+/// WS_CLIPCHILDREN, so any chrome paint or blit that overlaps a live WebView2
+/// child would stamp over its pixels until the child repaints - a flash.
+fn exclude_host_webview_content_from_paint(hdc: HDC, hwnd: HWND, webtag_key: &str) {
+    if let Some(webtag) = webtag_for_key(webtag_key)
+        && let Some(handler) = find_webview_handler(&webtag)
+        && hwnd_from_handle(handler.native_view().window) == hwnd
+    {
+        exclude_clip_rect_if_non_empty(hdc, content_rect_for_window(hwnd, webtag_key));
+    }
+
+    let mut client = RECT::default();
+    unsafe {
+        if WindowsAndMessaging::GetClientRect(hwnd, &mut client).is_err() {
+            return;
+        }
+    }
+    let Some(attached) = attached_layout_for_window(hwnd, webtag_key, client) else {
+        return;
+    };
+    for panel in &attached.panels {
+        // Native (chrome-drawn) panels have no webview; a not-yet-visible
+        // webview panel still wants its placeholder card painted.
+        if !panel.webtag_key.is_empty() && webtag_is_visible(&panel.webtag_key) {
+            exclude_clip_rect_if_non_empty(hdc, panel.rect);
+        }
+    }
+}
+
+fn exclude_clip_rect_if_non_empty(hdc: HDC, rect: RECT) {
     if rect.right <= rect.left || rect.bottom <= rect.top {
         return;
     }
@@ -2741,6 +2937,35 @@ fn invalidate_window(hwnd: HWND) {
     }
 }
 
+/// Invalidates only the caption-button strip. Hover/press feedback on the
+/// frame buttons repaints just those rects; invalidating the whole window for
+/// it would repaint (and previously flicker) the sidebar and content chrome
+/// on every hover transition.
+fn invalidate_frame_buttons(hwnd: HWND) {
+    let rects = windows_chrome_renderer()
+        .and_then(|renderer| {
+            let state = chrome_state_for_window(hwnd)?;
+            Some(
+                [
+                    WindowsFrameButton::Minimize,
+                    WindowsFrameButton::Maximize,
+                    WindowsFrameButton::Close,
+                ]
+                .into_iter()
+                .filter_map(|button| renderer.frame_button_rect(&state, button))
+                .collect::<Vec<_>>(),
+            )
+        })
+        .unwrap_or_default();
+    if rects.is_empty() {
+        invalidate_window(hwnd);
+        return;
+    }
+    for rect in rects {
+        invalidate_rect_if_non_empty(hwnd, rect);
+    }
+}
+
 fn invalidate_window_chrome(hwnd: HWND) {
     let Some(renderer) = windows_chrome_renderer() else {
         invalidate_window(hwnd);
@@ -3149,7 +3374,20 @@ fn handle_chrome_mouse_move(hwnd: HWND, point: (i32, i32)) -> bool {
     };
     if chrome_interaction(hwnd).frame_button_hover != hover {
         update_chrome_interaction(hwnd, |state| state.frame_button_hover = hover);
-        invalidate_window(hwnd);
+        invalidate_frame_buttons(hwnd);
+    }
+    if hover.is_some() {
+        // Without a leave notification the hover highlight sticks when the
+        // cursor exits the window over a caption button.
+        let mut track = TRACKMOUSEEVENT {
+            cbSize: std::mem::size_of::<TRACKMOUSEEVENT>() as u32,
+            dwFlags: TME_LEAVE,
+            hwndTrack: hwnd,
+            dwHoverTime: 0,
+        };
+        unsafe {
+            let _ = TrackMouseEvent(&mut track);
+        }
     }
     matches!(
         hit,
@@ -3191,7 +3429,7 @@ fn handle_chrome_left_down(hwnd: HWND, point: (i32, i32)) -> bool {
                 state.frame_button_hover = Some(button);
                 state.frame_button_pressed = Some(button);
             });
-            invalidate_window(hwnd);
+            invalidate_frame_buttons(hwnd);
             true
         },
         WindowsChromeHit::Focusable {
@@ -3254,7 +3492,7 @@ fn handle_chrome_left_up(hwnd: HWND, point: (i32, i32)) -> bool {
         update_chrome_interaction(hwnd, |state| {
             state.frame_button_hover = if activate { Some(button) } else { None };
         });
-        invalidate_window(hwnd);
+        invalidate_frame_buttons(hwnd);
         if activate {
             handle_frame_button(hwnd, button);
         }
@@ -3814,6 +4052,13 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 }
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }
+            WM_MOUSELEAVE => {
+                if chrome_interaction(hwnd).frame_button_hover.is_some() {
+                    update_chrome_interaction(hwnd, |state| state.frame_button_hover = None);
+                    invalidate_frame_buttons(hwnd);
+                }
+                unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
+            }
             WindowsAndMessaging::WM_LBUTTONDOWN => {
                 if windows_chrome_renderer().is_some()
                     && !is_native_framed_window(hwnd)
@@ -3862,6 +4107,7 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 destroy_transparent_tabbar_overlay(hwnd);
                 #[cfg(feature = "shell-chrome")]
                 destroy_sidebar_tabbar_popup(hwnd);
+                release_chrome_back_buffer(hwnd);
                 let webtag_key = window_webtag_key(hwnd);
                 let raw = unsafe {
                     WindowsAndMessaging::GetWindowLongPtrW(hwnd, WindowsAndMessaging::GWLP_USERDATA)
@@ -3907,8 +4153,10 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
         }
     }
 
+    // No CS_HREDRAW/CS_VREDRAW: they invalidate the whole window on every
+    // resize step. WM_SIZE already invalidates chrome windows explicitly, and
+    // the buffered WM_PAINT keeps that repaint tear-free.
     let class = WNDCLASSW {
-        style: WindowsAndMessaging::CS_HREDRAW | WindowsAndMessaging::CS_VREDRAW,
         lpfnWndProc: Some(window_proc),
         hCursor: unsafe { WindowsAndMessaging::LoadCursorW(None, WindowsAndMessaging::IDC_ARROW) }
             .unwrap_or_default(),
