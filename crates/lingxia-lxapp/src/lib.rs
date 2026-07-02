@@ -44,10 +44,10 @@ pub use lifecycle::{
     AppServiceEvent, AppServiceEventArgs, AppServiceEventReason, AppServiceEventSource,
     LxAppLifecycleEvent, PageLifecycleEvent, PageServiceEvent,
 };
+pub use lingxia_surface;
 pub use lingxia_update::{
     ReleaseType, RuntimeCompatibilityError, SemanticVersion, Version, VersionError,
 };
-pub use lingxia_surface;
 pub use lxapp::set_num_workers;
 pub use lxapp::{
     CloseReason, CreatePageInstanceRequest, CreatedPageInstance, LxApp, LxAppRuntimeInfo,

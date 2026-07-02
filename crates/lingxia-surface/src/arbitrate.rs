@@ -109,7 +109,11 @@ pub fn arbitrate(
             // to make room for a declared aside. So a browser aside and a `chat`
             // aside sit side by side, and opening more browser tabs never pushes
             // out `chat`.
-            let non_web_asides = next.asides().iter().filter(|s| web_url(s).is_none()).count();
+            let non_web_asides = next
+                .asides()
+                .iter()
+                .filter(|s| web_url(s).is_none())
+                .count();
             if non_web_asides < max {
                 next.insert(request);
                 return (next, Decision::Accepted);
@@ -152,11 +156,7 @@ fn existing_web_aside_with_url(
     graph
         .surfaces()
         .iter()
-        .find(|s| {
-            s.id != exclude_id
-                && s.role == Role::Aside
-                && web_url(s) == Some(url)
-        })
+        .find(|s| s.id != exclude_id && s.role == Role::Aside && web_url(s) == Some(url))
         .map(|s| s.id.clone())
 }
 
@@ -172,5 +172,9 @@ fn oldest_non_web_aside_id(graph: &SurfaceGraph, edge: Option<Edge>) -> Option<S
     {
         return Some(s.id.clone());
     }
-    graph.surfaces().iter().find(is_evictable).map(|s| s.id.clone())
+    graph
+        .surfaces()
+        .iter()
+        .find(is_evictable)
+        .map(|s| s.id.clone())
 }

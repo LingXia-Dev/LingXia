@@ -382,7 +382,10 @@ impl ProvisioningManager {
         load_or_create(profiles, &mut || {
             let mut create_name = profile_name.clone();
             if !stale_same_name.is_empty()
-                && self.client.delete_profiles(&token, &stale_same_name).is_err()
+                && self
+                    .client
+                    .delete_profiles(&token, &stale_same_name)
+                    .is_err()
             {
                 // Deletion endpoint availability varies; sidestep the
                 // duplicate-name check with a unique suffix instead.

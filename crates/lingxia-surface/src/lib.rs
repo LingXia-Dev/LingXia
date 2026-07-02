@@ -302,9 +302,13 @@ mod tests {
         // Open browser tabs beyond the generic aside cap (expanded=2). The
         // declared `chat` aside must survive — web + non-web budgets are
         // independent (they coexist as separate side panels).
-        for (i, url) in ["https://a.example", "https://b.example", "https://c.example"]
-            .iter()
-            .enumerate()
+        for (i, url) in [
+            "https://a.example",
+            "https://b.example",
+            "https://c.example",
+        ]
+        .iter()
+        .enumerate()
         {
             let (n, d) = arbitrate(
                 &next,
