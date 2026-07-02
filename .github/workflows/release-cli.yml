@@ -265,6 +265,14 @@ jobs:
       # lingxia / lingxia-platform build.rs embed the bridge/polyfills JS runtime.
       - uses: ./.github/actions/build-web-runtime
 
+      # Inject the private cloud provider when its secrets are present. The
+      # Windows runner build uses install-local-runner.ps1 below so the same
+      # provider injection path is exercised as local runner installs.
+      - uses: ./.github/actions/cloud-provider-env
+        with:
+          gitea-token: ${{ secrets.GITEA_TOKEN }}
+          provider-cloud-git: ${{ secrets.LINGXIA_PROVIDER_CLOUD_GIT }}
+
       - name: Verify tag matches CLI package version
         shell: bash
         run: |
@@ -280,10 +288,8 @@ jobs:
       # Static CRT so the released runner has no MSVC runtime DLL dependency
       # (matches install-local-runner.ps1).
       - name: Build Windows Runner
-        shell: bash
-        env:
-          RUSTFLAGS: "-C target-feature=+crt-static"
-        run: cargo build --release --package lingxia-runner-windows --bin lingxia-runner --target x86_64-pc-windows-msvc
+        shell: pwsh
+        run: tools\lingxia-runner\windows\install-local-runner.ps1
 
       - name: Package Runner zip
         shell: pwsh
@@ -291,9 +297,10 @@ jobs:
           $version = (Get-Content tools/lingxia-cli/Cargo.toml |
             Where-Object { $_ -match '^version\s*=\s*"([^"]+)"' } |
             Select-Object -First 1) -replace '^version\s*=\s*"([^"]+)".*', '$1'
+          $runnerDir = Join-Path $HOME ".lingxia\runner\$version"
           New-Item -ItemType Directory -Force dist/runner-release, stage | Out-Null
-          Copy-Item "target/x86_64-pc-windows-msvc/release/lingxia-runner.exe" stage/lingxia-runner.exe
-          Set-Content -Path stage/VERSION -Value $version -NoNewline
+          Copy-Item (Join-Path $runnerDir "lingxia-runner.exe") stage/lingxia-runner.exe
+          Copy-Item (Join-Path $runnerDir "VERSION") stage/VERSION
           Compress-Archive -Path stage/lingxia-runner.exe, stage/VERSION -DestinationPath dist/runner-release/lingxia-runner-windows-x64.zip -Force
 
       - name: Upload Runner zip
