@@ -149,6 +149,66 @@ function EmptyState() {
   );
 }
 
+// Desktop hosts (macOS/Windows) declare a dockable terminal surface; the
+// bridge global is the View-side platform source.
+function hasDesktopTerminal(): boolean {
+  try {
+    const p = (window as unknown as {
+      LingXiaBridge?: { platform?: { isMacOS(): boolean; isWindows(): boolean } };
+    }).LingXiaBridge?.platform;
+    return !!p && (p.isMacOS() || p.isWindows());
+  } catch {
+    return false;
+  }
+}
+
+const TERMINAL_EDGES = [
+  { edge: 'left' as const, label: 'Dock left', arrow: 'M15 6l-6 6 6 6' },
+  { edge: 'right' as const, label: 'Dock right', arrow: 'M9 6l6 6-6 6' },
+  { edge: 'top' as const, label: 'Dock top', arrow: 'M6 15l6-6 6 6' },
+  { edge: 'bottom' as const, label: 'Dock bottom', arrow: 'M6 9l6 6 6-6' },
+];
+
+function TerminalTool({ onOpen }: { onOpen: (edge: 'left' | 'right' | 'top' | 'bottom') => void }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        title="Terminal"
+        className="w-7 h-7 bg-white rounded-full shadow-sm flex items-center justify-center active:opacity-70"
+      >
+        <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="#374151" strokeWidth="1.8">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M7 9l3 3-3 3m5 0h5M4.5 5h15a1 1 0 011 1v12a1 1 0 01-1 1h-15a1 1 0 01-1-1V6a1 1 0 011-1z" />
+        </svg>
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 top-9 z-20 bg-white rounded-xl shadow-lg border border-gray-200 py-1 w-36">
+            {TERMINAL_EDGES.map(({ edge, label, arrow }) => (
+              <button
+                key={edge}
+                onClick={() => {
+                  setOpen(false);
+                  onOpen(edge);
+                }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 active:bg-gray-100"
+              >
+                <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5" stroke="#6b7280" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d={arrow} />
+                </svg>
+                {label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function AIAvatar() {
   return (
     <div className="w-7 h-7 rounded-full bg-gradient-to-br from-violet-500 to-blue-600 flex-shrink-0 flex items-center justify-center mt-0.5">
@@ -296,6 +356,7 @@ export default function ChatPage() {
     {
       onSend: (params: { text: string }) => LxStream<ChatChunk, void>;
       onClear: () => void;
+      onOpenTerminal: (params: { edge: 'left' | 'right' | 'top' | 'bottom' }) => void;
     }
   >();
 
@@ -333,16 +394,19 @@ export default function ChatPage() {
 
   return (
     <div className="flex flex-col bg-gray-100" style={{ height: '100vh' }}>
-      {messages.length > 0 && !chat.streaming && (
-        <div className="absolute top-3 right-4 z-10">
+      <div className="absolute top-3 right-4 z-10 flex items-center gap-2">
+        {messages.length > 0 && !chat.streaming && (
           <button
             onClick={() => actions.onClear()}
             className="text-xs text-blue-600 px-3 py-1 bg-white rounded-full shadow-sm active:opacity-70"
           >
             Clear
           </button>
-        </div>
-      )}
+        )}
+        {hasDesktopTerminal() && (
+          <TerminalTool onOpen={(edge) => actions.onOpenTerminal({ edge })} />
+        )}
+      </div>
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4">
         {messages.length === 0 && !chat.streaming ? (

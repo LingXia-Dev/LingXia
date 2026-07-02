@@ -207,4 +207,10 @@ Page({
     if (this.data.isStreaming) return;
     this.setData({ messages: [] });
   },
+
+  // Desktop-only (the View gates the affordance): dock the host-declared
+  // terminal on the requested edge.
+  async onOpenTerminal(params: { edge: 'left' | 'right' | 'top' | 'bottom' }) {
+    await lx.openSurface({ surface: 'terminal', edge: params?.edge ?? 'bottom' });
+  },
 });
