@@ -21,15 +21,29 @@ final class RunnerPhoneBrowserSurface {
     // button; this surface switches, opens, and closes them.
     private var openTabIds: [String] = []
     private var activeTabId: String?
+    /// Tabs the user has interacted with (page click or address navigation).
+    /// Until then, auto-created history (SPA pushState redirects) must not
+    /// light back/forward — mirroring Chrome's history intervention.
+    private var interactedTabIds: Set<String> = []
+    private var interactionMonitor: Any?
     // Owner of the most recent presentation, used to open new tabs ("+").
     private var ownerAppId: String?
     private var ownerSessionId: UInt64 = 0
 
     private var addressField: NSTextField?
     private var addressIcon: NSImageView?
+    private var addressPill: NSView?
+    private var bottomBarHeightConstraint: NSLayoutConstraint?
+    // Action-row top: below the address pill normally, at the bar top for an
+    // aside tab (address row hidden).
+    private var actionRowTopWithAddress: NSLayoutConstraint?
+    private var actionRowTopWithoutAddress: NSLayoutConstraint?
     private var backButton: NSButton?
     private var forwardButton: NSButton?
     private var refreshButton: NSButton?
+    /// Row refresh for aside tabs (self tabs refresh from the address pill).
+    private var asideRefreshButton: NSButton?
+    private var newTabButton: NSButton?
     private var tabsButton: NSButton?
     private var tabsBadge: NSTextField?
     private var tabSwitcherOverlay: NSView?
@@ -78,6 +92,7 @@ final class RunnerPhoneBrowserSurface {
             }
         }
         openTabIds.removeAll()
+        interactedTabIds.removeAll()
         activeTabId = nil
     }
 
@@ -93,7 +108,17 @@ final class RunnerPhoneBrowserSurface {
         guard openTabIds.contains(tabId) else { return }
         activeTabId = tabId
         clearWebViewAttachment()
+        // Blank the address and back/forward until the new tab's webview
+        // attaches — never show the previous tab's state (they are per-tab).
+        // End any in-progress address editing first: updateAddress skips a
+        // field that is being edited, which would leave the old URL behind.
+        if addressField?.currentEditor() != nil {
+            hostWindow?.makeFirstResponder(nil)
+        }
+        updateAddress(url: nil)
+        updateNavigationButtons()
         updateTabsBadge()
+        updateAddressRowVisibility()
         attachWebView(tabId: tabId, attempt: 0)
     }
 
@@ -105,6 +130,7 @@ final class RunnerPhoneBrowserSurface {
 
         _ = RunnerSupport.Browser.closeTab(tabId: tabId)
         openTabIds.remove(at: index)
+        interactedTabIds.remove(tabId)
         updateTabsBadge()
 
         guard wasActive else { return }
@@ -203,6 +229,8 @@ final class RunnerPhoneBrowserSurface {
 
         let backButton = makeIconButton(named: "icon_back", action: #selector(backClicked))
         let forwardButton = makeIconButton(named: "icon_forward", action: #selector(forwardClicked))
+        let asideRefreshButton = makeIconButton(named: "icon_browser_refresh", action: #selector(refreshClicked))
+        asideRefreshButton.isHidden = true
         let newTabButton = makeIconButton(named: "icon_browser_plus", action: #selector(newTabClicked))
         let tabsButton = makeIconButton(named: "icon_browser_tabs", action: #selector(tabsClicked))
         let closeButton = makeIconButton(named: "icon_close_x", action: #selector(closeClicked))
@@ -221,6 +249,7 @@ final class RunnerPhoneBrowserSurface {
 
         actionRow.addArrangedSubview(backButton)
         actionRow.addArrangedSubview(forwardButton)
+        actionRow.addArrangedSubview(asideRefreshButton)
         actionRow.addArrangedSubview(spacer)
         actionRow.addArrangedSubview(newTabButton)
         actionRow.addArrangedSubview(tabsButton)
@@ -229,6 +258,8 @@ final class RunnerPhoneBrowserSurface {
         self.backButton = backButton
         self.forwardButton = forwardButton
         self.refreshButton = refreshButton
+        self.asideRefreshButton = asideRefreshButton
+        self.newTabButton = newTabButton
         self.tabsButton = tabsButton
         self.tabsBadge = tabsBadge
         self.addressField = addressField
@@ -249,7 +280,6 @@ final class RunnerPhoneBrowserSurface {
             bottomBar.leadingAnchor.constraint(equalTo: overlay.leadingAnchor),
             bottomBar.trailingAnchor.constraint(equalTo: overlay.trailingAnchor),
             bottomBar.bottomAnchor.constraint(equalTo: overlay.bottomAnchor, constant: -4),
-            bottomBar.heightAnchor.constraint(equalToConstant: 96),
 
             barBackground.leadingAnchor.constraint(equalTo: bottomBar.leadingAnchor, constant: 12),
             barBackground.trailingAnchor.constraint(equalTo: bottomBar.trailingAnchor, constant: -12),
@@ -275,11 +305,20 @@ final class RunnerPhoneBrowserSurface {
 
             actionRow.leadingAnchor.constraint(equalTo: barBackground.leadingAnchor, constant: 6),
             actionRow.trailingAnchor.constraint(equalTo: barBackground.trailingAnchor, constant: -6),
-            actionRow.topAnchor.constraint(equalTo: addressPill.bottomAnchor, constant: 4),
 
             tabsBadge.centerXAnchor.constraint(equalTo: tabsButton.centerXAnchor, constant: 1),
             tabsBadge.centerYAnchor.constraint(equalTo: tabsButton.centerYAnchor, constant: -1),
         ])
+
+        let barHeight = bottomBar.heightAnchor.constraint(equalToConstant: 96)
+        barHeight.isActive = true
+        bottomBarHeightConstraint = barHeight
+        let withAddress = actionRow.topAnchor.constraint(equalTo: addressPill.bottomAnchor, constant: 4)
+        let withoutAddress = actionRow.topAnchor.constraint(equalTo: barBackground.topAnchor, constant: 8)
+        actionRowTopWithAddress = withAddress
+        actionRowTopWithoutAddress = withoutAddress
+        withAddress.isActive = true
+        self.addressPill = addressPill
 
         overlayView = overlay
         self.webContainer = webContainer
@@ -287,8 +326,43 @@ final class RunnerPhoneBrowserSurface {
         updateTabsBadge()
     }
 
+    /// Aside chrome: refresh, smart back/forward, tabs, close — no address
+    /// row, no new-tab (asides are API-opened; user-created tabs are self mode).
+    private func updateAddressRowVisibility() {
+        guard let tabId = activeTabId else { return }
+        let aside = RunnerSupport.Browser.isAside(tabId: tabId)
+        newTabButton?.isHidden = aside
+        asideRefreshButton?.isHidden = !aside
+        guard let addressPill, addressPill.isHidden != aside else { return }
+        addressPill.isHidden = aside
+        if aside {
+            actionRowTopWithAddress?.isActive = false
+            actionRowTopWithoutAddress?.isActive = true
+        } else {
+            actionRowTopWithoutAddress?.isActive = false
+            actionRowTopWithAddress?.isActive = true
+        }
+        bottomBarHeightConstraint?.constant = aside ? 56 : 96
+    }
+
     private func show(in phoneContent: NSView) {
         setupIfNeeded(in: phoneContent)
+        // First click inside the web area marks the active tab as interacted
+        // (observe-only; the event passes through untouched).
+        if interactionMonitor == nil {
+            interactionMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
+                MainActor.assumeIsolated {
+                    guard let self, let container = self.webContainer,
+                          let window = container.window, event.window === window,
+                          self.overlayView?.isHidden == false else { return }
+                    let point = container.convert(event.locationInWindow, from: nil)
+                    if container.bounds.contains(point) {
+                        self.markActiveTabInteracted()
+                    }
+                }
+                return event
+            }
+        }
         guard let overlay = overlayView else { return }
 
         phoneContent.addSubview(overlay, positioned: .above, relativeTo: nil)
@@ -369,12 +443,22 @@ final class RunnerPhoneBrowserSurface {
 
     private func updateNavigationButtons() {
         let webView = activeWebView
-        backButton?.isEnabled = webView?.canGoBack ?? false
-        backButton?.alphaValue = (webView?.canGoBack ?? false) ? 1.0 : 0.35
-        forwardButton?.isEnabled = webView?.canGoForward ?? false
-        forwardButton?.alphaValue = (webView?.canGoForward ?? false) ? 1.0 : 0.35
+        let interacted = activeTabId.map(interactedTabIds.contains) ?? false
+        let back = (webView?.canGoBack ?? false) && interacted
+        let forward = (webView?.canGoForward ?? false) && interacted
+        backButton?.isEnabled = back
+        backButton?.alphaValue = back ? 1.0 : 0.35
+        forwardButton?.isEnabled = forward
+        forwardButton?.alphaValue = forward ? 1.0 : 0.35
         refreshButton?.isEnabled = webView != nil
         refreshButton?.alphaValue = webView == nil ? 0.35 : 1.0
+    }
+
+    /// Mark the active tab as user-interacted and refresh the nav affordances.
+    private func markActiveTabInteracted() {
+        guard let tabId = activeTabId, !interactedTabIds.contains(tabId) else { return }
+        interactedTabIds.insert(tabId)
+        updateNavigationButtons()
     }
 
     private func updateTabsBadge() {
@@ -585,6 +669,8 @@ final class RunnerPhoneBrowserSurface {
             return
         }
         hostWindow?.makeFirstResponder(nil)
+        // An address-bar navigation is a user interaction.
+        markActiveTabInteracted()
         // Navigate via the managed runtime (a raw WKWebView.load is ignored by
         // the browser's navigation policy), then re-attach: leaving a blank tab
         // can swap in a fresh webview, so the displayed one would be stale.

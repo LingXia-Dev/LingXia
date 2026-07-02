@@ -14,6 +14,10 @@ final class LxAppBrowser: NSObject {
 
     private(set) static var openTabIds: [String] = []
     private(set) static var activeTabId: String?
+    /// Tabs the user has interacted with (page tap or address navigation).
+    /// Until then, auto-created history (SPA pushState redirects) must not
+    /// light back/forward — mirroring Chrome's history intervention.
+    static var interactedTabIds: Set<String> = []
 
     /// Show the browser displaying `tabId`. Creates and pushes the controller on
     /// first use; afterwards it only registers and activates the tab in place.
@@ -87,6 +91,7 @@ final class LxAppBrowser: NSObject {
         _ = browserTabClose(normalizedTabId)
         currentController?.releaseWebView(forTabId: normalizedTabId)
         openTabIds.remove(at: index)
+        interactedTabIds.remove(normalizedTabId)
 
         let wasActive = activeTabId == normalizedTabId
         if !wasActive { return }
@@ -138,6 +143,7 @@ final class LxAppBrowser: NSObject {
 
     fileprivate static func clearState() {
         openTabIds.removeAll()
+        interactedTabIds.removeAll()
         activeTabId = nil
     }
 
@@ -163,6 +169,8 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
     // Action row
     private let backButton = UIButton(type: .system)
     private let forwardButton = UIButton(type: .system)
+    /// Row refresh for aside tabs (self tabs refresh from the address pill).
+    private let asideRefreshButton = UIButton(type: .system)
     private let newTabButton = UIButton(type: .system)
     private let tabsButton = UIButton(type: .system)
     private let tabsBadge = UILabel()
@@ -175,6 +183,10 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
     private let bottomBarBackground = UIVisualEffectView(effect: UIBlurEffect(style: .systemThinMaterial))
 
     private var bottomBarBottomConstraint: NSLayoutConstraint?
+    // Action-row top: below the address pill normally, at the bar top for an
+    // aside tab (address row hidden).
+    private var actionRowTopWithAddress: NSLayoutConstraint?
+    private var actionRowTopWithoutAddress: NSLayoutConstraint?
 
     // The webview displayed for the active tab, plus the tab id it belongs to.
     private var activeBrowserWebView: WKWebView?
@@ -186,6 +198,7 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
     private var attachRetryWorkItem: DispatchWorkItem?
     private var didCloseManagedTab = false
     private var backEdgePanGesture: UIScreenEdgePanGestureRecognizer?
+    private var interactionTapGesture: UITapGestureRecognizer?
 
     init() {
         super.init(nibName: nil, bundle: nil)
@@ -269,6 +282,14 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
     /// Swap the attached webview to the manager's currently active tab.
     fileprivate func displayActiveTab() {
         updateTabsBadge()
+        // Blank the address and back/forward until the new tab's webview
+        // attaches — never show the previous tab's state (they are per-tab).
+        if activeWebViewTabId != LxAppBrowser.activeTabId {
+            addressField.text = ""
+            addressIcon.isHidden = true
+            NavButtonState.apply(backButton, enabled: false)
+            NavButtonState.apply(forwardButton, enabled: false)
+        }
         attachManagedWebViewIfNeeded()
     }
 
@@ -358,6 +379,10 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
         NavButtonState.apply(forwardButton, enabled: false)
         actionRow.addArrangedSubview(forwardButton)
 
+        configureIconButton(asideRefreshButton, iconName: "icon_browser_refresh", iconSize: 18, tintColor: UIColor(white: 0.2, alpha: 1.0), action: #selector(refreshTapped))
+        asideRefreshButton.isHidden = true
+        actionRow.addArrangedSubview(asideRefreshButton)
+
         let spacer = UIView()
         spacer.translatesAutoresizingMaskIntoConstraints = false
         spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
@@ -438,7 +463,6 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
             // Action row
             actionRow.leadingAnchor.constraint(equalTo: barContent.leadingAnchor, constant: 8),
             actionRow.trailingAnchor.constraint(equalTo: barContent.trailingAnchor, constant: -8),
-            actionRow.topAnchor.constraint(equalTo: addressPill.bottomAnchor, constant: 4),
             // Sit close to the home indicator; the blur extends below it.
             actionRow.bottomAnchor.constraint(equalTo: bottomBar.bottomAnchor, constant: -10),
 
@@ -453,6 +477,31 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
             contentContainer.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             contentContainer.bottomAnchor.constraint(equalTo: bottomBar.topAnchor),
         ])
+
+        let withAddress = actionRow.topAnchor.constraint(equalTo: addressPill.bottomAnchor, constant: 4)
+        let withoutAddress = actionRow.topAnchor.constraint(equalTo: barContent.topAnchor, constant: 6)
+        actionRowTopWithAddress = withAddress
+        actionRowTopWithoutAddress = withoutAddress
+        withAddress.isActive = true
+    }
+
+    /// Aside chrome: refresh, smart back/forward, tabs, close — no address
+    /// row, no new-tab, no menu (asides are API-opened; user-created tabs
+    /// are self mode).
+    private func updateAddressRowVisibility() {
+        let aside = LxAppBrowser.activeTabId.map { browserTabIsAside($0) } ?? false
+        newTabButton.isHidden = aside
+        menuButton.isHidden = aside
+        asideRefreshButton.isHidden = !aside
+        guard addressPill.isHidden != aside else { return }
+        addressPill.isHidden = aside
+        if aside {
+            actionRowTopWithAddress?.isActive = false
+            actionRowTopWithoutAddress?.isActive = true
+        } else {
+            actionRowTopWithoutAddress?.isActive = false
+            actionRowTopWithAddress?.isActive = true
+        }
     }
 
     private func setupTabsButton() {
@@ -510,6 +559,21 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
         edgePan.name = "LxAppBrowserBackEdgePan"
         view.addGestureRecognizer(edgePan)
         backEdgePanGesture = edgePan
+
+        // First tap on the page marks the active tab as interacted
+        // (observe-only; touches pass through to the webview).
+        let tap = UITapGestureRecognizer(target: self, action: #selector(handleInteractionTap))
+        tap.cancelsTouchesInView = false
+        tap.delegate = self
+        contentContainer.addGestureRecognizer(tap)
+        interactionTapGesture = tap
+    }
+
+    @objc private func handleInteractionTap() {
+        guard let tabId = LxAppBrowser.activeTabId,
+              !LxAppBrowser.interactedTabIds.contains(tabId) else { return }
+        LxAppBrowser.interactedTabIds.insert(tabId)
+        updateNavigationButtons()
     }
 
     // MARK: - Keyboard avoidance
@@ -554,6 +618,7 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
         attachRetryWorkItem = nil
 
         guard let activeTabId = LxAppBrowser.activeTabId else { return }
+        updateAddressRowVisibility()
 
         if let webView = findManagedBrowserWebView(tabId: activeTabId) {
             if activeBrowserWebView !== webView || activeWebViewTabId != activeTabId || webView.superview !== contentContainer {
@@ -688,8 +753,11 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
     }
 
     private func updateNavigationButtons() {
-        NavButtonState.apply(backButton, enabled: activeBrowserWebView?.canGoBack ?? false)
-        NavButtonState.apply(forwardButton, enabled: activeBrowserWebView?.canGoForward ?? false)
+        // Pre-interaction history is auto-created (redirects/pushState) and
+        // must not light the affordances.
+        let interacted = LxAppBrowser.activeTabId.map { LxAppBrowser.interactedTabIds.contains($0) } ?? false
+        NavButtonState.apply(backButton, enabled: (activeBrowserWebView?.canGoBack ?? false) && interacted)
+        NavButtonState.apply(forwardButton, enabled: (activeBrowserWebView?.canGoForward ?? false) && interacted)
     }
 
     private func configureIconButton(
@@ -818,6 +886,8 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
             return
         }
         if browserTabNavigate(tabId, target.absoluteString) {
+            // An address-bar navigation is a user interaction.
+            LxAppBrowser.interactedTabIds.insert(tabId)
             updateAddressBar(url: target)
             attachManagedWebViewIfNeeded()
         } else {
@@ -842,7 +912,7 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
     }
 
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
-        gestureRecognizer === backEdgePanGesture
+        gestureRecognizer === backEdgePanGesture || gestureRecognizer === interactionTapGesture
     }
 }
 
@@ -882,6 +952,8 @@ private final class LxAppBrowserTabSwitcherViewController: UIViewController, UIT
         addButton.translatesAutoresizingMaskIntoConstraints = false
         addButton.setImage(lxAppBrowserIconImage(named: "icon_plus", size: 20)?.withRenderingMode(.alwaysTemplate), for: .normal)
         addButton.addTarget(self, action: #selector(newTabTapped), for: .touchUpInside)
+        // New tabs are self mode; hide the affordance while an aside is active.
+        addButton.isHidden = LxAppBrowser.activeTabId.map { browserTabIsAside($0) } ?? false
         header.addSubview(addButton)
 
         tableView.translatesAutoresizingMaskIntoConstraints = false
