@@ -217,6 +217,14 @@ pub fn handle_browser_navigation_policy(request_json: String) -> Option<String> 
     crate::browser::classify_navigation_json(&request_json)
 }
 
+/// Offer a navigation URL from a native (non-managed) Web component to the
+/// URL-callback registry. `true` means a channel consumed it and the native
+/// side must cancel the navigation.
+#[napi]
+pub fn url_callback_dispatch(url: String) -> bool {
+    lingxia_webview::url_callback::dispatch(&url)
+}
+
 #[napi]
 pub fn open_browser_tab(appid: String, session_id: i64, url: String) -> Option<String> {
     if session_id <= 0 {

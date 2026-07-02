@@ -174,6 +174,14 @@ internal object NativeApi {
     external fun handleBrowserNavigationPolicy(requestJson: String): String?
 
     /**
+     * Offer a navigation URL from a native (non-managed) WebView to the
+     * URL-callback registry. `true` means a channel consumed it and the caller
+     * must cancel the navigation.
+     */
+    @JvmStatic
+    external fun urlCallbackDispatch(url: String): Boolean
+
+    /**
      * Open a managed internal browser tab and return tabId.
      * Returns null when owner/session is invalid or creation fails.
      */
