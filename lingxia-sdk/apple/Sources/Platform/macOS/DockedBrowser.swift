@@ -23,12 +23,11 @@ final class DockedBrowser: NSObject {
 
     private enum Layout {
         static let toolbarHeight: CGFloat = 38
-        static let tabStripHeight: CGFloat = 30
         static let buttonSize: CGFloat = 28
         static let closeSize: CGFloat = 24
         static let iconSize: CGFloat = 14
         static let edge: CGFloat = 8
-        static let tabMaxWidth: CGFloat = 160
+        static let maxTabWidth: CGFloat = 180
     }
 
     /// One open tab: a web-aside surface node backed by a Rust browser tab.
@@ -39,6 +38,10 @@ final class DockedBrowser: NSObject {
         var url: String
         var title: String = ""
         var webView: WKWebView?
+        /// Chrome-style history intervention: until the user interacts with
+        /// the page, auto-created history (SPA pushState redirects) must not
+        /// light up back/forward.
+        var userInteracted = false
         let button = NSButton()
         let closeButton = NSButton()
         let row = NSStackView()
@@ -74,13 +77,13 @@ final class DockedBrowser: NSObject {
     private let refreshButton = NSButton()
     private let closeAsideButton = NSButton()
     private let tabStrip = NSStackView()
-    private let tabScroll = NSScrollView()
     private let separator = NSView()
     private let webContainer = NSView()
 
     private var tabs: [Tab] = []
     private var activeSurfaceId: String?
     private var torn = false
+    private var interactionMonitor: Any?
 
     /// Create the panel with an initial tab for `surfaceId` → `url`. Returns nil
     /// if the first browser tab could not be created.
@@ -97,11 +100,39 @@ final class DockedBrowser: NSObject {
         super.init()
         buildChrome()
         guard addOrFocusTab(surfaceId: surfaceId, url: url) else { return nil }
+        // First click inside the web area marks the active tab as interacted
+        // (observe-only; the event passes through untouched).
+        interactionMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
+            MainActor.assumeIsolated {
+                self?.noteInteractionIfInWebArea(event)
+            }
+            return event
+        }
+    }
+
+    /// Mark the active tab as user-interacted when a click lands in its web
+    /// content, then refresh back/forward (they stay dimmed until first
+    /// interaction, mirroring Chrome's history-manipulation intervention).
+    private func noteInteractionIfInWebArea(_ event: NSEvent) {
+        guard !torn,
+              let window = webContainer.window,
+              event.window === window,
+              let tab = activeTab(),
+              !tab.userInteracted else { return }
+        let point = webContainer.convert(event.locationInWindow, from: nil)
+        guard webContainer.bounds.contains(point) else { return }
+        tab.userInteracted = true
+        if let webView = tab.webView {
+            updateBackForward(canGoBack: webView.canGoBack, canGoForward: webView.canGoForward)
+        }
     }
 
     /// The active tab's surface id, so the surface layer can re-anchor the shell
     /// panel to a survivor when the anchor node closes.
     var anchorSurfaceId: String? { tabs.first?.surfaceId }
+
+    /// Surface ids of every open tab (front = anchor).
+    var tabSurfaceIds: [String] { tabs.map { $0.surfaceId } }
 
     func contains(surfaceId: String) -> Bool {
         tabs.contains { $0.surfaceId == surfaceId }
@@ -153,6 +184,10 @@ final class DockedBrowser: NSObject {
     func tearDown() {
         guard !torn else { return }
         torn = true
+        if let monitor = interactionMonitor {
+            NSEvent.removeMonitor(monitor)
+            interactionMonitor = nil
+        }
         for tab in tabs { teardownTab(tab) }
         tabs.removeAll()
         activeSurfaceId = nil
@@ -203,8 +238,11 @@ final class DockedBrowser: NSObject {
         tab.webView?.stopLoading()
         tab.webView?.removeFromSuperview()
         tab.webView = nil
-        tab.row.removeFromSuperview()
+        // removeArrangedSubview FIRST: removeFromSuperview already detaches
+        // the view from the arranged list, and removing a no-longer-arranged
+        // view raises an NSStackView assertion.
         tabStrip.removeArrangedSubview(tab.row)
+        tab.row.removeFromSuperview()
         _ = browserTabClose(tab.browserTabId)
     }
 
@@ -247,14 +285,14 @@ final class DockedBrowser: NSObject {
     }
 
     private func observe(_ webView: WKWebView, tab: Tab) {
-        tab.urlObs = webView.observe(\.url, options: [.new]) { [weak self, weak tab] webView, _ in
+        tab.urlObs = webView.observe(\.url, options: [.initial, .new]) { [weak self, weak tab] webView, _ in
             Task { @MainActor in
                 guard let self, let tab, !self.torn else { return }
                 tab.url = webView.url?.absoluteString ?? tab.url
                 _ = updateBrowserTabInfo(tab.browserTabId, webView.url?.absoluteString ?? "", webView.title ?? "")
             }
         }
-        tab.titleObs = webView.observe(\.title, options: [.new]) { [weak self, weak tab] webView, _ in
+        tab.titleObs = webView.observe(\.title, options: [.initial, .new]) { [weak self, weak tab] webView, _ in
             Task { @MainActor in
                 guard let self, let tab, !self.torn else { return }
                 let t = (webView.title ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
@@ -262,13 +300,13 @@ final class DockedBrowser: NSObject {
                 self.updateTabButtonTitle(tab)
             }
         }
-        tab.backObs = webView.observe(\.canGoBack, options: [.new]) { [weak self, weak tab] webView, _ in
+        tab.backObs = webView.observe(\.canGoBack, options: [.initial, .new]) { [weak self, weak tab] webView, _ in
             Task { @MainActor in
                 guard let self, let tab, !self.torn, tab.surfaceId == self.activeSurfaceId else { return }
                 self.updateBackForward(canGoBack: webView.canGoBack, canGoForward: webView.canGoForward)
             }
         }
-        tab.forwardObs = webView.observe(\.canGoForward, options: [.new]) { [weak self, weak tab] webView, _ in
+        tab.forwardObs = webView.observe(\.canGoForward, options: [.initial, .new]) { [weak self, weak tab] webView, _ in
             Task { @MainActor in
                 guard let self, let tab, !self.torn, tab.surfaceId == self.activeSurfaceId else { return }
                 self.updateBackForward(canGoBack: webView.canGoBack, canGoForward: webView.canGoForward)
@@ -277,8 +315,11 @@ final class DockedBrowser: NSObject {
     }
 
     private func updateBackForward(canGoBack: Bool, canGoForward: Bool) {
-        NavButtonState.apply(backButton, enabled: canGoBack)
-        NavButtonState.apply(forwardButton, enabled: canGoForward)
+        // Pre-interaction history is auto-created (redirects/pushState) and
+        // must not light the affordances.
+        let interacted = activeTab()?.userInteracted ?? false
+        NavButtonState.apply(backButton, enabled: canGoBack && interacted)
+        NavButtonState.apply(forwardButton, enabled: canGoForward && interacted)
     }
 
     // MARK: - Chrome
@@ -307,17 +348,15 @@ final class DockedBrowser: NSObject {
         closeAsideButton.action = #selector(closeAsideClicked)
         toolbar.addSubview(closeAsideButton)
 
-        // Title tab strip (horizontal, scrollable) below the toolbar.
+        // Title tab strip in the SAME bar. Tabs sit adjacent, leading-packed:
+        // equal widths capped at maxTabWidth, shrinking evenly when crowded
+        // (the strip grows with its tabs instead of filling the whole bar).
         tabStrip.orientation = .horizontal
         tabStrip.spacing = 4
         tabStrip.alignment = .centerY
+        tabStrip.distribution = .fillEqually
         tabStrip.translatesAutoresizingMaskIntoConstraints = false
-        tabScroll.translatesAutoresizingMaskIntoConstraints = false
-        tabScroll.drawsBackground = false
-        tabScroll.hasHorizontalScroller = false
-        tabScroll.hasVerticalScroller = false
-        tabScroll.documentView = tabStrip
-        containerView.addSubview(tabScroll)
+        toolbar.addSubview(tabStrip)
 
         separator.translatesAutoresizingMaskIntoConstraints = false
         separator.wantsLayer = true
@@ -354,13 +393,12 @@ final class DockedBrowser: NSObject {
             closeAsideButton.widthAnchor.constraint(equalToConstant: Layout.closeSize),
             closeAsideButton.heightAnchor.constraint(equalToConstant: Layout.closeSize),
 
-            // Tabs live in the SAME bar as back/forward/refresh (one row), filling
-            // the space between the nav buttons and the close-aside button.
-            tabScroll.leadingAnchor.constraint(equalTo: refreshButton.trailingAnchor, constant: Layout.edge),
-            tabScroll.trailingAnchor.constraint(equalTo: closeAsideButton.leadingAnchor, constant: -Layout.edge),
-            tabScroll.centerYAnchor.constraint(equalTo: toolbar.centerYAnchor),
-            tabScroll.heightAnchor.constraint(equalToConstant: Layout.buttonSize),
-            tabStrip.heightAnchor.constraint(equalTo: tabScroll.heightAnchor),
+            // Tabs live in the SAME bar as back/forward/refresh (one row),
+            // leading-packed; the strip may grow up to the close-aside button.
+            tabStrip.leadingAnchor.constraint(equalTo: refreshButton.trailingAnchor, constant: Layout.edge),
+            tabStrip.trailingAnchor.constraint(lessThanOrEqualTo: closeAsideButton.leadingAnchor, constant: -Layout.edge),
+            tabStrip.centerYAnchor.constraint(equalTo: toolbar.centerYAnchor),
+            tabStrip.heightAnchor.constraint(equalToConstant: Layout.buttonSize),
 
             separator.topAnchor.constraint(equalTo: toolbar.bottomAnchor),
             separator.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
@@ -423,7 +461,10 @@ final class DockedBrowser: NSObject {
         row.addArrangedSubview(title)
         row.addArrangedSubview(close)
         row.translatesAutoresizingMaskIntoConstraints = false
-        title.widthAnchor.constraint(lessThanOrEqualToConstant: Layout.tabMaxWidth).isActive = true
+        // Equal share up to the cap; the title truncates when compressed.
+        title.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        title.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        row.widthAnchor.constraint(lessThanOrEqualToConstant: Layout.maxTabWidth).isActive = true
         close.widthAnchor.constraint(equalToConstant: 16).isActive = true
         tabStrip.addArrangedSubview(row)
         updateTabStripSelection()
@@ -441,7 +482,7 @@ final class DockedBrowser: NSObject {
                 : NSColor.clear.cgColor
             tab.button.contentTintColor = selected ? .labelColor : .secondaryLabelColor
         }
-        tabScroll.isHidden = tabs.isEmpty
+        tabStrip.isHidden = tabs.isEmpty
     }
 
     private enum AssociatedKeys { nonisolated(unsafe) static var surfaceId = 0 }
