@@ -826,7 +826,11 @@ fn execute_lxapp_dev(project_root: PathBuf, options: DevExecuteOptions) -> Resul
             LxAppRunnerHost::MacOs => {
                 launch_runner_for_lxapp(&project_root, &ws_url, options.runner_device.as_deref())?
             }
-            LxAppRunnerHost::Windows => launch_windows_runner_for_lxapp(&project_root, &ws_url)?,
+            LxAppRunnerHost::Windows => launch_windows_runner_for_lxapp(
+                &project_root,
+                &ws_url,
+                options.runner_device.as_deref(),
+            )?,
         };
 
         print_dev_banner("LxApp Runner", "Ctrl+C or close Runner", &[]);
@@ -1092,7 +1096,13 @@ fn installed_windows_runner_exe_path() -> Result<PathBuf> {
 /// contract: `LINGXIA_ASSET_DIR` (host assets),
 /// `LINGXIA_LXAPP_PATH` (live lxapp bundle), and `LINGXIA_DEV_WS_URL`
 /// (devtool bridge). Host identity is generated into `app.json`.
-fn launch_windows_runner_for_lxapp(lxapp_path: &Path, ws_url: &str) -> Result<RunnerProcess> {
+/// `runner_device` (the `--runner` flag) picks the simulated device, same
+/// id contract as the macOS runner's `LINGXIA_RUNNER_DEVICE`.
+fn launch_windows_runner_for_lxapp(
+    lxapp_path: &Path,
+    ws_url: &str,
+    runner_device: Option<&str>,
+) -> Result<RunnerProcess> {
     ensure_valid_lxapp_dir(lxapp_path)?;
     // Provision the runner from the matching release if it isn't installed yet.
     crate::runner_cache::ensure_runner(REQUIRED_RUNNER_VERSION, false)?;
@@ -1115,6 +1125,7 @@ fn launch_windows_runner_for_lxapp(lxapp_path: &Path, ws_url: &str) -> Result<Ru
         &assets_dir,
         ws_url,
         mock_dir.as_deref(),
+        runner_device,
     )?;
 
     #[cfg(not(target_os = "windows"))]
@@ -1125,6 +1136,9 @@ fn launch_windows_runner_for_lxapp(lxapp_path: &Path, ws_url: &str) -> Result<Ru
         command.arg("--asset-dir").arg(&assets_dir);
         if let Some(mock_dir) = &mock_dir {
             command.arg("--lingxiao-mock-dir").arg(mock_dir);
+        }
+        if let Some(device) = runner_device.map(str::trim).filter(|s| !s.is_empty()) {
+            command.arg("--runner-device").arg(device);
         }
         command.stdin(Stdio::null());
         command.stdout(Stdio::inherit());
@@ -1232,6 +1246,7 @@ fn shell_execute_windows_runner(
     assets_dir: &Path,
     ws_url: &str,
     mock_dir: Option<&Path>,
+    runner_device: Option<&str>,
 ) -> Result<RunnerProcess> {
     use std::mem::size_of;
     use windows::Win32::Foundation::HANDLE;
@@ -1253,6 +1268,10 @@ fn shell_execute_windows_runner(
     if let Some(mock_dir) = mock_dir {
         params.push("--lingxiao-mock-dir".to_string());
         params.push(mock_dir.display().to_string());
+    }
+    if let Some(device) = runner_device.map(str::trim).filter(|s| !s.is_empty()) {
+        params.push("--runner-device".to_string());
+        params.push(device.to_string());
     }
     let params = params
         .into_iter()

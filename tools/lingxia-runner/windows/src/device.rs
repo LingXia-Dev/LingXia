@@ -101,6 +101,18 @@ pub(crate) fn default_device_index() -> usize {
         .unwrap_or(0)
 }
 
+/// Startup device: `LINGXIA_RUNNER_DEVICE` (the CLI `--runner` contract,
+/// shared with the macOS runner) when it names a known device id, else the
+/// manifest default.
+pub(crate) fn initial_device_index() -> usize {
+    std::env::var("LINGXIA_RUNNER_DEVICE")
+        .ok()
+        .map(|id| id.trim().to_string())
+        .filter(|id| !id.is_empty())
+        .and_then(|id| presets().iter().position(|preset| preset.id == id))
+        .unwrap_or_else(default_device_index)
+}
+
 pub(crate) fn is_tablet(index: usize) -> bool {
     presets()
         .get(index)
