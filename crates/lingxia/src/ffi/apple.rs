@@ -230,6 +230,15 @@ mod bridge {
         #[swift_bridge(swift_name = "openStandaloneBrowserTab")]
         fn open_standalone_browser_tab(appid: &str, session_id: u64, url: &str) -> Option<String>;
 
+        // Open an aside tab in the shared in-app browser: self chrome minus the
+        // address bar (compact `{ url, as: 'aside' }`).
+        #[swift_bridge(swift_name = "openAsideBrowserTab")]
+        fn open_aside_browser_tab(appid: &str, session_id: u64, url: &str) -> Option<String>;
+
+        // Whether the tab was opened as an aside (chrome hides its address bar).
+        #[swift_bridge(swift_name = "browserTabIsAside")]
+        fn browser_tab_is_aside(tab_id: &str) -> bool;
+
         #[swift_bridge(swift_name = "openBrowserTabWithId")]
         fn open_browser_tab_with_id(
             appid: &str,
@@ -613,6 +622,24 @@ pub fn open_standalone_browser_tab(appid: &str, session_id: u64, url: &str) -> O
                 None
             }
         }
+    })
+}
+
+pub fn open_aside_browser_tab(appid: &str, session_id: u64, url: &str) -> Option<String> {
+    ffi_catch_unwind!("open_aside_browser_tab", None, || {
+        match crate::browser::open_aside_for_app(appid, session_id, url, None) {
+            Ok(tab_id) => Some(tab_id),
+            Err(e) => {
+                log::error!("open_aside_browser_tab failed: {}", e);
+                None
+            }
+        }
+    })
+}
+
+pub fn browser_tab_is_aside(tab_id: &str) -> bool {
+    ffi_catch_unwind!("browser_tab_is_aside", false, || {
+        crate::browser::tab_is_aside(tab_id)
     })
 }
 

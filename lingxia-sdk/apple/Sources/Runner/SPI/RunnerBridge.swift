@@ -11,14 +11,16 @@ import CLingXiaSwiftAPI
 enum RunnerBridge {
     private static let log = OSLog(subsystem: "LingXiaRunner", category: "RunnerBridge")
 
-    static func setOpenUrlHandler(_ handler: @escaping (String, UInt64, String) -> Bool) {
+    static func setOpenUrlHandler(_ handler: @escaping (String, UInt64, String, Bool) -> Bool) {
         LxApp.openUrlHandler = { ownerAppId, ownerSessionId, url, target in
             switch target {
-            case .selfTarget, .newBrowserTab:
+            case .selfTarget, .newBrowserTab, .asideBrowser:
                 // The phone simulator has a single in-app browser surface, so an
                 // in-page new-tab request (target="_blank" / window.open) opens
                 // another tab in it, just like a `target="self"` navigation.
-                return .handled(handler(ownerAppId, ownerSessionId, url))
+                // An aside open marks its tab so the chrome hides the address bar.
+                return .handled(
+                    handler(ownerAppId, ownerSessionId, url, target == .asideBrowser))
             case .external:
                 return .useDefault
             }
@@ -83,12 +85,26 @@ enum RunnerBridge {
         webView.resumeWebView()
     }
 
-    static func createBrowserTab(ownerAppId: String, ownerSessionId: UInt64, url: String) -> String? {
-        guard let openedTab = openBrowserTab(ownerAppId, ownerSessionId, url) else {
+    static func createBrowserTab(
+        ownerAppId: String,
+        ownerSessionId: UInt64,
+        url: String,
+        aside: Bool = false
+    ) -> String? {
+        let openedTab = aside
+            ? openAsideBrowserTab(ownerAppId, ownerSessionId, url)
+            : openBrowserTab(ownerAppId, ownerSessionId, url)
+        guard let openedTab else {
             return nil
         }
         let tabId = openedTab.toString().trimmingCharacters(in: .whitespacesAndNewlines)
         return tabId.isEmpty ? nil : tabId
+    }
+
+    static func browserTabIsAside(tabId: String) -> Bool {
+        let normalized = tabId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty else { return false }
+        return lingxia.browserTabIsAside(normalized)
     }
 
     static func builtinBrowserAppId() -> String {

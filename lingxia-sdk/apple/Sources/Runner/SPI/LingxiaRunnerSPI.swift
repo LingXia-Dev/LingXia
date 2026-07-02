@@ -8,7 +8,11 @@ import WebKit
 @_spi(Runner) public enum LingxiaRunnerSPI {
     @MainActor
     public enum Runtime {
-        public static func setOpenUrlHandler(_ handler: @escaping (String, UInt64, String) -> Bool) {
+        /// Handler receives `(ownerAppId, ownerSessionId, url, aside)`; `aside`
+        /// marks an `{ url, as: 'aside' }` open (chrome hides the address bar).
+        public static func setOpenUrlHandler(
+            _ handler: @escaping (String, UInt64, String, Bool) -> Bool
+        ) {
             RunnerBridge.setOpenUrlHandler(handler)
         }
 
@@ -83,13 +87,20 @@ import WebKit
         public static func openBrowserTab(
             ownerAppId: String,
             ownerSessionId: UInt64,
-            url: String
+            url: String,
+            aside: Bool = false
         ) -> String? {
             RunnerBridge.createBrowserTab(
                 ownerAppId: ownerAppId,
                 ownerSessionId: ownerSessionId,
-                url: url
+                url: url,
+                aside: aside
             )
+        }
+
+        /// Whether the tab was opened as an aside (chrome hides its address bar).
+        public static func browserTabIsAside(tabId: String) -> Bool {
+            RunnerBridge.browserTabIsAside(tabId: tabId)
         }
 
         public static func browserTabWebView(tabId: String) -> WKWebView? {

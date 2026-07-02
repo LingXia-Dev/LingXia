@@ -325,19 +325,18 @@ fn open_declared_surface_spec(ctx: &JSContext, spec: &JSObject) -> JSResult<JSOb
 /// as a full in-app browser tab in the main content (host-owned chrome, no
 /// handle), in contrast to `lx.openExternal` which hands off to the OS browser.
 /// With `as: 'aside'` the url is docked beside the main as a closable browser
-/// surface with its own chrome (address bar + close), driven through the surface
-/// graph exactly like a page aside.
+/// tab strip without an address bar, driven through the surface graph exactly
+/// like a page aside.
 async fn open_url_spec(ctx: JSContext, spec: &JSObject) -> JSResult<JSValue> {
     let raw_url = read_required_string(spec, "url")?;
     let lxapp = LxApp::from_ctx(&ctx)?;
 
     match read_optional_string(spec, "as")?.as_deref().map(str::trim) {
         Some("aside") => {
-            // A compact (phone-shaped) layout has no side-by-side room, so a URL
-            // aside degrades to the full-screen in-app browser — with its address
-            // bar / chrome — the same as omitting `as`, mirroring a real phone.
+            // No side-by-side room on compact: the aside becomes an in-app
+            // browser tab with the address bar hidden.
             if url_aside_degrades_to_browser(&lxapp) {
-                return open_url_in_browser(&ctx, &lxapp, raw_url.trim());
+                return open_url_in_browser(&ctx, &lxapp, raw_url.trim(), true);
             }
             let url = validate_url_target(&lxapp, raw_url.trim())?;
             let position =
@@ -357,7 +356,7 @@ async fn open_url_spec(ctx: JSContext, spec: &JSObject) -> JSResult<JSValue> {
                 .await
                 .map(JSObject::into_js_value)
         }
-        None => open_url_in_browser(&ctx, &lxapp, raw_url.trim()),
+        None => open_url_in_browser(&ctx, &lxapp, raw_url.trim(), false),
         Some(other) => Err(surface_error(
             rong::error::E_INVALID_ARG,
             "invalid_surface_spec",
@@ -600,10 +599,15 @@ fn is_compact_layout(lxapp: &LxApp) -> bool {
     )
 }
 
-/// Open a url as an in-app browser tab (host chrome with an address bar). Shared
-/// by `{ url }` and the compact `{ url, as: 'aside' }` degrade path. Returns null
-/// — the tab is host chrome, not a closable surface, so there is no handle.
-fn open_url_in_browser(ctx: &JSContext, lxapp: &LxApp, raw_url: &str) -> JSResult<JSValue> {
+/// Open a url as an in-app browser tab; `aside` selects the address-bar-less
+/// aside chrome. Returns null — the tab is host chrome, not a closable
+/// surface, so there is no handle.
+fn open_url_in_browser(
+    ctx: &JSContext,
+    lxapp: &LxApp,
+    raw_url: &str,
+    aside: bool,
+) -> JSResult<JSValue> {
     let url = lxapp_url(lxapp, raw_url)?;
     lxapp
         .runtime
@@ -611,21 +615,33 @@ fn open_url_in_browser(ctx: &JSContext, lxapp: &LxApp, raw_url: &str) -> JSResul
             owner_appid: lxapp.appid.clone(),
             owner_session_id: lxapp.session_id(),
             url,
-            target: OpenUrlTarget::SelfTarget,
+            target: if aside {
+                OpenUrlTarget::AsideBrowser
+            } else {
+                OpenUrlTarget::SelfTarget
+            },
         })
         .map_err(|err| surface_error(rong::error::E_INTERNAL, "open_url_failed", err))?;
     Ok(JSValue::null(ctx))
 }
 
-/// On a desktop host shrunk to a compact (phone) width — the macOS runner's
-/// iPhone shape — a URL aside has no dock room, so it becomes the full-screen
-/// in-app browser. Real mobile keeps its own URL-aside presentation.
-#[cfg(not(any(target_os = "ios", target_os = "android", target_env = "ohos")))]
+/// On a compact (phone) width a URL aside has no dock room, so it becomes the
+/// in-app browser with aside chrome (no address bar). Medium/Expanded keeps
+/// the docked URL-aside presentation; an unknown layout counts as compact.
+#[cfg(not(any(target_os = "android", target_env = "ohos")))]
 fn url_aside_degrades_to_browser(lxapp: &LxApp) -> bool {
-    is_compact_layout(lxapp)
+    use lingxia_surface::SizeClass;
+    !matches!(
+        lxapp
+            .surface_derived_layout()
+            .as_ref()
+            .map(|l| l.size_class),
+        Some(SizeClass::Medium) | Some(SizeClass::Expanded)
+    )
 }
 
-#[cfg(any(target_os = "ios", target_os = "android", target_env = "ohos"))]
+/// Aside chrome is not wired on Android/Harmony yet.
+#[cfg(any(target_os = "android", target_env = "ohos"))]
 fn url_aside_degrades_to_browser(_lxapp: &LxApp) -> bool {
     false
 }

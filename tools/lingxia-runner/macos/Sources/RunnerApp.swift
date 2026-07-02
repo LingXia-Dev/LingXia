@@ -137,11 +137,12 @@ public class RunnerApp {
 
     private func installRunnerOpenURLHandler() {
         os_log("Installing Runner openURL self handler", log: Self.log, type: .info)
-        RunnerSupport.Runtime.setOpenUrlHandler { [weak self] ownerAppId, ownerSessionId, url in
+        RunnerSupport.Runtime.setOpenUrlHandler { [weak self] ownerAppId, ownerSessionId, url, aside in
             self?.handleOpenURL(
                 ownerAppId: ownerAppId,
                 ownerSessionId: ownerSessionId,
-                url: url
+                url: url,
+                aside: aside
             ) ?? false
         }
     }
@@ -272,17 +273,21 @@ public class RunnerApp {
     private func handleOpenURL(
         ownerAppId: String,
         ownerSessionId: UInt64,
-        url rawURL: String
+        url rawURL: String,
+        aside: Bool
     ) -> Bool {
         var phoneHost = windowController?.appId == ownerAppId ? windowController : nil
-        let surfaceHost = surfaceShellHost?.appId == ownerAppId ? surfaceShellHost : nil
+        var surfaceHost = surfaceShellHost?.appId == ownerAppId ? surfaceShellHost : nil
         // In-page new-tab requests (`target="_blank"` / `window.open`) are owned
         // by the builtin browser app, not the lxapp, so they don't match either
-        // host's appId. Route them to the phone that is presenting the browser.
+        // host's appId. Route them to whichever host is presenting the browser.
         let isBuiltinBrowserTab = ownerAppId == RunnerSupport.Browser.builtinAppId
-        if phoneHost == nil, surfaceHost == nil, isBuiltinBrowserTab,
-           windowController?.isPresentingBrowser == true {
-            phoneHost = windowController
+        if phoneHost == nil, surfaceHost == nil, isBuiltinBrowserTab {
+            if windowController?.isPresentingBrowser == true {
+                phoneHost = windowController
+            } else if let host = surfaceShellHost {
+                surfaceHost = host
+            }
         }
         guard phoneHost != nil || surfaceHost != nil else {
             os_log("Runner rejected self openURL for non-active appId=%@", log: Self.log, type: .info, ownerAppId)
@@ -300,7 +305,8 @@ public class RunnerApp {
         guard let tabId = RunnerSupport.Browser.openTab(
             ownerAppId: ownerAppId,
             ownerSessionId: ownerSessionId,
-            url: rawURL
+            url: rawURL,
+            aside: aside
         ) else {
             os_log("Runner failed to open browser tab for appId=%@ url=%@", log: Self.log, type: .error, ownerAppId, rawURL)
             return false

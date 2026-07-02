@@ -475,7 +475,8 @@ extension LxApp {
             }
         }
 
-        guard openTarget == .selfTarget || openTarget == .newBrowserTab else {
+        guard openTarget == .selfTarget || openTarget == .newBrowserTab
+            || openTarget == .asideBrowser else {
             return openExternalUrlString(urlString)
         }
 
@@ -503,7 +504,10 @@ extension LxApp {
         }
         #endif
 
-        guard let openedTab = openBrowserTab(ownerAppId, owner_session_id, urlString) else {
+        let openedTab = openTarget == .asideBrowser
+            ? openAsideBrowserTab(ownerAppId, owner_session_id, urlString)
+            : openBrowserTab(ownerAppId, owner_session_id, urlString)
+        guard let openedTab else {
             return false
         }
         let tabId = openedTab.toString()

@@ -67,7 +67,18 @@ pub fn open_for_app(
     url: &str,
     tab_id: Option<&str>,
 ) -> Result<String, LxAppError> {
-    tabs::open_internal_browser_tab_for_owner(appid, session_id, url, tab_id, false)
+    tabs::open_internal_browser_tab_for_owner(appid, session_id, url, tab_id, false, false)
+}
+
+/// Open an aside tab in the shared in-app browser: same as [`open_for_app`]
+/// except the chrome hides its address bar while this tab is active.
+pub fn open_aside_for_app(
+    appid: &str,
+    session_id: u64,
+    url: &str,
+    tab_id: Option<&str>,
+) -> Result<String, LxAppError> {
+    tabs::open_internal_browser_tab_for_owner(appid, session_id, url, tab_id, false, true)
 }
 
 /// Open a standalone browser tab (no tab strip) for a docked aside browser.
@@ -79,7 +90,13 @@ pub fn open_standalone_for_app(
     url: &str,
     tab_id: Option<&str>,
 ) -> Result<String, LxAppError> {
-    tabs::open_internal_browser_tab_for_owner(appid, session_id, url, tab_id, true)
+    tabs::open_internal_browser_tab_for_owner(appid, session_id, url, tab_id, true, false)
+}
+
+/// Whether `tab_id` was opened as an aside — chrome hides the address bar
+/// while such a tab is active.
+pub fn tab_is_aside(tab_id: &str) -> bool {
+    tabs::is_aside_tab(tab_id)
 }
 
 pub fn close(tab_id: &str) -> Result<(), LxAppError> {

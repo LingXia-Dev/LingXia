@@ -498,9 +498,11 @@ fn handle_open_url_request(req: &OpenUrlRequest) -> bool {
         // browser engine there is nowhere in-app to open them, so defer to the
         // OS handler.
         #[cfg(not(feature = "browser-runtime"))]
-        OpenUrlTarget::SelfTarget | OpenUrlTarget::NewBrowserTab => false,
+        OpenUrlTarget::SelfTarget | OpenUrlTarget::NewBrowserTab | OpenUrlTarget::AsideBrowser => {
+            false
+        }
         #[cfg(feature = "browser-runtime")]
-        OpenUrlTarget::SelfTarget | OpenUrlTarget::NewBrowserTab => {
+        OpenUrlTarget::SelfTarget | OpenUrlTarget::NewBrowserTab | OpenUrlTarget::AsideBrowser => {
             let Some(owner_appid) = shell_owner_appid() else {
                 return false;
             };
