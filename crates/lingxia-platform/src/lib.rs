@@ -73,7 +73,7 @@ pub use harmony::Platform;
 #[cfg(target_os = "windows")]
 pub use windows::{
     Platform, WindowsMediaPreviewCancel, WindowsMediaPreviewOpen, WindowsUrlSurfaceWebTag,
-    WindowsVideoCommandDispatcher, apply_staged_windows_update,
+    WindowsVideoCommandDispatcher, apply_staged_windows_update, install_windows_aside_panel_bridge,
     register_windows_media_preview_host, register_windows_video_command_dispatcher,
     set_windows_app_exit_handler, set_windows_managed_surface_toggle_handler,
     set_windows_managed_surface_visible_handler, set_windows_open_url_handler,

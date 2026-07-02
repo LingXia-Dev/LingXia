@@ -448,6 +448,37 @@ impl WindowsHostBackend for WindowsHostBackendImpl {
             invalidate_window_chrome(hwnd);
         }
     }
+
+    fn refresh_aside_panel(&self, panel_id: &str) {
+        refresh_aside_panel_chrome(panel_id);
+    }
+}
+
+/// Repaints an aside panel's chrome: the top-band header strip plus the
+/// panel rect.
+fn refresh_aside_panel_chrome(panel_id: &str) {
+    let Some(hwnd) = active_host_window() else {
+        return;
+    };
+    let mut client = RECT::default();
+    unsafe {
+        if WindowsAndMessaging::GetClientRect(hwnd, &mut client).is_err() {
+            return;
+        }
+    }
+    #[cfg(feature = "shell-chrome")]
+    invalidate_rect_if_non_empty(
+        hwnd,
+        RECT {
+            left: client.left,
+            top: client.top,
+            right: client.right,
+            bottom: (client.top + crate::shell::shell_top_bar_height()).min(client.bottom),
+        },
+    );
+    #[cfg(not(feature = "shell-chrome"))]
+    let _ = client;
+    let _ = invalidate_active_host_panel(panel_id);
 }
 
 fn should_sync_webview_layout_now(hwnd: HWND) -> bool {
@@ -3248,6 +3279,11 @@ fn attached_chrome_dirty_rects(
 fn push_attached_layout_dirty_rects(dirty: &mut Vec<RECT>, attached: &WindowsChromeAttachedLayout) {
     for panel in &attached.panels {
         push_unique_dirty_rect(dirty, panel.rect);
+        // The browser/aside header lives in the shared top band, outside the
+        // panel rect; a tab switch redraws it too.
+        if let Some(header) = panel.header_rect {
+            push_unique_dirty_rect(dirty, header);
+        }
         if let Some(handle) = panel.resize_handle {
             push_unique_dirty_rect(dirty, handle);
         }

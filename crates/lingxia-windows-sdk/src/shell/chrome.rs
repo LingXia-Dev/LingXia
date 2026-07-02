@@ -11,10 +11,10 @@ use std::sync::{Arc, Mutex, OnceLock};
 #[cfg(feature = "browser-runtime")]
 use lingxia_windows_contract::post_to_window_thread;
 use lingxia_windows_contract::{
-    WindowsChromeAttachedLayout, WindowsChromeCommand, WindowsChromeHit, WindowsChromePanel,
-    WindowsChromePanelLayout, WindowsChromePanelLayoutInput, WindowsChromeRenderer,
-    WindowsChromeState, WindowsFrameButton, WindowsHostPanelContent, WindowsPanelPosition,
-    WindowsWindowLayout, set_windows_chrome_renderer,
+    WindowsAsidePanelTab, WindowsChromeAttachedLayout, WindowsChromeCommand, WindowsChromeHit,
+    WindowsChromePanel, WindowsChromePanelLayout, WindowsChromePanelLayoutInput,
+    WindowsChromeRenderer, WindowsChromeState, WindowsFrameButton, WindowsHostPanelContent,
+    WindowsPanelPosition, WindowsWindowLayout, aside_panel_tabs, set_windows_chrome_renderer,
 };
 use serde_json::json;
 use windows::Win32::Foundation::{HWND, RECT};
@@ -176,6 +176,12 @@ pub(super) mod command_id {
     pub(super) const BROWSER_PANEL_NAV_FORWARD: &str = "browser-panel.nav.forward";
     pub(super) const BROWSER_PANEL_NAV_RELOAD: &str = "browser-panel.nav.reload";
     pub(super) const BROWSER_PANEL_ADDRESS_BAR: &str = "browser-panel.address-bar";
+    pub(super) const ASIDE_PANEL_TAB_CLICK: &str = "aside-panel.tab.click";
+    pub(super) const ASIDE_PANEL_TAB_CLOSE: &str = "aside-panel.tab.close";
+    pub(super) const ASIDE_PANEL_CLOSE_ALL: &str = "aside-panel.close-all";
+    pub(super) const ASIDE_PANEL_NAV_BACK: &str = "aside-panel.nav.back";
+    pub(super) const ASIDE_PANEL_NAV_FORWARD: &str = "aside-panel.nav.forward";
+    pub(super) const ASIDE_PANEL_NAV_RELOAD: &str = "aside-panel.nav.reload";
     pub(super) const NATIVE_PANEL_TAB_CLICK: &str = "native-panel.tab.click";
     pub(super) const NATIVE_PANEL_TAB_CLOSE: &str = "native-panel.tab.close";
     pub(super) const NATIVE_PANEL_NEW_TAB: &str = "native-panel.new-tab";
@@ -1049,15 +1055,17 @@ fn compute_attached_layout(
             }
         };
 
-        // A browser aside hoists its address bar into the shared top band so
-        // it lands on the same baseline as the main lxapp navbar (which is
-        // clipped to `attached.main`). The webview then fills the whole panel
-        // rect, top-aligned with the main content card. Side panels only:
-        // terminal asides (top/bottom) keep their own in-panel header.
+        // A browser aside hoists its chrome (address bar, or the aside tab
+        // strip) into the shared top band so it lands on the same baseline as
+        // the main lxapp navbar (which is clipped to `attached.main`). The
+        // webview then fills the whole panel rect, top-aligned with the main
+        // content card. Side panels only: terminal asides (top/bottom) keep
+        // their own in-panel header.
         let header_rect = (matches!(
             panel.position,
             WindowsPanelPosition::Left | WindowsPanelPosition::Right
-        ) && panel.webtag_key.starts_with("app.lingxia.browser:"))
+        ) && (panel.webtag_key.starts_with("app.lingxia.browser:")
+            || !aside_panel_tabs(&panel.panel_id).is_empty()))
         .then(|| browser_panel_band_header_rect(client, rect));
 
         out.push(WindowsChromePanelLayout {
@@ -1456,6 +1464,10 @@ fn browser_panel_hit_test(
         {
             continue;
         }
+        let tabs = panel_aside_tabs(panel);
+        if !tabs.is_empty() {
+            return Some(aside_panel_header_hit(panel, &tabs, point));
+        }
         for (command, rect) in browser_panel_nav_button_rects(panel) {
             if rect_contains(&rect, point) {
                 return Some(chrome_command(
@@ -1481,8 +1493,55 @@ fn browser_panel_hit_test(
     None
 }
 
+/// The aside browser panel's API-only chrome: nav cluster, tab strip, and
+/// the close-all button. No address bar and no new-tab affordance (tabs are
+/// opened only through `lx.openSurface`).
+fn aside_panel_header_hit(
+    panel: &WindowsChromePanel,
+    tabs: &[WindowsAsidePanelTab],
+    point: (i32, i32),
+) -> WindowsChromeHit {
+    for (command, rect) in aside_panel_nav_button_rects(panel) {
+        if rect_contains(&rect, point) {
+            return chrome_command(command, json!({ "panel_id": panel.panel_id.clone() }));
+        }
+    }
+    if rect_contains(&browser_panel_close_rect(panel), point) {
+        return chrome_command(
+            command_id::ASIDE_PANEL_CLOSE_ALL,
+            json!({ "panel_id": panel.panel_id.clone() }),
+        );
+    }
+    for (tab, rect) in tabs.iter().zip(aside_panel_tab_rects(panel, tabs.len())) {
+        if let Some(close) = aside_panel_tab_close_rect(rect)
+            && rect_contains(&close, point)
+        {
+            return chrome_command(
+                command_id::ASIDE_PANEL_TAB_CLOSE,
+                json!({ "surface_id": tab.surface_id.clone() }),
+            );
+        }
+        if rect_contains(&rect, point) {
+            return chrome_command(
+                command_id::ASIDE_PANEL_TAB_CLICK,
+                json!({ "surface_id": tab.surface_id.clone() }),
+            );
+        }
+    }
+    WindowsChromeHit::Chrome
+}
+
+fn panel_aside_tabs(panel: &WindowsChromePanel) -> Vec<WindowsAsidePanelTab> {
+    if panel.host_content.is_some() {
+        return Vec::new();
+    }
+    aside_panel_tabs(&panel.panel_id)
+}
+
 fn browser_panel_header_visible(panel: &WindowsChromePanel) -> bool {
-    panel.host_content.is_none() && panel.webtag_key.starts_with("app.lingxia.browser:")
+    panel.host_content.is_none()
+        && (panel.webtag_key.starts_with("app.lingxia.browser:")
+            || !aside_panel_tabs(&panel.panel_id).is_empty())
 }
 
 fn browser_panel_header_rect(panel: &WindowsChromePanel) -> RECT {
@@ -1521,6 +1580,62 @@ fn browser_panel_nav_button_rects(panel: &WindowsChromePanel) -> [(&'static str,
         (command_id::BROWSER_PANEL_NAV_FORWARD, next()),
         (command_id::BROWSER_PANEL_NAV_RELOAD, next()),
     ]
+}
+
+/// Same nav-cluster geometry, aside-panel command ids (routed to the surface
+/// layer rather than the in-app browser).
+fn aside_panel_nav_button_rects(panel: &WindowsChromePanel) -> [(&'static str, RECT); 3] {
+    let [(_, back), (_, forward), (_, reload)] = browser_panel_nav_button_rects(panel);
+    [
+        (command_id::ASIDE_PANEL_NAV_BACK, back),
+        (command_id::ASIDE_PANEL_NAV_FORWARD, forward),
+        (command_id::ASIDE_PANEL_NAV_RELOAD, reload),
+    ]
+}
+
+const ASIDE_PANEL_TAB_MAX_WIDTH: i32 = 190;
+const ASIDE_PANEL_TAB_GAP: i32 = 4;
+const ASIDE_PANEL_TAB_CLOSE_WIDTH: i32 = 20;
+const ASIDE_PANEL_TAB_INSET: i32 = 5;
+
+/// Tab rects of the aside panel's strip, index-aligned with the registered
+/// tabs: equal widths (capped) between the nav cluster and close-all.
+fn aside_panel_tab_rects(panel: &WindowsChromePanel, count: usize) -> Vec<RECT> {
+    if count == 0 {
+        return Vec::new();
+    }
+    let header = browser_panel_header_rect(panel);
+    let nav_right = aside_panel_nav_button_rects(panel)[2].1.right;
+    let left_edge = nav_right + BROWSER_PANEL_HEADER_PADDING;
+    let right_edge = browser_panel_close_rect(panel).left - BROWSER_PANEL_HEADER_PADDING;
+    let count_i32 = count as i32;
+    let avail = (right_edge - left_edge - (count_i32 - 1) * ASIDE_PANEL_TAB_GAP).max(0);
+    let width = (avail / count_i32).clamp(24, ASIDE_PANEL_TAB_MAX_WIDTH);
+    let mut out = Vec::with_capacity(count);
+    let mut left = left_edge;
+    for _ in 0..count {
+        out.push(normalize_rect(RECT {
+            left,
+            top: header.top + ASIDE_PANEL_TAB_INSET,
+            right: (left + width).min(right_edge),
+            bottom: header.bottom - ASIDE_PANEL_TAB_INSET,
+        }));
+        left += width + ASIDE_PANEL_TAB_GAP;
+    }
+    out
+}
+
+/// Close-glyph rect at a tab's trailing edge; dropped on tabs too narrow to
+/// keep a readable title next to it.
+fn aside_panel_tab_close_rect(tab: RECT) -> Option<RECT> {
+    (rect_width(&tab) >= 3 * ASIDE_PANEL_TAB_CLOSE_WIDTH).then(|| {
+        normalize_rect(RECT {
+            left: tab.right - ASIDE_PANEL_TAB_CLOSE_WIDTH,
+            top: tab.top,
+            right: tab.right,
+            bottom: tab.bottom,
+        })
+    })
 }
 
 /// The URL capsule rect inside a browser aside's header (between the nav
@@ -1617,6 +1732,13 @@ fn draw_browser_panel_header(hdc: HDC, hwnd: HWND, panel: &WindowsChromePanel) {
         pal.divider,
     );
 
+    let tabs = panel_aside_tabs(panel);
+    if !tabs.is_empty() {
+        remember_panel_address_rect(hwnd, &panel.webtag_key, None);
+        draw_aside_panel_header(hdc, panel, &tabs);
+        return;
+    }
+
     let close = browser_panel_close_rect(panel);
     for (command, rect) in browser_panel_nav_button_rects(panel) {
         let glyph = match command {
@@ -1653,6 +1775,51 @@ fn browser_panel_title(panel: &WindowsChromePanel) -> String {
     } else {
         title.to_string()
     }
+}
+
+/// The aside browser panel's API-only chrome row: back/forward/reload, the
+/// title tab strip, and close-all. No address bar and no "+" - tabs come
+/// only from `lx.openSurface`.
+fn draw_aside_panel_header(hdc: HDC, panel: &WindowsChromePanel, tabs: &[WindowsAsidePanelTab]) {
+    let pal = shell_palette();
+    for (command, rect) in aside_panel_nav_button_rects(panel) {
+        let glyph = match command {
+            command_id::ASIDE_PANEL_NAV_BACK => GLYPH_NAV_BACK,
+            command_id::ASIDE_PANEL_NAV_FORWARD => GLYPH_NAV_FORWARD,
+            command_id::ASIDE_PANEL_NAV_RELOAD => GLYPH_NAV_RELOAD,
+            _ => "",
+        };
+        draw_frame_button_glyph(hdc, glyph, rect, pal.text_muted);
+    }
+
+    for (tab, rect) in tabs.iter().zip(aside_panel_tab_rects(panel, tabs.len())) {
+        if tab.active {
+            fill_round_rect_aa(hdc, rect, 6, pal.control_surface);
+        }
+        let close = aside_panel_tab_close_rect(rect);
+        let title_rect = normalize_rect(RECT {
+            left: rect.left + 8,
+            top: rect.top,
+            right: close.map(|close| close.left).unwrap_or(rect.right - 6),
+            bottom: rect.bottom,
+        });
+        let text_color = if tab.active {
+            pal.text_primary
+        } else {
+            pal.text_muted
+        };
+        draw_text(hdc, &tab.title, title_rect, text_color, DT_LEFT);
+        if let Some(close) = close {
+            draw_text(hdc, GLYPH_TAB_CLOSE, close, pal.text_muted, DT_CENTER);
+        }
+    }
+
+    draw_frame_button_glyph(
+        hdc,
+        GLYPH_CLOSE,
+        browser_panel_close_rect(panel),
+        pal.text_muted,
+    );
 }
 
 pub(super) fn draw_content_cards(hdc: HDC, state: &WindowsChromeState, rects: &ChromeRects) {

@@ -81,6 +81,9 @@ pub struct WindowsShellTabBarLayout {
 pub struct WindowsShellAddressBarLayout {
     pub visible: bool,
     pub url_text: String,
+    /// The presented tab is an aside (a compact-degraded URL aside): the top
+    /// bar keeps the browser controls but draws no address capsule.
+    pub aside: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
