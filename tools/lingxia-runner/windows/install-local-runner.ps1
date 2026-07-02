@@ -93,7 +93,33 @@ if ($WithProvider) {
         $ProviderPath = [Environment]::GetEnvironmentVariable($envKey)
     }
     if ([string]::IsNullOrWhiteSpace($ProviderPath)) {
-        throw "provider '$ProviderName' requested but no --ProviderPath / LINGXIA_PROVIDER_$($ProviderName.ToUpper())_PATH"
+        $gitKey = "LINGXIA_PROVIDER_$($ProviderName.ToUpper())_GIT"
+        $ProviderGit = [Environment]::GetEnvironmentVariable($gitKey)
+        if (-not [string]::IsNullOrWhiteSpace($ProviderGit)) {
+            if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+                throw "provider '$ProviderName' requested from $gitKey but git is missing"
+            }
+            $ProviderPath = Join-Path ([IO.Path]::GetTempPath()) "lingxia-provider-$ProviderName"
+            Remove-Item -LiteralPath $ProviderPath -Recurse -Force -ErrorAction SilentlyContinue
+            $cloneArgs = @("clone")
+            $refKey = "LINGXIA_PROVIDER_$($ProviderName.ToUpper())_REF"
+            $ProviderRef = [Environment]::GetEnvironmentVariable($refKey)
+            if (-not [string]::IsNullOrWhiteSpace($ProviderRef)) {
+                $cloneArgs += @("--branch", $ProviderRef)
+            }
+            $cloneArgs += @($ProviderGit, $ProviderPath)
+            & git @cloneArgs
+            if ($LASTEXITCODE -ne 0) { throw "git clone provider '$ProviderName' failed" }
+            $revKey = "LINGXIA_PROVIDER_$($ProviderName.ToUpper())_REV"
+            $ProviderRev = [Environment]::GetEnvironmentVariable($revKey)
+            if (-not [string]::IsNullOrWhiteSpace($ProviderRev)) {
+                & git -C $ProviderPath checkout $ProviderRev
+                if ($LASTEXITCODE -ne 0) { throw "git checkout provider '$ProviderName' rev failed" }
+            }
+        }
+    }
+    if ([string]::IsNullOrWhiteSpace($ProviderPath)) {
+        throw "provider '$ProviderName' requested but no --ProviderPath / LINGXIA_PROVIDER_$($ProviderName.ToUpper())_PATH / LINGXIA_PROVIDER_$($ProviderName.ToUpper())_GIT"
     }
     $ProviderPath = (Resolve-Path $ProviderPath).Path
     Write-Host "==> Injecting provider '$ProviderName' from $ProviderPath"

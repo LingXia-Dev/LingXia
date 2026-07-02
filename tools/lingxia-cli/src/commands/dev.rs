@@ -23,6 +23,7 @@ const RUNNER_APP_NAME: &str = "LingXia Runner.app";
 const RUNNER_EXECUTABLE_NAME: &str = "LingXiaRunner";
 const RUNNER_LXAPP_PATH_ENV: &str = "LINGXIA_LXAPP_PATH";
 const RUNNER_DEV_WS_URL_ENV: &str = "LINGXIA_DEV_WS_URL";
+const RUNNER_LINGXIAO_MOCK_DIR_ENV: &str = "LINGXIAO_MOCK_DIR";
 /// Overrides the launcher icon `lingxia-windows-sdk` loads, so `lingxia dev`
 /// can show the env badge without touching the prepared `windows/.lingxia/assets`.
 /// Must match the env var read in `lingxia-windows-sdk`'s `resolve_app_icon_path`.
@@ -322,7 +323,12 @@ fn execute_android(ctx: DevContext, abis: Vec<String>) -> Result<()> {
 
     let run_result = (|| -> Result<()> {
         let platforms_to_build = vec![PlatformType::Android];
-        prepare_dev_host_assets(&ctx, &platforms_to_build, &build_targets, Some(&device_ws_url))?;
+        prepare_dev_host_assets(
+            &ctx,
+            &platforms_to_build,
+            &build_targets,
+            Some(&device_ws_url),
+        )?;
 
         // Step 1: Build
         println!("{}", "Step 1/4: Building...".bold());
@@ -927,7 +933,7 @@ fn launch_runner_for_lxapp(
     // Cloud functions: transpile mocks + generate typed `lx.cloud.invoke`, then
     // point the runner at the loadable mock dir (it reads routing from functions.json).
     if let Some(mock_dir) = crate::lxapp::functions::prepare_dev(lxapp_path) {
-        command.env("LINGXIAO_MOCK_DIR", &mock_dir);
+        command.env(RUNNER_LINGXIAO_MOCK_DIR_ENV, &mock_dir);
         println!(
             "  {} Cloud functions (mock): {}",
             "*".cyan(),
@@ -1093,9 +1099,23 @@ fn launch_windows_runner_for_lxapp(lxapp_path: &Path, ws_url: &str) -> Result<Ru
     let identity = read_windows_runner_lxapp_identity(lxapp_path)?;
     let assets_dir = prepare_windows_runner_assets(lxapp_path, &identity, ws_url)?;
     let exe_path = installed_windows_runner_exe_path()?;
+    let mock_dir = crate::lxapp::functions::prepare_dev(lxapp_path);
+    if let Some(mock_dir) = &mock_dir {
+        println!(
+            "  {} Cloud functions (mock): {}",
+            "*".cyan(),
+            mock_dir.display()
+        );
+    }
 
     #[cfg(target_os = "windows")]
-    let child = shell_execute_windows_runner(&exe_path, lxapp_path, &assets_dir, ws_url)?;
+    let child = shell_execute_windows_runner(
+        &exe_path,
+        lxapp_path,
+        &assets_dir,
+        ws_url,
+        mock_dir.as_deref(),
+    )?;
 
     #[cfg(not(target_os = "windows"))]
     let child = {
@@ -1103,6 +1123,9 @@ fn launch_windows_runner_for_lxapp(lxapp_path: &Path, ws_url: &str) -> Result<Ru
         command.arg("--lxapp-path").arg(lxapp_path);
         command.arg("--dev-ws-url").arg(ws_url);
         command.arg("--asset-dir").arg(&assets_dir);
+        if let Some(mock_dir) = &mock_dir {
+            command.arg("--lingxiao-mock-dir").arg(mock_dir);
+        }
         command.stdin(Stdio::null());
         command.stdout(Stdio::inherit());
         command.stderr(Stdio::inherit());
@@ -1208,6 +1231,7 @@ fn shell_execute_windows_runner(
     lxapp_path: &Path,
     assets_dir: &Path,
     ws_url: &str,
+    mock_dir: Option<&Path>,
 ) -> Result<RunnerProcess> {
     use std::mem::size_of;
     use windows::Win32::Foundation::HANDLE;
@@ -1218,18 +1242,23 @@ fn shell_execute_windows_runner(
     use windows::Win32::UI::WindowsAndMessaging::{AllowSetForegroundWindow, SW_SHOWNORMAL};
     use windows::core::PCWSTR;
 
-    let params = [
+    let mut params = vec![
         "--lxapp-path".to_string(),
         lxapp_path.display().to_string(),
         "--dev-ws-url".to_string(),
         ws_url.to_string(),
         "--asset-dir".to_string(),
         assets_dir.display().to_string(),
-    ]
-    .into_iter()
-    .map(|arg| quote_windows_arg(&arg))
-    .collect::<Vec<_>>()
-    .join(" ");
+    ];
+    if let Some(mock_dir) = mock_dir {
+        params.push("--lingxiao-mock-dir".to_string());
+        params.push(mock_dir.display().to_string());
+    }
+    let params = params
+        .into_iter()
+        .map(|arg| quote_windows_arg(&arg))
+        .collect::<Vec<_>>()
+        .join(" ");
 
     let file = wide_null(&exe_path.display().to_string());
     let parameters = wide_null(&params);

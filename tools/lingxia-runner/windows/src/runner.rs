@@ -15,9 +15,11 @@ static LANDSCAPE: AtomicBool = AtomicBool::new(false);
 const ARG_ASSET_DIR: &str = "--asset-dir";
 const ARG_LXAPP_PATH: &str = "--lxapp-path";
 const ARG_DEV_WS_URL: &str = "--dev-ws-url";
+const ARG_LINGXIAO_MOCK_DIR: &str = "--lingxiao-mock-dir";
 const ENV_ASSET_DIR: &str = "LINGXIA_ASSET_DIR";
 const ENV_LXAPP_PATH: &str = "LINGXIA_LXAPP_PATH";
 const ENV_DEV_WS_URL: &str = "LINGXIA_DEV_WS_URL";
+const ENV_LINGXIAO_MOCK_DIR: &str = "LINGXIAO_MOCK_DIR";
 
 struct RunnerDevtoolAddon;
 
@@ -95,6 +97,7 @@ fn install_launch_args_env() {
             ARG_ASSET_DIR => Some(ENV_ASSET_DIR),
             ARG_LXAPP_PATH => Some(ENV_LXAPP_PATH),
             ARG_DEV_WS_URL => Some(ENV_DEV_WS_URL),
+            ARG_LINGXIAO_MOCK_DIR => Some(ENV_LINGXIAO_MOCK_DIR),
             _ => None,
         };
         if let Some(env_key) = env_key {
