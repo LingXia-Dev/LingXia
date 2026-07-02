@@ -211,7 +211,9 @@ class WorkspaceManager: NSObject {
     private static let animationDuration: TimeInterval = 0.22
     private static let cornerRadius: CGFloat = 10
     private static let panelMinSize: CGFloat = 160
-    private static let panelMaxSize: CGFloat = 700
+    /// Fallback cap used only before the window geometry is known; once laid
+    /// out, a panel may grow until the main region hits its minimum.
+    private static let panelFallbackMaxSize: CGFloat = 700
     private static let handleSize: CGFloat = 5
     private static let minMainRegionWidth: CGFloat = 320
     private static let minMainRegionHeight: CGFloat = 240
@@ -810,8 +812,10 @@ class WorkspaceManager: NSObject {
     /// Clamp panel size by absolute bounds and current window space,
     /// so main webview region always keeps a minimum visible area.
     private func clampedPanelSize(_ requested: CGFloat, for position: PanelPosition) -> CGFloat {
-        let base = min(max(requested, Self.panelMinSize), Self.panelMaxSize)
-        guard let parent = overlayParent else { return base }
+        let base = max(requested, Self.panelMinSize)
+        guard let parent = overlayParent else {
+            return min(base, Self.panelFallbackMaxSize)
+        }
 
         let p = padding
         let maxByWindow: CGFloat
