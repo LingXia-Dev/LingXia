@@ -78,6 +78,7 @@ pub(in crate::shell::chrome) fn draw_panel_activators(
     client: RECT,
     rects: &ChromeRects,
     layout: &WindowsShellWindowLayout,
+    cursor: Option<(i32, i32)>,
 ) {
     for (panel_id, rect) in panel_activator_rects(client, rects, layout) {
         let active = layout
@@ -98,6 +99,9 @@ pub(in crate::shell::chrome) fn draw_panel_activators(
             shell_palette().text_muted
         };
 
+        if !active {
+            draw_hover_wash(hdc, rect, 6, cursor);
+        }
         if active {
             // White activator pill on the gray sidebar footer.
             fill_round_rect_aa(hdc, rect, 6, shell_palette().panel_background);

@@ -348,6 +348,9 @@ pub struct WindowsChromeState {
     pub attached: Option<WindowsChromeAttachedState>,
     pub frame_button_hover: Option<WindowsFrameButton>,
     pub frame_button_pressed: Option<WindowsFrameButton>,
+    /// Client-space cursor position while over this window's chrome; drives
+    /// hover feedback (frame buttons keep their dedicated state above).
+    pub cursor: Option<(i32, i32)>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -447,6 +450,14 @@ pub trait WindowsChromeRenderer: Send + Sync {
         button: WindowsFrameButton,
     ) -> Option<RECT> {
         let _ = (state, button);
+        None
+    }
+
+    /// Bounding rect of the hover-highlightable element under `point`; the
+    /// host invalidates the rects the cursor enters/leaves so hover feedback
+    /// repaints exactly the affected element.
+    fn hover_rect(&self, state: &WindowsChromeState, point: (i32, i32)) -> Option<RECT> {
+        let _ = (state, point);
         None
     }
 }

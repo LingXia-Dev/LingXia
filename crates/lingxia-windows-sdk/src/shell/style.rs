@@ -56,6 +56,16 @@ pub(super) fn shell_palette() -> ShellPalette {
     }
 }
 
+/// Hover wash (`0xAARRGGBB`) for interactive chrome; an alpha overlay reads
+/// correctly on any surface, including colored lxapp navigation bars.
+pub(super) fn hover_overlay() -> u32 {
+    if super::theme::is_dark() {
+        0x1effffff
+    } else {
+        0x14000000
+    }
+}
+
 /// System red of the Win11 close button when hovered (#C42B1C).
 pub(super) const SHELL_CLOSE_HOVER: u32 = 0xc42b1c;
 

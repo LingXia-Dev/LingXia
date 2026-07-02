@@ -15,12 +15,17 @@ const BOTTOM_TAB_ITEM_HEIGHT: i32 = 49;
 const BOTTOM_TAB_ICON_TOP: i32 = 5;
 const BOTTOM_TAB_LABEL_TOP_GAP: i32 = 1;
 
-pub(super) fn draw_tab_bar(hdc: HDC, rect: RECT, tabbar: &WindowsShellTabBarLayout) {
+pub(super) fn draw_tab_bar(
+    hdc: HDC,
+    rect: RECT,
+    tabbar: &WindowsShellTabBarLayout,
+    cursor: Option<(i32, i32)>,
+) {
     if matches!(
         tabbar.position,
         WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right
     ) {
-        draw_sidebar_tab_bar(hdc, rect, tabbar);
+        draw_sidebar_tab_bar(hdc, rect, tabbar, cursor);
         return;
     }
 
@@ -91,7 +96,12 @@ pub(super) fn draw_tab_bar(hdc: HDC, rect: RECT, tabbar: &WindowsShellTabBarLayo
     }
 }
 
-pub(super) fn draw_sidebar_tab_bar(hdc: HDC, rect: RECT, tabbar: &WindowsShellTabBarLayout) {
+pub(super) fn draw_sidebar_tab_bar(
+    hdc: HDC,
+    rect: RECT,
+    tabbar: &WindowsShellTabBarLayout,
+    cursor: Option<(i32, i32)>,
+) {
     if rect_width(&rect) == 0 {
         return;
     }
@@ -99,7 +109,7 @@ pub(super) fn draw_sidebar_tab_bar(hdc: HDC, rect: RECT, tabbar: &WindowsShellTa
 
     // Icon-only rail: first-level entries only, centered in a compact column.
     if tabbar.collapsed || tabbar.icon_rail {
-        draw_sidebar_rail(hdc, rect, tabbar);
+        draw_sidebar_rail(hdc, rect, tabbar, cursor);
         return;
     }
 
@@ -141,6 +151,7 @@ pub(super) fn draw_sidebar_tab_bar(hdc: HDC, rect: RECT, tabbar: &WindowsShellTa
     } else {
         GLYPH_CHEVRON_DOWN
     };
+    draw_hover_wash(hdc, chevron_rect, 4, cursor);
     draw_frame_button_glyph(
         hdc,
         chevron,
@@ -149,10 +160,10 @@ pub(super) fn draw_sidebar_tab_bar(hdc: HDC, rect: RECT, tabbar: &WindowsShellTa
     );
 
     if !tabbar.items_collapsed {
-        draw_sidebar_items(hdc, rect, tabbar);
+        draw_sidebar_items(hdc, rect, tabbar, cursor);
     }
 
-    draw_sidebar_auxiliary_section(hdc, rect, tabbar);
+    draw_sidebar_auxiliary_section(hdc, rect, tabbar, cursor);
 
     let footer_top = rect.bottom - SIDEBAR_FOOTER_HEIGHT;
     draw_top_border(
@@ -173,6 +184,7 @@ pub(super) fn draw_sidebar_tab_bar(hdc: HDC, rect: RECT, tabbar: &WindowsShellTa
         else {
             continue;
         };
+        draw_hover_wash(hdc, action_rect, 4, cursor);
         draw_sidebar_header_action(hdc, &action.id, &action.glyph, action_rect);
     }
 }
@@ -203,7 +215,12 @@ fn draw_sidebar_header_action(hdc: HDC, action_id: &str, fallback_glyph: &str, r
 /// Draws the lxapp item rows plus the macOS-parity connector line: a thin
 /// vertical line along the items' leading edge linking them, drawn first so
 /// it sits behind the item cards and accent bars.
-pub(super) fn draw_sidebar_items(hdc: HDC, rect: RECT, tabbar: &WindowsShellTabBarLayout) {
+pub(super) fn draw_sidebar_items(
+    hdc: HDC,
+    rect: RECT,
+    tabbar: &WindowsShellTabBarLayout,
+    cursor: Option<(i32, i32)>,
+) {
     if !tabbar.items.is_empty() {
         let first = sidebar_item_rect(rect, 0);
         let last = sidebar_item_rect(rect, tabbar.items.len() - 1);
@@ -236,6 +253,8 @@ pub(super) fn draw_sidebar_items(hdc: HDC, rect: RECT, tabbar: &WindowsShellTabB
                 3,
                 tabbar.selected_color,
             );
+        } else {
+            draw_hover_wash(hdc, item_rect, 8, cursor);
         }
 
         let label_rect = RECT {
@@ -274,9 +293,15 @@ pub(super) fn draw_sidebar_items(hdc: HDC, rect: RECT, tabbar: &WindowsShellTabB
     }
 }
 
-fn draw_sidebar_rail(hdc: HDC, rect: RECT, tabbar: &WindowsShellTabBarLayout) {
+fn draw_sidebar_rail(
+    hdc: HDC,
+    rect: RECT,
+    tabbar: &WindowsShellTabBarLayout,
+    cursor: Option<(i32, i32)>,
+) {
     let app_rect = sidebar_rail_item_rect(rect, 0);
     fill_round_rect_aa(hdc, app_rect, 8, shell_palette().panel_background);
+    draw_hover_wash(hdc, app_rect, 8, cursor);
     let app_icon_rect = centered_icon_rect(app_rect, SIDEBAR_RAIL_ICON_SIZE);
     draw_icon_or_default(
         hdc,
@@ -290,6 +315,7 @@ fn draw_sidebar_rail(hdc: HDC, rect: RECT, tabbar: &WindowsShellTabBarLayout) {
         if item.active {
             fill_round_rect_aa(hdc, item_rect, 8, shell_palette().panel_background);
         }
+        draw_hover_wash(hdc, item_rect, 8, cursor);
         let icon_rect = centered_icon_rect(item_rect, SIDEBAR_RAIL_ICON_SIZE);
         let drew = match item.icon_png.as_deref() {
             Some(png) => draw_icon_from_png_bytes(hdc, &item.id, png, icon_rect),
@@ -303,20 +329,19 @@ fn draw_sidebar_rail(hdc: HDC, rect: RECT, tabbar: &WindowsShellTabBarLayout) {
     // The new-tab "+" stays reachable while collapsed, mirroring the expanded
     // auxiliary section (full browser environment only).
     if tabbar.show_auxiliary_add {
-        draw_frame_button_glyph(
-            hdc,
-            GLYPH_ADD,
-            sidebar_rail_add_rect(rect, tabbar),
-            shell_palette().text_muted,
-        );
+        let add_rect = sidebar_rail_add_rect(rect, tabbar);
+        draw_hover_wash(hdc, add_rect, 8, cursor);
+        draw_frame_button_glyph(hdc, GLYPH_ADD, add_rect, shell_palette().text_muted);
     }
 
     // The collapse/expand toggle (same `SidebarExpand` design icon the top bar
     // uses when expanded) pinned to the bottom of the rail, so a collapsed rail
     // is never a dead end.
+    let expand_rect = sidebar_rail_expand_rect(rect);
+    draw_hover_wash(hdc, expand_rect, 8, cursor);
     draw_design_icon_button(
         hdc,
-        sidebar_rail_expand_rect(rect),
+        expand_rect,
         WindowsDesignIcon::SidebarExpand,
         shell_palette().text_muted,
         18,
@@ -369,11 +394,10 @@ pub(super) fn sidebar_group_chevron_rect(rect: RECT) -> RECT {
 }
 
 /// Sidebar action buttons (settings/downloads) in the top caption strip,
-/// immediately right of the sidebar toggle. They belong to the sidebar:
-/// hidden while it is collapsed (only the toggle remains), and clamped to
-/// the sidebar column so they never reach the lxapp navbar region.
-/// `sidebar_rect` is the sidebar column rect (its top-left is the window
-/// origin; the caption strip sits inside its top).
+/// hidden while the sidebar is collapsed. Right-aligned at the column's
+/// trailing edge (flush with the chevron below) so the strip reads as two
+/// groups - window controls leading, sidebar actions trailing - instead of
+/// four packed icons. Actions that would reach the leading buttons drop.
 pub(super) fn sidebar_header_action_rects(
     sidebar_rect: RECT,
     tabbar: &WindowsShellTabBarLayout,
@@ -382,17 +406,19 @@ pub(super) fn sidebar_header_action_rects(
         return Vec::new();
     }
     let top = sidebar_rect.top + (SHELL_TOP_BAR_HEIGHT - SIDEBAR_HEADER_ACTION_SIZE).max(0) / 2;
-    // Start right of the two leading-edge buttons at the window's leading
-    // edge: the app-menu icon followed by the sidebar toggle.
-    let mut left = sidebar_rect.left
+    // Right edge of the leading app-menu + toggle buttons.
+    let leading_limit = sidebar_rect.left
         + TOP_BAR_PADDING
         + 2 * TOP_BAR_BUTTON_SIZE
         + TOP_BAR_BUTTON_GAP
         + SIDEBAR_HEADER_ACTION_GAP;
+    let mut right = sidebar_rect.right - SIDEBAR_ITEM_INSET;
     let mut out = Vec::with_capacity(tabbar.header_actions.len());
-    for action in &tabbar.header_actions {
-        let right = left + SIDEBAR_HEADER_ACTION_SIZE;
-        if right > sidebar_rect.left + tabbar.dimension - SIDEBAR_ITEM_INSET {
+    // Reverse order from the trailing edge keeps the declared left-to-right
+    // reading order.
+    for action in tabbar.header_actions.iter().rev() {
+        let left = right - SIDEBAR_HEADER_ACTION_SIZE;
+        if left < leading_limit {
             break;
         }
         out.push((
@@ -404,7 +430,7 @@ pub(super) fn sidebar_header_action_rects(
                 bottom: top + SIDEBAR_HEADER_ACTION_SIZE,
             }),
         ));
-        left = right + SIDEBAR_HEADER_ACTION_GAP;
+        right = left - SIDEBAR_HEADER_ACTION_GAP;
     }
     out
 }
