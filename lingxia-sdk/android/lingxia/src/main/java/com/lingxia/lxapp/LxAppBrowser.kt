@@ -802,12 +802,13 @@ internal object LxAppBrowser {
             icon.visibility = View.GONE
             return
         }
-        icon.visibility = View.VISIBLE
+        // Secure is the norm — no padlock (misread as "locked"); only insecure
+        // pages get an icon.
         val scheme = runCatching { URI(cleanUrl).scheme?.lowercase() }.getOrNull()
         if (scheme == "https" || scheme == "lingxia") {
-            icon.setImageResource(R.drawable.icon_lock)
-            icon.setColorFilter(Color.parseColor("#666666"))
+            icon.visibility = View.GONE
         } else {
+            icon.visibility = View.VISIBLE
             icon.setImageResource(R.drawable.icon_warning)
             icon.setColorFilter(Color.parseColor("#C44A21"))
         }
