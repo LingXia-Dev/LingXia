@@ -240,21 +240,24 @@ pub(super) fn ensure_project_tooling(
             if use_ci { "ci" } else { "install" }
         );
     }
-    let status = command
+    // Capture npm's output: it would interleave with the build spinners and
+    // leave flickering duplicate progress lines. Surfaced only on failure.
+    let output = command
         .current_dir(&project.root)
-        .status()
+        .output()
         .with_context(|| {
             format!(
                 "Failed to install project dependencies in {}",
                 project.root.display()
             )
         })?;
-    if !status.success() {
+    if !output.status.success() {
         return Err(anyhow!(
-            "Failed to install project dependencies with npm {}.\n\
+            "Failed to install project dependencies with npm {}.\n{}\n\
 Tip: npm ci requires package.json and package-lock.json to be in sync. \
 For local debug builds, rerun without --release so LingXia can use npm install.",
-            if use_ci { "ci" } else { "install" }
+            if use_ci { "ci" } else { "install" },
+            String::from_utf8_lossy(&output.stderr).trim()
         ));
     }
     if !node_modules_dir.exists() {
@@ -301,17 +304,19 @@ fn ensure_lingxia_workspace_built(project_root: &Path) -> Result<()> {
 }
 
 fn run_workspace_npm(packages_dir: &Path, args: &[&str], action: &str) -> Result<()> {
-    let ok = Command::new(crate::npm::command())
+    // Captured for the same reason as the project install: npm output tramples
+    // the active build spinners.
+    let output = Command::new(crate::npm::command())
         .args(args)
         .current_dir(packages_dir)
-        .status()
-        .with_context(|| format!("Failed to {action} in {}", packages_dir.display()))?
-        .success();
-    if !ok {
+        .output()
+        .with_context(|| format!("Failed to {action} in {}", packages_dir.display()))?;
+    if !output.status.success() {
         return Err(anyhow!(
-            "Failed to {action} (npm {}) in {}",
+            "Failed to {action} (npm {}) in {}\n{}",
             args.join(" "),
-            packages_dir.display()
+            packages_dir.display(),
+            String::from_utf8_lossy(&output.stderr).trim()
         ));
     }
     Ok(())
