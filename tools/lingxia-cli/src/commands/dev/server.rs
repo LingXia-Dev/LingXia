@@ -2,7 +2,7 @@ use super::log_store::{DevLogSession, create_session};
 use anyhow::{Context, Result, anyhow};
 use lingxia_devtool_protocol::{DevtoolsLogMessage, DevtoolsPeerRole, DevtoolsWireMessage};
 use std::fs::{File, OpenOptions};
-use std::io::Write;
+use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -15,6 +15,7 @@ use tungstenite::{Error as WsError, WebSocket, accept};
 
 const DEFAULT_COMMAND_TIMEOUT: Duration = Duration::from_secs(120);
 const COMMAND_TIMEOUT_BUFFER: Duration = Duration::from_secs(5);
+const DEV_LXAPP_HTTP_PREFIX: &str = "/__lingxia/dev/lxapp/";
 
 #[derive(Debug)]
 pub struct DevServerHandle {
@@ -262,6 +263,9 @@ fn handle_connection(
     writer: &SessionLogWriter,
     state: &DevServerState,
 ) -> Result<()> {
+    if !is_websocket_request(&stream)? {
+        return handle_http_connection(stream, state);
+    }
     let mut websocket = accept(stream).context("Failed to accept websocket")?;
     let hello = read_wire_message(&mut websocket)?;
     let DevtoolsWireMessage::Hello { role } = hello else {
@@ -271,6 +275,167 @@ fn handle_connection(
         DevtoolsPeerRole::Devtool => handle_devtool_connection(websocket, writer, state),
         DevtoolsPeerRole::Client => handle_client_connection(websocket, state),
     }
+}
+
+fn is_websocket_request(stream: &TcpStream) -> Result<bool> {
+    let mut buf = [0u8; 2048];
+    let n = stream
+        .peek(&mut buf)
+        .context("Failed to inspect dev server request")?;
+    let request = String::from_utf8_lossy(&buf[..n]).to_ascii_lowercase();
+    Ok(request.contains("\r\nupgrade: websocket")
+        || request.contains("\nupgrade: websocket")
+        || request.contains("\r\nsec-websocket-key:")
+        || request.contains("\nsec-websocket-key:"))
+}
+
+fn handle_http_connection(mut stream: TcpStream, state: &DevServerState) -> Result<()> {
+    let request = read_http_request_head(&mut stream)?;
+    let Some((method, target)) = parse_http_request_line(&request) else {
+        return write_http_error(&mut stream, 400, "Bad Request");
+    };
+    if method != "GET" {
+        return write_http_error(&mut stream, 405, "Method Not Allowed");
+    }
+    let target = target
+        .split_once('?')
+        .map(|(path, _)| path)
+        .unwrap_or(target);
+    match handle_dev_lxapp_http_request(state, target) {
+        Ok((content_type, body)) => write_http_response(&mut stream, 200, content_type, &body),
+        Err(err) => {
+            let message = err.to_string();
+            let status = if message.contains("not found")
+                || message.contains("No configured resource bundle")
+                || message.contains("not listed")
+            {
+                404
+            } else {
+                400
+            };
+            write_http_error(&mut stream, status, &message)
+        }
+    }
+}
+
+fn read_http_request_head(stream: &mut TcpStream) -> Result<String> {
+    let mut buf = Vec::with_capacity(1024);
+    let mut chunk = [0u8; 512];
+    loop {
+        let n = stream
+            .read(&mut chunk)
+            .context("Failed to read HTTP request")?;
+        if n == 0 {
+            break;
+        }
+        buf.extend_from_slice(&chunk[..n]);
+        if buf.windows(4).any(|window| window == b"\r\n\r\n") || buf.len() > 16 * 1024 {
+            break;
+        }
+    }
+    String::from_utf8(buf).context("HTTP request was not valid UTF-8")
+}
+
+fn parse_http_request_line(request: &str) -> Option<(&str, &str)> {
+    let line = request.lines().next()?;
+    let mut parts = line.split_whitespace();
+    let method = parts.next()?;
+    let target = parts.next()?;
+    Some((method, target))
+}
+
+fn handle_dev_lxapp_http_request(
+    state: &DevServerState,
+    target: &str,
+) -> Result<(&'static str, Vec<u8>)> {
+    let Some(rest) = target.strip_prefix(DEV_LXAPP_HTTP_PREFIX) else {
+        return Err(anyhow!("dev HTTP endpoint not found"));
+    };
+
+    if let Some(app_id) = rest.strip_suffix("/manifest.json") {
+        let app_id = decode_url_path_component(app_id)?;
+        let manifest = super::lxapp_manifest::load_manifest(&state.project_root, &app_id)?;
+        let body = serde_json::to_vec_pretty(&manifest)?;
+        return Ok(("application/json; charset=utf-8", body));
+    }
+
+    let Some((app_id, relative_path)) = rest.split_once("/files/") else {
+        return Err(anyhow!("dev HTTP endpoint not found"));
+    };
+    let app_id = decode_url_path_component(app_id)?;
+    let relative_path = decode_url_path_component(relative_path)?;
+    let file_path =
+        super::lxapp_manifest::resolve_dist_file(&state.project_root, &app_id, &relative_path)?;
+    let body = std::fs::read(&file_path)
+        .with_context(|| format!("Failed to read {}", file_path.display()))?;
+    Ok((content_type_for_path(&relative_path), body))
+}
+
+fn decode_url_path_component(value: &str) -> Result<String> {
+    urlencoding::decode(value)
+        .map(|value| value.into_owned())
+        .map_err(|err| anyhow!("invalid URL path encoding: {}", err))
+}
+
+fn content_type_for_path(path: &str) -> &'static str {
+    match Path::new(path)
+        .extension()
+        .and_then(std::ffi::OsStr::to_str)
+        .unwrap_or_default()
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "html" => "text/html; charset=utf-8",
+        "js" | "mjs" => "text/javascript; charset=utf-8",
+        "css" => "text/css; charset=utf-8",
+        "json" => "application/json; charset=utf-8",
+        "svg" => "image/svg+xml",
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "webp" => "image/webp",
+        "gif" => "image/gif",
+        "wasm" => "application/wasm",
+        _ => "application/octet-stream",
+    }
+}
+
+fn write_http_response(
+    stream: &mut TcpStream,
+    status: u16,
+    content_type: &str,
+    body: &[u8],
+) -> Result<()> {
+    let reason = match status {
+        200 => "OK",
+        400 => "Bad Request",
+        404 => "Not Found",
+        405 => "Method Not Allowed",
+        _ => "Error",
+    };
+    write!(
+        stream,
+        "HTTP/1.1 {status} {reason}\r\n\
+         Content-Type: {content_type}\r\n\
+         Content-Length: {}\r\n\
+         Access-Control-Allow-Origin: *\r\n\
+         Cache-Control: no-store\r\n\
+         Connection: close\r\n\r\n",
+        body.len()
+    )
+    .context("Failed to write HTTP response headers")?;
+    stream
+        .write_all(body)
+        .context("Failed to write HTTP response body")?;
+    Ok(())
+}
+
+fn write_http_error(stream: &mut TcpStream, status: u16, message: &str) -> Result<()> {
+    write_http_response(
+        stream,
+        status,
+        "text/plain; charset=utf-8",
+        message.as_bytes(),
+    )
 }
 
 fn handle_devtool_connection(
