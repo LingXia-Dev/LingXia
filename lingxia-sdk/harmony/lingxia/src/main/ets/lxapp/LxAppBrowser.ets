@@ -97,7 +97,7 @@ function browserUrlDisplay(rawUrl: string): BrowserUrlDisplay {
       text: trimmed,
       iconPath: $rawfile('icons/icon_lock.svg'),
       iconColor: '#666666',
-      iconVisible: true,
+      iconVisible: false,
     };
   }
   if (scheme === 'http' || scheme === 'https') {
@@ -121,11 +121,13 @@ function browserUrlDisplay(rawUrl: string): BrowserUrlDisplay {
         iconVisible: true,
       };
     }
+    // Secure is the norm — no padlock (misread as "locked"); only insecure
+    // pages get an icon.
     return {
       text: host,
       iconPath: $rawfile('icons/icon_lock.svg'),
       iconColor: '#666666',
-      iconVisible: true,
+      iconVisible: false,
     };
   }
   return fallback;
@@ -777,12 +779,12 @@ export struct LxAppBrowser {
         .width('100%')
         .height('100%')
 
-	        // The tab switcher layer sits above the page, below the bar.
+	        this.BottomBar();
+
+	        // The tab switcher overlays the whole browser, bar included.
 	        if (this.showTabSwitcher) {
           this.TabSwitcher();
         }
-
-	        this.BottomBar();
 
         // The overflow menu is an overlay layer over the bar so opening it
         // never reflows or shifts the bottom bar.
@@ -1271,15 +1273,18 @@ export struct LxAppBrowser {
             .fontWeight(FontWeight.Medium)
             .fontColor('#1A1A1A')
             .layoutWeight(1)
-          Stack({ alignContent: Alignment.Center }) {
-            this.ToolbarPlusIcon('#333333')
+          // New tabs are self mode; no affordance while an aside is active.
+          if (!this.isAsideActive) {
+            Stack({ alignContent: Alignment.Center }) {
+              this.ToolbarPlusIcon('#333333')
+            }
+              .width(40)
+              .height(36)
+              .onClick(() => {
+                this.toggleTabSwitcher();
+                LxAppBrowserManager.openNewTab();
+              })
           }
-            .width(40)
-            .height(36)
-            .onClick(() => {
-              this.toggleTabSwitcher();
-              LxAppBrowserManager.openNewTab();
-            })
         }
         .width('100%')
         .height(52)
@@ -1320,11 +1325,12 @@ export struct LxAppBrowser {
             }
           }, (row: BrowserTabRow) => row.tabId)
         }
-        .layoutWeight(1)
+        // Sized to the rows (56vp each), capped for long lists — one tab
+        // must not float in a half-screen sheet.
+        .height(Math.min(56 * Math.max(this.tabRows.length, 1), 360))
         .width('100%')
       }
       .width('100%')
-      .height('60%')
       .backgroundColor(Color.White)
       .borderRadius({ topLeft: 16, topRight: 16 })
       .padding({ bottom: px2vp(this.bottomSafeAreaHeight) })
