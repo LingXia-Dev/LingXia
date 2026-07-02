@@ -229,9 +229,7 @@ fn verify_file_size(path: &Path, file: &DevManifestFile) -> Result<(), String> {
     if len != file.size {
         return Err(format!(
             "cached dev file size mismatch for {}: expected {}, got {}",
-            file.path,
-            file.size,
-            len
+            file.path, file.size, len
         ));
     }
     Ok(())
