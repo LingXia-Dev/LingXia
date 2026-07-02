@@ -10,7 +10,7 @@ pub(in crate::shell::chrome) struct SidebarAuxiliaryRects {
     /// Row rects aligned index-for-index with `tabbar.auxiliary_items`
     /// (possibly truncated when rows run out of vertical space).
     pub(in crate::shell::chrome) items: Vec<RECT>,
-    pub(super) add: Option<RECT>,
+    pub(in crate::shell::chrome) add: Option<RECT>,
 }
 
 pub(in crate::shell::chrome) fn sidebar_auxiliary_rects(
@@ -120,6 +120,7 @@ pub(in crate::shell::chrome) fn draw_sidebar_auxiliary_section(
     hdc: HDC,
     rect: RECT,
     tabbar: &WindowsShellTabBarLayout,
+    cursor: Option<(i32, i32)>,
 ) {
     let Some(auxiliary) = sidebar_auxiliary_rects(rect, tabbar) else {
         return;
@@ -143,6 +144,8 @@ pub(in crate::shell::chrome) fn draw_sidebar_auxiliary_section(
                 3,
                 tabbar.selected_color,
             );
+        } else {
+            draw_hover_wash(hdc, item_rect, 8, cursor);
         }
 
         let close_rect = sidebar_auxiliary_close_rect(item_rect);
@@ -187,6 +190,7 @@ pub(in crate::shell::chrome) fn draw_sidebar_auxiliary_section(
 
     if let Some(add_rect) = auxiliary.add {
         // Add row: a centered "+" glyph only, no label.
+        draw_hover_wash(hdc, add_rect, 8, cursor);
         draw_frame_button_glyph(hdc, GLYPH_ADD, add_rect, shell_palette().text_muted);
     }
 }

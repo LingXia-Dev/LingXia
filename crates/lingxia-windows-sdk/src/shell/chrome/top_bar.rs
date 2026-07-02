@@ -216,11 +216,13 @@ pub(super) fn draw_top_bar_controls(
     layout: &WindowsShellWindowLayout,
 ) {
     let controls = top_bar_controls(state.client, rects.top_bar, layout);
+    let cursor = state.cursor;
     // The leading app-menu button is a window control; a device-framed screen
     // gets it from the simulator toolbar instead.
     if !layout.suppress_window_controls
         && let Some(app_icon) = controls.app_icon
     {
+        draw_hover_wash(hdc, app_icon, 5, cursor);
         draw_app_menu_icon(hdc, app_icon);
     }
     if let Some(toggle) = controls.sidebar_toggle {
@@ -237,9 +239,11 @@ pub(super) fn draw_top_bar_controls(
             .unwrap_or(WindowsDesignIcon::SidebarCollapse);
         // Muted like the sidebar header actions - it's a secondary control,
         // not a primary caption button.
+        draw_hover_wash(hdc, toggle, 5, cursor);
         draw_design_icon_button(hdc, toggle, icon, shell_palette().text_muted, 18);
     }
     if let Some(back) = controls.nav_back {
+        draw_hover_wash(hdc, back, 5, cursor);
         draw_design_icon_button(
             hdc,
             back,
@@ -249,6 +253,7 @@ pub(super) fn draw_top_bar_controls(
         );
     }
     if let Some(forward) = controls.nav_forward {
+        draw_hover_wash(hdc, forward, 5, cursor);
         draw_design_icon_button(
             hdc,
             forward,
@@ -258,6 +263,7 @@ pub(super) fn draw_top_bar_controls(
         );
     }
     if let Some(reload) = controls.nav_reload {
+        draw_hover_wash(hdc, reload, 5, cursor);
         draw_design_icon_button(
             hdc,
             reload,
@@ -302,6 +308,7 @@ pub(super) fn draw_navigation_bar(
     buttons_left: i32,
     navbar: &WindowsShellNavigationBarLayout,
     suppress_window_controls: bool,
+    cursor: Option<(i32, i32)>,
 ) {
     fill_rect(hdc, rect, navbar.background_color);
     draw_bottom_border(hdc, rect, shell_palette().divider);
@@ -314,9 +321,13 @@ pub(super) fn draw_navigation_bar(
         // Left-align the chevron near the leading edge instead of centering it
         // in the 44px tap target, so it sits close to the screen edge. The tap
         // target keeps its full width for title clearance below.
+        let slot = leading_icon_slot(back_rect);
+        if cursor.is_some_and(|point| rect_contains(&back_rect, point)) {
+            fill_round_rect_overlay(hdc, nav_hover_rect(slot, back_rect), 5, hover_overlay());
+        }
         draw_design_icon_button(
             hdc,
-            leading_icon_slot(back_rect),
+            slot,
             WindowsDesignIcon::Back,
             text_color,
             NAV_ICON_SIZE,
@@ -329,9 +340,13 @@ pub(super) fn draw_navigation_bar(
             buttons_left,
             if navbar.show_back_button { 1 } else { 0 },
         );
+        let slot = leading_icon_slot(home_rect);
+        if cursor.is_some_and(|point| rect_contains(&home_rect, point)) {
+            fill_round_rect_overlay(hdc, nav_hover_rect(slot, home_rect), 5, hover_overlay());
+        }
         draw_design_icon_button(
             hdc,
-            leading_icon_slot(home_rect),
+            slot,
             WindowsDesignIcon::Home,
             text_color,
             NAV_ICON_SIZE,
@@ -369,6 +384,20 @@ fn leading_icon_slot(button: RECT) -> RECT {
         top: button.top,
         right: (button.left + slot).min(button.right),
         bottom: button.bottom,
+    })
+}
+
+/// The hover wash square for a navbar button: sized like a top-bar button,
+/// centered on the drawn glyph slot rather than the wider tap target.
+fn nav_hover_rect(slot: RECT, button: RECT) -> RECT {
+    let size = TOP_BAR_BUTTON_SIZE;
+    let center_x = (slot.left + slot.right) / 2;
+    let center_y = (button.top + button.bottom) / 2;
+    normalize_rect(RECT {
+        left: center_x - size / 2,
+        top: center_y - size / 2,
+        right: center_x + size / 2,
+        bottom: center_y + size / 2,
     })
 }
 

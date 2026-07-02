@@ -19,11 +19,9 @@ use windows::core::w;
 use super::icons::{cached_png_bytes_icon_handle, cached_png_icon_handle};
 use super::*;
 
-/// Process-lifetime GDI font cache keyed by (face, pixel height, weight,
-/// quality). A chrome repaint draws dozens of strings and creating/destroying
-/// an HFONT per string is measurable GDI churn for what is only a handful of
-/// distinct fonts. Cached fonts are shared: callers select them into a DC and
-/// must NOT `DeleteObject` them (GDI reclaims them at process exit).
+/// Process-lifetime GDI font cache; a repaint draws dozens of strings and
+/// per-string HFONT create/delete is measurable churn. Cached fonts are
+/// shared - callers must not `DeleteObject` them.
 pub(in crate::shell) fn cached_font_with(
     face: &str,
     height: i32,
@@ -266,10 +264,79 @@ pub(in crate::shell) fn fill_round_rect_aa(hdc: HDC, rect: RECT, radius: i32, rg
         fill_round_rect_gdi(hdc, rect, rgb, radius * 2);
         return;
     }
+    fill_round_rect_path(hdc, rect, radius, 0xff00_0000 | rgb);
+}
+
+/// Translucent rounded wash (`0xAARRGGBB`) over whatever is already painted;
+/// decorative, so it is skipped when GDI+ is unavailable.
+pub(in crate::shell) fn fill_round_rect_overlay(hdc: HDC, rect: RECT, radius: i32, argb: u32) {
+    let width = rect_width(&rect);
+    let height = rect_height(&rect);
+    if width == 0 || height == 0 || !ensure_gdiplus_started() {
+        return;
+    }
+    let radius = radius.clamp(0, (width / 2).min(height / 2));
+    fill_round_rect_path(hdc, rect, radius.max(1), argb);
+}
+
+/// Hover wash over `rect` when the chrome cursor is inside it; call before
+/// the element's icon/text.
+pub(in crate::shell) fn draw_hover_wash(
+    hdc: HDC,
+    rect: RECT,
+    radius: i32,
+    cursor: Option<(i32, i32)>,
+) {
+    if cursor.is_some_and(|point| rect_contains(&rect, point)) {
+        fill_round_rect_overlay(hdc, rect, radius, hover_overlay());
+    }
+}
+
+fn fill_round_rect_path(hdc: HDC, rect: RECT, radius: i32, argb: u32) {
+    round_rect_path_op(hdc, rect, radius, |graphics, path| unsafe {
+        let mut brush: *mut GdiPlus::GpSolidFill = std::ptr::null_mut();
+        if GdiPlus::GdipCreateSolidFill(argb, &mut brush) == GdiPlus::Ok && !brush.is_null() {
+            let _ = GdiPlus::GdipFillPath(graphics, brush.cast(), path);
+            let _ = GdiPlus::GdipDeleteBrush(brush.cast());
+        }
+    });
+}
+
+/// Strokes a 1px anti-aliased rounded outline just inside `rect` (a hairline
+/// card border). No-op when GDI+ is unavailable.
+pub(in crate::shell) fn stroke_round_rect_aa(hdc: HDC, rect: RECT, radius: i32, rgb: u32) {
+    if rect_width(&rect) == 0 || rect_height(&rect) == 0 || !ensure_gdiplus_started() {
+        return;
+    }
+    // Inset by half the pen width so the stroke hugs the edge without
+    // spilling outside the (alpha-masked) bounds.
+    let inset = normalize_rect(RECT {
+        left: rect.left,
+        top: rect.top,
+        right: rect.right - 1,
+        bottom: rect.bottom - 1,
+    });
+    round_rect_path_op(hdc, inset, radius, |graphics, path| unsafe {
+        let mut pen: *mut GdiPlus::GpPen = std::ptr::null_mut();
+        if GdiPlus::GdipCreatePen1(0xff00_0000 | rgb, 1.0, GdiPlus::UnitPixel, &mut pen)
+            == GdiPlus::Ok
+            && !pen.is_null()
+        {
+            let _ = GdiPlus::GdipDrawPath(graphics, pen, path);
+            let _ = GdiPlus::GdipDeletePen(pen);
+        }
+    });
+}
+
+fn round_rect_path_op(
+    hdc: HDC,
+    rect: RECT,
+    radius: i32,
+    op: impl FnOnce(*mut GdiPlus::GpGraphics, *mut GdiPlus::GpPath),
+) {
     unsafe {
         let mut graphics: *mut GdiPlus::GpGraphics = std::ptr::null_mut();
         if GdiPlus::GdipCreateFromHDC(hdc, &mut graphics) != GdiPlus::Ok || graphics.is_null() {
-            fill_round_rect_gdi(hdc, rect, rgb, radius * 2);
             return;
         }
         let _ = GdiPlus::GdipSetSmoothingMode(graphics, GdiPlus::SmoothingModeAntiAlias);
@@ -311,13 +378,7 @@ pub(in crate::shell) fn fill_round_rect_aa(hdc: HDC, rect: RECT, radius: i32, rg
                 90.0,
             );
             let _ = GdiPlus::GdipClosePathFigure(path);
-            let mut brush: *mut GdiPlus::GpSolidFill = std::ptr::null_mut();
-            if GdiPlus::GdipCreateSolidFill(0xff00_0000 | rgb, &mut brush) == GdiPlus::Ok
-                && !brush.is_null()
-            {
-                let _ = GdiPlus::GdipFillPath(graphics, brush.cast(), path);
-                let _ = GdiPlus::GdipDeleteBrush(brush.cast());
-            }
+            op(graphics, path);
             let _ = GdiPlus::GdipDeletePath(path);
         }
         let _ = GdiPlus::GdipDeleteGraphics(graphics);

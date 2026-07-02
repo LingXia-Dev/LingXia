@@ -122,6 +122,9 @@ pub(super) const SIDEBAR_RAIL_ICON_SIZE: i32 = 18;
 
 pub(super) const SIDEBAR_TABBAR_POPUP_WIDTH: i32 = 220;
 pub(super) const SIDEBAR_TABBAR_POPUP_PADDING: i32 = 8;
+/// Corner radius of the collapsed-rail tabbar popup card; the host masks the
+/// layered popup window to this same rounding.
+pub(crate) const SIDEBAR_TABBAR_POPUP_RADIUS: i32 = 10;
 
 /// Edge length of the favicon drawn on a sidebar browser-tab row.
 pub(super) const SIDEBAR_FAVICON_SIZE: i32 = 16;
@@ -279,6 +282,128 @@ impl WindowsChromeRenderer for ShellChromeRenderer {
             .find(|(candidate, _)| *candidate == button)
             .map(|(_, rect)| rect)
     }
+
+    fn hover_rect(&self, state: &WindowsChromeState, point: (i32, i32)) -> Option<RECT> {
+        let layout = shell_layout(&state.layout)?;
+        chrome_hover_rect(state, layout, point)
+    }
+}
+
+/// Bounding rect of the hover-highlightable element under `point`. Mirrors
+/// `chrome_hit_test`'s geometry (minus caption/frame buttons, which track
+/// hover separately) so invalidation and painting agree on what lights up.
+fn chrome_hover_rect(
+    state: &WindowsChromeState,
+    layout: &WindowsShellWindowLayout,
+    point: (i32, i32),
+) -> Option<RECT> {
+    let client = state.client;
+    let rects = chrome_rects_for_state(state, layout);
+
+    let controls = top_bar_controls(client, rects.top_bar, layout);
+    let top_bar_buttons = [
+        (!layout.suppress_window_controls)
+            .then_some(controls.app_icon)
+            .flatten(),
+        controls.sidebar_toggle,
+        controls.nav_back,
+        controls.nav_forward,
+        controls.nav_reload,
+    ];
+    for rect in top_bar_buttons.into_iter().flatten() {
+        if rect_contains(&rect, point) {
+            return Some(rect);
+        }
+    }
+
+    if !address_bar_visible(layout)
+        && let (Some(navbar), Some(navbar_rect)) = (&layout.navigation_bar, rects.navigation_bar)
+        && rect_contains(&navbar_rect, point)
+    {
+        let buttons_left = navbar_buttons_left(client, rects.top_bar, layout, navbar_rect);
+        if navbar.show_back_button {
+            let rect = nav_button_rect(navbar_rect, buttons_left, 0);
+            if rect_contains(&rect, point) {
+                return Some(rect);
+            }
+        }
+        if navbar.show_home_button {
+            let index = if navbar.show_back_button { 1 } else { 0 };
+            let rect = nav_button_rect(navbar_rect, buttons_left, index);
+            if rect_contains(&rect, point) {
+                return Some(rect);
+            }
+        }
+        return None;
+    }
+
+    for (_, rect) in panel_activator_rects(client, &rects, layout) {
+        if rect_contains(&rect, point) {
+            return Some(rect);
+        }
+    }
+
+    let (tabbar, tabbar_rect) = match (&layout.tab_bar, rects.tab_bar) {
+        (Some(tabbar), Some(rect)) if rect_contains(&rect, point) => (tabbar, rect),
+        _ => return None,
+    };
+    if !matches!(
+        tabbar.position,
+        WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right
+    ) {
+        return None;
+    }
+
+    if tabbar.collapsed || tabbar.icon_rail {
+        let expand = sidebar_rail_expand_rect(tabbar_rect);
+        if rect_contains(&expand, point) {
+            return Some(expand);
+        }
+        for index in 0..=tabbar.auxiliary_items.len() {
+            let rect = sidebar_rail_item_rect(tabbar_rect, index);
+            if rect_contains(&rect, point) {
+                return Some(rect);
+            }
+        }
+        if tabbar.show_auxiliary_add {
+            let rect = sidebar_rail_add_rect(tabbar_rect, tabbar);
+            if rect_contains(&rect, point) {
+                return Some(rect);
+            }
+        }
+        return None;
+    }
+
+    let chevron = sidebar_group_chevron_rect(tabbar_rect);
+    if rect_contains(&chevron, point) {
+        return Some(chevron);
+    }
+    for (_, rect) in sidebar_header_action_rects(tabbar_rect, tabbar) {
+        if rect_contains(&rect, point) {
+            return Some(rect);
+        }
+    }
+    if !tabbar.items_collapsed {
+        for index in 0..tabbar.items.len() {
+            let rect = sidebar_item_rect(tabbar_rect, index);
+            if rect_contains(&rect, point) {
+                return Some(rect);
+            }
+        }
+    }
+    if let Some(auxiliary) = sidebar_auxiliary_rects(tabbar_rect, tabbar) {
+        for rect in &auxiliary.items {
+            if rect_contains(rect, point) {
+                return Some(*rect);
+            }
+        }
+        if let Some(add) = auxiliary.add
+            && rect_contains(&add, point)
+        {
+            return Some(add);
+        }
+    }
+    None
 }
 
 pub(super) fn install() {
@@ -734,11 +859,20 @@ pub(crate) fn paint_collapsed_sidebar_tabbar_popup(
     popup_tabbar.header_actions.clear();
     popup_tabbar.auxiliary_items.clear();
     popup_tabbar.show_auxiliary_add = false;
-    fill_round_rect_aa(hdc, bounds, 10, shell_palette().sidebar_background);
+    // The host alpha-masks the layered popup to the rounded shape; fill the
+    // full bounds and draw only the hairline outline here.
+    fill_rect(hdc, bounds, shell_palette().sidebar_background);
     draw_sidebar_items(
         hdc,
         collapsed_sidebar_tabbar_popup_item_bounds(bounds),
         &popup_tabbar,
+        None,
+    );
+    stroke_round_rect_aa(
+        hdc,
+        bounds,
+        SIDEBAR_TABBAR_POPUP_RADIUS,
+        shell_palette().divider,
     );
 }
 
@@ -778,6 +912,7 @@ pub(crate) fn paint_transparent_tabbar_overlay(
             bottom: height,
         },
         tabbar,
+        None,
     );
 }
 
@@ -1053,15 +1188,16 @@ pub(super) fn draw_window_chrome(
             buttons_left,
             navbar,
             layout.suppress_window_controls,
+            state.cursor,
         );
     }
     if let (Some(tabbar), Some(tabbar_rect)) = (&layout.tab_bar, rects.tab_bar) {
-        draw_tab_bar(hdc, tabbar_rect, tabbar);
+        draw_tab_bar(hdc, tabbar_rect, tabbar, state.cursor);
     }
     // Painted after the navigation bar: the navbar fills the whole top bar
     // with its own background, and the toggle/address controls sit on top.
     draw_top_bar_controls(hdc, state, &rects, layout);
-    draw_panel_activators(hdc, client, &rects, layout);
+    draw_panel_activators(hdc, client, &rects, layout, state.cursor);
     draw_maximized_native_panels(hdc, state);
     // A device-framed window's caption lives on the simulator toolbar, not the
     // shell screen.

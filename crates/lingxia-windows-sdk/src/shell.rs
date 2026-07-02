@@ -53,9 +53,10 @@ pub use chrome::{begin_address_edit, begin_panel_address_edit};
 
 pub(crate) use chrome::shell_chrome_dirty_rects;
 pub(crate) use chrome::{
-    collapsed_sidebar_tabbar_click_command, collapsed_sidebar_tabbar_popup,
-    collapsed_sidebar_tabbar_popup_hit, paint_collapsed_sidebar_tabbar_popup,
-    paint_transparent_tabbar_overlay, transparent_tabbar_overlay_rect,
+    SIDEBAR_TABBAR_POPUP_RADIUS, collapsed_sidebar_tabbar_click_command,
+    collapsed_sidebar_tabbar_popup, collapsed_sidebar_tabbar_popup_hit,
+    paint_collapsed_sidebar_tabbar_popup, paint_transparent_tabbar_overlay,
+    transparent_tabbar_overlay_rect,
 };
 
 /// Height of the shell's top caption strip (where the lxapp navbar and browser
