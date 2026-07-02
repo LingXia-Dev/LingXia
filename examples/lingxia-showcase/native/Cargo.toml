@@ -18,7 +18,7 @@ standard = ["lingxia/standard"]
 browser-shell = ["lingxia/browser-shell", "webview-input", "standard"]
 proxy = ["lingxia/proxy", "browser-shell"]
 terminal-runtime = ["lingxia/terminal-runtime"]
-devtools = ["dep:lingxia_devtool", "lingxia_devtool/browser"]
+devtools = ["dep:lingxia_devtool", "lingxia/devtool", "lingxia_devtool/browser"]
 webview-input = ["lingxia/webview-input"]
 # Cloud provider. Inert by default; `lingxia build/dev --with-provider cloud`
 # injects the private `lingxia-cloud-client` crate and rewrites this to `dep:`.
