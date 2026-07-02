@@ -1,6 +1,7 @@
 pub mod app_runtime;
 pub mod device;
 pub mod file;
+pub mod keyboard;
 pub mod location;
 pub mod media_interaction;
 pub mod media_runtime;
@@ -20,6 +21,9 @@ pub mod prelude {
     pub use super::app_runtime::AppRuntime;
     pub use super::device::{Device, DeviceHardware};
     pub use super::file::FileService;
+    pub use super::keyboard::{
+        AppKeyboard, AppKeyboardAction, AppKeyboardModifier, AppKeyboardRequest,
+    };
     pub use super::location::Location;
     pub use super::media_interaction::MediaInteraction;
     pub use super::media_runtime::MediaRuntime;

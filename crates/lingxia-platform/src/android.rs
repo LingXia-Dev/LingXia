@@ -8,6 +8,7 @@ use std::sync::OnceLock;
 mod app;
 mod device;
 mod file;
+mod keyboard;
 mod location;
 mod media;
 mod mouse;

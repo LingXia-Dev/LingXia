@@ -6,6 +6,7 @@ mod app;
 mod device;
 mod ffi;
 mod file;
+mod keyboard;
 mod location;
 mod media;
 mod mouse;

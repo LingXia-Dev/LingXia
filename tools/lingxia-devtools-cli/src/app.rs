@@ -39,6 +39,68 @@ pub enum AppCommand {
         #[command(subcommand)]
         command: MouseCommand,
     },
+    /// Send keyboard input to the host app window's focused control
+    Key {
+        #[command(subcommand)]
+        command: KeyCommand,
+    },
+}
+
+#[derive(Subcommand, Clone)]
+pub enum KeyCommand {
+    /// Type literal text into the focused control
+    Type(KeyTypeOptions),
+    /// Press a named key (return, tab, escape, delete, space, arrows)
+    Press(KeyPressOptions),
+}
+
+#[derive(Args, Clone)]
+pub struct KeyTypeOptions {
+    /// Text to type
+    text: String,
+    #[command(flatten)]
+    target: KeyTargetOptions,
+}
+
+#[derive(Args, Clone)]
+pub struct KeyPressOptions {
+    /// Key name: return, tab, escape, delete, space, left, right, up, down
+    key: String,
+    /// Modifier keys held during the press (repeatable)
+    #[arg(long, value_enum)]
+    modifiers: Vec<KeyModifierArg>,
+    #[command(flatten)]
+    target: KeyTargetOptions,
+}
+
+#[derive(Args, Clone)]
+pub struct KeyTargetOptions {
+    /// Specific window id (from `lxdev app windows`); defaults to the
+    /// platform's focused/main window.
+    #[arg(long)]
+    window: Option<String>,
+    /// Print JSON output
+    #[arg(long)]
+    json: bool,
+}
+
+#[derive(Clone, Copy, ValueEnum)]
+pub enum KeyModifierArg {
+    Command,
+    Shift,
+    Option,
+    Control,
+}
+
+impl KeyModifierArg {
+    fn as_protocol_str(self) -> &'static str {
+        match self {
+            Self::Command => "command",
+            Self::Shift => "shift",
+            Self::Option => "option",
+            Self::Control => "control",
+        }
+    }
 }
 
 #[derive(Subcommand, Clone)]
@@ -178,6 +240,7 @@ pub fn execute(info: &SessionInfo, options: AppOptions) -> Result<()> {
         } => execute_screenshot(info, window, output, json),
         AppCommand::Windows { json } => execute_windows(info, json),
         AppCommand::Mouse { command } => execute_mouse(info, command),
+        AppCommand::Key { command } => execute_key(info, command),
     }
 }
 
@@ -332,6 +395,59 @@ fn execute_mouse(info: &SessionInfo, command: MouseCommand) -> Result<()> {
 }
 
 fn mouse_payload(window: Option<String>, action: Value) -> Value {
+    let mut payload = Map::new();
+    if let Some(window) = window {
+        payload.insert("window_id".to_string(), Value::String(window));
+    }
+    payload.insert("action".to_string(), action);
+    Value::Object(payload)
+}
+
+fn execute_key(info: &SessionInfo, command: KeyCommand) -> Result<()> {
+    let (target, action) = match command {
+        KeyCommand::Type(options) => (
+            options.target,
+            json!({
+                "kind": "type",
+                "text": options.text,
+            }),
+        ),
+        KeyCommand::Press(options) => {
+            let modifiers: Vec<&str> = options
+                .modifiers
+                .iter()
+                .map(|m| m.as_protocol_str())
+                .collect();
+            (
+                options.target,
+                json!({
+                    "kind": "press",
+                    "key": options.key,
+                    "modifiers": modifiers,
+                }),
+            )
+        }
+    };
+
+    let payload = key_payload(target.window, action);
+    let data = client::execute_command(&info.ws_url, handlers::app::KEYBOARD, Some(payload))?
+        .unwrap_or(Value::Null);
+
+    if target.json {
+        println!("{}", serde_json::to_string_pretty(&data)?);
+        return Ok(());
+    }
+
+    let action = data.get("action").and_then(Value::as_str).unwrap_or("key");
+    let window_id = data
+        .get("window_id")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
+    println!("Sent app key {action} to window {window_id}");
+    Ok(())
+}
+
+fn key_payload(window: Option<String>, action: Value) -> Value {
     let mut payload = Map::new();
     if let Some(window) = window {
         payload.insert("window_id".to_string(), Value::String(window));

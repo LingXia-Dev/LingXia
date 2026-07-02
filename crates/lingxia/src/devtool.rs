@@ -344,6 +344,19 @@ pub async fn perform_app_mouse(
         .map_err(|err| err.to_string())
 }
 
+/// Dispatch keyboard input to the host app's focused window control.
+pub async fn perform_app_keyboard(
+    request: lingxia_platform::traits::keyboard::AppKeyboardRequest,
+) -> Result<lingxia_platform::traits::keyboard::AppKeyboardResult, String> {
+    use lingxia_platform::traits::keyboard::AppKeyboard;
+    let platform =
+        lxapp::get_platform().ok_or_else(|| "platform is not initialized".to_string())?;
+    platform
+        .perform_app_keyboard(request)
+        .await
+        .map_err(|err| err.to_string())
+}
+
 /// Capture a PNG screenshot of the target lxapp page's WebView.
 /// Returns raw PNG bytes.
 pub async fn lxapp_dev_page_screenshot(
