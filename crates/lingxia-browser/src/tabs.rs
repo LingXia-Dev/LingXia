@@ -49,6 +49,13 @@ pub(crate) struct BrowserTabState {
     /// `window.open`) load in the same WebView instead of spawning a new
     /// main-area tab, since there is no tab UI to surface them in.
     pub(crate) standalone: bool,
+    /// When true this tab was opened as an aside; the browser chrome hides
+    /// its address bar while it is active.
+    pub(crate) aside: bool,
+    /// The lxapp that opened this tab (None for globally-scoped tabs). Used
+    /// to attribute follow-up surfaces (e.g. a new-window request from a
+    /// docked aside tab) to the right owner.
+    pub(crate) owner_appid: Option<String>,
 }
 
 pub(crate) struct BrowserState {
@@ -521,6 +528,7 @@ fn open_internal_browser_tab_with_scope(
     requested_tab_key: Option<&str>,
     scope: BrowserTabScope<'_>,
     standalone: bool,
+    aside: bool,
 ) -> Result<String, LxAppError> {
     let browser = ensure_browser_lxapp()?;
     let browser_session_id = browser.session_id();
@@ -537,6 +545,10 @@ fn open_internal_browser_tab_with_scope(
 
     let normalized_target_url = normalize_browser_target_url(target_url);
     let has_target_url = !normalized_target_url.is_empty();
+    let owner_appid = match scope {
+        BrowserTabScope::Global => None,
+        BrowserTabScope::OwnerSession { owner_appid, .. } => Some(owner_appid.to_string()),
+    };
     let tab_id = resolve_browser_tab_id(requested_tab_key, scope)?;
     let path = browser_tab_path_for_runtime_id(&tab_id);
     let session_id = browser_session_id;
@@ -570,6 +582,8 @@ fn open_internal_browser_tab_with_scope(
                     favicon_png: None,
                     discarded: false,
                     standalone,
+                    aside,
+                    owner_appid,
                 },
             );
         }
@@ -640,7 +654,7 @@ pub(crate) fn open_internal_browser_tab(
     url: &str,
     tab_id: Option<&str>,
 ) -> Result<String, LxAppError> {
-    open_internal_browser_tab_with_scope(url, tab_id, BrowserTabScope::Global, false)
+    open_internal_browser_tab_with_scope(url, tab_id, BrowserTabScope::Global, false, false)
 }
 
 pub(crate) fn open_internal_browser_tab_for_owner(
@@ -649,6 +663,7 @@ pub(crate) fn open_internal_browser_tab_for_owner(
     url: &str,
     tab_id: Option<&str>,
     standalone: bool,
+    aside: bool,
 ) -> Result<String, LxAppError> {
     let _owner = resolve_owner_lxapp(owner_appid, owner_session_id)?;
     open_internal_browser_tab_with_scope(
@@ -659,7 +674,30 @@ pub(crate) fn open_internal_browser_tab_for_owner(
             owner_session_id,
         },
         standalone,
+        aside,
     )
+}
+
+/// The lxapp that opened `tab_id`, when it was owner-scoped.
+pub(crate) fn tab_owner_appid(tab_id: &str) -> Option<String> {
+    let normalized = normalize_runtime_tab_id(tab_id)?;
+    lock_state()
+        .tabs
+        .get(&normalized)
+        .and_then(|tab| tab.owner_appid.clone())
+}
+
+/// Whether `tab_id` was opened as an aside — the chrome hides its address bar
+/// while this tab is active.
+pub(crate) fn is_aside_tab(tab_id: &str) -> bool {
+    let Some(normalized) = normalize_runtime_tab_id(tab_id) else {
+        return false;
+    };
+    lock_state()
+        .tabs
+        .get(&normalized)
+        .map(|tab| tab.aside)
+        .unwrap_or(false)
 }
 
 /// Whether `tab_id` is a standalone (no-tab-strip) browser tab whose new-window

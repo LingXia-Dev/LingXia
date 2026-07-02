@@ -52,6 +52,34 @@ pub(crate) fn open_for_app(
     }
 }
 
+/// Open an aside tab in the shared in-app browser: self chrome minus the
+/// address bar.
+pub(crate) fn open_aside_for_app(
+    appid: &str,
+    session_id: u64,
+    url: &str,
+    tab_id: Option<&str>,
+) -> Result<String, lxapp::LxAppError> {
+    #[cfg(feature = "browser-runtime")]
+    return lingxia_browser::open_aside_for_app(appid, session_id, url, tab_id);
+    #[cfg(not(feature = "browser-runtime"))]
+    {
+        let _ = (appid, session_id, url, tab_id);
+        unavailable()
+    }
+}
+
+/// Whether `tab_id` was opened as an aside (chrome hides its address bar).
+pub(crate) fn tab_is_aside(tab_id: &str) -> bool {
+    #[cfg(feature = "browser-runtime")]
+    return lingxia_browser::tab_is_aside(tab_id);
+    #[cfg(not(feature = "browser-runtime"))]
+    {
+        let _ = tab_id;
+        false
+    }
+}
+
 /// Open a standalone (no-tab-strip) browser tab for a docked aside browser.
 /// New-window requests load inline in the same WebView.
 #[cfg(any(target_os = "ios", target_os = "macos", target_os = "windows"))]

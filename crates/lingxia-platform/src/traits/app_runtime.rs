@@ -36,6 +36,9 @@ pub enum OpenUrlTarget {
     SelfTarget = 1,
     /// Open a new browser tab unconditionally (skips "navigate current tab" heuristic).
     NewBrowserTab = 2,
+    /// Open in the in-app browser as an aside tab: same chrome as `SelfTarget`
+    /// minus the address bar. The compact presentation of `{ url, as: 'aside' }`.
+    AsideBrowser = 3,
 }
 
 impl OpenUrlTarget {
@@ -43,6 +46,7 @@ impl OpenUrlTarget {
         match raw.map(|v| v.trim().to_ascii_lowercase()) {
             Some(v) if v == "self" => Self::SelfTarget,
             Some(v) if v == "new_browser_tab" => Self::NewBrowserTab,
+            Some(v) if v == "aside" => Self::AsideBrowser,
             Some(v) if v == "external" => Self::External,
             Some(v) => {
                 log::warn!("Invalid openURL target='{}', fallback to external", v);
