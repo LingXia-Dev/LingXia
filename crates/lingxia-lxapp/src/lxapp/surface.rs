@@ -262,6 +262,48 @@ pub struct PageSurface {
     pub kind: SurfaceKind,
 }
 
+/// A presented URL surface paired with a URL-callback interception channel:
+/// the web content loads in the surface, and the navigation to the callback
+/// URL is cancelled and delivered here instead. Dropping the handle closes the
+/// surface and stops the interception, so an abandoned wait (e.g. a cancelled
+/// future) tears the surface down with it.
+pub struct UrlCallbackSurface {
+    appid: String,
+    surface: PageSurface,
+    channel: lingxia_webview::url_callback::UrlCallbackChannel,
+}
+
+impl UrlCallbackSurface {
+    /// The presented surface.
+    pub fn surface(&self) -> &PageSurface {
+        &self.surface
+    }
+
+    /// Waits for the navigation to the callback URL and returns the full
+    /// navigated URL, query and fragment included. Pends indefinitely until it
+    /// happens — bound the wait externally (a timeout or an abort race).
+    pub async fn recv(&mut self) -> String {
+        self.channel.recv().await
+    }
+
+    /// Returns an already-intercepted URL without waiting.
+    pub fn try_recv(&mut self) -> Option<String> {
+        self.channel.try_recv()
+    }
+
+    /// Close the surface now (same as dropping the handle).
+    pub fn close(self) {}
+}
+
+impl Drop for UrlCallbackSurface {
+    fn drop(&mut self) {
+        // A vanished lxapp already took its surfaces with it.
+        if let Some(app) = crate::lxapp::try_get(&self.appid) {
+            let _ = app.close_surface(&self.surface.id, "programmatic");
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct SurfaceRecord {
     pub owner_page_instance_id: Option<String>,
@@ -547,6 +589,32 @@ impl LxApp {
                 Err(err.into())
             }
         }
+    }
+
+    /// Present a URL surface and intercept the navigation to `callback_url`
+    /// (see [`lingxia_webview::url_callback`] for the matching rules): await
+    /// the URL with [`UrlCallbackSurface::recv`], drop the handle to close the
+    /// surface. `request.target` must be [`PageSurfaceTarget::Url`]. The
+    /// interception channel opens before the surface presents, so the sentinel
+    /// can never load unobserved.
+    pub fn open_url_callback_surface(
+        &self,
+        callback_url: impl Into<String>,
+        request: PageSurfaceRequest,
+    ) -> Result<UrlCallbackSurface, LxAppError> {
+        if !matches!(request.target, PageSurfaceTarget::Url(_)) {
+            return Err(LxAppError::InvalidParameter(
+                "a URL callback surface requires PageSurfaceTarget::Url".to_string(),
+            ));
+        }
+        let channel = lingxia_webview::url_callback::open_channel(callback_url)
+            .map_err(|err| LxAppError::InvalidParameter(err.to_string()))?;
+        let surface = self.open_surface(request)?;
+        Ok(UrlCallbackSurface {
+            appid: self.appid.clone(),
+            surface,
+            channel,
+        })
     }
 
     pub fn show_surface(&self, id: &str) -> Result<(), LxAppError> {
