@@ -84,6 +84,8 @@ pub mod terminal {
 }
 /// Host app update helpers and update event types.
 pub mod update;
+/// Process-local URL callback channels for native handoff flows.
+pub mod url_callback;
 /// Wi-Fi control, scanning, and state subscriptions.
 pub mod wifi;
 
