@@ -15,11 +15,13 @@ import {
 import {
 	  browserTabActivate,
 	  browserTabClose,
+	  browserTabIsAside,
 	  browserTabNavigate,
 	  browserTabPathForId,
   browserUrlIsHidden as nativeBrowserUrlIsHidden,
 	  getBuiltinBrowserAppId,
 	  getLxappSessionId,
+	  openAsideBrowserTab,
 	  openBrowserTab
 	} from 'liblingxia.so';
 
@@ -409,6 +411,13 @@ export struct LxAppBrowser {
   @State private addressEditing: boolean = false;
   @State private canGoBack: boolean = false;
   @State private canGoForward: boolean = false;
+  // Aside chrome: the active tab was opened as an aside — hide the address
+  // row and the new-tab/menu affordances; a row refresh appears instead.
+  @State private isAsideActive: boolean = false;
+  // Chrome-style history intervention: until the user interacts with a tab
+  // (page touch or address navigation), auto-created history (SPA pushState
+  // redirects) must not light back/forward.
+  private interactedTabIds: Set<string> = new Set();
   @State private bottomSafeAreaHeight: number = 0;
   @State private topSafeAreaHeight: number = 0;
   @State private addressIconPath: Resource = $rawfile('icons/icon_lock.svg');
@@ -444,20 +453,18 @@ export struct LxAppBrowser {
       const activeChanged = nextActiveTabId !== this.activeTabId;
       if (activeChanged) {
         // Keep the currently displayed WebView visible until the target tab's
-        // managed WebView has resolved. This mirrors iOS, which keeps the old
-        // WKWebView in the container during attach retry and avoids a blank flash
-        // on the first new-tab tap.
-        const hadVisibleTab = !!this.visibleTabId;
+        // managed WebView has resolved (mirrors iOS: no blank flash), but the
+        // chrome state switches immediately — address and back/forward are
+        // per-tab and must never show the previous tab's values.
         this.activeTabId = nextActiveTabId;
-        if (!hadVisibleTab) {
-          const initialUrl = LxAppBrowserManager.getInitialUrl(nextActiveTabId);
-          this.url = initialUrl;
-          if (!this.addressEditing) {
-            this.updateAddressDisplay(initialUrl);
-          }
-          this.canGoBack = false;
-          this.canGoForward = false;
+        this.isAsideActive = this.safeTabIsAside(nextActiveTabId);
+        const initialUrl = LxAppBrowserManager.getInitialUrl(nextActiveTabId);
+        this.url = initialUrl;
+        if (!this.addressEditing) {
+          this.updateAddressDisplay(initialUrl);
         }
+        this.canGoBack = false;
+        this.canGoForward = false;
       }
 
       // Re-resolve the open tabs against the runtime-managed webviews. New tabs
@@ -743,6 +750,8 @@ export struct LxAppBrowser {
     this.addressIconPath = $rawfile('icons/icon_lock.svg');
     this.addressIconColor = '#666666';
     this.addressIconVisible = false;
+    this.isAsideActive = false;
+    this.interactedTabIds.clear();
   }
 
 	  build() {
@@ -795,6 +804,13 @@ export struct LxAppBrowser {
       .width('100%')
       .height('100%')
       .visibility(entry.tabId === (this.visibleTabId || this.activeTabId) ? Visibility.Visible : Visibility.Hidden)
+      // Observe-only: the first touch marks the tab as user-interacted for
+      // the back/forward history gate; the event passes through to the page.
+      .onTouch((event: TouchEvent) => {
+        if (event.type === TouchType.Down && entry.tabId === this.activeTabId) {
+          this.markActiveTabInteracted();
+        }
+      })
       .javaScriptAccess(true)
       .domStorageAccess(true)
       .mixedMode(MixedMode.Compatible)
@@ -938,7 +954,9 @@ export struct LxAppBrowser {
       Divider().color('#E0E0E0').strokeWidth(0.5).width('100%')
 
       Column() {
-        // Address row: editable URL pill.
+        // Address row: editable URL pill. An aside tab hides it — asides are
+        // API-opened content with no user navigation.
+        if (!this.isAsideActive) {
         Row() {
           Image(this.addressIconPath)
             .width(16)
@@ -996,6 +1014,7 @@ export struct LxAppBrowser {
         .backgroundColor('#F0F0F0')
         .borderRadius(18)
         .alignItems(VerticalAlign.Center)
+        }
 
         // Action row: back / forward / spacer / new-tab / tabs / menu / close.
         Row() {
@@ -1039,18 +1058,42 @@ export struct LxAppBrowser {
               }
             })
 
+          // Aside chrome has no address pill, so refresh moves into the row.
+          if (this.isAsideActive) {
+            Image($rawfile('icons/icon_browser_refresh.svg'))
+              .width(18)
+              .height(18)
+              .fillColor('#333333')
+              .padding(8)
+              .width(40)
+              .height(36)
+              .onClick(() => {
+                const controller = this.activeController();
+                if (!controller) {
+                  return;
+                }
+                try {
+                  controller.refresh();
+                } catch (error) {
+                  hilog.warn(DOMAIN, TAG, `refresh failed: ${error}`);
+                }
+              })
+          }
+
           Blank()
 
-          // New-tab affordance.
-          Stack({ alignContent: Alignment.Center }) {
-            this.ToolbarPlusIcon('#333333')
-          }
+          // New-tab affordance (asides are API-opened; user tabs are self mode).
+          if (!this.isAsideActive) {
+            Stack({ alignContent: Alignment.Center }) {
+              this.ToolbarPlusIcon('#333333')
+            }
             .width(40)
             .height(36)
             .onClick(() => {
               this.closeMenus();
               LxAppBrowserManager.openNewTab();
             })
+          }
 
           // Tabs button: draw the numbered overlapping-square icon directly.
           // Harmony can render stroke-only SVGs as solid masks when fillColor is
@@ -1084,15 +1127,17 @@ export struct LxAppBrowser {
             this.toggleTabSwitcher();
           })
 
-          // Overflow menu (downloads / settings).
-          Stack({ alignContent: Alignment.Center }) {
-            this.ToolbarMenuIcon('#333333')
-          }
+          // Overflow menu (downloads / settings) — self tabs only.
+          if (!this.isAsideActive) {
+            Stack({ alignContent: Alignment.Center }) {
+              this.ToolbarMenuIcon('#333333')
+            }
             .width(40)
             .height(36)
             .onClick(() => {
               this.toggleOverflowMenu();
             })
+          }
 
           Image($rawfile('icons/icon_close_x.svg'))
             .width(20)
@@ -1308,10 +1353,32 @@ export struct LxAppBrowser {
   private submitAddressInput(): void {
     const target = resolveAddressInput(this.addressText);
     if (target) {
+      // An address-bar navigation is a user interaction.
+      this.markActiveTabInteracted();
       LxAppBrowserManager.navigateActiveTab(target);
     }
     this.addressEditing = false;
     this.updateAddressDisplay(this.url);
+  }
+
+  private markActiveTabInteracted(): void {
+    if (!this.activeTabId || this.interactedTabIds.has(this.activeTabId)) {
+      return;
+    }
+    this.interactedTabIds.add(this.activeTabId);
+    this.updateActiveState();
+  }
+
+  private safeTabIsAside(tabId: string): boolean {
+    if (!tabId) {
+      return false;
+    }
+    try {
+      return browserTabIsAside(tabId);
+    } catch (error) {
+      hilog.warn(DOMAIN, TAG, `browserTabIsAside failed: ${error}`);
+      return false;
+    }
   }
 
   /**
@@ -1345,7 +1412,11 @@ export struct LxAppBrowser {
 
     let newTabId: string | null = null;
     try {
-      newTabId = openBrowserTab(appId, Math.trunc(sessionId), targetUrl);
+      // A tab spawned from an aside page stays an aside (no address bar);
+      // self tabs keep spawning self tabs.
+      newTabId = this.isAsideActive
+        ? openAsideBrowserTab(appId, Math.trunc(sessionId), targetUrl)
+        : openBrowserTab(appId, Math.trunc(sessionId), targetUrl);
     } catch (error) {
       hilog.error(DOMAIN, TAG, `onWindowNew: openBrowserTab threw: ${error}`);
       return;
@@ -1455,11 +1526,14 @@ export struct LxAppBrowser {
           this.updateAddressDisplay(currentUrl);
         }
       }
-      const canGoBack = controller.accessBackward();
+      // Pre-interaction history is auto-created (redirects/pushState) and
+      // must not light the affordances.
+      const interacted = this.interactedTabIds.has(this.activeTabId);
+      const canGoBack = controller.accessBackward() && interacted;
       if (canGoBack !== this.canGoBack) {
         this.canGoBack = canGoBack;
       }
-      const canGoForward = controller.accessForward();
+      const canGoForward = controller.accessForward() && interacted;
       if (canGoForward !== this.canGoForward) {
         this.canGoForward = canGoForward;
       }
