@@ -71,8 +71,8 @@ pub use runtime_registry::{find_page_by_instance_id, get_locale, get_platform, t
 pub(crate) use runtime_registry::{get, get_lxapps_manager};
 pub(crate) use surface::SurfaceRecords;
 pub use surface::{
-    PageSurface, PageSurfaceRequest, PageSurfaceTarget, register_surface_close_observer,
-    register_surface_context_observer,
+    PageSurface, PageSurfaceRequest, PageSurfaceTarget, UrlCallbackSurface,
+    register_surface_close_observer, register_surface_context_observer,
 };
 use version::Version;
 
