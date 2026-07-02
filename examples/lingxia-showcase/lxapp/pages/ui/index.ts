@@ -248,16 +248,20 @@ Page({
       }
       const surface = await lx.openSurface(spec);
       // Aside tabs accumulate (multi-tab) — only float/window are single, tracked
-      // for the hide/show/close demo controls.
+      // for the hide/show/close demo controls. On a compact layout an aside
+      // opens in the in-app browser and returns no handle.
       if (as !== "aside") this._activeSurface = surface;
 
       this.setData({
-        "surfaceDemo.message": `Opened ${as}: ${surface.id}`,
+        "surfaceDemo.message": surface
+          ? `Opened ${as}: ${surface.id}`
+          : `Opened ${as} (in-app browser)`,
         // Keep the button enabled for asides so repeated clicks add tabs; the
         // hide/show/close controls only apply to a single float/window surface.
         "surfaceDemo.active": as !== "aside",
         "surfaceDemo.visible": as !== "aside",
       });
+      if (!surface) return;
       surface.onMessage((payload) => {
         // Messages from the surface page no longer auto-close it — that
         // would defeat the show/hide demo. We just log the payload and let
