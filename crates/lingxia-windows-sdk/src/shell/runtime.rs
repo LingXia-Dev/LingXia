@@ -23,9 +23,9 @@ use lingxia_platform::traits::app_runtime::{
 };
 use lingxia_webview::WebTag;
 use lingxia_windows_contract::{
-    WindowsChromeCommand, WindowsPanelPosition, WindowsWindowLayout, hide_host_panel,
-    is_panel_visible, restore_presented_group_main, set_webview_chrome_event_handler,
-    set_webview_window_layout,
+    WindowsAsidePanelEvent, WindowsChromeCommand, WindowsPanelPosition, WindowsWindowLayout,
+    dispatch_windows_aside_panel_event, hide_host_panel, is_panel_visible,
+    restore_presented_group_main, set_webview_chrome_event_handler, set_webview_window_layout,
 };
 // Presenting a browser tab over the main card is browser-only.
 #[cfg(feature = "browser-runtime")]
@@ -201,6 +201,12 @@ mod chrome_command {
     pub(super) const BROWSER_PANEL_NAV_FORWARD: &str = "browser-panel.nav.forward";
     pub(super) const BROWSER_PANEL_NAV_RELOAD: &str = "browser-panel.nav.reload";
     pub(super) const BROWSER_PANEL_ADDRESS_BAR: &str = "browser-panel.address-bar";
+    pub(super) const ASIDE_PANEL_TAB_CLICK: &str = "aside-panel.tab.click";
+    pub(super) const ASIDE_PANEL_TAB_CLOSE: &str = "aside-panel.tab.close";
+    pub(super) const ASIDE_PANEL_CLOSE_ALL: &str = "aside-panel.close-all";
+    pub(super) const ASIDE_PANEL_NAV_BACK: &str = "aside-panel.nav.back";
+    pub(super) const ASIDE_PANEL_NAV_FORWARD: &str = "aside-panel.nav.forward";
+    pub(super) const ASIDE_PANEL_NAV_RELOAD: &str = "aside-panel.nav.reload";
     pub(super) const NATIVE_PANEL_TAB_CLICK: &str = "native-panel.tab.click";
     pub(super) const NATIVE_PANEL_TAB_CLOSE: &str = "native-panel.tab.close";
     pub(super) const NATIVE_PANEL_NEW_TAB: &str = "native-panel.new-tab";
@@ -438,9 +444,15 @@ pub(super) fn install() {
     lingxia_platform::set_windows_managed_surface_toggle_handler(Arc::new(toggle_managed_surface));
 
     // Deliver lx.surface closes (user window-close or programmatic) back to the
-    // logic layer so the JS Surface handle fires onClose, mirroring the
-    // apple/android/harmony FFI bridges.
+    // logic layer, mirroring the apple/android/harmony FFI bridges: drop the
+    // graph node first (recommitting the layout plan), then resolve the JS
+    // Surface handle so onClose fires. Without the forget, the closed aside
+    // stays in the graph and its next open merges into a zombie node.
     lingxia_platform::set_windows_surface_closed_handler(Arc::new(|id, reason| {
+        let (appid, _, _) = lxapp::get_current_lxapp();
+        if let Some(app) = lxapp::try_get(&appid) {
+            let _ = app.forget_surface(id);
+        }
         lingxia_logic::notify_surface_closed(id, reason);
     }));
 
@@ -511,11 +523,14 @@ fn handle_open_url_request(req: &OpenUrlRequest) -> bool {
             // the new tab; background browser tabs only add a sidebar row.
             let from_browser_tab = req.owner_appid == lingxia_browser::BUILTIN_BROWSER_APPID;
             let present = !from_browser_tab || presented_browser_tab().is_some();
+            // A compact-degraded URL aside keeps aside chrome in the shared
+            // in-app browser (no address bar while the tab is active).
+            let aside = req.target == OpenUrlTarget::AsideBrowser;
             let url = req.url.clone();
             // May be called on a webview UI thread (NewWindowRequested);
             // hop onto the executor before touching tab/window state.
             std::mem::drop(lingxia::task::spawn(async move {
-                open_browser_tab_for_open_url(&owner_appid, &url, present);
+                open_browser_tab_for_open_url(&owner_appid, &url, present, aside);
             }));
             true
         }
@@ -526,12 +541,17 @@ fn handle_open_url_request(req: &OpenUrlRequest) -> bool {
 /// `present` is set, shows it over the main content card (same flow as the
 /// sidebar rows). The tabs-changed observer keeps the sidebar in sync.
 #[cfg(feature = "browser-runtime")]
-fn open_browser_tab_for_open_url(owner_appid: &str, url: &str, present: bool) {
+fn open_browser_tab_for_open_url(owner_appid: &str, url: &str, present: bool, aside: bool) {
     let Some(app) = lxapp::try_get(owner_appid) else {
         log::warn!("no shell owner app for in-app open-url of {url}");
         return;
     };
-    match lingxia_browser::open_for_app(owner_appid, app.session_id(), url, None) {
+    let opened = if aside {
+        lingxia_browser::open_aside_for_app(owner_appid, app.session_id(), url, None)
+    } else {
+        lingxia_browser::open_for_app(owner_appid, app.session_id(), url, None)
+    };
+    match opened {
         Ok(tab_id) if present => present_browser_tab_when_ready(owner_appid, tab_id),
         Ok(_) => sync_shell_layout(owner_appid),
         Err(err) => log::error!("failed to open browser tab for {url}: {err}"),
@@ -757,9 +777,14 @@ fn prime_tabbar_selection(app: &LxApp, selected_index: usize) {
 fn build_address_bar_layout() -> Option<WindowsShellAddressBarLayout> {
     let presented = presented_browser_tab()?;
     let tab = browser_tab_summary(&presented)?;
+    #[cfg(feature = "browser-runtime")]
+    let aside = lingxia_browser::tab_is_aside(&presented);
+    #[cfg(not(feature = "browser-runtime"))]
+    let aside = false;
     Some(WindowsShellAddressBarLayout {
         visible: true,
         url_text: browser_tab_display_url(&tab),
+        aside,
     })
 }
 
@@ -1097,6 +1122,12 @@ fn build_panel_activators(app: &LxApp) -> Vec<WindowsShellPanelActivatorLayout> 
         .unwrap_or_default()
 }
 
+fn dispatch_aside_panel_event(event: WindowsAsidePanelEvent) {
+    if !dispatch_windows_aside_panel_event(event) {
+        log::warn!("aside panel event dropped: no handler installed");
+    }
+}
+
 fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
     if !is_shell_owner_appid(appid) {
         log::debug!("ignoring Windows shell chrome event for non-owner app {appid}");
@@ -1212,6 +1243,38 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
             begin_browser_panel_address_edit(appid, &webtag_key, &tab_id);
             #[cfg(not(feature = "browser-runtime"))]
             let _ = (&webtag_key, &tab_id);
+            return;
+        }
+        // Aside browser panel (grouped web asides): routed to the surface
+        // layer, which owns the tab group.
+        chrome_command::ASIDE_PANEL_TAB_CLICK => {
+            let Some(surface_id) = payload_string(&event, "surface_id") else {
+                return;
+            };
+            dispatch_aside_panel_event(WindowsAsidePanelEvent::TabClick { surface_id });
+            return;
+        }
+        chrome_command::ASIDE_PANEL_TAB_CLOSE => {
+            let Some(surface_id) = payload_string(&event, "surface_id") else {
+                return;
+            };
+            dispatch_aside_panel_event(WindowsAsidePanelEvent::TabClose { surface_id });
+            return;
+        }
+        chrome_command::ASIDE_PANEL_CLOSE_ALL => {
+            dispatch_aside_panel_event(WindowsAsidePanelEvent::CloseAll);
+            return;
+        }
+        chrome_command::ASIDE_PANEL_NAV_BACK => {
+            dispatch_aside_panel_event(WindowsAsidePanelEvent::NavBack);
+            return;
+        }
+        chrome_command::ASIDE_PANEL_NAV_FORWARD => {
+            dispatch_aside_panel_event(WindowsAsidePanelEvent::NavForward);
+            return;
+        }
+        chrome_command::ASIDE_PANEL_NAV_RELOAD => {
+            dispatch_aside_panel_event(WindowsAsidePanelEvent::NavReload);
             return;
         }
         // Native-panel header events (terminal dock): pure terminal policy,

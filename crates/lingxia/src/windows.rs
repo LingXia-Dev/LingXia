@@ -22,6 +22,7 @@ pub fn init(platform: Platform) -> Option<String> {
     );
     install_lifecycle_bridge();
     install_url_surface_bridge();
+    install_aside_panel_bridge();
     crate::init_with_platform(platform)
 }
 
@@ -79,6 +80,10 @@ fn install_lifecycle_bridge() {
     lingxia_windows_contract::set_webview_visibility_handler(Arc::new(|webtag, visible| {
         on_webview_visibility_changed(webtag, visible);
     }));
+}
+
+fn install_aside_panel_bridge() {
+    lingxia_platform::install_windows_aside_panel_bridge();
 }
 
 fn install_url_surface_bridge() {
