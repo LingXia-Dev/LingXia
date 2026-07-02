@@ -371,12 +371,32 @@ impl ProvisioningManager {
         let profiles =
             self.client
                 .query_profiles(&token, mode.provision_type(), Some(&app.app_id))?;
+        // A stale same-name profile (older cert or device list, so it never
+        // matches above) blocks creation: AGC rejects duplicate provision
+        // names. Drop it before creating the replacement.
+        let stale_same_name: Vec<String> = profiles
+            .iter()
+            .filter(|profile| profile.provision_name == profile_name)
+            .map(|profile| profile.id.clone())
+            .collect();
         load_or_create(profiles, &mut || {
+            let mut create_name = profile_name.clone();
+            if !stale_same_name.is_empty()
+                && self.client.delete_profiles(&token, &stale_same_name).is_err()
+            {
+                // Deletion endpoint availability varies; sidestep the
+                // duplicate-name check with a unique suffix instead.
+                let stamp = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs())
+                    .unwrap_or_default();
+                create_name = format!("{profile_name}_{stamp}");
+            }
             self.client
                 .create_profile(
                     &token,
                     CreateProfileParams {
-                        name: profile_name.clone(),
+                        name: create_name.clone(),
                         app_id: app.app_id.clone(),
                         cert_id: cert.id.clone(),
                         device_ids: required_device_ids.to_vec(),

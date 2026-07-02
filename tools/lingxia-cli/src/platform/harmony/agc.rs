@@ -490,6 +490,19 @@ Use credentials from AGC `API密钥 > Connect API > API客户端`, and set Proje
         parse_provision_info(info, if params.is_debug { 1 } else { 2 })
     }
 
+    pub fn delete_profiles(&self, token: &AgcToken, ids: &[String]) -> Result<()> {
+        if ids.is_empty() {
+            return Ok(());
+        }
+        let path = format!(
+            "/v3/provision?provisionIdList={}",
+            urlencoding::encode(&ids.join(","))
+        );
+        let root = self.request_json::<()>("DELETE", &path, token, None)?;
+        ensure_success_response(&root)?;
+        Ok(())
+    }
+
     pub fn list_app_ids(
         &self,
         token: &AgcToken,
