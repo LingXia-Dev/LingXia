@@ -239,9 +239,26 @@ pub fn execute(info: &SessionInfo, options: AppOptions) -> Result<()> {
             json,
         } => execute_screenshot(info, window, output, json),
         AppCommand::Windows { json } => execute_windows(info, json),
-        AppCommand::Mouse { command } => execute_mouse(info, command),
-        AppCommand::Key { command } => execute_key(info, command),
+        AppCommand::Mouse { command } => {
+            require_desktop_input(info, "mouse")?;
+            execute_mouse(info, command)
+        }
+        AppCommand::Key { command } => {
+            require_desktop_input(info, "key")?;
+            execute_key(info, command)
+        }
     }
+}
+
+/// App input synthesis is desktop-only; fail fast with the platform's injector.
+fn require_desktop_input(info: &SessionInfo, what: &str) -> Result<()> {
+    let hint = match info.platform.as_str() {
+        "macos" | "windows" => return Ok(()),
+        "android" => "`adb shell input`",
+        "harmony" => "`hdc shell uitest uiInput`",
+        _ => "`lxdev lxapp page click/type` (web content)",
+    };
+    bail!("app {what} is desktop-only; on {} use {hint}", info.platform)
 }
 
 fn execute_windows(info: &SessionInfo, json: bool) -> Result<()> {
