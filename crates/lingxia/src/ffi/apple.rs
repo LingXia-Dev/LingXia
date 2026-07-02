@@ -239,6 +239,9 @@ mod bridge {
         #[swift_bridge(swift_name = "browserTabIsAside")]
         fn browser_tab_is_aside(tab_id: &str) -> bool;
 
+        #[swift_bridge(swift_name = "urlCallbackDispatch")]
+        fn url_callback_dispatch(url: &str) -> bool;
+
         #[swift_bridge(swift_name = "openBrowserTabWithId")]
         fn open_browser_tab_with_id(
             appid: &str,
@@ -613,6 +616,15 @@ pub fn open_browser_tab(appid: &str, session_id: u64, url: &str) -> Option<Strin
         }
     })
 }
+/// Offer a navigation URL from a native (non-managed) WebView to the
+/// URL-callback registry. `true` means a channel consumed it and the native
+/// side must cancel the navigation.
+pub fn url_callback_dispatch(url: &str) -> bool {
+    ffi_catch_unwind!("url_callback_dispatch", false, || {
+        lingxia_webview::url_callback::dispatch(url)
+    })
+}
+
 pub fn open_standalone_browser_tab(appid: &str, session_id: u64, url: &str) -> Option<String> {
     ffi_catch_unwind!("open_standalone_browser_tab", None, || {
         match crate::browser::open_standalone_for_app(appid, session_id, url, None) {

@@ -1399,6 +1399,19 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_surfaceDerivedLayout<'a>(
 }
 
 #[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_app_NativeApi_urlCallbackDispatch<'a>(
+    mut env: EnvUnowned<'a>,
+    _class: JClass<'a>,
+    url: JString<'a>,
+) -> jboolean {
+    env.with_env(|env| -> Result<jboolean, jni::errors::Error> {
+        let url: String = url.try_to_string(env)?;
+        Ok(lingxia_webview::url_callback::dispatch(&url) as jboolean)
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+#[unsafe(no_mangle)]
 pub extern "system" fn Java_com_lingxia_app_NativeApi_handleBrowserNavigationPolicy<'a>(
     mut env: EnvUnowned<'a>,
     _class: JClass<'a>,
