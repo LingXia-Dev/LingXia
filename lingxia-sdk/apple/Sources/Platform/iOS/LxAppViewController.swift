@@ -641,6 +641,15 @@ final class LxAppViewController: UIViewController, ObservableObject {
         updateNavigationBar(appId: appId, path: currentPath)
     }
 
+    /// Bar contents only — no webview-constraint sync. Used mid-transition,
+    /// where the outgoing page's layout must not move and the bar swaps its
+    /// content while translated off-screen.
+    private func updateNavigationBarContent(appId: String, path: String) {
+        NavigationBarStateManager.shared.updateState(appId: appId, path: path)
+        globalNavigationBar?.updateWithState(NavigationBarStateManager.shared.currentState)
+        setNeedsStatusBarAppearanceUpdate()
+    }
+
     public func updateNavigationBar(appId: String, path: String) {
         guard let navigationBar = globalNavigationBar else {
             os_log("updateNavigationBar: NavigationBar not initialized", log: Self.log, type: .error)
@@ -1148,6 +1157,9 @@ final class LxAppViewController: UIViewController, ObservableObject {
         let slideDistance: CGFloat = isBackward ? -screenWidth : screenWidth
         webView.transform = CGAffineTransform(translationX: slideDistance, y: 0)
         globalNavigationBar?.transform = CGAffineTransform(translationX: slideDistance, y: 0)
+        // Bar content swaps while translated off-screen (the snapshot shows the
+        // old bar until the slide completes).
+        updateNavigationBarContent(appId: appId, path: path)
 
         // Animate the slide transition
         UIView.animate(withDuration: 0.35, delay: 0, options: [.curveEaseInOut], animations: {
@@ -1172,21 +1184,17 @@ final class LxAppViewController: UIViewController, ObservableObject {
         let slideInTranslation: CGFloat = isBackNavigation ? -screenWidth : screenWidth
         let slideOutTranslation: CGFloat = isBackNavigation ? screenWidth : -screenWidth
 
-        // Update navigation bar and tabBar state first (before animation)
-        updateNavigationBar(appId: appId, path: path)
-        updateTabBar(for: appId, path: path)
-
-        // Ensure target WebView is properly configured for animation
+        // Ensure target WebView is properly configured for animation. Anchor it
+        // at the TARGET page's final top offset up front — correcting it after
+        // the animation makes the content jump at the end of the slide.
         if targetWebView.superview != rootContainer {
             rootContainer.addSubview(targetWebView)
             targetWebView.translatesAutoresizingMaskIntoConstraints = false
 
-            // Set up basic constraints without calling updateWebViewConstraints during animation
-            // Use rootContainer as reference instead of view to ensure proper containment
             NSLayoutConstraint.activate([
                 targetWebView.leadingAnchor.constraint(equalTo: rootContainer.leadingAnchor),
                 targetWebView.trailingAnchor.constraint(equalTo: rootContainer.trailingAnchor),
-                targetWebView.topAnchor.constraint(equalTo: rootContainer.topAnchor, constant: statusBarHeight + NavigationBarState.DEFAULT_HEIGHT),
+                targetWebView.topAnchor.constraint(equalTo: rootContainer.topAnchor, constant: calculateTopOffset(for: appId, path: path)),
                 targetWebView.bottomAnchor.constraint(equalTo: rootContainer.bottomAnchor)
             ])
         }
@@ -1218,6 +1226,13 @@ final class LxAppViewController: UIViewController, ObservableObject {
             if let navigationBar = globalNavigationBar {
                 navigationBar.transform = CGAffineTransform(translationX: slideInTranslation, y: 0)
             }
+
+            // Swap the bar contents only after the bar is translated off-screen
+            // — updating in place flashes the new title over the old page, and
+            // the full updateNavigationBar would also re-anchor the OUTGOING
+            // webview's constraints (a visible pre-animation jump).
+            updateNavigationBarContent(appId: appId, path: path)
+            updateTabBar(for: appId, path: path)
 
             // Force layout update to ensure proper frame sizes
             rootContainer.layoutIfNeeded()
