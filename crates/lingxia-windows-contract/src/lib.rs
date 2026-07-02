@@ -36,6 +36,74 @@ static HOST_PANEL_INPUT_HANDLERS: OnceLock<Mutex<HashMap<String, WindowsHostPane
 static WINDOW_LAYOUTS: OnceLock<Mutex<HashMap<String, WindowsWindowLayout>>> = OnceLock::new();
 static WINDOWS_CHROME_RENDERER: OnceLock<Mutex<Option<Arc<dyn WindowsChromeRenderer>>>> =
     OnceLock::new();
+static ASIDE_PANEL_TABS: OnceLock<Mutex<HashMap<String, Vec<WindowsAsidePanelTab>>>> =
+    OnceLock::new();
+static ASIDE_PANEL_EVENT_HANDLER: OnceLock<Mutex<Option<WindowsAsidePanelEventHandler>>> =
+    OnceLock::new();
+
+/// One tab of a docked aside browser panel (grouped web-URL asides).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WindowsAsidePanelTab {
+    pub surface_id: String,
+    pub title: String,
+    pub active: bool,
+}
+
+/// Chrome events from a docked aside browser panel, routed back to the
+/// surface layer that owns the grouped web asides.
+#[derive(Debug, Clone)]
+pub enum WindowsAsidePanelEvent {
+    TabClick { surface_id: String },
+    TabClose { surface_id: String },
+    CloseAll,
+    NavBack,
+    NavForward,
+    NavReload,
+}
+
+pub type WindowsAsidePanelEventHandler = Arc<dyn Fn(WindowsAsidePanelEvent) + Send + Sync>;
+
+/// Publishes the tab strip of an aside browser panel; an empty list removes
+/// it (the panel then falls back to non-tabbed chrome).
+pub fn set_aside_panel_tabs(panel_id: &str, tabs: Vec<WindowsAsidePanelTab>) {
+    let registry = ASIDE_PANEL_TABS.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Ok(mut registry) = registry.lock() {
+        if tabs.is_empty() {
+            registry.remove(panel_id);
+        } else {
+            registry.insert(panel_id.to_string(), tabs);
+        }
+    }
+}
+
+pub fn aside_panel_tabs(panel_id: &str) -> Vec<WindowsAsidePanelTab> {
+    ASIDE_PANEL_TABS
+        .get()
+        .and_then(|registry| registry.lock().ok())
+        .and_then(|registry| registry.get(panel_id).cloned())
+        .unwrap_or_default()
+}
+
+pub fn set_windows_aside_panel_event_handler(handler: WindowsAsidePanelEventHandler) {
+    let slot = ASIDE_PANEL_EVENT_HANDLER.get_or_init(|| Mutex::new(None));
+    if let Ok(mut slot) = slot.lock() {
+        *slot = Some(handler);
+    }
+}
+
+/// Routes a chrome event to the aside-panel handler; `false` when none is
+/// installed.
+pub fn dispatch_windows_aside_panel_event(event: WindowsAsidePanelEvent) -> bool {
+    let handler = ASIDE_PANEL_EVENT_HANDLER
+        .get()
+        .and_then(|slot| slot.lock().ok())
+        .and_then(|slot| slot.clone());
+    let Some(handler) = handler else {
+        return false;
+    };
+    handler(event);
+    true
+}
 
 fn unsupported_operation<T>(operation: &str) -> StdResult<T> {
     Err(WebViewError::WebView(format!(
@@ -192,6 +260,16 @@ pub trait WindowsHostBackend: Send + Sync {
     }
 
     fn sync_webview_window_layout(&self, _webtag: &WebTag) {}
+
+    /// Repaints an aside panel's chrome after a tab-strip change that leaves
+    /// the attached layout untouched (e.g. an inactive tab closed).
+    fn refresh_aside_panel(&self, _panel_id: &str) {}
+}
+
+pub fn refresh_aside_panel(panel_id: &str) {
+    if let Ok(backend) = backend() {
+        backend.refresh_aside_panel(panel_id);
+    }
 }
 
 pub fn set_windows_host_backend(backend: Arc<dyn WindowsHostBackend>) {
