@@ -200,6 +200,10 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
     private var backEdgePanGesture: UIScreenEdgePanGestureRecognizer?
     private var interactionTapGesture: UITapGestureRecognizer?
 
+    // In-view overlays shown/hidden instantly — no system sheet/menu animation.
+    private var tabSwitcherOverlay: LxAppBrowserTabSwitcherView?
+    private var menuOverlay: UIView?
+
     init() {
         super.init(nibName: nil, bundle: nil)
         modalPresentationStyle = .fullScreen
@@ -403,12 +407,12 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
         setupTabsButton()
         actionRow.addArrangedSubview(tabsButton)
 
-        // Menu (hamburger) with downloads + settings.
+        // Menu (hamburger) with downloads + settings — a custom instant popup,
+        // not UIMenu (its highlight flash + presentation animation).
         menuButton.translatesAutoresizingMaskIntoConstraints = false
         menuButton.tintColor = UIColor(white: 0.2, alpha: 1.0)
         menuButton.setImage(iconImage(named: "icon_menu", size: 20)?.withRenderingMode(.alwaysTemplate), for: .normal)
-        menuButton.showsMenuAsPrimaryAction = true
-        menuButton.menu = makeOverflowMenu()
+        menuButton.addTarget(self, action: #selector(menuTapped), for: .touchUpInside)
         NSLayoutConstraint.activate([
             menuButton.widthAnchor.constraint(equalToConstant: 40),
             menuButton.heightAnchor.constraint(equalToConstant: 36),
@@ -529,20 +533,85 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
         tabsBadge.text = String(LxAppBrowser.openTabIds.count)
     }
 
-    private func makeOverflowMenu() -> UIMenu {
-        let downloads = UIAction(
-            title: "Downloads",
-            image: iconImage(named: "icon_download", size: 18)?.withRenderingMode(.alwaysTemplate)
-        ) { [weak self] _ in
-            self?.navigateToInternalPage("lingxia://downloads")
+    @objc private func menuTapped() {
+        if menuOverlay != nil {
+            dismissOverflowMenu()
+            return
         }
-        let settings = UIAction(
-            title: "Settings",
-            image: iconImage(named: "icon_settings", size: 18)?.withRenderingMode(.alwaysTemplate)
-        ) { [weak self] _ in
-            self?.navigateToInternalPage("lingxia://settings")
-        }
-        return UIMenu(title: "", children: [downloads, settings])
+        dismissTabSwitcher()
+
+        let scrim = UIControl()
+        scrim.translatesAutoresizingMaskIntoConstraints = false
+        scrim.addTarget(self, action: #selector(overflowScrimTapped), for: .touchUpInside)
+        view.addSubview(scrim)
+
+        let card = UIView()
+        card.translatesAutoresizingMaskIntoConstraints = false
+        card.backgroundColor = .white
+        card.layer.cornerRadius = 12
+        card.layer.shadowColor = UIColor.black.cgColor
+        card.layer.shadowOpacity = 0.18
+        card.layer.shadowRadius = 12
+        card.layer.shadowOffset = CGSize(width: 0, height: 4)
+        scrim.addSubview(card)
+
+        let rows = UIStackView(arrangedSubviews: [
+            overflowMenuRow(title: "Downloads", iconName: "icon_download", action: #selector(downloadsTapped)),
+            overflowMenuRow(title: "Settings", iconName: "icon_settings", action: #selector(settingsTapped)),
+        ])
+        rows.translatesAutoresizingMaskIntoConstraints = false
+        rows.axis = .vertical
+        card.addSubview(rows)
+
+        NSLayoutConstraint.activate([
+            scrim.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            scrim.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            scrim.topAnchor.constraint(equalTo: view.topAnchor),
+            scrim.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+
+            card.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
+            card.bottomAnchor.constraint(equalTo: bottomBar.topAnchor, constant: -8),
+            card.widthAnchor.constraint(equalToConstant: 200),
+
+            rows.leadingAnchor.constraint(equalTo: card.leadingAnchor),
+            rows.trailingAnchor.constraint(equalTo: card.trailingAnchor),
+            rows.topAnchor.constraint(equalTo: card.topAnchor, constant: 6),
+            rows.bottomAnchor.constraint(equalTo: card.bottomAnchor, constant: -6),
+        ])
+
+        menuOverlay = scrim
+    }
+
+    private func overflowMenuRow(title: String, iconName: String, action: Selector) -> UIButton {
+        var config = UIButton.Configuration.plain()
+        config.title = title
+        config.image = iconImage(named: iconName, size: 18)?.withRenderingMode(.alwaysTemplate)
+        config.imagePadding = 12
+        config.baseForegroundColor = UIColor(white: 0.2, alpha: 1.0)
+        config.contentInsets = NSDirectionalEdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16)
+        let button = UIButton(configuration: config)
+        button.contentHorizontalAlignment = .leading
+        button.addTarget(self, action: action, for: .touchUpInside)
+        return button
+    }
+
+    @objc private func overflowScrimTapped() {
+        dismissOverflowMenu()
+    }
+
+    @objc private func downloadsTapped() {
+        dismissOverflowMenu()
+        navigateToInternalPage("lingxia://downloads")
+    }
+
+    @objc private func settingsTapped() {
+        dismissOverflowMenu()
+        navigateToInternalPage("lingxia://settings")
+    }
+
+    private func dismissOverflowMenu() {
+        menuOverlay?.removeFromSuperview()
+        menuOverlay = nil
     }
 
     /// Open one of the browser's own `lingxia://` pages in the active tab.
@@ -701,22 +770,28 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
             addressIcon.isHidden = true
             return
         }
-        addressIcon.isHidden = false
         let display = browserUrlDisplay(url: url)
         addressField.text = display.text
-        addressIcon.image = iconImage(named: display.iconName, size: 16)?.withRenderingMode(.alwaysTemplate)
-        addressIcon.tintColor = display.tintColor
+        if let iconName = display.iconName {
+            addressIcon.isHidden = false
+            addressIcon.image = iconImage(named: iconName, size: 16)?.withRenderingMode(.alwaysTemplate)
+            addressIcon.tintColor = display.tintColor
+        } else {
+            addressIcon.isHidden = true
+        }
     }
 
     private struct BrowserUrlDisplay {
         let text: String
-        let iconName: String
+        // Secure is the norm — no padlock (misread as "locked"); only insecure
+        // pages get an icon.
+        let iconName: String?
         let tintColor: UIColor
     }
 
     private func browserUrlDisplay(url: URL?) -> BrowserUrlDisplay {
         guard let url else {
-            return BrowserUrlDisplay(text: "", iconName: "icon_lock", tintColor: UIColor(white: 0.4, alpha: 1.0))
+            return BrowserUrlDisplay(text: "", iconName: nil, tintColor: UIColor(white: 0.4, alpha: 1.0))
         }
         switch url.scheme?.lowercased() {
         case "lingxia":
@@ -724,13 +799,13 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
             // show the full lingxia:// address, no security chrome.
             return BrowserUrlDisplay(
                 text: url.absoluteString,
-                iconName: "icon_lock",
+                iconName: nil,
                 tintColor: UIColor(white: 0.4, alpha: 1.0)
             )
         case "https":
             return BrowserUrlDisplay(
                 text: url.host?.isEmpty == false ? url.host! : "Web page",
-                iconName: "icon_lock",
+                iconName: nil,
                 tintColor: UIColor(white: 0.4, alpha: 1.0)
             )
         case "http":
@@ -810,12 +885,26 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
     }
 
     @objc private func tabsTapped() {
-        let switcher = LxAppBrowserTabSwitcherViewController(host: self)
-        if let sheet = switcher.sheetPresentationController {
-            sheet.detents = [.medium(), .large()]
-            sheet.prefersGrabberVisible = true
+        if tabSwitcherOverlay != nil {
+            dismissTabSwitcher()
+            return
         }
-        present(switcher, animated: true)
+        dismissOverflowMenu()
+        let switcher = LxAppBrowserTabSwitcherView(host: self)
+        view.addSubview(switcher)
+        NSLayoutConstraint.activate([
+            switcher.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            switcher.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            switcher.topAnchor.constraint(equalTo: view.topAnchor),
+            switcher.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+        ])
+        switcher.refresh()
+        tabSwitcherOverlay = switcher
+    }
+
+    fileprivate func dismissTabSwitcher() {
+        tabSwitcherOverlay?.removeFromSuperview()
+        tabSwitcherOverlay = nil
     }
 
     @objc private func newTabTapped() {
@@ -918,76 +1007,116 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
 
 /// Modal sheet listing the open tabs as a single-column list, with per-row close
 /// and a "+" affordance for opening a new tab.
+/// In-view tab switcher: scrim + edge-to-edge bottom panel sized to the tab
+/// rows (capped), shared by self and aside modes.
 @MainActor
-private final class LxAppBrowserTabSwitcherViewController: UIViewController, UITableViewDataSource, UITableViewDelegate {
+private final class LxAppBrowserTabSwitcherView: UIView, UITableViewDataSource, UITableViewDelegate {
     private weak var host: LxAppBrowserViewController?
     private let tableView = UITableView(frame: .zero, style: .plain)
+    private var tableHeightConstraint: NSLayoutConstraint?
     private static let cellReuseId = "LxAppBrowserTabCell"
+    private static let rowHeight: CGFloat = 56
+    private static let maxListHeight: CGFloat = 360
 
     init(host: LxAppBrowserViewController) {
         self.host = host
-        super.init(nibName: nil, bundle: nil)
-        modalPresentationStyle = .pageSheet
+        super.init(frame: .zero)
+        translatesAutoresizingMaskIntoConstraints = false
+
+        let scrim = UIControl()
+        scrim.translatesAutoresizingMaskIntoConstraints = false
+        scrim.backgroundColor = UIColor(white: 0, alpha: 0.4)
+        scrim.addTarget(self, action: #selector(scrimTapped), for: .touchUpInside)
+        addSubview(scrim)
+
+        let panel = UIView()
+        panel.translatesAutoresizingMaskIntoConstraints = false
+        panel.backgroundColor = .white
+        panel.layer.cornerRadius = 16
+        panel.layer.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
+        panel.clipsToBounds = true
+        addSubview(panel)
+
+        let titleLabel = UILabel()
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        titleLabel.text = "Tabs"
+        titleLabel.font = UIFont.systemFont(ofSize: 17, weight: .semibold)
+        panel.addSubview(titleLabel)
+
+        let addButton = UIButton(type: .system)
+        addButton.translatesAutoresizingMaskIntoConstraints = false
+        addButton.tintColor = UIColor(white: 0.2, alpha: 1.0)
+        addButton.setImage(lxAppBrowserIconImage(named: "icon_plus", size: 20)?.withRenderingMode(.alwaysTemplate), for: .normal)
+        addButton.addTarget(self, action: #selector(newTabTapped), for: .touchUpInside)
+        // New tabs are self mode; hide the affordance while an aside is active.
+        addButton.isHidden = LxAppBrowser.activeTabId.map { browserTabIsAside($0) } ?? false
+        panel.addSubview(addButton)
+
+        let divider = UIView()
+        divider.translatesAutoresizingMaskIntoConstraints = false
+        divider.backgroundColor = UIColor(white: 0, alpha: 0.07)
+        panel.addSubview(divider)
+
+        tableView.translatesAutoresizingMaskIntoConstraints = false
+        tableView.dataSource = self
+        tableView.delegate = self
+        tableView.register(LxAppBrowserTabCell.self, forCellReuseIdentifier: Self.cellReuseId)
+        tableView.rowHeight = Self.rowHeight
+        tableView.separatorStyle = .none
+        panel.addSubview(tableView)
+
+        let tableHeight = tableView.heightAnchor.constraint(equalToConstant: Self.rowHeight)
+        tableHeightConstraint = tableHeight
+
+        NSLayoutConstraint.activate([
+            scrim.leadingAnchor.constraint(equalTo: leadingAnchor),
+            scrim.trailingAnchor.constraint(equalTo: trailingAnchor),
+            scrim.topAnchor.constraint(equalTo: topAnchor),
+            scrim.bottomAnchor.constraint(equalTo: bottomAnchor),
+
+            panel.leadingAnchor.constraint(equalTo: leadingAnchor),
+            panel.trailingAnchor.constraint(equalTo: trailingAnchor),
+            panel.bottomAnchor.constraint(equalTo: bottomAnchor),
+
+            titleLabel.leadingAnchor.constraint(equalTo: panel.leadingAnchor, constant: 20),
+            titleLabel.topAnchor.constraint(equalTo: panel.topAnchor, constant: 16),
+
+            addButton.trailingAnchor.constraint(equalTo: panel.trailingAnchor, constant: -12),
+            addButton.centerYAnchor.constraint(equalTo: titleLabel.centerYAnchor),
+            addButton.widthAnchor.constraint(equalToConstant: 40),
+            addButton.heightAnchor.constraint(equalToConstant: 36),
+
+            divider.leadingAnchor.constraint(equalTo: panel.leadingAnchor),
+            divider.trailingAnchor.constraint(equalTo: panel.trailingAnchor),
+            divider.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 14),
+            divider.heightAnchor.constraint(equalToConstant: 0.5),
+
+            tableView.leadingAnchor.constraint(equalTo: panel.leadingAnchor),
+            tableView.trailingAnchor.constraint(equalTo: panel.trailingAnchor),
+            tableView.topAnchor.constraint(equalTo: divider.bottomAnchor),
+            tableView.bottomAnchor.constraint(equalTo: safeAreaLayoutGuide.bottomAnchor),
+            tableHeight,
+        ])
     }
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
 
-    override func viewDidLoad() {
-        super.viewDidLoad()
-        view.backgroundColor = .systemBackground
+    /// Reload the rows and size the list to their count, capped for long lists.
+    func refresh() {
+        let rows = max(LxAppBrowser.openTabIds.count, 1)
+        tableHeightConstraint?.constant = min(CGFloat(rows) * Self.rowHeight, Self.maxListHeight)
+        tableView.reloadData()
+    }
 
-        let header = UIView()
-        header.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(header)
-
-        let titleLabel = UILabel()
-        titleLabel.translatesAutoresizingMaskIntoConstraints = false
-        titleLabel.text = "Tabs"
-        titleLabel.font = UIFont.systemFont(ofSize: 17, weight: .semibold)
-        header.addSubview(titleLabel)
-
-        let addButton = UIButton(type: .system)
-        addButton.translatesAutoresizingMaskIntoConstraints = false
-        addButton.setImage(lxAppBrowserIconImage(named: "icon_plus", size: 20)?.withRenderingMode(.alwaysTemplate), for: .normal)
-        addButton.addTarget(self, action: #selector(newTabTapped), for: .touchUpInside)
-        // New tabs are self mode; hide the affordance while an aside is active.
-        addButton.isHidden = LxAppBrowser.activeTabId.map { browserTabIsAside($0) } ?? false
-        header.addSubview(addButton)
-
-        tableView.translatesAutoresizingMaskIntoConstraints = false
-        tableView.dataSource = self
-        tableView.delegate = self
-        tableView.register(LxAppBrowserTabCell.self, forCellReuseIdentifier: Self.cellReuseId)
-        tableView.rowHeight = 56
-        view.addSubview(tableView)
-
-        NSLayoutConstraint.activate([
-            header.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            header.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            header.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            header.heightAnchor.constraint(equalToConstant: 52),
-
-            titleLabel.leadingAnchor.constraint(equalTo: header.leadingAnchor, constant: 20),
-            titleLabel.centerYAnchor.constraint(equalTo: header.centerYAnchor),
-
-            addButton.trailingAnchor.constraint(equalTo: header.trailingAnchor, constant: -20),
-            addButton.centerYAnchor.constraint(equalTo: header.centerYAnchor),
-            addButton.widthAnchor.constraint(equalToConstant: 40),
-            addButton.heightAnchor.constraint(equalToConstant: 36),
-
-            tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            tableView.topAnchor.constraint(equalTo: header.bottomAnchor),
-            tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-        ])
+    @objc private func scrimTapped() {
+        host?.dismissTabSwitcher()
     }
 
     @objc private func newTabTapped() {
-        dismiss(animated: true) {
-            LxAppBrowser.openNewTab()
-        }
+        host?.dismissTabSwitcher()
+        _ = LxAppBrowser.openNewTab()
     }
 
     private func closeTab(at index: Int) {
@@ -995,9 +1124,9 @@ private final class LxAppBrowserTabSwitcherViewController: UIViewController, UIT
         let tabId = LxAppBrowser.openTabIds[index]
         LxAppBrowser.closeTab(tabId: tabId)
         if LxAppBrowser.openTabIds.isEmpty {
-            dismiss(animated: true)
+            host?.dismissTabSwitcher()
         } else {
-            tableView.reloadData()
+            refresh()
         }
     }
 
@@ -1021,9 +1150,8 @@ private final class LxAppBrowserTabSwitcherViewController: UIViewController, UIT
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: false)
         let tabId = LxAppBrowser.openTabIds[indexPath.row]
-        dismiss(animated: true) {
-            LxAppBrowser.activate(tabId: tabId)
-        }
+        host?.dismissTabSwitcher()
+        LxAppBrowser.activate(tabId: tabId)
     }
 }
 
