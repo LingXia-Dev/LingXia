@@ -181,6 +181,19 @@ internal object NativeApi {
     external fun openBrowserTab(appId: String, sessionId: Long, url: String): String?
 
     /**
+     * Open an aside tab in the shared in-app browser: same as openBrowserTab
+     * except the chrome hides its address bar while this tab is active.
+     */
+    @JvmStatic
+    external fun openAsideBrowserTab(appId: String, sessionId: Long, url: String): String?
+
+    /**
+     * Whether the tab was opened as an aside (chrome hides its address bar).
+     */
+    @JvmStatic
+    external fun browserTabIsAside(tabId: String): Boolean
+
+    /**
      * Close a managed internal browser tab.
      */
     @JvmStatic

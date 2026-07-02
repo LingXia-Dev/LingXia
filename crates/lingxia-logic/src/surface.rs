@@ -628,7 +628,6 @@ fn open_url_in_browser(
 /// On a compact (phone) width a URL aside has no dock room, so it becomes the
 /// in-app browser with aside chrome (no address bar). Medium/Expanded keeps
 /// the docked URL-aside presentation; an unknown layout counts as compact.
-#[cfg(not(any(target_os = "android", target_env = "ohos")))]
 fn url_aside_degrades_to_browser(lxapp: &LxApp) -> bool {
     use lingxia_surface::SizeClass;
     !matches!(
@@ -638,12 +637,6 @@ fn url_aside_degrades_to_browser(lxapp: &LxApp) -> bool {
             .map(|l| l.size_class),
         Some(SizeClass::Medium) | Some(SizeClass::Expanded)
     )
-}
-
-/// Aside chrome is not wired on Android/Harmony yet.
-#[cfg(any(target_os = "android", target_env = "ohos"))]
-fn url_aside_degrades_to_browser(_lxapp: &LxApp) -> bool {
-    false
 }
 
 async fn open_surface(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {

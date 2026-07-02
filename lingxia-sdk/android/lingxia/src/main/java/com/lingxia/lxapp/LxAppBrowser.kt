@@ -46,9 +46,20 @@ internal object LxAppBrowser {
 
     private var addressIcon: ImageView? = null
     private var addressField: EditText? = null
+    private var addressRow: View? = null
     private var backButton: ImageView? = null
     private var forwardButton: ImageView? = null
+    private var asideRefreshButton: View? = null
+    private var plusButton: View? = null
+    private var menuButton: View? = null
     private var tabsBadge: TextView? = null
+    // Aside chrome: the active tab was opened as an aside — hide the address
+    // row and the new-tab/menu affordances; a row refresh appears instead.
+    private var isAsideActive = false
+    // Chrome-style history intervention: until the user interacts with a tab
+    // (page touch or address navigation), auto-created history (SPA pushState
+    // redirects) must not light back/forward.
+    private val interactedTabIds = mutableSetOf<String>()
 
     private val chromeRefreshRunnable = object : Runnable {
         override fun run() {
@@ -65,12 +76,18 @@ internal object LxAppBrowser {
         }
 
         registerTab(normalizedTabId)
+        val tabChanged = activeTabId != normalizedTabId
         activeTabId = normalizedTabId
         currentActivity = activity
         NativeApi.browserTabActivate(normalizedTabId)
 
         if (!ensureChrome(activity)) {
             return false
+        }
+        if (tabChanged) {
+            onActiveTabSwitched(activity, normalizedTabId)
+        } else {
+            refreshAsideChrome(activity)
         }
         closeOverflowMenu()
         closeTabSwitcher()
@@ -95,6 +112,8 @@ internal object LxAppBrowser {
 
         val tabsToClose = openTabIds.toList()
         openTabIds.clear()
+        interactedTabIds.clear()
+        isAsideActive = false
         activeTabId = null
         tabsToClose.forEach { closeBrowserTab(it) }
 
@@ -322,8 +341,16 @@ internal object LxAppBrowser {
             dismiss()
         }
 
+        // Aside chrome has no address pill, so refresh moves into the row.
+        val asideRefreshBtn = createIconButton(activity, R.drawable.icon_browser_refresh, 32, "#333333") {
+            activeWebView?.reload()
+            scheduleChromeRefreshSoon()
+        }
+        asideRefreshBtn.visibility = View.GONE
+
         actionRow.addView(backBtn)
         actionRow.addView(fwdBtn)
+        actionRow.addView(asideRefreshBtn)
         actionRow.addView(View(activity), LinearLayout.LayoutParams(0, 1, 1f))
         actionRow.addView(plusBtn)
         actionRow.addView(tabsBtn)
@@ -333,8 +360,12 @@ internal object LxAppBrowser {
 
         addressIcon = addrIcon
         addressField = addrField
+        this.addressRow = addressRow
         backButton = backBtn
         forwardButton = fwdBtn
+        asideRefreshButton = asideRefreshBtn
+        plusButton = plusBtn
+        menuButton = menuBtn
         updateNavigationButtons()
         return bar
     }
@@ -395,6 +426,12 @@ internal object LxAppBrowser {
         host.addView(managedWebView)
         managedWebView.resume()
 
+        managedWebView.setOnTouchListener { _, event ->
+            if (event.action == android.view.MotionEvent.ACTION_DOWN) {
+                markActiveTabInteracted()
+            }
+            false
+        }
         activeWebView = managedWebView
         activeWebViewTabId = tabId
         updateAddressBar(initialUrl.ifEmpty { managedWebView.url.orEmpty() })
@@ -430,6 +467,7 @@ internal object LxAppBrowser {
         }
         activeTabId = normalizedTabId
         NativeApi.browserTabActivate(normalizedTabId)
+        onActiveTabSwitched(activity, normalizedTabId)
         closeOverflowMenu()
         closeTabSwitcher()
         beginAttachActiveTab(activity)
@@ -479,6 +517,8 @@ internal object LxAppBrowser {
             updateAddressBar(activeWebView?.url.orEmpty())
             return
         }
+        // An address-bar navigation is a user interaction.
+        markActiveTabInteracted()
         navigateActiveTab(activity, targetUrl)
     }
 
@@ -536,10 +576,13 @@ internal object LxAppBrowser {
             setTypeface(typeface, android.graphics.Typeface.BOLD)
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         })
-        header.addView(createIconButton(activity, R.drawable.icon_plus, 34, "#333333") {
-            closeTabSwitcher()
-            openNewTab(activity)
-        })
+        // New tabs are self mode; hide the affordance while an aside is active.
+        if (!isAsideActive) {
+            header.addView(createIconButton(activity, R.drawable.icon_plus, 34, "#333333") {
+                closeTabSwitcher()
+                openNewTab(activity)
+            })
+        }
         panel.addView(header)
 
         val list = LinearLayout(activity).apply {
@@ -767,8 +810,11 @@ internal object LxAppBrowser {
 
     private fun updateNavigationButtons() {
         val view = activeWebView
-        setButtonEnabled(backButton, view?.canGoBack() == true)
-        setButtonEnabled(forwardButton, view?.canGoForward() == true)
+        // Pre-interaction history is auto-created (redirects/pushState) and
+        // must not light the affordances.
+        val interacted = activeTabId?.let(interactedTabIds::contains) == true
+        setButtonEnabled(backButton, view?.canGoBack() == true && interacted)
+        setButtonEnabled(forwardButton, view?.canGoForward() == true && interacted)
         updateTabsBadge()
     }
 
@@ -778,7 +824,44 @@ internal object LxAppBrowser {
     }
 
     private fun refreshChromeFromActiveWebView() {
+        // During attach retry the displayed webview still belongs to the
+        // previous tab; address and back/forward are per-tab, keep them reset.
+        if (activeWebViewTabId != activeTabId) {
+            updateTabsBadge()
+            return
+        }
         updateAddressBar(activeWebView?.url.orEmpty())
+        updateNavigationButtons()
+    }
+
+    // Blank the per-tab chrome immediately on a tab switch and re-derive the
+    // aside styling for the new tab.
+    private fun onActiveTabSwitched(activity: Activity, tabId: String) {
+        addressField?.setText("")
+        setButtonEnabled(backButton, false)
+        setButtonEnabled(forwardButton, false)
+        isAsideActive = NativeApi.browserTabIsAside(tabId)
+        refreshAsideChrome(activity)
+    }
+
+    // Aside chrome: no address row, no new-tab/menu, refresh in the row.
+    private fun refreshAsideChrome(activity: Activity) {
+        val aside = isAsideActive
+        addressRow?.visibility = if (aside) View.GONE else View.VISIBLE
+        plusButton?.visibility = if (aside) View.GONE else View.VISIBLE
+        menuButton?.visibility = if (aside) View.GONE else View.VISIBLE
+        asideRefreshButton?.visibility = if (aside) View.VISIBLE else View.GONE
+        bottomBar?.layoutParams?.let { params ->
+            params.height = dp(activity, if (aside) 56 else 96)
+            bottomBar?.layoutParams = params
+        }
+    }
+
+    private fun markActiveTabInteracted() {
+        val tabId = activeTabId ?: return
+        if (!interactedTabIds.add(tabId)) {
+            return
+        }
         updateNavigationButtons()
     }
 
