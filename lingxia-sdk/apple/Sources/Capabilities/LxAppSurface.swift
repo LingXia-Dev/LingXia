@@ -631,7 +631,13 @@ enum LxAppSurface {
                 _ = LxAppSurface.close(id: sid, appId: appId, reason: "user")
             }
             let onCloseAside: () -> Void = {
-                _ = LxAppSurface.close(id: id, appId: appId, reason: "user")
+                // Close every tab node, non-anchor first; the last close tears
+                // the panel down.
+                let ids = LxAppActiveHost.activeShell?.browserCoordinator
+                    .activeDockedBrowser?.tabSurfaceIds ?? [id]
+                for sid in ids.reversed() {
+                    _ = LxAppSurface.close(id: sid, appId: appId, reason: "user")
+                }
             }
             guard let opened = shell.browserCoordinator.openDockedAsideTab(
                 surfaceId: id,
@@ -752,23 +758,60 @@ enum LxAppSurface {
         entry.hostView?.unmount(reason: closeReason(reason))
         entry.webView?.stopLoading()
         entry.webView?.navigationDelegate = nil
-        // Multi-tab browser aside: an anchor node (dockedContainer set) owns the
-        // panel — closing it dismisses the whole aside (tear down every tab +
-        // close sibling tab nodes). A non-anchor tab just removes its own tab.
+        // Multi-tab browser aside: a tab close removes just that tab. When the
+        // closed node is the anchor (dockedContainer set) and other tabs
+        // survive, the panel re-anchors to a survivor node; the LAST tab
+        // closing tears the panel down.
+        var reanchored = false
         if let browser = entry.dockedBrowser {
             if entry.dockedContainer != nil {
+                _ = browser.removeTab(surfaceId: id)
+                if let survivorId = browser.anchorSurfaceId, let survivor = entries[survivorId] {
+                    entries[survivorId] = Entry(
+                        id: survivorId,
+                        appId: survivor.appId,
+                        pageInstanceId: survivor.pageInstanceId,
+                        hostView: nil,
+                        webView: nil,
+                        navigationDelegate: nil,
+                        window: nil,
+                        parentWindow: nil,
+                        delegate: survivor.delegate,
+                        dockedPosition: entry.dockedPosition,
+                        dockedContainer: entry.dockedContainer,
+                        dockedBrowser: browser
+                    )
+                    if let container = entry.dockedContainer,
+                       let position = entry.dockedPosition,
+                       let shell = LxAppActiveHost.activeShell {
+                        shell.hidePanel(id: id)
+                        shell.registerPanelWithNativeContent(
+                            id: survivorId,
+                            position: position,
+                            contentView: container
+                        )
+                    }
+                    reanchored = true
+                } else {
+                    browser.tearDown()
+                    LxAppActiveHost.activeShell?.browserCoordinator.clearDockedBrowser()
+                }
+            } else if browser.removeTab(surfaceId: id) {
+                // Last tab closed through a non-anchor node (anchor entry
+                // missing): tear the panel down so no empty dock slot stays.
                 browser.tearDown()
                 LxAppActiveHost.activeShell?.browserCoordinator.clearDockedBrowser()
-                let siblings = entries.filter { $0.key != id && $0.value.dockedBrowser === browser }
-                for (siblingId, sibling) in siblings {
-                    entries.removeValue(forKey: siblingId)
-                    _ = onSurfaceClosed(sibling.appId, siblingId, closeReason(reason))
+                if let (anchorId, anchor) = entries.first(where: {
+                    $0.value.dockedBrowser === browser && $0.value.dockedContainer != nil
+                }) {
+                    entries.removeValue(forKey: anchorId)
+                    LxAppActiveHost.activeShell?.hidePanel(id: anchorId)
+                    anchor.dockedContainer?.removeFromSuperview()
+                    _ = onSurfaceClosed(anchor.appId, anchorId, closeReason(reason))
                 }
-            } else {
-                _ = browser.removeTab(surfaceId: id)
             }
         }
-        if entry.dockedPosition != nil {
+        if entry.dockedPosition != nil && !reanchored {
             // In-window aside: hide the panel slot and detach its content.
             LxAppActiveHost.activeShell?.hidePanel(id: id)
             entry.dockedContainer?.removeFromSuperview()
