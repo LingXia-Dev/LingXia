@@ -122,6 +122,16 @@ pub(super) fn top_bar_controls(
         nav_left + 2 * (TOP_BAR_BUTTON_SIZE + TOP_BAR_BUTTON_GAP),
     ));
 
+    // An aside tab keeps the nav cluster but has no address input - that is
+    // the sole self-vs-aside chrome distinction.
+    if layout
+        .address_bar
+        .as_ref()
+        .is_some_and(|address_bar| address_bar.aside)
+    {
+        return controls;
+    }
+
     let capsule_min_left = nav_left + nav_width + ADDRESS_CAPSULE_NAV_GAP;
     let capsule_width = capsule_space.min(ADDRESS_CAPSULE_MAX_WIDTH);
     let capsule_height = ADDRESS_CAPSULE_HEIGHT.min(rect_height(&top_bar));
