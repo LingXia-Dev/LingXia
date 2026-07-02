@@ -196,7 +196,7 @@ internal object LxAppBrowser {
             val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
             val ime = insets.getInsets(WindowInsetsCompat.Type.ime())
             val keyboardVisible = insets.isVisible(WindowInsetsCompat.Type.ime())
-            val barHeight = dp(activity, 96)
+            val barHeight = dp(activity, currentBarHeightDp())
             val navInset = if (keyboardVisible) 0 else systemBars.bottom
             val liftInset = if (keyboardVisible) ime.bottom else 0
             val totalBarHeight = barHeight + navInset
@@ -536,6 +536,10 @@ internal object LxAppBrowser {
             isClickable = true
             setOnClickListener { closeTabSwitcher() }
         }
+        // Edge-to-edge bottom sheet: flush with the screen sides/bottom, only
+        // the top corners rounded, content padded past the navigation bar.
+        val navInset = ViewCompat.getRootWindowInsets(container)
+            ?.getInsets(WindowInsetsCompat.Type.systemBars())?.bottom ?: 0
         val panel = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
             layoutParams = FrameLayout.LayoutParams(
@@ -543,9 +547,6 @@ internal object LxAppBrowser {
                 ViewGroup.LayoutParams.WRAP_CONTENT
             ).apply {
                 gravity = Gravity.BOTTOM
-                leftMargin = dp(activity, 12)
-                rightMargin = dp(activity, 12)
-                bottomMargin = dp(activity, 12)
             }
             background = GradientDrawable().apply {
                 setColor(Color.WHITE)
@@ -557,7 +558,7 @@ internal object LxAppBrowser {
                 )
             }
             elevation = dp(activity, 12).toFloat()
-            setPadding(dp(activity, 12), dp(activity, 10), dp(activity, 12), dp(activity, 12))
+            setPadding(dp(activity, 12), dp(activity, 10), dp(activity, 12), dp(activity, 12) + navInset)
             setOnClickListener { }
         }
 
@@ -595,10 +596,14 @@ internal object LxAppBrowser {
         openTabIds.forEach { tabId ->
             list.addView(createTabRow(activity, tabId))
         }
+        // Size to the rows (52dp each) and only cap when the list is long, so
+        // one tab doesn't float in a half-screen sheet.
+        val contentHeight = dp(activity, 52) * openTabIds.size.coerceAtLeast(1)
+        val maxHeight = minOf(dp(activity, 360), activity.resources.displayMetrics.heightPixels / 2)
         panel.addView(ScrollView(activity).apply {
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                minOf(dp(activity, 360), activity.resources.displayMetrics.heightPixels / 2)
+                minOf(contentHeight, maxHeight)
             )
             addView(list)
         })
@@ -844,6 +849,10 @@ internal object LxAppBrowser {
         refreshAsideChrome(activity)
     }
 
+    // The bar holds two rows for self chrome and a single compact action
+    // row for an aside; the insets listener owns the applied height.
+    private fun currentBarHeightDp(): Int = if (isAsideActive) 52 else 96
+
     // Aside chrome: no address row, no new-tab/menu, refresh in the row.
     private fun refreshAsideChrome(activity: Activity) {
         val aside = isAsideActive
@@ -851,10 +860,7 @@ internal object LxAppBrowser {
         plusButton?.visibility = if (aside) View.GONE else View.VISIBLE
         menuButton?.visibility = if (aside) View.GONE else View.VISIBLE
         asideRefreshButton?.visibility = if (aside) View.VISIBLE else View.GONE
-        bottomBar?.layoutParams?.let { params ->
-            params.height = dp(activity, if (aside) 56 else 96)
-            bottomBar?.layoutParams = params
-        }
+        overlayContainer?.let(ViewCompat::requestApplyInsets)
     }
 
     private fun markActiveTabInteracted() {
