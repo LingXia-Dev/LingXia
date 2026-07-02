@@ -812,6 +812,9 @@ impl LxApp {
         if !self.is_home_lxapp {
             return;
         }
+        if matches!(self.bundle_source, LxAppBundleSource::DevPath { .. }) {
+            return;
+        }
         if self
             .home_update_check_dispatched
             .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)

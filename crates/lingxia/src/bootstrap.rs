@@ -197,14 +197,12 @@ fn panel_position_from_edge(edge: &str) -> Option<lingxia_app_context::PanelPosi
 pub(crate) fn init_with_platform(platform: lingxia_platform::Platform) -> Option<String> {
     use lingxia_platform::traits::app_runtime::AppRuntime;
 
-    #[cfg(feature = "devtool")]
-    let _ = crate::devtool::install_lxapp_dev_config_from_env();
     crate::host_addon::run_before_init();
 
     let runtime = std::sync::Arc::new(platform.clone());
     crate::runtime::set_platform(runtime.clone());
     #[cfg(feature = "devtool")]
-    let app_config = crate::devtool::load_host_app_config(&runtime, load_bundled_app_config)?;
+    let app_config = crate::devtool::prepare_host_app_config(&runtime, load_bundled_app_config)?;
     #[cfg(not(feature = "devtool"))]
     let app_config = load_bundled_app_config(&runtime)?;
     crate::app::set_data_dir(runtime.app_data_dir());
@@ -213,6 +211,8 @@ pub(crate) fn init_with_platform(platform: lingxia_platform::Platform) -> Option
         log::error!("Failed to initialize app configuration: {}", err);
         return None;
     }
+    #[cfg(feature = "devtool")]
+    crate::devtool::prepare_bundle_sources(&runtime);
     crate::host_addon::run_install_logic_extensions();
     crate::host_addon::run_install_host_apis();
     crate::browser::register_bundled_app();
@@ -220,8 +220,6 @@ pub(crate) fn init_with_platform(platform: lingxia_platform::Platform) -> Option
     crate::applink::install_handler();
     #[cfg(feature = "standard")]
     lingxia_logic::register_logic_runtime();
-    #[cfg(feature = "devtool")]
-    crate::devtool::register_bundle_source_override();
     let home_app_id = lxapp::init(platform);
     crate::update::install_auto_trigger(runtime.clone());
     crate::browser::register_builtin_assets();
