@@ -136,10 +136,17 @@ pub trait SurfacePresenter: Send + Sync + 'static {
     }
 
     /// Show or hide a top-level surface declared by the host (e.g. the AI-chat
-    /// panel or terminal in `ui` config). Only platforms with a host shell that
-    /// manages declared surfaces (currently macOS) support it; others have no
-    /// such shell and return `NotSupported`.
-    fn set_managed_surface_visible(&self, _id: &str, _visible: bool) -> Result<(), PlatformError> {
+    /// panel or terminal in `ui` config). `edge` overrides the declared edge
+    /// for this show (the panel moves if already visible); `None` keeps the
+    /// current placement. Only platforms with a host shell that manages
+    /// declared surfaces (currently macOS) support it; others have no such
+    /// shell and return `NotSupported`.
+    fn set_managed_surface_visible(
+        &self,
+        _id: &str,
+        _visible: bool,
+        _edge: Option<&str>,
+    ) -> Result<(), PlatformError> {
         Err(PlatformError::NotSupported(
             "managed surfaces are not supported on this platform".to_string(),
         ))

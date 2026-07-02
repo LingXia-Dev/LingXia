@@ -308,15 +308,26 @@ async fn open_page_spec(ctx: JSContext, spec: &JSObject) -> JSResult<JSObject> {
     open_surface(ctx, options).await
 }
 
-/// `{ surface }` branch of `lx.openSurface`. Shows a
+/// `{ surface, edge? }` branch of `lx.openSurface`. Shows a
 /// host-declared top-level surface by its `ui` id and returns a handle whose
 /// `show`/`hide`/`close` drive the host shell's visibility. The host shell
-/// positions declared surfaces from `lingxia.yaml`.
+/// positions declared surfaces from `lingxia.yaml`; `edge` overrides the
+/// declared edge for this open (the panel moves if already visible).
 fn open_declared_surface_spec(ctx: &JSContext, spec: &JSObject) -> JSResult<JSObject> {
     let id = read_required_string(spec, "surface")?;
+    let edge = read_optional_string(spec, "edge")?;
+    if let Some(edge) = edge.as_deref()
+        && !matches!(edge.trim(), "left" | "right" | "top" | "bottom")
+    {
+        return Err(surface_error(
+            rong::error::E_INVALID_ARG,
+            "invalid_surface_spec",
+            format!("edge must be left, right, top, or bottom; got {edge}"),
+        ));
+    }
     let lxapp = LxApp::from_ctx(ctx)?;
     lxapp
-        .set_shell_surface_visible(id.trim(), true)
+        .set_shell_surface_visible(id.trim(), true, edge.as_deref().map(str::trim))
         .map_err(|err| surface_error(rong::error::E_INTERNAL, "shell_surface_failed", err))?;
     declared_surface_handle(ctx, lxapp, id.trim().to_string())
 }
@@ -401,7 +412,7 @@ fn declared_surface_handle(ctx: &JSContext, lxapp: Arc<LxApp>, id: String) -> JS
         "show",
         JSFunc::new(ctx, move || {
             show_lxapp
-                .set_shell_surface_visible(&show_id, true)
+                .set_shell_surface_visible(&show_id, true, None)
                 .map_err(|err| surface_error(rong::error::E_INTERNAL, "shell_surface_failed", err))
         })?,
     )?;
@@ -412,7 +423,7 @@ fn declared_surface_handle(ctx: &JSContext, lxapp: Arc<LxApp>, id: String) -> JS
         "hide",
         JSFunc::new(ctx, move || {
             hide_lxapp
-                .set_shell_surface_visible(&hide_id, false)
+                .set_shell_surface_visible(&hide_id, false, None)
                 .map_err(|err| surface_error(rong::error::E_INTERNAL, "shell_surface_failed", err))
         })?,
     )?;
@@ -423,7 +434,7 @@ fn declared_surface_handle(ctx: &JSContext, lxapp: Arc<LxApp>, id: String) -> JS
         "close",
         JSFunc::new(ctx, move || {
             close_lxapp
-                .set_shell_surface_visible(&close_id, false)
+                .set_shell_surface_visible(&close_id, false, None)
                 .map_err(|err| surface_error(rong::error::E_INTERNAL, "shell_surface_failed", err))
         })?,
     )?;

@@ -100,8 +100,13 @@ impl SurfacePresenter for Platform {
         }
     }
 
-    fn set_managed_surface_visible(&self, id: &str, visible: bool) -> Result<(), PlatformError> {
-        if set_managed_surface_visible(id, visible) {
+    fn set_managed_surface_visible(
+        &self,
+        id: &str,
+        visible: bool,
+        edge: Option<&str>,
+    ) -> Result<(), PlatformError> {
+        if set_managed_surface_visible(id, visible, edge.unwrap_or("")) {
             Ok(())
         } else {
             Err(PlatformError::Platform(format!(
