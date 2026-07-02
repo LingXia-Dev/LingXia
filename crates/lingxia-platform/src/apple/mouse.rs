@@ -71,7 +71,7 @@ async fn perform_app_mouse_macos(
 }
 
 #[cfg(target_os = "macos")]
-fn parse_window_id(raw: Option<&str>) -> Result<Option<i64>, PlatformError> {
+pub(super) fn parse_window_id(raw: Option<&str>) -> Result<Option<i64>, PlatformError> {
     match raw {
         Some(value) => value.parse::<i64>().map(Some).map_err(|_| {
             PlatformError::InvalidParameter(format!(
@@ -172,7 +172,7 @@ fn perform_app_mouse_on_main(
 }
 
 #[cfg(target_os = "macos")]
-fn resolve_window(
+pub(super) fn resolve_window(
     app: *mut objc2::runtime::AnyObject,
     target_window_number: Option<i64>,
 ) -> Option<*mut objc2::runtime::AnyObject> {
@@ -238,14 +238,19 @@ fn dispatch_action(
         } => {
             // click_count >= 1 is enforced by validate_action
             let count = isize::from(*click_count);
-            post_mouse(
+            // Deliver down+up through the app event queue (NSApp dispatch)
+            // rather than window.sendEvent: a control hit by the down runs a
+            // nested tracking loop that needs the up already queued (else the
+            // main thread deadlocks) and reads NSApp.currentEvent, which only
+            // the queue dispatch path maintains.
+            queue_mouse(
                 window,
                 content_view,
                 *x,
                 *y,
                 MousePhase::Down(*button, count),
             )?;
-            post_mouse(window, content_view, *x, *y, MousePhase::Up(*button, count))
+            queue_mouse(window, content_view, *x, *y, MousePhase::Up(*button, count))
         }
         AppMouseAction::Drag {
             from_x,
@@ -254,21 +259,22 @@ fn dispatch_action(
             to_y,
             button,
         } => {
-            post_mouse(
+            // Fully queued for the same reasons as Click.
+            queue_mouse(
                 window,
                 content_view,
                 *from_x,
                 *from_y,
                 MousePhase::Down(*button, 1),
             )?;
-            post_mouse(
+            queue_mouse(
                 window,
                 content_view,
                 *to_x,
                 *to_y,
                 MousePhase::Drag(*button),
             )?;
-            post_mouse(
+            queue_mouse(
                 window,
                 content_view,
                 *to_x,
@@ -347,7 +353,7 @@ fn content_point_to_window_point(
 /// `_eventRelativeToWindow:` (falling back to the original event when it
 /// returns nil), then deliver it through `NSWindow.sendEvent:`.
 #[cfg(target_os = "macos")]
-unsafe fn send_event_to_window(
+pub(super) unsafe fn send_event_to_window(
     window: *mut objc2::runtime::AnyObject,
     event: &objc2_app_kit::NSEvent,
 ) {
@@ -366,13 +372,13 @@ unsafe fn send_event_to_window(
 }
 
 #[cfg(target_os = "macos")]
-fn post_mouse(
+fn make_mouse_event(
     window: *mut objc2::runtime::AnyObject,
     content_view: *mut objc2::runtime::AnyObject,
     x: f64,
     y: f64,
     phase: MousePhase,
-) -> Result<(), String> {
+) -> Result<objc2::rc::Retained<objc2_app_kit::NSEvent>, String> {
     use objc2::msg_send;
     use objc2_app_kit::{NSEvent, NSEventModifierFlags};
 
@@ -380,7 +386,7 @@ fn post_mouse(
 
     unsafe {
         let window_number: isize = msg_send![window, windowNumber];
-        let event = NSEvent::mouseEventWithType_location_modifierFlags_timestamp_windowNumber_context_eventNumber_clickCount_pressure(
+        NSEvent::mouseEventWithType_location_modifierFlags_timestamp_windowNumber_context_eventNumber_clickCount_pressure(
             event_type(phase),
             location,
             NSEventModifierFlags::empty(),
@@ -391,11 +397,53 @@ fn post_mouse(
             click_count(phase),
             1.0,
         )
-        .ok_or_else(|| "failed to create mouse event".to_string())?;
+        .ok_or_else(|| "failed to create mouse event".to_string())
+    }
+}
 
+#[cfg(target_os = "macos")]
+fn post_mouse(
+    window: *mut objc2::runtime::AnyObject,
+    content_view: *mut objc2::runtime::AnyObject,
+    x: f64,
+    y: f64,
+    phase: MousePhase,
+) -> Result<(), String> {
+    let event = make_mouse_event(window, content_view, x, y, phase)?;
+    unsafe {
         send_event_to_window(window, event.as_ref());
     }
+    Ok(())
+}
 
+/// Enqueue the event in the app event queue (`postEvent:atStart:NO`) instead
+/// of delivering it synchronously, so a nested mouse-tracking loop started by
+/// an earlier down can consume it.
+#[cfg(target_os = "macos")]
+fn queue_mouse(
+    window: *mut objc2::runtime::AnyObject,
+    content_view: *mut objc2::runtime::AnyObject,
+    x: f64,
+    y: f64,
+    phase: MousePhase,
+) -> Result<(), String> {
+    use objc2::msg_send;
+    use objc2_app_kit::NSEvent;
+
+    let event = make_mouse_event(window, content_view, x, y, phase)?;
+    unsafe {
+        let event_ptr = event.as_ref() as *const NSEvent as *mut objc2::runtime::AnyObject;
+        let relative_event: *mut objc2::runtime::AnyObject =
+            msg_send![event_ptr, _eventRelativeToWindow: window];
+        let event_ptr = if relative_event.is_null() {
+            event_ptr
+        } else {
+            relative_event
+        };
+        let app: *mut objc2::runtime::AnyObject =
+            msg_send![objc2::class!(NSApplication), sharedApplication];
+        let _: () = msg_send![app, postEvent: event_ptr, atStart: false];
+    }
     Ok(())
 }
 
