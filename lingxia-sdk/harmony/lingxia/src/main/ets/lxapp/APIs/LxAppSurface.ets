@@ -5,6 +5,7 @@ import { webview } from '@kit.ArkWeb';
 import { LingXiaWebView } from '../LingXiaWebView';
 import { addWebViewUiCallback, removeWebViewUiCallback, WebViewInfo, WebViewManager, toWebTag } from '../WebViewBridge';
 import { disposePageInstance, notifyPageInstanceHidden, notifyPageInstanceMounted, notifyPageInstanceVisible, onSurfaceClosed } from 'liblingxia.so';
+import { FloatWindowManager } from './LxAppFloatWindow';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.Surface';
@@ -171,6 +172,21 @@ export class LxAppSurface {
     LxAppSurface.layouts.set(key, layout);
     LxAppSurface.visibleSurfaceKeys.add(key);
 
+    // Floats live in their own sub-window (never in the main tree — a hidden
+    // in-tree ArkWeb would keep intercepting touches); the window's content
+    // page attaches the page webview and fires mounted/visible itself.
+    if (role === ROLE_FLOAT) {
+      FloatWindowManager.setCloseHandler((closeId: string, closeAppId: string, reason: string) => {
+        LxAppSurface.close(closeId, closeAppId, reason);
+      });
+      FloatWindowManager.open(key, layout).then((opened: boolean) => {
+        if (!opened) {
+          LxAppSurface.failPageSurface(layout);
+        }
+      });
+      return true;
+    }
+
 	    const success = LxAppSurface.managerRef.present(layout);
 	    if (success) {
       if (content === CONTENT_PAGE) {
@@ -235,6 +251,17 @@ export class LxAppSurface {
     const key = LxAppSurface.surfaceKey(id, appId);
 	    const layout = LxAppSurface.layouts.get(key) ?? null;
 	    const manager = LxAppSurface.managerRef;
+    if (layout && layout.role === ROLE_FLOAT) {
+      if (layout.content === CONTENT_PAGE) {
+        notifyPageInstanceHidden(layout.pageInstanceId, normalizedReason);
+      }
+      LxAppSurface.layouts.delete(key);
+      LxAppSurface.visibleSurfaceKeys.delete(key);
+      FloatWindowManager.close(key).then(() => {
+        onSurfaceClosed(layout.appId, layout.id, normalizedReason);
+      });
+      return true;
+    }
 	    if (!layout) {
 	      hilog.warn(DOMAIN, TAG, `close without matching active layout id=${id} appId=${appId}`);
 	      if (manager && manager.hasSurface(id, appId)) {
@@ -292,6 +319,14 @@ export class LxAppSurface {
 	      return false;
 	    }
     const manager = LxAppSurface.managerRef;
+    if (layout.role === ROLE_FLOAT) {
+      LxAppSurface.visibleSurfaceKeys.add(key);
+      FloatWindowManager.show(key);
+      if (layout.content === CONTENT_PAGE && layout.pageInstanceId) {
+        notifyPageInstanceVisible(layout.pageInstanceId);
+      }
+      return true;
+    }
 	    if (layout.content === CONTENT_URL) {
 	      if (!manager) {
 	        return false;
@@ -332,6 +367,14 @@ export class LxAppSurface {
 	      hilog.warn(DOMAIN, TAG, `hide: surface not found id=${id} appId=${appId}`);
 	      return manager ? manager.setVisible(appId, false, id) : false;
 	    }
+    if (layout.role === ROLE_FLOAT) {
+      LxAppSurface.visibleSurfaceKeys.delete(key);
+      FloatWindowManager.hide(key);
+      if (layout.content === CONTENT_PAGE && layout.pageInstanceId) {
+        notifyPageInstanceHidden(layout.pageInstanceId, 'hidden');
+      }
+      return true;
+    }
 	    if (layout.content === CONTENT_URL) {
 	      if (!manager) {
 	        return false;
@@ -410,6 +453,9 @@ export class LxAppSurface {
 	    if (!current) {
 	      return;
 	    }
+    if (layout.role === ROLE_FLOAT) {
+      FloatWindowManager.close(key);
+    }
 	    const manager = LxAppSurface.managerRef;
 	    if (manager) {
 	      manager.close(layout.id, layout.appId);
