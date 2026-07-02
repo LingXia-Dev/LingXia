@@ -1259,11 +1259,37 @@ define_class!(
                                             NewWindowPolicy::Cancel => {}
                                         }
                                     } else {
-                                        log::warn!(
-                                            "Apple new-window handler missing webtag={} url={}",
-                                            webtag,
-                                            url
-                                        );
+                                        // No handler (e.g. runner without the
+                                        // browser-shell feature): a target=_blank
+                                        // link would otherwise vanish. For browser
+                                        // tabs (webtag `app.lingxia.browser:…`;
+                                        // literal hardcoded to avoid a dep cycle
+                                        // with lingxia-browser) load http/https
+                                        // URLs in place instead of dropping them.
+                                        let is_browser_tab = webtag
+                                            .as_str()
+                                            .starts_with("app.lingxia.browser:");
+                                        let scheme = url
+                                            .split(':')
+                                            .next()
+                                            .unwrap_or("")
+                                            .to_ascii_lowercase();
+                                        let is_web = scheme == "http" || scheme == "https";
+                                        if is_browser_tab && is_web {
+                                            let _: () =
+                                                msg_send![webview, loadRequest: request];
+                                            log::info!(
+                                                "Apple new-window loaded in self (no handler) webtag={} url={}",
+                                                webtag,
+                                                url
+                                            );
+                                        } else {
+                                            log::warn!(
+                                                "Apple new-window handler missing webtag={} url={}",
+                                                webtag,
+                                                url
+                                            );
+                                        }
                                     }
                                 }
                             }
