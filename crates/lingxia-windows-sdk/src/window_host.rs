@@ -509,12 +509,41 @@ pub fn show_webview_as_adaptive_panel(
     preferred_size: Option<i32>,
 ) -> StdResult<()> {
     let handler = find_webview_handler(webtag).ok_or_else(|| handler_not_ready(webtag))?;
+    // The caller's webtag may be the canonical (instance-less) form; every
+    // registry below must use the live webview's own key, or the layout
+    // pass's visibility reconcile never matches the panel and blinks it on
+    // each sync.
+    let webtag = &handler.webtag();
     let excluded = hwnd_from_handle(handler.native_view().window);
     let Some(host) = active_host_window_except(Some(excluded)) else {
         show_webview_window(webtag, title, true)?;
         mark_panel_visible(panel_id, true);
         return Ok(());
     };
+
+    // Re-presenting the panel already visible in this host with the same
+    // registration (a layout-plan recommit, e.g. on a page switch) must not
+    // blink the webview: skip the hide/show cycle and refresh the layout.
+    let already_docked = webtag_is_visible(webtag.key())
+        && is_panel_visible(panel_id)
+        && window_handle_for_key(webtag.key()).is_some_and(|window| window == host)
+        && WEBVIEW_PANELS
+            .get()
+            .and_then(|panels| panels.lock().ok())
+            .and_then(|panels| {
+                panels.get(panel_id).map(|panel| {
+                    panel.webtag_key == webtag.key()
+                        && panel.position == position
+                        && panel.requested_size == preferred_size
+                })
+            })
+            .unwrap_or(false);
+    if already_docked {
+        register_webview_panel(panel_id, webtag, title, position, preferred_size);
+        sync_window_layout(host);
+        invalidate_window_chrome(host);
+        return Ok(());
+    }
 
     handler.set_content_visible(false)?;
     set_window_handle(webtag.key(), host);
@@ -2102,7 +2131,13 @@ fn collapse_obscured_webview_panels(hwnd: HWND, laid_out: &HashSet<String>) {
 
 fn reconcile_host_webview_visibility(hwnd: HWND, visible_webtags: &HashSet<String>) {
     let host = hwnd_handle(hwnd);
-    let host_visible = is_window_visible(hwnd) && !is_minimized(hwnd);
+    // A transiently invisible host (frame-style churn during a present, or a
+    // minimize) must not strip its webviews: nothing is on screen anyway, and
+    // hiding the docked panel here blinks it once the host is back. The next
+    // layout pass on a visible host reconciles.
+    if !is_window_visible(hwnd) || is_minimized(hwnd) {
+        return;
+    }
     let mut to_show = Vec::new();
     let mut to_hide = Vec::new();
 
@@ -2117,7 +2152,7 @@ fn reconcile_host_webview_visibility(hwnd: HWND, visible_webtags: &HashSet<Strin
         let Some(handler) = find_webview_handler(&webtag) else {
             continue;
         };
-        let should_show = host_visible && visible_webtags.contains(&key);
+        let should_show = visible_webtags.contains(&key);
         match (should_show, webtag_is_visible(&key)) {
             (true, false) => to_show.push((key, handler)),
             (false, true) => to_hide.push((key, handler)),
