@@ -73,6 +73,13 @@ fn capsule_geometry() -> CapsuleGeometry {
     }
 }
 
+/// Screen width the capsule keeps occupied at the content's top-right: the
+/// pill plus its inset mirrored on both sides.
+pub(crate) fn capsule_reserve_width() -> i32 {
+    let pill_w = CAPSULE_PAD * 2 + CAPSULE_ICON * 2 + CAPSULE_GAP * 2 + 1;
+    pill_w + CAPSULE_INSET * 2
+}
+
 fn capsule_class() -> PCWSTR {
     static REGISTERED: OnceLock<()> = OnceLock::new();
     REGISTERED.get_or_init(|| {

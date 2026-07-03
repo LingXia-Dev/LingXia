@@ -710,7 +710,9 @@ fn build_window_layout(app: &LxApp, path: &str) -> WindowsShellWindowLayout {
     // style) page draws its own header and bleeds content up under the status
     // bar, so it reserves no top inset — the transparent status-bar overlay just
     // floats the clock/indicators over the page.
-    let immersive = app.get_navbar_state(path).is_custom_navigation();
+    // A presented browser tab is never immersive: its address row must sit
+    // below the status-bar strip, not under the floating clock/cutout.
+    let immersive = address_bar.is_none() && app.get_navbar_state(path).is_custom_navigation();
     let top_inset = if immersive {
         0
     } else {
@@ -718,10 +720,15 @@ fn build_window_layout(app: &LxApp, path: &str) -> WindowsShellWindowLayout {
             .map(device_frame_status_bar_height)
             .unwrap_or(0)
     };
+    // A presented browser tab covers the phone tab bar, matching the macOS
+    // runner's full-screen browser surface; side tab bars (sidebar) stay.
+    let tab_bar = build_tab_bar_layout(app, !panel_activators.is_empty()).filter(|tabbar| {
+        address_bar.is_none() || !matches!(tabbar.position, WindowsShellTabBarPosition::Bottom)
+    });
     WindowsShellWindowLayout {
         navigation_bar,
         address_bar,
-        tab_bar: build_tab_bar_layout(app, !panel_activators.is_empty()),
+        tab_bar,
         panel_activators,
         top_inset,
         suppress_window_controls,
