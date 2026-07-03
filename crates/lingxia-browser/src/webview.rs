@@ -86,6 +86,11 @@ impl WebViewDelegate for BrowserTabDelegate {
         let _ = crate::tabs::browser_update_tab_favicon(&self.tab_id, png_bytes);
     }
 
+    fn on_history_changed(&self, can_go_back: bool, can_go_forward: bool) {
+        let _ =
+            crate::tabs::browser_update_tab_nav_state(&self.tab_id, can_go_back, can_go_forward);
+    }
+
     fn handle_post_message(&self, msg: String) {
         if let Some((level, message)) = decode_console_envelope(&msg) {
             self.log(level, &message);

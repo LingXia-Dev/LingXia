@@ -61,6 +61,29 @@ pub(crate) fn register_event_handlers(
             })?;
     }
 
+    let history_tag = webtag.clone();
+    unsafe {
+        let mut token = 0;
+        webview
+            .add_HistoryChanged(
+                &HistoryChangedEventHandler::create(Box::new(move |sender, _args| {
+                    let Some(sender) = sender else {
+                        return Ok(());
+                    };
+                    let mut can_back = BOOL::default();
+                    let mut can_forward = BOOL::default();
+                    sender.CanGoBack(&mut can_back)?;
+                    sender.CanGoForward(&mut can_forward)?;
+                    if let Some(delegate) = find_webview_delegate(&history_tag) {
+                        delegate.on_history_changed(can_back.as_bool(), can_forward.as_bool());
+                    }
+                    Ok(())
+                })),
+                &mut token,
+            )
+            .map_err(|err| WebViewError::WebView(format!("add_HistoryChanged failed: {err}")))?;
+    }
+
     let title_tag = webtag.clone();
     unsafe {
         let mut token = 0;

@@ -131,6 +131,12 @@ pub struct BrowserTabInfo {
     pub current_url: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
+    /// Session-history availability of the tab's webview; drives smart
+    /// back/forward affordances in shell chrome.
+    #[serde(default)]
+    pub can_go_back: bool,
+    #[serde(default)]
+    pub can_go_forward: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

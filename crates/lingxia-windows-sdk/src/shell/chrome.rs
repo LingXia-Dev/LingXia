@@ -1821,13 +1821,19 @@ fn draw_aside_panel_header(hdc: HDC, panel: &WindowsChromePanel, tabs: &[Windows
         pal.window_background,
     );
 
+    let (can_back, can_forward) = super::runtime::aside_panel_nav_state();
     for (command, rect) in aside_panel_nav_button_rects(panel) {
-        let icon = match command {
-            command_id::ASIDE_PANEL_NAV_BACK => WindowsDesignIcon::Back,
-            command_id::ASIDE_PANEL_NAV_FORWARD => WindowsDesignIcon::Forward,
-            _ => WindowsDesignIcon::BrowserRefresh,
+        let (icon, enabled) = match command {
+            command_id::ASIDE_PANEL_NAV_BACK => (WindowsDesignIcon::Back, can_back),
+            command_id::ASIDE_PANEL_NAV_FORWARD => (WindowsDesignIcon::Forward, can_forward),
+            _ => (WindowsDesignIcon::BrowserRefresh, true),
         };
-        draw_design_icon_button(hdc, rect, icon, pal.frame_button_icon, 16);
+        let color = if enabled {
+            pal.frame_button_icon
+        } else {
+            pal.text_muted
+        };
+        draw_design_icon_button(hdc, rect, icon, color, 16);
     }
 
     let rects = aside_panel_tab_rects(panel, tabs.len());
