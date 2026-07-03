@@ -732,7 +732,12 @@ pub(super) fn compute_chrome_rects(client: RECT, layout: &WindowsShellWindowLayo
         // the top edge under the transparent status-bar overlay. Distinguish the
         // immersive frame (top_inset 0 + device frame) from the browser shell
         // (top_inset 0, no device frame) via suppress_window_controls.
-        if (top_inset == 0 && !layout.suppress_window_controls) || navbar_visible {
+        // A presented browser tab always gets the row: it carries the URL
+        // capsule and close control (the phone-sized frame included).
+        if (top_inset == 0 && !layout.suppress_window_controls)
+            || navbar_visible
+            || address_bar_visible(layout)
+        {
             content.top += SHELL_TOP_BAR_HEIGHT;
         }
         top_bar_left = content.left;

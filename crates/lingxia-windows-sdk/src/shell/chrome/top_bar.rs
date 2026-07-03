@@ -11,6 +11,19 @@ use super::*;
 
 /// Whether the layout carries a visible browser address bar (which then
 /// owns the top bar; the lxapp navigation bar yields).
+/// Width the floating device capsule keeps occupied at a framed screen's
+/// top-right, which the top-bar controls must stay clear of.
+fn device_capsule_reserve() -> i32 {
+    #[cfg(feature = "device-frame")]
+    {
+        crate::device_frame::capsule_reserve_width()
+    }
+    #[cfg(not(feature = "device-frame"))]
+    {
+        0
+    }
+}
+
 pub(super) fn address_bar_visible(layout: &WindowsShellWindowLayout) -> bool {
     layout
         .address_bar
@@ -86,7 +99,12 @@ pub(super) fn top_bar_controls(
         square_button(app_right + TOP_BAR_BUTTON_GAP)
     });
     let mut left_edge = top_bar.left + TOP_BAR_PADDING;
-    if let Some(app_icon) = app_icon {
+    // The app-menu slot is skipped on a device-framed screen (the icon is not
+    // drawn there — its menu lives on the frame's capsule), freeing the
+    // leading edge for the browser controls.
+    if !layout.suppress_window_controls
+        && let Some(app_icon) = app_icon
+    {
         left_edge = left_edge.max(app_icon.right + TOP_BAR_BUTTON_GAP);
     }
     if let Some(toggle) = &sidebar_toggle {
@@ -110,13 +128,14 @@ pub(super) fn top_bar_controls(
     // the toggle and them is available to the address section.
     let mut right_edge = (client.right - window_frame_buttons_width() - TOP_BAR_PADDING)
         .min(top_bar.right - TOP_BAR_PADDING);
-    // A device-framed screen has no caption buttons; the presented browser
-    // ends with a close button at the trailing edge instead.
+    // A device-framed screen has no caption buttons: the presented browser
+    // leads with a close button instead (Safari-view style), and the trailing
+    // edge stays clear of the floating device capsule.
     if layout.suppress_window_controls {
-        right_edge = top_bar.right - TOP_BAR_PADDING;
-        let close = square_button(right_edge - TOP_BAR_BUTTON_SIZE);
+        let close = square_button(left_edge);
         controls.browser_close = Some(close);
-        right_edge = close.left - TOP_BAR_BUTTON_GAP;
+        left_edge = close.right + TOP_BAR_BUTTON_GAP;
+        right_edge = top_bar.right - TOP_BAR_PADDING - device_capsule_reserve();
     }
     let nav_width = 3 * TOP_BAR_BUTTON_SIZE + 2 * TOP_BAR_BUTTON_GAP;
     let capsule_space = right_edge - left_edge - nav_width - ADDRESS_CAPSULE_NAV_GAP;

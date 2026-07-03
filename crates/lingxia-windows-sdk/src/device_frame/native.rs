@@ -49,6 +49,7 @@ mod info_sheet;
 mod paint;
 mod status_bar;
 
+pub(crate) use capsule::capsule_reserve_width;
 use capsule::{create_capsule_window, destroy_capsule, hide_capsule, reposition_capsule};
 use corner_mask::{
     create_corner_mask, destroy_corner_mask, hide_corner_mask, reposition_corner_mask,
