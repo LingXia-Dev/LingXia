@@ -331,23 +331,19 @@ struct RunnerBuildTool {
         }
 
         let libDir = pathJoin(projectRoot, "target/\(targetTriple)/\(buildConfig)")
-        let prebuiltLib = try? resolveBuiltStaticLibrary(libDir: libDir)
 
         print("[runner-plugin] building Rust staticlib (\(targetTriple), \(buildConfig))")
-        do {
-            _ = try runCommand(
-                executable: cargoPath,
-                args: args,
-                currentDir: projectRoot,
-                baseEnvironment: baseEnvironment,
-                envOverrides: ["MACOSX_DEPLOYMENT_TARGET": macosDeploymentTarget]
-            )
-        } catch {
-            guard let prebuiltLib else {
-                throw error
-            }
-            print("[runner-plugin] warning: cargo build failed, reusing existing staticlib: \(prebuiltLib)")
-        }
+        // Never fall back to a previously built staticlib: it silently drops
+        // requested features (an injected provider) and a lib from another
+        // source state misaligns with the freshly generated Swift glue —
+        // aborting at startup inside lingxia_init.
+        _ = try runCommand(
+            executable: cargoPath,
+            args: args,
+            currentDir: projectRoot,
+            baseEnvironment: baseEnvironment,
+            envOverrides: ["MACOSX_DEPLOYMENT_TARGET": macosDeploymentTarget]
+        )
 
         let src = try resolveBuiltStaticLibrary(libDir: libDir)
         let dst = pathJoin(libDir, "liblingxia.a")
