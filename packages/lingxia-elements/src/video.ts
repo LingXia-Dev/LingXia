@@ -106,6 +106,20 @@ export class LxVideoElement extends HTMLElement {
   private iOSScrollEventListener: EventListenerObject = {
     handleEvent: () => this.boundUpdatePosition(),
   };
+  private scrollSettleFrame: number | null = null;
+  // Scroll events do not bubble, so a plain window listener misses inner
+  // scroll containers; the capture phase sees them all. Any ancestor
+  // scrolling moves the element's document rect, so re-measure (coalesced
+  // to one update per frame; decide() dedups unchanged rects).
+  private containerScrollListener: EventListenerObject = {
+    handleEvent: () => {
+      if (this.scrollSettleFrame !== null) return;
+      this.scrollSettleFrame = requestAnimationFrame(() => {
+        this.scrollSettleFrame = null;
+        this.updatePosition();
+      });
+    },
+  };
   private rawHandlers: Record<string, EventListenerOrEventListenerObject> = {};
   private _pageBindings: Record<string, string> = {};
 
@@ -641,6 +655,11 @@ export class LxVideoElement extends HTMLElement {
     window.addEventListener("resize", this.resizeEventListener);
     if (isIOS()) {
       window.addEventListener("scroll", this.iOSScrollEventListener, { passive: true });
+    } else if (isWindows()) {
+      window.addEventListener("scroll", this.containerScrollListener, {
+        capture: true,
+        passive: true,
+      });
     }
     if (isAndroid()) {
       this.removeLayoutInvalidationListener = addNativeComponentLayoutInvalidationListener(this.resizeEventListener);
@@ -653,10 +672,16 @@ export class LxVideoElement extends HTMLElement {
     window.removeEventListener("resize", this.resizeEventListener);
     if (isIOS()) {
       window.removeEventListener("scroll", this.iOSScrollEventListener);
+    } else if (isWindows()) {
+      window.removeEventListener("scroll", this.containerScrollListener, { capture: true });
     }
     this.removeLayoutInvalidationListener?.();
     this.removeLayoutInvalidationListener = undefined;
     this.stopSizeObserver();
+    if (this.scrollSettleFrame !== null) {
+      cancelAnimationFrame(this.scrollSettleFrame);
+      this.scrollSettleFrame = null;
+    }
     if (this.winSettleFrame !== null) {
       cancelAnimationFrame(this.winSettleFrame);
       this.winSettleFrame = null;
