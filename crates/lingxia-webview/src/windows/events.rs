@@ -61,6 +61,28 @@ pub(crate) fn register_event_handlers(
             })?;
     }
 
+    let source_tag = webtag.clone();
+    unsafe {
+        let mut token = 0;
+        webview
+            .add_SourceChanged(
+                &SourceChangedEventHandler::create(Box::new(move |sender, _args| {
+                    let Some(sender) = sender else {
+                        return Ok(());
+                    };
+                    let mut source = PWSTR::null();
+                    sender.Source(&mut source)?;
+                    let source = CoTaskMemPWSTR::from(source).to_string();
+                    if let Some(delegate) = find_webview_delegate(&source_tag) {
+                        delegate.on_url_changed(&source);
+                    }
+                    Ok(())
+                })),
+                &mut token,
+            )
+            .map_err(|err| WebViewError::WebView(format!("add_SourceChanged failed: {err}")))?;
+    }
+
     let history_tag = webtag.clone();
     unsafe {
         let mut token = 0;

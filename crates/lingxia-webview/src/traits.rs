@@ -495,11 +495,18 @@ pub trait WebViewDelegate: Send + Sync {
     /// no-op so existing implementations do not need to change.
     fn on_favicon_changed(&self, _png_bytes: Vec<u8>) {}
 
-    /// Called when the webview's session history changes (where the platform
-    /// reports it; currently Windows/WebView2), with the new back/forward
-    /// availability. Default is a no-op so existing implementations do not
-    /// need to change.
+    /// Called when the webview's session history changes, with the new
+    /// back/forward availability. Platforms whose host layer observes this
+    /// separately (e.g. macOS KVO on `canGoBack`) do not call it. Default is
+    /// a no-op so existing implementations do not need to change.
     fn on_history_changed(&self, _can_go_back: bool, _can_go_forward: bool) {}
+
+    /// Called when the webview's document URL changes — including history
+    /// navigations, redirects, and same-document updates. Platforms whose
+    /// host layer observes this separately (e.g. macOS KVO on `url`) do not
+    /// call it. Default is a no-op so existing implementations do not need
+    /// to change.
+    fn on_url_changed(&self, _url: &str) {}
 
     /// Handles a postMessage from the page View(WebView)
     fn handle_post_message(&self, msg: String);
