@@ -1956,6 +1956,7 @@ dependencies = [
  "base64",
  "jni",
  "lingxia-app-context",
+ "lingxia-automation",
  "lingxia-browser",
  "lingxia-browser-shell",
  "lingxia-log",
@@ -1997,6 +1998,23 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.18",
+]
+
+[[package]]
+name = "lingxia-automation"
+version = "0.10.0"
+dependencies = [
+ "base64",
+ "futures",
+ "lingxia-browser",
+ "lingxia-lxapp",
+ "lingxia-platform",
+ "lingxia-webview",
+ "log",
+ "rong",
+ "serde",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]

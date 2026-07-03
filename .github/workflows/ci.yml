@@ -409,6 +409,12 @@ jobs:
       - name: Clippy (all workspace crates)
         run: cargo clippy --workspace --exclude lingxia-terminal --exclude lingxia-windows-sdk --exclude lingxia-windows-contract --exclude lingxia-windows-build --exclude lingxia-runner-windows -- -D warnings -A clippy::let_underscore_future
 
+      # `--workspace` builds each crate's default features only, so the
+      # `lingxia` facade's `automation`-gated bootstrap wiring never compiles.
+      # The Runner enables it by default; lint that path too.
+      - name: Clippy (lingxia automation feature)
+        run: cargo clippy -p lingxia --features automation -- -D warnings -A clippy::let_underscore_future
+
   runner:
     needs: changes
     if: ${{ needs.changes.outputs.runner == 'true' }}
