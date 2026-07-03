@@ -459,8 +459,8 @@ final class LingXiaTerminalWorkspaceView: NSView {
         contentHost.setContentHuggingPriority(.defaultLow, for: .horizontal)
         contentHost.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
-        addSubview(toolbarStack)
         addSubview(contentHost)
+        addSubview(toolbarStack, positioned: .above, relativeTo: contentHost)
     }
 
     private func updateEventMonitors() {
