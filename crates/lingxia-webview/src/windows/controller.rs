@@ -204,12 +204,10 @@ impl WebViewInner {
 
         self.wake_ui_thread();
 
-        match timeout {
-            Some(timeout) => resp_rx
-                .recv_timeout(timeout)
-                .map_err(|err| UiDispatchError::NoReply(Some(err.to_string()))),
-            None => resp_rx.recv().map_err(|_| UiDispatchError::NoReply(None)),
-        }
+        recv_reply_pumping(&resp_rx, timeout).map_err(|err| match err {
+            mpsc::RecvTimeoutError::Timeout => UiDispatchError::NoReply(Some(err.to_string())),
+            mpsc::RecvTimeoutError::Disconnected => UiDispatchError::NoReply(None),
+        })
     }
 
     fn dispatch_command(
@@ -235,8 +233,7 @@ impl WebViewInner {
             return Ok(());
         }
 
-        resp_rx
-            .recv()
+        recv_reply_pumping(&resp_rx, None)
             .map_err(|_| WebViewError::WebView("WebView UI thread did not reply".to_string()))?
             .map_err(|err| WebViewError::WebView(format!("run WebView layout command: {err}")))
     }
@@ -550,6 +547,43 @@ pub(crate) fn run_ui_thread_inner(
     };
 
     message_loop(&mut state, command_rx)
+}
+
+/// Waits for a dispatched command's reply while delivering incoming
+/// cross-thread sent messages (via `PeekMessageW(PM_NOREMOVE)`). A caller on
+/// a window-owning thread (e.g. the host window's UI thread) would otherwise
+/// deadlock: the WebView UI thread serving the command can itself block in a
+/// synchronous send back to one of the caller's windows.
+fn recv_reply_pumping<T>(
+    resp_rx: &Receiver<T>,
+    timeout: Option<Duration>,
+) -> std::result::Result<T, mpsc::RecvTimeoutError> {
+    const PUMP_SLICE: Duration = Duration::from_millis(10);
+    let deadline = timeout.map(|timeout| std::time::Instant::now() + timeout);
+    loop {
+        let slice = match deadline {
+            Some(deadline) => {
+                let Some(left) = deadline.checked_duration_since(std::time::Instant::now()) else {
+                    return Err(mpsc::RecvTimeoutError::Timeout);
+                };
+                PUMP_SLICE.min(left)
+            }
+            None => PUMP_SLICE,
+        };
+        match resp_rx.recv_timeout(slice) {
+            Err(mpsc::RecvTimeoutError::Timeout) => unsafe {
+                let mut msg = MSG::default();
+                let _ = WindowsAndMessaging::PeekMessageW(
+                    &mut msg,
+                    None,
+                    0,
+                    0,
+                    WindowsAndMessaging::PM_NOREMOVE,
+                );
+            },
+            reply => return reply,
+        }
+    }
 }
 
 pub(crate) fn ensure_message_queue() {
