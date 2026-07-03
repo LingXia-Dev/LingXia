@@ -193,6 +193,7 @@ pub(super) mod command_id {
     pub(super) const BROWSER_NAV_FORWARD: &str = "browser.nav.forward";
     pub(super) const BROWSER_NAV_RELOAD: &str = "browser.nav.reload";
     pub(super) const BROWSER_ADDRESS_BAR: &str = "browser.address-bar";
+    pub(super) const BROWSER_CLOSE: &str = "browser.close";
     pub(super) const SIDEBAR_TOGGLE: &str = "sidebar.toggle";
     pub(super) const SIDEBAR_GROUP_TOGGLE: &str = "sidebar.group.toggle";
     pub(super) const SIDEBAR_ACTION: &str = "sidebar.action";
@@ -315,6 +316,7 @@ fn chrome_hover_rect(
         controls.nav_back,
         controls.nav_forward,
         controls.nav_reload,
+        controls.browser_close,
     ];
     for rect in top_bar_buttons.into_iter().flatten() {
         if rect_contains(&rect, point) {
@@ -1289,6 +1291,11 @@ pub(super) fn chrome_hit_test(
         && rect_contains(&address, point)
     {
         return Some(chrome_command(command_id::BROWSER_ADDRESS_BAR, json!({})));
+    }
+    if let Some(close) = controls.browser_close
+        && rect_contains(&close, point)
+    {
+        return Some(chrome_command(command_id::BROWSER_CLOSE, json!({})));
     }
 
     if !address_bar_visible(layout)

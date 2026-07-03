@@ -33,6 +33,10 @@ pub(super) struct TopBarControls {
     pub(super) nav_reload: Option<RECT>,
     /// The URL capsule (also the inline address-edit anchor).
     pub(super) address: Option<RECT>,
+    /// Dismisses the presented browser tab back to the lxapp. Only on
+    /// device-framed screens (no caption buttons), mirroring the macOS
+    /// phone browser's close button.
+    pub(super) browser_close: Option<RECT>,
 }
 
 pub(super) fn top_bar_controls(
@@ -96,6 +100,7 @@ pub(super) fn top_bar_controls(
         nav_forward: None,
         nav_reload: None,
         address: None,
+        browser_close: None,
     };
     if !address_bar_visible(layout) {
         return controls;
@@ -103,8 +108,16 @@ pub(super) fn top_bar_controls(
 
     // The frame buttons own the client's trailing edge; everything between
     // the toggle and them is available to the address section.
-    let right_edge = (client.right - window_frame_buttons_width() - TOP_BAR_PADDING)
+    let mut right_edge = (client.right - window_frame_buttons_width() - TOP_BAR_PADDING)
         .min(top_bar.right - TOP_BAR_PADDING);
+    // A device-framed screen has no caption buttons; the presented browser
+    // ends with a close button at the trailing edge instead.
+    if layout.suppress_window_controls {
+        right_edge = top_bar.right - TOP_BAR_PADDING;
+        let close = square_button(right_edge - TOP_BAR_BUTTON_SIZE);
+        controls.browser_close = Some(close);
+        right_edge = close.left - TOP_BAR_BUTTON_GAP;
+    }
     let nav_width = 3 * TOP_BAR_BUTTON_SIZE + 2 * TOP_BAR_BUTTON_GAP;
     let capsule_space = right_edge - left_edge - nav_width - ADDRESS_CAPSULE_NAV_GAP;
     if capsule_space < 48 {
@@ -281,6 +294,10 @@ pub(super) fn draw_top_bar_controls(
             shell_palette().frame_button_icon,
             18,
         );
+    }
+    if let Some(close) = controls.browser_close {
+        draw_hover_wash(hdc, close, 5, cursor);
+        draw_frame_button_glyph(hdc, GLYPH_CLOSE, close, shell_palette().frame_button_icon);
     }
     if let Some(address) = controls.address {
         // White capsule on the gray caption strip; anti-alias the arc.

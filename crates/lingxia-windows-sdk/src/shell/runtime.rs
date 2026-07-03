@@ -117,6 +117,9 @@ fn browser_tab_summary_from_info(info: BrowserTabInfo) -> BrowserTabSummary {
 fn browser_tabs() -> Vec<BrowserTabSummary> {
     lingxia_browser::tabs()
         .into_iter()
+        // Standalone tabs (docked aside panels) are independent of the main
+        // tab model; the sidebar lists only main-area browser tabs.
+        .filter(|tab| !lingxia_browser::tab_is_standalone(&tab.tab_id))
         .map(browser_tab_summary_from_info)
         .collect()
 }
@@ -218,6 +221,7 @@ mod chrome_command {
     pub(super) const BROWSER_NAV_FORWARD: &str = "browser.nav.forward";
     pub(super) const BROWSER_NAV_RELOAD: &str = "browser.nav.reload";
     pub(super) const BROWSER_ADDRESS_BAR: &str = "browser.address-bar";
+    pub(super) const BROWSER_CLOSE: &str = "browser.close";
     pub(super) const SIDEBAR_TOGGLE: &str = "sidebar.toggle";
     pub(super) const SIDEBAR_GROUP_TOGGLE: &str = "sidebar.group.toggle";
     pub(super) const SIDEBAR_ACTION: &str = "sidebar.action";
@@ -1155,6 +1159,13 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
         chrome_command::NAVIGATION_HOME => {
             return_to_lxapp_from_browser(appid);
             app.on_lxapp_event(LxAppUiEventType::NavigationClick, "home".to_string())
+        }
+        // The device-framed browser's close button: dismiss the presented tab
+        // back to the lxapp (tabs stay alive, like the macOS phone browser).
+        chrome_command::BROWSER_CLOSE => {
+            return_to_lxapp_from_browser(appid);
+            sync_shell_layout(appid);
+            return;
         }
         chrome_command::PANEL_ACTIVATOR_CLICK => {
             let Some(panel_id) = payload_string(&event, "panel_id") else {

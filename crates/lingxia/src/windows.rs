@@ -91,10 +91,15 @@ fn install_url_surface_bridge() {
         if request.content != SurfaceContent::Url {
             return None;
         }
-        // The device-frame runner ships no browser engine, so a URL surface (e.g.
-        // the cloud interactive-login page) renders in a plain browser-profile
-        // WebView2 via lingxia-webview — mirroring the macOS URL surface — rather
-        // than a browser tab (`crate::browser`, which needs `browser-runtime`).
+        // With the browser engine compiled in, a URL surface is a standalone
+        // managed browser tab (downloads, new-window policy: window.open from
+        // a docked aside opens a sibling aside tab) - macOS DockedBrowser
+        // parity. Without it (plain builds), a browser-profile WebView2
+        // renders the URL directly.
+        #[cfg(feature = "browser-runtime")]
+        if let Some(resolved) = resolve_url_surface_as_browser_tab(request) {
+            return Some(resolved);
+        }
         // `teardown_surface` destroys this webview by its webtag, so no cleanup hook.
         let webtag = WebTag::new(&request.app_id, &request.path, Some(request.session_id));
         let url = request.path.clone();
@@ -116,6 +121,30 @@ fn install_url_surface_bridge() {
             cleanup: None,
         })
     }));
+}
+
+#[cfg(feature = "browser-runtime")]
+fn resolve_url_surface_as_browser_tab(
+    request: &lingxia_platform::traits::ui::SurfaceRequest,
+) -> Option<lingxia_platform::WindowsUrlSurfaceWebTag> {
+    let tab_id = crate::browser::open_standalone_for_app(
+        &request.app_id,
+        request.session_id,
+        &request.path,
+        None,
+    )
+    .inspect_err(|err| log::warn!("URL surface browser tab failed for {}: {err}", request.path))
+    .ok()?;
+    let tab = crate::browser::tab_summary(&tab_id)?;
+    let close_tab_id = tab_id.clone();
+    Some(lingxia_platform::WindowsUrlSurfaceWebTag {
+        app_id: crate::browser::APP_ID.to_string(),
+        path: tab.path,
+        session_id: tab.session_id,
+        cleanup: Some(Arc::new(move || {
+            let _ = crate::browser::close(&close_tab_id);
+        })),
+    })
 }
 
 fn on_webview_visibility_changed(webtag: &WebTag, visible: bool) {
