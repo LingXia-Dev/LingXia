@@ -82,6 +82,17 @@ fn hdc_command(device: Option<&str>) -> Command {
 }
 
 fn run_hdc_reverse(device: Option<&str>, port: u16) -> Result<()> {
+    // A dev session that died uncleanly leaves its reverse rule behind, and
+    // the device-side listener it holds makes the re-added rule report OK
+    // while `uv_listen` fails on-device. Clear it first; ignore "not found".
+    let _ = hdc_command(device)
+        .args([
+            "fport",
+            "rm",
+            &format!("tcp:{port}"),
+            &format!("tcp:{port}"),
+        ])
+        .output();
     let output = hdc_command(device)
         .args(["rport", &format!("tcp:{port}"), &format!("tcp:{port}")])
         .output()
