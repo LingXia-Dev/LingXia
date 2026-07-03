@@ -27,6 +27,8 @@ use windows::Win32::Graphics::Gdi::{
 use windows::Win32::UI::WindowsAndMessaging;
 use windows::core::{PCWSTR, w};
 
+use crate::WindowsDesignIcon;
+
 use super::style::*;
 
 mod drawing;
@@ -1062,18 +1064,16 @@ fn compute_attached_layout(
             }
         };
 
-        // A browser aside hoists its chrome (address bar, or the aside tab
-        // strip) into the shared top band so it lands on the same baseline as
-        // the main lxapp navbar (which is clipped to `attached.main`). The
-        // webview then fills the whole panel rect, top-aligned with the main
-        // content card. Side panels only: terminal asides (top/bottom) keep
-        // their own in-panel header.
+        // A browser aside carries its chrome (nav cluster + tab strip +
+        // close) as a toolbar row at the panel's own top, above the webview —
+        // the macOS DockedBrowser layout. Side panels only: terminal asides
+        // (top/bottom) keep their own native header.
         let header_rect = (matches!(
             panel.position,
             WindowsPanelPosition::Left | WindowsPanelPosition::Right
         ) && (panel.webtag_key.starts_with("app.lingxia.browser:")
             || !aside_panel_tabs(&panel.panel_id).is_empty()))
-        .then(|| browser_panel_band_header_rect(client, rect));
+        .then(|| aside_panel_toolbar_rect(rect));
 
         out.push(WindowsChromePanelLayout {
             panel_id: panel.panel_id.clone(),
@@ -1090,18 +1090,17 @@ fn compute_attached_layout(
     }
 }
 
-/// The top-band slice (aligned with the main navbar baseline) over a side
-/// panel's column. The trailing edge reserves room for the window frame
-/// buttons so the address bar's controls never run under the caption.
-fn browser_panel_band_header_rect(client: RECT, panel_rect: RECT) -> RECT {
-    let right = panel_rect
-        .right
-        .min(client.right - window_frame_buttons_width() - TOP_BAR_PADDING);
+/// Toolbar height of a browser aside panel (matches the macOS DockedBrowser).
+const ASIDE_PANEL_TOOLBAR_HEIGHT: i32 = 38;
+
+/// The toolbar row at a browser aside panel's top edge; the webview fills
+/// the panel below it.
+fn aside_panel_toolbar_rect(panel_rect: RECT) -> RECT {
     normalize_rect(RECT {
         left: panel_rect.left,
-        top: client.top,
-        right,
-        bottom: (client.top + SHELL_TOP_BAR_HEIGHT).min(client.bottom),
+        top: panel_rect.top,
+        right: panel_rect.right,
+        bottom: (panel_rect.top + ASIDE_PANEL_TOOLBAR_HEIGHT).min(panel_rect.bottom),
     })
 }
 
@@ -1557,8 +1556,8 @@ fn browser_panel_header_visible(panel: &WindowsChromePanel) -> bool {
 }
 
 fn browser_panel_header_rect(panel: &WindowsChromePanel) -> RECT {
-    // The address bar lives in the shared top band (computed at layout time);
-    // an empty rect makes the draw/hit-test paths no-op for panels without one.
+    // The toolbar row at the panel's top (computed at layout time); an empty
+    // rect makes the draw/hit-test paths no-op for panels without one.
     panel.header_rect.map(normalize_rect).unwrap_or_default()
 }
 
@@ -1608,7 +1607,11 @@ fn aside_panel_nav_button_rects(panel: &WindowsChromePanel) -> [(&'static str, R
 const ASIDE_PANEL_TAB_MAX_WIDTH: i32 = 190;
 const ASIDE_PANEL_TAB_GAP: i32 = 4;
 const ASIDE_PANEL_TAB_CLOSE_WIDTH: i32 = 20;
-const ASIDE_PANEL_TAB_INSET: i32 = 5;
+/// Air above the tabs; they run flush to the toolbar's bottom edge so the
+/// active tab merges into the content below (Chrome style).
+const ASIDE_PANEL_TAB_TOP_INSET: i32 = 6;
+/// Upper-corner radius of the active tab shape.
+const ASIDE_PANEL_TAB_RADIUS: i32 = 8;
 
 /// Tab rects of the aside panel's strip, index-aligned with the registered
 /// tabs: equal widths (capped) between the nav cluster and close-all.
@@ -1628,9 +1631,9 @@ fn aside_panel_tab_rects(panel: &WindowsChromePanel, count: usize) -> Vec<RECT> 
     for _ in 0..count {
         out.push(normalize_rect(RECT {
             left,
-            top: header.top + ASIDE_PANEL_TAB_INSET,
+            top: header.top + ASIDE_PANEL_TAB_TOP_INSET,
             right: (left + width).min(right_edge),
-            bottom: header.bottom - ASIDE_PANEL_TAB_INSET,
+            bottom: header.bottom,
         }));
         left += width + ASIDE_PANEL_TAB_GAP;
     }
@@ -1732,7 +1735,15 @@ fn draw_browser_panel_header(hdc: HDC, hwnd: HWND, panel: &WindowsChromePanel) {
     }
     let pal = shell_palette();
 
-    fill_rect(hdc, header, pal.panel_background);
+    let tabs = panel_aside_tabs(panel);
+    if !tabs.is_empty() {
+        remember_panel_address_rect(hwnd, &panel.webtag_key, None);
+        draw_aside_panel_header(hdc, panel, &tabs);
+        return;
+    }
+
+    // The toolbar shares the panel card's fill; only the divider separates
+    // it from the webview below.
     fill_rect(
         hdc,
         RECT {
@@ -1744,22 +1755,14 @@ fn draw_browser_panel_header(hdc: HDC, hwnd: HWND, panel: &WindowsChromePanel) {
         pal.divider,
     );
 
-    let tabs = panel_aside_tabs(panel);
-    if !tabs.is_empty() {
-        remember_panel_address_rect(hwnd, &panel.webtag_key, None);
-        draw_aside_panel_header(hdc, panel, &tabs);
-        return;
-    }
-
     let close = browser_panel_close_rect(panel);
     for (command, rect) in browser_panel_nav_button_rects(panel) {
-        let glyph = match command {
-            command_id::BROWSER_PANEL_NAV_BACK => GLYPH_NAV_BACK,
-            command_id::BROWSER_PANEL_NAV_FORWARD => GLYPH_NAV_FORWARD,
-            command_id::BROWSER_PANEL_NAV_RELOAD => GLYPH_NAV_RELOAD,
-            _ => "",
+        let icon = match command {
+            command_id::BROWSER_PANEL_NAV_BACK => WindowsDesignIcon::Back,
+            command_id::BROWSER_PANEL_NAV_FORWARD => WindowsDesignIcon::Forward,
+            _ => WindowsDesignIcon::BrowserRefresh,
         };
-        draw_frame_button_glyph(hdc, glyph, rect, pal.text_muted);
+        draw_design_icon_button(hdc, rect, icon, pal.frame_button_icon, 16);
     }
 
     let address = browser_panel_address_rect(panel);
@@ -1777,7 +1780,14 @@ fn draw_browser_panel_header(hdc: HDC, hwnd: HWND, panel: &WindowsChromePanel) {
     // Record the painted pill so a click can open the inline editor over it.
     remember_panel_address_rect(hwnd, &panel.webtag_key, address_visible.then_some(address));
 
-    draw_frame_button_glyph(hdc, GLYPH_CLOSE, close, pal.text_muted);
+    draw_design_icon_button_with_fallback(
+        hdc,
+        close,
+        WindowsDesignIcon::CloseX,
+        pal.frame_button_icon,
+        14,
+        Some(GLYPH_CLOSE),
+    );
 }
 
 fn browser_panel_title(panel: &WindowsChromePanel) -> String {
@@ -1794,23 +1804,64 @@ fn browser_panel_title(panel: &WindowsChromePanel) -> String {
 /// only from `lx.openSurface`.
 fn draw_aside_panel_header(hdc: HDC, panel: &WindowsChromePanel, tabs: &[WindowsAsidePanelTab]) {
     let pal = shell_palette();
+    let header = browser_panel_header_rect(panel);
+
+    // Chrome-style strip: a tinted bar the active tab lifts out of as a
+    // round-topped card merging into the content below. The strip keeps the
+    // panel card's top rounding; its bottom corners are squared.
+    fill_round_rect_aa(hdc, header, SHELL_PANEL_RADIUS, pal.window_background);
+    fill_rect(
+        hdc,
+        RECT {
+            left: header.left,
+            top: (header.bottom - SHELL_PANEL_RADIUS).max(header.top),
+            right: header.right,
+            bottom: header.bottom,
+        },
+        pal.window_background,
+    );
+
     for (command, rect) in aside_panel_nav_button_rects(panel) {
-        let glyph = match command {
-            command_id::ASIDE_PANEL_NAV_BACK => GLYPH_NAV_BACK,
-            command_id::ASIDE_PANEL_NAV_FORWARD => GLYPH_NAV_FORWARD,
-            command_id::ASIDE_PANEL_NAV_RELOAD => GLYPH_NAV_RELOAD,
-            _ => "",
+        let icon = match command {
+            command_id::ASIDE_PANEL_NAV_BACK => WindowsDesignIcon::Back,
+            command_id::ASIDE_PANEL_NAV_FORWARD => WindowsDesignIcon::Forward,
+            _ => WindowsDesignIcon::BrowserRefresh,
         };
-        draw_frame_button_glyph(hdc, glyph, rect, pal.text_muted);
+        draw_design_icon_button(hdc, rect, icon, pal.frame_button_icon, 16);
     }
 
-    for (tab, rect) in tabs.iter().zip(aside_panel_tab_rects(panel, tabs.len())) {
+    let rects = aside_panel_tab_rects(panel, tabs.len());
+    for (index, (tab, rect)) in tabs.iter().zip(rects.iter().copied()).enumerate() {
         if tab.active {
-            fill_round_rect_aa(hdc, rect, 6, pal.control_surface);
+            // Rounded top, flush bottom: the tab joins the web content.
+            fill_round_rect_aa(hdc, rect, ASIDE_PANEL_TAB_RADIUS, pal.panel_background);
+            fill_rect(
+                hdc,
+                RECT {
+                    left: rect.left,
+                    top: (rect.bottom - ASIDE_PANEL_TAB_RADIUS).max(rect.top),
+                    right: rect.right,
+                    bottom: rect.bottom,
+                },
+                pal.panel_background,
+            );
+        } else if index > 0 && !tabs[index - 1].active {
+            // Chrome hides the separator next to the active tab.
+            let x = rect.left - (ASIDE_PANEL_TAB_GAP + 1) / 2;
+            fill_rect(
+                hdc,
+                RECT {
+                    left: x,
+                    top: rect.top + 8,
+                    right: x + 1,
+                    bottom: rect.bottom - 8,
+                },
+                pal.divider,
+            );
         }
         let close = aside_panel_tab_close_rect(rect);
         let title_rect = normalize_rect(RECT {
-            left: rect.left + 8,
+            left: rect.left + 10,
             top: rect.top,
             right: close.map(|close| close.left).unwrap_or(rect.right - 6),
             bottom: rect.bottom,
@@ -1826,11 +1877,13 @@ fn draw_aside_panel_header(hdc: HDC, panel: &WindowsChromePanel, tabs: &[Windows
         }
     }
 
-    draw_frame_button_glyph(
+    draw_design_icon_button_with_fallback(
         hdc,
-        GLYPH_CLOSE,
         browser_panel_close_rect(panel),
-        pal.text_muted,
+        WindowsDesignIcon::CloseX,
+        pal.frame_button_icon,
+        14,
+        Some(GLYPH_CLOSE),
     );
 }
 
