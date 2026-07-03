@@ -745,6 +745,14 @@ pub(crate) fn handle_command(state: &mut UiState, command: UiCommand) -> StdResu
         }
         UiCommand::SetParentWindow { window, resp } => {
             let hwnd = hwnd_from_handle(window);
+            // Re-parenting to the current parent still tears down and
+            // re-attaches the composition target, blanking the content for a
+            // frame - layout passes re-assert the parent on every sync, so
+            // short-circuit the no-op.
+            if state.hwnd == hwnd {
+                let _ = resp.send(Ok(()));
+                return Ok(false);
+            }
             let result = unsafe {
                 state
                     .controller
