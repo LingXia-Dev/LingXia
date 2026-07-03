@@ -415,7 +415,11 @@ struct TerminalPanelRequest {
 }
 
 enum PanelTarget {
-    LxApp { appid: String, path: String },
+    LxApp {
+        appid: String,
+        path: String,
+        position: lingxia_app_context::PanelPosition,
+    },
     Terminal(TerminalPanelRequest),
 }
 
@@ -1127,7 +1131,7 @@ fn auxiliary_lxapp_id(raw: &str) -> Option<&str> {
 }
 
 /// Sidebar row title for a browser tab: page title, else the URL host,
-/// else "New Tab".
+/// else localized "New Tab".
 fn browser_tab_display_title(tab: &BrowserTabSummary) -> String {
     if let Some(title) = tab
         .title
@@ -1140,7 +1144,7 @@ fn browser_tab_display_title(tab: &BrowserTabSummary) -> String {
     if let Some(host) = tab.current_url.as_deref().and_then(url_host) {
         return host;
     }
-    "New Tab".to_string()
+    lingxia_logic::i18n::t(lingxia_logic::I18nKey::BrowserNewTab)
 }
 
 fn url_host(url: &str) -> Option<String> {
@@ -1275,12 +1279,13 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
             let Some(tab_id) = payload_string(&event, "tab_id") else {
                 return;
             };
-            let Some(target_appid) = auxiliary_lxapp_id(&tab_id) else {
-                return;
-            };
             let screen_x = payload_i32(&event, "screen_x").unwrap_or(0);
             let screen_y = payload_i32(&event, "screen_y").unwrap_or(0);
-            show_lxapp_auxiliary_context_menu(appid, target_appid, screen_x, screen_y);
+            if let Some(target_appid) = auxiliary_lxapp_id(&tab_id) {
+                show_lxapp_auxiliary_context_menu(appid, target_appid, screen_x, screen_y);
+            } else {
+                show_browser_tab_context_menu(appid, &tab_id, screen_x, screen_y);
+            }
             return;
         }
         chrome_command::BROWSER_PANEL_CLOSE => {
@@ -1671,31 +1676,108 @@ fn handle_browser_tab_close(appid: &str, tab_id: &str) {
 #[cfg(not(feature = "browser-runtime"))]
 fn handle_browser_tab_close(_appid: &str, _tab_id: &str) {}
 
+#[derive(Debug, Clone, Copy)]
+enum BrowserTabContextAction {
+    Close,
+    CloseOtherTabs,
+    CloseTabsBelow,
+}
+
+fn show_browser_tab_context_menu(appid: &str, tab_id: &str, screen_x: i32, screen_y: i32) {
+    let tabs = browser_tabs();
+    let Some(index) = tabs.iter().position(|tab| tab.tab_id == tab_id) else {
+        return;
+    };
+    let Some(window) = owner_window_handle(appid) else {
+        return;
+    };
+    use lingxia_logic::I18nKey;
+    let mut actions = vec![BrowserTabContextAction::Close];
+    let mut items = vec![lingxia_logic::i18n::t(I18nKey::CommonClose)];
+    if tabs.len() > 1 {
+        actions.push(BrowserTabContextAction::CloseOtherTabs);
+        items.push(lingxia_logic::i18n::t(I18nKey::BrowserCloseOtherTabs));
+    }
+    if index + 1 < tabs.len() {
+        actions.push(BrowserTabContextAction::CloseTabsBelow);
+        items.push(lingxia_logic::i18n::t(I18nKey::BrowserCloseTabsBelow));
+    }
+    let appid = appid.to_string();
+    let tab_id = tab_id.to_string();
+    super::context_menu::show_context_menu_checked(
+        window,
+        (screen_x, screen_y),
+        items,
+        Vec::new(),
+        Arc::new(move |index| {
+            if let Some(action) = actions.get(index).copied() {
+                handle_browser_tab_context_action(&appid, &tab_id, action);
+            }
+        }),
+    );
+}
+
+#[cfg(feature = "browser-runtime")]
+fn handle_browser_tab_context_action(appid: &str, tab_id: &str, action: BrowserTabContextAction) {
+    match action {
+        BrowserTabContextAction::Close => handle_browser_tab_close(appid, tab_id),
+        BrowserTabContextAction::CloseOtherTabs => close_other_browser_tabs(appid, tab_id),
+        BrowserTabContextAction::CloseTabsBelow => close_browser_tabs_below(appid, tab_id),
+    }
+}
+
+#[cfg(not(feature = "browser-runtime"))]
+fn handle_browser_tab_context_action(
+    _appid: &str,
+    _tab_id: &str,
+    _action: BrowserTabContextAction,
+) {
+}
+
+#[cfg(feature = "browser-runtime")]
+fn close_other_browser_tabs(appid: &str, keeping_tab_id: &str) {
+    let tab_ids: Vec<String> = browser_tabs()
+        .into_iter()
+        .map(|tab| tab.tab_id)
+        .filter(|tab_id| tab_id != keeping_tab_id)
+        .collect();
+    close_browser_tab_batch(appid, tab_ids);
+}
+
+#[cfg(feature = "browser-runtime")]
+fn close_browser_tabs_below(appid: &str, tab_id: &str) {
+    let tabs = browser_tabs();
+    let Some(index) = tabs.iter().position(|tab| tab.tab_id == tab_id) else {
+        return;
+    };
+    let tab_ids = tabs
+        .into_iter()
+        .skip(index + 1)
+        .map(|tab| tab.tab_id)
+        .collect();
+    close_browser_tab_batch(appid, tab_ids);
+}
+
+#[cfg(feature = "browser-runtime")]
+fn close_browser_tab_batch(appid: &str, tab_ids: Vec<String>) {
+    let presented_closed = presented_browser_tab()
+        .map(|presented| tab_ids.iter().any(|tab_id| tab_id == &presented))
+        .unwrap_or(false);
+    if presented_closed {
+        return_to_lxapp_from_browser(appid);
+    }
+    for tab_id in tab_ids {
+        if let Err(err) = lingxia_browser::close(&tab_id) {
+            log::error!("failed to close browser tab {tab_id}: {err}");
+        }
+    }
+    sync_shell_layout(appid);
+}
+
 fn handle_lxapp_auxiliary_click(owner_appid: &str, target_appid: &str) {
     return_to_lxapp_from_browser(owner_appid);
-    if let Some((panel_id, path)) = panel_item_for_lxapp(target_appid) {
-        register_managed_aside(owner_appid, &panel_id);
-        if let Some(panel) = lxapp::try_get(target_appid) {
-            let path = panel
-                .peek_current_page()
-                .unwrap_or_else(|| non_empty(Some(&path)).unwrap_or_else(|| panel.initial_route()));
-            if let Err(err) = panel.runtime.show_lxapp(
-                target_appid.to_string(),
-                path,
-                panel.session_id(),
-                LxAppOpenMode::Panel,
-                panel_id.clone(),
-            ) {
-                log::error!("failed to show sidebar lxapp panel {target_appid}: {err}");
-            }
-        } else if let Err(err) = lxapp::open_lxapp(
-            target_appid,
-            LxAppStartupOptions::new(&path)
-                .set_open_mode(LxAppOpenMode::Panel)
-                .set_panel_id(panel_id.clone()),
-        ) {
-            log::error!("failed to open sidebar lxapp panel {target_appid}: {err}");
-        }
+    if let Some((panel_id, path, position)) = panel_item_for_lxapp(target_appid) {
+        show_lxapp_panel(owner_appid, &panel_id, target_appid, &path, position, false);
     } else {
         log::warn!(
             "sidebar lxapp {target_appid} has no panel slot; leaving current surface unchanged"
@@ -1709,13 +1791,38 @@ fn handle_lxapp_auxiliary_close(owner_appid: &str, target_appid: &str) {
     if let Err(err) = lxapp::close_lxapp(target_appid) {
         log::error!("failed to close sidebar lxapp {target_appid}: {err}");
     }
-    if let Some((panel_id, _)) = panel_item_for_lxapp(target_appid) {
+    if let Some((panel_id, _, _)) = panel_item_for_lxapp(target_appid) {
         if let Err(err) = hide_host_panel(&panel_id) {
             log::warn!("failed to hide sidebar lxapp panel {panel_id}: {err}");
         }
+        crate::window_host::set_panel_position_override(&panel_id, None);
         unregister_managed_aside(owner_appid, &panel_id);
     }
     sync_shell_layout(owner_appid);
+}
+
+fn open_lxapp_panel_now(target_appid: &str, path: &str, panel_id: &str) {
+    if let Some(panel) = lxapp::try_get(target_appid) {
+        let path = panel
+            .peek_current_page()
+            .unwrap_or_else(|| non_empty(Some(path)).unwrap_or_else(|| panel.initial_route()));
+        if let Err(err) = panel.runtime.show_lxapp(
+            target_appid.to_string(),
+            path,
+            panel.session_id(),
+            LxAppOpenMode::Panel,
+            panel_id.to_string(),
+        ) {
+            log::error!("failed to show sidebar lxapp panel {target_appid}: {err}");
+        }
+    } else if let Err(err) = lxapp::open_lxapp(
+        target_appid,
+        LxAppStartupOptions::new(path)
+            .set_open_mode(LxAppOpenMode::Panel)
+            .set_panel_id(panel_id.to_string()),
+    ) {
+        log::error!("failed to open sidebar lxapp panel {target_appid}: {err}");
+    }
 }
 
 fn show_lxapp_auxiliary_context_menu(
@@ -2251,18 +2358,33 @@ fn commit_address_input(appid: &str, tab_id: &str, raw_input: &str) {
     }));
 }
 
-fn set_managed_surface_visible(panel_id: &str, visible: bool) -> bool {
+fn set_managed_surface_visible(panel_id: &str, visible: bool, edge: &str) -> bool {
     let Some(owner_appid) = shell_owner_appid() else {
         return false;
     };
-    if panel_target_for_id(panel_id).is_none() {
+    let position_override = match parse_panel_position_override(edge) {
+        Ok(position) => position,
+        Err(()) => {
+            log::warn!("invalid Windows managed surface edge override: {edge}");
+            return false;
+        }
+    };
+    let Some(target) = panel_target_for_id(panel_id) else {
         return false;
+    };
+    if !visible {
+        if is_panel_visible(panel_id) {
+            hide_panel_target(&owner_appid, panel_id, target);
+        } else {
+            sync_shell_layout(&owner_appid);
+        }
+        return true;
     }
-    if is_panel_visible(panel_id) == visible {
+    if is_panel_visible(panel_id) && position_override.is_none() {
         sync_shell_layout(&owner_appid);
         return true;
     }
-    handle_panel_activator(&owner_appid, panel_id.to_string());
+    show_panel_target(&owner_appid, panel_id, target, position_override);
     true
 }
 
@@ -2281,8 +2403,8 @@ fn toggle_managed_surface(panel_id: &str) -> bool {
 pub(crate) fn handle_menu_bar_surface_action(surface_id: &str, action_kind: &str) -> bool {
     if panel_target_for_id(surface_id).is_some() {
         return match action_kind {
-            "openSurface" | "focusSurface" => set_managed_surface_visible(surface_id, true),
-            "closeSurface" => set_managed_surface_visible(surface_id, false),
+            "openSurface" | "focusSurface" => set_managed_surface_visible(surface_id, true, ""),
+            "closeSurface" => set_managed_surface_visible(surface_id, false, ""),
             _ => toggle_managed_surface(surface_id),
         };
     }
@@ -2324,42 +2446,110 @@ fn handle_panel_activator(appid: &str, panel_id: String) {
         return;
     };
 
-    let (panel_appid, path) = match target {
-        PanelTarget::LxApp { appid, path } => (appid, path),
-        PanelTarget::Terminal(request) => {
-            handle_terminal_panel_activator(appid, request);
-            return;
-        }
-    };
-
     if is_panel_visible(&panel_id) {
-        if let Some(panel) = lxapp::try_get(&panel_appid)
-            && let Err(err) = panel
-                .runtime
-                .hide_lxapp(panel_appid.clone(), panel.session_id())
-        {
-            log::error!("failed to close Windows panel lxapp {panel_appid}: {err}");
-        }
-        if let Err(err) = hide_host_panel(&panel_id) {
-            log::warn!("failed to hide Windows panel {panel_id}: {err}");
-        }
-        unregister_managed_aside(appid, &panel_id);
-        lxapp::mark_lxapp_active(appid);
-        sync_shell_layout(appid);
+        hide_panel_target(appid, &panel_id, target);
         return;
     }
 
+    show_panel_target(appid, &panel_id, target, None);
+}
+
+fn show_panel_target(
+    appid: &str,
+    panel_id: &str,
+    target: PanelTarget,
+    position_override: Option<lingxia_app_context::PanelPosition>,
+) {
+    match target {
+        PanelTarget::LxApp {
+            appid: panel_appid,
+            path,
+            position,
+        } => show_lxapp_panel(
+            appid,
+            panel_id,
+            &panel_appid,
+            &path,
+            position_override.unwrap_or(position),
+            position_override.is_some(),
+        ),
+        PanelTarget::Terminal(mut request) => {
+            if let Some(position) = position_override {
+                request.position = position;
+            }
+            show_terminal_panel(appid, request);
+        }
+    }
+}
+
+fn hide_panel_target(appid: &str, panel_id: &str, target: PanelTarget) {
+    let restore_lxapp_active = matches!(&target, PanelTarget::LxApp { .. });
+    match target {
+        PanelTarget::LxApp {
+            appid: panel_appid, ..
+        } => {
+            if let Some(panel) = lxapp::try_get(&panel_appid)
+                && let Err(err) = panel
+                    .runtime
+                    .hide_lxapp(panel_appid.clone(), panel.session_id())
+            {
+                log::error!("failed to close Windows panel lxapp {panel_appid}: {err}");
+            }
+        }
+        PanelTarget::Terminal(_) => {}
+    }
+    if let Err(err) = hide_host_panel(panel_id) {
+        log::warn!("failed to hide Windows panel {panel_id}: {err}");
+    }
+    crate::window_host::set_panel_position_override(panel_id, None);
+    unregister_managed_aside(appid, panel_id);
+    if restore_lxapp_active {
+        lxapp::mark_lxapp_active(appid);
+    }
+    sync_shell_layout(appid);
+}
+
+fn show_lxapp_panel(
+    owner_appid: &str,
+    panel_id: &str,
+    panel_appid: &str,
+    path: &str,
+    position: lingxia_app_context::PanelPosition,
+    has_position_override: bool,
+) {
+    crate::window_host::set_panel_position_override(
+        panel_id,
+        has_position_override.then_some(panel_position(position)),
+    );
+    register_managed_aside(owner_appid, panel_id, position);
+
+    if is_panel_visible(panel_id) {
+        sync_shell_layout(owner_appid);
+        sync_shell_layout(panel_appid);
+        return;
+    }
+
+    if lxapp::try_get(panel_appid).is_some() {
+        open_lxapp_panel_now(panel_appid, path, panel_id);
+        sync_shell_layout(owner_appid);
+        sync_shell_layout(panel_appid);
+        return;
+    }
+
+    let panel_id = panel_id.to_string();
+    let panel_appid = panel_appid.to_string();
+    let path = path.to_string();
     if !pending_panel_opens().insert(panel_id.clone()) {
         return;
     }
 
-    let owner_appid = appid.to_string();
-    register_managed_aside(&owner_appid, &panel_id);
+    let owner_appid = owner_appid.to_string();
     std::mem::drop(lingxia::task::spawn(async move {
         let result = open_panel_lxapp(&panel_id, &panel_appid, &path).await;
         pending_panel_opens().remove(&panel_id);
         if let Err(err) = result {
             log::error!("failed to open Windows panel lxapp {panel_appid}: {err}");
+            crate::window_host::set_panel_position_override(&panel_id, None);
             unregister_managed_aside(&owner_appid, &panel_id);
             return;
         }
@@ -2376,6 +2566,7 @@ fn panel_target_for_id(panel_id: &str) -> Option<PanelTarget> {
         Some(PanelTarget::LxApp {
             appid: item.content.app_id,
             path: item.content.path.unwrap_or_default(),
+            position: item.position,
         })
     } else {
         Some(PanelTarget::Terminal(TerminalPanelRequest {
@@ -2386,32 +2577,24 @@ fn panel_target_for_id(panel_id: &str) -> Option<PanelTarget> {
     }
 }
 
-fn panel_item_for_lxapp(appid: &str) -> Option<(String, String)> {
+fn panel_item_for_lxapp(
+    appid: &str,
+) -> Option<(String, String, lingxia_app_context::PanelPosition)> {
     lingxia_app_context::app_config()
         .and_then(|config| config.panels.as_ref().cloned())
         .and_then(|panels| {
             panels.items.into_iter().find_map(|item| {
-                (item.content.kind.is_lxapp() && item.content.app_id == appid)
-                    .then_some((item.id, item.content.path.unwrap_or_default()))
+                (item.content.kind.is_lxapp() && item.content.app_id == appid).then_some((
+                    item.id,
+                    item.content.path.unwrap_or_default(),
+                    item.position,
+                ))
             })
         })
 }
 
-fn handle_terminal_panel_activator(appid: &str, request: TerminalPanelRequest) {
+fn show_terminal_panel(appid: &str, request: TerminalPanelRequest) {
     let position = panel_position(request.position);
-    if is_panel_visible(&request.panel_id) {
-        if let Err(err) = hide_host_panel(&request.panel_id) {
-            log::warn!(
-                "failed to hide Windows terminal panel {}: {}",
-                request.panel_id,
-                err
-            );
-        }
-        unregister_managed_aside(appid, &request.panel_id);
-        sync_shell_layout(appid);
-        return;
-    }
-
     let title = if request.label.trim().is_empty() {
         "Terminal"
     } else {
@@ -2422,7 +2605,7 @@ fn handle_terminal_panel_activator(appid: &str, request: TerminalPanelRequest) {
         title,
         position,
     ) {
-        register_managed_aside(appid, &request.panel_id);
+        register_managed_aside(appid, &request.panel_id, request.position);
         sync_shell_layout(appid);
         return;
     }
@@ -2436,16 +2619,17 @@ fn handle_terminal_panel_activator(appid: &str, request: TerminalPanelRequest) {
         );
         return;
     }
-    register_managed_aside(appid, &request.panel_id);
+    register_managed_aside(appid, &request.panel_id, request.position);
     sync_shell_layout(appid);
 }
 
-fn register_managed_aside(appid: &str, panel_id: &str) {
-    let Some(edge) = panel_edge_for_id(panel_id) else {
-        return;
-    };
+fn register_managed_aside(
+    appid: &str,
+    panel_id: &str,
+    position: lingxia_app_context::PanelPosition,
+) {
     if let Some(app) = lxapp::try_get(appid) {
-        app.register_host_aside(panel_id, edge);
+        app.register_host_aside(panel_id, panel_edge(position));
     }
 }
 
@@ -2455,16 +2639,29 @@ fn unregister_managed_aside(appid: &str, panel_id: &str) {
     }
 }
 
-fn panel_edge_for_id(panel_id: &str) -> Option<&'static str> {
-    let item = lingxia_app_context::app_config()
-        .and_then(|config| config.panels.as_ref().cloned())
-        .and_then(|panels| panels.items.into_iter().find(|item| item.id == panel_id))?;
-    Some(match item.position {
+fn parse_panel_position_override(
+    edge: &str,
+) -> Result<Option<lingxia_app_context::PanelPosition>, ()> {
+    let edge = edge.trim();
+    if edge.is_empty() {
+        return Ok(None);
+    }
+    match edge {
+        "left" => Ok(Some(lingxia_app_context::PanelPosition::Left)),
+        "right" => Ok(Some(lingxia_app_context::PanelPosition::Right)),
+        "top" => Ok(Some(lingxia_app_context::PanelPosition::Top)),
+        "bottom" => Ok(Some(lingxia_app_context::PanelPosition::Bottom)),
+        _ => Err(()),
+    }
+}
+
+fn panel_edge(position: lingxia_app_context::PanelPosition) -> &'static str {
+    match position {
         lingxia_app_context::PanelPosition::Left => "left",
         lingxia_app_context::PanelPosition::Right => "right",
         lingxia_app_context::PanelPosition::Top => "top",
         lingxia_app_context::PanelPosition::Bottom => "bottom",
-    })
+    }
 }
 
 async fn open_panel_lxapp(
