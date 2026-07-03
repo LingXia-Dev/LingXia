@@ -507,6 +507,15 @@ pub(crate) fn shell_chrome_dirty_rects(
         || old_layout.address_bar != new_layout.address_bar
     {
         push_dirty_rect(&mut dirty, new_rects.top_bar, client);
+        // A phone-width browser paints its address bar (URL, nav state, tab
+        // count) in the bottom bar instead of the top band.
+        if phone_browser_bar_active(client, new_layout) {
+            push_dirty_rect(
+                &mut dirty,
+                phone_browser_bar_rects(client, phone_bar_is_aside(new_layout)).bar,
+                client,
+            );
+        }
     }
 
     let tabbar_dirty = tabbar_dirty_rects(
