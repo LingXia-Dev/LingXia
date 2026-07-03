@@ -1,0 +1,92 @@
+use super::*;
+
+/// Overrides the launcher icon `lingxia-windows-sdk` loads, so `lingxia dev`
+/// can show the env badge without touching the prepared `windows/.lingxia/assets`.
+/// Must match the env var read in `lingxia-windows-sdk`'s `resolve_app_icon_path`.
+const WINDOWS_APP_ICON_PATH_ENV: &str = "LINGXIA_APP_ICON_PATH";
+
+pub(super) fn execute_windows(ctx: DevContext) -> Result<()> {
+    let platform_name = platform_session_name(PlatformType::Windows);
+    precheck_platform_session(&ctx.project_root, platform_name, ctx.parallel)?;
+    let platform = platform::windows::WindowsPlatform::new();
+    let server = server::start_server_fixed(&ctx.project_root, "127.0.0.1", platform_name)?;
+    let ws_url = server.ws_url();
+    let session = server.session().clone();
+
+    let run_result = (|| -> Result<()> {
+        let platforms_to_build = vec![PlatformType::Windows];
+        prepare_dev_host_assets(&ctx, &platforms_to_build, &[], Some(&ws_url))?;
+
+        println!("{}", "Step 1/2: Building...".bold());
+        let build_config = BuildConfig {
+            project_root: ctx.project_root.clone(),
+            profile: ctx.build_profile,
+            build_native: ctx.build_native,
+            targets: vec![],
+            lingxia_config: Some(ctx.config.clone()),
+            ipa: false,
+            package: false,
+            dmg: false,
+            android_aab: false,
+            macos_arch: None,
+            framework: ctx.framework,
+            native_features: dev_native_features(
+                &ctx.config,
+                "windows",
+                &ctx.extra_native_features,
+            ),
+            native_default_features: ctx.config.native_default_features_enabled(),
+            resolved_env: ctx.resolved_env.clone(),
+            skip_native_build: false,
+            native_only: false,
+        };
+
+        let artifacts = platform.build(&build_config)?;
+        let exe_path = artifacts.path().to_path_buf();
+        let runtime_env = platform::windows::windows_runtime_env(&ctx.project_root)?;
+
+        // dev/preview: stage a badged copy of the launcher icon and point the
+        // SDK at it via env, so the running window/taskbar shows the D/P badge
+        // without mutating the prepared `windows/.lingxia/assets` icon (which a
+        // later `lingxia build` copies into its dist).
+        let windows_dir = platform::windows::resolve_windows_dir(&ctx.project_root)?;
+        let staged_icon = crate::platform::windows::env_icon::stage_dev_badged_icon(
+            &windows_dir.join(".lingxia").join("assets"),
+            ctx.config.app.as_ref().map(|app| app.home_app_id.as_str()),
+            &windows_dir
+                .join(".lingxia")
+                .join("overlay")
+                .join(ctx.resolved_env.version.as_str()),
+            ctx.resolved_env.version,
+        )?;
+        println!();
+
+        println!("{}", "Step 2/2: Running...".bold());
+        let stop_requested = Arc::new(AtomicBool::new(false));
+        install_ctrlc_handler(stop_requested.clone())?;
+        log_store::write_session(&ctx.project_root, &session, platform_name, &ws_url)?;
+
+        let mut command = Command::new(&exe_path);
+        command.env(RUNNER_DEV_WS_URL_ENV, &ws_url);
+        for (key, value) in &runtime_env {
+            command.env(key, value);
+        }
+        if let Some(icon) = &staged_icon {
+            command.env(WINDOWS_APP_ICON_PATH_ENV, icon);
+        }
+        let mut child = command
+            .stdin(Stdio::null())
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit())
+            .spawn()
+            .with_context(|| format!("Failed to run {}", exe_path.display()))?;
+
+        print_dev_banner("Windows", "Ctrl+C or close app", &[]);
+
+        wait_for_child_or_interrupt(&mut child, stop_requested, "Windows app")?;
+        Ok(())
+    })();
+
+    let _ = log_store::remove_session(&ctx.project_root, &session.session_id);
+    stop_dev_server(server, run_result)
+}
