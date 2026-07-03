@@ -1087,6 +1087,34 @@ fn refresh_adjusted_content_rect(webtag_key: &str, mut rect: RECT) -> RECT {
 }
 
 fn sync_window_layout(hwnd: HWND) {
+    // The layout pass creates windows (overlays, panels) and moves them in the
+    // z-order. Both must happen on the window's own thread: a helper window
+    // created on a non-pumping thread (e.g. a tokio worker) permanently wedges
+    // every later cross-thread SetWindowPos over the owner group.
+    let owner_thread = unsafe { WindowsAndMessaging::GetWindowThreadProcessId(hwnd, None) };
+    if owner_thread != 0 && owner_thread != unsafe { GetCurrentThreadId() } {
+        let handle = hwnd_handle(hwnd);
+        let (done_tx, done_rx) = std::sync::mpsc::channel();
+        let posted = post_to_window_thread(
+            handle,
+            Box::new(move || {
+                sync_window_layout(hwnd_from_handle(handle));
+                let _ = done_tx.send(());
+            }),
+        );
+        // Present flows sequence a content show after this call, so the
+        // marshaled pass must complete before returning — a page shown with
+        // its stale (full-client) bounds flashes over the docked panels.
+        // The window thread pumps while we wait; time out defensively.
+        if posted
+            && done_rx
+                .recv_timeout(std::time::Duration::from_secs(5))
+                .is_err()
+        {
+            log::warn!("marshaled window layout pass timed out");
+        }
+        return;
+    }
     let Some(webtag_key) = active_webtag_key_for_window(hwnd) else {
         #[cfg(feature = "shell-chrome")]
         sync_transparent_tabbar_overlay(hwnd, None);
