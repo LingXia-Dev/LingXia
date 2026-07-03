@@ -17,6 +17,7 @@ type CloudPageType =
 type TenantLike = {
   tenantId?: string;
   tenantName?: string;
+  shortName?: string;
   logoUrl?: string;
 };
 
@@ -24,6 +25,7 @@ type LxIdentityLike = {
   tenant?: {
     id?: string;
     name?: string;
+    shortName?: string;
     logoUrl?: string;
   };
   active?: boolean;
@@ -101,6 +103,7 @@ function normalizeTenant(identityOrTenant: any): TenantLike | null {
       : typeof tenant.tenantName === "string"
         ? tenant.tenantName
         : "",
+    shortName: typeof tenant.shortName === "string" ? tenant.shortName : "",
     logoUrl: typeof tenant.logoUrl === "string" ? tenant.logoUrl : "",
   };
 }
