@@ -711,7 +711,7 @@ const PHONE_BROWSER_MAX_WIDTH: i32 = 600;
 /// action row.
 const PHONE_BAR_HEIGHT_SELF: i32 = 96;
 const PHONE_BAR_HEIGHT_ASIDE: i32 = 56;
-const PHONE_BAR_MARGIN: i32 = 8;
+const PHONE_BAR_MARGIN: i32 = 6;
 const PHONE_BAR_BOTTOM_GAP: i32 = 4;
 const PHONE_BAR_RADIUS: i32 = 16;
 const PHONE_BAR_BUTTON: i32 = 38;
@@ -770,9 +770,9 @@ fn phone_browser_bar_rects(client: RECT, aside: bool) -> PhoneBarRects {
         )
     } else {
         let pill = normalize_rect(RECT {
-            left: bar.left + 8,
+            left: bar.left + 6,
             top: bar.top + 8,
-            right: bar.right - 8,
+            right: bar.right - 6,
             bottom: bar.top + 8 + PHONE_ADDRESS_HEIGHT,
         });
         let reload = normalize_rect(RECT {
