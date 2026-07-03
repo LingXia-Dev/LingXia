@@ -141,14 +141,18 @@ impl<'a> LogicBundler<'a> {
         self.compile_module(path, role)
     }
 
-    fn render_bundle(self, _release: bool) -> Result<String> {
+    fn render_bundle(self, release: bool) -> Result<String> {
         let mut output = String::from("(function() {\n\n");
         for module in self.modules {
             output.push_str(&module.rendered);
             output.push('\n');
         }
         output.push_str("})();\n");
-        Ok(output)
+        if release {
+            crate::lxapp::hardening::harden_logic_bundle(&output)
+        } else {
+            Ok(output)
+        }
     }
 
     fn compile_module(&mut self, path: PathBuf, role: ModuleRole) -> Result<String> {

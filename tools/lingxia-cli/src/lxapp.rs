@@ -1,6 +1,7 @@
 mod build;
 mod framework;
 pub(crate) mod functions;
+mod hardening;
 mod logic;
 mod options;
 mod package;

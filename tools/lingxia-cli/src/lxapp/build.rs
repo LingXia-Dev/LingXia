@@ -103,6 +103,10 @@ pub fn run(args: &[String], cwd: &Path) -> Result<()> {
         view_duration,
     );
 
+    if options.release {
+        crate::lxapp::hardening::harden_release_output(&project)?;
+    }
+
     if options.package {
         let package_started = Instant::now();
         let archive = package::package_dist(&project)?;
