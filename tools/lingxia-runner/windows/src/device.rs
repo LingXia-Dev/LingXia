@@ -21,8 +21,8 @@ pub(crate) const CLEAN_CACHE_COMMAND: u32 = 0x0600;
 /// Shows the lxapp info (name + version).
 pub(crate) const ABOUT_COMMAND: u32 = 0x0700;
 
-/// Capsule close circle: quits the single-app emulator.
-pub(crate) const QUIT_COMMAND: u32 = 0x0800;
+/// Capsule close circle: dispatches the lxapp capsule close event.
+pub(crate) const CAPSULE_CLOSE_COMMAND: u32 = 0x0800;
 
 /// The selector dropdown only chooses the simulated frame/device.
 fn device_selector_items(index: usize) -> Vec<WindowsAppMenuItem> {
@@ -215,7 +215,7 @@ pub(crate) fn frame_spec(index: usize, landscape: bool) -> WindowsDeviceFrame {
             } else {
                 Vec::new()
             },
-            capsule_close_command: is_phone(index).then_some(QUIT_COMMAND),
+            capsule_close_command: is_phone(index).then_some(CAPSULE_CLOSE_COMMAND),
         }),
     }
 }

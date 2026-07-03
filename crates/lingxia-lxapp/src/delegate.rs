@@ -303,6 +303,9 @@ impl LxApp {
                 if let Err(e) = self.clear_page_stack() {
                     error!("Failed to clear page stack: {}", e).with_appid(self.appid.clone());
                 }
+                if let Some(manager) = lxapp::get_lxapps_manager() {
+                    manager.remove_from_stack(&self.appid);
+                }
 
                 // after SDK hides it, SDK should call get_current_lxapp to show another lxapp
                 let _ = self
@@ -369,6 +372,13 @@ impl LxApp {
     /// a tab page, reLaunch otherwise. Clears the page stack either way.
     fn navigate_to_initial_route(self: &Arc<Self>) -> bool {
         let home_route = self.config.get_initial_route();
+        if self
+            .peek_current_page()
+            .is_some_and(|path| path == home_route)
+        {
+            return true;
+        }
+
         let navigate_type = if let Some(tabbar) = self.get_tabbar() {
             if tabbar.is_tabbar_page(&home_route) {
                 NavigationType::SwitchTab
@@ -419,6 +429,9 @@ impl LxApp {
         if stack_size <= 1 {
             // If it's the last page, hide this LxApp (except home app)
             if !self.is_home_lxapp {
+                if let Some(manager) = lxapp::get_lxapps_manager() {
+                    manager.remove_from_stack(&self.appid);
+                }
                 let _ = self
                     .runtime
                     .hide_lxapp(self.appid.clone(), self.session_id());

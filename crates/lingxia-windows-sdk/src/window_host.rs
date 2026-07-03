@@ -4943,6 +4943,7 @@ fn stable_host_for_replacement(webtag: &WebTag, candidates: &[WebTag]) -> Option
 
 pub fn hide_webview_window(webtag: &WebTag) -> StdResult<()> {
     let handler = find_webview_handler(webtag).ok_or_else(|| handler_not_ready(webtag))?;
+    let current_host = window_handle_for_key(webtag.key());
     if let Some(panel_id) = panel_id_for_webtag(webtag.key()) {
         handler.set_content_visible(false)?;
         mark_panel_visible(&panel_id, false);
@@ -4971,7 +4972,46 @@ pub fn hide_webview_window(webtag: &WebTag) -> StdResult<()> {
     notify_webtag_visibility(webtag.key(), false);
     release_fullscreen_drill(webtag.key());
     unregister_floating_overlay(webtag.key());
+    #[cfg(feature = "components")]
+    restore_previous_lxapp_after_hide(current_host, webtag);
+    #[cfg(not(feature = "components"))]
+    let _ = current_host;
     Ok(())
+}
+
+/// Needs the lxapp runtime (`components`) to know which app is current; a
+/// bare host-api build has no lxapp stack to restore from.
+#[cfg(feature = "components")]
+fn restore_previous_lxapp_after_hide(host: Option<HWND>, hidden: &WebTag) {
+    let Some(host) = host else {
+        return;
+    };
+    if active_webtag_key_for_window(host).as_deref() != Some(hidden.key()) {
+        return;
+    }
+    let (appid, path, session_id) = lxapp::get_current_lxapp();
+    if appid.is_empty() || path.is_empty() {
+        return;
+    }
+    if appid == hidden.extract_appid() && session_id == hidden.session_id().unwrap_or_default() {
+        return;
+    }
+    let restore = WebTag::new(&appid, &path, Some(session_id));
+    let Some(restore_handler) = find_webview_handler(&restore) else {
+        return;
+    };
+    if webtag_is_visible(restore.key()) {
+        let _ = restore_handler.set_content_visible(false);
+    }
+    set_window_handle(restore.key(), host);
+    set_host_active_webtag(host, restore.key());
+    set_primary_host_window(host);
+    sync_window_layout(host);
+    if restore_handler.set_content_visible(true).is_ok() {
+        mark_active(&restore);
+        notify_webtag_visibility(restore.key(), true);
+        invalidate_window_chrome(host);
+    }
 }
 
 /// A hidden or destroyed full-screen drill hands the screen back: the owner
