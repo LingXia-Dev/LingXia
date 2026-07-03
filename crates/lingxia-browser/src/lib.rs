@@ -99,6 +99,13 @@ pub fn tab_is_aside(tab_id: &str) -> bool {
     tabs::is_aside_tab(tab_id)
 }
 
+/// Whether `tab_id` is a standalone (no-tab-strip) browser, e.g. a docked
+/// aside tab. Standalone tabs are independent of the main tab model, so
+/// shells exclude them from their main tab listings.
+pub fn tab_is_standalone(tab_id: &str) -> bool {
+    tabs::is_standalone_tab(tab_id)
+}
+
 pub fn close(tab_id: &str) -> Result<(), LxAppError> {
     tabs::close_browser_tab(tab_id)
 }

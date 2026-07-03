@@ -22,12 +22,13 @@ cloud = ["dep:lingxia-runner-config"]
 features = ["dev"]
 
 [dependencies]
-# The device-frame runner hosts a single lxapp in the shell (phone tabbar / lxapp
-# navbar), with no browser tabs — so it takes the shell substrate (`shell-chrome`)
-# + `device-frame`, and deliberately does NOT pull the browser engine.
+# The device-frame runner hosts a single lxapp in the shell, but self/aside URL
+# targets must stay in-app (never the system browser), so it takes the browser
+# ENGINE (`browser-runtime`, which implies `shell-chrome`) without the
+# `browser-shell` webui product — mirroring the macOS runner's feature set.
 lingxia = { workspace = true, features = ["standard", "devtool", "webview-input"] }
 lingxia_devtool = { workspace = true }
-lingxia-windows-sdk = { workspace = true, features = ["standard", "shell-chrome", "webview-input", "device-frame"] }
+lingxia-windows-sdk = { workspace = true, features = ["standard", "browser-runtime", "webview-input", "device-frame"] }
 lxapp = { workspace = true, default-features = false }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
