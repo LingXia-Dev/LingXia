@@ -125,7 +125,7 @@ struct DevOptions {
     /// Runner simulator device for `lingxia dev` on an lxapp (macOS and
     /// Windows runners): e.g. `iphone-15-pro`, `ipad`, `desktop-1440`. Only
     /// affects the lxapp runner window; ignored for native host apps.
-    #[arg(long)]
+    #[arg(long, num_args = 0..=1, default_missing_value = "")]
     runner: Option<String>,
 }
 
@@ -754,4 +754,27 @@ fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod cli_tests {
+    use super::*;
+
+    #[test]
+    fn dev_runner_accepts_missing_value_for_device_list() {
+        let cli = Cli::try_parse_from(["lingxia", "dev", "--runner"]).unwrap();
+        let Commands::Dev { dev_options } = cli.command else {
+            panic!("expected dev command");
+        };
+        assert_eq!(dev_options.runner.as_deref(), Some(""));
+    }
+
+    #[test]
+    fn dev_runner_accepts_explicit_device_id() {
+        let cli = Cli::try_parse_from(["lingxia", "dev", "--runner", "desktop-1440"]).unwrap();
+        let Commands::Dev { dev_options } = cli.command else {
+            panic!("expected dev command");
+        };
+        assert_eq!(dev_options.runner.as_deref(), Some("desktop-1440"));
+    }
 }
