@@ -4632,14 +4632,18 @@ fn window_logical_client_width(hwnd: HWND) -> f64 {
 pub fn find_webview_content_window(webtag: &WebTag) -> Option<WindowsWebViewContentWindow> {
     let hwnd = window_handle_for_key(webtag.key())?;
     let client = content_rect_for_window(hwnd, webtag.key());
-    let dpi = unsafe { windows::Win32::UI::HiDpi::GetDpiForWindow(hwnd) };
     Some(WindowsWebViewContentWindow {
         window: hwnd_handle(hwnd),
         content_left: client.left,
         content_top: client.top,
         content_width: (client.right - client.left).max(0),
         content_height: (client.bottom - client.top).max(0),
-        scale: if dpi == 0 { 1.0 } else { dpi as f64 / 96.0 },
+        // The WebView2 controller is pinned to raw pixels (RasterizationScale
+        // 1.0 in `configure_controller`), so CSS px == physical px regardless
+        // of the monitor DPI. Native component overlays must map document
+        // rects with the same factor — the monitor scale would blow them up
+        // past the elements they cover (a 1.5x video on a 150% laptop).
+        scale: 1.0,
     })
 }
 
