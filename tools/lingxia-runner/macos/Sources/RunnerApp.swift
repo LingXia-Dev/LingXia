@@ -18,6 +18,10 @@ public class RunnerApp {
     /// App ids whose next phone reopen should reload the webview in place (restart),
     /// keeping the device-frame window visible instead of rebuilding it.
     private var phoneRestartReloadPending: Set<String> = []
+    /// The lxapp stack behind the current phone window: opening another lxapp
+    /// suspends the current window (hidden, session and page stack intact);
+    /// closing the one on top reveals it again.
+    private var suspendedPhoneControllers: [SimulatorWindowController] = []
     /// App ids in a surface-shell (pad/desktop) restart — the runner stands down on
     /// `.didClose` and lets the runtime's recreate re-attach the fresh session.
     private var pendingSurfaceLifecycleReopens: Set<String> = []
@@ -104,6 +108,16 @@ public class RunnerApp {
                             // never disappears.
                             self.phoneRestartReloadPending.insert(session.appId)
                             self.reopenCurrentAppAfterLifecycleAction(pending)
+                        } else if let previous = self.suspendedPhoneControllers.popLast() {
+                            // A closed lxapp reveals the one it covered — same
+                            // window object, so its page stack is untouched.
+                            phoneHost.closeFromRuntime()
+                            self.windowController = previous
+                            previous.window?.makeKeyAndOrderFront(nil)
+                            RunnerSupport.Runtime.setCurrentApp(
+                                appId: previous.appId,
+                                path: previous.currentPath
+                            )
                         } else {
                             phoneHost.closeFromRuntime()
                             self.reopenHomeAfterRuntimeClose(appId: session.appId, controller: controller)
@@ -199,11 +213,27 @@ public class RunnerApp {
             return
         }
 
+        // Suspend the current phone window instead of discarding it — its
+        // session and page stack stay intact for when the new lxapp closes.
+        if let current = windowController {
+            current.window?.orderOut(nil)
+            suspendedPhoneControllers.append(current)
+        }
+        // Reopening an lxapp that is already suspended resumes its window.
+        if let index = suspendedPhoneControllers.lastIndex(where: { $0.appId == appId }) {
+            let resumed = suspendedPhoneControllers.remove(at: index)
+            resumed.applyDeviceChange(deviceSize)
+            resumed.window?.makeKeyAndOrderFront(nil)
+            resumed.navigate(to: path)
+            windowController = resumed
+            return
+        }
+
         let controller = SimulatorWindowController(appId: appId, path: path)
         controller.showWindow(self)
         controller.window?.makeKeyAndOrderFront(self)
         NSApp.activate(ignoringOtherApps: true)
-        
+
         windowController = controller
     }
 
@@ -347,10 +377,10 @@ public class RunnerApp {
     }
 
     public func closeCurrentLxAppFromCapsule() {
-        // The runner draws this capsule itself, so this only runs in runner mode:
-        // a single-app emulator where the close circle exits (quits) the app.
-        // Production's SDK-drawn capsule does the standard exit-to-host instead.
-        NSApp.terminate(nil)
+        // The close circle closes the current lxapp — never the runner app
+        // (quitting stays on the red dot). A covered lxapp is revealed by the
+        // didClose handler; the home lxapp's close clears its stack to home.
+        triggerCurrentLxAppAction("close", reopenAfterAction: false)
     }
 
     private func triggerCurrentLxAppAction(_ action: String, reopenAfterAction: Bool) {
