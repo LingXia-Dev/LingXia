@@ -54,6 +54,10 @@ function getTenantLogoUrl(tenant: TenantLike | null | undefined): string {
   return tenant?.logoUrl || '';
 }
 
+function getTenantShortName(tenant: TenantLike | null | undefined): string {
+  return tenant?.shortName || '';
+}
+
 function mqttStateColor(state: string): string {
   switch (state) {
     case 'connected': return 'text-emerald-600';
@@ -119,12 +123,16 @@ function CloudAuthView({
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <button
-              onClick={loginInteractive}
-              className="py-3 text-sm font-medium transition-all duration-200 rounded-xl shadow-sm active:scale-[0.98] bg-gradient-to-r from-sky-600 to-sky-500 hover:from-sky-500 hover:to-sky-600 text-white"
-            >
-              Interactive Login
-            </button>
+            {/* Login is the unauthenticated entry; once an identity is active
+                it silently refreshes, so hide it in favor of Add Identity. */}
+            {!tenant ? (
+              <button
+                onClick={loginInteractive}
+                className="py-3 text-sm font-medium transition-all duration-200 rounded-xl shadow-sm active:scale-[0.98] bg-gradient-to-r from-sky-600 to-sky-500 hover:from-sky-500 hover:to-sky-600 text-white"
+              >
+                Interactive Login
+              </button>
+            ) : null}
             <button
               onClick={addTenant}
               className="py-3 text-sm font-medium transition-all duration-200 rounded-xl shadow-sm active:scale-[0.98] bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-600 text-white"
@@ -174,6 +182,11 @@ function CloudAuthView({
                 <span className="text-sm font-semibold text-gray-800 text-right">
                   {tenant ? getTenantName(tenant) : 'No active tenant'}
                 </span>
+                {getTenantShortName(tenant) ? (
+                  <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
+                    {getTenantShortName(tenant)}
+                  </span>
+                ) : null}
               </div>
             </div>
           </div>
@@ -220,7 +233,14 @@ function CloudAuthView({
                           />
                         ) : null}
                         <div className="min-w-0">
-                          <div className="text-sm font-semibold text-gray-800">{getTenantName(item)}</div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-semibold text-gray-800">{getTenantName(item)}</span>
+                            {getTenantShortName(item) ? (
+                              <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
+                                {getTenantShortName(item)}
+                              </span>
+                            ) : null}
+                          </div>
                           <div className="mt-1 text-xs text-gray-500 break-all">{tenantId || 'Missing tenantId'}</div>
                         </div>
                       </div>
