@@ -60,9 +60,9 @@ pub(super) fn shell_palette() -> ShellPalette {
 /// correctly on any surface, including colored lxapp navigation bars.
 pub(super) fn hover_overlay() -> u32 {
     if super::theme::is_dark() {
-        0x1effffff
+        0x28ffffff
     } else {
-        0x14000000
+        0x1f000000
     }
 }
 
