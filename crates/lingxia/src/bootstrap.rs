@@ -230,6 +230,8 @@ pub(crate) fn init_with_platform(platform: lingxia_platform::Platform) -> Option
     crate::applink::install_handler();
     #[cfg(feature = "standard")]
     lingxia_logic::register_logic_runtime();
+    #[cfg(feature = "automation")]
+    lingxia_automation::register_automation_runtime();
     let home_app_id = lxapp::init(platform);
     if let Err(error) = crate::shell::initialize(runtime.clone()) {
         log::error!("Failed to initialize host shell state: {error}");

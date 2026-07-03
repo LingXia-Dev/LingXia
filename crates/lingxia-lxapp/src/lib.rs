@@ -2,6 +2,9 @@
 
 mod appservice;
 mod archive;
+/// Shared automation lower half for devtool handlers and `lx.automation()`.
+#[cfg(feature = "automation")]
+pub mod automation;
 pub(crate) mod bridge;
 mod cache;
 mod delegate;
@@ -55,15 +58,16 @@ pub use lxapp::{
     LxAppRuntimeInfo, LxAppRuntimePageInfo, LxAppRuntimeSurfaceInfo, LxAppSecurityPrivilege,
     PageDefinition, PageInstanceEvent, PageInstanceRuntimeInfo, PageOwner, PageQueryInput,
     PageSurface, PageSurfaceRequest, PageSurfaceTarget, PageTarget, PresentationKind, ResolvedPage,
-    SceneId, SurfaceKind, SurfacePosition, SurfaceRole, UrlCallbackSurface, close_lxapp,
-    config::LxAppInfo, create_page_instance, dispose_page_instance, dispose_page_instance_by_id,
-    ensure_builtin_lxapp, ensure_lxapp, find_page_by_instance_id, get_current_lxapp,
-    get_display_language, get_platform, init, installed_lxapp_path, is_dev_session,
-    is_pull_down_refresh_enabled, list_lxapps, mark_lxapp_active, notify_lxapp_host_visibility,
-    notify_page_host_visibility, notify_page_instance, notify_page_instance_by_id, on_low_memory,
-    open_lxapp, open_region, register_builtin_asset_bundle, register_dev_bundle_source,
-    register_surface_close_observer, register_surface_context_observer, register_synthetic_lxapp,
-    restart_lxapp, set_display_language, tabbar, touch_page_instance_by_id, try_get,
+    SceneId, SurfaceKind, SurfacePosition, SurfaceRole, UrlCallbackSurface, automation_auto_grant,
+    close_lxapp, config::LxAppInfo, create_page_instance, dispose_page_instance,
+    dispose_page_instance_by_id, ensure_builtin_lxapp, ensure_lxapp, find_page_by_instance_id,
+    get_current_lxapp, get_display_language, get_platform, init, installed_lxapp_path,
+    is_dev_session, is_pull_down_refresh_enabled, list_lxapps, mark_lxapp_active,
+    notify_lxapp_host_visibility, notify_page_host_visibility, notify_page_instance,
+    notify_page_instance_by_id, on_low_memory, open_lxapp, open_region,
+    register_builtin_asset_bundle, register_dev_bundle_source, register_surface_close_observer,
+    register_surface_context_observer, register_synthetic_lxapp, restart_lxapp,
+    set_automation_auto_grant, set_display_language, tabbar, touch_page_instance_by_id, try_get,
     uninstall_lxapp,
 };
 pub use native_component::{

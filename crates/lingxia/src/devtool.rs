@@ -2,6 +2,7 @@ use std::path::PathBuf;
 use std::sync::OnceLock;
 
 use lingxia_platform::traits::app_runtime::AppRuntime;
+use lxapp::automation as auto;
 
 const LXAPP_PATH_ENV: &str = "LINGXIA_LXAPP_PATH";
 
@@ -411,8 +412,8 @@ pub struct LxAppDevPageWaitResult {
 
 /// Returns information about the current page for the selected app.
 pub fn lxapp_dev_page_current(appid: Option<&str>) -> Result<LxAppDevPageInfo, String> {
-    let app = resolve_dev_lxapp(appid.unwrap_or("current"))?;
-    let (page, name) = resolve_dev_page(&app, None)?;
+    let app = auto::resolve_lxapp(appid.unwrap_or("current"))?;
+    let (page, name) = auto::resolve_page(&app, None)?;
     Ok(dev_page_info(&app, &page, name.as_deref()))
 }
 
@@ -477,8 +478,8 @@ pub fn lxapp_dev_page_info(
     appid: Option<&str>,
     page_name: Option<&str>,
 ) -> Result<LxAppDevPageInfo, String> {
-    let app = resolve_dev_lxapp(appid.unwrap_or("current"))?;
-    let (page, name) = resolve_dev_page(&app, page_name)?;
+    let app = auto::resolve_lxapp(appid.unwrap_or("current"))?;
+    let (page, name) = auto::resolve_page(&app, page_name)?;
     Ok(dev_page_info(&app, &page, name.as_deref()))
 }
 
@@ -504,7 +505,7 @@ pub async fn lxapp_dev_page_wait(
     }
 
     let query_script = selector
-        .map(|selector| build_dev_page_query_script(selector, index, false, Some(4096)))
+        .map(|selector| auto::build_query_script(selector, index, false, Some(4096)))
         .transpose()?;
     let deadline = tokio::time::Instant::now()
         .checked_add(timeout)
@@ -632,13 +633,8 @@ pub async fn lxapp_dev_page_eval(
     page_name: Option<&str>,
     js: &str,
 ) -> Result<serde_json::Value, String> {
-    let app = resolve_dev_lxapp(appid.unwrap_or("current"))?;
-    let (page, _) = resolve_dev_page(&app, page_name)?;
-    page.webview()
-        .ok_or_else(|| "page WebView is not ready".to_string())?
-        .evaluate_javascript(js)
-        .await
-        .map_err(|err| err.to_string())
+    let app = auto::resolve_lxapp(appid.unwrap_or("current"))?;
+    auto::page_eval(&app, page_name, js).await
 }
 
 /// Capture a PNG snapshot of the host app's entire window (not just a
@@ -755,14 +751,8 @@ pub async fn lxapp_dev_page_query(
     all: bool,
     max_text: Option<usize>,
 ) -> Result<serde_json::Value, String> {
-    let app = resolve_dev_lxapp(appid.unwrap_or("current"))?;
-    let (page, _) = resolve_dev_page(&app, page_name)?;
-    let script = build_dev_page_query_script(selector, index, all, max_text)?;
-    page.webview()
-        .ok_or_else(|| "page WebView is not ready".to_string())?
-        .evaluate_javascript(&script)
-        .await
-        .map_err(|err| err.to_string())
+    let app = auto::resolve_lxapp(appid.unwrap_or("current"))?;
+    auto::page_query(&app, page_name, selector, index, all, max_text).await
 }
 
 /// Clicks the matching DOM node in the target page.
@@ -772,15 +762,8 @@ pub async fn lxapp_dev_page_click(
     selector: &str,
     index: Option<usize>,
 ) -> Result<(), String> {
-    let app = resolve_dev_lxapp(appid.unwrap_or("current"))?;
-    let (page, _) = resolve_dev_page(&app, page_name)?;
-    let webview = page
-        .webview()
-        .ok_or_else(|| "page WebView is not ready".to_string())?;
-    webview
-        .click(selector, lingxia_webview::ClickOptions { index })
-        .await
-        .map_err(|err| err.to_string())
+    let app = auto::resolve_lxapp(appid.unwrap_or("current"))?;
+    auto::page_click(&app, page_name, selector, index).await
 }
 
 /// Types text into the matching editable DOM node without clearing existing content.
@@ -791,22 +774,8 @@ pub async fn lxapp_dev_page_type(
     index: Option<usize>,
     text: &str,
 ) -> Result<(), String> {
-    let app = resolve_dev_lxapp(appid.unwrap_or("current"))?;
-    let (page, _) = resolve_dev_page(&app, page_name)?;
-    let webview = page
-        .webview()
-        .ok_or_else(|| "page WebView is not ready".to_string())?;
-    webview
-        .type_text(
-            selector,
-            text,
-            lingxia_webview::TypeOptions {
-                index,
-                replace: false,
-            },
-        )
-        .await
-        .map_err(|err| err.to_string())
+    let app = auto::resolve_lxapp(appid.unwrap_or("current"))?;
+    auto::page_type(&app, page_name, selector, index, text).await
 }
 
 /// Replaces the matching editable DOM node content with the provided text.
@@ -817,15 +786,8 @@ pub async fn lxapp_dev_page_fill(
     index: Option<usize>,
     text: &str,
 ) -> Result<(), String> {
-    let app = resolve_dev_lxapp(appid.unwrap_or("current"))?;
-    let (page, _) = resolve_dev_page(&app, page_name)?;
-    let webview = page
-        .webview()
-        .ok_or_else(|| "page WebView is not ready".to_string())?;
-    webview
-        .fill(selector, text, lingxia_webview::FillOptions { index })
-        .await
-        .map_err(|err| err.to_string())
+    let app = auto::resolve_lxapp(appid.unwrap_or("current"))?;
+    auto::page_fill(&app, page_name, selector, index, text).await
 }
 
 /// Sends a key press to the target page WebView.
@@ -834,13 +796,8 @@ pub async fn lxapp_dev_page_press(
     page_name: Option<&str>,
     key: &str,
 ) -> Result<(), String> {
-    let app = resolve_dev_lxapp(appid.unwrap_or("current"))?;
-    let (page, _) = resolve_dev_page(&app, page_name)?;
-    page.webview()
-        .ok_or_else(|| "page WebView is not ready".to_string())?
-        .press(key, lingxia_webview::PressOptions)
-        .await
-        .map_err(|err| err.to_string())
+    let app = auto::resolve_lxapp(appid.unwrap_or("current"))?;
+    auto::page_press(&app, page_name, key).await
 }
 
 /// Scrolls the page DOM by `(dx, dy)`, walking up to the nearest scrollable
@@ -851,13 +808,8 @@ pub async fn lxapp_dev_page_scroll(
     dx: f64,
     dy: f64,
 ) -> Result<(), String> {
-    let app = resolve_dev_lxapp(appid.unwrap_or("current"))?;
-    let (page, _) = resolve_dev_page(&app, page_name)?;
-    page.webview()
-        .ok_or_else(|| "page WebView is not ready".to_string())?
-        .scroll(dx, dy, lingxia_webview::ScrollOptions)
-        .await
-        .map_err(|err| err.to_string())
+    let app = auto::resolve_lxapp(appid.unwrap_or("current"))?;
+    auto::page_scroll(&app, page_name, dx, dy).await
 }
 
 /// Scrolls the first matching DOM node into view.
@@ -866,42 +818,17 @@ pub async fn lxapp_dev_page_scroll_to(
     page_name: Option<&str>,
     selector: &str,
 ) -> Result<(), String> {
-    let app = resolve_dev_lxapp(appid.unwrap_or("current"))?;
-    let (page, _) = resolve_dev_page(&app, page_name)?;
-    page.webview()
-        .ok_or_else(|| "page WebView is not ready".to_string())?
-        .scroll_to(selector, lingxia_webview::ScrollOptions)
-        .await
-        .map_err(|err| err.to_string())
+    let app = auto::resolve_lxapp(appid.unwrap_or("current"))?;
+    auto::page_scroll_to(&app, page_name, selector).await
 }
 
 /// Navigates back in the current page stack by the requested delta.
 pub fn lxapp_dev_page_back(appid: Option<&str>, delta: u32) -> Result<(), String> {
-    let app = resolve_dev_lxapp(appid.unwrap_or("current"))?;
+    let app = auto::resolve_lxapp(appid.unwrap_or("current"))?;
     app.current_page()
         .map_err(|err| err.to_string())?
         .navigate_back(delta)
         .map_err(|err| err.to_string())
-}
-
-/// Navigation mode used by [`lxapp_dev_nav_with_kind`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum LxAppDevNavKind {
-    To,
-    Redirect,
-    SwitchTab,
-    Relaunch,
-}
-
-impl LxAppDevNavKind {
-    fn navigation_type(self) -> lxapp::NavigationType {
-        match self {
-            Self::To => lxapp::NavigationType::Forward,
-            Self::Redirect => lxapp::NavigationType::Replace,
-            Self::SwitchTab => lxapp::NavigationType::SwitchTab,
-            Self::Relaunch => lxapp::NavigationType::Launch,
-        }
-    }
 }
 
 /// Navigate to a configured page by page name.
@@ -910,7 +837,7 @@ pub async fn lxapp_dev_nav_to(
     page_name: &str,
     query: Option<serde_json::Value>,
 ) -> Result<LxAppDevPageInfo, String> {
-    lxapp_dev_nav_with_kind(appid, page_name, query, LxAppDevNavKind::To).await
+    lxapp_dev_nav_with_kind(appid, page_name, query, lxapp::NavigationType::Forward).await
 }
 
 /// Replace the current page with a configured page by page name.
@@ -919,7 +846,7 @@ pub async fn lxapp_dev_nav_redirect(
     page_name: &str,
     query: Option<serde_json::Value>,
 ) -> Result<LxAppDevPageInfo, String> {
-    lxapp_dev_nav_with_kind(appid, page_name, query, LxAppDevNavKind::Redirect).await
+    lxapp_dev_nav_with_kind(appid, page_name, query, lxapp::NavigationType::Replace).await
 }
 
 /// Switch to a configured tab page by page name.
@@ -928,7 +855,7 @@ pub async fn lxapp_dev_nav_switch_tab(
     page_name: &str,
     query: Option<serde_json::Value>,
 ) -> Result<LxAppDevPageInfo, String> {
-    lxapp_dev_nav_with_kind(appid, page_name, query, LxAppDevNavKind::SwitchTab).await
+    lxapp_dev_nav_with_kind(appid, page_name, query, lxapp::NavigationType::SwitchTab).await
 }
 
 /// Relaunch the lxapp at a configured page by page name.
@@ -937,7 +864,7 @@ pub async fn lxapp_dev_nav_relaunch(
     page_name: &str,
     query: Option<serde_json::Value>,
 ) -> Result<LxAppDevPageInfo, String> {
-    lxapp_dev_nav_with_kind(appid, page_name, query, LxAppDevNavKind::Relaunch).await
+    lxapp_dev_nav_with_kind(appid, page_name, query, lxapp::NavigationType::Launch).await
 }
 
 /// Navigate back in the current page stack and return the destination page.
@@ -945,13 +872,8 @@ pub async fn lxapp_dev_nav_back(
     appid: Option<&str>,
     delta: u32,
 ) -> Result<LxAppDevPageInfo, String> {
-    let app = resolve_dev_lxapp(appid.unwrap_or("current"))?;
-    app.current_page()
-        .map_err(|err| err.to_string())?
-        .navigate_back(delta)
-        .map_err(|err| err.to_string())?;
-
-    let (page, name) = resolve_dev_page(&app, None)?;
+    let app = auto::resolve_lxapp(appid.unwrap_or("current"))?;
+    let (page, name) = auto::navigate_back(&app, delta, false).await?;
     wait_dev_page_runtime_ready(&app, &page, name.as_deref()).await
 }
 
@@ -959,31 +881,10 @@ async fn lxapp_dev_nav_with_kind(
     appid: Option<&str>,
     page_name: &str,
     query: Option<serde_json::Value>,
-    kind: LxAppDevNavKind,
+    kind: lxapp::NavigationType,
 ) -> Result<LxAppDevPageInfo, String> {
-    let app = resolve_dev_lxapp(appid.unwrap_or("current"))?;
-    let target_url = resolve_dev_page_target(&app, page_name, query.as_ref())?;
-
-    if kind == LxAppDevNavKind::Redirect && is_dev_tabbar_page_url(&app, &target_url) {
-        return Err("redirectTo cannot navigate to a tabBar page".to_string());
-    }
-
-    app.ensure_page_exists(&target_url)
-        .map_err(|err| err.to_string())?;
-
-    let current_path = app
-        .peek_current_page()
-        .ok_or_else(|| "No current page found".to_string())?;
-    let current_page = app
-        .get_page(&current_path)
-        .ok_or_else(|| "Current page not found".to_string())?;
-    let target_page = app.get_or_create_page(&target_url);
-    let target_page = current_page
-        .navigate_to(target_page, kind.navigation_type())
-        .map_err(|err| err.to_string())?;
-
-    let (page, name) = resolve_dev_page(&app, None)?;
-    debug_assert_eq!(page.instance_id_string(), target_page.instance_id_string());
+    let app = auto::resolve_lxapp(appid.unwrap_or("current"))?;
+    let (page, name) = auto::navigate(&app, page_name, query.as_ref(), kind, false).await?;
     wait_dev_page_runtime_ready(&app, &page, name.as_deref()).await
 }
 
@@ -1023,46 +924,6 @@ async fn wait_dev_page_runtime_ready(
         ))
         .await;
     }
-}
-
-fn resolve_dev_page_target(
-    app: &std::sync::Arc<lxapp::LxApp>,
-    page_name: &str,
-    query: Option<&serde_json::Value>,
-) -> Result<String, String> {
-    let page_name = page_name.trim();
-    if page_name.is_empty() {
-        return Err("page name is required".to_string());
-    }
-    let path = app
-        .find_page_path_by_name(page_name)
-        .ok_or_else(|| format!("unknown page name: {page_name}"))?;
-    match query {
-        Some(query) => lxapp::append_page_query(path, query),
-        None => Ok(path),
-    }
-}
-
-fn normalize_dev_tabbar_path(url: &str) -> String {
-    let (path, _) = lxapp::startup::split_path_query(url);
-    let mut trimmed = path.trim_start_matches('/').to_string();
-    if let Some(dot_pos) = trimmed.rfind('.')
-        && trimmed.rfind('/').is_none_or(|slash| dot_pos > slash)
-    {
-        trimmed.truncate(dot_pos);
-    }
-    trimmed
-}
-
-fn is_dev_tabbar_page_url(app: &lxapp::LxApp, url: &str) -> bool {
-    let Some(tabbar) = app.get_tabbar() else {
-        return false;
-    };
-    let target = normalize_dev_tabbar_path(url);
-    tabbar
-        .list
-        .iter()
-        .any(|item| normalize_dev_tabbar_path(&item.pagePath) == target)
 }
 
 fn resolve_dev_lxapp(raw: &str) -> Result<std::sync::Arc<lxapp::LxApp>, String> {
@@ -1310,121 +1171,6 @@ pub fn lxapp_dev_page_input_supported() -> bool {
             feature = "webview-input",
             any(target_os = "macos", target_os = "windows")
         )
-    ))
-}
-
-fn build_dev_page_query_script(
-    selector: &str,
-    index: Option<usize>,
-    all: bool,
-    max_text_chars: Option<usize>,
-) -> Result<String, String> {
-    let selector_json =
-        serde_json::to_string(selector).map_err(|err| format!("invalid selector: {err}"))?;
-    let index_json =
-        serde_json::to_string(&index).map_err(|err| format!("invalid index: {err}"))?;
-    let max_text_json = serde_json::to_string(&max_text_chars)
-        .map_err(|err| format!("invalid query limit: {err}"))?;
-    Ok(format!(
-        r#"
-(() => {{
-  const selector = {selector_json};
-  const requestedIndex = {index_json};
-  const all = {};
-  const maxText = {max_text_json};
-  const truncate = (value) => {{
-    const text = String(value ?? "");
-    if (typeof maxText === "number" && maxText >= 0 && text.length > maxText) {{
-      return {{ value: text.slice(0, maxText), truncated: true }};
-    }}
-    return {{ value: text, truncated: false }};
-  }};
-  if (typeof selector !== "string" || selector.trim() === "") {{
-    throw new Error("selector must not be empty");
-  }}
-  let nodes;
-  try {{
-    nodes = Array.from(document.querySelectorAll(selector));
-  }} catch (err) {{
-    throw new Error("invalid selector: " + String(err && err.message ? err.message : err));
-  }}
-  const describe = (el, index, count) => {{
-    const rect = el.getBoundingClientRect();
-    const style = window.getComputedStyle(el);
-    const disabled = !!el.disabled || el.getAttribute("aria-disabled") === "true";
-    const tag = (el.tagName || "").toLowerCase();
-    const inputType = tag === "input" ? String(el.type || "text").toLowerCase() : "";
-    const blockedInputTypes = new Set([
-      "button", "checkbox", "color", "file", "hidden", "image", "radio",
-      "range", "reset", "submit"
-    ]);
-    const editable = !!el.isContentEditable ||
-      (tag === "textarea" && !disabled && !el.readOnly) ||
-      (tag === "input" && !disabled && !el.readOnly && !blockedInputTypes.has(inputType));
-    const visible = rect.width > 0 &&
-      rect.height > 0 &&
-      rect.bottom > 0 &&
-      rect.right > 0 &&
-      rect.top < window.innerHeight &&
-      rect.left < window.innerWidth &&
-      style.visibility !== "hidden" &&
-      style.display !== "none" &&
-      Number(style.opacity || "1") !== 0;
-    const hasValue = "value" in el;
-    const text = truncate(el.innerText || el.textContent || "");
-    const value = hasValue ? truncate(el.value ?? "") : null;
-    return {{
-      exists: true,
-      index,
-      count,
-      tag,
-      type: inputType || null,
-      id: el.id || null,
-      name: el.getAttribute("name"),
-      role: el.getAttribute("role"),
-      aria_label: el.getAttribute("aria-label"),
-      placeholder: el.getAttribute("placeholder"),
-      visible,
-      enabled: !disabled,
-      editable,
-      text: text.value,
-      text_truncated: text.truncated,
-      value: value ? value.value : null,
-      value_truncated: value ? value.truncated : false,
-      rect: {{
-        left: rect.left,
-        top: rect.top,
-        width: rect.width,
-        height: rect.height,
-        right: rect.right,
-        bottom: rect.bottom,
-        center_x: rect.left + (rect.width / 2),
-        center_y: rect.top + (rect.height / 2),
-        viewport_width: window.innerWidth,
-        viewport_height: window.innerHeight
-      }}
-    }};
-  }};
-  const count = nodes.length;
-  if (all) {{
-    return {{ count, items: nodes.map((el, index) => describe(el, index, count)) }};
-  }}
-  const index = typeof requestedIndex === "number" ? requestedIndex : 0;
-  const el = nodes[index];
-  if (!el) {{
-    return {{
-      exists: false,
-      index,
-      count,
-      visible: false,
-      enabled: false,
-      editable: false
-    }};
-  }}
-  return describe(el, index, count);
-}})()
-"#,
-        all
     ))
 }
 

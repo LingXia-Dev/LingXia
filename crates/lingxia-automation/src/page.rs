@@ -1,0 +1,309 @@
+//! `PageDriver` — element-level automation of the calling lxapp's own pages.
+//! All page/DOM semantics come from the shared `lxapp::automation` lower half,
+//! so results match the devtool (`lxdev lxapp page …`) exactly.
+
+use crate::auto_err;
+use crate::resolve::{json_to_js, upgrade};
+use base64::{Engine as _, engine::general_purpose};
+use lxapp::{LxApp, automation as auto};
+use rong::{
+    FromJSObj, HostError, IntoJSObj, JSContext, JSResult, JSValue, function::Optional, js_class,
+    js_export, js_method,
+};
+use std::sync::{Arc, Weak};
+use std::time::{Duration, Instant};
+
+const DEFAULT_MAX_TEXT: usize = 4096;
+const EVAL_DEFAULT_MS: u64 = 5_000;
+const WAIT_POLL_MS: u64 = 100;
+const WAIT_DEFAULT_MS: u64 = 10_000;
+const WAIT_MAX_MS: u64 = 60_000;
+
+#[js_export]
+pub(crate) struct JSPageDriver {
+    lxapp: Weak<LxApp>,
+}
+
+impl JSPageDriver {
+    pub(crate) fn new(lxapp: &Arc<LxApp>) -> Self {
+        Self {
+            lxapp: Arc::downgrade(lxapp),
+        }
+    }
+}
+
+#[derive(FromJSObj)]
+struct JSEvalOptions {
+    script: String,
+    page: Option<String>,
+    #[rename = "timeoutMs"]
+    timeout_ms: Option<u64>,
+}
+
+#[derive(FromJSObj)]
+struct JSQueryOptions {
+    css: String,
+    index: Option<usize>,
+    all: Option<bool>,
+    #[rename = "maxText"]
+    max_text: Option<usize>,
+    page: Option<String>,
+}
+
+#[derive(FromJSObj)]
+struct JSClickOptions {
+    css: String,
+    index: Option<usize>,
+    page: Option<String>,
+}
+
+#[derive(FromJSObj)]
+struct JSTypeOptions {
+    css: String,
+    text: String,
+    index: Option<usize>,
+    page: Option<String>,
+}
+
+#[derive(FromJSObj)]
+struct JSPressOptions {
+    key: String,
+    page: Option<String>,
+}
+
+#[derive(FromJSObj)]
+struct JSScrollToOptions {
+    css: String,
+    page: Option<String>,
+}
+
+#[derive(FromJSObj, Default)]
+struct JSScrollOptions {
+    dx: Option<f64>,
+    dy: Option<f64>,
+    page: Option<String>,
+}
+
+#[derive(FromJSObj)]
+struct JSWaitForOptions {
+    css: String,
+    state: Option<String>,
+    #[rename = "timeoutMs"]
+    timeout_ms: Option<u64>,
+    page: Option<String>,
+}
+
+#[derive(FromJSObj, Default)]
+struct JSScreenshotOptions {
+    page: Option<String>,
+}
+
+/// The two fields `waitFor` reads off the shared query payload.
+#[derive(serde::Deserialize)]
+struct WaitProbe {
+    exists: bool,
+    #[serde(default)]
+    visible: bool,
+}
+
+#[derive(Debug, Clone, IntoJSObj)]
+struct JSScreenshot {
+    format: String,
+    base64: String,
+    width: u32,
+    height: u32,
+}
+
+#[js_class(rename = "PageDriver")]
+impl JSPageDriver {
+    #[js_method(constructor)]
+    fn _ctor() -> JSResult<()> {
+        Err(HostError::new(rong::error::E_ILLEGAL_CONSTRUCTOR, "Use lx.automation()").into())
+    }
+
+    /// Evaluate JavaScript in the page WebView.
+    #[js_method]
+    async fn eval(&self, ctx: JSContext, options: JSEvalOptions) -> JSResult<JSValue> {
+        let app = upgrade(&self.lxapp)?;
+        let timeout = Duration::from_millis(options.timeout_ms.unwrap_or(EVAL_DEFAULT_MS));
+        let value = tokio::time::timeout(
+            timeout,
+            auto::page_eval(&app, options.page.as_deref(), &options.script),
+        )
+        .await
+        .map_err(|_| auto_err("page eval timed out"))?
+        .map_err(auto_err)?;
+        json_to_js(&ctx, &value)
+    }
+
+    /// Query element information. Same payload shape as `lxdev lxapp page query`.
+    #[js_method]
+    async fn query(&self, ctx: JSContext, options: JSQueryOptions) -> JSResult<JSValue> {
+        let app = upgrade(&self.lxapp)?;
+        let value = auto::page_query(
+            &app,
+            options.page.as_deref(),
+            &options.css,
+            options.index,
+            options.all.unwrap_or(false),
+            Some(options.max_text.unwrap_or(DEFAULT_MAX_TEXT)),
+        )
+        .await
+        .map_err(auto_err)?;
+        json_to_js(&ctx, &value)
+    }
+
+    #[js_method]
+    async fn click(&self, _ctx: JSContext, options: JSClickOptions) -> JSResult<()> {
+        let app = upgrade(&self.lxapp)?;
+        auto::page_click(&app, options.page.as_deref(), &options.css, options.index)
+            .await
+            .map_err(auto_err)
+    }
+
+    #[js_method(rename = "type")]
+    async fn type_text(&self, _ctx: JSContext, options: JSTypeOptions) -> JSResult<()> {
+        let app = upgrade(&self.lxapp)?;
+        auto::page_type(
+            &app,
+            options.page.as_deref(),
+            &options.css,
+            options.index,
+            &options.text,
+        )
+        .await
+        .map_err(auto_err)
+    }
+
+    #[js_method]
+    async fn fill(&self, _ctx: JSContext, options: JSTypeOptions) -> JSResult<()> {
+        let app = upgrade(&self.lxapp)?;
+        auto::page_fill(
+            &app,
+            options.page.as_deref(),
+            &options.css,
+            options.index,
+            &options.text,
+        )
+        .await
+        .map_err(auto_err)
+    }
+
+    #[js_method]
+    async fn press(&self, _ctx: JSContext, options: JSPressOptions) -> JSResult<()> {
+        let app = upgrade(&self.lxapp)?;
+        auto::page_press(&app, options.page.as_deref(), &options.key)
+            .await
+            .map_err(auto_err)
+    }
+
+    #[js_method(rename = "scrollTo")]
+    async fn scroll_to(&self, _ctx: JSContext, options: JSScrollToOptions) -> JSResult<()> {
+        let app = upgrade(&self.lxapp)?;
+        auto::page_scroll_to(&app, options.page.as_deref(), &options.css)
+            .await
+            .map_err(auto_err)
+    }
+
+    #[js_method]
+    async fn scroll(&self, _ctx: JSContext, options: Optional<JSScrollOptions>) -> JSResult<()> {
+        let app = upgrade(&self.lxapp)?;
+        let options = options.0.unwrap_or_default();
+        auto::page_scroll(
+            &app,
+            options.page.as_deref(),
+            options.dx.unwrap_or(0.0),
+            options.dy.unwrap_or(0.0),
+        )
+        .await
+        .map_err(auto_err)
+    }
+
+    #[js_method(rename = "waitFor")]
+    async fn wait_for(&self, _ctx: JSContext, options: JSWaitForOptions) -> JSResult<()> {
+        let app = upgrade(&self.lxapp)?;
+        let state = options.state.as_deref().unwrap_or("visible");
+        if !matches!(state, "exists" | "visible" | "gone") {
+            return Err(auto_err(format!("waitFor: unknown state '{state}'")));
+        }
+        // Reject a page name that isn't in the config up front, so a typo'd
+        // `page` can't satisfy `gone` below.
+        if !auto::page_name_known(&app, options.page.as_deref()) {
+            return Err(auto_err(format!(
+                "unknown page name: {}",
+                options.page.as_deref().unwrap_or_default()
+            )));
+        }
+        let timeout = Duration::from_millis(
+            options
+                .timeout_ms
+                .unwrap_or(WAIT_DEFAULT_MS)
+                .min(WAIT_MAX_MS),
+        );
+        let started = Instant::now();
+        loop {
+            // A page that is no longer active (or whose webview is torn down)
+            // counts as `gone`; for the other states it stays an error.
+            let probe = match auto::page_query(
+                &app,
+                options.page.as_deref(),
+                &options.css,
+                None,
+                false,
+                Some(0),
+            )
+            .await
+            {
+                Ok(value) => serde_json::from_value::<WaitProbe>(value)
+                    .map_err(|err| auto_err(format!("waitFor decode: {err}")))?,
+                Err(_) if state == "gone" => return Ok(()),
+                Err(err) => return Err(auto_err(err)),
+            };
+            let satisfied = match state {
+                "exists" => probe.exists,
+                "gone" => !probe.exists,
+                _ => probe.exists && probe.visible,
+            };
+            if satisfied {
+                return Ok(());
+            }
+            if started.elapsed() >= timeout {
+                return Err(auto_err(format!(
+                    "E_TIMEOUT: waitFor '{}' ({state})",
+                    options.css
+                )));
+            }
+            tokio::time::sleep(Duration::from_millis(WAIT_POLL_MS)).await;
+        }
+    }
+
+    #[js_method]
+    async fn screenshot(
+        &self,
+        _ctx: JSContext,
+        options: Optional<JSScreenshotOptions>,
+    ) -> JSResult<JSScreenshot> {
+        let app = upgrade(&self.lxapp)?;
+        let options = options.0.unwrap_or_default();
+        let bytes = auto::page_screenshot(&app, options.page.as_deref())
+            .await
+            .map_err(auto_err)?;
+        let (width, height) = png_dimensions(&bytes).unwrap_or((0, 0));
+        Ok(JSScreenshot {
+            format: "png".to_string(),
+            base64: general_purpose::STANDARD.encode(&bytes),
+            width,
+            height,
+        })
+    }
+}
+
+/// Read width/height from a PNG's IHDR chunk (bytes 16..24, big-endian).
+pub(crate) fn png_dimensions(bytes: &[u8]) -> Option<(u32, u32)> {
+    if bytes.len() < 24 || &bytes[0..8] != b"\x89PNG\r\n\x1a\n" {
+        return None;
+    }
+    let width = u32::from_be_bytes(bytes[16..20].try_into().ok()?);
+    let height = u32::from_be_bytes(bytes[20..24].try_into().ok()?);
+    Some((width, height))
+}
