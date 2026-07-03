@@ -521,6 +521,20 @@ pub fn show_webview_as_adaptive_panel(
         return Ok(());
     };
 
+    // A phone-width host has no room for a docked panel: a page aside drills
+    // in full-screen instead, mirroring iOS and the macOS runner's phone
+    // presentation. URL asides never reach here compact — the shared logic
+    // degrades them to browser tabs.
+    {
+        let mut client = RECT::default();
+        unsafe {
+            let _ = WindowsAndMessaging::GetClientRect(host, &mut client);
+        }
+        if client.right - client.left > 0 && client.right - client.left < PHONE_DRILL_MAX_WIDTH {
+            return present_webview_fullscreen_drill(webtag, &handler, excluded, host);
+        }
+    }
+
     // Re-presenting the panel already visible in this host with the same
     // registration (a layout-plan recommit, e.g. on a page switch) must not
     // blink the webview: skip the hide/show cycle and refresh the layout.
@@ -677,6 +691,7 @@ pub fn present_webview_as_overlay(
                 owner.0 as isize,
             );
         }
+        register_floating_overlay(owner, webtag.key());
     }
     // A managed overlay is not user-resizable. The shared webview-parent window
     // carries WS_SIZEBOX, whose non-client frame insets the WebView2 client a few
@@ -691,6 +706,7 @@ pub fn present_webview_as_overlay(
             WindowsAndMessaging::SetWindowLongPtrW(hwnd, WindowsAndMessaging::GWL_STYLE, stripped);
         }
     }
+    apply_floating_card_dressing(hwnd);
     let bounds = overlay_reference_rect(hwnd);
     let rect = overlay_rect(bounds, width, height, width_ratio, height_ratio, position);
 
@@ -715,6 +731,411 @@ pub fn present_webview_as_overlay(
     mark_active(webtag);
     notify_webtag_visibility(webtag.key(), true);
     Ok(())
+}
+
+/// A borderless overlay popup reads as a flat patch without window dressing:
+/// round its corners and re-enable the DWM drop shadow (extending the frame a
+/// single invisible pixel restores the shadow WS_POPUP loses) so the surface
+/// visibly floats over the host content.
+fn apply_floating_card_dressing(hwnd: HWND) {
+    use windows::Win32::Graphics::Dwm::{
+        DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND, DwmExtendFrameIntoClientArea,
+        DwmSetWindowAttribute,
+    };
+    use windows::Win32::UI::Controls::MARGINS;
+    unsafe {
+        let preference = DWMWCP_ROUND;
+        let _ = DwmSetWindowAttribute(
+            hwnd,
+            DWMWA_WINDOW_CORNER_PREFERENCE,
+            &preference as *const _ as *const std::ffi::c_void,
+            std::mem::size_of_val(&preference) as u32,
+        );
+        let margins = MARGINS {
+            cxLeftWidth: 0,
+            cxRightWidth: 0,
+            cyTopHeight: 0,
+            cyBottomHeight: 1,
+        };
+        let _ = DwmExtendFrameIntoClientArea(hwnd, &margins);
+    }
+}
+
+/// Floating overlay surfaces per host window (`owner -> surface webtags`), so
+/// host chrome popups raised on every layout pass (the transparent tab bar)
+/// can be kept underneath them.
+static FLOATING_OVERLAYS: OnceLock<Mutex<HashMap<isize, Vec<String>>>> = OnceLock::new();
+
+fn register_floating_overlay(owner: HWND, webtag_key: &str) {
+    if let Ok(mut floats) = FLOATING_OVERLAYS
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+    {
+        let keys = floats.entry(hwnd_handle(owner)).or_default();
+        if !keys.iter().any(|key| key == webtag_key) {
+            keys.push(webtag_key.to_string());
+        }
+    }
+}
+
+fn unregister_floating_overlay(webtag_key: &str) {
+    if let Some(mut floats) = FLOATING_OVERLAYS.get().and_then(|f| f.lock().ok()) {
+        for keys in floats.values_mut() {
+            keys.retain(|key| key != webtag_key);
+        }
+        floats.retain(|_, keys| !keys.is_empty());
+    }
+}
+
+/// Re-raises the owner's visible floating surfaces above its chrome popups —
+/// the tab-bar overlay repositions with HWND_TOP on every layout pass, which
+/// would otherwise stack it over an open float.
+fn raise_floating_overlays(owner: HWND) {
+    let keys: Vec<String> = FLOATING_OVERLAYS
+        .get()
+        .and_then(|floats| floats.lock().ok())
+        .and_then(|floats| floats.get(&hwnd_handle(owner)).cloned())
+        .unwrap_or_default();
+    for key in keys {
+        if !webtag_is_visible(&key) {
+            continue;
+        }
+        if let Some(float) = window_handle_for_key(&key)
+            && is_window_handle_valid(hwnd_handle(float))
+        {
+            unsafe {
+                let _ = WindowsAndMessaging::SetWindowPos(
+                    float,
+                    Some(WindowsAndMessaging::HWND_TOP),
+                    0,
+                    0,
+                    0,
+                    0,
+                    WindowsAndMessaging::SWP_NOMOVE
+                        | WindowsAndMessaging::SWP_NOSIZE
+                        | WindowsAndMessaging::SWP_NOACTIVATE,
+                );
+            }
+        }
+    }
+}
+
+/// Compact-width breakpoint below which page surfaces drill in full-screen.
+const PHONE_DRILL_MAX_WIDTH: i32 = 600;
+
+/// Full-screen drill surfaces per host window (`owner -> surface webtag`),
+/// so the transparent tab bar hides underneath them.
+static FULLSCREEN_DRILLS: OnceLock<Mutex<HashMap<isize, String>>> = OnceLock::new();
+
+pub(crate) fn fullscreen_drill_visible(owner: HWND) -> bool {
+    FULLSCREEN_DRILLS
+        .get()
+        .and_then(|drills| drills.lock().ok())
+        .and_then(|drills| drills.get(&hwnd_handle(owner)).cloned())
+        .is_some_and(|webtag_key| webtag_is_visible(&webtag_key))
+}
+
+/// Presents a page surface full-screen over the phone-sized host, mirroring
+/// the macOS runner's drill-in: the surface covers the whole device screen
+/// (tab bar included) with a floating back affordance to return.
+fn present_webview_fullscreen_drill(
+    webtag: &WebTag,
+    handler: &WindowsWebViewHandler,
+    hwnd: HWND,
+    owner: HWND,
+) -> StdResult<()> {
+    unsafe {
+        let _ = WindowsAndMessaging::SetWindowLongPtrW(
+            hwnd,
+            WindowsAndMessaging::GWLP_HWNDPARENT,
+            owner.0 as isize,
+        );
+        let style = WindowsAndMessaging::GetWindowLongPtrW(hwnd, WindowsAndMessaging::GWL_STYLE);
+        let borderless = (style
+            & !(WS_SIZEBOX.0 as isize
+                | WindowsAndMessaging::WS_CAPTION.0 as isize
+                | WS_MAXIMIZEBOX.0 as isize
+                | WS_MINIMIZEBOX.0 as isize))
+            | WS_POPUP.0 as isize;
+        if borderless != style {
+            WindowsAndMessaging::SetWindowLongPtrW(
+                hwnd,
+                WindowsAndMessaging::GWL_STYLE,
+                borderless,
+            );
+        }
+    }
+    let mut client = RECT::default();
+    let mut origin = POINT { x: 0, y: 0 };
+    unsafe {
+        let _ = WindowsAndMessaging::GetClientRect(owner, &mut client);
+        let _ = windows::Win32::Graphics::Gdi::ClientToScreen(owner, &mut origin);
+        WindowsAndMessaging::SetWindowPos(
+            hwnd,
+            Some(WindowsAndMessaging::HWND_TOP),
+            origin.x,
+            origin.y,
+            client.right - client.left,
+            client.bottom - client.top,
+            WindowsAndMessaging::SWP_SHOWWINDOW | WindowsAndMessaging::SWP_FRAMECHANGED,
+        )
+        .map_err(|err| WebViewError::WebView(format!("SetWindowPos failed: {err}")))?;
+        let _ = WindowsAndMessaging::BringWindowToTop(hwnd);
+    }
+    handler.set_content_visible(true)?;
+    set_window_handle(webtag.key(), hwnd);
+    set_host_active_webtag(hwnd, webtag.key());
+    sync_window_layout(hwnd);
+    mark_active(webtag);
+    notify_webtag_visibility(webtag.key(), true);
+    if let Ok(mut drills) = FULLSCREEN_DRILLS
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+    {
+        drills.insert(hwnd_handle(owner), webtag.key().to_string());
+    }
+    // Hiding the tab bar under the drill; the next owner layout pass with
+    // the drill gone restores it.
+    sync_window_layout(owner);
+    let drill = hwnd_handle(hwnd);
+    let webtag_key = webtag.key().to_string();
+    post_to_window_thread(
+        drill,
+        Box::new(move || show_drill_back_button(hwnd_from_handle(drill), webtag_key)),
+    );
+    Ok(())
+}
+
+const DRILL_BACK_SIZE: i32 = 28;
+const DRILL_BACK_MARGIN: i32 = 12;
+
+/// Floating drill-in back affordance pinned to the surface's top-left, the
+/// phone gesture to dismiss a full-screen surface (macOS runner parity).
+fn show_drill_back_button(drill: HWND, webtag_key: String) {
+    let class = drill_back_class();
+    let user_data = Box::into_raw(Box::new(webtag_key));
+    let Ok(button) = (unsafe {
+        WindowsAndMessaging::CreateWindowExW(
+            WindowsAndMessaging::WS_EX_LAYERED
+                | WindowsAndMessaging::WS_EX_TOOLWINDOW
+                | WindowsAndMessaging::WS_EX_NOACTIVATE,
+            class,
+            PCWSTR::null(),
+            WS_POPUP,
+            0,
+            0,
+            DRILL_BACK_SIZE,
+            DRILL_BACK_SIZE,
+            Some(drill),
+            None,
+            LibraryLoader::GetModuleHandleW(None)
+                .ok()
+                .map(|module| HINSTANCE(module.0)),
+            Some(user_data.cast()),
+        )
+    }) else {
+        let _ = unsafe { Box::from_raw(user_data) };
+        return;
+    };
+    let mut rect = RECT::default();
+    unsafe {
+        let _ = WindowsAndMessaging::GetWindowRect(drill, &mut rect);
+        let _ = WindowsAndMessaging::SetWindowPos(
+            button,
+            Some(WindowsAndMessaging::HWND_TOP),
+            rect.left + DRILL_BACK_MARGIN,
+            rect.top + DRILL_BACK_MARGIN,
+            DRILL_BACK_SIZE,
+            DRILL_BACK_SIZE,
+            WindowsAndMessaging::SWP_NOACTIVATE | WindowsAndMessaging::SWP_SHOWWINDOW,
+        );
+    }
+    upload_drill_back_button(button);
+}
+
+fn drill_back_class() -> PCWSTR {
+    static REGISTERED: OnceLock<()> = OnceLock::new();
+    REGISTERED.get_or_init(|| {
+        let module = unsafe { LibraryLoader::GetModuleHandleW(None) }
+            .map(|module| HINSTANCE(module.0))
+            .unwrap_or_default();
+        let cursor =
+            unsafe { WindowsAndMessaging::LoadCursorW(None, WindowsAndMessaging::IDC_ARROW) }
+                .unwrap_or_default();
+        let class = WNDCLASSW {
+            lpfnWndProc: Some(drill_back_proc),
+            hInstance: module,
+            hCursor: cursor,
+            cbWndExtra: 0,
+            lpszClassName: w!("LingXiaDrillBack"),
+            ..Default::default()
+        };
+        if unsafe { WindowsAndMessaging::RegisterClassW(&class) } == 0 {
+            log::error!(
+                "drill back class registration failed: {}",
+                windows::core::Error::from_thread()
+            );
+        }
+    });
+    w!("LingXiaDrillBack")
+}
+
+unsafe extern "system" fn drill_back_proc(
+    hwnd: HWND,
+    msg: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+) -> LRESULT {
+    match msg {
+        WindowsAndMessaging::WM_NCCREATE => {
+            let create = lparam.0 as *const WindowsAndMessaging::CREATESTRUCTW;
+            if !create.is_null() {
+                unsafe {
+                    WindowsAndMessaging::SetWindowLongPtrW(
+                        hwnd,
+                        WindowsAndMessaging::GWLP_USERDATA,
+                        (*create).lpCreateParams as isize,
+                    );
+                }
+            }
+            LRESULT(1)
+        }
+        WindowsAndMessaging::WM_MOUSEACTIVATE => {
+            LRESULT(WindowsAndMessaging::MA_NOACTIVATE as isize)
+        }
+        WindowsAndMessaging::WM_LBUTTONUP => {
+            let raw = unsafe {
+                WindowsAndMessaging::GetWindowLongPtrW(hwnd, WindowsAndMessaging::GWLP_USERDATA)
+            } as *const String;
+            if !raw.is_null() {
+                let webtag_key = unsafe { (*raw).clone() };
+                if let Some(close) = webview_close_handler(&webtag_key) {
+                    close();
+                }
+            }
+            LRESULT(0)
+        }
+        WindowsAndMessaging::WM_NCDESTROY => {
+            let raw = unsafe {
+                WindowsAndMessaging::GetWindowLongPtrW(hwnd, WindowsAndMessaging::GWLP_USERDATA)
+            } as *mut String;
+            if !raw.is_null() {
+                let _ = unsafe { Box::from_raw(raw) };
+            }
+            unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
+        }
+        _ => unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) },
+    }
+}
+
+/// Uploads the back button: a 35%-black circle with a white chevron.
+fn upload_drill_back_button(hwnd: HWND) {
+    let size = DRILL_BACK_SIZE;
+    unsafe {
+        let screen = GetDC(None);
+        if screen.is_invalid() {
+            return;
+        }
+        let dc = CreateCompatibleDC(Some(screen));
+        if dc.is_invalid() {
+            let _ = ReleaseDC(None, screen);
+            return;
+        }
+        let info = BITMAPINFO {
+            bmiHeader: BITMAPINFOHEADER {
+                biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+                biWidth: size,
+                biHeight: -size,
+                biPlanes: 1,
+                biBitCount: 32,
+                biCompression: BI_RGB.0,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let mut bits: *mut c_void = std::ptr::null_mut();
+        let Ok(bitmap) = CreateDIBSection(Some(screen), &info, DIB_RGB_COLORS, &mut bits, None, 0)
+        else {
+            let _ = DeleteDC(dc);
+            let _ = ReleaseDC(None, screen);
+            return;
+        };
+        if bits.is_null() {
+            let _ = DeleteObject(HGDIOBJ(bitmap.0));
+            let _ = DeleteDC(dc);
+            let _ = ReleaseDC(None, screen);
+            return;
+        }
+        let old_bitmap = SelectObject(dc, HGDIOBJ(bitmap.0));
+        // Black disc backdrop; the chevron in white 2px strokes.
+        let brush = CreateSolidBrush(COLORREF(0));
+        let pen = CreatePen(PS_SOLID, 0, COLORREF(0));
+        let old_brush = SelectObject(dc, HGDIOBJ(brush.0));
+        let old_pen = SelectObject(dc, HGDIOBJ(pen.0));
+        let _ = windows::Win32::Graphics::Gdi::Rectangle(dc, 0, 0, size, size);
+        let white_pen = CreatePen(PS_SOLID, 2, COLORREF(0x00ffffff));
+        let _ = SelectObject(dc, HGDIOBJ(white_pen.0));
+        let _ = windows::Win32::Graphics::Gdi::MoveToEx(dc, 17, 8, None);
+        let _ = windows::Win32::Graphics::Gdi::LineTo(dc, 11, 14);
+        let _ = windows::Win32::Graphics::Gdi::LineTo(dc, 17, 20);
+        let _ = SelectObject(dc, old_pen);
+        let _ = SelectObject(dc, old_brush);
+        let _ = DeleteObject(HGDIOBJ(white_pen.0));
+        let _ = DeleteObject(HGDIOBJ(pen.0));
+        let _ = DeleteObject(HGDIOBJ(brush.0));
+
+        let pixel_count = (size * size) as usize;
+        let pixels = std::slice::from_raw_parts_mut(bits.cast::<u32>(), pixel_count);
+        apply_drill_back_alpha(pixels, size);
+        let dib_size = SIZE { cx: size, cy: size };
+        let origin = POINT { x: 0, y: 0 };
+        let blend = BLENDFUNCTION {
+            BlendOp: AC_SRC_OVER as u8,
+            BlendFlags: 0,
+            SourceConstantAlpha: 255,
+            AlphaFormat: AC_SRC_ALPHA as u8,
+        };
+        let _ = WindowsAndMessaging::UpdateLayeredWindow(
+            hwnd,
+            Some(screen),
+            None,
+            Some(&dib_size),
+            Some(dc),
+            Some(&origin),
+            COLORREF(0),
+            Some(&blend),
+            WindowsAndMessaging::ULW_ALPHA,
+        );
+        if !old_bitmap.is_invalid() {
+            let _ = SelectObject(dc, old_bitmap);
+        }
+        let _ = DeleteObject(HGDIOBJ(bitmap.0));
+        let _ = DeleteDC(dc);
+        let _ = ReleaseDC(None, screen);
+    }
+}
+
+/// Circular alpha: the disc is a 35% black wash, the white chevron strokes
+/// stay opaque; outside the circle is fully transparent.
+fn apply_drill_back_alpha(pixels: &mut [u32], size: i32) {
+    const DIM: u32 = 0x59;
+    let radius = size as f32 / 2.0;
+    for y in 0..size {
+        for x in 0..size {
+            let index = (y * size + x) as usize;
+            let pixel = pixels[index] & 0x00ff_ffff;
+            let dx = x as f32 + 0.5 - radius;
+            let dy = y as f32 + 0.5 - radius;
+            let coverage = (radius - (dx * dx + dy * dy).sqrt() + 0.5).clamp(0.0, 1.0);
+            let base = if pixel > 0x00f0_f0f0 { 255 } else { DIM };
+            let alpha = (base as f32 * coverage) as u32;
+            let premultiply = |channel: u32| (channel * alpha + 127) / 255;
+            pixels[index] = (alpha << 24)
+                | (premultiply((pixel >> 16) & 0xff) << 16)
+                | (premultiply((pixel >> 8) & 0xff) << 8)
+                | premultiply(pixel & 0xff);
+        }
+    }
 }
 
 fn overlay_reference_rect(hwnd: HWND) -> RECT {
@@ -844,7 +1265,9 @@ fn resolve_overlay_extent(
     } else if ratio.is_finite() && ratio > 0.0 {
         (reference as f64 * ratio.clamp(0.0, 1.0)).round() as i32
     } else {
-        fallback
+        // The floating-card default never fills the host: keep a margin on a
+        // phone-narrow host so the card still reads as floating.
+        fallback.min(reference - 2 * OVERLAY_MARGIN)
     };
     // Never exceed the host content; floor at the min capped to the content so a
     // frame narrower than the min can still host a (full-bleed) surface.
@@ -1197,6 +1620,11 @@ fn sync_transparent_tabbar_overlay(hwnd: HWND, webtag_key: Option<&str>) {
         if !is_window_visible(hwnd) || is_minimized(hwnd) {
             return None;
         }
+        // A full-screen drill surface covers the whole device screen, tab
+        // bar included.
+        if fullscreen_drill_visible(hwnd) {
+            return None;
+        }
         let mut client = RECT::default();
         unsafe {
             if WindowsAndMessaging::GetClientRect(hwnd, &mut client).is_err() {
@@ -1248,6 +1676,7 @@ fn sync_transparent_tabbar_overlay(hwnd: HWND, webtag_key: Option<&str>) {
         );
     }
     cleanup_transparent_tabbar_overlays(hwnd, Some(overlay));
+    raise_floating_overlays(hwnd);
 }
 
 #[cfg(feature = "shell-chrome")]
@@ -4468,7 +4897,34 @@ pub fn hide_webview_window(webtag: &WebTag) -> StdResult<()> {
         .map_err(|err| WebViewError::WebView(format!("SetWindowPos failed: {err}")))?;
     }
     notify_webtag_visibility(webtag.key(), false);
+    release_fullscreen_drill(webtag.key());
+    unregister_floating_overlay(webtag.key());
     Ok(())
+}
+
+/// A hidden or destroyed full-screen drill hands the screen back: the owner
+/// relayouts so its tab bar (hidden underneath the drill) returns.
+fn release_fullscreen_drill(webtag_key: &str) {
+    let owners: Vec<isize> = FULLSCREEN_DRILLS
+        .get()
+        .and_then(|drills| drills.lock().ok())
+        .map(|mut drills| {
+            let owners = drills
+                .iter()
+                .filter(|(_, key)| key.as_str() == webtag_key)
+                .map(|(owner, _)| *owner)
+                .collect::<Vec<_>>();
+            for owner in &owners {
+                drills.remove(owner);
+            }
+            owners
+        })
+        .unwrap_or_default();
+    for owner in owners {
+        if is_window_handle_valid(owner) {
+            sync_window_layout(hwnd_from_handle(owner));
+        }
+    }
 }
 
 fn show_native_view(view: WindowsWebViewNativeView, title: &str, activate: bool) -> StdResult<()> {
@@ -4710,6 +5166,10 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 destroy_sidebar_tabbar_popup(hwnd);
                 release_chrome_back_buffer(hwnd);
                 let webtag_key = window_webtag_key(hwnd);
+                if let Some(key) = webtag_key.as_deref() {
+                    release_fullscreen_drill(key);
+                    unregister_floating_overlay(key);
+                }
                 let raw = unsafe {
                     WindowsAndMessaging::GetWindowLongPtrW(hwnd, WindowsAndMessaging::GWLP_USERDATA)
                 } as *mut String;

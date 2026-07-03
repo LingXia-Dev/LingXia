@@ -810,6 +810,17 @@ pub(super) fn present_surface(
     if request.role == SurfaceRole::Aside && is_web {
         aside_browser_group().active = Some(id.clone());
     }
+    // A float's or page aside's host affordances (the phone drill-in back
+    // button) close the surface through the graph, like a window's close box.
+    if request.role == SurfaceRole::Float || (request.role == SurfaceRole::Aside && !is_web) {
+        let close_id = id.clone();
+        set_webview_close_handler(
+            &webtag,
+            Arc::new(move || {
+                let _ = close_surface("", &close_id, "user");
+            }),
+        );
+    }
     // Asides are placed by the window-global LayoutPresentationPlan. Presenting
     // them immediately here races the later `present_layout` commit and can
     // show the page-instance parent as a standalone window before it is docked.
