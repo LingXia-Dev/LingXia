@@ -1070,10 +1070,13 @@ fn base_content_rect_for_window(hwnd: HWND, webtag_key: &str) -> RECT {
             .iter()
             .find(|panel| panel.webtag_key == webtag_key)
         {
-            // The browser aside's address bar now lives in the shared top band
-            // (above the panel), so the webview fills the whole panel rect and
-            // top-aligns with the main content card.
-            return normalize_rect(panel.rect);
+            // The browser aside's toolbar occupies the panel's top row; the
+            // webview fills the rest.
+            let mut rect = panel.rect;
+            if let Some(header) = panel.header_rect {
+                rect.top = header.bottom.clamp(rect.top, rect.bottom);
+            }
+            return normalize_rect(rect);
         }
     }
     normalize_rect(renderer.content_rect(client, &current_window_layout(webtag_key)))
@@ -2432,7 +2435,13 @@ fn exclude_host_webview_content_from_paint(hdc: HDC, hwnd: HWND, webtag_key: &st
         // Native (chrome-drawn) panels have no webview; a not-yet-visible
         // webview panel still wants its placeholder card painted.
         if !panel.webtag_key.is_empty() && webtag_is_visible(&panel.webtag_key) {
-            exclude_clip_rect_if_non_empty(hdc, panel.rect);
+            // The browser aside's toolbar row is chrome; only the webview
+            // area below it leaves the paint clip.
+            let mut rect = panel.rect;
+            if let Some(header) = panel.header_rect {
+                rect.top = header.bottom.clamp(rect.top, rect.bottom);
+            }
+            exclude_clip_rect_if_non_empty(hdc, rect);
         }
     }
 }
@@ -3307,8 +3316,8 @@ fn attached_chrome_dirty_rects(
 fn push_attached_layout_dirty_rects(dirty: &mut Vec<RECT>, attached: &WindowsChromeAttachedLayout) {
     for panel in &attached.panels {
         push_unique_dirty_rect(dirty, panel.rect);
-        // The browser/aside header lives in the shared top band, outside the
-        // panel rect; a tab switch redraws it too.
+        // A tab switch changes only the toolbar row; redraw it even when the
+        // panel rect itself is unchanged.
         if let Some(header) = panel.header_rect {
             push_unique_dirty_rect(dirty, header);
         }

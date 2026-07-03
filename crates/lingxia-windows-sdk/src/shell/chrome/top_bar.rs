@@ -164,20 +164,16 @@ pub(super) fn top_bar_controls(
         return controls;
     }
 
-    let capsule_min_left = nav_left + nav_width + ADDRESS_CAPSULE_NAV_GAP;
+    // The capsule sits right after the nav cluster, keeping the reload
+    // button and the address text together.
+    let capsule_left = nav_left + nav_width + ADDRESS_CAPSULE_NAV_GAP;
     let capsule_width = capsule_space.min(ADDRESS_CAPSULE_MAX_WIDTH);
     let capsule_height = ADDRESS_CAPSULE_HEIGHT.min(rect_height(&top_bar));
     let capsule_top = top_bar.top + (rect_height(&top_bar) - capsule_height).max(0) / 2;
-    // Center the capsule between the nav cluster and the frame buttons,
-    // clamped so it never runs under either.
-    let centered_left = (capsule_min_left + right_edge - capsule_width) / 2;
-    let capsule_left = centered_left
-        .max(capsule_min_left)
-        .min(right_edge - capsule_width);
     controls.address = Some(normalize_rect(RECT {
         left: capsule_left,
         top: capsule_top,
-        right: capsule_left + capsule_width,
+        right: (capsule_left + capsule_width).min(right_edge),
         bottom: capsule_top + capsule_height,
     }));
     controls
@@ -331,12 +327,14 @@ pub(super) fn draw_top_bar_controls(
             .as_ref()
             .map(|address_bar| address_bar.url_text.as_str())
             .unwrap_or_default();
+        // Left-aligned like a browser address bar, so the URL reads next to
+        // the nav cluster instead of floating in the capsule's middle.
         draw_text(
             hdc,
             text,
             inset_rect(address, ADDRESS_CAPSULE_HEIGHT / 2, 0),
             shell_palette().text_primary,
-            DT_CENTER,
+            DT_LEFT,
         );
     }
     remember_address_capsule_rect(state.hwnd, controls.address);
