@@ -203,6 +203,11 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     private var currentViewController: macOSLxAppViewController?
     private var viewControllers: [String: macOSLxAppViewController] = [:]
     internal var appSessions: [String: UInt64] = [:]
+    /// After a close, the shell reveals the runtime's next lxapp itself (and
+    /// closes its window when none remain). A host that orchestrates closes
+    /// externally (the runner) turns this off; tab switching via the tab
+    /// manager still applies.
+    internal var autoRevealOnClose = true
     internal let workspaceManager = WorkspaceManager()
     nonisolated(unsafe) private var sidebarRefreshObserver: NSObjectProtocol?
     nonisolated(unsafe) private var tabBarStateObserver: NSObjectProtocol?
@@ -1212,7 +1217,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         LxAppCore.removeSessionId(for: appId)
 
         // A restart drives its own reopen; everything else reveals the next app.
-        guard !suppressAutoReopen else { return }
+        guard !suppressAutoReopen, autoRevealOnClose else { return }
 
         let currentLxApp = getCurrentLxApp()
         let appidStr = currentLxApp.appid.toString()

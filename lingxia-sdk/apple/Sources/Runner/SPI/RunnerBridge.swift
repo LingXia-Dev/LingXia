@@ -221,6 +221,10 @@ enum RunnerBridge {
             configuration: configuration,
             startupBehavior: .manual
         )
+        // The runner orchestrates closes itself (reveal / reopen home across
+        // both device shapes); the shell must not auto-reveal or close its
+        // window when the last tab goes — that reads as the app quitting.
+        shell.autoRevealOnClose = false
         shell.reconcileSidebarAutoHide()
         return shell
     }
