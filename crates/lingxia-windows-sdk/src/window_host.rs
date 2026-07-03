@@ -26,10 +26,8 @@ use lingxia_windows_contract::{
     webview_chrome_event_handler, webview_close_handler, webview_visibility_handler,
     windows_chrome_renderer,
 };
-#[cfg(feature = "shell-chrome")]
 use windows::Win32::Foundation::SIZE;
 use windows::Win32::Foundation::{COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
-#[cfg(feature = "shell-chrome")]
 use windows::Win32::Graphics::Gdi::{AC_SRC_ALPHA, AC_SRC_OVER, BLENDFUNCTION};
 use windows::Win32::Graphics::Gdi::{
     BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BeginPaint, BitBlt, CreateCompatibleDC, CreateDIBSection,
@@ -793,6 +791,7 @@ fn unregister_floating_overlay(webtag_key: &str) {
 /// Re-raises the owner's visible floating surfaces above its chrome popups —
 /// the tab-bar overlay repositions with HWND_TOP on every layout pass, which
 /// would otherwise stack it over an open float.
+#[cfg(feature = "shell-chrome")]
 fn raise_floating_overlays(owner: HWND) {
     let keys: Vec<String> = FLOATING_OVERLAYS
         .get()
@@ -830,6 +829,7 @@ const PHONE_DRILL_MAX_WIDTH: i32 = 600;
 /// so the transparent tab bar hides underneath them.
 static FULLSCREEN_DRILLS: OnceLock<Mutex<HashMap<isize, String>>> = OnceLock::new();
 
+#[cfg(feature = "shell-chrome")]
 pub(crate) fn fullscreen_drill_visible(owner: HWND) -> bool {
     FULLSCREEN_DRILLS
         .get()
@@ -5820,7 +5820,6 @@ fn hwnd_from_handle(handle: isize) -> HWND {
     HWND(handle as *mut c_void)
 }
 
-#[cfg(feature = "shell-chrome")]
 fn is_window_handle_valid(handle: isize) -> bool {
     unsafe { WindowsAndMessaging::IsWindow(Some(hwnd_from_handle(handle))).as_bool() }
 }
