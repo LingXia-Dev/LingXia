@@ -96,6 +96,14 @@ fn harden_text_artifacts(output_dir: &Path) -> Result<()> {
                 fs::write(&path, minify_html(&source))
                     .with_context(|| format!("Failed to write {}", path.display()))?;
             }
+            Some("ts") | Some("tsx") | Some("vue") => {
+                let source = fs::read_to_string(&path)
+                    .with_context(|| format!("Failed to read {}", path.display()))?;
+                if is_html_document(&source) {
+                    fs::write(&path, minify_html(&source))
+                        .with_context(|| format!("Failed to write {}", path.display()))?;
+                }
+            }
             Some("css") => {
                 let source = fs::read_to_string(&path)
                     .with_context(|| format!("Failed to read {}", path.display()))?;
@@ -119,10 +127,23 @@ fn audit_release_output(project: &Project) -> Result<()> {
                 continue;
             }
             Some("ts") | Some("tsx") | Some("vue") => {
-                violations.push(format!("{rel}: source files are not allowed in release"));
-                continue;
+                let Ok(source) = fs::read_to_string(&path) else {
+                    violations.push(format!("{rel}: source files are not allowed in release"));
+                    continue;
+                };
+                if !is_html_document(&source) {
+                    violations.push(format!("{rel}: source files are not allowed in release"));
+                    continue;
+                }
             }
             _ => {}
+        }
+
+        if matches!(extension(&path).as_deref(), Some("ts" | "tsx" | "vue")) {
+            if let Ok(source) = fs::read_to_string(&path) {
+                audit_text_artifact(&rel, &source, &project_root, &mut violations);
+            }
+            continue;
         }
 
         if !is_text_artifact(&path) {
@@ -131,16 +152,7 @@ fn audit_release_output(project: &Project) -> Result<()> {
         let Ok(source) = fs::read_to_string(&path) else {
             continue;
         };
-        for pattern in ["sourceMappingURL", "//# sourceMappingURL", "//#region"] {
-            if source.contains(pattern) {
-                violations.push(format!(
-                    "{rel}: contains forbidden release marker {pattern:?}"
-                ));
-            }
-        }
-        if !project_root.is_empty() && source.replace('\\', "/").contains(&project_root) {
-            violations.push(format!("{rel}: contains the project root path"));
-        }
+        audit_text_artifact(&rel, &source, &project_root, &mut violations);
     }
 
     if violations.is_empty() {
@@ -155,6 +167,36 @@ fn audit_release_output(project: &Project) -> Result<()> {
                 .join("\n")
         )
     }
+}
+
+fn audit_text_artifact(
+    rel: &str,
+    source: &str,
+    project_root: &str,
+    violations: &mut Vec<String>,
+) {
+    for pattern in ["sourceMappingURL", "//# sourceMappingURL", "//#region"] {
+        if source.contains(pattern) {
+            violations.push(format!(
+                "{rel}: contains forbidden release marker {pattern:?}"
+            ));
+        }
+    }
+    if !project_root.is_empty() && source.replace('\\', "/").contains(project_root) {
+        violations.push(format!("{rel}: contains the project root path"));
+    }
+}
+
+fn is_html_document(source: &str) -> bool {
+    let trimmed = source.trim_start();
+    let lower = trimmed
+        .chars()
+        .take(128)
+        .collect::<String>()
+        .to_ascii_lowercase();
+    lower.starts_with("<!doctype html")
+        || lower.starts_with("<html")
+        || (lower.contains("<head") && lower.contains("<body"))
 }
 
 fn write_integrity_manifest(project: &Project) -> Result<()> {
@@ -385,6 +427,77 @@ mod tests {
         let err = audit_release_output(&project).unwrap_err().to_string();
         assert!(err.contains("sourcemap"));
         assert!(err.contains("sourceMappingURL"));
+    }
+
+    #[test]
+    fn release_allows_generated_react_page_documents() {
+        let temp = tempdir().unwrap();
+        let project = project(temp.path());
+        fs::create_dir_all(project.output_dir.join("pages/home")).unwrap();
+        fs::write(
+            project.output_dir.join("pages/home/index.tsx"),
+            "<!doctype html>\n<html>\n  <head></head>\n  <body>\n    <div id=\"root\"></div>\n  </body>\n</html>\n",
+        )
+        .unwrap();
+        fs::write(project.output_dir.join("logic.js"), "console.log('debug'); Page({});").unwrap();
+
+        harden_release_output(&project).unwrap();
+
+        let page = fs::read_to_string(project.output_dir.join("pages/home/index.tsx")).unwrap();
+        let logic = fs::read_to_string(project.output_dir.join("logic.js")).unwrap();
+        assert!(page.starts_with("<!doctype html><html>"));
+        assert!(!logic.contains("console.log"));
+        assert!(project.output_dir.join(INTEGRITY_MANIFEST).is_file());
+    }
+
+    #[test]
+    fn release_allows_generated_vue_page_documents() {
+        let temp = tempdir().unwrap();
+        let project = project(temp.path());
+        fs::create_dir_all(project.output_dir.join("pages/home")).unwrap();
+        fs::write(
+            project.output_dir.join("pages/home/index.vue"),
+            "<html>\n  <head></head>\n  <body><div id=\"root\"></div></body>\n</html>\n",
+        )
+        .unwrap();
+
+        harden_release_output(&project).unwrap();
+
+        let page = fs::read_to_string(project.output_dir.join("pages/home/index.vue")).unwrap();
+        assert_eq!(
+            page,
+            "<html><head></head><body><div id=\"root\"></div></body></html>"
+        );
+    }
+
+    #[test]
+    fn release_rejects_real_tsx_source_files() {
+        let temp = tempdir().unwrap();
+        let project = project(temp.path());
+        fs::create_dir_all(project.output_dir.join("pages/home")).unwrap();
+        fs::write(
+            project.output_dir.join("pages/home/index.tsx"),
+            "export default function Home() { return <div />; }",
+        )
+        .unwrap();
+
+        let err = harden_release_output(&project).unwrap_err().to_string();
+        assert!(err.contains("source files are not allowed in release"));
+    }
+
+    #[test]
+    fn release_rejects_real_vue_source_files() {
+        let temp = tempdir().unwrap();
+        let project = project(temp.path());
+        fs::create_dir_all(project.output_dir.join("pages/home")).unwrap();
+        fs::write(
+            project.output_dir.join("pages/home/index.vue"),
+            "<template><div /></template><script setup>console.log('debug')</script>",
+        )
+        .unwrap();
+
+        let err = harden_release_output(&project).unwrap_err().to_string();
+        assert!(err.contains("source files are not allowed in release"));
     }
 
     #[test]
