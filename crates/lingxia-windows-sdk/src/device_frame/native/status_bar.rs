@@ -108,7 +108,13 @@ pub(super) fn create_status_bar(content: HWND, spec: &WindowsDeviceFrame) -> isi
     };
     match window {
         Ok(window) => {
-            paint_status_bar(window, spec.screen_width, spec_cutout_width(spec), &bar);
+            paint_status_bar(
+                window,
+                spec.screen_width,
+                spec_cutout_width(spec),
+                spec.screen_corner_radius,
+                &bar,
+            );
             hwnd_handle(window)
         }
         Err(err) => {
@@ -121,14 +127,17 @@ pub(super) fn create_status_bar(content: HWND, spec: &WindowsDeviceFrame) -> isi
 /// Repaints the status bar from the (possibly updated) spec — used when the
 /// shell changes the bar's colors for a new page.
 pub(super) fn repaint_status_bar(content: HWND) {
-    let Some((handle, bar, width, cutout_width)) = frame_state(hwnd_handle(content), |state| {
-        (
-            state.status_bar,
-            state.spec.status_bar.clone(),
-            state.spec.screen_width,
-            spec_cutout_width(&state.spec),
-        )
-    }) else {
+    let Some((handle, bar, width, cutout_width, corner_radius)) =
+        frame_state(hwnd_handle(content), |state| {
+            (
+                state.status_bar,
+                state.spec.status_bar.clone(),
+                state.spec.screen_width,
+                spec_cutout_width(&state.spec),
+                state.spec.screen_corner_radius,
+            )
+        })
+    else {
         return;
     };
     let Some(bar) = bar.filter(|bar| bar.height > 0) else {
@@ -137,7 +146,13 @@ pub(super) fn repaint_status_bar(content: HWND) {
     if handle == 0 || !is_window_handle_valid(handle) {
         return;
     }
-    paint_status_bar(hwnd_from_handle(handle), width, cutout_width, &bar);
+    paint_status_bar(
+        hwnd_from_handle(handle),
+        width,
+        cutout_width,
+        corner_radius,
+        &bar,
+    );
 }
 
 /// Width of the screen cutout (Dynamic Island / notch), or 0 when the device has
@@ -211,6 +226,7 @@ fn paint_status_bar(
     window: HWND,
     width: i32,
     cutout_width: i32,
+    corner_radius: i32,
     bar: &WindowsDeviceFrameStatusBar,
 ) {
     let width = width.max(1);
@@ -280,6 +296,10 @@ fn paint_status_bar(
                     // the strip is opaque, so restore full alpha across it (the
                     // RGB it wrote already blends the foreground over the fill).
                     force_opaque(dib);
+                    // An opaque strip's square top corners would poke out past
+                    // the corner-mask ring (transparent beyond the device's
+                    // silhouette): clip them to the screen's rounded corners.
+                    clip_top_corners(dib, width, height, corner_radius as f32);
                 }
                 let size = SIZE {
                     cx: width,
@@ -381,6 +401,44 @@ fn draw_time(
 /// Restores full alpha across the opaque strip after GDI text zeroed the alpha
 /// byte of every pixel it touched. The RGB GDI wrote already blends the
 /// foreground over the opaque fill, so only the alpha needs fixing.
+/// Multiplies pixel alpha by the screen's rounded-corner coverage in the two
+/// top corners so the opaque strip follows the device's screen silhouette
+/// (premultiplied pixels: every channel scales).
+fn clip_top_corners(dib: &mut [u32], width: i32, height: i32, radius: f32) {
+    if radius <= 0.0 {
+        return;
+    }
+    let rows = height.min(radius.ceil() as i32);
+    for y in 0..rows {
+        let py = y as f32 + 0.5;
+        if py >= radius {
+            continue;
+        }
+        for x in 0..width {
+            let px = x as f32 + 0.5;
+            let center_x = if px < radius {
+                radius
+            } else if px > width as f32 - radius {
+                width as f32 - radius
+            } else {
+                continue;
+            };
+            let distance = ((px - center_x).powi(2) + (py - radius).powi(2)).sqrt();
+            let coverage = (radius - distance + 0.5).clamp(0.0, 1.0);
+            if coverage >= 1.0 {
+                continue;
+            }
+            let index = (y * width + x) as usize;
+            let pixel = dib[index];
+            let scale = |channel: u32| ((channel & 0xff) as f32 * coverage).round() as u32;
+            dib[index] = (scale(pixel >> 24) << 24)
+                | (scale(pixel >> 16) << 16)
+                | (scale(pixel >> 8) << 8)
+                | scale(pixel);
+        }
+    }
+}
+
 fn force_opaque(dib: &mut [u32]) {
     for pixel in dib.iter_mut() {
         *pixel = 0xff00_0000 | (*pixel & 0x00ff_ffff);
