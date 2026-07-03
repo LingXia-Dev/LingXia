@@ -617,6 +617,17 @@ impl LxApp {
         })
     }
 
+    /// Whether a surface with this id is currently open on this lxapp. Flips
+    /// false once the surface closes for any reason, including the user
+    /// dismissing it — poll it to bound a wait on a surface-driven flow.
+    pub fn has_surface(&self, id: &str) -> bool {
+        self.state
+            .lock()
+            .ok()
+            .map(|state| state.surfaces.lock().unwrap().contains_key(id))
+            .unwrap_or(false)
+    }
+
     pub fn show_surface(&self, id: &str) -> Result<(), LxAppError> {
         let id = id.trim();
         if id.is_empty() {
@@ -624,13 +635,7 @@ impl LxApp {
                 "surface id must not be empty".to_string(),
             ));
         }
-        let is_known = self
-            .state
-            .lock()
-            .ok()
-            .map(|state| state.surfaces.lock().unwrap().contains_key(id))
-            .unwrap_or(false);
-        if !is_known {
+        if !self.has_surface(id) {
             return Err(LxAppError::InvalidParameter(format!(
                 "unknown surface: {id}"
             )));
@@ -647,13 +652,7 @@ impl LxApp {
                 "surface id must not be empty".to_string(),
             ));
         }
-        let is_known = self
-            .state
-            .lock()
-            .ok()
-            .map(|state| state.surfaces.lock().unwrap().contains_key(id))
-            .unwrap_or(false);
-        if !is_known {
+        if !self.has_surface(id) {
             return Err(LxAppError::InvalidParameter(format!(
                 "unknown surface: {id}"
             )));
