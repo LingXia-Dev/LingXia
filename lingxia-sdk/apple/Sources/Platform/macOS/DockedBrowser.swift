@@ -22,12 +22,176 @@ final class DockedBrowser: NSObject {
     private static let attachRetryDelay: TimeInterval = 0.1
 
     private enum Layout {
-        static let toolbarHeight: CGFloat = 38
+        static let toolbarHeight: CGFloat = 44
         static let buttonSize: CGFloat = 28
         static let closeSize: CGFloat = 24
         static let iconSize: CGFloat = 14
         static let edge: CGFloat = 8
-        static let maxTabWidth: CGFloat = 180
+        static let tabHeight: CGFloat = 36
+        static let tabIconSize: CGFloat = 14
+        static let minTabWidth: CGFloat = 120
+        static let maxTabWidth: CGFloat = 220
+        /// Chrome-tab silhouette geometry.
+        static let tabTopInset: CGFloat = 4
+        static let tabFoot: CGFloat = 8
+        static let tabCorner: CGFloat = 7
+    }
+
+    @MainActor
+    private final class TabChromeView: NSStackView {
+        var isActiveTab = false {
+            didSet {
+                guard oldValue != isActiveTab else { return }
+                needsDisplay = true
+            }
+        }
+
+        private var isHovered = false {
+            didSet {
+                guard oldValue != isHovered else { return }
+                needsDisplay = true
+            }
+        }
+
+        private var tracking: NSTrackingArea?
+
+        override init(frame frameRect: NSRect) {
+            super.init(frame: frameRect)
+            wantsLayer = true
+            layer?.backgroundColor = NSColor.clear.cgColor
+            layer?.masksToBounds = false
+        }
+
+        required init?(coder: NSCoder) {
+            fatalError("init(coder:) has not been implemented")
+        }
+
+        override var isFlipped: Bool { true }
+
+        /// Suppresses this tab's trailing hairline divider when the seam is
+        /// shared with the active tab (Chrome hides the divider by the selection).
+        var suppressTrailingSeparator = false {
+            didSet {
+                guard oldValue != suppressTrailingSeparator else { return }
+                needsDisplay = true
+            }
+        }
+
+        override func draw(_ dirtyRect: NSRect) {
+            super.draw(dirtyRect)
+            let scale = max(1, window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2)
+            let pixel = 1 / scale
+            // Feet flare out to the full width at the baseline; the body sits
+            // inset by `foot` on each side so neighbouring feet interlock.
+            let topInset = Layout.tabTopInset
+            let foot = Layout.tabFoot
+            let corner = Layout.tabCorner
+
+            if isActiveTab {
+                // The active tab is the page surfacing up through the bar: fill
+                // with the content colour, flared feet merging into the toolbar
+                // bottom (overdraw 1px to bridge the toolbar separator).
+                let path = chromeTabPath(topInset: topInset, foot: foot, corner: corner, overdraw: pixel)
+                NSColor.windowBackgroundColor.setFill()
+                path.fill()
+                // Whisper-thin top hairline for definition; the colour contrast
+                // with the bar carries the separation (Chrome light has none).
+                NSColor.separatorColor.withAlphaComponent(0.3).setStroke()
+                path.lineWidth = pixel
+                path.stroke()
+            } else if isHovered {
+                // Hover: a gently rounded wash inset from the edges, no feet.
+                let washRect = NSRect(
+                    x: foot * 0.5,
+                    y: topInset + 1,
+                    width: max(0, bounds.width - foot),
+                    height: max(0, bounds.height - topInset - 1)
+                )
+                let path = NSBezierPath(
+                    roundedRect: washRect,
+                    xRadius: corner,
+                    yRadius: corner
+                )
+                NSColor.labelColor.withAlphaComponent(0.08).setFill()
+                path.fill()
+            } else if !suppressTrailingSeparator {
+                // Idle tabs are transparent, divided by a short centred hairline.
+                let inset: CGFloat = 8
+                NSColor.separatorColor.withAlphaComponent(0.5).setFill()
+                NSRect(
+                    x: bounds.width - pixel,
+                    y: topInset + inset,
+                    width: pixel,
+                    height: max(0, bounds.height - topInset - inset * 2)
+                ).fill()
+            }
+        }
+
+        /// A Chrome tab silhouette (flipped coords): rounded top corners and
+        /// bottom feet that flare outward to the full width at the baseline.
+        private func chromeTabPath(topInset: CGFloat, foot r: CGFloat, corner c: CGFloat, overdraw: CGFloat) -> NSBezierPath {
+            let top = topInset
+            let bottom = bounds.height + overdraw
+            let left: CGFloat = 0
+            let right = bounds.width
+            let k: CGFloat = 0.5 // control-point pull for a soft quarter turn
+            let path = NSBezierPath()
+            // bottom-left foot (outer)
+            path.move(to: NSPoint(x: left, y: bottom))
+            // flare up into the left side
+            path.curve(
+                to: NSPoint(x: left + r, y: bottom - r),
+                controlPoint1: NSPoint(x: left + r * k, y: bottom),
+                controlPoint2: NSPoint(x: left + r, y: bottom - r * k)
+            )
+            path.line(to: NSPoint(x: left + r, y: top + c))
+            // top-left corner
+            path.curve(
+                to: NSPoint(x: left + r + c, y: top),
+                controlPoint1: NSPoint(x: left + r, y: top + c * k),
+                controlPoint2: NSPoint(x: left + r + c * k, y: top)
+            )
+            path.line(to: NSPoint(x: right - r - c, y: top))
+            // top-right corner
+            path.curve(
+                to: NSPoint(x: right - r, y: top + c),
+                controlPoint1: NSPoint(x: right - r - c * k, y: top),
+                controlPoint2: NSPoint(x: right - r, y: top + c * k)
+            )
+            path.line(to: NSPoint(x: right - r, y: bottom - r))
+            // bottom-right foot flare
+            path.curve(
+                to: NSPoint(x: right, y: bottom),
+                controlPoint1: NSPoint(x: right - r, y: bottom - r * k),
+                controlPoint2: NSPoint(x: right - r * k, y: bottom)
+            )
+            path.close()
+            return path
+        }
+
+        override func updateTrackingAreas() {
+            super.updateTrackingAreas()
+            if let tracking {
+                removeTrackingArea(tracking)
+            }
+            let area = NSTrackingArea(
+                rect: bounds,
+                options: [.activeInKeyWindow, .mouseEnteredAndExited, .inVisibleRect],
+                owner: self,
+                userInfo: nil
+            )
+            addTrackingArea(area)
+            tracking = area
+        }
+
+        override func mouseEntered(with event: NSEvent) {
+            isHovered = true
+        }
+
+        override func mouseExited(with event: NSEvent) {
+            isHovered = false
+        }
+
     }
 
     /// One open tab: a web-aside surface node backed by a Rust browser tab.
@@ -44,7 +208,8 @@ final class DockedBrowser: NSObject {
         var userInteracted = false
         let button = NSButton()
         let closeButton = NSButton()
-        let row = NSStackView()
+        let iconView = NSImageView()
+        let row = TabChromeView()
         nonisolated(unsafe) var urlObs: NSKeyValueObservation?
         nonisolated(unsafe) var backObs: NSKeyValueObservation?
         nonisolated(unsafe) var forwardObs: NSKeyValueObservation?
@@ -329,6 +494,8 @@ final class DockedBrowser: NSObject {
         containerView.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
 
         toolbar.translatesAutoresizingMaskIntoConstraints = false
+        toolbar.wantsLayer = true
+        toolbar.layer?.backgroundColor = NSColor.controlBackgroundColor.cgColor
         containerView.addSubview(toolbar)
 
         configureToolButton(backButton, iconName: "icon_back", action: #selector(backClicked))
@@ -341,9 +508,9 @@ final class DockedBrowser: NSObject {
         closeAsideButton.translatesAutoresizingMaskIntoConstraints = false
         closeAsideButton.isBordered = false
         closeAsideButton.imagePosition = .imageOnly
-        closeAsideButton.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: "Close aside")
+        closeAsideButton.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: L10n.string("lx_common_close"))
         closeAsideButton.contentTintColor = NSColor.secondaryLabelColor
-        closeAsideButton.toolTip = "Close"
+        closeAsideButton.toolTip = L10n.string("lx_common_close")
         closeAsideButton.target = self
         closeAsideButton.action = #selector(closeAsideClicked)
         toolbar.addSubview(closeAsideButton)
@@ -352,9 +519,11 @@ final class DockedBrowser: NSObject {
         // equal widths capped at maxTabWidth, shrinking evenly when crowded
         // (the strip grows with its tabs instead of filling the whole bar).
         tabStrip.orientation = .horizontal
-        tabStrip.spacing = 4
-        tabStrip.alignment = .centerY
-        tabStrip.distribution = .fillEqually
+        // Negative spacing overlaps the flared feet so neighbouring tabs
+        // interlock like Chrome (foot width is Layout.tabFoot).
+        tabStrip.spacing = -Layout.tabFoot
+        tabStrip.alignment = .bottom
+        tabStrip.distribution = .fill
         tabStrip.translatesAutoresizingMaskIntoConstraints = false
         toolbar.addSubview(tabStrip)
 
@@ -397,8 +566,8 @@ final class DockedBrowser: NSObject {
             // leading-packed; the strip may grow up to the close-aside button.
             tabStrip.leadingAnchor.constraint(equalTo: refreshButton.trailingAnchor, constant: Layout.edge),
             tabStrip.trailingAnchor.constraint(lessThanOrEqualTo: closeAsideButton.leadingAnchor, constant: -Layout.edge),
-            tabStrip.centerYAnchor.constraint(equalTo: toolbar.centerYAnchor),
-            tabStrip.heightAnchor.constraint(equalToConstant: Layout.buttonSize),
+            tabStrip.bottomAnchor.constraint(equalTo: toolbar.bottomAnchor),
+            tabStrip.heightAnchor.constraint(equalToConstant: Layout.tabHeight),
 
             separator.topAnchor.constraint(equalTo: toolbar.bottomAnchor),
             separator.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
@@ -432,7 +601,7 @@ final class DockedBrowser: NSObject {
         title.translatesAutoresizingMaskIntoConstraints = false
         title.isBordered = false
         title.bezelStyle = .regularSquare
-        title.font = .systemFont(ofSize: 12)
+        title.font = .systemFont(ofSize: 12, weight: .medium)
         title.alignment = .left
         title.lineBreakMode = .byTruncatingTail
         title.title = tab.title
@@ -441,11 +610,17 @@ final class DockedBrowser: NSObject {
         title.action = #selector(tabButtonClicked(_:))
         objc_setAssociatedObject(title, &AssociatedKeys.surfaceId, tab.surfaceId, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
 
+        let icon = tab.iconView
+        icon.translatesAutoresizingMaskIntoConstraints = false
+        icon.image = NSImage(systemSymbolName: "globe", accessibilityDescription: nil)
+        icon.imageScaling = .scaleProportionallyDown
+        icon.contentTintColor = .secondaryLabelColor
+
         let close = tab.closeButton
         close.translatesAutoresizingMaskIntoConstraints = false
         close.isBordered = false
         close.imagePosition = .imageOnly
-        close.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: "Close tab")
+        close.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: L10n.string("lx_common_close"))
         close.contentTintColor = .tertiaryLabelColor
         close.target = self
         close.action = #selector(tabCloseClicked(_:))
@@ -453,17 +628,29 @@ final class DockedBrowser: NSObject {
 
         let row = tab.row
         row.orientation = .horizontal
-        row.spacing = 2
+        row.spacing = 5
         row.alignment = .centerY
-        row.wantsLayer = true
-        row.layer?.cornerRadius = 6
-        row.edgeInsets = NSEdgeInsets(top: 2, left: 8, bottom: 2, right: 6)
+        // Content clears the flared foot on the leading edge and the tab's
+        // top inset, so the icon/title sit centred in the tab body.
+        row.edgeInsets = NSEdgeInsets(
+            top: Layout.tabTopInset + 4,
+            left: Layout.tabFoot + 6,
+            bottom: 4,
+            right: Layout.tabFoot
+        )
+        row.addArrangedSubview(icon)
         row.addArrangedSubview(title)
         row.addArrangedSubview(close)
         row.translatesAutoresizingMaskIntoConstraints = false
-        // Equal share up to the cap; the title truncates when compressed.
+        // Chrome-like tabs keep a stable readable minimum and cap their growth.
         title.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         title.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        icon.widthAnchor.constraint(equalToConstant: Layout.tabIconSize).isActive = true
+        icon.heightAnchor.constraint(equalToConstant: Layout.tabIconSize).isActive = true
+        row.heightAnchor.constraint(equalToConstant: Layout.tabHeight).isActive = true
+        let minWidth = row.widthAnchor.constraint(greaterThanOrEqualToConstant: Layout.minTabWidth)
+        minWidth.priority = .defaultLow
+        minWidth.isActive = true
         row.widthAnchor.constraint(lessThanOrEqualToConstant: Layout.maxTabWidth).isActive = true
         close.widthAnchor.constraint(equalToConstant: 16).isActive = true
         tabStrip.addArrangedSubview(row)
@@ -475,12 +662,21 @@ final class DockedBrowser: NSObject {
     }
 
     private func updateTabStripSelection() {
-        for tab in tabs {
+        for (index, tab) in tabs.enumerated() {
             let selected = tab.surfaceId == activeSurfaceId
-            tab.row.layer?.backgroundColor = selected
-                ? NSColor.labelColor.withAlphaComponent(0.10).cgColor
-                : NSColor.clear.cgColor
+            tab.row.isActiveTab = selected
+            // The active tab overlaps its neighbours' feet, so lift it above.
+            tab.row.layer?.zPosition = selected ? 2 : 0
             tab.button.contentTintColor = selected ? .labelColor : .secondaryLabelColor
+            // Inactive favicon sits a touch brighter than the title for legibility.
+            tab.iconView.contentTintColor = selected
+                ? .controlAccentColor
+                : NSColor.labelColor.withAlphaComponent(0.65)
+            tab.closeButton.contentTintColor = selected ? .secondaryLabelColor : .tertiaryLabelColor
+            tab.closeButton.alphaValue = selected ? 1 : 0.65
+            // Hide the divider on the seam shared with the active tab.
+            let nextSelected = index + 1 < tabs.count && tabs[index + 1].surfaceId == activeSurfaceId
+            tab.row.suppressTrailingSeparator = selected || nextSelected
         }
         tabStrip.isHidden = tabs.isEmpty
     }
