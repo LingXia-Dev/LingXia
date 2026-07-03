@@ -259,7 +259,10 @@ fn require_desktop_input(info: &SessionInfo, what: &str) -> Result<()> {
         "harmony" => "`hdc shell uitest uiInput`",
         _ => "`lxdev lxapp page click/type` (web content)",
     };
-    bail!("app {what} is desktop-only; on {} use {hint}", info.platform)
+    bail!(
+        "app {what} is desktop-only; on {} use {hint}",
+        info.platform
+    )
 }
 
 fn execute_windows(info: &SessionInfo, json: bool) -> Result<()> {
