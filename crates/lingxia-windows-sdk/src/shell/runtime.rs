@@ -984,12 +984,11 @@ fn build_tab_bar_layout(
     };
     // A bottom tab bar shows only on tab pages; a navigated-to sub-page hides it
     // so its content gets the full height (standard mini-app behavior). A side
-    // bar is persistent navigation and stays. Auxiliary items (open lxapps /
-    // browser tabs) keep the bar regardless.
-    if position == WindowsShellTabBarPosition::Bottom
-        && current_tab_index.is_none()
-        && auxiliary_items.is_empty()
-    {
+    // bar is persistent navigation and stays, and its auxiliary rows (open
+    // lxapps / browser tabs) keep it visible — but they are sidebar content
+    // and never resurrect the bottom bar (a lingering background browser tab
+    // must not pop the tab bar onto a sub-page).
+    if position == WindowsShellTabBarPosition::Bottom && current_tab_index.is_none() {
         return None;
     }
     // `dimension` is the bar's cross-axis size: a sidebar's width, but a bottom
