@@ -1,9 +1,10 @@
 use crate::device::{
-    ABOUT_COMMAND, CLEAN_CACHE_COMMAND, DEVICE_COMMAND_BASE, OPEN_DEVTOOLS_COMMAND, QUIT_COMMAND,
-    RESTART_LXAPP_COMMAND, ROTATE_COMMAND, frame_spec, initial_device_index, is_phone, is_tablet,
-    presets,
+    ABOUT_COMMAND, CAPSULE_CLOSE_COMMAND, CLEAN_CACHE_COMMAND, DEVICE_COMMAND_BASE,
+    OPEN_DEVTOOLS_COMMAND, RESTART_LXAPP_COMMAND, ROTATE_COMMAND, frame_spec, initial_device_index,
+    is_phone, is_tablet, presets,
 };
 use lingxia_windows_sdk::WindowsShellTabBarPosition;
+use lxapp::{LxAppDelegate, LxAppUiEventType};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 /// The device + orientation the simulator currently shows. The toolbar's
@@ -79,6 +80,8 @@ pub(crate) fn run() -> lingxia_windows_sdk::Result<()> {
     // Same orientation rule as the toolbar selector: tablets land in
     // landscape, phones/desktops in portrait.
     let initial_landscape = is_tablet(default_device);
+    CURRENT_DEVICE.store(default_device, Ordering::Release);
+    LANDSCAPE.store(initial_landscape, Ordering::Release);
     let initial_frame = frame_spec(default_device, initial_landscape);
     lingxia_windows_sdk::set_windows_default_shell_tabbar_position(tabbar_position_for_device(
         default_device,
@@ -88,6 +91,7 @@ pub(crate) fn run() -> lingxia_windows_sdk::Result<()> {
         .with_window_size(initial_frame.screen_width, initial_frame.screen_height);
     let home_app_id = lingxia_windows_sdk::start_default_host(app)?;
     install_runner_commands(home_app_id.clone());
+    start_device_frame_sync(home_app_id.clone());
     apply_default_device(home_app_id, default_device, initial_landscape);
     std::process::exit(lingxia_windows_sdk::run_message_loop());
 }
@@ -115,7 +119,7 @@ fn install_launch_args_env() {
     }
 }
 
-fn apply_device(home_app_id: &str, index: usize, landscape: bool) -> Result<(), String> {
+fn apply_device(index: usize, landscape: bool) -> Result<(), String> {
     // Device switching, rotation, and DevTools live on the simulator frame's
     // toolbar (built in `frame_spec`), so the runner attaches no native menu
     // bar — the phone screen stays chrome-free like the macOS runner.
@@ -124,14 +128,33 @@ fn apply_device(home_app_id: &str, index: usize, landscape: bool) -> Result<(), 
     // these into separate immediate + posted updates lets layout briefly sync
     // against the previous device (e.g. iPhone status bar forcing bottom tabs
     // while switching to iPad).
-    lingxia_windows_sdk::set_app_window_device_frame_and_tabbar_position(
-        home_app_id,
-        frame_spec(index, landscape),
-        tabbar_position_for_device(index),
-    )?;
+    let mut applied = false;
+    for app in lxapp::list_lxapps() {
+        if app.status == "opened" && app.current_page.is_some() {
+            if let Err(err) = apply_device_to_app(&app.appid, index, landscape) {
+                eprintln!(
+                    "lingxia-runner: failed to apply device to {}: {err}",
+                    app.appid
+                );
+            } else {
+                applied = true;
+            }
+        }
+    }
+    if !applied {
+        return Err("no opened lxapp is ready for device frame".to_string());
+    }
     CURRENT_DEVICE.store(index, Ordering::Release);
     LANDSCAPE.store(landscape, Ordering::Release);
     Ok(())
+}
+
+fn apply_device_to_app(appid: &str, index: usize, landscape: bool) -> Result<(), String> {
+    lingxia_windows_sdk::set_app_window_device_frame_and_tabbar_position(
+        appid,
+        frame_spec(index, landscape),
+        tabbar_position_for_device(index),
+    )
 }
 
 fn tabbar_position_for_device(index: usize) -> WindowsShellTabBarPosition {
@@ -157,39 +180,40 @@ fn install_runner_commands(home_app_id: String) {
             if command == ROTATE_COMMAND {
                 let index = CURRENT_DEVICE.load(Ordering::Acquire);
                 let landscape = !LANDSCAPE.load(Ordering::Acquire);
-                if let Err(err) = apply_device(&home_app_id, index, landscape) {
+                if let Err(err) = apply_device(index, landscape) {
                     eprintln!("lingxia-runner: failed to rotate device: {err}");
                 }
                 return;
             }
 
             if command == ABOUT_COMMAND {
+                let target = current_or_home_app_id(&home_app_id);
                 if is_phone(CURRENT_DEVICE.load(Ordering::Acquire))
-                    && let Err(err) = show_lxapp_info_sheet(&home_app_id)
+                    && let Err(err) = show_lxapp_info_sheet(&target)
                 {
                     eprintln!("lingxia-runner: failed to show lxapp info: {err}");
                 }
                 return;
             }
 
-            if command == QUIT_COMMAND {
-                // Capsule close circle quits the single-app emulator, mirroring
-                // the macOS runner (PR #28).
-                if let Err(err) = lingxia::app::exit() {
-                    eprintln!("lingxia-runner: failed to quit: {err}");
+            if command == CAPSULE_CLOSE_COMMAND {
+                if let Err(err) = close_current_lxapp(&home_app_id) {
+                    eprintln!("lingxia-runner: failed to close current lxapp: {err}");
                 }
                 return;
             }
 
             if command == RESTART_LXAPP_COMMAND {
-                if let Err(err) = restart_lxapp(&home_app_id, false) {
+                let target = current_or_home_app_id(&home_app_id);
+                if let Err(err) = restart_lxapp(&target, false) {
                     eprintln!("lingxia-runner: failed to restart lxapp: {err}");
                 }
                 return;
             }
 
             if command == CLEAN_CACHE_COMMAND {
-                if let Err(err) = restart_lxapp(&home_app_id, true) {
+                let target = current_or_home_app_id(&home_app_id);
+                if let Err(err) = restart_lxapp(&target, true) {
                     eprintln!("lingxia-runner: failed to clean cache + restart lxapp: {err}");
                 }
                 return;
@@ -203,7 +227,7 @@ fn install_runner_commands(home_app_id: String) {
                 return;
             };
             // Tablets default to landscape, phones/desktops to portrait.
-            if let Err(err) = apply_device(&home_app_id, index, is_tablet(index)) {
+            if let Err(err) = apply_device(index, is_tablet(index)) {
                 eprintln!(
                     "lingxia-runner: failed to switch to {}: {err}",
                     presets()[index].name
@@ -211,6 +235,22 @@ fn install_runner_commands(home_app_id: String) {
             }
         },
     ));
+}
+
+fn current_or_home_app_id(home_app_id: &str) -> String {
+    let (appid, _, _) = lxapp::get_current_lxapp();
+    if appid.is_empty() {
+        home_app_id.to_string()
+    } else {
+        appid
+    }
+}
+
+fn close_current_lxapp(home_app_id: &str) -> Result<(), String> {
+    let target = current_or_home_app_id(home_app_id);
+    let app = lxapp::try_get(&target).ok_or_else(|| format!("lxapp is not active: {target}"))?;
+    let _ = app.on_lxapp_event(LxAppUiEventType::CapsuleClick, "close".to_string());
+    Ok(())
 }
 
 fn show_lxapp_info_sheet(appid: &str) -> Result<(), String> {
@@ -264,13 +304,31 @@ fn release_badge(release_type: &str) -> Option<lingxia_windows_sdk::WindowsDevic
 ///
 /// `clean_cache` first clears the lxapp's user cache (the capsule sheet's
 /// "Clean Cache && Restart").
-fn restart_lxapp(home_app_id: &str, clean_cache: bool) -> Result<(), String> {
-    let app =
-        lxapp::try_get(home_app_id).ok_or_else(|| format!("lxapp is not active: {home_app_id}"))?;
+fn restart_lxapp(appid: &str, clean_cache: bool) -> Result<(), String> {
+    let app = lxapp::try_get(appid).ok_or_else(|| format!("lxapp is not active: {appid}"))?;
     if clean_cache {
         app.clear_user_cache().map_err(|err| err.to_string())?;
     }
     app.restart_in_place().map_err(|err| err.to_string())
+}
+
+fn start_device_frame_sync(home_app_id: String) {
+    std::thread::spawn(move || {
+        let mut last: Option<(String, usize, bool)> = None;
+        loop {
+            std::thread::sleep(std::time::Duration::from_millis(150));
+            let target = current_or_home_app_id(&home_app_id);
+            let index = CURRENT_DEVICE.load(Ordering::Acquire);
+            let landscape = LANDSCAPE.load(Ordering::Acquire);
+            let next = (target.clone(), index, landscape);
+            if last.as_ref() == Some(&next) {
+                continue;
+            }
+            if apply_device_to_app(&target, index, landscape).is_ok() {
+                last = Some(next);
+            }
+        }
+    });
 }
 
 fn apply_default_device(home_app_id: String, default_device: usize, landscape: bool) {
@@ -279,7 +337,9 @@ fn apply_default_device(home_app_id: String, default_device: usize, landscape: b
             if attempt > 0 {
                 std::thread::sleep(std::time::Duration::from_millis(50));
             }
-            if apply_device(&home_app_id, default_device, landscape).is_ok() {
+            if apply_device_to_app(&home_app_id, default_device, landscape).is_ok() {
+                CURRENT_DEVICE.store(default_device, Ordering::Release);
+                LANDSCAPE.store(landscape, Ordering::Release);
                 return;
             }
         }
