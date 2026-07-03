@@ -221,6 +221,7 @@ mod chrome_command {
     pub(super) const NATIVE_PANEL_TAB_RENAME: &str = "native-panel.tab.rename";
     pub(super) const NATIVE_PANEL_RIGHT_CLICK: &str = "native-panel.right-click";
     pub(super) const NATIVE_PANEL_PANE_FOCUS: &str = "native-panel.pane-focus";
+    pub(super) const BROWSER_TABS_CYCLE: &str = "browser.tabs.cycle";
     pub(super) const BROWSER_NAV_BACK: &str = "browser.nav.back";
     pub(super) const BROWSER_NAV_FORWARD: &str = "browser.nav.forward";
     pub(super) const BROWSER_NAV_RELOAD: &str = "browser.nav.reload";
@@ -803,6 +804,7 @@ fn build_address_bar_layout() -> Option<WindowsShellAddressBarLayout> {
         aside,
         can_go_back: tab.can_go_back,
         can_go_forward: tab.can_go_forward,
+        tab_count: browser_tabs().len(),
     })
 }
 
@@ -852,14 +854,20 @@ fn refresh_aside_panel_nav_state() {
 }
 
 /// Capsule text of the presented tab: its current URL, else its title
-/// (matching the sidebar row fallback).
+/// (matching the sidebar row fallback). A blank new tab reads as empty,
+/// like a fresh address input.
 fn browser_tab_display_url(tab: &BrowserTabSummary) -> String {
-    tab.current_url
+    let url = tab
+        .current_url
         .as_deref()
         .map(str::trim)
         .filter(|url| !url.is_empty())
         .map(str::to_string)
-        .unwrap_or_else(|| browser_tab_display_title(tab))
+        .unwrap_or_else(|| browser_tab_display_title(tab));
+    if url == "about:blank" {
+        return String::new();
+    }
+    url
 }
 
 fn build_navigation_bar_layout(app: &LxApp, path: &str) -> WindowsShellNavigationBarLayout {
@@ -1234,6 +1242,10 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
             handle_panel_activator(appid, panel_id);
             return;
         }
+        chrome_command::BROWSER_TABS_CYCLE => {
+            handle_browser_tabs_toggle(appid);
+            return;
+        }
         chrome_command::BROWSER_NEW_TAB => {
             handle_browser_new_tab(appid, app.session_id());
             return;
@@ -1582,7 +1594,13 @@ fn return_to_lxapp_from_browser(appid: &str) {
 /// and presents it once its webview is ready.
 #[cfg(feature = "browser-runtime")]
 fn handle_browser_new_tab(appid: &str, session_id: u64) {
-    match lingxia_browser::open_for_app(appid, session_id, "lingxia://newtab", None) {
+    // Without the browser webui there is no `lingxia://newtab` start page;
+    // a new tab is a blank page, like the macOS runner.
+    #[cfg(feature = "browser-shell")]
+    const NEW_TAB_URL: &str = "lingxia://newtab";
+    #[cfg(not(feature = "browser-shell"))]
+    const NEW_TAB_URL: &str = "about:blank";
+    match lingxia_browser::open_for_app(appid, session_id, NEW_TAB_URL, None) {
         Ok(tab_id) => present_browser_tab_when_ready(appid, tab_id),
         Err(err) => log::error!("failed to open new browser tab for {appid}: {err}"),
     }
@@ -1590,6 +1608,31 @@ fn handle_browser_new_tab(appid: &str, session_id: u64) {
 
 #[cfg(not(feature = "browser-runtime"))]
 fn handle_browser_new_tab(_appid: &str, _session_id: u64) {}
+
+/// Toggles the phone tab-switcher sheet (the macOS runner's in-frame
+/// bottom sheet) listing every open tab.
+#[cfg(feature = "browser-runtime")]
+fn handle_browser_tabs_toggle(appid: &str) {
+    let presented = presented_browser_tab();
+    let tabs: Vec<(String, String, bool)> = browser_tabs()
+        .into_iter()
+        .map(|tab| {
+            let active = presented.as_deref() == Some(tab.tab_id.as_str());
+            let title = browser_tab_display_title(&tab);
+            (tab.tab_id, title, active)
+        })
+        .collect();
+    if tabs.is_empty() {
+        return;
+    }
+    let Some(owner) = owner_window_handle(appid) else {
+        return;
+    };
+    crate::window_host::toggle_phone_tab_switcher(owner, tabs);
+}
+
+#[cfg(not(feature = "browser-runtime"))]
+fn handle_browser_tabs_toggle(_appid: &str) {}
 
 #[cfg(feature = "browser-runtime")]
 fn handle_browser_tab_click(appid: &str, tab_id: &str) {

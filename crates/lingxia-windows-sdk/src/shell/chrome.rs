@@ -170,6 +170,7 @@ pub(super) mod command_id {
     pub(super) const NAVIGATION_BACK: &str = "navigation.back";
     pub(super) const NAVIGATION_HOME: &str = "navigation.home";
     pub(super) const BROWSER_NEW_TAB: &str = "browser.new-tab";
+    pub(super) const BROWSER_TABS_CYCLE: &str = "browser.tabs.cycle";
     pub(super) const BROWSER_TAB_CLICK: &str = "browser.tab.click";
     pub(super) const BROWSER_TAB_CLOSE: &str = "browser.tab.close";
     pub(super) const SIDEBAR_AUXILIARY_CONTEXT_MENU: &str = "sidebar.auxiliary.context-menu";
@@ -323,6 +324,30 @@ fn chrome_hover_rect(
     for rect in top_bar_buttons.into_iter().flatten() {
         if rect_contains(&rect, point) {
             return Some(rect);
+        }
+    }
+
+    // Phone browser bar: every button lights up on hover.
+    if phone_browser_bar_active(client, layout)
+        && let Some(address_bar) = &layout.address_bar
+    {
+        let rects = phone_browser_bar_rects(client, address_bar.aside);
+        if rect_contains(&rects.bar, point) {
+            let buttons = [
+                Some(rects.back),
+                Some(rects.forward),
+                rects.row_reload,
+                rects.address_reload,
+                rects.new_tab,
+                Some(rects.tabs),
+                Some(rects.close),
+            ];
+            for rect in buttons.into_iter().flatten() {
+                if rect_contains(&rect, point) {
+                    return Some(rect);
+                }
+            }
+            return None;
         }
     }
 
@@ -678,6 +703,397 @@ pub(super) struct ChromeRects {
     pub(super) tab_bar: Option<RECT>,
 }
 
+/// Compact (phone-width) breakpoint, matching the surface arbiter's Compact
+/// size class.
+const PHONE_BROWSER_MAX_WIDTH: i32 = 600;
+/// Bottom browser-bar metrics, mirroring the macOS RunnerPhoneBrowserSurface:
+/// a floating card with an address-pill row (self tabs only) above the
+/// action row.
+const PHONE_BAR_HEIGHT_SELF: i32 = 96;
+const PHONE_BAR_HEIGHT_ASIDE: i32 = 56;
+const PHONE_BAR_MARGIN: i32 = 8;
+const PHONE_BAR_BOTTOM_GAP: i32 = 4;
+const PHONE_BAR_RADIUS: i32 = 16;
+const PHONE_BAR_BUTTON: i32 = 38;
+const PHONE_BAR_BUTTON_GAP: i32 = 4;
+const PHONE_BAR_EDGE: i32 = 6;
+const PHONE_ADDRESS_HEIGHT: i32 = 34;
+
+/// Whether the presented browser tab renders the phone bottom bar: a
+/// device-framed screen at a compact width.
+pub(super) fn phone_browser_bar_active(client: RECT, layout: &WindowsShellWindowLayout) -> bool {
+    layout.suppress_window_controls
+        && address_bar_visible(layout)
+        && rect_width(&client) < PHONE_BROWSER_MAX_WIDTH
+}
+
+fn phone_bar_is_aside(layout: &WindowsShellWindowLayout) -> bool {
+    layout
+        .address_bar
+        .as_ref()
+        .is_some_and(|address_bar| address_bar.aside)
+}
+
+/// Interactive geometry of the phone browser bar. Self tabs get the address
+/// pill row and a new-tab button; API-driven asides drop both and put the
+/// reload into the action row.
+struct PhoneBarRects {
+    bar: RECT,
+    address: Option<RECT>,
+    address_reload: Option<RECT>,
+    back: RECT,
+    forward: RECT,
+    row_reload: Option<RECT>,
+    new_tab: Option<RECT>,
+    tabs: RECT,
+    close: RECT,
+}
+
+fn phone_browser_bar_rects(client: RECT, aside: bool) -> PhoneBarRects {
+    let height = if aside {
+        PHONE_BAR_HEIGHT_ASIDE
+    } else {
+        PHONE_BAR_HEIGHT_SELF
+    };
+    let bar = normalize_rect(RECT {
+        left: client.left + PHONE_BAR_MARGIN,
+        top: (client.bottom - PHONE_BAR_BOTTOM_GAP - height).max(client.top),
+        right: client.right - PHONE_BAR_MARGIN,
+        bottom: client.bottom - PHONE_BAR_BOTTOM_GAP,
+    });
+
+    let (address, address_reload, action_top) = if aside {
+        (
+            None,
+            None,
+            bar.top + (rect_height(&bar) - PHONE_BAR_BUTTON).max(0) / 2,
+        )
+    } else {
+        let pill = normalize_rect(RECT {
+            left: bar.left + 8,
+            top: bar.top + 8,
+            right: bar.right - 8,
+            bottom: bar.top + 8 + PHONE_ADDRESS_HEIGHT,
+        });
+        let reload = normalize_rect(RECT {
+            left: pill.right - PHONE_ADDRESS_HEIGHT,
+            top: pill.top + 2,
+            right: pill.right - 2,
+            bottom: pill.bottom - 2,
+        });
+        (Some(pill), Some(reload), pill.bottom + 4)
+    };
+
+    let button = |left: i32| {
+        normalize_rect(RECT {
+            left,
+            top: action_top,
+            right: left + PHONE_BAR_BUTTON,
+            bottom: action_top + PHONE_BAR_BUTTON,
+        })
+    };
+    let back = button(bar.left + PHONE_BAR_EDGE);
+    let forward = button(back.right + PHONE_BAR_BUTTON_GAP);
+    let row_reload = aside.then(|| button(forward.right + PHONE_BAR_BUTTON_GAP));
+
+    let close = button(bar.right - PHONE_BAR_EDGE - PHONE_BAR_BUTTON);
+    let tabs = button(close.left - PHONE_BAR_BUTTON_GAP - PHONE_BAR_BUTTON);
+    let new_tab = (!aside).then(|| button(tabs.left - PHONE_BAR_BUTTON_GAP - PHONE_BAR_BUTTON));
+
+    PhoneBarRects {
+        bar,
+        address,
+        address_reload,
+        back,
+        forward,
+        row_reload,
+        new_tab,
+        tabs,
+        close,
+    }
+}
+
+/// Paints the phone browser bar: a floating bottom card with the address
+/// pill (self tabs only), the nav cluster, and new-tab/tabs/close.
+fn draw_phone_browser_bar(hdc: HDC, state: &WindowsChromeState, layout: &WindowsShellWindowLayout) {
+    let Some(address_bar) = layout.address_bar.as_ref() else {
+        return;
+    };
+    let pal = shell_palette();
+    let cursor = state.cursor;
+    let rects = phone_browser_bar_rects(state.client, address_bar.aside);
+
+    fill_round_rect_aa(hdc, rects.bar, PHONE_BAR_RADIUS, pal.panel_background);
+
+    if let Some(pill) = rects.address {
+        fill_round_rect_aa(hdc, pill, rect_height(&pill) / 2, pal.control_surface);
+        let text_rect = normalize_rect(RECT {
+            left: pill.left + 12,
+            top: pill.top,
+            right: rects
+                .address_reload
+                .map(|reload| reload.left - 4)
+                .unwrap_or(pill.right - 8),
+            bottom: pill.bottom,
+        });
+        draw_text(
+            hdc,
+            &address_bar.url_text,
+            text_rect,
+            pal.text_primary,
+            DT_LEFT,
+        );
+        // The pill is the inline URL-edit anchor, like the top-bar capsule.
+        remember_address_capsule_rect(state.hwnd, Some(pill));
+        if let Some(reload) = rects.address_reload {
+            draw_hover_wash(hdc, reload, rect_height(&reload) / 2, cursor);
+            draw_design_icon_button(
+                hdc,
+                reload,
+                WindowsDesignIcon::BrowserRefresh,
+                pal.text_muted,
+                14,
+            );
+        }
+    } else {
+        remember_address_capsule_rect(state.hwnd, None);
+    }
+
+    let nav = [
+        (rects.back, WindowsDesignIcon::Back, address_bar.can_go_back),
+        (
+            rects.forward,
+            WindowsDesignIcon::Forward,
+            address_bar.can_go_forward,
+        ),
+    ];
+    for (rect, icon, enabled) in nav {
+        let color = if enabled {
+            draw_hover_wash(hdc, rect, 5, cursor);
+            pal.frame_button_icon
+        } else {
+            pal.text_muted
+        };
+        draw_design_icon_button(hdc, rect, icon, color, 18);
+    }
+    if let Some(reload) = rects.row_reload {
+        draw_hover_wash(hdc, reload, 5, cursor);
+        draw_design_icon_button(
+            hdc,
+            reload,
+            WindowsDesignIcon::BrowserRefresh,
+            pal.frame_button_icon,
+            18,
+        );
+    }
+    if let Some(new_tab) = rects.new_tab {
+        draw_hover_wash(hdc, new_tab, 5, cursor);
+        draw_frame_button_glyph(hdc, GLYPH_ADD, new_tab, pal.frame_button_icon);
+    }
+
+    // Tabs button: the shared browser-tabs icon with the open-tab count
+    // overlaid, matching the iOS/HarmonyOS browsers.
+    draw_hover_wash(hdc, rects.tabs, 5, cursor);
+    draw_design_icon_button(
+        hdc,
+        rects.tabs,
+        WindowsDesignIcon::BrowserTabs,
+        pal.frame_button_icon,
+        20,
+    );
+    let count = address_bar.tab_count.min(99).to_string();
+    let icon_box = inset_rect(
+        rects.tabs,
+        (rect_width(&rects.tabs) - 20) / 2,
+        (rect_height(&rects.tabs) - 20) / 2,
+    );
+    draw_text(hdc, &count, icon_box, pal.text_primary, DT_CENTER);
+
+    draw_hover_wash(hdc, rects.close, 5, cursor);
+    draw_design_icon_button_with_fallback(
+        hdc,
+        rects.close,
+        WindowsDesignIcon::CloseX,
+        pal.frame_button_icon,
+        16,
+        Some(GLYPH_CLOSE),
+    );
+}
+
+/// The phone tab-switcher bottom sheet (the macOS runner's in-frame sheet):
+/// a dimmed backdrop with a rounded-top panel listing every open tab.
+pub(crate) struct PhoneTabSwitcherLayout {
+    pub(crate) width: i32,
+    pub(crate) height: i32,
+    pub(crate) sheet: RECT,
+    pub(crate) rows: Vec<PhoneTabSwitcherRow>,
+}
+
+pub(crate) struct PhoneTabSwitcherRow {
+    pub(crate) tab_id: String,
+    pub(crate) title: String,
+    pub(crate) active: bool,
+    pub(crate) rect: RECT,
+    pub(crate) close: RECT,
+}
+
+pub(crate) enum PhoneTabSwitcherHit {
+    Row(String),
+    Close(String),
+    Sheet,
+    Dismiss,
+}
+
+pub(crate) const PHONE_SWITCHER_SHEET_RADIUS: i32 = 18;
+const PHONE_SWITCHER_ROW_HEIGHT: i32 = 40;
+const PHONE_SWITCHER_TITLE_HEIGHT: i32 = 36;
+
+/// Lays the sheet over a `width`x`height` phone client; `tabs` are
+/// `(tab_id, title, active)` in display order.
+pub(crate) fn phone_tab_switcher_layout(
+    width: i32,
+    height: i32,
+    tabs: &[(String, String, bool)],
+) -> PhoneTabSwitcherLayout {
+    let content = PHONE_SWITCHER_TITLE_HEIGHT + tabs.len() as i32 * PHONE_SWITCHER_ROW_HEIGHT + 16;
+    let sheet_height = content
+        .min(height * 3 / 5)
+        .max(PHONE_SWITCHER_TITLE_HEIGHT + 16);
+    let sheet = RECT {
+        left: 0,
+        top: (height - sheet_height).max(0),
+        right: width,
+        bottom: height,
+    };
+    let mut rows = Vec::with_capacity(tabs.len());
+    let mut top = sheet.top + PHONE_SWITCHER_TITLE_HEIGHT;
+    for (tab_id, title, active) in tabs {
+        if top + PHONE_SWITCHER_ROW_HEIGHT > sheet.bottom - 8 {
+            break;
+        }
+        let rect = RECT {
+            left: sheet.left + 8,
+            top,
+            right: sheet.right - 8,
+            bottom: top + PHONE_SWITCHER_ROW_HEIGHT,
+        };
+        let close = RECT {
+            left: rect.right - 36,
+            top: rect.top + (PHONE_SWITCHER_ROW_HEIGHT - 28) / 2,
+            right: rect.right - 8,
+            bottom: rect.top + (PHONE_SWITCHER_ROW_HEIGHT + 28) / 2,
+        };
+        rows.push(PhoneTabSwitcherRow {
+            tab_id: tab_id.clone(),
+            title: title.clone(),
+            active: *active,
+            rect,
+            close,
+        });
+        top += PHONE_SWITCHER_ROW_HEIGHT;
+    }
+    PhoneTabSwitcherLayout {
+        width,
+        height,
+        sheet,
+        rows,
+    }
+}
+
+/// Paints the switcher into a layered-window surface: black backdrop (the
+/// alpha mask turns it into the dim), a white sheet, and the tab rows.
+pub(crate) fn paint_phone_tab_switcher(hdc: HDC, layout: &PhoneTabSwitcherLayout) {
+    let pal = shell_palette();
+    fill_rect(
+        hdc,
+        RECT {
+            left: 0,
+            top: 0,
+            right: layout.width,
+            bottom: layout.height,
+        },
+        0x000000,
+    );
+    fill_round_rect_aa(
+        hdc,
+        layout.sheet,
+        PHONE_SWITCHER_SHEET_RADIUS,
+        pal.panel_background,
+    );
+    // Square the sheet's bottom corners (it sits flush with the screen edge).
+    fill_rect(
+        hdc,
+        RECT {
+            left: layout.sheet.left,
+            top: (layout.sheet.bottom - PHONE_SWITCHER_SHEET_RADIUS).max(layout.sheet.top),
+            right: layout.sheet.right,
+            bottom: layout.sheet.bottom,
+        },
+        pal.panel_background,
+    );
+    draw_text(
+        hdc,
+        "Tabs",
+        RECT {
+            left: layout.sheet.left + 16,
+            top: layout.sheet.top + 6,
+            right: layout.sheet.right - 16,
+            bottom: layout.sheet.top + PHONE_SWITCHER_TITLE_HEIGHT,
+        },
+        pal.text_primary,
+        DT_LEFT,
+    );
+    for row in &layout.rows {
+        if row.active {
+            fill_round_rect_aa(hdc, row.rect, 8, pal.control_surface);
+        }
+        let title_rect = RECT {
+            left: row.rect.left + 10,
+            top: row.rect.top,
+            right: row.close.left - 8,
+            bottom: row.rect.bottom,
+        };
+        let color = if row.active {
+            pal.text_primary
+        } else {
+            pal.text_muted
+        };
+        draw_text(hdc, &row.title, title_rect, color, DT_LEFT);
+        draw_text(hdc, GLYPH_TAB_CLOSE, row.close, pal.text_muted, DT_CENTER);
+    }
+}
+
+pub(crate) fn phone_tab_switcher_hit(
+    layout: &PhoneTabSwitcherLayout,
+    point: (i32, i32),
+) -> PhoneTabSwitcherHit {
+    for row in &layout.rows {
+        if rect_contains(&row.close, point) {
+            return PhoneTabSwitcherHit::Close(row.tab_id.clone());
+        }
+        if rect_contains(&row.rect, point) {
+            return PhoneTabSwitcherHit::Row(row.tab_id.clone());
+        }
+    }
+    if rect_contains(&layout.sheet, point) {
+        PhoneTabSwitcherHit::Sheet
+    } else {
+        PhoneTabSwitcherHit::Dismiss
+    }
+}
+
+/// Chrome commands the switcher rows dispatch back to the shell runtime
+/// (the sidebar's tab click/close semantics).
+pub(crate) fn phone_tab_click_command(tab_id: &str) -> WindowsChromeCommand {
+    WindowsChromeCommand::new(command_id::BROWSER_TAB_CLICK)
+        .with_payload(json!({ "tab_id": tab_id }))
+}
+
+pub(crate) fn phone_tab_close_command(tab_id: &str) -> WindowsChromeCommand {
+    WindowsChromeCommand::new(command_id::BROWSER_TAB_CLOSE)
+        .with_payload(json!({ "tab_id": tab_id }))
+}
+
 pub(super) fn compute_chrome_rects(client: RECT, layout: &WindowsShellWindowLayout) -> ChromeRects {
     // Reserve the device frame's status-bar strip at the very top; the nav bar +
     // content stack below it (the device frame's status-bar overlay paints the
@@ -768,15 +1184,23 @@ pub(super) fn compute_chrome_rects(client: RECT, layout: &WindowsShellWindowLayo
         // immersive frame (top_inset 0 + device frame) from the browser shell
         // (top_inset 0, no device frame) via suppress_window_controls.
         // A presented browser tab always gets the row: it carries the URL
-        // capsule and close control (the phone-sized frame included).
+        // capsule and close control — except on the phone-sized frame, whose
+        // browser chrome is the bottom bar instead.
         if (top_inset == 0 && !layout.suppress_window_controls)
             || navbar_visible
-            || address_bar_visible(layout)
+            || (address_bar_visible(layout) && !phone_browser_bar_active(client, layout))
         {
             content.top += SHELL_TOP_BAR_HEIGHT;
         }
         top_bar_left = content.left;
         top_bar_right = content.right;
+    }
+
+    // The phone-frame browser chrome docks at the screen's bottom (the macOS
+    // RunnerPhoneBrowserSurface layout); the webview ends above it.
+    if phone_browser_bar_active(client, layout) {
+        let bar = phone_browser_bar_rects(client, phone_bar_is_aside(layout)).bar;
+        content.bottom = bar.top.max(content.top);
     }
 
     content = normalize_rect(content);
@@ -1244,6 +1668,9 @@ pub(super) fn draw_window_chrome(
     // Painted after the navigation bar: the navbar fills the whole top bar
     // with its own background, and the toggle/address controls sit on top.
     draw_top_bar_controls(hdc, state, &rects, layout);
+    if phone_browser_bar_active(state.client, layout) {
+        draw_phone_browser_bar(hdc, state, layout);
+    }
     draw_panel_activators(hdc, client, &rects, layout, state.cursor);
     draw_maximized_native_panels(hdc, state);
     // A device-framed window's caption lives on the simulator toolbar, not the
@@ -1309,6 +1736,48 @@ pub(super) fn chrome_hit_test(
     {
         return Some(chrome_command(command_id::SIDEBAR_TOGGLE, json!({})));
     }
+    // The phone browser bar owns its bottom card; every element maps to the
+    // same browser commands the top bar uses.
+    if phone_browser_bar_active(client, layout)
+        && let Some(address_bar) = &layout.address_bar
+    {
+        let rects = phone_browser_bar_rects(client, address_bar.aside);
+        if rect_contains(&rects.bar, point) {
+            if rect_contains(&rects.back, point) {
+                return Some(chrome_command(command_id::BROWSER_NAV_BACK, json!({})));
+            }
+            if rect_contains(&rects.forward, point) {
+                return Some(chrome_command(command_id::BROWSER_NAV_FORWARD, json!({})));
+            }
+            if rects
+                .row_reload
+                .or(rects.address_reload)
+                .is_some_and(|reload| rect_contains(&reload, point))
+            {
+                return Some(chrome_command(command_id::BROWSER_NAV_RELOAD, json!({})));
+            }
+            if rects
+                .new_tab
+                .is_some_and(|new_tab| rect_contains(&new_tab, point))
+            {
+                return Some(chrome_command(command_id::BROWSER_NEW_TAB, json!({})));
+            }
+            if rect_contains(&rects.tabs, point) {
+                return Some(chrome_command(command_id::BROWSER_TABS_CYCLE, json!({})));
+            }
+            if rect_contains(&rects.close, point) {
+                return Some(chrome_command(command_id::BROWSER_CLOSE, json!({})));
+            }
+            if rects
+                .address
+                .is_some_and(|address| rect_contains(&address, point))
+            {
+                return Some(chrome_command(command_id::BROWSER_ADDRESS_BAR, json!({})));
+            }
+            return Some(WindowsChromeHit::Chrome);
+        }
+    }
+
     if let Some(back) = controls.nav_back
         && rect_contains(&back, point)
     {

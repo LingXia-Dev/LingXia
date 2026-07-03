@@ -53,6 +53,11 @@ pub use chrome::{begin_address_edit, begin_panel_address_edit};
 
 pub(crate) use chrome::shell_chrome_dirty_rects;
 pub(crate) use chrome::{
+    PHONE_SWITCHER_SHEET_RADIUS, PhoneTabSwitcherHit, PhoneTabSwitcherLayout,
+    paint_phone_tab_switcher, phone_tab_click_command, phone_tab_close_command,
+    phone_tab_switcher_hit, phone_tab_switcher_layout,
+};
+pub(crate) use chrome::{
     SIDEBAR_TABBAR_POPUP_RADIUS, collapsed_sidebar_tabbar_click_command,
     collapsed_sidebar_tabbar_popup, collapsed_sidebar_tabbar_popup_hit,
     paint_collapsed_sidebar_tabbar_popup, paint_transparent_tabbar_overlay,

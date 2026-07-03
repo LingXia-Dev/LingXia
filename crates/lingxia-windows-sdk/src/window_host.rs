@@ -1783,6 +1783,349 @@ fn upload_sidebar_tabbar_popup(
     }
 }
 
+/// One phone tab-switcher sheet per host window (the macOS runner's
+/// in-frame bottom sheet), shown from the phone bar's tabs button.
+#[cfg(feature = "shell-chrome")]
+struct PhoneTabSwitcher {
+    window: isize,
+    owner: isize,
+    layout: crate::shell::PhoneTabSwitcherLayout,
+}
+
+#[cfg(feature = "shell-chrome")]
+static PHONE_TAB_SWITCHERS: OnceLock<Mutex<HashMap<isize, PhoneTabSwitcher>>> = OnceLock::new();
+
+#[cfg(feature = "shell-chrome")]
+fn phone_tab_switcher_for_owner(owner: HWND) -> Option<isize> {
+    PHONE_TAB_SWITCHERS
+        .get()
+        .and_then(|switchers| switchers.lock().ok())
+        .and_then(|switchers| {
+            switchers
+                .get(&hwnd_handle(owner))
+                .map(|switcher| switcher.window)
+        })
+}
+
+/// Toggles the tab-switcher sheet over `owner`'s client area. `tabs` are
+/// `(tab_id, title, active)` in display order. Marshaled onto the window's
+/// thread: the popup window must be owned by a pumping thread.
+#[cfg(feature = "shell-chrome")]
+pub fn toggle_phone_tab_switcher(owner: isize, tabs: Vec<(String, String, bool)>) {
+    post_to_window_thread(
+        owner,
+        Box::new(move || toggle_phone_tab_switcher_on_thread(owner, tabs)),
+    );
+}
+
+#[cfg(feature = "shell-chrome")]
+fn toggle_phone_tab_switcher_on_thread(owner: isize, tabs: Vec<(String, String, bool)>) {
+    let owner_hwnd = hwnd_from_handle(owner);
+    if phone_tab_switcher_for_owner(owner_hwnd).is_some() {
+        destroy_phone_tab_switcher(owner_hwnd);
+        return;
+    }
+    if tabs.is_empty() {
+        return;
+    }
+    let mut client = RECT::default();
+    unsafe {
+        if WindowsAndMessaging::GetClientRect(owner_hwnd, &mut client).is_err() {
+            return;
+        }
+    }
+    let width = client.right - client.left;
+    let height = client.bottom - client.top;
+    let layout = crate::shell::phone_tab_switcher_layout(width, height, &tabs);
+
+    let class = phone_tab_switcher_class();
+    let Ok(window) = (unsafe {
+        WindowsAndMessaging::CreateWindowExW(
+            WindowsAndMessaging::WS_EX_LAYERED
+                | WindowsAndMessaging::WS_EX_TOOLWINDOW
+                | WindowsAndMessaging::WS_EX_NOACTIVATE,
+            class,
+            PCWSTR::null(),
+            WS_POPUP,
+            0,
+            0,
+            width,
+            height,
+            Some(owner_hwnd),
+            None,
+            LibraryLoader::GetModuleHandleW(None)
+                .ok()
+                .map(|module| HINSTANCE(module.0)),
+            None,
+        )
+    }) else {
+        log::warn!(
+            "phone tab switcher creation failed: {}",
+            windows::core::Error::from_thread()
+        );
+        return;
+    };
+    let mut origin = POINT { x: 0, y: 0 };
+    unsafe {
+        let _ = windows::Win32::Graphics::Gdi::ClientToScreen(owner_hwnd, &mut origin);
+        let _ = WindowsAndMessaging::SetWindowPos(
+            window,
+            Some(WindowsAndMessaging::HWND_TOP),
+            origin.x,
+            origin.y,
+            width,
+            height,
+            WindowsAndMessaging::SWP_NOACTIVATE | WindowsAndMessaging::SWP_SHOWWINDOW,
+        );
+    }
+    upload_phone_tab_switcher(window, &layout);
+    if let Ok(mut switchers) = PHONE_TAB_SWITCHERS
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+    {
+        switchers.insert(
+            hwnd_handle(owner_hwnd),
+            PhoneTabSwitcher {
+                window: hwnd_handle(window),
+                owner: hwnd_handle(owner_hwnd),
+                layout,
+            },
+        );
+    }
+}
+
+#[cfg(feature = "shell-chrome")]
+fn destroy_phone_tab_switcher(owner: HWND) {
+    let switcher = PHONE_TAB_SWITCHERS
+        .get()
+        .and_then(|switchers| switchers.lock().ok())
+        .and_then(|mut switchers| switchers.remove(&hwnd_handle(owner)));
+    if let Some(switcher) = switcher
+        && is_window_handle_valid(switcher.window)
+    {
+        unsafe {
+            let _ = WindowsAndMessaging::DestroyWindow(hwnd_from_handle(switcher.window));
+        }
+    }
+}
+
+#[cfg(feature = "shell-chrome")]
+fn phone_tab_switcher_class() -> PCWSTR {
+    static REGISTERED: OnceLock<()> = OnceLock::new();
+    REGISTERED.get_or_init(|| {
+        let module = unsafe { LibraryLoader::GetModuleHandleW(None) }
+            .map(|module| HINSTANCE(module.0))
+            .unwrap_or_default();
+        let cursor =
+            unsafe { WindowsAndMessaging::LoadCursorW(None, WindowsAndMessaging::IDC_ARROW) }
+                .unwrap_or_default();
+        let class = WNDCLASSW {
+            lpfnWndProc: Some(phone_tab_switcher_proc),
+            hInstance: module,
+            hCursor: cursor,
+            lpszClassName: w!("LingXiaPhoneTabSwitcher"),
+            ..Default::default()
+        };
+        if unsafe { WindowsAndMessaging::RegisterClassW(&class) } == 0 {
+            log::error!(
+                "phone tab switcher class registration failed: {}",
+                windows::core::Error::from_thread()
+            );
+        }
+    });
+    w!("LingXiaPhoneTabSwitcher")
+}
+
+#[cfg(feature = "shell-chrome")]
+unsafe extern "system" fn phone_tab_switcher_proc(
+    hwnd: HWND,
+    msg: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+) -> LRESULT {
+    match msg {
+        WindowsAndMessaging::WM_MOUSEACTIVATE => {
+            LRESULT(WindowsAndMessaging::MA_NOACTIVATE as isize)
+        }
+        WindowsAndMessaging::WM_ERASEBKGND => LRESULT(1),
+        WindowsAndMessaging::WM_LBUTTONUP => {
+            let point = lparam_client_point(lparam);
+            let entry = PHONE_TAB_SWITCHERS
+                .get()
+                .and_then(|switchers| switchers.lock().ok())
+                .and_then(|switchers| {
+                    switchers
+                        .values()
+                        .find(|switcher| switcher.window == hwnd_handle(hwnd))
+                        .map(|switcher| {
+                            (
+                                switcher.owner,
+                                crate::shell::phone_tab_switcher_hit(&switcher.layout, point),
+                            )
+                        })
+                });
+            if let Some((owner, hit)) = entry {
+                let owner_hwnd = hwnd_from_handle(owner);
+                match hit {
+                    crate::shell::PhoneTabSwitcherHit::Row(tab_id) => {
+                        destroy_phone_tab_switcher(owner_hwnd);
+                        dispatch_phone_switcher_command(
+                            owner_hwnd,
+                            crate::shell::phone_tab_click_command(&tab_id),
+                        );
+                    }
+                    crate::shell::PhoneTabSwitcherHit::Close(tab_id) => {
+                        destroy_phone_tab_switcher(owner_hwnd);
+                        dispatch_phone_switcher_command(
+                            owner_hwnd,
+                            crate::shell::phone_tab_close_command(&tab_id),
+                        );
+                    }
+                    crate::shell::PhoneTabSwitcherHit::Sheet => {}
+                    crate::shell::PhoneTabSwitcherHit::Dismiss => {
+                        destroy_phone_tab_switcher(owner_hwnd);
+                    }
+                }
+            }
+            LRESULT(0)
+        }
+        _ => unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) },
+    }
+}
+
+#[cfg(feature = "shell-chrome")]
+fn dispatch_phone_switcher_command(owner: HWND, command: WindowsChromeCommand) {
+    if let Some(webtag_key) = active_webtag_key_for_window(owner) {
+        invoke_chrome_command(&webtag_key, owner, (0, 0), command);
+    }
+}
+
+/// Uploads the switcher as a per-pixel-alpha layered window: the sheet is
+/// opaque with anti-aliased top corners; everything above it is the dim.
+#[cfg(feature = "shell-chrome")]
+fn upload_phone_tab_switcher(hwnd: HWND, layout: &crate::shell::PhoneTabSwitcherLayout) {
+    let width = layout.width;
+    let height = layout.height;
+    if width <= 0 || height <= 0 {
+        return;
+    }
+    unsafe {
+        let screen = GetDC(None);
+        if screen.is_invalid() {
+            return;
+        }
+        let dc = CreateCompatibleDC(Some(screen));
+        if dc.is_invalid() {
+            let _ = ReleaseDC(None, screen);
+            return;
+        }
+        let info = BITMAPINFO {
+            bmiHeader: BITMAPINFOHEADER {
+                biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+                biWidth: width,
+                biHeight: -height,
+                biPlanes: 1,
+                biBitCount: 32,
+                biCompression: BI_RGB.0,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let mut bits: *mut c_void = std::ptr::null_mut();
+        let Ok(bitmap) = CreateDIBSection(Some(screen), &info, DIB_RGB_COLORS, &mut bits, None, 0)
+        else {
+            let _ = DeleteDC(dc);
+            let _ = ReleaseDC(None, screen);
+            return;
+        };
+        if bits.is_null() {
+            let _ = DeleteObject(HGDIOBJ(bitmap.0));
+            let _ = DeleteDC(dc);
+            let _ = ReleaseDC(None, screen);
+            return;
+        }
+        let old_bitmap = SelectObject(dc, HGDIOBJ(bitmap.0));
+        crate::shell::paint_phone_tab_switcher(dc, layout);
+        let pixel_count = (width * height) as usize;
+        let pixels = std::slice::from_raw_parts_mut(bits.cast::<u32>(), pixel_count);
+        apply_phone_switcher_alpha(pixels, width, height, layout.sheet.top);
+        let size = SIZE {
+            cx: width,
+            cy: height,
+        };
+        let origin = POINT { x: 0, y: 0 };
+        let blend = BLENDFUNCTION {
+            BlendOp: AC_SRC_OVER as u8,
+            BlendFlags: 0,
+            SourceConstantAlpha: 255,
+            AlphaFormat: AC_SRC_ALPHA as u8,
+        };
+        let _ = WindowsAndMessaging::UpdateLayeredWindow(
+            hwnd,
+            Some(screen),
+            None,
+            Some(&size),
+            Some(dc),
+            Some(&origin),
+            COLORREF(0),
+            Some(&blend),
+            WindowsAndMessaging::ULW_ALPHA,
+        );
+        if !old_bitmap.is_invalid() {
+            let _ = SelectObject(dc, old_bitmap);
+        }
+        let _ = DeleteObject(HGDIOBJ(bitmap.0));
+        let _ = DeleteDC(dc);
+        let _ = ReleaseDC(None, screen);
+    }
+}
+
+/// Alpha for the switcher surface: a 35% dim above the sheet, opaque sheet
+/// below with an anti-aliased falloff into the dim at its top corners.
+#[cfg(feature = "shell-chrome")]
+fn apply_phone_switcher_alpha(pixels: &mut [u32], width: i32, height: i32, sheet_top: i32) {
+    const DIM: u32 = 0x59;
+    let radius = crate::shell::PHONE_SWITCHER_SHEET_RADIUS;
+    let coverage_at = |x: i32, y: i32| -> f32 {
+        if y >= sheet_top + radius {
+            return 1.0;
+        }
+        let corner_x = if x < radius {
+            radius
+        } else if x >= width - radius {
+            width - radius
+        } else {
+            return 1.0;
+        };
+        let dx = x as f32 + 0.5 - corner_x as f32;
+        let dy = y as f32 + 0.5 - (sheet_top + radius) as f32;
+        let distance = (dx * dx + dy * dy).sqrt();
+        (radius as f32 - distance + 0.5).clamp(0.0, 1.0)
+    };
+    for y in 0..height {
+        for x in 0..width {
+            let index = (y * width + x) as usize;
+            let pixel = pixels[index];
+            let alpha = if y < sheet_top {
+                DIM
+            } else {
+                let coverage = coverage_at(x, y);
+                DIM + ((255 - DIM) as f32 * coverage) as u32
+            };
+            pixels[index] = match alpha {
+                255 => 0xff00_0000 | (pixel & 0x00ff_ffff),
+                alpha => {
+                    let premultiply = |channel: u32| (channel * alpha + 127) / 255;
+                    (alpha << 24)
+                        | (premultiply((pixel >> 16) & 0xff) << 16)
+                        | (premultiply((pixel >> 8) & 0xff) << 8)
+                        | premultiply(pixel & 0xff)
+                }
+            };
+        }
+    }
+}
+
 /// Sets each pixel's alpha to its rounded-rect coverage (premultiplied, as
 /// `UpdateLayeredWindow` expects), with a 1px anti-aliased corner falloff.
 /// GDI-drawn content carries garbage alpha, so the mask is geometric.
@@ -4356,6 +4699,8 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 destroy_transparent_tabbar_overlay(hwnd);
                 #[cfg(feature = "shell-chrome")]
                 destroy_sidebar_tabbar_popup(hwnd);
+                #[cfg(feature = "shell-chrome")]
+                destroy_phone_tab_switcher(hwnd);
                 LRESULT(0)
             }
             WindowsAndMessaging::WM_NCDESTROY => {

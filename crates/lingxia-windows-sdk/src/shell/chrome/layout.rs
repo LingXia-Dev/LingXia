@@ -88,6 +88,8 @@ pub struct WindowsShellAddressBarLayout {
     /// buttons dim while their direction is unavailable.
     pub can_go_back: bool,
     pub can_go_forward: bool,
+    /// Open browser-tab count, shown on the phone bar's tabs button.
+    pub tab_count: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
