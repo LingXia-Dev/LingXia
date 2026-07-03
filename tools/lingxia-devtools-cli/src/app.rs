@@ -253,7 +253,8 @@ pub fn execute(info: &SessionInfo, options: AppOptions) -> Result<()> {
 /// App input synthesis is desktop-only; fail fast with the platform's injector.
 fn require_desktop_input(info: &SessionInfo, what: &str) -> Result<()> {
     let hint = match info.platform.as_str() {
-        "macos" | "windows" => return Ok(()),
+        // "lxapp" is the runner dev session; the runner is a desktop app.
+        "macos" | "windows" | "lxapp" => return Ok(()),
         "android" => "`adb shell input`",
         "harmony" => "`hdc shell uitest uiInput`",
         _ => "`lxdev lxapp page click/type` (web content)",
