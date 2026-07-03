@@ -5,11 +5,6 @@ use lingxia_windows_sdk::{
 use serde::Deserialize;
 use std::sync::OnceLock;
 
-/// Neutral mask color for the unclippable WebView2 screen corners. It tracks the
-/// light shell background, avoiding the heavy black wedges that appear if the
-/// mask uses the phone bezel color at high corner radii.
-const SCREEN_CORNER_MASK_COLOR: u32 = 0xE7E8EB;
-
 pub(crate) const DEVICE_COMMAND_BASE: u32 = 0x0100;
 
 pub(crate) const OPEN_DEVTOOLS_COMMAND: u32 = 0x0200;
@@ -142,6 +137,30 @@ fn status_bar_foreground() -> u32 {
     }
 }
 
+/// Uniform bezel + outer radius for a device group. The outer arc matches the
+/// group's largest screen radius (parallel curves, so the shape stays as
+/// round as the screen), and the ring is the thinnest that still tucks the
+/// unclippable webview's square corners under the outer silhouette:
+/// `w >= r * (1 - 1/sqrt(2)) + margin`. The edges wear that thin ring; the
+/// corners naturally thicken toward the arc, like the real hardware.
+fn group_bezel(group: &str) -> (i32, i32) {
+    let outer_radius = presets()
+        .iter()
+        .filter(|preset| preset.group == group)
+        .map(|preset| preset.screen_radius.max(preset.outer_radius))
+        .max()
+        .unwrap_or(0);
+    let min_bezel = presets()
+        .iter()
+        .filter(|preset| preset.group == group)
+        .map(|preset| preset.bezel_width)
+        .max()
+        .unwrap_or(4);
+    let sqrt2 = 2f64.sqrt();
+    let containing = (outer_radius as f64 * (1.0 - 1.0 / sqrt2) + 1.5 / sqrt2).ceil() as i32;
+    (min_bezel.max(containing), outer_radius)
+}
+
 pub(crate) fn frame_spec(index: usize, landscape: bool) -> WindowsDeviceFrame {
     let preset = &presets()[index];
     // Landscape swaps the screen's long and short edges; the bezel, radii, and
@@ -151,11 +170,16 @@ pub(crate) fn frame_spec(index: usize, landscape: bool) -> WindowsDeviceFrame {
     } else {
         (preset.width, preset.height)
     };
+    // A windowed WebView2 surface cannot be clipped, so its square corner
+    // tips can only be hidden under the opaque bezel ring — see
+    // `group_bezel`. Sized per device *group* so switching between phones
+    // keeps the same perceived border.
+    let (bezel_width, outer_radius) = group_bezel(&preset.group);
     WindowsDeviceFrame {
         screen_width,
         screen_height,
-        bezel_width: preset.bezel_width,
-        outer_corner_radius: preset.outer_radius,
+        bezel_width,
+        outer_corner_radius: outer_radius,
         screen_corner_radius: preset.screen_radius,
         cutout: (!landscape && preset.notch.width > 0 && preset.notch.height > 0).then(|| {
             WindowsDeviceFrameCutout {
@@ -177,10 +201,10 @@ pub(crate) fn frame_spec(index: usize, landscape: bool) -> WindowsDeviceFrame {
             },
         ),
         bezel_color: preset.bezel_color,
-        // Mask the cut-away square WebView2 corners with a quiet neutral. Using
-        // the black bezel is technically realistic, but too prominent at the
-        // large phone corner radii.
-        screen_corner_color: SCREEN_CORNER_MASK_COLOR,
+        // The cut-away square WebView2 corners are masked in the bezel color
+        // at the full screen radius, so the wedges read as the device body
+        // around the rounded screen (concentric with the outer silhouette).
+        screen_corner_color: preset.bezel_color,
         toolbar: Some(WindowsDeviceFrameToolbar {
             selector_label: preset.name.clone(),
             selector_items: device_selector_items(index),

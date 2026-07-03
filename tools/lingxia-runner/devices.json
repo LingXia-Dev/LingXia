@@ -2,23 +2,6 @@
   "default": "iphone-15-pro",
   "devices": [
     {
-      "id": "iphone-se",
-      "group": "phone",
-      "name": "iPhone SE",
-      "width": 375,
-      "height": 667,
-      "bezelWidth": 4,
-      "bezelColor": 1315860,
-      "outerRadius": 8,
-      "screenRadius": 0,
-      "notch": {
-        "width": 0,
-        "height": 0,
-        "cornerRadius": 0,
-        "statusBarHeight": 20
-      }
-    },
-    {
       "id": "iphone-13-mini",
       "group": "phone",
       "name": "iPhone 13 mini",
