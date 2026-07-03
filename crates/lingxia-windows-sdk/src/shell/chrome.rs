@@ -326,6 +326,39 @@ fn chrome_hover_rect(
         }
     }
 
+    // Aside browser toolbar: nav cluster, tab strip (titles + closes), and
+    // close-all light up on hover like the top-bar buttons.
+    if let Some(attached) = &state.attached {
+        for panel in &attached.panels {
+            if !browser_panel_header_visible(panel)
+                || !rect_contains(&browser_panel_header_rect(panel), point)
+            {
+                continue;
+            }
+            for (_, rect) in aside_panel_nav_button_rects(panel) {
+                if rect_contains(&rect, point) {
+                    return Some(rect);
+                }
+            }
+            let close_all = browser_panel_close_rect(panel);
+            if rect_contains(&close_all, point) {
+                return Some(close_all);
+            }
+            let tabs = panel_aside_tabs(panel);
+            for rect in aside_panel_tab_rects(panel, tabs.len()) {
+                if let Some(close) = aside_panel_tab_close_rect(rect)
+                    && rect_contains(&close, point)
+                {
+                    return Some(close);
+                }
+                if rect_contains(&rect, point) {
+                    return Some(rect);
+                }
+            }
+            return Some(browser_panel_header_rect(panel));
+        }
+    }
+
     if !address_bar_visible(layout)
         && let (Some(navbar), Some(navbar_rect)) = (&layout.navigation_bar, rects.navigation_bar)
         && rect_contains(&navbar_rect, point)
@@ -1727,7 +1760,12 @@ pub fn begin_panel_address_edit(
     )
 }
 
-fn draw_browser_panel_header(hdc: HDC, hwnd: HWND, panel: &WindowsChromePanel) {
+fn draw_browser_panel_header(
+    hdc: HDC,
+    hwnd: HWND,
+    panel: &WindowsChromePanel,
+    cursor: Option<(i32, i32)>,
+) {
     let header = browser_panel_header_rect(panel);
     if rect_width(&header) == 0 || rect_height(&header) == 0 {
         remember_panel_address_rect(hwnd, &panel.webtag_key, None);
@@ -1738,7 +1776,7 @@ fn draw_browser_panel_header(hdc: HDC, hwnd: HWND, panel: &WindowsChromePanel) {
     let tabs = panel_aside_tabs(panel);
     if !tabs.is_empty() {
         remember_panel_address_rect(hwnd, &panel.webtag_key, None);
-        draw_aside_panel_header(hdc, panel, &tabs);
+        draw_aside_panel_header(hdc, panel, &tabs, cursor);
         return;
     }
 
@@ -1762,6 +1800,7 @@ fn draw_browser_panel_header(hdc: HDC, hwnd: HWND, panel: &WindowsChromePanel) {
             command_id::BROWSER_PANEL_NAV_FORWARD => WindowsDesignIcon::Forward,
             _ => WindowsDesignIcon::BrowserRefresh,
         };
+        draw_hover_wash(hdc, rect, 5, cursor);
         draw_design_icon_button(hdc, rect, icon, pal.frame_button_icon, 16);
     }
 
@@ -1780,6 +1819,7 @@ fn draw_browser_panel_header(hdc: HDC, hwnd: HWND, panel: &WindowsChromePanel) {
     // Record the painted pill so a click can open the inline editor over it.
     remember_panel_address_rect(hwnd, &panel.webtag_key, address_visible.then_some(address));
 
+    draw_hover_wash(hdc, close, 5, cursor);
     draw_design_icon_button_with_fallback(
         hdc,
         close,
@@ -1802,7 +1842,12 @@ fn browser_panel_title(panel: &WindowsChromePanel) -> String {
 /// The aside browser panel's API-only chrome row: back/forward/reload, the
 /// title tab strip, and close-all. No address bar and no "+" - tabs come
 /// only from `lx.openSurface`.
-fn draw_aside_panel_header(hdc: HDC, panel: &WindowsChromePanel, tabs: &[WindowsAsidePanelTab]) {
+fn draw_aside_panel_header(
+    hdc: HDC,
+    panel: &WindowsChromePanel,
+    tabs: &[WindowsAsidePanelTab],
+    cursor: Option<(i32, i32)>,
+) {
     let pal = shell_palette();
     let header = browser_panel_header_rect(panel);
 
@@ -1828,7 +1873,10 @@ fn draw_aside_panel_header(hdc: HDC, panel: &WindowsChromePanel, tabs: &[Windows
             command_id::ASIDE_PANEL_NAV_FORWARD => (WindowsDesignIcon::Forward, can_forward),
             _ => (WindowsDesignIcon::BrowserRefresh, true),
         };
+        // Hover lights only actionable buttons; a disabled direction stays
+        // flat and dim.
         let color = if enabled {
+            draw_hover_wash(hdc, rect, 5, cursor);
             pal.frame_button_icon
         } else {
             pal.text_muted
@@ -1865,6 +1913,9 @@ fn draw_aside_panel_header(hdc: HDC, panel: &WindowsChromePanel, tabs: &[Windows
                 pal.divider,
             );
         }
+        if !tab.active {
+            draw_hover_wash(hdc, rect, ASIDE_PANEL_TAB_RADIUS, cursor);
+        }
         let close = aside_panel_tab_close_rect(rect);
         let title_rect = normalize_rect(RECT {
             left: rect.left + 10,
@@ -1879,13 +1930,16 @@ fn draw_aside_panel_header(hdc: HDC, panel: &WindowsChromePanel, tabs: &[Windows
         };
         draw_text(hdc, &tab.title, title_rect, text_color, DT_LEFT);
         if let Some(close) = close {
+            draw_hover_wash(hdc, close, 5, cursor);
             draw_text(hdc, GLYPH_TAB_CLOSE, close, pal.text_muted, DT_CENTER);
         }
     }
 
+    let close_all = browser_panel_close_rect(panel);
+    draw_hover_wash(hdc, close_all, 5, cursor);
     draw_design_icon_button_with_fallback(
         hdc,
-        browser_panel_close_rect(panel),
+        close_all,
         WindowsDesignIcon::CloseX,
         pal.frame_button_icon,
         14,
@@ -1908,7 +1962,7 @@ pub(super) fn draw_content_cards(hdc: HDC, state: &WindowsChromeState, rects: &C
             }
             draw_content_card(hdc, panel.rect);
             if browser_panel_header_visible(panel) {
-                draw_browser_panel_header(hdc, state.hwnd, panel);
+                draw_browser_panel_header(hdc, state.hwnd, panel, state.cursor);
             }
         }
         for panel in &attached.panels {
