@@ -610,14 +610,17 @@ pub fn present_webview_in_active_group(webtag: &WebTag) -> StdResult<()> {
         return Ok(());
     }
 
+    // Remember the lxapp page a browser tab covers so closing the last tab
+    // restores it. Track the LATEST lxapp page (the user may have navigated
+    // since the group first presented) but never a browser tab itself —
+    // switching between tabs must not overwrite the restore target.
     if let Some(previous) = previous.as_ref()
         && previous != webtag.key()
+        && group_main_restore_candidate(previous)
     {
         let presented = PRESENTED_GROUP_MAIN.get_or_init(|| Mutex::new(HashMap::new()));
         if let Ok(mut presented) = presented.lock() {
-            presented
-                .entry(hwnd_handle(host))
-                .or_insert_with(|| previous.clone());
+            presented.insert(hwnd_handle(host), previous.clone());
         }
     }
 
@@ -1308,6 +1311,21 @@ pub fn resize_host_window_content(webtag: &WebTag, width: i32, height: i32) -> S
         .map_err(|err| WebViewError::WebView(format!("SetWindowPos failed: {err}")))?;
     }
     Ok(())
+}
+
+/// Whether `webtag_key` can be a group-main restore target: any lxapp page
+/// qualifies; a browser tab does not (closing the last tab must fall back to
+/// the covered lxapp page, not another tab).
+fn group_main_restore_candidate(webtag_key: &str) -> bool {
+    #[cfg(feature = "browser-runtime")]
+    {
+        !webtag_key.starts_with(lingxia_browser::BUILTIN_BROWSER_APPID)
+    }
+    #[cfg(not(feature = "browser-runtime"))]
+    {
+        let _ = webtag_key;
+        true
+    }
 }
 
 pub fn restore_presented_group_main() -> StdResult<()> {
