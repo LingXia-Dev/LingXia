@@ -25,6 +25,12 @@ enum RunnerSupport {
             LingxiaRunnerSPI.Runtime.currentPath()
         }
 
+        @MainActor
+        @discardableResult
+        static func removeShellTab(for appId: String) -> String? {
+            LingxiaRunnerSPI.Runtime.removeShellTab(for: appId)
+        }
+
         static func setSessionId(_ sessionId: UInt64, for appId: String) {
             LingxiaRunnerSPI.Runtime.setSessionId(sessionId, for: appId)
         }

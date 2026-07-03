@@ -39,6 +39,16 @@ enum RunnerBridge {
         LxAppCore.getCurrentPath()
     }
 
+    /// Drop a closed lxapp from the shared desktop-shell tab list — the
+    /// manager is a singleton that outlives device-shape switches, so a tab
+    /// left behind reappears in the next shell's sidebar. Returns the app id
+    /// of the tab the shell switched to, if any survive.
+    @MainActor
+    static func removeShellTab(for appId: String) -> String? {
+        LxAppTabManager.shared.closeTab(appId: appId)
+        return LxAppTabManager.shared.activeTab?.appId
+    }
+
     static func setSessionId(_ sessionId: UInt64, for appId: String) {
         LxAppCore.setSessionId(sessionId, for: appId)
     }

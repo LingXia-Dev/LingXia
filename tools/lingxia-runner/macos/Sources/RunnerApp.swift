@@ -102,6 +102,10 @@ public class RunnerApp {
                     )
                 case .didClose(let session):
                     RunnerSupport.Runtime.removeSessionId(for: session.appId)
+                    // Keep the shared shell tab list in sync regardless of the
+                    // current device shape — a stale tab would resurface in
+                    // the sidebar after a later switch to desktop.
+                    let shellActiveAppId = RunnerSupport.Runtime.removeShellTab(for: session.appId)
                     if let phoneHost = self.windowController, phoneHost.appId == session.appId {
                         if let pending = self.pendingPhoneLifecycleReopens.removeValue(forKey: session.appId) {
                             // Restart: reload the webview in place so the device frame
@@ -112,21 +116,28 @@ public class RunnerApp {
                             // A closed lxapp reveals the one it covered — same
                             // window object, so its page stack is untouched.
                             phoneHost.closeFromRuntime()
+                            self.confirmRuntimeClose(session)
                             self.windowController = previous
                             previous.window?.makeKeyAndOrderFront(nil)
-                            RunnerSupport.Runtime.setCurrentApp(
-                                appId: previous.appId,
-                                path: previous.currentPath
-                            )
+                            self.alignPhoneHostWithRuntime(previous)
                         } else {
                             phoneHost.closeFromRuntime()
-                            self.reopenHomeAfterRuntimeClose(appId: session.appId, controller: controller)
+                            self.confirmRuntimeClose(session)
+                            self.revealRuntimeCurrentOrHome(
+                                closedAppId: session.appId, controller: controller)
                         }
                     } else if self.surfaceShellHost?.appId == session.appId {
                         if self.pendingSurfaceLifecycleReopens.remove(session.appId) != nil {
                             // Restart: the runtime's recreate re-attaches the fresh
                             // session through the shell; the runner stands down.
+                        } else if let next = shellActiveAppId {
+                            // The shell already switched to the surviving tab
+                            // (its page state intact) — just realign the host
+                            // record; reopening home would clobber that page.
+                            self.confirmRuntimeClose(session)
+                            self.surfaceShellHost?.noteActiveLxApp(appId: next)
                         } else {
+                            self.confirmRuntimeClose(session)
                             self.reopenHomeAfterRuntimeClose(appId: session.appId, controller: controller)
                         }
                     }
@@ -135,6 +146,54 @@ public class RunnerApp {
                 }
             }
         }
+    }
+
+    /// A runtime-initiated close (e.g. capsule) only hides the lxapp and waits
+    /// for the host to confirm the UI is gone. The phone host suppresses the
+    /// window-close notification, so without this echo the closed lxapp stays
+    /// on the runtime navigation stack with an empty page stack — and every
+    /// later reveal or shape switch reads that stale state (home page shown,
+    /// tabbar items missing). Synchronous, so runtime queries right after
+    /// already see the popped stack.
+    private func confirmRuntimeClose(_ session: LxAppSession) {
+        _ = onLxappClosed(session.appId, session.id.rawValue)
+    }
+
+    /// Show whatever the runtime navigation stack now has on top, at its real
+    /// current page; fall back to home only when the stack is empty (this is
+    /// how a close after a desktop→phone switch finds the lxapp that was
+    /// never suspended into a phone window).
+    private func revealRuntimeCurrentOrHome(closedAppId: String, controller: LxAppController) {
+        let current = getCurrentLxApp()
+        let appId = current.appid.toString()
+        if !appId.isEmpty, appId != closedAppId, current.session_id > 0 {
+            openInPhoneSimulator(
+                appId: appId,
+                path: current.path.toString(),
+                sessionId: current.session_id
+            )
+        } else {
+            reopenHomeAfterRuntimeClose(appId: closedAppId, controller: controller)
+        }
+    }
+
+    /// The runtime's page for `appId` when it is the stack-top lxapp; the
+    /// host caches miss navigations they didn't host (tab switches, pages
+    /// opened while the app lived in the other shape).
+    private func runtimePath(for appId: String, fallback: String) -> String {
+        let current = getCurrentLxApp()
+        let path = current.path.toString()
+        return (current.appid.toString() == appId && !path.isEmpty) ? path : fallback
+    }
+
+    /// Realign a revealed phone host with the runtime's authoritative page —
+    /// the host cache misses navigations that happened while it was covered,
+    /// and re-navigating also re-attaches the webview if the closed lxapp
+    /// had taken over the attachment.
+    private func alignPhoneHostWithRuntime(_ host: SimulatorWindowController) {
+        let path = runtimePath(for: host.appId, fallback: host.currentPath)
+        host.navigate(to: path)
+        RunnerSupport.Runtime.setCurrentApp(appId: host.appId, path: path)
     }
 
     private func reopenHomeAfterRuntimeClose(appId: String, controller: LxAppController) {
@@ -481,6 +540,19 @@ public class RunnerApp {
             surfaceShellHost?.applyDevice(device)
             return
         }
+        // Bring the whole phone lxapp stack over, bottom first — the shell's
+        // sidebar switcher lists every open lxapp, with current active last.
+        let suspended = suspendedPhoneControllers
+        suspendedPhoneControllers.removeAll()
+        for controller in suspended {
+            let appId = controller.appId
+            let path = controller.currentPath
+            let sessionId = RunnerSupport.Runtime.sessionId(for: appId) ?? 0
+            controller.detachForHostSwitch()
+            if sessionId > 0 {
+                openInSurfaceShell(appId: appId, path: path, sessionId: sessionId)
+            }
+        }
         openInSurfaceShell(
             appId: current.appId,
             path: current.path,
@@ -510,7 +582,11 @@ public class RunnerApp {
         if let windowController,
            let sessionId = RunnerSupport.Runtime.sessionId(for: windowController.appId),
            sessionId > 0 {
-            return (windowController.appId, windowController.currentPath, sessionId)
+            return (
+                windowController.appId,
+                runtimePath(for: windowController.appId, fallback: windowController.currentPath),
+                sessionId
+            )
         }
 
         if let surfaceShellHost {

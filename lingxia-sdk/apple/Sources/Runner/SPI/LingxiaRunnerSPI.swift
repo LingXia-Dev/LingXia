@@ -28,6 +28,12 @@ import WebKit
             RunnerBridge.currentPath()
         }
 
+        @MainActor
+        @discardableResult
+        public static func removeShellTab(for appId: String) -> String? {
+            RunnerBridge.removeShellTab(for: appId)
+        }
+
         public static func setSessionId(_ sessionId: UInt64, for appId: String) {
             RunnerBridge.setSessionId(sessionId, for: appId)
         }

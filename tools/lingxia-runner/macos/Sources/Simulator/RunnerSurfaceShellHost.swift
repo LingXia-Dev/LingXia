@@ -106,9 +106,22 @@ final class RunnerSurfaceShellHost {
         shell.window?.orderOut(nil)
     }
 
+    /// Realign the host record after the shell switched tabs on its own
+    /// (e.g. the active tab closed) — no navigation, bookkeeping only.
+    func noteActiveLxApp(appId: String) {
+        self.appId = appId
+        refreshCurrentPathFromRuntime()
+        RunnerSupport.Runtime.setCurrentApp(appId: appId, path: currentPath)
+    }
+
     func refreshCurrentPathFromRuntime() {
-        if RunnerSupport.Runtime.currentAppId() == appId {
-            currentPath = RunnerSupport.Runtime.currentPath()
+        // Ask the runtime's navigation stack, not the Swift-side current-app
+        // cache — the cache goes stale when navigation happens through the
+        // shell (tab switches, in-shell navigations).
+        let current = getCurrentLxApp()
+        let path = current.path.toString()
+        if current.appid.toString() == appId, !path.isEmpty {
+            currentPath = path
         }
     }
 
