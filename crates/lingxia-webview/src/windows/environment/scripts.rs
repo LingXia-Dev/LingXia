@@ -92,10 +92,23 @@ pub(crate) fn install_document_scripts(
                 };
                 window.addEventListener('scroll', lxNcScheduleScroll, { passive: true });
                 window.addEventListener('resize', lxNcScheduleScroll);
+                // Elastic overscroll is a compositor-level transform: it never
+                // updates scroll positions or element rects, so a native
+                // overlay cannot follow the bounce and visibly tears away
+                // from its element. A page that actually hosts native
+                // components trades the bounce for alignment.
+                var lxNcDisableOverscroll = function() {
+                    try {
+                        var style = document.createElement('style');
+                        style.textContent = 'html, body { overscroll-behavior: none; }';
+                        (document.head || document.documentElement).appendChild(style);
+                    } catch (e) {}
+                };
                 window.NativeComponentBridge = {
                     postMessage: function(message) {
                         if (!lxNcActive) {
                             lxNcActive = true;
+                            lxNcDisableOverscroll();
                             lxNcPostScroll();
                         }
                         lxNcPost(message);
