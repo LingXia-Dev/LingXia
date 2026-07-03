@@ -292,6 +292,13 @@ impl LxApp {
 
         match data.as_str() {
             "close" => {
+                // Home has nothing beneath it to reveal: reset it to the entry
+                // page in-session instead of closing — a session close/reopen
+                // tears down live webviews and repaints on the way back.
+                if self.is_home_lxapp {
+                    return self.navigate_to_initial_route();
+                }
+
                 // Clear page stack when closing app
                 if let Err(e) = self.clear_page_stack() {
                     error!("Failed to clear page stack: {}", e).with_appid(self.appid.clone());
@@ -358,6 +365,30 @@ impl LxApp {
         false
     }
 
+    /// Reset to the entry page in-session: SwitchTab when the initial route is
+    /// a tab page, reLaunch otherwise. Clears the page stack either way.
+    fn navigate_to_initial_route(self: &Arc<Self>) -> bool {
+        let home_route = self.config.get_initial_route();
+        let navigate_type = if let Some(tabbar) = self.get_tabbar() {
+            if tabbar.is_tabbar_page(&home_route) {
+                NavigationType::SwitchTab
+            } else {
+                NavigationType::Launch
+            }
+        } else {
+            NavigationType::Launch
+        };
+
+        if let Some(path) = self.peek_current_page() {
+            let page = self
+                .get_page(&path)
+                .unwrap_or_else(|| self.get_or_create_page(&path));
+            let target_page = self.get_or_create_page(&home_route);
+            let _ = page.navigate_to(target_page, navigate_type);
+        }
+        true
+    }
+
     /// Handle navigation bar button click
     fn handle_navigation_click(self: &Arc<Self>, data: String) -> bool {
         info!("Navigation button '{}' clicked", data).with_appid(self.appid.clone());
@@ -372,28 +403,7 @@ impl LxApp {
                 }
                 false
             }
-            "home" => {
-                // Navigate to home page using Launch
-                let home_route = self.config.get_initial_route();
-                let navigate_type = if let Some(tabbar) = self.get_tabbar() {
-                    if tabbar.is_tabbar_page(&home_route) {
-                        NavigationType::SwitchTab
-                    } else {
-                        NavigationType::Launch
-                    }
-                } else {
-                    NavigationType::Launch
-                };
-
-                if let Some(path) = self.peek_current_page() {
-                    let page = self
-                        .get_page(&path)
-                        .unwrap_or_else(|| self.get_or_create_page(&path));
-                    let target_page = self.get_or_create_page(&home_route);
-                    let _ = page.navigate_to(target_page, navigate_type);
-                }
-                true
-            }
+            "home" => self.navigate_to_initial_route(),
             _ => {
                 error!("Unknown navigation action: {}", data).with_appid(self.appid.clone());
                 false
