@@ -58,8 +58,11 @@ pub fn composite_badge_inset(img: &mut RgbaImage, letter: char, accent: [u8; 4],
     let (w, h) = img.dimensions();
     let margin = ((w.min(h) as f32) * margin_frac).round() as i32;
     let artwork = (w.min(h) as i32 - 2 * margin).max(1);
-    let badge_diameter = ((artwork as f32) * 0.35).round() as i32;
-    let inset = (badge_diameter / 8).max(2) + margin;
+    let badge_diameter = ((artwork as f32) * 0.30).round() as i32;
+    // Pull the badge in from the artwork corner so the whole circle clears the
+    // icon's rounded corner (a corner-anchored badge pokes into the transparent
+    // zone past the squircle). ~0.4·diameter of corner clearance seats it inside.
+    let inset = ((badge_diameter as f32 * 0.4).round() as i32).max(2) + margin;
     let center_x = w as i32 - badge_diameter / 2 - inset;
     let center_y = h as i32 - badge_diameter / 2 - inset;
     let outer_r = badge_diameter / 2;
