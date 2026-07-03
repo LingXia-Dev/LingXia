@@ -14,8 +14,6 @@ This skill is installed via `npx @lingxia/skill install` (the `lingxia` CLI prin
 - The `lingxia` CLI is on `PATH` (verify with `lingxia --version`); if not, the human needs to install the CLI first — a one-time setup outside this skill's scope.
 - You are inside a LingXia project — but **confirm the shape** with the probe in Step 0 rather than guessing.
 
-First-time CLI + platform-toolchain setup is a one-time, human-facing onramp this skill assumes is already done; it is out of scope here.
-
 ---
 
 ## Step 0 — Decide before scaffolding
@@ -72,7 +70,7 @@ Every published package and what to import from each. Don't guess imports from t
 
 | Package | What it is | Imported by | Typical import |
 |---|---|---|---|
-| `@lingxia/react` | React hooks + framework-wrapped native components | lxapp View (React) | `useLxPage`, `useLxStream`, `useLxChannel`, `LxInput`, `LxVideo`, … |
+| `@lingxia/react` | React hooks + framework-wrapped native components | lxapp View (React) | `useLxPage`, `useLxStream`, `useLxChannel`, `LxVideo`, `LxPicker`, … |
 | `@lingxia/vue` | Vue composables + framework-wrapped native components | lxapp View (Vue) | same surface as React, Vue-flavored |
 | `@lingxia/html` | DOM helpers for HTML-only views (`subscribe`, `getActions`, …) | lxapp View (HTML) | `import { getActions, subscribe } from '@lingxia/html'` |
 | `@lingxia/elements` | Pure-JS custom elements (`<lx-video>`, `<lx-input>`, …) | rarely direct — `@lingxia/react`/`vue` re-export wrappers around these | `registerVideoComponent`, `LxVideoElement` |
@@ -91,7 +89,7 @@ Every published package and what to import from each. Don't guess imports from t
 | Every CLI command, flag, env var (daily use) | [`./cli/reference.md`](./cli/reference.md) |
 | Drive a running `lingxia dev` session — `lxdev` (browser/app/lxapp/logs automation; run `lxdev <cmd> --help` for exact flags) | [`./cli/lxdev.md`](./cli/lxdev.md) |
 | Page authoring: `Page({})`, `useLxPage`, events | [`./lxapp/guide.md`](./lxapp/guide.md) |
-| **Native components: `LxInput`, `LxVideo`, `LxMediaSwiper`, `LxPicker`, `LxNavigator`, `LxTextarea`** | [`./lxapp/components.md`](./lxapp/components.md) |
+| **Native components: `LxVideo`, `LxMediaSwiper`, `LxPicker`, `LxNavigator` (text input is plain `<input>`/`<textarea>`)** | [`./lxapp/components.md`](./lxapp/components.md) |
 | **Logic-side `lx.*` API surface map** | [`./lxapp/lx-api.md`](./lxapp/lx-api.md) |
 | Bridge mechanics: `setData`, stream, channel | [`./lxapp/bridge.md`](./lxapp/bridge.md) |
 | Host project: `lingxia.yaml` reference, adaptive `surfaces` | [`./app/project.md`](./app/project.md) |

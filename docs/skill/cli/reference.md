@@ -1,9 +1,8 @@
 # CLI Command Reference
 
 What the `lingxia` command-line interface can **do** — each command's purpose, the
-capability worth knowing, and when to reach for it. This skill assumes the CLI is
-already installed and you are working inside a LingXia project. First-time
-install and toolchain onboarding is out of scope for this skill.
+capability worth knowing, and when to reach for it. Assumes the CLI is installed
+and you are inside a LingXia project.
 
 ---
 
@@ -54,19 +53,16 @@ shippable combination. Defaults and the per-env behavior are documented in
 [App Project → Environment versions](../app/project.md#environment-versions).
 
 Beyond plain compilation, `build` also drives the per-platform **packaging and
-signing** steps when asked: producing a signed iOS IPA, a macOS DMG, a Windows
-MSIX (optionally self-signed for local install/test), and choosing the Android
-distribution format (sideloadable APK vs a Google Play AAB). It can also build
-just the native Rust library and skip platform packaging, reuse existing native
-binaries, inject optional native features or a private provider crate for a
-single build, and select Android ABIs / macOS arch. When a host project has
-`lingxia.yaml`, `build` additionally prepares configured host assets; lxapp
-builds generate the Native client when `lxapp.config.ts` declares `native`.
+signing** steps when asked: a signed iOS IPA, a macOS DMG, a Windows MSIX
+(optionally self-signed for local install/test), and the Android distribution
+format (sideloadable APK vs a Google Play AAB). It can also build just the
+native Rust library, reuse existing native binaries, inject optional native
+features or a private provider crate for a single build, and select Android
+ABIs / macOS arch. When a host project has `lingxia.yaml`, `build` additionally
+prepares configured host assets; lxapp builds generate the Native client when
+`lxapp.config.ts` declares `native`.
 
-For the full flag set (including `--ipa` / `--dmg` / `--dist` / `--msix` /
-`--self-signed` / `--native-only` / `--with-provider`), see
-`lingxia build --help`. Platform-specific signing setup lives in
-[App signing](./signing.md).
+Flags: `lingxia build --help`. Platform signing setup: [App signing](./signing.md).
 
 ### `lingxia clean`
 
@@ -144,14 +140,12 @@ See `lingxia launch --help`.
 
 ### `lingxia icon`
 
-Generate or update app icons from a single full-bleed source image. macOS art is
-normalized automatically (scaled to Dock proportions, rounded corners,
-transparent margin). For Android/Harmony layered icons, by default the
-foreground embeds the source's own background, so keep the background-color flag
-matched to the source — or pass a transparent foreground glyph to render the
-mark larger. It can also do a standalone conversion, writing a `.ico` or `.png`
-master to a path instead of into a project (used to regenerate committed design
-assets).
+Generate or update app icons from a single full-bleed source image. macOS art
+is normalized automatically (Dock proportions, rounded corners, margin). For
+Android/Harmony layered icons the foreground embeds the source's own background
+by default — keep the background color matched to the source, or pass a
+transparent foreground glyph to render the mark larger. Can also convert
+standalone (write a `.ico`/`.png` master to a path instead of into a project).
 
 See `lingxia icon --help` for the flags.
 

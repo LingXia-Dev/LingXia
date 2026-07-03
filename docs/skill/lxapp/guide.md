@@ -9,8 +9,6 @@ Companion pages in this skill:
 - [Bridge Guide](./bridge.md) — `setData`, stream, channel mechanics in depth.
 - [App Project](../app/project.md) — host app setup (`lingxia.yaml`, adaptive `surfaces`).
 
-First-time CLI install and platform toolchains are a one-time, human-facing onramp this skill assumes is already done.
-
 ---
 
 ## Create an LxApp
@@ -476,69 +474,6 @@ Notes:
 
 ---
 
-## Complete Example: Input Page
-
-**Logic** (`pages/input/index.ts`):
-
-```ts
-Page({
-  data: {
-    inputValue: "",
-    syncValue: "",
-  },
-
-  onLoad: function () {},
-
-  onInputChange: function (params) {
-    // params is { value } passed by the View from the DOM input event
-    if (params?.value === undefined) return;
-    console.log("input changed:", params.value);
-  },
-
-  onSyncInput: function (params) {
-    if (params?.value === undefined) return;
-    // Write back to data → View re-renders with updated value
-    this.setData({ syncValue: String(params.value) });
-  },
-});
-```
-
-**View** (`pages/input/index.tsx`) — text input is a plain `<input>` / `<textarea>`:
-
-```tsx
-import { useLxPage } from '@lingxia/react';
-
-type PageData = { syncValue: string };
-type PageActions = {
-  onInputChange: (params: { value: string }) => void;
-  onSyncInput: (params: { value: string }) => void;
-};
-
-export default function InputPage() {
-  const { data, actions } = useLxPage<PageData, PageActions>();
-
-  return (
-    <div>
-      <input
-        placeholder="Basic input"
-        onInput={(e) => actions.onInputChange({ value: e.currentTarget.value })}
-      />
-
-      <textarea
-        value={data.syncValue}
-        placeholder="Synced input"
-        onInput={(e) => actions.onSyncInput({ value: e.currentTarget.value })}
-      />
-      <p>Current: {data.syncValue}</p>
-    </div>
-  );
-}
-```
-
-> Logic initializes `data: { syncValue: "" }`, so the field exists from first paint — required in the type.
-
----
-
 ## Tab bar navigation
 
 A **tab bar** is a persistent navigation strip — typically at the bottom of the screen — that shows the lxapp's primary pages. Tapping a tab switches the active page **without** push/pop semantics: the tab bar stays visible across all tab pages, and tab pages do not stack on each other.
@@ -554,15 +489,13 @@ Add a `tabBar` block alongside `pages`:
   "appId": "my-app",
   "version": "0.1.0",
   "pages": [
-    { "name": "home",     "path": "pages/home/index" },
-    { "name": "discover", "path": "pages/discover/index" },
-    { "name": "profile",  "path": "pages/profile/index" }
+    { "name": "home",    "path": "pages/home/index" },
+    { "name": "profile", "path": "pages/profile/index" }
   ],
   "tabBar": {
     "color":           "#999999",
     "selectedColor":   "#1677ff",
     "backgroundColor": "#ffffff",
-    "borderStyle":     "#eeeeee",
     "position":        "bottom",
     "list": [
       {
@@ -571,11 +504,6 @@ Add a `tabBar` block alongside `pages`:
         "iconPath":         "public/home.png",
         "selectedIconPath": "public/home_selected.png",
         "selected":         true
-      },
-      {
-        "text":     "Discover",
-        "pagePath": "pages/discover/index",
-        "iconPath": "public/discover.png"
       },
       {
         "text":     "Profile",
@@ -587,6 +515,8 @@ Add a `tabBar` block alongside `pages`:
 }
 ```
 
+Style keys (`color`, `selectedColor`, `backgroundColor`, `borderStyle`) are all optional.
+
 Rules:
 
 - Every `list[].pagePath` must match a registered page path under `pages[]`.
@@ -596,10 +526,13 @@ Rules:
 
 ### Switching tabs at runtime
 
-From Logic, use `lx.switchTab(...)`. **`lx.navigateTo` and `lx.redirectTo` do not work on tab pages** — the runtime rejects them with errors like `"redirectTo cannot navigate to a tabBar page"`. Switching is the only way in and out of tabs:
+From Logic, use `lx.switchTab(...)`. **`lx.navigateTo` and `lx.redirectTo` do not work on tab pages** — the runtime rejects them with errors like `"redirectTo cannot navigate to a tabBar page"`. Switching is the only way in and out of tabs.
+
+Like the whole navigation family, it takes **exactly one of `page` or `path` — there is no `url` field**: `page` is the page **name** registered in `lxapp.json`, `path` the full route.
 
 ```ts
-lx.switchTab({ url: '/pages/profile/index' });
+lx.switchTab({ page: 'profile' });                  // page name from lxapp.json
+lx.switchTab({ path: '/pages/profile/index' });     // or the full route
 ```
 
 When driving a running app from `lxdev`, use the page name from `lxapp.json` rather than the path:
@@ -633,6 +566,8 @@ Full option shapes: [`./lx-api.md#page-chrome--ui`](./lx-api.md#page-chrome--ui)
 
 - Mixing view logic and page logic in one file; keep `index.tsx` and `index.ts` roles clear.
 - Mutating `data` directly in View instead of calling Logic actions.
+- Touching the DOM from Logic — Logic has no DOM access; use `lx.*` for platform operations and `setData()` for state.
+- Keeping business state in View `useState`/`ref` instead of Logic-managed `setData()` — state drifts across the bridge boundary.
 - Re-documenting bridge behavior inside page code instead of leaning on [Bridge Guide](./bridge.md) for stream/channel details.
 - Assuming every component's event handler receives the same shape — `LxPicker` hands you the resolved value, `LxVideo` passes the raw DOM `Event`. See [Components](./components.md#callback-shapes-by-component).
 - Skipping `@lingxia/types` in the lxapp's devDependencies and losing intellisense on the entire `lx.*` surface. See [Logic-side `lx.*` API](./lx-api.md).
@@ -650,11 +585,3 @@ Full option shapes: [`./lx-api.md#page-chrome--ui`](./lx-api.md#page-chrome--ui)
 - [ ] One view-framework file per page.
 - [ ] Public actions typed in `PageActions`; private helpers prefixed `_`.
 - [ ] `lingxia dev` runs cleanly.
-
-## Tips
-
-- **Type your data**: Define a `PageData` type in both Logic and View to catch mismatches early.
-- **Keep Logic pure**: Logic has no DOM access. Use `lx.*` APIs for platform operations, `setData()` for state.
-- **Avoid heavy View state**: Prefer Logic-managed state via `setData()` over local `useState`/`ref`. This keeps state consistent across the bridge boundary.
-- **Private with `_` prefix**: Functions starting with `_` won't be exposed to View. Use them for internal helpers.
-- **Page config**: `index.json` controls navigation bar title, background color, and other page-level settings.

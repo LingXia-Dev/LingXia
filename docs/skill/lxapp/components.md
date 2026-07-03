@@ -242,12 +242,7 @@ You don't pick between them. Pass an `actions.foo` and you get the short path; p
 
 ---
 
-## Where these wrappers come from
+## Authoritative attribute types
 
-- **Pure JS custom elements** live in `@lingxia/elements` (`registerVideoComponent`, `LxVideoElement`, etc.). Importing `@lingxia/elements` registers `<lx-video>`, `<lx-picker>`, … into `customElements`.
-- **React wrappers** (`@lingxia/react`) wrap each custom element with prop-to-attribute translation and `pageBindings` injection.
-- **Vue wrappers** (`@lingxia/vue`) do the same for Vue's reactivity.
-- **HTML** views use the custom elements directly — `@lingxia/html` only handles page state / actions (`subscribe`, `getActions`).
-
-For attributes not listed here (rare, mostly low-level styling escape hatches), the underlying types are exported from `@lingxia/elements`:
+For any attribute not covered above, the underlying types are exported from `@lingxia/elements`:
 `LxPickerAttributes`, `LxVideoAttributes`, `LxMediaSwiperAttributes`, `LxNavigatorAttributes`, plus matching `*EventDetail` and `*Event` types.

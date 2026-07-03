@@ -221,21 +221,11 @@ Deletion order and protections (once cleanup is triggered):
 3. LRU-evict by access metadata, oldest atime first, until the low-water target is reached
 4. under appStorage or physical disk pressure, continue deleting eligible LRU usercache across LxApps until app storage fits or the requested physical bytes have been freed
 
-Access-time semantics:
+Access-time semantics (what counts as "recently used"):
 
-- access metadata is the file's atime; LingXia writes atime explicitly via `utimensat` rather than relying on the kernel
-- atime is updated on FileManager reads (`readFile`, `readDir`, `stat`, `exists`, and `copyFile`/`rename` from a usercache source) and on WebView `lx://usercache` resource loads
-- direct native reads that bypass these paths do not update atime
-- on Android and other mounts that use `relatime`/`noatime`, automatic kernel atime updates are unreliable; the explicit touch path above is the source of truth
-- a WebView page that keeps an asset in its internal resource cache will not re-hit the scheme handler, so the file's atime can go stale. The high water gate above prevents deletion as long as the cache is well under cap; once usage approaches `cacheMaxSizeMB`, stale-atime assets are the first LRU candidates. If a long-lived asset must survive cap pressure, write it to userdata or refresh atime explicitly with `fs.stat(path)` / `fs.exists(path)` at session start.
-- newly written usercache files are touched after the write succeeds and are preserved during the immediate post-write cleanup pass, so normal quota cleanup should not delete the file that was just written. Usercache is still regenerable storage: later cleanup passes may evict it if it becomes the least-recently-used eligible file under capacity pressure.
-
-Protection rules:
-
-- do not recurse into symlink directories
-- skip `.lock`, `.part`, `.ok`
-- skip data files with an active sibling `.lock`
-- when deleting a data file, delete its `.ok` marker and remove empty parent directories
+- LingXia tracks access explicitly: FileManager reads (`readFile`, `readDir`, `stat`, `exists`, and `copyFile`/`rename` from a usercache source) and WebView `lx://usercache` resource loads refresh a file's access time. Direct native reads that bypass these paths do not.
+- A WebView page that keeps an asset in its internal resource cache will not re-hit the scheme handler, so the asset's access time can go stale; once usage approaches `cacheMaxSizeMB`, stale assets are the first LRU candidates. If a long-lived asset must survive cap pressure, write it to userdata — or refresh it explicitly with `fs.stat(path)` / `fs.exists(path)` at session start.
+- A newly written usercache file is marked freshly used and preserved during the immediate post-write cleanup pass — quota cleanup will not delete what was just written. It remains regenerable storage: later passes may evict it once it becomes least-recently-used.
 
 If cleanup cannot make room for a cache write, return `USERCACHE_QUOTA_EXCEEDED`.
 
@@ -328,11 +318,3 @@ usercache     -> lx://usercache/<path>
 - Use `downloadFile({ filePath })` only for durable userdata destinations.
 - Do not pass `lx://usercache`, host download directories, or native paths to `downloadFile.filePath`.
 - Do not store business-critical references to `tempFilePath`.
-
-## Rules for LingXia Internals
-
-- Do not return `lx://usercache` as `tempFilePath`.
-- Do not store default downloads in usercache.
-- Keep temp URI values opaque.
-- Keep usercache cleanup inside `lingxia-lxapp` cache management.
-- Keep userdata outside automatic cleanup.
