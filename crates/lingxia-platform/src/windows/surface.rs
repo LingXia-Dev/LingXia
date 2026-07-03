@@ -536,7 +536,7 @@ fn hide_entry(entry: &SurfaceEntry) {
 /// Panel id of the shared multi-tab aside browser (grouped web asides). A
 /// stable id decoupled from the surface nodes, so tabs come and go without
 /// re-anchoring the docked panel.
-const ASIDE_BROWSER_PANEL_ID: &str = "lx.aside-browser";
+use lingxia_windows_contract::ASIDE_BROWSER_PANEL_ID;
 
 #[derive(Default)]
 struct AsideBrowserGroup {
@@ -621,11 +621,22 @@ fn sync_aside_browser_group() {
 
 /// The grouped aside tab whose webview matches `webtag` (URL surfaces share
 /// one webview per URL, so a reopen resolves to the same webtag).
-fn grouped_aside_with_webtag(webtag: &WebTag) -> Option<String> {
+/// Grouped aside tab already showing `url`, if any. Matches by normalized
+/// URL (ignore trailing slash + fragment, case-insensitive) — the webtag
+/// can't serve as the key because a browser-runtime host mints a fresh tab
+/// (new webtag) per open. Mirrors the macOS `sameURL` dedupe.
+fn grouped_aside_with_url(url: &str) -> Option<String> {
+    let target = normalize_aside_url(url);
     let order = aside_browser_group().order.clone();
-    order
-        .into_iter()
-        .find(|id| surface_entry(id).is_some_and(|entry| entry.webtag.key() == webtag.key()))
+    order.into_iter().find(|id| {
+        surface_entry(id)
+            .is_some_and(|entry| entry.is_web && normalize_aside_url(&entry.title) == target)
+    })
+}
+
+fn normalize_aside_url(raw: &str) -> String {
+    let no_fragment = raw.trim().split('#').next().unwrap_or_default();
+    no_fragment.trim_end_matches('/').to_ascii_lowercase()
 }
 
 /// Tab label for a URL aside: the host, falling back to the raw URL.
@@ -713,6 +724,25 @@ pub(super) fn present_surface(
     request: SurfaceRequest,
     product_name: &str,
 ) -> Result<(), PlatformError> {
+    // A URL that is already a grouped aside tab arrives as a merged reopen:
+    // the arbiter deduped the node (MergedIntoTabs), so the request fell back
+    // to the default main role. Focus the existing tab and resolve the fresh
+    // JS handle as closed — before resolving a webview, which would mint a
+    // fresh browser tab just to throw it away.
+    if request.content == SurfaceContent::Url
+        && request.role == SurfaceRole::Main
+        && request.kind == SurfaceKind::Overlay
+        && let Some(existing_id) = grouped_aside_with_url(&request.path)
+    {
+        log::info!(
+            "windows surface merged reopen: id={} focuses aside {existing_id}",
+            request.id
+        );
+        aside_browser_group().active = Some(existing_id);
+        sync_aside_browser_group();
+        notify_surface_closed(&request.id, "merged");
+        return Ok(());
+    }
     // A page-content surface's webview is created with a per-instance webtag
     // (`{path}#{page_instance_id}`, see lxapp create_page_instance), so the
     // plain path would never match. Url-content surfaces carry no instance id.
@@ -758,20 +788,6 @@ pub(super) fn present_surface(
         is_web,
         request.path
     );
-    // A URL that is already a grouped aside tab arrives as a merged reopen:
-    // the arbiter deduped the node (MergedIntoTabs), so the request fell back
-    // to the default main role. Focus the existing tab and resolve the fresh
-    // JS handle as closed instead of presenting a duplicate over the main.
-    if is_web
-        && request.role == SurfaceRole::Main
-        && request.kind == SurfaceKind::Overlay
-        && let Some(existing_id) = grouped_aside_with_webtag(&webtag)
-    {
-        aside_browser_group().active = Some(existing_id);
-        sync_aside_browser_group();
-        notify_surface_closed(&request.id, "merged");
-        return Ok(());
-    }
     // A surface page instance has its own WebView parent. `Window` presents
     // that parent as a standalone top-level window; `Overlay` positions it
     // relative to the active app content.
