@@ -104,6 +104,11 @@
       "import": "./dist/generated/logic.js",
       "require": "./dist/generated/logic.js"
     },
+    "./automation": {
+      "types": "./dist/automation/index.d.ts",
+      "import": "./dist/automation/index.js",
+      "require": "./dist/automation/index.js"
+    },
     "./error": {
       "types": "./dist/error.d.ts",
       "import": "./dist/error.js",
