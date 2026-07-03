@@ -67,7 +67,7 @@ class SidebarBrowserItemView: NSView {
         titleLabel.textColor = NSColor.labelColor
         titleLabel.lineBreakMode = .byTruncatingTail
         titleLabel.maximumNumberOfLines = 1
-        titleLabel.stringValue = "New Tab"
+        titleLabel.stringValue = L10n.string("lx_browser_new_tab")
         addSubview(titleLabel)
 
         // Close button (only visible for selected tab)
@@ -110,8 +110,11 @@ class SidebarBrowserItemView: NSView {
         updateAppearance()
     }
 
-    func configure(title: String, isSelected: Bool, favicon: NSImage?) {
-        titleLabel.stringValue = title.isEmpty ? "New Tab" : title
+    func configure(title: String, url: String, isSelected: Bool, favicon: NSImage?) {
+        let resolvedTitle = title.isEmpty ? L10n.string("lx_browser_new_tab") : title
+        titleLabel.stringValue = resolvedTitle
+        let trimmedURL = url.trimmingCharacters(in: .whitespacesAndNewlines)
+        toolTip = trimmedURL.isEmpty ? resolvedTitle : "\(resolvedTitle)\n\(trimmedURL)"
         // Update icon before isSelected so updateAppearance sees the correct tintColor state
         if let favicon {
             iconView.image = favicon

@@ -11,6 +11,9 @@ pub enum I18nKey {
     AlbumLabel,
     AlbumOriginalImage,
     AlbumSelected,
+    BrowserCloseOtherTabs,
+    BrowserCloseTabsBelow,
+    BrowserNewTab,
     CameraAccessDenied,
     CameraAudioInitFailed,
     CameraCancelling,
@@ -106,7 +109,10 @@ pub enum I18nKey {
     PermissionLimitedAccessAddMorePhotos,
     PermissionLimitedAccessAddMoreVideos,
     PermissionLimitedAccessWarning,
+    PermissionLocationReason,
     PermissionMediaReason,
+    PermissionNetworkReason,
+    PermissionWifiReason,
     TerminalChangeTitle,
     TerminalClosePane,
     TerminalCopy,
@@ -126,30 +132,23 @@ pub enum I18nKey {
 
 impl I18nKey {
     pub fn get(&self, locale: &str) -> &'static str {
-        let lang = locale
-            .split('-')
-            .next()
-            .unwrap_or(locale)
-            .to_ascii_lowercase();
+        let lang = locale.split('-').next().unwrap_or(locale).to_ascii_lowercase();
         match (self, lang.as_str()) {
-            (I18nKey::AlbumAddMoreMedia, "en") => {
-                "Add more
-accessible items"
-            }
-            (I18nKey::AlbumAddMorePhotos, "en") => {
-                "Add more
-accessible photos"
-            }
-            (I18nKey::AlbumAddMoreVideos, "en") => {
-                "Add more
-accessible videos"
-            }
+            (I18nKey::AlbumAddMoreMedia, "en") => "Add more
+accessible items",
+            (I18nKey::AlbumAddMorePhotos, "en") => "Add more
+accessible photos",
+            (I18nKey::AlbumAddMoreVideos, "en") => "Add more
+accessible videos",
             (I18nKey::AlbumAllMedia, "en") => "Photos & Videos",
             (I18nKey::AlbumAllPhotos, "en") => "All Photos",
             (I18nKey::AlbumAllVideos, "en") => "All Videos",
             (I18nKey::AlbumLabel, "en") => "Album",
             (I18nKey::AlbumOriginalImage, "en") => "Original",
             (I18nKey::AlbumSelected, "en") => "Selected",
+            (I18nKey::BrowserCloseOtherTabs, "en") => "Close Other Tabs",
+            (I18nKey::BrowserCloseTabsBelow, "en") => "Close Tabs Below",
+            (I18nKey::BrowserNewTab, "en") => "New Tab",
             (I18nKey::CameraAccessDenied, "en") => "Cannot access camera",
             (I18nKey::CameraAudioInitFailed, "en") => "Audio session initialization failed",
             (I18nKey::CameraCancelling, "en") => "Cancelling...",
@@ -197,15 +196,11 @@ accessible videos"
             (I18nKey::ErrCode12002, "en") => "Password error (incorrect WiFi password)",
             (I18nKey::ErrCode12003, "en") => "Connection timeout",
             (I18nKey::ErrCode12004, "en") => "Duplicate connection request",
-            (I18nKey::ErrCode12005, "en") => {
-                "Requested WiFi capability is not supported on this platform"
-            }
+            (I18nKey::ErrCode12005, "en") => "Requested WiFi capability is not supported on this platform",
             (I18nKey::ErrCode12006, "en") => "Permission denied",
             (I18nKey::ErrCode12007, "en") => "User did not respond",
             (I18nKey::ErrCode12008, "en") => "User refused connection",
-            (I18nKey::ErrCode12009, "en") => {
-                "WiFi is disabled (Please enable WiFi in system settings)"
-            }
+            (I18nKey::ErrCode12009, "en") => "WiFi is disabled (Please enable WiFi in system settings)",
             (I18nKey::ErrCode12010, "en") => "WiFi network not found",
             (I18nKey::ErrCode2000, "en") => "User cancelled",
             (I18nKey::ErrCode2001, "en") => "User declined",
@@ -234,39 +229,28 @@ accessible videos"
             (I18nKey::FileChooserChooseMedia, "en") => "Choose Media",
             (I18nKey::FileChooserChooseVideos, "en") => "Choose Videos",
             (I18nKey::FileChooserDefaultTitle, "en") => "Choose File",
-            (I18nKey::FileChooserEmptySubtitle, "en") => {
-                "This folder does not contain any files or subfolders yet."
-            }
+            (I18nKey::FileChooserEmptySubtitle, "en") => "This folder does not contain any files or subfolders yet.",
             (I18nKey::FileChooserEmptyTitle, "en") => "Nothing here yet",
             (I18nKey::FileChooserFilterAudio, "en") => "Audio",
             (I18nKey::FileChooserFilterImages, "en") => "Images",
             (I18nKey::FileChooserFilterLabel, "en") => "Showing %1$s",
             (I18nKey::FileChooserFilterVideos, "en") => "Videos",
-            (I18nKey::FileChooserFilteredEmptySubtitle, "en") => {
-                "There are no files matching the current filter in this folder."
-            }
+            (I18nKey::FileChooserFilteredEmptySubtitle, "en") => "There are no files matching the current filter in this folder.",
             (I18nKey::FileChooserFilteredEmptyTitle, "en") => "No matching files",
             (I18nKey::FileChooserFolderSubtitle, "en") => "Folder",
             (I18nKey::FileChooserSelectFile, "en") => "Select file",
             (I18nKey::FileChooserSelectFolder, "en") => "Select folder",
-            (I18nKey::PermissionLimitedAccessAddMoreMedia, "en") => {
-                "Add more
-accessible items"
-            }
-            (I18nKey::PermissionLimitedAccessAddMorePhotos, "en") => {
-                "Add more
-accessible photos"
-            }
-            (I18nKey::PermissionLimitedAccessAddMoreVideos, "en") => {
-                "Add more
-accessible videos"
-            }
-            (I18nKey::PermissionLimitedAccessWarning, "en") => {
-                "You have limited photo access. Grant full access in settings."
-            }
-            (I18nKey::PermissionMediaReason, "en") => {
-                "Media permission required to save images and videos to album"
-            }
+            (I18nKey::PermissionLimitedAccessAddMoreMedia, "en") => "Add more
+accessible items",
+            (I18nKey::PermissionLimitedAccessAddMorePhotos, "en") => "Add more
+accessible photos",
+            (I18nKey::PermissionLimitedAccessAddMoreVideos, "en") => "Add more
+accessible videos",
+            (I18nKey::PermissionLimitedAccessWarning, "en") => "You have limited photo access. Grant full access in settings.",
+            (I18nKey::PermissionLocationReason, "en") => "Location permission required for location-based features",
+            (I18nKey::PermissionMediaReason, "en") => "Media permission required to save images and videos to album",
+            (I18nKey::PermissionNetworkReason, "en") => "Network info permission required to read connection status",
+            (I18nKey::PermissionWifiReason, "en") => "Wi-Fi info permission required to read network status",
             (I18nKey::TerminalChangeTitle, "en") => "Change Tab Title…",
             (I18nKey::TerminalClosePane, "en") => "Close Pane",
             (I18nKey::TerminalCopy, "en") => "Copy",
@@ -282,24 +266,21 @@ accessible videos"
             (I18nKey::UpdateDownloading, "en") => "Downloading Update",
             (I18nKey::VideoQuality, "en") => "Quality",
             (I18nKey::VideoSpeed, "en") => "Speed",
-            (I18nKey::AlbumAddMoreMedia, "zh") => {
-                "添加更多
-可访问内容"
-            }
-            (I18nKey::AlbumAddMorePhotos, "zh") => {
-                "添加更多
-可访问照片"
-            }
-            (I18nKey::AlbumAddMoreVideos, "zh") => {
-                "添加更多
-可访问视频"
-            }
+            (I18nKey::AlbumAddMoreMedia, "zh") => "添加更多
+可访问内容",
+            (I18nKey::AlbumAddMorePhotos, "zh") => "添加更多
+可访问照片",
+            (I18nKey::AlbumAddMoreVideos, "zh") => "添加更多
+可访问视频",
             (I18nKey::AlbumAllMedia, "zh") => "图片和视频",
             (I18nKey::AlbumAllPhotos, "zh") => "所有图片",
             (I18nKey::AlbumAllVideos, "zh") => "所有视频",
             (I18nKey::AlbumLabel, "zh") => "相册",
             (I18nKey::AlbumOriginalImage, "zh") => "原图",
             (I18nKey::AlbumSelected, "zh") => "已选",
+            (I18nKey::BrowserCloseOtherTabs, "zh") => "关闭其他标签页",
+            (I18nKey::BrowserCloseTabsBelow, "zh") => "关闭下方标签页",
+            (I18nKey::BrowserNewTab, "zh") => "新建标签页",
             (I18nKey::CameraAccessDenied, "zh") => "无法访问摄像头",
             (I18nKey::CameraAudioInitFailed, "zh") => "音频会话初始化失败",
             (I18nKey::CameraCancelling, "zh") => "取消中...",
@@ -380,37 +361,28 @@ accessible videos"
             (I18nKey::FileChooserChooseMedia, "zh") => "选择媒体",
             (I18nKey::FileChooserChooseVideos, "zh") => "选择视频",
             (I18nKey::FileChooserDefaultTitle, "zh") => "选择文件",
-            (I18nKey::FileChooserEmptySubtitle, "zh") => {
-                "这个文件夹里还没有可显示的文件或子文件夹。"
-            }
+            (I18nKey::FileChooserEmptySubtitle, "zh") => "这个文件夹里还没有可显示的文件或子文件夹。",
             (I18nKey::FileChooserEmptyTitle, "zh") => "这里还是空的",
             (I18nKey::FileChooserFilterAudio, "zh") => "音频",
             (I18nKey::FileChooserFilterImages, "zh") => "图片",
             (I18nKey::FileChooserFilterLabel, "zh") => "筛选：%1$s",
             (I18nKey::FileChooserFilterVideos, "zh") => "视频",
-            (I18nKey::FileChooserFilteredEmptySubtitle, "zh") => {
-                "当前文件夹里没有符合筛选条件的文件。"
-            }
+            (I18nKey::FileChooserFilteredEmptySubtitle, "zh") => "当前文件夹里没有符合筛选条件的文件。",
             (I18nKey::FileChooserFilteredEmptyTitle, "zh") => "没有匹配的文件",
             (I18nKey::FileChooserFolderSubtitle, "zh") => "文件夹",
             (I18nKey::FileChooserSelectFile, "zh") => "选择文件",
             (I18nKey::FileChooserSelectFolder, "zh") => "选择文件夹",
-            (I18nKey::PermissionLimitedAccessAddMoreMedia, "zh") => {
-                "添加更多
-可访问内容"
-            }
-            (I18nKey::PermissionLimitedAccessAddMorePhotos, "zh") => {
-                "添加更多
-可访问照片"
-            }
-            (I18nKey::PermissionLimitedAccessAddMoreVideos, "zh") => {
-                "添加更多
-可访问视频"
-            }
-            (I18nKey::PermissionLimitedAccessWarning, "zh") => {
-                "你仅开启有限访问相册权限，建议允许访问「所有照片」"
-            }
+            (I18nKey::PermissionLimitedAccessAddMoreMedia, "zh") => "添加更多
+可访问内容",
+            (I18nKey::PermissionLimitedAccessAddMorePhotos, "zh") => "添加更多
+可访问照片",
+            (I18nKey::PermissionLimitedAccessAddMoreVideos, "zh") => "添加更多
+可访问视频",
+            (I18nKey::PermissionLimitedAccessWarning, "zh") => "你仅开启有限访问相册权限，建议允许访问「所有照片」",
+            (I18nKey::PermissionLocationReason, "zh") => "LingXia需要定位权限以提供位置相关功能",
             (I18nKey::PermissionMediaReason, "zh") => "LingXia需要相册权限保存图片和视频",
+            (I18nKey::PermissionNetworkReason, "zh") => "LingXia需要网络信息权限以读取连接状态",
+            (I18nKey::PermissionWifiReason, "zh") => "LingXia需要 Wi-Fi 信息权限以读取网络状态",
             (I18nKey::TerminalChangeTitle, "zh") => "修改标题…",
             (I18nKey::TerminalClosePane, "zh") => "关闭窗格",
             (I18nKey::TerminalCopy, "zh") => "复制",
@@ -429,6 +401,7 @@ accessible videos"
             _ => self.get("en"),
         }
     }
+
 }
 
 pub fn err_code_key(code: u32) -> Option<I18nKey> {
