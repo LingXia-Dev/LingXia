@@ -413,21 +413,13 @@ impl Drop for WebViewInner {
     fn drop(&mut self) {
         let _ = self.command_tx.send(UiCommand::Shutdown);
         self.wake_ui_thread();
-
-        if unsafe { Threading::GetCurrentThreadId() } == self.thread_id {
-            // The last Arc<WebView> was dropped by a callback running on the
-            // UI thread itself; joining here would self-deadlock, so detach.
-            log::debug!(
-                "Dropping WebViewInner for {} on its own UI thread; detaching instead of joining",
-                self.webtag.key()
-            );
-            return;
-        }
-
-        if let Ok(mut guard) = self.join_handle.lock()
-            && let Some(handle) = guard.take()
-        {
-            let _ = handle.join();
+        // Never block on the UI thread's exit: the dropping thread may itself
+        // own windows (another webview's UI thread running a layout callback),
+        // and the dying thread's WebView2 teardown can message those windows
+        // synchronously — a join would deadlock against that send. The thread
+        // exits on its own once it processes Shutdown.
+        if let Ok(mut guard) = self.join_handle.lock() {
+            drop(guard.take());
         }
     }
 }
