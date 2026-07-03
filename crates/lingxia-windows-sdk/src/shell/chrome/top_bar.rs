@@ -221,8 +221,8 @@ pub fn begin_address_edit(
         return false;
     };
     // The editor sits inside the capsule (white EDIT on the white capsule
-    // fill), inset past the rounded ends.
-    let edit_rect = inset_rect(capsule, ADDRESS_CAPSULE_HEIGHT / 2, 4);
+    // fill), inset just past the rounded ends so it uses the full width.
+    let edit_rect = inset_rect(capsule, 12, 4);
     if rect_width(&edit_rect) == 0 || rect_height(&edit_rect) == 0 {
         return false;
     }

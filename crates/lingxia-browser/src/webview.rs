@@ -91,6 +91,12 @@ impl WebViewDelegate for BrowserTabDelegate {
             crate::tabs::browser_update_tab_nav_state(&self.tab_id, can_go_back, can_go_forward);
     }
 
+    fn on_url_changed(&self, url: &str) {
+        // Mirror the live document URL into the tab state so address
+        // displays follow history navigations and redirects.
+        let _ = crate::tabs::browser_update_tab_info(&self.tab_id, Some(url), None);
+    }
+
     fn handle_post_message(&self, msg: String) {
         if let Some((level, message)) = decode_console_envelope(&msg) {
             self.log(level, &message);
