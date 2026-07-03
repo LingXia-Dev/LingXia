@@ -715,13 +715,14 @@ pub(super) struct ChromeRects {
 /// Compact (phone-width) breakpoint, matching the surface arbiter's Compact
 /// size class.
 const PHONE_BROWSER_MAX_WIDTH: i32 = 600;
-/// Bottom browser-bar metrics, mirroring the macOS RunnerPhoneBrowserSurface:
-/// a floating card with an address-pill row (self tabs only) above the
-/// action row.
+/// Bottom browser-bar metrics: an edge-to-edge bottom sheet (rounded top
+/// corners only, flush with the screen sides and bottom, like the iOS
+/// browser bar) with an address-pill row (self tabs only) above the action
+/// row.
 const PHONE_BAR_HEIGHT_SELF: i32 = 96;
 const PHONE_BAR_HEIGHT_ASIDE: i32 = 56;
-const PHONE_BAR_MARGIN: i32 = 6;
-const PHONE_BAR_BOTTOM_GAP: i32 = 4;
+const PHONE_BAR_MARGIN: i32 = 0;
+const PHONE_BAR_BOTTOM_GAP: i32 = 0;
 const PHONE_BAR_RADIUS: i32 = 16;
 const PHONE_BAR_BUTTON: i32 = 38;
 const PHONE_BAR_BUTTON_GAP: i32 = 4;
@@ -832,7 +833,16 @@ fn draw_phone_browser_bar(hdc: HDC, state: &WindowsChromeState, layout: &Windows
     let cursor = state.cursor;
     let rects = phone_browser_bar_rects(state.client, address_bar.aside);
 
-    fill_round_rect_aa(hdc, rects.bar, PHONE_BAR_RADIUS, pal.panel_background);
+    // Rounded top corners only: extend the fill below the client bottom so
+    // the lower arcs are clipped away and the sheet sits flush with the
+    // screen bottom.
+    let sheet = RECT {
+        left: rects.bar.left,
+        top: rects.bar.top,
+        right: rects.bar.right,
+        bottom: rects.bar.bottom + PHONE_BAR_RADIUS,
+    };
+    fill_round_rect_aa(hdc, sheet, PHONE_BAR_RADIUS, pal.panel_background);
 
     if let Some(pill) = rects.address {
         fill_round_rect_aa(hdc, pill, rect_height(&pill) / 2, pal.control_surface);
