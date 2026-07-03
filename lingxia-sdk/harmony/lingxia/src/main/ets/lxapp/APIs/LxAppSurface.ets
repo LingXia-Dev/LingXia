@@ -4,7 +4,7 @@ import { display, window } from '@kit.ArkUI';
 import { webview } from '@kit.ArkWeb';
 import { LingXiaWebView } from '../LingXiaWebView';
 import { addWebViewUiCallback, removeWebViewUiCallback, WebViewInfo, WebViewManager, toWebTag } from '../WebViewBridge';
-import { disposePageInstance, notifyPageInstanceHidden, notifyPageInstanceMounted, notifyPageInstanceVisible, onSurfaceClosed } from 'liblingxia.so';
+import { disposePageInstance, notifyPageInstanceHidden, notifyPageInstanceMounted, notifyPageInstanceVisible, onSurfaceClosed, urlCallbackDispatch } from 'liblingxia.so';
 import { FloatWindowManager } from './LxAppFloatWindow';
 
 const DOMAIN = 0x0000;
@@ -638,7 +638,7 @@ function normalizePort(scheme: string, port: string): string {
   return '';
 }
 
-function isSameOrigin(baseUrl: string, targetUrl: string): boolean {
+export function isSameOrigin(baseUrl: string, targetUrl: string): boolean {
   const baseOrigin = originOf(baseUrl);
   const targetOrigin = originOf(targetUrl);
   return !!baseOrigin && baseOrigin === targetOrigin;
@@ -913,7 +913,15 @@ export struct SurfaceManager {
                   return false;
                 }
                 const targetUrl = event.data.getRequestUrl();
-                if (!targetUrl || isSameOrigin(surface.path, targetUrl)) {
+                if (!targetUrl) {
+                  return false;
+                }
+                // A registered URL-callback sentinel (e.g. an auth handoff) is
+                // consumed by the waiting Rust channel; cancel the load.
+                if (urlCallbackDispatch(targetUrl)) {
+                  return true;
+                }
+                if (isSameOrigin(surface.path, targetUrl)) {
                   return false;
                 }
                 hilog.warn(DOMAIN, TAG, `blocked surface navigation: ${targetUrl}`);

@@ -19,7 +19,8 @@ import { webview } from '@kit.ArkWeb';
 import { Lingxia } from '../../app/Lingxia';
 import { LingXiaWebView } from '../LingXiaWebView';
 import { addWebViewUiCallback, removeWebViewUiCallback, WebViewInfo, WebViewManager, toWebTag } from '../WebViewBridge';
-import { notifyPageInstanceMounted, notifyPageInstanceVisible } from 'liblingxia.so';
+import { notifyPageInstanceMounted, notifyPageInstanceVisible, urlCallbackDispatch } from 'liblingxia.so';
+import { isSameOrigin } from './LxAppSurface';
 import type { SurfaceLayoutConfig } from './LxAppSurface';
 
 const DOMAIN = 0x0000;
@@ -239,6 +240,25 @@ struct LingXiaFloatSurfacePage {
               .javaScriptAccess(true)
               .fileAccess(false)
               .mixedMode(MixedMode.None)
+              .onLoadIntercept((event) => {
+                if (!event || !event.data) {
+                  return false;
+                }
+                const targetUrl = event.data.getRequestUrl();
+                if (!targetUrl) {
+                  return false;
+                }
+                // A registered URL-callback sentinel (e.g. an auth handoff) is
+                // consumed by the waiting Rust channel; cancel the load.
+                if (urlCallbackDispatch(targetUrl)) {
+                  return true;
+                }
+                if (isSameOrigin(this.layout!.path, targetUrl)) {
+                  return false;
+                }
+                hilog.warn(DOMAIN, TAG, `blocked float surface navigation: ${targetUrl}`);
+                return true;
+              })
               .width('100%')
               .height('100%')
           } else if (this.pageWebTag.length > 0) {

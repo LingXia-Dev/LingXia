@@ -170,7 +170,10 @@
               </div>
             </div>
             <div class="grid grid-cols-2 gap-3">
+              <!-- Login is the unauthenticated entry; once an identity is active
+                   it silently refreshes, so hide it in favor of Add Identity. -->
               <button
+                v-if="!tenant"
                 @click="loginInteractive"
                 class="py-3 text-sm font-medium transition-all duration-200 rounded-xl shadow-sm active:scale-[0.98] bg-gradient-to-r from-sky-600 to-sky-500 hover:from-sky-500 hover:to-sky-600 text-white"
               >
@@ -224,6 +227,12 @@
                   <span class="text-sm font-semibold text-gray-800 text-right">
                     {{ tenant ? getTenantName(tenant) : 'No active tenant' }}
                   </span>
+                  <span
+                    v-if="getTenantShortName(tenant)"
+                    class="text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700"
+                  >
+                    {{ getTenantShortName(tenant) }}
+                  </span>
                 </div>
               </div>
 
@@ -269,7 +278,15 @@
                       class="w-10 h-10 rounded-full border border-gray-200 bg-white object-cover shrink-0"
                     />
                     <div class="min-w-0">
-                      <div class="text-sm font-semibold text-gray-800">{{ getTenantName(item) }}</div>
+                      <div class="flex items-center gap-2">
+                        <span class="text-sm font-semibold text-gray-800">{{ getTenantName(item) }}</span>
+                        <span
+                          v-if="getTenantShortName(item)"
+                          class="text-xs font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-600"
+                        >
+                          {{ getTenantShortName(item) }}
+                        </span>
+                      </div>
                       <div class="mt-1 text-xs text-gray-500 break-all">{{ getTenantId(item) || 'Missing tenantId' }}</div>
                     </div>
                   </div>
@@ -295,6 +312,7 @@ type TenantLike = {
   tenantId?: string;
   tenantName?: string;
   displayName?: string;
+  shortName?: string;
   logoUrl?: string;
 };
 
@@ -400,6 +418,10 @@ function getTenantName(item: TenantLike | null | undefined): string {
 
 function getTenantLogoUrl(item: TenantLike | null | undefined): string {
   return item?.logoUrl || '';
+}
+
+function getTenantShortName(item: TenantLike | null | undefined): string {
+  return item?.shortName || '';
 }
 
 

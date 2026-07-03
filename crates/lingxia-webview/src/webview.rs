@@ -836,7 +836,13 @@ impl WebView {
     }
 
     /// Call the navigation handler. Returns `Allow` if no handler is registered.
+    ///
+    /// A URL matching an open [`crate::url_callback`] channel is delivered to
+    /// that channel and cancelled before any per-webview handler runs.
     pub fn handle_navigation(&self, url: &str) -> NavigationPolicy {
+        if crate::url_callback::dispatch(url) {
+            return NavigationPolicy::Cancel;
+        }
         if let Ok(guard) = self.navigation_handler.read()
             && let Some(handler) = guard.as_ref()
         {
@@ -854,7 +860,13 @@ impl WebView {
     }
 
     /// Call the new-window handler. Returns `Cancel` if no handler is registered.
+    ///
+    /// A URL matching an open [`crate::url_callback`] channel is delivered to
+    /// that channel and cancelled before any per-webview handler runs.
     pub fn handle_new_window(&self, url: &str) -> NewWindowPolicy {
+        if crate::url_callback::dispatch(url) {
+            return NewWindowPolicy::Cancel;
+        }
         if let Ok(guard) = self.new_window_handler.read()
             && let Some(handler) = guard.as_ref()
         {

@@ -600,18 +600,25 @@ internal object LxAppSurface {
             settings.allowFileAccess = false
             settings.allowContentAccess = false
             webViewClient = object : WebViewClient() {
+                // A registered URL-callback sentinel (e.g. an auth handoff) is
+                // consumed by the waiting Rust channel; cancel the load.
+                private fun handles(next: Uri): Boolean {
+                    if (NativeApi.urlCallbackDispatch(next.toString())) return true
+                    return !isSameOrigin(Uri.parse(url), next)
+                }
+
                 override fun shouldOverrideUrlLoading(
                     view: android.webkit.WebView?,
                     request: WebResourceRequest?
                 ): Boolean {
                     val next = request?.url ?: return true
-                    return !isSameOrigin(Uri.parse(url), next)
+                    return handles(next)
                 }
 
                 @Deprecated("Deprecated in Android")
                 override fun shouldOverrideUrlLoading(view: android.webkit.WebView?, nextUrl: String?): Boolean {
                     val next = nextUrl?.let { Uri.parse(it) } ?: return true
-                    return !isSameOrigin(Uri.parse(url), next)
+                    return handles(next)
                 }
             }
             webChromeClient = WebChromeClient()

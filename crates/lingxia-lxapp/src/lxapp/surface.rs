@@ -11,6 +11,32 @@ use std::time::Duration;
 
 const SURFACE_DISPOSE_TTL_MS: u64 = 30_000;
 static SURFACE_CLOSE_OBSERVER: OnceLock<fn(&str, &str) -> bool> = OnceLock::new();
+/// Waiters resolved when a surface's record is forgotten (any close path:
+/// user dismissal ack'd by the native side, programmatic close, teardown).
+/// Keyed by surface id; a `UrlCallbackSurface` holds the receiver.
+static SURFACE_CLOSE_WAITERS: OnceLock<
+    std::sync::Mutex<HashMap<String, tokio::sync::watch::Sender<bool>>>,
+> = OnceLock::new();
+
+fn surface_close_waiters()
+-> &'static std::sync::Mutex<HashMap<String, tokio::sync::watch::Sender<bool>>> {
+    SURFACE_CLOSE_WAITERS.get_or_init(|| std::sync::Mutex::new(HashMap::new()))
+}
+
+fn register_surface_close_waiter(id: &str) -> tokio::sync::watch::Receiver<bool> {
+    let (tx, rx) = tokio::sync::watch::channel(false);
+    surface_close_waiters()
+        .lock()
+        .unwrap()
+        .insert(id.to_string(), tx);
+    rx
+}
+
+fn notify_surface_close_waiter(id: &str) {
+    if let Some(tx) = surface_close_waiters().lock().unwrap().remove(id) {
+        let _ = tx.send(true);
+    }
+}
 /// Observer fired when a window's adaptive context (sizeClass/bottomOwner)
 /// changes, so the logic layer can push `lx.onSurfaceContext` to subscribers.
 /// Receives the window id whose context flipped.
@@ -260,6 +286,61 @@ pub struct PageSurface {
     pub page_path: Option<String>,
     pub page_instance_id: Option<String>,
     pub kind: SurfaceKind,
+}
+
+/// A presented URL surface paired with a URL-callback interception channel:
+/// the web content loads in the surface, and the navigation to the callback
+/// URL is cancelled and delivered here instead. Dropping the handle closes the
+/// surface and stops the interception, so an abandoned wait (e.g. a cancelled
+/// future) tears the surface down with it.
+pub struct UrlCallbackSurface {
+    appid: String,
+    surface: PageSurface,
+    channel: lingxia_webview::url_callback::UrlCallbackChannel,
+    closed: tokio::sync::watch::Receiver<bool>,
+}
+
+impl UrlCallbackSurface {
+    /// The presented surface.
+    pub fn surface(&self) -> &PageSurface {
+        &self.surface
+    }
+
+    /// Waits for the navigation to the callback URL and returns the full
+    /// navigated URL, query and fragment included. Returns `None` when the
+    /// surface closes first (e.g. the user dismisses it) — the callback can
+    /// no longer arrive.
+    pub async fn recv(&mut self) -> Option<String> {
+        tokio::select! {
+            url = self.channel.recv() => Some(url),
+            // Err means the waiter registry dropped the sender — also closed.
+            res = self.closed.wait_for(|&closed| closed) => {
+                let _ = res;
+                None
+            }
+        }
+    }
+
+    /// Returns an already-intercepted URL without waiting.
+    pub fn try_recv(&mut self) -> Option<String> {
+        self.channel.try_recv()
+    }
+
+    /// Close the surface now (same as dropping the handle).
+    pub fn close(self) {}
+}
+
+impl Drop for UrlCallbackSurface {
+    fn drop(&mut self) {
+        surface_close_waiters()
+            .lock()
+            .unwrap()
+            .remove(&self.surface.id);
+        // A vanished lxapp already took its surfaces with it.
+        if let Some(app) = crate::lxapp::try_get(&self.appid) {
+            let _ = app.close_surface(&self.surface.id, "programmatic");
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -549,6 +630,34 @@ impl LxApp {
         }
     }
 
+    /// Present a URL surface and intercept the navigation to `callback_url`
+    /// (see [`lingxia_webview::url_callback`] for the matching rules): await
+    /// the URL with [`UrlCallbackSurface::recv`], drop the handle to close the
+    /// surface. `request.target` must be [`PageSurfaceTarget::Url`]. The
+    /// interception channel opens before the surface presents, so the sentinel
+    /// can never load unobserved.
+    pub fn open_url_callback_surface(
+        &self,
+        callback_url: impl Into<String>,
+        request: PageSurfaceRequest,
+    ) -> Result<UrlCallbackSurface, LxAppError> {
+        if !matches!(request.target, PageSurfaceTarget::Url(_)) {
+            return Err(LxAppError::InvalidParameter(
+                "a URL callback surface requires PageSurfaceTarget::Url".to_string(),
+            ));
+        }
+        let channel = lingxia_webview::url_callback::open_channel(callback_url)
+            .map_err(|err| LxAppError::InvalidParameter(err.to_string()))?;
+        let surface = self.open_surface(request)?;
+        let closed = register_surface_close_waiter(&surface.id);
+        Ok(UrlCallbackSurface {
+            appid: self.appid.clone(),
+            surface,
+            channel,
+            closed,
+        })
+    }
+
     pub fn show_surface(&self, id: &str) -> Result<(), LxAppError> {
         let id = id.trim();
         if id.is_empty() {
@@ -668,6 +777,7 @@ impl LxApp {
         if id.is_empty() {
             return false;
         }
+        notify_surface_close_waiter(id);
         let removed = self
             .state
             .lock()
