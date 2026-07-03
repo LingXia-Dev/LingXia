@@ -448,10 +448,9 @@ impl crate::traits::ui::SurfacePresenter for Platform {
         &self,
         id: &str,
         visible: bool,
-        _edge: Option<&str>,
+        edge: Option<&str>,
     ) -> Result<(), PlatformError> {
-        // The Windows host handler has no per-open placement yet.
-        surface::set_managed_surface_visible(id, visible)
+        surface::set_managed_surface_visible(id, visible, edge)
     }
 
     fn toggle_managed_surface(&self, id: &str) -> Result<(), PlatformError> {

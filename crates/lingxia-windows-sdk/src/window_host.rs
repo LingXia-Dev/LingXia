@@ -57,6 +57,9 @@ static VISIBLE_PANELS: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
 static PANEL_TABS: OnceLock<Mutex<HashMap<String, Vec<WindowsHostPanelTab>>>> = OnceLock::new();
 static WEBVIEW_PANELS: OnceLock<Mutex<HashMap<String, WebViewPanelEntry>>> = OnceLock::new();
 static HOST_PANELS: OnceLock<Mutex<HashMap<String, HostPanelEntry>>> = OnceLock::new();
+#[cfg(feature = "shell-chrome")]
+static PANEL_POSITION_OVERRIDES: OnceLock<Mutex<HashMap<String, WindowsPanelPosition>>> =
+    OnceLock::new();
 static ACTIVE_WEBTAG: OnceLock<Mutex<Option<WebTag>>> = OnceLock::new();
 static WEBTAG_WINDOWS: OnceLock<Mutex<HashMap<String, isize>>> = OnceLock::new();
 static WEBTAG_VISIBILITY: OnceLock<Mutex<HashMap<String, bool>>> = OnceLock::new();
@@ -1415,6 +1418,24 @@ pub fn update_host_panel_body(panel_id: &str, body: &str) -> StdResult<()> {
     }
     repaint_active_host();
     Ok(())
+}
+
+#[cfg(feature = "shell-chrome")]
+pub(crate) fn set_panel_position_override(panel_id: &str, position: Option<WindowsPanelPosition>) {
+    let overrides = PANEL_POSITION_OVERRIDES.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Ok(mut overrides) = overrides.lock() {
+        match position {
+            Some(position) => {
+                overrides.insert(panel_id.to_string(), position);
+            }
+            None => {
+                overrides.remove(panel_id);
+            }
+        }
+    }
+
+    update_registered_panel_position(panel_id, panel_position_for_id(panel_id));
+    sync_active_host_layout();
 }
 
 pub fn set_host_panel_tabs(panel_id: &str, tabs: Vec<WindowsHostPanelTab>) -> bool {
@@ -3635,6 +3656,24 @@ fn register_webview_panel(
 }
 
 #[cfg(feature = "shell-chrome")]
+fn update_registered_panel_position(panel_id: &str, position: WindowsPanelPosition) {
+    if let Some(panels) = WEBVIEW_PANELS.get()
+        && let Ok(mut panels) = panels.lock()
+        && let Some(panel) = panels.get_mut(panel_id)
+    {
+        panel.position = position;
+        panel.docked = panel_position_is_flush_docked(position);
+    }
+    if let Some(panels) = HOST_PANELS.get()
+        && let Ok(mut panels) = panels.lock()
+        && let Some(panel) = panels.get_mut(panel_id)
+    {
+        panel.position = position;
+        panel.docked = panel_position_is_flush_docked(position);
+    }
+}
+
+#[cfg(feature = "shell-chrome")]
 pub(crate) fn close_webview_panel(panel_id: &str) {
     let Some(webtag_key) = WEBVIEW_PANELS
         .get()
@@ -3689,6 +3728,9 @@ fn host_panel_is_maximized(panel_id: &str) -> bool {
 
 #[cfg(feature = "shell-chrome")]
 fn panel_position_for_id(panel_id: &str) -> WindowsPanelPosition {
+    if let Some(position) = panel_position_override(panel_id) {
+        return position;
+    }
     lingxia_app_context::app_config()
         .and_then(|config| config.panels.as_ref().cloned())
         .and_then(|panels| panels.items.into_iter().find(|item| item.id == panel_id))
@@ -3704,6 +3746,14 @@ fn panel_position_for_id(panel_id: &str) -> WindowsPanelPosition {
 #[cfg(not(feature = "shell-chrome"))]
 fn panel_position_for_id(_panel_id: &str) -> WindowsPanelPosition {
     WindowsPanelPosition::Right
+}
+
+#[cfg(feature = "shell-chrome")]
+fn panel_position_override(panel_id: &str) -> Option<WindowsPanelPosition> {
+    PANEL_POSITION_OVERRIDES
+        .get()
+        .and_then(|overrides| overrides.lock().ok())
+        .and_then(|overrides| overrides.get(panel_id).copied())
 }
 
 fn panel_position_is_flush_docked(position: WindowsPanelPosition) -> bool {
