@@ -94,6 +94,8 @@ struct BrowserTabSummary {
     title: Option<String>,
     current_url: Option<String>,
     favicon_png: Option<Arc<Vec<u8>>>,
+    can_go_back: bool,
+    can_go_forward: bool,
 }
 
 fn browser_runtime_enabled() -> bool {
@@ -110,6 +112,8 @@ fn browser_tab_summary_from_info(info: BrowserTabInfo) -> BrowserTabSummary {
         title: info.title,
         current_url: info.current_url,
         favicon_png,
+        can_go_back: info.can_go_back,
+        can_go_forward: info.can_go_forward,
     }
 }
 
@@ -589,6 +593,7 @@ fn on_browser_tabs_changed() {
             log::warn!("failed to restore main webview after browser tab close: {err}");
         }
     }
+    refresh_aside_panel_nav_state();
     if consume_suppressed_browser_tab_sync() {
         return;
     }
@@ -796,7 +801,54 @@ fn build_address_bar_layout() -> Option<WindowsShellAddressBarLayout> {
         visible: true,
         url_text: browser_tab_display_url(&tab),
         aside,
+        can_go_back: tab.can_go_back,
+        can_go_forward: tab.can_go_forward,
     })
+}
+
+/// Session-history availability of the aside panel's visible tab, refreshed
+/// on every browser tabs-changed pass; the aside toolbar dims back/forward
+/// from this.
+static ASIDE_PANEL_NAV_STATE: OnceLock<Mutex<(bool, bool)>> = OnceLock::new();
+
+pub(super) fn aside_panel_nav_state() -> (bool, bool) {
+    // Enabled until reported otherwise: hosts without the browser engine
+    // (plain WebView2 asides) never report, so their buttons stay active.
+    ASIDE_PANEL_NAV_STATE
+        .get()
+        .and_then(|slot| slot.lock().ok())
+        .map(|state| *state)
+        .unwrap_or((true, true))
+}
+
+/// Mirrors the visible aside tab's nav state and repaints the aside toolbar
+/// when it changed.
+#[cfg(feature = "browser-runtime")]
+fn refresh_aside_panel_nav_state() {
+    let state = lingxia_browser::tabs()
+        .into_iter()
+        .filter(|tab| lingxia_browser::tab_is_aside(&tab.tab_id))
+        .find(|tab| {
+            let webtag = WebTag::new(
+                lingxia_browser::BUILTIN_BROWSER_APPID,
+                &tab.path,
+                Some(tab.session_id),
+            );
+            crate::window_host::webtag_is_visible(webtag.key())
+        })
+        .map(|tab| (tab.can_go_back, tab.can_go_forward))
+        .unwrap_or((false, false));
+    let slot = ASIDE_PANEL_NAV_STATE.get_or_init(|| Mutex::new((false, false)));
+    let changed = slot.lock().map(|mut current| {
+        let changed = *current != state;
+        *current = state;
+        changed
+    });
+    if changed.unwrap_or(false) {
+        lingxia_windows_contract::refresh_aside_panel(
+            lingxia_windows_contract::ASIDE_BROWSER_PANEL_ID,
+        );
+    }
 }
 
 /// Capsule text of the presented tab: its current URL, else its title

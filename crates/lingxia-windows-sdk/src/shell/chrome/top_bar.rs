@@ -280,25 +280,30 @@ pub(super) fn draw_top_bar_controls(
         draw_hover_wash(hdc, toggle, 5, cursor);
         draw_design_icon_button(hdc, toggle, icon, shell_palette().text_muted, 18);
     }
+    // Back/forward dim while the presented tab has no history in that
+    // direction (smart nav, mirroring the macOS browser chrome).
+    let (can_back, can_forward) = layout
+        .address_bar
+        .as_ref()
+        .map(|address_bar| (address_bar.can_go_back, address_bar.can_go_forward))
+        .unwrap_or((true, true));
     if let Some(back) = controls.nav_back {
         draw_hover_wash(hdc, back, 5, cursor);
-        draw_design_icon_button(
-            hdc,
-            back,
-            WindowsDesignIcon::Back,
-            shell_palette().frame_button_icon,
-            18,
-        );
+        let color = if can_back {
+            shell_palette().frame_button_icon
+        } else {
+            shell_palette().text_muted
+        };
+        draw_design_icon_button(hdc, back, WindowsDesignIcon::Back, color, 18);
     }
     if let Some(forward) = controls.nav_forward {
         draw_hover_wash(hdc, forward, 5, cursor);
-        draw_design_icon_button(
-            hdc,
-            forward,
-            WindowsDesignIcon::Forward,
-            shell_palette().frame_button_icon,
-            18,
-        );
+        let color = if can_forward {
+            shell_palette().frame_button_icon
+        } else {
+            shell_palette().text_muted
+        };
+        draw_design_icon_button(hdc, forward, WindowsDesignIcon::Forward, color, 18);
     }
     if let Some(reload) = controls.nav_reload {
         draw_hover_wash(hdc, reload, 5, cursor);

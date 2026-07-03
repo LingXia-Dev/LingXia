@@ -84,6 +84,10 @@ pub struct WindowsShellAddressBarLayout {
     /// The presented tab is an aside (a compact-degraded URL aside): the top
     /// bar keeps the browser controls but draws no address capsule.
     pub aside: bool,
+    /// Session-history availability of the presented tab; the back/forward
+    /// buttons dim while their direction is unavailable.
+    pub can_go_back: bool,
+    pub can_go_forward: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

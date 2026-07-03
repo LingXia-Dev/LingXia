@@ -63,6 +63,9 @@ pub enum WindowsAsidePanelEvent {
 
 pub type WindowsAsidePanelEventHandler = Arc<dyn Fn(WindowsAsidePanelEvent) + Send + Sync>;
 
+/// Stable panel id of the shared aside browser panel (one per window).
+pub const ASIDE_BROWSER_PANEL_ID: &str = "lx.aside-browser";
+
 /// Publishes the tab strip of an aside browser panel; an empty list removes
 /// it (the panel then falls back to non-tabbed chrome).
 pub fn set_aside_panel_tabs(panel_id: &str, tabs: Vec<WindowsAsidePanelTab>) {

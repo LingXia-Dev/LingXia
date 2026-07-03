@@ -4795,7 +4795,7 @@ fn cleanup_webview_panel(webtag_key: &str) -> bool {
     true
 }
 
-fn webtag_is_visible(webtag_key: &str) -> bool {
+pub(crate) fn webtag_is_visible(webtag_key: &str) -> bool {
     WEBTAG_VISIBILITY
         .get()
         .and_then(|visibility| visibility.lock().ok())

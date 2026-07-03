@@ -40,6 +40,11 @@ pub(crate) struct BrowserTabState {
     /// webview (`WebViewDelegate::on_favicon_changed`). `Arc`'d so shell
     /// layers can mirror it into layout snapshots without copying.
     pub(crate) favicon_png: Option<Arc<Vec<u8>>>,
+    /// Session-history availability reported by the platform webview
+    /// (`WebViewDelegate::on_history_changed`); drives smart back/forward
+    /// affordances in shell chrome.
+    pub(crate) can_go_back: bool,
+    pub(crate) can_go_forward: bool,
     /// When true the tab's WebView has been destroyed to free memory
     /// (Chrome-style discard); the entry/metadata is kept and the WebView is
     /// recreated from `current_url` on reactivation.
@@ -300,6 +305,8 @@ fn build_tab_info(tab_id: &str, state: &BrowserTabState) -> BrowserTabInfo {
         session_id: state.session_id,
         current_url: state.current_url.clone(),
         title: state.title.clone(),
+        can_go_back: state.can_go_back,
+        can_go_forward: state.can_go_forward,
     }
 }
 
@@ -371,6 +378,33 @@ pub(crate) fn browser_update_tab_info(
                 changed = true;
             }
         }
+        changed
+    };
+    if changed {
+        notify_tabs_changed();
+    }
+    true
+}
+
+/// Stores the webview-reported session-history availability for `tab_id`
+/// and fires the tabs-changed observer when it changed. Returns `false`
+/// when the tab does not exist.
+pub(crate) fn browser_update_tab_nav_state(
+    tab_id: &str,
+    can_go_back: bool,
+    can_go_forward: bool,
+) -> bool {
+    let Some(normalized) = normalize_runtime_tab_id(tab_id) else {
+        return false;
+    };
+    let changed = {
+        let mut state = lock_state();
+        let Some(tab) = state.tabs.get_mut(&normalized) else {
+            return false;
+        };
+        let changed = tab.can_go_back != can_go_back || tab.can_go_forward != can_go_forward;
+        tab.can_go_back = can_go_back;
+        tab.can_go_forward = can_go_forward;
         changed
     };
     if changed {
@@ -580,6 +614,8 @@ fn open_internal_browser_tab_with_scope(
                     current_url: None,
                     title: None,
                     favicon_png: None,
+                    can_go_back: false,
+                    can_go_forward: false,
                     discarded: false,
                     standalone,
                     aside,
