@@ -120,7 +120,9 @@ pub(super) fn top_bar_controls(
         address: None,
         browser_close: None,
     };
-    if !address_bar_visible(layout) {
+    // On the phone frame the browser chrome is the bottom bar; the top bar
+    // carries no browser controls.
+    if !address_bar_visible(layout) || super::phone_browser_bar_active(client, layout) {
         return controls;
     }
 
@@ -184,7 +186,7 @@ pub(super) fn top_bar_controls(
 /// the terminal tab-title rects in `terminal_grid`.
 static ADDRESS_CAPSULE_RECTS: OnceLock<Mutex<HashMap<isize, RECT>>> = OnceLock::new();
 
-fn remember_address_capsule_rect(hwnd: HWND, rect: Option<RECT>) {
+pub(super) fn remember_address_capsule_rect(hwnd: HWND, rect: Option<RECT>) {
     let rects = ADDRESS_CAPSULE_RECTS.get_or_init(|| Mutex::new(HashMap::new()));
     let Ok(mut rects) = rects.lock() else {
         return;
