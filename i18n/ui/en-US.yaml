@@ -85,6 +85,12 @@ date:
 update:
   downloading: "Downloading Update"
 
+# Browser
+browser:
+  new_tab: "New Tab"
+  close_other_tabs: "Close Other Tabs"
+  close_tabs_below: "Close Tabs Below"
+
 # Terminal panel (native Windows shell terminal)
 terminal:
   title: "Terminal"

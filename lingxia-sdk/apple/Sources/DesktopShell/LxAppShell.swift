@@ -498,6 +498,12 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         sidebar.onBrowserTabCloseRequested = { [weak self] id in
             self?.browserCoordinator.closeTab(id: id)
         }
+        sidebar.onBrowserTabCloseOtherRequested = { [weak self] id in
+            self?.browserCoordinator.closeOtherTabs(keeping: id)
+        }
+        sidebar.onBrowserTabCloseTabsBelowRequested = { [weak self] id in
+            self?.browserCoordinator.closeTabsBelow(id: id)
+        }
         sidebar.onPanelItemToggled = { [weak self] actionID in
             self?.sidebarHostActionHandler?(actionID)
         }
@@ -1663,7 +1669,7 @@ extension LxAppShell: BrowserCoordinatorHost {
         tabManager.activeTab?.appId
     }
 
-    func updateSidebarBrowserItems(_ items: [(id: String, title: String, favicon: NSImage?)], activeId: String?) {
+    func updateSidebarBrowserItems(_ items: [(id: String, title: String, url: String, favicon: NSImage?)], activeId: String?) {
         sidebarBrowserItemCount = items.count
         sidebarView?.updateBrowserItems(items, activeId: activeId)
         reconcileSidebarAutoHide()

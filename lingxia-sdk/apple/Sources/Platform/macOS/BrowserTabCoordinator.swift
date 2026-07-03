@@ -21,7 +21,7 @@ protocol BrowserCoordinatorHost: AnyObject {
     /// Currently active lxapp tab appId (if any).
     func activeAppTabId() -> String?
     /// Update sidebar browser items.
-    func updateSidebarBrowserItems(_ items: [(id: String, title: String, favicon: NSImage?)], activeId: String?)
+    func updateSidebarBrowserItems(_ items: [(id: String, title: String, url: String, favicon: NSImage?)], activeId: String?)
     /// Clear all sidebar highlights.
     func clearSidebarHighlights()
     /// Show/hide the lxapp navigation toolbar.
@@ -211,6 +211,21 @@ final class BrowserTabCoordinator: NSObject {
         }
 
         host?.updateSidebarBrowserItems(sidebarItems(), activeId: activeTabId)
+    }
+
+    func closeOtherTabs(keeping id: String) {
+        guard tabIds.contains(id) else { return }
+        for tabId in tabIds.filter({ $0 != id }) {
+            closeTab(id: tabId)
+        }
+    }
+
+    func closeTabsBelow(id: String) {
+        guard let index = tabIds.firstIndex(of: id),
+              index < tabIds.index(before: tabIds.endIndex) else { return }
+        for tabId in Array(tabIds[tabIds.index(after: index)...]) {
+            closeTab(id: tabId)
+        }
     }
 
     func closeAllTabs(notifyRust: Bool = true) {
@@ -578,14 +593,10 @@ final class BrowserTabCoordinator: NSObject {
             Task { @MainActor in
                 guard let self, let activeId = self.activeTabId else { return }
                 let rawURL = webView.url?.absoluteString ?? ""
-                if self.lastObservedURLs[activeId] == rawURL {
-                    return
-                }
+                let previousURL = self.lastObservedURLs[activeId]
+                self.syncAddressField(rawURL)
                 self.lastObservedURLs[activeId] = rawURL
-
-                if self.addressField.currentEditor() == nil {
-                    self.addressField.stringValue = self.displayableURL(rawURL)
-                }
+                guard previousURL != rawURL else { return }
                 if let origin = webView.url.flatMap({ self.faviconRequestOrigin(for: $0) }) {
                     if origin != self.tabFaviconRequestOrigins[activeId] {
                         self.tabFavicons.removeValue(forKey: activeId)
@@ -836,11 +847,13 @@ final class BrowserTabCoordinator: NSObject {
     @objc private func backClicked() {
         guard let webView = activeWebView, webView.canGoBack else { return }
         webView.goBack()
+        syncAddressFieldSoon(for: webView)
     }
 
     @objc private func forwardClicked() {
         guard let webView = activeWebView, webView.canGoForward else { return }
         webView.goForward()
+        syncAddressFieldSoon(for: webView)
     }
 
     @objc private func refreshClicked() {
@@ -860,6 +873,7 @@ final class BrowserTabCoordinator: NSObject {
         guard let webView = activeWebView,
               let url = URL(string: urlString) else { return false }
         addressField.stringValue = urlString
+        addressField.window?.makeFirstResponder(webView)
         // An address-bar navigation is a user interaction.
         markActiveTabInteracted()
         // file:// needs loadFileURL (granting read access to its directory); a normal
@@ -1087,9 +1101,22 @@ final class BrowserTabCoordinator: NSObject {
         return browserUrlIsHidden(trimmed) ? "" : trimmed
     }
 
-    private func sidebarItems() -> [(id: String, title: String, favicon: NSImage?)] {
+    private func syncAddressField(_ rawURL: String?, force: Bool = false) {
+        guard force || addressField.currentEditor() == nil else { return }
+        addressField.stringValue = displayableURL(rawURL)
+    }
+
+    private func syncAddressFieldSoon(for webView: WKWebView) {
+        syncAddressField(webView.url?.absoluteString, force: true)
+        DispatchQueue.main.async { [weak self, weak webView] in
+            guard let self, let webView, webView === self.activeWebView else { return }
+            self.syncAddressField(webView.url?.absoluteString, force: true)
+        }
+    }
+
+    private func sidebarItems() -> [(id: String, title: String, url: String, favicon: NSImage?)] {
         tabIds.map { id in
-            (id, tabTitles[id] ?? "New Tab", tabFavicons[id])
+            (id, tabTitles[id] ?? L10n.string("lx_browser_new_tab"), lastObservedURLs[id] ?? "", tabFavicons[id])
         }
     }
 

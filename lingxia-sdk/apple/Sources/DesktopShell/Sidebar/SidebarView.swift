@@ -57,6 +57,7 @@ private final class SidebarScrollView: NSScrollView {
 @MainActor
 private final class SidebarRailButton: NSButton {
     var onHoverChanged: ((Bool) -> Void)?
+    var onContextMenuRequested: ((NSEvent, SidebarRailButton) -> Void)?
     private var trackingArea: NSTrackingArea?
 
     override var mouseDownCanMoveWindow: Bool { false }
@@ -82,6 +83,14 @@ private final class SidebarRailButton: NSButton {
 
     override func mouseExited(with event: NSEvent) {
         onHoverChanged?(false)
+    }
+
+    override func rightMouseDown(with event: NSEvent) {
+        if let onContextMenuRequested {
+            onContextMenuRequested(event, self)
+        } else {
+            super.rightMouseDown(with: event)
+        }
     }
 }
 
@@ -221,6 +230,7 @@ private struct SidebarModel {
     struct BrowserTabVM {
         let id: String
         let title: String
+        let url: String
         let favicon: NSImage?
     }
 
@@ -417,6 +427,10 @@ class SidebarView: NSView, NSPopoverDelegate {
     var onBrowserTabSelected: ((String) -> Void)?
     /// Called when a browser tab close is requested
     var onBrowserTabCloseRequested: ((String) -> Void)?
+    /// Called when all browser tabs except the given tab should close.
+    var onBrowserTabCloseOtherRequested: ((String) -> Void)?
+    /// Called when browser tabs visually below the given tab should close.
+    var onBrowserTabCloseTabsBelowRequested: ((String) -> Void)?
     /// Called when settings button is clicked
     var onOpenSettings: (() -> Void)?
     /// Called when downloads button is clicked
@@ -785,11 +799,19 @@ class SidebarView: NSView, NSPopoverDelegate {
         for item in model.browserTabs {
             let key = "web:\(item.id)"
             let image = item.favicon ?? NSImage(systemSymbolName: "globe", accessibilityDescription: item.title)
-            let btn = makeRailButton(key: key, tooltip: item.title, image: image, isTemplate: item.favicon == nil)
+            let btn = makeRailButton(
+                key: key,
+                tooltip: browserTooltip(title: item.title, url: item.url),
+                image: image,
+                isTemplate: item.favicon == nil
+            )
             btn.action = #selector(railBrowserClicked(_:))
             if let railButton = btn as? SidebarRailButton {
                 railButton.onHoverChanged = { [weak self] hovering in
                     if hovering { self?.closeRailTabPopover() }
+                }
+                railButton.onContextMenuRequested = { [weak self] event, button in
+                    self?.showBrowserRailContextMenu(for: item.id, event: event, button: button)
                 }
             }
             railStack.addArrangedSubview(btn)
@@ -866,6 +888,62 @@ class SidebarView: NSView, NSPopoverDelegate {
         closeRailTabPopover()
         guard let key = sender.identifier?.rawValue, key.hasPrefix("web:") else { return }
         onBrowserTabSelected?(String(key.dropFirst(4)))
+    }
+
+    private func showBrowserRailContextMenu(for id: String, event: NSEvent, button: NSButton) {
+        closeRailTabPopover()
+        guard model.browserTabs.contains(where: { $0.id == id }) else { return }
+        let menu = NSMenu()
+
+        let close = NSMenuItem(
+            title: L10n.string("lx_common_close"),
+            action: #selector(closeBrowserMenuItemClicked(_:)),
+            keyEquivalent: ""
+        )
+        close.target = self
+        close.representedObject = id
+        menu.addItem(close)
+
+        if let index = model.browserTabs.firstIndex(where: { $0.id == id }) {
+            if model.browserTabs.count > 1 {
+                let closeOther = NSMenuItem(
+                    title: L10n.string("lx_browser_close_other_tabs"),
+                    action: #selector(closeOtherBrowserMenuItemClicked(_:)),
+                    keyEquivalent: ""
+                )
+                closeOther.target = self
+                closeOther.representedObject = id
+                menu.addItem(closeOther)
+            }
+
+            if index < model.browserTabs.index(before: model.browserTabs.endIndex) {
+                let closeBelow = NSMenuItem(
+                    title: L10n.string("lx_browser_close_tabs_below"),
+                    action: #selector(closeTabsBelowBrowserMenuItemClicked(_:)),
+                    keyEquivalent: ""
+                )
+                closeBelow.target = self
+                closeBelow.representedObject = id
+                menu.addItem(closeBelow)
+            }
+        }
+
+        NSMenu.popUpContextMenu(menu, with: event, for: button)
+    }
+
+    @objc private func closeBrowserMenuItemClicked(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? String else { return }
+        onBrowserTabCloseRequested?(id)
+    }
+
+    @objc private func closeOtherBrowserMenuItemClicked(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? String else { return }
+        onBrowserTabCloseOtherRequested?(id)
+    }
+
+    @objc private func closeTabsBelowBrowserMenuItemClicked(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? String else { return }
+        onBrowserTabCloseTabsBelowRequested?(id)
     }
 
     private func showRailTabPopover(appId: String, relativeTo button: NSButton) {
@@ -1175,9 +1253,9 @@ class SidebarView: NSView, NSPopoverDelegate {
     // MARK: - Browser Items
 
     /// Update browser tab items in the sidebar
-    func updateBrowserItems(_ items: [(id: String, title: String, favicon: NSImage?)], activeId: String?) {
+    func updateBrowserItems(_ items: [(id: String, title: String, url: String, favicon: NSImage?)], activeId: String?) {
         model.browserTabs = items.map {
-            SidebarModel.BrowserTabVM(id: $0.id, title: $0.title, favicon: $0.favicon)
+            SidebarModel.BrowserTabVM(id: $0.id, title: $0.title, url: $0.url, favicon: $0.favicon)
         }
         if let activeId {
             model.selection = .browser(id: activeId)
@@ -1337,7 +1415,7 @@ class SidebarView: NSView, NSPopoverDelegate {
         for item in model.browserTabs {
             let selected = isBrowserSelected(item.id)
             if let existing = browserItemViews[item.id] {
-                existing.configure(title: item.title, isSelected: selected, favicon: item.favicon)
+                existing.configure(title: item.title, url: item.url, isSelected: selected, favicon: item.favicon)
             } else {
                 let itemView = SidebarBrowserItemView(id: item.id)
                 itemView.translatesAutoresizingMaskIntoConstraints = false
@@ -1347,10 +1425,16 @@ class SidebarView: NSView, NSPopoverDelegate {
                 itemView.onClose = { [weak self] id in
                     self?.onBrowserTabCloseRequested?(id)
                 }
-                itemView.configure(title: item.title, isSelected: selected, favicon: item.favicon)
+                itemView.configure(title: item.title, url: item.url, isSelected: selected, favicon: item.favicon)
                 browserItemViews[item.id] = itemView
             }
         }
+    }
+
+    private func browserTooltip(title: String, url: String) -> String {
+        let resolvedTitle = title.isEmpty ? L10n.string("lx_browser_new_tab") : title
+        let trimmedURL = url.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmedURL.isEmpty ? resolvedTitle : "\(resolvedTitle)\n\(trimmedURL)"
     }
 
     /// Layout browser items and add button after lxapp groups
