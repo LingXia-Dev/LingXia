@@ -9,7 +9,7 @@ use std::thread;
 use std::time::Duration;
 use tungstenite::protocol::Message;
 use tungstenite::stream::MaybeTlsStream;
-use tungstenite::{Error as WsError, WebSocket, connect};
+use tungstenite::{Error as WsError, WebSocket};
 
 mod app;
 mod browser;
@@ -56,11 +56,48 @@ fn dev_ws_url() -> Option<String> {
         })
 }
 
+/// Connect with explicit TCP + handshake timeouts. A plain `connect` blocks
+/// forever when a stale port-forward listener accepts the socket but the far
+/// side is gone — the bridge then never retries.
+fn connect_with_timeout(
+    ws_url: &str,
+) -> Result<WebSocket<MaybeTlsStream<std::net::TcpStream>>, WsError> {
+    let authority = ws_url
+        .trim_start_matches("ws://")
+        .split('/')
+        .next()
+        .unwrap_or_default();
+    let addr = authority.parse::<std::net::SocketAddr>().map_err(|err| {
+        WsError::Url(tungstenite::error::UrlError::UnableToConnect(
+            err.to_string(),
+        ))
+    })?;
+    let stream =
+        std::net::TcpStream::connect_timeout(&addr, Duration::from_secs(5)).map_err(WsError::Io)?;
+    stream
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .map_err(WsError::Io)?;
+    stream
+        .set_write_timeout(Some(Duration::from_secs(5)))
+        .map_err(WsError::Io)?;
+    let (websocket, _) =
+        tungstenite::client(ws_url, MaybeTlsStream::Plain(stream)).map_err(|err| match err {
+            tungstenite::HandshakeError::Failure(err) => err,
+            // A read timeout during the handshake surfaces as Interrupted —
+            // exactly the stale-tunnel case this timeout exists to catch.
+            tungstenite::HandshakeError::Interrupted(_) => WsError::Io(std::io::Error::new(
+                std::io::ErrorKind::TimedOut,
+                "websocket handshake timed out",
+            )),
+        })?;
+    Ok(websocket)
+}
+
 fn run_dev_bridge(ws_url: String) {
     let mut connect_failures = 0u32;
     loop {
-        match connect(ws_url.as_str()) {
-            Ok((mut websocket, _)) => {
+        match connect_with_timeout(ws_url.as_str()) {
+            Ok(mut websocket) => {
                 if connect_failures > 0 {
                     log::info!(
                         "Connected devtool websocket after {} failed attempts",
