@@ -589,11 +589,14 @@ public class RunnerApp {
             )
         }
 
-        if let surfaceShellHost {
-            surfaceShellHost.refreshCurrentPathFromRuntime()
-            if let sessionId = RunnerSupport.Runtime.sessionId(for: surfaceShellHost.appId),
-               sessionId > 0 {
-                return (surfaceShellHost.appId, surfaceShellHost.currentPath, sessionId)
+        if surfaceShellHost != nil {
+            // The shell closes/switches tabs on its own (sidebar ×, chrome),
+            // without a controller didClose — the host's cached appId can point
+            // at a closed lxapp. The runtime nav stack is the authority.
+            let current = getCurrentLxApp()
+            let appId = current.appid.toString()
+            if !appId.isEmpty, current.session_id > 0 {
+                return (appId, current.path.toString(), current.session_id)
             }
         }
 
