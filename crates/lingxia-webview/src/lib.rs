@@ -77,6 +77,8 @@ pub enum LogLevel {
 
 mod input_helper;
 mod traits;
+/// Process-local URL callback channels for navigation handoff.
+pub mod url_callback;
 mod webview;
 
 #[cfg(target_os = "android")]
