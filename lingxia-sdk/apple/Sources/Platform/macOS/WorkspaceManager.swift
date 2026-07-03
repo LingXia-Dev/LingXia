@@ -251,9 +251,8 @@ class WorkspaceManager: NSObject {
     /// (left/right) support several panels side by side; the frame-driven
     /// bottom/top edges keep a single visible panel.
     private var visibleOrder: [PanelPosition: [String]] = [:]
-    /// The main content card's toolbar, which sits at the card's top edge.
-    /// Left/right docked panels anchor their top to it so they span the same
-    /// vertical band as the main webview card.
+    /// The main content card's toolbar, used only to place the lxapp content
+    /// below native navigation chrome inside the main card.
     private weak var toolbarRef: NSView?
 
     override init() {
@@ -607,11 +606,11 @@ class WorkspaceManager: NSObject {
         let p = padding
         let h = Self.handleSize
         let size = slot.currentSize
-        // Anchor side panels' top to the toolbar TOP (= the main content card's
-        // top edge) so a docked aside spans the same vertical band as the main
-        // webview card. Fall back to the parent top + padding with no toolbar.
-        let topAnchor = toolbarRef?.topAnchor ?? parent.topAnchor
-        let topInset: CGFloat = toolbarRef == nil ? p : 0
+        // Side panels belong to the stable workspace shell, not to the main
+        // card. Top/bottom panels shrink the main card; they must not move a
+        // left/right aside by pulling on the main card's toolbar anchor.
+        let sideTopAnchor = sidebar.topAnchor
+        let sideTopInset = p
 
         switch slot.config.position {
         case .right:
@@ -620,14 +619,14 @@ class WorkspaceManager: NSObject {
             let edge = wrapper.trailingAnchor.constraint(equalTo: parent.trailingAnchor, constant: -p)
             slot.edgeConstraint = edge
             slot.sideDockConstraints = [
-                wrapper.topAnchor.constraint(equalTo: topAnchor, constant: topInset),
+                wrapper.topAnchor.constraint(equalTo: sideTopAnchor, constant: sideTopInset),
                 wrapper.bottomAnchor.constraint(equalTo: parent.bottomAnchor, constant: -p),
             ]
             NSLayoutConstraint.activate(slot.sideDockConstraints + [
                 edge,
                 wc,
                 // Handle sits in the gap to the left of the panel card
-                handle.topAnchor.constraint(equalTo: topAnchor, constant: topInset),
+                handle.topAnchor.constraint(equalTo: sideTopAnchor, constant: sideTopInset),
                 handle.bottomAnchor.constraint(equalTo: parent.bottomAnchor, constant: -p),
                 handle.trailingAnchor.constraint(equalTo: wrapper.leadingAnchor),
                 handle.widthAnchor.constraint(equalToConstant: h),
@@ -639,14 +638,14 @@ class WorkspaceManager: NSObject {
             let edge = wrapper.leadingAnchor.constraint(equalTo: sidebar.trailingAnchor, constant: p)
             slot.edgeConstraint = edge
             slot.sideDockConstraints = [
-                wrapper.topAnchor.constraint(equalTo: topAnchor, constant: topInset),
+                wrapper.topAnchor.constraint(equalTo: sideTopAnchor, constant: sideTopInset),
                 wrapper.bottomAnchor.constraint(equalTo: parent.bottomAnchor, constant: -p),
             ]
             NSLayoutConstraint.activate(slot.sideDockConstraints + [
                 edge,
                 wc,
                 // Handle sits in the gap to the right of the panel card
-                handle.topAnchor.constraint(equalTo: topAnchor, constant: topInset),
+                handle.topAnchor.constraint(equalTo: sideTopAnchor, constant: sideTopInset),
                 handle.bottomAnchor.constraint(equalTo: parent.bottomAnchor, constant: -p),
                 handle.leadingAnchor.constraint(equalTo: wrapper.trailingAnchor),
                 handle.widthAnchor.constraint(equalToConstant: h),
