@@ -1,6 +1,8 @@
-use crate::project;
+use crate::client;
+use crate::project::{self, SessionSelector};
 use anyhow::Result;
 use chrono::{DateTime, Local, TimeZone};
+use lingxia_devtool_protocol::handlers;
 use serde_json::{Value, json};
 use std::path::Path;
 
@@ -67,6 +69,16 @@ pub fn execute_prune(project_root: &Path) -> Result<()> {
             info.session_id, info.platform, info.ws_url
         );
     }
+    Ok(())
+}
+
+pub fn execute_stop(project_root: &Path, selector: &SessionSelector) -> Result<()> {
+    let info = project::resolve_session(project_root, selector)?;
+    client::execute_command(&info.ws_url, handlers::session::SHUTDOWN, None)?;
+    println!(
+        "Stop requested for {} dev session {}.",
+        info.platform, info.session_id
+    );
     Ok(())
 }
 

@@ -56,6 +56,11 @@ struct SessionsCmd {
 enum SessionsAction {
     /// Remove session files whose WS server no longer responds
     Prune,
+    /// Stop a dev session by asking its owning `lingxia dev` process to exit
+    Stop {
+        /// Session id prefix or platform name. Overrides the global --session selector.
+        session: Option<String>,
+    },
 }
 
 fn main() -> Result<()> {
@@ -78,6 +83,12 @@ fn main() -> Result<()> {
         }
         Commands::Sessions(cmd) => match cmd.command {
             Some(SessionsAction::Prune) => sessions::execute_prune(&project_root),
+            Some(SessionsAction::Stop { session }) => {
+                let selector = SessionSelector {
+                    query: session.or(selector.query),
+                };
+                sessions::execute_stop(&project_root, &selector)
+            }
             None => sessions::execute_list(&project_root, cmd.json),
         },
         Commands::App(options) => {

@@ -82,6 +82,7 @@ impl SessionLogWriter {
 
 struct DevServerState {
     project_root: PathBuf,
+    stop_flag: Arc<AtomicBool>,
     runtime_sender: Mutex<Option<(u64, Sender<DevtoolsWireMessage>)>>,
     next_runtime_id: AtomicU64,
     pending_results: Mutex<std::collections::HashMap<String, Sender<DevtoolsWireMessage>>>,
@@ -89,9 +90,10 @@ struct DevServerState {
 }
 
 impl DevServerState {
-    fn new(project_root: PathBuf) -> Self {
+    fn new(project_root: PathBuf, stop_flag: Arc<AtomicBool>) -> Self {
         Self {
             project_root,
+            stop_flag,
             runtime_sender: Mutex::new(None),
             next_runtime_id: AtomicU64::new(1),
             pending_results: Mutex::new(std::collections::HashMap::new()),
@@ -159,9 +161,17 @@ impl DevServerState {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
+
+    fn request_shutdown(&self) {
+        self.stop_flag.store(true, Ordering::Release);
+    }
 }
 
-pub fn start_server_on(project_root: &Path, bind_addr: &str) -> Result<DevServerHandle> {
+pub fn start_server_on_with_stop(
+    project_root: &Path,
+    bind_addr: &str,
+    stop_flag: Arc<AtomicBool>,
+) -> Result<DevServerHandle> {
     let session = create_session(project_root)?;
     let listener = TcpListener::bind(bind_addr).context("Failed to bind dev websocket")?;
     listener
@@ -171,8 +181,10 @@ pub fn start_server_on(project_root: &Path, bind_addr: &str) -> Result<DevServer
         .local_addr()
         .context("Failed to resolve dev websocket address")?;
     let writer = Arc::new(SessionLogWriter::new(&session)?);
-    let state = Arc::new(DevServerState::new(project_root.to_path_buf()));
-    let stop_flag = Arc::new(AtomicBool::new(false));
+    let state = Arc::new(DevServerState::new(
+        project_root.to_path_buf(),
+        stop_flag.clone(),
+    ));
     let thread_stop_flag = stop_flag.clone();
     let server_thread =
         thread::spawn(move || run_server(listener, writer, state, thread_stop_flag));
@@ -183,6 +195,25 @@ pub fn start_server_on(project_root: &Path, bind_addr: &str) -> Result<DevServer
         stop_flag,
         server_thread: Some(server_thread),
     })
+}
+
+pub fn start_server_fixed_with_stop(
+    project_root: &Path,
+    host: &str,
+    platform: &str,
+    stop_flag: Arc<AtomicBool>,
+) -> Result<DevServerHandle> {
+    let port = dev_port(&project_root.to_string_lossy(), platform);
+    match start_server_on_with_stop(project_root, &format!("{host}:{port}"), stop_flag.clone()) {
+        Ok(handle) => Ok(handle),
+        Err(err) => {
+            eprintln!(
+                "⚠ dev port {port} unavailable ({err:#}); using an OS-assigned port — \
+                 reconnection after a client restart may need a re-forward."
+            );
+            start_server_on_with_stop(project_root, &format!("{host}:0"), stop_flag)
+        }
+    }
 }
 
 /// Deterministic dev-server port derived from a stable per-app key + platform,
@@ -200,29 +231,6 @@ pub fn dev_port(app_key: &str, platform: &str) -> u16 {
         hash = hash.wrapping_mul(FNV_PRIME);
     }
     39_000 + (hash % 1000) as u16
-}
-
-/// Start the dev server on `host` at the deterministic [`dev_port`] for this
-/// project + platform. `host` is `127.0.0.1` for loopback platforms (adb/hdc
-/// forward, local runner) or `0.0.0.0` for a LAN device (real iOS). Falls back
-/// to an OS-assigned port on the same host if the fixed one can't be bound,
-/// trading restart-stable reconnection for a still-working session.
-pub fn start_server_fixed(
-    project_root: &Path,
-    host: &str,
-    platform: &str,
-) -> Result<DevServerHandle> {
-    let port = dev_port(&project_root.to_string_lossy(), platform);
-    match start_server_on(project_root, &format!("{host}:{port}")) {
-        Ok(handle) => Ok(handle),
-        Err(err) => {
-            eprintln!(
-                "⚠ dev port {port} unavailable ({err:#}); using an OS-assigned port — \
-                 reconnection after a client restart may need a re-forward."
-            );
-            start_server_on(project_root, &format!("{host}:0"))
-        }
-    }
 }
 
 fn run_server(
@@ -560,6 +568,21 @@ fn handle_client_connection(
             },
         };
         send_wire_message(&mut websocket, &payload)?;
+        let _ = websocket.close(None);
+        return Ok(());
+    }
+
+    if handler.as_str() == lingxia_devtool_protocol::handlers::session::SHUTDOWN {
+        send_wire_message(
+            &mut websocket,
+            &DevtoolsWireMessage::Result {
+                command_id,
+                ok: true,
+                data: None,
+                error: None,
+            },
+        )?;
+        state.request_shutdown();
         let _ = websocket.close(None);
         return Ok(());
     }

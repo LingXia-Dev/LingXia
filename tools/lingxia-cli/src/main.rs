@@ -127,6 +127,31 @@ struct DevOptions {
     /// affects the lxapp runner window; ignored for native host apps.
     #[arg(long, num_args = 0..=1, default_missing_value = "")]
     runner: Option<String>,
+
+    /// Start the dev session in the background and return after it is ready
+    #[arg(long)]
+    background: bool,
+
+    #[command(subcommand)]
+    action: Option<DevAction>,
+}
+
+#[derive(Subcommand, Clone)]
+enum DevAction {
+    /// List dev sessions for this project
+    Status {
+        /// Print pretty JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Stop a dev session for this project
+    Stop {
+        /// Session id prefix or platform name. Omit when only one session is live.
+        session: Option<String>,
+        /// Kill the owning process if graceful shutdown fails
+        #[arg(long)]
+        force: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -654,6 +679,13 @@ fn main() -> Result<()> {
                 provider_path: dev_options.build_options.provider_path,
                 parallel: dev_options.parallel,
                 runner_device: dev_options.runner,
+                background: dev_options.background,
+                action: dev_options.action.map(|action| match action {
+                    DevAction::Status { json } => commands::dev::DevSessionAction::Status { json },
+                    DevAction::Stop { session, force } => {
+                        commands::dev::DevSessionAction::Stop { session, force }
+                    }
+                }),
             })?;
         }
         Commands::Doctor { platform } => {

@@ -3,6 +3,12 @@ use serde::{Deserialize, Serialize};
 pub mod handlers {
     pub const ECHO: &str = "echo";
 
+    pub mod session {
+        /// Request the owning `lingxia dev` process to stop this session.
+        /// Handled by the dev server, not forwarded to the runtime.
+        pub const SHUTDOWN: &str = "session.shutdown";
+    }
+
     pub mod browser {
         pub const OPEN: &str = "browser.open";
         pub const TABS: &str = "browser.tabs";

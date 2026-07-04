@@ -9,7 +9,13 @@ pub(super) fn execute_windows(ctx: DevContext) -> Result<()> {
     let platform_name = platform_session_name(PlatformType::Windows);
     precheck_platform_session(&ctx.project_root, platform_name, ctx.parallel)?;
     let platform = platform::windows::WindowsPlatform::new();
-    let server = server::start_server_fixed(&ctx.project_root, "127.0.0.1", platform_name)?;
+    let stop_requested = Arc::new(AtomicBool::new(false));
+    let server = server::start_server_fixed_with_stop(
+        &ctx.project_root,
+        "127.0.0.1",
+        platform_name,
+        stop_requested.clone(),
+    )?;
     let ws_url = server.ws_url();
     let session = server.session().clone();
 
@@ -62,7 +68,6 @@ pub(super) fn execute_windows(ctx: DevContext) -> Result<()> {
         println!();
 
         println!("{}", "Step 2/2: Running...".bold());
-        let stop_requested = Arc::new(AtomicBool::new(false));
         install_ctrlc_handler(stop_requested.clone())?;
         log_store::write_session(&ctx.project_root, &session, platform_name, &ws_url)?;
 
