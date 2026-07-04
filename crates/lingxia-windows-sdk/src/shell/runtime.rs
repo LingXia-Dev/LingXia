@@ -748,9 +748,11 @@ fn build_window_layout(app: &LxApp, path: &str) -> WindowsShellWindowLayout {
     };
     // A presented browser tab covers the phone tab bar, matching the macOS
     // runner's full-screen browser surface; side tab bars (sidebar) stay.
-    let tab_bar = build_tab_bar_layout(&shell_app, !panel_activators.is_empty()).filter(|tabbar| {
-        address_bar.is_none() || !matches!(tabbar.position, WindowsShellTabBarPosition::Bottom)
-    });
+    let tab_bar_app = tab_bar_owner_for_layout(app, owner_app.as_deref());
+    let tab_bar =
+        build_tab_bar_layout(tab_bar_app, !panel_activators.is_empty()).filter(|tabbar| {
+            address_bar.is_none() || !matches!(tabbar.position, WindowsShellTabBarPosition::Bottom)
+        });
     WindowsShellWindowLayout {
         navigation_bar,
         address_bar,
@@ -767,6 +769,17 @@ fn shell_owner_app_for(active: &LxApp) -> Option<Arc<LxApp>> {
         return None;
     }
     lxapp::try_get(&owner_appid)
+}
+
+fn tab_bar_owner_for_layout<'a>(active: &'a LxApp, owner: Option<&'a LxApp>) -> &'a LxApp {
+    if matches!(
+        tabbar_position(&active.appid),
+        WindowsShellTabBarPosition::Bottom
+    ) {
+        active
+    } else {
+        owner.unwrap_or(active)
+    }
 }
 
 fn prime_tabbar_selection(app: &LxApp, selected_index: usize) {

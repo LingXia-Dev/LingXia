@@ -28,6 +28,10 @@ const SEPARATOR_TEXT_COLOR: u32 = 0xCCCCCC;
 const ACTION_TEXT_COLOR: u32 = 0x333333;
 const SEPARATOR_COLOR: u32 = 0xEEEEEE;
 const SHEET_CORNER_RADIUS: i32 = 16;
+const BADGE_HEIGHT: i32 = 16;
+const BADGE_MIN_WIDTH: i32 = 34;
+const BADGE_TEXT_HORIZONTAL_PADDING: i32 = 10;
+const BADGE_VERSION_GAP: i32 = 4;
 
 #[derive(Debug, Clone)]
 pub(in crate::device_frame) struct DeviceFrameInfoSheet {
@@ -363,26 +367,51 @@ fn paint_header(dc: HDC, client: &RECT, info: &DeviceFrameInfoSheet) {
         DT_LEFT,
     );
     cursor += 18;
+    let version = info.version.trim();
+    let badge_width = info
+        .badge
+        .as_ref()
+        .map(|badge| {
+            text_width_estimate(&badge.text, 10, 600)
+                .max(BADGE_MIN_WIDTH - BADGE_TEXT_HORIZONTAL_PADDING)
+                + BADGE_TEXT_HORIZONTAL_PADDING
+        })
+        .unwrap_or(0);
+    let version_available_right = if badge_width > 0 {
+        client.right - HORIZONTAL_PADDING - badge_width - BADGE_VERSION_GAP
+    } else {
+        client.right - HORIZONTAL_PADDING
+    };
+    let version_width =
+        text_width_estimate(version, 14, 400).min((version_available_right - cursor).max(0));
+    let version_rect = RECT {
+        left: cursor,
+        top,
+        right: if badge_width > 0 {
+            cursor + version_width
+        } else {
+            client.right - HORIZONTAL_PADDING
+        },
+        bottom: top + HEADER_HEIGHT,
+    };
     draw_sheet_text(
         dc,
-        info.version.trim(),
-        RECT {
-            left: cursor,
-            top,
-            right: client.right - HORIZONTAL_PADDING - 42,
-            bottom: top + HEADER_HEIGHT,
-        },
+        version,
+        version_rect,
         -14,
         400,
         SECONDARY_TEXT_COLOR,
         DT_LEFT,
     );
     if let Some(badge) = info.badge.as_ref() {
+        let badge_left = (version_rect.right + BADGE_VERSION_GAP)
+            .min(client.right - HORIZONTAL_PADDING - badge_width)
+            .max(cursor);
         let badge_rect = RECT {
-            left: client.right - HORIZONTAL_PADDING - 34,
-            top: top + 1,
-            right: client.right - HORIZONTAL_PADDING,
-            bottom: top + 17,
+            left: badge_left,
+            top: top - 2,
+            right: badge_left + badge_width,
+            bottom: top - 2 + BADGE_HEIGHT,
         };
         fill_rect(dc, badge_rect, badge.background);
         draw_sheet_text(
