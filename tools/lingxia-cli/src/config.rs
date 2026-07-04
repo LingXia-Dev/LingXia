@@ -69,25 +69,9 @@ impl Default for FeaturesConfig {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct CapabilitiesConfig {
-    #[serde(default)]
-    pub notifications: bool,
-    /// The product in-app browser, with its newtab / settings / downloads pages
-    /// and browser shell runtime. Opt-in and cross-platform.
-    #[serde(default)]
-    pub browser: bool,
-    #[serde(default)]
-    pub terminal: bool,
-    /// Opt-in HTTP proxy for the in-app browser (desktop). Requires browser.
-    #[serde(default)]
-    pub proxy: bool,
-    /// Unlocks `lx.app.autostart` (launch at system startup). macOS/Windows
-    /// only; enabling is always a runtime user decision, never automatic.
-    #[serde(default)]
-    pub autostart: bool,
-}
+// One shared definition with the runtime (which reads it back from app.json),
+// so a capability can never exist on one side only.
+pub use lingxia_app_context::CapabilitiesConfig;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
