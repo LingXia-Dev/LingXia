@@ -18,11 +18,20 @@ const ARG_LXAPP_PATH: &str = "--lxapp-path";
 const ARG_DEV_WS_URL: &str = "--dev-ws-url";
 const ARG_LINGXIAO_MOCK_DIR: &str = "--lingxiao-mock-dir";
 const ARG_RUNNER_DEVICE: &str = "--runner-device";
+const ARG_RESOURCE_LXAPP_PATHS: &str = "--resource-lxapp-paths";
 const ENV_ASSET_DIR: &str = "LINGXIA_ASSET_DIR";
 const ENV_LXAPP_PATH: &str = "LINGXIA_LXAPP_PATH";
 const ENV_DEV_WS_URL: &str = "LINGXIA_DEV_WS_URL";
 const ENV_LINGXIAO_MOCK_DIR: &str = "LINGXIAO_MOCK_DIR";
 const ENV_RUNNER_DEVICE: &str = "LINGXIA_RUNNER_DEVICE";
+const ENV_RESOURCE_LXAPP_PATHS: &str = "LINGXIA_RESOURCE_LXAPP_PATHS";
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ResourceLxAppPath {
+    app_id: String,
+    path: std::path::PathBuf,
+}
 
 struct RunnerDevtoolAddon;
 
@@ -74,6 +83,7 @@ fn cloud_options() -> lingxia_cloud_client::CloudOptions {
 
 pub(crate) fn run() -> lingxia_windows_sdk::Result<()> {
     install_launch_args_env();
+    register_resource_lxapp_paths_from_env();
     lingxia::register_host_addon(Box::new(RunnerDevtoolAddon));
 
     let default_device = initial_device_index();
@@ -107,6 +117,7 @@ fn install_launch_args_env() {
             ARG_DEV_WS_URL => Some(ENV_DEV_WS_URL),
             ARG_LINGXIAO_MOCK_DIR => Some(ENV_LINGXIAO_MOCK_DIR),
             ARG_RUNNER_DEVICE => Some(ENV_RUNNER_DEVICE),
+            ARG_RESOURCE_LXAPP_PATHS => Some(ENV_RESOURCE_LXAPP_PATHS),
             _ => None,
         };
         if let Some(env_key) = env_key {
@@ -115,6 +126,37 @@ fn install_launch_args_env() {
                 std::env::set_var(env_key, value);
             }
         }
+    }
+}
+
+fn register_resource_lxapp_paths_from_env() {
+    let Ok(raw) = std::env::var(ENV_RESOURCE_LXAPP_PATHS) else {
+        return;
+    };
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return;
+    }
+    let paths = match serde_json::from_str::<Vec<ResourceLxAppPath>>(raw) {
+        Ok(paths) => paths,
+        Err(err) => {
+            eprintln!("lingxia-runner: invalid {ENV_RESOURCE_LXAPP_PATHS}: {err}");
+            return;
+        }
+    };
+    for entry in paths {
+        let app_id = entry.app_id.trim();
+        if app_id.is_empty() {
+            continue;
+        }
+        if !entry.path.join("lxapp.json").is_file() {
+            eprintln!(
+                "lingxia-runner: resource lxapp path for {app_id} is missing lxapp.json: {}",
+                entry.path.display()
+            );
+            continue;
+        }
+        lxapp::register_dev_bundle_source(app_id.to_string(), entry.path);
     }
 }
 
@@ -127,9 +169,13 @@ fn apply_device(index: usize, landscape: bool) -> Result<(), String> {
     // these into separate immediate + posted updates lets layout briefly sync
     // against the previous device (e.g. iPhone status bar forcing bottom tabs
     // while switching to iPad).
+    let tabbar_position = tabbar_position_for_device(index);
+    lingxia_windows_sdk::set_windows_default_shell_tabbar_position(tabbar_position);
+
     let mut applied = false;
     for app in lxapp::list_lxapps() {
-        if app.status == "opened" && app.current_page.is_some() {
+        if app.status == "opened" {
+            lingxia_windows_sdk::set_windows_shell_tabbar_position(&app.appid, tabbar_position);
             if let Err(err) = apply_device_to_app(&app.appid, index, landscape) {
                 eprintln!(
                     "lingxia-runner: failed to apply device to {}: {err}",

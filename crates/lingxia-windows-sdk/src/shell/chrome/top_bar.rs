@@ -181,8 +181,8 @@ pub(super) fn top_bar_controls(
     controls
 }
 
-/// Last painted URL-capsule rect per host window, so the facade can start
-/// an inline address edit (EDIT child) over the capsule; same pattern as
+/// Last painted URL address rect per host window, so the facade can start
+/// an inline address edit (EDIT child) over the address bar; same pattern as
 /// the terminal tab-title rects in `terminal_grid`.
 static ADDRESS_CAPSULE_RECTS: OnceLock<Mutex<HashMap<isize, RECT>>> = OnceLock::new();
 
@@ -201,7 +201,7 @@ pub(super) fn remember_address_capsule_rect(hwnd: HWND, rect: Option<RECT>) {
     }
 }
 
-/// Starts an inline URL edit over the address capsule last painted in
+/// Starts an inline URL edit over the address bar last painted in
 /// `window`'s top bar, prefilled with `initial_text` (selected). Safe to
 /// call from any thread; the editor is marshalled onto the window's UI
 /// thread (see [`super::super::text_input`] for lifecycle). `on_commit`
@@ -220,8 +220,8 @@ pub fn begin_address_edit(
     let Some(capsule) = capsule else {
         return false;
     };
-    // The editor sits inside the capsule (white EDIT on the white capsule
-    // fill), inset just past the rounded ends so it uses the full width.
+    // The editor sits inside the address bar fill, inset enough to match the
+    // painted URL text.
     let edit_rect = inset_rect(capsule, 12, 4);
     if rect_width(&edit_rect) == 0 || rect_height(&edit_rect) == 0 {
         return false;
@@ -246,7 +246,7 @@ pub(super) fn draw_shell_top_bar(hdc: HDC, rects: &ChromeRects) {
 }
 
 /// Draws the interactive top-bar controls (sidebar toggle, browser nav
-/// buttons, URL capsule) and records the capsule rect for the inline
+/// buttons, URL address bar) and records the address rect for the inline
 /// address editor. Painted after the navigation bar, which fills the top
 /// bar with its own background.
 pub(super) fn draw_top_bar_controls(
@@ -322,13 +322,7 @@ pub(super) fn draw_top_bar_controls(
         draw_frame_button_glyph(hdc, GLYPH_CLOSE, close, shell_palette().frame_button_icon);
     }
     if let Some(address) = controls.address {
-        // White capsule on the gray caption strip; anti-alias the arc.
-        fill_round_rect_aa(
-            hdc,
-            address,
-            rect_height(&address) / 2,
-            shell_palette().panel_background,
-        );
+        fill_rect(hdc, address, shell_palette().panel_background);
         let text = layout
             .address_bar
             .as_ref()
@@ -339,7 +333,7 @@ pub(super) fn draw_top_bar_controls(
         draw_text(
             hdc,
             text,
-            inset_rect(address, ADDRESS_CAPSULE_HEIGHT / 2, 0),
+            inset_rect(address, 12, 0),
             shell_palette().text_primary,
             DT_LEFT,
         );

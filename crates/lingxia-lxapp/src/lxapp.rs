@@ -1670,12 +1670,20 @@ impl LxApp {
         // app, not just whatever page happens to be showing. If the navigation
         // can't resolve, fall back to reloading the current page.
         let initial = self.initial_route();
-        if let Ok(current) = self.current_page()
-            && current.path() != initial
-            && self.ensure_page_exists(&initial).is_ok()
-        {
-            let target = self.get_or_create_page(&initial);
-            let _ = current.navigate_to(target, crate::page::NavigationType::Launch);
+        match self.current_page() {
+            Ok(current)
+                if current.path() != initial && self.ensure_page_exists(&initial).is_ok() =>
+            {
+                let target = self.get_or_create_page(&initial);
+                let _ = current.navigate_to(target, crate::page::NavigationType::Launch);
+            }
+            Ok(_) => {}
+            Err(_) if self.ensure_page_exists(&initial).is_ok() => {
+                let _ = self.get_or_create_page(&initial);
+                let _ = self.clear_page_stack();
+                let _ = self.push_to_page_stack(&initial);
+            }
+            Err(_) => {}
         }
         self.reload_current_page()
     }
