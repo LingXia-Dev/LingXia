@@ -104,6 +104,8 @@ pub struct CapabilitiesConfig {
     pub notifications: bool,
     #[serde(default)]
     pub terminal: bool,
+    #[serde(default)]
+    pub autostart: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -306,6 +308,14 @@ pub fn notifications_enabled() -> bool {
         .get()
         .and_then(|c| c.capabilities.as_ref())
         .map(|capabilities| capabilities.notifications)
+        .unwrap_or(false)
+}
+
+pub fn autostart_enabled() -> bool {
+    APP_CONFIG
+        .get()
+        .and_then(|c| c.capabilities.as_ref())
+        .map(|capabilities| capabilities.autostart)
         .unwrap_or(false)
 }
 
