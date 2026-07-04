@@ -79,24 +79,31 @@ pub(super) fn top_bar_controls(
     });
     let compact_sidebar = tabbar.is_some_and(|tabbar| tabbar.collapsed || tabbar.icon_rail);
 
-    // App-menu button: always shown at the window's leading edge. When a
-    // sidebar exists it shares the sidebar header's leading edge with the
-    // toggle (which moves to its right); otherwise it anchors the top bar.
+    // App-menu button at the window's leading edge. When a sidebar exists it
+    // shares the sidebar header's leading edge with the toggle (which moves
+    // to its right); otherwise it anchors the top bar. Only the product shell
+    // (`browser-shell`) has a real app menu (About/Exit); a runner-style
+    // build would offer a lone "Exit" that just duplicates the window close,
+    // so it gets no button at all.
     let app_icon_left = if has_sidebar_toggle {
         client.left + TOP_BAR_PADDING
     } else {
         top_bar.left + TOP_BAR_PADDING
     };
-    let app_icon = (!compact_sidebar).then(|| square_button(app_icon_left));
+    let app_icon =
+        (cfg!(feature = "browser-shell") && !compact_sidebar).then(|| square_button(app_icon_left));
 
-    // Sidebar toggle: sits just right of the app-menu button. It is
+    // Sidebar toggle: sits just right of the app-menu button (or takes its
+    // slot when there is none). It is
     // The collapse toggle lives in the sidebar header while the sidebar is
     // expanded. Once collapsed to a rail, the rail draws the *same* toggle
     // icon pinned to its bottom (see `draw_sidebar_rail`), so the top bar
     // shows none here — otherwise the rail would carry two expand affordances.
     let sidebar_toggle = (has_sidebar_toggle && !compact_sidebar).then(|| {
-        let app_right = app_icon.map(|rect| rect.right).unwrap_or(app_icon_left);
-        square_button(app_right + TOP_BAR_BUTTON_GAP)
+        let left = app_icon
+            .map(|rect| rect.right + TOP_BAR_BUTTON_GAP)
+            .unwrap_or(app_icon_left);
+        square_button(left)
     });
     let mut left_edge = top_bar.left + TOP_BAR_PADDING;
     // The app-menu slot is skipped on a device-framed screen (the icon is not
