@@ -319,7 +319,12 @@ fn draw_sidebar_rail(
         let icon_rect = centered_icon_rect(item_rect, SIDEBAR_RAIL_ICON_SIZE);
         let drew = match item.icon_png.as_deref() {
             Some(png) => draw_icon_from_png_bytes(hdc, &item.id, png, icon_rect),
-            None => false,
+            None => draw_icon_or_default(
+                hdc,
+                &item.icon_path,
+                icon_rect,
+                SIDEBAR_RAIL_ICON_SIZE as u32,
+            ),
         };
         if !drew {
             draw_default_app_icon(hdc, icon_rect);

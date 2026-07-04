@@ -162,7 +162,12 @@ pub(in crate::shell::chrome) fn draw_sidebar_auxiliary_section(
         });
         let icon_drawn = match item.icon_png.as_deref() {
             Some(png) => draw_icon_from_png_bytes(hdc, &item.id, png, icon_rect),
-            None => draw_default_app_icon(hdc, icon_rect),
+            None => draw_icon_or_default(
+                hdc,
+                &item.icon_path,
+                icon_rect,
+                SIDEBAR_FAVICON_SIZE.max(1) as u32,
+            ),
         };
         if icon_drawn {
             label_left = icon_rect.right + SIDEBAR_FAVICON_TEXT_GAP;

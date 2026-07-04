@@ -2,6 +2,7 @@
   "appId": "lingxia-chat",
   "appName": "LingXia Chat",
   "version": "1.0.5",
+  "icon": "public/chat.svg",
   "security": {
     "network": {
       "trustedDomains": []
