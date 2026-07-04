@@ -100,11 +100,8 @@ impl LxAppSvc {
             .await?;
             return Ok(());
         }
-        Err(HostError::new(
-            rong::error::E_INTERNAL,
-            format!("No event handler for {}", event.as_str()),
-        )
-        .into())
+        // App lifecycle handlers are optional, matching PageInstance handlers.
+        Ok(())
     }
 }
 
