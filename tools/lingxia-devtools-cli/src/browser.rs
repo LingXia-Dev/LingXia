@@ -259,6 +259,9 @@ pub enum BrowserCommand {
     },
     /// Manage browser cookies
     Cookies(CookiesOptions),
+    /// Inspect network traffic (request/response payloads). Windows sessions
+    /// only — requires the WebView2 DevTools protocol.
+    Network(NetworkOptions),
     /// Capture a PNG screenshot of the current/specified tab
     Screenshot {
         #[arg(long, default_value = "current")]
@@ -346,6 +349,58 @@ pub enum CookiesCommand {
         #[arg(long)]
         json: bool,
     },
+}
+
+#[derive(Args, Clone)]
+pub struct NetworkOptions {
+    #[arg(long, default_value = "current", global = true)]
+    pub tab: String,
+    #[command(subcommand)]
+    pub command: NetworkCommand,
+}
+
+#[derive(Subcommand, Clone)]
+pub enum NetworkCommand {
+    /// Start recording network traffic into the tab's capture buffer
+    Enable,
+    /// Stop recording (captured entries are kept until `clear`)
+    Disable,
+    /// List captured requests (summary rows, or full JSON with --json)
+    List {
+        /// Only requests whose URL contains this substring
+        #[arg(long)]
+        url: Option<String>,
+        /// Only this HTTP method (case-insensitive)
+        #[arg(long)]
+        method: Option<String>,
+        /// Only this resource type (substring, case-insensitive: xhr, fetch,
+        /// script, image, document, ...)
+        #[arg(long = "type")]
+        resource_type: Option<String>,
+        /// Only this exact response status
+        #[arg(long)]
+        status: Option<u16>,
+        /// Only failed requests (network failure or status >= 400)
+        #[arg(long)]
+        failed: bool,
+        /// Keep only the most recent N entries
+        #[arg(long)]
+        limit: Option<usize>,
+        /// Print the full JSON entries (headers + bodies) instead of a table
+        #[arg(long)]
+        json: bool,
+    },
+    /// Print one captured request in full (headers, payload, response body)
+    Get {
+        /// The request id from `list`
+        #[arg(long)]
+        id: String,
+        /// Print compact JSON on one line
+        #[arg(long)]
+        json: bool,
+    },
+    /// Drop all captured entries
+    Clear,
 }
 
 pub fn execute(info: &SessionInfo, options: BrowserOptions) -> Result<()> {
@@ -648,12 +703,244 @@ pub fn execute(info: &SessionInfo, options: BrowserOptions) -> Result<()> {
             print_optional_json(data, json)?;
         }
         BrowserCommand::Cookies(options) => execute_cookies(ws_url, options)?,
+        BrowserCommand::Network(options) => execute_network(info, options)?,
         BrowserCommand::Screenshot { tab, output, json } => {
             execute_screenshot(ws_url, tab, output, json)?
         }
     }
 
     Ok(())
+}
+
+fn execute_network(info: &SessionInfo, options: NetworkOptions) -> Result<()> {
+    // Network capture rides the WebView2 DevTools protocol, so it needs a
+    // Windows WebView2 runner. The dev session labels a direct Windows app
+    // "windows" and a runner-hosted lxapp "lxapp"; both host WebView2 on
+    // Windows, so accept either. lxdev and the runner are co-located, so the
+    // real backstop is the runner-side handler (compiled only on Windows) —
+    // a non-Windows runner answers "unknown handler" for these commands.
+    let platform = info.platform.as_str();
+    if !platform.eq_ignore_ascii_case("windows") && !platform.eq_ignore_ascii_case("lxapp") {
+        return Err(anyhow!(
+            "browser network capture needs a Windows WebView2 session (this session is '{platform}')",
+        ));
+    }
+    let ws_url = info.ws_url.as_str();
+    let tab = options.tab;
+    match options.command {
+        NetworkCommand::Enable => {
+            client::execute_command(
+                ws_url,
+                handlers::browser::NETWORK_ENABLE,
+                Some(json!({ "tab_id": tab })),
+            )?;
+            println!("network capture enabled for {tab}");
+        }
+        NetworkCommand::Disable => {
+            client::execute_command(
+                ws_url,
+                handlers::browser::NETWORK_DISABLE,
+                Some(json!({ "tab_id": tab })),
+            )?;
+            println!("network capture disabled for {tab}");
+        }
+        NetworkCommand::Clear => {
+            client::execute_command(
+                ws_url,
+                handlers::browser::NETWORK_CLEAR,
+                Some(json!({ "tab_id": tab })),
+            )?;
+            println!("network capture cleared for {tab}");
+        }
+        NetworkCommand::List {
+            url,
+            method,
+            resource_type,
+            status,
+            failed,
+            limit,
+            json,
+        } => {
+            let snapshot = network_snapshot(ws_url, &tab)?;
+            let filter = NetworkFilter {
+                url: url.as_deref(),
+                method: method.as_deref(),
+                resource_type: resource_type.as_deref(),
+                status,
+                failed,
+            };
+            print_network_list(&snapshot, &filter, limit, json)?;
+        }
+        NetworkCommand::Get { id, json } => {
+            let snapshot = network_snapshot(ws_url, &tab)?;
+            let entry = snapshot
+                .get("entries")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .find(|entry| entry.get("request_id").and_then(Value::as_str) == Some(id.as_str()))
+                .ok_or_else(|| anyhow!("no captured request with id {id}"))?;
+            if json {
+                print_json(entry, false)?;
+            } else {
+                print_json(entry, true)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn network_snapshot(ws_url: &str, tab: &str) -> Result<Value> {
+    Ok(client::execute_command(
+        ws_url,
+        handlers::browser::NETWORK_LIST,
+        Some(json!({ "tab_id": tab })),
+    )?
+    .unwrap_or(Value::Null))
+}
+
+struct NetworkFilter<'a> {
+    url: Option<&'a str>,
+    method: Option<&'a str>,
+    resource_type: Option<&'a str>,
+    status: Option<u16>,
+    failed: bool,
+}
+
+impl NetworkFilter<'_> {
+    fn matches(&self, entry: &Value) -> bool {
+        let field = |key| entry.get(key).and_then(Value::as_str);
+        if let Some(needle) = self.url
+            && !field("url").is_some_and(|url| url.contains(needle))
+        {
+            return false;
+        }
+        if let Some(method) = self.method
+            && !field("method").is_some_and(|m| m.eq_ignore_ascii_case(method))
+        {
+            return false;
+        }
+        if let Some(rtype) = self.resource_type
+            && !field("resource_type")
+                .is_some_and(|t| t.to_ascii_lowercase().contains(&rtype.to_ascii_lowercase()))
+        {
+            return false;
+        }
+        let status = entry.get("status").and_then(Value::as_u64);
+        if let Some(want) = self.status
+            && status != Some(want as u64)
+        {
+            return false;
+        }
+        if self.failed {
+            let is_failure = field("failed").is_some() || status.is_some_and(|s| s >= 400);
+            if !is_failure {
+                return false;
+            }
+        }
+        true
+    }
+}
+
+fn print_network_list(
+    snapshot: &Value,
+    filter: &NetworkFilter,
+    limit: Option<usize>,
+    json: bool,
+) -> Result<()> {
+    let all = snapshot
+        .get("entries")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let mut filtered: Vec<&Value> = all.iter().filter(|entry| filter.matches(entry)).collect();
+    if let Some(limit) = limit {
+        let start = filtered.len().saturating_sub(limit);
+        filtered = filtered.split_off(start);
+    }
+
+    if json {
+        let out = json!({
+            "entries": filtered,
+            "dropped": snapshot.get("dropped").cloned().unwrap_or(json!(0)),
+        });
+        return print_json(&out, false);
+    }
+
+    let dropped = snapshot.get("dropped").and_then(Value::as_u64).unwrap_or(0);
+    println!(
+        "{:<8} {:<7} {:<6} {:<10} {:>7} {:>9}  URL",
+        "ID", "METHOD", "STATUS", "TYPE", "MS", "BODY"
+    );
+    for entry in &filtered {
+        let id = entry
+            .get("request_id")
+            .and_then(Value::as_str)
+            .unwrap_or("");
+        let method = entry.get("method").and_then(Value::as_str).unwrap_or("");
+        let status = entry
+            .get("status")
+            .and_then(Value::as_u64)
+            .map(|s| s.to_string())
+            .or_else(|| {
+                entry
+                    .get("failed")
+                    .and_then(Value::as_str)
+                    .map(|_| "FAIL".to_string())
+            })
+            .unwrap_or_else(|| "-".to_string());
+        let rtype = entry
+            .get("resource_type")
+            .and_then(Value::as_str)
+            .unwrap_or("-");
+        let ms = network_duration_ms(entry)
+            .map(|ms| format!("{ms:.0}"))
+            .unwrap_or_else(|| "-".to_string());
+        let body = network_body_label(entry.get("response_body"));
+        let url = entry.get("url").and_then(Value::as_str).unwrap_or("");
+        println!("{id:<8} {method:<7} {status:<6} {rtype:<10} {ms:>7} {body:>9}  {url}");
+    }
+    println!(
+        "\n{} request(s){}",
+        filtered.len(),
+        if dropped > 0 {
+            format!(", {dropped} dropped (buffer full)")
+        } else {
+            String::new()
+        }
+    );
+    Ok(())
+}
+
+/// Duration in ms from the engine's monotonic started/finished timestamps.
+fn network_duration_ms(entry: &Value) -> Option<f64> {
+    let started = entry.get("started").and_then(Value::as_f64)?;
+    let finished = entry.get("finished").and_then(Value::as_f64)?;
+    (finished >= started).then_some((finished - started) * 1000.0)
+}
+
+/// Short label for a response body's capture state, for the list table.
+fn network_body_label(body: Option<&Value>) -> String {
+    match body.and_then(|b| b.get("kind")).and_then(Value::as_str) {
+        Some("text") => {
+            let len = body
+                .and_then(|b| b.get("text"))
+                .and_then(Value::as_str)
+                .map(str::len)
+                .unwrap_or(0);
+            format!("{len}B")
+        }
+        Some("base64") => {
+            let len = body
+                .and_then(|b| b.get("base64"))
+                .and_then(Value::as_str)
+                .map(|s| s.len() / 4 * 3)
+                .unwrap_or(0);
+            format!("~{len}B")
+        }
+        Some("skipped") => "skipped".to_string(),
+        _ => "-".to_string(),
+    }
 }
 
 fn execute_screenshot(ws_url: &str, tab: String, output: Option<String>, json: bool) -> Result<()> {
