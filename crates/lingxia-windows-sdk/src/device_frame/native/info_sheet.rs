@@ -2,9 +2,10 @@ use super::*;
 
 use crate::{WindowsDesignIcon, draw_windows_design_icon_with_color};
 use windows::Win32::Graphics::Gdi::{
-    BeginPaint, CreateFontW, CreateRoundRectRgn, CreateSolidBrush, DT_CENTER, DT_END_ELLIPSIS,
-    DT_LEFT, DT_SINGLELINE, DT_VCENTER, DeleteObject, DrawTextW, EndPaint, FillRect, HBRUSH,
-    HGDIOBJ, PAINTSTRUCT, SelectObject, SetBkMode, SetTextColor, SetWindowRgn, TRANSPARENT,
+    BeginPaint, CombineRgn, CreateFontW, CreateRoundRectRgn, CreateSolidBrush, DT_CENTER,
+    DT_END_ELLIPSIS, DT_LEFT, DT_SINGLELINE, DT_VCENTER, DeleteObject, DrawTextW, EndPaint,
+    FillRect, HBRUSH, HGDIOBJ, PAINTSTRUCT, RGN_AND, SelectObject, SetBkMode, SetTextColor,
+    SetWindowRgn, TRANSPARENT,
 };
 use windows::Win32::UI::WindowsAndMessaging::LWA_ALPHA;
 
@@ -561,11 +562,13 @@ pub(super) fn reposition_info_sheet(content: HWND) {
     };
     let width = rect.right - rect.left;
     let height = rect.bottom - rect.top;
+    let screen_corner_radius = content_screen_corner_radius(content);
     let sheet_height = sheet_height().min(height.max(1));
     unsafe {
         if is_window_handle_valid(windows.mask) {
+            let mask_hwnd = hwnd_from_handle(windows.mask);
             let _ = WindowsAndMessaging::SetWindowPos(
-                hwnd_from_handle(windows.mask),
+                mask_hwnd,
                 Some(WindowsAndMessaging::HWND_TOP),
                 rect.left,
                 rect.top,
@@ -573,6 +576,7 @@ pub(super) fn reposition_info_sheet(content: HWND) {
                 height,
                 WindowsAndMessaging::SWP_NOACTIVATE | WindowsAndMessaging::SWP_SHOWWINDOW,
             );
+            apply_screen_region(mask_hwnd, width, height, screen_corner_radius);
         }
         if is_window_handle_valid(windows.sheet) {
             let sheet_hwnd = hwnd_from_handle(windows.sheet);
@@ -585,7 +589,13 @@ pub(super) fn reposition_info_sheet(content: HWND) {
                 sheet_height,
                 WindowsAndMessaging::SWP_NOACTIVATE | WindowsAndMessaging::SWP_SHOWWINDOW,
             );
-            apply_sheet_region(sheet_hwnd, width, sheet_height);
+            apply_sheet_region(
+                sheet_hwnd,
+                width,
+                height,
+                sheet_height,
+                screen_corner_radius,
+            );
             let _ = windows::Win32::Graphics::Gdi::InvalidateRect(Some(sheet_hwnd), None, true);
         }
     }
@@ -613,29 +623,93 @@ fn consume_initial_mouse_up_for_window(window: HWND) -> bool {
         .unwrap_or(false)
 }
 
-fn apply_sheet_region(sheet: HWND, width: i32, height: i32) {
+fn apply_screen_region(window: HWND, width: i32, height: i32, screen_corner_radius: i32) {
     if width <= 0 || height <= 0 {
         return;
     }
-    let radius = SHEET_CORNER_RADIUS * 2;
+    if screen_corner_radius <= 0 {
+        unsafe {
+            let _ = SetWindowRgn(window, None, true);
+        }
+        return;
+    }
+    let diameter = screen_corner_radius * 2;
     unsafe {
-        // Extend the rounded region below the window so only the top corners are rounded.
-        let region = CreateRoundRectRgn(
-            0,
-            0,
-            width + 1,
-            height + SHEET_CORNER_RADIUS + 1,
-            radius,
-            radius,
-        );
+        let region = CreateRoundRectRgn(0, 0, width + 1, height + 1, diameter, diameter);
         if region.is_invalid() {
             return;
         }
-        let applied = SetWindowRgn(sheet, Some(region), true);
+        let applied = SetWindowRgn(window, Some(region), true);
         if applied == 0 {
             let _ = DeleteObject(HGDIOBJ(region.0));
         }
     }
+}
+
+fn apply_sheet_region(
+    sheet: HWND,
+    width: i32,
+    screen_height: i32,
+    sheet_height: i32,
+    screen_corner_radius: i32,
+) {
+    if width <= 0 || screen_height <= 0 || sheet_height <= 0 {
+        return;
+    }
+    let sheet_diameter = SHEET_CORNER_RADIUS * 2;
+    unsafe {
+        // Extend the rounded region below the window so the sheet keeps only
+        // its own top corners, then intersect it with the device screen shape
+        // so the bottom edge cannot paint outside the phone's lower corners.
+        let sheet_region = CreateRoundRectRgn(
+            0,
+            0,
+            width + 1,
+            sheet_height + SHEET_CORNER_RADIUS + 1,
+            sheet_diameter,
+            sheet_diameter,
+        );
+        if sheet_region.is_invalid() {
+            return;
+        }
+
+        if screen_corner_radius > 0 {
+            let screen_top = -(screen_height - sheet_height).max(0);
+            let screen_diameter = screen_corner_radius * 2;
+            let screen_region = CreateRoundRectRgn(
+                0,
+                screen_top,
+                width + 1,
+                sheet_height + 1,
+                screen_diameter,
+                screen_diameter,
+            );
+            if !screen_region.is_invalid() {
+                let _ = CombineRgn(
+                    Some(sheet_region),
+                    Some(sheet_region),
+                    Some(screen_region),
+                    RGN_AND,
+                );
+                let _ = DeleteObject(HGDIOBJ(screen_region.0));
+            }
+        }
+
+        let applied = SetWindowRgn(sheet, Some(sheet_region), true);
+        if applied == 0 {
+            let _ = DeleteObject(HGDIOBJ(sheet_region.0));
+        }
+    }
+}
+
+fn content_screen_corner_radius(content: HWND) -> i32 {
+    frame_state(hwnd_handle(content), |state| {
+        state
+            .spec
+            .screen_corner_radius
+            .clamp(0, CONTENT_REGION_MAX_RADIUS)
+    })
+    .unwrap_or(0)
 }
 
 fn content_rect(content: HWND) -> Option<RECT> {
