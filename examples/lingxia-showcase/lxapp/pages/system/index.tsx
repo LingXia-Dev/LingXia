@@ -3,8 +3,15 @@ import '../../tailwind.css';
 
 export default function SystemPage() {
   const { data, actions } = useLxPage();
-  const { getBaseInfo, getSystemSetting } = actions;
-  const { currentType = 'appBaseInfo', appBaseInfo = null, systemSetting = null } = data;
+  const { getBaseInfo, getSystemSetting, toggleAutostart, refreshAutostart } = actions;
+  const {
+    currentType = 'appBaseInfo',
+    appBaseInfo = null,
+    systemSetting = null,
+    autostartSupported = false,
+    autostartEnabled = null,
+    autostartError = '',
+  } = data;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
@@ -87,6 +94,67 @@ export default function SystemPage() {
                   </div>
                 </div>
               )}
+            </div>
+          </>
+        )}
+        {currentType === 'autostart' && (
+          <>
+            <div className="mb-6 text-center">
+              <h1 className="text-2xl font-light text-gray-800 mb-2">app.autostart</h1>
+              <div className="w-16 h-0.5 bg-gray-400 mx-auto"></div>
+            </div>
+
+            <div className="mb-5 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+              <div className="flex items-center gap-4 px-5 py-5 border-b border-gray-100">
+                <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-gradient-to-br from-amber-50 to-orange-50">
+                  <span className="text-2xl">🚀</span>
+                </div>
+                <div className="flex-1">
+                  <div className="text-sm text-gray-800 font-semibold">Launch at Startup</div>
+                  <div className="text-xs text-gray-500 mt-0.5">
+                    {autostartSupported
+                      ? 'Register this app as a login / startup item'
+                      : 'Not available on this platform'}
+                  </div>
+                </div>
+                {autostartSupported && (
+                  <button
+                    onClick={toggleAutostart}
+                    className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors duration-200 ${
+                      autostartEnabled ? 'bg-emerald-500' : 'bg-gray-300'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform duration-200 ${
+                        autostartEnabled ? 'translate-x-6' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                )}
+              </div>
+
+              <div className="p-5">
+                <div className="rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-white p-4">
+                  <div className="flex items-center gap-2 mb-4">
+                    <span className="w-1 h-4 bg-amber-500 rounded-full"></span>
+                    <h4 className="text-sm font-semibold text-gray-700">State</h4>
+                  </div>
+                  <InfoRow label="Supported" value={formatBool(autostartSupported)} />
+                  <InfoRow
+                    label="Enabled (OS)"
+                    value={autostartEnabled === null ? '--' : formatBool(autostartEnabled)}
+                  />
+                  {autostartError && <InfoRow label="Error" value={autostartError} />}
+                  <div className="pt-3">
+                    <button
+                      onClick={refreshAutostart}
+                      className="px-4 py-2 text-xs font-medium bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors"
+                    >
+                      Re-read OS State
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
           </>
         )}

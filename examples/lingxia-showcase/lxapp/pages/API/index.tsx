@@ -366,6 +366,20 @@ export default function APIPage() {
               </div>
               <div
                 className="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+                onClick={() => navigateToSystemPage({ type: 'autostart' })}
+              >
+                <div>
+                  <div className="text-sm text-gray-700">Autostart</div>
+                  <div className="text-xs text-gray-500 mt-0.5">Launch at system startup (macOS / Windows)</div>
+                </div>
+                <div className="w-4 h-4 text-gray-400">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <path d="M9 18l6-6-6-6"/>
+                  </svg>
+                </div>
+              </div>
+              <div
+                className="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
                 onClick={exitApp}
               >
                 <div>
