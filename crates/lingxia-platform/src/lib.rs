@@ -55,6 +55,22 @@ mod unsupported;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 pub mod desktop;
 
+/// Whether launch-at-startup can actually work on this host, probed at
+/// runtime. macOS builds target 12 but SMAppService needs 13+, so the
+/// `lx.app.autostart` member must not be registered from a compile-time
+/// gate alone — presence is the JS support contract.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+pub fn autostart_supported() -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        apple::autostart_probe_supported()
+    }
+    #[cfg(target_os = "windows")]
+    {
+        true
+    }
+}
+
 #[cfg(target_os = "android")]
 pub use android::{
     CachedClass, Platform, get_android_id, get_api_level, get_system_property,

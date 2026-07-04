@@ -5,6 +5,13 @@
 mod app;
 mod device;
 mod ffi;
+
+/// True when the shell reports a usable SMAppService (macOS 13+). -1 from the
+/// bridge means unsupported; 0/1 are real disabled/enabled states.
+#[cfg(target_os = "macos")]
+pub(crate) fn autostart_probe_supported() -> bool {
+    ffi::autostart_is_enabled() >= 0
+}
 mod file;
 mod keyboard;
 mod location;

@@ -167,6 +167,18 @@ pub trait AppRuntime:
         Ok(())
     }
 
+    /// Whether the app is registered to launch at system startup. Only reached
+    /// on macOS/Windows — `lx.app.autostart` is not registered elsewhere — so
+    /// the default is an error, not a no-op: a false answer here would be a lie.
+    fn autostart_is_enabled(&self) -> Result<bool, PlatformError> {
+        Err(PlatformError::NotSupported("autostart".to_string()))
+    }
+
+    /// Register or unregister the app as a per-user startup item.
+    fn autostart_set_enabled(&self, _enabled: bool) -> Result<(), PlatformError> {
+        Err(PlatformError::NotSupported("autostart".to_string()))
+    }
+
     /// Replace the tray dropdown menu. `items_json` is a JSON array of
     /// `{ label?, separator?, enabled?, checked? }`. Item clicks are delivered
     /// back to JS by index. Desktop only; no-op elsewhere.

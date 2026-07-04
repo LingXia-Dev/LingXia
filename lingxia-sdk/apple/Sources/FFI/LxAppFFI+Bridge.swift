@@ -9,6 +9,7 @@ import CLingXiaSwiftAPI
 import UIKit
 #elseif os(macOS)
 import AppKit
+import ServiceManagement
 #endif
 
 private let lxAppFFILog = OSLog(subsystem: "LingXia", category: "LxAppFFI")
@@ -362,6 +363,57 @@ extension LxApp {
             return false
             #endif
         }
+    }
+
+    // Launch-at-startup via the login-item registration of the main app
+    // bundle. SMAppService is macOS 13+; older shells report unsupported (-1 /
+    // false) and Rust surfaces that as an error. No main-thread hop: the calls
+    // are thread-safe and register() can block briefly.
+
+    /// 1 = enabled, 0 = disabled, -1 = unsupported on this shell.
+    nonisolated static func autostartIsEnabled() -> Int32 {
+        #if os(macOS)
+        if #available(macOS 13.0, *) {
+            return SMAppService.mainApp.status == .enabled ? 1 : 0
+        }
+        return -1
+        #else
+        return -1
+        #endif
+    }
+
+    nonisolated static func autostartSetEnabled(enabled: Bool) -> Bool {
+        #if os(macOS)
+        if #available(macOS 13.0, *) {
+            let service = SMAppService.mainApp
+            do {
+                switch (enabled, service.status) {
+                case (true, .enabled), (false, .notFound), (false, .notRegistered):
+                    // Already in the requested state; register()/unregister()
+                    // would throw here, so idempotence has to be explicit.
+                    break
+                case (true, .requiresApproval):
+                    // Registered but switched off by the user in System
+                    // Settings; a plain register() throws. Re-registering from
+                    // scratch prompts approval again.
+                    try? service.unregister()
+                    try service.register()
+                case (true, _):
+                    try service.register()
+                case (false, _):
+                    try service.unregister()
+                }
+                return true
+            } catch {
+                os_log(.error, log: lxAppFFILog, "autostart update failed: %{public}@",
+                       error.localizedDescription)
+                return false
+            }
+        }
+        return false
+        #else
+        return false
+        #endif
     }
 
     /// Show the post-download update prompt. `state` is "ready" (downloaded →

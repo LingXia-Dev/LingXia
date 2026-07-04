@@ -201,6 +201,26 @@ impl AppRuntime for Platform {
         }
     }
 
+    fn autostart_is_enabled(&self) -> Result<bool, PlatformError> {
+        match ffi::autostart_is_enabled() {
+            0 => Ok(false),
+            1 => Ok(true),
+            _ => Err(PlatformError::NotSupported(
+                "autostart requires a macOS 13+ app shell".to_string(),
+            )),
+        }
+    }
+
+    fn autostart_set_enabled(&self, enabled: bool) -> Result<(), PlatformError> {
+        if ffi::autostart_set_enabled(enabled) {
+            Ok(())
+        } else {
+            Err(PlatformError::Platform(
+                "Failed to update login item registration".to_string(),
+            ))
+        }
+    }
+
     fn set_tray_menu(&self, items_json: &str) -> Result<(), PlatformError> {
         if ffi::set_tray_menu(items_json) {
             Ok(())
