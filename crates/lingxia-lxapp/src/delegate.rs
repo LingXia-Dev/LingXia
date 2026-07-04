@@ -203,6 +203,8 @@ impl LxAppDelegate for LxApp {
         if let Err(e) = self.appservice_notify(AppServiceEvent::OnHide, Some(args)) {
             error!("Failed to trigger onHide service: {}", e).with_appid(self.appid.clone());
         }
+
+        self.sync_host_ui();
     }
 
     fn on_page_show(self: &Arc<Self>, path: String) {

@@ -426,7 +426,7 @@ enum PanelTarget {
 
 pub(super) fn install() {
     lingxia_platform::set_windows_ui_update_handler(Arc::new(|appid| {
-        sync_shell_layout(&appid);
+        sync_related_shell_layouts(&appid);
     }));
     // A trimmed lxapp page that opted into pull-down refresh gets an app-level
     // "Refresh" right-click entry (mirrors the macOS lxapp menu). The webview
@@ -512,6 +512,22 @@ pub(super) fn install() {
         };
         let _ = lxapp::dispose_page_instance_by_id(page_instance_id, reason);
     }));
+}
+
+fn sync_related_shell_layouts(appid: &str) {
+    let mut appids = Vec::from([appid.to_string()]);
+    if let Some(owner_appid) = shell_owner_appid()
+        && !appids.iter().any(|appid| appid == &owner_appid)
+    {
+        appids.push(owner_appid);
+    }
+    let current_appid = lxapp::get_current_lxapp().0;
+    if !current_appid.is_empty() && !appids.iter().any(|appid| appid == &current_appid) {
+        appids.push(current_appid);
+    }
+    for appid in appids {
+        sync_shell_layout(&appid);
+    }
 }
 
 /// Routes `open_url` requests with in-app targets into the internal
@@ -707,7 +723,9 @@ fn build_window_layout(app: &LxApp, path: &str) -> WindowsShellWindowLayout {
     } else {
         Some(build_navigation_bar_layout(app, path))
     };
-    let panel_activators = build_panel_activators(app);
+    let owner_app = shell_owner_app_for(app);
+    let shell_app = owner_app.as_deref().unwrap_or(app);
+    let panel_activators = build_panel_activators(&shell_app);
     // A simulator-framed window (the runner) gets its window controls from the
     // device-frame toolbar, so the shell drops its own caption on that screen.
     let owner_window = owner_window_handle(&app.appid);
@@ -730,7 +748,7 @@ fn build_window_layout(app: &LxApp, path: &str) -> WindowsShellWindowLayout {
     };
     // A presented browser tab covers the phone tab bar, matching the macOS
     // runner's full-screen browser surface; side tab bars (sidebar) stay.
-    let tab_bar = build_tab_bar_layout(app, !panel_activators.is_empty()).filter(|tabbar| {
+    let tab_bar = build_tab_bar_layout(&shell_app, !panel_activators.is_empty()).filter(|tabbar| {
         address_bar.is_none() || !matches!(tabbar.position, WindowsShellTabBarPosition::Bottom)
     });
     WindowsShellWindowLayout {
@@ -741,6 +759,14 @@ fn build_window_layout(app: &LxApp, path: &str) -> WindowsShellWindowLayout {
         top_inset,
         suppress_window_controls,
     }
+}
+
+fn shell_owner_app_for(active: &LxApp) -> Option<Arc<LxApp>> {
+    let owner_appid = shell_owner_appid()?;
+    if owner_appid == active.appid {
+        return None;
+    }
+    lxapp::try_get(&owner_appid)
 }
 
 fn prime_tabbar_selection(app: &LxApp, selected_index: usize) {
@@ -1100,6 +1126,7 @@ fn build_browser_tab_items() -> Vec<WindowsShellAuxiliaryItemLayout> {
 }
 
 fn build_open_lxapp_items(owner_appid: &str) -> Vec<WindowsShellAuxiliaryItemLayout> {
+    let current_appid = lxapp::get_current_lxapp().0;
     lxapp::list_lxapps()
         .into_iter()
         .filter(|info| !info.is_home)
@@ -1115,7 +1142,7 @@ fn build_open_lxapp_items(owner_appid: &str) -> Vec<WindowsShellAuxiliaryItemLay
             WindowsShellAuxiliaryItemLayout {
                 id: format!("{AUX_LXAPP_PREFIX}{}", info.appid),
                 title,
-                active: false,
+                active: info.appid == current_appid,
                 icon_png: None,
             }
         })

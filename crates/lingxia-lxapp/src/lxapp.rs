@@ -1671,6 +1671,7 @@ impl LxApp {
         // can't resolve, fall back to reloading the current page.
         let initial = self.initial_route();
         if let Ok(current) = self.current_page()
+            && current.path() != initial
             && self.ensure_page_exists(&initial).is_ok()
         {
             let target = self.get_or_create_page(&initial);

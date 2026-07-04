@@ -101,16 +101,21 @@ fn transient_user_data_dir(
         hash ^= *byte as u64;
         hash = hash.wrapping_mul(0x100000001b3);
     }
-    let dir = configured_webview_user_data_dir()
+    let base_dir = configured_webview_user_data_dir()
         .unwrap_or_else(|| std::env::temp_dir().join("lingxia-webview"))
         .join("strict")
         .join(format!("{}-{hash:016x}", std::process::id()));
+    let mut dir = base_dir.clone();
     if dir.exists() {
-        std::fs::remove_dir_all(&dir).map_err(|err| {
-            WebViewError::WebView(format!(
-                "failed to clear strict WebView2 profile {dir:?}: {err}"
-            ))
-        })?;
+        match std::fs::remove_dir_all(&dir) {
+            Ok(()) => {}
+            Err(err) => {
+                log::warn!(
+                    "strict WebView2 profile {dir:?} is still in use; creating a fresh profile: {err}"
+                );
+                dir = strict_fallback_user_data_dir(&base_dir);
+            }
+        }
     }
     std::fs::create_dir_all(&dir).map_err(|err| {
         WebViewError::WebView(format!(
@@ -118,6 +123,18 @@ fn transient_user_data_dir(
         ))
     })?;
     Ok(Some(dir))
+}
+
+fn strict_fallback_user_data_dir(base_dir: &std::path::Path) -> PathBuf {
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or_default();
+    let name = base_dir
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("profile");
+    base_dir.with_file_name(format!("{name}-{nonce:x}"))
 }
 
 pub(crate) fn registered_request_schemes(registered_schemes: &[String]) -> Vec<String> {
