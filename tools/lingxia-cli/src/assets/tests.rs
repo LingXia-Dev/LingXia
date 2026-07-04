@@ -201,6 +201,7 @@ fn generated_app_json_includes_capabilities() {
             browser: false,
             terminal: true,
             proxy: false,
+            autostart: false,
         }),
         browser: None,
         generated_ui: None,
@@ -470,6 +471,7 @@ fn generated_ui_json_rejects_terminal_when_capability_disabled() {
             browser: false,
             terminal: false,
             proxy: false,
+            autostart: false,
         }),
         browser: None,
         generated_ui: Some(serde_json::json!({

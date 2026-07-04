@@ -83,6 +83,10 @@ pub struct CapabilitiesConfig {
     /// Opt-in HTTP proxy for the in-app browser (desktop). Requires browser.
     #[serde(default)]
     pub proxy: bool,
+    /// Unlocks `lx.app.autostart` (launch at system startup). macOS/Windows
+    /// only; enabling is always a runtime user decision, never automatic.
+    #[serde(default)]
+    pub autostart: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
