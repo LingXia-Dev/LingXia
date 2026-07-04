@@ -134,6 +134,19 @@ try {
         Move-Item -Path $assetPath -Destination $dest -Force
         Write-Info "Installed $binName -> $dest"
     }
+
+    $MetaPath = Join-Path $InstallDir 'lingxia-cli-install.json'
+    $InstallPath = Join-Path $InstallDir 'lingxia.exe'
+    $Metadata = [ordered]@{
+        channel      = 'github-release'
+        repo         = $Repo
+        version      = $Version
+        install_path = [System.IO.Path]::GetFullPath($InstallPath)
+    }
+    $MetadataJson = $Metadata | ConvertTo-Json -Depth 4
+    $Utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+    [System.IO.File]::WriteAllText($MetaPath, $MetadataJson, $Utf8NoBom)
+    Write-Info "Installed update metadata -> $MetaPath"
 }
 finally {
     Remove-Item -Recurse -Force $TmpDir -ErrorAction SilentlyContinue

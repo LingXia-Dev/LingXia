@@ -149,7 +149,7 @@ fn install_update(exe_path: &Path, status: &UpdateStatus) -> Result<()> {
         .ok_or_else(|| anyhow!("Executable path has no parent: {}", exe_path.display()))?;
     let temp_path = parent.join(format!(".lingxia-update-{}", std::process::id()));
 
-    let install_result = (|| -> Result<()> {
+    let install_result = (|| -> Result<BinaryReplace> {
         fs::write(&temp_path, &bytes)
             .with_context(|| format!("Failed to write temp binary: {}", temp_path.display()))?;
 
@@ -160,19 +160,13 @@ fn install_update(exe_path: &Path, status: &UpdateStatus) -> Result<()> {
                 .with_context(|| format!("Failed to chmod {}", temp_path.display()))?;
         }
 
-        fs::rename(&temp_path, exe_path).with_context(|| {
-            format!(
-                "Failed to replace current executable\n  From: {}\n  To: {}",
-                temp_path.display(),
-                exe_path.display()
-            )
-        })
+        replace_current_binary(&temp_path, exe_path)
     })();
 
     if install_result.is_err() {
         let _ = fs::remove_file(&temp_path);
     }
-    install_result?;
+    let replace = install_result?;
 
     update_install_metadata_version(exe_path, &status.latest_version.to_string())?;
     if let Some(cache_path) = update_cache_path()
@@ -181,7 +175,19 @@ fn install_update(exe_path: &Path, status: &UpdateStatus) -> Result<()> {
         let _ = fs::remove_file(cache_path);
     }
 
-    println!("Updated LingXia CLI to {}", status.latest_version);
+    match replace {
+        #[cfg(not(target_os = "windows"))]
+        BinaryReplace::Complete => {
+            println!("Updated LingXia CLI to {}", status.latest_version);
+        }
+        #[cfg(target_os = "windows")]
+        BinaryReplace::Deferred => {
+            println!(
+                "Staged LingXia CLI update to {}; it will be installed after this command exits.",
+                status.latest_version
+            );
+        }
+    }
 
     // The CLI, lxdev, and the runner ship from one release, so update them
     // together. Both are best-effort: a failure (e.g. offline, or an older
@@ -216,7 +222,7 @@ fn update_sibling_binary(dir: &Path, name: &str, repo: &str, tag: &str) {
             return;
         }
     };
-    let dest = dir.join(name);
+    let dest = dir.join(binary_file_name(name));
     let temp_path = dir.join(format!(".{name}-update-{}", std::process::id()));
     let result = (|| -> Result<()> {
         fs::write(&temp_path, &bytes)
@@ -234,6 +240,62 @@ fn update_sibling_binary(dir: &Path, name: &str, repo: &str, tag: &str) {
         let _ = fs::remove_file(&temp_path);
         eprintln!("warning: failed to update {name}: {err}");
     }
+}
+
+enum BinaryReplace {
+    #[cfg(not(target_os = "windows"))]
+    Complete,
+    #[cfg(target_os = "windows")]
+    Deferred,
+}
+
+#[cfg(not(target_os = "windows"))]
+fn replace_current_binary(temp_path: &Path, exe_path: &Path) -> Result<BinaryReplace> {
+    fs::rename(temp_path, exe_path).with_context(|| {
+        format!(
+            "Failed to replace current executable\n  From: {}\n  To: {}",
+            temp_path.display(),
+            exe_path.display()
+        )
+    })?;
+    Ok(BinaryReplace::Complete)
+}
+
+#[cfg(target_os = "windows")]
+fn replace_current_binary(temp_path: &Path, exe_path: &Path) -> Result<BinaryReplace> {
+    use std::os::windows::process::CommandExt;
+
+    // Windows keeps the running .exe locked, so the CLI cannot atomically
+    // overwrite itself in-process. Hand the final swap to a detached helper
+    // that waits for this process to exit.
+    let pid = std::process::id();
+    let script = format!(
+        "$ErrorActionPreference='Stop'; \
+         Wait-Process -Id {pid} -ErrorAction SilentlyContinue; \
+         Move-Item -LiteralPath {} -Destination {} -Force",
+        ps_single_quote(temp_path),
+        ps_single_quote(exe_path),
+    );
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+    std::process::Command::new("powershell.exe")
+        .args([
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-WindowStyle",
+            "Hidden",
+            "-Command",
+            &script,
+        ])
+        .creation_flags(CREATE_NO_WINDOW)
+        .spawn()
+        .context("Failed to schedule deferred Windows CLI replacement")?;
+    Ok(BinaryReplace::Deferred)
+}
+
+#[cfg(target_os = "windows")]
+fn ps_single_quote(path: &Path) -> String {
+    format!("'{}'", path.display().to_string().replace('\'', "''"))
 }
 
 fn load_update_status(force_refresh: bool) -> Result<UpdateStatus> {
@@ -411,7 +473,11 @@ fn release_repo_for_current_install() -> String {
 
 fn default_install_path() -> Option<PathBuf> {
     let home = dirs::home_dir()?;
-    Some(home.join(".local").join("bin").join(BIN_NAME))
+    Some(
+        home.join(".local")
+            .join("bin")
+            .join(binary_file_name(BIN_NAME)),
+    )
 }
 
 fn load_install_metadata(exe_path: &Path) -> Option<InstallMetadata> {
@@ -441,6 +507,14 @@ fn current_platform_asset_name() -> Result<String> {
     Ok(format!("lingxia-{}", platform_suffix()?))
 }
 
+fn binary_file_name(name: &str) -> String {
+    if cfg!(target_os = "windows") {
+        format!("{name}.exe")
+    } else {
+        name.to_string()
+    }
+}
+
 /// The `<os>-<arch>` suffix shared by every release binary asset
 /// (`lingxia-<suffix>`, `lxdev-<suffix>`). Errors on platforms where
 /// auto-update isn't supported yet.
@@ -448,6 +522,7 @@ fn platform_suffix() -> Result<String> {
     let os = match env::consts::OS {
         "macos" => "darwin",
         "linux" => "linux",
+        "windows" => "windows",
         other => {
             return Err(anyhow!(
                 "Automatic CLI update is not supported on this OS yet: {}",
@@ -465,7 +540,12 @@ fn platform_suffix() -> Result<String> {
             ));
         }
     };
-    Ok(format!("{os}-{arch}"))
+    let ext = if cfg!(target_os = "windows") {
+        ".exe"
+    } else {
+        ""
+    };
+    Ok(format!("{os}-{arch}{ext}"))
 }
 
 #[cfg(test)]
@@ -475,7 +555,7 @@ mod tests {
     #[test]
     fn current_platform_asset_name_uses_release_naming() {
         let asset = current_platform_asset_name();
-        if cfg!(target_os = "macos") || cfg!(target_os = "linux") {
+        if cfg!(target_os = "macos") || cfg!(target_os = "linux") || cfg!(target_os = "windows") {
             assert!(asset.unwrap().starts_with("lingxia-"));
         } else {
             assert!(asset.is_err());
