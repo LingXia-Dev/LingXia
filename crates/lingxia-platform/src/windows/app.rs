@@ -37,6 +37,124 @@ pub(crate) fn request_windows_app_exit() {
     }
 }
 
+/// Per-user launch-at-startup entries; HKCU needs no elevation. The value name
+/// is the app identifier so renamed product titles keep pointing at one entry.
+const AUTOSTART_RUN_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Run";
+
+fn autostart_command(exe: &Path) -> String {
+    format!("\"{}\"", exe.display())
+}
+
+fn read_autostart_run_entry(name: &str) -> Option<String> {
+    use windows::Win32::System::Registry::{HKEY_CURRENT_USER, RRF_RT_REG_SZ, RegGetValueW};
+    use windows::core::HSTRING;
+
+    let subkey = HSTRING::from(AUTOSTART_RUN_KEY);
+    let value = HSTRING::from(name);
+    let mut size = 0u32;
+    let status = unsafe {
+        RegGetValueW(
+            HKEY_CURRENT_USER,
+            &subkey,
+            &value,
+            RRF_RT_REG_SZ,
+            None,
+            None,
+            Some(&mut size),
+        )
+    };
+    if !status.is_ok() || size < 2 {
+        return None;
+    }
+    let mut data = vec![0u8; size as usize];
+    let status = unsafe {
+        RegGetValueW(
+            HKEY_CURRENT_USER,
+            &subkey,
+            &value,
+            RRF_RT_REG_SZ,
+            None,
+            Some(data.as_mut_ptr().cast()),
+            Some(&mut size),
+        )
+    };
+    if !status.is_ok() {
+        return None;
+    }
+    let units: Vec<u16> = data
+        .chunks_exact(2)
+        .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
+        .take_while(|&unit| unit != 0)
+        .collect();
+    Some(String::from_utf16_lossy(&units))
+}
+
+fn write_autostart_run_entry(name: &str, exe: &Path) -> Result<(), PlatformError> {
+    use windows::Win32::System::Registry::{
+        HKEY, HKEY_CURRENT_USER, KEY_SET_VALUE, REG_OPTION_NON_VOLATILE, REG_SZ, RegCloseKey,
+        RegCreateKeyExW, RegSetValueExW,
+    };
+    use windows::core::{HSTRING, PCWSTR};
+
+    let subkey = HSTRING::from(AUTOSTART_RUN_KEY);
+    let value = HSTRING::from(name);
+    let data: Vec<u8> = autostart_command(exe)
+        .encode_utf16()
+        .chain(std::iter::once(0))
+        .flat_map(u16::to_le_bytes)
+        .collect();
+
+    unsafe {
+        let mut key = HKEY::default();
+        RegCreateKeyExW(
+            HKEY_CURRENT_USER,
+            &subkey,
+            None,
+            PCWSTR::null(),
+            REG_OPTION_NON_VOLATILE,
+            KEY_SET_VALUE,
+            None,
+            &mut key,
+            None,
+        )
+        .ok()
+        .map_err(|err| PlatformError::Platform(format!("cannot open Run key: {err}")))?;
+        let status = RegSetValueExW(key, &value, None, REG_SZ, Some(&data));
+        let _ = RegCloseKey(key);
+        status
+            .ok()
+            .map_err(|err| PlatformError::Platform(format!("cannot write Run entry: {err}")))
+    }
+}
+
+fn remove_autostart_run_entry(name: &str) -> Result<(), PlatformError> {
+    use windows::Win32::Foundation::ERROR_FILE_NOT_FOUND;
+    use windows::Win32::System::Registry::{
+        HKEY, HKEY_CURRENT_USER, KEY_SET_VALUE, RegCloseKey, RegDeleteValueW, RegOpenKeyExW,
+    };
+    use windows::core::HSTRING;
+
+    let subkey = HSTRING::from(AUTOSTART_RUN_KEY);
+    let value = HSTRING::from(name);
+    unsafe {
+        let mut key = HKEY::default();
+        let open = RegOpenKeyExW(HKEY_CURRENT_USER, &subkey, None, KEY_SET_VALUE, &mut key);
+        if open == ERROR_FILE_NOT_FOUND {
+            return Ok(());
+        }
+        open.ok()
+            .map_err(|err| PlatformError::Platform(format!("cannot open Run key: {err}")))?;
+        let status = RegDeleteValueW(key, &value);
+        let _ = RegCloseKey(key);
+        if status == ERROR_FILE_NOT_FOUND {
+            return Ok(());
+        }
+        status
+            .ok()
+            .map_err(|err| PlatformError::Platform(format!("cannot delete Run entry: {err}")))
+    }
+}
+
 /// Process-wide interceptor for [`AppRuntime::open_url`] requests. Returns
 /// `true` when the request was handled (e.g. routed into an in-app browser
 /// tab); `false` falls back to the OS shell handler.
@@ -159,6 +277,18 @@ impl Platform {
         &self.app_identifier
     }
 
+    /// Run-entry value name. `app_identifier` falls back to a constant shared
+    /// by every LingXia app without an explicit `windows_app_id`, so two such
+    /// apps would clobber each other's entry — disambiguate with the product
+    /// name (the same per-app key `state_root_for_product` uses).
+    fn autostart_value_name(&self) -> String {
+        if self.app_identifier != DEFAULT_APP_IDENTIFIER {
+            self.app_identifier.clone()
+        } else {
+            format!("{DEFAULT_APP_IDENTIFIER}.{}", self.product_name)
+        }
+    }
+
     pub(super) fn product_name(&self) -> &str {
         &self.product_name
     }
@@ -247,6 +377,29 @@ impl AppRuntime for Platform {
     fn exit(&self) -> Result<(), PlatformError> {
         request_windows_app_exit();
         Ok(())
+    }
+
+    fn autostart_is_enabled(&self) -> Result<bool, PlatformError> {
+        let exe = std::env::current_exe().map_err(|err| {
+            PlatformError::Platform(format!("cannot resolve app executable: {err}"))
+        })?;
+        // Enabled means the entry points at *this* executable: after a
+        // reinstall to a new path the stale entry no longer launches the app,
+        // so it must read as disabled (re-enabling then rewrites the path).
+        Ok(read_autostart_run_entry(&self.autostart_value_name())
+            .is_some_and(|cmd| cmd.eq_ignore_ascii_case(&autostart_command(&exe))))
+    }
+
+    fn autostart_set_enabled(&self, enabled: bool) -> Result<(), PlatformError> {
+        let name = self.autostart_value_name();
+        if enabled {
+            let exe = std::env::current_exe().map_err(|err| {
+                PlatformError::Platform(format!("cannot resolve app executable: {err}"))
+            })?;
+            write_autostart_run_entry(&name, &exe)
+        } else {
+            remove_autostart_run_entry(&name)
+        }
     }
 
     // Tray chrome. The system-tray icon and its menu live in the host SDK

@@ -146,6 +146,14 @@ mod bridge {
         #[swift_bridge(swift_name = "LxApp.setAppBadge")]
         fn set_app_badge(text: &str) -> bool;
 
+        // Launch-at-startup via SMAppService (macOS 13+ shells only).
+        // Returns 1 = enabled, 0 = disabled, -1 = unsupported.
+        #[swift_bridge(swift_name = "LxApp.autostartIsEnabled")]
+        fn autostart_is_enabled() -> i32;
+
+        #[swift_bridge(swift_name = "LxApp.autostartSetEnabled")]
+        fn autostart_set_enabled(enabled: bool) -> bool;
+
         #[swift_bridge(swift_name = "LxApp.setTrayMenu")]
         fn set_tray_menu(items_json: &str) -> bool;
 
@@ -393,13 +401,14 @@ mod bridge {
 // macOS-only: `notify_app_update_ready` is consumed only by the macOS updater
 // (`install_update_on_macos`); `reveal_in_file_manager` is macOS-only too.
 pub use bridge::{
-    ActionSheetOptions, ModalOptions, ToastIcon, ToastOptions, ToastPosition, cancel_preview_media,
-    close_lxapp, close_surface, exit_app, hide_surface, hide_toast, navigate,
-    open_document_external, open_lxapp, open_url, present_layout, present_surface, preview_media,
-    review_document, set_app_badge, set_managed_surface_visible, set_tray_badge,
-    set_tray_click_intercept, set_tray_icon, set_tray_menu, set_tray_title, set_tray_visible,
-    share, show_action_sheet, show_modal, show_surface, show_toast, toggle_managed_surface,
-    update_navbar_ui, update_orientation_ui, update_tabbar_ui,
+    ActionSheetOptions, ModalOptions, ToastIcon, ToastOptions, ToastPosition, autostart_is_enabled,
+    autostart_set_enabled, cancel_preview_media, close_lxapp, close_surface, exit_app,
+    hide_surface, hide_toast, navigate, open_document_external, open_lxapp, open_url,
+    present_layout, present_surface, preview_media, review_document, set_app_badge,
+    set_managed_surface_visible, set_tray_badge, set_tray_click_intercept, set_tray_icon,
+    set_tray_menu, set_tray_title, set_tray_visible, share, show_action_sheet, show_modal,
+    show_surface, show_toast, toggle_managed_surface, update_navbar_ui, update_orientation_ui,
+    update_tabbar_ui,
 };
 #[cfg(target_os = "macos")]
 pub use bridge::{notify_app_update_ready, reveal_in_file_manager};
