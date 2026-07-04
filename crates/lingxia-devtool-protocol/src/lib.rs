@@ -40,7 +40,7 @@ pub mod handlers {
         pub const CLOSE: &str = "lxapp.close";
         pub const RESTART: &str = "lxapp.restart";
         pub const UNINSTALL: &str = "lxapp.uninstall";
-        /// Build the lxapp front-end bundle. Handled by the `lingxia dev`
+        /// Rebuild the lxapp front-end bundle. Handled by the `lingxia dev`
         /// orchestrator (which owns the project + build pipeline), not the
         /// runtime — so it works even with no app attached.
         pub const BUILD: &str = "lxapp.build";

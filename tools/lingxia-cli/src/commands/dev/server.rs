@@ -540,9 +540,10 @@ fn handle_client_connection(
         return Err(anyhow!("Client websocket must send exactly one command"));
     };
 
-    // `lxapp.build` is an orchestrator-level operation: the dev server owns the
-    // project + build pipeline, so it builds in-process rather than forwarding to
-    // the runtime (which has no build toolchain). Works even with no app attached.
+    // `lxapp.build` is an orchestrator-level rebuild operation: the dev server
+    // owns the project + build pipeline, so it builds in-process rather than
+    // forwarding to the runtime (which has no build toolchain). Works even with
+    // no app attached.
     if handler.as_str() == lingxia_devtool_protocol::handlers::lxapp::BUILD {
         let payload = match run_lxapp_build(&state.project_root, args.as_ref()) {
             Ok(()) => DevtoolsWireMessage::Result {
@@ -635,7 +636,7 @@ fn command_timeout(args: Option<&serde_json::Value>) -> Duration {
     Duration::from_millis(timeout_ms).saturating_add(COMMAND_TIMEOUT_BUFFER)
 }
 
-/// Build the lxapp front-end bundle in-process. The dev orchestrator owns the
+/// Rebuild the lxapp front-end bundle in-process. The dev orchestrator owns the
 /// project + build pipeline; this mirrors `lingxia build` run in a standalone
 /// lxapp dir. Output streams to the `lingxia dev` terminal; the client receives
 /// only ok/error.
