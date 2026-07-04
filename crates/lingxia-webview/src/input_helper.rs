@@ -24,7 +24,10 @@ use std::collections::hash_map::RandomState;
 ))]
 use std::hash::{BuildHasher, Hash, Hasher};
 
-#[cfg(all(feature = "webview-input", target_os = "macos"))]
+#[cfg(all(
+    feature = "webview-input",
+    any(target_os = "macos", target_os = "windows")
+))]
 pub(crate) const INPUT_HELPER_BOOTSTRAP: &str = r#"
 (function() {
     if (window.__LingXiaInput) return;
@@ -203,7 +206,10 @@ pub(crate) fn parse_wrapped_eval_result(raw: &str) -> Result<Value, WebViewScrip
     }
 }
 
-#[cfg(all(feature = "webview-input", target_os = "macos"))]
+#[cfg(all(
+    feature = "webview-input",
+    any(target_os = "macos", target_os = "windows")
+))]
 pub(crate) fn build_helper_invocation(expr: &str) -> String {
     format!(
         "(() => {{ {} return {}; }})()",

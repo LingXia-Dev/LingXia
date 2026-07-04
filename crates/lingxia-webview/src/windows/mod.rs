@@ -8,7 +8,10 @@
 //! declares them, keeps the shared import prelude for WebView2 plumbing,
 //! and re-exports the public Windows WebView API.
 
-use crate::traits::{DownloadRequest, LoadDataRequest, NavigationPolicy, NewWindowPolicy};
+use crate::traits::{
+    DownloadRequest, LoadDataRequest, NavigationPolicy, NewWindowPolicy, WebViewCookie,
+    WebViewCookieSameSite, WebViewCookieSetRequest,
+};
 use crate::webview::{
     EffectiveWebViewCreateOptions, SecurityProfile, WebTag, WebViewCreateSender,
     WebViewCreateStage, find_webview, find_webview_delegate, register_webview,
@@ -47,6 +50,8 @@ use windows::{
 mod controller;
 mod environment;
 mod events;
+#[cfg(feature = "webview-input")]
+mod input;
 mod native_view;
 mod scheme;
 

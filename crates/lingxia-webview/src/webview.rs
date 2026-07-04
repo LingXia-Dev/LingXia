@@ -1178,6 +1178,10 @@ impl WebViewInputController for WebView {
         {
             return self.inner.click_inner(_selector, _options).await;
         }
+        #[cfg(all(feature = "webview-input", target_os = "windows"))]
+        {
+            return self.inner.click_inner(_selector, _options).await;
+        }
         #[cfg(target_os = "android")]
         {
             return self.inner.click_inner(_selector, _options).await;
@@ -1206,6 +1210,10 @@ impl WebViewInputController for WebView {
         {
             return self.inner.type_text_inner(_selector, _text, _options).await;
         }
+        #[cfg(all(feature = "webview-input", target_os = "windows"))]
+        {
+            return self.inner.type_text_inner(_selector, _text, _options).await;
+        }
         #[allow(unreachable_code)]
         Err(WebViewInputError::Unsupported(
             "input control is not implemented for this platform",
@@ -1218,7 +1226,10 @@ impl WebViewInputController for WebView {
         _text: &str,
         _options: FillOptions,
     ) -> Result<(), WebViewInputError> {
-        #[cfg(all(feature = "webview-input", target_os = "macos"))]
+        #[cfg(all(
+            feature = "webview-input",
+            any(target_os = "macos", target_os = "windows")
+        ))]
         {
             let _ = _options;
             return self
@@ -1244,6 +1255,10 @@ impl WebViewInputController for WebView {
         {
             return self.inner.press_inner(_key, _options).await;
         }
+        #[cfg(all(feature = "webview-input", target_os = "windows"))]
+        {
+            return self.inner.press_inner(_key, _options).await;
+        }
         #[allow(unreachable_code)]
         Err(WebViewInputError::Unsupported(
             "input control is not implemented for this platform",
@@ -1260,6 +1275,10 @@ impl WebViewInputController for WebView {
         {
             return self.inner.scroll_inner(_dx, _dy, _options).await;
         }
+        #[cfg(all(feature = "webview-input", target_os = "windows"))]
+        {
+            return self.inner.scroll_inner(_dx, _dy, _options).await;
+        }
         #[allow(unreachable_code)]
         Err(WebViewInputError::Unsupported(
             "input control is not implemented for this platform",
@@ -1272,6 +1291,10 @@ impl WebViewInputController for WebView {
         _options: ScrollOptions,
     ) -> Result<(), WebViewInputError> {
         #[cfg(all(feature = "webview-input", target_os = "macos"))]
+        {
+            return self.inner.scroll_to_inner(_selector, _options).await;
+        }
+        #[cfg(all(feature = "webview-input", target_os = "windows"))]
         {
             return self.inner.scroll_to_inner(_selector, _options).await;
         }

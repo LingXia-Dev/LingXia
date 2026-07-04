@@ -53,6 +53,30 @@ pub(crate) enum UiCommand {
     TakeScreenshot {
         resp: Sender<StdResult<Vec<u8>>>,
     },
+    ListCookies {
+        resp: Sender<StdResult<Vec<WebViewCookie>>>,
+    },
+    SetCookie {
+        request: WebViewCookieSetRequest,
+        resp: Sender<StdResult<()>>,
+    },
+    DeleteCookie {
+        name: String,
+        domain: String,
+        path: String,
+        resp: Sender<StdResult<()>>,
+    },
+    ClearCookies {
+        resp: Sender<StdResult<()>>,
+    },
+    /// Invoke a Chrome DevTools Protocol method (e.g. `Input.dispatchMouseEvent`)
+    /// and return its raw JSON result.
+    #[cfg_attr(not(feature = "webview-input"), allow(dead_code))]
+    CallDevToolsProtocol {
+        method: String,
+        params: String,
+        resp: Sender<StdResult<String>>,
+    },
     OpenDevTools {
         resp: Sender<StdResult<()>>,
     },
@@ -188,7 +212,7 @@ impl WebViewInner {
     /// All synchronous dispatchers are built on this: it guards against
     /// self-deadlock when called from the UI thread itself, wakes the UI
     /// message loop, and waits for the response (optionally with a timeout).
-    fn dispatch_ui<T>(
+    pub(super) fn dispatch_ui<T>(
         &self,
         make: impl FnOnce(Sender<T>) -> UiCommand,
         timeout: Option<Duration>,
@@ -293,7 +317,7 @@ impl WebViewInner {
         }
     }
 
-    fn dispatch_eval_command(
+    pub(super) fn dispatch_eval_command(
         &self,
         js: String,
     ) -> std::result::Result<serde_json::Value, WebViewScriptError> {
@@ -312,9 +336,35 @@ impl WebViewInner {
         self.dispatch_ui(|resp| UiCommand::CurrentUrl { resp }, None)
             .map_err(|err| err.into_webview_error("read current WebView URL"))?
     }
+
+    fn dispatch_list_cookies(&self) -> StdResult<Vec<WebViewCookie>> {
+        self.dispatch_ui(|resp| UiCommand::ListCookies { resp }, None)
+            .map_err(|err| err.into_webview_error("list WebView cookies"))?
+    }
+
+    /// Invoke a Chrome DevTools Protocol method and return its raw JSON
+    /// result. Backs the input automation dispatch.
+    #[cfg(feature = "webview-input")]
+    pub(super) fn dispatch_cdp_command(
+        &self,
+        method: &str,
+        params: serde_json::Value,
+    ) -> StdResult<String> {
+        let (method, params) = (method.to_string(), params.to_string());
+        self.dispatch_ui(
+            |resp| UiCommand::CallDevToolsProtocol {
+                method,
+                params,
+                resp,
+            },
+            Some(Duration::from_secs(4)),
+        )
+        .map_err(|err| err.into_webview_error("run CDP command"))?
+    }
 }
 
 /// Failure modes of [`WebViewInner::dispatch_ui`].
+#[derive(Debug)]
 pub(crate) enum UiDispatchError {
     /// Called from the UI thread itself; blocking would self-deadlock.
     SameThread,
@@ -406,6 +456,28 @@ impl WebViewController for WebViewInner {
 
     async fn take_screenshot(&self) -> StdResult<Vec<u8>> {
         self.dispatch_screenshot_command()
+    }
+
+    async fn list_cookies(&self) -> StdResult<Vec<WebViewCookie>> {
+        self.dispatch_list_cookies()
+    }
+
+    async fn set_cookie(&self, request: WebViewCookieSetRequest) -> StdResult<()> {
+        self.dispatch_command(|resp| UiCommand::SetCookie { request, resp })
+    }
+
+    async fn delete_cookie(&self, name: &str, domain: &str, path: &str) -> StdResult<()> {
+        let (name, domain, path) = (name.to_string(), domain.to_string(), path.to_string());
+        self.dispatch_command(|resp| UiCommand::DeleteCookie {
+            name,
+            domain,
+            path,
+            resp,
+        })
+    }
+
+    async fn clear_cookies(&self) -> StdResult<()> {
+        self.dispatch_command(|resp| UiCommand::ClearCookies { resp })
     }
 }
 
@@ -721,6 +793,33 @@ pub(crate) fn handle_command(state: &mut UiState, command: UiCommand) -> StdResu
         }
         UiCommand::TakeScreenshot { resp } => {
             start_capture_preview_png(&state.webview, resp);
+        }
+        UiCommand::ListCookies { resp } => {
+            start_list_cookies(&state.webview, resp);
+        }
+        UiCommand::SetCookie { request, resp } => {
+            let result = set_cookie(&state.webview, &request);
+            let _ = resp.send(result);
+        }
+        UiCommand::DeleteCookie {
+            name,
+            domain,
+            path,
+            resp,
+        } => {
+            let result = delete_cookie(&state.webview, &name, &domain, &path);
+            let _ = resp.send(result);
+        }
+        UiCommand::ClearCookies { resp } => {
+            let result = clear_cookies(&state.webview);
+            let _ = resp.send(result);
+        }
+        UiCommand::CallDevToolsProtocol {
+            method,
+            params,
+            resp,
+        } => {
+            start_call_devtools_protocol(&state.webview, &method, &params, resp);
         }
         UiCommand::OpenDevTools { resp } => {
             let result = unsafe {
