@@ -169,12 +169,7 @@ fn audit_release_output(project: &Project) -> Result<()> {
     }
 }
 
-fn audit_text_artifact(
-    rel: &str,
-    source: &str,
-    project_root: &str,
-    violations: &mut Vec<String>,
-) {
+fn audit_text_artifact(rel: &str, source: &str, project_root: &str, violations: &mut Vec<String>) {
     for pattern in ["sourceMappingURL", "//# sourceMappingURL", "//#region"] {
         if source.contains(pattern) {
             violations.push(format!(
@@ -439,7 +434,11 @@ mod tests {
             "<!doctype html>\n<html>\n  <head></head>\n  <body>\n    <div id=\"root\"></div>\n  </body>\n</html>\n",
         )
         .unwrap();
-        fs::write(project.output_dir.join("logic.js"), "console.log('debug'); Page({});").unwrap();
+        fs::write(
+            project.output_dir.join("logic.js"),
+            "console.log('debug'); Page({});",
+        )
+        .unwrap();
 
         harden_release_output(&project).unwrap();
 
