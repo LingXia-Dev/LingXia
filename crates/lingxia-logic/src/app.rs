@@ -4,6 +4,8 @@ use lingxia_platform::traits::app_runtime::AppRuntime;
 use lxapp::LxApp;
 use rong::{IntoJSObj, JSContext, JSFunc, JSObject, JSResult};
 
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+mod autostart;
 mod screenshot;
 mod update;
 
@@ -69,6 +71,8 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     app.set("getBaseInfo", JSFunc::new(ctx, get_app_base_info)?)?;
     app.set("exit", JSFunc::new(ctx, exit_app)?)?;
     app.set("setBadge", JSFunc::new(ctx, set_app_badge)?)?;
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    autostart::init(ctx, &app)?;
     screenshot::init(ctx, &app)?;
     update::init(ctx, &app)?;
 
