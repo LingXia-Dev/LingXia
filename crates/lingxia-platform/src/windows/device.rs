@@ -1,9 +1,7 @@
 use std::path::{Component, Path, PathBuf};
 use std::sync::OnceLock;
 
-use windows::Win32::System::Registry::{
-    HKEY_LOCAL_MACHINE, REG_ROUTINE_FLAGS, RRF_RT_REG_SZ, RegGetValueW,
-};
+use windows::Win32::System::Registry::HKEY_LOCAL_MACHINE;
 use windows::core::HSTRING;
 
 use super::{Platform, not_supported};
@@ -176,52 +174,7 @@ fn rtl_get_version() -> Option<(u32, u32, u32)> {
 }
 
 fn read_hklm_string(subkey: &str, value: &str) -> Option<String> {
-    let data = read_hklm_value(subkey, value, RRF_RT_REG_SZ)?;
-    if data.len() < 2 {
-        return None;
-    }
-    let units: Vec<u16> = data
-        .chunks_exact(2)
-        .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
-        .take_while(|&unit| unit != 0)
-        .collect();
-    let text = String::from_utf16_lossy(&units).trim().to_string();
+    let text = super::registry::read_string(HKEY_LOCAL_MACHINE, subkey, value)?;
+    let text = text.trim().to_string();
     (!text.is_empty()).then_some(text)
-}
-
-fn read_hklm_value(subkey: &str, value: &str, flags: REG_ROUTINE_FLAGS) -> Option<Vec<u8>> {
-    let subkey = HSTRING::from(subkey);
-    let value = HSTRING::from(value);
-    let mut size = 0u32;
-    let status = unsafe {
-        RegGetValueW(
-            HKEY_LOCAL_MACHINE,
-            &subkey,
-            &value,
-            flags,
-            None,
-            None,
-            Some(&mut size),
-        )
-    };
-    if !status.is_ok() || size == 0 {
-        return None;
-    }
-    let mut data = vec![0u8; size as usize];
-    let status = unsafe {
-        RegGetValueW(
-            HKEY_LOCAL_MACHINE,
-            &subkey,
-            &value,
-            flags,
-            None,
-            Some(data.as_mut_ptr().cast()),
-            Some(&mut size),
-        )
-    };
-    if !status.is_ok() {
-        return None;
-    }
-    data.truncate(size as usize);
-    Some(data)
 }

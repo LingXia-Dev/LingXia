@@ -46,47 +46,9 @@ fn autostart_command(exe: &Path) -> String {
 }
 
 fn read_autostart_run_entry(name: &str) -> Option<String> {
-    use windows::Win32::System::Registry::{HKEY_CURRENT_USER, RRF_RT_REG_SZ, RegGetValueW};
-    use windows::core::HSTRING;
+    use windows::Win32::System::Registry::HKEY_CURRENT_USER;
 
-    let subkey = HSTRING::from(AUTOSTART_RUN_KEY);
-    let value = HSTRING::from(name);
-    let mut size = 0u32;
-    let status = unsafe {
-        RegGetValueW(
-            HKEY_CURRENT_USER,
-            &subkey,
-            &value,
-            RRF_RT_REG_SZ,
-            None,
-            None,
-            Some(&mut size),
-        )
-    };
-    if !status.is_ok() || size < 2 {
-        return None;
-    }
-    let mut data = vec![0u8; size as usize];
-    let status = unsafe {
-        RegGetValueW(
-            HKEY_CURRENT_USER,
-            &subkey,
-            &value,
-            RRF_RT_REG_SZ,
-            None,
-            Some(data.as_mut_ptr().cast()),
-            Some(&mut size),
-        )
-    };
-    if !status.is_ok() {
-        return None;
-    }
-    let units: Vec<u16> = data
-        .chunks_exact(2)
-        .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
-        .take_while(|&unit| unit != 0)
-        .collect();
-    Some(String::from_utf16_lossy(&units))
+    super::registry::read_string(HKEY_CURRENT_USER, AUTOSTART_RUN_KEY, name)
 }
 
 fn write_autostart_run_entry(name: &str, exe: &Path) -> Result<(), PlatformError> {
