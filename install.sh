@@ -165,6 +165,28 @@ for bin in $BINARIES; do
   info "Installed $bin_name -> $dest"
 done
 
+metadata_install_path="$INSTALL_DIR/lingxia${EXT}"
+if [ "$OS" = "windows" ] && command -v cygpath >/dev/null 2>&1; then
+  metadata_install_path="$(cygpath -w "$metadata_install_path")"
+fi
+
+json_escape() {
+  printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'
+}
+
+metadata_repo="$(json_escape "$REPO")"
+metadata_version="$(json_escape "$VERSION")"
+metadata_install_path="$(json_escape "$metadata_install_path")"
+cat > "$INSTALL_DIR/lingxia-cli-install.json" <<EOF
+{
+  "channel": "github-release",
+  "repo": "$metadata_repo",
+  "version": "$metadata_version",
+  "install_path": "$metadata_install_path"
+}
+EOF
+info "Installed update metadata -> $INSTALL_DIR/lingxia-cli-install.json"
+
 info ""
 info "Installed lingxia + lxdev $VERSION to $INSTALL_DIR; run \`lingxia${EXT} --version\`"
 
