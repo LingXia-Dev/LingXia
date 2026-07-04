@@ -66,6 +66,12 @@ capabilities:
   # Enable the built-in terminal runtime. Declare a native terminal surface under `surfaces:`
   # when you want it to appear in host UI.
   terminal: false
+  # Enable the in-app browser's HTTP proxy (desktop). Requires browser: true.
+  proxy: false
+  # Unlock lx.app.autostart (launch at system startup; macOS 13+/Windows, home lxapp only).
+  # Declaring this never registers the app by itself — enabling is a user decision
+  # via the API, typically a settings-page toggle.
+  autostart: false
 
 # Resource bundle sources copied into native app assets.
 # app.homeAppId and ui surfaces reference appId; resources.bundles says where local/package
