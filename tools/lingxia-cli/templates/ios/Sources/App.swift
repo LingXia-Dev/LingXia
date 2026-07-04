@@ -10,8 +10,6 @@ public struct ContentView: View {
         Color.clear
             .onAppear {
                 if !Self.hasInitialized {
-                    // Enable WebView debugging BEFORE Lingxia.quickStart()
-                    Lingxia.enableWebViewDebugging()
                     do {
                         _ = try Lingxia.quickStart()
                         Self.hasInitialized = true

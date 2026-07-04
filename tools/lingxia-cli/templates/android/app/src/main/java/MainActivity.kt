@@ -4,7 +4,6 @@ import android.os.Bundle
 import android.util.Log
 import androidx.appcompat.app.AppCompatActivity
 import com.lingxia.lxapp.Lingxia
-import com.lingxia.lxapp.LxApp
 
 class MainActivity : AppCompatActivity() {
     private val TAG = "MainActivity"
@@ -13,7 +12,6 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        LxApp.enableWebViewDebugging()
         Lingxia.quickStart(this) {
             nativeRegisterHostAddon()
         }
