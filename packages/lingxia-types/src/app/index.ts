@@ -108,6 +108,46 @@ export interface AppScreenshotResult {
   height?: number;
 }
 
+/**
+ * Launch-at-startup control for the host app.
+ *
+ * **macOS 13+ / Windows only.** Everywhere else — other platforms, or a
+ * macOS shell older than 13 — `lx.app.autostart` is absent (`undefined`);
+ * presence is the support check, so portable code gates on the member itself:
+ *
+ * ```ts
+ * if (lx.app.autostart) {
+ *   // render the "Launch at startup" toggle
+ * }
+ * ```
+ *
+ * Requires `capabilities.autostart: true` in `lingxia.yaml`; without it the
+ * member is absent on all platforms. Declaring the capability never enables
+ * autostart by itself — the SDK registers the app only when `setEnabled(true)`
+ * is called, so the decision stays with the user (typically a settings-page
+ * toggle, default off).
+ *
+ * Host-app-level capability: like `checkUpdate` and `screenshot`, the methods
+ * are available only to the home lxapp; other lxapps receive a permission
+ * error.
+ */
+export interface AutostartApi {
+  /**
+   * Whether the app is currently registered to launch at startup, read from
+   * the OS (macOS login items / Windows `Run` registry key) — never a cached
+   * preference. The user can flip this outside the app (System Settings on
+   * macOS, Task Manager's Startup page on Windows), so re-read it whenever the
+   * settings UI is shown.
+   */
+  isEnabled(): Promise<boolean>;
+  /**
+   * Register or unregister the app as a startup item for the current user.
+   * Idempotent. On macOS the system may notify the user that a login item was
+   * added — only call this from an explicit user action.
+   */
+  setEnabled(on: boolean): Promise<void>;
+}
+
 export interface HostAppApi {
   /**
    * The environment this build was produced for, mirroring `app.json::envVersion`.
@@ -171,6 +211,13 @@ export interface HostAppApi {
    * is safe to call from portable code.
    */
   setBadge(value: string | number | null): void;
+
+  /**
+   * Launch-at-startup control. Present only on macOS / Windows with
+   * `capabilities.autostart: true` declared; absent everywhere else — gate on
+   * the member: `lx.app.autostart?.setEnabled(on)`. See {@link AutostartApi}.
+   */
+  autostart?: AutostartApi;
 }
 
 export interface AppLifecycleEventArgs {
