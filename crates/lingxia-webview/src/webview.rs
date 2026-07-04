@@ -48,7 +48,7 @@ use crate::traits::{
     WebViewInputController,
 };
 use crate::{
-    LoadDataRequest, WebResourceResponse, WebViewController, WebViewCookie,
+    LoadDataRequest, NetworkCaptureSnapshot, WebResourceResponse, WebViewController, WebViewCookie,
     WebViewCookieSetRequest, WebViewDelegate, WebViewError, WebViewInputError, WebViewScriptError,
 };
 use async_trait::async_trait;
@@ -1047,6 +1047,22 @@ impl WebView {
         self.inner.clear_cookies().await
     }
 
+    pub async fn start_network_capture(&self) -> Result<(), WebViewError> {
+        self.inner.start_network_capture().await
+    }
+
+    pub async fn stop_network_capture(&self) -> Result<(), WebViewError> {
+        self.inner.stop_network_capture().await
+    }
+
+    pub async fn network_entries(&self) -> Result<NetworkCaptureSnapshot, WebViewError> {
+        self.inner.network_entries().await
+    }
+
+    pub async fn clear_network_capture(&self) -> Result<(), WebViewError> {
+        self.inner.clear_network_capture().await
+    }
+
     pub async fn take_screenshot(&self) -> Result<Vec<u8>, WebViewError> {
         self.inner.take_screenshot().await
     }
@@ -1164,6 +1180,22 @@ impl WebViewController for WebView {
 
     async fn clear_cookies(&self) -> Result<(), WebViewError> {
         self.inner.clear_cookies().await
+    }
+
+    async fn start_network_capture(&self) -> Result<(), WebViewError> {
+        self.inner.start_network_capture().await
+    }
+
+    async fn stop_network_capture(&self) -> Result<(), WebViewError> {
+        self.inner.stop_network_capture().await
+    }
+
+    async fn network_entries(&self) -> Result<NetworkCaptureSnapshot, WebViewError> {
+        self.inner.network_entries().await
+    }
+
+    async fn clear_network_capture(&self) -> Result<(), WebViewError> {
+        self.inner.clear_network_capture().await
     }
 }
 
