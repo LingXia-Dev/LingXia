@@ -376,6 +376,18 @@ fn prepare_windows_runner_assets(
         include_bytes!("../../../assets/runner-icon.png"),
     )
     .with_context(|| format!("Failed to write {}", icon_path.display()))?;
+    // The shell's default sidebar icon (lxapp rows / browser tabs with no
+    // icon of their own) loads from `<assets>/icons/lingxia.png`; stage the
+    // same mark there so the dev runner has the fallback too.
+    let icons_dir = assets_dir.join("icons");
+    std::fs::create_dir_all(&icons_dir)
+        .with_context(|| format!("Failed to create {}", icons_dir.display()))?;
+    let default_icon_path = icons_dir.join("lingxia.png");
+    std::fs::write(
+        &default_icon_path,
+        include_bytes!("../../../assets/runner-icon.png"),
+    )
+    .with_context(|| format!("Failed to write {}", default_icon_path.display()))?;
     prepare_windows_design_icon_assets(&assets_dir)?;
 
     // The runtime's home-app bootstrap installs from `<assets>/<appid>/`

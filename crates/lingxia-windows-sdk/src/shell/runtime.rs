@@ -1151,6 +1151,7 @@ fn build_browser_tab_items() -> Vec<WindowsShellAuxiliaryItemLayout> {
                 title,
                 active,
                 icon_png,
+                icon_path: String::new(),
             }
         })
         .collect()
@@ -1174,14 +1175,46 @@ fn build_open_lxapp_items(owner_appid: &str) -> Vec<WindowsShellAuxiliaryItemLay
             } else {
                 info.app_name
             };
+            let icon_path = lxapp_auxiliary_icon_path(&info.appid);
             WindowsShellAuxiliaryItemLayout {
                 id: format!("{AUX_LXAPP_PREFIX}{}", info.appid),
                 title,
                 active: info.appid == current_appid,
                 icon_png: None,
+                icon_path,
             }
         })
         .collect()
+}
+
+/// Sidebar row icon for an open lxapp: the lxapp's own declared icon, else
+/// the icon of its configured surface/panel slot (matching the panel
+/// activator), else empty so the row falls back to the LingXia mark.
+fn lxapp_auxiliary_icon_path(appid: &str) -> String {
+    let own_icon = lxapp::try_get(appid)
+        .map(|app| app.get_lxapp_info().icon)
+        .filter(|icon| !icon.trim().is_empty());
+    if let Some(icon) = own_icon {
+        return icon;
+    }
+    let panel_icon = lingxia_app_context::app_config()
+        .and_then(|config| config.panels.as_ref().cloned())
+        .and_then(|panels| {
+            panels.items.into_iter().find_map(|item| {
+                (item.content.kind.is_lxapp()
+                    && item.content.app_id == appid
+                    && !item.icon.trim().is_empty())
+                .then_some(item.icon)
+            })
+        });
+    let Some(panel_icon) = panel_icon else {
+        return String::new();
+    };
+    shell_owner_appid()
+        .and_then(|owner_appid| lxapp::try_get(&owner_appid))
+        .and_then(|owner| resolve_asset_path(owner.runtime.asset_dir(), &panel_icon))
+        .map(|path| path.to_string_lossy().into_owned())
+        .unwrap_or(panel_icon)
 }
 
 fn auxiliary_lxapp_id(raw: &str) -> Option<&str> {

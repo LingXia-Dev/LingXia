@@ -40,6 +40,9 @@ pub struct WindowsShellAuxiliaryItemLayout {
     pub title: String,
     pub active: bool,
     pub icon_png: Option<Arc<Vec<u8>>>,
+    /// Absolute icon path (PNG or SVG) used when `icon_png` is absent —
+    /// e.g. an open lxapp's own icon. Empty falls back to the LingXia mark.
+    pub icon_path: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
