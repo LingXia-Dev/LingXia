@@ -4775,8 +4775,8 @@ pub fn show_webview_window(webtag: &WebTag, title: &str, activate: bool) -> StdR
     apply_shell_window_frame(hwnd)?;
     show_native_view(handler.native_view(), title, activate)?;
     handler.set_content_visible(true)?;
-    set_host_active_webtag(hwnd, webtag.key());
     set_window_handle(webtag.key(), hwnd);
+    set_host_active_webtag(hwnd, webtag.key());
     set_primary_host_window(hwnd);
     mark_active(webtag);
     notify_webtag_visibility(webtag.key(), true);
@@ -4796,8 +4796,8 @@ pub fn show_webview_window_with_content_size(
     apply_native_window_frame(hwnd)?;
     show_native_view(handler.native_view(), title, activate)?;
     handler.set_content_visible(true)?;
-    set_host_active_webtag(hwnd, webtag.key());
     set_window_handle(webtag.key(), hwnd);
+    set_host_active_webtag(hwnd, webtag.key());
     set_primary_host_window(hwnd);
     mark_active(webtag);
     notify_webtag_visibility(webtag.key(), true);
@@ -5866,6 +5866,18 @@ fn set_host_active_webtag(hwnd: HWND, webtag_key: &str) {
     if let Ok(mut hosts) = hosts.lock() {
         hosts.insert(hwnd_handle(hwnd), webtag_key.to_string());
     }
+    sync_active_webtag_host_ui(webtag_key);
+}
+
+fn sync_active_webtag_host_ui(webtag_key: &str) {
+    let Some(webtag) = webtag_for_key(webtag_key) else {
+        return;
+    };
+    let appid = webtag.extract_appid();
+    if appid.is_empty() {
+        return;
+    }
+    lingxia_platform::sync_windows_ui(&appid);
 }
 
 fn clear_host_active_webtag(webtag_key: &str) {
