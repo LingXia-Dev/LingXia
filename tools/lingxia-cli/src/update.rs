@@ -17,6 +17,7 @@ const SKILL_LATEST_URL: &str = "https://registry.npmjs.org/@lingxia/skill/latest
 /// Skill manifest under the home dir (the global `--user` install) recording the
 /// installed skill version. The skill body lives globally, not per project.
 const SKILL_MANIFEST_REL_PATH: &str = ".claude/skills/lingxia/skill-manifest.json";
+const UPDATE_ERROR_LOG_REL_PATH: &str = ".lingxia/cli/update-error.log";
 
 #[derive(Debug, Deserialize, Serialize)]
 struct InstallMetadata {
@@ -48,6 +49,8 @@ struct UpdateStatus {
 }
 
 pub fn maybe_auto_update() {
+    notify_deferred_update_failure();
+
     let Ok(raw_exe_path) = current_exe_path() else {
         return;
     };
@@ -149,6 +152,7 @@ fn install_update(exe_path: &Path, status: &UpdateStatus) -> Result<()> {
         .ok_or_else(|| anyhow!("Executable path has no parent: {}", exe_path.display()))?;
     let temp_path = parent.join(format!(".lingxia-update-{}", std::process::id()));
 
+    let cache_path = update_cache_path();
     let install_result = (|| -> Result<BinaryReplace> {
         fs::write(&temp_path, &bytes)
             .with_context(|| format!("Failed to write temp binary: {}", temp_path.display()))?;
@@ -160,7 +164,12 @@ fn install_update(exe_path: &Path, status: &UpdateStatus) -> Result<()> {
                 .with_context(|| format!("Failed to chmod {}", temp_path.display()))?;
         }
 
-        replace_current_binary(&temp_path, exe_path)
+        replace_current_binary(
+            &temp_path,
+            exe_path,
+            &status.latest_version.to_string(),
+            cache_path.as_deref(),
+        )
     })();
 
     if install_result.is_err() {
@@ -168,16 +177,15 @@ fn install_update(exe_path: &Path, status: &UpdateStatus) -> Result<()> {
     }
     let replace = install_result?;
 
-    update_install_metadata_version(exe_path, &status.latest_version.to_string())?;
-    if let Some(cache_path) = update_cache_path()
-        && cache_path.exists()
-    {
-        let _ = fs::remove_file(cache_path);
-    }
-
     match replace {
         #[cfg(not(target_os = "windows"))]
         BinaryReplace::Complete => {
+            update_install_metadata_version(exe_path, &status.latest_version.to_string())?;
+            if let Some(cache_path) = cache_path
+                && cache_path.exists()
+            {
+                let _ = fs::remove_file(cache_path);
+            }
             println!("Updated LingXia CLI to {}", status.latest_version);
         }
         #[cfg(target_os = "windows")]
@@ -186,6 +194,12 @@ fn install_update(exe_path: &Path, status: &UpdateStatus) -> Result<()> {
                 "Staged LingXia CLI update to {}; it will be installed after this command exits.",
                 status.latest_version
             );
+            if let Some(log_path) = update_error_log_path() {
+                println!(
+                    "If the background update fails, details will be written to {}",
+                    log_path.display()
+                );
+            }
         }
     }
 
@@ -224,7 +238,7 @@ fn update_sibling_binary(dir: &Path, name: &str, repo: &str, tag: &str) {
     };
     let dest = dir.join(binary_file_name(name));
     let temp_path = dir.join(format!(".{name}-update-{}", std::process::id()));
-    let result = (|| -> Result<()> {
+    let result = (|| -> Result<BinaryReplace> {
         fs::write(&temp_path, &bytes)
             .with_context(|| format!("Failed to write temp binary: {}", temp_path.display()))?;
         #[cfg(unix)]
@@ -233,8 +247,7 @@ fn update_sibling_binary(dir: &Path, name: &str, repo: &str, tag: &str) {
             fs::set_permissions(&temp_path, fs::Permissions::from_mode(0o755))
                 .with_context(|| format!("Failed to chmod {}", temp_path.display()))?;
         }
-        fs::rename(&temp_path, &dest)
-            .with_context(|| format!("Failed to replace {}", dest.display()))
+        replace_sibling_binary(&temp_path, &dest, name)
     })();
     if let Err(err) = result {
         let _ = fs::remove_file(&temp_path);
@@ -250,7 +263,12 @@ enum BinaryReplace {
 }
 
 #[cfg(not(target_os = "windows"))]
-fn replace_current_binary(temp_path: &Path, exe_path: &Path) -> Result<BinaryReplace> {
+fn replace_current_binary(
+    temp_path: &Path,
+    exe_path: &Path,
+    _version: &str,
+    _cache_path: Option<&Path>,
+) -> Result<BinaryReplace> {
     fs::rename(temp_path, exe_path).with_context(|| {
         format!(
             "Failed to replace current executable\n  From: {}\n  To: {}",
@@ -262,19 +280,65 @@ fn replace_current_binary(temp_path: &Path, exe_path: &Path) -> Result<BinaryRep
 }
 
 #[cfg(target_os = "windows")]
-fn replace_current_binary(temp_path: &Path, exe_path: &Path) -> Result<BinaryReplace> {
+fn replace_current_binary(
+    temp_path: &Path,
+    exe_path: &Path,
+    version: &str,
+    cache_path: Option<&Path>,
+) -> Result<BinaryReplace> {
     use std::os::windows::process::CommandExt;
 
     // Windows keeps the running .exe locked, so the CLI cannot atomically
     // overwrite itself in-process. Hand the final swap to a detached helper
-    // that waits for this process to exit.
+    // that waits for this process to exit. Metadata/cache changes live in the
+    // helper too, after Move-Item succeeds, so a failed deferred swap never
+    // records the old binary as updated.
     let pid = std::process::id();
+    let metadata_path = exe_path.with_file_name(INSTALL_META_NAME);
+    let cache_cleanup = cache_path
+        .map(|path| {
+            format!(
+                "if (Test-Path -LiteralPath {}) {{ Remove-Item -LiteralPath {} -Force; }}",
+                ps_single_quote(path),
+                ps_single_quote(path),
+            )
+        })
+        .unwrap_or_default();
+    let log_path = update_error_log_path()
+        .unwrap_or_else(|| exe_path.with_file_name(".lingxia-update-error.log"));
     let script = format!(
         "$ErrorActionPreference='Stop'; \
-         Wait-Process -Id {pid} -ErrorAction SilentlyContinue; \
-         Move-Item -LiteralPath {} -Destination {} -Force",
+         $log={}; \
+         try {{ \
+           Wait-Process -Id {pid} -ErrorAction SilentlyContinue; \
+           Move-Item -LiteralPath {} -Destination {} -Force; \
+         }} catch {{ \
+           $parent = [System.IO.Path]::GetDirectoryName($log); \
+           if ($parent) {{ New-Item -ItemType Directory -Path $parent -Force | Out-Null; }} \
+           $message = (Get-Date -Format o) + ' LingXia CLI deferred update failed: ' + $_.Exception.Message; \
+           $utf8 = [System.Text.UTF8Encoding]::new($false); \
+           [System.IO.File]::WriteAllText($log, $message, $utf8); \
+           exit 1; \
+         }}; \
+         try {{ \
+           if (Test-Path -LiteralPath {}) {{ \
+             $metadata = Get-Content -Raw -LiteralPath {} | ConvertFrom-Json; \
+             $metadata.version = {}; \
+             $json = $metadata | ConvertTo-Json -Depth 4; \
+             $utf8 = [System.Text.UTF8Encoding]::new($false); \
+             [System.IO.File]::WriteAllText({}, $json, $utf8); \
+           }} \
+         }} catch {{}}; \
+         try {{ {} }} catch {{}}; \
+         try {{ if (Test-Path -LiteralPath $log) {{ Remove-Item -LiteralPath $log -Force; }} }} catch {{}}",
+        ps_single_quote(&log_path),
         ps_single_quote(temp_path),
         ps_single_quote(exe_path),
+        ps_single_quote(&metadata_path),
+        ps_single_quote(&metadata_path),
+        ps_single_quote_str(version),
+        ps_single_quote(&metadata_path),
+        cache_cleanup,
     );
     const CREATE_NO_WINDOW: u32 = 0x08000000;
     std::process::Command::new("powershell.exe")
@@ -293,9 +357,81 @@ fn replace_current_binary(temp_path: &Path, exe_path: &Path) -> Result<BinaryRep
     Ok(BinaryReplace::Deferred)
 }
 
+#[cfg(not(target_os = "windows"))]
+fn replace_sibling_binary(temp_path: &Path, dest: &Path, _name: &str) -> Result<BinaryReplace> {
+    fs::rename(temp_path, dest).with_context(|| format!("Failed to replace {}", dest.display()))?;
+    Ok(BinaryReplace::Complete)
+}
+
+#[cfg(target_os = "windows")]
+fn replace_sibling_binary(temp_path: &Path, dest: &Path, name: &str) -> Result<BinaryReplace> {
+    match fs::rename(temp_path, dest) {
+        Ok(()) => Ok(BinaryReplace::Deferred),
+        Err(rename_err) => {
+            schedule_deferred_sibling_replace(temp_path, dest, name).with_context(|| {
+                format!(
+                    "Failed to replace {} now ({rename_err}); also failed to stage deferred replacement",
+                    dest.display()
+                )
+            })?;
+            eprintln!("warning: {name}.exe is in use; staged update after it exits");
+            Ok(BinaryReplace::Deferred)
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn schedule_deferred_sibling_replace(temp_path: &Path, dest: &Path, name: &str) -> Result<()> {
+    use std::os::windows::process::CommandExt;
+
+    let log_path =
+        update_error_log_path().unwrap_or_else(|| dest.with_file_name(".lingxia-update-error.log"));
+    let script = format!(
+        "$ErrorActionPreference='Stop'; \
+         $log={}; \
+         try {{ \
+           Wait-Process -Name {} -ErrorAction SilentlyContinue; \
+           Move-Item -LiteralPath {} -Destination {} -Force; \
+           if (Test-Path -LiteralPath $log) {{ Remove-Item -LiteralPath $log -Force; }} \
+         }} catch {{ \
+           $parent = [System.IO.Path]::GetDirectoryName($log); \
+           if ($parent) {{ New-Item -ItemType Directory -Path $parent -Force | Out-Null; }} \
+           $message = (Get-Date -Format o) + ' LingXia deferred update failed for {}: ' + $_.Exception.Message; \
+           $utf8 = [System.Text.UTF8Encoding]::new($false); \
+           [System.IO.File]::WriteAllText($log, $message, $utf8); \
+           exit 1; \
+         }}",
+        ps_single_quote(&log_path),
+        ps_single_quote_str(name),
+        ps_single_quote(temp_path),
+        ps_single_quote(dest),
+        ps_single_quote_str(name),
+    );
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+    std::process::Command::new("powershell.exe")
+        .args([
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-WindowStyle",
+            "Hidden",
+            "-Command",
+            &script,
+        ])
+        .creation_flags(CREATE_NO_WINDOW)
+        .spawn()
+        .context("Failed to schedule deferred sibling replacement")?;
+    Ok(())
+}
+
 #[cfg(target_os = "windows")]
 fn ps_single_quote(path: &Path) -> String {
-    format!("'{}'", path.display().to_string().replace('\'', "''"))
+    ps_single_quote_str(&path.display().to_string())
+}
+
+#[cfg(target_os = "windows")]
+fn ps_single_quote_str(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "''"))
 }
 
 fn load_update_status(force_refresh: bool) -> Result<UpdateStatus> {
@@ -423,6 +559,25 @@ fn update_cache_path() -> Option<PathBuf> {
     Some(home.join(".lingxia").join("cli").join("update.json"))
 }
 
+fn update_error_log_path() -> Option<PathBuf> {
+    let home = dirs::home_dir()?;
+    Some(home.join(UPDATE_ERROR_LOG_REL_PATH))
+}
+
+fn notify_deferred_update_failure() {
+    let Some(path) = update_error_log_path() else {
+        return;
+    };
+    let Ok(message) = fs::read_to_string(&path) else {
+        return;
+    };
+    let message = message.trim();
+    if !message.is_empty() {
+        eprintln!("warning: previous LingXia CLI update failed: {message}");
+    }
+    let _ = fs::remove_file(path);
+}
+
 fn current_unix_secs() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -486,6 +641,7 @@ fn load_install_metadata(exe_path: &Path) -> Option<InstallMetadata> {
     serde_json::from_str(&text).ok()
 }
 
+#[cfg(not(target_os = "windows"))]
 fn update_install_metadata_version(exe_path: &Path, version: &str) -> Result<()> {
     let meta_path = exe_path.with_file_name(INSTALL_META_NAME);
     if !meta_path.exists() {
