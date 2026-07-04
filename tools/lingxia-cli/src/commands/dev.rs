@@ -5,8 +5,12 @@ use crate::lxapp::ProjectFramework;
 use crate::platform::detector::PlatformType;
 use crate::platform::{self, BuildConfig, BuildProfile, InstallConfig, Platform, RunConfig};
 use anyhow::{Context, Result, anyhow};
+use chrono::{DateTime, Local, TimeZone};
 use colored::Colorize;
+use lingxia_log::now_timestamp_ms;
 use std::env;
+use std::ffi::OsString;
+use std::fs::{self, OpenOptions};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
@@ -28,6 +32,8 @@ mod runner;
 mod windows;
 
 const RUNNER_DEV_WS_URL_ENV: &str = "LINGXIA_DEV_WS_URL";
+const BACKGROUND_CHILD_ENV: &str = "LINGXIA_DEV_BACKGROUND_CHILD";
+const BACKGROUND_START_TIMEOUT: Duration = Duration::from_secs(600);
 
 fn dev_native_features(
     config: &LingXiaConfig,
@@ -69,6 +75,18 @@ pub struct DevExecuteOptions {
     pub parallel: bool,
     /// Runner simulator device (macOS lxapp runner only), e.g. `desktop-1440`.
     pub runner_device: Option<String>,
+    pub background: bool,
+    pub action: Option<DevSessionAction>,
+}
+
+pub enum DevSessionAction {
+    Status {
+        json: bool,
+    },
+    Stop {
+        session: Option<String>,
+        force: bool,
+    },
 }
 
 #[derive(Clone)]
@@ -168,6 +186,10 @@ pub fn execute(options: DevExecuteOptions) -> Result<()> {
     // Detect project root (current directory)
     let project_root = env::current_dir()?;
 
+    if let Some(action) = options.action {
+        return execute_session_action(&project_root, action);
+    }
+
     if options
         .runner_device
         .as_deref()
@@ -175,6 +197,10 @@ pub fn execute(options: DevExecuteOptions) -> Result<()> {
     {
         runner::print_runner_devices()?;
         return Ok(());
+    }
+
+    if options.background && env::var_os(BACKGROUND_CHILD_ENV).is_none() {
+        return spawn_background_dev(&project_root);
     }
 
     if runner::is_standalone_lxapp_project(&project_root) {
@@ -311,6 +337,312 @@ pub fn execute(options: DevExecuteOptions) -> Result<()> {
     };
     drop(provider_guard);
     result
+}
+
+fn execute_session_action(project_root: &Path, action: DevSessionAction) -> Result<()> {
+    match action {
+        DevSessionAction::Status { json } => print_session_status(project_root, json),
+        DevSessionAction::Stop { session, force } => stop_session(project_root, session, force),
+    }
+}
+
+fn spawn_background_dev(project_root: &Path) -> Result<()> {
+    let log_dir = log_store::dev_dir(project_root).join("background");
+    fs::create_dir_all(&log_dir)
+        .with_context(|| format!("Failed to create {}", log_dir.display()))?;
+    // Prune old background launch logs under the same retention as session logs
+    // so repeated `--background` starts don't grow `.lingxia/dev/background/`
+    // without bound.
+    let _ = log_store::cleanup_old_logs(&log_dir, log_store::DEFAULT_LOG_RETENTION_DAYS);
+    let started_at = now_timestamp_ms();
+    let log_path = log_dir.join(format!("dev-{started_at}.log"));
+    let stdout = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_path)
+        .with_context(|| format!("Failed to open {}", log_path.display()))?;
+    let stderr = stdout
+        .try_clone()
+        .with_context(|| format!("Failed to clone {}", log_path.display()))?;
+
+    let mut command = Command::new(env::current_exe().context("Failed to resolve current exe")?);
+    command
+        .args(background_child_args())
+        .current_dir(project_root)
+        .env(BACKGROUND_CHILD_ENV, "1")
+        .stdin(Stdio::null())
+        .stdout(Stdio::from(stdout))
+        .stderr(Stdio::from(stderr));
+    configure_background_process(&mut command);
+
+    let mut child = command.spawn().with_context(|| {
+        format!(
+            "Failed to start background dev process; log path {}",
+            log_path.display()
+        )
+    })?;
+    let pid = child.id();
+    println!("Started background dev process pid {pid}.");
+    println!("  log: {}", log_path.display());
+
+    match wait_for_background_session(project_root, &mut child, started_at)? {
+        Some(session) => {
+            println!("Dev session is ready.");
+            println!("  id: {}", session.session_id);
+            println!("  platform: {}", session.platform);
+            println!("  ws: {}", session.ws_url);
+            println!("  session log: {}", session.log_file);
+            println!("Use `lxdev logs -f` to follow logs.");
+            println!("Use `lingxia dev stop {}` to stop it.", session.session_id);
+        }
+        None => {
+            println!("Background dev process is still starting.");
+            println!("Use `lingxia dev status` to check readiness.");
+        }
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+fn configure_background_process(command: &mut Command) {
+    use std::os::unix::process::CommandExt;
+
+    unsafe {
+        command.pre_exec(|| {
+            if libc::setsid() == -1 {
+                return Err(std::io::Error::last_os_error());
+            }
+            Ok(())
+        });
+    }
+}
+
+#[cfg(windows)]
+fn configure_background_process(command: &mut Command) {
+    use std::os::windows::process::CommandExt;
+
+    const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+    const DETACHED_PROCESS: u32 = 0x0000_0008;
+    command.creation_flags(CREATE_NEW_PROCESS_GROUP | DETACHED_PROCESS);
+}
+
+fn background_child_args() -> Vec<OsString> {
+    env::args_os()
+        .skip(1)
+        .filter(|arg| {
+            let value = arg.to_string_lossy();
+            value != "--background" && !value.starts_with("--background=")
+        })
+        .collect()
+}
+
+fn wait_for_background_session(
+    project_root: &Path,
+    child: &mut Child,
+    started_at: u64,
+) -> Result<Option<log_store::SessionInfo>> {
+    let deadline = std::time::Instant::now() + BACKGROUND_START_TIMEOUT;
+    loop {
+        if let Some(status) = child
+            .try_wait()
+            .context("Failed to poll background dev process")?
+        {
+            return Err(anyhow!(
+                "Background dev process exited before it became ready: {status}"
+            ));
+        }
+
+        for session in log_store::list_sessions(project_root)? {
+            if session.pid == child.id()
+                && session.started_at >= started_at
+                && !log_store::is_stale(&session)
+            {
+                return Ok(Some(session));
+            }
+        }
+
+        if std::time::Instant::now() >= deadline {
+            return Ok(None);
+        }
+
+        thread::sleep(Duration::from_millis(250));
+    }
+}
+
+fn print_session_status(project_root: &Path, json_output: bool) -> Result<()> {
+    let sessions = log_store::list_sessions(project_root)?;
+    if json_output {
+        let values: Vec<serde_json::Value> = sessions
+            .iter()
+            .map(|session| {
+                serde_json::json!({
+                    "session_id": session.session_id,
+                    "pid": session.pid,
+                    "platform": session.platform,
+                    "started_at": session.started_at,
+                    "ws_url": session.ws_url,
+                    "log_file": session.log_file,
+                    "stale": log_store::is_stale(session),
+                })
+            })
+            .collect();
+        println!("{}", serde_json::to_string_pretty(&values)?);
+        return Ok(());
+    }
+
+    if sessions.is_empty() {
+        println!("No active dev sessions.");
+        return Ok(());
+    }
+
+    println!(
+        "{:<36}  {:<5}  {:<8}  {:<19}  {:<22}  PID",
+        "ID", "STATE", "PLATFORM", "STARTED", "WS"
+    );
+    for session in &sessions {
+        let state = if log_store::is_stale(session) {
+            "stale"
+        } else {
+            "live"
+        };
+        println!(
+            "{:<36}  {:<5}  {:<8}  {:<19}  {:<22}  {}",
+            session.session_id,
+            state,
+            session.platform,
+            format_started(session.started_at),
+            session.ws_url,
+            session.pid,
+        );
+        println!("  log: {}", session.log_file);
+    }
+    println!();
+    println!("Use `lxdev logs -f` to follow session logs.");
+    Ok(())
+}
+
+fn stop_session(project_root: &Path, selector: Option<String>, force: bool) -> Result<()> {
+    let session = log_store::resolve_session(project_root, selector.as_deref())?;
+    match log_store::request_shutdown(&session) {
+        Ok(()) => {
+            println!(
+                "Stop requested for {} dev session {}.",
+                session.platform, session.session_id
+            );
+            Ok(())
+        }
+        Err(err) if force => {
+            eprintln!("Graceful stop failed: {err:#}");
+            force_stop_session(project_root, &session)
+        }
+        Err(err) => Err(err).with_context(|| {
+            format!(
+                "Failed to stop session {} gracefully. Re-run with --force to kill pid {}.",
+                session.session_id, session.pid
+            )
+        }),
+    }
+}
+
+fn force_stop_session(project_root: &Path, session: &log_store::SessionInfo) -> Result<()> {
+    let pid = sysinfo::Pid::from_u32(session.pid);
+    let mut system = System::new();
+    system.refresh_processes(ProcessesToUpdate::Some(&[pid]), true);
+
+    let remove_stale = |note: &str| {
+        let _ = log_store::remove_session(project_root, &session.session_id);
+        println!(
+            "Session process {} {}; removed stale session {}.",
+            session.pid, note, session.session_id
+        );
+    };
+
+    let Some(process) = system.process(pid) else {
+        remove_stale("is not running");
+        return Ok(());
+    };
+
+    // Guard against PID reuse: a crashed session can leave a stale file whose
+    // pid the OS later hands to an unrelated process. Only kill if this really
+    // is the `lingxia dev` process that owns the session.
+    if !is_owning_dev_process(process, session) {
+        remove_stale("was reused by another process");
+        return Ok(());
+    }
+
+    // Prefer a graceful interrupt: the dev process's Ctrl+C handler runs its own
+    // teardown (terminates the app/Runner, drops port forwards, removes the
+    // session file), so children aren't orphaned. Fall back to SIGKILL only if
+    // it doesn't exit in time or the platform can't deliver the signal.
+    let interrupted = process.kill_with(Signal::Interrupt).unwrap_or(false);
+    if !(interrupted && wait_for_pid_exit(pid, Duration::from_secs(3))) {
+        let mut system = System::new();
+        system.refresh_processes(ProcessesToUpdate::Some(&[pid]), true);
+        if let Some(process) = system.process(pid) {
+            process.kill();
+        }
+        if !wait_for_pid_exit(pid, Duration::from_secs(2)) {
+            return Err(anyhow!("Failed to kill session pid {}", session.pid));
+        }
+    }
+
+    let _ = log_store::remove_session(project_root, &session.session_id);
+    println!(
+        "Killed {} dev session {} (pid {}).",
+        session.platform, session.session_id, session.pid
+    );
+    Ok(())
+}
+
+/// Whether `process` is still the `lingxia dev` process that wrote `session`.
+/// Defends `force_stop_session` against PID reuse by requiring the same
+/// executable and a process start time compatible with the recorded session.
+fn is_owning_dev_process(process: &sysinfo::Process, session: &log_store::SessionInfo) -> bool {
+    let Some(exe) = process.exe() else {
+        return false;
+    };
+    let Ok(current) = env::current_exe() else {
+        return false;
+    };
+    if !process_executable_matches(exe, &current) {
+        return false;
+    }
+    let started_at = process.start_time();
+    if started_at == 0 {
+        return false;
+    }
+    // Allow a little slack for the sub-second gap before write_session ran.
+    started_at <= session.started_at / 1000 + 2
+}
+
+/// Poll until the given pid is gone (or reaped to a zombie), up to `timeout`.
+fn wait_for_pid_exit(pid: sysinfo::Pid, timeout: Duration) -> bool {
+    let deadline = std::time::Instant::now() + timeout;
+    loop {
+        let mut system = System::new();
+        system.refresh_processes(ProcessesToUpdate::Some(&[pid]), true);
+        match system.process(pid) {
+            None => return true,
+            Some(process) if process.status() == sysinfo::ProcessStatus::Zombie => return true,
+            Some(_) => {}
+        }
+        if std::time::Instant::now() >= deadline {
+            return false;
+        }
+        thread::sleep(Duration::from_millis(100));
+    }
+}
+
+fn format_started(started_at: u64) -> String {
+    let secs = (started_at / 1000) as i64;
+    let nsecs = ((started_at % 1000) * 1_000_000) as u32;
+    match Local.timestamp_opt(secs, nsecs).single() {
+        Some(dt) => {
+            let dt: DateTime<Local> = dt;
+            dt.format("%Y-%m-%d %H:%M:%S").to_string()
+        }
+        None => started_at.to_string(),
+    }
 }
 fn install_ctrlc_handler(stop_requested: Arc<AtomicBool>) -> Result<()> {
     ctrlc::set_handler(move || {

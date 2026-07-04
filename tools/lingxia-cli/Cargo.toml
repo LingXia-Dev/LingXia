@@ -55,6 +55,7 @@ flate2 = "1.1"
 tar = "0.4"
 zstd = "0.13"
 ctrlc = "3.4"
+libc = "0.2"
 
 # Apple signing and API
 p256 = { version = "0.13", features = ["ecdsa", "pkcs8", "pem"] }

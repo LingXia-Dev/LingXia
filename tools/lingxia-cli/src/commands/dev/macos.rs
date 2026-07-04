@@ -22,7 +22,13 @@ Use `lingxia build --platform macos --macos-arch {}` for cross-arch builds.",
         ));
     }
 
-    let server = server::start_server_fixed(&ctx.project_root, "127.0.0.1", platform_name)?;
+    let stop_requested = Arc::new(AtomicBool::new(false));
+    let server = server::start_server_fixed_with_stop(
+        &ctx.project_root,
+        "127.0.0.1",
+        platform_name,
+        stop_requested.clone(),
+    )?;
     let ws_url = server.ws_url();
     let session = server.session().clone();
 
@@ -56,7 +62,6 @@ Use `lingxia build --platform macos --macos-arch {}` for cross-arch builds.",
         let exe = platform::macos::app_bundle_executable(&app_path)?;
         println!();
 
-        let stop_requested = Arc::new(AtomicBool::new(false));
         install_ctrlc_handler(stop_requested.clone())?;
         log_store::write_session(&ctx.project_root, &session, platform_name, &ws_url)?;
 

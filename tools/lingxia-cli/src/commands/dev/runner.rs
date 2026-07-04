@@ -123,7 +123,13 @@ pub(super) fn execute_lxapp_dev(project_root: PathBuf, options: DevExecuteOption
     println!("{}", "Development Mode: LxApp -> Runner".bold().cyan());
     println!();
 
-    let server = server::start_server_fixed(&project_root, "127.0.0.1", platform_name)?;
+    let stop_requested = Arc::new(AtomicBool::new(false));
+    let server = server::start_server_fixed_with_stop(
+        &project_root,
+        "127.0.0.1",
+        platform_name,
+        stop_requested.clone(),
+    )?;
     let ws_url = server.ws_url();
     let session = server.session().clone();
 
@@ -144,7 +150,6 @@ pub(super) fn execute_lxapp_dev(project_root: PathBuf, options: DevExecuteOption
         println!("{}", "Step 1/2: Building lxapp...".bold());
         crate::lxapp::run_in_dir(&build_args, &project_root)?;
 
-        let stop_requested = Arc::new(AtomicBool::new(false));
         install_ctrlc_handler(stop_requested.clone())?;
         log_store::write_session(&project_root, &session, platform_name, &ws_url)?;
 
@@ -161,7 +166,7 @@ pub(super) fn execute_lxapp_dev(project_root: PathBuf, options: DevExecuteOption
             )?,
         };
 
-        print_dev_banner("LxApp Runner", "Ctrl+C or close Runner", &[]);
+        print_dev_banner("LxApp Runner", "Ctrl+C or `lingxia dev stop`", &[]);
 
         wait_for_runner_or_interrupt(&mut runner, stop_requested)?;
         Ok(())
@@ -284,7 +289,11 @@ fn launch_runner_for_lxapp(
     })?;
 
     println!("{} Launched {}", "[runner]".cyan(), app_path.display());
-    Ok(RunnerProcess::Child(child))
+    Ok(RunnerProcess::MacOsApp {
+        child,
+        seen_running: false,
+        handoff_deadline: std::time::Instant::now() + Duration::from_secs(5),
+    })
 }
 
 /// Identity of the lxapp the Windows runner hosts, read from the built
@@ -488,7 +497,19 @@ fn launch_windows_runner_for_lxapp(
 }
 
 enum RunnerProcess {
+    #[cfg(not(target_os = "windows"))]
     Child(Child),
+    /// The macOS Runner: `child` is the executable we spawned, but it may re-exec
+    /// itself through LaunchServices and exit 0 while the real app keeps running
+    /// under a same-named process. Liveness is therefore tracked by process name,
+    /// not by the child handle (which would spin forever on a clean hand-off).
+    MacOsApp {
+        child: Child,
+        /// Set once we've observed a live Runner, so the initial hand-off window
+        /// (child exited, named process not yet visible) isn't mistaken for exit.
+        seen_running: bool,
+        handoff_deadline: std::time::Instant,
+    },
     #[cfg(target_os = "windows")]
     WindowsShell(WindowsShellRunnerProcess),
 }
@@ -501,6 +522,7 @@ struct RunnerExitStatus {
 impl RunnerProcess {
     fn try_wait(&mut self) -> Result<Option<RunnerExitStatus>> {
         match self {
+            #[cfg(not(target_os = "windows"))]
             RunnerProcess::Child(child) => child
                 .try_wait()
                 .context("Failed to poll LingXia Runner")
@@ -510,6 +532,45 @@ impl RunnerProcess {
                         code: status.code(),
                     })
                 }),
+            RunnerProcess::MacOsApp {
+                child,
+                seen_running,
+                handoff_deadline,
+            } => {
+                match child.try_wait().context("Failed to poll LingXia Runner")? {
+                    // A non-zero exit is a genuine launch/runtime failure.
+                    Some(status) if !status.success() => Ok(Some(RunnerExitStatus {
+                        success: false,
+                        code: status.code(),
+                    })),
+                    // Child exited 0 (either a clean quit or a LaunchServices
+                    // hand-off) — the real Runner's liveness is decided by name.
+                    Some(_) => {
+                        if runner_process_running() {
+                            *seen_running = true;
+                            Ok(None)
+                        } else if *seen_running {
+                            Ok(Some(RunnerExitStatus {
+                                success: true,
+                                code: Some(0),
+                            }))
+                        } else if std::time::Instant::now() >= *handoff_deadline {
+                            Ok(Some(RunnerExitStatus {
+                                success: false,
+                                code: None,
+                            }))
+                        } else {
+                            // Hand-off may still be in flight; keep waiting.
+                            Ok(None)
+                        }
+                    }
+                    // Child still running == Runner running (no hand-off yet).
+                    None => {
+                        *seen_running = true;
+                        Ok(None)
+                    }
+                }
+            }
             #[cfg(target_os = "windows")]
             RunnerProcess::WindowsShell(process) => process.try_wait(),
         }
@@ -517,7 +578,12 @@ impl RunnerProcess {
 
     fn terminate(&mut self) -> Result<()> {
         match self {
+            #[cfg(not(target_os = "windows"))]
             RunnerProcess::Child(child) => terminate_child(child, "LingXia Runner"),
+            RunnerProcess::MacOsApp { child, .. } => {
+                let _ = terminate_child(child, "LingXia Runner");
+                terminate_existing_runner_processes()
+            }
             #[cfg(target_os = "windows")]
             RunnerProcess::WindowsShell(process) => process.terminate(),
         }
@@ -716,6 +782,19 @@ fn wait_for_runner_or_interrupt(
 
         thread::sleep(Duration::from_millis(150));
     }
+}
+
+/// Whether any LingXia Runner process is currently alive (by executable name).
+/// Used to track the macOS Runner across a LaunchServices hand-off, where the
+/// process we spawned exits and the real app runs under a separate pid.
+fn runner_process_running() -> bool {
+    Command::new("pgrep")
+        .args(["-x", RUNNER_EXECUTABLE_NAME])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map(|status| status.success())
+        .unwrap_or(false)
 }
 
 fn terminate_existing_runner_processes() -> Result<()> {

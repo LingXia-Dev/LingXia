@@ -6,7 +6,13 @@ pub(super) fn execute_android(ctx: DevContext, abis: Vec<String>) -> Result<()> 
     precheck_platform_session(&ctx.project_root, platform_name, ctx.parallel)?;
     let platform = platform::android::AndroidPlatform::new();
     let build_targets = crate::platform::android_abis::resolve_android_targets_from_abis(&abis)?;
-    let server = server::start_server_fixed(&ctx.project_root, "127.0.0.1", platform_name)?;
+    let stop_requested = Arc::new(AtomicBool::new(false));
+    let server = server::start_server_fixed_with_stop(
+        &ctx.project_root,
+        "127.0.0.1",
+        platform_name,
+        stop_requested.clone(),
+    )?;
     let host_ws_url = server.ws_url();
     let device_ws_url = loopback_ws_url(server.port());
     let session = server.session().clone();
@@ -78,7 +84,6 @@ pub(super) fn execute_android(ctx: DevContext, abis: Vec<String>) -> Result<()> 
 
         // Step 4: Launch app
         println!("{}", "Step 4/4: Launching app...".bold());
-        let stop_requested = Arc::new(AtomicBool::new(false));
         install_ctrlc_handler(stop_requested.clone())?;
         log_store::write_session(&ctx.project_root, &session, platform_name, &host_ws_url)?;
 

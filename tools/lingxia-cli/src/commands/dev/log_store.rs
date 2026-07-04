@@ -17,6 +17,10 @@ pub const DEV_DIR_NAME: &str = ".lingxia";
 pub const SESSIONS_DIR_NAME: &str = "sessions";
 pub const SESSION_INFO_VERSION: u32 = 2;
 const WS_PROBE_TIMEOUT: Duration = Duration::from_millis(200);
+/// Read/write budget for an interactive command round trip (e.g. shutdown).
+/// The 200ms probe timeout is only meant for liveness checks; reusing it for a
+/// full hello+command+result exchange makes graceful stop fail on a busy host.
+const WS_COMMAND_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Debug, Clone)]
 pub struct DevLogSession {
@@ -179,6 +183,106 @@ pub fn find_live_for_platform(project_root: &Path, platform: &str) -> Result<Vec
         .into_iter()
         .filter(|s| s.platform.eq_ignore_ascii_case(platform) && !is_stale(s))
         .collect())
+}
+
+pub fn resolve_session(project_root: &Path, selector: Option<&str>) -> Result<SessionInfo> {
+    let all = list_sessions(project_root)?;
+    if all.is_empty() {
+        return Err(anyhow!(
+            "No active dev session found. Run `lingxia dev` in this project first.\n\
+             (Looked under {})",
+            sessions_dir(project_root).display()
+        ));
+    }
+
+    let mut candidates: Vec<SessionInfo> = all
+        .into_iter()
+        .filter(|session| match selector {
+            Some(value) => {
+                session.platform.eq_ignore_ascii_case(value)
+                    || session.session_id.starts_with(value)
+            }
+            None => true,
+        })
+        .collect();
+
+    if candidates.is_empty() {
+        return Err(anyhow!(
+            "No dev session matches the given selector ({:?}).",
+            selector
+        ));
+    }
+
+    if candidates.len() > 1 {
+        candidates.retain(|session| !is_stale(session));
+    }
+
+    match candidates.len() {
+        0 => Err(anyhow!(
+            "All matching dev sessions are unreachable. Run `lingxia dev status` to inspect them."
+        )),
+        1 => Ok(candidates.remove(0)),
+        _ => {
+            let mut msg = String::from(
+                "Multiple active dev sessions match. Pass a session id prefix or platform:\n",
+            );
+            for session in &candidates {
+                msg.push_str(&format!(
+                    "  {}  platform={}  pid={}  ws={}\n",
+                    session.session_id, session.platform, session.pid, session.ws_url
+                ));
+            }
+            Err(anyhow!(msg.trim_end().to_string()))
+        }
+    }
+}
+
+pub fn request_shutdown(info: &SessionInfo) -> Result<()> {
+    let mut websocket = connect_devtools_ws(&info.ws_url, WS_COMMAND_TIMEOUT)
+        .ok_or_else(|| anyhow!("Failed to connect dev websocket: {}", info.ws_url))?;
+    send_wire_message(
+        &mut websocket,
+        &DevtoolsWireMessage::Hello {
+            role: DevtoolsPeerRole::Client,
+        },
+    )?;
+
+    let command_id = format!("shutdown-{}", now_timestamp_ms());
+    send_wire_message(
+        &mut websocket,
+        &DevtoolsWireMessage::Command {
+            command_id: command_id.clone(),
+            handler: handlers::session::SHUTDOWN.to_string(),
+            args: None,
+        },
+    )?;
+
+    loop {
+        let message = websocket
+            .read()
+            .context("Failed to read dev websocket shutdown response")?;
+        let Message::Text(text) = message else {
+            continue;
+        };
+        match serde_json::from_str(&text) {
+            Ok(DevtoolsWireMessage::Result {
+                command_id: result_id,
+                ok,
+                error,
+                ..
+            }) if result_id == command_id => {
+                if ok {
+                    return Ok(());
+                }
+                return Err(anyhow!(
+                    "{}",
+                    error.unwrap_or_else(|| "shutdown command failed".to_string())
+                ));
+            }
+            Ok(_) => continue,
+            Err(err) => return Err(err).context("Failed to parse dev websocket shutdown response"),
+        }
+    }
 }
 
 fn devtools_ws_reachable(ws_url: &str, timeout: Duration) -> bool {
