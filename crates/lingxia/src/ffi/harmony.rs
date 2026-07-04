@@ -1222,3 +1222,8 @@ pub fn on_user_capture_screen(lxappid: String) {
 pub fn get_app_capabilities() -> u32 {
     crate::capabilities::app_capabilities()
 }
+
+#[napi]
+pub fn should_enable_webview_debugging() -> bool {
+    crate::should_enable_webview_debugging()
+}

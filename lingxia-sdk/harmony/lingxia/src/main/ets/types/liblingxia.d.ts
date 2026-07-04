@@ -506,4 +506,7 @@ declare module 'liblingxia.so' {
 
   /** Returns a bitmask of host app capabilities. */
   export function getAppCapabilities(): number;
+
+  /** Returns true when the current runtime config should enable WebView debugging. */
+  export function shouldEnableWebViewDebugging(): boolean;
 }

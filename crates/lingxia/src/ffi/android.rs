@@ -1439,3 +1439,11 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_getAppCapabilities(
 ) -> jint {
     crate::capabilities::app_capabilities() as jint
 }
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_app_NativeApi_shouldEnableWebViewDebugging(
+    _env: EnvUnowned,
+    _class: JClass,
+) -> jboolean {
+    crate::should_enable_webview_debugging()
+}

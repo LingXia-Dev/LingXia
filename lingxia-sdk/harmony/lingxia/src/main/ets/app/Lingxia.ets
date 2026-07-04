@@ -14,6 +14,7 @@ import {
   getCurrentLxapp,
   getPageOrientation,
   getAppCapabilities,
+  shouldEnableWebViewDebugging,
   onApplinkReceived,
   CurrentLxApp
 } from 'liblingxia.so';
@@ -100,7 +101,6 @@ export class Lingxia {
 
     // Initialize WebEngine after schemes are registered
     webview.WebviewController.initializeWebEngine();
-    webview.WebviewController.setWebDebuggingAccess(true);
 
     hilog.info(DOMAIN, TAG, `Calling lingxiaInit with callback and file system paths (FIRST AND ONLY TIME)`);
 
@@ -119,6 +119,9 @@ export class Lingxia {
       hilog.info(DOMAIN, TAG, `Lingxia initialized successfully with home app: ${appId}`);
       LxApp.setHomeAppId(appId);
       Lingxia.capabilities = getAppCapabilities();
+      if (shouldEnableWebViewDebugging()) {
+        webview.WebviewController.setWebDebuggingAccess(true);
+      }
     } else {
       hilog.error(DOMAIN, TAG, 'Failed to get home app details from native init.');
     }
