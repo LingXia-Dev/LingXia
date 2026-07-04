@@ -27,7 +27,7 @@ pub(super) fn init(ctx: &JSContext, app: &JSObject) -> JSResult<()> {
 /// preference — the user can flip it outside the app at any time.
 async fn autostart_is_enabled(ctx: JSContext) -> JSResult<bool> {
     let lxapp = LxApp::from_ctx(&ctx)?;
-    super::update::ensure_home_lxapp(&lxapp, "lx.app.autostart")?;
+    super::ensure_home_lxapp(&lxapp, "lx.app.autostart")?;
     lxapp
         .runtime
         .autostart_is_enabled()
@@ -36,7 +36,7 @@ async fn autostart_is_enabled(ctx: JSContext) -> JSResult<bool> {
 
 async fn autostart_set_enabled(ctx: JSContext, enabled: bool) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
-    super::update::ensure_home_lxapp(&lxapp, "lx.app.autostart")?;
+    super::ensure_home_lxapp(&lxapp, "lx.app.autostart")?;
     lxapp
         .runtime
         .autostart_set_enabled(enabled)
