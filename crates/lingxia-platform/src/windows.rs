@@ -12,6 +12,7 @@ mod media_preview;
 mod mouse;
 mod network;
 mod pull_to_refresh;
+mod registry;
 mod screenshot;
 mod secure_store;
 mod surface;
