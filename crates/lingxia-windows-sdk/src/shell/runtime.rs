@@ -330,7 +330,12 @@ pub(crate) fn set_tabbar_position(appid: &str, position: WindowsShellTabBarPosit
     if let Ok(mut overrides) = overrides.lock() {
         overrides.insert(appid.to_string(), position);
     }
-    sync_shell_layout(appid);
+    // Other apps' layouts embed this app's tab bar (a presented lxapp's
+    // window layout carries the shell owner's sidebar), so re-sync the owner
+    // and the current app too — not just `appid` — or a device switch that
+    // updates positions app-by-app leaves the visible layout built against
+    // a stale position.
+    sync_related_shell_layouts(appid);
 }
 
 pub(crate) fn set_tabbar_position_on_window_thread(
@@ -341,7 +346,7 @@ pub(crate) fn set_tabbar_position_on_window_thread(
     if let Ok(mut overrides) = overrides.lock() {
         overrides.insert(appid.to_string(), position);
     }
-    sync_shell_layout(appid);
+    sync_related_shell_layouts(appid);
 }
 
 fn tabbar_position(appid: &str) -> WindowsShellTabBarPosition {
@@ -526,8 +531,18 @@ fn sync_related_shell_layouts(appid: &str) {
         appids.push(current_appid);
     }
     for appid in appids {
-        sync_shell_layout(&appid);
+        sync_app_shell_layout(&appid);
     }
+}
+
+/// Shell chrome state (sidebar rows and collapse, panel activators, the
+/// presented browser tab) is shared by every webtag that renders the shell,
+/// and the visible layout may belong to a presented non-owner lxapp. Any
+/// state change therefore re-syncs the whole related set — the app, the
+/// shell owner, and the current app — never just one layout, or the change
+/// only shows up after the next unrelated sync.
+fn sync_shell_layout(appid: &str) {
+    sync_related_shell_layouts(appid);
 }
 
 /// Routes `open_url` requests with in-app targets into the internal
@@ -624,7 +639,7 @@ fn on_browser_tabs_changed() {
     }
 }
 
-fn sync_shell_layout(appid: &str) {
+fn sync_app_shell_layout(appid: &str) {
     let Some(app) = lxapp::try_get(appid) else {
         return;
     };
@@ -725,7 +740,7 @@ fn build_window_layout(app: &LxApp, path: &str) -> WindowsShellWindowLayout {
     };
     let owner_app = shell_owner_app_for(app);
     let shell_app = owner_app.as_deref().unwrap_or(app);
-    let panel_activators = build_panel_activators(&shell_app);
+    let panel_activators = build_panel_activators(shell_app);
     // A simulator-framed window (the runner) gets its window controls from the
     // device-frame toolbar, so the shell drops its own caption on that screen.
     let owner_window = owner_window_handle(&app.appid);
@@ -1146,6 +1161,10 @@ fn build_open_lxapp_items(owner_appid: &str) -> Vec<WindowsShellAuxiliaryItemLay
         .filter(|info| info.appid != owner_appid)
         .filter(|info| !is_builtin_browser_appid(&info.appid))
         .filter(|info| matches!(info.status.as_str(), "opening" | "opened"))
+        // A capsule-closed lxapp keeps its "opened" session (stateful hide)
+        // but leaves the navigation stack; the sidebar lists only apps the
+        // user still has open.
+        .filter(|info| info.in_stack)
         .map(|info| {
             let title = if info.app_name.trim().is_empty() {
                 info.appid.clone()
@@ -1241,10 +1260,28 @@ fn dispatch_aside_panel_event(event: WindowsAsidePanelEvent) {
 }
 
 fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
-    if !is_shell_owner_appid(appid) {
-        log::debug!("ignoring Windows shell chrome event for non-owner app {appid}");
-        return;
-    }
+    // Chrome events arrive on the active content webview's handler, which may
+    // belong to a presented non-owner lxapp (a second lxapp opened over the
+    // shell owner's card). The navigation bar is that visible page's, but
+    // every other command (sidebar rows, browser tabs, panels, app menu)
+    // targets the shell owner's chrome state — route there instead of
+    // dropping the event.
+    let page_scoped = matches!(
+        event.id.as_str(),
+        chrome_command::NAVIGATION_BACK | chrome_command::NAVIGATION_HOME
+    );
+    let appid = if page_scoped || is_shell_owner_appid(appid) {
+        appid.to_string()
+    } else {
+        match shell_owner_appid() {
+            Some(owner) => owner,
+            None => {
+                log::debug!("ignoring Windows shell chrome event without a shell owner: {appid}");
+                return;
+            }
+        }
+    };
+    let appid = appid.as_str();
     let Some(app) = lxapp::try_get(appid) else {
         return;
     };
