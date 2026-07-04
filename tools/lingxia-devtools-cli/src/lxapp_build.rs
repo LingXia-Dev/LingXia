@@ -24,16 +24,21 @@ pub struct RebuildOptions {
 // window, so request a generous timeout from the client + server.
 const BUILD_TIMEOUT_MS: u64 = 600_000;
 
-pub fn execute(ws_url: &str, options: &RebuildOptions) -> Result<()> {
+pub fn run(ws_url: &str, release: bool, framework: Option<&str>) -> Result<()> {
     client::execute_command(
         ws_url,
         lingxia_devtool_protocol::handlers::lxapp::BUILD,
         Some(json!({
-            "release": options.release,
-            "framework": options.framework,
+            "release": release,
+            "framework": framework,
             "timeout_ms": BUILD_TIMEOUT_MS,
         })),
     )?;
+    Ok(())
+}
+
+pub fn execute(ws_url: &str, options: &RebuildOptions) -> Result<()> {
+    run(ws_url, options.release, options.framework.as_deref())?;
 
     if options.json {
         println!("{}", json!({ "ok": true, "release": options.release }));
