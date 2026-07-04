@@ -168,6 +168,15 @@ pub fn execute(options: DevExecuteOptions) -> Result<()> {
     // Detect project root (current directory)
     let project_root = env::current_dir()?;
 
+    if options
+        .runner_device
+        .as_deref()
+        .is_some_and(|value| value.trim().is_empty())
+    {
+        runner::print_runner_devices()?;
+        return Ok(());
+    }
+
     if runner::is_standalone_lxapp_project(&project_root) {
         return runner::execute_lxapp_dev(project_root, options);
     }

@@ -94,18 +94,18 @@ lingxia-devtool-protocol = { workspace = true }
 lingxia-log = { workspace = true }
 
 # LxApp build — oxc-based JS/TS compilation
-oxc_parser = "0.137"
-oxc_resolver = "11.19.1"
-oxc_transformer = "0.137"
-oxc_codegen = "0.137"
-oxc_minifier = "0.137"
-oxc_allocator = "0.137"
-oxc_span = "0.137"
-oxc_ast = "0.137"
-oxc_ast_visit = "0.137"
-oxc_syntax = "0.137"
-oxc_semantic = "0.137"
-oxc_sourcemap = "8.0"
+oxc_parser = "0.138"
+oxc_resolver = "11.23.0"
+oxc_transformer = "0.138"
+oxc_codegen = "0.138"
+oxc_minifier = "0.138"
+oxc_allocator = "0.138"
+oxc_span = "0.138"
+oxc_ast = "0.138"
+oxc_ast_visit = "0.138"
+oxc_syntax = "0.138"
+oxc_semantic = "0.138"
+oxc_sourcemap = "8.1"
 sysinfo = "0.39"
 
 [target.'cfg(not(target_os = "windows"))'.dependencies]

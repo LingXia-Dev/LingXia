@@ -12,6 +12,77 @@ const REQUIRED_RUNNER_VERSION: &str = env!("CARGO_PKG_VERSION");
 const RUNNER_WINDOWS_BIN_NAME: &str = "lingxia-runner";
 const RUNNER_WINDOWS_PRODUCT_NAME: &str = "LingXia Runner";
 const RUNNER_WINDOWS_APP_ID: &str = "app.lingxia.runner";
+const RUNNER_DEVICES_JSON: &str = include_str!("../../../../lingxia-runner/devices.json");
+
+#[derive(Debug, serde::Deserialize)]
+struct RunnerDevicesManifest {
+    default: String,
+    devices: Vec<RunnerDevicePreset>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct RunnerDevicePreset {
+    id: String,
+    group: String,
+    name: String,
+    width: u32,
+    height: u32,
+}
+
+pub(super) fn print_runner_devices() -> Result<()> {
+    println!("{}", render_runner_devices()?);
+    Ok(())
+}
+
+fn render_runner_devices() -> Result<String> {
+    let manifest: RunnerDevicesManifest =
+        serde_json::from_str(RUNNER_DEVICES_JSON).context("runner devices.json must be valid")?;
+    let id_width = manifest
+        .devices
+        .iter()
+        .map(|device| device.id.len())
+        .max()
+        .unwrap_or("device".len())
+        .max("device".len());
+    let group_width = manifest
+        .devices
+        .iter()
+        .map(|device| device.group.len())
+        .max()
+        .unwrap_or("group".len())
+        .max("group".len());
+
+    let mut out = String::from("Runner devices:\n");
+    out.push_str(&format!(
+        "  {:id_width$}  {:group_width$}  {:>11}  {}\n",
+        "device",
+        "group",
+        "size",
+        "name",
+        id_width = id_width,
+        group_width = group_width
+    ));
+    for device in &manifest.devices {
+        let marker = if device.id == manifest.default {
+            " (default)"
+        } else {
+            ""
+        };
+        out.push_str(&format!(
+            "  {:id_width$}  {:group_width$}  {:>4} x {:<4}  {}{}\n",
+            device.id,
+            device.group,
+            device.width,
+            device.height,
+            device.name,
+            marker,
+            id_width = id_width,
+            group_width = group_width
+        ));
+    }
+    out.push_str("\nUse `lingxia dev --runner <device>` to launch a specific runner device.");
+    Ok(out)
+}
 
 pub(super) fn execute_lxapp_dev(project_root: PathBuf, options: DevExecuteOptions) -> Result<()> {
     let runner_host = LxAppRunnerHost::detect()?;
@@ -723,7 +794,10 @@ fn installed_runner_version(app_path: &Path) -> Result<Option<String>> {
 
 #[cfg(test)]
 mod tests {
-    use super::{WindowsRunnerLxAppIdentity, is_standalone_lxapp_project, windows_runner_ui_json};
+    use super::{
+        WindowsRunnerLxAppIdentity, is_standalone_lxapp_project, render_runner_devices,
+        windows_runner_ui_json,
+    };
     use crate::config::HOST_CONFIG_FILE;
     use std::fs;
     use tempfile::tempdir;
@@ -743,6 +817,15 @@ mod tests {
         fs::write(temp.path().join(HOST_CONFIG_FILE), "").unwrap();
 
         assert!(!is_standalone_lxapp_project(temp.path()));
+    }
+
+    #[test]
+    fn runner_device_list_uses_shared_manifest() {
+        let list = render_runner_devices().unwrap();
+
+        assert!(list.contains("iphone-15-pro"));
+        assert!(list.contains("(default)"));
+        assert!(list.contains("lingxia dev --runner <device>"));
     }
 
     #[test]

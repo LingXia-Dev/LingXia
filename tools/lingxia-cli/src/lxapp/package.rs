@@ -12,6 +12,15 @@ pub fn package_dist(project: &Project) -> Result<PathBuf> {
             project.output_dir.display()
         ));
     }
+    let integrity_manifest = project
+        .output_dir
+        .join(crate::lxapp::hardening::INTEGRITY_MANIFEST);
+    if !integrity_manifest.is_file() {
+        return Err(anyhow!(
+            "Release integrity manifest not found: {}.\nRun `lingxia build --release` before packaging.",
+            integrity_manifest.display()
+        ));
+    }
 
     let default_name = match project.kind {
         crate::lxapp::project::ProjectKind::LxApp => "lingxia-app",
