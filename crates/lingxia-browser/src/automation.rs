@@ -11,7 +11,9 @@ use crate::types::{
     BrowserWaitResult,
 };
 use lingxia_webview::runtime::find_webview as find_managed_webview;
-use lingxia_webview::{WebTag, WebView, WebViewCookie, WebViewCookieSetRequest};
+use lingxia_webview::{
+    NetworkCaptureSnapshot, WebTag, WebView, WebViewCookie, WebViewCookieSetRequest,
+};
 use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
 
@@ -414,6 +416,36 @@ pub async fn browser_delete_cookie(
 pub async fn browser_clear_cookies(tab_id: &str) -> Result<(), BrowserAutomationError> {
     browser_tab_webview(tab_id)?
         .clear_cookies()
+        .await
+        .map_err(BrowserAutomationError::from)
+}
+
+pub async fn browser_start_network_capture(tab_id: &str) -> Result<(), BrowserAutomationError> {
+    browser_tab_webview(tab_id)?
+        .start_network_capture()
+        .await
+        .map_err(BrowserAutomationError::from)
+}
+
+pub async fn browser_stop_network_capture(tab_id: &str) -> Result<(), BrowserAutomationError> {
+    browser_tab_webview(tab_id)?
+        .stop_network_capture()
+        .await
+        .map_err(BrowserAutomationError::from)
+}
+
+pub async fn browser_network_entries(
+    tab_id: &str,
+) -> Result<NetworkCaptureSnapshot, BrowserAutomationError> {
+    browser_tab_webview(tab_id)?
+        .network_entries()
+        .await
+        .map_err(BrowserAutomationError::from)
+}
+
+pub async fn browser_clear_network_capture(tab_id: &str) -> Result<(), BrowserAutomationError> {
+    browser_tab_webview(tab_id)?
+        .clear_network_capture()
         .await
         .map_err(BrowserAutomationError::from)
 }
