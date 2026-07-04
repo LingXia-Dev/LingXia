@@ -295,6 +295,13 @@ struct WindowsRunnerLxAppIdentity {
     version: String,
 }
 
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WindowsRunnerResourceLxAppPath {
+    app_id: String,
+    path: String,
+}
+
 fn read_windows_runner_lxapp_identity(lxapp_path: &Path) -> Result<WindowsRunnerLxAppIdentity> {
     let dist_manifest = lxapp_path.join("dist").join("lxapp.json");
     let manifest_path = if dist_manifest.exists() {
@@ -439,6 +446,7 @@ fn launch_windows_runner_for_lxapp(
     crate::runner_cache::ensure_runner(REQUIRED_RUNNER_VERSION, false)?;
     let identity = read_windows_runner_lxapp_identity(lxapp_path)?;
     let assets_dir = prepare_windows_runner_assets(lxapp_path, &identity, ws_url)?;
+    let resource_lxapp_paths = windows_runner_resource_lxapp_paths(lxapp_path, &identity)?;
     let exe_path = installed_windows_runner_exe_path()?;
     let mock_dir = crate::lxapp::functions::prepare_dev(lxapp_path);
     if let Some(mock_dir) = &mock_dir {
@@ -457,6 +465,7 @@ fn launch_windows_runner_for_lxapp(
         ws_url,
         mock_dir.as_deref(),
         runner_device,
+        &resource_lxapp_paths,
     )?;
 
     #[cfg(not(target_os = "windows"))]
@@ -470,6 +479,11 @@ fn launch_windows_runner_for_lxapp(
         }
         if let Some(device) = runner_device.map(str::trim).filter(|s| !s.is_empty()) {
             command.arg("--runner-device").arg(device);
+        }
+        if !resource_lxapp_paths.is_empty() {
+            command
+                .arg("--resource-lxapp-paths")
+                .arg(serde_json::to_string(&resource_lxapp_paths)?);
         }
         command.stdin(Stdio::null());
         command.stdout(Stdio::inherit());
@@ -485,6 +499,57 @@ fn launch_windows_runner_for_lxapp(
 
     println!("{} Launched {}", "[runner]".cyan(), exe_path.display());
     Ok(child)
+}
+
+fn windows_runner_resource_lxapp_paths(
+    lxapp_path: &Path,
+    identity: &WindowsRunnerLxAppIdentity,
+) -> Result<Vec<WindowsRunnerResourceLxAppPath>> {
+    let Some(host_root) = lxapp_path
+        .ancestors()
+        .skip(1)
+        .find(|root| root.join(crate::config::HOST_CONFIG_FILE).is_file())
+    else {
+        return Ok(Vec::new());
+    };
+    let config = LingXiaConfig::load(host_root)?;
+    let Some(resources) = config.resources.as_ref() else {
+        return Ok(Vec::new());
+    };
+
+    let mut paths = Vec::new();
+    for bundle in &resources.bundles {
+        if bundle.app_id == identity.app_id {
+            continue;
+        }
+        let Some(path) = bundle
+            .path
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        else {
+            continue;
+        };
+        let bundle_root = host_root.join(path);
+        let runnable = resolve_windows_runner_resource_lxapp_path(&bundle_root);
+        if !runnable.join("lxapp.json").is_file() {
+            continue;
+        }
+        paths.push(WindowsRunnerResourceLxAppPath {
+            app_id: bundle.app_id.clone(),
+            path: runnable.display().to_string(),
+        });
+    }
+    Ok(paths)
+}
+
+fn resolve_windows_runner_resource_lxapp_path(bundle_root: &Path) -> PathBuf {
+    let dist = bundle_root.join("dist");
+    if dist.join("lxapp.json").is_file() {
+        dist
+    } else {
+        bundle_root.to_path_buf()
+    }
 }
 
 enum RunnerProcess {
@@ -578,6 +643,7 @@ fn shell_execute_windows_runner(
     ws_url: &str,
     mock_dir: Option<&Path>,
     runner_device: Option<&str>,
+    resource_lxapp_paths: &[WindowsRunnerResourceLxAppPath],
 ) -> Result<RunnerProcess> {
     use ::windows::Win32::Foundation::HANDLE;
     use ::windows::Win32::System::Threading::GetProcessId;
@@ -603,6 +669,10 @@ fn shell_execute_windows_runner(
     if let Some(device) = runner_device.map(str::trim).filter(|s| !s.is_empty()) {
         params.push("--runner-device".to_string());
         params.push(device.to_string());
+    }
+    if !resource_lxapp_paths.is_empty() {
+        params.push("--resource-lxapp-paths".to_string());
+        params.push(serde_json::to_string(resource_lxapp_paths)?);
     }
     let params = params
         .into_iter()
