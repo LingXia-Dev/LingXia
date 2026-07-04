@@ -1,6 +1,6 @@
 # `lxdev` — Drive a running dev session
 
-`lxdev` inspects and drives a live `lingxia dev` session — the host app's browser tabs, the lxapps inside it, the host window, and the log stream — without rebuilding or restarting. Each invocation sends one command over the session's dev websocket, prints the result, and exits (except `logs -f`).
+`lxdev` inspects and drives a live `lingxia dev` session — the host app's browser tabs, the lxapps inside it, the host window, and the log stream. It is a session client: it connects to an existing dev websocket, sends one command, prints the result, and exits (except `logs -f`). It does not start new platform sessions; `lingxia dev` owns launch, install, process lifetime, and background mode.
 
 This file says **what `lxdev` can do**. For flags and defaults, `lxdev <family> <cmd> --help` is exhaustive and always matches the installed version — the doc does not duplicate it. The command set is dynamic per project type, so `--help` is also the only reliable list for the project you're in.
 
@@ -19,6 +19,8 @@ Stale files from crashed sessions are pruned automatically (or via `lxdev sessio
 **`lxapp`** — the lxapps in the session. Every command targets the **current** lxapp by default (`--app` to pick another); page commands likewise default to the **current page** (`--page` to pick):
 - `list` / `current` / `info` / `pages` — what's running, and the configured pages
 - `open` / `close` / `restart` / `uninstall` — lifecycle
+- `rebuild` — rebuild the lxapp front-end bundle through the running session
+- `restart --build` — rebuild, then restart the lxapp runtime
 - `nav to|redirect|switch-tab|relaunch|back` — navigate the runtime by page name (from `pages`)
 - `eval` — run JS in the **Logic runtime** (AppService: `lx.*`, `Page({})` state — no DOM)
 - `page current|list|info` — page stack status
@@ -43,9 +45,7 @@ Stale files from crashed sessions are pruned automatically (or via `lxdev sessio
 
 **`logs`** — the session's JSONL log stream: tail or `-f` follow, filter by level, source (native / webview / logic), page path, or text.
 
-**`sessions`** — list, probe liveness, prune stale session files.
-
-**`build`** — rebuild the session's lxapp front-end bundle via the `lingxia dev` orchestrator (works even with no app attached; output streams to the dev terminal).
+**`sessions`** — list, probe liveness, prune stale session files, or request that the owning `lingxia dev` process stop (`sessions stop`). Force-kill remains on `lingxia dev stop --force`, because `lingxia` owns the platform process lifecycle.
 
 ## The three JS contexts — don't conflate them
 
@@ -72,4 +72,4 @@ Scripts may be an expression or a function body using `return` / `await`. Surfac
 | `Multiple active dev sessions match` | Add `--session <id-prefix\|platform>`. |
 | `All matching dev sessions are unreachable` | `lxdev sessions prune`, then restart `lingxia dev`. |
 | `eval` returns nothing / wrong scope | Wrong JS context — see the table above. |
-| Commands connect but hang | Host app lost its bridge — restart `lingxia dev`. |
+| Commands connect but hang | Host app lost its bridge — use `lxdev sessions stop` or `lingxia dev stop`, then start `lingxia dev` again. |

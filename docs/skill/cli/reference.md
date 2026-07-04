@@ -80,7 +80,7 @@ See `lingxia package --help` for the flags.
 Development mode for both app and lxapp projects. In an app project it builds,
 installs, launches the host app, and starts a local dev websocket that `lxdev`
 drives. In a standalone lxapp project it builds the lxapp and launches LingXia
-Runner on macOS. Networking is handled per platform: Android and Harmony get
+Runner on the local runner platform. Networking is handled per platform: Android and Harmony get
 reverse port forwarding so the device reaches the local dev server; iOS embeds a
 LAN dev websocket URL, so the iOS device must be able to reach the host Mac over
 the local network.
@@ -89,12 +89,21 @@ By default it **refuses a second same-platform session** in a project (pass
 `--parallel` to opt in) so that `lxdev` never silently connects to the wrong
 target.
 
+`lingxia dev` owns dev-session lifecycle. Use it to start foreground sessions,
+start background sessions, inspect session status, stop sessions gracefully, or
+force-kill a session when graceful shutdown cannot reach the dev websocket.
+Background sessions write their process output under `.lingxia/background/` and
+still publish normal session metadata/logs for `lxdev`.
+
 See `lingxia dev --help` for the flags.
 
 > **Driving a live session:** once `lingxia dev` is running, use the separate
 > **`lxdev`** binary to automate the running app — open URLs, click/type/eval in
 > browser tabs and lxapp pages, screenshot windows, and tail logs without
-> restarting. See [`lxdev` — Drive a running dev session](./lxdev.md).
+> starting a new platform session. `lxdev` can ask a session to stop and can
+> rebuild/restart lxapps inside the running session; `lingxia dev` remains the
+> owner of platform process lifetime. See [`lxdev` — Drive a running dev
+> session](./lxdev.md).
 
 ### `lingxia devices`
 
