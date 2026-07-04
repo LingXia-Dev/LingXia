@@ -216,6 +216,10 @@ pub(crate) fn frame_spec(index: usize, landscape: bool) -> WindowsDeviceFrame {
                 Vec::new()
             },
             capsule_close_command: is_phone(index).then_some(CAPSULE_CLOSE_COMMAND),
+            // Phones/tablets are handheld mockups: the toolbar's macOS-style
+            // dots own close/minimize. A simulated desktop keeps the standard
+            // Windows caption buttons in the shell chrome instead.
+            window_dots: is_phone(index) || is_tablet(index),
         }),
     }
 }

@@ -741,10 +741,13 @@ fn build_window_layout(app: &LxApp, path: &str) -> WindowsShellWindowLayout {
     let owner_app = shell_owner_app_for(app);
     let shell_app = owner_app.as_deref().unwrap_or(app);
     let panel_activators = build_panel_activators(shell_app);
-    // A simulator-framed window (the runner) gets its window controls from the
-    // device-frame toolbar, so the shell drops its own caption on that screen.
+    // A simulator frame whose toolbar carries the close/minimize dots owns the
+    // window controls, so the shell drops its own caption there. A framed
+    // simulated desktop keeps the standard Windows caption buttons.
     let owner_window = owner_window_handle(&app.appid);
-    let suppress_window_controls = owner_window.map(window_has_device_frame).unwrap_or(false);
+    let suppress_window_controls = owner_window
+        .map(device_frame_owns_window_controls)
+        .unwrap_or(false);
     // Reserve the device frame's status-bar strip so the nav bar + content stack
     // below it (the status bar overlay owns the top strip), matching the macOS
     // runner's status-bar + nav-bar layout. An immersive (custom navigation-
@@ -1977,6 +1980,18 @@ fn window_has_device_frame(window: isize) -> bool {
 
 #[cfg(not(feature = "device-frame"))]
 fn window_has_device_frame(_window: isize) -> bool {
+    false
+}
+
+/// Whether `window`'s device frame owns the window controls (toolbar dots),
+/// which is what suppresses the shell's own caption buttons.
+#[cfg(feature = "device-frame")]
+fn device_frame_owns_window_controls(window: isize) -> bool {
+    crate::device_frame::device_frame_owns_window_controls(window)
+}
+
+#[cfg(not(feature = "device-frame"))]
+fn device_frame_owns_window_controls(_window: isize) -> bool {
     false
 }
 

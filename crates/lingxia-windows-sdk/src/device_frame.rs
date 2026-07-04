@@ -29,6 +29,11 @@ pub struct WindowsDeviceFrameToolbar {
     /// owns the meaning — the dev runner maps it to "quit the emulator". `None`
     /// leaves the circle inert.
     pub capsule_close_command: Option<u32>,
+    /// The toolbar draws macOS-style close/minimize dots and therefore owns
+    /// the window controls; the shell suppresses its own caption buttons.
+    /// `false` (e.g. a simulated desktop) keeps the standard Windows
+    /// min/max/close in the shell chrome and draws no dots.
+    pub window_dots: bool,
 }
 
 /// Optional physical screen cutout rendered over the simulated screen.
@@ -179,6 +184,15 @@ pub(crate) fn set_device_frame_command_handler(handler: WindowsAppMenuCommandHan
 #[cfg_attr(not(feature = "shell-chrome"), allow(dead_code))]
 pub(crate) fn window_has_device_frame(window: isize) -> bool {
     native::window_has_frame(window)
+}
+
+/// True while `window`'s device frame owns the window controls (macOS-style
+/// close/minimize dots on its toolbar). The shell suppresses its caption
+/// buttons only then — a framed simulated desktop keeps the standard Windows
+/// min/max/close in the shell chrome.
+#[cfg_attr(not(feature = "shell-chrome"), allow(dead_code))]
+pub(crate) fn device_frame_owns_window_controls(window: isize) -> bool {
+    native::frame_owns_window_controls(window)
 }
 
 /// Height of the simulated status bar for `window`, so the shell can reserve a

@@ -200,20 +200,29 @@ fn compute_layout(spec: &WindowsDeviceFrame) -> FrameLayout {
             right: margin + bezel_width,
             bottom: margin + TOOLBAR_HEIGHT,
         };
-        let dot = (TOOLBAR_DOT_RADIUS * 2.0) as i32;
-        let dot_top = layout.toolbar.top + (TOOLBAR_HEIGHT - dot) / 2;
-        layout.close_rect = RECT {
-            left: layout.toolbar.left + TOOLBAR_SIDE_MARGIN,
-            top: dot_top,
-            right: layout.toolbar.left + TOOLBAR_SIDE_MARGIN + dot,
-            bottom: dot_top + dot,
-        };
-        layout.minimize_rect = RECT {
-            left: layout.close_rect.right + TOOLBAR_DOT_SPACING,
-            top: dot_top,
-            right: layout.close_rect.right + TOOLBAR_DOT_SPACING + dot,
-            bottom: dot_top + dot,
-        };
+        // The close/minimize dots exist only when the toolbar owns the window
+        // controls; otherwise the shell chrome keeps its standard caption
+        // buttons and the rects stay empty (never drawn, never hit).
+        if spec
+            .toolbar
+            .as_ref()
+            .is_some_and(|toolbar| toolbar.window_dots)
+        {
+            let dot = (TOOLBAR_DOT_RADIUS * 2.0) as i32;
+            let dot_top = layout.toolbar.top + (TOOLBAR_HEIGHT - dot) / 2;
+            layout.close_rect = RECT {
+                left: layout.toolbar.left + TOOLBAR_SIDE_MARGIN,
+                top: dot_top,
+                right: layout.toolbar.left + TOOLBAR_SIDE_MARGIN + dot,
+                bottom: dot_top + dot,
+            };
+            layout.minimize_rect = RECT {
+                left: layout.close_rect.right + TOOLBAR_DOT_SPACING,
+                top: dot_top,
+                right: layout.close_rect.right + TOOLBAR_DOT_SPACING + dot,
+                bottom: dot_top + dot,
+            };
+        }
         // selector_rect and action_rect depend on text metrics; they are
         // filled in during painting (see paint_frame_window).
     }
@@ -294,6 +303,21 @@ fn frame_state<T>(content: isize, read: impl FnOnce(&DeviceFrameState) -> T) -> 
 #[cfg_attr(not(feature = "browser-runtime"), allow(dead_code))]
 pub(super) fn window_has_frame(content: isize) -> bool {
     frame_state(content, |_| ()).is_some()
+}
+
+/// True while `content`'s frame toolbar carries the close/minimize dots and
+/// therefore owns the window controls. A framed simulated desktop returns
+/// `false`: the shell keeps its standard caption buttons there.
+#[cfg_attr(not(feature = "shell-chrome"), allow(dead_code))]
+pub(super) fn frame_owns_window_controls(content: isize) -> bool {
+    frame_state(content, |state| {
+        state
+            .spec
+            .toolbar
+            .as_ref()
+            .is_some_and(|toolbar| toolbar.window_dots)
+    })
+    .unwrap_or(false)
 }
 
 /// Updates the simulated status bar's foreground + background for `content` and
