@@ -55,6 +55,7 @@ capabilities:
   browser: true
   proxy: true
   terminal: true
+  autostart: true
 
 resources:
   bundles:
