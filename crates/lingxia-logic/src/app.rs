@@ -1,5 +1,8 @@
-use crate::i18n::{js_error_from_platform_error, js_service_unavailable_error};
-use lingxia_app_context::{app_config, env_version};
+use crate::i18n::{
+    js_error_from_business_code_with_detail, js_error_from_platform_error,
+    js_service_unavailable_error,
+};
+use lingxia_app_context::{app_config, env_version, home_app_id};
 use lingxia_platform::traits::app_runtime::AppRuntime;
 use lxapp::LxApp;
 use rong::{IntoJSObj, JSContext, JSFunc, JSObject, JSResult};
@@ -49,6 +52,21 @@ fn set_app_badge(ctx: JSContext, text: Option<String>) -> JSResult<()> {
         .runtime
         .set_app_badge(text.as_deref().unwrap_or(""))
         .map_err(|e| js_error_from_platform_error(&e))
+}
+
+/// Guard for host-app-level APIs (`checkUpdate`, `screenshot`, `autostart`):
+/// only the home lxapp may call them; others get a permission error.
+pub(super) fn ensure_home_lxapp(lxapp: &LxApp, api_name: &str) -> JSResult<()> {
+    let home_appid = home_app_id()
+        .ok_or_else(|| js_service_unavailable_error("home lxapp is not configured"))?;
+    if lxapp.appid == home_appid {
+        return Ok(());
+    }
+
+    Err(js_error_from_business_code_with_detail(
+        3000,
+        format!("{api_name} is only available in the home lxapp"),
+    ))
 }
 
 fn app_namespace(ctx: &JSContext) -> JSResult<JSObject> {

@@ -1,9 +1,8 @@
 use crate::i18n::{
     js_error_from_business_code_with_detail, js_internal_error, js_invalid_parameter_error,
-    js_resource_not_found_error, js_service_unavailable_error,
+    js_resource_not_found_error,
 };
 use futures::channel::oneshot;
-use lingxia_app_context::home_app_id;
 use lingxia_service::update::{
     AppUpdateApply, AppUpdateEvent, AppUpdateStage, HostAppUpdateService, UpdateError,
     UpdatePackageInfo,
@@ -68,7 +67,7 @@ pub(super) fn init(ctx: &JSContext, app: &JSObject) -> JSResult<()> {
 
 async fn check_app_update(ctx: JSContext) -> JSResult<JSObject> {
     let lxapp = LxApp::from_ctx(&ctx)?;
-    ensure_home_lxapp(&lxapp, "lx.app.checkUpdate")?;
+    super::ensure_home_lxapp(&lxapp, "lx.app.checkUpdate")?;
 
     let update = host_update_service_from(&lxapp)
         .check()
@@ -124,7 +123,7 @@ fn create_update_object(ctx: &JSContext, update: UpdatePackageInfo) -> JSResult<
 
 fn create_apply_task(ctx: &JSContext, package: UpdatePackageInfo) -> JSResult<JSObject> {
     let lxapp = LxApp::from_ctx(ctx)?;
-    ensure_home_lxapp(&lxapp, "lx.app.checkUpdate")?;
+    super::ensure_home_lxapp(&lxapp, "lx.app.checkUpdate")?;
 
     let service = host_update_service_from(&lxapp);
     // Store-delivered platforms (iOS/HarmonyOS) update through the store and
@@ -286,19 +285,6 @@ fn completion_from_event(event: &AppUpdateEvent) -> AppUpdateCompletion {
 
 fn host_update_service_from(lxapp: &LxApp) -> HostAppUpdateService {
     HostAppUpdateService::new(lxapp.runtime.clone(), lxapp::provider::update_provider())
-}
-
-pub(super) fn ensure_home_lxapp(lxapp: &LxApp, api_name: &str) -> JSResult<()> {
-    let home_appid = home_app_id()
-        .ok_or_else(|| js_service_unavailable_error("home lxapp is not configured"))?;
-    if lxapp.appid == home_appid {
-        return Ok(());
-    }
-
-    Err(js_error_from_business_code_with_detail(
-        3000,
-        format!("{api_name} is only available in the home lxapp"),
-    ))
 }
 
 fn is_terminal_event(event: &AppUpdateEvent) -> bool {

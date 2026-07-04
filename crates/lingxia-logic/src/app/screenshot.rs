@@ -45,7 +45,7 @@ async fn app_screenshot(
     options: Optional<JSAppScreenshotOptions>,
 ) -> JSResult<JSAppScreenshotResult> {
     let lxapp = LxApp::from_ctx(&ctx)?;
-    super::update::ensure_home_lxapp(&lxapp, "lx.app.screenshot")?;
+    super::ensure_home_lxapp(&lxapp, "lx.app.screenshot")?;
 
     let window_id = options.as_ref().and_then(|o| o.window_id.clone());
     let platform = lxapp::get_platform()
