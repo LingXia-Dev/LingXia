@@ -614,6 +614,12 @@ pub fn present_webview_in_active_group(webtag: &WebTag) -> StdResult<()> {
     let already_active =
         previous.as_deref() == Some(webtag.key()) && webtag_is_visible(webtag.key());
     if already_active {
+        // The visibility registry tracks the *window* (WM_SHOWWINDOW /
+        // WM_WINDOWPOSCHANGED mark the active webtag visible), not the
+        // WebView2 controller. At launch the host window is shown before the
+        // controller ever became visible, so this branch must still show the
+        // controller or the screen stays black until another present.
+        handler.set_content_visible(true)?;
         sync_window_layout(host);
         invalidate_window_chrome(host);
         return Ok(());
@@ -640,19 +646,8 @@ pub fn present_webview_in_active_group(webtag: &WebTag) -> StdResult<()> {
     set_host_active_webtag(host, webtag.key());
     set_primary_host_window(host);
     sync_window_layout(host);
-    handler.set_content_visible(true)?;
-
-    if let Some(previous) = previous
-        && previous != webtag.key()
-    {
-        if let Some(previous_webtag) = webtag_for_key(&previous)
-            && let Some(previous_handler) = find_webview_handler(&previous_webtag)
-        {
-            let _ = previous_handler.set_content_visible(false);
-        }
-        notify_webtag_visibility(&previous, false);
-    }
-
+    // Show the host before the content so the controller's SetIsVisible(true)
+    // lands on a visible parent chain and composition starts immediately.
     if !is_window_visible(host) {
         unsafe {
             let _ = WindowsAndMessaging::SetWindowPos(
@@ -670,6 +665,19 @@ pub fn present_webview_in_active_group(webtag: &WebTag) -> StdResult<()> {
             let _ = WindowsAndMessaging::SetForegroundWindow(host);
         }
     }
+    handler.set_content_visible(true)?;
+
+    if let Some(previous) = previous
+        && previous != webtag.key()
+    {
+        if let Some(previous_webtag) = webtag_for_key(&previous)
+            && let Some(previous_handler) = find_webview_handler(&previous_webtag)
+        {
+            let _ = previous_handler.set_content_visible(false);
+        }
+        notify_webtag_visibility(&previous, false);
+    }
+
     mark_active(webtag);
     notify_webtag_visibility(webtag.key(), true);
     invalidate_window_chrome(host);
