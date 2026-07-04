@@ -7,7 +7,10 @@ mod tabs;
 mod types;
 mod webview;
 
-pub use lingxia_webview::{WebViewCookie, WebViewCookieSameSite, WebViewCookieSetRequest};
+pub use lingxia_webview::{
+    NetworkBody, NetworkCaptureSnapshot, NetworkEntry, WebViewCookie, WebViewCookieSameSite,
+    WebViewCookieSetRequest,
+};
 pub use policy::{extract_url_scheme, is_lingxia_startup_url};
 use std::sync::Arc;
 use std::time::Duration;
@@ -214,6 +217,24 @@ pub async fn delete_cookie(
 
 pub async fn clear_cookies(tab_id: &str) -> Result<(), BrowserAutomationError> {
     automation::browser_clear_cookies(tab_id).await
+}
+
+pub async fn start_network_capture(tab_id: &str) -> Result<(), BrowserAutomationError> {
+    automation::browser_start_network_capture(tab_id).await
+}
+
+pub async fn stop_network_capture(tab_id: &str) -> Result<(), BrowserAutomationError> {
+    automation::browser_stop_network_capture(tab_id).await
+}
+
+pub async fn network_entries(
+    tab_id: &str,
+) -> Result<NetworkCaptureSnapshot, BrowserAutomationError> {
+    automation::browser_network_entries(tab_id).await
+}
+
+pub async fn clear_network_capture(tab_id: &str) -> Result<(), BrowserAutomationError> {
+    automation::browser_clear_network_capture(tab_id).await
 }
 
 pub async fn query(

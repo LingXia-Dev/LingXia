@@ -28,6 +28,11 @@ pub mod handlers {
         pub const COOKIES_DELETE: &str = "browser.cookies.delete";
         pub const COOKIES_CLEAR: &str = "browser.cookies.clear";
         pub const SCREENSHOT: &str = "browser.screenshot";
+        // Network capture (Windows/WebView2 CDP only).
+        pub const NETWORK_ENABLE: &str = "browser.network.enable";
+        pub const NETWORK_DISABLE: &str = "browser.network.disable";
+        pub const NETWORK_LIST: &str = "browser.network.list";
+        pub const NETWORK_CLEAR: &str = "browser.network.clear";
     }
 
     pub mod lxapp {

@@ -309,6 +309,38 @@ fn handle_browser_command_impl(
             let bytes = run_async(lingxia_browser::take_screenshot(&tab_id))?;
             Ok(Some(png_response(&bytes, [("tab_id", json!(tab_id))])))
         }
+        // Network capture is WebView2/CDP-only; on other runners these fall
+        // through to "unknown handler" (and lxdev gates the subcommand on a
+        // Windows session before ever sending them).
+        #[cfg(target_os = "windows")]
+        handlers::browser::NETWORK_ENABLE => {
+            let args: TabArgs = parse_args(handler, args)?;
+            let tab_id = resolve_tab_id(&args.tab_id)?;
+            run_async(lingxia_browser::start_network_capture(&tab_id))?;
+            Ok(None)
+        }
+        #[cfg(target_os = "windows")]
+        handlers::browser::NETWORK_DISABLE => {
+            let args: TabArgs = parse_args(handler, args)?;
+            let tab_id = resolve_tab_id(&args.tab_id)?;
+            run_async(lingxia_browser::stop_network_capture(&tab_id))?;
+            Ok(None)
+        }
+        #[cfg(target_os = "windows")]
+        handlers::browser::NETWORK_LIST => {
+            let args: TabArgs = parse_args(handler, args)?;
+            let tab_id = resolve_tab_id(&args.tab_id)?;
+            run_async(lingxia_browser::network_entries(&tab_id))
+                .and_then(|snapshot| serde_json::to_value(snapshot).map_err(|err| err.to_string()))
+                .map(Some)
+        }
+        #[cfg(target_os = "windows")]
+        handlers::browser::NETWORK_CLEAR => {
+            let args: TabArgs = parse_args(handler, args)?;
+            let tab_id = resolve_tab_id(&args.tab_id)?;
+            run_async(lingxia_browser::clear_network_capture(&tab_id))?;
+            Ok(None)
+        }
         _ => Err(format!("unknown browser handler: {}", handler)),
     }
 }
