@@ -9,11 +9,12 @@ use lingxia_webview::WebTag;
 use lingxia_webview::platform::windows::{WindowsWebViewHandler, find_webview_handler};
 use lingxia_webview::runtime as webview_runtime;
 use lingxia_windows_contract::{
-    WindowsAsidePanelEvent, WindowsAsidePanelTab, WindowsPanelPosition, hide_webview_window,
-    navigate_webview_window, present_webview_as_overlay, present_webview_in_active_group,
-    refresh_aside_panel, set_aside_panel_tabs, set_webview_close_handler,
-    set_windows_aside_panel_event_handler, show_webview_as_adaptive_panel, show_webview_as_panel,
-    show_webview_window, show_webview_window_with_content_size,
+    WindowsAsidePanelEvent, WindowsAsidePanelTab, WindowsPanelPosition,
+    active_host_window_is_device_framed, hide_webview_window, navigate_webview_window,
+    present_webview_as_overlay, present_webview_in_active_group, refresh_aside_panel,
+    set_aside_panel_tabs, set_webview_close_handler, set_windows_aside_panel_event_handler,
+    show_webview_as_adaptive_panel, show_webview_as_panel, show_webview_window,
+    show_webview_window_with_content_size,
 };
 
 use super::request_windows_app_exit;
@@ -118,6 +119,9 @@ fn show_webview_handler_for_mode(
 ) {
     let result = match open_mode {
         LxAppOpenMode::Panel => show_webview_as_panel(&handler.webtag(), title, panel_id),
+        LxAppOpenMode::Normal if active_host_window_is_device_framed() => {
+            present_webview_in_active_group(&handler.webtag())
+        }
         LxAppOpenMode::Normal => show_webview_window(&handler.webtag(), title, activate),
     };
     if let Err(err) = result {

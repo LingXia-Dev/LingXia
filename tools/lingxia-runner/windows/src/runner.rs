@@ -91,7 +91,6 @@ pub(crate) fn run() -> lingxia_windows_sdk::Result<()> {
         .with_window_size(initial_frame.screen_width, initial_frame.screen_height);
     let home_app_id = lingxia_windows_sdk::start_default_host(app)?;
     install_runner_commands(home_app_id.clone());
-    start_device_frame_sync(home_app_id.clone());
     apply_default_device(home_app_id, default_device, initial_landscape);
     std::process::exit(lingxia_windows_sdk::run_message_loop());
 }
@@ -310,25 +309,6 @@ fn restart_lxapp(appid: &str, clean_cache: bool) -> Result<(), String> {
         app.clear_user_cache().map_err(|err| err.to_string())?;
     }
     app.restart_in_place().map_err(|err| err.to_string())
-}
-
-fn start_device_frame_sync(home_app_id: String) {
-    std::thread::spawn(move || {
-        let mut last: Option<(String, usize, bool)> = None;
-        loop {
-            std::thread::sleep(std::time::Duration::from_millis(150));
-            let target = current_or_home_app_id(&home_app_id);
-            let index = CURRENT_DEVICE.load(Ordering::Acquire);
-            let landscape = LANDSCAPE.load(Ordering::Acquire);
-            let next = (target.clone(), index, landscape);
-            if last.as_ref() == Some(&next) {
-                continue;
-            }
-            if apply_device_to_app(&target, index, landscape).is_ok() {
-                last = Some(next);
-            }
-        }
-    });
 }
 
 fn apply_default_device(home_app_id: String, default_device: usize, landscape: bool) {

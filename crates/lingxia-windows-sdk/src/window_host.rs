@@ -329,6 +329,14 @@ impl WindowsHostBackend for WindowsHostBackendImpl {
         present_webview_in_active_group(webtag)
     }
 
+    fn active_host_window_is_device_framed(&self) -> bool {
+        active_host_window().is_some_and(window_is_device_framed)
+    }
+
+    fn active_host_window_webtag_key(&self) -> Option<String> {
+        active_host_window().and_then(active_webtag_key_for_window)
+    }
+
     fn present_webview_as_group_main(&self, webtag: &WebTag, group_key: String) -> StdResult<()> {
         present_webview_as_group_main(webtag, group_key)
     }

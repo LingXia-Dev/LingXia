@@ -146,6 +146,14 @@ pub trait WindowsHostBackend: Send + Sync {
         unsupported_operation("present_webview_in_active_group")
     }
 
+    fn active_host_window_is_device_framed(&self) -> bool {
+        false
+    }
+
+    fn active_host_window_webtag_key(&self) -> Option<String> {
+        None
+    }
+
     fn present_webview_as_group_main(&self, _webtag: &WebTag, _group_key: String) -> StdResult<()> {
         unsupported_operation("present_webview_as_group_main")
     }
@@ -723,6 +731,18 @@ pub fn show_webview_as_adaptive_panel(
 
 pub fn present_webview_in_active_group(webtag: &WebTag) -> StdResult<()> {
     backend()?.present_webview_in_active_group(webtag)
+}
+
+pub fn active_host_window_is_device_framed() -> bool {
+    backend()
+        .map(|backend| backend.active_host_window_is_device_framed())
+        .unwrap_or(false)
+}
+
+pub fn active_host_window_webtag_key() -> Option<String> {
+    backend()
+        .ok()
+        .and_then(|backend| backend.active_host_window_webtag_key())
 }
 
 pub fn present_webview_as_group_main(webtag: &WebTag, group_key: String) -> StdResult<()> {

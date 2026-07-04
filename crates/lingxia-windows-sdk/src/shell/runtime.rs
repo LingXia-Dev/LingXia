@@ -24,8 +24,9 @@ use lingxia_platform::traits::app_runtime::{
 use lingxia_webview::WebTag;
 use lingxia_windows_contract::{
     WindowsAsidePanelEvent, WindowsChromeCommand, WindowsPanelPosition, WindowsWindowLayout,
-    dispatch_windows_aside_panel_event, hide_host_panel, is_panel_visible,
-    restore_presented_group_main, set_webview_chrome_event_handler, set_webview_window_layout,
+    active_host_window_webtag_key, dispatch_windows_aside_panel_event, hide_host_panel,
+    is_panel_visible, restore_presented_group_main, set_webview_chrome_event_handler,
+    set_webview_window_layout,
 };
 // Presenting a browser tab over the main card is browser-only.
 #[cfg(feature = "browser-runtime")]
@@ -608,10 +609,6 @@ fn on_browser_tabs_changed() {
 }
 
 fn sync_shell_layout(appid: &str) {
-    if !is_shell_owner_appid(appid) {
-        return;
-    }
-
     let Some(app) = lxapp::try_get(appid) else {
         return;
     };
@@ -623,13 +620,14 @@ fn sync_shell_layout(appid: &str) {
     }
 
     let webtag = WebTag::new(&app.appid, &path, Some(app.session_id()));
+    let is_active_content = active_host_window_webtag_key().as_deref() == Some(webtag.key());
     let layout = build_window_layout(&app, &path);
     install_shell_chrome_event_handler(&webtag, &app.appid);
 
     // Drive the device frame's status bar to match the active page: a visible
     // navigation bar extends its color up over the status bar (with its text
     // color); a plain page keeps the chrome-colored strip with contrasting text.
-    if let Some(window) = owner_window_handle(appid) {
+    if is_active_content && let Some(window) = owner_window_handle(appid) {
         let navbar = app.get_navbar_state(&path);
         let immersive = navbar.is_custom_navigation();
         let (foreground, background) = if immersive {
