@@ -398,6 +398,14 @@ impl LxApps {
         }
     }
 
+    /// Whether an app is anywhere on the navigation stack.
+    pub(crate) fn stack_contains(&self, appid: &str) -> bool {
+        self.lxapp_stack
+            .lock()
+            .map(|stack| stack.iter().any(|id| id == appid))
+            .unwrap_or(false)
+    }
+
     /// Check if the navigation stack is full
     fn is_lxapp_stack_full(&self) -> bool {
         let max = get_num_workers();
@@ -557,6 +565,10 @@ pub struct LxAppRuntimeInfo {
     pub release_type: String,
     pub session_id: u64,
     pub status: String,
+    /// Whether the app is on the runtime navigation stack — i.e. open from
+    /// the user's perspective. A hidden (capsule-closed) app keeps an
+    /// "opened" session but is not on the stack.
+    pub in_stack: bool,
     pub is_home: bool,
     pub current_page: Option<String>,
     pub initial_route: String,
@@ -774,6 +786,13 @@ impl LxApp {
     pub fn runtime_info(&self) -> LxAppRuntimeInfo {
         let info = self.get_lxapp_info();
         let page_entries = self.page_entries();
+        // On the navigation stack = open from the user's perspective. A
+        // capsule-closed app keeps its "opened" session (stateful hide) but
+        // leaves the stack, so hosts must read `in_stack` — not `status` —
+        // for open-app lists.
+        let in_stack = crate::lxapp::get_lxapps_manager()
+            .map(|manager| manager.stack_contains(&self.appid))
+            .unwrap_or(false);
         LxAppRuntimeInfo {
             appid: self.appid.clone(),
             app_name: info.app_name,
@@ -781,6 +800,7 @@ impl LxApp {
             release_type: info.release_type,
             session_id: self.session_id(),
             status: self.status_name().to_string(),
+            in_stack,
             is_home: self.is_home_lxapp,
             current_page: self.peek_current_page(),
             initial_route: self.initial_route(),

@@ -58,10 +58,13 @@ pub fn list_lxapps() -> Vec<LxAppRuntimeInfo> {
 pub fn close_lxapp(appid: &str) -> Result<(), LxAppError> {
     let app = super::runtime_registry::try_get(appid)
         .ok_or_else(|| LxAppError::ResourceNotFound(appid.to_string()))?;
-    app.shutdown()?;
+    // Leave the navigation stack before the shutdown hides the webview, so
+    // the host's hide path restores the previous lxapp (not the closing one)
+    // as the visible content.
     if let Some(manager) = super::runtime_registry::get_lxapps_manager() {
         manager.remove_from_stack(appid);
     }
+    app.shutdown()?;
     Ok(())
 }
 
