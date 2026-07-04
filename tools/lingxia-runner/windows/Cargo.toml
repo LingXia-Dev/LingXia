@@ -27,7 +27,9 @@ features = ["dev"]
 # ENGINE (`browser-runtime`, which implies `shell-chrome`) without the
 # `browser-shell` webui product — mirroring the macOS runner's feature set.
 lingxia = { workspace = true, features = ["standard", "devtool", "webview-input"] }
-lingxia_devtool = { workspace = true }
+# The runner links the browser engine (below), so the devtool bridge carries
+# its browser commands too — otherwise `lxdev browser ...` errors on Windows.
+lingxia_devtool = { workspace = true, features = ["browser"] }
 lingxia-windows-sdk = { workspace = true, features = ["standard", "browser-runtime", "webview-input", "device-frame"] }
 lxapp = { workspace = true, default-features = false }
 serde = { workspace = true, features = ["derive"] }
