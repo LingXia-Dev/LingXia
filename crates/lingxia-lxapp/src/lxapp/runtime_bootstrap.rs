@@ -93,11 +93,11 @@ fn installed_home_version(
     }))
 }
 
-/// Dev sessions rebuild the bundled lxapp assets in place without bumping the
-/// manifest version, so the version comparison alone would keep serving the
-/// stale installed copy forever. Force a refresh from bundled assets whenever
-/// a devtool bridge is configured for this process.
-fn dev_session_active() -> bool {
+/// Whether this process is an active `lingxia dev` session: a dev websocket is
+/// configured either via the `LINGXIA_DEV_WS_URL` env var or `app.json`'s
+/// `dev_ws_url` (written by `lingxia dev`). Drives dev-only behaviour such as
+/// forcing a bundled-asset refresh and enabling WebView debugging.
+pub fn dev_session_active() -> bool {
     let env_active = std::env::var("LINGXIA_DEV_WS_URL")
         .map(|value| !value.trim().is_empty())
         .unwrap_or(false);

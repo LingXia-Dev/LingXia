@@ -104,6 +104,9 @@ object Lingxia {
             if (initResultString != null) {
                 LxApp.homeAppId = initResultString
                 capabilities = NativeApi.getAppCapabilities()
+                if (NativeApi.shouldEnableWebViewDebugging()) {
+                    enableWebViewDebugging()
+                }
             } else {
                 Log.e(TAG, "Failed to get home app details from native init.")
             }

@@ -371,6 +371,9 @@ internal object NativeApi {
     @JvmStatic
     external fun getAppCapabilities(): Int
 
+    @JvmStatic
+    external fun shouldEnableWebViewDebugging(): Boolean
+
     /**
      * Notify native layer that app entered foreground
      * Called from LxAppActivity.onStart

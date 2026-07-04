@@ -346,6 +346,9 @@ mod bridge {
         #[swift_bridge(swift_name = "getAppCapabilities")]
         fn get_app_capabilities() -> u32;
 
+        #[swift_bridge(swift_name = "shouldEnableWebViewDebugging")]
+        fn should_enable_webview_debugging() -> bool;
+
         // Get panels config as JSON string (returns None if no panels configured)
         #[swift_bridge(swift_name = "getPanelsConfigJson")]
         fn get_panels_config_json() -> Option<String>;
@@ -1268,6 +1271,10 @@ pub fn on_user_capture_screen(lxappid: &str) {
 
 pub fn get_app_capabilities() -> u32 {
     crate::capabilities::app_capabilities()
+}
+
+pub fn should_enable_webview_debugging() -> bool {
+    crate::should_enable_webview_debugging()
 }
 
 /// Get panels config as a JSON string.

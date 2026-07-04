@@ -126,3 +126,16 @@ pub mod windows;
 pub(crate) mod browser;
 pub(crate) mod push;
 pub(crate) use bootstrap::init_with_platform;
+
+/// WebView debugging (inspectable) policy: on only for an active `lingxia dev`
+/// session, so release/production builds are never inspectable. `is_dev_session`
+/// covers both the `LINGXIA_DEV_WS_URL` env var and `app.json`'s `dev_ws_url`.
+#[cfg(any(
+    target_os = "android",
+    target_os = "ios",
+    target_os = "macos",
+    target_env = "ohos"
+))]
+pub(crate) fn should_enable_webview_debugging() -> bool {
+    lxapp::is_dev_session()
+}

@@ -236,6 +236,9 @@ final class LxAppCore {
         if let homeAppId = initResultString {
             homeLxAppId = homeAppId
             capabilities = getAppCapabilities()
+            if shouldEnableWebViewDebugging() {
+                enableWebViewDebugging()
+            }
             os_log("LxApp initialized successfully with home app: %{public}@", log: log, type: .info, homeAppId)
 
             // Auto-open home lxapp after initialization (unless skipped by external tools)
