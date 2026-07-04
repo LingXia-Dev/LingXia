@@ -2,7 +2,7 @@ use crate::client;
 use crate::lxapp_build;
 use crate::project::SessionInfo;
 use crate::screenshot;
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use clap::{Args, Parser, Subcommand};
 use lingxia_devtool_protocol::handlers;
 use serde_json::{Value, json};
@@ -101,6 +101,15 @@ pub enum LxAppCommand {
     Restart {
         #[arg(default_value = "current")]
         app: String,
+        /// Rebuild the lxapp bundle before restarting the runtime
+        #[arg(long)]
+        build: bool,
+        /// Release (minified) rebuild; requires --build
+        #[arg(long)]
+        release: bool,
+        /// Framework to rebuild when the project ships more than one; requires --build
+        #[arg(long)]
+        framework: Option<String>,
         /// Print JSON output
         #[arg(long)]
         json: bool,
@@ -434,7 +443,21 @@ pub fn execute(project_root: &Path, info: &SessionInfo, options: LxAppOptions) -
         }
         LxAppCommand::Close { app, json } => action(ws_url, handlers::lxapp::CLOSE, app, json)?,
         LxAppCommand::Rebuild(options) => lxapp_build::execute(ws_url, &options)?,
-        LxAppCommand::Restart { app, json } => action(ws_url, handlers::lxapp::RESTART, app, json)?,
+        LxAppCommand::Restart {
+            app,
+            build,
+            release,
+            framework,
+            json,
+        } => {
+            if !build && (release || framework.is_some()) {
+                bail!("--release and --framework require --build");
+            }
+            if build {
+                lxapp_build::run(ws_url, release, framework.as_deref())?;
+            }
+            action(ws_url, handlers::lxapp::RESTART, app, json)?
+        }
         LxAppCommand::Uninstall { app, json } => {
             action(ws_url, handlers::lxapp::UNINSTALL, app, json)?
         }
@@ -856,6 +879,37 @@ mod tests {
         assert!(options.release);
         assert_eq!(options.framework.as_deref(), Some("vue"));
         assert!(options.json);
+    }
+
+    #[test]
+    fn parses_restart_with_build_options() {
+        let cli = parse_lxapp_cli(args(&[
+            "restart",
+            "demo",
+            "--build",
+            "--release",
+            "--framework",
+            "react",
+            "--json",
+        ]))
+        .unwrap();
+
+        let LxAppCommand::Restart {
+            app,
+            build,
+            release,
+            framework,
+            json,
+        } = cli.command
+        else {
+            panic!("expected restart command");
+        };
+
+        assert_eq!(app, "demo");
+        assert!(build);
+        assert!(release);
+        assert_eq!(framework.as_deref(), Some("react"));
+        assert!(json);
     }
 
     #[test]
