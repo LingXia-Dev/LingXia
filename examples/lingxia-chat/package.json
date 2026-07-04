@@ -20,7 +20,7 @@
     "@lingxia/vue": "file:../../packages/lingxia-vue",
     "vue": "^3.5.0",
     "lingxia-types": "file:../../packages/lingxia-types",
-    "echarts": "^5.6.0",
+    "echarts": "^6.1.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "tailwindcss": "^3.4.13"
