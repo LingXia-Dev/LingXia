@@ -331,6 +331,101 @@ pub trait WebViewController: Send + Sync {
             "screenshot is not implemented for this platform".to_string(),
         ))
     }
+
+    /// Begin recording network requests/responses into a bounded per-webview
+    /// buffer, retrievable via [`Self::network_entries`]. Dev-tooling only;
+    /// implemented on platforms whose WebView exposes an inspection protocol
+    /// (currently Windows/WebView2 via the Chrome DevTools Protocol).
+    async fn start_network_capture(&self) -> Result<(), WebViewError> {
+        Err(WebViewError::WebView(
+            "network capture is not implemented for this platform".to_string(),
+        ))
+    }
+
+    /// Stop recording network traffic. Captured entries are kept until
+    /// [`Self::clear_network_capture`] or the webview is torn down.
+    async fn stop_network_capture(&self) -> Result<(), WebViewError> {
+        Err(WebViewError::WebView(
+            "network capture is not implemented for this platform".to_string(),
+        ))
+    }
+
+    /// Snapshot the captured network entries (oldest first). `dropped` counts
+    /// entries evicted from the ring buffer since the last clear.
+    async fn network_entries(&self) -> Result<NetworkCaptureSnapshot, WebViewError> {
+        Err(WebViewError::WebView(
+            "network capture is not implemented for this platform".to_string(),
+        ))
+    }
+
+    /// Drop all captured entries (leaves capture enabled if it was on).
+    async fn clear_network_capture(&self) -> Result<(), WebViewError> {
+        Err(WebViewError::WebView(
+            "network capture is not implemented for this platform".to_string(),
+        ))
+    }
+}
+
+/// One captured network request and its response (when it completed).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NetworkEntry {
+    /// Protocol request id, stable across the request/response events.
+    pub request_id: String,
+    pub url: String,
+    pub method: String,
+    /// Resource kind reported by the engine (document, xhr, fetch, script,
+    /// image, ...), when available.
+    pub resource_type: Option<String>,
+    pub request_headers: Vec<(String, String)>,
+    /// Request payload (POST body) as reported by the engine, when present.
+    pub request_body: Option<String>,
+    pub status: Option<u16>,
+    pub response_headers: Vec<(String, String)>,
+    pub mime_type: Option<String>,
+    pub response_body: NetworkBody,
+    pub from_cache: bool,
+    /// Populated when the request failed (engine error text) instead of
+    /// producing a response.
+    pub failed: Option<String>,
+    /// Wall-clock start time (Unix epoch seconds), when the engine reports it.
+    pub wall_time: Option<f64>,
+    /// Monotonic engine timestamps (seconds), for ordering and durations.
+    pub started: f64,
+    pub finished: Option<f64>,
+}
+
+impl NetworkEntry {
+    /// Request duration in milliseconds, once the response has completed.
+    pub fn duration_ms(&self) -> Option<f64> {
+        self.finished
+            .filter(|finished| *finished >= self.started)
+            .map(|finished| (finished - self.started) * 1000.0)
+    }
+}
+
+/// Response body of a captured entry.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum NetworkBody {
+    /// No body captured yet (in flight) or the response had none.
+    #[default]
+    None,
+    /// UTF-8 text body.
+    Text { text: String },
+    /// Base64-encoded binary body.
+    Base64 { base64: String },
+    /// Body deliberately not captured (e.g. over the size cap, or evicted
+    /// before it could be read); `reason` says which.
+    Skipped { reason: String },
+}
+
+/// A point-in-time view of the capture buffer.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct NetworkCaptureSnapshot {
+    pub entries: Vec<NetworkEntry>,
+    /// Entries evicted from the ring buffer since the last clear (buffer
+    /// full). Surfaced so truncation is never silent.
+    pub dropped: u64,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

@@ -69,6 +69,18 @@ pub(crate) enum UiCommand {
     ClearCookies {
         resp: Sender<StdResult<()>>,
     },
+    StartNetworkCapture {
+        resp: Sender<StdResult<()>>,
+    },
+    StopNetworkCapture {
+        resp: Sender<StdResult<()>>,
+    },
+    NetworkEntries {
+        resp: Sender<StdResult<NetworkCaptureSnapshot>>,
+    },
+    ClearNetworkCapture {
+        resp: Sender<StdResult<()>>,
+    },
     /// Invoke a Chrome DevTools Protocol method (e.g. `Input.dispatchMouseEvent`)
     /// and return its raw JSON result.
     #[cfg_attr(not(feature = "webview-input"), allow(dead_code))]
@@ -111,6 +123,11 @@ pub(crate) struct UiState {
     pub(crate) webtag_key: String,
     pub(crate) memory_pages: Arc<Mutex<HashMap<String, Vec<u8>>>>,
     pub(crate) transient_user_data_dir: Option<PathBuf>,
+    /// Captured network entries (shared with the CDP event handlers).
+    pub(crate) network_log: Arc<Mutex<network::NetworkLog>>,
+    /// Active CDP `Network` event subscriptions (receiver + token), non-empty
+    /// while capture is enabled; used to unsubscribe on stop.
+    pub(crate) network_receivers: Vec<(ICoreWebView2DevToolsProtocolEventReceiver, i64)>,
 }
 
 impl UiState {
@@ -342,6 +359,11 @@ impl WebViewInner {
             .map_err(|err| err.into_webview_error("list WebView cookies"))?
     }
 
+    fn dispatch_network_entries(&self) -> StdResult<NetworkCaptureSnapshot> {
+        self.dispatch_ui(|resp| UiCommand::NetworkEntries { resp }, None)
+            .map_err(|err| err.into_webview_error("read network capture"))?
+    }
+
     /// Invoke a Chrome DevTools Protocol method and return its raw JSON
     /// result. Backs the input automation dispatch.
     #[cfg(feature = "webview-input")]
@@ -479,6 +501,22 @@ impl WebViewController for WebViewInner {
     async fn clear_cookies(&self) -> StdResult<()> {
         self.dispatch_command(|resp| UiCommand::ClearCookies { resp })
     }
+
+    async fn start_network_capture(&self) -> StdResult<()> {
+        self.dispatch_command(|resp| UiCommand::StartNetworkCapture { resp })
+    }
+
+    async fn stop_network_capture(&self) -> StdResult<()> {
+        self.dispatch_command(|resp| UiCommand::StopNetworkCapture { resp })
+    }
+
+    async fn network_entries(&self) -> StdResult<NetworkCaptureSnapshot> {
+        self.dispatch_network_entries()
+    }
+
+    async fn clear_network_capture(&self) -> StdResult<()> {
+        self.dispatch_command(|resp| UiCommand::ClearNetworkCapture { resp })
+    }
 }
 
 impl Drop for WebViewInner {
@@ -608,6 +646,8 @@ pub(crate) fn run_ui_thread_inner(
         webtag_key,
         memory_pages,
         transient_user_data_dir,
+        network_log: Arc::new(Mutex::new(network::NetworkLog::default())),
+        network_receivers: Vec::new(),
     };
 
     message_loop(&mut state, command_rx)
@@ -813,6 +853,42 @@ pub(crate) fn handle_command(state: &mut UiState, command: UiCommand) -> StdResu
         UiCommand::ClearCookies { resp } => {
             let result = clear_cookies(&state.webview);
             let _ = resp.send(result);
+        }
+        UiCommand::StartNetworkCapture { resp } => {
+            if !state.network_receivers.is_empty() {
+                let _ = resp.send(Ok(())); // already capturing
+            } else {
+                match network::subscribe(&state.webview, &state.network_log) {
+                    Ok(receivers) => {
+                        state.network_receivers = receivers;
+                        // Reply only once Network.enable has taken effect, so
+                        // the caller can navigate immediately without missing
+                        // the first requests.
+                        network::enable_domain(&state.webview, resp);
+                    }
+                    Err(err) => {
+                        let _ = resp.send(Err(err));
+                    }
+                }
+            }
+        }
+        UiCommand::StopNetworkCapture { resp } => {
+            network::stop_capture(&state.webview, &mut state.network_receivers);
+            let _ = resp.send(Ok(()));
+        }
+        UiCommand::NetworkEntries { resp } => {
+            let snapshot = state
+                .network_log
+                .lock()
+                .map(|log| log.snapshot())
+                .unwrap_or_default();
+            let _ = resp.send(Ok(snapshot));
+        }
+        UiCommand::ClearNetworkCapture { resp } => {
+            if let Ok(mut log) = state.network_log.lock() {
+                log.clear();
+            }
+            let _ = resp.send(Ok(()));
         }
         UiCommand::CallDevToolsProtocol {
             method,

@@ -9,8 +9,8 @@
 //! and re-exports the public Windows WebView API.
 
 use crate::traits::{
-    DownloadRequest, LoadDataRequest, NavigationPolicy, NewWindowPolicy, WebViewCookie,
-    WebViewCookieSameSite, WebViewCookieSetRequest,
+    DownloadRequest, LoadDataRequest, NavigationPolicy, NetworkCaptureSnapshot, NewWindowPolicy,
+    WebViewCookie, WebViewCookieSameSite, WebViewCookieSetRequest,
 };
 use crate::webview::{
     EffectiveWebViewCreateOptions, SecurityProfile, WebTag, WebViewCreateSender,
@@ -53,6 +53,7 @@ mod events;
 #[cfg(feature = "webview-input")]
 mod input;
 mod native_view;
+mod network;
 mod scheme;
 
 pub(crate) use controller::WebViewInner;
