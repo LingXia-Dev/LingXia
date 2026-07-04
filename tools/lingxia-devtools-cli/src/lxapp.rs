@@ -1,4 +1,5 @@
 use crate::client;
+use crate::lxapp_build;
 use crate::project::SessionInfo;
 use crate::screenshot;
 use anyhow::{Context, Result};
@@ -73,6 +74,8 @@ pub enum LxAppCommand {
         #[arg(long)]
         pretty: bool,
     },
+    /// Rebuild the lxapp front-end bundle for this dev session
+    Rebuild(lxapp_build::RebuildOptions),
     /// Open an lxapp
     Open {
         appid: String,
@@ -430,6 +433,7 @@ pub fn execute(project_root: &Path, info: &SessionInfo, options: LxAppOptions) -
             }
         }
         LxAppCommand::Close { app, json } => action(ws_url, handlers::lxapp::CLOSE, app, json)?,
+        LxAppCommand::Rebuild(options) => lxapp_build::execute(ws_url, &options)?,
         LxAppCommand::Restart { app, json } => action(ws_url, handlers::lxapp::RESTART, app, json)?,
         LxAppCommand::Uninstall { app, json } => {
             action(ws_url, handlers::lxapp::UNINSTALL, app, json)?
@@ -713,7 +717,7 @@ fn parse_query_pairs(pairs: &[String]) -> Result<Option<Value>> {
 
 fn commands_for_project(project_root: &Path) -> &'static [&'static str] {
     if project_root.join("lxapp.json").exists() && !project_root.join("lingxia.yaml").exists() {
-        &["info", "pages", "page", "nav", "eval"]
+        &["info", "pages", "page", "nav", "eval", "rebuild"]
     } else {
         &[
             "list",
@@ -723,6 +727,7 @@ fn commands_for_project(project_root: &Path) -> &'static [&'static str] {
             "page",
             "nav",
             "eval",
+            "rebuild",
             "open",
             "close",
             "restart",
@@ -755,6 +760,7 @@ fn command_description(command: &str) -> &'static str {
         "page" => "Inspect and automate lxapp pages",
         "nav" => "Navigate the lxapp runtime by page name",
         "eval" => "Evaluate JavaScript in the lxapp logic runtime",
+        "rebuild" => "Rebuild the lxapp front-end bundle",
         "open" => "Open an lxapp",
         "close" => "Close an lxapp",
         "restart" => "Restart an lxapp",
@@ -829,6 +835,26 @@ mod tests {
         assert_eq!(options.page, "profile");
         assert_eq!(options.app, "demo");
         assert_eq!(options.query, vec!["tab=account"]);
+        assert!(options.json);
+    }
+
+    #[test]
+    fn parses_lxapp_rebuild_options() {
+        let cli = parse_lxapp_cli(args(&[
+            "rebuild",
+            "--release",
+            "--framework",
+            "vue",
+            "--json",
+        ]))
+        .unwrap();
+
+        let LxAppCommand::Rebuild(options) = cli.command else {
+            panic!("expected rebuild command");
+        };
+
+        assert!(options.release);
+        assert_eq!(options.framework.as_deref(), Some("vue"));
         assert!(options.json);
     }
 
