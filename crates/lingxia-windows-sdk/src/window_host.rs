@@ -2668,7 +2668,30 @@ fn maybe_destroy_sidebar_tabbar_popup(owner: HWND) {
             return;
         }
     }
-    if !point_in_screen_rect(cursor, popup.anchor) && !point_in_screen_rect(cursor, popup.rect) {
+    // The popup floats a few pixels off the rail, so the path from the
+    // anchor into the popup crosses a dead gap; a mouse move sampled inside
+    // that gap must not dismiss, or reaching the popup takes a lucky flick.
+    // The bridge spans only the gap column (not the rail below the anchor,
+    // so hovering other rail items still dismisses).
+    let bridge = if popup.rect.left >= popup.anchor.right {
+        RECT {
+            left: popup.anchor.right,
+            top: popup.anchor.top.min(popup.rect.top),
+            right: popup.rect.left,
+            bottom: popup.anchor.bottom.max(popup.rect.bottom),
+        }
+    } else {
+        RECT {
+            left: popup.rect.right,
+            top: popup.anchor.top.min(popup.rect.top),
+            right: popup.anchor.left,
+            bottom: popup.anchor.bottom.max(popup.rect.bottom),
+        }
+    };
+    if !point_in_screen_rect(cursor, popup.anchor)
+        && !point_in_screen_rect(cursor, popup.rect)
+        && !point_in_screen_rect(cursor, bridge)
+    {
         destroy_sidebar_tabbar_popup(owner);
     }
 }
