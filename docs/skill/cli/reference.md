@@ -9,9 +9,9 @@ and you are inside a LingXia project.
 ## `--help` is the source of truth for flags and values
 
 This file teaches the **model** of `lingxia` — what each command is for and the
-non-obvious behavior worth knowing. It deliberately does **not** reproduce every
-flag, argument, default, or accepted value: the binary's own `--help` is
-exhaustive and always matches the installed version, so it can never drift.
+non-obvious behavior worth knowing. It deliberately reproduces **no** flags,
+defaults, or value enums: the binary's own `--help` is exhaustive and always
+matches the installed version, so read flags there.
 
 ```bash
 lingxia --help               # the command list + global flags
@@ -19,15 +19,9 @@ lingxia <cmd> --help         # exact flags, defaults, and which are required
 lingxia <cmd> <sub> --help   # e.g. lingxia auth apple login --help
 ```
 
-When this page says "see `lingxia <cmd> --help`", that is where the precise flag
-names, value enums, and defaults live — read them there rather than trusting a
-hand-copied table.
-
-**Platforms.** Across the platform-aware commands the supported targets are
-`android`, `ios`, `macos`, `harmony`, and `windows` — a Windows host SDK now
-ships (git-distributed as of the latest `main`). Which platforms a given command
-or run actually touches depends on the project's `lingxia.yaml` and any
-`--platform` selection; `lingxia <cmd> --help` lists what that command accepts.
+**Platforms.** The platform-aware commands support `android`, `ios`, `macos`,
+`harmony`, and `windows`. Which platforms a given run actually touches depends
+on the project's `lingxia.yaml` and any `--platform` selection.
 
 ---
 
@@ -66,13 +60,10 @@ Flags: `lingxia build --help`. Platform signing setup: [App signing](./signing.m
 
 ### `lingxia clean`
 
-Remove generated artifacts for the current project context. It is
-context-sensitive: in a host app project it clears host outputs, generated host
-assets, platform build directories, configured bundle `dist/` directories, and
-the native `target/`; in an lxapp / lxplugin project it clears the local
-`dist/`, `node_modules/`, and the view build cache; in a standalone Apple Swift
-Package (e.g. a runner dev package) it clears `.build/` and `.lingxia/`. Reach
-for it when a `lingxia.yaml` change seems ignored after a rebuild.
+Remove generated artifacts for the current project context (host outputs and
+platform build directories in a host app; `dist/` and build caches in an
+lxapp / lxplugin). Reach for it when a `lingxia.yaml` change seems ignored
+after a rebuild.
 
 ### `lingxia package`
 

@@ -16,14 +16,14 @@ Stale files from crashed sessions are pruned automatically (or via `lxdev sessio
 
 ## Capabilities
 
-**`lxapp`** — the lxapps in the session:
+**`lxapp`** — the lxapps in the session. Every command targets the **current** lxapp by default (`--app` to pick another); page commands likewise default to the **current page** (`--page` to pick):
 - `list` / `current` / `info` / `pages` — what's running, and the configured pages
 - `open` / `close` / `restart` / `uninstall` — lifecycle
 - `nav to|redirect|switch-tab|relaunch|back` — navigate the runtime by page name (from `pages`)
 - `eval` — run JS in the **Logic runtime** (AppService: `lx.*`, `Page({})` state — no DOM)
 - `page current|list|info` — page stack status
 - `page eval` — run JS in the **page WebView** (rendered DOM — no AppService state)
-- `page query|click|type|fill|press` — element-level automation in the page WebView
+- `page query|click|type|fill|press|scroll|scroll-into-view` — element-level automation in the page WebView
 - `page back` — pop the page stack
 - `page screenshot` — PNG of one page's WebView
 

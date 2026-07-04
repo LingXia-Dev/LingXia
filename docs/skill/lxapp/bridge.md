@@ -27,8 +27,6 @@ The bridge is the only path between them. It carries three categories of data:
 | **Stream** (`yield` / `stream.send`) | Logic → View | Incremental output: tokens, progress, chunks |
 | **Channel** (`ch.send`) | bidirectional | Long-lived sessions: real-time sync, collaboration |
 
-These three cover every communication pattern. Choosing the right one for a given scenario keeps the architecture clean and performant.
-
 ---
 
 ## State — `setData`
@@ -62,32 +60,7 @@ Rules:
 
 ### View side
 
-```tsx
-// pages/counter/index.tsx
-import { useLxPage } from '@lingxia/react';
-
-type PageData = { count: number; label: string };
-
-export default function Counter() {
-  const { data, actions } = useLxPage<
-    PageData,
-    {
-      increment: () => void;
-      reset: () => void;
-    }
-  >();
-
-  return (
-    <div>
-      <p>{data.label}: {data.count}</p>
-      <button onClick={() => actions.increment()}>+1</button>
-      <button onClick={() => actions.reset()}>Reset</button>
-    </div>
-  );
-}
-```
-
-`useLxPage().data` reflects whatever Logic has replicated. It updates reactively — no polling, no manual subscription.
+`useLxPage().data` reflects whatever Logic has replicated. It updates reactively — no polling, no manual subscription. (Full View example: [guide → View Layer](./guide.md#view-layer).)
 
 ### How replication works
 
@@ -180,8 +153,6 @@ Page({
   },
 });
 ```
-
-The real chat example optionally probes an app-installed AI extension before falling back to mock data, but that extension is app-specific and not part of LingXia's built-in bridge API.
 
 ### Logic side — explicit handle form
 

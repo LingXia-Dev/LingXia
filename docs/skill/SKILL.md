@@ -1,18 +1,15 @@
 ---
 name: lingxia
-description: Build apps on the LingXia cross-platform framework — standalone lxapps (page-based mini-apps with a View+Logic split), native host apps (Android/iOS/macOS/Harmony shells embedding an lxapp), and Rust native extensions. TRIGGER on `lingxia` CLI, `lxapp`, `lingxia.yaml`, `lxapp.json`, `#[lingxia::native]`, `HostAddon`, `useLxPage`, `LxAppController`, or an lxapp-flavored `Page({})`. SKIP if the project imports `@tarojs/*`, `wx.*`, `uni-app`, `@dcloudio/*`, or `@remax/*` — those share the `Page({})` shape but are different runtimes. **Always read §"Step 0" before generating any file.**
+description: Build apps on the LingXia cross-platform framework — standalone lxapps (page-based mini-apps with a View+Logic split), native host apps (Android/iOS/macOS/Harmony/Windows shells embedding an lxapp), and Rust native extensions. TRIGGER on the `lingxia` CLI, `lxapp`, `lingxia.yaml`, `lxapp.json`, `#[lingxia::native]`, or `useLxPage`. SKIP for other mini-app runtimes that share the `Page({})` shape. **Always read §"Step 0" before generating any file.**
 license: MIT
 allowed-tools: Read, Grep, Glob, Edit, Write, Bash(lingxia:*), Bash(lxdev:*), Bash(npm:*), Bash(npx:*), Bash(test:*), Bash(ls:*), Bash(cat:*), Bash(cargo:*)
 ---
 
 # LingXia App Development
 
-LingXia is a cross-platform app framework. This skill is the entry router — it carries the decision tree, fast-path recipes, and pointers into supporting reference files. **Read sub-files only when you need them**; do not load the whole tree up front.
+LingXia is a cross-platform app framework. This skill is the entry router — it carries the decision tree and pointers into supporting reference files. **Read sub-files only when you need them**; do not load the whole tree up front.
 
-This skill is installed via `npx @lingxia/skill install` (the `lingxia` CLI prints a hint pointing at that command after `lingxia new`, but does not install the skill itself). When you read this you can usually assume:
-
-- The `lingxia` CLI is on `PATH` (verify with `lingxia --version`); if not, the human needs to install the CLI first — a one-time setup outside this skill's scope.
-- You are inside a LingXia project — but **confirm the shape** with the probe in Step 0 rather than guessing.
+When you read this you can usually assume the `lingxia` CLI is on `PATH` (verify with `lingxia --version`; installing it is outside this skill's scope) and that you are inside a LingXia project — but **confirm the shape** with the probe in Step 0 rather than guessing.
 
 ---
 
@@ -142,23 +139,6 @@ Jump straight here when the user reports a concrete failure:
 
 ---
 
-## Fast-path recipes
-
-Each recipe lives in full in its reference file — open the one matching the task:
-
-| Task | Full recipe | Scaffold |
-|---|---|---|
-| Standalone lxapp page — `Page({})` Logic, `useLxPage` View, page config, `lxapp.json` registration | [`./lxapp/guide.md` → Logic Layer](./lxapp/guide.md#logic-layer--page) | `lingxia new hello -t lxapp -y` |
-| macOS host-app window — minimal `lingxia.yaml` (`app` / `macos` / `features` / `resources` / `surfaces`) | [`./app/project.md` → Minimal macOS Example](./app/project.md#minimal-macos-example) | `lingxia new hello -t native-app -p macos --package-id com.example.hello -y` |
-| Rust native route called from the View — `#[lingxia::native]`, `HostAddon`, `@lingxia/native` client | [`./native/development.md` → Native Routes](./native/development.md#native-routes) | (Shape C — `-t native-app`, then `features.appService: false`) |
-
-Run any shape with `lingxia dev`. Two rules worth knowing before opening anything:
-
-- Type View `PageData` / `PageActions` fields as **required**, not all-`?` — the runtime guarantees Logic's initial `data` by first paint and fully wired `actions` at setup. All-optional fields produce needless `actions.foo?.()` noise.
-- `#[lingxia::native]` **generates** the `<fn>_host()` registration companion — never write it yourself; parameter order is `app: Arc<LxApp>` first (when present), `HostCancel` last.
-
----
-
 ## Where does this code go?
 
 | Job | Lives in | Surface |
@@ -189,7 +169,7 @@ Run any shape with `lingxia dev`. Two rules worth knowing before opening anythin
 **Native Rust** — see [`./native/development.md`](./native/development.md):
 
 - Importing internal crates (`lingxia_logic`, `rong`) directly. Use `lingxia::*` facades.
-- `app: Arc<LxApp>` not first, or `HostCancel` not last, in a `#[lingxia::native]` signature.
+- `app: Arc<LxApp>` not first, or `HostCancel` not last, in a `#[lingxia::native]` signature. The macro **generates** the `<fn>_host()` registration companion — never write it yourself.
 
 ---
 

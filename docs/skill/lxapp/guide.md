@@ -37,13 +37,7 @@ my-lxapp/
 └── shared/
 ```
 
-Key files:
-
-- `lxapp.json`: Runtime metadata (`appId`, `appName` or `name`, `version`, `pages`) and lxapp security policy.
-- `lxapp.config.ts`: Build config for view tooling, aliases, and static asset directories.
-- `pages/<name>/index.tsx` (or `.vue`): View layer — UI rendering in WebView.
-- `pages/<name>/index.ts`: Logic layer — page lifecycle and business operations.
-- `pages/<name>/index.json`: Page-level config (navigation/title/style and related options).
+`lxapp.json` holds runtime metadata (`appId`, `appName` or `name`, `version`, `pages`) and the security policy; `lxapp.config.ts` holds build config (view tooling, aliases, static asset directories).
 
 ### Static assets
 
@@ -129,11 +123,6 @@ Every page is split into two layers that communicate through a bridge:
 ```
 
 **View** renders UI. **Logic** owns state and business operations. Logic pushes state to View via `setData()`, and View calls Logic functions through auto-generated bridge bindings.
-
-Recommended reading path:
-
-- This guide: page layout, `Page({})`, `useLxPage`, events, and native components.
-- [Bridge Guide](./bridge.md): deeper mechanics of `setData`, stream, and channel.
 
 ---
 
@@ -251,33 +240,7 @@ export default function HomePage() {
 
 ### Vue
 
-```vue
-<!-- pages/home/index.vue -->
-<template>
-  <div>
-    <p>Count: {{ data.count }}</p>
-    <p>{{ data.message }}</p>
-    <button @click="actions.increment()">+1</button>
-    <button @click="actions.updateMessage({ text: 'World' })">Update</button>
-  </div>
-</template>
-
-<script setup lang="ts">
-import { useLxPage } from '@lingxia/vue';
-
-type PageData = {
-  count: number;
-  message: string;
-};
-
-type PageActions = {
-  increment: () => void;
-  updateMessage: (params: { text: string }) => void;
-};
-
-const { data, actions } = useLxPage<PageData, PageActions>();
-</script>
-```
+Identical shape via `@lingxia/vue`: `const { data, actions } = useLxPage<PageData, PageActions>()` in `<script setup lang="ts">`, then bind `{{ data.count }}` / `@click="actions.increment()"` in the template. `lingxia new … ` scaffolds the full file.
 
 ### HTML
 
@@ -365,24 +328,7 @@ const { actions } = useLxPage<PageData, PageActions>();
 <LxVideo src={url} onPlaying={actions.onPlaying} />
 ```
 
-**Vue:**
-
-```vue
-<script setup lang="ts">
-import { useLxPage, LxPicker, LxVideo } from '@lingxia/vue';
-
-const { actions } = useLxPage<PageData, PageActions>();
-</script>
-
-<input @input="(e) => actions.onInputChange({ value: e.currentTarget.value })" />
-
-<LxPicker
-  :columns="[['A', 'B', 'C']]"
-  @confirm="(value) => actions.onPickerConfirm({ field: 'choice', value })"
-/>
-
-<LxVideo :src="url" @playing="actions.onPlaying" />
-```
+Vue is the same with `@lingxia/vue` and `@event` syntax (`@confirm`, `@playing`, `@input`).
 
 Callback payloads differ by component — some unwrapped, some raw DOM `CustomEvent`. See [Callback shapes by component](./components.md#callback-shapes-by-component) in [`./components.md`](./components.md) for the per-component table and the full attribute/behavior reference (including imperative `LxVideo` control via `lx.createVideoContext()`).
 
@@ -568,7 +514,6 @@ Full option shapes: [`./lx-api.md#page-chrome--ui`](./lx-api.md#page-chrome--ui)
 - Mutating `data` directly in View instead of calling Logic actions.
 - Touching the DOM from Logic — Logic has no DOM access; use `lx.*` for platform operations and `setData()` for state.
 - Keeping business state in View `useState`/`ref` instead of Logic-managed `setData()` — state drifts across the bridge boundary.
-- Re-documenting bridge behavior inside page code instead of leaning on [Bridge Guide](./bridge.md) for stream/channel details.
 - Assuming every component's event handler receives the same shape — `LxPicker` hands you the resolved value, `LxVideo` passes the raw DOM `Event`. See [Components](./components.md#callback-shapes-by-component).
 - Skipping `@lingxia/types` in the lxapp's devDependencies and losing intellisense on the entire `lx.*` surface. See [Logic-side `lx.*` API](./lx-api.md).
 - Forgetting that only public `Page({})` methods become actions; lifecycle hooks and `_`-prefixed helpers are not exposed.
