@@ -57,10 +57,44 @@ pub(crate) fn normalize_browser_target_url(raw: &str) -> String {
         .get(..7)
         .is_some_and(|prefix| prefix.eq_ignore_ascii_case(b"http://"))
     {
+        if lxapp::is_dev_session() && preserves_plain_http_for_private_url(trimmed) {
+            return trimmed.to_string();
+        }
         // The first 7 bytes are ASCII, so byte offset 7 is a char boundary.
         format!("https://{}", &trimmed[7..])
     } else {
         trimmed.to_string()
+    }
+}
+
+fn preserves_plain_http_for_private_url(trimmed: &str) -> bool {
+    let Ok(uri) = trimmed.parse::<http::Uri>() else {
+        return false;
+    };
+    if uri
+        .scheme_str()
+        .is_none_or(|scheme| !scheme.eq_ignore_ascii_case("http"))
+    {
+        return false;
+    }
+    uri.host().is_some_and(is_private_http_host)
+}
+
+fn is_private_http_host(host: &str) -> bool {
+    let host = host
+        .trim_matches(|ch| ch == '[' || ch == ']')
+        .trim_end_matches('.')
+        .to_ascii_lowercase();
+
+    let Ok(ip) = host.parse::<std::net::IpAddr>() else {
+        return false;
+    };
+    match ip {
+        std::net::IpAddr::V4(ip) => ip.is_private() || ip.is_link_local(),
+        std::net::IpAddr::V6(ip) => {
+            let first_segment = ip.segments()[0];
+            (first_segment & 0xfe00) == 0xfc00 || (first_segment & 0xffc0) == 0xfe80
+        }
     }
 }
 
@@ -194,6 +228,34 @@ mod tests {
         assert_eq!(
             normalize_browser_target_url("https://example.com"),
             "https://example.com"
+        );
+    }
+
+    #[test]
+    fn normalize_browser_target_url_upgrades_private_ip_http_outside_dev_session() {
+        assert_eq!(
+            normalize_browser_target_url("http://192.168.1.16:8080/activate?user_code=1234"),
+            "https://192.168.1.16:8080/activate?user_code=1234"
+        );
+        assert_eq!(
+            normalize_browser_target_url("http://10.0.0.4:8080/activate"),
+            "https://10.0.0.4:8080/activate"
+        );
+        assert_eq!(
+            normalize_browser_target_url("http://172.16.0.8:8080/activate"),
+            "https://172.16.0.8:8080/activate"
+        );
+    }
+
+    #[test]
+    fn normalize_browser_target_url_does_not_preserve_loopback_http() {
+        assert_eq!(
+            normalize_browser_target_url("http://127.0.0.1:8080/activate"),
+            "https://127.0.0.1:8080/activate"
+        );
+        assert_eq!(
+            normalize_browser_target_url("http://localhost:8080/activate"),
+            "https://localhost:8080/activate"
         );
     }
 
