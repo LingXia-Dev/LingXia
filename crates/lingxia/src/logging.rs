@@ -207,7 +207,6 @@ impl PlatformLogger {
                 .module_path(Some(target))
                 .build();
             self.android.log(&record);
-            return;
         }
 
         #[cfg(target_env = "ohos")]
@@ -221,7 +220,6 @@ impl PlatformLogger {
                 .module_path(Some(target))
                 .build();
             self.harmony.log(&record);
-            return;
         }
 
         #[cfg(any(target_os = "ios", target_os = "macos"))]
