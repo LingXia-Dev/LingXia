@@ -109,7 +109,7 @@ fn init_cached_java_class(env: &mut Env<'_>, class: CachedClass) {
         Err(e) => {
             // `FindClass` leaves a pending exception. We treat this as best-effort caching,
             // so clear it to keep JNI usable.
-            let _ = env.exception_clear();
+            env.exception_clear();
             warn!(
                 "Failed to find cached class {} (will retry later): {:?}",
                 class.class_path(),
@@ -751,7 +751,7 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_getLxAppInfo<'a>(
         let app_name_str = env.new_string(&lxapp_info.app_name)?;
         let version_str = env.new_string(&lxapp_info.version)?;
         let release_type_str = env.new_string(&lxapp_info.release_type)?;
-        let cache_dir_str = env.new_string(lxapp.user_cache_dir.to_string_lossy().into_owned())?;
+        let cache_dir_str = env.new_string(lxapp.user_cache_dir.to_string_lossy())?;
 
         // Create LxAppInfo object (appName, version, releaseType, cacheDir)
         let obj = env.new_object(
@@ -1006,7 +1006,6 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_onCallback(
 ) -> jboolean {
     env.with_env(|env| -> Result<jboolean, jni::errors::Error> {
         let id = id as u64;
-        let success = success;
 
         let data_str: String = match data.try_to_string(env) {
             Ok(s) => s.to_string(),
