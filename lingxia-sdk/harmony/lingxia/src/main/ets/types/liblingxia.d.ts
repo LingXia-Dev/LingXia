@@ -155,7 +155,7 @@ declare module 'liblingxia.so' {
    * level: 0=verbose, 1=debug, 2=info, 3=warn, 4=error.
    * Returns false when the native log pipeline is not initialized or level is invalid.
    */
-  export function writeLog(
+  export function forwardHostLog(
     level: number,
     category: string,
     appid: string,

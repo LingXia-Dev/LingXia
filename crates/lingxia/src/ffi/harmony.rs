@@ -149,7 +149,7 @@ pub fn lingxia_init(
 }
 
 #[napi]
-pub fn write_log(
+pub fn forward_host_log(
     level: i32,
     category: String,
     appid: String,

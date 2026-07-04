@@ -217,7 +217,7 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_lingxiaInit<'a>(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_app_NativeApi_writeLog(
+pub extern "system" fn Java_com_lingxia_app_NativeApi_forwardHostLog(
     mut env: EnvUnowned,
     _class: JClass,
     level: jint,

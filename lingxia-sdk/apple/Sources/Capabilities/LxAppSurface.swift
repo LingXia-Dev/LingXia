@@ -431,9 +431,9 @@ enum LxAppSurface {
     ) -> Bool {
         let pageInstanceId = rawPageInstanceId.trimmingCharacters(in: .whitespacesAndNewlines)
         if path.isEmpty || pageInstanceId.isEmpty {
-            os_log(
-                "fullscreen page requires path and pageInstanceId id=%{public}@ app=%{public}@ path=%{public}@ pageInstanceId=%{public}@",
-                log: log, type: .error, id, appId, path, pageInstanceId
+            LXLog.error(
+                "fullscreen page requires path and pageInstanceId id=\(id) app=\(appId) path=\(path) pageInstanceId=\(pageInstanceId)",
+                category: "Surface", appId: appId, path: path
             )
             return false
         }
@@ -470,9 +470,9 @@ enum LxAppSurface {
             do {
                 try await lxHostView.mount(session, notifyVisibleOnMount: true)
             } catch {
-                os_log(
-                    "fullscreen mount failed id=%{public}@ app=%{public}@ path=%{public}@ error=%{public}@",
-                    log: log, type: .error, id, appId, path, String(describing: error)
+                LXLog.error(
+                    "fullscreen mount failed id=\(id) app=\(appId) path=\(path) error=\(String(describing: error))",
+                    category: "Surface", appId: appId, path: path
                 )
                 _ = close(id: id, appId: appId, reason: "failed")
             }

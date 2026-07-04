@@ -10,7 +10,8 @@ package com.lingxia.app
  * Prefer this over `android.util.Log` for any log a host/lxapp developer should
  * be able to observe. Pure platform / high-frequency traces may stay on `Log`.
  *
- * Signatures mirror `android.util.Log` so call sites change only the receiver.
+ * Method names and primary argument order follow `android.util.Log`; optional
+ * appId/path metadata routes records to the owning lxapp in dev logs.
  */
 internal object LxLog {
     // Mirrors the Rust FFI level contract (see `logging::forward_host_log`).
@@ -21,19 +22,19 @@ internal object LxLog {
     private const val ERROR = 4
 
     fun v(tag: String, message: String, appId: String = "", path: String = "") =
-        NativeApi.writeLog(VERBOSE, tag, appId, path, message)
+        NativeApi.forwardHostLog(VERBOSE, tag, appId, path, message)
 
     fun d(tag: String, message: String, appId: String = "", path: String = "") =
-        NativeApi.writeLog(DEBUG, tag, appId, path, message)
+        NativeApi.forwardHostLog(DEBUG, tag, appId, path, message)
 
     fun i(tag: String, message: String, appId: String = "", path: String = "") =
-        NativeApi.writeLog(INFO, tag, appId, path, message)
+        NativeApi.forwardHostLog(INFO, tag, appId, path, message)
 
     fun w(tag: String, message: String, tr: Throwable? = null, appId: String = "", path: String = "") =
-        NativeApi.writeLog(WARN, tag, appId, path, message.withThrowable(tr))
+        NativeApi.forwardHostLog(WARN, tag, appId, path, message.withThrowable(tr))
 
     fun e(tag: String, message: String, tr: Throwable? = null, appId: String = "", path: String = "") =
-        NativeApi.writeLog(ERROR, tag, appId, path, message.withThrowable(tr))
+        NativeApi.forwardHostLog(ERROR, tag, appId, path, message.withThrowable(tr))
 
     private fun String.withThrowable(tr: Throwable?): String =
         if (tr == null) this else "$this\n${tr.stackTraceToString()}"

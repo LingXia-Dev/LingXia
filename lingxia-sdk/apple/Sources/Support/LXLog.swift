@@ -21,7 +21,7 @@ enum LXLog {
 
     /// Forward a log entry into the Rust pipeline.
     /// - Parameters:
-    ///   - message: Fully-formatted message (autoclosure: built only when emitted).
+    ///   - message: Fully-formatted message.
     ///   - category: Subsystem/category label, surfaced as the log target.
     ///   - appId: Owning lxapp id, when known. Empty for host-global logs.
     ///   - path: Page path within the lxapp, when known.
@@ -33,7 +33,7 @@ enum LXLog {
         appId: String = "",
         path: String = ""
     ) -> Bool {
-        writeLog(level.rawValue, category, appId, path, message())
+        forwardHostLog(level.rawValue, category, appId, path, message())
     }
 
     @discardableResult

@@ -131,8 +131,14 @@ mod bridge {
         #[swift_bridge(swift_name = "lingxiaInit")]
         fn lingxia_init(data_dir: &str, cache_dir: &str, locale: &str) -> Option<String>;
 
-        #[swift_bridge(swift_name = "writeLog")]
-        fn write_log(level: i32, category: &str, appid: &str, path: &str, message: &str) -> bool;
+        #[swift_bridge(swift_name = "forwardHostLog")]
+        fn forward_host_log(
+            level: i32,
+            category: &str,
+            appid: &str,
+            path: &str,
+            message: &str,
+        ) -> bool;
 
         #[swift_bridge(swift_name = "onPageShow")]
         fn on_page_show(appid: &str, path: &str);
@@ -439,7 +445,13 @@ pub fn lingxia_init(data_dir: &str, cache_dir: &str, locale: &str) -> Option<Str
     crate::init_with_platform(platform)
 }
 
-pub fn write_log(level: i32, category: &str, appid: &str, path: &str, message: &str) -> bool {
+pub fn forward_host_log(
+    level: i32,
+    category: &str,
+    appid: &str,
+    path: &str,
+    message: &str,
+) -> bool {
     crate::logging::forward_host_log(level, category, appid, path, message)
 }
 

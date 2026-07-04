@@ -157,7 +157,7 @@ internal object NativeApi {
      * Returns false when the native log pipeline is not initialized or level is invalid.
      */
     @JvmStatic
-    external fun writeLog(
+    external fun forwardHostLog(
         level: Int,
         category: String,
         appId: String,
