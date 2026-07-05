@@ -247,7 +247,6 @@ Write-Host "==> Installing Windows Runner to $TargetDir"
 Remove-Item -LiteralPath $TmpTargetDir, $BackupTargetDir -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $TmpTargetDir | Out-Null
 Copy-Item -LiteralPath $RunnerExe -Destination (Join-Path $TmpTargetDir "lingxia-runner.exe") -Force
-Set-Content -LiteralPath (Join-Path $TmpTargetDir "VERSION") -Value $RunnerVersion -NoNewline
 New-Item -ItemType Directory -Force -Path $TargetParent | Out-Null
 if (Test-Path $TargetDir) {
     Move-Item -LiteralPath $TargetDir -Destination $BackupTargetDir

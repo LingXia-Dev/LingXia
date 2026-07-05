@@ -169,7 +169,7 @@ fn prune_other_versions(keep: &str) {
 /// Extract a zip preserving paths, Unix modes, and symlinks (a notarized `.app`
 /// bundle contains symlinks; mangling them breaks its code signature). Skips
 /// macOS archive junk (`__MACOSX/`, `.DS_Store`). The runner zip has the `.app`
-/// (macOS) or the exe + `VERSION` (Windows) at the top level — no strip.
+/// (macOS) or the exe (Windows) at the top level, no strip.
 fn extract_zip(bytes: &[u8], out_dir: &Path) -> Result<()> {
     let reader = std::io::Cursor::new(bytes);
     let mut archive =
