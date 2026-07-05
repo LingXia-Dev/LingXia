@@ -107,16 +107,19 @@ fn configure_local_debug_assets() {
     let Some(manifest_dir) = std::env::var_os("CARGO_MANIFEST_DIR").map(PathBuf::from) else {
         return;
     };
-    let source = manifest_dir.join(".lingxia").join("assets");
+    println!("cargo:rerun-if-env-changed=LINGXIA_WINDOWS_ASSET_DIR");
+    let source = std::env::var_os("LINGXIA_WINDOWS_ASSET_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| manifest_dir.join(".lingxia").join("assets"));
     if !source.is_dir() {
         return;
     }
 
     watch_dir(&source);
 
-    // Debug builds are local developer artifacts. Keep the generated assets in
-    // `windows/.lingxia/assets` and compile that path into the host entrypoint
-    // instead of copying a second tree under `target/debug/assets`.
+    // Debug builds are local developer artifacts. Compile the prepared asset
+    // dir into the host entrypoint instead of copying a second tree under
+    // `target/debug/assets`.
     if std::env::var("PROFILE").ok().as_deref() == Some("debug") {
         println!(
             "cargo:rustc-env=LINGXIA_WINDOWS_DEBUG_ASSET_DIR={}",

@@ -6,7 +6,7 @@ use super::apple::{self, IOS_TARGET};
 use super::spm;
 use super::{
     BuildArtifacts, BuildConfig, BuildProfile, Device, InstallConfig, Platform, RunConfig,
-    native_client_out_for_host_project, resolve_cargo_target_dir,
+    native_client_out_for_host_project, resolve_cargo_target_dir, resolve_lingxia_target_dir,
 };
 use crate::config::IosConfig;
 use crate::permission_cache::{DEFAULT_MAX_AGE_SECONDS, PermissionCache, PermissionPlatform};
@@ -209,9 +209,9 @@ impl IosPlatform {
 
     /// Find the .app bundle in build output.
     ///
-    /// Searches in `.lingxia/` directory where AppBundler places the .app.
-    fn find_app_bundle(&self, ios_dir: &Path, _profile: Option<BuildProfile>) -> Result<PathBuf> {
-        let output_dir = ios_dir.join(".lingxia");
+    /// Searches in the target directory where AppBundler places the .app.
+    fn find_app_bundle(&self, project_root: &Path, _profile: Option<BuildProfile>) -> Result<PathBuf> {
+        let output_dir = resolve_lingxia_target_dir(project_root).join("ios");
         if output_dir.exists() {
             for entry in fs::read_dir(&output_dir)? {
                 let path = entry?.path();
@@ -324,7 +324,7 @@ impl Platform for IosPlatform {
         // with a circular D/P badge — same visual language as the Android
         // launcher overlay. Source xcassets is never mutated.
         let resources_for_compile = match apple::env_icon::prepare_overlay_resources_dir(
-            &ios_dir,
+            &resolve_lingxia_target_dir(&config.project_root).join("ios"),
             &resources_dir,
             config.resolved_env.version,
             0.0,
@@ -414,14 +414,11 @@ impl Platform for IosPlatform {
             .and_then(|config| config.app_links.as_ref())
             .map(|app_links| app_links.hosts.clone())
             .unwrap_or_default();
-        let ios_config = host_config.and_then(|c| c.ios);
-
         // Determine app path
         let app_path = if let Some(ref path) = config.artifact_path {
             path.clone()
         } else {
-            let ios_dir = resolve_ios_dir(&config.project_root, ios_config.as_ref())?;
-            self.find_app_bundle(&ios_dir, None)?
+            self.find_app_bundle(&config.project_root, None)?
         };
 
         if !app_path.exists() {

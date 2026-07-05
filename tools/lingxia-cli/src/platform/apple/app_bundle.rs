@@ -2,7 +2,7 @@
 //!
 //! Converts a SwiftPM library package into a runnable .app bundle.
 
-use crate::platform::resolve_cargo_target_dir;
+use crate::platform::{resolve_cargo_target_dir, resolve_lingxia_target_dir};
 use anyhow::{Context, Result, anyhow};
 use colored::Colorize;
 use std::collections::HashMap;
@@ -52,14 +52,15 @@ impl AppBundler {
         println!("{}", "Creating app bundle...".cyan());
 
         // 1. Create temporary executable package
-        let tmp_package_dir = Self::create_executable_package(package_dir, config)?;
+        let tmp_package_dir = Self::create_executable_package(package_dir, project_root, config)?;
 
         // 2. Build the executable
         let build_dir =
             Self::build_executable(package_dir, &tmp_package_dir, project_root, release)?;
 
         // 3. Create .app bundle structure
-        let app_bundle = Self::create_bundle_structure(package_dir, &build_dir, config)?;
+        let app_bundle =
+            Self::create_bundle_structure(package_dir, project_root, &build_dir, config)?;
 
         // 4. Clean up temporary package
         let _ = fs::remove_dir_all(&tmp_package_dir);
@@ -74,8 +75,14 @@ impl AppBundler {
     }
 
     /// Create a temporary SwiftPM package with an executable target
-    fn create_executable_package(package_dir: &Path, config: &AppBundleConfig) -> Result<PathBuf> {
-        let build_dir = package_dir.join(".lingxia");
+    fn create_executable_package(
+        package_dir: &Path,
+        project_root: &Path,
+        config: &AppBundleConfig,
+    ) -> Result<PathBuf> {
+        let build_dir = resolve_lingxia_target_dir(project_root)
+            .join("ios")
+            .join("bundle-builder");
         let tmp_package_dir = build_dir.join(".tmp");
 
         // Clean up any existing temp package
@@ -100,7 +107,7 @@ let package = Package(
         ),
     ],
     dependencies: [
-        .package(name: "RootPackage", path: "../.."),
+        .package(name: "RootPackage", path: "{root_package_path}"),
     ],
     targets: [
         .executableTarget(
@@ -118,6 +125,7 @@ let package = Package(
 )
 "#,
             builder_package = APP_BUILDER_PACKAGE,
+            root_package_path = package_dir.display(),
             swift_product_name = config.swift_product_name,
             deployment_target = config.deployment_target,
             target_name = target_name,
@@ -145,7 +153,9 @@ let package = Package(
         // Get iOS SDK path
         let sdk_path = get_ios_sdk_path()?;
         let build_config = if release { "release" } else { "debug" };
-        let scratch_path = package_dir.join(".lingxia").join(".tmp-build");
+        let scratch_path = resolve_lingxia_target_dir(project_root)
+            .join("ios")
+            .join("swift-build");
         let cargo_target_dir = resolve_cargo_target_dir(project_root);
 
         let mut cmd = Command::new("swift");
@@ -183,14 +193,14 @@ let package = Package(
     /// Create the .app bundle structure
     fn create_bundle_structure(
         package_dir: &Path,
+        project_root: &Path,
         build_dir: &Path,
         config: &AppBundleConfig,
     ) -> Result<PathBuf> {
         let target_name = APP_RUNNER_TARGET;
         let app_name = format!("{}.app", config.app_name);
 
-        // Create app bundle in .lingxia/ directory
-        let output_dir = package_dir.join(".lingxia");
+        let output_dir = resolve_lingxia_target_dir(project_root).join("ios");
         fs::create_dir_all(&output_dir)?;
 
         let app_bundle = output_dir.join(&app_name);

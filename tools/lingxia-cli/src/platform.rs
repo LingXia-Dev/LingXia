@@ -37,6 +37,10 @@ pub fn resolve_cargo_target_dir(project_root: &Path) -> PathBuf {
         .join("target")
 }
 
+pub fn resolve_lingxia_target_dir(project_root: &Path) -> PathBuf {
+    resolve_cargo_target_dir(project_root).join("lingxia")
+}
+
 pub(crate) const NATIVE_CLIENT_OUT_ENV: &str = "LINGXIA_NATIVE_CLIENT_OUT";
 
 pub(crate) fn native_client_out_for_host_project(

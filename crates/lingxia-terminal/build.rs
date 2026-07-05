@@ -343,7 +343,7 @@ fn cache_dir() -> Result<PathBuf, String> {
 /// relative to the build cwd, which on Windows happens whenever the
 /// ghostty checkout sits on a different drive than the zig compiler
 /// (e.g. project on D:, zig under C:\Users). When OUT_DIR and zig
-/// disagree on the drive, fall back to a per-user cache on zig's drive
+/// disagree on the drive, fall back to a per-user build cache on zig's drive
 /// (under the profile root, not AppData — AV products are quick to eat
 /// freshly linked unsigned executables like zig's build runner there).
 fn windows_same_drive_cache(out_dir: &Path) -> Option<PathBuf> {
@@ -360,7 +360,13 @@ fn windows_same_drive_cache(out_dir: &Path) -> Option<PathBuf> {
     if windows_drive(&profile) != Some(zig_drive) {
         return None;
     }
-    Some(profile.join(".lingxia").join("ghostty-cache"))
+    Some(
+        profile
+            .join(".cache")
+            .join("lingxia")
+            .join("build")
+            .join("ghostty-vt"),
+    )
 }
 
 fn which_zig(zig: &OsStr) -> Option<PathBuf> {

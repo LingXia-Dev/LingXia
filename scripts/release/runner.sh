@@ -5,7 +5,15 @@ START_DIR="$(pwd)"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 CLI_CARGO_TOML="$ROOT_DIR/tools/lingxia-cli/Cargo.toml"
 RUNNER_PACKAGE_DIR="$ROOT_DIR/tools/lingxia-runner/macos"
-RUNNER_RAW_APP_DIR="$ROOT_DIR/tools/lingxia-runner/macos/.lingxia"
+if [[ -n "${CARGO_TARGET_DIR:-}" ]]; then
+  case "$CARGO_TARGET_DIR" in
+    /*) RUNNER_TARGET_DIR="$CARGO_TARGET_DIR" ;;
+    *) RUNNER_TARGET_DIR="$RUNNER_PACKAGE_DIR/$CARGO_TARGET_DIR" ;;
+  esac
+else
+  RUNNER_TARGET_DIR="$ROOT_DIR/target"
+fi
+RUNNER_RAW_APP_DIR="$RUNNER_TARGET_DIR/lingxia/macos"
 RUNNER_RAW_DIST_DIR="$ROOT_DIR/tools/lingxia-runner/macos/dist/macos"
 RUNNER_RELEASE_APP_NAME="LingXia Runner.app"
 RUNNER_WINDOWS_DIR="$ROOT_DIR/tools/lingxia-runner/windows"
@@ -22,7 +30,7 @@ Options:
   --out <dir>         Output directory (default: dist/runner-release)
   --platform <name>   Runner platform to build: macos or windows (default: current host)
   --macos-arch <arch> Build a specific macOS arch: arm64, x86_64, or all
-  --skip-build        Reuse existing lingxia build artifacts from tools/lingxia-runner/macos/.lingxia and dist/macos
+  --skip-build        Reuse existing lingxia build artifacts from target/lingxia/macos and dist/macos
 
 Environment:
   LINGXIA_RELEASE_REPO  Override target repo (default: LingXia-Dev/LingXia)
@@ -342,7 +350,7 @@ for arch in "${ARCHES[@]}"; do
     # Also wipe the raw dist dir: $RAW_ZIP_SRC lives there, and a stale zip from
     # the previous arch would otherwise be copied into this arch's output,
     # silently shipping the wrong architecture under the right name.
-    rm -rf "$RUNNER_PACKAGE_DIR/.build" "$RUNNER_PACKAGE_DIR/.lingxia" "$RUNNER_RAW_DIST_DIR"
+    rm -rf "$RUNNER_PACKAGE_DIR/.build" "$RUNNER_PACKAGE_DIR/.lingxia" "$RUNNER_RAW_APP_DIR" "$RUNNER_RAW_DIST_DIR"
 
     # Sources/Resources/bridge-runtime.js is gitignored and the build-tool plugin
     # writes it too late for SwiftPM's plan-time `.copy("Resources")` on a clean

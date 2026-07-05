@@ -207,6 +207,10 @@ fn clean_android(project_root: &Path, removed: &mut Vec<PathBuf>) -> Result<()> 
     remove_path(&android_dir.join("build"), removed)?;
     remove_path(&android_dir.join("app/build"), removed)?;
     remove_path(&android_dir.join("app/src/main/jniLibs"), removed)?;
+    remove_path(
+        &platform::resolve_lingxia_target_dir(project_root).join("android"),
+        removed,
+    )?;
     Ok(())
 }
 
@@ -219,6 +223,10 @@ fn clean_ios(
         remove_path(&ios_dir.join(".build"), removed)?;
         remove_path(&ios_dir.join(".lingxia"), removed)?;
     }
+    remove_path(
+        &platform::resolve_lingxia_target_dir(project_root).join("ios"),
+        removed,
+    )?;
     Ok(())
 }
 
@@ -231,6 +239,10 @@ fn clean_macos(
         remove_path(&macos_dir.join(".build"), removed)?;
         remove_path(&macos_dir.join(".lingxia"), removed)?;
     }
+    remove_path(
+        &platform::resolve_lingxia_target_dir(project_root).join("macos"),
+        removed,
+    )?;
     Ok(())
 }
 
@@ -247,14 +259,22 @@ fn clean_harmony(
         let native_lib = harmony_dir.join("entry/libs/arm64-v8a/liblingxia.so");
         remove_path(&native_lib, removed)?;
         remove_empty_parent_dirs_until(&harmony_dir, native_lib.parent());
+        remove_path(&harmony_dir.join(".lingxia"), removed)?;
     }
+    remove_path(
+        &platform::resolve_lingxia_target_dir(project_root).join("harmony"),
+        removed,
+    )?;
     Ok(())
 }
 
 fn clean_windows(project_root: &Path, removed: &mut Vec<PathBuf>) -> Result<()> {
     if let Ok(windows_dir) = platform::windows::resolve_windows_dir(project_root) {
-        // All generated Windows output (prepared assets, dist, env-icon overlay)
-        // lives under `windows/.lingxia/`.
+        remove_path(
+            &platform::windows::resolve_windows_build_dir(project_root)?,
+            removed,
+        )?;
+        // Legacy generated Windows output.
         remove_path(&windows_dir.join(".lingxia"), removed)?;
         // Legacy layout (assets/dist at the windows/ root) — clean if present.
         remove_path(&windows_dir.join("assets"), removed)?;

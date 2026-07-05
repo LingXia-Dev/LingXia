@@ -1,7 +1,7 @@
 use super::*;
 
 /// Overrides the launcher icon `lingxia-windows-sdk` loads, so `lingxia dev`
-/// can show the env badge without touching the prepared `windows/.lingxia/assets`.
+/// can show the env badge without touching the prepared Windows assets.
 /// Must match the env var read in `lingxia-windows-sdk`'s `resolve_app_icon_path`.
 const WINDOWS_APP_ICON_PATH_ENV: &str = "LINGXIA_APP_ICON_PATH";
 
@@ -52,14 +52,13 @@ pub(super) fn execute_windows(ctx: DevContext) -> Result<()> {
 
         // dev/preview: stage a badged copy of the launcher icon and point the
         // SDK at it via env, so the running window/taskbar shows the D/P badge
-        // without mutating the prepared `windows/.lingxia/assets` icon (which a
-        // later `lingxia build` copies into its dist).
-        let windows_dir = platform::windows::resolve_windows_dir(&ctx.project_root)?;
+        // without mutating the prepared assets icon (which a later
+        // `lingxia build` copies into its dist).
+        let windows_build_dir = platform::windows::resolve_windows_build_dir(&ctx.project_root)?;
         let staged_icon = crate::platform::windows::env_icon::stage_dev_badged_icon(
-            &windows_dir.join(".lingxia").join("assets"),
+            &platform::windows::resolve_windows_assets_dir(&ctx.project_root)?,
             ctx.config.app.as_ref().map(|app| app.home_app_id.as_str()),
-            &windows_dir
-                .join(".lingxia")
+            &windows_build_dir
                 .join("overlay")
                 .join(ctx.resolved_env.version.as_str()),
             ctx.resolved_env.version,

@@ -7,7 +7,7 @@ use super::apple::{self};
 use super::spm;
 use super::{
     BuildArtifacts, BuildConfig, BuildProfile, Device, InstallConfig, Platform, RunConfig,
-    native_client_out_for_host_project, resolve_cargo_target_dir,
+    native_client_out_for_host_project, resolve_cargo_target_dir, resolve_lingxia_target_dir,
 };
 use crate::config::MacosConfig;
 use crate::permission_cache::{DEFAULT_MAX_AGE_SECONDS, PermissionCache, PermissionPlatform};
@@ -477,6 +477,7 @@ impl Platform for MacosPlatform {
             .unwrap_or(false);
 
         let app_path = create_macos_app_bundle(
+            &config.project_root,
             &macos_dir,
             &bin_dir,
             &executable_path,
@@ -492,7 +493,7 @@ impl Platform for MacosPlatform {
         // get the D/P badge on the dock icon. macOS icon artwork sits inside
         // a ~10% transparent canvas margin — anchor the badge to the artwork.
         let resources_for_compile = match apple::env_icon::prepare_overlay_resources_dir(
-            &macos_dir,
+            &resolve_lingxia_target_dir(&config.project_root).join("macos"),
             &resources_dir,
             config.resolved_env.version,
             0.10,
@@ -669,6 +670,7 @@ LingXia will not inject these entitlements until approval is confirmed.",
 
 #[allow(clippy::too_many_arguments)]
 fn create_macos_app_bundle(
+    project_root: &Path,
     macos_dir: &Path,
     bin_dir: &Path,
     executable_path: &Path,
@@ -680,7 +682,7 @@ fn create_macos_app_bundle(
     hide_dock_icon: bool,
 ) -> Result<PathBuf> {
     let app_name = format!("{}.app", product_name);
-    let output_dir = macos_dir.join(".lingxia");
+    let output_dir = resolve_lingxia_target_dir(project_root).join("macos");
     fs::create_dir_all(&output_dir)?;
     remove_stale_macos_app_bundles(&output_dir, &app_name)?;
 

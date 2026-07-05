@@ -46,7 +46,7 @@ cargo run --manifest-path ../../lingxia-cli/Cargo.toml -- package --platform mac
 
 That produces:
 
-- `tools/lingxia-runner/macos/.lingxia/LingXia Runner.app`
+- `target/lingxia/macos/LingXia Runner.app`
 - `tools/lingxia-runner/macos/dist/macos/LingXia Runner-<version>-macos.zip`
 
 ## Release

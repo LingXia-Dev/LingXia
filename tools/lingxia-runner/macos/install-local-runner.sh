@@ -30,7 +30,15 @@ LINGXIA_BIN="${LINGXIA_BIN:-lingxia}"
 CARGO_BIN="${CARGO_BIN:-cargo}"
 NPM_BIN="${NPM_BIN:-npm}"
 APP_NAME="LingXia Runner.app"
-APP_SRC="$SCRIPT_DIR/.lingxia/$APP_NAME"
+if [[ -n "${CARGO_TARGET_DIR:-}" ]]; then
+  case "$CARGO_TARGET_DIR" in
+    /*) TARGET_BASE="$CARGO_TARGET_DIR" ;;
+    *) TARGET_BASE="$SCRIPT_DIR/$CARGO_TARGET_DIR" ;;
+  esac
+else
+  TARGET_BASE="$ROOT_DIR/target"
+fi
+APP_SRC="$TARGET_BASE/lingxia/macos/$APP_NAME"
 BRIDGE_DIR="$ROOT_DIR/packages/lingxia-bridge"
 BRIDGE_RUNTIME="$BRIDGE_DIR/dist/bridge-runtime.es2020.js"
 
@@ -59,7 +67,7 @@ source "$ROOT_DIR/scripts/lib/lingxia.sh"
 ensure_lingxia "$ROOT_DIR"
 
 echo "==> Cleaning Runner build outputs"
-rm -rf "$SCRIPT_DIR/.build" "$SCRIPT_DIR/.lingxia"
+rm -rf "$SCRIPT_DIR/.build" "$SCRIPT_DIR/.lingxia" "$TARGET_BASE/lingxia/macos"
 
 echo "==> Building bridge runtime"
 (

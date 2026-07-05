@@ -1,6 +1,7 @@
 use super::{
     BuildArtifacts, BuildConfig, Device, DeviceType, InstallConfig, Platform, RunConfig,
-    native_client_out_for_host_project, resolve_cargo_target_dir, set_native_client_codegen_env,
+    native_client_out_for_host_project, resolve_cargo_target_dir, resolve_lingxia_target_dir,
+    set_native_client_codegen_env,
 };
 use crate::commands::rust::run_cargo_build_for_target;
 use anyhow::{Context, Result, anyhow};
@@ -683,11 +684,11 @@ fn prepare_launcher_icon_overlay(
         return Ok(None);
     }
 
-    // Stage under <android_root>/.lingxia/overlay/<env>/res so the dir lives
-    // alongside iOS's `.lingxia/` build outputs. Gradle's `clean` won't touch
-    // this, but we wipe per-env on every build so stale resources never leak.
-    let staging_root = android_root
-        .join(".lingxia")
+    // Stage under target/lingxia/android/overlay/<env>/res. Gradle's `clean`
+    // won't touch this, but we wipe per-env on every build so stale resources
+    // never leak.
+    let staging_root = resolve_lingxia_target_dir(&config.project_root)
+        .join("android")
         .join("overlay")
         .join(config.resolved_env.version.as_str());
     let staging_res = staging_root.join("res");

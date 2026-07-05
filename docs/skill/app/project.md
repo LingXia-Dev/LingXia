@@ -419,12 +419,12 @@ The macOS host build does the following:
 - Generates `app.json` and `ui.json` from `surfaces:`.
 - Builds the Rust host static library with the native features derived from `features` + `capabilities` (e.g. `capabilities.browser` adds the browser/shell runtime, `capabilities.terminal` the terminal runtime).
 - Builds the SwiftPM macOS app.
-- Packages the `.app` under `macos/.lingxia/`.
+- Packages the `.app` under `target/lingxia/macos/`.
 
 Example output:
 
 ```text
-macos/.lingxia/My App.app
+target/lingxia/macos/My App.app
 ```
 
 If `--skip-native` is used, SwiftPM links an existing Rust static library. That can leave runtime capability bits stale (including browser/terminal). For UI debugging, prefer a normal build without `--skip-native`.
