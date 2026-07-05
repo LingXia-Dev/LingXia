@@ -21,7 +21,7 @@ cloud = ["host/cloud"]  # activated by `--with-provider cloud`
 # for the `proc-macros` feature, which crates.io forbids). Consumed via git at
 # the matching release tag; the [patch.crates-io] below unifies its windows-rs
 # with the published `windows` pulled in by lingxia-platform/-webview.
-lingxia-windows-sdk = { git = "https://github.com/LingXia-Dev/LingXia.git", tag = "lingxia-crates-v{{LINGXIA_VERSION}}", package = "lingxia-windows-sdk", default-features = false }
+lingxia-windows-sdk = { git = "https://github.com/LingXia-Dev/LingXia.git", {{LINGXIA_WINDOWS_SDK_GIT_REF}}, package = "lingxia-windows-sdk", default-features = false }
 host = { package = "{{HOST_CRATE_NAME}}", path = "../{{HOST_CRATE_NAME}}", default-features = false }
 
 [build-dependencies]

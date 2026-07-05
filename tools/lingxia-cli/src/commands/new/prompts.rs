@@ -157,6 +157,7 @@ pub(super) fn gather_native_project_info(
             validate_package_id(&p)?;
             p
         }
+        None if yes => default_package_id,
         None => {
             let input: String = Input::with_theme(&ColorfulTheme::default())
                 .with_prompt("Package ID")
