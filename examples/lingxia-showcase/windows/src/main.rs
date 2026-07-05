@@ -14,5 +14,3 @@ fn debug_asset_dir() -> Option<&'static str> {
         None
     }
 }
-    Ok(())
-}
