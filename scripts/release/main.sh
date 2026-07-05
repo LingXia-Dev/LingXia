@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 GH_REPO="${LINGXIA_RELEASE_REPO:-LingXia-Dev/LingXia}"
 
-RUNNER_ALL_ARCHES=(arm64 x86_64)
+RUNNER_TARGETS=(macos-arm64 macos-x86_64 windows-x64)
 
 usage() {
   cat <<'EOF'
@@ -31,6 +31,7 @@ CLI options:
   --skip-build        Reuse existing cargo artifacts
 
 Runner options:
+  --platform <name>   Build Runner platform: macos or windows (default: current host)
   --macos-arch <arch> Build specific Runner arch: arm64, x86_64, all
   --publish           Upload built assets to the GitHub release tag
   --tag <tag>         Release tag to upload to (default: lingxia-cli-v<version>)
@@ -58,6 +59,7 @@ workspace_version() {
     /^\[/ {in_section=0}
     in_section && $1 == "version" {
       gsub(/"/, "", $3);
+      gsub(/\r/, "", $3);
       print $3;
       exit
     }' "$ROOT_DIR/Cargo.toml"
@@ -69,6 +71,7 @@ cli_version() {
     /^\[/ {in_section=0}
     in_section && $1 == "version" {
       gsub(/"/, "", $3);
+      gsub(/\r/, "", $3);
       print $3;
       exit
     }' "$ROOT_DIR/tools/lingxia-cli/Cargo.toml"
@@ -97,6 +100,14 @@ current_cli_target() {
   case "$os" in
     Darwin) os="darwin" ;;
     MINGW*|MSYS*|CYGWIN*|Windows_NT) os="windows" ;;
+    Linux)
+      if command -v powershell.exe >/dev/null 2>&1 && command -v wslpath >/dev/null 2>&1; then
+        os="windows"
+      else
+        echo "ERROR: unsupported CLI host OS: $os" >&2
+        return 2
+      fi
+      ;;
     *)
       echo "ERROR: unsupported CLI host OS: $os" >&2
       return 2
@@ -142,7 +153,7 @@ CLI version:            $cli_v
 CLI release tag:        $cli_runner_tag
 CLI current asset:      $cli_asset
 Runner release tag:     $cli_runner_tag
-Runner arches:          ${RUNNER_ALL_ARCHES[*]}
+Runner targets:         ${RUNNER_TARGETS[*]}
 SDK release tag:        $sdk_tag
 NPM bridge version:     $bridge_v
 NPM polyfills version:  $polyfills_v
