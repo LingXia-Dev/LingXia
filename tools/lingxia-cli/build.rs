@@ -1,10 +1,13 @@
 use serde_json::Value as JsonValue;
 use std::env;
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::SystemTime;
 use toml::{Table as TomlTable, Value as TomlValue};
+
+const WINDOWS_DESIGN_ICON_PNG_SIZE: u32 = 64;
 
 #[derive(Debug)]
 struct ComponentVersions {
@@ -87,6 +90,7 @@ fn run() -> Result<(), String> {
         .map_err(|e| format!("failed to copy {}: {e}", es5_src.display()))?;
     fs::copy(&polyfills_src, &polyfills_out)
         .map_err(|e| format!("failed to copy {}: {e}", polyfills_src.display()))?;
+    generate_windows_design_icons(repo_root, &out_dir)?;
 
     println!(
         "cargo:rustc-env=LINGXIA_BRIDGE_RUNTIME_ES2020={}",
@@ -102,6 +106,92 @@ fn run() -> Result<(), String> {
     );
 
     Ok(())
+}
+
+fn generate_windows_design_icons(repo_root: &Path, out_dir: &Path) -> Result<(), String> {
+    let svg_dir = repo_root.join("design").join("icons").join("svg");
+    let png_dir = out_dir.join("windows-design-icons");
+    fs::create_dir_all(&png_dir)
+        .map_err(|e| format!("failed to create {}: {e}", png_dir.display()))?;
+
+    let mut svg_paths = Vec::new();
+    for entry in
+        fs::read_dir(&svg_dir).map_err(|e| format!("failed to read {}: {e}", svg_dir.display()))?
+    {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let path = entry.path();
+        if path
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("svg"))
+        {
+            svg_paths.push(path);
+        }
+    }
+    svg_paths.sort();
+
+    let generated_rs = out_dir.join("windows-design-icons.rs");
+    let mut rust =
+        String::from("pub(crate) static WINDOWS_DESIGN_ICONS: &[(&str, &str, &[u8])] = &[\n");
+    for svg_path in svg_paths {
+        let stem = svg_path
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .ok_or_else(|| format!("invalid SVG icon name: {}", svg_path.display()))?;
+        let svg = fs::read_to_string(&svg_path)
+            .map_err(|e| format!("failed to read {}: {e}", svg_path.display()))?;
+        let png = svg_to_png_bytes(&svg, WINDOWS_DESIGN_ICON_PNG_SIZE)
+            .map_err(|e| format!("failed to convert {} to PNG: {e}", svg_path.display()))?;
+        let png_path = png_dir.join(format!("{stem}.png"));
+        fs::write(&png_path, png)
+            .map_err(|e| format!("failed to write {}: {e}", png_path.display()))?;
+        let source_path = format!("design/icons/svg/{stem}.svg");
+        let relative_path = format!("icons/design/{stem}.png");
+        rust.push_str("    (");
+        rust.push_str(&rust_string_literal(&relative_path));
+        rust.push_str(", ");
+        rust.push_str(&rust_string_literal(&source_path));
+        rust.push_str(", include_bytes!(");
+        rust.push_str(&rust_string_literal(&png_path.to_string_lossy()));
+        rust.push_str(")),\n");
+    }
+    rust.push_str("];\n");
+    write_if_changed(&generated_rs, rust.as_bytes())
+        .map_err(|e| format!("failed to write {}: {e}", generated_rs.display()))?;
+    Ok(())
+}
+
+fn svg_to_png_bytes(svg_content: &str, target_size: u32) -> Result<Vec<u8>, String> {
+    let tree = usvg::Tree::from_str(svg_content, &usvg::Options::default())
+        .map_err(|e| format!("failed to parse SVG: {e}"))?;
+    let source_size = tree.size();
+    let max_side = source_size.width().max(source_size.height());
+    if max_side <= 0.0 {
+        return Err("SVG has an empty viewport".to_string());
+    }
+
+    let scale = target_size as f32 / max_side;
+    let offset_x = (target_size as f32 - source_size.width() * scale) / 2.0;
+    let offset_y = (target_size as f32 - source_size.height() * scale) / 2.0;
+    let mut pixmap = tiny_skia::Pixmap::new(target_size, target_size)
+        .ok_or_else(|| "failed to allocate icon pixmap".to_string())?;
+    let transform = tiny_skia::Transform::from_row(scale, 0.0, 0.0, scale, offset_x, offset_y);
+    resvg::render(&tree, transform, &mut pixmap.as_mut());
+    pixmap
+        .encode_png()
+        .map_err(|e| format!("failed to encode rendered SVG as PNG: {e}"))
+}
+
+fn rust_string_literal(value: &str) -> String {
+    format!("{value:?}")
+}
+
+fn write_if_changed(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    if fs::read(path).ok().as_deref() == Some(bytes) {
+        return Ok(());
+    }
+    let mut file = fs::File::create(path)?;
+    file.write_all(bytes)
 }
 
 fn read_component_versions(manifest: &Path) -> Result<ComponentVersions, String> {
