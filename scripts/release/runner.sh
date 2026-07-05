@@ -8,6 +8,8 @@ RUNNER_PACKAGE_DIR="$ROOT_DIR/tools/lingxia-runner/macos"
 RUNNER_RAW_APP_DIR="$ROOT_DIR/tools/lingxia-runner/macos/.lingxia"
 RUNNER_RAW_DIST_DIR="$ROOT_DIR/tools/lingxia-runner/macos/dist/macos"
 RUNNER_RELEASE_APP_NAME="LingXia Runner.app"
+RUNNER_WINDOWS_DIR="$ROOT_DIR/tools/lingxia-runner/windows"
+RUNNER_WINDOWS_ASSET_NAME="lingxia-runner-windows-x64.zip"
 GH_REPO="${LINGXIA_RELEASE_REPO:-LingXia-Dev/LingXia}"
 
 usage() {
@@ -18,6 +20,7 @@ Options:
   --publish           Upload the Runner zip to GitHub Release
   --tag <tag>         Release tag to upload to (default: lingxia-cli-v<version>)
   --out <dir>         Output directory (default: dist/runner-release)
+  --platform <name>   Runner platform to build: macos or windows (default: current host)
   --macos-arch <arch> Build a specific macOS arch: arm64, x86_64, or all
   --skip-build        Reuse existing lingxia build artifacts from tools/lingxia-runner/macos/.lingxia and dist/macos
 
@@ -27,6 +30,7 @@ Environment:
 Examples:
   scripts/release/runner.sh --macos-arch arm64
   scripts/release/runner.sh --macos-arch all
+  scripts/release/runner.sh --platform windows
   scripts/release/runner.sh --publish
   scripts/release/runner.sh --out /tmp/runner-release
 EOF
@@ -38,6 +42,7 @@ read_cli_version() {
     /^\[/ {in_section=0}
     in_section && $1 == "version" {
       gsub(/"/, "", $3);
+      gsub(/\r/, "", $3);
       print $3;
       exit
     }' "$CLI_CARGO_TOML"
@@ -50,10 +55,81 @@ require_command() {
   }
 }
 
+sha256_one() {
+  local f="$1"
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$f" | awk '{print $1}'
+  elif command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$f" | awk '{print $1}'
+  else
+    echo "ERROR: missing sha256sum or shasum" >&2
+    exit 1
+  fi
+}
+
 ensure_macos() {
   if [[ "$(uname -s)" != "Darwin" ]]; then
     echo "ERROR: LingXia Runner release is macOS-only." >&2
     exit 1
+  fi
+}
+
+ensure_windows() {
+  case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*|Windows_NT) ;;
+    Linux)
+      if command -v powershell.exe >/dev/null 2>&1 && command -v wslpath >/dev/null 2>&1; then
+        return 0
+      fi
+      echo "ERROR: Windows LingXia Runner release must run on Windows or WSL with powershell.exe." >&2
+      exit 1
+      ;;
+    *)
+      echo "ERROR: Windows LingXia Runner release must run on Windows." >&2
+      exit 1
+      ;;
+  esac
+}
+
+current_runner_platform() {
+  case "$(uname -s)" in
+    Darwin) echo "macos" ;;
+    MINGW*|MSYS*|CYGWIN*|Windows_NT) echo "windows" ;;
+    Linux)
+      if command -v powershell.exe >/dev/null 2>&1 && command -v wslpath >/dev/null 2>&1; then
+        echo "windows"
+      else
+        echo "ERROR: unsupported Runner release host: $(uname -s)" >&2
+        exit 2
+      fi
+      ;;
+    *)
+      echo "ERROR: unsupported Runner release host: $(uname -s)" >&2
+      exit 2
+      ;;
+  esac
+}
+
+powershell_bin() {
+  if command -v pwsh >/dev/null 2>&1; then
+    echo "pwsh"
+  elif command -v powershell.exe >/dev/null 2>&1; then
+    echo "powershell.exe"
+  elif command -v powershell >/dev/null 2>&1; then
+    echo "powershell"
+  else
+    echo "ERROR: missing PowerShell (pwsh or powershell.exe)" >&2
+    exit 1
+  fi
+}
+
+windows_path() {
+  if command -v cygpath >/dev/null 2>&1; then
+    cygpath -w "$1"
+  elif command -v wslpath >/dev/null 2>&1; then
+    wslpath -w "$1"
+  else
+    printf '%s\n' "$1"
   fi
 }
 
@@ -109,6 +185,45 @@ ensure_github_release() {
     --notes "LingXia Runner release $version"
 }
 
+update_release_shasums() {
+  local shasums_name="SHASUMS256-$VERSION.txt"
+  local tmp_dir="$OUT_DIR/.runner-shasums"
+  local current_file="$tmp_dir/current"
+  local next_file="$tmp_dir/next"
+
+  rm -rf "$tmp_dir"
+  mkdir -p "$tmp_dir"
+
+  if gh release download "$TAG" --repo "$GH_REPO" --pattern "$shasums_name" --dir "$tmp_dir" >/dev/null 2>&1 \
+    && [[ -f "$tmp_dir/$shasums_name" ]]; then
+    cp "$tmp_dir/$shasums_name" "$current_file"
+  else
+    : > "$current_file"
+  fi
+
+  cp "$current_file" "$next_file"
+  for zip_path in "${BUILT_ZIPS[@]}"; do
+    local asset_name asset_sha filtered_file
+    asset_name="$(basename "$zip_path")"
+    asset_sha="$(sha256_one "$zip_path")"
+    filtered_file="$tmp_dir/filtered"
+
+    awk -v name="$asset_name" '
+      {
+        file = $NF
+        sub(/^\*/, "", file)
+        if (file != name) print
+      }
+    ' "$next_file" > "$filtered_file"
+    mv "$filtered_file" "$next_file"
+    printf '%s  %s\n' "$asset_sha" "$asset_name" >> "$next_file"
+  done
+
+  sort -k2 "$next_file" > "$tmp_dir/$shasums_name"
+  gh release upload "$TAG" "$tmp_dir/$shasums_name" --repo "$GH_REPO" --clobber
+  echo "✅ Uploaded $shasums_name to GitHub release $TAG ($GH_REPO)"
+}
+
 if [[ $# -eq 0 ]]; then
   usage
   exit 2
@@ -119,12 +234,14 @@ OUT_DIR=""
 SKIP_BUILD=0
 TAG=""
 MACOS_ARCH=""
+PLATFORM=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --publish) PUBLISH=1 ;;
     --tag) TAG="$2"; shift ;;
     --out) OUT_DIR="$2"; shift ;;
+    --platform) PLATFORM="$2"; shift ;;
     --macos-arch) MACOS_ARCH="$2"; shift ;;
     --skip-build) SKIP_BUILD=1 ;;
     -h|--help)
@@ -140,9 +257,6 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
-ensure_macos
-require_command cargo
-
 VERSION="$(read_cli_version)"
 if [[ -z "$VERSION" ]]; then
   echo "ERROR: failed to read lingxia-cli version from $CLI_CARGO_TOML" >&2
@@ -153,35 +267,52 @@ TAG="${TAG:-$(release_tag_for_version "$VERSION")}"
 OUT_DIR="$(resolve_out_dir "$START_DIR/dist/runner-release" "$OUT_DIR")"
 mkdir -p "$OUT_DIR"
 
-if [[ -z "$MACOS_ARCH" ]]; then
-  if [[ "$PUBLISH" -eq 1 && "$SKIP_BUILD" -eq 0 ]]; then
-    MACOS_ARCH="all"
-  else
-    MACOS_ARCH="$(default_macos_arch)"
-  fi
-fi
-
-case "$MACOS_ARCH" in
-  arm64|x86_64) ARCHES=("$MACOS_ARCH") ;;
-  all) ARCHES=(arm64 x86_64) ;;
+PLATFORM="${PLATFORM:-$(current_runner_platform)}"
+case "$PLATFORM" in
+  macos) BUILD_MACOS=1; BUILD_WINDOWS=0 ;;
+  windows) BUILD_MACOS=0; BUILD_WINDOWS=1 ;;
   *)
-    echo "ERROR: unsupported --macos-arch '$MACOS_ARCH' (expected arm64, x86_64, or all)" >&2
+    echo "ERROR: unsupported --platform '$PLATFORM' (expected macos or windows)" >&2
     exit 2
     ;;
 esac
 
-if [[ "$SKIP_BUILD" -eq 1 && "${#ARCHES[@]}" -gt 1 ]]; then
-  echo "ERROR: --skip-build cannot be used with --macos-arch all." >&2
-  echo "       Raw runner outputs are single-arch and would be reused incorrectly." >&2
-  exit 2
+if [[ "$BUILD_MACOS" -eq 1 ]]; then
+  ensure_macos
+  if [[ -z "$MACOS_ARCH" ]]; then
+    if [[ "$PUBLISH" -eq 1 && "$SKIP_BUILD" -eq 0 ]]; then
+      MACOS_ARCH="all"
+    else
+      MACOS_ARCH="$(default_macos_arch)"
+    fi
+  fi
+
+  case "$MACOS_ARCH" in
+    arm64|x86_64) ARCHES=("$MACOS_ARCH") ;;
+    all) ARCHES=(arm64 x86_64) ;;
+    *)
+      echo "ERROR: unsupported --macos-arch '$MACOS_ARCH' (expected arm64, x86_64, or all)" >&2
+      exit 2
+      ;;
+  esac
+
+  if [[ "$SKIP_BUILD" -eq 1 && "${#ARCHES[@]}" -gt 1 ]]; then
+    echo "ERROR: --skip-build cannot be used with --macos-arch all." >&2
+    echo "       Raw runner outputs are single-arch and would be reused incorrectly." >&2
+    exit 2
+  fi
+else
+  ensure_windows
+  ARCHES=()
 fi
 
-if [[ "$SKIP_BUILD" -ne 1 ]]; then
+if [[ "$BUILD_MACOS" -eq 1 && "$SKIP_BUILD" -ne 1 ]]; then
+  require_command cargo
   cargo build --manifest-path "$ROOT_DIR/tools/lingxia-cli/Cargo.toml" -p lingxia-cli
 fi
 
 CLI_BIN="$ROOT_DIR/target/debug/lingxia"
-if [[ "$SKIP_BUILD" -ne 1 ]]; then
+if [[ "$BUILD_MACOS" -eq 1 && "$SKIP_BUILD" -ne 1 ]]; then
   [[ -x "$CLI_BIN" ]] || {
     echo "ERROR: missing built CLI binary: $CLI_BIN" >&2
     exit 1
@@ -266,16 +397,56 @@ for arch in "${ARCHES[@]}"; do
   echo "✅ Runner zip  -> $ZIP_OUT"
 done
 
+if [[ "$BUILD_WINDOWS" -eq 1 ]]; then
+  ZIP_OUT="$OUT_DIR/$RUNNER_WINDOWS_ASSET_NAME"
+
+  echo ""
+  echo "========================================"
+  echo "[runner:windows-x64] Building v$VERSION"
+  echo "========================================"
+
+  if [[ "$SKIP_BUILD" -ne 1 ]]; then
+    rm -f "$ZIP_OUT"
+    rm -rf "$OUT_DIR/windows-runner-stage"
+
+    ps="$(powershell_bin)"
+    runner_script_win="$(windows_path "$RUNNER_WINDOWS_DIR/install-local-runner.ps1")"
+    RUNNER_BUILD_PROFILE=release "$ps" -NoProfile -ExecutionPolicy Bypass -File "$runner_script_win"
+
+    stage="$OUT_DIR/windows-runner-stage"
+    mkdir -p "$stage"
+    stage_win="$(windows_path "$stage")"
+    zip_win="$(windows_path "$ZIP_OUT")"
+    "$ps" -NoProfile -Command \
+      "\$runnerDir = Join-Path ([Environment]::GetFolderPath('UserProfile')) '.lingxia\\runner\\$VERSION'; Copy-Item -LiteralPath (Join-Path \$runnerDir 'lingxia-runner.exe') -Destination '$stage_win\\lingxia-runner.exe' -Force; Copy-Item -LiteralPath (Join-Path \$runnerDir 'VERSION') -Destination '$stage_win\\VERSION' -Force; Compress-Archive -Path '$stage_win\\lingxia-runner.exe','$stage_win\\VERSION' -DestinationPath '$zip_win' -Force"
+  fi
+
+  [[ -f "$ZIP_OUT" ]] || {
+    echo "ERROR: missing Windows Runner release zip: $ZIP_OUT" >&2
+    exit 1
+  }
+
+  BUILT_ZIPS+=("$ZIP_OUT")
+  echo "鉁?Runner zip  -> $ZIP_OUT"
+fi
+
 if [[ "$PUBLISH" -eq 1 ]]; then
   for zip_path in "${BUILT_ZIPS[@]}"; do
     gh release upload "$TAG" "$zip_path" --repo "$GH_REPO" --clobber
     echo "✅ Uploaded Runner zip $(basename "$zip_path") to GitHub release $TAG ($GH_REPO)"
   done
+  update_release_shasums
 fi
 
 echo ""
 echo "✅ Runner release flow complete"
-echo "   Arches:  ${ARCHES[*]}"
+if [[ "$BUILD_MACOS" -eq 1 ]]; then
+  echo "   Platform: macos"
+  echo "   Arches:   ${ARCHES[*]}"
+else
+  echo "   Platform: windows"
+  echo "   Arches:   x64"
+fi
 echo "   Output:  $OUT_DIR"
 if [[ "$PUBLISH" -eq 1 ]]; then
   echo "   Release: $TAG ($GH_REPO)"

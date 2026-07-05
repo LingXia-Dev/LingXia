@@ -286,22 +286,10 @@ jobs:
           [ "$expected" = "$cli_version" ] || { echo "Tag ($expected) != lingxia-cli ($cli_version)" >&2; exit 1; }
 
       # Static CRT so the released runner has no MSVC runtime DLL dependency
-      # (matches install-local-runner.ps1).
-      - name: Build Windows Runner
-        shell: pwsh
-        run: tools\lingxia-runner\windows\install-local-runner.ps1
-
-      - name: Package Runner zip
-        shell: pwsh
-        run: |
-          $version = (Get-Content tools/lingxia-cli/Cargo.toml |
-            Where-Object { $_ -match '^version\s*=\s*"([^"]+)"' } |
-            Select-Object -First 1) -replace '^version\s*=\s*"([^"]+)".*', '$1'
-          $runnerDir = Join-Path $HOME ".lingxia\runner\$version"
-          New-Item -ItemType Directory -Force dist/runner-release, stage | Out-Null
-          Copy-Item (Join-Path $runnerDir "lingxia-runner.exe") stage/lingxia-runner.exe
-          Copy-Item (Join-Path $runnerDir "VERSION") stage/VERSION
-          Compress-Archive -Path stage/lingxia-runner.exe, stage/VERSION -DestinationPath dist/runner-release/lingxia-runner-windows-x64.zip -Force
+      # (the shared script delegates to install-local-runner.ps1).
+      - name: Build Windows Runner asset
+        shell: bash
+        run: bash scripts/release/runner.sh --platform windows --out dist/runner-release
 
       - name: Upload Runner zip
         uses: actions/upload-artifact@v4
