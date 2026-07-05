@@ -216,7 +216,7 @@ fn present_default_home(home_app_id: &str, asset_dir: &Path) -> Result<()> {
     set_windows_design_icon_dir(asset_dir.join("icons").join("design"));
     #[cfg(feature = "shell-chrome")]
     shell::set_home_app_id(home_app_id);
-    if let Some(icon_path) = resolve_app_icon_path(&asset_dir, home_app_id) {
+    if let Some(icon_path) = resolve_app_icon_path(asset_dir, home_app_id) {
         app_icon::set_app_icon_from_path(&icon_path).map_err(|message| {
             WindowsHostError::AppIcon {
                 path: icon_path,
@@ -226,8 +226,8 @@ fn present_default_home(home_app_id: &str, asset_dir: &Path) -> Result<()> {
     }
     // Tray-exclusive apps live only in the system tray, so their windows
     // must be created without a taskbar button. Apply before any window opens.
-    window_host::set_hide_from_taskbar(should_hide_taskbar(&asset_dir));
-    if should_open_on_launch(&asset_dir) {
+    window_host::set_hide_from_taskbar(should_hide_taskbar(asset_dir));
+    if should_open_on_launch(asset_dir) {
         open_home_app(home_app_id).map_err(WindowsHostError::OpenHomeApp)?;
     }
     #[cfg(feature = "browser-shell")]
@@ -240,7 +240,7 @@ fn present_default_home(home_app_id: &str, asset_dir: &Path) -> Result<()> {
         lingxia_platform::set_windows_tray_click_intercept_handler(std::sync::Arc::new(
             tray_icon::set_click_intercept,
         ));
-        if let Err(message) = tray_icon::install_from_ui(&asset_dir) {
+        if let Err(message) = tray_icon::install_from_ui(asset_dir) {
             log::warn!("failed to install Windows tray icon: {message}");
         }
     }
