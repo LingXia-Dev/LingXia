@@ -76,6 +76,22 @@ Example: workspace `0.9.0`, CLI already `0.9.1` from a hotfix. `--component all
 0.9.0` → workspace/base npm stay `0.9.0`, CLI rolls to `0.9.2`, CLI metadata →
 `0.9.0`. No collision, no regression.
 
+## CLI and Runner release assets
+
+The `lingxia-cli-v*` GitHub Release carries both user-installed CLI binaries
+and the developer Runner used by `lingxia dev` for standalone lxapps.
+
+- CLI assets (`lingxia-*`, `lxdev-*`) are installed by `install.sh` /
+  `install.ps1`.
+- Runner assets are fetched lazily by the CLI into
+  `~/.lingxia/runner/<version>`. They are not user-facing app distributions.
+- The Windows Runner zip intentionally contains only `lingxia-runner.exe` and
+  `VERSION`. `lingxia dev` generates temporary host assets from the installed
+  CLI and the current lxapp, then launches the runner with `--asset-dir`.
+- A normal Windows host app is different: distribution must be either an MSIX
+  or a portable bundle with the `.exe` next to its `assets/` directory. A bare
+  host-app `.exe` is not a runnable distribution.
+
 ## Suggested CI release grouping
 
 1. **Base runtime** (one version = workspace version): rust crates + SDK + CLI +

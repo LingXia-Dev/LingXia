@@ -80,10 +80,10 @@ See `lingxia package --help` for the flags.
 Development mode for both app and lxapp projects. In an app project it builds,
 installs, launches the host app, and starts a local dev websocket that `lxdev`
 drives. In a standalone lxapp project it builds the lxapp and launches LingXia
-Runner on the local runner platform. Networking is handled per platform: Android and Harmony get
-reverse port forwarding so the device reaches the local dev server; iOS embeds a
-LAN dev websocket URL, so the iOS device must be able to reach the host Mac over
-the local network.
+Runner on macOS/Windows. Networking is handled per platform: Android and
+Harmony get reverse port forwarding so the device reaches the local dev server;
+iOS embeds a LAN dev websocket URL, so the iOS device must be able to reach the
+host Mac over the local network.
 
 By default it **refuses a second same-platform session** in a project (pass
 `--parallel` to opt in) so that `lxdev` never silently connects to the wrong

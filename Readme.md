@@ -20,7 +20,7 @@
 
 ---
 
-LingXia is a cross-platform app framework for building **standalone lxapps** and **native host apps** on Android, iOS, macOS, and HarmonyOS.
+LingXia is a cross-platform app framework for building **standalone lxapps** and **native host apps** on Android, iOS, macOS, HarmonyOS, and Windows.
 
 An lxapp is a page-based mini-app with a strict split between:
 
@@ -37,7 +37,7 @@ This keeps UI rendering separate from business work. View code renders; Logic co
 | Shape | Use when | Starting point |
 |---|---|---|
 | **Standalone lxapp** | You are building pages that run inside any LingXia host. | `lingxia new my-lxapp -t lxapp -y` |
-| **Native host app** | You need an installable Android, iOS, macOS, or Harmony app embedding one or more lxapps. | `lingxia new my-app -t native-app -p macos --package-id com.example.myapp -y` |
+| **Native host app** | You need an installable Android, iOS, macOS, Harmony, or Windows app embedding one or more lxapps. | `lingxia new my-app -t native-app -p macos --package-id com.example.myapp -y` |
 | **Rust native extension** | You need host APIs, background services, native file/media integration, or Rust-owned app logic. | `#[lingxia::native]` plus `HostAddon` |
 
 ## Quick Start
