@@ -2,7 +2,7 @@
 //!
 //! Mirrors the Android `prepare_launcher_icon_overlay` flow: when the active
 //! env is developer/preview, build a parallel `Assets.xcassets` under
-//! `<platform_dir>/.lingxia/overlay/<env>/Resources/` whose `AppIcon.appiconset`
+//! `<target>/lingxia/<platform>/overlay/<env>/Resources/` whose `AppIcon.appiconset`
 //! has each PNG composited with a small accent badge (filled circle + bitmap
 //! "D" / "P"). The build then points `actool` at the staging resources dir so
 //! the source asset catalog is never mutated and dev/release can be installed
@@ -25,7 +25,7 @@ use crate::platform::env_badge::{composite_badge_inset, env_badge};
 /// artwork — 0.0 for full-bleed iOS icons, ~0.10 for macOS (Apple's grid puts
 /// the rounded square at 824/1024), so the badge lands ON the icon.
 pub fn prepare_overlay_resources_dir(
-    platform_dir: &Path,
+    staging_base: &Path,
     resources_dir: &Path,
     env: EnvVersion,
     icon_margin_frac: f32,
@@ -39,10 +39,7 @@ pub fn prepare_overlay_resources_dir(
         return Ok(None);
     }
 
-    let staging_root = platform_dir
-        .join(".lingxia")
-        .join("overlay")
-        .join(env.as_str());
+    let staging_root = staging_base.join("overlay").join(env.as_str());
     let staging_resources = staging_root.join("Resources");
     let staging_xcassets = staging_resources.join("Assets.xcassets");
     if staging_root.exists() {

@@ -1,6 +1,6 @@
 use super::{
     BuildArtifacts, BuildConfig, Device, DeviceType, InstallConfig, Platform, RunConfig,
-    resolve_cargo_target_dir,
+    resolve_cargo_target_dir, resolve_lingxia_target_dir,
 };
 use crate::platform::doctor::{CheckResult, command_version_line};
 use anyhow::{Context, Result, anyhow};
@@ -51,6 +51,7 @@ impl Platform for WindowsPlatform {
     fn build(&self, config: &BuildConfig) -> Result<BuildArtifacts> {
         let windows_dir = resolve_windows_dir(&config.project_root)?;
         let cargo_target_dir = resolve_cargo_target_dir(&config.project_root);
+        let assets_dir = resolve_windows_assets_dir(&config.project_root)?;
         let profile_dir = config.profile.as_str();
 
         println!(
@@ -63,6 +64,7 @@ impl Platform for WindowsPlatform {
         command
             .current_dir(&windows_dir)
             .env("CARGO_TARGET_DIR", &cargo_target_dir)
+            .env("LINGXIA_WINDOWS_ASSET_DIR", &assets_dir)
             .args(["build"]);
 
         if matches!(config.profile, super::BuildProfile::Release) {
@@ -141,11 +143,15 @@ pub fn resolve_windows_dir(project_root: &Path) -> Result<PathBuf> {
 }
 
 pub fn resolve_windows_assets_dir(project_root: &Path) -> Result<PathBuf> {
-    // Generated host assets live under `windows/.lingxia/` (mirrors macOS's
-    // `macos/.lingxia/`) so the `windows/` source dir stays free of build output.
-    Ok(resolve_windows_dir(project_root)?
-        .join(".lingxia")
+    let _ = resolve_windows_dir(project_root)?;
+    Ok(resolve_lingxia_target_dir(project_root)
+        .join("windows")
         .join("assets"))
+}
+
+pub fn resolve_windows_build_dir(project_root: &Path) -> Result<PathBuf> {
+    let _ = resolve_windows_dir(project_root)?;
+    Ok(resolve_lingxia_target_dir(project_root).join("windows"))
 }
 
 pub fn doctor_checks() -> Vec<CheckResult> {

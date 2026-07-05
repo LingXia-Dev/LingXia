@@ -2,7 +2,9 @@ use super::{
     DEFAULT_ABILITY_NAME, HarmonyPlatform, HarmonySigner, ProvisioningManager, SigningConfig,
     SigningMode, project::resolve_harmony_dir, read_bundle_name, resolve_effective_acl_permissions,
 };
-use crate::platform::{BuildProfile, Device, DeviceType, InstallConfig, RunConfig};
+use crate::platform::{
+    BuildProfile, Device, DeviceType, InstallConfig, RunConfig, resolve_lingxia_target_dir,
+};
 use anyhow::{Context, Result, anyhow, bail};
 use colored::Colorize;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -21,7 +23,7 @@ impl HarmonyPlatform {
             path.clone()
         } else {
             let harmony_dir = resolve_harmony_dir(&config.project_root, None)?;
-            auto_detect_hap(&harmony_dir)?
+            auto_detect_hap(&config.project_root, &harmony_dir)?
         };
 
         if !hap_path.exists() {
@@ -552,17 +554,23 @@ fn fetch_harmony_udid(target: &str) -> Result<String> {
     Ok(udid)
 }
 
-fn auto_detect_hap(harmony_dir: &Path) -> Result<PathBuf> {
-    // Builds since 0.6.4 mirror the Harmony project into `.lingxia/build/<env>/`
-    // and emit the hap there. Older builds (and the SwiftPM-style standalone
-    // path) leave artifacts directly under the source tree. Scan staging first,
-    // fall back to source, and pick the newest by mtime so the most recent
-    // build always wins regardless of where it landed.
+fn auto_detect_hap(project_root: &Path, harmony_dir: &Path) -> Result<PathBuf> {
+    // Current builds mirror the Harmony project into
+    // `target/lingxia/harmony/build/<env>/` and emit the hap there. Older builds
+    // used `<harmony>/.lingxia/build/<env>/`, and standalone paths may leave
+    // artifacts directly under the source tree. Scan staging first, fall back
+    // to source, and pick the newest by mtime.
     let mut candidates: Vec<PathBuf> = Vec::new();
-    let staging_root = harmony_dir.join(".lingxia").join("build");
-    if let Ok(entries) = std::fs::read_dir(&staging_root) {
-        for entry in entries.flatten() {
-            collect_hap_candidates(&entry.path(), &mut candidates);
+    for staging_root in [
+        resolve_lingxia_target_dir(project_root)
+            .join("harmony")
+            .join("build"),
+        harmony_dir.join(".lingxia").join("build"),
+    ] {
+        if let Ok(entries) = std::fs::read_dir(&staging_root) {
+            for entry in entries.flatten() {
+                collect_hap_candidates(&entry.path(), &mut candidates);
+            }
         }
     }
     collect_hap_candidates(harmony_dir, &mut candidates);

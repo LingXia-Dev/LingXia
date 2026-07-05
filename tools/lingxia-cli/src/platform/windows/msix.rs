@@ -1,6 +1,6 @@
 //! MSIX packaging for Windows host apps.
 //!
-//! Packs the assembled `windows/.lingxia/dist/<Product>/` payload (the exe next
+//! Packs the assembled `target/lingxia/windows/dist/<Product>/` payload (the exe next
 //! to the runtime `assets/`) into an installable `.msix` at
 //! `<project>/dist/windows/<Product>.msix` — the Windows counterpart of how
 //! macOS packages its `.app` into `dist/macos/<Product>.dmg`.
@@ -28,7 +28,7 @@ const LOGOS: &[(&str, u32)] = &[
     ("StoreLogo.png", 50),
 ];
 
-/// Pack the assembled `dist_dir` (`windows/.lingxia/dist/<Product>/`) into an
+/// Pack the assembled `dist_dir` (`target/lingxia/windows/dist/<Product>/`) into an
 /// unsigned `<project>/dist/windows/<Product>.msix`. Returns the `.msix` path.
 pub fn package(
     project_root: &Path,

@@ -2,7 +2,8 @@ use super::{HarmonyPlatform, OHOS_TARGET, deploy::ensure_command};
 use crate::commands::rust::run_cargo_build_for_target;
 use crate::platform::{
     BuildArtifacts, BuildConfig, BuildProfile, lingxia_workspace_root,
-    native_client_out_for_host_project, resolve_cargo_target_dir, set_native_client_codegen_env,
+    native_client_out_for_host_project, resolve_cargo_target_dir, resolve_lingxia_target_dir,
+    set_native_client_codegen_env,
 };
 use anyhow::{Context, Result, anyhow};
 use colored::Colorize;
@@ -286,20 +287,20 @@ impl HarmonyPlatform {
 /// effective name into the source file and tried to restore it on Drop, which
 /// left the source tree dirty during the build (visible in `git status`) and
 /// could leak the suffix on SIGKILL. We now mirror the whole project into
-/// `.lingxia/build/<env>/` and operate exclusively on the copy, so the source
+/// `target/lingxia/harmony/build/<env>/` and operate exclusively on the copy, so the source
 /// tree is never mutated regardless of how the build terminates.
 ///
-/// Excludes from the mirror: `.lingxia/` (would recurse into ourselves),
+/// Excludes from the mirror: `.lingxia/` (generated dev state),
 /// `oh_modules/` (re-installed inside staging), and `build/` (regenerated).
 ///
 /// After mirroring, `oh-package.json5` `file:` dependencies are rewritten so
 /// the staging-relative path still resolves to the original target. Without
 /// this step, `file:../../../foo` written from `<source>/entry/` would point
-/// inside `<source>/.lingxia/` once read from
-/// `<source>/.lingxia/build/<env>/entry/`.
+/// inside the staging tree once read from
+/// `<target>/lingxia/harmony/build/<env>/entry/`.
 fn prepare_harmony_staging(source: &Path, config: &BuildConfig) -> Result<PathBuf> {
-    let staging = source
-        .join(".lingxia")
+    let staging = resolve_lingxia_target_dir(&config.project_root)
+        .join("harmony")
         .join("build")
         .join(config.resolved_env.version.as_str());
     if staging.exists() {
@@ -309,30 +310,18 @@ fn prepare_harmony_staging(source: &Path, config: &BuildConfig) -> Result<PathBu
     const SKIP: &[&str] = &[".lingxia", "oh_modules", "build"];
     copy_dir_recursive_excluding(source, &staging, SKIP)
         .with_context(|| format!("Failed to mirror Harmony project to {}", staging.display()))?;
-    let depth = staging_depth_below_source(&staging, source)?;
-    rewrite_oh_package_file_deps(&staging, depth)?;
+    rewrite_staged_source_paths(&staging, source)?;
     rewrite_app_bundle_name(&staging, config)?;
     Ok(staging)
 }
 
-fn staging_depth_below_source(staging: &Path, source: &Path) -> Result<usize> {
-    let rel = staging
-        .strip_prefix(source)
-        .with_context(|| format!("{} is not under {}", staging.display(), source.display()))?;
-    Ok(rel.components().count())
-}
-
 /// Walk staging and rewrite every `oh-package.json5` so relative `file:`
 /// dependencies still resolve to the original source-tree target.
-fn rewrite_oh_package_file_deps(staging: &Path, depth: usize) -> Result<()> {
-    if depth == 0 {
-        return Ok(());
-    }
-    let prefix = "../".repeat(depth);
-    walk_and_rewrite_oh_packages(staging, &prefix)
+fn rewrite_staged_source_paths(staging: &Path, source: &Path) -> Result<()> {
+    walk_and_rewrite_oh_packages(staging, staging, source)
 }
 
-fn walk_and_rewrite_oh_packages(dir: &Path, prefix: &str) -> Result<()> {
+fn walk_and_rewrite_oh_packages(dir: &Path, staging: &Path, source: &Path) -> Result<()> {
     for entry in
         std::fs::read_dir(dir).with_context(|| format!("Failed to read {}", dir.display()))?
     {
@@ -340,14 +329,20 @@ fn walk_and_rewrite_oh_packages(dir: &Path, prefix: &str) -> Result<()> {
         let path = entry.path();
         let ft = entry.file_type()?;
         if ft.is_dir() {
-            walk_and_rewrite_oh_packages(&path, prefix)?;
+            walk_and_rewrite_oh_packages(&path, staging, source)?;
         } else if ft.is_file() {
             let name = entry.file_name();
             let name_os = name.as_os_str();
+            let rel_parent = path
+                .parent()
+                .unwrap_or(staging)
+                .strip_prefix(staging)
+                .unwrap_or_else(|_| Path::new(""));
+            let source_parent = source.join(rel_parent);
             if name_os == std::ffi::OsStr::new("oh-package.json5") {
                 let content = std::fs::read_to_string(&path)
                     .with_context(|| format!("Failed to read {}", path.display()))?;
-                let rewritten = rewrite_file_dependencies(&content, prefix);
+                let rewritten = rewrite_file_dependencies(&content, &source_parent);
                 if rewritten != content {
                     std::fs::write(&path, rewritten)
                         .with_context(|| format!("Failed to write {}", path.display()))?;
@@ -359,7 +354,7 @@ fn walk_and_rewrite_oh_packages(dir: &Path, prefix: &str) -> Result<()> {
                 // prefix as `file:` deps in oh-package.json5.
                 let content = std::fs::read_to_string(&path)
                     .with_context(|| format!("Failed to read {}", path.display()))?;
-                let rewritten = rewrite_build_profile_src_paths(&content, prefix);
+                let rewritten = rewrite_build_profile_src_paths(&content, &source_parent);
                 if rewritten != content {
                     std::fs::write(&path, rewritten)
                         .with_context(|| format!("Failed to write {}", path.display()))?;
@@ -370,10 +365,10 @@ fn walk_and_rewrite_oh_packages(dir: &Path, prefix: &str) -> Result<()> {
     Ok(())
 }
 
-/// Prepend `prefix` to relative `srcPath` values that point above the project
-/// root (i.e. start with `..`). In-tree paths (`./entry`, `entry`) are left
-/// untouched.
-fn rewrite_build_profile_src_paths(content: &str, prefix: &str) -> String {
+/// Rewrite relative `srcPath` values that point above the staged project root
+/// to absolute paths under the original source tree. In-tree paths (`./entry`,
+/// `entry`) are left untouched.
+fn rewrite_build_profile_src_paths(content: &str, source_dir: &Path) -> String {
     const MARKER: &str = "\"srcPath\"";
     let mut out = String::with_capacity(content.len() + content.len() / 16);
     let mut rest = content;
@@ -404,9 +399,10 @@ fn rewrite_build_profile_src_paths(content: &str, prefix: &str) -> String {
         // Only rewrite paths that escape the project root. Absolute paths and
         // in-tree paths stay as-is.
         if path.starts_with("..") {
-            out.push_str(prefix);
+            out.push_str(&source_path_string(source_dir.join(path)));
+        } else {
+            out.push_str(path);
         }
-        out.push_str(path);
         out.push('"');
         rest = &value_rest[end + 1..];
     }
@@ -414,9 +410,9 @@ fn rewrite_build_profile_src_paths(content: &str, prefix: &str) -> String {
     out
 }
 
-/// Prepend `prefix` (`../` repeats) to every relative `file:` path inside a
-/// JSON5 document. Absolute paths and `file://` URLs are left alone.
-fn rewrite_file_dependencies(content: &str, prefix: &str) -> String {
+/// Rewrite relative `file:` paths inside a JSON5 document to absolute source
+/// paths. Absolute paths and `file://` URLs are left alone.
+fn rewrite_file_dependencies(content: &str, source_dir: &Path) -> String {
     const MARKER: &str = "\"file:";
     let mut out = String::with_capacity(content.len() + content.len() / 16);
     let mut rest = content;
@@ -431,17 +427,20 @@ fn rewrite_file_dependencies(content: &str, prefix: &str) -> String {
         let path = &after[..end];
         out.push_str(MARKER);
         // Leave absolute paths and URL-form refs untouched.
-        if path.starts_with('/') || path.starts_with("//") {
+        if path.starts_with("//") || Path::new(path).is_absolute() {
             out.push_str(path);
         } else {
-            out.push_str(prefix);
-            out.push_str(path);
+            out.push_str(&source_path_string(source_dir.join(path)));
         }
         out.push('"');
         rest = &after[end + 1..];
     }
     out.push_str(rest);
     out
+}
+
+fn source_path_string(path: PathBuf) -> String {
+    path.to_string_lossy().replace('\\', "/")
 }
 
 /// Idempotently inject (or refresh) the LingXia SDK HAR as an absolute `file:`
@@ -835,9 +834,9 @@ fn parse_crate_and_lib_name(manifest_path: &Path) -> Result<(String, String)> {
 mod tests {
     use super::{
         copy_dir_recursive_excluding, replace_json5_string_field_value, rewrite_file_dependencies,
-        upsert_lingxia_har_dep,
+        source_path_string, upsert_lingxia_har_dep,
     };
-    use std::fs;
+    use std::{fs, path::Path};
     use tempfile::TempDir;
 
     #[test]
@@ -851,7 +850,7 @@ mod tests {
         let out = upsert_lingxia_har_dep(content, "file:/abs/lingxia.har").unwrap();
         assert!(out.contains(r#""lingxia": "file:/abs/lingxia.har""#));
         // Absolute file: path must survive the relative-only rewrite untouched.
-        assert_eq!(rewrite_file_dependencies(&out, "../../../"), out);
+        assert_eq!(rewrite_file_dependencies(&out, Path::new("/source")), out);
     }
 
     #[test]
@@ -877,17 +876,22 @@ mod tests {
     }
 
     #[test]
-    fn rewrite_file_deps_prefixes_relative_paths() {
+    fn rewrite_file_deps_resolves_relative_paths_to_source() {
+        let source = TempDir::new().unwrap();
         let content = r#"{
   "dependencies": {
     "lingxia": "file:../../../lingxia-sdk/harmony/lingxia/build/default/outputs/default/lingxia.har",
     "other": "1.0.0"
   }
 }"#;
-        let rewritten = rewrite_file_dependencies(content, "../../../");
-        assert!(rewritten.contains(
-            r#""file:../../../../../../lingxia-sdk/harmony/lingxia/build/default/outputs/default/lingxia.har""#
-        ));
+        let expected = source_path_string(
+            source
+                .path()
+                .join("entry")
+                .join("../../../lingxia-sdk/harmony/lingxia/build/default/outputs/default/lingxia.har"),
+        );
+        let rewritten = rewrite_file_dependencies(content, &source.path().join("entry"));
+        assert!(rewritten.contains(&format!(r#""file:{expected}""#)));
         // Non-file deps untouched.
         assert!(rewritten.contains(r#""other": "1.0.0""#));
     }
@@ -895,7 +899,7 @@ mod tests {
     #[test]
     fn rewrite_file_deps_leaves_absolute_paths_alone() {
         let content = r#"{"dependencies":{"x":"file:/abs/path/lib.har"}}"#;
-        let rewritten = rewrite_file_dependencies(content, "../../../");
+        let rewritten = rewrite_file_dependencies(content, Path::new("/source"));
         assert!(rewritten.contains(r#""file:/abs/path/lib.har""#));
         assert!(!rewritten.contains("../"));
     }
@@ -903,7 +907,7 @@ mod tests {
     #[test]
     fn rewrite_file_deps_is_noop_when_no_file_refs() {
         let content = r#"{"dependencies":{"x":"^1.2.3"}}"#;
-        assert_eq!(rewrite_file_dependencies(content, "../../../"), content);
+        assert_eq!(rewrite_file_dependencies(content, Path::new("/source")), content);
     }
 
     #[test]

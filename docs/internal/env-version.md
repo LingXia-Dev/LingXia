@@ -164,7 +164,7 @@ with project properties:
 -Plingxia.applicationIdSuffix=<.dev|.preview|...|empty>
 -Plingxia.appName=<productName>
 # When the env needs a launcher-icon badge (developer/preview):
--Plingxia.resOverlayDir=<.lingxia/overlay/<env>/res>
+-Plingxia.resOverlayDir=<target/lingxia/android/overlay/<env>/res>
 -Plingxia.appIcon=@mipmap/ic_launcher_lingxia_env
 -Plingxia.appRoundIcon=@mipmap/ic_launcher_lingxia_env_round
 ```
@@ -175,7 +175,7 @@ overlay dir to `sourceSets.main.res.srcDirs`. `AndroidManifest.xml`
 references `${lxAppName}`, `${lxAppIcon}`, `${lxAppRoundIcon}`.
 
 Non-release Android builds composite a red `D` or `P` adaptive-icon badge
-into a uniquely-named drawable under `.lingxia/overlay/<env>/res/` so AGP's
+into a uniquely-named drawable under `target/lingxia/android/overlay/<env>/res/` so AGP's
 resource merger sees a new name (no duplicate-resource collision with the
 project's own `ic_launcher.xml`).
 
@@ -192,7 +192,7 @@ CFBundleIdentifier = <bundle_id> + packageIdSuffix
 The source `Info.plist` in the project tree is never edited.
 
 For developer/preview env, `apple::env_icon::prepare_overlay_resources_dir`
-stages a copy of `Assets.xcassets` under `.lingxia/overlay/<env>/Resources/`
+stages a copy of `Assets.xcassets` under `target/lingxia/<platform>/overlay/<env>/Resources/`
 whose `AppIcon.appiconset` PNGs are composited with a circular D/P badge
 (hand-rolled 5x7 bitmap glyph + accent circle, no external deps). `actool`
 runs against the staging dir instead of the source xcassets.
@@ -208,20 +208,20 @@ to the bundle id in the generated `.app/Contents/Info.plist`, and uses
 Hvigor has no build-time injection point for `bundleName` — it reads
 `AppScope/app.json5` directly. The Harmony builder
 (`tools/lingxia-cli/src/platform/harmony/build.rs::prepare_harmony_staging`)
-**mirrors the project into `<harmony>/.lingxia/build/<env>/`** and operates
+**mirrors the project into `target/lingxia/harmony/build/<env>/`** and operates
 exclusively on the copy:
 
 1. Recursive copy from source, excluding `.lingxia`, `oh_modules`, `build`.
-2. Rewrite `oh-package.json5` `file:` deps in staging by prepending
-   `../../../` (so `file:../../../../lingxia-sdk/...` still resolves to the
-   original source-tree target after the 3-level path shift).
+2. Rewrite relative `oh-package.json5` `file:` deps in staging to source-tree
+   absolute paths.
 3. Rewrite `AppScope/app.json5::bundleName` in staging via a token-aware
    JSON5 scanner (`replace_json5_string_field_value`) that skips comments
    and string contents.
 4. `ohpm install` and `hvigorw assembleHap` run inside staging.
 
 `install`-time hap discovery (`auto_detect_hap` in `deploy.rs`) scans
-`<harmony>/.lingxia/build/*/` for the newest hap by mtime.
+`target/lingxia/harmony/build/*/` first, then legacy `<harmony>/.lingxia/build/*/`,
+for the newest hap by mtime.
 
 ## `app.json` output
 
