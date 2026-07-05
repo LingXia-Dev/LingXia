@@ -19,7 +19,6 @@ const ARG_DEV_WS_URL: &str = "--dev-ws-url";
 const ARG_LINGXIAO_MOCK_DIR: &str = "--lingxiao-mock-dir";
 const ARG_RUNNER_DEVICE: &str = "--runner-device";
 const ARG_RESOURCE_LXAPP_PATHS: &str = "--resource-lxapp-paths";
-const ENV_ASSET_DIR: &str = "LINGXIA_ASSET_DIR";
 const ENV_LXAPP_PATH: &str = "LINGXIA_LXAPP_PATH";
 const ENV_DEV_WS_URL: &str = "LINGXIA_DEV_WS_URL";
 const ENV_LINGXIAO_MOCK_DIR: &str = "LINGXIAO_MOCK_DIR";
@@ -82,7 +81,7 @@ fn cloud_options() -> lingxia_cloud_client::CloudOptions {
 }
 
 pub(crate) fn run() -> lingxia_windows_sdk::Result<()> {
-    install_launch_args_env();
+    let asset_dir = install_launch_args_env();
     register_resource_lxapp_paths_from_env();
     lingxia::register_host_addon(Box::new(RunnerDevtoolAddon));
 
@@ -97,22 +96,29 @@ pub(crate) fn run() -> lingxia_windows_sdk::Result<()> {
         default_device,
     ));
     lingxia_windows_sdk::set_initial_app_window_device_frame(initial_frame.clone());
-    let app = lingxia_windows_sdk::WindowsApp::from_env()
+    let mut app = lingxia_windows_sdk::WindowsApp::from_env()
         .with_window_size(initial_frame.screen_width, initial_frame.screen_height);
+    if let Some(asset_dir) = asset_dir {
+        app = app.with_asset_dir(asset_dir);
+    }
     let home_app_id = lingxia_windows_sdk::start_default_host(app)?;
     install_runner_commands(home_app_id.clone());
     apply_default_device(home_app_id, default_device, initial_landscape);
     std::process::exit(lingxia_windows_sdk::run_message_loop());
 }
 
-fn install_launch_args_env() {
+fn install_launch_args_env() -> Option<std::path::PathBuf> {
+    let mut asset_dir = None;
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
         let Some(value) = args.next() else {
             break;
         };
         let env_key = match arg.as_str() {
-            ARG_ASSET_DIR => Some(ENV_ASSET_DIR),
+            ARG_ASSET_DIR => {
+                asset_dir = Some(std::path::PathBuf::from(&value));
+                None
+            }
             ARG_LXAPP_PATH => Some(ENV_LXAPP_PATH),
             ARG_DEV_WS_URL => Some(ENV_DEV_WS_URL),
             ARG_LINGXIAO_MOCK_DIR => Some(ENV_LINGXIAO_MOCK_DIR),
@@ -127,6 +133,7 @@ fn install_launch_args_env() {
             }
         }
     }
+    asset_dir
 }
 
 fn register_resource_lxapp_paths_from_env() {

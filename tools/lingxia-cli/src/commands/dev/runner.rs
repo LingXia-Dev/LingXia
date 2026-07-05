@@ -451,10 +451,10 @@ fn installed_windows_runner_exe_path() -> Result<PathBuf> {
 }
 
 /// Windows counterpart of `launch_runner_for_lxapp`: prepares the runner
-/// asset layout and spawns the installed runner against the dev server. Env
-/// contract: `LINGXIA_ASSET_DIR` (host assets),
-/// `LINGXIA_LXAPP_PATH` (live lxapp bundle), and `LINGXIA_DEV_WS_URL`
-/// (devtool bridge). Host identity is generated into `app.json`.
+/// asset layout and spawns the installed runner against the dev server.
+/// Launch contract: `--asset-dir` (host assets), `LINGXIA_LXAPP_PATH`
+/// (live lxapp bundle), and `LINGXIA_DEV_WS_URL` (devtool bridge).
+/// Host identity is generated into `app.json`.
 /// `runner_device` (the `--runner` flag) picks the simulated device, same
 /// id contract as the macOS runner's `LINGXIA_RUNNER_DEVICE`.
 fn launch_windows_runner_for_lxapp(

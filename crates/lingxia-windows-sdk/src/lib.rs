@@ -85,16 +85,21 @@ pub use shell::{
 #[cfg(feature = "runtime")]
 pub struct WindowsApp {
     pub(crate) window_size: Option<(i32, i32)>,
+    pub(crate) asset_dir: Option<PathBuf>,
 }
 
 #[cfg(feature = "runtime")]
 impl WindowsApp {
-    /// Creates an app description from the process environment.
+    /// Creates an app description for the current process.
     ///
     /// App identity and state directories are resolved by the platform layer
-    /// from generated `assets/app.json`, which is derived from `lingxia.toml`.
+    /// from `assets/app.json` beside the executable, which is derived from
+    /// `lingxia.toml`.
     pub fn from_env() -> Self {
-        Self { window_size: None }
+        Self {
+            window_size: None,
+            asset_dir: None,
+        }
     }
 
     /// Sets the initial outer size, in pixels, of the app's webview windows,
@@ -106,6 +111,25 @@ impl WindowsApp {
     pub fn with_window_size(mut self, width: i32, height: i32) -> Self {
         self.window_size = Some((width, height));
         self
+    }
+
+    /// Overrides the generated assets directory.
+    ///
+    /// Normal host apps should not call this: `lingxia build` places `assets/`
+    /// beside the executable so Explorer double-click works. The Windows dev
+    /// runner uses this because one installed runner executable can host many
+    /// transient lxapp asset roots.
+    pub fn with_asset_dir(mut self, asset_dir: impl Into<PathBuf>) -> Self {
+        self.asset_dir = Some(asset_dir.into());
+        self
+    }
+
+    #[cfg(target_os = "windows")]
+    fn platform(&self) -> Result<lingxia::windows::Platform> {
+        match &self.asset_dir {
+            Some(asset_dir) => Ok(lingxia::windows::Platform::from_asset_dir(asset_dir)?),
+            None => Ok(lingxia::windows::Platform::from_env()?),
+        }
     }
 }
 
@@ -151,7 +175,7 @@ pub fn init_runtime(app: WindowsApp) -> Result<String> {
     if let Some((width, height)) = app.window_size {
         lingxia::windows::set_default_window_size(width, height);
     }
-    let platform = lingxia::windows::Platform::from_env()?;
+    let platform = app.platform()?;
     lingxia::windows::init(platform).ok_or(WindowsHostError::MissingHomeApp)
 }
 
@@ -188,13 +212,7 @@ pub fn install_default_windows_host() {
 /// Default-host post-boot wiring: design-icon directory, window icon, taskbar
 /// policy, opening the home window, and — under `browser-shell` — the tray.
 #[cfg(all(target_os = "windows", feature = "runtime"))]
-fn present_default_home(home_app_id: &str) -> Result<()> {
-    // `Platform::from_env` only re-reads generated config (the runtime was
-    // already initialized in `init_runtime`), so it is safe to rebuild here to
-    // recover the asset dir without threading it through the public boot API.
-    let asset_dir = lingxia::windows::Platform::from_env()?
-        .asset_dir()
-        .to_path_buf();
+fn present_default_home(home_app_id: &str, asset_dir: &Path) -> Result<()> {
     set_windows_design_icon_dir(asset_dir.join("icons").join("design"));
     #[cfg(feature = "shell-chrome")]
     shell::set_home_app_id(home_app_id);
@@ -239,8 +257,9 @@ pub fn start_default_host(app: WindowsApp) -> Result<String> {
     install_default_windows_host();
     // Own a message queue before any page can request exit from a WebView UI thread.
     install_current_thread_exit_handler();
+    let asset_dir = app.platform()?.asset_dir().to_path_buf();
     let home_app_id = init_runtime(app)?;
-    present_default_home(&home_app_id)?;
+    present_default_home(&home_app_id, &asset_dir)?;
     Ok(home_app_id)
 }
 

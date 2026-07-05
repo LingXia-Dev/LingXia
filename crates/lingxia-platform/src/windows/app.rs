@@ -214,7 +214,11 @@ impl Default for Platform {
 
 impl Platform {
     pub fn from_env() -> Result<Self, PlatformError> {
-        let asset_dir = default_asset_dir();
+        Self::from_asset_dir(default_asset_dir())
+    }
+
+    pub fn from_asset_dir(asset_dir: impl Into<PathBuf>) -> Result<Self, PlatformError> {
+        let asset_dir = asset_dir.into();
         let config = GeneratedAppConfig::read_from_assets(&asset_dir);
         let product_name = config.product_name.unwrap_or_else(|| "LingXia".to_string());
         let app_identifier = config
@@ -562,9 +566,6 @@ fn state_root_for_product(product_name: &str) -> PathBuf {
 }
 
 fn default_asset_dir() -> PathBuf {
-    if let Some(path) = std::env::var_os("LINGXIA_ASSET_DIR") {
-        return PathBuf::from(path);
-    }
     std::env::current_exe()
         .ok()
         .and_then(|exe| exe.parent().map(Path::to_path_buf))

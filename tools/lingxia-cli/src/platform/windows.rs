@@ -52,7 +52,6 @@ impl Platform for WindowsPlatform {
         let windows_dir = resolve_windows_dir(&config.project_root)?;
         let cargo_target_dir = resolve_cargo_target_dir(&config.project_root);
         let profile_dir = config.profile.as_str();
-        let runtime_env = windows_runtime_env(&config.project_root)?;
 
         println!(
             "{} Building Windows app from {}",
@@ -65,10 +64,6 @@ impl Platform for WindowsPlatform {
             .current_dir(&windows_dir)
             .env("CARGO_TARGET_DIR", &cargo_target_dir)
             .args(["build"]);
-
-        for (key, value) in &runtime_env {
-            command.env(key, value);
-        }
 
         if matches!(config.profile, super::BuildProfile::Release) {
             command.arg("--release");
@@ -151,15 +146,6 @@ pub fn resolve_windows_assets_dir(project_root: &Path) -> Result<PathBuf> {
     Ok(resolve_windows_dir(project_root)?
         .join(".lingxia")
         .join("assets"))
-}
-
-pub fn windows_runtime_env(project_root: &Path) -> Result<Vec<(String, String)>> {
-    Ok(vec![(
-        "LINGXIA_ASSET_DIR".to_string(),
-        resolve_windows_assets_dir(project_root)?
-            .to_string_lossy()
-            .to_string(),
-    )])
 }
 
 pub fn doctor_checks() -> Vec<CheckResult> {
