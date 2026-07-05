@@ -143,14 +143,6 @@ fn design_icon_path(icon: WindowsDesignIcon) -> Option<PathBuf> {
     if let Some(root) = WINDOWS_DESIGN_ICON_DIR.get() {
         return Some(root.join(icon.file_name()));
     }
-    if let Some(root) = std::env::var_os("LINGXIA_ASSET_DIR") {
-        return Some(
-            PathBuf::from(root)
-                .join("icons")
-                .join("design")
-                .join(icon.file_name()),
-        );
-    }
     None
 }
 

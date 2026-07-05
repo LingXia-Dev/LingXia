@@ -286,7 +286,7 @@ enum Commands {
         #[arg(
             long,
             value_delimiter = ',',
-            long_help = "Platforms to package (comma-separated).\n\nSupported values:\n  - android\n  - ios\n  - macos (aliases: mac, osx, macosx)\n  - harmony (alias: harmonyos)"
+            long_help = "Platforms to package (comma-separated).\n\nSupported values:\n  - android\n  - ios\n  - macos (aliases: mac, osx, macosx)\n  - harmony (alias: harmonyos)\n  - windows"
         )]
         platform: Vec<String>,
 
@@ -643,6 +643,8 @@ fn main() -> Result<()> {
                 with_provider: package_options.with_provider,
                 provider_path: package_options.provider_path,
                 android_dist: package_options.dist,
+                msix: package_options.msix,
+                self_signed: package_options.self_signed,
             })?;
         }
         Commands::Devices { platform } => {

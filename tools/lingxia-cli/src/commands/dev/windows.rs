@@ -49,7 +49,6 @@ pub(super) fn execute_windows(ctx: DevContext) -> Result<()> {
 
         let artifacts = platform.build(&build_config)?;
         let exe_path = artifacts.path().to_path_buf();
-        let runtime_env = platform::windows::windows_runtime_env(&ctx.project_root)?;
 
         // dev/preview: stage a badged copy of the launcher icon and point the
         // SDK at it via env, so the running window/taskbar shows the D/P badge
@@ -73,9 +72,6 @@ pub(super) fn execute_windows(ctx: DevContext) -> Result<()> {
 
         let mut command = Command::new(&exe_path);
         command.env(RUNNER_DEV_WS_URL_ENV, &ws_url);
-        for (key, value) in &runtime_env {
-            command.env(key, value);
-        }
         if let Some(icon) = &staged_icon {
             command.env(WINDOWS_APP_ICON_PATH_ENV, icon);
         }

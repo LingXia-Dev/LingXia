@@ -59,6 +59,14 @@ pub struct PackageOptions {
     /// for Google Play). Staged into `dist/android/` for `lingxia store submit`.
     #[arg(long, value_parser = ["sideload", "play"])]
     pub dist: Option<String>,
+
+    /// Package Windows build as an (unsigned) MSIX installer.
+    #[arg(long)]
+    pub msix: bool,
+
+    /// Self-sign the Windows MSIX for local installation. Implies --msix.
+    #[arg(long)]
+    pub self_signed: bool,
 }
 
 pub struct PackageExecuteOptions {
@@ -74,6 +82,8 @@ pub struct PackageExecuteOptions {
     pub with_provider: Vec<String>,
     pub provider_path: Option<String>,
     pub android_dist: Option<String>,
+    pub msix: bool,
+    pub self_signed: bool,
 }
 
 pub fn execute(options: PackageExecuteOptions) -> Result<()> {
@@ -93,8 +103,8 @@ pub fn execute(options: PackageExecuteOptions) -> Result<()> {
         ipa: false,
         dmg: false,
         android_dist: options.android_dist,
-        msix: false,
-        self_signed: false,
+        msix: options.msix || options.self_signed,
+        self_signed: options.self_signed,
         package: true,
         // Packaging needs the full platform artifact, not just the native lib.
         native_only: false,
