@@ -30,15 +30,6 @@ LINGXIA_BIN="${LINGXIA_BIN:-lingxia}"
 CARGO_BIN="${CARGO_BIN:-cargo}"
 NPM_BIN="${NPM_BIN:-npm}"
 APP_NAME="LingXia Runner.app"
-if [[ -n "${CARGO_TARGET_DIR:-}" ]]; then
-  case "$CARGO_TARGET_DIR" in
-    /*) TARGET_BASE="$CARGO_TARGET_DIR" ;;
-    *) TARGET_BASE="$SCRIPT_DIR/$CARGO_TARGET_DIR" ;;
-  esac
-else
-  TARGET_BASE="$ROOT_DIR/target"
-fi
-APP_SRC="$TARGET_BASE/lingxia/macos/$APP_NAME"
 BRIDGE_DIR="$ROOT_DIR/packages/lingxia-bridge"
 BRIDGE_RUNTIME="$BRIDGE_DIR/dist/bridge-runtime.es2020.js"
 
@@ -65,6 +56,10 @@ fi
 # shellcheck source=/dev/null
 source "$ROOT_DIR/scripts/lib/lingxia.sh"
 ensure_lingxia "$ROOT_DIR"
+# shellcheck source=../../../scripts/lib/cargo-target-dir.sh
+source "$ROOT_DIR/scripts/lib/cargo-target-dir.sh"
+TARGET_BASE="$(resolve_cargo_target_dir "$SCRIPT_DIR" "$ROOT_DIR/Cargo.toml")"
+APP_SRC="$TARGET_BASE/lingxia/macos/$APP_NAME"
 
 echo "==> Cleaning Runner build outputs"
 rm -rf "$SCRIPT_DIR/.build" "$SCRIPT_DIR/.lingxia" "$TARGET_BASE/lingxia/macos"
