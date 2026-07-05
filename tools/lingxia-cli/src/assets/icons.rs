@@ -23,6 +23,10 @@ const TERMINAL_ICON_SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" widt
 static WINDOWS_DESIGN_ICON_SVGS: Dir<'_> =
     include_dir!("$CARGO_MANIFEST_DIR/../../design/icons/svg");
 
+mod generated_windows_design_icons {
+    include!(concat!(env!("OUT_DIR"), "/windows-design-icons.rs"));
+}
+
 #[derive(Clone, Debug)]
 pub(super) struct PreparedAppUiIcon {
     pub(super) relative_path: String,
@@ -240,6 +244,22 @@ pub(super) fn prepare_windows_design_icons() -> Result<Vec<PreparedWindowsDesign
     Ok(prepared)
 }
 
+pub(super) fn prepare_embedded_windows_design_icons() -> Vec<PreparedWindowsDesignIcon> {
+    generated_windows_design_icons::WINDOWS_DESIGN_ICONS
+        .iter()
+        .map(|(relative_path, source_path, bytes)| {
+            let bytes = bytes.to_vec();
+            let hash = sha256_hex(&bytes);
+            PreparedWindowsDesignIcon {
+                relative_path: (*relative_path).to_string(),
+                source_path: (*source_path).to_string(),
+                bytes,
+                hash,
+            }
+        })
+        .collect()
+}
+
 pub(super) fn windows_design_icon_hashes(
     icons: &[PreparedWindowsDesignIcon],
 ) -> BTreeMap<String, String> {
@@ -361,6 +381,7 @@ pub(super) fn sync_windows_design_icons(
     target_root: &Path,
     icons: &[PreparedWindowsDesignIcon],
     prev_hashes: Option<&BTreeMap<String, String>>,
+    log_changes: bool,
 ) -> Result<bool> {
     let desired_hashes = windows_design_icon_hashes(icons);
     let mut changed = false;
@@ -411,12 +432,14 @@ pub(super) fn sync_windows_design_icons(
             continue;
         }
         if write_if_changed(&target, &icon.bytes)? {
-            println!(
-                "  {} design icon {} -> {}",
-                "ok".green(),
-                icon.source_path,
-                target.display()
-            );
+            if log_changes {
+                println!(
+                    "  {} design icon {} -> {}",
+                    "ok".green(),
+                    icon.source_path,
+                    target.display()
+                );
+            }
             changed = true;
         }
     }
@@ -547,7 +570,7 @@ mod tests {
             hash: "new-hash".to_string(),
         }];
 
-        assert!(sync_windows_design_icons(temp.path(), &icons, None).unwrap());
+        assert!(sync_windows_design_icons(temp.path(), &icons, None, true).unwrap());
         assert!(!stale.exists());
         assert!(
             temp.path()

@@ -87,9 +87,9 @@ ico = "0.4"
 # standalone `lingxia-gen` crate; see src/gen/.
 Inflector = "0.11"
 svg2pdf = "0.13"
-resvg = "0.45.1"
-tiny-skia = "0.11.4"
-usvg = "0.45.1"
+resvg = "0.47.0"
+tiny-skia = "0.12.0"
+usvg = "0.47.0"
 roxmltree = "0.21"
 jsonschema = "0.46"
 lingxia-devtool-protocol = { workspace = true }
@@ -124,6 +124,9 @@ windows = { workspace = true, features = [
 [build-dependencies]
 serde_json = "1.0"
 toml = "1.1.2"
+resvg = "0.47.0"
+tiny-skia = "0.12.0"
+usvg = "0.47.0"
 
 [dev-dependencies]
 filetime = "0.2"

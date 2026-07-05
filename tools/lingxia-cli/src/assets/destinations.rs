@@ -275,6 +275,7 @@ pub(super) fn prepare_windows_assets_root(
         assets_root,
         &windows_design_icons,
         prev.as_ref().map(|s| &s.windows_design_icon_hashes),
+        true,
     )?;
     changed |= sync_windows_lingxia_icon(assets_root)?;
 

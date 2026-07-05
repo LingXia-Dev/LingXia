@@ -18,7 +18,7 @@ use hash::sha256_hex;
 use icons::PreparedAppUiIcon;
 #[cfg(test)]
 use icons::validate_app_ui_svg_icon;
-use icons::{prepare_app_ui_icons, prepare_windows_design_icons, sync_windows_design_icons};
+use icons::{prepare_app_ui_icons, sync_windows_design_icons};
 use json::{
     build_app_json_from_config, build_ui_json_from_config, build_windows_ui_json_from_config,
 };
@@ -54,8 +54,8 @@ mod tests;
 mod ui;
 
 pub(crate) fn prepare_windows_design_icon_assets(assets_root: &Path) -> Result<()> {
-    let icons = prepare_windows_design_icons()?;
-    sync_windows_design_icons(assets_root, &icons, None)?;
+    let icons = icons::prepare_embedded_windows_design_icons();
+    sync_windows_design_icons(assets_root, &icons, None, false)?;
     Ok(())
 }
 
