@@ -399,18 +399,6 @@ fn prepare_windows_runner_assets(
     .with_context(|| format!("Failed to write {}", default_icon_path.display()))?;
     prepare_windows_design_icon_assets(&assets_dir)?;
 
-    // The runtime's home-app bootstrap installs from `<assets>/<appid>/`
-    // before the dev-config override kicks in, so the built bundle is
-    // mirrored into the assets as the install source; live edits still
-    // come from `dist/` via `LINGXIA_LXAPP_PATH`.
-    let bundle_src = lxapp_path.join("dist");
-    let bundle_dst = assets_dir.join(&identity.app_id);
-    if bundle_dst.exists() {
-        std::fs::remove_dir_all(&bundle_dst)
-            .with_context(|| format!("Failed to clear {}", bundle_dst.display()))?;
-    }
-    crate::platform::apple::copy_dir_recursive(&bundle_src, &bundle_dst)?;
-
     Ok(assets_dir)
 }
 

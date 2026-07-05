@@ -19,6 +19,7 @@ Platform toolchains — install only the ones you target:
 | Android | Android SDK + NDK (command-line tools), JDK |
 | iOS / macOS | Xcode on a macOS host |
 | Harmony | Harmony command-line tools SDK |
+| Windows native host app | Rust + MSVC Build Tools / Visual Studio on Windows |
 
 If you'll write Rust native code (custom host APIs, native-only host), also install a **Rust** toolchain via [rustup](https://rustup.rs).
 
@@ -101,9 +102,10 @@ cd my-lxapp
 lingxia dev
 ```
 
-`lingxia dev` builds the app and launches LingXia Runner on macOS.
+`lingxia dev` builds the app and launches LingXia Runner on the local desktop
+runner platform (macOS or Windows).
 
-### Native host app (Android / iOS / macOS / Harmony)
+### Native host app (Android / iOS / macOS / Harmony / Windows)
 
 ```bash
 lingxia new my-app -t native-app -p macos --package-id com.example.myapp -y
@@ -111,7 +113,8 @@ cd my-app
 lingxia dev
 ```
 
-`-p` accepts a comma-separated list: `-p android,ios,macos,harmony` or `-p all`.
+`-p` accepts a comma-separated list: `-p android,ios,macos,harmony,windows` or
+`-p all`.
 
 ---
 
