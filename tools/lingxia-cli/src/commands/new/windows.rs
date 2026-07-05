@@ -35,8 +35,35 @@ pub(super) fn create_windows_project(
         "LINGXIA_VERSION".to_string(),
         versions.lingxia_crate.clone(),
     );
+    vars.insert(
+        "LINGXIA_WINDOWS_SDK_GIT_REF".to_string(),
+        lingxia_windows_sdk_git_ref(&versions.lingxia_crate),
+    );
 
     process_template_dir(&template_dir, &windows_dir, &vars)?;
     println!("  Created Windows host project: windows/");
     Ok(())
+}
+
+fn lingxia_windows_sdk_git_ref(version: &str) -> String {
+    let hash = env!("LINGXIA_COMMIT_HASH");
+    if hash != "unknown" && hash.len() >= 7 {
+        format!("rev = \"{hash}\"")
+    } else {
+        format!("tag = \"lingxia-crates-v{version}\"")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::lingxia_windows_sdk_git_ref;
+
+    #[test]
+    fn windows_sdk_git_ref_is_valid_inline_table_fragment() {
+        let fragment = lingxia_windows_sdk_git_ref("0.10.0");
+        assert!(
+            fragment.starts_with("rev = \"") || fragment == "tag = \"lingxia-crates-v0.10.0\"",
+            "{fragment}"
+        );
+    }
 }

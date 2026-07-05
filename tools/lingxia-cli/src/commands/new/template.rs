@@ -20,10 +20,10 @@ pub fn process_template_dir(
         let path = entry.path();
         let file_name = entry.file_name();
         let file_name_str = file_name.to_string_lossy();
-        let output_name = if file_name_str == "gitignore" {
-            ".gitignore".to_string()
-        } else {
-            file_name_str.to_string()
+        let output_name = match file_name_str.as_ref() {
+            "gitignore" => ".gitignore".to_string(),
+            "Cargo.toml.template" => "Cargo.toml".to_string(),
+            _ => file_name_str.to_string(),
         };
 
         // Skip build artifacts and cache directories
@@ -195,6 +195,26 @@ mod tests {
             !dst.path().join("gitignore").exists(),
             "bare gitignore must not remain"
         );
+    }
+
+    #[test]
+    fn renames_cargo_toml_template_to_cargo_toml() {
+        let src = tempdir().unwrap();
+        let dst = tempdir().unwrap();
+        fs::write(
+            src.path().join("Cargo.toml.template"),
+            "[package]\nname = \"{{NAME}}\"\nversion = \"0.1.0\"\n",
+        )
+        .unwrap();
+        let mut vars = HashMap::new();
+        vars.insert("NAME".to_string(), "demo".to_string());
+
+        process_template_dir(src.path(), dst.path(), &vars).unwrap();
+
+        assert!(dst.path().join("Cargo.toml").exists());
+        assert!(!dst.path().join("Cargo.toml.template").exists());
+        let content = fs::read_to_string(dst.path().join("Cargo.toml")).unwrap();
+        assert!(content.contains("name = \"demo\""));
     }
 
     // --- process_template_dir: variable substitution in files ---
