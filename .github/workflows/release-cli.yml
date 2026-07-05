@@ -42,6 +42,7 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   RUST_TOOLCHAIN: "1.95.0"
+  CHECKOUT_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && github.ref_name || github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
 
 jobs:
   # Footgun guard: this executor is dispatched by "Release / 2. Publish
@@ -109,7 +110,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+          ref: ${{ env.CHECKOUT_REF }}
 
       - uses: dtolnay/rust-toolchain@master
         with:
@@ -167,7 +168,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+          ref: ${{ env.CHECKOUT_REF }}
 
       - uses: maxim-lobanov/setup-xcode@v1
         with:
@@ -251,7 +252,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+          ref: ${{ env.CHECKOUT_REF }}
 
       - uses: dtolnay/rust-toolchain@master
         with:
@@ -306,7 +307,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+          ref: ${{ env.CHECKOUT_REF }}
 
       - name: Verify tag matches CLI package version
         run: |
