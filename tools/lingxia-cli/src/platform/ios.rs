@@ -210,7 +210,11 @@ impl IosPlatform {
     /// Find the .app bundle in build output.
     ///
     /// Searches in the target directory where AppBundler places the .app.
-    fn find_app_bundle(&self, project_root: &Path, _profile: Option<BuildProfile>) -> Result<PathBuf> {
+    fn find_app_bundle(
+        &self,
+        project_root: &Path,
+        _profile: Option<BuildProfile>,
+    ) -> Result<PathBuf> {
         let output_dir = resolve_lingxia_target_dir(project_root).join("ios");
         if output_dir.exists() {
             for entry in fs::read_dir(&output_dir)? {

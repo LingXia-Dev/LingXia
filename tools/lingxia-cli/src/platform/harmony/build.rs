@@ -8,7 +8,7 @@ use crate::platform::{
 use anyhow::{Context, Result, anyhow};
 use colored::Colorize;
 use std::env;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::process::Command;
 
 const HMOS_CMDLINE_TOOLS_URL: &str =
@@ -426,8 +426,10 @@ fn rewrite_file_dependencies(content: &str, source_dir: &Path) -> String {
         };
         let path = &after[..end];
         out.push_str(MARKER);
-        // Leave absolute paths and URL-form refs untouched.
-        if path.starts_with("//") || Path::new(path).is_absolute() {
+        // Leave absolute paths and URL-form refs untouched. On Windows,
+        // `/shared/lib.har` is not `Path::is_absolute()`, but it is still a
+        // POSIX-rooted path that ohpm should receive as-is.
+        if is_rooted_file_ref(path) {
             out.push_str(path);
         } else {
             out.push_str(&source_path_string(source_dir.join(path)));
@@ -440,7 +442,33 @@ fn rewrite_file_dependencies(content: &str, source_dir: &Path) -> String {
 }
 
 fn source_path_string(path: PathBuf) -> String {
-    path.to_string_lossy().replace('\\', "/")
+    normalize_path_lexically(&path)
+        .to_string_lossy()
+        .replace('\\', "/")
+}
+
+fn is_rooted_file_ref(path: &str) -> bool {
+    path.starts_with('/') || Path::new(path).is_absolute()
+}
+
+fn normalize_path_lexically(path: &Path) -> PathBuf {
+    let mut out = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => match out.components().next_back() {
+                Some(Component::Normal(_)) => {
+                    out.pop();
+                }
+                Some(Component::RootDir) | Some(Component::Prefix(_)) => {}
+                _ => out.push(component.as_os_str()),
+            },
+            Component::Normal(_) | Component::Prefix(_) | Component::RootDir => {
+                out.push(component.as_os_str());
+            }
+        }
+    }
+    out
 }
 
 /// Idempotently inject (or refresh) the LingXia SDK HAR as an absolute `file:`
@@ -457,7 +485,7 @@ fn inject_harmony_har_dependency(staging: &Path, har: &Path) -> Result<()> {
         .with_context(|| format!("Failed to read {}", pkg_path.display()))?;
 
     let abs = har.canonicalize().unwrap_or_else(|_| har.to_path_buf());
-    let abs_str = abs.to_string_lossy().replace('\\', "/");
+    let abs_str = source_path_string(abs);
     let dep_value = format!("file:{abs_str}");
 
     let rewritten = upsert_lingxia_har_dep(&original, &dep_value).ok_or_else(|| {
@@ -833,8 +861,9 @@ fn parse_crate_and_lib_name(manifest_path: &Path) -> Result<(String, String)> {
 #[cfg(test)]
 mod tests {
     use super::{
-        copy_dir_recursive_excluding, replace_json5_string_field_value, rewrite_file_dependencies,
-        source_path_string, upsert_lingxia_har_dep,
+        copy_dir_recursive_excluding, replace_json5_string_field_value,
+        rewrite_build_profile_src_paths, rewrite_file_dependencies, source_path_string,
+        upsert_lingxia_har_dep,
     };
     use std::{fs, path::Path};
     use tempfile::TempDir;
@@ -884,12 +913,9 @@ mod tests {
     "other": "1.0.0"
   }
 }"#;
-        let expected = source_path_string(
-            source
-                .path()
-                .join("entry")
-                .join("../../../lingxia-sdk/harmony/lingxia/build/default/outputs/default/lingxia.har"),
-        );
+        let expected = source_path_string(source.path().join("entry").join(
+            "../../../lingxia-sdk/harmony/lingxia/build/default/outputs/default/lingxia.har",
+        ));
         let rewritten = rewrite_file_dependencies(content, &source.path().join("entry"));
         assert!(rewritten.contains(&format!(r#""file:{expected}""#)));
         // Non-file deps untouched.
@@ -905,9 +931,49 @@ mod tests {
     }
 
     #[test]
+    fn rewrite_file_deps_leaves_posix_rooted_paths_alone_on_windows() {
+        let content = r#"{"dependencies":{"x":"file:/shared/lib.har"}}"#;
+        assert_eq!(
+            rewrite_file_dependencies(content, Path::new("D:/source")),
+            content
+        );
+    }
+
+    #[test]
+    fn source_path_string_normalizes_parent_segments() {
+        let source = TempDir::new().unwrap();
+        let path = source.path().join("entry").join("../shared/lib.har");
+        let normalized = source_path_string(path);
+        assert!(normalized.ends_with("/shared/lib.har"));
+        assert!(!normalized.contains("/../"));
+        assert!(!normalized.contains("\\"));
+    }
+
+    #[test]
+    fn source_path_string_preserves_leading_relative_parent_segments() {
+        assert_eq!(
+            source_path_string(Path::new("../../lib.har").to_path_buf()),
+            "../../lib.har"
+        );
+    }
+
+    #[test]
+    fn rewrite_build_profile_src_paths_resolves_escaping_modules_to_source() {
+        let source = TempDir::new().unwrap();
+        let content = r#"{"modules":[{"name":"sdk","srcPath":"../../lingxia-sdk/harmony/lingxia"},{"name":"entry","srcPath":"./entry"}]}"#;
+        let rewritten = rewrite_build_profile_src_paths(content, &source.path().join("harmony"));
+        assert!(rewritten.contains("lingxia-sdk/harmony/lingxia"));
+        assert!(rewritten.contains(r#""srcPath":"./entry""#));
+        assert!(!rewritten.contains("../../lingxia-sdk"));
+    }
+
+    #[test]
     fn rewrite_file_deps_is_noop_when_no_file_refs() {
         let content = r#"{"dependencies":{"x":"^1.2.3"}}"#;
-        assert_eq!(rewrite_file_dependencies(content, Path::new("/source")), content);
+        assert_eq!(
+            rewrite_file_dependencies(content, Path::new("/source")),
+            content
+        );
     }
 
     #[test]

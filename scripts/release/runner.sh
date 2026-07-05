@@ -5,15 +5,9 @@ START_DIR="$(pwd)"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 CLI_CARGO_TOML="$ROOT_DIR/tools/lingxia-cli/Cargo.toml"
 RUNNER_PACKAGE_DIR="$ROOT_DIR/tools/lingxia-runner/macos"
-if [[ -n "${CARGO_TARGET_DIR:-}" ]]; then
-  case "$CARGO_TARGET_DIR" in
-    /*) RUNNER_TARGET_DIR="$CARGO_TARGET_DIR" ;;
-    *) RUNNER_TARGET_DIR="$RUNNER_PACKAGE_DIR/$CARGO_TARGET_DIR" ;;
-  esac
-else
-  RUNNER_TARGET_DIR="$ROOT_DIR/target"
-fi
-RUNNER_RAW_APP_DIR="$RUNNER_TARGET_DIR/lingxia/macos"
+# shellcheck source=../lib/cargo-target-dir.sh
+source "$ROOT_DIR/scripts/lib/cargo-target-dir.sh"
+RUNNER_RAW_APP_DIR=""
 RUNNER_RAW_DIST_DIR="$ROOT_DIR/tools/lingxia-runner/macos/dist/macos"
 RUNNER_RELEASE_APP_NAME="LingXia Runner.app"
 RUNNER_WINDOWS_DIR="$ROOT_DIR/tools/lingxia-runner/windows"
@@ -316,15 +310,26 @@ fi
 
 if [[ "$BUILD_MACOS" -eq 1 && "$SKIP_BUILD" -ne 1 ]]; then
   require_command cargo
-  cargo build --manifest-path "$ROOT_DIR/tools/lingxia-cli/Cargo.toml" -p lingxia-cli
+  ( cd "$ROOT_DIR" && cargo build --manifest-path "$ROOT_DIR/tools/lingxia-cli/Cargo.toml" -p lingxia-cli )
 fi
 
-CLI_BIN="$ROOT_DIR/target/debug/lingxia"
-if [[ "$BUILD_MACOS" -eq 1 && "$SKIP_BUILD" -ne 1 ]]; then
-  [[ -x "$CLI_BIN" ]] || {
-    echo "ERROR: missing built CLI binary: $CLI_BIN" >&2
-    exit 1
-  }
+if [[ "$BUILD_MACOS" -eq 1 ]]; then
+  RUNNER_TARGET_DIR="$(
+    resolve_cargo_target_dir "$RUNNER_PACKAGE_DIR" "$ROOT_DIR/Cargo.toml"
+  )"
+  RUNNER_RAW_APP_DIR="$RUNNER_TARGET_DIR/lingxia/macos"
+fi
+
+CLI_BIN=""
+if [[ "$BUILD_MACOS" -eq 1 ]]; then
+  CLI_TARGET_DIR="$(resolve_cargo_target_dir "$ROOT_DIR" "$ROOT_DIR/Cargo.toml")"
+  CLI_BIN="$CLI_TARGET_DIR/debug/lingxia"
+  if [[ "$SKIP_BUILD" -ne 1 ]]; then
+    [[ -x "$CLI_BIN" ]] || {
+      echo "ERROR: missing built CLI binary: $CLI_BIN" >&2
+      exit 1
+    }
+  fi
 fi
 
 if [[ "$PUBLISH" -eq 1 ]]; then
