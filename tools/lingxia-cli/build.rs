@@ -38,6 +38,7 @@ fn run() -> Result<(), String> {
 
     emit_rerun_markers(&manifest_dir, repo_root, &bridge_dir, &polyfills_dir)?;
     emit_component_version_env(&component_versions);
+    emit_build_metadata_env(repo_root);
 
     let actual_bridge_version = read_npm_package_version(&bridge_package_json)?;
     if actual_bridge_version != component_versions.bridge {
@@ -171,6 +172,37 @@ fn emit_component_version_env(versions: &ComponentVersions) {
     );
 }
 
+fn emit_build_metadata_env(repo_root: &Path) {
+    println!(
+        "cargo:rustc-env=LINGXIA_BUILD_HOST={}",
+        env::var("HOST").unwrap_or_else(|_| "unknown".to_string())
+    );
+    println!(
+        "cargo:rustc-env=LINGXIA_COMMIT_HASH={}",
+        git_output(repo_root, &["rev-parse", "HEAD"]).unwrap_or_else(|| "unknown".to_string())
+    );
+    println!(
+        "cargo:rustc-env=LINGXIA_COMMIT_DATE={}",
+        git_output(repo_root, &["show", "-s", "--format=%cs", "HEAD"])
+            .unwrap_or_else(|| "unknown".to_string())
+    );
+}
+
+fn git_output(repo_root: &Path, args: &[&str]) -> Option<String> {
+    let output = Command::new("git")
+        .args(args)
+        .current_dir(repo_root)
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    String::from_utf8(output.stdout)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
 fn run_npm_build(package_dir: &Path) -> Result<(), String> {
     let status = Command::new(npm_command())
         .arg("run")
@@ -269,6 +301,18 @@ fn emit_rerun_markers(
     );
     emit_rerun_for_dir(&manifest_dir.join("templates"))?;
     emit_rerun_for_dir(&repo_root.join("design").join("icons").join("svg"))?;
+    let git_head = repo_root.join(".git").join("HEAD");
+    if git_head.exists() {
+        println!("cargo:rerun-if-changed={}", git_head.display());
+        if let Ok(head) = fs::read_to_string(&git_head)
+            && let Some(reference) = head.trim().strip_prefix("ref: ")
+        {
+            let git_ref = repo_root.join(".git").join(reference);
+            if git_ref.exists() {
+                println!("cargo:rerun-if-changed={}", git_ref.display());
+            }
+        }
+    }
 
     for path in [
         bridge_dir.join("package.json"),

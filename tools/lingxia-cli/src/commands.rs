@@ -13,3 +13,4 @@ pub mod provider;
 pub mod publish;
 pub mod rust;
 pub mod store;
+pub mod version;

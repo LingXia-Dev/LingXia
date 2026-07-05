@@ -156,6 +156,13 @@ enum DevAction {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Show LingXia CLI version information
+    Version {
+        /// Print build, host, toolchain, and LingXia component versions
+        #[arg(long)]
+        verbose: bool,
+    },
+
     /// Create a new LingXia project
     New {
         /// Project name
@@ -541,6 +548,9 @@ fn main() -> Result<()> {
     };
 
     match cli.command {
+        Commands::Version { verbose } => {
+            commands::version::execute(verbose);
+        }
         Commands::New {
             name,
             project_type,
@@ -808,5 +818,14 @@ mod cli_tests {
             panic!("expected dev command");
         };
         assert_eq!(dev_options.runner.as_deref(), Some("desktop-1440"));
+    }
+
+    #[test]
+    fn version_command_accepts_verbose_flag() {
+        let cli = Cli::try_parse_from(["lingxia", "version", "--verbose"]).unwrap();
+        let Commands::Version { verbose } = cli.command else {
+            panic!("expected version command");
+        };
+        assert!(verbose);
     }
 }
