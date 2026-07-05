@@ -418,7 +418,7 @@ if [[ "$BUILD_WINDOWS" -eq 1 ]]; then
     stage_win="$(windows_path "$stage")"
     zip_win="$(windows_path "$ZIP_OUT")"
     "$ps" -NoProfile -Command \
-      "\$runnerDir = Join-Path ([Environment]::GetFolderPath('UserProfile')) '.lingxia\\runner\\$VERSION'; Copy-Item -LiteralPath (Join-Path \$runnerDir 'lingxia-runner.exe') -Destination '$stage_win\\lingxia-runner.exe' -Force; Copy-Item -LiteralPath (Join-Path \$runnerDir 'VERSION') -Destination '$stage_win\\VERSION' -Force; Compress-Archive -Path '$stage_win\\lingxia-runner.exe','$stage_win\\VERSION' -DestinationPath '$zip_win' -Force"
+      "\$runnerDir = Join-Path ([Environment]::GetFolderPath('UserProfile')) '.lingxia\\runner\\$VERSION'; Copy-Item -LiteralPath (Join-Path \$runnerDir 'lingxia-runner.exe') -Destination '$stage_win\\lingxia-runner.exe' -Force; Compress-Archive -Path '$stage_win\\lingxia-runner.exe' -DestinationPath '$zip_win' -Force"
   fi
 
   [[ -f "$ZIP_OUT" ]] || {
