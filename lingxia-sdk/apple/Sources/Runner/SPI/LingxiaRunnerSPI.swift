@@ -173,6 +173,7 @@ import WebKit
     @MainActor
     public enum NavigationBars {
         public typealias State = NavigationBarState
+        public static let stateChangedNotification = Notification.Name("NavBarDataChanged")
 
         public static func state(
             appId: String,

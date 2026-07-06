@@ -102,6 +102,7 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
 
     // Observers
     nonisolated(unsafe) private var navigationBarObserver: NSObjectProtocol?
+    nonisolated(unsafe) private var navBarStateChangedObserver: NSObjectProtocol?
     private var suppressRuntimeCloseNotification = false
     private var preserveRuntimeSessionOnClose = false
     
@@ -124,6 +125,7 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
     
     deinit {
         navigationBarObserver.map(NotificationCenter.default.removeObserver)
+        navBarStateChangedObserver.map(NotificationCenter.default.removeObserver)
         clockTimer?.invalidate()
     }
     
@@ -139,6 +141,23 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
             Task { @MainActor [weak self] in
                 guard let self = self, appId == self.appId else { return }
                 let navState = RunnerSupport.Navigation.state(appId: appId, path: path)
+                self.updateNavigationBar(with: navState)
+            }
+        }
+
+        // Rust drives navbar updates (page mount, lx.setNavigationBarTitle, …)
+        // through updateNavBarUI, which posts this. The initial navbar is applied
+        // before the page instance exists, so without this the title never lands.
+        navBarStateChangedObserver = NotificationCenter.default.addObserver(
+            forName: RunnerSupport.Navigation.stateChangedNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            let changedAppId = notification.object as? String
+            Task { @MainActor [weak self] in
+                guard let self = self else { return }
+                if let changedAppId, changedAppId != self.appId { return }
+                let navState = RunnerSupport.Navigation.state(appId: self.appId, path: self.currentPath)
                 self.updateNavigationBar(with: navState)
             }
         }

@@ -483,6 +483,11 @@ extension LxApp {
         let appIdString = appid.toString()
         return executeOnMain {
             NavigationBarStateManager.shared.refreshState(for: appIdString)
+            // Mirror updateTabBarUI: notify imperative hosts (e.g. the runner's
+            // AppKit navbar) so they re-render. Without this the runner's navbar
+            // stays on its stale init state — the page instance (and thus the
+            // real title) doesn't exist yet when the navbar is first applied.
+            NotificationCenter.default.post(name: .navBarStateChanged, object: appIdString)
             return true
         }
     }

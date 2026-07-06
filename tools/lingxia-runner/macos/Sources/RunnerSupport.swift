@@ -161,6 +161,8 @@ enum RunnerSupport {
 
     @MainActor
     enum Navigation {
+        static let stateChangedNotification = LingxiaRunnerSPI.NavigationBars.stateChangedNotification
+
         static func state(appId: String, path: String) -> RunnerNavigationBarState? {
             LingxiaRunnerSPI.NavigationBars.state(appId: appId, path: path)
         }
