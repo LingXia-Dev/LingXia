@@ -2,7 +2,7 @@
 
 | File | Used by | Allows variant overrides? |
 |---|---|---|
-| `ui.schema.json` | `ui/`, `error/`, `permission/runtime/` | yes (`default / android / apple / ios / harmony / rust`) |
+| `shared.schema.json` | `shared/`, `error/`, `permission/runtime/` | yes (`default / android / apple / ios / harmony / rust`) |
 | `permission.schema.json` | `permission/cli/` | n/a (flat `apple.info_plist.*` keys) |
 | `native.schema.json` | `logic/`, `android/`, `apple/`, `harmony/` | no — plain string leaves only |
 
