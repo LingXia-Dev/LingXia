@@ -90,6 +90,7 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
     // Status bar components
     private var timeLabel: NSTextField?
     private var batteryView: NSView?
+    private var signalView: NSView?
     private var notchView: NSView?
     // nonisolated(unsafe): invalidated from the nonisolated deinit, like the observer below.
     nonisolated(unsafe) private var clockTimer: Timer?
@@ -447,20 +448,28 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         let battery = createBatteryView()
         statusBar.addSubview(battery)
         self.batteryView = battery
-        
+
+        // Signal bars (leading the battery, matching a real iOS status bar)
+        let signal = createSignalView()
+        statusBar.addSubview(signal)
+        self.signalView = signal
+
         // Notch view
         let notch = createNotchView()
         statusBar.addSubview(notch)
         self.notchView = notch
-        
+
         // Constraints
         NSLayoutConstraint.activate([
             time.leadingAnchor.constraint(equalTo: statusBar.leadingAnchor, constant: Layout.statusBarSideMargin),
             time.centerYAnchor.constraint(equalTo: statusBar.centerYAnchor),
-            
+
             battery.trailingAnchor.constraint(equalTo: statusBar.trailingAnchor, constant: -Layout.statusBarSideMargin),
             battery.centerYAnchor.constraint(equalTo: statusBar.centerYAnchor),
-            
+
+            signal.trailingAnchor.constraint(equalTo: battery.leadingAnchor, constant: -8),
+            signal.centerYAnchor.constraint(equalTo: statusBar.centerYAnchor),
+
             notch.leadingAnchor.constraint(equalTo: statusBar.leadingAnchor),
             notch.trailingAnchor.constraint(equalTo: statusBar.trailingAnchor),
             notch.topAnchor.constraint(equalTo: statusBar.topAnchor),
@@ -484,7 +493,10 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         label.isBordered = false
         label.backgroundColor = NSColor.clear
         label.font = NSFont.systemFont(ofSize: 11, weight: .medium)
-        label.textColor = NSColor.labelColor
+        // Simulated iOS glyphs must not follow the macOS system appearance
+        // (labelColor is white in dark mode → invisible on a white status bar).
+        // Default to black; the page's textStyle overrides to white when needed.
+        label.textColor = NSColor.black
         label.alignment = .left
         label.translatesAutoresizingMaskIntoConstraints = false
         label.stringValue = Self.clockString()
@@ -524,7 +536,7 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         let outline = NSView()
         outline.wantsLayer = true
         outline.layer?.borderWidth = 1.0
-        outline.layer?.borderColor = NSColor.labelColor.cgColor
+        outline.layer?.borderColor = NSColor.black.cgColor
         outline.layer?.cornerRadius = 2.0
         outline.translatesAutoresizingMaskIntoConstraints = false
         
@@ -536,7 +548,7 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         
         let tip = NSView()
         tip.wantsLayer = true
-        tip.layer?.backgroundColor = NSColor.labelColor.cgColor
+        tip.layer?.backgroundColor = NSColor.black.cgColor
         tip.layer?.cornerRadius = 1.0
         tip.translatesAutoresizingMaskIntoConstraints = false
         
@@ -567,11 +579,51 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         return container
     }
     
+    /// Signal indicator: four bottom-aligned bars of increasing height, mirroring
+    /// the Windows runner's `draw_indicators`. Uses `labelColor` so it recolors
+    /// with the status-bar text style like the battery outline.
+    private func createSignalView() -> NSView {
+        let container = NSView()
+        container.translatesAutoresizingMaskIntoConstraints = false
+
+        let bars = 4
+        let barWidth: CGFloat = 3
+        let barGap: CGFloat = 2
+        let maxHeight: CGFloat = 10
+        let totalWidth = CGFloat(bars) * barWidth + CGFloat(bars - 1) * barGap
+
+        for index in 0..<bars {
+            let bar = NSView()
+            bar.wantsLayer = true
+            bar.layer?.backgroundColor = NSColor.black.cgColor
+            bar.layer?.cornerRadius = 1
+            bar.translatesAutoresizingMaskIntoConstraints = false
+            container.addSubview(bar)
+
+            let barHeight = 3 + CGFloat(index) * (maxHeight - 3) / CGFloat(bars - 1)
+            NSLayoutConstraint.activate([
+                bar.leadingAnchor.constraint(
+                    equalTo: container.leadingAnchor,
+                    constant: CGFloat(index) * (barWidth + barGap)),
+                bar.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+                bar.widthAnchor.constraint(equalToConstant: barWidth),
+                bar.heightAnchor.constraint(equalToConstant: barHeight)
+            ])
+        }
+
+        NSLayoutConstraint.activate([
+            container.widthAnchor.constraint(equalToConstant: totalWidth),
+            container.heightAnchor.constraint(equalToConstant: maxHeight)
+        ])
+
+        return container
+    }
+
     private func createNotchView() -> NSView {
         let container = NSView()
         container.wantsLayer = true
         container.translatesAutoresizingMaskIntoConstraints = false
-        
+
         let spec = Layout.currentNotchSpec
         if spec.width > 0 && spec.height > 0 {
             let notch = NSView()
@@ -579,16 +631,20 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
             notch.layer?.backgroundColor = NSColor.black.cgColor
             notch.layer?.cornerRadius = spec.cornerRadius
             notch.translatesAutoresizingMaskIntoConstraints = false
-            
+
             container.addSubview(notch)
+            // Float the cutout below the top edge like the real Dynamic Island
+            // (and the Windows runner's `CUTOUT_TOP_INSET`), scaled to match the
+            // fitted device. A flush-to-edge pill reads as neither notch nor island.
+            let topInset = (8 * appliedScale).rounded()
             NSLayoutConstraint.activate([
                 notch.centerXAnchor.constraint(equalTo: container.centerXAnchor),
-                notch.topAnchor.constraint(equalTo: container.topAnchor),
+                notch.topAnchor.constraint(equalTo: container.topAnchor, constant: topInset),
                 notch.widthAnchor.constraint(equalToConstant: spec.width),
                 notch.heightAnchor.constraint(equalToConstant: spec.height)
             ])
         }
-        
+
         return container
     }
     
@@ -599,7 +655,7 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         dragView.autoresizingMask = [.width, .height]
         statusBar.addSubview(dragView, positioned: .below, relativeTo: nil)
         
-        [timeLabel, batteryView, notchView].compactMap { $0 }.forEach {
+        [timeLabel, batteryView, signalView, notchView].compactMap { $0 }.forEach {
             statusBar.addSubview($0, positioned: .above, relativeTo: dragView)
         }
     }
@@ -871,6 +927,9 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
                 subview.layer?.borderColor = textColor.cgColor
             }
         }
+
+        // Signal bars are solid fills, not outlines — recolor their backgrounds.
+        signalView?.subviews.forEach { $0.layer?.backgroundColor = textColor.cgColor }
     }
     
     // MARK: - Button Actions
