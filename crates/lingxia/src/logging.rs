@@ -3,7 +3,7 @@
 use lingxia_log::{LogBuilder, LogLevel as LxLogLevel, LogManager, LogMessage, LogTag};
 use log::{Level, LevelFilter, Log, Metadata, Record};
 use std::sync::OnceLock;
-use std::sync::atomic::{AtomicI32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 
 static LOGGING_INIT: OnceLock<()> = OnceLock::new();
 static DOWNSTREAM_LOGGER: OnceLock<Box<dyn Log + Send + Sync>> = OnceLock::new();
@@ -15,9 +15,10 @@ const SDK_LOG_LEVEL_INFO: i32 = 2;
 const SDK_LOG_LEVEL_WARN: i32 = 3;
 const SDK_LOG_LEVEL_ERROR: i32 = 4;
 
-/// Env var read at [`init`] to seed the runtime log threshold, e.g.
-/// `LINGXIA_LOG_LEVEL=debug`. `lingxia dev` sets this so developers see
-/// debug/verbose; release builds omit it and default to `info`.
+/// Explicit override for the runtime log threshold, e.g.
+/// `LINGXIA_LOG_LEVEL=debug`. When unset, a dev session defaults to `debug`
+/// and everything else to `info` (see [`resolve_initial_level`]); when set it
+/// pins the level and the dev-session default is skipped.
 const LOG_LEVEL_ENV: &str = "LINGXIA_LOG_LEVEL";
 
 /// Single source of truth for the active minimum level, as an SDK level int
@@ -26,6 +27,10 @@ const LOG_LEVEL_ENV: &str = "LINGXIA_LOG_LEVEL";
 /// Adjustable at runtime via [`set_log_level`] (e.g. the dev server raising it
 /// for a session).
 static HOST_LOG_LEVEL: AtomicI32 = AtomicI32::new(SDK_LOG_LEVEL_INFO);
+
+/// True when `LINGXIA_LOG_LEVEL` explicitly set the level, so the dev-session
+/// default ([`apply_dev_session_level`]) doesn't override an explicit choice.
+static LEVEL_PINNED_BY_ENV: AtomicBool = AtomicBool::new(false);
 
 /// Error returned when installing a downstream logger fails.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -50,8 +55,11 @@ pub(crate) fn init() {
     }
 
     // Seed the shared threshold before any record can flow, so the platform
-    // sinks and the facade agree on the level from the very first log.
-    let level = resolve_env_level();
+    // sinks and the facade agree on the level from the very first log. On
+    // devices the dev-ws-url lives in app config that isn't loaded yet, so this
+    // sees only the env signal here; `apply_dev_session_level` re-checks later.
+    let (level, pinned) = resolve_initial_level();
+    LEVEL_PINNED_BY_ENV.store(pinned, Ordering::Relaxed);
     HOST_LOG_LEVEL.store(level, Ordering::Relaxed);
 
     let _ = LogManager::init(|message| {
@@ -80,18 +88,45 @@ pub fn set_log_level(level: i32) {
     log::set_max_level(sdk_level_to_filter(level));
 }
 
-/// Reads [`LOG_LEVEL_ENV`]; unknown/absent → `info`.
-fn resolve_env_level() -> i32 {
-    match std::env::var(LOG_LEVEL_ENV) {
-        Ok(value) => match value.trim().to_ascii_lowercase().as_str() {
-            "verbose" | "trace" => SDK_LOG_LEVEL_VERBOSE,
-            "debug" => SDK_LOG_LEVEL_DEBUG,
-            "info" => SDK_LOG_LEVEL_INFO,
-            "warn" | "warning" => SDK_LOG_LEVEL_WARN,
-            "error" => SDK_LOG_LEVEL_ERROR,
-            _ => SDK_LOG_LEVEL_INFO,
-        },
-        Err(_) => SDK_LOG_LEVEL_INFO,
+/// Initial level: an explicit `LINGXIA_LOG_LEVEL` wins and pins the choice;
+/// otherwise a dev session defaults to `debug` and everything else to `info`.
+/// Returns `(level, pinned_by_env)`.
+fn resolve_initial_level() -> (i32, bool) {
+    if let Ok(value) = std::env::var(LOG_LEVEL_ENV)
+        && let Some(level) = parse_level(&value)
+    {
+        return (level, true);
+    }
+    let level = if lxapp::is_dev_session() {
+        SDK_LOG_LEVEL_DEBUG
+    } else {
+        SDK_LOG_LEVEL_INFO
+    };
+    (level, false)
+}
+
+fn parse_level(value: &str) -> Option<i32> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "verbose" | "trace" => Some(SDK_LOG_LEVEL_VERBOSE),
+        "debug" => Some(SDK_LOG_LEVEL_DEBUG),
+        "info" => Some(SDK_LOG_LEVEL_INFO),
+        "warn" | "warning" => Some(SDK_LOG_LEVEL_WARN),
+        "error" => Some(SDK_LOG_LEVEL_ERROR),
+        _ => None,
+    }
+}
+
+/// Re-evaluate the dev-session default once app config is loaded — the device
+/// dev-ws-url isn't known at [`init`]. Raises to `debug` for a dev session
+/// unless `LINGXIA_LOG_LEVEL` pinned an explicit level. The Android/Harmony
+/// logcat sink cap is already fixed by then, so this reaches the dev-server
+/// stream and buffer (what `lxdev logs` shows) rather than raw logcat/hilog.
+pub(crate) fn apply_dev_session_level() {
+    if LEVEL_PINNED_BY_ENV.load(Ordering::Relaxed) {
+        return;
+    }
+    if lxapp::is_dev_session() && HOST_LOG_LEVEL.load(Ordering::Relaxed) > SDK_LOG_LEVEL_DEBUG {
+        set_log_level(SDK_LOG_LEVEL_DEBUG);
     }
 }
 
