@@ -112,7 +112,7 @@ pub(super) fn build_framework_vars(
         fw_pkg,
         fw_page_ext,
         fw_jsx_mode,
-        fw_tsconfig_include,
+        fw_view_include,
         fw_app_root_selector,
         fw_runtime_deps,
         fw_dev_deps_prefix,
@@ -123,7 +123,7 @@ pub(super) fn build_framework_vars(
             "@lingxia/react",
             "tsx",
             "react-jsx",
-            r#""**/*.ts", "**/*.tsx", ".lingxia/types/**/*.d.ts""#,
+            r#""pages/**/*.tsx""#,
             "#root",
             "\"react\": \"^19.0.0\",\n    \"react-dom\": \"^19.0.0\"",
             "\"@types/react\": \"^19.0.0\",\n    \"@types/react-dom\": \"^19.0.0\",\n    ",
@@ -134,7 +134,7 @@ pub(super) fn build_framework_vars(
             "@lingxia/vue",
             "vue",
             "preserve",
-            r#""**/*.ts", "**/*.tsx", "**/*.vue", ".lingxia/types/**/*.d.ts""#,
+            r#""pages/**/*.vue", "pages/**/*.tsx""#,
             "#app",
             "\"vue\": \"^3.5.0\"",
             "\"vue-tsc\": \"^3.2.4\",\n    ",
@@ -145,7 +145,7 @@ pub(super) fn build_framework_vars(
             "@lingxia/html",
             "html",
             "preserve",
-            r#""**/*.ts", ".lingxia/types/**/*.d.ts""#,
+            r#""pages/**/entry.ts""#,
             "body",
             "",
             "",
@@ -163,10 +163,7 @@ pub(super) fn build_framework_vars(
     vars.insert("FRAMEWORK_PKG".to_string(), fw_pkg.to_string());
     vars.insert("PAGE_EXT".to_string(), fw_page_ext.to_string());
     vars.insert("JSX_MODE".to_string(), fw_jsx_mode.to_string());
-    vars.insert(
-        "TSCONFIG_INCLUDE".to_string(),
-        fw_tsconfig_include.to_string(),
-    );
+    vars.insert("VIEW_INCLUDE".to_string(), fw_view_include.to_string());
     vars.insert(
         "APP_ROOT_SELECTOR".to_string(),
         fw_app_root_selector.to_string(),
@@ -322,9 +319,20 @@ mod tests {
         .unwrap();
         fs::write(
             lxapp.join("tsconfig.json"),
-            r#"{"compilerOptions":{"jsx":"{{JSX_MODE}}"},"include":[{{TSCONFIG_INCLUDE}}]}"#,
+            r#"{"files":[],"references":[{"path":"./tsconfig.logic.json"},{"path":"./tsconfig.view.json"}]}"#,
         )
         .unwrap();
+        fs::write(
+            lxapp.join("tsconfig.logic.json"),
+            r#"{"compilerOptions":{"lib":["ES2020"],"types":["@lingxia/types","@lingxia/types/logic-globals"]},"include":["pages/**/*.ts"]}"#,
+        )
+        .unwrap();
+        fs::write(
+            lxapp.join("tsconfig.view.json"),
+            r#"{"compilerOptions":{"jsx":"{{JSX_MODE}}"},"include":[{{VIEW_INCLUDE}}]}"#,
+        )
+        .unwrap();
+        fs::write(lxapp.join("global.d.ts"), "/// <reference types=\"@lingxia/types\" />\n").unwrap();
         fs::write(
             lxapp.join("app.css"),
             "{{APP_ROOT_SELECTOR}} { min-height: 100%; }",
@@ -354,11 +362,6 @@ mod tests {
         fs::write(
             lxapp_html.join("lxapp.json"),
             r#"{"framework":"html","security":{"network":{"trustedDomains":[]},"privileges":[]},"pages":[{"name":"home","path":"pages/home/index.html"}]}"#,
-        )
-        .unwrap();
-        fs::write(
-            lxapp_html.join("tsconfig.json"),
-            r#"{"compilerOptions":{"jsx":"preserve"}}"#,
         )
         .unwrap();
         fs::write(lxapp_html.join("lxapp.ts"), "App({ html: true });").unwrap();
@@ -446,8 +449,8 @@ mod tests {
         assert_eq!(vars["PAGE_EXT"], "tsx");
         assert_eq!(vars["JSX_MODE"], "react-jsx");
         assert_eq!(vars["APP_ROOT_SELECTOR"], "#root");
-        assert!(vars["TSCONFIG_INCLUDE"].contains("**/*.tsx"));
-        assert!(!vars["TSCONFIG_INCLUDE"].contains("**/*.vue"));
+        assert!(vars["VIEW_INCLUDE"].contains("pages/**/*.tsx"));
+        assert!(!vars["VIEW_INCLUDE"].contains("**/*.vue"));
         assert!(vars["FRAMEWORK_RUNTIME_DEPS"].contains("react-dom"));
         assert!(vars["FRAMEWORK_DEV_DEPS_PREFIX"].contains("@types/react"));
         assert!(vars["FRAMEWORK_VITE_DEV_DEPS"].contains("@vitejs/plugin-react"));
@@ -472,7 +475,7 @@ mod tests {
         assert_eq!(vars["PAGE_EXT"], "vue");
         assert_eq!(vars["JSX_MODE"], "preserve");
         assert_eq!(vars["APP_ROOT_SELECTOR"], "#app");
-        assert!(vars["TSCONFIG_INCLUDE"].contains("**/*.vue"));
+        assert!(vars["VIEW_INCLUDE"].contains("pages/**/*.vue"));
         assert!(vars["FRAMEWORK_RUNTIME_DEPS"].contains("\"vue\""));
         assert!(vars["FRAMEWORK_DEV_DEPS_PREFIX"].contains("vue-tsc"));
         assert!(vars["FRAMEWORK_VITE_DEV_DEPS"].contains("@vitejs/plugin-vue"));
@@ -618,7 +621,7 @@ mod tests {
     #[test]
     fn react_scaffold_tsconfig_jsx_mode() {
         let (_tmpl, out) = scaffold("react");
-        let s = fs::read_to_string(out.path().join("myapp/tsconfig.json")).unwrap();
+        let s = fs::read_to_string(out.path().join("myapp/tsconfig.view.json")).unwrap();
         assert!(s.contains("react-jsx"), "jsx must be react-jsx");
         assert!(!s.contains("preserve"), "jsx must not be preserve");
     }
@@ -679,7 +682,7 @@ mod tests {
     #[test]
     fn vue_scaffold_tsconfig_jsx_mode() {
         let (_tmpl, out) = scaffold("vue");
-        let s = fs::read_to_string(out.path().join("myapp/tsconfig.json")).unwrap();
+        let s = fs::read_to_string(out.path().join("myapp/tsconfig.view.json")).unwrap();
         assert!(s.contains("preserve"), "jsx must be preserve");
         assert!(!s.contains("react-jsx"), "jsx must not be react-jsx");
     }

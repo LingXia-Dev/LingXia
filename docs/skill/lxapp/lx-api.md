@@ -86,6 +86,8 @@ const res = await fetch('https://api.example.com/items', {
 });
 ```
 
+**Typing.** The scaffold type-checks each layer against its real runtime. Logic (`tsconfig.logic.json`) uses `lib: ["ES2020"]` + `@lingxia/types/logic-globals` — the web-standard globals above, but **no** browser DOM, so `document`/`window`/`localStorage` correctly error in Logic (they don't exist in the Rong runtime). View (`tsconfig.view.json`) keeps the full DOM. The root `tsconfig.json` references both, so editors route each file automatically.
+
 **Gating.** `fetch` (and `WebSocket`) is constrained by the lxapp's `security.network.trustedDomains` in `lxapp.json`. A request to a host not on that list **silently fails** — see [LxApp guide → Security Policy](./guide.md#security-policy). For HTTP use this global `fetch`, **not** the `lx.*` networking calls (those are WiFi / network-info only).
 
 ### AppService-only extras
