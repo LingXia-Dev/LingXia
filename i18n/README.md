@@ -11,9 +11,9 @@ Pick the directory that matches who actually reads the string at runtime.
 
 | Directory | Emits to | When to use |
 |---|---|---|
-| `ui/` | Rust + TS + Android + iOS + Harmony | Default. Cross-platform UI strings — 95% of new keys go here. |
-| `error/` | Same as `ui/` | `error.*` and `err_code_*` entries. Required to define at least one `err_code_*`. |
-| `permission/runtime/` | Same as `ui/` | Runtime permission dialog texts (e.g. `permission.media_reason`). |
+| `shared/` | Rust + TS + Android + iOS + Harmony | Default. Strings shared across every platform — 95% of new keys go here. |
+| `error/` | Same as `shared/` | `error.*` and `err_code_*` entries. Required to define at least one `err_code_*`. |
+| `permission/runtime/` | Same as `shared/` | Runtime permission dialog texts (e.g. `permission.media_reason`). |
 | `permission/cli/` | Apple `Info.plist` (CLI build step only) | `apple.info_plist.*` keys consumed during `lingxia build` for Apple targets. |
 | `logic/` *(optional)* | Rust + TS only | Strings the logic crate / JS bridge surfaces but no native SDK reads. |
 | `desktop/` *(optional)* | Rust + TS only | Desktop-shell strings (terminal, browser tabs) read only by the Windows SDK — kept out of the mobile resource bundles. |
@@ -26,7 +26,7 @@ scopes is the normal way to change its audience.
 
 `schema/` holds JSON Schema files used to validate the YAML files:
 
-- `ui.schema.json` — cross-platform leaves (`ui/`, `error/`, `permission/runtime/`).
+- `shared.schema.json` — cross-platform leaves (`shared/`, `error/`, `permission/runtime/`).
 - `permission.schema.json` — Apple `Info.plist` keys (`permission/cli/`).
 - `native.schema.json` — single-audience scopes (`logic/`, `desktop/`, `android/`, `apple/`, `harmony/`).
 
@@ -80,7 +80,7 @@ spurious `--check` drift.
 
 - Within each scope, every locale file defines the same key set.
 - Across scopes, a flattened key appears in **at most one** scope directory.
-- `ui/*.yaml` files do not declare `error` or `err_code` top-level sections.
+- `shared/*.yaml` files do not declare `error` or `err_code` top-level sections.
 - `error/*.yaml` files contain only `error` and/or `err_code` sections, and
   at least one `err_code_<N>` key is defined.
 - `err_code_<N>` keys only appear under `error/`.
