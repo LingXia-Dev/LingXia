@@ -72,9 +72,10 @@ Only the Rust (`i18n_generated.rs`) and TypeScript outputs are committed, so
 gitignored and regenerated at build time, so `--check` validates that they
 generate but does not require them to be tracked.
 
-The generated Rust is piped through `rustfmt` during generation, so plain
-`gen i18n` already matches `cargo fmt` — no separate formatting step, and no
-spurious `--check` drift.
+The generated Rust items carry `#[rustfmt::skip]`, so `cargo fmt` leaves the
+file alone and plain `gen i18n` output is byte-stable — no separate
+formatting step, no `rustfmt` binary needed at generation time, and no
+spurious `--check` drift across toolchains.
 
 ## What the generator enforces
 
