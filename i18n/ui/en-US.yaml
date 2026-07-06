@@ -87,24 +87,3 @@ date:
 # App Update
 update:
   downloading: "Downloading Update"
-
-# Browser
-browser:
-  new_tab: "New Tab"
-  close_other_tabs: "Close Other Tabs"
-  close_tabs_below: "Close Tabs Below"
-
-# Terminal panel (native Windows shell terminal)
-terminal:
-  title: "Terminal"
-  copy: "Copy"
-  paste: "Paste"
-  split_right: "Split Right"
-  split_left: "Split Left"
-  split_down: "Split Down"
-  split_up: "Split Up"
-  new_tab: "New Tab"
-  close_pane: "Close Pane"
-  change_title: "Change Tab Title…"
-  reset: "Reset Terminal"
-  read_only: "Terminal Read-only"

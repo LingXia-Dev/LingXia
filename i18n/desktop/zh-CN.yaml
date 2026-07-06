@@ -1,0 +1,23 @@
+# Desktop-shell strings — read only by the Windows SDK (Rust + TS).
+# Kept out of the mobile Android/iOS/Harmony resource bundles.
+
+# Browser
+browser:
+  new_tab: "新建标签页"
+  close_other_tabs: "关闭其他标签页"
+  close_tabs_below: "关闭下方标签页"
+
+# Terminal panel (native Windows shell terminal)
+terminal:
+  title: "终端"
+  copy: "复制"
+  paste: "粘贴"
+  split_right: "向右拆分"
+  split_left: "向左拆分"
+  split_down: "向下拆分"
+  split_up: "向上拆分"
+  new_tab: "新建标签页"
+  close_pane: "关闭窗格"
+  change_title: "修改标题…"
+  reset: "重置终端"
+  read_only: "终端只读"
