@@ -27,7 +27,6 @@ mod versions;
 #[derive(Parser)]
 #[command(name = "lingxia")]
 #[command(about = "LingXia CLI - Build cross-platform apps with ease", long_about = None)]
-#[command(version)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,

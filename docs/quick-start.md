@@ -56,14 +56,14 @@ export OHOS_NDK_HOME=$HOME/OpenHarmony/command-line-tools/sdk/default/openharmon
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/LingXia-Dev/LingXia/main/install.sh | sh
-lingxia --version
+lingxia version
 ```
 
 **Windows PowerShell:**
 
 ```powershell
 irm https://raw.githubusercontent.com/LingXia-Dev/LingXia/main/install.ps1 | iex
-lingxia --version
+lingxia version
 ```
 
 Both installers drop the binary in `~/.local/bin` (`%USERPROFILE%\.local\bin`
