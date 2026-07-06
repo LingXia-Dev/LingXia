@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "LingXia UI Locale Schema",
-  "description": "Recursive schema for locale documents (i18n/ui/*.yaml).",
+  "description": "Recursive schema for cross-platform locale documents (i18n/shared/*.yaml, i18n/error/*.yaml, i18n/permission/runtime/*.yaml).",
   "type": "object",
   "minProperties": 1,
   "additionalProperties": {
