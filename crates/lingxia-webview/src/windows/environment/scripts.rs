@@ -116,24 +116,10 @@ pub(crate) fn install_document_scripts(
                 };
             }
 
-            if (window.__LingXiaConsoleInjected) return;
-            window.__LingXiaConsoleInjected = true;
-            ['log', 'info', 'warn', 'error', 'debug'].forEach(function(level) {
-                var original = console[level];
-                console[level] = function() {
-                    try {
-                        var msg = Array.prototype.map.call(arguments, function(arg) {
-                            return typeof arg === 'object' ? JSON.stringify(arg) : String(arg);
-                        }).join(' ');
-                        window.chrome && window.chrome.webview && window.chrome.webview.postMessage(JSON.stringify({
-                            __lingxia_console__: true,
-                            level: level,
-                            message: msg
-                        }));
-                    } catch (e) {}
-                    if (original) return original.apply(console, arguments);
-                };
-            });
+            // Page console/error capture is handled natively via the WebView2
+            // DevTools Protocol (see windows/console.rs) — no console override is
+            // injected here, so the page's own `console` is left untouched and
+            // uncaught exceptions + browser diagnostics are captured too.
         })();
     "#;
 
