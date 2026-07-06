@@ -1,6 +1,7 @@
 import SwiftUI
 import Foundation
 import CLingXiaSwiftAPI
+import os.log
 
 /// Toast configuration
 struct ToastConfig {
@@ -72,6 +73,8 @@ extension ToastPosition {
 @MainActor
 class LxAppToast {
 
+    private static let log = OSLog(subsystem: "LingXia", category: "Toast")
+
     /// Current toast state
     @MainActor private static var currentToastTimer: Timer?
     @MainActor private static var toastOverlay: ToastOverlayManager?
@@ -92,7 +95,7 @@ class LxAppToast {
         mask: Bool = false,
         position: ToastPosition = .Center
     ) {
-        LXLog.info("Showing toast: \(title)", category: "Toast")
+        os_log("%@", log: Self.log, type: .info, "Showing toast: \(title)")
 
         // Hide any existing toast first
         hideToast()
@@ -110,7 +113,7 @@ class LxAppToast {
 
     /// Hide current toast immediately
     static func hideToast() {
-        LXLog.info("Hiding toast", category: "Toast")
+        os_log("%@", log: Self.log, type: .info, "Hiding toast")
         currentToastTimer?.invalidate()
         currentToastTimer = nil
         toastOverlay?.hide()

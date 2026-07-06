@@ -1,5 +1,6 @@
 package com.lingxia.lxapp.APIs
 
+import android.util.Log
 import com.lingxia.app.Lingxia
 import com.lingxia.app.LxLog
 import com.lingxia.lxapp.LxApp
@@ -32,7 +33,7 @@ internal object LxAppPullToRefresh {
             val currentPath = normalizePath(activity.getCurrentWebView()?.getCurrentPath())
             val targetPath = normalizePath(path)
             if (targetPath.isNotEmpty() && currentPath.isNotEmpty() && currentPath != targetPath) {
-                LxLog.d(TAG, "startPullDownRefresh skipped: path mismatch ($currentPath != $targetPath)", appId = appId, path = path)
+                Log.d(TAG, "startPullDownRefresh skipped: path mismatch ($currentPath != $targetPath)")
                 return@runOnUiThread
             }
 
@@ -40,7 +41,7 @@ internal object LxAppPullToRefresh {
                 if (helper.isEnabled()) {
                     helper.startRefreshing()
                 } else {
-                    LxLog.d(TAG, "startPullDownRefresh skipped: disabled for $appId", appId = appId, path = path)
+                    Log.d(TAG, "startPullDownRefresh skipped: disabled for $appId")
                 }
             } ?: LxLog.w(TAG, "startPullDownRefresh ignored: helper not initialized", appId = appId, path = path)
         }
@@ -65,7 +66,7 @@ internal object LxAppPullToRefresh {
             val currentPath = normalizePath(activity.getCurrentWebView()?.getCurrentPath())
             val targetPath = normalizePath(path)
             if (targetPath.isNotEmpty() && currentPath.isNotEmpty() && currentPath != targetPath) {
-                LxLog.d(TAG, "stopPullDownRefresh skipped: path mismatch ($currentPath != $targetPath)", appId = appId, path = path)
+                Log.d(TAG, "stopPullDownRefresh skipped: path mismatch ($currentPath != $targetPath)")
                 return@runOnUiThread
             }
             activity.pullToRefreshHelper?.endRefreshing()

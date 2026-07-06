@@ -2,6 +2,7 @@
 import UIKit
 import CLingXiaSwiftAPI
 import CLingXiaRustAPI
+import os.log
 
 extension LxAppMedia {
     // Strong reference to keep preview window alive
@@ -1071,6 +1072,7 @@ private final class MediaPreviewImageController: UIViewController, IndexedPrevie
 
 @MainActor
 private final class MediaPreviewVideoController: UIViewController, IndexedPreviewController {
+    private static let log = OSLog(subsystem: "LingXia", category: "MediaPreview")
     let index: Int
     private let item: PreviewMediaItem
     private let firstFrame: UIImage?
@@ -1224,7 +1226,7 @@ private final class MediaPreviewVideoController: UIViewController, IndexedPrevie
             switch event {
             case .play:
                 self?.hasStartedPlayback = true
-                LXLog.info("MediaPreview player event: play", category: "MediaPreview")
+                os_log("%@", log: Self.log, type: .info, "MediaPreview player event: play")
             case .playing:
                 // .playing fires when AVPlayer actually starts rendering frames
                 // — that's the right moment to hand off from the still poster

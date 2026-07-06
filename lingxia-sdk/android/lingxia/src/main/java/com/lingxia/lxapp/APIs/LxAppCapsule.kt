@@ -1,5 +1,6 @@
 package com.lingxia.lxapp.APIs
 
+import android.util.Log
 import com.lingxia.app.Lingxia
 import com.lingxia.app.LxLog
 import com.lingxia.lxapp.LxApp
@@ -19,7 +20,7 @@ internal object LxAppCapsule {
 
         activity.runOnUiThread {
             try {
-                LxLog.i(TAG, "Running getCapsuleRect on UI thread")
+                Log.i(TAG, "Running getCapsuleRect on UI thread")
 
                 val jsonString = activity.getCapsuleRectJSON()
                 if (jsonString.isEmpty() || jsonString == "{}") {
@@ -28,7 +29,7 @@ internal object LxAppCapsule {
                     return@runOnUiThread
                 }
 
-                LxLog.i(TAG, "Capsule rect (dp): $jsonString")
+                Log.i(TAG, "Capsule rect (dp): $jsonString")
                 NativeApi.onCallback(callbackId, true, jsonString)
             } catch (e: Exception) {
                 LxLog.e(TAG, "getCapsuleRect error", e)

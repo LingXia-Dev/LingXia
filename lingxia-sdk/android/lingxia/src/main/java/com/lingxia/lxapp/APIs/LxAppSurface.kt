@@ -13,6 +13,7 @@ import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebViewClient
 import android.widget.FrameLayout
+import android.util.Log
 import android.widget.ImageView
 import com.lingxia.app.Lingxia
 import com.lingxia.app.LxLog
@@ -389,7 +390,7 @@ internal object LxAppSurface {
             ImmersiveWindowUi.apply(activity.window, keepScreenOn = false)
         }
 
-        LxLog.d(TAG, "presented id=${request.id} appId=${request.appId} path=${request.path} fillsScreen=$fillsScreen immersive=$immersive role=${request.role}", appId = request.appId, path = request.path)
+        Log.d(TAG, "presented id=${request.id} appId=${request.appId} path=${request.path} fillsScreen=$fillsScreen immersive=$immersive role=${request.role}")
     }
 
     /**

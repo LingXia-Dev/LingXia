@@ -20,6 +20,7 @@ import android.os.Handler
 import android.os.Looper
 import android.util.TypedValue
 import android.util.LruCache
+import android.util.Log
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -987,7 +988,7 @@ internal class MediaPreviewFragment : Fragment() {
             if (bitmap != null && replaceCurrentImageInPlace(targetPagerPosition, targetIndex, target, bitmap)) {
                 return@prefetchItemVisual
             }
-            LxLog.i(
+            Log.i(
                 LOG_TAG,
                 "auto_image_inplace_fallback_pager success=$success cacheHit=${bitmap != null} " +
                     "targetIndex=$targetIndex uri=${target.uri}"
@@ -1005,7 +1006,7 @@ internal class MediaPreviewFragment : Fragment() {
         val replaceResult = previewAdapter?.replaceCurrentImage(target, targetBitmap)
             ?: InPlaceImageReplaceResult.NO_ADAPTER
         if (replaceResult != InPlaceImageReplaceResult.APPLIED) {
-            LxLog.i(
+            Log.i(
                 LOG_TAG,
                 "auto_image_inplace_replace_failed reason=$replaceResult " +
                     "targetIndex=$targetIndex pager=$targetPagerPosition uri=${target.uri}"
@@ -1488,7 +1489,7 @@ internal class MediaPreviewFragment : Fragment() {
                 append(' ').append(extra)
             }
         }
-        LxLog.i(LOG_TAG, details)
+        Log.i(LOG_TAG, details)
     }
 
     private fun logSharedPlayerEvent(payload: Map<String, Any>) {

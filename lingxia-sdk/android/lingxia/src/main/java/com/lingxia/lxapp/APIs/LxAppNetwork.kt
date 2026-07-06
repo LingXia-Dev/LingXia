@@ -12,6 +12,7 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.telephony.SubscriptionManager
 import android.telephony.TelephonyManager
+import android.util.Log
 import com.lingxia.app.Lingxia
 import com.lingxia.app.LxLog
 import com.lingxia.lxapp.LxApp
@@ -460,7 +461,7 @@ object LxAppNetwork {
                 "Cellular network type unknown; dataType=$dataType netType=$netType voiceType=$voiceType chosen=$networkType overrideType=$overrideType readPhoneState=$hasReadPhoneState readBasicPhoneState=$hasReadBasicPhoneState",
             )
         } else {
-            LxLog.d(
+            Log.d(
                 TAG,
                 "Cellular network type resolved=$mapped source=$source dataType=$dataType netType=$netType voiceType=$voiceType overrideType=$overrideType",
             )

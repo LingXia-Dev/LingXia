@@ -11,6 +11,7 @@ import android.os.Bundle
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import androidx.core.content.ContextCompat
 import org.json.JSONObject
 import com.lingxia.app.Lingxia
@@ -106,7 +107,7 @@ internal object LxAppLocation {
         }
 
         // Log configuration parameters
-        LxLog.d(TAG, "Location request config - high_accuracy: $isHighAccuracy, include_altitude: $includeAltitude, expire_time: ${expireTimeMs}ms")
+        Log.d(TAG, "Location request config - high_accuracy: $isHighAccuracy, include_altitude: $includeAltitude, expire_time: ${expireTimeMs}ms")
 
         // Choose providers based on accuracy requirements
         val providers = buildList {
@@ -199,7 +200,7 @@ internal object LxAppLocation {
                         Looper.getMainLooper(),
                     )
                     started = true
-                    LxLog.d(TAG, "Started location updates for $provider (minTime: ${minTimeMs}ms, minDistance: ${minDistanceM}m)")
+                    Log.d(TAG, "Started location updates for $provider (minTime: ${minTimeMs}ms, minDistance: ${minDistanceM}m)")
                 } catch (securityException: SecurityException) {
                     LxLog.e(TAG, "Security exception when requesting updates from $provider", securityException)
                 } catch (illegalArgumentException: IllegalArgumentException) {

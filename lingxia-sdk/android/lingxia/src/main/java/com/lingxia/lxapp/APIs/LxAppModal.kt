@@ -9,6 +9,7 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.*
+import android.util.Log
 import androidx.core.view.setPadding
 import com.lingxia.app.LxLog
 import com.lingxia.app.NativeApi
@@ -133,7 +134,7 @@ internal object LxAppModal {
             if (allowCancel) {
                 setOnClickListener {
                     if (allowCancel) {
-                        LxLog.i(TAG, "Modal cancelled by mask click")
+                        Log.i(TAG, "Modal cancelled by mask click")
                         // TODO: Add callback for mask click cancel
                         hideModalInternal()
                     }

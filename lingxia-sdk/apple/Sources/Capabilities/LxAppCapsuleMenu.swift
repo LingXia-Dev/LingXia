@@ -1,4 +1,5 @@
 import Foundation
+import os.log
 
 #if os(iOS)
 import UIKit
@@ -9,6 +10,8 @@ import AppKit
 /// Capsule Menu Bottom Sheet
 /// Shows LxApp info and action buttons when clicking the 3-dots capsule button
 class LxAppCapsuleMenu {
+
+    private static let log = OSLog(subsystem: "LingXia", category: "CapsuleMenu")
 
     private static let sheetContainerTag = 1001
 
@@ -455,7 +458,7 @@ class LxAppCapsuleMenu {
     }
     #else
     public static func show(appId: String) {
-        LXLog.info("Capsule menu is not implemented on this platform for \(appId)", category: "CapsuleMenu", appId: appId)
+        os_log("%@", log: Self.log, type: .info, "Capsule menu is not implemented on this platform for \(appId)")
     }
     #endif
 }

@@ -9,6 +9,7 @@ import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.util.DisplayMetrics
+import android.util.Log
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
@@ -781,7 +782,7 @@ internal class LxMediaPlayer(
 
     fun seek(time: Double) {
         if (isLiveContent) {
-            LxLog.i(TAG, "seek ignored for live content")
+            Log.i(TAG, "seek ignored for live content")
             return
         }
         val positionMs = (time * 1000).toLong()

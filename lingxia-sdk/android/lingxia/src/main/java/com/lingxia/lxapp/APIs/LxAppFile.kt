@@ -9,6 +9,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.webkit.MimeTypeMap
+import android.util.Log
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.lingxia.app.Lingxia
@@ -75,7 +76,7 @@ internal object LxAppFile {
             return launchInternalImagePreview(req.activity, req.file)
         }
 
-        LxLog.i(TAG, "reviewDocument: no native review handler for $filePath")
+        Log.i(TAG, "reviewDocument: no native review handler for $filePath")
         return false
     }
 

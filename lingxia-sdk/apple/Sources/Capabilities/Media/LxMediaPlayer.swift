@@ -1,5 +1,6 @@
 import Foundation
 import AVFoundation
+import os.log
 
 #if os(iOS)
 import UIKit
@@ -153,6 +154,10 @@ private final class TapOverlayView: UIView {
 
 @MainActor
 final class LxMediaPlayer: NSObject {
+    // Routine info/debug logging stays on os_log so it never crosses the FFI
+    // host-log pipeline (that carries errors/warns only).
+    private static let log = OSLog(subsystem: "LingXia", category: "Media")
+
     let view: UIView
     var onScrubStateChanged: ((Bool) -> Void)?
     private let container: PlayerContainerView
@@ -404,7 +409,7 @@ final class LxMediaPlayer: NSObject {
         // Ignore frame updates during fullscreen transition
         // The saved originalFrame will be restored after exit
         if isTransitioningFullscreen {
-            LXLog.debug("MediaPlayer setFrame ignored during fullscreen transition", category: "Media")
+            os_log("%@", log: Self.log, type: .debug, "MediaPlayer setFrame ignored during fullscreen transition")
             return
         }
 
@@ -1068,7 +1073,7 @@ final class LxMediaPlayer: NSObject {
                 self.updateEndedPosterVisibility()
                 // Only show poster if we've never rendered a frame (cold start only)
                 showPosterIfAvailable()
-                LXLog.info("MediaPlayer loaded poster", category: "Media")
+                os_log("%@", log: Self.log, type: .info, "MediaPlayer loaded poster")
             } catch {
                 if (error as? URLError)?.code == .cancelled || error is CancellationError { return }
                 LXLog.error("MediaPlayer failed to load poster: \(error.localizedDescription)", category: "Media")
@@ -1083,7 +1088,7 @@ final class LxMediaPlayer: NSObject {
         currentLoadingURL = url
         urlHasEnded = false
 
-        LXLog.info("MediaPlayer loadVideo seq=\(currentSequence) url=\(url.absoluteString)", category: "Media")
+        os_log("%@", log: Self.log, type: .info, "MediaPlayer loadVideo seq=\(currentSequence) url=\(url.absoluteString)")
 
         // Cancel any pending reveal work from previous loads
         revealVideoWorkItem?.cancel()
@@ -1153,19 +1158,19 @@ final class LxMediaPlayer: NSObject {
         activePlayer.rate = 0
         activePlayer.automaticallyWaitsToMinimizeStalling = true
         playerLayer.player = activePlayer
-        LXLog.info("MediaPlayer load url=\(url.absoluteString)", category: "Media")
+        os_log("%@", log: Self.log, type: .info, "MediaPlayer load url=\(url.absoluteString)")
 
         // Observe player item status - buffering ready
         statusObserver = item.observe(\.status, options: [.new]) { [weak self] item, _ in
             Task { @MainActor [weak self] in
                 guard let self = self else { return }
                 guard currentSequence == self.loadingSequence else {
-                    LXLog.debug("MediaPlayer IGNORE stale statusObserver seq=\(currentSequence) (current=\(self.loadingSequence))", category: "Media")
+                    os_log("%@", log: Self.log, type: .debug, "MediaPlayer IGNORE stale statusObserver seq=\(currentSequence) (current=\(self.loadingSequence))")
                     return
                 }
                 switch item.status {
                 case .readyToPlay:
-                    LXLog.info("MediaPlayer item ready to play seq=\(currentSequence)", category: "Media")
+                    os_log("%@", log: Self.log, type: .info, "MediaPlayer item ready to play seq=\(currentSequence)")
                     self.refreshProgressControls()
 
                     // Send loadedmetadata event
@@ -1299,7 +1304,7 @@ final class LxMediaPlayer: NSObject {
 
     @objc private func videoDidEnd() {
         Task { @MainActor in
-            LXLog.info("MediaPlayer video ended (loop=\(String(loopEnabled)))", category: "Media")
+            os_log("%@", log: Self.log, type: .info, "MediaPlayer video ended (loop=\(String(loopEnabled)))")
 
             // Cancel pending play event on end
             pendingPlayEvent = false
@@ -1699,7 +1704,7 @@ final class LxMediaPlayer: NSObject {
         if pendingPlayEvent {
             let timeAdvanced = lastTimeForPlayEvent >= 0 && currentTime > lastTimeForPlayEvent
             if currentTime > 0 && timeAdvanced {
-                LXLog.info("MediaPlayer emitting delayed play event, currentTime=\(currentTime), lastTime=\(lastTimeForPlayEvent)", category: "Media")
+                os_log("%@", log: Self.log, type: .info, "MediaPlayer emitting delayed play event, currentTime=\(currentTime), lastTime=\(lastTimeForPlayEvent)")
                 pendingPlayEvent = false
                 send(.playing)
             }
@@ -1718,12 +1723,12 @@ final class LxMediaPlayer: NSObject {
     private func logStateEvent(_ event: LxMediaEvent) {
         switch event {
         case .play, .playing, .pause, .waiting, .ended, .stop:
-            LXLog.info("MediaPlayer event: \(event.rawName)", category: "Media")
+            os_log("%@", log: Self.log, type: .info, "MediaPlayer event: \(event.rawName)")
         case .seeked(let time):
-            LXLog.info("MediaPlayer event: seeked time=\(time)", category: "Media")
+            os_log("%@", log: Self.log, type: .info, "MediaPlayer event: seeked time=\(time)")
         case .raw(let name, _):
             if name == "playrequest" || name == "seeking" {
-                LXLog.info("MediaPlayer event: \(name)", category: "Media")
+                os_log("%@", log: Self.log, type: .info, "MediaPlayer event: \(name)")
             }
         default:
             break
@@ -2314,7 +2319,7 @@ final class LxMediaPlayer: NSObject {
 
     private func handleQualitySelection(label: String) {
         currentQuality = label
-        LXLog.info("MediaPlayer quality selected: \(label)", category: "Media")
+        os_log("%@", log: Self.log, type: .info, "MediaPlayer quality selected: \(label)")
 
         let selectedQuality = availableQualities.first(where: { $0.label == label })
         let switchedUrl = selectedQuality?.url?.absoluteString
@@ -2326,7 +2331,7 @@ final class LxMediaPlayer: NSObject {
         }
 
         if let url = selectedQuality?.url, let player {
-            LXLog.info("MediaPlayer switching to internal URL: \(url.absoluteString)", category: "Media")
+            os_log("%@", log: Self.log, type: .info, "MediaPlayer switching to internal URL: \(url.absoluteString)")
             pendingRestoreAfterLoad = (player.currentTime(), player.rate > 0)
             loadVideo(url: url)
         }
@@ -2352,7 +2357,7 @@ final class LxMediaPlayer: NSObject {
     private func revealVideoIfReady(progressTime: Double? = nil, reason: String, sequence: UInt64) {
         guard waitingForFirstFrame else { return }
         guard sequence == loadingSequence else {
-            LXLog.debug("MediaPlayer IGNORE stale revealVideoIfReady seq=\(sequence) (current=\(loadingSequence))", category: "Media")
+            os_log("%@", log: Self.log, type: .debug, "MediaPlayer IGNORE stale revealVideoIfReady seq=\(sequence) (current=\(loadingSequence))")
             return
         }
 
@@ -2367,7 +2372,7 @@ final class LxMediaPlayer: NSObject {
     private func forceRevealVideo(sequence: UInt64) {
         guard waitingForFirstFrame else { return }
         guard sequence == loadingSequence else {
-            LXLog.debug("MediaPlayer IGNORE stale forceRevealVideo seq=\(sequence) (current=\(loadingSequence))", category: "Media")
+            os_log("%@", log: Self.log, type: .debug, "MediaPlayer IGNORE stale forceRevealVideo seq=\(sequence) (current=\(loadingSequence))")
             return
         }
 
@@ -2376,7 +2381,7 @@ final class LxMediaPlayer: NSObject {
             if forceRevealAttempts < 3 {
                 forceRevealAttempts += 1
                 let delay = 0.2 * Double(forceRevealAttempts)
-                LXLog.info("MediaPlayer timeout but layer not ready, retry \(forceRevealAttempts) after \(delay)s", category: "Media")
+                os_log("%@", log: Self.log, type: .info, "MediaPlayer timeout but layer not ready, retry \(forceRevealAttempts) after \(delay)s")
                 DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
                     self?.forceRevealVideo(sequence: sequence)
                 }
@@ -2396,7 +2401,7 @@ final class LxMediaPlayer: NSObject {
 
     private func performRevealVideo(reason: String, sequence: UInt64) {
         guard sequence == loadingSequence else {
-            LXLog.debug("MediaPlayer IGNORE stale performRevealVideo seq=\(sequence) (current=\(loadingSequence))", category: "Media")
+            os_log("%@", log: Self.log, type: .debug, "MediaPlayer IGNORE stale performRevealVideo seq=\(sequence) (current=\(loadingSequence))")
             return
         }
         // Stop all frame detection mechanisms
@@ -2404,7 +2409,7 @@ final class LxMediaPlayer: NSObject {
         revealVideoWorkItem = nil
         stopDisplayLink()
 
-        LXLog.info("MediaPlayer reveal video seq=\(sequence) (reason=\(reason))", category: "Media")
+        os_log("%@", log: Self.log, type: .info, "MediaPlayer reveal video seq=\(sequence) (reason=\(reason))")
 
         waitingForFirstFrame = false
         revealRenderableVideoFrame()
@@ -2460,7 +2465,7 @@ final class LxMediaPlayer: NSObject {
 
         // This is THE reliable signal: actual pixel buffer is available
         if output.hasNewPixelBuffer(forItemTime: itemTime) {
-            LXLog.info("MediaPlayer FIRST FRAME DETECTED via videoOutput seq=\(sequence)", category: "Media")
+            os_log("%@", log: Self.log, type: .info, "MediaPlayer FIRST FRAME DETECTED via videoOutput seq=\(sequence)")
             stopDisplayLink()
             revealVideoIfReady(progressTime: itemTime.seconds, reason: "pixelBuffer", sequence: sequence)
         }
@@ -2476,11 +2481,11 @@ final class LxMediaPlayer: NSObject {
         let work = DispatchWorkItem { [weak self] in
             guard let self = self else { return }
             guard sequence == self.loadingSequence else {
-                LXLog.debug("MediaPlayer IGNORE stale timeout seq=\(sequence) (current=\(self.loadingSequence))", category: "Media")
+                os_log("%@", log: Self.log, type: .debug, "MediaPlayer IGNORE stale timeout seq=\(sequence) (current=\(self.loadingSequence))")
                 return
             }
             if self.waitingForFirstFrame {
-                LXLog.info("MediaPlayer force reveal after timeout seq=\(sequence)", category: "Media")
+                os_log("%@", log: Self.log, type: .info, "MediaPlayer force reveal after timeout seq=\(sequence)")
                 self.forceRevealVideo(sequence: sequence)
             }
         }
@@ -2505,7 +2510,7 @@ final class LxMediaPlayer: NSObject {
         let link = CADisplayLink(target: self, selector: #selector(displayLinkDidRefresh))
         link.add(to: .main, forMode: .common)
         displayLink = link
-        LXLog.debug("MediaPlayer started displayLink for frame detection seq=\(sequence)", category: "Media")
+        os_log("%@", log: Self.log, type: .debug, "MediaPlayer started displayLink for frame detection seq=\(sequence)")
     }
 
     // MARK: - UI actions
@@ -2975,7 +2980,7 @@ final class LxMediaPlayer: NSObject {
         updateEndedPosterVisibility()
         send(.fullscreenChange(fullScreen: true, direction: "horizontal"))
 
-        LXLog.info("MediaPlayer entered fullscreen", category: "Media")
+        os_log("%@", log: Self.log, type: .info, "MediaPlayer entered fullscreen")
     }
 
     private func exitFullscreen() {
@@ -2985,7 +2990,7 @@ final class LxMediaPlayer: NSObject {
             return
         }
 
-        LXLog.info("MediaPlayer exitFullscreen: originalFrame=\(NSCoder.string(for: originalFrame))", category: "Media")
+        os_log("%@", log: Self.log, type: .info, "MediaPlayer exitFullscreen: originalFrame=\(NSCoder.string(for: originalFrame))")
 
         isFullscreen = false
         isTransitioningFullscreen = true  // Block external updates during transition
@@ -3039,13 +3044,13 @@ final class LxMediaPlayer: NSObject {
         updateEndedPosterVisibility()
         send(.fullscreenChange(fullScreen: false, direction: "vertical"))
 
-        LXLog.info("MediaPlayer exited fullscreen", category: "Media")
+        os_log("%@", log: Self.log, type: .info, "MediaPlayer exited fullscreen")
 
         // Clear transition flag after a delay to allow JS side to settle
         // This prevents the JS side's component.update from overriding our restored frame
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
             self?.isTransitioningFullscreen = false
-            LXLog.info("MediaPlayer fullscreen transition complete", category: "Media")
+            os_log("%@", log: Self.log, type: .info, "MediaPlayer fullscreen transition complete")
         }
     }
 
