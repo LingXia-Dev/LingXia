@@ -454,8 +454,10 @@ Specify one with `--platform <name>` or build all with `--all-platforms`."
     let mut all_artifacts = Vec::new();
     for (platform, mut build_config, platform_type) in platform_builds {
         build_config.skip_native_build = platform.hoists_native_build();
+        let should_assemble_windows_dist = matches!(platform_type, PlatformType::Windows)
+            && (matches!(build_config.profile, platform::BuildProfile::Release) || package || msix);
         let mut artifacts = platform.build(&build_config)?;
-        if matches!(platform_type, PlatformType::Windows) && (package || msix) {
+        if should_assemble_windows_dist {
             artifacts =
                 assemble_windows_dist(&project_root, &config, resolved_env.version, artifacts)?;
             if msix && let Some(dist_dir) = artifacts.path().parent() {
