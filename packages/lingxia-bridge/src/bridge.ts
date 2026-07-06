@@ -34,6 +34,7 @@ import {
   isMacOS,
   isWindows,
   isDesktop,
+  isDevSession,
 } from "./runtime-env";
 
 const NATIVE_HANDLER_NAME = "LingXia";
@@ -101,7 +102,20 @@ function isDebugEnabled(flag: keyof typeof debugFlags): boolean {
   return debugFlags.all || debugFlags[flag];
 }
 
+// `log` is the bridge's own protocol/lifecycle trace. Native log capture
+// forwards whatever the page emits to `console`, so the bridge itself decides
+// whether to surface this framework chatter: only in a `lingxia dev` session
+// (or when a debug flag is set). Shipped apps stay quiet, leaving the captured
+// stream to the page's own output plus bridge warnings/errors.
 function log(...args: unknown[]): void {
+  if (
+    !isDevSession() &&
+    !debugFlags.all &&
+    !debugFlags.proto &&
+    !debugFlags.data
+  ) {
+    return;
+  }
   console.log(LOG_PREFIX, ...args);
 }
 function warn(...args: unknown[]): void {

@@ -47,6 +47,7 @@ use windows::{
     core::{BOOL, Interface, PCWSTR, PWSTR, Result as WinResult},
 };
 
+mod console;
 mod controller;
 mod environment;
 mod events;

@@ -128,6 +128,10 @@ pub(crate) struct UiState {
     /// Active CDP `Network` event subscriptions (receiver + token), non-empty
     /// while capture is enabled; used to unsubscribe on stop.
     pub(crate) network_receivers: Vec<(ICoreWebView2DevToolsProtocolEventReceiver, i64)>,
+    /// CDP `Runtime`/`Log` subscriptions feeding page console/error/browser
+    /// logs to the delegate. Held for the webview's lifetime (capture is always
+    /// on); dropping them would stop delivery.
+    pub(crate) _console_receivers: Vec<(ICoreWebView2DevToolsProtocolEventReceiver, i64)>,
 }
 
 impl UiState {
@@ -638,6 +642,21 @@ pub(crate) fn run_ui_thread_inner(
         ));
     }
 
+    // Page-log capture over CDP (console calls, uncaught exceptions,
+    // browser-level messages) is wired before the message loop pumps any
+    // command, so it is live before the first navigation. Best-effort: a
+    // subscribe failure must not fail webview creation.
+    let console_receivers = match console::subscribe(&webview, &webtag) {
+        Ok(receivers) => {
+            console::enable(&webview);
+            receivers
+        }
+        Err(err) => {
+            log::warn!("console log capture unavailable: {err}");
+            Vec::new()
+        }
+    };
+
     let mut state = UiState {
         controller,
         webview,
@@ -648,6 +667,7 @@ pub(crate) fn run_ui_thread_inner(
         transient_user_data_dir,
         network_log: Arc::new(Mutex::new(network::NetworkLog::default())),
         network_receivers: Vec::new(),
+        _console_receivers: console_receivers,
     };
 
     message_loop(&mut state, command_rx)

@@ -282,12 +282,23 @@ fn build_bridge_config_script(bridge_nonce: Option<&str>) -> String {
         _ => String::new(),
     };
 
+    // Dev session = the `lingxia dev` runner (a devtool websocket is
+    // configured). The bridge reads this to decide whether to surface its own
+    // protocol/lifecycle trace: verbose in dev, quiet in shipped apps. Native
+    // log capture forwards whatever the page emits, so this single flag governs
+    // the framework's console noise across every platform.
+    let dev_kv = if super::is_dev_session() {
+        ",dev:true"
+    } else {
+        ""
+    };
+
     let generated_kv = format!("{}{}", nonce_kv, apple_downstream_kv);
 
     // Merge rather than overwrite so developer-provided config can coexist.
     format!(
-        r#"<script>(function(){{var c=window.__LX_BRIDGE_CFG||{{}}; window.__LX_BRIDGE_CFG=Object.assign({{}},c,{{os:"{}"{}}});}})();</script>"#,
-        bridge_os, generated_kv
+        r#"<script>(function(){{var c=window.__LX_BRIDGE_CFG||{{}}; window.__LX_BRIDGE_CFG=Object.assign({{}},c,{{os:"{}"{}{}}});}})();</script>"#,
+        bridge_os, generated_kv, dev_kv
     )
 }
 
