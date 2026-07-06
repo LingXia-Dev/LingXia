@@ -89,16 +89,11 @@ pub fn detect_available_platforms(project_root: &Path) -> Vec<PlatformType> {
 
 /// Create a platform instance for the given platform type
 pub fn create_platform(platform_type: &PlatformType) -> Result<Box<dyn Platform>> {
+    super::host_support::ensure_supported_host(platform_type)?;
     match platform_type {
         PlatformType::Android => Ok(Box::new(AndroidPlatform::new())),
-        PlatformType::Ios => {
-            super::apple::ensure_macos()?;
-            Ok(Box::new(IosPlatform::new()))
-        }
-        PlatformType::MacOs => {
-            super::apple::ensure_macos()?;
-            Ok(Box::new(super::macos::MacosPlatform::new()))
-        }
+        PlatformType::Ios => Ok(Box::new(IosPlatform::new())),
+        PlatformType::MacOs => Ok(Box::new(super::macos::MacosPlatform::new())),
         PlatformType::Harmony => Ok(Box::new(super::harmony::HarmonyPlatform::new())),
         PlatformType::Windows => Ok(Box::new(super::windows::WindowsPlatform::new())),
     }

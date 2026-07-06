@@ -3,6 +3,8 @@ use super::{
     resolve_cargo_target_dir, resolve_lingxia_target_dir,
 };
 use crate::config::{HOST_CONFIG_FILE, LingXiaConfig};
+#[cfg(not(target_os = "windows"))]
+use crate::platform::detector::PlatformType;
 use crate::platform::doctor::{CheckResult, command_version_line};
 use anyhow::{Context, Result, anyhow};
 use colored::Colorize;
@@ -51,6 +53,7 @@ pub fn generate_icons(project_root: &Path, source_icon: &Path) -> Result<()> {
 
 impl Platform for WindowsPlatform {
     fn build(&self, config: &BuildConfig) -> Result<BuildArtifacts> {
+        ensure_supported_host()?;
         let windows_dir = resolve_windows_dir(&config.project_root)?;
         let cargo_target_dir = resolve_cargo_target_dir(&config.project_root);
         let assets_dir = resolve_windows_assets_dir(&config.project_root)?;
@@ -117,6 +120,7 @@ impl Platform for WindowsPlatform {
     }
 
     fn run(&self, config: &RunConfig) -> Result<()> {
+        ensure_supported_host()?;
         let _ = (&config.package_id, &config.main_activity, &config.device_id);
         let project_root = current_windows_project_root()?;
         let exe_path = latest_runnable_windows_exe(&project_root)?;
@@ -175,21 +179,118 @@ pub fn resolve_windows_build_dir(project_root: &Path) -> Result<PathBuf> {
 }
 
 pub fn doctor_checks() -> Vec<CheckResult> {
-    vec![check_windows_host(), check_cargo_build()]
+    vec![host_doctor_check(), check_cargo_build()]
 }
 
-fn check_windows_host() -> CheckResult {
-    if cfg!(target_os = "windows") {
-        CheckResult::pass("Windows host", "running on Windows")
-    } else {
-        CheckResult::warn(
-            "Windows host",
-            "not running on Windows",
-            Some(
-                "Build and run Windows host apps on a Windows machine with the MSVC Rust toolchain.",
+pub(crate) fn ensure_supported_host() -> Result<()> {
+    #[cfg(target_os = "windows")]
+    {
+        let version = current_windows_version().ok_or_else(|| {
+            anyhow!("Unable to determine Windows version. LingXia Windows apps require Windows 10 or later.")
+        })?;
+        if version.is_supported() {
+            return Ok(());
+        }
+        Err(anyhow!(
+            "LingXia Windows apps require Windows 10 or later (detected Windows {}).",
+            version
+        ))
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        Err(crate::platform::host_support::unsupported_host(
+            &PlatformType::Windows,
+        ))
+    }
+}
+
+pub(crate) fn host_doctor_check() -> CheckResult {
+    #[cfg(target_os = "windows")]
+    {
+        match current_windows_version() {
+            Some(version) if version.is_supported() => {
+                CheckResult::pass("Host OS", format!("Windows {version}"))
+            }
+            Some(version) => CheckResult::fail(
+                "Host OS",
+                format!("Windows {version}"),
+                Some("LingXia Windows apps require Windows 10 or later."),
             ),
+            None => CheckResult::fail(
+                "Host OS",
+                "unable to determine Windows version".to_string(),
+                Some("LingXia Windows apps require Windows 10 or later."),
+            ),
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        CheckResult::fail(
+            "Host OS",
+            format!(
+                "Windows builds are only supported on Windows 10 or later (current: {})",
+                std::env::consts::OS
+            ),
+            None::<String>,
         )
     }
+}
+
+#[cfg(target_os = "windows")]
+#[derive(Debug, Clone, Copy)]
+struct WindowsVersion {
+    major: u32,
+    minor: u32,
+    build: u32,
+}
+
+#[cfg(target_os = "windows")]
+impl WindowsVersion {
+    fn is_supported(self) -> bool {
+        self.major > 10 || (self.major == 10 && self.build >= 10240)
+    }
+}
+
+#[cfg(target_os = "windows")]
+impl std::fmt::Display for WindowsVersion {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}.{}.{}", self.major, self.minor, self.build)
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn current_windows_version() -> Option<WindowsVersion> {
+    #[repr(C)]
+    struct OsVersionInfoW {
+        os_version_info_size: u32,
+        major_version: u32,
+        minor_version: u32,
+        build_number: u32,
+        platform_id: u32,
+        csd_version: [u16; 128],
+    }
+
+    #[link(name = "ntdll")]
+    unsafe extern "system" {
+        fn RtlGetVersion(version_information: *mut OsVersionInfoW) -> i32;
+    }
+
+    let mut info = OsVersionInfoW {
+        os_version_info_size: std::mem::size_of::<OsVersionInfoW>() as u32,
+        major_version: 0,
+        minor_version: 0,
+        build_number: 0,
+        platform_id: 0,
+        csd_version: [0; 128],
+    };
+    let status = unsafe { RtlGetVersion(&mut info) };
+    (status == 0).then_some(WindowsVersion {
+        major: info.major_version,
+        minor: info.minor_version,
+        build: info.build_number,
+    })
 }
 
 fn check_cargo_build() -> CheckResult {

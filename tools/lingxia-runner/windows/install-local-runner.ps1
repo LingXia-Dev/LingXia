@@ -14,6 +14,29 @@ $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RootDir = Resolve-Path (Join-Path $ScriptDir "..\..\..")
 $RunnerCargoToml = Join-Path $ScriptDir "Cargo.toml"
 
+function Get-WindowsVersion {
+    try {
+        $currentVersion = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion'
+        if ($null -ne $currentVersion.CurrentMajorVersionNumber) {
+            $major = [int]$currentVersion.CurrentMajorVersionNumber
+            $minor = if ($null -ne $currentVersion.CurrentMinorVersionNumber) { [int]$currentVersion.CurrentMinorVersionNumber } else { 0 }
+            $build = if ($currentVersion.CurrentBuildNumber) { [int]$currentVersion.CurrentBuildNumber } else { 0 }
+            return [version]::new($major, $minor, $build)
+        }
+    } catch {}
+
+    return [Environment]::OSVersion.Version
+}
+
+function Assert-SupportedWindows {
+    $version = Get-WindowsVersion
+    if ($version.Major -lt 10) {
+        throw "LingXia Windows Runner requires Windows 10 or later (detected Windows $version)"
+    }
+}
+
+Assert-SupportedWindows
+
 function Read-RunnerVersion {
     foreach ($line in Get-Content $RunnerCargoToml) {
         if ($line -match '^version\s*=\s*"([^"]+)"') {

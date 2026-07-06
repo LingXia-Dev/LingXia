@@ -453,6 +453,7 @@ fn launch_windows_runner_for_lxapp(
     ws_url: &str,
     runner_device: Option<&str>,
 ) -> Result<RunnerProcess> {
+    platform::host_support::ensure_supported_host(&PlatformType::Windows)?;
     ensure_valid_lxapp_dir(lxapp_path)?;
     // Provision the runner from the matching release if it isn't installed yet.
     crate::runner_cache::ensure_runner(REQUIRED_RUNNER_VERSION, false)?;
