@@ -289,7 +289,7 @@ fn frame_class() -> PCWSTR {
 /// Creates the layered shell window behind `content` and uploads its
 /// per-pixel-alpha bitmap (toolbar + bezel + shadow). Returns the window
 /// and the layout completed with the text-dependent toolbar rects, or
-/// `None` when creation fails (requires the Win8+ `supportedOS` manifest,
+/// `None` when creation fails (requires the Win10+ `supportedOS` manifest,
 /// like the corner caps).
 pub(super) fn create_frame_window(
     content: HWND,

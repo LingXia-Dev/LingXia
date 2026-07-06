@@ -76,6 +76,9 @@ fn runner_path(dir: &Path) -> PathBuf {
 /// `~/.lingxia/runner/<version>/` and return its path. On a cache hit (the app
 /// is present) returns immediately with no network, unless `force`.
 pub fn ensure_runner(version: &str, force: bool) -> Result<PathBuf> {
+    #[cfg(target_os = "windows")]
+    crate::platform::windows::ensure_supported_host()?;
+
     let dir = runner_root()?.join(version);
     let path = runner_path(&dir);
     // Published by an atomic rename below (and by install-local-runner.sh's

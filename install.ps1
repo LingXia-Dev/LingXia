@@ -39,6 +39,29 @@ function Stop-WithError {
     exit 1
 }
 
+function Get-WindowsVersion {
+    try {
+        $currentVersion = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion'
+        if ($null -ne $currentVersion.CurrentMajorVersionNumber) {
+            $major = [int]$currentVersion.CurrentMajorVersionNumber
+            $minor = if ($null -ne $currentVersion.CurrentMinorVersionNumber) { [int]$currentVersion.CurrentMinorVersionNumber } else { 0 }
+            $build = if ($currentVersion.CurrentBuildNumber) { [int]$currentVersion.CurrentBuildNumber } else { 0 }
+            return [version]::new($major, $minor, $build)
+        }
+    } catch {}
+
+    return [Environment]::OSVersion.Version
+}
+
+function Assert-SupportedWindows {
+    $version = Get-WindowsVersion
+    if ($version.Major -lt 10) {
+        Stop-WithError "LingXia for Windows requires Windows 10 or later (detected Windows $version)"
+    }
+}
+
+Assert-SupportedWindows
+
 $Repo       = 'LingXia-Dev/LingXia'
 $InstallDir = Join-Path $HOME '.local\bin'
 $TagPrefix  = 'lingxia-cli-v'

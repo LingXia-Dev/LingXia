@@ -11,6 +11,7 @@ pub mod detector;
 pub mod doctor;
 pub mod env_badge;
 pub mod harmony;
+pub mod host_support;
 pub mod ios;
 pub mod macos;
 pub mod spm;

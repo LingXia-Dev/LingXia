@@ -512,5 +512,20 @@ pub(crate) fn read_stream_to_end(stream: &IStream) -> WinResult<Vec<u8>> {
 }
 
 pub(crate) fn map_webview2_error(err: webview2_com::Error) -> WebViewError {
-    WebViewError::WebView(format!("{err}"))
+    if is_webview2_runtime_missing(&err) {
+        return WebViewError::WebView(format!(
+            "Microsoft Edge WebView2 Runtime is required to run LingXia Windows apps. \
+             Install the Evergreen WebView2 Runtime and try again. Original error: {err}"
+        ));
+    }
+    WebViewError::WebView(format!("WebView2 operation failed: {err}"))
+}
+
+fn is_webview2_runtime_missing(err: &webview2_com::Error) -> bool {
+    const HRESULT_FROM_WIN32_ERROR_FILE_NOT_FOUND: i32 = 0x80070002u32 as i32;
+    matches!(
+        err,
+        webview2_com::Error::WindowsError(err)
+            if err.code().0 == HRESULT_FROM_WIN32_ERROR_FILE_NOT_FOUND
+    )
 }
