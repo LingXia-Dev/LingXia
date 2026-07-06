@@ -13,7 +13,6 @@
     "@lingxia/bridge": "file:../../../packages/lingxia-bridge",
     "@lingxia/react": "file:../../../packages/lingxia-react",
     "@lingxia/vue": "file:../../../packages/lingxia-vue",
-    "@rongjs/rong": "^0.4.0",
     "@radix-ui/react-slot": "^1.1.0",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",

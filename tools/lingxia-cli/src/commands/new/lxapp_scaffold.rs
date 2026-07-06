@@ -87,6 +87,8 @@ pub(super) fn build_framework_vars(
     vars.insert("APP_PACKAGE_NAME".to_string(), slug);
     vars.insert("APP_ID".to_string(), app_id.to_string());
     vars.insert("APP_DISPLAY_NAME".to_string(), product_name.to_string());
+    // Rong runtime version stays available to templates; the lxapp scaffold no
+    // longer pins the `@rongjs/rong` npm type package (types come from the DOM lib).
     vars.insert("RONG_VERSION".to_string(), versions.rong.clone());
     vars.insert(
         "LINGXIA_BRIDGE_VERSION".to_string(),
@@ -311,7 +313,7 @@ mod tests {
 
         fs::write(
             lxapp.join("package.json"),
-            r#"{"name":"{{APP_PACKAGE_NAME}}","dependencies":{"{{FRAMEWORK_PKG}}":"{{LINGXIA_FRAMEWORK_RANGE}}","@rongjs/rong":"^{{RONG_VERSION}}","@lingxia/types":"^{{LINGXIA_TYPES_VERSION}}",{{FRAMEWORK_RUNTIME_DEPS}}},"devDependencies":{{{FRAMEWORK_DEV_DEPS_PREFIX}}{{FRAMEWORK_VITE_DEV_DEPS}}"typescript":"^5"}}"#,
+            r#"{"name":"{{APP_PACKAGE_NAME}}","dependencies":{"{{FRAMEWORK_PKG}}":"{{LINGXIA_FRAMEWORK_RANGE}}","@lingxia/types":"^{{LINGXIA_TYPES_VERSION}}",{{FRAMEWORK_RUNTIME_DEPS}}},"devDependencies":{{{FRAMEWORK_DEV_DEPS_PREFIX}}{{FRAMEWORK_VITE_DEV_DEPS}}"typescript":"^5"}}"#,
         ).unwrap();
         fs::write(
             lxapp.join("lxapp.json"),
@@ -554,7 +556,6 @@ mod tests {
         .unwrap();
         assert_eq!(vars["LINGXIA_BRIDGE_VERSION"], "1.2.3");
         assert_eq!(vars["LINGXIA_TYPES_VERSION"], "4.5.6");
-        assert_eq!(vars["RONG_VERSION"], "0.1.0");
         // Framework dep pins to the minor floor so an older framework patch resolves.
         assert_eq!(vars["LINGXIA_FRAMEWORK_RANGE"], "^1.2.0");
     }
@@ -590,7 +591,10 @@ mod tests {
             s.contains("@lingxia/react"),
             "must reference @lingxia/react"
         );
-        assert!(s.contains("@rongjs/rong"), "must reference @rongjs/rong");
+        assert!(
+            !s.contains("@rongjs/rong"),
+            "must not reference the removed @rongjs/rong type dep"
+        );
         assert!(
             !s.contains("@lingxia/rong"),
             "must not reference deprecated @lingxia/rong"
