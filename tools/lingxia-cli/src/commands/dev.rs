@@ -451,10 +451,7 @@ fn wait_for_background_session(
         }
 
         for session in log_store::list_sessions(project_root)? {
-            if session.pid == child.id()
-                && session.started_at >= started_at
-                && !log_store::is_stale(&session)
-            {
+            if session.started_at >= started_at && !log_store::is_stale(&session) {
                 return Ok(Some(session));
             }
         }
@@ -532,6 +529,14 @@ fn stop_session(project_root: &Path, selector: Option<String>, force: bool) -> R
         Err(err) if force => {
             eprintln!("Graceful stop failed: {err:#}");
             force_stop_session(project_root, &session)
+        }
+        Err(_) if log_store::is_stale(&session) => {
+            log_store::remove_session(project_root, &session.session_id)?;
+            println!(
+                "Removed stale {} dev session {}.",
+                session.platform, session.session_id
+            );
+            Ok(())
         }
         Err(err) => Err(err).with_context(|| {
             format!(

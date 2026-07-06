@@ -178,11 +178,10 @@ pub(super) fn execute_lxapp_dev(project_root: PathBuf, options: DevExecuteOption
         (Ok(()), Ok(())) => Ok(()),
         (Err(err), Ok(())) => Err(err),
         (Ok(()), Err(err)) => Err(err),
-        (Err(run_err), Err(stop_err)) => Err(anyhow!(
-            "{}\nAlso failed to stop dev server: {}",
-            run_err,
-            stop_err
-        )),
+        (Err(run_err), Err(stop_err)) => {
+            eprintln!("Also failed to stop dev server: {stop_err:#}");
+            Err(run_err)
+        }
     }
 }
 
@@ -350,6 +349,10 @@ fn prepare_windows_runner_assets(
     let assets_dir = log_store::dev_dir(lxapp_path)
         .join("runner")
         .join("windows-assets");
+    if assets_dir.exists() {
+        std::fs::remove_dir_all(&assets_dir)
+            .with_context(|| format!("Failed to clear {}", assets_dir.display()))?;
+    }
     std::fs::create_dir_all(&assets_dir)
         .with_context(|| format!("Failed to create {}", assets_dir.display()))?;
 
@@ -457,6 +460,7 @@ fn launch_windows_runner_for_lxapp(
     let assets_dir = prepare_windows_runner_assets(lxapp_path, &identity, ws_url)?;
     let resource_lxapp_paths = windows_runner_resource_lxapp_paths(lxapp_path, &identity)?;
     let exe_path = installed_windows_runner_exe_path()?;
+    terminate_existing_windows_runner_processes(&exe_path)?;
     let mock_dir = crate::lxapp::functions::prepare_dev(lxapp_path);
     if let Some(mock_dir) = &mock_dir {
         println!(
@@ -787,6 +791,43 @@ fn shell_execute_windows_runner(
     Ok(RunnerProcess::WindowsShell(WindowsShellRunnerProcess {
         handle: info.hProcess,
     }))
+}
+
+#[cfg(target_os = "windows")]
+fn terminate_existing_windows_runner_processes(exe_path: &Path) -> Result<()> {
+    let mut system = System::new();
+    system.refresh_processes(ProcessesToUpdate::All, true);
+
+    let mut pids = Vec::new();
+    for process in system.processes().values() {
+        let Some(process_exe) = process.exe() else {
+            continue;
+        };
+        if process_executable_matches(process_exe, exe_path) {
+            pids.push(process.pid());
+        }
+    }
+
+    for pid in pids {
+        let mut system = System::new();
+        system.refresh_processes(ProcessesToUpdate::Some(&[pid]), true);
+        let Some(process) = system.process(pid) else {
+            continue;
+        };
+        let _ = process.kill();
+        if !wait_for_pid_exit(pid, Duration::from_secs(3)) {
+            return Err(anyhow!(
+                "Failed to terminate existing LingXia Runner process {}",
+                pid
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[cfg(not(target_os = "windows"))]
+fn terminate_existing_windows_runner_processes(_exe_path: &Path) -> Result<()> {
+    Ok(())
 }
 
 #[cfg(target_os = "windows")]

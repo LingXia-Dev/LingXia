@@ -572,6 +572,23 @@ fn handle_client_connection(
         return Ok(());
     }
 
+    if handler.as_str() == lingxia_devtool_protocol::handlers::ECHO {
+        let runtime_connected = state.runtime_sender().is_some();
+        send_wire_message(
+            &mut websocket,
+            &DevtoolsWireMessage::Result {
+                command_id,
+                ok: true,
+                data: Some(serde_json::json!({
+                    "runtimeConnected": runtime_connected,
+                })),
+                error: None,
+            },
+        )?;
+        let _ = websocket.close(None);
+        return Ok(());
+    }
+
     if handler.as_str() == lingxia_devtool_protocol::handlers::session::SHUTDOWN {
         send_wire_message(
             &mut websocket,
