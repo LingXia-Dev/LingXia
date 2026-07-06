@@ -89,21 +89,17 @@ It **refuses a second same-platform session** in a project (stop the first with
 `lingxia dev stop`) so that `lxdev` never silently connects to the wrong target.
 Different platforms don't conflict — `-p android` and `-p ios` run side by side.
 
-`lingxia dev` owns dev-session lifecycle. Use it to start foreground sessions,
-start background sessions, inspect session status, stop sessions gracefully, or
-force-kill a session when graceful shutdown cannot reach the dev websocket.
-Background sessions write their process output under `.lingxia/background/` and
-still publish normal session metadata/logs for `lxdev`.
+`lingxia dev` owns the session lifecycle — start, `status`, `stop`. For
+automation, start it detached with `--background` (it returns once the session
+is live); a foreground run blocks the terminal and takes the session down when
+it exits. Either way the session publishes metadata + logs for `lxdev`.
 
 See `lingxia dev --help` for the flags.
 
-> **Driving a live session:** once `lingxia dev` is running, use the separate
-> **`lxdev`** binary to automate the running app — open URLs, click/type/eval in
-> browser tabs and lxapp pages, screenshot windows, and tail logs without
-> starting a new platform session. `lxdev` can ask a session to stop and can
-> rebuild/restart lxapps inside the running session; `lingxia dev` remains the
-> owner of platform process lifetime. See [`lxdev` — Drive a running dev
-> session](./lxdev.md).
+> **Drive the live session with [`lxdev`](./lxdev.md)** — a separate binary that
+> automates the running app (browser tabs, lxapp pages, screenshots, logs) and
+> can rebuild/restart lxapps, without starting a new session. The split:
+> `lingxia dev` owns process lifetime, `lxdev` drives.
 
 ### `lingxia devices`
 
