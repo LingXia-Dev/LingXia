@@ -12,7 +12,7 @@ This file says **what `lxdev` can do**. For flags and defaults, `lxdev <family> 
 lxdev --session ios ...          # platform name, or a session-id prefix
 ```
 
-Stale files from crashed sessions are pruned automatically (or via `lxdev sessions prune`). `lingxia dev` refuses a second same-platform session unless launched with `--parallel`.
+Stale files from crashed sessions are pruned automatically (or via `lxdev sessions prune`). `lingxia dev` refuses a second same-platform session (stop the first with `lingxia dev stop`); different platforms run side by side.
 
 ## Capabilities
 

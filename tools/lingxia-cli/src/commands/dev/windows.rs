@@ -7,7 +7,7 @@ const WINDOWS_APP_ICON_PATH_ENV: &str = "LINGXIA_APP_ICON_PATH";
 
 pub(super) fn execute_windows(ctx: DevContext) -> Result<()> {
     let platform_name = platform_session_name(PlatformType::Windows);
-    precheck_platform_session(&ctx.project_root, platform_name, ctx.parallel)?;
+    precheck_platform_session(&ctx.project_root, platform_name)?;
     let platform = platform::windows::WindowsPlatform::new();
     let stop_requested = Arc::new(AtomicBool::new(false));
     let server = server::start_server_fixed_with_stop(

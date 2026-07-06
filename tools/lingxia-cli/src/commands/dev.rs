@@ -72,7 +72,6 @@ pub struct DevExecuteOptions {
     pub extra_native_features: Vec<String>,
     pub with_provider: Vec<String>,
     pub provider_path: Option<String>,
-    pub parallel: bool,
     /// Runner simulator device (macOS lxapp runner only), e.g. `desktop-1440`.
     pub runner_device: Option<String>,
     pub background: bool,
@@ -101,7 +100,6 @@ struct DevContext {
     reinstall: bool,
     resolved_env: crate::config::ResolvedEnv,
     extra_native_features: Vec<String>,
-    parallel: bool,
 }
 
 fn prepare_dev_host_assets(
@@ -150,15 +148,18 @@ fn platform_session_name(platform: PlatformType) -> &'static str {
 }
 
 /// Refuse to start a new dev session if another live session already exists for
-/// the same platform in this project, unless `--parallel` was passed.
+/// the same platform in this project. A session is bound to its platform, so a
+/// second same-platform session is never wanted: it only leaves `lxdev` unable
+/// to tell which one to drive.
 ///
 /// Stale (unreachable) session files are pruned first; only WS-reachable peers
 /// count as conflicts. This is the single defense against the "human + agent
-/// both ran `lingxia dev -p ios`" footgun.
-fn precheck_platform_session(project_root: &Path, platform: &str, parallel: bool) -> Result<()> {
+/// both ran `lingxia dev -p ios`" footgun. Different platforms don't conflict —
+/// `lingxia dev -p android` and `-p ios` run side by side.
+fn precheck_platform_session(project_root: &Path, platform: &str) -> Result<()> {
     let _ = log_store::prune_stale(project_root);
     let live = log_store::find_live_for_platform(project_root, platform)?;
-    if live.is_empty() || parallel {
+    if live.is_empty() {
         return Ok(());
     }
     let mut msg = format!("Existing {platform} dev session is already running in this project:\n");
@@ -168,9 +169,7 @@ fn precheck_platform_session(project_root: &Path, platform: &str, parallel: bool
             info.session_id, info.pid, info.ws_url
         ));
     }
-    msg.push_str("\nStop it first, or rerun with --parallel to allow multiple ");
-    msg.push_str(platform);
-    msg.push_str(" sessions.");
+    msg.push_str("\nStop it first with `lingxia dev stop`.");
     Err(anyhow!(msg))
 }
 
@@ -325,7 +324,6 @@ pub fn execute(options: DevExecuteOptions) -> Result<()> {
         reinstall: options.reinstall,
         resolved_env,
         extra_native_features,
-        parallel: options.parallel,
     };
 
     let result = match platform_type {
