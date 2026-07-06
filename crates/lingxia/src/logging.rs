@@ -3,6 +3,7 @@
 use lingxia_log::{LogBuilder, LogLevel as LxLogLevel, LogManager, LogMessage, LogTag};
 use log::{Level, LevelFilter, Log, Metadata, Record};
 use std::sync::OnceLock;
+use std::sync::atomic::{AtomicI32, Ordering};
 
 static LOGGING_INIT: OnceLock<()> = OnceLock::new();
 static DOWNSTREAM_LOGGER: OnceLock<Box<dyn Log + Send + Sync>> = OnceLock::new();
@@ -13,6 +14,18 @@ const SDK_LOG_LEVEL_DEBUG: i32 = 1;
 const SDK_LOG_LEVEL_INFO: i32 = 2;
 const SDK_LOG_LEVEL_WARN: i32 = 3;
 const SDK_LOG_LEVEL_ERROR: i32 = 4;
+
+/// Env var read at [`init`] to seed the runtime log threshold, e.g.
+/// `LINGXIA_LOG_LEVEL=debug`. `lingxia dev` sets this so developers see
+/// debug/verbose; release builds omit it and default to `info`.
+const LOG_LEVEL_ENV: &str = "LINGXIA_LOG_LEVEL";
+
+/// Single source of truth for the active minimum level, as an SDK level int
+/// (0=verbose … 4=error). Both the Rust `log` facade and the host-log path
+/// ([`forward_host_log`]) gate on this, so Rust and SDK logs share one policy.
+/// Adjustable at runtime via [`set_log_level`] (e.g. the dev server raising it
+/// for a session).
+static HOST_LOG_LEVEL: AtomicI32 = AtomicI32::new(SDK_LOG_LEVEL_INFO);
 
 /// Error returned when installing a downstream logger fails.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -36,15 +49,61 @@ pub(crate) fn init() {
         return;
     }
 
+    // Seed the shared threshold before any record can flow, so the platform
+    // sinks and the facade agree on the level from the very first log.
+    let level = resolve_env_level();
+    HOST_LOG_LEVEL.store(level, Ordering::Relaxed);
+
     let _ = LogManager::init(|message| {
         platform_logger().write(message);
     });
 
     if log::set_logger(&SDK_LOGGER).is_ok() {
-        log::set_max_level(LevelFilter::Info);
+        log::set_max_level(sdk_level_to_filter(level));
     }
 
     let _ = LOGGING_INIT.set(());
+}
+
+/// Raise or lower the active log threshold at runtime (SDK level int: 0=verbose
+/// … 4=error). Updates both the host-log gate and the Rust `log` facade so they
+/// stay in lock-step — e.g. the dev server raising it to `debug` for a session.
+///
+/// Note: the Android/Harmony logcat sink's own cap is fixed when first built
+/// (from the env level), so a later raise reaches the dev-server stream and the
+/// in-memory buffer but not logcat/hilog.
+pub fn set_log_level(level: i32) {
+    if map_sdk_level(level).is_none() {
+        return;
+    }
+    HOST_LOG_LEVEL.store(level, Ordering::Relaxed);
+    log::set_max_level(sdk_level_to_filter(level));
+}
+
+/// Reads [`LOG_LEVEL_ENV`]; unknown/absent → `info`.
+fn resolve_env_level() -> i32 {
+    match std::env::var(LOG_LEVEL_ENV) {
+        Ok(value) => match value.trim().to_ascii_lowercase().as_str() {
+            "verbose" | "trace" => SDK_LOG_LEVEL_VERBOSE,
+            "debug" => SDK_LOG_LEVEL_DEBUG,
+            "info" => SDK_LOG_LEVEL_INFO,
+            "warn" | "warning" => SDK_LOG_LEVEL_WARN,
+            "error" => SDK_LOG_LEVEL_ERROR,
+            _ => SDK_LOG_LEVEL_INFO,
+        },
+        Err(_) => SDK_LOG_LEVEL_INFO,
+    }
+}
+
+fn sdk_level_to_filter(level: i32) -> LevelFilter {
+    match level {
+        SDK_LOG_LEVEL_VERBOSE => LevelFilter::Trace,
+        SDK_LOG_LEVEL_DEBUG => LevelFilter::Debug,
+        SDK_LOG_LEVEL_INFO => LevelFilter::Info,
+        SDK_LOG_LEVEL_WARN => LevelFilter::Warn,
+        SDK_LOG_LEVEL_ERROR => LevelFilter::Error,
+        _ => LevelFilter::Info,
+    }
 }
 
 /// Registers an additional logger that receives every Rust log record emitted by LingXia.
@@ -72,11 +131,30 @@ pub(crate) fn forward_host_log(
     path: &str,
     message: &str,
 ) -> bool {
-    let Some(level) = map_sdk_level(level) else {
+    let level_int = level;
+    let Some(level) = map_sdk_level(level_int) else {
         return false;
     };
-    if LogManager::get().is_none() {
+    // Shared threshold: drop anything below the active level before doing any
+    // work, so host logs honour the same policy as Rust `log::*` records
+    // (previously host logs bypassed the level entirely).
+    if level_int < HOST_LOG_LEVEL.load(Ordering::Relaxed) {
         return false;
+    }
+    // Before the pipeline is up (early cold-start), fall back to the platform
+    // logger directly so bootstrap warnings still reach logcat/os_log/hilog
+    // instead of vanishing.
+    if LogManager::get().is_none() {
+        let mut msg = LogMessage::new(LogTag::Native, message).with_level(level);
+        msg.target = Some(category.to_string());
+        if !appid.is_empty() {
+            msg.appid = Some(appid.to_string());
+        }
+        if !path.is_empty() {
+            msg.path = Some(path.to_string());
+        }
+        platform_logger().write(&msg);
+        return true;
     }
 
     LogBuilder::new(LogTag::Native, message)
@@ -176,17 +254,22 @@ struct PlatformLogger {
 
 impl PlatformLogger {
     fn new() -> Self {
+        // Match the logcat/hilog cap to the resolved threshold so a dev build
+        // (LINGXIA_LOG_LEVEL=debug) actually surfaces migrated debug/verbose
+        // records instead of the old hard Info cap silently dropping them.
+        #[cfg(any(target_os = "android", target_env = "ohos"))]
+        let sink_filter = sdk_level_to_filter(HOST_LOG_LEVEL.load(Ordering::Relaxed));
         Self {
             #[cfg(target_os = "android")]
             android: android_logger::AndroidLogger::new(
                 android_logger::Config::default()
-                    .with_max_level(LevelFilter::Info)
+                    .with_max_level(sink_filter)
                     .with_tag("Rust"),
             ),
             #[cfg(target_env = "ohos")]
             harmony: ohos_hilog::OhosLogger::new(
                 ohos_hilog::Config::default()
-                    .with_max_level(LevelFilter::Info)
+                    .with_max_level(sink_filter)
                     .with_tag("LingXia.Rust"),
             ),
             #[cfg(any(target_os = "ios", target_os = "macos"))]

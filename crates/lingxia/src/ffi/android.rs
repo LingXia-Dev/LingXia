@@ -238,6 +238,17 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_forwardHostLog(
     .resolve::<LogErrorAndDefault>()
 }
 
+/// Set the runtime log threshold (0=verbose … 4=error). See
+/// [`crate::logging::set_log_level`].
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_app_NativeApi_setLogLevel(
+    _env: EnvUnowned,
+    _class: JClass,
+    level: jint,
+) {
+    crate::logging::set_log_level(level);
+}
+
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_com_lingxia_app_NativeApi_onPageShow(
     mut env: EnvUnowned,

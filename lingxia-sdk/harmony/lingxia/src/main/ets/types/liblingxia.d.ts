@@ -163,6 +163,9 @@ declare module 'liblingxia.so' {
     message: string
   ): boolean;
 
+  /** Set the runtime log threshold (0=verbose … 4=error). */
+  export function setLogLevel(level: number): void;
+
   /**
    * Run the shared browser navigation policy classifier.
    *

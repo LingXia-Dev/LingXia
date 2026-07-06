@@ -140,6 +140,9 @@ mod bridge {
             message: &str,
         ) -> bool;
 
+        #[swift_bridge(swift_name = "setLogLevel")]
+        fn set_log_level(level: i32);
+
         #[swift_bridge(swift_name = "onPageShow")]
         fn on_page_show(appid: &str, path: &str);
 
@@ -453,6 +456,12 @@ pub fn forward_host_log(
     message: &str,
 ) -> bool {
     crate::logging::forward_host_log(level, category, appid, path, message)
+}
+
+/// Set the runtime log threshold (0=verbose … 4=error). See
+/// [`crate::logging::set_log_level`].
+pub fn set_log_level(level: i32) {
+    crate::logging::set_log_level(level);
 }
 
 /// Notify that a page is being shown

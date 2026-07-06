@@ -159,6 +159,13 @@ pub fn forward_host_log(
     crate::logging::forward_host_log(level, &category, &appid, &path, &message)
 }
 
+/// Set the runtime log threshold (0=verbose … 4=error). See
+/// [`crate::logging::set_log_level`].
+#[napi]
+pub fn set_log_level(level: i32) {
+    crate::logging::set_log_level(level);
+}
+
 /// Register custom schemes (must be called before WebEngine initialization)
 #[napi]
 pub fn register_custom_schemes() -> bool {
