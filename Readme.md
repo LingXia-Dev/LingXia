@@ -48,14 +48,14 @@ Install the CLI.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/LingXia-Dev/LingXia/main/install.sh | sh
-lingxia --version
+lingxia version
 ```
 
 **Windows PowerShell:**
 
 ```powershell
 irm https://raw.githubusercontent.com/LingXia-Dev/LingXia/main/install.ps1 | iex
-lingxia --version
+lingxia version
 ```
 
 Create and run a native host app:

@@ -188,7 +188,7 @@ EOF
 info "Installed update metadata -> $INSTALL_DIR/lingxia-cli-install.json"
 
 info ""
-info "Installed lingxia + lxdev $VERSION to $INSTALL_DIR; run \`lingxia${EXT} --version\`"
+info "Installed lingxia + lxdev $VERSION to $INSTALL_DIR; run \`lingxia${EXT} version\`"
 
 # Warn if the install dir is not on PATH.
 case ":$PATH:" in

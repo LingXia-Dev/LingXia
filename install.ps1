@@ -153,7 +153,7 @@ finally {
 }
 
 Write-Info ""
-Write-Info "Installed lingxia + lxdev $Version to $InstallDir; run ``lingxia.exe --version``"
+Write-Info "Installed lingxia + lxdev $Version to $InstallDir; run ``lingxia.exe version``"
 
 # --- Ensure the install dir is on PATH ---------------------------------------
 # Persist to the *user* PATH (idempotent) and update the current session so the

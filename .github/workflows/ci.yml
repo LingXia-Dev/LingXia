@@ -359,9 +359,9 @@ jobs:
       - name: Build CLI (release)
         run: cargo build -p lingxia-cli --release --target ${{ matrix.target }}
 
-      - name: Smoke test (--version)
+      - name: Smoke test (version)
         shell: bash
-        run: ./target/${{ matrix.target }}/release/lingxia${{ matrix.exe }} --version
+        run: ./target/${{ matrix.target }}/release/lingxia${{ matrix.exe }} version
 
       - name: Upload CLI binary
         uses: actions/upload-artifact@v4

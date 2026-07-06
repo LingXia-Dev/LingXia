@@ -9,7 +9,7 @@ allowed-tools: Read, Grep, Glob, Edit, Write, Bash(lingxia:*), Bash(lxdev:*), Ba
 
 LingXia is a cross-platform app framework. This skill is the entry router — it carries the decision tree and pointers into supporting reference files. **Read sub-files only when you need them**; do not load the whole tree up front.
 
-When you read this you can usually assume the `lingxia` CLI is on `PATH` (verify with `lingxia --version`; installing it is outside this skill's scope) and that you are inside a LingXia project — but **confirm the shape** with the probe in Step 0 rather than guessing.
+When you read this you can usually assume the `lingxia` CLI is on `PATH` (verify with `lingxia version`; installing it is outside this skill's scope) and that you are inside a LingXia project — but **confirm the shape** with the probe in Step 0 rather than guessing.
 
 ---
 
