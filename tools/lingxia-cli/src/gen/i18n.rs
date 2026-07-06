@@ -9,8 +9,9 @@ use std::path::{Path, PathBuf};
 
 #[derive(Args, Debug, Clone, Default)]
 pub struct I18nConfig {
-    /// Path to the i18n source root directory
-    /// (`shared/`, `permission/cli/`, `permission/runtime/`, `error/`, `schema/`)
+    /// Path to the i18n source root directory (holds the scope dirs
+    /// `shared/`, `error/`, `permission/runtime/`, `permission/cli/`,
+    /// `logic/`, `desktop/`, `android/`, `apple/`, `harmony/` and `schema/`)
     #[arg(short, long, default_value = "i18n")]
     pub input: PathBuf,
 
@@ -1023,43 +1024,6 @@ fn escape_rust_string(val: &str) -> String {
     val.replace("\\", "\\\\").replace("\"", "\\\"")
 }
 
-/// Pipe generated Rust through `rustfmt` (edition 2024, matching the
-/// workspace) so the checked-in file is byte-identical to what `cargo fmt`
-/// would produce. Without this, `gen i18n` emits raw long lines and every
-/// `gen i18n --check` run reports spurious drift against the fmt'd copy.
-fn rustfmt_source(src: &str) -> Result<String> {
-    use std::io::Write;
-    use std::process::{Command, Stdio};
-
-    let mut child = Command::new("rustfmt")
-        .args(["--edition", "2024", "--emit", "stdout"])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .context(
-            "failed to spawn `rustfmt` to format generated i18n Rust; \
-             install it with `rustup component add rustfmt`",
-        )?;
-    // Feed stdin from a scoped thread so a large formatted result filling the
-    // stdout pipe buffer can't deadlock against our stdin write.
-    let mut stdin = child.stdin.take().expect("rustfmt stdin piped");
-    let bytes = src.as_bytes();
-    let output = std::thread::scope(|scope| {
-        let writer = scope.spawn(move || stdin.write_all(bytes));
-        let output = child.wait_with_output();
-        writer.join().expect("stdin writer thread panicked")?;
-        output.map_err(anyhow::Error::from)
-    })?;
-    if !output.status.success() {
-        return Err(anyhow!(
-            "rustfmt failed on generated i18n Rust: {}",
-            String::from_utf8_lossy(&output.stderr)
-        ));
-    }
-    String::from_utf8(output.stdout).context("rustfmt produced non-UTF-8 output")
-}
-
 // --- Generators ---
 
 fn generate_rust(
@@ -1070,6 +1034,13 @@ fn generate_rust(
 ) -> Result<()> {
     let mut content = String::from(GEN_HEADER_RUST);
 
+    // Every top-level item carries `#[rustfmt::skip]`: this file is emitted
+    // raw (unformatted long match arms), so `cargo fmt --check` would flag it
+    // and `gen i18n --check` would report spurious drift against a fmt'd copy.
+    // Skipping keeps the generator self-sufficient — no `rustfmt` binary
+    // required at generation time (CI check/test toolchains lack the
+    // component), and output is byte-stable across rustfmt versions.
+    content.push_str("#[rustfmt::skip]\n");
     content.push_str("#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]\n");
     content.push_str("pub enum I18nKey {\n");
 
@@ -1083,6 +1054,7 @@ fn generate_rust(
     }
     content.push_str("}\n\n");
 
+    content.push_str("#[rustfmt::skip]\n");
     content.push_str("impl I18nKey {\n");
     content.push_str("    pub fn get(&self, locale: &str) -> &'static str {\n");
     content.push_str(
@@ -1152,7 +1124,7 @@ fn generate_rust(
     content.push_str("    }\n\n");
     content.push_str("}\n");
 
-    content.push_str("\npub fn err_code_key(code: u32) -> Option<I18nKey> {\n");
+    content.push_str("\n#[rustfmt::skip]\npub fn err_code_key(code: u32) -> Option<I18nKey> {\n");
     content.push_str("    match code {\n");
     for (code, key) in err_code_keys {
         content.push_str(&format!(
@@ -1164,8 +1136,6 @@ fn generate_rust(
     content.push_str("        _ => None,\n");
     content.push_str("    }\n");
     content.push_str("}\n");
-
-    let content = rustfmt_source(&content)?;
 
     if let Some(parent) = out_path.parent() {
         fs::create_dir_all(parent)?;
