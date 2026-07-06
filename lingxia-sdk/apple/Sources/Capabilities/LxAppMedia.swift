@@ -477,7 +477,10 @@ extension LxAppMedia {
         outputURL: URL? = nil
     ) -> URL? {
         guard let image = UIImage(contentsOfFile: sourceURL.path) else {
-            LXLog.error("Failed to load image from \(sourceURL.path)", category: "Media")
+            // Log the filename only, not the full path: os_log's `%@` used to
+            // redact it as <private>, but interpolation into the pipeline would
+            // otherwise store/upload the private path verbatim.
+            LXLog.error("Failed to load image from \(sourceURL.lastPathComponent)", category: "Media")
             return nil
         }
 

@@ -106,7 +106,7 @@ class LxAppWifi {
             // Send current state to new subscriber
             emitWifiConnectedToCallback(callback_id)
         } else {
-            LXLog.info("WiFi state listener already exists: \(callback_id)", category: "WiFi")
+            LXLog.warn("WiFi state listener already exists: \(callback_id)", category: "WiFi")
         }
     }
 
@@ -125,7 +125,7 @@ class LxAppWifi {
                 lastConnectedSignature = nil
             }
         } else {
-            LXLog.info("WiFi state listener not found: \(callback_id)", category: "WiFi")
+            LXLog.warn("WiFi state listener not found: \(callback_id)", category: "WiFi")
         }
     }
 
@@ -539,7 +539,7 @@ class LxAppWifi {
         LXLog.info("emitWifiConnected: callbackId=\(callbackId)", category: "WiFi")
         let success = onCallback(callbackId, true, jsonString)
         if !success {
-            LXLog.info("Failed to dispatch wifi connected event to callback \(callbackId)", category: "WiFi")
+            LXLog.warn("Failed to dispatch wifi connected event to callback \(callbackId)", category: "WiFi")
         }
     }
 
@@ -571,7 +571,7 @@ class LxAppWifi {
         for callbackId in stateCallbacks {
             let success = onCallback(callbackId, true, jsonString)
             if !success {
-                LXLog.info("Failed to dispatch wifi connected event to callback \(callbackId)", category: "WiFi")
+                LXLog.warn("Failed to dispatch wifi connected event to callback \(callbackId)", category: "WiFi")
             }
         }
     }
