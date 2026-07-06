@@ -453,6 +453,13 @@ pub(super) fn install() {
     lingxia_browser::set_tabs_changed_handler(Arc::new(|| {
         schedule_browser_tabs_changed_sync();
     }));
+    #[cfg(feature = "browser-runtime")]
+    lingxia_browser::set_tab_present_handler(Arc::new(|tab_id| {
+        let Some(owner_appid) = shell_owner_appid() else {
+            return;
+        };
+        present_browser_tab_when_ready(&owner_appid, tab_id.to_string());
+    }));
     // Keep in-app open-url targets (new-window requests from browser tabs,
     // lxapp openURL with self/new_browser_tab) inside the app as browser
     // tabs; unhandled requests fall back to the OS shell handler.

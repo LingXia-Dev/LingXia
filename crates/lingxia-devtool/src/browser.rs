@@ -413,7 +413,15 @@ fn present_browser_tab(tab_id: &str) {
     let _ = lingxia::apple::present_internal_browser_tab(tab_id);
 }
 
-#[cfg(all(feature = "browser", not(target_os = "macos")))]
+#[cfg(all(feature = "browser", target_os = "windows"))]
+fn present_browser_tab(tab_id: &str) {
+    let _ = lingxia_browser::present(tab_id);
+}
+
+#[cfg(all(
+    feature = "browser",
+    not(any(target_os = "macos", target_os = "windows"))
+))]
 fn present_browser_tab(_tab_id: &str) {}
 
 #[cfg(feature = "browser")]

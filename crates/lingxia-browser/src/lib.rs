@@ -152,6 +152,20 @@ pub fn set_tabs_changed_handler(handler: Arc<dyn Fn() + Send + Sync>) {
     tabs::set_tabs_changed_handler(handler);
 }
 
+/// Registers a process-wide observer used to bring a browser tab onscreen.
+///
+/// Browser core owns tab lifecycle and active-tab state, but only a host shell
+/// knows how to present that tab's WebView in its UI. Devtools and other
+/// automation surfaces call [`present`] to request this handoff.
+pub fn set_tab_present_handler(handler: Arc<dyn Fn(&str) + Send + Sync>) {
+    tabs::set_tab_present_handler(handler);
+}
+
+/// Mark `tab_id` active and ask the host shell to bring it onscreen.
+pub fn present(tab_id: &str) -> Result<BrowserTabInfo, BrowserAutomationError> {
+    tabs::browser_present_tab(tab_id)
+}
+
 /// PNG-encoded favicon of `tab_id`'s current page, if the platform webview
 /// reported one (see `WebViewDelegate::on_favicon_changed`). Kept out of
 /// [`BrowserTabInfo`] so the serialized tab projection stays byte-free;
