@@ -93,6 +93,10 @@ const OVERLAY_MARGIN: i32 = 24;
 const SIDEBAR_TABBAR_POPUP_TIMER_ID: usize = 0x5A18;
 #[cfg(feature = "shell-chrome")]
 const SIDEBAR_TABBAR_POPUP_TIMER_MS: u32 = 80;
+#[cfg(feature = "runtime")]
+const SYSTEM_MENU_ABOUT_COMMAND: usize = 0x7100;
+#[cfg(feature = "runtime")]
+const SYSTEM_MENU_COMMAND_MASK: usize = 0xfff0;
 
 /// `WM_DWMCOLORIZATIONCOLORCHANGED` (dwmapi.h) - sent on a system accent change.
 /// Not surfaced by the `windows` crate's message constants, so define it here.
@@ -5106,6 +5110,153 @@ fn show_native_view(view: WindowsWebViewNativeView, title: &str, activate: bool)
     Ok(())
 }
 
+#[cfg(feature = "runtime")]
+fn install_lingxia_system_menu(hwnd: HWND) {
+    use windows::Win32::UI::WindowsAndMessaging::{
+        DrawMenuBar, GetMenuItemCount, GetSystemMenu, InsertMenuW, MF_BYPOSITION, MF_SEPARATOR,
+        MF_STRING,
+    };
+
+    unsafe {
+        let menu = GetSystemMenu(hwnd, false);
+        if menu.is_invalid() {
+            return;
+        }
+        if GetMenuItemCount(Some(menu)) <= 0 {
+            return;
+        }
+
+        let about = to_wide(&localized_system_menu_label("common.about", "About"));
+        let _ = InsertMenuW(
+            menu,
+            0,
+            MF_BYPOSITION | MF_STRING,
+            SYSTEM_MENU_ABOUT_COMMAND,
+            PCWSTR(about.as_ptr()),
+        );
+        let _ = InsertMenuW(menu, 1, MF_BYPOSITION | MF_SEPARATOR, 0, PCWSTR::null());
+        let _ = DrawMenuBar(hwnd);
+    }
+}
+
+#[cfg(not(feature = "runtime"))]
+fn install_lingxia_system_menu(_hwnd: HWND) {}
+
+#[cfg(feature = "runtime")]
+fn handle_lingxia_system_menu_command(hwnd: HWND, command: usize) -> bool {
+    match command & SYSTEM_MENU_COMMAND_MASK {
+        SYSTEM_MENU_ABOUT_COMMAND => {
+            show_lingxia_system_about(hwnd);
+            true
+        }
+        _ => false,
+    }
+}
+
+#[cfg(not(feature = "runtime"))]
+fn handle_lingxia_system_menu_command(_hwnd: HWND, _command: usize) -> bool {
+    false
+}
+
+#[cfg(feature = "runtime")]
+fn show_lingxia_system_about(hwnd: HWND) {
+    let title = localized_system_menu_label("common.about", "About");
+    let app_name = lingxia::app::product_name()
+        .map(str::to_string)
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| "LingXia".to_string());
+    let version = lingxia::app::product_version()
+        .map(str::to_string)
+        .unwrap_or_default();
+    let version_label = localized_system_menu_label("common.version", "Version");
+    let body = if version.trim().is_empty() {
+        app_name.clone()
+    } else {
+        format!("{app_name}\n{version_label} {version}")
+    };
+    if show_lingxia_system_about_task_dialog(hwnd, &title, &app_name, &body) {
+        return;
+    }
+    show_lingxia_system_about_message_box(hwnd, &title, &body);
+}
+
+#[cfg(feature = "runtime")]
+fn show_lingxia_system_about_task_dialog(
+    hwnd: HWND,
+    title: &str,
+    app_name: &str,
+    body: &str,
+) -> bool {
+    use windows::Win32::UI::Controls::{
+        TASKDIALOGCONFIG, TASKDIALOGCONFIG_0, TDCBF_OK_BUTTON, TDF_ALLOW_DIALOG_CANCELLATION,
+        TDF_POSITION_RELATIVE_TO_WINDOW, TDF_USE_HICON_MAIN, TaskDialogIndirect,
+    };
+    use windows::Win32::UI::WindowsAndMessaging::{DestroyIcon, HICON};
+
+    let from_path = crate::app_icon::current_app_icon_path()
+        .and_then(|path| crate::app_icon::create_icon_handle_from_path(&path, 64));
+    let (icon_handle, owns_icon) = match from_path {
+        Some(handle) => (handle, true),
+        None => (
+            crate::app_icon::current_large_icon_handle().unwrap_or(0),
+            false,
+        ),
+    };
+
+    let title = to_wide(title);
+    let instruction = to_wide(app_name);
+    let body = to_wide(body);
+    let mut flags = TDF_ALLOW_DIALOG_CANCELLATION | TDF_POSITION_RELATIVE_TO_WINDOW;
+    let main_icon = if icon_handle != 0 {
+        flags |= TDF_USE_HICON_MAIN;
+        TASKDIALOGCONFIG_0 {
+            hMainIcon: HICON(icon_handle as *mut core::ffi::c_void),
+        }
+    } else {
+        TASKDIALOGCONFIG_0::default()
+    };
+    let config = TASKDIALOGCONFIG {
+        cbSize: std::mem::size_of::<TASKDIALOGCONFIG>() as u32,
+        hwndParent: hwnd,
+        dwFlags: flags,
+        dwCommonButtons: TDCBF_OK_BUTTON,
+        pszWindowTitle: PCWSTR(title.as_ptr()),
+        pszMainInstruction: PCWSTR(instruction.as_ptr()),
+        pszContent: PCWSTR(body.as_ptr()),
+        Anonymous1: main_icon,
+        ..Default::default()
+    };
+
+    let shown = unsafe { TaskDialogIndirect(&config, None, None, None) }.is_ok();
+    if owns_icon && icon_handle != 0 {
+        unsafe {
+            let _ = DestroyIcon(HICON(icon_handle as *mut core::ffi::c_void));
+        }
+    }
+    shown
+}
+
+#[cfg(feature = "runtime")]
+fn show_lingxia_system_about_message_box(hwnd: HWND, title: &str, body: &str) {
+    use windows::Win32::UI::WindowsAndMessaging::{MB_OK, MessageBoxW};
+
+    let body = to_wide(body);
+    let title = to_wide(title);
+    unsafe {
+        let _ = MessageBoxW(
+            Some(hwnd),
+            PCWSTR(body.as_ptr()),
+            PCWSTR(title.as_ptr()),
+            MB_OK,
+        );
+    }
+}
+
+#[cfg(feature = "runtime")]
+fn localized_system_menu_label(key: &str, fallback: &str) -> String {
+    lingxia_platform::i18n::dialog_title(key, fallback)
+}
+
 fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNativeView> {
     unsafe extern "system" fn window_proc(
         hwnd: HWND,
@@ -5125,6 +5276,16 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                             user_data as isize,
                         );
                     }
+                }
+                unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
+            }
+            WindowsAndMessaging::WM_CREATE => {
+                install_lingxia_system_menu(hwnd);
+                unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
+            }
+            WindowsAndMessaging::WM_SYSCOMMAND => {
+                if handle_lingxia_system_menu_command(hwnd, wparam.0) {
+                    return LRESULT(0);
                 }
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }

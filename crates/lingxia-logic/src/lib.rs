@@ -64,6 +64,9 @@ pub fn register_logic_runtime() {
 fn register_platform_dialog_i18n() {
     lingxia_platform::i18n::set_dialog_translator(|key| {
         let i18n_key = match key {
+            "common.about" => I18nKey::CommonAbout,
+            "common.exit" => I18nKey::CommonExit,
+            "common.version" => I18nKey::CommonVersion,
             "file_chooser.select_folder" => I18nKey::FileChooserSelectFolder,
             "file_chooser.select_file" => I18nKey::FileChooserSelectFile,
             "file_chooser.choose_images" => I18nKey::FileChooserChooseImages,

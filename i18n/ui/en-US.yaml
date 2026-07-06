@@ -9,6 +9,9 @@ common:
   done: "Done"
   close: "Close"
   refresh: "Refresh"
+  about: "About"
+  exit: "Exit"
+  version: "Version"
 
 # Capsule Menu
 capsule:

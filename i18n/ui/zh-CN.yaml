@@ -9,6 +9,9 @@ common:
   done: "完成"
   close: "关闭"
   refresh: "刷新"
+  about: "关于"
+  exit: "退出"
+  version: "版本"
 
 # Capsule Menu
 capsule:
