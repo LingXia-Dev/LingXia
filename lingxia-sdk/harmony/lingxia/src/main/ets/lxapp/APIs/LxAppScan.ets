@@ -1,11 +1,10 @@
-import { hilog } from '@kit.PerformanceAnalysisKit';
+import { LxLog } from '../../app/LxLog';
 import { scanBarcode, scanCore } from '@kit.ScanKit';
 import { Lingxia } from '../../app/Lingxia';
 import { onCallback } from 'liblingxia.so';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { PermissionManager } from '../../app/PermissionManager';
 
-const DOMAIN = 0x0000;
 const TAG = 'LingXia.Scan';
 
 interface ScanCodePayload {
@@ -28,7 +27,7 @@ export class LxAppScan {
 
       const hasCb = options && (typeof options.callbackId === 'string' || typeof options.callbackId === 'number');
       if (!hasCb) {
-        hilog.error(DOMAIN, TAG, 'scanCode: invalid payload');
+        LxLog.e(TAG, 'scanCode: invalid payload');
         return false;
       }
 
@@ -44,7 +43,7 @@ export class LxAppScan {
       return true;
     } catch (err) {
       const message = err instanceof Error ? err.message : `${err}`;
-      hilog.error(DOMAIN, TAG, `scanCode: failed to parse payload: ${message}`);
+      LxLog.e(TAG, `scanCode: failed to parse payload: ${message}`);
       return false;
     }
   }
@@ -101,7 +100,7 @@ export class LxAppScan {
         onCallback(String(options.callbackId), false, '2000');
       } else {
         const message = error.message || (err instanceof Error ? err.message : `${err}`);
-        hilog.error(DOMAIN, TAG, `startScan failed: ${message}`);
+        LxLog.e(TAG, `startScan failed: ${message}`);
         onCallback(String(options.callbackId), false, '1001');
       }
     }

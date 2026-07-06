@@ -36,6 +36,9 @@ internal object NativeApi {
                 libraryLoaded.set(true)
                 Log.d(TAG, "Native library 'lingxia' loaded")
             } catch (error: Throwable) {
+                // Stays on android.util.Log on purpose: LxLog routes through this
+                // very native library via forwardHostLog, so it can't report its
+                // own load failure.
                 Log.e(TAG, "Failed to load native library 'lingxia'", error)
             }
         }

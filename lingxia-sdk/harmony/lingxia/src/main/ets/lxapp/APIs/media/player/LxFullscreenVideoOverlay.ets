@@ -5,6 +5,7 @@ import { LxNativeVideoPlayer } from './LxNativeVideoPlayer';
 import { calculateSliderValue } from './VideoUtils';
 import { VideoControlsView, VideoControlSize } from './VideoControls';
 import { resolveLxUriForFileAccess } from '../LxUri';
+import { LxLog } from '../../../../app/LxLog';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.FullscreenOverlay';
@@ -80,7 +81,7 @@ export struct LxFullscreenVideoOverlay {
       this.screenWidthVp = defaultDisplay.width / density;
       this.screenHeightVp = defaultDisplay.height / density;
     } catch (error) {
-      hilog.error(DOMAIN, TAG, `Failed to get screen dimensions: ${error}`);
+      LxLog.e(TAG, `Failed to get screen dimensions: ${error}`);
       this.screenWidthVp = 360; // Fallback value
       this.screenHeightVp = 800; // Fallback value
     }
@@ -133,7 +134,7 @@ export struct LxFullscreenVideoOverlay {
         mainWindow.setWindowSystemBarEnable([]);
       });
     } catch (e) {
-      hilog.error(DOMAIN, TAG, `Error entering fullscreen mode: ${e}`);
+      LxLog.e(TAG, `Error entering fullscreen mode: ${e}`);
     }
   }
 
@@ -144,7 +145,7 @@ export struct LxFullscreenVideoOverlay {
         mainWindow.setWindowSystemBarEnable(['status', 'navigation']);
       });
     } catch (e) {
-      hilog.error(DOMAIN, TAG, `Error restoring from fullscreen: ${e}`);
+      LxLog.e(TAG, `Error restoring from fullscreen: ${e}`);
     }
   }
 

@@ -4,6 +4,7 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.view.TextureView
+import com.lingxia.app.LxLog
 import com.lingxia.lxapp.NativeComponents.Components.VideoComponent
 import org.json.JSONObject
 import java.lang.ref.WeakReference
@@ -264,7 +265,7 @@ internal object ComponentRouter {
     fun createStreamDecoder(componentId: String): Boolean {
         val manager = managers[componentId]?.get()
         if (manager == null) {
-            Log.e(TAG, "createStreamDecoder: component not found: $componentId")
+            LxLog.e(TAG, "createStreamDecoder: component not found: $componentId")
             return false
         }
 
@@ -279,12 +280,12 @@ internal object ComponentRouter {
         if (isMainThread) {
             val component = manager.getVideoComponent(componentId)
             if (component == null) {
-                Log.e(TAG, "createStreamDecoder: video component not found: $componentId")
+                LxLog.e(TAG, "createStreamDecoder: video component not found: $componentId")
                 return false
             }
             val textureView = component.acquireStreamTextureView()
             if (textureView == null) {
-                Log.e(TAG, "createStreamDecoder: TextureView not available: $componentId")
+                LxLog.e(TAG, "createStreamDecoder: TextureView not available: $componentId")
                 component.releaseStreamTextureView()
                 return false
             }

@@ -2,6 +2,7 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import { abilityAccessCtrl, Permissions } from '@kit.AbilityKit';
 import common from '@ohos.app.ability.common';
 import { onCallback } from 'liblingxia.so';
+import { LxLog } from './LxLog';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.Permission';
@@ -106,7 +107,7 @@ export class PermissionManager {
         hilog.info(DOMAIN, TAG, `requestLocationPermission result: ${granted}`);
       } catch (error) {
         const message = String(error);
-        hilog.error(DOMAIN, TAG, `requestLocationPermission failed: ${message}`);
+        LxLog.e(TAG, `requestLocationPermission failed: ${message}`);
         onCallback(id, false, '1000');
       }
     })();
@@ -235,11 +236,7 @@ export class PermissionManager {
 
       return allGranted;
     } catch (error) {
-      hilog.error(
-        DOMAIN,
-        TAG,
-        `requestPermissionsFromUser failed: ${String(error)}`
-      );
+      LxLog.e(TAG, `requestPermissionsFromUser failed: ${String(error)}`);
       return false;
     }
   }

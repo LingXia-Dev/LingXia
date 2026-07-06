@@ -1,4 +1,5 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
+import { LxLog } from '../../app/LxLog';
 import { notificationManager } from '@kit.NotificationKit';
 import { pushService } from '@kit.PushKit';
 import { BusinessError } from '@kit.BasicServicesKit';
@@ -24,7 +25,7 @@ export class LxAppPush {
       hilog.info(DOMAIN, TAG, `PushLink forwarded, trigger=${t}, rc=${rc}`);
     } catch (e) {
       const err: Error = e as Error;
-      hilog.error(DOMAIN, TAG, `handlePushLink error for ${url}: ${JSON.stringify(err)}`);
+      LxLog.e(TAG, `handlePushLink error for ${url}: ${JSON.stringify(err)}`);
     }
   }
   /**
@@ -34,7 +35,7 @@ export class LxAppPush {
     try {
       const ctx = Lingxia.context;
       if (!ctx) {
-        hilog.error(DOMAIN, TAG, 'requestEnableNotification: no context');
+        LxLog.e(TAG, 'requestEnableNotification: no context');
         return false;
       }
       (async () => {
@@ -42,12 +43,12 @@ export class LxAppPush {
           await notificationManager.requestEnableNotification(ctx);
         } catch (e) {
           const err: BusinessError = e as BusinessError;
-          hilog.error(DOMAIN, TAG, `requestEnableNotification failed: ${err.code} ${err.message}`);
+          LxLog.e(TAG, `requestEnableNotification failed: ${err.code} ${err.message}`);
         }
       })();
       return true;
     } catch (e) {
-      hilog.error(DOMAIN, TAG, `requestEnableNotification error: ${e}`);
+      LxLog.e(TAG, `requestEnableNotification error: ${e}`);
       return false;
     }
   }
@@ -61,7 +62,7 @@ export class LxAppPush {
         await notificationManager.setBadgeNumber(0);
       } catch (e) {
         const err: BusinessError = e as BusinessError;
-        hilog.error(DOMAIN, TAG, `clearBadge failed: ${err.code} ${err.message}`);
+        LxLog.e(TAG, `clearBadge failed: ${err.code} ${err.message}`);
       }
     })();
     return true;
@@ -77,7 +78,7 @@ export class LxAppPush {
         onPushTokenReceived(token);
       } catch (e) {
         const err: BusinessError = e as BusinessError;
-        hilog.error(DOMAIN, TAG, `initToken failed: ${err.code} ${err.message}`);
+        LxLog.e(TAG, `initToken failed: ${err.code} ${err.message}`);
       }
     })();
   }
@@ -96,7 +97,7 @@ export class LxAppPush {
       hilog.info(DOMAIN, TAG, '%{public}s', 'Scenario messages not used. Receiver not attached.');
     } catch (e) {
       const err: BusinessError = e as BusinessError;
-      hilog.error(DOMAIN, TAG, `attachReceiver failed: ${err.code} ${err.message}`);
+      LxLog.e(TAG, `attachReceiver failed: ${err.code} ${err.message}`);
     }
   }
 }

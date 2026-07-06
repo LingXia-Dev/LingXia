@@ -1,4 +1,5 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
+import { LxLog } from '../../app/LxLog';
 import { i18n } from '@kit.LocalizationKit';
 import { onCallback } from 'liblingxia.so';
 
@@ -213,7 +214,7 @@ export struct DatePickerManager {
         onCallback(this.callbackId, false, '2000');
       }
     } catch (err) {
-      hilog.error(DOMAIN, TAG, `onCancel callback failed: ${err}`);
+      LxLog.e(TAG, `onCancel callback failed: ${err}`);
     } finally {
       this.hidePicker();
     }
@@ -255,7 +256,7 @@ export struct DatePickerManager {
         onCallback(this.callbackId, true, resultJSON);
       }
     } catch (err) {
-      hilog.error(DOMAIN, TAG, `onConfirm callback failed: ${err}`);
+      LxLog.e(TAG, `onConfirm callback failed: ${err}`);
     } finally {
       this.hidePicker();
     }
@@ -295,7 +296,7 @@ export struct DatePickerManager {
         return new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
       }
     } catch (e) {
-      hilog.error(DOMAIN, TAG, `Failed to parse date: ${dateStr}`);
+      LxLog.e(TAG, `Failed to parse date: ${dateStr}`);
     }
     return new Date();
   }

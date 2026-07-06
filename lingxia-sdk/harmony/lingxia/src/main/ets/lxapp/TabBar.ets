@@ -1,4 +1,5 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
+import { LxLog } from '../app/LxLog';
 import { TabBarPosition, type TabBarItem, type TabBarState } from 'liblingxia.so';
 
 // TabBar layout constants
@@ -159,7 +160,7 @@ export struct TabBar {
               const currentIconPath: string | undefined = this.tabbar.selectedIndex === index ?
                 (item.selectedIconPath || item.iconPath) :
                 item.iconPath;
-              hilog.error(DOMAIN, TAG, `Tab ${index} icon load error: ${JSON.stringify(error)}, path: ${currentIconPath}`);
+              LxLog.e(TAG, `Tab ${index} icon load error: ${JSON.stringify(error)}, path: ${currentIconPath}`);
             })
         }
 

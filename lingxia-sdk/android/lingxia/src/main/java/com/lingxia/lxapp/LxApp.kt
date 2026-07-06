@@ -7,6 +7,7 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import com.lingxia.app.Lingxia
+import com.lingxia.app.LxLog
 import com.lingxia.app.NativeApi
 import com.lingxia.app.UpdateManager
 import java.util.concurrent.CountDownLatch
@@ -40,7 +41,7 @@ object LxApp {
     fun open(appId: String, path: String) {
         val sessionId = NativeApi.getLxAppSessionId(appId)
         if (sessionId <= 0L) {
-            Log.e(TAG, "Missing valid session for appId=$appId")
+            LxLog.e(TAG, "Missing valid session for appId=$appId")
             return
         }
         openWithSession(appId, path, sessionId)
@@ -61,14 +62,14 @@ object LxApp {
     internal fun openHome() {
         val homeId = homeAppId
         if (homeId == null) {
-            Log.e(TAG, "Native home app details not available. Cannot open home LxApp.")
+            LxLog.e(TAG, "Native home app details not available. Cannot open home LxApp.")
             return
         }
         val current = NativeApi.getCurrentLxApp()
         val sessionId = current?.takeIf { it.appId == homeId }?.sessionId
             ?: NativeApi.getLxAppSessionId(homeId)
         if (sessionId <= 0L) {
-            Log.e(TAG, "Missing valid session for home app: $homeId")
+            LxLog.e(TAG, "Missing valid session for home app: $homeId")
             return
         }
         openWithSession(homeId, "", sessionId)
@@ -77,7 +78,7 @@ object LxApp {
     @JvmStatic
     internal fun closeWithSession(appId: String, sessionId: Long) {
         if (sessionId <= 0L) {
-            Log.e(TAG, "Refusing to close LxApp without valid sessionId: appId=$appId")
+            LxLog.e(TAG, "Refusing to close LxApp without valid sessionId: appId=$appId")
             return
         }
         Log.d(TAG, "Closing LxApp with appId: $appId")
@@ -94,7 +95,7 @@ object LxApp {
         val activity = currentActivity?.takeIf { it.getAppId() == appId }
         val sessionId = activity?.getSessionId() ?: NativeApi.getLxAppSessionId(appId)
         if (sessionId <= 0L) {
-            Log.e(TAG, "Missing valid session for close appId=$appId")
+            LxLog.e(TAG, "Missing valid session for close appId=$appId")
             return
         }
         closeWithSession(appId, sessionId)
@@ -181,7 +182,7 @@ object LxApp {
 
     private fun openInCurrentActivity(appId: String, path: String, sessionId: Long) {
         if (sessionId <= 0L) {
-            Log.e(TAG, "Refusing to open LxApp without valid sessionId: appId=$appId")
+            LxLog.e(TAG, "Refusing to open LxApp without valid sessionId: appId=$appId")
             return
         }
         val openTask = Runnable {
@@ -197,7 +198,7 @@ object LxApp {
                 } else {
                     val ctx = Lingxia.applicationContext()
                     if (ctx == null) {
-                        Log.e(TAG, "Lingxia not initialized; cannot start LxAppActivity")
+                        LxLog.e(TAG, "Lingxia not initialized; cannot start LxAppActivity")
                         return@Runnable
                     }
                     val intent = Intent(ctx, LxAppActivity::class.java).apply {
@@ -209,7 +210,7 @@ object LxApp {
                     ctx.startActivity(intent)
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to open LxApp: ${e.message}")
+                LxLog.e(TAG, "Failed to open LxApp: ${e.message}")
             }
         }
         if (Looper.myLooper() == Looper.getMainLooper()) {

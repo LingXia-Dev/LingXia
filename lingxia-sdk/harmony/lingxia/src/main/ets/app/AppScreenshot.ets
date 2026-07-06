@@ -1,12 +1,11 @@
-import { hilog } from '@kit.PerformanceAnalysisKit';
 import { window } from '@kit.ArkUI';
 import { image } from '@kit.ImageKit';
 import { util } from '@kit.ArkTS';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { onCallback } from 'liblingxia.so';
 import { Lingxia } from './Lingxia';
+import { LxLog } from './LxLog';
 
-const DOMAIN = 0x0000;
 const TAG = 'LingXia.AppScreenshot';
 
 /// Envelope shape sent back to Rust via `onCallback(_, true, JSON)`. ArkTS
@@ -36,7 +35,7 @@ export function captureAppScreenshot(callbackIdStr: string): boolean {
     try {
       onCallback(callbackIdStr, true, JSON.stringify(envelope));
     } catch (callbackError) {
-      hilog.error(DOMAIN, TAG, `Failed to deliver app screenshot envelope: ${callbackError}`);
+      LxLog.e(TAG, `Failed to deliver app screenshot envelope: ${callbackError}`);
     }
   };
   const fail = (reason: string): boolean => {

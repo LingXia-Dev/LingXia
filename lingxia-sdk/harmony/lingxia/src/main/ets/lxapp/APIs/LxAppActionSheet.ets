@@ -1,4 +1,5 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
+import { LxLog } from '../../app/LxLog';
 import { onCallback } from 'liblingxia.so';
 
 /**
@@ -46,7 +47,7 @@ export class LxAppActionSheet {
       }
       return LxAppActionSheet.showActionSheet(options, cancelText, itemColor, cb);
     } catch (error) {
-      hilog.error(DOMAIN, TAG, `showActionSheetFromJson parse error: ${String(error)}`);
+      LxLog.e(TAG, `showActionSheetFromJson parse error: ${String(error)}`);
       onCallback(cb, false, '1000');
       return false;
     }

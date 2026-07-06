@@ -1,4 +1,5 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
+import { LxLog } from '../../app/LxLog';
 import { Want } from '@kit.AbilityKit';
 import wantConstant from '@ohos.ability.wantConstant';
 import common from '@ohos.app.ability.common';
@@ -227,7 +228,7 @@ function launchSystemViewer(context: common.UIAbilityContext, filePath: string, 
   }
   hilog.info(DOMAIN, TAG, `Opening with WPS: uri=${uri}, bundleName=${want.bundleName}`);
   context.startAbility(want).catch((err: Error) => {
-    hilog.error(DOMAIN, TAG, `Failed to open with WPS: ${err.message}, trying system viewer`);
+    LxLog.e(TAG, `Failed to open with WPS: ${err.message}, trying system viewer`);
     // Fallback to system viewer if WPS is not available
     const fallbackWant: Want = {
       action: ACTION_VIEW,
@@ -238,7 +239,7 @@ function launchSystemViewer(context: common.UIAbilityContext, filePath: string, 
       fallbackWant.type = mimeType;
     }
     context.startAbility(fallbackWant).catch((err2: Error) => {
-      hilog.error(DOMAIN, TAG, `openDocument startAbility error: ${err2.message}`);
+      LxLog.e(TAG, `openDocument startAbility error: ${err2.message}`);
     });
   });
 }
@@ -276,7 +277,7 @@ function shareDocument(context: common.UIAbilityContext, filePath: string, mimeT
   }).then(() => {
     hilog.info(DOMAIN, TAG, 'Share panel shown successfully');
   }).catch((err: Error) => {
-    hilog.error(DOMAIN, TAG, `shareDocument error: ${err.message}, code: ${(err as BusinessError).code}`);
+    LxLog.e(TAG, `shareDocument error: ${err.message}, code: ${(err as BusinessError).code}`);
   });
 }
 

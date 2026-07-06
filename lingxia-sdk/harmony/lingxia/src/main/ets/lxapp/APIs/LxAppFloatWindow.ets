@@ -13,6 +13,7 @@
  * WebviewController double-binds and the sub-window renders blank.
  */
 import { hilog } from '@kit.PerformanceAnalysisKit';
+import { LxLog } from '../../app/LxLog';
 import { window } from '@kit.ArkUI';
 import { display } from '@kit.ArkUI';
 import { webview } from '@kit.ArkWeb';
@@ -85,7 +86,7 @@ export class FloatWindowManager {
     }
     const stage = Lingxia.windowStage;
     if (!stage) {
-      hilog.error(DOMAIN, TAG, 'open failed: windowStage not initialized');
+      LxLog.e(TAG, 'open failed: windowStage not initialized');
       return false;
     }
     try {
@@ -104,7 +105,7 @@ export class FloatWindowManager {
       hilog.info(DOMAIN, TAG, `float window shown key=${key}`);
       return true;
     } catch (error) {
-      hilog.error(DOMAIN, TAG, `open failed key=${key}: ${error}`);
+      LxLog.e(TAG, `open failed key=${key}: ${error}`);
       // Never leave a half-created window behind — even unshown it can hold
       // focus and block the app's input.
       FloatWindowManager.close(key);
@@ -121,7 +122,7 @@ export class FloatWindowManager {
       await entry.win.showWindow();
       return true;
     } catch (error) {
-      hilog.error(DOMAIN, TAG, `show failed key=${key}: ${error}`);
+      LxLog.e(TAG, `show failed key=${key}: ${error}`);
       return false;
     }
   }
@@ -136,7 +137,7 @@ export class FloatWindowManager {
       await entry.win.minimize();
       return true;
     } catch (error) {
-      hilog.error(DOMAIN, TAG, `hide failed key=${key}: ${error}`);
+      LxLog.e(TAG, `hide failed key=${key}: ${error}`);
       return false;
     }
   }
@@ -181,7 +182,7 @@ struct LingXiaFloatSurfacePage {
     this.lxFloatKey = FloatWindowManager.takePendingKey();
     this.layout = FloatWindowManager.layoutFor(this.lxFloatKey);
     if (!this.layout) {
-      hilog.error(DOMAIN, TAG, `float page has no layout key=${this.lxFloatKey}`);
+      LxLog.e(TAG, `float page has no layout key=${this.lxFloatKey}`);
     }
     addWebViewUiCallback(this.webViewUiCallback);
     this.tryAttachPage();

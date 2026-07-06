@@ -1,4 +1,5 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
+import { LxLog } from '../app/LxLog';
 import { LxApp } from './LxApp';
 import { LxAppContainer } from './LxAppContainer';
 import { pauseAllComponentsByAppId } from './WebViewBridge';
@@ -88,7 +89,7 @@ export struct LxAppNavigation {
         return true;
       }
     } catch (error) {
-      hilog.error(DOMAIN, TAG, `Error closing LxAppBrowser: ${error}`);
+      LxLog.e(TAG, `Error closing LxAppBrowser: ${error}`);
     }
 
     try {
@@ -98,7 +99,7 @@ export struct LxAppNavigation {
         return true;
       }
     } catch (error) {
-      hilog.error(DOMAIN, TAG, `Error closing overlay PdfSinglePageViewerOverlay: ${error}`);
+      LxLog.e(TAG, `Error closing overlay PdfSinglePageViewerOverlay: ${error}`);
     }
 
     try {
@@ -108,7 +109,7 @@ export struct LxAppNavigation {
         return true;
       }
     } catch (error) {
-      hilog.error(DOMAIN, TAG, `Error closing overlay LocalFileChooserOverlay: ${error}`);
+      LxLog.e(TAG, `Error closing overlay LocalFileChooserOverlay: ${error}`);
     }
 
     try {
@@ -118,7 +119,7 @@ export struct LxAppNavigation {
         return true;
       }
     } catch (error) {
-      hilog.error(DOMAIN, TAG, `Error closing overlay CameraCaptureOverlay: ${error}`);
+      LxLog.e(TAG, `Error closing overlay CameraCaptureOverlay: ${error}`);
     }
 
 	    try {
@@ -128,7 +129,7 @@ export struct LxAppNavigation {
 	        return true;
 	      }
 	    } catch (error) {
-	      hilog.error(DOMAIN, TAG, `Error closing overlay MediaPreviewOverlay: ${error}`);
+	      LxLog.e(TAG, `Error closing overlay MediaPreviewOverlay: ${error}`);
 	    }
 
     try {
@@ -137,7 +138,7 @@ export struct LxAppNavigation {
         return true;
       }
     } catch (error) {
-      hilog.error(DOMAIN, TAG, `Error closing overlay LxAppSurface: ${error}`);
+      LxLog.e(TAG, `Error closing overlay LxAppSurface: ${error}`);
     }
 
 	    return false;
@@ -170,7 +171,7 @@ export struct LxAppNavigation {
         return handled;
       }
     } catch (error) {
-      hilog.error(DOMAIN, TAG, `Error handling system back press: ${error}`);
+      LxLog.e(TAG, `Error handling system back press: ${error}`);
     } finally {
       this.isBackHandling = false;
     }
@@ -320,17 +321,17 @@ export struct LxAppNavigation {
         const sessionId: number = LxApp.getRuntimeSessionId(homeAppId);
         if (!Number.isFinite(sessionId) || sessionId <= 0) {
           this.errorMessage = `Invalid home app session: ${homeAppId}`;
-          hilog.error(DOMAIN, TAG, this.errorMessage);
+          LxLog.e(TAG, this.errorMessage);
           return;
         }
         this.openLxAppWithSession(homeAppId, "", sessionId);
       } else {
         this.errorMessage = 'LxApp not initialized. Please call Lingxia.quickStart() in EntryAbility first.';
-        hilog.error(DOMAIN, TAG, 'LxApp not initialized');
+        LxLog.e(TAG, 'LxApp not initialized');
       }
     } catch (error) {
       this.errorMessage = `Initialization error: ${error}`;
-      hilog.error(DOMAIN, TAG, `Initialization error: ${error}`);
+      LxLog.e(TAG, `Initialization error: ${error}`);
     }
   }
 
@@ -341,7 +342,7 @@ export struct LxAppNavigation {
 
   public openLxAppWithSession(appId: string, path: string, sessionId: number): void {
     if (!Number.isFinite(sessionId) || sessionId <= 0) {
-      hilog.error(DOMAIN, TAG, `openLxAppWithSession requires valid sessionId for ${appId}`);
+      LxLog.e(TAG, `openLxAppWithSession requires valid sessionId for ${appId}`);
       return;
     }
     hilog.info(DOMAIN, TAG, `Opening lxapp: ${appId}:${path} (session=${sessionId})`);
@@ -369,7 +370,7 @@ export struct LxAppNavigation {
       this.currentModalAppPath = resolvedPath;
       this.modalAppVisible = true;
     } catch (error) {
-      hilog.error(DOMAIN, TAG, `Failed to open LxApp ${appId}: ${error}`);
+      LxLog.e(TAG, `Failed to open LxApp ${appId}: ${error}`);
     }
   }
 
@@ -418,7 +419,7 @@ export struct LxAppNavigation {
         this.modalAppVisible = false;
       }
     } catch (error) {
-      hilog.error(DOMAIN, TAG, `Failed to close LxApp ${appId}: ${error}`);
+      LxLog.e(TAG, `Failed to close LxApp ${appId}: ${error}`);
     }
   }
 
@@ -437,7 +438,7 @@ export struct LxAppNavigation {
       // Execute navigation with animation type information
       return this.navigateToPage(appId, path, animationType);
     } catch (error) {
-      hilog.error(DOMAIN, TAG, `Navigation failed: ${error}`);
+      LxLog.e(TAG, `Navigation failed: ${error}`);
       return false;
     }
   }
@@ -466,7 +467,7 @@ export struct LxAppNavigation {
 
       return tabIndex >= 0;
     } catch (error) {
-      hilog.error(DOMAIN, TAG, `Error checking if path is tabbar item: ${error}`);
+      LxLog.e(TAG, `Error checking if path is tabbar item: ${error}`);
       return false;
     }
   }

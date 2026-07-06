@@ -1,4 +1,5 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
+import { LxLog } from '../../app/LxLog';
 import { onCallback } from 'liblingxia.so';
 
 /**
@@ -139,7 +140,7 @@ export class LxAppPicker {
         return false;
       }
     } catch (error) {
-      hilog.error(DOMAIN, TAG, `Failed to parse columns: ${error}`);
+      LxLog.e(TAG, `Failed to parse columns: ${error}`);
       LxAppPicker.finalizeCallback(cb, false, '1000');
       return false;
     }
@@ -238,7 +239,7 @@ export struct PickerManager {
         onCallback(this.callbackId, false, '2000');
       }
     } catch (err) {
-      hilog.error(DOMAIN, TAG, `onCancel callback failed: ${err}`);
+      LxLog.e(TAG, `onCancel callback failed: ${err}`);
     } finally {
       this.hidePicker();
     }
@@ -270,7 +271,7 @@ export struct PickerManager {
         onCallback(this.callbackId, true, resultJSON);
       }
     } catch (err) {
-      hilog.error(DOMAIN, TAG, `onConfirm callback failed: ${err}`);
+      LxLog.e(TAG, `onConfirm callback failed: ${err}`);
     } finally {
       this.hidePicker();
     }

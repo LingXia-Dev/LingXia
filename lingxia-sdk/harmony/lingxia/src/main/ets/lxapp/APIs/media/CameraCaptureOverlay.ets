@@ -5,6 +5,7 @@ import { media } from '@kit.MediaKit';
 import { fileIo } from '@kit.CoreFileKit';
 import common from '@ohos.app.ability.common';
 import { promptAction } from '@kit.ArkUI';
+import { LxLog } from '../../../app/LxLog';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.CameraCapture';
@@ -381,7 +382,7 @@ export struct CameraCaptureOverlay {
 
       this.createImageReceiver();
     } catch (err) {
-      hilog.error(DOMAIN, TAG, `init camera failed: ${err}`);
+      LxLog.e(TAG, `init camera failed: ${err}`);
     }
   }
 
@@ -412,7 +413,7 @@ export struct CameraCaptureOverlay {
       });
 
     } catch (err) {
-      hilog.error(DOMAIN, TAG, `createImageReceiver failed: ${JSON.stringify(err)}`);
+      LxLog.e(TAG, `createImageReceiver failed: ${JSON.stringify(err)}`);
     }
   }
 
@@ -431,7 +432,7 @@ export struct CameraCaptureOverlay {
       this.enterPreviewMode(photoPath, 'image');
 
     } catch (err) {
-      hilog.error(DOMAIN, TAG, `savePhoto failed: ${JSON.stringify(err)}`);
+      LxLog.e(TAG, `savePhoto failed: ${JSON.stringify(err)}`);
       const cb = this.options?.callbackId || '';
       if (cb) {
         onCallback(cb, false, JSON.stringify({ error: String(err) }));
@@ -468,7 +469,7 @@ export struct CameraCaptureOverlay {
 
       // Don't close UI yet - imageArrival callback will save photo and close UI
     } catch (err) {
-      hilog.error(DOMAIN, TAG, `takePhoto FAILED: ${err instanceof Error ? err.message : String(err)}`);
+      LxLog.e(TAG, `takePhoto FAILED: ${err instanceof Error ? err.message : String(err)}`);
       promptAction.showToast({ message: `拍照失败: ${err instanceof Error ? err.message : String(err)}`, duration: 3000 });
       // Notify logic layer of failure
       onCallback(cb, false, String(err));
@@ -524,7 +525,7 @@ export struct CameraCaptureOverlay {
         return;
       }
     } catch (err) {
-      hilog.error(DOMAIN, TAG, `startRecording failed: ${err}`);
+      LxLog.e(TAG, `startRecording failed: ${err}`);
       this.startingVideo = false;
       this.stopRequestedDuringStart = false;
     }
@@ -737,7 +738,7 @@ export struct CameraCaptureOverlay {
         fileIo.unlinkSync(path);
       }
     } catch (e) {
-      hilog.error(DOMAIN, TAG, `Failed to delete preview file: ${e}`);
+      LxLog.e(TAG, `Failed to delete preview file: ${e}`);
     }
 
     this.isPreview = false;
@@ -879,7 +880,7 @@ export struct CameraCaptureOverlay {
                 const sid = this.ctrl.getXComponentSurfaceId();
                 this.onSurfaceReady(String(sid));
               } catch (e) {
-                hilog.error(DOMAIN, TAG, `get surfaceId failed: ${e}`);
+                LxLog.e(TAG, `get surfaceId failed: ${e}`);
               }
             })
             .width('100%')

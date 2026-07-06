@@ -8,6 +8,7 @@ import { LxApp } from '../lxapp/LxApp';
 import { LxAppPush } from '../lxapp/APIs/LxAppPush';
 import { PermissionManager } from './PermissionManager';
 import { initNativeBridge, getNativeCallbackFunction } from './NativeBridge';
+import { LxLog } from './LxLog';
 import {
   lingxiaInit,
   registerCustomSchemes,
@@ -95,7 +96,7 @@ export class Lingxia {
     // Register custom schemes BEFORE WebEngine initialization
     const schemesRegistered: boolean = registerCustomSchemes();
     if (!schemesRegistered) {
-      hilog.error(DOMAIN, TAG, 'Failed to register custom schemes');
+      LxLog.e(TAG, 'Failed to register custom schemes');
       return;
     }
 
@@ -123,7 +124,7 @@ export class Lingxia {
         webview.WebviewController.setWebDebuggingAccess(true);
       }
     } else {
-      hilog.error(DOMAIN, TAG, 'Failed to get home app details from native init.');
+      LxLog.e(TAG, 'Failed to get home app details from native init.');
     }
 
     if ((Lingxia.capabilities & Lingxia.CAP_NOTIFICATIONS) !== 0) {
@@ -131,7 +132,7 @@ export class Lingxia {
         LxAppPush.requestEnableNotification();
         LxAppPush.initToken();
       } catch (e) {
-        hilog.error(DOMAIN, TAG, `Push init error: ${e}`);
+        LxLog.e(TAG, `Push init error: ${e}`);
       }
     }
   }
@@ -178,11 +179,11 @@ export class Lingxia {
       mainWindow.setPreferredOrientation(targetOrientation)
         .catch((error: Error) => {
           const message: string = error?.message ?? String(error);
-          hilog.error(DOMAIN, TAG, `updateOrientationUI failed: ${message}`);
+          LxLog.e(TAG, `updateOrientationUI failed: ${message}`);
         });
       return true;
     } catch (error) {
-      hilog.error(DOMAIN, TAG, `updateOrientationUI failed: ${error}`);
+      LxLog.e(TAG, `updateOrientationUI failed: ${error}`);
       return false;
     }
   }
@@ -193,7 +194,7 @@ export class Lingxia {
    */
   public static launchWithUrl(url: string): void {
     if (!Lingxia.context) {
-      hilog.error(DOMAIN, TAG, `Context not available for launching URL: ${url}`);
+      LxLog.e(TAG, `Context not available for launching URL: ${url}`);
       return;
     }
 
@@ -202,7 +203,7 @@ export class Lingxia {
         hilog.info(DOMAIN, TAG, `Successfully launched URL: ${url}`);
       })
       .catch((err: Error) => {
-        hilog.error(DOMAIN, TAG, `Failed to launch URL: ${url}, error: ${JSON.stringify(err)}`);
+        LxLog.e(TAG, `Failed to launch URL: ${url}, error: ${JSON.stringify(err)}`);
       });
   }
 
@@ -216,7 +217,7 @@ export class Lingxia {
       const result: number = onApplinkReceived(url);
       hilog.info(DOMAIN, TAG, `AppLink processed with result: ${result}`);
     } catch (error) {
-      hilog.error(DOMAIN, TAG, `Error processing AppLink: ${url}, error: ${JSON.stringify(error)}`);
+      LxLog.e(TAG, `Error processing AppLink: ${url}, error: ${JSON.stringify(error)}`);
     }
   }
 
@@ -235,7 +236,7 @@ export class Lingxia {
       }
     } catch (e) {
       const err: Error = e as Error;
-      hilog.error(DOMAIN, TAG, `handleWant error: ${JSON.stringify(err)}`);
+      LxLog.e(TAG, `handleWant error: ${JSON.stringify(err)}`);
     }
   }
 }

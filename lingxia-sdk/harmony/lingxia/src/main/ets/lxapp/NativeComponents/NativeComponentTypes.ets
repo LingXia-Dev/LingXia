@@ -4,6 +4,7 @@
  */
 
 import { hilog } from '@kit.PerformanceAnalysisKit';
+import { LxLog } from '../../app/LxLog';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.NativeComponent';
@@ -105,5 +106,5 @@ export function nativeComponentLog(message: string): void {
 }
 
 export function nativeComponentError(message: string): void {
-  hilog.error(DOMAIN, TAG, message);
+  LxLog.e(TAG, message);
 }

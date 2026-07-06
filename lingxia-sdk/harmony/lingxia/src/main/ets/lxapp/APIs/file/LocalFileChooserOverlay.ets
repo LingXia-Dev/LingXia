@@ -1,6 +1,6 @@
-import { hilog } from '@kit.PerformanceAnalysisKit';
 import { fileIo } from '@kit.CoreFileKit';
 import { onCallback } from 'liblingxia.so';
+import { LxLog } from '../../../app/LxLog';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.LocalFileChooser';
@@ -127,7 +127,7 @@ export class LocalFileChooserOverlayManager {
       try {
         listener();
       } catch (error) {
-        hilog.error(DOMAIN, TAG, `listener error: ${error}`);
+        LxLog.e(TAG, `listener error: ${error}`);
       }
     });
   }
@@ -404,7 +404,7 @@ export struct LocalFileChooserOverlay {
       this.entries = result.entries;
       this.hasFilteredOutFiles = result.hasFilteredOutFiles;
     } catch (error) {
-      hilog.error(DOMAIN, TAG, `reloadEntries failed: ${error}`);
+      LxLog.e(TAG, `reloadEntries failed: ${error}`);
       this.entries = [];
       this.hasFilteredOutFiles = false;
     }
@@ -465,7 +465,7 @@ export struct LocalFileChooserOverlay {
       fileIo.unlinkSync(path);
       return true;
     } catch (error) {
-      hilog.error(DOMAIN, TAG, `deletePathRecursive failed: ${error}`);
+      LxLog.e(TAG, `deletePathRecursive failed: ${error}`);
       return false;
     }
   }
@@ -481,7 +481,7 @@ export struct LocalFileChooserOverlay {
     }
     const ok = this.deletePathRecursive(entry.path);
     if (!ok) {
-      hilog.error(DOMAIN, TAG, 'delete failed');
+      LxLog.e(TAG, 'delete failed');
     }
     this.reloadEntries();
   }

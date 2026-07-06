@@ -1,6 +1,7 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { pdfService } from '@kit.PDFKit';
 import { image } from '@kit.ImageKit';
+import { LxLog } from '../../../app/LxLog';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.PdfSingleViewer';
@@ -37,7 +38,7 @@ export class PdfSingleViewerOverlayManager {
 
   public static share(): void {
     try { PdfSingleViewerOverlayManager.shareHandler?.(); } catch (e) {
-      hilog.error(DOMAIN, TAG, `share handler error: ${e}`);
+      LxLog.e(TAG, `share handler error: ${e}`);
     }
   }
 
@@ -157,7 +158,7 @@ struct PdfSinglePageContent {
       hilog.info(DOMAIN, TAG, `PDF loaded: pageCount=${this.pageCount}`);
       this.ensureVisiblePagesLoaded(0, Math.min(2, this.pageCount - 1));
     } catch (e) {
-      hilog.error(DOMAIN, TAG, `loadDocument failed: ${e}`);
+      LxLog.e(TAG, `loadDocument failed: ${e}`);
       this.onClose();
     }
   }
@@ -203,7 +204,7 @@ struct PdfSinglePageContent {
       }
       this.pageCacheVersion += 1;
     } catch (error) {
-      hilog.error(DOMAIN, TAG, `loadPage ${index} failed: ${error}`);
+      LxLog.e(TAG, `loadPage ${index} failed: ${error}`);
     }
   }
 

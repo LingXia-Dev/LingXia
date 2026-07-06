@@ -15,6 +15,7 @@ import android.os.Looper
 import android.os.SystemClock
 import android.util.Base64
 import android.util.Log
+import com.lingxia.app.LxLog
 import android.view.Surface
 import android.view.TextureView
 import android.view.View
@@ -843,7 +844,7 @@ internal class StreamDecoderSession(
                         try {
                             decoder.releaseOutputBuffer(outputIndex, targetNs)
                         } catch (e: Throwable) {
-                            Log.e(logTag, "[$componentId] video releaseOutputBuffer error: ${e.message}", e)
+                            LxLog.e(logTag, "[$componentId] video releaseOutputBuffer error: ${e.message}", e)
                             releaseVideoDecoder()
                             return
                         }
@@ -862,7 +863,7 @@ internal class StreamDecoderSession(
                         }
                         decoder.releaseOutputBuffer(outputIndex, maxOf(nowNs, targetNs))
                     } catch (e: Throwable) {
-                        Log.e(logTag, "[$componentId] video releaseOutputBuffer error: ${e.message}", e)
+                        LxLog.e(logTag, "[$componentId] video releaseOutputBuffer error: ${e.message}", e)
                         releaseVideoDecoder()
                         return
                     }
@@ -877,7 +878,7 @@ internal class StreamDecoderSession(
                         }
                         decoder.releaseOutputBuffer(outputIndex, true)
                     } catch (e: Throwable) {
-                        Log.e(logTag, "[$componentId] video releaseOutputBuffer error: ${e.message}", e)
+                        LxLog.e(logTag, "[$componentId] video releaseOutputBuffer error: ${e.message}", e)
                         releaseVideoDecoder()
                         return
                     }
@@ -899,7 +900,7 @@ internal class StreamDecoderSession(
                 scheduleVideoDrain(nextDelayMs ?: 5L)
             }
         } catch (e: Throwable) {
-            Log.e(logTag, "[$componentId] video decode error: ${e.message}", e)
+            LxLog.e(logTag, "[$componentId] video decode error: ${e.message}", e)
             releaseVideoDecoder()
         }
     }
@@ -1021,7 +1022,7 @@ internal class StreamDecoderSession(
                 ensureAudioTrack(decoder.outputFormat)
             }
         } catch (e: Exception) {
-            Log.e(logTag, "[$componentId] audio decode error: ${e.message}", e)
+            LxLog.e(logTag, "[$componentId] audio decode error: ${e.message}", e)
             releaseAudioDecoder()
         }
     }

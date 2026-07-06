@@ -4,6 +4,7 @@
  */
 
 import { hilog } from '@kit.PerformanceAnalysisKit';
+import { LxLog } from '../app/LxLog';
 import { getLxAppInfo, onLxappEvent, UiEventType, type LxAppInfo } from 'liblingxia.so';
 import {
   CAPSULE_ACTION_CLEAN_CACHE_RESTART,
@@ -48,7 +49,7 @@ export class CapsuleMenuManager {
       CapsuleMenuManager.managerRef.show(appId);
       return true;
     }
-    hilog.error(DOMAIN, TAG, 'CapsuleMenuManager: managerRef is null');
+    LxLog.e(TAG, 'CapsuleMenuManager: managerRef is null');
     return false;
   }
 
@@ -196,7 +197,7 @@ export struct CapsuleMenuBottomSheetComponent {
       this.appInfo = info;
       this.isVisible = true;
     } else {
-      hilog.error(DOMAIN, TAG, `Failed to get LxApp info for: ${appId}`);
+      LxLog.e(TAG, `Failed to get LxApp info for: ${appId}`);
       this.appId = '';
       this.appInfo = null;
       this.isVisible = false;
@@ -216,7 +217,7 @@ export struct CapsuleMenuBottomSheetComponent {
     const success: boolean = onLxappEvent(this.appId, UiEventType.CapsuleClick, action);
 
     if (!success) {
-      hilog.error(DOMAIN, TAG, `Failed to send UI event for action: ${action}`);
+      LxLog.e(TAG, `Failed to send UI event for action: ${action}`);
     }
 
     // Hide the menu
