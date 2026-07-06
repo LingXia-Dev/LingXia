@@ -16,6 +16,7 @@ Pick the directory that matches who actually reads the string at runtime.
 | `permission/runtime/` | Same as `ui/` | Runtime permission dialog texts (e.g. `permission.media_reason`). |
 | `permission/cli/` | Apple `Info.plist` (CLI build step only) | `apple.info_plist.*` keys consumed during `lingxia build` for Apple targets. |
 | `logic/` *(optional)* | Rust + TS only | Strings the logic crate / JS bridge surfaces but no native SDK reads. |
+| `desktop/` *(optional)* | Rust + TS only | Desktop-shell strings (terminal, browser tabs) read only by the Windows SDK — kept out of the mobile resource bundles. |
 | `android/` *(optional)* | Android `strings.xml` only | Android-only SDK strings (e.g. `R.string.lx_update_install_*`). |
 | `apple/` *(optional)* | Apple `Localizable.strings` only | iOS / macOS-only SDK strings. |
 | `harmony/` *(optional)* | Harmony `string.json` only | Harmony-only SDK strings. |
@@ -27,7 +28,7 @@ scopes is the normal way to change its audience.
 
 - `ui.schema.json` — cross-platform leaves (`ui/`, `error/`, `permission/runtime/`).
 - `permission.schema.json` — Apple `Info.plist` keys (`permission/cli/`).
-- `native.schema.json` — single-audience scopes (`logic/`, `android/`, `apple/`, `harmony/`).
+- `native.schema.json` — single-audience scopes (`logic/`, `desktop/`, `android/`, `apple/`, `harmony/`).
 
 ## Regenerating
 
@@ -76,8 +77,8 @@ tracked.
 - `error/*.yaml` files contain only `error` and/or `err_code` sections, and
   at least one `err_code_<N>` key is defined.
 - `err_code_<N>` keys only appear under `error/`.
-- `logic/`, `android/`, `apple/`, `harmony/` use plain string leaves
-  (no `default / android / apple / harmony / rust` variant overrides).
+- `logic/`, `desktop/`, `android/`, `apple/`, `harmony/` use plain string
+  leaves (no `default / android / apple / harmony / rust` variant overrides).
 - YAML files validate against their scope's JSON schema.
 - Apple CLI permission YAML files validate against `permission.schema.json`
   and share an identical key set across locales.

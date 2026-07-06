@@ -224,6 +224,7 @@ const PERMISSION_RUNTIME_DIR: &str = "permission/runtime";
 const PERMISSION_CLI_DIR: &str = "permission/cli";
 const ERROR_DIR: &str = "error";
 const LOGIC_DIR: &str = "logic";
+const DESKTOP_DIR: &str = "desktop";
 const ANDROID_DIR: &str = "android";
 const APPLE_DIR: &str = "apple";
 const HARMONY_DIR: &str = "harmony";
@@ -240,6 +241,7 @@ enum Scope {
     PermissionRuntime,
     Error,
     Logic,
+    Desktop,
     Android,
     Apple,
     Harmony,
@@ -268,6 +270,7 @@ impl Scope {
             Scope::PermissionRuntime => PERMISSION_RUNTIME_DIR,
             Scope::Error => ERROR_DIR,
             Scope::Logic => LOGIC_DIR,
+            Scope::Desktop => DESKTOP_DIR,
             Scope::Android => ANDROID_DIR,
             Scope::Apple => APPLE_DIR,
             Scope::Harmony => HARMONY_DIR,
@@ -290,9 +293,11 @@ impl Scope {
             // The error scope reuses the UI schema; its boundary check
             // (only `error` / `err_code` top-level keys) runs separately.
             Scope::Error => Some("ui.schema.json"),
-            Scope::Logic | Scope::Android | Scope::Apple | Scope::Harmony => {
-                Some("native.schema.json")
-            }
+            Scope::Logic
+            | Scope::Desktop
+            | Scope::Android
+            | Scope::Apple
+            | Scope::Harmony => Some("native.schema.json"),
         }
     }
 
@@ -311,7 +316,10 @@ impl Scope {
             }
             // Rust + TS only: keys used by the logic crate (and surfaced to
             // JS via the bridge) but never referenced from native SDK code.
-            Scope::Logic => &[Rust, Ts],
+            // `desktop/` holds desktop-shell strings (terminal, browser tabs)
+            // that only the Windows SDK reads — keeping them out of the mobile
+            // Android/iOS/Harmony resource bundles.
+            Scope::Logic | Scope::Desktop => &[Rust, Ts],
             // Single-platform native strings — nothing else needs them.
             Scope::Android => &[Android],
             Scope::Apple => &[Apple],
@@ -325,6 +333,7 @@ const ALL_SCOPES: &[Scope] = &[
     Scope::PermissionRuntime,
     Scope::Error,
     Scope::Logic,
+    Scope::Desktop,
     Scope::Android,
     Scope::Apple,
     Scope::Harmony,
@@ -415,6 +424,7 @@ pub fn run(config: I18nConfig) -> Result<()> {
                 Scope::Error => validate_error_locale_boundary(&path, &yaml_value)?,
                 Scope::PermissionRuntime
                 | Scope::Logic
+                | Scope::Desktop
                 | Scope::Android
                 | Scope::Apple
                 | Scope::Harmony => {}
