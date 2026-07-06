@@ -166,6 +166,13 @@ pub fn set_log_level(level: i32) {
     crate::logging::set_log_level(level);
 }
 
+/// Whether a host log at `level` would be recorded. See
+/// [`crate::logging::host_log_enabled`].
+#[napi]
+pub fn host_log_enabled(level: i32) -> bool {
+    crate::logging::host_log_enabled(level)
+}
+
 /// Register custom schemes (must be called before WebEngine initialization)
 #[napi]
 pub fn register_custom_schemes() -> bool {

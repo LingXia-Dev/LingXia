@@ -166,6 +166,9 @@ declare module 'liblingxia.so' {
   /** Set the runtime log threshold (0=verbose … 4=error). */
   export function setLogLevel(level: number): void;
 
+  /** Whether a host log at `level` (0=verbose … 4=error) would be recorded. */
+  export function hostLogEnabled(level: number): boolean;
+
   /**
    * Run the shared browser navigation policy classifier.
    *

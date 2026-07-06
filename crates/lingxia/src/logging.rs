@@ -88,6 +88,13 @@ pub fn set_log_level(level: i32) {
     log::set_max_level(sdk_level_to_filter(level));
 }
 
+/// Whether a host log at `level` (SDK int) would be recorded at the current
+/// threshold. Host wrappers guard hot-path logs with this to skip building a
+/// message (and crossing the FFI) that [`forward_host_log`] would only drop.
+pub fn host_log_enabled(level: i32) -> bool {
+    map_sdk_level(level).is_some() && level >= HOST_LOG_LEVEL.load(Ordering::Relaxed)
+}
+
 /// Initial level: an explicit `LINGXIA_LOG_LEVEL` wins and pins the choice;
 /// otherwise a dev session defaults to `debug` and everything else to `info`.
 /// Returns `(level, pinned_by_env)`.

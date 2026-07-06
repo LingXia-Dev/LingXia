@@ -143,6 +143,9 @@ mod bridge {
         #[swift_bridge(swift_name = "setLogLevel")]
         fn set_log_level(level: i32);
 
+        #[swift_bridge(swift_name = "hostLogEnabled")]
+        fn host_log_enabled(level: i32) -> bool;
+
         #[swift_bridge(swift_name = "onPageShow")]
         fn on_page_show(appid: &str, path: &str);
 
@@ -462,6 +465,12 @@ pub fn forward_host_log(
 /// [`crate::logging::set_log_level`].
 pub fn set_log_level(level: i32) {
     crate::logging::set_log_level(level);
+}
+
+/// Whether a host log at `level` would be recorded. See
+/// [`crate::logging::host_log_enabled`].
+pub fn host_log_enabled(level: i32) -> bool {
+    crate::logging::host_log_enabled(level)
 }
 
 /// Notify that a page is being shown

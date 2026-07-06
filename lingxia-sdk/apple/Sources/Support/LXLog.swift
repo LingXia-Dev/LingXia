@@ -19,6 +19,13 @@ enum LXLog {
         case error = 4
     }
 
+    /// Whether a log at `level` would be recorded at the current threshold.
+    /// Guard an expensive hot-path log with this to skip building the message:
+    /// `if LXLog.isEnabled(.debug) { LXLog.debug("…\(costly())…", category: "X") }`.
+    static func isEnabled(_ level: Level) -> Bool {
+        hostLogEnabled(level.rawValue)
+    }
+
     /// Forward a log entry into the Rust pipeline.
     ///
     /// `message` is a plain `String`, not an autoclosure: `forwardHostLog`

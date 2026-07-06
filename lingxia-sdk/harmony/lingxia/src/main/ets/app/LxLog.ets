@@ -1,4 +1,4 @@
-import { forwardHostLog } from 'liblingxia.so';
+import { forwardHostLog, hostLogEnabled } from 'liblingxia.so';
 
 /**
  * Routes SDK-native logs into the LingXia Rust log pipeline.
@@ -13,6 +13,12 @@ export class LxLog {
   private static readonly INFO: number = 2;
   private static readonly WARN: number = 3;
   private static readonly ERROR: number = 4;
+
+  /** Whether a log at `level` (0=verbose … 4=error) would be recorded. Guard an
+   * expensive hot-path log with this to skip building the message. */
+  public static isEnabled(level: number): boolean {
+    return hostLogEnabled(level);
+  }
 
   public static v(tag: string, message: string, appId: string = '', path: string = ''): boolean {
     return forwardHostLog(LxLog.VERBOSE, tag, appId, path, message);
