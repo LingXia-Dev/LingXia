@@ -317,7 +317,7 @@ class WorkspaceManager: NSObject {
         slot.resizeHandle.onDragEnd = resizeHandler
 
         guard let parent = overlayParent, let sidebar = sidebarRef else {
-            os_log("registerPanel: configure() not called yet — panel %@ deferred", log: Self.log, type: .error, config.id)
+            LXLog.error("registerPanel: configure() not called yet — panel \(config.id) deferred", category: "Workspace")
             lxWorkspaceStdoutLog("registerPanel deferred id=\(config.id) missing parent/sidebar")
             return slot.containerView
         }

@@ -105,7 +105,7 @@ enum LxAppLayoutReconciler {
         }
         guard let data = json.data(using: .utf8),
               let plan = try? JSONDecoder().decode(LayoutPresentationPlan.self, from: data) else {
-            os_log("presentLayout: failed to parse layout json %{public}@", log: log, type: .error, label)
+            LXLog.error("presentLayout: failed to parse layout json \(label)", category: "LayoutReconciler")
             return false
         }
 

@@ -235,14 +235,7 @@ final class LxAppMacAppUIRuntime: NSObject {
                 path: path,
                 sessionId: sessionId
             ) else {
-                os_log(
-                    "independent panel missing page instance id panel=%{public}@ appId=%{public}@ path=%{public}@",
-                    log: Self.log,
-                    type: .error,
-                    panelId,
-                    appId,
-                    path
-                )
+                LXLog.error("independent panel missing page instance id panel=\(panelId) appId=\(appId) path=\(path)", category: "MacAppUI")
                 return false
             }
             surfacePageInstanceIDs[panelId] = pageInstanceId
@@ -295,15 +288,7 @@ final class LxAppMacAppUIRuntime: NSObject {
                     openedSurfaceIDs.remove(panelId)
                     visibleSurfaceIDs.remove(panelId)
                     updateIndependentPanelOutsideClickMonitors()
-                    os_log(
-                        "independent panel webview mount failed panel=%{public}@ appId=%{public}@ path=%{public}@ error=%{public}@",
-                        log: Self.log,
-                        type: .error,
-                        panelId,
-                        appId,
-                        path,
-                        String(describing: error)
-                    )
+                    LXLog.error("independent panel webview mount failed panel=\(panelId) appId=\(appId) path=\(path)", category: "MacAppUI", error: error)
                 }
             }
             return true
@@ -417,14 +402,7 @@ final class LxAppMacAppUIRuntime: NSObject {
         do {
             try openSurface(id: id, sourceActivatorID: sourceActivatorID)
         } catch {
-            os_log(
-                "AppUI failed to open surface=%{public}@ activator=%{public}@ error=%{public}@",
-                log: Self.log,
-                type: .error,
-                id,
-                sourceActivatorID ?? "nil",
-                String(describing: error)
-            )
+            LXLog.error("AppUI failed to open surface=\(id) activator=\(sourceActivatorID ?? "nil")", category: "MacAppUI", error: error)
         }
     }
 
@@ -553,13 +531,7 @@ final class LxAppMacAppUIRuntime: NSObject {
                 }
                 surfacePageInstanceIDs.removeValue(forKey: surfaceID)
                 openedSurfaceIDs.remove(surfaceID)
-                os_log(
-                    "AppUI failed to open independent panel surface=%{public}@ error=%{public}@",
-                    log: Self.log,
-                    type: .error,
-                    surfaceID,
-                    String(describing: error)
-                )
+                LXLog.error("AppUI failed to open independent panel surface=\(surfaceID)", category: "MacAppUI", error: error)
                 panel?.orderOut(nil)
                 visibleSurfaceIDs.remove(surfaceID)
                 updateIndependentPanelOutsideClickMonitors()

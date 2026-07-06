@@ -25,7 +25,7 @@ final class LxAppBrowser: NSObject {
     static func show(tabId: String) -> Bool {
         let normalizedTabId = normalizeTabId(tabId)
         guard !normalizedTabId.isEmpty else {
-            os_log("show failed: empty tab id", log: log, type: .error)
+            LXLog.error("show failed: empty tab id", category: "Browser")
             return false
         }
 
@@ -41,7 +41,7 @@ final class LxAppBrowser: NSObject {
 
         guard let manager = iOSLxApp.getInstance().currentLxAppManager,
               let navController = manager.navigationController else {
-            os_log("show failed: no active navigation controller", log: log, type: .error)
+            LXLog.error("show failed: no active navigation controller", category: "Browser")
             return false
         }
 
@@ -59,12 +59,12 @@ final class LxAppBrowser: NSObject {
         let appId = getBuiltinBrowserAppId().toString()
         let sessionId = getLxAppSessionId(appId)
         guard sessionId > 0 else {
-            os_log("openNewTab failed: no session for builtin browser", log: log, type: .error)
+            LXLog.error("openNewTab failed: no session for builtin browser", category: "Browser")
             return false
         }
         guard let newId = openBrowserTab(appId, sessionId, "lingxia://newtab")?.toString(),
               !normalizeTabId(newId).isEmpty else {
-            os_log("openNewTab failed: runtime returned no tab id", log: log, type: .error)
+            LXLog.error("openNewTab failed: runtime returned no tab id", category: "Browser")
             return false
         }
         let normalizedTabId = normalizeTabId(newId)
@@ -709,7 +709,7 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
         }
 
         guard attempt < Self.maxAttachRetries else {
-            os_log("Failed to attach browser webview for tab=%{public}@", log: Self.log, type: .error, activeTabId)
+            LXLog.error("Failed to attach browser webview for tab=\(activeTabId)", category: "BrowserViewController")
             return
         }
 

@@ -705,12 +705,7 @@ final class LingXiaTerminalWorkspaceView: NSView {
         split.translatesAutoresizingMaskIntoConstraints = false
 
         guard replaceNodeView(activePane, with: split, in: tab.rootContainer) else {
-            os_log(
-                "terminal split failed: cannot replace pane surface=%{public}@",
-                log: Self.log,
-                type: .error,
-                surfaceID
-            )
+            LXLog.error("terminal split failed: cannot replace pane surface=\(surfaceID)", category: "MacTerminal")
             lxTerminalLog("workspace.split failed-replace surface=\(surfaceID) direction=\(direction)", type: .error)
             return
         }

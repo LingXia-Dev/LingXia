@@ -915,7 +915,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
             ? currentLxApp.session_id
             : getLxAppSessionId(homeLxAppId)
         guard sessionId > 0 else {
-            os_log("setupInitialTab missing home session for %@", log: Self.log, type: .error, homeLxAppId)
+            LXLog.error("setupInitialTab missing home session for \(homeLxAppId)", category: "LxAppShell")
             return
         }
 
@@ -946,7 +946,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
 
     private func switchToTab(_ appId: String) {
         guard let sessionId = resolvedSessionId(for: appId) else {
-            os_log("switchToTab missing session for %@", log: Self.log, type: .error, appId)
+            LXLog.error("switchToTab missing session for \(appId)", category: "LxAppShell")
             return
         }
 
@@ -1186,7 +1186,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
 
     private func closeSession(appId: String, notifyRuntime: Bool) {
         guard let sessionId = appSessions[appId], sessionId > 0 else {
-            os_log("closeSession missing session for %@", log: Self.log, type: .error, appId)
+            LXLog.error("closeSession missing session for \(appId)", category: "LxAppShell")
             return
         }
 
@@ -1889,12 +1889,7 @@ extension LxAppShell {
         }
         let message = "Panel layout changed window frame; restoring reason=\(reason) before=\(String(format: "%.1fx%.1f", frameBefore.width, frameBefore.height)) current=\(String(format: "%.1fx%.1f", current.width, current.height))"
         lxShellStdoutLog(message, level: 4)
-        os_log(
-            "%{public}@",
-            log: Self.log,
-            type: .error,
-            message
-        )
+        LXLog.error(message, category: "LxAppShell")
         window.setFrame(frameBefore, display: true)
     }
 
@@ -1910,8 +1905,7 @@ extension LxAppShell {
         }
 
         guard attempt < Self.panelAttachMaxRetry else {
-            os_log("panel webview attach timed out for panel=%{public}@ appId=%{public}@ path=%{public}@",
-                   type: .error, panelId, appId, path)
+            LXLog.error("panel webview attach timed out for panel=\(panelId) appId=\(appId) path=\(path)", category: "LxAppShell")
             return
         }
 

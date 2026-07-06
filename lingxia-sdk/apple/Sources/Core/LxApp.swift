@@ -92,7 +92,7 @@ final class LxAppCore {
         panelId: String = ""
     ) -> Bool {
         guard sessionId > 0 else {
-            os_log("executeOpenLxApp rejected invalid session for %@", log: log, type: .error, appId)
+            LXLog.error("executeOpenLxApp rejected invalid session for \(appId)", category: "LxAppCore")
             return false
         }
 
@@ -147,7 +147,7 @@ final class LxAppCore {
         os_log("Core executeNavigation: %@ to %@ with type: %@", log: log, type: .info, appId, path, String(describing: animationType))
 
         guard !appId.isEmpty else {
-            os_log("Empty appId provided for navigation", log: log, type: .error)
+            LXLog.error("Empty appId provided for navigation", category: "LxAppCore")
             return
         }
 
@@ -248,7 +248,7 @@ final class LxAppCore {
                 }
             }
         } else {
-            os_log("Failed to get home LxApp ID from native init", log: log, type: .error)
+            LXLog.error("Failed to get home LxApp ID from native init", category: "LxAppCore")
         }
     }
 

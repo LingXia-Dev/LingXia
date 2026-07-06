@@ -315,7 +315,7 @@ final class DockedBrowser: NSObject {
             return true
         }
         guard let opened = openStandaloneBrowserTab(owner.appId, owner.sessionId, url) else {
-            os_log("openStandaloneBrowserTab failed url=%{public}@", log: Self.log, type: .error, url)
+            LXLog.error("openStandaloneBrowserTab failed url=\(url)", category: "DockedBrowser")
             return false
         }
         let browserTabId = opened.toString().trimmingCharacters(in: .whitespacesAndNewlines)
@@ -420,7 +420,7 @@ final class DockedBrowser: NSObject {
             return
         }
         guard attempt < Self.maxAttachRetry else {
-            os_log("docked tab webview never ready tab=%{public}@", log: Self.log, type: .error, tab.browserTabId)
+            LXLog.error("docked tab webview never ready tab=\(tab.browserTabId)", category: "DockedBrowser")
             onCloseTab(tab.surfaceId)
             return
         }

@@ -279,12 +279,12 @@ final class BrowserTabCoordinator: NSObject {
             }
             // Stale panel reference (e.g. torn down without clearing): drop it
             // and rebuild below instead of failing every future aside.
-            os_log("docked browser reference was stale; rebuilding", log: Self.log, type: .error)
+            LXLog.error("docked browser reference was stale; rebuilding", category: "BrowserTabCoordinator")
             existing.tearDown()
             dockedBrowser = nil
         }
         guard let owner = host?.browserOwnerForNewTab() else {
-            os_log("Cannot create docked browser without active lxapp session", log: Self.log, type: .error)
+            LXLog.error("Cannot create docked browser without active lxapp session", category: "BrowserTabCoordinator")
             return nil
         }
         guard let browser = DockedBrowser(
@@ -438,13 +438,9 @@ final class BrowserTabCoordinator: NSObject {
 
     private func scheduleBrowserDevToolsRetry(tabId: String, attempt: Int, token: UInt64, reason: String) -> Bool {
         guard attempt < Self.devToolsMaxRetry else {
-            os_log(
-                "toggleBrowserDevToolsWhenReady timed out after %d attempts for tab=%{public}@ reason=%{public}@",
-                log: Self.log,
-                type: .error,
-                attempt,
-                tabIdString(tabId),
-                reason
+            LXLog.error(
+                "toggleBrowserDevToolsWhenReady timed out after \(attempt) attempts for tab=\(tabIdString(tabId)) reason=\(reason)",
+                category: "BrowserTabCoordinator"
             )
             return false
         }
@@ -646,7 +642,7 @@ final class BrowserTabCoordinator: NSObject {
 
     private func addTabWithURL(_ url: String, stableTabId: String? = nil) {
         guard let owner = host?.browserOwnerForNewTab() else {
-            os_log("Cannot create browser tab without active lxapp session", log: Self.log, type: .error)
+            LXLog.error("Cannot create browser tab without active lxapp session", category: "BrowserTabCoordinator")
             return
         }
 
@@ -661,21 +657,16 @@ final class BrowserTabCoordinator: NSObject {
         }
 
         guard let openedTab else {
-            os_log(
-                "openBrowserTab failed for %{public}@/%{public}llu url=%{public}@ stableTabId=%{public}@",
-                log: Self.log,
-                type: .error,
-                owner.appId,
-                owner.sessionId,
-                url,
-                requestedStableTabId ?? ""
+            LXLog.error(
+                "openBrowserTab failed for \(owner.appId)/\(owner.sessionId) url=\(url) stableTabId=\(requestedStableTabId ?? "")",
+                category: "BrowserTabCoordinator"
             )
             return
         }
 
         let tabId = tabIdString(openedTab.toString())
         guard !tabId.isEmpty else {
-            os_log("openBrowserTab returned empty tab id", log: Self.log, type: .error)
+            LXLog.error("openBrowserTab returned empty tab id", category: "BrowserTabCoordinator")
             return
         }
 
@@ -822,8 +813,8 @@ final class BrowserTabCoordinator: NSObject {
         }
 
         guard attempt < Self.attachMaxRetry else {
-            os_log("Failed to attach browser webview after %d retries for tab=%{public}@",
-                   log: Self.log, type: .error, attempt, tabIdString(tabId))
+            LXLog.error("Failed to attach browser webview after \(attempt) retries for tab=\(tabIdString(tabId))",
+                        category: "BrowserTabCoordinator")
             if activeTabId == tabId {
                 clearWebViewAttachment()
                 hideBrowserView()

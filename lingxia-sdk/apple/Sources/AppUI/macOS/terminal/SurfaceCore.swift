@@ -924,12 +924,7 @@ private final class LingXiaPTYTerminalSession: @unchecked Sendable {
             let ok = terminalSessionWrite(self.sessionID, input)
             lxTerminalLogAsync("pty.send write session=\(self.sessionID) bytes=\(input.utf8.count) ok=\(ok)")
             if !ok {
-                os_log(
-                    "terminal write failed session=%{public}llu",
-                    log: Self.log,
-                    type: .error,
-                    self.sessionID
-                )
+                LXLog.error("terminal write failed session=\(self.sessionID)", category: "MacTerminalPTY")
             }
         }
     }

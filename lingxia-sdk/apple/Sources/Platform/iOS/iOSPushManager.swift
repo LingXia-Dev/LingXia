@@ -108,8 +108,7 @@ final class iOSPushManager: NSObject {
 
     /// Handle device token registration failure
     public func didFailToRegisterForRemoteNotifications(withError error: Error) {
-        os_log("Failed to register for remote notifications: %{public}@",
-               log: Self.log, type: .error, error.localizedDescription)
+        LXLog.error("Failed to register for remote notifications", category: "Push", error: error)
     }
 
     /// Handle incoming remote notification
@@ -180,7 +179,7 @@ extension iOSPushManager: UNUserNotificationCenterDelegate {
         case "launch":
             pushTrigger = .Launch
         default:
-            os_log("Unknown trigger type: %{public}@", log: Self.log, type: .error, trigger)
+            LXLog.error("Unknown trigger type: \(trigger)", category: "Push")
             return
         }
 
