@@ -2187,13 +2187,16 @@ fn show_app_menu(appid: &str, app: &LxApp, screen_x: i32, screen_y: i32) {
             .map(|path| path.to_string_lossy().into_owned())
             .filter(|path| !path.is_empty())
             .unwrap_or(lxapp_info.icon);
+        let about_label = lingxia_logic::i18n::t(lingxia_logic::I18nKey::CommonAbout);
+        let exit_label = lingxia_logic::i18n::t(lingxia_logic::I18nKey::CommonExit);
+        let version_label = lingxia_logic::i18n::t(lingxia_logic::I18nKey::CommonVersion);
         let about = AboutInfo {
-            title: "About".to_string(),
+            title: about_label.clone(),
             app_name,
-            version_line: format!("Version {version}"),
+            version_line: format!("{version_label} {version}"),
             icon_path,
         };
-        let items = vec!["About".to_string(), "Exit".to_string()];
+        let items = vec![about_label, exit_label];
         super::context_menu::show_context_menu_checked(
             window,
             (screen_x, screen_y),
@@ -2210,7 +2213,7 @@ fn show_app_menu(appid: &str, app: &LxApp, screen_x: i32, screen_y: i32) {
     #[cfg(not(feature = "browser-shell"))]
     {
         let _ = app;
-        let items = vec!["Exit".to_string()];
+        let items = vec![lingxia_logic::i18n::t(lingxia_logic::I18nKey::CommonExit)];
         super::context_menu::show_context_menu_checked(
             window,
             (screen_x, screen_y),
