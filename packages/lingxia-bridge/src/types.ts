@@ -2,6 +2,9 @@ export interface BridgeConfig {
   os?: 'Harmony' | 'iOS' | 'Android' | 'macOS' | 'Windows';
   nonce?: string;
   appleDownstreamURL?: string;
+  // Set by the host when attached to a `lingxia dev` session; gates the
+  // bridge's own trace logging.
+  dev?: boolean;
 }
 
 export interface RuntimeConfig {

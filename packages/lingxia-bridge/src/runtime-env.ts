@@ -39,6 +39,13 @@ export function isDesktop(): boolean {
   return isMacOS() || isWindows();
 }
 
+// True when attached to a `lingxia dev` session (the host sets `dev` in
+// `__LX_BRIDGE_CFG`). Used to surface the bridge's own protocol/lifecycle trace
+// only during development.
+export function isDevSession(): boolean {
+  return BRIDGE_CONFIG.dev === true;
+}
+
 export function getCommunicationMethod(): CommunicationMethod {
   if (BRIDGE_CONFIG.os === 'iOS' || BRIDGE_CONFIG.os === 'macOS') return 'webkit';
   if (BRIDGE_CONFIG.os === 'Harmony') return 'messageport';
