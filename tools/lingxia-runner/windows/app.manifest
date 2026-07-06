@@ -22,4 +22,17 @@
       <dpiAware xmlns="http://schemas.microsoft.com/SMI/2005/WindowsSettings">true/pm</dpiAware>
     </windowsSettings>
   </application>
+  <!-- comctl32 v6: the runner statically imports TaskDialogIndirect (the
+       capsule's About sheet), which only the v6 Common-Controls assembly
+       exports. Without this dependency the loader binds comctl32 v5 and the
+       process dies at load with STATUS_ENTRYPOINT_NOT_FOUND (0xC0000139)
+       before main(), so the devtool bridge never starts and `lxdev` reports
+       "devtool runtime is not connected". -->
+  <dependency>
+    <dependentAssembly>
+      <assemblyIdentity type="win32" name="Microsoft.Windows.Common-Controls"
+        version="6.0.0.0" processorArchitecture="*"
+        publicKeyToken="6595b64144ccf1df" language="*"/>
+    </dependentAssembly>
+  </dependency>
 </assembly>
