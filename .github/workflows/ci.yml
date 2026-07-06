@@ -214,8 +214,12 @@ jobs:
       - name: Check i18n-related crates explicitly
         run: cargo check -p lingxia-logic -p lingxia-cli
 
-      - name: Verify strict i18n generation gate
-        run: cargo run -p lingxia-cli -- gen i18n --input i18n --rust-out /tmp/i18n_generated.rs --ts-out /tmp/lingxia-types-generated
+      # Byte-compares the committed Rust + TS outputs against a fresh
+      # regeneration and fails on drift — catches "edited yaml but forgot to
+      # run `gen i18n`". The native resource bundles are gitignored, so
+      # `--check` only validates that they generate, not that they're tracked.
+      - name: Verify committed i18n outputs are in sync
+        run: cargo run -p lingxia-cli -- gen i18n --check
 
   # lingxia (lib) for the android target does not pull lingxia-terminal, so this
   # job needs only the NDK clang.

@@ -63,11 +63,18 @@ cargo run -p lingxia-cli -- gen i18n --check
 
 Generates every enabled target into a temp dir, diffs against the
 checked-in copy, prints any drift, and exits non-zero. Run this in
-pre-commit / pre-push hooks. The verify-only mode writes nothing.
+pre-commit / pre-push hooks. The verify-only mode writes nothing. This is
+also the CI gate.
 
-Android `strings.xml` files are generated/ignored, so `--check` validates
-that Android generation succeeds but does not require those XML files to be
-tracked.
+Only the Rust (`i18n_generated.rs`) and TypeScript outputs are committed, so
+`--check` byte-compares those. The native resource bundles (Android
+`strings.xml`, Apple `Localizable.strings`, Harmony `string.json`) are
+gitignored and regenerated at build time, so `--check` validates that they
+generate but does not require them to be tracked.
+
+The generated Rust is piped through `rustfmt` during generation, so plain
+`gen i18n` already matches `cargo fmt` — no separate formatting step, and no
+spurious `--check` drift.
 
 ## What the generator enforces
 
