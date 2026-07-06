@@ -74,12 +74,22 @@ static BROWSER_CREATE_TOKEN: AtomicU64 = AtomicU64::new(1);
 static BROWSER_LOAD_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
 static BROWSER_ACTIVE_TAB_ID: OnceLock<Mutex<Option<String>>> = OnceLock::new();
 static BROWSER_TABS_CHANGED_HANDLER: OnceLock<Mutex<Option<TabsChangedHandler>>> = OnceLock::new();
+static BROWSER_TAB_PRESENT_HANDLER: OnceLock<Mutex<Option<TabPresentHandler>>> = OnceLock::new();
 
 /// Process-wide observer invoked when the browser tab set/metadata changes.
 type TabsChangedHandler = Arc<dyn Fn() + Send + Sync>;
+/// Process-wide observer invoked when a caller wants a tab brought onscreen.
+type TabPresentHandler = Arc<dyn Fn(&str) + Send + Sync>;
 
 pub(crate) fn set_tabs_changed_handler(handler: TabsChangedHandler) {
     let slot = BROWSER_TABS_CHANGED_HANDLER.get_or_init(|| Mutex::new(None));
+    if let Ok(mut slot) = slot.lock() {
+        *slot = Some(handler);
+    }
+}
+
+pub(crate) fn set_tab_present_handler(handler: TabPresentHandler) {
+    let slot = BROWSER_TAB_PRESENT_HANDLER.get_or_init(|| Mutex::new(None));
     if let Ok(mut slot) = slot.lock() {
         *slot = Some(handler);
     }
@@ -95,6 +105,16 @@ pub(crate) fn notify_tabs_changed() {
         .and_then(|slot| slot.clone());
     if let Some(handler) = handler {
         handler();
+    }
+}
+
+fn notify_tab_present_requested(tab_id: &str) {
+    let handler = BROWSER_TAB_PRESENT_HANDLER
+        .get()
+        .and_then(|slot| slot.lock().ok())
+        .and_then(|slot| slot.clone());
+    if let Some(handler) = handler {
+        handler(tab_id);
     }
 }
 
@@ -347,6 +367,12 @@ pub fn browser_activate_tab(tab_id: &str) -> Result<BrowserTabInfo, BrowserAutom
     if set_active_browser_tab(&normalized_tab_id) {
         notify_tabs_changed();
     }
+    Ok(info)
+}
+
+pub fn browser_present_tab(tab_id: &str) -> Result<BrowserTabInfo, BrowserAutomationError> {
+    let info = browser_activate_tab(tab_id)?;
+    notify_tab_present_requested(&info.tab_id);
     Ok(info)
 }
 
