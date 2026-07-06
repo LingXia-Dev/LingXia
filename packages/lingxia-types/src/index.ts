@@ -5,6 +5,7 @@
  */
 
 export * from './app';
+export * from './surface';
 export * from './lxapp';
 export * from './device';
 export * from './display';
@@ -31,9 +32,19 @@ import type {
   PageMessagePort,
   PageConfig,
   PageInstance,
+} from './app';
+
+import type {
   Surface,
   SurfaceHandle,
-} from './app';
+  SurfaceContext,
+  TrayApi,
+  OpenSurfaceSpec,
+  OpenPageSurfaceSpec,
+  OpenDeclaredSurfaceSpec,
+  OpenUrlTabSpec,
+  OpenUrlAsideSpec,
+} from './surface';
 
 import type {
   LxAppInfo,
@@ -140,200 +151,21 @@ import type {
   RemoveTabBarBadgeOptions,
   SetTabBarStyleOptions,
   SetTabBarItemOptions,
-  SurfaceEdge,
-  SurfaceFloatPosition,
-  OverlaySurfaceSize,
-  SurfaceContext,
   CapsuleRect,
 } from './ui';
 
-interface WindowSurfaceSize {
-  /** Initial window width in logical pixels. */
-  width?: number;
-  /** Initial window height in logical pixels. */
-  height?: number;
-}
-
 /**
- * Spec for {@link Lx.openSurface}. A discriminated union keyed by source so a
- * page name and a declared surface id never collide (each is its own string
- * space, separately type-checkable).
- *
- * - `{ page }` — one of this lxapp's own pages, by name, arranged as `as`
- *   (`float` is a popup; `window` is a bare desktop window, which rejects on
- *   mobile). `position` applies to `float`, and `size` is a Host-clamped hint.
- *   They are fixed at open (re-open to change). Your own pages **cannot** be
- *   docked as an `aside` — an aside is external content only (see `{ url }`).
- *   For a side panel of your own, use a declared `surface`, an in-page split
- *   layout, or `role: main` for a switchable destination.
- *
- *   `float` is a popup layered above the main at `position` (like a dialog); it
- *   takes no layout space. The SDK gives it **no chrome of its own — there is no
- *   built-in close button**: the lxapp owns the popup UI and dismisses it by
- *   calling `surface.close()` (or `.hide()`). A float sized to the full container
- *   (`size: { width: '100%', height: '100%' }`) presents immersively on mobile
- *   (system bars hidden) and is likewise chrome-less — draw your own close
- *   affordance. (iOS retains a silent left-edge swipe as a last-resort escape so a
- *   full-screen float can never trap the user; don't rely on it as the primary
- *   dismissal.)
- * - `{ surface }` — a surface declared in `lingxia.yaml` `surfaces:`, by id
- *   (e.g. `'terminal'`, `'ai-assistant'`). Form, position, and startup data come
- *   from the declaration.
- * - `{ url }` — external content in the in-app browser. Without `as` it opens as
- *   a main browser tab (the **self** browser: full chrome **with an editable
- *   address bar**, no handle). With `as: 'aside'` it opens in the **browser
- *   aside** — a docked (large screen) / full-screen (phone) **multi-tab** browser
- *   for external content only (`https://` or `file://`).
- *
- *   The aside is **API-only and has no address input** (its one difference from
- *   the self browser): each `openSurface({ url, as: 'aside' })` call opens a tab;
- *   there is no manual "new tab" affordance and the address is never editable.
- *   Tabs are **deduped by URL** — reopening a URL focuses the existing tab and
- *   returns its handle. The handle is **tab-scoped**: `close()` closes that tab,
- *   and closing the last tab closes the aside. The tab strip shows page
- *   **titles** (never the URL), plus per-tab close, back/forward, refresh, and a
- *   close-aside control.
- *
- *   Presentation is the only large/small difference: on `medium` / `expanded`
- *   the aside **docks** and splits beside the main at `edge` (default `'right'`)
- *   with a horizontal title tab strip; on `compact` (phone / runner) it presents
- *   **full-screen** with a **bottom** browser toolbar (tabs reached via a tab
- *   switcher), dismissed by the host back affordance. `size` is a host-clamped
- *   preferred size (large screen only).
+ * The global `lx` object — the full Logic-side platform surface, and the
+ * authoritative capability index (grouped by the banners below). Mostly flat,
+ * with a few nested namespaces (`env`, `app`, `tray`).
  */
-export type OpenPageSurfaceSpec =
-  | {
-      page: string;
-      /**
-       * A chrome-less popup above the main: the lxapp draws its own UI and close
-       * affordance — there is no SDK-provided close button (see
-       * {@link OpenPageSurfaceSpec}).
-       */
-      as: 'float';
-      position?: SurfaceFloatPosition;
-      size?: OverlaySurfaceSize;
-      query?: Record<string, unknown>;
-      edge?: never;
-      surface?: never;
-      url?: never;
-    }
-  | {
-      page: string;
-      as: 'window';
-      size?: WindowSurfaceSize;
-      query?: Record<string, unknown>;
-      edge?: never;
-      position?: never;
-      surface?: never;
-      url?: never;
-    };
-
-export interface OpenDeclaredSurfaceSpec {
-  surface: string;
-  /**
-   * Docking edge override for this open. Without it the surface keeps its
-   * current placement (initially the `lingxia.yaml` edge); with it the panel
-   * opens there — or moves there if already visible.
-   */
-  edge?: SurfaceEdge;
-  page?: never;
-  url?: never;
-  as?: never;
-  position?: never;
-  size?: never;
-  query?: never;
-}
-
-export interface OpenUrlTabSpec {
-  url: string;
-  as?: never;
-  page?: never;
-  surface?: never;
-  edge?: never;
-  position?: never;
-  size?: never;
-  query?: never;
-}
-
-/**
- * Open `url` in the multi-tab browser aside. `url` must be `https://` or
- * `file://` (external content only). Repeated calls add/focus tabs (deduped by
- * URL) in the single aside per window; the returned handle is scoped to that
- * tab. See {@link OpenSurfaceSpec} for the full aside contract.
- */
-export interface OpenUrlAsideSpec {
-  url: string;
-  as: 'aside';
-  edge?: SurfaceEdge;
-  size?: OverlaySurfaceSize;
-  page?: never;
-  surface?: never;
-  position?: never;
-  query?: never;
-}
-
-export type OpenSurfaceSpec =
-  | OpenPageSurfaceSpec
-  | OpenDeclaredSurfaceSpec
-  | OpenUrlTabSpec
-  | OpenUrlAsideSpec;
-
-/**
- * Runtime control of the menu-bar (macOS) / system-tray (Windows) status item.
- * The tray is declared in `lingxia.yaml` (`tray:`); these update its dynamic
- * content at runtime.
- *
- * **Desktop only.** Mobile platforms have no tray, so every method here is a
- * no-op there (it never throws) — safe to call from portable code. For an
- * app-icon badge that *is* cross-platform (including mobile), use
- * {@link HostAppApi.setBadge}.
- */
-export interface TrayMenuItem {
-  label: string;
-  /** Invoked when this item is clicked. */
-  onClick?: () => void;
-  enabled?: boolean;
-  checked?: boolean;
-}
-
-export interface TrayMenuSeparator {
-  separator: true;
-}
-
-export interface TrayApi {
-  /** Replace the status-item icon (a resource path). */
-  setIcon(icon: string): void;
-  /** Set the text shown beside the icon (macOS). Pass `null`/empty to clear. */
-  setTitle(text: string | null): void;
-  /** Set the badge — e.g. an unread count. Pass `null`/empty to clear. */
-  setBadge(value: string | number | null): void;
-  /**
-   * Replace the right-click dropdown menu. There is no default menu — provide
-   * your own items (e.g. `{ label: 'Quit', onClick: () => lx.app.exit() }`).
-   *
-   * The menu is a snapshot: to change an item's `checked`/`enabled`/`label`
-   * state, call `setMenu` again with the full updated array. There is no
-   * per-item mutation API.
-   */
-  setMenu(items: Array<TrayMenuItem | TrayMenuSeparator>): void;
-  /**
-   * Handle a left-click on the tray icon yourself. While a handler is
-   * registered the click runs only the handler — the tray's configured surface
-   * `action` is suppressed, so the click is fully yours (e.g. toggle a state and
-   * `setIcon`). Returns an unsubscribe function.
-   */
-  onClick(handler: () => void): () => void;
-  /** Show the tray status item. */
-  show(): void;
-  /** Hide the tray status item (without removing the app). */
-  hide(): void;
-}
-
 export interface Lx {
+  // Environment, host app & tray
   env: LxEnv;
   app: HostAppApi;
   tray: TrayApi;
 
+  // Surfaces (asides, floats, windows, browser tabs)
   /**
    * Open a surface.
    *
@@ -356,12 +188,14 @@ export interface Lx {
    */
   onSurfaceContext(handler: (context: SurfaceContext) => void): () => void;
 
+  // Device & system info
   getDeviceInfo(): DeviceInfo;
   getScreenInfo(): ScreenInfo;
   vibrateShort(): boolean;
   vibrateLong(): boolean;
   makePhoneCall(options: MakePhoneCallOptions): boolean;
 
+  // WiFi & network
   startWifi(): Promise<void>;
   stopWifi(): Promise<void>;
   connectWifi(options: ConnectWifiOptions): Promise<void>;
@@ -373,10 +207,12 @@ export interface Lx {
   onNetworkChange(callback: NetworkChangeCallback): void;
   offNetworkChange(callback?: NetworkChangeCallback): void;
 
+  // Display / orientation
   setDeviceOrientation(orientation: DeviceOrientation): boolean;
   onDeviceOrientationChange(callback: (event: DeviceOrientationChangeEvent) => void): void;
   offDeviceOrientationChange(callback?: (event: DeviceOrientationChangeEvent) => void): void;
 
+  // File & transfer
   /**
    * Open a local file with the requested strategy.
    * Use `mode: 'review'` when the UX requires in-app preview,
@@ -391,18 +227,24 @@ export interface Lx {
   uploadFile(options: UploadOptions): UploadTask;
   getFileManager(): FileManager;
 
+  // Storage (key/value)
   getStorage(): Storage;
 
+  // Location
   getLocation(options?: GetLocationOptions): Promise<LocationInfo>;
 
+  // Cross-lxapp navigation
   navigateToLxApp(options: NavigateToLxAppOptions): Promise<void>;
   navigateBackLxApp(): Promise<void>;
 
+  // LxApp & system info
   getLxAppInfo(): LxAppInfo;
   getSystemSetting(): SystemSettingInfo;
 
+  // LxApp bundle update
   getUpdateManager(): UpdateManager;
 
+  // Media
   getImageInfo(options: GetImageInfoOptions): Promise<ImageInfo>;
   compressImage(options: CompressImageOptions): Promise<CompressImageResult>;
   compressVideo(options: CompressVideoOptions): CompressVideoTask;
@@ -438,10 +280,12 @@ export interface Lx {
 
   scanCode(options?: ScanCodeOptions): Promise<ScanCodeResult>;
 
-  share(options: ShareOptions): Promise<ShareResult>;
-
   createVideoContext(componentId: string): VideoContext;
 
+  // Share
+  share(options: ShareOptions): Promise<ShareResult>;
+
+  // UI feedback
   showToast(options: ShowToastOptions): void;
   hideToast(): void;
 
@@ -449,16 +293,19 @@ export interface Lx {
 
   showActionSheet(options: ShowActionSheetOptions): Promise<ActionSheetResult>;
 
+  // Page navigation
   navigateTo(options: NavigateToOptions): Promise<PageMessagePort>;
   navigateBack(options: NavigateBackOptions): void;
   redirectTo(options: RedirectToOptions): Promise<void>;
   switchTab(options: SwitchTabOptions): Promise<void>;
   reLaunch(options: ReLaunchOptions): Promise<void>;
 
+  // Navigation bar / home button
   setNavigationBarTitle(options: SetNavigationBarTitleOptions): boolean;
   setNavigationBarColor(options: SetNavigationBarColorOptions): boolean;
   hideHomeButton(): boolean;
 
+  // Tab bar
   showTabBarRedDot(options: TabBarRedDotOptions): boolean;
   hideTabBarRedDot(options: TabBarRedDotOptions): boolean;
   setTabBarBadge(options: SetTabBarBadgeOptions): boolean;
@@ -468,14 +315,18 @@ export interface Lx {
   setTabBarStyle(options: SetTabBarStyleOptions): boolean;
   setTabBarItem(options: SetTabBarItemOptions): boolean;
 
+  // Pull-down refresh
   startPullDownRefresh(): void;
   stopPullDownRefresh(): void;
 
+  // Capsule
   getCapsuleRect(): Promise<CapsuleRect>;
 
+  // File / directory picker
   chooseFile(options?: ChooseFileOptions): Promise<ChooseFileResult>;
   chooseDirectory(options?: ChooseDirectoryOptions): Promise<ChooseDirectoryResult>;
 
+  // Keyboard / hardware keys (TV / desktop)
   onKeyDown(callback: KeyEventCallback): void;
   offKeyDown(callback?: KeyEventCallback): void;
   onKeyUp(callback: KeyEventCallback): void;

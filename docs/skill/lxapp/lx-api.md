@@ -101,27 +101,21 @@ The Rong `cron` surface **isn't declared in `@lingxia/types`** yet — inspect t
 
 ## `lx` capability map
 
-The `lx` object is mostly flat, with a few nested namespaces (`lx.app`, `lx.tray`, `lx.env`); the rest is grouped logically below. These are method **names for discovery** — open `@lingxia/types` for the signatures and option/result types (the "Types" column shows the sub-module). The non-obvious behavior is in [Behavioral notes](#behavioral-notes) below.
+**The sectioned `interface Lx` in `@lingxia/types` *is* the capability index** — the single source of truth, always in sync with the runtime. Every method is grouped under `//` comment banners (Surfaces, Device & system, WiFi & network, Media, Share, UI feedback, Page navigation, Tab bar, Pull-down refresh, Keyboard, …), so scanning that one block shows the whole surface. There is deliberately **no method table duplicated here** — a hand-copied list drifts (it already had, silently dropping `lx.share`), so read the `.d.ts` instead:
 
-| Capability | Methods | Types |
-|---|---|---|
-| **Navigation** | `navigateTo` `navigateBack` `redirectTo` `switchTab` `reLaunch` `navigateToLxApp` `navigateBackLxApp` | `navigator`, `app` |
-| **Media** | `chooseMedia` `previewMedia` `saveImageToPhotosAlbum` `saveVideoToPhotosAlbum` `getImageInfo` `compressImage` `compressVideo` `getVideoInfo` `extractVideoThumbnail` `scanCode` `createVideoContext` | `media` |
-| **File & transfer** | `openFile` `chooseFile` `chooseDirectory` `downloadFile` `uploadFile` `getFileManager` | `file`, `transfer` |
-| **Device / system** | `getDeviceInfo` `getScreenInfo` `getSystemSetting` `vibrateShort` `vibrateLong` `makePhoneCall` `openExternal` | `device`, `system` |
-| **Networking** | `startWifi` `stopWifi` `connectWifi` `getWifiList` `getConnectedWifi` `onWifiConnected`/`off…` `getNetworkInfo` `onNetworkChange`/`off…` | — |
-| **Display / orientation** | `setDeviceOrientation` `onDeviceOrientationChange`/`off…` | — |
-| **Location** | `getLocation` | — |
-| **Keyboard / hardware** | `onKeyDown`/`off…` `onKeyUp`/`off…` (TV/desktop hosts) | — |
-| **Storage (k/v)** | `getStorage` → `{ get, set, remove, clear, keys, has, size }` | `storage` |
-| **Host app** (`lx.app`) | `envVersion` `getBaseInfo` `checkUpdate` `exit` `screenshot` `setBadge` `autostart?.isEnabled` `autostart?.setEnabled` | — |
-| **Tray** (`lx.tray`, desktop) | `setIcon` `setTitle` `setBadge` `setMenu` `onClick` `show` `hide` | — |
-| **Surfaces** | `openSurface` `onSurfaceContext` | `ui` |
-| **Runtime info** | `env` (`USER_DATA_PATH` / `USER_CACHE_PATH`) `getLxAppInfo` `getUpdateManager` | `update` |
+- open `node_modules/@lingxia/types/dist/index.d.ts` → the `interface Lx { … }` block, or
+- type `lx.` in your editor and let completion list the grouped members, or
+- grep a hunch: `grep -rn "scanCode" node_modules/@lingxia/types`.
 
-### Page chrome / UI
+**Nested namespaces** (the rest of `lx.*` is flat):
 
-`lx.setNavigationBarTitle` / `setNavigationBarColor` / `hideHomeButton`, `showToast` / `hideToast`, `showModal`, `showActionSheet`, `startPullDownRefresh` / `stopPullDownRefresh`, `getCapsuleRect`, and the `setTabBar*` family. Signatures and option shapes are in `@lingxia/types/ui`.
+- `lx.env` — `USER_DATA_PATH` / `USER_CACHE_PATH`.
+- `lx.app` — host-app control: `getBaseInfo`, `checkUpdate`, `exit`, `screenshot`, `setBadge`, `envVersion`, `autostart?`.
+- `lx.tray` — desktop menu-bar / system-tray status item.
+
+The non-obvious behavior each signature can't convey is in [Behavioral notes](#behavioral-notes) below.
+
+### Tab bar
 
 The `setTabBar*` / `showTabBar` / `hideTabBar` family **mutates an already-declared tab bar** — the tab bar itself is configured statically in `lxapp.json`. For the declarative shape, `lx.switchTab`, and why the tab bar is lxapp-internal (unrelated to host surfaces), see [LxApp guide → Tab bar navigation](./guide.md#tab-bar-navigation).
 

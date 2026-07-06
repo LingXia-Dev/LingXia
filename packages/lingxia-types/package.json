@@ -21,6 +21,11 @@
       "import": "./dist/app/index.js",
       "require": "./dist/app/index.js"
     },
+    "./surface": {
+      "types": "./dist/surface/index.d.ts",
+      "import": "./dist/surface/index.js",
+      "require": "./dist/surface/index.js"
+    },
     "./lxapp": {
       "types": "./dist/lxapp/index.d.ts",
       "import": "./dist/lxapp/index.js",
@@ -40,6 +45,11 @@
       "types": "./dist/input/index.d.ts",
       "import": "./dist/input/index.js",
       "require": "./dist/input/index.js"
+    },
+    "./env": {
+      "types": "./dist/env/index.d.ts",
+      "import": "./dist/env/index.js",
+      "require": "./dist/env/index.js"
     },
     "./storage": {
       "types": "./dist/storage/index.d.ts",

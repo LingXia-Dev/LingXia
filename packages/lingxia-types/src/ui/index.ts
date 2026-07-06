@@ -118,43 +118,6 @@ export interface SetTabBarItemOptions {
   selectedIconPath?: string;
 }
 
-// ── Adaptive Surface Layout ─────────────────────────────────────────────────
-// The form is expressed by the `as` field on `lx.openSurface({ page, as })`; the
-// Host arbitrates the realized platform form (split pane on larger screens,
-// full-screen drill-in on compact screens).
-
-/**
- * Size hint for an overlay surface (aside / float).
- *
- * - number: absolute px, must be > 0
- * - `${number}%`: percentage of the container, 0 < N ≤ 100
- */
-export type OverlaySurfaceSizeValue = number | `${number}%`;
-
-export interface OverlaySurfaceSize {
-  /** Width hint. */
-  width?: OverlaySurfaceSizeValue;
-  /** Height hint. */
-  height?: OverlaySurfaceSizeValue;
-}
-
-/** Edge an aside docks to; the Host decides the realized form by screen size. */
-export type SurfaceEdge = 'left' | 'right' | 'top' | 'bottom';
-
-/** Where a float popup anchors (default `center`). */
-export type SurfaceFloatPosition = 'center' | 'top' | 'bottom' | 'left' | 'right';
-
-/**
- * The window's adaptive context, delivered to `lx.onSurfaceContext()` so an
- * lxapp can self-adapt (e.g. switch column count by `sizeClass`).
- */
-export interface SurfaceContext {
-  /** compact (<600) / medium (600–840) / expanded (>840), with hysteresis. */
-  sizeClass: 'compact' | 'medium' | 'expanded';
-  /** In compact, the bottom region belongs to the app content. */
-  bottomOwner: 'app';
-}
-
 export interface CapsuleRect {
   width?: number;
   height?: number;
