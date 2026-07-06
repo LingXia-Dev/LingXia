@@ -137,28 +137,12 @@ fn status_bar_foreground() -> u32 {
     }
 }
 
-/// Uniform bezel + outer radius for a device group. The outer arc matches the
-/// group's largest screen radius (parallel curves, so the shape stays as
-/// round as the screen), and the ring is the thinnest that still tucks the
-/// unclippable webview's square corners under the outer silhouette:
-/// `w >= r * (1 - 1/sqrt(2)) + margin`. The edges wear that thin ring; the
-/// corners naturally thicken toward the arc, like the real hardware.
-fn group_bezel(group: &str) -> (i32, i32) {
-    let outer_radius = presets()
-        .iter()
-        .filter(|preset| preset.group == group)
-        .map(|preset| preset.screen_radius.max(preset.outer_radius))
-        .max()
-        .unwrap_or(0);
-    let min_bezel = presets()
-        .iter()
-        .filter(|preset| preset.group == group)
-        .map(|preset| preset.bezel_width)
-        .max()
-        .unwrap_or(4);
-    let sqrt2 = 2f64.sqrt();
-    let containing = (outer_radius as f64 * (1.0 - 1.0 / sqrt2) + 1.5 / sqrt2).ceil() as i32;
-    (min_bezel.max(containing), outer_radius)
+fn visual_bezel_width(preset: &DevicePreset) -> i32 {
+    if preset.group == "phone" {
+        preset.bezel_width.max(10)
+    } else {
+        preset.bezel_width
+    }
 }
 
 pub(crate) fn frame_spec(index: usize, landscape: bool) -> WindowsDeviceFrame {
@@ -170,15 +154,13 @@ pub(crate) fn frame_spec(index: usize, landscape: bool) -> WindowsDeviceFrame {
     } else {
         (preset.width, preset.height)
     };
-    // A windowed WebView2 surface cannot be clipped, so its square corner
-    // tips can only be hidden under the opaque bezel ring — see
-    // `group_bezel`. Sized per device *group* so switching between phones
-    // keeps the same perceived border.
-    let (bezel_width, outer_radius) = group_bezel(&preset.group);
+    // A windowed WebView2 surface cannot be clipped directly; the device-frame
+    // corner mask covers the cut-away screen corners over this slim bezel.
+    let outer_radius = preset.screen_radius.max(preset.outer_radius);
     WindowsDeviceFrame {
         screen_width,
         screen_height,
-        bezel_width,
+        bezel_width: visual_bezel_width(preset),
         outer_corner_radius: outer_radius,
         screen_corner_radius: preset.screen_radius,
         cutout: (!landscape && preset.notch.width > 0 && preset.notch.height > 0).then(|| {
