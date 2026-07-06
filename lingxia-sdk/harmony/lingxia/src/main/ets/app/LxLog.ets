@@ -6,6 +6,13 @@ import { forwardHostLog, hostLogEnabled } from 'liblingxia.so';
  * Unlike direct hilog calls, records emitted here flow through the same pipeline
  * as Rust logs, so they show up in dev-server log streams tagged with the
  * originating appId/path when provided.
+ *
+ * **Forward errors and important warnings only.** Records here are also buffered
+ * for cloud upload / crash diagnosis, so routing routine info/debug dilutes that
+ * bounded buffer (evicting the errors it's meant to keep) and pays an FFI
+ * crossing per call. Keep lifecycle/info/debug and high-frequency traces on
+ * hilog; send through LxLog the diagnostics you'd want in an uploaded log
+ * bundle. On a hot path, guard with `LxLog.isEnabled(level)`.
  */
 export class LxLog {
   private static readonly VERBOSE: number = 0;

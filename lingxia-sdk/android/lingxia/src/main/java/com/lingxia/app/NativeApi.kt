@@ -165,6 +165,14 @@ internal object NativeApi {
         message: String
     ): Boolean
 
+    /** Set the runtime log threshold (0=verbose … 4=error). */
+    @JvmStatic
+    external fun setLogLevel(level: Int)
+
+    /** Whether a host log at `level` (0=verbose … 4=error) would be recorded. */
+    @JvmStatic
+    external fun hostLogEnabled(level: Int): Boolean
+
     /**
      * Run the shared browser navigation policy classifier.
      *

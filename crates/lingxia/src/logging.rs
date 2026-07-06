@@ -166,6 +166,14 @@ pub fn register_downstream_logger(
 /// The `level` value is the raw FFI contract: 0=verbose, 1=debug, 2=info,
 /// 3=warn, 4=error. SDK-facing wrappers should hide these integer values
 /// behind platform-native enums.
+///
+/// **Recommended: forward errors and important warnings only.** Records that
+/// arrive here are not just shown in `lxdev logs` — they are buffered for cloud
+/// upload / crash diagnosis. Routing routine info/debug or high-frequency traces
+/// churns that bounded buffer and evicts the errors it exists to preserve (and
+/// costs an FFI crossing + eager message build per call). Keep lifecycle/info/
+/// debug on the platform logger (os_log / logcat / hilog); send through this
+/// path the diagnostics you'd want in an uploaded log bundle.
 pub(crate) fn forward_host_log(
     level: i32,
     category: &str,

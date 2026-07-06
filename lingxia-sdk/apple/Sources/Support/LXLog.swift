@@ -6,9 +6,13 @@ import CLingXiaRustAPI
 /// logs: they reach the platform sink *and* the dev-server stream, so they show
 /// up in `lxdev logs` tagged with the originating `appId`/`path`.
 ///
-/// Prefer this over `os_log` for any log a host/lxapp developer should be able
-/// to observe. Pure platform-rendering / high-frequency traces may stay on
-/// `os_log`.
+/// **Forward errors and important warnings only.** Records here are also
+/// buffered for cloud upload / crash diagnosis, so routing routine info/debug
+/// dilutes that bounded buffer (evicting the errors it's meant to keep) and
+/// pays an FFI crossing + eager message build per call. Keep lifecycle/info/
+/// debug and high-frequency traces on `os_log`; send through `LXLog` the
+/// diagnostics you'd want in an uploaded log bundle. On a genuinely hot path
+/// guard the call with ``isEnabled(_:)``.
 enum LXLog {
     /// Mirrors the Rust FFI level contract (see `logging::forward_host_log`).
     enum Level: Int32 {
