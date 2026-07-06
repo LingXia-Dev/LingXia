@@ -1,10 +1,12 @@
 # `lxdev` — Drive a running dev session
 
-`lxdev` inspects and drives a live `lingxia dev` session — the host app's browser tabs, the lxapps inside it, the host window, and the log stream. It is a session client: it connects to an existing dev websocket, sends one command, prints the result, and exits (except `logs -f`). It does not start new platform sessions; `lingxia dev` owns launch, install, process lifetime, and background mode.
+`lxdev` drives a live `lingxia dev` session — a session client that connects to the dev websocket, runs one command, prints the result, and exits (except `logs -f`). It never starts a session; `lingxia dev` owns launch, install, and process lifetime. What it can drive is in **Capabilities** below.
 
 This file says **what `lxdev` can do**. For flags and defaults, `lxdev <family> <cmd> --help` is exhaustive and always matches the installed version — the doc does not duplicate it. The command set is dynamic per project type, so `--help` is also the only reliable list for the project you're in.
 
 ## Session selection
+
+**Start a session for automation with `lingxia dev --background`.** `lxdev` needs a *live* session, and a session lives only as long as its owning `lingxia dev` process — a foreground `lingxia dev` blocks the terminal, and if an agent backgrounds it and later loses that process, the session dies with it. `--background` builds, launches, and returns once the session is ready; check it with `lingxia dev status`, stop it with `lingxia dev stop`. Then drive it with `lxdev`.
 
 `lingxia dev` writes `.lingxia/sessions/<id>.json` per session; `lxdev` scans it on every run. One live session → used automatically. Several → it **refuses to guess** and lists candidates; pick one with the global selector, which goes **before** the subcommand:
 
@@ -22,9 +24,8 @@ Stale files from crashed sessions are pruned automatically (or via `lxdev sessio
 - `rebuild` — rebuild the lxapp front-end bundle through the running session
 - `restart --build` — rebuild, then restart the lxapp runtime
 - `nav to|redirect|switch-tab|relaunch|back` — navigate the runtime by page name (from `pages`)
-- `eval` — run JS in the **Logic runtime** (AppService: `lx.*`, `Page({})` state — no DOM)
+- `eval` — run JS in the **Logic runtime**; `page eval` — run JS in the **page WebView** (the two see different things — JS-contexts table below)
 - `page current|list|info` — page stack status
-- `page eval` — run JS in the **page WebView** (rendered DOM — no AppService state)
 - `page query|click|type|fill|press|scroll|scroll-into-view` — element-level automation in the page WebView
 - `page back` — pop the page stack
 - `page screenshot` — PNG of one page's WebView
