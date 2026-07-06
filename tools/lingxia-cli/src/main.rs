@@ -297,7 +297,7 @@ enum Commands {
 
     /// List connected devices
     Devices {
-        /// Target platform (android, ios, harmony). Auto-detected if not specified.
+        /// Target platform (android, ios, harmony, windows). Auto-detected if not specified.
         #[arg(short = 'p', long)]
         platform: Option<String>,
     },
@@ -348,7 +348,7 @@ enum Commands {
         #[arg(short = 'd', long)]
         device: Option<String>,
 
-        /// Target platform (android, ios, harmony). Auto-detected if not specified.
+        /// Target platform (android, ios, harmony, windows). Auto-detected if not specified.
         #[arg(short = 'p', long)]
         platform: Option<String>,
 
