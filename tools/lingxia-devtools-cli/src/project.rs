@@ -40,6 +40,14 @@ pub fn sessions_dir(project_root: &Path) -> PathBuf {
     project_root.join(DEV_DIR_NAME).join(SESSIONS_DIR_NAME)
 }
 
+pub fn remove_session(project_root: &Path, session_id: &str) -> Result<()> {
+    let path = sessions_dir(project_root).join(format!("{session_id}.json"));
+    if path.exists() {
+        fs::remove_file(&path).with_context(|| format!("Failed to remove {}", path.display()))?;
+    }
+    Ok(())
+}
+
 /// Enumerate every parseable session file under `.lingxia/sessions/`.
 /// Malformed JSON / unreadable files are silently skipped.
 pub fn list_all_sessions(project_root: &Path) -> Result<Vec<SessionInfo>> {

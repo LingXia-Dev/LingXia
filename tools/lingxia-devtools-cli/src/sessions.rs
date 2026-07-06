@@ -74,12 +74,24 @@ pub fn execute_prune(project_root: &Path) -> Result<()> {
 
 pub fn execute_stop(project_root: &Path, selector: &SessionSelector) -> Result<()> {
     let info = project::resolve_session(project_root, selector)?;
-    client::execute_command(&info.ws_url, handlers::session::SHUTDOWN, None)?;
-    println!(
-        "Stop requested for {} dev session {}.",
-        info.platform, info.session_id
-    );
-    Ok(())
+    match client::execute_command(&info.ws_url, handlers::session::SHUTDOWN, None) {
+        Ok(_) => {
+            println!(
+                "Stop requested for {} dev session {}.",
+                info.platform, info.session_id
+            );
+            Ok(())
+        }
+        Err(_) if project::is_stale(&info) => {
+            project::remove_session(project_root, &info.session_id)?;
+            println!(
+                "Removed stale {} dev session {}.",
+                info.platform, info.session_id
+            );
+            Ok(())
+        }
+        Err(err) => Err(err),
+    }
 }
 
 fn format_started(started_at: u64) -> String {

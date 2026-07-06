@@ -286,9 +286,14 @@ pub fn request_shutdown(info: &SessionInfo) -> Result<()> {
 }
 
 fn devtools_ws_reachable(ws_url: &str, timeout: Duration) -> bool {
-    let Some(mut websocket) = connect_devtools_ws(ws_url, timeout) else {
-        return false;
-    };
+    match devtools_ws_echo(ws_url, timeout) {
+        Some((ok, _)) => ok,
+        None => false,
+    }
+}
+
+fn devtools_ws_echo(ws_url: &str, timeout: Duration) -> Option<(bool, Option<serde_json::Value>)> {
+    let mut websocket = connect_devtools_ws(ws_url, timeout)?;
 
     if send_wire_message(
         &mut websocket,
@@ -298,7 +303,7 @@ fn devtools_ws_reachable(ws_url: &str, timeout: Duration) -> bool {
     )
     .is_err()
     {
-        return false;
+        return None;
     }
 
     let command_id = format!("probe-{}", now_timestamp_ms());
@@ -312,12 +317,12 @@ fn devtools_ws_reachable(ws_url: &str, timeout: Duration) -> bool {
     )
     .is_err()
     {
-        return false;
+        return None;
     }
 
     loop {
         let Ok(message) = websocket.read() else {
-            return false;
+            return None;
         };
         let Message::Text(text) = message else {
             continue;
@@ -326,10 +331,11 @@ fn devtools_ws_reachable(ws_url: &str, timeout: Duration) -> bool {
             Ok(DevtoolsWireMessage::Result {
                 command_id: result_id,
                 ok,
+                data,
                 ..
-            }) if result_id == command_id => return ok,
+            }) if result_id == command_id => return Some((ok, data)),
             Ok(_) => continue,
-            Err(_) => return false,
+            Err(_) => return None,
         }
     }
 }
