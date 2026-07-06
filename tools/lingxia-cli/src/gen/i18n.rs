@@ -83,8 +83,11 @@ struct OutputPlan {
     /// `write_to` against this path tree.
     expected: PathBuf,
     /// Whether `--check` should byte-compare the generated result against
-    /// `expected`. Android `strings.xml` is intentionally generated/ignored,
-    /// so for that target `--check` only validates that generation succeeds.
+    /// `expected`. Only the Rust and TS outputs are committed; the native
+    /// resource bundles (Android `strings.xml`, Apple `Localizable.strings`,
+    /// Harmony `string.json`) are gitignored and regenerated at build time,
+    /// so for those targets `--check` only validates that generation
+    /// succeeds — it must not demand a checked-in copy that never exists.
     compare_in_check: bool,
 }
 
@@ -293,11 +296,9 @@ impl Scope {
             // The error scope reuses the UI schema; its boundary check
             // (only `error` / `err_code` top-level keys) runs separately.
             Scope::Error => Some("ui.schema.json"),
-            Scope::Logic
-            | Scope::Desktop
-            | Scope::Android
-            | Scope::Apple
-            | Scope::Harmony => Some("native.schema.json"),
+            Scope::Logic | Scope::Desktop | Scope::Android | Scope::Apple | Scope::Harmony => {
+                Some("native.schema.json")
+            }
         }
     }
 
@@ -564,7 +565,7 @@ pub fn run(config: I18nConfig) -> Result<()> {
         APPLE_DEFAULT_OUT,
         "apple",
         temp_path,
-        true,
+        false,
     );
     let harmony_plan = resolve_output_plan(
         config.harmony_out.as_deref(),
@@ -572,7 +573,7 @@ pub fn run(config: I18nConfig) -> Result<()> {
         HARMONY_DEFAULT_OUT,
         "harmony",
         temp_path,
-        true,
+        false,
     );
 
     // 5. Share the (combined, keys) computation between Rust and TS — they
@@ -1019,6 +1020,43 @@ fn escape_rust_string(val: &str) -> String {
     val.replace("\\", "\\\\").replace("\"", "\\\"")
 }
 
+/// Pipe generated Rust through `rustfmt` (edition 2024, matching the
+/// workspace) so the checked-in file is byte-identical to what `cargo fmt`
+/// would produce. Without this, `gen i18n` emits raw long lines and every
+/// `gen i18n --check` run reports spurious drift against the fmt'd copy.
+fn rustfmt_source(src: &str) -> Result<String> {
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+
+    let mut child = Command::new("rustfmt")
+        .args(["--edition", "2024", "--emit", "stdout"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .context(
+            "failed to spawn `rustfmt` to format generated i18n Rust; \
+             install it with `rustup component add rustfmt`",
+        )?;
+    // Feed stdin from a scoped thread so a large formatted result filling the
+    // stdout pipe buffer can't deadlock against our stdin write.
+    let mut stdin = child.stdin.take().expect("rustfmt stdin piped");
+    let bytes = src.as_bytes();
+    let output = std::thread::scope(|scope| {
+        let writer = scope.spawn(move || stdin.write_all(bytes));
+        let output = child.wait_with_output();
+        writer.join().expect("stdin writer thread panicked")?;
+        output.map_err(anyhow::Error::from)
+    })?;
+    if !output.status.success() {
+        return Err(anyhow!(
+            "rustfmt failed on generated i18n Rust: {}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+    String::from_utf8(output.stdout).context("rustfmt produced non-UTF-8 output")
+}
+
 // --- Generators ---
 
 fn generate_rust(
@@ -1123,6 +1161,8 @@ fn generate_rust(
     content.push_str("        _ => None,\n");
     content.push_str("    }\n");
     content.push_str("}\n");
+
+    let content = rustfmt_source(&content)?;
 
     if let Some(parent) = out_path.parent() {
         fs::create_dir_all(parent)?;
