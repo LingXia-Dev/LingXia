@@ -85,9 +85,9 @@ Harmony get reverse port forwarding so the device reaches the local dev server;
 iOS embeds a LAN dev websocket URL, so the iOS device must be able to reach the
 host Mac over the local network.
 
-By default it **refuses a second same-platform session** in a project (pass
-`--parallel` to opt in) so that `lxdev` never silently connects to the wrong
-target.
+It **refuses a second same-platform session** in a project (stop the first with
+`lingxia dev stop`) so that `lxdev` never silently connects to the wrong target.
+Different platforms don't conflict — `-p android` and `-p ios` run side by side.
 
 `lingxia dev` owns dev-session lifecycle. Use it to start foreground sessions,
 start background sessions, inspect session status, stop sessions gracefully, or

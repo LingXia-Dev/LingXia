@@ -117,7 +117,7 @@ pub(super) fn execute_lxapp_dev(project_root: PathBuf, options: DevExecuteOption
     }
 
     let platform_name = "lxapp";
-    precheck_platform_session(&project_root, platform_name, options.parallel)?;
+    precheck_platform_session(&project_root, platform_name)?;
 
     println!();
     println!("{}", "Development Mode: LxApp -> Runner".bold().cyan());

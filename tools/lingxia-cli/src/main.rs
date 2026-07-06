@@ -114,14 +114,6 @@ struct DevOptions {
     #[arg(long)]
     reinstall: bool,
 
-    /// Allow starting another dev session for a platform that already has one
-    /// running in this project. Without this flag, `lingxia dev` refuses to
-    /// launch a second same-platform session so that `lxdev` cannot silently
-    /// connect to the wrong one (the canonical "human + agent both ran
-    /// `lingxia dev -p ios`" footgun).
-    #[arg(long)]
-    parallel: bool,
-
     /// Runner simulator device for `lingxia dev` on an lxapp (macOS and
     /// Windows runners): e.g. `iphone-15-pro`, `ipad`, `desktop-1440`. Only
     /// affects the lxapp runner window; ignored for native host apps.
@@ -689,7 +681,6 @@ fn main() -> Result<()> {
                 extra_native_features: dev_options.build_options.native_features,
                 with_provider: dev_options.build_options.with_provider,
                 provider_path: dev_options.build_options.provider_path,
-                parallel: dev_options.parallel,
                 runner_device: dev_options.runner,
                 background: dev_options.background,
                 action: dev_options.action.map(|action| match action {

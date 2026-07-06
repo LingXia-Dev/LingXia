@@ -3,7 +3,7 @@ use super::*;
 
 pub(super) fn execute_android(ctx: DevContext, abis: Vec<String>) -> Result<()> {
     let platform_name = platform_session_name(PlatformType::Android);
-    precheck_platform_session(&ctx.project_root, platform_name, ctx.parallel)?;
+    precheck_platform_session(&ctx.project_root, platform_name)?;
     let platform = platform::android::AndroidPlatform::new();
     let build_targets = crate::platform::android_abis::resolve_android_targets_from_abis(&abis)?;
     let stop_requested = Arc::new(AtomicBool::new(false));
