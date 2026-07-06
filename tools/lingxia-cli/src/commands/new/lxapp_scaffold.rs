@@ -332,7 +332,11 @@ mod tests {
             r#"{"compilerOptions":{"jsx":"{{JSX_MODE}}"},"include":[{{VIEW_INCLUDE}}]}"#,
         )
         .unwrap();
-        fs::write(lxapp.join("global.d.ts"), "/// <reference types=\"@lingxia/types\" />\n").unwrap();
+        fs::write(
+            lxapp.join("global.d.ts"),
+            "/// <reference types=\"@lingxia/types\" />\n",
+        )
+        .unwrap();
         fs::write(
             lxapp.join("app.css"),
             "{{APP_ROOT_SELECTOR}} { min-height: 100%; }",
