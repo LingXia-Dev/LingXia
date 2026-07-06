@@ -2,12 +2,14 @@ use super::{
     BuildArtifacts, BuildConfig, Device, DeviceType, InstallConfig, Platform, RunConfig,
     resolve_cargo_target_dir, resolve_lingxia_target_dir,
 };
+use crate::config::{HOST_CONFIG_FILE, LingXiaConfig};
 use crate::platform::doctor::{CheckResult, command_version_line};
 use anyhow::{Context, Result, anyhow};
 use colored::Colorize;
+use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 pub mod env_icon;
 pub mod msix;
@@ -97,6 +99,8 @@ impl Platform for WindowsPlatform {
             ));
         }
 
+        sync_assets_next_to_exe(&assets_dir, &exe_path)?;
+
         Ok(BuildArtifacts::Windows { exe_path })
     }
 
@@ -112,11 +116,27 @@ impl Platform for WindowsPlatform {
         Err(anyhow!("Uninstall is not supported for Windows apps"))
     }
 
-    fn run(&self, _config: &RunConfig) -> Result<()> {
-        Err(anyhow!(
-            "Windows apps run directly from the build output.\n\
-             Use 'lingxia dev --platform windows' for the full build-and-run workflow."
-        ))
+    fn run(&self, config: &RunConfig) -> Result<()> {
+        let _ = (&config.package_id, &config.main_activity, &config.device_id);
+        let project_root = current_windows_project_root()?;
+        let exe_path = latest_runnable_windows_exe(&project_root)?;
+        if config.restart
+            && let Some(name) = exe_path.file_name().and_then(|name| name.to_str())
+        {
+            terminate_windows_process(name);
+        }
+        let mut command = Command::new(&exe_path);
+        if let Some(parent) = exe_path.parent() {
+            command.current_dir(parent);
+        }
+        command
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .with_context(|| format!("Failed to launch {}", exe_path.display()))?;
+        println!("{} App launched -> {}", "✓".green(), exe_path.display());
+        Ok(())
     }
 
     fn list_devices(&self) -> Result<Vec<Device>> {
@@ -184,9 +204,14 @@ fn check_cargo_build() -> CheckResult {
 }
 
 fn resolve_windows_executable_name(config: &BuildConfig, windows_dir: &Path) -> Result<String> {
+    resolve_windows_executable_name_from_config(config.lingxia_config.as_ref(), windows_dir)
+}
+
+fn resolve_windows_executable_name_from_config(
+    config: Option<&LingXiaConfig>,
+    windows_dir: &Path,
+) -> Result<String> {
     if let Some(name) = config
-        .lingxia_config
-        .as_ref()
         .and_then(|cfg| cfg.windows.as_ref())
         .and_then(|cfg| cfg.executable_name.as_deref())
         .map(str::trim)
@@ -196,8 +221,6 @@ fn resolve_windows_executable_name(config: &BuildConfig, windows_dir: &Path) -> 
     }
 
     if let Some(name) = config
-        .lingxia_config
-        .as_ref()
         .and_then(|cfg| cfg.app.as_ref())
         .map(|app| app.project_name.as_str())
         .filter(|value| !value.trim().is_empty())
@@ -215,6 +238,133 @@ fn executable_file_name(name: &str) -> String {
     } else {
         format!("{name}.exe")
     }
+}
+
+fn sync_assets_next_to_exe(assets_src: &Path, exe_path: &Path) -> Result<()> {
+    if !assets_src.is_dir() {
+        return Ok(());
+    }
+    let exe_dir = exe_path.parent().ok_or_else(|| {
+        anyhow!(
+            "Windows executable path has no parent: {}",
+            exe_path.display()
+        )
+    })?;
+    let assets_dest = exe_dir.join("assets");
+    if assets_dest.exists() {
+        fs::remove_dir_all(&assets_dest)
+            .with_context(|| format!("Failed to clear {}", assets_dest.display()))?;
+    }
+    crate::platform::apple::copy_dir_recursive(assets_src, &assets_dest)
+        .with_context(|| format!("Failed to copy Windows assets to {}", assets_dest.display()))?;
+    Ok(())
+}
+
+fn current_windows_project_root() -> Result<PathBuf> {
+    let current_dir = env::current_dir().context("Failed to get current directory")?;
+    super::detector::find_host_project_root(&current_dir, HOST_CONFIG_FILE).ok_or_else(|| {
+        anyhow!(
+            "No {} found from {}. Run this command inside a LingXia app project.",
+            HOST_CONFIG_FILE,
+            current_dir.display()
+        )
+    })
+}
+
+pub(crate) fn record_last_build_exe(project_root: &Path, exe_path: &Path) -> Result<()> {
+    let marker = last_build_marker_path(project_root)?;
+    if let Some(parent) = marker.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("Failed to create {}", parent.display()))?;
+    }
+    fs::write(&marker, exe_path.to_string_lossy().as_bytes())
+        .with_context(|| format!("Failed to write {}", marker.display()))?;
+    Ok(())
+}
+
+fn latest_runnable_windows_exe(project_root: &Path) -> Result<PathBuf> {
+    if let Some(path) = read_last_build_exe(project_root)? {
+        return Ok(path);
+    }
+
+    let windows_dir = resolve_windows_dir(project_root)?;
+    let config = LingXiaConfig::load(project_root).ok();
+    let exe_name = executable_file_name(&resolve_windows_executable_name_from_config(
+        config.as_ref(),
+        &windows_dir,
+    )?);
+
+    let mut candidates = Vec::new();
+    let cargo_target_dir = resolve_cargo_target_dir(project_root);
+    candidates.push((0, cargo_target_dir.join("debug").join(&exe_name)));
+    candidates.push((1, cargo_target_dir.join("release").join(&exe_name)));
+
+    if let Some(product_name) = config
+        .as_ref()
+        .and_then(|config| config.app.as_ref())
+        .map(|app| app.product_name.as_str())
+        .filter(|value| !value.trim().is_empty())
+    {
+        candidates.push((
+            2,
+            resolve_windows_build_dir(project_root)?
+                .join("dist")
+                .join(product_name)
+                .join(&exe_name),
+        ));
+    }
+
+    candidates
+        .into_iter()
+        .filter(|(_, path)| path.is_file() && path_sibling_assets_app_json(path).is_file())
+        .max_by_key(|(priority, path)| {
+            let assets_modified = path_sibling_assets_app_json(path)
+                .metadata()
+                .and_then(|metadata| metadata.modified())
+                .ok();
+            (assets_modified, *priority)
+        })
+        .map(|(_, path)| path)
+        .ok_or_else(|| {
+            anyhow!(
+                "No runnable Windows build found. Run `lingxia build --platform windows` first."
+            )
+        })
+}
+
+fn read_last_build_exe(project_root: &Path) -> Result<Option<PathBuf>> {
+    let marker = last_build_marker_path(project_root)?;
+    if !marker.is_file() {
+        return Ok(None);
+    }
+    let value = fs::read_to_string(&marker)
+        .with_context(|| format!("Failed to read {}", marker.display()))?;
+    let path = PathBuf::from(value.trim());
+    if path.is_file() && path_sibling_assets_app_json(&path).is_file() {
+        return Ok(Some(path));
+    }
+    Ok(None)
+}
+
+fn last_build_marker_path(project_root: &Path) -> Result<PathBuf> {
+    Ok(resolve_windows_build_dir(project_root)?.join("last-build.txt"))
+}
+
+fn path_sibling_assets_app_json(exe_path: &Path) -> PathBuf {
+    exe_path
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join("assets")
+        .join("app.json")
+}
+
+fn terminate_windows_process(exe_name: &str) {
+    let _ = Command::new("taskkill")
+        .args(["/IM", exe_name, "/F"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
 }
 
 fn is_windows_manifest(path: &Path) -> bool {

@@ -411,8 +411,7 @@ mod tests {
         assert!(
             session
                 .log_file
-                .to_string_lossy()
-                .contains("/.lingxia/logs/")
+                .starts_with(temp.path().join(".lingxia").join("logs"))
         );
     }
 

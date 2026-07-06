@@ -477,6 +477,9 @@ Specify one with `--platform <name>` or build all with `--all-platforms`."
         if package {
             stage_package_artifact(&project_root, &platform_type, &artifacts)?;
         }
+        if matches!(platform_type, PlatformType::Windows) {
+            crate::platform::windows::record_last_build_exe(&project_root, artifacts.path())?;
+        }
         all_artifacts.push((platform_type, artifacts));
     }
 
