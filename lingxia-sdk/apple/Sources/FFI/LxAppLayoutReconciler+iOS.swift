@@ -54,7 +54,7 @@ enum LxAppLayoutReconcileriOS {
     static func reconcile(windowId: String, json: String) -> Bool {
         guard let data = json.data(using: .utf8),
               let plan = try? JSONDecoder().decode(LayoutPresentationPlan.self, from: data) else {
-            os_log("presentLayout: failed to parse layout json window=%{public}@", log: log, type: .error, windowId)
+            LXLog.error("presentLayout: failed to parse layout json window=\(windowId)", category: "LayoutReconciler")
             return false
         }
 

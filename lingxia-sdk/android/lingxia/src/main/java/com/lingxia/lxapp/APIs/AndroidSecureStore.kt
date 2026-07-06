@@ -7,8 +7,8 @@ import android.security.KeyPairGeneratorSpec
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
-import android.util.Log
 import com.lingxia.app.Lingxia
+import com.lingxia.app.LxLog
 import com.lingxia.lxapp.LxApp
 import java.math.BigInteger
 import java.nio.charset.StandardCharsets
@@ -132,9 +132,9 @@ internal object AndroidSecureStore {
         error: Exception? = null
     ): ByteArray? {
         if (error == null) {
-            Log.w(TAG, "$message for key hash $entryKey")
+            LxLog.w(TAG, "$message for key hash $entryKey")
         } else {
-            Log.w(TAG, "$message for key hash $entryKey", error)
+            LxLog.w(TAG, "$message for key hash $entryKey", error)
         }
         prefs.edit().remove(entryKey).apply()
         return null
@@ -236,7 +236,7 @@ internal object AndroidSecureStore {
         try {
             keyGenerator.init(buildSpec(256))
         } catch (e: Exception) {
-            Log.w(TAG, "Falling back to 128-bit AndroidKeyStore AES key", e)
+            LxLog.w(TAG, "Falling back to 128-bit AndroidKeyStore AES key", e)
             keyGenerator.init(buildSpec(128))
         }
         keyGenerator.generateKey()
@@ -258,7 +258,7 @@ internal object AndroidSecureStore {
             try {
                 return unwrapLegacyMasterKey(keyStore, alias, wrapped)
             } catch (e: Exception) {
-                Log.w(TAG, "Legacy secure store master key unwrap failed, resetting store", e)
+                LxLog.w(TAG, "Legacy secure store master key unwrap failed, resetting store", e)
                 clearAllSecureStoreState(context, prefs)
             }
         }
@@ -318,7 +318,7 @@ internal object AndroidSecureStore {
         reason: String
     ) {
         if (prefs.all.isNotEmpty()) {
-            Log.w(TAG, "Resetting Android secure store after restore mismatch: $reason")
+            LxLog.w(TAG, "Resetting Android secure store after restore mismatch: $reason")
             prefs.edit().clear().commit()
             cachedMasterKey = null
         }
@@ -332,7 +332,7 @@ internal object AndroidSecureStore {
                 try {
                     keyStore.deleteEntry(alias)
                 } catch (e: Exception) {
-                    Log.w(TAG, "Failed to delete AndroidKeyStore alias $alias during reset", e)
+                    LxLog.w(TAG, "Failed to delete AndroidKeyStore alias $alias during reset", e)
                 }
             }
         }

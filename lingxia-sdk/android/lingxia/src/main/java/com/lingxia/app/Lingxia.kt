@@ -108,7 +108,7 @@ object Lingxia {
                     enableWebViewDebugging()
                 }
             } else {
-                Log.e(TAG, "Failed to get home app details from native init.")
+                LxLog.e(TAG, "Failed to get home app details from native init.")
             }
 
             if (context is AppCompatActivity) {
@@ -290,10 +290,10 @@ object Lingxia {
                 }
             }
         } catch (e: URISyntaxException) {
-            Log.e(TAG, "Invalid intent URI: $uri", e)
+            LxLog.e(TAG, "Invalid intent URI: $uri", e)
             false
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to launch with URL: $uri", e)
+            LxLog.e(TAG, "Failed to launch with URL: $uri", e)
             false
         }
     }

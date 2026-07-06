@@ -149,14 +149,28 @@ pub fn lingxia_init(
 }
 
 #[napi]
-pub fn emit_sdk_log(
+pub fn forward_host_log(
     level: i32,
     category: String,
     appid: String,
     path: String,
     message: String,
 ) -> bool {
-    crate::logging::emit_sdk_log(level, &category, &appid, &path, &message)
+    crate::logging::forward_host_log(level, &category, &appid, &path, &message)
+}
+
+/// Set the runtime log threshold (0=verbose … 4=error). See
+/// [`crate::logging::set_log_level`].
+#[napi]
+pub fn set_log_level(level: i32) {
+    crate::logging::set_log_level(level);
+}
+
+/// Whether a host log at `level` would be recorded. See
+/// [`crate::logging::host_log_enabled`].
+#[napi]
+pub fn host_log_enabled(level: i32) -> bool {
+    crate::logging::host_log_enabled(level)
 }
 
 /// Register custom schemes (must be called before WebEngine initialization)

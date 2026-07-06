@@ -271,8 +271,12 @@ impl LogBuffer {
     }
 
     pub fn push(&self, message: LogMessage) {
-        let entry = message.clone();
-        {
+        // Separate the two concerns: the live broadcast (what `lxdev logs`
+        // subscribes to) gets every record at the console level, but only warn+
+        // is retained in the bounded history that `collect_archive` uploads — so
+        // routine info/debug stay visible in dev without churning the crash-
+        // upload buffer and evicting the errors it exists to preserve.
+        if matches!(message.level, LogLevel::Warn | LogLevel::Error) {
             let mut history = self
                 .history
                 .lock()
@@ -280,7 +284,7 @@ impl LogBuffer {
             if history.len() >= self.config.history_capacity.max(1) {
                 history.pop_front();
             }
-            history.push_back(entry);
+            history.push_back(message.clone());
         }
 
         let _ = self.sender.send(message);

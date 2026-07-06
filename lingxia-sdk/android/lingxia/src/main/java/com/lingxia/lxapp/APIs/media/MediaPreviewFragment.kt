@@ -18,9 +18,9 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.util.Log
 import android.util.TypedValue
 import android.util.LruCache
+import android.util.Log
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -39,6 +39,7 @@ import androidx.fragment.app.FragmentManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.viewpager2.widget.ViewPager2
 import com.lingxia.app.Lingxia
+import com.lingxia.app.LxLog
 import com.lingxia.lxapp.LxApp
 import com.lingxia.app.NativeApi
 import com.lingxia.lxapp.R
@@ -1296,7 +1297,7 @@ internal class MediaPreviewFragment : Fragment() {
 
         val timeoutRunnable = Runnable {
             if (finished || pendingPrewarmGen != prewarmGen) return@Runnable
-            Log.w(TAG, "Prewarm timed out; falling back to immediate swap")
+            LxLog.w(TAG, "Prewarm timed out; falling back to immediate swap")
             clearPendingPrewarm()
             switchToPagerPositionWithVisualOverlay(targetPagerPosition, target)
         }

@@ -1,4 +1,5 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
+import { LxLog } from '../../app/LxLog';
 import { display } from '@kit.ArkUI';
 import { call } from '@kit.TelephonyKit';
 import liblingxia from 'liblingxia.so';
@@ -33,10 +34,10 @@ export class LxAppDevice {
 
       const success: boolean = liblingxia.onCallback(callbackId, true, JSON.stringify(screenInfo));
       if (!success) {
-        hilog.error(DOMAIN, TAG, `Failed to send screen info callback for ID: ${callbackId}`);
+        LxLog.e(TAG, `Failed to send screen info callback for ID: ${callbackId}`);
       }
     } catch (error) {
-      hilog.error(DOMAIN, TAG, `Failed to get screen info: ${error}`);
+      LxLog.e(TAG, `Failed to get screen info: ${error}`);
       liblingxia.onCallback(callbackId, false, JSON.stringify(DEFAULT_SCREEN_INFO));
     }
   }
@@ -47,13 +48,13 @@ export class LxAppDevice {
 
       call.makeCall(phoneNumber, (err) => {
         if (err) {
-          hilog.error(DOMAIN, TAG, `Failed to make call: ${err.code} - ${err.message}`);
+          LxLog.e(TAG, `Failed to make call: ${err.code} - ${err.message}`);
         } else {
           hilog.info(DOMAIN, TAG, `Successfully opened dialer for: ${phoneNumber}`);
         }
       });
     } catch (error) {
-      hilog.error(DOMAIN, TAG, `Failed to make phone call: ${error}`);
+      LxLog.e(TAG, `Failed to make phone call: ${error}`);
     }
   }
 }

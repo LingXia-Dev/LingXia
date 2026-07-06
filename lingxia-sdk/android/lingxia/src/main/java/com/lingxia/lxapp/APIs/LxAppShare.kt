@@ -6,8 +6,8 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.provider.OpenableColumns
-import android.util.Log
 import android.webkit.MimeTypeMap
+import com.lingxia.app.LxLog
 import com.lingxia.app.NativeApi
 import com.lingxia.lxapp.LxApp
 import com.lingxia.lxapp.APIs.document.LingxiaDocumentProvider
@@ -30,7 +30,7 @@ internal object LxAppShare {
     ): Boolean {
         val activity = LxApp.getCurrentActivity()
         if (activity == null) {
-            Log.w(TAG, "share: current activity is null")
+            LxLog.w(TAG, "share: current activity is null")
             NativeApi.onCallback(callbackId, false, "1000")
             return false
         }
@@ -38,7 +38,7 @@ internal object LxAppShare {
         val files = try {
             parseFiles(filesJson)
         } catch (error: Throwable) {
-            Log.w(TAG, "share: failed to parse filesJson", error)
+            LxLog.w(TAG, "share: failed to parse filesJson", error)
             NativeApi.onCallback(callbackId, false, "1002")
             return false
         }
@@ -57,7 +57,7 @@ internal object LxAppShare {
         for (path in files) {
             val shareFile = resolveShareFile(activity, path)
             if (shareFile == null) {
-                Log.w(TAG, "share: file is not readable: $path")
+                LxLog.w(TAG, "share: file is not readable: $path")
                 NativeApi.onCallback(callbackId, false, "1000")
                 return false
             }
@@ -112,16 +112,16 @@ internal object LxAppShare {
                     activity.startActivity(chooser)
                     NativeApi.onCallback(callbackId, true, "{}")
                 } catch (error: ActivityNotFoundException) {
-                    Log.e(TAG, "share: no activity found", error)
+                    LxLog.e(TAG, "share: no activity found", error)
                     NativeApi.onCallback(callbackId, false, "1000")
                 } catch (error: Throwable) {
-                    Log.e(TAG, "share: startActivity failed", error)
+                    LxLog.e(TAG, "share: startActivity failed", error)
                     NativeApi.onCallback(callbackId, false, "1000")
                 }
             }
             true
         } catch (error: Throwable) {
-            Log.e(TAG, "share: dispatch failed", error)
+            LxLog.e(TAG, "share: dispatch failed", error)
             NativeApi.onCallback(callbackId, false, "1000")
             false
         }
@@ -202,7 +202,7 @@ internal object LxAppShare {
         return try {
             context.contentResolver.openInputStream(uri).use { input ->
                 if (input == null) {
-                    Log.w(TAG, "materializeContentUri: openInputStream returned null for $uri")
+                    LxLog.w(TAG, "materializeContentUri: openInputStream returned null for $uri")
                     return null
                 }
                 FileOutputStream(dest).use { output ->
@@ -211,7 +211,7 @@ internal object LxAppShare {
             }
             dest
         } catch (error: Throwable) {
-            Log.w(TAG, "materializeContentUri failed for $uri", error)
+            LxLog.w(TAG, "materializeContentUri failed for $uri", error)
             runCatching { dest.delete() }
             null
         }

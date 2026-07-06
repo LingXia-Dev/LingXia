@@ -934,16 +934,14 @@ private final class SwiperPageView {
         let token = UUID()
         imageRequestToken = token
         guard let url = MediaSwiperURL.resolve(item.src) else {
-            os_log("[page %d] loadImage resolve nil for src=%{public}@",
-                   log: swiperLog, type: .error, index, item.src)
+            LXLog.error("[page \(index)] loadImage resolve nil for src=\(item.src)", category: "MediaSwiper")
             emitError(code: "not_found", message: "image source not found")
             return
         }
         if url.isFileURL {
             let path = url.path
             if !FileManager.default.fileExists(atPath: path) {
-                os_log("[page %d] loadImage file missing path=%{public}@",
-                       log: swiperLog, type: .error, index, path)
+                LXLog.error("[page \(index)] loadImage file missing path=\(url.lastPathComponent)", category: "MediaSwiper")
                 emitError(code: "not_found", message: "image file does not exist")
                 return
             }
@@ -951,7 +949,7 @@ private final class SwiperPageView {
                 guard let data = try? Data(contentsOf: url), let image = UIImage(data: data) else {
                     Task { @MainActor [weak self] in
                         guard let self, self.imageRequestToken == token else { return }
-                        os_log("[page %d] loadImage decode failed", log: swiperLog, type: .error, self.index)
+                        LXLog.error("[page \(self.index)] loadImage decode failed", category: "MediaSwiper")
                         self.emitError(code: "decode", message: "image decode failed")
                     }
                     return

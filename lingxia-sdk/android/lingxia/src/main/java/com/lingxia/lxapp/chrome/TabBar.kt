@@ -11,6 +11,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import java.io.File
 import android.util.Log
+import com.lingxia.app.LxLog
 import android.util.TypedValue
 import android.widget.FrameLayout
 
@@ -473,7 +474,7 @@ internal class TabBar(context: Context) : LinearLayout(context) {
                 createDefaultIcon(selected)
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to load icon: ${e.message}")
+            LxLog.e(TAG, "Failed to load icon: ${e.message}")
             createDefaultIcon(selected)
         }
     }

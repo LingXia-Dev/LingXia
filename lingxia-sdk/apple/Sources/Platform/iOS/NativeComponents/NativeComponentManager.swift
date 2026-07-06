@@ -139,7 +139,7 @@ final class NativeComponentManager {
         let rect = rectFrom(dict: rectDict)
 
         guard components[id] == nil, let factory = factories[type] else {
-            os_log("NativeComponentManager mount skipped for id=%{public}@ type=%{public}@", log: nativeComponentLog, type: .error, id, type)
+            LXLog.error("NativeComponentManager mount skipped for id=\(id) type=\(type)", category: "NativeComponent")
             return
         }
 
@@ -192,7 +192,7 @@ final class NativeComponentManager {
 
         if !mountedInChildScrollView {
             guard let host = hostView else {
-                os_log("Failed to mount component %{public}@ (no container)", log: nativeComponentLog, type: .error, id)
+                LXLog.error("Failed to mount component \(id) (no container)", category: "NativeComponent")
                 return
             }
             component.mount(in: host)
@@ -577,35 +577,18 @@ final class NativeComponentManager {
         }
         guard let pageId = componentPage[componentId],
               let route = parsePageId(pageId) else {
-            os_log(
-                "NativeComponent drop event: invalid pageId componentId=%{public}@",
-                log: nativeComponentLog,
-                type: .error,
-                componentId
-            )
+            LXLog.error("NativeComponent drop event: invalid pageId componentId=\(componentId)", category: "NativeComponent")
             return
         }
         let pageEvent = buildPageEvent(componentId: componentId, eventName: eventName, payload: payload)
         guard let data = try? JSONSerialization.data(withJSONObject: pageEvent, options: []),
               let payloadJson = String(data: data, encoding: .utf8) else {
-            os_log(
-                "NativeComponent drop event: payload encode failed componentId=%{public}@ event=%{public}@",
-                log: nativeComponentLog,
-                type: .error,
-                componentId,
-                eventName
-            )
+            LXLog.error("NativeComponent drop event: payload encode failed componentId=\(componentId) event=\(eventName)", category: "NativeComponent")
             return
         }
         guard let bindingsData = try? JSONSerialization.data(withJSONObject: bindings, options: []),
               let bindingsJson = String(data: bindingsData, encoding: .utf8) else {
-            os_log(
-                "NativeComponent drop event: bindings encode failed componentId=%{public}@ event=%{public}@",
-                log: nativeComponentLog,
-                type: .error,
-                componentId,
-                eventName
-            )
+            LXLog.error("NativeComponent drop event: bindings encode failed componentId=\(componentId) event=\(eventName)", category: "NativeComponent")
             return
         }
         _ = onNativeComponentEvent(route.appid, route.path, componentId, eventName, payloadJson, bindingsJson)
@@ -1013,7 +996,7 @@ final class WKContentViewHitTestSwizzler {
         swizzled = true
 
         guard let wkContentViewClass = NSClassFromString("WKContentView") else {
-            os_log("WKContentViewHitTestSwizzler: WKContentView class not found", log: nativeComponentLog, type: .error)
+            LXLog.error("WKContentViewHitTestSwizzler: WKContentView class not found", category: "NativeComponent")
             return
         }
 
@@ -1022,7 +1005,7 @@ final class WKContentViewHitTestSwizzler {
 
         guard let originalMethod = class_getInstanceMethod(wkContentViewClass, originalSelector),
               let swizzledMethod = class_getInstanceMethod(UIView.self, swizzledSelector) else {
-            os_log("WKContentViewHitTestSwizzler: failed to get methods", log: nativeComponentLog, type: .error)
+            LXLog.error("WKContentViewHitTestSwizzler: failed to get methods", category: "NativeComponent")
             return
         }
 

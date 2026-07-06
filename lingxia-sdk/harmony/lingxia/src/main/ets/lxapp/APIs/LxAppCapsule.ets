@@ -1,6 +1,7 @@
 import display from '@ohos.display';
 import { window } from '@kit.ArkUI';
 import hilog from '@ohos.hilog';
+import { LxLog } from '../../app/LxLog';
 import liblingxia from 'liblingxia.so';
 
 const DOMAIN = 0xFF00;
@@ -66,10 +67,10 @@ export class LxAppCapsule {
 
         const success: boolean = liblingxia.onCallback(callbackId, true, JSON.stringify(capsuleRect));
         if (!success) {
-          hilog.error(DOMAIN, TAG, `Failed to send capsule rect callback for ID: ${callbackId}`);
+          LxLog.e(TAG, `Failed to send capsule rect callback for ID: ${callbackId}`);
         }
       } catch (error) {
-        hilog.error(DOMAIN, TAG, `Failed to get capsule rect: ${error}`);
+        LxLog.e(TAG, `Failed to get capsule rect: ${error}`);
         const errorData = JSON.stringify({
           error: String(error),
           message: 'Failed to get capsule rect'

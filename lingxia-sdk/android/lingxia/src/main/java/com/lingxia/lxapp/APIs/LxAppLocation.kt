@@ -15,6 +15,7 @@ import android.util.Log
 import androidx.core.content.ContextCompat
 import org.json.JSONObject
 import com.lingxia.app.Lingxia
+import com.lingxia.app.LxLog
 import com.lingxia.lxapp.LxApp
 import com.lingxia.app.PermissionManager
 import java.util.concurrent.atomic.AtomicBoolean
@@ -35,7 +36,7 @@ internal object LxAppLocation {
     fun isLocationEnabled(): Boolean {
         val context = LxApp.getCurrentActivity() ?: Lingxia.applicationContext()
         if (context == null) {
-            Log.w(TAG, "isLocationEnabled: no context available")
+            LxLog.w(TAG, "isLocationEnabled: no context available")
             return false
         }
         return isLocationEnabled(context)
@@ -45,7 +46,7 @@ internal object LxAppLocation {
     fun requestLocation(callbackId: Long, isHighAccuracy: Boolean, includeAltitude: Boolean, expireTimeMs: Int) {
         val activity = LxApp.getCurrentActivity()
         if (activity == null) {
-            Log.e(TAG, "requestLocation: current activity is null")
+            LxLog.e(TAG, "requestLocation: current activity is null")
             com.lingxia.app.NativeApi.onCallback(callbackId, false, "1000")
             return
         }
@@ -57,7 +58,7 @@ internal object LxAppLocation {
     fun isLocationEnabled(context: Context): Boolean {
         val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
         if (locationManager == null) {
-            Log.w(TAG, "LocationManager is not available")
+            LxLog.w(TAG, "LocationManager is not available")
             return false
         }
 
@@ -128,7 +129,7 @@ internal object LxAppLocation {
         }
 
         if (providers.isEmpty()) {
-            Log.w(TAG, "No enabled location provider")
+            LxLog.w(TAG, "No enabled location provider")
             sendFailure(callbackId, 4001)
             return
         }
@@ -138,7 +139,7 @@ internal object LxAppLocation {
                 try {
                     locationManager.getLastKnownLocation(provider)
                 } catch (securityException: SecurityException) {
-                    Log.e(TAG, "Failed to access last known location for $provider", securityException)
+                    LxLog.e(TAG, "Failed to access last known location for $provider", securityException)
                     null
                 }
             }
@@ -201,9 +202,9 @@ internal object LxAppLocation {
                     started = true
                     Log.d(TAG, "Started location updates for $provider (minTime: ${minTimeMs}ms, minDistance: ${minDistanceM}m)")
                 } catch (securityException: SecurityException) {
-                    Log.e(TAG, "Security exception when requesting updates from $provider", securityException)
+                    LxLog.e(TAG, "Security exception when requesting updates from $provider", securityException)
                 } catch (illegalArgumentException: IllegalArgumentException) {
-                    Log.w(TAG, "Provider $provider is unavailable", illegalArgumentException)
+                    LxLog.w(TAG, "Provider $provider is unavailable", illegalArgumentException)
                 }
             }
 
@@ -245,14 +246,14 @@ internal object LxAppLocation {
 
         val success = com.lingxia.app.NativeApi.onCallback(callbackId, true, payload.toString())
         if (!success) {
-            Log.w(TAG, "Location callback $callbackId was not handled by native layer")
+            LxLog.w(TAG, "Location callback $callbackId was not handled by native layer")
         }
     }
 
     private fun sendFailure(callbackId: Long, code: Int) {
         val success = com.lingxia.app.NativeApi.onCallback(callbackId, false, code.toString())
         if (!success) {
-            Log.w(TAG, "Failed to deliver location error for callback $callbackId")
+            LxLog.w(TAG, "Failed to deliver location error for callback $callbackId")
         }
     }
 }

@@ -1,4 +1,5 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
+import { LxLog } from '../app/LxLog';
 import { webview } from '@kit.ArkWeb';
 import { window, display } from '@kit.ArkUI';
 import { common } from '@kit.AbilityKit';
@@ -239,7 +240,7 @@ export struct LxAppContainer {
       const safeArea = await mainWindow.getWindowAvoidArea(window.AvoidAreaType.TYPE_SYSTEM);
       this.statusBarHeight = safeArea.topRect.height || SYSTEM_STATUS_BAR_HEIGHT; // Ensure fallback value
     } catch (error) {
-      hilog.error(DOMAIN, TAG, `Failed to get status bar height: ${error}`);
+      LxLog.e(TAG, `Failed to get status bar height: ${error}`);
       this.statusBarHeight = SYSTEM_STATUS_BAR_HEIGHT; // Safe fallback value for all devices
     }
   }
@@ -319,7 +320,7 @@ export struct LxAppContainer {
         hilog.warn(DOMAIN, TAG, `No TabBar data found for appId: ${this.appId}`);
       }
     } catch (error) {
-      hilog.error(DOMAIN, TAG, `Failed to load TabBar data: ${error}`);
+      LxLog.e(TAG, `Failed to load TabBar data: ${error}`);
       this.tabBarState = null;
     }
   }
@@ -1271,7 +1272,7 @@ export struct LxAppContainer {
     hilog.info(DOMAIN, TAG, 'Capsule more button pressed');
     const shown: boolean = CapsuleMenuManager.show(this.appId);
     if (!shown) {
-      hilog.error(DOMAIN, TAG, `Failed to show capsule menu for app: ${this.appId}`);
+      LxLog.e(TAG, `Failed to show capsule menu for app: ${this.appId}`);
     }
   }
 

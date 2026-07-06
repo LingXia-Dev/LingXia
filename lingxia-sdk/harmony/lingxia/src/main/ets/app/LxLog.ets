@@ -1,0 +1,59 @@
+import { forwardHostLog, hostLogEnabled } from 'liblingxia.so';
+
+/**
+ * Routes SDK-native logs into the LingXia Rust log pipeline.
+ *
+ * Unlike direct hilog calls, records emitted here flow through the same pipeline
+ * as Rust logs, so they show up in dev-server log streams tagged with the
+ * originating appId/path when provided.
+ *
+ * **Forward errors and important warnings only.** Records here are also buffered
+ * for cloud upload / crash diagnosis, so routing routine info/debug dilutes that
+ * bounded buffer (evicting the errors it's meant to keep) and pays an FFI
+ * crossing per call. Keep lifecycle/info/debug and high-frequency traces on
+ * hilog; send through LxLog the diagnostics you'd want in an uploaded log
+ * bundle. On a hot path, guard with `LxLog.isEnabled(level)`.
+ */
+export class LxLog {
+  private static readonly VERBOSE: number = 0;
+  private static readonly DEBUG: number = 1;
+  private static readonly INFO: number = 2;
+  private static readonly WARN: number = 3;
+  private static readonly ERROR: number = 4;
+
+  /** Whether a log at `level` (0=verbose … 4=error) would be recorded. Guard an
+   * expensive hot-path log with this to skip building the message. */
+  public static isEnabled(level: number): boolean {
+    return hostLogEnabled(level);
+  }
+
+  public static v(tag: string, message: string, appId: string = '', path: string = ''): boolean {
+    return forwardHostLog(LxLog.VERBOSE, tag, appId, path, message);
+  }
+
+  public static d(tag: string, message: string, appId: string = '', path: string = ''): boolean {
+    return forwardHostLog(LxLog.DEBUG, tag, appId, path, message);
+  }
+
+  public static i(tag: string, message: string, appId: string = '', path: string = ''): boolean {
+    return forwardHostLog(LxLog.INFO, tag, appId, path, message);
+  }
+
+  // `err` mirrors Android `w(tag, message, tr)`: appended so caught errors
+  // carry a stack/message across platforms instead of being dropped on Harmony.
+  public static w(tag: string, message: string, err?: Error, appId: string = '', path: string = ''): boolean {
+    return forwardHostLog(LxLog.WARN, tag, appId, path, LxLog.appending(err, message));
+  }
+
+  public static e(tag: string, message: string, err?: Error, appId: string = '', path: string = ''): boolean {
+    return forwardHostLog(LxLog.ERROR, tag, appId, path, LxLog.appending(err, message));
+  }
+
+  private static appending(err: Error | undefined, message: string): string {
+    if (err === undefined) {
+      return message;
+    }
+    const detail: string = err.stack ?? err.message;
+    return `${message}\n${detail}`;
+  }
+}

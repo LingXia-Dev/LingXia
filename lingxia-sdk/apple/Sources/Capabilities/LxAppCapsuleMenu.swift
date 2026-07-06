@@ -12,6 +12,7 @@ import AppKit
 class LxAppCapsuleMenu {
 
     private static let log = OSLog(subsystem: "LingXia", category: "CapsuleMenu")
+
     private static let sheetContainerTag = 1001
 
     #if os(iOS)
@@ -19,7 +20,7 @@ class LxAppCapsuleMenu {
     static func show(appId: String) {
         let appInfo = getLxAppInfo(appId)
         if appInfo.app_name.toString().isEmpty {
-            os_log("Failed to get LxApp info for: %{public}@", log: log, type: .error, appId)
+            LXLog.error("Failed to get LxApp info for: \(appId)", category: "CapsuleMenu", appId: appId)
             return
         }
 
@@ -32,7 +33,7 @@ class LxAppCapsuleMenu {
         guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
               let window = windowScene.windows.first(where: { $0.isKeyWindow }) ?? windowScene.windows.first,
               let rootViewController = window.rootViewController else {
-            os_log("Could not find root view controller", log: log, type: .error)
+            LXLog.error("Could not find root view controller", category: "CapsuleMenu", appId: appId)
             return
         }
 
@@ -364,7 +365,7 @@ class LxAppCapsuleMenu {
     static func show(appId: String) {
         let appInfo = getLxAppInfo(appId)
         if appInfo.app_name.toString().isEmpty {
-            os_log("Failed to get LxApp info for: %{public}@", log: log, type: .error, appId)
+            LXLog.error("Failed to get LxApp info for: \(appId)", category: "CapsuleMenu", appId: appId)
             return
         }
 
@@ -380,7 +381,7 @@ class LxAppCapsuleMenu {
         // Anchor the menu near the mouse location in the key window.
         guard let window = NSApp.keyWindow ?? NSApp.mainWindow,
               let contentView = window.contentView else {
-            os_log("Could not find active window/content view for capsule menu", log: log, type: .error)
+            LXLog.error("Could not find active window/content view for capsule menu", category: "CapsuleMenu", appId: appId)
             return
         }
 
@@ -457,7 +458,7 @@ class LxAppCapsuleMenu {
     }
     #else
     public static func show(appId: String) {
-        os_log("Capsule menu is not implemented on this platform for %{public}@", log: log, type: .info, appId)
+        os_log("%@", log: Self.log, type: .info, "Capsule menu is not implemented on this platform for \(appId)")
     }
     #endif
 }

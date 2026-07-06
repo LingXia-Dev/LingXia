@@ -37,6 +37,7 @@ import com.lingxia.lxapp.APIs.media.player.StopReason
 import com.lingxia.lxapp.APIs.media.player.SurfaceHost
 import com.lingxia.lxapp.APIs.media.player.UrlEngine
 import com.lingxia.app.Lingxia
+import com.lingxia.app.LxLog
 import com.lingxia.lxapp.LxApp
 import com.lingxia.lxapp.LxAppActivity
 import com.lingxia.app.NativeApi
@@ -849,7 +850,7 @@ internal class LxMediaPlayer(
 
         // Get Activity context - required for Dialog
         val activityContext = getActivityContext() ?: run {
-            Log.w(TAG, "enterFullscreen: Cannot get Activity context")
+            LxLog.w(TAG, "enterFullscreen: Cannot get Activity context")
             return
         }
 
@@ -858,7 +859,7 @@ internal class LxMediaPlayer(
         val hostActivity = (activityContext as? com.lingxia.lxapp.LxAppActivity)
             ?: (LxApp.getCurrentActivity() as? com.lingxia.lxapp.LxAppActivity)
         if (hostActivity == null) {
-            Log.w(TAG, "enterFullscreen: host activity not found; using overlay fallback")
+            LxLog.w(TAG, "enterFullscreen: host activity not found; using overlay fallback")
             hideOverlayViewsFallback(view.rootView)
         } else {
             hostActivity.enterMediaFullscreen()
@@ -1047,7 +1048,7 @@ internal class LxMediaPlayer(
             try {
                 dialog.dismiss()
             } catch (e: Exception) {
-                Log.w(TAG, "exitFullscreen: Error dismissing dialog", e)
+                LxLog.w(TAG, "exitFullscreen: Error dismissing dialog", e)
             }
         }
         fullscreenDialog = null
@@ -1090,7 +1091,7 @@ internal class LxMediaPlayer(
     private fun enterInlineFullscreen() {
         if (isFullscreen) return
         val activityContext = getActivityContext() ?: run {
-            Log.w(TAG, "enterFullscreen: Cannot get Activity context")
+            LxLog.w(TAG, "enterFullscreen: Cannot get Activity context")
             return
         }
 
@@ -1098,7 +1099,7 @@ internal class LxMediaPlayer(
         val hostActivity = (activityContext as? com.lingxia.lxapp.LxAppActivity)
             ?: (LxApp.getCurrentActivity() as? com.lingxia.lxapp.LxAppActivity)
         if (hostActivity == null) {
-            Log.w(TAG, "enterFullscreen: host activity not found; using overlay fallback")
+            LxLog.w(TAG, "enterFullscreen: host activity not found; using overlay fallback")
             hideOverlayViewsFallback(view.rootView)
         } else {
             hostActivity.enterMediaFullscreen()
@@ -1170,7 +1171,7 @@ internal class LxMediaPlayer(
         val hostActivity = (hostContext as? com.lingxia.lxapp.LxAppActivity)
             ?: (LxApp.getCurrentActivity() as? com.lingxia.lxapp.LxAppActivity)
         if (hostActivity == null) {
-            Log.w(TAG, "exitFullscreen: host activity not found; using overlay fallback")
+            LxLog.w(TAG, "exitFullscreen: host activity not found; using overlay fallback")
             restoreOverlayViewsFallback()
         } else {
             hostActivity.exitMediaFullscreen()
@@ -1563,7 +1564,7 @@ internal class LxMediaPlayer(
                             }
                         }
                     } catch (e: Exception) {
-                        Log.w(TAG, "Failed to load network poster: $url", e)
+                        LxLog.w(TAG, "Failed to load network poster: $url", e)
                     }
                 }
             } else {
@@ -1579,7 +1580,7 @@ internal class LxMediaPlayer(
                             }
                         }
                     } catch (e: Exception) {
-                        Log.w(TAG, "Failed to load local poster: $uri", e)
+                        LxLog.w(TAG, "Failed to load local poster: $uri", e)
                         mainHandler.post {
                             if (requestToken == posterLoadToken) {
                                 posterImageView?.setImageURI(uri)
@@ -1589,7 +1590,7 @@ internal class LxMediaPlayer(
                 }
             }
         } catch (e: Exception) {
-            Log.w(TAG, "Failed to load poster: $url", e)
+            LxLog.w(TAG, "Failed to load poster: $url", e)
         }
     }
 
@@ -1620,14 +1621,14 @@ internal class LxMediaPlayer(
                 connection.inputStream.use { input ->
                     val bytes = readBytesWithLimit(input, MAX_POSTER_DOWNLOAD_BYTES)
                     if (bytes == null) {
-                        Log.w(TAG, "Poster too large, skipped: $url")
+                        LxLog.w(TAG, "Poster too large, skipped: $url")
                         return@use null
                     }
                     decodeSampledBitmap(bytes, targetWidth, targetHeight)
                 }
             }
         } catch (e: Exception) {
-            Log.w(TAG, "decodeNetworkPoster failed: $url", e)
+            LxLog.w(TAG, "decodeNetworkPoster failed: $url", e)
             null
         } finally {
             connection?.disconnect()
@@ -1738,7 +1739,7 @@ internal class LxMediaPlayer(
     private fun setDisplayRotationDegrees(degrees: Int?) {
         val normalized = degrees?.let { normalizeRotation(it) }
         if (normalized != null && normalized != 0 && normalized != 90 && normalized != 180 && normalized != 270) {
-            Log.w(TAG, "Ignoring invalid rotate value: input=$degrees normalized=$normalized")
+            LxLog.w(TAG, "Ignoring invalid rotate value: input=$degrees normalized=$normalized")
             return
         }
         explicitDisplayRotationDegrees = normalized

@@ -20,7 +20,7 @@ final class StreamDecoderRegistry {
     func create(componentId: String) -> Bool {
         stopping.remove(componentId)
         guard let view = ComponentRouter.shared.componentView(componentId: componentId) else {
-            os_log("Stream decoder create failed: component not found %{public}@", log: log, type: .error, componentId)
+            LXLog.error("Stream decoder create failed: component not found \(componentId)", category: "StreamDecoder")
             return false
         }
         if let existing = sessions[componentId], existing.usesContainerView(view) {
@@ -171,21 +171,9 @@ final class StreamDecoderRegistry {
 
     private func ensureSession(componentId: String, reason: StaticString) -> StreamDecoderSession? {
         if let session = sessions[componentId] { return session }
-        os_log(
-            "Stream decoder missing session for %{public}@ (%{public}@), attempting recreate",
-            log: log,
-            type: .error,
-            componentId,
-            String(describing: reason)
-        )
+        LXLog.error("Stream decoder missing session for \(componentId) (\(String(describing: reason))), attempting recreate", category: "StreamDecoder")
         guard create(componentId: componentId), let session = sessions[componentId] else {
-            os_log(
-                "Stream decoder recreate failed for %{public}@ (%{public}@)",
-                log: log,
-                type: .error,
-                componentId,
-                String(describing: reason)
-            )
+            LXLog.error("Stream decoder recreate failed for \(componentId) (\(String(describing: reason)))", category: "StreamDecoder")
             return nil
         }
         return session
@@ -199,12 +187,7 @@ final class StreamDecoderRegistry {
     ) -> Bool {
         if requireVideo {
             guard let cachedVideo = lastVideoConfigJson[componentId] else {
-                os_log(
-                    "Stream decoder missing cached video config for %{public}@",
-                    log: log,
-                    type: .error,
-                    componentId
-                )
+                LXLog.error("Stream decoder missing cached video config for \(componentId)", category: "StreamDecoder")
                 return false
             }
             session.configureVideo(cachedVideo)
@@ -214,12 +197,7 @@ final class StreamDecoderRegistry {
 
         if requireAudio {
             guard let cachedAudio = lastAudioConfigJson[componentId] else {
-                os_log(
-                    "Stream decoder missing cached audio config for %{public}@",
-                    log: log,
-                    type: .error,
-                    componentId
-                )
+                LXLog.error("Stream decoder missing cached audio config for \(componentId)", category: "StreamDecoder")
                 return false
             }
             session.configureAudio(cachedAudio)
@@ -454,15 +432,7 @@ private final class StreamDecoderSession {
                     let now = CFAbsoluteTimeGetCurrent()
                     if now - self.lastDroppedKeyframeLogAt > 1.0 {
                         self.lastDroppedKeyframeLogAt = now
-                        os_log(
-                            "dropping initial keyframe (invalid access unit) componentId=%{public}@ len=%{public}@ codec=%{public}@ fmt=%{public}@",
-                            log: self.log,
-                            type: .error,
-                            self.componentId,
-                            String(data.count),
-                            config.codec,
-                            config.format
-                        )
+                        LXLog.error("dropping initial keyframe (invalid access unit) componentId=\(self.componentId) len=\(data.count) codec=\(config.codec) fmt=\(config.format)", category: "StreamDecoder")
                     }
                     // Some cameras can emit a truncated/garbled first keyframe right after connect.
                     // Dropping it and waiting for the next clean keyframe avoids "first frame only"
@@ -520,16 +490,7 @@ private final class StreamDecoderSession {
                 ptsMs: normalizedPts,
                 durationMs: durationMs
             ) else {
-                os_log(
-                    "makeSampleBuffer(video) failed codec=%{public}@ format=%{public}@ data_len=%{public}@ pts=%{public}@ dts=%{public}@",
-                    log: self.log,
-                    type: .error,
-                    self.videoConfig?.codec ?? "unknown",
-                    self.videoConfig?.format ?? "unknown",
-                    String(sampleData.count),
-                    String(normalizedPts),
-                    String(normalizedDts)
-                )
+                LXLog.error("makeSampleBuffer(video) failed codec=\(self.videoConfig?.codec ?? "unknown") format=\(self.videoConfig?.format ?? "unknown") data_len=\(sampleData.count) pts=\(normalizedPts) dts=\(normalizedDts)", category: "StreamDecoder")
                 return
             }
             self.applyVideoSampleAttachments(sampleBuffer, isSync: keyframe || self.inferKeyframe(data: sampleData))
@@ -542,12 +503,7 @@ private final class StreamDecoderSession {
                     let now = CFAbsoluteTimeGetCurrent()
                     if now - self.lastVideoFlushAt > 0.5 {
                         self.lastVideoFlushAt = now
-                        os_log(
-                            "video layer requires flush componentId=%{public}@",
-                            log: self.log,
-                            type: .error,
-                            self.componentId
-                        )
+                        LXLog.error("video layer requires flush componentId=\(self.componentId)", category: "StreamDecoder")
                     }
                     self.lastEnqueuedVideoPtsMs = nil
                     self.waitingForVideoKeyframe = true
@@ -626,28 +582,14 @@ private final class StreamDecoderSession {
             timebaseStallCount = 0
             timebaseDriftCount = 0
             lastTimebaseResyncAt = now
-            os_log(
-                "render timebase stalled; resyncing componentId=%{public}@ time=%{public}@ pts=%{public}@",
-                log: log,
-                type: .error,
-                componentId,
-                String(timebaseMs),
-                String(ptsMs)
-            )
+            LXLog.error("render timebase stalled; resyncing componentId=\(componentId) time=\(timebaseMs) pts=\(ptsMs)", category: "StreamDecoder")
             timelineResetPending = false
             renderSynchronizer.setRate(1.0, time: pts)
         } else if timebaseDriftCount >= 3 && now - lastTimebaseResyncAt > 1.0 {
             timebaseStallCount = 0
             timebaseDriftCount = 0
             lastTimebaseResyncAt = now
-            os_log(
-                "render timebase drift; resyncing componentId=%{public}@ time=%{public}@ pts=%{public}@",
-                log: log,
-                type: .error,
-                componentId,
-                String(timebaseMs),
-                String(ptsMs)
-            )
+            LXLog.error("render timebase drift; resyncing componentId=\(componentId) time=\(timebaseMs) pts=\(ptsMs)", category: "StreamDecoder")
             timelineResetPending = false
             renderSynchronizer.setRate(1.0, time: pts)
         }
@@ -849,15 +791,7 @@ private final class StreamDecoderSession {
                 )
             }
             guard let sampleBuffer else {
-                os_log(
-                    "makeSampleBuffer(audio) failed codec=%{public}@ data_len=%{public}@ dts=%{public}@ pts=%{public}@",
-                    log: self.log,
-                    type: .error,
-                    self.audioConfig?.codec ?? "unknown",
-                    String(data.count),
-                    String(dtsMs),
-                    String(ptsMs)
-                )
+                LXLog.error("makeSampleBuffer(audio) failed codec=\(self.audioConfig?.codec ?? "unknown") data_len=\(data.count) dts=\(dtsMs) pts=\(ptsMs)", category: "StreamDecoder")
                 return
             }
             self.audioRenderer.enqueue(sampleBuffer)
@@ -1082,7 +1016,7 @@ private final class StreamDecoderSession {
         }
 
         if status != noErr {
-            os_log("AAC converter decode failed: %{public}@", log: log, type: .error, String(status))
+            LXLog.error("AAC converter decode failed: \(status)", category: "StreamDecoder")
             return nil
         }
 
@@ -1472,13 +1406,7 @@ private final class StreamDecoderSession {
                 : 0
             if enqueuedDelta >= 12 && now - lastDisplayedSignatureAt > 1.5 {
                 lastStuckRecoveryAt = now
-                os_log(
-                    "video appears stuck; auto-resetting timeline componentId=%{public}@ enqueue=%{public}@",
-                    log: log,
-                    type: .error,
-                    componentId,
-                    String(snapshot.enqueueCount)
-                )
+                LXLog.error("video appears stuck; auto-resetting timeline componentId=\(componentId) enqueue=\(snapshot.enqueueCount)", category: "StreamDecoder")
                 showFreezeOverlay(reason: "stuck")
                 // Keep the last rendered frame visible during recovery to avoid a black flash.
                 resetTimingForResume(keepLastFrame: true)
@@ -1635,13 +1563,7 @@ private final class StreamDecoderSession {
 
     @MainActor
     private func handleVideoDecodeFailure(infoDescription: String) {
-        os_log(
-            "displayLayer failed to decode componentId=%{public}@ info=%{public}@",
-            log: log,
-            type: .error,
-            componentId,
-            infoDescription
-        )
+        LXLog.error("displayLayer failed to decode componentId=\(componentId) info=\(infoDescription)", category: "StreamDecoder")
         showFreezeOverlay(reason: "decode_failed")
         // Keep the last rendered frame visible during recovery to avoid a black flash.
         resetTimingForResume(keepLastFrame: true)
@@ -1838,14 +1760,7 @@ private final class StreamDecoderSession {
         let details = sets
             .map { "\($0.0)=\($0.1.count)(\(bytesPrefixHex($0.1, count: 8)))" }
             .joined(separator: " ")
-        os_log(
-            "%{public}@ failed status=%d %{public}@",
-            log: log,
-            type: .error,
-            label,
-            status,
-            details
-        )
+        LXLog.error("\(label) failed status=\(status) \(details)", category: "StreamDecoder")
     }
 
     private func buildH264Format(config: VideoConfig, nalLength: Int) -> CMFormatDescription? {
@@ -2249,7 +2164,7 @@ private final class StreamDecoderSession {
             let session = AVAudioSession.sharedInstance()
             try session.setActive(true)
         } catch {
-            os_log("Audio session re-activate failed: %{public}@", log: log, type: .error, String(describing: error))
+            LXLog.error("Audio session re-activate failed", category: "StreamDecoder", error: error)
         }
         if wasPlayingBeforeBackground {
             playRequested = true
@@ -2284,7 +2199,7 @@ private final class StreamDecoderSession {
             // Re-activate on demand; some devices deactivate the session after stream pause/resume.
             try session.setActive(true)
         } catch {
-            os_log("Audio session setup failed: %{public}@", log: log, type: .error, String(describing: error))
+            LXLog.error("Audio session setup failed", category: "StreamDecoder", error: error)
         }
     }
 
@@ -2302,7 +2217,7 @@ private final class StreamDecoderSession {
             interleaved: true
         )
         guard let format else {
-            os_log("PCM audio engine format init failed", log: log, type: .error)
+            LXLog.error("PCM audio engine format init failed", category: "StreamDecoder")
             return
         }
         let engine = AVAudioEngine()
@@ -2318,7 +2233,7 @@ private final class StreamDecoderSession {
             usePcmAudioEngine = true
             applyStreamVolume()
         } catch {
-            os_log("PCM audio engine start failed: %{public}@", log: log, type: .error, String(describing: error))
+            LXLog.error("PCM audio engine start failed", category: "StreamDecoder", error: error)
         }
     }
 
@@ -2463,13 +2378,7 @@ private final class StreamDecoderSession {
             blockBufferOut: &blockBuffer
         )
         if status != kCMBlockBufferNoErr || blockBuffer == nil {
-            os_log(
-                "CMBlockBufferCreateWithMemoryBlock failed status=%{public}@ len=%{public}@",
-                log: log,
-                type: .error,
-                String(status),
-                String(data.count)
-            )
+            LXLog.error("CMBlockBufferCreateWithMemoryBlock failed status=\(status) len=\(data.count)", category: "StreamDecoder")
             return nil
         }
         data.withUnsafeBytes { ptr in
@@ -2504,22 +2413,14 @@ private final class StreamDecoderSession {
             sampleBufferOut: &sampleBuffer
         )
         if sampleStatus != noErr {
-            os_log(
-                "CMSampleBufferCreateReady failed status=%{public}@ len=%{public}@ pts=%{public}@ dts=%{public}@",
-                log: log,
-                type: .error,
-                String(sampleStatus),
-                String(data.count),
-                String(ptsMs),
-                String(dtsMs)
-            )
+            LXLog.error("CMSampleBufferCreateReady failed status=\(sampleStatus) len=\(data.count) pts=\(ptsMs) dts=\(dtsMs)", category: "StreamDecoder")
             return nil
         }
         return sampleBuffer
     }
 
     private func emitError(_ message: String) {
-        os_log("Stream decoder error %{public}@", log: log, type: .error, message)
+        LXLog.error("Stream decoder error \(message)", category: "StreamDecoder")
         let componentId = self.componentId
         DispatchQueue.main.async {
             ComponentRouter.shared.emitComponentEvent(

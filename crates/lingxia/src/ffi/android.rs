@@ -217,7 +217,7 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_lingxiaInit<'a>(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_app_NativeApi_emitSdkLog(
+pub extern "system" fn Java_com_lingxia_app_NativeApi_forwardHostLog(
     mut env: EnvUnowned,
     _class: JClass,
     level: jint,
@@ -231,11 +231,33 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_emitSdkLog(
         let appid: String = appid.try_to_string(env)?;
         let path: String = path.try_to_string(env)?;
         let message: String = message.try_to_string(env)?;
-        Ok(crate::logging::emit_sdk_log(
+        Ok(crate::logging::forward_host_log(
             level, &category, &appid, &path, &message,
         ))
     })
     .resolve::<LogErrorAndDefault>()
+}
+
+/// Set the runtime log threshold (0=verbose … 4=error). See
+/// [`crate::logging::set_log_level`].
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_app_NativeApi_setLogLevel(
+    _env: EnvUnowned,
+    _class: JClass,
+    level: jint,
+) {
+    crate::logging::set_log_level(level);
+}
+
+/// Whether a host log at `level` would be recorded. See
+/// [`crate::logging::host_log_enabled`].
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_app_NativeApi_hostLogEnabled(
+    _env: EnvUnowned,
+    _class: JClass,
+    level: jint,
+) -> jboolean {
+    crate::logging::host_log_enabled(level) as jboolean
 }
 
 #[unsafe(no_mangle)]

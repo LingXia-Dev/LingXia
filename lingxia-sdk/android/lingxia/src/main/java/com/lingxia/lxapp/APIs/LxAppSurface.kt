@@ -5,7 +5,6 @@ import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Build
-import android.util.Log
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
@@ -14,8 +13,10 @@ import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebViewClient
 import android.widget.FrameLayout
+import android.util.Log
 import android.widget.ImageView
 import com.lingxia.app.Lingxia
+import com.lingxia.app.LxLog
 import com.lingxia.lxapp.LxApp
 import com.lingxia.lxapp.LxAppActivity
 import com.lingxia.lxapp.R
@@ -126,7 +127,7 @@ internal object LxAppSurface {
         if (content != CONTENT_PAGE && content != CONTENT_URL) return false
         val activity = LxApp.getCurrentActivity() ?: return false
         if (activity.getAppId() != appId) {
-            Log.w(TAG, "present: active appId=${activity.getAppId()} does not match $appId")
+            LxLog.w(TAG, "present: active appId=${activity.getAppId()} does not match $appId", appId = appId, path = path)
             return false
         }
 
@@ -162,7 +163,7 @@ internal object LxAppSurface {
         val plan = try {
             JSONObject(layoutJson)
         } catch (error: Throwable) {
-            Log.e(TAG, "presentLayout failed to parse windowId=$windowId", error)
+            LxLog.e(TAG, "presentLayout failed to parse windowId=$windowId", error)
             return false
         }
 
@@ -269,7 +270,7 @@ internal object LxAppSurface {
             } else {
                 pendingRequests.remove(request.id)
                 pendingVisibility.remove(request.id)
-                Log.e(TAG, "present failed: WebView not ready for pageInstanceId=${request.pageInstanceId}")
+                LxLog.e(TAG, "present failed: WebView not ready for pageInstanceId=${request.pageInstanceId}", appId = request.appId, path = request.path)
                 NativeApi.disposePageInstance(request.pageInstanceId, "failed")
                 NativeApi.onSurfaceClosed(request.appId, request.id, "failed")
             }

@@ -1,5 +1,4 @@
 import Foundation
-import OSLog
 import CLingXiaRustAPI
 import CLingXiaSwiftAPI
 
@@ -9,7 +8,6 @@ import WebKit
 
 @MainActor
 enum LxAppSurface {
-    private static let log = OSLog(subsystem: "LingXia", category: "Surface")
     /// View a controller-hosted host (the Runner's phone simulator) renders the
     /// lxapp into. Floats are bounded to it when there is no desktop shell, so they
     /// don't spill past the device frame. Weak — owned by the host view tree.
@@ -256,7 +254,7 @@ enum LxAppSurface {
 
         let context = surfaceContext(kind: kind)
         if kind != kindWindow && kind != kindPopup {
-            os_log("unsupported surface kind=%{public}d id=%{public}@ app=%{public}@", log: log, type: .error, kind, id, appId)
+            LXLog.error("unsupported surface kind=\(kind) id=\(id) app=\(appId)", category: "Surface", appId: appId)
             return false
         }
 
@@ -316,16 +314,11 @@ enum LxAppSurface {
         case contentPage:
             pageInstanceId = rawPageInstanceId.trimmingCharacters(in: .whitespacesAndNewlines)
             if path.isEmpty || pageInstanceId.isEmpty {
-                os_log(
-                    "present page requires path and pageInstanceId id=%{public}@ app=%{public}@ path=%{public}@ pageInstanceId=%{public}@ content=%{public}d kind=%{public}d",
-                    log: log,
-                    type: .error,
-                    id,
-                    appId,
-                    path,
-                    pageInstanceId,
-                    content,
-                    kind
+                LXLog.error(
+                    "present page requires path and pageInstanceId id=\(id) app=\(appId) path=\(path) pageInstanceId=\(pageInstanceId) content=\(content) kind=\(kind)",
+                    category: "Surface",
+                    appId: appId,
+                    path: path
                 )
                 return false
             }
@@ -357,14 +350,11 @@ enum LxAppSurface {
                 do {
                     try await lxHostView.mount(session, notifyVisibleOnMount: true)
                 } catch {
-                    os_log(
-                        "mount failed id=%{public}@ app=%{public}@ path=%{public}@ error=%{public}@",
-                        log: log,
-                        type: .error,
-                        id,
-                        appId,
-                        path,
-                        String(describing: error)
+                    LXLog.error(
+                        "mount failed id=\(id) app=\(appId) path=\(path) error=\(String(describing: error))",
+                        category: "Surface",
+                        appId: appId,
+                        path: path
                     )
                     _ = close(id: id, appId: appId, reason: "failed")
                 }
@@ -372,7 +362,7 @@ enum LxAppSurface {
 
         case contentUrl:
             guard let url = URL(string: path), let scheme = url.scheme?.lowercased(), scheme == "https" || scheme == "http" else {
-                os_log("invalid web surface url id=%{public}@ url=%{public}@", log: log, type: .error, id, path)
+                LXLog.error("invalid web surface url id=\(id) url=\(path)", category: "Surface", appId: appId, path: path)
                 return false
             }
             pageInstanceId = ""
@@ -389,7 +379,7 @@ enum LxAppSurface {
             navigationDelegate = delegate
 
         default:
-            os_log("unsupported surface content=%{public}d id=%{public}@ app=%{public}@ path=%{public}@ kind=%{public}d", log: log, type: .error, content, id, appId, path, kind)
+            LXLog.error("unsupported surface content=\(content) id=\(id) app=\(appId) path=\(path) kind=\(kind)", category: "Surface", appId: appId, path: path)
             return false
         }
 
@@ -441,9 +431,9 @@ enum LxAppSurface {
     ) -> Bool {
         let pageInstanceId = rawPageInstanceId.trimmingCharacters(in: .whitespacesAndNewlines)
         if path.isEmpty || pageInstanceId.isEmpty {
-            os_log(
-                "fullscreen page requires path and pageInstanceId id=%{public}@ app=%{public}@ path=%{public}@ pageInstanceId=%{public}@",
-                log: log, type: .error, id, appId, path, pageInstanceId
+            LXLog.error(
+                "fullscreen page requires path and pageInstanceId id=\(id) app=\(appId) path=\(path) pageInstanceId=\(pageInstanceId)",
+                category: "Surface", appId: appId, path: path
             )
             return false
         }
@@ -480,9 +470,9 @@ enum LxAppSurface {
             do {
                 try await lxHostView.mount(session, notifyVisibleOnMount: true)
             } catch {
-                os_log(
-                    "fullscreen mount failed id=%{public}@ app=%{public}@ path=%{public}@ error=%{public}@",
-                    log: log, type: .error, id, appId, path, String(describing: error)
+                LXLog.error(
+                    "fullscreen mount failed id=\(id) app=\(appId) path=\(path) error=\(String(describing: error))",
+                    category: "Surface", appId: appId, path: path
                 )
                 _ = close(id: id, appId: appId, reason: "failed")
             }
@@ -586,9 +576,9 @@ enum LxAppSurface {
         case contentPage:
             pageInstanceId = rawPageInstanceId.trimmingCharacters(in: .whitespacesAndNewlines)
             if path.isEmpty || pageInstanceId.isEmpty {
-                os_log(
-                    "aside page requires path and pageInstanceId id=%{public}@ app=%{public}@ path=%{public}@ pageInstanceId=%{public}@",
-                    log: log, type: .error, id, appId, path, pageInstanceId
+                LXLog.error(
+                    "aside page requires path and pageInstanceId id=\(id) app=\(appId) path=\(path) pageInstanceId=\(pageInstanceId)",
+                    category: "Surface", appId: appId, path: path
                 )
                 return false
             }
@@ -618,9 +608,9 @@ enum LxAppSurface {
                 do {
                     try await lxHostView.mount(session, notifyVisibleOnMount: true)
                 } catch {
-                    os_log(
-                        "aside mount failed id=%{public}@ app=%{public}@ path=%{public}@ error=%{public}@",
-                        log: log, type: .error, id, appId, path, String(describing: error)
+                    LXLog.error(
+                        "aside mount failed id=\(id) app=\(appId) path=\(path) error=\(String(describing: error))",
+                        category: "Surface", appId: appId, path: path
                     )
                     _ = close(id: id, appId: appId, reason: "failed")
                 }
@@ -629,7 +619,7 @@ enum LxAppSurface {
         case contentUrl:
             guard let url = URL(string: path), let scheme = url.scheme?.lowercased(),
                   scheme == "https" || scheme == "http" || scheme == "file" else {
-                os_log("invalid web aside url id=%{public}@ url=%{public}@", log: log, type: .error, id, path)
+                LXLog.error("invalid web aside url id=\(id) url=\(path)", category: "Surface", appId: appId, path: path)
                 return false
             }
             // Every web-aside node is a tab in the single per-window browser
@@ -655,7 +645,7 @@ enum LxAppSurface {
                 onCloseTab: onCloseTab,
                 onCloseAside: onCloseAside
             ) else {
-                os_log("failed to open docked aside tab id=%{public}@ url=%{public}@", log: log, type: .error, id, path)
+                LXLog.error("failed to open docked aside tab id=\(id) url=\(path)", category: "Surface", appId: appId, path: path)
                 return false
             }
             guard opened.isNew else {
@@ -686,7 +676,7 @@ enum LxAppSurface {
             pinToEdges(opened.browser.containerView, in: container)
 
         default:
-            os_log("unsupported aside content=%{public}d id=%{public}@ app=%{public}@", log: log, type: .error, content, id, appId)
+            LXLog.error("unsupported aside content=\(content) id=\(id) app=\(appId)", category: "Surface", appId: appId, path: path)
             return false
         }
 
@@ -838,7 +828,7 @@ enum LxAppSurface {
 
     static func show(id: String, appId: String) -> Bool {
         guard let entry = entries[id], entry.appId == appId else {
-            os_log("show: surface not found id=%{public}@ app=%{public}@", log: log, type: .error, id, appId)
+            LXLog.error("show: surface not found id=\(id) app=\(appId)", category: "Surface", appId: appId)
             return false
         }
         if entry.dockedPosition != nil {
@@ -852,7 +842,7 @@ enum LxAppSurface {
             return true
         }
         guard let window = entry.window else {
-            os_log("show: surface has no window id=%{public}@ app=%{public}@", log: log, type: .error, id, appId)
+            LXLog.error("show: surface has no window id=\(id) app=\(appId)", category: "Surface", appId: appId)
             return false
         }
         // Defense in depth — JS-side already short-circuits on no-op.
@@ -878,7 +868,7 @@ enum LxAppSurface {
 
     static func hide(id: String, appId: String) -> Bool {
         guard let entry = entries[id], entry.appId == appId else {
-            os_log("hide: surface not found id=%{public}@ app=%{public}@", log: log, type: .error, id, appId)
+            LXLog.error("hide: surface not found id=\(id) app=\(appId)", category: "Surface", appId: appId)
             return false
         }
         if entry.dockedPosition != nil {
@@ -892,7 +882,7 @@ enum LxAppSurface {
             return true
         }
         guard let window = entry.window else {
-            os_log("hide: surface has no window id=%{public}@ app=%{public}@", log: log, type: .error, id, appId)
+            LXLog.error("hide: surface has no window id=\(id) app=\(appId)", category: "Surface", appId: appId)
             return false
         }
         if !window.isVisible { return true }
@@ -1190,7 +1180,6 @@ import WebKit
 
 @MainActor
 enum LxAppSurface {
-    private static let log = OSLog(subsystem: "LingXia", category: "Surface")
     private static let kindWindow: Int32 = 0
     private static let kindPopup: Int32 = 1
     private static let contentPage: Int32 = 0
@@ -1416,15 +1405,15 @@ enum LxAppSurface {
         // full-screen — the same way the primary lxapp page is shown. A float
         // (kind Overlay, role Float) keeps the positioned-popup treatment below.
         guard kind == kindPopup || kind == kindWindow else {
-            os_log("unsupported mobile surface kind=%{public}d id=%{public}@ app=%{public}@", log: log, type: .error, kind, id, appId)
+            LXLog.error("unsupported mobile surface kind=\(kind) id=\(id) app=\(appId)", category: "Surface", appId: appId, path: path)
             return false
         }
         guard content == contentPage || content == contentUrl else {
-            os_log("unsupported surface content=%{public}d id=%{public}@ app=%{public}@", log: log, type: .error, content, id, appId)
+            LXLog.error("unsupported surface content=\(content) id=\(id) app=\(appId)", category: "Surface", appId: appId, path: path)
             return false
         }
         guard let windowScene = activeWindowScene() else {
-            os_log("no active window scene for surface id=%{public}@ app=%{public}@", log: log, type: .error, id, appId)
+            LXLog.error("no active window scene for surface id=\(id) app=\(appId)", category: "Surface", appId: appId, path: path)
             return false
         }
 
@@ -1478,7 +1467,7 @@ enum LxAppSurface {
         case contentPage:
             pageInstanceId = rawPageInstanceId.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !path.isEmpty, !pageInstanceId.isEmpty else {
-                os_log("present page requires path and pageInstanceId id=%{public}@ app=%{public}@", log: log, type: .error, id, appId)
+                LXLog.error("present page requires path and pageInstanceId id=\(id) app=\(appId)", category: "Surface", appId: appId, path: path)
                 return false
             }
 
@@ -1505,14 +1494,14 @@ enum LxAppSurface {
                 do {
                     try await lxHostView.mount(session, notifyVisibleOnMount: true)
                 } catch {
-                    os_log("mount failed id=%{public}@ app=%{public}@ path=%{public}@ error=%{public}@", log: log, type: .error, id, appId, path, String(describing: error))
+                    LXLog.error("mount failed id=\(id) app=\(appId) path=\(path) error=\(String(describing: error))", category: "Surface", appId: appId, path: path)
                     _ = close(id: id, appId: appId, reason: "failed")
                 }
             }
 
         case contentUrl:
             guard let url = URL(string: path), let scheme = url.scheme?.lowercased(), scheme == "https" || scheme == "http" else {
-                os_log("invalid web surface url id=%{public}@ url=%{public}@", log: log, type: .error, id, path)
+                LXLog.error("invalid web surface url id=\(id) url=\(path)", category: "Surface", appId: appId, path: path)
                 return false
             }
             pageInstanceId = ""
@@ -1584,7 +1573,7 @@ enum LxAppSurface {
 
     static func show(id: String, appId: String) -> Bool {
         guard let entry = entries[id], entry.appId == appId else {
-            os_log("show: surface not found id=%{public}@ app=%{public}@", log: log, type: .error, id, appId)
+            LXLog.error("show: surface not found id=\(id) app=\(appId)", category: "Surface", appId: appId)
             return false
         }
         // Defense in depth — the Rust JS-side closure already short-circuits
@@ -1611,7 +1600,7 @@ enum LxAppSurface {
 
     static func hide(id: String, appId: String) -> Bool {
         guard let entry = entries[id], entry.appId == appId else {
-            os_log("hide: surface not found id=%{public}@ app=%{public}@", log: log, type: .error, id, appId)
+            LXLog.error("hide: surface not found id=\(id) app=\(appId)", category: "Surface", appId: appId)
             return false
         }
         if entry.window.isHidden { return true }

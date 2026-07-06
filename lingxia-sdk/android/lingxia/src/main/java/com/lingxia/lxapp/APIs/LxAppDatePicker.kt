@@ -4,12 +4,12 @@ import android.app.Activity
 import android.content.Context
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
-import android.util.Log
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.*
 import com.lingxia.app.Lingxia
+import com.lingxia.app.LxLog
 import com.lingxia.lxapp.LxApp
 import com.lingxia.lxapp.R
 import org.json.JSONArray
@@ -55,7 +55,7 @@ internal object LxAppDatePicker {
     ) {
         val activity = LxApp.getCurrentActivity()
         if (activity == null) {
-            Log.e(TAG, "showDatePicker: current activity is null")
+            LxLog.e(TAG, "showDatePicker: current activity is null")
             sendPickerResultCancel(callbackId)
             return
         }
@@ -109,7 +109,7 @@ internal object LxAppDatePicker {
             dividerField?.isAccessible = true
             dividerField?.set(this, null)
         } catch (e: Exception) {
-            Log.w(TAG, "Failed to hide dividers: ${e.message}")
+            LxLog.w(TAG, "Failed to hide dividers: ${e.message}")
         }
     }
 

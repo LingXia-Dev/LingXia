@@ -71,13 +71,10 @@ extension LxApp {
                     )
                     return true
                 } catch {
-                    os_log(
-                        "openLxApp rejected by active controller for %{public}@ path=%{public}@ error=%{public}@",
-                        log: .default,
-                        type: .error,
-                        appIdString,
-                        pathString,
-                        String(describing: error)
+                    LXLog.error(
+                        "openLxApp rejected by active controller for \(appIdString) path=\(pathString)",
+                        category: "LxAppFFI",
+                        error: error
                     )
                     return false
                 }
@@ -137,13 +134,9 @@ extension LxApp {
         let pathString = path.toString()
         let pageInstanceId = page_instance_id.toString()
         guard !idString.isEmpty, !appIdString.isEmpty, session_id > 0 else {
-            os_log(
-                "presentSurface rejected invalid args id=%{public}@ app=%{public}@ session=%{public}llu",
-                log: lxAppFFILog,
-                type: .error,
-                idString,
-                appIdString,
-                session_id
+            LXLog.error(
+                "presentSurface rejected invalid args id=\(idString) app=\(appIdString) session=\(session_id)",
+                category: "LxAppFFI"
             )
             return false
         }
@@ -405,8 +398,7 @@ extension LxApp {
                 }
                 return true
             } catch {
-                os_log(.error, log: lxAppFFILog, "autostart update failed: %{public}@",
-                       error.localizedDescription)
+                LXLog.error("autostart update failed", category: "LxAppFFI", error: error)
                 return false
             }
         }

@@ -7,6 +7,7 @@ import android.widget.FrameLayout
 import com.lingxia.lxapp.APIs.LxAppPicker
 import com.lingxia.lxapp.APIs.LxAppDatePicker
 import com.lingxia.app.Lingxia
+import com.lingxia.app.LxLog
 import com.lingxia.lxapp.LxApp
 import com.lingxia.lxapp.NativeComponents.LxNativeComponent
 import com.lingxia.lxapp.NativeComponents.LxNativeComponentFactory
@@ -210,7 +211,7 @@ internal class PickerComponent(
                 }
             }
         } catch (e: Exception) {
-            android.util.Log.e("PickerComponent", "Failed to parse columns: $columnsJSON", e)
+            LxLog.e("PickerComponent", "Failed to parse columns: $columnsJSON", e)
         }
     }
 
@@ -268,7 +269,7 @@ internal class PickerComponent(
                 sendEvent("scroll", detail)
             }
         } catch (e: Exception) {
-            android.util.Log.e("PickerComponent", "Failed to parse callback data: $data", e)
+            LxLog.e("PickerComponent", "Failed to parse callback data: $data", e)
         }
     }
 }

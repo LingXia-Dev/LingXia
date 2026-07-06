@@ -211,6 +211,9 @@ pub(crate) fn init_with_platform(platform: lingxia_platform::Platform) -> Option
         log::error!("Failed to initialize app configuration: {}", err);
         return None;
     }
+    // App config (with the device dev-ws-url) is now loaded, so a dev session is
+    // detectable: default logging to debug unless LINGXIA_LOG_LEVEL pinned it.
+    crate::logging::apply_dev_session_level();
     #[cfg(feature = "devtool")]
     crate::devtool::prepare_bundle_sources(&runtime);
     crate::host_addon::run_install_logic_extensions();

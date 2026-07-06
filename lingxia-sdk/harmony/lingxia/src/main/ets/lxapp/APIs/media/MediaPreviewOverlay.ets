@@ -11,6 +11,7 @@ import {
 import { VideoControlsView, VideoControlSize } from './player/VideoControls';
 import { LxMediaFrameCache } from './player/LxMediaFrameCache';
 import { resolveLxUriForFileAccess } from './LxUri';
+import { LxLog } from '../../../app/LxLog';
 import { onCallback, videoPlayerSetVolume } from 'liblingxia.so';
 
 export interface MediaPreviewItem {
@@ -192,7 +193,7 @@ export class MediaPreviewOverlayManager {
       try {
         LxNativeVideoPlayer.destroyStatic(playerId);
       } catch {
-        hilog.error(DOMAIN, TAG, `Failed to destroy preview player ${playerId}`);
+        LxLog.e(TAG, `Failed to destroy preview player ${playerId}`);
       }
     });
     MediaPreviewOverlayManager.activePreviewPlayers.clear();
@@ -326,16 +327,16 @@ export struct MediaPreviewOverlay {
             if (opVersion !== this.windowOpVersion) {
               return;
             }
-            hilog.error(DOMAIN, TAG, 'Failed to apply fullscreen bars');
+            LxLog.e(TAG, 'Failed to apply fullscreen bars');
           });
       }).catch(() => {
         if (opVersion !== this.windowOpVersion) {
           return;
         }
-        hilog.error(DOMAIN, TAG, 'Failed to get main window for enter fullscreen');
+        LxLog.e(TAG, 'Failed to get main window for enter fullscreen');
       });
     } catch {
-      hilog.error(DOMAIN, TAG, 'Failed to enter fullscreen mode');
+      LxLog.e(TAG, 'Failed to enter fullscreen mode');
     }
   }
 
@@ -364,16 +365,16 @@ export struct MediaPreviewOverlay {
             if (opVersion !== this.windowOpVersion) {
               return;
             }
-            hilog.error(DOMAIN, TAG, 'Failed to restore fullscreen bars/orientation');
+            LxLog.e(TAG, 'Failed to restore fullscreen bars/orientation');
           });
       }).catch(() => {
         if (opVersion !== this.windowOpVersion) {
           return;
         }
-        hilog.error(DOMAIN, TAG, 'Failed to get main window for exit fullscreen');
+        LxLog.e(TAG, 'Failed to get main window for exit fullscreen');
       });
     } catch {
-      hilog.error(DOMAIN, TAG, 'Failed to exit fullscreen mode');
+      LxLog.e(TAG, 'Failed to exit fullscreen mode');
     }
   }
 
@@ -444,7 +445,7 @@ struct MediaPreviewContent {
       const safeArea: window.AvoidArea = await windowClass.getWindowAvoidArea(window.AvoidAreaType.TYPE_SYSTEM);
       this.statusBarHeight = safeArea.topRect.height || 44;
     } catch {
-      hilog.error(DOMAIN, TAG, 'Failed to get status bar height');
+      LxLog.e(TAG, 'Failed to get status bar height');
     }
   }
 
@@ -786,7 +787,7 @@ struct MediaViewer {
       this.screenHeightVp = displayInfo.height / density;
       hilog.info(DOMAIN, TAG, `Screen dimensions: ${this.screenWidthVp}x${this.screenHeightVp} vp`);
     } catch {
-      hilog.error(DOMAIN, TAG, 'Failed to get screen dimensions');
+      LxLog.e(TAG, 'Failed to get screen dimensions');
       // Fallback to reasonable defaults
       this.screenWidthVp = 360;
       this.screenHeightVp = 800;
@@ -1150,7 +1151,7 @@ struct MediaViewer {
         }
         break;
       case 'error':
-        hilog.error(DOMAIN, TAG, `Video error: ${(detail as VideoErrorDetail).message}`);
+        LxLog.e(TAG, `Video error: ${(detail as VideoErrorDetail).message}`);
         this.videoState.isPlaying = false;
         this.videoState.isPaused = true;
         this.videoState.isBuffering = false;

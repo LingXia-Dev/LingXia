@@ -7,7 +7,6 @@ import android.graphics.Color
 import android.os.Bundle
 import android.animation.ObjectAnimator
 import android.animation.ValueAnimator
-import android.util.Log
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
@@ -31,6 +30,7 @@ import com.google.mlkit.vision.barcode.BarcodeScanner
 import com.google.mlkit.vision.barcode.BarcodeScannerOptions
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.common.InputImage
+import com.lingxia.app.LxLog
 import com.lingxia.app.NativeApi
 import com.lingxia.lxapp.R
 import org.json.JSONObject
@@ -264,7 +264,7 @@ internal class ScanCodeFragment : Fragment() {
         try {
             barcodeScanner?.close()
         } catch (e: Exception) {
-            Log.w(TAG, "Failed to close barcode scanner", e)
+            LxLog.w(TAG, "Failed to close barcode scanner", e)
         }
         barcodeScanner = null
     }
@@ -342,7 +342,7 @@ internal class ScanCodeFragment : Fragment() {
                     analysis
                 )
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to start camera", e)
+                LxLog.e(TAG, "Failed to start camera", e)
                 deliverFailure(1001, "Unable to start camera: ${e.message}")
             }
         }, executor)
@@ -372,11 +372,11 @@ internal class ScanCodeFragment : Fragment() {
                         }
                     }
                     ?.addOnFailureListener { error ->
-                        Log.e(TAG, "Gallery scan failed", error)
+                        LxLog.e(TAG, "Gallery scan failed", error)
                         deliverFailure(1001, "Failed to scan image")
                     }
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to process selected image", e)
+                LxLog.e(TAG, "Failed to process selected image", e)
                 deliverFailure(1001, "Failed to process image")
             }
         }
@@ -403,13 +403,13 @@ internal class ScanCodeFragment : Fragment() {
                         }
                     }
                     ?.addOnFailureListener { error ->
-                        Log.w(TAG, "Camera scan failed: ${error.message}")
+                        LxLog.w(TAG, "Camera scan failed: ${error.message}")
                     }
                     ?.addOnCompleteListener {
                         imageProxy.close()
                     }
             } catch (e: Exception) {
-                Log.e(TAG, "Barcode processing error", e)
+                LxLog.e(TAG, "Barcode processing error", e)
                 imageProxy.close()
             }
         }
@@ -468,7 +468,7 @@ internal class ScanCodeFragment : Fragment() {
             return
         }
         hasReportedResult = true
-        Log.e(TAG, "scanCode failed ($code): $message")
+        LxLog.e(TAG, "scanCode failed ($code): $message")
         NativeApi.onCallback(callbackId, false, code.toString())
         safeClose()
     }

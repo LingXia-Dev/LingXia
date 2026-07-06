@@ -1,4 +1,5 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
+import { LxLog } from '../../app/LxLog';
 import { MediaPreviewOverlayManager, MediaPreviewItem, MediaPreviewPageParams } from './media/MediaPreviewOverlay';
 import { photoAccessHelper } from '@kit.MediaLibraryKit';
 import { CameraCaptureOverlayManager, CameraCaptureOptions } from './media/CameraCaptureOverlay';
@@ -119,7 +120,7 @@ export class LxAppMedia {
   }
 
   private static logError(message: string): void {
-    hilog.error(DOMAIN, TAG, `${LOG_PREFIX} ${message}`);
+    LxLog.e(TAG, `${LOG_PREFIX} ${message}`);
   }
 
   private static lastSaveKey: string = '';
@@ -159,9 +160,7 @@ export class LxAppMedia {
       const micGranted: boolean = await PermissionManager.ensureMicrophoneAccess();
       return micGranted ? null : '3003';
     } catch (error) {
-      hilog.error(
-        DOMAIN,
-        TAG,
+      LxLog.e(TAG,
         `requestCameraPermissions error: ${String(error)}`
       );
       return '1000';
@@ -218,7 +217,7 @@ export class LxAppMedia {
     try {
       const options: ChooseMediaOptions = JSON.parse(payload || '{}');
       if (!options || typeof options.callbackId !== 'string' || options.callbackId.length === 0) {
-        hilog.error(DOMAIN, TAG, 'chooseMedia: invalid payload');
+        LxLog.e(TAG, 'chooseMedia: invalid payload');
         return false;
       }
 
@@ -333,7 +332,7 @@ export class LxAppMedia {
           onCallback(normalized.callbackId, true, JSON.stringify(results));
         } catch (err) {
           const message = err instanceof Error ? err.message : `${err}`;
-          hilog.error(DOMAIN, TAG, `chooseMedia (PhotoViewPicker) failed: ${message}`);
+          LxLog.e(TAG, `chooseMedia (PhotoViewPicker) failed: ${message}`);
           onCallback(normalized.callbackId, false, '1000');
         }
       })();
@@ -341,7 +340,7 @@ export class LxAppMedia {
       return true;
     } catch (err) {
       const message = err instanceof Error ? err.message : `${err}`;
-      hilog.error(DOMAIN, TAG, `chooseMedia: failed to parse payload: ${message}`);
+      LxLog.e(TAG, `chooseMedia: failed to parse payload: ${message}`);
       return false;
     }
   }
@@ -364,7 +363,7 @@ export class LxAppMedia {
     let uri: string | undefined;
     try {
       uri = LxAppMedia.resolveAssetUri(await helper.createAsset(type, ext));
-      if (!uri) { hilog.error(DOMAIN, TAG, 'saveMediaToAlbum: empty asset uri'); return false; }
+      if (!uri) { LxLog.e(TAG, 'saveMediaToAlbum: empty asset uri'); return false; }
       const src = await fileIo.open(path, fileIo.OpenMode.READ_ONLY);
       try {
         const dst = await fileIo.open(uri, fileIo.OpenMode.READ_WRITE | fileIo.OpenMode.CREATE);
@@ -379,7 +378,7 @@ export class LxAppMedia {
         try { await fileIo.close(src.fd); } catch {}
       }
     } catch (err) {
-      hilog.error(DOMAIN, TAG, `saveMediaToAlbum failed: ${err}`);
+      LxLog.e(TAG, `saveMediaToAlbum failed: ${err}`);
       return false;
     }
   }
@@ -404,7 +403,7 @@ export class LxAppMedia {
         const ok = await LxAppMedia.saveMediaToAlbum(normalizedPath, mediaType);
         onCallback(cb, ok, ok ? '{}' : '1001');
       } catch (error) {
-        hilog.error(DOMAIN, TAG, `saveMedia error: ${String(error)}`);
+        LxLog.e(TAG, `saveMedia error: ${String(error)}`);
         onCallback(cb, false, '1000');
       }
     })();
@@ -1030,7 +1029,7 @@ export class LxAppMedia {
       MediaPreviewOverlayManager.show(params);
       return true;
     } catch (error) {
-      hilog.error(DOMAIN, TAG, `Error showing media preview overlay: ${error}`);
+      LxLog.e(TAG, `Error showing media preview overlay: ${error}`);
       return false;
     }
   }

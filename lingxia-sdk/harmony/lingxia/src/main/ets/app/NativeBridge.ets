@@ -2,6 +2,7 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import { setComponentCallback } from '../lxapp/NativeComponents/NativeCallbackRegistry';
 import { LxApp } from '../lxapp/LxApp';
 import { Lingxia } from './Lingxia';
+import { LxLog } from './LxLog';
 import { LxAppToast, ToastIcon, ToastPosition } from '../lxapp/APIs/LxAppToast';
 import { LxAppModal } from '../lxapp/APIs/LxAppModal';
 import { LxAppActionSheet } from '../lxapp/APIs/LxAppActionSheet';
@@ -106,7 +107,7 @@ class NativeBridge {
     this.register('openLxApp', (appId: string, path: string, sessionIdRaw?: Object) => {
       const sessionId = parseSessionId(sessionIdRaw);
       if (sessionId === null) {
-        hilog.error(DOMAIN, TAG, `openLxApp missing/invalid sessionId: appId=${appId}`);
+        LxLog.e(TAG, `openLxApp missing/invalid sessionId: appId=${appId}`);
         return false;
       }
       LxApp.openLxAppWithSession(appId, path, sessionId);
@@ -116,7 +117,7 @@ class NativeBridge {
     this.register('closeLxApp', (appId: string, sessionIdRaw?: Object) => {
       const sessionId = parseSessionId(sessionIdRaw);
       if (sessionId === null) {
-        hilog.error(DOMAIN, TAG, `closeLxApp missing/invalid sessionId: appId=${appId}`);
+        LxLog.e(TAG, `closeLxApp missing/invalid sessionId: appId=${appId}`);
         return false;
       }
       LxApp.closeLxAppWithSession(appId, sessionId);
@@ -126,12 +127,12 @@ class NativeBridge {
     this.register('exitApp', () => {
       const context = Lingxia.context;
       if (!context) {
-        hilog.error(DOMAIN, TAG, 'exitApp failed: UIAbility context not available');
+        LxLog.e(TAG, 'exitApp failed: UIAbility context not available');
         return false;
       }
 
       context.terminateSelf().catch((error: Error) => {
-        hilog.error(DOMAIN, TAG, `exitApp failed: ${error.message}`);
+        LxLog.e(TAG, `exitApp failed: ${error.message}`, error);
       });
       return true;
     });
@@ -142,7 +143,7 @@ class NativeBridge {
       // Use helper function from NavigationBar to convert int to enum
       const animType = animationTypeFromInt(animationType);
       if (animType === null) {
-        hilog.error(DOMAIN, TAG, `Invalid animation type: ${animationType}`);
+        LxLog.e(TAG, `Invalid animation type: ${animationType}`);
         return false;
       }
 
@@ -174,7 +175,7 @@ class NativeBridge {
 
       const normalizedUrl = String(url ?? '').trim();
       if (!normalizedUrl) {
-        hilog.error(DOMAIN, TAG, 'launchWithUrl target=in_app failed: empty url');
+        LxLog.e(TAG, 'launchWithUrl target=in_app failed: empty url');
         return false;
       }
 
@@ -193,11 +194,7 @@ class NativeBridge {
       })();
 
       if (!resolvedOwnerAppId || !Number.isFinite(resolvedOwnerSessionId) || resolvedOwnerSessionId <= 0) {
-        hilog.error(
-          DOMAIN,
-          TAG,
-          `launchWithUrl target=in_app failed: invalid owner appId=${resolvedOwnerAppId} session=${resolvedOwnerSessionId}`
-        );
+        LxLog.e(TAG, `launchWithUrl target=in_app failed: invalid owner appId=${resolvedOwnerAppId} session=${resolvedOwnerSessionId}`);
         return false;
       }
 
@@ -205,7 +202,7 @@ class NativeBridge {
         ? openAsideBrowserTab(resolvedOwnerAppId, Math.trunc(resolvedOwnerSessionId), normalizedUrl)
         : openBrowserTab(resolvedOwnerAppId, Math.trunc(resolvedOwnerSessionId), normalizedUrl);
       if (!tabId || tabId.trim().length === 0) {
-        hilog.error(DOMAIN, TAG, 'launchWithUrl target=in_app failed: openBrowserTab returned empty tabId');
+        LxLog.e(TAG, 'launchWithUrl target=in_app failed: openBrowserTab returned empty tabId');
         return false;
       }
 
@@ -282,7 +279,7 @@ class NativeBridge {
           callbackId
         );
       } catch (error) {
-        hilog.error(DOMAIN, TAG, `Error showing modal: ${error}`);
+        LxLog.e(TAG, `Error showing modal: ${error}`);
       }
     });
 
@@ -373,7 +370,7 @@ class NativeBridge {
         }
         return success;
       } catch (error) {
-        hilog.error(DOMAIN, TAG, `Failed to update TabBar UI: ${error}`);
+        LxLog.e(TAG, `Failed to update TabBar UI: ${error}`);
         return false;
       }
     });
@@ -573,7 +570,7 @@ class NativeBridge {
       try {
         return callback(...args);
       } catch (error) {
-        hilog.error(DOMAIN, TAG, `Error calling callback ${name}: ${error}`);
+        LxLog.e(TAG, `Error calling callback ${name}: ${error}`);
         return null;
       }
     } else {

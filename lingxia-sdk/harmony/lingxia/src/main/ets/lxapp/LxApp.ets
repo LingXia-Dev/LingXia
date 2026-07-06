@@ -1,4 +1,5 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
+import { LxLog } from '../app/LxLog';
 import { LxAppContainer } from './LxAppContainer';
 import { ToastManager } from './APIs/LxAppToast';
 import { WebViewManager } from './WebViewBridge';
@@ -69,12 +70,12 @@ export class LxApp {
     if (homeAppId && LxApp.navigationInstance) {
       const sessionId: number = getLxappSessionId(homeAppId);
       if (!Number.isFinite(sessionId) || sessionId <= 0) {
-        hilog.error(DOMAIN, TAG, `Invalid home app session: ${homeAppId}`);
+        LxLog.e(TAG, `Invalid home app session: ${homeAppId}`);
         return;
       }
       LxApp.openLxAppWithSession(homeAppId, '', sessionId);
     } else {
-      hilog.error(DOMAIN, TAG, 'openHomeApp failed: homeAppId or navigationInstance not available');
+      LxLog.e(TAG, 'openHomeApp failed: homeAppId or navigationInstance not available');
     }
   }
 
@@ -88,7 +89,7 @@ export class LxApp {
       return;
     }
 
-    hilog.error(DOMAIN, TAG, 'LxAppNavigation instance not available for closeLxApp');
+    LxLog.e(TAG, 'LxAppNavigation instance not available for closeLxApp');
   }
 
   /**
@@ -106,7 +107,7 @@ export class LxApp {
       return;
     }
 
-    hilog.error(DOMAIN, TAG, 'LxAppNavigation instance not available for openLxApp');
+    LxLog.e(TAG, 'LxAppNavigation instance not available for openLxApp');
   }
 
   /**
@@ -161,26 +162,26 @@ export class LxApp {
 
   public static openLxAppWithSession(appId: string, path: string, sessionId: number): void {
     if (!Number.isFinite(sessionId) || sessionId <= 0) {
-      hilog.error(DOMAIN, TAG, `openLxAppWithSession requires valid session for ${appId}`);
+      LxLog.e(TAG, `openLxAppWithSession requires valid session for ${appId}`);
       return;
     }
     if (LxApp.navigationInstance) {
       LxApp.navigationInstance.openLxAppWithSession(appId, path, sessionId);
       return;
     }
-    hilog.error(DOMAIN, TAG, 'LxAppNavigation instance not available for openLxAppWithSession');
+    LxLog.e(TAG, 'LxAppNavigation instance not available for openLxAppWithSession');
   }
 
   public static closeLxAppWithSession(appId: string, sessionId: number): void {
     if (!Number.isFinite(sessionId) || sessionId <= 0) {
-      hilog.error(DOMAIN, TAG, `closeLxAppWithSession requires valid session for ${appId}`);
+      LxLog.e(TAG, `closeLxAppWithSession requires valid session for ${appId}`);
       return;
     }
     if (LxApp.navigationInstance) {
       LxApp.navigationInstance.closeLxAppWithSession(appId, sessionId);
       return;
     }
-    hilog.error(DOMAIN, TAG, 'LxAppNavigation instance not available for closeLxAppWithSession');
+    LxLog.e(TAG, 'LxAppNavigation instance not available for closeLxAppWithSession');
   }
 }
 
@@ -278,7 +279,7 @@ struct LxAppManager {
    */
   public doOpenLxApp(appId: string, path: string, sessionId: number, isHomeApp: boolean = false): void {
     if (!Number.isFinite(sessionId) || sessionId <= 0) {
-      hilog.error(DOMAIN, TAG, `doOpenLxApp requires valid sessionId for ${appId}`);
+      LxLog.e(TAG, `doOpenLxApp requires valid sessionId for ${appId}`);
       return;
     }
     hilog.info(DOMAIN, TAG, `Opening LxApp: ${appId}:${path}, isHome: ${isHomeApp}`);
@@ -310,7 +311,7 @@ struct LxAppManager {
         this.modalLxAppVisible = true;
       }
     } catch (error) {
-      hilog.error(DOMAIN, TAG, `Failed to open LxApp ${appId}: ${error}`);
+      LxLog.e(TAG, `Failed to open LxApp ${appId}: ${error}`);
       if (isHomeApp) {
         this.errorMessage = `Failed to load Home LxApp: ${error}`;
       }

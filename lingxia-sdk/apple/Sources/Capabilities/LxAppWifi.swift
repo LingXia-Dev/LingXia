@@ -2,8 +2,8 @@ import Foundation
 import Network
 import NetworkExtension
 import SystemConfiguration.CaptiveNetwork
-import os.log
 import CLingXiaRustAPI
+import os.log
 
 #if os(iOS)
 import UIKit
@@ -27,7 +27,7 @@ import CoreWLAN
  */
 class LxAppWifi {
 
-    internal static let log = OSLog(subsystem: "LingXia", category: "WiFi")
+    private static let log = OSLog(subsystem: "LingXia", category: "WiFi")
 
     // Multi-LxApp support: maintain a set of state listeners
     private nonisolated(unsafe) static var stateCallbacks: Set<UInt64> = []
@@ -46,18 +46,18 @@ class LxAppWifi {
         Task { @MainActor in
             PermissionManager.ensureLocationWhenInUseAccess { granted in
                 guard granted else {
-                    os_log("WiFi module initialization denied due to missing location permission", log: log, type: .info)
+                    os_log("%@", log: Self.log, type: .info, "WiFi module initialization denied due to missing location permission")
                     let _ = onCallback(callback_id, false, "12006") // Permission denied
                     return
                 }
 
-                os_log("WiFi module initialized with location permission", log: log, type: .info)
+                os_log("%@", log: Self.log, type: .info, "WiFi module initialized with location permission")
                 let _ = onCallback(callback_id, true, "{}")
             }
         }
         #else
         // macOS doesn't need location permission
-        os_log("WiFi module initialized", log: log, type: .info)
+        os_log("%@", log: Self.log, type: .info, "WiFi module initialized")
         let _ = onCallback(callback_id, true, "{}")
         #endif
     }
@@ -66,7 +66,7 @@ class LxAppWifi {
      * Stop WiFi module
      */
     nonisolated public static func stopWifi(callback_id: UInt64) {
-        os_log("WiFi module stopped", log: log, type: .info)
+        os_log("%@", log: Self.log, type: .info, "WiFi module stopped")
         let _ = onCallback(callback_id, true, "{}")
     }
 
@@ -75,7 +75,7 @@ class LxAppWifi {
      * Multiple listeners can be registered (supports multiple LxApp instances)
      */
     nonisolated public static func addWifiStateListener(callback_id: UInt64) {
-        os_log("addWifiStateListener: callbackId=%llu", log: log, type: .info, callback_id)
+        os_log("%@", log: Self.log, type: .info, "addWifiStateListener: callbackId=\(callback_id)")
 
         #if os(iOS) || os(macOS)
         // Check location permission (should already be granted by startWifi)
@@ -83,7 +83,7 @@ class LxAppWifi {
         Task { @MainActor in
             PermissionManager.ensureLocationWhenInUseAccess { granted in
                 guard granted else {
-                    os_log("Location permission not granted - skip WiFi listener registration", log: log, type: .info)
+                    os_log("%@", log: Self.log, type: .info, "Location permission not granted - skip WiFi listener registration")
                     return
                 }
 
@@ -98,7 +98,7 @@ class LxAppWifi {
 
     private static func registerWifiStateListener(_ callback_id: UInt64) {
         if stateCallbacks.insert(callback_id).inserted {
-            os_log("Added WiFi state listener: %llu (total=%d)", log: log, type: .info, callback_id, stateCallbacks.count)
+            os_log("%@", log: Self.log, type: .info, "Added WiFi state listener: \(callback_id) (total=\(stateCallbacks.count))")
 
             // First subscriber: start system WiFi monitoring
             if stateCallbacks.count == 1 {
@@ -109,7 +109,7 @@ class LxAppWifi {
             // Send current state to new subscriber
             emitWifiConnectedToCallback(callback_id)
         } else {
-            os_log("WiFi state listener already exists: %llu", log: log, type: .default, callback_id)
+            LXLog.warn("WiFi state listener already exists: \(callback_id)", category: "WiFi")
         }
     }
 
@@ -117,10 +117,10 @@ class LxAppWifi {
      * Remove a previously registered WiFi state listener
      */
     nonisolated public static func removeWifiStateListener(callback_id: UInt64) {
-        os_log("removeWifiStateListener: callbackId=%llu", log: log, type: .info, callback_id)
+        os_log("%@", log: Self.log, type: .info, "removeWifiStateListener: callbackId=\(callback_id)")
 
         if stateCallbacks.remove(callback_id) != nil {
-            os_log("Removed WiFi state listener: %llu (remaining=%d)", log: log, type: .info, callback_id, stateCallbacks.count)
+            os_log("%@", log: Self.log, type: .info, "Removed WiFi state listener: \(callback_id) (remaining=\(stateCallbacks.count))")
 
             // Last subscriber: stop system WiFi monitoring
             if stateCallbacks.isEmpty {
@@ -128,7 +128,7 @@ class LxAppWifi {
                 lastConnectedSignature = nil
             }
         } else {
-            os_log("WiFi state listener not found: %llu", log: log, type: .default, callback_id)
+            LXLog.warn("WiFi state listener not found: \(callback_id)", category: "WiFi")
         }
     }
 
@@ -153,7 +153,7 @@ class LxAppWifi {
 
         #if os(iOS)
         guard #available(iOS 11.0, *) else {
-            os_log("NEHotspotConfiguration requires iOS 11+", log: log, type: .error)
+            LXLog.error("NEHotspotConfiguration requires iOS 11+", category: "WiFi")
             let _ = onCallback(callback_id, false, "12005") // Not supported
             return
         }
@@ -174,7 +174,7 @@ class LxAppWifi {
         // Apply configuration
         NEHotspotConfigurationManager.shared.apply(configuration) { error in
             if let error = error {
-                os_log("Failed to connect to WiFi: %{public}@", log: log, type: .error, error.localizedDescription)
+                LXLog.error("Failed to connect to WiFi: \(error.localizedDescription)", category: "WiFi")
 
                 // Map error codes
                 let errorCode: String
@@ -182,7 +182,7 @@ class LxAppWifi {
                 case NEHotspotConfigurationError.invalid.rawValue:
                     errorCode = "12002" // Password error or invalid config
                 case NEHotspotConfigurationError.alreadyAssociated.rawValue:
-                    os_log("Already connected to network", log: log, type: .info)
+                    os_log("%@", log: Self.log, type: .info, "Already connected to network")
                     emitWifiConnectedToAll(
                         connected: true,
                         ssid: ssidString,
@@ -202,7 +202,7 @@ class LxAppWifi {
                 return
             }
 
-            os_log("Successfully connected to WiFi: %{public}@", log: log, type: .info, ssidString)
+            os_log("%@", log: Self.log, type: .info, "Successfully connected to WiFi: \(ssidString)")
             let _ = onCallback(callback_id, true, "{}")
             emitWifiConnectedToAll(
                 connected: true,
@@ -216,7 +216,7 @@ class LxAppWifi {
         let client = CWWiFiClient.shared()
 
         guard let interface = client.interface() else {
-            os_log("No WiFi interface available", log: log, type: .error)
+            LXLog.error("No WiFi interface available", category: "WiFi")
             let _ = onCallback(callback_id, false, "12001") // System error
             return
         }
@@ -229,7 +229,7 @@ class LxAppWifi {
             guard let targetNetwork = networks.first(where: { network in
                 network.ssid == ssidString
             }) else {
-            os_log("Network not found: %{public}@", log: log, type: .error, ssidString)
+            LXLog.error("Network not found: \(ssidString)", category: "WiFi")
             let _ = onCallback(callback_id, false, "12010") // Network not found
             return
         }
@@ -241,7 +241,7 @@ class LxAppWifi {
                 try interface.associate(to: targetNetwork, password: nil)
             }
 
-            os_log("Successfully connected to WiFi: %{public}@", log: log, type: .info, ssidString)
+            os_log("%@", log: Self.log, type: .info, "Successfully connected to WiFi: \(ssidString)")
             let _ = onCallback(callback_id, true, "{}")
             emitWifiConnectedToAll(
                 connected: true,
@@ -251,7 +251,7 @@ class LxAppWifi {
                 signalStrength: rssiToStrength(interface.rssiValue())
             )
         } catch {
-            os_log("Failed to connect to WiFi: %{public}@", log: log, type: .error, error.localizedDescription)
+            LXLog.error("Failed to connect to WiFi: \(error.localizedDescription)", category: "WiFi")
             let _ = onCallback(callback_id, false, "12002") // Connection error
         }
         #endif
@@ -264,13 +264,13 @@ class LxAppWifi {
      */
     nonisolated public static func getWifiList(callback_id: UInt64) {
         #if os(iOS)
-        os_log("WiFi scanning not supported on iOS (platform limitation)", log: log, type: .error)
+        LXLog.error("WiFi scanning not supported on iOS (platform limitation)", category: "WiFi")
         let _ = onCallback(callback_id, false, "12005") // Not supported
         #elseif os(macOS)
         let client = CWWiFiClient.shared()
 
         guard let interface = client.interface() else {
-            os_log("No WiFi interface available", log: log, type: .error)
+            LXLog.error("No WiFi interface available", category: "WiFi")
             let _ = onCallback(callback_id, false, "12001") // System error
             return
         }
@@ -304,14 +304,14 @@ class LxAppWifi {
             // Serialize to JSON
             if let jsonData = try? JSONSerialization.data(withJSONObject: wifiList, options: []),
                let jsonString = String(data: jsonData, encoding: .utf8) {
-                os_log("Found %d WiFi networks", log: log, type: .info, wifiList.count)
+                os_log("%@", log: Self.log, type: .info, "Found \(wifiList.count) WiFi networks")
                 let _ = onCallback(callback_id, true, jsonString)
             } else {
-                os_log("Failed to serialize WiFi list", log: log, type: .error)
+                LXLog.error("Failed to serialize WiFi list", category: "WiFi")
                 let _ = onCallback(callback_id, false, "12001") // System error
             }
         } catch {
-            os_log("Failed to scan WiFi networks: %{public}@", log: log, type: .error, error.localizedDescription)
+            LXLog.error("Failed to scan WiFi networks: \(error.localizedDescription)", category: "WiFi")
             let _ = onCallback(callback_id, false, "12001") // System error
         }
         #endif
@@ -348,7 +348,7 @@ class LxAppWifi {
         Task { @MainActor in
             PermissionManager.ensureLocationWhenInUseAccess { granted in
                 guard granted else {
-                    os_log("Location permission denied", log: log, type: .error)
+                    LXLog.error("Location permission denied", category: "WiFi")
                     let _ = onCallback(callback_id, false, "12006") // Permission denied
                     return
                 }
@@ -359,7 +359,7 @@ class LxAppWifi {
                 // - Access WiFi Information entitlement
                 // - App must be in foreground
                 guard let interfaces = CNCopySupportedInterfaces() as? [String] else {
-                    os_log("No WiFi interfaces found", log: log, type: .error)
+                    LXLog.error("No WiFi interfaces found", category: "WiFi")
                     let _ = onCallback(callback_id, false, "12001") // System error
                     return
                 }
@@ -394,14 +394,14 @@ class LxAppWifi {
                     // Serialize to JSON
                     if let jsonData = try? JSONSerialization.data(withJSONObject: result, options: []),
                        let jsonString = String(data: jsonData, encoding: .utf8) {
-                        os_log("Connected WiFi: %{public}@", log: log, type: .info, ssid)
+                        os_log("%@", log: Self.log, type: .info, "Connected WiFi: \(ssid)")
                         let _ = onCallback(callback_id, true, jsonString)
                         return
                     }
                 }
 
                 // No connected WiFi found (or insufficient entitlement on iOS)
-                os_log("No WiFi connected or permission denied", log: log, type: .info)
+                os_log("%@", log: Self.log, type: .info, "No WiFi connected or permission denied")
                 let _ = onCallback(callback_id, false, "12001") // System error
             }
         }
@@ -409,7 +409,7 @@ class LxAppWifi {
         Task { @MainActor in
             PermissionManager.ensureLocationWhenInUseAccess { granted in
                 guard granted else {
-                    os_log("Location permission denied on macOS", log: log, type: .info)
+                    os_log("%@", log: Self.log, type: .info, "Location permission denied on macOS")
                     let _ = onCallback(callback_id, false, "12006") // Permission denied
                     return
                 }
@@ -417,13 +417,13 @@ class LxAppWifi {
                 let client = CWWiFiClient.shared()
 
                 guard let interface = client.interface() else {
-                    os_log("No WiFi interface available", log: log, type: .error)
+                    LXLog.error("No WiFi interface available", category: "WiFi")
                     let _ = onCallback(callback_id, false, "12001") // System error
                     return
                 }
 
                 guard let ssid = interface.ssid(), !ssid.isEmpty else {
-                    os_log("No WiFi connected", log: log, type: .info)
+                    os_log("%@", log: Self.log, type: .info, "No WiFi connected")
                     let _ = onCallback(callback_id, false, "12001") // Not connected
                     return
                 }
@@ -447,10 +447,10 @@ class LxAppWifi {
                 // Serialize to JSON
                 if let jsonData = try? JSONSerialization.data(withJSONObject: result, options: []),
                    let jsonString = String(data: jsonData, encoding: .utf8) {
-                    os_log("Connected WiFi: %{public}@", log: log, type: .info, ssid)
+                    os_log("%@", log: Self.log, type: .info, "Connected WiFi: \(ssid)")
                     let _ = onCallback(callback_id, true, jsonString)
                 } else {
-                    os_log("Failed to serialize WiFi info", log: log, type: .error)
+                    LXLog.error("Failed to serialize WiFi info", category: "WiFi")
                     let _ = onCallback(callback_id, false, "12001") // System error
                 }
             }
@@ -539,10 +539,10 @@ class LxAppWifi {
             return
         }
 
-        os_log("emitWifiConnected: callbackId=%llu", log: log, type: .info, callbackId)
+        os_log("%@", log: Self.log, type: .info, "emitWifiConnected: callbackId=\(callbackId)")
         let success = onCallback(callbackId, true, jsonString)
         if !success {
-            os_log("Failed to dispatch wifi connected event to callback %llu", log: log, type: .default, callbackId)
+            LXLog.warn("Failed to dispatch wifi connected event to callback \(callbackId)", category: "WiFi")
         }
     }
 
@@ -570,11 +570,11 @@ class LxAppWifi {
             return
         }
 
-        os_log("emitWifiConnectedToAll: %d subscribers", log: log, type: .info, stateCallbacks.count)
+        os_log("%@", log: Self.log, type: .info, "emitWifiConnectedToAll: \(stateCallbacks.count) subscribers")
         for callbackId in stateCallbacks {
             let success = onCallback(callbackId, true, jsonString)
             if !success {
-                os_log("Failed to dispatch wifi connected event to callback %llu", log: log, type: .default, callbackId)
+                LXLog.warn("Failed to dispatch wifi connected event to callback \(callbackId)", category: "WiFi")
             }
         }
     }

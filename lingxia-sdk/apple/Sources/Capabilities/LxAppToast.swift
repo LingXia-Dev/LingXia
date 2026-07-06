@@ -1,7 +1,7 @@
 import SwiftUI
 import Foundation
-import os.log
 import CLingXiaSwiftAPI
+import os.log
 
 /// Toast configuration
 struct ToastConfig {
@@ -95,7 +95,7 @@ class LxAppToast {
         mask: Bool = false,
         position: ToastPosition = .Center
     ) {
-        os_log(.info, log: log, "Showing toast: %{public}@", title)
+        os_log("%@", log: Self.log, type: .info, "Showing toast: \(title)")
 
         // Hide any existing toast first
         hideToast()
@@ -113,7 +113,7 @@ class LxAppToast {
 
     /// Hide current toast immediately
     static func hideToast() {
-        os_log(.info, log: log, "Hiding toast")
+        os_log("%@", log: Self.log, type: .info, "Hiding toast")
         currentToastTimer?.invalidate()
         currentToastTimer = nil
         toastOverlay?.hide()

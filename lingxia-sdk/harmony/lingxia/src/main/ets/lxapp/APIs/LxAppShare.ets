@@ -1,4 +1,5 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
+import { LxLog } from '../../app/LxLog';
 import common from '@ohos.app.ability.common';
 import fileUri from '@ohos.file.fileuri';
 import { fileIo } from '@kit.CoreFileKit';
@@ -73,7 +74,7 @@ export class LxAppShare {
 
     shareWithSystem(context, normalizedTitle, normalizedText, content, normalizedUrl, files, id)
       .catch((error: Error) => {
-        hilog.error(DOMAIN, TAG, `share dispatch failed: ${error?.message ?? error}`);
+        LxLog.e(TAG, `share dispatch failed: ${error?.message ?? error}`);
         onCallback(id, false, '1000');
       });
     return true;
@@ -116,9 +117,7 @@ async function shareWithSystem(
     onCallback(callbackId, true, '{}');
   } catch (rawError) {
     const error = rawError as BusinessError;
-    hilog.error(
-      DOMAIN,
-      TAG,
+    LxLog.e(TAG,
       `ShareController.show failed: code=${error?.code ?? '?'} msg=${error?.message ?? rawError}`
     );
     onCallback(callbackId, false, '1000');

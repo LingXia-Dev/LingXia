@@ -13,7 +13,6 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
 import android.util.Size
-import android.util.Log
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
@@ -31,6 +30,7 @@ import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
+import com.lingxia.app.LxLog
 import com.lingxia.app.NativeApi
 import com.lingxia.lxapp.R
 import org.json.JSONObject
@@ -800,7 +800,7 @@ internal class MediaPickerFragment : Fragment() {
                     }
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "loadMedia failed: ${e.message}", e)
+                LxLog.e(TAG, "loadMedia failed: ${e.message}", e)
             }
             activity?.runOnUiThread { onLoaded(out) }
         }.start()

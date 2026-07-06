@@ -7,8 +7,6 @@ import os.log
 // MARK: - Entry point
 
 extension LxAppMedia {
-    nonisolated fileprivate static let previewLog = OSLog(subsystem: "LingXia", category: "MediaPreview")
-
     /// Shared controller that manages the Quick Look preview panel.
     @MainActor static var qlController: MacQuickLookController?
 
@@ -34,7 +32,7 @@ extension LxAppMedia {
             ],
             options: []
         ), let json = String(data: data, encoding: .utf8) else {
-            os_log(.error, log: previewLog, "Failed to encode preview result for callback %{public}llu", callbackId)
+            LXLog.error("Failed to encode preview result for callback \(callbackId)", category: "MediaPreview")
             return
         }
         let _ = onCallback(callbackId, true, json)
@@ -56,7 +54,7 @@ extension LxAppMedia {
         let itemsJson = items_json.toString()
 
         guard let jsonData = itemsJson.data(using: .utf8) else {
-            os_log(.error, log: previewLog, "Failed to convert items JSON to data")
+            LXLog.error("Failed to convert items JSON to data", category: "MediaPreview")
             return false
         }
 
@@ -64,11 +62,11 @@ extension LxAppMedia {
         do {
             request = try JSONDecoder().decode(PreviewMediaRequestPayload.self, from: jsonData)
         } catch {
-            os_log(.error, log: previewLog, "Failed to decode items JSON: %{public}@", error.localizedDescription)
+            LXLog.error("Failed to decode items JSON", category: "MediaPreview", error: error)
             return false
         }
         guard !request.sources.isEmpty else {
-            os_log(.error, log: previewLog, "previewMedia called with empty items")
+            LXLog.error("previewMedia called with empty items", category: "MediaPreview")
             return false
         }
 
@@ -106,7 +104,7 @@ extension LxAppMedia {
             return URL(fileURLWithPath: payload.path)
         }
         guard !urls.isEmpty else {
-            os_log(.error, log: previewLog, "previewMedia called with no valid URLs")
+            LXLog.error("previewMedia called with no valid URLs", category: "MediaPreview")
             return false
         }
         // macOS uses QuickLook which is presented synchronously; fire the
@@ -175,7 +173,7 @@ final class MacQuickLookController: NSObject, @preconcurrency QLPreviewPanelData
 
     func show() -> Bool {
         guard let panel = QLPreviewPanel.shared() else {
-            os_log(.error, log: LxAppMedia.previewLog, "Failed to acquire QLPreviewPanel")
+            LXLog.error("Failed to acquire QLPreviewPanel", category: "MediaPreview")
             return false
         }
         panel.dataSource = self

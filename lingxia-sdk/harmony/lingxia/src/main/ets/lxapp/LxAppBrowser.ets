@@ -1,4 +1,5 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
+import { LxLog } from '../app/LxLog';
 import { webview } from '@kit.ArkWeb';
 import { display, window } from '@kit.ArkUI';
 import { Lingxia } from '../app/Lingxia';
@@ -176,7 +177,7 @@ export class LxAppBrowserManager {
   public static show(tabId: string, initialUrl: string = ''): boolean {
     const normalizedTabId = String(tabId ?? '').trim();
     if (!normalizedTabId) {
-      hilog.error(DOMAIN, TAG, 'show failed: empty tabId');
+      LxLog.e(TAG, 'show failed: empty tabId');
       return false;
     }
 
@@ -201,17 +202,17 @@ export class LxAppBrowserManager {
     try {
       appId = String(getBuiltinBrowserAppId() ?? '').trim();
     } catch (error) {
-      hilog.error(DOMAIN, TAG, `openNewTab failed: getBuiltinBrowserAppId threw: ${error}`);
+      LxLog.e(TAG, `openNewTab failed: getBuiltinBrowserAppId threw: ${error}`);
       return false;
     }
     if (!appId) {
-      hilog.error(DOMAIN, TAG, 'openNewTab failed: no builtin browser app id');
+      LxLog.e(TAG, 'openNewTab failed: no builtin browser app id');
       return false;
     }
 
     const sessionId = Number(getLxappSessionId(appId));
     if (!Number.isFinite(sessionId) || sessionId <= 0) {
-      hilog.error(DOMAIN, TAG, 'openNewTab failed: no session for builtin browser');
+      LxLog.e(TAG, 'openNewTab failed: no session for builtin browser');
       return false;
     }
 
@@ -219,11 +220,11 @@ export class LxAppBrowserManager {
     try {
       newTabId = openBrowserTab(appId, Math.trunc(sessionId), NEW_TAB_URL);
     } catch (error) {
-      hilog.error(DOMAIN, TAG, `openNewTab failed: openBrowserTab threw: ${error}`);
+      LxLog.e(TAG, `openNewTab failed: openBrowserTab threw: ${error}`);
       return false;
     }
     if (!newTabId || newTabId.trim().length === 0) {
-      hilog.error(DOMAIN, TAG, 'openNewTab failed: runtime returned no tab id');
+      LxLog.e(TAG, 'openNewTab failed: runtime returned no tab id');
       return false;
     }
 
@@ -287,7 +288,7 @@ export class LxAppBrowserManager {
     try {
       return Boolean(browserTabNavigate(tabId, target));
     } catch (error) {
-      hilog.error(DOMAIN, TAG, `browserTabNavigate failed for tabId=${tabId}: ${error}`);
+      LxLog.e(TAG, `browserTabNavigate failed for tabId=${tabId}: ${error}`);
       return false;
     }
   }
@@ -346,7 +347,7 @@ export class LxAppBrowserManager {
       try {
         listener();
       } catch (error) {
-        hilog.error(DOMAIN, TAG, `Listener error: ${error}`);
+        LxLog.e(TAG, `Listener error: ${error}`);
       }
     });
   }
@@ -361,7 +362,7 @@ export class LxAppBrowserManager {
         hilog.warn(DOMAIN, TAG, `browserTabClose returned false for tabId=${tabId}`);
       }
     } catch (error) {
-      hilog.error(DOMAIN, TAG, `browserTabClose failed for tabId=${tabId}: ${error}`);
+      LxLog.e(TAG, `browserTabClose failed for tabId=${tabId}: ${error}`);
     }
   }
 
@@ -498,7 +499,7 @@ export struct LxAppBrowser {
       this.topSafeAreaHeight = safeArea.topRect.height || 0;
       hilog.info(DOMAIN, TAG, `Safe area top=${this.topSafeAreaHeight} bottom=${this.bottomSafeAreaHeight}`);
     } catch (error) {
-	      hilog.error(DOMAIN, TAG, `Failed to get safe area insets: ${error}`);
+	      LxLog.e(TAG, `Failed to get safe area insets: ${error}`);
 	    }
 	  }
 
@@ -602,7 +603,7 @@ export struct LxAppBrowser {
       appId = String(getBuiltinBrowserAppId() ?? '').trim();
       path = String(browserTabPathForId(tabId) ?? '').trim();
     } catch (error) {
-      hilog.error(DOMAIN, TAG, `Failed to resolve browser app/path for tabId=${tabId}: ${error}`);
+      LxLog.e(TAG, `Failed to resolve browser app/path for tabId=${tabId}: ${error}`);
       return null;
     }
 
@@ -676,7 +677,7 @@ export struct LxAppBrowser {
     // The active tab's webview hasn't materialized yet: retry, and only give up
     // (dropping just that tab) after exhausting the budget.
     if (this.attachRetryCount >= ATTACH_MAX_RETRIES) {
-      hilog.error(DOMAIN, TAG, `show failed: managed WebView not found for tabId=${this.activeTabId}`);
+      LxLog.e(TAG, `show failed: managed WebView not found for tabId=${this.activeTabId}`);
       this.clearAttachRetryTimer();
       this.attachRetryCount = 0;
       LxAppBrowserManager.closeTab(this.activeTabId);
@@ -1402,17 +1403,17 @@ export struct LxAppBrowser {
     try {
       appId = String(getBuiltinBrowserAppId() ?? '').trim();
     } catch (error) {
-      hilog.error(DOMAIN, TAG, `onWindowNew: getBuiltinBrowserAppId threw: ${error}`);
+      LxLog.e(TAG, `onWindowNew: getBuiltinBrowserAppId threw: ${error}`);
       return;
     }
     if (!appId) {
-      hilog.error(DOMAIN, TAG, 'onWindowNew: no builtin browser app id');
+      LxLog.e(TAG, 'onWindowNew: no builtin browser app id');
       return;
     }
 
     const sessionId = Number(getLxappSessionId(appId));
     if (!Number.isFinite(sessionId) || sessionId <= 0) {
-      hilog.error(DOMAIN, TAG, 'onWindowNew: no session for builtin browser');
+      LxLog.e(TAG, 'onWindowNew: no session for builtin browser');
       return;
     }
 
@@ -1424,11 +1425,11 @@ export struct LxAppBrowser {
         ? openAsideBrowserTab(appId, Math.trunc(sessionId), targetUrl)
         : openBrowserTab(appId, Math.trunc(sessionId), targetUrl);
     } catch (error) {
-      hilog.error(DOMAIN, TAG, `onWindowNew: openBrowserTab threw: ${error}`);
+      LxLog.e(TAG, `onWindowNew: openBrowserTab threw: ${error}`);
       return;
     }
     if (!newTabId || newTabId.trim().length === 0) {
-      hilog.error(DOMAIN, TAG, 'onWindowNew: runtime returned no tab id');
+      LxLog.e(TAG, 'onWindowNew: runtime returned no tab id');
       return;
     }
 

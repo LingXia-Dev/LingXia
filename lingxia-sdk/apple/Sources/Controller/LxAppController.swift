@@ -287,13 +287,10 @@ public final class LxAppController {
             do {
                 try await hostViewToMount.mount(session)
             } catch {
-                os_log(
-                    "mountInHost failed for %{public}@ session=%{public}llu: %{public}@",
-                    log: Self.log,
-                    type: .error,
-                    appId,
-                    sessionId,
-                    String(describing: error)
+                LXLog.error(
+                    "mountInHost failed for \(appId) session=\(sessionId)",
+                    category: "LxAppController",
+                    error: error
                 )
             }
         }
@@ -326,8 +323,7 @@ public final class LxAppController {
     /// Navigate within a session.
     public func navigate(_ request: LxAppNavigateRequest) {
         guard var session = sessions[request.sessionId] else {
-            os_log("navigate: unknown session %{public}@", log: Self.log, type: .error,
-                   String(describing: request.sessionId))
+            LXLog.error("navigate: unknown session \(String(describing: request.sessionId))", category: "LxAppController")
             return
         }
 

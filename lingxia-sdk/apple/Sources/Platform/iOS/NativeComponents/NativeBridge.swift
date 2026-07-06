@@ -187,7 +187,9 @@ extension NativeBridge {
         }
 
         guard let payload = dict else {
-            os_log("NativeBridge: unsupported message body %@", log: nativeComponentLog, type: .error, String(describing: message.body))
+            // Log only the payload's type, not its contents: the body can carry
+            // arbitrary JS/app data, and this record is buffered for cloud upload.
+            LXLog.error("NativeBridge: unsupported message body of type \(type(of: message.body))", category: "NativeComponent")
             return
         }
 

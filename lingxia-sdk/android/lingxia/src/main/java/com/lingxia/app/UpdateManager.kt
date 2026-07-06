@@ -546,19 +546,19 @@ internal object UpdateManager {
     private fun validateInstallRequest(activity: Activity, apkPath: String): Boolean {
         val apkFile = File(apkPath)
         if (!apkFile.exists() || apkFile.length() == 0L) {
-            Log.e(TAG, "APK file missing or empty: $apkPath (len=${apkFile.length()})")
+            LxLog.e(TAG, "APK file missing or empty: $apkPath (len=${apkFile.length()})")
             showInstallErrorToast(activity, activity.getString(R.string.lx_update_install_apk_empty))
             return false
         }
 
         val pkgInfo = activity.packageManager.getPackageArchiveInfo(apkPath, 0)
         if (pkgInfo == null) {
-            Log.e(TAG, "Invalid APK (cannot parse package): $apkPath")
+            LxLog.e(TAG, "Invalid APK (cannot parse package): $apkPath")
             showInstallErrorToast(activity, activity.getString(R.string.lx_update_install_apk_invalid))
             return false
         }
         if (pkgInfo.packageName != activity.packageName) {
-            Log.e(
+            LxLog.e(
                 TAG,
                 "APK package mismatch: ${pkgInfo.packageName} vs ${activity.packageName}"
             )
@@ -591,19 +591,19 @@ internal object UpdateManager {
         try {
             val apkFile = File(apkPath)
             if (!apkFile.exists() || apkFile.length() == 0L) {
-                Log.e(TAG, "APK file missing or empty: $apkPath (len=${apkFile.length()})")
+                LxLog.e(TAG, "APK file missing or empty: $apkPath (len=${apkFile.length()})")
                 showInstallErrorToast(activity, activity.getString(R.string.lx_update_install_apk_empty))
                 return false
             }
 
             val pkgInfo = activity.packageManager.getPackageArchiveInfo(apkPath, 0)
             if (pkgInfo == null) {
-                Log.e(TAG, "Invalid APK (cannot parse package): $apkPath")
+                LxLog.e(TAG, "Invalid APK (cannot parse package): $apkPath")
                 showInstallErrorToast(activity, activity.getString(R.string.lx_update_install_apk_invalid))
                 return false
             }
             if (pkgInfo.packageName != activity.packageName) {
-                Log.e(
+                LxLog.e(
                     TAG,
                     "APK package mismatch: ${pkgInfo.packageName} vs ${activity.packageName}"
                 )
@@ -629,7 +629,7 @@ internal object UpdateManager {
             Log.w(TAG, "Session install failed to commit; falling back to ACTION_VIEW")
             return launchInstallerLegacy(activity, apkFile)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to install update from: $apkPath", e)
+            LxLog.e(TAG, "Failed to install update from: $apkPath", e)
             showInstallErrorToast(
                 activity,
                 activity.getString(R.string.lx_update_install_failure)
@@ -657,7 +657,7 @@ internal object UpdateManager {
     private fun openUnknownSourcesSettings(activity: Activity): Boolean {
         val resolved = resolveUnknownSourcesSettingsIntent(activity)
         if (resolved == null) {
-            Log.e(TAG, "No settings activity available to grant install permission")
+            LxLog.e(TAG, "No settings activity available to grant install permission")
             return false
         }
         return runOnUiThreadForResult(activity) {
@@ -723,10 +723,10 @@ internal object UpdateManager {
             Log.i(TAG, "PackageInstaller session committed: id=$sessionId, apk=${apkFile.path}")
             true
         } catch (e: SecurityException) {
-            Log.e(TAG, "Session install denied by system", e)
+            LxLog.e(TAG, "Session install denied by system", e)
             false
         } catch (e: Exception) {
-            Log.e(TAG, "Session install failed", e)
+            LxLog.e(TAG, "Session install failed", e)
             false
         }
     }
@@ -751,7 +751,7 @@ internal object UpdateManager {
         }
 
         if (intent.resolveActivity(activity.packageManager) == null) {
-            Log.e(TAG, "No installer activity available on this device (likely TV/restricted)")
+            LxLog.e(TAG, "No installer activity available on this device (likely TV/restricted)")
             showInstallErrorToast(
                 activity,
                 activity.getString(R.string.lx_update_install_no_ui)
@@ -766,7 +766,7 @@ internal object UpdateManager {
             true
         }
         if (!launched) {
-            Log.e(TAG, "Failed to launch ACTION_VIEW installer")
+            LxLog.e(TAG, "Failed to launch ACTION_VIEW installer")
             showInstallErrorToast(
                 activity,
                 activity.getString(R.string.lx_update_install_failure)
@@ -823,7 +823,7 @@ internal object UpdateManager {
             }
             installReceiver = receiver
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to register install result receiver", e)
+            LxLog.e(TAG, "Failed to register install result receiver", e)
         }
     }
 
@@ -835,7 +835,7 @@ internal object UpdateManager {
                 @Suppress("DEPRECATION")
                 val confirm = intent.getParcelableExtra<Intent>(Intent.EXTRA_INTENT)
                 if (confirm == null) {
-                    Log.e(TAG, "STATUS_PENDING_USER_ACTION but EXTRA_INTENT is null")
+                    LxLog.e(TAG, "STATUS_PENDING_USER_ACTION but EXTRA_INTENT is null")
                     showInstallErrorToast(
                         ctx,
                         ctx.getString(R.string.lx_update_install_failure)
@@ -863,7 +863,7 @@ internal object UpdateManager {
                 Log.i(TAG, "Install succeeded")
             }
             else -> {
-                Log.e(TAG, "Install failed: status=$status msg=\"$message\"")
+                LxLog.e(TAG, "Install failed: status=$status msg=\"$message\"")
                 showInstallErrorToast(ctx, humanInstallError(ctx, status))
             }
         }

@@ -8,11 +8,12 @@ import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
-import android.util.Log
 import android.webkit.MimeTypeMap
+import android.util.Log
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.lingxia.app.Lingxia
+import com.lingxia.app.LxLog
 import com.lingxia.lxapp.LxApp
 import com.lingxia.lxapp.LxAppActivity
 import com.lingxia.app.NativeApi
@@ -51,11 +52,11 @@ internal object LxAppFile {
     private fun validateRequest(caller: String, filePath: String, mimeType: String?): ValidatedRequest? {
         val activity = LxApp.getCurrentActivity()
         if (activity == null) {
-            Log.w(TAG, "$caller: current activity is null")
+            LxLog.w(TAG, "$caller: current activity is null")
             return null
         }
         if (filePath.isBlank()) {
-            Log.w(TAG, "$caller: empty file path")
+            LxLog.w(TAG, "$caller: empty file path")
             return null
         }
         val file = File(filePath)
@@ -87,7 +88,7 @@ internal object LxAppFile {
         val shouldUseWps = shouldPreferWps(req.file, req.resolvedMime)
         val wpsPackageName = if (shouldUseWps) resolveWpsPackage(req.activity) else null
         if (isChineseLocale && shouldUseWps && wpsPackageName == null) {
-            Log.w(TAG, "openDocumentExternal: WPS is required for domestic users but not installed")
+            LxLog.w(TAG, "openDocumentExternal: WPS is required for domestic users but not installed")
             promptInstallWps(req.activity)
             return true
         }
@@ -110,9 +111,9 @@ internal object LxAppFile {
                 req.activity.startActivity(intent)
                 success = true
             } catch (error: ActivityNotFoundException) {
-                Log.e(TAG, "openDocumentExternal: no activity found to handle document", error)
+                LxLog.e(TAG, "openDocumentExternal: no activity found to handle document", error)
             } catch (error: Exception) {
-                Log.e(TAG, "openDocumentExternal: failed to launch viewer", error)
+                LxLog.e(TAG, "openDocumentExternal: failed to launch viewer", error)
             } finally {
                 latch.countDown()
             }
@@ -136,7 +137,7 @@ internal object LxAppFile {
     ): Boolean {
         val activity = LxApp.getCurrentActivity()
         if (activity == null) {
-            Log.w(TAG, "chooseFile: current activity is null")
+            LxLog.w(TAG, "chooseFile: current activity is null")
             NativeApi.onCallback(callbackId, false, "1000")
             return false
         }
@@ -239,7 +240,7 @@ internal object LxAppFile {
             }
             launched
         } catch (error: Throwable) {
-            Log.e(TAG, "launchLocalFileChooser failed", error)
+            LxLog.e(TAG, "launchLocalFileChooser failed", error)
             NativeApi.onCallback(callbackId, false, "1000")
             false
         }
@@ -253,7 +254,7 @@ internal object LxAppFile {
     ): Boolean {
         val activity = LxApp.getCurrentActivity()
         if (activity == null) {
-            Log.w(TAG, "chooseDirectory: current activity is null")
+            LxLog.w(TAG, "chooseDirectory: current activity is null")
             NativeApi.onCallback(callbackId, false, "1000")
             return false
         }
@@ -307,7 +308,7 @@ internal object LxAppFile {
                 activity.startActivity(intent)
                 success = true
             } catch (error: Exception) {
-                Log.e(TAG, "reviewDocument: failed to start PdfViewerActivity", error)
+                LxLog.e(TAG, "reviewDocument: failed to start PdfViewerActivity", error)
             } finally {
                 latch.countDown()
             }
@@ -349,7 +350,7 @@ internal object LxAppFile {
             }
             true
         } catch (error: Throwable) {
-            Log.e(TAG, "reviewDocument: failed to start image preview", error)
+            LxLog.e(TAG, "reviewDocument: failed to start image preview", error)
             false
         }
     }
@@ -444,7 +445,7 @@ internal object LxAppFile {
                 }
             }.distinct()
         } catch (error: Exception) {
-            Log.w(TAG, "parseMimeTypes failed: ${error.message}")
+            LxLog.w(TAG, "parseMimeTypes failed: ${error.message}")
             emptyList()
         }
     }
@@ -467,7 +468,7 @@ internal object LxAppFile {
                 }
             }
         } catch (error: Exception) {
-            Log.w(TAG, "parseExtensions failed: ${error.message}")
+            LxLog.w(TAG, "parseExtensions failed: ${error.message}")
             emptySet()
         }
     }

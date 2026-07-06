@@ -259,7 +259,7 @@ final class LxAppViewController: UIViewController, ObservableObject {
             if let scene = view.window?.windowScene {
                 let preferences = UIWindowScene.GeometryPreferences.iOS(interfaceOrientations: mapped.mask)
                 scene.requestGeometryUpdate(preferences) { error in
-                    os_log("requestGeometryUpdate failed: %@", log: Self.log, type: .error, error.localizedDescription)
+                    LXLog.error("requestGeometryUpdate failed", category: "LxAppViewController", error: error)
                 }
             }
         } else {
@@ -288,7 +288,7 @@ final class LxAppViewController: UIViewController, ObservableObject {
     public func openLxApp(appId: String, path: String, sessionId: UInt64) {
         os_log("Opening LxApp: %@ at path: %@", log: Self.log, type: .info, appId, path)
         guard sessionId > 0 else {
-            os_log("openLxApp rejected invalid session for %@", log: Self.log, type: .error, appId)
+            LXLog.error("openLxApp rejected invalid session for \(appId)", category: "LxAppViewController")
             return
         }
         currentSessionId = sessionId
@@ -305,11 +305,11 @@ final class LxAppViewController: UIViewController, ObservableObject {
         os_log("Closing LxApp: %@", log: Self.log, type: .info, appId)
 
         guard LxAppCore.currentAppId == appId else {
-            os_log("LxApp %@ not current app for closing", log: Self.log, type: .error, appId)
+            LXLog.error("LxApp \(appId) not current app for closing", category: "LxAppViewController")
             return
         }
         guard sessionId > 0 else {
-            os_log("closeLxApp rejected invalid session for %@", log: Self.log, type: .error, appId)
+            LXLog.error("closeLxApp rejected invalid session for \(appId)", category: "LxAppViewController")
             return
         }
 
@@ -652,7 +652,7 @@ final class LxAppViewController: UIViewController, ObservableObject {
 
     public func updateNavigationBar(appId: String, path: String) {
         guard let navigationBar = globalNavigationBar else {
-            os_log("updateNavigationBar: NavigationBar not initialized", log: Self.log, type: .error)
+            LXLog.error("updateNavigationBar: NavigationBar not initialized", category: "LxAppViewController")
             return
         }
 
@@ -1001,7 +1001,7 @@ final class LxAppViewController: UIViewController, ObservableObject {
     private func setupGlobalNavigationBar() {
         guard globalNavigationBar == nil else { return }
         guard rootContainer != nil else {
-            os_log("setupGlobalNavigationBar: rootContainer is nil", log: Self.log, type: .error)
+            LXLog.error("setupGlobalNavigationBar: rootContainer is nil", category: "LxAppViewController")
             return
         }
 

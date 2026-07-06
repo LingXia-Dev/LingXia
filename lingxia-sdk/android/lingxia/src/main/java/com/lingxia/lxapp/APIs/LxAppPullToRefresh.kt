@@ -2,6 +2,7 @@ package com.lingxia.lxapp.APIs
 
 import android.util.Log
 import com.lingxia.app.Lingxia
+import com.lingxia.app.LxLog
 import com.lingxia.lxapp.LxApp
 
 /**
@@ -24,7 +25,7 @@ internal object LxAppPullToRefresh {
     fun startPullDownRefresh(appId: String, path: String = "") {
         val activity = LxApp.getCurrentActivity()
         if (activity == null || activity.appId != appId) {
-            Log.w(TAG, "startPullDownRefresh ignored: no active activity for $appId")
+            LxLog.w(TAG, "startPullDownRefresh ignored: no active activity for $appId", appId = appId, path = path)
             return
         }
 
@@ -42,7 +43,7 @@ internal object LxAppPullToRefresh {
                 } else {
                     Log.d(TAG, "startPullDownRefresh skipped: disabled for $appId")
                 }
-            } ?: Log.w(TAG, "startPullDownRefresh ignored: helper not initialized")
+            } ?: LxLog.w(TAG, "startPullDownRefresh ignored: helper not initialized", appId = appId, path = path)
         }
     }
 
@@ -57,7 +58,7 @@ internal object LxAppPullToRefresh {
     fun stopPullDownRefresh(appId: String, path: String = "") {
         val activity = LxApp.getCurrentActivity()
         if (activity == null || activity.appId != appId) {
-            Log.w(TAG, "stopPullDownRefresh ignored: no active activity for $appId")
+            LxLog.w(TAG, "stopPullDownRefresh ignored: no active activity for $appId", appId = appId, path = path)
             return
         }
 

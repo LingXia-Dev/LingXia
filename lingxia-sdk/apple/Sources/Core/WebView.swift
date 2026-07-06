@@ -106,7 +106,7 @@ final class WebViewManager {
         let webViewPtr = lingxia.findWebViewByPageInstanceId(trimmed)
         guard webViewPtr != 0 else { return nil }
         guard let rawPointer = UnsafeRawPointer(bitPattern: webViewPtr) else {
-            os_log("Warning: Invalid WebView pointer received from Rust layer", log: log, type: .error)
+            LXLog.error("Warning: Invalid WebView pointer received from Rust layer", category: "WebView")
             return nil
         }
         let webView = Unmanaged<WKWebView>.fromOpaque(rawPointer).takeUnretainedValue()
@@ -127,7 +127,7 @@ final class WebViewManager {
         sessionId: UInt64
     ) -> (pageInstanceId: String, webViewPtr: UInt)? {
         guard sessionId > 0 else {
-            os_log("lookupBinding rejected invalid session for %@", log: log, type: .error, appId)
+            LXLog.error("lookupBinding rejected invalid session for \(appId)", category: "WebView")
             return nil
         }
         let binding = resolvePageBinding(appId, path, sessionId)
@@ -146,13 +146,13 @@ final class WebViewManager {
 
     static func resolveWebView(appId: String, path: String, sessionId: UInt64) -> WKWebView? {
         guard let binding = lookupBinding(appId: appId, path: path, sessionId: sessionId) else {
-            os_log("resolveWebView missing binding for %{public}@:%{public}@", log: log, type: .error, appId, path)
+            LXLog.error("resolveWebView missing binding for \(appId):\(path)", category: "WebView")
             return nil
         }
         let webViewPtr = binding.webViewPtr
         guard webViewPtr != 0 else { return nil }
         guard let rawPointer = UnsafeRawPointer(bitPattern: webViewPtr) else {
-            os_log("Warning: Invalid WebView pointer received from Rust layer", log: log, type: .error)
+            LXLog.error("Warning: Invalid WebView pointer received from Rust layer", category: "WebView")
             return nil
         }
         let webView = Unmanaged<WKWebView>.fromOpaque(rawPointer).takeUnretainedValue()
@@ -171,7 +171,7 @@ final class WebViewManager {
     /// Convenience resolve using stored runtime session for the app.
     static func resolveWebView(appId: String, path: String) -> WKWebView? {
         guard let sessionId = LxAppCore.sessionId(for: appId), sessionId > 0 else {
-            os_log("resolveWebView missing session for %@", log: log, type: .error, appId)
+            LXLog.error("resolveWebView missing session for \(appId)", category: "WebView")
             return nil
         }
         return resolveWebView(appId: appId, path: path, sessionId: sessionId)

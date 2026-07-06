@@ -3,12 +3,12 @@ package com.lingxia.lxapp.APIs
 import android.app.Activity
 import android.content.Context
 import android.graphics.Color
-import android.util.Log
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.*
 import com.lingxia.app.Lingxia
+import com.lingxia.app.LxLog
 import com.lingxia.lxapp.LxApp
 import android.graphics.drawable.GradientDrawable
 import com.lingxia.app.NativeApi
@@ -27,7 +27,7 @@ internal object LxAppActionSheet {
     fun showActionSheet(options: Array<String>, cancelText: String, itemColor: String, callbackId: Long) {
         val activity = LxApp.getCurrentActivity()
         if (activity == null) {
-            Log.e(TAG, "showActionSheet: current activity is null")
+            LxLog.e(TAG, "showActionSheet: current activity is null")
             sendActionSheetError(callbackId, 1000)
             return
         }
@@ -48,12 +48,12 @@ internal object LxAppActionSheet {
      */
     fun showActionSheet(context: Context, options: List<String>, cancelText: String, itemColor: String, callbackId: Long) {
         val activity = context as? Activity ?: run {
-            Log.e(TAG, "showActionSheet: context is not an Activity")
+            LxLog.e(TAG, "showActionSheet: context is not an Activity")
             sendActionSheetError(callbackId, 1000)
             return
         }
         val rootView = activity.findViewById<ViewGroup>(android.R.id.content) ?: run {
-            Log.e(TAG, "showActionSheet: rootView is null")
+            LxLog.e(TAG, "showActionSheet: rootView is null")
             sendActionSheetError(callbackId, 1000)
             return
         }

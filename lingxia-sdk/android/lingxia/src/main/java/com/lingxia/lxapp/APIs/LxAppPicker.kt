@@ -4,13 +4,13 @@ import android.app.Activity
 import android.content.Context
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
-import android.util.Log
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.*
 import androidx.core.view.ViewCompat
 import com.lingxia.app.Lingxia
+import com.lingxia.app.LxLog
 import com.lingxia.lxapp.LxApp
 import com.lingxia.app.NativeApi
 import com.lingxia.lxapp.R
@@ -64,7 +64,7 @@ internal object LxAppPicker {
     ) {
         val activity = LxApp.getCurrentActivity()
         if (activity == null) {
-            Log.e(TAG, "showSingleColumnPicker: current activity is null")
+            LxLog.e(TAG, "showSingleColumnPicker: current activity is null")
             sendPickerResultCancel(callbackId)
             return
         }
@@ -107,7 +107,7 @@ internal object LxAppPicker {
     ) {
         val activity = LxApp.getCurrentActivity()
         if (activity == null) {
-            Log.e(TAG, "showDualColumnPicker: current activity is null")
+            LxLog.e(TAG, "showDualColumnPicker: current activity is null")
             sendPickerResultCancel(callbackId)
             return
         }
@@ -151,7 +151,7 @@ internal object LxAppPicker {
     ) {
         val activity = LxApp.getCurrentActivity()
         if (activity == null) {
-            Log.e(TAG, "showCascadingPicker: current activity is null")
+            LxLog.e(TAG, "showCascadingPicker: current activity is null")
             sendPickerResultCancel(callbackId)
             return
         }
@@ -311,7 +311,7 @@ internal object LxAppPicker {
                 try {
                     setTextColor(Color.parseColor(config.cancelTextColor))
                 } catch (e: Exception) {
-                    Log.w(TAG, "Failed to parse cancel text color: ${config.cancelTextColor}, using default")
+                    LxLog.w(TAG, "Failed to parse cancel text color: ${config.cancelTextColor}, using default")
                     setTextColor(Color.parseColor("#007AFF"))
                 }
 
@@ -328,7 +328,7 @@ internal object LxAppPicker {
                     try {
                         setColor(Color.parseColor(config.cancelButtonColor))
                     } catch (e: Exception) {
-                        Log.w(TAG, "Failed to parse cancel button color: ${config.cancelButtonColor}, using default")
+                        LxLog.w(TAG, "Failed to parse cancel button color: ${config.cancelButtonColor}, using default")
                         setColor(Color.parseColor("#F2F2F2"))
                     }
                     cornerRadius = (8 * context.resources.displayMetrics.density)
@@ -365,7 +365,7 @@ internal object LxAppPicker {
                 try {
                     setTextColor(Color.parseColor(config.confirmTextColor))
                 } catch (e: Exception) {
-                    Log.w(TAG, "Failed to parse confirm text color: ${config.confirmTextColor}, using default")
+                    LxLog.w(TAG, "Failed to parse confirm text color: ${config.confirmTextColor}, using default")
                     setTextColor(Color.parseColor("#FFFFFF"))
                 }
 
@@ -382,7 +382,7 @@ internal object LxAppPicker {
                     try {
                         setColor(Color.parseColor(config.confirmButtonColor))
                     } catch (e: Exception) {
-                        Log.w(TAG, "Failed to parse confirm button color: ${config.confirmButtonColor}, using default")
+                        LxLog.w(TAG, "Failed to parse confirm button color: ${config.confirmButtonColor}, using default")
                         setColor(Color.parseColor("#007AFF"))
                     }
                     cornerRadius = (8 * context.resources.displayMetrics.density)

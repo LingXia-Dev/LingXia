@@ -46,6 +46,7 @@ import androidx.appcompat.app.AppCompatActivity
 import android.view.animation.AccelerateDecelerateInterpolator
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
+import com.lingxia.app.LxLog
 import com.lingxia.app.NativeApi
 import com.lingxia.app.PermissionManager
 import com.lingxia.app.UpdateManager
@@ -148,7 +149,7 @@ class LxAppActivity : AppCompatActivity() {
                             Log.w(TAG, "No TabBar config available for refresh")
                         }
                     } catch (e: Exception) {
-                        Log.e(TAG, "Failed to refresh TabBar from Rust: ${e.message}", e)
+                        LxLog.e(TAG, "Failed to refresh TabBar from Rust: ${e.message}", e)
                     }
                 }
 
@@ -326,7 +327,7 @@ class LxAppActivity : AppCompatActivity() {
         requestedSessionId: Long
     ): Pair<String, Long>? {
         if (LxApp.homeAppId == null) {
-            Log.e(TAG, "LxApp runtime is not initialized before LxAppActivity creation")
+            LxLog.e(TAG, "LxApp runtime is not initialized before LxAppActivity creation")
             return null
         }
 
@@ -338,7 +339,7 @@ class LxAppActivity : AppCompatActivity() {
         }
 
         if (sessionId <= 0L) {
-            Log.e(TAG, "Missing valid runtime session for appId=$targetAppId")
+            LxLog.e(TAG, "Missing valid runtime session for appId=$targetAppId")
             return null
         }
 
@@ -381,7 +382,7 @@ class LxAppActivity : AppCompatActivity() {
 
         // Initialize appId from intent FIRST (check for null)
         appId = intent.getStringExtra(EXTRA_APP_ID) ?: run {
-            Log.e(TAG, "Missing required parameter: appId")
+            LxLog.e(TAG, "Missing required parameter: appId")
             finish()
             return
         }
@@ -394,7 +395,7 @@ class LxAppActivity : AppCompatActivity() {
         initialPath = resolvedEntry.first
         currentSessionId = resolvedEntry.second
         if (currentSessionId <= 0L) {
-            Log.e(TAG, "Runtime returned invalid session for appId=$appId")
+            LxLog.e(TAG, "Runtime returned invalid session for appId=$appId")
             finish()
             return
         }
@@ -514,7 +515,7 @@ class LxAppActivity : AppCompatActivity() {
                         currentWebView?.visibility = View.VISIBLE
                         NativeApi.onLxappEvent(appId, NativeApi.UI_EVENT_BACK_PRESS, "")
                     } catch (e: Exception) {
-                        Log.e(TAG, "Error handling back press: ${e.message}")
+                        LxLog.e(TAG, "Error handling back press: ${e.message}")
                     }
                 }
             })
@@ -567,7 +568,7 @@ class LxAppActivity : AppCompatActivity() {
             fileChooserLauncher.launch(intent)
             true
         } catch (error: Throwable) {
-            Log.e(TAG, "launch file chooser failed", error)
+            LxLog.e(TAG, "launch file chooser failed", error)
             pendingFileChooserCallback = null
             callback.onReceiveValue(null)
             false
@@ -581,7 +582,7 @@ class LxAppActivity : AppCompatActivity() {
             hostFileDialogLauncher.launch(intent)
             true
         } catch (error: Throwable) {
-            Log.e(TAG, "launch host file dialog failed", error)
+            LxLog.e(TAG, "launch host file dialog failed", error)
             pendingHostFileDialogCallback = null
             callback(null)
             false
@@ -917,7 +918,7 @@ class LxAppActivity : AppCompatActivity() {
     // Helper function to attach a WebView to the container and resume it
     private fun attachWebViewToUI(view: com.lingxia.lxapp.WebView?) {
         if (view == null) {
-            Log.e(TAG, "attachWebViewToUI called with null view!")
+            LxLog.e(TAG, "attachWebViewToUI called with null view!")
             return
         }
         if (!isDestroyed) {
@@ -967,7 +968,7 @@ class LxAppActivity : AppCompatActivity() {
     private fun setupWebViewContent(appId: String, path: String) {
         val initialWebView = findWebView(appId, path)
         if (initialWebView == null) {
-            Log.e(TAG, "Initial WebView missing for appId=$appId, path=$path")
+            LxLog.e(TAG, "Initial WebView missing for appId=$appId, path=$path")
             finishWithSessionClose("initial_webview_missing")
             return
         }
@@ -1057,7 +1058,7 @@ class LxAppActivity : AppCompatActivity() {
         val enabled = try {
             NativeApi.isPullDownRefreshEnabled(appId, normalized)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to read pull-to-refresh config for $path: ${e.message}")
+            LxLog.e(TAG, "Failed to read pull-to-refresh config for $path: ${e.message}")
             true // fall back to enabled if config lookup fails
         }
         helper.setEnabled(enabled)
@@ -1080,7 +1081,7 @@ class LxAppActivity : AppCompatActivity() {
         try {
             NativeApi.onLxappEvent(appId, NativeApi.UI_EVENT_PULL_DOWN_REFRESH, path)
         } catch (e: Exception) {
-            Log.e(TAG, "onLxappEvent pull-to-refresh failed: ${e.message}")
+            LxLog.e(TAG, "onLxappEvent pull-to-refresh failed: ${e.message}")
             helper.endRefreshing()
         }
     }
@@ -1327,7 +1328,7 @@ class LxAppActivity : AppCompatActivity() {
             // Coordinate all UI updates in the same step for consistency
             return coordinatedNavigationUpdate(targetPath, animationType)
         } catch (e: Exception) {
-            Log.e(TAG, "Navigation failed: ${e.message}", e)
+            LxLog.e(TAG, "Navigation failed: ${e.message}", e)
             return false
         }
     }
@@ -1536,7 +1537,7 @@ class LxAppActivity : AppCompatActivity() {
                     (oldContainer.parent as? ViewGroup)?.removeView(oldContainer)
 
                 } catch (e: Exception) {
-                    Log.e(TAG, "Error cleaning up old container: ${e.message}")
+                    LxLog.e(TAG, "Error cleaning up old container: ${e.message}")
                 }
             }
             .start()
@@ -1556,7 +1557,7 @@ class LxAppActivity : AppCompatActivity() {
             // Add the new container to the webview container
             webViewContainer.addView(newContainer)
         } catch (e: Exception) {
-            Log.e(TAG, "Error adding new container to webViewContainer: ${e.message}")
+            LxLog.e(TAG, "Error adding new container to webViewContainer: ${e.message}")
             return
         }
 
@@ -1638,7 +1639,7 @@ class LxAppActivity : AppCompatActivity() {
                     applyPageOrientation(pagePath)
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to call nativeOnPageShow in performWebViewTransition: ${e.message}")
+                LxLog.e(TAG, "Failed to call nativeOnPageShow in performWebViewTransition: ${e.message}")
             }
         }
     }
@@ -1650,7 +1651,7 @@ class LxAppActivity : AppCompatActivity() {
         try {
             webViewContainer.removeView(container)
         } catch (e: Exception) {
-            Log.e(TAG, "Error cleaning up old container: ${e.message}")
+            LxLog.e(TAG, "Error cleaning up old container: ${e.message}")
         }
     }
 
@@ -1676,7 +1677,7 @@ class LxAppActivity : AppCompatActivity() {
             // Find WebView for the target page
             val newWebView = findWebView(appId, targetPath)
             if (newWebView == null) {
-                Log.e(TAG, "Failed to find WebView for path: $targetPath")
+                LxLog.e(TAG, "Failed to find WebView for path: $targetPath")
                 return
             }
 
@@ -1706,7 +1707,7 @@ class LxAppActivity : AppCompatActivity() {
                 try {
                     addView(newWebView)
                 } catch (e: Exception) {
-                    Log.e(TAG, "Error adding WebView to container: ${e.message}")
+                    LxLog.e(TAG, "Error adding WebView to container: ${e.message}")
                     return@apply
                 }
             }
@@ -1729,7 +1730,7 @@ class LxAppActivity : AppCompatActivity() {
             currentWebView = newWebView
 
         } catch (e: Exception) {
-            Log.e(TAG, "Error in coordinated navigation: ${e.message}", e)
+            LxLog.e(TAG, "Error in coordinated navigation: ${e.message}", e)
         }
     }
 
@@ -2074,7 +2075,7 @@ class LxAppActivity : AppCompatActivity() {
     // Switch to a different LxApp in the current activity
     fun openLxApp(appId: String, path: String, sessionId: Long) {
         if (sessionId <= 0L) {
-            Log.e(TAG, "Refusing to open app without valid sessionId: appId=$appId")
+            LxLog.e(TAG, "Refusing to open app without valid sessionId: appId=$appId")
             return
         }
 
@@ -2094,7 +2095,7 @@ class LxAppActivity : AppCompatActivity() {
             if (path.isNotEmpty()) {
                 navigate(path, AnimationType.NONE)
             } else {
-                Log.e(TAG, "No valid path to navigate to")
+                LxLog.e(TAG, "No valid path to navigate to")
             }
         }
     }

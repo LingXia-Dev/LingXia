@@ -7,7 +7,6 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.Base64
-import android.util.Log
 import android.view.PixelCopy
 import com.lingxia.app.Lingxia
 import com.lingxia.lxapp.LxApp
@@ -81,7 +80,7 @@ object AppScreenshot {
                                     deliverError(callbackId, "PixelCopy failed: result=$result")
                                 }
                             } catch (e: Throwable) {
-                                Log.e(TAG, "Failed to forward PixelCopy result", e)
+                                LxLog.e(TAG, "Failed to forward PixelCopy result", e)
                             }
                         },
                         mainHandler,
@@ -122,7 +121,7 @@ object AppScreenshot {
         try {
             NativeApi.onCallback(callbackId, true, envelope.toString())
         } catch (callbackError: Throwable) {
-            Log.e(TAG, "Failed to deliver screenshot envelope", callbackError)
+            LxLog.e(TAG, "Failed to deliver screenshot envelope", callbackError)
         }
     }
 

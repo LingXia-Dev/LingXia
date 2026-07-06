@@ -1,4 +1,5 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
+import { LxLog } from '../../app/LxLog';
 import { common } from '@kit.AbilityKit';
 import { display, window } from '@kit.ArkUI';
 import { webview } from '@kit.ArkWeb';
@@ -132,7 +133,7 @@ export class LxAppSurface {
       return false;
     }
     if (!LxAppSurface.managerRef) {
-      hilog.error(DOMAIN, TAG, 'present failed: SurfaceManager not initialized');
+      LxLog.e(TAG, 'present failed: SurfaceManager not initialized');
       return false;
     }
 
@@ -211,7 +212,7 @@ export class LxAppSurface {
     try {
       plan = JSON.parse(layoutJson) as SurfaceLayoutPlan;
     } catch (error) {
-      hilog.error(DOMAIN, TAG, `presentLayout failed to parse windowId=${windowId}: ${error}`);
+      LxLog.e(TAG, `presentLayout failed to parse windowId=${windowId}: ${error}`);
       return false;
     }
 
@@ -442,7 +443,7 @@ export class LxAppSurface {
       }, SURFACE_NOTIFY_RETRY_DELAY_MS);
       return true;
     }
-    hilog.error(DOMAIN, TAG, `showPageSurfaceWhenReady failed id=${layout.id} appId=${layout.appId} path=${layout.path} pageInstanceId=${layout.pageInstanceId}`);
+    LxLog.e(TAG, `showPageSurfaceWhenReady failed id=${layout.id} appId=${layout.appId} path=${layout.path} pageInstanceId=${layout.pageInstanceId}`);
     LxAppSurface.failPageSurface(layout);
     return false;
 	  }
@@ -937,7 +938,7 @@ export struct SurfaceManager {
                     hilog.info(DOMAIN, TAG, `load surface url=${url}`);
                     controller.loadUrl(url);
                   } catch (error) {
-                    hilog.error(DOMAIN, TAG, `failed to load surface URL: ${error}`);
+                    LxLog.e(TAG, `failed to load surface URL: ${error}`);
                   }
                 }, 0);
               })
@@ -1224,18 +1225,18 @@ export struct SurfaceManager {
               return;
             }
             this.fullscreenWindowActive = false;
-            hilog.error(DOMAIN, TAG, 'Failed to apply fullscreen surface bars');
+            LxLog.e(TAG, 'Failed to apply fullscreen surface bars');
           });
       }).catch(() => {
         if (opVersion !== this.windowOpVersion) {
           return;
         }
         this.fullscreenWindowActive = false;
-        hilog.error(DOMAIN, TAG, 'Failed to get main window for fullscreen surface');
+        LxLog.e(TAG, 'Failed to get main window for fullscreen surface');
       });
     } catch {
       this.fullscreenWindowActive = false;
-      hilog.error(DOMAIN, TAG, 'Failed to enter fullscreen surface mode');
+      LxLog.e(TAG, 'Failed to enter fullscreen surface mode');
     }
   }
 
@@ -1268,16 +1269,16 @@ export struct SurfaceManager {
             if (opVersion !== this.windowOpVersion) {
               return;
             }
-            hilog.error(DOMAIN, TAG, 'Failed to restore fullscreen surface bars');
+            LxLog.e(TAG, 'Failed to restore fullscreen surface bars');
           });
       }).catch(() => {
         if (opVersion !== this.windowOpVersion) {
           return;
         }
-        hilog.error(DOMAIN, TAG, 'Failed to get main window for fullscreen surface restore');
+        LxLog.e(TAG, 'Failed to get main window for fullscreen surface restore');
       });
     } catch {
-      hilog.error(DOMAIN, TAG, 'Failed to exit fullscreen surface mode');
+      LxLog.e(TAG, 'Failed to exit fullscreen surface mode');
     }
   }
 }

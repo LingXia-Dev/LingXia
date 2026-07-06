@@ -47,7 +47,7 @@ class macOSLxApp: ObservableObject {
 
     internal static func handleAppClosing(appId: String) {
         guard let sessionId = LxAppCore.sessionId(for: appId), sessionId > 0 else {
-            os_log("handleAppClosing missing session for %@", log: log, type: .error, appId)
+            LXLog.error("handleAppClosing missing session for \(appId)", category: "macOSLxApp")
             return
         }
         let accepted = onLxappClosed(appId, sessionId)
@@ -88,7 +88,7 @@ class macOSLxApp: ObservableObject {
         isInitialized = LxAppCore.getHomeLxAppId() != nil
 
         if !isInitialized {
-            os_log("Failed to initialize LxApps - no home app ID", log: log, type: .error)
+            LXLog.error("Failed to initialize LxApps - no home app ID", category: "macOSLxApp")
         } else {
             setupLifecycleObservers()
         }
@@ -200,7 +200,7 @@ extension macOSLxApp {
     internal static func presentInternalBrowserTab(tabId: String) -> Bool {
         let normalized = tabId.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalized.isEmpty else {
-            os_log("presentInternalBrowserTab invalid tab id: %{public}@", log: log, type: .error, tabId)
+            LXLog.error("presentInternalBrowserTab invalid tab id: \(tabId)", category: "macOSLxApp")
             return false
         }
 

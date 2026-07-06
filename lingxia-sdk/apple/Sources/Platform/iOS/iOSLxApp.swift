@@ -159,7 +159,7 @@ class iOSLxApp {
     /// Opens the home mini app
     static func openHomeLxApp() {
         guard let homeLxAppId = LxAppCore.getHomeLxAppId() else {
-            os_log("Home app details not available", log: log, type: .error)
+            LXLog.error("Home app details not available", category: "iOSLxApp")
             return
         }
 
@@ -176,7 +176,7 @@ class iOSLxApp {
             }
         }
         guard sessionId > 0 else {
-            os_log("Invalid home app session for %@", log: log, type: .error, homeLxAppId)
+            LXLog.error("Invalid home app session for \(homeLxAppId)", category: "iOSLxApp")
             return
         }
         LxAppCore.setSessionId(sessionId, for: homeLxAppId)
@@ -203,7 +203,7 @@ class iOSLxApp {
     private func openLxAppInManager(appId: String, path: String, sessionId: UInt64) {
         guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
               let window = windowScene.windows.first else {
-            os_log("Failed to get window for presenting LxAppManager", log: Self.log, type: .error)
+            LXLog.error("Failed to get window for presenting LxAppManager", category: "iOSLxApp")
             return
         }
 
@@ -321,7 +321,7 @@ extension iOSLxApp {
     private func setupLxAppManagerIfNeeded() {
         guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
               let window = windowScene.windows.first else {
-            os_log("Failed to get window for presenting LxAppManager", log: Self.log, type: .error)
+            LXLog.error("Failed to get window for presenting LxAppManager", category: "iOSLxApp")
             return
         }
 

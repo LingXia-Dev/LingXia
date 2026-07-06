@@ -1,5 +1,4 @@
 import Foundation
-import os.log
 import CLingXiaRustAPI
 
 #if os(iOS)
@@ -7,8 +6,6 @@ import UIKit
 #endif
 
 class LxAppPicker {
-
-    internal static let log = OSLog(subsystem: "LingXia", category: "Picker")
 
     // Local callback registry for native components
     // Key is callback ID, value is (success, data) -> Void
@@ -60,7 +57,7 @@ class LxAppPicker {
             confirmButtonColor: confirmButtonColor,
             confirmTextColor: confirmTextColor
         ) else {
-            os_log("Failed to parse picker configuration", log: log, type: .error)
+            LXLog.error("Failed to parse picker configuration", category: "Picker")
             sendPickerError(callback_id: callbackID, code: 1002)
             return
         }
@@ -68,7 +65,7 @@ class LxAppPicker {
         #if os(iOS)
         showIOSPicker(configuration: configuration, callbackID: callbackID)
         #else
-        os_log("macOS picker not implemented", log: log, type: .error)
+        LXLog.error("macOS picker not implemented", category: "Picker")
         sendPickerError(callback_id: callbackID, code: 6000)
         #endif
     }
@@ -153,7 +150,7 @@ extension LxAppPicker {
         guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
               let window = windowScene.windows.first(where: { $0.isKeyWindow }) ?? windowScene.windows.first,
               let rootViewController = window.rootViewController else {
-            os_log("Unable to locate window or root view controller", log: log, type: .error)
+            LXLog.error("Unable to locate window or root view controller", category: "Picker")
             sendPickerError(callback_id: callbackID, code: 1000)
             return
         }
@@ -248,7 +245,7 @@ extension LxAppPicker {
         cancelButton.addAction(UIAction { _ in
             Task { @MainActor in
                 guard let pickerData = LxAppPicker.currentPickerData else {
-                    os_log("No picker data available for cancel", log: LxAppPicker.log, type: .error)
+                    LXLog.error("No picker data available for cancel", category: "Picker")
                     return
                 }
                 LxAppPicker.sendPickerResultCancel(callback_id: pickerData.callbackID)
@@ -259,7 +256,7 @@ extension LxAppPicker {
         confirmButton.addAction(UIAction { _ in
             Task { @MainActor in
                 guard let pickerData = LxAppPicker.currentPickerData else {
-                    os_log("No picker data available for confirm", log: LxAppPicker.log, type: .error)
+                    LXLog.error("No picker data available for confirm", category: "Picker")
                     return
                 }
                 LxAppPicker.sendPickerResultConfirm(callback_id: pickerData.callbackID, selectedIndices: pickerData.currentSelection)
@@ -343,14 +340,14 @@ extension LxAppPicker {
 
         if window == nil {
             guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene else {
-                os_log("No window scene found", log: LxAppPicker.log, type: .error)
+                LXLog.error("No window scene found", category: "Picker")
                 return
             }
             window = windowScene.windows.first(where: { $0.isKeyWindow }) ?? windowScene.windows.first
         }
 
         guard let window = window else {
-            os_log("No window found for dismissing picker", log: LxAppPicker.log, type: .error)
+            LXLog.error("No window found for dismissing picker", category: "Picker")
             return
         }
 
@@ -369,7 +366,7 @@ extension LxAppPicker {
         }
 
         guard let pickerView = targetView else {
-            os_log("No picker view found to dismiss", log: LxAppPicker.log, type: .error)
+            LXLog.error("No picker view found to dismiss", category: "Picker")
             return
         }
 

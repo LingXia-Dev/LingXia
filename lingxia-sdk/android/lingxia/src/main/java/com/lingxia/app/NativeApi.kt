@@ -36,6 +36,9 @@ internal object NativeApi {
                 libraryLoaded.set(true)
                 Log.d(TAG, "Native library 'lingxia' loaded")
             } catch (error: Throwable) {
+                // Stays on android.util.Log on purpose: LxLog routes through this
+                // very native library via forwardHostLog, so it can't report its
+                // own load failure.
                 Log.e(TAG, "Failed to load native library 'lingxia'", error)
             }
         }
@@ -151,19 +154,27 @@ internal object NativeApi {
     external fun resolveLxUri(appId: String, input: String): String?
 
     /**
-     * Emit an SDK-side log entry into the Rust log pipeline.
+     * Forward a host-side log entry into the Rust log pipeline.
      *
      * level: 0=verbose, 1=debug, 2=info, 3=warn, 4=error.
      * Returns false when the native log pipeline is not initialized or level is invalid.
      */
     @JvmStatic
-    external fun emitSdkLog(
+    external fun forwardHostLog(
         level: Int,
         category: String,
         appId: String,
         path: String,
         message: String
     ): Boolean
+
+    /** Set the runtime log threshold (0=verbose … 4=error). */
+    @JvmStatic
+    external fun setLogLevel(level: Int)
+
+    /** Whether a host log at `level` (0=verbose … 4=error) would be recorded. */
+    @JvmStatic
+    external fun hostLogEnabled(level: Int): Boolean
 
     /**
      * Run the shared browser navigation policy classifier.

@@ -1,4 +1,5 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
+import { LxLog } from '../../app/LxLog';
 import { BusinessError } from '@kit.BasicServicesKit';
 import wifiManager from '@ohos.wifiManager';
 import liblingxia from 'liblingxia.so';
@@ -52,11 +53,11 @@ export class LxAppWifi {
       hilog.info(DOMAIN, TAG, 'WiFi module initialized');
       const success: boolean = liblingxia.onCallback(callbackId, true, '{}');
       if (!success) {
-        hilog.error(DOMAIN, TAG, `Failed to send startWifi callback for ID: ${callbackId}`);
+        LxLog.e(TAG, `Failed to send startWifi callback for ID: ${callbackId}`);
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      hilog.error(DOMAIN, TAG, `startWifi error: ${errorMessage}`);
+      LxLog.e(TAG, `startWifi error: ${errorMessage}`);
       liblingxia.onCallback(callbackId, false, '12001'); // System error
     }
   }
@@ -85,11 +86,11 @@ export class LxAppWifi {
 
       const success: boolean = liblingxia.onCallback(callbackId, true, '{}');
       if (!success) {
-        hilog.error(DOMAIN, TAG, `Failed to send stopWifi callback for ID: ${callbackId}`);
+        LxLog.e(TAG, `Failed to send stopWifi callback for ID: ${callbackId}`);
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      hilog.error(DOMAIN, TAG, `stopWifi error: ${errorMessage}`);
+      LxLog.e(TAG, `stopWifi error: ${errorMessage}`);
       liblingxia.onCallback(callbackId, false, '12001'); // System error
     }
   }
@@ -169,7 +170,7 @@ export class LxAppWifi {
         // Check WiFi permissions first
         const granted = await PermissionManager.ensureWifiAccess();
         if (!granted) {
-          hilog.error(DOMAIN, TAG, 'WiFi permission not granted for connectWifi');
+          LxLog.e(TAG, 'WiFi permission not granted for connectWifi');
           liblingxia.onCallback(callbackId, false, '12006'); // Permission denied
           return;
         }
@@ -213,13 +214,13 @@ export class LxAppWifi {
 
         const success: boolean = liblingxia.onCallback(callbackId, true, '{}');
         if (!success) {
-          hilog.error(DOMAIN, TAG, `Failed to send connectWifi callback for ID: ${callbackId}`);
+          LxLog.e(TAG, `Failed to send connectWifi callback for ID: ${callbackId}`);
         }
         LxAppWifi.emitWifiConnectedToAll(ssid);
       } catch (error) {
         const businessError = error as BusinessError;
         const errorMessage = businessError.message || String(error);
-        hilog.error(DOMAIN, TAG, `connectWifi error: ${errorMessage}, code: ${businessError.code}`);
+        LxLog.e(TAG, `connectWifi error: ${errorMessage}, code: ${businessError.code}`);
         // Handle specific error codes
         if (businessError.code === 201) {
           liblingxia.onCallback(callbackId, false, '12006'); // Permission denied
@@ -242,7 +243,7 @@ export class LxAppWifi {
       try {
         const granted = await PermissionManager.ensureWifiAccess();
         if (!granted) {
-          hilog.error(DOMAIN, TAG, 'WiFi permission not granted for WiFi scan');
+          LxLog.e(TAG, 'WiFi permission not granted for WiFi scan');
           liblingxia.onCallback(callbackId, false, '12006'); // Permission denied
           return;
         }
@@ -281,17 +282,17 @@ export class LxAppWifi {
             hilog.info(DOMAIN, TAG, `Found ${wifiList.length} WiFi networks`);
             const success: boolean = liblingxia.onCallback(callbackId, true, JSON.stringify(wifiList));
             if (!success) {
-              hilog.error(DOMAIN, TAG, `Failed to send getWifiList callback for ID: ${callbackId}`);
+              LxLog.e(TAG, `Failed to send getWifiList callback for ID: ${callbackId}`);
             }
           } catch (resultError) {
             const errorMessage = resultError instanceof Error ? resultError.message : JSON.stringify(resultError);
-            hilog.error(DOMAIN, TAG, `Failed to get scan results: ${errorMessage}`);
+            LxLog.e(TAG, `Failed to get scan results: ${errorMessage}`);
             liblingxia.onCallback(callbackId, false, '12001'); // System error
           }
         }, LxAppWifi.SCAN_TIMEOUT_MS);
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : JSON.stringify(error);
-        hilog.error(DOMAIN, TAG, `getWifiList error: ${errorMessage}`);
+        LxLog.e(TAG, `getWifiList error: ${errorMessage}`);
         liblingxia.onCallback(callbackId, false, '12001'); // System error
       }
     })();
@@ -305,7 +306,7 @@ export class LxAppWifi {
       try {
         const granted = await PermissionManager.ensureWifiAccess();
         if (!granted) {
-          hilog.error(DOMAIN, TAG, 'WiFi permission not granted for getConnectedWifi');
+          LxLog.e(TAG, 'WiFi permission not granted for getConnectedWifi');
           liblingxia.onCallback(callbackId, false, '12006'); // Permission denied
           return;
         }
@@ -313,7 +314,7 @@ export class LxAppWifi {
         // Get linked (connected) WiFi info
         wifiManager.getLinkedInfo((error: Error, linkedInfo: wifiManager.WifiLinkedInfo): void => {
           if (error) {
-            hilog.error(DOMAIN, TAG, `Failed to get linked info: ${error.message}`);
+            LxLog.e(TAG, `Failed to get linked info: ${error.message}`);
             liblingxia.onCallback(callbackId, false, '12001'); // System error
             return;
           }
@@ -347,12 +348,12 @@ export class LxAppWifi {
           hilog.info(DOMAIN, TAG, `Connected to WiFi: ${linkedInfo.ssid}`);
           const success: boolean = liblingxia.onCallback(callbackId, true, JSON.stringify(wifiInfo));
           if (!success) {
-            hilog.error(DOMAIN, TAG, `Failed to send getConnectedWifi callback for ID: ${callbackId}`);
+            LxLog.e(TAG, `Failed to send getConnectedWifi callback for ID: ${callbackId}`);
           }
         });
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
-        hilog.error(DOMAIN, TAG, `getConnectedWifi error: ${errorMessage}`);
+        LxLog.e(TAG, `getConnectedWifi error: ${errorMessage}`);
         liblingxia.onCallback(callbackId, false, '12001'); // System error
       }
     })();
@@ -417,7 +418,7 @@ export class LxAppWifi {
       return wifiInfo;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : JSON.stringify(error);
-      hilog.error(DOMAIN, TAG, `buildWifiInfoJson error: ${errorMessage}`);
+      LxLog.e(TAG, `buildWifiInfoJson error: ${errorMessage}`);
       return null;
     }
   }
@@ -437,7 +438,7 @@ export class LxAppWifi {
         hilog.warn(DOMAIN, TAG, `Failed to dispatch wifi connected event to callback ${callbackId}`);
       }
     }).catch((err: Error) => {
-      hilog.error(DOMAIN, TAG, `emitWifiConnectedToCallback error: ${err.message}`);
+      LxLog.e(TAG, `emitWifiConnectedToCallback error: ${err.message}`);
     });
   }
 
@@ -472,7 +473,7 @@ export class LxAppWifi {
         }
       }
     }).catch((err: Error) => {
-      hilog.error(DOMAIN, TAG, `emitWifiConnectedToAll error: ${err.message}`);
+      LxLog.e(TAG, `emitWifiConnectedToAll error: ${err.message}`);
     }).finally(() => {
       LxAppWifi.emitInFlight = false;
       if (LxAppWifi.pendingEmit) {

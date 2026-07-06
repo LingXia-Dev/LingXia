@@ -2,6 +2,7 @@ import { AbilityConstant, UIAbility, Want } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { window, display } from '@kit.ArkUI';
 import { Lingxia } from './Lingxia';
+import { LxLog } from './LxLog';
 import {
   getCurrentLxapp,
   onLxappEvent,
@@ -119,7 +120,7 @@ export class LingxiaBaseAbility extends UIAbility {
         return handled;
       }
     } catch (error) {
-      hilog.error(DOMAIN, TAG, '%{public}s', `Error handling back press: ${error}`);
+      LxLog.e(TAG, `Error handling back press: ${error}`);
     } finally {
       this.isBackHandling = false;
     }
@@ -208,7 +209,7 @@ export class LingxiaBaseAbility extends UIAbility {
         return;
       }
     } catch (error) {
-      hilog.error(DOMAIN, TAG, '%{public}s', `Failed to register back interceptor: ${error}`);
+      LxLog.e(TAG, `Failed to register back interceptor: ${error}`);
     }
   }
 
@@ -227,12 +228,12 @@ export class LingxiaBaseAbility extends UIAbility {
             onUserCaptureScreen(current.appid);
           }
         } catch (error) {
-          hilog.error(DOMAIN, TAG, '%{public}s', `Error in screenshot callback: ${error}`);
+          LxLog.e(TAG, `Error in screenshot callback: ${error}`);
         }
       });
       hilog.info(DOMAIN, TAG, '%{public}s', 'Screenshot listener registered');
     } catch (error) {
-      hilog.error(DOMAIN, TAG, '%{public}s', `Failed to register screenshot listener: ${error}`);
+      LxLog.e(TAG, `Failed to register screenshot listener: ${error}`);
     }
   }
 
@@ -272,7 +273,7 @@ export class LingxiaBaseAbility extends UIAbility {
         this.lastReportedDeviceOrientation = orientationValue;
       }
     } catch (error) {
-      hilog.error(DOMAIN, TAG, '%{public}s', `Failed to report device orientation: ${error}`);
+      LxLog.e(TAG, `Failed to report device orientation: ${error}`);
     }
   }
 
@@ -318,7 +319,7 @@ export class LingxiaBaseAbility extends UIAbility {
       this.sizeChangeListenerRegistered = true;
       this.syncDeviceOrientationFromDisplay();
     } catch (error) {
-      hilog.error(DOMAIN, TAG, '%{public}s', `Failed to register orientation listener: ${error}`);
+      LxLog.e(TAG, `Failed to register orientation listener: ${error}`);
     }
   }
 
@@ -367,7 +368,7 @@ export class LingxiaBaseAbility extends UIAbility {
         }
       }
     } catch (error) {
-      hilog.error(DOMAIN, TAG, '%{public}s', `Error in onForeground: ${error}`);
+      LxLog.e(TAG, `Error in onForeground: ${error}`);
     }
   }
 
@@ -383,7 +384,7 @@ export class LingxiaBaseAbility extends UIAbility {
       }
       this.hasEnteredBackground = true;
     } catch (error) {
-      hilog.error(DOMAIN, TAG, '%{public}s', `Error in onBackground: ${error}`);
+      LxLog.e(TAG, `Error in onBackground: ${error}`);
     }
   }
 
