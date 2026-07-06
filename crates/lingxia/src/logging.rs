@@ -28,9 +28,10 @@ const LOG_LEVEL_ENV: &str = "LINGXIA_LOG_LEVEL";
 /// for a session).
 static HOST_LOG_LEVEL: AtomicI32 = AtomicI32::new(SDK_LOG_LEVEL_INFO);
 
-/// True when `LINGXIA_LOG_LEVEL` explicitly set the level, so the dev-session
-/// default ([`apply_dev_session_level`]) doesn't override an explicit choice.
-static LEVEL_PINNED_BY_ENV: AtomicBool = AtomicBool::new(false);
+/// True when the level was set explicitly (via `LINGXIA_LOG_LEVEL` or
+/// [`set_log_level`]), so neither the dev-session default
+/// ([`apply_dev_session_level`]) nor a late [`init`] overrides that choice.
+static LEVEL_PINNED: AtomicBool = AtomicBool::new(false);
 
 /// Error returned when installing a downstream logger fails.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -55,19 +56,23 @@ pub(crate) fn init() {
     }
 
     // Seed the shared threshold before any record can flow, so the platform
-    // sinks and the facade agree on the level from the very first log. On
+    // sinks and the facade agree on the level from the very first log. A
+    // set_log_level() before init() (e.g. an early dev-server hook) already
+    // pinned it, so only seed the env/dev default when it hasn't been. On
     // devices the dev-ws-url lives in app config that isn't loaded yet, so this
     // sees only the env signal here; `apply_dev_session_level` re-checks later.
-    let (level, pinned) = resolve_initial_level();
-    LEVEL_PINNED_BY_ENV.store(pinned, Ordering::Relaxed);
-    HOST_LOG_LEVEL.store(level, Ordering::Relaxed);
+    if !LEVEL_PINNED.load(Ordering::Relaxed) {
+        let (level, pinned) = resolve_initial_level();
+        LEVEL_PINNED.store(pinned, Ordering::Relaxed);
+        HOST_LOG_LEVEL.store(level, Ordering::Relaxed);
+    }
 
     let _ = LogManager::init(|message| {
         platform_logger().write(message);
     });
 
     if log::set_logger(&SDK_LOGGER).is_ok() {
-        log::set_max_level(sdk_level_to_filter(level));
+        log::set_max_level(sdk_level_to_filter(HOST_LOG_LEVEL.load(Ordering::Relaxed)));
     }
 
     let _ = LOGGING_INIT.set(());
@@ -84,6 +89,8 @@ pub fn set_log_level(level: i32) {
     if map_sdk_level(level).is_none() {
         return;
     }
+    // Pin so `init`/`apply_dev_session_level` don't clobber an explicit choice.
+    LEVEL_PINNED.store(true, Ordering::Relaxed);
     HOST_LOG_LEVEL.store(level, Ordering::Relaxed);
     log::set_max_level(sdk_level_to_filter(level));
 }
@@ -129,7 +136,7 @@ fn parse_level(value: &str) -> Option<i32> {
 /// logcat sink cap is already fixed by then, so this reaches the dev-server
 /// stream and buffer (what `lxdev logs` shows) rather than raw logcat/hilog.
 pub(crate) fn apply_dev_session_level() {
-    if LEVEL_PINNED_BY_ENV.load(Ordering::Relaxed) {
+    if LEVEL_PINNED.load(Ordering::Relaxed) {
         return;
     }
     if lxapp::is_dev_session() && HOST_LOG_LEVEL.load(Ordering::Relaxed) > SDK_LOG_LEVEL_DEBUG {
@@ -361,8 +368,12 @@ impl PlatformLogger {
             let level = match message.level {
                 LxLogLevel::Verbose | LxLogLevel::Debug => OsLevel::Debug,
                 LxLogLevel::Info => OsLevel::Info,
-                LxLogLevel::Warn => OsLevel::Error,
-                LxLogLevel::Error => OsLevel::Fault,
+                // Warn -> Default (notice: still persisted to the unified log),
+                // Error -> Error. Avoid Fault, which crash tooling reserves for
+                // unrecoverable system faults — mapping SDK errors to it inflates
+                // severity and misleads iOS/macOS triage.
+                LxLogLevel::Warn => OsLevel::Default,
+                LxLogLevel::Error => OsLevel::Error,
             };
             self.apple.with_level(level, &formatted);
         }

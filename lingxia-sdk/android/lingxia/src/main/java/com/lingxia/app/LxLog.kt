@@ -1,5 +1,7 @@
 package com.lingxia.app
 
+import android.util.Log
+
 /**
  * Routes SDK-native logs into the LingXia Rust log pipeline.
  *
@@ -26,23 +28,44 @@ internal object LxLog {
     private const val ERROR = 4
 
     /** Whether a log at [level] (0=verbose … 4=error) would be recorded. Guard an
-     *  expensive hot-path log with this to skip building the message. */
-    fun isEnabled(level: Int): Boolean = NativeApi.hostLogEnabled(level)
+     *  expensive hot-path log with this to skip building the message. Defaults to
+     *  enabled if the native lib isn't loaded, so a check never silently drops. */
+    fun isEnabled(level: Int): Boolean =
+        try { NativeApi.hostLogEnabled(level) } catch (t: Throwable) { true }
 
     fun v(tag: String, message: String, appId: String = "", path: String = "") =
-        NativeApi.forwardHostLog(VERBOSE, tag, appId, path, message)
+        forward(VERBOSE, tag, message, appId, path)
 
     fun d(tag: String, message: String, appId: String = "", path: String = "") =
-        NativeApi.forwardHostLog(DEBUG, tag, appId, path, message)
+        forward(DEBUG, tag, message, appId, path)
 
     fun i(tag: String, message: String, appId: String = "", path: String = "") =
-        NativeApi.forwardHostLog(INFO, tag, appId, path, message)
+        forward(INFO, tag, message, appId, path)
 
     fun w(tag: String, message: String, tr: Throwable? = null, appId: String = "", path: String = "") =
-        NativeApi.forwardHostLog(WARN, tag, appId, path, message.withThrowable(tr))
+        forward(WARN, tag, message.withThrowable(tr), appId, path)
 
     fun e(tag: String, message: String, tr: Throwable? = null, appId: String = "", path: String = "") =
-        NativeApi.forwardHostLog(ERROR, tag, appId, path, message.withThrowable(tr))
+        forward(ERROR, tag, message.withThrowable(tr), appId, path)
+
+    /** Forward to the Rust pipeline, falling back to logcat if the native lib
+     *  isn't loaded (throws UnsatisfiedLinkError). Logging must never crash the
+     *  app — least of all on an error path already reporting a failure. */
+    private fun forward(level: Int, tag: String, message: String, appId: String, path: String): Boolean =
+        try {
+            NativeApi.forwardHostLog(level, tag, appId, path, message)
+        } catch (t: Throwable) {
+            Log.println(androidPriority(level), tag, message)
+            false
+        }
+
+    private fun androidPriority(level: Int): Int = when (level) {
+        VERBOSE -> Log.VERBOSE
+        DEBUG -> Log.DEBUG
+        INFO -> Log.INFO
+        WARN -> Log.WARN
+        else -> Log.ERROR
+    }
 
     private fun String.withThrowable(tr: Throwable?): String =
         if (tr == null) this else "$this\n${tr.stackTraceToString()}"

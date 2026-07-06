@@ -80,6 +80,9 @@ enum LXLog {
 
     private static func appending(_ error: Error?, to message: String) -> String {
         guard let error else { return message }
-        return "\(message)\n\(error)"
+        // Swift `Error` carries no call stack (unlike Android/Harmony throwables),
+        // so this is the type + details, not a stack trace — the closest parity
+        // the language allows. `reflecting` includes the concrete type.
+        return "\(message)\n\(String(reflecting: error))"
     }
 }

@@ -444,7 +444,13 @@ impl LogManager {
         }
 
         let _reset_guard = DispatchGuardReset;
-        self.buffer.push(message.clone());
+        // Upload-buffer policy is separate from console verbosity: retain only
+        // warn+ in the bounded ring that `collect_archive` uploads, so routine
+        // info/debug still reach the console + live dev stream without churning
+        // the buffer and evicting the errors it exists to preserve.
+        if matches!(message.level, LogLevel::Warn | LogLevel::Error) {
+            self.buffer.push(message.clone());
+        }
         get_log_provider().on_log(&message);
         (self.logger)(&message);
     }
