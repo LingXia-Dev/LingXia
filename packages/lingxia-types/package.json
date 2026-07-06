@@ -16,6 +16,9 @@
       "import": "./dist/index.js",
       "require": "./dist/index.js"
     },
+    "./logic-globals": {
+      "types": "./dist/logic-globals.d.ts"
+    },
     "./app": {
       "types": "./dist/app/index.d.ts",
       "import": "./dist/app/index.js",
@@ -113,7 +116,7 @@
   ],
   "scripts": {
     "gen:i18n": "node scripts/gen-i18n.mjs",
-    "build": "npm run gen:i18n && tsc",
+    "build": "npm run gen:i18n && tsc && cp src/logic-globals.d.ts dist/logic-globals.d.ts",
     "clean": "rm -rf dist",
     "prepublishOnly": "npm run clean && npm run build"
   },
