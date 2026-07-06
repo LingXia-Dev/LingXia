@@ -26,11 +26,21 @@ export class LxLog {
     return forwardHostLog(LxLog.INFO, tag, appId, path, message);
   }
 
-  public static w(tag: string, message: string, appId: string = '', path: string = ''): boolean {
-    return forwardHostLog(LxLog.WARN, tag, appId, path, message);
+  // `err` mirrors Android `w(tag, message, tr)`: appended so caught errors
+  // carry a stack/message across platforms instead of being dropped on Harmony.
+  public static w(tag: string, message: string, err?: Error, appId: string = '', path: string = ''): boolean {
+    return forwardHostLog(LxLog.WARN, tag, appId, path, LxLog.appending(err, message));
   }
 
-  public static e(tag: string, message: string, appId: string = '', path: string = ''): boolean {
-    return forwardHostLog(LxLog.ERROR, tag, appId, path, message);
+  public static e(tag: string, message: string, err?: Error, appId: string = '', path: string = ''): boolean {
+    return forwardHostLog(LxLog.ERROR, tag, appId, path, LxLog.appending(err, message));
+  }
+
+  private static appending(err: Error | undefined, message: string): string {
+    if (err === undefined) {
+      return message;
+    }
+    const detail: string = err.stack ?? err.message;
+    return `${message}\n${detail}`;
   }
 }

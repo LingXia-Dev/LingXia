@@ -20,6 +20,10 @@ enum LXLog {
     }
 
     /// Forward a log entry into the Rust pipeline.
+    ///
+    /// `message` is a plain `String`, not an autoclosure: `forwardHostLog`
+    /// evaluates and dispatches unconditionally, so a deferred closure would
+    /// buy nothing and only imply a laziness that doesn't exist.
     /// - Parameters:
     ///   - message: Fully-formatted message.
     ///   - category: Subsystem/category label, surfaced as the log target.
@@ -28,36 +32,43 @@ enum LXLog {
     @discardableResult
     static func log(
         _ level: Level,
-        _ message: @autoclosure () -> String,
+        _ message: String,
         category: String,
         appId: String = "",
         path: String = ""
     ) -> Bool {
-        forwardHostLog(level.rawValue, category, appId, path, message())
+        forwardHostLog(level.rawValue, category, appId, path, message)
     }
 
     @discardableResult
-    static func verbose(_ message: @autoclosure () -> String, category: String, appId: String = "", path: String = "") -> Bool {
-        log(.verbose, message(), category: category, appId: appId, path: path)
+    static func verbose(_ message: String, category: String, appId: String = "", path: String = "") -> Bool {
+        log(.verbose, message, category: category, appId: appId, path: path)
     }
 
     @discardableResult
-    static func debug(_ message: @autoclosure () -> String, category: String, appId: String = "", path: String = "") -> Bool {
-        log(.debug, message(), category: category, appId: appId, path: path)
+    static func debug(_ message: String, category: String, appId: String = "", path: String = "") -> Bool {
+        log(.debug, message, category: category, appId: appId, path: path)
     }
 
     @discardableResult
-    static func info(_ message: @autoclosure () -> String, category: String, appId: String = "", path: String = "") -> Bool {
-        log(.info, message(), category: category, appId: appId, path: path)
+    static func info(_ message: String, category: String, appId: String = "", path: String = "") -> Bool {
+        log(.info, message, category: category, appId: appId, path: path)
+    }
+
+    /// `error:` mirrors Android/Harmony `w(tag, msg, tr)`: when present its
+    /// description is appended so caught errors carry context across platforms.
+    @discardableResult
+    static func warn(_ message: String, category: String, appId: String = "", path: String = "", error: Error? = nil) -> Bool {
+        log(.warn, Self.appending(error, to: message), category: category, appId: appId, path: path)
     }
 
     @discardableResult
-    static func warn(_ message: @autoclosure () -> String, category: String, appId: String = "", path: String = "") -> Bool {
-        log(.warn, message(), category: category, appId: appId, path: path)
+    static func error(_ message: String, category: String, appId: String = "", path: String = "", error: Error? = nil) -> Bool {
+        log(.error, Self.appending(error, to: message), category: category, appId: appId, path: path)
     }
 
-    @discardableResult
-    static func error(_ message: @autoclosure () -> String, category: String, appId: String = "", path: String = "") -> Bool {
-        log(.error, message(), category: category, appId: appId, path: path)
+    private static func appending(_ error: Error?, to message: String) -> String {
+        guard let error else { return message }
+        return "\(message)\n\(error)"
     }
 }
