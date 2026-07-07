@@ -1224,22 +1224,25 @@ fn resolve_local_path(input: &str) -> Option<std::path::PathBuf> {
 }
 
 fn home_dir() -> Option<std::ffi::OsString> {
-    std::env::var_os("HOME").or_else(|| {
-        #[cfg(windows)]
-        {
-            std::env::var_os("USERPROFILE").or_else(|| {
-                let drive = std::env::var_os("HOMEDRIVE")?;
-                let path = std::env::var_os("HOMEPATH")?;
-                let mut home = drive;
-                home.push(path);
-                Some(home)
-            })
+    if let Some(home) = std::env::var_os("HOME") {
+        return Some(home);
+    }
+    // On Windows HOME is often unset; fall back to USERPROFILE, then
+    // HOMEDRIVE+HOMEPATH.
+    #[cfg(windows)]
+    {
+        if let Some(profile) = std::env::var_os("USERPROFILE") {
+            return Some(profile);
         }
-        #[cfg(not(windows))]
+        if let (Some(drive), Some(path)) =
+            (std::env::var_os("HOMEDRIVE"), std::env::var_os("HOMEPATH"))
         {
-            None
+            let mut home = drive;
+            home.push(path);
+            return Some(home);
         }
-    })
+    }
+    None
 }
 
 /// Lexically drop `.` and resolve `..` components without touching the
