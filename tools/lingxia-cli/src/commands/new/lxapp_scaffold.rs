@@ -195,11 +195,14 @@ pub(super) fn create_lxapp_project(
 ) -> Result<LxAppInfo> {
     let lxapp_dir_name = lxapp_dir_name.trim();
     let lxapp_dir = config.target_dir.join(lxapp_dir_name);
+    // The lxapp's appId is namespaced (lingxia.lxapp.<name>) and must match the
+    // host's homeAppId / bundle appId; only the directory name stays simple.
+    let app_id = super::types::default_lxapp_app_id(&config.name);
     println!("  Creating LxApp project...");
     create_lxapp_from_template(
         &lxapp_dir,
         lxapp_dir_name,
-        lxapp_dir_name,
+        &app_id,
         &config.product_name,
         framework,
         app_service,
@@ -208,7 +211,8 @@ pub(super) fn create_lxapp_project(
         lingxia_types_version,
     )?;
     Ok(LxAppInfo {
-        app_id: lxapp_dir_name.to_string(),
+        app_id,
+        dir_name: lxapp_dir_name.to_string(),
     })
 }
 

@@ -30,6 +30,33 @@ pub fn validate_product_name(name: &str) -> Result<()> {
     Ok(())
 }
 
+/// Validate an lxapp `appId`. Allows dotted, namespaced ids
+/// (e.g. `lingxia.lxapp.demo`) as well as a bare single segment. Each
+/// dot-separated segment must be non-empty and contain only alphanumeric
+/// characters, underscores, or hyphens.
+pub fn validate_lxapp_id(app_id: &str) -> Result<()> {
+    let app_id = app_id.trim();
+    if app_id.is_empty() {
+        return Err(anyhow!("LxApp ID cannot be empty"));
+    }
+    for segment in app_id.split('.') {
+        if segment.is_empty() {
+            return Err(anyhow!(
+                "LxApp ID segments cannot be empty (no leading, trailing, or doubled dots)"
+            ));
+        }
+        if !segment
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '_' || c == '-')
+        {
+            return Err(anyhow!(
+                "LxApp ID can only contain alphanumeric characters, underscores, hyphens, and dots"
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// Validate package ID format
 pub fn validate_package_id(package_id: &str) -> Result<()> {
     if package_id.is_empty() {
@@ -92,4 +119,27 @@ pub fn swift_target_name_from_project_name(project_name: &str) -> String {
     }
 
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validate_lxapp_id_accepts_dotted_and_bare() {
+        assert!(validate_lxapp_id("lingxia.lxapp.demo").is_ok());
+        assert!(validate_lxapp_id("demo").is_ok());
+        assert!(validate_lxapp_id("home-lxapp").is_ok());
+        assert!(validate_lxapp_id("a.b_c.d-e").is_ok());
+    }
+
+    #[test]
+    fn validate_lxapp_id_rejects_bad_segments() {
+        assert!(validate_lxapp_id("").is_err());
+        assert!(validate_lxapp_id("lingxia..demo").is_err());
+        assert!(validate_lxapp_id(".demo").is_err());
+        assert!(validate_lxapp_id("demo.").is_err());
+        assert!(validate_lxapp_id("has space").is_err());
+        assert!(validate_lxapp_id("bad/slash").is_err());
+    }
 }
