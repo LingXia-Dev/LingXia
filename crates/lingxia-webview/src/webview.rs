@@ -952,7 +952,44 @@ impl WebView {
     /// selector, scrolls it into view, and dispatches a synthetic
     /// `MouseEvent` (or sets `focus="true"` for `<lx-*>` custom elements
     /// that proxy focus to a native overlay).
-    #[cfg(any(target_os = "ios", all(target_os = "linux", target_env = "ohos")))]
+    /// Run a page-input action script and decode its `{ok, error, interactable}`
+    /// result.
+    #[cfg(any(
+        target_os = "ios",
+        all(feature = "webview-input", target_os = "macos"),
+        all(target_os = "linux", target_env = "ohos")
+    ))]
+    async fn run_js_action(&self, script: &str) -> Result<(), WebViewInputError> {
+        let result = self
+            .inner
+            .eval_js(script)
+            .await
+            .map_err(WebViewInputError::Script)?;
+        if result.get("ok").and_then(|v| v.as_bool()) == Some(true) {
+            return Ok(());
+        }
+        let err_msg = result
+            .get("error")
+            .and_then(|v| v.as_str())
+            .unwrap_or("input action failed")
+            .to_string();
+        if result.get("interactable").and_then(|v| v.as_bool()) == Some(false) {
+            Err(WebViewInputError::ElementNotInteractable(err_msg))
+        } else {
+            Err(WebViewInputError::ElementNotFound(err_msg))
+        }
+    }
+
+    /// Click an element by synthesizing DOM events. The shared input mechanism
+    /// for platforms/hosts where native event dispatch cannot reach the page:
+    /// iOS (no `UITouch` synthesis), OpenHarmony, and macOS when the WebView is
+    /// detached (AppUI renders pages off-surface). `lx-` custom elements proxy
+    /// focus to their native overlay instead of receiving mouse events.
+    #[cfg(any(
+        target_os = "ios",
+        all(feature = "webview-input", target_os = "macos"),
+        all(target_os = "linux", target_env = "ohos")
+    ))]
     pub(crate) async fn click_via_js(
         &self,
         selector: &str,
@@ -983,31 +1020,93 @@ impl WebView {
               }} \
               if (typeof el.focus === 'function') {{ try {{ el.focus({{preventScroll:true}}); }} catch(_e) {{ try {{ el.focus(); }} catch(__){{}} }} }} \
               const opts = {{ bubbles:true, cancelable:true, view:window, clientX: rect.left + rect.width/2, clientY: rect.top + rect.height/2 }}; \
+              try {{ if (window.PointerEvent) el.dispatchEvent(new PointerEvent('pointerdown', Object.assign({{pointerId:1, isPrimary:true, pointerType:'mouse'}}, opts))); }} catch(_e) {{}} \
               try {{ el.dispatchEvent(new MouseEvent('mousedown', opts)); }} catch(_e) {{}} \
+              try {{ if (window.PointerEvent) el.dispatchEvent(new PointerEvent('pointerup', Object.assign({{pointerId:1, isPrimary:true, pointerType:'mouse'}}, opts))); }} catch(_e) {{}} \
               try {{ el.dispatchEvent(new MouseEvent('mouseup', opts)); }} catch(_e) {{}} \
               try {{ el.dispatchEvent(new MouseEvent('click', opts)); }} catch(_e) {{}} \
               return {{ ok:true, count:els.length }}; \
             }})({selector_json}, {idx})"
         );
-        let result = self
-            .inner
-            .eval_js(&script)
-            .await
-            .map_err(WebViewInputError::Script)?;
-        if result.get("ok").and_then(|v| v.as_bool()) == Some(true) {
-            Ok(())
-        } else {
-            let err_msg = result
-                .get("error")
-                .and_then(|v| v.as_str())
-                .unwrap_or("click failed")
-                .to_string();
-            if result.get("interactable").and_then(|v| v.as_bool()) == Some(false) {
-                Err(WebViewInputError::ElementNotInteractable(err_msg))
-            } else {
-                Err(WebViewInputError::ElementNotFound(err_msg))
-            }
-        }
+        self.run_js_action(&script).await
+    }
+
+    /// Type text into an editable element by synthesizing DOM events. Goes
+    /// through the native value setter so framework-tracked inputs (React) fire
+    /// their `onChange`. `lx-` custom elements set their value + sync native.
+    #[cfg(any(
+        target_os = "ios",
+        all(feature = "webview-input", target_os = "macos"),
+        all(target_os = "linux", target_env = "ohos")
+    ))]
+    pub(crate) async fn type_via_js(
+        &self,
+        selector: &str,
+        index: Option<usize>,
+        text: &str,
+        replace: bool,
+    ) -> Result<(), WebViewInputError> {
+        let selector_json = serde_json::to_string(selector)
+            .map_err(|err| WebViewInputError::Platform(format!("Invalid selector: {err}")))?;
+        let text_json = serde_json::to_string(text)
+            .map_err(|err| WebViewInputError::Platform(format!("Invalid text: {err}")))?;
+        let idx = index.unwrap_or(0);
+        let script = format!(
+            "((sel, i, text, replace) => {{ \
+              const els = document.querySelectorAll(sel); \
+              if (!els.length || i < 0 || i >= els.length) return {{ ok:false, error:'no match', count:els.length }}; \
+              const el = els[i]; \
+              try {{ el.scrollIntoView({{block:'center', inline:'center'}}); }} catch(_e) {{}} \
+              if (typeof el.focus === 'function') {{ try {{ el.focus({{preventScroll:true}}); }} catch(_e) {{ try {{ el.focus(); }} catch(__){{}} }} }} \
+              const tag = (el.tagName || '').toLowerCase(); \
+              if (tag === 'input' || tag === 'textarea') {{ \
+                const proto = tag === 'textarea' ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype; \
+                const desc = Object.getOwnPropertyDescriptor(proto, 'value'); \
+                const next = (replace ? '' : (el.value || '')) + text; \
+                if (desc && desc.set) {{ desc.set.call(el, next); }} else {{ el.value = next; }} \
+                el.dispatchEvent(new InputEvent('input', {{ bubbles:true, cancelable:true, data:text, inputType:'insertText' }})); \
+                el.dispatchEvent(new Event('change', {{ bubbles:true }})); \
+                return {{ ok:true, count:els.length }}; \
+              }} \
+              if (el.isContentEditable) {{ \
+                el.textContent = (replace ? '' : (el.textContent || '')) + text; \
+                el.dispatchEvent(new InputEvent('input', {{ bubbles:true, data:text, inputType:'insertText' }})); \
+                return {{ ok:true, count:els.length }}; \
+              }} \
+              if (tag.indexOf('lx-') === 0) {{ \
+                try {{ el.value = (replace ? '' : (el.value || '')) + text; }} catch(_e) {{}} \
+                if (typeof el.syncNativeProps === 'function') {{ try {{ el.syncNativeProps(); }} catch(_e) {{}} }} \
+                el.dispatchEvent(new Event('input', {{ bubbles:true }})); \
+                return {{ ok:true, count:els.length, native:true }}; \
+              }} \
+              return {{ ok:false, error:'not editable', interactable:false, count:els.length }}; \
+            }})({selector_json}, {idx}, {text_json}, {replace})"
+        );
+        self.run_js_action(&script).await
+    }
+
+    /// Press a key by synthesizing keydown/keyup on the focused element.
+    #[cfg(any(
+        target_os = "ios",
+        all(feature = "webview-input", target_os = "macos"),
+        all(target_os = "linux", target_env = "ohos")
+    ))]
+    pub(crate) async fn press_via_js(&self, key: &str) -> Result<(), WebViewInputError> {
+        let key_json = serde_json::to_string(key)
+            .map_err(|err| WebViewInputError::Platform(format!("Invalid key: {err}")))?;
+        let script = format!(
+            "((key) => {{ \
+              const el = document.activeElement || document.body; \
+              const map = {{ enter:'Enter', 'return':'Enter', tab:'Tab', esc:'Escape', escape:'Escape', backspace:'Backspace', 'delete':'Delete', forwarddelete:'Delete', space:' ', up:'ArrowUp', down:'ArrowDown', left:'ArrowLeft', right:'ArrowRight', arrowup:'ArrowUp', arrowdown:'ArrowDown', arrowleft:'ArrowLeft', arrowright:'ArrowRight', home:'Home', end:'End', pageup:'PageUp', pagedown:'PageDown' }}; \
+              const norm = String(key).toLowerCase(); \
+              const k = map[norm] || key; \
+              const opts = {{ bubbles:true, cancelable:true, composed:true, key:k, view:window }}; \
+              el.dispatchEvent(new KeyboardEvent('keydown', opts)); \
+              el.dispatchEvent(new KeyboardEvent('keyup', opts)); \
+              return {{ ok:true }}; \
+            }})({key_json})"
+        );
+        self.run_js_action(&script).await
     }
 
     pub async fn current_url(&self) -> Result<Option<String>, WebViewError> {
@@ -1206,9 +1305,16 @@ impl WebViewInputController for WebView {
         _selector: &str,
         _options: ClickOptions,
     ) -> Result<(), WebViewInputError> {
+        // macOS: native NSEvent input when the WebView is window-attached
+        // (trusted events/IME); otherwise (AppUI off-surface render) fall back
+        // to DOM-level JS synthesis. iOS/OpenHarmony always use JS (no native
+        // touch synthesis).
         #[cfg(all(feature = "webview-input", target_os = "macos"))]
         {
-            return self.inner.click_inner(_selector, _options).await;
+            if self.inner.is_window_attached().await {
+                return self.inner.click_inner(_selector, _options).await;
+            }
+            return self.click_via_js(_selector, _options.index).await;
         }
         #[cfg(all(feature = "webview-input", target_os = "windows"))]
         {
@@ -1218,11 +1324,10 @@ impl WebViewInputController for WebView {
         {
             return self.inner.click_inner(_selector, _options).await;
         }
-        #[cfg(target_os = "ios")]
-        {
-            return self.click_via_js(_selector, _options.index).await;
-        }
-        #[cfg(all(target_os = "linux", target_env = "ohos"))]
+        #[cfg(any(
+            target_os = "ios",
+            all(target_os = "linux", target_env = "ohos")
+        ))]
         {
             return self.click_via_js(_selector, _options.index).await;
         }
@@ -1240,11 +1345,25 @@ impl WebViewInputController for WebView {
     ) -> Result<(), WebViewInputError> {
         #[cfg(all(feature = "webview-input", target_os = "macos"))]
         {
-            return self.inner.type_text_inner(_selector, _text, _options).await;
+            if self.inner.is_window_attached().await {
+                return self.inner.type_text_inner(_selector, _text, _options).await;
+            }
+            return self
+                .type_via_js(_selector, _options.index, _text, _options.replace)
+                .await;
         }
         #[cfg(all(feature = "webview-input", target_os = "windows"))]
         {
             return self.inner.type_text_inner(_selector, _text, _options).await;
+        }
+        #[cfg(any(
+            target_os = "ios",
+            all(target_os = "linux", target_env = "ohos")
+        ))]
+        {
+            return self
+                .type_via_js(_selector, _options.index, _text, _options.replace)
+                .await;
         }
         #[allow(unreachable_code)]
         Err(WebViewInputError::Unsupported(
@@ -1258,12 +1377,25 @@ impl WebViewInputController for WebView {
         _text: &str,
         _options: FillOptions,
     ) -> Result<(), WebViewInputError> {
-        #[cfg(all(
-            feature = "webview-input",
-            any(target_os = "macos", target_os = "windows")
-        ))]
+        #[cfg(all(feature = "webview-input", target_os = "macos"))]
         {
-            let _ = _options;
+            if self.inner.is_window_attached().await {
+                return self
+                    .inner
+                    .type_text_inner(
+                        _selector,
+                        _text,
+                        TypeOptions {
+                            index: _options.index,
+                            replace: true,
+                        },
+                    )
+                    .await;
+            }
+            return self.type_via_js(_selector, _options.index, _text, true).await;
+        }
+        #[cfg(all(feature = "webview-input", target_os = "windows"))]
+        {
             return self
                 .inner
                 .type_text_inner(
@@ -1276,6 +1408,13 @@ impl WebViewInputController for WebView {
                 )
                 .await;
         }
+        #[cfg(any(
+            target_os = "ios",
+            all(target_os = "linux", target_env = "ohos")
+        ))]
+        {
+            return self.type_via_js(_selector, _options.index, _text, true).await;
+        }
         #[allow(unreachable_code)]
         Err(WebViewInputError::Unsupported(
             "input control is not implemented for this platform",
@@ -1285,11 +1424,21 @@ impl WebViewInputController for WebView {
     async fn press(&self, _key: &str, _options: PressOptions) -> Result<(), WebViewInputError> {
         #[cfg(all(feature = "webview-input", target_os = "macos"))]
         {
-            return self.inner.press_inner(_key, _options).await;
+            if self.inner.is_window_attached().await {
+                return self.inner.press_inner(_key, _options).await;
+            }
+            return self.press_via_js(_key).await;
         }
         #[cfg(all(feature = "webview-input", target_os = "windows"))]
         {
             return self.inner.press_inner(_key, _options).await;
+        }
+        #[cfg(any(
+            target_os = "ios",
+            all(target_os = "linux", target_env = "ohos")
+        ))]
+        {
+            return self.press_via_js(_key).await;
         }
         #[allow(unreachable_code)]
         Err(WebViewInputError::Unsupported(
