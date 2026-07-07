@@ -822,7 +822,10 @@ fn dev_page_info(
 
 /// Reports whether direct WebView input actions are supported on this platform build.
 pub fn lxapp_dev_page_input_supported() -> bool {
-    cfg!(all(feature = "webview-input", target_os = "macos"))
+    cfg!(all(
+        feature = "webview-input",
+        any(target_os = "macos", target_os = "windows")
+    ))
 }
 
 fn build_dev_page_query_script(
