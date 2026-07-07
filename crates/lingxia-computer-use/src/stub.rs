@@ -3,8 +3,8 @@
 
 use crate::error::{Error, Result};
 use crate::model::{
-    Ack, Capabilities, Capture, CaptureTarget, Display, Doctor, Modifier, MouseButton, Pixel,
-    Window, WindowQuery, WindowTarget,
+    Ack, Capabilities, Capture, CaptureTarget, Clipboard, Display, Doctor, Modifier, MouseButton,
+    Pixel, Window, WindowQuery, WindowTarget,
 };
 
 fn unsupported<T>() -> Result<T> {
@@ -99,5 +99,18 @@ pub fn key_down(_name: &str) -> Result<Ack> {
     unsupported()
 }
 pub fn key_up(_name: &str) -> Result<Ack> {
+    unsupported()
+}
+
+pub fn clipboard_get() -> Result<Clipboard> {
+    unsupported()
+}
+pub fn clipboard_set(_text: &str) -> Result<Ack> {
+    unsupported()
+}
+pub fn clipboard_clear() -> Result<Ack> {
+    unsupported()
+}
+pub fn clipboard_paste() -> Result<Ack> {
     unsupported()
 }

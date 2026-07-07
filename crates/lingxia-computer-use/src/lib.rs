@@ -11,9 +11,17 @@ pub mod model;
 
 pub use error::{Error, ErrorCode, Result};
 pub use model::{
-    Ack, Capabilities, Capture, CaptureTarget, Display, Doctor, Modifier, MouseButton, Pixel, Rect,
-    Window, WindowQuery, WindowTarget,
+    Ack, Capabilities, Capture, CaptureTarget, Clipboard, Display, Doctor, Modifier, MouseButton,
+    Pixel, Rect, Window, WindowQuery, WindowTarget,
 };
+
+/// Clipboard access (`desktop clipboard ...`).
+pub mod clipboard {
+    pub use crate::backend::{
+        clipboard_clear as clear, clipboard_get as get, clipboard_paste as paste,
+        clipboard_set as set,
+    };
+}
 
 /// Synthetic input (`desktop pointer` / `desktop key`). All mutating.
 pub mod input {

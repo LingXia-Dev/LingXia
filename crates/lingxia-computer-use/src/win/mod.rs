@@ -9,8 +9,12 @@ use windows::core::{BOOL, PWSTR};
 use windows::Win32::Foundation::{CloseHandle, HANDLE, HWND, LPARAM, RECT, TRUE};
 
 mod capture;
+mod clipboard;
 mod input;
 mod window_ops;
+pub use clipboard::{
+    clear as clipboard_clear, get as clipboard_get, paste as clipboard_paste, set as clipboard_set,
+};
 pub use capture::{pixel, screenshot};
 pub use input::{
     key_down, key_press, key_type, key_up, pointer_click, pointer_down, pointer_drag, pointer_move,
@@ -86,6 +90,7 @@ pub fn doctor() -> Doctor {
             window_management: true,
             pointer: true,
             key: true,
+            clipboard: true,
             ..Capabilities::default()
         },
     }

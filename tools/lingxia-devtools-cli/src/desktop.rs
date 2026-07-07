@@ -107,6 +107,37 @@ pub enum DesktopCommand {
         #[command(subcommand)]
         action: KeyAction,
     },
+    /// Read/write the system clipboard
+    Clipboard {
+        #[command(subcommand)]
+        action: ClipboardAction,
+    },
+}
+
+#[derive(Subcommand, Clone)]
+pub enum ClipboardAction {
+    /// Read the clipboard (read-only)
+    Get {
+        #[arg(long)]
+        json: bool,
+    },
+    /// Set the clipboard text
+    Set {
+        #[arg(long)]
+        text: String,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Empty the clipboard
+    Clear {
+        #[arg(long)]
+        json: bool,
+    },
+    /// Paste into the focused control (Ctrl+V)
+    Paste {
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Clone, Copy, clap::ValueEnum)]
@@ -324,6 +355,35 @@ pub fn execute(options: DesktopOptions) -> ! {
             run_pointer(action, allow_control, allow_destructive)
         }
         DesktopCommand::Key { action } => run_key(action, allow_control, allow_destructive),
+        DesktopCommand::Clipboard { action } => {
+            run_clipboard(action, allow_control, allow_destructive)
+        }
+    }
+}
+
+fn run_clipboard(action: ClipboardAction, allow_control: bool, allow_destructive: bool) -> ! {
+    use cu::clipboard as c;
+    match action {
+        ClipboardAction::Get { json } => finish(json, c::get(), print_clipboard),
+        ClipboardAction::Set { text, json } => {
+            let r = gate(allow_control, false, allow_destructive).and_then(|_| c::set(&text));
+            finish(json, r, print_ack)
+        }
+        ClipboardAction::Clear { json } => {
+            let r = gate(allow_control, false, allow_destructive).and_then(|_| c::clear());
+            finish(json, r, print_ack)
+        }
+        ClipboardAction::Paste { json } => {
+            let r = gate(allow_control, false, allow_destructive).and_then(|_| c::paste());
+            finish(json, r, print_ack)
+        }
+    }
+}
+
+fn print_clipboard(c: &cu::Clipboard) {
+    match &c.text {
+        Some(t) => println!("{t}"),
+        None => println!("(clipboard has no text)"),
     }
 }
 

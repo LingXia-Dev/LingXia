@@ -124,6 +124,13 @@ pub enum WindowTarget {
     Match(WindowQuery),
 }
 
+/// Clipboard contents (`desktop clipboard get`).
+#[derive(Debug, Clone, Serialize)]
+pub struct Clipboard {
+    pub available_formats: Vec<String>,
+    pub text: Option<String>,
+}
+
 /// A single pixel's color (`desktop pixel`).
 #[derive(Debug, Clone, Serialize)]
 pub struct Pixel {
