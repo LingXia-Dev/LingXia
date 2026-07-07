@@ -110,6 +110,16 @@ pub fn dev_session_active() -> bool {
         .unwrap_or(false)
 }
 
+/// Whether this process is the LingXia Runner (the `lingxia dev` device
+/// simulator), which sets `LINGXIA_RUNNER` on its child process. Unlike a real
+/// host app in dev mode, the Runner lacks host-declared surfaces such as the
+/// terminal; the bridge exposes this so apps can hide those affordances.
+pub fn runner_active() -> bool {
+    std::env::var("LINGXIA_RUNNER")
+        .map(|value| !value.trim().is_empty())
+        .unwrap_or(false)
+}
+
 /// Initialize the LxApps singleton using the host app configuration from app-context.
 pub fn init(runtime: Platform) -> Option<String> {
     // Set up panic hook to capture panic information

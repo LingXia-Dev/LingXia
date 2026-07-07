@@ -46,6 +46,14 @@ export function isDevSession(): boolean {
   return BRIDGE_CONFIG.dev === true;
 }
 
+// True when running inside the LingXia Runner (the `lingxia dev` device
+// simulator), which the host marks in `__LX_BRIDGE_CFG`. Unlike a real host
+// app in dev mode, the Runner lacks host-declared surfaces such as the
+// terminal — apps read this to hide those affordances.
+export function isRunner(): boolean {
+  return BRIDGE_CONFIG.runner === true;
+}
+
 export function getCommunicationMethod(): CommunicationMethod {
   if (BRIDGE_CONFIG.os === 'iOS' || BRIDGE_CONFIG.os === 'macOS') return 'webkit';
   if (BRIDGE_CONFIG.os === 'Harmony') return 'messageport';

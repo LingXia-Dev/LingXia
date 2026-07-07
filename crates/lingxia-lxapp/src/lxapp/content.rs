@@ -293,12 +293,20 @@ fn build_bridge_config_script(bridge_nonce: Option<&str>) -> String {
         ""
     };
 
+    // Runner marker: the bridge reads this to expose `platform.isRunner()` so
+    // apps can hide Runner-unavailable surfaces (e.g. the terminal).
+    let runner_kv = if super::is_runner() {
+        ",runner:true"
+    } else {
+        ""
+    };
+
     let generated_kv = format!("{}{}", nonce_kv, apple_downstream_kv);
 
     // Merge rather than overwrite so developer-provided config can coexist.
     format!(
-        r#"<script>(function(){{var c=window.__LX_BRIDGE_CFG||{{}}; window.__LX_BRIDGE_CFG=Object.assign({{}},c,{{os:"{}"{}{}}});}})();</script>"#,
-        bridge_os, generated_kv, dev_kv
+        r#"<script>(function(){{var c=window.__LX_BRIDGE_CFG||{{}}; window.__LX_BRIDGE_CFG=Object.assign({{}},c,{{os:"{}"{}{}{}}});}})();</script>"#,
+        bridge_os, generated_kv, dev_kv, runner_kv
     )
 }
 

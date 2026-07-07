@@ -5,6 +5,11 @@ const RUNNER_EXECUTABLE_NAME: &str = "LingXiaRunner";
 const RUNNER_LXAPP_PATH_ENV: &str = "LINGXIA_LXAPP_PATH";
 const RUNNER_DEV_WS_URL_ENV: &str = "LINGXIA_DEV_WS_URL";
 const RUNNER_LINGXIAO_MOCK_DIR_ENV: &str = "LINGXIAO_MOCK_DIR";
+/// Marks the child process as the LingXia Runner (vs a real host app). The core
+/// runtime injects `runner:true` into `__LX_BRIDGE_CFG` so the View bridge can
+/// expose `platform.isRunner()`; the Runner lacks host-declared surfaces like
+/// the terminal, so apps use this to hide those affordances.
+const RUNNER_MARKER_ENV: &str = "LINGXIA_RUNNER";
 const REQUIRED_RUNNER_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Windows runner: standalone executable installed by
@@ -261,6 +266,7 @@ fn launch_runner_for_lxapp(
     }
 
     let mut command = Command::new(&executable_path);
+    command.env(RUNNER_MARKER_ENV, "1");
     command.env(RUNNER_LXAPP_PATH_ENV, lxapp_path);
     command.env(RUNNER_DEV_WS_URL_ENV, ws_url);
     if let Some(device) = runner_device.map(str::trim).filter(|s| !s.is_empty()) {
@@ -485,6 +491,7 @@ fn launch_windows_runner_for_lxapp(
     #[cfg(not(target_os = "windows"))]
     let child = {
         let mut command = Command::new(&exe_path);
+        command.env(RUNNER_MARKER_ENV, "1");
         command.arg("--lxapp-path").arg(lxapp_path);
         command.arg("--dev-ws-url").arg(ws_url);
         command.arg("--asset-dir").arg(&assets_dir);
@@ -724,6 +731,11 @@ fn shell_execute_windows_runner(
     use ::windows::Win32::UI::WindowsAndMessaging::{AllowSetForegroundWindow, SW_SHOWNORMAL};
     use ::windows::core::PCWSTR;
     use std::mem::size_of;
+
+    // ShellExecuteExW gives the child our environment block (no per-child env
+    // param), so stamp the runner marker on this process. Safe in practice: a
+    // single write of a var no other thread reads, done just before launch.
+    unsafe { std::env::set_var(RUNNER_MARKER_ENV, "1") };
 
     let mut params = vec![
         "--lxapp-path".to_string(),

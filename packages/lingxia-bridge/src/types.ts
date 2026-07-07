@@ -5,6 +5,10 @@ export interface BridgeConfig {
   // Set by the host when attached to a `lingxia dev` session; gates the
   // bridge's own trace logging.
   dev?: boolean;
+  // Set by the LingXia Runner (the `lingxia dev` device simulator). Distinct
+  // from a real host app in dev mode; apps use it to hide Runner-unavailable
+  // affordances (e.g. the terminal surface).
+  runner?: boolean;
 }
 
 export interface RuntimeConfig {
@@ -179,6 +183,7 @@ export interface LingXiaBridgeInterface {
     isMacOS(): boolean;
     isWindows(): boolean;
     isDesktop(): boolean;
+    isRunner(): boolean;
     getOS(): string;
   };
   dom: {
