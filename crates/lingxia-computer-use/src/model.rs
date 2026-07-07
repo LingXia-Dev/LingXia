@@ -73,6 +73,14 @@ impl WindowQuery {
         self.malformed
     }
 
+    /// A query that matches windows owned by `pid`.
+    pub fn by_pid(pid: u32) -> Self {
+        WindowQuery {
+            pid: Some(pid),
+            ..Default::default()
+        }
+    }
+
     /// Parse the proposal's window match grammar:
     /// bare `text`, or `title:`, `class:`, `process:`, `pid:` prefixes.
     pub fn parse(input: &str) -> Self {
@@ -211,6 +219,29 @@ impl AxQuery {
         }
         true
     }
+}
+
+/// A running process (`desktop process list`).
+#[derive(Debug, Clone, Serialize)]
+pub struct ProcessInfo {
+    pub pid: u32,
+    pub name: String,
+}
+
+/// Result of launching an app (`desktop app launch`).
+#[derive(Debug, Clone, Serialize)]
+pub struct LaunchResult {
+    pub pid: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub window: Option<Window>,
+}
+
+/// How `desktop app quit` selects its target.
+#[derive(Debug, Clone)]
+pub enum QuitTarget {
+    Match(WindowQuery),
+    Pid(u32),
+    Window(String),
 }
 
 /// Clipboard contents (`desktop clipboard get`).

@@ -4,7 +4,8 @@
 use crate::error::{Error, Result};
 use crate::model::{
     Ack, AxNode, AxQuery, Capabilities, Capture, CaptureTarget, Clipboard, Display, Doctor,
-    Modifier, MouseButton, Pixel, Window, WindowQuery, WindowTarget,
+    LaunchResult, Modifier, MouseButton, Pixel, ProcessInfo, QuitTarget, Window, WindowQuery,
+    WindowTarget,
 };
 
 fn unsupported<T>() -> Result<T> {
@@ -154,5 +155,23 @@ pub fn wait_window(_q: &WindowQuery, _visible: Option<bool>, _timeout_ms: u64) -
     unsupported()
 }
 pub fn wait_pixel(_x: i32, _y: i32, _hex: &str, _tol: u8, _timeout_ms: u64) -> Result<Pixel> {
+    unsupported()
+}
+
+pub fn process_list(_filter: Option<&str>) -> Result<Vec<ProcessInfo>> {
+    unsupported()
+}
+pub fn process_kill(_pid: u32, _force: bool) -> Result<Ack> {
+    unsupported()
+}
+pub fn app_launch(
+    _app: &str,
+    _args: &[String],
+    _wait_window: Option<&str>,
+    _timeout_ms: u64,
+) -> Result<LaunchResult> {
+    unsupported()
+}
+pub fn app_quit(_target: QuitTarget, _force: bool) -> Result<Ack> {
     unsupported()
 }

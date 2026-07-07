@@ -124,6 +124,77 @@ pub enum DesktopCommand {
         #[command(subcommand)]
         action: WaitAction,
     },
+    /// Launch / quit applications
+    App {
+        #[command(subcommand)]
+        action: AppAction,
+    },
+    /// Inspect / kill processes
+    Process {
+        #[command(subcommand)]
+        action: ProcessAction,
+    },
+    /// One-shot window snapshot: window info + screenshot + ax tree (JSON)
+    Snapshot {
+        #[arg(long)]
+        window: String,
+        /// Skip the accessibility tree
+        #[arg(long)]
+        no_ax: bool,
+        /// Limit ax tree depth
+        #[arg(long)]
+        depth: Option<u32>,
+    },
+}
+
+#[derive(Subcommand, Clone)]
+pub enum AppAction {
+    /// Launch an app (path or PATH-resolved command), optionally waiting for a window
+    Launch {
+        #[arg(long)]
+        app: String,
+        #[arg(long)]
+        args: Vec<String>,
+        #[arg(long)]
+        wait_window: Option<String>,
+        #[arg(long, default_value_t = 10000)]
+        timeout_ms: u64,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Quit an app (graceful WM_CLOSE, or --force to terminate). Destructive.
+    Quit {
+        #[arg(long = "match")]
+        match_query: Option<String>,
+        #[arg(long)]
+        pid: Option<u32>,
+        #[arg(long)]
+        window: Option<String>,
+        #[arg(long)]
+        force: bool,
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+#[derive(Subcommand, Clone)]
+pub enum ProcessAction {
+    /// List running processes (read-only)
+    List {
+        #[arg(long = "match")]
+        match_query: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Terminate a process by pid. Destructive.
+    Kill {
+        #[arg(long)]
+        pid: u32,
+        #[arg(long)]
+        force: bool,
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Subcommand, Clone)]
@@ -482,7 +553,108 @@ pub fn execute(options: DesktopOptions) -> ! {
         }
         DesktopCommand::Ax { action } => run_ax(action, allow_control, allow_destructive),
         DesktopCommand::Wait { action } => run_wait(action),
+        DesktopCommand::App { action } => run_app(action, allow_control, allow_destructive),
+        DesktopCommand::Process { action } => run_process(action, allow_control, allow_destructive),
+        DesktopCommand::Snapshot {
+            window,
+            no_ax,
+            depth,
+        } => run_snapshot(window, no_ax, depth),
     }
+}
+
+fn run_app(action: AppAction, allow_control: bool, allow_destructive: bool) -> ! {
+    match action {
+        AppAction::Launch {
+            app,
+            args,
+            wait_window,
+            timeout_ms,
+            json,
+        } => {
+            let r = gate(allow_control, false, allow_destructive)
+                .and_then(|_| cu::app::launch(&app, &args, wait_window.as_deref(), timeout_ms));
+            finish(json, r, |lr: &cu::LaunchResult| {
+                let win = lr
+                    .window
+                    .as_ref()
+                    .map(|w| format!(" window {}", w.id))
+                    .unwrap_or_default();
+                println!("launched pid {}{win}", lr.pid);
+            })
+        }
+        AppAction::Quit {
+            match_query,
+            pid,
+            window,
+            force,
+            json,
+        } => {
+            let target = match (match_query, pid, window) {
+                (Some(q), None, None) => Ok(cu::QuitTarget::Match(cu::WindowQuery::parse(&q))),
+                (None, Some(p), None) => Ok(cu::QuitTarget::Pid(p)),
+                (None, None, Some(w)) => Ok(cu::QuitTarget::Window(w)),
+                _ => Err(cu::Error::Usage(
+                    "pass exactly one of --match / --pid / --window".into(),
+                )),
+            };
+            let r = gate(allow_control, true, allow_destructive)
+                .and(target)
+                .and_then(|t| cu::app::quit(t, force));
+            finish(json, r, print_ack)
+        }
+    }
+}
+
+fn run_process(action: ProcessAction, allow_control: bool, allow_destructive: bool) -> ! {
+    match action {
+        ProcessAction::List { match_query, json } => {
+            finish(json, cu::process::list(match_query.as_deref()), |ps| {
+                for p in ps {
+                    println!("{:<8}  {}", p.pid, p.name);
+                }
+            })
+        }
+        ProcessAction::Kill { pid, force, json } => {
+            let r = gate(allow_control, true, allow_destructive)
+                .and_then(|_| cu::process::kill(pid, force));
+            finish(json, r, print_ack)
+        }
+    }
+}
+
+fn run_snapshot(window: String, no_ax: bool, depth: Option<u32>) -> ! {
+    use base64::Engine as _;
+    let target = cu::WindowTarget::Id(window.clone());
+    let info = match cu::window::status(&target) {
+        Ok(w) => w,
+        Err(e) => finish::<()>(true, Err(e), |_| {}),
+    };
+    let shot = cu::screenshot(cu::CaptureTarget::Window(window.clone())).ok();
+    let ax = if no_ax {
+        None
+    } else {
+        cu::ax::tree(&window, depth, None).ok()
+    };
+    let envelope = serde_json::json!({
+        "target": "desktop",
+        "kind": "snapshot",
+        "window": info,
+        "screenshot": shot.map(|c| serde_json::json!({
+            "format": "png",
+            "width": c.width,
+            "height": c.height,
+            "occlusion_independent": c.occlusion_independent,
+            "image": { "mime": "image/png", "encoding": "base64",
+                       "data": base64::engine::general_purpose::STANDARD.encode(&c.png) },
+        })),
+        "ax": ax,
+    });
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&envelope).unwrap_or_default()
+    );
+    std::process::exit(0);
 }
 
 fn run_ax(action: AxAction, allow_control: bool, allow_destructive: bool) -> ! {
@@ -519,9 +691,12 @@ fn run_ax(action: AxAction, allow_control: bool, allow_destructive: bool) -> ! {
         AxAction::Select(s) => ax_act(s, allow_control, allow_destructive, cu::ax::select),
         AxAction::Expand(s) => ax_act(s, allow_control, allow_destructive, cu::ax::expand),
         AxAction::Collapse(s) => ax_act(s, allow_control, allow_destructive, cu::ax::collapse),
-        AxAction::ScrollIntoView(s) => {
-            ax_act(s, allow_control, allow_destructive, cu::ax::scroll_into_view)
-        }
+        AxAction::ScrollIntoView(s) => ax_act(
+            s,
+            allow_control,
+            allow_destructive,
+            cu::ax::scroll_into_view,
+        ),
         AxAction::SetValue { sel, value } => {
             ax_act(sel, allow_control, allow_destructive, move |w, q| {
                 cu::ax::set_value(w, q, &value)

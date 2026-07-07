@@ -12,6 +12,7 @@ mod ax;
 mod capture;
 mod clipboard;
 mod input;
+mod process;
 mod window_ops;
 pub use ax::{
     collapse as ax_collapse, expand as ax_expand, focus as ax_focus, invoke as ax_invoke,
@@ -26,6 +27,7 @@ pub use input::{
     key_down, key_press, key_type, key_up, pointer_click, pointer_down, pointer_drag, pointer_move,
     pointer_scroll, pointer_up,
 };
+pub use process::{app_launch, app_quit, process_kill, process_list};
 pub use window_ops::{
     activate as window_activate, close as window_close, focus as window_focus,
     maximize as window_maximize, minimize as window_minimize, move_to as window_move,

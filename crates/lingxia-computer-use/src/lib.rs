@@ -12,8 +12,19 @@ pub mod model;
 pub use error::{Error, ErrorCode, Result};
 pub use model::{
     Ack, AxNode, AxQuery, Capabilities, Capture, CaptureTarget, Clipboard, Display, Doctor,
-    Modifier, MouseButton, Pixel, Rect, Window, WindowQuery, WindowTarget,
+    LaunchResult, Modifier, MouseButton, Pixel, ProcessInfo, QuitTarget, Rect, Window, WindowQuery,
+    WindowTarget,
 };
+
+/// App lifecycle (`desktop app ...`).
+pub mod app {
+    pub use crate::backend::{app_launch as launch, app_quit as quit};
+}
+
+/// Process control (`desktop process ...`).
+pub mod process {
+    pub use crate::backend::{process_kill as kill, process_list as list};
+}
 
 /// Native accessibility (`desktop ax ...`).
 pub mod ax {
