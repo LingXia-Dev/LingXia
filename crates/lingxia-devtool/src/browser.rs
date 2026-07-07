@@ -341,6 +341,17 @@ fn handle_browser_command_impl(
             run_async(lingxia_browser::clear_network_capture(&tab_id))?;
             Ok(None)
         }
+        // Network capture depends on the webview backend's devtools protocol and
+        // is compiled in only where available (arms above). Elsewhere answer with
+        // a clear capability error instead of the generic "unknown handler", so
+        // callers can tell "not supported here" apart from a genuine typo.
+        #[cfg(not(target_os = "windows"))]
+        handlers::browser::NETWORK_ENABLE
+        | handlers::browser::NETWORK_DISABLE
+        | handlers::browser::NETWORK_LIST
+        | handlers::browser::NETWORK_CLEAR => {
+            Err("not supported: browser network capture is unavailable in this session".to_string())
+        }
         _ => Err(format!("unknown browser handler: {}", handler)),
     }
 }
@@ -426,7 +437,9 @@ fn present_browser_tab(_tab_id: &str) {}
 
 #[cfg(feature = "browser")]
 fn wait_for_tab_navigation(tab_id: &str, requested_url: &str) -> Result<(), String> {
-    let expected_url = normalize_expected_url(requested_url);
+    // Compare via the runtime's own canonicalizer so the wait target matches
+    // what the tab actually loads (e.g. loopback http is not force-upgraded).
+    let expected_url = lingxia_browser::normalize_url_for_wait_compare(requested_url);
     if expected_url.is_empty() {
         return Ok(());
     }
@@ -436,7 +449,8 @@ fn wait_for_tab_navigation(tab_id: &str, requested_url: &str) -> Result<(), Stri
         let current_url = lingxia_browser::tabs()
             .into_iter()
             .find(|tab| tab.tab_id == tab_id)
-            .and_then(|tab| tab.current_url);
+            .and_then(|tab| tab.current_url)
+            .map(|url| lingxia_browser::normalize_url_for_wait_compare(&url));
 
         if current_url.as_deref() == Some(expected_url.as_str()) {
             return Ok(());
@@ -452,16 +466,6 @@ fn wait_for_tab_navigation(tab_id: &str, requested_url: &str) -> Result<(), Stri
         }
 
         std::thread::sleep(OPEN_WAIT_INTERVAL);
-    }
-}
-
-#[cfg(feature = "browser")]
-fn normalize_expected_url(raw: &str) -> String {
-    let trimmed = raw.trim();
-    if trimmed.len() >= "http://".len() && trimmed[..7].eq_ignore_ascii_case("http://") {
-        format!("https://{}", &trimmed[7..])
-    } else {
-        trimmed.to_string()
     }
 }
 

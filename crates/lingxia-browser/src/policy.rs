@@ -57,7 +57,12 @@ pub(crate) fn normalize_browser_target_url(raw: &str) -> String {
         .get(..7)
         .is_some_and(|prefix| prefix.eq_ignore_ascii_case(b"http://"))
     {
-        if lxapp::is_dev_session() && preserves_plain_http_for_private_url(trimmed) {
+        // Loopback is always the same machine and browsers treat it as a secure
+        // context, so never force-upgrade it (dev or prod). Other private hosts
+        // (LAN IPs) keep plain http only inside a dev session.
+        if url_host_is_loopback(trimmed)
+            || (lxapp::is_dev_session() && preserves_plain_http_for_private_url(trimmed))
+        {
             return trimmed.to_string();
         }
         // The first 7 bytes are ASCII, so byte offset 7 is a char boundary.
@@ -65,6 +70,27 @@ pub(crate) fn normalize_browser_target_url(raw: &str) -> String {
     } else {
         trimmed.to_string()
     }
+}
+
+/// Whether the http URL's host is loopback (`localhost`, `*.localhost`,
+/// `127.0.0.0/8`, `::1`).
+fn url_host_is_loopback(trimmed: &str) -> bool {
+    let Ok(uri) = trimmed.parse::<http::Uri>() else {
+        return false;
+    };
+    uri.host().is_some_and(is_loopback_http_host)
+}
+
+fn is_loopback_http_host(host: &str) -> bool {
+    let host = host
+        .trim_matches(|ch| ch == '[' || ch == ']')
+        .trim_end_matches('.')
+        .to_ascii_lowercase();
+    if host == "localhost" || host.ends_with(".localhost") {
+        return true;
+    }
+    host.parse::<std::net::IpAddr>()
+        .is_ok_and(|ip| ip.is_loopback())
 }
 
 fn preserves_plain_http_for_private_url(trimmed: &str) -> bool {
@@ -98,7 +124,7 @@ fn is_private_http_host(host: &str) -> bool {
     }
 }
 
-pub(crate) fn normalize_url_for_wait_compare(raw: &str) -> String {
+pub fn normalize_url_for_wait_compare(raw: &str) -> String {
     let normalized = normalize_browser_target_url(raw);
     let trimmed = normalized.trim();
     let Ok(uri) = trimmed.parse::<http::Uri>() else {
@@ -248,14 +274,29 @@ mod tests {
     }
 
     #[test]
-    fn normalize_browser_target_url_does_not_preserve_loopback_http() {
+    fn normalize_browser_target_url_preserves_loopback_http_unconditionally() {
+        // Loopback is the same machine and treated as a secure context, so plain
+        // http is kept even outside a dev session (unlike LAN private IPs above).
         assert_eq!(
             normalize_browser_target_url("http://127.0.0.1:8080/activate"),
-            "https://127.0.0.1:8080/activate"
+            "http://127.0.0.1:8080/activate"
         );
         assert_eq!(
-            normalize_browser_target_url("http://localhost:8080/activate"),
-            "https://localhost:8080/activate"
+            normalize_browser_target_url("http://localhost:8799/"),
+            "http://localhost:8799/"
+        );
+        assert_eq!(
+            normalize_browser_target_url("http://app.localhost:3000/x"),
+            "http://app.localhost:3000/x"
+        );
+        assert_eq!(
+            normalize_browser_target_url("http://[::1]:8080/"),
+            "http://[::1]:8080/"
+        );
+        // Non-loopback still upgrades outside a dev session.
+        assert_eq!(
+            normalize_browser_target_url("http://example.com/"),
+            "https://example.com/"
         );
     }
 
