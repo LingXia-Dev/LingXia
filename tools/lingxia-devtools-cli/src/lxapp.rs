@@ -56,6 +56,12 @@ pub enum LxAppCommand {
         #[arg(long)]
         pretty: bool,
     },
+    /// List the selected session's top-level windows
+    Windows {
+        /// Print JSON output
+        #[arg(long)]
+        json: bool,
+    },
     /// Capture a PNG screenshot of the selected session's app surface
     Screenshot {
         /// Specific window id (from `lxdev lxapp windows`); defaults to the
@@ -409,6 +415,7 @@ pub fn execute(project_root: &Path, info: &SessionInfo, options: LxAppOptions) -
             .unwrap_or(Value::Null);
             print_json(&data, pretty)?;
         }
+        LxAppCommand::Windows { json } => execute_windows(ws_url, json)?,
         LxAppCommand::Screenshot {
             window,
             output,
@@ -482,6 +489,48 @@ pub fn execute(project_root: &Path, info: &SessionInfo, options: LxAppOptions) -
         }
     }
 
+    Ok(())
+}
+
+fn execute_windows(ws_url: &str, json: bool) -> Result<()> {
+    let data = client::execute_command(ws_url, handlers::app::WINDOWS, None)?
+        .unwrap_or(Value::Array(Vec::new()));
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&data)?);
+        return Ok(());
+    }
+
+    let Some(array) = data.as_array() else {
+        println!("{}", serde_json::to_string_pretty(&data)?);
+        return Ok(());
+    };
+    if array.is_empty() {
+        println!("No windows reported by the session.");
+        return Ok(());
+    }
+    println!(
+        "{:<12}  {:<5}  {:<5}  {:<7}  {:<9}  TITLE",
+        "ID", "FOCUS", "MAIN", "VISIBLE", "SIZE"
+    );
+    for win in array {
+        let id = win.get("id").and_then(Value::as_str).unwrap_or("-");
+        let focused = win.get("focused").and_then(Value::as_bool).unwrap_or(false);
+        let main = win.get("main").and_then(Value::as_bool).unwrap_or(false);
+        let visible = win.get("visible").and_then(Value::as_bool).unwrap_or(false);
+        let width = win.get("width").and_then(Value::as_u64).unwrap_or(0);
+        let height = win.get("height").and_then(Value::as_u64).unwrap_or(0);
+        let title = win.get("title").and_then(Value::as_str).unwrap_or("");
+        println!(
+            "{:<12}  {:<5}  {:<5}  {:<7}  {:<9}  {}",
+            id,
+            if focused { "yes" } else { "no" },
+            if main { "yes" } else { "no" },
+            if visible { "yes" } else { "no" },
+            format!("{width}x{height}"),
+            title,
+        );
+    }
     Ok(())
 }
 
@@ -780,13 +829,23 @@ fn parse_query_pairs(pairs: &[String]) -> Result<Option<Value>> {
 
 fn commands_for_project(project_root: &Path) -> &'static [&'static str] {
     if project_root.join("lxapp.json").exists() && !project_root.join("lingxia.yaml").exists() {
-        &["info", "pages", "screenshot", "page", "nav", "eval", "rebuild"]
+        &[
+            "info",
+            "pages",
+            "windows",
+            "screenshot",
+            "page",
+            "nav",
+            "eval",
+            "rebuild",
+        ]
     } else {
         &[
             "list",
             "current",
             "info",
             "pages",
+            "windows",
             "screenshot",
             "page",
             "nav",
@@ -821,6 +880,7 @@ fn command_description(command: &str) -> &'static str {
         "current" => "Print the current lxapp",
         "info" => "Print lxapp runtime summary",
         "pages" => "Print configured lxapp pages",
+        "windows" => "List the session's top-level windows",
         "screenshot" => "Capture a PNG screenshot of the app surface",
         "page" => "Inspect and automate lxapp pages",
         "nav" => "Navigate the lxapp runtime by page name",
@@ -901,6 +961,15 @@ mod tests {
         assert_eq!(options.app, "demo");
         assert_eq!(options.query, vec!["tab=account"]);
         assert!(options.json);
+    }
+
+    #[test]
+    fn parses_windows_options() {
+        let cli = parse_lxapp_cli(args(&["windows", "--json"])).unwrap();
+        let LxAppCommand::Windows { json } = cli.command else {
+            panic!("expected windows command");
+        };
+        assert!(json);
     }
 
     #[test]
