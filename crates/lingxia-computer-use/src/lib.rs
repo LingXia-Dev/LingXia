@@ -12,8 +12,8 @@ pub mod model;
 pub use error::{Error, ErrorCode, Result};
 pub use model::{
     Ack, AxNode, AxQuery, Capabilities, Capture, CaptureTarget, Clipboard, Display, Doctor,
-    LaunchResult, Modifier, MouseButton, Pixel, ProcessInfo, QuitTarget, Rect, Window, WindowQuery,
-    WindowTarget,
+    LaunchResult, Modifier, MouseButton, Permissions, Pixel, ProcessInfo, QuitTarget, Rect, Window,
+    WindowQuery, WindowTarget,
 };
 
 /// App lifecycle (`desktop app ...`).
@@ -76,13 +76,31 @@ pub mod window {
 #[path = "win/mod.rs"]
 mod backend;
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(target_os = "macos")]
+#[path = "mac/mod.rs"]
+mod backend;
+
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
 #[path = "stub.rs"]
 mod backend;
 
-/// Backend + capability report (`desktop doctor`).
+/// Backend + capability + live-permission report (`desktop doctor`).
 pub fn doctor() -> Doctor {
     backend::doctor()
+}
+
+/// The host process's current OS-permission grants, without prompting
+/// (`desktop permissions`).
+pub fn permissions() -> Permissions {
+    backend::permissions()
+}
+
+/// Trigger the OS permission prompts for anything not yet granted, then report
+/// the resulting state (`desktop permissions --request`). The OS cannot grant
+/// silently: the user must approve (and often relaunch) for the change to take
+/// effect, so a follow-up call may still show `false` until then.
+pub fn request_permissions() -> Permissions {
+    backend::request_permissions()
 }
 
 /// Enumerate monitors (`desktop displays`).

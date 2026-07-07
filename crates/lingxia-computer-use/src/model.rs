@@ -303,6 +303,34 @@ pub struct Doctor {
     pub os: String,
     pub os_version: String,
     pub capabilities: Capabilities,
+    pub permissions: Permissions,
+}
+
+/// Live OS-permission grants for the host process (`desktop permissions`).
+/// A capability can be present in [`Capabilities`] yet unusable until the
+/// matching permission here is granted.
+#[derive(Debug, Clone, Copy, Default, Serialize)]
+pub struct Permissions {
+    /// Accessibility — required for the AX tree/actions, synthetic input, and
+    /// managing other apps' windows. (macOS "Accessibility".)
+    pub accessibility: bool,
+    /// Screen capture — required to screenshot other apps' pixels and read
+    /// window titles. (macOS "Screen Recording".)
+    pub screen_recording: bool,
+    /// Permission to post synthetic input events. (macOS folds this into
+    /// Accessibility; reported separately for a precise diagnosis.)
+    pub input: bool,
+}
+
+impl Permissions {
+    /// Every permission this platform needs is granted.
+    pub fn all_granted() -> Self {
+        Permissions {
+            accessibility: true,
+            screen_recording: true,
+            input: true,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, Serialize)]

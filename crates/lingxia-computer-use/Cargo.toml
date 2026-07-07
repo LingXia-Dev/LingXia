@@ -45,3 +45,11 @@ windows = { workspace = true, features = [
     "Win32_System_WinRT_Direct3D11",
     "Win32_System_WinRT_Graphics_Capture",
 ] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+libc = "0.2.186"
+objc2 = "0.6.4"
+objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "objc2-core-foundation", "NSPasteboard", "NSWorkspace", "NSRunningApplication", "libc"] }
+objc2-core-foundation = { version = "0.3.2", default-features = false, features = ["std", "CFBase", "CFArray", "CFDictionary", "CFString", "CFNumber", "CFCGTypes"] }
+objc2-core-graphics = { version = "0.3.2", default-features = false, features = ["std", "objc2", "libc", "CGBase", "CGGeometry", "CGError", "CGDirectDisplay", "CGWindow", "CGWindowLevel", "CGImage", "CGColorSpace", "CGContext", "CGBitmapContext", "CGEvent", "CGEventSource", "CGEventTypes", "CGRemoteOperation", "CGDisplayConfiguration"] }
+objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSString", "NSArray", "NSDictionary", "NSEnumerator", "NSURL", "NSData", "NSGeometry"] }
