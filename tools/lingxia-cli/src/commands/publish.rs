@@ -145,6 +145,82 @@ pub fn execute(opts: PublishOptions) -> Result<()> {
     }
 }
 
+/// `lingxia publish login`: persist the publish server URL and/or token to
+/// `~/.lingxia/cli/config.toml`. With `--env`, scopes to that channel's
+/// `[publish.<env>]` table; without it, sets the top-level defaults. Other
+/// channels' values are preserved.
+pub fn save_login(
+    server: Option<String>,
+    token: Option<String>,
+    env: Option<String>,
+) -> Result<()> {
+    let server = clean_arg(server, "--server")?;
+    let token = clean_arg(token, "--token")?;
+    if server.is_none() && token.is_none() {
+        bail!("Provide --server and/or --token to save.");
+    }
+    if let Some(server) = server.as_deref() {
+        validate_publish_server(server)?;
+    }
+    let env = env.as_deref().map(EnvVersion::parse_cli).transpose()?;
+
+    let mut config = CliConfig::load()?;
+    config.set_publish(env, server.clone(), token.clone());
+    config.save()?;
+
+    let path = crate::cli_config::config_path()?;
+    let scope = env
+        .map(|e| format!("channel '{}'", e.as_str()))
+        .unwrap_or_else(|| "all channels (default)".to_string());
+    println!(
+        "{} Saved publish credentials for {} to {}",
+        "✓".green().bold(),
+        scope,
+        path.display()
+    );
+    if let Some(server) = server.as_deref() {
+        println!("   Server: {server}");
+    }
+    if let Some(token) = token.as_deref() {
+        println!("   Token:  {}", mask_token(token));
+    }
+    Ok(())
+}
+
+/// Trim an optional arg, rejecting a present-but-empty value.
+fn clean_arg(value: Option<String>, flag: &str) -> Result<Option<String>> {
+    match value {
+        None => Ok(None),
+        Some(v) => {
+            let trimmed = v.trim();
+            if trimmed.is_empty() {
+                bail!("{flag} cannot be empty");
+            }
+            Ok(Some(trimmed.to_string()))
+        }
+    }
+}
+
+/// A publish server must be an absolute http(s) URL (the upload endpoint is
+/// built as `{server}/api/v1/package/upload`).
+fn validate_publish_server(server: &str) -> Result<()> {
+    if !(server.starts_with("http://") || server.starts_with("https://")) {
+        bail!("--server must be an http(s) URL (got '{server}')");
+    }
+    Ok(())
+}
+
+/// Show only the first/last few characters of a token in logs.
+fn mask_token(token: &str) -> String {
+    let chars: Vec<char> = token.chars().collect();
+    if chars.len() <= 8 {
+        return "*".repeat(chars.len());
+    }
+    let head: String = chars[..4].iter().collect();
+    let tail: String = chars[chars.len() - 4..].iter().collect();
+    format!("{head}…{tail}")
+}
+
 fn resolve_package_for_publish(
     cwd: &Path,
     meta: &PackageMeta,
@@ -808,6 +884,32 @@ mod tests {
     use std::io::Write;
     use tempfile::TempDir;
     use zip::write::SimpleFileOptions;
+
+    use super::{clean_arg, mask_token, validate_publish_server};
+
+    #[test]
+    fn validate_publish_server_requires_http_scheme() {
+        assert!(validate_publish_server("https://api.example.com").is_ok());
+        assert!(validate_publish_server("http://localhost:8080").is_ok());
+        assert!(validate_publish_server("api.example.com").is_err());
+        assert!(validate_publish_server("ftp://x").is_err());
+    }
+
+    #[test]
+    fn clean_arg_rejects_present_but_empty() {
+        assert!(clean_arg(None, "--server").unwrap().is_none());
+        assert_eq!(
+            clean_arg(Some("  x ".to_string()), "--server").unwrap(),
+            Some("x".to_string())
+        );
+        assert!(clean_arg(Some("   ".to_string()), "--token").is_err());
+    }
+
+    #[test]
+    fn mask_token_hides_the_middle() {
+        assert_eq!(mask_token("lx_abcdefgh"), "lx_a…efgh");
+        assert_eq!(mask_token("short"), "*****");
+    }
 
     #[test]
     fn app_package_match_accepts_cli_generated_macos_zip_only_in_dist_macos() {

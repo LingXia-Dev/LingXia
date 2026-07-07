@@ -108,7 +108,87 @@ impl CliConfig {
             .with_context(|| format!("Failed to read {}", path.display()))?;
         toml::from_str(&text).with_context(|| format!("Failed to parse {}", path.display()))
     }
+
+    /// Write the config to `~/.lingxia/cli/config.toml` (mode 0600), creating the
+    /// parent directory. Any hand-added TOML comments are lost — this file is
+    /// CLI-managed.
+    pub fn save(&self) -> Result<()> {
+        self.save_to(&config_path()?)
+    }
+
+    pub fn save_to(&self, path: &Path) -> Result<()> {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)
+                .with_context(|| format!("Failed to create {}", parent.display()))?;
+        }
+        let text =
+            toml::to_string_pretty(self).context("Failed to serialize CLI config to TOML")?;
+        fs::write(path, &text).with_context(|| format!("Failed to write {}", path.display()))?;
+        set_secret_file_mode(path);
+        Ok(())
+    }
+
+    /// Set the publish server and/or token for `env`. A `None` env writes the
+    /// top-level defaults; an env writes the matching `[publish.<env>]` table.
+    /// `None` arguments are left unchanged.
+    pub fn set_publish(
+        &mut self,
+        env: Option<EnvVersion>,
+        server: Option<String>,
+        token: Option<String>,
+    ) {
+        let publish = self.publish.get_or_insert_with(PublishConfig::default);
+        let target = match env {
+            None => EnvPublishMut {
+                server: &mut publish.server,
+                token: &mut publish.token,
+            },
+            Some(EnvVersion::Developer) => publish
+                .developer
+                .get_or_insert_with(EnvPublish::default)
+                .as_mut(),
+            Some(EnvVersion::Preview) => publish
+                .preview
+                .get_or_insert_with(EnvPublish::default)
+                .as_mut(),
+            Some(EnvVersion::Release) => publish
+                .release
+                .get_or_insert_with(EnvPublish::default)
+                .as_mut(),
+        };
+        if let Some(server) = server {
+            *target.server = Some(server);
+        }
+        if let Some(token) = token {
+            *target.token = Some(token);
+        }
+    }
 }
+
+/// Mutable view over an env's server/token, so `set_publish` handles the
+/// top-level defaults and the per-env tables uniformly.
+struct EnvPublishMut<'a> {
+    server: &'a mut Option<String>,
+    token: &'a mut Option<String>,
+}
+
+impl EnvPublish {
+    fn as_mut(&mut self) -> EnvPublishMut<'_> {
+        EnvPublishMut {
+            server: &mut self.server,
+            token: &mut self.token,
+        }
+    }
+}
+
+#[cfg(unix)]
+fn set_secret_file_mode(path: &Path) {
+    use std::os::unix::fs::PermissionsExt;
+    let _ = fs::set_permissions(path, fs::Permissions::from_mode(0o600));
+}
+
+#[cfg(not(unix))]
+fn set_secret_file_mode(_path: &Path) {}
 
 #[cfg(test)]
 mod tests {
@@ -118,6 +198,84 @@ mod tests {
     fn missing_file_is_empty() {
         let cfg = CliConfig::load_from(Path::new("/no/such/config.toml")).unwrap();
         assert!(cfg.publish.is_none());
+    }
+
+    #[test]
+    fn set_publish_writes_top_level_defaults_when_env_is_none() {
+        let mut cfg = CliConfig::default();
+        cfg.set_publish(
+            None,
+            Some("https://api.example.com".to_string()),
+            Some("lx_tok".to_string()),
+        );
+        let publish = cfg.publish.unwrap();
+        assert_eq!(
+            publish.lingxia_server_for(EnvVersion::Release),
+            Some("https://api.example.com")
+        );
+        assert_eq!(publish.token_for(EnvVersion::Developer), Some("lx_tok"));
+        assert!(publish.developer.is_none());
+    }
+
+    #[test]
+    fn set_publish_scopes_to_env_table_and_preserves_others() {
+        let mut cfg = CliConfig::default();
+        cfg.set_publish(
+            Some(EnvVersion::Release),
+            Some("https://prod.example.com".to_string()),
+            Some("lx_prod".to_string()),
+        );
+        cfg.set_publish(
+            Some(EnvVersion::Developer),
+            Some("http://localhost:8080".to_string()),
+            Some("lx_dev".to_string()),
+        );
+        let publish = cfg.publish.unwrap();
+        // developer edit must not clobber the release table.
+        assert_eq!(
+            publish.lingxia_server_for(EnvVersion::Release),
+            Some("https://prod.example.com")
+        );
+        assert_eq!(publish.token_for(EnvVersion::Release), Some("lx_prod"));
+        assert_eq!(
+            publish.lingxia_server_for(EnvVersion::Developer),
+            Some("http://localhost:8080")
+        );
+        assert_eq!(publish.token_for(EnvVersion::Developer), Some("lx_dev"));
+    }
+
+    #[test]
+    fn set_publish_leaves_unspecified_field_unchanged() {
+        let mut cfg = CliConfig::default();
+        cfg.set_publish(None, Some("https://a.example.com".to_string()), None);
+        cfg.set_publish(None, None, Some("lx_tok".to_string()));
+        let publish = cfg.publish.unwrap();
+        assert_eq!(
+            publish.lingxia_server_for(EnvVersion::Release),
+            Some("https://a.example.com")
+        );
+        assert_eq!(publish.token_for(EnvVersion::Release), Some("lx_tok"));
+    }
+
+    #[test]
+    fn save_then_load_roundtrips() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("cli").join("config.toml");
+        let mut cfg = CliConfig::default();
+        cfg.set_publish(
+            Some(EnvVersion::Preview),
+            Some("https://preview.example.com".to_string()),
+            Some("lx_preview".to_string()),
+        );
+        cfg.save_to(&path).unwrap();
+
+        let loaded = CliConfig::load_from(&path).unwrap();
+        let publish = loaded.publish.unwrap();
+        assert_eq!(
+            publish.lingxia_server_for(EnvVersion::Preview),
+            Some("https://preview.example.com")
+        );
+        assert_eq!(publish.token_for(EnvVersion::Preview), Some("lx_preview"));
     }
 
     #[test]
