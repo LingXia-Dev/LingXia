@@ -85,6 +85,15 @@ pub enum DesktopCommand {
         #[arg(long)]
         json: bool,
     },
+    /// Report (or request) the OS permissions this backend needs
+    Permissions {
+        /// Trigger the OS permission prompts for anything not yet granted
+        #[arg(long)]
+        request: bool,
+        /// Print JSON output
+        #[arg(long)]
+        json: bool,
+    },
     /// List monitors/displays (global physical pixels)
     Displays {
         /// Print JSON output
@@ -134,11 +143,24 @@ pub enum DesktopCommand {
     },
     /// Synthesize physical mouse input at screen coordinates
     Pointer {
+        /// Deliver input to this window's app in the background (no focus steal).
+        /// Omit to drive the foreground app like a physical mouse.
+        #[arg(long, global = true)]
+        window: Option<String>,
+        /// Deliver input to this pid in the background instead of the foreground.
+        #[arg(long, global = true)]
+        pid: Option<u32>,
         #[command(subcommand)]
         action: PointerAction,
     },
     /// Synthesize physical keyboard input
     Key {
+        /// Deliver input to this window's app in the background (no focus steal).
+        #[arg(long, global = true)]
+        window: Option<String>,
+        /// Deliver input to this pid in the background instead of the foreground.
+        #[arg(long, global = true)]
+        pid: Option<u32>,
         #[command(subcommand)]
         action: KeyAction,
     },
@@ -570,6 +592,14 @@ pub fn execute(options: DesktopOptions) -> ! {
     let allow_destructive = options.allow_destructive;
     match options.command {
         DesktopCommand::Doctor { json } => finish(json, Ok(cu::doctor()), print_doctor),
+        DesktopCommand::Permissions { request, json } => {
+            let perms = if request {
+                cu::request_permissions()
+            } else {
+                cu::permissions()
+            };
+            finish(json, Ok(perms), print_permissions)
+        }
         DesktopCommand::Displays { json } => finish(json, cu::displays(), print_displays),
         DesktopCommand::Windows { match_query, json } => {
             let query = match_query
@@ -593,8 +623,22 @@ pub fn execute(options: DesktopOptions) -> ! {
             finish(json, cu::pixel(x, y), print_pixel)
         }
         DesktopCommand::Window { action } => run_window(action, allow_control, allow_destructive),
-        DesktopCommand::Pointer { action } => run_pointer(action, allow_control, allow_destructive),
-        DesktopCommand::Key { action } => run_key(action, allow_control, allow_destructive),
+        DesktopCommand::Pointer {
+            window,
+            pid,
+            action,
+        } => match resolve_target(pid, window) {
+            Ok(t) => run_pointer(action, t, allow_control, allow_destructive),
+            Err(e) => finish::<cu::Ack>(false, Err(e), print_ack),
+        },
+        DesktopCommand::Key {
+            window,
+            pid,
+            action,
+        } => match resolve_target(pid, window) {
+            Ok(t) => run_key(action, t, allow_control, allow_destructive),
+            Err(e) => finish::<cu::Ack>(false, Err(e), print_ack),
+        },
         DesktopCommand::Clipboard { action } => {
             run_clipboard(action, allow_control, allow_destructive)
         }
@@ -921,24 +965,41 @@ fn print_ack(a: &cu::Ack) {
     println!("ok: {}", a.action);
 }
 
-fn run_pointer(action: PointerAction, allow_control: bool, allow_destructive: bool) -> ! {
+/// Resolve the optional background target: an explicit `--pid`, or a `--window`
+/// id mapped to its owning process. `None` means foreground/active-app input.
+fn resolve_target(pid: Option<u32>, window: Option<String>) -> cu::Result<Option<u32>> {
+    if let Some(pid) = pid {
+        return Ok(Some(pid));
+    }
+    match window {
+        Some(id) => Ok(Some(cu::window::status(&cu::WindowTarget::Id(id))?.pid)),
+        None => Ok(None),
+    }
+}
+
+fn run_pointer(
+    action: PointerAction,
+    target: Option<u32>,
+    allow_control: bool,
+    allow_destructive: bool,
+) -> ! {
     use cu::input as i;
     let g = gate(allow_control, false, allow_destructive);
     let (json, result) = match action {
         PointerAction::Move { at, json } => (
             json,
             g.and_then(|_| parse_pair(&at))
-                .and_then(|(x, y)| i::pointer_move(x, y)),
+                .and_then(|(x, y)| i::pointer_move(x, y, target)),
         ),
         PointerAction::Down { at, button, json } => (
             json,
             g.and_then(|_| parse_pair(&at))
-                .and_then(|(x, y)| i::pointer_down(x, y, button.into())),
+                .and_then(|(x, y)| i::pointer_down(x, y, button.into(), target)),
         ),
         PointerAction::Up { at, button, json } => (
             json,
             g.and_then(|_| parse_pair(&at))
-                .and_then(|(x, y)| i::pointer_up(x, y, button.into())),
+                .and_then(|(x, y)| i::pointer_up(x, y, button.into(), target)),
         ),
         PointerAction::Click {
             at,
@@ -948,7 +1009,7 @@ fn run_pointer(action: PointerAction, allow_control: bool, allow_destructive: bo
         } => (
             json,
             g.and_then(|_| parse_pair(&at))
-                .and_then(|(x, y)| i::pointer_click(x, y, button.into(), count)),
+                .and_then(|(x, y)| i::pointer_click(x, y, button.into(), count, target)),
         ),
         PointerAction::Drag {
             from,
@@ -958,32 +1019,39 @@ fn run_pointer(action: PointerAction, allow_control: bool, allow_destructive: bo
         } => (
             json,
             g.and_then(|_| Ok((parse_pair(&from)?, parse_pair(&to)?)))
-                .and_then(|((fx, fy), (tx, ty))| i::pointer_drag(fx, fy, tx, ty, button.into())),
+                .and_then(|((fx, fy), (tx, ty))| {
+                    i::pointer_drag(fx, fy, tx, ty, button.into(), target)
+                }),
         ),
         PointerAction::Scroll { at, dx, dy, json } => (
             json,
             g.and_then(|_| parse_pair(&at))
-                .and_then(|(x, y)| i::pointer_scroll(x, y, dx, dy)),
+                .and_then(|(x, y)| i::pointer_scroll(x, y, dx, dy, target)),
         ),
     };
     finish(json, result, print_ack)
 }
 
-fn run_key(action: KeyAction, allow_control: bool, allow_destructive: bool) -> ! {
+fn run_key(
+    action: KeyAction,
+    target: Option<u32>,
+    allow_control: bool,
+    allow_destructive: bool,
+) -> ! {
     use cu::input as i;
     let g = gate(allow_control, false, allow_destructive);
     let (json, result) = match action {
-        KeyAction::Type { text, json } => (json, g.and_then(|_| i::key_type(&text))),
+        KeyAction::Type { text, json } => (json, g.and_then(|_| i::key_type(&text, target))),
         KeyAction::Press {
             key,
             modifier,
             json,
         } => {
             let mods: Vec<cu::Modifier> = modifier.into_iter().map(Into::into).collect();
-            (json, g.and_then(|_| i::key_press(&key, &mods)))
+            (json, g.and_then(|_| i::key_press(&key, &mods, target)))
         }
-        KeyAction::Down { key, json } => (json, g.and_then(|_| i::key_down(&key))),
-        KeyAction::Up { key, json } => (json, g.and_then(|_| i::key_up(&key))),
+        KeyAction::Down { key, json } => (json, g.and_then(|_| i::key_down(&key, target))),
+        KeyAction::Up { key, json } => (json, g.and_then(|_| i::key_up(&key, target))),
     };
     finish(json, result, print_ack)
 }
@@ -1273,6 +1341,24 @@ fn print_doctor(d: &cu::Doctor) {
     println!("  clipboard           {}", yn(c.clipboard));
     println!("  ax tree             {}", yn(c.ax_tree));
     println!("  ocr                 {}", yn(c.ocr));
+    println!("permissions:");
+    print_permission_lines(&d.permissions);
+}
+
+fn print_permission_lines(p: &cu::Permissions) {
+    println!("  accessibility       {}", yn(p.accessibility));
+    println!("  screen recording    {}", yn(p.screen_recording));
+    println!("  input               {}", yn(p.input));
+}
+
+fn print_permissions(p: &cu::Permissions) {
+    println!("permissions:");
+    print_permission_lines(p);
+    if !(p.accessibility && p.screen_recording && p.input) {
+        println!(
+            "\nSome permissions are missing. Run `lxdev desktop permissions --request` to prompt,\nthen grant them in System Settings › Privacy & Security and relaunch."
+        );
+    }
 }
 
 fn print_displays(displays: &Vec<cu::Display>) {
