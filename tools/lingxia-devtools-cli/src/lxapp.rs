@@ -56,6 +56,20 @@ pub enum LxAppCommand {
         #[arg(long)]
         pretty: bool,
     },
+    /// Capture a PNG screenshot of the selected session's app surface
+    Screenshot {
+        /// Specific window id (from `lxdev lxapp windows`); defaults to the
+        /// session's focused/main window
+        #[arg(long)]
+        window: Option<String>,
+        /// Output path; use `-` for stdout. Default:
+        /// `.lingxia/screenshots/lxapp-<platform>-<ts>.png`
+        #[arg(long, short = 'o')]
+        output: Option<String>,
+        /// Print the JSON envelope (metadata + base64 PNG)
+        #[arg(long)]
+        json: bool,
+    },
     /// Inspect and automate lxapp pages
     Page(PageOptions),
     /// Navigate the lxapp runtime by page name
@@ -395,6 +409,11 @@ pub fn execute(project_root: &Path, info: &SessionInfo, options: LxAppOptions) -
             .unwrap_or(Value::Null);
             print_json(&data, pretty)?;
         }
+        LxAppCommand::Screenshot {
+            window,
+            output,
+            json,
+        } => execute_screenshot(info, window, output, json)?,
         LxAppCommand::Page(options) => execute_page(ws_url, options)?,
         LxAppCommand::Nav(options) => execute_nav(ws_url, options)?,
         LxAppCommand::Eval {
@@ -464,6 +483,27 @@ pub fn execute(project_root: &Path, info: &SessionInfo, options: LxAppOptions) -
     }
 
     Ok(())
+}
+
+fn execute_screenshot(
+    info: &SessionInfo,
+    window: Option<String>,
+    output: Option<String>,
+    json: bool,
+) -> Result<()> {
+    let args = window.as_ref().map(|id| json!({ "window_id": id }));
+    let data = client::execute_command(&info.ws_url, handlers::app::SCREENSHOT, args)?
+        .unwrap_or(Value::Null);
+
+    if json {
+        println!("{}", serde_json::to_string(&data)?);
+        return Ok(());
+    }
+
+    let bytes = screenshot::decode_png_payload(&data, handlers::app::SCREENSHOT)?;
+    let ts = chrono::Local::now().format("%Y%m%d-%H%M%S");
+    let platform = screenshot::safe_component(&info.platform);
+    screenshot::write_png(output, format!("lxapp-{platform}-{ts}.png"), &bytes)
 }
 
 fn execute_nav(ws_url: &str, options: NavOptions) -> Result<()> {
@@ -740,13 +780,14 @@ fn parse_query_pairs(pairs: &[String]) -> Result<Option<Value>> {
 
 fn commands_for_project(project_root: &Path) -> &'static [&'static str] {
     if project_root.join("lxapp.json").exists() && !project_root.join("lingxia.yaml").exists() {
-        &["info", "pages", "page", "nav", "eval", "rebuild"]
+        &["info", "pages", "screenshot", "page", "nav", "eval", "rebuild"]
     } else {
         &[
             "list",
             "current",
             "info",
             "pages",
+            "screenshot",
             "page",
             "nav",
             "eval",
@@ -766,9 +807,9 @@ fn print_dynamic_help(commands: &[&str]) {
     println!();
     println!("Commands:");
     for command in commands {
-        println!("  {:<10}{}", command, command_description(command));
+        println!("  {:<12}{}", command, command_description(command));
     }
-    println!("  help      Print this message or the help of the given command(s)");
+    println!("  help        Print this message or the help of the given command(s)");
     println!();
     println!("Options:");
     println!("  -h, --help  Print help");
@@ -780,6 +821,7 @@ fn command_description(command: &str) -> &'static str {
         "current" => "Print the current lxapp",
         "info" => "Print lxapp runtime summary",
         "pages" => "Print configured lxapp pages",
+        "screenshot" => "Capture a PNG screenshot of the app surface",
         "page" => "Inspect and automate lxapp pages",
         "nav" => "Navigate the lxapp runtime by page name",
         "eval" => "Evaluate JavaScript in the lxapp logic runtime",
@@ -859,6 +901,32 @@ mod tests {
         assert_eq!(options.app, "demo");
         assert_eq!(options.query, vec!["tab=account"]);
         assert!(options.json);
+    }
+
+    #[test]
+    fn parses_screenshot_options() {
+        let cli = parse_lxapp_cli(args(&[
+            "screenshot",
+            "--window",
+            "0x42",
+            "-o",
+            "out.png",
+            "--json",
+        ]))
+        .unwrap();
+
+        let LxAppCommand::Screenshot {
+            window,
+            output,
+            json,
+        } = cli.command
+        else {
+            panic!("expected screenshot command");
+        };
+
+        assert_eq!(window.as_deref(), Some("0x42"));
+        assert_eq!(output.as_deref(), Some("out.png"));
+        assert!(json);
     }
 
     #[test]
