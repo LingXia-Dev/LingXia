@@ -138,6 +138,8 @@ fn handle_lxapp_page_command_impl(
                 parsed.page.as_deref(),
             ))?;
             Ok(Some(png_response(
+                "page",
+                "css_pixels",
                 &bytes,
                 [
                     ("appid", json!(parsed.appid.unwrap_or_default())),

@@ -29,9 +29,9 @@ pub mod process {
 /// Native accessibility (`desktop ax ...`).
 pub mod ax {
     pub use crate::backend::{
-        ax_collapse as collapse, ax_expand as expand, ax_focus as focus, ax_invoke as invoke,
-        ax_query as query, ax_scroll_into_view as scroll_into_view, ax_select as select,
-        ax_set_value as set_value, ax_tree as tree, ax_wait as wait,
+        ax_collapse as collapse, ax_expand as expand, ax_focus as focus, ax_hit_test as hit_test,
+        ax_invoke as invoke, ax_query as query, ax_scroll_into_view as scroll_into_view,
+        ax_select as select, ax_set_value as set_value, ax_tree as tree, ax_wait as wait,
     };
 }
 

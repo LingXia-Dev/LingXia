@@ -307,7 +307,12 @@ fn handle_browser_command_impl(
             let args: TabArgs = parse_args(handler, args)?;
             let tab_id = resolve_tab_id(&args.tab_id)?;
             let bytes = run_async(lingxia_browser::take_screenshot(&tab_id))?;
-            Ok(Some(png_response(&bytes, [("tab_id", json!(tab_id))])))
+            Ok(Some(png_response(
+                "browser",
+                "css_pixels",
+                &bytes,
+                [("tab_id", json!(tab_id))],
+            )))
         }
         // Network capture is WebView2/CDP-only; on other runners these fall
         // through to "unknown handler" (and lxdev gates the subcommand on a

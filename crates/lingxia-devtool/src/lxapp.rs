@@ -18,6 +18,55 @@ pub(crate) fn handle_lxapp_command(
     Some(handle_lxapp_command_impl(handler, args))
 }
 
+/// Report the selected session's automation capabilities. Runtime-known facts
+/// (platform, page-input support) are resolved here; the CLI adds session id.
+fn build_doctor() -> Value {
+    let page_input = lingxia::dev::lxapp_dev_page_input_supported();
+    let is_desktop = cfg!(any(target_os = "windows", target_os = "macos"));
+    let platform = if cfg!(target_os = "windows") {
+        "windows"
+    } else if cfg!(target_os = "macos") {
+        "macos"
+    } else if cfg!(target_os = "android") {
+        "android"
+    } else if cfg!(target_os = "ios") {
+        "ios"
+    } else {
+        "unknown"
+    };
+    let backend = if is_desktop {
+        "runner"
+    } else {
+        "lingxia_mobile"
+    };
+    let page_pointer = if page_input {
+        json!({ "supported": true, "tier": "runner", "coordinate_space": "css_pixels" })
+    } else {
+        json!({ "supported": false, "reason": "no first-class page input bridge" })
+    };
+    let page_key = if page_input {
+        json!({ "supported": true, "tier": "runner" })
+    } else {
+        json!({ "supported": false, "reason": "no first-class page input bridge" })
+    };
+    json!({
+        "target": "lxapp",
+        "platform": platform,
+        "backend": backend,
+        "capabilities": {
+            "session_screenshot": { "supported": true },
+            "page_screenshot": { "supported": true },
+            "page_pointer": page_pointer,
+            "page_key": page_key,
+            "runner": { "supported": is_desktop },
+        },
+        "coordinate_spaces": {
+            "page": "css_pixels",
+            "session": "session_logical"
+        }
+    })
+}
+
 fn handle_lxapp_command_impl(handler: &str, args: Option<Value>) -> Result<Option<Value>, String> {
     match handler {
         handlers::lxapp::LIST => {
@@ -51,6 +100,7 @@ fn handle_lxapp_command_impl(handler: &str, args: Option<Value>) -> Result<Optio
             });
             Ok(Some(Value::Array(apps)))
         }
+        handlers::lxapp::DOCTOR => Ok(Some(build_doctor())),
         handlers::lxapp::CURRENT => {
             let (appid, path, _) = lxapp::get_current_lxapp();
             Ok(Some(json!({

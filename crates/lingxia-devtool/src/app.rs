@@ -30,6 +30,8 @@ fn handle_app_command_impl(handler: &str, args: Option<Value>) -> Result<Option<
             let window_id = parsed.window_id;
             let bytes = run_async(lingxia::dev::take_app_screenshot(window_id.as_deref()))?;
             Ok(Some(png_response(
+                "app",
+                "session",
                 &bytes,
                 [("window_id", json!(window_id))],
             )))

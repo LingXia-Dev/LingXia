@@ -324,6 +324,20 @@ pub enum AxAction {
     Collapse(AxSel),
     /// Scroll an element into view
     ScrollIntoView(AxSel),
+    /// Report the accessible element at a screen point (read-only)
+    HitTest {
+        /// Screen point as X,Y in global physical pixels
+        #[arg(long)]
+        at: String,
+        /// Optional window scope (advisory; hit-test is screen-global)
+        #[arg(long)]
+        window: Option<String>,
+        /// Optional window match scope (advisory)
+        #[arg(long = "window-match")]
+        window_match: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 /// Shared AX action selector: exactly one node via `--window` + `--match`.
@@ -731,6 +745,12 @@ fn run_ax(action: AxAction, allow_control: bool, allow_destructive: bool) -> ! {
             ax_act(sel, allow_control, allow_destructive, move |w, q| {
                 cu::ax::set_value(w, q, &value)
             })
+        }
+        AxAction::HitTest { at, json, .. } => {
+            // Read-only: no gate. Window scope is advisory (ElementFromPoint is
+            // screen-global).
+            let result = parse_pair(&at).and_then(|(x, y)| cu::ax::hit_test(x, y));
+            finish(json, result, |n| print_ax_tree(n, 0))
         }
     }
 }

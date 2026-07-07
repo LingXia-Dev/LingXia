@@ -119,6 +119,9 @@ pub fn clipboard_paste() -> Result<Ack> {
 pub fn ax_tree(_window_id: &str, _depth: Option<u32>, _max: Option<usize>) -> Result<AxNode> {
     unsupported()
 }
+pub fn ax_hit_test(_x: i32, _y: i32) -> Result<AxNode> {
+    unsupported()
+}
 pub fn ax_query(
     _window_id: &str,
     _q: &AxQuery,

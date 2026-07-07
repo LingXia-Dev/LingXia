@@ -8,6 +8,7 @@ use super::rect_to;
 use crate::error::{Error, Result};
 use crate::model::{Ack, AxNode, AxQuery};
 use std::sync::Once;
+use windows::Win32::Foundation::POINT;
 use windows::Win32::System::Com::{
     CLSCTX_INPROC_SERVER, COINIT_MULTITHREADED, CoCreateInstance, CoInitializeEx,
 };
@@ -185,6 +186,16 @@ fn collect_flat(
             child = walker.GetNextSiblingElement(&c).ok();
         }
     }
+}
+
+/// The deepest accessible element at a screen point (global physical pixels).
+/// `ElementFromPoint` is screen-global; the returned node's id is a positional
+/// marker, not a tree path, so it is for inspection rather than path actions.
+pub fn hit_test(x: i32, y: i32) -> Result<AxNode> {
+    let uia = automation()?;
+    let el = unsafe { uia.ElementFromPoint(POINT { x, y }) }
+        .map_err(|e| Error::NotFound(format!("no accessible element at {x},{y}: {e}")))?;
+    Ok(node_data(&el, format!("ax:@{x},{y}")))
 }
 
 pub fn tree(window_id: &str, depth: Option<u32>, max_nodes: Option<usize>) -> Result<AxNode> {

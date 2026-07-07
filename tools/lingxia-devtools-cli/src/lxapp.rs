@@ -40,6 +40,12 @@ pub enum LxAppCommand {
         #[arg(long)]
         pretty: bool,
     },
+    /// Report the selected session's automation capabilities
+    Doctor {
+        /// Print JSON output
+        #[arg(long)]
+        json: bool,
+    },
     /// Print lxapp runtime summary
     Info {
         #[arg(default_value = "current")]
@@ -636,6 +642,7 @@ pub fn execute(project_root: &Path, info: &SessionInfo, options: LxAppOptions) -
                 .unwrap_or(Value::Null);
             print_json(&data, pretty)?;
         }
+        LxAppCommand::Doctor { json } => execute_doctor(info, json)?,
         LxAppCommand::Info { app, pretty } => {
             let data = client::execute_command(
                 ws_url,
@@ -837,6 +844,56 @@ fn print_device_state(data: &Value) {
         .unwrap_or(false);
     let orientation = if landscape { "landscape" } else { "portrait" };
     println!("{name} ({id})  {width}x{height}  {orientation}");
+}
+
+fn execute_doctor(info: &SessionInfo, json: bool) -> Result<()> {
+    let mut data = client::execute_command(&info.ws_url, handlers::lxapp::DOCTOR, None)?
+        .unwrap_or_else(|| json!({}));
+    // The runtime doesn't know the CLI's session id; graft it on so the doctor
+    // envelope is self-describing.
+    if let Value::Object(map) = &mut data {
+        map.insert("session_id".to_string(), json!(info.session_id));
+    }
+
+    if json {
+        print_json(&data, false)?;
+        return Ok(());
+    }
+
+    let get = |path: &[&str]| -> Option<&Value> {
+        let mut cur = &data;
+        for key in path {
+            cur = cur.get(*key)?;
+        }
+        Some(cur)
+    };
+    let cap = |name: &str| -> String {
+        match get(&["capabilities", name, "supported"]).and_then(Value::as_bool) {
+            Some(true) => {
+                let tier = get(&["capabilities", name, "tier"])
+                    .and_then(Value::as_str)
+                    .map(|t| format!(" ({t})"))
+                    .unwrap_or_default();
+                format!("yes{tier}")
+            }
+            _ => "no".to_string(),
+        }
+    };
+    println!("session      {}", info.session_id);
+    println!(
+        "platform     {}",
+        get(&["platform"]).and_then(Value::as_str).unwrap_or("-")
+    );
+    println!(
+        "backend      {}",
+        get(&["backend"]).and_then(Value::as_str).unwrap_or("-")
+    );
+    println!("screenshot   {}", cap("session_screenshot"));
+    println!("page shot    {}", cap("page_screenshot"));
+    println!("page pointer {}", cap("page_pointer"));
+    println!("page key     {}", cap("page_key"));
+    println!("runner       {}", cap("runner"));
+    Ok(())
 }
 
 fn execute_windows(ws_url: &str, json: bool) -> Result<()> {
@@ -1301,6 +1358,7 @@ fn parse_query_pairs(pairs: &[String]) -> Result<Option<Value>> {
 fn commands_for_project(project_root: &Path) -> &'static [&'static str] {
     if project_root.join("lxapp.json").exists() && !project_root.join("lingxia.yaml").exists() {
         &[
+            "doctor",
             "info",
             "pages",
             "windows",
@@ -1315,6 +1373,7 @@ fn commands_for_project(project_root: &Path) -> &'static [&'static str] {
         &[
             "list",
             "current",
+            "doctor",
             "info",
             "pages",
             "windows",
@@ -1351,6 +1410,7 @@ fn command_description(command: &str) -> &'static str {
     match command {
         "list" => "List open lxapps",
         "current" => "Print the current lxapp",
+        "doctor" => "Report the session's automation capabilities",
         "info" => "Print lxapp runtime summary",
         "pages" => "Print configured lxapp pages",
         "windows" => "List the session's top-level windows",

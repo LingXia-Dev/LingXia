@@ -16,9 +16,9 @@ mod process;
 mod wgc;
 mod window_ops;
 pub use ax::{
-    collapse as ax_collapse, expand as ax_expand, focus as ax_focus, invoke as ax_invoke,
-    query as ax_query, scroll_into_view as ax_scroll_into_view, select as ax_select,
-    set_value as ax_set_value, tree as ax_tree, wait as ax_wait,
+    collapse as ax_collapse, expand as ax_expand, focus as ax_focus, hit_test as ax_hit_test,
+    invoke as ax_invoke, query as ax_query, scroll_into_view as ax_scroll_into_view,
+    select as ax_select, set_value as ax_set_value, tree as ax_tree, wait as ax_wait,
 };
 pub use capture::{pixel, screenshot, wait_pixel};
 pub use clipboard::{
