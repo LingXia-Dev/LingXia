@@ -171,6 +171,9 @@ pub enum DesktopCommand {
         /// Limit ax tree depth
         #[arg(long)]
         depth: Option<u32>,
+        /// Accepted for consistency; snapshot output is always JSON
+        #[arg(long)]
+        json: bool,
     },
 }
 
@@ -597,6 +600,7 @@ pub fn execute(options: DesktopOptions) -> ! {
             window,
             no_ax,
             depth,
+            json: _,
         } => run_snapshot(window, no_ax, depth),
     }
 }

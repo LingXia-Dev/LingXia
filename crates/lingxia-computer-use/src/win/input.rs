@@ -9,9 +9,10 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
     KEYEVENTF_UNICODE, MOUSE_EVENT_FLAGS, MOUSEEVENTF_HWHEEL, MOUSEEVENTF_LEFTDOWN,
     MOUSEEVENTF_LEFTUP, MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP, MOUSEEVENTF_RIGHTDOWN,
     MOUSEEVENTF_RIGHTUP, MOUSEEVENTF_WHEEL, MOUSEINPUT, SendInput, VIRTUAL_KEY, VK_BACK,
-    VK_CONTROL, VK_DELETE, VK_DOWN, VK_END, VK_ESCAPE, VK_F1, VK_F2, VK_F3, VK_F4, VK_F5, VK_F6,
-    VK_F7, VK_F8, VK_F9, VK_F10, VK_F11, VK_F12, VK_HOME, VK_LEFT, VK_LWIN, VK_MENU, VK_NEXT,
-    VK_PRIOR, VK_RETURN, VK_RIGHT, VK_SHIFT, VK_SPACE, VK_TAB, VK_UP, VkKeyScanW,
+    VK_CAPITAL, VK_CONTROL, VK_DELETE, VK_DOWN, VK_END, VK_ESCAPE, VK_F1, VK_F2, VK_F3, VK_F4,
+    VK_F5, VK_F6, VK_F7, VK_F8, VK_F9, VK_F10, VK_F11, VK_F12, VK_HOME, VK_INSERT, VK_LEFT,
+    VK_LWIN, VK_MENU, VK_NEXT, VK_PRIOR, VK_RETURN, VK_RIGHT, VK_SHIFT, VK_SPACE, VK_TAB, VK_UP,
+    VkKeyScanW,
 };
 use windows::Win32::UI::WindowsAndMessaging::SetCursorPos;
 
@@ -188,6 +189,13 @@ fn key_vk(name: &str) -> Result<VIRTUAL_KEY> {
         "space" => VK_SPACE,
         "delete" | "del" => VK_DELETE,
         "backspace" => VK_BACK,
+        // Modifier keys, so `key down/up` can hold them for chords.
+        "shift" => VK_SHIFT,
+        "ctrl" | "control" => VK_CONTROL,
+        "alt" | "option" => VK_MENU,
+        "win" | "meta" | "cmd" | "command" => VK_LWIN,
+        "capslock" => VK_CAPITAL,
+        "insert" | "ins" => VK_INSERT,
         "left" => VK_LEFT,
         "right" => VK_RIGHT,
         "up" => VK_UP,
