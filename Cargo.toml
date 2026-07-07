@@ -25,6 +25,7 @@ members = [
     "crates/lingxia-messaging",
     "crates/lingxia",
     "crates/lingxia-proxy",
+    "crates/lingxia-computer-use",
     "tools/lingxia-runner/macos/native",
     "tools/lingxia-runner/windows",
     "tools/lingxia-runner/config",
@@ -67,6 +68,7 @@ lingxia-lxapp = { path = "crates/lingxia-lxapp", version = "0.10.0", default-fea
 lxapp = { package = "lingxia-lxapp", path = "crates/lingxia-lxapp", version = "0.10.0", default-features = false }
 lingxia_devtool = { package = "lingxia-devtool", path = "crates/lingxia-devtool", version = "0.10.0" }
 lingxia-devtool-protocol = { path = "crates/lingxia-devtool-protocol", version = "0.10.0" }
+lingxia-computer-use = { path = "crates/lingxia-computer-use", version = "0.10.0" }
 lingxia-log = { path = "crates/lingxia-log", version = "0.10.0" }
 lingxia-provider = { path = "crates/lingxia-provider", version = "0.10.0" }
 lingxia-update = { path = "crates/lingxia-update", version = "0.10.0" }
