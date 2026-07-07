@@ -130,7 +130,7 @@ impl WebViewDelegate for BrowserTabDelegate {
             LogLevel::Info => LxLogLevel::Info,
             LogLevel::Debug | LogLevel::Verbose => LxLogLevel::Debug,
         };
-        LogBuilder::new(LogTag::WebViewConsole, message)
+        LogBuilder::new(LogTag::BrowserConsole, message)
             .with_level(log_level)
             .with_path(&self.page_path)
             .with_appid(BUILTIN_BROWSER_APPID.to_string());

@@ -42,14 +42,16 @@ pub enum LogTag {
     Native,
     WebViewConsole,
     LxAppServiceConsole,
+    BrowserConsole,
 }
 
 impl LogTag {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Native => "Native",
-            Self::WebViewConsole => "JSView",
-            Self::LxAppServiceConsole => "JSService",
+            Self::WebViewConsole => "LXView",
+            Self::LxAppServiceConsole => "LXLogic",
+            Self::BrowserConsole => "Browser",
         }
     }
 }
@@ -627,8 +629,9 @@ fn new_log_message(tag: LogTag, message: impl std::fmt::Display) -> LogMessage {
 fn log_tag_from_str(value: &str) -> Option<LogTag> {
     match value {
         "Native" => Some(LogTag::Native),
-        "JSView" => Some(LogTag::WebViewConsole),
-        "JSService" => Some(LogTag::LxAppServiceConsole),
+        "LXView" => Some(LogTag::WebViewConsole),
+        "LXLogic" => Some(LogTag::LxAppServiceConsole),
+        "Browser" => Some(LogTag::BrowserConsole),
         _ => None,
     }
 }

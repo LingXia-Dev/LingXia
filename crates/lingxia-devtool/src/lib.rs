@@ -319,6 +319,7 @@ fn devtools_log_source(value: LogTag) -> DevtoolsLogSource {
         LogTag::Native => DevtoolsLogSource::Native,
         LogTag::WebViewConsole => DevtoolsLogSource::WebViewConsole,
         LogTag::LxAppServiceConsole => DevtoolsLogSource::LxAppServiceConsole,
+        LogTag::BrowserConsole => DevtoolsLogSource::BrowserConsole,
     }
 }
 
