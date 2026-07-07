@@ -124,6 +124,83 @@ pub enum WindowTarget {
     Match(WindowQuery),
 }
 
+/// A node in the native accessibility tree (`desktop ax`).
+#[derive(Debug, Clone, Serialize)]
+pub struct AxNode {
+    pub id: String,
+    pub role: String,
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub value: Option<String>,
+    pub enabled: bool,
+    pub focused: bool,
+    pub rect: Rect,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub children: Vec<AxNode>,
+}
+
+/// An accessibility node query (`--match`): bare `text`, or a
+/// `name:` / `role:` / `value:` / `id:` prefix.
+#[derive(Debug, Clone, Default)]
+pub struct AxQuery {
+    pub text: Option<String>,
+    pub name: Option<String>,
+    pub role: Option<String>,
+    pub value: Option<String>,
+    pub id: Option<String>,
+}
+
+impl AxQuery {
+    pub fn parse(input: &str) -> Self {
+        let mut q = AxQuery::default();
+        if let Some(r) = input.strip_prefix("name:") {
+            q.name = Some(r.to_string());
+        } else if let Some(r) = input.strip_prefix("role:") {
+            q.role = Some(r.to_string());
+        } else if let Some(r) = input.strip_prefix("value:") {
+            q.value = Some(r.to_string());
+        } else if let Some(r) = input.strip_prefix("id:") {
+            q.id = Some(r.to_string());
+        } else if let Some(r) = input.strip_prefix("text:") {
+            q.text = Some(r.to_string());
+        } else {
+            q.text = Some(input.to_string());
+        }
+        q
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.text.is_none()
+            && self.name.is_none()
+            && self.role.is_none()
+            && self.value.is_none()
+            && self.id.is_none()
+    }
+
+    /// Does a node satisfy this query? (case-insensitive substring, exact id).
+    pub fn matches(&self, node: &AxNode) -> bool {
+        let ci = |needle: &str, hay: &str| hay.to_lowercase().contains(&needle.to_lowercase());
+        if let Some(id) = &self.id {
+            return &node.id == id;
+        }
+        if let Some(n) = &self.name {
+            return ci(n, &node.name);
+        }
+        if let Some(r) = &self.role {
+            return ci(r, &node.role);
+        }
+        if let Some(v) = &self.value {
+            return node.value.as_deref().is_some_and(|nv| ci(v, nv));
+        }
+        if let Some(t) = &self.text {
+            return ci(t, &node.name)
+                || ci(t, &node.role)
+                || node.value.as_deref().is_some_and(|nv| ci(t, nv));
+        }
+        true
+    }
+}
+
 /// Clipboard contents (`desktop clipboard get`).
 #[derive(Debug, Clone, Serialize)]
 pub struct Clipboard {

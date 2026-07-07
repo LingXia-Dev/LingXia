@@ -8,10 +8,12 @@ use std::sync::Once;
 use windows::core::{BOOL, PWSTR};
 use windows::Win32::Foundation::{CloseHandle, HANDLE, HWND, LPARAM, RECT, TRUE};
 
+mod ax;
 mod capture;
 mod clipboard;
 mod input;
 mod window_ops;
+pub use ax::{invoke as ax_invoke, query as ax_query, tree as ax_tree};
 pub use clipboard::{
     clear as clipboard_clear, get as clipboard_get, paste as clipboard_paste, set as clipboard_set,
 };
@@ -91,6 +93,7 @@ pub fn doctor() -> Doctor {
             pointer: true,
             key: true,
             clipboard: true,
+            ax_tree: true,
             ..Capabilities::default()
         },
     }

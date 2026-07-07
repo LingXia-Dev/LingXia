@@ -11,9 +11,14 @@ pub mod model;
 
 pub use error::{Error, ErrorCode, Result};
 pub use model::{
-    Ack, Capabilities, Capture, CaptureTarget, Clipboard, Display, Doctor, Modifier, MouseButton,
-    Pixel, Rect, Window, WindowQuery, WindowTarget,
+    Ack, AxNode, AxQuery, Capabilities, Capture, CaptureTarget, Clipboard, Display, Doctor,
+    Modifier, MouseButton, Pixel, Rect, Window, WindowQuery, WindowTarget,
 };
+
+/// Native accessibility (`desktop ax ...`).
+pub mod ax {
+    pub use crate::backend::{ax_invoke as invoke, ax_query as query, ax_tree as tree};
+}
 
 /// Clipboard access (`desktop clipboard ...`).
 pub mod clipboard {

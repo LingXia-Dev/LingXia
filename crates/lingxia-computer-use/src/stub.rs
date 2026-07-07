@@ -3,8 +3,8 @@
 
 use crate::error::{Error, Result};
 use crate::model::{
-    Ack, Capabilities, Capture, CaptureTarget, Clipboard, Display, Doctor, Modifier, MouseButton,
-    Pixel, Window, WindowQuery, WindowTarget,
+    Ack, AxNode, AxQuery, Capabilities, Capture, CaptureTarget, Clipboard, Display, Doctor,
+    Modifier, MouseButton, Pixel, Window, WindowQuery, WindowTarget,
 };
 
 fn unsupported<T>() -> Result<T> {
@@ -112,5 +112,20 @@ pub fn clipboard_clear() -> Result<Ack> {
     unsupported()
 }
 pub fn clipboard_paste() -> Result<Ack> {
+    unsupported()
+}
+
+pub fn ax_tree(_window_id: &str, _depth: Option<u32>, _max: Option<usize>) -> Result<AxNode> {
+    unsupported()
+}
+pub fn ax_query(
+    _window_id: &str,
+    _q: &AxQuery,
+    _all: bool,
+    _index: Option<usize>,
+) -> Result<Vec<AxNode>> {
+    unsupported()
+}
+pub fn ax_invoke(_window_id: &str, _q: &AxQuery) -> Result<Ack> {
     unsupported()
 }

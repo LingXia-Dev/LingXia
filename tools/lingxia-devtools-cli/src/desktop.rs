@@ -112,6 +112,53 @@ pub enum DesktopCommand {
         #[command(subcommand)]
         action: ClipboardAction,
     },
+    /// Inspect and act on a window's native accessibility tree
+    Ax {
+        #[command(subcommand)]
+        action: AxAction,
+    },
+}
+
+#[derive(Subcommand, Clone)]
+pub enum AxAction {
+    /// Dump the accessibility tree of a window (read-only)
+    Tree {
+        #[arg(long)]
+        window: String,
+        /// Limit tree depth
+        #[arg(long)]
+        depth: Option<u32>,
+        /// Cap the number of nodes
+        #[arg(long)]
+        max_nodes: Option<usize>,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Find matching nodes (read-only)
+    Query {
+        #[arg(long)]
+        window: String,
+        /// Match: text | name: | role: | value: | id:
+        #[arg(long = "match")]
+        match_query: String,
+        /// Return every match
+        #[arg(long)]
+        all: bool,
+        /// Return the nth match
+        #[arg(long)]
+        index: Option<usize>,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Atomically match exactly one node and Invoke it
+    Invoke {
+        #[arg(long)]
+        window: String,
+        #[arg(long = "match")]
+        match_query: String,
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Subcommand, Clone)]
@@ -358,6 +405,78 @@ pub fn execute(options: DesktopOptions) -> ! {
         DesktopCommand::Clipboard { action } => {
             run_clipboard(action, allow_control, allow_destructive)
         }
+        DesktopCommand::Ax { action } => run_ax(action, allow_control, allow_destructive),
+    }
+}
+
+fn run_ax(action: AxAction, allow_control: bool, allow_destructive: bool) -> ! {
+    match action {
+        AxAction::Tree {
+            window,
+            depth,
+            max_nodes,
+            json,
+        } => finish(json, cu::ax::tree(&window, depth, max_nodes), |n| {
+            print_ax_tree(n, 0)
+        }),
+        AxAction::Query {
+            window,
+            match_query,
+            all,
+            index,
+            json,
+        } => {
+            let q = cu::AxQuery::parse(&match_query);
+            finish(json, cu::ax::query(&window, &q, all, index), print_ax_nodes)
+        }
+        AxAction::Invoke {
+            window,
+            match_query,
+            json,
+        } => {
+            let q = cu::AxQuery::parse(&match_query);
+            let r = gate(allow_control, false, allow_destructive)
+                .and_then(|_| cu::ax::invoke(&window, &q));
+            finish(json, r, print_ack)
+        }
+    }
+}
+
+fn print_ax_node_line(n: &cu::AxNode) {
+    let value = n
+        .value
+        .as_deref()
+        .map(|v| format!("  =\"{v}\""))
+        .unwrap_or_default();
+    println!(
+        "{}  [{}] {:?}{}  ({},{} {}x{}){}",
+        n.id,
+        n.role,
+        n.name,
+        value,
+        n.rect.x,
+        n.rect.y,
+        n.rect.w,
+        n.rect.h,
+        if n.enabled { "" } else { "  (disabled)" },
+    );
+}
+
+fn print_ax_tree(n: &cu::AxNode, indent: usize) {
+    print!("{}", "  ".repeat(indent));
+    print_ax_node_line(n);
+    for c in &n.children {
+        print_ax_tree(c, indent + 1);
+    }
+}
+
+fn print_ax_nodes(nodes: &Vec<cu::AxNode>) {
+    if nodes.is_empty() {
+        println!("No matching nodes.");
+        return;
+    }
+    for n in nodes {
+        print_ax_node_line(n);
     }
 }
 
