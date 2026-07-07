@@ -133,6 +133,28 @@ fn capture_screen_rect(x: i32, y: i32, w: i32, h: i32) -> Result<Capture> {
 
 fn capture_window(id: &str) -> Result<Capture> {
     let hwnd = parse_hwnd(id)?;
+    // Prefer WGC: it captures the real composited output, so GPU/hardware
+    // surfaces (WebView2, Direct3D apps) that PrintWindow renders black come
+    // through correctly. Fall back to PrintWindow if WGC is unavailable.
+    match super::wgc::capture_window(hwnd) {
+        Ok(rgba) => match rgba_to_png(rgba.width, rgba.height, rgba.pixels) {
+            Ok(png) => {
+                return Ok(Capture {
+                    width: rgba.width,
+                    height: rgba.height,
+                    png,
+                    occlusion_independent: true,
+                    backend: "wgc".into(),
+                });
+            }
+            Err(e) => log::debug!("wgc png encode failed, falling back to PrintWindow: {e}"),
+        },
+        Err(e) => log::debug!("wgc capture failed, falling back to PrintWindow: {e}"),
+    }
+    capture_window_printwindow(id, hwnd)
+}
+
+fn capture_window_printwindow(id: &str, hwnd: windows::Win32::Foundation::HWND) -> Result<Capture> {
     unsafe {
         let mut rect = RECT::default();
         if GetWindowRect(hwnd, &mut rect).is_err() {
@@ -225,11 +247,16 @@ unsafe fn dib_to_png(memdc: HDC, bmp: HBITMAP, w: i32, h: i32) -> Result<Vec<u8>
             px.swap(0, 2);
             px[3] = 255;
         }
-        let img = image::RgbaImage::from_raw(w as u32, h as u32, buf)
-            .ok_or_else(|| Error::Failed("bitmap buffer size mismatch".into()))?;
-        let mut png = Vec::new();
-        img.write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
-            .map_err(|e| Error::Failed(format!("PNG encode failed: {e}")))?;
-        Ok(png)
+        rgba_to_png(w as u32, h as u32, buf)
     }
+}
+
+/// Encode top-down RGBA pixels to PNG bytes.
+fn rgba_to_png(w: u32, h: u32, buf: Vec<u8>) -> Result<Vec<u8>> {
+    let img = image::RgbaImage::from_raw(w, h, buf)
+        .ok_or_else(|| Error::Failed("bitmap buffer size mismatch".into()))?;
+    let mut png = Vec::new();
+    img.write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
+        .map_err(|e| Error::Failed(format!("PNG encode failed: {e}")))?;
+    Ok(png)
 }

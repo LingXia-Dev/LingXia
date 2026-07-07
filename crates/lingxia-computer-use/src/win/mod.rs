@@ -13,6 +13,7 @@ mod capture;
 mod clipboard;
 mod input;
 mod process;
+mod wgc;
 mod window_ops;
 pub use ax::{
     collapse as ax_collapse, expand as ax_expand, focus as ax_focus, invoke as ax_invoke,
