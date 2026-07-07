@@ -8,7 +8,7 @@ use windows::Win32::System::DataExchange::{
     CloseClipboard, EmptyClipboard, GetClipboardData, IsClipboardFormatAvailable, OpenClipboard,
     SetClipboardData,
 };
-use windows::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalUnlock, GMEM_MOVEABLE};
+use windows::Win32::System::Memory::{GMEM_MOVEABLE, GlobalAlloc, GlobalLock, GlobalUnlock};
 use windows::Win32::System::Ole::CF_UNICODETEXT;
 
 fn cf_unicode() -> u32 {
@@ -30,7 +30,9 @@ pub fn get() -> Result<Clipboard> {
                     while *ptr.add(len) != 0 {
                         len += 1;
                     }
-                    text = Some(String::from_utf16_lossy(std::slice::from_raw_parts(ptr, len)));
+                    text = Some(String::from_utf16_lossy(std::slice::from_raw_parts(
+                        ptr, len,
+                    )));
                     let _ = GlobalUnlock(hglobal);
                 }
             }

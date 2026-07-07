@@ -1107,9 +1107,12 @@ fn execute_page_key(ws_url: &str, options: PageKeyOptions) -> Result<()> {
         payload.insert("window_id".to_string(), Value::String(window));
     }
     payload.insert("action".to_string(), action);
-    let data =
-        client::execute_command(ws_url, handlers::app::KEYBOARD, Some(Value::Object(payload)))?
-            .unwrap_or(Value::Null);
+    let data = client::execute_command(
+        ws_url,
+        handlers::app::KEYBOARD,
+        Some(Value::Object(payload)),
+    )?
+    .unwrap_or(Value::Null);
 
     if target.json {
         println!("{}", serde_json::to_string_pretty(&data)?);
@@ -1325,7 +1328,15 @@ mod tests {
     #[test]
     fn parses_page_key_press() {
         let cli = parse_lxapp_cli(args(&[
-            "page", "key", "press", "--key", "return", "--modifier", "ctrl", "--modifier", "shift",
+            "page",
+            "key",
+            "press",
+            "--key",
+            "return",
+            "--modifier",
+            "ctrl",
+            "--modifier",
+            "shift",
         ]))
         .unwrap();
 

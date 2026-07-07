@@ -293,7 +293,12 @@ mod tests {
             title: "T".into(),
             process: "p".into(),
             pid,
-            bounds: Rect { x: 0, y: 0, w: 1, h: 1 },
+            bounds: Rect {
+                x: 0,
+                y: 0,
+                w: 1,
+                h: 1,
+            },
             display_id: "display-1".into(),
             scale: 1.0,
             dpi: 96,
@@ -317,7 +322,10 @@ mod tests {
     fn malformed_pid_matches_nothing_not_everything() {
         let q = WindowQuery::parse("pid:abc");
         assert!(q.is_malformed());
-        assert!(!q.is_empty(), "malformed query must not read as empty (match-all)");
+        assert!(
+            !q.is_empty(),
+            "malformed query must not read as empty (match-all)"
+        );
     }
 
     #[test]
@@ -334,7 +342,12 @@ mod tests {
             value: Some("v".into()),
             enabled: true,
             focused: false,
-            rect: Rect { x: 0, y: 0, w: 0, h: 0 },
+            rect: Rect {
+                x: 0,
+                y: 0,
+                w: 0,
+                h: 0,
+            },
             children: vec![],
         };
         assert!(AxQuery::parse("name:ok").matches(&node));

@@ -6,11 +6,11 @@ use crate::error::{Error, Result};
 use crate::model::{Window, WindowQuery, WindowTarget};
 use windows::Win32::Foundation::{HWND, LPARAM, RECT, WPARAM};
 use windows::Win32::UI::WindowsAndMessaging::{
-    GetForegroundWindow, GetWindowLongW, GetWindowRect, GetWindowTextW, GetWindowThreadProcessId,
-    IsIconic, IsWindow, IsWindowVisible, IsZoomed, PostMessageW, SetForegroundWindow, SetWindowPos,
-    ShowWindow, GWL_EXSTYLE, HWND_NOTOPMOST, HWND_TOP, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE,
-    SWP_NOSIZE, SWP_NOZORDER, SWP_SHOWWINDOW, SW_MINIMIZE, SW_RESTORE, SW_SHOWMAXIMIZED, WM_CLOSE,
-    WS_EX_TOPMOST,
+    GWL_EXSTYLE, GetForegroundWindow, GetWindowLongW, GetWindowRect, GetWindowTextW,
+    GetWindowThreadProcessId, HWND_NOTOPMOST, HWND_TOP, HWND_TOPMOST, IsIconic, IsWindow,
+    IsWindowVisible, IsZoomed, PostMessageW, SW_MINIMIZE, SW_RESTORE, SW_SHOWMAXIMIZED,
+    SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SWP_SHOWWINDOW, SetForegroundWindow,
+    SetWindowPos, ShowWindow, WM_CLOSE, WS_EX_TOPMOST,
 };
 
 /// Resolve a target to a live HWND.
@@ -119,7 +119,15 @@ pub fn raise(target: &WindowTarget) -> Result<Window> {
 pub fn move_to(target: &WindowTarget, x: i32, y: i32) -> Result<Window> {
     let hwnd = resolve(target)?;
     unsafe {
-        let _ = SetWindowPos(hwnd, None, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+        let _ = SetWindowPos(
+            hwnd,
+            None,
+            x,
+            y,
+            0,
+            0,
+            SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE,
+        );
     }
     window_info(hwnd)
 }
@@ -131,7 +139,11 @@ pub fn move_to_display(target: &WindowTarget, display_id: &str) -> Result<Window
         .iter()
         .find(|d| d.id == display_id)
         .ok_or_else(|| Error::NotFound(format!("no display {display_id}")))?;
-    move_to(&WindowTarget::Id(format!("0x{:X}", hwnd.0 as isize)), display.work_area.x, display.work_area.y)
+    move_to(
+        &WindowTarget::Id(format!("0x{:X}", hwnd.0 as isize)),
+        display.work_area.x,
+        display.work_area.y,
+    )
 }
 
 pub fn resize(target: &WindowTarget, w: i32, h: i32) -> Result<Window> {
@@ -140,7 +152,15 @@ pub fn resize(target: &WindowTarget, w: i32, h: i32) -> Result<Window> {
     }
     let hwnd = resolve(target)?;
     unsafe {
-        let _ = SetWindowPos(hwnd, None, 0, 0, w, h, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+        let _ = SetWindowPos(
+            hwnd,
+            None,
+            0,
+            0,
+            w,
+            h,
+            SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE,
+        );
     }
     window_info(hwnd)
 }

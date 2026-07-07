@@ -30,9 +30,9 @@ pub fn migrate(options: AppOptions) -> Result<()> {
         "" => "The `lxdev app` namespace was removed. Session commands live under \
              `lxdev lxapp`: screenshot, windows, `page pointer`, `page key`."
             .to_string(),
-        other => format!(
-            "`lxdev app {other}` was removed. See `lxdev lxapp` for session commands."
-        ),
+        other => {
+            format!("`lxdev app {other}` was removed. See `lxdev lxapp` for session commands.")
+        }
     };
     bail!("{hint}");
 }

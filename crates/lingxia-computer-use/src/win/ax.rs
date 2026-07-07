@@ -8,9 +8,8 @@ use super::rect_to;
 use crate::error::{Error, Result};
 use crate::model::{Ack, AxNode, AxQuery};
 use std::sync::Once;
-use windows::core::BSTR;
 use windows::Win32::System::Com::{
-    CoCreateInstance, CoInitializeEx, CLSCTX_INPROC_SERVER, COINIT_MULTITHREADED,
+    CLSCTX_INPROC_SERVER, COINIT_MULTITHREADED, CoCreateInstance, CoInitializeEx,
 };
 use windows::Win32::UI::Accessibility::{
     CUIAutomation, IUIAutomation, IUIAutomationElement, IUIAutomationInvokePattern,
@@ -21,6 +20,7 @@ use windows::Win32::UI::Accessibility::{
     UIA_MenuItemControlTypeId, UIA_PaneControlTypeId, UIA_TextControlTypeId, UIA_ValuePatternId,
     UIA_WindowControlTypeId,
 };
+use windows::core::BSTR;
 
 const DEFAULT_MAX_NODES: usize = 2000;
 
@@ -82,7 +82,10 @@ fn control_type_name(id: i32) -> String {
 
 fn node_data(el: &IUIAutomationElement, id: String) -> AxNode {
     unsafe {
-        let name = el.CurrentName().map(|b| bstr_to_string(&b)).unwrap_or_default();
+        let name = el
+            .CurrentName()
+            .map(|b| bstr_to_string(&b))
+            .unwrap_or_default();
         let role = control_type_name(el.CurrentControlType().map(|c| c.0).unwrap_or(0));
         let enabled = el.CurrentIsEnabled().map(|b| b.as_bool()).unwrap_or(false);
         let focused = el
@@ -253,11 +256,12 @@ pub fn invoke(window_id: &str, q: &AxQuery) -> Result<Ack> {
         n => {
             return Err(Error::Ambiguous(format!(
                 "{n} nodes matched; narrow the query"
-            )))
+            )));
         }
     };
-    let pattern = unsafe { el.GetCurrentPatternAs::<IUIAutomationInvokePattern>(UIA_InvokePatternId) }
-        .map_err(|_| Error::Unsupported("target does not support the invoke pattern".into()))?;
+    let pattern =
+        unsafe { el.GetCurrentPatternAs::<IUIAutomationInvokePattern>(UIA_InvokePatternId) }
+            .map_err(|_| Error::Unsupported("target does not support the invoke pattern".into()))?;
     unsafe { pattern.Invoke() }.map_err(|e| Error::Failed(format!("invoke failed: {e}")))?;
     Ok(Ack::new("ax.invoke"))
 }

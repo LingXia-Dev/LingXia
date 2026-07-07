@@ -5,8 +5,8 @@
 use crate::error::{Error, Result};
 use crate::model::{Capabilities, Display, Doctor, Rect, Window, WindowQuery};
 use std::sync::Once;
-use windows::core::{BOOL, PWSTR};
 use windows::Win32::Foundation::{CloseHandle, HANDLE, HWND, LPARAM, RECT, TRUE};
+use windows::core::{BOOL, PWSTR};
 
 mod ax;
 mod capture;
@@ -14,10 +14,10 @@ mod clipboard;
 mod input;
 mod window_ops;
 pub use ax::{invoke as ax_invoke, query as ax_query, tree as ax_tree};
+pub use capture::{pixel, screenshot};
 pub use clipboard::{
     clear as clipboard_clear, get as clipboard_get, paste as clipboard_paste, set as clipboard_set,
 };
-pub use capture::{pixel, screenshot};
 pub use input::{
     key_down, key_press, key_type, key_up, pointer_click, pointer_down, pointer_drag, pointer_move,
     pointer_scroll, pointer_up,
@@ -40,21 +40,21 @@ pub(crate) fn parse_hwnd(id: &str) -> Result<HWND> {
         .map_err(|_| Error::Usage(format!("invalid window id '{id}'")))?;
     Ok(HWND(raw as *mut core::ffi::c_void))
 }
-use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_CLOAKED};
+use windows::Win32::Graphics::Dwm::{DWMWA_CLOAKED, DwmGetWindowAttribute};
 use windows::Win32::Graphics::Gdi::{
-    EnumDisplayMonitors, GetMonitorInfoW, MonitorFromRect, HDC, HMONITOR, MONITORINFO,
-    MONITORINFOEXW, MONITOR_DEFAULTTONEAREST,
+    EnumDisplayMonitors, GetMonitorInfoW, HDC, HMONITOR, MONITOR_DEFAULTTONEAREST, MONITORINFO,
+    MONITORINFOEXW, MonitorFromRect,
 };
 use windows::Win32::System::Threading::{
-    OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
+    OpenProcess, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION, QueryFullProcessImageNameW,
 };
 use windows::Win32::UI::HiDpi::{
-    GetDpiForMonitor, SetProcessDpiAwarenessContext,
-    DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, MDT_EFFECTIVE_DPI,
+    DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, GetDpiForMonitor, MDT_EFFECTIVE_DPI,
+    SetProcessDpiAwarenessContext,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    EnumWindows, GetForegroundWindow, GetWindowLongW, GetWindowRect, GetWindowTextW,
-    GetWindowThreadProcessId, IsIconic, IsWindowVisible, IsZoomed, GWL_EXSTYLE, WS_EX_TOPMOST,
+    EnumWindows, GWL_EXSTYLE, GetForegroundWindow, GetWindowLongW, GetWindowRect, GetWindowTextW,
+    GetWindowThreadProcessId, IsIconic, IsWindowVisible, IsZoomed, WS_EX_TOPMOST,
 };
 
 const MONITORINFOF_PRIMARY: u32 = 1;
@@ -313,11 +313,10 @@ pub(crate) fn process_name(pid: u32) -> String {
         return String::new();
     }
     unsafe {
-        let handle: HANDLE =
-            match OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) {
-                Ok(h) => h,
-                Err(_) => return String::new(),
-            };
+        let handle: HANDLE = match OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) {
+            Ok(h) => h,
+            Err(_) => return String::new(),
+        };
         let mut buf = [0u16; 260];
         let mut len = buf.len() as u32;
         let ok = QueryFullProcessImageNameW(

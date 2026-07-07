@@ -34,10 +34,12 @@ impl WindowSel {
         match (&self.window, &self.match_query) {
             (Some(id), None) => Ok(cu::WindowTarget::Id(id.clone())),
             (None, Some(q)) => Ok(cu::WindowTarget::Match(cu::WindowQuery::parse(q))),
-            (None, None) => Err(cu::Error::Usage("pass --window <id> or --match <query>".into())),
-            (Some(_), Some(_)) => {
-                Err(cu::Error::Usage("pass only one of --window / --match".into()))
-            }
+            (None, None) => Err(cu::Error::Usage(
+                "pass --window <id> or --match <query>".into(),
+            )),
+            (Some(_), Some(_)) => Err(cu::Error::Usage(
+                "pass only one of --window / --match".into(),
+            )),
         }
     }
 }
@@ -398,9 +400,7 @@ pub fn execute(options: DesktopOptions) -> ! {
             finish(json, cu::pixel(x, y), print_pixel)
         }
         DesktopCommand::Window { action } => run_window(action, allow_control, allow_destructive),
-        DesktopCommand::Pointer { action } => {
-            run_pointer(action, allow_control, allow_destructive)
-        }
+        DesktopCommand::Pointer { action } => run_pointer(action, allow_control, allow_destructive),
         DesktopCommand::Key { action } => run_key(action, allow_control, allow_destructive),
         DesktopCommand::Clipboard { action } => {
             run_clipboard(action, allow_control, allow_destructive)
@@ -621,7 +621,11 @@ fn run_window(action: WindowAction, allow_control: bool, allow_destructive: bool
     match action {
         WindowAction::Status(sel) => {
             let json = sel.json;
-            finish(json, sel.target().and_then(|t| w::status(&t)), print_window_one)
+            finish(
+                json,
+                sel.target().and_then(|t| w::status(&t)),
+                print_window_one,
+            )
         }
         WindowAction::Focus(sel) => gated(sel, allow_control, false, allow_destructive, w::focus),
         WindowAction::Raise(sel) => gated(sel, allow_control, false, allow_destructive, w::raise),
@@ -634,13 +638,11 @@ fn run_window(action: WindowAction, allow_control: bool, allow_destructive: bool
         WindowAction::Restore(sel) => {
             gated(sel, allow_control, false, allow_destructive, w::restore)
         }
-        WindowAction::AlwaysOnTop { sel, enabled } => gated(
-            sel,
-            allow_control,
-            false,
-            allow_destructive,
-            move |t| w::set_always_on_top(t, enabled),
-        ),
+        WindowAction::AlwaysOnTop { sel, enabled } => {
+            gated(sel, allow_control, false, allow_destructive, move |t| {
+                w::set_always_on_top(t, enabled)
+            })
+        }
         WindowAction::Close(sel) => gated(sel, allow_control, true, allow_destructive, w::close),
         WindowAction::Activate { match_query, json } => {
             let result = gate(allow_control, false, allow_destructive)
@@ -658,9 +660,7 @@ fn run_window(action: WindowAction, allow_control: bool, allow_destructive: bool
                         let (x, y) = parse_pair(xy)?;
                         w::move_to(&t, x, y)
                     }
-                    (None, None) => {
-                        Err(cu::Error::Usage("pass --to X,Y or --display <id>".into()))
-                    }
+                    (None, None) => Err(cu::Error::Usage("pass --to X,Y or --display <id>".into())),
                 });
             finish(json, result, print_window_one)
         }
@@ -800,7 +800,10 @@ fn parse_region(s: &str) -> cu::Result<cu::CaptureTarget> {
 }
 
 fn print_pixel(p: &cu::Pixel) {
-    println!("#{}  rgb({},{},{})  at {},{}", p.hex, p.r, p.g, p.b, p.x, p.y);
+    println!(
+        "#{}  rgb({},{},{})  at {},{}",
+        p.hex, p.r, p.g, p.b, p.x, p.y
+    );
 }
 
 /// Emit the result and exit with the contract's exit code. `desktop` commands
@@ -877,7 +880,10 @@ fn print_displays(displays: &Vec<cu::Display>) {
             "{:<10}  {:<7}  {:<20}  {:<6}  {}",
             d.id,
             yn(d.primary),
-            format!("{},{} {}x{}", d.bounds.x, d.bounds.y, d.bounds.w, d.bounds.h),
+            format!(
+                "{},{} {}x{}",
+                d.bounds.x, d.bounds.y, d.bounds.w, d.bounds.h
+            ),
             format!("{:.2}", d.scale),
             d.dpi,
         );
@@ -899,7 +905,10 @@ fn print_windows(windows: &Vec<cu::Window>) {
             w.id,
             w.pid,
             truncate(&w.process, 18),
-            format!("{},{} {}x{}", w.bounds.x, w.bounds.y, w.bounds.w, w.bounds.h),
+            format!(
+                "{},{} {}x{}",
+                w.bounds.x, w.bounds.y, w.bounds.w, w.bounds.h
+            ),
             yn(w.focused),
             truncate(&w.title, 60),
         );
@@ -910,6 +919,9 @@ fn truncate(s: &str, max: usize) -> String {
     if s.chars().count() <= max {
         s.to_string()
     } else {
-        format!("{}…", s.chars().take(max.saturating_sub(1)).collect::<String>())
+        format!(
+            "{}…",
+            s.chars().take(max.saturating_sub(1)).collect::<String>()
+        )
     }
 }
