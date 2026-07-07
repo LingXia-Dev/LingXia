@@ -35,6 +35,7 @@ import {
   isWindows,
   isDesktop,
   isDevSession,
+  isRunner,
 } from "./runtime-env";
 
 const NATIVE_HANDLER_NAME = "LingXia";
@@ -1788,6 +1789,7 @@ export const LingXiaBridge: LingXiaBridgeInterface = {
     isMacOS,
     isWindows,
     isDesktop,
+    isRunner,
     getOS: getPlatformOS,
   },
 
