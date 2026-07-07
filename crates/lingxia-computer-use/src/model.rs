@@ -53,15 +53,24 @@ pub struct WindowQuery {
     pub class: Option<String>,
     pub process: Option<String>,
     pub pid: Option<u32>,
+    /// A prefix was given but its value was malformed (e.g. `pid:abc`); such a
+    /// query must match nothing, never everything.
+    malformed: bool,
 }
 
 impl WindowQuery {
     pub fn is_empty(&self) -> bool {
-        self.text.is_none()
+        !self.malformed
+            && self.text.is_none()
             && self.title.is_none()
             && self.class.is_none()
             && self.process.is_none()
             && self.pid.is_none()
+    }
+
+    /// A malformed query (e.g. `pid:abc`) must match nothing.
+    pub fn is_malformed(&self) -> bool {
+        self.malformed
     }
 
     /// Parse the proposal's window match grammar:
@@ -75,7 +84,10 @@ impl WindowQuery {
         } else if let Some(rest) = input.strip_prefix("process:") {
             q.process = Some(rest.to_string());
         } else if let Some(rest) = input.strip_prefix("pid:") {
-            q.pid = rest.trim().parse().ok();
+            match rest.trim().parse() {
+                Ok(pid) => q.pid = Some(pid),
+                Err(_) => q.malformed = true,
+            }
         } else {
             q.text = Some(input.to_string());
         }
@@ -269,4 +281,73 @@ pub struct Capabilities {
     pub ax_tree: bool,
     pub ocr: bool,
     pub image_match: bool,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn win(pid: u32) -> Window {
+        Window {
+            id: format!("0x{pid:X}"),
+            title: "T".into(),
+            process: "p".into(),
+            pid,
+            bounds: Rect { x: 0, y: 0, w: 1, h: 1 },
+            display_id: "display-1".into(),
+            scale: 1.0,
+            dpi: 96,
+            visible: true,
+            focused: false,
+            minimized: false,
+            maximized: false,
+            always_on_top: false,
+            z: 0,
+        }
+    }
+
+    #[test]
+    fn window_query_prefixes() {
+        assert_eq!(WindowQuery::parse("title:AI").title.as_deref(), Some("AI"));
+        assert_eq!(WindowQuery::parse("pid:42").pid, Some(42));
+        assert_eq!(WindowQuery::parse("hello").text.as_deref(), Some("hello"));
+    }
+
+    #[test]
+    fn malformed_pid_matches_nothing_not_everything() {
+        let q = WindowQuery::parse("pid:abc");
+        assert!(q.is_malformed());
+        assert!(!q.is_empty(), "malformed query must not read as empty (match-all)");
+    }
+
+    #[test]
+    fn empty_query_is_empty() {
+        assert!(WindowQuery::default().is_empty());
+    }
+
+    #[test]
+    fn ax_query_matching() {
+        let node = AxNode {
+            id: "ax:0".into(),
+            role: "button".into(),
+            name: "OK".into(),
+            value: Some("v".into()),
+            enabled: true,
+            focused: false,
+            rect: Rect { x: 0, y: 0, w: 0, h: 0 },
+            children: vec![],
+        };
+        assert!(AxQuery::parse("name:ok").matches(&node));
+        assert!(AxQuery::parse("role:button").matches(&node));
+        assert!(AxQuery::parse("id:ax:0").matches(&node));
+        assert!(!AxQuery::parse("id:ax:9").matches(&node));
+        assert!(AxQuery::parse("OK").matches(&node));
+        assert!(!AxQuery::parse("nope").matches(&node));
+    }
+
+    #[test]
+    fn window_display_id_unused_ok() {
+        // Smoke: constructing a Window is fine (guards the DTO shape).
+        let _ = win(1);
+    }
 }

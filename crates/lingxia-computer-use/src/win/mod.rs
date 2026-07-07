@@ -225,6 +225,9 @@ pub fn windows(query: &WindowQuery) -> Result<Vec<Window>> {
 }
 
 fn matches_query(r: &Raw, q: &WindowQuery) -> bool {
+    if q.is_malformed() {
+        return false;
+    }
     if q.is_empty() {
         return true;
     }

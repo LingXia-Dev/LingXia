@@ -82,3 +82,21 @@ impl Error {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn exit_codes_match_contract() {
+        assert_eq!(Error::Usage("".into()).exit_code(), 2);
+        assert_eq!(Error::NotFound("".into()).exit_code(), 3);
+        assert_eq!(Error::Ambiguous("".into()).exit_code(), 4);
+        assert_eq!(Error::Timeout("".into()).exit_code(), 5);
+        assert_eq!(Error::Permission("".into()).exit_code(), 6);
+        assert_eq!(Error::Unsupported("".into()).exit_code(), 7);
+        assert_eq!(Error::Unavailable("".into()).exit_code(), 8);
+        assert_eq!(Error::Stale("".into()).exit_code(), 9);
+        assert_eq!(Error::Failed("".into()).exit_code(), 10);
+    }
+}

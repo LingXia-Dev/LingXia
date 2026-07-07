@@ -15,6 +15,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 
 /// Resolve a target to a live HWND.
 fn resolve(target: &WindowTarget) -> Result<HWND> {
+    super::ensure_dpi_aware();
     match target {
         WindowTarget::Id(id) => {
             let hwnd = parse_hwnd(id)?;
@@ -82,7 +83,15 @@ pub fn status(target: &WindowTarget) -> Result<Window> {
 pub fn focus(target: &WindowTarget) -> Result<Window> {
     let hwnd = resolve(target)?;
     unsafe {
-        let _ = SetForegroundWindow(hwnd);
+        let ok = SetForegroundWindow(hwnd).as_bool();
+        // Windows may refuse foreground changes (foreground lock / integrity).
+        // Report failure instead of a false success.
+        if !ok && GetForegroundWindow() != hwnd {
+            return Err(Error::Failed(
+                "could not bring the window to the foreground (foreground lock or integrity level)"
+                    .into(),
+            ));
+        }
     }
     window_info(hwnd)
 }

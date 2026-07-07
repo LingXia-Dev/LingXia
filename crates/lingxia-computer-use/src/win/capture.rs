@@ -18,6 +18,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 };
 
 pub fn pixel(x: i32, y: i32) -> Result<Pixel> {
+    super::ensure_dpi_aware();
     unsafe {
         let hdc = GetDC(None);
         if hdc.is_invalid() {
@@ -43,6 +44,7 @@ pub fn pixel(x: i32, y: i32) -> Result<Pixel> {
 }
 
 pub fn screenshot(target: CaptureTarget) -> Result<Capture> {
+    super::ensure_dpi_aware();
     match target {
         CaptureTarget::Window(id) => capture_window(&id),
         CaptureTarget::Screen => {
@@ -52,6 +54,9 @@ pub fn screenshot(target: CaptureTarget) -> Result<Capture> {
         CaptureTarget::Region { x, y, w, h } => {
             if w <= 0 || h <= 0 {
                 return Err(Error::Usage("region width/height must be positive".into()));
+            }
+            if w > 32767 || h > 32767 {
+                return Err(Error::Usage("region is unreasonably large".into()));
             }
             capture_screen_rect(x, y, w, h)
         }
@@ -171,7 +176,7 @@ unsafe fn dib_to_png(memdc: HDC, bmp: HBITMAP, w: i32, h: i32) -> Result<Vec<u8>
             },
             ..Default::default()
         };
-        let mut buf = vec![0u8; (w * h * 4) as usize];
+        let mut buf = vec![0u8; w as usize * h as usize * 4];
         let lines = GetDIBits(
             memdc,
             bmp,

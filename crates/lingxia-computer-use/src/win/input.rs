@@ -27,6 +27,7 @@ fn send(inputs: &[INPUT]) -> Result<()> {
 }
 
 fn set_cursor(x: i32, y: i32) -> Result<()> {
+    super::ensure_dpi_aware();
     unsafe { SetCursorPos(x, y) }.map_err(|e| Error::Failed(format!("SetCursorPos failed: {e}")))
 }
 
@@ -100,13 +101,19 @@ pub fn pointer_drag(fx: i32, fy: i32, tx: i32, ty: i32, button: MouseButton) -> 
     let (down, up) = button_flags(button);
     set_cursor(fx, fy)?;
     send(&[mouse_event(down, 0)])?;
-    // A few intermediate steps so drag-aware targets register motion.
-    for i in 1..=4 {
-        let x = fx + (tx - fx) * i / 4;
-        let y = fy + (ty - fy) * i / 4;
-        set_cursor(x, y)?;
-    }
-    send(&[mouse_event(up, 0)])?;
+    // Once the button is down, always release it — even if a step fails — so a
+    // failure can't leave the mouse button stuck down.
+    let result = (|| {
+        for i in 1..=4 {
+            let x = fx + (tx - fx) * i / 4;
+            let y = fy + (ty - fy) * i / 4;
+            set_cursor(x, y)?;
+        }
+        Ok(())
+    })();
+    let up_result = send(&[mouse_event(up, 0)]);
+    result?;
+    up_result?;
     Ok(Ack::new("pointer.drag"))
 }
 
@@ -226,15 +233,23 @@ pub fn key_up(name: &str) -> Result<Ack> {
 
 pub fn key_press(name: &str, mods: &[Modifier]) -> Result<Ack> {
     let vk = key_vk(name)?;
-    let mut inputs = Vec::new();
+    let mut downs = Vec::new();
     for m in mods {
-        inputs.push(key_input(modifier_vk(*m), KEYBD_EVENT_FLAGS(0)));
+        downs.push(key_input(modifier_vk(*m), KEYBD_EVENT_FLAGS(0)));
     }
-    inputs.push(key_input(vk, KEYBD_EVENT_FLAGS(0)));
-    inputs.push(key_input(vk, KEYEVENTF_KEYUP));
+    downs.push(key_input(vk, KEYBD_EVENT_FLAGS(0)));
+
+    // Releases in reverse; always flush these so a partial/blocked SendInput can
+    // never strand ctrl/shift/etc held down system-wide.
+    let mut ups = vec![key_input(vk, KEYEVENTF_KEYUP)];
     for m in mods.iter().rev() {
-        inputs.push(key_input(modifier_vk(*m), KEYEVENTF_KEYUP));
+        ups.push(key_input(modifier_vk(*m), KEYEVENTF_KEYUP));
     }
-    send(&inputs)?;
+
+    let result = send(&downs).and_then(|_| send(&ups));
+    if result.is_err() {
+        let _ = send(&ups);
+    }
+    result?;
     Ok(Ack::new("key.press"))
 }

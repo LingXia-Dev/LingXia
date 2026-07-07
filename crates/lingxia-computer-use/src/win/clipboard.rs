@@ -3,7 +3,7 @@
 
 use crate::error::{Error, Result};
 use crate::model::{Ack, Clipboard, Modifier};
-use windows::Win32::Foundation::{HANDLE, HGLOBAL};
+use windows::Win32::Foundation::{GlobalFree, HANDLE, HGLOBAL};
 use windows::Win32::System::DataExchange::{
     CloseClipboard, EmptyClipboard, GetClipboardData, IsClipboardFormatAvailable, OpenClipboard,
     SetClipboardData,
@@ -51,17 +51,25 @@ pub fn set(text: &str) -> Result<Ack> {
             .map_err(|e| Error::Failed(format!("GlobalAlloc failed: {e}")))?;
         let dst = GlobalLock(hmem) as *mut u16;
         if dst.is_null() {
+            let _ = GlobalFree(Some(hmem));
             return Err(Error::Failed("GlobalLock failed".into()));
         }
         std::ptr::copy_nonoverlapping(utf16.as_ptr(), dst, utf16.len());
         let _ = GlobalUnlock(hmem);
 
-        OpenClipboard(None).map_err(|e| Error::Failed(format!("OpenClipboard failed: {e}")))?;
+        if let Err(e) = OpenClipboard(None) {
+            let _ = GlobalFree(Some(hmem));
+            return Err(Error::Failed(format!("OpenClipboard failed: {e}")));
+        }
         let _ = EmptyClipboard();
-        // On success the clipboard takes ownership of hmem.
+        // SetClipboardData transfers ownership of hmem to the clipboard only on
+        // success; free it ourselves on failure.
         let set = SetClipboardData(cf_unicode(), Some(HANDLE(hmem.0)));
         let _ = CloseClipboard();
-        set.map_err(|e| Error::Failed(format!("SetClipboardData failed: {e}")))?;
+        if let Err(e) = set {
+            let _ = GlobalFree(Some(hmem));
+            return Err(Error::Failed(format!("SetClipboardData failed: {e}")));
+        }
     }
     Ok(Ack::new("clipboard.set"))
 }

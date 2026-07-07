@@ -29,6 +29,7 @@ fn bstr_to_string(b: &BSTR) -> String {
 }
 
 fn automation() -> Result<IUIAutomation> {
+    super::ensure_dpi_aware();
     static INIT: Once = Once::new();
     INIT.call_once(|| unsafe {
         // Ignore the HRESULT: RPC_E_CHANGED_MODE just means COM is already up.
