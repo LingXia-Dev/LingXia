@@ -111,7 +111,7 @@ pub fn app_launch(
         let _ = CloseHandle(info.hThread);
         let _ = CloseHandle(info.hProcess);
     }
-    let pid = info.dwProcessId;
+    let launcher_pid = info.dwProcessId;
 
     // When the caller asked to wait for a window, a timeout is a real failure
     // (exit code follows the error) — don't swallow it into a bare pid.
@@ -122,7 +122,14 @@ pub fn app_launch(
         }
         None => None,
     };
-    Ok(LaunchResult { pid, window })
+    // Report the matched window's owning process as the durable pid: a
+    // relauncher stub's CreateProcess pid may already be dead by now.
+    let pid = window.as_ref().map(|w| w.pid).unwrap_or(launcher_pid);
+    Ok(LaunchResult {
+        pid,
+        launcher_pid,
+        window,
+    })
 }
 
 /// Resolve a quit target to a pid.

@@ -169,6 +169,7 @@ pub enum DeviceCommand {
     /// Switch the simulated device by preset id
     Set {
         /// Device preset id (see `lxdev lxapp device list`)
+        #[arg(long)]
         id: String,
         /// Force landscape orientation
         #[arg(long, conflicts_with = "portrait")]

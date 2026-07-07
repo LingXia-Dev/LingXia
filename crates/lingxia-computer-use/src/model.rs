@@ -231,7 +231,14 @@ pub struct ProcessInfo {
 /// Result of launching an app (`desktop app launch`).
 #[derive(Debug, Clone, Serialize)]
 pub struct LaunchResult {
+    /// Durable target pid: the matched window's owning process when
+    /// `--wait-window` found one, otherwise the launched process. Prefer this
+    /// for follow-up `app quit`/`process kill`.
     pub pid: u32,
+    /// The pid `CreateProcess` returned. Differs from `pid` when the launched
+    /// binary is a relauncher/stub (e.g. the Store-hosted notepad), whose
+    /// process exits after spawning the real app under a new pid.
+    pub launcher_pid: u32,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub window: Option<Window>,
 }

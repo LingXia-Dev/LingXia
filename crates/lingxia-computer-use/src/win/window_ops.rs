@@ -3,7 +3,7 @@
 
 use super::{display_id_for_rect, parse_hwnd, process_name, rect_to};
 use crate::error::{Error, Result};
-use crate::model::{Window, WindowQuery, WindowTarget};
+use crate::model::{Window, WindowTarget};
 use windows::Win32::Foundation::{HWND, LPARAM, RECT, WPARAM};
 use windows::Win32::UI::WindowsAndMessaging::{
     GWL_EXSTYLE, GetForegroundWindow, GetWindowLongW, GetWindowRect, GetWindowTextW,
@@ -96,8 +96,8 @@ pub fn focus(target: &WindowTarget) -> Result<Window> {
     window_info(hwnd)
 }
 
-pub fn activate(query: WindowQuery) -> Result<Window> {
-    focus(&WindowTarget::Match(query))
+pub fn activate(target: &WindowTarget) -> Result<Window> {
+    focus(target)
 }
 
 pub fn raise(target: &WindowTarget) -> Result<Window> {

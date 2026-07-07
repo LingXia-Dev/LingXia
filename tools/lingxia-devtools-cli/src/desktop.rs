@@ -44,6 +44,33 @@ impl WindowSel {
     }
 }
 
+/// `wait window --state` values. Enumeration only surfaces visible windows,
+/// so `hidden` is currently unsatisfiable and rejected at the backend.
+#[derive(clap::ValueEnum, Clone, Copy)]
+pub enum WindowVisibility {
+    Visible,
+    Hidden,
+}
+
+impl WindowVisibility {
+    fn as_bool(self) -> bool {
+        matches!(self, WindowVisibility::Visible)
+    }
+}
+
+/// `window always-on-top --state` values.
+#[derive(clap::ValueEnum, Clone, Copy)]
+pub enum AlwaysOnTopState {
+    Enabled,
+    Disabled,
+}
+
+impl AlwaysOnTopState {
+    fn as_bool(self) -> bool {
+        matches!(self, AlwaysOnTopState::Enabled)
+    }
+}
+
 #[derive(Subcommand, Clone)]
 pub enum DesktopCommand {
     /// Report backend, capabilities, and permission status
@@ -203,8 +230,9 @@ pub enum WaitAction {
     Window {
         #[arg(long = "match")]
         match_query: String,
-        #[arg(long)]
-        visible: Option<bool>,
+        /// visible (default) | hidden
+        #[arg(long, value_enum)]
+        state: Option<WindowVisibility>,
         #[arg(long, default_value_t = 5000)]
         timeout_ms: u64,
         #[arg(long)]
@@ -473,13 +501,8 @@ pub enum WindowAction {
     Status(WindowSel),
     /// Bring a window to the foreground
     Focus(WindowSel),
-    /// Activate the single window matching a query
-    Activate {
-        #[arg(long = "match")]
-        match_query: String,
-        #[arg(long)]
-        json: bool,
-    },
+    /// Activate a window (by id or the single window matching a query)
+    Activate(WindowSel),
     /// Raise a window to the top of the z-order
     Raise(WindowSel),
     /// Move a window to X,Y or to a display
@@ -511,8 +534,9 @@ pub enum WindowAction {
     AlwaysOnTop {
         #[command(flatten)]
         sel: WindowSel,
-        #[arg(long, action = clap::ArgAction::Set)]
-        enabled: bool,
+        /// enabled | disabled
+        #[arg(long, value_enum)]
+        state: AlwaysOnTopState,
     },
     /// Ask a window to close (destructive)
     Close(WindowSel),
@@ -580,7 +604,13 @@ fn run_app(action: AppAction, allow_control: bool, allow_destructive: bool) -> !
                     .as_ref()
                     .map(|w| format!(" window {}", w.id))
                     .unwrap_or_default();
-                println!("launched pid {}{win}", lr.pid);
+                // Note the launcher pid only when it differs (relauncher stub).
+                let launcher = if lr.launcher_pid != lr.pid {
+                    format!(" (launcher pid {})", lr.launcher_pid)
+                } else {
+                    String::new()
+                };
+                println!("launched pid {}{launcher}{win}", lr.pid);
             })
         }
         AppAction::Quit {
@@ -721,14 +751,14 @@ fn run_wait(action: WaitAction) -> ! {
     match action {
         WaitAction::Window {
             match_query,
-            visible,
+            state,
             timeout_ms,
             json,
         } => {
             let q = cu::WindowQuery::parse(&match_query);
             finish(
                 json,
-                cu::wait_window(&q, visible, timeout_ms),
+                cu::wait_window(&q, state.map(WindowVisibility::as_bool), timeout_ms),
                 print_window_one,
             )
         }
@@ -962,17 +992,15 @@ fn run_window(action: WindowAction, allow_control: bool, allow_destructive: bool
         WindowAction::Restore(sel) => {
             gated(sel, allow_control, false, allow_destructive, w::restore)
         }
-        WindowAction::AlwaysOnTop { sel, enabled } => {
+        WindowAction::AlwaysOnTop { sel, state } => {
+            let on = state.as_bool();
             gated(sel, allow_control, false, allow_destructive, move |t| {
-                w::set_always_on_top(t, enabled)
+                w::set_always_on_top(t, on)
             })
         }
         WindowAction::Close(sel) => gated(sel, allow_control, true, allow_destructive, w::close),
-        WindowAction::Activate { match_query, json } => {
-            let result = gate(allow_control, false, allow_destructive)
-                .map(|_| cu::WindowQuery::parse(&match_query))
-                .and_then(w::activate);
-            finish(json, result, print_window_one)
+        WindowAction::Activate(sel) => {
+            gated(sel, allow_control, false, allow_destructive, w::activate)
         }
         WindowAction::Move { sel, to, display } => {
             let json = sel.json;

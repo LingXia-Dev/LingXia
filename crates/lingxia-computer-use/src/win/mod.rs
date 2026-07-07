@@ -235,12 +235,11 @@ pub fn windows(query: &WindowQuery) -> Result<Vec<Window>> {
 /// time out (exit 5).
 pub fn wait_window(query: &WindowQuery, visible: Option<bool>, timeout_ms: u64) -> Result<Window> {
     // Enumeration only surfaces visible, uncloaked, non-zero-area top-level
-    // windows, so every candidate is visible. `--visible false` is therefore
+    // windows, so every candidate is visible. `--state hidden` is therefore
     // unsatisfiable; reject it up front rather than spinning to a timeout.
     if visible == Some(false) {
         return Err(Error::Usage(
-            "wait window --visible false is unsupported: only visible windows are enumerated"
-                .into(),
+            "wait window --state hidden is unsupported: only visible windows are enumerated".into(),
         ));
     }
     let deadline = std::time::Instant::now() + std::time::Duration::from_millis(timeout_ms);
