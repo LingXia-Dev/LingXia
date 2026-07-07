@@ -44,7 +44,7 @@ Stale files from crashed sessions are pruned automatically (or via `lxdev sessio
 - `mouse move|down|up|click|drag|scroll` — raw input at window coordinates
 - `key text|press` — keyboard input to the focused control
 
-**`logs`** — the session's JSONL log stream: tail or `-f` follow, filter by level, source (native / webview / logic), page path, or text.
+**`logs`** — the session's JSONL log stream: tail or `-f` follow; filter by `--level`, `--source` (`native` host, your app's `lxview`/`lxlogic`, or a `browser` tab), `--path`, `--grep`, `--app <id>`; `--wide` prefixes each line with its app id.
 
 **`sessions`** — list, probe liveness, prune stale session files, or request that the owning `lingxia dev` process stop (`sessions stop`). Force-kill remains on `lingxia dev stop --force`, because `lingxia` owns the platform process lifecycle.
 

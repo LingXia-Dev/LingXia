@@ -23,16 +23,21 @@ pub struct LogsOptions {
     pub level: Option<String>,
 
     /// Only include entries for this source
-    #[arg(
-        long,
-        alias = "tag",
-        value_parser = ["native", "webview", "logic", "web_view_console", "lx_app_service_console"]
-    )]
+    #[arg(long, alias = "tag", value_parser = ["native", "lxview", "lxlogic", "browser"])]
     pub source: Option<String>,
+
+    /// Only include entries for this app id (exact match)
+    #[arg(long)]
+    pub app: Option<String>,
 
     /// Only include entries whose page path contains this text
     #[arg(long)]
     pub path: Option<String>,
+
+    /// Prefix the origin column with the app id (useful when several lxapps
+    /// or the built-in browser share one session)
+    #[arg(long)]
+    pub wide: bool,
 
     /// Show only the most recent N matching backlog entries (0 to skip backlog when --follow)
     #[arg(long, default_value_t = 200)]
@@ -54,6 +59,7 @@ pub struct LogsOptions {
 struct Filters {
     level: Option<DevtoolsLogLevel>,
     source: Option<DevtoolsLogSource>,
+    app: Option<String>,
     grep: Option<String>,
     path: Option<String>,
 }
@@ -62,18 +68,21 @@ struct Filters {
 struct RenderOpts {
     json: bool,
     pretty: bool,
+    wide: bool,
 }
 
 pub fn execute(log_file: &Path, options: LogsOptions) -> Result<()> {
     let filters = Filters {
         level: options.level.as_deref().map(parse_level).transpose()?,
         source: options.source.as_deref().map(parse_source).transpose()?,
+        app: options.app.as_deref().map(str::to_lowercase),
         grep: options.grep.as_deref().map(str::to_lowercase),
         path: options.path.as_deref().map(str::to_lowercase),
     };
     let render = RenderOpts {
         json: options.json,
         pretty: options.pretty,
+        wide: options.wide,
     };
 
     let end_offset = drain_backlog(log_file, &filters, options.limit, render, options.follow)?;
@@ -189,6 +198,12 @@ fn matches_filters(entry: &DevtoolsLogMessage, filters: &Filters) -> bool {
     {
         return false;
     }
+    if let Some(app_filter) = filters.app.as_deref() {
+        let hay = entry.appid.as_deref().unwrap_or("").to_lowercase();
+        if hay != app_filter {
+            return false;
+        }
+    }
     if let Some(path_filter) = filters.path.as_deref() {
         let hay = entry.path.as_deref().unwrap_or("").to_lowercase();
         if !hay.contains(path_filter) {
@@ -220,15 +235,11 @@ fn render_entry(entry: &DevtoolsLogMessage, render: RenderOpts) -> Result<String
     let timestamp = dt.format("%H:%M:%S%.3f").to_string();
     let level = format_level(entry.level);
     let source = format_source(entry.source);
-    let path = entry
-        .path
-        .as_deref()
-        .filter(|p| !p.is_empty())
-        .unwrap_or("");
+    let origin = origin_column(entry, render.wide);
 
     if render.pretty {
         let level_field = format!("{level:<7}");
-        let source_field = format!("{source:<22}");
+        let source_field = format!("{source:<7}");
         let level_colored = match entry.level {
             DevtoolsLogLevel::Error => level_field.red().bold().to_string(),
             DevtoolsLogLevel::Warn => level_field.yellow().bold().to_string(),
@@ -241,20 +252,33 @@ fn render_entry(entry: &DevtoolsLogMessage, render: RenderOpts) -> Result<String
             level_colored,
             source_field.dimmed()
         );
-        if !path.is_empty() {
+        if !origin.is_empty() {
             line.push(' ');
-            line.push_str(&path.dimmed().to_string());
+            line.push_str(&origin.dimmed().to_string());
         }
         line.push(' ');
         line.push_str(&entry.message);
         Ok(line)
     } else {
-        let mut prefix = format!("{timestamp} {level:<7} {source:<22}");
-        if !path.is_empty() {
+        let mut prefix = format!("{timestamp} {level:<7} {source:<7}");
+        if !origin.is_empty() {
             prefix.push(' ');
-            prefix.push_str(path);
+            prefix.push_str(&origin);
         }
         Ok(format!("{prefix} {}", entry.message))
+    }
+}
+
+/// The origin column: the page path, optionally prefixed with the app id when
+/// `--wide` is set so entries from different lxapps (or the built-in browser)
+/// are distinguishable on the line.
+fn origin_column(entry: &DevtoolsLogMessage, wide: bool) -> String {
+    let path = entry.path.as_deref().unwrap_or("").trim();
+    let appid = entry.appid.as_deref().unwrap_or("").trim();
+    match (wide, appid.is_empty(), path.is_empty()) {
+        (true, false, false) => format!("{appid}:{path}"),
+        (true, false, true) => appid.to_string(),
+        _ => path.to_string(),
     }
 }
 
@@ -272,8 +296,9 @@ fn parse_level(value: &str) -> Result<DevtoolsLogLevel> {
 fn parse_source(value: &str) -> Result<DevtoolsLogSource> {
     match value {
         "native" => Ok(DevtoolsLogSource::Native),
-        "webview" | "web_view_console" => Ok(DevtoolsLogSource::WebViewConsole),
-        "logic" | "lx_app_service_console" => Ok(DevtoolsLogSource::LxAppServiceConsole),
+        "lxview" => Ok(DevtoolsLogSource::WebViewConsole),
+        "lxlogic" => Ok(DevtoolsLogSource::LxAppServiceConsole),
+        "browser" => Ok(DevtoolsLogSource::BrowserConsole),
         _ => Err(anyhow!("Unsupported log source: {}", value)),
     }
 }
@@ -291,7 +316,143 @@ fn format_level(level: DevtoolsLogLevel) -> &'static str {
 fn format_source(source: DevtoolsLogSource) -> &'static str {
     match source {
         DevtoolsLogSource::Native => "native",
-        DevtoolsLogSource::WebViewConsole => "webview",
-        DevtoolsLogSource::LxAppServiceConsole => "logic",
+        DevtoolsLogSource::WebViewConsole => "lxview",
+        DevtoolsLogSource::LxAppServiceConsole => "lxlogic",
+        DevtoolsLogSource::BrowserConsole => "browser",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn entry(source: DevtoolsLogSource, appid: &str, path: &str) -> DevtoolsLogMessage {
+        DevtoolsLogMessage {
+            timestamp_ms: 0,
+            source,
+            level: DevtoolsLogLevel::Info,
+            appid: Some(appid.to_string()),
+            path: Some(path.to_string()),
+            message: "hi".to_string(),
+        }
+    }
+
+    fn no_filters() -> Filters {
+        Filters {
+            level: None,
+            source: None,
+            app: None,
+            grep: None,
+            path: None,
+        }
+    }
+
+    #[test]
+    fn source_names_are_the_four_canonical_values() {
+        assert_eq!(parse_source("native").unwrap(), DevtoolsLogSource::Native);
+        assert_eq!(
+            parse_source("lxview").unwrap(),
+            DevtoolsLogSource::WebViewConsole
+        );
+        assert_eq!(
+            parse_source("lxlogic").unwrap(),
+            DevtoolsLogSource::LxAppServiceConsole
+        );
+        assert_eq!(
+            parse_source("browser").unwrap(),
+            DevtoolsLogSource::BrowserConsole
+        );
+        assert!(parse_source("webview").is_err());
+        assert!(parse_source("browser_console").is_err());
+        assert_eq!(format_source(DevtoolsLogSource::WebViewConsole), "lxview");
+        assert_eq!(
+            format_source(DevtoolsLogSource::LxAppServiceConsole),
+            "lxlogic"
+        );
+        assert_eq!(format_source(DevtoolsLogSource::BrowserConsole), "browser");
+    }
+
+    #[test]
+    fn source_column_separates_browser_from_page() {
+        let render = RenderOpts {
+            json: false,
+            pretty: false,
+            wide: false,
+        };
+        let page = render_entry(
+            &entry(
+                DevtoolsLogSource::WebViewConsole,
+                "com.demo.app",
+                "pages/home",
+            ),
+            render,
+        )
+        .unwrap();
+        let tab = render_entry(
+            &entry(
+                DevtoolsLogSource::BrowserConsole,
+                "app.lingxia.browser",
+                "https://example.com/",
+            ),
+            render,
+        )
+        .unwrap();
+        assert!(page.contains("lxview"), "{page}");
+        assert!(tab.contains("browser"), "{tab}");
+    }
+
+    #[test]
+    fn wide_prefixes_appid_onto_origin() {
+        let render = RenderOpts {
+            json: false,
+            pretty: false,
+            wide: true,
+        };
+        let line = render_entry(
+            &entry(
+                DevtoolsLogSource::WebViewConsole,
+                "com.demo.app",
+                "pages/home",
+            ),
+            render,
+        )
+        .unwrap();
+        assert!(line.contains("com.demo.app:pages/home"), "{line}");
+    }
+
+    #[test]
+    fn app_filter_matches_exact_appid() {
+        let mut filters = no_filters();
+        filters.app = Some("app.lingxia.browser".to_string());
+        assert!(matches_filters(
+            &entry(
+                DevtoolsLogSource::BrowserConsole,
+                "app.lingxia.browser",
+                "x"
+            ),
+            &filters
+        ));
+        assert!(!matches_filters(
+            &entry(DevtoolsLogSource::WebViewConsole, "com.demo.app", "x"),
+            &filters
+        ));
+    }
+
+    #[test]
+    fn source_filter_selects_browser_only() {
+        let mut filters = no_filters();
+        filters.source = Some(DevtoolsLogSource::BrowserConsole);
+        assert!(matches_filters(
+            &entry(
+                DevtoolsLogSource::BrowserConsole,
+                "app.lingxia.browser",
+                "x"
+            ),
+            &filters
+        ));
+        assert!(!matches_filters(
+            &entry(DevtoolsLogSource::WebViewConsole, "com.demo.app", "x"),
+            &filters
+        ));
     }
 }
