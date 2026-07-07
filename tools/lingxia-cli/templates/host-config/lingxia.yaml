@@ -14,8 +14,9 @@ app:
   productName: {{PRODUCT_NAME}}
   # Host app version. Must be semantic version major.minor.patch.
   productVersion: 0.0.1
-  # Optional logical publishing ID used by app publishing flows.
-  # lingxiaId: {{PROJECT_NAME_COMMENT}}
+  # Logical publishing ID used by `lingxia publish` (distinct from the OS package
+  # id). Identifies this host app to the LingXia server.
+  lingxiaId: {{LINGXIA_ID}}
 
   # Default env per command (override with --env <developer|preview|release>):
   #   - `lingxia build` / `lingxia dev`: developer (day-to-day work)

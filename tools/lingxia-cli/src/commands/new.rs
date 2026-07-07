@@ -87,7 +87,7 @@ pub fn execute(
                  and builds the cloud worker.\nInstall lingxiao and retry, or omit --functions."
             ));
         }
-        let app_id = gather_lxapp_id(&name, yes)?;
+        let app_id = gather_lxapp_id(&self::types::default_lxapp_app_id(&name), yes)?;
         let framework = gather_lxapp_framework(yes)?;
         let target_dir = std::env::current_dir()?.join(&name);
         create_lxapp_from_template(

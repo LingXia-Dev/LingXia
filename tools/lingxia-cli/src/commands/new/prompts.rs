@@ -1,7 +1,9 @@
 use super::DEFAULT_LXAPP_DIR_NAME;
 use super::lxapp_scaffold;
 use super::types::{AppServiceMode, DEFAULT_PACKAGE_PREFIX, Platform, ProjectConfig, ProjectType};
-use super::validation::{validate_package_id, validate_product_name, validate_project_name};
+use super::validation::{
+    validate_lxapp_id, validate_package_id, validate_product_name, validate_project_name,
+};
 use anyhow::{Result, anyhow};
 use dialoguer::{Input, MultiSelect, Select, theme::ColorfulTheme};
 
@@ -38,9 +40,9 @@ pub(super) fn gather_product_name(project_name: &str, yes: bool) -> Result<Strin
     Ok(input.trim().to_string())
 }
 
-/// Editable appId for a standalone lxapp. Defaults to the project name and is
-/// validated like a project name (no spaces; alphanumeric/_/- only). In --yes
-/// mode the default is used unprompted.
+/// Editable appId for a standalone lxapp. Defaults to the namespaced
+/// `lingxia.lxapp.<name>` and accepts dotted ids. In --yes mode the default is
+/// used unprompted.
 pub(super) fn gather_lxapp_id(default: &str, yes: bool) -> Result<String> {
     if yes {
         return Ok(default.to_string());
@@ -50,7 +52,7 @@ pub(super) fn gather_lxapp_id(default: &str, yes: bool) -> Result<String> {
         .with_prompt("LxApp ID")
         .with_initial_text(default.to_string())
         .validate_with(|input: &String| -> Result<(), String> {
-            validate_project_name(input.trim()).map_err(|e| e.to_string())
+            validate_lxapp_id(input.trim()).map_err(|e| e.to_string())
         })
         .interact_text()?;
     Ok(id.trim().to_string())

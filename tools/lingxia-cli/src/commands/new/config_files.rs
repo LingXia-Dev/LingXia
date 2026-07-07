@@ -46,8 +46,11 @@ fn render_host_config(
     );
     vars.insert("PACKAGE_ID".to_string(), yaml_string(&config.package_id));
     vars.insert("HOME_APP_ID".to_string(), yaml_string(&lxapp.app_id));
-    vars.insert("HOME_APP_PATH".to_string(), yaml_string(&lxapp.app_id));
-    vars.insert("PROJECT_NAME_COMMENT".to_string(), config.name.clone());
+    vars.insert("HOME_APP_PATH".to_string(), yaml_string(&lxapp.dir_name));
+    vars.insert(
+        "LINGXIA_ID".to_string(),
+        yaml_string(&super::types::default_lingxia_id(&config.name)),
+    );
     vars.insert(
         "SWIFT_TARGET_NAME".to_string(),
         yaml_string(&swift_target_name),
@@ -162,14 +165,17 @@ mod tests {
             target_dir: PathBuf::from("/tmp/demo"),
         };
         let lxapp = LxAppInfo {
-            app_id: "demo".to_string(),
+            app_id: "lingxia.lxapp.demo".to_string(),
+            dir_name: "lxapp".to_string(),
         };
 
         let yaml = render_host_config(&config, &lxapp, AppServiceMode::Enabled);
         let lingxia: LingXiaConfig = serde_yaml_ng::from_str(&yaml).unwrap();
         let app = lingxia.app.as_ref().expect("app config should exist");
         assert_eq!(app.product_name, "Demo: App");
-        assert_eq!(app.home_app_id, "demo");
+        assert_eq!(app.home_app_id, "lingxia.lxapp.demo");
+        // lingxiaId defaults to the namespaced host publish id.
+        assert_eq!(app.lingxia_id.as_deref(), Some("lingxia.app.demo"));
         let storage = lingxia
             .storage
             .as_ref()
@@ -192,8 +198,9 @@ mod tests {
             .as_ref()
             .expect("resources config should exist");
         assert_eq!(resources.bundles.len(), 1);
-        assert_eq!(resources.bundles[0].app_id, "demo");
-        assert_eq!(resources.bundles[0].path.as_deref(), Some("demo"));
+        // Bundle appId is the namespaced id; its path stays the on-disk dir name.
+        assert_eq!(resources.bundles[0].app_id, "lingxia.lxapp.demo");
+        assert_eq!(resources.bundles[0].path.as_deref(), Some("lxapp"));
     }
 
     #[test]
@@ -209,6 +216,7 @@ mod tests {
         };
         let lxapp = LxAppInfo {
             app_id: "demo-home".to_string(),
+            dir_name: "lxapp".to_string(),
         };
 
         let yaml = render_host_config(&config, &lxapp, AppServiceMode::Enabled);

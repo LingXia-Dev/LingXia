@@ -3,6 +3,20 @@ use std::path::PathBuf;
 pub(super) const DEFAULT_PACKAGE_PREFIX: &str = "app.lingxia";
 pub(super) const DEFAULT_ICON_BACKGROUND_COLOR: &str = "#FFFFFF";
 
+/// Default logical publish id for a host app: `lingxia.app.<name>`.
+/// Distinct from the OS package id (`app.lingxia.<name>`); this one identifies
+/// the app to the LingXia server for `lingxia publish`.
+pub(super) fn default_lingxia_id(project_name: &str) -> String {
+    format!("lingxia.app.{}", project_name.to_lowercase())
+}
+
+/// Default lxapp `appId`: `lingxia.lxapp.<name>`. Namespaced so ids don't
+/// collide across projects on a shared server. Decoupled from the lxapp's
+/// on-disk directory name.
+pub(super) fn default_lxapp_app_id(project_name: &str) -> String {
+    format!("lingxia.lxapp.{}", project_name.to_lowercase())
+}
+
 #[derive(Debug)]
 pub(super) struct ProjectConfig {
     pub(super) name: String,
@@ -71,7 +85,12 @@ impl Platform {
 
 #[derive(Debug, Clone)]
 pub(super) struct LxAppInfo {
+    /// The namespaced logical id (e.g. `lingxia.lxapp.demo`). Becomes the host's
+    /// `homeAppId`, the bundle `appId`, and the surface `id`.
     pub(super) app_id: String,
+    /// The lxapp's on-disk directory name (e.g. `lxapp`). Becomes the bundle
+    /// `path`. Kept separate so the id can be namespaced without dotting a dir.
+    pub(super) dir_name: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
