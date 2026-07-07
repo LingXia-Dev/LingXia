@@ -11,7 +11,7 @@ pub use lingxia_webview::{
     NetworkBody, NetworkCaptureSnapshot, NetworkEntry, WebViewCookie, WebViewCookieSameSite,
     WebViewCookieSetRequest,
 };
-pub use policy::{extract_url_scheme, is_lingxia_startup_url};
+pub use policy::{extract_url_scheme, is_lingxia_startup_url, normalize_url_for_wait_compare};
 use std::sync::Arc;
 use std::time::Duration;
 pub use types::{
