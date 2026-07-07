@@ -397,10 +397,12 @@ pub(crate) fn browser_update_tab_info(
                 changed = true;
             }
         }
-        if title.is_some() {
-            let value = normalize_optional_string(title);
-            if tab.title != value {
-                tab.title = value;
+        if let Some(value) = normalize_optional_string(title) {
+            // Only non-empty titles update the record: an empty title means "not
+            // yet known" (e.g. a webview's initial KVO fire before the document
+            // title is parsed) and must never clobber a title already reported.
+            if tab.title.as_deref() != Some(value.as_str()) {
+                tab.title = Some(value);
                 changed = true;
             }
         }

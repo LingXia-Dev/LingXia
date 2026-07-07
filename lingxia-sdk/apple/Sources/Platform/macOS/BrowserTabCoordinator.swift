@@ -113,6 +113,11 @@ final class BrowserTabCoordinator: NSObject {
     nonisolated(unsafe) private var urlObservation: NSKeyValueObservation?
     nonisolated(unsafe) private var canGoBackObservation: NSKeyValueObservation?
     nonisolated(unsafe) private var canGoForwardObservation: NSKeyValueObservation?
+    /// Per-tab title observations kept for *all* tabs, not just the active one.
+    /// Only the active webview is attached, so without these a background tab
+    /// whose title lands after it's switched away would keep the "New Tab"
+    /// placeholder in the sidebar until it's clicked.
+    nonisolated(unsafe) private var tabTitleObservations: [String: NSKeyValueObservation] = [:]
 
     private var devToolsRequestToken: UInt64 = 0
     private var lxappDevToolsRequestToken: UInt64 = 0
@@ -126,6 +131,32 @@ final class BrowserTabCoordinator: NSObject {
         urlObservation?.invalidate()
         canGoBackObservation?.invalidate()
         canGoForwardObservation?.invalidate()
+        tabTitleObservations.values.forEach { $0.invalidate() }
+        tabTitleObservations.removeAll()
+    }
+
+    /// Observe a tab's title for as long as the tab exists (independent of which
+    /// tab is currently attached), so the sidebar label follows background tabs.
+    /// The tab's webview may not exist yet right after open, so retry briefly.
+    private func ensureTitleObservation(for id: String, attempt: Int = 0) {
+        guard tabIds.contains(id), tabTitleObservations[id] == nil else { return }
+        guard let webView = findWebView(for: id) else {
+            if attempt < Self.attachMaxRetry {
+                DispatchQueue.main.asyncAfter(deadline: .now() + Self.devToolsRetryDelay) { [weak self] in
+                    self?.ensureTitleObservation(for: id, attempt: attempt + 1)
+                }
+            }
+            return
+        }
+        tabTitleObservations[id] = webView.observe(\.title, options: [.initial, .new]) { [weak self] webView, _ in
+            Task { @MainActor in
+                guard let self, self.tabIds.contains(id) else { return }
+                let title = (webView.title ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !title.isEmpty else { return }
+                self.handleTitleChanged(id: id, title: title)
+                _ = updateBrowserTabInfo(self.tabIdString(id), webView.url?.absoluteString ?? "", title)
+            }
+        }
     }
 
     /// Deactivate browser UI (called when switching to an lxapp tab). Idempotent.
@@ -182,6 +213,7 @@ final class BrowserTabCoordinator: NSObject {
             clearWebViewAttachment()
         }
 
+        tabTitleObservations.removeValue(forKey: id)?.invalidate()
         tabTitles.removeValue(forKey: id)
         tabFavicons.removeValue(forKey: id)
         tabFaviconRequestOrigins.removeValue(forKey: id)
@@ -252,6 +284,7 @@ final class BrowserTabCoordinator: NSObject {
         if !tabIds.contains(id) {
             tabIds.append(id)
         }
+        ensureTitleObservation(for: id)
         switchToTab(id: id)
     }
 
