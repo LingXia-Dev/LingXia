@@ -68,7 +68,7 @@ pub fn window_set_always_on_top(_t: &WindowTarget, _on: bool) -> Result<Window> 
 pub fn window_close(_t: &WindowTarget) -> Result<Window> {
     unsupported()
 }
-pub fn window_activate(_q: WindowQuery) -> Result<Window> {
+pub fn window_activate(_t: &WindowTarget) -> Result<Window> {
     unsupported()
 }
 
