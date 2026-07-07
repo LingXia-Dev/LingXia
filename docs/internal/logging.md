@@ -62,8 +62,9 @@ There are two separate capability paths:
   - `Verbose`, `Debug`, `Info`, `Warn`, `Error`
 - `LogTag`
   - `Native`
-  - `WebViewConsole`
-  - `LxAppServiceConsole`
+  - `WebViewConsole` (lxapp page console)
+  - `LxAppServiceConsole` (lxapp logic/app-service console)
+  - `BrowserConsole` (built-in browser tab console — external web content)
 
 The model is intentionally transport-agnostic. It is valid for:
 
@@ -256,7 +257,7 @@ The runtime can normalize logs from multiple sources into the same model:
 
 - Rust `log` crate records
 - tracing events
-- view/appservice console events
+- page/appservice/browser-tab console events
 - direct `lingxia_log::log(...)` calls
 - `info!`, `warn!`, `error!`, `debug!`, `verbose!` helpers
 - platform SDK FFI logs via `emitSdkLog`
@@ -275,8 +276,9 @@ platform logger:
 `LogTag::as_str()` controls the display tag used in formatted platform output:
 
 - `LogTag::Native` -> `Native`
-- `LogTag::WebViewConsole` -> `JSView`
-- `LogTag::LxAppServiceConsole` -> `JSService`
+- `LogTag::WebViewConsole` -> `LXView`
+- `LogTag::LxAppServiceConsole` -> `LXLogic`
+- `LogTag::BrowserConsole` -> `Browser`
 
 ## Invariants
 

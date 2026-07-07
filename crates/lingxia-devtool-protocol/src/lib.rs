@@ -126,6 +126,7 @@ pub enum DevtoolsLogSource {
     Native,
     WebViewConsole,
     LxAppServiceConsole,
+    BrowserConsole,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
