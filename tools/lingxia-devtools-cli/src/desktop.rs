@@ -4,8 +4,42 @@ use serde::Serialize;
 
 #[derive(Args, Clone)]
 pub struct DesktopOptions {
+    /// Authorize mutating desktop commands (or set LXDEV_DESKTOP_ALLOW_CONTROL=1)
+    #[arg(long, global = true)]
+    allow_control: bool,
+    /// Authorize destructive commands like `window close` (or set
+    /// LXDEV_DESKTOP_ALLOW_DESTRUCTIVE=1)
+    #[arg(long, global = true)]
+    allow_destructive: bool,
     #[command(subcommand)]
     command: DesktopCommand,
+}
+
+/// Shared window selector: exactly one of `--window` / `--match`.
+#[derive(Args, Clone)]
+pub struct WindowSel {
+    /// Window id from `desktop windows`
+    #[arg(long)]
+    window: Option<String>,
+    /// Match query (text | title: | class: | process: | pid:)
+    #[arg(long = "match")]
+    match_query: Option<String>,
+    /// Print JSON output
+    #[arg(long)]
+    json: bool,
+}
+
+impl WindowSel {
+    fn target(&self) -> cu::Result<cu::WindowTarget> {
+        match (&self.window, &self.match_query) {
+            (Some(id), None) => Ok(cu::WindowTarget::Id(id.clone())),
+            (None, Some(q)) => Ok(cu::WindowTarget::Match(cu::WindowQuery::parse(q))),
+            (None, None) => Err(cu::Error::Usage("pass --window <id> or --match <query>".into())),
+            (Some(_), Some(_)) => {
+                Err(cu::Error::Usage("pass only one of --window / --match".into()))
+            }
+        }
+    }
 }
 
 #[derive(Subcommand, Clone)]
@@ -58,9 +92,67 @@ pub enum DesktopCommand {
         #[arg(long)]
         json: bool,
     },
+    /// Manage a window (focus, move, resize, min/max, close, ...)
+    Window {
+        #[command(subcommand)]
+        action: WindowAction,
+    },
+}
+
+#[derive(Subcommand, Clone)]
+pub enum WindowAction {
+    /// Report a window's current state (read-only)
+    Status(WindowSel),
+    /// Bring a window to the foreground
+    Focus(WindowSel),
+    /// Activate the single window matching a query
+    Activate {
+        #[arg(long = "match")]
+        match_query: String,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Raise a window to the top of the z-order
+    Raise(WindowSel),
+    /// Move a window to X,Y or to a display
+    Move {
+        #[command(flatten)]
+        sel: WindowSel,
+        /// New top-left as X,Y in global physical pixels
+        #[arg(long)]
+        to: Option<String>,
+        /// Move to a display id (from `desktop displays`)
+        #[arg(long)]
+        display: Option<String>,
+    },
+    /// Resize a window to W,H
+    Resize {
+        #[command(flatten)]
+        sel: WindowSel,
+        /// New size as W,H in physical pixels
+        #[arg(long)]
+        to: String,
+    },
+    /// Minimize a window
+    Minimize(WindowSel),
+    /// Maximize a window
+    Maximize(WindowSel),
+    /// Restore a minimized/maximized window
+    Restore(WindowSel),
+    /// Set or clear always-on-top
+    AlwaysOnTop {
+        #[command(flatten)]
+        sel: WindowSel,
+        #[arg(long, action = clap::ArgAction::Set)]
+        enabled: bool,
+    },
+    /// Ask a window to close (destructive)
+    Close(WindowSel),
 }
 
 pub fn execute(options: DesktopOptions) -> ! {
+    let allow_control = options.allow_control;
+    let allow_destructive = options.allow_destructive;
     match options.command {
         DesktopCommand::Doctor { json } => finish(json, Ok(cu::doctor()), print_doctor),
         DesktopCommand::Displays { json } => finish(json, cu::displays(), print_displays),
@@ -85,7 +177,129 @@ pub fn execute(options: DesktopOptions) -> ! {
             };
             finish(json, cu::pixel(x, y), print_pixel)
         }
+        DesktopCommand::Window { action } => run_window(action, allow_control, allow_destructive),
     }
+}
+
+fn env_flag(name: &str) -> bool {
+    std::env::var(name)
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
+}
+
+/// Authorize a mutating (and optionally destructive) desktop command.
+fn gate(allow_control: bool, destructive: bool, allow_destructive: bool) -> cu::Result<()> {
+    if !(allow_control || env_flag("LXDEV_DESKTOP_ALLOW_CONTROL")) {
+        return Err(cu::Error::Permission(
+            "mutating desktop command needs --allow-control (or LXDEV_DESKTOP_ALLOW_CONTROL=1)"
+                .into(),
+        ));
+    }
+    if destructive && !(allow_destructive || env_flag("LXDEV_DESKTOP_ALLOW_DESTRUCTIVE")) {
+        return Err(cu::Error::Permission(
+            "destructive desktop command needs --allow-destructive (or LXDEV_DESKTOP_ALLOW_DESTRUCTIVE=1)"
+                .into(),
+        ));
+    }
+    Ok(())
+}
+
+fn run_window(action: WindowAction, allow_control: bool, allow_destructive: bool) -> ! {
+    use cu::window as w;
+
+    // A gated single-target op that returns the updated window record.
+    fn gated(
+        sel: WindowSel,
+        allow_control: bool,
+        destructive: bool,
+        allow_destructive: bool,
+        op: impl Fn(&cu::WindowTarget) -> cu::Result<cu::Window>,
+    ) -> ! {
+        let json = sel.json;
+        let result = gate(allow_control, destructive, allow_destructive)
+            .and_then(|_| sel.target())
+            .and_then(|t| op(&t));
+        finish(json, result, print_window_one)
+    }
+
+    match action {
+        WindowAction::Status(sel) => {
+            let json = sel.json;
+            finish(json, sel.target().and_then(|t| w::status(&t)), print_window_one)
+        }
+        WindowAction::Focus(sel) => gated(sel, allow_control, false, allow_destructive, w::focus),
+        WindowAction::Raise(sel) => gated(sel, allow_control, false, allow_destructive, w::raise),
+        WindowAction::Minimize(sel) => {
+            gated(sel, allow_control, false, allow_destructive, w::minimize)
+        }
+        WindowAction::Maximize(sel) => {
+            gated(sel, allow_control, false, allow_destructive, w::maximize)
+        }
+        WindowAction::Restore(sel) => {
+            gated(sel, allow_control, false, allow_destructive, w::restore)
+        }
+        WindowAction::AlwaysOnTop { sel, enabled } => gated(
+            sel,
+            allow_control,
+            false,
+            allow_destructive,
+            move |t| w::set_always_on_top(t, enabled),
+        ),
+        WindowAction::Close(sel) => gated(sel, allow_control, true, allow_destructive, w::close),
+        WindowAction::Activate { match_query, json } => {
+            let result = gate(allow_control, false, allow_destructive)
+                .map(|_| cu::WindowQuery::parse(&match_query))
+                .and_then(w::activate);
+            finish(json, result, print_window_one)
+        }
+        WindowAction::Move { sel, to, display } => {
+            let json = sel.json;
+            let result = gate(allow_control, false, allow_destructive)
+                .and_then(|_| sel.target())
+                .and_then(|t| match (&display, &to) {
+                    (Some(d), _) => w::move_to_display(&t, d),
+                    (None, Some(xy)) => {
+                        let (x, y) = parse_pair(xy)?;
+                        w::move_to(&t, x, y)
+                    }
+                    (None, None) => {
+                        Err(cu::Error::Usage("pass --to X,Y or --display <id>".into()))
+                    }
+                });
+            finish(json, result, print_window_one)
+        }
+        WindowAction::Resize { sel, to } => {
+            let json = sel.json;
+            let result = gate(allow_control, false, allow_destructive)
+                .and_then(|_| sel.target())
+                .and_then(|t| {
+                    let (wd, ht) = parse_pair(&to)?;
+                    w::resize(&t, wd, ht)
+                });
+            finish(json, result, print_window_one)
+        }
+    }
+}
+
+fn print_window_one(w: &cu::Window) {
+    println!(
+        "{}  pid {}  {}  {},{} {}x{}  {}{}",
+        w.id,
+        w.pid,
+        w.process,
+        w.bounds.x,
+        w.bounds.y,
+        w.bounds.w,
+        w.bounds.h,
+        if w.minimized {
+            "[min] "
+        } else if w.maximized {
+            "[max] "
+        } else {
+            ""
+        },
+        w.title,
+    );
 }
 
 /// `X,Y` -> (i32, i32).

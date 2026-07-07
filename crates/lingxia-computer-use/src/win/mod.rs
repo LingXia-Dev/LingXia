@@ -9,7 +9,15 @@ use windows::core::{BOOL, PWSTR};
 use windows::Win32::Foundation::{CloseHandle, HANDLE, HWND, LPARAM, RECT, TRUE};
 
 mod capture;
+mod window_ops;
 pub use capture::{pixel, screenshot};
+pub use window_ops::{
+    activate as window_activate, close as window_close, focus as window_focus,
+    maximize as window_maximize, minimize as window_minimize, move_to as window_move,
+    move_to_display as window_move_display, raise as window_raise, resize as window_resize,
+    restore as window_restore, set_always_on_top as window_set_always_on_top,
+    status as window_status,
+};
 
 /// Parse a "0x…"-style window id back into an `HWND`.
 pub(crate) fn parse_hwnd(id: &str) -> Result<HWND> {
@@ -42,14 +50,14 @@ const MONITORINFOF_PRIMARY: u32 = 1;
 
 /// Make the process per-monitor DPI aware once, so window/monitor rects come
 /// back in true physical pixels instead of being virtualized.
-fn ensure_dpi_aware() {
+pub(crate) fn ensure_dpi_aware() {
     static ONCE: Once = Once::new();
     ONCE.call_once(|| unsafe {
         let _ = SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     });
 }
 
-fn rect_to(r: RECT) -> Rect {
+pub(crate) fn rect_to(r: RECT) -> Rect {
     Rect {
         x: r.left,
         y: r.top,
@@ -70,6 +78,7 @@ pub fn doctor() -> Doctor {
             screenshot: true,
             window_screenshot_occlusion_independent: true,
             pixel: true,
+            window_management: true,
             ..Capabilities::default()
         },
     }
@@ -132,7 +141,7 @@ unsafe extern "system" fn monitor_enum_proc(
     TRUE
 }
 
-fn display_id_for_rect(displays: &[Display], r: &RECT) -> (String, u32, f64) {
+pub(crate) fn display_id_for_rect(displays: &[Display], r: &RECT) -> (String, u32, f64) {
     let hmon = unsafe { MonitorFromRect(r, MONITOR_DEFAULTTONEAREST) };
     let dpi = monitor_dpi(hmon);
     // Match by containment of the window's top-left against known bounds.
@@ -281,7 +290,7 @@ unsafe extern "system" fn window_enum_proc(hwnd: HWND, lparam: LPARAM) -> BOOL {
     TRUE
 }
 
-fn process_name(pid: u32) -> String {
+pub(crate) fn process_name(pid: u32) -> String {
     if pid == 0 {
         return String::new();
     }

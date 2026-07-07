@@ -83,6 +83,13 @@ impl WindowQuery {
     }
 }
 
+/// How a window action selects its target: a runtime id, or a match query.
+#[derive(Debug, Clone)]
+pub enum WindowTarget {
+    Id(String),
+    Match(WindowQuery),
+}
+
 /// A single pixel's color (`desktop pixel`).
 #[derive(Debug, Clone, Serialize)]
 pub struct Pixel {

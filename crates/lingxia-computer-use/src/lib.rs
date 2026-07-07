@@ -12,7 +12,19 @@ pub mod model;
 pub use error::{Error, ErrorCode, Result};
 pub use model::{
     Capabilities, Capture, CaptureTarget, Display, Doctor, Pixel, Rect, Window, WindowQuery,
+    WindowTarget,
 };
+
+/// Window management (`desktop window ...`). All mutating.
+pub mod window {
+    pub use crate::backend::{
+        window_activate as activate, window_close as close, window_focus as focus,
+        window_maximize as maximize, window_minimize as minimize, window_move as move_to,
+        window_move_display as move_to_display, window_raise as raise, window_resize as resize,
+        window_restore as restore, window_set_always_on_top as set_always_on_top,
+        window_status as status,
+    };
+}
 
 #[cfg(target_os = "windows")]
 #[path = "win/mod.rs"]
