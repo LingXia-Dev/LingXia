@@ -22,7 +22,7 @@ Stale files from crashed sessions are pruned automatically (or via `lxdev sessio
 - `list` / `current` / `info` / `pages` — what's running, and the configured pages
 - `open` / `close` / `restart` / `uninstall` — lifecycle
 - `rebuild` — rebuild the lxapp front-end bundle through the running session
-- `restart --build` — rebuild, then restart the lxapp runtime
+- `restart --build` — rebuild, then restart the lxapp runtime. **This is the fast dev inner-loop**: after editing lxapp code you do *not* need to Ctrl-C and re-run `lingxia dev` (which rebuilds the whole session and relaunches the host/Runner). Reach for it whenever you change **Logic** (`pages/*/index.ts`, `lxapp.ts`, the AppService) or bump `lxapp.json` — those need the runtime to reload, not just the WebView (that's what plain `rebuild` covers). Add `--release` / `--framework <name>` as needed.
 - `nav to|redirect|switch-tab|relaunch|back` — navigate the runtime by page name (from `pages`)
 - `eval` — run JS in the **Logic runtime**; `page eval` — run JS in the **page WebView** (the two see different things — JS-contexts table below)
 - `page current|list|info` — page stack status
