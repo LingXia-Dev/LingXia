@@ -13,11 +13,6 @@ public class DeviceFrame: NSView {
         // Desktop/tablet: just a thin border
         public static let desktopBezelWidth: CGFloat = 1
 
-        // Shadow
-        public static let shadowRadius: CGFloat = 20
-        public static let shadowOpacity: Float = 0.4
-        public static let shadowOffset = CGSize(width: 0, height: -6)
-
         // Corner radius for device frame (outer)
         public static func frameCornerRadius(for device: MobileDeviceSize) -> CGFloat {
             device.outerRadius
@@ -61,20 +56,15 @@ public class DeviceFrame: NSView {
         wantsLayer = true
         layer?.backgroundColor = NSColor.clear.cgColor
         
-        // Device bezel (the phone frame)
+        // Device bezel (the phone frame). No drop shadow: on the transparent
+        // simulator window the shadow renders as a gray "ghost" hugging the
+        // rounded corners, so the device is drawn flat.
         deviceBezel = NSView()
         deviceBezel.wantsLayer = true
         deviceBezel.layer?.backgroundColor = NSColor(white: 0.08, alpha: 1.0).cgColor
         deviceBezel.layer?.cornerRadius = Layout.frameCornerRadius(for: deviceSize)
         deviceBezel.translatesAutoresizingMaskIntoConstraints = false
-        
-        // Shadow on bezel
-        deviceBezel.shadow = NSShadow()
-        deviceBezel.layer?.shadowColor = NSColor.black.cgColor
-        deviceBezel.layer?.shadowOpacity = Layout.shadowOpacity
-        deviceBezel.layer?.shadowOffset = Layout.shadowOffset
-        deviceBezel.layer?.shadowRadius = Layout.shadowRadius
-        
+
         addSubview(deviceBezel)
         
         // Screen container inside bezel
@@ -104,13 +94,6 @@ public class DeviceFrame: NSView {
         ])
     }
     
-    public override func layout() {
-        super.layout()
-        // Update shadow path
-        let cornerRadius = Layout.frameCornerRadius(for: deviceSize)
-        deviceBezel.layer?.shadowPath = CGPath(roundedRect: deviceBezel.bounds, cornerWidth: cornerRadius, cornerHeight: cornerRadius, transform: nil)
-    }
-    
     // MARK: - Public API
     
     /// Frame size includes the bezel (device-aware bezel width)
@@ -125,11 +108,9 @@ public class DeviceFrame: NSView {
         if !size.usesPhoneChrome {
             // Browser-window style: thin light border
             deviceBezel.layer?.backgroundColor = NSColor(white: 0.22, alpha: 1.0).cgColor
-            deviceBezel.layer?.shadowOpacity = 0.25
         } else {
             // Phone style: dark thick bezel
             deviceBezel.layer?.backgroundColor = NSColor(white: 0.08, alpha: 1.0).cgColor
-            deviceBezel.layer?.shadowOpacity = Layout.shadowOpacity
         }
 
         deviceBezel.layer?.cornerRadius = Layout.frameCornerRadius(for: size)
