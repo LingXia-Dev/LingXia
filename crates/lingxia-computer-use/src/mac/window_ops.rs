@@ -3,7 +3,7 @@
 //! drive `AXPosition`/`AXSize`/`AXMinimized`/`AXRaise`/close-button. Requires the
 //! Accessibility permission (mutating a foreign app's windows).
 
-use super::axui::{require_trusted, AxEl};
+use super::axui::{AxEl, require_trusted};
 use super::{display_for_rect, displays, parse_window_id};
 use crate::error::{Error, Result};
 use crate::model::{Window, WindowTarget};
@@ -13,7 +13,8 @@ fn resolve(target: &WindowTarget) -> Result<Window> {
     match target {
         WindowTarget::Id(id) => {
             let wid = parse_window_id(id)?;
-            super::window_record(wid).ok_or_else(|| Error::Stale(format!("window {id} no longer exists")))
+            super::window_record(wid)
+                .ok_or_else(|| Error::Stale(format!("window {id} no longer exists")))
         }
         WindowTarget::Match(query) => {
             let mut wins = super::windows(query)?;

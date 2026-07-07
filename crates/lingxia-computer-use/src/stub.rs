@@ -90,7 +90,13 @@ pub fn pointer_down(_x: i32, _y: i32, _b: MouseButton, _target: Option<u32>) -> 
 pub fn pointer_up(_x: i32, _y: i32, _b: MouseButton, _target: Option<u32>) -> Result<Ack> {
     unsupported()
 }
-pub fn pointer_click(_x: i32, _y: i32, _b: MouseButton, _c: u32, _target: Option<u32>) -> Result<Ack> {
+pub fn pointer_click(
+    _x: i32,
+    _y: i32,
+    _b: MouseButton,
+    _c: u32,
+    _target: Option<u32>,
+) -> Result<Ack> {
     unsupported()
 }
 pub fn pointer_scroll(_x: i32, _y: i32, _dx: i32, _dy: i32, _target: Option<u32>) -> Result<Ack> {

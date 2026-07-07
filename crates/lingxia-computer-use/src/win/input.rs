@@ -81,7 +81,13 @@ pub fn pointer_up(x: i32, y: i32, button: MouseButton, _target: Option<u32>) -> 
     Ok(Ack::new("pointer.up"))
 }
 
-pub fn pointer_click(x: i32, y: i32, button: MouseButton, count: u32, _target: Option<u32>) -> Result<Ack> {
+pub fn pointer_click(
+    x: i32,
+    y: i32,
+    button: MouseButton,
+    count: u32,
+    _target: Option<u32>,
+) -> Result<Ack> {
     if count == 0 {
         return Err(Error::Usage("count must be greater than zero".into()));
     }
@@ -104,7 +110,14 @@ pub fn pointer_scroll(x: i32, y: i32, dx: i32, dy: i32, _target: Option<u32>) ->
     Ok(Ack::new("pointer.scroll"))
 }
 
-pub fn pointer_drag(fx: i32, fy: i32, tx: i32, ty: i32, button: MouseButton, _target: Option<u32>) -> Result<Ack> {
+pub fn pointer_drag(
+    fx: i32,
+    fy: i32,
+    tx: i32,
+    ty: i32,
+    button: MouseButton,
+    _target: Option<u32>,
+) -> Result<Ack> {
     let (down, up) = button_flags(button);
     set_cursor(fx, fy)?;
     send(&[mouse_event(down, 0)])?;

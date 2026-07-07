@@ -16,7 +16,8 @@ use crate::model::{Capture, CaptureTarget, Pixel};
 use objc2_core_foundation::CGRect;
 use objc2_core_graphics::{
     CGColorSpace, CGContext, CGDisplayCreateImage, CGImage, CGImageAlphaInfo,
-    CGPreflightScreenCaptureAccess, CGWindowImageOption, CGWindowListCreateImage, CGWindowListOption,
+    CGPreflightScreenCaptureAccess, CGWindowImageOption, CGWindowListCreateImage,
+    CGWindowListOption,
 };
 use std::ffi::c_void;
 

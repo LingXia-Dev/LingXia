@@ -40,7 +40,8 @@ pub fn process_list(filter: Option<&str>) -> Result<Vec<ProcessInfo>> {
 
 fn proc_name(pid: i32) -> String {
     let mut buf = [0u8; 256];
-    let n = unsafe { libc::proc_name(pid, buf.as_mut_ptr() as *mut libc::c_void, buf.len() as u32) };
+    let n =
+        unsafe { libc::proc_name(pid, buf.as_mut_ptr() as *mut libc::c_void, buf.len() as u32) };
     if n <= 0 {
         return String::new();
     }
@@ -136,8 +137,9 @@ pub fn app_quit(target: QuitTarget, force: bool) -> Result<Ack> {
     // non-GUI process.
     let running = NSRunningApplication::runningApplicationWithProcessIdentifier(pid as libc::pid_t);
     if let Some(app) = running
-        && app.terminate() {
-            return Ok(Ack::new("app.quit"));
-        }
+        && app.terminate()
+    {
+        return Ok(Ack::new("app.quit"));
+    }
     process_kill(pid, false).map(|_| Ack::new("app.quit"))
 }

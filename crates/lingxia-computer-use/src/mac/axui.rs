@@ -310,11 +310,7 @@ impl AxEl {
         let s = CFString::from_str(value);
         let key = name(attr);
         let rc = unsafe {
-            AXUIElementSetAttributeValue(
-                self.0,
-                name_ptr(&key),
-                (&*s as *const CFString).cast(),
-            )
+            AXUIElementSetAttributeValue(self.0, name_ptr(&key), (&*s as *const CFString).cast())
         };
         if rc == AX_SUCCESS {
             Ok(())
@@ -325,7 +321,8 @@ impl AxEl {
 
     pub(super) fn set_point(&self, attr: &str, x: f64, y: f64) -> Result<()> {
         let p = CGPoint::new(x, y);
-        let value = unsafe { AXValueCreate(AX_VALUE_CGPOINT, &p as *const CGPoint as *const c_void) };
+        let value =
+            unsafe { AXValueCreate(AX_VALUE_CGPOINT, &p as *const CGPoint as *const c_void) };
         if value.is_null() {
             return Err(Error::Failed("could not create AXValue point".into()));
         }

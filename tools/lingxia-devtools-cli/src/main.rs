@@ -78,6 +78,9 @@ fn main() -> Result<()> {
             browser::execute(&info, options)
         }
         Commands::Lxapp(options) => {
+            if lxapp::handle_pre_session(&project_root, &options)? {
+                return Ok(());
+            }
             let info = project::resolve_session(&project_root, &selector)?;
             lxapp::execute(&project_root, &info, options)
         }

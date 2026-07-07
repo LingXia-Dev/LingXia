@@ -4,7 +4,10 @@
 
 use serde::Serialize;
 
-/// A rectangle in global virtual-screen physical pixels.
+/// A rectangle in backend-native global desktop coordinates.
+///
+/// Windows uses physical pixels. macOS uses global display points and reports
+/// each display/window scale so callers can convert to backing pixels.
 #[derive(Debug, Clone, Copy, Serialize)]
 pub struct Rect {
     pub x: i32,
@@ -278,7 +281,7 @@ pub enum CaptureTarget {
     Display(usize),
     /// A window by id ("0x...").
     Window(String),
-    /// A region in global physical pixels.
+    /// A region in backend-native global desktop coordinates.
     Region { x: i32, y: i32, w: i32, h: i32 },
 }
 

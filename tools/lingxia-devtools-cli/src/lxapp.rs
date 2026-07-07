@@ -747,6 +747,29 @@ pub fn execute(project_root: &Path, info: &SessionInfo, options: LxAppOptions) -
     Ok(())
 }
 
+pub fn handle_pre_session(project_root: &Path, options: &LxAppOptions) -> Result<bool> {
+    if options.args.is_empty() || is_top_level_help(&options.args) {
+        print_dynamic_help(commands_for_project(project_root));
+        return Ok(true);
+    }
+
+    match parse_lxapp_cli(options.args.clone()) {
+        Ok(_) => Ok(false),
+        Err(err) => {
+            if let Some(clap_err) = err.downcast_ref::<clap::Error>()
+                && matches!(
+                    clap_err.kind(),
+                    clap::error::ErrorKind::DisplayHelp | clap::error::ErrorKind::DisplayVersion
+                )
+            {
+                clap_err.print()?;
+                return Ok(true);
+            }
+            Err(err)
+        }
+    }
+}
+
 fn execute_device(ws_url: &str, options: DeviceOptions) -> Result<()> {
     match options.command {
         DeviceCommand::List { json } => {

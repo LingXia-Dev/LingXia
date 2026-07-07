@@ -94,7 +94,7 @@ pub enum DesktopCommand {
         #[arg(long)]
         json: bool,
     },
-    /// List monitors/displays (global physical pixels)
+    /// List monitors/displays (backend-native desktop coordinates)
     Displays {
         /// Print JSON output
         #[arg(long)]
@@ -117,7 +117,7 @@ pub enum DesktopCommand {
         /// Capture a window by id (occlusion-independent)
         #[arg(long)]
         window: Option<String>,
-        /// Capture a region as X,Y,W,H in global physical pixels
+        /// Capture a region as X,Y,W,H in backend-native desktop coordinates
         #[arg(long)]
         region: Option<String>,
         /// Output path; `-` for stdout. Default: .lingxia/screenshots/desktop-<ts>.png
@@ -129,7 +129,7 @@ pub enum DesktopCommand {
     },
     /// Read the color of a pixel at a screen coordinate
     Pixel {
-        /// Coordinate as X,Y in global physical pixels
+        /// Coordinate as X,Y in backend-native desktop coordinates
         #[arg(long)]
         at: String,
         /// Print JSON output
@@ -357,7 +357,7 @@ pub enum AxAction {
     ScrollIntoView(AxSel),
     /// Report the accessible element at a screen point (read-only)
     HitTest {
-        /// Screen point as X,Y in global physical pixels
+        /// Screen point as X,Y in backend-native desktop coordinates
         #[arg(long)]
         at: String,
         /// Optional window scope (advisory; hit-test is screen-global)
@@ -554,7 +554,7 @@ pub enum WindowAction {
     Move {
         #[command(flatten)]
         sel: WindowSel,
-        /// New top-left as X,Y in global physical pixels
+        /// New top-left as X,Y in backend-native desktop coordinates
         #[arg(long)]
         to: Option<String>,
         /// Move to a display id (from `desktop displays`)
@@ -565,7 +565,7 @@ pub enum WindowAction {
     Resize {
         #[command(flatten)]
         sel: WindowSel,
-        /// New size as W,H in physical pixels
+        /// New size as W,H in backend-native desktop coordinates
         #[arg(long)]
         to: String,
     },
@@ -1230,7 +1230,7 @@ fn run_screenshot(
         let envelope = serde_json::json!({
             "target": "desktop",
             "kind": "screenshot",
-            "coordinate_space": "desktop_pixels",
+            "coordinate_space": screenshot_coordinate_space(),
             "backend": capture.backend,
             "occlusion_independent": capture.occlusion_independent,
             "format": "png",
@@ -1274,6 +1274,16 @@ fn parse_region(s: &str) -> cu::Result<cu::CaptureTarget> {
         w: n(parts[2])?,
         h: n(parts[3])?,
     })
+}
+
+#[cfg(target_os = "macos")]
+fn screenshot_coordinate_space() -> &'static str {
+    "desktop_points"
+}
+
+#[cfg(not(target_os = "macos"))]
+fn screenshot_coordinate_space() -> &'static str {
+    "desktop_pixels"
 }
 
 fn print_pixel(p: &cu::Pixel) {

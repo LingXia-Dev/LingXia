@@ -3,7 +3,7 @@
 //! one process run — which is what the query→act flow needs. Rects are in global
 //! points (top-left origin), matching the rest of the backend.
 
-use super::axui::{require_trusted, AxEl};
+use super::axui::{AxEl, require_trusted};
 use super::window_ops::ax_window_for_id;
 use crate::error::{Error, Result};
 use crate::model::{Ack, AxNode, AxQuery, Rect};
@@ -18,7 +18,9 @@ fn role_name(role: Option<String>) -> String {
 
 fn node_rect(el: &AxEl) -> Rect {
     use objc2_core_foundation::{CGPoint, CGSize};
-    let pos = el.attr_point("AXPosition").unwrap_or(CGPoint::new(0.0, 0.0));
+    let pos = el
+        .attr_point("AXPosition")
+        .unwrap_or(CGPoint::new(0.0, 0.0));
     let size = el.attr_size("AXSize").unwrap_or(CGSize::new(0.0, 0.0));
     Rect {
         x: pos.x.round() as i32,
@@ -36,7 +38,10 @@ fn node_data(el: &AxEl, id: String) -> AxNode {
         .attr_string("AXTitle")
         .filter(|s| !s.is_empty())
         .or_else(|| el.attr_string("AXDescription").filter(|s| !s.is_empty()))
-        .or_else(|| el.attr_string("AXRoleDescription").filter(|s| !s.is_empty()))
+        .or_else(|| {
+            el.attr_string("AXRoleDescription")
+                .filter(|s| !s.is_empty())
+        })
         .unwrap_or_default();
     AxNode {
         id,
@@ -50,13 +55,7 @@ fn node_data(el: &AxEl, id: String) -> AxNode {
     }
 }
 
-fn build_tree(
-    el: &AxEl,
-    id: String,
-    depth: Option<u32>,
-    count: &mut usize,
-    max: usize,
-) -> AxNode {
+fn build_tree(el: &AxEl, id: String, depth: Option<u32>, count: &mut usize, max: usize) -> AxNode {
     let mut node = node_data(el, id.clone());
     *count += 1;
     if depth == Some(0) || *count >= max {
@@ -77,7 +76,13 @@ fn build_tree(
     node
 }
 
-fn collect_flat(el: &AxEl, id: String, count: &mut usize, max: usize, out: &mut Vec<(AxNode, AxEl)>) {
+fn collect_flat(
+    el: &AxEl,
+    id: String,
+    count: &mut usize,
+    max: usize,
+    out: &mut Vec<(AxNode, AxEl)>,
+) {
     if *count >= max {
         return;
     }
@@ -118,7 +123,13 @@ fn flat(window_id: &str) -> Result<Vec<(AxNode, AxEl)>> {
     let root = ax_window_for_id(window_id)?;
     let mut out = Vec::new();
     let mut count = 0;
-    collect_flat(&root, "ax:0".to_string(), &mut count, DEFAULT_MAX_NODES, &mut out);
+    collect_flat(
+        &root,
+        "ax:0".to_string(),
+        &mut count,
+        DEFAULT_MAX_NODES,
+        &mut out,
+    );
     Ok(out)
 }
 
@@ -157,7 +168,9 @@ fn resolve_one(window_id: &str, q: &AxQuery) -> Result<AxEl> {
     match matches.len() {
         0 => Err(Error::NotFound("no accessibility node matched".into())),
         1 => Ok(matches.remove(0)),
-        n => Err(Error::Ambiguous(format!("{n} nodes matched; narrow the query"))),
+        n => Err(Error::Ambiguous(format!(
+            "{n} nodes matched; narrow the query"
+        ))),
     }
 }
 

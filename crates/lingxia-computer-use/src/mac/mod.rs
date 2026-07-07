@@ -247,7 +247,9 @@ fn enumerate(query: &WindowQuery, only_onscreen: bool) -> Result<Vec<Window>> {
         CGWindowListOption::OptionAll | CGWindowListOption::ExcludeDesktopElements
     };
     let Some(info) = CGWindowListCopyWindowInfo(option, 0) else {
-        return Err(Error::Unavailable("CGWindowListCopyWindowInfo failed".into()));
+        return Err(Error::Unavailable(
+            "CGWindowListCopyWindowInfo failed".into(),
+        ));
     };
     let array = (&*info as *const objc2_core_foundation::CFArray).cast::<std::ffi::c_void>();
     let displays = displays().unwrap_or_default();

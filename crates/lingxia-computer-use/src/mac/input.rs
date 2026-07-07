@@ -151,14 +151,22 @@ pub fn pointer_click(
     // Each successive down/up carries the running click count so the target
     // recognizes double/triple clicks.
     for i in 1..=count {
-        let down =
-            CGEvent::new_mouse_event(source().as_deref(), down_type(button), point(x, y), cg_button(button))
-                .ok_or_else(|| Error::Failed("could not create mouse event".into()))?;
+        let down = CGEvent::new_mouse_event(
+            source().as_deref(),
+            down_type(button),
+            point(x, y),
+            cg_button(button),
+        )
+        .ok_or_else(|| Error::Failed("could not create mouse event".into()))?;
         CGEvent::set_integer_value_field(Some(&down), CGEventField::MouseEventClickState, i as i64);
         post(&down, target);
-        let up =
-            CGEvent::new_mouse_event(source().as_deref(), up_type(button), point(x, y), cg_button(button))
-                .ok_or_else(|| Error::Failed("could not create mouse event".into()))?;
+        let up = CGEvent::new_mouse_event(
+            source().as_deref(),
+            up_type(button),
+            point(x, y),
+            cg_button(button),
+        )
+        .ok_or_else(|| Error::Failed("could not create mouse event".into()))?;
         CGEvent::set_integer_value_field(Some(&up), CGEventField::MouseEventClickState, i as i64);
         post(&up, target);
     }
@@ -172,8 +180,15 @@ pub fn pointer_scroll(x: i32, y: i32, dx: i32, dy: i32, target: Option<u32>) -> 
         let _ = CGWarpMouseCursorPosition(point(x, y));
     }
     // Positive dy scrolls content up on macOS; `dy` means "wheel up".
-    let event = CGEvent::new_scroll_wheel_event2(source().as_deref(), CGScrollEventUnit::Line, 2, dy, dx, 0)
-        .ok_or_else(|| Error::Failed("could not create scroll event".into()))?;
+    let event = CGEvent::new_scroll_wheel_event2(
+        source().as_deref(),
+        CGScrollEventUnit::Line,
+        2,
+        dy,
+        dx,
+        0,
+    )
+    .ok_or_else(|| Error::Failed("could not create scroll event".into()))?;
     CGEvent::set_location(Some(&event), point(x, y));
     post(&event, target);
     flush();
@@ -220,7 +235,11 @@ pub fn key_type(text: &str, target: Option<u32>) -> Result<Ack> {
             let event = CGEvent::new_keyboard_event(source().as_deref(), 0, down)
                 .ok_or_else(|| Error::Failed("could not create keyboard event".into()))?;
             unsafe {
-                CGEvent::keyboard_set_unicode_string(Some(&event), units.len() as _, units.as_ptr());
+                CGEvent::keyboard_set_unicode_string(
+                    Some(&event),
+                    units.len() as _,
+                    units.as_ptr(),
+                );
             }
             post_key(&event, target);
         }
