@@ -6,7 +6,6 @@
 use crate::error::{Error, Result};
 use std::sync::mpsc;
 use std::time::Duration;
-use windows::core::{Interface, IInspectable};
 use windows::Foundation::TypedEventHandler;
 use windows::Graphics::Capture::{Direct3D11CaptureFramePool, GraphicsCaptureItem};
 use windows::Graphics::DirectX::Direct3D11::IDirect3DDevice;
@@ -14,16 +13,17 @@ use windows::Graphics::DirectX::DirectXPixelFormat;
 use windows::Win32::Foundation::HWND;
 use windows::Win32::Graphics::Direct3D::D3D_DRIVER_TYPE_HARDWARE;
 use windows::Win32::Graphics::Direct3D11::{
+    D3D11_CPU_ACCESS_READ, D3D11_CREATE_DEVICE_BGRA_SUPPORT, D3D11_MAP_READ,
+    D3D11_MAPPED_SUBRESOURCE, D3D11_SDK_VERSION, D3D11_TEXTURE2D_DESC, D3D11_USAGE_STAGING,
     D3D11CreateDevice, ID3D11Device, ID3D11DeviceContext, ID3D11Texture2D,
-    D3D11_CPU_ACCESS_READ, D3D11_CREATE_DEVICE_BGRA_SUPPORT, D3D11_MAPPED_SUBRESOURCE, D3D11_MAP_READ,
-    D3D11_SDK_VERSION, D3D11_TEXTURE2D_DESC, D3D11_USAGE_STAGING,
 };
 use windows::Win32::Graphics::Dxgi::IDXGIDevice;
+use windows::Win32::System::Com::{COINIT_MULTITHREADED, CoInitializeEx};
 use windows::Win32::System::WinRT::Direct3D11::{
     CreateDirect3D11DeviceFromDXGIDevice, IDirect3DDxgiInterfaceAccess,
 };
-use windows::Win32::System::Com::{CoInitializeEx, COINIT_MULTITHREADED};
 use windows::Win32::System::WinRT::Graphics::Capture::IGraphicsCaptureItemInterop;
+use windows::core::{IInspectable, Interface};
 
 /// Captured RGBA pixels for a window.
 pub struct Rgba {
@@ -71,8 +71,9 @@ pub fn capture_window(hwnd: HWND) -> Result<Rgba> {
         let dxgi: IDXGIDevice = device.cast().map_err(|e| fail(format!("dxgi cast: {e}")))?;
         let inspectable: IInspectable = CreateDirect3D11DeviceFromDXGIDevice(&dxgi)
             .map_err(|e| fail(format!("interop device: {e}")))?;
-        let rt_device: IDirect3DDevice =
-            inspectable.cast().map_err(|e| fail(format!("rt device cast: {e}")))?;
+        let rt_device: IDirect3DDevice = inspectable
+            .cast()
+            .map_err(|e| fail(format!("rt device cast: {e}")))?;
 
         // Capture item for the window.
         let interop: IGraphicsCaptureItemInterop =
@@ -103,16 +104,18 @@ pub fn capture_window(hwnd: HWND) -> Result<Rgba> {
 
         let (tx, rx) = mpsc::channel();
         let token = pool
-            .FrameArrived(&TypedEventHandler::<Direct3D11CaptureFramePool, IInspectable>::new(
-                move |pool, _| {
-                    if let Some(pool) = pool.as_ref() {
-                        if let Ok(frame) = pool.TryGetNextFrame() {
+            .FrameArrived(
+                &TypedEventHandler::<Direct3D11CaptureFramePool, IInspectable>::new(
+                    move |pool, _| {
+                        if let Some(pool) = pool.as_ref()
+                            && let Ok(frame) = pool.TryGetNextFrame()
+                        {
                             let _ = tx.send(frame);
                         }
-                    }
-                    Ok(())
-                },
-            ))
+                        Ok(())
+                    },
+                ),
+            )
             .map_err(|e| fail(format!("FrameArrived: {e}")))?;
 
         session
@@ -127,10 +130,12 @@ pub fn capture_window(hwnd: HWND) -> Result<Rgba> {
 
         // Frame surface -> ID3D11Texture2D.
         let surface = frame.Surface().map_err(|e| fail(format!("surface: {e}")))?;
-        let access: IDirect3DDxgiInterfaceAccess =
-            surface.cast().map_err(|e| fail(format!("dxgi access: {e}")))?;
-        let texture: ID3D11Texture2D =
-            access.GetInterface().map_err(|e| fail(format!("get texture: {e}")))?;
+        let access: IDirect3DDxgiInterfaceAccess = surface
+            .cast()
+            .map_err(|e| fail(format!("dxgi access: {e}")))?;
+        let texture: ID3D11Texture2D = access
+            .GetInterface()
+            .map_err(|e| fail(format!("get texture: {e}")))?;
 
         // Copy into a CPU-readable staging texture.
         let mut desc = D3D11_TEXTURE2D_DESC::default();
