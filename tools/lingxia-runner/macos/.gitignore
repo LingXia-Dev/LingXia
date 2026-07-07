@@ -2,3 +2,4 @@
 .build/
 dist/
 Sources/Resources/bridge-runtime.js
+Sources/Resources/devices.json

@@ -368,6 +368,10 @@ for arch in "${ARCHES[@]}"; do
     fi
     cp "$BRIDGE_DIST" "$RUNNER_PACKAGE_DIR/Sources/Resources/bridge-runtime.js"
 
+    # devices.json is likewise gitignored/generated from the shared source and
+    # synced too late by the plugin — stage it up front so releases bundle it.
+    cp "$ROOT_DIR/tools/lingxia-runner/devices.json" "$RUNNER_PACKAGE_DIR/Sources/Resources/devices.json"
+
     (
       cd "$RUNNER_PACKAGE_DIR"
       "$CLI_BIN" package --platform macos --macos-arch "$arch"

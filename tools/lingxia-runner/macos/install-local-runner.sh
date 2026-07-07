@@ -80,6 +80,11 @@ fi
 # absent from the bundle and lx://assets/bridge-runtime.js would 404.
 cp "$BRIDGE_RUNTIME" "$SCRIPT_DIR/Sources/Resources/bridge-runtime.js"
 
+# devices.json is generated from the shared source (the build-tool plugin also
+# syncs it, but too late for the plan-time .copy). Stage it up front like the
+# bridge runtime so a clean checkout bundles it.
+cp "$ROOT_DIR/tools/lingxia-runner/devices.json" "$SCRIPT_DIR/Sources/Resources/devices.json"
+
 echo "==> Generating apple SDK resources (i18n + icons)"
 # Same step bootstrap-apple-sdk / scripts/release/sdk.sh run: without it a new or
 # changed design/icons/svg or i18n YAML never reaches the runner bundle.
