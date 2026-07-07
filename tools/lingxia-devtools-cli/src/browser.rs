@@ -408,6 +408,7 @@ pub fn execute(info: &SessionInfo, options: BrowserOptions) -> Result<()> {
 
     match options.command {
         BrowserCommand::Open { url, tab, json } => {
+            let url = normalize_open_url(&url);
             let data = client::execute_command(
                 ws_url,
                 handlers::browser::OPEN,
@@ -1161,4 +1162,228 @@ fn truncate(value: &str, max_chars: usize) -> String {
         out.push_str("...");
     }
     out
+}
+
+/// Default a bare host to a scheme so `lxdev browser open example.com` works.
+/// Local/loopback hosts (`localhost:3000`, `127.0.0.1`, `192.168.x`, …) default
+/// to `http://` since dev servers rarely serve TLS; everything else to
+/// `https://`. Inputs that already carry a scheme (`http://`, `about:`, …) pass
+/// through untouched.
+fn normalize_open_url(input: &str) -> String {
+    let trimmed = input.trim();
+    if trimmed.is_empty() || has_url_scheme(trimmed) {
+        return trimmed.to_string();
+    }
+    if let Some(file_url) = local_file_url(trimmed) {
+        return file_url;
+    }
+    let scheme = if is_local_host(host_of(trimmed)) {
+        "http"
+    } else {
+        "https"
+    };
+    format!("{scheme}://{trimmed}")
+}
+
+/// Resolve a local filesystem path to an absolute `file://` URL. Explicit path
+/// forms (`/abs`, `./rel`, `../rel`, `~/home`) always resolve; a bare token
+/// (e.g. `a.html`) resolves only when a file actually exists at that relative
+/// path — otherwise it is left to be treated as a web host. Resolution is done
+/// against the CLI's cwd/`$HOME` so the runner receives an absolute path.
+fn local_file_url(input: &str) -> Option<String> {
+    let explicit = input.starts_with('/')
+        || input.starts_with("./")
+        || input.starts_with("../")
+        || input.starts_with("~/")
+        || input == "~"
+        || input == "."
+        || input == "..";
+    let abs = resolve_local_path(input)?;
+    (explicit || abs.exists()).then(|| file_url_from_path(&abs))
+}
+
+fn resolve_local_path(input: &str) -> Option<std::path::PathBuf> {
+    use std::path::PathBuf;
+    let expanded: PathBuf = if input == "~" {
+        std::env::var_os("HOME")?.into()
+    } else if let Some(rest) = input.strip_prefix("~/") {
+        let mut home = PathBuf::from(std::env::var_os("HOME")?);
+        home.push(rest);
+        home
+    } else {
+        PathBuf::from(input)
+    };
+    let absolute = if expanded.is_absolute() {
+        expanded
+    } else {
+        std::env::current_dir().ok()?.join(expanded)
+    };
+    Some(lexically_clean(&absolute))
+}
+
+/// Lexically drop `.` and resolve `..` components without touching the
+/// filesystem (the target may not exist yet).
+fn lexically_clean(path: &std::path::Path) -> std::path::PathBuf {
+    use std::path::{Component, PathBuf};
+    let mut out = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                if !out.pop() {
+                    out.push("..");
+                }
+            }
+            other => out.push(other),
+        }
+    }
+    out
+}
+
+/// Build a `file://` URL from an absolute path, percent-encoding path bytes
+/// outside the unreserved set so spaces and other characters are safe.
+fn file_url_from_path(path: &std::path::Path) -> String {
+    let mut out = String::from("file://");
+    for &b in path.to_string_lossy().as_bytes() {
+        match b {
+            b'/' | b'-' | b'.' | b'_' | b'~' | b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' => {
+                out.push(b as char)
+            }
+            _ => out.push_str(&format!("%{b:02X}")),
+        }
+    }
+    out
+}
+
+/// The host part of a schemeless authority: drop any `/path`, `?query`, `#frag`,
+/// userinfo, and `:port`, handling `[::1]`-style IPv6 literals.
+fn host_of(input: &str) -> &str {
+    let authority = input
+        .split(['/', '?', '#'])
+        .next()
+        .unwrap_or(input)
+        .rsplit('@')
+        .next()
+        .unwrap_or(input);
+    if let Some(rest) = authority.strip_prefix('[') {
+        // IPv6 literal: host is up to the closing bracket.
+        return rest.split(']').next().unwrap_or(rest);
+    }
+    authority.split(':').next().unwrap_or(authority)
+}
+
+/// Loopback / private-network hosts that should default to `http://`.
+fn is_local_host(host: &str) -> bool {
+    let host = host.to_ascii_lowercase();
+    if host == "localhost" || host.ends_with(".localhost") || host == "::1" {
+        return true;
+    }
+    if let Ok(ip) = host.parse::<std::net::Ipv4Addr>() {
+        // 127.0.0.0/8, 10/8, 172.16/12, 192.168/16, 0.0.0.0
+        return ip.is_loopback() || ip.is_private() || ip.is_unspecified();
+    }
+    false
+}
+
+fn has_url_scheme(url: &str) -> bool {
+    // Authority-based scheme, e.g. `https://`, `ws://`, `custom://`.
+    if let Some(pos) = url.find("://")
+        && pos > 0
+    {
+        let scheme = &url[..pos];
+        let mut chars = scheme.chars();
+        let valid = chars.next().is_some_and(|c| c.is_ascii_alphabetic())
+            && chars.all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '.' | '-'));
+        if valid {
+            return true;
+        }
+    }
+    // Schemeless special schemes that must not be rewritten to a host.
+    const SCHEMELESS: &[&str] = &["about:", "data:", "blob:", "file:", "view-source:"];
+    let lower = url.to_ascii_lowercase();
+    SCHEMELESS.iter().any(|prefix| lower.starts_with(prefix))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{file_url_from_path, local_file_url, normalize_open_url};
+    use std::path::Path;
+
+    #[test]
+    fn bare_remote_host_gets_https() {
+        assert_eq!(normalize_open_url("example.com"), "https://example.com");
+        assert_eq!(
+            normalize_open_url("example.com/path"),
+            "https://example.com/path"
+        );
+        assert_eq!(normalize_open_url("  example.com "), "https://example.com");
+        assert_eq!(normalize_open_url("8.8.8.8"), "https://8.8.8.8");
+    }
+
+    #[test]
+    fn absolute_path_becomes_file_url() {
+        assert_eq!(
+            normalize_open_url("/Users/me/page.html"),
+            "file:///Users/me/page.html"
+        );
+        // Explicit relative/home forms resolve even if missing.
+        assert!(normalize_open_url("./a.html").starts_with("file://"));
+        assert!(normalize_open_url("~/a.html").starts_with("file://"));
+        assert!(normalize_open_url("../up.html").starts_with("file://"));
+    }
+
+    #[test]
+    fn file_url_encodes_and_resolves_dots() {
+        assert_eq!(
+            file_url_from_path(Path::new("/a b/c#d.html")),
+            "file:///a%20b/c%23d.html"
+        );
+        // `.`/`..` are cleaned lexically in the absolute result.
+        assert_eq!(
+            local_file_url("/a/./b/../c.html").as_deref(),
+            Some("file:///a/c.html")
+        );
+    }
+
+    #[test]
+    fn bare_nonexistent_token_stays_a_host() {
+        // `a.html` with no such file in cwd is treated as a web host, not a file.
+        assert_eq!(local_file_url("definitely-not-a-real-file.xyz"), None);
+    }
+
+    #[test]
+    fn bare_local_host_gets_http() {
+        assert_eq!(
+            normalize_open_url("localhost:3000"),
+            "http://localhost:3000"
+        );
+        assert_eq!(normalize_open_url("localhost"), "http://localhost");
+        assert_eq!(
+            normalize_open_url("127.0.0.1:8080/x"),
+            "http://127.0.0.1:8080/x"
+        );
+        assert_eq!(
+            normalize_open_url("192.168.1.10:5173"),
+            "http://192.168.1.10:5173"
+        );
+        assert_eq!(
+            normalize_open_url("app.localhost:3000"),
+            "http://app.localhost:3000"
+        );
+        assert_eq!(normalize_open_url("0.0.0.0:9000"), "http://0.0.0.0:9000");
+    }
+
+    #[test]
+    fn existing_scheme_is_preserved() {
+        assert_eq!(
+            normalize_open_url("http://example.com"),
+            "http://example.com"
+        );
+        assert_eq!(
+            normalize_open_url("https://example.com"),
+            "https://example.com"
+        );
+        assert_eq!(normalize_open_url("about:blank"), "about:blank");
+        assert_eq!(normalize_open_url("data:text/html,hi"), "data:text/html,hi");
+    }
 }
