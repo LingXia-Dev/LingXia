@@ -4,8 +4,8 @@
 use crate::error::{Error, Result};
 use crate::model::{
     Ack, AxNode, AxQuery, Capabilities, Capture, CaptureTarget, Clipboard, Display, Doctor,
-    LaunchResult, Modifier, MouseButton, Pixel, ProcessInfo, QuitTarget, Window, WindowQuery,
-    WindowTarget,
+    LaunchResult, Modifier, MouseButton, Permissions, Pixel, ProcessInfo, QuitTarget, Window,
+    WindowQuery, WindowTarget,
 };
 
 fn unsupported<T>() -> Result<T> {
@@ -14,12 +14,21 @@ fn unsupported<T>() -> Result<T> {
     ))
 }
 
+pub fn permissions() -> Permissions {
+    Permissions::default()
+}
+
+pub fn request_permissions() -> Permissions {
+    Permissions::default()
+}
+
 pub fn doctor() -> Doctor {
     Doctor {
         backend: "unsupported".to_string(),
         os: std::env::consts::OS.to_string(),
         os_version: String::new(),
         capabilities: Capabilities::default(),
+        permissions: Permissions::default(),
     }
 }
 
@@ -72,34 +81,41 @@ pub fn window_activate(_t: &WindowTarget) -> Result<Window> {
     unsupported()
 }
 
-pub fn pointer_move(_x: i32, _y: i32) -> Result<Ack> {
+pub fn pointer_move(_x: i32, _y: i32, _target: Option<u32>) -> Result<Ack> {
     unsupported()
 }
-pub fn pointer_down(_x: i32, _y: i32, _b: MouseButton) -> Result<Ack> {
+pub fn pointer_down(_x: i32, _y: i32, _b: MouseButton, _target: Option<u32>) -> Result<Ack> {
     unsupported()
 }
-pub fn pointer_up(_x: i32, _y: i32, _b: MouseButton) -> Result<Ack> {
+pub fn pointer_up(_x: i32, _y: i32, _b: MouseButton, _target: Option<u32>) -> Result<Ack> {
     unsupported()
 }
-pub fn pointer_click(_x: i32, _y: i32, _b: MouseButton, _c: u32) -> Result<Ack> {
+pub fn pointer_click(_x: i32, _y: i32, _b: MouseButton, _c: u32, _target: Option<u32>) -> Result<Ack> {
     unsupported()
 }
-pub fn pointer_scroll(_x: i32, _y: i32, _dx: i32, _dy: i32) -> Result<Ack> {
+pub fn pointer_scroll(_x: i32, _y: i32, _dx: i32, _dy: i32, _target: Option<u32>) -> Result<Ack> {
     unsupported()
 }
-pub fn pointer_drag(_fx: i32, _fy: i32, _tx: i32, _ty: i32, _b: MouseButton) -> Result<Ack> {
+pub fn pointer_drag(
+    _fx: i32,
+    _fy: i32,
+    _tx: i32,
+    _ty: i32,
+    _b: MouseButton,
+    _target: Option<u32>,
+) -> Result<Ack> {
     unsupported()
 }
-pub fn key_type(_text: &str) -> Result<Ack> {
+pub fn key_type(_text: &str, _target: Option<u32>) -> Result<Ack> {
     unsupported()
 }
-pub fn key_press(_name: &str, _mods: &[Modifier]) -> Result<Ack> {
+pub fn key_press(_name: &str, _mods: &[Modifier], _target: Option<u32>) -> Result<Ack> {
     unsupported()
 }
-pub fn key_down(_name: &str) -> Result<Ack> {
+pub fn key_down(_name: &str, _target: Option<u32>) -> Result<Ack> {
     unsupported()
 }
-pub fn key_up(_name: &str) -> Result<Ack> {
+pub fn key_up(_name: &str, _target: Option<u32>) -> Result<Ack> {
     unsupported()
 }
 

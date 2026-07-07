@@ -3,7 +3,7 @@
 //! not virtualized.
 
 use crate::error::{Error, Result};
-use crate::model::{Capabilities, Display, Doctor, Rect, Window, WindowQuery};
+use crate::model::{Capabilities, Display, Doctor, Permissions, Rect, Window, WindowQuery};
 use std::sync::Once;
 use windows::Win32::Foundation::{CloseHandle, HANDLE, HWND, LPARAM, RECT, TRUE};
 use windows::core::{BOOL, PWSTR};
@@ -84,12 +84,23 @@ pub(crate) fn rect_to(r: RECT) -> Rect {
     }
 }
 
+/// Windows needs no per-process TCC-style grants for these APIs, so all
+/// permissions read as granted.
+pub fn permissions() -> Permissions {
+    Permissions::all_granted()
+}
+
+pub fn request_permissions() -> Permissions {
+    Permissions::all_granted()
+}
+
 pub fn doctor() -> Doctor {
     ensure_dpi_aware();
     Doctor {
         backend: "windows".to_string(),
         os: "windows".to_string(),
         os_version: os_version(),
+        permissions: permissions(),
         capabilities: Capabilities {
             displays: true,
             windows: true,

@@ -87,6 +87,6 @@ pub fn clear() -> Result<Ack> {
 
 /// Paste into the focused control via Ctrl+V.
 pub fn paste() -> Result<Ack> {
-    super::input::key_press("v", &[Modifier::Ctrl])?;
+    super::input::key_press("v", &[Modifier::Ctrl], None)?;
     Ok(Ack::new("clipboard.paste"))
 }

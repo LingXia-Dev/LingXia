@@ -1,6 +1,10 @@
 //! Synthetic pointer/keyboard input via SendInput. The cursor is positioned in
 //! physical pixels with SetCursorPos (the process is DPI aware), then button /
 //! wheel / key events are injected at that position.
+//!
+//! The `_target` pid parameter (background, app-directed input) is accepted for
+//! contract parity but ignored here: SendInput is always foreground/active. A
+//! Windows background path would post window messages instead — not yet built.
 
 use crate::error::{Error, Result};
 use crate::model::{Ack, Modifier, MouseButton};
@@ -58,26 +62,26 @@ fn button_flags(button: MouseButton) -> (MOUSE_EVENT_FLAGS, MOUSE_EVENT_FLAGS) {
     }
 }
 
-pub fn pointer_move(x: i32, y: i32) -> Result<Ack> {
+pub fn pointer_move(x: i32, y: i32, _target: Option<u32>) -> Result<Ack> {
     set_cursor(x, y)?;
     Ok(Ack::new("pointer.move"))
 }
 
-pub fn pointer_down(x: i32, y: i32, button: MouseButton) -> Result<Ack> {
+pub fn pointer_down(x: i32, y: i32, button: MouseButton, _target: Option<u32>) -> Result<Ack> {
     set_cursor(x, y)?;
     let (down, _) = button_flags(button);
     send(&[mouse_event(down, 0)])?;
     Ok(Ack::new("pointer.down"))
 }
 
-pub fn pointer_up(x: i32, y: i32, button: MouseButton) -> Result<Ack> {
+pub fn pointer_up(x: i32, y: i32, button: MouseButton, _target: Option<u32>) -> Result<Ack> {
     set_cursor(x, y)?;
     let (_, up) = button_flags(button);
     send(&[mouse_event(up, 0)])?;
     Ok(Ack::new("pointer.up"))
 }
 
-pub fn pointer_click(x: i32, y: i32, button: MouseButton, count: u32) -> Result<Ack> {
+pub fn pointer_click(x: i32, y: i32, button: MouseButton, count: u32, _target: Option<u32>) -> Result<Ack> {
     if count == 0 {
         return Err(Error::Usage("count must be greater than zero".into()));
     }
@@ -89,7 +93,7 @@ pub fn pointer_click(x: i32, y: i32, button: MouseButton, count: u32) -> Result<
     Ok(Ack::new("pointer.click"))
 }
 
-pub fn pointer_scroll(x: i32, y: i32, dx: i32, dy: i32) -> Result<Ack> {
+pub fn pointer_scroll(x: i32, y: i32, dx: i32, dy: i32, _target: Option<u32>) -> Result<Ack> {
     set_cursor(x, y)?;
     if dy != 0 {
         send(&[mouse_event(MOUSEEVENTF_WHEEL, dy * WHEEL_DELTA)])?;
@@ -100,7 +104,7 @@ pub fn pointer_scroll(x: i32, y: i32, dx: i32, dy: i32) -> Result<Ack> {
     Ok(Ack::new("pointer.scroll"))
 }
 
-pub fn pointer_drag(fx: i32, fy: i32, tx: i32, ty: i32, button: MouseButton) -> Result<Ack> {
+pub fn pointer_drag(fx: i32, fy: i32, tx: i32, ty: i32, button: MouseButton, _target: Option<u32>) -> Result<Ack> {
     let (down, up) = button_flags(button);
     set_cursor(fx, fy)?;
     send(&[mouse_event(down, 0)])?;
@@ -157,7 +161,7 @@ fn unicode_input(unit: u16, up: bool) -> INPUT {
     }
 }
 
-pub fn key_type(text: &str) -> Result<Ack> {
+pub fn key_type(text: &str, _target: Option<u32>) -> Result<Ack> {
     let mut inputs = Vec::new();
     for unit in text.encode_utf16() {
         inputs.push(unicode_input(unit, false));
@@ -231,17 +235,17 @@ fn key_vk(name: &str) -> Result<VIRTUAL_KEY> {
     Ok(vk)
 }
 
-pub fn key_down(name: &str) -> Result<Ack> {
+pub fn key_down(name: &str, _target: Option<u32>) -> Result<Ack> {
     send(&[key_input(key_vk(name)?, KEYBD_EVENT_FLAGS(0))])?;
     Ok(Ack::new("key.down"))
 }
 
-pub fn key_up(name: &str) -> Result<Ack> {
+pub fn key_up(name: &str, _target: Option<u32>) -> Result<Ack> {
     send(&[key_input(key_vk(name)?, KEYEVENTF_KEYUP)])?;
     Ok(Ack::new("key.up"))
 }
 
-pub fn key_press(name: &str, mods: &[Modifier]) -> Result<Ack> {
+pub fn key_press(name: &str, mods: &[Modifier], _target: Option<u32>) -> Result<Ack> {
     let vk = key_vk(name)?;
     let mut downs = Vec::new();
     for m in mods {
