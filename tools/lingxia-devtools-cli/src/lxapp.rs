@@ -150,6 +150,146 @@ pub struct PageOptions {
     command: PageCommand,
 }
 
+/// A coordinate parsed from the `X,Y` flag form (e.g. `--at 120,48`).
+#[derive(Clone, Copy)]
+pub struct Point {
+    x: f64,
+    y: f64,
+}
+
+impl std::str::FromStr for Point {
+    type Err = String;
+    fn from_str(s: &str) -> std::result::Result<Self, String> {
+        let (x, y) = s
+            .split_once(',')
+            .ok_or_else(|| format!("expected X,Y (e.g. 120,48), got '{s}'"))?;
+        Ok(Point {
+            x: x.trim()
+                .parse()
+                .map_err(|_| format!("invalid X in '{s}'"))?,
+            y: y.trim()
+                .parse()
+                .map_err(|_| format!("invalid Y in '{s}'"))?,
+        })
+    }
+}
+
+#[derive(Clone, Copy, clap::ValueEnum)]
+pub enum PointerButton {
+    Left,
+    Right,
+    Middle,
+}
+
+impl PointerButton {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Left => "left",
+            Self::Right => "right",
+            Self::Middle => "middle",
+        }
+    }
+}
+
+#[derive(Args, Clone)]
+pub struct PagePointerOptions {
+    #[command(subcommand)]
+    command: PagePointerCommand,
+}
+
+#[derive(Subcommand, Clone)]
+pub enum PagePointerCommand {
+    /// Move the pointer to a page coordinate
+    Move(PointerMoveOptions),
+    /// Press a button at a page coordinate
+    Down(PointerButtonOptions),
+    /// Release a button at a page coordinate
+    Up(PointerButtonOptions),
+    /// Click at a page coordinate
+    Click(PointerClickOptions),
+    /// Drag between two page coordinates
+    Drag(PointerDragOptions),
+    /// Scroll at a page coordinate
+    Scroll(PointerScrollOptions),
+}
+
+#[derive(Args, Clone)]
+pub struct PointerTarget {
+    /// Specific window id (from `lxdev lxapp windows`); defaults to the
+    /// session's focused/main window
+    #[arg(long)]
+    window: Option<String>,
+    /// Print JSON output
+    #[arg(long)]
+    json: bool,
+}
+
+#[derive(Args, Clone)]
+pub struct PointerMoveOptions {
+    /// Target coordinate as X,Y in page (CSS) pixels
+    #[arg(long)]
+    at: Point,
+    #[command(flatten)]
+    target: PointerTarget,
+}
+
+#[derive(Args, Clone)]
+pub struct PointerButtonOptions {
+    /// Target coordinate as X,Y in page (CSS) pixels
+    #[arg(long)]
+    at: Point,
+    /// Mouse button
+    #[arg(long, value_enum, default_value = "left")]
+    button: PointerButton,
+    #[command(flatten)]
+    target: PointerTarget,
+}
+
+#[derive(Args, Clone)]
+pub struct PointerClickOptions {
+    /// Target coordinate as X,Y in page (CSS) pixels
+    #[arg(long)]
+    at: Point,
+    /// Mouse button
+    #[arg(long, value_enum, default_value = "left")]
+    button: PointerButton,
+    /// Number of clicks to report in the event
+    #[arg(long, default_value_t = 1)]
+    count: u8,
+    #[command(flatten)]
+    target: PointerTarget,
+}
+
+#[derive(Args, Clone)]
+pub struct PointerDragOptions {
+    /// Start coordinate as X,Y in page (CSS) pixels
+    #[arg(long)]
+    from: Point,
+    /// End coordinate as X,Y in page (CSS) pixels
+    #[arg(long)]
+    to: Point,
+    /// Mouse button
+    #[arg(long, value_enum, default_value = "left")]
+    button: PointerButton,
+    #[command(flatten)]
+    target: PointerTarget,
+}
+
+#[derive(Args, Clone)]
+pub struct PointerScrollOptions {
+    /// Target coordinate as X,Y in page (CSS) pixels
+    #[arg(long)]
+    at: Point,
+    /// Horizontal scroll delta in page pixels
+    #[arg(long, default_value_t = 0.0, allow_hyphen_values = true)]
+    dx: f64,
+    /// Vertical scroll delta in page pixels
+    #[arg(long, default_value_t = 0.0, allow_hyphen_values = true)]
+    dy: f64,
+    #[command(flatten)]
+    target: PointerTarget,
+}
+
 #[derive(Args, Clone)]
 pub struct NavOptions {
     #[command(subcommand)]
@@ -343,6 +483,8 @@ pub enum PageCommand {
         #[arg(long)]
         json: bool,
     },
+    /// Send pointer input at page coordinates (CSS pixels)
+    Pointer(PagePointerOptions),
     /// Navigate back in the lxapp page stack
     Back {
         /// LxApp context; defaults to current
@@ -421,7 +563,12 @@ pub fn execute(project_root: &Path, info: &SessionInfo, options: LxAppOptions) -
             output,
             json,
         } => execute_screenshot(info, window, output, json)?,
-        LxAppCommand::Page(options) => execute_page(ws_url, options)?,
+        LxAppCommand::Page(options) => {
+            if matches!(&options.command, PageCommand::Pointer(_)) {
+                require_desktop_input(info, "page pointer")?;
+            }
+            execute_page(ws_url, options)?
+        }
         LxAppCommand::Nav(options) => execute_nav(ws_url, options)?,
         LxAppCommand::Eval {
             script,
@@ -749,6 +896,7 @@ fn execute_page(ws_url: &str, options: PageOptions) -> Result<()> {
             )?;
             print_optional_json(data, json)?;
         }
+        PageCommand::Pointer(options) => execute_page_pointer(ws_url, options)?,
         PageCommand::Back { app, delta, json } => {
             let data = client::execute_command(
                 ws_url,
@@ -794,6 +942,90 @@ fn execute_page_screenshot(
     let app = screenshot::safe_component(&app);
     let page = screenshot::safe_component(&page);
     screenshot::write_png(output, format!("{app}-{page}-{ts}.png"), &bytes)
+}
+
+/// Page pointer/key input is synthesized on the session's desktop window; fail
+/// fast with a platform hint on sessions that have no desktop input backend.
+fn require_desktop_input(info: &SessionInfo, what: &str) -> Result<()> {
+    let hint = match info.platform.as_str() {
+        // "lxapp" is the runner dev session; the runner is a desktop app.
+        "macos" | "windows" | "lxapp" => return Ok(()),
+        "android" => "`adb shell input`",
+        "harmony" => "`hdc shell uitest uiInput`",
+        _ => "`lxdev lxapp page click/type` (DOM automation)",
+    };
+    bail!("{what} is desktop-only; on {} use {hint}", info.platform)
+}
+
+fn execute_page_pointer(ws_url: &str, options: PagePointerOptions) -> Result<()> {
+    let (target, action) = match options.command {
+        PagePointerCommand::Move(o) => (
+            o.target,
+            json!({ "kind": "move", "x": o.at.x, "y": o.at.y }),
+        ),
+        PagePointerCommand::Down(o) => (
+            o.target,
+            json!({ "kind": "down", "x": o.at.x, "y": o.at.y, "button": o.button.as_str() }),
+        ),
+        PagePointerCommand::Up(o) => (
+            o.target,
+            json!({ "kind": "up", "x": o.at.x, "y": o.at.y, "button": o.button.as_str() }),
+        ),
+        PagePointerCommand::Click(o) => {
+            if o.count == 0 {
+                bail!("--count must be greater than zero");
+            }
+            (
+                o.target,
+                json!({
+                    "kind": "click",
+                    "x": o.at.x,
+                    "y": o.at.y,
+                    "button": o.button.as_str(),
+                    "click_count": o.count,
+                }),
+            )
+        }
+        PagePointerCommand::Drag(o) => (
+            o.target,
+            json!({
+                "kind": "drag",
+                "from_x": o.from.x,
+                "from_y": o.from.y,
+                "to_x": o.to.x,
+                "to_y": o.to.y,
+                "button": o.button.as_str(),
+            }),
+        ),
+        PagePointerCommand::Scroll(o) => (
+            o.target,
+            json!({ "kind": "scroll", "x": o.at.x, "y": o.at.y, "dx": o.dx, "dy": o.dy }),
+        ),
+    };
+
+    let mut payload = serde_json::Map::new();
+    if let Some(window) = target.window {
+        payload.insert("window_id".to_string(), Value::String(window));
+    }
+    payload.insert("action".to_string(), action);
+    let data = client::execute_command(ws_url, handlers::app::MOUSE, Some(Value::Object(payload)))?
+        .unwrap_or(Value::Null);
+
+    if target.json {
+        println!("{}", serde_json::to_string_pretty(&data)?);
+        return Ok(());
+    }
+
+    let action = data
+        .get("action")
+        .and_then(Value::as_str)
+        .unwrap_or("pointer");
+    let window_id = data
+        .get("window_id")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
+    println!("Sent page pointer {action} to window {window_id}");
+    Ok(())
 }
 
 fn is_top_level_help(args: &[String]) -> bool {
@@ -961,6 +1193,36 @@ mod tests {
         assert_eq!(options.app, "demo");
         assert_eq!(options.query, vec!["tab=account"]);
         assert!(options.json);
+    }
+
+    #[test]
+    fn parses_page_pointer_click() {
+        let cli = parse_lxapp_cli(args(&[
+            "page", "pointer", "click", "--at", "120,48", "--button", "right", "--count", "2",
+            "--window", "0x42", "--json",
+        ]))
+        .unwrap();
+
+        let LxAppCommand::Page(options) = cli.command else {
+            panic!("expected page command");
+        };
+        let PageCommand::Pointer(options) = options.command else {
+            panic!("expected pointer command");
+        };
+        let PagePointerCommand::Click(o) = options.command else {
+            panic!("expected click command");
+        };
+        assert_eq!(o.at.x, 120.0);
+        assert_eq!(o.at.y, 48.0);
+        assert!(matches!(o.button, PointerButton::Right));
+        assert_eq!(o.count, 2);
+        assert_eq!(o.target.window.as_deref(), Some("0x42"));
+        assert!(o.target.json);
+    }
+
+    #[test]
+    fn rejects_bad_pointer_coordinate() {
+        assert!(parse_lxapp_cli(args(&["page", "pointer", "move", "--at", "oops"])).is_err());
     }
 
     #[test]
