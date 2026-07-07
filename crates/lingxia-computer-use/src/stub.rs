@@ -3,7 +3,8 @@
 
 use crate::error::{Error, Result};
 use crate::model::{
-    Capabilities, Capture, CaptureTarget, Display, Doctor, Pixel, Window, WindowQuery, WindowTarget,
+    Ack, Capabilities, Capture, CaptureTarget, Display, Doctor, Modifier, MouseButton, Pixel,
+    Window, WindowQuery, WindowTarget,
 };
 
 fn unsupported<T>() -> Result<T> {
@@ -67,5 +68,36 @@ pub fn window_close(_t: &WindowTarget) -> Result<Window> {
     unsupported()
 }
 pub fn window_activate(_q: WindowQuery) -> Result<Window> {
+    unsupported()
+}
+
+pub fn pointer_move(_x: i32, _y: i32) -> Result<Ack> {
+    unsupported()
+}
+pub fn pointer_down(_x: i32, _y: i32, _b: MouseButton) -> Result<Ack> {
+    unsupported()
+}
+pub fn pointer_up(_x: i32, _y: i32, _b: MouseButton) -> Result<Ack> {
+    unsupported()
+}
+pub fn pointer_click(_x: i32, _y: i32, _b: MouseButton, _c: u32) -> Result<Ack> {
+    unsupported()
+}
+pub fn pointer_scroll(_x: i32, _y: i32, _dx: i32, _dy: i32) -> Result<Ack> {
+    unsupported()
+}
+pub fn pointer_drag(_fx: i32, _fy: i32, _tx: i32, _ty: i32, _b: MouseButton) -> Result<Ack> {
+    unsupported()
+}
+pub fn key_type(_text: &str) -> Result<Ack> {
+    unsupported()
+}
+pub fn key_press(_name: &str, _mods: &[Modifier]) -> Result<Ack> {
+    unsupported()
+}
+pub fn key_down(_name: &str) -> Result<Ack> {
+    unsupported()
+}
+pub fn key_up(_name: &str) -> Result<Ack> {
     unsupported()
 }

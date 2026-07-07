@@ -83,6 +83,40 @@ impl WindowQuery {
     }
 }
 
+/// A generic "it worked" acknowledgement for input/mutation commands that have
+/// no richer result to return.
+#[derive(Debug, Clone, Serialize)]
+pub struct Ack {
+    pub ok: bool,
+    pub action: String,
+}
+
+impl Ack {
+    pub fn new(action: impl Into<String>) -> Self {
+        Ack {
+            ok: true,
+            action: action.into(),
+        }
+    }
+}
+
+/// Mouse button for pointer input.
+#[derive(Debug, Clone, Copy)]
+pub enum MouseButton {
+    Left,
+    Right,
+    Middle,
+}
+
+/// Canonical modifier keys (platform-neutral; `Meta` maps to Win/Command).
+#[derive(Debug, Clone, Copy)]
+pub enum Modifier {
+    Ctrl,
+    Shift,
+    Alt,
+    Meta,
+}
+
 /// How a window action selects its target: a runtime id, or a match query.
 #[derive(Debug, Clone)]
 pub enum WindowTarget {

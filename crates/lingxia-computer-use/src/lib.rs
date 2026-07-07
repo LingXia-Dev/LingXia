@@ -11,9 +11,17 @@ pub mod model;
 
 pub use error::{Error, ErrorCode, Result};
 pub use model::{
-    Capabilities, Capture, CaptureTarget, Display, Doctor, Pixel, Rect, Window, WindowQuery,
-    WindowTarget,
+    Ack, Capabilities, Capture, CaptureTarget, Display, Doctor, Modifier, MouseButton, Pixel, Rect,
+    Window, WindowQuery, WindowTarget,
 };
+
+/// Synthetic input (`desktop pointer` / `desktop key`). All mutating.
+pub mod input {
+    pub use crate::backend::{
+        key_down, key_press, key_type, key_up, pointer_click, pointer_down, pointer_drag,
+        pointer_move, pointer_scroll, pointer_up,
+    };
+}
 
 /// Window management (`desktop window ...`). All mutating.
 pub mod window {

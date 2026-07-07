@@ -97,6 +97,148 @@ pub enum DesktopCommand {
         #[command(subcommand)]
         action: WindowAction,
     },
+    /// Synthesize physical mouse input at screen coordinates
+    Pointer {
+        #[command(subcommand)]
+        action: PointerAction,
+    },
+    /// Synthesize physical keyboard input
+    Key {
+        #[command(subcommand)]
+        action: KeyAction,
+    },
+}
+
+#[derive(Clone, Copy, clap::ValueEnum)]
+pub enum CliButton {
+    Left,
+    Right,
+    Middle,
+}
+
+impl From<CliButton> for cu::MouseButton {
+    fn from(b: CliButton) -> Self {
+        match b {
+            CliButton::Left => cu::MouseButton::Left,
+            CliButton::Right => cu::MouseButton::Right,
+            CliButton::Middle => cu::MouseButton::Middle,
+        }
+    }
+}
+
+#[derive(Clone, Copy, clap::ValueEnum)]
+pub enum CliModifier {
+    Ctrl,
+    Shift,
+    Alt,
+    Meta,
+}
+
+impl From<CliModifier> for cu::Modifier {
+    fn from(m: CliModifier) -> Self {
+        match m {
+            CliModifier::Ctrl => cu::Modifier::Ctrl,
+            CliModifier::Shift => cu::Modifier::Shift,
+            CliModifier::Alt => cu::Modifier::Alt,
+            CliModifier::Meta => cu::Modifier::Meta,
+        }
+    }
+}
+
+#[derive(Subcommand, Clone)]
+pub enum PointerAction {
+    /// Move the cursor to X,Y
+    Move {
+        #[arg(long)]
+        at: String,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Press a button at X,Y
+    Down {
+        #[arg(long)]
+        at: String,
+        #[arg(long, value_enum, default_value = "left")]
+        button: CliButton,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Release a button at X,Y
+    Up {
+        #[arg(long)]
+        at: String,
+        #[arg(long, value_enum, default_value = "left")]
+        button: CliButton,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Click at X,Y
+    Click {
+        #[arg(long)]
+        at: String,
+        #[arg(long, value_enum, default_value = "left")]
+        button: CliButton,
+        #[arg(long, default_value_t = 1)]
+        count: u32,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Drag from one point to another
+    Drag {
+        #[arg(long)]
+        from: String,
+        #[arg(long)]
+        to: String,
+        #[arg(long, value_enum, default_value = "left")]
+        button: CliButton,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Scroll at X,Y by dx/dy notches
+    Scroll {
+        #[arg(long)]
+        at: String,
+        #[arg(long, default_value_t = 0, allow_hyphen_values = true)]
+        dx: i32,
+        #[arg(long, default_value_t = 0, allow_hyphen_values = true)]
+        dy: i32,
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+#[derive(Subcommand, Clone)]
+pub enum KeyAction {
+    /// Type literal text (may bypass IME; prefer clipboard paste for CJK)
+    Type {
+        #[arg(long)]
+        text: String,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Press a key with optional modifiers
+    Press {
+        #[arg(long)]
+        key: String,
+        #[arg(long = "modifier", value_enum)]
+        modifier: Vec<CliModifier>,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Hold a key down
+    Down {
+        #[arg(long)]
+        key: String,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Release a key
+    Up {
+        #[arg(long)]
+        key: String,
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Subcommand, Clone)]
@@ -178,7 +320,82 @@ pub fn execute(options: DesktopOptions) -> ! {
             finish(json, cu::pixel(x, y), print_pixel)
         }
         DesktopCommand::Window { action } => run_window(action, allow_control, allow_destructive),
+        DesktopCommand::Pointer { action } => {
+            run_pointer(action, allow_control, allow_destructive)
+        }
+        DesktopCommand::Key { action } => run_key(action, allow_control, allow_destructive),
     }
+}
+
+fn print_ack(a: &cu::Ack) {
+    println!("ok: {}", a.action);
+}
+
+fn run_pointer(action: PointerAction, allow_control: bool, allow_destructive: bool) -> ! {
+    use cu::input as i;
+    let g = gate(allow_control, false, allow_destructive);
+    let (json, result) = match action {
+        PointerAction::Move { at, json } => (
+            json,
+            g.and_then(|_| parse_pair(&at))
+                .and_then(|(x, y)| i::pointer_move(x, y)),
+        ),
+        PointerAction::Down { at, button, json } => (
+            json,
+            g.and_then(|_| parse_pair(&at))
+                .and_then(|(x, y)| i::pointer_down(x, y, button.into())),
+        ),
+        PointerAction::Up { at, button, json } => (
+            json,
+            g.and_then(|_| parse_pair(&at))
+                .and_then(|(x, y)| i::pointer_up(x, y, button.into())),
+        ),
+        PointerAction::Click {
+            at,
+            button,
+            count,
+            json,
+        } => (
+            json,
+            g.and_then(|_| parse_pair(&at))
+                .and_then(|(x, y)| i::pointer_click(x, y, button.into(), count)),
+        ),
+        PointerAction::Drag {
+            from,
+            to,
+            button,
+            json,
+        } => (
+            json,
+            g.and_then(|_| Ok((parse_pair(&from)?, parse_pair(&to)?)))
+                .and_then(|((fx, fy), (tx, ty))| i::pointer_drag(fx, fy, tx, ty, button.into())),
+        ),
+        PointerAction::Scroll { at, dx, dy, json } => (
+            json,
+            g.and_then(|_| parse_pair(&at))
+                .and_then(|(x, y)| i::pointer_scroll(x, y, dx, dy)),
+        ),
+    };
+    finish(json, result, print_ack)
+}
+
+fn run_key(action: KeyAction, allow_control: bool, allow_destructive: bool) -> ! {
+    use cu::input as i;
+    let g = gate(allow_control, false, allow_destructive);
+    let (json, result) = match action {
+        KeyAction::Type { text, json } => (json, g.and_then(|_| i::key_type(&text))),
+        KeyAction::Press {
+            key,
+            modifier,
+            json,
+        } => {
+            let mods: Vec<cu::Modifier> = modifier.into_iter().map(Into::into).collect();
+            (json, g.and_then(|_| i::key_press(&key, &mods)))
+        }
+        KeyAction::Down { key, json } => (json, g.and_then(|_| i::key_down(&key))),
+        KeyAction::Up { key, json } => (json, g.and_then(|_| i::key_up(&key))),
+    };
+    finish(json, result, print_ack)
 }
 
 fn env_flag(name: &str) -> bool {

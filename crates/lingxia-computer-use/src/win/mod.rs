@@ -9,8 +9,13 @@ use windows::core::{BOOL, PWSTR};
 use windows::Win32::Foundation::{CloseHandle, HANDLE, HWND, LPARAM, RECT, TRUE};
 
 mod capture;
+mod input;
 mod window_ops;
 pub use capture::{pixel, screenshot};
+pub use input::{
+    key_down, key_press, key_type, key_up, pointer_click, pointer_down, pointer_drag, pointer_move,
+    pointer_scroll, pointer_up,
+};
 pub use window_ops::{
     activate as window_activate, close as window_close, focus as window_focus,
     maximize as window_maximize, minimize as window_minimize, move_to as window_move,
@@ -79,6 +84,8 @@ pub fn doctor() -> Doctor {
             window_screenshot_occlusion_independent: true,
             pixel: true,
             window_management: true,
+            pointer: true,
+            key: true,
             ..Capabilities::default()
         },
     }
