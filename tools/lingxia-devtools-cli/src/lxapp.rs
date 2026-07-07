@@ -291,6 +291,62 @@ pub struct PointerScrollOptions {
 }
 
 #[derive(Args, Clone)]
+pub struct PageKeyOptions {
+    #[command(subcommand)]
+    command: PageKeyCommand,
+}
+
+#[derive(Subcommand, Clone)]
+pub enum PageKeyCommand {
+    /// Type literal text into the focused control
+    Type(KeyTypeOptions),
+    /// Press a named key (return, tab, escape, delete, space, arrows)
+    Press(KeyPressOptions),
+}
+
+#[derive(Args, Clone)]
+pub struct KeyTypeOptions {
+    /// Text to type
+    #[arg(long)]
+    text: String,
+    #[command(flatten)]
+    target: PointerTarget,
+}
+
+#[derive(Args, Clone)]
+pub struct KeyPressOptions {
+    /// Key name: return, tab, escape, delete, space, left, right, up, down
+    #[arg(long)]
+    key: String,
+    /// Modifier keys held during the press (repeatable)
+    #[arg(long, value_enum)]
+    modifier: Vec<KeyModifier>,
+    #[command(flatten)]
+    target: PointerTarget,
+}
+
+/// Canonical cross-platform modifier vocabulary. Backends map `meta` to the
+/// platform meta key (Command on macOS, Windows key on Windows).
+#[derive(Clone, Copy, clap::ValueEnum)]
+pub enum KeyModifier {
+    Ctrl,
+    Shift,
+    Alt,
+    Meta,
+}
+
+impl KeyModifier {
+    fn to_wire(self) -> &'static str {
+        match self {
+            Self::Ctrl => "control",
+            Self::Shift => "shift",
+            Self::Alt => "option",
+            Self::Meta => "command",
+        }
+    }
+}
+
+#[derive(Args, Clone)]
 pub struct NavOptions {
     #[command(subcommand)]
     command: NavCommand,
@@ -485,6 +541,8 @@ pub enum PageCommand {
     },
     /// Send pointer input at page coordinates (CSS pixels)
     Pointer(PagePointerOptions),
+    /// Send keyboard input to the session's focused control
+    Key(PageKeyOptions),
     /// Navigate back in the lxapp page stack
     Back {
         /// LxApp context; defaults to current
@@ -564,8 +622,11 @@ pub fn execute(project_root: &Path, info: &SessionInfo, options: LxAppOptions) -
             json,
         } => execute_screenshot(info, window, output, json)?,
         LxAppCommand::Page(options) => {
-            if matches!(&options.command, PageCommand::Pointer(_)) {
-                require_desktop_input(info, "page pointer")?;
+            if matches!(
+                &options.command,
+                PageCommand::Pointer(_) | PageCommand::Key(_)
+            ) {
+                require_desktop_input(info, "page input")?;
             }
             execute_page(ws_url, options)?
         }
@@ -897,6 +958,7 @@ fn execute_page(ws_url: &str, options: PageOptions) -> Result<()> {
             print_optional_json(data, json)?;
         }
         PageCommand::Pointer(options) => execute_page_pointer(ws_url, options)?,
+        PageCommand::Key(options) => execute_page_key(ws_url, options)?,
         PageCommand::Back { app, delta, json } => {
             let data = client::execute_command(
                 ws_url,
@@ -1025,6 +1087,41 @@ fn execute_page_pointer(ws_url: &str, options: PagePointerOptions) -> Result<()>
         .and_then(Value::as_str)
         .unwrap_or("unknown");
     println!("Sent page pointer {action} to window {window_id}");
+    Ok(())
+}
+
+fn execute_page_key(ws_url: &str, options: PageKeyOptions) -> Result<()> {
+    let (target, action) = match options.command {
+        PageKeyCommand::Type(o) => (o.target, json!({ "kind": "type", "text": o.text })),
+        PageKeyCommand::Press(o) => {
+            let modifiers: Vec<&str> = o.modifier.iter().map(|m| m.to_wire()).collect();
+            (
+                o.target,
+                json!({ "kind": "press", "key": o.key, "modifiers": modifiers }),
+            )
+        }
+    };
+
+    let mut payload = serde_json::Map::new();
+    if let Some(window) = target.window {
+        payload.insert("window_id".to_string(), Value::String(window));
+    }
+    payload.insert("action".to_string(), action);
+    let data =
+        client::execute_command(ws_url, handlers::app::KEYBOARD, Some(Value::Object(payload)))?
+            .unwrap_or(Value::Null);
+
+    if target.json {
+        println!("{}", serde_json::to_string_pretty(&data)?);
+        return Ok(());
+    }
+
+    let action = data.get("action").and_then(Value::as_str).unwrap_or("key");
+    let window_id = data
+        .get("window_id")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
+    println!("Sent page key {action} to window {window_id}");
     Ok(())
 }
 
@@ -1223,6 +1320,28 @@ mod tests {
     #[test]
     fn rejects_bad_pointer_coordinate() {
         assert!(parse_lxapp_cli(args(&["page", "pointer", "move", "--at", "oops"])).is_err());
+    }
+
+    #[test]
+    fn parses_page_key_press() {
+        let cli = parse_lxapp_cli(args(&[
+            "page", "key", "press", "--key", "return", "--modifier", "ctrl", "--modifier", "shift",
+        ]))
+        .unwrap();
+
+        let LxAppCommand::Page(options) = cli.command else {
+            panic!("expected page command");
+        };
+        let PageCommand::Key(options) = options.command else {
+            panic!("expected key command");
+        };
+        let PageKeyCommand::Press(o) = options.command else {
+            panic!("expected press command");
+        };
+        assert_eq!(o.key, "return");
+        assert_eq!(o.modifier.len(), 2);
+        assert_eq!(o.modifier[0].to_wire(), "control");
+        assert_eq!(o.modifier[1].to_wire(), "shift");
     }
 
     #[test]
