@@ -31,6 +31,33 @@ pub enum DesktopCommand {
         #[arg(long)]
         json: bool,
     },
+    /// Capture a display, window, or region (defaults to the whole screen)
+    Screenshot {
+        /// Capture a monitor by 1-based index (from `desktop displays`)
+        #[arg(long)]
+        display: Option<usize>,
+        /// Capture a window by id (occlusion-independent)
+        #[arg(long)]
+        window: Option<String>,
+        /// Capture a region as X,Y,W,H in global physical pixels
+        #[arg(long)]
+        region: Option<String>,
+        /// Output path; `-` for stdout. Default: .lingxia/screenshots/desktop-<ts>.png
+        #[arg(long, short = 'o')]
+        output: Option<String>,
+        /// Print the JSON envelope (metadata + base64 PNG)
+        #[arg(long)]
+        json: bool,
+    },
+    /// Read the color of a pixel at a screen coordinate
+    Pixel {
+        /// Coordinate as X,Y in global physical pixels
+        #[arg(long)]
+        at: String,
+        /// Print JSON output
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 pub fn execute(options: DesktopOptions) -> ! {
@@ -44,7 +71,126 @@ pub fn execute(options: DesktopOptions) -> ! {
                 .unwrap_or_default();
             finish(json, cu::windows(&query), print_windows)
         }
+        DesktopCommand::Screenshot {
+            display,
+            window,
+            region,
+            output,
+            json,
+        } => run_screenshot(display, window, region, output, json),
+        DesktopCommand::Pixel { at, json } => {
+            let (x, y) = match parse_pair(&at) {
+                Ok(p) => p,
+                Err(e) => finish::<()>(json, Err(e), |_| {}),
+            };
+            finish(json, cu::pixel(x, y), print_pixel)
+        }
     }
+}
+
+/// `X,Y` -> (i32, i32).
+fn parse_pair(s: &str) -> cu::Result<(i32, i32)> {
+    let (a, b) = s
+        .split_once(',')
+        .ok_or_else(|| cu::Error::Usage(format!("expected X,Y, got '{s}'")))?;
+    Ok((
+        a.trim()
+            .parse()
+            .map_err(|_| cu::Error::Usage(format!("invalid X in '{s}'")))?,
+        b.trim()
+            .parse()
+            .map_err(|_| cu::Error::Usage(format!("invalid Y in '{s}'")))?,
+    ))
+}
+
+fn run_screenshot(
+    display: Option<usize>,
+    window: Option<String>,
+    region: Option<String>,
+    output: Option<String>,
+    json: bool,
+) -> ! {
+    let selectors = display.is_some() as u8 + window.is_some() as u8 + region.is_some() as u8;
+    if selectors > 1 {
+        finish::<()>(
+            json,
+            Err(cu::Error::Usage(
+                "pass at most one of --display / --window / --region".into(),
+            )),
+            |_| {},
+        );
+    }
+    let target = if let Some(n) = display {
+        cu::CaptureTarget::Display(n)
+    } else if let Some(id) = window {
+        cu::CaptureTarget::Window(id)
+    } else if let Some(r) = region {
+        match parse_region(&r) {
+            Ok(t) => t,
+            Err(e) => finish::<()>(json, Err(e), |_| {}),
+        }
+    } else {
+        cu::CaptureTarget::Screen
+    };
+
+    let capture = match cu::screenshot(target) {
+        Ok(c) => c,
+        Err(e) => finish::<()>(json, Err(e), |_| {}),
+    };
+
+    if json {
+        use base64::Engine as _;
+        let envelope = serde_json::json!({
+            "target": "desktop",
+            "kind": "screenshot",
+            "coordinate_space": "desktop_pixels",
+            "backend": capture.backend,
+            "occlusion_independent": capture.occlusion_independent,
+            "format": "png",
+            "width": capture.width,
+            "height": capture.height,
+            "image": {
+                "mime": "image/png",
+                "encoding": "base64",
+                "data": base64::engine::general_purpose::STANDARD.encode(&capture.png),
+            }
+        });
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&envelope).unwrap_or_default()
+        );
+        std::process::exit(0);
+    }
+
+    let ts = chrono::Local::now().format("%Y%m%d-%H%M%S");
+    match crate::screenshot::write_png(output, format!("desktop-{ts}.png"), &capture.png) {
+        Ok(()) => std::process::exit(0),
+        Err(e) => {
+            eprintln!("Error: {e}");
+            std::process::exit(10);
+        }
+    }
+}
+
+fn parse_region(s: &str) -> cu::Result<cu::CaptureTarget> {
+    let parts: Vec<&str> = s.split(',').map(str::trim).collect();
+    if parts.len() != 4 {
+        return Err(cu::Error::Usage(format!("expected X,Y,W,H, got '{s}'")));
+    }
+    let n = |v: &str| {
+        v.parse::<i32>()
+            .map_err(|_| cu::Error::Usage(format!("invalid number in region '{s}'")))
+    };
+    Ok(cu::CaptureTarget::Region {
+        x: n(parts[0])?,
+        y: n(parts[1])?,
+        w: n(parts[2])?,
+        h: n(parts[3])?,
+    })
+}
+
+fn print_pixel(p: &cu::Pixel) {
+    println!("#{}  rgb({},{},{})  at {},{}", p.hex, p.r, p.g, p.b, p.x, p.y);
 }
 
 /// Emit the result and exit with the contract's exit code. `desktop` commands

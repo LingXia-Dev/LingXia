@@ -2997,6 +2997,7 @@ dependencies = [
 name = "lingxia-computer-use"
 version = "0.10.0"
 dependencies = [
+ "image",
  "log",
  "serde",
  "serde_json",

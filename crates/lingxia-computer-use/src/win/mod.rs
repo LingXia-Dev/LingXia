@@ -2,11 +2,25 @@
 //! pixels; the process is made per-monitor DPI aware on first use so reads are
 //! not virtualized.
 
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::model::{Capabilities, Display, Doctor, Rect, Window, WindowQuery};
 use std::sync::Once;
 use windows::core::{BOOL, PWSTR};
 use windows::Win32::Foundation::{CloseHandle, HANDLE, HWND, LPARAM, RECT, TRUE};
+
+mod capture;
+pub use capture::{pixel, screenshot};
+
+/// Parse a "0x…"-style window id back into an `HWND`.
+pub(crate) fn parse_hwnd(id: &str) -> Result<HWND> {
+    let hex = id
+        .strip_prefix("0x")
+        .or_else(|| id.strip_prefix("0X"))
+        .unwrap_or(id);
+    let raw = isize::from_str_radix(hex, 16)
+        .map_err(|_| Error::Usage(format!("invalid window id '{id}'")))?;
+    Ok(HWND(raw as *mut core::ffi::c_void))
+}
 use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_CLOAKED};
 use windows::Win32::Graphics::Gdi::{
     EnumDisplayMonitors, GetMonitorInfoW, MonitorFromRect, HDC, HMONITOR, MONITORINFO,
@@ -53,6 +67,9 @@ pub fn doctor() -> Doctor {
         capabilities: Capabilities {
             displays: true,
             windows: true,
+            screenshot: true,
+            window_screenshot_occlusion_independent: true,
+            pixel: true,
             ..Capabilities::default()
         },
     }

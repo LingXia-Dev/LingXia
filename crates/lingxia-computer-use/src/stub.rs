@@ -2,7 +2,7 @@
 //! report unsupported explicitly rather than pretending.
 
 use crate::error::{Error, Result};
-use crate::model::{Capabilities, Display, Doctor, Window, WindowQuery};
+use crate::model::{Capabilities, Capture, CaptureTarget, Display, Doctor, Pixel, Window, WindowQuery};
 
 fn unsupported<T>() -> Result<T> {
     Err(Error::Unsupported(
@@ -24,5 +24,13 @@ pub fn displays() -> Result<Vec<Display>> {
 }
 
 pub fn windows(_query: &WindowQuery) -> Result<Vec<Window>> {
+    unsupported()
+}
+
+pub fn screenshot(_target: CaptureTarget) -> Result<Capture> {
+    unsupported()
+}
+
+pub fn pixel(_x: i32, _y: i32) -> Result<Pixel> {
     unsupported()
 }

@@ -10,7 +10,9 @@ pub mod error;
 pub mod model;
 
 pub use error::{Error, ErrorCode, Result};
-pub use model::{Capabilities, Display, Doctor, Rect, Window, WindowQuery};
+pub use model::{
+    Capabilities, Capture, CaptureTarget, Display, Doctor, Pixel, Rect, Window, WindowQuery,
+};
 
 #[cfg(target_os = "windows")]
 #[path = "win/mod.rs"]
@@ -33,4 +35,14 @@ pub fn displays() -> Result<Vec<Display>> {
 /// Enumerate top-level OS windows, optionally filtered (`desktop windows`).
 pub fn windows(query: &WindowQuery) -> Result<Vec<Window>> {
     backend::windows(query)
+}
+
+/// Capture a display/window/region (`desktop screenshot`).
+pub fn screenshot(target: CaptureTarget) -> Result<Capture> {
+    backend::screenshot(target)
+}
+
+/// Read a single pixel's color (`desktop pixel`).
+pub fn pixel(x: i32, y: i32) -> Result<Pixel> {
+    backend::pixel(x, y)
 }

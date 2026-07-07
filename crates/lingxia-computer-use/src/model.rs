@@ -83,6 +83,44 @@ impl WindowQuery {
     }
 }
 
+/// A single pixel's color (`desktop pixel`).
+#[derive(Debug, Clone, Serialize)]
+pub struct Pixel {
+    pub x: i32,
+    pub y: i32,
+    pub hex: String,
+    pub r: u8,
+    pub g: u8,
+    pub b: u8,
+}
+
+/// What to capture (`desktop screenshot`).
+#[derive(Debug, Clone)]
+pub enum CaptureTarget {
+    /// The whole virtual screen (all monitors).
+    Screen,
+    /// A monitor by 1-based index (as listed by `desktop displays`).
+    Display(usize),
+    /// A window by id ("0x...").
+    Window(String),
+    /// A region in global physical pixels.
+    Region { x: i32, y: i32, w: i32, h: i32 },
+}
+
+/// The result of a capture. `png` holds the encoded bytes; the CLI decides
+/// whether to write a file or emit a base64 envelope, so this is not itself
+/// serialized.
+#[derive(Debug, Clone)]
+pub struct Capture {
+    pub width: u32,
+    pub height: u32,
+    pub png: Vec<u8>,
+    /// True when the backend captured window pixels regardless of occlusion
+    /// (PrintWindow), false for on-screen BitBlt captures.
+    pub occlusion_independent: bool,
+    pub backend: String,
+}
+
 /// Backend capability + permission report (`desktop doctor`).
 #[derive(Debug, Clone, Serialize)]
 pub struct Doctor {
