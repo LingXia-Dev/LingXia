@@ -142,6 +142,44 @@ pub enum LxAppCommand {
         #[arg(long)]
         json: bool,
     },
+    /// Inspect or switch the simulated device (runner only)
+    Device(DeviceOptions),
+}
+
+#[derive(Args, Clone)]
+pub struct DeviceOptions {
+    #[command(subcommand)]
+    command: DeviceCommand,
+}
+
+#[derive(Subcommand, Clone)]
+pub enum DeviceCommand {
+    /// List the device presets the runner offers
+    List {
+        /// Print JSON output
+        #[arg(long)]
+        json: bool,
+    },
+    /// Print the currently selected device
+    Get {
+        /// Print JSON output
+        #[arg(long)]
+        json: bool,
+    },
+    /// Switch the simulated device by preset id
+    Set {
+        /// Device preset id (see `lxdev lxapp device list`)
+        id: String,
+        /// Force landscape orientation
+        #[arg(long, conflicts_with = "portrait")]
+        landscape: bool,
+        /// Force portrait orientation
+        #[arg(long)]
+        portrait: bool,
+        /// Print JSON output
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Args, Clone)]
@@ -695,9 +733,109 @@ pub fn execute(project_root: &Path, info: &SessionInfo, options: LxAppOptions) -
         LxAppCommand::Uninstall { app, json } => {
             action(ws_url, handlers::lxapp::UNINSTALL, app, json)?
         }
+        LxAppCommand::Device(options) => execute_device(ws_url, options)?,
     }
 
     Ok(())
+}
+
+fn execute_device(ws_url: &str, options: DeviceOptions) -> Result<()> {
+    match options.command {
+        DeviceCommand::List { json } => {
+            let data = client::execute_command(ws_url, handlers::lxapp_device::LIST, None)?
+                .unwrap_or_else(|| json!([]));
+            if json {
+                print_json(&data, false)?;
+            } else {
+                print_device_list(&data);
+            }
+        }
+        DeviceCommand::Get { json } => {
+            let data = client::execute_command(ws_url, handlers::lxapp_device::GET, None)?
+                .unwrap_or(Value::Null);
+            if json {
+                print_json(&data, false)?;
+            } else {
+                print_device_state(&data);
+            }
+        }
+        DeviceCommand::Set {
+            id,
+            landscape,
+            portrait,
+            json,
+        } => {
+            // Leave orientation to the runner default (tablet=landscape,
+            // phone/desktop=portrait) unless a flag pins it.
+            let orientation = if landscape {
+                Some(true)
+            } else if portrait {
+                Some(false)
+            } else {
+                None
+            };
+            let data = client::execute_command(
+                ws_url,
+                handlers::lxapp_device::SET,
+                Some(json!({ "id": id, "landscape": orientation })),
+            )?
+            .unwrap_or(Value::Null);
+            if json {
+                print_json(&data, false)?;
+            } else {
+                print_device_state(&data);
+            }
+        }
+    }
+    Ok(())
+}
+
+fn print_device_list(data: &Value) {
+    let Some(array) = data.as_array() else {
+        let _ = print_json(data, false);
+        return;
+    };
+    if array.is_empty() {
+        println!("No devices reported by the session.");
+        return;
+    }
+    println!(
+        "{:<3}  {:<20}  {:<8}  {:<11}  ID",
+        "CUR", "NAME", "GROUP", "SIZE"
+    );
+    for dev in array {
+        let id = dev.get("id").and_then(Value::as_str).unwrap_or("-");
+        let name = dev.get("name").and_then(Value::as_str).unwrap_or("");
+        let group = dev.get("group").and_then(Value::as_str).unwrap_or("");
+        let width = dev.get("width").and_then(Value::as_u64).unwrap_or(0);
+        let height = dev.get("height").and_then(Value::as_u64).unwrap_or(0);
+        let current = dev.get("current").and_then(Value::as_bool).unwrap_or(false);
+        println!(
+            "{:<3}  {:<20}  {:<8}  {:<11}  {}",
+            if current { " * " } else { "" },
+            name,
+            group,
+            format!("{width}x{height}"),
+            id,
+        );
+    }
+}
+
+fn print_device_state(data: &Value) {
+    if data.is_null() {
+        println!("No device reported by the session.");
+        return;
+    }
+    let name = data.get("name").and_then(Value::as_str).unwrap_or("");
+    let id = data.get("id").and_then(Value::as_str).unwrap_or("-");
+    let width = data.get("width").and_then(Value::as_u64).unwrap_or(0);
+    let height = data.get("height").and_then(Value::as_u64).unwrap_or(0);
+    let landscape = data
+        .get("landscape")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let orientation = if landscape { "landscape" } else { "portrait" };
+    println!("{name} ({id})  {width}x{height}  {orientation}");
 }
 
 fn execute_windows(ws_url: &str, json: bool) -> Result<()> {
@@ -1168,6 +1306,7 @@ fn commands_for_project(project_root: &Path) -> &'static [&'static str] {
             "screenshot",
             "page",
             "nav",
+            "device",
             "eval",
             "rebuild",
         ]
@@ -1181,6 +1320,7 @@ fn commands_for_project(project_root: &Path) -> &'static [&'static str] {
             "screenshot",
             "page",
             "nav",
+            "device",
             "eval",
             "rebuild",
             "open",
@@ -1216,6 +1356,7 @@ fn command_description(command: &str) -> &'static str {
         "screenshot" => "Capture a PNG screenshot of the app surface",
         "page" => "Inspect and automate lxapp pages",
         "nav" => "Navigate the lxapp runtime by page name",
+        "device" => "Inspect or switch the simulated device",
         "eval" => "Evaluate JavaScript in the lxapp logic runtime",
         "rebuild" => "Rebuild the lxapp front-end bundle",
         "open" => "Open an lxapp",

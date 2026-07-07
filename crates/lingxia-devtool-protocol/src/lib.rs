@@ -88,6 +88,15 @@ pub mod handlers {
         pub const KEYBOARD: &str = "app.keyboard";
     }
 
+    pub mod lxapp_device {
+        /// List the device presets the runner offers (id, name, group, size).
+        pub const LIST: &str = "lxapp.device.list";
+        /// Report the currently selected device and orientation.
+        pub const GET: &str = "lxapp.device.get";
+        /// Switch the simulated device (by preset id) and/or orientation.
+        pub const SET: &str = "lxapp.device.set";
+    }
+
     pub mod lxapp_page {
         pub const CURRENT: &str = "lxapp.page.current";
         pub const LIST: &str = "lxapp.page.list";
