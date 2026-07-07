@@ -363,8 +363,13 @@ fn frame_pixels(spec: &WindowsDeviceFrame, layout: &FrameLayout) -> Vec<u32> {
             let mut blue = toolbar_blue as f32 * toolbar_alpha
                 + bezel_blue as f32 * bezel_coverage * (1.0 - toolbar_alpha);
 
-            // Dots paint opaquely over the toolbar.
+            // Dots paint opaquely over the toolbar. A device that keeps the
+            // shell's standard caption buttons (e.g. a simulated desktop) leaves
+            // these rects empty — skip them so no stray dot lands at the origin.
             for (rect, color) in dots {
+                if rect.right <= rect.left || rect.bottom <= rect.top {
+                    continue;
+                }
                 let cx = (rect.left + rect.right) as f32 / 2.0;
                 let cy = (rect.top + rect.bottom) as f32 / 2.0;
                 let distance = ((px - cx).powi(2) + (py - cy).powi(2)).sqrt();
