@@ -113,10 +113,15 @@ pub fn app_launch(
     }
     let pid = info.dwProcessId;
 
-    let window = wait_window.and_then(|query| {
-        let q = WindowQuery::parse(query);
-        super::wait_window(&q, Some(true), timeout_ms).ok()
-    });
+    // When the caller asked to wait for a window, a timeout is a real failure
+    // (exit code follows the error) — don't swallow it into a bare pid.
+    let window = match wait_window {
+        Some(query) => {
+            let q = WindowQuery::parse(query);
+            Some(super::wait_window(&q, Some(true), timeout_ms)?)
+        }
+        None => None,
+    };
     Ok(LaunchResult { pid, window })
 }
 
