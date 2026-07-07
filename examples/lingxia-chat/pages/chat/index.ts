@@ -213,4 +213,16 @@ Page({
   async onOpenTerminal(params: { edge: 'left' | 'right' | 'top' | 'bottom' }) {
     await lx.openSurface({ surface: 'terminal', edge: params?.edge ?? 'bottom' });
   },
+
+  // Open a new in-app browser tab (self browser with an editable address bar).
+  // The start host must be in lxapp.json security.network.trustedDomains, else
+  // openSurface rejects with security_denied — catch it so a policy denial can
+  // never take down the host/Runner.
+  async onOpenBrowser() {
+    try {
+      await lx.openSurface({ url: 'https://www.deepseek.com' });
+    } catch (err) {
+      console.error('openBrowser failed', err);
+    }
+  },
 });

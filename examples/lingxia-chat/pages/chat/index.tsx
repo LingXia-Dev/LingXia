@@ -149,14 +149,36 @@ function EmptyState() {
   );
 }
 
-// Desktop hosts (macOS/Windows) declare a dockable terminal surface; the
-// bridge global is the View-side platform source.
+function bridgePlatform() {
+  return (window as unknown as {
+    LingXiaBridge?: {
+      platform?: {
+        isMacOS(): boolean;
+        isWindows(): boolean;
+        isDesktop?(): boolean;
+        isRunner?(): boolean;
+      };
+    };
+  }).LingXiaBridge?.platform;
+}
+
+// Whether the host is a desktop (macOS/Windows) — where the Tools menu applies.
+function isDesktopHost(): boolean {
+  try {
+    const p = bridgePlatform();
+    return !!p && (p.isMacOS() || p.isWindows());
+  } catch {
+    return false;
+  }
+}
+
+// The dockable terminal is a host-declared surface that the LingXia Runner does
+// not provide. Show the terminal affordance only on a desktop host that is NOT
+// the Runner. (isRunner is optional-called so older bridges read as "not runner".)
 function hasDesktopTerminal(): boolean {
   try {
-    const p = (window as unknown as {
-      LingXiaBridge?: { platform?: { isMacOS(): boolean; isWindows(): boolean } };
-    }).LingXiaBridge?.platform;
-    return !!p && (p.isMacOS() || p.isWindows());
+    const p = bridgePlatform();
+    return !!p && (p.isMacOS() || p.isWindows()) && p.isRunner?.() !== true;
   } catch {
     return false;
   }
@@ -169,39 +191,75 @@ const TERMINAL_EDGES = [
   { edge: 'bottom' as const, label: 'Dock bottom', arrow: 'M6 9l6 6 6-6' },
 ];
 
-function TerminalTool({ onOpen }: { onOpen: (edge: 'left' | 'right' | 'top' | 'bottom') => void }) {
+// SVG path for a menu row icon.
+function MenuIcon({ d }: { d: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5" stroke="#6b7280" strokeWidth="2">
+      <path strokeLinecap="round" strokeLinejoin="round" d={d} />
+    </svg>
+  );
+}
+
+// A "New browser tab" globe icon path.
+const BROWSER_ICON = 'M12 3a9 9 0 100 18 9 9 0 000-18zM3.6 9h16.8M3.6 15h16.8M12 3c2.5 2.4 3.75 5.4 3.75 9S14.5 18.6 12 21c-2.5-2.4-3.75-5.4-3.75-9S9.5 5.4 12 3z';
+
+// Tools menu: a wrench-icon button opening a dropdown of host tools. Always
+// offers "New browser tab"; adds the terminal dock-edge items when the host
+// provides the terminal surface (desktop and not the Runner).
+function ToolsMenu({
+  showTerminal,
+  onOpenBrowser,
+  onOpenTerminal,
+}: {
+  showTerminal: boolean;
+  onOpenBrowser: () => void;
+  onOpenTerminal: (edge: 'left' | 'right' | 'top' | 'bottom') => void;
+}) {
   const [open, setOpen] = useState(false);
 
   return (
     <div className="relative">
       <button
         onClick={() => setOpen((v) => !v)}
-        title="Terminal"
+        title="Tools"
         className="w-7 h-7 bg-white rounded-full shadow-sm flex items-center justify-center active:opacity-70"
       >
         <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="#374151" strokeWidth="1.8">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M7 9l3 3-3 3m5 0h5M4.5 5h15a1 1 0 011 1v12a1 1 0 01-1 1h-15a1 1 0 01-1-1V6a1 1 0 011-1z" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="M14.7 6.3a4 4 0 00-5.2 5.2L3 18l3 3 6.5-6.5a4 4 0 005.2-5.2l-2.6 2.6-2.5-.6-.6-2.5 2.6-2.6z" />
         </svg>
       </button>
       {open && (
         <>
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 top-9 z-20 bg-white rounded-xl shadow-lg border border-gray-200 py-1 w-36">
-            {TERMINAL_EDGES.map(({ edge, label, arrow }) => (
-              <button
-                key={edge}
-                onClick={() => {
-                  setOpen(false);
-                  onOpen(edge);
-                }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 active:bg-gray-100"
-              >
-                <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5" stroke="#6b7280" strokeWidth="2">
-                  <path strokeLinecap="round" strokeLinejoin="round" d={arrow} />
-                </svg>
-                {label}
-              </button>
-            ))}
+          <div className="absolute right-0 top-9 z-20 bg-white rounded-xl shadow-lg border border-gray-200 py-1 w-44">
+            <button
+              onClick={() => {
+                setOpen(false);
+                onOpenBrowser();
+              }}
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 active:bg-gray-100"
+            >
+              <MenuIcon d={BROWSER_ICON} />
+              New browser tab
+            </button>
+            {showTerminal && (
+              <>
+                <div className="my-1 border-t border-gray-100" />
+                {TERMINAL_EDGES.map(({ edge, label, arrow }) => (
+                  <button
+                    key={edge}
+                    onClick={() => {
+                      setOpen(false);
+                      onOpenTerminal(edge);
+                    }}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 active:bg-gray-100"
+                  >
+                    <MenuIcon d={arrow} />
+                    {label}
+                  </button>
+                ))}
+              </>
+            )}
           </div>
         </>
       )}
@@ -357,6 +415,7 @@ export default function ChatPage() {
       onSend: (params: { text: string }) => LxStream<ChatChunk, void>;
       onClear: () => void;
       onOpenTerminal: (params: { edge: 'left' | 'right' | 'top' | 'bottom' }) => void;
+      onOpenBrowser: () => void;
     }
   >();
 
@@ -403,8 +462,12 @@ export default function ChatPage() {
             Clear
           </button>
         )}
-        {hasDesktopTerminal() && (
-          <TerminalTool onOpen={(edge) => actions.onOpenTerminal({ edge })} />
+        {isDesktopHost() && (
+          <ToolsMenu
+            showTerminal={hasDesktopTerminal()}
+            onOpenBrowser={() => actions.onOpenBrowser()}
+            onOpenTerminal={(edge) => actions.onOpenTerminal({ edge })}
+          />
         )}
       </div>
 
