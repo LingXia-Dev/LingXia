@@ -38,7 +38,8 @@ enum Commands {
     Logs(logs::LogsOptions),
     /// List or prune dev sessions for this project
     Sessions(SessionsCmd),
-    /// Operate on the host app as a whole (window-level screenshot, etc.)
+    /// Removed: session commands moved under `lxdev lxapp`
+    #[command(hide = true)]
     App(app::AppOptions),
 }
 
@@ -91,9 +92,7 @@ fn main() -> Result<()> {
             }
             None => sessions::execute_list(&project_root, cmd.json),
         },
-        Commands::App(options) => {
-            let info = project::resolve_session(&project_root, &selector)?;
-            app::execute(&info, options)
-        }
+        // Removed namespace: emit a migration hint without needing a session.
+        Commands::App(options) => app::migrate(options),
     }
 }
