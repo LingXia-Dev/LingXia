@@ -44,8 +44,7 @@ impl WindowSel {
     }
 }
 
-/// `wait window --state` values. Enumeration only surfaces visible windows,
-/// so `hidden` is currently unsatisfiable and rejected at the backend.
+/// `wait window --state` values.
 #[derive(clap::ValueEnum, Clone, Copy)]
 pub enum WindowVisibility {
     Visible,
@@ -56,6 +55,13 @@ impl WindowVisibility {
     fn as_bool(self) -> bool {
         matches!(self, WindowVisibility::Visible)
     }
+}
+
+#[derive(Serialize)]
+struct WaitWindowHidden {
+    ok: bool,
+    state: &'static str,
+    matched_visible_windows: usize,
 }
 
 /// `window always-on-top --state` values.
@@ -780,11 +786,18 @@ fn run_wait(action: WaitAction) -> ! {
             json,
         } => {
             let q = cu::WindowQuery::parse(&match_query);
-            finish(
-                json,
-                cu::wait_window(&q, state.map(WindowVisibility::as_bool), timeout_ms),
-                print_window_one,
-            )
+            match state {
+                Some(WindowVisibility::Hidden) => {
+                    finish(json, wait_window_hidden(&q, timeout_ms), |r| {
+                        println!("window state {}", r.state)
+                    })
+                }
+                _ => finish(
+                    json,
+                    cu::wait_window(&q, state.map(WindowVisibility::as_bool), timeout_ms),
+                    print_window_one,
+                ),
+            }
         }
         WaitAction::Ax {
             window,
@@ -817,6 +830,26 @@ fn run_wait(action: WaitAction) -> ! {
                 print_pixel,
             )
         }
+    }
+}
+
+fn wait_window_hidden(query: &cu::WindowQuery, timeout_ms: u64) -> cu::Result<WaitWindowHidden> {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_millis(timeout_ms);
+    loop {
+        let visible = cu::windows(query)?;
+        if visible.is_empty() {
+            return Ok(WaitWindowHidden {
+                ok: true,
+                state: "hidden",
+                matched_visible_windows: 0,
+            });
+        }
+        if std::time::Instant::now() >= deadline {
+            return Err(cu::Error::Timeout(
+                "timed out waiting for window to become hidden".into(),
+            ));
+        }
+        std::thread::sleep(std::time::Duration::from_millis(150));
     }
 }
 

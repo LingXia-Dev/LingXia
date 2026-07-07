@@ -1207,9 +1207,9 @@ fn local_file_url(input: &str) -> Option<String> {
 fn resolve_local_path(input: &str) -> Option<std::path::PathBuf> {
     use std::path::PathBuf;
     let expanded: PathBuf = if input == "~" {
-        std::env::var_os("HOME")?.into()
+        home_dir()?.into()
     } else if let Some(rest) = input.strip_prefix("~/") {
-        let mut home = PathBuf::from(std::env::var_os("HOME")?);
+        let mut home = PathBuf::from(home_dir()?);
         home.push(rest);
         home
     } else {
@@ -1221,6 +1221,25 @@ fn resolve_local_path(input: &str) -> Option<std::path::PathBuf> {
         std::env::current_dir().ok()?.join(expanded)
     };
     Some(lexically_clean(&absolute))
+}
+
+fn home_dir() -> Option<std::ffi::OsString> {
+    std::env::var_os("HOME").or_else(|| {
+        #[cfg(windows)]
+        {
+            std::env::var_os("USERPROFILE").or_else(|| {
+                let drive = std::env::var_os("HOMEDRIVE")?;
+                let path = std::env::var_os("HOMEPATH")?;
+                let mut home = drive;
+                home.push(path);
+                Some(home)
+            })
+        }
+        #[cfg(not(windows))]
+        {
+            None
+        }
+    })
 }
 
 /// Lexically drop `.` and resolve `..` components without touching the

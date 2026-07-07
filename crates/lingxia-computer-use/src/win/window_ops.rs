@@ -5,12 +5,13 @@ use super::{display_id_for_rect, parse_hwnd, process_name, rect_to};
 use crate::error::{Error, Result};
 use crate::model::{Window, WindowTarget};
 use windows::Win32::Foundation::{HWND, LPARAM, RECT, WPARAM};
+use windows::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
 use windows::Win32::UI::WindowsAndMessaging::{
-    GWL_EXSTYLE, GetForegroundWindow, GetWindowLongW, GetWindowRect, GetWindowTextW,
-    GetWindowThreadProcessId, HWND_NOTOPMOST, HWND_TOP, HWND_TOPMOST, IsIconic, IsWindow,
-    IsWindowVisible, IsZoomed, PostMessageW, SW_MINIMIZE, SW_RESTORE, SW_SHOWMAXIMIZED,
-    SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SWP_SHOWWINDOW, SetForegroundWindow,
-    SetWindowPos, ShowWindow, WM_CLOSE, WS_EX_TOPMOST,
+    BringWindowToTop, GWL_EXSTYLE, GetForegroundWindow, GetWindowLongW, GetWindowRect,
+    GetWindowTextW, GetWindowThreadProcessId, HWND_NOTOPMOST, HWND_TOP, HWND_TOPMOST, IsIconic,
+    IsWindow, IsWindowVisible, IsZoomed, PostMessageW, SW_MINIMIZE, SW_RESTORE, SW_SHOW,
+    SW_SHOWMAXIMIZED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SWP_SHOWWINDOW,
+    SetForegroundWindow, SetWindowPos, ShowWindow, WM_CLOSE, WS_EX_TOPMOST,
 };
 
 /// Resolve a target to a live HWND.
@@ -82,22 +83,71 @@ pub fn status(target: &WindowTarget) -> Result<Window> {
 
 pub fn focus(target: &WindowTarget) -> Result<Window> {
     let hwnd = resolve(target)?;
-    unsafe {
-        let ok = SetForegroundWindow(hwnd).as_bool();
-        // Windows may refuse foreground changes (foreground lock / integrity).
-        // Report failure instead of a false success.
-        if !ok && GetForegroundWindow() != hwnd {
-            return Err(Error::Failed(
-                "could not bring the window to the foreground (foreground lock or integrity level)"
-                    .into(),
-            ));
-        }
+    if !activate_hwnd(hwnd) {
+        return Err(Error::Failed(
+            "could not bring the window to the foreground (foreground lock or integrity level)"
+                .into(),
+        ));
     }
     window_info(hwnd)
 }
 
 pub fn activate(target: &WindowTarget) -> Result<Window> {
     focus(target)
+}
+
+fn activate_hwnd(hwnd: HWND) -> bool {
+    unsafe {
+        if GetForegroundWindow() == hwnd {
+            return true;
+        }
+
+        if IsIconic(hwnd).as_bool() {
+            let _ = ShowWindow(hwnd, SW_RESTORE);
+        } else {
+            let _ = ShowWindow(hwnd, SW_SHOW);
+        }
+
+        let current_thread = GetCurrentThreadId();
+        let foreground = GetForegroundWindow();
+        let foreground_thread = if foreground.0.is_null() {
+            0
+        } else {
+            GetWindowThreadProcessId(foreground, None)
+        };
+        let target_thread = GetWindowThreadProcessId(hwnd, None);
+
+        let attach_foreground = foreground_thread != 0 && foreground_thread != current_thread;
+        let attach_target = target_thread != 0 && target_thread != current_thread;
+
+        if attach_foreground {
+            let _ = AttachThreadInput(current_thread, foreground_thread, true);
+        }
+        if attach_target && target_thread != foreground_thread {
+            let _ = AttachThreadInput(current_thread, target_thread, true);
+        }
+
+        let _ = BringWindowToTop(hwnd);
+        let _ = SetWindowPos(
+            hwnd,
+            Some(HWND_TOP),
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW,
+        );
+        let ok = SetForegroundWindow(hwnd).as_bool();
+
+        if attach_target && target_thread != foreground_thread {
+            let _ = AttachThreadInput(current_thread, target_thread, false);
+        }
+        if attach_foreground {
+            let _ = AttachThreadInput(current_thread, foreground_thread, false);
+        }
+
+        ok || GetForegroundWindow() == hwnd
+    }
 }
 
 pub fn raise(target: &WindowTarget) -> Result<Window> {
