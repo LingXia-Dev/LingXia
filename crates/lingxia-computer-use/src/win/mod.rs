@@ -13,8 +13,12 @@ mod capture;
 mod clipboard;
 mod input;
 mod window_ops;
-pub use ax::{invoke as ax_invoke, query as ax_query, tree as ax_tree};
-pub use capture::{pixel, screenshot};
+pub use ax::{
+    collapse as ax_collapse, expand as ax_expand, focus as ax_focus, invoke as ax_invoke,
+    query as ax_query, scroll_into_view as ax_scroll_into_view, select as ax_select,
+    set_value as ax_set_value, tree as ax_tree, wait as ax_wait,
+};
+pub use capture::{pixel, screenshot, wait_pixel};
 pub use clipboard::{
     clear as clipboard_clear, get as clipboard_get, paste as clipboard_paste, set as clipboard_set,
 };
@@ -222,6 +226,25 @@ pub fn windows(query: &WindowQuery) -> Result<Vec<Window>> {
         });
     }
     Ok(out)
+}
+
+/// Poll `windows()` until one matches (and, if given, matches `visible`), or
+/// time out (exit 5).
+pub fn wait_window(query: &WindowQuery, visible: Option<bool>, timeout_ms: u64) -> Result<Window> {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_millis(timeout_ms);
+    loop {
+        if let Ok(found) = windows(query)
+            && let Some(w) = found
+                .into_iter()
+                .find(|w| visible.is_none_or(|v| w.visible == v))
+        {
+            return Ok(w);
+        }
+        if std::time::Instant::now() >= deadline {
+            return Err(Error::Timeout("timed out waiting for window".into()));
+        }
+        std::thread::sleep(std::time::Duration::from_millis(150));
+    }
 }
 
 fn matches_query(r: &Raw, q: &WindowQuery) -> bool {

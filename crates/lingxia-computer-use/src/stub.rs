@@ -129,3 +129,30 @@ pub fn ax_query(
 pub fn ax_invoke(_window_id: &str, _q: &AxQuery) -> Result<Ack> {
     unsupported()
 }
+pub fn ax_focus(_window_id: &str, _q: &AxQuery) -> Result<Ack> {
+    unsupported()
+}
+pub fn ax_set_value(_window_id: &str, _q: &AxQuery, _v: &str) -> Result<Ack> {
+    unsupported()
+}
+pub fn ax_select(_window_id: &str, _q: &AxQuery) -> Result<Ack> {
+    unsupported()
+}
+pub fn ax_expand(_window_id: &str, _q: &AxQuery) -> Result<Ack> {
+    unsupported()
+}
+pub fn ax_collapse(_window_id: &str, _q: &AxQuery) -> Result<Ack> {
+    unsupported()
+}
+pub fn ax_scroll_into_view(_window_id: &str, _q: &AxQuery) -> Result<Ack> {
+    unsupported()
+}
+pub fn ax_wait(_window_id: &str, _q: &AxQuery, _state: &str, _timeout_ms: u64) -> Result<Ack> {
+    unsupported()
+}
+pub fn wait_window(_q: &WindowQuery, _visible: Option<bool>, _timeout_ms: u64) -> Result<Window> {
+    unsupported()
+}
+pub fn wait_pixel(_x: i32, _y: i32, _hex: &str, _tol: u8, _timeout_ms: u64) -> Result<Pixel> {
+    unsupported()
+}

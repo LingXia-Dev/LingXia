@@ -119,6 +119,53 @@ pub enum DesktopCommand {
         #[command(subcommand)]
         action: AxAction,
     },
+    /// Wait for a condition (window / ax node / pixel), then exit 0 or 5
+    Wait {
+        #[command(subcommand)]
+        action: WaitAction,
+    },
+}
+
+#[derive(Subcommand, Clone)]
+pub enum WaitAction {
+    /// Wait until a window matches
+    Window {
+        #[arg(long = "match")]
+        match_query: String,
+        #[arg(long)]
+        visible: Option<bool>,
+        #[arg(long, default_value_t = 5000)]
+        timeout_ms: u64,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Wait until an ax node reaches a state
+    Ax {
+        #[arg(long)]
+        window: String,
+        #[arg(long = "match")]
+        match_query: String,
+        /// exists (default) | gone | enabled | focused
+        #[arg(long, default_value = "exists")]
+        state: String,
+        #[arg(long, default_value_t = 5000)]
+        timeout_ms: u64,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Wait until a pixel matches a color
+    Pixel {
+        #[arg(long)]
+        at: String,
+        #[arg(long)]
+        color: String,
+        #[arg(long, default_value_t = 0)]
+        tolerance: u8,
+        #[arg(long, default_value_t = 5000)]
+        timeout_ms: u64,
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Subcommand, Clone)]
@@ -161,6 +208,34 @@ pub enum AxAction {
         #[arg(long)]
         json: bool,
     },
+    /// Give an element keyboard focus
+    Focus(AxSel),
+    /// Replace an editable element's value
+    SetValue {
+        #[command(flatten)]
+        sel: AxSel,
+        #[arg(long)]
+        value: String,
+    },
+    /// Select an item (list/tab/tree item)
+    Select(AxSel),
+    /// Expand an expandable element
+    Expand(AxSel),
+    /// Collapse an expandable element
+    Collapse(AxSel),
+    /// Scroll an element into view
+    ScrollIntoView(AxSel),
+}
+
+/// Shared AX action selector: exactly one node via `--window` + `--match`.
+#[derive(Args, Clone)]
+pub struct AxSel {
+    #[arg(long)]
+    window: String,
+    #[arg(long = "match")]
+    match_query: String,
+    #[arg(long)]
+    json: bool,
 }
 
 #[derive(Subcommand, Clone)]
@@ -406,6 +481,7 @@ pub fn execute(options: DesktopOptions) -> ! {
             run_clipboard(action, allow_control, allow_destructive)
         }
         DesktopCommand::Ax { action } => run_ax(action, allow_control, allow_destructive),
+        DesktopCommand::Wait { action } => run_wait(action),
     }
 }
 
@@ -438,6 +514,79 @@ fn run_ax(action: AxAction, allow_control: bool, allow_destructive: bool) -> ! {
             let r = gate(allow_control, false, allow_destructive)
                 .and_then(|_| cu::ax::invoke(&window, &q));
             finish(json, r, print_ack)
+        }
+        AxAction::Focus(s) => ax_act(s, allow_control, allow_destructive, cu::ax::focus),
+        AxAction::Select(s) => ax_act(s, allow_control, allow_destructive, cu::ax::select),
+        AxAction::Expand(s) => ax_act(s, allow_control, allow_destructive, cu::ax::expand),
+        AxAction::Collapse(s) => ax_act(s, allow_control, allow_destructive, cu::ax::collapse),
+        AxAction::ScrollIntoView(s) => {
+            ax_act(s, allow_control, allow_destructive, cu::ax::scroll_into_view)
+        }
+        AxAction::SetValue { sel, value } => {
+            ax_act(sel, allow_control, allow_destructive, move |w, q| {
+                cu::ax::set_value(w, q, &value)
+            })
+        }
+    }
+}
+
+/// Run a gated single-node AX action.
+fn ax_act(
+    sel: AxSel,
+    allow_control: bool,
+    allow_destructive: bool,
+    op: impl Fn(&str, &cu::AxQuery) -> cu::Result<cu::Ack>,
+) -> ! {
+    let q = cu::AxQuery::parse(&sel.match_query);
+    let r = gate(allow_control, false, allow_destructive).and_then(|_| op(&sel.window, &q));
+    finish(sel.json, r, print_ack)
+}
+
+fn run_wait(action: WaitAction) -> ! {
+    match action {
+        WaitAction::Window {
+            match_query,
+            visible,
+            timeout_ms,
+            json,
+        } => {
+            let q = cu::WindowQuery::parse(&match_query);
+            finish(
+                json,
+                cu::wait_window(&q, visible, timeout_ms),
+                print_window_one,
+            )
+        }
+        WaitAction::Ax {
+            window,
+            match_query,
+            state,
+            timeout_ms,
+            json,
+        } => {
+            let q = cu::AxQuery::parse(&match_query);
+            finish(
+                json,
+                cu::ax::wait(&window, &q, &state, timeout_ms),
+                print_ack,
+            )
+        }
+        WaitAction::Pixel {
+            at,
+            color,
+            tolerance,
+            timeout_ms,
+            json,
+        } => {
+            let (x, y) = match parse_pair(&at) {
+                Ok(p) => p,
+                Err(e) => finish::<()>(json, Err(e), |_| {}),
+            };
+            finish(
+                json,
+                cu::wait_pixel(x, y, &color, tolerance, timeout_ms),
+                print_pixel,
+            )
         }
     }
 }

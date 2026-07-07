@@ -17,7 +17,21 @@ pub use model::{
 
 /// Native accessibility (`desktop ax ...`).
 pub mod ax {
-    pub use crate::backend::{ax_invoke as invoke, ax_query as query, ax_tree as tree};
+    pub use crate::backend::{
+        ax_collapse as collapse, ax_expand as expand, ax_focus as focus, ax_invoke as invoke,
+        ax_query as query, ax_scroll_into_view as scroll_into_view, ax_select as select,
+        ax_set_value as set_value, ax_tree as tree, ax_wait as wait,
+    };
+}
+
+/// Wait for a window to appear (`desktop wait window`).
+pub fn wait_window(query: &WindowQuery, visible: Option<bool>, timeout_ms: u64) -> Result<Window> {
+    backend::wait_window(query, visible, timeout_ms)
+}
+
+/// Wait for a pixel color (`desktop wait pixel`).
+pub fn wait_pixel(x: i32, y: i32, hex: &str, tolerance: u8, timeout_ms: u64) -> Result<Pixel> {
+    backend::wait_pixel(x, y, hex, tolerance, timeout_ms)
 }
 
 /// Clipboard access (`desktop clipboard ...`).

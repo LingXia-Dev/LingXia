@@ -43,6 +43,37 @@ pub fn pixel(x: i32, y: i32) -> Result<Pixel> {
     }
 }
 
+/// Poll a pixel until it matches `hex` within `tolerance` per channel, or time
+/// out (exit 5).
+pub fn wait_pixel(x: i32, y: i32, hex: &str, tolerance: u8, timeout_ms: u64) -> Result<Pixel> {
+    let want = parse_hex(hex)?;
+    let deadline = std::time::Instant::now() + std::time::Duration::from_millis(timeout_ms);
+    loop {
+        if let Ok(p) = pixel(x, y) {
+            let close = |a: u8, b: u8| a.abs_diff(b) <= tolerance;
+            if close(p.r, want.0) && close(p.g, want.1) && close(p.b, want.2) {
+                return Ok(p);
+            }
+        }
+        if std::time::Instant::now() >= deadline {
+            return Err(Error::Timeout(format!("timed out waiting for pixel {hex}")));
+        }
+        std::thread::sleep(std::time::Duration::from_millis(120));
+    }
+}
+
+fn parse_hex(hex: &str) -> Result<(u8, u8, u8)> {
+    let h = hex.trim_start_matches('#');
+    if h.len() != 6 {
+        return Err(Error::Usage(format!("color must be rrggbb, got '{hex}'")));
+    }
+    let byte = |i: usize| {
+        u8::from_str_radix(&h[i..i + 2], 16)
+            .map_err(|_| Error::Usage(format!("invalid color '{hex}'")))
+    };
+    Ok((byte(0)?, byte(2)?, byte(4)?))
+}
+
 pub fn screenshot(target: CaptureTarget) -> Result<Capture> {
     super::ensure_dpi_aware();
     match target {
