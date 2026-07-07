@@ -387,35 +387,70 @@ enum Commands {
     },
 
     /// Publish a package to the LingXia server
+    ///
+    /// Run with no subcommand to upload; `lingxia publish login` saves the
+    /// server URL + token to `~/.lingxia/cli/config.toml`.
+    #[command(args_conflicts_with_subcommands = true, subcommand_negates_reqs = true)]
     Publish {
-        /// Bearer token for authentication. Falls back to `[publish] token` in
-        /// `~/.lingxia/cli/config.toml` when omitted.
+        #[command(subcommand)]
+        action: Option<PublishAction>,
+
+        #[command(flatten)]
+        args: PublishArgs,
+    },
+}
+
+#[derive(clap::Args)]
+struct PublishArgs {
+    /// Bearer token for authentication. Falls back to `[publish] token` in
+    /// `~/.lingxia/cli/config.toml` when omitted.
+    #[arg(long)]
+    token: Option<String>,
+
+    /// LingXia server URL
+    #[arg(long)]
+    lingxia_server: Option<String>,
+
+    /// Path to the package archive (app only)
+    #[arg(long = "package-path")]
+    package_path: Option<String>,
+
+    /// App platform to publish: android, macos, windows
+    #[arg(long, value_parser = ["android", "macos", "windows"])]
+    platform: Option<String>,
+
+    /// Release channel for lxapp/lxplugin publishing: release, preview, developer.
+    #[arg(long = "env", alias = "channel", value_parser = ["developer", "dev", "preview", "release"])]
+    channel: Option<String>,
+
+    /// Override lxapp view framework detection
+    #[arg(long, value_parser = ["react", "vue", "html"])]
+    framework: Option<String>,
+
+    /// LxApp progress output mode
+    #[arg(long, value_parser = ["task", "plain"])]
+    progress: Option<String>,
+}
+
+#[derive(Subcommand)]
+enum PublishAction {
+    /// Save the publish server URL + token to `~/.lingxia/cli/config.toml`
+    ///
+    /// Pass `--env` to target a single channel's `[publish.<env>]` table;
+    /// omit it to set the top-level defaults used by all channels. Existing
+    /// values for other channels are preserved.
+    Login {
+        /// LingXia server URL to save
+        #[arg(long)]
+        server: Option<String>,
+
+        /// Bearer token to save
         #[arg(long)]
         token: Option<String>,
 
-        /// LingXia server URL
-        #[arg(long)]
-        lingxia_server: Option<String>,
-
-        /// Path to the package archive (app only)
-        #[arg(long = "package-path")]
-        package_path: Option<String>,
-
-        /// App platform to publish: android, macos, windows
-        #[arg(long, value_parser = ["android", "macos", "windows"])]
-        platform: Option<String>,
-
-        /// Release channel for lxapp/lxplugin publishing: release, preview, developer.
+        /// Channel to scope these credentials to: developer, preview, release.
         #[arg(long = "env", alias = "channel", value_parser = ["developer", "dev", "preview", "release"])]
-        channel: Option<String>,
-
-        /// Override lxapp view framework detection
-        #[arg(long, value_parser = ["react", "vue", "html"])]
-        framework: Option<String>,
-
-        /// LxApp progress output mode
-        #[arg(long, value_parser = ["task", "plain"])]
-        progress: Option<String>,
+        env: Option<String>,
     },
 }
 
@@ -766,25 +801,22 @@ fn main() -> Result<()> {
                 r#gen::icons::run(config)?;
             }
         },
-        Commands::Publish {
-            token,
-            lingxia_server,
-            package_path,
-            platform,
-            channel,
-            framework,
-            progress,
-        } => {
-            commands::publish::execute(commands::publish::PublishOptions {
-                token,
-                lingxia_server,
-                package: package_path,
-                platform,
-                channel,
-                framework,
-                progress,
-            })?;
-        }
+        Commands::Publish { action, args } => match action {
+            Some(PublishAction::Login { server, token, env }) => {
+                commands::publish::save_login(server, token, env)?;
+            }
+            None => {
+                commands::publish::execute(commands::publish::PublishOptions {
+                    token: args.token,
+                    lingxia_server: args.lingxia_server,
+                    package: args.package_path,
+                    platform: args.platform,
+                    channel: args.channel,
+                    framework: args.framework,
+                    progress: args.progress,
+                })?;
+            }
+        },
     }
 
     Ok(())
