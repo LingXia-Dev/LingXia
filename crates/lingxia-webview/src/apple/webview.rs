@@ -2714,6 +2714,10 @@ impl WebViewController for WebViewInner {
         self.apple_bridge_transport.enqueue_message(message)
     }
 
+    fn post_messages(&self, messages: &[String]) -> Result<(), WebViewError> {
+        self.apple_bridge_transport.enqueue_messages(messages)
+    }
+
     fn clear_browsing_data(&self) -> Result<(), WebViewError> {
         if MainThreadMarker::new().is_some() {
             // Already on main thread, execute directly

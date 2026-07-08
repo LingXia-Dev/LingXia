@@ -50,6 +50,7 @@ struct AppleBridgeTransportState {
     queue: VecDeque<Vec<u8>>,
     connection: Option<AppleBridgeConnection>,
     next_connection_id: u64,
+    has_connected: bool,
     shutdown: bool,
 }
 
@@ -67,6 +68,7 @@ impl AppleBridgeTransport {
                 queue: VecDeque::new(),
                 connection: None,
                 next_connection_id: 0,
+                has_connected: false,
                 shutdown: false,
             }),
             signal: Condvar::new(),
@@ -96,18 +98,30 @@ impl AppleBridgeTransport {
             );
         }
 
-        let (replaced_existing, dropped_queued_frames) = {
+        let (replaced_existing, dropped_queued_frames, preserved_queued_frames) = {
             let mut guard = self.state.lock().unwrap_or_else(|e| e.into_inner());
             guard.next_connection_id += 1;
             let replaced = guard.connection.is_some();
-            let dropped = guard.queue.len();
-            guard.queue.clear();
+            let queued_before_connect = guard.queue.len();
+            let preserve_preconnect_queue = !guard.has_connected && !replaced;
+            let dropped = if preserve_preconnect_queue {
+                0
+            } else {
+                guard.queue.clear();
+                queued_before_connect
+            };
             let id = guard.next_connection_id;
             guard.connection = Some(AppleBridgeConnection {
                 id,
                 writer: write_end,
             });
-            (replaced, dropped)
+            guard.has_connected = true;
+            let preserved = if preserve_preconnect_queue {
+                queued_before_connect
+            } else {
+                0
+            };
+            (replaced, dropped, preserved)
         };
         self.signal.notify_all();
         let dropped_suffix = if dropped_queued_frames > 0 {
@@ -115,15 +129,21 @@ impl AppleBridgeTransport {
         } else {
             String::new()
         };
+        let preserved_suffix = if preserved_queued_frames > 0 {
+            format!(" (preserved {} queued frame(s))", preserved_queued_frames)
+        } else {
+            String::new()
+        };
         log::info!(
-            "Apple bridge downstream connected webtag={}{}{}",
+            "Apple bridge downstream connected webtag={}{}{}{}",
             self.webtag,
             if replaced_existing {
                 " (replaced existing stream)"
             } else {
                 ""
             },
-            dropped_suffix
+            dropped_suffix,
+            preserved_suffix
         );
         Ok(reader)
     }
@@ -132,7 +152,28 @@ impl AppleBridgeTransport {
         let mut frame = Vec::with_capacity(message.len() + 1);
         frame.extend_from_slice(message.as_bytes());
         frame.push(b'\n');
+        self.enqueue_frame(frame)
+    }
 
+    pub(super) fn enqueue_messages(&self, messages: &[String]) -> Result<(), WebViewError> {
+        if messages.is_empty() {
+            return Ok(());
+        }
+
+        // Apple downstream is NDJSON over a custom-scheme streaming response.
+        // Keep ordered bridge frames in one queued frame so WebKit observes
+        // protocol-adjacent messages from the same lower-level stream write.
+        let frame_capacity = messages.iter().map(|message| message.len() + 1).sum();
+        let mut frame = Vec::with_capacity(frame_capacity);
+        for message in messages {
+            frame.extend_from_slice(message.as_bytes());
+            frame.push(b'\n');
+        }
+
+        self.enqueue_frame(frame)
+    }
+
+    fn enqueue_frame(&self, frame: Vec<u8>) -> Result<(), WebViewError> {
         let queued_len = {
             let mut guard = self.state.lock().unwrap_or_else(|e| e.into_inner());
             if guard.shutdown {
@@ -208,13 +249,21 @@ impl AppleBridgeTransport {
                     e
                 );
                 let mut guard = self.state.lock().unwrap_or_else(|e| e.into_inner());
-                guard.queue.push_front(frame);
                 if guard
                     .connection
                     .as_ref()
                     .is_some_and(|connection| connection.id == connection_id)
                 {
                     guard.connection = None;
+                    let dropped = guard.queue.len();
+                    guard.queue.clear();
+                    if dropped > 0 {
+                        log::debug!(
+                            "Apple bridge downstream dropped {} queued frame(s) after write failure webtag={}",
+                            dropped,
+                            self.webtag
+                        );
+                    }
                 }
             }
         }

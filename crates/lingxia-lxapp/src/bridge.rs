@@ -92,6 +92,18 @@ pub(crate) const BRIDGE_INTERNAL_ERROR: &str = "BRIDGE_INTERNAL_ERROR";
 // ViewTransport — posting messages back to the WebView
 pub(crate) trait ViewTransport {
     fn post_message_to_view(&self, message_json: String) -> Result<(), LxAppError>;
+
+    /// Post bridge messages in order.
+    ///
+    /// This does not require atomic delivery: the default implementation sends
+    /// messages one at a time. Platform transports may coalesce the lower-level
+    /// write when adjacent bridge frames should become visible together.
+    fn post_messages_to_view(&self, messages_json: Vec<String>) -> Result<(), LxAppError> {
+        for message_json in messages_json {
+            self.post_message_to_view(message_json)?;
+        }
+        Ok(())
+    }
 }
 
 impl ViewTransport for PageInstance {
@@ -99,6 +111,16 @@ impl ViewTransport for PageInstance {
         if let Some(controller) = self.webview_controller() {
             controller
                 .post_message(&message_json)
+                .map_err(|e| LxAppError::WebView(e.to_string()))
+        } else {
+            Err(LxAppError::WebView("WebView not ready".to_string()))
+        }
+    }
+
+    fn post_messages_to_view(&self, messages_json: Vec<String>) -> Result<(), LxAppError> {
+        if let Some(controller) = self.webview_controller() {
+            controller
+                .post_messages(&messages_json)
                 .map_err(|e| LxAppError::WebView(e.to_string()))
         } else {
             Err(LxAppError::WebView("WebView not ready".to_string()))
@@ -339,9 +361,8 @@ impl PageBridge {
         self.reset_session();
 
         let session_id = self.new_session_id();
-        self.send_hello_ack(page, msg.nonce.clone(), session_id.clone())?;
+        self.send_handshake_ack_and_ready(page, msg.nonce.clone(), session_id.clone())?;
         self.set_ready(session_id.clone());
-        self.send_ready(page, session_id.clone())?;
         if let Err(err) = self.forward_js_message(page, AppServiceCommand::Ready) {
             crate::warn!("bridge ready bootstrap failed: {}", err)
                 .with_appid(page.appid())
@@ -745,34 +766,29 @@ impl PageBridge {
         )?)
     }
 
-    fn send_hello_ack<T: ViewTransport>(
+    fn send_handshake_ack_and_ready<T: ViewTransport>(
         &self,
         transport: &T,
         nonce: String,
         session_id: String,
     ) -> Result<(), LxAppError> {
-        let msg = HelloAck {
+        let hello_ack = HelloAck {
             v: 2,
             kind: "helloAck",
             nonce,
             protocol: 2,
-            session_id,
+            session_id: session_id.clone(),
         };
-        self.send_json(transport, &msg)
-    }
-
-    fn send_ready<T: ViewTransport>(
-        &self,
-        transport: &T,
-        session_id: String,
-    ) -> Result<(), LxAppError> {
-        let msg = ReadyMsg {
+        let ready = ReadyMsg {
             v: 2,
             kind: "ready",
             session_id,
             host_methods: host::host_method_schema(),
         };
-        self.send_json(transport, &msg)
+        transport.post_messages_to_view(vec![
+            serde_json::to_string(&hello_ack)?,
+            serde_json::to_string(&ready)?,
+        ])
     }
 
     fn set_ready(&self, session_id: String) {

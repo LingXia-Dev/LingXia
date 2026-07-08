@@ -264,6 +264,21 @@ pub trait WebViewController: Send + Sync {
     /// Post a message to the WebView
     fn post_message(&self, message: &str) -> Result<(), WebViewError>;
 
+    /// Post multiple messages to the WebView in the given order.
+    ///
+    /// This is an ordering/coalescing hook, not an atomic transaction. The
+    /// default implementation preserves existing platform semantics by sending
+    /// each message independently and may partially succeed if a later send
+    /// fails. Streaming transports can override this to coalesce adjacent
+    /// protocol frames into one lower-level write while preserving their
+    /// observable order.
+    fn post_messages(&self, messages: &[String]) -> Result<(), WebViewError> {
+        for message in messages {
+            self.post_message(message)?;
+        }
+        Ok(())
+    }
+
     /// Clear browsing data from the WebView
     fn clear_browsing_data(&self) -> Result<(), WebViewError>;
 

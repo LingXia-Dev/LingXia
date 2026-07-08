@@ -1329,6 +1329,10 @@ impl WebViewController for WebView {
         self.inner.post_message(message)
     }
 
+    fn post_messages(&self, messages: &[String]) -> Result<(), WebViewError> {
+        self.inner.post_messages(messages)
+    }
+
     fn clear_browsing_data(&self) -> Result<(), WebViewError> {
         self.inner.clear_browsing_data()
     }

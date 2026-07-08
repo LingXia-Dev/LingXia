@@ -184,6 +184,16 @@ impl ViewTransport for PageSvc {
             Err(LxAppError::WebView("WebView not ready".to_string()))
         }
     }
+
+    fn post_messages_to_view(&self, messages_json: Vec<String>) -> Result<(), LxAppError> {
+        if let Some(controller) = self.page.webview_controller() {
+            controller
+                .post_messages(&messages_json)
+                .map_err(|e| LxAppError::WebView(e.to_string()))
+        } else {
+            Err(LxAppError::WebView("WebView not ready".to_string()))
+        }
+    }
 }
 
 impl PageSvc {
