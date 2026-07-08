@@ -1011,7 +1011,7 @@ fn execute_screenshot(
 
     let bytes = screenshot::decode_png_payload(&data, handlers::app::SCREENSHOT)?;
     let ts = chrono::Local::now().format("%Y%m%d-%H%M%S");
-    let platform = screenshot::safe_component(&info.platform);
+    let platform = screenshot::safe_component(&info.target);
     screenshot::write_png(output, format!("lxapp-{platform}-{ts}.png"), &bytes)
 }
 
@@ -1297,14 +1297,14 @@ fn execute_page_screenshot(
 /// Page pointer/key input is synthesized on the session's desktop window; fail
 /// fast with a platform hint on sessions that have no desktop input backend.
 fn require_desktop_input(info: &SessionInfo, what: &str) -> Result<()> {
-    let hint = match info.platform.as_str() {
+    let hint = match info.target.as_str() {
         // "lxapp" is the runner dev session; the runner is a desktop app.
         "macos" | "windows" | "lxapp" => return Ok(()),
         "android" => "`adb shell input`",
         "harmony" => "`hdc shell uitest uiInput`",
         _ => "`lxdev lxapp page click/type` (DOM automation)",
     };
-    bail!("{what} is desktop-only; on {} use {hint}", info.platform)
+    bail!("{what} is desktop-only; on {} use {hint}", info.target)
 }
 
 fn execute_page_pointer(ws_url: &str, options: PagePointerOptions) -> Result<()> {
