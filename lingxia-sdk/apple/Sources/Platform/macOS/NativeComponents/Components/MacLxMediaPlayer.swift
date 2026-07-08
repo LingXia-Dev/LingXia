@@ -175,6 +175,10 @@ final class MacLxMediaPlayer: NSObject {
             NSColor.black.withAlphaComponent(0.6).cgColor
         ]
         gradient.locations = [0, 1]
+        // Track Auto Layout resizes of the bar; layoutSubviews() is only
+        // called on explicit setFrame/fullscreen, so the layer must follow
+        // the superlayer on its own or it keeps a stale width.
+        gradient.autoresizingMask = [.layerWidthSizable, .layerHeightSizable]
         bottomBar.layer?.addSublayer(gradient)
 
         configureButton(playPauseButton, symbolName: "play.fill", action: #selector(togglePlayPause))
