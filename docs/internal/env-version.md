@@ -86,6 +86,7 @@ Default per command when `--env` is omitted:
 | `lingxia build` | `developer` | Day-to-day iteration on a real device. |
 | `lingxia dev` | `developer` | Same as build. |
 | `lingxia package` | `release` | Produces a shippable artifact. |
+| `lingxia publish` | `developer` for lxapp/lxplugin | Matches dev by default; host-app publish uses the package's `app.json envVersion`. |
 
 Build profile (`--release`) is independent of env selection. The CLI prints
 a banner on every build so the active env is visible:
@@ -305,7 +306,9 @@ from the package's baked `app.json`
 The upload `id` field is set to the suffixed value from the package, not
 the base id from `lingxia.yaml`. This is mandatory: the runtime queries
 updates against the exact suffixed id, so server-side id must match. The
-upload `channel` field carries the `envVersion`.
+upload `channel` field carries the `envVersion`. For lxapp/lxplugin publish,
+omitting `--env` defaults to `developer`; host-app publish always reads
+`envVersion` from the package.
 
 ## File map
 

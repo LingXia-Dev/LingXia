@@ -12,6 +12,8 @@ use crate::http_client;
 use crate::lxapp;
 use crate::platform::detector::PlatformType;
 
+const DEFAULT_PUBLISH_CHANNEL: &str = "developer";
+
 pub struct PublishOptions {
     pub token: Option<String>,
     pub lingxia_server: Option<String>,
@@ -70,7 +72,7 @@ pub fn execute(opts: PublishOptions) -> Result<()> {
             meta.target_id = id;
         }
     } else if meta.channel.is_none() {
-        meta.channel = Some("release".to_string());
+        meta.channel = Some(DEFAULT_PUBLISH_CHANNEL.to_string());
     }
     // Resolve server and token *after* channel is known so per-env config
     // routes to the package's envVersion.
@@ -240,7 +242,8 @@ fn resolve_package_for_publish(
                     meta.target
                 );
             }
-            package_current_project(cwd, framework, progress)
+            let channel = meta.channel.as_deref().unwrap_or(DEFAULT_PUBLISH_CHANNEL);
+            package_current_project(cwd, framework, progress, channel)
         }
         _ => {
             let platform = resolve_publish_platform(cwd, &meta.target, platform.as_deref())?;
@@ -257,22 +260,37 @@ fn package_current_project(
     cwd: &Path,
     framework: Option<String>,
     progress: Option<String>,
+    channel: &str,
 ) -> Result<ResolvedPackage> {
-    let mut args = vec!["build".to_string(), "--release".to_string()];
-    if let Some(framework) = framework.as_deref() {
-        args.push("--framework".to_string());
-        args.push(framework.to_string());
-    }
-    if let Some(progress) = progress.as_deref() {
-        args.push("--progress".to_string());
-        args.push(progress.to_string());
-    }
+    let args = publish_build_args(framework.as_deref(), progress.as_deref(), channel);
     lxapp::run_in_dir(&args, cwd)?;
     Ok(ResolvedPackage {
         path: lxapp::package_in_dir(cwd, framework.as_deref())?,
         platform: None,
         cleanup_after_publish: true,
     })
+}
+
+fn publish_build_args(
+    framework: Option<&str>,
+    progress: Option<&str>,
+    channel: &str,
+) -> Vec<String> {
+    let mut args = vec![
+        "build".to_string(),
+        "--release".to_string(),
+        "--env".to_string(),
+        channel.to_string(),
+    ];
+    if let Some(framework) = framework {
+        args.push("--framework".to_string());
+        args.push(framework.to_string());
+    }
+    if let Some(progress) = progress {
+        args.push("--progress".to_string());
+        args.push(progress.to_string());
+    }
+    args
 }
 
 fn resolve_meta(cwd: &Path, channel_arg: Option<&str>) -> Result<PackageMeta> {
@@ -286,7 +304,7 @@ fn resolve_meta(cwd: &Path, channel_arg: Option<&str>) -> Result<PackageMeta> {
                 target,
                 target_id: id,
                 version,
-                channel: Some(channel.unwrap_or_else(|| "release".to_string())),
+                channel: Some(channel.unwrap_or_else(|| DEFAULT_PUBLISH_CHANNEL.to_string())),
             })
         }
         "lxplugin" => {
@@ -296,7 +314,7 @@ fn resolve_meta(cwd: &Path, channel_arg: Option<&str>) -> Result<PackageMeta> {
                 target,
                 target_id: id,
                 version,
-                channel: Some(channel.unwrap_or_else(|| "release".to_string())),
+                channel: Some(channel.unwrap_or_else(|| DEFAULT_PUBLISH_CHANNEL.to_string())),
             })
         }
         "app" => {
@@ -337,7 +355,7 @@ fn normalize_channel(s: &str) -> Result<String> {
     match s.to_lowercase().as_str() {
         "release" => Ok("release".to_string()),
         "preview" | "trial" => Ok("preview".to_string()),
-        "developer" | "develop" => Ok("developer".to_string()),
+        "developer" | "develop" | "dev" => Ok("developer".to_string()),
         _ => bail!("Invalid envVersion '{s}'. Must be one of: release, preview, developer"),
     }
 }
@@ -517,7 +535,7 @@ fn non_empty_str(val: &serde_json::Value, label: &str) -> Result<String> {
 
 /// Resolve the bearer token: `--token` flag → `[publish]` token in
 /// `~/.lingxia/cli/config.toml` (per-env `tokens.<env>`, else the section
-/// `token`), routed by `channel` (defaults to release) → error.
+/// `token`), routed by `channel` (defaults to developer) → error.
 fn resolve_token(channel: Option<&str>, token_arg: Option<String>) -> Result<String> {
     if let Some(t) = token_arg {
         let trimmed = t.trim();
@@ -528,7 +546,7 @@ fn resolve_token(channel: Option<&str>, token_arg: Option<String>) -> Result<Str
     }
     let env_version = channel
         .and_then(|c| EnvVersion::parse_cli(c).ok())
-        .unwrap_or(EnvVersion::Release);
+        .unwrap_or(EnvVersion::Developer);
     if let Some(token) = CliConfig::load()
         .ok()
         .and_then(|c| c.publish)
@@ -575,13 +593,13 @@ fn resolve_lingxia_server(
 }
 
 /// `[publish]` server from `~/.lingxia/cli/config.toml`, routed by `channel`
-/// (defaults to release when absent). Lowest precedence: flag and project
+/// (defaults to developer when absent). Lowest precedence: flag and project
 /// config win first.
 fn global_lingxia_server(channel: Option<&str>) -> Option<String> {
     let publish = CliConfig::load().ok()?.publish?;
     let env_version = channel
         .and_then(|c| EnvVersion::parse_cli(c).ok())
-        .unwrap_or(EnvVersion::Release);
+        .unwrap_or(EnvVersion::Developer);
     publish.lingxia_server_for(env_version).map(str::to_string)
 }
 
@@ -877,8 +895,9 @@ fn build_multipart(
 #[cfg(test)]
 mod tests {
     use super::{
-        build_multipart, find_or_resolve_package, normalize_platform, package_matches,
-        read_app_package_metadata, resolve_meta, resolve_publish_platform,
+        build_multipart, find_or_resolve_package, normalize_channel, normalize_platform,
+        package_matches, publish_build_args, read_app_package_metadata, resolve_meta,
+        resolve_publish_platform,
     };
     use std::fs;
     use std::io::Write;
@@ -1083,6 +1102,45 @@ harmony:
 
         assert_eq!(meta.target, "lxapp");
         assert_eq!(meta.channel.as_deref(), Some("preview"));
+    }
+
+    #[test]
+    fn lxapp_publish_defaults_to_developer_channel() {
+        let temp = TempDir::new().unwrap();
+        fs::write(
+            temp.path().join("lxapp.json"),
+            br#"{"appId":"demo","version":"1.0.0","pages":["index.html"]}"#,
+        )
+        .unwrap();
+
+        let meta = resolve_meta(temp.path(), None).unwrap();
+
+        assert_eq!(meta.target, "lxapp");
+        assert_eq!(meta.channel.as_deref(), Some("developer"));
+    }
+
+    #[test]
+    fn publish_channel_accepts_dev_alias() {
+        assert_eq!(normalize_channel("dev").unwrap(), "developer");
+    }
+
+    #[test]
+    fn publish_build_uses_selected_env() {
+        let args = publish_build_args(Some("react"), Some("plain"), "preview");
+
+        assert_eq!(
+            args,
+            vec![
+                "build",
+                "--release",
+                "--env",
+                "preview",
+                "--framework",
+                "react",
+                "--progress",
+                "plain"
+            ]
+        );
     }
 
     #[test]

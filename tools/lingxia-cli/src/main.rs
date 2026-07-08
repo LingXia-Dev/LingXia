@@ -419,7 +419,8 @@ struct PublishArgs {
     #[arg(long, value_parser = ["android", "macos", "windows"])]
     platform: Option<String>,
 
-    /// Release channel for lxapp/lxplugin publishing: release, preview, developer.
+    /// Environment/channel for lxapp/lxplugin publishing: developer, preview,
+    /// release. Defaults to developer; alias `dev` for developer.
     #[arg(long = "env", alias = "channel", value_parser = ["developer", "dev", "preview", "release"])]
     channel: Option<String>,
 
