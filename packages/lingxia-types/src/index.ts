@@ -310,8 +310,8 @@ export interface Lx {
   hideTabBarRedDot(options: TabBarRedDotOptions): boolean;
   setTabBarBadge(options: SetTabBarBadgeOptions): boolean;
   removeTabBarBadge(options: RemoveTabBarBadgeOptions): boolean;
-  showTabBar(): boolean;
-  hideTabBar(): boolean;
+  showTabBar(): Promise<boolean>;
+  hideTabBar(): Promise<boolean>;
   setTabBarStyle(options: SetTabBarStyleOptions): boolean;
   setTabBarItem(options: SetTabBarItemOptions): boolean;
 

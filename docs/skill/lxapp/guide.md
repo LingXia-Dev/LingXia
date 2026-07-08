@@ -500,8 +500,8 @@ lx.removeTabBarBadge({ index: 1 });
 lx.showTabBarRedDot({ index: 0 });
 lx.hideTabBarRedDot({ index: 0 });
 lx.setTabBarStyle({ selectedColor: '#ff0000' });
-lx.showTabBar();
-lx.hideTabBar();
+await lx.showTabBar();
+await lx.hideTabBar();
 ```
 
 Full option shapes: [`./lx-api.md#page-chrome--ui`](./lx-api.md#page-chrome--ui).

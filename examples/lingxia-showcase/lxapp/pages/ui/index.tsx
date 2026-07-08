@@ -760,8 +760,8 @@ export default function UIPage() {
               <div className="p-4 space-y-4">
                 <div className="flex space-x-3">
                   <button
-                    onClick={() => {
-                      const result = showTabBar();
+                    onClick={async () => {
+                      const result = await showTabBar();
                       console.log('Show TabBar:', result);
                     }}
                     className="flex-1 bg-green-500 hover:bg-green-600 text-white py-2 px-4 rounded-lg text-sm font-medium transition-colors"
@@ -769,8 +769,8 @@ export default function UIPage() {
                     Show TabBar
                   </button>
                   <button
-                    onClick={() => {
-                      const result = hideTabBar();
+                    onClick={async () => {
+                      const result = await hideTabBar();
                       console.log('Hide TabBar:', result);
                     }}
                     className="flex-1 bg-red-500 hover:bg-red-600 text-white py-2 px-4 rounded-lg text-sm font-medium transition-colors"

@@ -125,8 +125,7 @@ object LxApp {
     fun updateTabBarUI(appId: String): Boolean {
         val activity = currentActivity?.takeIf { it.getAppId() == appId }
         return if (activity != null) {
-            activity.runOnUiThread { LxAppActivity.updateTabBarUI(appId) }
-            true
+            LxAppActivity.updateTabBarUI(appId)
         } else {
             Log.w(TAG, "No matching activity for appId: $appId in updateTabBarUI")
             false

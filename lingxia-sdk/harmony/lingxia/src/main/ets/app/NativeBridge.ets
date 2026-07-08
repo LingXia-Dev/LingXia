@@ -32,7 +32,7 @@ import { PermissionManager } from './PermissionManager';
 import { LxNativeVideoPlayer } from '../lxapp/APIs/media/player/LxNativeVideoPlayer';
 import { updateNativeComponentProps } from '../lxapp/NativeComponents/NativeBridgeInternal';
 import { completeWebFileChooserRequest } from '../lxapp/WebFileChooserBridge';
-import { getCurrentLxapp, getLxappSessionId, openAsideBrowserTab, openBrowserTab, type CurrentLxApp } from 'liblingxia.so';
+import { getCurrentLxapp, getLxappSessionId, onCallback, openAsideBrowserTab, openBrowserTab, type CurrentLxApp } from 'liblingxia.so';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.NativeBridge';
@@ -372,6 +372,22 @@ class NativeBridge {
       } catch (error) {
         LxLog.e(TAG, `Failed to update TabBar UI: ${error}`);
         return false;
+      }
+    });
+
+    this.register('updateTabBarUIAsync', (callbackId: string, appId: string): void => {
+      try {
+        const success = LxAppContainer.updateTabBarUI(appId);
+        if (success) {
+          hilog.info(DOMAIN, TAG, `TabBar UI updated successfully for ${appId}`);
+          onCallback(callbackId, true, JSON.stringify({ success: true }));
+        } else {
+          hilog.warn(DOMAIN, TAG, `Failed to find active container for TabBar update: ${appId}`);
+          onCallback(callbackId, false, '1000');
+        }
+      } catch (error) {
+        LxLog.e(TAG, `Failed to update TabBar UI: ${error}`);
+        onCallback(callbackId, false, '1000');
       }
     });
 
