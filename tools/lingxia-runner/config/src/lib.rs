@@ -92,7 +92,8 @@ fn runner_env_from_env() -> RunnerEnv {
     match std::env::var(ENV_RUNNER_ENV).as_deref().map(str::trim) {
         Ok("preview") => RunnerEnv::Preview,
         Ok("release") => RunnerEnv::Release,
-        Ok("developer") | Ok("dev") | _ => RunnerEnv::Developer,
+        // "developer"/"dev", unset, or anything unrecognized
+        _ => RunnerEnv::Developer,
     }
 }
 
