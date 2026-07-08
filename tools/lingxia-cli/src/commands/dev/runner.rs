@@ -164,7 +164,8 @@ pub(super) fn execute_lxapp_dev(project_root: PathBuf, options: DevExecuteOption
         crate::lxapp::run_in_dir(&build_args, &project_root)?;
 
         install_ctrlc_handler(stop_requested.clone())?;
-        log_store::write_session(&project_root, &session, platform_name, &ws_url)?;
+        let _session_registration =
+            log_store::register_session(&project_root, &session, platform_name, &ws_url);
 
         println!();
         println!("{}", "Step 2/2: Launching Runner...".bold());
@@ -189,7 +190,6 @@ pub(super) fn execute_lxapp_dev(project_root: PathBuf, options: DevExecuteOption
         Ok(())
     })();
 
-    let _ = log_store::remove_session(&project_root, &session.session_id);
     let stop_result = server.stop();
     match (run_result, stop_result) {
         (Ok(()), Ok(())) => Ok(()),

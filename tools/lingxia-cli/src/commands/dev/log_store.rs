@@ -1,7 +1,8 @@
 use anyhow::{Context, Result, anyhow};
+use lingxia_devtool_protocol::broker::Registration;
+pub use lingxia_devtool_protocol::broker::SessionInfo;
 use lingxia_devtool_protocol::{DevtoolsPeerRole, DevtoolsWireMessage, handlers};
 use lingxia_log::now_timestamp_ms;
-use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::{Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
@@ -14,8 +15,6 @@ use uuid::Uuid;
 
 pub const DEFAULT_LOG_RETENTION_DAYS: u64 = 7;
 pub const DEV_DIR_NAME: &str = ".lingxia";
-pub const SESSIONS_DIR_NAME: &str = "sessions";
-pub const SESSION_INFO_VERSION: u32 = 2;
 const WS_PROBE_TIMEOUT: Duration = Duration::from_millis(200);
 /// Read/write budget for an interactive command round trip (e.g. shutdown).
 /// The 200ms probe timeout is only meant for liveness checks; reusing it for a
@@ -28,27 +27,8 @@ pub struct DevLogSession {
     pub log_file: PathBuf,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SessionInfo {
-    pub version: u32,
-    pub session_id: String,
-    pub pid: u32,
-    pub platform: String,
-    pub started_at: u64,
-    pub ws_url: String,
-    pub log_file: String,
-}
-
 pub fn dev_dir(project_root: &Path) -> PathBuf {
     project_root.join(DEV_DIR_NAME)
-}
-
-pub fn sessions_dir(project_root: &Path) -> PathBuf {
-    dev_dir(project_root).join(SESSIONS_DIR_NAME)
-}
-
-pub fn session_file_path(project_root: &Path, session_id: &str) -> PathBuf {
-    sessions_dir(project_root).join(format!("{session_id}.json"))
 }
 
 pub fn create_session(project_root: &Path) -> Result<DevLogSession> {
@@ -58,130 +38,107 @@ pub fn create_session(project_root: &Path) -> Result<DevLogSession> {
     fs::create_dir_all(&logs_dir)
         .with_context(|| format!("Failed to create {}", logs_dir.display()))?;
 
-    let session_id = format!("{}-{}", now_timestamp_ms(), Uuid::new_v4().simple());
+    // Short ids: the broker keeps the per-user live-session set small, and
+    // `lxdev --session` accepts prefixes, so 6 hex chars are plenty.
+    let session_id = Uuid::new_v4().simple().to_string()[..6].to_string();
     Ok(DevLogSession {
         session_id: session_id.clone(),
         log_file: logs_dir.join(format!("{session_id}.jsonl")),
     })
 }
 
-/// Atomically write the session metadata to `.lingxia/sessions/<id>.json`.
-/// Uses tmp + rename so concurrent `lxdev` readers never see a partial file.
-pub fn write_session(
+/// Canonical project identity used in broker records: sessions register it,
+/// project-scoped queries (`lingxia dev status/stop`, duplicate guard) filter
+/// by it.
+pub fn canonical_project_root(project_root: &Path) -> String {
+    fs::canonicalize(project_root)
+        .unwrap_or_else(|_| project_root.to_path_buf())
+        .display()
+        .to_string()
+}
+
+/// Spawn a detached per-user broker (`lingxia dev-broker`). Losing the bind
+/// race to a concurrent spawn is fine — the loser exits and the caller
+/// connects to the winner.
+pub fn spawn_broker() -> std::io::Result<()> {
+    let exe = std::env::current_exe()?;
+    let mut command = std::process::Command::new(exe);
+    command
+        .arg("dev-broker")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+    detach_process(&mut command);
+    command.spawn().map(|_| ())
+}
+
+#[cfg(unix)]
+fn detach_process(command: &mut std::process::Command) {
+    use std::os::unix::process::CommandExt;
+    unsafe {
+        command.pre_exec(|| {
+            if libc::setsid() == -1 {
+                return Err(std::io::Error::last_os_error());
+            }
+            Ok(())
+        });
+    }
+}
+
+#[cfg(windows)]
+fn detach_process(command: &mut std::process::Command) {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+    const DETACHED_PROCESS: u32 = 0x0000_0008;
+    command.creation_flags(CREATE_NEW_PROCESS_GROUP | DETACHED_PROCESS);
+}
+
+/// Register this dev session with the per-user broker. The returned guard
+/// keeps the registration alive (re-registering across broker restarts);
+/// dropping it — or process exit — removes the session.
+pub fn register_session(
     project_root: &Path,
     session: &DevLogSession,
-    platform: &str,
+    target: &str,
     ws_url: &str,
-) -> Result<()> {
-    let dir = sessions_dir(project_root);
-    fs::create_dir_all(&dir).with_context(|| format!("Failed to create {}", dir.display()))?;
+) -> Registration {
     let info = SessionInfo {
-        version: SESSION_INFO_VERSION,
         session_id: session.session_id.clone(),
+        project_root: canonical_project_root(project_root),
+        target: target.to_string(),
         pid: std::process::id(),
-        platform: platform.to_string(),
         started_at: now_timestamp_ms(),
         ws_url: ws_url.to_string(),
         log_file: session.log_file.display().to_string(),
     };
-    let bytes = serde_json::to_vec_pretty(&info).context("Failed to encode session info")?;
-    let final_path = session_file_path(project_root, &session.session_id);
-    let tmp_path = final_path.with_extension("json.tmp");
-    {
-        let mut file = fs::File::create(&tmp_path)
-            .with_context(|| format!("Failed to create {}", tmp_path.display()))?;
-        file.write_all(&bytes)
-            .with_context(|| format!("Failed to write {}", tmp_path.display()))?;
-        file.sync_all().ok();
-    }
-    fs::rename(&tmp_path, &final_path).with_context(|| {
-        format!(
-            "Failed to rename {} -> {}",
-            tmp_path.display(),
-            final_path.display()
-        )
-    })?;
-    Ok(())
+    lingxia_devtool_protocol::broker::register_session(info, spawn_broker)
 }
 
-/// Remove this session's metadata file. Logs are kept under retention policy.
-pub fn remove_session(project_root: &Path, session_id: &str) -> Result<()> {
-    let path = session_file_path(project_root, session_id);
-    if path.exists() {
-        fs::remove_file(&path).with_context(|| format!("Failed to remove {}", path.display()))?;
-    }
-    Ok(())
-}
-
-/// Enumerate all parseable session metadata files under `.lingxia/sessions/`.
-/// Malformed/unreadable files are skipped silently.
+/// Live sessions for this project, ordered by start time.
 pub fn list_sessions(project_root: &Path) -> Result<Vec<SessionInfo>> {
-    let dir = sessions_dir(project_root);
-    if !dir.exists() {
-        return Ok(Vec::new());
-    }
-    let mut out = Vec::new();
-    for entry in fs::read_dir(&dir).with_context(|| format!("Failed to read {}", dir.display()))? {
-        let entry = entry?;
-        let path = entry.path();
-        if path.extension().and_then(|s| s.to_str()) != Some("json") {
-            continue;
-        }
-        let Ok(bytes) = fs::read(&path) else { continue };
-        let Ok(info) = serde_json::from_slice::<SessionInfo>(&bytes) else {
-            continue;
-        };
-        out.push(info);
-    }
-    out.sort_by_key(|s| s.started_at);
-    Ok(out)
+    let root = canonical_project_root(project_root);
+    let mut sessions: Vec<SessionInfo> =
+        lingxia_devtool_protocol::broker::list_sessions_spawning(&spawn_broker)
+            .context("Failed to query the dev-session broker")?
+            .into_iter()
+            .filter(|s| s.project_root == root)
+            .collect();
+    sessions.sort_by_key(|s| s.started_at);
+    Ok(sessions)
 }
 
-/// Probe the devtools WS endpoint to see if the session is still reachable.
-/// PID is stored only for diagnostics — protocol reachability is the truth.
+/// Registration with the broker is the liveness signal; the WS probe is a
+/// second opinion for display and for spotting a wedged-but-alive session.
 pub fn is_stale(info: &SessionInfo) -> bool {
     !devtools_ws_reachable(&info.ws_url, WS_PROBE_TIMEOUT)
 }
 
-/// Remove session files that fail the devtools WS probe. Malformed files are
-/// removed silently because they do not contain a printable session id.
-/// Returns parsed stale entries so callers can surface a one-line warning.
-pub fn prune_stale(project_root: &Path) -> Result<Vec<SessionInfo>> {
-    let dir = sessions_dir(project_root);
-    if !dir.exists() {
-        return Ok(Vec::new());
-    }
-    let mut pruned = Vec::new();
-    for entry in fs::read_dir(&dir).with_context(|| format!("Failed to read {}", dir.display()))? {
-        let entry = entry?;
-        let path = entry.path();
-        if path.extension().and_then(|s| s.to_str()) != Some("json") {
-            continue;
-        }
-        let Ok(bytes) = fs::read(&path) else {
-            let _ = fs::remove_file(&path);
-            continue;
-        };
-        let Ok(info) = serde_json::from_slice::<SessionInfo>(&bytes) else {
-            let _ = fs::remove_file(&path);
-            continue;
-        };
-        if is_stale(&info) {
-            let _ = fs::remove_file(&path);
-            pruned.push(info);
-        }
-    }
-    Ok(pruned)
-}
-
-/// Convenience: return the live session for a given platform, if exactly one
-/// exists. Used by `lingxia dev` to detect "another session is already running
-/// for this platform" before launching.
-pub fn find_live_for_platform(project_root: &Path, platform: &str) -> Result<Vec<SessionInfo>> {
-    let sessions = list_sessions(project_root)?;
-    Ok(sessions
+/// Live sessions for a given target in this project. Used by `lingxia dev` to
+/// detect "another session is already running" before launching.
+pub fn find_live_for_platform(project_root: &Path, target: &str) -> Result<Vec<SessionInfo>> {
+    Ok(list_sessions(project_root)?
         .into_iter()
-        .filter(|s| s.platform.eq_ignore_ascii_case(platform) && !is_stale(s))
+        .filter(|s| s.target.eq_ignore_ascii_case(target))
         .collect())
 }
 
@@ -189,9 +146,7 @@ pub fn resolve_session(project_root: &Path, selector: Option<&str>) -> Result<Se
     let all = list_sessions(project_root)?;
     if all.is_empty() {
         return Err(anyhow!(
-            "No active dev session found. Run `lingxia dev` in this project first.\n\
-             (Looked under {})",
-            sessions_dir(project_root).display()
+            "No live dev session found for this project. Run `lingxia dev` first."
         ));
     }
 
@@ -199,8 +154,7 @@ pub fn resolve_session(project_root: &Path, selector: Option<&str>) -> Result<Se
         .into_iter()
         .filter(|session| match selector {
             Some(value) => {
-                session.platform.eq_ignore_ascii_case(value)
-                    || session.session_id.starts_with(value)
+                session.target.eq_ignore_ascii_case(value) || session.session_id.starts_with(value)
             }
             None => true,
         })
@@ -213,23 +167,16 @@ pub fn resolve_session(project_root: &Path, selector: Option<&str>) -> Result<Se
         ));
     }
 
-    if candidates.len() > 1 {
-        candidates.retain(|session| !is_stale(session));
-    }
-
     match candidates.len() {
-        0 => Err(anyhow!(
-            "All matching dev sessions are unreachable. Run `lingxia dev status` to inspect them."
-        )),
         1 => Ok(candidates.remove(0)),
         _ => {
             let mut msg = String::from(
-                "Multiple active dev sessions match. Pass a session id prefix or platform:\n",
+                "Multiple live dev sessions match. Pass a session id prefix or target:\n",
             );
             for session in &candidates {
                 msg.push_str(&format!(
-                    "  {}  platform={}  pid={}  ws={}\n",
-                    session.session_id, session.platform, session.pid, session.ws_url
+                    "  {}  target={}  pid={}  ws={}\n",
+                    session.session_id, session.target, session.pid, session.ws_url
                 ));
             }
             Err(anyhow!(msg.trim_end().to_string()))
@@ -419,53 +366,7 @@ mod tests {
                 .log_file
                 .starts_with(temp.path().join(".lingxia").join("logs"))
         );
-    }
-
-    #[test]
-    fn write_and_list_session_roundtrip() {
-        let temp = tempdir().unwrap();
-        let session = create_session(temp.path()).unwrap();
-        write_session(temp.path(), &session, "macos", "ws://127.0.0.1:65535").unwrap();
-        let sessions = list_sessions(temp.path()).unwrap();
-        assert_eq!(sessions.len(), 1);
-        assert_eq!(sessions[0].session_id, session.session_id);
-        assert_eq!(sessions[0].platform, "macos");
-        assert_eq!(sessions[0].ws_url, "ws://127.0.0.1:65535");
-        assert_eq!(sessions[0].version, SESSION_INFO_VERSION);
-        assert_eq!(sessions[0].pid, std::process::id());
-    }
-
-    #[test]
-    fn remove_session_clears_file() {
-        let temp = tempdir().unwrap();
-        let session = create_session(temp.path()).unwrap();
-        write_session(temp.path(), &session, "ios", "ws://127.0.0.1:65535").unwrap();
-        remove_session(temp.path(), &session.session_id).unwrap();
-        assert!(list_sessions(temp.path()).unwrap().is_empty());
-    }
-
-    #[test]
-    fn prune_stale_removes_unreachable_sessions() {
-        let temp = tempdir().unwrap();
-        let session = create_session(temp.path()).unwrap();
-        // Port 1 is never bound by anything legitimate; TCP probe will fail.
-        write_session(temp.path(), &session, "harmony", "ws://127.0.0.1:1").unwrap();
-        let pruned = prune_stale(temp.path()).unwrap();
-        assert_eq!(pruned.len(), 1);
-        assert!(list_sessions(temp.path()).unwrap().is_empty());
-    }
-
-    #[test]
-    fn prune_stale_removes_malformed_session_files() {
-        let temp = tempdir().unwrap();
-        let dir = sessions_dir(temp.path());
-        fs::create_dir_all(&dir).unwrap();
-        fs::write(dir.join("bad.json"), b"{not json").unwrap();
-
-        let pruned = prune_stale(temp.path()).unwrap();
-        assert!(pruned.is_empty());
-        assert!(list_sessions(temp.path()).unwrap().is_empty());
-        assert!(!dir.join("bad.json").exists());
+        assert_eq!(session.session_id.len(), 6);
     }
 
     #[test]

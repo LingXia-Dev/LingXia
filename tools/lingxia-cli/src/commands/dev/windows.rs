@@ -67,7 +67,8 @@ pub(super) fn execute_windows(ctx: DevContext) -> Result<()> {
 
         println!("{}", "Step 2/2: Running...".bold());
         install_ctrlc_handler(stop_requested.clone())?;
-        log_store::write_session(&ctx.project_root, &session, platform_name, &ws_url)?;
+        let _session_registration =
+            log_store::register_session(&ctx.project_root, &session, platform_name, &ws_url);
 
         let mut command = Command::new(&exe_path);
         command.env(RUNNER_DEV_WS_URL_ENV, &ws_url);
@@ -87,6 +88,5 @@ pub(super) fn execute_windows(ctx: DevContext) -> Result<()> {
         Ok(())
     })();
 
-    let _ = log_store::remove_session(&ctx.project_root, &session.session_id);
     stop_dev_server(server, run_result)
 }

@@ -63,7 +63,8 @@ Use `lingxia build --platform macos --macos-arch {}` for cross-arch builds.",
         println!();
 
         install_ctrlc_handler(stop_requested.clone())?;
-        log_store::write_session(&ctx.project_root, &session, platform_name, &ws_url)?;
+        let _session_registration =
+            log_store::register_session(&ctx.project_root, &session, platform_name, &ws_url);
 
         // Step 2: Run (run the built executable directly)
         println!("{}", "Step 2/2: Running...".bold());
@@ -82,7 +83,6 @@ Use `lingxia build --platform macos --macos-arch {}` for cross-arch builds.",
         Ok(())
     })();
 
-    let _ = log_store::remove_session(&ctx.project_root, &session.session_id);
     let stop_result = server.stop();
     match (run_result, stop_result) {
         (Ok(()), Ok(())) => Ok(()),
