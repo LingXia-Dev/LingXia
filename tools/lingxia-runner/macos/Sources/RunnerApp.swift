@@ -93,12 +93,12 @@ public class RunnerApp {
             for await event in controller.events {
                 guard let self else { return }
                 switch event {
-                case .didNavigate(let sessionId, let path):
+                case .didNavigate(let sessionId, let path, let animation):
                     guard let session = controller.sessions[sessionId] else { continue }
                     self.handleNavigation(
                         appId: session.appId,
                         path: path,
-                        animationType: .none
+                        animationType: animation
                     )
                 case .didClose(let session):
                     RunnerSupport.Runtime.removeSessionId(for: session.appId)

@@ -225,12 +225,43 @@ public class SimulatorViewController: NSViewController, WKNavigationDelegate {
     }
     
     /// Unified method to show a WebView to the user
-    private func showWebViewToUser(_ webView: WKWebView, path: String) {
+    private func showWebViewToUser(
+        _ webView: WKWebView,
+        path: String,
+        animation: LxAppAnimation = .none
+    ) {
+        if animation != .none {
+            applyNavigationTransition(animation)
+        }
         RunnerSupport.WebView.removeCurrentFromSuperview()
         RunnerSupport.WebView.attachLxApp(webView, to: webViewContainer)
         if let tabBar = tabBarView {
             view.addSubview(tabBar, positioned: .above, relativeTo: webViewContainer)
         }
+    }
+
+    /// Slide the container's contents in the navigation direction — mirrors the
+    /// iOS/Android 300ms page transition. A layer `CATransition` animates the
+    /// webview swap; the phone frame's container already clips to bounds.
+    private func applyNavigationTransition(_ animation: LxAppAnimation) {
+        webViewContainer.layer?.masksToBounds = true
+        guard let layer = webViewContainer.layer else { return }
+        let transition = CATransition()
+        transition.duration = 0.3
+        transition.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        switch animation {
+        case .push:
+            transition.type = .push
+            transition.subtype = .fromRight
+        case .pop:
+            transition.type = .push
+            transition.subtype = .fromLeft
+        case .fade:
+            transition.type = .fade
+        case .none:
+            return
+        }
+        layer.add(transition, forKey: "lxNavTransition")
     }
     
     // MARK: - Notification Observers
@@ -272,9 +303,9 @@ public class SimulatorViewController: NSViewController, WKNavigationDelegate {
         
         // Show WebView
         if let webView = RunnerSupport.WebView.resolve(appId: appId, path: path) {
-            showWebViewToUser(webView, path: path)
+            showWebViewToUser(webView, path: path, animation: animationType)
         }
-        
+
         // Update app state
         RunnerSupport.Runtime.setCurrentPath(path)
     }
