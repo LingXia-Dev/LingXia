@@ -288,7 +288,14 @@ impl WebViewInner {
     }
 
     pub(crate) fn set_content_visible(&self, visible: bool) -> StdResult<()> {
-        self.dispatch_command(|resp| UiCommand::SetContentVisible { visible, resp })
+        // Layout dispatch: visibility is toggled from host layout passes, which
+        // on a desktop (non-framed) page run on this webview's OWN UI thread —
+        // the page's host window lives there. The plain synchronous dispatch
+        // rejects same-thread calls (`SameThread`), which left the controller
+        // permanently hidden after a same-page navigation: the reconcile's
+        // show failed, the visibility registry went stale, and every later
+        // layout pass failed the same way — a stuck white page.
+        self.dispatch_layout_command(|resp| UiCommand::SetContentVisible { visible, resp })
     }
 
     pub(crate) fn set_parent_window(&self, window: isize) -> StdResult<()> {

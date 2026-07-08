@@ -4867,7 +4867,18 @@ fn show_webview_window_replacing(
     hide_webtags: Vec<WebTag>,
 ) -> StdResult<()> {
     let handler = find_webview_handler(webtag).ok_or_else(|| handler_not_ready(webtag))?;
+    // Host pick order: a visible sibling's window, the window this page is
+    // already registered on, then the primary host. Only with none of those
+    // does the webview's own parent window become the host. The sibling scan
+    // keys off the visibility REGISTRY, which app deactivation clears for the
+    // active page (WM_ACTIVATEAPP) — so a navigation while the app is not
+    // foreground (e.g. re-navigating to the current page from a background
+    // window) used to find no candidate and jump the app to the webview's raw
+    // parent window, hiding every page in the host the user was looking at
+    // (a stuck white shell) while a duplicate shell window appeared.
     let target = stable_host_for_replacement(webtag, &hide_webtags)
+        .or_else(|| window_handle_for_key(webtag.key()).filter(|hwnd| is_valid_host_window(*hwnd)))
+        .or_else(|| primary_host_window_except(None))
         .unwrap_or_else(|| hwnd_from_handle(handler.native_view().window));
     set_native_framed_window(target, false);
     apply_shell_window_frame(target)?;
