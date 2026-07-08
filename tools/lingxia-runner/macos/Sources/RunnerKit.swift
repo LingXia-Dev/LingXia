@@ -5,11 +5,32 @@ import AppKit
 public struct RunnerKit {
     @MainActor
     public static func run() {
+        writePidFileIfRequested()
         let delegate = RunnerKitDelegate()
         let app = NSApplication.shared
         app.delegate = delegate
         app.setActivationPolicy(.regular)
         app.run()
+    }
+
+    /// Record our real pid where `lingxia dev` can find it (per project), so it
+    /// terminates exactly this Runner and leaves other projects' Runners alone.
+    /// Writing our own pid is also correct across a LaunchServices hand-off.
+    @MainActor
+    private static func writePidFileIfRequested() {
+        let env = ProcessInfo.processInfo.environment
+        guard let path = env["LINGXIA_RUNNER_PID_FILE"], !path.isEmpty else { return }
+        let url = URL(fileURLWithPath: path)
+        try? FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try? "\(getpid())".write(to: url, atomically: true, encoding: .utf8)
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.willTerminateNotification, object: nil, queue: .main
+        ) { _ in
+            try? FileManager.default.removeItem(at: url)
+        }
     }
 }
 

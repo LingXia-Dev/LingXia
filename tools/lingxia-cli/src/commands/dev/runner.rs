@@ -10,6 +10,10 @@ const RUNNER_LINGXIAO_MOCK_DIR_ENV: &str = "LINGXIAO_MOCK_DIR";
 /// expose `platform.isRunner()`; the Runner lacks host-declared surfaces like
 /// the terminal, so apps use this to hide those affordances.
 const RUNNER_MARKER_ENV: &str = "LINGXIA_RUNNER";
+/// Per-project file the Runner writes its own pid into on startup. Lets the CLI
+/// terminate *this* project's Runner without touching Runners from other
+/// projects — so `lingxia dev` in two lxapp dirs runs two Runners in parallel.
+const RUNNER_PID_FILE_ENV: &str = "LINGXIA_RUNNER_PID_FILE";
 const REQUIRED_RUNNER_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Windows runner: standalone executable installed by
@@ -252,7 +256,11 @@ fn launch_runner_for_lxapp(
     crate::runner_cache::ensure_runner(REQUIRED_RUNNER_VERSION, false)?;
     let app_path = installed_runner_app_path()?;
     ensure_runner_matches_cli(&app_path)?;
-    terminate_existing_runner_processes()?;
+
+    // Replace only *this* project's prior Runner (a leftover from a crashed
+    // session); Runners started for other projects keep running in parallel.
+    let pid_file = runner_pid_file(lxapp_path);
+    terminate_runner_from_pid_file(&pid_file);
 
     let executable_path = app_path
         .join("Contents")
@@ -269,6 +277,7 @@ fn launch_runner_for_lxapp(
     command.env(RUNNER_MARKER_ENV, "1");
     command.env(RUNNER_LXAPP_PATH_ENV, lxapp_path);
     command.env(RUNNER_DEV_WS_URL_ENV, ws_url);
+    command.env(RUNNER_PID_FILE_ENV, &pid_file);
     if let Some(device) = runner_device.map(str::trim).filter(|s| !s.is_empty()) {
         command.env("LINGXIA_RUNNER_DEVICE", device);
     }
@@ -296,6 +305,7 @@ fn launch_runner_for_lxapp(
     println!("{} Launched {}", "[runner]".cyan(), app_path.display());
     Ok(RunnerProcess::MacOsApp {
         child,
+        pid_file,
         seen_running: false,
         handoff_deadline: std::time::Instant::now() + Duration::from_secs(5),
     })
@@ -578,12 +588,14 @@ enum RunnerProcess {
     Child(Child),
     /// The macOS Runner: `child` is the executable we spawned, but it may re-exec
     /// itself through LaunchServices and exit 0 while the real app keeps running
-    /// under a same-named process. Liveness is therefore tracked by process name,
-    /// not by the child handle (which would spin forever on a clean hand-off).
+    /// under a separate pid. Liveness is therefore tracked by the Runner's own
+    /// `pid_file` (which it writes on startup), not by the child handle — and
+    /// per-file so one project's Runner is distinguished from another's.
     MacOsApp {
         child: Child,
+        pid_file: PathBuf,
         /// Set once we've observed a live Runner, so the initial hand-off window
-        /// (child exited, named process not yet visible) isn't mistaken for exit.
+        /// (child exited, pid-file not yet written) isn't mistaken for exit.
         seen_running: bool,
         handoff_deadline: std::time::Instant,
     },
@@ -611,6 +623,7 @@ impl RunnerProcess {
                 }),
             RunnerProcess::MacOsApp {
                 child,
+                pid_file,
                 seen_running,
                 handoff_deadline,
             } => {
@@ -621,9 +634,9 @@ impl RunnerProcess {
                         code: status.code(),
                     })),
                     // Child exited 0 (either a clean quit or a LaunchServices
-                    // hand-off) — the real Runner's liveness is decided by name.
+                    // hand-off) — the real Runner's liveness is its pid-file.
                     Some(_) => {
-                        if runner_process_running() {
+                        if runner_process_running(pid_file) {
                             *seen_running = true;
                             Ok(None)
                         } else if *seen_running {
@@ -657,9 +670,12 @@ impl RunnerProcess {
         match self {
             #[cfg(not(target_os = "windows"))]
             RunnerProcess::Child(child) => terminate_child(child, "LingXia Runner"),
-            RunnerProcess::MacOsApp { child, .. } => {
+            RunnerProcess::MacOsApp {
+                child, pid_file, ..
+            } => {
                 let _ = terminate_child(child, "LingXia Runner");
-                terminate_existing_runner_processes()
+                terminate_runner_from_pid_file(pid_file);
+                Ok(())
             }
             #[cfg(target_os = "windows")]
             RunnerProcess::WindowsShell(process) => process.terminate(),
@@ -908,37 +924,43 @@ fn wait_for_runner_or_interrupt(
     }
 }
 
-/// Whether any LingXia Runner process is currently alive (by executable name).
-/// Used to track the macOS Runner across a LaunchServices hand-off, where the
-/// process we spawned exits and the real app runs under a separate pid.
-fn runner_process_running() -> bool {
-    Command::new("pgrep")
-        .args(["-x", RUNNER_EXECUTABLE_NAME])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .map(|status| status.success())
-        .unwrap_or(false)
+/// This project's Runner pid-file. Each Runner writes its own pid here, so the
+/// CLI can act on exactly its own Runner and leave other projects' alone.
+fn runner_pid_file(project_root: &Path) -> PathBuf {
+    log_store::dev_dir(project_root).join("runner.pid")
 }
 
-fn terminate_existing_runner_processes() -> Result<()> {
-    let status = Command::new("pkill")
-        .args(["-x", RUNNER_EXECUTABLE_NAME])
-        .status()
-        .context("Failed to execute pkill for LingXia Runner")?;
+fn read_runner_pid(pid_file: &Path) -> Option<i32> {
+    std::fs::read_to_string(pid_file)
+        .ok()?
+        .trim()
+        .parse::<i32>()
+        .ok()
+        .filter(|pid| *pid > 0)
+}
 
-    if let Some(1) = status.code() {
-        return Ok(());
+/// Whether `pid` is a live process (`kill(pid, 0)`, no signal delivered).
+fn pid_alive(pid: i32) -> bool {
+    unsafe { libc::kill(pid, 0) == 0 }
+}
+
+/// Whether *this project's* Runner is alive, by its pid-file. Replaces the
+/// name-based check, which couldn't tell one project's Runner from another's.
+fn runner_process_running(pid_file: &Path) -> bool {
+    read_runner_pid(pid_file).map(pid_alive).unwrap_or(false)
+}
+
+/// Terminate the Runner recorded in `pid_file` (if any) and clear the file.
+/// Scoped to one project — never touches Runners started for other projects.
+fn terminate_runner_from_pid_file(pid_file: &Path) {
+    if let Some(pid) = read_runner_pid(pid_file) {
+        if pid_alive(pid) {
+            unsafe {
+                libc::kill(pid, libc::SIGTERM);
+            }
+        }
     }
-
-    if !status.success() {
-        return Err(anyhow!(
-            "Failed to terminate existing LingXia Runner processes"
-        ));
-    }
-
-    std::thread::sleep(std::time::Duration::from_millis(300));
-    Ok(())
+    let _ = std::fs::remove_file(pid_file);
 }
 
 fn installed_runner_app_path() -> Result<PathBuf> {
