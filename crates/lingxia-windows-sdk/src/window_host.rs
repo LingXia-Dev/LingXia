@@ -5563,10 +5563,15 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
         } else {
             WINDOW_EX_STYLE::default()
         };
+        // Title the window with the app's product name so taskbar tooltips and
+        // Alt+Tab distinguish apps sharing this exe (e.g. two dev runners).
+        // Show paths that pass an explicit title re-title later; this covers
+        // paths that never do (the device-framed group present).
+        let title = to_wide(&default_window_title());
         let result = WindowsAndMessaging::CreateWindowExW(
             ex_style,
             w!("LingXiaWebViewParent"),
-            w!("LingXia WebView"),
+            PCWSTR(title.as_ptr()),
             style,
             origin_x,
             origin_y,
@@ -5595,6 +5600,19 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
             }
         }
     }
+}
+
+/// Initial title for webview host windows: the app's product name when the
+/// runtime is up (per-app in the dev runner), else the generic fallback.
+fn default_window_title() -> String {
+    #[cfg(feature = "runtime")]
+    if let Some(name) = lingxia::app::product_name()
+        .map(str::to_string)
+        .filter(|value| !value.trim().is_empty())
+    {
+        return name;
+    }
+    "LingXia WebView".to_string()
 }
 
 pub fn post_to_window_thread(window: isize, callback: Box<dyn FnOnce() + Send>) -> bool {

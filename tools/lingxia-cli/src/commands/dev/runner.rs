@@ -362,11 +362,15 @@ fn prepare_windows_runner_assets(
     std::fs::create_dir_all(&assets_dir)
         .with_context(|| format!("Failed to create {}", assets_dir.display()))?;
 
+    // Per-lxapp identity: the window title / About dialog name which app this
+    // runner hosts, and the windowsAppId becomes the process's taskbar
+    // AppUserModelID — so two runners (different projects) show as two separate
+    // taskbar apps instead of grouping under the shared runner executable.
     let app_json = serde_json::json!({
-        "productName": RUNNER_WINDOWS_PRODUCT_NAME,
+        "productName": format!("{} - {RUNNER_WINDOWS_PRODUCT_NAME}", identity.app_id),
         "productVersion": REQUIRED_RUNNER_VERSION,
         "envVersion": "developer",
-        "windowsAppId": RUNNER_WINDOWS_APP_ID,
+        "windowsAppId": format!("{RUNNER_WINDOWS_APP_ID}.{}", identity.app_id),
         "homeAppId": identity.app_id,
         "homeAppVersion": identity.version,
         "devWsUrl": ws_url,
