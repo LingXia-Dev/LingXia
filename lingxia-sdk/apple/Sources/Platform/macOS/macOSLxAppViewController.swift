@@ -11,6 +11,8 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
 
     private static let navigationRetryDelayNs: UInt64 = 80_000_000
     private static let navigationRetryCount = 20
+    /// Page-navigation slide duration; matches the iOS/Android 300ms transition.
+    private static let navTransitionDuration: CFTimeInterval = 0.3
 
     var appId: String
     internal var currentPath: String
@@ -127,7 +129,23 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         }
     }
 
-    private func showWebViewToUser(_ webView: WKWebView, path: String) {
+    private func showWebViewToUser(
+        _ webView: WKWebView,
+        path: String,
+        animation: LxAppAnimation = .none
+    ) {
+        // Same target webview (navigate to the already-shown page): a container
+        // CATransition has no sublayer change to animate, so drive the slide from
+        // a snapshot of the current page. Different webview: swap under a
+        // CATransition (new page slides in over the old).
+        if animation != .none, let current = activeWebView, current === webView {
+            performSameWebViewTransition(webView: webView, animation: animation)
+            return
+        }
+        if animation != .none, activeWebView !== webView {
+            applyNavigationTransition(animation)
+        }
+
         if let old = activeWebView, old !== webView {
             old.pauseWebView()
             old.removeFromSuperview()
@@ -145,6 +163,98 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         MacNativeBridge.attachIfNeeded(to: webView, in: webViewContainer)
         webView.resumeWebView()
         activeWebView = webView
+    }
+
+    /// Slide the container's contents in the navigation direction (mirrors the
+    /// iOS/Android 300ms page transition). A layer `CATransition` animates the
+    /// swap of the old webview subview for the new one; no per-webview transform
+    /// or constraint juggling, and it survives Auto Layout re-pinning.
+    private func applyNavigationTransition(_ animation: LxAppAnimation) {
+        guard let layer = webViewContainer.layer else { return }
+        let transition = CATransition()
+        transition.duration = Self.navTransitionDuration
+        transition.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        switch animation {
+        case .push:
+            transition.type = .push
+            transition.subtype = .fromRight
+        case .pop:
+            transition.type = .push
+            transition.subtype = .fromLeft
+        case .fade:
+            transition.type = .fade
+        case .none:
+            return
+        }
+        layer.add(transition, forKey: "lxNavTransition")
+    }
+
+    /// Navigating to the page already on screen (same WKWebView instance): the
+    /// webview now shows the destination, so snapshot the outgoing page, slide it
+    /// out while the webview slides in from the opposite edge. `.fade` cross-fades
+    /// the snapshot out instead.
+    private func performSameWebViewTransition(webView: WKWebView, animation: LxAppAnimation) {
+        guard webView.superview === webViewContainer,
+              webViewContainer.bounds.width > 0
+        else {
+            // Not laid out yet — just show it without an animation.
+            webView.resumeWebView()
+            activeWebView = webView
+            return
+        }
+        let bounds = webViewContainer.bounds
+        webViewContainer.layoutSubtreeIfNeeded()
+        webView.takeSnapshot(with: nil) { [weak self] image, _ in
+            guard let self, let image else {
+                webView.resumeWebView()
+                self?.activeWebView = webView
+                return
+            }
+            MainActor.assumeIsolated {
+                let snap = NSImageView(frame: bounds)
+                snap.wantsLayer = true
+                snap.imageScaling = .scaleAxesIndependently
+                snap.image = image
+                snap.autoresizingMask = [.width, .height]
+                self.webViewContainer.addSubview(snap, positioned: .above, relativeTo: webView)
+
+                let width = bounds.width
+                let forward = animation != .pop
+                webView.resumeWebView()
+                self.activeWebView = webView
+
+                CATransaction.begin()
+                CATransaction.setCompletionBlock { snap.removeFromSuperview() }
+                if animation == .fade {
+                    let fade = CABasicAnimation(keyPath: "opacity")
+                    fade.fromValue = 1.0
+                    fade.toValue = 0.0
+                    fade.duration = Self.navTransitionDuration
+                    snap.layer?.add(fade, forKey: "lxFadeOut")
+                    snap.layer?.opacity = 0.0
+                } else {
+                    // Incoming webview starts off-screen on the leading/trailing
+                    // edge and slides to rest; the snapshot slides out the other way.
+                    let inFrom: CGFloat = forward ? width : -width
+                    let outTo: CGFloat = forward ? -width : width
+                    self.slide(layer: webView.layer, from: inFrom, to: 0)
+                    self.slide(layer: snap.layer, from: 0, to: outTo)
+                }
+                CATransaction.commit()
+            }
+        }
+    }
+
+    private func slide(layer: CALayer?, from: CGFloat, to: CGFloat) {
+        guard let layer else { return }
+        let anim = CABasicAnimation(keyPath: "transform.translation.x")
+        anim.fromValue = from
+        anim.toValue = to
+        anim.duration = Self.navTransitionDuration
+        anim.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        anim.fillMode = .forwards
+        layer.add(anim, forKey: "lxSlide")
+        layer.transform = CATransform3DMakeTranslation(to, 0, 0)
     }
 
     func currentWebView() -> WKWebView? {
@@ -240,12 +350,13 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         self.currentPath = path
         updateNavigationBar(appId: appId, path: path)
         if let webView = findManagedWebView(path: path) {
-            showWebViewToUser(webView, path: path)
+            showWebViewToUser(webView, path: path, animation: animationType)
         } else {
             retryShowWebView(
                 appId: appId,
                 path: path,
                 sessionId: sessionId,
+                animationType: animationType,
                 remainingAttempts: Self.navigationRetryCount
             )
         }
@@ -257,6 +368,7 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         appId: String,
         path: String,
         sessionId: UInt64,
+        animationType: LxAppAnimation,
         remainingAttempts: Int
     ) {
         guard remainingAttempts > 0 else { return }
@@ -267,12 +379,13 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
                   self.sessionId == sessionId,
                   self.currentPath == path else { return }
             if let webView = self.findManagedWebView(path: path) {
-                self.showWebViewToUser(webView, path: path)
+                self.showWebViewToUser(webView, path: path, animation: animationType)
             } else {
                 self.retryShowWebView(
                     appId: appId,
                     path: path,
                     sessionId: sessionId,
+                    animationType: animationType,
                     remainingAttempts: remainingAttempts - 1
                 )
             }

@@ -341,7 +341,7 @@ public final class LxAppController {
             sessionId: request.sessionId.rawValue
         )
         sessions[request.sessionId] = session
-        emit(.didNavigate(sessionId: request.sessionId, to: request.path))
+        emit(.didNavigate(sessionId: request.sessionId, to: request.path, animation: request.animation))
     }
 
     /// Close a session from the Swift side.

@@ -335,7 +335,7 @@ public final class LxAppHostView: LxAppPlatformView {
             for await event in controller.events {
                 guard let self else { return }
                 switch event {
-                case .didNavigate(let sessionId, _):
+                case .didNavigate(let sessionId, _, _):
                     guard mountedSession?.id == sessionId else { continue }
                     try? await mount(sessionId: sessionId)
                 case .didClose(let session):
