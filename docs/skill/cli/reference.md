@@ -170,7 +170,8 @@ Publish a package to the **LingXia server** (not an OS app store — that's
 `store`). Auto-detects what it's publishing from the project marker file
 (`lxapp.json` → lxapp, `lxplugin.json` → lxplugin, `lingxia.yaml` → host app) and
 reads the id/version from it. lxapp / lxplugin publishes package the current
-project first and require a release channel; only host-app publish accepts a
+project first and default to the `developer` env when `--env` is omitted; only
+host-app publish accepts a
 prebuilt package path. Authenticates with a bearer token: the `--token` flag,
 or `[publish] token` in `~/.lingxia/cli/config.toml`.
 
@@ -194,7 +195,7 @@ token = "lx_prod_token"
 server = "https://prod.example.com"
 ```
 
-Token and server resolve per-env, selected by the package's `--env`/`--channel` (defaults to `release`): the `[publish.<env>]` table wins, else the top-level default. Each env is a distinct backend, so its token and server live together.
+Token and server resolve per-env, selected by the package's `--env`/`--channel` (defaults to `developer` for lxapp/lxplugin publish; host-app publish reads the package's `app.json envVersion`): the `[publish.<env>]` table wins, else the top-level default. Each env is a distinct backend, so its token and server live together.
 
 ### `lingxia doctor`
 
