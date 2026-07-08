@@ -956,6 +956,7 @@ impl WebView {
     /// result.
     #[cfg(any(
         target_os = "ios",
+        target_os = "android",
         all(feature = "webview-input", target_os = "macos"),
         all(target_os = "linux", target_env = "ohos")
     ))]
@@ -1036,6 +1037,7 @@ impl WebView {
     /// their `onChange`. `lx-` custom elements set their value + sync native.
     #[cfg(any(
         target_os = "ios",
+        target_os = "android",
         all(feature = "webview-input", target_os = "macos"),
         all(target_os = "linux", target_env = "ohos")
     ))]
@@ -1088,6 +1090,7 @@ impl WebView {
     /// Press a key by synthesizing keydown/keyup on the focused element.
     #[cfg(any(
         target_os = "ios",
+        target_os = "android",
         all(feature = "webview-input", target_os = "macos"),
         all(target_os = "linux", target_env = "ohos")
     ))]
@@ -1128,20 +1131,40 @@ impl WebView {
         let (px, py) = at.unwrap_or((-1.0, -1.0));
         let script = format!(
             "((px, py, dx, dy) => {{ \
-              const cx = px >= 0 ? px : Math.floor(window.innerWidth / 2); \
-              const cy = py >= 0 ? py : Math.floor(window.innerHeight / 2); \
-              const scrollable = (node) => {{ \
+              const overflows = (v) => (/(auto|scroll|overlay)/).test(v); \
+              const ancestor = (node) => {{ \
                 while (node && node !== document.body && node !== document.documentElement) {{ \
                   const s = window.getComputedStyle(node); \
-                  const oy = s.overflowY, ox = s.overflowX; \
-                  if (((/(auto|scroll|overlay)/).test(oy) && node.scrollHeight > node.clientHeight) || \
-                      ((/(auto|scroll|overlay)/).test(ox) && node.scrollWidth > node.clientWidth)) return node; \
+                  if ((overflows(s.overflowY) && node.scrollHeight > node.clientHeight) || \
+                      (overflows(s.overflowX) && node.scrollWidth > node.clientWidth)) return node; \
                   node = node.parentElement; \
                 }} \
-                return document.scrollingElement || document.documentElement; \
+                return null; \
               }}; \
-              const hit = document.elementFromPoint(cx, cy) || document.body; \
-              const target = scrollable(hit); \
+              const largest = () => {{ \
+                let best = null, range = 0; \
+                const all = document.querySelectorAll('*'); \
+                for (let k = 0; k < all.length; k++) {{ \
+                  const n = all[k], s = window.getComputedStyle(n); \
+                  const ry = overflows(s.overflowY) ? (n.scrollHeight - n.clientHeight) : 0; \
+                  const rx = overflows(s.overflowX) ? (n.scrollWidth - n.clientWidth) : 0; \
+                  const r = ry > rx ? ry : rx; \
+                  if (r > range) {{ range = r; best = n; }} \
+                }} \
+                return best; \
+              }}; \
+              // Prefer the scrollable at the given/center point; but some webviews \
+              // (android) report innerWidth/Height as 0, so fall back to the largest \
+              // scrollable element, then the document scroller. \
+              const vw = window.innerWidth || document.documentElement.clientWidth || 0; \
+              const vh = window.innerHeight || document.documentElement.clientHeight || 0; \
+              let target = null; \
+              if (px >= 0 && py >= 0) target = ancestor(document.elementFromPoint(px, py) || document.body); \
+              else if (vw > 0 && vh > 0) target = ancestor(document.elementFromPoint(vw >> 1, vh >> 1) || document.body); \
+              if (!target) {{ \
+                const se = document.scrollingElement || document.documentElement; \
+                target = (se && se.scrollHeight > se.clientHeight) ? se : (largest() || se); \
+              }} \
               target.scrollLeft += dx; target.scrollTop += dy; \
               return {{ ok:true }}; \
             }})({px}, {py}, {dx}, {dy})"
@@ -1423,6 +1446,7 @@ impl WebViewInputController for WebView {
         }
         #[cfg(any(
             target_os = "ios",
+            target_os = "android",
             all(target_os = "linux", target_env = "ohos")
         ))]
         {
@@ -1475,6 +1499,7 @@ impl WebViewInputController for WebView {
         }
         #[cfg(any(
             target_os = "ios",
+            target_os = "android",
             all(target_os = "linux", target_env = "ohos")
         ))]
         {
@@ -1500,6 +1525,7 @@ impl WebViewInputController for WebView {
         }
         #[cfg(any(
             target_os = "ios",
+            target_os = "android",
             all(target_os = "linux", target_env = "ohos")
         ))]
         {
@@ -1530,6 +1556,12 @@ impl WebViewInputController for WebView {
         {
             return self.inner.scroll_inner(_dx, _dy, _options).await;
         }
+        // Android scrolls page content in the native View layer (the DOM
+        // document has no scroll extent), so drive WebView.scrollBy natively.
+        #[cfg(target_os = "android")]
+        {
+            return self.inner.scroll_inner(_dx, _dy, _options).await;
+        }
         // iOS has no native scroll synthesis; Harmony webview is always detached.
         #[cfg(any(
             target_os = "ios",
@@ -1557,6 +1589,10 @@ impl WebViewInputController for WebView {
             return self.scroll_to_via_js(_selector, None).await;
         }
         #[cfg(all(feature = "webview-input", target_os = "windows"))]
+        {
+            return self.inner.scroll_to_inner(_selector, _options).await;
+        }
+        #[cfg(target_os = "android")]
         {
             return self.inner.scroll_to_inner(_selector, _options).await;
         }

@@ -414,6 +414,94 @@ impl WebViewInner {
             crate::WebViewInputError::Platform(format!("dispatchClickAt failed: {:?}", err))
         })
     }
+
+    /// Scroll page content by `(dx, dy)` CSS pixels. Android scrolls page-level
+    /// content in the native View layer (the DOM document has no scroll extent),
+    /// so this drives `WebView.scrollBy` after converting CSS px → device px.
+    pub(crate) async fn scroll_inner(
+        &self,
+        dx: f64,
+        dy: f64,
+        _options: crate::traits::ScrollOptions,
+    ) -> Result<(), crate::WebViewInputError> {
+        let dpr = self
+            .eval_js("(window.devicePixelRatio || 1)")
+            .await
+            .map_err(crate::WebViewInputError::Script)?
+            .as_f64()
+            .filter(|v| *v > 0.0)
+            .unwrap_or(1.0);
+        let device_dx = (dx * dpr).round() as i32;
+        let device_dy = (dy * dpr).round() as i32;
+        with_env(|env| -> Result<(), Box<dyn std::error::Error>> {
+            env.call_method(
+                &*self.get_java_webview(),
+                jni_str!("scrollByPixels"),
+                jni_sig!("(II)V"),
+                &[device_dx.into(), device_dy.into()],
+            )?;
+            Ok(())
+        })
+        .map_err(|err| {
+            crate::WebViewInputError::Platform(format!("scrollByPixels failed: {:?}", err))
+        })
+    }
+
+    /// Scroll the first matching element into view. Each swipe is capped to one
+    /// gesture, so repeatedly read the element's viewport-relative top and swipe
+    /// toward it until it sits ~40 CSS px below the top edge (or it stops moving).
+    pub(crate) async fn scroll_to_inner(
+        &self,
+        selector: &str,
+        _options: crate::traits::ScrollOptions,
+    ) -> Result<(), crate::WebViewInputError> {
+        let selector_json = serde_json::to_string(selector).map_err(|err| {
+            crate::WebViewInputError::Platform(format!("Invalid selector: {err}"))
+        })?;
+        let expr = format!(
+            "((sel) => {{ const el = document.querySelector(sel); \
+             if (!el) return {{ ok:false }}; const r = el.getBoundingClientRect(); \
+             return {{ ok:true, top:r.top, dpr:window.devicePixelRatio || 1 }}; }})({selector_json})"
+        );
+        let mut last_top = f64::INFINITY;
+        for _ in 0..10 {
+            let value = self
+                .eval_js(&expr)
+                .await
+                .map_err(crate::WebViewInputError::Script)?;
+            if value.get("ok").and_then(|v| v.as_bool()) != Some(true) {
+                return Err(crate::WebViewInputError::ElementNotFound(
+                    selector.to_string(),
+                ));
+            }
+            let top = value.get("top").and_then(|v| v.as_f64()).unwrap_or(0.0);
+            let dpr = value
+                .get("dpr")
+                .and_then(|v| v.as_f64())
+                .filter(|v| *v > 0.0)
+                .unwrap_or(1.0);
+            // Close enough, or the last swipe made no further progress (clamped
+            // at a scroll boundary) — stop.
+            if top.abs() <= 48.0 || (last_top - top).abs() < 4.0 {
+                break;
+            }
+            last_top = top;
+            let device_dy = ((top - 40.0) * dpr).round() as i32;
+            with_env(|env| -> Result<(), Box<dyn std::error::Error>> {
+                env.call_method(
+                    &*self.get_java_webview(),
+                    jni_str!("scrollByPixels"),
+                    jni_sig!("(II)V"),
+                    &[0i32.into(), device_dy.into()],
+                )?;
+                Ok(())
+            })
+            .map_err(|err| {
+                crate::WebViewInputError::Platform(format!("scrollByPixels failed: {:?}", err))
+            })?;
+        }
+        Ok(())
+    }
 }
 
 #[async_trait]
