@@ -176,6 +176,10 @@ pub fn init_runtime(app: WindowsApp) -> Result<String> {
         lingxia::windows::set_default_window_size(width, height);
     }
     let platform = app.platform()?;
+    // Before any window exists: stamp the process's per-app taskbar identity
+    // (AppUserModelID) so two apps hosted by the same exe — e.g. two dev
+    // runners for different projects — get separate taskbar buttons.
+    platform.install_taskbar_identity();
     lingxia::windows::init(platform).ok_or(WindowsHostError::MissingHomeApp)
 }
 

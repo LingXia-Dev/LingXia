@@ -259,6 +259,32 @@ impl Platform {
         &self.product_name
     }
 
+    /// Stamps this process's explicit AppUserModelID from the app identity so
+    /// the taskbar groups windows per app, not per executable. Without it two
+    /// apps served by the same exe (e.g. two dev runners for different
+    /// projects) collapse into one taskbar button. Must run before the first
+    /// window is created — Windows samples the id at window registration.
+    pub fn install_taskbar_identity(&self) {
+        use windows::Win32::UI::Shell::SetCurrentProcessExplicitAppUserModelID;
+        use windows::core::PCWSTR;
+
+        // Same disambiguation rule as `autostart_value_name`: an explicit
+        // `windows_app_id` is authoritative; the shared default identifier is
+        // qualified by product name so distinct products don't collide. AUMIDs
+        // must contain no spaces and stay under 128 characters.
+        let id = self.autostart_value_name();
+        let id: String = id
+            .chars()
+            .map(|c| if c.is_whitespace() { '.' } else { c })
+            .take(127)
+            .collect();
+        let wide: Vec<u16> = id.encode_utf16().chain(std::iter::once(0)).collect();
+        if let Err(err) = unsafe { SetCurrentProcessExplicitAppUserModelID(PCWSTR(wide.as_ptr())) }
+        {
+            log::warn!("failed to set process AppUserModelID {id:?}: {err}");
+        }
+    }
+
     pub(super) fn data_dir(&self) -> &Path {
         &self.data_dir
     }
