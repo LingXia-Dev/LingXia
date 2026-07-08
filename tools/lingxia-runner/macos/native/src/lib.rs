@@ -94,7 +94,8 @@ fn runner_env_from_env() -> RunnerEnv {
     {
         Ok("preview") => RunnerEnv::Preview,
         Ok("release") => RunnerEnv::Release,
-        Ok("developer") | Ok("dev") | _ => RunnerEnv::Developer,
+        // "developer"/"dev", unset, or anything unrecognized
+        _ => RunnerEnv::Developer,
     }
 }
 
