@@ -41,7 +41,9 @@ pub use surface::{
     set_windows_page_visibility_handler, set_windows_surface_closed_handler,
     set_windows_surface_dispose_handler, set_windows_url_surface_handler,
 };
-pub use ui_update::{set_windows_ui_update_handler, sync_windows_ui};
+pub use ui_update::{
+    set_windows_ui_update_async_handler, set_windows_ui_update_handler, sync_windows_ui,
+};
 pub use update::apply_staged_windows_update;
 pub use video_player::{WindowsVideoCommandDispatcher, register_windows_video_command_dispatcher};
 

@@ -53,9 +53,6 @@ import com.lingxia.app.PermissionManager
 import com.lingxia.app.UpdateManager
 import com.lingxia.lxapp.APIs.LxAppSurface
 import com.lingxia.lxapp.NativeComponents.NativeBridge
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicReference
 
 /**
  * Animation type enum for page transitions
@@ -163,27 +160,11 @@ class LxAppActivity : AppCompatActivity() {
                     return updateTask()
                 }
 
-                val result = AtomicReference(false)
-                val latch = CountDownLatch(1)
-                activity.runOnUiThread {
-                    try {
-                        result.set(updateTask())
-                    } finally {
-                        latch.countDown()
-                    }
-                }
-
-                return try {
-                    if (!latch.await(1000, TimeUnit.MILLISECONDS)) {
-                        Log.w(TAG, "Timed out waiting for TabBar UI update for appId: $appId")
-                        false
-                    } else {
-                        result.get()
-                    }
-                } catch (e: InterruptedException) {
-                    Thread.currentThread().interrupt()
-                    false
-                }
+                // Off the main thread: fire-and-forget so sync callers
+                // (badges, style, per-navigation sync) never block. Callers
+                // that need the real result use LxApp.updateTabBarUIAsync.
+                activity.runOnUiThread { updateTask() }
+                return true
             } else {
                 Log.w(TAG, "No matching activity found for appId: $appId (current: ${activity?.appId})")
                 return false

@@ -132,6 +132,29 @@ object LxApp {
         }
     }
 
+    /**
+     * Async TabBar update for callers that await the real result
+     * (lx.showTabBar/hideTabBar). Runs on the UI thread and reports
+     * completion through NativeApi.onCallback — never blocks the caller.
+     */
+    @JvmStatic
+    fun updateTabBarUIAsync(callbackId: Long, appId: String) {
+        val activity = currentActivity?.takeIf { it.getAppId() == appId }
+        if (activity == null) {
+            Log.w(TAG, "No matching activity for appId: $appId in updateTabBarUIAsync")
+            NativeApi.onCallback(callbackId, false, "1000")
+            return
+        }
+        activity.runOnUiThread {
+            val updated = LxAppActivity.updateTabBarUI(appId)
+            if (updated) {
+                NativeApi.onCallback(callbackId, true, "{}")
+            } else {
+                NativeApi.onCallback(callbackId, false, "1000")
+            }
+        }
+    }
+
     @JvmStatic
     fun updateNavBarUI(appId: String): Boolean {
         val activity = currentActivity?.takeIf { it.getAppId() == appId }

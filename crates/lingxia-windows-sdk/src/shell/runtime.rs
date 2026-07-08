@@ -433,6 +433,14 @@ pub(super) fn install() {
     lingxia_platform::set_windows_ui_update_handler(Arc::new(|appid| {
         sync_related_shell_layouts(&appid);
     }));
+    // Awaited UI updates (lx.showTabBar/hideTabBar): run the layout sync off
+    // the caller's thread and complete the callback once it has applied.
+    lingxia_platform::set_windows_ui_update_async_handler(Arc::new(|appid, done| {
+        std::mem::drop(lingxia::task::spawn(async move {
+            sync_related_shell_layouts(&appid);
+            done(true);
+        }));
+    }));
     // A trimmed lxapp page that opted into pull-down refresh gets an app-level
     // "Refresh" right-click entry (mirrors the macOS lxapp menu). The webview
     // layer that builds the menu sits below lxapp / i18n / pull-refresh, so it

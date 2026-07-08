@@ -471,6 +471,18 @@ extension LxApp {
         }
     }
 
+    /// Async variant for lx.showTabBar/hideTabBar: returns immediately and
+    /// reports completion through onCallback once the main thread has
+    /// delivered the state change (NotificationCenter posts synchronously
+    /// to observers, so the UI update has run by then).
+    nonisolated static func updateTabBarUIAsync(appid: RustStr, callback_id: UInt64) {
+        let appIdString = appid.toString()
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(name: .tabBarStateChanged, object: appIdString)
+            _ = onCallback(callback_id, true, "{}")
+        }
+    }
+
     nonisolated static func updateNavBarUI(appid: RustStr) -> Bool {
         let appIdString = appid.toString()
         return executeOnMain {
