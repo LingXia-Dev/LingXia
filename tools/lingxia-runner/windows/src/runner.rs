@@ -21,6 +21,7 @@ const ARG_RUNNER_DEVICE: &str = "--runner-device";
 const ARG_RESOURCE_LXAPP_PATHS: &str = "--resource-lxapp-paths";
 const ENV_LXAPP_PATH: &str = "LINGXIA_LXAPP_PATH";
 const ENV_DEV_WS_URL: &str = "LINGXIA_DEV_WS_URL";
+const ENV_STATE_ROOT: &str = "LINGXIA_STATE_ROOT";
 const ENV_LINGXIAO_MOCK_DIR: &str = "LINGXIAO_MOCK_DIR";
 const ENV_RUNNER_DEVICE: &str = "LINGXIA_RUNNER_DEVICE";
 const ENV_RESOURCE_LXAPP_PATHS: &str = "LINGXIA_RESOURCE_LXAPP_PATHS";
@@ -134,7 +135,34 @@ fn install_launch_args_env() -> Option<std::path::PathBuf> {
             }
         }
     }
+    install_dev_state_root_env();
     asset_dir
+}
+
+/// Isolates this dev runner's data + cache under its own lxapp directory so two
+/// runners for different projects can run at once. Without it every runner uses
+/// the single per-product state root (`%LOCALAPPDATA%\LingXia Runner`), whose
+/// metadata database (redb, exclusive file lock) and WebView2 profile can only
+/// be held by one process — the second runner dies with "Database already open.
+/// Cannot acquire lock." Honors an explicit `LINGXIA_STATE_ROOT` if one is set.
+fn install_dev_state_root_env() {
+    if std::env::var_os(ENV_STATE_ROOT).is_some() {
+        return;
+    }
+    let Ok(lxapp_path) = std::env::var(ENV_LXAPP_PATH) else {
+        return;
+    };
+    if lxapp_path.trim().is_empty() {
+        return;
+    }
+    let state_root = std::path::Path::new(&lxapp_path)
+        .join(".lingxia")
+        .join("runner")
+        .join("state");
+    // Runs at process startup before LingXia starts any worker threads.
+    unsafe {
+        std::env::set_var(ENV_STATE_ROOT, state_root);
+    }
 }
 
 fn register_resource_lxapp_paths_from_env() {

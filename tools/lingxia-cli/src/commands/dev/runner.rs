@@ -481,7 +481,7 @@ fn launch_windows_runner_for_lxapp(
     let assets_dir = prepare_windows_runner_assets(lxapp_path, &identity, ws_url)?;
     let resource_lxapp_paths = windows_runner_resource_lxapp_paths(lxapp_path, &identity)?;
     let exe_path = installed_windows_runner_exe_path()?;
-    terminate_existing_windows_runner_processes(&exe_path)?;
+    terminate_existing_windows_runner_processes(&exe_path, ws_url)?;
     let mock_dir = crate::lxapp::functions::prepare_dev(lxapp_path);
     if let Some(mock_dir) = &mock_dir {
         println!(
@@ -827,16 +827,38 @@ fn shell_execute_windows_runner(
 }
 
 #[cfg(target_os = "windows")]
-fn terminate_existing_windows_runner_processes(exe_path: &Path) -> Result<()> {
+fn terminate_existing_windows_runner_processes(exe_path: &Path, dev_ws_url: &str) -> Result<()> {
+    use sysinfo::{ProcessRefreshKind, UpdateKind};
+
     let mut system = System::new();
-    system.refresh_processes(ProcessesToUpdate::All, true);
+    // The default process refresh leaves `cmd()` empty; ask for it explicitly —
+    // matching on the command line is what scopes the kill to this session.
+    system.refresh_processes_specifics(
+        ProcessesToUpdate::All,
+        true,
+        ProcessRefreshKind::nothing()
+            .with_exe(UpdateKind::Always)
+            .with_cmd(UpdateKind::Always),
+    );
 
     let mut pids = Vec::new();
     for process in system.processes().values() {
         let Some(process_exe) = process.exe() else {
             continue;
         };
-        if process_executable_matches(process_exe, exe_path) {
+        if !process_executable_matches(process_exe, exe_path) {
+            continue;
+        }
+        // Reclaim only a stale runner of THIS dev session — one launched with the
+        // same `--dev-ws-url`. The ws port is deterministic per project+platform
+        // (`dev_port`), so any lingering holder of this url is a previous run of
+        // this same project; runners for other projects use a different url and
+        // must survive so two instances can run at once.
+        let owns_session = process
+            .cmd()
+            .iter()
+            .any(|arg| arg.to_string_lossy() == dev_ws_url);
+        if owns_session {
             pids.push(process.pid());
         }
     }
@@ -859,7 +881,7 @@ fn terminate_existing_windows_runner_processes(exe_path: &Path) -> Result<()> {
 }
 
 #[cfg(not(target_os = "windows"))]
-fn terminate_existing_windows_runner_processes(_exe_path: &Path) -> Result<()> {
+fn terminate_existing_windows_runner_processes(_exe_path: &Path, _dev_ws_url: &str) -> Result<()> {
     Ok(())
 }
 
