@@ -96,6 +96,25 @@ it exits. Either way the session publishes metadata + logs for `lxdev`.
 
 See `lingxia dev --help` for the flags.
 
+**Runner cloud defaults (`~/.lingxia/runner/config.toml`):**
+
+Standalone lxapp dev on macOS/Windows launches LingXia Runner. When the Runner
+uses the cloud provider, this file can override the backend and app identity.
+Top-level values are defaults; per-env tables override them. The active table
+follows `lingxia dev --env` (`developer` by default).
+
+```toml
+lingxiaServer = "https://api.example.com"
+lingxiaId = "com.example.app"
+
+[developer]
+lingxiaServer = "http://127.0.0.1:8787"
+
+[preview]
+lingxiaServer = "https://preview-api.example.com"
+lingxiaId = "com.example.app.preview"
+```
+
 > **Drive the live session with [`lxdev`](./lxdev.md)** — a separate binary that
 > automates the running app (browser tabs, lxapp pages, screenshots, logs) and
 > can rebuild/restart lxapps, without starting a new session. The split:

@@ -17,6 +17,8 @@ use std::path::{Path, PathBuf};
 const ENV_MOCK_DIR: &str = "LINGXIAO_MOCK_DIR";
 /// Env var (set by `lingxia dev`) pointing at the running lxapp's directory.
 const ENV_LXAPP_PATH: &str = "LINGXIA_LXAPP_PATH";
+/// Env var (set by `lingxia dev --env`) selecting the runner config table.
+const ENV_RUNNER_ENV: &str = "LINGXIA_RUNNER_ENV";
 /// Runner config location, relative to the user's home directory.
 const RUNNER_CONFIG_REL: &str = ".lingxia/runner/config.toml";
 
@@ -52,8 +54,9 @@ pub struct RunnerRouting {
 
 /// Resolve the runner config from the current process environment.
 pub fn from_env() -> RunnerConfig {
+    let env = runner_env_from_env();
     let (lingxia_server, lingxia_id) = home_dir()
-        .map(|home| parse_runner_config(&home.join(RUNNER_CONFIG_REL)))
+        .map(|home| parse_runner_config(&home.join(RUNNER_CONFIG_REL), env))
         .unwrap_or_default();
     let mock = std::env::var_os(ENV_MOCK_DIR)
         .filter(|dir| !dir.is_empty())
@@ -68,6 +71,31 @@ pub fn from_env() -> RunnerConfig {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum RunnerEnv {
+    Developer,
+    Preview,
+    Release,
+}
+
+impl RunnerEnv {
+    fn table_name(self) -> &'static str {
+        match self {
+            Self::Developer => "developer",
+            Self::Preview => "preview",
+            Self::Release => "release",
+        }
+    }
+}
+
+fn runner_env_from_env() -> RunnerEnv {
+    match std::env::var(ENV_RUNNER_ENV).as_deref().map(str::trim) {
+        Ok("preview") => RunnerEnv::Preview,
+        Ok("release") => RunnerEnv::Release,
+        Ok("developer") | Ok("dev") | _ => RunnerEnv::Developer,
+    }
+}
+
 /// Cross-platform home directory (`USERPROFILE` on Windows, else `HOME`).
 fn home_dir() -> Option<PathBuf> {
     std::env::var_os("USERPROFILE")
@@ -76,22 +104,32 @@ fn home_dir() -> Option<PathBuf> {
 }
 
 /// Parse `(lingxiaServer, lingxiaId)` from the runner config at `path`. A
-/// missing or unparseable file yields `(None, None)`.
-fn parse_runner_config(path: &Path) -> (Option<String>, Option<String>) {
+/// missing or unparseable file yields `(None, None)`. Top-level values are
+/// defaults; `[developer]`, `[preview]`, and `[release]` override per env.
+fn parse_runner_config(path: &Path, env: RunnerEnv) -> (Option<String>, Option<String>) {
     let Ok(text) = std::fs::read_to_string(path) else {
         return (None, None);
     };
     let Ok(value) = toml::from_str::<toml::Value>(&text) else {
         return (None, None);
     };
+    let env_table = value.get(env.table_name()).and_then(toml::Value::as_table);
     (
-        str_field(&value, "lingxiaServer"),
-        str_field(&value, "lingxiaId"),
+        table_str_field(env_table, "lingxiaServer").or_else(|| str_field(&value, "lingxiaServer")),
+        table_str_field(env_table, "lingxiaId").or_else(|| str_field(&value, "lingxiaId")),
     )
 }
 
 fn str_field(value: &toml::Value, key: &str) -> Option<String> {
     let s = value.get(key)?.as_str()?.trim();
+    (!s.is_empty()).then(|| s.to_string())
+}
+
+fn table_str_field(
+    table: Option<&toml::map::Map<String, toml::Value>>,
+    key: &str,
+) -> Option<String> {
+    let s = table?.get(key)?.as_str()?.trim();
     (!s.is_empty()).then(|| s.to_string())
 }
 
@@ -148,15 +186,45 @@ mod tests {
             "lingxiaServer = \"https://staging.example.com\"\nlingxiaId = \"app-123\"\n",
         )
         .unwrap();
-        let (server, id) = parse_runner_config(&path);
+        let (server, id) = parse_runner_config(&path, RunnerEnv::Developer);
         assert_eq!(server.as_deref(), Some("https://staging.example.com"));
         assert_eq!(id.as_deref(), Some("app-123"));
         std::fs::remove_dir_all(&dir).ok();
         // Missing file -> no overrides.
         assert_eq!(
-            parse_runner_config(Path::new("/no/such/config.toml")),
+            parse_runner_config(Path::new("/no/such/config.toml"), RunnerEnv::Developer),
             (None, None)
         );
+    }
+
+    #[test]
+    fn env_table_overrides_top_level_runner_config() {
+        let dir = std::env::temp_dir().join(format!("lx-runner-cfg-env-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.toml");
+        std::fs::write(
+            &path,
+            r#"
+lingxiaServer = "https://default.example.com"
+lingxiaId = "default-id"
+
+[preview]
+lingxiaServer = "https://preview.example.com"
+
+[release]
+lingxiaId = "release-id"
+"#,
+        )
+        .unwrap();
+
+        let (server, id) = parse_runner_config(&path, RunnerEnv::Preview);
+        assert_eq!(server.as_deref(), Some("https://preview.example.com"));
+        assert_eq!(id.as_deref(), Some("default-id"));
+
+        let (server, id) = parse_runner_config(&path, RunnerEnv::Release);
+        assert_eq!(server.as_deref(), Some("https://default.example.com"));
+        assert_eq!(id.as_deref(), Some("release-id"));
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]

@@ -46,6 +46,11 @@ struct RunnerOverrides {
 /// Parse overrides from `<home>/.lingxia/runner/config.toml`, if present.
 #[cfg(feature = "cloud")]
 fn parse_runner_config(home: &std::path::Path) -> RunnerOverrides {
+    parse_runner_config_for_env(home, runner_env_from_env())
+}
+
+#[cfg(feature = "cloud")]
+fn parse_runner_config_for_env(home: &std::path::Path, env: RunnerEnv) -> RunnerOverrides {
     let path = home.join(".lingxia/runner/config.toml");
     let Ok(text) = std::fs::read_to_string(&path) else {
         return RunnerOverrides::default();
@@ -53,15 +58,58 @@ fn parse_runner_config(home: &std::path::Path) -> RunnerOverrides {
     let Ok(value) = toml::from_str::<toml::Value>(&text) else {
         return RunnerOverrides::default();
     };
+    let env_table = value.get(env.table_name()).and_then(toml::Value::as_table);
     RunnerOverrides {
-        lingxia_server: str_field(&value, "lingxiaServer"),
-        lingxia_id: str_field(&value, "lingxiaId"),
+        lingxia_server: table_str_field(env_table, "lingxiaServer")
+            .or_else(|| str_field(&value, "lingxiaServer")),
+        lingxia_id: table_str_field(env_table, "lingxiaId")
+            .or_else(|| str_field(&value, "lingxiaId")),
+    }
+}
+
+#[cfg(feature = "cloud")]
+#[derive(Clone, Copy)]
+enum RunnerEnv {
+    Developer,
+    Preview,
+    Release,
+}
+
+#[cfg(feature = "cloud")]
+impl RunnerEnv {
+    fn table_name(self) -> &'static str {
+        match self {
+            Self::Developer => "developer",
+            Self::Preview => "preview",
+            Self::Release => "release",
+        }
+    }
+}
+
+#[cfg(feature = "cloud")]
+fn runner_env_from_env() -> RunnerEnv {
+    match std::env::var("LINGXIA_RUNNER_ENV")
+        .as_deref()
+        .map(str::trim)
+    {
+        Ok("preview") => RunnerEnv::Preview,
+        Ok("release") => RunnerEnv::Release,
+        Ok("developer") | Ok("dev") | _ => RunnerEnv::Developer,
     }
 }
 
 #[cfg(feature = "cloud")]
 fn str_field(value: &toml::Value, key: &str) -> Option<String> {
     let s = value.get(key)?.as_str()?.trim();
+    (!s.is_empty()).then(|| s.to_string())
+}
+
+#[cfg(feature = "cloud")]
+fn table_str_field(
+    table: Option<&toml::map::Map<String, toml::Value>>,
+    key: &str,
+) -> Option<String> {
+    let s = table?.get(key)?.as_str()?.trim();
     (!s.is_empty()).then(|| s.to_string())
 }
 
@@ -72,7 +120,7 @@ pub extern "C" fn lingxia_register_host_addon() {
 
 #[cfg(all(test, feature = "cloud"))]
 mod tests {
-    use super::parse_runner_config;
+    use super::{RunnerEnv, parse_runner_config, parse_runner_config_for_env};
 
     #[test]
     fn parses_server_and_id() {
@@ -94,5 +142,29 @@ mod tests {
         // Missing file -> no overrides.
         let empty = parse_runner_config(std::path::Path::new("/no/such/home"));
         assert!(empty.lingxia_server.is_none() && empty.lingxia_id.is_none());
+    }
+
+    #[test]
+    fn env_table_overrides_top_level_values() {
+        let dir = std::env::temp_dir().join(format!("lx-runner-env-{}", std::process::id()));
+        let runner = dir.join(".lingxia/runner");
+        std::fs::create_dir_all(&runner).unwrap();
+        std::fs::write(
+            runner.join("config.toml"),
+            r#"lingxiaServer = "https://default.example.com"
+lingxiaId = "default-id"
+
+[preview]
+lingxiaServer = "https://preview.example.com"
+"#,
+        )
+        .unwrap();
+        let o = parse_runner_config_for_env(&dir, RunnerEnv::Preview);
+        assert_eq!(
+            o.lingxia_server.as_deref(),
+            Some("https://preview.example.com")
+        );
+        assert_eq!(o.lingxia_id.as_deref(), Some("default-id"));
+        std::fs::remove_dir_all(&dir).ok();
     }
 }
