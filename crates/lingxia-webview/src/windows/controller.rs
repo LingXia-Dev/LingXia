@@ -295,7 +295,7 @@ impl WebViewInner {
         self.dispatch_layout_command(|resp| UiCommand::SetParentWindow { window, resp })
     }
 
-    fn dispatch_screenshot_command(&self) -> StdResult<Vec<u8>> {
+    pub(crate) fn dispatch_screenshot_command(&self) -> StdResult<Vec<u8>> {
         self.dispatch_ui(
             |resp| UiCommand::TakeScreenshot { resp },
             Some(WEBVIEW_SCREENSHOT_TIMEOUT),

@@ -80,6 +80,14 @@ impl WindowsWebViewHandler {
     pub fn notify_parent_position_changed(&self) -> StdResult<()> {
         self.webview.inner.notify_parent_position_changed()
     }
+
+    /// Captures the WebView2 viewport as PNG bytes (`CapturePreview`), blocking
+    /// until the capture completes. Unlike a GDI/screen grab this sees only the
+    /// webview's own composition — unoccluded, no other windows — which makes it
+    /// suitable for transition snapshots.
+    pub fn capture_png(&self) -> StdResult<Vec<u8>> {
+        self.webview.inner.dispatch_screenshot_command()
+    }
 }
 
 static WEBVIEW_USER_DATA_DIR: OnceLock<Mutex<Option<PathBuf>>> = OnceLock::new();
