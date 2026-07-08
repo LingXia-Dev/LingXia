@@ -26,23 +26,22 @@ Stale files from crashed sessions are pruned automatically (or via `lxdev sessio
 - `nav to|redirect|switch-tab|relaunch|back` — navigate the runtime by page name (from `pages`)
 - `eval` — run JS in the **Logic runtime**; `page eval` — run JS in the **page WebView** (the two see different things — JS-contexts table below)
 - `page current|list|info` — page stack status
-- `page query|click|type|fill|press|scroll|scroll-into-view` — element-level automation in the page WebView
+- `page query|click|type|fill|press` — element-level automation in the page WebView (works cross-platform: native input on desktop/attached, JS synthesis on iOS/Android/Harmony/AppUI-detached)
+- `page scroll` (by `--dx`/`--dy`) / `page scroll-to --css` — scroll the page DOM (nearest scroll container) or bring an element into view
 - `page back` — pop the page stack
+- `page pointer move|down|up|click|drag|scroll` — raw input at window coordinates (vs DOM-level `page click`/`type`; useful when you need real hit-testing or to reach native surfaces)
+- `page key text|press` — keyboard input to the session's focused control
 - `page screenshot` — PNG of one page's WebView
+- `windows` — enumerate the session's top-level windows; the id feeds `--window` on `screenshot` / `page pointer` / `page key`. Mobile is a single window; on desktop each window is separate (macOS AppUI surfaces — DockedBrowser, floats — are their own windows), so `--window` only disambiguates there
+- `screenshot` — the session's **full app surface**: native controls, overlays, composited WebViews (vs `page screenshot`, which is one page's WebView)
 
 **`browser`** — the host app's browser tabs (arbitrary web content, Playwright-like):
 - `open` / `tabs` / `current` / `activate` / `close` / `reload` / `back` / `forward`
 - `eval` / `query` — JS and element inspection in a tab
 - `wait` / `wait-url` / `wait-away` — block until a condition holds
-- `click` / `type` / `fill` / `press` / `scroll` / `scroll-into-view`
+- `click` / `type` / `fill` / `press` / `scroll` / `scroll-to`
 - `cookies list|set|delete|clear`
 - `screenshot` — PNG of the tab's web content only
-
-**`app`** — the host app as a whole:
-- `windows` — enumerate top-level windows (macOS surfaces make separate windows; target with `--window`)
-- `screenshot` — the full host window: native controls, overlays, composited WebViews
-- `mouse move|down|up|click|drag|scroll` — raw input at window coordinates
-- `key text|press` — keyboard input to the focused control
 
 **`logs`** — the session's JSONL log stream: tail or `-f` follow; filter by `--level`, `--source` (`native` host, your app's `lxview`/`lxlogic`, or a `browser` tab), `--path`, `--grep`, `--app <id>`; `--wide` prefixes each line with its app id.
 
