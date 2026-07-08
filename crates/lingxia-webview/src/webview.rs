@@ -1109,6 +1109,71 @@ impl WebView {
         self.run_js_action(&script).await
     }
 
+    /// Scroll by `(dx, dy)` in the DOM. Walks up from the element at the given
+    /// viewport point (default: center) to the nearest scrollable ancestor, so
+    /// it scrolls internal scroll containers, not just the document. Uses direct
+    /// `scrollTop`/`scrollLeft` assignment, not `scrollBy`: on iOS WKWebView
+    /// `scrollBy` animates sub-scrollers and overshoots to 2x the delta.
+    #[cfg(any(
+        target_os = "ios",
+        all(feature = "webview-input", target_os = "macos"),
+        all(target_os = "linux", target_env = "ohos")
+    ))]
+    pub(crate) async fn scroll_via_js(
+        &self,
+        at: Option<(f64, f64)>,
+        dx: f64,
+        dy: f64,
+    ) -> Result<(), WebViewInputError> {
+        let (px, py) = at.unwrap_or((-1.0, -1.0));
+        let script = format!(
+            "((px, py, dx, dy) => {{ \
+              const cx = px >= 0 ? px : Math.floor(window.innerWidth / 2); \
+              const cy = py >= 0 ? py : Math.floor(window.innerHeight / 2); \
+              const scrollable = (node) => {{ \
+                while (node && node !== document.body && node !== document.documentElement) {{ \
+                  const s = window.getComputedStyle(node); \
+                  const oy = s.overflowY, ox = s.overflowX; \
+                  if (((/(auto|scroll|overlay)/).test(oy) && node.scrollHeight > node.clientHeight) || \
+                      ((/(auto|scroll|overlay)/).test(ox) && node.scrollWidth > node.clientWidth)) return node; \
+                  node = node.parentElement; \
+                }} \
+                return document.scrollingElement || document.documentElement; \
+              }}; \
+              const hit = document.elementFromPoint(cx, cy) || document.body; \
+              const target = scrollable(hit); \
+              target.scrollLeft += dx; target.scrollTop += dy; \
+              return {{ ok:true }}; \
+            }})({px}, {py}, {dx}, {dy})"
+        );
+        self.run_js_action(&script).await
+    }
+
+    /// Scroll an element into view (`scrollIntoView`).
+    #[cfg(any(
+        target_os = "ios",
+        all(feature = "webview-input", target_os = "macos"),
+        all(target_os = "linux", target_env = "ohos")
+    ))]
+    pub(crate) async fn scroll_to_via_js(
+        &self,
+        selector: &str,
+        index: Option<usize>,
+    ) -> Result<(), WebViewInputError> {
+        let selector_json = serde_json::to_string(selector)
+            .map_err(|err| WebViewInputError::Platform(format!("Invalid selector: {err}")))?;
+        let idx = index.unwrap_or(0);
+        let script = format!(
+            "((sel, i) => {{ \
+              const els = document.querySelectorAll(sel); \
+              if (!els.length || i < 0 || i >= els.length) return {{ ok:false, error:'no match', count:els.length }}; \
+              try {{ els[i].scrollIntoView({{ block:'center', inline:'center' }}); }} catch(_e) {{ els[i].scrollIntoView(); }} \
+              return {{ ok:true, count:els.length }}; \
+            }})({selector_json}, {idx})"
+        );
+        self.run_js_action(&script).await
+    }
+
     pub async fn current_url(&self) -> Result<Option<String>, WebViewError> {
         self.inner.current_url().await
     }
@@ -1452,13 +1517,26 @@ impl WebViewInputController for WebView {
         _dy: f64,
         _options: ScrollOptions,
     ) -> Result<(), WebViewInputError> {
+        // AppUI renders lxapp pages as native surfaces with the WKWebView
+        // detached, so native scroll wheel events can't reach the DOM — use JS.
         #[cfg(all(feature = "webview-input", target_os = "macos"))]
         {
-            return self.inner.scroll_inner(_dx, _dy, _options).await;
+            if self.inner.is_window_attached().await {
+                return self.inner.scroll_inner(_dx, _dy, _options).await;
+            }
+            return self.scroll_via_js(None, _dx, _dy).await;
         }
         #[cfg(all(feature = "webview-input", target_os = "windows"))]
         {
             return self.inner.scroll_inner(_dx, _dy, _options).await;
+        }
+        // iOS has no native scroll synthesis; Harmony webview is always detached.
+        #[cfg(any(
+            target_os = "ios",
+            all(target_os = "linux", target_env = "ohos")
+        ))]
+        {
+            return self.scroll_via_js(None, _dx, _dy).await;
         }
         #[allow(unreachable_code)]
         Err(WebViewInputError::Unsupported(
@@ -1473,11 +1551,21 @@ impl WebViewInputController for WebView {
     ) -> Result<(), WebViewInputError> {
         #[cfg(all(feature = "webview-input", target_os = "macos"))]
         {
-            return self.inner.scroll_to_inner(_selector, _options).await;
+            if self.inner.is_window_attached().await {
+                return self.inner.scroll_to_inner(_selector, _options).await;
+            }
+            return self.scroll_to_via_js(_selector, None).await;
         }
         #[cfg(all(feature = "webview-input", target_os = "windows"))]
         {
             return self.inner.scroll_to_inner(_selector, _options).await;
+        }
+        #[cfg(any(
+            target_os = "ios",
+            all(target_os = "linux", target_env = "ohos")
+        ))]
+        {
+            return self.scroll_to_via_js(_selector, None).await;
         }
         #[allow(unreachable_code)]
         Err(WebViewInputError::Unsupported(
