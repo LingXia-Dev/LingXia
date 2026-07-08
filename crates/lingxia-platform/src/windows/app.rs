@@ -551,18 +551,33 @@ fn collect_asset_files<'a>(
     }
 }
 
-fn default_state_root() -> PathBuf {
-    std::env::var_os("LOCALAPPDATA")
+/// An explicit state root, when `LINGXIA_STATE_ROOT` is set. This isolates a
+/// process's data/cache from the default per-product location — the dev runner
+/// sets it per lxapp so two runners (different projects) don't collide on the
+/// single per-product metadata database (redb takes an exclusive file lock) or
+/// the shared WebView2 profile, which is what blocks running two at once.
+fn state_root_override() -> Option<PathBuf> {
+    std::env::var_os("LINGXIA_STATE_ROOT")
         .map(PathBuf::from)
-        .unwrap_or_else(std::env::temp_dir)
-        .join("LingXia")
+        .filter(|path| !path.as_os_str().is_empty())
+}
+
+fn default_state_root() -> PathBuf {
+    state_root_override().unwrap_or_else(|| {
+        std::env::var_os("LOCALAPPDATA")
+            .map(PathBuf::from)
+            .unwrap_or_else(std::env::temp_dir)
+            .join("LingXia")
+    })
 }
 
 fn state_root_for_product(product_name: &str) -> PathBuf {
-    std::env::var_os("LOCALAPPDATA")
-        .map(PathBuf::from)
-        .unwrap_or_else(std::env::temp_dir)
-        .join(product_name)
+    state_root_override().unwrap_or_else(|| {
+        std::env::var_os("LOCALAPPDATA")
+            .map(PathBuf::from)
+            .unwrap_or_else(std::env::temp_dir)
+            .join(product_name)
+    })
 }
 
 fn default_asset_dir() -> PathBuf {
