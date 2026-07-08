@@ -4943,6 +4943,19 @@ fn show_webview_window_replacing(
 }
 
 pub fn navigate_webview_window(webtag: &WebTag, title: &str, activate: bool) -> StdResult<()> {
+    // A device-framed host presents its pages inside one fixed simulator
+    // silhouette (`present_webview_in_active_group`) rather than as separate
+    // top-level windows. Route navigation through that group present so it keeps
+    // the frame, its corner overlays, and the group-main restore target — the
+    // replace path below reparents the page into its own native window and
+    // reasserts a plain shell frame, which escapes the device frame entirely
+    // (the show path already branches this way; navigation must match). This is
+    // an instant swap, matching the tab-switch/redirect present.
+    if let Some(host) = active_host_window()
+        && window_is_device_framed(host)
+    {
+        return present_webview_in_active_group(webtag);
+    }
     show_webview_window_replacing(webtag, title, activate, normal_group_webtags(webtag))
 }
 
