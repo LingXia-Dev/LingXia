@@ -111,6 +111,8 @@ pub mod handlers {
         pub const TYPE: &str = "lxapp.page.type";
         pub const FILL: &str = "lxapp.page.fill";
         pub const PRESS: &str = "lxapp.page.press";
+        pub const SCROLL: &str = "lxapp.page.scroll";
+        pub const SCROLL_TO: &str = "lxapp.page.scroll_to";
         pub const BACK: &str = "lxapp.page.back";
         pub const SCREENSHOT: &str = "lxapp.page.screenshot";
     }

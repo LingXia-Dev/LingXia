@@ -558,6 +558,38 @@ pub async fn lxapp_dev_page_press(
         .map_err(|err| err.to_string())
 }
 
+/// Scrolls the page DOM by `(dx, dy)`, walking up to the nearest scrollable
+/// container so internal scroll regions move, not just the document.
+pub async fn lxapp_dev_page_scroll(
+    appid: Option<&str>,
+    page_name: Option<&str>,
+    dx: f64,
+    dy: f64,
+) -> Result<(), String> {
+    let app = resolve_dev_lxapp(appid.unwrap_or("current"))?;
+    let (page, _) = resolve_dev_page(&app, page_name)?;
+    page.webview()
+        .ok_or_else(|| "page WebView is not ready".to_string())?
+        .scroll(dx, dy, lingxia_webview::ScrollOptions)
+        .await
+        .map_err(|err| err.to_string())
+}
+
+/// Scrolls the first matching DOM node into view.
+pub async fn lxapp_dev_page_scroll_to(
+    appid: Option<&str>,
+    page_name: Option<&str>,
+    selector: &str,
+) -> Result<(), String> {
+    let app = resolve_dev_lxapp(appid.unwrap_or("current"))?;
+    let (page, _) = resolve_dev_page(&app, page_name)?;
+    page.webview()
+        .ok_or_else(|| "page WebView is not ready".to_string())?
+        .scroll_to(selector, lingxia_webview::ScrollOptions)
+        .await
+        .map_err(|err| err.to_string())
+}
+
 /// Navigates back in the current page stack by the requested delta.
 pub fn lxapp_dev_page_back(appid: Option<&str>, delta: u32) -> Result<(), String> {
     let app = resolve_dev_lxapp(appid.unwrap_or("current"))?;

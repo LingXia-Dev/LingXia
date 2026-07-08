@@ -584,6 +584,39 @@ pub enum PageCommand {
         #[arg(long)]
         json: bool,
     },
+    /// Scroll the page DOM by a delta (finds the nearest scrollable container)
+    Scroll {
+        /// Horizontal delta in CSS pixels (positive = right)
+        #[arg(long, default_value_t = 0.0, allow_hyphen_values = true)]
+        dx: f64,
+        /// Vertical delta in CSS pixels (positive = down)
+        #[arg(long, default_value_t = 0.0, allow_hyphen_values = true)]
+        dy: f64,
+        /// Page name; defaults to current page
+        #[arg(long)]
+        page: Option<String>,
+        /// LxApp context; defaults to current
+        #[arg(long, default_value = "current")]
+        app: String,
+        /// Print JSON output
+        #[arg(long)]
+        json: bool,
+    },
+    /// Scroll the first matching DOM element into view
+    ScrollTo {
+        /// CSS selector to scroll into view
+        #[arg(long)]
+        selector: String,
+        /// Page name; defaults to current page
+        #[arg(long)]
+        page: Option<String>,
+        /// LxApp context; defaults to current
+        #[arg(long, default_value = "current")]
+        app: String,
+        /// Print JSON output
+        #[arg(long)]
+        json: bool,
+    },
     /// Send pointer input at page coordinates (CSS pixels)
     Pointer(PagePointerOptions),
     /// Send keyboard input to the session's focused control
@@ -1172,6 +1205,42 @@ fn execute_page(ws_url: &str, options: PageOptions) -> Result<()> {
                     "appid": app,
                     "page": page,
                     "key": key,
+                })),
+            )?;
+            print_optional_json(data, json)?;
+        }
+        PageCommand::Scroll {
+            dx,
+            dy,
+            page,
+            app,
+            json,
+        } => {
+            let data = client::execute_command(
+                ws_url,
+                handlers::lxapp_page::SCROLL,
+                Some(json!({
+                    "appid": app,
+                    "page": page,
+                    "dx": dx,
+                    "dy": dy,
+                })),
+            )?;
+            print_optional_json(data, json)?;
+        }
+        PageCommand::ScrollTo {
+            selector,
+            page,
+            app,
+            json,
+        } => {
+            let data = client::execute_command(
+                ws_url,
+                handlers::lxapp_page::SCROLL_TO,
+                Some(json!({
+                    "appid": app,
+                    "page": page,
+                    "selector": selector,
                 })),
             )?;
             print_optional_json(data, json)?;
