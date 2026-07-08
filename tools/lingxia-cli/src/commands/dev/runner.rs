@@ -14,6 +14,9 @@ const RUNNER_MARKER_ENV: &str = "LINGXIA_RUNNER";
 /// terminate *this* project's Runner without touching Runners from other
 /// projects — so `lingxia dev` in two lxapp dirs runs two Runners in parallel.
 const RUNNER_PID_FILE_ENV: &str = "LINGXIA_RUNNER_PID_FILE";
+/// Stable-per-project id that isolates each Runner instance's on-disk state
+/// (metadata DB, caches, WebView data) so parallel Runners don't collide.
+const RUNNER_INSTANCE_ENV: &str = "LINGXIA_RUNNER_INSTANCE";
 const REQUIRED_RUNNER_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Windows runner: standalone executable installed by
@@ -278,6 +281,7 @@ fn launch_runner_for_lxapp(
     command.env(RUNNER_LXAPP_PATH_ENV, lxapp_path);
     command.env(RUNNER_DEV_WS_URL_ENV, ws_url);
     command.env(RUNNER_PID_FILE_ENV, &pid_file);
+    command.env(RUNNER_INSTANCE_ENV, runner_instance_id(lxapp_path));
     if let Some(device) = runner_device.map(str::trim).filter(|s| !s.is_empty()) {
         command.env("LINGXIA_RUNNER_DEVICE", device);
     }
@@ -930,6 +934,34 @@ fn runner_pid_file(project_root: &Path) -> PathBuf {
     log_store::dev_dir(project_root).join("runner.pid")
 }
 
+/// Stable, filesystem-safe id for a project, so its Runner reuses the same
+/// isolated data subtree across restarts while staying distinct from other
+/// projects. `<dir name>-<hash of the canonical path>`.
+fn runner_instance_id(lxapp_path: &Path) -> String {
+    use std::hash::{Hash, Hasher};
+    let canonical = lxapp_path
+        .canonicalize()
+        .unwrap_or_else(|_| lxapp_path.to_path_buf());
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    canonical.hash(&mut hasher);
+    let hash = hasher.finish();
+    let name = lxapp_path
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("lxapp");
+    let slug: String = name
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '-'
+            }
+        })
+        .collect();
+    format!("{slug}-{hash:x}")
+}
+
 fn read_runner_pid(pid_file: &Path) -> Option<i32> {
     std::fs::read_to_string(pid_file)
         .ok()?
@@ -939,9 +971,19 @@ fn read_runner_pid(pid_file: &Path) -> Option<i32> {
         .filter(|pid| *pid > 0)
 }
 
-/// Whether `pid` is a live process (`kill(pid, 0)`, no signal delivered).
+/// Whether `pid` is a live process (`kill(pid, 0)`, no signal delivered). The
+/// pid-file scheme is only used by the macOS Runner, so the check is a no-op on
+/// non-Unix targets (this file still compiles for the Windows Runner path).
 fn pid_alive(pid: i32) -> bool {
-    unsafe { libc::kill(pid, 0) == 0 }
+    #[cfg(unix)]
+    {
+        unsafe { libc::kill(pid, 0) == 0 }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = pid;
+        false
+    }
 }
 
 /// Whether *this project's* Runner is alive, by its pid-file. Replaces the
@@ -953,11 +995,10 @@ fn runner_process_running(pid_file: &Path) -> bool {
 /// Terminate the Runner recorded in `pid_file` (if any) and clear the file.
 /// Scoped to one project — never touches Runners started for other projects.
 fn terminate_runner_from_pid_file(pid_file: &Path) {
-    if let Some(pid) = read_runner_pid(pid_file) {
-        if pid_alive(pid) {
-            unsafe {
-                libc::kill(pid, libc::SIGTERM);
-            }
+    if let Some(_pid) = read_runner_pid(pid_file).filter(|pid| pid_alive(*pid)) {
+        #[cfg(unix)]
+        unsafe {
+            libc::kill(_pid, libc::SIGTERM);
         }
     }
     let _ = std::fs::remove_file(pid_file);

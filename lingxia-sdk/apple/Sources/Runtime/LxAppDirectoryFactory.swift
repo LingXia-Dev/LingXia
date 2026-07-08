@@ -48,8 +48,21 @@ struct LxAppDirectoryFactory {
                 throw LxAppDirectoryError.systemDirectoryNotFound(dataDirectory)
             }
 
-            let dataPath = dataURL.appendingPathComponent(bundleId).path
-            let cachePath = cacheURL.appendingPathComponent(bundleId).path
+            // The Runner can host several lxapp projects at once, one process per
+            // project (`lingxia dev` in each dir). They share a bundle id, so
+            // without isolation they'd share the on-disk metadata DB / caches and
+            // the second process's bootstrap would fail. `LINGXIA_RUNNER_INSTANCE`
+            // (set by `lingxia dev`, stable per project) nests each instance in its
+            // own subtree. Absent → unchanged behavior for normal host apps.
+            var dataBase = dataURL.appendingPathComponent(bundleId)
+            var cacheBase = cacheURL.appendingPathComponent(bundleId)
+            if let instance = ProcessInfo.processInfo.environment["LINGXIA_RUNNER_INSTANCE"],
+               !instance.isEmpty {
+                dataBase = dataBase.appendingPathComponent("instances").appendingPathComponent(instance)
+                cacheBase = cacheBase.appendingPathComponent("instances").appendingPathComponent(instance)
+            }
+            let dataPath = dataBase.path
+            let cachePath = cacheBase.path
 
             // Create directories if they don't exist
             try FileManager.default.createDirectory(atPath: dataPath, withIntermediateDirectories: true, attributes: nil)
