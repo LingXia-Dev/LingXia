@@ -1412,10 +1412,7 @@ impl WebViewInputController for WebView {
         {
             return self.inner.click_inner(_selector, _options).await;
         }
-        #[cfg(any(
-            target_os = "ios",
-            all(target_os = "linux", target_env = "ohos")
-        ))]
+        #[cfg(any(target_os = "ios", all(target_os = "linux", target_env = "ohos")))]
         {
             return self.click_via_js(_selector, _options.index).await;
         }
@@ -1481,7 +1478,9 @@ impl WebViewInputController for WebView {
                     )
                     .await;
             }
-            return self.type_via_js(_selector, _options.index, _text, true).await;
+            return self
+                .type_via_js(_selector, _options.index, _text, true)
+                .await;
         }
         #[cfg(all(feature = "webview-input", target_os = "windows"))]
         {
@@ -1503,7 +1502,9 @@ impl WebViewInputController for WebView {
             all(target_os = "linux", target_env = "ohos")
         ))]
         {
-            return self.type_via_js(_selector, _options.index, _text, true).await;
+            return self
+                .type_via_js(_selector, _options.index, _text, true)
+                .await;
         }
         #[allow(unreachable_code)]
         Err(WebViewInputError::Unsupported(
@@ -1563,10 +1564,7 @@ impl WebViewInputController for WebView {
             return self.inner.scroll_inner(_dx, _dy, _options).await;
         }
         // iOS has no native scroll synthesis; Harmony webview is always detached.
-        #[cfg(any(
-            target_os = "ios",
-            all(target_os = "linux", target_env = "ohos")
-        ))]
+        #[cfg(any(target_os = "ios", all(target_os = "linux", target_env = "ohos")))]
         {
             return self.scroll_via_js(None, _dx, _dy).await;
         }
@@ -1596,10 +1594,7 @@ impl WebViewInputController for WebView {
         {
             return self.inner.scroll_to_inner(_selector, _options).await;
         }
-        #[cfg(any(
-            target_os = "ios",
-            all(target_os = "linux", target_env = "ohos")
-        ))]
+        #[cfg(any(target_os = "ios", all(target_os = "linux", target_env = "ohos")))]
         {
             return self.scroll_to_via_js(_selector, None).await;
         }
