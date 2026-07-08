@@ -1,12 +1,11 @@
 //! Host tier (`lx.automation({ host: true })`): cross-lxapp management, browser
-//! tabs, and host-window input. Gated by the `host` privilege. macOS is the
-//! reference platform where every capability is live.
+//! tabs, and app-window screenshot/enumeration. Gated by the `host` privilege.
+//! macOS is the reference platform where every capability is live.
 
 use crate::auto_err;
 use crate::page::png_dimensions;
 use crate::resolve::{json_to_js, resolve_lxapp_by_id};
 use base64::{Engine as _, engine::general_purpose};
-use lingxia_platform::traits::{keyboard, mouse};
 use lxapp::{LxApp, LxAppStartupOptions, ReleaseType};
 use rong::{
     Class, FromJSObj, HostError, IntoJSObj, JSContext, JSObject, JSResult, JSValue,
@@ -194,6 +193,44 @@ impl JSLxAppManager {
         let app = resolve_lxapp_by_id(app_ref(&options.app))?;
         Ok(Class::lookup::<crate::JSAutomation>(&ctx)?
             .instance(crate::JSAutomation::new(&app, false)))
+    }
+
+    /// Enumerate the host app's windows (`lxdev lxapp windows`).
+    #[js_method]
+    async fn windows(&self, ctx: JSContext) -> JSResult<JSValue> {
+        use lingxia_platform::traits::screenshot::AppScreenshot;
+        let platform =
+            lxapp::get_platform().ok_or_else(|| auto_err("platform is not initialized"))?;
+        let windows = platform
+            .list_app_windows()
+            .await
+            .map_err(|err| auto_err(err.to_string()))?;
+        to_js(&ctx, &windows)
+    }
+
+    /// PNG screenshot of a host app window (`lxdev lxapp screenshot`);
+    /// defaults to the session's focused/main window.
+    #[js_method]
+    async fn screenshot(
+        &self,
+        _ctx: JSContext,
+        options: Optional<WindowOpt>,
+    ) -> JSResult<JSAppScreenshot> {
+        let options = options.0.unwrap_or_default();
+        use lingxia_platform::traits::screenshot::AppScreenshot;
+        let platform =
+            lxapp::get_platform().ok_or_else(|| auto_err("platform is not initialized"))?;
+        let bytes = platform
+            .take_app_screenshot(options.window.as_deref())
+            .await
+            .map_err(|err| auto_err(err.to_string()))?;
+        let (width, height) = png_dimensions(&bytes).unwrap_or((0, 0));
+        Ok(JSAppScreenshot {
+            format: "png".to_string(),
+            base64: general_purpose::STANDARD.encode(&bytes),
+            width,
+            height,
+        })
     }
 }
 
@@ -636,17 +673,7 @@ impl JSBrowserCookies {
             .map_err(|err| auto_err(err.to_string()))
     }
 }
-
-// ===================== AppDriver (host window / input) =====================
-
-#[js_export]
-pub(crate) struct JSAppDriver {}
-
-impl JSAppDriver {
-    pub(crate) fn new() -> Self {
-        Self {}
-    }
-}
+// ===================== shared window option / screenshot payload =====================
 
 #[derive(FromJSObj, Default)]
 struct WindowOpt {
@@ -659,311 +686,4 @@ struct JSAppScreenshot {
     base64: String,
     width: u32,
     height: u32,
-}
-
-async fn app_mouse(
-    ctx: &JSContext,
-    window: Option<String>,
-    action: mouse::AppMouseAction,
-) -> JSResult<JSValue> {
-    use lingxia_platform::traits::mouse::AppMouse;
-    let platform = lxapp::get_platform().ok_or_else(|| auto_err("platform is not initialized"))?;
-    let result = platform
-        .perform_app_mouse(mouse::AppMouseRequest {
-            window_id: window,
-            action,
-        })
-        .await
-        .map_err(|err| auto_err(err.to_string()))?;
-    to_js(ctx, &result)
-}
-
-async fn app_keyboard(
-    ctx: &JSContext,
-    window: Option<String>,
-    action: keyboard::AppKeyboardAction,
-) -> JSResult<JSValue> {
-    use lingxia_platform::traits::keyboard::AppKeyboard;
-    let platform = lxapp::get_platform().ok_or_else(|| auto_err("platform is not initialized"))?;
-    let result = platform
-        .perform_app_keyboard(keyboard::AppKeyboardRequest {
-            window_id: window,
-            action,
-        })
-        .await
-        .map_err(|err| auto_err(err.to_string()))?;
-    to_js(ctx, &result)
-}
-
-fn mouse_button(raw: &Option<String>) -> JSResult<mouse::AppMouseButton> {
-    match raw.as_deref().map(str::trim) {
-        None | Some("") | Some("left") => Ok(mouse::AppMouseButton::Left),
-        Some("right") => Ok(mouse::AppMouseButton::Right),
-        Some("middle") => Ok(mouse::AppMouseButton::Middle),
-        Some(other) => Err(auto_err(format!(
-            "unknown mouse button '{other}' (expected left | right | middle)"
-        ))),
-    }
-}
-
-fn keyboard_modifiers(raw: &Option<Vec<String>>) -> JSResult<Vec<keyboard::AppKeyboardModifier>> {
-    raw.iter()
-        .flatten()
-        .map(|value| match value.trim() {
-            "command" | "cmd" => Ok(keyboard::AppKeyboardModifier::Command),
-            "shift" => Ok(keyboard::AppKeyboardModifier::Shift),
-            "option" | "alt" => Ok(keyboard::AppKeyboardModifier::Option),
-            "control" | "ctrl" => Ok(keyboard::AppKeyboardModifier::Control),
-            other => Err(auto_err(format!(
-                "unknown modifier '{other}' (expected command | shift | option | control)"
-            ))),
-        })
-        .collect()
-}
-
-#[js_class(rename = "AppDriver")]
-impl JSAppDriver {
-    #[js_method(constructor)]
-    fn _ctor() -> JSResult<()> {
-        Err(illegal_ctor())
-    }
-
-    #[js_method]
-    async fn screenshot(
-        &self,
-        _ctx: JSContext,
-        options: Optional<WindowOpt>,
-    ) -> JSResult<JSAppScreenshot> {
-        let options = options.0.unwrap_or_default();
-        use lingxia_platform::traits::screenshot::AppScreenshot;
-        let platform =
-            lxapp::get_platform().ok_or_else(|| auto_err("platform is not initialized"))?;
-        let bytes = platform
-            .take_app_screenshot(options.window.as_deref())
-            .await
-            .map_err(|err| auto_err(err.to_string()))?;
-        let (width, height) = png_dimensions(&bytes).unwrap_or((0, 0));
-        Ok(JSAppScreenshot {
-            format: "png".to_string(),
-            base64: general_purpose::STANDARD.encode(&bytes),
-            width,
-            height,
-        })
-    }
-
-    #[js_method]
-    async fn windows(&self, ctx: JSContext) -> JSResult<JSValue> {
-        use lingxia_platform::traits::screenshot::AppScreenshot;
-        let platform =
-            lxapp::get_platform().ok_or_else(|| auto_err("platform is not initialized"))?;
-        let windows = platform
-            .list_app_windows()
-            .await
-            .map_err(|err| auto_err(err.to_string()))?;
-        to_js(&ctx, &windows)
-    }
-
-    #[js_method(getter, enumerable)]
-    fn mouse(&self, ctx: JSContext) -> JSResult<JSObject> {
-        Ok(Class::lookup::<JSAppMouse>(&ctx)?.instance(JSAppMouse::new()))
-    }
-
-    #[js_method(getter, enumerable)]
-    fn key(&self, ctx: JSContext) -> JSResult<JSObject> {
-        Ok(Class::lookup::<JSAppKey>(&ctx)?.instance(JSAppKey::new()))
-    }
-}
-
-// ---- app.mouse.* ----
-
-#[js_export]
-pub(crate) struct JSAppMouse {}
-
-impl JSAppMouse {
-    pub(crate) fn new() -> Self {
-        Self {}
-    }
-}
-
-#[derive(FromJSObj)]
-struct MousePoint {
-    x: f64,
-    y: f64,
-    button: Option<String>,
-    window: Option<String>,
-}
-
-#[derive(FromJSObj)]
-struct MouseDrag {
-    #[rename = "fromX"]
-    from_x: f64,
-    #[rename = "fromY"]
-    from_y: f64,
-    #[rename = "toX"]
-    to_x: f64,
-    #[rename = "toY"]
-    to_y: f64,
-    button: Option<String>,
-    window: Option<String>,
-}
-
-#[derive(FromJSObj)]
-struct MouseScroll {
-    x: f64,
-    y: f64,
-    dx: Option<f64>,
-    dy: Option<f64>,
-    window: Option<String>,
-}
-
-#[js_class(rename = "AppMouse")]
-impl JSAppMouse {
-    #[js_method(constructor)]
-    fn _ctor() -> JSResult<()> {
-        Err(illegal_ctor())
-    }
-
-    #[js_method(rename = "move")]
-    async fn mouse_move(&self, ctx: JSContext, o: MousePoint) -> JSResult<JSValue> {
-        app_mouse(
-            &ctx,
-            o.window,
-            mouse::AppMouseAction::Move { x: o.x, y: o.y },
-        )
-        .await
-    }
-
-    #[js_method]
-    async fn down(&self, ctx: JSContext, o: MousePoint) -> JSResult<JSValue> {
-        let button = mouse_button(&o.button)?;
-        app_mouse(
-            &ctx,
-            o.window,
-            mouse::AppMouseAction::Down {
-                x: o.x,
-                y: o.y,
-                button,
-            },
-        )
-        .await
-    }
-
-    #[js_method]
-    async fn up(&self, ctx: JSContext, o: MousePoint) -> JSResult<JSValue> {
-        let button = mouse_button(&o.button)?;
-        app_mouse(
-            &ctx,
-            o.window,
-            mouse::AppMouseAction::Up {
-                x: o.x,
-                y: o.y,
-                button,
-            },
-        )
-        .await
-    }
-
-    #[js_method]
-    async fn click(&self, ctx: JSContext, o: MousePoint) -> JSResult<JSValue> {
-        let button = mouse_button(&o.button)?;
-        app_mouse(
-            &ctx,
-            o.window,
-            mouse::AppMouseAction::Click {
-                x: o.x,
-                y: o.y,
-                button,
-                click_count: 1,
-            },
-        )
-        .await
-    }
-
-    #[js_method]
-    async fn drag(&self, ctx: JSContext, o: MouseDrag) -> JSResult<JSValue> {
-        let button = mouse_button(&o.button)?;
-        app_mouse(
-            &ctx,
-            o.window,
-            mouse::AppMouseAction::Drag {
-                from_x: o.from_x,
-                from_y: o.from_y,
-                to_x: o.to_x,
-                to_y: o.to_y,
-                button,
-            },
-        )
-        .await
-    }
-
-    #[js_method]
-    async fn scroll(&self, ctx: JSContext, o: MouseScroll) -> JSResult<JSValue> {
-        app_mouse(
-            &ctx,
-            o.window,
-            mouse::AppMouseAction::Scroll {
-                x: o.x,
-                y: o.y,
-                dx: o.dx.unwrap_or(0.0),
-                dy: o.dy.unwrap_or(0.0),
-            },
-        )
-        .await
-    }
-}
-
-// ---- app.key.* ----
-
-#[js_export]
-pub(crate) struct JSAppKey {}
-
-impl JSAppKey {
-    pub(crate) fn new() -> Self {
-        Self {}
-    }
-}
-
-#[derive(FromJSObj)]
-struct KeyType {
-    text: String,
-    window: Option<String>,
-}
-
-#[derive(FromJSObj)]
-struct KeyPress {
-    key: String,
-    modifiers: Option<Vec<String>>,
-    window: Option<String>,
-}
-
-#[js_class(rename = "AppKey")]
-impl JSAppKey {
-    #[js_method(constructor)]
-    fn _ctor() -> JSResult<()> {
-        Err(illegal_ctor())
-    }
-
-    #[js_method(rename = "type")]
-    async fn key_type(&self, ctx: JSContext, o: KeyType) -> JSResult<JSValue> {
-        app_keyboard(
-            &ctx,
-            o.window,
-            keyboard::AppKeyboardAction::Type { text: o.text },
-        )
-        .await
-    }
-
-    #[js_method]
-    async fn press(&self, ctx: JSContext, o: KeyPress) -> JSResult<JSValue> {
-        let modifiers = keyboard_modifiers(&o.modifiers)?;
-        app_keyboard(
-            &ctx,
-            o.window,
-            keyboard::AppKeyboardAction::Press {
-                key: o.key,
-                modifiers,
-            },
-        )
-        .await
-    }
 }

@@ -6,8 +6,10 @@
 //! by default. This is the product-side, privilege-scoped mapping of the
 //! devtool (lxdev) automation surface.
 
+mod desktop;
 mod host;
 mod info;
+mod input;
 mod nav;
 mod page;
 mod resolve;
@@ -121,10 +123,19 @@ impl JSAutomation {
         Ok(Class::lookup::<host::JSBrowserDriver>(&ctx)?.instance(host::JSBrowserDriver::new()))
     }
 
+    /// Session-less local-OS desktop automation (`lxdev desktop`). Beyond the
+    /// app sandbox — it drives the whole OS — so on top of the host tier it is
+    /// restricted to dev/test hosts (a `lingxia dev` session or the Runner).
     #[js_method(getter, enumerable)]
-    fn app(&self, ctx: JSContext) -> JSResult<JSObject> {
+    fn desktop(&self, ctx: JSContext) -> JSResult<JSObject> {
         self.require_host()?;
-        Ok(Class::lookup::<host::JSAppDriver>(&ctx)?.instance(host::JSAppDriver::new()))
+        if !(lxapp::is_dev_session() || lxapp::automation_auto_grant()) {
+            return Err(auto_err(
+                "desktop tier is available only in dev/test hosts (lingxia dev or the Runner)",
+            ));
+        }
+        Ok(Class::lookup::<desktop::JSDesktopDriver>(&ctx)?
+            .instance(desktop::JSDesktopDriver::new()))
     }
 }
 
@@ -150,14 +161,22 @@ impl lx::LxLogicExtension for AutomationExtension {
     fn init(&self, ctx: &JSContext) -> JSResult<()> {
         ctx.register_hidden_class::<JSAutomation>()?;
         ctx.register_hidden_class::<page::JSPageDriver>()?;
+        ctx.register_hidden_class::<input::JSPagePointer>()?;
+        ctx.register_hidden_class::<input::JSPageKey>()?;
         ctx.register_hidden_class::<nav::JSNavDriver>()?;
         ctx.register_hidden_class::<info::JSSelfInfo>()?;
         ctx.register_hidden_class::<host::JSLxAppManager>()?;
         ctx.register_hidden_class::<host::JSBrowserDriver>()?;
         ctx.register_hidden_class::<host::JSBrowserCookies>()?;
-        ctx.register_hidden_class::<host::JSAppDriver>()?;
-        ctx.register_hidden_class::<host::JSAppMouse>()?;
-        ctx.register_hidden_class::<host::JSAppKey>()?;
+        ctx.register_hidden_class::<desktop::JSDesktopDriver>()?;
+        ctx.register_hidden_class::<desktop::JSDesktopWindow>()?;
+        ctx.register_hidden_class::<desktop::JSDesktopPointer>()?;
+        ctx.register_hidden_class::<desktop::JSDesktopKey>()?;
+        ctx.register_hidden_class::<desktop::JSDesktopClipboard>()?;
+        ctx.register_hidden_class::<desktop::JSDesktopAx>()?;
+        ctx.register_hidden_class::<desktop::JSDesktopWait>()?;
+        ctx.register_hidden_class::<desktop::JSDesktopApp>()?;
+        ctx.register_hidden_class::<desktop::JSDesktopProcess>()?;
         lx::register_js_api(ctx, "automation", JSFunc::new(ctx, make_automation)?)?;
         Ok(())
     }

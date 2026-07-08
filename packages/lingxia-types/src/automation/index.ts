@@ -27,7 +27,7 @@ export interface Automation {
   readonly lxapp: LxAppSelfInfo;
 }
 
-/** Host tier: adds cross-lxapp, browser, and host-window control. */
+/** Host tier: adds cross-lxapp, browser, and local-OS desktop control. */
 export interface HostAutomation {
   readonly page: PageDriver;
   readonly nav: NavDriver;
@@ -35,8 +35,12 @@ export interface HostAutomation {
   readonly lxapp: LxAppManager;
   /** The host app's browser tabs. */
   readonly browser: BrowserDriver;
-  /** The host app as a whole: window screenshot, mouse, and keyboard input. */
-  readonly app: AppDriver;
+  /**
+   * Session-less local-OS desktop automation (`lxdev desktop`). Beyond the
+   * app sandbox, so restricted to dev/test hosts (`lingxia dev` or the
+   * Runner) on top of the `host` privilege. Windows/macOS only.
+   */
+  readonly desktop: DesktopDriver;
 }
 
 // ============================ page tier ============================
@@ -187,6 +191,10 @@ export interface PageDriver {
   /** Poll until the selector reaches `state`, else reject on timeout. */
   waitFor(options: PageWaitForOptions): Promise<void>;
   screenshot(options?: PageTarget): Promise<Screenshot>;
+  /** App-window pointer input at page coordinates (`lxdev lxapp page pointer`). */
+  readonly pointer: PagePointer;
+  /** App-window keyboard input (`lxdev lxapp page key`). */
+  readonly key: PageKey;
 }
 
 // ============================ nav tier ============================
@@ -331,6 +339,11 @@ export interface LxAppManager {
   eval(options: LxAppEvalOptions): Promise<unknown>;
   /** A base-tier handle (`page`/`nav`/`lxapp`) scoped to another app. */
   scope(options?: LxAppRef): Automation;
+  /** Enumerate the host app's top-level windows (`lxdev lxapp windows`). */
+  windows(): Promise<AppWindowInfo[]>;
+  /** PNG of a host app window (`lxdev lxapp screenshot`); defaults to the
+   *  session's focused/main window. */
+  screenshot(options?: WindowRef): Promise<Screenshot>;
 }
 
 // ======================= browser (host) =======================
@@ -489,11 +502,11 @@ export interface BrowserDriver {
   readonly cookies: BrowserCookies;
 }
 
-// ======================= app / input (host) =======================
+// ======================= page input (app window) =======================
 
-/** Targets a host window; defaults to the focused/main window. */
+/** Targets a host window; defaults to the session's focused/main window. */
 export interface WindowRef {
-  /** Window id from `app.windows()`. */
+  /** Window id from `lxapp.windows()`. */
   window?: string;
 }
 
@@ -516,63 +529,468 @@ export interface InputResult {
 
 export type MouseButton = 'left' | 'right' | 'middle';
 
-export interface MousePoint extends WindowRef {
-  /** X in logical window content points. */
-  x: number;
-  /** Y in logical window content points. */
-  y: number;
+/** A coordinate as `[x, y]` (the `--at X,Y` flag form). */
+export type Point = [number, number];
+
+export interface PointerAtOptions extends WindowRef {
+  /** Target coordinate in page (CSS) pixels. */
+  at: Point;
+}
+
+export interface PointerButtonOptions extends PointerAtOptions {
   button?: MouseButton;
 }
 
-export interface MouseDrag extends WindowRef {
-  fromX: number;
-  fromY: number;
-  toX: number;
-  toY: number;
+export interface PointerClickOptions extends PointerButtonOptions {
+  /** Number of clicks to report in the event (default 1). */
+  count?: number;
+}
+
+export interface PointerDragOptions extends WindowRef {
+  from: Point;
+  to: Point;
   button?: MouseButton;
 }
 
-export interface MouseScrollOptions extends WindowRef {
-  x: number;
-  y: number;
+export interface PointerScrollOptions extends PointerAtOptions {
+  /** Horizontal scroll delta in page pixels. */
   dx?: number;
+  /** Vertical scroll delta in page pixels. */
   dy?: number;
 }
 
-/** Raw mouse input to a host window (logical content coordinates). */
-export interface AppMouse {
-  move(options: MousePoint): Promise<InputResult>;
-  down(options: MousePoint): Promise<InputResult>;
-  up(options: MousePoint): Promise<InputResult>;
-  click(options: MousePoint): Promise<InputResult>;
-  drag(options: MouseDrag): Promise<InputResult>;
-  scroll(options: MouseScrollOptions): Promise<InputResult>;
+/** App-window pointer input at page coordinates (`lxdev lxapp page pointer`). */
+export interface PagePointer {
+  move(options: PointerAtOptions): Promise<InputResult>;
+  down(options: PointerButtonOptions): Promise<InputResult>;
+  up(options: PointerButtonOptions): Promise<InputResult>;
+  click(options: PointerClickOptions): Promise<InputResult>;
+  drag(options: PointerDragOptions): Promise<InputResult>;
+  scroll(options: PointerScrollOptions): Promise<InputResult>;
 }
 
-export type KeyModifier = 'command' | 'shift' | 'option' | 'control';
+/** Canonical cross-platform modifier vocabulary; `meta` maps to the platform
+ *  meta key (Command on macOS, Windows key on Windows). */
+export type KeyModifier = 'ctrl' | 'shift' | 'alt' | 'meta';
 
 export interface KeyTypeOptions extends WindowRef {
   text: string;
 }
 
 export interface KeyPressOptions extends WindowRef {
-  /** Key name, e.g. `return`, `tab`, `escape`, arrows. */
+  /** Key name: `return`, `tab`, `escape`, `delete`, `space`, arrows. */
   key: string;
   modifiers?: KeyModifier[];
 }
 
-/** Keyboard input to a host window's focused control. */
-export interface AppKey {
+/** App-window keyboard input to the focused control (`lxdev lxapp page key`). */
+export interface PageKey {
   type(options: KeyTypeOptions): Promise<InputResult>;
   press(options: KeyPressOptions): Promise<InputResult>;
 }
 
-/** The host app as a whole: window screenshot, enumeration, and input. */
-export interface AppDriver {
-  /** PNG of the full host window (native controls + composited WebViews). */
-  screenshot(options?: WindowRef): Promise<Screenshot>;
-  /** Enumerate the host app's top-level windows. */
-  windows(): Promise<AppWindowInfo[]>;
-  readonly mouse: AppMouse;
-  readonly key: AppKey;
+// ======================= desktop (host, dev/test only) =======================
+
+/** A rectangle in backend-native global desktop coordinates. */
+export interface DesktopRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/** A monitor/display (raw contract payload, snake_case keys). */
+export interface DesktopDisplay {
+  id: string;
+  primary: boolean;
+  bounds: DesktopRect;
+  work_area: DesktopRect;
+  scale: number;
+  dpi: number;
+}
+
+/** A top-level OS window (raw contract payload, snake_case keys). */
+export interface DesktopWindowInfo {
+  id: string;
+  title: string;
+  process: string;
+  pid: number;
+  bounds: DesktopRect;
+  display_id: string;
+  scale: number;
+  dpi: number;
+  visible: boolean;
+  focused: boolean;
+  minimized: boolean;
+  maximized: boolean;
+  always_on_top: boolean;
+  /** Front-to-back z index (0 = frontmost). */
+  z: number;
+}
+
+/** Generic acknowledgement for input/mutation commands. */
+export interface DesktopAck {
+  ok: boolean;
+  action: string;
+}
+
+export interface DesktopPermissions {
+  accessibility: boolean;
+  screen_recording: boolean;
+  input: boolean;
+}
+
+export interface DesktopCapabilities {
+  displays: boolean;
+  windows: boolean;
+  screenshot: boolean;
+  window_screenshot_occlusion_independent: boolean;
+  pixel: boolean;
+  pointer: boolean;
+  key: boolean;
+  window_management: boolean;
+  clipboard: boolean;
+  ax_tree: boolean;
+  ocr: boolean;
+  image_match: boolean;
+}
+
+export interface DesktopDoctor {
+  backend: string;
+  os: string;
+  os_version: string;
+  capabilities: DesktopCapabilities;
+  permissions: DesktopPermissions;
+}
+
+export interface DesktopPixel {
+  x: number;
+  y: number;
+  hex: string;
+  r: number;
+  g: number;
+  b: number;
+}
+
+export interface DesktopCapture extends Screenshot {
+  /** True when the capture ignored occlusion (window PrintWindow path). */
+  occlusionIndependent: boolean;
+  backend: string;
+}
+
+export interface DesktopClipboardContent {
+  available_formats: string[];
+  text: string | null;
+}
+
+/** A node in the native accessibility tree. */
+export interface DesktopAxNode {
+  id: string;
+  role: string;
+  name: string;
+  value?: string;
+  enabled: boolean;
+  focused: boolean;
+  rect: DesktopRect;
+  children?: DesktopAxNode[];
+}
+
+export interface DesktopProcessInfo {
+  pid: number;
+  name: string;
+}
+
+export interface DesktopLaunchResult {
+  /** Durable target pid — prefer this for follow-up quit/kill. */
+  pid: number;
+  launcher_pid: number;
+  window?: DesktopWindowInfo;
+}
+
+/**
+ * Selects a desktop window: exactly one of `window` (id from `windows()`) or
+ * `match` (query `text | title: | class: | process: | pid:`, must resolve to
+ * exactly one window).
+ */
+export interface DesktopWindowSel {
+  window?: string;
+  match?: string;
+}
+
+export interface DesktopWindowsOptions {
+  /** Match query (`text | title: | class: | process: | pid:`). */
+  match?: string;
+}
+
+/** Capture target — at most one of `display` / `window` / `region`;
+ *  omit all to capture the whole virtual screen. */
+export interface DesktopScreenshotOptions {
+  /** Monitor by 1-based index (as listed by `displays()`). */
+  display?: number;
+  /** Window by id (occlusion-independent capture). */
+  window?: string;
+  /** Region as `[x, y, w, h]` in desktop coordinates. */
+  region?: [number, number, number, number];
+}
+
+export interface DesktopAtOptions {
+  /** Coordinate in backend-native desktop pixels. */
+  at: Point;
+}
+
+/** Optional background-input target: a `window` id (resolved to its owning
+ *  process) or an explicit `pid`. Omit both for foreground input. */
+export interface DesktopInputTarget {
+  window?: string;
+  pid?: number;
+}
+
+export interface DesktopPointerAtOptions extends DesktopInputTarget {
+  at: Point;
+}
+
+export interface DesktopPointerButtonOptions extends DesktopPointerAtOptions {
+  button?: MouseButton;
+}
+
+export interface DesktopPointerClickOptions extends DesktopPointerButtonOptions {
+  count?: number;
+}
+
+export interface DesktopPointerDragOptions extends DesktopInputTarget {
+  from: Point;
+  to: Point;
+  button?: MouseButton;
+}
+
+export interface DesktopPointerScrollOptions extends DesktopPointerAtOptions {
+  /** Horizontal scroll delta in notches. */
+  dx?: number;
+  /** Vertical scroll delta in notches. */
+  dy?: number;
+}
+
+/** Synthetic physical mouse input at desktop coordinates. */
+export interface DesktopPointer {
+  move(options: DesktopPointerAtOptions): Promise<DesktopAck>;
+  down(options: DesktopPointerButtonOptions): Promise<DesktopAck>;
+  up(options: DesktopPointerButtonOptions): Promise<DesktopAck>;
+  click(options: DesktopPointerClickOptions): Promise<DesktopAck>;
+  drag(options: DesktopPointerDragOptions): Promise<DesktopAck>;
+  scroll(options: DesktopPointerScrollOptions): Promise<DesktopAck>;
+}
+
+export interface DesktopKeyTypeOptions extends DesktopInputTarget {
+  text: string;
+}
+
+export interface DesktopKeyPressOptions extends DesktopInputTarget {
+  key: string;
+  modifiers?: KeyModifier[];
+}
+
+export interface DesktopKeyNameOptions extends DesktopInputTarget {
+  key: string;
+}
+
+/** Synthetic physical keyboard input. */
+export interface DesktopKey {
+  /** Type literal text into the focused control. */
+  type(options: DesktopKeyTypeOptions): Promise<DesktopAck>;
+  press(options: DesktopKeyPressOptions): Promise<DesktopAck>;
+  down(options: DesktopKeyNameOptions): Promise<DesktopAck>;
+  up(options: DesktopKeyNameOptions): Promise<DesktopAck>;
+}
+
+export interface DesktopWindowMoveOptions extends DesktopWindowSel {
+  /** Target position as `[x, y]` in desktop coordinates. */
+  to: Point;
+}
+
+export interface DesktopWindowResizeOptions extends DesktopWindowSel {
+  width: number;
+  height: number;
+}
+
+export interface DesktopWindowMoveDisplayOptions extends DesktopWindowSel {
+  /** Display id from `displays()`. */
+  display: string;
+}
+
+export interface DesktopWindowAlwaysOnTopOptions extends DesktopWindowSel {
+  on: boolean;
+}
+
+/** Window management; every verb resolves to the resulting window state. */
+export interface DesktopWindowDriver {
+  status(options: DesktopWindowSel): Promise<DesktopWindowInfo>;
+  focus(options: DesktopWindowSel): Promise<DesktopWindowInfo>;
+  activate(options: DesktopWindowSel): Promise<DesktopWindowInfo>;
+  raise(options: DesktopWindowSel): Promise<DesktopWindowInfo>;
+  minimize(options: DesktopWindowSel): Promise<DesktopWindowInfo>;
+  maximize(options: DesktopWindowSel): Promise<DesktopWindowInfo>;
+  restore(options: DesktopWindowSel): Promise<DesktopWindowInfo>;
+  /** Close a window. Destructive. */
+  close(options: DesktopWindowSel): Promise<DesktopWindowInfo>;
+  moveTo(options: DesktopWindowMoveOptions): Promise<DesktopWindowInfo>;
+  moveToDisplay(options: DesktopWindowMoveDisplayOptions): Promise<DesktopWindowInfo>;
+  resize(options: DesktopWindowResizeOptions): Promise<DesktopWindowInfo>;
+  setAlwaysOnTop(options: DesktopWindowAlwaysOnTopOptions): Promise<DesktopWindowInfo>;
+}
+
+export interface DesktopClipboardSetOptions {
+  text: string;
+}
+
+/** System clipboard access (Unicode text). */
+export interface DesktopClipboard {
+  get(): Promise<DesktopClipboardContent>;
+  set(options: DesktopClipboardSetOptions): Promise<DesktopAck>;
+  clear(): Promise<DesktopAck>;
+  /** Paste into the focused control (Ctrl/Cmd+V). */
+  paste(): Promise<DesktopAck>;
+}
+
+export interface DesktopAxTreeOptions {
+  /** Window id from `windows()`. */
+  window: string;
+  /** Limit tree depth. */
+  depth?: number;
+  /** Cap the number of nodes. */
+  maxNodes?: number;
+}
+
+/** Node match query: `text | name: | role: | value: | id:`. */
+export interface DesktopAxSel {
+  window: string;
+  match: string;
+}
+
+export interface DesktopAxQueryOptions extends DesktopAxSel {
+  /** Return every match instead of exactly one. */
+  all?: boolean;
+  /** Target the nth match. */
+  index?: number;
+}
+
+export interface DesktopAxSetValueOptions extends DesktopAxSel {
+  value: string;
+}
+
+/** Native accessibility tree inspection and atomic actions — never falls back
+ *  to physical input silently. */
+export interface DesktopAx {
+  tree(options: DesktopAxTreeOptions): Promise<DesktopAxNode>;
+  query(options: DesktopAxQueryOptions): Promise<DesktopAxNode[]>;
+  /** Atomically match exactly one node and invoke it. */
+  invoke(options: DesktopAxSel): Promise<DesktopAck>;
+  focus(options: DesktopAxSel): Promise<DesktopAck>;
+  setValue(options: DesktopAxSetValueOptions): Promise<DesktopAck>;
+  select(options: DesktopAxSel): Promise<DesktopAck>;
+  expand(options: DesktopAxSel): Promise<DesktopAck>;
+  collapse(options: DesktopAxSel): Promise<DesktopAck>;
+  scrollIntoView(options: DesktopAxSel): Promise<DesktopAck>;
+  /** The accessible element at a screen point. */
+  hitTest(options: DesktopAtOptions): Promise<DesktopAxNode>;
+}
+
+export interface DesktopWaitWindowOptions {
+  match: string;
+  /** `visible` (default) | `hidden`. */
+  state?: 'visible' | 'hidden';
+  /** Timeout in ms (default 5000). */
+  timeoutMs?: number;
+}
+
+export interface DesktopWaitAxOptions extends DesktopAxSel {
+  /** `exists` (default) | `gone` | `enabled` | `focused`. */
+  state?: 'exists' | 'gone' | 'enabled' | 'focused';
+  timeoutMs?: number;
+}
+
+export interface DesktopWaitPixelOptions extends DesktopAtOptions {
+  /** Expected color as `#rrggbb`. */
+  color: string;
+  /** Per-channel tolerance (default 0). */
+  tolerance?: number;
+  timeoutMs?: number;
+}
+
+/** Wait for a condition; rejects with `E_DESKTOP_TIMEOUT` when it never holds. */
+export interface DesktopWait {
+  window(options: DesktopWaitWindowOptions): Promise<DesktopWindowInfo>;
+  ax(options: DesktopWaitAxOptions): Promise<DesktopAck>;
+  pixel(options: DesktopWaitPixelOptions): Promise<DesktopPixel>;
+}
+
+export interface DesktopAppLaunchOptions {
+  /** Path or PATH-resolved command. */
+  app: string;
+  args?: string[];
+  /** Wait for a window matching this query before resolving. */
+  waitWindow?: string;
+  timeoutMs?: number;
+}
+
+/** Quit target — exactly one of `match` / `pid` / `window`. */
+export interface DesktopAppQuitOptions {
+  match?: string;
+  pid?: number;
+  window?: string;
+  /** Terminate instead of a graceful close. */
+  force?: boolean;
+}
+
+/** App lifecycle. */
+export interface DesktopApp {
+  launch(options: DesktopAppLaunchOptions): Promise<DesktopLaunchResult>;
+  /** Quit an app. Destructive. */
+  quit(options: DesktopAppQuitOptions): Promise<DesktopAck>;
+}
+
+export interface DesktopProcessListOptions {
+  /** Case-insensitive name substring filter. */
+  filter?: string;
+}
+
+export interface DesktopProcessKillOptions {
+  pid: number;
+  force?: boolean;
+}
+
+/** Process inspection/control. */
+export interface DesktopProcess {
+  list(options?: DesktopProcessListOptions): Promise<DesktopProcessInfo[]>;
+  /** Terminate a process. Destructive. */
+  kill(options: DesktopProcessKillOptions): Promise<DesktopAck>;
+}
+
+/**
+ * Session-less local-OS desktop automation — the in-process mapping of
+ * `lxdev desktop` over the same backend, DTOs, and error taxonomy
+ * (errors carry stable `E_DESKTOP_<CODE>` codes). Windows and macOS;
+ * other platforms reject with `E_DESKTOP_UNSUPPORTED`.
+ *
+ * Coordinates are backend-native global desktop coordinates: physical pixels
+ * on Windows, display points (top-left origin) on macOS.
+ */
+export interface DesktopDriver {
+  /** Backend, capability, and permission report. */
+  doctor(): Promise<DesktopDoctor>;
+  /** OS-permission grants; `{ request: true }` triggers the OS prompts. */
+  permissions(options?: { request?: boolean }): Promise<DesktopPermissions>;
+  displays(): Promise<DesktopDisplay[]>;
+  windows(options?: DesktopWindowsOptions): Promise<DesktopWindowInfo[]>;
+  /** Capture the screen (default), a display, a window, or a region. */
+  screenshot(options?: DesktopScreenshotOptions): Promise<DesktopCapture>;
+  /** Read one pixel's color. */
+  pixel(options: DesktopAtOptions): Promise<DesktopPixel>;
+  readonly window: DesktopWindowDriver;
+  readonly pointer: DesktopPointer;
+  readonly key: DesktopKey;
+  readonly clipboard: DesktopClipboard;
+  readonly ax: DesktopAx;
+  readonly wait: DesktopWait;
+  readonly app: DesktopApp;
+  readonly process: DesktopProcess;
 }

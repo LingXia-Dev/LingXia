@@ -7,8 +7,8 @@ use crate::resolve::{json_to_js, upgrade};
 use base64::{Engine as _, engine::general_purpose};
 use lxapp::{LxApp, automation as auto};
 use rong::{
-    FromJSObj, HostError, IntoJSObj, JSContext, JSResult, JSValue, function::Optional, js_class,
-    js_export, js_method,
+    Class, FromJSObj, HostError, IntoJSObj, JSContext, JSObject, JSResult, JSValue,
+    function::Optional, js_class, js_export, js_method,
 };
 use std::sync::{Arc, Weak};
 use std::time::{Duration, Instant};
@@ -217,6 +217,22 @@ impl JSPageDriver {
         )
         .await
         .map_err(auto_err)
+    }
+
+    /// App-window pointer input at page coordinates (`lxdev lxapp page pointer`).
+    #[js_method(getter, enumerable)]
+    fn pointer(&self, ctx: JSContext) -> JSResult<JSObject> {
+        Ok(Class::lookup::<crate::input::JSPagePointer>(&ctx)?
+            .instance(crate::input::JSPagePointer::new()))
+    }
+
+    /// App-window keyboard input (`lxdev lxapp page key`).
+    #[js_method(getter, enumerable)]
+    fn key(&self, ctx: JSContext) -> JSResult<JSObject> {
+        Ok(
+            Class::lookup::<crate::input::JSPageKey>(&ctx)?
+                .instance(crate::input::JSPageKey::new()),
+        )
     }
 
     #[js_method(rename = "waitFor")]

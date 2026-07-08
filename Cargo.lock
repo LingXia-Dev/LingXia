@@ -3091,6 +3091,7 @@ dependencies = [
  "base64",
  "futures",
  "lingxia-browser",
+ "lingxia-computer-use",
  "lingxia-lxapp",
  "lingxia-platform",
  "lingxia-webview",
