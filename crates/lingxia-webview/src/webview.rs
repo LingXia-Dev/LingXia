@@ -1114,9 +1114,13 @@ impl WebView {
 
     /// Scroll by `(dx, dy)` in the DOM. Walks up from the element at the given
     /// viewport point (default: center) to the nearest scrollable ancestor, so
-    /// it scrolls internal scroll containers, not just the document. Uses direct
-    /// `scrollTop`/`scrollLeft` assignment, not `scrollBy`: on iOS WKWebView
-    /// `scrollBy` animates sub-scrollers and overshoots to 2x the delta.
+    /// it scrolls internal scroll containers, not just the document. When a
+    /// webview reports `innerWidth/Height` as 0, the center point is unusable,
+    /// so it falls back to the largest scrollable element, then the document
+    /// scroller. Uses direct `scrollTop`/`scrollLeft` assignment, not
+    /// `scrollBy`: on iOS WKWebView `scrollBy` animates sub-scrollers and
+    /// overshoots to 2x the delta. NB: the built script must contain no `//`
+    /// line comments — the `\`-continued format string collapses to one line.
     #[cfg(any(
         target_os = "ios",
         all(feature = "webview-input", target_os = "macos"),
@@ -1153,9 +1157,6 @@ impl WebView {
                 }} \
                 return best; \
               }}; \
-              // Prefer the scrollable at the given/center point; but some webviews \
-              // (android) report innerWidth/Height as 0, so fall back to the largest \
-              // scrollable element, then the document scroller. \
               const vw = window.innerWidth || document.documentElement.clientWidth || 0; \
               const vh = window.innerHeight || document.documentElement.clientHeight || 0; \
               let target = null; \
