@@ -87,6 +87,8 @@ export struct LxAppContainer {
   @State private keepAliveTags: string[] = [] // Keep WebViews hidden (not removed) to avoid destroy
   private pageShowTriggered: Set<string> = new Set() // Track which pages have triggered onPageShow
   @State private statusBarHeight: number = SYSTEM_STATUS_BAR_HEIGHT // Default status bar height
+  // Home-indicator gesture inset (vp); lifts TabBar items out of the zone
+  @State private bottomIndicatorInset: number = 0
 
   // Animation state for WebView transitions
   @State private animationInProgress: boolean = false
@@ -239,6 +241,10 @@ export struct LxAppContainer {
 
       const safeArea = await mainWindow.getWindowAvoidArea(window.AvoidAreaType.TYPE_SYSTEM);
       this.statusBarHeight = safeArea.topRect.height || SYSTEM_STATUS_BAR_HEIGHT; // Ensure fallback value
+
+      const indicator = await mainWindow.getWindowAvoidArea(
+        window.AvoidAreaType.TYPE_NAVIGATION_INDICATOR);
+      this.bottomIndicatorInset = Math.max(0, Math.round(px2vp(indicator.bottomRect.height)));
     } catch (error) {
       LxLog.e(TAG, `Failed to get status bar height: ${error}`);
       this.statusBarHeight = SYSTEM_STATUS_BAR_HEIGHT; // Safe fallback value for all devices
@@ -684,6 +690,7 @@ export struct LxAppContainer {
         tabbar: this.tabBarState,
         appId: this.appId,
         refreshKey: this.tabBarRefreshKey,
+        bottomInset: this.isTabBarVertical() ? 0 : this.bottomIndicatorInset,
         onTabSelected: (appId: string, index: number, item: TabBarItem): void => this.handleTabSelected(index)
       })
     }

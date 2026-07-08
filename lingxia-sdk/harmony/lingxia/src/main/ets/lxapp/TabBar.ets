@@ -60,6 +60,10 @@ const TEXT_SHADOW_OFFSET_Y = 1;
 
 // System constants
 const SYSTEM_SAFE_AREA_BOTTOM = 24;  // Safe area bottom extra spacing
+// How far the item content may dip into the home-indicator gesture zone (vp).
+// The zone's tap-eating region starts below its top edge, so a small overlap
+// is safe and keeps the bar visually snug to the screen bottom.
+const TAB_BAR_GESTURE_ZONE_OVERLAP = 6;
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.TabBar';
@@ -73,6 +77,9 @@ export struct TabBar {
   @Prop tabbar: TabBarState;  // Cached static tabbar for performance
   @Prop appId: string = '';
   @Prop refreshKey: number = 0;  // Force refresh when data changes
+  // Bottom system-gesture inset (vp): the home-indicator zone swallows taps,
+  // so the strip grows and the items sit above it.
+  @Prop bottomInset: number = 0;
 
   // Callback functions
   onTabSelected?: (appId: string, index: number, item: TabBarItem) => void;
@@ -82,6 +89,11 @@ export struct TabBar {
   }
 
   build() {
+    // The root hugs the bar strip instead of covering the whole screen: the parent
+    // Stack's alignContent places it, touches inside the strip are consumed (even
+    // when visually transparent), and the area outside has no node to intercept.
+    // A full-screen root with HitTestMode.Transparent would leak item taps to the
+    // WebView behind — Transparent ancestors pass touches through unconditionally.
     Stack() {
       if (this.isVertical()) {
         this.buildVerticalTabBar();
@@ -89,9 +101,8 @@ export struct TabBar {
         this.buildHorizontalTabBar();
       }
     }
-    .width('100%')
-    .height('100%')
-    .hitTestBehavior(HitTestMode.Transparent)
+    .width(this.isVertical() ? this.getTabBarSize() : '100%')
+    .height(this.isVertical() ? '100%' : this.getTabBarSize() + this.extraBottomHeight())
   }
 
   @Builder
@@ -106,20 +117,12 @@ export struct TabBar {
     .alignItems(HorizontalAlign.Center)
     .padding({
       top: TAB_BAR_PADDING_VERTICAL_TOP,
-      bottom: TAB_BAR_PADDING_VERTICAL_BOTTOM,
+      bottom: TAB_BAR_PADDING_VERTICAL_BOTTOM + this.bottomInset,
       left: TAB_BAR_PADDING_VERTICAL_LEFT,
       right: TAB_BAR_PADDING_VERTICAL_RIGHT
     })
       .border(this.getVerticalBorder())
       .linearGradient(this.getVerticalGradient())
-      .hitTestBehavior(HitTestMode.Transparent)
-      .zIndex(1)
-      .position({
-        top: 0,
-        bottom: 0,
-        left: this.tabbar.position === TabBarPosition.Left ? 0 : undefined,
-        right: this.tabbar.position === TabBarPosition.Right ? 0 : undefined
-      })
   }
 
   @Builder
@@ -128,20 +131,13 @@ export struct TabBar {
       this.buildCenteredHorizontalLayout()
     }
     .width('100%')
-    .height(this.getTabBarSize())
+    .height(this.getTabBarSize() + this.extraBottomHeight())
     .backgroundColor(this.getBackgroundColor())
     .justifyContent(FlexAlign.SpaceEvenly)
     .alignItems(VerticalAlign.Center)
     .padding(this.getHorizontalPadding())
       .border(this.getHorizontalBorder())
       .linearGradient(this.getHorizontalGradient())
-      .hitTestBehavior(HitTestMode.Transparent)
-      .zIndex(1)
-      .position({
-        bottom: this.tabbar.position === TabBarPosition.Bottom ? 0 : undefined,
-        left: 0,
-        right: 0
-      })
   }
 
   @Builder
@@ -323,23 +319,35 @@ export struct TabBar {
   /**
    * Get padding for horizontal layout
    */
-  private getHorizontalPadding(): Padding {
+  /**
+   * The inset keeps icons/labels above the home-indicator gesture zone,
+   * which eats taps; the strip still covers the zone so nothing leaks
+   * through to the WebView. The inset REPLACES the regular bottom padding
+   * (rather than adding to it) so the bar grows only by what the gesture
+   * zone actually requires.
+   */
+  private getBottomPadding(): number {
+    // The gesture zone only eats taps in its lower part; overlapping it a
+    // little keeps the items visually anchored to the bottom.
+    const inset = Math.max(0, this.bottomInset - TAB_BAR_GESTURE_ZONE_OVERLAP);
     if (this.isTransparent()) {
-      // Overlay mode: keep the bottom safe area at zero to avoid stretching the tappable area and showing a white block
-      return {
-        top: TAB_BAR_PADDING_HORIZONTAL_TOP,
-        bottom: 0,
-        left: TAB_BAR_PADDING_HORIZONTAL_LEFT,
-        right: TAB_BAR_PADDING_HORIZONTAL_RIGHT
-      };
-    } else {
-      return {
-        top: TAB_BAR_PADDING_HORIZONTAL_TOP,
-        bottom: TAB_BAR_PADDING_HORIZONTAL_BOTTOM,
-        left: TAB_BAR_PADDING_HORIZONTAL_LEFT,
-        right: TAB_BAR_PADDING_HORIZONTAL_RIGHT
-      };
+      return inset;
     }
+    return Math.max(TAB_BAR_PADDING_HORIZONTAL_BOTTOM, inset);
+  }
+
+  private extraBottomHeight(): number {
+    const base = this.isTransparent() ? 0 : TAB_BAR_PADDING_HORIZONTAL_BOTTOM;
+    return Math.max(0, this.getBottomPadding() - base);
+  }
+
+  private getHorizontalPadding(): Padding {
+    return {
+      top: TAB_BAR_PADDING_HORIZONTAL_TOP,
+      bottom: this.getBottomPadding(),
+      left: TAB_BAR_PADDING_HORIZONTAL_LEFT,
+      right: TAB_BAR_PADDING_HORIZONTAL_RIGHT
+    };
   }
 
   /**
