@@ -1,3 +1,6 @@
+#[cfg(feature = "broker")]
+pub mod broker;
+
 use serde::{Deserialize, Serialize};
 
 pub mod handlers {
