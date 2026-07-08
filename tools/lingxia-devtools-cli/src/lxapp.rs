@@ -606,7 +606,7 @@ pub enum PageCommand {
     ScrollTo {
         /// CSS selector to scroll into view
         #[arg(long)]
-        selector: String,
+        css: String,
         /// Page name; defaults to current page
         #[arg(long)]
         page: Option<String>,
@@ -1229,7 +1229,7 @@ fn execute_page(ws_url: &str, options: PageOptions) -> Result<()> {
             print_optional_json(data, json)?;
         }
         PageCommand::ScrollTo {
-            selector,
+            css,
             page,
             app,
             json,
@@ -1240,7 +1240,7 @@ fn execute_page(ws_url: &str, options: PageOptions) -> Result<()> {
                 Some(json!({
                     "appid": app,
                     "page": page,
-                    "selector": selector,
+                    "selector": css,
                 })),
             )?;
             print_optional_json(data, json)?;
