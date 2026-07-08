@@ -35,13 +35,15 @@ mod capabilities;
 #[cfg(feature = "devtool")]
 pub mod dev {
     pub use crate::devtool::{
-        LxAppDevConfig, LxAppDevIdentity, LxAppDevPageInfo, install_lxapp_dev_config,
+        DeviceController, DeviceEntry, DeviceState, LxAppDevConfig, LxAppDevIdentity,
+        LxAppDevPageInfo, device_get, device_list, device_set, install_lxapp_dev_config,
         install_lxapp_dev_config_from_env, list_app_windows, lxapp_dev_nav_back,
         lxapp_dev_nav_redirect, lxapp_dev_nav_relaunch, lxapp_dev_nav_switch_tab, lxapp_dev_nav_to,
         lxapp_dev_page_back, lxapp_dev_page_click, lxapp_dev_page_current, lxapp_dev_page_eval,
         lxapp_dev_page_fill, lxapp_dev_page_info, lxapp_dev_page_input_supported,
         lxapp_dev_page_list, lxapp_dev_page_press, lxapp_dev_page_query, lxapp_dev_page_screenshot,
-        lxapp_dev_page_type, perform_app_keyboard, perform_app_mouse, take_app_screenshot,
+        lxapp_dev_page_scroll, lxapp_dev_page_scroll_to, lxapp_dev_page_type, perform_app_keyboard,
+        perform_app_mouse, register_device_controller, take_app_screenshot,
     };
     pub use lingxia_platform::traits::keyboard::{
         AppKeyboardAction, AppKeyboardModifier, AppKeyboardRequest, AppKeyboardResult,

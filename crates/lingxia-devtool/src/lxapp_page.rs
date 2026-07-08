@@ -126,6 +126,25 @@ fn handle_lxapp_page_command_impl(
             ))?;
             Ok(None)
         }
+        handlers::lxapp_page::SCROLL => {
+            let args: ScrollArgs = parse_args(handler, args)?;
+            run_async(lingxia::dev::lxapp_dev_page_scroll(
+                args.appid.as_deref(),
+                args.page.as_deref(),
+                args.dx,
+                args.dy,
+            ))?;
+            Ok(None)
+        }
+        handlers::lxapp_page::SCROLL_TO => {
+            let args: SelectorActionArgs = parse_args(handler, args)?;
+            run_async(lingxia::dev::lxapp_dev_page_scroll_to(
+                args.appid.as_deref(),
+                args.page.as_deref(),
+                &args.selector,
+            ))?;
+            Ok(None)
+        }
         handlers::lxapp_page::BACK => {
             let args: BackArgs = parse_args(handler, args)?;
             lingxia::dev::lxapp_dev_page_back(args.appid.as_deref(), args.delta.unwrap_or(1))?;
@@ -138,6 +157,8 @@ fn handle_lxapp_page_command_impl(
                 parsed.page.as_deref(),
             ))?;
             Ok(Some(png_response(
+                "page",
+                "css_pixels",
                 &bytes,
                 [
                     ("appid", json!(parsed.appid.unwrap_or_default())),
@@ -220,6 +241,18 @@ struct TextActionArgs {
     text: String,
     #[serde(default)]
     index: Option<usize>,
+}
+
+#[derive(Deserialize)]
+struct ScrollArgs {
+    #[serde(default)]
+    appid: Option<String>,
+    #[serde(default)]
+    page: Option<String>,
+    #[serde(default)]
+    dx: f64,
+    #[serde(default)]
+    dy: f64,
 }
 
 #[derive(Deserialize)]

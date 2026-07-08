@@ -1237,7 +1237,11 @@ pub fn get_app_capabilities() -> u32 {
     crate::capabilities::app_capabilities()
 }
 
-#[napi]
+// `js_name` pins the export to `shouldEnableWebViewDebugging` (capital V) to
+// match the harmony SDK glue and the android/apple bindings — napi's default
+// camelCasing of `webview` would otherwise emit `shouldEnableWebviewDebugging`,
+// which the ArkTS import can't resolve (app crashes at `Lingxia.quickStart`).
+#[napi(js_name = "shouldEnableWebViewDebugging")]
 pub fn should_enable_webview_debugging() -> bool {
     crate::should_enable_webview_debugging()
 }

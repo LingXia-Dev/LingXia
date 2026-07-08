@@ -1197,7 +1197,9 @@ fn local_file_url(input: &str) -> Option<String> {
         || input.starts_with("~/")
         || input == "~"
         || input == "."
-        || input == "..";
+        || input == ".."
+        // Windows drive-absolute (`C:\…`, `C:/…`) and UNC paths.
+        || std::path::Path::new(input).is_absolute();
     let abs = resolve_local_path(input)?;
     (explicit || abs.exists()).then(|| file_url_from_path(&abs))
 }
@@ -1205,9 +1207,9 @@ fn local_file_url(input: &str) -> Option<String> {
 fn resolve_local_path(input: &str) -> Option<std::path::PathBuf> {
     use std::path::PathBuf;
     let expanded: PathBuf = if input == "~" {
-        std::env::var_os("HOME")?.into()
+        home_dir()?.into()
     } else if let Some(rest) = input.strip_prefix("~/") {
-        let mut home = PathBuf::from(std::env::var_os("HOME")?);
+        let mut home = PathBuf::from(home_dir()?);
         home.push(rest);
         home
     } else {
@@ -1219,6 +1221,28 @@ fn resolve_local_path(input: &str) -> Option<std::path::PathBuf> {
         std::env::current_dir().ok()?.join(expanded)
     };
     Some(lexically_clean(&absolute))
+}
+
+fn home_dir() -> Option<std::ffi::OsString> {
+    if let Some(home) = std::env::var_os("HOME") {
+        return Some(home);
+    }
+    // On Windows HOME is often unset; fall back to USERPROFILE, then
+    // HOMEDRIVE+HOMEPATH.
+    #[cfg(windows)]
+    {
+        if let Some(profile) = std::env::var_os("USERPROFILE") {
+            return Some(profile);
+        }
+        if let (Some(drive), Some(path)) =
+            (std::env::var_os("HOMEDRIVE"), std::env::var_os("HOMEPATH"))
+        {
+            let mut home = drive;
+            home.push(path);
+            return Some(home);
+        }
+    }
+    None
 }
 
 /// Lexically drop `.` and resolve `..` components without touching the
@@ -1242,11 +1266,19 @@ fn lexically_clean(path: &std::path::Path) -> std::path::PathBuf {
 
 /// Build a `file://` URL from an absolute path, percent-encoding path bytes
 /// outside the unreserved set so spaces and other characters are safe.
+///
+/// Windows paths (`C:\dir\file`) are normalized to forward slashes with a
+/// leading slash so they yield `file:///C:/dir/file`; the drive colon is kept
+/// literal (RFC 8089). POSIX paths already start with `/` and are unchanged.
 fn file_url_from_path(path: &std::path::Path) -> String {
+    let normalized = path.to_string_lossy().replace('\\', "/");
     let mut out = String::from("file://");
-    for &b in path.to_string_lossy().as_bytes() {
+    if !normalized.starts_with('/') {
+        out.push('/');
+    }
+    for &b in normalized.as_bytes() {
         match b {
-            b'/' | b'-' | b'.' | b'_' | b'~' | b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' => {
+            b'/' | b'-' | b'.' | b'_' | b'~' | b':' | b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' => {
                 out.push(b as char)
             }
             _ => out.push_str(&format!("%{b:02X}")),
@@ -1322,9 +1354,15 @@ mod tests {
 
     #[test]
     fn absolute_path_becomes_file_url() {
+        #[cfg(not(windows))]
         assert_eq!(
             normalize_open_url("/Users/me/page.html"),
             "file:///Users/me/page.html"
+        );
+        #[cfg(windows)]
+        assert_eq!(
+            normalize_open_url(r"C:\Users\me\page.html"),
+            "file:///C:/Users/me/page.html"
         );
         // Explicit relative/home forms resolve even if missing.
         assert!(normalize_open_url("./a.html").starts_with("file://"));
@@ -1334,14 +1372,21 @@ mod tests {
 
     #[test]
     fn file_url_encodes_and_resolves_dots() {
+        // A forward-slash-rooted path encodes the same on every platform.
         assert_eq!(
             file_url_from_path(Path::new("/a b/c#d.html")),
             "file:///a%20b/c%23d.html"
         );
         // `.`/`..` are cleaned lexically in the absolute result.
+        #[cfg(not(windows))]
         assert_eq!(
             local_file_url("/a/./b/../c.html").as_deref(),
             Some("file:///a/c.html")
+        );
+        #[cfg(windows)]
+        assert_eq!(
+            local_file_url(r"C:\a\.\b\..\c.html").as_deref(),
+            Some("file:///C:/a/c.html")
         );
     }
 

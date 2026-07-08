@@ -103,6 +103,7 @@ pub(crate) fn run() -> lingxia_windows_sdk::Result<()> {
     }
     let home_app_id = lingxia_windows_sdk::start_default_host(app)?;
     install_runner_commands(home_app_id.clone());
+    lingxia::dev::register_device_controller(Box::new(RunnerDeviceController));
     apply_default_device(home_app_id, default_device, initial_landscape);
     std::process::exit(lingxia_windows_sdk::run_message_loop());
 }
@@ -164,6 +165,67 @@ fn register_resource_lxapp_paths_from_env() {
             continue;
         }
         lxapp::register_dev_bundle_source(app_id.to_string(), entry.path);
+    }
+}
+
+/// Exposes device switching to the devtool bridge (`lxapp.device.*`). The
+/// runner owns the presets + window frame, so it implements the shared
+/// `DeviceController` trait and registers it in `run()`; the bridge calls
+/// through `lingxia::dev` without depending on the runner or the windows SDK.
+struct RunnerDeviceController;
+
+impl lingxia::dev::DeviceController for RunnerDeviceController {
+    fn list(&self) -> Vec<lingxia::dev::DeviceEntry> {
+        let current = CURRENT_DEVICE.load(Ordering::Acquire);
+        presets()
+            .iter()
+            .enumerate()
+            .map(|(index, preset)| lingxia::dev::DeviceEntry {
+                id: preset.id().to_string(),
+                name: preset.name.clone(),
+                group: preset.group().to_string(),
+                width: preset.width.max(0) as u32,
+                height: preset.height.max(0) as u32,
+                current: index == current,
+            })
+            .collect()
+    }
+
+    fn get(&self) -> lingxia::dev::DeviceState {
+        let index = CURRENT_DEVICE.load(Ordering::Acquire);
+        let landscape = LANDSCAPE.load(Ordering::Acquire);
+        device_state(index, landscape)
+    }
+
+    fn set(&self, id: &str, landscape: Option<bool>) -> Result<lingxia::dev::DeviceState, String> {
+        let index = presets()
+            .iter()
+            .position(|preset| preset.id() == id)
+            .ok_or_else(|| format!("unknown device id: {id}"))?;
+        // Default orientation matches the toolbar selector: tablets landscape,
+        // phones/desktops portrait.
+        let landscape = landscape.unwrap_or_else(|| is_tablet(index));
+        apply_device(index, landscape)?;
+        Ok(device_state(index, landscape))
+    }
+}
+
+/// Builds the reported device state for `index`/`landscape`, swapping the
+/// screen edges in landscape so the size matches what the frame shows.
+fn device_state(index: usize, landscape: bool) -> lingxia::dev::DeviceState {
+    let preset = &presets()[index];
+    let (width, height) = if landscape {
+        (preset.height, preset.width)
+    } else {
+        (preset.width, preset.height)
+    };
+    lingxia::dev::DeviceState {
+        id: preset.id().to_string(),
+        name: preset.name.clone(),
+        group: preset.group().to_string(),
+        width: width.max(0) as u32,
+        height: height.max(0) as u32,
+        landscape,
     }
 }
 

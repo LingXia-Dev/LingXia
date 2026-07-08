@@ -833,6 +833,129 @@ public class LingXiaWebView extends WebView {
         }
     }
 
+    /**
+     * Scroll page content by a delta in device pixels via a synthesized touch
+     * swipe. The lxapp shell renders pages into a WebView sized to content
+     * height inside a native scroll parent, so neither DOM `scrollTop` nor
+     * `WebView.scrollBy` moves it — only a real gesture routes through the
+     * scroll pipeline. To scroll content by (dx, dy) the finger travels by
+     * (-dx, -dy). Used by `WebViewInputController::scroll` on Android.
+     */
+    public void scrollByPixels(final int dx, final int dy) {
+        final int w = getWidth();
+        final int h = getHeight();
+        if (w <= 0 || h <= 0) {
+            return;
+        }
+        // Anchor at the center and keep the whole gesture on-screen: the finger
+        // travels by (-dx, -dy), clamped so start and end stay within a safe
+        // inset. Large deltas are capped to one gesture (callers repeat).
+        final float insetX = w * 0.1f;
+        final float insetY = h * 0.15f;
+        final float cx = w / 2f;
+        final float cy = h / 2f;
+        float travelX = -dx;
+        float travelY = -dy;
+        final float maxX = (w / 2f) - insetX;
+        final float maxY = (h / 2f) - insetY;
+        if (travelX > maxX) travelX = maxX; else if (travelX < -maxX) travelX = -maxX;
+        if (travelY > maxY) travelY = maxY; else if (travelY < -maxY) travelY = -maxY;
+        final float startX = cx - travelX / 2f;
+        final float startY = cy - travelY / 2f;
+        final float endX = cx + travelX / 2f;
+        final float endY = cy + travelY / 2f;
+
+        // Dispatch the gesture spaced in REAL time. Firing all MotionEvents in a
+        // tight synchronous loop makes Chromium's velocity tracker see the whole
+        // travel in ~0ms → a huge fling that overshoots many times. So sleep
+        // between events (on a worker; the JNI caller thread is not the main
+        // thread) and post each event to the main thread.
+        final Runnable swipe = new Runnable() {
+            @Override
+            public void run() {
+                final long downTime = android.os.SystemClock.uptimeMillis();
+                postMotion(android.view.MotionEvent.ACTION_DOWN, startX, startY, downTime);
+                final int steps = 20;
+                for (int i = 1; i <= steps; i++) {
+                    sleepQuietly(16);
+                    final float t = (float) i / steps;
+                    postMotion(android.view.MotionEvent.ACTION_MOVE,
+                        startX + (endX - startX) * t, startY + (endY - startY) * t, downTime);
+                }
+                // Sustained real-time hold at the end so the release velocity is
+                // ~zero — this is what actually prevents the fling.
+                for (int i = 0; i < 8; i++) {
+                    sleepQuietly(20);
+                    postMotion(android.view.MotionEvent.ACTION_MOVE, endX, endY, downTime);
+                }
+                sleepQuietly(16);
+                postMotion(android.view.MotionEvent.ACTION_UP, endX, endY, downTime);
+                // Flush the main queue so the gesture is fully delivered before
+                // scrollByPixels returns (scroll_to loops and re-reads position).
+                runOnMainSync(new Runnable() { @Override public void run() {} });
+            }
+        };
+
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            final Thread worker = new Thread(swipe, "lx-swipe");
+            worker.start();
+            try {
+                worker.join(5000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        } else {
+            swipe.run();
+        }
+    }
+
+    private void postMotion(final int action, final float x, final float y, final long downTime) {
+        final long eventTime = android.os.SystemClock.uptimeMillis();
+        new Handler(Looper.getMainLooper()).post(new Runnable() {
+            @Override
+            public void run() {
+                android.view.MotionEvent ev =
+                    android.view.MotionEvent.obtain(downTime, eventTime, action, x, y, 0);
+                try {
+                    LingXiaWebView.super.dispatchTouchEvent(ev);
+                } finally {
+                    ev.recycle();
+                }
+            }
+        });
+    }
+
+    private void runOnMainSync(final Runnable r) {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            r.run();
+            return;
+        }
+        final java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(1);
+        new Handler(Looper.getMainLooper()).post(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    r.run();
+                } finally {
+                    latch.countDown();
+                }
+            }
+        });
+        try {
+            latch.await(2, java.util.concurrent.TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    private void sleepQuietly(long ms) {
+        try {
+            Thread.sleep(ms);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
     public boolean openFileChooser(
         final ValueCallback<android.net.Uri[]> filePathCallback,
         final WebChromeClient.FileChooserParams fileChooserParams

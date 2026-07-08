@@ -3062,6 +3062,7 @@ struct InputHelperElementResult {
     viewport_height: f64,
     #[serde(default)]
     visible: bool,
+    // Part of the query payload; the editable check is done in JS at input time.
     #[serde(default)]
     editable: bool,
 }
@@ -3658,6 +3659,18 @@ impl WebViewInner {
         }
     }
 
+    /// True when the WebView is in a window's view hierarchy. Native NSEvent
+    /// input requires this; AppUI renders pages off-surface (no window), and the
+    /// caller routes those to DOM-level JS synthesis instead.
+    pub(crate) async fn is_window_attached(&self) -> bool {
+        self.run_input_on_main(|webview_ptr| unsafe {
+            let view = &*(webview_ptr as *mut NSView);
+            Ok(view.window().is_some())
+        })
+        .await
+        .unwrap_or(false)
+    }
+
     pub(crate) async fn click_inner(
         &self,
         selector: &str,
@@ -3666,8 +3679,7 @@ impl WebViewInner {
         let result = self.ensure_element_visible(selector, options.index).await?;
         self.focus_webview_for_input().await?;
         self.post_mouse_click_at(result.center_x, result.center_y)
-            .await?;
-        Ok(())
+            .await
     }
 
     pub(crate) async fn type_text_inner(

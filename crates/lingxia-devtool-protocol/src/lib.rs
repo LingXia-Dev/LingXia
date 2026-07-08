@@ -44,6 +44,9 @@ pub mod handlers {
     pub mod lxapp {
         pub const LIST: &str = "lxapp.list";
         pub const CURRENT: &str = "lxapp.current";
+        /// Report the selected session's automation capabilities (screenshot,
+        /// page pointer/key support + tier, runner) and coordinate spaces.
+        pub const DOCTOR: &str = "lxapp.doctor";
         pub const INFO: &str = "lxapp.info";
         pub const PAGES: &str = "lxapp.pages";
         pub const EVAL: &str = "lxapp.eval";
@@ -69,8 +72,9 @@ pub mod handlers {
         /// Capture a PNG of the host app's window. Accepts an optional
         /// `window_id` (returned by [`WINDOWS`]) so multi-window desktop
         /// apps can pick a specific surface; mobile platforms ignore it
-        /// since they have a single foreground window. Returns a JSON
-        /// envelope `{format, size_bytes, data_base64}`.
+        /// since they have a single foreground window. Returns the unified
+        /// screenshot envelope `{target, kind, coordinate_space, format,
+        /// width, height, size_bytes, image:{mime, encoding, data}}`.
         pub const SCREENSHOT: &str = "app.screenshot";
 
         /// Enumerate the host app's top-level windows. Returns a JSON
@@ -88,6 +92,15 @@ pub mod handlers {
         pub const KEYBOARD: &str = "app.keyboard";
     }
 
+    pub mod lxapp_device {
+        /// List the device presets the runner offers (id, name, group, size).
+        pub const LIST: &str = "lxapp.device.list";
+        /// Report the currently selected device and orientation.
+        pub const GET: &str = "lxapp.device.get";
+        /// Switch the simulated device (by preset id) and/or orientation.
+        pub const SET: &str = "lxapp.device.set";
+    }
+
     pub mod lxapp_page {
         pub const CURRENT: &str = "lxapp.page.current";
         pub const LIST: &str = "lxapp.page.list";
@@ -98,6 +111,8 @@ pub mod handlers {
         pub const TYPE: &str = "lxapp.page.type";
         pub const FILL: &str = "lxapp.page.fill";
         pub const PRESS: &str = "lxapp.page.press";
+        pub const SCROLL: &str = "lxapp.page.scroll";
+        pub const SCROLL_TO: &str = "lxapp.page.scroll_to";
         pub const BACK: &str = "lxapp.page.back";
         pub const SCREENSHOT: &str = "lxapp.page.screenshot";
     }

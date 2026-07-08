@@ -75,6 +75,18 @@ struct DeviceNotch {
     status_bar_height: i32,
 }
 
+impl DevicePreset {
+    /// Stable preset id from `devices.json` (e.g. "iphone-15-pro").
+    pub(crate) fn id(&self) -> &str {
+        &self.id
+    }
+
+    /// Form-factor group ("phone" | "tablet" | "desktop").
+    pub(crate) fn group(&self) -> &str {
+        &self.group
+    }
+}
+
 fn runner_devices() -> &'static RunnerDevices {
     static DEVICES: OnceLock<RunnerDevices> = OnceLock::new();
     DEVICES.get_or_init(|| {

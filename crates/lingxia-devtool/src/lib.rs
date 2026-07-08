@@ -14,6 +14,7 @@ use tungstenite::{Error as WsError, WebSocket};
 mod app;
 mod browser;
 mod lxapp;
+mod lxapp_device;
 mod lxapp_nav;
 mod lxapp_page;
 mod util;
@@ -239,6 +240,8 @@ fn handle_incoming_message(
     } else if let Some(result) = lxapp_nav::handle_lxapp_nav_command(&handler, args.clone()) {
         command_result(command_id, result)
     } else if let Some(result) = lxapp_page::handle_lxapp_page_command(&handler, args.clone()) {
+        command_result(command_id, result)
+    } else if let Some(result) = lxapp_device::handle_lxapp_device_command(&handler, args.clone()) {
         command_result(command_id, result)
     } else if let Some(result) = lxapp::handle_lxapp_command(&handler, args.clone()) {
         command_result(command_id, result)

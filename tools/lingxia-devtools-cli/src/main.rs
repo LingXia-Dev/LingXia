@@ -5,6 +5,7 @@ use std::path::Path;
 mod app;
 mod browser;
 mod client;
+mod desktop;
 mod logs;
 mod lxapp;
 mod lxapp_build;
@@ -38,7 +39,10 @@ enum Commands {
     Logs(logs::LogsOptions),
     /// List or prune dev sessions for this project
     Sessions(SessionsCmd),
-    /// Operate on the host app as a whole (window-level screenshot, etc.)
+    /// Automate the local desktop OS (no dev session required)
+    Desktop(desktop::DesktopOptions),
+    /// Removed: session commands moved under `lxdev lxapp`
+    #[command(hide = true)]
     App(app::AppOptions),
 }
 
@@ -74,6 +78,9 @@ fn main() -> Result<()> {
             browser::execute(&info, options)
         }
         Commands::Lxapp(options) => {
+            if lxapp::handle_pre_session(&project_root, &options)? {
+                return Ok(());
+            }
             let info = project::resolve_session(&project_root, &selector)?;
             lxapp::execute(&project_root, &info, options)
         }
@@ -91,9 +98,9 @@ fn main() -> Result<()> {
             }
             None => sessions::execute_list(&project_root, cmd.json),
         },
-        Commands::App(options) => {
-            let info = project::resolve_session(&project_root, &selector)?;
-            app::execute(&info, options)
-        }
+        // Local OS automation: no dev session; the handler owns process exit.
+        Commands::Desktop(options) => desktop::execute(options),
+        // Removed namespace: emit a migration hint without needing a session.
+        Commands::App(options) => app::migrate(options),
     }
 }
