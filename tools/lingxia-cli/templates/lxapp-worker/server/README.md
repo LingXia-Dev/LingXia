@@ -3,7 +3,7 @@
 Same `lx.fn` contract, two providers:
 
 ```
-functions.json        worker dir + dev routing (mock/real per function)
+worker.json           worker dir + dev routing (mock/live per function)
 server/
   src/functions/*.ts  live — `lingxiao build` / deploy unit
   mocks/*.ts          dev mock — served by `lingxia dev`
@@ -30,7 +30,7 @@ on the next `lingxia dev` run, not mid-session.
 
 ## Routing & sandbox
 
-- `functions.json` `dev.default` (`"mock"`/`"real"`) + per-function
+- `worker.json` `dev.default` (`"mock"`/`"live"`) + per-function
   `dev.overrides`.
 - Mocked `lx.cloud.invoke` is fully offline; `lx.cloud.lingxiao(appId)` still
   needs a logged-in tenant.

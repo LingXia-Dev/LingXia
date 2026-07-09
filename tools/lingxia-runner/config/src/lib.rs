@@ -4,10 +4,10 @@
 //! them to the (privately-injected) provider: the `lingxiaServer`/`lingxiaId`
 //! overrides from `~/.lingxia/runner/config.toml`, the local function-mock
 //! directory that `lingxia dev` points at, and the per-function mock/live
-//! routing from the running lxapp's `functions.json`.
+//! routing from the running lxapp's `worker.json`.
 //!
 //! That resolution is pure LingXia/CLI convention — env var names, file paths,
-//! and the `functions.json` schema — so it lives here as a small, dependency-
+//! and the `worker.json` schema — so it lives here as a small, dependency-
 //! light crate returning plain data. Each runner maps the result onto the
 //! provider's own option/routing types (the only crate that has them).
 
@@ -134,23 +134,23 @@ fn env_value(root: &toml::Value, key: &str, env: RunnerEnv) -> Option<String> {
     (!s.is_empty()).then(|| s.to_string())
 }
 
-/// Read routing from `<LINGXIA_LXAPP_PATH>/functions.json`. Missing/invalid →
+/// Read routing from `<LINGXIA_LXAPP_PATH>/worker.json`. Missing/invalid →
 /// all-mock default.
 fn routing_from_env() -> RunnerRouting {
     let Some(lxapp) = std::env::var_os(ENV_LXAPP_PATH) else {
         return RunnerRouting::default();
     };
-    let Ok(text) = std::fs::read_to_string(Path::new(&lxapp).join("functions.json")) else {
+    let Ok(text) = std::fs::read_to_string(Path::new(&lxapp).join("worker.json")) else {
         return RunnerRouting::default();
     };
     parse_routing(&text)
 }
 
-/// Parse the `dev` section of a `functions.json` document into routing. Absent
+/// Parse the `dev` section of a `worker.json` document into routing. Absent
 /// fields and unknown provider strings fall back to mock.
-fn parse_routing(functions_json: &str) -> RunnerRouting {
+fn parse_routing(worker_json: &str) -> RunnerRouting {
     let is_live = |s: &str| s.eq_ignore_ascii_case("live");
-    let Ok(config) = serde_json::from_str::<serde_json::Value>(functions_json) else {
+    let Ok(config) = serde_json::from_str::<serde_json::Value>(worker_json) else {
         return RunnerRouting::default();
     };
     let dev = config.get("dev");
@@ -229,7 +229,7 @@ release = "https://api.example.com"
 
     #[test]
     fn parses_routing_default_and_overrides() {
-        let json = r#"{ "worker": "./server",
+        let json = r#"{ "dir": "./server",
             "dev": { "default": "live", "overrides": { "hello": "mock", "charge": "live" } } }"#;
         let r = parse_routing(json);
         assert!(r.default_live);
@@ -243,7 +243,7 @@ release = "https://api.example.com"
 
     #[test]
     fn missing_dev_section_or_invalid_is_all_mock() {
-        let r = parse_routing(r#"{ "worker": "./server" }"#);
+        let r = parse_routing(r#"{ "dir": "./server" }"#);
         assert!(!r.default_live);
         assert!(r.overrides.is_empty());
         assert_eq!(parse_routing("not json"), RunnerRouting::default());

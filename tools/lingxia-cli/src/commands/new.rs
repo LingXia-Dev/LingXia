@@ -53,7 +53,7 @@ pub fn execute(
     platforms: Vec<String>,
     package_id: Option<String>,
     icon: Option<String>,
-    functions: bool,
+    worker: bool,
     yes: bool,
 ) -> Result<()> {
     println!("{}", "Create a new LingXia project".bold());
@@ -79,12 +79,12 @@ pub fn execute(
         // A lightweight lxapp keeps a single name: the project name doubles as
         // the display name. Only the appId is separately editable.
         let product_name = name.clone();
-        // --functions needs the lingxiao CLI (it scaffolds + builds the worker).
+        // --worker needs the lingxiao CLI (it scaffolds + builds the worker).
         // Fail fast before creating anything — no half-worker fallback.
-        if functions && !lingxiao_available() {
+        if worker && !lingxiao_available() {
             return Err(anyhow!(
-                "`lingxia new --functions` requires the `lingxiao` CLI on PATH — it scaffolds \
-                 and builds the cloud worker.\nInstall lingxiao and retry, or omit --functions."
+                "`lingxia new --worker` requires the `lingxiao` CLI on PATH — it scaffolds \
+                 and builds the cloud worker.\nInstall lingxiao and retry, or omit --worker."
             ));
         }
         let app_id = gather_lxapp_id(&self::types::default_lxapp_app_id(&name), yes)?;
@@ -101,8 +101,8 @@ pub fn execute(
             &scaffold_versions.bridge,
             &scaffold_versions.types,
         )?;
-        if functions {
-            scaffold_functions(&target_dir)?;
+        if worker {
+            scaffold_worker(&target_dir)?;
         }
 
         println!();
@@ -261,13 +261,14 @@ fn print_manual_skill_hint() {
 
 // Platform-specific helpers are in `commands/new/*`.
 
-/// `--functions`: lay the typed-cloud-functions overlay onto a fresh lxapp.
-/// lingxia owns the contract + sample impl + mock + `functions.json` + home
+/// `--worker`: lay the typed-cloud-functions overlay onto a fresh lxapp.
+/// lingxia owns the contract + sample impl + mock + `worker.json` + home
 /// variant; the worker *structure* (lingxiao.toml / tsconfig / src/index.ts /
 /// package.json) is scaffolded by `lingxiao new` — which is required (the caller
 /// checks availability first, so this only fails if the run itself errors).
-fn scaffold_functions(target_dir: &std::path::Path) -> Result<()> {
-    let overlay = locate_templates_dir()?.join("lxapp-functions");
+/// The worker id is always the lxapp's appId — never recorded anywhere else.
+fn scaffold_worker(target_dir: &std::path::Path) -> Result<()> {
+    let overlay = locate_templates_dir()?.join("lxapp-worker");
     let server = target_dir.join("server");
 
     // Worker structure: lingxiao owns it (never hand-mirror its scaffold).
@@ -277,10 +278,7 @@ fn scaffold_functions(target_dir: &std::path::Path) -> Result<()> {
 
     // lingxia's overlay: build-ready sample + mock + config + home variant.
     copy_dir_all(&overlay.join("server"), &server)?;
-    std::fs::copy(
-        overlay.join("functions.json"),
-        target_dir.join("functions.json"),
-    )?;
+    std::fs::copy(overlay.join("worker.json"), target_dir.join("worker.json"))?;
     // Home variant: swap the `greet` action body to call the cloud function
     // (the View is untouched).
     std::fs::copy(
@@ -289,7 +287,7 @@ fn scaffold_functions(target_dir: &std::path::Path) -> Result<()> {
     )?;
 
     println!(
-        "  {} Cloud functions: server/ worker (via lingxiao new) + functions.json",
+        "  {} Cloud worker: server/ (via lingxiao new) + worker.json",
         "✓".green()
     );
     Ok(())

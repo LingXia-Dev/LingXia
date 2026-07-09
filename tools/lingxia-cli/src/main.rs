@@ -176,10 +176,11 @@ enum Commands {
         #[arg(long)]
         icon: Option<String>,
 
-        /// (lxapp) Scaffold typed cloud functions: a `server/` worker (mock +
-        /// live), `functions.json` routing, and a home page wired to `lx.cloud`
-        #[arg(long)]
-        functions: bool,
+        /// (lxapp) Scaffold a LingXiao cloud worker: a `server/` worker (mock +
+        /// live), `worker.json` routing, and a home page wired to `lx.cloud`.
+        /// The worker id is always the lxapp's appId; it is not configurable.
+        #[arg(long, hide = true)]
+        worker: bool,
 
         /// Skip confirmation prompt
         #[arg(short = 'y', long)]
@@ -590,7 +591,7 @@ fn main() -> Result<()> {
             platform,
             package_id,
             icon,
-            functions,
+            worker,
             yes,
         } => {
             commands::new::execute(
@@ -599,7 +600,7 @@ fn main() -> Result<()> {
                 platform,
                 package_id,
                 icon,
-                functions,
+                worker,
                 yes,
             )?;
         }

@@ -40,7 +40,7 @@ struct RunnerDevtoolAddon;
 impl lingxia::HostAddon for RunnerDevtoolAddon {
     // Cloud provider. Must register in this hook — the logic context is built
     // before `start_services`. Injected via `--with-provider cloud`. The runner
-    // env contract (config.toml overrides, mock dir, functions.json routing) is
+    // env contract (config.toml overrides, mock dir, worker.json routing) is
     // resolved by `lingxia_runner_config`, shared with the macOS runner.
     #[cfg(feature = "cloud")]
     fn install_logic_extensions(&self) {

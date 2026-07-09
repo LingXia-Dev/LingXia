@@ -317,9 +317,9 @@ fn launch_runner_for_lxapp(
     if let Some(device) = runner_device.map(str::trim).filter(|s| !s.is_empty()) {
         command.env("LINGXIA_RUNNER_DEVICE", device);
     }
-    // Cloud functions: transpile mocks + generate typed `lx.cloud.invoke`, then
-    // point the runner at the loadable mock dir (it reads routing from functions.json).
-    if let Some(mock_dir) = crate::lxapp::functions::prepare_dev(lxapp_path) {
+    // Cloud worker: transpile mocks + generate typed `lx.cloud.invoke`, then
+    // point the runner at the loadable mock dir (it reads routing from worker.json).
+    if let Some(mock_dir) = crate::lxapp::worker::prepare_dev(lxapp_path) {
         command.env(RUNNER_LINGXIAO_MOCK_DIR_ENV, &mock_dir);
         println!(
             "  {} Cloud functions (mock): {}",
@@ -520,7 +520,7 @@ fn launch_windows_runner_for_lxapp(
     let resource_lxapp_paths = windows_runner_resource_lxapp_paths(lxapp_path, &identity)?;
     let exe_path = installed_windows_runner_exe_path()?;
     terminate_existing_windows_runner_processes(&exe_path, ws_url)?;
-    let mock_dir = crate::lxapp::functions::prepare_dev(lxapp_path);
+    let mock_dir = crate::lxapp::worker::prepare_dev(lxapp_path);
     if let Some(mock_dir) = &mock_dir {
         println!(
             "  {} Cloud functions (mock): {}",
