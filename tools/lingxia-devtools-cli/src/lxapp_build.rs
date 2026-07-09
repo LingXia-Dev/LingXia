@@ -2,7 +2,7 @@ use crate::client;
 use anyhow::Result;
 use clap::Args;
 use lingxia_devtool_protocol::handlers;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 /// Rebuild the lxapp front-end bundle for the selected session's project, then
 /// reload the running lxapp so the new bundle is live — the session is already
@@ -72,9 +72,7 @@ pub fn execute(ws_url: &str, options: &ReloadOptions) -> Result<()> {
                 println!("✓ lxapp bundle rebuilt{suffix}, reloaded {appid}")
             }
             None if options.build_only => println!("✓ lxapp bundle rebuilt{suffix}"),
-            None => println!(
-                "✓ lxapp bundle rebuilt{suffix} (no running lxapp to reload)"
-            ),
+            None => println!("✓ lxapp bundle rebuilt{suffix} (no running lxapp to reload)"),
         }
     }
     Ok(())
