@@ -51,10 +51,25 @@ pub fn create_session(project_root: &Path) -> Result<DevLogSession> {
 /// project-scoped queries (`lingxia dev status/stop`, duplicate guard) filter
 /// by it.
 pub fn canonical_project_root(project_root: &Path) -> String {
-    fs::canonicalize(project_root)
-        .unwrap_or_else(|_| project_root.to_path_buf())
-        .display()
-        .to_string()
+    let canonical = fs::canonicalize(project_root).unwrap_or_else(|_| project_root.to_path_buf());
+    strip_verbatim_prefix(&canonical.display().to_string())
+}
+
+/// On Windows `fs::canonicalize` returns extended-length paths (`\\?\C:\…`,
+/// `\\?\UNC\server\share\…`). The verbatim prefix is noise in an identity
+/// that is also shown to users (`lxdev session list`'s PROJECT column) — strip
+/// it back to the conventional form. Both sides of every comparison come from
+/// this function, so matching stays consistent.
+fn strip_verbatim_prefix(display: &str) -> String {
+    if cfg!(windows) {
+        if let Some(rest) = display.strip_prefix(r"\\?\UNC\") {
+            return format!(r"\\{rest}");
+        }
+        if let Some(rest) = display.strip_prefix(r"\\?\") {
+            return rest.to_string();
+        }
+    }
+    display.to_string()
 }
 
 /// Spawn a detached per-user broker (`lingxia dev-broker`). Losing the bind
