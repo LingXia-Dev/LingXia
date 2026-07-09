@@ -1,12 +1,12 @@
 mod build;
 mod framework;
-pub(crate) mod worker;
 mod hardening;
 mod logic;
 mod options;
 mod package;
 mod project;
 mod view;
+pub(crate) mod worker;
 
 use anyhow::Result;
 use std::env;
