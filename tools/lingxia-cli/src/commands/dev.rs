@@ -147,29 +147,62 @@ fn platform_session_name(platform: PlatformType) -> &'static str {
     }
 }
 
-/// Refuse to start a new dev session if another live session already exists for
-/// the same platform in this project. A session is bound to its platform, so a
-/// second same-platform session is never wanted: it only leaves `lxdev` unable
-/// to tell which one to drive.
+/// Stop any live dev session for the same platform in this project before a
+/// new one starts. A session is bound to its platform, so a second
+/// same-platform session is never wanted — and re-running `lingxia dev` after
+/// a host-code edit is the normal inner loop, so the restart intent is
+/// unambiguous: take over rather than refuse. Different platforms don't
+/// conflict — `lingxia dev -p android` and `-p ios` run side by side.
 ///
 /// Liveness comes from the broker registration: a session that exited (or
-/// crashed) has already dropped off the list. This is the single defense against the "human + agent
-/// both ran `lingxia dev -p ios`" footgun. Different platforms don't conflict —
-/// `lingxia dev -p android` and `-p ios` run side by side.
+/// crashed) has already dropped off the list. Waits until the old session
+/// deregisters so the new one never races it.
 fn precheck_platform_session(project_root: &Path, platform: &str) -> Result<()> {
     let live = log_store::find_live_for_platform(project_root, platform)?;
     if live.is_empty() {
         return Ok(());
     }
-    let mut msg = format!("Existing {platform} dev session is already running in this project:\n");
     for info in &live {
-        msg.push_str(&format!(
-            "  {}  pid={}  ws={}\n",
-            info.session_id, info.pid, info.ws_url
-        ));
+        println!(
+            "Stopping existing {platform} dev session {} (pid {})...",
+            info.session_id, info.pid
+        );
+        if let Err(err) = log_store::request_shutdown(info) {
+            eprintln!("Graceful stop failed ({err:#}); killing pid {}.", info.pid);
+            force_stop_session(info)?;
+        }
     }
-    msg.push_str("\nStop it first with `lingxia dev stop`.");
-    Err(anyhow!(msg))
+    if wait_for_platform_sessions_gone(project_root, platform, Duration::from_secs(10))? {
+        return Ok(());
+    }
+    // Graceful shutdown stalled — escalate to a kill, then give the broker a
+    // moment to drop the registrations.
+    for info in log_store::find_live_for_platform(project_root, platform)? {
+        force_stop_session(&info)?;
+    }
+    if wait_for_platform_sessions_gone(project_root, platform, Duration::from_secs(5))? {
+        return Ok(());
+    }
+    Err(anyhow!(
+        "Existing {platform} dev session did not stop; stop it manually with `lingxia dev stop --force`."
+    ))
+}
+
+fn wait_for_platform_sessions_gone(
+    project_root: &Path,
+    platform: &str,
+    timeout: Duration,
+) -> Result<bool> {
+    let deadline = std::time::Instant::now() + timeout;
+    loop {
+        if log_store::find_live_for_platform(project_root, platform)?.is_empty() {
+            return Ok(true);
+        }
+        if std::time::Instant::now() >= deadline {
+            return Ok(false);
+        }
+        thread::sleep(Duration::from_millis(200));
+    }
 }
 
 /// Execute the dev command.
