@@ -145,6 +145,13 @@ import WebKit
             RunnerBridge.tabBar(appId: appId)
         }
 
+        /// Signal that the runner chrome finished applying a tabbar state
+        /// change; resolves any awaited lx.showTabBar/hideTabBar.
+        @MainActor
+        public static func updateApplied(appId: String) {
+            TabBarUpdateWaiters.complete(appId)
+        }
+
         public static func isTransparent(_ colorValue: UInt32) -> Bool {
             RunnerBridge.isTabBarTransparent(colorValue)
         }

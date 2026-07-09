@@ -383,7 +383,7 @@ class NativeBridge {
         LxAppContainer.updateTabBarUIAsync(appId, (updated: boolean): void => {
           if (updated) {
             hilog.info(DOMAIN, TAG, `TabBar UI updated for ${appId}`);
-            onCallback(callbackId, true, JSON.stringify({ success: true }));
+            onCallback(callbackId, true, '{}');
           } else {
             hilog.warn(DOMAIN, TAG, `Failed to find active container for TabBar update: ${appId}`);
             onCallback(callbackId, false, '1000');

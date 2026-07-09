@@ -676,6 +676,12 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         ) { [weak self] notification in
             let appId = notification.object as? String
             Task { @MainActor in
+                defer {
+                    // Applied (or no shell to apply to): resolve awaited callers.
+                    if let appId {
+                        TabBarUpdateWaiters.complete(appId)
+                    }
+                }
                 guard let self, let appId else { return }
                 self.sidebarView?.refreshAppGroup(appId: appId)
                 if let activeAppId = self.tabManager.activeTab?.appId, activeAppId == appId {

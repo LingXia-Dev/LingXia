@@ -865,7 +865,8 @@ final class LxAppViewController: UIViewController, ObservableObject {
             forName: .tabBarStateChanged,
             object: nil,
             queue: .main
-        ) { [weak self] _ in
+        ) { [weak self] notification in
+            let appId = notification.object as? String
             guard let self = self else { return }
 
             Task { @MainActor in
@@ -875,6 +876,11 @@ final class LxAppViewController: UIViewController, ObservableObject {
                 // After refreshing, the bar might have become visible, so we must ensure
                 // it's correctly layered in front of the webview.
                 self.bringUIElementsToFront()
+
+                // Applied: resolve any awaited lx.showTabBar/hideTabBar.
+                if let appId {
+                    TabBarUpdateWaiters.complete(appId)
+                }
             }
         }
     }

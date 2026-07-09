@@ -287,6 +287,8 @@ public class SimulatorViewController: NSViewController, WKNavigationDelegate {
             
             Task { @MainActor in
                 self.updateTabBar()
+                // Applied: resolve any awaited lx.showTabBar/hideTabBar.
+                LingxiaRunnerSPI.Tabs.updateApplied(appId: self.appId)
             }
         }
     }
