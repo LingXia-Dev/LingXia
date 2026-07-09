@@ -696,7 +696,36 @@ fn run_lxapp_build(project_root: &Path, args: Option<&serde_json::Value>) -> Res
         build_args.push("--framework".to_string());
         build_args.push(framework.to_string());
     }
-    crate::lxapp::run_in_dir(&build_args, project_root)
+    crate::lxapp::run_in_dir(&build_args, &resolve_lxapp_dir(project_root)?)
+}
+
+/// The directory holding the lxapp to build: the project root itself for a
+/// standalone lxapp/lxplugin project, else the host project's home-lxapp
+/// bundle path from `lingxia.yaml`.
+fn resolve_lxapp_dir(project_root: &Path) -> Result<PathBuf> {
+    if project_root.join("lxapp.json").exists() || project_root.join("lxplugin.json").exists() {
+        return Ok(project_root.to_path_buf());
+    }
+    let config = crate::config::LingXiaConfig::load(project_root)?;
+    let home_app_id = config
+        .app
+        .as_ref()
+        .map(|app| app.home_app_id.as_str())
+        .ok_or_else(|| anyhow!("Missing app settings in lingxia.yaml"))?;
+    let path = config
+        .resources
+        .as_ref()
+        .and_then(|resources| {
+            resources
+                .bundles
+                .iter()
+                .find(|bundle| bundle.app_id == home_app_id)
+        })
+        .and_then(|bundle| bundle.path.as_deref())
+        .ok_or_else(|| {
+            anyhow!("home lxapp '{home_app_id}' has no local path in lingxia.yaml resources")
+        })?;
+    Ok(project_root.join(path))
 }
 
 fn drain_outgoing_messages(
