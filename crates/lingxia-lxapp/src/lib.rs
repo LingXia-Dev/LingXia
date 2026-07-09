@@ -8,6 +8,8 @@ pub mod automation;
 pub(crate) mod bridge;
 mod cache;
 mod delegate;
+/// Simulated-device control shared by the devtool and `lx.automation()`.
+pub mod device;
 mod error;
 mod executor;
 pub mod host;

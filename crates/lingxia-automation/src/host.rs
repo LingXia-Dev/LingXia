@@ -195,6 +195,13 @@ impl JSLxAppManager {
             .instance(crate::JSAutomation::new(&app, false)))
     }
 
+    /// Simulated-device control (`lxdev lxapp device`); available only in a host
+    /// runner that registered a device controller (rejects otherwise).
+    #[js_method(getter, enumerable)]
+    fn device(&self, ctx: JSContext) -> JSResult<JSObject> {
+        Ok(Class::lookup::<JSDeviceDriver>(&ctx)?.instance(JSDeviceDriver::new()))
+    }
+
     /// Enumerate the host app's windows (`lxdev lxapp windows`).
     #[js_method]
     async fn windows(&self, ctx: JSContext) -> JSResult<JSValue> {
@@ -234,6 +241,54 @@ impl JSLxAppManager {
     }
 }
 
+// ===================== DeviceDriver =====================
+
+#[js_export]
+pub(crate) struct JSDeviceDriver {}
+
+impl JSDeviceDriver {
+    pub(crate) fn new() -> Self {
+        Self {}
+    }
+}
+
+#[derive(FromJSObj)]
+struct DeviceSetOpt {
+    /// Device preset id (see `list()`).
+    id: String,
+    /// Force landscape (`true`) or portrait (`false`); omit to keep current.
+    landscape: Option<bool>,
+}
+
+#[js_class(rename = "DeviceDriver")]
+impl JSDeviceDriver {
+    #[js_method(constructor)]
+    fn _ctor() -> JSResult<()> {
+        Err(illegal_ctor())
+    }
+
+    /// The device presets the host runner offers.
+    #[js_method]
+    async fn list(&self, ctx: JSContext) -> JSResult<JSValue> {
+        let entries = lxapp::device::device_list().map_err(auto_err)?;
+        to_js(&ctx, &entries)
+    }
+
+    /// The currently selected device and orientation.
+    #[js_method]
+    async fn get(&self, ctx: JSContext) -> JSResult<JSValue> {
+        let state = lxapp::device::device_get().map_err(auto_err)?;
+        to_js(&ctx, &state)
+    }
+
+    /// Switch the simulated device by preset id and/or orientation.
+    #[js_method]
+    async fn set(&self, ctx: JSContext, options: DeviceSetOpt) -> JSResult<JSValue> {
+        let state = lxapp::device::device_set(&options.id, options.landscape).map_err(auto_err)?;
+        to_js(&ctx, &state)
+    }
+}
+
 // ===================== BrowserDriver =====================
 
 #[js_export]
@@ -260,6 +315,11 @@ struct TabOpt {
 struct BrowserEvalOpt {
     js: String,
     tab: Option<String>,
+    /// After the eval, wait for a navigation it triggers.
+    #[rename = "waitNavigation"]
+    wait_navigation: Option<bool>,
+    /// With `waitNavigation`, wait until the load completes.
+    complete: Option<bool>,
     #[rename = "timeoutMs"]
     timeout_ms: Option<u64>,
 }
@@ -270,6 +330,8 @@ struct BrowserQueryOpt {
     tab: Option<String>,
     #[rename = "maxText"]
     max_text: Option<usize>,
+    /// Return untruncated text/value (ignores `maxText`).
+    full: Option<bool>,
 }
 
 /// Exactly one condition field must be set.
@@ -285,6 +347,10 @@ struct BrowserWaitOpt {
     #[rename = "urlContains"]
     url_contains: Option<String>,
     navigation: Option<bool>,
+    /// With `navigation`: baseline URL to detect a change from (default: the
+    /// current URL is not pinned, so any navigation satisfies it).
+    #[rename = "fromUrl"]
+    from_url: Option<String>,
     complete: Option<bool>,
     tab: Option<String>,
     #[rename = "timeoutMs"]
@@ -295,6 +361,18 @@ struct BrowserWaitOpt {
 struct BrowserSelectorOpt {
     css: String,
     tab: Option<String>,
+}
+
+/// `click` / `press` also carry the navigation-sync flags.
+#[derive(FromJSObj)]
+struct BrowserClickOpt {
+    css: String,
+    tab: Option<String>,
+    #[rename = "waitNavigation"]
+    wait_navigation: Option<bool>,
+    complete: Option<bool>,
+    #[rename = "timeoutMs"]
+    timeout_ms: Option<u64>,
 }
 
 #[derive(FromJSObj)]
@@ -308,6 +386,11 @@ struct BrowserTextOpt {
 struct BrowserPressOpt {
     key: String,
     tab: Option<String>,
+    #[rename = "waitNavigation"]
+    wait_navigation: Option<bool>,
+    complete: Option<bool>,
+    #[rename = "timeoutMs"]
+    timeout_ms: Option<u64>,
 }
 
 #[derive(FromJSObj)]
@@ -368,7 +451,7 @@ fn browser_wait_condition(o: &BrowserWaitOpt) -> JSResult<lingxia_browser::Brows
     }
     if o.navigation == Some(true) {
         conditions.push(C::Navigation {
-            initial_url: None,
+            initial_url: o.from_url.clone(),
             wait_until_complete: o.complete.unwrap_or(false),
         });
     }
@@ -378,6 +461,58 @@ fn browser_wait_condition(o: &BrowserWaitOpt) -> JSResult<lingxia_browser::Brows
             "wait: pass exactly one condition (loaded | exists | visible | hidden | editable | js | url | urlContains | navigation)",
         )),
     }
+}
+
+/// Capture the pre-action URL when `wait_navigation` is set, so a following
+/// [`browser_wait_after_action`] can detect the navigation the action triggers.
+/// Mirrors the devtool browser handlers' arming order.
+async fn browser_arm_navigation(
+    tab: &str,
+    wait_navigation: bool,
+) -> JSResult<Option<Option<String>>> {
+    if wait_navigation {
+        Ok(Some(
+            lingxia_browser::current_url(tab)
+                .await
+                .map_err(|err| auto_err(err.to_string()))?,
+        ))
+    } else {
+        Ok(None)
+    }
+}
+
+/// Wait for the armed navigation after the action ran. `None` armed value means
+/// `wait_navigation` was off → returns `None` (no navigation payload).
+async fn browser_wait_after_action(
+    tab: &str,
+    armed: Option<Option<String>>,
+    complete: bool,
+    timeout: Duration,
+) -> JSResult<Option<serde_json::Value>> {
+    let Some(initial_url) = armed else {
+        return Ok(None);
+    };
+    let result = lingxia_browser::wait(
+        tab,
+        lingxia_browser::BrowserWaitCondition::Navigation {
+            initial_url,
+            wait_until_complete: complete,
+        },
+        timeout,
+    )
+    .await
+    .map_err(|err| auto_err(err.to_string()))?;
+    serde_json::to_value(&result)
+        .map(Some)
+        .map_err(|err| auto_err(err.to_string()))
+}
+
+fn browser_wait_duration(timeout_ms: Option<u64>) -> Duration {
+    Duration::from_millis(
+        timeout_ms
+            .unwrap_or(BROWSER_WAIT_DEFAULT_MS)
+            .min(BROWSER_WAIT_MAX_MS),
+    )
 }
 
 #[js_class(rename = "BrowserDriver")]
@@ -440,11 +575,14 @@ impl JSBrowserDriver {
             .map_err(|err| auto_err(err.to_string()))
     }
 
-    /// Evaluate JavaScript in the tab's page.
+    /// Evaluate JavaScript in the tab's page. With `waitNavigation`, awaits a
+    /// navigation the script triggers and resolves to `{ value, navigation }`.
     #[js_method]
     async fn eval(&self, ctx: JSContext, options: BrowserEvalOpt) -> JSResult<JSValue> {
         let tab = resolve_tab_id(&options.tab)?;
+        let wait_navigation = options.wait_navigation.unwrap_or(false);
         let timeout = Duration::from_millis(options.timeout_ms.unwrap_or(BROWSER_EVAL_DEFAULT_MS));
+        let armed = browser_arm_navigation(&tab, wait_navigation).await?;
         let value = tokio::time::timeout(
             timeout,
             lingxia_browser::evaluate_javascript(&tab, &options.js),
@@ -452,14 +590,27 @@ impl JSBrowserDriver {
         .await
         .map_err(|_| auto_err("browser eval timed out"))?
         .map_err(|err| auto_err(err.to_string()))?;
-        json_to_js(&ctx, &value)
+        match browser_wait_after_action(&tab, armed, options.complete.unwrap_or(false), timeout)
+            .await?
+        {
+            Some(navigation) => {
+                json_to_js(&ctx, &json!({ "value": value, "navigation": navigation }))
+            }
+            None => json_to_js(&ctx, &value),
+        }
     }
 
-    /// Query element information in the tab's page.
+    /// Query element information in the tab's page. `full` returns untruncated
+    /// text/value (ignoring `maxText`).
     #[js_method]
     async fn query(&self, ctx: JSContext, options: BrowserQueryOpt) -> JSResult<JSValue> {
         let tab = resolve_tab_id(&options.tab)?;
-        let info = lingxia_browser::query_with_max_text(&tab, &options.css, options.max_text)
+        let max_text = if options.full.unwrap_or(false) {
+            None
+        } else {
+            options.max_text
+        };
+        let info = lingxia_browser::query_with_max_text(&tab, &options.css, max_text)
             .await
             .map_err(|err| auto_err(err.to_string()))?;
         to_js(&ctx, &info)
@@ -485,12 +636,21 @@ impl JSBrowserDriver {
         to_js(&ctx, &result)
     }
 
+    /// Click an element. With `waitNavigation`, awaits a navigation the click
+    /// triggers and resolves to the navigation payload (else `null`).
     #[js_method]
-    async fn click(&self, _ctx: JSContext, options: BrowserSelectorOpt) -> JSResult<()> {
+    async fn click(&self, ctx: JSContext, options: BrowserClickOpt) -> JSResult<JSValue> {
         let tab = resolve_tab_id(&options.tab)?;
+        let wait_navigation = options.wait_navigation.unwrap_or(false);
+        let timeout = browser_wait_duration(options.timeout_ms);
+        let armed = browser_arm_navigation(&tab, wait_navigation).await?;
         lingxia_browser::click(&tab, &options.css)
             .await
-            .map_err(|err| auto_err(err.to_string()))
+            .map_err(|err| auto_err(err.to_string()))?;
+        let navigation =
+            browser_wait_after_action(&tab, armed, options.complete.unwrap_or(false), timeout)
+                .await?;
+        json_to_js(&ctx, &navigation.unwrap_or(serde_json::Value::Null))
     }
 
     #[js_method(rename = "type")]
@@ -509,12 +669,21 @@ impl JSBrowserDriver {
             .map_err(|err| auto_err(err.to_string()))
     }
 
+    /// Press a key. With `waitNavigation`, awaits a navigation it triggers and
+    /// resolves to the navigation payload (else `null`).
     #[js_method]
-    async fn press(&self, _ctx: JSContext, options: BrowserPressOpt) -> JSResult<()> {
+    async fn press(&self, ctx: JSContext, options: BrowserPressOpt) -> JSResult<JSValue> {
         let tab = resolve_tab_id(&options.tab)?;
+        let wait_navigation = options.wait_navigation.unwrap_or(false);
+        let timeout = browser_wait_duration(options.timeout_ms);
+        let armed = browser_arm_navigation(&tab, wait_navigation).await?;
         lingxia_browser::press(&tab, &options.key)
             .await
-            .map_err(|err| auto_err(err.to_string()))
+            .map_err(|err| auto_err(err.to_string()))?;
+        let navigation =
+            browser_wait_after_action(&tab, armed, options.complete.unwrap_or(false), timeout)
+                .await?;
+        json_to_js(&ctx, &navigation.unwrap_or(serde_json::Value::Null))
     }
 
     #[js_method]

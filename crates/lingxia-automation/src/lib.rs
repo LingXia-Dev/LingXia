@@ -166,6 +166,7 @@ impl lx::LxLogicExtension for AutomationExtension {
         ctx.register_hidden_class::<nav::JSNavDriver>()?;
         ctx.register_hidden_class::<info::JSSelfInfo>()?;
         ctx.register_hidden_class::<host::JSLxAppManager>()?;
+        ctx.register_hidden_class::<host::JSDeviceDriver>()?;
         ctx.register_hidden_class::<host::JSBrowserDriver>()?;
         ctx.register_hidden_class::<host::JSBrowserCookies>()?;
         ctx.register_hidden_class::<desktop::JSDesktopDriver>()?;

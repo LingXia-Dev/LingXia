@@ -164,6 +164,10 @@ impl JSPagePointer {
     async fn click(&self, ctx: JSContext, o: PointerClick) -> JSResult<JSValue> {
         let (x, y) = point(&o.at, "at")?;
         let button = mouse_button(&o.button)?;
+        let click_count = o.count.unwrap_or(1);
+        if click_count == 0 {
+            return Err(auto_err("count must be greater than zero"));
+        }
         app_mouse(
             &ctx,
             o.window,
@@ -171,7 +175,7 @@ impl JSPagePointer {
                 x,
                 y,
                 button,
-                click_count: o.count.unwrap_or(1),
+                click_count,
             },
         )
         .await

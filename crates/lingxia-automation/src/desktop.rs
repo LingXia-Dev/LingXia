@@ -15,6 +15,7 @@ use rong::{
     js_class, js_export, js_method,
 };
 use serde_json::json;
+use std::time::{Duration, Instant};
 
 fn illegal_ctor() -> rong::RongJSError {
     HostError::new(
@@ -176,6 +177,17 @@ struct AtOpt {
     at: Vec<f64>,
 }
 
+#[derive(FromJSObj)]
+struct SnapshotOpt {
+    /// Window id from `windows()`.
+    window: String,
+    /// Skip the accessibility tree.
+    #[rename = "noAx"]
+    no_ax: Option<bool>,
+    /// Limit ax tree depth.
+    depth: Option<u32>,
+}
+
 #[js_class(rename = "DesktopDriver")]
 impl JSDesktopDriver {
     #[js_method(constructor)]
@@ -264,6 +276,42 @@ impl JSDesktopDriver {
         let (x, y) = point(&options.at, "at")?;
         let pixel = blocking(move || cu::pixel(x, y)).await?;
         to_js(&ctx, &pixel)
+    }
+
+    /// One-shot window snapshot: window info + PNG screenshot + ax tree, in a
+    /// single object (`lxdev desktop snapshot`). `noAx` skips the tree; `depth`
+    /// caps it. Screenshot/ax degrade to `null` if unavailable rather than
+    /// failing the whole call.
+    #[js_method]
+    async fn snapshot(&self, ctx: JSContext, options: SnapshotOpt) -> JSResult<JSValue> {
+        use base64::{Engine as _, engine::general_purpose};
+        let window = options.window;
+        let no_ax = options.no_ax.unwrap_or(false);
+        let depth = options.depth;
+        let (info, shot, ax) = blocking(move || {
+            let info = cu::window::status(&cu::WindowTarget::Id(window.clone()))?;
+            let shot = cu::screenshot(cu::CaptureTarget::Window(window.clone())).ok();
+            let ax = if no_ax {
+                None
+            } else {
+                cu::ax::tree(&window, depth, None).ok()
+            };
+            Ok((info, shot, ax))
+        })
+        .await?;
+        let screenshot = shot.map(|c| {
+            json!({
+                "format": "png",
+                "width": c.width,
+                "height": c.height,
+                "occlusionIndependent": c.occlusion_independent,
+                "base64": general_purpose::STANDARD.encode(&c.png),
+            })
+        });
+        to_js(
+            &ctx,
+            &json!({ "window": info, "screenshot": screenshot, "ax": ax }),
+        )
     }
 
     #[js_method(getter, enumerable)]
@@ -922,25 +970,48 @@ impl JSDesktopWait {
         Err(illegal_ctor())
     }
 
-    /// Wait until a window matches (resolves to the window).
+    /// Wait until a window matches. `visible` (default) resolves to the window;
+    /// `hidden` waits until no window matches and resolves to `{ ok, state }`.
     #[js_method]
     async fn window(&self, ctx: JSContext, options: WaitWindowOpt) -> JSResult<JSValue> {
-        let visible = match options.state.as_deref() {
-            None | Some("visible") => Some(true),
-            Some("hidden") => Some(false),
-            Some(other) => {
-                return Err(usage(format!(
-                    "unknown state '{other}' (expected visible | hidden)"
-                )));
-            }
-        };
         let timeout_ms = options.timeout_ms.unwrap_or(WAIT_DEFAULT_MS);
-        let window = blocking(move || {
-            let query = cu::WindowQuery::parse(&options.match_query);
-            cu::wait_window(&query, visible, timeout_ms)
-        })
-        .await?;
-        to_js(&ctx, &window)
+        let match_query = options.match_query;
+        match options.state.as_deref() {
+            None | Some("visible") => {
+                let window = blocking(move || {
+                    let query = cu::WindowQuery::parse(&match_query);
+                    cu::wait_window(&query, Some(true), timeout_ms)
+                })
+                .await?;
+                to_js(&ctx, &window)
+            }
+            // The backend only enumerates visible windows, so "hidden" means
+            // "no match remains"; poll until the set empties, mirroring
+            // `lxdev desktop wait window --state hidden` (which the backend's
+            // one-shot `wait_window(visible=false)` rejects outright).
+            Some("hidden") => {
+                let ok = blocking(move || {
+                    let query = cu::WindowQuery::parse(&match_query);
+                    let deadline = Instant::now() + Duration::from_millis(timeout_ms);
+                    loop {
+                        if cu::windows(&query)?.is_empty() {
+                            return Ok(true);
+                        }
+                        if Instant::now() >= deadline {
+                            return Err(cu::Error::Timeout(
+                                "timed out waiting for window to become hidden".into(),
+                            ));
+                        }
+                        std::thread::sleep(Duration::from_millis(150));
+                    }
+                })
+                .await?;
+                to_js(&ctx, &json!({ "ok": ok, "state": "hidden" }))
+            }
+            Some(other) => Err(usage(format!(
+                "unknown state '{other}' (expected visible | hidden)"
+            ))),
+        }
     }
 
     /// Wait until an ax node reaches a state.

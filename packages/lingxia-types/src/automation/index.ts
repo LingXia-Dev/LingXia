@@ -66,6 +66,8 @@ export interface PageQueryOptions extends PageTarget {
   all?: boolean;
   /** Cap text/value length (default 4096). */
   maxText?: number;
+  /** Return untruncated text/value (ignores `maxText`). */
+  full?: boolean;
 }
 
 export interface PageSelectorOptions extends PageTarget {
@@ -240,6 +242,8 @@ export interface NavDriver {
   relaunch(options: NavOptions): Promise<PageInfo>;
   back(options?: NavBackOptions): Promise<PageInfo>;
   current(): Promise<PageInfo>;
+  /** Status of a configured page by name; omit `page` for the current page. */
+  info(options?: PageTarget): Promise<PageInfo>;
   stack(): Promise<PageInfo[]>;
 }
 
@@ -346,6 +350,51 @@ export interface LxAppManager {
   screenshot(options?: WindowRef): Promise<Screenshot>;
 }
 
+// ======================= device (host) =======================
+
+/** A device preset the runner can simulate (raw payload, snake_case-free). */
+export interface DeviceEntry {
+  id: string;
+  name: string;
+  /** Form-factor group: `phone` | `tablet` | `desktop`. */
+  group: string;
+  /** Logical width in points. */
+  width: number;
+  /** Logical height in points. */
+  height: number;
+  /** True for the currently selected device. */
+  current: boolean;
+}
+
+/** The active device selection. */
+export interface DeviceState {
+  id: string;
+  name: string;
+  group: string;
+  /** Logical width in points (accounts for orientation). */
+  width: number;
+  height: number;
+  /** True when rotated to landscape. */
+  landscape: boolean;
+}
+
+export interface DeviceSetOptions {
+  /** Device preset id (see `list()`). */
+  id: string;
+  /** Force landscape (`true`) or portrait (`false`); omit to keep current. */
+  landscape?: boolean;
+}
+
+/**
+ * Simulated-device control (`lxdev lxapp device`). Only functional in a host
+ * runner that registered a device controller; otherwise every call rejects.
+ */
+export interface DeviceDriver {
+  list(): Promise<DeviceEntry[]>;
+  get(): Promise<DeviceState>;
+  set(options: DeviceSetOptions): Promise<DeviceState>;
+}
+
 // ======================= browser (host) =======================
 
 /** Selects a browser tab by id; defaults to the current tab. */
@@ -362,16 +411,31 @@ export interface BrowserOpenOptions {
 
 export interface BrowserEvalOptions extends BrowserTabRef {
   js: string;
+  /** After the eval, wait for a navigation it triggers. */
+  waitNavigation?: boolean;
+  /** With `waitNavigation`: wait until the load completes. */
+  complete?: boolean;
   timeoutMs?: number;
 }
 
 export interface BrowserQueryOptions extends BrowserTabRef {
   css: string;
   maxText?: number;
+  /** Return untruncated text/value (ignores `maxText`). */
+  full?: boolean;
 }
 
 export interface BrowserSelectorOptions extends BrowserTabRef {
   css: string;
+}
+
+/** `click` / `press` also carry the navigation-sync flags. */
+export interface BrowserClickOptions extends BrowserTabRef {
+  css: string;
+  /** After the click, wait for a navigation it triggers. */
+  waitNavigation?: boolean;
+  complete?: boolean;
+  timeoutMs?: number;
 }
 
 export interface BrowserTypeOptions extends BrowserSelectorOptions {
@@ -380,6 +444,10 @@ export interface BrowserTypeOptions extends BrowserSelectorOptions {
 
 export interface BrowserPressOptions extends BrowserTabRef {
   key: string;
+  /** After the press, wait for a navigation it triggers. */
+  waitNavigation?: boolean;
+  complete?: boolean;
+  timeoutMs?: number;
 }
 
 export interface BrowserScrollOptions extends BrowserTabRef {
@@ -410,6 +478,9 @@ export interface BrowserWaitOptions extends BrowserTabRef {
   urlContains?: string;
   /** Wait for a navigation. */
   navigation?: boolean;
+  /** With `navigation`: baseline URL to detect a change from (default: any
+   *  navigation satisfies it). */
+  fromUrl?: string;
   /** With `navigation`: wait until the load completes. */
   complete?: boolean;
   /** Timeout in ms (default 10000, capped at 60000). */
@@ -488,14 +559,17 @@ export interface BrowserDriver {
   reload(options?: BrowserTabRef): Promise<void>;
   back(options?: BrowserTabRef): Promise<void>;
   forward(options?: BrowserTabRef): Promise<void>;
+  /** Evaluate JS; with `waitNavigation` resolves to `{ value, navigation }`. */
   eval(options: BrowserEvalOptions): Promise<unknown>;
   query(options: BrowserQueryOptions): Promise<PageElement | PageElementMiss>;
   /** Wait for a condition (pass exactly one condition field). */
   wait(options: BrowserWaitOptions): Promise<unknown>;
-  click(options: BrowserSelectorOptions): Promise<void>;
+  /** Click; with `waitNavigation` resolves to the navigation payload else `null`. */
+  click(options: BrowserClickOptions): Promise<unknown>;
   type(options: BrowserTypeOptions): Promise<void>;
   fill(options: BrowserTypeOptions): Promise<void>;
-  press(options: BrowserPressOptions): Promise<void>;
+  /** Press; with `waitNavigation` resolves to the navigation payload else `null`. */
+  press(options: BrowserPressOptions): Promise<unknown>;
   scroll(options: BrowserScrollOptions): Promise<void>;
   scrollTo(options: BrowserSelectorOptions): Promise<void>;
   screenshot(options?: BrowserTabRef): Promise<Screenshot>;
@@ -698,6 +772,23 @@ export interface DesktopAxNode {
 export interface DesktopProcessInfo {
   pid: number;
   name: string;
+}
+
+export interface DesktopSnapshotOptions {
+  /** Window id from `windows()`. */
+  window: string;
+  /** Skip the accessibility tree. */
+  noAx?: boolean;
+  /** Limit ax tree depth. */
+  depth?: number;
+}
+
+export interface DesktopSnapshot {
+  window: DesktopWindowInfo;
+  /** PNG capture, or `null` when unavailable. */
+  screenshot: (Screenshot & { occlusionIndependent: boolean }) | null;
+  /** AX tree, `null` when `noAx` or unavailable. */
+  ax: DesktopAxNode | null;
 }
 
 export interface DesktopLaunchResult {
@@ -985,6 +1076,8 @@ export interface DesktopDriver {
   screenshot(options?: DesktopScreenshotOptions): Promise<DesktopCapture>;
   /** Read one pixel's color. */
   pixel(options: DesktopAtOptions): Promise<DesktopPixel>;
+  /** One-shot window info + screenshot + ax tree. */
+  snapshot(options: DesktopSnapshotOptions): Promise<DesktopSnapshot>;
   readonly window: DesktopWindowDriver;
   readonly pointer: DesktopPointer;
   readonly key: DesktopKey;

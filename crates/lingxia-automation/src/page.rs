@@ -47,6 +47,8 @@ struct JSQueryOptions {
     all: Option<bool>,
     #[rename = "maxText"]
     max_text: Option<usize>,
+    /// Return untruncated text/value (ignores `maxText`).
+    full: Option<bool>,
     page: Option<String>,
 }
 
@@ -140,13 +142,22 @@ impl JSPageDriver {
     #[js_method]
     async fn query(&self, ctx: JSContext, options: JSQueryOptions) -> JSResult<JSValue> {
         let app = upgrade(&self.lxapp)?;
+        let all = options.all.unwrap_or(false);
+        if all && options.index.is_some() {
+            return Err(auto_err("pass either all or index, not both"));
+        }
+        let max_text = if options.full.unwrap_or(false) {
+            None
+        } else {
+            Some(options.max_text.unwrap_or(DEFAULT_MAX_TEXT))
+        };
         let value = auto::page_query(
             &app,
             options.page.as_deref(),
             &options.css,
             options.index,
-            options.all.unwrap_or(false),
-            Some(options.max_text.unwrap_or(DEFAULT_MAX_TEXT)),
+            all,
+            max_text,
         )
         .await
         .map_err(auto_err)?;

@@ -8,7 +8,8 @@ use crate::auto_err;
 use crate::resolve::{js_object_to_json, upgrade};
 use lxapp::{LxApp, NavigationType, automation as auto};
 use rong::{
-    FromJSObj, HostError, IntoJSObj, JSContext, JSObject, JSResult, js_class, js_export, js_method,
+    FromJSObj, HostError, IntoJSObj, JSContext, JSObject, JSResult, function::Optional, js_class,
+    js_export, js_method,
 };
 use std::sync::{Arc, Weak};
 
@@ -34,6 +35,11 @@ struct JSBackOptions {
 struct JSNavOptions {
     page: String,
     query: Option<JSObject>,
+}
+
+#[derive(FromJSObj, Default)]
+struct JSPageRef {
+    page: Option<String>,
 }
 
 #[derive(Debug, Clone, IntoJSObj)]
@@ -109,6 +115,16 @@ impl JSNavDriver {
     async fn current(&self, _ctx: JSContext) -> JSResult<JSPageInfo> {
         let app = upgrade(&self.lxapp)?;
         let (page, name) = auto::resolve_page(&app, None).map_err(auto_err)?;
+        Ok(auto::page_status(&app, &page, name.as_deref()).into())
+    }
+
+    /// Status of a configured page by name (`lxdev lxapp page info --page`);
+    /// omit `page` for the current page.
+    #[js_method]
+    async fn info(&self, _ctx: JSContext, options: Optional<JSPageRef>) -> JSResult<JSPageInfo> {
+        let app = upgrade(&self.lxapp)?;
+        let options = options.0.unwrap_or_default();
+        let (page, name) = auto::resolve_page(&app, options.page.as_deref()).map_err(auto_err)?;
         Ok(auto::page_status(&app, &page, name.as_deref()).into())
     }
 
