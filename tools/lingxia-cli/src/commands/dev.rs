@@ -152,12 +152,11 @@ fn platform_session_name(platform: PlatformType) -> &'static str {
 /// second same-platform session is never wanted: it only leaves `lxdev` unable
 /// to tell which one to drive.
 ///
-/// Stale (unreachable) session files are pruned first; only WS-reachable peers
-/// count as conflicts. This is the single defense against the "human + agent
+/// Liveness comes from the broker registration: a session that exited (or
+/// crashed) has already dropped off the list. This is the single defense against the "human + agent
 /// both ran `lingxia dev -p ios`" footgun. Different platforms don't conflict —
 /// `lingxia dev -p android` and `-p ios` run side by side.
 fn precheck_platform_session(project_root: &Path, platform: &str) -> Result<()> {
-    let _ = log_store::prune_stale(project_root);
     let live = log_store::find_live_for_platform(project_root, platform)?;
     if live.is_empty() {
         return Ok(());
@@ -387,7 +386,7 @@ fn spawn_background_dev(project_root: &Path) -> Result<()> {
         Some(session) => {
             println!("Dev session is ready.");
             println!("  id: {}", session.session_id);
-            println!("  platform: {}", session.platform);
+            println!("  target: {}", session.target);
             println!("  ws: {}", session.ws_url);
             println!("  session log: {}", session.log_file);
             println!("Use `lxdev logs -f` to follow logs.");
@@ -473,7 +472,7 @@ fn print_session_status(project_root: &Path, json_output: bool) -> Result<()> {
                 serde_json::json!({
                     "session_id": session.session_id,
                     "pid": session.pid,
-                    "platform": session.platform,
+                    "target": session.target,
                     "started_at": session.started_at,
                     "ws_url": session.ws_url,
                     "log_file": session.log_file,
@@ -491,8 +490,8 @@ fn print_session_status(project_root: &Path, json_output: bool) -> Result<()> {
     }
 
     println!(
-        "{:<36}  {:<5}  {:<8}  {:<19}  {:<22}  PID",
-        "ID", "STATE", "PLATFORM", "STARTED", "WS"
+        "{:<8}  {:<5}  {:<8}  {:<19}  {:<22}  PID",
+        "ID", "STATE", "TARGET", "STARTED", "WS"
     );
     for session in &sessions {
         let state = if log_store::is_stale(session) {
@@ -501,10 +500,10 @@ fn print_session_status(project_root: &Path, json_output: bool) -> Result<()> {
             "live"
         };
         println!(
-            "{:<36}  {:<5}  {:<8}  {:<19}  {:<22}  {}",
+            "{:<8}  {:<5}  {:<8}  {:<19}  {:<22}  {}",
             session.session_id,
             state,
-            session.platform,
+            session.target,
             format_started(session.started_at),
             session.ws_url,
             session.pid,
@@ -522,21 +521,13 @@ fn stop_session(project_root: &Path, selector: Option<String>, force: bool) -> R
         Ok(()) => {
             println!(
                 "Stop requested for {} dev session {}.",
-                session.platform, session.session_id
+                session.target, session.session_id
             );
             Ok(())
         }
         Err(err) if force => {
             eprintln!("Graceful stop failed: {err:#}");
-            force_stop_session(project_root, &session)
-        }
-        Err(_) if log_store::is_stale(&session) => {
-            log_store::remove_session(project_root, &session.session_id)?;
-            println!(
-                "Removed stale {} dev session {}.",
-                session.platform, session.session_id
-            );
-            Ok(())
+            force_stop_session(&session)
         }
         Err(err) => Err(err).with_context(|| {
             format!(
@@ -547,35 +538,26 @@ fn stop_session(project_root: &Path, selector: Option<String>, force: bool) -> R
     }
 }
 
-fn force_stop_session(project_root: &Path, session: &log_store::SessionInfo) -> Result<()> {
+fn force_stop_session(session: &log_store::SessionInfo) -> Result<()> {
     let pid = sysinfo::Pid::from_u32(session.pid);
     let mut system = System::new();
     system.refresh_processes(ProcessesToUpdate::Some(&[pid]), true);
 
-    let remove_stale = |note: &str| {
-        let _ = log_store::remove_session(project_root, &session.session_id);
-        println!(
-            "Session process {} {}; removed stale session {}.",
-            session.pid, note, session.session_id
-        );
-    };
-
     let Some(process) = system.process(pid) else {
-        remove_stale("is not running");
+        println!("Session process {} is not running.", session.pid);
         return Ok(());
     };
 
-    // Guard against PID reuse: a crashed session can leave a stale file whose
-    // pid the OS later hands to an unrelated process. Only kill if this really
-    // is the `lingxia dev` process that owns the session.
+    // Guard against PID reuse: only kill if this really is the `lingxia dev`
+    // process that registered the session.
     if !is_owning_dev_process(process, session) {
-        remove_stale("was reused by another process");
+        println!("Session pid {} was reused by another process.", session.pid);
         return Ok(());
     }
 
     // Prefer a graceful interrupt: the dev process's Ctrl+C handler runs its own
-    // teardown (terminates the app/Runner, drops port forwards, removes the
-    // session file), so children aren't orphaned. Fall back to SIGKILL only if
+    // teardown (terminates the app/Runner, drops port forwards), so children
+    // aren't orphaned. Fall back to SIGKILL only if
     // it doesn't exit in time or the platform can't deliver the signal.
     let interrupted = process.kill_with(Signal::Interrupt).unwrap_or(false);
     if !(interrupted && wait_for_pid_exit(pid, Duration::from_secs(3))) {
@@ -589,10 +571,9 @@ fn force_stop_session(project_root: &Path, session: &log_store::SessionInfo) -> 
         }
     }
 
-    let _ = log_store::remove_session(project_root, &session.session_id);
     println!(
         "Killed {} dev session {} (pid {}).",
-        session.platform, session.session_id, session.pid
+        session.target, session.session_id, session.pid
     );
     Ok(())
 }

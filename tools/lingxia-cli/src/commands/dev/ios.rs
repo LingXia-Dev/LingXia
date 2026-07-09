@@ -61,7 +61,8 @@ pub(super) fn execute_ios(ctx: DevContext) -> Result<()> {
         // Step 3: Launch app
         println!("{}", "Step 3/3: Launching...".bold());
         install_ctrlc_handler(stop_requested.clone())?;
-        log_store::write_session(&ctx.project_root, &session, platform_name, &host_ws_url)?;
+        let _session_registration =
+            log_store::register_session(&ctx.project_root, &session, platform_name, &host_ws_url);
 
         // Read bundle ID from the signed app (signing may change it for free accounts)
         let bundle_id = platform::ios::read_bundle_id(app_path)?;
@@ -79,6 +80,5 @@ pub(super) fn execute_ios(ctx: DevContext) -> Result<()> {
         Ok(())
     })();
 
-    let _ = log_store::remove_session(&ctx.project_root, &session.session_id);
     stop_dev_server(server, run_result)
 }

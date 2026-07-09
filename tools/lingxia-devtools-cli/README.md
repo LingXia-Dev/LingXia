@@ -13,7 +13,7 @@ cargo build -p lingxia-devtools-cli --release   # builds the optimized `lxdev` b
 cargo run -p lingxia-devtools-cli -- --help
 ```
 
-There is no setup: start a session with `lingxia dev` in a project, then run `lxdev` from anywhere inside that project tree — it resolves the session from `.lingxia/sessions/` relative to the working directory.
+There is no setup: start a session with `lingxia dev` in a project, then run `lxdev` from any directory — sessions register with a per-user local broker, and `lxdev` resolves them there.
 
 ## Commands
 
@@ -25,9 +25,9 @@ lxdev <family> --help        # commands in a family
 lxdev <family> <cmd> --help  # exact flags, defaults, and which are required
 ```
 
-The five families and what each targets: **`browser`** (the host app's browser tabs), **`app`** (the host windows), **`lxapp`** (the lxapps and their pages), **`logs`** (the dev log stream), **`sessions`** (the dev-session files).
+The five families and what each targets: **`browser`** (the host app's browser tabs), **`app`** (the host windows), **`lxapp`** (the lxapps and their pages), **`logs`** (the dev log stream), **`session`** (the live dev sessions).
 
-Use `lxdev lxapp rebuild` to rebuild the lxapp front-end bundle through the running session, or `lxdev lxapp restart --build` to rebuild and restart the lxapp runtime. Use `lxdev sessions stop` to request graceful shutdown; use `lingxia dev stop --force` only when the owner process must be killed.
+Use `lxdev lxapp rebuild` to rebuild the lxapp front-end bundle through the running session, or `lxdev lxapp restart --build` to rebuild and restart the lxapp runtime. Use `lxdev session stop` to request graceful shutdown; use `lingxia dev stop --force` only when the owner process must be killed.
 
 ## Conceptual guide
 

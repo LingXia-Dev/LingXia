@@ -92,7 +92,7 @@ tiny-skia = "0.12.0"
 usvg = "0.47.0"
 roxmltree = "0.21"
 jsonschema = "0.46"
-lingxia-devtool-protocol = { workspace = true }
+lingxia-devtool-protocol = { workspace = true, features = ["broker"] }
 lingxia-log = { workspace = true }
 
 # LxApp build — oxc-based JS/TS compilation

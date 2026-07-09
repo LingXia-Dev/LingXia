@@ -8,13 +8,14 @@ This file says **what `lxdev` can do**. For flags and defaults, `lxdev <family> 
 
 **Start a session for automation with `lingxia dev --background`.** `lxdev` needs a *live* session, and a session lives only as long as its owning `lingxia dev` process — a foreground `lingxia dev` blocks the terminal, and if an agent backgrounds it and later loses that process, the session dies with it. `--background` builds, launches, and returns once the session is ready; check it with `lingxia dev status`, stop it with `lingxia dev stop`. Then drive it with `lxdev`.
 
-`lingxia dev` writes `.lingxia/sessions/<id>.json` per session; `lxdev` scans it on every run. One live session → used automatically. Several → it **refuses to guess** and lists candidates; pick one with the global selector, which goes **before** the subcommand:
+Each `lingxia dev` session registers with a per-user local broker and stays registered for exactly as long as its process lives; `lxdev` queries the broker, so it works from **any directory** — the session may be one you started or one already running. One live session → used automatically. Several → it **refuses to guess** and prints the candidates; pick one with the global selector (before the subcommand) or the `LXDEV_SESSION` env var:
 
 ```bash
-lxdev --session ios ...          # platform name, or a session-id prefix
+lxdev --session a1b2 ...         # session-id prefix
+lxdev --session ios ...          # target name, when unique
 ```
 
-Stale files from crashed sessions are pruned automatically (or via `lxdev sessions prune`). `lingxia dev` refuses a second same-platform session (stop the first with `lingxia dev stop`); different platforms run side by side.
+Crashed sessions disappear from the broker automatically — there is nothing to prune. `lingxia dev` refuses a second same-target session per project (stop the first with `lingxia dev stop`); different targets run side by side.
 
 ## Capabilities
 
@@ -45,7 +46,7 @@ Stale files from crashed sessions are pruned automatically (or via `lxdev sessio
 
 **`logs`** — the session's JSONL log stream: tail or `-f` follow; filter by `--level`, `--source` (`native` host, your app's `lxview`/`lxlogic`, or a `browser` tab), `--path`, `--grep`, `--app <id>`; `--wide` prefixes each line with its app id.
 
-**`sessions`** — list, probe liveness, prune stale session files, or request that the owning `lingxia dev` process stop (`sessions stop`). Force-kill remains on `lingxia dev stop --force`, because `lingxia` owns the platform process lifecycle.
+**`session`** — list live sessions (id, target, project path) or request that the owning `lingxia dev` process stop (`session stop`). Force-kill remains on `lingxia dev stop --force`, because `lingxia` owns the platform process lifecycle.
 
 ## The three JS contexts — don't conflate them
 
@@ -68,8 +69,7 @@ Scripts may be an expression or a function body using `return` / `await`. Surfac
 
 | Symptom | Fix |
 |---|---|
-| `No active dev session found` | Run `lingxia dev` in this project. |
-| `Multiple active dev sessions match` | Add `--session <id-prefix\|platform>`. |
-| `All matching dev sessions are unreachable` | `lxdev sessions prune`, then restart `lingxia dev`. |
+| `No live dev session found` | Run `lingxia dev` in the project. |
+| `Multiple LingXia dev sessions are live` | Add `--session <id-prefix\|target>`. |
 | `eval` returns nothing / wrong scope | Wrong JS context — see the table above. |
-| Commands connect but hang | Host app lost its bridge — use `lxdev sessions stop` or `lingxia dev stop`, then start `lingxia dev` again. |
+| Commands connect but hang | Host app lost its bridge — use `lxdev session stop` or `lingxia dev stop`, then start `lingxia dev` again. |

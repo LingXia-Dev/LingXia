@@ -720,7 +720,7 @@ fn execute_network(info: &SessionInfo, options: NetworkOptions) -> Result<()> {
     // Windows, so accept either. lxdev and the runner are co-located, so the
     // real backstop is the runner-side handler (compiled only on Windows) —
     // a non-Windows runner answers "unknown handler" for these commands.
-    let platform = info.platform.as_str();
+    let platform = info.target.as_str();
     if !platform.eq_ignore_ascii_case("windows") && !platform.eq_ignore_ascii_case("lxapp") {
         return Err(anyhow!(
             "browser network capture needs a Windows WebView2 session (this session is '{platform}')",

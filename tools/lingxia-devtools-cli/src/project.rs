@@ -1,180 +1,133 @@
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{Context, Result, bail};
+pub use lingxia_devtool_protocol::broker::SessionInfo;
 use lingxia_devtool_protocol::{DevtoolsPeerRole, DevtoolsWireMessage, handlers};
-use serde::Deserialize;
-use std::fs;
 use std::io::{Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
-use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tungstenite::WebSocket;
 use tungstenite::client::IntoClientRequest;
 use tungstenite::protocol::Message;
 
-const DEV_DIR_NAME: &str = ".lingxia";
-const SESSIONS_DIR_NAME: &str = "sessions";
 const WS_PROBE_TIMEOUT: Duration = Duration::from_millis(200);
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct SessionInfo {
-    pub session_id: String,
-    pub pid: u32,
-    pub platform: String,
-    pub started_at: u64,
-    pub ws_url: String,
-    pub log_file: String,
-}
 
 #[derive(Debug, Default, Clone)]
 pub struct SessionSelector {
-    /// Session id prefix or platform name. `None` auto-selects when unambiguous.
+    /// Listing ordinal, session id prefix, or target name.
+    /// `None` auto-selects when exactly one session is live.
     pub query: Option<String>,
 }
 
-impl SessionSelector {
-    pub fn is_empty(&self) -> bool {
-        self.query.is_none()
+/// Spawn the per-user broker so sessions orphaned by a broker crash can
+/// re-register and become visible again. `lxdev` never starts `lingxia dev`
+/// itself — only the broker. Missing `lingxia` binary is fine: with no broker
+/// there are no registered sessions either.
+fn spawn_broker() -> std::io::Result<()> {
+    let lingxia_bin = std::env::var("LINGXIA_BIN").unwrap_or_else(|_| "lingxia".to_string());
+    let mut command = std::process::Command::new(lingxia_bin);
+    command
+        .arg("dev-broker")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+    detach_process(&mut command);
+    command.spawn().map(|_| ())
+}
+
+#[cfg(unix)]
+fn detach_process(command: &mut std::process::Command) {
+    use std::os::unix::process::CommandExt;
+    unsafe {
+        command.pre_exec(|| {
+            if libc::setsid() == -1 {
+                return Err(std::io::Error::last_os_error());
+            }
+            Ok(())
+        });
     }
 }
 
-pub fn sessions_dir(project_root: &Path) -> PathBuf {
-    project_root.join(DEV_DIR_NAME).join(SESSIONS_DIR_NAME)
+#[cfg(windows)]
+fn detach_process(command: &mut std::process::Command) {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+    const DETACHED_PROCESS: u32 = 0x0000_0008;
+    command.creation_flags(CREATE_NEW_PROCESS_GROUP | DETACHED_PROCESS);
 }
 
-pub fn remove_session(project_root: &Path, session_id: &str) -> Result<()> {
-    let path = sessions_dir(project_root).join(format!("{session_id}.json"));
-    if path.exists() {
-        fs::remove_file(&path).with_context(|| format!("Failed to remove {}", path.display()))?;
-    }
-    Ok(())
-}
-
-/// Enumerate every parseable session file under `.lingxia/sessions/`.
-/// Malformed JSON / unreadable files are silently skipped.
-pub fn list_all_sessions(project_root: &Path) -> Result<Vec<SessionInfo>> {
-    let dir = sessions_dir(project_root);
-    if !dir.exists() {
-        return Ok(Vec::new());
-    }
-    let mut out = Vec::new();
-    for entry in fs::read_dir(&dir).with_context(|| format!("Failed to read {}", dir.display()))? {
-        let entry = entry?;
-        let path = entry.path();
-        if path.extension().and_then(|s| s.to_str()) != Some("json") {
-            continue;
-        }
-        let Ok(bytes) = fs::read(&path) else { continue };
-        let Ok(info) = serde_json::from_slice::<SessionInfo>(&bytes) else {
-            continue;
-        };
-        out.push(info);
-    }
-    out.sort_by_key(|s| s.started_at);
-    Ok(out)
-}
-
-pub fn is_stale(info: &SessionInfo) -> bool {
-    !devtools_ws_reachable(&info.ws_url, WS_PROBE_TIMEOUT)
-}
-
-/// Delete session files whose devtools WS probe fails. Malformed files are
-/// removed silently because they do not contain a printable session id.
-/// Returns parsed stale entries so `lxdev sessions prune` can print one line.
-pub fn prune_stale(project_root: &Path) -> Result<Vec<SessionInfo>> {
-    let dir = sessions_dir(project_root);
-    if !dir.exists() {
-        return Ok(Vec::new());
-    }
-    let mut pruned = Vec::new();
-    for entry in fs::read_dir(&dir).with_context(|| format!("Failed to read {}", dir.display()))? {
-        let entry = entry?;
-        let path = entry.path();
-        if path.extension().and_then(|s| s.to_str()) != Some("json") {
-            continue;
-        }
-        let Ok(bytes) = fs::read(&path) else {
-            let _ = fs::remove_file(&path);
-            continue;
-        };
-        let Ok(info) = serde_json::from_slice::<SessionInfo>(&bytes) else {
-            let _ = fs::remove_file(&path);
-            continue;
-        };
-        if is_stale(&info) {
-            let _ = fs::remove_file(&path);
-            pruned.push(info);
-        }
-    }
-    Ok(pruned)
+/// All live sessions for this user, ordered by start time.
+pub fn list_all_sessions() -> Result<Vec<SessionInfo>> {
+    let mut sessions = lingxia_devtool_protocol::broker::list_sessions_spawning(&spawn_broker)
+        .context("Failed to query the dev-session broker")?;
+    sessions.sort_by_key(|s| s.started_at);
+    Ok(sessions)
 }
 
 /// Resolve which session a `lxdev` subcommand should target.
 ///
-/// Avoids probing more than necessary: when only one session file exists,
-/// reuse it directly without TCP probes; only escalate to liveness checks
-/// when ambiguity actually exists.
-pub fn resolve_session(project_root: &Path, selector: &SessionSelector) -> Result<SessionInfo> {
-    let all = list_all_sessions(project_root)?;
+/// The common case is one live session and no selector: use it. With several
+/// sessions, `--session` (or `LXDEV_SESSION`) picks one by session id prefix
+/// or target name; anything ambiguous or unmatched is an error, never a
+/// guess.
+pub fn resolve_session(selector: &SessionSelector) -> Result<SessionInfo> {
+    let all = list_all_sessions()?;
     if all.is_empty() {
-        bail!(
-            "No active dev session found. Run `lingxia dev` in this project first.\n\
-             (Looked under {})",
-            sessions_dir(project_root).display()
-        );
+        bail!("No live dev session found. Run `lingxia dev` first.");
     }
 
-    // Fast path: exactly one session file and no explicit selector → use it
-    // without probing. If it's actually stale the subsequent WS connect will
-    // surface a clearer error than a 200ms probe ever could.
-    if selector.is_empty() && all.len() == 1 {
-        return Ok(all.into_iter().next().unwrap());
-    }
+    let Some(needle) = selector.query.as_deref() else {
+        if all.len() == 1 {
+            return Ok(all.into_iter().next().unwrap());
+        }
+        bail!(pick_message(&all));
+    };
 
-    // Match against the selector: one value, tried as a platform name first
-    // (exact, case-insensitive) then as a session-id prefix. Ambiguity in the
-    // surviving set is what triggers the explicit error.
-    let mut candidates: Vec<SessionInfo> = all
-        .into_iter()
-        .filter(|s| match &selector.query {
-            Some(needle) => {
-                s.platform.eq_ignore_ascii_case(needle) || s.session_id.starts_with(needle)
-            }
-            None => true,
-        })
+    let candidates: Vec<SessionInfo> = all
+        .iter()
+        .filter(|s| s.target.eq_ignore_ascii_case(needle) || s.session_id.starts_with(needle))
+        .cloned()
         .collect();
 
-    if candidates.is_empty() {
-        bail!(
-            "No dev session matches the given selector ({:?}). \
-             Run `lxdev sessions` to see active sessions.",
-            selector
-        );
-    }
-
-    // If multiple candidates remain, probe and drop stale ones — a dead
-    // session shouldn't force a user to disambiguate.
-    if candidates.len() > 1 {
-        candidates.retain(|s| !is_stale(s));
-    }
-
     match candidates.len() {
-        0 => Err(anyhow!(
-            "All matching dev sessions are unreachable. \
-             Run `lxdev sessions prune` to clean up, or start a new session."
-        )),
+        0 => bail!(
+            "No dev session matches --session {needle:?}.\n{}",
+            pick_message(&all)
+        ),
         1 => Ok(candidates.into_iter().next().unwrap()),
-        _ => {
-            let mut msg = String::from(
-                "Multiple active dev sessions match. Add --session <id-prefix|platform> to choose:\n",
-            );
-            for s in &candidates {
-                msg.push_str(&format!(
-                    "  {}  platform={}  pid={}  ws={}\n",
-                    s.session_id, s.platform, s.pid, s.ws_url
-                ));
-            }
-            Err(anyhow!(msg.trim_end().to_string()))
-        }
+        _ => bail!(
+            "--session {needle:?} is ambiguous.\n{}",
+            pick_message(&candidates)
+        ),
     }
+}
+
+/// The disambiguation listing: session id, target, project path.
+fn pick_message(sessions: &[SessionInfo]) -> String {
+    let mut msg =
+        String::from("Multiple LingXia dev sessions are live. Pick one with --session:\n\n");
+    for s in sessions {
+        msg.push_str(&format!(
+            "  {}  {:<8} {}\n",
+            s.session_id,
+            s.target,
+            abbreviate_home(&s.project_root)
+        ));
+    }
+    msg.trim_end().to_string()
+}
+
+fn abbreviate_home(path: &str) -> String {
+    let Some(home) = std::env::var_os("HOME") else {
+        return path.to_string();
+    };
+    let home = home.to_string_lossy();
+    match path.strip_prefix(home.as_ref()) {
+        Some(rest) if rest.starts_with('/') => format!("~{rest}"),
+        _ => path.to_string(),
+    }
+}
+
+pub fn is_stale(info: &SessionInfo) -> bool {
+    !devtools_ws_reachable(&info.ws_url, WS_PROBE_TIMEOUT)
 }
 
 fn devtools_ws_reachable(ws_url: &str, timeout: Duration) -> bool {
@@ -271,5 +224,29 @@ fn parse_ws_addr(ws_url: &str) -> Option<String> {
         Some(authority.to_string())
     } else {
         Some(format!("{authority}:80"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn session(id: &str, target: &str, started_at: u64) -> SessionInfo {
+        SessionInfo {
+            session_id: id.to_string(),
+            project_root: "/p".to_string(),
+            target: target.to_string(),
+            pid: 1,
+            started_at,
+            ws_url: "ws://127.0.0.1:1".to_string(),
+            log_file: "/p/.lingxia/logs/x.jsonl".to_string(),
+        }
+    }
+
+    #[test]
+    fn pick_message_lists_id_target_path() {
+        let msg = pick_message(&[session("a1b2c3", "macos", 1), session("d4e5f6", "lxapp", 2)]);
+        assert!(msg.contains("a1b2c3  macos"));
+        assert!(msg.contains("d4e5f6  lxapp"));
     }
 }

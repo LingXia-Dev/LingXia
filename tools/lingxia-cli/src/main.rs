@@ -354,6 +354,10 @@ enum Commands {
         dev_options: DevOptions,
     },
 
+    /// Per-user dev-session broker (started on demand by `lingxia dev`/`lxdev`)
+    #[command(hide = true, name = "dev-broker")]
+    DevBroker,
+
     /// Check development environment setup
     Doctor {
         /// Platforms to check (comma-separated). Defaults to configured platforms or all.
@@ -725,6 +729,9 @@ fn main() -> Result<()> {
                     }
                 }),
             })?;
+        }
+        Commands::DevBroker => {
+            lingxia_devtool_protocol::broker::run_broker()?;
         }
         Commands::Doctor { platform } => {
             commands::doctor::execute(platform)?;

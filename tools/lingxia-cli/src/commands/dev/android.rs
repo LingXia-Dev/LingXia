@@ -85,7 +85,8 @@ pub(super) fn execute_android(ctx: DevContext, abis: Vec<String>) -> Result<()> 
         // Step 4: Launch app
         println!("{}", "Step 4/4: Launching app...".bold());
         install_ctrlc_handler(stop_requested.clone())?;
-        log_store::write_session(&ctx.project_root, &session, platform_name, &host_ws_url)?;
+        let _session_registration =
+            log_store::register_session(&ctx.project_root, &session, platform_name, &host_ws_url);
 
         let run_config = RunConfig {
             device_id: ctx.device.clone(),
@@ -101,6 +102,5 @@ pub(super) fn execute_android(ctx: DevContext, abis: Vec<String>) -> Result<()> 
         Ok(())
     })();
 
-    let _ = log_store::remove_session(&ctx.project_root, &session.session_id);
     stop_dev_server(server, run_result)
 }

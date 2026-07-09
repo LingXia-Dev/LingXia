@@ -20,8 +20,9 @@ use project::SessionSelector;
 #[command(about = "LingXia devtools client", long_about = None)]
 #[command(version)]
 struct Cli {
-    /// Select the dev session by id prefix or platform name (android, ios,
-    /// macos, harmony, windows, lxapp). Optional when only one session is live.
+    /// Select the dev session by id prefix or target name (android, ios,
+    /// macos, harmony, windows, lxapp). Optional when only one session is
+    /// live. Falls back to the LXDEV_SESSION env var.
     #[arg(long, global = true)]
     session: Option<String>,
 
@@ -37,8 +38,9 @@ enum Commands {
     Lxapp(lxapp::LxAppOptions),
     /// Query and filter the current dev session log file
     Logs(logs::LogsOptions),
-    /// List or prune dev sessions for this project
-    Sessions(SessionsCmd),
+    /// List or stop live dev sessions
+    #[command(alias = "sessions")]
+    Session(SessionCmd),
     /// Automate the local desktop OS (no dev session required)
     Desktop(desktop::DesktopOptions),
     /// Removed: session commands moved under `lxdev lxapp`
@@ -47,9 +49,9 @@ enum Commands {
 }
 
 #[derive(Args, Clone)]
-struct SessionsCmd {
+struct SessionCmd {
     #[command(subcommand)]
-    command: Option<SessionsAction>,
+    command: Option<SessionAction>,
 
     /// Print pretty JSON output (list only — ignored when a subcommand is given)
     #[arg(long)]
@@ -57,46 +59,52 @@ struct SessionsCmd {
 }
 
 #[derive(Subcommand, Clone)]
-enum SessionsAction {
-    /// Remove session files whose WS server no longer responds
-    Prune,
+enum SessionAction {
+    /// List live dev sessions
+    List {
+        /// Print pretty JSON output
+        #[arg(long)]
+        json: bool,
+    },
     /// Stop a dev session by asking its owning `lingxia dev` process to exit
     Stop {
-        /// Session id prefix or platform name. Overrides the global --session selector.
+        /// Session id prefix or target name. Overrides --session.
         session: Option<String>,
     },
 }
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
-    let project_root = std::env::current_dir()?;
-    let selector = SessionSelector { query: cli.session };
+    let selector = SessionSelector {
+        query: cli.session.or_else(|| std::env::var("LXDEV_SESSION").ok()),
+    };
 
     match cli.command {
         Commands::Browser(options) => {
-            let info = project::resolve_session(&project_root, &selector)?;
+            let info = project::resolve_session(&selector)?;
             browser::execute(&info, options)
         }
         Commands::Lxapp(options) => {
-            if lxapp::handle_pre_session(&project_root, &options)? {
+            if lxapp::handle_pre_session(&std::env::current_dir()?, &options)? {
                 return Ok(());
             }
-            let info = project::resolve_session(&project_root, &selector)?;
+            let info = project::resolve_session(&selector)?;
+            let project_root = std::path::PathBuf::from(&info.project_root);
             lxapp::execute(&project_root, &info, options)
         }
         Commands::Logs(options) => {
-            let info = project::resolve_session(&project_root, &selector)?;
+            let info = project::resolve_session(&selector)?;
             logs::execute(Path::new(&info.log_file), options)
         }
-        Commands::Sessions(cmd) => match cmd.command {
-            Some(SessionsAction::Prune) => sessions::execute_prune(&project_root),
-            Some(SessionsAction::Stop { session }) => {
+        Commands::Session(cmd) => match cmd.command {
+            Some(SessionAction::List { json }) => sessions::execute_list(json),
+            Some(SessionAction::Stop { session }) => {
                 let selector = SessionSelector {
                     query: session.or(selector.query),
                 };
-                sessions::execute_stop(&project_root, &selector)
+                sessions::execute_stop(&selector)
             }
-            None => sessions::execute_list(&project_root, cmd.json),
+            None => sessions::execute_list(cmd.json),
         },
         // Local OS automation: no dev session; the handler owns process exit.
         Commands::Desktop(options) => desktop::execute(options),
