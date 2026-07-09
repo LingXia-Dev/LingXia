@@ -1088,7 +1088,12 @@ fn build_tab_bar_layout(
         .unwrap_or("#ffffff");
     let tabbar_background_transparent = is_transparent_css_color(tabbar_background);
     Some(WindowsShellTabBarLayout {
-        visible: true,
+        // Hidden ⇒ `compute_chrome_rects` reserves no strip, so the WebView
+        // reclaims the space and nothing draws.
+        visible: tabbar
+            .as_ref()
+            .map(|tabbar| tabbar.is_visible)
+            .unwrap_or(true),
         position,
         dimension,
         app_name: app.runtime_info().app_name,
