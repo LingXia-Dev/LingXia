@@ -9,8 +9,7 @@ static WINDOWS_UI_UPDATE_HANDLER: Mutex<Option<WindowsUiUpdateHandler>> = Mutex:
 
 /// Async UI update: the handler receives the appid and a completion closure
 /// it must call (with success) once the UI has actually applied the change.
-type WindowsUiUpdateAsyncHandler =
-    Arc<dyn Fn(String, Box<dyn FnOnce(bool) + Send>) + Send + Sync>;
+type WindowsUiUpdateAsyncHandler = Arc<dyn Fn(String, Box<dyn FnOnce(bool) + Send>) + Send + Sync>;
 static WINDOWS_UI_UPDATE_ASYNC_HANDLER: Mutex<Option<WindowsUiUpdateAsyncHandler>> =
     Mutex::new(None);
 
@@ -61,7 +60,7 @@ impl UIUpdate for Platform {
             // applies the update inline, so resolving afterwards is accurate.
             return self.update_tabbar_ui(appid);
         };
-        crate::rt::native_call(|callback_id| {
+        crate::rt::native_call_ui(|callback_id| {
             handler(
                 appid.clone(),
                 Box::new(move |ok| {
@@ -72,6 +71,5 @@ impl UIUpdate for Platform {
             Ok(())
         })
         .await
-        .map(|_| ())
     }
 }

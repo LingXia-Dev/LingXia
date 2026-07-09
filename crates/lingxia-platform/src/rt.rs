@@ -60,3 +60,39 @@ where
         Err(_) => Err(PlatformError::CallbackDropped),
     }
 }
+
+/// Completion budget for awaited UI updates (see `native_call_ui`).
+const UI_CALLBACK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// `native_call` for UI-apply confirmations (tabbar show/hide and friends).
+///
+/// The completion signal rides the platform's render loop, which can pause
+/// outright — vsync stops when the app backgrounds (Harmony), the main queue
+/// defers when suspended (Apple), a posted runnable can die with its activity
+/// (Android) — and the registry keeps the callback sender alive, so a missed
+/// completion would hang the JS promise forever. The state change itself was
+/// already committed before dispatch, so on deadline the callback is
+/// deregistered and the call resolves Ok: bounded resolution beats a hung
+/// `await` over a purely visual confirmation.
+pub(crate) async fn native_call_ui<F>(init: F) -> Result<(), PlatformError>
+where
+    F: FnOnce(u64) -> Result<(), PlatformError>,
+{
+    let (callback_id, receiver) = lingxia_messaging::get_callback();
+    if let Err(e) = init(callback_id) {
+        lingxia_messaging::remove_callback(callback_id);
+        return Err(e);
+    }
+    match tokio::time::timeout(UI_CALLBACK_TIMEOUT, receiver).await {
+        Ok(Ok(lingxia_messaging::CallbackResult::Success(_))) => Ok(()),
+        Ok(Ok(lingxia_messaging::CallbackResult::Error(code))) => {
+            Err(PlatformError::BusinessError(code))
+        }
+        Ok(Err(_)) => Err(PlatformError::CallbackDropped),
+        Err(_) => {
+            lingxia_messaging::remove_callback(callback_id);
+            log::warn!("UI update confirmation timed out after {UI_CALLBACK_TIMEOUT:?}; resolving");
+            Ok(())
+        }
+    }
+}

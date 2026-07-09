@@ -63,7 +63,7 @@ impl UIUpdate for Platform {
     }
 
     async fn update_tabbar_ui_async(&self, appid: String) -> Result<(), PlatformError> {
-        crate::rt::native_call(|callback_id| {
+        crate::rt::native_call_ui(|callback_id| {
             let lxapp_class: &JClass = super::get_cached_class(super::CachedClass::LxApp)
                 .map_err(|e| PlatformError::Platform(e.to_string()))?;
 
@@ -88,7 +88,6 @@ impl UIUpdate for Platform {
             })
         })
         .await
-        .map(|_| ())
     }
 
     fn update_orientation_ui(&self, appid: String) -> Result<(), PlatformError> {

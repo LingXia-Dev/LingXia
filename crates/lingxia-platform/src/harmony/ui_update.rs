@@ -28,7 +28,7 @@ impl UIUpdate for Platform {
     }
 
     async fn update_tabbar_ui_async(&self, appid: String) -> Result<(), PlatformError> {
-        crate::rt::native_call(|callback_id| {
+        crate::rt::native_call_ui(|callback_id| {
             let callback_id = callback_id.to_string();
             lingxia_webview::platform::harmony::tsfn::call_arkts(
                 "updateTabBarUIAsync",
@@ -42,7 +42,6 @@ impl UIUpdate for Platform {
             })
         })
         .await
-        .map(|_| ())
     }
 
     fn update_orientation_ui(&self, appid: String) -> Result<(), PlatformError> {
