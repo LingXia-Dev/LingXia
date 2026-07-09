@@ -4980,18 +4980,27 @@ pub fn navigate_webview_window(
     // replace path below reparents the page into its own native window and
     // reasserts a plain shell frame, which escapes the device frame entirely
     // (the show path already branches this way; navigation must match).
-    if let Some(host) = active_host_window()
-        && window_is_device_framed(host)
-    {
-        return navigate_in_active_group(host, webtag, animation);
+    if let Some(host) = active_host_window() {
+        if window_is_device_framed(host) {
+            return navigate_with_snapshot_slide(host, animation, || {
+                present_webview_in_active_group(webtag)
+            });
+        }
+        // Desktop (non-framed) shell: same slide over the replace-path swap —
+        // the content area animates while the sidebar/top-bar chrome stays put.
+        return navigate_with_snapshot_slide(host, animation, || {
+            show_webview_window_replacing(webtag, title, activate, normal_group_webtags(webtag))
+        });
     }
     let _ = animation;
     show_webview_window_replacing(webtag, title, activate, normal_group_webtags(webtag))
 }
 
-/// Navigates within a device frame's active group. Forward/backward play the
-/// 300ms horizontal page transition iOS/Android have; everything else (redirect,
-/// switchTab, reLaunch) is the instant group swap.
+/// Runs a navigation present under the page-transition animation when
+/// `animation` asks for one. Forward/backward play the 300ms horizontal slide
+/// iOS/Android have; everything else (redirect, switchTab, reLaunch) — and any
+/// state the slide can't serve (host hidden, no outgoing page, capture failure)
+/// — is the plain instant present.
 ///
 /// WebView2 cannot be animated directly: a controller whose bounds move
 /// off-screen stops compositing and shows blank white for the whole slide. So
@@ -5003,10 +5012,10 @@ pub fn navigate_webview_window(
 /// an image, this also covers the same-WebView case (re-navigating to the page
 /// you are already on — pages are keyed by path, so the one live WebView is
 /// reused; iOS handles it with `performSameWebViewAnimation`).
-fn navigate_in_active_group(
+fn navigate_with_snapshot_slide(
     host: HWND,
-    webtag: &WebTag,
     animation: WindowsNavAnimation,
+    present: impl FnOnce() -> StdResult<()>,
 ) -> StdResult<()> {
     #[cfg(feature = "components")]
     {
@@ -5026,7 +5035,7 @@ fn navigate_in_active_group(
         {
             // The snapshot overlay now covers the content region, so the swap
             // underneath is invisible; the slide reveals its result.
-            let result = present_webview_in_active_group(webtag);
+            let result = present();
             if result.is_ok() {
                 start_nav_snapshot_slide(host);
             } else {
@@ -5036,7 +5045,7 @@ fn navigate_in_active_group(
         }
     }
     let _ = animation;
-    present_webview_in_active_group(webtag)
+    present()
 }
 
 /// A navigation snapshot overlay mid-slide. The layered window stays FIXED
