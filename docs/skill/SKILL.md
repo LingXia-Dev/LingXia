@@ -1,6 +1,6 @@
 ---
 name: lingxia
-description: Build apps on the LingXia cross-platform framework — standalone lxapps (page-based mini-apps with a View+Logic split), native host apps (Android/iOS/macOS/Harmony/Windows shells embedding an lxapp), and Rust native extensions. TRIGGER on the `lingxia` CLI, `lxapp`, or `useLxPage`. SKIP for other mini-app runtimes that share the `Page({})` shape. **Always read §"Step 0" before generating any file.**
+description: Build apps on the LingXia cross-platform framework — standalone lxapps (page-based mini-apps with a View+Logic split), native host apps (Android/iOS/macOS/Harmony/Windows shells embedding an lxapp), and Rust native extensions. TRIGGER on the `lingxia` CLI, `lxdev`, `lxapp`, or `useLxPage`. SKIP for other mini-app runtimes that share the `Page({})` shape. **Always read §"Step 0" before generating any file.**
 license: MIT
 allowed-tools: Read, Grep, Glob, Edit, Write, Bash(lingxia:*), Bash(lxdev:*), Bash(npm:*), Bash(npx:*), Bash(test:*), Bash(ls:*), Bash(cat:*), Bash(cargo:*)
 ---
@@ -105,9 +105,9 @@ Every published package and what to import from each. Don't guess imports from t
 
 | Need | File |
 |---|---|
-| The `lingxia` CLI — daily commands (build, dev, package, install; signing pointer inside) | [`./cli/lingxia.md`](./cli/lingxia.md) |
+| The `lingxia` CLI — daily commands (build, dev, package, install) | [`./cli/lingxia.md`](./cli/lingxia.md) |
 | Drive a running `lingxia dev` session — `lxdev` (browser/app/lxapp/logs automation; run `lxdev <cmd> --help` for exact flags) | [`./cli/lxdev.md`](./cli/lxdev.md) |
-| Publish to the LingXia server, app-store submission, developer accounts (`publish`/`store`/`auth`/`ds`) | [`./cli/distribution.md`](./cli/distribution.md) |
+| Ship it: publish to the LingXia server, platform signing, app-store submission, developer accounts | [`./cli/distribution.md`](./cli/distribution.md) |
 | Page authoring: `Page({})`, `useLxPage`, events | [`./lxapp/guide.md`](./lxapp/guide.md) |
 | **Native components: `LxVideo`, `LxMediaSwiper`, `LxPicker`, `LxNavigator` (text input is plain `<input>`/`<textarea>`)** | [`./lxapp/components.md`](./lxapp/components.md) |
 | **Logic-side `lx.*` API surface map** | [`./lxapp/lx-api.md`](./lxapp/lx-api.md) |

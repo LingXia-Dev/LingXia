@@ -6,9 +6,9 @@ and you are inside a LingXia project.
 
 `lingxia` owns the project lifecycle: scaffold, build, **start dev sessions**
 (`lingxia dev`), package, sign, publish. Driving a *running* session is the
-other binary's job — [`lxdev`](./lxdev.md). Platform signing setup (certs,
-profiles, keystores) lives in [App signing](./signing.md) — read it before any
-device build or store packaging.
+other binary's job — [`lxdev`](./lxdev.md). Signing setup, publishing, and
+store submission live in [Distribution](./distribution.md) — read its signing
+section before any device build or store packaging.
 
 ---
 
@@ -62,7 +62,7 @@ ABIs / macOS arch. When a host project has `lingxia.yaml`, `build` additionally
 prepares configured host assets; lxapp builds generate the Native client when
 `lxapp.config.ts` declares `native`.
 
-Flags: `lingxia build --help`. Platform signing setup: [App signing](./signing.md).
+Flags: `lingxia build --help`. Platform signing setup: [Distribution → App signing](./distribution.md#app-signing).
 
 ### `lingxia clean`
 
@@ -180,11 +180,11 @@ lingxia doctor
 lingxia doctor --platform harmony
 ```
 
-### Distribution & accounts — `publish`, `auth`, `store`, `ds`
+### Distribution — `publish`, `auth`, `store`, `ds`, signing
 
-Low-frequency commands: publish to the LingXia server, developer-account
-credentials, OS app-store submission, and developer-service queries. All four
-live in [Distribution & accounts](./distribution.md).
+Low-frequency: publish to the LingXia server, platform signing setup,
+developer-account credentials, OS app-store submission, and developer-service
+queries. All of it lives in [Distribution](./distribution.md).
 
 ---
 
@@ -205,7 +205,7 @@ If a platform build complains about missing tools, run
 `lingxia doctor --platform <p>` to see exactly what's missing. Credential and
 signing env overrides (e.g. `LINGXIA_APPLE_*`, `LINGXIA_AUTH_TOKEN`,
 `LINGXIA_NATIVE_FEATURES`) are documented with their commands and in
-[App signing](./signing.md).
+[Distribution → App signing](./distribution.md#app-signing).
 
 ---
 
