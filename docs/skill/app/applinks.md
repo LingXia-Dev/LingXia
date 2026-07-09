@@ -237,14 +237,6 @@ The handler:
 5. Ensures the requested lxapp release is installed and compatible.
 6. Opens the target lxapp with `scene: AppLink`.
 
-Return codes:
-
-| Code | Meaning |
-|---:|---|
-| `1` | Link was accepted and handling was scheduled. |
-| `0` | Link was ignored. |
-| `-1` | Link looked like a LingXia link but was invalid. |
-
 Unknown paths are ignored. Invalid LingXia URLs, such as bad percent encoding or
 a missing `appId`, are rejected.
 

@@ -210,7 +210,7 @@ The browser, terminal, and HTTP-proxy runtime features are **not** set here — 
 
 ## `browser` Section
 
-`browser` overrides the in-app browser webui, used only when `capabilities.browser: true`. Normal apps omit it and use the SDK default. Set exactly one source under `webui`: a project-relative `path:` to a browser-shell webui lxapp source tree (the CLI builds it — typical for repo development), or a `package:` npm name shipping a prebuilt `lxapp.json` + `dist/` (with an optional `version:`; the CLI version is used when omitted). Setting both is rejected.
+`browser` overrides the in-app browser webui, used only when `capabilities.browser: true`. Normal apps omit it and use the SDK default. Set exactly one source under `webui`: a project-relative `path:` to a browser-shell webui lxapp source tree (the CLI builds it — for developing a custom webui alongside the app), or a `package:` npm name shipping a prebuilt `lxapp.json` + `dist/` (with an optional `version:`; the CLI version is used when omitted). Setting both is rejected.
 
 Do not use `app.homeAppId` for browser internals. `app.homeAppId` is the product home app; `browser.webui` is the browser UI asset.
 
@@ -410,7 +410,7 @@ Generated files are build artifacts. Edit `lingxia.yaml` instead.
 Build macOS from the host project root:
 
 ```bash
-lingxia build --platform macos --framework vue
+lingxia build --platform macos
 ```
 
 The macOS host build does the following:

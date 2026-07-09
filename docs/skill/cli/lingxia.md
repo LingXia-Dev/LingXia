@@ -37,9 +37,7 @@ on the project's `lingxia.yaml` and any `--platform` selection.
 
 Scaffold a new LingXia project. Run it interactively to be prompted for project
 type (a native host **app** or a standalone **lxapp**), target platforms, and
-package id, or pass those up front to script it. Can seed an app icon and, for
-lxapps, optionally scaffold typed cloud functions (a mock + live `server/`
-worker wired to `lx.cloud`).
+package id, or pass those up front to script it. Can also seed an app icon.
 
 See `lingxia new --help` for the flags.
 
@@ -224,13 +222,3 @@ Quick reminders:
 - `lingxia.yaml` is the source of truth for host app build metadata.
 - `homeAppVersion` is generated into runtime `app.json`; you do not set it manually.
 - Storage/cache limits live under `storage`; set `storage.cacheMaxSizeMB` to `0` to disable usercache size enforcement.
-
----
-
-## Exit Codes
-
-| Code | Meaning |
-|------|---------|
-| 0 | Success |
-| 1 | Error |
-| 2 | Usage error (bad flags/arguments) |

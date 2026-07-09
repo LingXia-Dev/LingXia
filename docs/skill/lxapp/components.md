@@ -32,7 +32,7 @@ A common source of confusion: not every component passes the same thing to its e
 | Component | What the handler receives | Example |
 |---|---|---|
 | `LxPicker` | **Resolved value directly** — `string \| string[]` | `onConfirm(value)`, `onColumnChange(value)` |
-| `LxVideo` | **Raw DOM `Event`** | `onPlaying(event)` → `event.detail` |
+| `LxVideo` | **Raw DOM `CustomEvent`** | `onPlaying(event)` → `event.detail` |
 | `LxMediaSwiper` | **Raw DOM `CustomEvent`** with a typed `detail` | `onChange(event)` → `event.detail.index` |
 | `LxNavigator` | Raw DOM `CustomEvent` | `onSuccess(event)` → `event.detail.success` |
 
@@ -126,7 +126,7 @@ full attribute list (`src`, `poster`, `objectFit`, `controls`, `qualities`,
 remote `src` must be under `security.network.trustedDomains`. Two pieces of
 behavior are doc-only: event reshaping and imperative control.
 
-**Events** — every handler receives a **raw DOM `Event`**; the native player
+**Events** — every handler receives a **raw DOM `CustomEvent`**; the native player
 encodes payloads on `event.detail` (e.g. `onTimeUpdate` →
 `event.detail.currentTime`, `onError` → `event.detail.code` / `.message`,
 `onLoadedMetadata` → `.duration` / `.width` / `.height`, `onFullscreenChange` →
