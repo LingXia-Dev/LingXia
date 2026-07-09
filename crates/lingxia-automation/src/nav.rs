@@ -103,9 +103,14 @@ impl JSNavDriver {
     }
 
     #[js_method]
-    async fn back(&self, _ctx: JSContext, options: JSBackOptions) -> JSResult<JSPageInfo> {
+    async fn back(
+        &self,
+        _ctx: JSContext,
+        options: Optional<JSBackOptions>,
+    ) -> JSResult<JSPageInfo> {
         let app = upgrade(&self.lxapp)?;
-        let (page, name) = auto::navigate_back(&app, options.delta.unwrap_or(1), false)
+        let delta = options.0.and_then(|o| o.delta).unwrap_or(1);
+        let (page, name) = auto::navigate_back(&app, delta, false)
             .await
             .map_err(auto_err)?;
         Ok(auto::page_status(&app, &page, name.as_deref()).into())
