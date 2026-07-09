@@ -105,8 +105,9 @@ fn home_dir() -> Option<PathBuf> {
 }
 
 /// Parse `(lingxiaServer, lingxiaId)` from the runner config at `path`. A
-/// missing or unparseable file yields `(None, None)`. Top-level values are
-/// defaults; `[developer]`, `[preview]`, and `[release]` override per env.
+/// missing or unparseable file yields `(None, None)`. Each key is either a
+/// scalar (applies to every env) or an env-keyed table (explicit per env, no
+/// fallback) — the same shape as `lingxia.yaml`'s `app.lingxiaServer`.
 fn parse_runner_config(path: &Path, env: RunnerEnv) -> (Option<String>, Option<String>) {
     let Ok(text) = std::fs::read_to_string(path) else {
         return (None, None);
@@ -114,23 +115,22 @@ fn parse_runner_config(path: &Path, env: RunnerEnv) -> (Option<String>, Option<S
     let Ok(value) = toml::from_str::<toml::Value>(&text) else {
         return (None, None);
     };
-    let env_table = value.get(env.table_name()).and_then(toml::Value::as_table);
     (
-        table_str_field(env_table, "lingxiaServer").or_else(|| str_field(&value, "lingxiaServer")),
-        table_str_field(env_table, "lingxiaId").or_else(|| str_field(&value, "lingxiaId")),
+        env_value(&value, "lingxiaServer", env),
+        env_value(&value, "lingxiaId", env),
     )
 }
 
-fn str_field(value: &toml::Value, key: &str) -> Option<String> {
-    let s = value.get(key)?.as_str()?.trim();
-    (!s.is_empty()).then(|| s.to_string())
-}
-
-fn table_str_field(
-    table: Option<&toml::map::Map<String, toml::Value>>,
-    key: &str,
-) -> Option<String> {
-    let s = table?.get(key)?.as_str()?.trim();
+/// Resolve `key` for `env`: a string value applies to every env; a table
+/// value is looked up by env name. Empty strings are treated as unset.
+fn env_value(root: &toml::Value, key: &str, env: RunnerEnv) -> Option<String> {
+    let value = root.get(key)?;
+    let s = match value {
+        toml::Value::String(s) => s.as_str(),
+        toml::Value::Table(per_env) => per_env.get(env.table_name())?.as_str()?,
+        _ => return None,
+    }
+    .trim();
     (!s.is_empty()).then(|| s.to_string())
 }
 
@@ -199,32 +199,31 @@ mod tests {
     }
 
     #[test]
-    fn env_table_overrides_top_level_runner_config() {
+    fn per_key_env_maps_are_explicit_per_env() {
         let dir = std::env::temp_dir().join(format!("lx-runner-cfg-env-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("config.toml");
         std::fs::write(
             &path,
             r#"
-lingxiaServer = "https://default.example.com"
-lingxiaId = "default-id"
+lingxiaId = "app-id"
 
-[preview]
-lingxiaServer = "https://preview.example.com"
-
-[release]
-lingxiaId = "release-id"
+[lingxiaServer]
+preview = "https://preview.example.com"
+release = "https://api.example.com"
 "#,
         )
         .unwrap();
 
+        // Scalar lingxiaId applies to every env; the lingxiaServer map is
+        // looked up per env with no fallback for envs it does not list.
         let (server, id) = parse_runner_config(&path, RunnerEnv::Preview);
         assert_eq!(server.as_deref(), Some("https://preview.example.com"));
-        assert_eq!(id.as_deref(), Some("default-id"));
+        assert_eq!(id.as_deref(), Some("app-id"));
 
-        let (server, id) = parse_runner_config(&path, RunnerEnv::Release);
-        assert_eq!(server.as_deref(), Some("https://default.example.com"));
-        assert_eq!(id.as_deref(), Some("release-id"));
+        let (server, id) = parse_runner_config(&path, RunnerEnv::Developer);
+        assert_eq!(server, None);
+        assert_eq!(id.as_deref(), Some("app-id"));
         std::fs::remove_dir_all(&dir).ok();
     }
 
