@@ -99,20 +99,18 @@ See `lingxia dev --help` for the flags.
 **Runner cloud defaults (`~/.lingxia/runner/config.toml`):**
 
 Standalone lxapp dev on macOS/Windows launches LingXia Runner. When the Runner
-uses the cloud provider, this file can override the backend and app identity.
-Top-level values are defaults; per-env tables override them. The active table
-follows `lingxia dev --env` (`developer` by default).
+uses the cloud provider, this hand-edited file can override the backend and app
+identity. Each value follows the same shape as `app.lingxiaServer` in
+`lingxia.yaml`: a scalar applies to every env, an env-keyed map is explicit per
+env (`developer` / `preview` / `release`) with no fallback for envs it omits.
+The active env comes from `lingxia dev --env` (`developer` when omitted).
 
 ```toml
-lingxiaServer = "https://api.example.com"
-lingxiaId = "com.example.app"
+lingxiaId = "com.example.app"      # scalar: same for every env
 
-[developer]
-lingxiaServer = "http://127.0.0.1:8787"
-
-[preview]
-lingxiaServer = "https://preview-api.example.com"
-lingxiaId = "com.example.app.preview"
+[lingxiaServer]                    # map: explicit per env
+developer = "http://127.0.0.1:8787"
+release = "https://api.example.com"
 ```
 
 > **Drive the live session with [`lxdev`](./lxdev.md)** — a separate binary that
@@ -179,23 +177,29 @@ See `lingxia publish --help` for the flags.
 
 **Machine-wide publish defaults (`~/.lingxia/cli/config.toml`):**
 
-Set per-user defaults so lxapp/lxplugin projects (which have no `lingxia.yaml`) need not pass `--token` / `--lingxia-server` on every publish. The flags (and, for the server, project `app.lingxiaServer`) take precedence.
+Set per-user defaults so lxapp/lxplugin projects (which have no `lingxia.yaml`)
+need not pass `--token` / `--lingxia-server` on every publish. The flags (and,
+for the server, project `app.lingxiaServer`) take precedence. Publish keys sit
+under `[publish]` (the file holds more areas than publishing), and each value
+follows the same shape as `app.lingxiaServer` in `lingxia.yaml`: a scalar
+applies to every env, an env-keyed map is explicit per env with no fallback for
+envs it omits. The env comes from the package's `--env`/`--channel`
+(`developer` when omitted for lxapp/lxplugin; host-app publish reads the
+package's `app.json envVersion`). The file is CLI-managed — `lingxia publish
+login` writes it, hand comments are lost.
 
 ```toml
-[publish]
-token = "lx_your_token"               # default for all envs
-server = "https://prod.example.com"   # default for all envs
+[publish.token]                    # map: explicit per env — each env is a
+developer = "lx_dev_token"         # distinct backend with its own credentials
+release = "lx_prod_token"
 
-[publish.developer]                   # per-env override (token + server together)
-token = "lx_dev_token"
-server = "http://localhost:8080"
-
-[publish.release]
-token = "lx_prod_token"
-server = "https://prod.example.com"
+[publish.lingxiaServer]
+developer = "http://localhost:8080"
+release = "https://prod.example.com"
 ```
 
-Token and server resolve per-env, selected by the package's `--env`/`--channel` (defaults to `developer` for lxapp/lxplugin publish; host-app publish reads the package's `app.json envVersion`): the `[publish.<env>]` table wins, else the top-level default. Each env is a distinct backend, so its token and server live together.
+A scalar form covers the single-backend case: `token = "lx_tok"` under
+`[publish]` applies to every env.
 
 ### `lingxia doctor`
 
