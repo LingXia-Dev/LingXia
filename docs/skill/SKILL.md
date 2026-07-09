@@ -67,6 +67,22 @@ lingxia dev --background     # start (or take over) this project's session; retu
 lxdev lxapp reload           # lxapp inner loop: rebuild + reload in place
 ```
 
+**A successful edit (or build) is not "done."** Done means you drove the change
+in the running app and watched it behave. Close the loop with `lxdev`:
+
+1. Apply the change with the loop above (reload / dev takeover).
+2. Exercise the change itself: navigate to the page (`lxdev lxapp nav to ...`)
+   and interact with it (`lxdev lxapp page click/type ...`). A new control gets
+   clicked, not just rendered.
+3. Confirm the expected effect where it lives: page DOM via
+   `lxdev lxapp page eval`, Logic state via `lxdev lxapp eval` — assertable
+   values beat screenshot-squinting. Screenshot before/after only when the
+   change is visual.
+4. Check `lxdev logs` for new errors or warnings from the interaction.
+
+Any step fails → fix and rerun from step 1. Don't hand back partially verified
+work, and report what you actually observed — not what the edit should do.
+
 Command details: [`lingxia` CLI](./cli/lingxia.md) · [`lxdev`](./cli/lxdev.md).
 
 ---
