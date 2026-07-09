@@ -342,9 +342,12 @@ struct MacOSLxAppTabBar: View {
                         .lineLimit(1)
                 }
             }
-            .frame(maxWidth: .infinity)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding(.vertical, LxAppTheme.Metrics.smallSpacing)
+            .contentShape(Rectangle())
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .contentShape(Rectangle())
         .buttonStyle(PlainButtonStyle())
     }
 
@@ -353,10 +356,11 @@ struct MacOSLxAppTabBar: View {
         HStack(spacing: LxAppTheme.Metrics.standardSpacing) {
             ForEach(Array(items.enumerated()), id: \.offset) { index, item in
                 buildTabItem(item: item, index: index)
-                    .frame(maxWidth: .infinity)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         .padding(.horizontal, LxAppTheme.Metrics.largeSpacing)
+        .contentShape(Rectangle())
     }
 
     @ViewBuilder
@@ -364,9 +368,11 @@ struct MacOSLxAppTabBar: View {
         VStack(spacing: LxAppTheme.Metrics.standardSpacing) {
             ForEach(Array(items.enumerated()), id: \.offset) { index, item in
                 buildTabItem(item: item, index: index)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         .padding(.vertical, LxAppTheme.Metrics.largeSpacing)
+        .contentShape(Rectangle())
     }
 
     @ViewBuilder
@@ -821,6 +827,24 @@ class macOSTabBarWrapper: NSView, TabBarProtocol, ObservableObject {
         super.init(coder: coder)
         setupView()
     }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard let config = tabBarConfig,
+              config.is_visible,
+              !isHidden,
+              alphaValue > 0.01,
+              bounds.contains(point) else {
+            return nil
+        }
+
+        return super.hitTest(point) ?? self
+    }
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+        true
+    }
+
+    override func mouseDown(with event: NSEvent) {}
 
     private func setupView() {
         wantsLayer = true
