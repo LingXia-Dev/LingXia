@@ -148,9 +148,9 @@ pub fn execute(opts: PublishOptions) -> Result<()> {
 }
 
 /// `lingxia publish login`: persist the publish server URL and/or token to
-/// `~/.lingxia/cli/config.toml`. With `--env`, scopes to that channel's
-/// `[publish.<env>]` table; without it, sets the top-level defaults. Other
-/// channels' values are preserved.
+/// `~/.lingxia/cli/config.toml`. With `--env`, scopes to that channel's entry
+/// in the per-env map; without it, writes a scalar that applies to every
+/// channel. Other channels' values are preserved.
 pub fn save_login(
     server: Option<String>,
     token: Option<String>,
@@ -534,8 +534,8 @@ fn non_empty_str(val: &serde_json::Value, label: &str) -> Result<String> {
 }
 
 /// Resolve the bearer token: `--token` flag → `[publish]` token in
-/// `~/.lingxia/cli/config.toml` (per-env `tokens.<env>`, else the section
-/// `token`), routed by `channel` (defaults to developer) → error.
+/// `~/.lingxia/cli/config.toml` (scalar or per-env map), routed by `channel`
+/// (defaults to developer) → error.
 fn resolve_token(channel: Option<&str>, token_arg: Option<String>) -> Result<String> {
     if let Some(t) = token_arg {
         let trimmed = t.trim();
