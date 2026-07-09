@@ -377,14 +377,18 @@ class NativeBridge {
 
     this.register('updateTabBarUIAsync', (callbackId: string, appId: string): void => {
       try {
-        const success = LxAppContainer.updateTabBarUI(appId);
-        if (success) {
-          hilog.info(DOMAIN, TAG, `TabBar UI updated successfully for ${appId}`);
-          onCallback(callbackId, true, JSON.stringify({ success: true }));
-        } else {
-          hilog.warn(DOMAIN, TAG, `Failed to find active container for TabBar update: ${appId}`);
-          onCallback(callbackId, false, '1000');
-        }
+        // Completion-gated: the callback fires only after the frame that
+        // applied the hide/show has committed, so the JS promise resolves
+        // when the TabBar has actually changed on screen.
+        LxAppContainer.updateTabBarUIAsync(appId, (updated: boolean): void => {
+          if (updated) {
+            hilog.info(DOMAIN, TAG, `TabBar UI updated for ${appId}`);
+            onCallback(callbackId, true, JSON.stringify({ success: true }));
+          } else {
+            hilog.warn(DOMAIN, TAG, `Failed to find active container for TabBar update: ${appId}`);
+            onCallback(callbackId, false, '1000');
+          }
+        });
       } catch (error) {
         LxLog.e(TAG, `Failed to update TabBar UI: ${error}`);
         onCallback(callbackId, false, '1000');
