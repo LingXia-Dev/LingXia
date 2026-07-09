@@ -2007,6 +2007,7 @@ dependencies = [
  "base64",
  "futures",
  "lingxia-browser",
+ "lingxia-computer-use",
  "lingxia-lxapp",
  "lingxia-platform",
  "lingxia-webview",
@@ -2059,6 +2060,24 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.18",
  "tokio",
+]
+
+[[package]]
+name = "lingxia-computer-use"
+version = "0.10.0"
+dependencies = [
+ "image",
+ "libc",
+ "log",
+ "objc2",
+ "objc2-app-kit",
+ "objc2-core-foundation",
+ "objc2-core-graphics",
+ "objc2-foundation",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "windows",
 ]
 
 [[package]]
@@ -2872,7 +2891,9 @@ checksum = "d49e936b501e5c5bf01fda3a9452ff86dc3ea98ad5f283e1455153142d97518c"
 dependencies = [
  "bitflags 2.13.0",
  "block2",
+ "libc",
  "objc2",
+ "objc2-core-foundation",
  "objc2-core-graphics",
  "objc2-foundation",
 ]
