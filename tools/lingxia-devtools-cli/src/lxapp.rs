@@ -100,8 +100,8 @@ pub enum LxAppCommand {
         #[arg(long)]
         pretty: bool,
     },
-    /// Rebuild the lxapp front-end bundle for this dev session
-    Rebuild(lxapp_build::RebuildOptions),
+    /// Rebuild the lxapp front-end bundle and reload the running lxapp
+    Reload(lxapp_build::ReloadOptions),
     /// Open an lxapp
     Open {
         appid: String,
@@ -123,19 +123,10 @@ pub enum LxAppCommand {
         #[arg(long)]
         json: bool,
     },
-    /// Restart an lxapp
+    /// Restart an lxapp (without rebuilding; use `reload` for build + restart)
     Restart {
         #[arg(default_value = "current")]
         app: String,
-        /// Rebuild the lxapp bundle before restarting the runtime
-        #[arg(long)]
-        build: bool,
-        /// Release (minified) rebuild; requires --build
-        #[arg(long)]
-        release: bool,
-        /// Framework to rebuild when the project ships more than one; requires --build
-        #[arg(long)]
-        framework: Option<String>,
         /// Print JSON output
         #[arg(long)]
         json: bool,
@@ -755,20 +746,8 @@ pub fn execute(project_root: &Path, info: &SessionInfo, options: LxAppOptions) -
             }
         }
         LxAppCommand::Close { app, json } => action(ws_url, handlers::lxapp::CLOSE, app, json)?,
-        LxAppCommand::Rebuild(options) => lxapp_build::execute(ws_url, &options)?,
-        LxAppCommand::Restart {
-            app,
-            build,
-            release,
-            framework,
-            json,
-        } => {
-            if !build && (release || framework.is_some()) {
-                bail!("--release and --framework require --build");
-            }
-            if build {
-                lxapp_build::run(ws_url, release, framework.as_deref())?;
-            }
+        LxAppCommand::Reload(options) => lxapp_build::execute(ws_url, &options)?,
+        LxAppCommand::Restart { app, json } => {
             action(ws_url, handlers::lxapp::RESTART, app, json)?
         }
         LxAppCommand::Uninstall { app, json } => {
@@ -1459,7 +1438,7 @@ fn commands_for_project(project_root: &Path) -> &'static [&'static str] {
             "nav",
             "device",
             "eval",
-            "rebuild",
+            "reload",
         ]
     } else {
         &[
@@ -1474,7 +1453,7 @@ fn commands_for_project(project_root: &Path) -> &'static [&'static str] {
             "nav",
             "device",
             "eval",
-            "rebuild",
+            "reload",
             "open",
             "close",
             "restart",
@@ -1511,10 +1490,10 @@ fn command_description(command: &str) -> &'static str {
         "nav" => "Navigate the lxapp runtime by page name",
         "device" => "Inspect or switch the simulated device",
         "eval" => "Evaluate JavaScript in the lxapp logic runtime",
-        "rebuild" => "Rebuild the lxapp front-end bundle",
+        "reload" => "Rebuild the lxapp front-end bundle and reload the running lxapp",
         "open" => "Open an lxapp",
         "close" => "Close an lxapp",
-        "restart" => "Restart an lxapp",
+        "restart" => "Restart an lxapp (without rebuilding)",
         "uninstall" => "Uninstall an lxapp and its data",
         _ => "",
     }
@@ -1685,9 +1664,9 @@ mod tests {
     }
 
     #[test]
-    fn parses_lxapp_rebuild_options() {
+    fn parses_lxapp_reload_options() {
         let cli = parse_lxapp_cli(args(&[
-            "rebuild",
+            "reload",
             "--release",
             "--framework",
             "vue",
@@ -1695,43 +1674,39 @@ mod tests {
         ]))
         .unwrap();
 
-        let LxAppCommand::Rebuild(options) = cli.command else {
-            panic!("expected rebuild command");
+        let LxAppCommand::Reload(options) = cli.command else {
+            panic!("expected reload command");
         };
 
         assert!(options.release);
         assert_eq!(options.framework.as_deref(), Some("vue"));
         assert!(options.json);
+        // The one-stop default: build then reload the current lxapp.
+        assert!(!options.build_only);
+        assert_eq!(options.app, "current");
     }
 
     #[test]
-    fn parses_restart_with_build_options() {
-        let cli = parse_lxapp_cli(args(&[
-            "restart",
-            "demo",
-            "--build",
-            "--release",
-            "--framework",
-            "react",
-            "--json",
-        ]))
-        .unwrap();
+    fn parses_lxapp_reload_build_only() {
+        let cli = parse_lxapp_cli(args(&["reload", "--build-only", "--app", "demo"])).unwrap();
 
-        let LxAppCommand::Restart {
-            app,
-            build,
-            release,
-            framework,
-            json,
-        } = cli.command
-        else {
+        let LxAppCommand::Reload(options) = cli.command else {
+            panic!("expected reload command");
+        };
+
+        assert!(options.build_only);
+        assert_eq!(options.app, "demo");
+    }
+
+    #[test]
+    fn parses_restart() {
+        let cli = parse_lxapp_cli(args(&["restart", "demo", "--json"])).unwrap();
+
+        let LxAppCommand::Restart { app, json } = cli.command else {
             panic!("expected restart command");
         };
 
         assert_eq!(app, "demo");
-        assert!(build);
-        assert!(release);
-        assert_eq!(framework.as_deref(), Some("react"));
         assert!(json);
     }
 

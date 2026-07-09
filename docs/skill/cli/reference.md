@@ -115,7 +115,7 @@ release = "https://api.example.com"
 
 > **Drive the live session with [`lxdev`](./lxdev.md)** — a separate binary that
 > automates the running app (browser tabs, lxapp pages, screenshots, logs) and
-> can rebuild/restart lxapps, without starting a new session. The split:
+> can rebuild + reload lxapps, without starting a new session. The split:
 > `lingxia dev` owns process lifetime, `lxdev` drives.
 
 ### `lingxia devices`
