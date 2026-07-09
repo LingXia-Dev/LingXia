@@ -55,8 +55,9 @@ struct BuildOptions {
     #[arg(long, value_parser = ["arm64", "x86_64"])]
     macos_arch: Option<String>,
 
-    /// Override LxApp view framework detection
-    #[arg(long, value_parser = ["react", "vue", "html"])]
+    /// Override LxApp view framework detection (multi-framework demo projects
+    /// only — a real project has exactly one; hidden from help)
+    #[arg(long, hide = true, value_parser = ["react", "vue", "html"])]
     framework: Option<String>,
 
     /// LxApp progress output mode
@@ -428,8 +429,9 @@ struct PublishArgs {
     #[arg(long = "env", alias = "channel", value_parser = ["developer", "dev", "preview", "release"])]
     channel: Option<String>,
 
-    /// Override lxapp view framework detection
-    #[arg(long, value_parser = ["react", "vue", "html"])]
+    /// Override lxapp view framework detection (multi-framework demo projects
+    /// only — a real project has exactly one; hidden from help)
+    #[arg(long, hide = true, value_parser = ["react", "vue", "html"])]
     framework: Option<String>,
 
     /// LxApp progress output mode

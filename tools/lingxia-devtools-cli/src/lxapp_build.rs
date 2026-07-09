@@ -15,8 +15,9 @@ pub struct ReloadOptions {
     /// Release (minified) build
     #[arg(long)]
     pub release: bool,
-    /// Framework to build when the project ships more than one (react, vue, html)
-    #[arg(long)]
+    /// Framework to build when the project ships more than one (react, vue,
+    /// html) — multi-framework demo projects only; hidden from help
+    #[arg(long, hide = true)]
     pub framework: Option<String>,
     /// Build only; skip reloading the running lxapp
     #[arg(long)]
