@@ -21,9 +21,8 @@ Crashed sessions disappear from the broker automatically — there is nothing to
 
 **`lxapp`** — the lxapps in the session. Every command targets the **current** lxapp by default (`--app` to pick another); page commands likewise default to the **current page** (`--page` to pick):
 - `list` / `current` / `info` / `pages` — what's running, and the configured pages
-- `open` / `close` / `restart` / `uninstall` — lifecycle
-- `rebuild` — rebuild the lxapp front-end bundle through the running session
-- `restart --build` — rebuild, then restart the lxapp runtime. **This is the fast dev inner-loop**: after editing lxapp code you do *not* need to Ctrl-C and re-run `lingxia dev` (which rebuilds the whole session and relaunches the host/Runner). Reach for it whenever you change **Logic** (`pages/*/index.ts`, `lxapp.ts`, the AppService) or bump `lxapp.json` — those need the runtime to reload, not just the WebView (that's what plain `rebuild` covers). Add `--release` / `--framework <name>` as needed.
+- `open` / `close` / `restart` / `uninstall` — lifecycle (`restart` relaunches the runtime without rebuilding)
+- `reload` — rebuild the lxapp front-end bundle through the running session, then reload the running lxapp so the new bundle is live. **This is the fast dev inner-loop**: after editing lxapp code you do *not* need to Ctrl-C and re-run `lingxia dev` (which rebuilds the whole session and relaunches the host/Runner) — one command covers Web, Logic, and `lxapp.json` changes. Add `--release` / `--framework <name>` as needed; `--build-only` skips the runtime reload.
 - `nav to|redirect|switch-tab|relaunch|back` — navigate the runtime by page name (from `pages`)
 - `eval` — run JS in the **Logic runtime**; `page eval` — run JS in the **page WebView** (the two see different things — JS-contexts table below)
 - `page current|list|info` — page stack status
