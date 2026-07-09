@@ -6,10 +6,11 @@ use std::sync::{Mutex, OnceLock};
 
 use windows::Win32::Foundation::{COLORREF, RECT};
 use windows::Win32::Graphics::Gdi::{
-    ANTIALIASED_QUALITY, CLEARTYPE_QUALITY, CLIP_DEFAULT_PRECIS, CreateFontW, CreateSolidBrush,
-    DEFAULT_CHARSET, DEFAULT_PITCH, DT_CENTER, DT_END_ELLIPSIS, DT_SINGLELINE, DT_VCENTER,
-    DeleteObject, DrawTextW, FF_SWISS, FONT_QUALITY, FillRect, GetDeviceCaps, GetStockObject, HDC,
-    HFONT, HGDIOBJ, LOGPIXELSY, NULL_PEN, OUT_DEFAULT_PRECIS, RoundRect, SelectObject, SetBkMode,
+    ANTIALIASED_QUALITY, CLEARTYPE_QUALITY, CLIP_DEFAULT_PRECIS, CreateFontW, CreateRoundRectRgn,
+    CreateSolidBrush, DEFAULT_CHARSET, DEFAULT_PITCH, DT_CENTER, DT_END_ELLIPSIS, DT_SINGLELINE,
+    DT_VCENTER, DeleteObject, DrawTextW, ExtSelectClipRgn, FF_SWISS, FONT_QUALITY, FillRect,
+    GetDeviceCaps, GetStockObject, HDC, HFONT, HGDIOBJ, IntersectClipRect, LOGPIXELSY, NULL_PEN,
+    OUT_DEFAULT_PRECIS, RGN_AND, RestoreDC, RoundRect, SaveDC, SelectObject, SetBkMode,
     SetTextColor, TRANSPARENT,
 };
 use windows::Win32::Graphics::GdiPlus;
@@ -265,6 +266,57 @@ pub(in crate::shell) fn fill_round_rect_aa(hdc: HDC, rect: RECT, radius: i32, rg
         return;
     }
     fill_round_rect_path(hdc, rect, radius, 0xff00_0000 | rgb);
+}
+
+/// Fills the horizontal band `band_top..band_bottom` of `rect`'s rounded
+/// shape, anti-aliased. The band clip has straight edges only, so splitting a
+/// card into differently colored strips (e.g. header over body) keeps every
+/// arc pixel blended exactly once in its final color — no fringe from stacking
+/// a second rounded fill on the same arc.
+pub(in crate::shell) fn fill_round_rect_aa_band(
+    hdc: HDC,
+    rect: RECT,
+    radius: i32,
+    rgb: u32,
+    band_top: i32,
+    band_bottom: i32,
+) {
+    let band_top = band_top.max(rect.top);
+    let band_bottom = band_bottom.min(rect.bottom);
+    if band_bottom <= band_top {
+        return;
+    }
+    unsafe {
+        let saved = SaveDC(hdc);
+        let _ = IntersectClipRect(hdc, rect.left, band_top, rect.right, band_bottom);
+        fill_round_rect_aa(hdc, rect, radius, rgb);
+        let _ = RestoreDC(hdc, saved);
+    }
+}
+
+/// Intersects the DC's clip with a rounded rect one pixel inside `rect`.
+/// Pairs with an outer [`fill_round_rect_aa`] of the same rect: the AA fill
+/// provides the card's smooth edge, and plain square fills painted inside the
+/// clip get their corners shaped by it without a second anti-aliased arc (a
+/// re-blend over the card's arc leaves a fringe). Bracket with
+/// `SaveDC`/`RestoreDC`.
+pub(in crate::shell) fn clip_to_round_rect_inside(hdc: HDC, rect: RECT, radius: i32) {
+    let radius = radius.clamp(1, (rect_width(&rect) / 2).min(rect_height(&rect) / 2));
+    unsafe {
+        let region = CreateRoundRectRgn(
+            rect.left + 1,
+            rect.top + 1,
+            rect.right - 1,
+            rect.bottom - 1,
+            (radius - 1).max(1) * 2,
+            (radius - 1).max(1) * 2,
+        );
+        if region.is_invalid() {
+            return;
+        }
+        let _ = ExtSelectClipRgn(hdc, Some(region), RGN_AND);
+        let _ = DeleteObject(HGDIOBJ(region.0));
+    }
 }
 
 /// Translucent rounded wash (`0xAARRGGBB`) over whatever is already painted;

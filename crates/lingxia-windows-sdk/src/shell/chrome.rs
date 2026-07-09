@@ -1072,23 +1072,10 @@ fn compute_attached_layout(
                 main.right = handle.left.max(main.left);
                 (rect, Some(handle))
             }
-            WindowsPanelPosition::Top if panel.docked => {
-                let height = attached_panel_size(panel, main, ATTACHED_PANEL_BOTTOM_HEIGHT);
-                let rect = RECT {
-                    left: main.left,
-                    top: main.top,
-                    right: main.right,
-                    bottom: (main.top + height).min(main.bottom),
-                };
-                let handle = normalize_rect(RECT {
-                    left: rect.left,
-                    top: (rect.bottom - ATTACHED_PANEL_HANDLE_SIZE).max(rect.top),
-                    right: rect.right,
-                    bottom: rect.bottom,
-                });
-                main.top = rect.bottom.min(main.bottom);
-                (rect, Some(handle))
-            }
+            // Docked and floating share the geometry: the gutter between the
+            // panel and the content shows the shell background and hosts the
+            // resize handle, so the split reads as a divider — not the panel
+            // covering the content. (Side panels already separate this way.)
             WindowsPanelPosition::Top => {
                 let height = attached_panel_size(panel, main, ATTACHED_PANEL_BOTTOM_HEIGHT);
                 let rect = RECT {
@@ -1107,30 +1094,22 @@ fn compute_attached_layout(
                 main.top = handle.bottom.min(main.bottom);
                 (rect, Some(handle))
             }
-            WindowsPanelPosition::Bottom if panel.docked => {
-                let height = attached_panel_size(panel, main, ATTACHED_PANEL_BOTTOM_HEIGHT);
-                let rect = RECT {
-                    left: main.left,
-                    top: (main.bottom - height).max(main.top),
-                    right: main.right,
-                    bottom: main.bottom,
-                };
-                let handle = normalize_rect(RECT {
-                    left: rect.left,
-                    top: rect.top,
-                    right: rect.right,
-                    bottom: (rect.top + ATTACHED_PANEL_HANDLE_SIZE).min(rect.bottom),
-                });
-                main.bottom = rect.top.max(main.top);
-                (rect, Some(handle))
-            }
             WindowsPanelPosition::Bottom => {
                 let height = attached_panel_size(panel, main, ATTACHED_PANEL_BOTTOM_HEIGHT);
+                // Docked panels split the space flat — flush with the content
+                // edges, divided from the content by the gutter's hairline —
+                // so both regions read as the same layer. A floating panel
+                // keeps a bottom margin and draws as a rounded card instead.
+                let bottom = if panel.docked {
+                    main.bottom
+                } else {
+                    (main.bottom - SHELL_PANEL_PADDING).max(main.top)
+                };
                 let rect = RECT {
                     left: main.left,
-                    top: (main.bottom - height).max(main.top),
+                    top: (bottom - height).max(main.top),
                     right: main.right,
-                    bottom: main.bottom,
+                    bottom,
                 };
                 let handle_height = SHELL_PANEL_PADDING.max(ATTACHED_PANEL_HANDLE_SIZE);
                 let handle = normalize_rect(RECT {
@@ -1303,7 +1282,7 @@ fn paint_native_panel_region(hdc: HDC, state: &WindowsChromeState, invalid: RECT
     }) else {
         return false;
     };
-    draw_native_panel_content(hdc, state.hwnd, panel);
+    draw_native_panel_content(hdc, state.hwnd, state.client, panel);
     true
 }
 
@@ -1578,10 +1557,69 @@ fn native_panel_hit_by(
 pub(super) fn draw_content_cards(hdc: HDC, state: &WindowsChromeState, rects: &ChromeRects) {
     if let Some(attached) = &state.attached {
         draw_content_card(hdc, attached.main);
-        // A docked panel sits flush under the main card; square the card's
-        // bottom corners so the shared seam has no notches.
-        if attached.panels.iter().any(|panel| panel.docked) {
-            square_card_bottom_corners(hdc, attached.main);
+        // A docked panel splits the space flat; a 1px hairline centered in
+        // the gutter marks the technical divider between the two regions —
+        // the same language on every side (bottom terminal, side asides).
+        let main = attached.main;
+        for panel in &attached.panels {
+            if !panel.docked {
+                continue;
+            }
+            let rect = panel.rect;
+            let divider = shell_palette().divider;
+            if rect.top >= main.bottom && rect.top > main.top {
+                // Below the content: horizontal line across the panel.
+                let mid = main.bottom + (rect.top - main.bottom) / 2;
+                fill_rect(
+                    hdc,
+                    RECT {
+                        left: rect.left,
+                        top: mid,
+                        right: rect.right,
+                        bottom: mid + 1,
+                    },
+                    divider,
+                );
+            } else if rect.bottom <= main.top {
+                // Above the content.
+                let mid = rect.bottom + (main.top - rect.bottom) / 2;
+                fill_rect(
+                    hdc,
+                    RECT {
+                        left: rect.left,
+                        top: mid,
+                        right: rect.right,
+                        bottom: mid + 1,
+                    },
+                    divider,
+                );
+            } else if rect.left >= main.right {
+                // Right of the content: vertical line spanning the panel.
+                let mid = main.right + (rect.left - main.right) / 2;
+                fill_rect(
+                    hdc,
+                    RECT {
+                        left: mid,
+                        top: rect.top,
+                        right: mid + 1,
+                        bottom: rect.bottom,
+                    },
+                    divider,
+                );
+            } else if rect.right <= main.left {
+                // Left of the content.
+                let mid = rect.right + (main.left - rect.right) / 2;
+                fill_rect(
+                    hdc,
+                    RECT {
+                        left: mid,
+                        top: rect.top,
+                        right: mid + 1,
+                        bottom: rect.bottom,
+                    },
+                    divider,
+                );
+            }
         }
         for panel in &attached.panels {
             // Interactive panels paint their own full-bleed card.
@@ -1597,7 +1635,7 @@ pub(super) fn draw_content_cards(hdc: HDC, state: &WindowsChromeState, rects: &C
             // Maximized native panels are drawn as an overlay later in
             // `draw_window_chrome`, above sidebar/tabbar shell chrome.
             if panel.host_content.is_some() && !panel_is_maximized(panel) {
-                draw_native_panel_content(hdc, state.hwnd, panel);
+                draw_native_panel_content(hdc, state.hwnd, state.client, panel);
             }
         }
         // Attached cards are painted as plain filled rounded rects; the
@@ -1607,24 +1645,6 @@ pub(super) fn draw_content_cards(hdc: HDC, state: &WindowsChromeState, rects: &C
     }
 
     draw_content_card(hdc, rects.panel);
-}
-
-/// Overpaints the bottom rounded corners of a card with its own fill so
-/// the bottom edge becomes square (used above a flush docked panel).
-pub(super) fn square_card_bottom_corners(hdc: HDC, rect: RECT) {
-    if rect_width(&rect) == 0 || rect_height(&rect) == 0 {
-        return;
-    }
-    fill_rect(
-        hdc,
-        RECT {
-            left: rect.left,
-            top: (rect.bottom - SHELL_PANEL_RADIUS).max(rect.top),
-            right: rect.right,
-            bottom: rect.bottom,
-        },
-        shell_palette().panel_background,
-    );
 }
 
 pub(super) fn draw_content_card(hdc: HDC, rect: RECT) {

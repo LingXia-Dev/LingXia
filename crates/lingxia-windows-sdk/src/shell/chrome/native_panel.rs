@@ -1,6 +1,34 @@
 //! Native panel chrome, including terminal panel headers and body drawing.
 
 use super::*;
+use windows::Win32::Graphics::Gdi::{RestoreDC, SaveDC};
+
+/// Restores the DC's saved state (clip region included) on drop, so the
+/// rounded-card clip cannot leak past this panel's painting even through the
+/// early returns.
+struct DcClipGuard {
+    hdc: HDC,
+    saved: i32,
+}
+
+impl DcClipGuard {
+    fn save(hdc: HDC) -> Self {
+        Self {
+            hdc,
+            saved: unsafe { SaveDC(hdc) },
+        }
+    }
+}
+
+impl Drop for DcClipGuard {
+    fn drop(&mut self) {
+        if self.saved != 0 {
+            unsafe {
+                let _ = RestoreDC(self.hdc, self.saved);
+            }
+        }
+    }
+}
 
 pub(super) fn panel_is_maximized(panel: &WindowsChromePanel) -> bool {
     panel
@@ -17,16 +45,21 @@ pub(super) fn draw_maximized_native_panels(hdc: HDC, state: &WindowsChromeState)
     };
     for panel in &attached.panels {
         if panel.host_content.is_some() && panel_is_maximized(panel) {
-            draw_native_panel_content(hdc, state.hwnd, panel);
+            draw_native_panel_content(hdc, state.hwnd, state.client, panel);
         }
     }
 }
 
-pub(super) fn draw_native_panel_content(hdc: HDC, hwnd: HWND, panel: &WindowsChromePanel) {
+pub(super) fn draw_native_panel_content(
+    hdc: HDC,
+    hwnd: HWND,
+    client: RECT,
+    panel: &WindowsChromePanel,
+) {
     let Some(native) = &panel.host_content else {
         return;
     };
-    draw_terminal_panel_content(hdc, hwnd, panel, native);
+    draw_terminal_panel_content(hdc, hwnd, client, panel, native);
 }
 
 /// Header geometry of one terminal panel tab.
@@ -205,6 +238,7 @@ pub(super) fn terminal_header_hit_test(
 pub(super) fn draw_terminal_panel_content(
     hdc: HDC,
     hwnd: HWND,
+    client: RECT,
     panel: &WindowsChromePanel,
     native: &WindowsHostPanelContent,
 ) {
@@ -212,49 +246,58 @@ pub(super) fn draw_terminal_panel_content(
     if rect_width(&rect) == 0 || rect_height(&rect) == 0 {
         return;
     }
+    let _ = client;
     let surface = super::super::terminal_panel::focused_session(&panel.panel_id)
         .and_then(super::super::terminal_grid::session_surface_background)
         .unwrap_or(TERMINAL_SURFACE_BACKGROUND);
-    let square_top = panel.docked && !native.maximized;
 
-    // Surface card: maximized panels are flush with the content pane, so avoid
-    // rounded anti-aliased edges there.
-    if native.maximized {
-        fill_rect(hdc, rect, surface);
-    } else {
-        fill_round_rect_aa(hdc, rect, SHELL_PANEL_RADIUS, surface);
-    }
-    if square_top || native.maximized {
+    // Card: ONE rounded path, filled in two colors split at the header's
+    // bottom edge. Each fill is clipped by a plain horizontal band (straight
+    // clip edges alias nothing), so every arc pixel is anti-aliased exactly
+    // once in its final color — a second rounded fill over the same arc
+    // re-blends it (the old header-over-card fringe), and an aliased rounded
+    // clip shows a staircase wherever the inner color differs from the card.
+    // A maximized panel is flush with the content pane: plain square fills.
+    let header_rects = terminal_header_rects(rect, native);
+    let header = header_rects.header;
+    let _clip_guard = DcClipGuard::save(hdc);
+    if native.maximized || panel.docked {
+        // Flat variant: a docked panel splits the space at the same layer as
+        // the content (the gutter hairline is the divider), and a maximized
+        // panel is flush with the content pane — square fills, no arcs.
+        fill_rect(hdc, rect, TERMINAL_HEADER_BACKGROUND);
         fill_rect(
             hdc,
             RECT {
                 left: rect.left,
-                top: rect.top,
+                top: header.bottom,
                 right: rect.right,
-                bottom: (rect.top + SHELL_PANEL_RADIUS).min(rect.bottom),
+                bottom: rect.bottom,
             },
             surface,
         );
-    }
-
-    // Header strip: bottom corners always square (it joins the surface);
-    // top corners follow the card's corner shape.
-    let header_rects = terminal_header_rects(rect, native);
-    let header = header_rects.header;
-    if square_top || native.maximized {
-        fill_rect(hdc, header, TERMINAL_HEADER_BACKGROUND);
     } else {
-        fill_round_rect_aa(hdc, header, SHELL_PANEL_RADIUS, TERMINAL_HEADER_BACKGROUND);
-        fill_rect(
+        fill_round_rect_aa_band(
             hdc,
-            RECT {
-                left: header.left,
-                top: header.top + rect_height(&header) / 2,
-                right: header.right,
-                bottom: header.bottom,
-            },
+            rect,
+            SHELL_PANEL_RADIUS,
             TERMINAL_HEADER_BACKGROUND,
+            rect.top,
+            header.bottom,
         );
+        fill_round_rect_aa_band(
+            hdc,
+            rect,
+            SHELL_PANEL_RADIUS,
+            surface,
+            header.bottom,
+            rect.bottom,
+        );
+        // Body drawing below (pane fills, grid) stays clipped to the card's
+        // interior so square fills cannot overpaint the bottom arcs. The clip
+        // boundary is aliased, but everything drawn inside matches the card's
+        // surface color there, so it stays invisible.
+        clip_to_round_rect_inside(hdc, rect, SHELL_PANEL_RADIUS);
     }
 
     for tab in &header_rects.tabs {
