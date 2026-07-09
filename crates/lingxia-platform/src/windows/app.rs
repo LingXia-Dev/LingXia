@@ -413,7 +413,7 @@ impl AppRuntime for Platform {
         &self,
         appid: String,
         path: String,
-        _animation_type: AnimationType,
+        animation_type: AnimationType,
     ) -> Result<(), PlatformError> {
         let session_id = webview_runtime::list_webviews()
             .into_iter()
@@ -421,7 +421,7 @@ impl AppRuntime for Platform {
             .and_then(|tag| tag.session_id());
         let webtag = WebTag::new(&appid, &path, session_id);
         ui_update::sync_windows_ui(&appid);
-        surface::navigate_webtag_window(webtag, self.product_name.clone());
+        surface::navigate_webtag_window(webtag, self.product_name.clone(), animation_type);
         Ok(())
     }
 

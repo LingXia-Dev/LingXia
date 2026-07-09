@@ -250,6 +250,7 @@ pub trait WindowsHostBackend: Send + Sync {
         _webtag: &WebTag,
         _title: &str,
         _activate: bool,
+        _animation: WindowsNavAnimation,
     ) -> StdResult<()> {
         unsupported_operation("navigate_webview_window")
     }
@@ -327,6 +328,19 @@ pub enum WindowsPanelPosition {
     Right,
     Top,
     Bottom,
+}
+
+/// The page-transition animation a `navigate` should play, mirroring the
+/// `AnimationType` the core computes from the JS navigation verb (forward slide
+/// for `navigateTo`, backward slide for `navigateBack`, none for
+/// `redirectTo`/`switchTab`/`reLaunch`). Kept as a contract-local enum so this
+/// crate needs no dependency on `lingxia-platform`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum WindowsNavAnimation {
+    #[default]
+    None,
+    Forward,
+    Backward,
 }
 
 #[derive(Clone, Default)]
@@ -861,8 +875,13 @@ pub fn show_webview_window_with_content_size(
     backend()?.show_webview_window_with_content_size(webtag, title, activate, width, height)
 }
 
-pub fn navigate_webview_window(webtag: &WebTag, title: &str, activate: bool) -> StdResult<()> {
-    backend()?.navigate_webview_window(webtag, title, activate)
+pub fn navigate_webview_window(
+    webtag: &WebTag,
+    title: &str,
+    activate: bool,
+    animation: WindowsNavAnimation,
+) -> StdResult<()> {
+    backend()?.navigate_webview_window(webtag, title, activate, animation)
 }
 
 pub fn hide_webview_window(webtag: &WebTag) -> StdResult<()> {

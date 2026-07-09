@@ -9,7 +9,7 @@ use lingxia_webview::WebTag;
 use lingxia_webview::platform::windows::{WindowsWebViewHandler, find_webview_handler};
 use lingxia_webview::runtime as webview_runtime;
 use lingxia_windows_contract::{
-    WindowsAsidePanelEvent, WindowsAsidePanelTab, WindowsPanelPosition,
+    WindowsAsidePanelEvent, WindowsAsidePanelTab, WindowsNavAnimation, WindowsPanelPosition,
     active_host_window_is_device_framed, hide_webview_window, navigate_webview_window,
     present_webview_as_overlay, present_webview_in_active_group, refresh_aside_panel,
     set_aside_panel_tabs, set_webview_close_handler, set_windows_aside_panel_event_handler,
@@ -19,7 +19,7 @@ use lingxia_windows_contract::{
 
 use super::request_windows_app_exit;
 use crate::error::PlatformError;
-use crate::traits::app_runtime::LxAppOpenMode;
+use crate::traits::app_runtime::{AnimationType, LxAppOpenMode};
 use crate::traits::ui::{SurfaceContent, SurfaceKind, SurfaceRequest, SurfaceRole};
 
 static WINDOWS_SHOW_SEQUENCE: AtomicU64 = AtomicU64::new(1);
@@ -68,12 +68,13 @@ pub(super) fn show_webtag_window(
         });
 }
 
-pub(super) fn navigate_webtag_window(webtag: WebTag, title: String) {
+pub(super) fn navigate_webtag_window(webtag: WebTag, title: String, animation: AnimationType) {
+    let animation = nav_animation(animation);
     let request_key = show_request_key(&webtag, LxAppOpenMode::Normal, "");
     let request_id = remember_show_request(&request_key);
     if let Some(handler) = find_webview_handler(&webtag) {
         if show_request_is_current(&request_key, request_id) {
-            show_webview_handler_navigate(handler, &title);
+            show_webview_handler_navigate(handler, &title, animation);
         }
         return;
     }
@@ -87,7 +88,7 @@ pub(super) fn navigate_webtag_window(webtag: WebTag, title: String) {
                     return;
                 }
                 if let Some(handler) = find_webview_handler(&webtag) {
-                    show_webview_handler_navigate(handler, &title);
+                    show_webview_handler_navigate(handler, &title, animation);
                     return;
                 }
                 thread::sleep(Duration::from_millis(50));
@@ -97,6 +98,14 @@ pub(super) fn navigate_webtag_window(webtag: WebTag, title: String) {
                 webtag.key()
             );
         });
+}
+
+fn nav_animation(animation: AnimationType) -> WindowsNavAnimation {
+    match animation {
+        AnimationType::Forward => WindowsNavAnimation::Forward,
+        AnimationType::Backward => WindowsNavAnimation::Backward,
+        AnimationType::None => WindowsNavAnimation::None,
+    }
 }
 
 pub(super) fn hide_lxapp_window(appid: &str, session_id: u64) {
@@ -133,9 +142,13 @@ fn show_webview_handler_for_mode(
     }
 }
 
-fn show_webview_handler_navigate(handler: WindowsWebViewHandler, title: &str) {
+fn show_webview_handler_navigate(
+    handler: WindowsWebViewHandler,
+    title: &str,
+    animation: WindowsNavAnimation,
+) {
     let webtag = handler.webtag();
-    if let Err(err) = navigate_webview_window(&webtag, title, false) {
+    if let Err(err) = navigate_webview_window(&webtag, title, false, animation) {
         log::warn!(
             "Failed to navigate Windows WebView window {}: {}",
             webtag.key(),
