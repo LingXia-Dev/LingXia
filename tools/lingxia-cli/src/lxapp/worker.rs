@@ -1,12 +1,12 @@
-//! Cloud-function dev support for an lxapp: transpile the worker's `.ts` mocks
+//! Cloud-worker dev support for an lxapp: transpile the worker's `.ts` mocks
 //! to loadable `.js`, and generate typed `lx.cloud.invoke` declarations. Driven
-//! by the lxapp's `functions.json` (`worker` dir).
+//! by the lxapp's `worker.json` (`dir`).
 
 use anyhow::Result;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
-/// If the lxapp declares cloud functions (`functions.json`), regenerate typed
+/// If the lxapp declares a cloud worker (`worker.json`), regenerate typed
 /// `lx.cloud.invoke`, transpile the worker's `.ts` mocks to a `.js` dir the mock
 /// backend can load, and return that dir. None when there are no cloud functions.
 pub(crate) fn prepare_dev(lxapp_path: &Path) -> Option<PathBuf> {
@@ -26,16 +26,16 @@ pub(crate) fn prepare_dev(lxapp_path: &Path) -> Option<PathBuf> {
     Some(load_dir)
 }
 
-/// The `worker` dir declared in `<lxapp>/functions.json` (default `server`); None
-/// when the lxapp has no `functions.json`.
+/// The worker dir declared in `<lxapp>/worker.json` (`dir`, default `server`);
+/// None when the lxapp has no `worker.json`.
 fn read_worker(lxapp_path: &Path) -> Option<String> {
-    let text = std::fs::read_to_string(lxapp_path.join("functions.json")).ok()?;
+    let text = std::fs::read_to_string(lxapp_path.join("worker.json")).ok()?;
     let config = serde_json::from_str::<serde_json::Value>(&text)
-        .map_err(|_| eprintln!("[cloud] functions.json is not valid JSON"))
+        .map_err(|_| eprintln!("[cloud] worker.json is not valid JSON"))
         .ok()?;
     Some(
         config
-            .get("worker")
+            .get("dir")
             .and_then(serde_json::Value::as_str)
             .unwrap_or("server")
             .to_string(),
