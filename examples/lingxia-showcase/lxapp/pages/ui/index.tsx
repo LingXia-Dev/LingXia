@@ -763,6 +763,8 @@ export default function UIPage() {
                     onClick={async () => {
                       const result = await showTabBar();
                       console.log('Show TabBar:', result);
+                      // Toast at resolve time: the bar must already be visible.
+                      showToastWithParams({ title: 'shown', icon: 'success', duration: 800 });
                     }}
                     className="flex-1 bg-green-500 hover:bg-green-600 text-white py-2 px-4 rounded-lg text-sm font-medium transition-colors"
                   >
@@ -772,6 +774,8 @@ export default function UIPage() {
                     onClick={async () => {
                       const result = await hideTabBar();
                       console.log('Hide TabBar:', result);
+                      // Toast at resolve time: the bar must already be gone.
+                      showToastWithParams({ title: 'hidden', icon: 'success', duration: 800 });
                     }}
                     className="flex-1 bg-red-500 hover:bg-red-600 text-white py-2 px-4 rounded-lg text-sm font-medium transition-colors"
                   >
