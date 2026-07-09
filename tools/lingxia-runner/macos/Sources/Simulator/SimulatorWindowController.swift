@@ -449,6 +449,11 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         
         // Setup floating capsule buttons
         setupFloatingCapsuleButtons(in: phoneContent)
+
+        // The initial sync in setupSimulatorMode can run before this overlay
+        // exists. Apply the current page config now that the navbar view is
+        // available, so the first screen does not wait for a later notification.
+        applyInitialNavigationConfiguration()
     }
     
     private func createSystemStatusBar() -> NSView {
@@ -806,6 +811,8 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
             floatingCapsuleContainer?.isHidden = false
             if systemStatusBar == nil, phoneContentView != nil {
                 setupPhoneUIOverlay()
+            } else {
+                applyInitialNavigationConfiguration()
             }
         }
     }
