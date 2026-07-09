@@ -68,7 +68,11 @@ The skill's content documents the CLI surface; CLI releases that change a flag b
 ```
 .claude/skills/lingxia/
 ├── SKILL.md              # entry: decision tree, fast-path recipes, symptom router
-├── cli/reference.md      # every CLI command, flag, env var
+├── cli/
+│   ├── lingxia.md        # the lingxia CLI: build, dev sessions, package, install
+│   ├── lxdev.md          # drive a running dev session (reload, eval, automation, logs)
+│   ├── distribution.md   # publish, app-store submission, developer accounts
+│   └── signing.md        # platform signing setup
 ├── lxapp/
 │   ├── guide.md          # Page({}), useLxPage, events
 │   ├── components.md     # LxInput, LxVideo, LxPicker, LxMediaSwiper, LxNavigator

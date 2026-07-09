@@ -1,6 +1,6 @@
 ---
 name: lingxia
-description: Build apps on the LingXia cross-platform framework — standalone lxapps (page-based mini-apps with a View+Logic split), native host apps (Android/iOS/macOS/Harmony/Windows shells embedding an lxapp), and Rust native extensions. TRIGGER on the `lingxia` CLI, `lxapp`, `lingxia.yaml`, `lxapp.json`, `#[lingxia::native]`, or `useLxPage`. SKIP for other mini-app runtimes that share the `Page({})` shape. **Always read §"Step 0" before generating any file.**
+description: Build apps on the LingXia cross-platform framework — standalone lxapps (page-based mini-apps with a View+Logic split), native host apps (Android/iOS/macOS/Harmony/Windows shells embedding an lxapp), and Rust native extensions. TRIGGER on the `lingxia` CLI, `lxapp`, or `useLxPage`. SKIP for other mini-app runtimes that share the `Page({})` shape. **Always read §"Step 0" before generating any file.**
 license: MIT
 allowed-tools: Read, Grep, Glob, Edit, Write, Bash(lingxia:*), Bash(lxdev:*), Bash(npm:*), Bash(npx:*), Bash(test:*), Bash(ls:*), Bash(cat:*), Bash(cargo:*)
 ---
@@ -22,7 +22,6 @@ When you read this you can usually assume the `lingxia` CLI is on `PATH` (verify
 ```bash
 test -f lingxia.yaml   && echo "host-app"
 test -f lxapp.json     && echo "lxapp"
-test -f lxplugin.json  && echo "lxplugin"
 ```
 
 If none match, you're about to scaffold a new project — continue to 0b. If one matches, jump to the fast-path for that shape.
@@ -32,7 +31,7 @@ If none match, you're about to scaffold a new project — continue to 0b. If one
 1. **Standalone lxapp or host app?** (A vs B/C below)
 2. **If host app:** which platforms? `android`, `ios`, `macos`, `windows`, `harmony`, any combination.
 3. **If host app:** JS Logic for the home lxapp, or native-only Rust? (B vs C)
-4. **View framework:** React **or** Vue **or** HTML — pick **one**. Some demo apps deliberately mix all three to exercise each binding; real apps do not.
+4. **View framework:** React, Vue, or HTML — chosen once at scaffold; a project has exactly one.
 
 Then scaffold:
 
@@ -46,6 +45,29 @@ lingxia new my-app -t native-app -p macos --package-id com.example.myapp -y
 ```
 
 `lingxia doctor` verifies platform toolchains.
+
+---
+
+## The development loop
+
+Two binaries, one split: **`lingxia dev` starts a session** (build → install →
+launch → dev websocket), **`lxdev` connects to that session** and drives it.
+Memorize the split; everything else is detail in the two CLI docs.
+
+After an edit, pick the loop by **what you changed** — this is the decision
+that matters:
+
+| You changed | Do |
+|---|---|
+| **lxapp code** (View / Logic / `lxapp.json`) — the embedded home lxapp or a standalone lxapp project | `lxdev lxapp reload` — rebuilds the bundle and reloads the running lxapp. No new session. |
+| **host/app code** (`lingxia.yaml`, native Rust, platform projects) | re-run `lingxia dev` — it automatically stops the project's previous same-platform session and takes over. |
+
+```bash
+lingxia dev --background     # start (or take over) this project's session; returns when live
+lxdev lxapp reload           # lxapp inner loop: rebuild + reload in place
+```
+
+Command details: [`lingxia` CLI](./cli/lingxia.md) · [`lxdev`](./cli/lxdev.md).
 
 ---
 
@@ -83,8 +105,9 @@ Every published package and what to import from each. Don't guess imports from t
 
 | Need | File |
 |---|---|
-| Every CLI command, flag, env var (daily use) | [`./cli/reference.md`](./cli/reference.md) |
+| The `lingxia` CLI — daily commands (build, dev, package, install; signing pointer inside) | [`./cli/lingxia.md`](./cli/lingxia.md) |
 | Drive a running `lingxia dev` session — `lxdev` (browser/app/lxapp/logs automation; run `lxdev <cmd> --help` for exact flags) | [`./cli/lxdev.md`](./cli/lxdev.md) |
+| Publish to the LingXia server, app-store submission, developer accounts (`publish`/`store`/`auth`/`ds`) | [`./cli/distribution.md`](./cli/distribution.md) |
 | Page authoring: `Page({})`, `useLxPage`, events | [`./lxapp/guide.md`](./lxapp/guide.md) |
 | **Native components: `LxVideo`, `LxMediaSwiper`, `LxPicker`, `LxNavigator` (text input is plain `<input>`/`<textarea>`)** | [`./lxapp/components.md`](./lxapp/components.md) |
 | **Logic-side `lx.*` API surface map** | [`./lxapp/lx-api.md`](./lxapp/lx-api.md) |
@@ -130,8 +153,8 @@ Jump straight here when the user reports a concrete failure:
 | Native route returns `BRIDGE_METHOD_NOT_FOUND` | [`./native/development.md`](./native/development.md) → Host Addon registration |
 | `#[lingxia::native]` compiles but View can't call it | [`./native/development.md`](./native/development.md) → "Generated Native Client" |
 | Stream cancels never trigger cleanup | [`./lxapp/bridge.md`](./lxapp/bridge.md) → use the generator form + `finally` (the explicit handle has no cancel hook) |
-| `lingxia.yaml` change ignored after rebuild | [`./cli/reference.md`](./cli/reference.md) → `lingxia clean`, then rebuild |
-| iOS dev app can't reach Mac dev server | [`./cli/reference.md`](./cli/reference.md) → `lingxia dev` (LAN reachability) |
+| `lingxia.yaml` change ignored after rebuild | [`./cli/lingxia.md`](./cli/lingxia.md) → `lingxia clean`, then rebuild |
+| iOS dev app can't reach Mac dev server | [`./cli/lingxia.md`](./cli/lingxia.md) → `lingxia dev` (LAN reachability) |
 | `Lingxia.initialize(...)` not found | [`./app/apple-sdk.md`](./app/apple-sdk.md) → use `Lingxia.quickStart()` (legacy removed) |
 | TS doesn't know about `lx.foo()` / `Page({})` in Logic | install `@lingxia/types` as a devDependency; see [`./lxapp/lx-api.md`](./lxapp/lx-api.md) |
 | `<LxVideo>` / `<LxPicker>` attribute not recognized by TS or runtime | [`./lxapp/components.md`](./lxapp/components.md) → component attribute table |
@@ -158,7 +181,7 @@ Jump straight here when the user reports a concrete failure:
 
 **LxApp** — see [`./lxapp/guide.md` → Common Pitfalls](./lxapp/guide.md#common-pitfalls):
 
-- Generating `.tsx` + `.vue` + `.html` for one page. Pick **one** view framework per project.
+- Generating `.tsx` + `.vue` + `.html` for one page. A project has one view framework — match the existing pages.
 - `fetch()` to a host not in `security.network.trustedDomains` fails silently.
 
 **Host app** — see [`./app/project.md` → Common Pitfalls](./app/project.md#common-pitfalls):

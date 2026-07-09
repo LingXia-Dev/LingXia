@@ -147,4 +147,4 @@ You can browse the same content in this repo at [`docs/skill/SKILL.md`](./skill/
 - Bridge mechanics (`setData`, stream, channel): [`docs/skill/lxapp/bridge.md`](./skill/lxapp/bridge.md)
 - Host project (`lingxia.yaml`, macOS App UI): [`docs/skill/app/project.md`](./skill/app/project.md)
 - Native Rust (`#[lingxia::native]`, `HostAddon`): [`docs/skill/native/development.md`](./skill/native/development.md)
-- Every CLI command: [`docs/skill/cli/reference.md`](./skill/cli/reference.md)
+- Every CLI command: [`docs/skill/cli/lingxia.md`](./skill/cli/lingxia.md)
