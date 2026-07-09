@@ -5,7 +5,7 @@ A LingXia app project is a native host app that embeds one home lxapp and can op
 The UI is described by a flat, adaptive `surfaces:` list (see [Surfaces](#surfaces-adaptive-ui)) — you declare *what* each surface is and the Host derives the realized platform form (window / panel / sidebar / tab / tray) by screen size. macOS is the most complete runtime today; the same `surfaces:` schema feeds every platform.
 
 For lxapp page development, see [LxApp Development Guide](../lxapp/guide.md).
-For CLI commands, see [CLI Command Reference](../cli/reference.md).
+For CLI commands, see [CLI Command Reference](../cli/lingxia.md).
 
 ---
 

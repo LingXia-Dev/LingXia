@@ -15,7 +15,7 @@
   <a href="docs/skill/SKILL.md">AI Skill</a> &middot;
   <a href="docs/skill/lxapp/guide.md">LxApp Guide</a> &middot;
   <a href="docs/skill/app/project.md">Host Apps</a> &middot;
-  <a href="docs/skill/cli/reference.md">CLI Reference</a>
+  <a href="docs/skill/cli/lingxia.md">CLI Reference</a>
 </p>
 
 ---
@@ -110,7 +110,7 @@ Browse the source directly at [docs/skill/SKILL.md](docs/skill/SKILL.md), or rea
 | iOS/macOS SDK embedding | [docs/skill/app/apple-sdk.md](docs/skill/app/apple-sdk.md) |
 | Universal links and app links | [docs/skill/app/applinks.md](docs/skill/app/applinks.md) |
 | Rust native routes and host addons | [docs/skill/native/development.md](docs/skill/native/development.md) |
-| Every CLI command and flag | [docs/skill/cli/reference.md](docs/skill/cli/reference.md) |
+| Every CLI command and flag | [docs/skill/cli/lingxia.md](docs/skill/cli/lingxia.md) |
 
 ## Packages
 

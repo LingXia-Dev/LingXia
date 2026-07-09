@@ -15,14 +15,14 @@ lxdev --session a1b2 ...         # session-id prefix
 lxdev --session ios ...          # target name, when unique
 ```
 
-Crashed sessions disappear from the broker automatically — there is nothing to prune. `lingxia dev` refuses a second same-target session per project (stop the first with `lingxia dev stop`); different targets run side by side.
+Crashed sessions disappear from the broker automatically — there is nothing to prune. Re-running `lingxia dev` for the same target in a project stops the previous session and takes over; different targets run side by side.
 
 ## Capabilities
 
 **`lxapp`** — the lxapps in the session. Every command targets the **current** lxapp by default (`--app` to pick another); page commands likewise default to the **current page** (`--page` to pick):
 - `list` / `current` / `info` / `pages` — what's running, and the configured pages
 - `open` / `close` / `restart` / `uninstall` — lifecycle (`restart` relaunches the runtime without rebuilding)
-- `reload` — rebuild the lxapp front-end bundle through the running session, then reload the running lxapp so the new bundle is live. **This is the fast dev inner-loop**: after editing lxapp code you do *not* need to Ctrl-C and re-run `lingxia dev` (which rebuilds the whole session and relaunches the host/Runner) — one command covers Web, Logic, and `lxapp.json` changes. Add `--release` / `--framework <name>` as needed; `--build-only` skips the runtime reload.
+- `reload` — rebuild the lxapp front-end bundle through the running session, then reload the running lxapp so the new bundle is live (covers Web, Logic, and `lxapp.json` changes); `--build-only` skips the runtime reload
 - `nav to|redirect|switch-tab|relaunch|back` — navigate the runtime by page name (from `pages`)
 - `eval` — run JS in the **Logic runtime**; `page eval` — run JS in the **page WebView** (the two see different things — JS-contexts table below)
 - `page current|list|info` — page stack status
