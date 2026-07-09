@@ -113,165 +113,34 @@ Rules:
 - The host app owns native window/layout behavior.
 - LingXia owns lxapp session lifecycle and webview attachment.
 
-## API Reference
+## API Reference — where it lives
 
-### `Lingxia`
+Swift signatures are **not** mirrored here — a hand-copied listing drifts. The
+authoritative surface is the `lingxia` SwiftPM package itself: use Xcode
+jump-to-definition / autocomplete, or read the package sources.
 
-```swift
-@MainActor
-public enum Lingxia {
-    @discardableResult
-    public static func quickStart() throws -> LxAppShell
+The supported host-app contract is exactly these symbols (plus their
+request/event/id types):
 
-    @available(*, deprecated, message: "Configure product UI in lingxia.yaml and use Lingxia.quickStart(). Use initializeRuntime() + LxAppController + LxAppHostView for advanced embedding.")
-    @discardableResult
-    public static func quickStart(
-        configuration: LxAppShellConfiguration
-    ) throws -> LxAppShell
-
-    public static func handleAppActivation() -> Bool
-
-    @discardableResult
-    public static func initializeRuntime() throws -> LxAppRuntimeInfo
-
-    public static func activate(controller: LxAppController)
-
-    public static func enableWebViewDebugging()
-
-    public static func handleAppLink(url: URL)
-}
-```
+| Symbol | Role |
+|---|---|
+| `Lingxia` | Entry points: `quickStart()`, `handleAppActivation()`, `initializeRuntime()`, `activate(controller:)`, `enableWebViewDebugging()`, `handleAppLink(url:)` |
+| `LxAppController` | Session lifecycle for advanced embedding: `open` / `openHomeApp` / `navigate` / `close`, `events` stream, interceptors |
+| `LxAppHostView` | The embeddable native view: `mount` / `unmount` / `dispatch`, `events` stream (`LxAppHostViewRepresentable` wraps it for SwiftUI) |
 
 `Lingxia.initialize()` has been removed. Use `quickStart()` for product apps or
-`initializeRuntime()` for advanced embedding.
+`initializeRuntime()` for advanced embedding. Most apps should also never touch
+`LxAppRuntime.shared` directly — both entry points wrap it.
 
-### `LxAppController`
+Semantics the signatures can't convey:
 
-```swift
-@MainActor
-public final class LxAppController {
-    public let id: LxAppControllerID
-    public private(set) var sessions: [LxAppSessionID: LxAppSession] { get }
-    public var events: AsyncStream<LxAppControllerEvent> { get }
-
-    public init()
-
-    public func setInterceptor(
-        _ kind: LxAppControllerInterceptor,
-        handler: ((LxAppInterceptContext) async -> LxAppInterceptDecision?)?
-    )
-
-    public func session(forAppId appId: String) -> LxAppSession?
-
-    @discardableResult
-    public func open(_ request: LxAppOpenRequest) async throws -> LxAppSession
-
-    @discardableResult
-    public func openHomeApp(path: String = "") async throws -> LxAppSession
-
-    public func navigate(_ request: LxAppNavigateRequest)
-
-    @discardableResult
-    public func close(_ sessionId: LxAppSessionID) async -> Bool
-}
-```
-
-Supporting types:
-
-```swift
-public struct LxAppControllerID: Hashable, Codable, Sendable
-public struct LxAppSessionID: Hashable, Codable, Sendable
-public struct LxAppSession: Hashable, Codable, Sendable, Identifiable
-public struct LxAppOpenRequest: Codable, Sendable
-public struct LxAppNavigateRequest: Codable, Sendable
-public enum LxAppOpenPresentation: String, Codable, Sendable, CaseIterable
-public enum LxAppAnimation: String, Codable, Sendable, CaseIterable
-public enum LxAppControllerEvent: Codable, Sendable
-public enum LxAppControllerInterceptor: String, Codable, Sendable
-public struct LxAppInterceptContext: Codable, Sendable
-public enum LxAppInterceptDecision: Codable, Sendable
-public struct LxAppErrorPayload: Codable, Sendable, Error, Hashable
-public enum LxAppJSONValue: Codable, Sendable, Hashable
-```
-
-Controller event semantics:
-
-- `didOpen` carries the opened `LxAppSession`.
-- `didClose` carries the closed `LxAppSession`.
-- `.mountInHost(id:)` mounts the opened session into the registered `LxAppHostView`.
-
-### `LxAppHostView`
-
-```swift
-#if os(iOS)
-public typealias LxAppPlatformView = UIView
-#else
-public typealias LxAppPlatformView = NSView
-#endif
-
-@MainActor
-public final class LxAppHostView: LxAppPlatformView {
-    public let id: LxAppHostViewID
-    public let controller: LxAppController
-    public private(set) var webView: WKWebView? { get }
-    public private(set) var mountedSession: LxAppSession? { get }
-    public private(set) var appId: String? { get }
-    public private(set) var currentPath: String? { get }
-    public private(set) var canGoBack: Bool { get }
-
-    public var events: AsyncStream<LxAppHostViewEvent> { get }
-
-    public init(controller: LxAppController, frame: CGRect = .zero)
-    public func attach(_ webView: WKWebView, appId: String?, path: String?)
-    public func mount(_ session: LxAppSession) async throws
-    public func mount(sessionId: LxAppSessionID) async throws
-    public func unmount()
-    public func dispatch(_ command: LxAppHostViewCommand)
-}
-```
-
-SwiftUI wrapper:
-
-```swift
-public struct LxAppHostViewRepresentable {
-    public init(hostView: LxAppHostView, onEvent: ((LxAppHostViewEvent) -> Void)? = nil)
-    public init(controller: LxAppController, onEvent: ((LxAppHostViewEvent) -> Void)? = nil)
-}
-```
-
-Supporting types:
-
-```swift
-public struct LxAppHostViewID: Hashable, Codable, Sendable
-public enum LxAppHostViewEvent: Codable, Sendable
-public enum LxAppHostViewCommand: Codable, Sendable
-```
-
-Host-view event semantics:
-
-- `didChangeTitle`, `didUpdateCanGoBack`, `didStartLoading`, `didFinishLoading`, and `didFail` come from the mounted webview.
-- `dispatch(.triggerCapsuleAction(...))` forwards that action into the runtime for the mounted app session.
-
-### `LxAppRuntime`
-
-```swift
-@MainActor
-public final class LxAppRuntime {
-    public static let shared: LxAppRuntime
-    public private(set) var info: LxAppRuntimeInfo? { get }
-    public func initialize() throws -> LxAppRuntimeInfo
-}
-
-public struct LxAppRuntimeInfo: Codable, Sendable, Hashable {
-    public let homeAppId: String
-    public let capabilities: LxAppCapabilities
-    public let dataPath: String
-    public let cachesPath: String
-}
-```
-
-Most apps should not call `LxAppRuntime.shared.initialize()` directly. Use
-`Lingxia.quickStart()` or `Lingxia.initializeRuntime()`.
+- Controller events: `didOpen` / `didClose` carry the affected `LxAppSession`;
+  `.mountInHost(id:)` mounts the opened session into the registered
+  `LxAppHostView`.
+- Host-view events `didChangeTitle`, `didUpdateCanGoBack`, `didStartLoading`,
+  `didFinishLoading`, and `didFail` come from the mounted webview;
+  `dispatch(.triggerCapsuleAction(...))` forwards that action into the runtime
+  for the mounted app session.
 
 ## Legacy Shell Override
 

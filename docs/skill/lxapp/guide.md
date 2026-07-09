@@ -37,7 +37,7 @@ my-lxapp/
 └── shared/
 ```
 
-`lxapp.json` holds runtime metadata (`appId`, `appName` or `name`, `version`, `pages`) and the security policy; `lxapp.config.ts` holds build config (view tooling, aliases, static asset directories).
+`lxapp.json` holds runtime metadata (`appId`, `appName`, `version`, `pages` — `name` is a legacy alias for `appName`; write `appName` in new projects) and the security policy; `lxapp.config.ts` holds build config (view tooling, aliases, static asset directories).
 
 ### Static assets
 
@@ -324,7 +324,7 @@ const { actions } = useLxPage<PageData, PageActions>();
   onConfirm={(value) => actions.onPickerConfirm({ field: 'choice', value })}
 />
 
-// Video — handler receives raw DOM Event
+// Video — handler receives raw DOM CustomEvent
 <LxVideo src={url} onPlaying={actions.onPlaying} />
 ```
 
@@ -514,7 +514,7 @@ Full option shapes: [`./lx-api.md#page-chrome--ui`](./lx-api.md#page-chrome--ui)
 - Mutating `data` directly in View instead of calling Logic actions.
 - Touching the DOM from Logic — Logic has no DOM access; use `lx.*` for platform operations and `setData()` for state.
 - Keeping business state in View `useState`/`ref` instead of Logic-managed `setData()` — state drifts across the bridge boundary.
-- Assuming every component's event handler receives the same shape — `LxPicker` hands you the resolved value, `LxVideo` passes the raw DOM `Event`. See [Components](./components.md#callback-shapes-by-component).
+- Assuming every component's event handler receives the same shape — `LxPicker` hands you the resolved value, `LxVideo` passes the raw DOM `CustomEvent`. See [Components](./components.md#callback-shapes-by-component).
 - Skipping `@lingxia/types` in the lxapp's devDependencies and losing intellisense on the entire `lx.*` surface. See [Logic-side `lx.*` API](./lx-api.md).
 - Forgetting that only public `Page({})` methods become actions; lifecycle hooks and `_`-prefixed helpers are not exposed.
 - Mutating `App({}).globalData` and expecting page views to re-render — `globalData` is not reactive. Propagate to a page's `data` via `setData`.

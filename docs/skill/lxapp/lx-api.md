@@ -92,12 +92,7 @@ const res = await fetch('https://api.example.com/items', {
 
 ### AppService-only extras
 
-When the host has `features.appService: true`, the wider **AppService scope** (the JS service hosting all per-page Logic contexts) adds:
-
-- **`cron`** — scheduled-task module for app-lifetime jobs (heartbeat, badge refresh, polling) that should run as long as the lxapp is loaded, not tied to one page's lifecycle.
-- **App-wide `storage`** — durable key/value at the lxapp scope, via `lx.getStorage()` (values persist across pages and launches).
-
-The Rong `cron` surface **isn't declared in `@lingxia/types`** yet — inspect the runtime's live globals (`console.log(globalThis)` from `App({}).onLaunch`) for the exact API.
+When the host has `features.appService: true`, the wider **AppService scope** (the JS service hosting all per-page Logic contexts) adds app-wide **`storage`** — durable key/value at the lxapp scope, via `lx.getStorage()` (values persist across pages and launches).
 
 ---
 

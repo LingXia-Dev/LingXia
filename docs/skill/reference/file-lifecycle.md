@@ -1,51 +1,36 @@
 # LingXia File Lifecycle
 
-This document defines LingXia-managed file lifetimes, storage locations, cleanup triggers, quota behavior, and the relationship between APIs such as `downloadFile`, `getFileManager()`, `chooseMedia`, `compressImage`, and `compressVideo`.
-
-The design goal is simple: a returned path should tell developers whether the file is temporary, cache-managed, or durable.
+What an lxapp author needs to know about LingXia-managed files: which storage
+class a returned path belongs to, how `downloadFile`, `getFileManager()`, and
+the media APIs place files, and when the runtime may clean them up. A returned
+path tells you whether the file is temporary, cache-managed, or durable.
 
 ## Storage Classes
 
 LingXia exposes three LxApp-owned storage classes:
 
-| Class | URI | Physical Owner | Lifetime |
-| --- | --- | --- | --- |
-| Temp | `lx://temp/<opaque_id>` | current LxApp runtime session | short-lived, auto-cleaned |
-| User Data | `lx://userdata/<path>` | one LxApp | durable, never auto-cleaned |
-| User Cache | `lx://usercache/<path>` | one LxApp | regenerable, auto-cleaned |
+| Class | URI | Lifetime |
+| --- | --- | --- |
+| Temp | `lx://temp/<opaque_id>` | short-lived, session-scoped, auto-cleaned |
+| User Data | `lx://userdata/<path>` | durable, never auto-cleaned |
+| User Cache | `lx://usercache/<path>` | regenerable, auto-cleaned under capacity pressure |
 
-User-visible downloads are exposed through `downloadFile({ destination: "downloads" })`. They are owned by the host downloads center, not by LxApp private storage.
+User-visible downloads are exposed through
+`downloadFile({ destination: "downloads" })`. They are owned by the host
+downloads center, not by LxApp private storage.
 
-## Physical Layout
-
-> Informational, not a contract: lxapp code must only use `lx://` URIs. The physical layout below explains *where* those map on disk and may change between releases.
-
-LingXia identifies each LxApp storage owner by its fingermark.
-
-```text
-<app_data>/lingxia/lxapps/<lxapp_fingermark>/
-  installed LxApp bundle
-
-<app_data>/lingxia/userdata/<lxapp_fingermark>/
-  durable LxApp files
-
-<app_data>/lingxia/usercache/<lxapp_fingermark>/
-  LingXia-managed regenerable cache
-
-<app_data>/lingxia/storage/<lxapp_fingermark>.redb
-  LxApp key-value storage
-
-<app_cache>/lingxia/lxapps/temp/<lxapp_fingermark>/<session_id>/
-  current runtime temp files
-```
-
-`usercache` intentionally lives under app data, not OS cache, because LingXia owns its cleanup policy. Temp lives under app cache because it is session-scoped and disposable.
+LxApp code must only use `lx://` URIs — never native paths. Physically, temp
+lives under the OS app-cache directory (disposable), while userdata *and*
+usercache live under app data: usercache deliberately so, because LingXia owns
+its cleanup policy rather than the OS. The exact on-disk layout is internal and
+may change between releases.
 
 ## API Semantics
 
 ### `downloadFile`
 
-`downloadFile` defaults to app-owned output. Final output depends on `destination` and `filePath`.
+`downloadFile` defaults to app-owned output. Final output depends on
+`destination` and `filePath`.
 
 Without `filePath`, the result is temp:
 
@@ -64,7 +49,10 @@ const result = await lx.downloadFile({
 result.filePath; // lx://userdata/videos/video.mp4
 ```
 
-With `destination: "downloads"`, the file is saved into the user's Downloads directory and appears in the built-in downloads page. `filePath` is treated as a filename or relative-name hint only; the runtime sanitizes it, prevents directory traversal, and avoids overwriting existing files.
+With `destination: "downloads"`, the file is saved into the user's Downloads
+directory and appears in the built-in downloads page. `filePath` is treated as
+a filename or relative-name hint only; the runtime sanitizes it, prevents
+directory traversal, and avoids overwriting existing files.
 
 ```ts
 const task = lx.downloadFile({
@@ -74,7 +62,8 @@ const task = lx.downloadFile({
 });
 ```
 
-This requires `"downloads"` in `lxapp.json` `security.privileges`. App-owned output (`destination: "app"`, the default) does not require that privilege.
+This requires `"downloads"` in `lxapp.json` `security.privileges`. App-owned
+output (`destination: "app"`, the default) does not require that privilege.
 
 Rejected destinations:
 
@@ -86,6 +75,11 @@ Rejected destinations:
 - `.` or `..` segments
 - the `lx://userdata` root itself
 
+Downloads stage in a private location and move into place on success, so a
+failed or canceled download never leaves a partial final file; pausing keeps
+the staging so `resume()` can continue, and identical URLs can download
+concurrently.
+
 ### `getFileManager`
 
 `getFileManager` returns the LingXia-managed file manager.
@@ -94,7 +88,9 @@ Rejected destinations:
 const fs = lx.getFileManager();
 ```
 
-Relative paths resolve under userdata. `lx.env.USER_DATA_PATH` and `lx.env.USER_CACHE_PATH` provide the explicit `lx://userdata` and `lx://usercache` roots. Read methods also accept `lx://temp/...`.
+Relative paths resolve under userdata. `lx.env.USER_DATA_PATH` and
+`lx.env.USER_CACHE_PATH` provide the explicit `lx://userdata` and
+`lx://usercache` roots. Read methods also accept `lx://temp/...`.
 
 ### File Copy And Move
 
@@ -102,7 +98,7 @@ Relative paths resolve under userdata. `lx.env.USER_DATA_PATH` and `lx.env.USER_
 const fs = lx.getFileManager();
 await fs.copyFile({
   srcPath: result.tempFilePath,
-  destPath: "downloads/video.mp4",
+  destPath: "media/video.mp4",          // relative → lx://userdata/media/video.mp4
 });
 
 await fs.rename({
@@ -123,21 +119,25 @@ Rules:
 
 ### FileManager writes
 
-`writeFile`, `copyFile`, and `rename` are explicit file management APIs. They default to no overwrite and support `overwrite: true` only when requested. Overwrite applies to files only; directories are never replaced by file writes.
+`writeFile`, `copyFile`, and `rename` are explicit file management APIs. They
+default to no overwrite and support `overwrite: true` only when requested.
+Overwrite applies to files only; directories are never replaced by file writes.
 
-`rename` is move semantics. It may move from temp, userdata, or usercache into userdata or usercache. Moving a temp download into usercache avoids a second durable copy and hands the file to cache cleanup.
+`rename` is move semantics. Moving a temp download into usercache avoids a
+second durable copy and hands the file to cache cleanup.
 
-`readDir` resolves to an async iterator of directory entries with `name`, `isFile`, `isDirectory`, and `isSymlink`, matching the Rong fs shape while keeping LingXia path lifecycle rules.
-
-Userdata writes run userdata and appStorage quota checks. Usercache writes run usercache cleanup/quota checks and then appStorage checks.
+`readDir` resolves to an async iterator of directory entries with `name`,
+`isFile`, `isDirectory`, and `isSymlink`.
 
 ### Media APIs
 
-`chooseMedia`, `compressImage`, `compressVideo`, and video thumbnail APIs return temp outputs by default. Use `copyFile` to keep a copy, or `rename` to move it into userdata or usercache.
+`chooseMedia`, `compressImage`, `compressVideo`, and video thumbnail APIs
+return temp outputs by default. Use `copyFile` to keep a copy, or `rename` to
+move it into userdata or usercache.
 
 ## `lingxia.yaml` Storage Configuration
 
-`lingxia.yaml` configures storage limits. This section is only configuration; cleanup behavior is described in the next section.
+Host apps configure storage limits in `lingxia.yaml`:
 
 ```yaml
 storage:
@@ -147,166 +147,63 @@ storage:
   appStorageMaxSizeMB: 16384
 ```
 
-| Setting | Default | Scope | Meaning | `0` Means |
-| --- | ---: | --- | --- | --- |
-| `tempMaxSizeMB` | 1024 | per LxApp runtime session | max size for returned temp files | disable temp size limit |
-| `cacheMaxSizeMB` | 2048 | per LxApp usercache | size cap for one LxApp cache directory; cleanup triggers at 80% high water and LRU-evicts down to 50% low water | disable usercache size enforcement |
-| `dataMaxSizeMB` | 4096 | per LxApp userdata | max durable files for one LxApp | disable userdata size limit |
-| `appStorageMaxSizeMB` | 16384 | whole LingXia-managed app storage | total userdata + usercache budget | disable app-wide storage limit |
+| Setting | Default | Scope | `0` Means |
+| --- | ---: | --- | --- |
+| `tempMaxSizeMB` | 1024 | per LxApp runtime session | disable temp size limit |
+| `cacheMaxSizeMB` | 2048 | per LxApp usercache | disable usercache size enforcement |
+| `dataMaxSizeMB` | 4096 | per LxApp userdata | disable userdata size limit |
+| `appStorageMaxSizeMB` | 16384 | total userdata + usercache budget | disable app-wide storage limit |
 
-`cacheMaxSizeMB` is per LxApp. Normal per-LxApp cleanup should not evict another LxApp's cache. Cross-LxApp cleanup happens only for app-wide storage pressure.
+## When files get cleaned up
 
-There is no fixed age cutoff for usercache. In particular, LingXia does **not** delete files merely because they have not been accessed for 7 days. Eviction is capacity-driven and uses least-recently-used ordering only after a cleanup trigger fires.
+**Temp** is session-scoped: stale sessions are removed when the lxapp opens,
+and the current session's temp is removed on lxapp destroy. Size cleanup
+(oldest-first) runs as temp files are produced; if it can't free enough space
+under `tempMaxSizeMB`, the operation fails with `TEMP_QUOTA_EXCEEDED`. The OS
+may also clear app cache at any time.
 
-## Cleanup Policy
+**User cache** eviction is capacity-driven LRU — there is **no age cutoff**
+(files are never deleted just for being old). Cleanup triggers when a cache
+would reach 80% of `cacheMaxSizeMB` and evicts least-recently-used files down
+to 50%, so writes don't thrash the cleaner. It runs at host startup, on
+usercache writes, and app-wide when total storage nears
+`appStorageMaxSizeMB`. A freshly written file is never evicted by the write
+that stored it. If cleanup can't make room, the write fails with
+`USERCACHE_QUOTA_EXCEEDED`.
 
-Cleanup is triggered by runtime events, not by developers calling arbitrary cleanup code.
+What counts as "recently used": FileManager reads (`readFile`, `readDir`,
+`stat`, `exists`, copy/move *from* usercache) and WebView `lx://usercache`
+resource loads refresh a file's access time. **Gotcha:** a WebView that keeps
+an asset in its internal resource cache never re-hits the scheme handler, so
+that asset's access time goes stale and it becomes the first LRU candidate
+under pressure. If a long-lived asset must survive, put it in userdata — or
+refresh it explicitly with `fs.stat(path)` / `fs.exists(path)` at session
+start.
 
-| Trigger | Scope | May Delete | Never Deletes |
-| --- | --- | --- | --- |
-| LxApp startup/open | stale temp sessions for that LxApp | old temp session dirs | current active temp session |
-| Temp output registration/finalization | current runtime temp session | old unpinned temp files | active `.download-staging`, current keep file |
-| LxApp destroy | current runtime temp session | current temp session dir | userdata |
-| App startup maintenance | all LxApp usercache dirs | LRU usercache once over high water | userdata, temp staging |
-| Usercache write | current LxApp usercache | LRU files in that LxApp cache once over high water | other LxApp caches in normal per-LxApp cleanup |
-| `downloadFile({ filePath })` / FileManager managed writes under appStorage pressure | all LxApp usercache dirs | usercache across LxApps | userdata |
-| LxApp uninstall | that LxApp storage | its userdata, usercache, KV storage, bundle | other LxApps |
+**User data** is never auto-cleaned to satisfy quota. It is deleted only by
+explicit delete APIs, lxapp uninstall, or the user clearing app data. Writes
+that would exceed `dataMaxSizeMB` fail with `USERDATA_QUOTA_EXCEEDED`; writes
+that would exceed `appStorageMaxSizeMB` first trigger usercache cleanup, then
+fail with `APP_STORAGE_QUOTA_EXCEEDED`. Quota failures are ordinary errors to
+handle in app code — existing data is never silently deleted to make a write
+succeed.
 
-Global invariants:
-
-- LingXia may delete temp and usercache automatically.
-- LingXia must not delete userdata automatically to satisfy quota.
-- Quota failures are business errors, not internal runtime errors.
-- Failed writes must not leave final partial files.
-
-## Temp Policy
-
-Temp is session-scoped. Returned temp URIs are opaque and should not reveal filesystem layout.
-
-Cleanup:
-
-- stale sessions are removed when the LxApp opens
-- current session temp is removed on runtime destroy best-effort
-- size cleanup runs when temp files are returned or finalized
-- OS may also clear app cache
-
-Quota:
-
-- each active runtime session uses `tempMaxSizeMB`
-- size cleanup deletes oldest unpinned files first
-- if cleanup cannot free enough space, LingXia deletes the current output and returns `TEMP_QUOTA_EXCEEDED`
-
-## User Cache Policy
-
-Usercache is for regenerable data only. LxApps may explicitly place files there through FileManager when the file can be downloaded or generated again.
-
-Cleanup modes:
-
-- app-wide maintenance cleanup runs once on host process startup and scans `<app_data>/lingxia/usercache/*`
-- per-LxApp opportunistic cleanup runs when that LxApp writes to usercache (`writeFile`, `copyFile`, `rename` into usercache); reads only refresh access metadata, they do not trigger cleanup
-- appStorage pressure cleanup may delete usercache across LxApps when any FileManager write (userdata or usercache) would otherwise exceed `appStorageMaxSizeMB`
-
-LRU high water / low water:
-
-Per-LxApp cleanup is gated on the cache reaching the **high water mark** at 80% of `cacheMaxSizeMB`. For write-time cleanup, LingXia evaluates the projected size after the operation: `current usercache bytes + incoming write bytes - replaced destination bytes - removed source bytes`. A write that would push the cache to or above high water can therefore trigger cleanup even if the cache is currently below high water. Overwrites and moves are judged by their net growth, so replacing an existing cache file does not double-count the old file.
-
-Once triggered, LingXia sorts eligible files by access time and deletes the oldest files first. The target is the **low water mark** at 50% of `cacheMaxSizeMB`; for write-time cleanup, LingXia evicts until `current bytes <= 50% - net incoming bytes`, so the cache lands near 50% after the pending write completes. Going deeper than just-under-cap prevents thrash: subsequent writes can fill back to 80% before another cleanup fires.
-
-Setting `cacheMaxSizeMB: 0` disables size enforcement entirely; the cache is then only bounded by `appStorageMaxSizeMB`, the OS, or LxApp uninstall.
-
-Deletion order and protections (once cleanup is triggered):
-
-1. skip protected files (`.lock`, `.part`, `.ok`) and data files with an active sibling `.lock`
-2. preserve active operation paths: the destination being written and any usercache source being copied or moved
-3. LRU-evict by access metadata, oldest atime first, until the low-water target is reached
-4. under appStorage or physical disk pressure, continue deleting eligible LRU usercache across LxApps until app storage fits or the requested physical bytes have been freed
-
-Access-time semantics (what counts as "recently used"):
-
-- LingXia tracks access explicitly: FileManager reads (`readFile`, `readDir`, `stat`, `exists`, and `copyFile`/`rename` from a usercache source) and WebView `lx://usercache` resource loads refresh a file's access time. Direct native reads that bypass these paths do not.
-- A WebView page that keeps an asset in its internal resource cache will not re-hit the scheme handler, so the asset's access time can go stale; once usage approaches `cacheMaxSizeMB`, stale assets are the first LRU candidates. If a long-lived asset must survive cap pressure, write it to userdata — or refresh it explicitly with `fs.stat(path)` / `fs.exists(path)` at session start.
-- A newly written usercache file is marked freshly used and preserved during the immediate post-write cleanup pass — quota cleanup will not delete what was just written. It remains regenerable storage: later passes may evict it once it becomes least-recently-used.
-
-If cleanup cannot make room for a cache write, return `USERCACHE_QUOTA_EXCEEDED`.
-
-## User Data Policy
-
-Userdata is durable owner-private data.
-
-Cleanup:
-
-- explicit delete APIs
-- LxApp uninstall
-- app data clearing
-- host-admin reset tools
-
-LingXia must not apply age-based or LRU cleanup to userdata.
-
-Write checks:
-
-- `dataMaxSizeMB` applies to one LxApp userdata directory
-- `appStorageMaxSizeMB` applies to all LingXia-managed userdata + usercache
-- appStorage pressure may clean usercache before rejecting the write
-
-Failure behavior:
-
-- exceeding `dataMaxSizeMB` returns `USERDATA_QUOTA_EXCEEDED`
-- exceeding `appStorageMaxSizeMB` after usercache cleanup returns `APP_STORAGE_QUOTA_EXCEEDED`
-- existing userdata is not silently deleted
-
-## Physical Disk Pressure
-
-Configured quotas are logical caps measured against `dataMaxSizeMB`,
-`cacheMaxSizeMB`, and `appStorageMaxSizeMB`. The host device's physical
-filesystem can run out of space well before any of these caps are reached
-(low-end Android, near-full disks, shared volumes).
-
-LingXia FileManager writes (`writeFile`, `copyFile`, `rename`) and
-`downloadFile` finalization detect filesystem `ENOSPC` (and the
-platform-equivalent `StorageFull` error) and run a recovery pass:
-
-1. delete LRU usercache files across all LxApps until the freed bytes cover
-   the incoming write (with 25% headroom, minimum 1 MiB)
-2. retry the write once
-
-If the retry still fails with `ENOSPC`, the IO error is surfaced to the caller.
-Recovery only deletes usercache; userdata is never touched. FileManager
-recovery preserves active operation paths: the destination being written and
-any source file being copied or moved.
-
-This recovery is best-effort: if the device is full and there is no
-regenerable cache to evict, the LxApp must surface the failure to the user.
-
-## Download Staging
-
-`downloadFile` writes to staging before finalization.
-
-Current physical staging location:
-
-```text
-<app_cache>/lingxia/lxapps/temp/<lxapp_fingermark>/<session_id>/.download-staging/<task_id>
-```
-
-Behavior:
-
-- default temp downloads use a unique staging id per call, so identical URLs can download concurrently
-- `filePath` downloads reserve the userdata destination while running or paused
-- pause keeps staging so resume can continue
-- cancel deletes staging
-- failure deletes staging when possible
-- success moves staging to temp or userdata final location
+**Physical disk full**: quotas are logical caps — the device can hit `ENOSPC`
+first. FileManager writes and `downloadFile` finalization then evict LRU
+usercache (never userdata) and retry once; if the retry still fails, the IO
+error surfaces to the caller and the lxapp should tell the user.
 
 ## Storage Summary
 
 ```text
 tempFilePath  -> lx://temp/<opaque_id>
-                 short-lived, session/size scoped, physically under app cache
+                 short-lived, session/size scoped
 
 filePath      -> lx://userdata/<path>
-                 durable owner-private data, physically under app data
+                 durable owner-private data
 
 usercache     -> lx://usercache/<path>
-                 regenerable cache, physically under app data and owned by LingXia cleanup
+                 regenerable cache, LRU-evicted under capacity pressure
 ```
 
 ## Rules for Developers

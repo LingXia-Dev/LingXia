@@ -1,6 +1,6 @@
 ---
 name: lingxia
-description: Build apps on the LingXia cross-platform framework — standalone lxapps (page-based mini-apps with a View+Logic split), native host apps (Android/iOS/macOS/Harmony/Windows shells embedding an lxapp), and Rust native extensions. TRIGGER on the `lingxia` CLI, `lxdev`, `lxapp`, or `useLxPage`. SKIP for other mini-app runtimes that share the `Page({})` shape. **Always read §"Step 0" before generating any file.**
+description: Build apps on the LingXia cross-platform framework — standalone lxapps (page-based mini-apps with a View+Logic split), native host apps (Android/iOS/macOS/Harmony/Windows shells embedding an lxapp), and Rust native extensions. TRIGGER on the `lingxia` CLI, `lxdev`, `lxapp`, `lingxia.yaml`, `lxapp.json`, `#[lingxia::native]`, `HostAddon`, `useLxPage`, or an lxapp-flavored `Page({})`. SKIP if the project imports `@tarojs/*`, `wx.*`, `uni-app`, `@dcloudio/*`, or `@remax/*` — those share the `Page({})` shape but are different runtimes. **Always read §"Step 0" before generating any file.**
 license: MIT
 allowed-tools: Read, Grep, Glob, Edit, Write, Bash(lingxia:*), Bash(lxdev:*), Bash(npm:*), Bash(npx:*), Bash(test:*), Bash(ls:*), Bash(cat:*), Bash(cargo:*)
 ---
@@ -92,7 +92,7 @@ Command details: [`lingxia` CLI](./cli/lingxia.md) · [`lxdev`](./cli/lxdev.md).
 | Shape | What it is | Pick when |
 |---|---|---|
 | **A. Standalone lxapp** | Page-based mini-app that runs in any LingXia host (e.g. macOS Runner). | UI/page work, no native shell. |
-| **B. Host app + JS lxapp** | Native installable app (Android/iOS/macOS/Harmony) embedding a home lxapp whose Logic is JS. | Most product apps. |
+| **B. Host app + JS lxapp** | Native installable app (Android/iOS/macOS/Windows/Harmony) embedding a home lxapp whose Logic is JS. | Most product apps. |
 | **C. Host app + native Rust logic** | Same shell, but the home lxapp's Logic is in Rust. The lxapp is HTML-only with `logic: false`. | Native-only hosts (e.g. menu-bar utilities), or when the heavy lifting belongs in Rust. |
 
 C is just B with `features.appService: false` and Rust replacing the JS Logic. You can also mix: a JS-Logic lxapp that **calls** Rust routes via `#[lingxia::native]` — that is still B, with native Rust as an *API surface* rather than the Logic layer.
@@ -163,7 +163,6 @@ Jump straight here when the user reports a concrete failure:
 | `fetch()` silently fails from an lxapp | [`./lxapp/guide.md`](./lxapp/guide.md) → "Security Policy" (`trustedDomains`) |
 | "Is `fetch` / `setTimeout` / `URL` available in Logic?" | [`./lxapp/lx-api.md`](./lxapp/lx-api.md#standard-web-apis-built-in-globals) — yes, full Rong runtime |
 | Need to read/write files (not just `lx.downloadFile`) | [`./lxapp/lx-api.md`](./lxapp/lx-api.md#file-and-transfer) → `lx.getFileManager()` |
-| Need a scheduled task running across pages | [`./lxapp/lx-api.md`](./lxapp/lx-api.md#appservice-only-extras) → AppService `cron` |
 | Surface config rejected (`aside` needs `edge`, one `main`, terminal needs capability) | [`./app/project.md`](./app/project.md#surfaces-adaptive-ui) → Rules |
 | `setData` not reflecting in View | [`./lxapp/bridge.md`](./lxapp/bridge.md) → "How replication works" |
 | Native route returns `BRIDGE_METHOD_NOT_FOUND` | [`./native/development.md`](./native/development.md) → Host Addon registration |
