@@ -88,12 +88,6 @@ static SIDEBAR_TABBAR_POPUPS: OnceLock<Mutex<HashMap<isize, SidebarTabbarPopup>>
 static NAV_SNAPSHOT_SLIDES: OnceLock<Mutex<HashMap<isize, NavSnapshotSlide>>> = OnceLock::new();
 const WM_LINGXIA_RUN_CALLBACK: u32 = WindowsAndMessaging::WM_APP + 0x158;
 const PULL_REFRESH_TIMER_ID: usize = 0x5A17;
-/// `WM_TIMER` id driving the page-navigation snapshot slide ("LXNV").
-#[cfg(feature = "components")]
-const NAV_SLIDE_TIMER_ID: usize = 0x4C58_4E56;
-/// Navigation slide frame cadence (~60fps).
-#[cfg(feature = "components")]
-const NAV_SLIDE_INTERVAL_MS: u32 = 16;
 /// Navigation slide duration, matching the iOS/Android 300ms page transition.
 #[cfg(feature = "components")]
 const NAV_SLIDE_DURATION_MS: f64 = 300.0;
@@ -5390,7 +5384,14 @@ unsafe extern "system" fn nav_overlay_proc(
     unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
 }
 
-/// Starts the slide clock and the per-frame timer on the host thread.
+/// Starts the slide clock and its frame pacer.
+///
+/// Frames are paced by a short-lived thread that blocks on `DwmFlush` — the
+/// compositor's vblank — and posts each frame to the host thread. `WM_TIMER`
+/// is the wrong tool here: it coalesces to ~15.6ms and is the lowest-priority
+/// message, so ticks are skipped whenever the host thread has any other work,
+/// which reads as judder. Vblank pacing renders exactly one frame per display
+/// refresh. Without DWM (rare) the pacer degrades to an 8ms sleep.
 #[cfg(feature = "components")]
 fn start_nav_snapshot_slide(host: HWND) {
     let slides = NAV_SNAPSHOT_SLIDES.get_or_init(|| Mutex::new(HashMap::new()));
@@ -5401,29 +5402,40 @@ fn start_nav_snapshot_slide(host: HWND) {
         slide.started = Some(Instant::now());
     }
     let host_handle = hwnd_handle(host);
-    let owner_thread = unsafe { WindowsAndMessaging::GetWindowThreadProcessId(host, None) };
-    if owner_thread != 0 && owner_thread != unsafe { GetCurrentThreadId() } {
-        let _ = post_to_window_thread(
-            host_handle,
-            Box::new(move || unsafe {
-                let _ = WindowsAndMessaging::SetTimer(
-                    Some(hwnd_from_handle(host_handle)),
-                    NAV_SLIDE_TIMER_ID,
-                    NAV_SLIDE_INTERVAL_MS,
-                    None,
-                );
-            }),
-        );
-        return;
-    }
-    unsafe {
-        let _ = WindowsAndMessaging::SetTimer(
-            Some(host),
-            NAV_SLIDE_TIMER_ID,
-            NAV_SLIDE_INTERVAL_MS,
-            None,
-        );
-    }
+    let _ = std::thread::Builder::new()
+        .name("lingxia-nav-slide".to_string())
+        .spawn(move || {
+            use windows::Win32::Graphics::Dwm::DwmFlush;
+            let deadline = Instant::now()
+                + std::time::Duration::from_millis(NAV_SLIDE_DURATION_MS as u64 + 250);
+            while nav_snapshot_slide_active(host_handle) {
+                if unsafe { DwmFlush() }.is_err() {
+                    std::thread::sleep(std::time::Duration::from_millis(8));
+                }
+                if !post_to_window_thread(
+                    host_handle,
+                    Box::new(move || {
+                        advance_nav_snapshot_slide(hwnd_from_handle(host_handle));
+                    }),
+                ) {
+                    break;
+                }
+                if Instant::now() > deadline {
+                    // Host thread never advanced the slide to completion (e.g.
+                    // stalled); tear it down so the overlay can't linger.
+                    finish_nav_snapshot_slide(hwnd_from_handle(host_handle));
+                    break;
+                }
+            }
+        });
+}
+
+#[cfg(feature = "components")]
+fn nav_snapshot_slide_active(host: isize) -> bool {
+    NAV_SNAPSHOT_SLIDES
+        .get()
+        .and_then(|slides| slides.lock().ok())
+        .is_some_and(|slides| slides.contains_key(&host))
 }
 
 /// Advances one slide frame; runs on the host's `WM_TIMER`. Shifts the
@@ -5436,10 +5448,6 @@ fn advance_nav_snapshot_slide(host: HWND) {
         return;
     };
     let Some(state) = slides_guard.get(&hwnd_handle(host)) else {
-        drop(slides_guard);
-        unsafe {
-            let _ = WindowsAndMessaging::KillTimer(Some(host), NAV_SLIDE_TIMER_ID);
-        }
         return;
     };
     let Some(started) = state.started else {
@@ -5482,9 +5490,8 @@ fn finish_nav_snapshot_slide(host: HWND) {
     let Some(state) = state else {
         return;
     };
-    let teardown = move |host: HWND| {
+    let teardown = move |_host: HWND| {
         unsafe {
-            let _ = WindowsAndMessaging::KillTimer(Some(host), NAV_SLIDE_TIMER_ID);
             let _ = WindowsAndMessaging::DestroyWindow(hwnd_from_handle(state.overlay));
         }
         release_nav_snapshot_source(
@@ -5960,11 +5967,6 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
             WindowsAndMessaging::WM_TIMER if wparam.0 == PULL_REFRESH_TIMER_ID => {
                 advance_pull_refresh_tick(hwnd);
                 invalidate_window(hwnd);
-                LRESULT(0)
-            }
-            #[cfg(feature = "components")]
-            WindowsAndMessaging::WM_TIMER if wparam.0 == NAV_SLIDE_TIMER_ID => {
-                advance_nav_snapshot_slide(hwnd);
                 LRESULT(0)
             }
             WindowsAndMessaging::WM_NCHITTEST => {
