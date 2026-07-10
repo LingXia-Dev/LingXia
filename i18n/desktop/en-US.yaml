@@ -3,9 +3,23 @@
 
 # Browser
 browser:
+  label: "Browser"
+  address_placeholder: "Search or enter address"
   new_tab: "New Tab"
   close_other_tabs: "Close Other Tabs"
   close_tabs_below: "Close Tabs Below"
+  bookmarks: "Bookmarks"
+  history: "History"
+  clear_browsing_data: "Clear Browsing Data…"
+  add_bookmark: "Add Bookmark"
+  remove_bookmark: "Remove Bookmark"
+  copy_link: "Copy Link"
+  link_copied: "Link copied"
+  open_in_system_browser: "Open in System Browser"
+  page_menu: "More"
+  pin_to_sidebar: "Pin to Sidebar"
+  unpin: "Unpin"
+  manage_bookmarks: "Manage Bookmarks…"
 
 # Terminal panel (native Windows shell terminal)
 terminal:
