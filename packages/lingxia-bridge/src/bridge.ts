@@ -1388,7 +1388,15 @@ function handleIncomingMessage(msg: unknown): void {
       if (pendingReq.has(message.id)) {
         const req = pendingReq.get(message.id);
         if (req?.mode === "stream" && req.stream) {
-          armRequestTimer(message.id);
+          // The first frame proves the handler is live. Long-lived streams
+          // (bookmarks.watch, proxy.watch) are idle between pushes, so the
+          // request timeout must not treat silence as death — disarm it for
+          // good instead of re-arming per frame.
+          if (req.timerId !== null) {
+            clearTimeout(req.timerId);
+            req.timerId = null;
+          }
+          req.timeoutMs = 0;
           req.stream._emitData(message.payload);
         } else {
           warn(`Received event for non-stream request '${message.id}'`);
