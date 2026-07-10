@@ -32,6 +32,7 @@ class SidebarBrowserItemView: NSView {
     let browserId: String
     var onClick: ((String) -> Void)?
     var onClose: ((String) -> Void)?
+    var contextMenuProvider: ((String) -> NSMenu?)?
 
     init(id: String) {
         self.browserId = id
@@ -56,9 +57,13 @@ class SidebarBrowserItemView: NSView {
 
         // Globe icon
         iconView.translatesAutoresizingMaskIntoConstraints = false
-        iconView.image = NSImage(systemSymbolName: "globe", accessibilityDescription: "Browser")
+        iconView.image = LxIcon.image(
+            named: "icon_globe",
+            size: CGSize(width: Layout.iconSize, height: Layout.iconSize)
+        )
         iconView.imageScaling = .scaleProportionallyUpOrDown
         iconView.contentTintColor = NSColor.secondaryLabelColor
+        iconView.setAccessibilityLabel(L10n.string("lx_browser_label"))
         addSubview(iconView)
 
         // Title
@@ -72,11 +77,16 @@ class SidebarBrowserItemView: NSView {
 
         // Close button (only visible for selected tab)
         closeButton.translatesAutoresizingMaskIntoConstraints = false
-        closeButton.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: "Close")
+        closeButton.image = LxIcon.image(
+            named: "icon_close_x",
+            size: CGSize(width: 12, height: 12)
+        )
         closeButton.isBordered = false
         closeButton.bezelStyle = .regularSquare
         closeButton.imagePosition = .imageOnly
         closeButton.contentTintColor = NSColor.secondaryLabelColor
+        closeButton.toolTip = L10n.string("lx_common_close")
+        closeButton.setAccessibilityLabel(L10n.string("lx_common_close"))
         closeButton.target = self
         closeButton.action = #selector(closeClicked)
         closeButton.isHidden = true
@@ -120,7 +130,10 @@ class SidebarBrowserItemView: NSView {
             iconView.image = favicon
             iconView.contentTintColor = nil
         } else {
-            iconView.image = NSImage(systemSymbolName: "globe", accessibilityDescription: "Browser")
+            iconView.image = LxIcon.image(
+                named: "icon_globe",
+                size: CGSize(width: Layout.iconSize, height: Layout.iconSize)
+            )
             iconView.contentTintColor = NSColor.secondaryLabelColor  // updateAppearance will refine
         }
         self.isSelected = isSelected
@@ -169,6 +182,10 @@ class SidebarBrowserItemView: NSView {
 
     override func mouseDown(with event: NSEvent) {
         onClick?(browserId)
+    }
+
+    override func menu(for event: NSEvent) -> NSMenu? {
+        contextMenuProvider?(browserId) ?? super.menu(for: event)
     }
 
     // MARK: - Mouse tracking

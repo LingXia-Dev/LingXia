@@ -290,6 +290,32 @@ mod bridge {
         #[swift_bridge(swift_name = "updateBrowserTabInfo")]
         fn update_browser_tab_info(tab_id: &str, current_url: &str, title: &str) -> bool;
 
+        // Whether `url` is in the browser bookmarks store (chrome star state).
+        #[swift_bridge(swift_name = "browserBookmarkStatus")]
+        fn browser_bookmark_status(url: &str) -> bool;
+
+        // Toggle `url` in the bookmarks store; returns the new bookmarked state.
+        #[swift_bridge(swift_name = "browserBookmarkToggle")]
+        fn browser_bookmark_toggle(url: &str, title: &str) -> bool;
+
+        // Remove `url` from bookmarks (sidebar row action).
+        #[swift_bridge(swift_name = "browserBookmarkRemoveByUrl")]
+        fn browser_bookmark_remove_by_url(url: &str) -> bool;
+
+        // Full bookmarks snapshot ({groups, entries}) as JSON for the sidebar.
+        #[swift_bridge(swift_name = "browserBookmarksSnapshotJson")]
+        fn browser_bookmarks_snapshot_json() -> String;
+
+        // One sidebar management command as JSON ({"op": "rename" | "move" |
+        // "createGroupAndMove" | "renameGroup" | "deleteGroup" | "setPinned",
+        // ...}).
+        #[swift_bridge(swift_name = "browserBookmarksCommand")]
+        fn browser_bookmarks_command(json: &str) -> bool;
+
+        // Pin `url` to the sidebar grid, bookmarking it first when needed.
+        #[swift_bridge(swift_name = "browserBookmarkPin")]
+        fn browser_bookmark_pin(url: &str, title: &str) -> bool;
+
         #[swift_bridge(swift_name = "startBrowserTabDownload")]
         fn start_browser_tab_download(
             tab_id: &str,
@@ -400,6 +426,10 @@ mod bridge {
 
         #[swift_bridge(swift_name = "LxApp.prepareInternalBrowserTabForInput")]
         fn prepare_internal_browser_tab_for_input(tab_id: &str) -> bool;
+
+        // Bookmarks store changed (any writer) — chrome refreshes its sidebar.
+        #[swift_bridge(swift_name = "LxApp.browserBookmarksChanged")]
+        fn browser_bookmarks_changed();
     }
 }
 
@@ -420,6 +450,11 @@ impl lingxia_browser::BrowserNativeInputHost for AppleBrowserNativeInputHost {
 #[cfg(all(target_os = "macos", feature = "browser-shell"))]
 fn install_browser_native_input_host() {
     let _ = lingxia_browser::register_native_input_host(Arc::new(AppleBrowserNativeInputHost));
+    // Sidebar bookmarks live-refresh: any bookmarks mutation (star, sidebar
+    // action, webui manager page) notifies the Swift shell.
+    lingxia_browser_shell::set_bookmarks_change_listener(Box::new(|| {
+        self::bridge::browser_bookmarks_changed();
+    }));
 }
 
 #[cfg(not(all(target_os = "macos", feature = "browser-shell")))]
@@ -736,6 +771,42 @@ pub fn browser_tab_activate(tab_id: &str) {
 
 pub fn get_builtin_browser_app_id() -> String {
     crate::browser::APP_ID.to_string()
+}
+
+pub fn browser_bookmark_status(url: &str) -> bool {
+    ffi_catch_unwind!("browser_bookmark_status", false, || {
+        crate::browser::bookmark_status(url)
+    })
+}
+
+pub fn browser_bookmark_toggle(url: &str, title: &str) -> bool {
+    ffi_catch_unwind!("browser_bookmark_toggle", false, || {
+        crate::browser::bookmark_toggle(url, title)
+    })
+}
+
+pub fn browser_bookmark_remove_by_url(url: &str) -> bool {
+    ffi_catch_unwind!("browser_bookmark_remove_by_url", false, || {
+        crate::browser::bookmark_remove_by_url(url)
+    })
+}
+
+pub fn browser_bookmarks_snapshot_json() -> String {
+    ffi_catch_unwind!("browser_bookmarks_snapshot_json", String::new(), || {
+        crate::browser::bookmarks_snapshot_json()
+    })
+}
+
+pub fn browser_bookmarks_command(json: &str) -> bool {
+    ffi_catch_unwind!("browser_bookmarks_command", false, || {
+        crate::browser::bookmarks_command_json(json)
+    })
+}
+
+pub fn browser_bookmark_pin(url: &str, title: &str) -> bool {
+    ffi_catch_unwind!("browser_bookmark_pin", false, || {
+        crate::browser::bookmark_pin(url, title)
+    })
 }
 
 pub fn browser_tab_path_for_id(tab_id: &str) -> String {

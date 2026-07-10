@@ -240,6 +240,9 @@ final class DockedBrowser: NSObject {
     private let backButton = NSButton()
     private let forwardButton = NSButton()
     private let refreshButton = NSButton()
+    /// Page menu for the active tab — with no address bar, this menu is the
+    /// aside's only URL affordance (header shows title+URL, Copy Link, star).
+    private let menuButton = NSButton()
     private let closeAsideButton = NSButton()
     private let tabStrip = NSStackView()
     private let separator = NSView()
@@ -463,6 +466,11 @@ final class DockedBrowser: NSObject {
                 let t = (webView.title ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
                 tab.title = t.isEmpty ? Self.shortTitle(for: tab.url) : t
                 self.updateTabButtonTitle(tab)
+                _ = updateBrowserTabInfo(
+                    tab.browserTabId,
+                    webView.url?.absoluteString ?? tab.url,
+                    t
+                )
             }
         }
         tab.backObs = webView.observe(\.canGoBack, options: [.initial, .new]) { [weak self, weak tab] webView, _ in
@@ -505,10 +513,22 @@ final class DockedBrowser: NSObject {
         toolbar.addSubview(forwardButton)
         toolbar.addSubview(refreshButton)
 
+        menuButton.translatesAutoresizingMaskIntoConstraints = false
+        menuButton.isBordered = false
+        menuButton.imagePosition = .imageOnly
+        menuButton.image = LxIcon.image(
+            named: "icon_page_menu", size: CGSize(width: Layout.iconSize, height: Layout.iconSize))
+        menuButton.contentTintColor = NSColor.secondaryLabelColor
+        menuButton.toolTip = L10n.string("lx_browser_page_menu")
+        menuButton.target = self
+        menuButton.action = #selector(menuClicked)
+        toolbar.addSubview(menuButton)
+
         closeAsideButton.translatesAutoresizingMaskIntoConstraints = false
         closeAsideButton.isBordered = false
         closeAsideButton.imagePosition = .imageOnly
-        closeAsideButton.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: L10n.string("lx_common_close"))
+        closeAsideButton.image = LxIcon.image(
+            named: "icon_close_x", size: CGSize(width: 14, height: 14))
         closeAsideButton.contentTintColor = NSColor.secondaryLabelColor
         closeAsideButton.toolTip = L10n.string("lx_common_close")
         closeAsideButton.target = self
@@ -562,10 +582,15 @@ final class DockedBrowser: NSObject {
             closeAsideButton.widthAnchor.constraint(equalToConstant: Layout.closeSize),
             closeAsideButton.heightAnchor.constraint(equalToConstant: Layout.closeSize),
 
+            menuButton.trailingAnchor.constraint(equalTo: closeAsideButton.leadingAnchor, constant: -4),
+            menuButton.centerYAnchor.constraint(equalTo: toolbar.centerYAnchor),
+            menuButton.widthAnchor.constraint(equalToConstant: Layout.closeSize),
+            menuButton.heightAnchor.constraint(equalToConstant: Layout.closeSize),
+
             // Tabs live in the SAME bar as back/forward/refresh (one row),
-            // leading-packed; the strip may grow up to the close-aside button.
+            // leading-packed; the strip may grow up to the page-menu button.
             tabStrip.leadingAnchor.constraint(equalTo: refreshButton.trailingAnchor, constant: Layout.edge),
-            tabStrip.trailingAnchor.constraint(lessThanOrEqualTo: closeAsideButton.leadingAnchor, constant: -Layout.edge),
+            tabStrip.trailingAnchor.constraint(lessThanOrEqualTo: menuButton.leadingAnchor, constant: -Layout.edge),
             tabStrip.bottomAnchor.constraint(equalTo: toolbar.bottomAnchor),
             tabStrip.heightAnchor.constraint(equalToConstant: Layout.tabHeight),
 
@@ -612,7 +637,8 @@ final class DockedBrowser: NSObject {
 
         let icon = tab.iconView
         icon.translatesAutoresizingMaskIntoConstraints = false
-        icon.image = NSImage(systemSymbolName: "globe", accessibilityDescription: nil)
+        icon.image = LxIcon.image(
+            named: "icon_globe", size: CGSize(width: Layout.tabIconSize, height: Layout.tabIconSize))
         icon.imageScaling = .scaleProportionallyDown
         icon.contentTintColor = .secondaryLabelColor
 
@@ -620,7 +646,8 @@ final class DockedBrowser: NSObject {
         close.translatesAutoresizingMaskIntoConstraints = false
         close.isBordered = false
         close.imagePosition = .imageOnly
-        close.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: L10n.string("lx_common_close"))
+        close.image = LxIcon.image(
+            named: "icon_close_x", size: CGSize(width: 12, height: 12))
         close.contentTintColor = .tertiaryLabelColor
         close.target = self
         close.action = #selector(tabCloseClicked(_:))
@@ -641,6 +668,13 @@ final class DockedBrowser: NSObject {
         row.addArrangedSubview(icon)
         row.addArrangedSubview(title)
         row.addArrangedSubview(close)
+
+        // Right-click page menu on the tab chip; items are rebuilt on open so
+        // the bookmark state is always current.
+        let rowMenu = NSMenu()
+        rowMenu.delegate = self
+        objc_setAssociatedObject(rowMenu, &AssociatedKeys.surfaceId, tab.surfaceId, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        row.menu = rowMenu
         row.translatesAutoresizingMaskIntoConstraints = false
         // Chrome-like tabs keep a stable readable minimum and cap their growth.
         title.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
@@ -703,6 +737,28 @@ final class DockedBrowser: NSObject {
         onCloseAside()
     }
 
+    private func pageMenuContext(for tab: Tab) -> BrowserPageMenu.Context {
+        BrowserPageMenu.Context(
+            url: tab.webView?.url?.absoluteString ?? tab.url,
+            title: tab.title,
+            toastHost: webContainer,
+            onBookmarkChanged: nil,
+            onOpenBookmarks: nil,
+            onOpenHistory: nil,
+            onClearBrowsingData: nil
+        )
+    }
+
+    @objc private func menuClicked() {
+        guard let tab = activeTab() else { return }
+        let menu = BrowserPageMenu.menu(for: pageMenuContext(for: tab))
+        menu.popUp(
+            positioning: nil,
+            at: NSPoint(x: menuButton.bounds.minX, y: menuButton.bounds.maxY + 6),
+            in: menuButton
+        )
+    }
+
     @objc private func tabButtonClicked(_ sender: NSButton) {
         guard let id = objc_getAssociatedObject(sender, &AssociatedKeys.surfaceId) as? String else { return }
         activate(id)
@@ -731,6 +787,19 @@ final class DockedBrowser: NSObject {
         if let host = URL(string: url)?.host { return host }
         if let u = URL(string: url), u.isFileURL { return u.lastPathComponent }
         return url
+    }
+}
+
+extension DockedBrowser: NSMenuDelegate {
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.removeAllItems()
+        guard let surfaceId = objc_getAssociatedObject(menu, &AssociatedKeys.surfaceId) as? String,
+              let tab = tabs.first(where: { $0.surfaceId == surfaceId }) else { return }
+        let built = BrowserPageMenu.menu(for: pageMenuContext(for: tab))
+        for item in built.items {
+            built.removeItem(item)
+            menu.addItem(item)
+        }
     }
 }
 #endif
