@@ -24,6 +24,7 @@ import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Looper
 import android.util.Log
 import android.view.Gravity
 import android.view.KeyEvent
@@ -136,23 +137,33 @@ class LxAppActivity : AppCompatActivity() {
         fun updateTabBarUI(appId: String): Boolean {
             val activity = LxApp.getCurrentActivity()
             if (activity != null && activity.appId == appId) {
-                // Run on UI thread to update TabBar directly
-                activity.runOnUiThread {
+                val updateTask = {
                     try {
                         // Get fresh TabBar state from Rust
                         val newTabBarConfig = NativeApi.getTabBarState(appId)
                         if (newTabBarConfig != null) {
                             // Update existing TabBar with new configuration
                             activity.setupTabBar(newTabBarConfig)
+                            true
 
                         } else {
                             Log.w(TAG, "No TabBar config available for refresh")
+                            false
                         }
                     } catch (e: Exception) {
                         LxLog.e(TAG, "Failed to refresh TabBar from Rust: ${e.message}", e)
+                        false
                     }
                 }
 
+                if (Looper.myLooper() == Looper.getMainLooper()) {
+                    return updateTask()
+                }
+
+                // Off the main thread: fire-and-forget so sync callers
+                // (badges, style, per-navigation sync) never block. Callers
+                // that need the real result use LxApp.updateTabBarUIAsync.
+                activity.runOnUiThread { updateTask() }
                 return true
             } else {
                 Log.w(TAG, "No matching activity found for appId: $appId (current: ${activity?.appId})")

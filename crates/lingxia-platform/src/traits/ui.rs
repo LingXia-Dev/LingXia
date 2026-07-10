@@ -165,6 +165,13 @@ pub trait UIUpdate: Send + Sync + 'static {
     fn update_navbar_ui(&self, appid: String) -> Result<(), PlatformError>;
     fn update_tabbar_ui(&self, appid: String) -> Result<(), PlatformError>;
 
+    fn update_tabbar_ui_async(
+        &self,
+        appid: String,
+    ) -> impl Future<Output = Result<(), PlatformError>> + Send {
+        async move { self.update_tabbar_ui(appid) }
+    }
+
     fn update_orientation_ui(&self, _appid: String) -> Result<(), PlatformError> {
         Err(PlatformError::NotSupported(
             "update_orientation_ui not implemented for this platform".to_string(),

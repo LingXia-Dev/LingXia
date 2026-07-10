@@ -30,6 +30,14 @@ impl UIUpdate for Platform {
         }
     }
 
+    async fn update_tabbar_ui_async(&self, appid: String) -> Result<(), PlatformError> {
+        crate::rt::native_call_ui(|callback_id| {
+            ffi::update_tabbar_ui_async(&appid, callback_id);
+            Ok(())
+        })
+        .await
+    }
+
     fn update_orientation_ui(&self, appid: String) -> Result<(), PlatformError> {
         let success = ffi::update_orientation_ui(&appid);
         if success {

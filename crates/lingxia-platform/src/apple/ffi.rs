@@ -117,6 +117,10 @@ mod bridge {
         #[swift_bridge(swift_name = "LxApp.updateTabBarUI")]
         fn update_tabbar_ui(appid: &str) -> bool;
 
+        // TabBar UI update with completion callback (lx.showTabBar/hideTabBar)
+        #[swift_bridge(swift_name = "LxApp.updateTabBarUIAsync")]
+        fn update_tabbar_ui_async(appid: &str, callback_id: u64);
+
         // NavigationBar UI update callback
         #[swift_bridge(swift_name = "LxApp.updateNavBarUI")]
         fn update_navbar_ui(appid: &str) -> bool;
@@ -408,7 +412,7 @@ pub use bridge::{
     set_managed_surface_visible, set_tray_badge, set_tray_click_intercept, set_tray_icon,
     set_tray_menu, set_tray_title, set_tray_visible, share, show_action_sheet, show_modal,
     show_surface, show_toast, toggle_managed_surface, update_navbar_ui, update_orientation_ui,
-    update_tabbar_ui,
+    update_tabbar_ui, update_tabbar_ui_async,
 };
 #[cfg(target_os = "macos")]
 pub use bridge::{notify_app_update_ready, reveal_in_file_manager};

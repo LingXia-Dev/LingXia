@@ -153,7 +153,7 @@ fn remove_tabbar_badge(ctx: JSContext, options: RemoveTabBarBadgeOptions) -> JSR
 }
 
 /// Show TabBar
-fn show_tabbar(ctx: JSContext) -> JSResult<bool> {
+async fn show_tabbar(ctx: JSContext) -> JSResult<bool> {
     let lxapp = LxApp::from_ctx(&ctx)?;
 
     // Update TabBar visibility
@@ -166,7 +166,11 @@ fn show_tabbar(ctx: JSContext) -> JSResult<bool> {
 
     if updated {
         // Always update UI for show/hide operations
-        if let Err(e) = lxapp.runtime.update_tabbar_ui(lxapp.appid.clone()) {
+        if let Err(e) = lxapp
+            .runtime
+            .update_tabbar_ui_async(lxapp.appid.clone())
+            .await
+        {
             return Err(js_internal_error(format!(
                 "Failed to update TabBar UI: {}",
                 e
@@ -179,7 +183,7 @@ fn show_tabbar(ctx: JSContext) -> JSResult<bool> {
 }
 
 /// Hide TabBar
-fn hide_tabbar(ctx: JSContext) -> JSResult<bool> {
+async fn hide_tabbar(ctx: JSContext) -> JSResult<bool> {
     let lxapp = LxApp::from_ctx(&ctx)?;
 
     // Update TabBar visibility
@@ -192,7 +196,11 @@ fn hide_tabbar(ctx: JSContext) -> JSResult<bool> {
 
     if updated {
         // Always update UI for show/hide operations
-        if let Err(e) = lxapp.runtime.update_tabbar_ui(lxapp.appid.clone()) {
+        if let Err(e) = lxapp
+            .runtime
+            .update_tabbar_ui_async(lxapp.appid.clone())
+            .await
+        {
             return Err(js_internal_error(format!(
                 "Failed to update TabBar UI: {}",
                 e

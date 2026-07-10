@@ -35,12 +35,10 @@ use lxapp::{LxApp, LxAppDelegate, LxAppStartupOptions, LxAppUiEventType, Release
 
 const DEFAULT_NAV_BAR_HEIGHT: i32 = 38;
 const MIN_SIDEBAR_WIDTH: i32 = 180;
-/// iPhone-style bottom tab bar: 49 px item strip plus a home-indicator safe area.
-/// Bottom tab bar content height (icons + labels). Face-ID-style devices add a
-/// home-indicator safe area below it; home-button devices (e.g. iPhone SE) do
-/// not, so their bar is shorter (no tall blank strip under the labels).
+/// Bottom tab bar height (icons + labels). The strip sits just above the
+/// content area's bottom, which is already inset for the home-indicator safe
+/// area, so no extra height is reserved here.
 const BOTTOM_TABBAR_CONTENT_HEIGHT: i32 = 49;
-const HOME_INDICATOR_HEIGHT: i32 = 34;
 
 /// How many times to retry presenting a freshly opened browser tab whose
 /// WebView creation is still in flight, and the delay between attempts.
@@ -432,6 +430,14 @@ enum PanelTarget {
 pub(super) fn install() {
     lingxia_platform::set_windows_ui_update_handler(Arc::new(|appid| {
         sync_related_shell_layouts(&appid);
+    }));
+    // Awaited UI updates (lx.showTabBar/hideTabBar): run the layout sync off
+    // the caller's thread and complete the callback once it has applied.
+    lingxia_platform::set_windows_ui_update_async_handler(Arc::new(|appid, done| {
+        std::mem::drop(lingxia::task::spawn(async move {
+            sync_related_shell_layouts(&appid);
+            done(true);
+        }));
     }));
     // A trimmed lxapp page that opted into pull-down refresh gets an app-level
     // "Refresh" right-click entry (mirrors the macOS lxapp menu). The webview
@@ -1013,14 +1019,6 @@ fn build_tab_bar_layout(
     let frame_status_bar_height = owner_window
         .map(device_frame_status_bar_height)
         .unwrap_or(0);
-    // A home-indicator safe area is reserved below the bar only on devices that
-    // have one (a tall status bar ⇒ Face-ID notch/island). Home-button devices
-    // (short status bar, e.g. SE) and un-framed windows keep the legacy height.
-    let has_home_indicator = if device_framed {
-        frame_status_bar_height > 30
-    } else {
-        true
-    };
     let show_auxiliary_add = browser_runtime_enabled() && !device_framed;
     let header_actions = build_sidebar_header_actions();
     let sidebar_has_content =
@@ -1048,27 +1046,23 @@ fn build_tab_bar_layout(
     } else {
         requested_position
     };
-    // A bottom tab bar shows only on tab pages; a navigated-to sub-page hides it
-    // so its content gets the full height (standard mini-app behavior). A side
-    // bar is persistent navigation and stays, and its auxiliary rows (open
-    // lxapps / browser tabs) keep it visible — but they are sidebar content
-    // and never resurrect the bottom bar (a lingering background browser tab
-    // must not pop the tab bar onto a sub-page).
-    if position == WindowsShellTabBarPosition::Bottom && current_tab_index.is_none() {
+    // The bottom bar persists across pages, driven by `is_visible` like the
+    // sidebar. Only an item-less bar is dropped on a sub-page, so a stray
+    // auxiliary row (open lxapps / browser tabs) can't pop a bottom bar onto
+    // one.
+    if position == WindowsShellTabBarPosition::Bottom
+        && current_tab_index.is_none()
+        && items.is_empty()
+    {
         return None;
     }
     // `dimension` is the bar's cross-axis size: a sidebar's width, but a bottom
     // bar's *height*. A bottom bar is a compact icon+label strip, so it must not
-    // borrow the (much taller) sidebar minimum width.
+    // borrow the (much taller) sidebar minimum width. The content area is already
+    // inset by the home-indicator safe area, so the strip sits just above it and
+    // must not re-reserve that height (which would float it up by that much).
     let dimension = match position {
-        WindowsShellTabBarPosition::Bottom => {
-            BOTTOM_TABBAR_CONTENT_HEIGHT
-                + if has_home_indicator {
-                    HOME_INDICATOR_HEIGHT
-                } else {
-                    0
-                }
-        }
+        WindowsShellTabBarPosition::Bottom => BOTTOM_TABBAR_CONTENT_HEIGHT,
         WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right => tabbar
             .as_ref()
             .map(|tabbar| tabbar.dimension.max(MIN_SIDEBAR_WIDTH))
@@ -1080,7 +1074,12 @@ fn build_tab_bar_layout(
         .unwrap_or("#ffffff");
     let tabbar_background_transparent = is_transparent_css_color(tabbar_background);
     Some(WindowsShellTabBarLayout {
-        visible: true,
+        // Hidden ⇒ `compute_chrome_rects` reserves no strip, so the WebView
+        // reclaims the space and nothing draws.
+        visible: tabbar
+            .as_ref()
+            .map(|tabbar| tabbar.is_visible)
+            .unwrap_or(true),
         position,
         dimension,
         app_name: app.runtime_info().app_name,

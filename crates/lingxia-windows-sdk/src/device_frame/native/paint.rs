@@ -273,10 +273,7 @@ fn frame_pixels(spec: &WindowsDeviceFrame, layout: &FrameLayout) -> Vec<u32> {
     let bezel = layout.bezel;
     let bezel_center_x = (bezel.left + bezel.right) as f32 / 2.0;
     let bezel_center_y = (bezel.top + bezel.bottom) as f32 / 2.0;
-    let radius = spec
-        .outer_corner_radius
-        .max(1)
-        .min(spec.screen_width / 2 + spec.bezel_width) as f32;
+    let radius = outer_corner_radius(spec) as f32;
     let half_x = (bezel.right - bezel.left) as f32 / 2.0 - radius;
     let half_y = (bezel.bottom - bezel.top) as f32 / 2.0 - radius;
     // Rounded-rect signed distance: negative inside the silhouette.

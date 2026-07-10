@@ -3,7 +3,7 @@
 //! Presents a host window as a fixed-size framed content surface:
 //! the host window is restyled borderless at the content size, its screen
 //! corners are rounded by anti-aliased companion overlays (see
-//! `corner_caps.rs`) painted over the WebView2 surface, and a per-pixel-alpha
+//! [`corner_mask`]) painted over the WebView2 surface, and a per-pixel-alpha
 //! layered companion window is kept glued behind it, painting the optional
 //! toolbar, the bezel with anti-aliased outer corners, and a soft drop
 //! shadow.
@@ -112,7 +112,23 @@ const SIZEMOVE_TIMER_INTERVAL_MS: u32 = 16;
 /// Timer that ticks the simulated status-bar clock.
 const CLOCK_TIMER_ID: usize = 0x4C58_434B; // "LXCK"
 const CLOCK_TIMER_INTERVAL_MS: u32 = 20_000;
-const CONTENT_REGION_MAX_RADIUS: i32 = 36;
+
+/// Screen radius clamped to geometry the content window can represent.
+fn screen_corner_radius(spec: &WindowsDeviceFrame) -> i32 {
+    spec.screen_corner_radius
+        .clamp(0, spec.screen_width.min(spec.screen_height) / 2)
+}
+
+/// Outer radius shared by the frame bitmap and the corner-mask overlay.
+/// Expanding the screen by the bezel width also expands its corner radius;
+/// otherwise the two arcs cross near each corner and leave a pointed wedge.
+fn outer_corner_radius(spec: &WindowsDeviceFrame) -> i32 {
+    let bezel = spec.bezel_width.max(0);
+    let max_radius = (spec.screen_width.min(spec.screen_height) / 2 + bezel).max(1);
+    spec.outer_corner_radius
+        .max(screen_corner_radius(spec) + bezel)
+        .clamp(1, max_radius)
+}
 
 fn dispatch_device_frame_command(id: u32) -> bool {
     let handler = DEVICE_FRAME_COMMAND_HANDLER
@@ -1026,9 +1042,7 @@ fn apply_round_corner_preference(hwnd: HWND) {
 }
 
 fn apply_content_screen_region(content: HWND, spec: &WindowsDeviceFrame) {
-    let radius = spec
-        .screen_corner_radius
-        .clamp(0, CONTENT_REGION_MAX_RADIUS);
+    let radius = screen_corner_radius(spec);
     if radius <= 0 {
         unsafe {
             let _ = SetWindowRgn(content, None, true);
@@ -1065,4 +1079,34 @@ fn is_window_handle_valid(handle: isize) -> bool {
 
 fn to_wide(value: &str) -> Vec<u16> {
     value.encode_utf16().chain(std::iter::once(0)).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn phone_frame() -> WindowsDeviceFrame {
+        WindowsDeviceFrame {
+            screen_width: 393,
+            screen_height: 852,
+            bezel_width: 10,
+            outer_corner_radius: 58,
+            screen_corner_radius: 54,
+            cutout: None,
+            status_bar: None,
+            bezel_color: 0x141414,
+            screen_corner_color: 0x141414,
+            toolbar: None,
+        }
+    }
+
+    #[test]
+    fn content_region_uses_full_screen_radius() {
+        assert_eq!(screen_corner_radius(&phone_frame()), 54);
+    }
+
+    #[test]
+    fn outer_radius_expands_with_visual_bezel() {
+        assert_eq!(outer_corner_radius(&phone_frame()), 64);
+    }
 }

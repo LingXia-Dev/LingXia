@@ -471,6 +471,20 @@ extension LxApp {
         }
     }
 
+    /// Async variant for lx.showTabBar/hideTabBar: registers a completion
+    /// waiter, then posts the state change. The observers deliver on the
+    /// main queue asynchronously, so completion is signaled by the observer
+    /// that applies the change (TabBarUpdateWaiters.complete), not here.
+    nonisolated static func updateTabBarUIAsync(appid: RustStr, callback_id: UInt64) {
+        let appIdString = appid.toString()
+        DispatchQueue.main.async {
+            MainActor.assumeIsolated {
+                TabBarUpdateWaiters.add(appIdString, callback_id)
+            }
+            NotificationCenter.default.post(name: .tabBarStateChanged, object: appIdString)
+        }
+    }
+
     nonisolated static func updateNavBarUI(appid: RustStr) -> Bool {
         let appIdString = appid.toString()
         return executeOnMain {

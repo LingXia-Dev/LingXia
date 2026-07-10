@@ -1,7 +1,7 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { LxLog } from '../app/LxLog';
 import { webview } from '@kit.ArkWeb';
-import { window, display } from '@kit.ArkUI';
+import { window, display, FrameCallback } from '@kit.ArkUI';
 import { common } from '@kit.AbilityKit';
 import { LxApp } from './LxApp';
 import { Lingxia } from '../app/Lingxia';
@@ -366,6 +366,36 @@ export struct LxAppContainer {
     } else {
       hilog.warn(DOMAIN, TAG, `No active container found for appId: ${appId}`);
       return false;
+    }
+  }
+
+  /**
+   * TabBar update with a real completion signal, for lx.showTabBar/hideTabBar.
+   * The @State change renders on the next frame, so `done` is chained through
+   * two frame callbacks: the second fires at the start of the frame after the
+   * one that applied the state, i.e. once the hide/show has actually committed.
+   */
+  public static updateTabBarUIAsync(appId: string, done: (ok: boolean) => void): void {
+    const container = LxAppContainer.activeContainers.get(appId);
+    if (!container) {
+      hilog.warn(DOMAIN, TAG, `No active container found for appId: ${appId}`);
+      done(false);
+      return;
+    }
+    container.refreshTabBarData();
+    try {
+      const ui = container.getUIContext();
+      ui.postFrameCallback(new RunOnFrame(() => {
+        ui.postFrameCallback(new RunOnFrame(() => {
+          hilog.info(DOMAIN, TAG, `TabBar update committed for ${appId}`);
+          done(true);
+        }));
+      }));
+    } catch (error) {
+      // No UI context (container tearing down): the state change is in;
+      // report completion without the frame gate rather than hanging.
+      hilog.warn(DOMAIN, TAG, `TabBar frame gate unavailable for ${appId}: ${error}`);
+      done(true);
     }
   }
 
@@ -1674,5 +1704,19 @@ export struct LxAppContainer {
       entries.push({ webTag: tag, controller: controller });
     });
     return entries;
+  }
+}
+
+/** Adapter: run a closure on the next ArkUI frame (see updateTabBarUIAsync). */
+class RunOnFrame extends FrameCallback {
+  private readonly run: () => void;
+
+  constructor(run: () => void) {
+    super();
+    this.run = run;
+  }
+
+  onFrame(_frameTimeInNano: number): void {
+    this.run();
   }
 }
