@@ -1,11 +1,9 @@
 //! Single anti-aliased overlay that rounds the simulated device screen.
 //!
-//! Windowed WebView2 presents through DirectComposition and ignores both a
-//! `SetWindowRgn` on its host window and the z-order of sibling child windows,
-//! so the screen corners can be rounded only by a layered window that
-//! composites *above* the WebView2 surface. The [`cutout`](super::cutout)
-//! overlay proves a layered popup window can do that while the content window
-//! is active.
+//! The host window region clips the windowed WebView2 to the screen silhouette,
+//! but that region has an aliased edge. A layered window composited above the
+//! WebView2 supplies the smooth screen arc and matching bezel pixels. The
+//! [`cutout`](super::cutout) overlay uses the same owned-popup approach.
 //!
 //! Rather than four separate corner windows (which update independently and can
 //! show a half-rounded "ghost" corner mid-drag, and risk a one-pixel seam at
@@ -78,10 +76,7 @@ pub(super) fn create_corner_mask(content: HWND, spec: &WindowsDeviceFrame) -> is
     // bezel color between the screen silhouette and the device's outer
     // silhouette, so the corners read as the uniform hardware bezel —
     // concentric arcs, transparent outside (the frame's shadow shows there).
-    let radius = spec
-        .screen_corner_radius
-        .max(0)
-        .min(spec.screen_width.min(spec.screen_height) / 2);
+    let radius = screen_corner_radius(spec);
     if radius <= 0 {
         return 0;
     }
@@ -116,9 +111,7 @@ pub(super) fn create_corner_mask(content: HWND, spec: &WindowsDeviceFrame) -> is
             return 0;
         }
     };
-    let outer_radius = spec
-        .outer_corner_radius
-        .max(radius + spec.bezel_width.max(0)) as f32;
+    let outer_radius = outer_corner_radius(spec) as f32;
     apply_corner_mask_region(mask, width, height, outer_radius as i32 + margin);
     if !upload_corner_mask_pixels(
         mask,
@@ -298,13 +291,10 @@ fn upload_corner_mask_pixels(window: HWND, width: i32, height: i32, pixels: &[u3
 /// the overlay's square corners, reading as heavy black blocks far thicker
 /// than the bezel edges.
 ///
-/// Beyond the outer silhouette the WebView2 window's square corner tips still
-/// poke out (concentric arcs can never cover a square corner), and the
-/// unclippable webview can't be made transparent — so over the screen rect the
-/// tips are veiled with the frame's own drop-shadow gradient. It uses the same
-/// silhouette, offset, and falloff as the frame paints outside, so the shadow
-/// continues seamlessly across the window boundary and the tips read as part
-/// of the device shadow. `fill_color` is `0xRRGGBB`; output is premultiplied.
+/// The content window itself is clipped to the full screen radius. Pixels past
+/// the outer silhouette therefore stay transparent here, exposing the frame
+/// window's single continuous shadow instead of painting a second corner veil.
+/// `fill_color` is `0xRRGGBB`; output is premultiplied.
 fn corner_mask_pixels(
     screen_width: i32,
     screen_height: i32,
@@ -329,7 +319,6 @@ fn corner_mask_pixels(
     let screen_half_y = screen_height as f32 / 2.0 - radius;
     let outer_half_x = screen_width as f32 / 2.0 + bezel_width - outer_radius;
     let outer_half_y = screen_height as f32 / 2.0 + bezel_width - outer_radius;
-    let shadow_reach = FRAME_SHADOW_MARGIN as f32;
     let red = (fill_color >> 16) & 0xff;
     let green = (fill_color >> 8) & 0xff;
     let blue = fill_color & 0xff;
@@ -343,31 +332,7 @@ fn corner_mask_pixels(
             // Anti-aliased coverage of the bezel ring: outside the screen
             // silhouette AND inside the outer silhouette.
             let ring = (screen_d + 0.5).clamp(0.0, 1.0) * (0.5 - outer_d).clamp(0.0, 1.0);
-            // Frame-matched shadow over the webview's square corner tips —
-            // only where the webview actually is (the screen rect); outside
-            // it the frame paints the real shadow.
-            let over_screen = px >= margin as f32
-                && px <= (margin + screen_width) as f32
-                && py >= margin as f32
-                && py <= (margin + screen_height) as f32;
-            let shadow = if over_screen && screen_d > -0.5 {
-                let shadow_d = rounded_distance(
-                    px,
-                    py - FRAME_SHADOW_OFFSET_Y,
-                    outer_half_x,
-                    outer_half_y,
-                    outer_radius,
-                )
-                .max(0.0);
-                let falloff = (1.0 - shadow_d / shadow_reach).clamp(0.0, 1.0);
-                // Clamped to outside the screen silhouette, or the veil would
-                // tint the whole screen interior.
-                FRAME_SHADOW_ALPHA * falloff * falloff * (screen_d + 0.5).clamp(0.0, 1.0)
-            } else {
-                0.0
-            };
-            let coverage = ring + (1.0 - ring) * shadow;
-            let alpha = (coverage * 255.0 * MASK_OPACITY).round() as u32;
+            let alpha = (ring * 255.0 * MASK_OPACITY).round() as u32;
             let premultiply = |channel: u32| channel * alpha / 255;
             pixels.push(
                 (alpha << 24)
@@ -378,4 +343,22 @@ fn corner_mask_pixels(
         }
     }
     pixels
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pixels_past_outer_silhouette_are_transparent() {
+        let screen_width = 393;
+        let bezel_width = 10;
+        let pixels =
+            corner_mask_pixels(screen_width, 852, 54.0, bezel_width as f32, 64.0, 0x141414);
+        let margin = bezel_width + MASK_AA_MARGIN;
+        let width = screen_width + 2 * margin;
+        let former_triangle_pixel = ((margin + 1) * width + margin + 1) as usize;
+
+        assert_eq!(pixels[former_triangle_pixel] >> 24, 0);
+    }
 }

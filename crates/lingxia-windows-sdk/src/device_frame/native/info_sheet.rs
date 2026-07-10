@@ -733,10 +733,7 @@ fn apply_sheet_region(
 
 fn content_screen_corner_radius(content: HWND) -> i32 {
     frame_state(hwnd_handle(content), |state| {
-        state
-            .spec
-            .screen_corner_radius
-            .clamp(0, CONTENT_REGION_MAX_RADIUS)
+        screen_corner_radius(&state.spec)
     })
     .unwrap_or(0)
 }

@@ -121,11 +121,9 @@ pub struct WindowsDeviceFrame {
     pub status_bar: Option<WindowsDeviceFrameStatusBar>,
     /// Bezel fill color as `0xRRGGBB`.
     pub bezel_color: u32,
-    /// Fill color of the masked area outside the rounded screen corners, as
-    /// `0xRRGGBB`. A windowed WebView2 paints square corners that can't be
-    /// clipped, so this color is painted over them to fake the rounding. Set it
-    /// to the surrounding chrome color (not the dark bezel) so the rounded
-    /// corners read as a soft, barely-visible cut rather than hard black wedges.
+    /// Fill color of the anti-aliased bezel mask outside the rounded screen,
+    /// as `0xRRGGBB`. This normally matches `bezel_color` so the smooth overlay
+    /// edge blends into the frame around the clipped content window.
     pub screen_corner_color: u32,
     /// Simulator toolbar floating above the device, when present.
     pub toolbar: Option<WindowsDeviceFrameToolbar>,
