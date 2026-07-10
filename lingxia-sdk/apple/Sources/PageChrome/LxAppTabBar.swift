@@ -833,7 +833,7 @@ class macOSTabBarWrapper: NSView, TabBarProtocol, ObservableObject {
               config.is_visible,
               !isHidden,
               alphaValue > 0.01,
-              bounds.contains(point) else {
+              frame.contains(point) else {
             return nil
         }
 
