@@ -116,6 +116,11 @@ fn resolve_browser_http_url(raw: &str, preferred_scheme: &str) -> Option<Browser
     })
 }
 
+pub(crate) fn is_valid_explicit_http_url(raw: &str) -> bool {
+    resolve_browser_http_url(raw, DEFAULT_BROWSER_PREFERRED_SCHEME)
+        .is_some_and(|resolved| resolved.inferred_scheme.is_none())
+}
+
 fn classify_browser_address_value(raw: &str) -> BrowserAddressValueKind {
     let trimmed = raw.trim();
     if trimmed.is_empty() {

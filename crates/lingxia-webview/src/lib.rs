@@ -109,6 +109,54 @@ pub use webview::{
     WebViewEventSubscription, WebViewSession,
 };
 
+/// Global website-data operations on the shared default data store
+/// (privacy: usage counts, clear cache, clear cookies & site data).
+/// Unsupported platforms return `WebViewError::WebView`.
+pub mod data_store {
+    #[cfg(any(target_os = "ios", target_os = "macos"))]
+    pub use crate::apple::data_store::{
+        cache_site_count, clear_cache, clear_cache_since, clear_site_data, clear_site_data_since,
+        site_data_usage,
+    };
+
+    #[cfg(not(any(target_os = "ios", target_os = "macos")))]
+    mod unsupported {
+        use crate::WebViewError;
+
+        fn err(action: &str) -> WebViewError {
+            WebViewError::WebView(format!("{action} is not supported on this platform"))
+        }
+
+        pub async fn cache_site_count() -> Result<usize, WebViewError> {
+            Err(err("cache usage query"))
+        }
+
+        pub async fn site_data_usage() -> Result<(usize, usize), WebViewError> {
+            Err(err("site data usage query"))
+        }
+
+        pub async fn clear_cache() -> Result<(), WebViewError> {
+            Err(err("clear cache"))
+        }
+
+        pub async fn clear_site_data() -> Result<(), WebViewError> {
+            Err(err("clear cookies & site data"))
+        }
+
+        pub async fn clear_cache_since(_since_unix_ms: Option<u64>) -> Result<(), WebViewError> {
+            Err(err("clear cache"))
+        }
+
+        pub async fn clear_site_data_since(
+            _since_unix_ms: Option<u64>,
+        ) -> Result<(), WebViewError> {
+            Err(err("clear cookies & site data"))
+        }
+    }
+    #[cfg(not(any(target_os = "ios", target_os = "macos")))]
+    pub use unsupported::*;
+}
+
 /// Runtime-scoped APIs (instance lookup/destruction, proxy state).
 pub mod runtime {
     use std::sync::Arc;

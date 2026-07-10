@@ -7,10 +7,13 @@
 extern crate self as lingxia;
 
 mod address_bar;
+mod bookmarks;
 mod downloads;
 mod facade;
+mod history;
 mod panel;
 mod platform_error;
+mod privacy;
 #[cfg(all(any(target_os = "macos", target_os = "windows"), feature = "proxy"))]
 mod proxy;
 #[cfg(all(any(target_os = "macos", target_os = "windows"), feature = "proxy"))]
@@ -18,10 +21,16 @@ mod proxy_settings;
 mod settings;
 
 pub use address_bar::{resolve_input, resolve_input_json};
+pub use bookmarks::{
+    command_json as bookmarks_command_json, is_bookmarked, pin_url as pin_bookmark_url,
+    remove_by_url as remove_bookmark_by_url, set_change_listener as set_bookmarks_change_listener,
+    snapshot_json as bookmarks_snapshot_json, toggle_bookmark,
+};
 pub use facade::{
     APP_ID, classify_navigation, classify_navigation_json, close, download, open, open_for_app,
     should_hide_url, tab_path, update_tab,
 };
+pub use history::{record_visit as record_history_visit, update_title as update_history_title};
 use lingxia_browser::LxAppError;
 pub use lingxia_browser::{
     BrowserAddressAction, BrowserAddressInputContext, BrowserAddressInputRequest,
@@ -99,6 +108,15 @@ fn bundled_context_menu_script() -> Result<String, LxAppError> {
 pub fn register_runtime() {
     lingxia_browser::install_runtime();
     downloads::register();
+    bookmarks::register();
+    history::register();
+    privacy::register();
+    lingxia_browser::set_navigation_finished_handler(std::sync::Arc::new(|url, title| {
+        history::record_visit(url, title);
+    }));
+    lingxia_browser::set_title_changed_handler(std::sync::Arc::new(|url, title| {
+        history::update_title(url, title);
+    }));
     #[cfg(all(any(target_os = "macos", target_os = "windows"), feature = "proxy"))]
     proxy::register();
     settings::register();
@@ -156,6 +174,7 @@ mod tests {
             r#"{
                 "pages": [
                     { "name": "newtab", "path": "pages/newtab/index.html" },
+                    { "name": "history", "path": "pages/history/index.html" },
                     { "name": "downloads", "path": "pages/downloads/index.html" },
                     { "name": "settings", "path": "pages/settings/index.html" }
                 ]
@@ -165,6 +184,10 @@ mod tests {
         assert_eq!(
             pages.get("newtab").map(String::as_str),
             Some("pages/newtab/index.html")
+        );
+        assert_eq!(
+            pages.get("history").map(String::as_str),
+            Some("pages/history/index.html")
         );
         assert_eq!(
             pages.get("downloads").map(String::as_str),

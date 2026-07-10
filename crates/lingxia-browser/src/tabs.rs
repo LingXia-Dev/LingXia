@@ -75,11 +75,17 @@ static BROWSER_LOAD_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
 static BROWSER_ACTIVE_TAB_ID: OnceLock<Mutex<Option<String>>> = OnceLock::new();
 static BROWSER_TABS_CHANGED_HANDLER: OnceLock<Mutex<Option<TabsChangedHandler>>> = OnceLock::new();
 static BROWSER_TAB_PRESENT_HANDLER: OnceLock<Mutex<Option<TabPresentHandler>>> = OnceLock::new();
+static BROWSER_NAVIGATION_FINISHED_HANDLER: OnceLock<Mutex<Option<NavigationFinishedHandler>>> =
+    OnceLock::new();
+static BROWSER_TITLE_CHANGED_HANDLER: OnceLock<Mutex<Option<TitleChangedHandler>>> =
+    OnceLock::new();
 
 /// Process-wide observer invoked when the browser tab set/metadata changes.
 type TabsChangedHandler = Arc<dyn Fn() + Send + Sync>;
 /// Process-wide observer invoked when a caller wants a tab brought onscreen.
 type TabPresentHandler = Arc<dyn Fn(&str) + Send + Sync>;
+type NavigationFinishedHandler = Arc<dyn Fn(&str, &str) + Send + Sync>;
+type TitleChangedHandler = Arc<dyn Fn(&str, &str) + Send + Sync>;
 
 pub(crate) fn set_tabs_changed_handler(handler: TabsChangedHandler) {
     let slot = BROWSER_TABS_CHANGED_HANDLER.get_or_init(|| Mutex::new(None));
@@ -92,6 +98,43 @@ pub(crate) fn set_tab_present_handler(handler: TabPresentHandler) {
     let slot = BROWSER_TAB_PRESENT_HANDLER.get_or_init(|| Mutex::new(None));
     if let Ok(mut slot) = slot.lock() {
         *slot = Some(handler);
+    }
+}
+
+pub(crate) fn set_navigation_finished_handler(handler: NavigationFinishedHandler) {
+    let slot = BROWSER_NAVIGATION_FINISHED_HANDLER.get_or_init(|| Mutex::new(None));
+    if let Ok(mut slot) = slot.lock() {
+        *slot = Some(handler);
+    }
+}
+
+pub(crate) fn set_title_changed_handler(handler: TitleChangedHandler) {
+    let slot = BROWSER_TITLE_CHANGED_HANDLER.get_or_init(|| Mutex::new(None));
+    if let Ok(mut slot) = slot.lock() {
+        *slot = Some(handler);
+    }
+}
+
+pub(crate) fn notify_navigation_finished(tab_id: &str, url: &str) {
+    let handler = BROWSER_NAVIGATION_FINISHED_HANDLER
+        .get()
+        .and_then(|slot| slot.lock().ok())
+        .and_then(|slot| slot.clone());
+    if let Some(handler) = handler {
+        let title = browser_tab_info(tab_id)
+            .and_then(|tab| tab.title)
+            .unwrap_or_default();
+        handler(url, &title);
+    }
+}
+
+fn notify_title_changed(url: &str, title: &str) {
+    let handler = BROWSER_TITLE_CHANGED_HANDLER
+        .get()
+        .and_then(|slot| slot.lock().ok())
+        .and_then(|slot| slot.clone());
+    if let Some(handler) = handler {
+        handler(url, title);
     }
 }
 
@@ -384,12 +427,13 @@ pub(crate) fn browser_update_tab_info(
     let Some(normalized) = normalize_runtime_tab_id(tab_id) else {
         return false;
     };
-    let changed = {
+    let (changed, changed_title) = {
         let mut state = lock_state();
         let Some(tab) = state.tabs.get_mut(&normalized) else {
             return false;
         };
         let mut changed = false;
+        let mut changed_title = None;
         if current_url.is_some() {
             let value = normalize_optional_string(current_url);
             if tab.current_url != value {
@@ -402,14 +446,20 @@ pub(crate) fn browser_update_tab_info(
             // yet known" (e.g. a webview's initial KVO fire before the document
             // title is parsed) and must never clobber a title already reported.
             if tab.title.as_deref() != Some(value.as_str()) {
-                tab.title = Some(value);
+                tab.title = Some(value.clone());
+                if let Some(url) = tab.current_url.clone() {
+                    changed_title = Some((url, value));
+                }
                 changed = true;
             }
         }
-        changed
+        (changed, changed_title)
     };
     if changed {
         notify_tabs_changed();
+    }
+    if let Some((url, title)) = changed_title {
+        notify_title_changed(&url, &title);
     }
     true
 }

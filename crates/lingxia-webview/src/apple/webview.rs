@@ -725,13 +725,16 @@ define_class!(
         }
 
         #[unsafe(method(webView:didFinishNavigation:))]
-        fn did_finish_navigation(&self, _webview: *mut AnyObject, _navigation: &WKNavigation) {
+        fn did_finish_navigation(&self, webview: *mut AnyObject, _navigation: &WKNavigation) {
             let webtag = &self.ivars().webtag;
             let (appid, path) = webtag.extract_parts();
 
             // Call delegate's on_page_finished
             if let Some(delegate) = find_webview_delegate(webtag) {
                 delegate.on_page_finished();
+                if let Some(url) = source_page_url_from_webview(webview) {
+                    delegate.on_navigation_finished(&url);
+                }
             }
             log::info!("WebView page finished: {} at {}", appid, path);
         }

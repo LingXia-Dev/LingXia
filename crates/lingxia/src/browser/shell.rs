@@ -65,6 +65,69 @@ pub(crate) fn open_panel_lxapp(panel_id: &str, appid: &str, path: &str) {
     let _ = (panel_id, appid, path);
 }
 
+#[cfg_attr(not(any(target_os = "ios", target_os = "macos")), allow(dead_code))]
+pub(crate) fn bookmark_status(url: &str) -> bool {
+    #[cfg(feature = "browser-shell")]
+    return lingxia_browser_shell::is_bookmarked(url);
+    #[cfg(not(feature = "browser-shell"))]
+    {
+        let _ = url;
+        false
+    }
+}
+
+#[cfg_attr(not(any(target_os = "ios", target_os = "macos")), allow(dead_code))]
+pub(crate) fn bookmark_remove_by_url(url: &str) -> bool {
+    #[cfg(feature = "browser-shell")]
+    return lingxia_browser_shell::remove_bookmark_by_url(url);
+    #[cfg(not(feature = "browser-shell"))]
+    {
+        let _ = url;
+        false
+    }
+}
+
+#[cfg_attr(not(any(target_os = "ios", target_os = "macos")), allow(dead_code))]
+pub(crate) fn bookmark_pin(url: &str, title: &str) -> bool {
+    #[cfg(feature = "browser-shell")]
+    return lingxia_browser_shell::pin_bookmark_url(url, title);
+    #[cfg(not(feature = "browser-shell"))]
+    {
+        let _ = (url, title);
+        false
+    }
+}
+
+#[cfg_attr(not(any(target_os = "ios", target_os = "macos")), allow(dead_code))]
+pub(crate) fn bookmarks_command_json(json: &str) -> bool {
+    #[cfg(feature = "browser-shell")]
+    return lingxia_browser_shell::bookmarks_command_json(json);
+    #[cfg(not(feature = "browser-shell"))]
+    {
+        let _ = json;
+        false
+    }
+}
+
+#[cfg_attr(not(any(target_os = "ios", target_os = "macos")), allow(dead_code))]
+pub(crate) fn bookmarks_snapshot_json() -> String {
+    #[cfg(feature = "browser-shell")]
+    return lingxia_browser_shell::bookmarks_snapshot_json().unwrap_or_default();
+    #[cfg(not(feature = "browser-shell"))]
+    String::new()
+}
+
+#[cfg_attr(not(any(target_os = "ios", target_os = "macos")), allow(dead_code))]
+pub(crate) fn bookmark_toggle(url: &str, title: &str) -> bool {
+    #[cfg(feature = "browser-shell")]
+    return lingxia_browser_shell::toggle_bookmark(url, title).unwrap_or(false);
+    #[cfg(not(feature = "browser-shell"))]
+    {
+        let _ = (url, title);
+        false
+    }
+}
+
 #[cfg(feature = "browser-shell")]
 pub(crate) fn register_runtime() {
     lingxia_browser_shell::register_runtime();

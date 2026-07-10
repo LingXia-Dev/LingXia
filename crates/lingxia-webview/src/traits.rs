@@ -573,6 +573,10 @@ pub trait WebViewDelegate: Send + Sync {
     /// Called when the page finishes loading
     fn on_page_finished(&self);
 
+    /// Called after a successful top-level navigation with its final URL.
+    /// Default is a no-op for platforms that do not expose the URL here.
+    fn on_navigation_finished(&self, _url: &str) {}
+
     /// Called when a main-frame page load fails (e.g. DNS failure, network unreachable, TLS error).
     ///
     /// Only fires for the main document; sub-resource errors are ignored.

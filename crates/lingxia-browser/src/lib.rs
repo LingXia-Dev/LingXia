@@ -27,6 +27,7 @@ pub use types::{
 pub use lxapp::LxAppError;
 
 pub const BUILTIN_BROWSER_APPID: &str = "app.lingxia.browser";
+pub type BrowserPageMetadataHandler = Arc<dyn Fn(&str, &str) + Send + Sync>;
 
 pub fn classify_navigation(
     request: BrowserNavigationPolicyRequest,
@@ -36,6 +37,16 @@ pub fn classify_navigation(
 
 pub fn classify_navigation_json(request_json: &str) -> Option<String> {
     policy::handle_browser_navigation_policy_json(request_json)
+}
+
+#[doc(hidden)]
+pub fn set_navigation_finished_handler(handler: BrowserPageMetadataHandler) {
+    tabs::set_navigation_finished_handler(handler);
+}
+
+#[doc(hidden)]
+pub fn set_title_changed_handler(handler: BrowserPageMetadataHandler) {
+    tabs::set_title_changed_handler(handler);
 }
 
 #[doc(hidden)]

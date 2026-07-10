@@ -1,4 +1,5 @@
 mod bridge_transport;
+pub(crate) mod data_store;
 mod schemehandler;
 mod webview;
 

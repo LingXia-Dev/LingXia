@@ -30,6 +30,10 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 log = { workspace = true }
 rong = { workspace = true, default-features = false }
+rusqlite = { version = "0.40.1", features = ["bundled"] }
 
 [target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
 lingxia-proxy = { workspace = true, features = ["rule-list-routing"], optional = true }
+
+[dev-dependencies]
+tempfile = "3"
