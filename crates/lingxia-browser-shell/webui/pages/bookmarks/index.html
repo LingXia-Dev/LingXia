@@ -1,0 +1,819 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title data-i18n="bookmarks.title">Bookmarks</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    :root { color-scheme: light; }
+    html, body { min-height: 100%; }
+    body {
+      display: flex; min-height: 100vh;
+      background: #f5f5f7; color: #1d1d1f;
+      font-family: -apple-system, "SF Pro Text", "PingFang SC", "Helvetica Neue", sans-serif;
+      font-size: 13px; -webkit-font-smoothing: antialiased;
+    }
+    button { font: inherit; border: none; background: none; cursor: pointer; color: inherit; }
+    input { font: inherit; }
+
+    .rail {
+      width: 208px; flex-shrink: 0; background: #fff;
+      border-right: 1px solid #e5e5ea; padding: 20px 0 14px;
+      position: sticky; top: 0; height: 100vh; overflow-y: auto;
+      display: flex; flex-direction: column;
+    }
+    .rail-title { font-size: 20px; font-weight: 700; padding: 0 20px 16px; letter-spacing: -0.3px; }
+    .rail-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 9px 14px 9px 20px; font-size: 13px; font-weight: 500;
+      color: #6e6e73; cursor: pointer; transition: all 80ms;
+      border-left: 3px solid transparent; user-select: none;
+    }
+    .rail-item:hover { background: #f2f4f7; color: #1d1d1f; }
+    .rail-item.active { color: #007AFF; background: #f0f5ff; border-left-color: #007AFF; }
+    .rail-item svg { width: 15px; height: 15px; flex-shrink: 0; }
+    .rail-item .rail-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .rail-item .rail-count { font-size: 11px; color: #98a2b3; font-weight: 600; }
+    .rail-item .rail-actions { display: none; gap: 2px; }
+    .rail-item:hover .rail-actions { display: inline-flex; }
+    .rail-item:hover .rail-count { display: none; }
+    .rail-icon-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 22px; height: 22px; border-radius: 6px; color: #98a2b3;
+    }
+    .rail-icon-btn:hover { background: #e8edf3; color: #344054; }
+    .rail-icon-btn.danger:hover { background: #fff1f3; color: #c01048; }
+    .rail-icon-btn svg { width: 12px; height: 12px; }
+    .rail-divider { height: 1px; background: #f2f2f7; margin: 10px 20px; }
+    .rail-new {
+      display: flex; align-items: center; gap: 8px;
+      margin: 4px 12px 0; padding: 8px 10px; border-radius: 10px;
+      color: #6e6e73; font-size: 12.5px; font-weight: 600;
+    }
+    .rail-new:hover { background: #f2f4f7; color: #1d1d1f; }
+    .rail-new svg { width: 13px; height: 13px; }
+    .rail-form { margin: 4px 12px 0; display: none; }
+    .rail-form.active { display: block; }
+    .rail-input {
+      width: 100%; height: 32px; border-radius: 9px; border: 1px solid #84caff;
+      padding: 0 10px; font-size: 12.5px; outline: none;
+      box-shadow: 0 0 0 3px rgba(0,122,255,0.12);
+    }
+
+    .main { flex: 1; min-width: 0; overflow-y: auto; }
+    .main-header {
+      position: sticky; top: 0; z-index: 10;
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      padding: 14px 24px; background: rgba(245,245,247,0.9);
+      backdrop-filter: blur(12px); border-bottom: 1px solid #e5e5ea;
+    }
+    .main-header h2 { font-size: 17px; font-weight: 600; }
+    .header-sub { font-size: 12px; color: #98a2b3; margin-top: 1px; }
+    .btn {
+      padding: 8px 13px; border-radius: 999px; background: #007AFF; color: #fff;
+      font-size: 12px; font-weight: 600; white-space: nowrap;
+    }
+    .btn.secondary { background: #eef1f6; color: #344054; }
+    .btn:hover { filter: brightness(0.97); }
+
+    .content { padding: 18px 24px 28px; }
+
+    .hint {
+      display: flex; align-items: center; gap: 8px;
+      padding: 10px 14px; margin-bottom: 14px; border-radius: 12px;
+      background: linear-gradient(180deg, #f8fbff 0%, #eef6ff 100%);
+      border: 1px solid #dbe7ff; color: #36536b; font-size: 12px; line-height: 1.5;
+    }
+    .hint svg { width: 14px; height: 14px; flex-shrink: 0; color: #175cd3; }
+
+    .add-card {
+      display: none; background: #fff; border: 1px solid #dbe7ff; border-radius: 16px;
+      padding: 16px; margin-bottom: 16px;
+      box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
+    }
+    .add-card.active { display: block; }
+    .add-grid { display: grid; grid-template-columns: 1fr 220px auto auto; gap: 10px; }
+    .field {
+      height: 36px; border-radius: 11px; border: 1px solid #d0d5dd;
+      padding: 0 11px; background: #fff; color: #101828; font-size: 13px; width: 100%;
+    }
+    .field:focus { outline: none; border-color: #84caff; box-shadow: 0 0 0 3px rgba(0,122,255,0.12); }
+
+    .list { background: #fff; border: 1px solid #e5e5ea; border-radius: 16px; overflow: hidden; }
+    .row {
+      display: flex; align-items: center; gap: 12px;
+      padding: 11px 16px; border-top: 1px solid #f2f2f7; background: #fff;
+      transition: background 80ms;
+    }
+    .row:first-child { border-top: none; }
+    .row:hover { background: #fafbfd; }
+    .row.dragging { opacity: 0.45; }
+    .row.drop-above { box-shadow: inset 0 2px 0 #007AFF; }
+    .row.drop-below { box-shadow: inset 0 -2px 0 #007AFF; }
+    .drag-handle {
+      flex-shrink: 0; color: #d0d5dd; cursor: grab; display: inline-flex;
+      padding: 4px 2px; border-radius: 6px;
+    }
+    .row:hover .drag-handle { color: #98a2b3; }
+    .drag-handle:active { cursor: grabbing; }
+    .drag-handle svg { width: 10px; height: 16px; }
+    .drag-handle.hidden { display: none; }
+    .row-favicon {
+      flex-shrink: 0; width: 32px; height: 32px; border-radius: 9px;
+      display: grid; place-items: center; background: #f2f4f7; overflow: hidden;
+    }
+    .row-favicon img { width: 18px; height: 18px; object-fit: contain; }
+    .row-favicon .letter { font-size: 14px; font-weight: 700; color: #007AFF; }
+    .row-main { flex: 1; min-width: 0; }
+    .row-title {
+      font-size: 13px; font-weight: 600; color: #101828;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      text-decoration: none; display: block;
+    }
+    a.row-title:hover { color: #007AFF; }
+    .row-url {
+      font-size: 11.5px; color: #98a2b3; margin-top: 2px;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .row-rename { display: none; width: 100%; }
+    .row.renaming .row-rename { display: block; }
+    .row.renaming .row-title, .row.renaming .row-url { display: none; }
+    .rename-input {
+      width: 100%; height: 32px; border-radius: 9px; border: 1px solid #84caff;
+      padding: 0 10px; font-size: 13px; outline: none;
+      box-shadow: 0 0 0 3px rgba(0,122,255,0.12);
+    }
+
+    /* Pin toggle — the sidebar-grid membership switch */
+    .pin-btn {
+      flex-shrink: 0; display: inline-flex; align-items: center; gap: 5px;
+      height: 30px; padding: 0 11px; border-radius: 999px;
+      border: 1px solid #e3e8ef; color: #667085; font-size: 11.5px; font-weight: 650;
+      transition: all 100ms;
+    }
+    .pin-btn svg { width: 12px; height: 12px; }
+    .pin-btn:hover { border-color: #b9c4d3; color: #344054; }
+    .pin-btn.pinned {
+      background: linear-gradient(180deg, #f0f7ff 0%, #e8f1ff 100%);
+      border-color: #9cc4ff; color: #0b57d0;
+    }
+
+    .group-picker { flex-shrink: 0; }
+    .group-picker-button {
+      display: inline-flex; align-items: center; justify-content: space-between; gap: 8px;
+      min-width: 112px; max-width: 148px; height: 30px; padding: 0 9px 0 11px;
+      border: 1px solid #e3e8ef; border-radius: 9px; background: #fff;
+      color: #475467; font-size: 12px; text-align: left;
+      transition: border-color 120ms, background 120ms, box-shadow 120ms;
+    }
+    .group-picker-button span {
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .group-picker-button svg {
+      width: 11px; height: 11px; flex-shrink: 0; color: #98a2b3;
+      transition: transform 140ms ease;
+    }
+    .group-picker-button:hover { background: #f8fafc; border-color: #c8d1dc; }
+    .group-picker-button[aria-expanded="true"] {
+      border-color: #84caff; box-shadow: 0 0 0 3px rgba(0,122,255,0.10);
+    }
+    .group-picker-button[aria-expanded="true"] svg { transform: rotate(180deg); }
+    .group-menu {
+      position: fixed; display: none; z-index: 70; min-width: 160px;
+      max-height: 240px; overflow-y: auto; padding: 5px;
+      border: 1px solid rgba(16, 24, 40, 0.10); border-radius: 12px;
+      background: rgba(255,255,255,0.98);
+      box-shadow: 0 16px 36px rgba(15,23,42,0.16), 0 2px 8px rgba(15,23,42,0.08);
+      backdrop-filter: blur(18px);
+    }
+    .group-menu.active { display: block; }
+    .group-option {
+      width: 100%; min-height: 32px; display: flex; align-items: center;
+      justify-content: space-between; gap: 12px; padding: 6px 9px;
+      border-radius: 8px; color: #344054; font-size: 12px; text-align: left;
+    }
+    .group-option:hover, .group-option.active { background: #f2f6fc; color: #175cd3; }
+    .group-option[aria-selected="true"] { color: #0b57d0; font-weight: 650; }
+    .group-option svg { width: 13px; height: 13px; flex-shrink: 0; }
+    .row-actions { flex-shrink: 0; display: flex; gap: 2px; opacity: 0; transition: opacity 100ms; }
+    .row:hover .row-actions, .row.renaming .row-actions { opacity: 1; }
+    .icon-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 28px; height: 28px; border-radius: 8px; color: #98a2b3;
+    }
+    .icon-btn:hover { background: #eef1f6; color: #344054; }
+    .icon-btn.danger:hover { background: #fff1f3; color: #c01048; }
+    .icon-btn svg { width: 14px; height: 14px; }
+
+    .empty {
+      display: none; flex-direction: column; align-items: center; gap: 10px;
+      padding: 72px 24px; text-align: center; color: #98a2b3;
+    }
+    .empty.active { display: flex; }
+    .empty-star {
+      width: 56px; height: 56px; border-radius: 16px; display: grid; place-items: center;
+      background: linear-gradient(180deg, #f0f5ff 0%, #e6efff 100%);
+      color: #007AFF; box-shadow: 0 10px 24px rgba(0, 122, 255, 0.10);
+    }
+    .empty-star svg { width: 26px; height: 26px; }
+    .empty-title { font-size: 15px; font-weight: 650; color: #344054; }
+    .empty-copy { font-size: 12.5px; line-height: 1.55; max-width: 380px; }
+
+    .toast {
+      position: fixed; left: 50%; bottom: 26px; transform: translate(-50%, 16px);
+      padding: 10px 18px; border-radius: 999px; background: rgba(29, 29, 31, 0.92);
+      color: #fff; font-size: 12.5px; font-weight: 600; opacity: 0;
+      pointer-events: none; transition: opacity 160ms ease, transform 160ms ease;
+      backdrop-filter: blur(8px); z-index: 50;
+    }
+    .toast.active { opacity: 1; transform: translate(-50%, 0); }
+
+    @media (max-width: 700px) {
+      body { display: block; }
+      .rail {
+        width: auto; height: auto; position: static; flex-direction: row; align-items: center;
+        border-right: none; border-bottom: 1px solid #e5e5ea;
+        padding: 10px 12px; overflow-x: auto; gap: 2px;
+      }
+      .rail-title, .rail-divider { display: none; }
+      .rail-item { flex: 0 0 auto; border-left: none; border-radius: 10px; padding: 8px 12px; }
+      .rail-item.active { border-left-color: transparent; }
+      .rail-item .rail-actions { display: none !important; }
+      .rail-new { margin: 0; flex: 0 0 auto; }
+      .add-grid { grid-template-columns: 1fr; }
+      .group-picker-button { min-width: 94px; max-width: 112px; }
+      .row-actions { opacity: 1; }
+    }
+  </style>
+</head>
+<body>
+  <nav class="rail">
+    <div class="rail-title" data-i18n="bookmarks.title">Bookmarks</div>
+    <div id="railList"></div>
+    <div class="rail-divider"></div>
+    <button class="rail-new" id="newGroupBtn" type="button">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M8 3.5v9M3.5 8h9"/></svg>
+      <span data-i18n="bookmarks.newGroup">New Group</span>
+    </button>
+    <div class="rail-form" id="newGroupForm">
+      <input class="rail-input" id="newGroupInput" type="text" data-i18n-placeholder="bookmarks.groupName" placeholder="Group name" autocomplete="off">
+    </div>
+  </nav>
+
+  <div class="main">
+    <div class="main-header">
+      <div>
+        <h2 id="headerTitle" data-i18n="bookmarks.allTitle">All Bookmarks</h2>
+        <div class="header-sub" id="headerSub"></div>
+      </div>
+      <button class="btn" id="addBtn" type="button" data-i18n="bookmarks.add">Add Bookmark</button>
+    </div>
+
+    <div class="content">
+      <div class="hint">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 2.5l4 4-3 1-2.5 4.5-4-4L8.5 5.5z"/><path d="M5.5 10.5l-3 3"/></svg>
+        <span data-i18n="bookmarks.pinHint">Pinned bookmarks appear as the icon grid at the top of the sidebar - your fastest entry points.</span>
+      </div>
+
+      <div class="add-card" id="addCard">
+        <div class="add-grid">
+          <input class="field" id="addUrl" type="url" placeholder="https://example.com" autocomplete="off">
+          <input class="field" id="addTitle" type="text" data-i18n-placeholder="bookmarks.optionalTitle" placeholder="Title (optional)" autocomplete="off">
+          <button class="btn" id="addConfirm" type="button" data-i18n="common.add">Add</button>
+          <button class="btn secondary" id="addCancel" type="button" data-i18n="common.cancel">Cancel</button>
+        </div>
+      </div>
+
+      <div class="list" id="list"></div>
+
+      <div class="empty" id="empty">
+        <div class="empty-star">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M8.25 3.25h7.5c.97 0 1.75.78 1.75 1.75v15.25L12 16.75l-5.5 3.5V5c0-.97.78-1.75 1.75-1.75z"/>
+          </svg>
+        </div>
+        <div class="empty-title" data-i18n="bookmarks.emptyTitle">No bookmarks yet</div>
+        <div class="empty-copy" data-i18n="bookmarks.emptyCopy">Bookmark a page from the browser toolbar (⌘D), or use Add Bookmark above. Pin the ones you use most to put them at the top of the sidebar.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+  <div class="group-menu" id="groupMenu" role="listbox" data-i18n-aria-label="bookmarks.moveAria" aria-label="Move bookmark to group"></div>
+
+  <script src="lingxia://lxapp/public/i18n.js"></script>
+  <script>
+    (function () {
+      var i18n = window.LingXiaI18n;
+      var t = i18n.t;
+      i18n.apply();
+      var state = {
+        snapshot: { groups: [], entries: [] },
+        scope: 'all',
+        dragId: null,
+        groupPicker: null
+      };
+      var toastTimer = null;
+
+      function bridge() {
+        var api = window.LingXiaBridge;
+        if (!api || typeof api.invoke !== 'function') {
+          throw new Error('LingXiaBridge is not available');
+        }
+        return api;
+      }
+
+      function call(route, input) { return bridge().invoke(route, input); }
+
+      function toast(message) {
+        var el = document.getElementById('toast');
+        if (toastTimer) clearTimeout(toastTimer);
+        el.textContent = message;
+        el.classList.add('active');
+        toastTimer = setTimeout(function () { el.classList.remove('active'); }, 2200);
+      }
+
+      function fail(err) {
+        console.error('[Bookmarks]', err);
+        toast((err && err.message) || t('common.somethingWentWrong'));
+      }
+
+      function escapeHtml(s) {
+        return String(s == null ? '' : s)
+          .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+      }
+
+      function hostOf(url) {
+        try { return new URL(url).host; } catch (_) { return url; }
+      }
+
+      function originOf(url) {
+        try { return new URL(url).origin; } catch (_) { return null; }
+      }
+
+      function closeGroupMenu(restoreFocus) {
+        var picker = state.groupPicker;
+        var menu = document.getElementById('groupMenu');
+        menu.classList.remove('active');
+        menu.innerHTML = '';
+        if (picker && picker.button) {
+          picker.button.setAttribute('aria-expanded', 'false');
+          if (restoreFocus) picker.button.focus();
+        }
+        state.groupPicker = null;
+      }
+
+      function setActiveGroupOption(index, focus) {
+        var picker = state.groupPicker;
+        if (!picker) return;
+        var options = Array.prototype.slice.call(
+          document.getElementById('groupMenu').querySelectorAll('.group-option')
+        );
+        if (!options.length) return;
+        picker.activeIndex = (index + options.length) % options.length;
+        options.forEach(function (option, optionIndex) {
+          option.classList.toggle('active', optionIndex === picker.activeIndex);
+          option.tabIndex = optionIndex === picker.activeIndex ? 0 : -1;
+        });
+        if (focus) options[picker.activeIndex].focus();
+      }
+
+      function openGroupMenu(button, rowId, direction) {
+        if (state.groupPicker && state.groupPicker.button === button) {
+          closeGroupMenu(true);
+          return;
+        }
+        closeGroupMenu(false);
+        var entry = state.snapshot.entries.find(function (item) { return item.id === rowId; });
+        if (!entry) return;
+        var options = [{ id: '', name: t('bookmarks.noGroup') }].concat(
+          state.snapshot.groups.map(function (group) {
+            return { id: group.id, name: group.name };
+          })
+        );
+        var selectedIndex = Math.max(0, options.findIndex(function (option) {
+          return option.id === (entry.groupId || '');
+        }));
+        var menu = document.getElementById('groupMenu');
+        menu.innerHTML = options.map(function (option, index) {
+          var selected = index === selectedIndex;
+          return '<button class="group-option" type="button" role="option" data-group-id="' +
+            escapeHtml(option.id) + '" aria-selected="' + selected + '" tabindex="-1">' +
+            '<span>' + escapeHtml(option.name) + '</span>' + (selected ? checkIcon : '') + '</button>';
+        }).join('');
+
+        state.groupPicker = {
+          button: button,
+          rowId: rowId,
+          activeIndex: direction === 'up' ? options.length - 1 : selectedIndex
+        };
+        button.setAttribute('aria-expanded', 'true');
+        menu.classList.add('active');
+        menu.style.minWidth = Math.max(160, button.getBoundingClientRect().width) + 'px';
+        var rect = button.getBoundingClientRect();
+        menu.style.left = Math.max(
+          12,
+          Math.min(rect.left, window.innerWidth - menu.offsetWidth - 12)
+        ) + 'px';
+        var top = rect.bottom + 6;
+        if (top + menu.offsetHeight > window.innerHeight - 12) {
+          top = Math.max(12, rect.top - menu.offsetHeight - 6);
+        }
+        menu.style.top = top + 'px';
+        setActiveGroupOption(state.groupPicker.activeIndex, true);
+      }
+
+      function chooseGroup(groupId) {
+        var picker = state.groupPicker;
+        if (!picker) return;
+        var rowId = picker.rowId;
+        closeGroupMenu(false);
+        call('bookmarks.move', {
+          id: rowId,
+          groupId: groupId || undefined
+        }).catch(fail);
+      }
+
+      function scopeEntries() {
+        var entries = state.snapshot.entries;
+        if (state.scope === 'all') return entries;
+        if (state.scope === 'pinned') return entries.filter(function (e) { return e.pinned; });
+        if (state.scope === 'ungrouped') return entries.filter(function (e) { return !e.groupId; });
+        return entries.filter(function (e) { return e.groupId === state.scope; });
+      }
+
+      function scopeName() {
+        if (state.scope === 'all') return t('bookmarks.allTitle');
+        if (state.scope === 'pinned') return t('bookmarks.pinned');
+        if (state.scope === 'ungrouped') return t('bookmarks.otherTitle');
+        var group = state.snapshot.groups.find(function (g) { return g.id === state.scope; });
+        return group ? group.name : t('bookmarks.allTitle');
+      }
+
+      var railIcons = {
+        all: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5.5 2.5h5c.83 0 1.5.67 1.5 1.5v9.5L8 11l-4 2.5V4c0-.83.67-1.5 1.5-1.5z"/></svg>',
+        pinned: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 2.5l4 4-3 1-2.5 4.5-4-4L8.5 5.5z"/><path d="M5.5 10.5l-3 3"/></svg>',
+        ungrouped: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="5.4"/><path d="M8 5.2v.01M8 7.4V11"/></svg>',
+        group: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.8 4.6c0-.7.6-1.3 1.3-1.3h2.5l1.4 1.6h3.9c.7 0 1.3.6 1.3 1.3v5.2c0 .7-.6 1.3-1.3 1.3H4.1c-.7 0-1.3-.6-1.3-1.3z"/></svg>'
+      };
+      var pencilIcon = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9.9 3.4l2.7 2.7-6.4 6.4-3 .3.3-3z"/></svg>';
+      var trashIcon = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M3.2 4.6h9.6M6.4 4.3V3.2h3.2v1.1M4.3 4.9l.5 7.4c0 .5.5.9 1 .9h4.4c.5 0 1-.4 1-.9l.5-7.4"/></svg>';
+      var pinIcon = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 2.5l4 4-3 1-2.5 4.5-4-4L8.5 5.5z"/><path d="M5.5 10.5l-3 3"/></svg>';
+      var chevronIcon = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 6.2L8 9.8l3.5-3.6"/></svg>';
+      var checkIcon = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 8.2l2.7 2.7 6.3-6.3"/></svg>';
+
+      function countFor(scope) {
+        var entries = state.snapshot.entries;
+        if (scope === 'all') return entries.length;
+        if (scope === 'pinned') return entries.filter(function (e) { return e.pinned; }).length;
+        if (scope === 'ungrouped') return entries.filter(function (e) { return !e.groupId; }).length;
+        return entries.filter(function (e) { return e.groupId === scope; }).length;
+      }
+
+      function railItem(id, name, icon, editable) {
+        var actions = editable
+          ? '<span class="rail-actions">' +
+            '<button class="rail-icon-btn" data-group-rename="' + escapeHtml(id) + '" title="' + escapeHtml(t('bookmarks.renameGroup')) + '" type="button">' + pencilIcon + '</button>' +
+            '<button class="rail-icon-btn danger" data-group-delete="' + escapeHtml(id) + '" title="' + escapeHtml(t('bookmarks.deleteGroup')) + '" type="button">' + trashIcon + '</button>' +
+            '</span>'
+          : '';
+        return '<div class="rail-item' + (state.scope === id ? ' active' : '') + '" data-scope="' + escapeHtml(id) + '">' +
+          icon +
+          '<span class="rail-name">' + escapeHtml(name) + '</span>' +
+          '<span class="rail-count">' + countFor(id) + '</span>' +
+          actions +
+          '</div>';
+      }
+
+      function renderRail() {
+        var groups = state.snapshot.groups;
+        var html = railItem('all', t('bookmarks.all'), railIcons.all, false);
+        if (countFor('pinned')) html += railItem('pinned', t('bookmarks.pinned'), railIcons.pinned, false);
+        if (groups.length && countFor('ungrouped')) {
+          html += railItem('ungrouped', t('bookmarks.other'), railIcons.ungrouped, false);
+        }
+        html += groups.map(function (g) {
+          return railItem(g.id, g.name, railIcons.group, true);
+        }).join('');
+        document.getElementById('railList').innerHTML = html;
+      }
+
+      function renderList() {
+        closeGroupMenu(false);
+        var entries = scopeEntries();
+        var groups = state.snapshot.groups;
+        var draggable = state.scope !== 'all' && state.scope !== 'pinned';
+        var list = document.getElementById('list');
+        var empty = document.getElementById('empty');
+        list.innerHTML = entries.map(function (entry) {
+          var origin = originOf(entry.url);
+          var letter = (entry.title || hostOf(entry.url) || '?').charAt(0).toUpperCase();
+          var icon = origin
+            ? '<img src="' + escapeHtml(origin) + '/favicon.ico" alt="" loading="lazy"' +
+              ' onerror="this.outerHTML=\'<span class=&quot;letter&quot;>' + escapeHtml(letter) + '</span>\'">'
+            : '<span class="letter">' + escapeHtml(letter) + '</span>';
+          var currentGroup = groups.find(function (g) { return g.id === entry.groupId; });
+          var groupLabel = currentGroup ? currentGroup.name : t('bookmarks.noGroup');
+          return '<div class="row" data-id="' + escapeHtml(entry.id) + '"' + (draggable ? ' draggable="true"' : '') + '>' +
+            '<span class="drag-handle' + (draggable ? '' : ' hidden') + '" title="' + escapeHtml(t('bookmarks.dragReorder')) + '">' +
+            '<svg viewBox="0 0 10 16" fill="currentColor"><circle cx="3" cy="3" r="1.2"/><circle cx="7" cy="3" r="1.2"/><circle cx="3" cy="8" r="1.2"/><circle cx="7" cy="8" r="1.2"/><circle cx="3" cy="13" r="1.2"/><circle cx="7" cy="13" r="1.2"/></svg></span>' +
+            '<span class="row-favicon">' + icon + '</span>' +
+            '<span class="row-main">' +
+            '<a class="row-title" href="' + escapeHtml(entry.url) + '" target="_blank" rel="noopener">' + escapeHtml(entry.title || hostOf(entry.url)) + '</a>' +
+            '<span class="row-url">' + escapeHtml(entry.url) + '</span>' +
+            '<span class="row-rename"><input class="rename-input" data-rename-input value="' + escapeHtml(entry.title) + '"></span>' +
+            '</span>' +
+            '<button class="pin-btn' + (entry.pinned ? ' pinned' : '') + '" data-pin title="' +
+            escapeHtml(t(entry.pinned ? 'bookmarks.unpinSidebar' : 'bookmarks.pinSidebar')) + '" type="button">' +
+            pinIcon + escapeHtml(t(entry.pinned ? 'bookmarks.unpin' : 'bookmarks.pin')) + '</button>' +
+            '<span class="group-picker">' +
+            '<button class="group-picker-button" data-move-button type="button" aria-haspopup="listbox" aria-expanded="false" title="' + escapeHtml(t('bookmarks.moveGroup')) + '">' +
+            '<span>' + escapeHtml(groupLabel) + '</span>' + chevronIcon + '</button></span>' +
+            '<span class="row-actions">' +
+            '<button class="icon-btn" data-rename title="' + escapeHtml(t('bookmarks.rename')) + '" type="button">' + pencilIcon + '</button>' +
+            '<button class="icon-btn danger" data-delete title="' + escapeHtml(t('common.remove')) + '" type="button">' + trashIcon + '</button>' +
+            '</span>' +
+            '</div>';
+        }).join('');
+        list.style.display = entries.length ? '' : 'none';
+        empty.classList.toggle('active', !entries.length);
+      }
+
+      function render() {
+        renderRail();
+        renderList();
+        document.getElementById('headerTitle').textContent = scopeName();
+        var count = scopeEntries().length;
+        document.getElementById('headerSub').textContent =
+          count === 1 ? t('bookmarks.countOne') : t('bookmarks.countMany', { count: count });
+      }
+
+      function apply(snapshot) {
+        state.snapshot = snapshot || { groups: [], entries: [] };
+        if (['all', 'pinned', 'ungrouped'].indexOf(state.scope) < 0 &&
+            !state.snapshot.groups.some(function (g) { return g.id === state.scope; })) {
+          state.scope = 'all';
+        }
+        render();
+      }
+
+      function refresh() {
+        call('bookmarks.list').then(apply, fail);
+      }
+
+      function watch() {
+        var api = bridge();
+        if (typeof api.stream !== 'function') return;
+        var handle = api.stream('bookmarks.watch');
+        handle.onEvent(apply);
+        handle.onError(function (err) { console.warn('[Bookmarks] watch error:', err); });
+      }
+
+      document.querySelector('.rail').addEventListener('click', function (event) {
+        var renameBtn = event.target.closest('[data-group-rename]');
+        if (renameBtn) {
+          event.stopPropagation();
+          var gid = renameBtn.getAttribute('data-group-rename');
+          var group = state.snapshot.groups.find(function (g) { return g.id === gid; });
+          var name = prompt(t('bookmarks.renameGroup'), group ? group.name : '');
+          if (name && name.trim()) {
+            call('bookmarks.renameGroup', { id: gid, name: name.trim() }).catch(fail);
+          }
+          return;
+        }
+        var deleteBtn = event.target.closest('[data-group-delete]');
+        if (deleteBtn) {
+          event.stopPropagation();
+          call('bookmarks.deleteGroup', { id: deleteBtn.getAttribute('data-group-delete') })
+            .then(function () { toast(t('bookmarks.groupDeleted')); }, fail);
+          return;
+        }
+        var item = event.target.closest('.rail-item');
+        if (item) {
+          state.scope = item.getAttribute('data-scope');
+          render();
+        }
+      });
+
+      var newGroupBtn = document.getElementById('newGroupBtn');
+      var newGroupForm = document.getElementById('newGroupForm');
+      var newGroupInput = document.getElementById('newGroupInput');
+      newGroupBtn.addEventListener('click', function () {
+        newGroupForm.classList.add('active');
+        newGroupInput.value = '';
+        newGroupInput.focus();
+      });
+      newGroupInput.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape') { newGroupForm.classList.remove('active'); return; }
+        if (event.key !== 'Enter') return;
+        var name = newGroupInput.value.trim();
+        if (!name) return;
+        call('bookmarks.createGroup', { name: name }).then(function (group) {
+          newGroupForm.classList.remove('active');
+          state.scope = group.id;
+        }, fail);
+      });
+      newGroupInput.addEventListener('blur', function () {
+        newGroupForm.classList.remove('active');
+      });
+
+      var addCard = document.getElementById('addCard');
+      var addUrl = document.getElementById('addUrl');
+      var addTitle = document.getElementById('addTitle');
+      document.getElementById('addBtn').addEventListener('click', function () {
+        addCard.classList.toggle('active');
+        if (addCard.classList.contains('active')) addUrl.focus();
+      });
+      document.getElementById('addCancel').addEventListener('click', function () {
+        addCard.classList.remove('active');
+      });
+      function submitAdd() {
+        var url = addUrl.value.trim();
+        if (!url) { addUrl.focus(); return; }
+        if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(url)) url = 'https://' + url;
+        var groupId = (['all', 'pinned', 'ungrouped'].indexOf(state.scope) < 0) ? state.scope : undefined;
+        call('bookmarks.add', { url: url, title: addTitle.value.trim() || undefined, groupId: groupId })
+          .then(function (result) {
+            addUrl.value = ''; addTitle.value = '';
+            addCard.classList.remove('active');
+            toast(t(result.created ? 'bookmarks.added' : 'bookmarks.alreadyAdded'));
+          }, fail);
+      }
+      document.getElementById('addConfirm').addEventListener('click', submitAdd);
+      [addUrl, addTitle].forEach(function (el) {
+        el.addEventListener('keydown', function (event) {
+          if (event.key === 'Enter') submitAdd();
+          if (event.key === 'Escape') addCard.classList.remove('active');
+        });
+      });
+
+      var list = document.getElementById('list');
+
+      list.addEventListener('click', function (event) {
+        var row = event.target.closest('.row');
+        if (!row) return;
+        var id = row.getAttribute('data-id');
+        var moveButton = event.target.closest('[data-move-button]');
+        if (moveButton) {
+          openGroupMenu(moveButton, id);
+          return;
+        }
+        if (event.target.closest('[data-pin]')) {
+          var entry = state.snapshot.entries.find(function (e) { return e.id === id; });
+          if (!entry) return;
+          call('bookmarks.setPinned', { id: id, pinned: !entry.pinned }).then(function (updated) {
+            toast(t(updated.pinned ? 'bookmarks.pinnedToast' : 'bookmarks.unpinnedToast'));
+          }, fail);
+          return;
+        }
+        if (event.target.closest('[data-delete]')) {
+          call('bookmarks.remove', { id: id }).then(function () {
+            toast(t('bookmarks.removedToast'));
+          }, fail);
+          return;
+        }
+        if (event.target.closest('[data-rename]')) {
+          row.classList.add('renaming');
+          var input = row.querySelector('[data-rename-input]');
+          input.focus();
+          input.select();
+        }
+      });
+
+      list.addEventListener('keydown', function (event) {
+        var moveButton = event.target.closest('[data-move-button]');
+        if (moveButton && ['Enter', ' ', 'ArrowDown', 'ArrowUp'].indexOf(event.key) >= 0) {
+          event.preventDefault();
+          openGroupMenu(
+            moveButton,
+            event.target.closest('.row').getAttribute('data-id'),
+            event.key === 'ArrowUp' ? 'up' : 'down'
+          );
+          return;
+        }
+        var input = event.target.closest('[data-rename-input]');
+        if (!input) return;
+        var row = event.target.closest('.row');
+        if (event.key === 'Escape') row.classList.remove('renaming');
+        if (event.key === 'Enter') {
+          var title = input.value.trim();
+          if (title) {
+            call('bookmarks.rename', { id: row.getAttribute('data-id'), title: title }).catch(fail);
+          } else {
+            row.classList.remove('renaming');
+          }
+        }
+      });
+
+      list.addEventListener('focusout', function (event) {
+        var input = event.target.closest('[data-rename-input]');
+        if (!input) return;
+        event.target.closest('.row').classList.remove('renaming');
+      });
+
+      var groupMenu = document.getElementById('groupMenu');
+      groupMenu.addEventListener('click', function (event) {
+        var option = event.target.closest('.group-option');
+        if (option) chooseGroup(option.getAttribute('data-group-id'));
+      });
+
+      groupMenu.addEventListener('keydown', function (event) {
+        var picker = state.groupPicker;
+        if (!picker) return;
+        var options = groupMenu.querySelectorAll('.group-option');
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          closeGroupMenu(true);
+        } else if (event.key === 'ArrowDown') {
+          event.preventDefault();
+          setActiveGroupOption(picker.activeIndex + 1, true);
+        } else if (event.key === 'ArrowUp') {
+          event.preventDefault();
+          setActiveGroupOption(picker.activeIndex - 1, true);
+        } else if (event.key === 'Home') {
+          event.preventDefault();
+          setActiveGroupOption(0, true);
+        } else if (event.key === 'End') {
+          event.preventDefault();
+          setActiveGroupOption(options.length - 1, true);
+        } else if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          var option = options[picker.activeIndex];
+          if (option) chooseGroup(option.getAttribute('data-group-id'));
+        } else if (event.key === 'Tab') {
+          closeGroupMenu(false);
+        }
+      });
+
+      document.addEventListener('mousedown', function (event) {
+        if (!state.groupPicker) return;
+        if (groupMenu.contains(event.target) || event.target.closest('[data-move-button]')) return;
+        closeGroupMenu(false);
+      });
+      window.addEventListener('resize', function () { closeGroupMenu(false); });
+      window.addEventListener('scroll', function (event) {
+        if (event.target !== groupMenu) closeGroupMenu(false);
+      }, true);
+
+      list.addEventListener('dragstart', function (event) {
+        var row = event.target.closest('.row');
+        if (!row || state.scope === 'all' || state.scope === 'pinned') { event.preventDefault(); return; }
+        state.dragId = row.getAttribute('data-id');
+        row.classList.add('dragging');
+        event.dataTransfer.effectAllowed = 'move';
+        try { event.dataTransfer.setData('text/plain', state.dragId); } catch (_) {}
+      });
+
+      list.addEventListener('dragover', function (event) {
+        if (!state.dragId) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'move';
+        var row = event.target.closest('.row');
+        Array.prototype.forEach.call(list.children, function (child) {
+          child.classList.remove('drop-above', 'drop-below');
+        });
+        if (!row || row.getAttribute('data-id') === state.dragId) return;
+        var rect = row.getBoundingClientRect();
+        row.classList.add(event.clientY > rect.top + rect.height / 2 ? 'drop-below' : 'drop-above');
+      });
+
+      list.addEventListener('drop', function (event) {
+        if (!state.dragId) return;
+        event.preventDefault();
+        var target = event.target.closest('.row');
+        var dragId = state.dragId;
+        endDrag();
+        if (!target || target.getAttribute('data-id') === dragId) return;
+        var ids = scopeEntries().map(function (e) { return e.id; });
+        var from = ids.indexOf(dragId);
+        if (from < 0) return;
+        ids.splice(from, 1);
+        var to = ids.indexOf(target.getAttribute('data-id'));
+        var rect = target.getBoundingClientRect();
+        if (event.clientY > rect.top + rect.height / 2) to += 1;
+        ids.splice(to, 0, dragId);
+        var groupId = state.scope === 'ungrouped' ? undefined : state.scope;
+        call('bookmarks.reorder', { groupId: groupId, orderedIds: ids }).catch(fail);
+      });
+
+      list.addEventListener('dragend', endDrag);
+
+      function endDrag() {
+        state.dragId = null;
+        Array.prototype.forEach.call(list.children, function (child) {
+          child.classList.remove('dragging', 'drop-above', 'drop-below');
+        });
+      }
+
+      document.addEventListener('visibilitychange', function () {
+        if (!document.hidden) refresh();
+      });
+
+      refresh();
+      watch();
+    })();
+  </script>
+</body>
+</html>

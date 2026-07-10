@@ -3,155 +3,296 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>New Tab</title>
+  <title data-i18n="newtab.title">New Tab</title>
   <style>
     :root {
-      color-scheme: light;
-      --panel-bg: rgba(255, 255, 255, 0.16);
-      --panel-border: rgba(255, 255, 255, 0.28);
-      --text-primary: #f8fbff;
-      --text-secondary: rgba(248, 251, 255, 0.82);
-      --input-bg: rgba(10, 20, 34, 0.36);
-      --input-border: rgba(255, 255, 255, 0.22);
-      --button-bg: #0a66d9;
-      --button-bg-hover: #0856b8;
-      --shadow: 0 20px 60px rgba(0, 0, 0, 0.28);
+      color-scheme: light dark;
+      --page: #f7f8fa;
+      --surface: rgba(255, 255, 255, 0.96);
+      --surface-muted: #f2f4f7;
+      --border: rgba(16, 24, 40, 0.12);
+      --text: #182230;
+      --muted: #667085;
+      --accent: #0b66d8;
+      --danger: #c4323a;
+      --shadow: 0 10px 32px rgba(16, 24, 40, 0.14);
     }
-
-    * {
-      box-sizing: border-box;
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --page: #202124;
+        --surface: rgba(45, 46, 50, 0.97);
+        --surface-muted: #36373b;
+        --border: rgba(255, 255, 255, 0.12);
+        --text: #f2f4f7;
+        --muted: #a7abb4;
+        --accent: #8ab4f8;
+        --danger: #ff8a8f;
+        --shadow: 0 12px 38px rgba(0, 0, 0, 0.34);
+      }
     }
-
-    html,
+    * { box-sizing: border-box; }
+    html, body { margin: 0; width: 100%; min-height: 100%; }
     body {
-      margin: 0;
-      min-height: 100%;
-      font-family: "SF Pro Display", "PingFang SC", "Helvetica Neue", sans-serif;
+      min-height: 100vh;
+      overflow: hidden;
+      color: var(--text);
+      background: var(--page) center / cover no-repeat;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif;
+      letter-spacing: 0;
     }
-
-    body {
+    body.has-background::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background: rgba(0, 0, 0, 0.12);
+    }
+    button, input { font: inherit; letter-spacing: 0; }
+    button { color: inherit; }
+    .page {
+      position: relative;
+      z-index: 1;
       min-height: 100vh;
       display: grid;
       place-items: center;
       padding: 24px;
-      color: var(--text-primary);
-      background:
-        linear-gradient(rgba(6, 17, 30, 0.36), rgba(6, 17, 30, 0.62)),
-        url("https://cn.bing.com/th?id=OHR.OloupenaFalls_ZH-CN2980118660_UHD.jpg") center center / cover no-repeat;
     }
-
-    .shell {
-      width: min(100%, 760px);
-      padding: 32px;
-      border: 1px solid var(--panel-border);
-      border-radius: 28px;
-      background: var(--panel-bg);
-      box-shadow: var(--shadow);
-      backdrop-filter: blur(22px);
-      -webkit-backdrop-filter: blur(22px);
-    }
-
-    .title {
-      margin: 0 0 10px;
-      font-size: clamp(30px, 4vw, 48px);
-      font-weight: 600;
-      letter-spacing: -0.03em;
-    }
-
-    .subtitle {
-      margin: 0 0 28px;
-      color: var(--text-secondary);
-      font-size: 15px;
-      line-height: 1.5;
-    }
-
-    .search-form {
+    .search-form { width: min(584px, calc(100vw - 48px)); transform: translateY(-7vh); }
+    .search-box {
+      height: 50px;
       display: grid;
-      grid-template-columns: 1fr auto;
-      gap: 12px;
+      grid-template-columns: 30px minmax(0, 1fr) 38px;
+      align-items: center;
+      gap: 6px;
+      padding: 0 8px 0 14px;
+      border: 1px solid var(--border);
+      border-radius: 25px;
+      background: var(--surface);
+      box-shadow: 0 2px 8px rgba(16, 24, 40, 0.12);
     }
-
-    .search-input {
-      width: 100%;
-      height: 56px;
-      padding: 0 18px;
-      border: 1px solid var(--input-border);
-      border-radius: 16px;
-      background: var(--input-bg);
-      color: var(--text-primary);
-      font-size: 16px;
-      outline: none;
-      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
-    }
-
-    .search-input::placeholder {
-      color: rgba(248, 251, 255, 0.6);
-    }
-
-    .search-input:focus {
-      border-color: rgba(255, 255, 255, 0.42);
-      background: rgba(10, 20, 34, 0.48);
-    }
-
-    .search-button {
-      height: 56px;
-      padding: 0 22px;
-      border: 0;
-      border-radius: 16px;
-      background: var(--button-bg);
+    .search-box:focus-within { border-color: color-mix(in srgb, var(--accent) 55%, transparent); box-shadow: var(--shadow); }
+    .engine-mark {
+      width: 24px;
+      height: 24px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
       color: #fff;
-      font-size: 15px;
-      font-weight: 600;
+      background: #1683e8;
+      font-size: 12px;
+      font-weight: 700;
+      user-select: none;
+    }
+    .search-input {
+      min-width: 0;
+      height: 46px;
+      border: 0;
+      outline: 0;
+      color: var(--text);
+      background: transparent;
+      font-size: 16px;
+    }
+    .search-input::placeholder { color: var(--muted); }
+    .icon-button {
+      width: 34px;
+      height: 34px;
+      display: grid;
+      place-items: center;
+      border: 0;
+      border-radius: 50%;
+      background: transparent;
       cursor: pointer;
-      transition: background 120ms ease, transform 120ms ease;
     }
-
-    .search-button:hover {
-      background: var(--button-bg-hover);
+    .icon-button:hover { background: var(--surface-muted); }
+    .icon-button svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    .customize-button {
+      position: fixed;
+      z-index: 3;
+      right: 18px;
+      bottom: 18px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      box-shadow: 0 2px 8px rgba(16, 24, 40, 0.12);
     }
-
-    .search-button:active {
-      transform: translateY(1px);
+    .overlay {
+      position: fixed;
+      z-index: 10;
+      inset: 0;
+      display: none;
+      justify-content: flex-end;
+      background: rgba(16, 24, 40, 0.28);
     }
-
-    .footer {
-      margin-top: 18px;
-      color: rgba(248, 251, 255, 0.72);
-      font-size: 13px;
+    .overlay.open { display: flex; }
+    .panel {
+      width: min(390px, 100vw);
+      height: 100%;
+      overflow: auto;
+      padding: 18px;
+      background: var(--surface);
+      box-shadow: -12px 0 36px rgba(16, 24, 40, 0.2);
     }
-
-    @media (max-width: 640px) {
-      .shell {
-        padding: 22px;
-        border-radius: 22px;
-      }
-
-      .search-form {
-        grid-template-columns: 1fr;
-      }
-
-      .search-button {
-        width: 100%;
-      }
+    .panel-header { display: flex; align-items: center; justify-content: space-between; min-height: 36px; }
+    .panel-header h1, .section h2 { margin: 0; letter-spacing: 0; }
+    .panel-header h1 { font-size: 17px; font-weight: 650; }
+    .section { padding: 20px 0; border-bottom: 1px solid var(--border); }
+    .section:last-child { border-bottom: 0; }
+    .section h2 { font-size: 14px; font-weight: 650; }
+    .section-copy { margin: 5px 0 14px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+    .engine-list { display: grid; gap: 6px; }
+    .engine-row {
+      min-height: 44px;
+      display: grid;
+      grid-template-columns: 20px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 10px;
+      padding: 7px 8px;
+      border-radius: 7px;
+    }
+    .engine-row:hover { background: var(--surface-muted); }
+    .engine-row input { accent-color: var(--accent); }
+    .engine-copy { min-width: 0; }
+    .engine-name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 600; }
+    .engine-url { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 10.5px; }
+    .row-button, .primary-button, .secondary-button, .danger-button {
+      min-height: 34px;
+      border: 0;
+      border-radius: 6px;
+      padding: 0 12px;
+      cursor: pointer;
+      font-size: 12.5px;
+      font-weight: 600;
+    }
+    .row-button:disabled, .primary-button:disabled, .secondary-button:disabled, .danger-button:disabled {
+      opacity: 0.45;
+      cursor: default;
+    }
+    .row-button, .secondary-button { background: var(--surface-muted); }
+    .primary-button { color: #fff; background: #0b66d8; }
+    .danger-button { color: var(--danger); background: color-mix(in srgb, var(--danger) 10%, transparent); }
+    .add-engine { margin-top: 10px; }
+    .engine-form { display: none; gap: 10px; margin-top: 12px; }
+    .engine-form.open { display: grid; }
+    .field { display: grid; gap: 5px; }
+    .field label { color: var(--muted); font-size: 11.5px; font-weight: 600; }
+    .field input {
+      width: 100%;
+      height: 36px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0 10px;
+      outline: none;
+      color: var(--text);
+      background: transparent;
+    }
+    .field input:focus { border-color: var(--accent); }
+    .field-help, .form-error { margin: 0; font-size: 10.5px; line-height: 1.4; }
+    .field-help { color: var(--muted); }
+    .form-error { display: none; color: var(--danger); }
+    .form-error.visible { display: block; }
+    .form-actions { display: flex; justify-content: flex-end; gap: 8px; }
+    .background-preview {
+      height: 116px;
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      color: var(--muted);
+      background: var(--page) center / cover no-repeat;
+      font-size: 12px;
+    }
+    .background-preview.has-image span { display: none; }
+    .background-actions { display: flex; gap: 8px; margin-top: 10px; }
+    .background-actions button { flex: 1; }
+    .toast {
+      position: fixed;
+      z-index: 20;
+      left: 50%;
+      bottom: 24px;
+      max-width: calc(100vw - 48px);
+      transform: translate(-50%, 16px);
+      padding: 9px 13px;
+      border-radius: 6px;
+      color: #fff;
+      background: rgba(24, 34, 48, 0.94);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 150ms ease, transform 150ms ease;
+      font-size: 12px;
+    }
+    .toast.visible { opacity: 1; transform: translate(-50%, 0); }
+    @media (max-width: 540px) {
+      .search-form { transform: translateY(-11vh); }
+      .panel { width: 100%; }
     }
   </style>
 </head>
 <body>
-  <main class="shell">
-    <h1 class="title">Bing Search</h1>
-    <p class="subtitle">Type a query and press Enter to search with Bing.</p>
-    <form class="search-form" action="https://cn.bing.com/search" method="get">
-      <input
-        class="search-input"
-        type="search"
-        name="q"
-        placeholder="Search the web, images, videos, and more"
-        autocomplete="off"
-        autofocus
-      >
-      <button class="search-button" type="submit">Search</button>
+  <main class="page">
+    <form class="search-form" id="searchForm">
+      <div class="search-box">
+        <span class="engine-mark" id="engineMark" aria-hidden="true">B</span>
+        <input class="search-input" id="searchInput" type="search" autocomplete="off" autofocus
+               data-i18n-placeholder="newtab.searchPlaceholder" placeholder="Search the web">
+        <button class="icon-button" type="submit" data-i18n-aria-label="newtab.searchPlaceholder" aria-label="Search the web">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.3"/><path d="m15.5 15.5 4.2 4.2"/></svg>
+        </button>
+      </div>
     </form>
-    <div class="footer">Background image by Bing</div>
   </main>
+
+  <button class="icon-button customize-button" id="customizeButton" type="button"
+          data-i18n-title="newtab.customize" data-i18n-aria-label="newtab.customize" title="Customize New Tab" aria-label="Customize New Tab">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.86 2.86-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21h-4v-.1A1.7 1.7 0 0 0 8.6 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.86-2.86.06-.06A1.7 1.7 0 0 0 4.2 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.1-.4H2.4v-4h.1A1.7 1.7 0 0 0 4.2 8.6a1.7 1.7 0 0 0-.34-1.88l-.06-.06L6.66 3.8l.06.06A1.7 1.7 0 0 0 8.6 4.2a1.7 1.7 0 0 0 1-.6A1.7 1.7 0 0 0 10 2.5v-.1h4v.1A1.7 1.7 0 0 0 15 4.2a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.86 2.86-.06.06A1.7 1.7 0 0 0 19.4 8.6a1.7 1.7 0 0 0 .6 1 1.7 1.7 0 0 0 1.1.4h.1v4h-.1a1.7 1.7 0 0 0-1.7 1z"/></svg>
+  </button>
+
+  <div class="overlay" id="customizeOverlay">
+    <aside class="panel" role="dialog" aria-modal="true" aria-labelledby="customizeTitle">
+      <header class="panel-header">
+        <h1 id="customizeTitle" data-i18n="newtab.customize">Customize New Tab</h1>
+        <button class="icon-button" id="closeCustomize" type="button" data-i18n-aria-label="common.close" aria-label="Close">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>
+        </button>
+      </header>
+
+      <section class="section">
+        <h2 data-i18n="newtab.searchEngine">Search engine</h2>
+        <p class="section-copy" data-i18n="newtab.searchEngineHelp">Choose the engine used by the New Tab search box.</p>
+        <div class="engine-list" id="engineList"></div>
+        <button class="row-button add-engine" id="showEngineForm" type="button" data-i18n="newtab.addEngine">Add search engine</button>
+        <form class="engine-form" id="engineForm">
+          <div class="field">
+            <label for="engineName" data-i18n="newtab.engineName">Name</label>
+            <input id="engineName" maxlength="40" data-i18n-placeholder="newtab.engineNamePlaceholder" placeholder="Example Search">
+          </div>
+          <div class="field">
+            <label for="engineUrl" data-i18n="newtab.engineUrl">Search URL</label>
+            <input id="engineUrl" inputmode="url" data-i18n-placeholder="newtab.engineUrlPlaceholder" placeholder="https://example.com/search?q={query}">
+            <p class="field-help" data-i18n="newtab.engineUrlHelp">Use {query} where the search text belongs.</p>
+          </div>
+          <p class="form-error" id="engineError"></p>
+          <div class="form-actions">
+            <button class="secondary-button" id="cancelEngine" type="button" data-i18n="common.cancel">Cancel</button>
+            <button class="primary-button" type="submit" data-i18n="common.add">Add</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="section">
+        <h2 data-i18n="newtab.background">Background</h2>
+        <p class="section-copy" data-i18n="newtab.backgroundHelp">Use a local image, or keep the default clean background.</p>
+        <div class="background-preview" id="backgroundPreview"><span data-i18n="newtab.noBackground">No background image</span></div>
+        <div class="background-actions">
+          <button class="secondary-button" id="chooseBackground" type="button" data-i18n="newtab.chooseImage">Choose image</button>
+          <button class="danger-button" id="removeBackground" type="button" data-i18n="newtab.removeImage" disabled>Remove image</button>
+        </div>
+        <input id="backgroundFile" type="file" accept="image/*" hidden>
+      </section>
+    </aside>
+  </div>
+  <div class="toast" id="toast" role="status"></div>
+
+  <script src="lingxia://lxapp/public/i18n.js"></script>
+  <script src="lingxia://lxapp/pages/newtab/newtab.js"></script>
 </body>
 </html>

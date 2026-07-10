@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Downloads</title>
+  <title data-i18n="downloads.title">Downloads</title>
   <link rel="stylesheet" href="lingxia://lxapp/public/downloads.css">
   <style>
     #clearBtn { font-size: 13px; color: #007AFF; font-weight: 500; display: none; padding: 6px 12px; border-radius: 999px; }
@@ -14,14 +14,16 @@
 <body>
   <div class="header">
     <div class="header-left">
-      <h1>Downloads</h1>
+      <h1 data-i18n="downloads.title">Downloads</h1>
       <p class="status" id="statusText"></p>
     </div>
-    <button id="clearBtn">Clear all</button>
+    <button id="clearBtn" data-i18n="downloads.clearAll">Clear all</button>
   </div>
   <div class="error-banner" id="errorBanner"></div>
   <div class="list" id="list"></div>
 
+  <script src="lingxia://lxapp/public/i18n.js"></script>
+  <script>window.LingXiaI18n.apply();</script>
   <script src="lingxia://lxapp/pages/downloads/download.js"></script>
 </body>
 </html>
