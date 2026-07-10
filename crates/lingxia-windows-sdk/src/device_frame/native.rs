@@ -836,6 +836,34 @@ fn sync_device_frame_for_content(content: HWND) {
     set_last_sync_rect(handle, content_rect);
 }
 
+/// Restacks only the frame window directly below `content`. A z-order-only
+/// raise of the content does not change its cached rectangle, but the frame
+/// must still follow it or the desktop shows through the rounded window region.
+/// Avoid moving the companion overlays here; doing so on every page switch
+/// causes the visible jitter that the geometry cache prevents.
+fn restack_frame_below_content(content: HWND) {
+    let Some(frame) = frame_state(hwnd_handle(content), |state| state.frame) else {
+        return;
+    };
+    if !is_window_handle_valid(frame) {
+        return;
+    }
+    unsafe {
+        let _ = WindowsAndMessaging::SetWindowPos(
+            hwnd_from_handle(frame),
+            Some(content),
+            0,
+            0,
+            0,
+            0,
+            WindowsAndMessaging::SWP_NOMOVE
+                | WindowsAndMessaging::SWP_NOSIZE
+                | WindowsAndMessaging::SWP_NOACTIVATE
+                | WindowsAndMessaging::SWP_SHOWWINDOW,
+        );
+    }
+}
+
 fn install_device_frame_subclass(hwnd: HWND) {
     let states = WINDOW_STATES.get_or_init(|| Mutex::new(HashMap::new()));
     if states
@@ -888,7 +916,9 @@ unsafe extern "system" fn device_frame_host_proc(
             // the screen comes back.
             let shown_or_hidden = flags.contains(WindowsAndMessaging::SWP_SHOWWINDOW)
                 || flags.contains(WindowsAndMessaging::SWP_HIDEWINDOW);
-            if sized || moved || z_order_only || shown_or_hidden {
+            if z_order_only {
+                restack_frame_below_content(hwnd);
+            } else if sized || moved || shown_or_hidden {
                 sync_device_frame_for_content(hwnd);
             }
         }
