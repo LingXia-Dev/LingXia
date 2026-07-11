@@ -1184,6 +1184,7 @@ fn build_browser_tab_items() -> Vec<WindowsShellAuxiliaryItemLayout> {
                 id: tab.tab_id,
                 title,
                 active,
+                pinned: false,
                 closable: true,
                 icon_png,
                 icon_path: String::new(),
@@ -1198,6 +1199,7 @@ fn build_pinned_bookmark_items() -> Vec<WindowsShellAuxiliaryItemLayout> {
         .and_then(|tab_id| browser_tab_summary(&tab_id))
         .and_then(|tab| tab.current_url)
         .map(|url| lingxia_browser_shell::normalize_bookmark_url(&url));
+    let tabs = browser_tabs();
     lingxia_browser_shell::bookmarks_snapshot()
         .map(|snapshot| {
             snapshot
@@ -1205,6 +1207,16 @@ fn build_pinned_bookmark_items() -> Vec<WindowsShellAuxiliaryItemLayout> {
                 .into_iter()
                 .filter(|entry| entry.pinned)
                 .map(|entry| {
+                    let normalized = lingxia_browser_shell::normalize_bookmark_url(&entry.url);
+                    let icon_png = tabs.iter().find_map(|tab| {
+                        tab.current_url
+                            .as_deref()
+                            .is_some_and(|url| {
+                                lingxia_browser_shell::normalize_bookmark_url(url) == normalized
+                            })
+                            .then(|| tab.favicon_png.clone())
+                            .flatten()
+                    });
                     let title = if entry.title.trim().is_empty() {
                         entry.url.clone()
                     } else {
@@ -1213,12 +1225,10 @@ fn build_pinned_bookmark_items() -> Vec<WindowsShellAuxiliaryItemLayout> {
                     WindowsShellAuxiliaryItemLayout {
                         id: format!("{AUX_BOOKMARK_PREFIX}{}", entry.id),
                         title,
-                        active: active_url.as_deref()
-                            == Some(
-                                lingxia_browser_shell::normalize_bookmark_url(&entry.url).as_str(),
-                            ),
+                        active: active_url.as_deref() == Some(normalized.as_str()),
+                        pinned: true,
                         closable: false,
-                        icon_png: None,
+                        icon_png,
                         icon_path: String::new(),
                     }
                 })
@@ -1255,6 +1265,7 @@ fn build_open_lxapp_items(owner_appid: &str) -> Vec<WindowsShellAuxiliaryItemLay
                 id: format!("{AUX_LXAPP_PREFIX}{}", info.appid),
                 title,
                 active: info.appid == current_appid,
+                pinned: false,
                 closable: true,
                 icon_png: None,
                 icon_path,

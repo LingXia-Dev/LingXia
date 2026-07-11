@@ -39,6 +39,8 @@ pub struct WindowsShellAuxiliaryItemLayout {
     pub id: String,
     pub title: String,
     pub active: bool,
+    /// Compact pinned-site shortcut rendered in the sidebar icon grid.
+    pub pinned: bool,
     /// Whether the row exposes the trailing close affordance. Pinned bookmark
     /// shortcuts are independent from open tabs and therefore are not closed.
     pub closable: bool,

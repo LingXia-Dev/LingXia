@@ -2,6 +2,9 @@
 
 use super::*;
 
+const PINNED_SHORTCUT_SIZE: i32 = 34;
+const PINNED_SHORTCUT_ICON_SIZE: i32 = 20;
+
 /// Geometry of the sidebar auxiliary section: separator line, one row rect
 /// per auxiliary item (rows that would collide with the footer are dropped),
 /// and the add row.
@@ -54,7 +57,41 @@ pub(in crate::shell::chrome) fn sidebar_auxiliary_rects(
     };
 
     let mut items = Vec::with_capacity(tabbar.auxiliary_items.len());
-    for _ in &tabbar.auxiliary_items {
+    let pinned_count = tabbar
+        .auxiliary_items
+        .iter()
+        .take_while(|item| item.pinned)
+        .count();
+    if pinned_count > 0 {
+        let grid_left = rect.left + SIDEBAR_ITEM_INSET;
+        let grid_width = (rect.right - SIDEBAR_ITEM_INSET - grid_left).max(PINNED_SHORTCUT_SIZE);
+        let columns = ((grid_width + SIDEBAR_ITEM_GAP) / (PINNED_SHORTCUT_SIZE + SIDEBAR_ITEM_GAP))
+            .max(1) as usize;
+        let grid_top = top;
+        for index in 0..pinned_count {
+            let row = index / columns;
+            let column = index % columns;
+            let left = grid_left + column as i32 * (PINNED_SHORTCUT_SIZE + SIDEBAR_ITEM_GAP);
+            let top = grid_top + row as i32 * (PINNED_SHORTCUT_SIZE + SIDEBAR_ITEM_GAP);
+            let pinned_rect = normalize_rect(RECT {
+                left,
+                top,
+                right: left + PINNED_SHORTCUT_SIZE,
+                bottom: top + PINNED_SHORTCUT_SIZE,
+            });
+            if pinned_rect.bottom > footer_top {
+                return Some(SidebarAuxiliaryRects {
+                    separator,
+                    items,
+                    add: None,
+                });
+            }
+            items.push(pinned_rect);
+        }
+        let rows = pinned_count.div_ceil(columns) as i32;
+        top = grid_top + rows * (PINNED_SHORTCUT_SIZE + SIDEBAR_ITEM_GAP);
+    }
+    for _ in tabbar.auxiliary_items.iter().skip(pinned_count) {
         match row(&mut top) {
             Some(rect) => items.push(rect),
             None => break,
@@ -130,6 +167,48 @@ pub(in crate::shell::chrome) fn draw_sidebar_auxiliary_section(
 
     for (item, item_rect) in tabbar.auxiliary_items.iter().zip(&auxiliary.items) {
         let item_rect = *item_rect;
+        if item.pinned {
+            if item.active {
+                fill_round_rect_aa(hdc, item_rect, 8, shell_palette().panel_background);
+                fill_round_rect_aa(
+                    hdc,
+                    RECT {
+                        left: item_rect.left + 9,
+                        top: item_rect.bottom - 4,
+                        right: item_rect.right - 9,
+                        bottom: item_rect.bottom - 1,
+                    },
+                    2,
+                    tabbar.selected_color,
+                );
+            } else {
+                draw_hover_wash(hdc, item_rect, 8, cursor);
+            }
+            let left =
+                item_rect.left + (rect_width(&item_rect) - PINNED_SHORTCUT_ICON_SIZE).max(0) / 2;
+            let top =
+                item_rect.top + (rect_height(&item_rect) - PINNED_SHORTCUT_ICON_SIZE).max(0) / 2;
+            let icon_rect = normalize_rect(RECT {
+                left,
+                top,
+                right: left + PINNED_SHORTCUT_ICON_SIZE,
+                bottom: top + PINNED_SHORTCUT_ICON_SIZE,
+            });
+            let drawn = item
+                .icon_png
+                .as_deref()
+                .is_some_and(|png| draw_icon_from_png_bytes(hdc, &item.id, png, icon_rect));
+            if !drawn {
+                draw_design_icon_button(
+                    hdc,
+                    item_rect,
+                    WindowsDesignIcon::Globe,
+                    shell_palette().text_muted,
+                    PINNED_SHORTCUT_ICON_SIZE,
+                );
+            }
+            continue;
+        }
         if item.active {
             // White row card on the gray sidebar, accent bar on white.
             fill_round_rect_aa(hdc, item_rect, 8, shell_palette().panel_background);
