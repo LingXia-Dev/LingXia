@@ -202,6 +202,7 @@ pub(super) mod command_id {
     pub(super) const BROWSER_NAV_RELOAD: &str = "browser.nav.reload";
     pub(super) const BROWSER_ADDRESS_BAR: &str = "browser.address-bar";
     pub(super) const BROWSER_BOOKMARK_TOGGLE: &str = "browser.bookmark.toggle";
+    pub(super) const BROWSER_PIN_TOGGLE: &str = "browser.pin.toggle";
     pub(super) const BROWSER_PAGE_MENU: &str = "browser.page-menu";
     pub(super) const BROWSER_CLOSE: &str = "browser.close";
     pub(super) const SIDEBAR_TOGGLE: &str = "sidebar.toggle";
@@ -1395,6 +1396,11 @@ pub(super) fn chrome_hit_test(
             command_id::BROWSER_BOOKMARK_TOGGLE,
             json!({}),
         ));
+    }
+    if let Some(pin) = controls.pin
+        && rect_contains(&pin, point)
+    {
+        return Some(chrome_command(command_id::BROWSER_PIN_TOGGLE, json!({})));
     }
     if let Some(page_menu) = controls.page_menu
         && rect_contains(&page_menu, point)

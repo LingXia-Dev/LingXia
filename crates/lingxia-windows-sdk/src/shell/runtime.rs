@@ -227,6 +227,7 @@ mod chrome_command {
     pub(super) const BROWSER_NAV_RELOAD: &str = "browser.nav.reload";
     pub(super) const BROWSER_ADDRESS_BAR: &str = "browser.address-bar";
     pub(super) const BROWSER_BOOKMARK_TOGGLE: &str = "browser.bookmark.toggle";
+    pub(super) const BROWSER_PIN_TOGGLE: &str = "browser.pin.toggle";
     pub(super) const BROWSER_PAGE_MENU: &str = "browser.page-menu";
     pub(super) const BROWSER_CLOSE: &str = "browser.close";
     pub(super) const SIDEBAR_TOGGLE: &str = "sidebar.toggle";
@@ -886,6 +887,14 @@ fn build_address_bar_layout() -> Option<WindowsShellAddressBarLayout> {
         .is_some_and(lingxia_browser_shell::is_bookmarked);
     #[cfg(not(feature = "browser-shell"))]
     let bookmarked = false;
+    #[cfg(feature = "browser-shell")]
+    let pinned = tab
+        .current_url
+        .as_deref()
+        .and_then(pinned_bookmark_for_url)
+        .is_some();
+    #[cfg(not(feature = "browser-shell"))]
+    let pinned = false;
     Some(WindowsShellAddressBarLayout {
         visible: true,
         url_text: browser_tab_display_url(&tab),
@@ -893,6 +902,7 @@ fn build_address_bar_layout() -> Option<WindowsShellAddressBarLayout> {
         can_go_back: tab.can_go_back,
         can_go_forward: tab.can_go_forward,
         bookmarked,
+        pinned,
         tab_count: browser_tabs().len(),
     })
 }
@@ -1301,6 +1311,17 @@ fn auxiliary_bookmark(raw: &str) -> Option<lingxia_browser_shell::BookmarkEntry>
         .find(|entry| entry.id == id && entry.pinned)
 }
 
+#[cfg(feature = "browser-shell")]
+fn pinned_bookmark_for_url(url: &str) -> Option<lingxia_browser_shell::BookmarkEntry> {
+    let normalized = lingxia_browser_shell::normalize_bookmark_url(url);
+    lingxia_browser_shell::bookmarks_snapshot()?
+        .entries
+        .into_iter()
+        .find(|entry| {
+            entry.pinned && lingxia_browser_shell::normalize_bookmark_url(&entry.url) == normalized
+        })
+}
+
 #[cfg(not(feature = "browser-shell"))]
 fn auxiliary_bookmark(_raw: &str) -> Option<()> {
     None
@@ -1670,6 +1691,10 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
         }
         chrome_command::BROWSER_BOOKMARK_TOGGLE => {
             toggle_presented_tab_bookmark(appid);
+            return;
+        }
+        chrome_command::BROWSER_PIN_TOGGLE => {
+            toggle_presented_tab_pin(appid);
             return;
         }
         chrome_command::BROWSER_PAGE_MENU => {
@@ -2600,6 +2625,39 @@ fn toggle_presented_tab_bookmark(appid: &str) {
     sync_shell_layout(appid);
 }
 
+#[cfg(feature = "browser-shell")]
+fn toggle_presented_tab_pin(appid: &str) {
+    let Some(tab_id) = presented_browser_tab() else {
+        return;
+    };
+    let Some(tab) = browser_tab_summary(&tab_id) else {
+        return;
+    };
+    let Some(url) = tab
+        .current_url
+        .as_deref()
+        .map(str::trim)
+        .filter(|url| url.starts_with("http://") || url.starts_with("https://"))
+    else {
+        return;
+    };
+    if let Some(entry) = pinned_bookmark_for_url(url) {
+        let command = serde_json::json!({
+            "op": "setPinned",
+            "id": entry.id,
+            "pinned": false,
+        });
+        let _ = lingxia_browser_shell::bookmarks_command_json(&command.to_string());
+    } else {
+        let title = browser_tab_display_title(&tab);
+        let _ = lingxia_browser_shell::pin_bookmark_url(url, &title);
+    }
+    sync_shell_layout(appid);
+}
+
+#[cfg(not(feature = "browser-shell"))]
+fn toggle_presented_tab_pin(_appid: &str) {}
+
 #[cfg(not(feature = "browser-shell"))]
 fn toggle_presented_tab_bookmark(_appid: &str) {}
 
@@ -2617,17 +2675,7 @@ fn show_browser_page_menu(appid: &str, screen_x: i32, screen_y: i32) {
     let url = tab.current_url.clone().unwrap_or_default();
     let is_web_url = url.starts_with("http://") || url.starts_with("https://");
     let bookmarked = is_web_url && lingxia_browser_shell::is_bookmarked(&url);
-    let normalized_url = lingxia_browser_shell::normalize_bookmark_url(&url);
-    let pinned_id = lingxia_browser_shell::bookmarks_snapshot().and_then(|snapshot| {
-        snapshot
-            .entries
-            .into_iter()
-            .find(|entry| {
-                entry.pinned
-                    && lingxia_browser_shell::normalize_bookmark_url(&entry.url) == normalized_url
-            })
-            .map(|entry| entry.id)
-    });
+    let pinned_id = pinned_bookmark_for_url(&url).map(|entry| entry.id);
     let mut items = vec![
         lingxia_logic::i18n::t(if bookmarked {
             lingxia_logic::I18nKey::BrowserRemoveBookmark

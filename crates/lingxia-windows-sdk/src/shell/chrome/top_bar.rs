@@ -46,8 +46,9 @@ pub(super) struct TopBarControls {
     pub(super) nav_reload: Option<RECT>,
     /// The URL capsule (also the inline address-edit anchor).
     pub(super) address: Option<RECT>,
-    /// Current-page bookmark toggle and overflow page menu.
+    /// Current-page bookmark/pin toggles and overflow page menu.
     pub(super) bookmark: Option<RECT>,
+    pub(super) pin: Option<RECT>,
     pub(super) page_menu: Option<RECT>,
     /// Dismisses the presented browser tab back to the lxapp. Only on
     /// device-framed screens (no caption buttons), mirroring the macOS
@@ -129,6 +130,7 @@ pub(super) fn top_bar_controls(
         nav_reload: None,
         address: None,
         bookmark: None,
+        pin: None,
         page_menu: None,
         browser_close: None,
     };
@@ -157,8 +159,10 @@ pub(super) fn top_bar_controls(
         .is_some_and(|address_bar| address_bar.aside);
     if !aside {
         let page_menu = square_button(right_edge - TOP_BAR_BUTTON_SIZE);
-        let bookmark = square_button(page_menu.left - TOP_BAR_BUTTON_GAP - TOP_BAR_BUTTON_SIZE);
+        let pin = square_button(page_menu.left - TOP_BAR_BUTTON_GAP - TOP_BAR_BUTTON_SIZE);
+        let bookmark = square_button(pin.left - TOP_BAR_BUTTON_GAP - TOP_BAR_BUTTON_SIZE);
         controls.page_menu = Some(page_menu);
+        controls.pin = Some(pin);
         controls.bookmark = Some(bookmark);
         right_edge = bookmark.left - ADDRESS_CAPSULE_NAV_GAP;
     }
@@ -370,6 +374,24 @@ pub(super) fn draw_top_bar_controls(
                 WindowsDesignIcon::BookmarkFilled
             } else {
                 WindowsDesignIcon::Bookmark
+            },
+            shell_palette().frame_button_icon,
+            18,
+        );
+    }
+    if let Some(pin) = controls.pin {
+        draw_hover_wash(hdc, pin, 5, cursor);
+        let filled = layout
+            .address_bar
+            .as_ref()
+            .is_some_and(|address_bar| address_bar.pinned);
+        draw_design_icon_button(
+            hdc,
+            pin,
+            if filled {
+                WindowsDesignIcon::PinFilled
+            } else {
+                WindowsDesignIcon::Pin
             },
             shell_palette().frame_button_icon,
             18,

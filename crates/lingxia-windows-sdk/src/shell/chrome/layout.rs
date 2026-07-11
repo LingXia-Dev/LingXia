@@ -96,6 +96,8 @@ pub struct WindowsShellAddressBarLayout {
     pub can_go_forward: bool,
     /// Whether the current page is stored as a bookmark.
     pub bookmarked: bool,
+    /// Whether the current page is pinned as a sidebar shortcut.
+    pub pinned: bool,
     /// Open browser-tab count, shown on the phone bar's tabs button.
     pub tab_count: usize,
 }
