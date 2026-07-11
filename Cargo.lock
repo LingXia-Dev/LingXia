@@ -2973,6 +2973,7 @@ dependencies = [
 name = "lingxia-browser-shell"
 version = "0.10.0"
 dependencies = [
+ "base64",
  "futures",
  "html5ever",
  "lingxia-app-context",

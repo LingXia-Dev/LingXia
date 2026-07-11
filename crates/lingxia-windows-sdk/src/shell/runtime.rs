@@ -1176,6 +1176,10 @@ fn build_browser_tab_items() -> Vec<WindowsShellAuxiliaryItemLayout> {
     let presented = presented_browser_tab();
     browser_tabs()
         .into_iter()
+        // A pinned page has one canonical sidebar representation: the compact
+        // shortcut above lxapp navigation. Keeping its open-tab row as well
+        // duplicates the same website below Home and scrambles the hierarchy.
+        .filter(|tab| !browser_tab_is_pinned(tab))
         .map(|tab| {
             let active = presented.as_deref() == Some(tab.tab_id.as_str());
             let title = browser_tab_display_title(&tab);
@@ -1194,6 +1198,19 @@ fn build_browser_tab_items() -> Vec<WindowsShellAuxiliaryItemLayout> {
 }
 
 #[cfg(feature = "browser-shell")]
+fn browser_tab_is_pinned(tab: &BrowserTabSummary) -> bool {
+    tab.current_url
+        .as_deref()
+        .and_then(pinned_bookmark_for_url)
+        .is_some()
+}
+
+#[cfg(not(feature = "browser-shell"))]
+fn browser_tab_is_pinned(_tab: &BrowserTabSummary) -> bool {
+    false
+}
+
+#[cfg(feature = "browser-shell")]
 fn build_pinned_bookmark_items() -> Vec<WindowsShellAuxiliaryItemLayout> {
     let active_url = presented_browser_tab()
         .and_then(|tab_id| browser_tab_summary(&tab_id))
@@ -1208,14 +1225,16 @@ fn build_pinned_bookmark_items() -> Vec<WindowsShellAuxiliaryItemLayout> {
                 .filter(|entry| entry.pinned)
                 .map(|entry| {
                     let normalized = lingxia_browser_shell::normalize_bookmark_url(&entry.url);
-                    let icon_png = tabs.iter().find_map(|tab| {
-                        tab.current_url
-                            .as_deref()
-                            .is_some_and(|url| {
-                                lingxia_browser_shell::normalize_bookmark_url(url) == normalized
-                            })
-                            .then(|| tab.favicon_png.clone())
-                            .flatten()
+                    let icon_png = entry.favicon_png().map(Arc::new).or_else(|| {
+                        tabs.iter().find_map(|tab| {
+                            tab.current_url
+                                .as_deref()
+                                .is_some_and(|url| {
+                                    lingxia_browser_shell::normalize_bookmark_url(url) == normalized
+                                })
+                                .then(|| tab.favicon_png.clone())
+                                .flatten()
+                        })
                     });
                     let title = if entry.title.trim().is_empty() {
                         entry.url.clone()
@@ -2661,7 +2680,11 @@ fn toggle_presented_tab_pin(appid: &str) {
         let _ = lingxia_browser_shell::bookmarks_command_json(&command.to_string());
     } else {
         let title = browser_tab_display_title(&tab);
-        let _ = lingxia_browser_shell::pin_bookmark_url(url, &title);
+        let _ = lingxia_browser_shell::pin_bookmark_url_with_favicon(
+            url,
+            &title,
+            tab.favicon_png.as_deref().map(Vec::as_slice),
+        );
     }
     sync_shell_layout(appid);
 }
@@ -2764,7 +2787,11 @@ fn show_browser_page_menu(appid: &str, screen_x: i32, screen_y: i32) {
                     });
                     let _ = lingxia_browser_shell::bookmarks_command_json(&command.to_string());
                 } else {
-                    let _ = lingxia_browser_shell::pin_bookmark_url(&url, &title);
+                    let _ = lingxia_browser_shell::pin_bookmark_url_with_favicon(
+                        &url,
+                        &title,
+                        tab.favicon_png.as_deref().map(Vec::as_slice),
+                    );
                 }
             }
             2 if page_actionable => {
