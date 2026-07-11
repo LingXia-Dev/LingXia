@@ -58,31 +58,18 @@ Crashed sessions disappear from the broker automatically — there is nothing to
 Scripts may be an expression or a function body using `return` / `await`. Surface-opening calls (`lx.surface.*`, `navigateTo`) deadlock from `lxapp eval` — trigger those via a real page interaction (`lxapp page click`) instead. To navigate, prefer `lxapp nav`; the JS APIs take `{ page }` or `{ path }`, never `url`.
 
 **`desktop`** — local desktop inspection and automation, independent of a dev
-session. It can enumerate windows/displays, capture an occlusion-independent
-window screenshot, inspect accessibility, read pixels/clipboard state, and
-synthesize pointer or keyboard input. Mutating commands require
-`--allow-control`; destructive commands additionally require
-`--allow-destructive`.
+session. It covers windows, screenshots, accessibility, pixels, clipboard,
+pointer, and keyboard. Writes require `--allow-control`; destructive actions
+also require `--allow-destructive`.
 
-### Known `desktop` limitations on Windows
+On Windows, pointer and key input use foreground-only `SendInput`. A `--window`
+target is activated first; `--pid` requires exactly one visible window. True
+background input is not implemented by the current backend. Without a target,
+input goes to the foreground app. Window screenshots remain
+occlusion-independent, but separate native popups may require their own capture.
 
-- `desktop pointer|key ... --window <id>` (and `--pid`) is not supported on
-  Windows yet because the current backend uses foreground-only `SendInput`.
-  These targeted forms now fail explicitly with exit code 7 instead of
-  returning a false success acknowledgement. Focus the target and omit
-  `--window`/`--pid`, then verify the resulting state or screenshot.
-- Physical pointer input without `--window` targets the foreground desktop and
-  therefore can interfere with the user's active application. Do not use it in
-  unattended automation when the desktop is shared.
-- `desktop screenshot --window` captures the target's main window, but owned
-  native popup menus may be separate HWNDs and can be absent from that capture.
-  Enumerate/capture the popup window separately when the backend exposes it.
-- Win32 owner-drawn controls do not automatically expose accessibility nodes.
-  `desktop ax` therefore cannot semantically locate LingXia's native address-bar
-  icons or sidebar rows today; coordinate input is the only available path.
-- For LingXia WebView content, prefer `lxdev browser` or `lxdev lxapp page`:
-  those commands provide deterministic DOM targeting and state assertions. Use
-  `desktop` only for native chrome that those APIs cannot reach.
+Prefer `browser` or `lxapp page` for WebView content and use `desktop` for native
+chrome. Owner-drawn Win32 controls may not expose accessibility nodes.
 
 ## Output contract
 
