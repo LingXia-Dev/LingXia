@@ -48,6 +48,7 @@
     .settings-content .row-value { font-size: 12px; color: #667085; margin-top: 3px; word-break: break-word; line-height: 1.45; }
     .row-control { width: min(300px, 100%); flex-shrink: 0; }
     .row-control.compact { width: 132px; }
+    .row-control.language { width: 224px; }
     .row-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
     .settings-input {
       width: 100%; height: 36px; border-radius: 11px; border: 1px solid #d0d5dd;
@@ -55,6 +56,21 @@
     }
     .settings-input:focus { outline: none; border-color: #84caff; box-shadow: 0 0 0 3px rgba(0,122,255,0.12); }
     .settings-input:disabled { background: #f5f5f7; color: #98a2b3; cursor: not-allowed; }
+    .language-options {
+      display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px;
+      padding: 3px; border: 1px solid #d0d5dd; border-radius: 8px; background: #f2f4f7;
+    }
+    .language-option {
+      height: 32px; border: 0; border-radius: 5px; color: #667085; background: transparent;
+      font-size: 12px; font-weight: 600; transition: color 120ms, background 120ms, box-shadow 120ms;
+    }
+    .language-option:hover:not(:disabled) { color: #344054; background: rgba(255,255,255,0.62); }
+    .language-option:focus-visible { outline: 2px solid #84caff; outline-offset: 1px; }
+    .language-option.active {
+      color: #175cd3; background: #fff;
+      box-shadow: 0 1px 3px rgba(16,24,40,0.12), 0 0 0 1px rgba(16,24,40,0.04);
+    }
+    .language-option:disabled { opacity: 0.55; cursor: default; }
     .row-action { padding: 8px 13px; border-radius: 999px; background: #007AFF; color: #fff; font-size: 12px; font-weight: 600; white-space: nowrap; }
     .row-action.secondary { background: #eef1f6; color: #344054; }
     .row-action:hover, .row-action:focus-visible { filter: brightness(0.97); }
@@ -302,7 +318,7 @@
       .main-header { padding: 12px 16px; }
       .settings-content, .about-content { padding: 12px 16px 20px; }
       .settings-content .row, .about-content .row, .proxy-block-head { align-items: flex-start; flex-direction: column; }
-      .row-control, .row-control.compact, .row-actions { width: 100%; }
+      .row-control, .row-control.compact, .row-control.language, .row-actions { width: 100%; }
     }
 
     @media (max-width: 600px) {
@@ -325,7 +341,7 @@
       .settings-content .row, .about-content .row, .proxy-block-head, .proxy-mini .row {
         align-items: flex-start; flex-direction: column;
       }
-      .row-control, .row-control.compact, .row-actions { width: 100%; }
+      .row-control, .row-control.compact, .row-control.language, .row-actions { width: 100%; }
       .row-actions { flex-wrap: wrap; }
       .row-action { width: 100%; text-align: center; }
       .proxy-mode-group { grid-template-columns: 1fr; }
@@ -343,7 +359,13 @@
 <body>
   <nav class="sidebar">
     <div class="sidebar-title" data-i18n="settings.title">Settings</div>
-    <a class="nav-item active" data-panel="downloads">
+    <a class="nav-item active" data-panel="general">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="8" cy="8" r="6"/><path d="M2 8h12M8 2c1.7 1.6 2.5 3.6 2.5 6S9.7 12.4 8 14M8 2C6.3 3.6 5.5 5.6 5.5 8s.8 4.4 2.5 6"/>
+      </svg>
+      <span data-i18n="settings.general">General</span>
+    </a>
+    <a class="nav-item" data-panel="downloads">
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
         <path d="M8 2v8m0 0l-3-3m3 3l3-3"/><path d="M3 12h10"/>
       </svg>
@@ -370,7 +392,29 @@
   </nav>
 
   <div class="main">
-    <div class="panel active" id="panel-downloads">
+    <div class="panel active" id="panel-general">
+      <div class="main-header">
+        <div><h2 data-i18n="settings.general">General</h2></div>
+      </div>
+      <div class="settings-content">
+        <div class="section">
+          <div class="row">
+            <div class="row-main">
+              <div class="row-title" data-i18n="settings.language">Language</div>
+              <div class="row-value" id="languageStatus" data-i18n="settings.languageCopy">Choose the language used by LingXia browser pages.</div>
+            </div>
+            <div class="row-control language">
+              <div class="language-options" id="languageOptions" role="radiogroup" data-i18n-aria-label="settings.language" aria-label="Language">
+                <button class="language-option" data-language="en-US" type="button" role="radio">English</button>
+                <button class="language-option" data-language="zh-CN" type="button" role="radio">简体中文</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel" id="panel-downloads">
       <div class="main-header">
         <div><h2 data-i18n="settings.downloads">Downloads</h2></div>
       </div>
@@ -699,6 +743,33 @@
       var i18n = window.LingXiaI18n;
       var t = i18n.t;
       i18n.apply();
+      var languageStatus = document.getElementById('languageStatus');
+      var languageOptions = Array.prototype.slice.call(document.querySelectorAll('[data-language]'));
+      function syncLanguageOptions(locale, disabled) {
+        languageOptions.forEach(function (option) {
+          var selected = option.dataset.language === locale;
+          option.classList.toggle('active', selected);
+          option.setAttribute('aria-checked', selected ? 'true' : 'false');
+          option.disabled = !!disabled;
+        });
+      }
+      syncLanguageOptions(i18n.locale, false);
+      languageOptions.forEach(function (option) {
+        option.addEventListener('click', function () {
+          var next = option.dataset.language;
+          if (next === i18n.locale) return;
+          syncLanguageOptions(next, true);
+          callHost('settings.setLanguage', { language: next }).then(function (result) {
+            i18n.setLocale(result.language || next);
+            window.location.reload();
+          }, function (error) {
+            console.error('[Settings] settings.setLanguage error:', error);
+            syncLanguageOptions(i18n.locale, false);
+            languageStatus.textContent = t('settings.languageSaveFailed');
+            languageStatus.style.color = '#c01048';
+          });
+        });
+      });
       document.getElementById('aboutVersion').textContent = t('settings.appVersionValue', { version: '-' });
       var navItems = document.querySelectorAll('.nav-item[data-panel]');
       var modeButtons = document.querySelectorAll('.proxy-mode[data-proxy-mode]');
@@ -801,7 +872,7 @@
       function formatTimestamp(ts) {
         if (!ts) return t('settings.never');
         try {
-          return new Date(ts).toLocaleString();
+          return new Date(ts).toLocaleString(i18n.locale);
         } catch (_) {
           return t('settings.never');
         }

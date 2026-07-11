@@ -17,6 +17,8 @@ pub enum SettingsError {
 pub struct Settings {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub download_dir: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub webui_language: Option<String>,
 }
 
 static SETTINGS_CACHE: OnceLock<DashMap<String, Settings>> = OnceLock::new();
@@ -75,4 +77,40 @@ pub fn set_download_dir(
     let mut settings = load(app_data_dir)?;
     settings.download_dir = path.map(|value| value.as_ref().to_string_lossy().to_string());
     save(app_data_dir, &settings)
+}
+
+pub fn get_webui_language(app_data_dir: &Path) -> Result<Option<String>, SettingsError> {
+    Ok(load(app_data_dir)?
+        .webui_language
+        .filter(|value| !value.trim().is_empty()))
+}
+
+pub fn set_webui_language(
+    app_data_dir: &Path,
+    language: Option<&str>,
+) -> Result<(), SettingsError> {
+    let mut settings = load(app_data_dir)?;
+    settings.webui_language = language.map(str::to_string);
+    save(app_data_dir, &settings)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn webui_language_round_trips_with_other_settings() {
+        let dir = tempfile::tempdir().unwrap();
+        set_download_dir(dir.path(), Some(dir.path().join("downloads"))).unwrap();
+        set_webui_language(dir.path(), Some("zh-CN")).unwrap();
+
+        assert_eq!(
+            get_webui_language(dir.path()).unwrap().as_deref(),
+            Some("zh-CN")
+        );
+        assert_eq!(
+            get_download_dir(dir.path()).unwrap(),
+            Some(dir.path().join("downloads"))
+        );
+    }
 }

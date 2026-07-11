@@ -1,11 +1,13 @@
-use crate::host::{HostCancel, HostResult, await_or_cancel};
+use crate::host::{HostCancel, HostResult, StreamContext, await_or_cancel};
 use crate::platform_error::map_platform_error;
 use lingxia_app_context::app_config;
 use lingxia_service::file::ChooseDirectoryRequest;
 use lxapp::LxApp;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::OnceLock;
+use tokio::sync::broadcast;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -21,6 +23,29 @@ struct DownloadSettingsResult {
     download_dir: String,
     uses_default_dir: bool,
     can_choose_directory: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LanguageSettingsResult {
+    language: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SetLanguageInput {
+    language: String,
+}
+
+fn language_channel() -> &'static broadcast::Sender<LanguageSettingsResult> {
+    static CHANNEL: OnceLock<broadcast::Sender<LanguageSettingsResult>> = OnceLock::new();
+    CHANNEL.get_or_init(|| broadcast::channel(16).0)
+}
+
+fn language_settings_result(app: &LxApp) -> HostResult<LanguageSettingsResult> {
+    let language = lingxia_service::settings::webui_language(&app.app_data_dir())
+        .map_err(|error| lxapp::LxAppError::Runtime(error.to_string()))?;
+    Ok(LanguageSettingsResult { language })
 }
 
 fn download_settings_result(app: &LxApp) -> HostResult<DownloadSettingsResult> {
@@ -94,9 +119,59 @@ fn reset_download_directory(app: Arc<LxApp>) -> HostResult<DownloadSettingsResul
     download_settings_result(&app)
 }
 
+#[lingxia::native("settings.getLanguage")]
+fn get_webui_language(app: Arc<LxApp>) -> HostResult<LanguageSettingsResult> {
+    language_settings_result(&app)
+}
+
+#[lingxia::native("settings.setLanguage")]
+fn set_webui_language(
+    app: Arc<LxApp>,
+    input: SetLanguageInput,
+) -> HostResult<LanguageSettingsResult> {
+    if input.language != "en-US" && input.language != "zh-CN" {
+        return Err(lxapp::LxAppError::InvalidParameter(
+            "language must be en-US or zh-CN".to_string(),
+        ));
+    }
+    lingxia_service::settings::set_webui_language(&app.app_data_dir(), Some(&input.language))
+        .map_err(|error| lxapp::LxAppError::Runtime(error.to_string()))?;
+    let result = LanguageSettingsResult {
+        language: Some(input.language),
+    };
+    let _ = language_channel().send(result.clone());
+    Ok(result)
+}
+
+#[lingxia::native("settings.watchLanguage", stream)]
+async fn watch_webui_language(
+    app: Arc<LxApp>,
+    mut stream: StreamContext<LanguageSettingsResult>,
+) -> HostResult<()> {
+    let mut receiver = language_channel().subscribe();
+    stream.send(language_settings_result(&app)?)?;
+    loop {
+        tokio::select! {
+            _ = stream.canceled() => return Ok(()),
+            received = receiver.recv() => {
+                match received {
+                    Ok(language) => stream.send(language)?,
+                    Err(broadcast::error::RecvError::Lagged(_)) => {
+                        stream.send(language_settings_result(&app)?)?;
+                    }
+                    Err(broadcast::error::RecvError::Closed) => return stream.end(()),
+                }
+            }
+        }
+    }
+}
+
 pub(crate) fn register() {
     lxapp::host::register_host_entry(get_app_info_host());
     lxapp::host::register_host_entry(get_download_settings_host());
     lxapp::host::register_host_entry(choose_download_directory_host());
     lxapp::host::register_host_entry(reset_download_directory_host());
+    lxapp::host::register_host_entry(get_webui_language_host());
+    lxapp::host::register_host_entry(set_webui_language_host());
+    lxapp::host::register_host_entry(watch_webui_language_host());
 }

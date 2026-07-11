@@ -80,6 +80,10 @@
       'downloads.fileCountMany': '{count} files',
       'downloads.loadFailed': 'Failed to load',
       'settings.title': 'Settings',
+      'settings.general': 'General',
+      'settings.language': 'Language',
+      'settings.languageCopy': 'Choose the language used by LingXia browser pages.',
+      'settings.languageSaveFailed': 'Language could not be saved.',
       'settings.downloads': 'Downloads',
       'settings.proxy': 'Proxy',
       'settings.privacy': 'Privacy',
@@ -293,6 +297,10 @@
       'downloads.fileCountMany': '{count} 个文件',
       'downloads.loadFailed': '加载失败',
       'settings.title': '设置',
+      'settings.general': '通用',
+      'settings.language': '语言',
+      'settings.languageCopy': '选择凌霞浏览器内置页面使用的语言。',
+      'settings.languageSaveFailed': '无法保存语言设置。',
       'settings.downloads': '下载',
       'settings.proxy': '代理',
       'settings.privacy': '隐私',
@@ -430,7 +438,25 @@
     }
   };
 
+  var LOCALE_STORAGE_KEY = 'lingxia.webui.locale';
+
+  function normalizeLocale(value) {
+    if (value === 'zh-CN' || /^zh(?:-|$)/i.test(String(value || ''))) return 'zh-CN';
+    if (value === 'en-US' || /^en(?:-|$)/i.test(String(value || ''))) return 'en-US';
+    return null;
+  }
+
+  function storedLocale() {
+    try {
+      return normalizeLocale(global.localStorage.getItem(LOCALE_STORAGE_KEY));
+    } catch (_) {
+      return null;
+    }
+  }
+
   function resolveLocale() {
+    var stored = storedLocale();
+    if (stored) return stored;
     var candidates = Array.isArray(navigator.languages) && navigator.languages.length
       ? navigator.languages
       : [navigator.language || 'en-US'];
@@ -473,9 +499,61 @@
     });
   }
 
-  global.LingXiaI18n = {
+  function setLocale(value) {
+    var next = normalizeLocale(value);
+    if (!next) return locale;
+    locale = next;
+    api.locale = locale;
+    try {
+      global.localStorage.setItem(LOCALE_STORAGE_KEY, locale);
+    } catch (_) {}
+    apply();
+    return locale;
+  }
+
+  var api = {
     locale: locale,
     t: t,
-    apply: apply
+    apply: apply,
+    setLocale: setLocale,
+    storageKey: LOCALE_STORAGE_KEY
   };
+  global.LingXiaI18n = api;
+
+  function syncLocaleFromHost() {
+    var bridge = global.LingXiaBridge;
+    if (!bridge || typeof bridge.invoke !== 'function') return;
+    function adoptHostLocale(result) {
+      var hostLocale = normalizeLocale(result && result.language);
+      if (!hostLocale || hostLocale === locale) return;
+      setLocale(hostLocale);
+      if (global.location && typeof global.location.reload === 'function') {
+        global.location.reload();
+      }
+    }
+    bridge.invoke('settings.getLanguage').then(adoptHostLocale, function () {});
+    if (typeof bridge.stream === 'function') {
+      var watch = bridge.stream('settings.watchLanguage');
+      watch.onEvent(adoptHostLocale);
+      watch.onError(function () {});
+      api.languageWatch = watch;
+    }
+  }
+
+  if (typeof global.addEventListener === 'function') {
+    global.addEventListener('storage', function (event) {
+      if (event.key !== LOCALE_STORAGE_KEY) return;
+      var next = normalizeLocale(event.newValue) || resolveLocale();
+      if (next === locale) return;
+      locale = next;
+      api.locale = locale;
+      if (global.location && typeof global.location.reload === 'function') {
+        global.location.reload();
+      } else {
+        apply();
+      }
+    });
+  }
+
+  syncLocaleFromHost();
 })(window);

@@ -24,3 +24,11 @@ pub fn set_download_dir(
 ) -> Result<()> {
     lingxia_settings::set_download_dir(app_data_dir, path)
 }
+
+pub fn webui_language(app_data_dir: &std::path::Path) -> Result<Option<String>> {
+    lingxia_settings::get_webui_language(app_data_dir)
+}
+
+pub fn set_webui_language(app_data_dir: &std::path::Path, language: Option<&str>) -> Result<()> {
+    lingxia_settings::set_webui_language(app_data_dir, language)
+}
