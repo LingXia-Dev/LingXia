@@ -8,6 +8,7 @@ extern crate self as lingxia;
 
 mod address_bar;
 mod bookmarks;
+mod bookmarks_html;
 mod downloads;
 mod facade;
 mod history;

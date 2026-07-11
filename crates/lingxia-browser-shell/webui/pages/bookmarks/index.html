@@ -76,6 +76,29 @@
     }
     .btn.secondary { background: #eef1f6; color: #344054; }
     .btn:hover { filter: brightness(0.97); }
+    .header-actions { display: flex; align-items: center; gap: 8px; }
+    .page-menu-wrap { position: relative; }
+    .page-menu-button {
+      width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center;
+      border-radius: 8px; color: #667085; background: #eef1f6;
+    }
+    .page-menu-button:hover, .page-menu-button[aria-expanded="true"] { background: #e3e8ef; color: #1d2939; }
+    .page-menu-button svg { width: 16px; height: 16px; }
+    .page-menu {
+      position: absolute; display: none; z-index: 80; right: 0; top: 38px;
+      width: 190px; padding: 5px; border: 1px solid rgba(16, 24, 40, 0.10);
+      border-radius: 8px; background: rgba(255,255,255,0.98);
+      box-shadow: 0 16px 36px rgba(15,23,42,0.16), 0 2px 8px rgba(15,23,42,0.08);
+      backdrop-filter: blur(18px);
+    }
+    .page-menu.active { display: block; }
+    .page-menu-item {
+      width: 100%; min-height: 34px; display: flex; align-items: center; gap: 9px;
+      padding: 7px 9px; border-radius: 6px; color: #344054; font-size: 12.5px; text-align: left;
+    }
+    .page-menu-item:hover, .page-menu-item:focus-visible { background: #f2f6fc; color: #175cd3; outline: none; }
+    .page-menu-item:disabled { opacity: 0.5; cursor: default; }
+    .page-menu-item svg { width: 15px; height: 15px; flex-shrink: 0; }
 
     .content { padding: 18px 24px 28px; }
 
@@ -226,6 +249,7 @@
       color: #fff; font-size: 12.5px; font-weight: 600; opacity: 0;
       pointer-events: none; transition: opacity 160ms ease, transform 160ms ease;
       backdrop-filter: blur(8px); z-index: 50;
+      max-width: min(520px, calc(100vw - 32px)); text-align: center; line-height: 1.35;
     }
     .toast.active { opacity: 1; transform: translate(-50%, 0); }
 
@@ -267,7 +291,24 @@
         <h2 id="headerTitle" data-i18n="bookmarks.allTitle">All Bookmarks</h2>
         <div class="header-sub" id="headerSub"></div>
       </div>
-      <button class="btn" id="addBtn" type="button" data-i18n="bookmarks.add">Add Bookmark</button>
+      <div class="header-actions">
+        <button class="btn" id="addBtn" type="button" data-i18n="bookmarks.add">Add Bookmark</button>
+        <div class="page-menu-wrap">
+          <button class="page-menu-button" id="pageMenuButton" type="button" aria-haspopup="menu" aria-expanded="false" data-i18n-title="bookmarks.moreActions" title="More actions">
+            <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><circle cx="3" cy="8" r="1.25"/><circle cx="8" cy="8" r="1.25"/><circle cx="13" cy="8" r="1.25"/></svg>
+          </button>
+          <div class="page-menu" id="pageMenu" role="menu">
+            <button class="page-menu-item" id="importBtn" type="button" role="menuitem">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.5v7M5.4 7l2.6 2.6L10.6 7"/><path d="M3 11v1.5c0 .55.45 1 1 1h8c.55 0 1-.45 1-1V11"/></svg>
+              <span data-i18n="bookmarks.import">Import bookmarks</span>
+            </button>
+            <button class="page-menu-item" id="exportBtn" type="button" role="menuitem">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 9.5v-7M5.4 5l2.6-2.6L10.6 5"/><path d="M3 9v3.5c0 .55.45 1 1 1h8c.55 0 1-.45 1-1V9"/></svg>
+              <span data-i18n="bookmarks.export">Export bookmarks</span>
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <div class="content">
@@ -324,7 +365,7 @@
         return api;
       }
 
-      function call(route, input) { return bridge().invoke(route, input); }
+      function call(route, input, options) { return bridge().invoke(route, input, options); }
 
       function toast(message) {
         var el = document.getElementById('toast');
@@ -571,6 +612,66 @@
         handle.onError(function (err) { console.warn('[Bookmarks] watch error:', err); });
       }
 
+      var pageMenuButton = document.getElementById('pageMenuButton');
+      var pageMenu = document.getElementById('pageMenu');
+      var importBtn = document.getElementById('importBtn');
+      var exportBtn = document.getElementById('exportBtn');
+
+      function closePageMenu(restoreFocus) {
+        pageMenu.classList.remove('active');
+        pageMenuButton.setAttribute('aria-expanded', 'false');
+        if (restoreFocus) pageMenuButton.focus();
+      }
+
+      pageMenuButton.addEventListener('click', function () {
+        var open = !pageMenu.classList.contains('active');
+        pageMenu.classList.toggle('active', open);
+        pageMenuButton.setAttribute('aria-expanded', String(open));
+        if (open) importBtn.focus();
+      });
+
+      pageMenu.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          closePageMenu(true);
+        }
+      });
+
+      function setTransferBusy(busy) {
+        importBtn.disabled = busy;
+        exportBtn.disabled = busy;
+      }
+
+      importBtn.addEventListener('click', function () {
+        closePageMenu(false);
+        setTransferBusy(true);
+        call('bookmarks.importChrome', undefined, { timeoutMs: 0 }).then(function (result) {
+          if (result) {
+            toast(t('bookmarks.imported', {
+              count: result.imported,
+              skipped: result.skipped
+            }));
+          }
+        }, function (err) {
+          console.error('[Bookmarks] import failed:', err);
+          toast(t('bookmarks.importFailed'));
+        }).then(function () { setTransferBusy(false); });
+      });
+
+      exportBtn.addEventListener('click', function () {
+        closePageMenu(false);
+        setTransferBusy(true);
+        call('bookmarks.exportChrome').then(function (result) {
+          toast(t('bookmarks.exported', {
+            count: result.count,
+            fileName: result.fileName
+          }));
+        }, function (err) {
+          console.error('[Bookmarks] export failed:', err);
+          toast(t('bookmarks.exportFailed'));
+        }).then(function () { setTransferBusy(false); });
+      });
+
       document.querySelector('.rail').addEventListener('click', function (event) {
         var renameBtn = event.target.closest('[data-group-rename]');
         if (renameBtn) {
@@ -748,6 +849,7 @@
       });
 
       document.addEventListener('mousedown', function (event) {
+        if (!event.target.closest('.page-menu-wrap')) closePageMenu(false);
         if (!state.groupPicker) return;
         if (groupMenu.contains(event.target) || event.target.closest('[data-move-button]')) return;
         closeGroupMenu(false);

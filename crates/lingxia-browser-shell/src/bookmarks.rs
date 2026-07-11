@@ -6,8 +6,11 @@
 //! so `bookmarks.watch` subscribers (newtab, bookmarks page) re-render live
 //! when the native chrome toggles a star.
 
-use crate::host::{HostResult, StreamContext};
+use crate::bookmarks_html::{ImportedBookmark, export_chrome_html, parse_chrome_html};
+use crate::host::{HostCancel, HostResult, StreamContext, await_or_cancel};
+use crate::platform_error::map_platform_error;
 use lingxia_platform::traits::app_runtime::AppRuntime;
+use lingxia_service::file::{ChooseFileRequest, FileDialogFilter};
 use lxapp::LxApp;
 use lxapp::LxAppError;
 use serde::{Deserialize, Serialize};
@@ -20,6 +23,7 @@ use tokio::sync::broadcast;
 
 const BOOKMARKS_FILE: &str = "browser-bookmarks.json";
 const CURRENT_VERSION: u32 = 1;
+const MAX_IMPORT_FILE_BYTES: u64 = 16 * 1024 * 1024;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -592,6 +596,91 @@ struct StatusResult {
     entry: Option<BookmarkEntry>,
 }
 
+#[derive(Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct ImportResult {
+    imported: usize,
+    skipped: usize,
+    groups_created: usize,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ExportResult {
+    path: String,
+    file_name: String,
+    count: usize,
+}
+
+fn merge_imported(
+    snapshot: &mut BookmarksSnapshot,
+    bookmarks: Vec<ImportedBookmark>,
+) -> ImportResult {
+    let mut result = ImportResult {
+        imported: 0,
+        skipped: 0,
+        groups_created: 0,
+    };
+    for imported in bookmarks {
+        let url = imported.url.trim();
+        if !crate::address_bar::is_valid_explicit_http_url(url)
+            || find_entry(snapshot, &normalize_url(url)).is_some()
+        {
+            result.skipped += 1;
+            continue;
+        }
+
+        let group_id = imported.group_name.as_deref().map(|name| {
+            if let Some(group) = snapshot.groups.iter().find(|group| group.name == name) {
+                return group.id.clone();
+            }
+            let group = BookmarkGroup {
+                id: next_id("g"),
+                name: name.to_string(),
+            };
+            let id = group.id.clone();
+            snapshot.groups.push(group);
+            result.groups_created += 1;
+            id
+        });
+
+        match add_entry(
+            snapshot,
+            url,
+            (!imported.title.is_empty()).then_some(imported.title.as_str()),
+            group_id.as_deref(),
+        ) {
+            Ok((entry, true)) => {
+                if let Some(created_at_ms) = imported.created_at_ms
+                    && let Some(saved) = snapshot
+                        .entries
+                        .iter_mut()
+                        .find(|saved| saved.id == entry.id)
+                {
+                    saved.created_at_ms = created_at_ms;
+                }
+                result.imported += 1;
+            }
+            _ => result.skipped += 1,
+        }
+    }
+    result
+}
+
+fn unique_export_path(directory: &Path) -> PathBuf {
+    let base = directory.join("bookmarks.html");
+    if !base.exists() {
+        return base;
+    }
+    for suffix in 1..10_000 {
+        let candidate = directory.join(format!("bookmarks ({suffix}).html"));
+        if !candidate.exists() {
+            return candidate;
+        }
+    }
+    directory.join(format!("bookmarks-{}.html", now_ms()))
+}
+
 fn validated_name(name: &str, what: &str) -> Result<String, LxAppError> {
     let name = name.trim();
     if name.is_empty() {
@@ -854,6 +943,107 @@ fn reorder_groups(app: Arc<LxApp>, input: OrderedIdsInput) -> HostResult<()> {
     })
 }
 
+#[lingxia::native("bookmarks.importChrome")]
+async fn import_chrome_bookmarks(
+    app: Arc<LxApp>,
+    mut cancel: HostCancel,
+) -> HostResult<Option<ImportResult>> {
+    let app_for_picker = app.clone();
+    let is_chinese = lingxia_service::settings::webui_language(&app.app_data_dir())
+        .ok()
+        .flatten()
+        .as_deref()
+        == Some("zh-CN");
+    let selected = await_or_cancel(&mut cancel, async move {
+        lingxia_service::file::choose_file(
+            &*app_for_picker.runtime,
+            ChooseFileRequest {
+                multiple: false,
+                filters: vec![FileDialogFilter {
+                    name: Some(
+                        if is_chinese {
+                            "书签 HTML"
+                        } else {
+                            "Bookmark HTML"
+                        }
+                        .to_string(),
+                    ),
+                    extensions: vec!["html".to_string(), "htm".to_string()],
+                }],
+                title: Some(
+                    if is_chinese {
+                        "导入书签"
+                    } else {
+                        "Import Bookmarks"
+                    }
+                    .to_string(),
+                ),
+                default_path: None,
+            },
+        )
+        .await
+        .map_err(|error| map_platform_error("bookmarks.importChrome", error))
+    })
+    .await?;
+    if selected.canceled {
+        return Ok(None);
+    }
+    let path = selected.paths.first().ok_or_else(|| {
+        LxAppError::InvalidParameter("bookmark import did not return a file".to_string())
+    })?;
+    let metadata = std::fs::metadata(path)
+        .map_err(|error| LxAppError::IoError(format!("read {path}: {error}")))?;
+    if metadata.len() > MAX_IMPORT_FILE_BYTES {
+        return Err(LxAppError::InvalidParameter(format!(
+            "bookmark file exceeds the {} MB limit",
+            MAX_IMPORT_FILE_BYTES / 1024 / 1024
+        )));
+    }
+    let html = std::fs::read_to_string(path)
+        .map_err(|error| LxAppError::IoError(format!("read {path}: {error}")))?;
+    if !html
+        .get(..html.len().min(1024))
+        .unwrap_or(&html)
+        .to_ascii_lowercase()
+        .contains("netscape-bookmark-file-1")
+    {
+        return Err(LxAppError::InvalidParameter(
+            "select a Chrome-compatible bookmark HTML file".to_string(),
+        ));
+    }
+    let bookmarks = parse_chrome_html(&html);
+    mutate(&app.app_data_dir(), move |snapshot| {
+        Ok(merge_imported(snapshot, bookmarks))
+    })
+    .map(Some)
+}
+
+#[lingxia::native("bookmarks.exportChrome")]
+fn export_chrome_bookmarks(app: Arc<LxApp>) -> HostResult<ExportResult> {
+    let snapshot = {
+        let _guard = store_lock()
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        load(&app.app_data_dir())?
+    };
+    let directory = lingxia_service::downloads::dir(&app.app_data_dir());
+    std::fs::create_dir_all(&directory)
+        .map_err(|error| LxAppError::IoError(format!("mkdir {}: {error}", directory.display())))?;
+    let path = unique_export_path(&directory);
+    let html = export_chrome_html(&snapshot, now_ms());
+    std::fs::write(&path, html)
+        .map_err(|error| LxAppError::IoError(format!("write {}: {error}", path.display())))?;
+    Ok(ExportResult {
+        path: path.to_string_lossy().to_string(),
+        file_name: path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("bookmarks.html")
+            .to_string(),
+        count: snapshot.entries.len(),
+    })
+}
+
 #[lingxia::native("bookmarks.watch", stream)]
 async fn watch_bookmarks(
     app: Arc<LxApp>,
@@ -900,6 +1090,8 @@ pub(crate) fn register() {
     lxapp::host::register_host_entry(rename_group_host());
     lxapp::host::register_host_entry(delete_group_host());
     lxapp::host::register_host_entry(reorder_groups_host());
+    lxapp::host::register_host_entry(import_chrome_bookmarks_host());
+    lxapp::host::register_host_entry(export_chrome_bookmarks_host());
     lxapp::host::register_host_entry(watch_bookmarks_host());
 }
 
@@ -978,5 +1170,52 @@ mod tests {
             &expected,
             &["a".to_string(), "a".to_string()]
         ));
+    }
+
+    #[test]
+    fn import_merges_valid_bookmarks_and_preserves_existing_entries() {
+        let mut snapshot = BookmarksSnapshot::default();
+        add_entry(
+            &mut snapshot,
+            "https://existing.test",
+            Some("Existing"),
+            None,
+        )
+        .unwrap();
+        let result = merge_imported(
+            &mut snapshot,
+            vec![
+                ImportedBookmark {
+                    url: "https://EXISTING.test/".into(),
+                    title: "Duplicate".into(),
+                    group_name: Some("Imported".into()),
+                    created_at_ms: None,
+                },
+                ImportedBookmark {
+                    url: "javascript:alert(1)".into(),
+                    title: "Unsafe".into(),
+                    group_name: Some("Imported".into()),
+                    created_at_ms: None,
+                },
+                ImportedBookmark {
+                    url: "https://new.test/docs".into(),
+                    title: "New".into(),
+                    group_name: Some("Imported".into()),
+                    created_at_ms: Some(42_000),
+                },
+            ],
+        );
+        assert_eq!(
+            result,
+            ImportResult {
+                imported: 1,
+                skipped: 2,
+                groups_created: 1,
+            }
+        );
+        assert_eq!(snapshot.entries.len(), 2);
+        assert_eq!(snapshot.groups.len(), 1);
+        assert_eq!(snapshot.entries[1].created_at_ms, 42_000);
+        assert!(!snapshot.entries[1].pinned);
     }
 }
