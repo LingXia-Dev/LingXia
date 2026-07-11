@@ -1334,11 +1334,6 @@ fn pinned_bookmark_for_url(url: &str) -> Option<lingxia_browser_shell::BookmarkE
         })
 }
 
-#[cfg(not(feature = "browser-shell"))]
-fn auxiliary_bookmark(_raw: &str) -> Option<()> {
-    None
-}
-
 /// Sidebar row title for a browser tab: page title, else the URL host,
 /// else localized "New Tab".
 fn browser_tab_display_title(tab: &BrowserTabSummary) -> String {

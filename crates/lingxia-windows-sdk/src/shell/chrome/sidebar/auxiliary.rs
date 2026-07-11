@@ -24,10 +24,20 @@ pub(in crate::shell::chrome) fn sidebar_pinned_grid_height(
     let grid_width = (rect_width(&rect) - 2 * SIDEBAR_ITEM_INSET).max(PINNED_SHORTCUT_SIZE);
     let columns = ((grid_width + SIDEBAR_ITEM_GAP) / (PINNED_SHORTCUT_SIZE + SIDEBAR_ITEM_GAP))
         .max(1) as usize;
+    let stride = PINNED_SHORTCUT_SIZE + SIDEBAR_ITEM_GAP;
+    // `sidebar_auxiliary_rects` drops rows that would cross the footer;
+    // reserve height only for rows that actually render, or the sections
+    // below would shift as if the dropped rows existed.
+    let available = (rect.bottom - SIDEBAR_FOOTER_HEIGHT) - (rect.top + SHELL_TOP_BAR_HEIGHT);
+    let fitting_rows = if available < PINNED_SHORTCUT_SIZE {
+        0
+    } else {
+        (available - PINNED_SHORTCUT_SIZE) / stride + 1
+    };
     // The grid's row stride already leaves `SIDEBAR_ITEM_GAP` after its last
     // row. Do not add browser-section padding here: pins and lxapp groups are
     // adjacent primary navigation sections, not separator-delimited groups.
-    count.div_ceil(columns) as i32 * (PINNED_SHORTCUT_SIZE + SIDEBAR_ITEM_GAP)
+    (count.div_ceil(columns) as i32).min(fitting_rows) * stride
 }
 
 /// Geometry of the sidebar auxiliary section: separator line, one row rect
@@ -221,10 +231,19 @@ pub(in crate::shell::chrome) fn draw_sidebar_auxiliary_section(
                 right: left + PINNED_SHORTCUT_ICON_SIZE,
                 bottom: top + PINNED_SHORTCUT_ICON_SIZE,
             });
+            // Live-tab favicon bytes first, then the bookmark's cached
+            // favicon file (`icon_path`), then the generic globe.
             let drawn = item
                 .icon_png
                 .as_deref()
-                .is_some_and(|png| draw_icon_from_png_bytes(hdc, &item.id, png, icon_rect));
+                .is_some_and(|png| draw_icon_from_png_bytes(hdc, &item.id, png, icon_rect))
+                || (!item.icon_path.trim().is_empty()
+                    && draw_icon_from_path(
+                        hdc,
+                        &item.icon_path,
+                        icon_rect,
+                        PINNED_SHORTCUT_ICON_SIZE as u32,
+                    ));
             if !drawn {
                 draw_design_icon_button(
                     hdc,

@@ -4,8 +4,9 @@
 //! Windows PNGs into each app's generated assets, and runtime code draws those
 //! assets instead of hand-maintaining a Windows-only icon set.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
+use std::sync::{Arc, Mutex, OnceLock};
 
 use windows::Win32::Foundation::RECT;
 use windows::Win32::Graphics::Gdi::{
@@ -13,6 +14,13 @@ use windows::Win32::Graphics::Gdi::{
     CreateCompatibleDC, CreateDIBSection, DIB_RGB_COLORS, DeleteDC, DeleteObject, HDC, HGDIOBJ,
     SelectObject,
 };
+
+type PixelCache = HashMap<(WindowsDesignIcon, u32, Option<u32>), Arc<Vec<u32>>>;
+
+/// Decoded-icon memo: PNG/SVG decode + Lanczos resize is far too expensive to
+/// run per paint (the top bar repaints on every hover mouse-move). Keyed by
+/// (icon, size, tint) — a naturally small set, so no eviction is needed.
+static ICON_PIXELS: OnceLock<Mutex<PixelCache>> = OnceLock::new();
 static WINDOWS_DESIGN_ICON_DIR: OnceLock<PathBuf> = OnceLock::new();
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -232,10 +240,27 @@ fn design_icon_path(icon: WindowsDesignIcon) -> Option<PathBuf> {
 /// `size * size` entries) for compositing directly onto a per-pixel-alpha
 /// layered surface, where `DrawIconEx` does not reliably write the alpha
 /// channel. `tint` recolors the icon (the PNG is a black silhouette + alpha).
-///
-/// Only the device-frame capsule composites onto a per-pixel-alpha layered
-/// surface, so this helper is gated to that feature.
+/// Decodes are memoized in [`ICON_PIXELS`]; only successes are cached so a
+/// not-yet-registered icon dir does not pin a permanent miss.
 pub fn design_icon_argb_premultiplied(
+    icon: WindowsDesignIcon,
+    size: u32,
+    tint: Option<u32>,
+) -> Option<Arc<Vec<u32>>> {
+    let key = (icon, size, tint);
+    let cache = ICON_PIXELS.get_or_init(|| Mutex::new(HashMap::new()));
+    let Ok(mut cache) = cache.lock() else {
+        return decode_icon_argb_premultiplied(icon, size, tint).map(Arc::new);
+    };
+    if let Some(pixels) = cache.get(&key) {
+        return Some(pixels.clone());
+    }
+    let pixels = Arc::new(decode_icon_argb_premultiplied(icon, size, tint)?);
+    cache.insert(key, pixels.clone());
+    Some(pixels)
+}
+
+fn decode_icon_argb_premultiplied(
     icon: WindowsDesignIcon,
     size: u32,
     tint: Option<u32>,
