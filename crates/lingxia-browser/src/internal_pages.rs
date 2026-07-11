@@ -2,7 +2,7 @@
 //! request rewriting, and the shared startup-page bridge.
 
 use crate::BUILTIN_BROWSER_APPID;
-use crate::policy::{LINGXIA_SCHEME, extract_url_scheme};
+use crate::policy::{LINGXIA_SCHEME, extract_url_scheme, lingxia_url_host};
 use crate::tabs::{
     INTERNAL_TAB_PATH_PREFIX, ensure_browser_lxapp, lock_state, normalize_runtime_tab_id,
 };
@@ -141,14 +141,7 @@ fn internal_page_target_for_url(startup_path: &str, url: &str) -> Option<Interna
     if extract_url_scheme(url).as_deref() != Some(LINGXIA_SCHEME) {
         return None;
     }
-    let host = url
-        .split_once("://")
-        .map(|x| x.1)
-        .unwrap_or("")
-        .split('/')
-        .next()
-        .unwrap_or("")
-        .to_ascii_lowercase();
+    let host = lingxia_url_host(url);
     internal_page_target_for_host(startup_path, &host)
 }
 
@@ -472,6 +465,23 @@ mod tests {
             internal_page_target_entry_path(&target),
             "pages/settings/index.html"
         );
+    }
+
+    #[test]
+    fn registered_internal_page_route_resolves_with_fragment_query_or_slash() {
+        register_test_browser_internal_pages();
+        for url in [
+            "lingxia://settings#clear-browsing-data",
+            "lingxia://settings?section=privacy",
+            "lingxia://settings/",
+        ] {
+            let target = internal_page_target_for_url("pages/newtab/index.html", url)
+                .unwrap_or_else(|| panic!("settings route should resolve for {url}"));
+            assert_eq!(
+                internal_page_target_entry_path(&target),
+                "pages/settings/index.html"
+            );
+        }
     }
 
     #[test]
