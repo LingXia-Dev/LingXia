@@ -222,8 +222,8 @@ pub(super) fn draw_sidebar_items(
     cursor: Option<(i32, i32)>,
 ) {
     if !tabbar.items.is_empty() {
-        let first = sidebar_item_rect(rect, 0);
-        let last = sidebar_item_rect(rect, tabbar.items.len() - 1);
+        let first = sidebar_item_rect(rect, tabbar, 0);
+        let last = sidebar_item_rect(rect, tabbar, tabbar.items.len() - 1);
         fill_rect(
             hdc,
             RECT {
@@ -237,7 +237,7 @@ pub(super) fn draw_sidebar_items(
     }
 
     for (index, item) in tabbar.items.iter().enumerate() {
-        let item_rect = sidebar_item_rect(rect, index);
+        let item_rect = sidebar_item_rect(rect, tabbar, index);
         let selected = tabbar.selected_index == index as i32;
         if selected {
             // White item card on the gray sidebar, accent bar on white.
@@ -488,9 +488,15 @@ pub(super) fn tab_item_rect(
     }
 }
 
-pub(super) fn sidebar_item_rect(rect: RECT, index: usize) -> RECT {
-    let top =
-        rect.top + SIDEBAR_HEADER_HEIGHT + index as i32 * (SIDEBAR_ITEM_HEIGHT + SIDEBAR_ITEM_GAP);
+pub(super) fn sidebar_item_rect(
+    rect: RECT,
+    tabbar: &WindowsShellTabBarLayout,
+    index: usize,
+) -> RECT {
+    let top = rect.top
+        + SIDEBAR_HEADER_HEIGHT
+        + sidebar_pinned_grid_height(rect, tabbar)
+        + index as i32 * (SIDEBAR_ITEM_HEIGHT + SIDEBAR_ITEM_GAP);
     normalize_rect(RECT {
         left: rect.left + SIDEBAR_ITEM_INSET,
         top,

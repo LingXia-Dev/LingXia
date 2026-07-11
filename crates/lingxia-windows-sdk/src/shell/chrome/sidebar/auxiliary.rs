@@ -5,6 +5,29 @@ use super::*;
 const PINNED_SHORTCUT_SIZE: i32 = 34;
 const PINNED_SHORTCUT_ICON_SIZE: i32 = 20;
 
+fn pinned_count(tabbar: &WindowsShellTabBarLayout) -> usize {
+    tabbar
+        .auxiliary_items
+        .iter()
+        .take_while(|item| item.pinned)
+        .count()
+}
+
+pub(in crate::shell::chrome) fn sidebar_pinned_grid_height(
+    rect: RECT,
+    tabbar: &WindowsShellTabBarLayout,
+) -> i32 {
+    let count = pinned_count(tabbar);
+    if count == 0 {
+        return 0;
+    }
+    let grid_width = (rect_width(&rect) - 2 * SIDEBAR_ITEM_INSET).max(PINNED_SHORTCUT_SIZE);
+    let columns = ((grid_width + SIDEBAR_ITEM_GAP) / (PINNED_SHORTCUT_SIZE + SIDEBAR_ITEM_GAP))
+        .max(1) as usize;
+    count.div_ceil(columns) as i32 * (PINNED_SHORTCUT_SIZE + SIDEBAR_ITEM_GAP)
+        + SIDEBAR_BROWSER_SECTION_GAP
+}
+
 /// Geometry of the sidebar auxiliary section: separator line, one row rect
 /// per auxiliary item (rows that would collide with the footer are dropped),
 /// and the add row.
@@ -26,12 +49,13 @@ pub(in crate::shell::chrome) fn sidebar_auxiliary_rects(
     let footer_top = rect.bottom - SIDEBAR_FOOTER_HEIGHT;
     // A collapsed items group hides its rows; the auxiliary section moves up
     // directly under the group header.
+    let pinned_height = sidebar_pinned_grid_height(rect, tabbar);
     let items_height = if tabbar.items_collapsed {
         0
     } else {
         tabbar.items.len() as i32 * (SIDEBAR_ITEM_HEIGHT + SIDEBAR_ITEM_GAP)
     };
-    let items_bottom = rect.top + SIDEBAR_HEADER_HEIGHT + items_height;
+    let items_bottom = rect.top + SIDEBAR_HEADER_HEIGHT + pinned_height + items_height;
     let mut top = items_bottom + SIDEBAR_BROWSER_SECTION_GAP;
     let separator = normalize_rect(RECT {
         left: rect.left + SIDEBAR_ITEM_INSET,
@@ -57,17 +81,15 @@ pub(in crate::shell::chrome) fn sidebar_auxiliary_rects(
     };
 
     let mut items = Vec::with_capacity(tabbar.auxiliary_items.len());
-    let pinned_count = tabbar
-        .auxiliary_items
-        .iter()
-        .take_while(|item| item.pinned)
-        .count();
+    let pinned_count = pinned_count(tabbar);
     if pinned_count > 0 {
         let grid_left = rect.left + SIDEBAR_ITEM_INSET;
         let grid_width = (rect.right - SIDEBAR_ITEM_INSET - grid_left).max(PINNED_SHORTCUT_SIZE);
         let columns = ((grid_width + SIDEBAR_ITEM_GAP) / (PINNED_SHORTCUT_SIZE + SIDEBAR_ITEM_GAP))
             .max(1) as usize;
-        let grid_top = top;
+        // Pinned websites are primary shortcuts: place them directly below
+        // the group header, before the lxapp navigation entries.
+        let grid_top = rect.top + SIDEBAR_HEADER_HEIGHT;
         for index in 0..pinned_count {
             let row = index / columns;
             let column = index % columns;
@@ -88,8 +110,6 @@ pub(in crate::shell::chrome) fn sidebar_auxiliary_rects(
             }
             items.push(pinned_rect);
         }
-        let rows = pinned_count.div_ceil(columns) as i32;
-        top = grid_top + rows * (PINNED_SHORTCUT_SIZE + SIDEBAR_ITEM_GAP);
     }
     for _ in tabbar.auxiliary_items.iter().skip(pinned_count) {
         match row(&mut top) {
@@ -163,7 +183,11 @@ pub(in crate::shell::chrome) fn draw_sidebar_auxiliary_section(
         return;
     };
 
-    fill_rect(hdc, auxiliary.separator, shell_palette().divider);
+    let has_regular_rows =
+        tabbar.auxiliary_items.iter().any(|item| !item.pinned) || tabbar.show_auxiliary_add;
+    if has_regular_rows {
+        fill_rect(hdc, auxiliary.separator, shell_palette().divider);
+    }
 
     for (item, item_rect) in tabbar.auxiliary_items.iter().zip(&auxiliary.items) {
         let item_rect = *item_rect;

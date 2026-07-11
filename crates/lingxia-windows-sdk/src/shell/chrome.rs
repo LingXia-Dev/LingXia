@@ -461,7 +461,7 @@ fn chrome_hover_rect(
     }
     if !tabbar.items_collapsed {
         for index in 0..tabbar.items.len() {
-            let rect = sidebar_item_rect(tabbar_rect, index);
+            let rect = sidebar_item_rect(tabbar_rect, tabbar, index);
             if rect_contains(&rect, point) {
                 return Some(rect);
             }
@@ -620,7 +620,7 @@ fn push_tabbar_selected_rects(
             new_tabbar.position,
             WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right
         ) {
-            sidebar_item_rect(rect, index as usize)
+            sidebar_item_rect(rect, new_tabbar, index as usize)
         } else {
             tab_item_rect(
                 rect,
@@ -930,7 +930,7 @@ pub(crate) fn collapsed_sidebar_tabbar_popup_hit(
     });
     let item_bounds = collapsed_sidebar_tabbar_popup_item_bounds(bounds);
     (0..tabbar.items.len())
-        .find(|&index| rect_contains(&sidebar_item_rect(item_bounds, index), point))
+        .find(|&index| rect_contains(&sidebar_item_rect(item_bounds, tabbar, index), point))
 }
 
 pub(crate) fn collapsed_sidebar_tabbar_click_command(index: usize) -> WindowsChromeCommand {
@@ -1505,7 +1505,7 @@ pub(super) fn chrome_hit_test(
         if !(sidebar && tabbar.items_collapsed) {
             for index in 0..tabbar.items.len() {
                 let item_rect = if sidebar {
-                    sidebar_item_rect(tabbar_rect, index)
+                    sidebar_item_rect(tabbar_rect, tabbar, index)
                 } else {
                     tab_item_rect(tabbar_rect, tabbar.position, tabbar.items.len(), index)
                 };
