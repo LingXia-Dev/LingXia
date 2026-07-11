@@ -143,11 +143,11 @@ pub enum DesktopCommand {
     },
     /// Synthesize physical mouse input at screen coordinates
     Pointer {
-        /// Deliver input to this window's app in the background (unsupported on Windows).
-        /// Omit to drive the foreground app like a physical mouse.
+        /// Target this window (Windows activates it; other backends may deliver in background).
+        /// Omit to drive the current foreground app like a physical mouse.
         #[arg(long, global = true)]
         window: Option<String>,
-        /// Deliver input to this pid in the background (unsupported on Windows).
+        /// Target this pid (Windows requires exactly one visible window and activates it).
         #[arg(long, global = true)]
         pid: Option<u32>,
         #[command(subcommand)]
@@ -155,10 +155,10 @@ pub enum DesktopCommand {
     },
     /// Synthesize physical keyboard input
     Key {
-        /// Deliver input to this window's app in the background (unsupported on Windows).
+        /// Target this window (Windows activates it; other backends may deliver in background).
         #[arg(long, global = true)]
         window: Option<String>,
-        /// Deliver input to this pid in the background (unsupported on Windows).
+        /// Target this pid (Windows requires exactly one visible window and activates it).
         #[arg(long, global = true)]
         pid: Option<u32>,
         #[command(subcommand)]
@@ -965,15 +965,38 @@ fn print_ack(a: &cu::Ack) {
     println!("ok: {}", a.action);
 }
 
-/// Resolve the optional background target: an explicit `--pid`, or a `--window`
-/// id mapped to its owning process. `None` means foreground/active-app input.
+/// Resolve an optional app target. Windows SendInput cannot address background
+/// apps, so the CLI activates the target before issuing foreground input.
 fn resolve_target(pid: Option<u32>, window: Option<String>) -> cu::Result<Option<u32>> {
-    if let Some(pid) = pid {
-        return Ok(Some(pid));
-    }
-    match window {
-        Some(id) => Ok(Some(cu::window::status(&cu::WindowTarget::Id(id))?.pid)),
-        None => Ok(None),
+    match (pid, window) {
+        (Some(_), Some(_)) => Err(cu::Error::Usage("pass only one of --window / --pid".into())),
+        #[cfg(target_os = "windows")]
+        (None, Some(id)) => {
+            cu::window::activate(&cu::WindowTarget::Id(id))?;
+            Ok(None)
+        }
+        #[cfg(target_os = "windows")]
+        (Some(pid), None) => {
+            let windows = cu::windows(&cu::WindowQuery::parse(&format!("pid:{pid}")))?;
+            match windows.as_slice() {
+                [] => Err(cu::Error::NotFound(format!(
+                    "no visible window found for pid {pid}"
+                ))),
+                [window] => {
+                    cu::window::activate(&cu::WindowTarget::Id(window.id.clone()))?;
+                    Ok(None)
+                }
+                _ => Err(cu::Error::Ambiguous(format!(
+                    "pid {pid} has {} visible windows; pass --window <id>",
+                    windows.len()
+                ))),
+            }
+        }
+        #[cfg(not(target_os = "windows"))]
+        (None, Some(id)) => Ok(Some(cu::window::status(&cu::WindowTarget::Id(id))?.pid)),
+        #[cfg(not(target_os = "windows"))]
+        (Some(pid), None) => Ok(Some(pid)),
+        (None, None) => Ok(None),
     }
 }
 
