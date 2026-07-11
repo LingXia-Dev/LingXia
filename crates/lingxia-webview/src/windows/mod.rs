@@ -49,6 +49,7 @@ use windows::{
 
 mod console;
 mod controller;
+pub(crate) mod data_store;
 mod environment;
 mod events;
 #[cfg(feature = "webview-input")]

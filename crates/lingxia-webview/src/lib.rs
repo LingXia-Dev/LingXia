@@ -119,7 +119,13 @@ pub mod data_store {
         site_data_usage,
     };
 
-    #[cfg(not(any(target_os = "ios", target_os = "macos")))]
+    #[cfg(target_os = "windows")]
+    pub use crate::windows::data_store::{
+        cache_site_count, clear_cache, clear_cache_since, clear_site_data, clear_site_data_since,
+        site_data_usage,
+    };
+
+    #[cfg(not(any(target_os = "ios", target_os = "macos", target_os = "windows")))]
     mod unsupported {
         use crate::WebViewError;
 
@@ -153,7 +159,7 @@ pub mod data_store {
             Err(err("clear cookies & site data"))
         }
     }
-    #[cfg(not(any(target_os = "ios", target_os = "macos")))]
+    #[cfg(not(any(target_os = "ios", target_os = "macos", target_os = "windows")))]
     pub use unsupported::*;
 }
 

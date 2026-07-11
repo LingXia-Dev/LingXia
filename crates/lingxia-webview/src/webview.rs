@@ -2192,6 +2192,21 @@ pub(crate) fn find_webview(webtag: &WebTag) -> Option<Arc<WebView>> {
     }
 }
 
+#[cfg(target_os = "windows")]
+pub(crate) fn first_browser_webview() -> Option<Arc<WebView>> {
+    WEBVIEW_INSTANCES
+        .get()
+        .and_then(|instances| instances.lock().ok())
+        .and_then(|webviews| {
+            webviews
+                .values()
+                .find(|webview| {
+                    webview.effective_options.profile == SecurityProfile::BrowserRelaxed
+                })
+                .cloned()
+        })
+}
+
 pub(crate) fn list_webviews() -> Vec<WebTag> {
     if let Some(instances) = WEBVIEW_INSTANCES.get()
         && let Ok(webviews) = instances.lock()

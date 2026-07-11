@@ -38,6 +38,11 @@ pub(crate) enum UiCommand {
     ClearBrowsingData {
         resp: Sender<StdResult<()>>,
     },
+    ClearProfileData {
+        kind: super::data_store::BrowsingDataKind,
+        since_unix_ms: Option<u64>,
+        resp: Sender<StdResult<()>>,
+    },
     CurrentUrl {
         resp: Sender<StdResult<Option<String>>>,
     },
@@ -530,6 +535,20 @@ impl WebViewController for WebViewInner {
     }
 }
 
+impl WebViewInner {
+    pub(crate) fn clear_profile_data(
+        &self,
+        kind: super::data_store::BrowsingDataKind,
+        since_unix_ms: Option<u64>,
+    ) -> StdResult<()> {
+        self.dispatch_command(|resp| UiCommand::ClearProfileData {
+            kind,
+            since_unix_ms,
+            resp,
+        })
+    }
+}
+
 impl Drop for WebViewInner {
     fn drop(&mut self) {
         let _ = self.command_tx.send(UiCommand::Shutdown);
@@ -835,6 +854,14 @@ pub(crate) fn handle_command(state: &mut UiState, command: UiCommand) -> StdResu
         }
         UiCommand::ClearBrowsingData { resp } => {
             let result = clear_browsing_data(&state.webview);
+            let _ = resp.send(result);
+        }
+        UiCommand::ClearProfileData {
+            kind,
+            since_unix_ms,
+            resp,
+        } => {
+            let result = clear_profile_data(&state.webview, kind, since_unix_ms);
             let _ = resp.send(result);
         }
         UiCommand::CurrentUrl { resp } => {
