@@ -118,6 +118,17 @@ pub(crate) fn bookmarks_snapshot_json() -> String {
 }
 
 #[cfg_attr(not(any(target_os = "ios", target_os = "macos")), allow(dead_code))]
+pub(crate) fn bookmark_favicon_path(url: &str) -> String {
+    #[cfg(feature = "browser-shell")]
+    return lingxia_browser_shell::bookmark_favicon_path(url).unwrap_or_default();
+    #[cfg(not(feature = "browser-shell"))]
+    {
+        let _ = url;
+        String::new()
+    }
+}
+
+#[cfg_attr(not(any(target_os = "ios", target_os = "macos")), allow(dead_code))]
 pub(crate) fn bookmark_toggle(url: &str, title: &str) -> bool {
     #[cfg(feature = "browser-shell")]
     return lingxia_browser_shell::toggle_bookmark(url, title).unwrap_or(false);

@@ -9,7 +9,6 @@
 use crate::bookmarks_html::{ImportedBookmark, export_chrome_html, parse_chrome_html};
 use crate::host::{HostCancel, HostResult, StreamContext, await_or_cancel};
 use crate::platform_error::map_platform_error;
-use base64::Engine as _;
 use lingxia_platform::traits::app_runtime::AppRuntime;
 use lingxia_service::file::{ChooseFileRequest, FileDialogFilter};
 use lxapp::LxApp;
@@ -47,22 +46,8 @@ pub struct BookmarkEntry {
     /// exists here). Order within `entries` is the grid order.
     #[serde(default)]
     pub pinned: bool,
-    /// PNG favicon captured when the site is pinned. Persisted independently
-    /// from open tabs so the top shortcut keeps the website identity after
-    /// its browser tab or the app is closed.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub favicon_png_base64: Option<String>,
     #[serde(default)]
     pub created_at_ms: u64,
-}
-
-impl BookmarkEntry {
-    pub fn favicon_png(&self) -> Option<Vec<u8>> {
-        base64::engine::general_purpose::STANDARD
-            .decode(self.favicon_png_base64.as_deref()?)
-            .ok()
-            .filter(|bytes| !bytes.is_empty())
-    }
 }
 
 /// The persisted file and the `list`/`watch` payload are the same shape.
@@ -284,7 +269,6 @@ fn add_entry(
         title,
         group_id: group_id.map(str::to_string),
         pinned: false,
-        favicon_png_base64: None,
         created_at_ms: now_ms(),
     };
     snapshot.entries.push(entry.clone());
@@ -332,6 +316,19 @@ pub fn snapshot() -> Option<BookmarksSnapshot> {
     load(&dir).ok()
 }
 
+/// Absolute path to Rust's cached favicon for `url`. A missing or stale cache
+/// entry is refreshed asynchronously; native chrome is notified when ready.
+pub fn favicon_path(url: &str) -> Option<String> {
+    let runtime = lxapp::get_platform()?;
+    let notify = Arc::new(|| {
+        if let Some(listener) = change_listener().get() {
+            listener();
+        }
+    });
+    lingxia_service::favicon::cached_or_request(&runtime.app_cache_dir(), url, notify)
+        .map(|path| path.to_string_lossy().into_owned())
+}
+
 /// Pin `url` to the sidebar grid ("Pin to Sidebar" on a tab). Bookmarks the
 /// page first when needed, keeping the pinned ⊆ bookmarked invariant without
 /// forcing a two-step flow on the user.
@@ -339,18 +336,18 @@ pub fn pin_url(url: &str, title: &str) -> bool {
     pin_url_with_favicon(url, title, None)
 }
 
-/// Pin a URL and persist its current favicon. Oversized images are ignored;
-/// normal browser favicons are tiny and should not inflate bookmark storage.
+/// Pin a URL and cache its current favicon outside the bookmark JSON.
 pub fn pin_url_with_favicon(url: &str, title: &str, favicon_png: Option<&[u8]>) -> bool {
-    let Some(dir) = runtime_data_dir() else {
+    let Some(runtime) = lxapp::get_platform() else {
         return false;
     };
+    let dir = runtime.app_data_dir();
     let title = if title.trim().is_empty() {
         None
     } else {
         Some(title)
     };
-    mutate(&dir, |snapshot| {
+    let result = mutate(&dir, |snapshot| {
         let (entry, _) = add_entry(snapshot, url, title, None)?;
         let id = entry.id;
         let entry = snapshot
@@ -359,16 +356,19 @@ pub fn pin_url_with_favicon(url: &str, title: &str, favicon_png: Option<&[u8]>) 
             .find(|e| e.id == id)
             .expect("entry just added or found");
         entry.pinned = true;
-        if let Some(favicon) =
-            favicon_png.filter(|bytes| !bytes.is_empty() && bytes.len() <= 256 * 1024)
-        {
-            entry.favicon_png_base64 =
-                Some(base64::engine::general_purpose::STANDARD.encode(favicon));
-        }
         Ok(())
-    })
-    .map_err(|e| log::warn!("[BrowserBookmarks] pin failed: {e}"))
-    .is_ok()
+    });
+    if let Err(error) = result {
+        log::warn!("[BrowserBookmarks] pin failed: {error}");
+        return false;
+    }
+    if let Some(bytes) = favicon_png
+        && lingxia_service::favicon::store_for_url(&runtime.app_cache_dir(), url, bytes).is_some()
+        && let Some(listener) = change_listener().get()
+    {
+        listener();
+    }
+    true
 }
 
 /// Remove `url` from bookmarks (sidebar row action). True when removed.

@@ -255,7 +255,6 @@ mod tests {
             title: "A \"useful\" page".into(),
             group_id: Some("g1".into()),
             pinned: true,
-            favicon_png_base64: None,
             created_at_ms: 123_000,
         }];
         let exported = export_chrome_html(&snapshot, 456_000);

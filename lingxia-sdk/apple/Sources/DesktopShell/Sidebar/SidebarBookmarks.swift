@@ -52,7 +52,7 @@ struct SidebarBookmarksSnapshot: Decodable {
     }
 }
 
-/// Small shared favicon loader for pin tiles.
+/// Native decoder for favicon files owned by Rust's cross-platform cache.
 @MainActor
 enum SidebarFaviconLoader {
     private static let cache = NSCache<NSString, NSImage>()
@@ -73,24 +73,18 @@ enum SidebarFaviconLoader {
         urlString: String,
         into apply: @escaping @MainActor @Sendable (NSImage) -> Void
     ) {
-        guard let origin = originKey(for: urlString) else { return }
-        if let cached = cache.object(forKey: origin as NSString) {
+        let path = browserBookmarkFaviconPath(urlString).toString()
+        guard !path.isEmpty else { return }
+        let modified = (try? FileManager.default.attributesOfItem(atPath: path)[.modificationDate]
+            as? Date)?.timeIntervalSince1970 ?? 0
+        let cacheKey = "\(path)#\(modified)" as NSString
+        if let cached = cache.object(forKey: cacheKey) {
             apply(cached)
             return
         }
-        guard let faviconURL = URL(string: "\(origin)/favicon.ico") else { return }
-        URLSession.shared.dataTask(with: faviconURL) { data, response, _ in
-            guard let data,
-                  let http = response as? HTTPURLResponse,
-                  http.statusCode == 200,
-                  let contentType = http.value(forHTTPHeaderField: "Content-Type"),
-                  !contentType.hasPrefix("text/") else { return }
-            Task { @MainActor in
-                guard let image = NSImage(data: data), image.isValid else { return }
-                cache.setObject(image, forKey: origin as NSString)
-                apply(image)
-            }
-        }.resume()
+        guard let image = NSImage(contentsOfFile: path), image.isValid else { return }
+        cache.setObject(image, forKey: cacheKey)
+        apply(image)
     }
 }
 

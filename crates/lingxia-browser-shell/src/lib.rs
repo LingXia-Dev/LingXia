@@ -23,7 +23,8 @@ mod settings;
 
 pub use address_bar::{resolve_input, resolve_input_json};
 pub use bookmarks::{
-    BookmarkEntry, BookmarksSnapshot, command_json as bookmarks_command_json, is_bookmarked,
+    BookmarkEntry, BookmarksSnapshot, command_json as bookmarks_command_json,
+    favicon_path as bookmark_favicon_path, is_bookmarked,
     normalize_url_for_match as normalize_bookmark_url, pin_url as pin_bookmark_url,
     pin_url_with_favicon as pin_bookmark_url_with_favicon, remove_by_url as remove_bookmark_by_url,
     set_change_listener as set_bookmarks_change_listener, snapshot as bookmarks_snapshot,

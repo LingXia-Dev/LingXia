@@ -306,6 +306,11 @@ mod bridge {
         #[swift_bridge(swift_name = "browserBookmarksSnapshotJson")]
         fn browser_bookmarks_snapshot_json() -> String;
 
+        // Absolute path to Rust's cross-platform favicon cache. Empty while a
+        // missing entry is being fetched.
+        #[swift_bridge(swift_name = "browserBookmarkFaviconPath")]
+        fn browser_bookmark_favicon_path(url: &str) -> String;
+
         // One sidebar management command as JSON ({"op": "rename" | "move" |
         // "createGroupAndMove" | "renameGroup" | "deleteGroup" | "setPinned",
         // ...}).
@@ -794,6 +799,12 @@ pub fn browser_bookmark_remove_by_url(url: &str) -> bool {
 pub fn browser_bookmarks_snapshot_json() -> String {
     ffi_catch_unwind!("browser_bookmarks_snapshot_json", String::new(), || {
         crate::browser::bookmarks_snapshot_json()
+    })
+}
+
+pub fn browser_bookmark_favicon_path(url: &str) -> String {
+    ffi_catch_unwind!("browser_bookmark_favicon_path", String::new(), || {
+        crate::browser::bookmark_favicon_path(url)
     })
 }
 

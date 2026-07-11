@@ -1176,10 +1176,6 @@ fn build_browser_tab_items() -> Vec<WindowsShellAuxiliaryItemLayout> {
     let presented = presented_browser_tab();
     browser_tabs()
         .into_iter()
-        // A pinned page has one canonical sidebar representation: the compact
-        // shortcut above lxapp navigation. Keeping its open-tab row as well
-        // duplicates the same website below Home and scrambles the hierarchy.
-        .filter(|tab| !browser_tab_is_pinned(tab))
         .map(|tab| {
             let active = presented.as_deref() == Some(tab.tab_id.as_str());
             let title = browser_tab_display_title(&tab);
@@ -1198,19 +1194,6 @@ fn build_browser_tab_items() -> Vec<WindowsShellAuxiliaryItemLayout> {
 }
 
 #[cfg(feature = "browser-shell")]
-fn browser_tab_is_pinned(tab: &BrowserTabSummary) -> bool {
-    tab.current_url
-        .as_deref()
-        .and_then(pinned_bookmark_for_url)
-        .is_some()
-}
-
-#[cfg(not(feature = "browser-shell"))]
-fn browser_tab_is_pinned(_tab: &BrowserTabSummary) -> bool {
-    false
-}
-
-#[cfg(feature = "browser-shell")]
 fn build_pinned_bookmark_items() -> Vec<WindowsShellAuxiliaryItemLayout> {
     let active_url = presented_browser_tab()
         .and_then(|tab_id| browser_tab_summary(&tab_id))
@@ -1225,16 +1208,14 @@ fn build_pinned_bookmark_items() -> Vec<WindowsShellAuxiliaryItemLayout> {
                 .filter(|entry| entry.pinned)
                 .map(|entry| {
                     let normalized = lingxia_browser_shell::normalize_bookmark_url(&entry.url);
-                    let icon_png = entry.favicon_png().map(Arc::new).or_else(|| {
-                        tabs.iter().find_map(|tab| {
-                            tab.current_url
-                                .as_deref()
-                                .is_some_and(|url| {
-                                    lingxia_browser_shell::normalize_bookmark_url(url) == normalized
-                                })
-                                .then(|| tab.favicon_png.clone())
-                                .flatten()
-                        })
+                    let icon_png = tabs.iter().find_map(|tab| {
+                        tab.current_url
+                            .as_deref()
+                            .is_some_and(|url| {
+                                lingxia_browser_shell::normalize_bookmark_url(url) == normalized
+                            })
+                            .then(|| tab.favicon_png.clone())
+                            .flatten()
                     });
                     let title = if entry.title.trim().is_empty() {
                         entry.url.clone()
@@ -1242,13 +1223,14 @@ fn build_pinned_bookmark_items() -> Vec<WindowsShellAuxiliaryItemLayout> {
                         entry.title
                     };
                     WindowsShellAuxiliaryItemLayout {
+                        icon_path: lingxia_browser_shell::bookmark_favicon_path(&entry.url)
+                            .unwrap_or_default(),
                         id: format!("{AUX_BOOKMARK_PREFIX}{}", entry.id),
                         title,
                         active: active_url.as_deref() == Some(normalized.as_str()),
                         pinned: true,
                         closable: false,
                         icon_png,
-                        icon_path: String::new(),
                     }
                 })
                 .collect()

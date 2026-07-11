@@ -2973,7 +2973,6 @@ dependencies = [
 name = "lingxia-browser-shell"
 version = "0.10.0"
 dependencies = [
- "base64",
  "futures",
  "html5ever",
  "lingxia-app-context",
@@ -3371,6 +3370,7 @@ dependencies = [
  "rong_rt",
  "serde_json",
  "sha2 0.11.0",
+ "tempfile",
  "tokio",
 ]
 

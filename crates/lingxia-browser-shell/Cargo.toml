@@ -16,7 +16,6 @@ categories = ["web-programming", "api-bindings"]
 proxy = ["dep:lingxia-proxy"]
 
 [dependencies]
-base64.workspace = true
 lxapp = { workspace = true, default-features = false }
 lingxia-app-context = { workspace = true }
 lingxia-browser = { workspace = true }
