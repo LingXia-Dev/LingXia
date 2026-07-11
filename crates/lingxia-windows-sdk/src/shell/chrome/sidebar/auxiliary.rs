@@ -24,8 +24,10 @@ pub(in crate::shell::chrome) fn sidebar_pinned_grid_height(
     let grid_width = (rect_width(&rect) - 2 * SIDEBAR_ITEM_INSET).max(PINNED_SHORTCUT_SIZE);
     let columns = ((grid_width + SIDEBAR_ITEM_GAP) / (PINNED_SHORTCUT_SIZE + SIDEBAR_ITEM_GAP))
         .max(1) as usize;
+    // The grid's row stride already leaves `SIDEBAR_ITEM_GAP` after its last
+    // row. Do not add browser-section padding here: pins and lxapp groups are
+    // adjacent primary navigation sections, not separator-delimited groups.
     count.div_ceil(columns) as i32 * (PINNED_SHORTCUT_SIZE + SIDEBAR_ITEM_GAP)
-        + SIDEBAR_BROWSER_SECTION_GAP
 }
 
 /// Geometry of the sidebar auxiliary section: separator line, one row rect
