@@ -15,20 +15,31 @@
     url: 'https://www.bing.com/search?q={query}',
     builtin: true
   };
+  var BUILTIN_GOOGLE = {
+    id: 'google',
+    name: 'Google',
+    url: 'https://www.google.com/search?q={query}',
+    builtin: true
+  };
+  var BUILTIN_ENGINES = [BUILTIN_BING, BUILTIN_GOOGLE];
 
   var state = loadSettings();
   var activeBackgroundUrl = null;
   var toastTimer = null;
 
   function loadSettings() {
-    var fallback = { defaultEngineId: BUILTIN_BING.id, engines: [BUILTIN_BING] };
+    var fallback = { defaultEngineId: BUILTIN_BING.id, engines: BUILTIN_ENGINES.slice() };
     try {
       var parsed = JSON.parse(localStorage.getItem(SETTINGS_KEY) || 'null');
       if (!parsed || !Array.isArray(parsed.engines)) return fallback;
-      var custom = parsed.engines.filter(validStoredEngine).map(function (engine) {
+      var custom = parsed.engines.filter(validStoredEngine).filter(function (engine) {
+        return !BUILTIN_ENGINES.some(function (builtin) {
+          return engine.id === builtin.id || engine.url.toLowerCase() === builtin.url.toLowerCase();
+        });
+      }).map(function (engine) {
         return { id: engine.id, name: engine.name, url: engine.url, builtin: false };
       });
-      var engines = [BUILTIN_BING].concat(custom.filter(function (engine) { return engine.id !== 'bing'; }));
+      var engines = BUILTIN_ENGINES.concat(custom);
       var defaultEngineId = engines.some(function (engine) { return engine.id === parsed.defaultEngineId; })
         ? parsed.defaultEngineId
         : BUILTIN_BING.id;
