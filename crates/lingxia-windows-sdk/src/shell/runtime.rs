@@ -76,6 +76,7 @@ const SETTINGS_PAGE_URL: &str = "lingxia://settings";
 #[cfg(feature = "browser-runtime")]
 const DOWNLOADS_PAGE_URL: &str = "lingxia://downloads";
 const AUX_LXAPP_PREFIX: &str = "lxapp:";
+const AUX_BOOKMARK_PREFIX: &str = "bookmark:";
 
 /// Segoe Fluent Icons glyphs of the sidebar header actions (passed through
 /// layout data so the webview layer stays product-agnostic).
@@ -225,6 +226,8 @@ mod chrome_command {
     pub(super) const BROWSER_NAV_FORWARD: &str = "browser.nav.forward";
     pub(super) const BROWSER_NAV_RELOAD: &str = "browser.nav.reload";
     pub(super) const BROWSER_ADDRESS_BAR: &str = "browser.address-bar";
+    pub(super) const BROWSER_BOOKMARK_TOGGLE: &str = "browser.bookmark.toggle";
+    pub(super) const BROWSER_PAGE_MENU: &str = "browser.page-menu";
     pub(super) const BROWSER_CLOSE: &str = "browser.close";
     pub(super) const SIDEBAR_TOGGLE: &str = "sidebar.toggle";
     pub(super) const SIDEBAR_GROUP_TOGGLE: &str = "sidebar.group.toggle";
@@ -458,6 +461,12 @@ pub(super) fn install() {
     #[cfg(feature = "browser-runtime")]
     lingxia_browser::set_tabs_changed_handler(Arc::new(|| {
         schedule_browser_tabs_changed_sync();
+    }));
+    #[cfg(feature = "browser-shell")]
+    lingxia_browser_shell::set_bookmarks_change_listener(Box::new(|| {
+        if let Some(appid) = shell_owner_appid() {
+            sync_shell_layout(&appid);
+        }
     }));
     #[cfg(feature = "browser-runtime")]
     lingxia_browser::set_tab_present_handler(Arc::new(|tab_id| {
@@ -870,12 +879,20 @@ fn build_address_bar_layout() -> Option<WindowsShellAddressBarLayout> {
     let aside = lingxia_browser::tab_is_aside(&presented);
     #[cfg(not(feature = "browser-runtime"))]
     let aside = false;
+    #[cfg(feature = "browser-shell")]
+    let bookmarked = tab
+        .current_url
+        .as_deref()
+        .is_some_and(lingxia_browser_shell::is_bookmarked);
+    #[cfg(not(feature = "browser-shell"))]
+    let bookmarked = false;
     Some(WindowsShellAddressBarLayout {
         visible: true,
         url_text: browser_tab_display_url(&tab),
         aside,
         can_go_back: tab.can_go_back,
         can_go_forward: tab.can_go_forward,
+        bookmarked,
         tab_count: browser_tabs().len(),
     })
 }
@@ -1009,7 +1026,8 @@ fn build_tab_bar_layout(
                 .collect::<Vec<_>>()
         })
         .unwrap_or_default();
-    let mut auxiliary_items = build_open_lxapp_items(&app.appid);
+    let mut auxiliary_items = build_pinned_bookmark_items();
+    auxiliary_items.extend(build_open_lxapp_items(&app.appid));
     auxiliary_items.extend(build_browser_tab_items());
     // The "+" opens a new browser tab, so it belongs to the full browser
     // environment only — not the device-framed dev runner, which hosts a
@@ -1156,11 +1174,52 @@ fn build_browser_tab_items() -> Vec<WindowsShellAuxiliaryItemLayout> {
                 id: tab.tab_id,
                 title,
                 active,
+                closable: true,
                 icon_png,
                 icon_path: String::new(),
             }
         })
         .collect()
+}
+
+#[cfg(feature = "browser-shell")]
+fn build_pinned_bookmark_items() -> Vec<WindowsShellAuxiliaryItemLayout> {
+    let active_url = presented_browser_tab()
+        .and_then(|tab_id| browser_tab_summary(&tab_id))
+        .and_then(|tab| tab.current_url)
+        .map(|url| lingxia_browser_shell::normalize_bookmark_url(&url));
+    lingxia_browser_shell::bookmarks_snapshot()
+        .map(|snapshot| {
+            snapshot
+                .entries
+                .into_iter()
+                .filter(|entry| entry.pinned)
+                .map(|entry| {
+                    let title = if entry.title.trim().is_empty() {
+                        entry.url.clone()
+                    } else {
+                        entry.title
+                    };
+                    WindowsShellAuxiliaryItemLayout {
+                        id: format!("{AUX_BOOKMARK_PREFIX}{}", entry.id),
+                        title,
+                        active: active_url.as_deref()
+                            == Some(
+                                lingxia_browser_shell::normalize_bookmark_url(&entry.url).as_str(),
+                            ),
+                        closable: false,
+                        icon_png: None,
+                        icon_path: String::new(),
+                    }
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+#[cfg(not(feature = "browser-shell"))]
+fn build_pinned_bookmark_items() -> Vec<WindowsShellAuxiliaryItemLayout> {
+    Vec::new()
 }
 
 fn build_open_lxapp_items(owner_appid: &str) -> Vec<WindowsShellAuxiliaryItemLayout> {
@@ -1186,6 +1245,7 @@ fn build_open_lxapp_items(owner_appid: &str) -> Vec<WindowsShellAuxiliaryItemLay
                 id: format!("{AUX_LXAPP_PREFIX}{}", info.appid),
                 title,
                 active: info.appid == current_appid,
+                closable: true,
                 icon_png: None,
                 icon_path,
             }
@@ -1227,6 +1287,23 @@ fn auxiliary_lxapp_id(raw: &str) -> Option<&str> {
     raw.strip_prefix(AUX_LXAPP_PREFIX)
         .map(str::trim)
         .filter(|appid| !appid.is_empty())
+}
+
+#[cfg(feature = "browser-shell")]
+fn auxiliary_bookmark(raw: &str) -> Option<lingxia_browser_shell::BookmarkEntry> {
+    let id = raw
+        .strip_prefix(AUX_BOOKMARK_PREFIX)
+        .map(str::trim)
+        .filter(|id| !id.is_empty())?;
+    lingxia_browser_shell::bookmarks_snapshot()?
+        .entries
+        .into_iter()
+        .find(|entry| entry.id == id && entry.pinned)
+}
+
+#[cfg(not(feature = "browser-shell"))]
+fn auxiliary_bookmark(_raw: &str) -> Option<()> {
+    None
 }
 
 /// Sidebar row title for a browser tab: page title, else the URL host,
@@ -1378,6 +1455,11 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
                 handle_lxapp_auxiliary_click(appid, target_appid);
                 return;
             }
+            #[cfg(feature = "browser-shell")]
+            if let Some(bookmark) = auxiliary_bookmark(&tab_id) {
+                open_or_present_browser_page(appid, app.session_id(), &bookmark.url);
+                return;
+            }
             handle_browser_tab_click(appid, &tab_id);
             return;
         }
@@ -1387,6 +1469,10 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
             };
             if let Some(target_appid) = auxiliary_lxapp_id(&tab_id) {
                 handle_lxapp_auxiliary_close(appid, target_appid);
+                return;
+            }
+            #[cfg(feature = "browser-shell")]
+            if auxiliary_bookmark(&tab_id).is_some() {
                 return;
             }
             handle_browser_tab_close(appid, &tab_id);
@@ -1400,6 +1486,8 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
             let screen_y = payload_i32(&event, "screen_y").unwrap_or(0);
             if let Some(target_appid) = auxiliary_lxapp_id(&tab_id) {
                 show_lxapp_auxiliary_context_menu(appid, target_appid, screen_x, screen_y);
+            } else if tab_id.starts_with(AUX_BOOKMARK_PREFIX) {
+                show_pinned_bookmark_context_menu(appid, &tab_id, screen_x, screen_y);
             } else {
                 show_browser_tab_context_menu(appid, &tab_id, screen_x, screen_y);
             }
@@ -1578,6 +1666,16 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
         }
         chrome_command::BROWSER_ADDRESS_BAR => {
             begin_presented_tab_address_edit(&app);
+            return;
+        }
+        chrome_command::BROWSER_BOOKMARK_TOGGLE => {
+            toggle_presented_tab_bookmark(appid);
+            return;
+        }
+        chrome_command::BROWSER_PAGE_MENU => {
+            let screen_x = payload_i32(&event, "screen_x").unwrap_or(0);
+            let screen_y = payload_i32(&event, "screen_y").unwrap_or(0);
+            show_browser_page_menu(appid, screen_x, screen_y);
             return;
         }
         chrome_command::SIDEBAR_TOGGLE => {
@@ -1833,6 +1931,46 @@ fn show_browser_tab_context_menu(appid: &str, tab_id: &str, screen_x: i32, scree
         }),
     );
 }
+
+#[cfg(feature = "browser-shell")]
+fn show_pinned_bookmark_context_menu(appid: &str, row_id: &str, screen_x: i32, screen_y: i32) {
+    let Some(bookmark) = auxiliary_bookmark(row_id) else {
+        return;
+    };
+    let Some(window) = owner_window_handle(appid) else {
+        return;
+    };
+    let items = vec![
+        lingxia_logic::i18n::t(lingxia_logic::I18nKey::BrowserUnpin),
+        lingxia_logic::i18n::t(lingxia_logic::I18nKey::BrowserManageBookmarks),
+    ];
+    let appid = appid.to_string();
+    super::context_menu::show_context_menu_checked(
+        window,
+        (screen_x, screen_y),
+        items,
+        Vec::new(),
+        Arc::new(move |index| match index {
+            0 => {
+                let command = serde_json::json!({
+                    "op": "setPinned",
+                    "id": bookmark.id,
+                    "pinned": false,
+                });
+                let _ = lingxia_browser_shell::bookmarks_command_json(&command.to_string());
+            }
+            1 => {
+                if let Some(app) = lxapp::try_get(&appid) {
+                    open_or_present_browser_page(&appid, app.session_id(), "lingxia://bookmarks");
+                }
+            }
+            _ => {}
+        }),
+    );
+}
+
+#[cfg(not(feature = "browser-shell"))]
+fn show_pinned_bookmark_context_menu(_appid: &str, _row_id: &str, _screen_x: i32, _screen_y: i32) {}
 
 #[cfg(feature = "browser-runtime")]
 fn handle_browser_tab_context_action(appid: &str, tab_id: &str, action: BrowserTabContextAction) {
@@ -2143,14 +2281,31 @@ fn handle_sidebar_action(appid: &str, session_id: u64, action_id: &str) {
 #[cfg(not(feature = "browser-runtime"))]
 fn handle_sidebar_action(_appid: &str, _session_id: u64, _action_id: &str) {}
 
+#[cfg(feature = "browser-shell")]
+fn browser_page_urls_match(current: &str, target: &str) -> bool {
+    if target.starts_with("http://") || target.starts_with("https://") {
+        lingxia_browser_shell::normalize_bookmark_url(current)
+            == lingxia_browser_shell::normalize_bookmark_url(target)
+    } else {
+        current == target
+    }
+}
+
+#[cfg(not(feature = "browser-shell"))]
+fn browser_page_urls_match(current: &str, target: &str) -> bool {
+    current == target
+}
+
 /// Presents `url` as a browser page: when a tab already shows it, that tab
 /// is activated and presented; otherwise a new tab opens at `url` (same
 /// flow as the sidebar "New Tab" row, just with a target URL).
 #[cfg(feature = "browser-runtime")]
 fn open_or_present_browser_page(appid: &str, session_id: u64, url: &str) {
-    let existing = browser_tabs()
-        .into_iter()
-        .find(|tab| tab.current_url.as_deref() == Some(url));
+    let existing = browser_tabs().into_iter().find(|tab| {
+        tab.current_url
+            .as_deref()
+            .is_some_and(|current| browser_page_urls_match(current, url))
+    });
     if let Some(existing) = existing {
         handle_browser_tab_click(appid, &existing.tab_id);
         return;
@@ -2423,6 +2578,145 @@ fn begin_presented_tab_address_edit(app: &LxApp) {
         }),
     );
 }
+
+#[cfg(feature = "browser-shell")]
+fn toggle_presented_tab_bookmark(appid: &str) {
+    let Some(tab_id) = presented_browser_tab() else {
+        return;
+    };
+    let Some(tab) = browser_tab_summary(&tab_id) else {
+        return;
+    };
+    let Some(url) = tab
+        .current_url
+        .as_deref()
+        .map(str::trim)
+        .filter(|url| url.starts_with("http://") || url.starts_with("https://"))
+    else {
+        return;
+    };
+    let title = browser_tab_display_title(&tab);
+    let _ = lingxia_browser_shell::toggle_bookmark(url, &title);
+    sync_shell_layout(appid);
+}
+
+#[cfg(not(feature = "browser-shell"))]
+fn toggle_presented_tab_bookmark(_appid: &str) {}
+
+#[cfg(feature = "browser-shell")]
+fn show_browser_page_menu(appid: &str, screen_x: i32, screen_y: i32) {
+    let Some(tab_id) = presented_browser_tab() else {
+        return;
+    };
+    let Some(tab) = browser_tab_summary(&tab_id) else {
+        return;
+    };
+    let Some(window) = owner_window_handle(appid) else {
+        return;
+    };
+    let url = tab.current_url.clone().unwrap_or_default();
+    let is_web_url = url.starts_with("http://") || url.starts_with("https://");
+    let bookmarked = is_web_url && lingxia_browser_shell::is_bookmarked(&url);
+    let normalized_url = lingxia_browser_shell::normalize_bookmark_url(&url);
+    let pinned_id = lingxia_browser_shell::bookmarks_snapshot().and_then(|snapshot| {
+        snapshot
+            .entries
+            .into_iter()
+            .find(|entry| {
+                entry.pinned
+                    && lingxia_browser_shell::normalize_bookmark_url(&entry.url) == normalized_url
+            })
+            .map(|entry| entry.id)
+    });
+    let mut items = vec![
+        lingxia_logic::i18n::t(if bookmarked {
+            lingxia_logic::I18nKey::BrowserRemoveBookmark
+        } else {
+            lingxia_logic::I18nKey::BrowserAddBookmark
+        }),
+        lingxia_logic::i18n::t(if pinned_id.is_some() {
+            lingxia_logic::I18nKey::BrowserUnpin
+        } else {
+            lingxia_logic::I18nKey::BrowserPinToSidebar
+        }),
+        lingxia_logic::i18n::t(lingxia_logic::I18nKey::BrowserCopyLink),
+        lingxia_logic::i18n::t(lingxia_logic::I18nKey::BrowserOpenInSystemBrowser),
+        String::new(),
+        lingxia_logic::i18n::t(lingxia_logic::I18nKey::BrowserManageBookmarks),
+        lingxia_logic::i18n::t(lingxia_logic::I18nKey::BrowserHistory),
+        String::new(),
+        lingxia_logic::i18n::t(lingxia_logic::I18nKey::BrowserClearBrowsingData),
+    ];
+    if !is_web_url {
+        items[0].clear();
+        items[1].clear();
+    }
+    if url.trim().is_empty() || lingxia_browser_shell::should_hide_url(&url) {
+        items[2].clear();
+        items[3].clear();
+    }
+    let appid = appid.to_string();
+    let title = browser_tab_display_title(&tab);
+    super::context_menu::show_context_menu_checked(
+        window,
+        (screen_x, screen_y),
+        items,
+        Vec::new(),
+        Arc::new(move |index| match index {
+            0 if is_web_url => {
+                let _ = lingxia_browser_shell::toggle_bookmark(&url, &title);
+            }
+            1 if is_web_url => {
+                if let Some(id) = pinned_id.as_deref() {
+                    let command = serde_json::json!({
+                        "op": "setPinned",
+                        "id": id,
+                        "pinned": false,
+                    });
+                    let _ = lingxia_browser_shell::bookmarks_command_json(&command.to_string());
+                } else {
+                    let _ = lingxia_browser_shell::pin_bookmark_url(&url, &title);
+                }
+            }
+            2 => {
+                let _ = super::clipboard::set_clipboard_text(&url);
+            }
+            3 => {
+                if let Some(app) = lxapp::try_get(&appid) {
+                    let _ = app.runtime.open_url(OpenUrlRequest {
+                        owner_appid: appid.clone(),
+                        owner_session_id: app.session_id(),
+                        url: url.clone(),
+                        target: OpenUrlTarget::External,
+                    });
+                }
+            }
+            5 => {
+                if let Some(app) = lxapp::try_get(&appid) {
+                    open_or_present_browser_page(&appid, app.session_id(), "lingxia://bookmarks");
+                }
+            }
+            6 => {
+                if let Some(app) = lxapp::try_get(&appid) {
+                    open_or_present_browser_page(&appid, app.session_id(), "lingxia://history");
+                }
+            }
+            8 => {
+                if let Some(app) = lxapp::try_get(&appid) {
+                    open_or_present_browser_page(
+                        &appid,
+                        app.session_id(),
+                        "lingxia://settings#clear-browsing-data",
+                    );
+                }
+            }
+            _ => {}
+        }),
+    );
+}
+
+#[cfg(not(feature = "browser-shell"))]
+fn show_browser_page_menu(_appid: &str, _screen_x: i32, _screen_y: i32) {}
 
 #[cfg(not(feature = "browser-runtime"))]
 fn begin_presented_tab_address_edit(_app: &LxApp) {

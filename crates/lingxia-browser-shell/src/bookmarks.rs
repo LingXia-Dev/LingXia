@@ -298,6 +298,20 @@ pub fn snapshot_json() -> Option<String> {
     serde_json::to_string(&snapshot).ok()
 }
 
+/// Stable comparison key used by native chrome when matching a stored
+/// bookmark to an open tab.
+pub fn normalize_url_for_match(raw: &str) -> String {
+    normalize_url(raw)
+}
+
+/// Typed snapshot for native shell chrome. Platform SDKs use this to render
+/// pinned entries without duplicating the persisted JSON schema.
+pub fn snapshot() -> Option<BookmarksSnapshot> {
+    let dir = runtime_data_dir()?;
+    let _guard = store_lock().lock().unwrap_or_else(|e| e.into_inner());
+    load(&dir).ok()
+}
+
 /// Pin `url` to the sidebar grid ("Pin to Sidebar" on a tab). Bookmarks the
 /// page first when needed, keeping the pinned ⊆ bookmarked invariant without
 /// forcing a two-step flow on the user.

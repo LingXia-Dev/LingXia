@@ -81,7 +81,7 @@ pub(in crate::shell::chrome) fn sidebar_auxiliary_hit_test(
     let auxiliary = sidebar_auxiliary_rects(rect, tabbar)?;
     for (item, item_rect) in tabbar.auxiliary_items.iter().zip(&auxiliary.items) {
         if rect_contains(item_rect, point) {
-            if rect_contains(&sidebar_auxiliary_close_rect(*item_rect), point) {
+            if item.closable && rect_contains(&sidebar_auxiliary_close_rect(*item_rect), point) {
                 return Some(chrome_command(
                     command_id::BROWSER_TAB_CLOSE,
                     serde_json::json!({ "tab_id": item.id.clone() }),
@@ -175,7 +175,11 @@ pub(in crate::shell::chrome) fn draw_sidebar_auxiliary_section(
         let label_rect = normalize_rect(RECT {
             left: label_left,
             top: item_rect.top,
-            right: close_rect.left - 2,
+            right: if item.closable {
+                close_rect.left - 2
+            } else {
+                item_rect.right - 8
+            },
             bottom: item_rect.bottom,
         });
         let text_color = if item.active {
@@ -184,13 +188,15 @@ pub(in crate::shell::chrome) fn draw_sidebar_auxiliary_section(
             shell_palette().text_muted
         };
         draw_text(hdc, &item.title, label_rect, text_color, DT_LEFT);
-        draw_text(
-            hdc,
-            GLYPH_TAB_CLOSE,
-            close_rect,
-            shell_palette().text_muted,
-            DT_CENTER,
-        );
+        if item.closable {
+            draw_text(
+                hdc,
+                GLYPH_TAB_CLOSE,
+                close_rect,
+                shell_palette().text_muted,
+                DT_CENTER,
+            );
+        }
     }
 
     if let Some(add_rect) = auxiliary.add {

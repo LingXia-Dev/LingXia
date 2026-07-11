@@ -46,6 +46,9 @@ pub(super) struct TopBarControls {
     pub(super) nav_reload: Option<RECT>,
     /// The URL capsule (also the inline address-edit anchor).
     pub(super) address: Option<RECT>,
+    /// Current-page bookmark toggle and overflow page menu.
+    pub(super) bookmark: Option<RECT>,
+    pub(super) page_menu: Option<RECT>,
     /// Dismisses the presented browser tab back to the lxapp. Only on
     /// device-framed screens (no caption buttons), mirroring the macOS
     /// phone browser's close button.
@@ -125,6 +128,8 @@ pub(super) fn top_bar_controls(
         nav_forward: None,
         nav_reload: None,
         address: None,
+        bookmark: None,
+        page_menu: None,
         browser_close: None,
     };
     // On the phone frame the browser chrome is the bottom bar; the top bar
@@ -146,6 +151,17 @@ pub(super) fn top_bar_controls(
         left_edge = close.right + TOP_BAR_BUTTON_GAP;
         right_edge = top_bar.right - TOP_BAR_PADDING - device_capsule_reserve();
     }
+    let aside = layout
+        .address_bar
+        .as_ref()
+        .is_some_and(|address_bar| address_bar.aside);
+    if !aside {
+        let page_menu = square_button(right_edge - TOP_BAR_BUTTON_SIZE);
+        let bookmark = square_button(page_menu.left - TOP_BAR_BUTTON_GAP - TOP_BAR_BUTTON_SIZE);
+        controls.page_menu = Some(page_menu);
+        controls.bookmark = Some(bookmark);
+        right_edge = bookmark.left - ADDRESS_CAPSULE_NAV_GAP;
+    }
     let nav_width = 3 * TOP_BAR_BUTTON_SIZE + 2 * TOP_BAR_BUTTON_GAP;
     let capsule_space = right_edge - left_edge - nav_width - ADDRESS_CAPSULE_NAV_GAP;
     if capsule_space < 48 {
@@ -165,11 +181,7 @@ pub(super) fn top_bar_controls(
 
     // An aside tab keeps the nav cluster but has no address input - that is
     // the sole self-vs-aside chrome distinction.
-    if layout
-        .address_bar
-        .as_ref()
-        .is_some_and(|address_bar| address_bar.aside)
-    {
+    if aside {
         return controls;
     }
 
@@ -343,6 +355,34 @@ pub(super) fn draw_top_bar_controls(
             inset_rect(address, 12, 0),
             shell_palette().text_primary,
             DT_LEFT,
+        );
+    }
+    if let Some(bookmark) = controls.bookmark {
+        draw_hover_wash(hdc, bookmark, 5, cursor);
+        let filled = layout
+            .address_bar
+            .as_ref()
+            .is_some_and(|address_bar| address_bar.bookmarked);
+        draw_design_icon_button(
+            hdc,
+            bookmark,
+            if filled {
+                WindowsDesignIcon::BookmarkFilled
+            } else {
+                WindowsDesignIcon::Bookmark
+            },
+            shell_palette().frame_button_icon,
+            18,
+        );
+    }
+    if let Some(page_menu) = controls.page_menu {
+        draw_hover_wash(hdc, page_menu, 5, cursor);
+        draw_design_icon_button(
+            hdc,
+            page_menu,
+            WindowsDesignIcon::PageMenu,
+            shell_palette().frame_button_icon,
+            18,
         );
     }
     remember_address_capsule_rect(state.hwnd, controls.address);

@@ -22,9 +22,10 @@ mod settings;
 
 pub use address_bar::{resolve_input, resolve_input_json};
 pub use bookmarks::{
-    command_json as bookmarks_command_json, is_bookmarked, pin_url as pin_bookmark_url,
+    BookmarkEntry, BookmarksSnapshot, command_json as bookmarks_command_json, is_bookmarked,
+    normalize_url_for_match as normalize_bookmark_url, pin_url as pin_bookmark_url,
     remove_by_url as remove_bookmark_by_url, set_change_listener as set_bookmarks_change_listener,
-    snapshot_json as bookmarks_snapshot_json, toggle_bookmark,
+    snapshot as bookmarks_snapshot, snapshot_json as bookmarks_snapshot_json, toggle_bookmark,
 };
 pub use facade::{
     APP_ID, classify_navigation, classify_navigation_json, close, download, open, open_for_app,

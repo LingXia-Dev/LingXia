@@ -201,6 +201,8 @@ pub(super) mod command_id {
     pub(super) const BROWSER_NAV_FORWARD: &str = "browser.nav.forward";
     pub(super) const BROWSER_NAV_RELOAD: &str = "browser.nav.reload";
     pub(super) const BROWSER_ADDRESS_BAR: &str = "browser.address-bar";
+    pub(super) const BROWSER_BOOKMARK_TOGGLE: &str = "browser.bookmark.toggle";
+    pub(super) const BROWSER_PAGE_MENU: &str = "browser.page-menu";
     pub(super) const BROWSER_CLOSE: &str = "browser.close";
     pub(super) const SIDEBAR_TOGGLE: &str = "sidebar.toggle";
     pub(super) const SIDEBAR_GROUP_TOGGLE: &str = "sidebar.group.toggle";
@@ -1385,6 +1387,21 @@ pub(super) fn chrome_hit_test(
         && rect_contains(&address, point)
     {
         return Some(chrome_command(command_id::BROWSER_ADDRESS_BAR, json!({})));
+    }
+    if let Some(bookmark) = controls.bookmark
+        && rect_contains(&bookmark, point)
+    {
+        return Some(chrome_command(
+            command_id::BROWSER_BOOKMARK_TOGGLE,
+            json!({}),
+        ));
+    }
+    if let Some(page_menu) = controls.page_menu
+        && rect_contains(&page_menu, point)
+    {
+        return Some(WindowsChromeHit::Command(
+            WindowsChromeCommand::new(command_id::BROWSER_PAGE_MENU).with_screen_position(),
+        ));
     }
     if let Some(close) = controls.browser_close
         && rect_contains(&close, point)

@@ -39,6 +39,9 @@ pub struct WindowsShellAuxiliaryItemLayout {
     pub id: String,
     pub title: String,
     pub active: bool,
+    /// Whether the row exposes the trailing close affordance. Pinned bookmark
+    /// shortcuts are independent from open tabs and therefore are not closed.
+    pub closable: bool,
     pub icon_png: Option<Arc<Vec<u8>>>,
     /// Absolute icon path (PNG or SVG) used when `icon_png` is absent —
     /// e.g. an open lxapp's own icon. Empty falls back to the LingXia mark.
@@ -91,6 +94,8 @@ pub struct WindowsShellAddressBarLayout {
     /// buttons dim while their direction is unavailable.
     pub can_go_back: bool,
     pub can_go_forward: bool,
+    /// Whether the current page is stored as a bookmark.
+    pub bookmarked: bool,
     /// Open browser-tab count, shown on the phone bar's tabs button.
     pub tab_count: usize,
 }
