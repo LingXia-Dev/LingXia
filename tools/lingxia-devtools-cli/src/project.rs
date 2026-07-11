@@ -50,8 +50,12 @@ fn detach_process(command: &mut std::process::Command) {
 fn detach_process(command: &mut std::process::Command) {
     use std::os::windows::process::CommandExt;
     const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
-    const DETACHED_PROCESS: u32 = 0x0000_0008;
-    command.creation_flags(CREATE_NEW_PROCESS_GROUP | DETACHED_PROCESS);
+    // DETACHED_PROCESS can still flash a console window when the console
+    // subsystem `lingxia.exe` is launched from Windows Terminal/Explorer.
+    // CREATE_NO_WINDOW keeps the broker fully headless while preserving its
+    // independent process group.
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    command.creation_flags(CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW);
 }
 
 /// All live sessions for this user, ordered by start time.
