@@ -71,6 +71,36 @@ struct ClearBrowsingDataResult {
     history_removed: usize,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ClearSiteDataInput {
+    tab_id: String,
+    #[serde(default)]
+    cache: bool,
+    #[serde(default)]
+    cookies: bool,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ClearSiteDataResult {
+    cache_cleared: bool,
+    site_data_cleared: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SiteDataContextInput {
+    tab_id: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SiteDataContext {
+    url: String,
+    host: String,
+}
+
 fn map_webview_error(action: &str, err: WebViewError) -> LxAppError {
     let message = err.to_string();
     if message.contains("not supported on this platform") {
@@ -140,9 +170,65 @@ async fn clear_browsing_data(
     Ok(ClearBrowsingDataResult { history_removed })
 }
 
+#[lingxia::native("privacy.clearSiteData")]
+async fn clear_site_data(
+    _app: Arc<LxApp>,
+    input: ClearSiteDataInput,
+) -> HostResult<ClearSiteDataResult> {
+    if !input.cache && !input.cookies {
+        return Err(LxAppError::InvalidParameter(
+            "select site data or cache to clear".to_string(),
+        ));
+    }
+    let result = lingxia_browser::clear_site_data(
+        &input.tab_id,
+        lingxia_webview::ClearSiteDataOptions {
+            cache: input.cache,
+            site_data: input.cookies,
+        },
+    )
+    .await
+    .map_err(|error| LxAppError::Runtime(format!("privacy.clearSiteData: {error}")))?;
+    lingxia_browser::reload(&input.tab_id)
+        .map_err(|error| LxAppError::Runtime(format!("privacy.clearSiteData.reload: {error}")))?;
+    Ok(ClearSiteDataResult {
+        cache_cleared: result.cache_cleared,
+        site_data_cleared: result.site_data_cleared,
+    })
+}
+
+#[lingxia::native("privacy.getSiteDataContext")]
+async fn get_site_data_context(
+    _app: Arc<LxApp>,
+    input: SiteDataContextInput,
+) -> HostResult<SiteDataContext> {
+    let url = lingxia_browser::current_url(&input.tab_id)
+        .await
+        .map_err(|error| LxAppError::Runtime(format!("privacy.getSiteDataContext: {error}")))?
+        .ok_or_else(|| {
+            LxAppError::InvalidParameter("current tab has no website URL".to_string())
+        })?;
+    let uri = url.parse::<http::Uri>().map_err(|_| {
+        LxAppError::InvalidParameter("current tab URL is not a website".to_string())
+    })?;
+    if !matches!(uri.scheme_str(), Some("http" | "https")) {
+        return Err(LxAppError::InvalidParameter(
+            "current tab URL is not a website".to_string(),
+        ));
+    }
+    let host = uri
+        .host()
+        .filter(|host| !host.is_empty())
+        .ok_or_else(|| LxAppError::InvalidParameter("current tab URL has no host".to_string()))?
+        .to_string();
+    Ok(SiteDataContext { url, host })
+}
+
 pub(crate) fn register() {
     lxapp::host::register_host_entry(get_privacy_usage_host());
     lxapp::host::register_host_entry(clear_cache_host());
     lxapp::host::register_host_entry(clear_cookies_host());
     lxapp::host::register_host_entry(clear_browsing_data_host());
+    lxapp::host::register_host_entry(clear_site_data_host());
+    lxapp::host::register_host_entry(get_site_data_context_host());
 }

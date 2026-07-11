@@ -32,6 +32,7 @@ log = { workspace = true }
 rong = { workspace = true, default-features = false }
 rusqlite = { version = "0.40.1", features = ["bundled"] }
 html5ever = "0.35.0"
+http = { workspace = true }
 
 [target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
 lingxia-proxy = { workspace = true, features = ["rule-list-routing"], optional = true }

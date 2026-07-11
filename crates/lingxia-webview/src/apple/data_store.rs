@@ -6,7 +6,7 @@
 //! to the main thread and complete through a oneshot, mirroring the per-view
 //! patterns in `webview.rs`.
 
-use crate::WebViewError;
+use crate::{ClearSiteDataOptions, ClearSiteDataResult, WebViewError};
 use block2::StackBlock;
 use dispatch2::DispatchQueue;
 use objc2::MainThreadMarker;
@@ -52,6 +52,40 @@ fn site_data_types() -> Retained<NSSet<NSString>> {
             WKWebsiteDataTypeIndexedDBDatabases,
         ])
     }
+}
+
+fn selected_types(options: ClearSiteDataOptions) -> Retained<NSSet<NSString>> {
+    unsafe {
+        let mut types = Vec::new();
+        if options.cache {
+            types.extend([
+                WKWebsiteDataTypeDiskCache,
+                WKWebsiteDataTypeMemoryCache,
+                WKWebsiteDataTypeFetchCache,
+                WKWebsiteDataTypeOfflineWebApplicationCache,
+            ]);
+        }
+        if options.site_data {
+            types.extend([
+                WKWebsiteDataTypeCookies,
+                WKWebsiteDataTypeSessionStorage,
+                WKWebsiteDataTypeLocalStorage,
+                WKWebsiteDataTypeWebSQLDatabases,
+                WKWebsiteDataTypeIndexedDBDatabases,
+            ]);
+        }
+        NSSet::from_slice(&types)
+    }
+}
+
+fn record_matches_host(record_name: &str, host: &str) -> bool {
+    let record_name = record_name.trim_start_matches('.').to_ascii_lowercase();
+    let host = host.trim_start_matches('.').to_ascii_lowercase();
+    !record_name.is_empty()
+        && (host == record_name
+            || host
+                .strip_suffix(&record_name)
+                .is_some_and(|prefix| prefix.ends_with('.')))
 }
 
 fn send_once<T>(state: &Arc<Mutex<Option<oneshot::Sender<T>>>>, value: T) {
@@ -166,4 +200,92 @@ pub async fn clear_site_data() -> Result<(), WebViewError> {
 pub async fn clear_site_data_since(since_unix_ms: Option<u64>) -> Result<(), WebViewError> {
     let rx = clear_types(site_data_types, since_unix_ms);
     await_store_op(rx, "clear cookies & site data").await
+}
+
+pub(crate) async fn clear_site_data_for_url(
+    url: &str,
+    options: ClearSiteDataOptions,
+) -> Result<ClearSiteDataResult, WebViewError> {
+    let uri = url
+        .parse::<http::Uri>()
+        .map_err(|_| WebViewError::WebView("site data URL is invalid".to_string()))?;
+    let host = uri
+        .host()
+        .filter(|host| !host.is_empty())
+        .ok_or_else(|| WebViewError::WebView("site data URL has no host".to_string()))?
+        .to_ascii_lowercase();
+    if !matches!(uri.scheme_str(), Some("http" | "https")) {
+        return Err(WebViewError::WebView(
+            "site data URL must use HTTP or HTTPS".to_string(),
+        ));
+    }
+    if !options.cache && !options.site_data {
+        return Err(WebViewError::WebView(
+            "select site data or cache to clear".to_string(),
+        ));
+    }
+
+    let (tx, rx) = oneshot::channel();
+    DispatchQueue::main().exec_async(move || unsafe {
+        let Some(mtm) = MainThreadMarker::new() else {
+            let _ = tx.send(Err(WebViewError::WebView("Not on main thread".to_string())));
+            return;
+        };
+        let store = WKWebsiteDataStore::defaultDataStore(mtm);
+        let types = selected_types(options);
+        let store_for_records = store.clone();
+        let types_for_records = types.clone();
+        let tx_state = Arc::new(Mutex::new(Some(tx)));
+        let tx_for_records = Arc::clone(&tx_state);
+        let completion = StackBlock::new(move |records: NonNull<NSArray<WKWebsiteDataRecord>>| {
+            let selected = records
+                .as_ref()
+                .iter()
+                .filter(|record| record_matches_host(&record.displayName().to_string(), &host))
+                .collect::<Vec<_>>();
+            if selected.is_empty() {
+                send_once(
+                    &tx_for_records,
+                    Ok(ClearSiteDataResult {
+                        cache_cleared: options.cache,
+                        site_data_cleared: options.site_data,
+                    }),
+                );
+                return;
+            }
+            let selected = NSArray::from_retained_slice(&selected);
+            let tx_for_remove = Arc::clone(&tx_for_records);
+            let remove_completion = StackBlock::new(move || {
+                send_once(
+                    &tx_for_remove,
+                    Ok(ClearSiteDataResult {
+                        cache_cleared: options.cache,
+                        site_data_cleared: options.site_data,
+                    }),
+                );
+            })
+            .copy();
+            store_for_records.removeDataOfTypes_forDataRecords_completionHandler(
+                &types_for_records,
+                &selected,
+                &remove_completion,
+            );
+        })
+        .copy();
+        store.fetchDataRecordsOfTypes_completionHandler(&types, &completion);
+    });
+    await_store_op(rx, "clear site data").await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::record_matches_host;
+
+    #[test]
+    fn website_data_record_matches_current_site() {
+        assert!(record_matches_host("example.com", "example.com"));
+        assert!(record_matches_host("example.com", "account.example.com"));
+        assert!(!record_matches_host("notexample.com", "example.com"));
+        assert!(!record_matches_host("example.com", "notexample.com"));
+    }
 }

@@ -472,6 +472,7 @@ mod tests {
         register_test_browser_internal_pages();
         for url in [
             "lingxia://settings#clear-browsing-data",
+            "lingxia://settings#clear-site-data?tabId=tab-1",
             "lingxia://settings?section=privacy",
             "lingxia://settings/",
         ] {

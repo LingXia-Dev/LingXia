@@ -96,12 +96,12 @@ mod windows;
 // Public exports
 // WebViewError and LogLevel are defined above
 pub use traits::{
-    ClickOptions, DownloadRequest, FileChooserFile, FileChooserRequest, FileChooserResponse,
-    FillOptions, LoadDataRequest, LoadError, LoadErrorKind, NavigationPolicy, NetworkBody,
-    NetworkCaptureSnapshot, NetworkEntry, NewWindowPolicy, PressOptions, SchemeOutcome,
-    ScrollOptions, SystemPipeReader, TypeOptions, WebResourceBody, WebResourceResponse,
-    WebViewController, WebViewCookie, WebViewCookieSameSite, WebViewCookieSetRequest,
-    WebViewDelegate, WebViewInputController,
+    ClearSiteDataOptions, ClearSiteDataResult, ClickOptions, DownloadRequest, FileChooserFile,
+    FileChooserRequest, FileChooserResponse, FillOptions, LoadDataRequest, LoadError,
+    LoadErrorKind, NavigationPolicy, NetworkBody, NetworkCaptureSnapshot, NetworkEntry,
+    NewWindowPolicy, PressOptions, SchemeOutcome, ScrollOptions, SystemPipeReader, TypeOptions,
+    WebResourceBody, WebResourceResponse, WebViewController, WebViewCookie, WebViewCookieSameSite,
+    WebViewCookieSetRequest, WebViewDelegate, WebViewInputController,
 };
 pub use webview::{
     BrowserWebViewBuilder, ProxyActivation, ProxyApplyReport, ProxyApplyStatus, ProxyConfig,

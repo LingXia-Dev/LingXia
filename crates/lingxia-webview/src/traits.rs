@@ -324,6 +324,19 @@ pub trait WebViewController: Send + Sync {
         ))
     }
 
+    /// Clear data owned by the current website without clearing the shared
+    /// browser profile. Platforms report whether their network cache supports
+    /// site-scoped removal.
+    async fn clear_site_data(
+        &self,
+        _url: &str,
+        _options: ClearSiteDataOptions,
+    ) -> Result<ClearSiteDataResult, WebViewError> {
+        Err(WebViewError::WebView(
+            "site-scoped data clearing is not implemented for this platform".to_string(),
+        ))
+    }
+
     /// Capture a PNG screenshot of the WebView's visible content.
     /// Returns raw PNG-encoded bytes ready to be base64'd over the wire.
     async fn take_screenshot(&self) -> Result<Vec<u8>, WebViewError> {
@@ -364,6 +377,18 @@ pub trait WebViewController: Send + Sync {
             "network capture is not implemented for this platform".to_string(),
         ))
     }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct ClearSiteDataOptions {
+    pub cache: bool,
+    pub site_data: bool,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct ClearSiteDataResult {
+    pub cache_cleared: bool,
+    pub site_data_cleared: bool,
 }
 
 /// One captured network request and its response (when it completed).

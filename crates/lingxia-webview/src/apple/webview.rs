@@ -17,9 +17,9 @@ use crate::traits::{
 };
 use crate::webview::{find_webview, find_webview_delegate};
 use crate::{
-    DownloadRequest, LoadDataRequest, LogLevel, WebResourceResponse, WebViewController,
-    WebViewCookie, WebViewCookieSameSite, WebViewCookieSetRequest, WebViewError,
-    WebViewScriptError,
+    ClearSiteDataOptions, ClearSiteDataResult, DownloadRequest, LoadDataRequest, LogLevel,
+    WebResourceResponse, WebViewController, WebViewCookie, WebViewCookieSameSite,
+    WebViewCookieSetRequest, WebViewError, WebViewScriptError,
 };
 use async_trait::async_trait;
 use block2::{Block, RcBlock, StackBlock};
@@ -3043,6 +3043,14 @@ impl WebViewController for WebViewInner {
         });
         rx.await
             .map_err(|_| WebViewError::WebView("cookie clear request was canceled".to_string()))?
+    }
+
+    async fn clear_site_data(
+        &self,
+        url: &str,
+        options: ClearSiteDataOptions,
+    ) -> Result<ClearSiteDataResult, WebViewError> {
+        crate::apple::data_store::clear_site_data_for_url(url, options).await
     }
 }
 

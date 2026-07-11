@@ -244,6 +244,13 @@ pub async fn clear_cookies(tab_id: &str) -> Result<(), BrowserAutomationError> {
     automation::browser_clear_cookies(tab_id).await
 }
 
+pub async fn clear_site_data(
+    tab_id: &str,
+    options: lingxia_webview::ClearSiteDataOptions,
+) -> Result<lingxia_webview::ClearSiteDataResult, BrowserAutomationError> {
+    automation::browser_clear_site_data(tab_id, options).await
+}
+
 pub async fn start_network_capture(tab_id: &str) -> Result<(), BrowserAutomationError> {
     automation::browser_start_network_capture(tab_id).await
 }

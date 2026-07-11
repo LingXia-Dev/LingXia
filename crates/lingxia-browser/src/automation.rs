@@ -12,7 +12,8 @@ use crate::types::{
 };
 use lingxia_webview::runtime::find_webview as find_managed_webview;
 use lingxia_webview::{
-    NetworkCaptureSnapshot, WebTag, WebView, WebViewCookie, WebViewCookieSetRequest,
+    NetworkCaptureSnapshot, WebTag, WebView, WebViewController, WebViewCookie,
+    WebViewCookieSetRequest,
 };
 use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
@@ -416,6 +417,27 @@ pub async fn browser_delete_cookie(
 pub async fn browser_clear_cookies(tab_id: &str) -> Result<(), BrowserAutomationError> {
     browser_tab_webview(tab_id)?
         .clear_cookies()
+        .await
+        .map_err(BrowserAutomationError::from)
+}
+
+pub async fn browser_clear_site_data(
+    tab_id: &str,
+    options: lingxia_webview::ClearSiteDataOptions,
+) -> Result<lingxia_webview::ClearSiteDataResult, BrowserAutomationError> {
+    let url = browser_live_current_url(tab_id).await?.ok_or_else(|| {
+        BrowserAutomationError::NativeInput("current tab has no website URL".to_string())
+    })?;
+    let uri = url.parse::<http::Uri>().map_err(|_| {
+        BrowserAutomationError::NativeInput("current tab URL is not a website".to_string())
+    })?;
+    if !matches!(uri.scheme_str(), Some("http" | "https")) || uri.host().is_none() {
+        return Err(BrowserAutomationError::NativeInput(
+            "current tab URL is not a website".to_string(),
+        ));
+    }
+    browser_tab_webview(tab_id)?
+        .clear_site_data(&url, options)
         .await
         .map_err(BrowserAutomationError::from)
 }

@@ -17,7 +17,8 @@ use crate::webview::{
     WebViewCreateStage, find_webview, find_webview_delegate, register_webview,
 };
 use crate::{
-    WebResourceBody, WebResourceResponse, WebViewController, WebViewError, WebViewScriptError,
+    ClearSiteDataOptions, ClearSiteDataResult, WebResourceBody, WebResourceResponse,
+    WebViewController, WebViewError, WebViewScriptError,
 };
 use http::{Request, StatusCode};
 use std::collections::HashMap;
