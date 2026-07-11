@@ -383,7 +383,12 @@
       function escapeHtml(s) {
         return String(s == null ? '' : s)
           .replace(/&/g, '&amp;').replace(/</g, '&lt;')
-          .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+          .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+      }
+
+      // Defense in depth: the store already rejects non-http(s) URLs.
+      function isHttpUrl(url) {
+        return /^https?:\/\//i.test(String(url || ''));
       }
 
       function hostOf(url) {
@@ -551,18 +556,24 @@
         list.innerHTML = entries.map(function (entry) {
           var origin = originOf(entry.url);
           var letter = (entry.title || hostOf(entry.url) || '?').charAt(0).toUpperCase();
+          var fallbackIcon = '<span class="letter">' + escapeHtml(letter) + '</span>';
+          // Escape for the JS string inside onerror, then for the HTML attribute.
+          var onerrorAttr = escapeHtml("this.outerHTML='" + fallbackIcon.replace(/\\/g, '\\\\') + "'");
           var icon = origin
-            ? '<img src="' + escapeHtml(origin) + '/favicon.ico" alt="" loading="lazy"' +
-              ' onerror="this.outerHTML=\'<span class=&quot;letter&quot;>' + escapeHtml(letter) + '</span>\'">'
-            : '<span class="letter">' + escapeHtml(letter) + '</span>';
+            ? '<img src="' + escapeHtml(origin) + '/favicon.ico" alt="" loading="lazy" onerror="' + onerrorAttr + '">'
+            : fallbackIcon;
           var currentGroup = groups.find(function (g) { return g.id === entry.groupId; });
           var groupLabel = currentGroup ? currentGroup.name : t('bookmarks.noGroup');
+          var titleHtml = escapeHtml(entry.title || hostOf(entry.url));
+          var titleCell = isHttpUrl(entry.url)
+            ? '<a class="row-title" href="' + escapeHtml(entry.url) + '" target="_blank" rel="noopener">' + titleHtml + '</a>'
+            : '<span class="row-title">' + titleHtml + '</span>';
           return '<div class="row" data-id="' + escapeHtml(entry.id) + '"' + (draggable ? ' draggable="true"' : '') + '>' +
             '<span class="drag-handle' + (draggable ? '' : ' hidden') + '" title="' + escapeHtml(t('bookmarks.dragReorder')) + '">' +
             '<svg viewBox="0 0 10 16" fill="currentColor"><circle cx="3" cy="3" r="1.2"/><circle cx="7" cy="3" r="1.2"/><circle cx="3" cy="8" r="1.2"/><circle cx="7" cy="8" r="1.2"/><circle cx="3" cy="13" r="1.2"/><circle cx="7" cy="13" r="1.2"/></svg></span>' +
             '<span class="row-favicon">' + icon + '</span>' +
             '<span class="row-main">' +
-            '<a class="row-title" href="' + escapeHtml(entry.url) + '" target="_blank" rel="noopener">' + escapeHtml(entry.title || hostOf(entry.url)) + '</a>' +
+            titleCell +
             '<span class="row-url">' + escapeHtml(entry.url) + '</span>' +
             '<span class="row-rename"><input class="rename-input" data-rename-input value="' + escapeHtml(entry.title) + '"></span>' +
             '</span>' +
@@ -604,12 +615,30 @@
         call('bookmarks.list').then(apply, fail);
       }
 
+      var watchHandle = null;
       function watch() {
         var api = bridge();
         if (typeof api.stream !== 'function') return;
+        var previous = watchHandle;
         var handle = api.stream('bookmarks.watch');
-        handle.onEvent(apply);
-        handle.onError(function (err) { console.warn('[Bookmarks] watch error:', err); });
+        watchHandle = handle;
+        if (previous && typeof previous.cancel === 'function') previous.cancel();
+        function recover(err) {
+          if (watchHandle !== handle) return;
+          // Transport reset: re-subscribe, then reload in the background so
+          // live updates keep flowing.
+          console.warn('[Bookmarks] watch interrupted; re-subscribing:', err);
+          watch();
+          refresh();
+        }
+        handle.onEvent(function (snapshot) {
+          if (watchHandle !== handle) return;
+          apply(snapshot);
+        });
+        handle.onError(recover);
+        if (handle.result && typeof handle.result.then === 'function') {
+          handle.result.then(function () { recover('stream ended'); }, function () {});
+        }
       }
 
       var pageMenuButton = document.getElementById('pageMenuButton');
@@ -645,7 +674,7 @@
       importBtn.addEventListener('click', function () {
         closePageMenu(false);
         setTransferBusy(true);
-        call('bookmarks.importChrome', { language: i18n.locale }, { timeoutMs: 0 }).then(function (result) {
+        call('bookmarks.importHtml', null, { timeoutMs: 0 }).then(function (result) {
           if (result) {
             toast(t('bookmarks.imported', {
               count: result.imported,
@@ -661,7 +690,7 @@
       exportBtn.addEventListener('click', function () {
         closePageMenu(false);
         setTransferBusy(true);
-        call('bookmarks.exportChrome').then(function (result) {
+        call('bookmarks.exportHtml').then(function (result) {
           toast(t('bookmarks.exported', {
             count: result.count,
             fileName: result.fileName

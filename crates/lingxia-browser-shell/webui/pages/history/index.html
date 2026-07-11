@@ -194,7 +194,11 @@
       function escapeHtml(value) {
         return String(value == null ? '' : value)
           .replace(/&/g, '&amp;').replace(/</g, '&lt;')
-          .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+          .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+      }
+      // Defense in depth: the store already rejects non-http(s) URLs.
+      function isHttpUrl(url) {
+        return /^https?:\/\//i.test(String(url || ''));
       }
       function originOf(url) { try { return new URL(url).origin; } catch (_) { return ''; } }
       function hostOf(url) { try { return new URL(url).host; } catch (_) { return url; } }
@@ -244,14 +248,20 @@
           var rows = group.entries.map(function (entry) {
             var origin = originOf(entry.url);
             var letter = (entry.title || hostOf(entry.url) || '?').charAt(0).toUpperCase();
+            var fallbackIcon = '<span>' + escapeHtml(letter) + '</span>';
+            // Escape for the JS string inside onerror, then for the HTML attribute.
+            var onerrorAttr = escapeHtml("this.outerHTML='" + fallbackIcon.replace(/\\/g, '\\\\') + "'");
             var icon = origin
-              ? '<img src="' + escapeHtml(origin) + '/favicon.ico" alt="" loading="lazy" onerror="this.outerHTML=\'<span>' + escapeHtml(letter) + '</span>\'">'
-              : '<span>' + escapeHtml(letter) + '</span>';
+              ? '<img src="' + escapeHtml(origin) + '/favicon.ico" alt="" loading="lazy" onerror="' + onerrorAttr + '">'
+              : fallbackIcon;
             var time = new Date(entry.visitedAtMs).toLocaleTimeString(i18n.locale, { hour: 'numeric', minute: '2-digit' });
+            var titleHtml = escapeHtml(entry.title || hostOf(entry.url));
+            var titleCell = isHttpUrl(entry.url)
+              ? '<a class="row-title" href="' + escapeHtml(entry.url) + '">' + titleHtml + '</a>'
+              : '<span class="row-title">' + titleHtml + '</span>';
             return '<div class="row" data-id="' + escapeHtml(entry.id) + '">' +
               '<span class="favicon">' + icon + '</span>' +
-              '<span class="main"><a class="row-title" href="' + escapeHtml(entry.url) + '">' +
-              escapeHtml(entry.title || hostOf(entry.url)) + '</a><span class="row-url">' +
+              '<span class="main">' + titleCell + '<span class="row-url">' +
               escapeHtml(entry.url) + '</span></span><span class="time">' + escapeHtml(time) +
               '</span><button class="remove" data-remove type="button" title="' + escapeHtml(t('history.remove')) + '">' +
               '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M3.2 4.6h9.6M6.4 4.3V3.2h3.2v1.1M4.3 4.9l.5 7.4c0 .5.5.9 1 .9h4.4c.5 0 1-.4 1-.9l.5-7.4"/></svg></button></div>';
@@ -275,12 +285,32 @@
         render();
       }
       function refresh() { call('history.list').then(apply, fail); }
+      var watchHandle = null;
       function watch() {
         var api = bridge();
         if (typeof api.stream !== 'function') return;
+        var previous = watchHandle;
         var handle = api.stream('history.watch');
-        if (handle && typeof handle.onEvent === 'function') handle.onEvent(apply);
-        if (handle && typeof handle.onError === 'function') handle.onError(fail);
+        watchHandle = handle;
+        if (previous && typeof previous.cancel === 'function') previous.cancel();
+        function recover(err) {
+          if (watchHandle !== handle) return;
+          // Transport reset: re-subscribe, then reload in the background so
+          // live updates keep flowing.
+          console.warn('[History] watch interrupted; re-subscribing:', err);
+          watch();
+          refresh();
+        }
+        if (handle && typeof handle.onEvent === 'function') {
+          handle.onEvent(function (snapshot) {
+            if (watchHandle !== handle) return;
+            apply(snapshot);
+          });
+        }
+        if (handle && typeof handle.onError === 'function') handle.onError(recover);
+        if (handle && handle.result && typeof handle.result.then === 'function') {
+          handle.result.then(function () { recover('stream ended'); }, function () {});
+        }
       }
 
       document.getElementById('search').addEventListener('input', function (event) {

@@ -6,9 +6,10 @@
 //! so `bookmarks.watch` subscribers (newtab, bookmarks page) re-render live
 //! when the native chrome toggles a star.
 
-use crate::bookmarks_html::{ImportedBookmark, export_chrome_html, parse_chrome_html};
+use crate::bookmarks_html::{ImportedBookmark, export_netscape_html, parse_netscape_html};
 use crate::host::{HostCancel, HostResult, StreamContext, await_or_cancel};
 use crate::platform_error::map_platform_error;
+use crate::url_match::normalize_url;
 use lingxia_platform::traits::app_runtime::AppRuntime;
 use lingxia_service::file::{ChooseFileRequest, FileDialogFilter};
 use lxapp::LxApp;
@@ -79,34 +80,9 @@ fn next_id(prefix: &str) -> String {
     )
 }
 
-/// Dedup key: trimmed, fragment stripped, trailing `/` stripped, and the
-/// scheme+host lowered (paths stay case-sensitive).
-fn normalize_url(raw: &str) -> String {
-    let mut s = raw.trim();
-    if let Some(hash) = s.find('#') {
-        s = &s[..hash];
-    }
-    let s = s.strip_suffix('/').unwrap_or(s);
-    match s.split_once("://") {
-        Some((scheme, rest)) => {
-            let (host, path) = match rest.find(['/', '?']) {
-                Some(i) => (&rest[..i], &rest[i..]),
-                None => (rest, ""),
-            };
-            format!(
-                "{}://{}{}",
-                scheme.to_ascii_lowercase(),
-                host.to_ascii_lowercase(),
-                path
-            )
-        }
-        None => s.to_string(),
-    }
-}
-
 fn default_title(url: &str) -> String {
     url.split_once("://")
-        .map(|(_, rest)| rest.split('/').next().unwrap_or(rest))
+        .map(|(_, rest)| rest.split(['/', '?']).next().unwrap_or(rest))
         .unwrap_or(url)
         .to_string()
 }
@@ -137,8 +113,22 @@ fn load(app_data_dir: &Path) -> Result<BookmarksSnapshot, LxAppError> {
     }
     let content = std::fs::read_to_string(&path)
         .map_err(|e| LxAppError::IoError(format!("read {}: {e}", path.display())))?;
-    serde_json::from_str(&content)
-        .map_err(|e| LxAppError::InvalidJsonFile(format!("{}: {e}", path.display())))
+    match serde_json::from_str(&content) {
+        Ok(snapshot) => Ok(snapshot),
+        Err(e) => {
+            // A corrupt file would otherwise fail every load forever; set it
+            // aside and recover with an empty store.
+            log::error!(
+                "[BrowserBookmarks] corrupt {}: {e}; starting fresh",
+                path.display()
+            );
+            let _ = std::fs::rename(&path, path.with_extension("json.corrupt"));
+            Ok(BookmarksSnapshot {
+                version: CURRENT_VERSION,
+                ..Default::default()
+            })
+        }
+    }
 }
 
 fn save(app_data_dir: &Path, snapshot: &BookmarksSnapshot) -> Result<(), LxAppError> {
@@ -273,6 +263,94 @@ fn add_entry(
     };
     snapshot.entries.push(entry.clone());
     Ok((entry, true))
+}
+
+// MARK: - Shared store mutations
+// Host routes and native-chrome `command_json` both dispatch through these,
+// so the two entry points cannot drift apart.
+
+fn rename_entry_op(
+    snapshot: &mut BookmarksSnapshot,
+    id: &str,
+    title: &str,
+) -> Result<BookmarkEntry, LxAppError> {
+    let title = validated_name(title, "bookmark title")?;
+    let entry = snapshot
+        .entries
+        .iter_mut()
+        .find(|e| e.id == id)
+        .ok_or_else(|| LxAppError::ResourceNotFound(format!("bookmark not found: {id}")))?;
+    entry.title = title;
+    Ok(entry.clone())
+}
+
+fn move_entry_op(
+    snapshot: &mut BookmarksSnapshot,
+    id: &str,
+    group_id: Option<String>,
+) -> Result<BookmarkEntry, LxAppError> {
+    if let Some(gid) = group_id.as_deref()
+        && !snapshot.groups.iter().any(|g| g.id == gid)
+    {
+        return Err(LxAppError::ResourceNotFound(format!(
+            "bookmark group not found: {gid}"
+        )));
+    }
+    let entry = snapshot
+        .entries
+        .iter_mut()
+        .find(|e| e.id == id)
+        .ok_or_else(|| LxAppError::ResourceNotFound(format!("bookmark not found: {id}")))?;
+    entry.group_id = group_id;
+    Ok(entry.clone())
+}
+
+fn set_pinned_op(
+    snapshot: &mut BookmarksSnapshot,
+    id: &str,
+    pinned: bool,
+) -> Result<BookmarkEntry, LxAppError> {
+    let entry = snapshot
+        .entries
+        .iter_mut()
+        .find(|e| e.id == id)
+        .ok_or_else(|| LxAppError::ResourceNotFound(format!("bookmark not found: {id}")))?;
+    entry.pinned = pinned;
+    Ok(entry.clone())
+}
+
+fn rename_group_op(
+    snapshot: &mut BookmarksSnapshot,
+    id: &str,
+    name: &str,
+) -> Result<BookmarkGroup, LxAppError> {
+    let name = validated_name(name, "group name")?;
+    let group = snapshot
+        .groups
+        .iter_mut()
+        .find(|g| g.id == id)
+        .ok_or_else(|| LxAppError::ResourceNotFound(format!("bookmark group not found: {id}")))?;
+    group.name = name;
+    Ok(group.clone())
+}
+
+fn delete_group_op(snapshot: &mut BookmarksSnapshot, id: &str) -> Result<(), LxAppError> {
+    let before = snapshot.groups.len();
+    snapshot.groups.retain(|g| g.id != id);
+    if snapshot.groups.len() == before {
+        return Err(LxAppError::ResourceNotFound(format!(
+            "bookmark group not found: {id}"
+        )));
+    }
+    // Orphaned entries fall back to ungrouped rather than disappearing.
+    for entry in snapshot
+        .entries
+        .iter_mut()
+        .filter(|e| e.group_id.as_deref() == Some(id))
+    {
+        entry.group_id = None;
+    }
+    Ok(())
 }
 
 // MARK: - Chrome-facing helpers (no LxApp, e.g. from Swift FFI)
@@ -423,95 +501,27 @@ pub fn command_json(json: &str) -> bool {
         }
     };
     let result = mutate(&dir, |snapshot| match command {
-        Command::Rename { id, title } => {
-            let title = title.trim();
-            if title.is_empty() {
-                return Err(LxAppError::InvalidParameter("empty title".to_string()));
-            }
-            let entry = snapshot
-                .entries
-                .iter_mut()
-                .find(|e| e.id == id)
-                .ok_or(LxAppError::ResourceNotFound(id))?;
-            entry.title = title.to_string();
-            Ok(())
-        }
-        Command::Move { id, group_id } => {
-            if let Some(gid) = group_id.as_deref()
-                && !snapshot.groups.iter().any(|g| g.id == gid)
-            {
-                return Err(LxAppError::ResourceNotFound(gid.to_string()));
-            }
-            let entry = snapshot
-                .entries
-                .iter_mut()
-                .find(|e| e.id == id)
-                .ok_or(LxAppError::ResourceNotFound(id))?;
-            entry.group_id = group_id;
-            Ok(())
-        }
+        Command::Rename { id, title } => rename_entry_op(snapshot, &id, &title).map(|_| ()),
+        Command::Move { id, group_id } => move_entry_op(snapshot, &id, group_id).map(|_| ()),
         Command::CreateGroupAndMove { id, name } => {
-            let name = name.trim();
-            if name.is_empty() {
-                return Err(LxAppError::InvalidParameter("empty group name".to_string()));
-            }
+            let name = validated_name(&name, "group name")?;
             let group_id = match snapshot.groups.iter().find(|g| g.name == name) {
                 Some(existing) => existing.id.clone(),
                 None => {
                     let group = BookmarkGroup {
                         id: next_id("g"),
-                        name: name.to_string(),
+                        name,
                     };
                     let group_id = group.id.clone();
                     snapshot.groups.push(group);
                     group_id
                 }
             };
-            let entry = snapshot
-                .entries
-                .iter_mut()
-                .find(|e| e.id == id)
-                .ok_or(LxAppError::ResourceNotFound(id))?;
-            entry.group_id = Some(group_id);
-            Ok(())
+            move_entry_op(snapshot, &id, Some(group_id)).map(|_| ())
         }
-        Command::RenameGroup { id, name } => {
-            let name = name.trim();
-            if name.is_empty() {
-                return Err(LxAppError::InvalidParameter("empty group name".to_string()));
-            }
-            let group = snapshot
-                .groups
-                .iter_mut()
-                .find(|g| g.id == id)
-                .ok_or(LxAppError::ResourceNotFound(id))?;
-            group.name = name.to_string();
-            Ok(())
-        }
-        Command::SetPinned { id, pinned } => {
-            let entry = snapshot
-                .entries
-                .iter_mut()
-                .find(|e| e.id == id)
-                .ok_or(LxAppError::ResourceNotFound(id))?;
-            entry.pinned = pinned;
-            Ok(())
-        }
-        Command::DeleteGroup { id } => {
-            let before = snapshot.groups.len();
-            snapshot.groups.retain(|g| g.id != id);
-            if snapshot.groups.len() == before {
-                return Err(LxAppError::ResourceNotFound(id.clone()));
-            }
-            for entry in snapshot
-                .entries
-                .iter_mut()
-                .filter(|e| e.group_id.as_deref() == Some(id.as_str()))
-            {
-                entry.group_id = None;
-            }
-            Ok(())
-        }
+        Command::RenameGroup { id, name } => rename_group_op(snapshot, &id, &name).map(|_| ()),
+        Command::SetPinned { id, pinned } => set_pinned_op(snapshot, &id, pinned).map(|_| ()),
+        Command::DeleteGroup { id } => delete_group_op(snapshot, &id),
     });
     result
         .map_err(|e| log::warn!("[BrowserBookmarks] command failed: {e}"))
@@ -640,11 +650,22 @@ struct ExportResult {
     count: usize,
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ImportChromeInput {
-    #[serde(default)]
-    language: Option<String>,
+/// File-picker labels follow the host-owned webui language (the source behind
+/// `settings.getLanguage`); `None` = auto, which falls back to the system
+/// locale exactly like the webui i18n resolution.
+fn webui_locale_is_chinese(app: &LxApp) -> Result<bool, LxAppError> {
+    let stored = lingxia_service::settings::webui_language(&app.app_data_dir())
+        .map_err(|error| LxAppError::Runtime(error.to_string()))?;
+    let language = stored.unwrap_or_else(|| app.runtime.get_system_locale().to_string());
+    Ok(is_chinese_locale(&language))
+}
+
+fn is_chinese_locale(language: &str) -> bool {
+    // Mirrors the webui's /^zh(?:-|$)/ test (plus "_" for POSIX locale ids).
+    let bytes = language.trim().as_bytes();
+    bytes.len() >= 2
+        && bytes[..2].eq_ignore_ascii_case(b"zh")
+        && (bytes.len() == 2 || matches!(bytes[2], b'-' | b'_'))
 }
 
 fn merge_imported(
@@ -730,19 +751,64 @@ fn is_id_permutation(expected: &[&str], ordered: &[String]) -> bool {
     if expected.len() != ordered.len() {
         return false;
     }
-    let expected: std::collections::HashSet<&str> = expected.iter().copied().collect();
-    let ordered: std::collections::HashSet<&str> = ordered.iter().map(String::as_str).collect();
-    expected.len() == ordered.len() && expected == ordered
+    // Compare as multisets: a set comparison lets duplicated ids slip through.
+    let mut expected: Vec<&str> = expected.to_vec();
+    let mut ordered: Vec<&str> = ordered.iter().map(String::as_str).collect();
+    expected.sort_unstable();
+    ordered.sort_unstable();
+    expected == ordered
+}
+
+fn reorder_entries(
+    snapshot: &mut BookmarksSnapshot,
+    group_id: Option<&str>,
+    ordered_ids: &[String],
+) -> Result<(), LxAppError> {
+    // Reorder only the entries in the given group scope; entries in other
+    // scopes keep their relative positions.
+    let in_scope = |e: &BookmarkEntry| e.group_id.as_deref() == group_id;
+    let scope_ids: Vec<&str> = snapshot
+        .entries
+        .iter()
+        .filter(|e| in_scope(e))
+        .map(|e| e.id.as_str())
+        .collect();
+    if !is_id_permutation(&scope_ids, ordered_ids) {
+        return Err(LxAppError::InvalidParameter(
+            "orderedIds must be a permutation of the group's bookmarks".to_string(),
+        ));
+    }
+    // Queue per id so duplicated ids in a damaged store still pop one entry each.
+    let mut by_id: std::collections::HashMap<String, Vec<BookmarkEntry>> =
+        std::collections::HashMap::new();
+    for entry in snapshot.entries.iter().filter(|e| in_scope(e)) {
+        by_id
+            .entry(entry.id.clone())
+            .or_default()
+            .push(entry.clone());
+    }
+    let mut ordered = ordered_ids.iter();
+    for slot in snapshot.entries.iter_mut().filter(|e| in_scope(e)) {
+        // Both iterators walk the same scope, so `ordered` cannot run dry.
+        let id = ordered.next().expect("scope sizes verified equal");
+        *slot = by_id
+            .get_mut(id)
+            .and_then(Vec::pop)
+            .expect("multiset equality verified");
+    }
+    Ok(())
 }
 
 #[lingxia::native("bookmarks.list")]
 fn list_bookmarks(app: Arc<LxApp>) -> HostResult<BookmarksSnapshot> {
+    crate::require_builtin_browser(&app)?;
     let _guard = store_lock().lock().unwrap_or_else(|e| e.into_inner());
     load(&app.app_data_dir())
 }
 
 #[lingxia::native("bookmarks.add")]
 fn add_bookmark(app: Arc<LxApp>, input: UrlInput) -> HostResult<AddResult> {
+    crate::require_builtin_browser(&app)?;
     mutate(&app.app_data_dir(), |snapshot| {
         let (entry, created) = add_entry(
             snapshot,
@@ -756,6 +822,7 @@ fn add_bookmark(app: Arc<LxApp>, input: UrlInput) -> HostResult<AddResult> {
 
 #[lingxia::native("bookmarks.remove")]
 fn remove_bookmark(app: Arc<LxApp>, input: IdInput) -> HostResult<()> {
+    crate::require_builtin_browser(&app)?;
     mutate(&app.app_data_dir(), |snapshot| {
         let before = snapshot.entries.len();
         snapshot.entries.retain(|e| e.id != input.id);
@@ -771,6 +838,7 @@ fn remove_bookmark(app: Arc<LxApp>, input: IdInput) -> HostResult<()> {
 
 #[lingxia::native("bookmarks.toggle")]
 fn toggle_bookmark_route(app: Arc<LxApp>, input: UrlInput) -> HostResult<StatusResult> {
+    crate::require_builtin_browser(&app)?;
     mutate(&app.app_data_dir(), |snapshot| {
         let normalized = normalize_url(&input.url);
         if let Some(existing) = find_entry(snapshot, &normalized) {
@@ -795,8 +863,9 @@ fn toggle_bookmark_route(app: Arc<LxApp>, input: UrlInput) -> HostResult<StatusR
     })
 }
 
-#[lingxia::native("bookmarks.status")]
+#[lingxia::native("bookmarks.getStatus")]
 fn bookmark_status(app: Arc<LxApp>, input: UrlInput) -> HostResult<StatusResult> {
+    crate::require_builtin_browser(&app)?;
     let _guard = store_lock().lock().unwrap_or_else(|e| e.into_inner());
     let snapshot = load(&app.app_data_dir())?;
     let entry = find_entry(&snapshot, &normalize_url(&input.url)).cloned();
@@ -808,92 +877,39 @@ fn bookmark_status(app: Arc<LxApp>, input: UrlInput) -> HostResult<StatusResult>
 
 #[lingxia::native("bookmarks.rename")]
 fn rename_bookmark(app: Arc<LxApp>, input: RenameInput) -> HostResult<BookmarkEntry> {
-    let title = validated_name(&input.title, "bookmark title")?;
+    crate::require_builtin_browser(&app)?;
     mutate(&app.app_data_dir(), |snapshot| {
-        let entry = snapshot
-            .entries
-            .iter_mut()
-            .find(|e| e.id == input.id)
-            .ok_or_else(|| {
-                LxAppError::ResourceNotFound(format!("bookmark not found: {}", input.id))
-            })?;
-        entry.title = title;
-        Ok(entry.clone())
+        rename_entry_op(snapshot, &input.id, &input.title)
     })
 }
 
 #[lingxia::native("bookmarks.move")]
 fn move_bookmark(app: Arc<LxApp>, input: MoveInput) -> HostResult<BookmarkEntry> {
+    crate::require_builtin_browser(&app)?;
     mutate(&app.app_data_dir(), |snapshot| {
-        if let Some(gid) = input.group_id.as_deref()
-            && !snapshot.groups.iter().any(|g| g.id == gid)
-        {
-            return Err(LxAppError::ResourceNotFound(format!(
-                "bookmark group not found: {gid}"
-            )));
-        }
-        let entry = snapshot
-            .entries
-            .iter_mut()
-            .find(|e| e.id == input.id)
-            .ok_or_else(|| {
-                LxAppError::ResourceNotFound(format!("bookmark not found: {}", input.id))
-            })?;
-        entry.group_id = input.group_id.clone();
-        Ok(entry.clone())
+        move_entry_op(snapshot, &input.id, input.group_id.clone())
     })
 }
 
 #[lingxia::native("bookmarks.reorder")]
 fn reorder_bookmarks(app: Arc<LxApp>, input: ReorderInput) -> HostResult<()> {
+    crate::require_builtin_browser(&app)?;
     mutate(&app.app_data_dir(), |snapshot| {
-        // Reorder only the entries in the given group scope; entries in other
-        // scopes keep their relative positions.
-        let in_scope = |e: &BookmarkEntry| e.group_id.as_deref() == input.group_id.as_deref();
-        let scope_ids: Vec<&str> = snapshot
-            .entries
-            .iter()
-            .filter(|e| in_scope(e))
-            .map(|e| e.id.as_str())
-            .collect();
-        if !is_id_permutation(&scope_ids, &input.ordered_ids) {
-            return Err(LxAppError::InvalidParameter(
-                "orderedIds must be a permutation of the group's bookmarks".to_string(),
-            ));
-        }
-        let mut by_id: std::collections::HashMap<String, BookmarkEntry> = snapshot
-            .entries
-            .iter()
-            .filter(|e| in_scope(e))
-            .map(|e| (e.id.clone(), e.clone()))
-            .collect();
-        let mut ordered = input.ordered_ids.iter();
-        for slot in snapshot.entries.iter_mut().filter(|e| in_scope(e)) {
-            // Both iterators walk the same scope, so `ordered` cannot run dry.
-            let id = ordered.next().expect("scope sizes verified equal");
-            *slot = by_id.remove(id).expect("permutation verified");
-        }
-        Ok(())
+        reorder_entries(snapshot, input.group_id.as_deref(), &input.ordered_ids)
     })
 }
 
 #[lingxia::native("bookmarks.setPinned")]
 fn set_pinned(app: Arc<LxApp>, input: SetPinnedInput) -> HostResult<BookmarkEntry> {
+    crate::require_builtin_browser(&app)?;
     mutate(&app.app_data_dir(), |snapshot| {
-        let entry = snapshot
-            .entries
-            .iter_mut()
-            .find(|e| e.id == input.id)
-            .ok_or_else(|| {
-                LxAppError::ResourceNotFound(format!("bookmark not found: {}", input.id))
-            })?;
-        entry.pinned = input.pinned;
-        Ok(entry.clone())
+        set_pinned_op(snapshot, &input.id, input.pinned)
     })
 }
 
 #[lingxia::native("bookmarks.createGroup")]
 fn create_group(app: Arc<LxApp>, input: GroupNameInput) -> HostResult<BookmarkGroup> {
+    crate::require_builtin_browser(&app)?;
     let name = validated_name(&input.name, "group name")?;
     mutate(&app.app_data_dir(), |snapshot| {
         if snapshot.groups.iter().any(|g| g.name == name) {
@@ -912,8 +928,11 @@ fn create_group(app: Arc<LxApp>, input: GroupNameInput) -> HostResult<BookmarkGr
 
 #[lingxia::native("bookmarks.renameGroup")]
 fn rename_group(app: Arc<LxApp>, input: GroupRenameInput) -> HostResult<BookmarkGroup> {
+    crate::require_builtin_browser(&app)?;
     let name = validated_name(&input.name, "group name")?;
     mutate(&app.app_data_dir(), |snapshot| {
+        // Duplicate-name guard is webui-route-only; native-chrome `command_json`
+        // has never enforced it.
         if snapshot
             .groups
             .iter()
@@ -923,43 +942,21 @@ fn rename_group(app: Arc<LxApp>, input: GroupRenameInput) -> HostResult<Bookmark
                 "group already exists: {name}"
             )));
         }
-        let group = snapshot
-            .groups
-            .iter_mut()
-            .find(|g| g.id == input.id)
-            .ok_or_else(|| {
-                LxAppError::ResourceNotFound(format!("bookmark group not found: {}", input.id))
-            })?;
-        group.name = name;
-        Ok(group.clone())
+        rename_group_op(snapshot, &input.id, &name)
     })
 }
 
 #[lingxia::native("bookmarks.deleteGroup")]
 fn delete_group(app: Arc<LxApp>, input: IdInput) -> HostResult<()> {
+    crate::require_builtin_browser(&app)?;
     mutate(&app.app_data_dir(), |snapshot| {
-        let before = snapshot.groups.len();
-        snapshot.groups.retain(|g| g.id != input.id);
-        if snapshot.groups.len() == before {
-            return Err(LxAppError::ResourceNotFound(format!(
-                "bookmark group not found: {}",
-                input.id
-            )));
-        }
-        // Orphaned entries fall back to ungrouped rather than disappearing.
-        for entry in snapshot
-            .entries
-            .iter_mut()
-            .filter(|e| e.group_id.as_deref() == Some(input.id.as_str()))
-        {
-            entry.group_id = None;
-        }
-        Ok(())
+        delete_group_op(snapshot, &input.id)
     })
 }
 
 #[lingxia::native("bookmarks.reorderGroups")]
 fn reorder_groups(app: Arc<LxApp>, input: OrderedIdsInput) -> HostResult<()> {
+    crate::require_builtin_browser(&app)?;
     mutate(&app.app_data_dir(), |snapshot| {
         let ids: Vec<&str> = snapshot.groups.iter().map(|g| g.id.as_str()).collect();
         if !is_id_permutation(&ids, &input.ordered_ids) {
@@ -978,14 +975,14 @@ fn reorder_groups(app: Arc<LxApp>, input: OrderedIdsInput) -> HostResult<()> {
     })
 }
 
-#[lingxia::native("bookmarks.importChrome")]
-async fn import_chrome_bookmarks(
+#[lingxia::native("bookmarks.importHtml")]
+async fn import_html_bookmarks(
     app: Arc<LxApp>,
-    input: ImportChromeInput,
     mut cancel: HostCancel,
 ) -> HostResult<Option<ImportResult>> {
+    crate::require_builtin_browser(&app)?;
     let app_for_picker = app.clone();
-    let is_chinese = input.language.as_deref() == Some("zh-CN");
+    let is_chinese = webui_locale_is_chinese(&app)?;
     let selected = await_or_cancel(&mut cancel, async move {
         lingxia_service::file::choose_file(
             &*app_for_picker.runtime,
@@ -1014,7 +1011,7 @@ async fn import_chrome_bookmarks(
             },
         )
         .await
-        .map_err(|error| map_platform_error("bookmarks.importChrome", error))
+        .map_err(|error| map_platform_error("bookmarks.importHtml", error))
     })
     .await?;
     if selected.canceled {
@@ -1040,18 +1037,19 @@ async fn import_chrome_bookmarks(
         .contains("netscape-bookmark-file-1")
     {
         return Err(LxAppError::InvalidParameter(
-            "select a Chrome-compatible bookmark HTML file".to_string(),
+            "select a Netscape-format bookmark HTML file".to_string(),
         ));
     }
-    let bookmarks = parse_chrome_html(&html);
+    let bookmarks = parse_netscape_html(&html);
     mutate(&app.app_data_dir(), move |snapshot| {
         Ok(merge_imported(snapshot, bookmarks))
     })
     .map(Some)
 }
 
-#[lingxia::native("bookmarks.exportChrome")]
-fn export_chrome_bookmarks(app: Arc<LxApp>) -> HostResult<ExportResult> {
+#[lingxia::native("bookmarks.exportHtml")]
+fn export_html_bookmarks(app: Arc<LxApp>) -> HostResult<ExportResult> {
+    crate::require_builtin_browser(&app)?;
     let snapshot = {
         let _guard = store_lock()
             .lock()
@@ -1062,7 +1060,7 @@ fn export_chrome_bookmarks(app: Arc<LxApp>) -> HostResult<ExportResult> {
     std::fs::create_dir_all(&directory)
         .map_err(|error| LxAppError::IoError(format!("mkdir {}: {error}", directory.display())))?;
     let path = unique_export_path(&directory);
-    let html = export_chrome_html(&snapshot, now_ms());
+    let (html, count) = export_netscape_html(&snapshot, now_ms());
     std::fs::write(&path, html)
         .map_err(|error| LxAppError::IoError(format!("write {}: {error}", path.display())))?;
     Ok(ExportResult {
@@ -1072,7 +1070,7 @@ fn export_chrome_bookmarks(app: Arc<LxApp>) -> HostResult<ExportResult> {
             .and_then(|name| name.to_str())
             .unwrap_or("bookmarks.html")
             .to_string(),
-        count: snapshot.entries.len(),
+        count,
     })
 }
 
@@ -1081,6 +1079,7 @@ async fn watch_bookmarks(
     app: Arc<LxApp>,
     mut stream: StreamContext<BookmarksSnapshot>,
 ) -> HostResult<()> {
+    crate::require_builtin_browser(&app)?;
     let mut rx = channel().subscribe();
     // Seed subscribers with the current state so the page renders from the
     // stream alone.
@@ -1122,31 +1121,14 @@ pub(crate) fn register() {
     lxapp::host::register_host_entry(rename_group_host());
     lxapp::host::register_host_entry(delete_group_host());
     lxapp::host::register_host_entry(reorder_groups_host());
-    lxapp::host::register_host_entry(import_chrome_bookmarks_host());
-    lxapp::host::register_host_entry(export_chrome_bookmarks_host());
+    lxapp::host::register_host_entry(import_html_bookmarks_host());
+    lxapp::host::register_host_entry(export_html_bookmarks_host());
     lxapp::host::register_host_entry(watch_bookmarks_host());
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn normalize_strips_fragment_slash_and_lowers_host() {
-        assert_eq!(
-            normalize_url("HTTPS://Example.COM/Path/#frag"),
-            "https://example.com/Path"
-        );
-        assert_eq!(normalize_url("https://example.com/"), "https://example.com");
-        assert_eq!(
-            normalize_url("https://example.com/A?q=B"),
-            "https://example.com/A?q=B"
-        );
-        assert_eq!(
-            normalize_url("https://EXAMPLE.com?q=CaseSensitive"),
-            "https://example.com?q=CaseSensitive"
-        );
-    }
 
     #[test]
     fn add_dedups_by_normalized_url() {
@@ -1202,6 +1184,68 @@ mod tests {
             &expected,
             &["a".to_string(), "a".to_string()]
         ));
+        // Duplicates on both sides fool a set comparison; multisets must not.
+        assert!(!is_id_permutation(
+            &["a", "a", "b"],
+            &["a".to_string(), "b".to_string(), "b".to_string()]
+        ));
+    }
+
+    #[test]
+    fn reorder_with_duplicate_ids_errors_instead_of_panicking() {
+        let entry = |id: &str, url: &str| BookmarkEntry {
+            id: id.to_string(),
+            url: url.to_string(),
+            title: String::new(),
+            group_id: None,
+            pinned: false,
+            created_at_ms: 0,
+        };
+        // Damaged store: two entries share an id.
+        let mut snapshot = BookmarksSnapshot {
+            entries: vec![
+                entry("a", "https://a.test"),
+                entry("a", "https://a2.test"),
+                entry("b", "https://b.test"),
+            ],
+            ..Default::default()
+        };
+        let result = reorder_entries(
+            &mut snapshot,
+            None,
+            &["a".to_string(), "b".to_string(), "b".to_string()],
+        );
+        assert!(matches!(result, Err(LxAppError::InvalidParameter(_))));
+        // A matching multiset still reorders cleanly.
+        reorder_entries(
+            &mut snapshot,
+            None,
+            &["b".to_string(), "a".to_string(), "a".to_string()],
+        )
+        .unwrap();
+        assert_eq!(snapshot.entries[0].id, "b");
+    }
+
+    #[test]
+    fn chinese_locale_matches_webui_resolution() {
+        for locale in ["zh", "zh-CN", "zh_CN", "ZH-Hans-CN"] {
+            assert!(is_chinese_locale(locale), "expected Chinese: {locale}");
+        }
+        for locale in ["en-US", "zho", "ja-JP", ""] {
+            assert!(!is_chinese_locale(locale), "expected non-Chinese: {locale}");
+        }
+    }
+
+    #[test]
+    fn corrupt_store_recovers_with_default_snapshot() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = bookmarks_path(dir.path());
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, "{ truncated").unwrap();
+        let snapshot = load(dir.path()).unwrap();
+        assert!(snapshot.entries.is_empty());
+        assert!(!path.exists());
+        assert!(path.with_extension("json.corrupt").exists());
     }
 
     #[test]

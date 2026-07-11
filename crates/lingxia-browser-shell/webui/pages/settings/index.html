@@ -975,7 +975,8 @@
             .replace(/&/g, '&amp;')
             .replace(/"/g, '&quot;')
             .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;');
+            .replace(/>/g, '&gt;')
+            .replace(/'/g, '&#39;');
           var action = rule.action === 'direct' ? 'direct' : 'proxy';
           return [
             '<tr class="autoswitch-rule-row" data-rule-index="', index, '">',
@@ -1531,7 +1532,7 @@
           timeRange: clearDataState.timeRange,
           history: document.getElementById('clearHistoryCheck').checked,
           cache: document.getElementById('clearCacheCheck').checked,
-          cookies: document.getElementById('clearCookiesCheck').checked
+          siteData: document.getElementById('clearCookiesCheck').checked
         }).then(function () {
           button.disabled = false;
           closeClearDataDialog();
@@ -1600,7 +1601,7 @@
         privacyApi().clearSiteData({
           tabId: clearSiteDataState.tabId,
           cache: cacheRequested,
-          cookies: document.getElementById('clearSiteCookiesCheck').checked
+          siteData: document.getElementById('clearSiteCookiesCheck').checked
         }).then(function (result) {
           closeClearSiteDataDialog();
           showPrivacyToast(

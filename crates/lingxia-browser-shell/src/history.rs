@@ -5,6 +5,7 @@
 //! JSON because they are small and edited infrequently.
 
 use crate::host::{HostResult, StreamContext};
+use crate::url_match::normalize_url;
 use lingxia_platform::traits::app_runtime::AppRuntime;
 use lxapp::{LxApp, LxAppError};
 use rusqlite::{Connection, OptionalExtension, params};
@@ -63,29 +64,6 @@ fn now_ms() -> u64 {
 fn next_id() -> String {
     static SEQ: AtomicU64 = AtomicU64::new(0);
     format!("h{}-{}", now_ms(), SEQ.fetch_add(1, Ordering::Relaxed))
-}
-
-fn normalize_url(raw: &str) -> String {
-    let mut value = raw.trim();
-    if let Some(hash) = value.find('#') {
-        value = &value[..hash];
-    }
-    let value = value.strip_suffix('/').unwrap_or(value);
-    match value.split_once("://") {
-        Some((scheme, rest)) => {
-            let (host, suffix) = match rest.find(['/', '?']) {
-                Some(index) => (&rest[..index], &rest[index..]),
-                None => (rest, ""),
-            };
-            format!(
-                "{}://{}{}",
-                scheme.to_ascii_lowercase(),
-                host.to_ascii_lowercase(),
-                suffix
-            )
-        }
-        None => value.to_string(),
-    }
 }
 
 fn is_recordable_url(url: &str) -> bool {
@@ -178,6 +156,10 @@ fn load(app_data_dir: &Path) -> Result<HistorySnapshot, LxAppError> {
 }
 
 fn broadcast_snapshot(connection: &Connection) -> Result<(), LxAppError> {
+    // Skip the full snapshot query when nobody is watching.
+    if channel().receiver_count() == 0 {
+        return Ok(());
+    }
     let _ = channel().send(load_from(connection)?);
     Ok(())
 }
@@ -274,57 +256,107 @@ fn record_in(
     Ok(!coalesced)
 }
 
-pub fn record_visit(url: &str, title: &str) -> bool {
+fn update_title_in(app_data_dir: &Path, url: &str, title: &str) -> Result<bool, LxAppError> {
+    let _guard = store_lock()
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    let connection = open(app_data_dir)?;
+    // Retitle only the newest visit of the URL; the inequality lives on the
+    // outer UPDATE so an already-current title never retargets an older row.
+    let changed = connection
+        .execute(
+            "UPDATE history SET title = ?1
+             WHERE title <> ?1 AND id = (
+                 SELECT id FROM history
+                 WHERE normalized_url = ?2
+                 ORDER BY visited_at_ms DESC, rowid DESC
+                 LIMIT 1
+             )",
+            params![title, normalize_url(url)],
+        )
+        .map_err(database_error)?
+        > 0;
+    if changed {
+        broadcast_snapshot(&connection)?;
+    }
+    Ok(changed)
+}
+
+enum Job {
+    Record {
+        url: String,
+        title: String,
+        visited_at_ms: u64,
+    },
+    UpdateTitle {
+        url: String,
+        title: String,
+    },
+}
+
+/// SQLite writes run on a dedicated thread: `record_visit`/`update_title`
+/// fire from platform navigation callbacks (UI thread) and must not block.
+/// A single queue preserves navigation event order.
+fn worker() -> &'static std::sync::mpsc::Sender<Job> {
+    static WORKER: OnceLock<std::sync::mpsc::Sender<Job>> = OnceLock::new();
+    WORKER.get_or_init(|| {
+        let (sender, receiver) = std::sync::mpsc::channel::<Job>();
+        std::thread::Builder::new()
+            .name("browser-history".to_string())
+            .spawn(move || {
+                while let Ok(job) = receiver.recv() {
+                    run_job(job);
+                }
+            })
+            .expect("spawn browser-history worker");
+        sender
+    })
+}
+
+fn run_job(job: Job) {
     let Some(runtime) = lxapp::get_platform() else {
-        return false;
+        return;
     };
-    match record_in(&runtime.app_data_dir(), url, title, now_ms()) {
-        Ok(recorded) => recorded,
-        Err(error) => {
-            log::warn!("[BrowserHistory] record failed: {error}");
-            false
+    let app_data_dir = runtime.app_data_dir();
+    match job {
+        Job::Record {
+            url,
+            title,
+            visited_at_ms,
+        } => {
+            if let Err(error) = record_in(&app_data_dir, &url, &title, visited_at_ms) {
+                log::warn!("[BrowserHistory] record failed: {error}");
+            }
+        }
+        Job::UpdateTitle { url, title } => {
+            if let Err(error) = update_title_in(&app_data_dir, &url, &title) {
+                log::warn!("[BrowserHistory] title update failed: {error}");
+            }
         }
     }
 }
 
-pub fn update_title(url: &str, title: &str) -> bool {
+pub fn record_visit(url: &str, title: &str) {
+    let url = url.trim();
+    if !is_recordable_url(url) {
+        return;
+    }
+    let _ = worker().send(Job::Record {
+        url: url.to_string(),
+        title: title.to_string(),
+        visited_at_ms: now_ms(),
+    });
+}
+
+pub fn update_title(url: &str, title: &str) {
     let title = title.trim();
     if title.is_empty() || !is_recordable_url(url) {
-        return false;
+        return;
     }
-    let Some(runtime) = lxapp::get_platform() else {
-        return false;
-    };
-    let result = (|| {
-        let _guard = store_lock()
-            .lock()
-            .unwrap_or_else(|error| error.into_inner());
-        let connection = open(&runtime.app_data_dir())?;
-        let changed = connection
-            .execute(
-                "UPDATE history SET title = ?1
-                 WHERE id = (
-                     SELECT id FROM history
-                     WHERE normalized_url = ?2 AND title <> ?1
-                     ORDER BY visited_at_ms DESC, rowid DESC
-                     LIMIT 1
-                 )",
-                params![title, normalize_url(url)],
-            )
-            .map_err(database_error)?
-            > 0;
-        if changed {
-            broadcast_snapshot(&connection)?;
-        }
-        Ok::<_, LxAppError>(changed)
-    })();
-    match result {
-        Ok(changed) => changed,
-        Err(error) => {
-            log::warn!("[BrowserHistory] title update failed: {error}");
-            false
-        }
-    }
+    let _ = worker().send(Job::UpdateTitle {
+        url: url.to_string(),
+        title: title.to_string(),
+    });
 }
 
 pub(crate) fn clear_since_in(
@@ -339,12 +371,18 @@ pub(crate) fn clear_since_in(
         Some(cutoff) => connection
             .execute(
                 "DELETE FROM history WHERE visited_at_ms >= ?1",
-                [cutoff as i64],
+                // Saturate: an `as` cast wraps huge cutoffs negative and would delete everything.
+                [i64::try_from(cutoff).unwrap_or(i64::MAX)],
             )
             .map_err(database_error)?,
-        None => connection
-            .execute("DELETE FROM history", [])
-            .map_err(database_error)?,
+        None => {
+            let removed = connection
+                .execute("DELETE FROM history", [])
+                .map_err(database_error)?;
+            // Best-effort: keep cleared URLs from surviving in the WAL.
+            let _ = connection.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |_| Ok(()));
+            removed
+        }
     };
     broadcast_snapshot(&connection)?;
     Ok(removed)
@@ -363,8 +401,12 @@ pub(crate) fn count_in(app_data_dir: &Path) -> Result<usize, LxAppError> {
         .map_err(database_error)
 }
 
+/// Returns at most `MAX_ENTRIES` (10k) newest visits — the store itself is
+/// pruned to that cap. No query input: this is an internal webui route and the
+/// history page filters/searches client-side by design.
 #[lingxia::native("history.list")]
 fn list_history(app: Arc<LxApp>) -> HostResult<HistorySnapshot> {
+    crate::require_builtin_browser(&app)?;
     let _guard = store_lock()
         .lock()
         .unwrap_or_else(|error| error.into_inner());
@@ -373,6 +415,7 @@ fn list_history(app: Arc<LxApp>) -> HostResult<HistorySnapshot> {
 
 #[lingxia::native("history.remove")]
 fn remove_history_entry(app: Arc<LxApp>, input: IdInput) -> HostResult<()> {
+    crate::require_builtin_browser(&app)?;
     let _guard = store_lock()
         .lock()
         .unwrap_or_else(|error| error.into_inner());
@@ -391,6 +434,7 @@ fn remove_history_entry(app: Arc<LxApp>, input: IdInput) -> HostResult<()> {
 
 #[lingxia::native("history.clear")]
 fn clear_history(app: Arc<LxApp>, input: ClearInput) -> HostResult<ClearResult> {
+    crate::require_builtin_browser(&app)?;
     clear_since_in(&app.app_data_dir(), input.since_ms).map(|removed| ClearResult { removed })
 }
 
@@ -399,6 +443,7 @@ async fn watch_history(
     app: Arc<LxApp>,
     mut stream: StreamContext<HistorySnapshot>,
 ) -> HostResult<()> {
+    crate::require_builtin_browser(&app)?;
     let mut receiver = channel().subscribe();
     {
         let _guard = store_lock()
@@ -435,14 +480,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn normalization_preserves_path_and_query_case() {
-        assert_eq!(
-            normalize_url("HTTPS://Example.COM/Path?q=Case#fragment"),
-            "https://example.com/Path?q=Case"
-        );
-    }
-
-    #[test]
     fn recording_coalesces_immediate_duplicate() {
         let dir = tempfile::tempdir().unwrap();
         assert!(record_in(dir.path(), "https://example.com/", "First", 1_000).unwrap());
@@ -450,6 +487,23 @@ mod tests {
         let snapshot = load(dir.path()).unwrap();
         assert_eq!(snapshot.entries.len(), 1);
         assert_eq!(snapshot.entries[0].title, "Second");
+    }
+
+    #[test]
+    fn update_title_never_retargets_an_older_visit() {
+        let dir = tempfile::tempdir().unwrap();
+        record_in(dir.path(), "https://example.com", "Old", 1_000).unwrap();
+        record_in(dir.path(), "https://example.com", "Newest", 10_000).unwrap();
+        // Newest row already carries the title: nothing may change.
+        assert!(!update_title_in(dir.path(), "https://example.com", "Newest").unwrap());
+        let snapshot = load(dir.path()).unwrap();
+        assert_eq!(snapshot.entries[0].title, "Newest");
+        assert_eq!(snapshot.entries[1].title, "Old");
+        // A new title still lands on the newest row only.
+        assert!(update_title_in(dir.path(), "https://example.com", "Renamed").unwrap());
+        let snapshot = load(dir.path()).unwrap();
+        assert_eq!(snapshot.entries[0].title, "Renamed");
+        assert_eq!(snapshot.entries[1].title, "Old");
     }
 
     #[test]

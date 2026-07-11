@@ -20,6 +20,7 @@ mod proxy;
 #[cfg(all(any(target_os = "macos", target_os = "windows"), feature = "proxy"))]
 mod proxy_settings;
 mod settings;
+mod url_match;
 
 pub use address_bar::{resolve_input, resolve_input_json};
 pub use bookmarks::{
@@ -108,6 +109,22 @@ fn bundled_context_menu_script() -> Result<String, LxAppError> {
     read_browser_asset_text(BROWSER_CONTEXT_MENU_ASSET_PATH)
 }
 
+/// Host routes live in a process-global registry with no per-app scoping, so
+/// every browser-private route must gate itself on the calling app's id.
+pub(crate) fn require_builtin_browser(app: &LxApp) -> Result<(), LxAppError> {
+    require_builtin_browser_appid(&app.appid)
+}
+
+fn require_builtin_browser_appid(appid: &str) -> Result<(), LxAppError> {
+    if appid == lingxia_browser::BUILTIN_BROWSER_APPID {
+        Ok(())
+    } else {
+        Err(LxAppError::UnsupportedOperation(format!(
+            "browser route is restricted to the built-in browser (caller: {appid})"
+        )))
+    }
+}
+
 #[doc(hidden)]
 pub fn register_runtime() {
     lingxia_browser::install_runtime();
@@ -170,7 +187,13 @@ pub fn warmup() {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_internal_pages;
+    use super::{parse_internal_pages, require_builtin_browser_appid};
+
+    #[test]
+    fn browser_routes_reject_other_apps() {
+        assert!(require_builtin_browser_appid(lingxia_browser::BUILTIN_BROWSER_APPID).is_ok());
+        assert!(require_builtin_browser_appid("com.example.thirdparty").is_err());
+    }
 
     #[test]
     fn parses_named_internal_pages_manifest() {

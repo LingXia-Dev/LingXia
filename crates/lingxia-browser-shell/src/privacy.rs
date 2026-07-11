@@ -62,7 +62,7 @@ struct ClearBrowsingDataInput {
     #[serde(default)]
     cache: bool,
     #[serde(default)]
-    cookies: bool,
+    site_data: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -78,7 +78,7 @@ struct ClearSiteDataInput {
     #[serde(default)]
     cache: bool,
     #[serde(default)]
-    cookies: bool,
+    site_data: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -102,43 +102,46 @@ struct SiteDataContext {
 }
 
 fn map_webview_error(action: &str, err: WebViewError) -> LxAppError {
-    let message = err.to_string();
-    if message.contains("not supported on this platform") {
-        LxAppError::UnsupportedOperation(format!("{action}: {message}"))
-    } else {
-        LxAppError::Runtime(format!("{action}: {message}"))
+    match err {
+        WebViewError::Unsupported(_) => {
+            LxAppError::UnsupportedOperation(format!("{action}: {err}"))
+        }
+        _ => LxAppError::Runtime(format!("{action}: {err}")),
     }
 }
 
 #[lingxia::native("privacy.getUsage")]
 async fn get_privacy_usage(app: Arc<LxApp>) -> HostResult<PrivacyUsage> {
+    crate::require_builtin_browser(&app)?;
     let history_entries = crate::history::count_in(&app.app_data_dir())?;
     let cache_sites = lingxia_webview::data_store::cache_site_count()
         .await
         .map_err(|e| map_webview_error("privacy.getUsage", e))?;
-    let (site_data_sites, cookies) = lingxia_webview::data_store::site_data_usage()
+    let usage = lingxia_webview::data_store::site_data_usage()
         .await
         .map_err(|e| map_webview_error("privacy.getUsage", e))?;
     Ok(PrivacyUsage {
         history_entries: history_entries as u64,
         cache_sites: cache_sites as u64,
-        site_data_sites: site_data_sites as u64,
-        cookies: cookies as u64,
+        site_data_sites: usage.sites as u64,
+        cookies: usage.cookies as u64,
     })
 }
 
 #[lingxia::native("privacy.clearCache")]
-async fn clear_cache(_app: Arc<LxApp>) -> HostResult<()> {
-    lingxia_webview::data_store::clear_cache()
+async fn clear_cache(app: Arc<LxApp>) -> HostResult<()> {
+    crate::require_builtin_browser(&app)?;
+    lingxia_webview::data_store::clear_cache(None)
         .await
         .map_err(|e| map_webview_error("privacy.clearCache", e))
 }
 
-#[lingxia::native("privacy.clearCookies")]
-async fn clear_cookies(_app: Arc<LxApp>) -> HostResult<()> {
-    lingxia_webview::data_store::clear_site_data()
+#[lingxia::native("privacy.clearAllSiteData")]
+async fn clear_all_site_data(app: Arc<LxApp>) -> HostResult<()> {
+    crate::require_builtin_browser(&app)?;
+    lingxia_webview::data_store::clear_all_site_data(None)
         .await
-        .map_err(|e| map_webview_error("privacy.clearCookies", e))
+        .map_err(|e| map_webview_error("privacy.clearAllSiteData", e))
 }
 
 #[lingxia::native("privacy.clearBrowsingData")]
@@ -146,36 +149,64 @@ async fn clear_browsing_data(
     app: Arc<LxApp>,
     input: ClearBrowsingDataInput,
 ) -> HostResult<ClearBrowsingDataResult> {
-    if !input.history && !input.cache && !input.cookies {
+    crate::require_builtin_browser(&app)?;
+    if !input.history && !input.cache && !input.site_data {
         return Err(LxAppError::InvalidParameter(
             "select at least one browsing data category".to_string(),
         ));
     }
-    let since_ms = input.time_range.since_ms();
-    if input.cache {
-        lingxia_webview::data_store::clear_cache_since(since_ms)
-            .await
-            .map_err(|error| map_webview_error("privacy.clearBrowsingData.cache", error))?;
+    // Clearing runs sequentially; when a later category fails, say which
+    // earlier ones already succeeded so the error is not misread as "nothing
+    // was cleared".
+    fn with_progress(cleared: &[&str], error: LxAppError) -> LxAppError {
+        if cleared.is_empty() {
+            error
+        } else {
+            LxAppError::Runtime(format!("{} cleared; {error}", cleared.join(", ")))
+        }
     }
-    if input.cookies {
-        lingxia_webview::data_store::clear_site_data_since(since_ms)
+    let since_ms = input.time_range.since_ms();
+    let mut cleared: Vec<&str> = Vec::new();
+    if input.cache {
+        lingxia_webview::data_store::clear_cache(since_ms)
             .await
-            .map_err(|error| map_webview_error("privacy.clearBrowsingData.cookies", error))?;
+            .map_err(|error| {
+                with_progress(
+                    &cleared,
+                    map_webview_error("privacy.clearBrowsingData.cache", error),
+                )
+            })?;
+        cleared.push("cache");
+    }
+    if input.site_data {
+        lingxia_webview::data_store::clear_all_site_data(since_ms)
+            .await
+            .map_err(|error| {
+                with_progress(
+                    &cleared,
+                    map_webview_error("privacy.clearBrowsingData.siteData", error),
+                )
+            })?;
+        cleared.push("site data");
     }
     let history_removed = if input.history {
-        crate::history::clear_since_in(&app.app_data_dir(), since_ms)?
+        crate::history::clear_since_in(&app.app_data_dir(), since_ms)
+            .map_err(|error| with_progress(&cleared, error))?
     } else {
         0
     };
     Ok(ClearBrowsingDataResult { history_removed })
 }
 
+/// Clears data for the current site only, then reloads the tab so the page
+/// reflects the cleared state.
 #[lingxia::native("privacy.clearSiteData")]
 async fn clear_site_data(
-    _app: Arc<LxApp>,
+    app: Arc<LxApp>,
     input: ClearSiteDataInput,
 ) -> HostResult<ClearSiteDataResult> {
-    if !input.cache && !input.cookies {
+    crate::require_builtin_browser(&app)?;
+    if !input.cache && !input.site_data {
         return Err(LxAppError::InvalidParameter(
             "select site data or cache to clear".to_string(),
         ));
@@ -184,11 +215,18 @@ async fn clear_site_data(
         &input.tab_id,
         lingxia_webview::ClearSiteDataOptions {
             cache: input.cache,
-            site_data: input.cookies,
+            site_data: input.site_data,
         },
     )
     .await
-    .map_err(|error| LxAppError::Runtime(format!("privacy.clearSiteData: {error}")))?;
+    .map_err(|error| match error {
+        // Bad tab state is caller input, not a runtime fault — matches
+        // getSiteDataContext's mapping for the same conditions.
+        lingxia_browser::BrowserAutomationError::NativeInput(message) => {
+            LxAppError::InvalidParameter(message)
+        }
+        other => LxAppError::Runtime(format!("privacy.clearSiteData: {other}")),
+    })?;
     lingxia_browser::reload(&input.tab_id)
         .map_err(|error| LxAppError::Runtime(format!("privacy.clearSiteData.reload: {error}")))?;
     Ok(ClearSiteDataResult {
@@ -199,9 +237,10 @@ async fn clear_site_data(
 
 #[lingxia::native("privacy.getSiteDataContext")]
 async fn get_site_data_context(
-    _app: Arc<LxApp>,
+    app: Arc<LxApp>,
     input: SiteDataContextInput,
 ) -> HostResult<SiteDataContext> {
+    crate::require_builtin_browser(&app)?;
     let url = lingxia_browser::current_url(&input.tab_id)
         .await
         .map_err(|error| LxAppError::Runtime(format!("privacy.getSiteDataContext: {error}")))?
@@ -227,7 +266,7 @@ async fn get_site_data_context(
 pub(crate) fn register() {
     lxapp::host::register_host_entry(get_privacy_usage_host());
     lxapp::host::register_host_entry(clear_cache_host());
-    lxapp::host::register_host_entry(clear_cookies_host());
+    lxapp::host::register_host_entry(clear_all_site_data_host());
     lxapp::host::register_host_entry(clear_browsing_data_host());
     lxapp::host::register_host_entry(clear_site_data_host());
     lxapp::host::register_host_entry(get_site_data_context_host());

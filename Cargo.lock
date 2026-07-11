@@ -2975,6 +2975,7 @@ version = "0.10.0"
 dependencies = [
  "futures",
  "html5ever",
+ "http",
  "lingxia-app-context",
  "lingxia-browser",
  "lingxia-lxapp",
@@ -3380,6 +3381,7 @@ version = "0.10.0"
 dependencies = [
  "dashmap 6.2.1",
  "lingxia-app-context",
+ "log",
  "serde",
  "serde_json",
  "tempfile",

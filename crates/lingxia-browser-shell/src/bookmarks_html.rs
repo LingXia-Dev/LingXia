@@ -85,6 +85,9 @@ impl TokenSink for BookmarkSink {
                         state.pending_folder = (!name.is_empty()).then_some(name);
                     }
                 } else if name.eq_ignore_ascii_case("a") {
+                    // Always consume the capture so it cannot accumulate stale
+                    // characters once the import cap is reached.
+                    let capture = state.capture.take();
                     if state.bookmarks.len() >= MAX_IMPORT_BOOKMARKS {
                         return TokenSinkResult::Continue;
                     }
@@ -92,7 +95,7 @@ impl TokenSink for BookmarkSink {
                         url,
                         title,
                         created_at_ms,
-                    }) = state.capture.take()
+                    }) = capture
                     {
                         let group_name = flattened_folder_name(&state.folders);
                         state.bookmarks.push(ImportedBookmark {
@@ -135,12 +138,12 @@ fn flattened_folder_name(folders: &[Option<String>]) -> Option<String> {
     (!path.is_empty()).then_some(path)
 }
 
-pub(crate) fn parse_chrome_html(input: &str) -> Vec<ImportedBookmark> {
+pub(crate) fn parse_netscape_html(input: &str) -> Vec<ImportedBookmark> {
     let sink = BookmarkSink::default();
-    let mut queue = BufferQueue::default();
+    let queue = BufferQueue::default();
     queue.push_back(StrTendril::from(input));
     let tokenizer = Tokenizer::new(sink, TokenizerOpts::default());
-    let _ = tokenizer.feed(&mut queue);
+    let _ = tokenizer.feed(&queue);
     tokenizer.end();
     tokenizer.sink.finish()
 }
@@ -162,8 +165,14 @@ fn bookmark_line(url: &str, title: &str, created_at_ms: u64, indent: &str) -> St
     )
 }
 
-pub(crate) fn export_chrome_html(snapshot: &BookmarksSnapshot, exported_at_ms: u64) -> String {
+/// Returns the HTML and the number of bookmarks actually emitted (entries
+/// with an orphaned group id are skipped).
+pub(crate) fn export_netscape_html(
+    snapshot: &BookmarksSnapshot,
+    exported_at_ms: u64,
+) -> (String, usize) {
     let exported_at = exported_at_ms / 1_000;
+    let mut count = 0usize;
     let mut output = String::from(
         "<!DOCTYPE NETSCAPE-Bookmark-file-1>\n\
 <!-- This is an automatically generated file.\n\
@@ -186,6 +195,7 @@ pub(crate) fn export_chrome_html(snapshot: &BookmarksSnapshot, exported_at_ms: u
             entry.created_at_ms,
             "    ",
         ));
+        count += 1;
     }
 
     for group in &snapshot.groups {
@@ -205,11 +215,12 @@ pub(crate) fn export_chrome_html(snapshot: &BookmarksSnapshot, exported_at_ms: u
                 entry.created_at_ms,
                 "        ",
             ));
+            count += 1;
         }
         output.push_str("    </DL><p>\n");
     }
     output.push_str("</DL><p>\n");
-    output
+    (output, count)
 }
 
 #[cfg(test)]
@@ -218,7 +229,7 @@ mod tests {
     use crate::bookmarks::{BookmarkEntry, BookmarkGroup};
 
     #[test]
-    fn parses_chrome_folders_entities_and_dates() {
+    fn parses_netscape_folders_entities_and_dates() {
         let html = r#"<!DOCTYPE NETSCAPE-Bookmark-file-1>
 <DL><p>
   <DT><H3>Bookmarks bar</H3>
@@ -229,7 +240,7 @@ mod tests {
   </DL><p>
   <DT><A HREF="https://root.example.com">Root</A>
 </DL><p>"#;
-        let parsed = parse_chrome_html(html);
+        let parsed = parse_netscape_html(html);
         assert_eq!(parsed.len(), 3);
         assert_eq!(parsed[0].url, "https://example.com/?a=1&b=2");
         assert_eq!(parsed[0].title, "A & B");
@@ -257,16 +268,43 @@ mod tests {
             pinned: true,
             created_at_ms: 123_000,
         }];
-        let exported = export_chrome_html(&snapshot, 456_000);
+        let (exported, count) = export_netscape_html(&snapshot, 456_000);
+        assert_eq!(count, 1);
         assert!(exported.starts_with("<!DOCTYPE NETSCAPE-Bookmark-file-1>"));
         assert!(exported.contains("R&amp;D &lt;Docs&gt;"));
         assert!(exported.contains("HREF=\"https://example.com/?a=1&amp;b=2\""));
 
-        let parsed = parse_chrome_html(&exported);
+        let parsed = parse_netscape_html(&exported);
         assert_eq!(parsed.len(), 1);
         assert_eq!(parsed[0].url, snapshot.entries[0].url);
         assert_eq!(parsed[0].title, snapshot.entries[0].title);
         assert_eq!(parsed[0].group_name.as_deref(), Some("R&D <Docs>"));
         assert_eq!(parsed[0].created_at_ms, Some(123_000));
+    }
+
+    #[test]
+    fn export_count_skips_entries_with_orphaned_groups() {
+        let mut snapshot = BookmarksSnapshot::default();
+        snapshot.entries = vec![
+            BookmarkEntry {
+                id: "b1".into(),
+                url: "https://kept.test".into(),
+                title: "Kept".into(),
+                group_id: None,
+                pinned: false,
+                created_at_ms: 0,
+            },
+            BookmarkEntry {
+                id: "b2".into(),
+                url: "https://orphan.test".into(),
+                title: "Orphan".into(),
+                group_id: Some("missing-group".into()),
+                pinned: false,
+                created_at_ms: 0,
+            },
+        ];
+        let (exported, count) = export_netscape_html(&snapshot, 0);
+        assert_eq!(count, 1);
+        assert_eq!(parse_netscape_html(&exported).len(), 1);
     }
 }

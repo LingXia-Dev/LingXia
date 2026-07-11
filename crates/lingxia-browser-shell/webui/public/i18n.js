@@ -89,7 +89,7 @@
       'settings.title': 'Settings',
       'settings.general': 'General',
       'settings.language': 'Language',
-      'settings.languageCopy': 'Use your system language automatically, or choose a language.',
+      'settings.languageCopy': 'Use your system language automatically, or choose a language for browser pages.',
       'settings.languageAuto': 'Automatic',
       'settings.languageSaveFailed': 'Language could not be saved.',
       'settings.downloads': 'Downloads',
@@ -324,7 +324,7 @@
       'settings.title': '设置',
       'settings.general': '通用',
       'settings.language': '语言',
-      'settings.languageCopy': '自动跟随系统语言，或手动选择语言。',
+      'settings.languageCopy': '自动跟随系统语言，或为浏览器页面手动选择语言。',
       'settings.languageAuto': '自动',
       'settings.languageSaveFailed': '无法保存语言设置。',
       'settings.downloads': '下载',
@@ -586,17 +586,31 @@
       var hostLocale = normalizeLocale(result && result.language);
       if (!hostLocale || hostLocale === locale) return;
       setLocale(hostLocale);
-      if (global.location && typeof global.location.reload === 'function') {
+      // Reload only when the locale actually persisted; if localStorage is
+      // unavailable the mismatch would survive the reload and loop forever,
+      // so keep the in-memory apply() from setLocale instead.
+      if (storedLocale() === hostLocale &&
+          global.location && typeof global.location.reload === 'function') {
         global.location.reload();
       }
     }
-    bridge.invoke('settings.getLanguage').then(adoptHostLocale, function () {});
-    if (typeof bridge.stream === 'function') {
-      var watch = bridge.stream('settings.watchLanguage');
-      watch.onEvent(adoptHostLocale);
-      watch.onError(function () {});
-      api.languageWatch = watch;
+    function refreshFromHost() {
+      bridge.invoke('settings.getLanguage').then(adoptHostLocale, function () {});
     }
+    function attachLanguageWatch() {
+      if (typeof bridge.stream !== 'function') return;
+      var watch = bridge.stream('settings.watchLanguage');
+      api.languageWatch = watch;
+      watch.onEvent(adoptHostLocale);
+      watch.onError(function () {
+        if (api.languageWatch !== watch) return;
+        // Transport reset: re-sync then re-subscribe so changes keep applying.
+        refreshFromHost();
+        attachLanguageWatch();
+      });
+    }
+    refreshFromHost();
+    attachLanguageWatch();
   }
 
   if (typeof global.addEventListener === 'function') {

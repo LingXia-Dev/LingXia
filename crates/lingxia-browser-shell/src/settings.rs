@@ -63,7 +63,8 @@ fn download_settings_result(app: &LxApp) -> HostResult<DownloadSettingsResult> {
 }
 
 #[lingxia::native("app.getInfo")]
-fn get_app_info(_app: Arc<LxApp>) -> HostResult<AppInfo> {
+fn get_app_info(app: Arc<LxApp>) -> HostResult<AppInfo> {
+    crate::require_builtin_browser(&app)?;
     let (product_name, version) = match app_config() {
         Some(cfg) => (cfg.product_name.clone(), cfg.product_version.clone()),
         None => (String::new(), String::new()),
@@ -77,6 +78,7 @@ fn get_app_info(_app: Arc<LxApp>) -> HostResult<AppInfo> {
 
 #[lingxia::native("downloads.getSettings")]
 fn get_download_settings(app: Arc<LxApp>) -> HostResult<DownloadSettingsResult> {
+    crate::require_builtin_browser(&app)?;
     download_settings_result(&app)
 }
 
@@ -85,6 +87,7 @@ async fn choose_download_directory(
     app: Arc<LxApp>,
     mut cancel: HostCancel,
 ) -> HostResult<DownloadSettingsResult> {
+    crate::require_builtin_browser(&app)?;
     let current_dir = lingxia_service::downloads::dir(&app.app_data_dir())
         .to_string_lossy()
         .to_string();
@@ -114,6 +117,7 @@ async fn choose_download_directory(
 
 #[lingxia::native("downloads.resetDirectory")]
 fn reset_download_directory(app: Arc<LxApp>) -> HostResult<DownloadSettingsResult> {
+    crate::require_builtin_browser(&app)?;
     lingxia_service::downloads::reset_dir(&app.app_data_dir())
         .map_err(|e| lxapp::LxAppError::Runtime(e.to_string()))?;
     download_settings_result(&app)
@@ -121,6 +125,7 @@ fn reset_download_directory(app: Arc<LxApp>) -> HostResult<DownloadSettingsResul
 
 #[lingxia::native("settings.getLanguage")]
 fn get_webui_language(app: Arc<LxApp>) -> HostResult<LanguageSettingsResult> {
+    crate::require_builtin_browser(&app)?;
     language_settings_result(&app)
 }
 
@@ -129,6 +134,7 @@ fn set_webui_language(
     app: Arc<LxApp>,
     input: SetLanguageInput,
 ) -> HostResult<LanguageSettingsResult> {
+    crate::require_builtin_browser(&app)?;
     if input.language != "auto" && input.language != "en-US" && input.language != "zh-CN" {
         return Err(lxapp::LxAppError::InvalidParameter(
             "language must be auto, en-US, or zh-CN".to_string(),
@@ -147,6 +153,7 @@ async fn watch_webui_language(
     app: Arc<LxApp>,
     mut stream: StreamContext<LanguageSettingsResult>,
 ) -> HostResult<()> {
+    crate::require_builtin_browser(&app)?;
     let mut receiver = language_channel().subscribe();
     stream.send(language_settings_result(&app)?)?;
     loop {
