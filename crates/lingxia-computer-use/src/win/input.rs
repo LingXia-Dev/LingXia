@@ -2,9 +2,9 @@
 //! physical pixels with SetCursorPos (the process is DPI aware), then button /
 //! wheel / key events are injected at that position.
 //!
-//! The `_target` pid parameter (background, app-directed input) is accepted for
-//! contract parity but ignored here: SendInput is always foreground/active. A
-//! Windows background path would post window messages instead — not yet built.
+//! Windows SendInput is foreground-only. Targeted input is rejected explicitly
+//! until a real app-directed backend exists, so callers never receive a false
+//! success acknowledgement for an event delivered to the wrong application.
 
 use crate::error::{Error, Result};
 use crate::model::{Ack, Modifier, MouseButton};
@@ -21,6 +21,15 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
 use windows::Win32::UI::WindowsAndMessaging::SetCursorPos;
 
 const WHEEL_DELTA: i32 = 120;
+
+fn ensure_target_supported(target: Option<u32>) -> Result<()> {
+    if target.is_some() {
+        return Err(Error::Unsupported(
+            "background --window/--pid input is not supported by the Windows backend; focus the window and omit the target".into(),
+        ));
+    }
+    Ok(())
+}
 
 fn send(inputs: &[INPUT]) -> Result<()> {
     let sent = unsafe { SendInput(inputs, std::mem::size_of::<INPUT>() as i32) };
@@ -62,19 +71,22 @@ fn button_flags(button: MouseButton) -> (MOUSE_EVENT_FLAGS, MOUSE_EVENT_FLAGS) {
     }
 }
 
-pub fn pointer_move(x: i32, y: i32, _target: Option<u32>) -> Result<Ack> {
+pub fn pointer_move(x: i32, y: i32, target: Option<u32>) -> Result<Ack> {
+    ensure_target_supported(target)?;
     set_cursor(x, y)?;
     Ok(Ack::new("pointer.move"))
 }
 
-pub fn pointer_down(x: i32, y: i32, button: MouseButton, _target: Option<u32>) -> Result<Ack> {
+pub fn pointer_down(x: i32, y: i32, button: MouseButton, target: Option<u32>) -> Result<Ack> {
+    ensure_target_supported(target)?;
     set_cursor(x, y)?;
     let (down, _) = button_flags(button);
     send(&[mouse_event(down, 0)])?;
     Ok(Ack::new("pointer.down"))
 }
 
-pub fn pointer_up(x: i32, y: i32, button: MouseButton, _target: Option<u32>) -> Result<Ack> {
+pub fn pointer_up(x: i32, y: i32, button: MouseButton, target: Option<u32>) -> Result<Ack> {
+    ensure_target_supported(target)?;
     set_cursor(x, y)?;
     let (_, up) = button_flags(button);
     send(&[mouse_event(up, 0)])?;
@@ -86,8 +98,9 @@ pub fn pointer_click(
     y: i32,
     button: MouseButton,
     count: u32,
-    _target: Option<u32>,
+    target: Option<u32>,
 ) -> Result<Ack> {
+    ensure_target_supported(target)?;
     if count == 0 {
         return Err(Error::Usage("count must be greater than zero".into()));
     }
@@ -99,7 +112,8 @@ pub fn pointer_click(
     Ok(Ack::new("pointer.click"))
 }
 
-pub fn pointer_scroll(x: i32, y: i32, dx: i32, dy: i32, _target: Option<u32>) -> Result<Ack> {
+pub fn pointer_scroll(x: i32, y: i32, dx: i32, dy: i32, target: Option<u32>) -> Result<Ack> {
+    ensure_target_supported(target)?;
     set_cursor(x, y)?;
     if dy != 0 {
         send(&[mouse_event(MOUSEEVENTF_WHEEL, dy * WHEEL_DELTA)])?;
@@ -116,8 +130,9 @@ pub fn pointer_drag(
     tx: i32,
     ty: i32,
     button: MouseButton,
-    _target: Option<u32>,
+    target: Option<u32>,
 ) -> Result<Ack> {
+    ensure_target_supported(target)?;
     let (down, up) = button_flags(button);
     set_cursor(fx, fy)?;
     send(&[mouse_event(down, 0)])?;
@@ -174,7 +189,8 @@ fn unicode_input(unit: u16, up: bool) -> INPUT {
     }
 }
 
-pub fn key_type(text: &str, _target: Option<u32>) -> Result<Ack> {
+pub fn key_type(text: &str, target: Option<u32>) -> Result<Ack> {
+    ensure_target_supported(target)?;
     let mut inputs = Vec::new();
     for unit in text.encode_utf16() {
         inputs.push(unicode_input(unit, false));
@@ -248,17 +264,20 @@ fn key_vk(name: &str) -> Result<VIRTUAL_KEY> {
     Ok(vk)
 }
 
-pub fn key_down(name: &str, _target: Option<u32>) -> Result<Ack> {
+pub fn key_down(name: &str, target: Option<u32>) -> Result<Ack> {
+    ensure_target_supported(target)?;
     send(&[key_input(key_vk(name)?, KEYBD_EVENT_FLAGS(0))])?;
     Ok(Ack::new("key.down"))
 }
 
-pub fn key_up(name: &str, _target: Option<u32>) -> Result<Ack> {
+pub fn key_up(name: &str, target: Option<u32>) -> Result<Ack> {
+    ensure_target_supported(target)?;
     send(&[key_input(key_vk(name)?, KEYEVENTF_KEYUP)])?;
     Ok(Ack::new("key.up"))
 }
 
-pub fn key_press(name: &str, mods: &[Modifier], _target: Option<u32>) -> Result<Ack> {
+pub fn key_press(name: &str, mods: &[Modifier], target: Option<u32>) -> Result<Ack> {
+    ensure_target_supported(target)?;
     let vk = key_vk(name)?;
     let mut downs = Vec::new();
     for m in mods {

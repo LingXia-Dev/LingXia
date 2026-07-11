@@ -143,11 +143,11 @@ pub enum DesktopCommand {
     },
     /// Synthesize physical mouse input at screen coordinates
     Pointer {
-        /// Deliver input to this window's app in the background (no focus steal).
+        /// Deliver input to this window's app in the background (unsupported on Windows).
         /// Omit to drive the foreground app like a physical mouse.
         #[arg(long, global = true)]
         window: Option<String>,
-        /// Deliver input to this pid in the background instead of the foreground.
+        /// Deliver input to this pid in the background (unsupported on Windows).
         #[arg(long, global = true)]
         pid: Option<u32>,
         #[command(subcommand)]
@@ -155,10 +155,10 @@ pub enum DesktopCommand {
     },
     /// Synthesize physical keyboard input
     Key {
-        /// Deliver input to this window's app in the background (no focus steal).
+        /// Deliver input to this window's app in the background (unsupported on Windows).
         #[arg(long, global = true)]
         window: Option<String>,
-        /// Deliver input to this pid in the background instead of the foreground.
+        /// Deliver input to this pid in the background (unsupported on Windows).
         #[arg(long, global = true)]
         pid: Option<u32>,
         #[command(subcommand)]
