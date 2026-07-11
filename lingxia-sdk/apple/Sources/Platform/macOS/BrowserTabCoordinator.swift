@@ -138,15 +138,13 @@ final class BrowserTabCoordinator: NSObject {
     // MARK: - Lifecycle
 
     nonisolated func cleanup() {
-        if let shortcutMonitor {
-            NSEvent.removeMonitor(shortcutMonitor)
-            self.shortcutMonitor = nil
-        }
-        if let interactionMonitor {
-            NSEvent.removeMonitor(interactionMonitor)
-            self.interactionMonitor = nil
-        }
-        idleSweepTimer?.invalidate()
+        // May run from a background-thread deinit. Capture the values, nil the
+        // fields, then hop to main for the AppKit monitor removal and the
+        // main-scheduled Timer invalidation — never capturing self.
+        nonisolated(unsafe) let monitors = [shortcutMonitor, interactionMonitor].compactMap { $0 }
+        shortcutMonitor = nil
+        interactionMonitor = nil
+        nonisolated(unsafe) let timer = idleSweepTimer
         idleSweepTimer = nil
         memoryPressureSource?.cancel()
         memoryPressureSource = nil
@@ -156,6 +154,16 @@ final class BrowserTabCoordinator: NSObject {
         canGoForwardObservation?.invalidate()
         tabTitleObservations.values.forEach { $0.invalidate() }
         tabTitleObservations.removeAll()
+
+        let finish = { @Sendable in
+            monitors.forEach { NSEvent.removeMonitor($0) }
+            timer?.invalidate()
+        }
+        if Thread.isMainThread {
+            finish()
+        } else {
+            DispatchQueue.main.async(execute: finish)
+        }
     }
 
     /// Observe a tab's title for as long as the tab exists (independent of which
@@ -975,12 +983,11 @@ final class BrowserTabCoordinator: NSObject {
         }
         starButton.isHidden = false
         pinButton.isHidden = false
-        let normalized = SidebarBookmarksSnapshot.normalize(raw)
-        let entry = SidebarBookmarksSnapshot.loadFromHost().entries.first {
-            SidebarBookmarksSnapshot.normalize($0.url) == normalized
-        }
-        let bookmarked = entry != nil
-        let pinned = entry?.isPinned == true
+        // One O(1)-ish FFI call (bit 0 = bookmarked, bit 1 = pinned) instead of
+        // decoding a full snapshot on every URL change.
+        let state = browserBookmarkState(raw)
+        let bookmarked = state & 0b1 != 0
+        let pinned = state & 0b10 != 0
         starButton.image = LxIcon.image(
             named: bookmarked ? "icon_bookmark_filled" : "icon_bookmark",
             size: CGSize(width: 16, height: 16)
@@ -995,6 +1002,13 @@ final class BrowserTabCoordinator: NSObject {
         pinButton.contentTintColor = pinned ? .controlAccentColor : .tertiaryLabelColor
         pinButton.toolTip = L10n.string(pinned ? "lx_browser_unpin" : "lx_browser_pin_to_sidebar")
         pinButton.setAccessibilityLabel(pinButton.toolTip ?? "")
+    }
+
+    /// Re-derive star/pin state after an external bookmarks mutation (webui
+    /// manager page, sidebar tile menu) so a stale filled star can't re-add.
+    func refreshPageSaveButtons() {
+        guard let activeId = activeTabId else { return }
+        updatePageSaveButtons(for: activeWebView?.url?.absoluteString ?? lastObservedURLs[activeId])
     }
 
     private func toggleActiveBookmark() {

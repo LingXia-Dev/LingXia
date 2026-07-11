@@ -38,17 +38,9 @@ struct SidebarBookmarksSnapshot: Decodable {
     }
 
     /// Comparison key used to associate a pin with an existing browser tab.
-    /// Pins never absorb or hide tabs from the normal tab list.
+    /// Thin wrapper over Rust's normalizer so the rules live in one place.
     static func normalize(_ raw: String) -> String {
-        var s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let hash = s.firstIndex(of: "#") { s = String(s[..<hash]) }
-        if s.hasSuffix("/") { s.removeLast() }
-        guard let separator = s.range(of: "://") else { return s }
-        let scheme = s[..<separator.lowerBound].lowercased()
-        let rest = s[separator.upperBound...]
-        let hostEnd = rest.firstIndex(where: { $0 == "/" || $0 == "?" }) ?? rest.endIndex
-        let host = rest[..<hostEnd].lowercased()
-        return "\(scheme)://\(host)\(rest[hostEnd...])"
+        browserBookmarkNormalizeUrl(raw).toString()
     }
 }
 
@@ -295,7 +287,9 @@ final class SidebarPinTileView: NSView {
     }
 
     @objc private func copyLinkClicked() {
-        BrowserPageMenu.copyLink(url, toastHost: superview)
+        // Anchor the toast to the visible viewport, not the (possibly tall)
+        // scroll document view where it could render off-screen.
+        BrowserPageMenu.copyLink(url, toastHost: enclosingScrollView?.contentView ?? superview)
     }
 
     @objc private func openExternalClicked() {
@@ -335,6 +329,8 @@ func jsonEscape(_ s: String) -> String {
         case "\n": out += "\\n"
         case "\r": out += "\\r"
         case "\t": out += "\\t"
+        // Remaining control chars would produce invalid JSON if left raw.
+        case let c where c.value < 0x20: out += String(format: "\\u%04x", c.value)
         default: out.unicodeScalars.append(c)
         }
     }

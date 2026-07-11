@@ -294,6 +294,14 @@ mod bridge {
         #[swift_bridge(swift_name = "browserBookmarkStatus")]
         fn browser_bookmark_status(url: &str) -> bool;
 
+        // Bookmark state bitmask for `url`: bit 0 = bookmarked, bit 1 = pinned.
+        #[swift_bridge(swift_name = "browserBookmarkState")]
+        fn browser_bookmark_state(url: &str) -> u32;
+
+        // Canonical bookmark-match key (Rust owns the normalization rules).
+        #[swift_bridge(swift_name = "browserBookmarkNormalizeUrl")]
+        fn browser_bookmark_normalize_url(raw: &str) -> String;
+
         // Toggle `url` in the bookmarks store; returns the new bookmarked state.
         #[swift_bridge(swift_name = "browserBookmarkToggle")]
         fn browser_bookmark_toggle(url: &str, title: &str) -> bool;
@@ -781,6 +789,18 @@ pub fn get_builtin_browser_app_id() -> String {
 pub fn browser_bookmark_status(url: &str) -> bool {
     ffi_catch_unwind!("browser_bookmark_status", false, || {
         crate::browser::bookmark_status(url)
+    })
+}
+
+pub fn browser_bookmark_state(url: &str) -> u32 {
+    ffi_catch_unwind!("browser_bookmark_state", 0, || {
+        crate::browser::bookmark_state(url)
+    })
+}
+
+pub fn browser_bookmark_normalize_url(raw: &str) -> String {
+    ffi_catch_unwind!("browser_bookmark_normalize_url", String::new(), || {
+        crate::browser::normalize_bookmark_url(raw)
     })
 }
 

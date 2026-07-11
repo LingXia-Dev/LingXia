@@ -1638,10 +1638,12 @@ extension LxAppShell {
     }
 
     /// The bookmarks store changed (star toggle, sidebar action, manager page)
-    /// — re-render the sidebar bookmarks section.
+    /// — re-render the sidebar bookmarks section and resync the address-bar
+    /// star/pin buttons, or a stale filled star would re-add on click.
     func refreshSidebarBookmarks() {
         sidebarView?.reloadBookmarks()
         reconcileSidebarAutoHide()
+        browserCoordinator.refreshPageSaveButtons()
     }
 
     func presentInternalBrowserTab(id: String) {
