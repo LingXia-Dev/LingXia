@@ -853,16 +853,20 @@ pub(crate) fn handle_command(state: &mut UiState, command: UiCommand) -> StdResu
             let _ = resp.send(result);
         }
         UiCommand::ClearBrowsingData { resp } => {
-            let result = clear_browsing_data(&state.webview);
-            let _ = resp.send(result);
+            if let Err(err) = begin_clear_browsing_data(&state.webview, resp.clone()) {
+                let _ = resp.send(Err(err));
+            }
         }
         UiCommand::ClearProfileData {
             kind,
             since_unix_ms,
             resp,
         } => {
-            let result = clear_profile_data(&state.webview, kind, since_unix_ms);
-            let _ = resp.send(result);
+            if let Err(err) =
+                begin_clear_profile_data(&state.webview, kind, since_unix_ms, resp.clone())
+            {
+                let _ = resp.send(Err(err));
+            }
         }
         UiCommand::CurrentUrl { resp } => {
             let result = current_url(&state.webview);

@@ -18,7 +18,10 @@ pub(crate) fn set_user_agent(webview: &ICoreWebView2, ua: &str) -> StdResult<()>
     Ok(())
 }
 
-pub(crate) fn clear_browsing_data(webview: &ICoreWebView2) -> StdResult<()> {
+pub(crate) fn begin_clear_browsing_data(
+    webview: &ICoreWebView2,
+    completion: Sender<StdResult<()>>,
+) -> StdResult<()> {
     let webview13: ICoreWebView2_13 = webview
         .cast()
         .map_err(|err| WebViewError::WebView(format!("WebView profile cast failed: {err}")))?;
@@ -31,12 +34,14 @@ pub(crate) fn clear_browsing_data(webview: &ICoreWebView2) -> StdResult<()> {
         .cast()
         .map_err(|err| WebViewError::WebView(format!("Profile2 cast failed: {err}")))?;
 
-    let (tx, rx) = mpsc::channel();
     unsafe {
         profile2
             .ClearBrowsingDataAll(&ClearBrowsingDataCompletedHandler::create(Box::new(
                 move |result| {
-                    tx.send(result)
+                    completion
+                        .send(result.map_err(|err| {
+                            WebViewError::WebView(format!("Clear browsing data failed: {err}"))
+                        }))
                         .map_err(|_| windows::core::Error::from(E_POINTER))?;
                     Ok(())
                 },
@@ -44,9 +49,7 @@ pub(crate) fn clear_browsing_data(webview: &ICoreWebView2) -> StdResult<()> {
             .map_err(|err| WebViewError::WebView(format!("ClearBrowsingDataAll failed: {err}")))?;
     }
 
-    rx.recv()
-        .map_err(|_| WebViewError::WebView("Clear browsing data callback failed".to_string()))?
-        .map_err(|err| WebViewError::WebView(format!("Clear browsing data failed: {err}")))
+    Ok(())
 }
 
 pub(crate) fn current_url(webview: &ICoreWebView2) -> StdResult<Option<String>> {
@@ -521,10 +524,11 @@ pub(crate) fn map_webview2_error(err: webview2_com::Error) -> WebViewError {
     WebViewError::WebView(format!("WebView2 operation failed: {err}"))
 }
 
-pub(crate) fn clear_profile_data(
+pub(crate) fn begin_clear_profile_data(
     webview: &ICoreWebView2,
     kind: super::super::data_store::BrowsingDataKind,
     since_unix_ms: Option<u64>,
+    completion: Sender<StdResult<()>>,
 ) -> StdResult<()> {
     let webview13: ICoreWebView2_13 = webview
         .cast()
@@ -548,12 +552,15 @@ pub(crate) fn clear_profile_data(
                 | COREWEBVIEW2_BROWSING_DATA_KINDS_SERVICE_WORKERS
         }
     };
-    let (tx, rx) = mpsc::channel();
-    let handler = ClearBrowsingDataCompletedHandler::create(Box::new(move |result| {
-        tx.send(result)
-            .map_err(|_| windows::core::Error::from(E_POINTER))?;
-        Ok(())
-    }));
+    let handler =
+        ClearBrowsingDataCompletedHandler::create(Box::new(move |result| {
+            completion
+                .send(result.map_err(|err| {
+                    WebViewError::WebView(format!("Clear browsing data failed: {err}"))
+                }))
+                .map_err(|_| windows::core::Error::from(E_POINTER))?;
+            Ok(())
+        }));
     unsafe {
         if let Some(since_unix_ms) = since_unix_ms {
             let end = std::time::SystemTime::now()
@@ -571,9 +578,7 @@ pub(crate) fn clear_profile_data(
         }
         .map_err(|err| WebViewError::WebView(format!("ClearBrowsingData failed: {err}")))?;
     }
-    rx.recv()
-        .map_err(|_| WebViewError::WebView("Clear browsing data callback failed".to_string()))?
-        .map_err(|err| WebViewError::WebView(format!("Clear browsing data failed: {err}")))
+    Ok(())
 }
 
 fn is_webview2_runtime_missing(err: &webview2_com::Error) -> bool {
