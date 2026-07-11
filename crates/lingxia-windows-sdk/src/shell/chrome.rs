@@ -450,7 +450,7 @@ fn chrome_hover_rect(
         return None;
     }
 
-    let chevron = sidebar_group_chevron_rect(tabbar_rect);
+    let chevron = sidebar_group_chevron_rect(tabbar_rect, tabbar);
     if rect_contains(&chevron, point) {
         return Some(chevron);
     }
@@ -1487,7 +1487,7 @@ pub(super) fn chrome_hit_test(
             return Some(WindowsChromeHit::Chrome);
         }
         if sidebar {
-            if rect_contains(&sidebar_group_chevron_rect(tabbar_rect), point) {
+            if rect_contains(&sidebar_group_chevron_rect(tabbar_rect, tabbar), point) {
                 return Some(chrome_command(
                     command_id::SIDEBAR_GROUP_TOGGLE,
                     json!({ "group": tabbar.group_id.clone() }),

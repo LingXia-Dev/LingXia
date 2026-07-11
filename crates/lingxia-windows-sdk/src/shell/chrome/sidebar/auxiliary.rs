@@ -87,9 +87,10 @@ pub(in crate::shell::chrome) fn sidebar_auxiliary_rects(
         let grid_width = (rect.right - SIDEBAR_ITEM_INSET - grid_left).max(PINNED_SHORTCUT_SIZE);
         let columns = ((grid_width + SIDEBAR_ITEM_GAP) / (PINNED_SHORTCUT_SIZE + SIDEBAR_ITEM_GAP))
             .max(1) as usize;
-        // Pinned websites are primary shortcuts: place them directly below
-        // the group header, before the lxapp navigation entries.
-        let grid_top = rect.top + SIDEBAR_HEADER_HEIGHT;
+        // Pinned websites are global shortcuts, not children of the current
+        // lxapp group. They sit immediately below the caption controls and
+        // above the lxapp header/navigation, matching macOS.
+        let grid_top = rect.top + SHELL_TOP_BAR_HEIGHT;
         for index in 0..pinned_count {
             let row = index / columns;
             let column = index % columns;

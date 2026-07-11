@@ -118,9 +118,11 @@ pub(super) fn draw_sidebar_tab_bar(
     } else {
         tabbar.app_name.to_ascii_uppercase()
     };
-    let chevron_rect = sidebar_group_chevron_rect(rect);
+    let group_top = sidebar_group_top(rect, tabbar);
+    let group_bottom = rect.top + SIDEBAR_HEADER_HEIGHT + sidebar_pinned_grid_height(rect, tabbar);
+    let chevron_rect = sidebar_group_chevron_rect(rect, tabbar);
     // The lxapp's own icon (via the app-info API) leads the group header.
-    let icon_top = rect.top + 22 + (SIDEBAR_HEADER_HEIGHT - 22 - SIDEBAR_ICON_SIZE).max(0) / 2;
+    let icon_top = group_top + (group_bottom - group_top - SIDEBAR_ICON_SIZE).max(0) / 2;
     let icon_rect = RECT {
         left: rect.left + SIDEBAR_ITEM_INSET + 2,
         top: icon_top,
@@ -135,9 +137,9 @@ pub(super) fn draw_sidebar_tab_bar(
     );
     let header_rect = RECT {
         left: icon_rect.right + 8,
-        top: rect.top + 22,
+        top: group_top,
         right: chevron_rect.left - 4,
-        bottom: rect.top + SIDEBAR_HEADER_HEIGHT,
+        bottom: group_bottom,
     };
     draw_text(
         hdc,
@@ -388,8 +390,14 @@ pub(super) fn sidebar_rail_item_rect(rect: RECT, index: usize) -> RECT {
 
 /// Chevron hit/draw rect at the trailing edge of the sidebar group header
 /// row (the lxapp name).
-pub(super) fn sidebar_group_chevron_rect(rect: RECT) -> RECT {
-    let top = rect.top + 22 + (SIDEBAR_HEADER_HEIGHT - 22 - SIDEBAR_CHEVRON_SIZE).max(0) / 2;
+fn sidebar_group_top(rect: RECT, tabbar: &WindowsShellTabBarLayout) -> i32 {
+    rect.top + SHELL_TOP_BAR_HEIGHT + sidebar_pinned_grid_height(rect, tabbar)
+}
+
+pub(super) fn sidebar_group_chevron_rect(rect: RECT, tabbar: &WindowsShellTabBarLayout) -> RECT {
+    let group_top = sidebar_group_top(rect, tabbar);
+    let group_bottom = rect.top + SIDEBAR_HEADER_HEIGHT + sidebar_pinned_grid_height(rect, tabbar);
+    let top = group_top + (group_bottom - group_top - SIDEBAR_CHEVRON_SIZE).max(0) / 2;
     normalize_rect(RECT {
         left: rect.right - SIDEBAR_ITEM_INSET - SIDEBAR_CHEVRON_SIZE,
         top,
