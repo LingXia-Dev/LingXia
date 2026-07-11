@@ -4,19 +4,15 @@
 //! Windows PNGs into each app's generated assets, and runtime code draws those
 //! assets instead of hand-maintaining a Windows-only icon set.
 
-use std::collections::HashMap;
-use std::ffi::c_void;
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, OnceLock};
+use std::sync::OnceLock;
 
 use windows::Win32::Foundation::RECT;
-use windows::Win32::Graphics::Gdi::{CreateBitmap, DeleteObject, HDC, HGDIOBJ};
-use windows::Win32::UI::WindowsAndMessaging::{self, HICON, ICONINFO};
-use windows::core::BOOL;
-
-type IconCache = HashMap<(WindowsDesignIcon, u32, Option<u32>), Option<isize>>;
-
-static ICON_HANDLES: OnceLock<Mutex<IconCache>> = OnceLock::new();
+use windows::Win32::Graphics::Gdi::{
+    AC_SRC_ALPHA, AC_SRC_OVER, AlphaBlend, BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BLENDFUNCTION,
+    CreateCompatibleDC, CreateDIBSection, DIB_RGB_COLORS, DeleteDC, DeleteObject, HDC, HGDIOBJ,
+    SelectObject,
+};
 static WINDOWS_DESIGN_ICON_DIR: OnceLock<PathBuf> = OnceLock::new();
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -104,6 +100,39 @@ impl WindowsDesignIcon {
             Self::Uninstall => "icon_uninstall.png",
         }
     }
+
+    #[cfg(feature = "shell-chrome")]
+    fn embedded_svg(self) -> Option<&'static [u8]> {
+        Some(match self {
+            Self::Back => include_bytes!("../../../design/icons/svg/icon_back.svg"),
+            Self::Forward => include_bytes!("../../../design/icons/svg/icon_forward.svg"),
+            Self::BrowserRefresh => {
+                include_bytes!("../../../design/icons/svg/icon_browser_refresh.svg")
+            }
+            Self::BrowserTabs => include_bytes!("../../../design/icons/svg/icon_browser_tabs.svg"),
+            Self::Bookmark => include_bytes!("../../../design/icons/svg/icon_bookmark.svg"),
+            Self::BookmarkFilled => {
+                include_bytes!("../../../design/icons/svg/icon_bookmark_filled.svg")
+            }
+            Self::Bookmarks => include_bytes!("../../../design/icons/svg/icon_bookmarks.svg"),
+            Self::Pin => include_bytes!("../../../design/icons/svg/icon_pin.svg"),
+            Self::PinFilled => include_bytes!("../../../design/icons/svg/icon_pin_filled.svg"),
+            Self::Unpin => include_bytes!("../../../design/icons/svg/icon_unpin.svg"),
+            Self::Link => include_bytes!("../../../design/icons/svg/icon_link.svg"),
+            Self::External => include_bytes!("../../../design/icons/svg/icon_external.svg"),
+            Self::Globe => include_bytes!("../../../design/icons/svg/icon_globe.svg"),
+            Self::CloseOtherTabs => {
+                include_bytes!("../../../design/icons/svg/icon_close_other_tabs.svg")
+            }
+            Self::CloseTabsBelow => {
+                include_bytes!("../../../design/icons/svg/icon_close_tabs_below.svg")
+            }
+            Self::History => include_bytes!("../../../design/icons/svg/icon_history.svg"),
+            Self::ClearData => include_bytes!("../../../design/icons/svg/icon_clear_data.svg"),
+            Self::PageMenu => include_bytes!("../../../design/icons/svg/icon_page_menu.svg"),
+            _ => return None,
+        })
+    }
 }
 
 pub fn set_windows_design_icon_dir(path: impl AsRef<Path>) {
@@ -129,42 +158,67 @@ fn draw_windows_design_icon_inner(
     rect: RECT,
     tint: Option<u32>,
 ) -> bool {
-    let size = (rect.right - rect.left).max(rect.bottom - rect.top).max(1) as u32;
-    let Some(handle) = cached_icon_handle(icon, size, tint) else {
+    let width = (rect.right - rect.left).max(1);
+    let height = (rect.bottom - rect.top).max(1);
+    let size = width.max(height) as u32;
+    let Some(pixels) = design_icon_argb_premultiplied(icon, size, tint) else {
         return false;
     };
     unsafe {
-        WindowsAndMessaging::DrawIconEx(
+        let memory = CreateCompatibleDC(Some(hdc));
+        if memory.is_invalid() {
+            return false;
+        }
+        let info = BITMAPINFO {
+            bmiHeader: BITMAPINFOHEADER {
+                biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+                biWidth: size as i32,
+                biHeight: -(size as i32),
+                biPlanes: 1,
+                biBitCount: 32,
+                biCompression: BI_RGB.0,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let mut bits = std::ptr::null_mut();
+        let Ok(bitmap) = CreateDIBSection(Some(hdc), &info, DIB_RGB_COLORS, &mut bits, None, 0)
+        else {
+            let _ = DeleteDC(memory);
+            return false;
+        };
+        if bits.is_null() {
+            let _ = DeleteObject(HGDIOBJ(bitmap.0));
+            let _ = DeleteDC(memory);
+            return false;
+        }
+        std::ptr::copy_nonoverlapping(pixels.as_ptr(), bits.cast::<u32>(), pixels.len());
+        let previous = SelectObject(memory, HGDIOBJ(bitmap.0));
+        let blend = BLENDFUNCTION {
+            BlendOp: AC_SRC_OVER as u8,
+            BlendFlags: 0,
+            SourceConstantAlpha: 255,
+            AlphaFormat: AC_SRC_ALPHA as u8,
+        };
+        let ok = AlphaBlend(
             hdc,
             rect.left,
             rect.top,
-            HICON(handle as *mut c_void),
-            (rect.right - rect.left).max(1),
-            (rect.bottom - rect.top).max(1),
+            width,
+            height,
+            memory,
             0,
-            None,
-            WindowsAndMessaging::DI_NORMAL,
+            0,
+            size as i32,
+            size as i32,
+            blend,
         )
-        .is_ok()
+        .as_bool();
+        let _ = SelectObject(memory, previous);
+        let _ = DeleteObject(HGDIOBJ(bitmap.0));
+        let _ = DeleteDC(memory);
+        ok
     }
-}
-
-fn cached_icon_handle(icon: WindowsDesignIcon, size: u32, tint: Option<u32>) -> Option<isize> {
-    let key = (icon, size, tint);
-    let handles = ICON_HANDLES.get_or_init(|| Mutex::new(HashMap::new()));
-    if let Ok(mut handles) = handles.lock() {
-        if let Some(handle) = handles.get(&key) {
-            return *handle;
-        }
-        let handle = create_icon_from_png(&design_icon_path(icon)?, size, tint).ok();
-        if let Some(Some(previous)) = handles.insert(key, handle)
-            && Some(previous) != handle
-        {
-            destroy_icon_handle(previous);
-        }
-        return handle;
-    }
-    create_icon_from_png(&design_icon_path(icon)?, size, tint).ok()
 }
 
 fn design_icon_path(icon: WindowsDesignIcon) -> Option<PathBuf> {
@@ -181,16 +235,19 @@ fn design_icon_path(icon: WindowsDesignIcon) -> Option<PathBuf> {
 ///
 /// Only the device-frame capsule composites onto a per-pixel-alpha layered
 /// surface, so this helper is gated to that feature.
-#[cfg(feature = "device-frame")]
 pub fn design_icon_argb_premultiplied(
     icon: WindowsDesignIcon,
     size: u32,
     tint: Option<u32>,
 ) -> Option<Vec<u32>> {
-    let image = image::open(design_icon_path(icon)?)
-        .ok()?
-        .resize_exact(size, size, image::imageops::FilterType::Lanczos3)
-        .into_rgba8();
+    let image = design_icon_path(icon)
+        .and_then(|path| image::open(path).ok())
+        .map(|image| {
+            image
+                .resize_exact(size, size, image::imageops::FilterType::Lanczos3)
+                .into_rgba8()
+        })
+        .or_else(|| embedded_svg_image(icon, size))?;
     let mut out = Vec::with_capacity((size * size) as usize);
     for pixel in image.pixels() {
         let [mut r, mut g, mut b, a] = pixel.0;
@@ -205,61 +262,32 @@ pub fn design_icon_argb_premultiplied(
     Some(out)
 }
 
-fn create_icon_from_png(path: &Path, size: u32, tint: Option<u32>) -> Result<isize, String> {
-    let image = image::open(path)
-        .map_err(|err| {
-            format!(
-                "Failed to load Windows design icon {}: {err}",
-                path.display()
-            )
-        })?
-        .resize_exact(size, size, image::imageops::FilterType::Lanczos3)
-        .into_rgba8();
-
-    let mut bgra = Vec::with_capacity(image.len());
-    for pixel in image.pixels() {
-        let [mut r, mut g, mut b, a] = pixel.0;
-        if let Some(rgb) = tint {
-            r = ((rgb >> 16) & 0xff) as u8;
-            g = ((rgb >> 8) & 0xff) as u8;
-            b = (rgb & 0xff) as u8;
-        }
-        bgra.extend_from_slice(&[b, g, r, a]);
+#[cfg(feature = "shell-chrome")]
+fn embedded_svg_image(icon: WindowsDesignIcon, size: u32) -> Option<image::RgbaImage> {
+    let svg = std::str::from_utf8(icon.embedded_svg()?).ok()?;
+    let tree = usvg::Tree::from_str(svg, &usvg::Options::default()).ok()?;
+    let svg_size = tree.size();
+    let max_side = svg_size.width().max(svg_size.height());
+    if max_side <= 0.0 {
+        return None;
     }
-
-    unsafe {
-        let width = size as i32;
-        let height = size as i32;
-        let color = CreateBitmap(width, height, 1, 32, Some(bgra.as_ptr().cast()));
-        if color.is_invalid() {
-            return Err("Failed to create generated design icon color bitmap".to_string());
-        }
-
-        let mask = CreateBitmap(width, height, 1, 1, None);
-        if mask.is_invalid() {
-            let _ = DeleteObject(HGDIOBJ(color.0));
-            return Err("Failed to create generated design icon mask bitmap".to_string());
-        }
-
-        let info = ICONINFO {
-            fIcon: BOOL(1),
-            xHotspot: 0,
-            yHotspot: 0,
-            hbmMask: mask,
-            hbmColor: color,
-        };
-        let icon = WindowsAndMessaging::CreateIconIndirect(&info)
-            .map_err(|err| format!("Failed to create generated design icon: {err}"))?;
-        let _ = DeleteObject(HGDIOBJ(color.0));
-        let _ = DeleteObject(HGDIOBJ(mask.0));
-        Ok(icon.0 as isize)
+    let scale = size as f32 / max_side;
+    let mut pixmap = tiny_skia::Pixmap::new(size, size)?;
+    let transform = tiny_skia::Transform::from_translate(
+        (size as f32 - svg_size.width() * scale) / 2.0,
+        (size as f32 - svg_size.height() * scale) / 2.0,
+    )
+    .post_scale(scale, scale);
+    resvg::render(&tree, transform, &mut pixmap.as_mut());
+    let mut image = image::RgbaImage::new(size, size);
+    for (pixel, out) in pixmap.pixels().iter().zip(image.pixels_mut()) {
+        let color = pixel.demultiply();
+        *out = image::Rgba([color.red(), color.green(), color.blue(), color.alpha()]);
     }
+    Some(image)
 }
 
-fn destroy_icon_handle(handle: isize) {
-    if handle != 0 {
-        unsafe {
-            let _ = WindowsAndMessaging::DestroyIcon(HICON(handle as *mut c_void));
-        }
-    }
+#[cfg(not(feature = "shell-chrome"))]
+fn embedded_svg_image(_icon: WindowsDesignIcon, _size: u32) -> Option<image::RgbaImage> {
+    None
 }

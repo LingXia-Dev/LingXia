@@ -2687,40 +2687,70 @@ fn show_browser_page_menu(appid: &str, screen_x: i32, screen_y: i32) {
     let is_web_url = url.starts_with("http://") || url.starts_with("https://");
     let bookmarked = is_web_url && lingxia_browser_shell::is_bookmarked(&url);
     let pinned_id = pinned_bookmark_for_url(&url).map(|entry| entry.id);
-    let mut items = vec![
-        lingxia_logic::i18n::t(if bookmarked {
-            lingxia_logic::I18nKey::BrowserRemoveBookmark
-        } else {
-            lingxia_logic::I18nKey::BrowserAddBookmark
-        }),
-        lingxia_logic::i18n::t(if pinned_id.is_some() {
-            lingxia_logic::I18nKey::BrowserUnpin
-        } else {
-            lingxia_logic::I18nKey::BrowserPinToSidebar
-        }),
-        lingxia_logic::i18n::t(lingxia_logic::I18nKey::BrowserCopyLink),
-        lingxia_logic::i18n::t(lingxia_logic::I18nKey::BrowserOpenInSystemBrowser),
-        String::new(),
-        lingxia_logic::i18n::t(lingxia_logic::I18nKey::BrowserManageBookmarks),
-        lingxia_logic::i18n::t(lingxia_logic::I18nKey::BrowserHistory),
-        String::new(),
-        lingxia_logic::i18n::t(lingxia_logic::I18nKey::BrowserClearBrowsingData),
+    use super::context_menu::ContextMenuEntry;
+    use crate::WindowsDesignIcon;
+    let page_actionable = !url.trim().is_empty() && !lingxia_browser_shell::should_hide_url(&url);
+    let items = vec![
+        ContextMenuEntry::item(
+            lingxia_logic::i18n::t(if bookmarked {
+                lingxia_logic::I18nKey::BrowserRemoveBookmark
+            } else {
+                lingxia_logic::I18nKey::BrowserAddBookmark
+            }),
+            is_web_url,
+            if bookmarked {
+                WindowsDesignIcon::BookmarkFilled
+            } else {
+                WindowsDesignIcon::Bookmark
+            },
+        ),
+        ContextMenuEntry::item(
+            lingxia_logic::i18n::t(if pinned_id.is_some() {
+                lingxia_logic::I18nKey::BrowserUnpin
+            } else {
+                lingxia_logic::I18nKey::BrowserPinToSidebar
+            }),
+            is_web_url,
+            if pinned_id.is_some() {
+                WindowsDesignIcon::Unpin
+            } else {
+                WindowsDesignIcon::Pin
+            },
+        ),
+        ContextMenuEntry::item(
+            lingxia_logic::i18n::t(lingxia_logic::I18nKey::BrowserCopyLink),
+            page_actionable,
+            WindowsDesignIcon::Link,
+        ),
+        ContextMenuEntry::item(
+            lingxia_logic::i18n::t(lingxia_logic::I18nKey::BrowserOpenInSystemBrowser),
+            is_web_url,
+            WindowsDesignIcon::External,
+        ),
+        ContextMenuEntry::separator(),
+        ContextMenuEntry::item(
+            lingxia_logic::i18n::t(lingxia_logic::I18nKey::BrowserManageBookmarks),
+            true,
+            WindowsDesignIcon::Bookmarks,
+        ),
+        ContextMenuEntry::item(
+            lingxia_logic::i18n::t(lingxia_logic::I18nKey::BrowserHistory),
+            true,
+            WindowsDesignIcon::History,
+        ),
+        ContextMenuEntry::separator(),
+        ContextMenuEntry::item(
+            lingxia_logic::i18n::t(lingxia_logic::I18nKey::BrowserClearBrowsingData),
+            true,
+            WindowsDesignIcon::ClearData,
+        ),
     ];
-    if !is_web_url {
-        items[0].clear();
-        items[1].clear();
-    }
-    if url.trim().is_empty() || lingxia_browser_shell::should_hide_url(&url) {
-        items[2].clear();
-        items[3].clear();
-    }
     let appid = appid.to_string();
     let title = browser_tab_display_title(&tab);
-    super::context_menu::show_context_menu_checked(
+    super::context_menu::show_context_menu_entries(
         window,
         (screen_x, screen_y),
         items,
-        Vec::new(),
         Arc::new(move |index| match index {
             0 if is_web_url => {
                 let _ = lingxia_browser_shell::toggle_bookmark(&url, &title);
@@ -2737,10 +2767,10 @@ fn show_browser_page_menu(appid: &str, screen_x: i32, screen_y: i32) {
                     let _ = lingxia_browser_shell::pin_bookmark_url(&url, &title);
                 }
             }
-            2 => {
+            2 if page_actionable => {
                 let _ = super::clipboard::set_clipboard_text(&url);
             }
-            3 => {
+            3 if is_web_url => {
                 if let Some(app) = lxapp::try_get(&appid) {
                     let _ = app.runtime.open_url(OpenUrlRequest {
                         owner_appid: appid.clone(),
