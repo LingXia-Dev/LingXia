@@ -169,6 +169,10 @@ let appleDownstreamTask: Promise<void> | null = null;
 let appleDownstreamAbortController: AbortController | null = null;
 let appleReconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let appleReconnectDelayMs = APPLE_RECONNECT_BASE_MS;
+// Highest transport frame seq processed. Sent as `?from=` on reconnect so the
+// host replays the gap; survives reconnects so a WebKit-replaced stream resumes
+// without losing frames or tearing down the bridge session.
+let appleLastFrameSeq = 0;
 const portInitState = {
   listenerInstalled: false,
   promise: null as Promise<MessagePort> | null,
@@ -255,12 +259,36 @@ function processAppleDownstreamBuffer(buffer: string): string {
     remaining = remaining.slice(newlineIndex + 1);
     if (!line) continue;
     try {
-      handleIncomingMessage(JSON.parse(line));
+      handleAppleDownstreamFrame(JSON.parse(line));
     } catch (e) {
       warn("Apple downstream parse error:", e, line);
     }
   }
   return remaining;
+}
+
+// Unwrap the transport envelope: {"lxff":seq,"m":<message>} carries a business
+// message with its frame seq; {"lxreset":true} means the host cannot replay our
+// resume point and we must re-handshake.
+function handleAppleDownstreamFrame(frame: unknown): void {
+  if (!frame || typeof frame !== "object") return;
+  const record = frame as { lxff?: unknown; m?: unknown; lxreset?: unknown };
+  if (record.lxreset === true) {
+    appleLastFrameSeq = 0;
+    resetHandshakeState("Apple downstream reset", true);
+    startHandshake();
+    return;
+  }
+  if (typeof record.lxff === "number") {
+    // Replayed frames after a reconnect can repeat the last-seen seq; ignore
+    // anything we have already processed so the session is not double-fed.
+    if (record.lxff <= appleLastFrameSeq) return;
+    appleLastFrameSeq = record.lxff;
+    handleIncomingMessage(record.m);
+    return;
+  }
+  // Legacy/un-enveloped line (e.g. a bare keepalive); pass through.
+  handleIncomingMessage(frame);
 }
 
 async function runAppleDownstream(): Promise<void> {
@@ -270,7 +298,10 @@ async function runAppleDownstream(): Promise<void> {
 
   const controller = new AbortController();
   appleDownstreamAbortController = controller;
-  const response = await fetch(APPLE_DOWNSTREAM_URL, {
+  // Resume from the last frame we saw so the host replays the gap on reconnect.
+  const separator = APPLE_DOWNSTREAM_URL.includes("?") ? "&" : "?";
+  const url = `${APPLE_DOWNSTREAM_URL}${separator}from=${appleLastFrameSeq}`;
+  const response = await fetch(url, {
     method: "GET",
     cache: "no-store",
     headers: { Accept: "application/x-ndjson" },
@@ -351,9 +382,11 @@ function ensureAppleDownstream(): void {
       const aborted = appleDownstreamAbortController?.signal.aborted ?? false;
       appleDownstreamTask = null;
       appleDownstreamAbortController = null;
-      const wasConnected = appleDownstreamConnected;
       appleDownstreamConnected = false;
-      resetHandshakeState("Apple downstream closed", wasConnected);
+      // A dropped transport is not a dead session: reconnect resumes from the
+      // last seq and the host replays the gap, so the handshake and in-flight
+      // streams stay intact. Only a host-sent reset (handled on the frame path)
+      // or a real abort tears things down.
       if (!aborted) scheduleAppleDownstreamReconnect("stream closed");
     });
 }
