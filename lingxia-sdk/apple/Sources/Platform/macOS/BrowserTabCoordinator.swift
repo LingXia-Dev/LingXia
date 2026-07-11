@@ -231,9 +231,9 @@ final class BrowserTabCoordinator: NSObject {
         addTabWithURL("lingxia://history", stableTabId: historyTabId)
     }
 
-    func openClearBrowsingData() {
+    func openClearSiteData(tabId: String) {
         addTabWithURL(
-            "lingxia://settings#clear-browsing-data",
+            "lingxia://settings#clear-site-data?tabId=\(tabIdString(tabId))",
             stableTabId: settingsTabId
         )
     }
@@ -1047,8 +1047,9 @@ final class BrowserTabCoordinator: NSObject {
             onOpenHistory: { [weak self] in
                 self?.openHistory()
             },
-            onClearBrowsingData: { [weak self] in
-                self?.openClearBrowsingData()
+            onClearSiteData: { [weak self] in
+                guard let self, let tabId = self.activeTabId else { return }
+                self.openClearSiteData(tabId: tabId)
             }
         )
         let menu = BrowserPageMenu.menu(for: context)

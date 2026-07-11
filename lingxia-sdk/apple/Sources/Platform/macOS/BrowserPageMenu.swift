@@ -23,8 +23,8 @@ enum BrowserPageMenu {
         var onOpenBookmarks: (() -> Void)?
         /// Open browser history (main browser only).
         var onOpenHistory: (() -> Void)?
-        /// Open the unified browsing-data dialog (main browser only).
-        var onClearBrowsingData: (() -> Void)?
+        /// Open the current website's data-clearing dialog.
+        var onClearSiteData: (() -> Void)?
     }
 
     static func menu(for context: Context) -> NSMenu {
@@ -95,7 +95,7 @@ enum BrowserPageMenu {
         menu.addItem(externalItem)
 
         if context.onOpenBookmarks != nil || context.onOpenHistory != nil
-            || context.onClearBrowsingData != nil
+            || context.onClearSiteData != nil
         {
             menu.addItem(.separator())
             if let onOpenBookmarks = context.onOpenBookmarks {
@@ -114,12 +114,12 @@ enum BrowserPageMenu {
                     handler: onOpenHistory
                 ))
             }
-            if let onClearBrowsingData = context.onClearBrowsingData {
+            if let onClearSiteData = context.onClearSiteData, isBookmarkActionable(context.url) {
                 menu.addItem(.separator())
                 menu.addItem(actionItem(
-                    title: L10n.string("lx_browser_clear_browsing_data"),
+                    title: L10n.string("lx_browser_clear_site_data"),
                     iconName: "icon_clear_data",
-                    handler: onClearBrowsingData
+                    handler: onClearSiteData
                 ))
             }
         }

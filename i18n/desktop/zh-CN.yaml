@@ -11,6 +11,7 @@ browser:
   bookmarks: "书签"
   history: "历史记录"
   clear_browsing_data: "清除浏览数据…"
+  clear_site_data: "清除此网站的数据…"
   add_bookmark: "添加书签"
   remove_bookmark: "移除书签"
   copy_link: "复制链接"

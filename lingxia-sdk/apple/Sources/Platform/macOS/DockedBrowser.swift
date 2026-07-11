@@ -745,7 +745,7 @@ final class DockedBrowser: NSObject {
             onBookmarkChanged: nil,
             onOpenBookmarks: nil,
             onOpenHistory: nil,
-            onClearBrowsingData: nil
+            onClearSiteData: nil
         )
     }
 

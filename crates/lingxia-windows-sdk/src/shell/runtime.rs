@@ -2745,8 +2745,8 @@ fn show_browser_page_menu(appid: &str, screen_x: i32, screen_y: i32) {
         ),
         ContextMenuEntry::separator(),
         ContextMenuEntry::item(
-            lingxia_logic::i18n::t(lingxia_logic::I18nKey::BrowserClearBrowsingData),
-            true,
+            lingxia_logic::i18n::t(lingxia_logic::I18nKey::BrowserClearSiteData),
+            is_web_url,
             WindowsDesignIcon::ClearData,
         ),
     ];
@@ -2799,12 +2799,12 @@ fn show_browser_page_menu(appid: &str, screen_x: i32, screen_y: i32) {
                     open_or_present_browser_page(&appid, app.session_id(), "lingxia://history");
                 }
             }
-            8 => {
+            8 if is_web_url => {
                 if let Some(app) = lxapp::try_get(&appid) {
                     open_or_present_browser_page(
                         &appid,
                         app.session_id(),
-                        "lingxia://settings#clear-browsing-data",
+                        &format!("lingxia://settings#clear-site-data?tabId={tab_id}"),
                     );
                 }
             }

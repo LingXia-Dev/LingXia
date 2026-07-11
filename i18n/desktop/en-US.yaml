@@ -11,6 +11,7 @@ browser:
   bookmarks: "Bookmarks"
   history: "History"
   clear_browsing_data: "Clear Browsing Data…"
+  clear_site_data: "Clear Data for This Site…"
   add_bookmark: "Add Bookmark"
   remove_bookmark: "Remove Bookmark"
   copy_link: "Copy Link"

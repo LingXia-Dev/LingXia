@@ -14,6 +14,7 @@ export const I18N_KEYS = [
   "browser_address_placeholder",
   "browser_bookmarks",
   "browser_clear_browsing_data",
+  "browser_clear_site_data",
   "browser_close_other_tabs",
   "browser_close_tabs_below",
   "browser_copy_link",

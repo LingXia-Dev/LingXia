@@ -9,14 +9,14 @@
     body { display: flex; min-height: 100vh; }
 
     .sidebar {
-      width: 208px; flex-shrink: 0; background: #fff;
+      width: 176px; flex-shrink: 0; background: #fff;
       border-right: 1px solid #e5e5ea; padding: 20px 0;
       position: sticky; top: 0; height: 100vh; overflow-y: auto;
     }
-    .sidebar-title { font-size: 20px; font-weight: 700; padding: 0 20px 16px; letter-spacing: -0.3px; }
+    .sidebar-title { font-size: 18px; font-weight: 700; padding: 0 16px 16px; }
     .nav-item {
       display: flex; align-items: center; gap: 10px;
-      padding: 9px 20px; font-size: 13px; font-weight: 500;
+      padding: 9px 16px; font-size: 13px; font-weight: 500;
       color: #6e6e73; cursor: pointer; transition: all 80ms;
       border-left: 3px solid transparent; text-decoration: none;
     }
@@ -236,6 +236,11 @@
     .confirm-copy { margin-top: 8px; font-size: 12.5px; line-height: 1.55; color: #667085; }
     .confirm-actions { margin-top: 18px; display: flex; justify-content: flex-end; gap: 8px; }
     .browsing-data-card { width: min(100%, 470px); }
+    .site-data-host {
+      margin-top: 12px; padding: 10px 12px; border-radius: 8px;
+      background: #f2f4f7; color: #344054; font-size: 12.5px; font-weight: 650;
+      overflow-wrap: anywhere;
+    }
     .clear-section-label {
       margin: 18px 0 8px; color: #667085; font-size: 11px;
       font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase;
@@ -264,8 +269,8 @@
     .data-option:hover { background: #fafbfd; }
     .data-option input { margin: 2px 0 0; accent-color: #007aff; }
     .data-option-main { min-width: 0; }
-    .data-option-title { color: #344054; font-size: 12.5px; font-weight: 650; }
-    .data-option-copy { margin-top: 2px; color: #98a2b3; font-size: 11px; line-height: 1.4; }
+    .data-option-title { display: block; color: #344054; font-size: 12.5px; font-weight: 650; }
+    .data-option-copy { display: block; margin-top: 2px; color: #98a2b3; font-size: 11px; line-height: 1.4; }
     .cookie-warning {
       display: none; margin-top: 10px; padding: 10px 12px;
       border: 1px solid #fedf89; border-radius: 11px;
@@ -311,10 +316,17 @@
     @media (max-width: 820px) {
       body { display: block; }
       .sidebar {
-        width: auto; height: auto; position: static;
+        display: flex; flex-direction: row; align-items: center; gap: 4px;
+        width: auto; height: auto; position: static; padding: 8px 10px;
         border-right: none; border-bottom: 1px solid #e5e5ea;
-        padding: 12px 0; white-space: nowrap; overflow-x: auto;
+        white-space: nowrap; overflow-x: auto;
       }
+      .sidebar-title { display: none; }
+      .nav-item {
+        flex: 0 0 auto; padding: 8px 12px; border-left: none;
+        border-bottom: 2px solid transparent; border-radius: 8px;
+      }
+      .nav-item.active { border-left-color: transparent; border-bottom-color: #007AFF; }
       .main-header { padding: 12px 16px; }
       .settings-content, .about-content { padding: 12px 16px 20px; }
       .settings-content .row, .about-content .row, .proxy-block-head { align-items: flex-start; flex-direction: column; }
@@ -708,6 +720,36 @@
       </div>
     </div>
 
+    <div class="confirm-overlay" id="clearSiteDataDialog">
+      <div class="confirm-card browsing-data-card" role="dialog" aria-modal="true" aria-labelledby="clearSiteDataTitle">
+        <div class="confirm-title" id="clearSiteDataTitle" data-i18n="settings.clearSiteData">Clear data for this site</div>
+        <div class="confirm-copy" data-i18n="settings.clearSiteDataCopy">Remove data saved by this website without affecting other sites.</div>
+        <div class="site-data-host" id="clearSiteDataHost" data-i18n="settings.loading">Loading</div>
+        <div class="clear-section-label" data-i18n="settings.dataToRemove">Data to remove</div>
+        <div class="data-options">
+          <label class="data-option">
+            <input id="clearSiteCacheCheck" type="checkbox" checked>
+            <span class="data-option-main">
+              <span class="data-option-title" data-i18n="settings.cachedFiles">Cached images and files</span>
+              <span class="data-option-copy" data-i18n="settings.siteCacheDataCopy">Only cache storage that can be isolated to this site is removed.</span>
+            </span>
+          </label>
+          <label class="data-option">
+            <input id="clearSiteCookiesCheck" type="checkbox">
+            <span class="data-option-main">
+              <span class="data-option-title" data-i18n="settings.cookies">Cookies and site data</span>
+              <span class="data-option-copy" data-i18n="settings.siteCookieDataCopy">You will be signed out of this website.</span>
+            </span>
+          </label>
+        </div>
+        <div class="cookie-warning" id="siteCookieWarning" data-i18n="settings.siteCookieWarning">You will be signed out of this website.</div>
+        <div class="confirm-actions">
+          <button class="row-action secondary" id="clearSiteDataCancelBtn" type="button" data-i18n="common.cancel">Cancel</button>
+          <button class="row-action danger" id="clearSiteDataConfirmBtn" type="button" data-i18n="settings.clearSiteDataAction">Clear Site Data</button>
+        </div>
+      </div>
+    </div>
+
     <div class="panel" id="panel-about">
       <div class="main-header">
         <div><h2 data-i18n="settings.about">About</h2></div>
@@ -832,7 +874,9 @@
       var privacyApi = function () {
         return {
           getUsage: function () { return callHost('privacy.getUsage'); },
-          clearBrowsingData: function (input) { return callHost('privacy.clearBrowsingData', input); }
+          clearBrowsingData: function (input) { return callHost('privacy.clearBrowsingData', input); },
+          getSiteDataContext: function (input) { return callHost('privacy.getSiteDataContext', input); },
+          clearSiteData: function (input) { return callHost('privacy.clearSiteData', input); }
         };
       };
       var proxyApi = function () {
@@ -1476,6 +1520,8 @@
       document.addEventListener('keydown', function (event) {
         if (event.key === 'Escape' && clearDataDialog.classList.contains('active')) {
           closeClearDataDialog();
+        } else if (event.key === 'Escape' && clearSiteDataDialog.classList.contains('active')) {
+          closeClearSiteDataDialog();
         }
       });
       document.getElementById('clearDataConfirmBtn').addEventListener('click', function () {
@@ -1498,6 +1544,80 @@
         });
       });
 
+      var clearSiteDataDialog = document.getElementById('clearSiteDataDialog');
+      var clearSiteDataState = { tabId: null, context: null };
+      var clearSiteChecks = [
+        document.getElementById('clearSiteCacheCheck'),
+        document.getElementById('clearSiteCookiesCheck')
+      ];
+
+      function updateClearSiteDataDialog() {
+        document.getElementById('siteCookieWarning').classList.toggle(
+          'active',
+          document.getElementById('clearSiteCookiesCheck').checked
+        );
+        document.getElementById('clearSiteDataConfirmBtn').disabled =
+          !clearSiteDataState.context ||
+          !clearSiteChecks.some(function (check) { return check.checked; });
+      }
+
+      function closeClearSiteDataDialog() {
+        clearSiteDataDialog.classList.remove('active');
+        clearSiteDataState = { tabId: null, context: null };
+        if (location.hash.indexOf('#clear-site-data') === 0) {
+          history.replaceState(null, '', '#privacy');
+        }
+      }
+
+      function openClearSiteDataDialog(tabId) {
+        clearSiteDataState = { tabId: tabId, context: null };
+        document.getElementById('clearSiteDataHost').textContent = t('settings.loading');
+        clearSiteDataDialog.classList.add('active');
+        updateClearSiteDataDialog();
+        privacyApi().getSiteDataContext({ tabId: tabId }).then(function (context) {
+          clearSiteDataState.context = context;
+          document.getElementById('clearSiteDataHost').textContent = context.host || context.url;
+          updateClearSiteDataDialog();
+          document.getElementById('clearSiteCacheCheck').focus();
+        }, function (err) {
+          console.error('[Settings] privacy.getSiteDataContext error:', err);
+          closeClearSiteDataDialog();
+          showPrivacyToast('error', t('settings.siteUnavailable'));
+        });
+      }
+
+      clearSiteChecks.forEach(function (check) {
+        check.addEventListener('change', updateClearSiteDataDialog);
+      });
+      document.getElementById('clearSiteDataCancelBtn').addEventListener('click', closeClearSiteDataDialog);
+      clearSiteDataDialog.addEventListener('click', function (event) {
+        if (event.target === clearSiteDataDialog) closeClearSiteDataDialog();
+      });
+      document.getElementById('clearSiteDataConfirmBtn').addEventListener('click', function () {
+        var button = document.getElementById('clearSiteDataConfirmBtn');
+        var cacheRequested = document.getElementById('clearSiteCacheCheck').checked;
+        button.disabled = true;
+        privacyApi().clearSiteData({
+          tabId: clearSiteDataState.tabId,
+          cache: cacheRequested,
+          cookies: document.getElementById('clearSiteCookiesCheck').checked
+        }).then(function (result) {
+          closeClearSiteDataDialog();
+          showPrivacyToast(
+            'success',
+            cacheRequested && !result.cacheCleared
+              ? t('settings.siteDataClearedSharedCacheKept')
+              : t('settings.siteDataCleared')
+          );
+          refreshPrivacyUsage();
+        }, function (err) {
+          button.disabled = false;
+          console.error('[Settings] privacy.clearSiteData error:', err);
+          showPrivacyToast('error', t('settings.clearSiteDataFailed'));
+          updateClearSiteDataDialog();
+        });
+      });
+
       refreshPrivacyUsage();
 
       function applyLocationHash() {
@@ -1505,6 +1625,11 @@
         if (hash === 'clear-browsing-data') {
           switchPanel('privacy');
           openClearDataDialog();
+        } else if (hash.indexOf('clear-site-data?') === 0) {
+          var query = new URLSearchParams(hash.slice(hash.indexOf('?') + 1));
+          var tabId = query.get('tabId');
+          switchPanel('privacy');
+          if (tabId) openClearSiteDataDialog(tabId);
         } else if (hash && document.getElementById('panel-' + hash)) {
           switchPanel(hash);
         }
