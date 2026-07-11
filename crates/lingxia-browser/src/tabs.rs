@@ -36,6 +36,9 @@ pub(crate) struct BrowserTabState {
     pub(crate) pending_url: Option<String>,
     pub(crate) current_url: Option<String>,
     pub(crate) title: Option<String>,
+    /// URL `title` was reported for. Titles are never cleared on navigation,
+    /// so nav-finish must not attribute page A's title to page B.
+    pub(crate) title_url: Option<String>,
     /// PNG-encoded favicon of the current page, as reported by the platform
     /// webview (`WebViewDelegate::on_favicon_changed`). `Arc`'d so shell
     /// layers can mirror it into layout snapshots without copying.
@@ -121,9 +124,16 @@ pub(crate) fn notify_navigation_finished(tab_id: &str, url: &str) {
         .and_then(|slot| slot.lock().ok())
         .and_then(|slot| slot.clone());
     if let Some(handler) = handler {
-        let title = browser_tab_info(tab_id)
-            .and_then(|tab| tab.title)
-            .unwrap_or_default();
+        // Pass the stored title only when it belongs to the finishing URL;
+        // otherwise it is a stale title from the previous page.
+        let title = {
+            let state = lock_state();
+            normalize_runtime_tab_id(tab_id)
+                .and_then(|normalized| state.tabs.get(&normalized))
+                .filter(|tab| tab.title_url.as_deref() == Some(url))
+                .and_then(|tab| tab.title.clone())
+                .unwrap_or_default()
+        };
         handler(url, &title);
     }
 }
@@ -445,6 +455,9 @@ pub(crate) fn browser_update_tab_info(
             // Only non-empty titles update the record: an empty title means "not
             // yet known" (e.g. a webview's initial KVO fire before the document
             // title is parsed) and must never clobber a title already reported.
+            // Even an unchanged title re-binds title_url: the report is for the
+            // page currently loaded in the tab.
+            tab.title_url = tab.current_url.clone();
             if tab.title.as_deref() != Some(value.as_str()) {
                 tab.title = Some(value.clone());
                 if let Some(url) = tab.current_url.clone() {
@@ -691,6 +704,7 @@ fn open_internal_browser_tab_with_scope(
                     },
                     current_url: None,
                     title: None,
+                    title_url: None,
                     favicon_png: None,
                     can_go_back: false,
                     can_go_forward: false,
@@ -1031,6 +1045,55 @@ mod tests {
     fn stable_browser_tab_ids_reject_invalid_keys() {
         let result = resolve_browser_tab_id(Some("settings/main"), BrowserTabScope::Global);
         assert!(matches!(result, Err(LxAppError::InvalidParameter(_))));
+    }
+
+    #[test]
+    fn navigation_finish_drops_title_from_previous_page() {
+        // Metadata bookkeeping needs no WebView; seed the tab entry directly.
+        let tab_id = "navfinishtitletest";
+        lock_state().tabs.insert(
+            tab_id.to_string(),
+            BrowserTabState {
+                session_id: 1,
+                create_token: 1,
+                create_in_flight: false,
+                pending_url: None,
+                current_url: None,
+                title: None,
+                title_url: None,
+                favicon_png: None,
+                can_go_back: false,
+                can_go_forward: false,
+                discarded: false,
+                standalone: false,
+                aside: false,
+                owner_appid: None,
+            },
+        );
+        assert!(browser_update_tab_info(
+            tab_id,
+            Some("https://a.test/"),
+            Some("Page A")
+        ));
+
+        let captured: Arc<Mutex<Vec<(String, String)>>> = Arc::new(Mutex::new(Vec::new()));
+        let sink = captured.clone();
+        set_navigation_finished_handler(Arc::new(move |url, title| {
+            sink.lock()
+                .unwrap()
+                .push((url.to_string(), title.to_string()));
+        }));
+        // Page B finishes before its title is reported: A's title must not leak.
+        notify_navigation_finished(tab_id, "https://b.test/");
+        notify_navigation_finished(tab_id, "https://a.test/");
+        assert_eq!(
+            *captured.lock().unwrap(),
+            vec![
+                ("https://b.test/".to_string(), String::new()),
+                ("https://a.test/".to_string(), "Page A".to_string()),
+            ]
+        );
+        lock_state().tabs.remove(tab_id);
     }
 
     #[test]

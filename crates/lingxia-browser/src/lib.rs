@@ -27,6 +27,8 @@ pub use types::{
 pub use lxapp::LxAppError;
 
 pub const BUILTIN_BROWSER_APPID: &str = "app.lingxia.browser";
+/// `(url, title)` observer; `title` is empty when no title has been reported
+/// for that URL yet.
 pub type BrowserPageMetadataHandler = Arc<dyn Fn(&str, &str) + Send + Sync>;
 
 pub fn classify_navigation(
