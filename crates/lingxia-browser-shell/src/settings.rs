@@ -129,16 +129,15 @@ fn set_webui_language(
     app: Arc<LxApp>,
     input: SetLanguageInput,
 ) -> HostResult<LanguageSettingsResult> {
-    if input.language != "en-US" && input.language != "zh-CN" {
+    if input.language != "auto" && input.language != "en-US" && input.language != "zh-CN" {
         return Err(lxapp::LxAppError::InvalidParameter(
-            "language must be en-US or zh-CN".to_string(),
+            "language must be auto, en-US, or zh-CN".to_string(),
         ));
     }
-    lingxia_service::settings::set_webui_language(&app.app_data_dir(), Some(&input.language))
+    let language = (input.language != "auto").then_some(input.language);
+    lingxia_service::settings::set_webui_language(&app.app_data_dir(), language.as_deref())
         .map_err(|error| lxapp::LxAppError::Runtime(error.to_string()))?;
-    let result = LanguageSettingsResult {
-        language: Some(input.language),
-    };
+    let result = LanguageSettingsResult { language };
     let _ = language_channel().send(result.clone());
     Ok(result)
 }

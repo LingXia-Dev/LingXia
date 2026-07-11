@@ -645,7 +645,7 @@
       importBtn.addEventListener('click', function () {
         closePageMenu(false);
         setTransferBusy(true);
-        call('bookmarks.importChrome', undefined, { timeoutMs: 0 }).then(function (result) {
+        call('bookmarks.importChrome', { language: i18n.locale }, { timeoutMs: 0 }).then(function (result) {
           if (result) {
             toast(t('bookmarks.imported', {
               count: result.imported,

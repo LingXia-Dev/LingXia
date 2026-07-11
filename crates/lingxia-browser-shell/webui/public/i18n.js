@@ -89,7 +89,8 @@
       'settings.title': 'Settings',
       'settings.general': 'General',
       'settings.language': 'Language',
-      'settings.languageCopy': 'Choose the language used by LingXia browser pages.',
+      'settings.languageCopy': 'Use your system language automatically, or choose a language.',
+      'settings.languageAuto': 'Automatic',
       'settings.languageSaveFailed': 'Language could not be saved.',
       'settings.downloads': 'Downloads',
       'settings.proxy': 'Proxy',
@@ -313,7 +314,8 @@
       'settings.title': '设置',
       'settings.general': '通用',
       'settings.language': '语言',
-      'settings.languageCopy': '选择凌霞浏览器内置页面使用的语言。',
+      'settings.languageCopy': '自动跟随系统语言，或手动选择语言。',
+      'settings.languageAuto': '自动',
       'settings.languageSaveFailed': '无法保存语言设置。',
       'settings.downloads': '下载',
       'settings.proxy': '代理',
@@ -468,15 +470,17 @@
     }
   }
 
-  function resolveLocale() {
-    var stored = storedLocale();
-    if (stored) return stored;
+  function systemLocale() {
     var candidates = Array.isArray(navigator.languages) && navigator.languages.length
       ? navigator.languages
       : [navigator.language || 'en-US'];
-    return candidates.some(function (value) { return /^zh(?:-|$)/i.test(value); })
+    return /^zh(?:-|$)/i.test(String(candidates[0] || ''))
       ? 'zh-CN'
       : 'en-US';
+  }
+
+  function resolveLocale() {
+    return storedLocale() || systemLocale();
   }
 
   var locale = resolveLocale();
@@ -525,11 +529,22 @@
     return locale;
   }
 
+  function useSystemLocale() {
+    try {
+      global.localStorage.removeItem(LOCALE_STORAGE_KEY);
+    } catch (_) {}
+    locale = systemLocale();
+    api.locale = locale;
+    apply();
+    return locale;
+  }
+
   var api = {
     locale: locale,
     t: t,
     apply: apply,
     setLocale: setLocale,
+    useSystemLocale: useSystemLocale,
     storageKey: LOCALE_STORAGE_KEY
   };
   global.LingXiaI18n = api;
@@ -538,6 +553,16 @@
     var bridge = global.LingXiaBridge;
     if (!bridge || typeof bridge.invoke !== 'function') return;
     function adoptHostLocale(result) {
+      if (result && result.language == null) {
+        var previousLocale = locale;
+        var hadStoredLocale = !!storedLocale();
+        useSystemLocale();
+        if ((hadStoredLocale || previousLocale !== locale) &&
+            global.location && typeof global.location.reload === 'function') {
+          global.location.reload();
+        }
+        return;
+      }
       var hostLocale = normalizeLocale(result && result.language);
       if (!hostLocale || hostLocale === locale) return;
       setLocale(hostLocale);

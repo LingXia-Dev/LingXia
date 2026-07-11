@@ -612,6 +612,13 @@ struct ExportResult {
     count: usize,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ImportChromeInput {
+    #[serde(default)]
+    language: Option<String>,
+}
+
 fn merge_imported(
     snapshot: &mut BookmarksSnapshot,
     bookmarks: Vec<ImportedBookmark>,
@@ -946,14 +953,11 @@ fn reorder_groups(app: Arc<LxApp>, input: OrderedIdsInput) -> HostResult<()> {
 #[lingxia::native("bookmarks.importChrome")]
 async fn import_chrome_bookmarks(
     app: Arc<LxApp>,
+    input: ImportChromeInput,
     mut cancel: HostCancel,
 ) -> HostResult<Option<ImportResult>> {
     let app_for_picker = app.clone();
-    let is_chinese = lingxia_service::settings::webui_language(&app.app_data_dir())
-        .ok()
-        .flatten()
-        .as_deref()
-        == Some("zh-CN");
+    let is_chinese = input.language.as_deref() == Some("zh-CN");
     let selected = await_or_cancel(&mut cancel, async move {
         lingxia_service::file::choose_file(
             &*app_for_picker.runtime,

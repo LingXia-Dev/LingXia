@@ -48,7 +48,7 @@
     .settings-content .row-value { font-size: 12px; color: #667085; margin-top: 3px; word-break: break-word; line-height: 1.45; }
     .row-control { width: min(300px, 100%); flex-shrink: 0; }
     .row-control.compact { width: 132px; }
-    .row-control.language { width: 224px; }
+    .row-control.language { width: 304px; }
     .row-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
     .settings-input {
       width: 100%; height: 36px; border-radius: 11px; border: 1px solid #d0d5dd;
@@ -57,7 +57,7 @@
     .settings-input:focus { outline: none; border-color: #84caff; box-shadow: 0 0 0 3px rgba(0,122,255,0.12); }
     .settings-input:disabled { background: #f5f5f7; color: #98a2b3; cursor: not-allowed; }
     .language-options {
-      display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px;
+      display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3px;
       padding: 3px; border: 1px solid #d0d5dd; border-radius: 8px; background: #f2f4f7;
     }
     .language-option {
@@ -405,6 +405,7 @@
             </div>
             <div class="row-control language">
               <div class="language-options" id="languageOptions" role="radiogroup" data-i18n-aria-label="settings.language" aria-label="Language">
+                <button class="language-option" data-language="auto" type="button" role="radio" data-i18n="settings.languageAuto">Automatic</button>
                 <button class="language-option" data-language="en-US" type="button" role="radio">English</button>
                 <button class="language-option" data-language="zh-CN" type="button" role="radio">简体中文</button>
               </div>
@@ -745,26 +746,38 @@
       i18n.apply();
       var languageStatus = document.getElementById('languageStatus');
       var languageOptions = Array.prototype.slice.call(document.querySelectorAll('[data-language]'));
-      function syncLanguageOptions(locale, disabled) {
+      var configuredLanguage = null;
+      function syncLanguageOptions(language, disabled) {
         languageOptions.forEach(function (option) {
-          var selected = option.dataset.language === locale;
+          var selected = option.dataset.language === language;
           option.classList.toggle('active', selected);
           option.setAttribute('aria-checked', selected ? 'true' : 'false');
           option.disabled = !!disabled;
         });
       }
-      syncLanguageOptions(i18n.locale, false);
+      syncLanguageOptions('auto', false);
+      callHost('settings.getLanguage').then(function (result) {
+        configuredLanguage = result && result.language || null;
+        syncLanguageOptions(configuredLanguage || 'auto', false);
+      }, function () {
+        syncLanguageOptions('auto', false);
+      });
       languageOptions.forEach(function (option) {
         option.addEventListener('click', function () {
           var next = option.dataset.language;
-          if (next === i18n.locale) return;
+          if (next === (configuredLanguage || 'auto')) return;
           syncLanguageOptions(next, true);
           callHost('settings.setLanguage', { language: next }).then(function (result) {
-            i18n.setLocale(result.language || next);
+            configuredLanguage = result && result.language || null;
+            if (configuredLanguage) {
+              i18n.setLocale(configuredLanguage);
+            } else {
+              i18n.useSystemLocale();
+            }
             window.location.reload();
           }, function (error) {
             console.error('[Settings] settings.setLanguage error:', error);
-            syncLanguageOptions(i18n.locale, false);
+            syncLanguageOptions(configuredLanguage || 'auto', false);
             languageStatus.textContent = t('settings.languageSaveFailed');
             languageStatus.style.color = '#c01048';
           });
