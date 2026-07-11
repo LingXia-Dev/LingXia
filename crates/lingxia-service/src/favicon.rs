@@ -9,6 +9,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::Write as _;
 use std::io::Error as IoError;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant, SystemTime};
 
@@ -225,7 +226,13 @@ fn store(cache_root: &Path, key: &str, extension: &str, bytes: &[u8]) -> Result<
     std::fs::create_dir_all(&directory)
         .map_err(|error| format!("create {}: {error}", directory.display()))?;
     let path = directory.join(format!("{key}.{extension}"));
-    let temporary = directory.join(format!("{key}.tmp"));
+    // Unique per writer: a background fetch and a pin-time store for the same
+    // key must not interleave through one shared temp file.
+    static TEMP_SEQ: AtomicU64 = AtomicU64::new(0);
+    let temporary = directory.join(format!(
+        "{key}.{}.tmp",
+        TEMP_SEQ.fetch_add(1, Ordering::Relaxed)
+    ));
     std::fs::write(&temporary, bytes)
         .map_err(|error| format!("write {}: {error}", temporary.display()))?;
     replace_cache_file(&temporary, &path)?;
