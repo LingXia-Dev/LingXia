@@ -6,6 +6,7 @@
 //! to the main thread and complete through a oneshot, mirroring the per-view
 //! patterns in `webview.rs`.
 
+use crate::data_store::SiteDataUsage;
 use crate::{ClearSiteDataOptions, ClearSiteDataResult, WebViewError};
 use block2::StackBlock;
 use dispatch2::DispatchQueue;
@@ -16,8 +17,8 @@ use objc2_web_kit::{
     WKWebsiteDataRecord, WKWebsiteDataStore, WKWebsiteDataTypeCookies, WKWebsiteDataTypeDiskCache,
     WKWebsiteDataTypeFetchCache, WKWebsiteDataTypeIndexedDBDatabases,
     WKWebsiteDataTypeLocalStorage, WKWebsiteDataTypeMemoryCache,
-    WKWebsiteDataTypeOfflineWebApplicationCache, WKWebsiteDataTypeSessionStorage,
-    WKWebsiteDataTypeWebSQLDatabases,
+    WKWebsiteDataTypeOfflineWebApplicationCache, WKWebsiteDataTypeServiceWorkerRegistrations,
+    WKWebsiteDataTypeSessionStorage, WKWebsiteDataTypeWebSQLDatabases,
 };
 use std::ptr::NonNull;
 use std::sync::{Arc, Mutex};
@@ -26,6 +27,9 @@ use tokio::sync::oneshot;
 use tokio::time::timeout;
 
 const DATA_STORE_TIMEOUT: Duration = Duration::from_secs(10);
+/// Destructive clears can churn through multi-GB caches; give them far longer
+/// than usage queries so a slow-but-succeeding clear isn't reported as failed.
+const DATA_STORE_CLEAR_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// Regenerable caches — clearing never logs anyone out.
 fn cache_types() -> Retained<NSSet<NSString>> {
@@ -50,6 +54,8 @@ fn site_data_types() -> Retained<NSSet<NSString>> {
             WKWebsiteDataTypeLocalStorage,
             WKWebsiteDataTypeWebSQLDatabases,
             WKWebsiteDataTypeIndexedDBDatabases,
+            // Parity with Windows, which clears SERVICE_WORKERS for site data.
+            WKWebsiteDataTypeServiceWorkerRegistrations,
         ])
     }
 }
@@ -72,6 +78,7 @@ fn selected_types(options: ClearSiteDataOptions) -> Retained<NSSet<NSString>> {
                 WKWebsiteDataTypeLocalStorage,
                 WKWebsiteDataTypeWebSQLDatabases,
                 WKWebsiteDataTypeIndexedDBDatabases,
+                WKWebsiteDataTypeServiceWorkerRegistrations,
             ]);
         }
         NSSet::from_slice(&types)
@@ -97,8 +104,9 @@ fn send_once<T>(state: &Arc<Mutex<Option<oneshot::Sender<T>>>>, value: T) {
 async fn await_store_op<T: Send + 'static>(
     rx: oneshot::Receiver<Result<T, WebViewError>>,
     what: &str,
+    deadline: Duration,
 ) -> Result<T, WebViewError> {
-    match timeout(DATA_STORE_TIMEOUT, rx).await {
+    match timeout(deadline, rx).await {
         Ok(Ok(result)) => result,
         Ok(Err(_)) => Err(WebViewError::WebView(format!("{what} was canceled"))),
         Err(_) => Err(WebViewError::WebView(format!("{what} timed out"))),
@@ -129,14 +137,14 @@ fn count_records(
 pub async fn cache_site_count() -> Result<usize, WebViewError> {
     let (tx, rx) = oneshot::channel();
     count_records(cache_types, tx);
-    await_store_op(rx, "cache usage query").await
+    await_store_op(rx, "cache usage query", DATA_STORE_TIMEOUT).await
 }
 
 /// Count of sites with cookies/site data, plus the total cookie count.
-pub async fn site_data_usage() -> Result<(usize, usize), WebViewError> {
+pub async fn site_data_usage() -> Result<SiteDataUsage, WebViewError> {
     let (tx, rx) = oneshot::channel();
     count_records(site_data_types, tx);
-    let sites = await_store_op(rx, "site data usage query").await?;
+    let sites = await_store_op(rx, "site data usage query", DATA_STORE_TIMEOUT).await?;
 
     let (tx, rx) = oneshot::channel::<Result<usize, WebViewError>>();
     DispatchQueue::main().exec_async(move || unsafe {
@@ -153,8 +161,8 @@ pub async fn site_data_usage() -> Result<(usize, usize), WebViewError> {
         .copy();
         cookie_store.getAllCookies(&completion);
     });
-    let cookies = await_store_op(rx, "cookie count query").await?;
-    Ok((sites, cookies))
+    let cookies = await_store_op(rx, "cookie count query", DATA_STORE_TIMEOUT).await?;
+    Ok(SiteDataUsage { sites, cookies })
 }
 
 fn clear_types(
@@ -182,24 +190,16 @@ fn clear_types(
     rx
 }
 
-/// Clear all regenerable caches in the default store.
-pub async fn clear_cache() -> Result<(), WebViewError> {
-    clear_cache_since(None).await
-}
-
-pub async fn clear_cache_since(since_unix_ms: Option<u64>) -> Result<(), WebViewError> {
+/// Clear regenerable caches in the default store (`None` = everything).
+pub async fn clear_cache(since_unix_ms: Option<u64>) -> Result<(), WebViewError> {
     let rx = clear_types(cache_types, since_unix_ms);
-    await_store_op(rx, "clear cache").await
+    await_store_op(rx, "clear cache", DATA_STORE_CLEAR_TIMEOUT).await
 }
 
-/// Clear cookies and site data (logs sites out) in the default store.
-pub async fn clear_site_data() -> Result<(), WebViewError> {
-    clear_site_data_since(None).await
-}
-
-pub async fn clear_site_data_since(since_unix_ms: Option<u64>) -> Result<(), WebViewError> {
+/// Clear cookies and site data for every site — logs sites out (`None` = everything).
+pub async fn clear_all_site_data(since_unix_ms: Option<u64>) -> Result<(), WebViewError> {
     let rx = clear_types(site_data_types, since_unix_ms);
-    await_store_op(rx, "clear cookies & site data").await
+    await_store_op(rx, "clear cookies & site data", DATA_STORE_CLEAR_TIMEOUT).await
 }
 
 pub(crate) async fn clear_site_data_for_url(
@@ -274,7 +274,7 @@ pub(crate) async fn clear_site_data_for_url(
         .copy();
         store.fetchDataRecordsOfTypes_completionHandler(&types, &completion);
     });
-    await_store_op(rx, "clear site data").await
+    await_store_op(rx, "clear site data", DATA_STORE_CLEAR_TIMEOUT).await
 }
 
 #[cfg(test)]

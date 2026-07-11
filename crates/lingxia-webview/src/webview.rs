@@ -63,7 +63,7 @@ const APPLE_INTERNAL_SCHEME: &str = "lx-apple";
     all(target_os = "linux", target_env = "ohos")
 )))]
 fn unsupported_webview_error(action: &str) -> WebViewError {
-    WebViewError::WebView(format!("{action} is not supported on this platform"))
+    WebViewError::Unsupported(action.to_string())
 }
 
 #[cfg(not(any(

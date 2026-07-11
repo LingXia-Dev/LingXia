@@ -88,7 +88,6 @@ pub(crate) enum UiCommand {
     },
     /// Invoke a Chrome DevTools Protocol method (e.g. `Input.dispatchMouseEvent`)
     /// and return its raw JSON result.
-    #[cfg_attr(not(feature = "webview-input"), allow(dead_code))]
     CallDevToolsProtocol {
         method: String,
         params: String,

@@ -18,6 +18,10 @@ pub enum WebViewError {
 
     #[error("Invalid WebView create options: {0}")]
     InvalidCreateOptions(String),
+
+    /// The named operation is not available on this platform's WebView runtime.
+    #[error("{0} is not supported on this platform")]
+    Unsupported(String),
 }
 
 #[derive(Error, Debug, Clone, PartialEq, Eq)]
@@ -109,53 +113,56 @@ pub use webview::{
     WebViewEventSubscription, WebViewSession,
 };
 
-/// Global website-data operations on the shared default data store
-/// (privacy: usage counts, clear cache, clear cookies & site data).
-/// Unsupported platforms return `WebViewError::WebView`.
+/// Global website-data operations for privacy surfaces: usage counts,
+/// clear cache, clear cookies & site data.
+///
+/// Every operation here is profile-wide: all browser tabs share one browser
+/// profile (the platform's default data store), so clears affect every site,
+/// not just the current tab. On Windows, [`cache_site_count`] returns `Ok(0)`
+/// because WebView2 cannot enumerate HTTP-cache origins (clearing still
+/// works). Unsupported platforms return [`WebViewError::Unsupported`].
 pub mod data_store {
+    /// Profile-wide cookies/site-data footprint.
+    #[derive(Debug, Clone, Copy)]
+    pub struct SiteDataUsage {
+        /// Sites storing cookies or other site data.
+        pub sites: usize,
+        /// Total cookie count across all sites.
+        pub cookies: usize,
+    }
+
     #[cfg(any(target_os = "ios", target_os = "macos"))]
     pub use crate::apple::data_store::{
-        cache_site_count, clear_cache, clear_cache_since, clear_site_data, clear_site_data_since,
-        site_data_usage,
+        cache_site_count, clear_all_site_data, clear_cache, site_data_usage,
     };
 
     #[cfg(target_os = "windows")]
     pub use crate::windows::data_store::{
-        cache_site_count, clear_cache, clear_cache_since, clear_site_data, clear_site_data_since,
-        site_data_usage,
+        cache_site_count, clear_all_site_data, clear_cache, site_data_usage,
     };
 
     #[cfg(not(any(target_os = "ios", target_os = "macos", target_os = "windows")))]
     mod unsupported {
+        use super::SiteDataUsage;
         use crate::WebViewError;
 
         fn err(action: &str) -> WebViewError {
-            WebViewError::WebView(format!("{action} is not supported on this platform"))
+            WebViewError::Unsupported(action.to_string())
         }
 
         pub async fn cache_site_count() -> Result<usize, WebViewError> {
             Err(err("cache usage query"))
         }
 
-        pub async fn site_data_usage() -> Result<(usize, usize), WebViewError> {
+        pub async fn site_data_usage() -> Result<SiteDataUsage, WebViewError> {
             Err(err("site data usage query"))
         }
 
-        pub async fn clear_cache() -> Result<(), WebViewError> {
+        pub async fn clear_cache(_since_unix_ms: Option<u64>) -> Result<(), WebViewError> {
             Err(err("clear cache"))
         }
 
-        pub async fn clear_site_data() -> Result<(), WebViewError> {
-            Err(err("clear cookies & site data"))
-        }
-
-        pub async fn clear_cache_since(_since_unix_ms: Option<u64>) -> Result<(), WebViewError> {
-            Err(err("clear cache"))
-        }
-
-        pub async fn clear_site_data_since(
-            _since_unix_ms: Option<u64>,
-        ) -> Result<(), WebViewError> {
+        pub async fn clear_all_site_data(_since_unix_ms: Option<u64>) -> Result<(), WebViewError> {
             Err(err("clear cookies & site data"))
         }
     }

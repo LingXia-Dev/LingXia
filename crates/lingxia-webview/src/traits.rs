@@ -379,13 +379,22 @@ pub trait WebViewController: Send + Sync {
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+/// Data categories to remove for one site via
+/// [`WebViewController::clear_site_data`].
+#[derive(Debug, Clone, Copy)]
 pub struct ClearSiteDataOptions {
     pub cache: bool,
     pub site_data: bool,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+/// Outcome of [`WebViewController::clear_site_data`]. Each flag means "this
+/// category was requested AND the platform fully honored it" — `false` both
+/// when the category was not requested and when it could not be fully cleared.
+///
+/// Windows caveat: WebView2 clears the site's Cache Storage/appcache but
+/// cannot site-scope the shared HTTP cache, so it reports
+/// `cache_cleared: false` even when cache clearing was requested.
+#[derive(Debug, Clone, Copy)]
 pub struct ClearSiteDataResult {
     pub cache_cleared: bool,
     pub site_data_cleared: bool,
@@ -595,11 +604,14 @@ pub trait WebViewDelegate: Send + Sync {
     /// Called when the page starts loading
     fn on_page_started(&self);
 
-    /// Called when the page finishes loading
+    /// Called when the page finishes loading. Fires on every completed load
+    /// attempt, including failures, and carries no URL — for successful
+    /// navigations with the final URL see [`Self::on_navigation_finished`].
     fn on_page_finished(&self);
 
-    /// Called after a successful top-level navigation with its final URL.
-    /// Default is a no-op for platforms that do not expose the URL here.
+    /// Called after a successful top-level navigation with its final URL;
+    /// unlike [`Self::on_page_finished`] it never fires for failed loads.
+    /// Currently delivered on macOS/iOS/Windows only; default is a no-op.
     fn on_navigation_finished(&self, _url: &str) {}
 
     /// Called when a main-frame page load fails (e.g. DNS failure, network unreachable, TLS error).
