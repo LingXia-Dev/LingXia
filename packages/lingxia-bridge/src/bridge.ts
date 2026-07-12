@@ -174,6 +174,12 @@ let appleReconnectDelayMs = APPLE_RECONNECT_BASE_MS;
 // host replays the gap; survives reconnects so a WebKit-replaced stream resumes
 // without losing frames or tearing down the bridge session.
 let appleLastFrameSeq = 0;
+// Liveness tracking: the host heartbeats an idle connection, so a gap longer
+// than a couple of heartbeats means the connection is silently dead and we
+// reconnect proactively instead of waiting for a read error that may never come.
+const APPLE_DOWNSTREAM_STALE_MS = 35000;
+let appleLastFrameAt = 0;
+let appleWatchdogTimer: ReturnType<typeof setInterval> | null = null;
 const portInitState = {
   listenerInstalled: false,
   promise: null as Promise<MessagePort> | null,
@@ -273,7 +279,10 @@ function processAppleDownstreamBuffer(buffer: string): string {
 // resume point and we must re-handshake.
 function handleAppleDownstreamFrame(frame: unknown): void {
   if (!frame || typeof frame !== "object") return;
-  const record = frame as { lxff?: unknown; m?: unknown; lxreset?: unknown };
+  // Any frame — data, heartbeat, or reset — proves the connection is alive.
+  appleLastFrameAt = Date.now();
+  const record = frame as { lxff?: unknown; m?: unknown; lxreset?: unknown; lxhb?: unknown };
+  if (record.lxhb !== undefined) return; // heartbeat: liveness only, nothing to dispatch
   if (record.lxreset === true) {
     appleLastFrameSeq = 0;
     resetHandshakeState("Apple downstream reset", true);
@@ -318,6 +327,7 @@ async function runAppleDownstream(): Promise<void> {
 
   appleDownstreamConnected = true;
   appleReconnectDelayMs = APPLE_RECONNECT_BASE_MS;
+  appleLastFrameAt = Date.now();
   if (isDebugEnabled("proto")) log("Apple downstream connected");
   startHandshake();
 
@@ -392,16 +402,38 @@ function ensureAppleDownstream(): void {
     });
 }
 
-// Dev hook: drop the current downstream and reconnect, exactly as WebKit does
-// when it replaces the streaming fetch. The reconnect carries the real
-// `from=<lastSeq>`, so this exercises the true resume path. Exposed for repro
-// harnesses; a no-op off the Apple transport.
+// Drop the current downstream and reconnect, exactly as WebKit does when it
+// replaces the streaming fetch. The reconnect carries the real `from=<lastSeq>`,
+// so nothing is lost. Driven by the staleness watchdog and the foreground
+// handler, and exposed as a dev hook for repro harnesses. A no-op off Apple.
 function forceDownstreamReconnect(): void {
   if (!useAppleDownstreamTransport()) return;
   const task = appleDownstreamTask;
   appleDownstreamAbortController?.abort();
   if (task) task.finally(() => ensureAppleDownstream());
   else ensureAppleDownstream();
+}
+
+// A silently dead connection (half-open socket) never surfaces a read error, so
+// poll for heartbeat staleness and reconnect when the host has gone quiet.
+function startAppleWatchdog(): void {
+  if (!useAppleDownstreamTransport() || appleWatchdogTimer !== null) return;
+  appleWatchdogTimer = setInterval(() => {
+    if (!appleDownstreamConnected || appleLastFrameAt === 0) return;
+    if (Date.now() - appleLastFrameAt > APPLE_DOWNSTREAM_STALE_MS) {
+      warn("Apple downstream stale (no heartbeat), forcing reconnect");
+      forceDownstreamReconnect();
+    }
+  }, 5000);
+}
+
+// WebKit suspends/throttles a backgrounded webview and may tear the stream
+// down; reconnect the moment it returns so the UI is never left stale.
+function installAppleForegroundReconnect(): void {
+  if (!useAppleDownstreamTransport() || typeof document === "undefined") return;
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") forceDownstreamReconnect();
+  });
 }
 
 function getMessagePort(): Promise<MessagePort> {
@@ -2013,6 +2045,8 @@ export function initBridge(): void {
 
     if (useAppleDownstreamTransport()) {
       ensureAppleDownstream();
+      startAppleWatchdog();
+      installAppleForegroundReconnect();
     } else if (communicationMethod === MESSAGE_PORT_TYPE) {
       installMessagePortInitListener();
       getMessagePort().catch((e) => warn("Port init failed:", e));

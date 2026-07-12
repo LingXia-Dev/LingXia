@@ -5,6 +5,7 @@ use std::io::Write;
 use std::os::fd::IntoRawFd;
 use std::os::unix::net::UnixStream;
 use std::sync::{Arc, Condvar, Mutex};
+use std::time::Duration;
 
 pub(crate) const APPLE_BRIDGE_DOWNSTREAM_URL: &str = "lx-apple://bridge/downstream";
 pub(crate) const APPLE_BRIDGE_DOWNSTREAM_CSP_SOURCE: &str = "lx-apple:";
@@ -18,6 +19,10 @@ const APPLE_BRIDGE_DOWNSTREAM_PATH: &str = "/downstream";
 const APPLE_BRIDGE_REPLAY_LIMIT: usize = 4096;
 // Query key carrying the client's last-seen transport seq on (re)connect.
 const APPLE_BRIDGE_FROM_QUERY: &str = "from";
+// Heartbeat cadence for an idle connection. Keeps the socket warm and lets the
+// client detect a silently dead connection (half-open socket) it would
+// otherwise never see a read error for.
+const APPLE_BRIDGE_HEARTBEAT_INTERVAL: Duration = Duration::from_secs(15);
 
 pub(super) fn is_bridge_downstream_request(request: &http::Request<Vec<u8>>) -> bool {
     let uri = request.uri();
@@ -81,6 +86,12 @@ fn envelope(seq: u64, message: &str) -> Vec<u8> {
 /// re-handshake. Rare backstop; the common path always resumes cleanly.
 fn reset_frame() -> Vec<u8> {
     b"{\"lxreset\":true}\n".to_vec()
+}
+
+/// Liveness ping for an idle connection. Carries no seq and is not retained;
+/// the client treats it as proof-of-life only.
+fn heartbeat_frame() -> Vec<u8> {
+    b"{\"lxhb\":1}\n".to_vec()
 }
 
 /// Retained transport frames plus the seq counter. Kept free of socket/thread
@@ -296,7 +307,7 @@ impl AppleBridgeTransport {
                         if let Some(frame) = guard.log.frame_at(cursor).map(<[u8]>::to_vec) {
                             let id = connection.id;
                             match connection.writer.try_clone() {
-                                Ok(writer) => break (id, writer, cursor + 1, frame),
+                                Ok(writer) => break (id, writer, Some(cursor + 1), frame),
                                 Err(e) => {
                                     log::warn!(
                                         "Apple bridge downstream clone failed webtag={}: {}",
@@ -309,7 +320,29 @@ impl AppleBridgeTransport {
                             }
                         }
                     }
-                    guard = self.signal.wait(guard).unwrap_or_else(|e| e.into_inner());
+                    // No frame ready: wait, waking periodically to heartbeat an
+                    // idle connection so a dead socket is detected on both ends.
+                    let (next_guard, timeout) = self
+                        .signal
+                        .wait_timeout(guard, APPLE_BRIDGE_HEARTBEAT_INTERVAL)
+                        .unwrap_or_else(|e| e.into_inner());
+                    guard = next_guard;
+                    if timeout.timed_out() {
+                        // Snapshot under the borrow, then act, so the Err arm can
+                        // clear the connection without a borrow conflict.
+                        let idle = match guard.connection.as_ref() {
+                            Some(connection) if guard.log.frame_at(connection.cursor).is_none() => {
+                                Some((connection.id, connection.writer.try_clone()))
+                            }
+                            _ => None,
+                        };
+                        if let Some((id, cloned)) = idle {
+                            match cloned {
+                                Ok(writer) => break (id, writer, None, heartbeat_frame()),
+                                Err(_) => guard.connection = None,
+                            }
+                        }
+                    }
                 }
             };
 
@@ -329,13 +362,15 @@ impl AppleBridgeTransport {
                 {
                     guard.connection = None;
                 }
-            } else {
+            } else if let Some(next) = next_cursor {
                 let mut guard = self.state.lock().unwrap_or_else(|e| e.into_inner());
                 if let Some(connection) = guard.connection.as_mut()
                     && connection.id == connection_id
                 {
-                    connection.cursor = next_cursor;
+                    connection.cursor = next;
                 }
+            } else {
+                log::debug!("Apple bridge downstream heartbeat webtag={}", self.webtag);
             }
         }
     }
