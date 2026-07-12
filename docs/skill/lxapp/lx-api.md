@@ -2,13 +2,7 @@
 
 Every lxapp Logic file (`pages/*/index.ts`) runs against a global `lx` object exposing platform capabilities — navigation, file I/O, media, networking, device info, UI chrome, and more.
 
-**`@lingxia/types` is the authoritative `lx.*` surface.** It declares the exact signatures, option shapes, and result types of every method, globally. This page does **not** re-list them — that mirror only drifts. Instead it covers the three things the type declarations can't tell you:
-
-1. **What standard web globals exist** in the Logic runtime (`fetch`, `setTimeout`, …) — runtime facts, not on `lx`.
-2. **A capability map** — which method names exist in each group, so you know what to reach for; read the `.d.ts` for the signature.
-3. **Behavioral notes / gotchas** that the signatures don't spell out.
-
-For exact signatures, install the types (below) and let TypeScript drive, or open `node_modules/@lingxia/types/dist/index.d.ts` and read the `interface Lx { … }` block.
+**`@lingxia/types` is the authoritative `lx.*` surface.** It declares the exact signature, option shapes, result types, **and JSDoc contract** (platform support, restrictions, task semantics) of every method, globally. This page does **not** re-list any of that — a mirror only drifts. It covers only what the declarations can't tell you: runtime globals, typing wiring, and cross-cutting behavior.
 
 For page mechanics (`data`, `setData`, lifecycle), see [`./guide.md`](./guide.md). For bridge details (stream, channel), see [`./bridge.md`](./bridge.md).
 
@@ -32,18 +26,12 @@ Match the version to your `lingxia` CLI — the CLI, the skill, and `@lingxia/ty
 }
 ```
 
-That's it. `lx`, `Page`, `App`, `getApp`, and `getCurrentPages` are now globally typed.
+That's it. `lx`, `Page`, `App`, `getApp`, and `getCurrentPages` are now globally typed:
 
 ```ts
 // pages/home/index.ts — no imports needed for the lx surface
 Page({
   data: { name: '' },
-
-  async onLoad() {
-    const info = lx.getDeviceInfo();   // typed
-    lx.setNavigationBarTitle({ title: `Hello, ${info.model}` });
-  },
-
   async pickFile() {
     const res = await lx.chooseFile({ count: 1 });
     this.setData({ name: res.files[0]?.name ?? '' });
@@ -51,91 +39,39 @@ Page({
 });
 ```
 
-| Global | Purpose |
-|---|---|
-| `lx` | The full platform API surface (capability map below). |
-| `Page(config)` | Define a page. `config.data` initializes state; public methods become bridge-callable actions. |
-| `App(config)` | Define the app-wide lifecycle (`onLaunch`, `onShow`, `onHide`, …). |
-| `getApp<T>()` | Return the current `AppInstance` or `null`. |
-| `getCurrentPages<T>()` | Stack of currently mounted pages, top of stack last. |
+The scaffold type-checks each layer against its real runtime: Logic (`tsconfig.logic.json`) uses `lib: ["ES2020"]` + `@lingxia/types/logic-globals` — web-standard globals but **no** browser DOM. View (`tsconfig.view.json`) keeps the full DOM. The root `tsconfig.json` references both, so editors route each file automatically.
+
+---
+
+## Finding a method or type
+
+- Type `lx.` in your editor — completion lists every member, and hovering shows the JSDoc contract.
+- Or open `node_modules/@lingxia/types/dist/generated/logic.d.ts` → the `interface Lx { … }` declarations.
+- Or grep a hunch: `grep -rn "scanCode" node_modules/@lingxia/types`.
+- Every option/result type is importable from the package root — `import type { ScanCodeResult } from '@lingxia/types'` — when typing your own helpers.
+
+**Nested namespaces** (the rest of `lx.*` is flat): `lx.env` (abstract `lx://` paths), `lx.app` (host-app control), `lx.tray` (desktop status item).
 
 ---
 
 ## Standard Web APIs (built-in globals)
 
-The Logic JS runtime is **not** a stripped-down sandbox. It's the Rong runtime with the standard Web API set wired in, so you write Logic the same way you'd write any modern JS — `fetch`, `setTimeout`, `URL`, `console`, all global, no import.
+The Logic JS runtime is **not** a stripped-down sandbox. It's the Rong runtime with the standard Web API set wired in — `fetch`, `setTimeout`, `URL`, `console`, all global, no import.
 
-| Group | Globals provided |
-|---|---|
-| **Timers** | `setTimeout`, `setInterval`, `clearTimeout`, `clearInterval`, `queueMicrotask` |
-| **HTTP** | `fetch`, `Request`, `Response`, `Headers`, `FormData` |
-| **Encoding** | `TextEncoder`, `TextDecoder`, `btoa`, `atob` |
-| **URL** | `URL`, `URLSearchParams` |
-| **Streams** | `ReadableStream`, `WritableStream`, `TransformStream`, `ByteLengthQueuingStrategy`, `CountQueuingStrategy` |
-| **Events / abort** | `Event`, `EventTarget`, `CustomEvent`, `AbortController`, `AbortSignal` |
-| **Exception** | `DOMException` |
-| **Buffer** | `Buffer` (Node-style — handy for binary work alongside `ArrayBuffer`) |
-| **Console** | `console.log` / `.info` / `.warn` / `.error` / `.debug` / `.trace` |
-
-```ts
-const res = await fetch('https://api.example.com/items', {
-  method: 'POST',
-  headers: { 'content-type': 'application/json' },
-  body: JSON.stringify({ id: 42 }),
-  signal: AbortSignal.timeout(5000),
-});
-```
-
-**Typing.** The scaffold type-checks each layer against its real runtime. Logic (`tsconfig.logic.json`) uses `lib: ["ES2020"]` + `@lingxia/types/logic-globals` — the web-standard globals above, but **no** browser DOM, so `document`/`window`/`localStorage` correctly error in Logic (they don't exist in the Rong runtime). View (`tsconfig.view.json`) keeps the full DOM. The root `tsconfig.json` references both, so editors route each file automatically.
+**The authoritative list is `@lingxia/types/logic-globals`** (`node_modules/@lingxia/types/dist/logic-globals.d.ts`, which includes the generated `dist/generated/logic-web.d.ts` runtime profile). It is generated against the exact runtime modules the Logic worker initializes, so it neither over- nor under-promises. By group: timers, HTTP (`fetch` family), encoding, URL, streams, compression, events & abort, `DOMException`, and `console`. If a name is not declared there, it does not exist in this runtime — `document`, `window`, `localStorage`, and Node globals like `Buffer` correctly error.
 
 **Gating.** `fetch` (and `WebSocket`) is constrained by the lxapp's `security.network.trustedDomains` in `lxapp.json`. A request to a host not on that list **silently fails** — see [LxApp guide → Security Policy](./guide.md#security-policy). For HTTP use this global `fetch`, **not** the `lx.*` networking calls (those are WiFi / network-info only).
 
-### AppService-only extras
-
-When the host has `features.appService: true`, the wider **AppService scope** (the JS service hosting all per-page Logic contexts) adds app-wide **`storage`** — durable key/value at the lxapp scope, via `lx.getStorage()` (values persist across pages and launches).
-
 ---
 
-## `lx` capability map
+## Cross-cutting behavior
 
-**The sectioned `interface Lx` in `@lingxia/types` *is* the capability index** — the single source of truth, always in sync with the runtime. Every method is grouped under `//` comment banners (Surfaces, Device & system, WiFi & network, Media, Share, UI feedback, Page navigation, Tab bar, Pull-down refresh, Keyboard, …), so scanning that one block shows the whole surface. There is deliberately **no method table duplicated here** — a hand-copied list drifts (it already had, silently dropping `lx.share`), so read the `.d.ts` instead:
+Facts that span the whole surface, so no single method's JSDoc carries them:
 
-- open `node_modules/@lingxia/types/dist/index.d.ts` → the `interface Lx { … }` block, or
-- type `lx.` in your editor and let completion list the grouped members, or
-- grep a hunch: `grep -rn "scanCode" node_modules/@lingxia/types`.
-
-**Nested namespaces** (the rest of `lx.*` is flat):
-
-- `lx.env` — `USER_DATA_PATH` / `USER_CACHE_PATH`.
-- `lx.app` — host-app control: `getBaseInfo`, `checkUpdate`, `exit`, `screenshot`, `setBadge`, `envVersion`, `autostart?`.
-- `lx.tray` — desktop menu-bar / system-tray status item.
-
-The non-obvious behavior each signature can't convey is in [Behavioral notes](#behavioral-notes) below.
-
-### Tab bar
-
-The `setTabBar*` / `showTabBar` / `hideTabBar` family **mutates an already-declared tab bar** — the tab bar itself is configured statically in `lxapp.json`. For the declarative shape, `lx.switchTab`, and why the tab bar is lxapp-internal (unrelated to host surfaces), see [LxApp guide → Tab bar navigation](./guide.md#tab-bar-navigation).
-
-### File and transfer
-
-`FileManager` (`lx.getFileManager()`) gives low-level `exists` / `stat` / `readDir` / `mkdir` / `readFile` / `writeFile` / `copyFile` / `rename` / `remove` — **every method is async (`Promise`)**. Path strings use the `lx://` storage-class scheme (`lx://temp/…`, `lx://userdata/…`, `lx://usercache/…`); bundle-relative paths (`images/a.png`) resolve against the lxapp bundle. Storage classes, auto-cleanup, size caps, and how `downloadFile` paths interact with them are in [`../reference/file-lifecycle.md`](../reference/file-lifecycle.md). Signatures: `@lingxia/types/file` and `/transfer`.
-
----
-
-## Behavioral notes
-
-The signatures don't capture these — get them wrong and the code compiles but misbehaves:
-
-- **Unsupported platforms no-op; they don't throw.** The `lx.*` surface is one shared, cross-platform type. A capability that some platforms lack — a *cosmetic / optional* one, e.g. the desktop tray (`lx.tray.*`), which has no equivalent on mobile — is a **silent no-op** there, never a thrown error. So portable code can call it unconditionally; no `if (platform === …)` guards, no `try/catch`. This holds only for cosmetic capabilities: a method that **returns a result** you depend on, or whose failure is a genuine bug (permissions, bad arguments), **throws** instead. A method's JSDoc states its platform support (e.g. `lx.tray.*` is *desktop only*; `lx.app.setBadge` is cross-platform including the mobile app icon). When adding a new `lx.*` API, follow this: no-op off-platform for cosmetic chrome, throw for result-bearing or correctness-critical calls. A third shape exists for **result-bearing platform-exclusive** capabilities: an **optional member** that is simply absent off-platform (e.g. `lx.app.autostart?` — macOS/Windows only, and only with `capabilities.autostart` declared in `lingxia.yaml`). Presence is the support check (`if (lx.app.autostart)`), so a stub never has to fake a result.
-- **Storage is synchronous and untyped.** `get(key)` returns `unknown` with no generic and is **not** a promise — never `await` it. Cast at the call site: `lx.getStorage().get('userId') as string | undefined`. For larger or path-based storage use `FileManager`.
-- **Transfer/transcode tasks are `PromiseLike` *and* `AsyncIterable`.** `DownloadTask`, `UploadTask`, `CompressVideoTask`: `await` the task for the final result, or `for await` it for live progress. `break`-ing out of the loop **stops iteration without cancelling** the transfer — call `task.cancel()` to actually abort. `pause()`/`resume()` and the `abort()` alias are download-only.
-- **`previewMedia` returns a handle synchronously**, not a promise — attach `onChange` listeners before the first event; `await handle.presented` / `handle.completed` for lifecycle.
-- **`downloadFile` defaults to `destination: 'app'`.** Use `destination: 'downloads'` to save into the user's Downloads dir and surface it in the built-in downloads page — that requires `"downloads"` in `lxapp.json` `security.privileges`. The `filePath` is then a sanitized filename hint only.
-- **`lx.app.checkUpdate()`, `screenshot()`, and `autostart.*` are home-lxapp only** (others get a permission error). `checkUpdate()` also **opts the whole app into custom update handling** — the built-in update UI is suppressed afterward. `apply()` (direct package handoff) works on Android/macOS; elsewhere point users at the store.
-- **Two distinct `envVersion`s.** `lx.app.envVersion` (`'developer' | 'preview' | 'release'`, fixed at boot, from `lingxia … --env`) is **not** the navigator-module `envVersion` (`'develop' | 'preview' | 'release'`) used in cross-lxapp URLs.
-- **Two distinct update flows.** `lx.getUpdateManager()` updates the **lxapp bundle** (every lxapp, callback model: `onUpdateReady` → `applyUpdate()`); `lx.app.checkUpdate()` updates the **host app shell** (home lxapp only, Promise + `update.apply()` task). Don't mix them.
-- **`lx.openSurface(spec)`** opens dynamic / host-declared surfaces. `{ page, as: 'aside'|'float'|'window' }` returns a full `Surface` (with `postMessage` / `onMessage` / `show` / `hide` / `close`); `{ surface }` (declared in `lingxia.yaml`) returns a smaller `SurfaceHandle`; `{ url }` opens a browser tab (no handle), `{ url, as: 'aside' }` a browser aside. `hide()` preserves the page's JS state; `close()` tears it down. URL surfaces have no page-side receiver.
-- **`lx.onSurfaceContext(handler)`** reports the adaptive `SurfaceContext` (`sizeClass: 'compact' | 'medium' | 'expanded'`, with hysteresis) so an lxapp can self-adapt (e.g. column count). The handler fires on each change; returns an unsubscribe fn.
+- **Unsupported platforms no-op; they don't throw.** A capability some platforms lack — a *cosmetic / optional* one, e.g. the desktop tray, with no mobile equivalent — is a **silent no-op** there, so portable code calls it unconditionally: no platform guards, no `try/catch`. A method that **returns a result** you depend on, or whose failure is a genuine bug (permissions, bad arguments), **throws** instead. Result-bearing platform-exclusive capabilities are **optional members** that are simply absent off-platform (e.g. `lx.app.autostart?`) — presence *is* the support check. Each method's JSDoc states its platform support.
+- **Storage is synchronous and untyped.** `lx.getStorage().get(key)` returns `unknown` and is not a promise — never `await` it; cast at the call site. For larger or path-based data use `FileManager` (all-async, `lx://` storage-class paths — see [`../reference/file-lifecycle.md`](../reference/file-lifecycle.md)).
+- **Two distinct update flows.** `lx.getUpdateManager()` updates the **lxapp bundle** (every lxapp, callback model); `lx.app.checkUpdate()` updates the **host app shell** (home lxapp only, task model). Don't mix them.
+- **The tab bar is declared, not built.** The `setTabBar*` / `showTabBar` / `hideTabBar` family mutates a tab bar configured statically in `lxapp.json` — see [LxApp guide → Tab bar navigation](./guide.md#tab-bar-navigation).
 
 ---
 
@@ -145,12 +81,4 @@ The signatures don't capture these — get them wrong and the code compiles but 
 
 If you need cross-page business helpers callable from Logic as `lx.<yourNamespace>.foo(...)`, define a `lingxia::js` extension in the host Rust crate — see [`../native/development.md` → JS AppService Extensions](../native/development.md#js-appservice-extensions).
 
----
-
-## Can't remember a method name?
-
-1. Open `@lingxia/types/dist/index.d.ts` and search the `interface Lx { … }` block.
-2. Or grep: `grep -r "scanCode" node_modules/@lingxia/types`.
-3. The sub-module layout (`@lingxia/types/media`, `/file`, `/ui`, …) groups option/result types — useful when typing your own helpers.
-
-The `.d.ts` is the source of truth; this page is just orientation.
+The `.d.ts` (with its JSDoc) is the source of truth; this page is just orientation.

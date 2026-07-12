@@ -18,7 +18,7 @@ Scope includes:
 - `tools/lingxia-cli` (config schema, `--env` flag, suffix injection)
 - `crates/lingxia-app-context` (runtime `AppConfig.env_version`)
 - `crates/lingxia-logic::app` (binds `lx.app.envVersion`)
-- `packages/lingxia-types/src/app/index.ts` (`HostAppEnvVersion` type)
+- `crates/lingxia-logic/src/public_types.rs` (`HostAppEnvVersion` type metadata)
 - Platform builders under `tools/lingxia-cli/src/platform/{android,apple,harmony}`
 
 ## Mental model
@@ -270,7 +270,8 @@ The enum's serde representation is lowercase (`"developer" | "preview" |
 
 ### JavaScript
 
-Surface defined in `packages/lingxia-types/src/app/index.ts`:
+Surface generated from `crates/lingxia-logic/src/public_types.rs` and the
+`HostAppApi` augmentation in `packages/lingxia-types/typegen/logic-prelude.ts`:
 
 ```ts
 export type HostAppEnvVersion = 'developer' | 'preview' | 'release';
@@ -328,4 +329,4 @@ omitting `--env` defaults to `developer`; host-app publish always reads
 | Publish reads package metadata | `tools/lingxia-cli/src/commands/publish.rs::read_app_package_metadata` |
 | Runtime config struct | `crates/lingxia-app-context/src/lib.rs::AppConfig` |
 | `lx.app.envVersion` JS binding | `crates/lingxia-logic/src/app.rs::init` |
-| TS type | `packages/lingxia-types/src/app/index.ts::HostAppEnvVersion` |
+| TS type metadata | `crates/lingxia-logic/src/public_types.rs::HostAppEnvVersion` |

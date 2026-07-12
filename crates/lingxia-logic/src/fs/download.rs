@@ -13,9 +13,9 @@ use lingxia_transfer::user_cache::{
     self, DownloadBehavior, DownloadEvent as TransferDownloadEvent, DownloadFailure,
     DownloadFailureKind,
 };
-use lxapp::{LxApp, LxAppSecurityPrivilege, lx};
+use lxapp::{LxApp, LxAppSecurityPrivilege};
 use rong::{
-    HostError, IntoJSObj, JSContext, JSFunc, JSObject, JSResult, JSSymbol, JSValue, Promise,
+    HostError, IntoJSObject, JSContext, JSFunc, JSObject, JSResult, JSSymbol, JSValue, Promise,
     function::Optional,
 };
 use std::collections::HashSet;
@@ -35,29 +35,32 @@ struct ParsedDownloadOptions {
     signal: Option<JSObject>,
 }
 
-#[derive(Debug, Clone, IntoJSObj)]
+#[derive(Debug, Clone, IntoJSObject)]
+#[ts_skip]
 struct JSDownloadResult {
-    #[rename = "tempFilePath"]
+    #[js_name = "tempFilePath"]
     temp_file_path: Option<String>,
-    #[rename = "filePath"]
+    #[js_name = "filePath"]
     file_path: Option<String>,
-    #[rename = "mimeType"]
+    #[js_name = "mimeType"]
     mime_type: Option<String>,
     size: u64,
 }
 
-#[derive(Debug, Clone, IntoJSObj)]
+#[derive(Debug, Clone, IntoJSObject)]
+#[ts_skip]
 struct JSDownloadEvent {
     kind: String,
-    #[rename = "downloadedBytes"]
+    #[js_name = "downloadedBytes"]
     downloaded_bytes: Option<u64>,
-    #[rename = "totalBytes"]
+    #[js_name = "totalBytes"]
     total_bytes: Option<u64>,
     progress: Option<f64>,
     result: Option<JSDownloadResult>,
 }
 
-#[derive(Debug, Clone, IntoJSObj)]
+#[derive(Debug, Clone, IntoJSObject)]
+#[ts_skip]
 struct JSDownloadIteratorStep {
     done: bool,
     value: Option<JSDownloadEvent>,
@@ -1563,10 +1566,16 @@ async fn download_cancel_task(state: &Arc<Mutex<DownloadIteratorState>>) -> JSRe
     }
 }
 
-pub(super) fn init(ctx: &JSContext) -> JSResult<()> {
-    let download_file_func = JSFunc::new(ctx, download_file)?;
-    lx::register_js_api(ctx, "downloadFile", download_file_func)?;
-    Ok(())
+pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
+    register_api(ctx)
+}
+
+rong::js_api! {
+    fn register_api(ctx) {
+        namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
+        // Precise correlated overloads remain in the curated Lx augmentation.
+        fn downloadFile(ts_params = "options: never", ts_return = "never") = download_file;
+    }
 }
 
 #[cfg(test)]

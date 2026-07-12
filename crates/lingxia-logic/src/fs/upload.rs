@@ -10,9 +10,9 @@ use lingxia_transfer::{
     UploadBehavior, UploadEvent as TransferUploadEvent, UploadFailure, UploadFailureKind,
     UploadMethod, UploadRequest, resolve_upload_file_name, upload_file_with_behavior,
 };
-use lxapp::{LxApp, lx};
+use lxapp::LxApp;
 use rong::{
-    HostError, IntoJSObj, JSContext, JSFunc, JSObject, JSResult, JSValue, Promise,
+    HostError, IntoJSObject, JSContext, JSFunc, JSObject, JSResult, JSValue, Promise,
     function::Optional,
 };
 use std::path::{Path, PathBuf};
@@ -33,25 +33,28 @@ struct ParsedUploadOptions {
     signal: Option<JSObject>,
 }
 
-#[derive(Debug, Clone, IntoJSObj)]
+#[derive(Debug, Clone, IntoJSObject)]
+#[ts_skip]
 struct JSUploadResult {
-    #[rename = "statusCode"]
+    #[js_name = "statusCode"]
     status_code: u16,
     data: String,
 }
 
-#[derive(Debug, Clone, IntoJSObj)]
+#[derive(Debug, Clone, IntoJSObject)]
+#[ts_skip]
 struct JSUploadEvent {
     kind: String,
-    #[rename = "uploadedBytes"]
+    #[js_name = "uploadedBytes"]
     uploaded_bytes: Option<u64>,
-    #[rename = "totalBytes"]
+    #[js_name = "totalBytes"]
     total_bytes: Option<u64>,
     progress: Option<f64>,
     result: Option<JSUploadResult>,
 }
 
-#[derive(Debug, Clone, IntoJSObj)]
+#[derive(Debug, Clone, IntoJSObject)]
+#[ts_skip]
 struct JSUploadIteratorStep {
     done: bool,
     value: Option<JSUploadEvent>,
@@ -809,8 +812,16 @@ async fn upload_cancel_task(state: &Arc<Mutex<UploadIteratorState>>) -> JSResult
     Ok(())
 }
 
-pub(super) fn init(ctx: &JSContext) -> JSResult<()> {
-    let upload_file_func = JSFunc::new(ctx, upload_file)?;
-    lx::register_js_api(ctx, "uploadFile", upload_file_func)?;
-    Ok(())
+pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
+    register_api(ctx)
+}
+
+rong::js_api! {
+    fn register_api(ctx) {
+        namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
+        fn uploadFile(
+            ts_params = "options: UploadOptions",
+            ts_return = "UploadTask"
+        ) = upload_file;
+    }
 }

@@ -8,28 +8,31 @@ use lingxia_service::update::{
     UpdatePackageInfo,
 };
 use lxapp::LxApp;
-use rong::{IntoJSObj, JSContext, JSFunc, JSObject, JSResult, Promise};
+use rong::{IntoJSObject, JSContext, JSFunc, JSObject, JSResult, Promise};
 use std::sync::Arc;
 use std::sync::Mutex as StdMutex;
 use tokio::sync::{Mutex, watch};
 
-#[derive(Debug, Clone, IntoJSObj)]
+#[derive(Debug, Clone, IntoJSObject)]
+#[ts_skip]
 struct JSAppUpdateEvent {
     state: String,
     stage: Option<String>,
-    #[rename = "downloadedBytes"]
+    #[js_name = "downloadedBytes"]
     downloaded_bytes: Option<u64>,
     progress: Option<u8>,
     error: Option<String>,
 }
 
-#[derive(Debug, Clone, IntoJSObj)]
+#[derive(Debug, Clone, IntoJSObject)]
+#[ts_skip]
 struct JSAppUpdateIteratorStep {
     done: bool,
     value: Option<JSAppUpdateEvent>,
 }
 
-#[derive(Debug, Clone, IntoJSObj)]
+#[derive(Debug, Clone, IntoJSObject)]
+#[ts_skip]
 struct JSAppUpdateResult {
     state: String,
 }
@@ -59,12 +62,23 @@ impl AppUpdateIteratorState {
     }
 }
 
-pub(super) fn init(ctx: &JSContext, app: &JSObject) -> JSResult<()> {
-    let check_update = JSFunc::new(ctx, check_app_update)?.name("checkUpdate")?;
-    app.set("checkUpdate", check_update)?;
-    Ok(())
+pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
+    register_api(ctx)
 }
 
+rong::js_api! {
+    fn register_api(ctx) {
+        namespace HostAppApi = ctx.global().get::<_, rong::JSObject>("lx")?.get::<_, rong::JSObject>("app")?;
+        fn checkUpdate(ts_return = "Promise<HostAppUpdateCheckResult>") = check_app_update;
+    }
+}
+
+/// Check whether the host app has an update.
+///
+/// This host-level capability is restricted to the home lxapp. Calling it opts
+/// the process into custom update handling. Incompatible updates are hidden as
+/// `hasUpdate: false`; platforms that cannot apply a package may still return
+/// metadata and reject when `update.apply()` is invoked.
 async fn check_app_update(ctx: JSContext) -> JSResult<JSObject> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     super::ensure_home_lxapp(&lxapp, "lx.app.checkUpdate")?;

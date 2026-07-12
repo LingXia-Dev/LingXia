@@ -144,13 +144,29 @@ fn set_menu(ctx: JSContext, items: Vec<JSObject>) -> JSResult<()> {
 }
 
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
-    let tray = tray_namespace(ctx)?;
-    tray.set("setBadge", JSFunc::new(ctx, set_badge)?)?;
-    tray.set("setIcon", JSFunc::new(ctx, set_icon)?)?;
-    tray.set("setTitle", JSFunc::new(ctx, set_title)?)?;
-    tray.set("setMenu", JSFunc::new(ctx, set_menu)?)?;
-    tray.set("onClick", JSFunc::new(ctx, on_click)?)?;
-    tray.set("show", JSFunc::new(ctx, show)?)?;
-    tray.set("hide", JSFunc::new(ctx, hide)?)?;
-    Ok(())
+    register_tray_property(ctx)?;
+    register_tray_api(ctx)
+}
+
+rong::js_api! {
+    fn register_tray_property(ctx) {
+        namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
+        const tray: "TrayApi" = tray_namespace(ctx)?;
+    }
+}
+
+rong::js_api! {
+    fn register_tray_api(ctx) {
+        namespace TrayApi = tray_namespace(ctx)?;
+        fn setBadge(ts_params = "value: string | number | null") = set_badge;
+        fn setIcon(ts_params = "icon: string") = set_icon;
+        fn setTitle(ts_params = "text: string | null") = set_title;
+        fn setMenu(ts_params = "items: Array<TrayMenuItem | TrayMenuSeparator>") = set_menu;
+        fn onClick(
+            ts_params = "handler: () => void",
+            ts_return = "() => void"
+        ) = on_click;
+        fn show = show;
+        fn hide = hide;
+    }
 }

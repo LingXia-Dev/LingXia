@@ -1,6 +1,6 @@
 use crate::i18n::js_service_unavailable_error;
-use lxapp::{LxApp, lx};
-use rong::{JSContext, JSContextService, JSFunc, JSResult};
+use lxapp::LxApp;
+use rong::{JSContext, JSContextService, JSResult};
 use rong_storage::{Storage as RongStorage, StorageOptions};
 
 const STORAGE_MAX_KEY_BYTES: u32 = 1024; // match module defaults
@@ -59,7 +59,12 @@ fn get_storage(ctx: JSContext) -> JSResult<RongStorage> {
 }
 
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
-    let get_storage_fn = JSFunc::new(ctx, get_storage)?.name("getStorage")?;
-    lx::register_js_api(ctx, "getStorage", get_storage_fn)?;
-    Ok(())
+    register_api(ctx)
+}
+
+rong::js_api! {
+    fn register_api(ctx) {
+        namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
+        fn getStorage(ts_return = "Storage") = get_storage;
+    }
 }

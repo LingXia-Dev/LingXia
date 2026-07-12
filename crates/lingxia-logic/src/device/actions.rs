@@ -1,20 +1,20 @@
 use crate::i18n::js_error_from_platform_error;
 use lingxia_platform::traits::device::Device;
-use lxapp::{LxApp, lx};
-use rong::{FromJSObj, JSContext, JSFunc, JSResult};
+use lxapp::LxApp;
+use rong::{FromJSObject, JSContext, JSResult};
 use serde::Deserialize;
 
-pub fn init(ctx: &JSContext) -> JSResult<()> {
-    let vibrate_short_func = JSFunc::new(ctx, vibrate_short)?;
-    lx::register_js_api(ctx, "vibrateShort", vibrate_short_func)?;
+pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
+    register_api(ctx)
+}
 
-    let vibrate_long_func = JSFunc::new(ctx, vibrate_long)?;
-    lx::register_js_api(ctx, "vibrateLong", vibrate_long_func)?;
-
-    let make_phone_call_func = JSFunc::new(ctx, make_phone_call)?;
-    lx::register_js_api(ctx, "makePhoneCall", make_phone_call_func)?;
-
-    Ok(())
+rong::js_api! {
+    fn register_api(ctx) {
+        namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
+        fn vibrateShort = vibrate_short;
+        fn vibrateLong = vibrate_long;
+        fn makePhoneCall(ts_params = "options: MakePhoneCallOptions") = make_phone_call;
+    }
 }
 
 fn vibrate_short(ctx: JSContext) -> JSResult<bool> {
@@ -35,10 +35,11 @@ fn vibrate_long(ctx: JSContext) -> JSResult<bool> {
         .map_err(|e| js_error_from_platform_error(&e))
 }
 
-#[derive(FromJSObj, Deserialize)]
+#[derive(FromJSObject, Deserialize)]
+#[ts_skip]
 struct MakePhoneCallParams {
     #[serde(rename = "phoneNumber")]
-    #[rename = "phoneNumber"]
+    #[js_name = "phoneNumber"]
     phone_number: String,
 }
 

@@ -1,54 +1,56 @@
 use crate::i18n::js_internal_error;
 use lingxia_platform::traits::ui::UIUpdate;
-use lxapp::{LxApp, lx};
-use rong::{FromJSObj, JSContext, JSFunc, JSResult};
+use lxapp::LxApp;
+use rong::{FromJSObject, JSContext, JSResult};
 use std::sync::Arc;
 
 /// Options for showing TabBar red dot
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
+#[ts_skip]
 struct ShowTabBarRedDotOptions {
     index: i32,
 }
 
 /// Options for hiding TabBar red dot
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
+#[ts_skip]
 struct HideTabBarRedDotOptions {
     index: i32,
 }
 
 /// Options for setting TabBar badge
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct SetTabBarBadgeOptions {
     index: i32,
     text: String,
 }
 
 /// Options for removing TabBar badge
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct RemoveTabBarBadgeOptions {
     index: i32,
 }
 
 /// Options for setting TabBar style
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct SetTabBarStyleOptions {
     color: Option<String>,
-    #[rename = "selectedColor"]
+    #[js_name = "selectedColor"]
     selected_color: Option<String>,
-    #[rename = "backgroundColor"]
+    #[js_name = "backgroundColor"]
     background_color: Option<String>,
-    #[rename = "borderStyle"]
+    #[js_name = "borderStyle"]
     border_style: Option<String>,
 }
 
 /// Options for setting TabBar item
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct SetTabBarItemOptions {
     index: i32,
     text: Option<String>,
-    #[rename = "iconPath"]
+    #[js_name = "iconPath"]
     icon_path: Option<String>,
-    #[rename = "selectedIconPath"]
+    #[js_name = "selectedIconPath"]
     selected_icon_path: Option<String>,
 }
 
@@ -289,29 +291,19 @@ fn set_tabbar_item(ctx: JSContext, options: SetTabBarItemOptions) -> JSResult<bo
 
 /// Initialize TabBar module
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
-    let show_red_dot_func = JSFunc::new(ctx, show_tabbar_red_dot)?;
-    lx::register_js_api(ctx, "showTabBarRedDot", show_red_dot_func)?;
+    register_api(ctx)
+}
 
-    let hide_red_dot_func = JSFunc::new(ctx, hide_tabbar_red_dot)?;
-    lx::register_js_api(ctx, "hideTabBarRedDot", hide_red_dot_func)?;
-
-    let set_badge_func = JSFunc::new(ctx, set_tabbar_badge)?;
-    lx::register_js_api(ctx, "setTabBarBadge", set_badge_func)?;
-
-    let remove_badge_func = JSFunc::new(ctx, remove_tabbar_badge)?;
-    lx::register_js_api(ctx, "removeTabBarBadge", remove_badge_func)?;
-
-    let show_tabbar_func = JSFunc::new(ctx, show_tabbar)?;
-    lx::register_js_api(ctx, "showTabBar", show_tabbar_func)?;
-
-    let hide_tabbar_func = JSFunc::new(ctx, hide_tabbar)?;
-    lx::register_js_api(ctx, "hideTabBar", hide_tabbar_func)?;
-
-    let set_style_func = JSFunc::new(ctx, set_tabbar_style)?;
-    lx::register_js_api(ctx, "setTabBarStyle", set_style_func)?;
-
-    let set_item_func = JSFunc::new(ctx, set_tabbar_item)?;
-    lx::register_js_api(ctx, "setTabBarItem", set_item_func)?;
-
-    Ok(())
+rong::js_api! {
+    fn register_api(ctx) {
+        namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
+        fn showTabBarRedDot(ts_params = "options: TabBarRedDotOptions") = show_tabbar_red_dot;
+        fn hideTabBarRedDot(ts_params = "options: TabBarRedDotOptions") = hide_tabbar_red_dot;
+        fn setTabBarBadge(ts_params = "options: SetTabBarBadgeOptions") = set_tabbar_badge;
+        fn removeTabBarBadge(ts_params = "options: RemoveTabBarBadgeOptions") = remove_tabbar_badge;
+        fn showTabBar = show_tabbar;
+        fn hideTabBar = hide_tabbar;
+        fn setTabBarStyle(ts_params = "options: SetTabBarStyleOptions") = set_tabbar_style;
+        fn setTabBarItem(ts_params = "options: SetTabBarItemOptions") = set_tabbar_item;
+    }
 }

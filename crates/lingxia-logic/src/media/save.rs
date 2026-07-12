@@ -1,21 +1,25 @@
 use crate::i18n::{js_error_from_lxapp_error, js_error_from_platform_error};
 use lingxia_service::media::SaveMediaRequest;
-use lxapp::{LxApp, lx};
-use rong::{FromJSObj, JSContext, JSFunc, JSResult};
+use lxapp::LxApp;
+use rong::{FromJSObject, JSContext, JSResult};
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
+#[ts_skip]
 struct JSSaveMediaOptions {
-    #[rename = "filePath"]
+    #[js_name = "filePath"]
     file_path: String,
 }
 
-pub fn init(ctx: &JSContext) -> JSResult<()> {
-    let save_image_func = JSFunc::new(ctx, save_image_to_photos_album)?;
-    lx::register_js_api(ctx, "saveImageToPhotosAlbum", save_image_func)?;
+pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
+    register_api(ctx)
+}
 
-    let save_video_func = JSFunc::new(ctx, save_video_to_photos_album)?;
-    lx::register_js_api(ctx, "saveVideoToPhotosAlbum", save_video_func)?;
-    Ok(())
+rong::js_api! {
+    fn register_api(ctx) {
+        namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
+        fn saveImageToPhotosAlbum(ts_params = "options: SaveMediaOptions") = save_image_to_photos_album;
+        fn saveVideoToPhotosAlbum(ts_params = "options: SaveMediaOptions") = save_video_to_photos_album;
+    }
 }
 
 async fn save_image_to_photos_album(ctx: JSContext, options: JSSaveMediaOptions) -> JSResult<()> {

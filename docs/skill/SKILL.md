@@ -162,7 +162,7 @@ Jump straight here when the user reports a concrete failure:
 | `homeAppId` doesn't match any bundle / wrong app launches | [`./app/project.md`](./app/project.md) → `resources.bundles` |
 | `fetch()` silently fails from an lxapp | [`./lxapp/guide.md`](./lxapp/guide.md) → "Security Policy" (`trustedDomains`) |
 | "Is `fetch` / `setTimeout` / `URL` available in Logic?" | [`./lxapp/lx-api.md`](./lxapp/lx-api.md#standard-web-apis-built-in-globals) — yes, full Rong runtime |
-| Need to read/write files (not just `lx.downloadFile`) | [`./lxapp/lx-api.md`](./lxapp/lx-api.md#file-and-transfer) → `lx.getFileManager()` |
+| Need to read/write files (not just `lx.downloadFile`) | `lx.getFileManager()` — paths & lifecycle in [`./reference/file-lifecycle.md`](./reference/file-lifecycle.md) |
 | Surface config rejected (`aside` needs `edge`, one `main`, terminal needs capability) | [`./app/project.md`](./app/project.md#surfaces-adaptive-ui) → Rules |
 | `setData` not reflecting in View | [`./lxapp/bridge.md`](./lxapp/bridge.md) → "How replication works" |
 | Native route returns `BRIDGE_METHOD_NOT_FOUND` | [`./native/development.md`](./native/development.md) → Host Addon registration |

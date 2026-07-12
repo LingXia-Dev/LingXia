@@ -91,6 +91,9 @@ jobs:
               - 'i18n/**'
             npm:
               - 'packages/**'
+            # Source of truth for the generated @lingxia/types Logic API.
+            typegen_src:
+              - 'crates/lingxia-logic/**'
             ci:
               - '.github/**'
       - id: compute
@@ -114,6 +117,7 @@ jobs:
           EX_HARMONY: ${{ steps.filter.outputs.ex_harmony }}
           I18N: ${{ steps.filter.outputs.i18n }}
           NPM: ${{ steps.filter.outputs.npm }}
+          TYPEGEN_SRC: ${{ steps.filter.outputs.typegen_src }}
           # A release/* PR (from Prepare Release PR) only touches Cargo.toml /
           # install.sh / packages/*, so the path filters would skip sdk/harmony.
           # Force the FULL validate set on release PRs so a maintainer sees every
@@ -146,8 +150,10 @@ jobs:
           sdk_android=$(any "$rel" "$sdk_base" "$ANDROID" "$SDK_RELEASE")
           # Harmony: harmony SDK tree + harmony webview backend + harmony example inputs.
           harmony=$(any "$rel" "$sdk_base" "$HARMONY_SDK" "$WEBVIEW_HARMONY" "$SDK_RELEASE" "$ex_base" "$EX_HARMONY")
-          # NPM packages (advisory): any packages/* change, or a release PR.
-          npm=$(any "$rel" "$NPM")
+          # NPM packages (advisory): any packages/* change, a release PR, or a
+          # crates/lingxia-logic change (it is the generation source for
+          # @lingxia/types, so Rust-only PRs must still run the drift gate).
+          npm=$(any "$rel" "$NPM" "$TYPEGEN_SRC")
           {
             echo "rust=$rust"
             echo "ios=$ios"
@@ -780,6 +786,10 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+
       - name: Cache npm
         uses: actions/cache@v4
         with:
@@ -796,6 +806,8 @@ jobs:
         working-directory: packages
         run: |
           npm install
+          npm run check:logic --workspace @lingxia/types
+          npm run check:quality --workspace @lingxia/types
           npm run build --workspaces --if-present
 
   npm-skill:

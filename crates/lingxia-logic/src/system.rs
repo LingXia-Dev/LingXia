@@ -3,17 +3,17 @@
 use crate::i18n::host_error_from_platform_error;
 use lingxia_platform::traits::location::Location;
 use lingxia_platform::traits::wifi::Wifi;
-use lxapp::{LxApp, lx};
-use rong::{IntoJSObj, JSContext, JSFunc, JSResult};
+use lxapp::LxApp;
+use rong::{IntoJSObject, JSContext, JSResult};
 
 /// System setting status
-#[derive(Debug, Clone, IntoJSObj)]
+#[derive(Debug, Clone, IntoJSObject)]
 pub struct SystemSettingInfo {
-    #[rename = "bluetoothEnabled"]
+    #[js_name = "bluetoothEnabled"]
     bluetooth_enabled: bool,
-    #[rename = "locationEnabled"]
+    #[js_name = "locationEnabled"]
     location_enabled: bool,
-    #[rename = "wifiEnabled"]
+    #[js_name = "wifiEnabled"]
     wifi_enabled: bool,
 }
 
@@ -36,8 +36,12 @@ fn get_system_setting(ctx: JSContext) -> JSResult<SystemSettingInfo> {
 }
 
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
-    let get_system_setting_func = JSFunc::new(ctx, get_system_setting)?;
-    lx::register_js_api(ctx, "getSystemSetting", get_system_setting_func)?;
+    register_api(ctx)
+}
 
-    Ok(())
+rong::js_api! {
+    fn register_api(ctx) {
+        namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
+        fn getSystemSetting(ts_return = "SystemSettingInfo") = get_system_setting;
+    }
 }

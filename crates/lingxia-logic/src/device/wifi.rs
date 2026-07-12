@@ -2,10 +2,10 @@ use crate::i18n::{js_error_from_business_code, js_error_from_platform_error};
 use crate::i18n::{js_internal_error, js_timeout_error};
 use lingxia_messaging::{CallbackResult, get_callback, register_handler, remove_callback};
 use lingxia_platform::traits::wifi::{Wifi, WifiConnectRequest, WifiGetConnectedRequest};
-use lxapp::{LxApp, lx, publish_app_event, register_app_handler, unregister_app_handler};
+use lxapp::{LxApp, publish_app_event, register_app_handler, unregister_app_handler};
 use lxapp::{info, warn};
 use rong::function::Optional;
-use rong::{FromJSObj, IntoJSObj, JSContext, JSFunc, JSResult, RongJSError};
+use rong::{FromJSObject, IntoJSObject, JSContext, JSFunc, JSResult, RongJSError};
 use serde_json::{Value, json};
 
 const WIFI_CONNECTED_EVENT: &str = "WifiConnected";
@@ -133,34 +133,34 @@ fn clear_wifi_connected_callback(ctx: &JSContext) -> JSResult<()> {
     Ok(())
 }
 
-/// WiFi information from JavaScript
-#[derive(Debug, Clone, IntoJSObj)]
-pub struct JSWifiInfo {
+/// Wi-Fi APIs.
+#[derive(Debug, Clone, IntoJSObject)]
+pub struct WifiInfo {
     /// Service Set Identifier (network name)
-    #[rename = "SSID"]
+    #[js_name = "SSID"]
     ssid: String,
     /// Basic Service Set Identifier (MAC address)
-    #[rename = "BSSID"]
+    #[js_name = "BSSID"]
     bssid: Option<String>,
     /// Whether the network is secure (requires password)
     secure: bool,
     /// Signal strength (0-100, higher is better)
-    #[rename = "signalStrength"]
+    #[js_name = "signalStrength"]
     signal_strength: u8,
     /// Center frequency in MHz (if available)
-    #[rename = "frequency"]
+    #[js_name = "frequency"]
     frequency: Option<u32>,
 }
 
 /// Parse WiFi info from a JSON value
-fn parse_wifi_info_from_json(item: &Value, default_signal: u8, default_secure: bool) -> JSWifiInfo {
+fn parse_wifi_info_from_json(item: &Value, default_signal: u8, default_secure: bool) -> WifiInfo {
     let signal_strength = item
         .get("signalStrength")
         .and_then(Value::as_u64)
         .map(|v| v.min(100) as u8) // Clamp to valid range to prevent overflow
         .unwrap_or(default_signal);
 
-    JSWifiInfo {
+    WifiInfo {
         ssid: item
             .get("ssid")
             .or_else(|| item.get("SSID"))
@@ -185,10 +185,11 @@ fn parse_wifi_info_from_json(item: &Value, default_signal: u8, default_secure: b
 }
 
 /// WiFi connection options from JavaScript
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
+#[ts_skip]
 struct JSConnectWifiOptions {
     /// SSID of the network to connect to
-    #[rename = "SSID"]
+    #[js_name = "SSID"]
     ssid: String,
     /// Network password (omit for open networks)
     password: Option<String>,
@@ -245,7 +246,7 @@ where
 }
 
 /// Parse WiFi list from callback result
-fn parse_wifi_list(data: String) -> Result<Vec<JSWifiInfo>, RongJSError> {
+fn parse_wifi_list(data: String) -> Result<Vec<WifiInfo>, RongJSError> {
     let parsed: Value = serde_json::from_str(&data)
         .map_err(|e| js_internal_error(format!("Failed to parse WiFi list: {}", e)))?;
 
@@ -262,7 +263,7 @@ fn parse_wifi_list(data: String) -> Result<Vec<JSWifiInfo>, RongJSError> {
 }
 
 /// Parse connected WiFi info from callback result
-fn parse_connected_wifi(data: String) -> Result<JSWifiInfo, RongJSError> {
+fn parse_connected_wifi(data: String) -> Result<WifiInfo, RongJSError> {
     let parsed: Value = serde_json::from_str(&data)
         .map_err(|e| js_internal_error(format!("Failed to parse WiFi info: {}", e)))?;
 
@@ -315,7 +316,7 @@ async fn connect_wifi(ctx: JSContext, options: JSConnectWifiOptions) -> JSResult
 }
 
 /// Get WiFi list (scan results)
-async fn get_wifi_list(ctx: JSContext) -> JSResult<Vec<JSWifiInfo>> {
+async fn get_wifi_list(ctx: JSContext) -> JSResult<Vec<WifiInfo>> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     handle_wifi_callback_with_data(
         &ctx,
@@ -327,7 +328,7 @@ async fn get_wifi_list(ctx: JSContext) -> JSResult<Vec<JSWifiInfo>> {
 }
 
 /// Get connected WiFi info
-async fn get_connected_wifi(ctx: JSContext) -> JSResult<JSWifiInfo> {
+async fn get_connected_wifi(ctx: JSContext) -> JSResult<WifiInfo> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     handle_wifi_callback_with_data(
         &ctx,
@@ -361,27 +362,19 @@ fn off_wifi_connected(ctx: JSContext, callback: Optional<JSFunc>) -> JSResult<()
 }
 
 /// Initialize WiFi API bindings
-pub fn init(ctx: &JSContext) -> JSResult<()> {
-    let start_wifi_func = JSFunc::new(ctx, start_wifi)?;
-    lx::register_js_api(ctx, "startWifi", start_wifi_func)?;
+pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
+    register_api(ctx)
+}
 
-    let stop_wifi_func = JSFunc::new(ctx, stop_wifi)?;
-    lx::register_js_api(ctx, "stopWifi", stop_wifi_func)?;
-
-    let connect_wifi_func = JSFunc::new(ctx, connect_wifi)?;
-    lx::register_js_api(ctx, "connectWifi", connect_wifi_func)?;
-
-    let get_wifi_list_func = JSFunc::new(ctx, get_wifi_list)?;
-    lx::register_js_api(ctx, "getWifiList", get_wifi_list_func)?;
-
-    let get_connected_wifi_func = JSFunc::new(ctx, get_connected_wifi)?;
-    lx::register_js_api(ctx, "getConnectedWifi", get_connected_wifi_func)?;
-
-    let on_wifi_connected_func = JSFunc::new(ctx, on_wifi_connected)?;
-    lx::register_js_api(ctx, "onWifiConnected", on_wifi_connected_func)?;
-
-    let off_wifi_connected_func = JSFunc::new(ctx, off_wifi_connected)?;
-    lx::register_js_api(ctx, "offWifiConnected", off_wifi_connected_func)?;
-
-    Ok(())
+rong::js_api! {
+    fn register_api(ctx) {
+        namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
+        fn startWifi = start_wifi;
+        fn stopWifi = stop_wifi;
+        fn connectWifi(ts_params = "options: ConnectWifiOptions") = connect_wifi;
+        fn getWifiList(ts_return = "Promise<WifiInfo[]>") = get_wifi_list;
+        fn getConnectedWifi(ts_return = "Promise<WifiInfo>") = get_connected_wifi;
+        fn onWifiConnected(ts_params = "callback: WifiConnectedCallback") = on_wifi_connected;
+        fn offWifiConnected(ts_params = "callback?: WifiConnectedCallback") = off_wifi_connected;
+    }
 }

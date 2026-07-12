@@ -5,7 +5,7 @@ use crate::i18n::{
 use lingxia_app_context::{app_config, env_version, home_app_id};
 use lingxia_platform::traits::app_runtime::AppRuntime;
 use lxapp::LxApp;
-use rong::{IntoJSObj, JSContext, JSFunc, JSObject, JSResult};
+use rong::{IntoJSObject, JSContext, JSObject, JSResult};
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 mod autostart;
@@ -13,14 +13,14 @@ mod screenshot;
 mod update;
 
 /// Host app base information.
-#[derive(Debug, Clone, IntoJSObj)]
+#[derive(Debug, Clone, IntoJSObject)]
 struct AppBaseInfo {
     language: String,
-    #[rename = "productName"]
+    #[js_name = "productName"]
     product_name: String,
-    #[rename = "version"]
+    #[js_name = "version"]
     version: String,
-    #[rename = "SDKVersion"]
+    #[js_name = "SDKVersion"]
     sdk_version: String,
 }
 
@@ -37,6 +37,10 @@ fn get_app_base_info(ctx: JSContext) -> JSResult<AppBaseInfo> {
     })
 }
 
+/// Exit the host app immediately without a confirmation dialog.
+///
+/// If the user should confirm first, call `lx.showModal(...)` and invoke this
+/// only after confirmation.
 fn exit_app(ctx: JSContext) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     lxapp
@@ -45,7 +49,11 @@ fn exit_app(ctx: JSContext) -> JSResult<()> {
         .map_err(|e| js_error_from_platform_error(&e))
 }
 
-/// lx.app.setBadge(value) — the dock (macOS) / taskbar (Windows) badge. Null/empty clears it.
+/// Set the app-icon badge, for example an unread count.
+///
+/// This targets the dock on macOS, taskbar on Windows, and home/launcher icon
+/// on mobile. Null or an empty string clears it. Unsupported platforms treat
+/// the call as a no-op.
 fn set_app_badge(ctx: JSContext, text: Option<String>) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     lxapp
@@ -83,16 +91,29 @@ fn app_namespace(ctx: &JSContext) -> JSResult<JSObject> {
 
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     let app = app_namespace(ctx)?;
-    // `envVersion` is a synchronous, build-time-fixed string property — set
-    // once at namespace init so JS reads it as a plain field on `lx.app`.
-    app.set("envVersion", env_version().as_str())?;
-    app.set("getBaseInfo", JSFunc::new(ctx, get_app_base_info)?)?;
-    app.set("exit", JSFunc::new(ctx, exit_app)?)?;
-    app.set("setBadge", JSFunc::new(ctx, set_app_badge)?)?;
+    register_app_property(ctx)?;
+    register_app_api(ctx)?;
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     autostart::init(ctx, &app)?;
-    screenshot::init(ctx, &app)?;
-    update::init(ctx, &app)?;
+    screenshot::init(ctx)?;
+    update::init(ctx)?;
 
     Ok(())
+}
+
+rong::js_api! {
+    fn register_app_property(ctx) {
+        namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
+        const app: "HostAppApi" = app_namespace(ctx)?;
+    }
+}
+
+rong::js_api! {
+    fn register_app_api(ctx) {
+        namespace HostAppApi = app_namespace(ctx)?;
+        const envVersion: "HostAppEnvVersion" = env_version().as_str();
+        fn getBaseInfo = get_app_base_info;
+        fn exit = exit_app;
+        fn setBadge(ts_params = "value: string | number | null") = set_app_badge;
+    }
 }

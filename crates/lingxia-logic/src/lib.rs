@@ -13,6 +13,7 @@ mod lxapp;
 mod media;
 mod message_port;
 mod navigator;
+mod public_types;
 mod share;
 mod storage;
 mod surface;
@@ -29,6 +30,7 @@ pub struct LxLogicRuntime;
 
 impl LxLogicExtension for LxLogicRuntime {
     fn init(&self, ctx: &JSContext) -> JSResult<()> {
+        public_types::init(ctx)?;
         env::init(ctx)?;
         app::init(ctx)?;
         lxapp::init(ctx)?;

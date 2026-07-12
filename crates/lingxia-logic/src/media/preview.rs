@@ -8,7 +8,7 @@ use lingxia_messaging::{CallbackResult, get_callback, get_stream_callback, remov
 use lingxia_service::media::{
     MediaKind, MediaObjectFit, PreviewMediaAdvance, PreviewMediaItem, PreviewMediaRequest,
 };
-use lxapp::{LxApp, lx};
+use lxapp::LxApp;
 use rong::{
     HostError, JSArray, JSContext, JSFunc, JSObject, JSResult, JSValue, Promise, RongJSError,
 };
@@ -104,10 +104,18 @@ impl AbortListener {
     }
 }
 
-pub fn init(ctx: &JSContext) -> JSResult<()> {
-    let preview_media_func = JSFunc::new(ctx, preview_media)?;
-    lx::register_js_api(ctx, "previewMedia", preview_media_func)?;
-    Ok(())
+pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
+    register_api(ctx)
+}
+
+rong::js_api! {
+    fn register_api(ctx) {
+        namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
+        fn previewMedia(
+            ts_params = "options: PreviewMediaOptions",
+            ts_return = "PreviewMediaHandle"
+        ) = preview_media;
+    }
 }
 
 /// Synchronously returns a JS handle so listeners can be attached before the

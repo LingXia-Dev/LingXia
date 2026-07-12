@@ -8,8 +8,8 @@ use lingxia_platform::traits::media_runtime::{
     VideoInfo as PlatformVideoInfo,
 };
 use lingxia_service::storage;
-use lxapp::{LxApp, lx};
-use rong::{FromJSObj, HostError, IntoJSObj, JSContext, JSFunc, JSObject, JSResult, Promise};
+use lxapp::LxApp;
+use rong::{FromJSObject, HostError, IntoJSObject, JSContext, JSFunc, JSObject, JSResult, Promise};
 use serde::Deserialize;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -21,43 +21,47 @@ use tokio::sync::{Mutex, mpsc};
 static THUMBNAIL_NAME_COUNTER: AtomicU64 = AtomicU64::new(0);
 static COMPRESS_VIDEO_NAME_COUNTER: AtomicU64 = AtomicU64::new(0);
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
+#[ts_skip]
 struct JSGetVideoInfoOptions {
     path: String,
 }
 
-#[derive(Debug, Clone, IntoJSObj)]
+#[derive(Debug, Clone, IntoJSObject)]
+#[ts_skip]
 struct JSVideoInfoResult {
     width: u32,
     height: u32,
-    #[rename = "durationMs"]
+    #[js_name = "durationMs"]
     duration_ms: u64,
     rotation: Option<u16>,
     bitrate: Option<u64>,
     fps: Option<f64>,
-    #[rename = "type"]
+    #[js_name = "type"]
     video_type: Option<String>,
     path: String,
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
+#[ts_skip]
 struct JSVideoThumbnailOptions {
     path: String,
-    #[rename = "outputPath"]
+    #[js_name = "outputPath"]
     output_path: Option<String>,
-    #[rename = "maxWidth"]
+    #[js_name = "maxWidth"]
     max_width: Option<u32>,
-    #[rename = "maxHeight"]
+    #[js_name = "maxHeight"]
     max_height: Option<u32>,
-    #[rename = "timeMs"]
+    #[js_name = "timeMs"]
     time_ms: Option<i64>,
     quality: Option<i32>,
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
+#[ts_skip]
 struct JSCompressVideoOptions {
     path: String,
-    #[rename = "outputPath"]
+    #[js_name = "outputPath"]
     output_path: Option<String>,
     quality: Option<String>,
     bitrate: Option<u32>,
@@ -65,35 +69,39 @@ struct JSCompressVideoOptions {
     resolution: Option<f64>,
 }
 
-#[derive(Debug, Clone, IntoJSObj)]
+#[derive(Debug, Clone, IntoJSObject)]
+#[ts_skip]
 struct JSVideoThumbnailResult {
-    #[rename = "tempFilePath"]
+    #[js_name = "tempFilePath"]
     temp_file_path: String,
     width: u32,
     height: u32,
-    #[rename = "type"]
+    #[js_name = "type"]
     image_type: String,
 }
 
-#[derive(Debug, Clone, IntoJSObj)]
+#[derive(Debug, Clone, IntoJSObject)]
+#[ts_skip]
 struct JSCompressVideoResult {
-    #[rename = "tempFilePath"]
+    #[js_name = "tempFilePath"]
     temp_file_path: String,
     width: u32,
     height: u32,
-    #[rename = "durationMs"]
+    #[js_name = "durationMs"]
     duration_ms: u64,
     size: u64,
-    #[rename = "type"]
+    #[js_name = "type"]
     video_type: String,
 }
 
-#[derive(Debug, Clone, IntoJSObj)]
+#[derive(Debug, Clone, IntoJSObject)]
+#[ts_skip]
 struct JSCompressProgressEvent {
     progress: u8,
 }
 
-#[derive(Debug, Clone, IntoJSObj)]
+#[derive(Debug, Clone, IntoJSObject)]
+#[ts_skip]
 struct JSCompressIteratorStep {
     done: bool,
     value: Option<JSCompressProgressEvent>,
@@ -125,16 +133,26 @@ struct CompressProgressState {
     closed: bool,
 }
 
-pub fn init(ctx: &JSContext) -> JSResult<()> {
-    let get_video_info_func = JSFunc::new(ctx, get_video_info_api)?;
-    lx::register_js_api(ctx, "getVideoInfo", get_video_info_func)?;
+pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
+    register_api(ctx)
+}
 
-    let extract_video_thumbnail_func = JSFunc::new(ctx, extract_video_thumbnail_api)?;
-    lx::register_js_api(ctx, "extractVideoThumbnail", extract_video_thumbnail_func)?;
-
-    let compress_video_func = JSFunc::new(ctx, compress_video_api)?;
-    lx::register_js_api(ctx, "compressVideo", compress_video_func)?;
-    Ok(())
+rong::js_api! {
+    fn register_api(ctx) {
+        namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
+        fn getVideoInfo(
+            ts_params = "options: GetVideoInfoOptions",
+            ts_return = "Promise<VideoInfo>"
+        ) = get_video_info_api;
+        fn extractVideoThumbnail(
+            ts_params = "options: ExtractVideoThumbnailOptions",
+            ts_return = "Promise<ExtractVideoThumbnailResult>"
+        ) = extract_video_thumbnail_api;
+        fn compressVideo(
+            ts_params = "options: CompressVideoOptions",
+            ts_return = "CompressVideoTask"
+        ) = compress_video_api;
+    }
 }
 
 async fn get_video_info_api(

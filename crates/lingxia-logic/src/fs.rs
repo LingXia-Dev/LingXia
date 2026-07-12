@@ -7,11 +7,11 @@ use futures::Stream;
 use lingxia_service::file::{
     ChooseDirectoryRequest, ChooseFileRequest, FileDialogFilter, OpenFileRequest,
 };
-use lxapp::{LxApp, lx};
+use lxapp::LxApp;
 use rong::{
-    AnyJSTypedArray, Class, FromJSObj, HostError, IntoJSAsyncIteratorExt, IntoJSObj, IntoJSValue,
-    JSArrayBuffer, JSContext, JSFunc, JSObject, JSResult, JSValue, RongJSError, function::Optional,
-    js_class, js_export, js_method,
+    AnyJSTypedArray, Class, FromJSObject, HostError, IntoJSAsyncIteratorExt, IntoJSObject,
+    IntoJSValue, JSArrayBuffer, JSContext, JSObject, JSResult, JSValue, RongJSError,
+    function::Optional, js_class, js_method,
 };
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
@@ -25,14 +25,15 @@ mod network_security;
 mod storage;
 mod upload;
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
+#[ts_skip]
 struct JSOpenFileOptions {
-    #[rename = "filePath"]
+    #[js_name = "filePath"]
     file_path: String,
-    #[rename = "fileType"]
+    #[js_name = "fileType"]
     file_type: Option<String>,
     mode: Option<String>,
-    #[rename = "showMenu"]
+    #[js_name = "showMenu"]
     show_menu: Option<bool>,
 }
 
@@ -130,6 +131,10 @@ async fn open_file_with_mode(
     }
 }
 
+/// Open a local file with the requested strategy.
+///
+/// Use `mode: "review"` when the UX requires in-app preview; otherwise prefer
+/// `mode: "auto"`.
 async fn open_file(ctx: JSContext, options: JSOpenFileOptions) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let mode = OpenFileMode::parse(options.mode.as_deref(), "openFile")?;
@@ -137,112 +142,125 @@ async fn open_file(ctx: JSContext, options: JSOpenFileOptions) -> JSResult<()> {
     open_file_with_mode(&lxapp, request, mode).await
 }
 
-#[derive(FromJSObj, Clone, Default)]
+#[derive(FromJSObject, Clone, Default)]
+#[ts_skip]
 struct JSFileDialogFilter {
     name: Option<String>,
     extensions: Option<Vec<String>>,
 }
 
-#[derive(FromJSObj, Clone, Default)]
+#[derive(FromJSObject, Clone, Default)]
+#[ts_skip]
 struct JSChooseFileOptions {
     multiple: Option<bool>,
     filters: Option<Vec<JSFileDialogFilter>>,
-    #[rename = "defaultPath"]
+    #[js_name = "defaultPath"]
     default_path: Option<String>,
 }
 
-#[derive(Debug, Clone, IntoJSObj)]
+#[derive(Debug, Clone, IntoJSObject)]
+#[ts_skip]
 struct ChooseFileResultObj {
     canceled: bool,
     paths: Vec<String>,
 }
 
-#[derive(FromJSObj, Clone, Default)]
+#[derive(FromJSObject, Clone, Default)]
+#[ts_skip]
 struct JSChooseDirectoryOptions {
-    #[rename = "defaultPath"]
+    #[js_name = "defaultPath"]
     default_path: Option<String>,
 }
 
-#[derive(Debug, Clone, IntoJSObj)]
+#[derive(Debug, Clone, IntoJSObject)]
+#[ts_skip]
 struct ChooseDirectoryResultObj {
     canceled: bool,
     path: Option<String>,
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
+#[ts_skip]
 struct JSFsPathOptions {
     path: String,
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
+#[ts_skip]
 struct JSFsDirPathOptions {
     path: String,
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
+#[ts_skip]
 struct JSMkdirOptions {
     path: String,
     recursive: Option<bool>,
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
+#[ts_skip]
 struct JSReadFileOptions {
-    #[rename = "filePath"]
+    #[js_name = "filePath"]
     file_path: String,
     encoding: Option<String>,
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
+#[ts_skip]
 struct JSWriteFileOptions {
-    #[rename = "filePath"]
+    #[js_name = "filePath"]
     file_path: String,
     data: JSValue,
     encoding: Option<String>,
     overwrite: Option<bool>,
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
+#[ts_skip]
 struct JSCopyFileOptions {
-    #[rename = "srcPath"]
+    #[js_name = "srcPath"]
     src_path: String,
-    #[rename = "destPath"]
+    #[js_name = "destPath"]
     dest_path: String,
     overwrite: Option<bool>,
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
+#[ts_skip]
 struct JSRenameOptions {
-    #[rename = "oldPath"]
+    #[js_name = "oldPath"]
     old_path: String,
-    #[rename = "newPath"]
+    #[js_name = "newPath"]
     new_path: String,
     overwrite: Option<bool>,
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
+#[ts_skip]
 struct JSRemoveOptions {
     path: String,
     recursive: Option<bool>,
 }
 
-#[derive(Debug, Clone, IntoJSObj)]
-struct JSFileStats {
-    #[rename = "isFile"]
+#[derive(Debug, Clone, IntoJSObject)]
+struct FileStats {
+    #[js_name = "isFile"]
     is_file: bool,
-    #[rename = "isDirectory"]
+    #[js_name = "isDirectory"]
     is_directory: bool,
-    #[rename = "isSymlink"]
+    #[js_name = "isSymlink"]
     is_symlink: bool,
     size: u64,
-    #[rename = "lastModifiedTime"]
+    #[js_name = "lastModifiedTime"]
     last_modified_time: Option<u64>,
-    #[rename = "lastAccessedTime"]
+    #[js_name = "lastAccessedTime"]
     last_accessed_time: Option<u64>,
-    #[rename = "createTime"]
+    #[js_name = "createTime"]
     create_time: Option<u64>,
 }
 
-#[js_export]
+#[js_class(clone)]
 struct JSFileManager {
     lxapp: Weak<LxApp>,
     user_data_dir: PathBuf,
@@ -308,7 +326,7 @@ fn managed_root(lxapp: &LxApp, kind: ManagedPathKind) -> Option<&Path> {
     }
 }
 
-#[js_export]
+#[js_class(clone)]
 struct JSDirEntry {
     name: String,
     is_directory: bool,
@@ -317,7 +335,7 @@ struct JSDirEntry {
 
 #[js_class(rename = "DirEntry")]
 impl JSDirEntry {
-    #[js_method(constructor)]
+    #[js_method(constructor, private)]
     fn _ctor() -> JSResult<()> {
         Err(HostError::new(
             rong::error::E_ILLEGAL_CONSTRUCTOR,
@@ -771,9 +789,9 @@ fn resolve_writable_path(
     resolve_managed_path(lxapp, raw_path, api_name, field_name, false, true, true)
 }
 
-fn file_stats(metadata: std::fs::Metadata) -> JSFileStats {
+fn file_stats(metadata: std::fs::Metadata) -> FileStats {
     let file_type = metadata.file_type();
-    JSFileStats {
+    FileStats {
         is_file: file_type.is_file(),
         is_directory: file_type.is_dir(),
         is_symlink: file_type.is_symlink(),
@@ -1003,7 +1021,7 @@ fn bytes_to_read_file_result(
 
 #[js_class(rename = "FileManager")]
 impl JSFileManager {
-    #[js_method(constructor)]
+    #[js_method(constructor, private)]
     fn _ctor() -> JSResult<()> {
         Err(HostError::new(
             rong::error::E_ILLEGAL_CONSTRUCTOR,
@@ -1012,7 +1030,7 @@ impl JSFileManager {
         .into())
     }
 
-    #[js_method]
+    #[js_method(ts_params = "options: ExistsOptions")]
     async fn exists(&self, _ctx: JSContext, options: JSFsPathOptions) -> JSResult<bool> {
         let lxapp = self.lxapp()?;
         match resolve_readable_path(&lxapp, &options.path, "exists", "path") {
@@ -1030,8 +1048,8 @@ impl JSFileManager {
         }
     }
 
-    #[js_method]
-    async fn stat(&self, _ctx: JSContext, options: JSFsPathOptions) -> JSResult<JSFileStats> {
+    #[js_method(ts_params = "options: StatOptions", ts_return = "Promise<FileStats>")]
+    async fn stat(&self, _ctx: JSContext, options: JSFsPathOptions) -> JSResult<FileStats> {
         let lxapp = self.lxapp()?;
         let path = resolve_readable_path(&lxapp, &options.path, "stat", "path")?;
         ensure_no_symlink_ancestors(&lxapp, &path, "stat", "path")?;
@@ -1040,7 +1058,11 @@ impl JSFileManager {
         Ok(file_stats(metadata))
     }
 
-    #[js_method(rename = "readDir")]
+    #[js_method(
+        rename = "readDir",
+        ts_params = "options: ReadDirOptions",
+        ts_return = "Promise<AsyncIterableIterator<DirEntry>>"
+    )]
     async fn read_dir(&self, ctx: JSContext, options: JSFsDirPathOptions) -> JSResult<JSObject> {
         let lxapp = self.lxapp()?;
         let path = resolve_readable_path(&lxapp, &options.path, "readDir", "path")?;
@@ -1057,7 +1079,7 @@ impl JSFileManager {
         DirEntryStream::new(entries).to_js_async_iter(&ctx)
     }
 
-    #[js_method]
+    #[js_method(ts_params = "options: MkdirOptions")]
     async fn mkdir(&self, _ctx: JSContext, options: JSMkdirOptions) -> JSResult<()> {
         let lxapp = self.lxapp()?;
         let path = resolve_writable_path(&lxapp, &options.path, "mkdir", "path")?;
@@ -1079,7 +1101,7 @@ impl JSFileManager {
         Ok(())
     }
 
-    #[js_method(rename = "readFile")]
+    #[js_method(rename = "readFile", ts_params = "options: never", ts_return = "never")]
     async fn read_file(&self, ctx: JSContext, options: JSReadFileOptions) -> JSResult<JSObject> {
         let lxapp = self.lxapp()?;
         let path = resolve_readable_path(&lxapp, &options.file_path, "readFile", "filePath")?;
@@ -1095,7 +1117,7 @@ impl JSFileManager {
         bytes_to_read_file_result(&ctx, bytes, options.encoding.as_deref())
     }
 
-    #[js_method(rename = "writeFile")]
+    #[js_method(rename = "writeFile", ts_params = "options: WriteFileOptions")]
     async fn write_file(&self, _ctx: JSContext, options: JSWriteFileOptions) -> JSResult<()> {
         let lxapp = self.lxapp()?;
         let path = resolve_writable_path(&lxapp, &options.file_path, "writeFile", "filePath")?;
@@ -1118,7 +1140,7 @@ impl JSFileManager {
         Ok(())
     }
 
-    #[js_method(rename = "copyFile")]
+    #[js_method(rename = "copyFile", ts_params = "options: CopyFileOptions")]
     async fn copy_file(&self, _ctx: JSContext, options: JSCopyFileOptions) -> JSResult<()> {
         let lxapp = self.lxapp()?;
         let source = resolve_readable_path(&lxapp, &options.src_path, "copyFile", "srcPath")?;
@@ -1152,7 +1174,7 @@ impl JSFileManager {
         Ok(())
     }
 
-    #[js_method]
+    #[js_method(ts_params = "options: RenameOptions")]
     async fn rename(&self, _ctx: JSContext, options: JSRenameOptions) -> JSResult<()> {
         let lxapp = self.lxapp()?;
         let old_path = resolve_managed_path(
@@ -1219,7 +1241,7 @@ impl JSFileManager {
         Ok(())
     }
 
-    #[js_method]
+    #[js_method(ts_params = "options: RemoveOptions")]
     async fn remove(&self, _ctx: JSContext, options: JSRemoveOptions) -> JSResult<()> {
         let lxapp = self.lxapp()?;
         let path = resolve_writable_path(&lxapp, &options.path, "remove", "path")?;
@@ -1253,12 +1275,25 @@ fn get_file_manager(ctx: JSContext) -> JSResult<JSObject> {
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     ctx.register_hidden_class::<JSDirEntry>()?;
     ctx.register_hidden_class::<JSFileManager>()?;
-    lx::register_js_api(ctx, "openFile", JSFunc::new(ctx, open_file)?)?;
-    lx::register_js_api(ctx, "chooseFile", JSFunc::new(ctx, choose_file)?)?;
-    lx::register_js_api(ctx, "chooseDirectory", JSFunc::new(ctx, choose_directory)?)?;
-    lx::register_js_api(ctx, "getFileManager", JSFunc::new(ctx, get_file_manager)?)?;
+    register_file_api(ctx)?;
     download::init(ctx)?;
     upload::init(ctx)?;
 
     Ok(())
+}
+
+rong::js_api! {
+    fn register_file_api(ctx) {
+        namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
+        fn openFile(ts_params = "options: OpenFileOptions", ts_return = "void") = open_file;
+        fn chooseFile(
+            ts_params = "options?: ChooseFileOptions",
+            ts_return = "Promise<ChooseFileResult>"
+        ) = choose_file;
+        fn chooseDirectory(
+            ts_params = "options?: ChooseDirectoryOptions",
+            ts_return = "Promise<ChooseDirectoryResult>"
+        ) = choose_directory;
+        fn getFileManager(ts_return = "FileManager") = get_file_manager;
+    }
 }

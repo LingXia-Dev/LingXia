@@ -4,55 +4,64 @@ use crate::i18n::{
 };
 use lingxia_platform::traits::media_runtime::{CompressImageRequest, MediaRuntime};
 use lingxia_service::storage;
-use lxapp::{LxApp, lx};
-use rong::{FromJSObj, IntoJSObj, JSContext, JSFunc, JSResult};
+use lxapp::LxApp;
+use rong::{FromJSObject, IntoJSObject, JSContext, JSResult};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
+#[ts_skip]
 struct JSGetImageInfoOptions {
     path: String,
 }
 
-#[derive(Debug, Clone, IntoJSObj)]
-struct JSImageInfoResult {
+#[derive(Debug, Clone, IntoJSObject)]
+struct ImageInfo {
     width: u32,
     height: u32,
-    #[rename = "type"]
+    #[js_name = "type"]
     image_type: String,
     path: String,
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
+#[ts_skip]
 struct JSCompressImageOptions {
     path: String,
     quality: Option<i32>,
-    #[rename = "compressedWidth"]
+    #[js_name = "compressedWidth"]
     compressed_width: Option<u32>,
-    #[rename = "compressedHeight"]
+    #[js_name = "compressedHeight"]
     compressed_height: Option<u32>,
 }
 
-#[derive(Debug, Clone, IntoJSObj)]
+#[derive(Debug, Clone, IntoJSObject)]
+#[ts_skip]
 struct JSCompressImageResult {
-    #[rename = "tempFilePath"]
+    #[js_name = "tempFilePath"]
     temp_file_path: String,
 }
 
-pub fn init(ctx: &JSContext) -> JSResult<()> {
-    let get_image_info_func = JSFunc::new(ctx, get_image_info_api)?;
-    lx::register_js_api(ctx, "getImageInfo", get_image_info_func)?;
-
-    let compress_image_func = JSFunc::new(ctx, compress_image_api)?;
-    lx::register_js_api(ctx, "compressImage", compress_image_func)?;
-    Ok(())
+pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
+    register_api(ctx)
 }
 
-async fn get_image_info_api(
-    ctx: JSContext,
-    options: JSGetImageInfoOptions,
-) -> JSResult<JSImageInfoResult> {
+rong::js_api! {
+    fn register_api(ctx) {
+        namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
+        fn getImageInfo(
+            ts_params = "options: GetImageInfoOptions",
+            ts_return = "Promise<ImageInfo>"
+        ) = get_image_info_api;
+        fn compressImage(
+            ts_params = "options: CompressImageOptions",
+            ts_return = "Promise<CompressImageResult>"
+        ) = compress_image_api;
+    }
+}
+
+async fn get_image_info_api(ctx: JSContext, options: JSGetImageInfoOptions) -> JSResult<ImageInfo> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let runtime = &lxapp.runtime;
 
@@ -83,7 +92,7 @@ async fn get_image_info_api(
                 .filter(|s| !s.is_empty())
                 .unwrap_or_else(|| infer_mime_from_path(&normalized_path).to_string());
 
-            JSImageInfoResult {
+            ImageInfo {
                 width: info.width,
                 height: info.height,
                 image_type,

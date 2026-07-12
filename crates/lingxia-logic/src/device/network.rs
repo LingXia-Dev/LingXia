@@ -2,11 +2,9 @@ use crate::i18n::js_error_from_platform_error;
 use crate::i18n::js_internal_error;
 use lingxia_messaging::{CallbackResult, register_handler, remove_callback};
 use lingxia_platform::traits::network::Network;
-use lxapp::{
-    LxApp, info, lx, publish_app_event, register_app_handler, unregister_app_handler, warn,
-};
+use lxapp::{LxApp, info, publish_app_event, register_app_handler, unregister_app_handler, warn};
 use rong::function::Optional;
-use rong::{IntoJSObj, JSContext, JSFunc, JSResult, RongJSError};
+use rong::{IntoJSObject, JSContext, JSFunc, JSResult, RongJSError};
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
 use std::net::{Ipv4Addr, Ipv6Addr};
@@ -24,11 +22,12 @@ fn network_callback_id(ctx: &JSContext) -> Option<u64> {
     ctx.get_state::<NetworkCallbackId>().and_then(|s| s.0)
 }
 
-#[derive(Debug, Clone, IntoJSObj)]
+#[derive(Debug, Clone, IntoJSObject)]
+#[ts_skip]
 struct JSNetworkInfoResult {
-    #[rename = "isConnected"]
+    #[js_name = "isConnected"]
     is_connected: bool,
-    #[rename = "networkType"]
+    #[js_name = "networkType"]
     network_type: String,
     ipv4: Vec<String>,
     ipv6: Vec<String>,
@@ -227,15 +226,15 @@ fn off_network_change(ctx: JSContext, callback: Optional<JSFunc>) -> JSResult<()
     Ok(())
 }
 
-pub fn init(ctx: &JSContext) -> JSResult<()> {
-    let get_network_info_func = JSFunc::new(ctx, get_network_info)?;
-    lx::register_js_api(ctx, "getNetworkInfo", get_network_info_func)?;
+pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
+    register_api(ctx)
+}
 
-    let on_network_change_func = JSFunc::new(ctx, on_network_change)?;
-    lx::register_js_api(ctx, "onNetworkChange", on_network_change_func)?;
-
-    let off_network_change_func = JSFunc::new(ctx, off_network_change)?;
-    lx::register_js_api(ctx, "offNetworkChange", off_network_change_func)?;
-
-    Ok(())
+rong::js_api! {
+    fn register_api(ctx) {
+        namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
+        fn getNetworkInfo(ts_return = "Promise<NetworkInfo>") = get_network_info;
+        fn onNetworkChange(ts_params = "callback: NetworkChangeCallback") = on_network_change;
+        fn offNetworkChange(ts_params = "callback?: NetworkChangeCallback") = off_network_change;
+    }
 }

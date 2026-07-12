@@ -1,0 +1,7 @@
+{
+  "source": "../../crates/lingxia-logic/src",
+  "name": "lingxia",
+  "out": "src/generated/logic.ts",
+  "preludes": ["typegen/logic-prelude.ts"],
+  "profiles": { "logic-web": "src/generated/logic-web.d.ts" }
+}

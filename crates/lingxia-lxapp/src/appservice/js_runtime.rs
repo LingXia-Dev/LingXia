@@ -33,6 +33,35 @@ mod runtime_ctx;
 pub(crate) use runtime_ctx::set_app_svc_for_ctx;
 use runtime_ctx::{register_app_ctx, remove_app_ctx, with_app_svc, with_page_svc_map};
 
+/// Rong modules initialized in every Logic worker. Every name must be backed
+/// by an enabled `rong_modules` Cargo feature: resolution fail-fasts on an
+/// uncompiled module and the worker aborts before `lx` exists (see the
+/// `requested_rong_modules_resolve` test).
+const RONG_MODULES: [&str; 13] = [
+    "timer",
+    "cron",
+    "event",
+    "exception",
+    "abort",
+    "encoding",
+    "console",
+    "url",
+    "buffer",
+    "stream",
+    "http",
+    "compression",
+    "storage",
+];
+
+#[cfg(test)]
+mod rong_modules_tests {
+    #[test]
+    fn requested_rong_modules_resolve() {
+        rong_modules::resolve_modules(super::RONG_MODULES)
+            .expect("every requested Rong module must be compiled into this build");
+    }
+}
+
 /// Message type for LxApp service system
 pub(crate) enum ServiceMessage {
     // Create a new AppService (JS runtime) for this LxApp instance
@@ -397,7 +426,14 @@ pub(crate) async fn lxapp_service_handler(
             // Set network access guard to prevent unauthorized domain access
             http::set_network_access_guard(Box::new(app_ctx));
 
-            let _ = rong_modules::init(&ctx);
+            if let Err(e) = rong_modules::init(&ctx, RONG_MODULES) {
+                error!(
+                    "[Worker {}] Failed to initialize Rong modules: {}",
+                    worker_id, e
+                )
+                .with_appid(lxapp.appid.clone());
+                return;
+            }
             let _ = lx::init(&ctx);
 
             // Execute a closure with access to the list of registered extensions.

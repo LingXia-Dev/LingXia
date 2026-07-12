@@ -3,12 +3,12 @@ use lingxia_platform::traits::app_runtime::{AppRuntime, OpenUrlRequest, OpenUrlT
 use lingxia_platform::traits::ui::{SurfaceKind, SurfacePosition};
 use lxapp::{
     LxApp, LxAppError, PageQueryInput, PageSurfaceRequest, PageSurfaceTarget, PageTarget,
-    list_lxapps, lx, publish_app_event, register_app_handler, try_get, unregister_app_handler,
+    list_lxapps, publish_app_event, register_app_handler, try_get, unregister_app_handler,
 };
 use rong::{
-    Class, HostError, IntoJSObj, JSContext, JSFunc, JSObject, JSResult, JSValue, Promise,
+    Class, HostError, IntoJSObject, JSContext, JSFunc, JSObject, JSResult, JSValue, Promise,
     function::{Rest, This},
-    js_class, js_export, js_method,
+    js_class, js_method,
 };
 use rong_event::{Emitter, EmitterExt, EventEmitter, EventKey};
 use serde_json::Value;
@@ -27,14 +27,16 @@ struct ClosedRegistration {
 
 static SURFACE_CLOSED: OnceLock<Mutex<HashMap<String, ClosedRegistration>>> = OnceLock::new();
 
-#[derive(Debug, Clone, IntoJSObj)]
+#[derive(Debug, Clone, IntoJSObject)]
+#[ts_skip]
 struct JSSurfaceClosed {
     id: String,
     kind: String,
     reason: String,
 }
 
-#[derive(Debug, Clone, IntoJSObj)]
+#[derive(Debug, Clone, IntoJSObject)]
+#[ts_skip]
 struct JSSurfaceVisibility {
     id: String,
     kind: String,
@@ -45,7 +47,7 @@ struct JSSurfaceVisibility {
     source: String,
 }
 
-#[js_export]
+#[js_class(clone)]
 struct JSSurface {
     id: String,
     kind: String,
@@ -79,7 +81,7 @@ impl JSSurface {
         .into())
     }
 
-    #[js_method(rename = "close")]
+    #[js_method(rename = "close", ts_return = "Promise<void>")]
     fn close(&self, ctx: JSContext) -> JSResult<Promise> {
         let lxapp = LxApp::from_ctx(&ctx)?;
         let id = self.id.clone();
@@ -143,14 +145,20 @@ impl Emitter for JSSurface {
 
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     ctx.register_hidden_class::<JSSurface>()?;
-    lx::register_js_api(ctx, "openSurface", JSFunc::new(ctx, open_surface_spec)?)?;
-    lx::register_js_api(ctx, "openExternal", JSFunc::new(ctx, open_external)?)?;
-    lx::register_js_api(
-        ctx,
-        "onSurfaceContext",
-        JSFunc::new(ctx, surface_on_change)?,
-    )?;
-    Ok(())
+    register_surface_api(ctx)
+}
+
+rong::js_api! {
+    fn register_surface_api(ctx) {
+        namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
+        // Precise correlated overloads remain in the curated Lx augmentation.
+        fn openSurface(ts_params = "spec: never", ts_return = "never") = open_surface_spec;
+        fn openExternal = open_external;
+        fn onSurfaceContext(
+            ts_params = "handler: (context: SurfaceContext) => void",
+            ts_return = "() => void"
+        ) = surface_on_change;
+    }
 }
 
 /// Event name on the per-app bus carrying `{ sizeClass, bottomOwner }`.
@@ -188,7 +196,8 @@ pub(crate) fn notify_surface_context_changed(_window_id: &str) {
     }
 }
 
-#[derive(Debug, Clone, IntoJSObj)]
+#[derive(Debug, Clone, IntoJSObject)]
+#[ts_skip]
 struct PageSurfaceOptions {
     path: String,
     kind: String,
@@ -196,7 +205,8 @@ struct PageSurfaceOptions {
     role: String,
 }
 
-#[derive(Debug, Clone, IntoJSObj)]
+#[derive(Debug, Clone, IntoJSObject)]
+#[ts_skip]
 struct WebSurfaceOptions {
     url: String,
     kind: String,
@@ -207,9 +217,10 @@ struct WebSurfaceOptions {
 /// `lx.openSurface(spec)` — unified surface entry point. The spec is a
 /// discriminated union keyed by exactly one of `page`, `surface`, or `url`:
 ///
-/// - `{ page, as, edge?, position?, size?, query? }` opens one of this lxapp's
-///   own pages as an `aside` (docked beside the main), a `float` (overlay
-///   popup), or a `window` (bare standalone desktop window).
+/// - `{ page, as, position?, size?, query? }` opens one of this lxapp's own
+///   pages as a `float` (overlay popup) or a `window` (bare standalone desktop
+///   window). Pages cannot be docked as an `aside` — an aside shows external
+///   content only.
 /// - `{ surface, edge?, query? }` shows a host-declared surface by its `ui` id.
 /// - `{ url }` opens an http(s)/lingxia url in the in-app chromed browser.
 async fn open_surface_spec(ctx: JSContext, spec: JSValue) -> JSResult<JSValue> {
@@ -524,7 +535,8 @@ fn build_open_options(
 }
 
 #[cfg(not(any(target_os = "ios", target_os = "android", target_env = "ohos")))]
-#[derive(Debug, Clone, IntoJSObj)]
+#[derive(Debug, Clone, IntoJSObject)]
+#[ts_skip]
 struct PageWindowOptions {
     path: String,
     kind: String,
@@ -571,11 +583,12 @@ fn build_window_options(
     ))
 }
 
-#[derive(Debug, Clone, IntoJSObj)]
+#[derive(Debug, Clone, IntoJSObject)]
+#[ts_skip]
 struct JSSurfaceContext {
-    #[rename = "sizeClass"]
+    #[js_name = "sizeClass"]
     size_class: String,
-    #[rename = "bottomOwner"]
+    #[js_name = "bottomOwner"]
     bottom_owner: String,
 }
 

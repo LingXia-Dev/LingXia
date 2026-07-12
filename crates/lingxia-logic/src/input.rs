@@ -1,5 +1,5 @@
 use lxapp::lifecycle::key_events;
-use lxapp::{LxApp, lx, register_app_handler, unregister_app_handler};
+use lxapp::{LxApp, register_app_handler, unregister_app_handler};
 use rong::function::Optional;
 use rong::{JSContext, JSFunc, JSResult};
 
@@ -34,18 +34,16 @@ fn off_key_up(ctx: JSContext, callback: Optional<JSFunc>) -> JSResult<()> {
     Ok(())
 }
 
-pub fn init(ctx: &JSContext) -> JSResult<()> {
-    let on_key_down_func = JSFunc::new(ctx, on_key_down)?;
-    lx::register_js_api(ctx, "onKeyDown", on_key_down_func)?;
+pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
+    register_api(ctx)
+}
 
-    let off_key_down_func = JSFunc::new(ctx, off_key_down)?;
-    lx::register_js_api(ctx, "offKeyDown", off_key_down_func)?;
-
-    let on_key_up_func = JSFunc::new(ctx, on_key_up)?;
-    lx::register_js_api(ctx, "onKeyUp", on_key_up_func)?;
-
-    let off_key_up_func = JSFunc::new(ctx, off_key_up)?;
-    lx::register_js_api(ctx, "offKeyUp", off_key_up_func)?;
-
-    Ok(())
+rong::js_api! {
+    fn register_api(ctx) {
+        namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
+        fn onKeyDown(ts_params = "callback: KeyEventCallback") = on_key_down;
+        fn offKeyDown(ts_params = "callback?: KeyEventCallback") = off_key_down;
+        fn onKeyUp(ts_params = "callback: KeyEventCallback") = on_key_up;
+        fn offKeyUp(ts_params = "callback?: KeyEventCallback") = off_key_up;
+    }
 }

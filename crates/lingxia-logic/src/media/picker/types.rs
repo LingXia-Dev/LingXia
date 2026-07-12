@@ -1,16 +1,17 @@
-use rong::FromJSObj;
+use rong::FromJSObject;
 use serde::{Deserialize, Serialize};
 
-#[derive(FromJSObj, Clone)]
+#[derive(FromJSObject, Clone)]
+#[ts_skip]
 pub(super) struct JSChooseMediaOptions {
-    #[rename = "count"]
+    #[js_name = "count"]
     pub(super) count: Option<u32>,
-    #[rename = "mediaType"]
+    #[js_name = "mediaType"]
     pub(super) media_type: Option<Vec<String>>,
-    #[rename = "sourceType"]
+    #[js_name = "sourceType"]
     pub(super) source_type: Option<Vec<String>>,
     pub(super) camera: Option<String>,
-    #[rename = "maxDuration"]
+    #[js_name = "maxDuration"]
     pub(super) max_duration: Option<f64>,
 }
 
