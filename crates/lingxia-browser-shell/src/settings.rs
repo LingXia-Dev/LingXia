@@ -1,6 +1,7 @@
 use crate::host::{HostCancel, HostResult, StreamContext, await_or_cancel};
 use crate::platform_error::map_platform_error;
 use lingxia_app_context::app_config;
+use lingxia_platform::traits::app_runtime::AppRuntime;
 use lingxia_service::file::ChooseDirectoryRequest;
 use lxapp::LxApp;
 use serde::{Deserialize, Serialize};
@@ -42,8 +43,30 @@ fn language_channel() -> &'static broadcast::Sender<LanguageSettingsResult> {
     CHANNEL.get_or_init(|| broadcast::channel(16).0)
 }
 
+/// Native chrome hook fired after the display language changes, so platform
+/// shells can re-render translated labels (webui pages follow the
+/// `settings.watchLanguage` stream instead).
+static LANGUAGE_CHANGE_LISTENER: OnceLock<Box<dyn Fn() + Send + Sync>> = OnceLock::new();
+
+pub fn set_display_language_change_listener(listener: Box<dyn Fn() + Send + Sync>) {
+    let _ = LANGUAGE_CHANGE_LISTENER.set(listener);
+}
+
+/// Seed the process-wide display-language override from the settings store.
+/// Called once at runtime registration; `lxapp::get_locale` then resolves the
+/// user's choice for every consumer, native chrome i18n included.
+pub(crate) fn seed_display_language() {
+    let Some(runtime) = lxapp::get_platform() else {
+        return;
+    };
+    match lingxia_service::settings::display_language(&runtime.app_data_dir()) {
+        Ok(language) => lxapp::set_display_language(language),
+        Err(error) => log::warn!("failed to load display language: {error}"),
+    }
+}
+
 fn language_settings_result(app: &LxApp) -> HostResult<LanguageSettingsResult> {
-    let language = lingxia_service::settings::webui_language(&app.app_data_dir())
+    let language = lingxia_service::settings::display_language(&app.app_data_dir())
         .map_err(|error| lxapp::LxAppError::Runtime(error.to_string()))?;
     Ok(LanguageSettingsResult { language })
 }
@@ -124,13 +147,13 @@ fn reset_download_directory(app: Arc<LxApp>) -> HostResult<DownloadSettingsResul
 }
 
 #[lingxia::native("settings.getLanguage")]
-fn get_webui_language(app: Arc<LxApp>) -> HostResult<LanguageSettingsResult> {
+fn get_display_language(app: Arc<LxApp>) -> HostResult<LanguageSettingsResult> {
     crate::require_builtin_browser(&app)?;
     language_settings_result(&app)
 }
 
 #[lingxia::native("settings.setLanguage")]
-fn set_webui_language(
+fn set_display_language(
     app: Arc<LxApp>,
     input: SetLanguageInput,
 ) -> HostResult<LanguageSettingsResult> {
@@ -141,15 +164,19 @@ fn set_webui_language(
         ));
     }
     let language = (input.language != "auto").then_some(input.language);
-    lingxia_service::settings::set_webui_language(&app.app_data_dir(), language.as_deref())
+    lingxia_service::settings::set_display_language(&app.app_data_dir(), language.as_deref())
         .map_err(|error| lxapp::LxAppError::Runtime(error.to_string()))?;
+    lxapp::set_display_language(language.clone());
+    if let Some(listener) = LANGUAGE_CHANGE_LISTENER.get() {
+        listener();
+    }
     let result = LanguageSettingsResult { language };
     let _ = language_channel().send(result.clone());
     Ok(result)
 }
 
 #[lingxia::native("settings.watchLanguage", stream)]
-async fn watch_webui_language(
+async fn watch_display_language(
     app: Arc<LxApp>,
     mut stream: StreamContext<LanguageSettingsResult>,
 ) -> HostResult<()> {
@@ -177,7 +204,7 @@ pub(crate) fn register() {
     lxapp::host::register_host_entry(get_download_settings_host());
     lxapp::host::register_host_entry(choose_download_directory_host());
     lxapp::host::register_host_entry(reset_download_directory_host());
-    lxapp::host::register_host_entry(get_webui_language_host());
-    lxapp::host::register_host_entry(set_webui_language_host());
-    lxapp::host::register_host_entry(watch_webui_language_host());
+    lxapp::host::register_host_entry(get_display_language_host());
+    lxapp::host::register_host_entry(set_display_language_host());
+    lxapp::host::register_host_entry(watch_display_language_host());
 }

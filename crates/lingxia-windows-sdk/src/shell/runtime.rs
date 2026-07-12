@@ -477,6 +477,15 @@ pub(super) fn install() {
             sync_shell_layout(&appid);
         }
     }));
+    // Re-render chrome labels when the user changes the display language:
+    // `lingxia_logic::i18n::t` resolves through `lxapp::get_locale`, so a
+    // layout re-sync is all a language switch needs.
+    #[cfg(feature = "browser-shell")]
+    lingxia_browser_shell::set_display_language_change_listener(Box::new(|| {
+        if let Some(appid) = shell_owner_appid() {
+            sync_shell_layout(&appid);
+        }
+    }));
     #[cfg(feature = "browser-runtime")]
     lingxia_browser::set_tab_present_handler(Arc::new(|tab_id| {
         let Some(owner_appid) = shell_owner_appid() else {

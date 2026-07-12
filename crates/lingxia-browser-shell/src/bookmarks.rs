@@ -659,14 +659,11 @@ struct ExportResult {
     count: usize,
 }
 
-/// File-picker labels follow the host-owned webui language (the source behind
-/// `settings.getLanguage`); `None` = auto, which falls back to the system
-/// locale exactly like the webui i18n resolution.
-fn webui_locale_is_chinese(app: &LxApp) -> Result<bool, LxAppError> {
-    let stored = lingxia_service::settings::webui_language(&app.app_data_dir())
-        .map_err(|error| LxAppError::Runtime(error.to_string()))?;
-    let language = stored.unwrap_or_else(|| app.runtime.get_system_locale().to_string());
-    Ok(is_chinese_locale(&language))
+/// File-picker labels follow the product display language: `lxapp::get_locale`
+/// resolves the user override behind `settings.getLanguage`, else the system
+/// locale — exactly like the webui i18n resolution.
+fn display_locale_is_chinese() -> bool {
+    is_chinese_locale(&lxapp::get_locale())
 }
 
 fn is_chinese_locale(language: &str) -> bool {
@@ -979,7 +976,7 @@ async fn import_html_bookmarks(
 ) -> HostResult<Option<ImportResult>> {
     crate::require_builtin_browser(&app)?;
     let app_for_picker = app.clone();
-    let is_chinese = webui_locale_is_chinese(&app)?;
+    let is_chinese = display_locale_is_chinese();
     let selected = await_or_cancel(&mut cancel, async move {
         lingxia_service::file::choose_file(
             &*app_for_picker.runtime,

@@ -52,6 +52,7 @@ pub use lxapp::LxApp;
 pub use lxapp::host;
 pub use panel::{open_panel_lxapp, panel_item_for_id, panels_config_json};
 use serde::Deserialize;
+pub use settings::set_display_language_change_listener;
 use std::collections::BTreeMap;
 use std::io::Read;
 
@@ -141,6 +142,7 @@ pub fn register_runtime() {
     #[cfg(all(any(target_os = "macos", target_os = "windows"), feature = "proxy"))]
     proxy::register();
     settings::register();
+    settings::seed_display_language();
 }
 
 #[doc(hidden)]

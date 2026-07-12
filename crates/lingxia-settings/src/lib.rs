@@ -17,8 +17,16 @@ pub enum SettingsError {
 pub struct Settings {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub download_dir: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub webui_language: Option<String>,
+    /// User override for the product display language; `None` follows the
+    /// system locale. Applies to every host-owned UI surface (webui pages and
+    /// native chrome), not just the webui — the old stored key is kept as an
+    /// alias for files written before the rename.
+    #[serde(
+        default,
+        alias = "webuiLanguage",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub display_language: Option<String>,
 }
 
 static SETTINGS_CACHE: OnceLock<DashMap<String, Settings>> = OnceLock::new();
@@ -126,19 +134,19 @@ pub fn set_download_dir(
     save(app_data_dir, &settings)
 }
 
-pub fn get_webui_language(app_data_dir: &Path) -> Result<Option<String>, SettingsError> {
+pub fn get_display_language(app_data_dir: &Path) -> Result<Option<String>, SettingsError> {
     Ok(load(app_data_dir)?
-        .webui_language
+        .display_language
         .filter(|value| !value.trim().is_empty()))
 }
 
-pub fn set_webui_language(
+pub fn set_display_language(
     app_data_dir: &Path,
     language: Option<&str>,
 ) -> Result<(), SettingsError> {
     let _guard = store_lock().lock().unwrap_or_else(|e| e.into_inner());
     let mut settings = load(app_data_dir)?;
-    settings.webui_language = language.map(str::to_string);
+    settings.display_language = language.map(str::to_string);
     save(app_data_dir, &settings)
 }
 
@@ -147,18 +155,31 @@ mod tests {
     use super::*;
 
     #[test]
-    fn webui_language_round_trips_with_other_settings() {
+    fn display_language_round_trips_with_other_settings() {
         let dir = tempfile::tempdir().unwrap();
         set_download_dir(dir.path(), Some(dir.path().join("downloads"))).unwrap();
-        set_webui_language(dir.path(), Some("zh-CN")).unwrap();
+        set_display_language(dir.path(), Some("zh-CN")).unwrap();
 
         assert_eq!(
-            get_webui_language(dir.path()).unwrap().as_deref(),
+            get_display_language(dir.path()).unwrap().as_deref(),
             Some("zh-CN")
         );
         assert_eq!(
             get_download_dir(dir.path()).unwrap(),
             Some(dir.path().join("downloads"))
+        );
+    }
+
+    #[test]
+    fn display_language_reads_the_pre_rename_stored_key() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = settings_path(dir.path());
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, r#"{ "webuiLanguage": "zh-CN" }"#).unwrap();
+
+        assert_eq!(
+            get_display_language(dir.path()).unwrap().as_deref(),
+            Some("zh-CN")
         );
     }
 
@@ -174,9 +195,9 @@ mod tests {
         assert!(path.with_extension("json.corrupt").exists());
 
         // The store is writable again after recovery.
-        set_webui_language(dir.path(), Some("en-US")).unwrap();
+        set_display_language(dir.path(), Some("en-US")).unwrap();
         assert_eq!(
-            get_webui_language(dir.path()).unwrap().as_deref(),
+            get_display_language(dir.path()).unwrap().as_deref(),
             Some("en-US")
         );
     }
