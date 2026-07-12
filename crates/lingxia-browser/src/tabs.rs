@@ -64,6 +64,9 @@ pub(crate) struct BrowserTabState {
     /// to attribute follow-up surfaces (e.g. a new-window request from a
     /// docked aside tab) to the right owner.
     pub(crate) owner_appid: Option<String>,
+    /// Session that owned the tab. Keeping this separately from the browser
+    /// lxapp's `session_id` lets shells retire tabs after their owner restarts.
+    pub(crate) owner_session_id: Option<u64>,
 }
 
 pub(crate) struct BrowserState {
@@ -670,9 +673,12 @@ fn open_internal_browser_tab_with_scope(
 
     let normalized_target_url = normalize_browser_target_url(target_url);
     let has_target_url = !normalized_target_url.is_empty();
-    let owner_appid = match scope {
-        BrowserTabScope::Global => None,
-        BrowserTabScope::OwnerSession { owner_appid, .. } => Some(owner_appid.to_string()),
+    let (owner_appid, owner_session_id) = match scope {
+        BrowserTabScope::Global => (None, None),
+        BrowserTabScope::OwnerSession {
+            owner_appid,
+            owner_session_id,
+        } => (Some(owner_appid.to_string()), Some(owner_session_id)),
     };
     let tab_id = resolve_browser_tab_id(requested_tab_key, scope)?;
     let path = browser_tab_path_for_runtime_id(&tab_id);
@@ -712,6 +718,7 @@ fn open_internal_browser_tab_with_scope(
                     standalone,
                     aside,
                     owner_appid,
+                    owner_session_id,
                 },
             );
         }
@@ -892,6 +899,27 @@ pub(crate) fn close_browser_tab(tab_id: &str) -> Result<(), LxAppError> {
     Ok(())
 }
 
+/// Remove tabs owned by earlier incarnations of an lxapp. Pinned shortcuts
+/// remain in the bookmark store and can reopen a fresh tab in the new session.
+pub(crate) fn prune_stale_owner_tabs(owner_appid: &str, current_session_id: u64) -> usize {
+    let stale_ids = {
+        let state = lock_state();
+        state
+            .tabs
+            .iter()
+            .filter(|(_, tab)| {
+                tab.owner_appid.as_deref() == Some(owner_appid)
+                    && tab.owner_session_id != Some(current_session_id)
+            })
+            .map(|(tab_id, _)| tab_id.clone())
+            .collect::<Vec<_>>()
+    };
+    for tab_id in &stale_ids {
+        let _ = close_browser_tab(tab_id);
+    }
+    stale_ids.len()
+}
+
 /// Chrome-style tab discard: destroy the tab's WebView to free its native
 /// memory while keeping the tab entry (`current_url` / `title`) so the sidebar
 /// still shows it. Reactivation recreates the WebView and reloads the URL.
@@ -1068,6 +1096,7 @@ mod tests {
                 standalone: false,
                 aside: false,
                 owner_appid: None,
+                owner_session_id: None,
             },
         );
         assert!(browser_update_tab_info(

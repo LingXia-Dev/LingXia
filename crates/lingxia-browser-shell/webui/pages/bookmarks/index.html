@@ -479,7 +479,7 @@
         call('bookmarks.move', {
           id: rowId,
           groupId: groupId || undefined
-        }).catch(fail);
+        }).then(refreshUnlessWatching, fail);
       }
 
       function scopeEntries() {
@@ -614,22 +614,42 @@
       function refresh() {
         call('bookmarks.list').then(apply, fail);
       }
+      // The watch stream re-renders after every mutation; fetch manually only
+      // when it is down (unsupported transport or reconnecting).
+      function refreshUnlessWatching() {
+        if (!watchHandle) refresh();
+      }
 
       var watchHandle = null;
+      var watchRetryMs = 1000;
+      var watchRetryTimer = null;
+      function scheduleWatch() {
+        if (watchRetryTimer != null) return;
+        watchRetryTimer = setTimeout(function () {
+          watchRetryTimer = null;
+          watch();
+        }, watchRetryMs);
+        watchRetryMs = Math.min(watchRetryMs * 2, 30000);
+      }
       function watch() {
         var api = bridge();
         if (typeof api.stream !== 'function') return;
         var previous = watchHandle;
         var handle = api.stream('bookmarks.watch');
+        var startedAt = Date.now();
         watchHandle = handle;
         if (previous && typeof previous.cancel === 'function') previous.cancel();
         function recover(err) {
           if (watchHandle !== handle) return;
-          // Transport reset: re-subscribe, then reload in the background so
-          // live updates keep flowing.
+          watchHandle = null;
+          // Transport reset: reload now, then reconnect with bounded backoff.
+          // Only a stream that stayed healthy for a while resets the backoff —
+          // the seed snapshot must not, or a flapping stream reconnects at the
+          // floor forever.
+          if (Date.now() - startedAt > 30000) watchRetryMs = 1000;
           console.warn('[Bookmarks] watch interrupted; re-subscribing:', err);
-          watch();
           refresh();
+          scheduleWatch();
         }
         handle.onEvent(function (snapshot) {
           if (watchHandle !== handle) return;
@@ -680,6 +700,7 @@
               count: result.imported,
               skipped: result.skipped
             }));
+            refreshUnlessWatching();
           }
         }, function (err) {
           console.error('[Bookmarks] import failed:', err);
@@ -709,7 +730,7 @@
           var group = state.snapshot.groups.find(function (g) { return g.id === gid; });
           var name = prompt(t('bookmarks.renameGroup'), group ? group.name : '');
           if (name && name.trim()) {
-            call('bookmarks.renameGroup', { id: gid, name: name.trim() }).catch(fail);
+            call('bookmarks.renameGroup', { id: gid, name: name.trim() }).then(refreshUnlessWatching, fail);
           }
           return;
         }
@@ -717,7 +738,7 @@
         if (deleteBtn) {
           event.stopPropagation();
           call('bookmarks.deleteGroup', { id: deleteBtn.getAttribute('data-group-delete') })
-            .then(function () { toast(t('bookmarks.groupDeleted')); }, fail);
+            .then(function () { toast(t('bookmarks.groupDeleted')); refreshUnlessWatching();
           return;
         }
         var item = event.target.closest('.rail-item');
@@ -743,6 +764,7 @@
         call('bookmarks.createGroup', { name: name }).then(function (group) {
           newGroupForm.classList.remove('active');
           state.scope = group.id;
+          refreshUnlessWatching();
         }, fail);
       });
       newGroupInput.addEventListener('blur', function () {
@@ -769,6 +791,7 @@
             addUrl.value = ''; addTitle.value = '';
             addCard.classList.remove('active');
             toast(t(result.created ? 'bookmarks.added' : 'bookmarks.alreadyAdded'));
+            refreshUnlessWatching();
           }, fail);
       }
       document.getElementById('addConfirm').addEventListener('click', submitAdd);
@@ -795,12 +818,14 @@
           if (!entry) return;
           call('bookmarks.setPinned', { id: id, pinned: !entry.pinned }).then(function (updated) {
             toast(t(updated.pinned ? 'bookmarks.pinnedToast' : 'bookmarks.unpinnedToast'));
+            refreshUnlessWatching();
           }, fail);
           return;
         }
         if (event.target.closest('[data-delete]')) {
           call('bookmarks.remove', { id: id }).then(function () {
             toast(t('bookmarks.removedToast'));
+            refreshUnlessWatching();
           }, fail);
           return;
         }
@@ -830,7 +855,7 @@
         if (event.key === 'Enter') {
           var title = input.value.trim();
           if (title) {
-            call('bookmarks.rename', { id: row.getAttribute('data-id'), title: title }).catch(fail);
+            call('bookmarks.rename', { id: row.getAttribute('data-id'), title: title }).then(refreshUnlessWatching, fail);
           } else {
             row.classList.remove('renaming');
           }
@@ -926,7 +951,7 @@
         if (event.clientY > rect.top + rect.height / 2) to += 1;
         ids.splice(to, 0, dragId);
         var groupId = state.scope === 'ungrouped' ? undefined : state.scope;
-        call('bookmarks.reorder', { groupId: groupId, orderedIds: ids }).catch(fail);
+        call('bookmarks.reorder', { groupId: groupId, orderedIds: ids }).then(refreshUnlessWatching, fail);
       });
 
       list.addEventListener('dragend', endDrag);

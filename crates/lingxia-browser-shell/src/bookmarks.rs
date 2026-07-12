@@ -325,6 +325,15 @@ fn rename_group_op(
     name: &str,
 ) -> Result<BookmarkGroup, LxAppError> {
     let name = validated_name(name, "group name")?;
+    if snapshot
+        .groups
+        .iter()
+        .any(|group| group.name == name && group.id != id)
+    {
+        return Err(LxAppError::InvalidParameter(format!(
+            "group already exists: {name}"
+        )));
+    }
     let group = snapshot
         .groups
         .iter_mut()
@@ -929,20 +938,8 @@ fn create_group(app: Arc<LxApp>, input: GroupNameInput) -> HostResult<BookmarkGr
 #[lingxia::native("bookmarks.renameGroup")]
 fn rename_group(app: Arc<LxApp>, input: GroupRenameInput) -> HostResult<BookmarkGroup> {
     crate::require_builtin_browser(&app)?;
-    let name = validated_name(&input.name, "group name")?;
     mutate(&app.app_data_dir(), |snapshot| {
-        // Duplicate-name guard is webui-route-only; native-chrome `command_json`
-        // has never enforced it.
-        if snapshot
-            .groups
-            .iter()
-            .any(|g| g.name == name && g.id != input.id)
-        {
-            return Err(LxAppError::InvalidParameter(format!(
-                "group already exists: {name}"
-            )));
-        }
-        rename_group_op(snapshot, &input.id, &name)
+        rename_group_op(snapshot, &input.id, &input.name)
     })
 }
 
@@ -1224,6 +1221,27 @@ mod tests {
         )
         .unwrap();
         assert_eq!(snapshot.entries[0].id, "b");
+    }
+
+    #[test]
+    fn rename_group_rejects_duplicate_names_for_every_caller() {
+        let mut snapshot = BookmarksSnapshot {
+            version: CURRENT_VERSION,
+            groups: vec![
+                BookmarkGroup {
+                    id: "g1".into(),
+                    name: "Work".into(),
+                },
+                BookmarkGroup {
+                    id: "g2".into(),
+                    name: "Personal".into(),
+                },
+            ],
+            entries: Vec::new(),
+        };
+        let error = rename_group_op(&mut snapshot, "g2", "Work").unwrap_err();
+        assert!(matches!(error, LxAppError::InvalidParameter(_)));
+        assert_eq!(snapshot.groups[1].name, "Personal");
     }
 
     #[test]

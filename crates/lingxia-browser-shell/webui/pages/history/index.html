@@ -280,26 +280,53 @@
             : t('history.countMany', { count: state.entries.length });
         document.getElementById('clearButton').disabled = state.entries.length === 0;
       }
-      function apply(snapshot) {
-        state.entries = snapshot && Array.isArray(snapshot.entries) ? snapshot.entries : [];
+      function apply(update) {
+        if (update && update.kind === 'upsert' && update.entry) {
+          state.entries = state.entries.filter(function (entry) { return entry.id !== update.entry.id; });
+          state.entries.push(update.entry);
+          state.entries.sort(function (left, right) { return right.visitedAtMs - left.visitedAtMs; });
+          // The store's size cap arrives as explicit remove events; re-slicing
+          // here could tie-break differently and drift from the store.
+        } else if (update && update.kind === 'remove') {
+          state.entries = state.entries.filter(function (entry) { return entry.id !== update.id; });
+        } else {
+          // history.list returns a plain snapshot; history.watch seeds with a
+          // tagged snapshot so subsequent navigation can use small deltas.
+          state.entries = update && Array.isArray(update.entries) ? update.entries : [];
+        }
         render();
       }
       function refresh() { call('history.list').then(apply, fail); }
       var watchHandle = null;
+      var watchRetryMs = 1000;
+      var watchRetryTimer = null;
+      function scheduleWatch() {
+        if (watchRetryTimer != null) return;
+        watchRetryTimer = setTimeout(function () {
+          watchRetryTimer = null;
+          watch();
+        }, watchRetryMs);
+        watchRetryMs = Math.min(watchRetryMs * 2, 30000);
+      }
       function watch() {
         var api = bridge();
         if (typeof api.stream !== 'function') return;
         var previous = watchHandle;
         var handle = api.stream('history.watch');
+        var startedAt = Date.now();
         watchHandle = handle;
         if (previous && typeof previous.cancel === 'function') previous.cancel();
         function recover(err) {
           if (watchHandle !== handle) return;
-          // Transport reset: re-subscribe, then reload in the background so
-          // live updates keep flowing.
+          watchHandle = null;
+          // Transport reset: reload now, then reconnect with bounded backoff.
+          // Only a stream that stayed healthy for a while resets the backoff —
+          // the seed snapshot must not, or a flapping stream reconnects at the
+          // floor forever.
+          if (Date.now() - startedAt > 30000) watchRetryMs = 1000;
           console.warn('[History] watch interrupted; re-subscribing:', err);
-          watch();
           refresh();
+          scheduleWatch();
         }
         if (handle && typeof handle.onEvent === 'function') {
           handle.onEvent(function (snapshot) {
@@ -313,15 +340,24 @@
         }
       }
 
+      var searchRenderTimer = null;
       document.getElementById('search').addEventListener('input', function (event) {
         state.query = event.target.value;
-        render();
+        if (searchRenderTimer != null) clearTimeout(searchRenderTimer);
+        searchRenderTimer = setTimeout(function () {
+          searchRenderTimer = null;
+          render();
+        }, 120);
       });
       document.getElementById('groups').addEventListener('click', function (event) {
         var button = event.target.closest('[data-remove]');
         if (!button) return;
         var row = button.closest('.row');
-        call('history.remove', { id: row.getAttribute('data-id') }).catch(fail);
+        var id = row.getAttribute('data-id');
+        call('history.remove', { id: id }).then(function () {
+          state.entries = state.entries.filter(function (entry) { return entry.id !== id; });
+          render();
+        }, fail);
       });
       var dialog = document.getElementById('clearDialog');
       document.getElementById('clearButton').addEventListener('click', function () {

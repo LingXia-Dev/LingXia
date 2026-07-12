@@ -165,8 +165,8 @@ fn bookmark_line(url: &str, title: &str, created_at_ms: u64, indent: &str) -> St
     )
 }
 
-/// Returns the HTML and the number of bookmarks actually emitted (entries
-/// with an orphaned group id are skipped).
+/// Returns the HTML and the number of bookmarks actually emitted. Entries
+/// whose group no longer exists are preserved in the ungrouped section.
 pub(crate) fn export_netscape_html(
     snapshot: &BookmarksSnapshot,
     exported_at_ms: u64,
@@ -184,11 +184,17 @@ pub(crate) fn export_netscape_html(
 <DL><p>\n",
     );
 
-    for entry in snapshot
-        .entries
+    let known_group_ids = snapshot
+        .groups
         .iter()
-        .filter(|entry| entry.group_id.is_none())
-    {
+        .map(|group| group.id.as_str())
+        .collect::<std::collections::HashSet<_>>();
+    for entry in snapshot.entries.iter().filter(|entry| {
+        entry
+            .group_id
+            .as_deref()
+            .is_none_or(|group_id| !known_group_ids.contains(group_id))
+    }) {
         output.push_str(&bookmark_line(
             &entry.url,
             &entry.title,
@@ -283,7 +289,7 @@ mod tests {
     }
 
     #[test]
-    fn export_count_skips_entries_with_orphaned_groups() {
+    fn export_preserves_entries_with_orphaned_groups_as_ungrouped() {
         let mut snapshot = BookmarksSnapshot::default();
         snapshot.entries = vec![
             BookmarkEntry {
@@ -304,7 +310,7 @@ mod tests {
             },
         ];
         let (exported, count) = export_netscape_html(&snapshot, 0);
-        assert_eq!(count, 1);
-        assert_eq!(parse_netscape_html(&exported).len(), 1);
+        assert_eq!(count, 2);
+        assert_eq!(parse_netscape_html(&exported).len(), 2);
     }
 }

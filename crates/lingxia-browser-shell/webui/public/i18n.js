@@ -597,16 +597,32 @@
     function refreshFromHost() {
       bridge.invoke('settings.getLanguage').then(adoptHostLocale, function () {});
     }
+    var languageWatchRetryMs = 1000;
+    var languageWatchRetryTimer = null;
+    function scheduleLanguageWatch() {
+      if (languageWatchRetryTimer != null) return;
+      languageWatchRetryTimer = global.setTimeout(function () {
+        languageWatchRetryTimer = null;
+        attachLanguageWatch();
+      }, languageWatchRetryMs);
+      languageWatchRetryMs = Math.min(languageWatchRetryMs * 2, 30000);
+    }
     function attachLanguageWatch() {
       if (typeof bridge.stream !== 'function') return;
       var watch = bridge.stream('settings.watchLanguage');
+      var startedAt = Date.now();
       api.languageWatch = watch;
       watch.onEvent(adoptHostLocale);
       watch.onError(function () {
         if (api.languageWatch !== watch) return;
-        // Transport reset: re-sync then re-subscribe so changes keep applying.
+        api.languageWatch = null;
+        // Transport reset: re-sync immediately, then reconnect with backoff.
+        // Only a stream that stayed healthy for a while resets the backoff —
+        // the seed event must not, or a flapping stream reconnects at the
+        // floor forever.
+        if (Date.now() - startedAt > 30000) languageWatchRetryMs = 1000;
         refreshFromHost();
-        attachLanguageWatch();
+        scheduleLanguageWatch();
       });
     }
     refreshFromHost();

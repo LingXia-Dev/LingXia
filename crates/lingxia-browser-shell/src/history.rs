@@ -35,6 +35,14 @@ pub struct HistorySnapshot {
     pub entries: Vec<HistoryEntry>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+enum HistoryWatchEvent {
+    Snapshot { entries: Vec<HistoryEntry> },
+    Upsert { entry: HistoryEntry },
+    Remove { id: String },
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct IdInput {
@@ -86,8 +94,8 @@ fn store_lock() -> &'static Mutex<()> {
     LOCK.get_or_init(|| Mutex::new(()))
 }
 
-fn channel() -> &'static broadcast::Sender<HistorySnapshot> {
-    static CHANNEL: OnceLock<broadcast::Sender<HistorySnapshot>> = OnceLock::new();
+fn channel() -> &'static broadcast::Sender<HistoryWatchEvent> {
+    static CHANNEL: OnceLock<broadcast::Sender<HistoryWatchEvent>> = OnceLock::new();
     CHANNEL.get_or_init(|| broadcast::channel(32).0)
 }
 
@@ -160,7 +168,38 @@ fn broadcast_snapshot(connection: &Connection) -> Result<(), LxAppError> {
     if channel().receiver_count() == 0 {
         return Ok(());
     }
-    let _ = channel().send(load_from(connection)?);
+    let snapshot = load_from(connection)?;
+    let _ = channel().send(HistoryWatchEvent::Snapshot {
+        entries: snapshot.entries,
+    });
+    Ok(())
+}
+
+fn load_entry(connection: &Connection, id: &str) -> Result<Option<HistoryEntry>, LxAppError> {
+    connection
+        .query_row(
+            "SELECT id, url, title, visited_at_ms FROM history WHERE id = ?1",
+            [id],
+            |row| {
+                Ok(HistoryEntry {
+                    id: row.get(0)?,
+                    url: row.get(1)?,
+                    title: row.get(2)?,
+                    visited_at_ms: row.get::<_, i64>(3)?.max(0) as u64,
+                })
+            },
+        )
+        .optional()
+        .map_err(database_error)
+}
+
+fn broadcast_upsert(connection: &Connection, id: &str) -> Result<(), LxAppError> {
+    if channel().receiver_count() == 0 {
+        return Ok(());
+    }
+    if let Some(entry) = load_entry(connection, id)? {
+        let _ = channel().send(HistoryWatchEvent::Upsert { entry });
+    }
     Ok(())
 }
 
@@ -201,14 +240,19 @@ fn record_in(
     let coalesced = latest.as_ref().is_some_and(|(_, latest_url, latest_at)| {
         latest_url == &normalized && visited_at_ms.saturating_sub(*latest_at) <= COALESCE_WINDOW_MS
     });
-    if coalesced {
-        let latest_id = &latest.as_ref().expect("coalesced history entry exists").0;
+    let mut pruned_ids: Vec<String> = Vec::new();
+    let affected_id = if coalesced {
+        let latest_id = latest
+            .as_ref()
+            .expect("coalesced history entry exists")
+            .0
+            .clone();
         if title.is_empty() {
             transaction
                 .execute(
                     "UPDATE history SET url = ?1, normalized_url = ?2, visited_at_ms = ?3
                      WHERE id = ?4",
-                    params![url, normalized, visited_at_ms as i64, latest_id],
+                    params![url, normalized, visited_at_ms as i64, &latest_id],
                 )
                 .map_err(database_error)?;
         } else {
@@ -217,42 +261,53 @@ fn record_in(
                     "UPDATE history
                      SET url = ?1, normalized_url = ?2, title = ?3, visited_at_ms = ?4
                      WHERE id = ?5",
-                    params![url, normalized, title, visited_at_ms as i64, latest_id],
+                    params![url, normalized, title, visited_at_ms as i64, &latest_id],
                 )
                 .map_err(database_error)?;
         }
+        latest_id
     } else {
         let display_title = if title.is_empty() {
             default_title(url)
         } else {
             title.to_string()
         };
+        let id = next_id();
         transaction
             .execute(
                 "INSERT INTO history (id, url, normalized_url, title, visited_at_ms)
                  VALUES (?1, ?2, ?3, ?4, ?5)",
-                params![
-                    next_id(),
-                    url,
-                    normalized,
-                    display_title,
-                    visited_at_ms as i64
-                ],
+                params![&id, url, normalized, display_title, visited_at_ms as i64],
             )
             .map_err(database_error)?;
-        transaction
-            .execute(
+        // Watchers apply deltas, so the cap prune must reach them as explicit
+        // removals — a client-side re-sort can tie-break differently and drift
+        // from the store.
+        let mut prune = transaction
+            .prepare(
                 "DELETE FROM history WHERE id IN (
                      SELECT id FROM history
                      ORDER BY visited_at_ms DESC, rowid DESC
                      LIMIT -1 OFFSET ?1
-                 )",
-                [MAX_ENTRIES as i64],
+                 ) RETURNING id",
             )
             .map_err(database_error)?;
-    }
+        let ids = prune
+            .query_map([MAX_ENTRIES as i64], |row| row.get::<_, String>(0))
+            .map_err(database_error)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(database_error)?;
+        drop(prune);
+        pruned_ids = ids;
+        id
+    };
     transaction.commit().map_err(database_error)?;
-    broadcast_snapshot(&connection)?;
+    broadcast_upsert(&connection, &affected_id)?;
+    if channel().receiver_count() > 0 {
+        for id in pruned_ids {
+            let _ = channel().send(HistoryWatchEvent::Remove { id });
+        }
+    }
     Ok(!coalesced)
 }
 
@@ -276,8 +331,27 @@ fn update_title_in(app_data_dir: &Path, url: &str, title: &str) -> Result<bool, 
         )
         .map_err(database_error)?
         > 0;
-    if changed {
-        broadcast_snapshot(&connection)?;
+    if changed && channel().receiver_count() > 0 {
+        let newest = connection
+            .query_row(
+                "SELECT id, url, title, visited_at_ms FROM history
+                 WHERE normalized_url = ?1
+                 ORDER BY visited_at_ms DESC, rowid DESC LIMIT 1",
+                [normalize_url(url)],
+                |row| {
+                    Ok(HistoryEntry {
+                        id: row.get(0)?,
+                        url: row.get(1)?,
+                        title: row.get(2)?,
+                        visited_at_ms: row.get::<_, i64>(3)?.max(0) as u64,
+                    })
+                },
+            )
+            .optional()
+            .map_err(database_error)?;
+        if let Some(entry) = newest {
+            let _ = channel().send(HistoryWatchEvent::Upsert { entry });
+        }
     }
     Ok(changed)
 }
@@ -429,7 +503,10 @@ fn remove_history_entry(app: Arc<LxApp>, input: IdInput) -> HostResult<()> {
             input.id
         )));
     }
-    broadcast_snapshot(&connection)
+    let _ = channel().send(HistoryWatchEvent::Remove {
+        id: input.id.clone(),
+    });
+    Ok(())
 }
 
 #[lingxia::native("history.clear")]
@@ -441,7 +518,7 @@ fn clear_history(app: Arc<LxApp>, input: ClearInput) -> HostResult<ClearResult> 
 #[lingxia::native("history.watch", stream)]
 async fn watch_history(
     app: Arc<LxApp>,
-    mut stream: StreamContext<HistorySnapshot>,
+    mut stream: StreamContext<HistoryWatchEvent>,
 ) -> HostResult<()> {
     crate::require_builtin_browser(&app)?;
     let mut receiver = channel().subscribe();
@@ -449,17 +526,23 @@ async fn watch_history(
         let _guard = store_lock()
             .lock()
             .unwrap_or_else(|error| error.into_inner());
-        stream.send(load(&app.app_data_dir())?)?;
+        let snapshot = load(&app.app_data_dir())?;
+        stream.send(HistoryWatchEvent::Snapshot {
+            entries: snapshot.entries,
+        })?;
     }
     loop {
         tokio::select! {
             _ = stream.canceled() => return Ok(()),
             received = receiver.recv() => {
                 match received {
-                    Ok(snapshot) => stream.send(snapshot)?,
+                    Ok(event) => stream.send(event)?,
                     Err(broadcast::error::RecvError::Lagged(_)) => {
                         let _guard = store_lock().lock().unwrap_or_else(|error| error.into_inner());
-                        stream.send(load(&app.app_data_dir())?)?;
+                        let snapshot = load(&app.app_data_dir())?;
+                        stream.send(HistoryWatchEvent::Snapshot {
+                            entries: snapshot.entries,
+                        })?;
                     }
                     Err(broadcast::error::RecvError::Closed) => return stream.end(()),
                 }

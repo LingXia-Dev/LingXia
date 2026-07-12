@@ -126,6 +126,11 @@ pub fn close(tab_id: &str) -> Result<(), LxAppError> {
     tabs::close_browser_tab(tab_id)
 }
 
+/// Retire browser tabs owned by previous sessions of an lxapp.
+pub fn prune_stale_owner_tabs(owner_appid: &str, current_session_id: u64) -> usize {
+    tabs::prune_stale_owner_tabs(owner_appid, current_session_id)
+}
+
 /// Discard a tab's WebView to free memory while keeping its sidebar entry.
 pub fn discard(tab_id: &str) -> Result<(), LxAppError> {
     tabs::discard_browser_tab(tab_id)
