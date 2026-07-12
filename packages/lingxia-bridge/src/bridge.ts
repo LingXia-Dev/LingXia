@@ -392,6 +392,18 @@ function ensureAppleDownstream(): void {
     });
 }
 
+// Dev hook: drop the current downstream and reconnect, exactly as WebKit does
+// when it replaces the streaming fetch. The reconnect carries the real
+// `from=<lastSeq>`, so this exercises the true resume path. Exposed for repro
+// harnesses; a no-op off the Apple transport.
+function forceDownstreamReconnect(): void {
+  if (!useAppleDownstreamTransport()) return;
+  const task = appleDownstreamTask;
+  appleDownstreamAbortController?.abort();
+  if (task) task.finally(() => ensureAppleDownstream());
+  else ensureAppleDownstream();
+}
+
 function getMessagePort(): Promise<MessagePort> {
   if (messagePort) return Promise.resolve(messagePort);
   if (portInitState.promise) return portInitState.promise;
@@ -2015,6 +2027,9 @@ export function initBridge(): void {
     }
 
     window.LingXiaBridge = LingXiaBridge;
+    // Dev hook so repro/test pages can simulate a WebKit stream replacement.
+    (window as unknown as Record<string, unknown>).__lxForceDownstreamReconnect =
+      forceDownstreamReconnect;
     installNativeComponentCoverageMonitor({
       os: getPlatformOS(),
       send: sendNativeComponentMessage,

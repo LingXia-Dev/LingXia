@@ -22,6 +22,10 @@ Page({
     await lx.navigateTo({ page: "channel" });
   },
 
+  navigateToBridgeReproPage: async function() {
+    await lx.navigateTo({ page: "bridge-repro" });
+  },
+
   // Navigate to UI API page with specific type parameter
   navigateToUIPage: async function(params) {
     const { type = "navigation" } = params || {};
