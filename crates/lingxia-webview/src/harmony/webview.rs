@@ -1504,6 +1504,35 @@ extern "C" fn on_page_end_callback(web_tag: *const c_char, _user_data: *mut c_vo
     }
 }
 
+/// ArkWeb exposes URL, title, and back/forward availability only through the
+/// ArkTS `WebviewController`, so the ets layer samples them on page and
+/// progress callbacks and pushes them here — completing the Harmony
+/// adapter's observable-state reporting on the shared delegate contract.
+/// Empty strings mean "no sample" and are skipped.
+pub fn notify_webview_state(
+    web_tag: &str,
+    url: &str,
+    title: &str,
+    can_go_back: bool,
+    can_go_forward: bool,
+) {
+    let webtag = WebTag::from(web_tag);
+    if find_webview(&webtag).is_none() {
+        log::debug!("Ignoring webview state for stale webview {}", web_tag);
+        return;
+    }
+    let Some(delegate) = find_webview_delegate(&webtag) else {
+        return;
+    };
+    if !url.is_empty() {
+        delegate.on_url_changed(url);
+    }
+    if !title.is_empty() {
+        delegate.on_title_changed(title);
+    }
+    delegate.on_history_changed(can_go_back, can_go_forward);
+}
+
 extern "C" fn on_destroy_callback(web_tag: *const c_char, _user_data: *mut c_void) {
     if web_tag.is_null() {
         log::warn!("on_destroy_callback received null web_tag");

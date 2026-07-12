@@ -173,6 +173,20 @@ pub fn host_log_enabled(level: i32) -> bool {
     crate::logging::host_log_enabled(level)
 }
 
+/// Push ArkTS-sampled WebView state (URL/title/back-forward) into the Rust
+/// webview delegate; the ArkWeb C surface cannot query these itself. Empty
+/// strings mean "no sample".
+#[napi]
+pub fn notify_web_view_state(
+    web_tag: String,
+    url: String,
+    title: String,
+    can_go_back: bool,
+    can_go_forward: bool,
+) {
+    webview_harmony::notify_webview_state(&web_tag, &url, &title, can_go_back, can_go_forward);
+}
+
 /// Register custom schemes (must be called before WebEngine initialization)
 #[napi]
 pub fn register_custom_schemes() -> bool {
