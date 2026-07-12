@@ -61,10 +61,7 @@ rong::js_api! {
     }
 }
 
-async fn get_image_info_api(
-    ctx: JSContext,
-    options: JSGetImageInfoOptions,
-) -> JSResult<ImageInfo> {
+async fn get_image_info_api(ctx: JSContext, options: JSGetImageInfoOptions) -> JSResult<ImageInfo> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let runtime = &lxapp.runtime;
 
