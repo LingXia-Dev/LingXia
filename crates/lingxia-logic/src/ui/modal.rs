@@ -7,24 +7,24 @@ use lingxia_platform::error::PlatformError;
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 use lingxia_platform::traits::ui::{ModalOptions, UserFeedback};
 use lxapp::{LxApp, lx};
-use rong::{FromJSObj, IntoJSObj, JSContext, JSFunc, JSResult, RongJSError};
+use rong::{FromJSObject, IntoJSObject, JSContext, JSFunc, JSResult, RongJSError};
 use serde::Deserialize;
 use std::sync::Arc;
 
 /// Modal options from JavaScript (compatible with common mini-app APIs)
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct JSModalOptions {
     title: Option<String>,
     content: Option<String>,
-    #[rename = "showCancel"]
+    #[js_name = "showCancel"]
     show_cancel: Option<bool>,
-    #[rename = "cancelText"]
+    #[js_name = "cancelText"]
     cancel_text: Option<String>,
-    #[rename = "cancelColor"]
+    #[js_name = "cancelColor"]
     cancel_color: Option<String>,
-    #[rename = "confirmText"]
+    #[js_name = "confirmText"]
     confirm_text: Option<String>,
-    #[rename = "confirmColor"]
+    #[js_name = "confirmColor"]
     confirm_color: Option<String>,
 }
 
@@ -46,7 +46,7 @@ impl JSModalOptions {
 }
 
 /// JavaScript ModalResult for return value
-#[derive(Debug, Clone, IntoJSObj)]
+#[derive(Debug, Clone, IntoJSObject)]
 struct JSModalResult {
     confirm: bool,
     cancel: bool,

@@ -2,21 +2,21 @@ use lingxia_platform::traits::device::Device;
 use lingxia_platform::{DeviceInfo, ScreenInfo};
 use lxapp::LxApp;
 use lxapp::lx;
-use rong::{IntoJSObj, JSContext, JSFunc, JSResult};
+use rong::{IntoJSObject, JSContext, JSFunc, JSResult};
 
-#[derive(Debug, Clone, IntoJSObj)]
+#[derive(Debug, Clone, IntoJSObject)]
 pub struct DevInfoObj {
     brand: String,
     model: String,
-    #[rename = "marketName"]
+    #[js_name = "marketName"]
     market_name: String,
-    #[rename = "osName"]
+    #[js_name = "osName"]
     os_name: String,
-    #[rename = "osVersion"]
+    #[js_name = "osVersion"]
     os_version: String,
 }
 
-#[derive(Debug, Clone, IntoJSObj)]
+#[derive(Debug, Clone, IntoJSObject)]
 pub struct ScreenInfoObj {
     width: f64,
     height: f64,

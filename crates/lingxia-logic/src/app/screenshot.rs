@@ -6,22 +6,22 @@ use lingxia_platform::traits::screenshot::AppScreenshot;
 use lingxia_service::storage;
 use lxapp::LxApp;
 use rong::function::Optional;
-use rong::{FromJSObj, IntoJSObj, JSContext, JSFunc, JSObject, JSResult};
+use rong::{FromJSObject, IntoJSObject, JSContext, JSFunc, JSObject, JSResult};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-#[derive(Debug, Clone, Default, FromJSObj)]
+#[derive(Debug, Clone, Default, FromJSObject)]
 struct JSAppScreenshotOptions {
     /// Platform-specific window id (desktop only). Omitted: the platform
     /// captures the key/main window (desktop) or the sole window (mobile).
-    #[rename = "windowId"]
+    #[js_name = "windowId"]
     window_id: Option<String>,
 }
 
-#[derive(Debug, Clone, IntoJSObj)]
+#[derive(Debug, Clone, IntoJSObject)]
 struct JSAppScreenshotResult {
-    #[rename = "tempFilePath"]
+    #[js_name = "tempFilePath"]
     temp_file_path: String,
     width: Option<u32>,
     height: Option<u32>,

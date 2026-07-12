@@ -9,7 +9,7 @@ use lingxia_platform::traits::media_runtime::{
 };
 use lingxia_service::storage;
 use lxapp::{LxApp, lx};
-use rong::{FromJSObj, HostError, IntoJSObj, JSContext, JSFunc, JSObject, JSResult, Promise};
+use rong::{FromJSObject, HostError, IntoJSObject, JSContext, JSFunc, JSObject, JSResult, Promise};
 use serde::Deserialize;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -21,43 +21,43 @@ use tokio::sync::{Mutex, mpsc};
 static THUMBNAIL_NAME_COUNTER: AtomicU64 = AtomicU64::new(0);
 static COMPRESS_VIDEO_NAME_COUNTER: AtomicU64 = AtomicU64::new(0);
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct JSGetVideoInfoOptions {
     path: String,
 }
 
-#[derive(Debug, Clone, IntoJSObj)]
+#[derive(Debug, Clone, IntoJSObject)]
 struct JSVideoInfoResult {
     width: u32,
     height: u32,
-    #[rename = "durationMs"]
+    #[js_name = "durationMs"]
     duration_ms: u64,
     rotation: Option<u16>,
     bitrate: Option<u64>,
     fps: Option<f64>,
-    #[rename = "type"]
+    #[js_name = "type"]
     video_type: Option<String>,
     path: String,
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct JSVideoThumbnailOptions {
     path: String,
-    #[rename = "outputPath"]
+    #[js_name = "outputPath"]
     output_path: Option<String>,
-    #[rename = "maxWidth"]
+    #[js_name = "maxWidth"]
     max_width: Option<u32>,
-    #[rename = "maxHeight"]
+    #[js_name = "maxHeight"]
     max_height: Option<u32>,
-    #[rename = "timeMs"]
+    #[js_name = "timeMs"]
     time_ms: Option<i64>,
     quality: Option<i32>,
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct JSCompressVideoOptions {
     path: String,
-    #[rename = "outputPath"]
+    #[js_name = "outputPath"]
     output_path: Option<String>,
     quality: Option<String>,
     bitrate: Option<u32>,
@@ -65,35 +65,35 @@ struct JSCompressVideoOptions {
     resolution: Option<f64>,
 }
 
-#[derive(Debug, Clone, IntoJSObj)]
+#[derive(Debug, Clone, IntoJSObject)]
 struct JSVideoThumbnailResult {
-    #[rename = "tempFilePath"]
+    #[js_name = "tempFilePath"]
     temp_file_path: String,
     width: u32,
     height: u32,
-    #[rename = "type"]
+    #[js_name = "type"]
     image_type: String,
 }
 
-#[derive(Debug, Clone, IntoJSObj)]
+#[derive(Debug, Clone, IntoJSObject)]
 struct JSCompressVideoResult {
-    #[rename = "tempFilePath"]
+    #[js_name = "tempFilePath"]
     temp_file_path: String,
     width: u32,
     height: u32,
-    #[rename = "durationMs"]
+    #[js_name = "durationMs"]
     duration_ms: u64,
     size: u64,
-    #[rename = "type"]
+    #[js_name = "type"]
     video_type: String,
 }
 
-#[derive(Debug, Clone, IntoJSObj)]
+#[derive(Debug, Clone, IntoJSObject)]
 struct JSCompressProgressEvent {
     progress: u8,
 }
 
-#[derive(Debug, Clone, IntoJSObj)]
+#[derive(Debug, Clone, IntoJSObject)]
 struct JSCompressIteratorStep {
     done: bool,
     value: Option<JSCompressProgressEvent>,

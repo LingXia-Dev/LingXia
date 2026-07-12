@@ -1,7 +1,7 @@
 use crate::i18n::{js_internal_error, js_service_unavailable_error};
 use lingxia_platform::traits::ui::UIUpdate;
 use lxapp::{LxApp, lx};
-use rong::{FromJSObj, JSContext, JSFunc, JSResult};
+use rong::{FromJSObject, JSContext, JSFunc, JSResult};
 use std::sync::Arc;
 
 /// Check if NavigationBar is currently visible for the current page
@@ -36,17 +36,17 @@ fn update_current_navbar(
 }
 
 /// Options for setNavigationBarTitle
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct SetNavigationBarTitleOptions {
     title: String,
 }
 
 /// Options for setNavigationBarColor
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct SetNavigationBarColorOptions {
-    #[rename = "frontColor"]
+    #[js_name = "frontColor"]
     front_color: String,
-    #[rename = "backgroundColor"]
+    #[js_name = "backgroundColor"]
     background_color: String,
 }
 

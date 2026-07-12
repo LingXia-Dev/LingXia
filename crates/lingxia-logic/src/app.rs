@@ -5,7 +5,7 @@ use crate::i18n::{
 use lingxia_app_context::{app_config, env_version, home_app_id};
 use lingxia_platform::traits::app_runtime::AppRuntime;
 use lxapp::LxApp;
-use rong::{IntoJSObj, JSContext, JSFunc, JSObject, JSResult};
+use rong::{IntoJSObject, JSContext, JSFunc, JSObject, JSResult};
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 mod autostart;
@@ -13,14 +13,14 @@ mod screenshot;
 mod update;
 
 /// Host app base information.
-#[derive(Debug, Clone, IntoJSObj)]
+#[derive(Debug, Clone, IntoJSObject)]
 struct AppBaseInfo {
     language: String,
-    #[rename = "productName"]
+    #[js_name = "productName"]
     product_name: String,
-    #[rename = "version"]
+    #[js_name = "version"]
     version: String,
-    #[rename = "SDKVersion"]
+    #[js_name = "SDKVersion"]
     sdk_version: String,
 }
 

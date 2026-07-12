@@ -6,7 +6,7 @@ use lxapp::{
     LxApp, info, lx, publish_app_event, register_app_handler, unregister_app_handler, warn,
 };
 use rong::function::Optional;
-use rong::{IntoJSObj, JSContext, JSFunc, JSResult, RongJSError};
+use rong::{IntoJSObject, JSContext, JSFunc, JSResult, RongJSError};
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
 use std::net::{Ipv4Addr, Ipv6Addr};
@@ -24,11 +24,11 @@ fn network_callback_id(ctx: &JSContext) -> Option<u64> {
     ctx.get_state::<NetworkCallbackId>().and_then(|s| s.0)
 }
 
-#[derive(Debug, Clone, IntoJSObj)]
+#[derive(Debug, Clone, IntoJSObject)]
 struct JSNetworkInfoResult {
-    #[rename = "isConnected"]
+    #[js_name = "isConnected"]
     is_connected: bool,
-    #[rename = "networkType"]
+    #[js_name = "networkType"]
     network_type: String,
     ipv4: Vec<String>,
     ipv6: Vec<String>,

@@ -1,54 +1,54 @@
 use crate::i18n::js_internal_error;
 use lingxia_platform::traits::ui::UIUpdate;
 use lxapp::{LxApp, lx};
-use rong::{FromJSObj, JSContext, JSFunc, JSResult};
+use rong::{FromJSObject, JSContext, JSFunc, JSResult};
 use std::sync::Arc;
 
 /// Options for showing TabBar red dot
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct ShowTabBarRedDotOptions {
     index: i32,
 }
 
 /// Options for hiding TabBar red dot
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct HideTabBarRedDotOptions {
     index: i32,
 }
 
 /// Options for setting TabBar badge
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct SetTabBarBadgeOptions {
     index: i32,
     text: String,
 }
 
 /// Options for removing TabBar badge
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct RemoveTabBarBadgeOptions {
     index: i32,
 }
 
 /// Options for setting TabBar style
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct SetTabBarStyleOptions {
     color: Option<String>,
-    #[rename = "selectedColor"]
+    #[js_name = "selectedColor"]
     selected_color: Option<String>,
-    #[rename = "backgroundColor"]
+    #[js_name = "backgroundColor"]
     background_color: Option<String>,
-    #[rename = "borderStyle"]
+    #[js_name = "borderStyle"]
     border_style: Option<String>,
 }
 
 /// Options for setting TabBar item
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct SetTabBarItemOptions {
     index: i32,
     text: Option<String>,
-    #[rename = "iconPath"]
+    #[js_name = "iconPath"]
     icon_path: Option<String>,
-    #[rename = "selectedIconPath"]
+    #[js_name = "selectedIconPath"]
     selected_icon_path: Option<String>,
 }
 

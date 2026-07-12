@@ -1,11 +1,11 @@
 use crate::i18n::{js_error_from_lxapp_error, js_error_from_platform_error};
 use lingxia_service::media::SaveMediaRequest;
 use lxapp::{LxApp, lx};
-use rong::{FromJSObj, JSContext, JSFunc, JSResult};
+use rong::{FromJSObject, JSContext, JSFunc, JSResult};
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct JSSaveMediaOptions {
-    #[rename = "filePath"]
+    #[js_name = "filePath"]
     file_path: String,
 }
 

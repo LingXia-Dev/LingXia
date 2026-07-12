@@ -12,7 +12,7 @@ use lingxia_transfer::{
 };
 use lxapp::{LxApp, lx};
 use rong::{
-    HostError, IntoJSObj, JSContext, JSFunc, JSObject, JSResult, JSValue, Promise,
+    HostError, IntoJSObject, JSContext, JSFunc, JSObject, JSResult, JSValue, Promise,
     function::Optional,
 };
 use std::path::{Path, PathBuf};
@@ -33,25 +33,25 @@ struct ParsedUploadOptions {
     signal: Option<JSObject>,
 }
 
-#[derive(Debug, Clone, IntoJSObj)]
+#[derive(Debug, Clone, IntoJSObject)]
 struct JSUploadResult {
-    #[rename = "statusCode"]
+    #[js_name = "statusCode"]
     status_code: u16,
     data: String,
 }
 
-#[derive(Debug, Clone, IntoJSObj)]
+#[derive(Debug, Clone, IntoJSObject)]
 struct JSUploadEvent {
     kind: String,
-    #[rename = "uploadedBytes"]
+    #[js_name = "uploadedBytes"]
     uploaded_bytes: Option<u64>,
-    #[rename = "totalBytes"]
+    #[js_name = "totalBytes"]
     total_bytes: Option<u64>,
     progress: Option<f64>,
     result: Option<JSUploadResult>,
 }
 
-#[derive(Debug, Clone, IntoJSObj)]
+#[derive(Debug, Clone, IntoJSObject)]
 struct JSUploadIteratorStep {
     done: bool,
     value: Option<JSUploadEvent>,

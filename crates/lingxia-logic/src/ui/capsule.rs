@@ -1,12 +1,12 @@
 use crate::i18n::{js_error_from_platform_error, js_internal_error};
 use lingxia_platform::traits::app_runtime::AppRuntime;
 use lxapp::{LxApp, lx};
-use rong::{IntoJSObj, JSContext, JSFunc, JSResult};
+use rong::{IntoJSObject, JSContext, JSFunc, JSResult};
 use serde::Deserialize;
 
 /// Get capsule button bounding client rect
 /// Returns object with format: {"width": 84.5, "height": 32, "top": 50, "right": 375, "bottom": 82, "left": 290.5}
-#[derive(Debug, Clone, Default, Deserialize, IntoJSObj)]
+#[derive(Debug, Clone, Default, Deserialize, IntoJSObject)]
 struct JSCapsuleRect {
     width: Option<f64>,
     height: Option<f64>,

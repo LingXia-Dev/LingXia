@@ -1,22 +1,22 @@
 use crate::i18n::{js_error_from_platform_error, js_internal_error, js_invalid_parameter_error};
 use lingxia_service::media::{ScanCodeRequest, ScanType};
 use lxapp::{LxApp, lx};
-use rong::{FromJSObj, IntoJSObj, JSContext, JSFunc, JSResult, function::Optional};
+use rong::{FromJSObject, IntoJSObject, JSContext, JSFunc, JSResult, function::Optional};
 use serde_json::Value;
 
-#[derive(FromJSObj, Clone, Default)]
+#[derive(FromJSObject, Clone, Default)]
 struct JSScanOptions {
-    #[rename = "onlyFromCamera"]
+    #[js_name = "onlyFromCamera"]
     only_from_camera: Option<bool>,
-    #[rename = "scanType"]
+    #[js_name = "scanType"]
     scan_type: Option<Vec<String>>,
 }
 
-#[derive(Debug, Clone, IntoJSObj)]
+#[derive(Debug, Clone, IntoJSObject)]
 struct ScanResultObj {
-    #[rename = "scanResult"]
+    #[js_name = "scanResult"]
     scan_result: String,
-    #[rename = "scanType"]
+    #[js_name = "scanType"]
     scan_type: String,
 }
 

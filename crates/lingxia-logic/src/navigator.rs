@@ -4,20 +4,20 @@ use crate::update;
 use lingxia_platform::traits::ui::{ToastIcon, ToastOptions, ToastPosition, UserFeedback};
 use lxapp::lx;
 use lxapp::{self, LxApp, LxAppError, LxAppStartupOptions, ReleaseType, UpdateManager};
-use rong::{FromJSObj, JSContext, JSFunc, JSObject, JSResult};
+use rong::{FromJSObject, JSContext, JSFunc, JSObject, JSResult};
 use serde_json::Value;
 use std::sync::Arc;
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct NavigateToOptions {
-    #[rename = "appId"]
+    #[js_name = "appId"]
     appid: String,
     path: Option<String>,
     page: Option<String>,
     query: Option<JSObject>,
-    #[rename = "envVersion"]
+    #[js_name = "envVersion"]
     env_version: Option<String>,
-    #[rename = "targetVersion"]
+    #[js_name = "targetVersion"]
     target_version: Option<String>,
 }
 

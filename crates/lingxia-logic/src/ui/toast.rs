@@ -6,10 +6,10 @@ use crate::i18n::js_service_unavailable_error;
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 use lingxia_platform::traits::ui::{ToastIcon, ToastOptions, ToastPosition, UserFeedback};
 use lxapp::{LxApp, lx};
-use rong::{FromJSObj, JSContext, JSFunc, JSResult};
+use rong::{FromJSObject, JSContext, JSFunc, JSResult};
 
 /// Toast options from JavaScript
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct JSToastOptions {
     title: String,
     icon: Option<String>,

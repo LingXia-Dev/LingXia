@@ -9,23 +9,23 @@ use lingxia_platform::error::PlatformError;
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 use lingxia_platform::traits::ui::UserFeedback;
 use lxapp::{LxApp, lx};
-use rong::{FromJSObj, IntoJSObj, JSContext, JSFunc, JSResult, RongJSError};
+use rong::{FromJSObject, IntoJSObject, JSContext, JSFunc, JSResult, RongJSError};
 use serde::Deserialize;
 use std::sync::Arc;
 
 /// Action sheet options from JavaScript
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct JSActionSheetOptions {
-    #[rename = "itemList"]
+    #[js_name = "itemList"]
     item_list: Vec<String>,
-    #[rename = "itemColor"]
+    #[js_name = "itemColor"]
     item_color: Option<String>,
 }
 
 /// JavaScript ActionSheetResult for return value
-#[derive(Debug, Clone, IntoJSObj)]
+#[derive(Debug, Clone, IntoJSObject)]
 struct JSActionSheetResult {
-    #[rename = "tapIndex"]
+    #[js_name = "tapIndex"]
     tap_index: i32,
 }
 

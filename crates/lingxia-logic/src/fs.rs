@@ -9,9 +9,9 @@ use lingxia_service::file::{
 };
 use lxapp::{LxApp, lx};
 use rong::{
-    AnyJSTypedArray, Class, FromJSObj, HostError, IntoJSAsyncIteratorExt, IntoJSObj, IntoJSValue,
-    JSArrayBuffer, JSContext, JSFunc, JSObject, JSResult, JSValue, RongJSError, function::Optional,
-    js_class, js_export, js_method,
+    AnyJSTypedArray, Class, FromJSObject, HostError, IntoJSAsyncIteratorExt, IntoJSObject,
+    IntoJSValue, JSArrayBuffer, JSContext, JSFunc, JSObject, JSResult, JSValue, RongJSError,
+    function::Optional, js_class, js_method,
 };
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
@@ -25,14 +25,14 @@ mod network_security;
 mod storage;
 mod upload;
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct JSOpenFileOptions {
-    #[rename = "filePath"]
+    #[js_name = "filePath"]
     file_path: String,
-    #[rename = "fileType"]
+    #[js_name = "fileType"]
     file_type: Option<String>,
     mode: Option<String>,
-    #[rename = "showMenu"]
+    #[js_name = "showMenu"]
     show_menu: Option<bool>,
 }
 
@@ -137,112 +137,112 @@ async fn open_file(ctx: JSContext, options: JSOpenFileOptions) -> JSResult<()> {
     open_file_with_mode(&lxapp, request, mode).await
 }
 
-#[derive(FromJSObj, Clone, Default)]
+#[derive(FromJSObject, Clone, Default)]
 struct JSFileDialogFilter {
     name: Option<String>,
     extensions: Option<Vec<String>>,
 }
 
-#[derive(FromJSObj, Clone, Default)]
+#[derive(FromJSObject, Clone, Default)]
 struct JSChooseFileOptions {
     multiple: Option<bool>,
     filters: Option<Vec<JSFileDialogFilter>>,
-    #[rename = "defaultPath"]
+    #[js_name = "defaultPath"]
     default_path: Option<String>,
 }
 
-#[derive(Debug, Clone, IntoJSObj)]
+#[derive(Debug, Clone, IntoJSObject)]
 struct ChooseFileResultObj {
     canceled: bool,
     paths: Vec<String>,
 }
 
-#[derive(FromJSObj, Clone, Default)]
+#[derive(FromJSObject, Clone, Default)]
 struct JSChooseDirectoryOptions {
-    #[rename = "defaultPath"]
+    #[js_name = "defaultPath"]
     default_path: Option<String>,
 }
 
-#[derive(Debug, Clone, IntoJSObj)]
+#[derive(Debug, Clone, IntoJSObject)]
 struct ChooseDirectoryResultObj {
     canceled: bool,
     path: Option<String>,
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct JSFsPathOptions {
     path: String,
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct JSFsDirPathOptions {
     path: String,
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct JSMkdirOptions {
     path: String,
     recursive: Option<bool>,
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct JSReadFileOptions {
-    #[rename = "filePath"]
+    #[js_name = "filePath"]
     file_path: String,
     encoding: Option<String>,
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct JSWriteFileOptions {
-    #[rename = "filePath"]
+    #[js_name = "filePath"]
     file_path: String,
     data: JSValue,
     encoding: Option<String>,
     overwrite: Option<bool>,
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct JSCopyFileOptions {
-    #[rename = "srcPath"]
+    #[js_name = "srcPath"]
     src_path: String,
-    #[rename = "destPath"]
+    #[js_name = "destPath"]
     dest_path: String,
     overwrite: Option<bool>,
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct JSRenameOptions {
-    #[rename = "oldPath"]
+    #[js_name = "oldPath"]
     old_path: String,
-    #[rename = "newPath"]
+    #[js_name = "newPath"]
     new_path: String,
     overwrite: Option<bool>,
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct JSRemoveOptions {
     path: String,
     recursive: Option<bool>,
 }
 
-#[derive(Debug, Clone, IntoJSObj)]
+#[derive(Debug, Clone, IntoJSObject)]
 struct JSFileStats {
-    #[rename = "isFile"]
+    #[js_name = "isFile"]
     is_file: bool,
-    #[rename = "isDirectory"]
+    #[js_name = "isDirectory"]
     is_directory: bool,
-    #[rename = "isSymlink"]
+    #[js_name = "isSymlink"]
     is_symlink: bool,
     size: u64,
-    #[rename = "lastModifiedTime"]
+    #[js_name = "lastModifiedTime"]
     last_modified_time: Option<u64>,
-    #[rename = "lastAccessedTime"]
+    #[js_name = "lastAccessedTime"]
     last_accessed_time: Option<u64>,
-    #[rename = "createTime"]
+    #[js_name = "createTime"]
     create_time: Option<u64>,
 }
 
-#[js_export]
+#[js_class(clone)]
 struct JSFileManager {
     lxapp: Weak<LxApp>,
     user_data_dir: PathBuf,
@@ -308,7 +308,7 @@ fn managed_root(lxapp: &LxApp, kind: ManagedPathKind) -> Option<&Path> {
     }
 }
 
-#[js_export]
+#[js_class(clone)]
 struct JSDirEntry {
     name: String,
     is_directory: bool,

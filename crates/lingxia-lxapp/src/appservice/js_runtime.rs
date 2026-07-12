@@ -397,7 +397,31 @@ pub(crate) async fn lxapp_service_handler(
             // Set network access guard to prevent unauthorized domain access
             http::set_network_access_guard(Box::new(app_ctx));
 
-            let _ = rong_modules::init(&ctx);
+            if let Err(e) = rong_modules::init(
+                &ctx,
+                [
+                    "timer",
+                    "cron",
+                    "event",
+                    "exception",
+                    "abort",
+                    "encoding",
+                    "console",
+                    "url",
+                    "buffer",
+                    "stream",
+                    "http",
+                    "assert",
+                    "storage",
+                ],
+            ) {
+                error!(
+                    "[Worker {}] Failed to initialize Rong modules: {}",
+                    worker_id, e
+                )
+                .with_appid(lxapp.appid.clone());
+                return;
+            }
             let _ = lx::init(&ctx);
 
             // Execute a closure with access to the list of registered extensions.

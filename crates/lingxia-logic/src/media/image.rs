@@ -5,38 +5,38 @@ use crate::i18n::{
 use lingxia_platform::traits::media_runtime::{CompressImageRequest, MediaRuntime};
 use lingxia_service::storage;
 use lxapp::{LxApp, lx};
-use rong::{FromJSObj, IntoJSObj, JSContext, JSFunc, JSResult};
+use rong::{FromJSObject, IntoJSObject, JSContext, JSFunc, JSResult};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct JSGetImageInfoOptions {
     path: String,
 }
 
-#[derive(Debug, Clone, IntoJSObj)]
+#[derive(Debug, Clone, IntoJSObject)]
 struct JSImageInfoResult {
     width: u32,
     height: u32,
-    #[rename = "type"]
+    #[js_name = "type"]
     image_type: String,
     path: String,
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct JSCompressImageOptions {
     path: String,
     quality: Option<i32>,
-    #[rename = "compressedWidth"]
+    #[js_name = "compressedWidth"]
     compressed_width: Option<u32>,
-    #[rename = "compressedHeight"]
+    #[js_name = "compressedHeight"]
     compressed_height: Option<u32>,
 }
 
-#[derive(Debug, Clone, IntoJSObj)]
+#[derive(Debug, Clone, IntoJSObject)]
 struct JSCompressImageResult {
-    #[rename = "tempFilePath"]
+    #[js_name = "tempFilePath"]
     temp_file_path: String,
 }
 

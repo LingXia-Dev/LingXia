@@ -7,7 +7,7 @@ use lxapp::{
 };
 use rong::{
     Class, HostError, JSContext, JSFunc, JSObject, JSResult, JSRuntimeService, JSValue, js_class,
-    js_export, js_method,
+    js_method,
 };
 use std::cell::RefCell;
 use std::sync::Arc;
@@ -106,7 +106,7 @@ fn ensure_update_handlers(ctx: &JSContext) -> JSResult<()> {
 }
 
 /// JS Update Manager - simply restarts app to apply downloaded updates
-#[js_export]
+#[js_class(clone)]
 pub(crate) struct JSUpdateManager {
     appid: String,
     on_ready: Option<JSFunc>,

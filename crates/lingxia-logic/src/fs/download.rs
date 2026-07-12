@@ -15,7 +15,7 @@ use lingxia_transfer::user_cache::{
 };
 use lxapp::{LxApp, LxAppSecurityPrivilege, lx};
 use rong::{
-    HostError, IntoJSObj, JSContext, JSFunc, JSObject, JSResult, JSSymbol, JSValue, Promise,
+    HostError, IntoJSObject, JSContext, JSFunc, JSObject, JSResult, JSSymbol, JSValue, Promise,
     function::Optional,
 };
 use std::collections::HashSet;
@@ -35,29 +35,29 @@ struct ParsedDownloadOptions {
     signal: Option<JSObject>,
 }
 
-#[derive(Debug, Clone, IntoJSObj)]
+#[derive(Debug, Clone, IntoJSObject)]
 struct JSDownloadResult {
-    #[rename = "tempFilePath"]
+    #[js_name = "tempFilePath"]
     temp_file_path: Option<String>,
-    #[rename = "filePath"]
+    #[js_name = "filePath"]
     file_path: Option<String>,
-    #[rename = "mimeType"]
+    #[js_name = "mimeType"]
     mime_type: Option<String>,
     size: u64,
 }
 
-#[derive(Debug, Clone, IntoJSObj)]
+#[derive(Debug, Clone, IntoJSObject)]
 struct JSDownloadEvent {
     kind: String,
-    #[rename = "downloadedBytes"]
+    #[js_name = "downloadedBytes"]
     downloaded_bytes: Option<u64>,
-    #[rename = "totalBytes"]
+    #[js_name = "totalBytes"]
     total_bytes: Option<u64>,
     progress: Option<f64>,
     result: Option<JSDownloadResult>,
 }
 
-#[derive(Debug, Clone, IntoJSObj)]
+#[derive(Debug, Clone, IntoJSObject)]
 struct JSDownloadIteratorStep {
     done: bool,
     value: Option<JSDownloadEvent>,

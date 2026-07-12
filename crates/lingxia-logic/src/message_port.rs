@@ -3,11 +3,11 @@ use std::cell::RefCell;
 use rong::{
     Class, HostError, JSContext, JSFunc, JSObject, JSResult, JSValue,
     function::{Rest, This},
-    js_class, js_export, js_method,
+    js_class, js_method,
 };
 use rong_event::{Emitter, EmitterExt, EventEmitter, EventKey};
 
-#[js_export]
+#[js_class(clone)]
 pub(crate) struct JSMessagePort {
     event_emitter: EventEmitter,
     peer: RefCell<Option<JSObject>>,

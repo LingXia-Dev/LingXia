@@ -6,9 +6,9 @@ use lxapp::{
     list_lxapps, lx, publish_app_event, register_app_handler, try_get, unregister_app_handler,
 };
 use rong::{
-    Class, HostError, IntoJSObj, JSContext, JSFunc, JSObject, JSResult, JSValue, Promise,
+    Class, HostError, IntoJSObject, JSContext, JSFunc, JSObject, JSResult, JSValue, Promise,
     function::{Rest, This},
-    js_class, js_export, js_method,
+    js_class, js_method,
 };
 use rong_event::{Emitter, EmitterExt, EventEmitter, EventKey};
 use serde_json::Value;
@@ -27,14 +27,14 @@ struct ClosedRegistration {
 
 static SURFACE_CLOSED: OnceLock<Mutex<HashMap<String, ClosedRegistration>>> = OnceLock::new();
 
-#[derive(Debug, Clone, IntoJSObj)]
+#[derive(Debug, Clone, IntoJSObject)]
 struct JSSurfaceClosed {
     id: String,
     kind: String,
     reason: String,
 }
 
-#[derive(Debug, Clone, IntoJSObj)]
+#[derive(Debug, Clone, IntoJSObject)]
 struct JSSurfaceVisibility {
     id: String,
     kind: String,
@@ -45,7 +45,7 @@ struct JSSurfaceVisibility {
     source: String,
 }
 
-#[js_export]
+#[js_class(clone)]
 struct JSSurface {
     id: String,
     kind: String,
@@ -188,7 +188,7 @@ pub(crate) fn notify_surface_context_changed(_window_id: &str) {
     }
 }
 
-#[derive(Debug, Clone, IntoJSObj)]
+#[derive(Debug, Clone, IntoJSObject)]
 struct PageSurfaceOptions {
     path: String,
     kind: String,
@@ -196,7 +196,7 @@ struct PageSurfaceOptions {
     role: String,
 }
 
-#[derive(Debug, Clone, IntoJSObj)]
+#[derive(Debug, Clone, IntoJSObject)]
 struct WebSurfaceOptions {
     url: String,
     kind: String,
@@ -524,7 +524,7 @@ fn build_open_options(
 }
 
 #[cfg(not(any(target_os = "ios", target_os = "android", target_env = "ohos")))]
-#[derive(Debug, Clone, IntoJSObj)]
+#[derive(Debug, Clone, IntoJSObject)]
 struct PageWindowOptions {
     path: String,
     kind: String,
@@ -571,11 +571,11 @@ fn build_window_options(
     ))
 }
 
-#[derive(Debug, Clone, IntoJSObj)]
+#[derive(Debug, Clone, IntoJSObject)]
 struct JSSurfaceContext {
-    #[rename = "sizeClass"]
+    #[js_name = "sizeClass"]
     size_class: String,
-    #[rename = "bottomOwner"]
+    #[js_name = "bottomOwner"]
     bottom_owner: String,
 }
 

@@ -1,7 +1,7 @@
 use crate::i18n::js_error_from_platform_error;
 use lingxia_platform::traits::device::Device;
 use lxapp::{LxApp, lx};
-use rong::{FromJSObj, JSContext, JSFunc, JSResult};
+use rong::{FromJSObject, JSContext, JSFunc, JSResult};
 use serde::Deserialize;
 
 pub fn init(ctx: &JSContext) -> JSResult<()> {
@@ -35,10 +35,10 @@ fn vibrate_long(ctx: JSContext) -> JSResult<bool> {
         .map_err(|e| js_error_from_platform_error(&e))
 }
 
-#[derive(FromJSObj, Deserialize)]
+#[derive(FromJSObject, Deserialize)]
 struct MakePhoneCallParams {
     #[serde(rename = "phoneNumber")]
-    #[rename = "phoneNumber"]
+    #[js_name = "phoneNumber"]
     phone_number: String,
 }
 

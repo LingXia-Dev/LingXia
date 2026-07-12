@@ -7,7 +7,7 @@ use lingxia_platform::Platform;
 use lingxia_platform::traits::stream_decoder::VideoStreamDecoderHandle;
 use lingxia_platform::traits::video_player::{VideoPlayerHandle, VideoPlayerManager};
 use lxapp::{LxApp, lx};
-use rong::{JSContext, JSFunc, JSResult, js_export};
+use rong::{JSContext, JSFunc, JSResult, js_class};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -22,7 +22,7 @@ pub fn init(ctx: &JSContext) -> JSResult<()> {
     Ok(())
 }
 
-#[js_export]
+#[js_class(clone)]
 pub struct JSVideoContext {
     pub(super) component_id: String,
     pub(super) player_handle: Arc<dyn VideoPlayerHandle>,

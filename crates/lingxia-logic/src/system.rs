@@ -4,16 +4,16 @@ use crate::i18n::host_error_from_platform_error;
 use lingxia_platform::traits::location::Location;
 use lingxia_platform::traits::wifi::Wifi;
 use lxapp::{LxApp, lx};
-use rong::{IntoJSObj, JSContext, JSFunc, JSResult};
+use rong::{IntoJSObject, JSContext, JSFunc, JSResult};
 
 /// System setting status
-#[derive(Debug, Clone, IntoJSObj)]
+#[derive(Debug, Clone, IntoJSObject)]
 pub struct SystemSettingInfo {
-    #[rename = "bluetoothEnabled"]
+    #[js_name = "bluetoothEnabled"]
     bluetooth_enabled: bool,
-    #[rename = "locationEnabled"]
+    #[js_name = "locationEnabled"]
     location_enabled: bool,
-    #[rename = "wifiEnabled"]
+    #[js_name = "wifiEnabled"]
     wifi_enabled: bool,
 }
 

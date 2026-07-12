@@ -8,28 +8,28 @@ use lingxia_service::update::{
     UpdatePackageInfo,
 };
 use lxapp::LxApp;
-use rong::{IntoJSObj, JSContext, JSFunc, JSObject, JSResult, Promise};
+use rong::{IntoJSObject, JSContext, JSFunc, JSObject, JSResult, Promise};
 use std::sync::Arc;
 use std::sync::Mutex as StdMutex;
 use tokio::sync::{Mutex, watch};
 
-#[derive(Debug, Clone, IntoJSObj)]
+#[derive(Debug, Clone, IntoJSObject)]
 struct JSAppUpdateEvent {
     state: String,
     stage: Option<String>,
-    #[rename = "downloadedBytes"]
+    #[js_name = "downloadedBytes"]
     downloaded_bytes: Option<u64>,
     progress: Option<u8>,
     error: Option<String>,
 }
 
-#[derive(Debug, Clone, IntoJSObj)]
+#[derive(Debug, Clone, IntoJSObject)]
 struct JSAppUpdateIteratorStep {
     done: bool,
     value: Option<JSAppUpdateEvent>,
 }
 
-#[derive(Debug, Clone, IntoJSObj)]
+#[derive(Debug, Clone, IntoJSObject)]
 struct JSAppUpdateResult {
     state: String,
 }

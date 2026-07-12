@@ -5,7 +5,7 @@ use lingxia_platform::traits::wifi::{Wifi, WifiConnectRequest, WifiGetConnectedR
 use lxapp::{LxApp, lx, publish_app_event, register_app_handler, unregister_app_handler};
 use lxapp::{info, warn};
 use rong::function::Optional;
-use rong::{FromJSObj, IntoJSObj, JSContext, JSFunc, JSResult, RongJSError};
+use rong::{FromJSObject, IntoJSObject, JSContext, JSFunc, JSResult, RongJSError};
 use serde_json::{Value, json};
 
 const WIFI_CONNECTED_EVENT: &str = "WifiConnected";
@@ -134,21 +134,21 @@ fn clear_wifi_connected_callback(ctx: &JSContext) -> JSResult<()> {
 }
 
 /// WiFi information from JavaScript
-#[derive(Debug, Clone, IntoJSObj)]
+#[derive(Debug, Clone, IntoJSObject)]
 pub struct JSWifiInfo {
     /// Service Set Identifier (network name)
-    #[rename = "SSID"]
+    #[js_name = "SSID"]
     ssid: String,
     /// Basic Service Set Identifier (MAC address)
-    #[rename = "BSSID"]
+    #[js_name = "BSSID"]
     bssid: Option<String>,
     /// Whether the network is secure (requires password)
     secure: bool,
     /// Signal strength (0-100, higher is better)
-    #[rename = "signalStrength"]
+    #[js_name = "signalStrength"]
     signal_strength: u8,
     /// Center frequency in MHz (if available)
-    #[rename = "frequency"]
+    #[js_name = "frequency"]
     frequency: Option<u32>,
 }
 
@@ -185,10 +185,10 @@ fn parse_wifi_info_from_json(item: &Value, default_signal: u8, default_secure: b
 }
 
 /// WiFi connection options from JavaScript
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct JSConnectWifiOptions {
     /// SSID of the network to connect to
-    #[rename = "SSID"]
+    #[js_name = "SSID"]
     ssid: String,
     /// Network password (omit for open networks)
     password: Option<String>,

@@ -1,15 +1,15 @@
 use ::lxapp::LxApp;
 use ::lxapp::lx;
-use rong::{IntoJSObj, JSContext, JSFunc, JSResult};
+use rong::{IntoJSObject, JSContext, JSFunc, JSResult};
 
-#[derive(Debug, Clone, IntoJSObj)]
+#[derive(Debug, Clone, IntoJSObject)]
 struct LxAppInfo {
-    #[rename = "appId"]
+    #[js_name = "appId"]
     app_id: String,
-    #[rename = "appName"]
+    #[js_name = "appName"]
     app_name: String,
     version: String,
-    #[rename = "releaseType"]
+    #[js_name = "releaseType"]
     release_type: String,
 }
 

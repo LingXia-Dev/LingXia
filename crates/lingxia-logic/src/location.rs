@@ -6,7 +6,7 @@ use lingxia_platform::error::PlatformError;
 use lingxia_platform::traits::location::{Location, LocationRequestConfig};
 use lxapp::{LxApp, lx};
 use rong::function::Optional;
-use rong::{FromJSObj, IntoJSObj, JSContext, JSFunc, JSResult, RongJSError};
+use rong::{FromJSObject, IntoJSObject, JSContext, JSFunc, JSResult, RongJSError};
 use serde_json::Value;
 
 fn handle_location_error(code: u32) -> RongJSError {
@@ -75,19 +75,19 @@ fn transform_lng(lng: f64, lat: f64) -> f64 {
 }
 
 /// Location options from JavaScript
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct JSLocationOptions {
-    #[rename = "type"]
+    #[js_name = "type"]
     coordinate_type: Option<String>,
     altitude: Option<bool>,
-    #[rename = "isHighAccuracy"]
+    #[js_name = "isHighAccuracy"]
     is_high_accuracy: Option<bool>,
-    #[rename = "highAccuracyExpireTime"]
+    #[js_name = "highAccuracyExpireTime"]
     high_accuracy_expire_time: Option<u32>,
 }
 
 /// Location information
-#[derive(Debug, Clone, IntoJSObj)]
+#[derive(Debug, Clone, IntoJSObject)]
 pub struct LocationObj {
     /// Latitude, range -90~90, negative for south
     latitude: f64,
@@ -100,10 +100,10 @@ pub struct LocationObj {
     /// Altitude in meters
     altitude: Option<f64>,
     /// Vertical accuracy in meters
-    #[rename = "verticalAccuracy"]
+    #[js_name = "verticalAccuracy"]
     vertical_accuracy: Option<f64>,
     /// Horizontal accuracy in meters
-    #[rename = "horizontalAccuracy"]
+    #[js_name = "horizontalAccuracy"]
     horizontal_accuracy: Option<f64>,
 }
 

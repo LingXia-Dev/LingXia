@@ -14,18 +14,18 @@ use lingxia_platform::traits::stream_decoder::{
 };
 use lingxia_platform::traits::video_player::VideoPlayerCommand;
 use log::{info, warn};
-use rong::{FromJSObj, JSObject, JSResult, JSValue, js_class, js_method};
+use rong::{FromJSObject, JSObject, JSResult, JSValue, js_class, js_method};
 use serde_json::Value;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::thread;
 use std::time::{Duration, Instant};
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct JSStreamSourceOptions {
-    #[rename = "provider"]
+    #[js_name = "provider"]
     provider: String,
-    #[rename = "isLive"]
+    #[js_name = "isLive"]
     is_live: bool,
     duration: Option<f64>,
     params: Option<JSObject>,

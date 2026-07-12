@@ -6,7 +6,7 @@ use lingxia_platform::traits::share::{
     ShareRequest, ShareResult as PlatformShareResult, ShareService,
 };
 use lxapp::{LxApp, LxAppError, lx};
-use rong::{IntoJSObj, JSArray, JSContext, JSFunc, JSObject, JSResult, JSValue};
+use rong::{IntoJSObject, JSArray, JSContext, JSFunc, JSObject, JSResult, JSValue};
 use serde_json::Value;
 
 struct JSShareOptions {
@@ -20,7 +20,7 @@ struct JSSharePage {
     query: Option<JSObject>,
 }
 
-#[derive(IntoJSObj)]
+#[derive(IntoJSObject)]
 struct JSShareResult {
     completed: Option<bool>,
 }

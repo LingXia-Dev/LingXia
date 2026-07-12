@@ -4,18 +4,18 @@ use crate::i18n::{
 use crate::message_port;
 use lxapp::lx;
 use lxapp::{LxApp, LxAppError, NavigationType, startup};
-use rong::{FromJSObj, JSContext, JSFunc, JSObject, JSResult};
+use rong::{FromJSObject, JSContext, JSFunc, JSObject, JSResult};
 use serde_json::Value;
 use std::sync::Arc;
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct PageTargetOptions {
     page: Option<String>,
     path: Option<String>,
     query: Option<JSObject>,
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct NavigateBack {
     delta: u32,
 }

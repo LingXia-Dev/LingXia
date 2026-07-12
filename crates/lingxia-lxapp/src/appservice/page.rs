@@ -9,7 +9,7 @@ use crate::lxapp::LxApp;
 use crate::page::PageInstance;
 use rong::{
     Class, JSContext, JSFunc, JSObject, JSResult, JSSymbol, JSValue, JsonToJSValue, RongJSError,
-    Source, error::HostError, function::Optional, js_class, js_export, js_method,
+    Source, error::HostError, function::Optional, js_class, js_method,
 };
 use rong_event::EventEmitter;
 use serde::Deserialize;
@@ -19,7 +19,7 @@ use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use tokio::sync::{Mutex, oneshot};
 
-#[js_export]
+#[js_class(clone)]
 pub struct PageSvc {
     functions: HashMap<String, JSFunc>,
     /// Methods declared as `stream_handlers` in page meta — they receive an
