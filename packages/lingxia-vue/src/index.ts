@@ -2,10 +2,12 @@ export {
   useLxPage,
   useLxStream,
   useLxChannel,
+  usePlatform,
   type LxStreamOptions,
   type LxStreamState,
   type LxChannelOptions,
   type LxChannelState,
+  type LxPlatform,
 } from "./hook.js";
 export { default as LxVideo } from "./LxVideo.vue";
 export { default as LxMediaSwiper } from "./LxMediaSwiper.vue";

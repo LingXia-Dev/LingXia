@@ -183,6 +183,7 @@ export interface LingXiaBridgeInterface {
     isMacOS(): boolean;
     isWindows(): boolean;
     isDesktop(): boolean;
+    isApple(): boolean;
     isRunner(): boolean;
     getOS(): string;
   };

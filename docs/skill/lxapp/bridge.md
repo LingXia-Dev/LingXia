@@ -451,5 +451,7 @@ For streams, check `chat.error` after `chat.streaming` becomes `false`. For chan
 
 ## Platform Detection
 
-- **View**: `window.LingXiaBridge.platform` — `isIOS()`, `isMacOS()`, `isDesktop()`, `getOS()`, … (sync; read the global, never import).
+- **View (React/Vue)**: `usePlatform()` from `@lingxia/react` / `@lingxia/vue` → `{ isApple, isIOS, isMacOS, isAndroid, isHarmony, isWindows, isDesktop, isRunner, os }` (typed, sync, resolved once).
+- **View (any framework)**: `window.LingXiaBridge.platform` — `isApple()`, `isIOS()`, `isMacOS()`, `isDesktop()`, `getOS()`, … (sync; read the global, never import). It is already typed in pages that import `@lingxia/react` / `@lingxia/vue`, so no cast is needed.
+- `isApple()` is `iOS || macOS` (the WKWebView group); `isDesktop()` is `macOS || Windows`.
 - **Logic**: `lx.device.getDeviceInfo()` → `osName` (async).

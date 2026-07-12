@@ -34,6 +34,7 @@ import {
   isMacOS,
   isWindows,
   isDesktop,
+  isApple,
   isDevSession,
   isRunner,
 } from "./runtime-env";
@@ -1822,6 +1823,7 @@ export const LingXiaBridge: LingXiaBridgeInterface = {
     isMacOS,
     isWindows,
     isDesktop,
+    isApple,
     isRunner,
     getOS: getPlatformOS,
   },
