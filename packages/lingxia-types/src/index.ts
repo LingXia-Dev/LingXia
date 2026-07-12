@@ -25,6 +25,8 @@ export * from './error';
 export * from './generated/error';
 export * from './generated/i18n';
 
+import './generated/logic';
+
 import type {
   AppConfig,
   AppInstance,
@@ -159,7 +161,11 @@ import type {
  * authoritative capability index (grouped by the banners below). Mostly flat,
  * with a few nested namespaces (`env`, `app`, `tray`).
  */
-export interface Lx {
+/**
+ * The pre-generator public contract. It remains as a curated augmentation and
+ * as the compatibility baseline checked against Rong's generated `Lx` API.
+ */
+interface HandwrittenLx {
   // Environment, host app & tray
   env: LxEnv;
   app: HostAppApi;
@@ -333,7 +339,11 @@ export interface Lx {
   offKeyUp(callback?: KeyEventCallback): void;
 }
 
+export type Lx = globalThis.Lx;
+
 declare global {
+  interface Lx extends HandwrittenLx {}
+
   const lx: Lx;
 
   function App(config: AppConfig): AppInstance;

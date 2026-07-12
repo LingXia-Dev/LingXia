@@ -1,0 +1,83 @@
+import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import ts from "typescript";
+
+const packageDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+
+function interfaceMembers(path, interfaceName) {
+  const source = ts.createSourceFile(
+    path,
+    readFileSync(path, "utf8"),
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS,
+  );
+  const members = new Set();
+  function visit(node) {
+    if (ts.isInterfaceDeclaration(node) && node.name.text === interfaceName) {
+      for (const member of node.members) {
+        const name = member.name && ts.getNameOfDeclaration(member);
+        if (name && ts.isIdentifier(name)) members.add(name.text);
+      }
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(source);
+  return members;
+}
+
+const handwritten = interfaceMembers(resolve(packageDir, "src/index.ts"), "HandwrittenLx");
+const generated = interfaceMembers(resolve(packageDir, "src/generated/logic.ts"), "Lx");
+const missing = [...handwritten].filter((name) => !generated.has(name)).sort();
+
+if (missing.length > 0) {
+  console.error(`Generated Lx is missing handwritten APIs: ${missing.join(", ")}`);
+  process.exit(1);
+}
+
+const profile = readFileSync(resolve(packageDir, "src/generated/logic-web.d.ts"), "utf8");
+const runtime = readFileSync(
+  resolve(packageDir, "../../crates/lingxia-lxapp/src/appservice/js_runtime.rs"),
+  "utf8",
+);
+const webStandards = [
+  ["fetch", "http"],
+  ["Request", "http"],
+  ["Response", "http"],
+  ["Headers", "http"],
+  ["URL", "url"],
+  ["URLSearchParams", "url"],
+  ["TextEncoder", "encoding"],
+  ["TextDecoder", "encoding"],
+  ["AbortController", "abort"],
+  ["AbortSignal", "abort"],
+  ["Event", "event"],
+  ["EventTarget", "event"],
+  ["ReadableStream", "stream"],
+  ["WritableStream", "stream"],
+  ["setTimeout", "timer"],
+  ["console", "console"],
+];
+const missingStandards = webStandards.filter(
+  ([name, module]) =>
+    !new RegExp(`\\b(?:interface|class|function|var|const|type)\\s+${name}\\b`).test(profile) ||
+    !runtime.includes(`"${module}"`),
+);
+if (missingStandards.length > 0) {
+  console.error(
+    `Web-standard types/runtime modules are out of sync: ${missingStandards
+      .map(([name, module]) => `${name} (${module})`)
+      .join(", ")}`,
+  );
+  process.exit(1);
+}
+
+const tsc = process.platform === "win32" ? "tsc.cmd" : "tsc";
+const result = spawnSync(tsc, ["--noEmit"], { cwd: packageDir, stdio: "inherit" });
+if (result.error) throw result.error;
+if (result.status !== 0) process.exit(result.status ?? 1);
+
+console.log(`Generated Lx covers all ${handwritten.size} handwritten API names with compatible types.`);
+console.log(`Rong Logic Web profile and runtime modules cover ${webStandards.length} standard APIs.`);

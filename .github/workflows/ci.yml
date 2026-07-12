@@ -780,6 +780,10 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+
       - name: Cache npm
         uses: actions/cache@v4
         with:
@@ -796,6 +800,8 @@ jobs:
         working-directory: packages
         run: |
           npm install
+          npm run check:logic --workspace @lingxia/types
+          npm run check:quality --workspace @lingxia/types
           npm run build --workspaces --if-present
 
   npm-skill:

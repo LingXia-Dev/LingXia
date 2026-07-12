@@ -116,7 +116,11 @@
   ],
   "scripts": {
     "gen:i18n": "node scripts/gen-i18n.mjs",
-    "build": "npm run gen:i18n && tsc && cp src/logic-globals.d.ts dist/logic-globals.d.ts",
+    "gen:logic": "node scripts/gen-logic.mjs",
+    "gen": "npm run gen:i18n && npm run gen:logic",
+    "check:logic": "npm run gen:logic -- --check",
+    "check:quality": "node scripts/check-generated-quality.mjs",
+    "build": "npm run gen && tsc && mkdir -p dist/generated && cp src/logic-globals.d.ts dist/logic-globals.d.ts && cp src/generated/logic-web.d.ts dist/generated/logic-web.d.ts",
     "clean": "rm -rf dist",
     "prepublishOnly": "npm run clean && npm run build"
   },
