@@ -457,7 +457,6 @@ final class DockedBrowser: NSObject {
             Task { @MainActor in
                 guard let self, let tab, !self.torn else { return }
                 tab.url = webView.url?.absoluteString ?? tab.url
-                _ = updateBrowserTabInfo(tab.browserTabId, webView.url?.absoluteString ?? "", webView.title ?? "")
             }
         }
         tab.titleObs = webView.observe(\.title, options: [.initial, .new]) { [weak self, weak tab] webView, _ in
@@ -466,11 +465,6 @@ final class DockedBrowser: NSObject {
                 let t = (webView.title ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
                 tab.title = t.isEmpty ? Self.shortTitle(for: tab.url) : t
                 self.updateTabButtonTitle(tab)
-                _ = updateBrowserTabInfo(
-                    tab.browserTabId,
-                    webView.url?.absoluteString ?? tab.url,
-                    t
-                )
             }
         }
         tab.backObs = webView.observe(\.canGoBack, options: [.initial, .new]) { [weak self, weak tab] webView, _ in
