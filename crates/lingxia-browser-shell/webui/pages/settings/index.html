@@ -3,20 +3,20 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Settings</title>
+  <title data-i18n="settings.title">Settings</title>
   <link rel="stylesheet" href="lingxia://lxapp/public/downloads.css">
   <style>
     body { display: flex; min-height: 100vh; }
 
     .sidebar {
-      width: 208px; flex-shrink: 0; background: #fff;
+      width: 176px; flex-shrink: 0; background: #fff;
       border-right: 1px solid #e5e5ea; padding: 20px 0;
       position: sticky; top: 0; height: 100vh; overflow-y: auto;
     }
-    .sidebar-title { font-size: 20px; font-weight: 700; padding: 0 20px 16px; letter-spacing: -0.3px; }
+    .sidebar-title { font-size: 18px; font-weight: 700; padding: 0 16px 16px; }
     .nav-item {
       display: flex; align-items: center; gap: 10px;
-      padding: 9px 20px; font-size: 13px; font-weight: 500;
+      padding: 9px 16px; font-size: 13px; font-weight: 500;
       color: #6e6e73; cursor: pointer; transition: all 80ms;
       border-left: 3px solid transparent; text-decoration: none;
     }
@@ -48,6 +48,7 @@
     .settings-content .row-value { font-size: 12px; color: #667085; margin-top: 3px; word-break: break-word; line-height: 1.45; }
     .row-control { width: min(300px, 100%); flex-shrink: 0; }
     .row-control.compact { width: 132px; }
+    .row-control.language { width: 304px; }
     .row-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
     .settings-input {
       width: 100%; height: 36px; border-radius: 11px; border: 1px solid #d0d5dd;
@@ -55,6 +56,21 @@
     }
     .settings-input:focus { outline: none; border-color: #84caff; box-shadow: 0 0 0 3px rgba(0,122,255,0.12); }
     .settings-input:disabled { background: #f5f5f7; color: #98a2b3; cursor: not-allowed; }
+    .language-options {
+      display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3px;
+      padding: 3px; border: 1px solid #d0d5dd; border-radius: 8px; background: #f2f4f7;
+    }
+    .language-option {
+      height: 32px; border: 0; border-radius: 5px; color: #667085; background: transparent;
+      font-size: 12px; font-weight: 600; transition: color 120ms, background 120ms, box-shadow 120ms;
+    }
+    .language-option:hover:not(:disabled) { color: #344054; background: rgba(255,255,255,0.62); }
+    .language-option:focus-visible { outline: 2px solid #84caff; outline-offset: 1px; }
+    .language-option.active {
+      color: #175cd3; background: #fff;
+      box-shadow: 0 1px 3px rgba(16,24,40,0.12), 0 0 0 1px rgba(16,24,40,0.04);
+    }
+    .language-option:disabled { opacity: 0.55; cursor: default; }
     .row-action { padding: 8px 13px; border-radius: 999px; background: #007AFF; color: #fff; font-size: 12px; font-weight: 600; white-space: nowrap; }
     .row-action.secondary { background: #eef1f6; color: #344054; }
     .row-action:hover, .row-action:focus-visible { filter: brightness(0.97); }
@@ -202,6 +218,66 @@
     .proxy-toast.is-success { background: #ecfdf3; border-color: #b7ebc6; color: #067647; }
     .proxy-toast.is-error { background: #fff1f3; border-color: #fecdd6; color: #c01048; }
 
+    .row-action.danger { background: #fff1f3; color: #c01048; }
+    .row-action.danger:hover, .row-action.danger:focus-visible { background: #ffe4e8; filter: none; }
+
+    .confirm-overlay {
+      display: none; position: fixed; inset: 0; z-index: 40;
+      background: rgba(15, 23, 42, 0.32); backdrop-filter: blur(4px);
+      align-items: center; justify-content: center; padding: 24px;
+    }
+    .confirm-overlay.active { display: flex; }
+    .confirm-card {
+      width: min(100%, 400px); background: #fff; border-radius: 18px;
+      padding: 22px; box-shadow: 0 24px 64px rgba(15, 23, 42, 0.24);
+      border: 1px solid #e5e5ea;
+    }
+    .confirm-title { font-size: 15px; font-weight: 700; color: #101828; }
+    .confirm-copy { margin-top: 8px; font-size: 12.5px; line-height: 1.55; color: #667085; }
+    .confirm-actions { margin-top: 18px; display: flex; justify-content: flex-end; gap: 8px; }
+    .browsing-data-card { width: min(100%, 470px); }
+    .site-data-host {
+      margin-top: 12px; padding: 10px 12px; border-radius: 8px;
+      background: #f2f4f7; color: #344054; font-size: 12.5px; font-weight: 650;
+      overflow-wrap: anywhere;
+    }
+    .clear-section-label {
+      margin: 18px 0 8px; color: #667085; font-size: 11px;
+      font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase;
+    }
+    .time-range-options {
+      display: grid; grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 5px; padding: 4px; border-radius: 12px; background: #f2f4f7;
+    }
+    .time-range-option {
+      min-height: 34px; padding: 4px 7px; border-radius: 9px;
+      color: #667085; font-size: 11px; font-weight: 620; line-height: 1.2;
+    }
+    .time-range-option:hover { color: #344054; background: rgba(255,255,255,0.6); }
+    .time-range-option.selected {
+      color: #175cd3; background: #fff;
+      box-shadow: 0 1px 4px rgba(16,24,40,0.10);
+    }
+    .data-options {
+      overflow: hidden; border: 1px solid #e5e7eb; border-radius: 13px;
+    }
+    .data-option {
+      display: flex; align-items: flex-start; gap: 11px; padding: 11px 12px;
+      border-top: 1px solid #f0f2f5; cursor: pointer;
+    }
+    .data-option:first-child { border-top: 0; }
+    .data-option:hover { background: #fafbfd; }
+    .data-option input { margin: 2px 0 0; accent-color: #007aff; }
+    .data-option-main { min-width: 0; }
+    .data-option-title { display: block; color: #344054; font-size: 12.5px; font-weight: 650; }
+    .data-option-copy { display: block; margin-top: 2px; color: #98a2b3; font-size: 11px; line-height: 1.4; }
+    .cookie-warning {
+      display: none; margin-top: 10px; padding: 10px 12px;
+      border: 1px solid #fedf89; border-radius: 11px;
+      color: #934f00; background: #fffaeb; font-size: 11.5px; line-height: 1.45;
+    }
+    .cookie-warning.active { display: block; }
+
     .section-title {
       padding: 14px 16px 0; font-size: 12px; font-weight: 700;
       letter-spacing: 0.06em; text-transform: uppercase; color: #667085;
@@ -234,19 +310,27 @@
 
     @media (max-width: 980px) {
       .proxy-mode-group { grid-template-columns: 1fr; }
+      .time-range-options { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
 
     @media (max-width: 820px) {
       body { display: block; }
       .sidebar {
-        width: auto; height: auto; position: static;
+        display: flex; flex-direction: row; align-items: center; gap: 4px;
+        width: auto; height: auto; position: static; padding: 8px 10px;
         border-right: none; border-bottom: 1px solid #e5e5ea;
-        padding: 12px 0; white-space: nowrap; overflow-x: auto;
+        white-space: nowrap; overflow-x: auto;
       }
+      .sidebar-title { display: none; }
+      .nav-item {
+        flex: 0 0 auto; padding: 8px 12px; border-left: none;
+        border-bottom: 2px solid transparent; border-radius: 8px;
+      }
+      .nav-item.active { border-left-color: transparent; border-bottom-color: #007AFF; }
       .main-header { padding: 12px 16px; }
       .settings-content, .about-content { padding: 12px 16px 20px; }
       .settings-content .row, .about-content .row, .proxy-block-head { align-items: flex-start; flex-direction: column; }
-      .row-control, .row-control.compact, .row-actions { width: 100%; }
+      .row-control, .row-control.compact, .row-control.language, .row-actions { width: 100%; }
     }
 
     @media (max-width: 600px) {
@@ -269,7 +353,7 @@
       .settings-content .row, .about-content .row, .proxy-block-head, .proxy-mini .row {
         align-items: flex-start; flex-direction: column;
       }
-      .row-control, .row-control.compact, .row-actions { width: 100%; }
+      .row-control, .row-control.compact, .row-control.language, .row-actions { width: 100%; }
       .row-actions { flex-wrap: wrap; }
       .row-action { width: 100%; text-align: center; }
       .proxy-mode-group { grid-template-columns: 1fr; }
@@ -286,48 +370,83 @@
 </head>
 <body>
   <nav class="sidebar">
-    <div class="sidebar-title">Settings</div>
-    <a class="nav-item active" data-panel="downloads">
+    <div class="sidebar-title" data-i18n="settings.title">Settings</div>
+    <a class="nav-item active" data-panel="general">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="8" cy="8" r="6"/><path d="M2 8h12M8 2c1.7 1.6 2.5 3.6 2.5 6S9.7 12.4 8 14M8 2C6.3 3.6 5.5 5.6 5.5 8s.8 4.4 2.5 6"/>
+      </svg>
+      <span data-i18n="settings.general">General</span>
+    </a>
+    <a class="nav-item" data-panel="downloads">
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
         <path d="M8 2v8m0 0l-3-3m3 3l3-3"/><path d="M3 12h10"/>
       </svg>
-      Downloads
+      <span data-i18n="settings.downloads">Downloads</span>
     </a>
     <a class="nav-item" data-panel="proxy">
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
         <path d="M3 5.5h5"/><path d="M8 5.5l1.8-1.8"/><path d="M8 5.5l1.8 1.8"/><path d="M13 10.5H8"/><path d="M8 10.5L6.2 8.7"/><path d="M8 10.5l-1.8 1.8"/>
       </svg>
-      Proxy
+      <span data-i18n="settings.proxy">Proxy</span>
+    </a>
+    <a class="nav-item" data-panel="privacy">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M8 2.2l4.6 1.7v3.4c0 3-1.9 5.2-4.6 6.5-2.7-1.3-4.6-3.5-4.6-6.5V3.9z"/><path d="M6 8l1.4 1.4L10.2 6.6"/>
+      </svg>
+      <span data-i18n="settings.privacy">Privacy</span>
     </a>
     <a class="nav-item" data-panel="about">
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
         <circle cx="8" cy="8" r="6"/><path d="M8 11V7.5"/><circle cx="8" cy="5.25" r="0.01" stroke-width="2"/>
       </svg>
-      About
+      <span data-i18n="settings.about">About</span>
     </a>
   </nav>
 
   <div class="main">
-    <div class="panel active" id="panel-downloads">
+    <div class="panel active" id="panel-general">
       <div class="main-header">
-        <div><h2>Downloads</h2></div>
+        <div><h2 data-i18n="settings.general">General</h2></div>
       </div>
       <div class="settings-content">
         <div class="section">
           <div class="row">
             <div class="row-main">
-              <div class="row-title">Location</div>
-              <div class="row-value" id="downloadDir">Loading...</div>
+              <div class="row-title" data-i18n="settings.language">Language</div>
+              <div class="row-value" id="languageStatus" data-i18n="settings.languageCopy">Choose the language used by LingXia browser pages.</div>
+            </div>
+            <div class="row-control language">
+              <div class="language-options" id="languageOptions" role="radiogroup" data-i18n-aria-label="settings.language" aria-label="Language">
+                <button class="language-option" data-language="auto" type="button" role="radio" data-i18n="settings.languageAuto">Automatic</button>
+                <button class="language-option" data-language="en-US" type="button" role="radio">English</button>
+                <button class="language-option" data-language="zh-CN" type="button" role="radio">简体中文</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel" id="panel-downloads">
+      <div class="main-header">
+        <div><h2 data-i18n="settings.downloads">Downloads</h2></div>
+      </div>
+      <div class="settings-content">
+        <div class="section">
+          <div class="row">
+            <div class="row-main">
+              <div class="row-title" data-i18n="settings.location">Location</div>
+              <div class="row-value" id="downloadDir" data-i18n="downloads.loading">Loading...</div>
             </div>
             <span class="pill is-disabled" id="downloadMode">-</span>
           </div>
           <div class="row">
-            <div class="row-main"><div class="row-title">Change location</div></div>
-            <button class="row-action" id="changeBtn" type="button">Change</button>
+            <div class="row-main"><div class="row-title" data-i18n="settings.changeLocation">Change location</div></div>
+            <button class="row-action" id="changeBtn" type="button" data-i18n="settings.change">Change</button>
           </div>
           <div class="row" id="resetRow" style="display:none">
-            <div class="row-main"><div class="row-title">Reset to default</div></div>
-            <button class="row-action secondary" id="resetBtn" type="button">Reset</button>
+            <div class="row-main"><div class="row-title" data-i18n="settings.resetDefault">Reset to default</div></div>
+            <button class="row-action secondary" id="resetBtn" type="button" data-i18n="settings.reset">Reset</button>
           </div>
         </div>
       </div>
@@ -335,26 +454,24 @@
 
     <div class="panel" id="panel-proxy">
       <div class="main-header">
-        <div><h2>Proxy</h2></div>
+        <div><h2 data-i18n="settings.proxy">Proxy</h2></div>
       </div>
       <div class="settings-content">
         <div class="proxy-stack">
           <section class="proxy-block">
             <div class="proxy-block-head">
               <div>
-                <div class="proxy-kicker">Proxy Server</div>
+                <div class="proxy-kicker" data-i18n="settings.proxyServer">Proxy Server</div>
                 <div class="proxy-title">SOCKS</div>
-                <div class="proxy-subtitle">
-                  Configure the SOCKS server used by both <strong>Always Proxy</strong> and <strong>Auto Switch</strong> modes.
-                </div>
+                <div class="proxy-subtitle" data-i18n="settings.proxyServerCopy">Configure the SOCKS server used by both Always Proxy and Auto Switch modes.</div>
               </div>
             </div>
             <div class="proxy-block-body">
               <div class="proxy-mini">
                 <div class="row">
                   <div class="row-main">
-                    <div class="row-title">SOCKS host</div>
-                    <div class="row-value">Used by both Always Proxy and Auto Switch modes.</div>
+                    <div class="row-title" data-i18n="settings.socksHost">SOCKS host</div>
+                    <div class="row-value" data-i18n="settings.socksHostCopy">Used by both Always Proxy and Auto Switch modes.</div>
                   </div>
                   <div class="row-control">
                     <input class="settings-input" id="proxyHost" type="text" placeholder="127.0.0.1" autocomplete="off">
@@ -362,8 +479,8 @@
                 </div>
                 <div class="row">
                   <div class="row-main">
-                    <div class="row-title">SOCKS port</div>
-                    <div class="row-value">Default is 1080.</div>
+                    <div class="row-title" data-i18n="settings.socksPort">SOCKS port</div>
+                    <div class="row-value" data-i18n="settings.socksPortCopy">Default is 1080.</div>
                   </div>
                   <div class="row-control compact">
                     <input class="settings-input" id="proxyPort" type="text" inputmode="numeric" placeholder="1080" autocomplete="off">
@@ -371,8 +488,8 @@
                 </div>
                 <div class="row">
                   <div class="row-main">
-                    <div class="row-title">Username</div>
-                    <div class="row-value">Optional SOCKS username.</div>
+                    <div class="row-title" data-i18n="settings.username">Username</div>
+                    <div class="row-value" data-i18n="settings.usernameCopy">Optional SOCKS username.</div>
                   </div>
                   <div class="row-control">
                     <input class="settings-input" id="proxyUsername" type="text" autocomplete="off">
@@ -380,8 +497,8 @@
                 </div>
                 <div class="row">
                   <div class="row-main">
-                    <div class="row-title">Password</div>
-                    <div class="row-value">Optional SOCKS password.</div>
+                    <div class="row-title" data-i18n="settings.password">Password</div>
+                    <div class="row-value" data-i18n="settings.passwordCopy">Optional SOCKS password.</div>
                   </div>
                   <div class="row-control">
                     <input class="settings-input" id="proxyPassword" type="password" autocomplete="off">
@@ -389,11 +506,11 @@
                 </div>
                 <div class="row">
                   <div class="row-main">
-                    <div class="row-title">Save server settings</div>
-                    <div class="row-value">Save the server fields and reapply the current routing mode.</div>
+                    <div class="row-title" data-i18n="settings.saveServerSettings">Save server settings</div>
+                    <div class="row-value" data-i18n="settings.saveServerCopy">Save the server fields and reapply the current routing mode.</div>
                   </div>
                   <div class="row-actions">
-                    <button class="row-action" id="saveServerBtn" type="button">Save Server</button>
+                    <button class="row-action" id="saveServerBtn" type="button" data-i18n="settings.saveServer">Save Server</button>
                   </div>
                 </div>
               </div>
@@ -403,27 +520,25 @@
           <section class="proxy-block">
             <div class="proxy-block-head">
               <div>
-                <div class="proxy-kicker">Proxy</div>
-                <div class="proxy-title">Routing Mode</div>
-                <div class="proxy-subtitle" id="proxySummary">
-                  Choose how browser traffic should be routed: direct, auto switch by rule list, or always through the upstream proxy.
-                </div>
+                <div class="proxy-kicker" data-i18n="settings.proxy">Proxy</div>
+                <div class="proxy-title" data-i18n="settings.routingMode">Routing Mode</div>
+                <div class="proxy-subtitle" id="proxySummary" data-i18n="settings.routingCopy">Choose how browser traffic should be routed: direct, auto switch by rule list, or always through the upstream proxy.</div>
               </div>
-              <span class="pill is-pending" id="proxyStatusPill">Loading</span>
+              <span class="pill is-pending" id="proxyStatusPill" data-i18n="settings.loading">Loading</span>
             </div>
             <div class="proxy-block-body">
               <div class="proxy-mode-group">
                 <button class="proxy-mode" data-proxy-mode="direct" type="button">
-                  <span class="proxy-mode-label">Direct</span>
-                  <span class="proxy-mode-desc">No proxy. Browser traffic goes out normally.</span>
+                  <span class="proxy-mode-label" data-i18n="settings.direct">Direct</span>
+                  <span class="proxy-mode-desc" data-i18n="settings.directDesc">No proxy. Browser traffic goes out normally.</span>
                 </button>
                 <button class="proxy-mode" data-proxy-mode="gfw_list" type="button">
-                  <span class="proxy-mode-label">Auto Switch</span>
-                  <span class="proxy-mode-desc">Use the rule list below. Matched requests go to the proxy server, default traffic stays direct.</span>
+                  <span class="proxy-mode-label" data-i18n="settings.autoSwitch">Auto Switch</span>
+                  <span class="proxy-mode-desc" data-i18n="settings.autoSwitchDesc">Use the rule list below. Matched requests go to the proxy server, default traffic stays direct.</span>
                 </button>
                 <button class="proxy-mode" data-proxy-mode="global" type="button">
-                  <span class="proxy-mode-label">Always Proxy</span>
-                  <span class="proxy-mode-desc">Send all browser traffic to the configured SOCKS server.</span>
+                  <span class="proxy-mode-label" data-i18n="settings.alwaysProxy">Always Proxy</span>
+                  <span class="proxy-mode-desc" data-i18n="settings.alwaysProxyDesc">Send all browser traffic to the configured SOCKS server.</span>
                 </button>
               </div>
 
@@ -431,78 +546,69 @@
 
               <div class="mode-detail active" id="modeDetailDirect">
                 <div class="mode-detail-card">
-                  <div class="mode-detail-title">Direct</div>
-                  <div class="mode-detail-copy">
-                    Browser traffic goes out normally. The proxy server configuration stays saved, but it is not used in this mode.
-                  </div>
+                  <div class="mode-detail-title" data-i18n="settings.direct">Direct</div>
+                  <div class="mode-detail-copy" data-i18n="settings.directDetail">Browser traffic goes out normally. The proxy server configuration stays saved, but it is not used in this mode.</div>
                 </div>
               </div>
 
               <div class="mode-detail" id="modeDetailGlobal">
                 <div class="mode-detail-card">
-                  <div class="mode-detail-title">Always Proxy</div>
-                  <div class="mode-detail-copy">
-                    All browser requests are configured to use the <strong>SOCKS</strong> server for newly created browser tabs.
-                  </div>
+                  <div class="mode-detail-title" data-i18n="settings.alwaysProxy">Always Proxy</div>
+                  <div class="mode-detail-copy" data-i18n="settings.alwaysProxyDetail">All browser requests use the SOCKS server for newly created browser tabs.</div>
                 </div>
               </div>
 
               <div class="mode-detail autoswitch-grid section is-muted" id="gfwListSection">
                 <div class="autoswitch-card">
-                  <div class="autoswitch-card-title">Switch Rules</div>
-                  <div class="autoswitch-card-copy">
-                    Auto Switch checks your custom rules first, then the downloaded rule list, and finally falls back to direct.
-                    Use <strong>SOCKS</strong> to manually add sites that are not covered by gfwlist, or <strong>Direct</strong> to create whitelist exceptions.
-                  </div>
-                  <div class="autoswitch-card-note">
-                    <strong>How match works:</strong> enter a host pattern to match that host and its subdomains.
-                  </div>
+                  <div class="autoswitch-card-title" data-i18n="settings.switchRules">Switch Rules</div>
+                  <div class="autoswitch-card-copy" data-i18n="settings.switchRulesCopy">Auto Switch checks custom rules first, then the downloaded rule list, and finally falls back to direct.</div>
+                  <div class="autoswitch-card-note" data-i18n="settings.matchHelp">Enter a host pattern to match that host and its subdomains.</div>
                   <table class="autoswitch-table">
                     <thead>
                       <tr>
-                        <th>Condition Type</th>
-                        <th>Condition Details</th>
-                        <th>Profile</th>
+                        <th data-i18n="settings.conditionType">Condition Type</th>
+                        <th data-i18n="settings.conditionDetails">Condition Details</th>
+                        <th data-i18n="settings.profile">Profile</th>
                       </tr>
                     </thead>
                     <tbody>
                       <tr>
-                        <td>Rule list rules</td>
-                        <td>Any request matching the configured rule list.</td>
+                        <td data-i18n="settings.ruleListRules">Rule list rules</td>
+                        <td data-i18n="settings.ruleListRulesCopy">Any request matching the configured rule list.</td>
                         <td><span class="autoswitch-profile is-proxy">SOCKS</span></td>
                       </tr>
                     </tbody>
                     <tbody id="autoSwitchRulesBody">
                       <tr>
-                        <td colspan="3" class="autoswitch-rule-empty">No custom rules yet.</td>
+                        <td colspan="3" class="autoswitch-rule-empty" data-i18n="settings.noCustomRules">No custom rules yet.</td>
                       </tr>
                     </tbody>
                     <tbody>
                       <tr>
-                        <td>Default</td>
-                        <td>Requests that do not match the rule list.</td>
-                        <td><span class="autoswitch-profile is-direct">Direct</span></td>
+                        <td data-i18n="settings.default">Default</td>
+                        <td data-i18n="settings.defaultRuleCopy">Requests that do not match the rule list.</td>
+                        <td><span class="autoswitch-profile is-direct" data-i18n="settings.direct">Direct</span></td>
                       </tr>
                     </tbody>
                   </table>
                   <div class="autoswitch-card-actions">
-                    <button class="row-action secondary" id="addAutoSwitchRuleBtn" type="button">Add Rule</button>
+                    <button class="row-action secondary" id="addAutoSwitchRuleBtn" type="button" data-i18n="settings.addRule">Add Rule</button>
                   </div>
                 </div>
 
                 <div class="autoswitch-card">
-                  <div class="autoswitch-card-title">Rule List Config</div>
+                  <div class="autoswitch-card-title" data-i18n="settings.ruleListConfig">Rule List Config</div>
                   <div class="autoswitch-card-copy" id="gfwListStatusMessage">
-                    Loading...
+                    <span data-i18n="downloads.loading">Loading...</span>
                   </div>
                   <div class="autoswitch-card-actions">
-                    <span class="pill is-empty" id="gfwListStatusPill">Empty</span>
+                    <span class="pill is-empty" id="gfwListStatusPill" data-i18n="settings.empty">Empty</span>
                   </div>
                   <div class="proxy-mini" style="margin-top:14px;">
                     <div class="row">
                       <div class="row-main">
-                        <div class="row-title">Rule List URL</div>
-                        <div class="row-value">HTTPS URL for the rule list source. Used when you click Download Rules Now.</div>
+                        <div class="row-title" data-i18n="settings.ruleListUrl">Rule List URL</div>
+                        <div class="row-value" data-i18n="settings.ruleListUrlCopy">HTTPS URL used when downloading the rule list.</div>
                       </div>
                       <div class="row-control">
                         <input class="settings-input" id="gfwListSourceInput" type="url" placeholder="https://raw.githubusercontent.com/gfwlist/gfwlist/master/gfwlist.txt" autocomplete="off">
@@ -510,29 +616,143 @@
                     </div>
                     <div class="row">
                       <div class="row-main">
-                        <div class="row-title">Last updated</div>
-                        <div class="row-value" id="gfwListUpdatedAt">Never</div>
+                        <div class="row-title" data-i18n="settings.lastUpdated">Last updated</div>
+                        <div class="row-value" id="gfwListUpdatedAt" data-i18n="settings.never">Never</div>
                       </div>
                       <div class="row-actions">
-                        <button class="row-action secondary" id="refreshGfwListBtn" type="button">Download Rules Now</button>
+                        <button class="row-action secondary" id="refreshGfwListBtn" type="button" data-i18n="settings.downloadRules">Download Rules Now</button>
                       </div>
                     </div>
                   </div>
                 </div>
               </div>
 
-              <div class="proxy-helper" id="proxyModeHelper">
-                Choose a mode, then save when you want to update the proxy configuration used by browser tabs.
-              </div>
+              <div class="proxy-helper" id="proxyModeHelper" data-i18n="settings.proxyHelper">Choose a mode, then save when you want to update the proxy configuration used by browser tabs.</div>
             </div>
           </section>
         </div>
       </div>
     </div>
 
+    <div class="panel" id="panel-privacy">
+      <div class="main-header">
+        <div><h2 data-i18n="settings.privacy">Privacy</h2></div>
+      </div>
+      <div class="settings-content">
+        <div class="section">
+          <div class="section-title" data-i18n="settings.privacyBrowsingData">Browsing Data</div>
+          <div class="row">
+            <div class="row-main">
+              <div class="row-title" data-i18n="settings.browsingHistory">Browsing history</div>
+              <div class="row-value" id="privacyHistoryUsage" data-i18n="downloads.loading">Loading...</div>
+            </div>
+            <div class="row-actions">
+              <a class="row-action secondary" href="lingxia://history" data-i18n="settings.viewHistory">View History</a>
+            </div>
+          </div>
+          <div class="row">
+            <div class="row-main">
+              <div class="row-title" data-i18n="settings.cachedFiles">Cached images and files</div>
+              <div class="row-value" id="privacyCacheUsage" data-i18n="downloads.loading">Loading...</div>
+            </div>
+          </div>
+          <div class="row">
+            <div class="row-main">
+              <div class="row-title" data-i18n="settings.cookies">Cookies and site data</div>
+              <div class="row-value" id="privacyCookieUsage" data-i18n="downloads.loading">Loading...</div>
+            </div>
+          </div>
+          <div class="row">
+            <div class="row-main">
+              <div class="row-title" data-i18n="settings.clearBrowsingData">Clear browsing data</div>
+              <div class="row-value" data-i18n="settings.clearBrowsingDataCopy">Choose a time range and the data you want to remove.</div>
+            </div>
+            <div class="row-actions">
+              <button class="row-action danger" id="openClearDataBtn" type="button" data-i18n="settings.clearBrowsingDataMenu">Clear Browsing Data...</button>
+            </div>
+          </div>
+        </div>
+        <div class="proxy-toast" id="privacyToast"></div>
+      </div>
+    </div>
+
+    <div class="confirm-overlay" id="clearBrowsingDataDialog">
+      <div class="confirm-card browsing-data-card" role="dialog" aria-modal="true" aria-labelledby="clearBrowsingDataTitle">
+        <div class="confirm-title" id="clearBrowsingDataTitle" data-i18n="settings.clearBrowsingData">Clear browsing data</div>
+        <div class="confirm-copy" data-i18n="settings.clearDialogCopy">Select a time range and the information to remove from this browser profile.</div>
+        <div class="clear-section-label" data-i18n="settings.timeRange">Time range</div>
+        <div class="time-range-options" id="timeRangeOptions" role="radiogroup" data-i18n-aria-label="settings.timeRange" aria-label="Time range">
+          <button class="time-range-option" data-time-range="lastHour" type="button" role="radio" data-i18n="settings.lastHour">Last hour</button>
+          <button class="time-range-option" data-time-range="last24Hours" type="button" role="radio" data-i18n="settings.last24Hours">24 hours</button>
+          <button class="time-range-option" data-time-range="last7Days" type="button" role="radio" data-i18n="settings.last7Days">7 days</button>
+          <button class="time-range-option" data-time-range="last4Weeks" type="button" role="radio" data-i18n="settings.last4Weeks">4 weeks</button>
+          <button class="time-range-option selected" data-time-range="allTime" type="button" role="radio" aria-checked="true" data-i18n="settings.allTime">All time</button>
+        </div>
+        <div class="clear-section-label" data-i18n="settings.dataToRemove">Data to remove</div>
+        <div class="data-options">
+          <label class="data-option">
+            <input id="clearHistoryCheck" type="checkbox" checked>
+            <span class="data-option-main">
+              <span class="data-option-title" data-i18n="settings.browsingHistory">Browsing history</span>
+              <span class="data-option-copy" data-i18n="settings.historyDataCopy">Visited pages and their timestamps.</span>
+            </span>
+          </label>
+          <label class="data-option">
+            <input id="clearCacheCheck" type="checkbox" checked>
+            <span class="data-option-main">
+              <span class="data-option-title" data-i18n="settings.cachedFiles">Cached images and files</span>
+              <span class="data-option-copy" data-i18n="settings.cacheDataCopy">Sites may load more slowly on your next visit.</span>
+            </span>
+          </label>
+          <label class="data-option">
+            <input id="clearCookiesCheck" type="checkbox">
+            <span class="data-option-main">
+              <span class="data-option-title" data-i18n="settings.cookies">Cookies and site data</span>
+              <span class="data-option-copy" data-i18n="settings.cookieDataCopy">Sign-in sessions, local storage, and databases.</span>
+            </span>
+          </label>
+        </div>
+        <div class="cookie-warning" id="cookieWarning" data-i18n="settings.cookieWarning">You will be signed out of most websites.</div>
+        <div class="confirm-actions">
+          <button class="row-action secondary" id="clearDataCancelBtn" type="button" data-i18n="common.cancel">Cancel</button>
+          <button class="row-action danger" id="clearDataConfirmBtn" type="button" data-i18n="settings.clearData">Clear Data</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="confirm-overlay" id="clearSiteDataDialog">
+      <div class="confirm-card browsing-data-card" role="dialog" aria-modal="true" aria-labelledby="clearSiteDataTitle">
+        <div class="confirm-title" id="clearSiteDataTitle" data-i18n="settings.clearSiteData">Clear data for this site</div>
+        <div class="confirm-copy" data-i18n="settings.clearSiteDataCopy">Remove data saved by this website without affecting other sites.</div>
+        <div class="site-data-host" id="clearSiteDataHost" data-i18n="settings.loading">Loading</div>
+        <div class="clear-section-label" data-i18n="settings.dataToRemove">Data to remove</div>
+        <div class="data-options">
+          <label class="data-option">
+            <input id="clearSiteCacheCheck" type="checkbox" checked>
+            <span class="data-option-main">
+              <span class="data-option-title" data-i18n="settings.cachedFiles">Cached images and files</span>
+              <span class="data-option-copy" data-i18n="settings.siteCacheDataCopy">Only cache storage that can be isolated to this site is removed.</span>
+            </span>
+          </label>
+          <label class="data-option">
+            <input id="clearSiteCookiesCheck" type="checkbox">
+            <span class="data-option-main">
+              <span class="data-option-title" data-i18n="settings.cookies">Cookies and site data</span>
+              <span class="data-option-copy" data-i18n="settings.siteCookieDataCopy">You will be signed out of this website.</span>
+            </span>
+          </label>
+        </div>
+        <div class="cookie-warning" id="siteCookieWarning" data-i18n="settings.siteCookieWarning">You will be signed out of this website.</div>
+        <div class="confirm-actions">
+          <button class="row-action secondary" id="clearSiteDataCancelBtn" type="button" data-i18n="common.cancel">Cancel</button>
+          <button class="row-action danger" id="clearSiteDataConfirmBtn" type="button" data-i18n="settings.clearSiteDataAction">Clear Site Data</button>
+        </div>
+      </div>
+    </div>
+
     <div class="panel" id="panel-about">
       <div class="main-header">
-        <div><h2>About</h2></div>
+        <div><h2 data-i18n="settings.about">About</h2></div>
       </div>
       <div class="about-content">
         <div class="about-logo">
@@ -545,13 +765,13 @@
         <div class="section">
           <div class="row">
             <div class="row-main">
-              <div class="row-title">App Version</div>
+              <div class="row-title" data-i18n="settings.appVersion">App Version</div>
               <div class="row-value" id="aboutAppVersion">-</div>
             </div>
           </div>
           <div class="row">
             <div class="row-main">
-              <div class="row-title">LingXia Version</div>
+              <div class="row-title" data-i18n="settings.lingxiaVersion">LingXia Version</div>
               <div class="row-value" id="aboutSdkVersion">-</div>
             </div>
           </div>
@@ -560,8 +780,52 @@
     </div>
   </div>
 
+  <script src="lingxia://lxapp/public/i18n.js"></script>
   <script>
     (function () {
+      var i18n = window.LingXiaI18n;
+      var t = i18n.t;
+      i18n.apply();
+      var languageStatus = document.getElementById('languageStatus');
+      var languageOptions = Array.prototype.slice.call(document.querySelectorAll('[data-language]'));
+      var configuredLanguage = null;
+      function syncLanguageOptions(language, disabled) {
+        languageOptions.forEach(function (option) {
+          var selected = option.dataset.language === language;
+          option.classList.toggle('active', selected);
+          option.setAttribute('aria-checked', selected ? 'true' : 'false');
+          option.disabled = !!disabled;
+        });
+      }
+      syncLanguageOptions('auto', false);
+      callHost('settings.getLanguage').then(function (result) {
+        configuredLanguage = result && result.language || null;
+        syncLanguageOptions(configuredLanguage || 'auto', false);
+      }, function () {
+        syncLanguageOptions('auto', false);
+      });
+      languageOptions.forEach(function (option) {
+        option.addEventListener('click', function () {
+          var next = option.dataset.language;
+          if (next === (configuredLanguage || 'auto')) return;
+          syncLanguageOptions(next, true);
+          callHost('settings.setLanguage', { language: next }).then(function (result) {
+            configuredLanguage = result && result.language || null;
+            if (configuredLanguage) {
+              i18n.setLocale(configuredLanguage);
+            } else {
+              i18n.useSystemLocale();
+            }
+            window.location.reload();
+          }, function (error) {
+            console.error('[Settings] settings.setLanguage error:', error);
+            syncLanguageOptions(configuredLanguage || 'auto', false);
+            languageStatus.textContent = t('settings.languageSaveFailed');
+            languageStatus.style.color = '#c01048';
+          });
+        });
+      });
+      document.getElementById('aboutVersion').textContent = t('settings.appVersionValue', { version: '-' });
       var navItems = document.querySelectorAll('.nav-item[data-panel]');
       var modeButtons = document.querySelectorAll('.proxy-mode[data-proxy-mode]');
       var DEFAULT_PROXY_PORT = 1080;
@@ -605,6 +869,14 @@
           getSettings: function () { return callHost('downloads.getSettings'); },
           chooseDirectory: function () { return callHost('downloads.chooseDirectory'); },
           resetDirectory: function () { return callHost('downloads.resetDirectory'); }
+        };
+      };
+      var privacyApi = function () {
+        return {
+          getUsage: function () { return callHost('privacy.getUsage'); },
+          clearBrowsingData: function (input) { return callHost('privacy.clearBrowsingData', input); },
+          getSiteDataContext: function (input) { return callHost('privacy.getSiteDataContext', input); },
+          clearSiteData: function (input) { return callHost('privacy.clearSiteData', input); }
         };
       };
       var proxyApi = function () {
@@ -655,11 +927,11 @@
       }
 
       function formatTimestamp(ts) {
-        if (!ts) return 'Never';
+        if (!ts) return t('settings.never');
         try {
-          return new Date(ts).toLocaleString();
+          return new Date(ts).toLocaleString(i18n.locale);
         } catch (_) {
-          return 'Never';
+          return t('settings.never');
         }
       }
 
@@ -694,7 +966,7 @@
         var body = document.getElementById('autoSwitchRulesBody');
         var list = Array.isArray(rules) ? rules : [];
         if (!list.length) {
-          body.innerHTML = '<tr><td colspan="3" class="autoswitch-rule-empty">No custom rules yet.</td></tr>';
+          body.innerHTML = '<tr><td colspan="3" class="autoswitch-rule-empty">' + t('settings.noCustomRules') + '</td></tr>';
           return;
         }
 
@@ -703,16 +975,17 @@
             .replace(/&/g, '&amp;')
             .replace(/"/g, '&quot;')
             .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;');
+            .replace(/>/g, '&gt;')
+            .replace(/'/g, '&#39;');
           var action = rule.action === 'direct' ? 'direct' : 'proxy';
           return [
             '<tr class="autoswitch-rule-row" data-rule-index="', index, '">',
-            '<td>Match site</td>',
+            '<td>', t('settings.matchSite'), '</td>',
             '<td><input class="autoswitch-rule-input" data-rule-pattern type="text" placeholder="site.test" value="', pattern, '"></td>',
             '<td><div class="autoswitch-rule-cell">',
             '<div class="autoswitch-rule-segment">',
             '<button class="autoswitch-rule-action', action === 'proxy' ? ' active' : '', '" data-rule-action-btn data-rule-action-value="proxy" type="button">SOCKS</button>',
-            '<button class="autoswitch-rule-action', action === 'direct' ? ' active' : '', '" data-rule-action-btn data-rule-action-value="direct" type="button">Direct</button>',
+            '<button class="autoswitch-rule-action', action === 'direct' ? ' active' : '', '" data-rule-action-btn data-rule-action-value="direct" type="button">', t('settings.direct'), '</button>',
             '<input type="hidden" data-rule-action value="', action, '">',
             '</div>',
             '<button class="autoswitch-rule-delete" data-rule-delete type="button">×</button>',
@@ -755,9 +1028,9 @@
         document.getElementById('gfwListSection').classList.toggle('is-muted', mode !== 'gfw_list');
 
         var summaryMap = {
-          direct: 'Direct mode disables the browser proxy and keeps the upstream server settings available for later use.',
-          global: 'Always Proxy configures browser tabs to use the specified SOCKS server.',
-          gfw_list: 'Auto Switch uses the rule list below. Matched domains go to the proxy server and unmatched traffic stays direct.'
+          direct: t('settings.directDetail'),
+          global: t('settings.alwaysProxyDetail'),
+          gfw_list: t('settings.autoSwitchDesc')
         };
 
         document.getElementById('proxySummary').textContent = summaryMap[mode] || summaryMap.direct;
@@ -778,18 +1051,18 @@
         document.getElementById('refreshGfwListBtn').disabled = disabled;
 
         saveServerBtn.classList.toggle('is-success', settingsState.serverSavedFeedback && !settingsState.serverDirty);
-        saveServerBtn.textContent = settingsState.serverSavedFeedback && !settingsState.serverDirty ? 'Saved' : 'Save Server';
+        saveServerBtn.textContent = t(settingsState.serverSavedFeedback && !settingsState.serverDirty ? 'settings.saved' : 'settings.saveServer');
 
         var helper = document.getElementById('proxyModeHelper');
         if (disabled) {
           helper.className = 'proxy-helper';
-          helper.textContent = 'Applying configuration...';
+          helper.textContent = t('settings.applying');
         } else if (!hasUpstream) {
           helper.className = 'proxy-helper is-warning';
-          helper.textContent = 'Always Proxy and Auto Switch require a valid SOCKS5 host and port.';
+          helper.textContent = t('settings.invalidServer');
         } else {
           helper.className = 'proxy-helper';
-          helper.textContent = 'Mode buttons update the selected configuration. Use "Save Server" after editing the SOCKS fields.';
+          helper.textContent = t('settings.saveAfterEdit');
         }
       }
 
@@ -802,12 +1075,12 @@
         var pill = document.getElementById('proxyStatusPill');
         var text = (status || '').toLowerCase();
         var labelMap = {
-          saved: 'Saved',
-          active: 'Active',
-          disabled: 'Direct',
-          unsupported: 'Unsupported',
-          error: 'Error',
-          pending: 'Pending'
+          saved: t('settings.saved'),
+          active: t('settings.active'),
+          disabled: t('settings.direct'),
+          unsupported: t('settings.unsupported'),
+          error: t('settings.error'),
+          pending: t('settings.pending')
         };
         var classMap = {
           saved: 'is-success',
@@ -818,7 +1091,7 @@
           pending: 'is-pending'
         };
         pill.className = 'pill ' + (classMap[text] || 'is-pending');
-        pill.textContent = labelMap[text] || 'Loading';
+        pill.textContent = labelMap[text] || t('settings.loading');
         var summary = document.getElementById('proxySummary');
         if (summary && message) summary.textContent = message;
       }
@@ -827,9 +1100,9 @@
         var pill = document.getElementById('gfwListStatusPill');
         var text = (status || '').toLowerCase();
         var labelMap = {
-          ready: 'Ready',
-          empty: 'Empty',
-          error: 'Error'
+          ready: t('settings.ready'),
+          empty: t('settings.empty'),
+          error: t('settings.error')
         };
         var classMap = {
           ready: 'is-ready',
@@ -837,8 +1110,8 @@
           error: 'is-error'
         };
         pill.className = 'pill ' + (classMap[text] || 'is-empty');
-        pill.textContent = labelMap[text] || 'Empty';
-        document.getElementById('gfwListStatusMessage').textContent = message || 'Rules have not been downloaded yet.';
+        pill.textContent = labelMap[text] || t('settings.empty');
+        document.getElementById('gfwListStatusMessage').textContent = message || t('settings.rulesNotDownloaded');
         if (source != null) proxyField('gfwListSourceInput').value = source || '';
         document.getElementById('gfwListUpdatedAt').textContent = formatTimestamp(updatedAt);
       }
@@ -849,14 +1122,14 @@
         var mode = document.getElementById('downloadMode');
         var resetRow = document.getElementById('resetRow');
         if (!s) {
-          dir.textContent = 'Loading...';
+          dir.textContent = t('downloads.loading');
           mode.textContent = '-';
           resetRow.style.display = 'none';
           return;
         }
         var isDefault = !!s.usesDefaultDir;
         dir.textContent = s.downloadDir || '-';
-        mode.textContent = isDefault ? 'Default' : 'Custom';
+        mode.textContent = t(isDefault ? 'settings.default' : 'settings.custom');
         mode.className = 'pill ' + (isDefault ? 'is-disabled' : 'is-active');
         resetRow.style.display = isDefault ? 'none' : '';
       }
@@ -864,8 +1137,8 @@
       function renderProxySettings() {
         var s = settingsState.proxySettings;
         if (!s) {
-          setProxyStatus('pending', 'Loading...', null);
-          setGfwListStatus('empty', 'Loading...', null, null);
+          setProxyStatus('pending', t('downloads.loading'), null);
+          setGfwListStatus('empty', t('downloads.loading'), null, null);
           return;
         }
 
@@ -901,13 +1174,13 @@
       }
 
       function proxyErrorMessage(err) {
-        if (!err) return 'Unknown proxy error';
+        if (!err) return t('settings.unknownProxyError');
         if (typeof err === 'string') return err;
         if (err.message) return err.message;
         try {
           return JSON.stringify(err);
         } catch (_) {
-          return 'Unknown proxy error';
+          return t('settings.unknownProxyError');
         }
       }
 
@@ -944,16 +1217,16 @@
           if (event && event.status === 'active' && /new webviews only/i.test(event.statusMessage || '')) {
             normalizedEvent = Object.assign({}, event, {
               status: 'saved',
-              statusMessage: 'Saved. Configuration updated and will apply to newly created browser tabs.'
+              statusMessage: t('settings.savedForNewTabs')
             });
           }
           settingsState.proxySettings = normalizedEvent;
           renderProxySettings();
           if (normalizedEvent && normalizedEvent.status !== previousStatus) {
-            if (normalizedEvent.status === 'saved') showProxyToast('success', normalizedEvent.statusMessage || 'Settings saved.');
-            else if (normalizedEvent.status === 'active') showProxyToast('success', normalizedEvent.statusMessage || 'Proxy configuration is active.');
-            else if (normalizedEvent.status === 'error') showProxyToast('error', normalizedEvent.statusMessage || 'Proxy configuration failed.');
-            else if (normalizedEvent.status === 'pending') showProxyToast('', normalizedEvent.statusMessage || 'Applying proxy configuration...');
+            if (normalizedEvent.status === 'saved') showProxyToast('success', normalizedEvent.statusMessage || t('settings.settingsSaved'));
+            else if (normalizedEvent.status === 'active') showProxyToast('success', normalizedEvent.statusMessage || t('settings.proxyActive'));
+            else if (normalizedEvent.status === 'error') showProxyToast('error', normalizedEvent.statusMessage || t('settings.proxyFailed'));
+            else if (normalizedEvent.status === 'pending') showProxyToast('', normalizedEvent.statusMessage || t('settings.applying'));
           }
         });
         proxyWatchHandle.onError(function (err) {
@@ -969,9 +1242,9 @@
 
       function validateProxyPayload(payload) {
         if (payload.mode === 'direct') return null;
-        if (!payload.socks5Host) return 'SOCKS5 host is required for the selected mode.';
+        if (!payload.socks5Host) return t('settings.hostRequired');
         if (!Number.isInteger(payload.socks5Port) || payload.socks5Port <= 0 || payload.socks5Port > 65535) {
-          return 'SOCKS5 port must be between 1 and 65535.';
+          return t('settings.portInvalid');
         }
         return null;
       }
@@ -1004,15 +1277,15 @@
           if (submitOptions.source === 'server') {
             settingsState.serverDirty = false;
             settingsState.serverSavedFeedback = true;
-            showProxyToast('success', 'Proxy server settings saved.');
+            showProxyToast('success', t('settings.serverSaved'));
           } else if (submitOptions.source === 'auto_switch') {
             settingsState.autoSwitchDirty = false;
-            if (!submitOptions.autosave) showProxyToast('success', 'Auto Switch settings saved.');
+            if (!submitOptions.autosave) showProxyToast('success', t('settings.autoSaved'));
           }
 
           if (payload.mode === 'gfw_list' && !result.gfwlistReady) {
-            setProxyStatus('pending', 'Downloading Auto Switch rules and applying the mode...', result.localProxyAddr);
-            setGfwListStatus('empty', 'Downloading rules from the configured source...', payload.gfwlistSourceUrl, result.gfwlistUpdatedAtMs);
+            setProxyStatus('pending', t('settings.downloadingAutoRules'), result.localProxyAddr);
+            setGfwListStatus('empty', t('settings.downloadingRules'), payload.gfwlistSourceUrl, result.gfwlistUpdatedAtMs);
             withTimeout(proxyApi().refreshGfwList(), 15000, 'proxy.refreshGfwList').then(function (refreshResult) {
               settingsState.proxySettings = refreshResult;
               renderProxySettings();
@@ -1136,8 +1409,234 @@
         });
       });
 
-      var hash = location.hash.replace('#', '');
-      if (hash && document.getElementById('panel-' + hash)) switchPanel(hash);
+      // MARK: privacy
+
+      var privacyToastTimer = null;
+      function showPrivacyToast(kind, message) {
+        var toast = document.getElementById('privacyToast');
+        if (privacyToastTimer) window.clearTimeout(privacyToastTimer);
+        toast.className = 'proxy-toast active' + (kind === 'error' ? ' is-error' : ' is-success');
+        toast.textContent = message;
+        privacyToastTimer = window.setTimeout(function () {
+          toast.className = 'proxy-toast';
+          toast.textContent = '';
+          privacyToastTimer = null;
+        }, 2600);
+      }
+
+      function hidePrivacyPanel() {
+        var nav = document.querySelector('.nav-item[data-panel="privacy"]');
+        if (nav) nav.style.display = 'none';
+        var panel = document.getElementById('panel-privacy');
+        var wasActive = panel && panel.classList.contains('active');
+        if (panel) panel.style.display = 'none';
+        if (wasActive || (nav && nav.classList.contains('active'))) switchPanel('downloads');
+      }
+
+      function sitesLabel(n) {
+        if (!n) return t('settings.noSites');
+        return n === 1 ? t('settings.siteCountOne') : t('settings.siteCountMany', { count: n });
+      }
+
+      function renderPrivacyUsage(usage) {
+        var historyUsage = document.getElementById('privacyHistoryUsage');
+        var cache = document.getElementById('privacyCacheUsage');
+        var cookies = document.getElementById('privacyCookieUsage');
+        if (!usage) {
+          historyUsage.textContent = t('downloads.loading');
+          cache.textContent = t('downloads.loading');
+          cookies.textContent = t('downloads.loading');
+          return;
+        }
+        historyUsage.textContent = usage.historyEntries
+          ? t(usage.historyEntries === 1 ? 'history.countOne' : 'history.countMany', { count: usage.historyEntries })
+          : t('settings.noSavedHistory');
+        cache.textContent = usage.cacheSites
+          ? t('settings.cacheSites', { sites: sitesLabel(usage.cacheSites) })
+          : t('settings.nothingCached');
+        cookies.textContent = usage.cookies || usage.siteDataSites
+          ? t('settings.cookieUsage', { count: usage.cookies, sites: sitesLabel(usage.siteDataSites) })
+          : t('settings.noCookies');
+      }
+
+      function refreshPrivacyUsage() {
+        privacyApi().getUsage().then(renderPrivacyUsage, function (err) {
+          if (isRouteUnavailableError(err) || /not supported/i.test((err && err.message) || '')) {
+            hidePrivacyPanel();
+            return;
+          }
+          console.error('[Settings] privacy.getUsage error:', err);
+          document.getElementById('privacyHistoryUsage').textContent = t('settings.unavailable');
+          document.getElementById('privacyCacheUsage').textContent = t('settings.unavailable');
+          document.getElementById('privacyCookieUsage').textContent = t('settings.unavailable');
+        });
+      }
+
+      var clearDataState = { timeRange: 'allTime' };
+      var clearDataDialog = document.getElementById('clearBrowsingDataDialog');
+      var clearDataChecks = [
+        document.getElementById('clearHistoryCheck'),
+        document.getElementById('clearCacheCheck'),
+        document.getElementById('clearCookiesCheck')
+      ];
+
+      function updateClearDataDialog() {
+        document.querySelectorAll('[data-time-range]').forEach(function (button) {
+          var selected = button.dataset.timeRange === clearDataState.timeRange;
+          button.classList.toggle('selected', selected);
+          button.setAttribute('aria-checked', selected ? 'true' : 'false');
+        });
+        document.getElementById('cookieWarning').classList.toggle(
+          'active',
+          document.getElementById('clearCookiesCheck').checked
+        );
+        document.getElementById('clearDataConfirmBtn').disabled =
+          !clearDataChecks.some(function (check) { return check.checked; });
+      }
+
+      function openClearDataDialog() {
+        clearDataDialog.classList.add('active');
+        updateClearDataDialog();
+        document.querySelector('[data-time-range].selected').focus();
+      }
+
+      function closeClearDataDialog() {
+        clearDataDialog.classList.remove('active');
+      }
+
+      document.getElementById('openClearDataBtn').addEventListener('click', openClearDataDialog);
+      document.getElementById('clearDataCancelBtn').addEventListener('click', closeClearDataDialog);
+      document.getElementById('timeRangeOptions').addEventListener('click', function (event) {
+        var option = event.target.closest('[data-time-range]');
+        if (!option) return;
+        clearDataState.timeRange = option.dataset.timeRange;
+        updateClearDataDialog();
+      });
+      clearDataChecks.forEach(function (check) {
+        check.addEventListener('change', updateClearDataDialog);
+      });
+      clearDataDialog.addEventListener('click', function (event) {
+        if (event.target === clearDataDialog) closeClearDataDialog();
+      });
+      document.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape' && clearDataDialog.classList.contains('active')) {
+          closeClearDataDialog();
+        } else if (event.key === 'Escape' && clearSiteDataDialog.classList.contains('active')) {
+          closeClearSiteDataDialog();
+        }
+      });
+      document.getElementById('clearDataConfirmBtn').addEventListener('click', function () {
+        var button = document.getElementById('clearDataConfirmBtn');
+        button.disabled = true;
+        privacyApi().clearBrowsingData({
+          timeRange: clearDataState.timeRange,
+          history: document.getElementById('clearHistoryCheck').checked,
+          cache: document.getElementById('clearCacheCheck').checked,
+          siteData: document.getElementById('clearCookiesCheck').checked
+        }).then(function () {
+          button.disabled = false;
+          closeClearDataDialog();
+          showPrivacyToast('success', t('settings.dataCleared'));
+          refreshPrivacyUsage();
+        }, function (err) {
+          button.disabled = false;
+          console.error('[Settings] privacy.clearBrowsingData error:', err);
+          showPrivacyToast('error', t('settings.clearFailed'));
+        });
+      });
+
+      var clearSiteDataDialog = document.getElementById('clearSiteDataDialog');
+      var clearSiteDataState = { tabId: null, context: null };
+      var clearSiteChecks = [
+        document.getElementById('clearSiteCacheCheck'),
+        document.getElementById('clearSiteCookiesCheck')
+      ];
+
+      function updateClearSiteDataDialog() {
+        document.getElementById('siteCookieWarning').classList.toggle(
+          'active',
+          document.getElementById('clearSiteCookiesCheck').checked
+        );
+        document.getElementById('clearSiteDataConfirmBtn').disabled =
+          !clearSiteDataState.context ||
+          !clearSiteChecks.some(function (check) { return check.checked; });
+      }
+
+      function closeClearSiteDataDialog() {
+        clearSiteDataDialog.classList.remove('active');
+        clearSiteDataState = { tabId: null, context: null };
+        if (location.hash.indexOf('#clear-site-data') === 0) {
+          history.replaceState(null, '', '#privacy');
+        }
+      }
+
+      function openClearSiteDataDialog(tabId) {
+        clearSiteDataState = { tabId: tabId, context: null };
+        document.getElementById('clearSiteDataHost').textContent = t('settings.loading');
+        clearSiteDataDialog.classList.add('active');
+        updateClearSiteDataDialog();
+        privacyApi().getSiteDataContext({ tabId: tabId }).then(function (context) {
+          clearSiteDataState.context = context;
+          document.getElementById('clearSiteDataHost').textContent = context.host || context.url;
+          updateClearSiteDataDialog();
+          document.getElementById('clearSiteCacheCheck').focus();
+        }, function (err) {
+          console.error('[Settings] privacy.getSiteDataContext error:', err);
+          closeClearSiteDataDialog();
+          showPrivacyToast('error', t('settings.siteUnavailable'));
+        });
+      }
+
+      clearSiteChecks.forEach(function (check) {
+        check.addEventListener('change', updateClearSiteDataDialog);
+      });
+      document.getElementById('clearSiteDataCancelBtn').addEventListener('click', closeClearSiteDataDialog);
+      clearSiteDataDialog.addEventListener('click', function (event) {
+        if (event.target === clearSiteDataDialog) closeClearSiteDataDialog();
+      });
+      document.getElementById('clearSiteDataConfirmBtn').addEventListener('click', function () {
+        var button = document.getElementById('clearSiteDataConfirmBtn');
+        var cacheRequested = document.getElementById('clearSiteCacheCheck').checked;
+        button.disabled = true;
+        privacyApi().clearSiteData({
+          tabId: clearSiteDataState.tabId,
+          cache: cacheRequested,
+          siteData: document.getElementById('clearSiteCookiesCheck').checked
+        }).then(function (result) {
+          closeClearSiteDataDialog();
+          showPrivacyToast(
+            'success',
+            cacheRequested && !result.cacheCleared
+              ? t('settings.siteDataClearedSharedCacheKept')
+              : t('settings.siteDataCleared')
+          );
+          refreshPrivacyUsage();
+        }, function (err) {
+          button.disabled = false;
+          console.error('[Settings] privacy.clearSiteData error:', err);
+          showPrivacyToast('error', t('settings.clearSiteDataFailed'));
+          updateClearSiteDataDialog();
+        });
+      });
+
+      refreshPrivacyUsage();
+
+      function applyLocationHash() {
+        var hash = location.hash.replace('#', '');
+        if (hash === 'clear-browsing-data') {
+          switchPanel('privacy');
+          openClearDataDialog();
+        } else if (hash.indexOf('clear-site-data?') === 0) {
+          var query = new URLSearchParams(hash.slice(hash.indexOf('?') + 1));
+          var tabId = query.get('tabId');
+          switchPanel('privacy');
+          if (tabId) openClearSiteDataDialog(tabId);
+        } else if (hash && document.getElementById('panel-' + hash)) {
+          switchPanel(hash);
+        }
+      }
+      window.addEventListener('hashchange', applyLocationHash);
+      applyLocationHash();
 
       document.getElementById('changeBtn').addEventListener('click', function () {
         downloadsApi().chooseDirectory().then(function (s) {
@@ -1161,7 +1660,7 @@
         if (!info) return;
         if (info.productName) document.getElementById('aboutProductName').textContent = info.productName;
         if (info.version) {
-          document.getElementById('aboutVersion').textContent = 'App Version ' + info.version;
+          document.getElementById('aboutVersion').textContent = t('settings.appVersionValue', { version: info.version });
           document.getElementById('aboutAppVersion').textContent = info.version;
         }
         if (info.sdkVersion) {

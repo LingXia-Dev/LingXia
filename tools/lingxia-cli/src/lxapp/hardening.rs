@@ -320,12 +320,20 @@ fn minify_css(source: &str) -> String {
     let mut out = String::with_capacity(source.len());
     let mut chars = source.chars().peekable();
     let mut in_comment = false;
+    let mut in_quote: Option<char> = None;
     let mut pending_space = false;
     while let Some(ch) = chars.next() {
         if in_comment {
             if ch == '*' && chars.peek() == Some(&'/') {
                 chars.next();
                 in_comment = false;
+            }
+            continue;
+        }
+        if let Some(quote) = in_quote {
+            out.push(ch);
+            if ch == quote {
+                in_quote = None;
             }
             continue;
         }
@@ -338,11 +346,15 @@ fn minify_css(source: &str) -> String {
             pending_space = true;
             continue;
         }
-        if pending_space && needs_space_before(out.chars().last(), Some(ch)) {
+        // Whitespace between tokens is semantic in CSS (descendant
+        // combinators, calc() operators, multi-part shorthands); a collapsed
+        // run is only droppable next to structural punctuation.
+        const GLUE: &[char] = &['{', '}', ';', ','];
+        if pending_space && !out.is_empty() && !out.ends_with(GLUE) && !GLUE.contains(&ch) {
             out.push(' ');
         }
-        if matches!(ch, '{' | '}' | ':' | ';' | ',' | '>' | '+') && out.ends_with(' ') {
-            out.pop();
+        if matches!(ch, '"' | '\'') {
+            in_quote = Some(ch);
         }
         out.push(ch);
         pending_space = false;
@@ -350,13 +362,24 @@ fn minify_css(source: &str) -> String {
     out
 }
 
+/// Whether a collapsed whitespace run must survive HTML minification.
+/// Dropping is only safe next to markup structure; between two token
+/// characters it is semantic — embedded `<style>` descendant combinators
+/// and calc() operators, and the boundary after a quoted attribute value
+/// (`<meta name="a" content="b">`).
 fn needs_space_before(prev: Option<char>, next: Option<char>) -> bool {
-    matches!(
-        (prev, next),
-        (Some(a), Some(b))
-            if (a.is_ascii_alphanumeric() || matches!(a, '_' | '-'))
-                && (b.is_ascii_alphanumeric() || matches!(b, '_' | '-'))
-    )
+    let (Some(prev), Some(next)) = (prev, next) else {
+        return false;
+    };
+    let token_end = |c: char| {
+        c.is_ascii_alphanumeric()
+            || matches!(c, '_' | '-' | '+' | '"' | '\'' | ')' | ']' | '%' | '*')
+    };
+    let token_start = |c: char| {
+        c.is_ascii_alphanumeric()
+            || matches!(c, '_' | '-' | '+' | '.' | '#' | '(' | '[' | '*' | ':')
+    };
+    token_end(prev) && token_start(next)
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {
@@ -405,6 +428,33 @@ mod tests {
         assert!(!output.contains("verboseName"));
         assert!(!output.contains("console.log"));
         assert!(!output.contains('\n'));
+    }
+
+    #[test]
+    fn css_minify_preserves_semantic_whitespace() {
+        let out = minify_css(
+            ".settings-content .section { background: #fff; }\n\
+             @media screen and (min-width: 10px) {\n\
+               .c { width: calc(100% - 8px); margin: 0 .5em; content: \"a  b\"; }\n\
+             }",
+        );
+        assert!(out.contains(".settings-content .section{"), "{out}");
+        assert!(out.contains("and (min-width: 10px)"), "{out}");
+        assert!(out.contains("calc(100% - 8px)"), "{out}");
+        assert!(out.contains("margin: 0 .5em"), "{out}");
+        assert!(out.contains("content: \"a  b\""), "{out}");
+    }
+
+    #[test]
+    fn html_minify_preserves_attribute_and_style_whitespace() {
+        let out = minify_html(
+            "<meta name=\"viewport\" content=\"width=device-width\">\n\
+             <style>\n  .a .b { color: red; }\n  .a :hover { width: calc(1em + 2px); }\n</style>",
+        );
+        assert!(out.contains("name=\"viewport\" content="), "{out}");
+        assert!(out.contains(".a .b{"), "{out}");
+        assert!(out.contains(".a :hover{"), "{out}");
+        assert!(out.contains("calc(1em + 2px)"), "{out}");
     }
 
     #[test]

@@ -10,7 +10,11 @@ use windows::Win32::UI::WindowsAndMessaging::{self, HICON, ICONINFO};
 use windows::core::BOOL;
 
 type IconCacheKey = (PathBuf, u32);
-type IconHandleCache = HashMap<IconCacheKey, Option<isize>>;
+/// (mtime, len) of the source file when the handle was created. Favicon
+/// cache files are rewritten in place on refresh, so a path-only key would
+/// serve the old icon (or a memoized failure) forever.
+type IconStamp = (u64, u64);
+type IconHandleCache = HashMap<IconCacheKey, (IconStamp, Option<isize>)>;
 type BytesIconCache = HashMap<(String, u32), (u64, Option<isize>)>;
 
 static PANEL_ICON_HANDLES: OnceLock<Mutex<IconHandleCache>> = OnceLock::new();
@@ -18,14 +22,19 @@ static BYTES_ICON_HANDLES: OnceLock<Mutex<BytesIconCache>> = OnceLock::new();
 
 pub(super) fn cached_png_icon_handle(path: &str, size: u32) -> Option<isize> {
     let path = PathBuf::from(path);
+    // A missing file (e.g. mid-replace during a favicon refresh) is never
+    // memoized — the next repaint retries.
+    let stamp = file_stamp(&path)?;
     let key = (path.clone(), size);
     let handles = PANEL_ICON_HANDLES.get_or_init(|| Mutex::new(HashMap::new()));
     if let Ok(mut handles) = handles.lock() {
-        if let Some(handle) = handles.get(&key) {
+        if let Some((cached_stamp, handle)) = handles.get(&key)
+            && *cached_stamp == stamp
+        {
             return *handle;
         }
         let handle = create_icon_from_path(&path, size).ok();
-        if let Some(Some(previous)) = handles.insert(key, handle)
+        if let Some((_, Some(previous))) = handles.insert(key, (stamp, handle))
             && Some(previous) != handle
         {
             destroy_icon_handle(previous);
@@ -33,6 +42,16 @@ pub(super) fn cached_png_icon_handle(path: &str, size: u32) -> Option<isize> {
         return handle;
     }
     create_icon_from_path(&path, size).ok()
+}
+
+fn file_stamp(path: &Path) -> Option<IconStamp> {
+    let meta = std::fs::metadata(path).ok()?;
+    let modified = meta
+        .modified()
+        .ok()?
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()?;
+    Some((modified.as_nanos() as u64, meta.len()))
 }
 
 pub(super) fn cached_png_bytes_icon_handle(

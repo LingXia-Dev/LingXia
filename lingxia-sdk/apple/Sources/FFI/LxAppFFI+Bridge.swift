@@ -614,6 +614,14 @@ extension LxApp {
         #endif
     }
 
+    nonisolated static func browserBookmarksChanged() {
+        #if os(macOS)
+        DispatchQueue.main.async {
+            macOSLxApp.browserBookmarksChanged()
+        }
+        #endif
+    }
+
     nonisolated static func share(
         title: RustStr,
         text: RustStr,

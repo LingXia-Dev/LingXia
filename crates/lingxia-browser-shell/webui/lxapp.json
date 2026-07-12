@@ -1,7 +1,7 @@
 {
   "appId": "app.lingxia.browser",
   "name": "LingXia Browser",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "logic": false,
   "security": {
     "network": {
@@ -12,8 +12,25 @@
     "privileges": []
   },
   "pages": [
-    { "name": "newtab", "path": "pages/newtab/index.html" },
-    { "name": "downloads", "path": "pages/downloads/index.html" },
-    { "name": "settings", "path": "pages/settings/index.html" }
+    {
+      "name": "newtab",
+      "path": "pages/newtab/index.html"
+    },
+    {
+      "name": "bookmarks",
+      "path": "pages/bookmarks/index.html"
+    },
+    {
+      "name": "history",
+      "path": "pages/history/index.html"
+    },
+    {
+      "name": "downloads",
+      "path": "pages/downloads/index.html"
+    },
+    {
+      "name": "settings",
+      "path": "pages/settings/index.html"
+    }
   ]
 }

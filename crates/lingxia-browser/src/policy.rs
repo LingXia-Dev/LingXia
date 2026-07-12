@@ -37,15 +37,18 @@ pub fn is_lingxia_startup_url(url: &str) -> Option<bool> {
     if extract_url_scheme(url).as_deref() != Some(LINGXIA_SCHEME) {
         return None;
     }
-    let host = url
-        .split_once("://")
+    let host = lingxia_url_host(url);
+    Some(host.is_empty() || host == "newtab")
+}
+
+pub(crate) fn lingxia_url_host(url: &str) -> String {
+    url.split_once("://")
         .map(|x| x.1)
         .unwrap_or("")
-        .split('/')
+        .split(['/', '?', '#'])
         .next()
         .unwrap_or("")
-        .to_ascii_lowercase();
-    Some(host.is_empty() || host == "newtab")
+        .to_ascii_lowercase()
 }
 
 pub(crate) fn normalize_browser_target_url(raw: &str) -> String {
@@ -308,6 +311,20 @@ mod tests {
         assert_eq!(
             normalize_browser_target_url("http://例え.jp/路径"),
             "https://例え.jp/路径"
+        );
+    }
+
+    #[test]
+    fn lingxia_startup_host_ignores_path_query_and_fragment_delimiters() {
+        assert_eq!(
+            lingxia_url_host("lingxia://settings#clear-browsing-data"),
+            "settings"
+        );
+        assert_eq!(lingxia_url_host("lingxia://history/?q=deepseek"), "history");
+        assert_eq!(is_lingxia_startup_url("lingxia://newtab#top"), Some(true));
+        assert_eq!(
+            is_lingxia_startup_url("lingxia://settings#clear-browsing-data"),
+            Some(false)
         );
     }
 

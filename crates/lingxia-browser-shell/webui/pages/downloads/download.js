@@ -1,4 +1,6 @@
 (function () {
+  var i18n = window.LingXiaI18n;
+  var t = i18n.t;
   var SVG_PAUSE = '<svg viewBox="0 0 16 16" fill="currentColor"><rect x="4" y="3" width="3" height="10" rx="0.5"/><rect x="9" y="3" width="3" height="10" rx="0.5"/></svg>';
   var SVG_FOLDER = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4.5C2 3.67 2.67 3 3.5 3H6l1.5 1.5H12.5c.83 0 1.5.67 1.5 1.5v6c0 .83-.67 1.5-1.5 1.5h-9C2.67 13.5 2 12.83 2 12V4.5z"/></svg>';
   var SVG_REMOVE = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><line x1="4.5" y1="4.5" x2="11.5" y2="11.5"/><line x1="11.5" y1="4.5" x2="4.5" y2="11.5"/></svg>';
@@ -225,17 +227,17 @@
 
   function fmtDate(ms) {
     if (!ms) return '';
-    try { return new Date(ms).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }); } catch (_) { return ''; }
+    try { return new Date(ms).toLocaleString(i18n.locale, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }); } catch (_) { return ''; }
   }
 
   function dateGroup(ms) {
-    if (!ms) return 'Earlier';
+    if (!ms) return t('downloads.earlier');
     var d = new Date(ms), now = new Date();
     var today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     var yesterday = new Date(today); yesterday.setDate(yesterday.getDate() - 1);
-    if (d >= today) return 'Today';
-    if (d >= yesterday) return 'Yesterday';
-    return d.toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: d.getFullYear() !== now.getFullYear() ? 'numeric' : undefined });
+    if (d >= today) return t('history.today');
+    if (d >= yesterday) return t('history.yesterday');
+    return d.toLocaleDateString(i18n.locale, { month: 'long', day: 'numeric', year: d.getFullYear() !== now.getFullYear() ? 'numeric' : undefined });
   }
 
   function pct(item) {
@@ -408,9 +410,9 @@
     var controls = document.createElement('div');
     controls.className = 'item-controls';
 
-    var pauseBtn = mkBtn('ctrl-btn', SVG_PAUSE, 'Pause');
-    var revealBtn = mkBtn('ctrl-btn', SVG_FOLDER, 'Show in Finder');
-    var removeBtn = mkBtn('ctrl-btn danger', SVG_REMOVE, 'Remove');
+    var pauseBtn = mkBtn('ctrl-btn', SVG_PAUSE, t('downloads.pause'));
+    var revealBtn = mkBtn('ctrl-btn', SVG_FOLDER, t('downloads.showInFolder'));
+    var removeBtn = mkBtn('ctrl-btn danger', SVG_REMOVE, t('common.remove'));
     controls.appendChild(pauseBtn);
     controls.appendChild(revealBtn);
     controls.appendChild(removeBtn);
@@ -434,13 +436,13 @@
     var actionRow = document.createElement('div');
     actionRow.className = 'action-row'; actionRow.hidden = true;
     var resumeBtn = document.createElement('button');
-    resumeBtn.type = 'button'; resumeBtn.className = 'act-btn'; resumeBtn.textContent = 'Resume'; resumeBtn.hidden = true;
+    resumeBtn.type = 'button'; resumeBtn.className = 'act-btn'; resumeBtn.textContent = t('downloads.resume'); resumeBtn.hidden = true;
     var retryBtn = document.createElement('button');
-    retryBtn.type = 'button'; retryBtn.className = 'act-btn'; retryBtn.textContent = 'Retry'; retryBtn.hidden = true;
+    retryBtn.type = 'button'; retryBtn.className = 'act-btn'; retryBtn.textContent = t('downloads.retry'); retryBtn.hidden = true;
     var cancelBtn = document.createElement('button');
-    cancelBtn.type = 'button'; cancelBtn.className = 'act-btn warn'; cancelBtn.textContent = 'Cancel'; cancelBtn.hidden = true;
+    cancelBtn.type = 'button'; cancelBtn.className = 'act-btn warn'; cancelBtn.textContent = t('common.cancel'); cancelBtn.hidden = true;
     var cancelDlBtn = document.createElement('button');
-    cancelDlBtn.type = 'button'; cancelDlBtn.className = 'act-btn warn'; cancelDlBtn.textContent = 'Cancel download'; cancelDlBtn.hidden = true;
+    cancelDlBtn.type = 'button'; cancelDlBtn.className = 'act-btn warn'; cancelDlBtn.textContent = t('downloads.cancelDownload'); cancelDlBtn.hidden = true;
     actionRow.appendChild(resumeBtn);
     actionRow.appendChild(retryBtn);
     actionRow.appendChild(cancelBtn);
@@ -526,7 +528,7 @@
     r.nameSpan.hidden = isDone;
     if (isDone) {
       r.nameLink.textContent = item.fileName;
-      r.nameLink.title = 'Open ' + item.fileName;
+      r.nameLink.title = t('downloads.openFile', { name: item.fileName });
     }
     else {
       r.nameSpan.textContent = item.fileName;
@@ -550,11 +552,11 @@
       var ps = fmtBytes(item.downloadedBytes);
       if (item.totalBytes) ps += ' / ' + fmtBytes(item.totalBytes);
       parts.push(ps);
-      parts.push('Paused');
+      parts.push(t('downloads.paused'));
     } else if (isFailed) {
-      parts.push('<span class="error-text">' + escHtml(item.error || 'Download failed') + '</span>');
+      parts.push('<span class="error-text">' + escHtml(item.error || t('downloads.failed')) + '</span>');
     } else {
-      parts.push('Removed');
+      parts.push(t('downloads.removed'));
     }
     r.detail.innerHTML = parts.join('<span class="sep"> · </span>');
 
@@ -585,7 +587,7 @@
   function buildGroups() {
     var groups = [], lastGroup = '';
     state.downloads.forEach(function (item) {
-      var g = item.status === 'downloading' ? 'Downloading' : isPaused(item) ? 'Paused' : dateGroup(item.completedAt || item.updatedAt || item.createdAt);
+      var g = item.status === 'downloading' ? t('downloads.downloading') : isPaused(item) ? t('downloads.paused') : dateGroup(item.completedAt || item.updatedAt || item.createdAt);
       if (g !== lastGroup) { groups.push({ label: g, items: [] }); lastGroup = g; }
       groups[groups.length - 1].items.push(item);
     });
@@ -614,19 +616,20 @@
     }
 
     var active = state.downloads.filter(function (d) { return d.status === 'downloading'; }).length;
-    statusEl.textContent = state.loading ? 'Loading...'
-      : active > 0 ? active + ' downloading'
-      : state.downloads.length === 0 ? '' : state.downloads.length + ' file' + (state.downloads.length > 1 ? 's' : '');
+    statusEl.textContent = state.loading ? t('downloads.loading')
+      : active > 0 ? t('downloads.activeCount', { count: active })
+      : state.downloads.length === 0 ? ''
+        : t(state.downloads.length === 1 ? 'downloads.fileCountOne' : 'downloads.fileCountMany', { count: state.downloads.length });
 
     clearBtn.style.display = state.downloads.some(function (d) { return d.status !== 'downloading'; }) ? '' : 'none';
 
     if (state.loading) {
-      list.innerHTML = '<div class="empty"><span class="empty-icon">⏳</span><p>Loading...</p></div>';
+      list.innerHTML = '<div class="empty"><span class="empty-icon">⏳</span><p>' + escHtml(t('downloads.loading')) + '</p></div>';
       lastRenderKey = '';
       return;
     }
     if (state.downloads.length === 0) {
-      list.innerHTML = '<div class="empty"><span class="empty-icon">📥</span><p>No downloads yet</p><span>Files you download will appear here</span></div>';
+      list.innerHTML = '<div class="empty"><span class="empty-icon">📥</span><p>' + escHtml(t('downloads.emptyTitle')) + '</p><span>' + escHtml(t('downloads.emptyCopy')) + '</span></div>';
       lastRenderKey = '';
       return;
     }
@@ -724,7 +727,7 @@
   }).catch(function (err) {
     console.error('[DL] initial load FAIL', err);
     state.loading = false;
-    state.error = err instanceof Error ? err.message : 'Failed to load';
+    state.error = err instanceof Error ? err.message : t('downloads.loadFailed');
     render();
   });
 

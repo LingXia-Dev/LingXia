@@ -73,6 +73,10 @@ impl WebViewDelegate for BrowserTabDelegate {
         }
     }
 
+    fn on_navigation_finished(&self, url: &str) {
+        crate::tabs::notify_navigation_finished(&self.tab_id, url);
+    }
+
     fn on_title_changed(&self, title: &str) {
         // Mirror the document title into the tab state (fires the
         // tabs-changed observer for shell sidebars). Platforms whose host

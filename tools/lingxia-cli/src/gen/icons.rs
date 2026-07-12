@@ -9,8 +9,10 @@ pub struct IconsConfig {
     #[arg(short, long, default_value = "design/icons/svg")]
     pub input: PathBuf,
 
-    /// Path to output iOS resources (PDF files)
-    #[arg(long)]
+    /// Path to output iOS/macOS resources (PDF files). Defaults to the SDK's
+    /// bundled icons dir so `gen icons` produces the Apple assets by default,
+    /// mirroring `gen i18n`. Generated, gitignored — only the SVG is tracked.
+    #[arg(long, default_value = "lingxia-sdk/apple/Sources/Resources/icons")]
     pub ios_out: Option<PathBuf>,
 
     /// Path to output Android resources (Vector Drawable XML)

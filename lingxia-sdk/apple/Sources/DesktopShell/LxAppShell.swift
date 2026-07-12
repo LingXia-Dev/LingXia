@@ -492,6 +492,13 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         sidebar.onOpenDownloads = { [weak self] in
             self?.browserCoordinator.openDownloads()
         }
+        sidebar.onBookmarkOpen = { [weak self] url in
+            self?.browserCoordinator.openBookmark(url: url)
+        }
+        sidebar.onManageBookmarks = { [weak self] in
+            self?.browserCoordinator.openBookmarks()
+        }
+        sidebar.reloadBookmarks()
         sidebar.onBrowserTabSelected = { [weak self] id in
             self?.browserCoordinator.selectTab(id: id)
         }
@@ -1401,6 +1408,9 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         case "settings":
             browserCoordinator.openSettings()
             return true
+        case "bookmarks":
+            browserCoordinator.openBookmarks()
+            return true
         default:
             return false
         }
@@ -1524,10 +1534,11 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     }
 
     /// Show the sidebar chrome only when it has something to show. Content comes
-    /// from four sources: an open-lxapp switcher (more than one open main), the
-    /// active lxapp's own tabBar, browser tabs, and declared sidebar host
-    /// actions. When all four are empty the chrome hides; when any has content
-    /// it returns, and the enable path restores the user's last expanded width.
+    /// from five sources: an open-lxapp switcher (more than one open main), the
+    /// active lxapp's own tabBar, pinned websites, browser tabs, and declared
+    /// sidebar host actions. When all five are empty the chrome hides; when any
+    /// has content it returns, and the enable path restores the user's last
+    /// expanded width.
     /// A suppressed root (e.g. a float window) keeps the chrome off regardless
     /// of content.
     func reconcileSidebarAutoHide() {
@@ -1545,10 +1556,12 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         }
 
         let hasDeclaredSidebarEntries = !lastSidebarHostActions.isEmpty
+        let hasPinnedWebsites = sidebarView?.hasPinnedWebsites == true
         let hasBrowserEntries = sidebarBrowserItemCount > 0
 
         let hasContent = hasSwitcher
             || activeLxAppTabBarHasItems
+            || hasPinnedWebsites
             || hasBrowserEntries
             || hasDeclaredSidebarEntries
         setSidebarChromeEnabled(hasContent)
@@ -1622,6 +1635,15 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
 extension LxAppShell {
     func toggleActiveDevTools() -> Bool {
         browserCoordinator.toggleActiveDevTools()
+    }
+
+    /// The bookmarks store changed (star toggle, sidebar action, manager page)
+    /// — re-render the sidebar bookmarks section and resync the address-bar
+    /// star/pin buttons, or a stale filled star would re-add on click.
+    func refreshSidebarBookmarks() {
+        sidebarView?.reloadBookmarks()
+        reconcileSidebarAutoHide()
+        browserCoordinator.refreshPageSaveButtons()
     }
 
     func presentInternalBrowserTab(id: String) {

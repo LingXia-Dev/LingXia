@@ -33,9 +33,29 @@ pub fn get_platform() -> Option<Arc<Platform>> {
         .or_else(|| LXAPPS_MANAGER.get().map(|manager| manager.runtime.clone()))
 }
 
-/// Get the system locale string.
-/// Returns "en-US" as default if the SDK has not been initialized.
+/// User override for the product display language (the settings-page
+/// "Language" choice). `None` follows the system locale.
+static DISPLAY_LANGUAGE: Mutex<Option<String>> = Mutex::new(None);
+
+/// Set (or clear) the display-language override. The shell that owns the
+/// language setting seeds this at startup and updates it on change so every
+/// `get_locale` consumer — native chrome i18n included — follows the user's
+/// choice without re-reading the settings store.
+pub fn set_display_language(language: Option<String>) {
+    let normalized = language.filter(|value| !value.trim().is_empty());
+    *DISPLAY_LANGUAGE.lock().unwrap_or_else(|e| e.into_inner()) = normalized;
+}
+
+/// Get the product display language: the user override when set, else the
+/// system locale. Returns "en-US" if the SDK has not been initialized.
 pub fn get_locale() -> String {
+    if let Some(language) = DISPLAY_LANGUAGE
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone()
+    {
+        return language;
+    }
     RUNTIME
         .get()
         .map(|runtime| runtime.get_system_locale().to_string())

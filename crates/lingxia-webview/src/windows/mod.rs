@@ -17,7 +17,8 @@ use crate::webview::{
     WebViewCreateStage, find_webview, find_webview_delegate, register_webview,
 };
 use crate::{
-    WebResourceBody, WebResourceResponse, WebViewController, WebViewError, WebViewScriptError,
+    ClearSiteDataOptions, ClearSiteDataResult, WebResourceBody, WebResourceResponse,
+    WebViewController, WebViewError, WebViewScriptError,
 };
 use http::{Request, StatusCode};
 use std::collections::HashMap;
@@ -49,6 +50,7 @@ use windows::{
 
 mod console;
 mod controller;
+pub(crate) mod data_store;
 mod environment;
 mod events;
 #[cfg(feature = "webview-input")]

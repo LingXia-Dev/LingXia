@@ -24,3 +24,13 @@ pub fn set_download_dir(
 ) -> Result<()> {
     lingxia_settings::set_download_dir(app_data_dir, path)
 }
+
+/// User override for the product display language; `None` follows the
+/// system locale.
+pub fn display_language(app_data_dir: &std::path::Path) -> Result<Option<String>> {
+    lingxia_settings::get_display_language(app_data_dir)
+}
+
+pub fn set_display_language(app_data_dir: &std::path::Path, language: Option<&str>) -> Result<()> {
+    lingxia_settings::set_display_language(app_data_dir, language)
+}

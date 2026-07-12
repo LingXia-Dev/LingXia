@@ -39,6 +39,7 @@ mod native_panel;
 mod phone_bar;
 mod sidebar;
 mod top_bar;
+#[cfg(feature = "browser-runtime")]
 pub use aside_panel::begin_panel_address_edit;
 pub(crate) use aside_panel::*;
 pub(super) use drawing::*;
@@ -77,6 +78,10 @@ pub(super) const ADDRESS_CAPSULE_HEIGHT: i32 = 24;
 
 /// Gap between the nav-button cluster and the URL capsule.
 pub(super) const ADDRESS_CAPSULE_NAV_GAP: i32 = 8;
+
+/// Side length of the star/pin buttons inside the URL capsule (macOS
+/// address-bar parity).
+pub(super) const ADDRESS_CAPSULE_BUTTON_SIZE: i32 = 20;
 
 /// Side length of the sidebar group-header chevron hit area.
 pub(super) const SIDEBAR_CHEVRON_SIZE: i32 = 18;
@@ -201,6 +206,9 @@ pub(super) mod command_id {
     pub(super) const BROWSER_NAV_FORWARD: &str = "browser.nav.forward";
     pub(super) const BROWSER_NAV_RELOAD: &str = "browser.nav.reload";
     pub(super) const BROWSER_ADDRESS_BAR: &str = "browser.address-bar";
+    pub(super) const BROWSER_BOOKMARK_TOGGLE: &str = "browser.bookmark.toggle";
+    pub(super) const BROWSER_PIN_TOGGLE: &str = "browser.pin.toggle";
+    pub(super) const BROWSER_PAGE_MENU: &str = "browser.page-menu";
     pub(super) const BROWSER_CLOSE: &str = "browser.close";
     pub(super) const SIDEBAR_TOGGLE: &str = "sidebar.toggle";
     pub(super) const SIDEBAR_GROUP_TOGGLE: &str = "sidebar.group.toggle";
@@ -325,6 +333,9 @@ fn chrome_hover_rect(
         controls.nav_forward,
         controls.nav_reload,
         controls.browser_close,
+        controls.bookmark,
+        controls.pin,
+        controls.page_menu,
     ];
     for rect in top_bar_buttons.into_iter().flatten() {
         if rect_contains(&rect, point) {
@@ -447,7 +458,7 @@ fn chrome_hover_rect(
         return None;
     }
 
-    let chevron = sidebar_group_chevron_rect(tabbar_rect);
+    let chevron = sidebar_group_chevron_rect(tabbar_rect, tabbar);
     if rect_contains(&chevron, point) {
         return Some(chevron);
     }
@@ -458,7 +469,7 @@ fn chrome_hover_rect(
     }
     if !tabbar.items_collapsed {
         for index in 0..tabbar.items.len() {
-            let rect = sidebar_item_rect(tabbar_rect, index);
+            let rect = sidebar_item_rect(tabbar_rect, tabbar, index);
             if rect_contains(&rect, point) {
                 return Some(rect);
             }
@@ -617,7 +628,7 @@ fn push_tabbar_selected_rects(
             new_tabbar.position,
             WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right
         ) {
-            sidebar_item_rect(rect, index as usize)
+            sidebar_item_rect(rect, new_tabbar, index as usize)
         } else {
             tab_item_rect(
                 rect,
@@ -919,19 +930,40 @@ pub(crate) fn collapsed_sidebar_tabbar_popup_hit(
     tabbar: &WindowsShellTabBarLayout,
     point: (i32, i32),
 ) -> Option<usize> {
+    // Hit-test against the same tabbar variant the popup paints; the raw
+    // tabbar's auxiliary items would shift row rects by the pinned-grid height.
+    let popup_tabbar = collapsed_sidebar_popup_tabbar(tabbar, SIDEBAR_TABBAR_POPUP_WIDTH);
     let bounds = normalize_rect(RECT {
         left: 0,
         top: 0,
         right: SIDEBAR_TABBAR_POPUP_WIDTH,
-        bottom: collapsed_sidebar_tabbar_popup_size(tabbar).1,
+        bottom: collapsed_sidebar_tabbar_popup_size(&popup_tabbar).1,
     });
     let item_bounds = collapsed_sidebar_tabbar_popup_item_bounds(bounds);
-    (0..tabbar.items.len())
-        .find(|&index| rect_contains(&sidebar_item_rect(item_bounds, index), point))
+    (0..popup_tabbar.items.len())
+        .find(|&index| rect_contains(&sidebar_item_rect(item_bounds, &popup_tabbar, index), point))
 }
 
 pub(crate) fn collapsed_sidebar_tabbar_click_command(index: usize) -> WindowsChromeCommand {
     WindowsChromeCommand::new(command_id::TAB_BAR_CLICK).with_payload(json!({ "index": index }))
+}
+
+/// The tabbar variant the popup renders: expanded first-level rows only, no
+/// header actions or auxiliary section. Paint and hit-test must both use this
+/// so their row geometry agrees.
+fn collapsed_sidebar_popup_tabbar(
+    tabbar: &WindowsShellTabBarLayout,
+    width: i32,
+) -> WindowsShellTabBarLayout {
+    let mut popup_tabbar = tabbar.clone();
+    popup_tabbar.collapsed = false;
+    popup_tabbar.icon_rail = false;
+    popup_tabbar.items_collapsed = false;
+    popup_tabbar.dimension = width;
+    popup_tabbar.header_actions.clear();
+    popup_tabbar.auxiliary_items.clear();
+    popup_tabbar.show_auxiliary_add = false;
+    popup_tabbar
 }
 
 pub(crate) fn paint_collapsed_sidebar_tabbar_popup(
@@ -946,14 +978,7 @@ pub(crate) fn paint_collapsed_sidebar_tabbar_popup(
         right: width,
         bottom: height,
     });
-    let mut popup_tabbar = tabbar.clone();
-    popup_tabbar.collapsed = false;
-    popup_tabbar.icon_rail = false;
-    popup_tabbar.items_collapsed = false;
-    popup_tabbar.dimension = width;
-    popup_tabbar.header_actions.clear();
-    popup_tabbar.auxiliary_items.clear();
-    popup_tabbar.show_auxiliary_add = false;
+    let popup_tabbar = collapsed_sidebar_popup_tabbar(tabbar, width);
     // The host alpha-masks the layered popup to the rounded shape; fill the
     // full bounds and draw only the hairline outline here.
     fill_rect(hdc, bounds, shell_palette().sidebar_background);
@@ -1381,10 +1406,32 @@ pub(super) fn chrome_hit_test(
     {
         return Some(chrome_command(command_id::BROWSER_NAV_RELOAD, json!({})));
     }
+    // The star/pin buttons sit inside the address capsule, so they must win
+    // the hit-test over the address edit.
+    if let Some(bookmark) = controls.bookmark
+        && rect_contains(&bookmark, point)
+    {
+        return Some(chrome_command(
+            command_id::BROWSER_BOOKMARK_TOGGLE,
+            json!({}),
+        ));
+    }
+    if let Some(pin) = controls.pin
+        && rect_contains(&pin, point)
+    {
+        return Some(chrome_command(command_id::BROWSER_PIN_TOGGLE, json!({})));
+    }
     if let Some(address) = controls.address
         && rect_contains(&address, point)
     {
         return Some(chrome_command(command_id::BROWSER_ADDRESS_BAR, json!({})));
+    }
+    if let Some(page_menu) = controls.page_menu
+        && rect_contains(&page_menu, point)
+    {
+        return Some(WindowsChromeHit::Command(
+            WindowsChromeCommand::new(command_id::BROWSER_PAGE_MENU).with_screen_position(),
+        ));
     }
     if let Some(close) = controls.browser_close
         && rect_contains(&close, point)
@@ -1464,7 +1511,7 @@ pub(super) fn chrome_hit_test(
             return Some(WindowsChromeHit::Chrome);
         }
         if sidebar {
-            if rect_contains(&sidebar_group_chevron_rect(tabbar_rect), point) {
+            if rect_contains(&sidebar_group_chevron_rect(tabbar_rect, tabbar), point) {
                 return Some(chrome_command(
                     command_id::SIDEBAR_GROUP_TOGGLE,
                     json!({ "group": tabbar.group_id.clone() }),
@@ -1482,7 +1529,7 @@ pub(super) fn chrome_hit_test(
         if !(sidebar && tabbar.items_collapsed) {
             for index in 0..tabbar.items.len() {
                 let item_rect = if sidebar {
-                    sidebar_item_rect(tabbar_rect, index)
+                    sidebar_item_rect(tabbar_rect, tabbar, index)
                 } else {
                     tab_item_rect(tabbar_rect, tabbar.position, tabbar.items.len(), index)
                 };

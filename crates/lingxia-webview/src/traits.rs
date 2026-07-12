@@ -324,6 +324,19 @@ pub trait WebViewController: Send + Sync {
         ))
     }
 
+    /// Clear data owned by the current website without clearing the shared
+    /// browser profile. Platforms report whether their network cache supports
+    /// site-scoped removal.
+    async fn clear_site_data(
+        &self,
+        _url: &str,
+        _options: ClearSiteDataOptions,
+    ) -> Result<ClearSiteDataResult, WebViewError> {
+        Err(WebViewError::WebView(
+            "site-scoped data clearing is not implemented for this platform".to_string(),
+        ))
+    }
+
     /// Capture a PNG screenshot of the WebView's visible content.
     /// Returns raw PNG-encoded bytes ready to be base64'd over the wire.
     async fn take_screenshot(&self) -> Result<Vec<u8>, WebViewError> {
@@ -364,6 +377,27 @@ pub trait WebViewController: Send + Sync {
             "network capture is not implemented for this platform".to_string(),
         ))
     }
+}
+
+/// Data categories to remove for one site via
+/// [`WebViewController::clear_site_data`].
+#[derive(Debug, Clone, Copy)]
+pub struct ClearSiteDataOptions {
+    pub cache: bool,
+    pub site_data: bool,
+}
+
+/// Outcome of [`WebViewController::clear_site_data`]. Each flag means "this
+/// category was requested AND the platform fully honored it" — `false` both
+/// when the category was not requested and when it could not be fully cleared.
+///
+/// Windows caveat: WebView2 clears the site's Cache Storage/appcache but
+/// cannot site-scope the shared HTTP cache, so it reports
+/// `cache_cleared: false` even when cache clearing was requested.
+#[derive(Debug, Clone, Copy)]
+pub struct ClearSiteDataResult {
+    pub cache_cleared: bool,
+    pub site_data_cleared: bool,
 }
 
 /// One captured network request and its response (when it completed).
@@ -570,8 +604,15 @@ pub trait WebViewDelegate: Send + Sync {
     /// Called when the page starts loading
     fn on_page_started(&self);
 
-    /// Called when the page finishes loading
+    /// Called when the page finishes loading. Fires on every completed load
+    /// attempt, including failures, and carries no URL — for successful
+    /// navigations with the final URL see [`Self::on_navigation_finished`].
     fn on_page_finished(&self);
+
+    /// Called after a successful top-level navigation with its final URL;
+    /// unlike [`Self::on_page_finished`] it never fires for failed loads.
+    /// Currently delivered on macOS/iOS/Windows only; default is a no-op.
+    fn on_navigation_finished(&self, _url: &str) {}
 
     /// Called when a main-frame page load fails (e.g. DNS failure, network unreachable, TLS error).
     ///

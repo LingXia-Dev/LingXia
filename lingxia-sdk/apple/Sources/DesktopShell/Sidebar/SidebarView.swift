@@ -435,6 +435,33 @@ class SidebarView: NSView, NSPopoverDelegate {
     var onOpenSettings: (() -> Void)?
     /// Called when downloads button is clicked
     var onOpenDownloads: (() -> Void)?
+    /// Called when a pin tile with no open tab is clicked (open its URL)
+    var onBookmarkOpen: ((String) -> Void)?
+    /// Called from tile menus to open the bookmarks manager page
+    var onManageBookmarks: (() -> Void)?
+
+    // MARK: Pin grid state. Pins are persistent website shortcuts above the
+    // normal tab list; they never replace or hide an open tab.
+    private var bookmarksSnapshot = SidebarBookmarksSnapshot.empty
+    private var pinTileViews: [String: SidebarPinTileView] = [:]
+    private var pinTileTopConstraints: [String: NSLayoutConstraint] = [:]
+    private var pinTileLeadingConstraints: [String: NSLayoutConstraint] = [:]
+
+    var hasPinnedWebsites: Bool {
+        !bookmarksSnapshot.pinnedEntries.isEmpty
+    }
+
+    private func openTabId(for entry: SidebarBookmarksSnapshot.Entry) -> String? {
+        let key = SidebarBookmarksSnapshot.normalize(entry.url)
+        let matching = model.browserTabs.filter {
+            SidebarBookmarksSnapshot.normalize($0.url) == key
+        }
+        if case .browser(let activeId) = model.selection,
+           matching.contains(where: { $0.id == activeId }) {
+            return activeId
+        }
+        return matching.first?.id
+    }
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -798,7 +825,8 @@ class SidebarView: NSView, NSPopoverDelegate {
 
         for item in model.browserTabs {
             let key = "web:\(item.id)"
-            let image = item.favicon ?? NSImage(systemSymbolName: "globe", accessibilityDescription: item.title)
+            let image = item.favicon ?? LxIcon.image(
+                named: "icon_globe", size: CGSize(width: Layout.railIconSize, height: Layout.railIconSize))
             let btn = makeRailButton(
                 key: key,
                 tooltip: browserTooltip(title: item.title, url: item.url),
@@ -811,7 +839,8 @@ class SidebarView: NSView, NSPopoverDelegate {
                     if hovering { self?.closeRailTabPopover() }
                 }
                 railButton.onContextMenuRequested = { [weak self] event, button in
-                    self?.showBrowserRailContextMenu(for: item.id, event: event, button: button)
+                    guard let menu = self?.browserContextMenu(for: item.id) else { return }
+                    NSMenu.popUpContextMenu(menu, with: event, for: button)
                 }
             }
             railStack.addArrangedSubview(btn)
@@ -825,8 +854,10 @@ class SidebarView: NSView, NSPopoverDelegate {
         if browserEnabled {
             let addRailButton = makeRailButton(
                 key: "action:add-tab",
-                tooltip: "Add browser tab",
-                image: NSImage(systemSymbolName: "plus", accessibilityDescription: "Add browser tab"),
+                tooltip: L10n.string("lx_browser_new_tab"),
+                image: LxIcon.image(
+                    named: "icon_browser_plus",
+                    size: CGSize(width: Layout.railIconSize, height: Layout.railIconSize)),
                 isTemplate: true
             )
             addRailButton.action = #selector(addButtonClicked)
@@ -890,10 +921,46 @@ class SidebarView: NSView, NSPopoverDelegate {
         onBrowserTabSelected?(String(key.dropFirst(4)))
     }
 
-    private func showBrowserRailContextMenu(for id: String, event: NSEvent, button: NSButton) {
+    private func browserContextMenu(for id: String) -> NSMenu? {
         closeRailTabPopover()
-        guard model.browserTabs.contains(where: { $0.id == id }) else { return }
+        guard let tab = model.browserTabs.first(where: { $0.id == id }) else { return nil }
         let menu = NSMenu()
+
+        // Page actions first (Arc keeps pin/copy on the tab row itself).
+        let url = tab.url.trimmingCharacters(in: .whitespacesAndNewlines)
+        if BrowserPageMenu.isBookmarkActionable(url) {
+            let pinnedEntry = bookmarksSnapshot.pinnedEntries.first {
+                SidebarBookmarksSnapshot.normalize($0.url)
+                    == SidebarBookmarksSnapshot.normalize(url)
+            }
+            let pin = NSMenuItem(
+                title: L10n.string(
+                    pinnedEntry == nil ? "lx_browser_pin_to_sidebar" : "lx_browser_unpin"
+                ),
+                action: #selector(togglePinBrowserMenuItemClicked(_:)),
+                keyEquivalent: ""
+            )
+            pin.image = LxIcon.image(
+                named: pinnedEntry == nil ? "icon_pin" : "icon_unpin",
+                size: CGSize(width: 16, height: 16)
+            )
+            pin.target = self
+            pin.representedObject = id
+            menu.addItem(pin)
+
+            let copyLink = NSMenuItem(
+                title: L10n.string("lx_browser_copy_link"),
+                action: #selector(copyLinkBrowserMenuItemClicked(_:)),
+                keyEquivalent: ""
+            )
+            copyLink.image = LxIcon.image(
+                named: "icon_link", size: CGSize(width: 16, height: 16))
+            copyLink.target = self
+            copyLink.representedObject = id
+            menu.addItem(copyLink)
+
+            menu.addItem(.separator())
+        }
 
         let close = NSMenuItem(
             title: L10n.string("lx_common_close"),
@@ -902,6 +969,8 @@ class SidebarView: NSView, NSPopoverDelegate {
         )
         close.target = self
         close.representedObject = id
+        close.image = LxIcon.image(
+            named: "icon_close_x", size: CGSize(width: 16, height: 16))
         menu.addItem(close)
 
         if let index = model.browserTabs.firstIndex(where: { $0.id == id }) {
@@ -913,6 +982,8 @@ class SidebarView: NSView, NSPopoverDelegate {
                 )
                 closeOther.target = self
                 closeOther.representedObject = id
+                closeOther.image = LxIcon.image(
+                    named: "icon_close_other_tabs", size: CGSize(width: 16, height: 16))
                 menu.addItem(closeOther)
             }
 
@@ -924,16 +995,39 @@ class SidebarView: NSView, NSPopoverDelegate {
                 )
                 closeBelow.target = self
                 closeBelow.representedObject = id
+                closeBelow.image = LxIcon.image(
+                    named: "icon_close_tabs_below", size: CGSize(width: 16, height: 16))
                 menu.addItem(closeBelow)
             }
         }
 
-        NSMenu.popUpContextMenu(menu, with: event, for: button)
+        return menu
     }
 
     @objc private func closeBrowserMenuItemClicked(_ sender: NSMenuItem) {
         guard let id = sender.representedObject as? String else { return }
         onBrowserTabCloseRequested?(id)
+    }
+
+    @objc private func togglePinBrowserMenuItemClicked(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? String,
+              let tab = model.browserTabs.first(where: { $0.id == id }) else { return }
+        if let pinnedEntry = bookmarksSnapshot.pinnedEntries.first(where: {
+            SidebarBookmarksSnapshot.normalize($0.url)
+                == SidebarBookmarksSnapshot.normalize(tab.url)
+        }) {
+            _ = browserBookmarksCommand(
+                #"{"op":"setPinned","id":"\#(jsonEscape(pinnedEntry.id))","pinned":false}"#
+            )
+        } else {
+            _ = browserBookmarkPin(tab.url, tab.title)
+        }
+    }
+
+    @objc private func copyLinkBrowserMenuItemClicked(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? String,
+              let tab = model.browserTabs.first(where: { $0.id == id }) else { return }
+        BrowserPageMenu.copyLink(tab.url, toastHost: self)
     }
 
     @objc private func closeOtherBrowserMenuItemClicked(_ sender: NSMenuItem) {
@@ -1099,6 +1193,10 @@ class SidebarView: NSView, NSPopoverDelegate {
         browserItemViews.values.forEach { $0.removeFromSuperview() }
         browserItemViews.removeAll()
         browserItemTopConstraints.removeAll()
+        pinTileViews.values.forEach { $0.removeFromSuperview() }
+        pinTileViews.removeAll()
+        pinTileTopConstraints.removeAll()
+        pinTileLeadingConstraints.removeAll()
         addButton.removeFromSuperview()
         addButtonTopConstraint = nil
 
@@ -1291,7 +1389,9 @@ class SidebarView: NSView, NSPopoverDelegate {
         guard let docView = scrollView.documentView else { return }
 
         renderBrowserItems()
-        let yOffset = renderAppGroups(in: docView)
+        renderPinTiles()
+        let pinY = layoutPinGrid(in: docView, yOffset: 6)
+        let yOffset = renderAppGroups(in: docView, startY: pinY)
         let finalY = layoutBrowserSection(in: docView, yOffset: yOffset)
         docView.frame = NSRect(x: 0, y: 0, width: docView.frame.width, height: finalY)
 
@@ -1302,7 +1402,7 @@ class SidebarView: NSView, NSPopoverDelegate {
 
     /// Diff app group views against `model.appGroups`, position them, and return
     /// the Y offset where the browser section begins.
-    private func renderAppGroups(in docView: NSView) -> CGFloat {
+    private func renderAppGroups(in docView: NSView, startY: CGFloat = 4) -> CGFloat {
         // Remove groups for apps no longer present.
         let currentAppIds = Set(model.appGroups.map { $0.appId })
         for (appId, groupView) in groupViews where !currentAppIds.contains(appId) {
@@ -1312,7 +1412,7 @@ class SidebarView: NSView, NSPopoverDelegate {
         }
 
         // Add/update groups.
-        var yOffset: CGFloat = 4
+        var yOffset: CGFloat = startY
         for (index, group) in model.appGroups.enumerated() {
             let appId = group.appId
             let groupView: SidebarGroupView
@@ -1425,6 +1525,9 @@ class SidebarView: NSView, NSPopoverDelegate {
                 itemView.onClose = { [weak self] id in
                     self?.onBrowserTabCloseRequested?(id)
                 }
+                itemView.contextMenuProvider = { [weak self] id in
+                    self?.browserContextMenu(for: id)
+                }
                 itemView.configure(title: item.title, url: item.url, isSelected: selected, favicon: item.favicon)
                 browserItemViews[item.id] = itemView
             }
@@ -1442,7 +1545,7 @@ class SidebarView: NSView, NSPopoverDelegate {
         let groupInset: CGFloat = SidebarGroupView.Layout.groupInset
         var yOffset = startY
 
-        // Browser item views (ordered by model.browserTabs)
+        // Browser item views remain visible independently of pinned shortcuts.
         for tab in model.browserTabs {
             let tabId = tab.id
             guard let itemView = browserItemViews[tabId] else { continue }
@@ -1507,8 +1610,8 @@ class SidebarView: NSView, NSPopoverDelegate {
     private func relayoutAfterGroupToggle() {
         guard let docView = scrollView.documentView else { return }
 
-        // Reposition all groups using stored top constraints
-        var yOffset: CGFloat = 4
+        // Reposition all groups below pinned website shortcuts.
+        var yOffset = layoutPinGrid(in: docView, yOffset: 6)
         for group in model.appGroups {
             guard let groupView = groupViews[group.appId] else { continue }
             groupTopConstraints[group.appId]?.constant = yOffset
@@ -1522,10 +1625,114 @@ class SidebarView: NSView, NSPopoverDelegate {
         docView.frame = NSRect(x: 0, y: 0, width: docView.frame.width, height: yOffset)
     }
 
+    // MARK: - Bookmarks section
+
+    /// Re-read the bookmarks store (host FFI) and re-render. Called at setup
+    /// and whenever the store changes (star toggle, tile action, manager
+    /// page edit — routed through `LxApp.browserBookmarksChanged`).
+    func reloadBookmarks() {
+        guard (LxAppCore.capabilities & LxAppCore.capBrowser) != 0 else { return }
+        bookmarksSnapshot = SidebarBookmarksSnapshot.loadFromHost()
+        render()
+    }
+
+    /// Diff pin tiles against the snapshot's pinned subset.
+    private func renderPinTiles() {
+        let pinned = bookmarksSnapshot.pinnedEntries
+        let pinnedIds = Set(pinned.map { $0.id })
+        for (id, view) in pinTileViews where !pinnedIds.contains(id) {
+            pinTileTopConstraints.removeValue(forKey: id)?.isActive = false
+            pinTileLeadingConstraints.removeValue(forKey: id)?.isActive = false
+            view.removeFromSuperview()
+            pinTileViews.removeValue(forKey: id)
+        }
+
+        for entry in pinned {
+            let tile = pinTileViews[entry.id] ?? {
+                let view = SidebarPinTileView(bookmarkId: entry.id)
+                view.translatesAutoresizingMaskIntoConstraints = false
+                view.onOpen = { [weak self] url in
+                    self?.onBookmarkOpen?(url)
+                }
+                view.onSelectTab = { [weak self] tabId in
+                    self?.onBrowserTabSelected?(tabId)
+                }
+                view.onManageBookmarks = { [weak self] in
+                    self?.onManageBookmarks?()
+                }
+                pinTileViews[entry.id] = view
+                return view
+            }()
+            tile.configure(url: entry.url, title: entry.title)
+            let openTabId = openTabId(for: entry)
+            tile.openTabId = openTabId
+            tile.isFocused = openTabId.map { isBrowserSelected($0) } ?? false
+            if let openTabId,
+               let tabIndex = model.browserTabs.firstIndex(where: { $0.id == openTabId }) {
+                tile.onCloseTab = { [weak self] in
+                    self?.onBrowserTabCloseRequested?(openTabId)
+                }
+                tile.onCloseOtherTabs = model.browserTabs.count > 1 ? { [weak self] in
+                    self?.onBrowserTabCloseOtherRequested?(openTabId)
+                } : nil
+                tile.onCloseTabsBelow =
+                    tabIndex < model.browserTabs.index(before: model.browserTabs.endIndex)
+                    ? { [weak self] in
+                        self?.onBrowserTabCloseTabsBelowRequested?(openTabId)
+                    }
+                    : nil
+            } else {
+                tile.onCloseTab = nil
+                tile.onCloseOtherTabs = nil
+                tile.onCloseTabsBelow = nil
+            }
+            tile.syncState()
+        }
+    }
+
+    /// Lay out the pin grid at the very top of the list.
+    private func layoutPinGrid(in docView: NSView, yOffset startY: CGFloat) -> CGFloat {
+        let pinned = bookmarksSnapshot.pinnedEntries
+        guard !pinned.isEmpty else { return startY }
+        let inset: CGFloat = SidebarGroupView.Layout.groupInset + 4
+        let size = SidebarPinTileView.Layout.size
+        let gap = SidebarPinTileView.Layout.gap
+        let columns = SidebarPinTileView.Layout.columns
+        var yOffset = startY
+
+        for (index, entry) in pinned.enumerated() {
+            guard let tile = pinTileViews[entry.id] else { continue }
+            let column = index % columns
+            let row = index / columns
+            let x = inset + CGFloat(column) * (size + gap)
+            let y = startY + CGFloat(row) * (size + gap)
+            ensureSubview(tile, in: docView) {}
+            if let tc = pinTileTopConstraints[entry.id] {
+                tc.constant = y
+            } else {
+                let tc = tile.topAnchor.constraint(equalTo: docView.topAnchor, constant: y)
+                tc.isActive = true
+                pinTileTopConstraints[entry.id] = tc
+            }
+            if let lc = pinTileLeadingConstraints[entry.id] {
+                lc.constant = x
+            } else {
+                let lc = tile.leadingAnchor.constraint(equalTo: docView.leadingAnchor, constant: x)
+                lc.isActive = true
+                pinTileLeadingConstraints[entry.id] = lc
+            }
+            yOffset = y + size
+        }
+
+        return yOffset + 10
+    }
+
     private func setupAddButton() {
         addButton.translatesAutoresizingMaskIntoConstraints = false
         addButton.title = ""
-        addButton.image = NSImage(systemSymbolName: "plus", accessibilityDescription: "Add browser tab")
+        addButton.image = LxIcon.image(
+            named: "icon_browser_plus", size: CGSize(width: 16, height: 16))
+        addButton.toolTip = L10n.string("lx_browser_new_tab")
         addButton.isBordered = false
         addButton.bezelStyle = .regularSquare
         addButton.imagePosition = .imageOnly

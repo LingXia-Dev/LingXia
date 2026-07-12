@@ -669,6 +669,9 @@ function createStreamHandle(
 ): InternalStreamHandle {
   const listeners = createListenerBuckets();
   let done = false;
+  // Only buffer for the async iterator; long-lived streams consumed via
+  // .on("data") would otherwise accumulate payloads forever.
+  let iteratorRequested = false;
   let resolveResult: (value: unknown) => void = () => {};
   let rejectResult: (reason: unknown) => void = () => {};
   const pendingData: unknown[] = [];
@@ -700,6 +703,7 @@ function createStreamHandle(
       return this;
     },
     [Symbol.asyncIterator](): AsyncIterator<unknown, unknown, void> {
+      iteratorRequested = true;
       return {
         next(): Promise<IteratorResult<unknown, unknown>> {
           if (pendingData.length > 0) {
@@ -728,7 +732,7 @@ function createStreamHandle(
       if (done) return;
       if (pendingReads.length > 0) {
         pendingReads.shift()!.resolve({ done: false, value: payload });
-      } else {
+      } else if (iteratorRequested) {
         pendingData.push(payload);
       }
       for (const listener of listeners.data) {
@@ -792,6 +796,9 @@ function createChannel(
   let open = false;
   let outboundSeq = 0;
   let closed = false;
+  // Only buffer for the async iterator or pre-first-listener replay;
+  // otherwise a listener-driven channel would accumulate payloads forever.
+  let iteratorRequested = false;
   const pendingData: unknown[] = [];
   const pendingReads: Array<{
     resolve: (value: IteratorResult<unknown, void>) => void;
@@ -842,6 +849,7 @@ function createChannel(
       return this;
     },
     [Symbol.asyncIterator](): AsyncIterator<unknown, void, void> {
+      iteratorRequested = true;
       return {
         next(): Promise<IteratorResult<unknown, void>> {
           if (pendingData.length > 0) {
@@ -870,7 +878,7 @@ function createChannel(
       if (!open) return;
       if (pendingReads.length > 0) {
         pendingReads.shift()!.resolve({ done: false, value: payload });
-      } else {
+      } else if (iteratorRequested || listeners.data.size === 0) {
         pendingData.push(payload);
       }
       for (const listener of listeners.data) {
@@ -1388,7 +1396,15 @@ function handleIncomingMessage(msg: unknown): void {
       if (pendingReq.has(message.id)) {
         const req = pendingReq.get(message.id);
         if (req?.mode === "stream" && req.stream) {
-          armRequestTimer(message.id);
+          // The first frame proves the handler is live. Long-lived streams
+          // (bookmarks.watch, proxy.watch) are idle between pushes, so the
+          // request timeout must not treat silence as death — disarm it for
+          // good instead of re-arming per frame.
+          if (req.timerId !== null) {
+            clearTimeout(req.timerId);
+            req.timerId = null;
+          }
+          req.timeoutMs = 0;
           req.stream._emitData(message.payload);
         } else {
           warn(`Received event for non-stream request '${message.id}'`);

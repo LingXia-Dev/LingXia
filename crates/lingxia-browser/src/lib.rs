@@ -27,6 +27,9 @@ pub use types::{
 pub use lxapp::LxAppError;
 
 pub const BUILTIN_BROWSER_APPID: &str = "app.lingxia.browser";
+/// `(url, title)` observer; `title` is empty when no title has been reported
+/// for that URL yet.
+pub type BrowserPageMetadataHandler = Arc<dyn Fn(&str, &str) + Send + Sync>;
 
 pub fn classify_navigation(
     request: BrowserNavigationPolicyRequest,
@@ -36,6 +39,16 @@ pub fn classify_navigation(
 
 pub fn classify_navigation_json(request_json: &str) -> Option<String> {
     policy::handle_browser_navigation_policy_json(request_json)
+}
+
+#[doc(hidden)]
+pub fn set_navigation_finished_handler(handler: BrowserPageMetadataHandler) {
+    tabs::set_navigation_finished_handler(handler);
+}
+
+#[doc(hidden)]
+pub fn set_title_changed_handler(handler: BrowserPageMetadataHandler) {
+    tabs::set_title_changed_handler(handler);
 }
 
 #[doc(hidden)]
@@ -111,6 +124,11 @@ pub fn tab_is_standalone(tab_id: &str) -> bool {
 
 pub fn close(tab_id: &str) -> Result<(), LxAppError> {
     tabs::close_browser_tab(tab_id)
+}
+
+/// Retire browser tabs owned by previous sessions of an lxapp.
+pub fn prune_stale_owner_tabs(owner_appid: &str, current_session_id: u64) -> usize {
+    tabs::prune_stale_owner_tabs(owner_appid, current_session_id)
 }
 
 /// Discard a tab's WebView to free memory while keeping its sidebar entry.
@@ -231,6 +249,13 @@ pub async fn delete_cookie(
 
 pub async fn clear_cookies(tab_id: &str) -> Result<(), BrowserAutomationError> {
     automation::browser_clear_cookies(tab_id).await
+}
+
+pub async fn clear_site_data(
+    tab_id: &str,
+    options: lingxia_webview::ClearSiteDataOptions,
+) -> Result<lingxia_webview::ClearSiteDataResult, BrowserAutomationError> {
+    automation::browser_clear_site_data(tab_id, options).await
 }
 
 pub async fn start_network_capture(tab_id: &str) -> Result<(), BrowserAutomationError> {

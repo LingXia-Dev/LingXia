@@ -46,6 +46,10 @@ pub(super) struct TopBarControls {
     pub(super) nav_reload: Option<RECT>,
     /// The URL capsule (also the inline address-edit anchor).
     pub(super) address: Option<RECT>,
+    /// Current-page bookmark/pin toggles and overflow page menu.
+    pub(super) bookmark: Option<RECT>,
+    pub(super) pin: Option<RECT>,
+    pub(super) page_menu: Option<RECT>,
     /// Dismisses the presented browser tab back to the lxapp. Only on
     /// device-framed screens (no caption buttons), mirroring the macOS
     /// phone browser's close button.
@@ -125,6 +129,9 @@ pub(super) fn top_bar_controls(
         nav_forward: None,
         nav_reload: None,
         address: None,
+        bookmark: None,
+        pin: None,
+        page_menu: None,
         browser_close: None,
     };
     // On the phone frame the browser chrome is the bottom bar; the top bar
@@ -146,9 +153,22 @@ pub(super) fn top_bar_controls(
         left_edge = close.right + TOP_BAR_BUTTON_GAP;
         right_edge = top_bar.right - TOP_BAR_PADDING - device_capsule_reserve();
     }
+    let aside = layout
+        .address_bar
+        .as_ref()
+        .is_some_and(|address_bar| address_bar.aside);
+    // The ••• page menu hugs the capsule's trailing edge (macOS groups the
+    // page controls with the address bar, not the window edge); reserve its
+    // slot here, place the button once the capsule rect is known.
+    if !aside {
+        right_edge -= TOP_BAR_BUTTON_SIZE + ADDRESS_CAPSULE_NAV_GAP;
+    }
     let nav_width = 3 * TOP_BAR_BUTTON_SIZE + 2 * TOP_BAR_BUTTON_GAP;
     let capsule_space = right_edge - left_edge - nav_width - ADDRESS_CAPSULE_NAV_GAP;
     if capsule_space < 48 {
+        if !aside {
+            controls.page_menu = Some(square_button(right_edge + ADDRESS_CAPSULE_NAV_GAP));
+        }
         return controls;
     }
 
@@ -165,11 +185,7 @@ pub(super) fn top_bar_controls(
 
     // An aside tab keeps the nav cluster but has no address input - that is
     // the sole self-vs-aside chrome distinction.
-    if layout
-        .address_bar
-        .as_ref()
-        .is_some_and(|address_bar| address_bar.aside)
-    {
+    if aside {
         return controls;
     }
 
@@ -179,12 +195,34 @@ pub(super) fn top_bar_controls(
     let capsule_width = capsule_space.min(ADDRESS_CAPSULE_MAX_WIDTH);
     let capsule_height = ADDRESS_CAPSULE_HEIGHT.min(rect_height(&top_bar));
     let capsule_top = top_bar.top + (rect_height(&top_bar) - capsule_height).max(0) / 2;
-    controls.address = Some(normalize_rect(RECT {
+    let capsule = normalize_rect(RECT {
         left: capsule_left,
         top: capsule_top,
         right: (capsule_left + capsule_width).min(right_edge),
         bottom: capsule_top + capsule_height,
-    }));
+    });
+    controls.address = Some(capsule);
+    controls.page_menu = Some(square_button(capsule.right + ADDRESS_CAPSULE_NAV_GAP));
+    // Star/pin live inside the capsule's trailing edge, like the macOS
+    // address bar; internal pages have neither (they cannot be bookmarked).
+    let web = layout
+        .address_bar
+        .as_ref()
+        .is_some_and(|address_bar| address_bar.web);
+    if web && rect_width(&capsule) >= 4 * ADDRESS_CAPSULE_BUTTON_SIZE {
+        let button_top =
+            capsule.top + (rect_height(&capsule) - ADDRESS_CAPSULE_BUTTON_SIZE).max(0) / 2;
+        let capsule_button = |right: i32| RECT {
+            left: right - ADDRESS_CAPSULE_BUTTON_SIZE,
+            top: button_top,
+            right,
+            bottom: button_top + ADDRESS_CAPSULE_BUTTON_SIZE,
+        };
+        let pin = capsule_button(capsule.right - 5);
+        let bookmark = capsule_button(pin.left - 2);
+        controls.pin = Some(pin);
+        controls.bookmark = Some(bookmark);
+    }
     controls
 }
 
@@ -336,16 +374,91 @@ pub(super) fn draw_top_bar_controls(
             .map(|address_bar| address_bar.url_text.as_str())
             .unwrap_or_default();
         // Left-aligned like a browser address bar, so the URL reads next to
-        // the nav cluster instead of floating in the capsule's middle.
+        // the nav cluster instead of floating in the capsule's middle. The
+        // text yields to the trailing star/pin buttons when present.
+        let text_right = controls
+            .bookmark
+            .map(|bookmark| bookmark.left - 4)
+            .unwrap_or(address.right - 12);
         draw_text(
             hdc,
             text,
-            inset_rect(address, 12, 0),
+            normalize_rect(RECT {
+                left: address.left + 12,
+                top: address.top,
+                right: text_right,
+                bottom: address.bottom,
+            }),
             shell_palette().text_primary,
             DT_LEFT,
         );
     }
-    remember_address_capsule_rect(state.hwnd, controls.address);
+    // Star/pin inside the capsule: accent-tinted while active, muted
+    // otherwise (macOS address-bar styling).
+    if let Some(bookmark) = controls.bookmark {
+        draw_hover_wash(hdc, bookmark, 5, cursor);
+        let filled = layout
+            .address_bar
+            .as_ref()
+            .is_some_and(|address_bar| address_bar.bookmarked);
+        draw_design_icon_button(
+            hdc,
+            bookmark,
+            if filled {
+                WindowsDesignIcon::BookmarkFilled
+            } else {
+                WindowsDesignIcon::Bookmark
+            },
+            if filled {
+                shell_palette().accent
+            } else {
+                shell_palette().text_muted
+            },
+            14,
+        );
+    }
+    if let Some(pin) = controls.pin {
+        draw_hover_wash(hdc, pin, 5, cursor);
+        let filled = layout
+            .address_bar
+            .as_ref()
+            .is_some_and(|address_bar| address_bar.pinned);
+        draw_design_icon_button(
+            hdc,
+            pin,
+            if filled {
+                WindowsDesignIcon::PinFilled
+            } else {
+                WindowsDesignIcon::Pin
+            },
+            if filled {
+                shell_palette().accent
+            } else {
+                shell_palette().text_muted
+            },
+            14,
+        );
+    }
+    if let Some(page_menu) = controls.page_menu {
+        draw_hover_wash(hdc, page_menu, 5, cursor);
+        draw_design_icon_button(
+            hdc,
+            page_menu,
+            WindowsDesignIcon::PageMenu,
+            shell_palette().frame_button_icon,
+            18,
+        );
+    }
+    // The inline URL editor overlays the capsule but must not cover the
+    // trailing star/pin buttons.
+    let edit_rect = controls.address.map(|address| match controls.bookmark {
+        Some(bookmark) => RECT {
+            right: bookmark.left - 4,
+            ..address
+        },
+        None => address,
+    });
+    remember_address_capsule_rect(state.hwnd, edit_rect);
 }
 
 /// Rendered size of the back/home navigation glyphs.

@@ -61,6 +61,8 @@ final class BrowserTabCoordinator: NSObject {
     // Tab state
     private let settingsTabId = "settings"
     private let downloadsTabId = "downloads"
+    private let bookmarksTabId = "bookmarks"
+    private let historyTabId = "history"
     private(set) var activeTabId: String?
     private var tabIds: [String] = []
     private var tabTitles: [String: String] = [:]
@@ -77,10 +79,10 @@ final class BrowserTabCoordinator: NSObject {
     private var backgroundedAt: [String: Date] = [:]
 
     /// Reactive: free background tabs when the system reports memory pressure.
-    private var memoryPressureSource: DispatchSourceMemoryPressure?
+    nonisolated(unsafe) private var memoryPressureSource: DispatchSourceMemoryPressure?
     /// Proactive: periodically free tabs idle longer than `idleDiscardThreshold`,
     /// so memory stays low without waiting for pressure.
-    private var idleSweepTimer: Timer?
+    nonisolated(unsafe) private var idleSweepTimer: Timer?
     private var memoryManagementStarted = false
     /// Background-idle time after which a tab is discarded proactively.
     private static let idleDiscardThreshold: TimeInterval = 30 * 60
@@ -100,13 +102,22 @@ final class BrowserTabCoordinator: NSObject {
     private let refreshButton = NSButton()
     private let addressBarContainer = NSView()
     private let addressField = NSTextField()
+    /// Save the current website to the bookmarks archive.
+    private let starButton = NSButton()
+    /// Promote the current website to a persistent sidebar shortcut.
+    private let pinButton = NSButton()
+    /// Open the bookmarks manager without adding sidebar chrome.
+    private let bookmarksButton = NSButton()
+    /// Per-tab page menu (bookmark, copy link, bookmarks page).
+    private let menuButton = NSButton()
     private let webContainer = NSView()
+    nonisolated(unsafe) private var shortcutMonitor: Any?
     private var activeWebView: WKWebView?
     private var backButtonLeadingConstraint: NSLayoutConstraint?
     private var toolbarCenterYConstraints: [NSLayoutConstraint] = []
     /// Tabs the user has interacted with (page click or address navigation).
     private var interactedTabs: Set<String> = []
-    private var interactionMonitor: Any?
+    nonisolated(unsafe) private var interactionMonitor: Any?
 
     // KVO
     nonisolated(unsafe) private var titleObservation: NSKeyValueObservation?
@@ -127,12 +138,32 @@ final class BrowserTabCoordinator: NSObject {
     // MARK: - Lifecycle
 
     nonisolated func cleanup() {
+        // May run from a background-thread deinit. Capture the values, nil the
+        // fields, then hop to main for the AppKit monitor removal and the
+        // main-scheduled Timer invalidation — never capturing self.
+        nonisolated(unsafe) let monitors = [shortcutMonitor, interactionMonitor].compactMap { $0 }
+        shortcutMonitor = nil
+        interactionMonitor = nil
+        nonisolated(unsafe) let timer = idleSweepTimer
+        idleSweepTimer = nil
+        memoryPressureSource?.cancel()
+        memoryPressureSource = nil
         titleObservation?.invalidate()
         urlObservation?.invalidate()
         canGoBackObservation?.invalidate()
         canGoForwardObservation?.invalidate()
         tabTitleObservations.values.forEach { $0.invalidate() }
         tabTitleObservations.removeAll()
+
+        let finish = { @Sendable in
+            monitors.forEach { NSEvent.removeMonitor($0) }
+            timer?.invalidate()
+        }
+        if Thread.isMainThread {
+            finish()
+        } else {
+            DispatchQueue.main.async(execute: finish)
+        }
     }
 
     /// Observe a tab's title for as long as the tab exists (independent of which
@@ -197,6 +228,39 @@ final class BrowserTabCoordinator: NSObject {
 
     func openDownloads() {
         addTabWithURL("lingxia://downloads", stableTabId: downloadsTabId)
+    }
+
+    /// Open the bookmarks manager page (the archive; pins are its subset).
+    func openBookmarks() {
+        addTabWithURL("lingxia://bookmarks", stableTabId: bookmarksTabId)
+    }
+
+    func openHistory() {
+        addTabWithURL("lingxia://history", stableTabId: historyTabId)
+    }
+
+    func openClearSiteData(tabId: String) {
+        addTabWithURL(
+            "lingxia://settings#clear-site-data?tabId=\(tabIdString(tabId))",
+            stableTabId: settingsTabId
+        )
+    }
+
+    /// Open a bookmark: focus an existing tab with the same URL (Arc pinned
+    /// semantics — one entity, click activates) or open a fresh tab.
+    func openBookmark(url: String) {
+        let target = normalizedBookmarkURL(url)
+        if let existing = tabIds.first(where: {
+            normalizedBookmarkURL(lastObservedURLs[$0] ?? "") == target
+        }) {
+            selectTab(id: existing)
+            return
+        }
+        addTabWithURL(url)
+    }
+
+    private func normalizedBookmarkURL(_ raw: String) -> String {
+        SidebarBookmarksSnapshot.normalize(raw)
     }
 
     func selectTab(id: String) {
@@ -624,18 +688,19 @@ final class BrowserTabCoordinator: NSObject {
                 let rawURL = webView.url?.absoluteString ?? ""
                 let previousURL = self.lastObservedURLs[activeId]
                 self.syncAddressField(rawURL)
+                self.updatePageSaveButtons(for: rawURL)
                 self.lastObservedURLs[activeId] = rawURL
                 guard previousURL != rawURL else { return }
                 if let origin = webView.url.flatMap({ self.faviconRequestOrigin(for: $0) }) {
                     if origin != self.tabFaviconRequestOrigins[activeId] {
                         self.tabFavicons.removeValue(forKey: activeId)
                         self.tabFaviconRequestOrigins[activeId] = origin
-                        self.host?.updateSidebarBrowserItems(self.sidebarItems(), activeId: activeId)
                     }
                     if self.tabFavicons[activeId] == nil {
                         self.fetchFavicon(for: origin, tabId: activeId)
                     }
                 }
+                self.host?.updateSidebarBrowserItems(self.sidebarItems(), activeId: activeId)
                 _ = updateBrowserTabInfo(self.tabIdString(activeId), webView.url?.absoluteString ?? "", webView.title ?? "")
             }
         }
@@ -703,6 +768,10 @@ final class BrowserTabCoordinator: NSObject {
             return
         }
 
+        let requestedURL = url.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !requestedURL.isEmpty {
+            lastObservedURLs[tabId] = requestedURL
+        }
         presentInternalBrowserTab(id: tabId)
     }
 
@@ -746,6 +815,7 @@ final class BrowserTabCoordinator: NSObject {
 
         showBrowserView()
         addressField.stringValue = ""
+        updatePageSaveButtons(for: nil)
         // An aside tab hides the address bar (self chrome otherwise unchanged).
         addressBarContainer.isHidden = browserTabIsAside(tabIdString(id))
         updateBackButtonState(canGoBack: false)
@@ -780,10 +850,13 @@ final class BrowserTabCoordinator: NSObject {
         memoryPressureSource = source
 
         // Proactive: sweep idle tabs so memory stays low before pressure hits.
+        let idleDiscardThreshold = Self.idleDiscardThreshold
         let timer = Timer.scheduledTimer(
             withTimeInterval: Self.idleSweepInterval, repeats: true
         ) { [weak self] _ in
-            self?.discardBackgroundTabs(minIdle: Self.idleDiscardThreshold)
+            Task { @MainActor [weak self] in
+                self?.discardBackgroundTabs(minIdle: idleDiscardThreshold)
+            }
         }
         timer.tolerance = Self.idleSweepInterval / 2
         idleSweepTimer = timer
@@ -884,6 +957,146 @@ final class BrowserTabCoordinator: NSObject {
         activeWebView?.reload()
     }
 
+    // MARK: - Page menu / bookmarks
+
+    /// The active tab's real page URL (empty for hidden startup pages).
+    private func activePageURL() -> String {
+        guard let activeId = activeTabId else { return "" }
+        let raw = activeWebView?.url?.absoluteString ?? lastObservedURLs[activeId] ?? ""
+        return BrowserPageMenu.isPageActionable(raw) ? raw : ""
+    }
+
+    private func activePageTitle() -> String {
+        guard let activeId = activeTabId else { return "" }
+        let title = (activeWebView?.title ?? tabTitles[activeId] ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return title
+    }
+
+    /// Sync the distinct archive (star) and sidebar shortcut (pin) actions.
+    private func updatePageSaveButtons(for url: String?) {
+        let raw = url ?? ""
+        guard BrowserPageMenu.isBookmarkActionable(raw) else {
+            starButton.isHidden = true
+            pinButton.isHidden = true
+            return
+        }
+        starButton.isHidden = false
+        pinButton.isHidden = false
+        // One O(1)-ish FFI call (bit 0 = bookmarked, bit 1 = pinned) instead of
+        // decoding a full snapshot on every URL change.
+        let state = browserBookmarkState(raw)
+        let bookmarked = state & 0b1 != 0
+        let pinned = state & 0b10 != 0
+        starButton.image = LxIcon.image(
+            named: bookmarked ? "icon_bookmark_filled" : "icon_bookmark",
+            size: CGSize(width: 16, height: 16)
+        )
+        starButton.contentTintColor = bookmarked ? .controlAccentColor : .tertiaryLabelColor
+        starButton.toolTip = L10n.string(bookmarked ? "lx_browser_remove_bookmark" : "lx_browser_add_bookmark")
+        starButton.setAccessibilityLabel(starButton.toolTip ?? "")
+        pinButton.image = LxIcon.image(
+            named: pinned ? "icon_pin_filled" : "icon_pin",
+            size: CGSize(width: 16, height: 16)
+        )
+        pinButton.contentTintColor = pinned ? .controlAccentColor : .tertiaryLabelColor
+        pinButton.toolTip = L10n.string(pinned ? "lx_browser_unpin" : "lx_browser_pin_to_sidebar")
+        pinButton.setAccessibilityLabel(pinButton.toolTip ?? "")
+    }
+
+    /// Re-derive star/pin state after an external bookmarks mutation (webui
+    /// manager page, sidebar tile menu) so a stale filled star can't re-add.
+    func refreshPageSaveButtons() {
+        guard let activeId = activeTabId else { return }
+        updatePageSaveButtons(for: activeWebView?.url?.absoluteString ?? lastObservedURLs[activeId])
+    }
+
+    private func toggleActiveBookmark() {
+        let url = activePageURL()
+        guard BrowserPageMenu.isBookmarkActionable(url) else { return }
+        _ = browserBookmarkToggle(url, activePageTitle())
+        updatePageSaveButtons(for: url)
+    }
+
+    private func toggleActivePin() {
+        let url = activePageURL()
+        guard BrowserPageMenu.isBookmarkActionable(url) else { return }
+        let normalized = SidebarBookmarksSnapshot.normalize(url)
+        if let pinned = SidebarBookmarksSnapshot.loadFromHost().pinnedEntries.first(where: {
+            SidebarBookmarksSnapshot.normalize($0.url) == normalized
+        }) {
+            _ = browserBookmarksCommand(
+                #"{"op":"setPinned","id":"\#(jsonEscape(pinned.id))","pinned":false}"#
+            )
+        } else {
+            _ = browserBookmarkPin(url, activePageTitle())
+        }
+        updatePageSaveButtons(for: url)
+    }
+
+    @objc private func starClicked() {
+        toggleActiveBookmark()
+    }
+
+    @objc private func pinClicked() {
+        toggleActivePin()
+    }
+
+    @objc private func bookmarksClicked() {
+        openBookmarks()
+    }
+
+    @objc private func menuClicked() {
+        let url = activePageURL()
+        let context = BrowserPageMenu.Context(
+            url: url,
+            title: activePageTitle(),
+            toastHost: webContainer,
+            onBookmarkChanged: { [weak self] _ in
+                self?.updatePageSaveButtons(for: url)
+            },
+            onOpenBookmarks: { [weak self] in
+                self?.openBookmarks()
+            },
+            onOpenHistory: { [weak self] in
+                self?.openHistory()
+            },
+            onClearSiteData: { [weak self] in
+                guard let self, let tabId = self.activeTabId else { return }
+                self.openClearSiteData(tabId: tabId)
+            }
+        )
+        let menu = BrowserPageMenu.menu(for: context)
+        menu.popUp(
+            positioning: nil,
+            at: NSPoint(x: menuButton.bounds.minX, y: menuButton.bounds.maxY + 6),
+            in: menuButton
+        )
+    }
+
+    /// Browser-scope keyboard shortcuts (active only while a browser tab is
+    /// frontmost): ⌘D toggles bookmark, ⌘Y opens history, ⇧⌘C copies the link.
+    private func handleShortcut(_ event: NSEvent) -> Bool {
+        guard activeTabId != nil else { return false }
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        let key = event.charactersIgnoringModifiers?.lowercased()
+        if flags == [.command], key == "d" {
+            toggleActiveBookmark()
+            return true
+        }
+        if flags == [.command], key == "y" {
+            openHistory()
+            return true
+        }
+        if flags == [.command, .shift], key == "c" {
+            let url = activePageURL()
+            guard !url.isEmpty else { return false }
+            BrowserPageMenu.copyLink(url, toastHost: webContainer)
+            return true
+        }
+        return false
+    }
+
     @objc private func addressSubmitted(_ sender: NSTextField) {
         guard let result = handleBrowserAddressSubmission(
             rawInput: sender.stringValue,
@@ -921,6 +1134,21 @@ final class BrowserTabCoordinator: NSObject {
 
     private func setupBrowserViewIfNeeded() {
         guard browserView == nil else { return }
+
+        // Browser keyboard shortcuts (⌘D bookmark, ⌘Y history, ⇧⌘C copy link). Swallowed
+        // only while a browser tab is active, so lxapp views keep their keys.
+        if shortcutMonitor == nil {
+            shortcutMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+                var handled = false
+                MainActor.assumeIsolated {
+                    guard let self,
+                          let window = self.webContainer.window,
+                          event.window === window else { return }
+                    handled = self.handleShortcut(event)
+                }
+                return handled ? nil : event
+            }
+        }
 
         // First click inside the web area marks the active tab as interacted
         // (observe-only; the event passes through untouched).
@@ -967,7 +1195,7 @@ final class BrowserTabCoordinator: NSObject {
 
         addressField.translatesAutoresizingMaskIntoConstraints = false
         addressField.font = NSFont.systemFont(ofSize: 13)
-        addressField.placeholderString = "Enter URL"
+        addressField.placeholderString = L10n.string("lx_browser_address_placeholder")
         addressField.isBordered = false
         addressField.drawsBackground = false
         addressField.focusRingType = .none
@@ -978,6 +1206,40 @@ final class BrowserTabCoordinator: NSObject {
         addressField.target = self
         addressField.action = #selector(addressSubmitted(_:))
         addressBarContainer.addSubview(addressField)
+
+        starButton.translatesAutoresizingMaskIntoConstraints = false
+        starButton.title = ""
+        starButton.isBordered = false
+        starButton.bezelStyle = .regularSquare
+        starButton.imagePosition = .imageOnly
+        starButton.imageScaling = .scaleProportionallyDown
+        starButton.target = self
+        starButton.action = #selector(starClicked)
+        starButton.toolTip = L10n.string("lx_browser_add_bookmark")
+        starButton.isHidden = true
+        addressBarContainer.addSubview(starButton)
+
+        pinButton.translatesAutoresizingMaskIntoConstraints = false
+        pinButton.title = ""
+        pinButton.isBordered = false
+        pinButton.bezelStyle = .regularSquare
+        pinButton.imagePosition = .imageOnly
+        pinButton.imageScaling = .scaleProportionallyDown
+        pinButton.target = self
+        pinButton.action = #selector(pinClicked)
+        pinButton.toolTip = L10n.string("lx_browser_pin_to_sidebar")
+        pinButton.isHidden = true
+        addressBarContainer.addSubview(pinButton)
+
+        configureButton(bookmarksButton, iconName: "icon_bookmarks", action: #selector(bookmarksClicked))
+        bookmarksButton.toolTip = L10n.string("lx_browser_manage_bookmarks")
+        bookmarksButton.setAccessibilityLabel(bookmarksButton.toolTip ?? "")
+        toolbar.addSubview(bookmarksButton)
+
+        configureButton(menuButton, iconName: "icon_page_menu", action: #selector(menuClicked))
+        menuButton.toolTip = L10n.string("lx_browser_page_menu")
+        menuButton.setAccessibilityLabel(menuButton.toolTip ?? "")
+        toolbar.addSubview(menuButton)
 
         toolbarSeparator.translatesAutoresizingMaskIntoConstraints = false
         toolbarSeparator.wantsLayer = true
@@ -992,7 +1254,12 @@ final class BrowserTabCoordinator: NSObject {
         let forwardCenterY = forwardButton.centerYAnchor.constraint(equalTo: toolbar.topAnchor, constant: Layout.toolbarCenterY)
         let refreshCenterY = refreshButton.centerYAnchor.constraint(equalTo: toolbar.topAnchor, constant: Layout.toolbarCenterY)
         let addressCenterY = addressBarContainer.centerYAnchor.constraint(equalTo: toolbar.topAnchor, constant: Layout.toolbarCenterY)
-        toolbarCenterYConstraints = [backCenterY, forwardCenterY, refreshCenterY, addressCenterY]
+        let bookmarksCenterY = bookmarksButton.centerYAnchor.constraint(equalTo: toolbar.topAnchor, constant: Layout.toolbarCenterY)
+        let menuCenterY = menuButton.centerYAnchor.constraint(equalTo: toolbar.topAnchor, constant: Layout.toolbarCenterY)
+        toolbarCenterYConstraints = [
+            backCenterY, forwardCenterY, refreshCenterY, addressCenterY,
+            bookmarksCenterY, menuCenterY,
+        ]
 
         NSLayoutConstraint.activate([
             toolbar.topAnchor.constraint(equalTo: bv.topAnchor),
@@ -1020,13 +1287,33 @@ final class BrowserTabCoordinator: NSObject {
             refreshButton.heightAnchor.constraint(equalToConstant: Layout.buttonSize),
 
             addressBarContainer.leadingAnchor.constraint(equalTo: refreshButton.trailingAnchor, constant: 8),
-            addressBarContainer.trailingAnchor.constraint(equalTo: toolbar.trailingAnchor, constant: -8),
+            addressBarContainer.trailingAnchor.constraint(equalTo: bookmarksButton.leadingAnchor, constant: -8),
             addressCenterY,
             addressBarContainer.heightAnchor.constraint(equalToConstant: Layout.addressBarHeight),
 
+            bookmarksButton.trailingAnchor.constraint(equalTo: menuButton.leadingAnchor, constant: -4),
+            bookmarksCenterY,
+            bookmarksButton.widthAnchor.constraint(equalToConstant: Layout.buttonSize),
+            bookmarksButton.heightAnchor.constraint(equalToConstant: Layout.buttonSize),
+
+            menuButton.trailingAnchor.constraint(equalTo: toolbar.trailingAnchor, constant: -8),
+            menuCenterY,
+            menuButton.widthAnchor.constraint(equalToConstant: Layout.buttonSize),
+            menuButton.heightAnchor.constraint(equalToConstant: Layout.buttonSize),
+
             addressField.leadingAnchor.constraint(equalTo: addressBarContainer.leadingAnchor, constant: 8),
-            addressField.trailingAnchor.constraint(equalTo: addressBarContainer.trailingAnchor, constant: -8),
+            addressField.trailingAnchor.constraint(equalTo: starButton.leadingAnchor, constant: -4),
             addressField.centerYAnchor.constraint(equalTo: addressBarContainer.centerYAnchor),
+
+            starButton.trailingAnchor.constraint(equalTo: pinButton.leadingAnchor, constant: -2),
+            starButton.centerYAnchor.constraint(equalTo: addressBarContainer.centerYAnchor),
+            starButton.widthAnchor.constraint(equalToConstant: 20),
+            starButton.heightAnchor.constraint(equalToConstant: 20),
+
+            pinButton.trailingAnchor.constraint(equalTo: addressBarContainer.trailingAnchor, constant: -5),
+            pinButton.centerYAnchor.constraint(equalTo: addressBarContainer.centerYAnchor),
+            pinButton.widthAnchor.constraint(equalToConstant: 20),
+            pinButton.heightAnchor.constraint(equalToConstant: 20),
 
             toolbarSeparator.topAnchor.constraint(equalTo: toolbar.bottomAnchor),
             toolbarSeparator.leadingAnchor.constraint(equalTo: bv.leadingAnchor),
@@ -1093,6 +1380,7 @@ final class BrowserTabCoordinator: NSObject {
 
     private func configureButton(_ button: NSButton, iconName: String, action: Selector) {
         button.translatesAutoresizingMaskIntoConstraints = false
+        button.title = ""
         button.isBordered = false
         button.bezelStyle = .regularSquare
         button.imagePosition = .imageOnly

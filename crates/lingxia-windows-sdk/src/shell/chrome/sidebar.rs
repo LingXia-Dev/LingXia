@@ -118,9 +118,11 @@ pub(super) fn draw_sidebar_tab_bar(
     } else {
         tabbar.app_name.to_ascii_uppercase()
     };
-    let chevron_rect = sidebar_group_chevron_rect(rect);
+    let group_top = sidebar_group_top(rect, tabbar);
+    let group_bottom = rect.top + SIDEBAR_HEADER_HEIGHT + sidebar_pinned_grid_height(rect, tabbar);
+    let chevron_rect = sidebar_group_chevron_rect(rect, tabbar);
     // The lxapp's own icon (via the app-info API) leads the group header.
-    let icon_top = rect.top + 22 + (SIDEBAR_HEADER_HEIGHT - 22 - SIDEBAR_ICON_SIZE).max(0) / 2;
+    let icon_top = group_top + (group_bottom - group_top - SIDEBAR_ICON_SIZE).max(0) / 2;
     let icon_rect = RECT {
         left: rect.left + SIDEBAR_ITEM_INSET + 2,
         top: icon_top,
@@ -135,9 +137,9 @@ pub(super) fn draw_sidebar_tab_bar(
     );
     let header_rect = RECT {
         left: icon_rect.right + 8,
-        top: rect.top + 22,
+        top: group_top,
         right: chevron_rect.left - 4,
-        bottom: rect.top + SIDEBAR_HEADER_HEIGHT,
+        bottom: group_bottom,
     };
     draw_text(
         hdc,
@@ -222,8 +224,8 @@ pub(super) fn draw_sidebar_items(
     cursor: Option<(i32, i32)>,
 ) {
     if !tabbar.items.is_empty() {
-        let first = sidebar_item_rect(rect, 0);
-        let last = sidebar_item_rect(rect, tabbar.items.len() - 1);
+        let first = sidebar_item_rect(rect, tabbar, 0);
+        let last = sidebar_item_rect(rect, tabbar, tabbar.items.len() - 1);
         fill_rect(
             hdc,
             RECT {
@@ -237,7 +239,7 @@ pub(super) fn draw_sidebar_items(
     }
 
     for (index, item) in tabbar.items.iter().enumerate() {
-        let item_rect = sidebar_item_rect(rect, index);
+        let item_rect = sidebar_item_rect(rect, tabbar, index);
         let selected = tabbar.selected_index == index as i32;
         if selected {
             // White item card on the gray sidebar, accent bar on white.
@@ -388,8 +390,14 @@ pub(super) fn sidebar_rail_item_rect(rect: RECT, index: usize) -> RECT {
 
 /// Chevron hit/draw rect at the trailing edge of the sidebar group header
 /// row (the lxapp name).
-pub(super) fn sidebar_group_chevron_rect(rect: RECT) -> RECT {
-    let top = rect.top + 22 + (SIDEBAR_HEADER_HEIGHT - 22 - SIDEBAR_CHEVRON_SIZE).max(0) / 2;
+fn sidebar_group_top(rect: RECT, tabbar: &WindowsShellTabBarLayout) -> i32 {
+    rect.top + SHELL_TOP_BAR_HEIGHT + sidebar_pinned_grid_height(rect, tabbar)
+}
+
+pub(super) fn sidebar_group_chevron_rect(rect: RECT, tabbar: &WindowsShellTabBarLayout) -> RECT {
+    let group_top = sidebar_group_top(rect, tabbar);
+    let group_bottom = rect.top + SIDEBAR_HEADER_HEIGHT + sidebar_pinned_grid_height(rect, tabbar);
+    let top = group_top + (group_bottom - group_top - SIDEBAR_CHEVRON_SIZE).max(0) / 2;
     normalize_rect(RECT {
         left: rect.right - SIDEBAR_ITEM_INSET - SIDEBAR_CHEVRON_SIZE,
         top,
@@ -488,9 +496,15 @@ pub(super) fn tab_item_rect(
     }
 }
 
-pub(super) fn sidebar_item_rect(rect: RECT, index: usize) -> RECT {
-    let top =
-        rect.top + SIDEBAR_HEADER_HEIGHT + index as i32 * (SIDEBAR_ITEM_HEIGHT + SIDEBAR_ITEM_GAP);
+pub(super) fn sidebar_item_rect(
+    rect: RECT,
+    tabbar: &WindowsShellTabBarLayout,
+    index: usize,
+) -> RECT {
+    let top = rect.top
+        + SIDEBAR_HEADER_HEIGHT
+        + sidebar_pinned_grid_height(rect, tabbar)
+        + index as i32 * (SIDEBAR_ITEM_HEIGHT + SIDEBAR_ITEM_GAP);
     normalize_rect(RECT {
         left: rect.left + SIDEBAR_ITEM_INSET,
         top,

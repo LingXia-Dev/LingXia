@@ -1,0 +1,398 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title data-i18n="history.title">History</title>
+  <style>
+    * { box-sizing: border-box; }
+    :root {
+      color-scheme: light;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+      color: #101828;
+      background: #f6f7f9;
+    }
+    body { margin: 0; min-height: 100vh; }
+    button, input { font: inherit; }
+    button { border: 0; background: none; cursor: pointer; }
+    .shell { min-height: 100vh; }
+    .header {
+      position: sticky; top: 0; z-index: 10;
+      display: flex; align-items: center; justify-content: space-between; gap: 24px;
+      padding: 22px 34px 18px;
+      background: rgba(246,247,249,0.88);
+      border-bottom: 1px solid rgba(16,24,40,0.07);
+      backdrop-filter: blur(20px);
+    }
+    .title { margin: 0; font-size: 22px; font-weight: 720; letter-spacing: -0.02em; }
+    .subtitle { margin-top: 3px; color: #98a2b3; font-size: 12px; }
+    .header-actions { display: flex; align-items: center; gap: 10px; }
+    .search-wrap { position: relative; width: min(360px, 36vw); }
+    .search-wrap svg {
+      position: absolute; left: 12px; top: 50%; width: 15px; height: 15px;
+      transform: translateY(-50%); color: #98a2b3; pointer-events: none;
+    }
+    .search {
+      width: 100%; height: 36px; padding: 0 12px 0 36px;
+      border: 1px solid #d9dee7; border-radius: 11px; outline: none;
+      background: rgba(255,255,255,0.9); color: #101828; font-size: 13px;
+      transition: border-color 120ms, box-shadow 120ms;
+    }
+    .search:focus { border-color: #84caff; box-shadow: 0 0 0 3px rgba(0,122,255,0.11); }
+    .clear-button {
+      height: 36px; padding: 0 14px; border-radius: 10px;
+      color: #b42318; background: #fff; border: 1px solid #e5e7eb;
+      font-size: 12px; font-weight: 650;
+    }
+    .clear-button:hover { background: #fff5f5; border-color: #fecaca; }
+    .clear-button:disabled { opacity: 0.45; cursor: default; }
+    .content { width: min(920px, calc(100% - 56px)); margin: 0 auto; padding: 26px 0 60px; }
+    .day { margin-bottom: 24px; }
+    .day-title {
+      margin: 0 0 9px 10px; color: #667085;
+      font-size: 12px; font-weight: 680; letter-spacing: 0.01em;
+    }
+    .day-card {
+      overflow: hidden; border: 1px solid #e5e7eb; border-radius: 15px;
+      background: #fff; box-shadow: 0 5px 18px rgba(16,24,40,0.035);
+    }
+    .row {
+      display: grid; grid-template-columns: 34px minmax(0,1fr) auto 30px;
+      align-items: center; gap: 12px; min-height: 58px; padding: 9px 13px 9px 16px;
+      border-top: 1px solid #f1f3f6; transition: background 90ms;
+    }
+    .row:first-child { border-top: 0; }
+    .row:hover { background: #fafbfd; }
+    .favicon {
+      width: 32px; height: 32px; display: grid; place-items: center;
+      overflow: hidden; border-radius: 9px; background: #f2f4f7;
+      color: #007aff; font-size: 13px; font-weight: 720;
+    }
+    .favicon img { width: 18px; height: 18px; object-fit: contain; }
+    .main { min-width: 0; }
+    .row-title {
+      display: block; overflow: hidden; color: #101828; text-decoration: none;
+      text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 620;
+    }
+    .row-title:hover { color: #007aff; }
+    .row-url {
+      display: block; margin-top: 2px; overflow: hidden; color: #98a2b3;
+      text-overflow: ellipsis; white-space: nowrap; font-size: 11.5px;
+    }
+    .time { color: #98a2b3; font-size: 11.5px; white-space: nowrap; }
+    .remove {
+      width: 28px; height: 28px; display: grid; place-items: center;
+      border-radius: 8px; color: #b3bac6; opacity: 0; transition: opacity 100ms, background 100ms;
+    }
+    .row:hover .remove, .remove:focus-visible { opacity: 1; }
+    .remove:hover { color: #c01048; background: #fff1f3; }
+    .remove svg { width: 14px; height: 14px; }
+    .empty {
+      display: none; min-height: 420px; flex-direction: column;
+      align-items: center; justify-content: center; text-align: center; color: #98a2b3;
+    }
+    .empty.active { display: flex; }
+    .empty-icon {
+      width: 58px; height: 58px; display: grid; place-items: center; margin-bottom: 14px;
+      border-radius: 17px; color: #667085; background: linear-gradient(180deg,#fff,#edf0f5);
+      box-shadow: 0 10px 24px rgba(16,24,40,0.08);
+    }
+    .empty-icon svg { width: 27px; height: 27px; }
+    .empty-title { color: #344054; font-size: 15px; font-weight: 680; }
+    .empty-copy { margin-top: 5px; font-size: 12.5px; }
+    .overlay {
+      position: fixed; inset: 0; z-index: 50; display: none; align-items: center; justify-content: center;
+      padding: 24px; background: rgba(16,24,40,0.28); backdrop-filter: blur(5px);
+    }
+    .overlay.active { display: flex; }
+    .dialog {
+      width: min(410px, 100%); padding: 22px; border: 1px solid rgba(255,255,255,0.55);
+      border-radius: 18px; background: rgba(255,255,255,0.98);
+      box-shadow: 0 24px 64px rgba(16,24,40,0.22);
+    }
+    .dialog-title { font-size: 16px; font-weight: 720; }
+    .dialog-copy { margin-top: 7px; color: #667085; font-size: 12.5px; line-height: 1.55; }
+    .dialog-actions { display: flex; justify-content: flex-end; gap: 9px; margin-top: 20px; }
+    .dialog-button {
+      height: 34px; padding: 0 14px; border-radius: 9px;
+      background: #eef1f5; color: #344054; font-size: 12px; font-weight: 650;
+    }
+    .dialog-button.danger { background: #d92d20; color: #fff; }
+    .toast {
+      position: fixed; z-index: 80; left: 50%; bottom: 28px;
+      transform: translate(-50%, 14px); opacity: 0; pointer-events: none;
+      padding: 10px 17px; border-radius: 999px; color: #fff;
+      background: rgba(29,29,31,0.92); font-size: 12px; font-weight: 620;
+      transition: opacity 150ms, transform 150ms;
+    }
+    .toast.active { opacity: 1; transform: translate(-50%,0); }
+    @media (max-width: 680px) {
+      .header { align-items: flex-start; flex-direction: column; padding: 18px 20px 14px; gap: 14px; }
+      .header-actions, .search-wrap { width: 100%; }
+      .search-wrap { flex: 1; }
+      .content { width: calc(100% - 28px); padding-top: 18px; }
+      .row { grid-template-columns: 34px minmax(0,1fr) 28px; }
+      .time { display: none; }
+      .remove { opacity: 1; }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header class="header">
+      <div>
+        <h1 class="title" data-i18n="history.title">History</h1>
+        <div class="subtitle" id="summary" data-i18n="history.loading">Loading...</div>
+      </div>
+      <div class="header-actions">
+        <label class="search-wrap">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="4.4"/><path d="M10.3 10.3L14 14"/></svg>
+          <input class="search" id="search" type="search" data-i18n-placeholder="history.search" placeholder="Search history" autocomplete="off">
+        </label>
+        <button class="clear-button" id="clearButton" type="button" data-i18n="history.clearMenu">Clear History...</button>
+      </div>
+    </header>
+    <section class="content">
+      <div id="groups"></div>
+      <div class="empty" id="empty">
+        <div class="empty-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="8"/><path d="M12 7.6v4.8l3.2 1.9"/><path d="M4.8 5.8L3.2 4.2"/></svg>
+        </div>
+        <div class="empty-title" id="emptyTitle" data-i18n="history.emptyTitle">No history yet</div>
+        <div class="empty-copy" id="emptyCopy" data-i18n="history.emptyCopy">Pages you visit will appear here.</div>
+      </div>
+    </section>
+  </main>
+
+  <div class="overlay" id="clearDialog" role="dialog" aria-modal="true" aria-labelledby="clearTitle">
+    <div class="dialog">
+      <div class="dialog-title" id="clearTitle" data-i18n="history.clearTitle">Clear all browsing history?</div>
+      <div class="dialog-copy" data-i18n="history.clearCopy">This removes visited pages from History. Cookies, site data, and cached files are not affected.</div>
+      <div class="dialog-actions">
+        <button class="dialog-button" id="cancelClear" type="button" data-i18n="common.cancel">Cancel</button>
+        <button class="dialog-button danger" id="confirmClear" type="button" data-i18n="history.clear">Clear History</button>
+      </div>
+    </div>
+  </div>
+  <div class="toast" id="toast"></div>
+
+  <script src="lingxia://lxapp/public/i18n.js"></script>
+  <script>
+    (function () {
+      var i18n = window.LingXiaI18n;
+      var t = i18n.t;
+      i18n.apply();
+      var state = { entries: [], query: '' };
+      var toastTimer = null;
+
+      function bridge() {
+        var api = window.LingXiaBridge;
+        if (!api || typeof api.invoke !== 'function') throw new Error('LingXiaBridge is not available');
+        return api;
+      }
+      function call(route, input) { return bridge().invoke(route, input); }
+      function escapeHtml(value) {
+        return String(value == null ? '' : value)
+          .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+      }
+      // Defense in depth: the store already rejects non-http(s) URLs.
+      function isHttpUrl(url) {
+        return /^https?:\/\//i.test(String(url || ''));
+      }
+      function originOf(url) { try { return new URL(url).origin; } catch (_) { return ''; } }
+      function hostOf(url) { try { return new URL(url).host; } catch (_) { return url; } }
+      function toast(message) {
+        var element = document.getElementById('toast');
+        if (toastTimer) clearTimeout(toastTimer);
+        element.textContent = message;
+        element.classList.add('active');
+        toastTimer = setTimeout(function () { element.classList.remove('active'); }, 2200);
+      }
+      function fail(error) {
+        console.error('[History]', error);
+        toast((error && error.message) || t('common.somethingWentWrong'));
+      }
+      function localDay(timestamp) {
+        var date = new Date(timestamp);
+        return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+      }
+      function dayLabel(timestamp) {
+        var day = localDay(timestamp);
+        var today = localDay(Date.now());
+        var difference = Math.round((today.getTime() - day.getTime()) / 86400000);
+        if (difference === 0) return t('history.today');
+        if (difference === 1) return t('history.yesterday');
+        return day.toLocaleDateString(i18n.locale, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+      }
+      function filteredEntries() {
+        var query = state.query.trim().toLowerCase();
+        if (!query) return state.entries;
+        return state.entries.filter(function (entry) {
+          return (entry.title + ' ' + entry.url).toLowerCase().indexOf(query) >= 0;
+        });
+      }
+      function render() {
+        var entries = filteredEntries();
+        var groups = [];
+        entries.forEach(function (entry) {
+          var key = localDay(entry.visitedAtMs).getTime();
+          var group = groups.length ? groups[groups.length - 1] : null;
+          if (!group || group.key !== key) {
+            group = { key: key, label: dayLabel(entry.visitedAtMs), entries: [] };
+            groups.push(group);
+          }
+          group.entries.push(entry);
+        });
+        document.getElementById('groups').innerHTML = groups.map(function (group) {
+          var rows = group.entries.map(function (entry) {
+            var origin = originOf(entry.url);
+            var letter = (entry.title || hostOf(entry.url) || '?').charAt(0).toUpperCase();
+            var fallbackIcon = '<span>' + escapeHtml(letter) + '</span>';
+            // Escape for the JS string inside onerror, then for the HTML attribute.
+            var onerrorAttr = escapeHtml("this.outerHTML='" + fallbackIcon.replace(/\\/g, '\\\\') + "'");
+            var icon = origin
+              ? '<img src="' + escapeHtml(origin) + '/favicon.ico" alt="" loading="lazy" onerror="' + onerrorAttr + '">'
+              : fallbackIcon;
+            var time = new Date(entry.visitedAtMs).toLocaleTimeString(i18n.locale, { hour: 'numeric', minute: '2-digit' });
+            var titleHtml = escapeHtml(entry.title || hostOf(entry.url));
+            var titleCell = isHttpUrl(entry.url)
+              ? '<a class="row-title" href="' + escapeHtml(entry.url) + '">' + titleHtml + '</a>'
+              : '<span class="row-title">' + titleHtml + '</span>';
+            return '<div class="row" data-id="' + escapeHtml(entry.id) + '">' +
+              '<span class="favicon">' + icon + '</span>' +
+              '<span class="main">' + titleCell + '<span class="row-url">' +
+              escapeHtml(entry.url) + '</span></span><span class="time">' + escapeHtml(time) +
+              '</span><button class="remove" data-remove type="button" title="' + escapeHtml(t('history.remove')) + '">' +
+              '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M3.2 4.6h9.6M6.4 4.3V3.2h3.2v1.1M4.3 4.9l.5 7.4c0 .5.5.9 1 .9h4.4c.5 0 1-.4 1-.9l.5-7.4"/></svg></button></div>';
+          }).join('');
+          return '<section class="day"><h2 class="day-title">' + escapeHtml(group.label) +
+            '</h2><div class="day-card">' + rows + '</div></section>';
+        }).join('');
+        var empty = document.getElementById('empty');
+        empty.classList.toggle('active', entries.length === 0);
+        document.getElementById('emptyTitle').textContent = t(state.query ? 'history.noMatches' : 'history.emptyTitle');
+        document.getElementById('emptyCopy').textContent =
+          t(state.query ? 'history.noMatchesCopy' : 'history.emptyCopy');
+        document.getElementById('summary').textContent =
+          state.entries.length === 1
+            ? t('history.countOne')
+            : t('history.countMany', { count: state.entries.length });
+        document.getElementById('clearButton').disabled = state.entries.length === 0;
+      }
+      function apply(update) {
+        if (update && update.kind === 'upsert' && update.entry) {
+          state.entries = state.entries.filter(function (entry) { return entry.id !== update.entry.id; });
+          state.entries.push(update.entry);
+          state.entries.sort(function (left, right) { return right.visitedAtMs - left.visitedAtMs; });
+          // The store's size cap arrives as explicit remove events; re-slicing
+          // here could tie-break differently and drift from the store.
+        } else if (update && update.kind === 'remove') {
+          state.entries = state.entries.filter(function (entry) { return entry.id !== update.id; });
+        } else {
+          // history.list returns a plain snapshot; history.watch seeds with a
+          // tagged snapshot so subsequent navigation can use small deltas.
+          state.entries = update && Array.isArray(update.entries) ? update.entries : [];
+        }
+        render();
+      }
+      function refresh() { call('history.list').then(apply, fail); }
+      var watchHandle = null;
+      var watchRetryMs = 1000;
+      var watchRetryTimer = null;
+      function scheduleWatch() {
+        if (watchRetryTimer != null) return;
+        watchRetryTimer = setTimeout(function () {
+          watchRetryTimer = null;
+          watch();
+        }, watchRetryMs);
+        watchRetryMs = Math.min(watchRetryMs * 2, 30000);
+      }
+      function watch() {
+        var api = bridge();
+        if (typeof api.stream !== 'function') return;
+        var previous = watchHandle;
+        var handle = api.stream('history.watch');
+        var startedAt = Date.now();
+        watchHandle = handle;
+        if (previous && typeof previous.cancel === 'function') previous.cancel();
+        function recover(err) {
+          if (watchHandle !== handle) return;
+          watchHandle = null;
+          // Transport reset: reload now, then reconnect with bounded backoff.
+          // Only a stream that stayed healthy for a while resets the backoff —
+          // the seed snapshot must not, or a flapping stream reconnects at the
+          // floor forever.
+          if (Date.now() - startedAt > 30000) watchRetryMs = 1000;
+          console.warn('[History] watch interrupted; re-subscribing:', err);
+          refresh();
+          scheduleWatch();
+        }
+        if (handle && typeof handle.onEvent === 'function') {
+          handle.onEvent(function (snapshot) {
+            if (watchHandle !== handle) return;
+            apply(snapshot);
+          });
+        }
+        if (handle && typeof handle.onError === 'function') handle.onError(recover);
+        if (handle && handle.result && typeof handle.result.then === 'function') {
+          handle.result.then(function () { recover('stream ended'); }, function () {});
+        }
+      }
+
+      var searchRenderTimer = null;
+      document.getElementById('search').addEventListener('input', function (event) {
+        state.query = event.target.value;
+        if (searchRenderTimer != null) clearTimeout(searchRenderTimer);
+        searchRenderTimer = setTimeout(function () {
+          searchRenderTimer = null;
+          render();
+        }, 120);
+      });
+      document.getElementById('groups').addEventListener('click', function (event) {
+        var button = event.target.closest('[data-remove]');
+        if (!button) return;
+        var row = button.closest('.row');
+        var id = row.getAttribute('data-id');
+        call('history.remove', { id: id }).then(function () {
+          state.entries = state.entries.filter(function (entry) { return entry.id !== id; });
+          render();
+        }, fail);
+      });
+      var dialog = document.getElementById('clearDialog');
+      document.getElementById('clearButton').addEventListener('click', function () {
+        dialog.classList.add('active');
+        document.getElementById('cancelClear').focus();
+      });
+      document.getElementById('cancelClear').addEventListener('click', function () {
+        dialog.classList.remove('active');
+      });
+      document.getElementById('confirmClear').addEventListener('click', function () {
+        call('history.clear', {}).then(function (result) {
+          state.entries = [];
+          render();
+          dialog.classList.remove('active');
+          toast(t('history.cleared', { count: result.removed || 0 }));
+          refresh();
+        }, fail);
+      });
+      dialog.addEventListener('click', function (event) {
+        if (event.target === dialog) dialog.classList.remove('active');
+      });
+      document.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape') dialog.classList.remove('active');
+        if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'f') {
+          event.preventDefault();
+          document.getElementById('search').focus();
+        }
+      });
+      document.addEventListener('visibilitychange', function () {
+        if (!document.hidden) refresh();
+      });
+
+      refresh();
+      watch();
+    })();
+  </script>
+</body>
+</html>

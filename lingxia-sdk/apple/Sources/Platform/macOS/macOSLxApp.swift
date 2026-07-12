@@ -197,6 +197,11 @@ extension macOSLxApp {
     }
 
     @MainActor
+    internal static func browserBookmarksChanged() {
+        activeShell()?.refreshSidebarBookmarks()
+    }
+
+    @MainActor
     internal static func presentInternalBrowserTab(tabId: String) -> Bool {
         let normalized = tabId.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalized.isEmpty else {

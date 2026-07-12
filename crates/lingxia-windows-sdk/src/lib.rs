@@ -217,7 +217,6 @@ pub fn install_default_windows_host() {
 /// policy, opening the home window, and — under `browser-shell` — the tray.
 #[cfg(all(target_os = "windows", feature = "runtime"))]
 fn present_default_home(home_app_id: &str, asset_dir: &Path) -> Result<()> {
-    set_windows_design_icon_dir(asset_dir.join("icons").join("design"));
     #[cfg(feature = "shell-chrome")]
     shell::set_home_app_id(home_app_id);
     if let Some(icon_path) = resolve_app_icon_path(asset_dir, home_app_id) {
@@ -262,6 +261,10 @@ pub fn start_default_host(app: WindowsApp) -> Result<String> {
     // Own a message queue before any page can request exit from a WebView UI thread.
     install_current_thread_exit_handler();
     let asset_dir = app.platform()?.asset_dir().to_path_buf();
+    // `init_runtime` may create and paint the first shell window. Register
+    // generated SVG-derived icons before that first paint so native chrome
+    // never starts with invisible icon-only controls.
+    set_windows_design_icon_dir(asset_dir.join("icons").join("design"));
     let home_app_id = init_runtime(app)?;
     present_default_home(&home_app_id, &asset_dir)?;
     Ok(home_app_id)

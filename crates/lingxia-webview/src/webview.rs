@@ -48,8 +48,9 @@ use crate::traits::{
     WebViewInputController,
 };
 use crate::{
-    LoadDataRequest, NetworkCaptureSnapshot, WebResourceResponse, WebViewController, WebViewCookie,
-    WebViewCookieSetRequest, WebViewDelegate, WebViewError, WebViewInputError, WebViewScriptError,
+    ClearSiteDataOptions, ClearSiteDataResult, LoadDataRequest, NetworkCaptureSnapshot,
+    WebResourceResponse, WebViewController, WebViewCookie, WebViewCookieSetRequest,
+    WebViewDelegate, WebViewError, WebViewInputError, WebViewScriptError,
 };
 use async_trait::async_trait;
 
@@ -63,7 +64,7 @@ const APPLE_INTERNAL_SCHEME: &str = "lx-apple";
     all(target_os = "linux", target_env = "ohos")
 )))]
 fn unsupported_webview_error(action: &str) -> WebViewError {
-    WebViewError::WebView(format!("{action} is not supported on this platform"))
+    WebViewError::Unsupported(action.to_string())
 }
 
 #[cfg(not(any(
@@ -1370,6 +1371,22 @@ impl WebViewController for WebView {
         self.inner.clear_cookies().await
     }
 
+    async fn clear_site_data(
+        &self,
+        url: &str,
+        options: ClearSiteDataOptions,
+    ) -> Result<ClearSiteDataResult, WebViewError> {
+        self.inner.clear_site_data(url, options).await
+    }
+
+    // Callers reach this through the inherent method today, but the trait
+    // impl must stay exhaustive: a missed forward silently resolves to the
+    // trait's Err default for dyn/generic dispatch (how clear_site_data
+    // shipped broken).
+    async fn take_screenshot(&self) -> Result<Vec<u8>, WebViewError> {
+        self.inner.take_screenshot().await
+    }
+
     async fn start_network_capture(&self) -> Result<(), WebViewError> {
         self.inner.start_network_capture().await
     }
@@ -2190,6 +2207,21 @@ pub(crate) fn find_webview(webtag: &WebTag) -> Option<Arc<WebView>> {
     } else {
         None
     }
+}
+
+#[cfg(target_os = "windows")]
+pub(crate) fn first_browser_webview() -> Option<Arc<WebView>> {
+    WEBVIEW_INSTANCES
+        .get()
+        .and_then(|instances| instances.lock().ok())
+        .and_then(|webviews| {
+            webviews
+                .values()
+                .find(|webview| {
+                    webview.effective_options.profile == SecurityProfile::BrowserRelaxed
+                })
+                .cloned()
+        })
 }
 
 pub(crate) fn list_webviews() -> Vec<WebTag> {

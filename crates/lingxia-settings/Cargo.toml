@@ -10,6 +10,10 @@ repository.workspace = true
 [dependencies]
 lingxia-app-context = { workspace = true }
 dashmap = { workspace = true }
+log = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"

@@ -38,6 +38,11 @@ pub(crate) enum UiCommand {
     ClearBrowsingData {
         resp: Sender<StdResult<()>>,
     },
+    ClearProfileData {
+        kind: super::data_store::BrowsingDataKind,
+        since_unix_ms: Option<u64>,
+        resp: Sender<StdResult<()>>,
+    },
     CurrentUrl {
         resp: Sender<StdResult<Option<String>>>,
     },
@@ -83,7 +88,6 @@ pub(crate) enum UiCommand {
     },
     /// Invoke a Chrome DevTools Protocol method (e.g. `Input.dispatchMouseEvent`)
     /// and return its raw JSON result.
-    #[cfg_attr(not(feature = "webview-input"), allow(dead_code))]
     CallDevToolsProtocol {
         method: String,
         params: String,
@@ -377,7 +381,6 @@ impl WebViewInner {
 
     /// Invoke a Chrome DevTools Protocol method and return its raw JSON
     /// result. Backs the input automation dispatch.
-    #[cfg(feature = "webview-input")]
     pub(super) fn dispatch_cdp_command(
         &self,
         method: &str,
@@ -513,6 +516,91 @@ impl WebViewController for WebViewInner {
         self.dispatch_command(|resp| UiCommand::ClearCookies { resp })
     }
 
+    async fn clear_site_data(
+        &self,
+        url: &str,
+        options: ClearSiteDataOptions,
+    ) -> StdResult<ClearSiteDataResult> {
+        let uri = url
+            .parse::<http::Uri>()
+            .map_err(|_| WebViewError::WebView("site data URL is invalid".to_string()))?;
+        let host = uri
+            .host()
+            .filter(|host| !host.is_empty())
+            .ok_or_else(|| WebViewError::WebView("site data URL has no host".to_string()))?
+            .trim_start_matches('.')
+            .to_ascii_lowercase();
+        if !matches!(uri.scheme_str(), Some("http" | "https")) {
+            return Err(WebViewError::WebView(
+                "site data URL must use HTTP or HTTPS".to_string(),
+            ));
+        }
+        let current = self.current_url().await?.ok_or_else(|| {
+            WebViewError::WebView("current WebView has no website URL".to_string())
+        })?;
+        let current_host = current
+            .parse::<http::Uri>()
+            .ok()
+            .and_then(|uri| uri.host().map(str::to_ascii_lowercase));
+        if current_host.as_deref() != Some(host.as_str()) {
+            return Err(WebViewError::WebView(
+                "current website changed before its data could be cleared".to_string(),
+            ));
+        }
+
+        if options.site_data {
+            for cookie in self.list_cookies().await? {
+                let domain = cookie.domain.trim_start_matches('.').to_ascii_lowercase();
+                let matches = if cookie.host_only {
+                    domain == host
+                } else {
+                    host == domain
+                        || host
+                            .strip_suffix(&domain)
+                            .is_some_and(|prefix| prefix.ends_with('.'))
+                };
+                if matches {
+                    self.delete_cookie(&cookie.name, &cookie.domain, &cookie.path)
+                        .await?;
+                }
+            }
+        }
+
+        let mut storage_types = Vec::new();
+        if options.site_data {
+            storage_types.extend([
+                "file_systems",
+                "indexeddb",
+                "local_storage",
+                "websql",
+                "service_workers",
+            ]);
+        }
+        if options.cache {
+            storage_types.extend(["appcache", "cache_storage"]);
+        }
+        if !storage_types.is_empty() {
+            let scheme = uri.scheme_str().unwrap_or("https");
+            let authority = uri.authority().ok_or_else(|| {
+                WebViewError::WebView("site data URL has no authority".to_string())
+            })?;
+            self.dispatch_cdp_command(
+                "Storage.clearDataForOrigin",
+                serde_json::json!({
+                    "origin": format!("{scheme}://{authority}"),
+                    "storageTypes": storage_types.join(","),
+                }),
+            )?;
+        }
+
+        Ok(ClearSiteDataResult {
+            // WebView2 only exposes HTTP-cache clearing at profile scope. Cache
+            // Storage is cleared above, but shared network cache is preserved.
+            cache_cleared: false,
+            site_data_cleared: options.site_data,
+        })
+    }
+
     async fn start_network_capture(&self) -> StdResult<()> {
         self.dispatch_command(|resp| UiCommand::StartNetworkCapture { resp })
     }
@@ -527,6 +615,20 @@ impl WebViewController for WebViewInner {
 
     async fn clear_network_capture(&self) -> StdResult<()> {
         self.dispatch_command(|resp| UiCommand::ClearNetworkCapture { resp })
+    }
+}
+
+impl WebViewInner {
+    pub(crate) fn clear_profile_data(
+        &self,
+        kind: super::data_store::BrowsingDataKind,
+        since_unix_ms: Option<u64>,
+    ) -> StdResult<()> {
+        self.dispatch_command(|resp| UiCommand::ClearProfileData {
+            kind,
+            since_unix_ms,
+            resp,
+        })
     }
 }
 
@@ -834,8 +936,20 @@ pub(crate) fn handle_command(state: &mut UiState, command: UiCommand) -> StdResu
             let _ = resp.send(result);
         }
         UiCommand::ClearBrowsingData { resp } => {
-            let result = clear_browsing_data(&state.webview);
-            let _ = resp.send(result);
+            if let Err(err) = begin_clear_browsing_data(&state.webview, resp.clone()) {
+                let _ = resp.send(Err(err));
+            }
+        }
+        UiCommand::ClearProfileData {
+            kind,
+            since_unix_ms,
+            resp,
+        } => {
+            if let Err(err) =
+                begin_clear_profile_data(&state.webview, kind, since_unix_ms, resp.clone())
+            {
+                let _ = resp.send(Err(err));
+            }
         }
         UiCommand::CurrentUrl { resp } => {
             let result = current_url(&state.webview);

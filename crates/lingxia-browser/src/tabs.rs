@@ -36,6 +36,9 @@ pub(crate) struct BrowserTabState {
     pub(crate) pending_url: Option<String>,
     pub(crate) current_url: Option<String>,
     pub(crate) title: Option<String>,
+    /// URL `title` was reported for. Titles are never cleared on navigation,
+    /// so nav-finish must not attribute page A's title to page B.
+    pub(crate) title_url: Option<String>,
     /// PNG-encoded favicon of the current page, as reported by the platform
     /// webview (`WebViewDelegate::on_favicon_changed`). `Arc`'d so shell
     /// layers can mirror it into layout snapshots without copying.
@@ -61,6 +64,9 @@ pub(crate) struct BrowserTabState {
     /// to attribute follow-up surfaces (e.g. a new-window request from a
     /// docked aside tab) to the right owner.
     pub(crate) owner_appid: Option<String>,
+    /// Session that owned the tab. Keeping this separately from the browser
+    /// lxapp's `session_id` lets shells retire tabs after their owner restarts.
+    pub(crate) owner_session_id: Option<u64>,
 }
 
 pub(crate) struct BrowserState {
@@ -75,11 +81,17 @@ static BROWSER_LOAD_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
 static BROWSER_ACTIVE_TAB_ID: OnceLock<Mutex<Option<String>>> = OnceLock::new();
 static BROWSER_TABS_CHANGED_HANDLER: OnceLock<Mutex<Option<TabsChangedHandler>>> = OnceLock::new();
 static BROWSER_TAB_PRESENT_HANDLER: OnceLock<Mutex<Option<TabPresentHandler>>> = OnceLock::new();
+static BROWSER_NAVIGATION_FINISHED_HANDLER: OnceLock<Mutex<Option<NavigationFinishedHandler>>> =
+    OnceLock::new();
+static BROWSER_TITLE_CHANGED_HANDLER: OnceLock<Mutex<Option<TitleChangedHandler>>> =
+    OnceLock::new();
 
 /// Process-wide observer invoked when the browser tab set/metadata changes.
 type TabsChangedHandler = Arc<dyn Fn() + Send + Sync>;
 /// Process-wide observer invoked when a caller wants a tab brought onscreen.
 type TabPresentHandler = Arc<dyn Fn(&str) + Send + Sync>;
+type NavigationFinishedHandler = Arc<dyn Fn(&str, &str) + Send + Sync>;
+type TitleChangedHandler = Arc<dyn Fn(&str, &str) + Send + Sync>;
 
 pub(crate) fn set_tabs_changed_handler(handler: TabsChangedHandler) {
     let slot = BROWSER_TABS_CHANGED_HANDLER.get_or_init(|| Mutex::new(None));
@@ -92,6 +104,50 @@ pub(crate) fn set_tab_present_handler(handler: TabPresentHandler) {
     let slot = BROWSER_TAB_PRESENT_HANDLER.get_or_init(|| Mutex::new(None));
     if let Ok(mut slot) = slot.lock() {
         *slot = Some(handler);
+    }
+}
+
+pub(crate) fn set_navigation_finished_handler(handler: NavigationFinishedHandler) {
+    let slot = BROWSER_NAVIGATION_FINISHED_HANDLER.get_or_init(|| Mutex::new(None));
+    if let Ok(mut slot) = slot.lock() {
+        *slot = Some(handler);
+    }
+}
+
+pub(crate) fn set_title_changed_handler(handler: TitleChangedHandler) {
+    let slot = BROWSER_TITLE_CHANGED_HANDLER.get_or_init(|| Mutex::new(None));
+    if let Ok(mut slot) = slot.lock() {
+        *slot = Some(handler);
+    }
+}
+
+pub(crate) fn notify_navigation_finished(tab_id: &str, url: &str) {
+    let handler = BROWSER_NAVIGATION_FINISHED_HANDLER
+        .get()
+        .and_then(|slot| slot.lock().ok())
+        .and_then(|slot| slot.clone());
+    if let Some(handler) = handler {
+        // Pass the stored title only when it belongs to the finishing URL;
+        // otherwise it is a stale title from the previous page.
+        let title = {
+            let state = lock_state();
+            normalize_runtime_tab_id(tab_id)
+                .and_then(|normalized| state.tabs.get(&normalized))
+                .filter(|tab| tab.title_url.as_deref() == Some(url))
+                .and_then(|tab| tab.title.clone())
+                .unwrap_or_default()
+        };
+        handler(url, &title);
+    }
+}
+
+fn notify_title_changed(url: &str, title: &str) {
+    let handler = BROWSER_TITLE_CHANGED_HANDLER
+        .get()
+        .and_then(|slot| slot.lock().ok())
+        .and_then(|slot| slot.clone());
+    if let Some(handler) = handler {
+        handler(url, title);
     }
 }
 
@@ -384,12 +440,13 @@ pub(crate) fn browser_update_tab_info(
     let Some(normalized) = normalize_runtime_tab_id(tab_id) else {
         return false;
     };
-    let changed = {
+    let (changed, changed_title) = {
         let mut state = lock_state();
         let Some(tab) = state.tabs.get_mut(&normalized) else {
             return false;
         };
         let mut changed = false;
+        let mut changed_title = None;
         if current_url.is_some() {
             let value = normalize_optional_string(current_url);
             if tab.current_url != value {
@@ -401,15 +458,24 @@ pub(crate) fn browser_update_tab_info(
             // Only non-empty titles update the record: an empty title means "not
             // yet known" (e.g. a webview's initial KVO fire before the document
             // title is parsed) and must never clobber a title already reported.
+            // Even an unchanged title re-binds title_url: the report is for the
+            // page currently loaded in the tab.
+            tab.title_url = tab.current_url.clone();
             if tab.title.as_deref() != Some(value.as_str()) {
-                tab.title = Some(value);
+                tab.title = Some(value.clone());
+                if let Some(url) = tab.current_url.clone() {
+                    changed_title = Some((url, value));
+                }
                 changed = true;
             }
         }
-        changed
+        (changed, changed_title)
     };
     if changed {
         notify_tabs_changed();
+    }
+    if let Some((url, title)) = changed_title {
+        notify_title_changed(&url, &title);
     }
     true
 }
@@ -607,9 +673,12 @@ fn open_internal_browser_tab_with_scope(
 
     let normalized_target_url = normalize_browser_target_url(target_url);
     let has_target_url = !normalized_target_url.is_empty();
-    let owner_appid = match scope {
-        BrowserTabScope::Global => None,
-        BrowserTabScope::OwnerSession { owner_appid, .. } => Some(owner_appid.to_string()),
+    let (owner_appid, owner_session_id) = match scope {
+        BrowserTabScope::Global => (None, None),
+        BrowserTabScope::OwnerSession {
+            owner_appid,
+            owner_session_id,
+        } => (Some(owner_appid.to_string()), Some(owner_session_id)),
     };
     let tab_id = resolve_browser_tab_id(requested_tab_key, scope)?;
     let path = browser_tab_path_for_runtime_id(&tab_id);
@@ -641,6 +710,7 @@ fn open_internal_browser_tab_with_scope(
                     },
                     current_url: None,
                     title: None,
+                    title_url: None,
                     favicon_png: None,
                     can_go_back: false,
                     can_go_forward: false,
@@ -648,6 +718,7 @@ fn open_internal_browser_tab_with_scope(
                     standalone,
                     aside,
                     owner_appid,
+                    owner_session_id,
                 },
             );
         }
@@ -828,6 +899,27 @@ pub(crate) fn close_browser_tab(tab_id: &str) -> Result<(), LxAppError> {
     Ok(())
 }
 
+/// Remove tabs owned by earlier incarnations of an lxapp. Pinned shortcuts
+/// remain in the bookmark store and can reopen a fresh tab in the new session.
+pub(crate) fn prune_stale_owner_tabs(owner_appid: &str, current_session_id: u64) -> usize {
+    let stale_ids = {
+        let state = lock_state();
+        state
+            .tabs
+            .iter()
+            .filter(|(_, tab)| {
+                tab.owner_appid.as_deref() == Some(owner_appid)
+                    && tab.owner_session_id != Some(current_session_id)
+            })
+            .map(|(tab_id, _)| tab_id.clone())
+            .collect::<Vec<_>>()
+    };
+    for tab_id in &stale_ids {
+        let _ = close_browser_tab(tab_id);
+    }
+    stale_ids.len()
+}
+
 /// Chrome-style tab discard: destroy the tab's WebView to free its native
 /// memory while keeping the tab entry (`current_url` / `title`) so the sidebar
 /// still shows it. Reactivation recreates the WebView and reloads the URL.
@@ -981,6 +1073,56 @@ mod tests {
     fn stable_browser_tab_ids_reject_invalid_keys() {
         let result = resolve_browser_tab_id(Some("settings/main"), BrowserTabScope::Global);
         assert!(matches!(result, Err(LxAppError::InvalidParameter(_))));
+    }
+
+    #[test]
+    fn navigation_finish_drops_title_from_previous_page() {
+        // Metadata bookkeeping needs no WebView; seed the tab entry directly.
+        let tab_id = "navfinishtitletest";
+        lock_state().tabs.insert(
+            tab_id.to_string(),
+            BrowserTabState {
+                session_id: 1,
+                create_token: 1,
+                create_in_flight: false,
+                pending_url: None,
+                current_url: None,
+                title: None,
+                title_url: None,
+                favicon_png: None,
+                can_go_back: false,
+                can_go_forward: false,
+                discarded: false,
+                standalone: false,
+                aside: false,
+                owner_appid: None,
+                owner_session_id: None,
+            },
+        );
+        assert!(browser_update_tab_info(
+            tab_id,
+            Some("https://a.test/"),
+            Some("Page A")
+        ));
+
+        let captured: Arc<Mutex<Vec<(String, String)>>> = Arc::new(Mutex::new(Vec::new()));
+        let sink = captured.clone();
+        set_navigation_finished_handler(Arc::new(move |url, title| {
+            sink.lock()
+                .unwrap()
+                .push((url.to_string(), title.to_string()));
+        }));
+        // Page B finishes before its title is reported: A's title must not leak.
+        notify_navigation_finished(tab_id, "https://b.test/");
+        notify_navigation_finished(tab_id, "https://a.test/");
+        assert_eq!(
+            *captured.lock().unwrap(),
+            vec![
+                ("https://b.test/".to_string(), String::new()),
+                ("https://a.test/".to_string(), "Page A".to_string()),
+            ]
+        );
+        lock_state().tabs.remove(tab_id);
     }
 
     #[test]

@@ -28,6 +28,8 @@ pub(crate) use runtime::{open_aside_for_app, tab_is_aside};
 pub(crate) use shell::should_hide_url;
 #[cfg(any(target_os = "ios", target_os = "macos"))]
 pub(crate) use shell::{
+    bookmark_favicon_path, bookmark_pin, bookmark_remove_by_url, bookmark_state, bookmark_status,
+    bookmark_toggle, bookmarks_command_json, bookmarks_snapshot_json, normalize_bookmark_url,
     open_panel_lxapp, panel_item_for_id, panels_config_json, resolve_input_json,
 };
 

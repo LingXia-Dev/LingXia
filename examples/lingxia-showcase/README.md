@@ -13,6 +13,7 @@ HarmonyOS / Windows) embedding the `lingxia-showcase` lxapp, which demos pages, 
 ```bash
 # From this directory; pick one platform and one of react | vue
 lingxia dev --platform macos   --framework react
+lingxia dev --platform windows --framework react
 lingxia dev --platform android --framework vue
 lingxia dev --platform ios     --framework react
 lingxia dev --platform harmony --framework vue

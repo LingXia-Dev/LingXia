@@ -48,9 +48,19 @@ pub(crate) fn register_event_handlers(
         let mut token = 0;
         webview
             .add_NavigationCompleted(
-                &NavigationCompletedEventHandler::create(Box::new(move |_sender, _args| {
+                &NavigationCompletedEventHandler::create(Box::new(move |sender, args| {
                     if let Some(delegate) = find_webview_delegate(&finished_tag) {
                         delegate.on_page_finished();
+                        if let (Some(sender), Some(args)) = (sender, args) {
+                            let mut succeeded = BOOL::default();
+                            args.IsSuccess(&mut succeeded)?;
+                            if succeeded.as_bool() {
+                                let mut source = PWSTR::null();
+                                sender.Source(&mut source)?;
+                                let source = CoTaskMemPWSTR::from(source).to_string();
+                                delegate.on_navigation_finished(&source);
+                            }
+                        }
                     }
                     Ok(())
                 })),

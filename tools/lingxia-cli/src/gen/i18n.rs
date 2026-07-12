@@ -321,10 +321,12 @@ impl Scope {
             }
             // Rust + TS only: keys used by the logic crate (and surfaced to
             // JS via the bridge) but never referenced from native SDK code.
-            // `desktop/` holds desktop-shell strings (terminal, browser tabs)
-            // that only the Windows SDK reads — keeping them out of the mobile
-            // Android/iOS/Harmony resource bundles.
-            Scope::Logic | Scope::Desktop => &[Rust, Ts],
+            Scope::Logic => &[Rust, Ts],
+            // `desktop/` holds desktop-shell strings (terminal, browser
+            // chrome) read by the Windows SDK (Rust/TS) and the macOS Swift
+            // shell (Localizable.strings) — but not the mobile Android /
+            // Harmony resource bundles.
+            Scope::Desktop => &[Rust, Ts, Apple],
             // Single-platform native strings — nothing else needs them.
             Scope::Android => &[Android],
             Scope::Apple => &[Apple],
