@@ -1,6 +1,6 @@
 use super::bridge_transport::{
     APPLE_INTERNAL_SCHEME, AppleBridgeTransport, bridge_downstream_cors_origin,
-    is_bridge_downstream_request,
+    downstream_from_seq, is_bridge_downstream_request,
 };
 #[cfg(all(feature = "webview-input", target_os = "macos"))]
 use crate::WebViewInputError;
@@ -1652,7 +1652,8 @@ impl WebViewInner {
             return Some((parts, b"Bridge downstream only accepts GET.".to_vec()).into());
         }
 
-        let reader = match self.apple_bridge_transport.connect_downstream() {
+        let from = downstream_from_seq(request);
+        let reader = match self.apple_bridge_transport.connect_downstream(from) {
             Ok(reader) => reader,
             Err(err) => {
                 let response = Response::builder()

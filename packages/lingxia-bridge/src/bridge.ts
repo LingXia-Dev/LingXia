@@ -34,6 +34,7 @@ import {
   isMacOS,
   isWindows,
   isDesktop,
+  isApple,
   isDevSession,
   isRunner,
 } from "./runtime-env";
@@ -169,6 +170,16 @@ let appleDownstreamTask: Promise<void> | null = null;
 let appleDownstreamAbortController: AbortController | null = null;
 let appleReconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let appleReconnectDelayMs = APPLE_RECONNECT_BASE_MS;
+// Highest transport frame seq processed. Sent as `?from=` on reconnect so the
+// host replays the gap; survives reconnects so a WebKit-replaced stream resumes
+// without losing frames or tearing down the bridge session.
+let appleLastFrameSeq = 0;
+// Liveness tracking: the host heartbeats an idle connection, so a gap longer
+// than a couple of heartbeats means the connection is silently dead and we
+// reconnect proactively instead of waiting for a read error that may never come.
+const APPLE_DOWNSTREAM_STALE_MS = 35000;
+let appleLastFrameAt = 0;
+let appleWatchdogTimer: ReturnType<typeof setInterval> | null = null;
 const portInitState = {
   listenerInstalled: false,
   promise: null as Promise<MessagePort> | null,
@@ -255,12 +266,39 @@ function processAppleDownstreamBuffer(buffer: string): string {
     remaining = remaining.slice(newlineIndex + 1);
     if (!line) continue;
     try {
-      handleIncomingMessage(JSON.parse(line));
+      handleAppleDownstreamFrame(JSON.parse(line));
     } catch (e) {
       warn("Apple downstream parse error:", e, line);
     }
   }
   return remaining;
+}
+
+// Unwrap the transport envelope: {"lxff":seq,"m":<message>} carries a business
+// message with its frame seq; {"lxreset":true} means the host cannot replay our
+// resume point and we must re-handshake.
+function handleAppleDownstreamFrame(frame: unknown): void {
+  if (!frame || typeof frame !== "object") return;
+  // Any frame — data, heartbeat, or reset — proves the connection is alive.
+  appleLastFrameAt = Date.now();
+  const record = frame as { lxff?: unknown; m?: unknown; lxreset?: unknown; lxhb?: unknown };
+  if (record.lxhb !== undefined) return; // heartbeat: liveness only, nothing to dispatch
+  if (record.lxreset === true) {
+    appleLastFrameSeq = 0;
+    resetHandshakeState("Apple downstream reset", true);
+    startHandshake();
+    return;
+  }
+  if (typeof record.lxff === "number") {
+    // Replayed frames after a reconnect can repeat the last-seen seq; ignore
+    // anything we have already processed so the session is not double-fed.
+    if (record.lxff <= appleLastFrameSeq) return;
+    appleLastFrameSeq = record.lxff;
+    handleIncomingMessage(record.m);
+    return;
+  }
+  // Legacy/un-enveloped line (e.g. a bare keepalive); pass through.
+  handleIncomingMessage(frame);
 }
 
 async function runAppleDownstream(): Promise<void> {
@@ -270,7 +308,10 @@ async function runAppleDownstream(): Promise<void> {
 
   const controller = new AbortController();
   appleDownstreamAbortController = controller;
-  const response = await fetch(APPLE_DOWNSTREAM_URL, {
+  // Resume from the last frame we saw so the host replays the gap on reconnect.
+  const separator = APPLE_DOWNSTREAM_URL.includes("?") ? "&" : "?";
+  const url = `${APPLE_DOWNSTREAM_URL}${separator}from=${appleLastFrameSeq}`;
+  const response = await fetch(url, {
     method: "GET",
     cache: "no-store",
     headers: { Accept: "application/x-ndjson" },
@@ -286,6 +327,7 @@ async function runAppleDownstream(): Promise<void> {
 
   appleDownstreamConnected = true;
   appleReconnectDelayMs = APPLE_RECONNECT_BASE_MS;
+  appleLastFrameAt = Date.now();
   if (isDebugEnabled("proto")) log("Apple downstream connected");
   startHandshake();
 
@@ -351,11 +393,58 @@ function ensureAppleDownstream(): void {
       const aborted = appleDownstreamAbortController?.signal.aborted ?? false;
       appleDownstreamTask = null;
       appleDownstreamAbortController = null;
-      const wasConnected = appleDownstreamConnected;
       appleDownstreamConnected = false;
-      resetHandshakeState("Apple downstream closed", wasConnected);
+      // A dropped transport is not a dead session: reconnect resumes from the
+      // last seq and the host replays the gap, so the handshake and in-flight
+      // streams stay intact. Only a host-sent reset (handled on the frame path)
+      // or a real abort tears things down.
       if (!aborted) scheduleAppleDownstreamReconnect("stream closed");
     });
+}
+
+// Drop the current downstream and reconnect, exactly as WebKit does when it
+// replaces the streaming fetch. The reconnect carries the real `from=<lastSeq>`,
+// so nothing is lost. Driven by the staleness watchdog and the foreground
+// handler, and exposed as a dev hook for repro harnesses. A no-op off Apple.
+let appleForcedReconnectPending = false;
+function forceDownstreamReconnect(): void {
+  if (!useAppleDownstreamTransport()) return;
+  // Coalesce a burst of triggers (rapid foreground toggles, repeated calls)
+  // into a single reconnect so they cannot stack concurrent fetches.
+  if (appleForcedReconnectPending) return;
+  appleForcedReconnectPending = true;
+  const task = appleDownstreamTask;
+  appleDownstreamAbortController?.abort();
+  const reconnect = (): void => {
+    appleForcedReconnectPending = false;
+    ensureAppleDownstream();
+  };
+  if (task) task.finally(reconnect);
+  else reconnect();
+}
+
+// A silently dead connection (half-open socket) never surfaces a read error, so
+// poll for heartbeat staleness and reconnect when the host has gone quiet.
+function startAppleWatchdog(): void {
+  if (!useAppleDownstreamTransport() || appleWatchdogTimer !== null) return;
+  appleWatchdogTimer = setInterval(() => {
+    // No `connected` guard: a reconnect that hung before delivering a frame
+    // also goes stale, and forcing a reconnect aborts and retries it.
+    if (appleLastFrameAt === 0) return;
+    if (Date.now() - appleLastFrameAt > APPLE_DOWNSTREAM_STALE_MS) {
+      warn("Apple downstream stale (no heartbeat), forcing reconnect");
+      forceDownstreamReconnect();
+    }
+  }, 5000);
+}
+
+// WebKit suspends/throttles a backgrounded webview and may tear the stream
+// down; reconnect the moment it returns so the UI is never left stale.
+function installAppleForegroundReconnect(): void {
+  if (!useAppleDownstreamTransport() || typeof document === "undefined") return;
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") forceDownstreamReconnect();
+  });
 }
 
 function getMessagePort(): Promise<MessagePort> {
@@ -1789,6 +1878,7 @@ export const LingXiaBridge: LingXiaBridgeInterface = {
     isMacOS,
     isWindows,
     isDesktop,
+    isApple,
     isRunner,
     getOS: getPlatformOS,
   },
@@ -1966,6 +2056,8 @@ export function initBridge(): void {
 
     if (useAppleDownstreamTransport()) {
       ensureAppleDownstream();
+      startAppleWatchdog();
+      installAppleForegroundReconnect();
     } else if (communicationMethod === MESSAGE_PORT_TYPE) {
       installMessagePortInitListener();
       getMessagePort().catch((e) => warn("Port init failed:", e));
@@ -1980,6 +2072,9 @@ export function initBridge(): void {
     }
 
     window.LingXiaBridge = LingXiaBridge;
+    // Dev hook so repro/test pages can simulate a WebKit stream replacement.
+    (window as unknown as Record<string, unknown>).__lxForceDownstreamReconnect =
+      forceDownstreamReconnect;
     installNativeComponentCoverageMonitor({
       os: getPlatformOS(),
       send: sendNativeComponentMessage,

@@ -316,3 +316,36 @@ export function useLxChannel<
 
   return { ...state, send, close, reopen };
 }
+
+export interface LxPlatform {
+  os: string;
+  isIOS: boolean;
+  isMacOS: boolean;
+  isApple: boolean;
+  isAndroid: boolean;
+  isHarmony: boolean;
+  isWindows: boolean;
+  isDesktop: boolean;
+  isRunner: boolean;
+}
+
+function readPlatform(): LxPlatform {
+  const p = window.LingXiaBridge?.platform;
+  return {
+    os: p?.getOS() ?? "unknown",
+    isIOS: p?.isIOS() ?? false,
+    isMacOS: p?.isMacOS() ?? false,
+    isApple: p?.isApple() ?? false,
+    isAndroid: p?.isAndroid() ?? false,
+    isHarmony: p?.isHarmony() ?? false,
+    isWindows: p?.isWindows() ?? false,
+    isDesktop: p?.isDesktop() ?? false,
+    isRunner: p?.isRunner() ?? false,
+  };
+}
+
+// Typed platform detection for pages, so they never reach for the window global
+// or hand-roll an OS check. Fixed for the session, so it resolves once.
+export function usePlatform(): LxPlatform {
+  return React.useMemo(readPlatform, []);
+}

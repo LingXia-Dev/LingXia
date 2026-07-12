@@ -39,6 +39,12 @@ export function isDesktop(): boolean {
   return isMacOS() || isWindows();
 }
 
+// iOS and macOS share the WKWebView transport, so features scoped to it (e.g.
+// the streaming downstream) key off this rather than the two OS checks.
+export function isApple(): boolean {
+  return isIOS() || isMacOS();
+}
+
 // True when attached to a `lingxia dev` session (the host sets `dev` in
 // `__LX_BRIDGE_CFG`). Used to surface the bridge's own protocol/lifecycle trace
 // only during development.
