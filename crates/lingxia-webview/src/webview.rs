@@ -48,8 +48,9 @@ use crate::traits::{
     WebViewInputController,
 };
 use crate::{
-    LoadDataRequest, NetworkCaptureSnapshot, WebResourceResponse, WebViewController, WebViewCookie,
-    WebViewCookieSetRequest, WebViewDelegate, WebViewError, WebViewInputError, WebViewScriptError,
+    ClearSiteDataOptions, ClearSiteDataResult, LoadDataRequest, NetworkCaptureSnapshot,
+    WebResourceResponse, WebViewController, WebViewCookie, WebViewCookieSetRequest,
+    WebViewDelegate, WebViewError, WebViewInputError, WebViewScriptError,
 };
 use async_trait::async_trait;
 
@@ -1368,6 +1369,14 @@ impl WebViewController for WebView {
 
     async fn clear_cookies(&self) -> Result<(), WebViewError> {
         self.inner.clear_cookies().await
+    }
+
+    async fn clear_site_data(
+        &self,
+        url: &str,
+        options: ClearSiteDataOptions,
+    ) -> Result<ClearSiteDataResult, WebViewError> {
+        self.inner.clear_site_data(url, options).await
     }
 
     async fn start_network_capture(&self) -> Result<(), WebViewError> {

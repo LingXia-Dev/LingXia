@@ -227,8 +227,11 @@ async fn clear_site_data(
         }
         other => LxAppError::Runtime(format!("privacy.clearSiteData: {other}")),
     })?;
-    lingxia_browser::reload(&input.tab_id)
-        .map_err(|error| LxAppError::Runtime(format!("privacy.clearSiteData.reload: {error}")))?;
+    // Best-effort: the data is already cleared, so a reload failure must not
+    // fail the route (the page would report the clear itself as failed).
+    if let Err(error) = lingxia_browser::reload(&input.tab_id) {
+        log::warn!("privacy.clearSiteData.reload: {error}");
+    }
     Ok(ClearSiteDataResult {
         cache_cleared: result.cache_cleared,
         site_data_cleared: result.site_data_cleared,
