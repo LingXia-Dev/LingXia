@@ -5,8 +5,9 @@ use crate::BUILTIN_BROWSER_APPID;
 use crate::chooser::browser_choose_files;
 use crate::downloads::browser_download_resource;
 use crate::internal_pages::{
-    LingxiaSchemeContext, browser_attach_tab_page, browser_resolve_delegate_context,
-    browser_resolve_delegate_page, ensure_browser_startup_page, handle_browser_lingxia_scheme,
+    LingxiaSchemeContext, browser_attach_tab_page, browser_document_scripts_snapshot,
+    browser_resolve_delegate_context, browser_resolve_delegate_page,
+    ensure_browser_startup_page, handle_browser_lingxia_scheme,
 };
 use crate::policy::{
     LINGXIA_SCHEME, extract_url_scheme, handle_browser_navigation_policy,
@@ -46,6 +47,27 @@ struct BrowserTabDelegate {
     session_id: u64,
 }
 
+impl BrowserTabDelegate {
+    fn inject_document_scripts(&self) {
+        let scripts = browser_document_scripts_snapshot();
+        if scripts.is_empty() {
+            return;
+        }
+        let Ok(webview) = browser_find_webview(&self.page_path, self.session_id) else {
+            return;
+        };
+        for js in &scripts {
+            if let Err(err) = webview.exec_js(js) {
+                lxapp::warn!(
+                    "[InternalBrowser] document script injection failed for tab {}: {}",
+                    self.tab_id,
+                    err
+                );
+            }
+        }
+    }
+}
+
 impl WebViewDelegate for BrowserTabDelegate {
     fn on_page_started(&self) {
         match browser_resolve_delegate_page(&self.page_path, self.session_id) {
@@ -61,6 +83,10 @@ impl WebViewDelegate for BrowserTabDelegate {
     }
 
     fn on_page_finished(&self) {
+        // Browser-owned document scripts (context menu, …) run in every
+        // finished document — internal and external — independent of any
+        // lxapp page lifecycle.
+        self.inject_document_scripts();
         match browser_resolve_delegate_page(&self.page_path, self.session_id) {
             Ok(page) => page.handle_loaded(),
             Err(err) => {

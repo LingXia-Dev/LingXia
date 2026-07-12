@@ -52,8 +52,8 @@ pub fn set_title_changed_handler(handler: BrowserPageMetadataHandler) {
 }
 
 #[doc(hidden)]
-pub fn register_startup_page_script(js: impl Into<String>) {
-    internal_pages::register_browser_startup_page_script(js);
+pub fn register_document_script(js: impl Into<String>) {
+    internal_pages::register_browser_document_script(js);
 }
 
 #[doc(hidden)]

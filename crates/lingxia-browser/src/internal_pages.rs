@@ -23,7 +23,7 @@ const BROWSER_LINGXIA_ASSET_HOSTS: &[&str] = &[
 ];
 
 static BROWSER_STARTUP_PAGE_INIT_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
-static BROWSER_STARTUP_PAGE_SCRIPTS: OnceLock<Mutex<Vec<String>>> = OnceLock::new();
+static BROWSER_DOCUMENT_SCRIPTS: OnceLock<Mutex<Vec<Arc<str>>>> = OnceLock::new();
 static BROWSER_INTERNAL_PAGES: OnceLock<Mutex<HashMap<String, BrowserInternalPageRegistration>>> =
     OnceLock::new();
 
@@ -38,15 +38,26 @@ pub(crate) enum InternalPageTarget {
     Registered(BrowserInternalPageRegistration),
 }
 
-/// Register a startup-time script that should run after each browser page load.
+/// Register a browser-owned script that runs after every browser tab document
+/// load — internal pages and external sites alike (e.g. the context menu).
 ///
-/// Browser pages all belong to the single built-in browser LxApp, so startup-time
-/// registration is enough: warmup drains these scripts into that app's page-script list.
-pub(crate) fn register_browser_startup_page_script(js: impl Into<String>) {
-    let scripts = BROWSER_STARTUP_PAGE_SCRIPTS.get_or_init(|| Mutex::new(Vec::new()));
+/// Injection happens in the tab delegate, not through an lxapp
+/// `PageInstance`, so external documents get the scripts without driving any
+/// page lifecycle.
+pub(crate) fn register_browser_document_script(js: impl Into<String>) {
+    let scripts = BROWSER_DOCUMENT_SCRIPTS.get_or_init(|| Mutex::new(Vec::new()));
     if let Ok(mut guard) = scripts.lock() {
-        guard.push(js.into());
+        guard.push(Arc::from(js.into()));
     }
+}
+
+/// Snapshot of the registered browser document scripts, in registration order.
+pub(crate) fn browser_document_scripts_snapshot() -> Vec<Arc<str>> {
+    BROWSER_DOCUMENT_SCRIPTS
+        .get()
+        .and_then(|m| m.lock().ok())
+        .map(|guard| guard.clone())
+        .unwrap_or_default()
 }
 
 /// Register a browser-internal route and the packaged HTML entry that implements it.
@@ -64,16 +75,6 @@ pub(crate) fn register_browser_internal_page(
     let mut guard = pages.lock().unwrap_or_else(|e| e.into_inner());
     guard.insert(route, BrowserInternalPageRegistration { entry_asset });
     Ok(())
-}
-
-/// Take all registered scripts, leaving the registry empty.
-/// Subsequent calls return an empty Vec.
-fn take_browser_startup_page_scripts() -> Vec<String> {
-    BROWSER_STARTUP_PAGE_SCRIPTS
-        .get()
-        .and_then(|m| m.lock().ok())
-        .map(|mut guard| std::mem::take(&mut *guard))
-        .unwrap_or_default()
 }
 
 fn normalize_internal_page_route_key(raw: &str) -> Result<String, LxAppError> {
@@ -429,15 +430,6 @@ pub(crate) fn browser_logic_page_path_for_tab_path(
 
 pub(crate) fn warmup_builtin_browser_runtime() -> Result<(), LxAppError> {
     let browser = ensure_browser_lxapp()?;
-
-    // Drain startup scripts registered before the browser LxApp existed
-    // (e.g. shell's context-menu JS)
-    // into the LxApp's page_scripts so they are picked up by PageInstance::handle_loaded().
-    // take_ ensures idempotency — repeated warmup calls won't duplicate scripts.
-    for js in take_browser_startup_page_scripts() {
-        browser.add_page_script(js);
-    }
-
     let _ = ensure_browser_startup_page(&browser)?;
     Ok(())
 }
