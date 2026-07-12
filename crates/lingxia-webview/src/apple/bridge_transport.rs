@@ -23,6 +23,9 @@ const APPLE_BRIDGE_FROM_QUERY: &str = "from";
 // client detect a silently dead connection (half-open socket) it would
 // otherwise never see a read error for.
 const APPLE_BRIDGE_HEARTBEAT_INTERVAL: Duration = Duration::from_secs(15);
+// A single frame write may not exceed this. Past it the client is treated as
+// gone: the connection is dropped rather than blocking the writer thread.
+const APPLE_BRIDGE_WRITE_TIMEOUT: Duration = Duration::from_secs(5);
 
 pub(super) fn is_bridge_downstream_request(request: &http::Request<Vec<u8>>) -> bool {
     let uri = request.uri();
@@ -208,6 +211,12 @@ impl AppleBridgeTransport {
         })?;
         let read_fd = read_end.into_raw_fd();
         let reader = unsafe { SystemPipeReader::from_raw_fd(read_fd) };
+
+        // Bound every write so a client that stops reading (aborted fetch,
+        // suspended webview) cannot block the writer thread forever and wedge
+        // the transport. A timed-out write drops the connection; the client
+        // reconnects and resumes from its last seq.
+        let _ = write_end.set_write_timeout(Some(APPLE_BRIDGE_WRITE_TIMEOUT));
 
         // Avoid an idle custom-scheme streaming response. WebKit can fail a
         // fetch before native has a real bridge frame ready if no body bytes

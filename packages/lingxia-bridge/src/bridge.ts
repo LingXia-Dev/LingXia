@@ -406,12 +406,21 @@ function ensureAppleDownstream(): void {
 // replaces the streaming fetch. The reconnect carries the real `from=<lastSeq>`,
 // so nothing is lost. Driven by the staleness watchdog and the foreground
 // handler, and exposed as a dev hook for repro harnesses. A no-op off Apple.
+let appleForcedReconnectPending = false;
 function forceDownstreamReconnect(): void {
   if (!useAppleDownstreamTransport()) return;
+  // Coalesce a burst of triggers (rapid foreground toggles, repeated calls)
+  // into a single reconnect so they cannot stack concurrent fetches.
+  if (appleForcedReconnectPending) return;
+  appleForcedReconnectPending = true;
   const task = appleDownstreamTask;
   appleDownstreamAbortController?.abort();
-  if (task) task.finally(() => ensureAppleDownstream());
-  else ensureAppleDownstream();
+  const reconnect = (): void => {
+    appleForcedReconnectPending = false;
+    ensureAppleDownstream();
+  };
+  if (task) task.finally(reconnect);
+  else reconnect();
 }
 
 // A silently dead connection (half-open socket) never surfaces a read error, so
@@ -419,7 +428,9 @@ function forceDownstreamReconnect(): void {
 function startAppleWatchdog(): void {
   if (!useAppleDownstreamTransport() || appleWatchdogTimer !== null) return;
   appleWatchdogTimer = setInterval(() => {
-    if (!appleDownstreamConnected || appleLastFrameAt === 0) return;
+    // No `connected` guard: a reconnect that hung before delivering a frame
+    // also goes stale, and forcing a reconnect aborts and retries it.
+    if (appleLastFrameAt === 0) return;
     if (Date.now() - appleLastFrameAt > APPLE_DOWNSTREAM_STALE_MS) {
       warn("Apple downstream stale (no heartbeat), forcing reconnect");
       forceDownstreamReconnect();
