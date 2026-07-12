@@ -16,6 +16,8 @@ struct AppInfo {
     product_name: String,
     version: String,
     sdk_version: String,
+    webui_version: String,
+    git_sha: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -96,6 +98,8 @@ fn get_app_info(app: Arc<LxApp>) -> HostResult<AppInfo> {
         product_name,
         version,
         sdk_version: lxapp::SDK_RUNTIME_VERSION.to_string(),
+        webui_version: crate::bundled_webui_version().unwrap_or_default(),
+        git_sha: env!("LINGXIA_GIT_SHA_SHORT").to_string(),
     })
 }
 

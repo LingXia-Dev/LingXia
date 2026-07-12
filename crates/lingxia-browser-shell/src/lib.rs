@@ -62,6 +62,8 @@ const BROWSER_CONTEXT_MENU_ASSET_PATH: &str = "app.lingxia.browser/public/browse
 #[derive(Debug, Deserialize)]
 struct BrowserWebUiManifest {
     #[serde(default)]
+    version: Option<String>,
+    #[serde(default)]
     pages: Vec<BrowserWebUiPage>,
 }
 
@@ -104,6 +106,13 @@ fn read_browser_asset_text(asset_path: &str) -> Result<String, LxAppError> {
 fn bundled_internal_pages() -> Result<BTreeMap<String, String>, LxAppError> {
     let manifest = read_browser_asset_text(BROWSER_WEBUI_MANIFEST_ASSET_PATH)?;
     parse_internal_pages(&manifest)
+}
+
+pub(crate) fn bundled_webui_version() -> Option<String> {
+    let manifest = read_browser_asset_text(BROWSER_WEBUI_MANIFEST_ASSET_PATH).ok()?;
+    serde_json::from_str::<BrowserWebUiManifest>(&manifest)
+        .ok()?
+        .version
 }
 
 fn bundled_context_menu_script() -> Result<String, LxAppError> {
