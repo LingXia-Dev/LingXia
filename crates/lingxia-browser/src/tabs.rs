@@ -121,6 +121,24 @@ pub(crate) fn set_title_changed_handler(handler: TitleChangedHandler) {
     }
 }
 
+/// Whether the tab's current document is a browser-internal `lingxia://`
+/// page. Uses the pending URL while a load is in flight, else the committed
+/// URL. External documents (http/https/about:blank/…) must never drive an
+/// lxapp `PageInstance` lifecycle or receive its bridge.
+pub(crate) fn browser_tab_document_is_internal(tab_id: &str) -> bool {
+    let document_url = {
+        let state = lock_state();
+        normalize_runtime_tab_id(tab_id)
+            .and_then(|normalized| state.tabs.get(&normalized))
+            .and_then(|tab| tab.pending_url.clone().or_else(|| tab.current_url.clone()))
+    };
+    document_url
+        .as_deref()
+        .and_then(crate::policy::extract_url_scheme)
+        .as_deref()
+        == Some(crate::policy::LINGXIA_SCHEME)
+}
+
 pub(crate) fn notify_navigation_finished(tab_id: &str, url: &str) {
     let handler = BROWSER_NAVIGATION_FINISHED_HANDLER
         .get()

@@ -188,6 +188,17 @@ pub(crate) fn ensure_browser_startup_page(
     browser.ensure_headless_page_service(&startup_path)
 }
 
+/// Drop the WebView binding of the tab's headless page, if one exists.
+/// Called when the tab's document kind changes to external so a stale bridge
+/// binding cannot deliver into the replacing document.
+pub(crate) fn detach_internal_tab_page(tab_path: &str) {
+    if let Some(browser) = lxapp::try_get(BUILTIN_BROWSER_APPID)
+        && let Some(page) = browser.get_page(tab_path)
+    {
+        page.detach_webview();
+    }
+}
+
 fn detach_internal_tab_pages_except(tab_path: &str, keep_appid: &str) {
     if let Some(browser) = lxapp::try_get(BUILTIN_BROWSER_APPID)
         && browser.appid != keep_appid

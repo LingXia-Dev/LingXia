@@ -38,9 +38,11 @@ use std::sync::Arc;
 
 /// WebView delegate for browser tab WebViews.
 ///
-/// All tab WebViews share a single headless startup PageInstance (and its PageSvc).
-/// This delegate routes postMessage, page-started, and page-finished events
-/// from the currently active tab WebView to that shared startup PageInstance.
+/// Each tab binds its own headless `PageInstance` (keyed by tab path), and
+/// only browser-internal `lingxia://` documents drive that page's lifecycle
+/// and receive its bridge. External documents update browser tab state only:
+/// they never call `notify_page_started`/`handle_loaded` and never emit an
+/// internal page's `onReady`.
 struct BrowserTabDelegate {
     tab_id: String,
     page_path: String,
@@ -48,6 +50,10 @@ struct BrowserTabDelegate {
 }
 
 impl BrowserTabDelegate {
+    fn document_is_internal(&self) -> bool {
+        crate::tabs::browser_tab_document_is_internal(&self.tab_id)
+    }
+
     fn inject_document_scripts(&self) {
         let scripts = browser_document_scripts_snapshot();
         if scripts.is_empty() {
@@ -70,6 +76,9 @@ impl BrowserTabDelegate {
 
 impl WebViewDelegate for BrowserTabDelegate {
     fn on_page_started(&self) {
+        if !self.document_is_internal() {
+            return;
+        }
         match browser_resolve_delegate_page(&self.page_path, self.session_id) {
             Ok(page) => page.notify_page_started(),
             Err(err) => {
@@ -87,6 +96,9 @@ impl WebViewDelegate for BrowserTabDelegate {
         // finished document — internal and external — independent of any
         // lxapp page lifecycle.
         self.inject_document_scripts();
+        if !self.document_is_internal() {
+            return;
+        }
         match browser_resolve_delegate_page(&self.page_path, self.session_id) {
             Ok(page) => page.handle_loaded(),
             Err(err) => {
@@ -100,6 +112,12 @@ impl WebViewDelegate for BrowserTabDelegate {
     }
 
     fn on_navigation_finished(&self, url: &str) {
+        // A commit that changes document kind to external terminates the
+        // internal page binding so bridge responses cannot target a document
+        // that is gone.
+        if extract_url_scheme(url).as_deref() != Some(LINGXIA_SCHEME) {
+            crate::internal_pages::detach_internal_tab_page(&self.page_path);
+        }
         crate::tabs::notify_navigation_finished(&self.tab_id, url);
     }
 
@@ -130,6 +148,16 @@ impl WebViewDelegate for BrowserTabDelegate {
     fn handle_post_message(&self, msg: String) {
         if let Some((level, message)) = decode_console_envelope(&msg) {
             self.log(level, &message);
+            return;
+        }
+
+        // The page bridge belongs to internal documents; an external document
+        // has no nonce and gets no page routing.
+        if !self.document_is_internal() {
+            lxapp::warn!(
+                "[InternalBrowser] Dropping bridge message from external document in tab {}",
+                self.tab_id
+            );
             return;
         }
 
