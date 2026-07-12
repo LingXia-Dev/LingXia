@@ -1379,6 +1379,14 @@ impl WebViewController for WebView {
         self.inner.clear_site_data(url, options).await
     }
 
+    // Callers reach this through the inherent method today, but the trait
+    // impl must stay exhaustive: a missed forward silently resolves to the
+    // trait's Err default for dyn/generic dispatch (how clear_site_data
+    // shipped broken).
+    async fn take_screenshot(&self) -> Result<Vec<u8>, WebViewError> {
+        self.inner.take_screenshot().await
+    }
+
     async fn start_network_capture(&self) -> Result<(), WebViewError> {
         self.inner.start_network_capture().await
     }
