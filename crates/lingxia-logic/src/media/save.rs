@@ -4,6 +4,7 @@ use lxapp::LxApp;
 use rong::{FromJSObject, JSContext, JSResult};
 
 #[derive(FromJSObject)]
+#[ts_skip]
 struct JSSaveMediaOptions {
     #[js_name = "filePath"]
     file_path: String,

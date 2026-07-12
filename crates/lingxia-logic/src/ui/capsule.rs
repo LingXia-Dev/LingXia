@@ -7,6 +7,7 @@ use serde::Deserialize;
 /// Get capsule button bounding client rect
 /// Returns object with format: {"width": 84.5, "height": 32, "top": 50, "right": 375, "bottom": 82, "left": 290.5}
 #[derive(Debug, Clone, Default, Deserialize, IntoJSObject)]
+#[ts_skip]
 struct JSCapsuleRect {
     width: Option<f64>,
     height: Option<f64>,

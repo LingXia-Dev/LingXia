@@ -1,10 +1,11 @@
 use lingxia_platform::traits::device::Device;
-use lingxia_platform::{DeviceInfo, ScreenInfo};
+use lingxia_platform::{DeviceInfo as PlatformDeviceInfo, ScreenInfo as PlatformScreenInfo};
 use lxapp::LxApp;
 use rong::{IntoJSObject, JSContext, JSResult};
 
+/// Device info APIs.
 #[derive(Debug, Clone, IntoJSObject)]
-pub struct DevInfoObj {
+pub struct DeviceInfo {
     brand: String,
     model: String,
     #[js_name = "marketName"]
@@ -16,15 +17,15 @@ pub struct DevInfoObj {
 }
 
 #[derive(Debug, Clone, IntoJSObject)]
-pub struct ScreenInfoObj {
+pub struct ScreenInfo {
     width: f64,
     height: f64,
     scale: f64,
 }
 
-impl From<DeviceInfo> for DevInfoObj {
-    fn from(device_info: DeviceInfo) -> Self {
-        DevInfoObj {
+impl From<PlatformDeviceInfo> for DeviceInfo {
+    fn from(device_info: PlatformDeviceInfo) -> Self {
+        DeviceInfo {
             brand: device_info.brand,
             model: device_info.model,
             market_name: device_info.market_name,
@@ -34,9 +35,9 @@ impl From<DeviceInfo> for DevInfoObj {
     }
 }
 
-impl From<ScreenInfo> for ScreenInfoObj {
-    fn from(screen_info: ScreenInfo) -> Self {
-        ScreenInfoObj {
+impl From<PlatformScreenInfo> for ScreenInfo {
+    fn from(screen_info: PlatformScreenInfo) -> Self {
+        ScreenInfo {
             width: screen_info.width,
             height: screen_info.height,
             scale: screen_info.scale,
@@ -56,13 +57,13 @@ rong::js_api! {
     }
 }
 
-fn device_info(ctx: JSContext) -> JSResult<DevInfoObj> {
+fn device_info(ctx: JSContext) -> JSResult<DeviceInfo> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let device_info = lxapp.runtime.device_info();
     Ok(device_info.into())
 }
 
-fn screen_info(ctx: JSContext) -> JSResult<ScreenInfoObj> {
+fn screen_info(ctx: JSContext) -> JSResult<ScreenInfo> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     Ok(lxapp.runtime.screen_info().into())
 }

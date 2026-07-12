@@ -303,16 +303,6 @@ rong::js_api! {
     overwrite?: boolean;
 }"###;
 
-        /// Device info APIs.
-        ///
-        type DeviceInfo = r###"{
-    brand: string;
-    model: string;
-    marketName: string;
-    osName: string;
-    osVersion: string;
-}"###;
-
         /// Display and orientation APIs.
         ///
         type DeviceOrientation = r###""portrait" | "landscape""###;
@@ -417,16 +407,6 @@ rong::js_api! {
     extensions: string[];
 }"###;
 
-        type FileStats = r###"{
-    isFile: boolean;
-    isDirectory: boolean;
-    isSymlink: boolean;
-    size: number;
-    lastModifiedTime?: number;
-    lastAccessedTime?: number;
-    createTime?: number;
-}"###;
-
         /// Media picker, preview, scan, and file processing APIs.
         ///
         type GetImageInfoOptions = r###"{
@@ -521,13 +501,6 @@ rong::js_api! {
     wait(): Promise<HostAppUpdateResult>;
 }"###;
 
-        type ImageInfo = r###"{
-    width: number;
-    height: number;
-    type: string;
-    path: string;
-}"###;
-
         /// Input event APIs.
         ///
         /// Platform support: Android only
@@ -545,16 +518,6 @@ rong::js_api! {
 }"###;
 
         type KeyEventCallback = r###"(event: KeyEvent) => void"###;
-
-        type LocationInfo = r###"{
-    latitude: number;
-    longitude: number;
-    speed?: number;
-    accuracy?: number;
-    altitude?: number;
-    verticalAccuracy?: number;
-    horizontalAccuracy?: number;
-}"###;
 
         type LxAppEnvVersion = r###"'release' | 'preview' | 'develop'"###;
 
@@ -981,12 +944,6 @@ rong::js_api! {
     scanType: string;
 }"###;
 
-        type ScreenInfo = r###"{
-    width: number;
-    height: number;
-    scale: number;
-}"###;
-
         /// Share images, PDFs, or other files.
         ///
         type ShareFilesOptions = r###"ShareTitleOptions & {
@@ -1402,16 +1359,6 @@ true
     state: string;
 }"###;
 
-        /// Wi-Fi APIs.
-        ///
-        type WifiInfo = r###"{
-    SSID: string;
-    BSSID?: string;
-    secure: boolean;
-    signalStrength: number;
-    frequency?: number;
-}"###;
-
         type WindowSurfaceSize = r###"{
     /** Initial window width in logical pixels. */
     width?: number;
@@ -1435,13 +1382,6 @@ true
     encoding?: 'utf8' | 'base64';
     /** Defaults to false. */
     overwrite?: boolean;
-}"###;
-
-        type LxAppInfo = r###"{
-    appId: string;
-    appName: string;
-    version: string;
-    releaseType: LxAppReleaseType;
 }"###;
 
         /// Target page for `navigateTo`, `redirectTo`, `switchTab`, and `reLaunch`.

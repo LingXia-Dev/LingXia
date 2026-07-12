@@ -36,6 +36,7 @@ struct ParsedDownloadOptions {
 }
 
 #[derive(Debug, Clone, IntoJSObject)]
+#[ts_skip]
 struct JSDownloadResult {
     #[js_name = "tempFilePath"]
     temp_file_path: Option<String>,
@@ -47,6 +48,7 @@ struct JSDownloadResult {
 }
 
 #[derive(Debug, Clone, IntoJSObject)]
+#[ts_skip]
 struct JSDownloadEvent {
     kind: String,
     #[js_name = "downloadedBytes"]
@@ -58,6 +60,7 @@ struct JSDownloadEvent {
 }
 
 #[derive(Debug, Clone, IntoJSObject)]
+#[ts_skip]
 struct JSDownloadIteratorStep {
     done: bool,
     value: Option<JSDownloadEvent>,

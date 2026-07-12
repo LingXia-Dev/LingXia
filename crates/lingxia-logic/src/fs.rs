@@ -26,6 +26,7 @@ mod storage;
 mod upload;
 
 #[derive(FromJSObject)]
+#[ts_skip]
 struct JSOpenFileOptions {
     #[js_name = "filePath"]
     file_path: String,
@@ -142,12 +143,14 @@ async fn open_file(ctx: JSContext, options: JSOpenFileOptions) -> JSResult<()> {
 }
 
 #[derive(FromJSObject, Clone, Default)]
+#[ts_skip]
 struct JSFileDialogFilter {
     name: Option<String>,
     extensions: Option<Vec<String>>,
 }
 
 #[derive(FromJSObject, Clone, Default)]
+#[ts_skip]
 struct JSChooseFileOptions {
     multiple: Option<bool>,
     filters: Option<Vec<JSFileDialogFilter>>,
@@ -156,40 +159,47 @@ struct JSChooseFileOptions {
 }
 
 #[derive(Debug, Clone, IntoJSObject)]
+#[ts_skip]
 struct ChooseFileResultObj {
     canceled: bool,
     paths: Vec<String>,
 }
 
 #[derive(FromJSObject, Clone, Default)]
+#[ts_skip]
 struct JSChooseDirectoryOptions {
     #[js_name = "defaultPath"]
     default_path: Option<String>,
 }
 
 #[derive(Debug, Clone, IntoJSObject)]
+#[ts_skip]
 struct ChooseDirectoryResultObj {
     canceled: bool,
     path: Option<String>,
 }
 
 #[derive(FromJSObject)]
+#[ts_skip]
 struct JSFsPathOptions {
     path: String,
 }
 
 #[derive(FromJSObject)]
+#[ts_skip]
 struct JSFsDirPathOptions {
     path: String,
 }
 
 #[derive(FromJSObject)]
+#[ts_skip]
 struct JSMkdirOptions {
     path: String,
     recursive: Option<bool>,
 }
 
 #[derive(FromJSObject)]
+#[ts_skip]
 struct JSReadFileOptions {
     #[js_name = "filePath"]
     file_path: String,
@@ -197,6 +207,7 @@ struct JSReadFileOptions {
 }
 
 #[derive(FromJSObject)]
+#[ts_skip]
 struct JSWriteFileOptions {
     #[js_name = "filePath"]
     file_path: String,
@@ -206,6 +217,7 @@ struct JSWriteFileOptions {
 }
 
 #[derive(FromJSObject)]
+#[ts_skip]
 struct JSCopyFileOptions {
     #[js_name = "srcPath"]
     src_path: String,
@@ -215,6 +227,7 @@ struct JSCopyFileOptions {
 }
 
 #[derive(FromJSObject)]
+#[ts_skip]
 struct JSRenameOptions {
     #[js_name = "oldPath"]
     old_path: String,
@@ -224,13 +237,14 @@ struct JSRenameOptions {
 }
 
 #[derive(FromJSObject)]
+#[ts_skip]
 struct JSRemoveOptions {
     path: String,
     recursive: Option<bool>,
 }
 
 #[derive(Debug, Clone, IntoJSObject)]
-struct JSFileStats {
+struct FileStats {
     #[js_name = "isFile"]
     is_file: bool,
     #[js_name = "isDirectory"]
@@ -775,9 +789,9 @@ fn resolve_writable_path(
     resolve_managed_path(lxapp, raw_path, api_name, field_name, false, true, true)
 }
 
-fn file_stats(metadata: std::fs::Metadata) -> JSFileStats {
+fn file_stats(metadata: std::fs::Metadata) -> FileStats {
     let file_type = metadata.file_type();
-    JSFileStats {
+    FileStats {
         is_file: file_type.is_file(),
         is_directory: file_type.is_dir(),
         is_symlink: file_type.is_symlink(),
@@ -1035,7 +1049,7 @@ impl JSFileManager {
     }
 
     #[js_method(ts_params = "options: StatOptions", ts_return = "Promise<FileStats>")]
-    async fn stat(&self, _ctx: JSContext, options: JSFsPathOptions) -> JSResult<JSFileStats> {
+    async fn stat(&self, _ctx: JSContext, options: JSFsPathOptions) -> JSResult<FileStats> {
         let lxapp = self.lxapp()?;
         let path = resolve_readable_path(&lxapp, &options.path, "stat", "path")?;
         ensure_no_symlink_ancestors(&lxapp, &path, "stat", "path")?;

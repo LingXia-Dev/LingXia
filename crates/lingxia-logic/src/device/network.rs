@@ -23,6 +23,7 @@ fn network_callback_id(ctx: &JSContext) -> Option<u64> {
 }
 
 #[derive(Debug, Clone, IntoJSObject)]
+#[ts_skip]
 struct JSNetworkInfoResult {
     #[js_name = "isConnected"]
     is_connected: bool,

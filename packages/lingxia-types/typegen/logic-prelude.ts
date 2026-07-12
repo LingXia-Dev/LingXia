@@ -115,6 +115,10 @@ export interface FileManager {
 }
 
 declare global {
+  // HostAppApi/LxEnv members are emitted from the Rust js_api metadata; these
+  // merges only add what Rong cannot express — the cfg-gated autostart member
+  // and doc comments (js_api consts cannot carry docs). envVersion re-declares
+  // the generated member doc-only; tsc rejects the merge if the types drift.
   interface HostAppApi {
     /**
      * The build environment from `app.json::envVersion`. It is fixed at boot
@@ -130,10 +134,7 @@ declare global {
   }
 
   /** Runtime environment constants backed by abstract `lx://` paths. */
-  interface LxEnv {
-    readonly USER_DATA_PATH: "lx://userdata";
-    readonly USER_CACHE_PATH: "lx://usercache";
-  }
+  interface LxEnv {}
 
   interface Lx {
     /**

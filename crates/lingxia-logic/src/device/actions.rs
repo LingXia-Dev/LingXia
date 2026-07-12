@@ -36,6 +36,7 @@ fn vibrate_long(ctx: JSContext) -> JSResult<bool> {
 }
 
 #[derive(FromJSObject, Deserialize)]
+#[ts_skip]
 struct MakePhoneCallParams {
     #[serde(rename = "phoneNumber")]
     #[js_name = "phoneNumber"]

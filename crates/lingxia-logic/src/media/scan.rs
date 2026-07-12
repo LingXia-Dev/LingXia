@@ -5,6 +5,7 @@ use rong::{FromJSObject, IntoJSObject, JSContext, JSResult, function::Optional};
 use serde_json::Value;
 
 #[derive(FromJSObject, Clone, Default)]
+#[ts_skip]
 struct JSScanOptions {
     #[js_name = "onlyFromCamera"]
     only_from_camera: Option<bool>,
@@ -13,6 +14,7 @@ struct JSScanOptions {
 }
 
 #[derive(Debug, Clone, IntoJSObject)]
+#[ts_skip]
 struct ScanResultObj {
     #[js_name = "scanResult"]
     scan_result: String,

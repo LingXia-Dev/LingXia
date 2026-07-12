@@ -6,12 +6,14 @@ use std::sync::Arc;
 
 /// Options for showing TabBar red dot
 #[derive(FromJSObject)]
+#[ts_skip]
 struct ShowTabBarRedDotOptions {
     index: i32,
 }
 
 /// Options for hiding TabBar red dot
 #[derive(FromJSObject)]
+#[ts_skip]
 struct HideTabBarRedDotOptions {
     index: i32,
 }

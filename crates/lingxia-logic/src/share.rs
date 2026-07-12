@@ -21,6 +21,7 @@ struct JSSharePage {
 }
 
 #[derive(IntoJSObject)]
+#[ts_skip]
 struct JSShareResult {
     completed: Option<bool>,
 }

@@ -28,6 +28,7 @@ struct ClosedRegistration {
 static SURFACE_CLOSED: OnceLock<Mutex<HashMap<String, ClosedRegistration>>> = OnceLock::new();
 
 #[derive(Debug, Clone, IntoJSObject)]
+#[ts_skip]
 struct JSSurfaceClosed {
     id: String,
     kind: String,
@@ -35,6 +36,7 @@ struct JSSurfaceClosed {
 }
 
 #[derive(Debug, Clone, IntoJSObject)]
+#[ts_skip]
 struct JSSurfaceVisibility {
     id: String,
     kind: String,
@@ -195,6 +197,7 @@ pub(crate) fn notify_surface_context_changed(_window_id: &str) {
 }
 
 #[derive(Debug, Clone, IntoJSObject)]
+#[ts_skip]
 struct PageSurfaceOptions {
     path: String,
     kind: String,
@@ -203,6 +206,7 @@ struct PageSurfaceOptions {
 }
 
 #[derive(Debug, Clone, IntoJSObject)]
+#[ts_skip]
 struct WebSurfaceOptions {
     url: String,
     kind: String,
@@ -213,9 +217,10 @@ struct WebSurfaceOptions {
 /// `lx.openSurface(spec)` — unified surface entry point. The spec is a
 /// discriminated union keyed by exactly one of `page`, `surface`, or `url`:
 ///
-/// - `{ page, as, edge?, position?, size?, query? }` opens one of this lxapp's
-///   own pages as an `aside` (docked beside the main), a `float` (overlay
-///   popup), or a `window` (bare standalone desktop window).
+/// - `{ page, as, position?, size?, query? }` opens one of this lxapp's own
+///   pages as a `float` (overlay popup) or a `window` (bare standalone desktop
+///   window). Pages cannot be docked as an `aside` — an aside shows external
+///   content only.
 /// - `{ surface, edge?, query? }` shows a host-declared surface by its `ui` id.
 /// - `{ url }` opens an http(s)/lingxia url in the in-app chromed browser.
 async fn open_surface_spec(ctx: JSContext, spec: JSValue) -> JSResult<JSValue> {
@@ -531,6 +536,7 @@ fn build_open_options(
 
 #[cfg(not(any(target_os = "ios", target_os = "android", target_env = "ohos")))]
 #[derive(Debug, Clone, IntoJSObject)]
+#[ts_skip]
 struct PageWindowOptions {
     path: String,
     kind: String,
@@ -578,6 +584,7 @@ fn build_window_options(
 }
 
 #[derive(Debug, Clone, IntoJSObject)]
+#[ts_skip]
 struct JSSurfaceContext {
     #[js_name = "sizeClass"]
     size_class: String,

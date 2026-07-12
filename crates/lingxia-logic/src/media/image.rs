@@ -11,12 +11,13 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(FromJSObject)]
+#[ts_skip]
 struct JSGetImageInfoOptions {
     path: String,
 }
 
 #[derive(Debug, Clone, IntoJSObject)]
-struct JSImageInfoResult {
+struct ImageInfo {
     width: u32,
     height: u32,
     #[js_name = "type"]
@@ -25,6 +26,7 @@ struct JSImageInfoResult {
 }
 
 #[derive(FromJSObject)]
+#[ts_skip]
 struct JSCompressImageOptions {
     path: String,
     quality: Option<i32>,
@@ -35,6 +37,7 @@ struct JSCompressImageOptions {
 }
 
 #[derive(Debug, Clone, IntoJSObject)]
+#[ts_skip]
 struct JSCompressImageResult {
     #[js_name = "tempFilePath"]
     temp_file_path: String,
@@ -61,7 +64,7 @@ rong::js_api! {
 async fn get_image_info_api(
     ctx: JSContext,
     options: JSGetImageInfoOptions,
-) -> JSResult<JSImageInfoResult> {
+) -> JSResult<ImageInfo> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let runtime = &lxapp.runtime;
 
@@ -92,7 +95,7 @@ async fn get_image_info_api(
                 .filter(|s| !s.is_empty())
                 .unwrap_or_else(|| infer_mime_from_path(&normalized_path).to_string());
 
-            JSImageInfoResult {
+            ImageInfo {
                 width: info.width,
                 height: info.height,
                 image_type,

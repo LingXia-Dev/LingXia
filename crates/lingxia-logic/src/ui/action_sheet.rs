@@ -15,6 +15,7 @@ use std::sync::Arc;
 
 /// Action sheet options from JavaScript
 #[derive(FromJSObject)]
+#[ts_skip]
 struct JSActionSheetOptions {
     #[js_name = "itemList"]
     item_list: Vec<String>,
@@ -24,6 +25,7 @@ struct JSActionSheetOptions {
 
 /// JavaScript ActionSheetResult for return value
 #[derive(Debug, Clone, IntoJSObject)]
+#[ts_skip]
 struct JSActionSheetResult {
     #[js_name = "tapIndex"]
     tap_index: i32,

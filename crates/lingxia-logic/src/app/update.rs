@@ -14,6 +14,7 @@ use std::sync::Mutex as StdMutex;
 use tokio::sync::{Mutex, watch};
 
 #[derive(Debug, Clone, IntoJSObject)]
+#[ts_skip]
 struct JSAppUpdateEvent {
     state: String,
     stage: Option<String>,
@@ -24,12 +25,14 @@ struct JSAppUpdateEvent {
 }
 
 #[derive(Debug, Clone, IntoJSObject)]
+#[ts_skip]
 struct JSAppUpdateIteratorStep {
     done: bool,
     value: Option<JSAppUpdateEvent>,
 }
 
 #[derive(Debug, Clone, IntoJSObject)]
+#[ts_skip]
 struct JSAppUpdateResult {
     state: String,
 }

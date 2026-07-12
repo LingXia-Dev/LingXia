@@ -2,6 +2,7 @@ use rong::FromJSObject;
 use serde::{Deserialize, Serialize};
 
 #[derive(FromJSObject, Clone)]
+#[ts_skip]
 pub(super) struct JSChooseMediaOptions {
     #[js_name = "count"]
     pub(super) count: Option<u32>,

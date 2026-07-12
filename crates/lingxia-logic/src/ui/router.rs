@@ -16,6 +16,7 @@ struct PageTargetOptions {
 }
 
 #[derive(FromJSObject)]
+#[ts_skip]
 struct NavigateBack {
     delta: u32,
 }

@@ -12,6 +12,7 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Clone, Default, FromJSObject)]
+#[ts_skip]
 struct JSAppScreenshotOptions {
     /// Platform-specific window id (desktop only). Omitted: the platform
     /// captures the key/main window (desktop) or the sole window (mobile).
@@ -20,6 +21,7 @@ struct JSAppScreenshotOptions {
 }
 
 #[derive(Debug, Clone, IntoJSObject)]
+#[ts_skip]
 struct JSAppScreenshotResult {
     #[js_name = "tempFilePath"]
     temp_file_path: String,

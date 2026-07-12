@@ -22,6 +22,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 #[derive(FromJSObject)]
+#[ts_skip]
 struct JSStreamSourceOptions {
     #[js_name = "provider"]
     provider: String,
@@ -209,7 +210,7 @@ impl JSVideoContext {
         self.dispatch(VideoPlayerCommand::ExitFullscreen)
     }
 
-    #[js_method(rename = "setStreamSource")]
+    #[js_method(rename = "setStreamSource", ts_params = "options: StreamSourceOptions")]
     fn set_stream_source(&self, options: JSStreamSourceOptions) -> JSResult<()> {
         if options.provider.trim().is_empty() {
             return Err(js_invalid_parameter_error("provider is required"));

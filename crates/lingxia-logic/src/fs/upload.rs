@@ -34,6 +34,7 @@ struct ParsedUploadOptions {
 }
 
 #[derive(Debug, Clone, IntoJSObject)]
+#[ts_skip]
 struct JSUploadResult {
     #[js_name = "statusCode"]
     status_code: u16,
@@ -41,6 +42,7 @@ struct JSUploadResult {
 }
 
 #[derive(Debug, Clone, IntoJSObject)]
+#[ts_skip]
 struct JSUploadEvent {
     kind: String,
     #[js_name = "uploadedBytes"]
@@ -52,6 +54,7 @@ struct JSUploadEvent {
 }
 
 #[derive(Debug, Clone, IntoJSObject)]
+#[ts_skip]
 struct JSUploadIteratorStep {
     done: bool,
     value: Option<JSUploadEvent>,

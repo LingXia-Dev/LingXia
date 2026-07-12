@@ -10,6 +10,7 @@ use rong::{FromJSObject, JSContext, JSResult};
 
 /// Toast options from JavaScript
 #[derive(FromJSObject)]
+#[ts_skip]
 struct JSToastOptions {
     title: String,
     icon: Option<String>,

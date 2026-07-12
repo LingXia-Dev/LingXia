@@ -76,6 +76,7 @@ fn transform_lng(lng: f64, lat: f64) -> f64 {
 
 /// Location options from JavaScript
 #[derive(FromJSObject)]
+#[ts_skip]
 struct JSLocationOptions {
     #[js_name = "type"]
     coordinate_type: Option<String>,
@@ -88,7 +89,7 @@ struct JSLocationOptions {
 
 /// Location information
 #[derive(Debug, Clone, IntoJSObject)]
-pub struct LocationObj {
+pub struct LocationInfo {
     /// Latitude, range -90~90, negative for south
     latitude: f64,
     /// Longitude, range -180~180, negative for west
@@ -107,7 +108,7 @@ pub struct LocationObj {
     horizontal_accuracy: Option<f64>,
 }
 
-fn parse_location_payload(data: &str) -> Result<LocationObj, RongJSError> {
+fn parse_location_payload(data: &str) -> Result<LocationInfo, RongJSError> {
     let parsed: Value = serde_json::from_str(data)
         .map_err(|e| js_internal_error(format!("getLocation invalid payload: {}", e)))?;
 
@@ -125,7 +126,7 @@ fn parse_location_payload(data: &str) -> Result<LocationObj, RongJSError> {
     let vertical_accuracy = parsed.get("vertical_accuracy").and_then(Value::as_f64);
     let horizontal_accuracy = parsed.get("horizontal_accuracy").and_then(Value::as_f64);
 
-    Ok(LocationObj {
+    Ok(LocationInfo {
         latitude,
         longitude,
         speed,
@@ -140,7 +141,7 @@ fn parse_location_payload(data: &str) -> Result<LocationObj, RongJSError> {
 async fn get_location(
     ctx: JSContext,
     options: Optional<JSLocationOptions>,
-) -> JSResult<LocationObj> {
+) -> JSResult<LocationInfo> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let requested_type = options
         .as_ref()

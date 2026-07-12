@@ -22,11 +22,13 @@ static THUMBNAIL_NAME_COUNTER: AtomicU64 = AtomicU64::new(0);
 static COMPRESS_VIDEO_NAME_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 #[derive(FromJSObject)]
+#[ts_skip]
 struct JSGetVideoInfoOptions {
     path: String,
 }
 
 #[derive(Debug, Clone, IntoJSObject)]
+#[ts_skip]
 struct JSVideoInfoResult {
     width: u32,
     height: u32,
@@ -41,6 +43,7 @@ struct JSVideoInfoResult {
 }
 
 #[derive(FromJSObject)]
+#[ts_skip]
 struct JSVideoThumbnailOptions {
     path: String,
     #[js_name = "outputPath"]
@@ -55,6 +58,7 @@ struct JSVideoThumbnailOptions {
 }
 
 #[derive(FromJSObject)]
+#[ts_skip]
 struct JSCompressVideoOptions {
     path: String,
     #[js_name = "outputPath"]
@@ -66,6 +70,7 @@ struct JSCompressVideoOptions {
 }
 
 #[derive(Debug, Clone, IntoJSObject)]
+#[ts_skip]
 struct JSVideoThumbnailResult {
     #[js_name = "tempFilePath"]
     temp_file_path: String,
@@ -76,6 +81,7 @@ struct JSVideoThumbnailResult {
 }
 
 #[derive(Debug, Clone, IntoJSObject)]
+#[ts_skip]
 struct JSCompressVideoResult {
     #[js_name = "tempFilePath"]
     temp_file_path: String,
@@ -89,11 +95,13 @@ struct JSCompressVideoResult {
 }
 
 #[derive(Debug, Clone, IntoJSObject)]
+#[ts_skip]
 struct JSCompressProgressEvent {
     progress: u8,
 }
 
 #[derive(Debug, Clone, IntoJSObject)]
+#[ts_skip]
 struct JSCompressIteratorStep {
     done: bool,
     value: Option<JSCompressProgressEvent>,

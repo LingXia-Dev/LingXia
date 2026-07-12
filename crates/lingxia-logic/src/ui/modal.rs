@@ -13,6 +13,7 @@ use std::sync::Arc;
 
 /// Modal options from JavaScript (compatible with common mini-app APIs)
 #[derive(FromJSObject)]
+#[ts_skip]
 struct JSModalOptions {
     title: Option<String>,
     content: Option<String>,
@@ -47,6 +48,7 @@ impl JSModalOptions {
 
 /// JavaScript ModalResult for return value
 #[derive(Debug, Clone, IntoJSObject)]
+#[ts_skip]
 struct JSModalResult {
     confirm: bool,
     cancel: bool,

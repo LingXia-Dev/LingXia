@@ -2,7 +2,6 @@ use ::lxapp::LxApp;
 use rong::{IntoJSObject, JSContext, JSResult};
 
 #[derive(Debug, Clone, IntoJSObject)]
-#[ts_skip]
 struct LxAppInfo {
     #[js_name = "appId"]
     app_id: String,
@@ -10,6 +9,7 @@ struct LxAppInfo {
     app_name: String,
     version: String,
     #[js_name = "releaseType"]
+    #[ts_type = "LxAppReleaseType"]
     release_type: String,
 }
 

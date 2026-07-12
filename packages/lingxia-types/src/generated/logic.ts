@@ -118,6 +118,10 @@ export interface FileManager {
 }
 
 declare global {
+  // HostAppApi/LxEnv members are emitted from the Rust js_api metadata; these
+  // merges only add what Rong cannot express — the cfg-gated autostart member
+  // and doc comments (js_api consts cannot carry docs). envVersion re-declares
+  // the generated member doc-only; tsc rejects the merge if the types drift.
   interface HostAppApi {
     /**
      * The build environment from `app.json::envVersion`. It is fixed at boot
@@ -133,10 +137,7 @@ declare global {
   }
 
   /** Runtime environment constants backed by abstract `lx://` paths. */
-  interface LxEnv {
-    readonly USER_DATA_PATH: "lx://userdata";
-    readonly USER_CACHE_PATH: "lx://usercache";
-  }
+  interface LxEnv {}
 
   interface Lx {
     /**
@@ -448,15 +449,6 @@ export type CopyFileOptions = {
     overwrite?: boolean;
 };
 
-/** Device info APIs. */
-export type DeviceInfo = {
-    brand: string;
-    model: string;
-    marketName: string;
-    osName: string;
-    osVersion: string;
-};
-
 /** Display and orientation APIs. */
 export type DeviceOrientation = "portrait" | "landscape";
 
@@ -560,16 +552,6 @@ export type FileDialogFilter = {
     extensions: string[];
 };
 
-export type FileStats = {
-    isFile: boolean;
-    isDirectory: boolean;
-    isSymlink: boolean;
-    size: number;
-    lastModifiedTime?: number;
-    lastAccessedTime?: number;
-    createTime?: number;
-};
-
 /** Media picker, preview, scan, and file processing APIs. */
 export type GetImageInfoOptions = {
     path: string;
@@ -663,13 +645,6 @@ export type HostAppUpdateTask = PromiseLike<HostAppUpdateResult> & AsyncIterable
     wait(): Promise<HostAppUpdateResult>;
 };
 
-export type ImageInfo = {
-    width: number;
-    height: number;
-    type: string;
-    path: string;
-};
-
 /**
  * Input event APIs.
  * Platform support: Android only
@@ -688,24 +663,7 @@ export type KeyEvent = {
 
 export type KeyEventCallback = (event: KeyEvent) => void;
 
-export type LocationInfo = {
-    latitude: number;
-    longitude: number;
-    speed?: number;
-    accuracy?: number;
-    altitude?: number;
-    verticalAccuracy?: number;
-    horizontalAccuracy?: number;
-};
-
 export type LxAppEnvVersion = 'release' | 'preview' | 'develop';
-
-export type LxAppInfo = {
-    appId: string;
-    appName: string;
-    version: string;
-    releaseType: LxAppReleaseType;
-};
 
 /** LxApp metadata APIs. */
 export type LxAppReleaseType = 'release' | 'preview' | 'developer';
@@ -1144,12 +1102,6 @@ export type ScanCodeResult = {
     scanType: string;
 };
 
-export type ScreenInfo = {
-    width: number;
-    height: number;
-    scale: number;
-};
-
 /** Share images, PDFs, or other files. */
 export type ShareFilesOptions = ShareTitleOptions & {
     /**
@@ -1565,15 +1517,6 @@ export type WifiConnectedInfo = WifiInfo & {
     state: string;
 };
 
-/** Wi-Fi APIs. */
-export type WifiInfo = {
-    SSID: string;
-    BSSID?: string;
-    secure: boolean;
-    signalStrength: number;
-    frequency?: number;
-};
-
 export type WindowSurfaceSize = {
     /** Initial window width in logical pixels. */
     width?: number;
@@ -1607,17 +1550,8 @@ export interface AppBaseInfo {
   SDKVersion: string;
 }
 
-export interface ChooseDirectoryResultObj {
-  canceled: boolean;
-  path?: string;
-}
-
-export interface ChooseFileResultObj {
-  canceled: boolean;
-  paths: string[];
-}
-
-export interface DevInfoObj {
+/** Device info APIs. */
+export interface DeviceInfo {
   brand: string;
   model: string;
   marketName: string;
@@ -1625,162 +1559,7 @@ export interface DevInfoObj {
   osVersion: string;
 }
 
-/** Options for hiding TabBar red dot */
-export interface HideTabBarRedDotOptions {
-  index: number;
-}
-
-/** Action sheet options from JavaScript */
-export interface JSActionSheetOptions {
-  itemList: string[];
-  itemColor?: string;
-}
-
-/** JavaScript ActionSheetResult for return value */
-export interface JSActionSheetResult {
-  tapIndex: number;
-}
-
-export interface JSAppScreenshotOptions {
-  /**
-   * Platform-specific window id (desktop only). Omitted: the platform
-   * captures the key/main window (desktop) or the sole window (mobile).
-   */
-  windowId?: string;
-}
-
-export interface JSAppScreenshotResult {
-  tempFilePath: string;
-  width?: number;
-  height?: number;
-}
-
-export interface JSAppUpdateEvent {
-  state: string;
-  stage?: string;
-  downloadedBytes?: number;
-  progress?: number;
-  error?: string;
-}
-
-export interface JSAppUpdateIteratorStep {
-  done: boolean;
-  value?: JSAppUpdateEvent;
-}
-
-export interface JSAppUpdateResult {
-  state: string;
-}
-
-/**
- * Get capsule button bounding client rect
- * Returns object with format: {"width": 84.5, "height": 32, "top": 50, "right": 375, "bottom": 82, "left": 290.5}
- */
-export interface JSCapsuleRect {
-  width?: number;
-  height?: number;
-  top?: number;
-  right?: number;
-  bottom?: number;
-  left?: number;
-}
-
-export interface JSChooseDirectoryOptions {
-  defaultPath?: string;
-}
-
-export interface JSChooseFileOptions {
-  multiple?: boolean;
-  filters?: JSFileDialogFilter[];
-  defaultPath?: string;
-}
-
-export interface JSChooseMediaOptions {
-  count?: number;
-  mediaType?: string[];
-  sourceType?: string[];
-  camera?: string;
-  maxDuration?: number;
-}
-
-export interface JSCompressImageOptions {
-  path: string;
-  quality?: number;
-  compressedWidth?: number;
-  compressedHeight?: number;
-}
-
-export interface JSCompressImageResult {
-  tempFilePath: string;
-}
-
-export interface JSCompressIteratorStep {
-  done: boolean;
-  value?: JSCompressProgressEvent;
-}
-
-export interface JSCompressProgressEvent {
-  progress: number;
-}
-
-export interface JSCompressVideoOptions {
-  path: string;
-  outputPath?: string;
-  quality?: string;
-  bitrate?: number;
-  fps?: number;
-  resolution?: number;
-}
-
-export interface JSCompressVideoResult {
-  tempFilePath: string;
-  width: number;
-  height: number;
-  durationMs: number;
-  size: number;
-  type: string;
-}
-
-/** WiFi connection options from JavaScript */
-export interface JSConnectWifiOptions {
-  /** SSID of the network to connect to */
-  SSID: string;
-  /** Network password (omit for open networks) */
-  password?: string;
-}
-
-export interface JSCopyFileOptions {
-  srcPath: string;
-  destPath: string;
-  overwrite?: boolean;
-}
-
-export interface JSDownloadEvent {
-  kind: string;
-  downloadedBytes?: number;
-  totalBytes?: number;
-  progress?: number;
-  result?: JSDownloadResult;
-}
-
-export interface JSDownloadIteratorStep {
-  done: boolean;
-  value?: JSDownloadEvent;
-}
-
-export interface JSDownloadResult {
-  tempFilePath?: string;
-  filePath?: string;
-  mimeType?: string;
-  size: number;
-}
-
-export interface JSFileDialogFilter {
-  name?: string;
-  extensions?: string[];
-}
-
-export interface JSFileStats {
+export interface FileStats {
   isFile: boolean;
   isDirectory: boolean;
   isSymlink: boolean;
@@ -1790,210 +1569,15 @@ export interface JSFileStats {
   createTime?: number;
 }
 
-export interface JSFsDirPathOptions {
-  path: string;
-}
-
-export interface JSFsPathOptions {
-  path: string;
-}
-
-export interface JSGetImageInfoOptions {
-  path: string;
-}
-
-export interface JSGetVideoInfoOptions {
-  path: string;
-}
-
-export interface JSImageInfoResult {
+export interface ImageInfo {
   width: number;
   height: number;
   type: string;
   path: string;
-}
-
-/** Location options from JavaScript */
-export interface JSLocationOptions {
-  type?: string;
-  altitude?: boolean;
-  isHighAccuracy?: boolean;
-  highAccuracyExpireTime?: number;
-}
-
-export interface JSMkdirOptions {
-  path: string;
-  recursive?: boolean;
-}
-
-/** Modal options from JavaScript (compatible with common mini-app APIs) */
-export interface JSModalOptions {
-  title?: string;
-  content?: string;
-  showCancel?: boolean;
-  cancelText?: string;
-  cancelColor?: string;
-  confirmText?: string;
-  confirmColor?: string;
-}
-
-/** JavaScript ModalResult for return value */
-export interface JSModalResult {
-  confirm: boolean;
-  cancel: boolean;
-}
-
-export interface JSNetworkInfoResult {
-  isConnected: boolean;
-  networkType: string;
-  ipv4: string[];
-  ipv6: string[];
-}
-
-export interface JSOpenFileOptions {
-  filePath: string;
-  fileType?: string;
-  mode?: string;
-  showMenu?: boolean;
-}
-
-export interface JSReadFileOptions {
-  filePath: string;
-  encoding?: string;
-}
-
-export interface JSRemoveOptions {
-  path: string;
-  recursive?: boolean;
-}
-
-export interface JSRenameOptions {
-  oldPath: string;
-  newPath: string;
-  overwrite?: boolean;
-}
-
-export interface JSSaveMediaOptions {
-  filePath: string;
-}
-
-export interface JSScanOptions {
-  onlyFromCamera?: boolean;
-  scanType?: string[];
-}
-
-export interface JSShareResult {
-  completed?: boolean;
-}
-
-export interface JSStreamSourceOptions {
-  provider: string;
-  isLive: boolean;
-  duration?: number;
-  params?: object;
-}
-
-export interface JSSurfaceClosed {
-  id: string;
-  kind: string;
-  reason: string;
-}
-
-export interface JSSurfaceContext {
-  sizeClass: string;
-  bottomOwner: string;
-}
-
-export interface JSSurfaceVisibility {
-  id: string;
-  kind: string;
-  /**
-   * Which side initiated the visibility change. "opener" when the caller
-   * holds the opener-side surface, "page" when the page-side surface drove
-   * it. Lets analytics / logging distinguish without having to wire extra
-   * state through the caller.
-   */
-  source: string;
-}
-
-/** Toast options from JavaScript */
-export interface JSToastOptions {
-  title: string;
-  icon?: string;
-  image?: string;
-  duration?: number;
-  mask?: boolean;
-  position?: string;
-}
-
-export interface JSUploadEvent {
-  kind: string;
-  uploadedBytes?: number;
-  totalBytes?: number;
-  progress?: number;
-  result?: JSUploadResult;
-}
-
-export interface JSUploadIteratorStep {
-  done: boolean;
-  value?: JSUploadEvent;
-}
-
-export interface JSUploadResult {
-  statusCode: number;
-  data: string;
-}
-
-export interface JSVideoInfoResult {
-  width: number;
-  height: number;
-  durationMs: number;
-  rotation?: number;
-  bitrate?: number;
-  fps?: number;
-  type?: string;
-  path: string;
-}
-
-export interface JSVideoThumbnailOptions {
-  path: string;
-  outputPath?: string;
-  maxWidth?: number;
-  maxHeight?: number;
-  timeMs?: number;
-  quality?: number;
-}
-
-export interface JSVideoThumbnailResult {
-  tempFilePath: string;
-  width: number;
-  height: number;
-  type: string;
-}
-
-/** WiFi information from JavaScript */
-export interface JSWifiInfo {
-  /** Service Set Identifier (network name) */
-  SSID: string;
-  /** Basic Service Set Identifier (MAC address) */
-  BSSID?: string;
-  /** Whether the network is secure (requires password) */
-  secure: boolean;
-  /** Signal strength (0-100, higher is better) */
-  signalStrength: number;
-  /** Center frequency in MHz (if available) */
-  frequency?: number;
-}
-
-export interface JSWriteFileOptions {
-  filePath: string;
-  data: any;
-  encoding?: string;
-  overwrite?: boolean;
 }
 
 /** Location information */
-export interface LocationObj {
+export interface LocationInfo {
   /** Latitude, range -90~90, negative for south */
   latitude: number;
   /** Longitude, range -180~180, negative for west */
@@ -2010,24 +1594,11 @@ export interface LocationObj {
   horizontalAccuracy?: number;
 }
 
-export interface MakePhoneCallParams {
-  phoneNumber: string;
-}
-
-export interface NavigateBack {
-  delta: number;
-}
-
-export interface PageSurfaceOptions {
-  path: string;
-  kind: string;
-  position: string;
-  role: string;
-}
-
-export interface PageWindowOptions {
-  path: string;
-  kind: string;
+export interface LxAppInfo {
+  appId: string;
+  appName: string;
+  version: string;
+  releaseType: LxAppReleaseType;
 }
 
 /** Options for removing TabBar badge */
@@ -2035,12 +1606,7 @@ export interface RemoveTabBarBadgeOptions {
   index: number;
 }
 
-export interface ScanResultObj {
-  scanResult: string;
-  scanType: string;
-}
-
-export interface ScreenInfoObj {
+export interface ScreenInfo {
   width: number;
   height: number;
   scale: number;
@@ -2079,11 +1645,6 @@ export interface SetTabBarStyleOptions {
   borderStyle?: string;
 }
 
-/** Options for showing TabBar red dot */
-export interface ShowTabBarRedDotOptions {
-  index: number;
-}
-
 /** System setting status */
 export interface SystemSettingInfo {
   bluetoothEnabled: boolean;
@@ -2091,11 +1652,18 @@ export interface SystemSettingInfo {
   wifiEnabled: boolean;
 }
 
-export interface WebSurfaceOptions {
-  url: string;
-  kind: string;
-  position: string;
-  role: string;
+/** Wi-Fi APIs. */
+export interface WifiInfo {
+  /** Service Set Identifier (network name) */
+  SSID: string;
+  /** Basic Service Set Identifier (MAC address) */
+  BSSID?: string;
+  /** Whether the network is secure (requires password) */
+  secure: boolean;
+  /** Signal strength (0-100, higher is better) */
+  signalStrength: number;
+  /** Center frequency in MHz (if available) */
+  frequency?: number;
 }
 
 export declare class DirEntry {
@@ -2149,7 +1717,7 @@ export declare class JSVideoContext {
   seek(position: number): void;
   requestFullScreen(): void;
   exitFullScreen(): void;
-  setStreamSource(options: JSStreamSourceOptions): void;
+  setStreamSource(options: StreamSourceOptions): void;
 }
 
 declare global {
@@ -2273,9 +1841,10 @@ declare global {
     /**
      * `lx.openSurface(spec)` — unified surface entry point. The spec is a
      * discriminated union keyed by exactly one of `page`, `surface`, or `url`:
-     * - `{ page, as, edge?, position?, size?, query? }` opens one of this lxapp's
-     * own pages as an `aside` (docked beside the main), a `float` (overlay
-     * popup), or a `window` (bare standalone desktop window).
+     * - `{ page, as, position?, size?, query? }` opens one of this lxapp's own
+     * pages as a `float` (overlay popup) or a `window` (bare standalone desktop
+     * window). Pages cannot be docked as an `aside` — an aside shows external
+     * content only.
      * - `{ surface, edge?, query? }` shows a host-declared surface by its `ui` id.
      * - `{ url }` opens an http(s)/lingxia url in the in-app chromed browser.
      */
