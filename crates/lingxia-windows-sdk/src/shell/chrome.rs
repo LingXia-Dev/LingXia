@@ -39,6 +39,7 @@ mod native_panel;
 mod phone_bar;
 mod sidebar;
 mod top_bar;
+#[cfg(feature = "browser-runtime")]
 pub use aside_panel::begin_panel_address_edit;
 pub(crate) use aside_panel::*;
 pub(super) use drawing::*;
@@ -77,6 +78,10 @@ pub(super) const ADDRESS_CAPSULE_HEIGHT: i32 = 24;
 
 /// Gap between the nav-button cluster and the URL capsule.
 pub(super) const ADDRESS_CAPSULE_NAV_GAP: i32 = 8;
+
+/// Side length of the star/pin buttons inside the URL capsule (macOS
+/// address-bar parity).
+pub(super) const ADDRESS_CAPSULE_BUTTON_SIZE: i32 = 20;
 
 /// Side length of the sidebar group-header chevron hit area.
 pub(super) const SIDEBAR_CHEVRON_SIZE: i32 = 18;
@@ -1401,11 +1406,8 @@ pub(super) fn chrome_hit_test(
     {
         return Some(chrome_command(command_id::BROWSER_NAV_RELOAD, json!({})));
     }
-    if let Some(address) = controls.address
-        && rect_contains(&address, point)
-    {
-        return Some(chrome_command(command_id::BROWSER_ADDRESS_BAR, json!({})));
-    }
+    // The star/pin buttons sit inside the address capsule, so they must win
+    // the hit-test over the address edit.
     if let Some(bookmark) = controls.bookmark
         && rect_contains(&bookmark, point)
     {
@@ -1418,6 +1420,11 @@ pub(super) fn chrome_hit_test(
         && rect_contains(&pin, point)
     {
         return Some(chrome_command(command_id::BROWSER_PIN_TOGGLE, json!({})));
+    }
+    if let Some(address) = controls.address
+        && rect_contains(&address, point)
+    {
+        return Some(chrome_command(command_id::BROWSER_ADDRESS_BAR, json!({})));
     }
     if let Some(page_menu) = controls.page_menu
         && rect_contains(&page_menu, point)

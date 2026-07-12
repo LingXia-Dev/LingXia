@@ -86,7 +86,10 @@ thiserror = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]
-image = { version = "0.25.10", default-features = false, features = ["png"], optional = true }
+# Favicons cached by lingxia-service arrive as whatever the site serves
+# (most /favicon.ico responses are real ICO containers), so the sidebar
+# needs the common raster decoders, not just PNG.
+image = { version = "0.25.10", default-features = false, features = ["png", "ico", "bmp", "jpeg", "gif", "webp"], optional = true }
 log = { workspace = true, optional = true }
 # SVG sidebar/app icons (lxapp icons may be SVG, as on macOS).
 resvg = { version = "0.45.1", optional = true }

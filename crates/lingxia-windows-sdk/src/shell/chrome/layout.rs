@@ -100,6 +100,9 @@ pub struct WindowsShellAddressBarLayout {
     pub bookmarked: bool,
     /// Whether the current page is pinned as a sidebar shortcut.
     pub pinned: bool,
+    /// Current page is an http(s) website; the capsule's star/pin buttons
+    /// only exist then (internal pages cannot be bookmarked, as on macOS).
+    pub web: bool,
     /// Open browser-tab count, shown on the phone bar's tabs button.
     pub tab_count: usize,
 }

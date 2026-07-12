@@ -292,9 +292,17 @@ fn is_shell_owner_appid(appid: &str) -> bool {
 
 pub(crate) fn open_home_app(appid: &str) -> Result<(), String> {
     set_shell_owner_appid(appid);
-    lxapp::open_lxapp(appid, LxAppStartupOptions::new(""))
-        .map(|_| ())
-        .map_err(|err| err.to_string())
+    let app =
+        lxapp::open_lxapp(appid, LxAppStartupOptions::new("")).map_err(|err| err.to_string())?;
+    // A restarted lxapp cannot reuse browser WebViews attached to its previous
+    // session. Persistent pins remain in the bookmark store and reopen cleanly.
+    // If the presented tab is among the pruned, the tabs-changed handler drops
+    // the stale presentation and restores the main webview.
+    #[cfg(feature = "browser-runtime")]
+    let _ = lingxia_browser::prune_stale_owner_tabs(&app.appid, app.session_id());
+    #[cfg(not(feature = "browser-runtime"))]
+    let _ = app;
+    Ok(())
 }
 
 fn shell_owner_appid() -> Option<String> {
@@ -895,6 +903,10 @@ fn build_address_bar_layout() -> Option<WindowsShellAddressBarLayout> {
         .is_some();
     #[cfg(not(feature = "browser-shell"))]
     let pinned = false;
+    let web = tab
+        .current_url
+        .as_deref()
+        .is_some_and(|url| url.starts_with("http://") || url.starts_with("https://"));
     Some(WindowsShellAddressBarLayout {
         visible: true,
         url_text: browser_tab_display_url(&tab),
@@ -903,6 +915,7 @@ fn build_address_bar_layout() -> Option<WindowsShellAddressBarLayout> {
         can_go_forward: tab.can_go_forward,
         bookmarked,
         pinned,
+        web,
         tab_count: browser_tabs().len(),
     })
 }
@@ -1036,9 +1049,10 @@ fn build_tab_bar_layout(
                 .collect::<Vec<_>>()
         })
         .unwrap_or_default();
-    let mut auxiliary_items = build_pinned_bookmark_items();
+    let browser_tabs = browser_tabs();
+    let mut auxiliary_items = build_pinned_bookmark_items(&browser_tabs);
     auxiliary_items.extend(build_open_lxapp_items(&app.appid));
-    auxiliary_items.extend(build_browser_tab_items());
+    auxiliary_items.extend(build_browser_tab_items(browser_tabs));
     // The "+" opens a new browser tab, so it belongs to the full browser
     // environment only — not the device-framed dev runner, which hosts a
     // single lxapp with no browser.
@@ -1172,10 +1186,11 @@ fn build_sidebar_header_actions() -> Vec<WindowsShellHeaderActionLayout> {
     ]
 }
 
-fn build_browser_tab_items() -> Vec<WindowsShellAuxiliaryItemLayout> {
+// Browser tab rows stay visible independently of pinned shortcuts (a pinned
+// site keeps both its grid tile and its row), matching the macOS sidebar.
+fn build_browser_tab_items(tabs: Vec<BrowserTabSummary>) -> Vec<WindowsShellAuxiliaryItemLayout> {
     let presented = presented_browser_tab();
-    browser_tabs()
-        .into_iter()
+    tabs.into_iter()
         .map(|tab| {
             let active = presented.as_deref() == Some(tab.tab_id.as_str());
             let title = browser_tab_display_title(&tab);
@@ -1194,12 +1209,11 @@ fn build_browser_tab_items() -> Vec<WindowsShellAuxiliaryItemLayout> {
 }
 
 #[cfg(feature = "browser-shell")]
-fn build_pinned_bookmark_items() -> Vec<WindowsShellAuxiliaryItemLayout> {
+fn build_pinned_bookmark_items(tabs: &[BrowserTabSummary]) -> Vec<WindowsShellAuxiliaryItemLayout> {
     let active_url = presented_browser_tab()
         .and_then(|tab_id| browser_tab_summary(&tab_id))
         .and_then(|tab| tab.current_url)
         .map(|url| lingxia_browser_shell::normalize_bookmark_url(&url));
-    let tabs = browser_tabs();
     lingxia_browser_shell::bookmarks_snapshot()
         .map(|snapshot| {
             snapshot
@@ -1239,7 +1253,9 @@ fn build_pinned_bookmark_items() -> Vec<WindowsShellAuxiliaryItemLayout> {
 }
 
 #[cfg(not(feature = "browser-shell"))]
-fn build_pinned_bookmark_items() -> Vec<WindowsShellAuxiliaryItemLayout> {
+fn build_pinned_bookmark_items(
+    _tabs: &[BrowserTabSummary],
+) -> Vec<WindowsShellAuxiliaryItemLayout> {
     Vec::new()
 }
 
@@ -2315,11 +2331,33 @@ fn handle_sidebar_action(_appid: &str, _session_id: u64, _action_id: &str) {}
 
 #[cfg(feature = "browser-shell")]
 fn browser_page_urls_match(current: &str, target: &str) -> bool {
+    if let (Some(current_route), Some(target_route)) = (
+        browser_internal_page_key(current),
+        browser_internal_page_key(target),
+    ) {
+        return current_route == target_route;
+    }
     if target.starts_with("http://") || target.starts_with("https://") {
         lingxia_browser_shell::normalize_bookmark_url(current)
             == lingxia_browser_shell::normalize_bookmark_url(target)
     } else {
         current == target
+    }
+}
+
+#[cfg(any(feature = "browser-shell", feature = "browser-runtime", test))]
+fn browser_internal_page_key(url: &str) -> Option<&'static str> {
+    let normalized = url.trim().to_ascii_lowercase();
+    let route = normalized
+        .strip_prefix("lingxia://")?
+        .split(['/', '?', '#'])
+        .next()?;
+    match route {
+        "settings" => Some("settings"),
+        "bookmarks" => Some("bookmarks"),
+        "history" => Some("history"),
+        "downloads" => Some("downloads"),
+        _ => None,
     }
 }
 
@@ -2331,6 +2369,11 @@ fn browser_page_urls_match(current: &str, target: &str) -> bool {
 /// Presents `url` as a browser page: when a tab already shows it, that tab
 /// is activated and presented; otherwise a new tab opens at `url` (same
 /// flow as the sidebar "New Tab" row, just with a target URL).
+///
+/// Internal `lingxia://` pages match by route, so re-opening Settings finds
+/// the existing tab whatever query/fragment it carries. A bare re-open only
+/// presents it (keeping scroll and dialog state); a deep link (query or
+/// fragment on the target) navigates the tab so hash routing fires.
 #[cfg(feature = "browser-runtime")]
 fn open_or_present_browser_page(appid: &str, session_id: u64, url: &str) {
     let existing = browser_tabs().into_iter().find(|tab| {
@@ -2339,6 +2382,11 @@ fn open_or_present_browser_page(appid: &str, session_id: u64, url: &str) {
             .is_some_and(|current| browser_page_urls_match(current, url))
     });
     if let Some(existing) = existing {
+        if browser_internal_page_deep_link(url)
+            && let Err(err) = lingxia_browser::open(url, Some(&existing.tab_id))
+        {
+            log::error!("failed to navigate browser page {url}: {err}");
+        }
         handle_browser_tab_click(appid, &existing.tab_id);
         return;
     }
@@ -2346,6 +2394,13 @@ fn open_or_present_browser_page(appid: &str, session_id: u64, url: &str) {
         Ok(tab_id) => present_browser_tab_when_ready(appid, tab_id),
         Err(err) => log::error!("failed to open browser page {url} for {appid}: {err}"),
     }
+}
+
+/// An internal page target that carries a query or fragment, e.g.
+/// `lingxia://settings#clear-site-data?tabId=t1`.
+#[cfg(any(feature = "browser-shell", feature = "browser-runtime", test))]
+fn browser_internal_page_deep_link(url: &str) -> bool {
+    browser_internal_page_key(url).is_some() && url.contains(['?', '#'])
 }
 
 /// Opens the app-menu popup under the top-bar app icon. The product shell adds
@@ -3254,4 +3309,37 @@ fn parse_css_color(raw: &str, fallback: u32) -> u32 {
 
 fn is_transparent_css_color(raw: &str) -> bool {
     raw.trim().eq_ignore_ascii_case("transparent")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{browser_internal_page_deep_link, browser_internal_page_key};
+
+    #[test]
+    fn internal_page_key_ignores_url_decoration() {
+        assert_eq!(
+            browser_internal_page_key("lingxia://settings"),
+            Some("settings")
+        );
+        assert_eq!(
+            browser_internal_page_key("lingxia://settings/#privacy"),
+            Some("settings")
+        );
+        assert_eq!(
+            browser_internal_page_key("LINGXIA://BOOKMARKS/?q=rust#top"),
+            Some("bookmarks")
+        );
+        assert_eq!(browser_internal_page_key("lingxia://newtab"), None);
+        assert_eq!(browser_internal_page_key("https://example.com"), None);
+    }
+
+    #[test]
+    fn deep_link_requires_query_or_fragment() {
+        assert!(browser_internal_page_deep_link(
+            "lingxia://settings#clear-site-data?tabId=t1"
+        ));
+        assert!(!browser_internal_page_deep_link("lingxia://settings"));
+        assert!(!browser_internal_page_deep_link("lingxia://settings/"));
+        assert!(!browser_internal_page_deep_link("https://example.com/?q=1"));
+    }
 }
