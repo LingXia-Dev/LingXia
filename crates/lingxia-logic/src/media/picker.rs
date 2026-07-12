@@ -11,21 +11,27 @@ use lingxia_platform::traits::app_runtime::AppRuntime;
 #[cfg(not(target_os = "macos"))]
 use lingxia_service::media::ChooseMediaMode;
 use lingxia_service::media::{ChooseMediaRequest, MediaKind, MediaSource};
-use lxapp::{LxApp, lx};
+use lxapp::LxApp;
 use parser::{parse_camera, parse_choose_mode, parse_sources};
-use rong::{JSContext, JSFunc, JSResult, JSValue, JsonToJSValue, function::Optional};
+use rong::{JSContext, JSResult, JSValue, JsonToJSValue, function::Optional};
 use serde_json::Value;
 use source_picker::present_source_picker;
 use std::fs;
 use std::path::{Path, PathBuf};
 use types::{ChosenMediaEntry, JSChooseMediaOptions, MediaKey};
 
-pub fn init(ctx: &JSContext) -> JSResult<()> {
-    let choose_media_func = JSFunc::new(ctx, |ctx, options| async move {
-        choose_media(ctx, options).await
-    })?;
-    lx::register_js_api(ctx, "chooseMedia", choose_media_func)?;
-    Ok(())
+pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
+    register_api(ctx)
+}
+
+rong::js_api! {
+    fn register_api(ctx) {
+        namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
+        fn chooseMedia(
+            ts_params = "options?: ChooseMediaOptions",
+            ts_return = "Promise<ChosenMediaEntry[]>"
+        ) = choose_media;
+    }
 }
 
 async fn choose_media(

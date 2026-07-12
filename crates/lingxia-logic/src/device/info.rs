@@ -1,8 +1,7 @@
 use lingxia_platform::traits::device::Device;
 use lingxia_platform::{DeviceInfo, ScreenInfo};
 use lxapp::LxApp;
-use lxapp::lx;
-use rong::{IntoJSObject, JSContext, JSFunc, JSResult};
+use rong::{IntoJSObject, JSContext, JSResult};
 
 #[derive(Debug, Clone, IntoJSObject)]
 pub struct DevInfoObj {
@@ -45,13 +44,16 @@ impl From<ScreenInfo> for ScreenInfoObj {
     }
 }
 
-pub fn init(ctx: &JSContext) -> JSResult<()> {
-    let device_info_func = JSFunc::new(ctx, device_info)?;
-    lx::register_js_api(ctx, "getDeviceInfo", device_info_func)?;
+pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
+    register_api(ctx)
+}
 
-    let screen_info_func = JSFunc::new(ctx, screen_info)?;
-    lx::register_js_api(ctx, "getScreenInfo", screen_info_func)?;
-    Ok(())
+rong::js_api! {
+    fn register_api(ctx) {
+        namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
+        fn getDeviceInfo(ts_return = "DeviceInfo") = device_info;
+        fn getScreenInfo(ts_return = "ScreenInfo") = screen_info;
+    }
 }
 
 fn device_info(ctx: JSContext) -> JSResult<DevInfoObj> {

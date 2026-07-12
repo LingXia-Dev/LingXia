@@ -2,7 +2,7 @@ use crate::i18n::{js_error_from_business_code, js_error_from_platform_error};
 use crate::i18n::{js_internal_error, js_timeout_error};
 use lingxia_messaging::{CallbackResult, get_callback, register_handler, remove_callback};
 use lingxia_platform::traits::wifi::{Wifi, WifiConnectRequest, WifiGetConnectedRequest};
-use lxapp::{LxApp, lx, publish_app_event, register_app_handler, unregister_app_handler};
+use lxapp::{LxApp, publish_app_event, register_app_handler, unregister_app_handler};
 use lxapp::{info, warn};
 use rong::function::Optional;
 use rong::{FromJSObject, IntoJSObject, JSContext, JSFunc, JSResult, RongJSError};
@@ -361,27 +361,19 @@ fn off_wifi_connected(ctx: JSContext, callback: Optional<JSFunc>) -> JSResult<()
 }
 
 /// Initialize WiFi API bindings
-pub fn init(ctx: &JSContext) -> JSResult<()> {
-    let start_wifi_func = JSFunc::new(ctx, start_wifi)?;
-    lx::register_js_api(ctx, "startWifi", start_wifi_func)?;
+pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
+    register_api(ctx)
+}
 
-    let stop_wifi_func = JSFunc::new(ctx, stop_wifi)?;
-    lx::register_js_api(ctx, "stopWifi", stop_wifi_func)?;
-
-    let connect_wifi_func = JSFunc::new(ctx, connect_wifi)?;
-    lx::register_js_api(ctx, "connectWifi", connect_wifi_func)?;
-
-    let get_wifi_list_func = JSFunc::new(ctx, get_wifi_list)?;
-    lx::register_js_api(ctx, "getWifiList", get_wifi_list_func)?;
-
-    let get_connected_wifi_func = JSFunc::new(ctx, get_connected_wifi)?;
-    lx::register_js_api(ctx, "getConnectedWifi", get_connected_wifi_func)?;
-
-    let on_wifi_connected_func = JSFunc::new(ctx, on_wifi_connected)?;
-    lx::register_js_api(ctx, "onWifiConnected", on_wifi_connected_func)?;
-
-    let off_wifi_connected_func = JSFunc::new(ctx, off_wifi_connected)?;
-    lx::register_js_api(ctx, "offWifiConnected", off_wifi_connected_func)?;
-
-    Ok(())
+rong::js_api! {
+    fn register_api(ctx) {
+        namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
+        fn startWifi = start_wifi;
+        fn stopWifi = stop_wifi;
+        fn connectWifi(ts_params = "options: ConnectWifiOptions") = connect_wifi;
+        fn getWifiList(ts_return = "Promise<WifiInfo[]>") = get_wifi_list;
+        fn getConnectedWifi(ts_return = "Promise<WifiInfo>") = get_connected_wifi;
+        fn onWifiConnected(ts_params = "callback: WifiConnectedCallback") = on_wifi_connected;
+        fn offWifiConnected(ts_params = "callback?: WifiConnectedCallback") = off_wifi_connected;
+    }
 }

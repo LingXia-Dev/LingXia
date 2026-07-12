@@ -1,7 +1,7 @@
 use crate::i18n::{js_error_from_platform_error, js_service_unavailable_error};
 use lingxia_platform::traits::pull_to_refresh::PullToRefresh;
-use lxapp::{LxApp, lx};
-use rong::{JSContext, JSFunc, JSResult};
+use lxapp::LxApp;
+use rong::{JSContext, JSResult};
 
 /// lx.startPullDownRefresh()
 ///
@@ -46,10 +46,13 @@ fn stop_pull_down_refresh(ctx: JSContext) -> JSResult<()> {
 }
 
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
-    let start_pull_down_refresh_fn = JSFunc::new(ctx, start_pull_down_refresh)?;
-    lx::register_js_api(ctx, "startPullDownRefresh", start_pull_down_refresh_fn)?;
+    register_api(ctx)
+}
 
-    let stop_pull_down_refresh_fn = JSFunc::new(ctx, stop_pull_down_refresh)?;
-    lx::register_js_api(ctx, "stopPullDownRefresh", stop_pull_down_refresh_fn)?;
-    Ok(())
+rong::js_api! {
+    fn register_api(ctx) {
+        namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
+        fn startPullDownRefresh = start_pull_down_refresh;
+        fn stopPullDownRefresh = stop_pull_down_refresh;
+    }
 }

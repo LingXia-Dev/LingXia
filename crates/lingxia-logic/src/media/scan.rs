@@ -1,7 +1,7 @@
 use crate::i18n::{js_error_from_platform_error, js_internal_error, js_invalid_parameter_error};
 use lingxia_service::media::{ScanCodeRequest, ScanType};
-use lxapp::{LxApp, lx};
-use rong::{FromJSObject, IntoJSObject, JSContext, JSFunc, JSResult, function::Optional};
+use lxapp::LxApp;
+use rong::{FromJSObject, IntoJSObject, JSContext, JSResult, function::Optional};
 use serde_json::Value;
 
 #[derive(FromJSObject, Clone, Default)]
@@ -20,10 +20,18 @@ struct ScanResultObj {
     scan_type: String,
 }
 
-pub fn init(ctx: &JSContext) -> JSResult<()> {
-    let scan_func = JSFunc::new(ctx, scan)?;
-    lx::register_js_api(ctx, "scanCode", scan_func)?;
-    Ok(())
+pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
+    register_api(ctx)
+}
+
+rong::js_api! {
+    fn register_api(ctx) {
+        namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
+        fn scanCode(
+            ts_params = "options?: ScanCodeOptions",
+            ts_return = "Promise<ScanCodeResult>"
+        ) = scan;
+    }
 }
 
 async fn scan(ctx: JSContext, options: Optional<JSScanOptions>) -> JSResult<ScanResultObj> {

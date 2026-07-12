@@ -10,7 +10,7 @@ use lingxia_transfer::{
     UploadBehavior, UploadEvent as TransferUploadEvent, UploadFailure, UploadFailureKind,
     UploadMethod, UploadRequest, resolve_upload_file_name, upload_file_with_behavior,
 };
-use lxapp::{LxApp, lx};
+use lxapp::LxApp;
 use rong::{
     HostError, IntoJSObject, JSContext, JSFunc, JSObject, JSResult, JSValue, Promise,
     function::Optional,
@@ -809,8 +809,16 @@ async fn upload_cancel_task(state: &Arc<Mutex<UploadIteratorState>>) -> JSResult
     Ok(())
 }
 
-pub(super) fn init(ctx: &JSContext) -> JSResult<()> {
-    let upload_file_func = JSFunc::new(ctx, upload_file)?;
-    lx::register_js_api(ctx, "uploadFile", upload_file_func)?;
-    Ok(())
+pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
+    register_api(ctx)
+}
+
+rong::js_api! {
+    fn register_api(ctx) {
+        namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
+        fn uploadFile(
+            ts_params = "options: UploadOptions",
+            ts_return = "UploadTask"
+        ) = upload_file;
+    }
 }

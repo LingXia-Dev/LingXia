@@ -5,8 +5,8 @@ use crate::i18n::js_internal_error;
 use crate::i18n::js_service_unavailable_error;
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 use lingxia_platform::traits::ui::{ToastIcon, ToastOptions, ToastPosition, UserFeedback};
-use lxapp::{LxApp, lx};
-use rong::{FromJSObject, JSContext, JSFunc, JSResult};
+use lxapp::LxApp;
+use rong::{FromJSObject, JSContext, JSResult};
 
 /// Toast options from JavaScript
 #[derive(FromJSObject)]
@@ -133,13 +133,13 @@ async fn hide_toast(ctx: JSContext) -> JSResult<()> {
 
 /// Initialize toast functions
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
-    // Register showToast function
-    let show_toast_func = JSFunc::new(ctx, show_toast)?;
-    lx::register_js_api(ctx, "showToast", show_toast_func)?;
+    register_api(ctx)
+}
 
-    // Register hideToast function
-    let hide_toast_func = JSFunc::new(ctx, hide_toast)?;
-    lx::register_js_api(ctx, "hideToast", hide_toast_func)?;
-
-    Ok(())
+rong::js_api! {
+    fn register_api(ctx) {
+        namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
+        fn showToast(ts_params = "options: ShowToastOptions", ts_return = "void") = show_toast;
+        fn hideToast(ts_return = "void") = hide_toast;
+    }
 }

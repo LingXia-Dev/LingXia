@@ -13,7 +13,7 @@ use lingxia_transfer::user_cache::{
     self, DownloadBehavior, DownloadEvent as TransferDownloadEvent, DownloadFailure,
     DownloadFailureKind,
 };
-use lxapp::{LxApp, LxAppSecurityPrivilege, lx};
+use lxapp::{LxApp, LxAppSecurityPrivilege};
 use rong::{
     HostError, IntoJSObject, JSContext, JSFunc, JSObject, JSResult, JSSymbol, JSValue, Promise,
     function::Optional,
@@ -1563,10 +1563,16 @@ async fn download_cancel_task(state: &Arc<Mutex<DownloadIteratorState>>) -> JSRe
     }
 }
 
-pub(super) fn init(ctx: &JSContext) -> JSResult<()> {
-    let download_file_func = JSFunc::new(ctx, download_file)?;
-    lx::register_js_api(ctx, "downloadFile", download_file_func)?;
-    Ok(())
+pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
+    register_api(ctx)
+}
+
+rong::js_api! {
+    fn register_api(ctx) {
+        namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
+        // Precise correlated overloads remain in the curated Lx augmentation.
+        fn downloadFile(ts_params = "options: never", ts_return = "never") = download_file;
+    }
 }
 
 #[cfg(test)]

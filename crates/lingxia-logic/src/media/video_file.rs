@@ -8,7 +8,7 @@ use lingxia_platform::traits::media_runtime::{
     VideoInfo as PlatformVideoInfo,
 };
 use lingxia_service::storage;
-use lxapp::{LxApp, lx};
+use lxapp::LxApp;
 use rong::{FromJSObject, HostError, IntoJSObject, JSContext, JSFunc, JSObject, JSResult, Promise};
 use serde::Deserialize;
 use std::fs;
@@ -125,16 +125,26 @@ struct CompressProgressState {
     closed: bool,
 }
 
-pub fn init(ctx: &JSContext) -> JSResult<()> {
-    let get_video_info_func = JSFunc::new(ctx, get_video_info_api)?;
-    lx::register_js_api(ctx, "getVideoInfo", get_video_info_func)?;
+pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
+    register_api(ctx)
+}
 
-    let extract_video_thumbnail_func = JSFunc::new(ctx, extract_video_thumbnail_api)?;
-    lx::register_js_api(ctx, "extractVideoThumbnail", extract_video_thumbnail_func)?;
-
-    let compress_video_func = JSFunc::new(ctx, compress_video_api)?;
-    lx::register_js_api(ctx, "compressVideo", compress_video_func)?;
-    Ok(())
+rong::js_api! {
+    fn register_api(ctx) {
+        namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
+        fn getVideoInfo(
+            ts_params = "options: GetVideoInfoOptions",
+            ts_return = "Promise<VideoInfo>"
+        ) = get_video_info_api;
+        fn extractVideoThumbnail(
+            ts_params = "options: ExtractVideoThumbnailOptions",
+            ts_return = "Promise<ExtractVideoThumbnailResult>"
+        ) = extract_video_thumbnail_api;
+        fn compressVideo(
+            ts_params = "options: CompressVideoOptions",
+            ts_return = "CompressVideoTask"
+        ) = compress_video_api;
+    }
 }
 
 async fn get_video_info_api(

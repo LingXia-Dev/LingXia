@@ -1,6 +1,5 @@
 use ::lxapp::LxApp;
-use ::lxapp::lx;
-use rong::{IntoJSObject, JSContext, JSFunc, JSResult};
+use rong::{IntoJSObject, JSContext, JSResult};
 
 #[derive(Debug, Clone, IntoJSObject)]
 struct LxAppInfo {
@@ -25,7 +24,12 @@ fn get_lxapp_info(ctx: JSContext) -> JSResult<LxAppInfo> {
 }
 
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
-    let get_lxapp_info_func = JSFunc::new(ctx, get_lxapp_info)?;
-    lx::register_js_api(ctx, "getLxAppInfo", get_lxapp_info_func)?;
-    Ok(())
+    register_api(ctx)
+}
+
+rong::js_api! {
+    fn register_api(ctx) {
+        namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
+        fn getLxAppInfo(ts_return = "PublicLxAppInfo") = get_lxapp_info;
+    }
 }

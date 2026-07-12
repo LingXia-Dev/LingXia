@@ -3,7 +3,7 @@ use lingxia_platform::traits::app_runtime::{AppRuntime, OpenUrlRequest, OpenUrlT
 use lingxia_platform::traits::ui::{SurfaceKind, SurfacePosition};
 use lxapp::{
     LxApp, LxAppError, PageQueryInput, PageSurfaceRequest, PageSurfaceTarget, PageTarget,
-    list_lxapps, lx, publish_app_event, register_app_handler, try_get, unregister_app_handler,
+    list_lxapps, publish_app_event, register_app_handler, try_get, unregister_app_handler,
 };
 use rong::{
     Class, HostError, IntoJSObject, JSContext, JSFunc, JSObject, JSResult, JSValue, Promise,
@@ -79,7 +79,7 @@ impl JSSurface {
         .into())
     }
 
-    #[js_method(rename = "close")]
+    #[js_method(rename = "close", ts_return = "Promise<void>")]
     fn close(&self, ctx: JSContext) -> JSResult<Promise> {
         let lxapp = LxApp::from_ctx(&ctx)?;
         let id = self.id.clone();
@@ -143,14 +143,20 @@ impl Emitter for JSSurface {
 
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     ctx.register_hidden_class::<JSSurface>()?;
-    lx::register_js_api(ctx, "openSurface", JSFunc::new(ctx, open_surface_spec)?)?;
-    lx::register_js_api(ctx, "openExternal", JSFunc::new(ctx, open_external)?)?;
-    lx::register_js_api(
-        ctx,
-        "onSurfaceContext",
-        JSFunc::new(ctx, surface_on_change)?,
-    )?;
-    Ok(())
+    register_surface_api(ctx)
+}
+
+rong::js_api! {
+    fn register_surface_api(ctx) {
+        namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
+        // Precise correlated overloads remain in the curated Lx augmentation.
+        fn openSurface(ts_params = "spec: never", ts_return = "never") = open_surface_spec;
+        fn openExternal = open_external;
+        fn onSurfaceContext(
+            ts_params = "handler: (context: SurfaceContext) => void",
+            ts_return = "() => void"
+        ) = surface_on_change;
+    }
 }
 
 /// Event name on the per-app bus carrying `{ sizeClass, bottomOwner }`.

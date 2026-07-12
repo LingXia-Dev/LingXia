@@ -1,7 +1,7 @@
 use crate::i18n::{js_internal_error, js_service_unavailable_error};
 use lingxia_platform::traits::ui::UIUpdate;
-use lxapp::{LxApp, lx};
-use rong::{FromJSObject, JSContext, JSFunc, JSResult};
+use lxapp::LxApp;
+use rong::{FromJSObject, JSContext, JSResult};
 use std::sync::Arc;
 
 /// Check if NavigationBar is currently visible for the current page
@@ -104,14 +104,14 @@ fn hide_home_button(ctx: JSContext) -> JSResult<bool> {
 
 /// Initialize NavigationBar module
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
-    let set_title_func = JSFunc::new(ctx, set_navigation_bar_title)?;
-    lx::register_js_api(ctx, "setNavigationBarTitle", set_title_func)?;
+    register_api(ctx)
+}
 
-    let set_color_func = JSFunc::new(ctx, set_navigation_bar_color)?;
-    lx::register_js_api(ctx, "setNavigationBarColor", set_color_func)?;
-
-    let hide_home_func = JSFunc::new(ctx, hide_home_button)?;
-    lx::register_js_api(ctx, "hideHomeButton", hide_home_func)?;
-
-    Ok(())
+rong::js_api! {
+    fn register_api(ctx) {
+        namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
+        fn setNavigationBarTitle(ts_params = "options: PublicSetNavigationBarTitleOptions") = set_navigation_bar_title;
+        fn setNavigationBarColor(ts_params = "options: PublicSetNavigationBarColorOptions") = set_navigation_bar_color;
+        fn hideHomeButton = hide_home_button;
+    }
 }

@@ -2,9 +2,8 @@ use crate::I18nKey;
 use crate::i18n::{js_error_from_lxapp_error, t};
 use crate::update;
 use lingxia_platform::traits::ui::{ToastIcon, ToastOptions, ToastPosition, UserFeedback};
-use lxapp::lx;
 use lxapp::{self, LxApp, LxAppError, LxAppStartupOptions, ReleaseType, UpdateManager};
-use rong::{FromJSObject, JSContext, JSFunc, JSObject, JSResult};
+use rong::{FromJSObject, JSContext, JSObject, JSResult};
 use serde_json::Value;
 use std::sync::Arc;
 
@@ -178,12 +177,13 @@ async fn navigate_back_lxapp(ctx: JSContext) -> JSResult<()> {
 }
 
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
-    // Register navigator
-    let navigate_to_lxapp = JSFunc::new(ctx, navigate_to_lxapp)?;
-    lx::register_js_api(ctx, "navigateToLxApp", navigate_to_lxapp)?;
+    register_api(ctx)
+}
 
-    let navigate_back_lxapp = JSFunc::new(ctx, navigate_back_lxapp)?;
-    lx::register_js_api(ctx, "navigateBackLxApp", navigate_back_lxapp)?;
-
-    Ok(())
+rong::js_api! {
+    fn register_api(ctx) {
+        namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
+        fn navigateToLxApp(ts_params = "options: NavigateToLxAppOptions") = navigate_to_lxapp;
+        fn navigateBackLxApp = navigate_back_lxapp;
+    }
 }

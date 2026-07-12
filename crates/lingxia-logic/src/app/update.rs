@@ -59,10 +59,15 @@ impl AppUpdateIteratorState {
     }
 }
 
-pub(super) fn init(ctx: &JSContext, app: &JSObject) -> JSResult<()> {
-    let check_update = JSFunc::new(ctx, check_app_update)?.name("checkUpdate")?;
-    app.set("checkUpdate", check_update)?;
-    Ok(())
+pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
+    register_api(ctx)
+}
+
+rong::js_api! {
+    fn register_api(ctx) {
+        namespace HostAppApi = ctx.global().get::<_, rong::JSObject>("lx")?.get::<_, rong::JSObject>("app")?;
+        fn checkUpdate(ts_return = "Promise<HostAppUpdateCheckResult>") = check_app_update;
+    }
 }
 
 async fn check_app_update(ctx: JSContext) -> JSResult<JSObject> {

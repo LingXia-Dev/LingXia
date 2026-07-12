@@ -5,8 +5,8 @@ use crate::i18n::{
 use lingxia_platform::traits::share::{
     ShareRequest, ShareResult as PlatformShareResult, ShareService,
 };
-use lxapp::{LxApp, LxAppError, lx};
-use rong::{IntoJSObject, JSArray, JSContext, JSFunc, JSObject, JSResult, JSValue};
+use lxapp::{LxApp, LxAppError};
+use rong::{IntoJSObject, JSArray, JSContext, JSObject, JSResult, JSValue};
 use serde_json::Value;
 
 struct JSShareOptions {
@@ -312,7 +312,15 @@ impl From<PlatformShareResult> for JSShareResult {
 }
 
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
-    let share_func = JSFunc::new(ctx, |ctx, options| async move { share(ctx, options).await })?;
-    lx::register_js_api(ctx, "share", share_func)?;
-    Ok(())
+    register_api(ctx)
+}
+
+rong::js_api! {
+    fn register_api(ctx) {
+        namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
+        fn share(
+            ts_params = "options: ShareOptions",
+            ts_return = "Promise<ShareResult>"
+        ) = share;
+    }
 }

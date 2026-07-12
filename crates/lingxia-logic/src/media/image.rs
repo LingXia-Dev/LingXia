@@ -4,8 +4,8 @@ use crate::i18n::{
 };
 use lingxia_platform::traits::media_runtime::{CompressImageRequest, MediaRuntime};
 use lingxia_service::storage;
-use lxapp::{LxApp, lx};
-use rong::{FromJSObject, IntoJSObject, JSContext, JSFunc, JSResult};
+use lxapp::LxApp;
+use rong::{FromJSObject, IntoJSObject, JSContext, JSResult};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -40,13 +40,22 @@ struct JSCompressImageResult {
     temp_file_path: String,
 }
 
-pub fn init(ctx: &JSContext) -> JSResult<()> {
-    let get_image_info_func = JSFunc::new(ctx, get_image_info_api)?;
-    lx::register_js_api(ctx, "getImageInfo", get_image_info_func)?;
+pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
+    register_api(ctx)
+}
 
-    let compress_image_func = JSFunc::new(ctx, compress_image_api)?;
-    lx::register_js_api(ctx, "compressImage", compress_image_func)?;
-    Ok(())
+rong::js_api! {
+    fn register_api(ctx) {
+        namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
+        fn getImageInfo(
+            ts_params = "options: GetImageInfoOptions",
+            ts_return = "Promise<ImageInfo>"
+        ) = get_image_info_api;
+        fn compressImage(
+            ts_params = "options: CompressImageOptions",
+            ts_return = "Promise<CompressImageResult>"
+        ) = compress_image_api;
+    }
 }
 
 async fn get_image_info_api(

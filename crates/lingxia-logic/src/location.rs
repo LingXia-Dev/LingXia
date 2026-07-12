@@ -4,9 +4,9 @@ use crate::i18n::{
 };
 use lingxia_platform::error::PlatformError;
 use lingxia_platform::traits::location::{Location, LocationRequestConfig};
-use lxapp::{LxApp, lx};
+use lxapp::LxApp;
 use rong::function::Optional;
-use rong::{FromJSObject, IntoJSObject, JSContext, JSFunc, JSResult, RongJSError};
+use rong::{FromJSObject, IntoJSObject, JSContext, JSResult, RongJSError};
 use serde_json::Value;
 
 fn handle_location_error(code: u32) -> RongJSError {
@@ -182,9 +182,16 @@ async fn get_location(
     }
 }
 
-pub fn init(ctx: &JSContext) -> JSResult<()> {
-    let get_location_func = JSFunc::new(ctx, get_location)?;
-    lx::register_js_api(ctx, "getLocation", get_location_func)?;
+pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
+    register_api(ctx)
+}
 
-    Ok(())
+rong::js_api! {
+    fn register_api(ctx) {
+        namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
+        fn getLocation(
+            ts_params = "options?: GetLocationOptions",
+            ts_return = "Promise<LocationInfo>"
+        ) = get_location;
+    }
 }

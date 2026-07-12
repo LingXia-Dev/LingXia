@@ -6,7 +6,7 @@ use lingxia_platform::traits::screenshot::AppScreenshot;
 use lingxia_service::storage;
 use lxapp::LxApp;
 use rong::function::Optional;
-use rong::{FromJSObject, IntoJSObject, JSContext, JSFunc, JSObject, JSResult};
+use rong::{FromJSObject, IntoJSObject, JSContext, JSResult};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -27,10 +27,18 @@ struct JSAppScreenshotResult {
     height: Option<u32>,
 }
 
-pub(super) fn init(ctx: &JSContext, app: &JSObject) -> JSResult<()> {
-    let screenshot = JSFunc::new(ctx, app_screenshot)?.name("screenshot")?;
-    app.set("screenshot", screenshot)?;
-    Ok(())
+pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
+    register_api(ctx)
+}
+
+rong::js_api! {
+    fn register_api(ctx) {
+        namespace HostAppApi = ctx.global().get::<_, rong::JSObject>("lx")?.get::<_, rong::JSObject>("app")?;
+        fn screenshot(
+            ts_params = "options?: AppScreenshotOptions",
+            ts_return = "Promise<AppScreenshotResult>"
+        ) = app_screenshot;
+    }
 }
 
 /// `lx.app.screenshot(options?)` — capture the host app's window as a PNG.

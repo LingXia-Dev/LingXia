@@ -7,10 +7,10 @@ use futures::Stream;
 use lingxia_service::file::{
     ChooseDirectoryRequest, ChooseFileRequest, FileDialogFilter, OpenFileRequest,
 };
-use lxapp::{LxApp, lx};
+use lxapp::LxApp;
 use rong::{
     AnyJSTypedArray, Class, FromJSObject, HostError, IntoJSAsyncIteratorExt, IntoJSObject,
-    IntoJSValue, JSArrayBuffer, JSContext, JSFunc, JSObject, JSResult, JSValue, RongJSError,
+    IntoJSValue, JSArrayBuffer, JSContext, JSObject, JSResult, JSValue, RongJSError,
     function::Optional, js_class, js_method,
 };
 use std::path::{Path, PathBuf};
@@ -1253,12 +1253,25 @@ fn get_file_manager(ctx: JSContext) -> JSResult<JSObject> {
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     ctx.register_hidden_class::<JSDirEntry>()?;
     ctx.register_hidden_class::<JSFileManager>()?;
-    lx::register_js_api(ctx, "openFile", JSFunc::new(ctx, open_file)?)?;
-    lx::register_js_api(ctx, "chooseFile", JSFunc::new(ctx, choose_file)?)?;
-    lx::register_js_api(ctx, "chooseDirectory", JSFunc::new(ctx, choose_directory)?)?;
-    lx::register_js_api(ctx, "getFileManager", JSFunc::new(ctx, get_file_manager)?)?;
+    register_file_api(ctx)?;
     download::init(ctx)?;
     upload::init(ctx)?;
 
     Ok(())
+}
+
+rong::js_api! {
+    fn register_file_api(ctx) {
+        namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
+        fn openFile(ts_params = "options: OpenFileOptions", ts_return = "void") = open_file;
+        fn chooseFile(
+            ts_params = "options?: ChooseFileOptions",
+            ts_return = "Promise<ChooseFileResult>"
+        ) = choose_file;
+        fn chooseDirectory(
+            ts_params = "options?: ChooseDirectoryOptions",
+            ts_return = "Promise<ChooseDirectoryResult>"
+        ) = choose_directory;
+        fn getFileManager(ts_return = "PublicFileManager") = get_file_manager;
+    }
 }

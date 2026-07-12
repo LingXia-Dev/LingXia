@@ -8,8 +8,8 @@ use crate::{I18nKey, i18n::t};
 use lingxia_platform::error::PlatformError;
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 use lingxia_platform::traits::ui::UserFeedback;
-use lxapp::{LxApp, lx};
-use rong::{FromJSObject, IntoJSObject, JSContext, JSFunc, JSResult, RongJSError};
+use lxapp::LxApp;
+use rong::{FromJSObject, IntoJSObject, JSContext, JSResult, RongJSError};
 use serde::Deserialize;
 use std::sync::Arc;
 
@@ -155,9 +155,15 @@ async fn present_action_sheet_native(
 
 /// Initialize action sheet functions
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
-    // Register showActionSheet function
-    let show_action_sheet_func = JSFunc::new(ctx, show_action_sheet)?;
-    lx::register_js_api(ctx, "showActionSheet", show_action_sheet_func)?;
+    register_api(ctx)
+}
 
-    Ok(())
+rong::js_api! {
+    fn register_api(ctx) {
+        namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
+        fn showActionSheet(
+            ts_params = "options: ShowActionSheetOptions",
+            ts_return = "Promise<ActionSheetResult>"
+        ) = show_action_sheet;
+    }
 }

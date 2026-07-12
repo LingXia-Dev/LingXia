@@ -1,7 +1,7 @@
 use crate::i18n::{js_error_from_platform_error, js_internal_error};
 use lingxia_platform::traits::app_runtime::AppRuntime;
-use lxapp::{LxApp, lx};
-use rong::{IntoJSObject, JSContext, JSFunc, JSResult};
+use lxapp::LxApp;
+use rong::{IntoJSObject, JSContext, JSResult};
 use serde::Deserialize;
 
 /// Get capsule button bounding client rect
@@ -33,8 +33,12 @@ async fn get_capsule_rect(ctx: JSContext) -> JSResult<JSCapsuleRect> {
 
 /// Initialize capsule button functions
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
-    // Register getCapsuleRect function
-    let func = JSFunc::new(ctx, get_capsule_rect)?;
-    lx::register_js_api(ctx, "getCapsuleRect", func)?;
-    Ok(())
+    register_api(ctx)
+}
+
+rong::js_api! {
+    fn register_api(ctx) {
+        namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
+        fn getCapsuleRect(ts_return = "Promise<CapsuleRect>") = get_capsule_rect;
+    }
 }

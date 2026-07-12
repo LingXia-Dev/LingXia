@@ -2,7 +2,6 @@
 
 use crate::i18n::{js_error_from_platform_error, js_invalid_parameter_error};
 use lingxia_platform::traits::ui::UIUpdate;
-use lxapp::lx;
 use lxapp::{
     LxApp, OrientationConfig, publish_app_event, register_app_handler, unregister_app_handler,
 };
@@ -89,22 +88,18 @@ fn off_device_orientation_change(ctx: JSContext, callback: Optional<JSFunc>) -> 
 }
 
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
-    let set_device_orientation_func = JSFunc::new(ctx, set_device_orientation)?;
-    lx::register_js_api(ctx, "setDeviceOrientation", set_device_orientation_func)?;
+    register_api(ctx)
+}
 
-    let on_device_orientation_change_func = JSFunc::new(ctx, on_device_orientation_change)?;
-    lx::register_js_api(
-        ctx,
-        "onDeviceOrientationChange",
-        on_device_orientation_change_func,
-    )?;
-
-    let off_device_orientation_change_func = JSFunc::new(ctx, off_device_orientation_change)?;
-    lx::register_js_api(
-        ctx,
-        "offDeviceOrientationChange",
-        off_device_orientation_change_func,
-    )?;
-
-    Ok(())
+rong::js_api! {
+    fn register_api(ctx) {
+        namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
+        fn setDeviceOrientation(ts_params = "orientation: DeviceOrientation") = set_device_orientation;
+        fn onDeviceOrientationChange(
+            ts_params = "callback: (event: DeviceOrientationChangeEvent) => void"
+        ) = on_device_orientation_change;
+        fn offDeviceOrientationChange(
+            ts_params = "callback?: (event: DeviceOrientationChangeEvent) => void"
+        ) = off_device_orientation_change;
+    }
 }

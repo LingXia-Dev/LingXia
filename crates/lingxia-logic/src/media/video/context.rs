@@ -6,8 +6,8 @@ use lingxia_messaging::{CallbackResult, register_handler, remove_callback};
 use lingxia_platform::Platform;
 use lingxia_platform::traits::stream_decoder::VideoStreamDecoderHandle;
 use lingxia_platform::traits::video_player::{VideoPlayerHandle, VideoPlayerManager};
-use lxapp::{LxApp, lx};
-use rong::{JSContext, JSFunc, JSResult, js_class};
+use lxapp::LxApp;
+use rong::{JSContext, JSResult, js_class};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -15,11 +15,21 @@ use std::sync::{Arc, Mutex, OnceLock, Weak};
 
 pub fn init(ctx: &JSContext) -> JSResult<()> {
     ctx.register_class::<JSVideoContext>()?;
-    let create_ctx = JSFunc::new(ctx, |ctx: JSContext, component_id: String| {
-        JSVideoContext::create(&ctx, component_id)
-    })?;
-    lx::register_js_api(ctx, "createVideoContext", create_ctx)?;
-    Ok(())
+    register_video_context_api(ctx)
+}
+
+fn create_video_context(ctx: JSContext, component_id: String) -> JSResult<JSVideoContext> {
+    JSVideoContext::create(&ctx, component_id)
+}
+
+rong::js_api! {
+    fn register_video_context_api(ctx) {
+        namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
+        fn createVideoContext(
+            ts_params = "componentId: string",
+            ts_return = "VideoContext"
+        ) = create_video_context;
+    }
 }
 
 #[js_class(clone)]

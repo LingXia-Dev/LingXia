@@ -5,7 +5,7 @@ use crate::i18n::{
 use lingxia_app_context::{app_config, env_version, home_app_id};
 use lingxia_platform::traits::app_runtime::AppRuntime;
 use lxapp::LxApp;
-use rong::{IntoJSObject, JSContext, JSFunc, JSObject, JSResult};
+use rong::{IntoJSObject, JSContext, JSObject, JSResult};
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 mod autostart;
@@ -83,16 +83,29 @@ fn app_namespace(ctx: &JSContext) -> JSResult<JSObject> {
 
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     let app = app_namespace(ctx)?;
-    // `envVersion` is a synchronous, build-time-fixed string property — set
-    // once at namespace init so JS reads it as a plain field on `lx.app`.
-    app.set("envVersion", env_version().as_str())?;
-    app.set("getBaseInfo", JSFunc::new(ctx, get_app_base_info)?)?;
-    app.set("exit", JSFunc::new(ctx, exit_app)?)?;
-    app.set("setBadge", JSFunc::new(ctx, set_app_badge)?)?;
+    register_app_property(ctx)?;
+    register_app_api(ctx)?;
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     autostart::init(ctx, &app)?;
-    screenshot::init(ctx, &app)?;
-    update::init(ctx, &app)?;
+    screenshot::init(ctx)?;
+    update::init(ctx)?;
 
     Ok(())
+}
+
+rong::js_api! {
+    fn register_app_property(ctx) {
+        namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
+        const app: "HostAppApi" = app_namespace(ctx)?;
+    }
+}
+
+rong::js_api! {
+    fn register_app_api(ctx) {
+        namespace HostAppApi = app_namespace(ctx)?;
+        const envVersion: "HostAppEnvVersion" = env_version().as_str();
+        fn getBaseInfo = get_app_base_info;
+        fn exit = exit_app;
+        fn setBadge(ts_params = "value: string | number | null") = set_app_badge;
+    }
 }

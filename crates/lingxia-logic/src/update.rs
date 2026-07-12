@@ -213,40 +213,45 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     // before lx.getUpdateManager() is called by app logic.
     ensure_update_handlers(ctx)?;
 
-    // lx.getUpdateManager() -> returns singleton instance
-    fn get_update_manager(ctx: JSContext) -> JSResult<JSObject> {
-        ensure_update_handlers(&ctx)?;
+    register_update_api(ctx)
+}
 
-        let current_appid = LxApp::from_ctx(&ctx)?.appid.clone();
+// lx.getUpdateManager() -> returns singleton instance
+fn get_update_manager(ctx: JSContext) -> JSResult<JSObject> {
+    ensure_update_handlers(&ctx)?;
 
-        let existing = read_update_state(&ctx, |state| {
-            if state.lxappid.as_deref() == Some(current_appid.as_str()) {
-                state.manager.clone()
-            } else {
-                None
-            }
-        });
-        if let Some(manager) = existing {
-            return Ok(manager);
+    let current_appid = LxApp::from_ctx(&ctx)?.appid.clone();
+
+    let existing = read_update_state(&ctx, |state| {
+        if state.lxappid.as_deref() == Some(current_appid.as_str()) {
+            state.manager.clone()
+        } else {
+            None
         }
-
-        let class = Class::lookup::<JSUpdateManager>(&ctx)?;
-        let instance = class.instance(JSUpdateManager::new(current_appid.clone()));
-        with_update_state(&ctx, |state| {
-            state.lxappid = Some(current_appid);
-            state.manager = Some(instance.clone());
-            // Drop callbacks/pending payload from any previous app binding.
-            state.on_ready = None;
-            state.on_failed = None;
-            state.pending_ready = None;
-            state.pending_failed = None;
-        });
-        Ok(instance)
+    });
+    if let Some(manager) = existing {
+        return Ok(manager);
     }
 
-    let get_update_manager = JSFunc::new(ctx, get_update_manager)?.name("getUpdateManager")?;
-    lxapp::lx::register_js_api(ctx, "getUpdateManager", get_update_manager)?;
-    Ok(())
+    let class = Class::lookup::<JSUpdateManager>(&ctx)?;
+    let instance = class.instance(JSUpdateManager::new(current_appid.clone()));
+    with_update_state(&ctx, |state| {
+        state.lxappid = Some(current_appid);
+        state.manager = Some(instance.clone());
+        // Drop callbacks/pending payload from any previous app binding.
+        state.on_ready = None;
+        state.on_failed = None;
+        state.pending_ready = None;
+        state.pending_failed = None;
+    });
+    Ok(instance)
+}
+
+rong::js_api! {
+    fn register_update_api(ctx) {
+        namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
+        fn getUpdateManager(ts_return = "UpdateManager") = get_update_manager;
+    }
 }
 
 /// Ensure the target app is installed at least once (first-launch preparation).

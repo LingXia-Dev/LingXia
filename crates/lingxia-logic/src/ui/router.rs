@@ -2,9 +2,8 @@ use crate::i18n::{
     js_error_from_business_code_with_detail, js_error_from_lxapp_error, js_internal_error,
 };
 use crate::message_port;
-use lxapp::lx;
 use lxapp::{LxApp, LxAppError, NavigationType, startup};
-use rong::{FromJSObject, JSContext, JSFunc, JSObject, JSResult};
+use rong::{FromJSObject, JSContext, JSObject, JSResult};
 use serde_json::Value;
 use std::sync::Arc;
 
@@ -245,21 +244,19 @@ async fn re_launch(ctx: JSContext, options: PageTargetOptions) -> JSResult<()> {
 }
 
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
-    // Register navigation functions
-    let navigate_to_func = JSFunc::new(ctx, navigate_to)?;
-    lx::register_js_api(ctx, "navigateTo", navigate_to_func)?;
+    register_api(ctx)
+}
 
-    let navigate_back_func = JSFunc::new(ctx, navigate_back)?;
-    lx::register_js_api(ctx, "navigateBack", navigate_back_func)?;
-
-    let redirect_to_func = JSFunc::new(ctx, redirect_to)?;
-    lx::register_js_api(ctx, "redirectTo", redirect_to_func)?;
-
-    let switch_tab_func = JSFunc::new(ctx, switch_tab)?;
-    lx::register_js_api(ctx, "switchTab", switch_tab_func)?;
-
-    let re_launch_func = JSFunc::new(ctx, re_launch)?;
-    lx::register_js_api(ctx, "reLaunch", re_launch_func)?;
-
-    Ok(())
+rong::js_api! {
+    fn register_api(ctx) {
+        namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
+        fn navigateTo(
+            ts_params = "options: PublicNavigateToOptions",
+            ts_return = "Promise<PageMessagePort>"
+        ) = navigate_to;
+        fn navigateBack(ts_params = "options: NavigateBackOptions") = navigate_back;
+        fn redirectTo(ts_params = "options: RedirectToOptions") = redirect_to;
+        fn switchTab(ts_params = "options: SwitchTabOptions") = switch_tab;
+        fn reLaunch(ts_params = "options: ReLaunchOptions") = re_launch;
+    }
 }

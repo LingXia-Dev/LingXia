@@ -6,8 +6,8 @@ use crate::{I18nKey, i18n::t};
 use lingxia_platform::error::PlatformError;
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 use lingxia_platform::traits::ui::{ModalOptions, UserFeedback};
-use lxapp::{LxApp, lx};
-use rong::{FromJSObject, IntoJSObject, JSContext, JSFunc, JSResult, RongJSError};
+use lxapp::LxApp;
+use rong::{FromJSObject, IntoJSObject, JSContext, JSResult, RongJSError};
 use serde::Deserialize;
 use std::sync::Arc;
 
@@ -140,9 +140,15 @@ async fn present_modal_native(
 
 /// Initialize modal functions
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
-    // Register showModal function
-    let show_modal_func = JSFunc::new(ctx, show_modal)?;
-    lx::register_js_api(ctx, "showModal", show_modal_func)?;
+    register_api(ctx)
+}
 
-    Ok(())
+rong::js_api! {
+    fn register_api(ctx) {
+        namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
+        fn showModal(
+            ts_params = "options: ShowModalOptions",
+            ts_return = "Promise<ModalResult>"
+        ) = show_modal;
+    }
 }
