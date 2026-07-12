@@ -5,7 +5,7 @@ This guide covers how to write lxapp pages — project layout, the View + Logic 
 Companion pages in this skill:
 
 - [Components](./components.md) — `LxPicker`, `LxVideo`, `LxMediaSwiper`, `LxNavigator` — capabilities, callback shapes, and imperative control (attribute lists live in the exported `@lingxia/elements` types); text input is plain `<input>` / `<textarea>`.
-- [Logic-side `lx.*` API](./lx-api.md) — capability map + behavioral notes; signatures live in `@lingxia/types` (install steps here too).
+- [Logic-side `lx.*` API](./lx-api.md) — runtime globals, typing wiring, cross-cutting behavior; signatures and per-method contracts live in `@lingxia/types` (install steps here too).
 - [Bridge Guide](./bridge.md) — `setData`, stream, channel mechanics in depth.
 - [App Project](../app/project.md) — host app setup (`lingxia.yaml`, adaptive `surfaces`).
 
@@ -504,7 +504,7 @@ await lx.showTabBar();
 await lx.hideTabBar();
 ```
 
-Full option shapes: [`./lx-api.md#page-chrome--ui`](./lx-api.md#page-chrome--ui).
+Full option shapes: the corresponding `*Options` types in `@lingxia/types`.
 
 ---
 
