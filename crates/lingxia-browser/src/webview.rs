@@ -463,7 +463,7 @@ async fn browser_on_webview_ready(
                     }
                 }
             } else {
-                // Startup page: attach WebView to shared startup PageInstance, then load with nonce.
+                // Startup page: attach WebView to the tab's headless PageInstance, then load with nonce.
                 if let Err(e) =
                     browser_attach_tab_page(webview.clone(), &path, session_id, &tab_id, None).await
                 {
@@ -474,11 +474,15 @@ async fn browser_on_webview_ready(
                     );
                     let _ = webview.load_url("about:blank");
                 } else {
+                    // Commit the real startup URL: document-kind gating reads
+                    // the committed URL, and platforms without URL-change
+                    // reporting never backfill it.
+                    let startup_url = format!("{}://newtab", LINGXIA_SCHEME);
                     browser_commit_navigation_if_token_matches(
                         &tab_id,
                         session_id,
                         create_token,
-                        None,
+                        Some(&startup_url),
                     );
                 }
             }
