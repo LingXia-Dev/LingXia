@@ -16,6 +16,12 @@ function declarations(path) {
   );
   const names = new Set();
   const documented = new Set();
+  function isExported(node) {
+    return (
+      ts.canHaveModifiers(node) &&
+      (ts.getModifiers(node) ?? []).some((m) => m.kind === ts.SyntaxKind.ExportKeyword)
+    );
+  }
   function visit(node) {
     if (
       (ts.isInterfaceDeclaration(node) ||
@@ -24,7 +30,9 @@ function declarations(path) {
       node.name
     ) {
       const name = node.name.text;
-      names.add(name);
+      // Only exported declarations count toward the public contract; a name
+      // that survives solely inside `declare global` is not importable.
+      if (isExported(node)) names.add(name);
       let hasDocs = false;
       function inspect(child) {
         hasDocs ||= ts.getJSDocCommentsAndTags(child).length > 0;
@@ -44,7 +52,7 @@ const generated = declarations(resolve(packageDir, "src/generated/logic.ts"));
 const missing = contract.types.filter((name) => !generated.names.has(name)).sort();
 
 if (missing.length > 0) {
-  console.error(`Generated declarations are missing public types: ${missing.join(", ")}`);
+  console.error(`Generated declarations are missing exported public types: ${missing.join(", ")}`);
   process.exit(1);
 }
 
@@ -74,6 +82,8 @@ const webStandards = [
   ["EventTarget", "event"],
   ["ReadableStream", "stream"],
   ["WritableStream", "stream"],
+  ["CompressionStream", "compression"],
+  ["DecompressionStream", "compression"],
   ["setTimeout", "timer"],
   ["console", "console"],
 ];
@@ -95,6 +105,8 @@ const tsc = process.platform === "win32" ? "tsc.cmd" : "tsc";
 const result = spawnSync(tsc, ["-p", "tests/tsconfig.json"], {
   cwd: packageDir,
   stdio: "inherit",
+  // Node >= 18.20/20.12 refuses to spawn .cmd files without a shell (CVE-2024-27980).
+  shell: process.platform === "win32",
 });
 if (result.error) throw result.error;
 if (result.status !== 0) process.exit(result.status ?? 1);
