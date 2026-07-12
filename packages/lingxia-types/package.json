@@ -20,89 +20,89 @@
       "types": "./dist/logic-globals.d.ts"
     },
     "./app": {
-      "types": "./dist/app/index.d.ts",
-      "import": "./dist/app/index.js",
-      "require": "./dist/app/index.js"
+      "types": "./dist/generated/logic.d.ts",
+      "import": "./dist/generated/logic.js",
+      "require": "./dist/generated/logic.js"
     },
     "./surface": {
-      "types": "./dist/surface/index.d.ts",
-      "import": "./dist/surface/index.js",
-      "require": "./dist/surface/index.js"
+      "types": "./dist/generated/logic.d.ts",
+      "import": "./dist/generated/logic.js",
+      "require": "./dist/generated/logic.js"
     },
     "./lxapp": {
-      "types": "./dist/lxapp/index.d.ts",
-      "import": "./dist/lxapp/index.js",
-      "require": "./dist/lxapp/index.js"
+      "types": "./dist/generated/logic.d.ts",
+      "import": "./dist/generated/logic.js",
+      "require": "./dist/generated/logic.js"
     },
     "./device": {
-      "types": "./dist/device/index.d.ts",
-      "import": "./dist/device/index.js",
-      "require": "./dist/device/index.js"
+      "types": "./dist/generated/logic.d.ts",
+      "import": "./dist/generated/logic.js",
+      "require": "./dist/generated/logic.js"
     },
     "./display": {
-      "types": "./dist/display/index.d.ts",
-      "import": "./dist/display/index.js",
-      "require": "./dist/display/index.js"
+      "types": "./dist/generated/logic.d.ts",
+      "import": "./dist/generated/logic.js",
+      "require": "./dist/generated/logic.js"
     },
     "./input": {
-      "types": "./dist/input/index.d.ts",
-      "import": "./dist/input/index.js",
-      "require": "./dist/input/index.js"
+      "types": "./dist/generated/logic.d.ts",
+      "import": "./dist/generated/logic.js",
+      "require": "./dist/generated/logic.js"
     },
     "./env": {
-      "types": "./dist/env/index.d.ts",
-      "import": "./dist/env/index.js",
-      "require": "./dist/env/index.js"
+      "types": "./dist/generated/logic.d.ts",
+      "import": "./dist/generated/logic.js",
+      "require": "./dist/generated/logic.js"
     },
     "./storage": {
-      "types": "./dist/storage/index.d.ts",
-      "import": "./dist/storage/index.js",
-      "require": "./dist/storage/index.js"
+      "types": "./dist/generated/logic.d.ts",
+      "import": "./dist/generated/logic.js",
+      "require": "./dist/generated/logic.js"
     },
     "./file": {
-      "types": "./dist/file/index.d.ts",
-      "import": "./dist/file/index.js",
-      "require": "./dist/file/index.js"
+      "types": "./dist/generated/logic.d.ts",
+      "import": "./dist/generated/logic.js",
+      "require": "./dist/generated/logic.js"
     },
     "./transfer": {
-      "types": "./dist/transfer/index.d.ts",
-      "import": "./dist/transfer/index.js",
-      "require": "./dist/transfer/index.js"
+      "types": "./dist/generated/logic.d.ts",
+      "import": "./dist/generated/logic.js",
+      "require": "./dist/generated/logic.js"
     },
     "./location": {
-      "types": "./dist/location/index.d.ts",
-      "import": "./dist/location/index.js",
-      "require": "./dist/location/index.js"
+      "types": "./dist/generated/logic.d.ts",
+      "import": "./dist/generated/logic.js",
+      "require": "./dist/generated/logic.js"
     },
     "./navigator": {
-      "types": "./dist/navigator/index.d.ts",
-      "import": "./dist/navigator/index.js",
-      "require": "./dist/navigator/index.js"
+      "types": "./dist/generated/logic.d.ts",
+      "import": "./dist/generated/logic.js",
+      "require": "./dist/generated/logic.js"
     },
     "./system": {
-      "types": "./dist/system/index.d.ts",
-      "import": "./dist/system/index.js",
-      "require": "./dist/system/index.js"
+      "types": "./dist/generated/logic.d.ts",
+      "import": "./dist/generated/logic.js",
+      "require": "./dist/generated/logic.js"
     },
     "./update": {
-      "types": "./dist/update/index.d.ts",
-      "import": "./dist/update/index.js",
-      "require": "./dist/update/index.js"
+      "types": "./dist/generated/logic.d.ts",
+      "import": "./dist/generated/logic.js",
+      "require": "./dist/generated/logic.js"
     },
     "./media": {
-      "types": "./dist/media/index.d.ts",
-      "import": "./dist/media/index.js",
-      "require": "./dist/media/index.js"
+      "types": "./dist/generated/logic.d.ts",
+      "import": "./dist/generated/logic.js",
+      "require": "./dist/generated/logic.js"
     },
     "./share": {
-      "types": "./dist/share/index.d.ts",
-      "import": "./dist/share/index.js",
-      "require": "./dist/share/index.js"
+      "types": "./dist/generated/logic.d.ts",
+      "import": "./dist/generated/logic.js",
+      "require": "./dist/generated/logic.js"
     },
     "./ui": {
-      "types": "./dist/ui/index.d.ts",
-      "import": "./dist/ui/index.js",
-      "require": "./dist/ui/index.js"
+      "types": "./dist/generated/logic.d.ts",
+      "import": "./dist/generated/logic.js",
+      "require": "./dist/generated/logic.js"
     },
     "./error": {
       "types": "./dist/error.d.ts",

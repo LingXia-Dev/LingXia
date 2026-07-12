@@ -37,6 +37,10 @@ fn get_app_base_info(ctx: JSContext) -> JSResult<AppBaseInfo> {
     })
 }
 
+/// Exit the host app immediately without a confirmation dialog.
+///
+/// If the user should confirm first, call `lx.showModal(...)` and invoke this
+/// only after confirmation.
 fn exit_app(ctx: JSContext) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     lxapp
@@ -45,7 +49,11 @@ fn exit_app(ctx: JSContext) -> JSResult<()> {
         .map_err(|e| js_error_from_platform_error(&e))
 }
 
-/// lx.app.setBadge(value) — the dock (macOS) / taskbar (Windows) badge. Null/empty clears it.
+/// Set the app-icon badge, for example an unread count.
+///
+/// This targets the dock on macOS, taskbar on Windows, and home/launcher icon
+/// on mobile. Null or an empty string clears it. Unsupported platforms treat
+/// the call as a no-op.
 fn set_app_badge(ctx: JSContext, text: Option<String>) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     lxapp

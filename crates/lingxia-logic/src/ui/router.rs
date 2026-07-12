@@ -8,6 +8,7 @@ use serde_json::Value;
 use std::sync::Arc;
 
 #[derive(FromJSObject)]
+#[ts_skip]
 struct PageTargetOptions {
     page: Option<String>,
     path: Option<String>,
@@ -251,7 +252,7 @@ rong::js_api! {
     fn register_api(ctx) {
         namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
         fn navigateTo(
-            ts_params = "options: PublicNavigateToOptions",
+            ts_params = "options: NavigateToOptions",
             ts_return = "Promise<PageMessagePort>"
         ) = navigate_to;
         fn navigateBack(ts_params = "options: NavigateBackOptions") = navigate_back;

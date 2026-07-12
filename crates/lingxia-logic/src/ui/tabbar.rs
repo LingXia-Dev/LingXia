@@ -297,11 +297,11 @@ rong::js_api! {
         namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
         fn showTabBarRedDot(ts_params = "options: TabBarRedDotOptions") = show_tabbar_red_dot;
         fn hideTabBarRedDot(ts_params = "options: TabBarRedDotOptions") = hide_tabbar_red_dot;
-        fn setTabBarBadge(ts_params = "options: PublicSetTabBarBadgeOptions") = set_tabbar_badge;
-        fn removeTabBarBadge(ts_params = "options: PublicRemoveTabBarBadgeOptions") = remove_tabbar_badge;
+        fn setTabBarBadge(ts_params = "options: SetTabBarBadgeOptions") = set_tabbar_badge;
+        fn removeTabBarBadge(ts_params = "options: RemoveTabBarBadgeOptions") = remove_tabbar_badge;
         fn showTabBar = show_tabbar;
         fn hideTabBar = hide_tabbar;
-        fn setTabBarStyle(ts_params = "options: PublicSetTabBarStyleOptions") = set_tabbar_style;
-        fn setTabBarItem(ts_params = "options: PublicSetTabBarItemOptions") = set_tabbar_item;
+        fn setTabBarStyle(ts_params = "options: SetTabBarStyleOptions") = set_tabbar_style;
+        fn setTabBarItem(ts_params = "options: SetTabBarItemOptions") = set_tabbar_item;
     }
 }

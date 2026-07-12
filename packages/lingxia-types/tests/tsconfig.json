@@ -1,0 +1,15 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "declaration": false,
+    "declarationMap": false,
+    "noEmit": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "rootDir": ".."
+  },
+  "include": [
+    "../src/**/*",
+    "./generated-quality.ts"
+  ]
+}

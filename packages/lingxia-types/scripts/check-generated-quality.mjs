@@ -6,7 +6,7 @@ import ts from "typescript";
 
 const packageDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
-function interfaceMembers(path, interfaceName) {
+function declarations(path) {
   const source = ts.createSourceFile(
     path,
     readFileSync(path, "utf8"),
@@ -14,26 +14,43 @@ function interfaceMembers(path, interfaceName) {
     true,
     ts.ScriptKind.TS,
   );
-  const members = new Set();
+  const names = new Set();
+  const documented = new Set();
   function visit(node) {
-    if (ts.isInterfaceDeclaration(node) && node.name.text === interfaceName) {
-      for (const member of node.members) {
-        const name = member.name && ts.getNameOfDeclaration(member);
-        if (name && ts.isIdentifier(name)) members.add(name.text);
+    if (
+      (ts.isInterfaceDeclaration(node) ||
+        ts.isTypeAliasDeclaration(node) ||
+        ts.isClassDeclaration(node)) &&
+      node.name
+    ) {
+      const name = node.name.text;
+      names.add(name);
+      let hasDocs = false;
+      function inspect(child) {
+        hasDocs ||= ts.getJSDocCommentsAndTags(child).length > 0;
+        ts.forEachChild(child, inspect);
       }
+      inspect(node);
+      if (hasDocs) documented.add(name);
     }
     ts.forEachChild(node, visit);
   }
   visit(source);
-  return members;
+  return { names, documented };
 }
 
-const handwritten = interfaceMembers(resolve(packageDir, "src/index.ts"), "HandwrittenLx");
-const generated = interfaceMembers(resolve(packageDir, "src/generated/logic.ts"), "Lx");
-const missing = [...handwritten].filter((name) => !generated.has(name)).sort();
+const contract = JSON.parse(readFileSync(resolve(packageDir, "typegen/public-api.json"), "utf8"));
+const generated = declarations(resolve(packageDir, "src/generated/logic.ts"));
+const missing = contract.types.filter((name) => !generated.names.has(name)).sort();
 
 if (missing.length > 0) {
-  console.error(`Generated Lx is missing handwritten APIs: ${missing.join(", ")}`);
+  console.error(`Generated declarations are missing public types: ${missing.join(", ")}`);
+  process.exit(1);
+}
+
+const missingDocs = contract.documented.filter((name) => !generated.documented.has(name)).sort();
+if (missingDocs.length > 0) {
+  console.error(`Generated declarations lost critical documentation: ${missingDocs.join(", ")}`);
   process.exit(1);
 }
 
@@ -75,9 +92,14 @@ if (missingStandards.length > 0) {
 }
 
 const tsc = process.platform === "win32" ? "tsc.cmd" : "tsc";
-const result = spawnSync(tsc, ["--noEmit"], { cwd: packageDir, stdio: "inherit" });
+const result = spawnSync(tsc, ["-p", "tests/tsconfig.json"], {
+  cwd: packageDir,
+  stdio: "inherit",
+});
 if (result.error) throw result.error;
 if (result.status !== 0) process.exit(result.status ?? 1);
 
-console.log(`Generated Lx covers all ${handwritten.size} handwritten API names with compatible types.`);
+console.log(
+  `Generated declarations cover all ${contract.types.length} legacy public type names and critical documentation.`,
+);
 console.log(`Rong Logic Web profile and runtime modules cover ${webStandards.length} standard APIs.`);

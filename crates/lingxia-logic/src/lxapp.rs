@@ -2,6 +2,7 @@ use ::lxapp::LxApp;
 use rong::{IntoJSObject, JSContext, JSResult};
 
 #[derive(Debug, Clone, IntoJSObject)]
+#[ts_skip]
 struct LxAppInfo {
     #[js_name = "appId"]
     app_id: String,
@@ -30,6 +31,6 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
 rong::js_api! {
     fn register_api(ctx) {
         namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
-        fn getLxAppInfo(ts_return = "PublicLxAppInfo") = get_lxapp_info;
+        fn getLxAppInfo(ts_return = "LxAppInfo") = get_lxapp_info;
     }
 }

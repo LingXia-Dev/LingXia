@@ -110,8 +110,8 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
 rong::js_api! {
     fn register_api(ctx) {
         namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
-        fn setNavigationBarTitle(ts_params = "options: PublicSetNavigationBarTitleOptions") = set_navigation_bar_title;
-        fn setNavigationBarColor(ts_params = "options: PublicSetNavigationBarColorOptions") = set_navigation_bar_color;
+        fn setNavigationBarTitle(ts_params = "options: SetNavigationBarTitleOptions") = set_navigation_bar_title;
+        fn setNavigationBarColor(ts_params = "options: SetNavigationBarColorOptions") = set_navigation_bar_color;
         fn hideHomeButton = hide_home_button;
     }
 }

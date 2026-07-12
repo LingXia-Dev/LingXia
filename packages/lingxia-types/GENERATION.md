@@ -14,12 +14,21 @@ directory on first use, then writes `src/generated/logic.ts` and the DOM-free
 `src/generated/logic-web.d.ts` runtime profile. Both outputs are committed so
 package consumers never need Rust.
 
-The generated `Lx` interface is merged with `HandwrittenLx`, the previous public
-contract retained as a curated compatibility baseline. `check:quality` requires
-the merged generated interface to remain assignable to every handwritten API;
-generator inference may become more precise, but it cannot weaken or remove the
-published surface. Signatures that need correlated overloads stay in the
-curated augmentation and use a non-callable generated registration signature.
+The generated module replaces all previous handwritten domain declaration
+files. Runtime-backed structs/classes come directly from their Rust bindings;
+semantic unions, callbacks, handles, and lifecycle contracts live as TS-only
+`js_api!` metadata in `crates/lingxia-logic/src/public_types.rs`.
+
+Rong 0.5 cannot yet express generic TS-only declaration names or correlated
+overloads. The minimal generation prelude therefore contains only nine generic
+contracts plus the `openSurface`, `downloadFile`, and `FileManager.readFile`
+overloads. It is generator input, not a second public declaration tree.
+
+`check:quality` verifies the complete legacy public-name manifest, critical
+documentation, branded paths, overload resolution, and representative complex
+return types. The old handwritten declarations and comparison fixture are not
+kept in the repository.
+
 The same check also ties the generated Logic Web declarations (`fetch`, URL,
 encoding, abort, streams, timers, console, and related types) to the explicit
 `rong_modules::init` array used by the LingXia Logic runtime.

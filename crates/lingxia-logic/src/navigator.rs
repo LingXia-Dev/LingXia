@@ -8,6 +8,7 @@ use serde_json::Value;
 use std::sync::Arc;
 
 #[derive(FromJSObject)]
+#[ts_skip]
 struct NavigateToOptions {
     #[js_name = "appId"]
     appid: String,
