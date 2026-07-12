@@ -9,6 +9,7 @@
   var STORE_NAME = 'assets';
   var BACKGROUND_KEY = 'background';
   var MAX_IMAGE_BYTES = 25 * 1024 * 1024;
+  var MAX_SHORTCUTS = 12;
   var BUILTIN_BING = {
     id: 'bing',
     name: 'Bing',
@@ -28,10 +29,15 @@
   var toastTimer = null;
 
   function loadSettings() {
-    var fallback = { defaultEngineId: BUILTIN_BING.id, engines: BUILTIN_ENGINES.slice() };
+    var fallback = { defaultEngineId: BUILTIN_BING.id, engines: BUILTIN_ENGINES.slice(), shortcuts: [] };
     try {
       var parsed = JSON.parse(localStorage.getItem(SETTINGS_KEY) || 'null');
       if (!parsed || !Array.isArray(parsed.engines)) return fallback;
+      var shortcuts = (Array.isArray(parsed.shortcuts) ? parsed.shortcuts : []).filter(validShortcut)
+        .slice(0, MAX_SHORTCUTS)
+        .map(function (shortcut) {
+          return { id: shortcut.id, name: shortcut.name, url: shortcut.url };
+        });
       var custom = parsed.engines.filter(validStoredEngine).filter(function (engine) {
         return !BUILTIN_ENGINES.some(function (builtin) {
           return engine.id === builtin.id || engine.url.toLowerCase() === builtin.url.toLowerCase();
@@ -43,9 +49,23 @@
       var defaultEngineId = engines.some(function (engine) { return engine.id === parsed.defaultEngineId; })
         ? parsed.defaultEngineId
         : BUILTIN_BING.id;
-      return { defaultEngineId: defaultEngineId, engines: engines };
+      return { defaultEngineId: defaultEngineId, engines: engines, shortcuts: shortcuts };
     } catch (_) {
       return fallback;
+    }
+  }
+
+  function validShortcut(shortcut) {
+    return shortcut && typeof shortcut.id === 'string' && typeof shortcut.name === 'string' &&
+      typeof shortcut.url === 'string' && validShortcutUrl(shortcut.url);
+  }
+
+  function validShortcutUrl(value) {
+    try {
+      var parsed = new URL(value);
+      return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+    } catch (_) {
+      return false;
     }
   }
 
@@ -69,10 +89,12 @@
       defaultEngineId: state.defaultEngineId,
       engines: state.engines.filter(function (engine) { return !engine.builtin; }).map(function (engine) {
         return { id: engine.id, name: engine.name, url: engine.url };
-      })
+      }),
+      shortcuts: state.shortcuts
     }));
     renderEngines();
     syncActiveEngine();
+    renderShortcuts();
     if (showConfirmation) toast(t('newtab.settingsSaved'));
   }
 
@@ -133,6 +155,105 @@
       row.append(radio, copy, action);
       list.appendChild(row);
     });
+  }
+
+  function renderShortcuts() {
+    var grid = document.getElementById('shortcutGrid');
+    grid.replaceChildren();
+    state.shortcuts.forEach(function (shortcut) {
+      var tile = document.createElement('a');
+      tile.className = 'shortcut';
+      tile.href = shortcut.url;
+      tile.title = shortcut.url;
+
+      var mark = document.createElement('span');
+      mark.className = 'shortcut-mark';
+      mark.setAttribute('aria-hidden', 'true');
+      var letter = shortcut.name.trim().charAt(0).toUpperCase() || '?';
+      var origin = originOf(shortcut.url);
+      if (origin) {
+        var icon = document.createElement('img');
+        icon.src = origin + '/favicon.ico';
+        icon.alt = '';
+        icon.loading = 'lazy';
+        icon.addEventListener('error', function () { mark.textContent = letter; });
+        mark.appendChild(icon);
+      } else {
+        mark.textContent = letter;
+      }
+
+      var label = document.createElement('span');
+      label.className = 'shortcut-label';
+      label.textContent = shortcut.name;
+
+      var remove = document.createElement('button');
+      remove.className = 'shortcut-remove';
+      remove.type = 'button';
+      remove.title = t('newtab.removeShortcut');
+      remove.setAttribute('aria-label', t('newtab.removeShortcut') + ': ' + shortcut.name);
+      remove.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>';
+      remove.addEventListener('click', function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+        state.shortcuts = state.shortcuts.filter(function (candidate) { return candidate.id !== shortcut.id; });
+        saveSettings(true);
+      });
+
+      tile.append(mark, label, remove);
+      grid.appendChild(tile);
+    });
+
+    if (state.shortcuts.length < MAX_SHORTCUTS) {
+      var add = document.createElement('button');
+      add.className = 'shortcut shortcut-add';
+      add.type = 'button';
+      add.id = 'addShortcut';
+      add.title = t('newtab.addShortcut');
+      add.setAttribute('aria-label', t('newtab.addShortcut'));
+      var addMark = document.createElement('span');
+      addMark.className = 'shortcut-mark';
+      addMark.setAttribute('aria-hidden', 'true');
+      addMark.textContent = '+';
+      add.append(addMark);
+      add.addEventListener('click', openShortcutDialog);
+      grid.appendChild(add);
+    }
+  }
+
+  function openShortcutDialog() {
+    document.getElementById('shortcutDialog').classList.add('open');
+    document.getElementById('shortcutName').focus();
+  }
+
+  function closeShortcutDialog() {
+    document.getElementById('shortcutDialog').classList.remove('open');
+    document.getElementById('shortcutForm').reset();
+    document.getElementById('shortcutError').classList.remove('visible');
+  }
+
+  function normalizeShortcutUrl(value) {
+    if (!value) return '';
+    return /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(value) ? value : 'https://' + value;
+  }
+
+  function originOf(url) {
+    try {
+      return new URL(url).origin;
+    } catch (_) {
+      return '';
+    }
+  }
+
+  function loadBuildInfo() {
+    var api = window.LingXiaBridge;
+    if (!api || typeof api.invoke !== 'function') return;
+    Promise.resolve(api.invoke('app.getInfo')).then(function (info) {
+      if (!info) return;
+      var parts = [];
+      if (info.webuiVersion) parts.push('v' + info.webuiVersion);
+      if (info.gitSha) parts.push(info.gitSha);
+      document.getElementById('buildInfo').textContent = parts.join(' · ');
+    }).catch(function () {});
   }
 
   function openDatabase() {
@@ -240,7 +361,9 @@
   i18n.apply();
   syncActiveEngine();
   renderEngines();
+  renderShortcuts();
   loadBackground();
+  loadBuildInfo();
 
   document.getElementById('searchForm').addEventListener('submit', function (event) {
     event.preventDefault();
@@ -265,11 +388,43 @@
     }
   });
   document.addEventListener('keydown', function (event) {
-    if (event.key === 'Escape' && overlay.classList.contains('open')) {
+    if (event.key !== 'Escape') return;
+    if (document.getElementById('shortcutDialog').classList.contains('open')) {
+      closeShortcutDialog();
+      return;
+    }
+    if (overlay.classList.contains('open')) {
       overlay.classList.remove('open');
       closeEngineForm();
       document.getElementById('customizeButton').focus();
     }
+  });
+
+  var shortcutDialog = document.getElementById('shortcutDialog');
+  shortcutDialog.addEventListener('click', function (event) {
+    if (event.target === shortcutDialog) closeShortcutDialog();
+  });
+  document.getElementById('cancelShortcut').addEventListener('click', closeShortcutDialog);
+  document.getElementById('shortcutForm').addEventListener('submit', function (event) {
+    event.preventDefault();
+    var name = document.getElementById('shortcutName').value.trim();
+    var url = normalizeShortcutUrl(document.getElementById('shortcutUrl').value.trim());
+    var error = document.getElementById('shortcutError');
+    if (!name || !validShortcutUrl(url)) {
+      error.textContent = t('newtab.invalidShortcut');
+      error.classList.add('visible');
+      return;
+    }
+    var normalized = url.toLowerCase();
+    if (state.shortcuts.some(function (shortcut) { return shortcut.url.toLowerCase() === normalized; })) {
+      error.textContent = t('newtab.duplicateShortcut');
+      error.classList.add('visible');
+      return;
+    }
+    var id = 'shortcut-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 7);
+    state.shortcuts.push({ id: id, name: name, url: url });
+    closeShortcutDialog();
+    saveSettings(true);
   });
 
   document.getElementById('showEngineForm').addEventListener('click', function () {

@@ -57,7 +57,8 @@
       place-items: center;
       padding: 24px;
     }
-    .search-form { width: min(584px, calc(100vw - 48px)); transform: translateY(-7vh); }
+    .stack { display: grid; gap: 26px; justify-items: center; transform: translateY(-7vh); }
+    .search-form { width: min(584px, calc(100vw - 48px)); }
     .search-box {
       height: 50px;
       display: grid;
@@ -109,11 +110,110 @@
       position: fixed;
       z-index: 3;
       right: 18px;
-      bottom: 18px;
-      border: 1px solid var(--border);
-      background: var(--surface);
-      box-shadow: 0 2px 8px rgba(16, 24, 40, 0.12);
+      top: 18px;
+      color: var(--muted);
     }
+    .customize-button:hover { color: var(--text); }
+    body.has-background .customize-button { color: rgba(255, 255, 255, 0.88); filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.45)); }
+    body.has-background .customize-button:hover { color: #fff; background: rgba(255, 255, 255, 0.14); }
+    .shortcuts {
+      width: min(584px, calc(100vw - 48px));
+      display: grid;
+      grid-template-columns: repeat(auto-fit, 72px);
+      justify-content: center;
+      gap: 2px;
+    }
+    .shortcut {
+      position: relative;
+      width: 72px;
+      display: grid;
+      justify-items: center;
+      gap: 6px;
+      padding: 8px 4px;
+      border: 0;
+      border-radius: 10px;
+      background: transparent;
+      cursor: pointer;
+      text-decoration: none;
+      color: inherit;
+    }
+    .shortcut:hover { background: color-mix(in srgb, var(--surface) 62%, transparent); }
+    .shortcut-mark {
+      width: 44px;
+      height: 44px;
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+      border-radius: 50%;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      font-size: 17px;
+      font-weight: 700;
+      user-select: none;
+    }
+    .shortcut-mark img { width: 24px; height: 24px; object-fit: contain; }
+    .shortcut { align-content: start; }
+    .shortcut-add .shortcut-mark {
+      background: transparent;
+      border-style: dashed;
+      color: var(--muted);
+      font-weight: 400;
+      font-size: 22px;
+    }
+    .shortcut-add:hover .shortcut-mark { color: var(--text); background: color-mix(in srgb, var(--surface) 62%, transparent); }
+    body.has-background .shortcut-add .shortcut-mark { color: rgba(255, 255, 255, 0.88); border-color: rgba(255, 255, 255, 0.5); }
+    .shortcut-label {
+      max-width: 64px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 12px;
+    }
+    body.has-background .shortcut-label { color: #fff; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45); }
+    .shortcut-remove {
+      position: absolute;
+      top: 4px;
+      right: 4px;
+      width: 20px;
+      height: 20px;
+      display: none;
+      place-items: center;
+      border: 0;
+      border-radius: 50%;
+      background: var(--surface);
+      box-shadow: 0 1px 4px rgba(16, 24, 40, 0.22);
+      cursor: pointer;
+    }
+    .shortcut:hover .shortcut-remove, .shortcut-remove:focus-visible { display: grid; }
+    .shortcut-remove svg { width: 11px; height: 11px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+    .dialog-backdrop {
+      position: fixed;
+      z-index: 12;
+      inset: 0;
+      display: none;
+      place-items: center;
+      background: rgba(16, 24, 40, 0.28);
+    }
+    .dialog-backdrop.open { display: grid; }
+    .dialog {
+      width: min(340px, calc(100vw - 48px));
+      display: grid;
+      gap: 12px;
+      padding: 18px;
+      border-radius: 12px;
+      background: var(--surface);
+      box-shadow: var(--shadow);
+    }
+    .dialog h2 { margin: 0; font-size: 15px; font-weight: 650; }
+    .build-info {
+      position: fixed;
+      z-index: 2;
+      right: 16px;
+      bottom: 14px;
+      color: var(--muted);
+      font-size: 11px;
+    }
+    body.has-background .build-info { color: rgba(255, 255, 255, 0.88); text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45); }
     .overlay {
       position: fixed;
       z-index: 10;
@@ -222,24 +322,48 @@
     }
     .toast.visible { opacity: 1; transform: translate(-50%, 0); }
     @media (max-width: 540px) {
-      .search-form { transform: translateY(-11vh); }
+      .stack { transform: translateY(-11vh); }
       .panel { width: 100%; }
     }
   </style>
 </head>
 <body>
   <main class="page">
-    <form class="search-form" id="searchForm">
-      <div class="search-box">
-        <span class="engine-mark" id="engineMark" aria-hidden="true">B</span>
-        <input class="search-input" id="searchInput" type="search" autocomplete="off" autofocus
-               data-i18n-placeholder="newtab.searchPlaceholder" placeholder="Search the web">
-        <button class="icon-button" type="submit" data-i18n-aria-label="newtab.searchPlaceholder" aria-label="Search the web">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.3"/><path d="m15.5 15.5 4.2 4.2"/></svg>
-        </button>
+    <div class="stack">
+      <form class="search-form" id="searchForm">
+        <div class="search-box">
+          <span class="engine-mark" id="engineMark" aria-hidden="true">B</span>
+          <input class="search-input" id="searchInput" type="search" autocomplete="off" autofocus
+                 data-i18n-placeholder="newtab.searchPlaceholder" placeholder="Search the web">
+          <button class="icon-button" type="submit" data-i18n-aria-label="newtab.searchPlaceholder" aria-label="Search the web">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.3"/><path d="m15.5 15.5 4.2 4.2"/></svg>
+          </button>
+        </div>
+      </form>
+      <div class="shortcuts" id="shortcutGrid"></div>
+    </div>
+  </main>
+
+  <div class="dialog-backdrop" id="shortcutDialog">
+    <form class="dialog" id="shortcutForm" role="dialog" aria-modal="true" aria-labelledby="shortcutDialogTitle">
+      <h2 id="shortcutDialogTitle" data-i18n="newtab.addShortcut">Add shortcut</h2>
+      <div class="field">
+        <label for="shortcutName" data-i18n="newtab.shortcutName">Name</label>
+        <input id="shortcutName" maxlength="40" autocomplete="off">
+      </div>
+      <div class="field">
+        <label for="shortcutUrl" data-i18n="newtab.shortcutUrl">URL</label>
+        <input id="shortcutUrl" inputmode="url" autocomplete="off" placeholder="https://example.com">
+      </div>
+      <p class="form-error" id="shortcutError"></p>
+      <div class="form-actions">
+        <button class="secondary-button" id="cancelShortcut" type="button" data-i18n="common.cancel">Cancel</button>
+        <button class="primary-button" type="submit" data-i18n="common.add">Add</button>
       </div>
     </form>
-  </main>
+  </div>
+
+  <div class="build-info" id="buildInfo"></div>
 
   <button class="icon-button customize-button" id="customizeButton" type="button"
           data-i18n-title="newtab.customize" data-i18n-aria-label="newtab.customize" title="Customize New Tab" aria-label="Customize New Tab">

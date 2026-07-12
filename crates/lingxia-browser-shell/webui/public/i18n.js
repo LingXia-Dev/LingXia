@@ -235,7 +235,13 @@
       'newtab.removeImage': 'Remove image',
       'newtab.imageTooLarge': 'Choose an image smaller than 25 MB.',
       'newtab.imageReadFailed': 'The selected image could not be loaded.',
-      'newtab.settingsSaved': 'New Tab settings updated.'
+      'newtab.settingsSaved': 'New Tab settings updated.',
+      'newtab.addShortcut': 'Add shortcut',
+      'newtab.shortcutName': 'Name',
+      'newtab.shortcutUrl': 'URL',
+      'newtab.invalidShortcut': 'Enter a name and a valid web address.',
+      'newtab.duplicateShortcut': 'A shortcut with this URL already exists.',
+      'newtab.removeShortcut': 'Remove shortcut'
     },
     'zh-CN': {
       'common.add': '添加',
@@ -470,7 +476,13 @@
       'newtab.removeImage': '移除图片',
       'newtab.imageTooLarge': '请选择小于 25 MB 的图片。',
       'newtab.imageReadFailed': '无法加载所选图片。',
-      'newtab.settingsSaved': '新标签页设置已更新。'
+      'newtab.settingsSaved': '新标签页设置已更新。',
+      'newtab.addShortcut': '添加快捷方式',
+      'newtab.shortcutName': '名称',
+      'newtab.shortcutUrl': '网址',
+      'newtab.invalidShortcut': '请输入名称和有效的网址。',
+      'newtab.duplicateShortcut': '该网址的快捷方式已存在。',
+      'newtab.removeShortcut': '移除快捷方式'
     }
   };
 
