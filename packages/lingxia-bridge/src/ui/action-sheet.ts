@@ -1,4 +1,4 @@
-import { getPlatformOS } from '../runtime-env';
+import { isDesktop } from '../runtime-env';
 
 interface ActionSheetParams {
   itemList: string[];
@@ -16,7 +16,7 @@ const STYLE_ID = 'lx-action-sheet-style';
 let activeSheet: Promise<ActionSheetResult> | null = null;
 
 function isDesktopMode(): boolean {
-  return getPlatformOS() === 'macOS';
+  return isDesktop();
 }
 
 function ensureActionSheetStyle(): void {
