@@ -1908,8 +1908,6 @@ fn harmony_load_error_kind(error_code: i32, description: &str) -> LoadErrorKind 
                 || desc.contains("secure connection")
             {
                 LoadErrorKind::Security
-            } else if desc.contains("cancel") || desc.contains("aborted") {
-                LoadErrorKind::Cancelled
             } else if desc.contains("bad url")
                 || desc.contains("invalid url")
                 || desc.contains("malformed")
@@ -1934,9 +1932,19 @@ fn harmony_load_error_kind(error_code: i32, description: &str) -> LoadErrorKind 
 
 pub fn on_load_error(webtag_str: &str, url: &str, error_code: i32, description: &str) {
     let webtag = WebTag::from(webtag_str);
+    // Cancellation is control flow, never an application-visible load error.
+    let desc = description.trim().to_ascii_lowercase();
+    if desc.contains("cancel") || desc.contains("aborted") {
+        log::debug!(
+            "Ignoring cancelled navigation webtag={} error={}",
+            webtag,
+            description
+        );
+        return;
+    }
     if let Some(delegate) = find_webview_delegate(&webtag) {
         delegate.on_load_error(&LoadError {
-            url: (!url.is_empty()).then(|| url.to_string()),
+            failing_url: (!url.is_empty()).then(|| url.to_string()),
             kind: harmony_load_error_kind(error_code, description),
             description: description.to_string(),
         });

@@ -573,13 +573,15 @@ impl<'a> LoadDataRequest<'a> {
 }
 
 /// Normalized category for a main-frame page load failure.
+///
+/// Cancellation is deliberately not a kind: a cancelled navigation is control
+/// flow and terminates as `NavigationEvent::Cancelled`, never as a load error.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LoadErrorKind {
     Dns,
     Network,
     Timeout,
     Security,
-    Cancelled,
     InvalidUrl,
     NotFound,
     Unknown,
@@ -587,12 +589,13 @@ pub enum LoadErrorKind {
 
 /// Error reported when a main-frame page load fails (DNS, network, TLS, etc.).
 ///
-/// The webview crate is responsible only for delivering this event.
-/// What to display is entirely up to the caller.
-#[derive(Debug, Clone)]
+/// `kind` is the stable value for program logic; `description` is platform
+/// diagnostic text for logs and must not be parsed or shown directly as
+/// localized product copy.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LoadError {
     /// URL that failed to load, if the platform exposes it.
-    pub url: Option<String>,
+    pub failing_url: Option<String>,
     /// Cross-platform error category for application logic and UI.
     pub kind: LoadErrorKind,
     /// Human-readable description from the platform.

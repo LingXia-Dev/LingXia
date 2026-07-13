@@ -213,6 +213,14 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onScreenshotResul
     .resolve::<ThrowRuntimeExAndDefault>()
 }
 
+/// Whether the native failure is a cancellation — control flow that must
+/// terminate as a cancelled navigation, never as an application-visible
+/// load error.
+fn android_error_is_cancellation(description: &str) -> bool {
+    let desc = description.trim().to_ascii_lowercase();
+    desc.contains("cancel") || desc.contains("aborted")
+}
+
 fn android_load_error_kind(error_code: i32, description: &str) -> LoadErrorKind {
     match error_code {
         -2 => LoadErrorKind::Dns,
@@ -238,8 +246,6 @@ fn android_load_error_kind(error_code: i32, description: &str) -> LoadErrorKind 
                 || desc.contains("secure connection")
             {
                 LoadErrorKind::Security
-            } else if desc.contains("cancel") || desc.contains("aborted") {
-                LoadErrorKind::Cancelled
             } else if desc.contains("bad url")
                 || desc.contains("invalid url")
                 || desc.contains("malformed")
@@ -285,9 +291,17 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onLoadError(
         let description: String = description.try_to_string(env)?;
 
         let webtag = WebTag::new(&appid, &path, session_id);
+        if android_error_is_cancellation(&description) {
+            log::debug!(
+                "Ignoring cancelled navigation webtag={} error={}",
+                webtag,
+                description
+            );
+            return Ok(());
+        }
         if let Some(delegate) = find_webview_delegate(&webtag) {
             delegate.on_load_error(&LoadError {
-                url: if url.is_empty() { None } else { Some(url) },
+                failing_url: if url.is_empty() { None } else { Some(url) },
                 kind: android_load_error_kind(error_code, &description),
                 description,
             });

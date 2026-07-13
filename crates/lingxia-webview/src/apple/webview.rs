@@ -608,17 +608,24 @@ pub(crate) fn apply_http_proxy(
     })?
 }
 
-/// Extract a `LoadError` from a raw `*mut NSError`.
+/// Outcome of normalizing a native navigation failure: cancellation is
+/// control flow and never becomes an application-visible `LoadError`.
+enum AppleNavigationFailure {
+    Cancelled { description: String },
+    Error(LoadError),
+}
+
+/// Normalize a raw `*mut NSError` from a failed navigation.
 ///
 /// # Safety
 /// `error` must be either null or a valid `NSError` pointer.
-unsafe fn ns_error_to_load_error(error: *mut NSError) -> LoadError {
+unsafe fn ns_error_to_navigation_failure(error: *mut NSError) -> AppleNavigationFailure {
     if error.is_null() {
-        return LoadError {
-            url: None,
+        return AppleNavigationFailure::Error(LoadError {
+            failing_url: None,
             kind: LoadErrorKind::Unknown,
             description: "unknown error".to_string(),
-        };
+        });
     }
     let description = {
         let s: *mut NSString = unsafe { msg_send![error, localizedDescription] };
@@ -637,8 +644,11 @@ unsafe fn ns_error_to_load_error(error: *mut NSError) -> LoadError {
             unsafe { val.as_ref() }.map(|v| v.to_string())
         }
     };
+    // NSURLErrorCancelled — supersession, explicit stop, or policy rejection.
+    if error_code == -999 {
+        return AppleNavigationFailure::Cancelled { description };
+    }
     let kind = match error_code {
-        -999 => LoadErrorKind::Cancelled,
         -1001 => LoadErrorKind::Timeout,
         -1002 => LoadErrorKind::InvalidUrl,
         -1003 | -1006 => LoadErrorKind::Dns,
@@ -663,7 +673,7 @@ unsafe fn ns_error_to_load_error(error: *mut NSError) -> LoadError {
             {
                 LoadErrorKind::Security
             } else if desc.contains("cancel") || desc.contains("aborted") {
-                LoadErrorKind::Cancelled
+                return AppleNavigationFailure::Cancelled { description };
             } else if desc.contains("bad url")
                 || desc.contains("invalid url")
                 || desc.contains("malformed")
@@ -684,11 +694,11 @@ unsafe fn ns_error_to_load_error(error: *mut NSError) -> LoadError {
             }
         }
     };
-    LoadError {
-        url,
+    AppleNavigationFailure::Error(LoadError {
+        failing_url: url,
         kind,
         description,
-    }
+    })
 }
 
 // KVO observer that turns WKWebView observable state (URL, title,
@@ -839,15 +849,17 @@ define_class!(
             error: *mut NSError,
         ) {
             let webtag = &self.ivars().webtag;
-            let load_error = unsafe { ns_error_to_load_error(error) };
-            if load_error.kind == LoadErrorKind::Cancelled {
-                log::debug!(
-                    "Ignoring cancelled provisional navigation webtag={} error={}",
-                    webtag,
-                    load_error.description
-                );
-                return;
-            }
+            let load_error = match unsafe { ns_error_to_navigation_failure(error) } {
+                AppleNavigationFailure::Cancelled { description } => {
+                    log::debug!(
+                        "Ignoring cancelled provisional navigation webtag={} error={}",
+                        webtag,
+                        description
+                    );
+                    return;
+                }
+                AppleNavigationFailure::Error(load_error) => load_error,
+            };
             log::warn!(
                 "WebView provisional navigation failed webtag={} error={}",
                 webtag,
@@ -866,15 +878,17 @@ define_class!(
             error: *mut NSError,
         ) {
             let webtag = &self.ivars().webtag;
-            let load_error = unsafe { ns_error_to_load_error(error) };
-            if load_error.kind == LoadErrorKind::Cancelled {
-                log::debug!(
-                    "Ignoring cancelled navigation webtag={} error={}",
-                    webtag,
-                    load_error.description
-                );
-                return;
-            }
+            let load_error = match unsafe { ns_error_to_navigation_failure(error) } {
+                AppleNavigationFailure::Cancelled { description } => {
+                    log::debug!(
+                        "Ignoring cancelled navigation webtag={} error={}",
+                        webtag,
+                        description
+                    );
+                    return;
+                }
+                AppleNavigationFailure::Error(load_error) => load_error,
+            };
             log::warn!(
                 "WebView navigation failed webtag={} error={}",
                 webtag,
