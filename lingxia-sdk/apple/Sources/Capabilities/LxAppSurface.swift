@@ -180,10 +180,16 @@ enum LxAppSurface {
                 return
             }
             if allowsCrossOrigin {
-                // Any http(s) destination may render; other schemes (app
-                // links etc.) stay blocked so the surface remains a web sheet.
+                // Any http(s) destination may render. Other schemes are app
+                // deep links (dingtalk://, feishu://, ...) an IdP page uses to
+                // launch its native app — hand those to the OS instead.
                 let scheme = url.scheme?.lowercased()
-                decisionHandler(scheme == "http" || scheme == "https" ? .allow : .cancel)
+                if scheme == "http" || scheme == "https" {
+                    decisionHandler(.allow)
+                } else {
+                    NSWorkspace.shared.open(url)
+                    decisionHandler(.cancel)
+                }
                 return
             }
             guard LxAppSurface.isSameOrigin(initialURL, url) else {
@@ -1274,10 +1280,16 @@ enum LxAppSurface {
                 return
             }
             if allowsCrossOrigin {
-                // Any http(s) destination may render; other schemes (app
-                // links etc.) stay blocked so the surface remains a web sheet.
+                // Any http(s) destination may render. Other schemes are app
+                // deep links (dingtalk://, feishu://, ...) an IdP page uses to
+                // launch its native app — hand those to the OS instead.
                 let scheme = url.scheme?.lowercased()
-                decisionHandler(scheme == "http" || scheme == "https" ? .allow : .cancel)
+                if scheme == "http" || scheme == "https" {
+                    decisionHandler(.allow)
+                } else {
+                    UIApplication.shared.open(url, options: [:], completionHandler: nil)
+                    decisionHandler(.cancel)
+                }
                 return
             }
             guard LxAppSurface.isSameOrigin(initialURL, url) else {

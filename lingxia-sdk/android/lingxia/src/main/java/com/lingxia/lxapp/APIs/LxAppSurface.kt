@@ -603,9 +603,24 @@ internal object LxAppSurface {
             webViewClient = object : WebViewClient() {
                 // A registered URL-callback sentinel (e.g. an auth handoff) is
                 // consumed by the waiting Rust channel; cancel the load.
+                // URL surfaces host multi-origin journeys (an auth page may
+                // hop through an external IdP and back), so cross-origin
+                // http(s) navigation is allowed. Non-http(s) schemes are app
+                // deep links (dingtalk://, feishu://, ...) that IdP pages use
+                // to launch their native app for authorization — hand those
+                // to the OS instead of loading them in the sheet.
                 private fun handles(next: Uri): Boolean {
                     if (NativeApi.urlCallbackDispatch(next.toString())) return true
-                    return !isSameOrigin(Uri.parse(url), next)
+                    val scheme = next.scheme?.lowercase()
+                    if (scheme == "http" || scheme == "https") return false
+                    try {
+                        activity.startActivity(
+                            android.content.Intent(android.content.Intent.ACTION_VIEW, next)
+                        )
+                    } catch (e: Exception) {
+                        Log.w(TAG, "no handler for deep link ${'$'}next: ${'$'}e")
+                    }
+                    return true
                 }
 
                 override fun shouldOverrideUrlLoading(
@@ -624,23 +639,6 @@ internal object LxAppSurface {
             }
             webChromeClient = WebChromeClient()
             loadUrl(url)
-        }
-    }
-
-    private fun isSameOrigin(initial: Uri, next: Uri): Boolean {
-        val initialScheme = initial.scheme?.lowercase()
-        val nextScheme = next.scheme?.lowercase()
-        if (initialScheme != nextScheme) return false
-        if (!initial.host.equals(next.host, ignoreCase = true)) return false
-        return effectivePort(initial) == effectivePort(next)
-    }
-
-    private fun effectivePort(uri: Uri): Int {
-        if (uri.port > 0) return uri.port
-        return when (uri.scheme?.lowercase()) {
-            "http" -> 80
-            "https" -> 443
-            else -> -1
         }
     }
 
