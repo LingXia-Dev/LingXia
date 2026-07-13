@@ -715,14 +715,20 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         workspaceManager.isPanelFullscreen(id: id)
     }
 
-    /// Add a companion (aside) lxapp to the sidebar without making it the active
-    /// main — so an activator/shell-opened lxapp appears like any lxapp.
+    /// Companion (aside) lxapps never enter the sidebar — sidebar tabs
+    /// represent mains only. Switching between aside lxapps lives in the lxapp
+    /// slot's header tab strip, exactly like the browser slot's title tabs.
     func registerAsideLxApp(appId: String, surfaceId: String) {
-        tabManager.addTab(appId: appId, asideSurfaceId: surfaceId, activate: false)
+        // Intentionally no sidebar entry; the slot strip is fed by the layout
+        // reconciler from the plan's asideSlots.
     }
 
     func unregisterAsideLxApp(appId: String) {
-        tabManager.closeTab(appId: appId)
+        // No sidebar entry to remove (see registerAsideLxApp). Clear any
+        // companion row that predates this rule.
+        if tabManager.tabs.contains(where: { $0.appId == appId && $0.asideSurfaceId != nil }) {
+            tabManager.closeTab(appId: appId)
+        }
     }
 
     /// Switch the main to an lxapp from its sidebar group header — no specific

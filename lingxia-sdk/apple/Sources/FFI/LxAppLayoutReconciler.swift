@@ -54,6 +54,7 @@ enum LxAppLayoutReconciler {
         let mains: [String]
         let activeMainId: String?
         let asides: [PlanAside]
+        let asideSlots: [PlanAsideSlot]?
         let floats: [PlanFloat]
         let tree: LxAppJSONValue?
     }
@@ -62,6 +63,14 @@ enum LxAppLayoutReconciler {
         let id: String
         let edge: String?
         let preferredSize: Double?
+    }
+
+    private struct PlanAsideSlot: Decodable {
+        let kind: String
+        let edge: String?
+        let children: [String]
+        let activeChild: String?
+        let visible: Bool
     }
 
     private struct PlanFloat: Decodable {
@@ -115,10 +124,31 @@ enum LxAppLayoutReconciler {
         // also lists compact full-screen asides so mobile skins can keep them
         // in their desired set; macOS only docks them when the split form says
         // there is a side-by-side container.
+        //
+        // With slots (§4.6) the aside area holds ONE region per content kind:
+        // only each visible slot's active child docks; sibling children stay
+        // registered-but-hidden and switch via the slot's header tab strip.
         var desired: [String: PanelPosition] = [:]
+        let slots = plan.asideSlots ?? []
         if plan.splitForm != "fullScreen" {
-            for aside in plan.asides {
-                desired[aside.id] = panelPosition(for: aside.edge)
+            if slots.isEmpty {
+                for aside in plan.asides {
+                    desired[aside.id] = panelPosition(for: aside.edge)
+                }
+            } else {
+                for slot in slots where slot.visible {
+                    if slot.kind == "browser" {
+                        // Browser-slot children live inside the ONE docked
+                        // browser (its own title tabs), not the panel registry
+                        // — keep the legacy per-child desired set for it.
+                        for child in slot.children {
+                            desired[child] = panelPosition(for: slot.edge)
+                        }
+                        continue
+                    }
+                    guard let active = slot.activeChild ?? slot.children.last else { continue }
+                    desired[active] = panelPosition(for: slot.edge)
+                }
             }
         }
         let desiredIds = Set(desired.keys)
@@ -156,6 +186,29 @@ enum LxAppLayoutReconciler {
             if !workspace.isPanelVisible(id: id) {
                 shell.showPanel(id: id)
             }
+        }
+
+        // Slot tab pass — bind each visible slot's header strip onto the panel
+        // presenting it. Selecting a tab focuses that child in the core graph
+        // (the next plan swaps the visible child); closing removes it from the
+        // graph. The strip collapses for single-child slots.
+        for slot in slots where slot.visible && slot.kind == "lxapp" {
+            guard let active = slot.activeChild ?? slot.children.last,
+                  workspace.isPanelRegistered(id: active) else { continue }
+            let tabs = slot.children.map { AsideSlotTab(id: $0, title: $0) }
+            let focusAppId = shell.attachedMainAppId ?? active
+            workspace.setSlotTabs(
+                panelId: active,
+                tabs: tabs,
+                activeId: active,
+                onSelect: { childId in
+                    guard childId != active else { return }
+                    _ = focusSurface(focusAppId, childId)
+                },
+                onClose: { childId in
+                    _ = unregisterHostAside(focusAppId, childId)
+                }
+            )
         }
 
         // Float pass — popups above the layout. The reconciler is the single

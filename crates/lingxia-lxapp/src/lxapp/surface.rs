@@ -186,6 +186,17 @@ impl WindowSurfaceController {
         self.commit();
     }
 
+    /// Focus a surface (any role) and commit. Drives aside-slot tab switches:
+    /// the plan's `activeChild` follows the graph focus, so the skin reconciler
+    /// swaps the slot's visible child. Returns `false` for an unknown id.
+    fn focus_surface(&self, surface_id: &str) -> bool {
+        let focused = self.manager.lock().unwrap().set_focus(surface_id);
+        if focused {
+            self.commit();
+        }
+        focused
+    }
+
     /// Report the container width so the core resolves the right `sizeClass`
     /// (with hysteresis), seeding the root `main` if absent. Commits (and
     /// returns `true`) only when the `sizeClass` flipped.
@@ -789,6 +800,17 @@ impl LxApp {
             return;
         }
         window_controller(PRIMARY_WINDOW, &self.runtime).unregister_host_aside(surface_id);
+    }
+
+    /// Focus a surface in the window graph (aside-slot tab switch). The commit
+    /// pushes a plan whose slot `activeChild` follows the focus, and the skin
+    /// reconciler swaps the visible child. Returns `false` for an unknown id.
+    pub fn focus_shell_surface(&self, surface_id: &str) -> bool {
+        let surface_id = surface_id.trim();
+        if surface_id.is_empty() {
+            return false;
+        }
+        window_controller(PRIMARY_WINDOW, &self.runtime).focus_surface(surface_id)
     }
 
     /// Flip a host-declared top-level surface's visibility by its `ui` id.

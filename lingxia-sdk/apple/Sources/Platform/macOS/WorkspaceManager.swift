@@ -127,6 +127,11 @@ private class PanelSlot {
     /// vertical extent, out to the window edge) while fullscreen.
     var sideFullscreenConstraints: [NSLayoutConstraint] = []
 
+    /// Aside-slot header tab strip (§4.6). Mounted above `containerView`;
+    /// zero-height while the slot has at most one child.
+    let slotTabStrip = AsideSlotTabStripView()
+    private var slotStripHeight: NSLayoutConstraint?
+
     var isVisible: Bool = false
     var currentSize: CGFloat
     var isFullscreen: Bool = false
@@ -156,18 +161,35 @@ private class PanelSlot {
         resizeHandle.translatesAutoresizingMaskIntoConstraints = false
 
         shadowWrapper.addSubview(blurView)
+        slotTabStrip.translatesAutoresizingMaskIntoConstraints = false
+        blurView.addSubview(slotTabStrip)
         blurView.addSubview(containerView)
 
+        let stripHeight = slotTabStrip.heightAnchor.constraint(equalToConstant: 0)
+        slotStripHeight = stripHeight
         NSLayoutConstraint.activate([
             blurView.topAnchor.constraint(equalTo: shadowWrapper.topAnchor),
             blurView.leadingAnchor.constraint(equalTo: shadowWrapper.leadingAnchor),
             blurView.trailingAnchor.constraint(equalTo: shadowWrapper.trailingAnchor),
             blurView.bottomAnchor.constraint(equalTo: shadowWrapper.bottomAnchor),
-            containerView.topAnchor.constraint(equalTo: blurView.topAnchor),
+            slotTabStrip.topAnchor.constraint(equalTo: blurView.topAnchor),
+            slotTabStrip.leadingAnchor.constraint(equalTo: blurView.leadingAnchor),
+            slotTabStrip.trailingAnchor.constraint(equalTo: blurView.trailingAnchor),
+            stripHeight,
+            containerView.topAnchor.constraint(equalTo: slotTabStrip.bottomAnchor),
             containerView.leadingAnchor.constraint(equalTo: blurView.leadingAnchor),
             containerView.trailingAnchor.constraint(equalTo: blurView.trailingAnchor),
             containerView.bottomAnchor.constraint(equalTo: blurView.bottomAnchor),
         ])
+    }
+
+    /// Show the slot strip for multi-child slots; a single child degenerates
+    /// to the panel's own header (§4.6), so the strip collapses to 0.
+    func setSlotTabs(_ tabs: [AsideSlotTab], activeId: String?) {
+        slotTabStrip.update(tabs: tabs, activeId: activeId)
+        let wantsStrip = tabs.count > 1
+        slotTabStrip.isHidden = !wantsStrip
+        slotStripHeight?.constant = wantsStrip ? AsideSlotTabStripView.stripHeight : 0
     }
 
     func applyShadow(for position: PanelPosition) {
@@ -330,6 +352,22 @@ class WorkspaceManager: NSObject {
             "registerPanel installed id=\(config.id) wrapperFrame=\(lxWorkspaceFormatRect(slot.shadowWrapper.frame)) handleFrame=\(lxWorkspaceFormatRect(slot.resizeHandle.frame)) containerBounds=\(lxWorkspaceFormatRect(slot.containerView.bounds))"
         )
         return slot.containerView
+    }
+
+    /// Bind an aside slot's header tabs onto the panel currently presenting
+    /// that slot (§4.6). `tabs` follow open order; one child collapses the
+    /// strip so the panel's own header stands in.
+    func setSlotTabs(
+        panelId: String,
+        tabs: [AsideSlotTab],
+        activeId: String?,
+        onSelect: @escaping (String) -> Void,
+        onClose: @escaping (String) -> Void
+    ) {
+        guard let slot = panels[panelId] else { return }
+        slot.slotTabStrip.onSelect = onSelect
+        slot.slotTabStrip.onClose = onClose
+        slot.setSlotTabs(tabs, activeId: activeId)
     }
 
     /// Show a panel, animating it in and shrinking the WebView card.

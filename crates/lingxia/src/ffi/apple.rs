@@ -232,6 +232,12 @@ mod bridge {
         #[swift_bridge(swift_name = "setActiveMain")]
         fn set_active_main(appid: &str) -> bool;
 
+        // Focus a surface in the window graph (aside-slot tab switch): the
+        // committed plan's slot `activeChild` follows the focus and the skin
+        // reconciler swaps the slot's visible child.
+        #[swift_bridge(swift_name = "focusSurface")]
+        fn focus_surface(appid: &str, surface_id: &str) -> bool;
+
         #[swift_bridge(swift_name = "registerHostAside")]
         fn register_host_aside(appid: &str, surface_id: &str, edge: &str) -> bool;
 
@@ -902,6 +908,16 @@ pub fn set_active_main(appid: &str) -> bool {
         if let Some(lxapp) = lxapp::try_get(appid) {
             lxapp.set_active_main();
             true
+        } else {
+            false
+        }
+    })
+}
+
+pub fn focus_surface(appid: &str, surface_id: &str) -> bool {
+    ffi_catch_unwind!("focus_surface", false, || {
+        if let Some(lxapp) = lxapp::try_get(appid) {
+            lxapp.focus_shell_surface(surface_id)
         } else {
             false
         }
