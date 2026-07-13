@@ -6,8 +6,8 @@ use crate::chooser::browser_choose_files;
 use crate::downloads::browser_download_resource;
 use crate::internal_pages::{
     LingxiaSchemeContext, browser_attach_tab_page, browser_document_scripts_snapshot,
-    browser_resolve_delegate_context, browser_resolve_delegate_page,
-    ensure_browser_startup_page, handle_browser_lingxia_scheme,
+    browser_resolve_delegate_context, browser_resolve_delegate_page, ensure_browser_startup_page,
+    handle_browser_lingxia_scheme,
 };
 use crate::policy::{
     LINGXIA_SCHEME, extract_url_scheme, handle_browser_navigation_policy,
