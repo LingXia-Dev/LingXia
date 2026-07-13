@@ -3,6 +3,31 @@ pub mod broker;
 
 use serde::{Deserialize, Serialize};
 
+/// Extract the session auth token from a dev websocket URL's `?token=` query
+/// parameter. The tokened URL is the single credential artifact: the server
+/// prints it, and every peer parses the token back out to present in `Hello`.
+pub fn token_from_ws_url(ws_url: &str) -> Option<String> {
+    let (_, query) = ws_url.split_once('?')?;
+    query.split('&').find_map(|pair| {
+        let (key, value) = pair.split_once('=')?;
+        (key == "token" && !value.is_empty()).then(|| value.to_string())
+    })
+}
+
+/// Append a `?token=` query to a dev websocket URL. Authority-only URLs
+/// (`ws://host:port`) get an explicit `/` first so naive authority parsers
+/// (`split('/')`) never see the query glued to the port.
+pub fn ws_url_with_token(ws_url: &str, token: &str) -> String {
+    if ws_url.contains('?') {
+        return format!("{ws_url}&token={token}");
+    }
+    let has_path = ws_url
+        .split_once("://")
+        .is_some_and(|(_, rest)| rest.contains('/'));
+    let separator = if has_path { "?" } else { "/?" };
+    format!("{ws_url}{separator}token={token}")
+}
+
 pub mod handlers {
     pub const ECHO: &str = "echo";
 
@@ -10,6 +35,17 @@ pub mod handlers {
         /// Request the owning `lingxia dev` process to stop this session.
         /// Handled by the dev server, not forwarded to the runtime.
         pub const SHUTDOWN: &str = "session.shutdown";
+        /// Read a chunk of the session log file from a byte offset. Handled
+        /// by the dev server (the log file lives on its machine), so remote
+        /// `lxdev logs` works over the LAN.
+        /// Args: `{offset?: u64, max_bytes?: u64}` → data:
+        /// `{chunk: String (complete JSONL lines), next_offset: u64, len: u64}`.
+        pub const LOGS: &str = "session.logs";
+        /// Describe this session. Handled by the dev server, so a remote
+        /// `lxdev` can render attached sessions with the same identity a
+        /// local listing shows. Data: `{session_id, target, project_root,
+        /// started_at, pid}`.
+        pub const INFO: &str = "session.info";
     }
 
     pub mod browser {
@@ -163,6 +199,11 @@ pub struct DevtoolsLogMessage {
 pub enum DevtoolsWireMessage {
     Hello {
         role: DevtoolsPeerRole,
+        /// Session auth token, required when the dev server was started with
+        /// a non-loopback bind (`lingxia dev --lan`). Peers take it from the
+        /// `?token=` query of the ws URL they were handed.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        token: Option<String>,
     },
     LogBatch {
         logs: Vec<DevtoolsLogMessage>,
@@ -181,4 +222,45 @@ pub enum DevtoolsWireMessage {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         error: Option<String>,
     },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn token_appends_with_path_separator_on_authority_only_urls() {
+        let url = ws_url_with_token("ws://192.168.1.20:39142", "abc");
+        assert_eq!(url, "ws://192.168.1.20:39142/?token=abc");
+        assert_eq!(token_from_ws_url(&url).as_deref(), Some("abc"));
+    }
+
+    #[test]
+    fn token_round_trips_with_existing_path_and_query() {
+        assert_eq!(
+            ws_url_with_token("ws://h:1/x", "t"),
+            "ws://h:1/x?token=t".to_string()
+        );
+        assert_eq!(
+            ws_url_with_token("ws://h:1/x?a=b", "t"),
+            "ws://h:1/x?a=b&token=t".to_string()
+        );
+        assert_eq!(
+            token_from_ws_url("ws://h:1/x?a=b&token=t").as_deref(),
+            Some("t")
+        );
+        assert_eq!(token_from_ws_url("ws://h:1/x?a=b"), None);
+        assert_eq!(token_from_ws_url("ws://h:1"), None);
+    }
+
+    #[test]
+    fn hello_without_token_deserializes_as_none() {
+        let hello: DevtoolsWireMessage =
+            serde_json::from_str(r#"{"type":"hello","role":"client"}"#).unwrap();
+        let DevtoolsWireMessage::Hello { role, token } = hello else {
+            panic!("expected hello");
+        };
+        assert_eq!(role, DevtoolsPeerRole::Client);
+        assert_eq!(token, None);
+    }
 }
