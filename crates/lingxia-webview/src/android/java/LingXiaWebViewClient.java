@@ -51,11 +51,23 @@ public class LingXiaWebViewClient extends WebViewClient {
         if (webView != null) {
             webView.setPageLoaded(true);
             webView.resetViewport();
+            webView.pushWebViewState();
             webView.onPageFinished(
                 webView.getAppId() != null ? webView.getAppId() : "",
                 webView.getCurrentPath() != null ? webView.getCurrentPath() : "",
                 webView.getSessionId()
             );
+        }
+    }
+
+    @Override
+    public void doUpdateVisitedHistory(WebView view, String url, boolean isReload) {
+        super.doUpdateVisitedHistory(view, url, isReload);
+        // Fires for committed navigations, redirects, and History API updates —
+        // the Android signal for "URL / back-forward state changed".
+        LingXiaWebView webView = webViewRef.get();
+        if (webView != null) {
+            webView.pushWebViewState();
         }
     }
 

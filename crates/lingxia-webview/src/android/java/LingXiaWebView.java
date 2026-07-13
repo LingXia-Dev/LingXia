@@ -1132,9 +1132,45 @@ public class LingXiaWebView extends WebView {
         this.pageLoaded = loaded;
     }
 
+    /**
+     * Sample this WebView's observable state (URL, title, back/forward
+     * availability) and push it into the Rust delegate. Called from the
+     * client callbacks so the platform adapter — not host UI — is the source
+     * of truth for Rust-visible WebView state.
+     */
+    void pushWebViewState() {
+        onWebViewStateChanged(
+            getAppId() != null ? getAppId() : "",
+            getCurrentPath() != null ? getCurrentPath() : "",
+            getSessionId(),
+            getUrl() != null ? getUrl() : "",
+            getTitle() != null ? getTitle() : "",
+            canGoBack(),
+            canGoForward()
+        );
+    }
+
+    /** Encode the received favicon as PNG and push it into the Rust delegate. */
+    void pushFavicon(android.graphics.Bitmap icon) {
+        if (icon == null) {
+            return;
+        }
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        if (icon.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out)) {
+            onFaviconChanged(
+                getAppId() != null ? getAppId() : "",
+                getCurrentPath() != null ? getCurrentPath() : "",
+                getSessionId(),
+                out.toByteArray()
+            );
+        }
+    }
+
     native void onConsoleMessage(String appId, String path, long sessionId, int level, String message);
     native void onPageStarted(String appId, String path, long sessionId);
     native void onPageFinished(String appId, String path, long sessionId);
+    native void onWebViewStateChanged(String appId, String path, long sessionId, String url, String title, boolean canGoBack, boolean canGoForward);
+    native void onFaviconChanged(String appId, String path, long sessionId, byte[] pngBytes);
     native void onLoadError(String appId, String path, long sessionId, String url, int errorCode, String description);
     native WebResourceResponseData handleRequest(String appId, String path, long sessionId, String url, String method, String[] headerKeysAndValues);
     native boolean handleNavigationPolicy(String appId, String path, long sessionId, String url);

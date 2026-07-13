@@ -53,6 +53,24 @@ public class LingXiaWebChromeClient extends WebChromeClient {
     }
 
     @Override
+    public void onReceivedTitle(WebView view, String title) {
+        super.onReceivedTitle(view, title);
+        LingXiaWebView webView = webViewRef.get();
+        if (webView != null) {
+            webView.pushWebViewState();
+        }
+    }
+
+    @Override
+    public void onReceivedIcon(WebView view, Bitmap icon) {
+        super.onReceivedIcon(view, icon);
+        LingXiaWebView webView = webViewRef.get();
+        if (webView != null) {
+            webView.pushFavicon(icon);
+        }
+    }
+
+    @Override
     public boolean onCreateWindow(
         WebView view,
         boolean isDialog,

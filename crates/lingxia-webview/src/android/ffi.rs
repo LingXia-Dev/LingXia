@@ -45,6 +45,76 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_handlePostMessage
     .resolve::<ThrowRuntimeExAndDefault>()
 }
 
+/// Java-sampled observable WebView state (URL/title/back-forward), pushed on
+/// visited-history, title, and page-finished callbacks. Empty strings mean
+/// "no sample" and are skipped.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onWebViewStateChanged(
+    mut env: EnvUnowned,
+    _this: JObject,
+    appid: JString,
+    path: JString,
+    session_id: jlong,
+    url: JString,
+    title: JString,
+    can_go_back: jboolean,
+    can_go_forward: jboolean,
+) -> jint {
+    env.with_env(|env| -> Result<jint, jni::errors::Error> {
+        let appid: String = appid.try_to_string(env)?;
+        let path: String = path.try_to_string(env)?;
+        let url: String = url.try_to_string(env)?;
+        let title: String = title.try_to_string(env)?;
+        let session_id = if session_id > 0 {
+            Some(session_id as u64)
+        } else {
+            None
+        };
+
+        let webtag = WebTag::new(&appid, &path, session_id);
+        if let Some(delegate) = find_webview_delegate(&webtag) {
+            if !url.is_empty() {
+                delegate.on_url_changed(&url);
+            }
+            if !title.is_empty() {
+                delegate.on_title_changed(&title);
+            }
+            delegate.on_history_changed(can_go_back, can_go_forward);
+        }
+        Ok(0)
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+/// PNG favicon reported by `WebChromeClient.onReceivedIcon`.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onFaviconChanged(
+    mut env: EnvUnowned,
+    _this: JObject,
+    appid: JString,
+    path: JString,
+    session_id: jlong,
+    png_bytes: JByteArray,
+) -> jint {
+    env.with_env(|env| -> Result<jint, jni::errors::Error> {
+        let appid: String = appid.try_to_string(env)?;
+        let path: String = path.try_to_string(env)?;
+        let png_bytes = env.convert_byte_array(&png_bytes)?;
+        let session_id = if session_id > 0 {
+            Some(session_id as u64)
+        } else {
+            None
+        };
+
+        let webtag = WebTag::new(&appid, &path, session_id);
+        if let Some(delegate) = find_webview_delegate(&webtag) {
+            delegate.on_favicon_changed(png_bytes);
+        }
+        Ok(0)
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onPageStarted(
     mut env: EnvUnowned,
