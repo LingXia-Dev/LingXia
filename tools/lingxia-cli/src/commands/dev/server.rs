@@ -104,6 +104,11 @@ struct DevServerState {
     session_id: String,
     target: String,
     started_at: u64,
+    /// A runtime peer failed token auth since the last successful runtime
+    /// connection — almost always a host/Runner binary that predates session
+    /// tokens. Folded into the "runtime is not connected" client error so
+    /// the operator sees the cause on their side of the wire.
+    runtime_rejected: AtomicBool,
 }
 
 impl DevServerState {
@@ -131,6 +136,7 @@ impl DevServerState {
             session_id,
             target,
             started_at,
+            runtime_rejected: AtomicBool::new(false),
         }
     }
 
@@ -350,12 +356,23 @@ fn handle_connection(
     };
     if !state.authorizes(token.as_deref()) {
         let _ = websocket.close(None);
+        if role == DevtoolsPeerRole::Devtool {
+            state.runtime_rejected.store(true, Ordering::Release);
+            return Err(anyhow!(
+                "Rejected a runtime peer with a missing or wrong session token — the running \
+                 host/Runner likely predates LAN session tokens; rebuild it from this revision \
+                 (or reinstall the Runner)"
+            ));
+        }
         return Err(anyhow!(
-            "Rejected dev websocket peer with a missing or wrong session token"
+            "Rejected dev websocket client with a missing or wrong session token"
         ));
     }
     match role {
-        DevtoolsPeerRole::Devtool => handle_devtool_connection(websocket, writer, state),
+        DevtoolsPeerRole::Devtool => {
+            state.runtime_rejected.store(false, Ordering::Release);
+            handle_devtool_connection(websocket, writer, state)
+        }
         DevtoolsPeerRole::Client => handle_client_connection(websocket, state),
     }
 }
@@ -769,13 +786,21 @@ fn handle_client_connection(
     }
 
     let Some(runtime_sender) = state.runtime_sender() else {
+        let error = if state.runtime_rejected.load(Ordering::Acquire) {
+            "devtool runtime is not connected: a runtime peer was rejected for a missing or \
+             wrong session token — the host/Runner likely predates LAN session tokens; rebuild \
+             it from this revision (or reinstall the Runner)"
+                .to_string()
+        } else {
+            "devtool runtime is not connected".to_string()
+        };
         send_wire_message(
             &mut websocket,
             &DevtoolsWireMessage::Result {
                 command_id,
                 ok: false,
                 data: None,
-                error: Some("devtool runtime is not connected".to_string()),
+                error: Some(error),
             },
         )?;
         let _ = websocket.close(None);
