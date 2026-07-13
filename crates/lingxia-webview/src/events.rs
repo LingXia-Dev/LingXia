@@ -4,6 +4,11 @@
 
 pub(crate) mod normalizer;
 
+/// Register a read-only observer for a WebView's delivered events
+/// (automation waits, devtools). Observers run after the delegate, in
+/// registration order, on the same delivery drain.
+pub use normalizer::add_observer;
+
 use crate::traits::LoadError;
 use std::fmt;
 use std::sync::Arc;

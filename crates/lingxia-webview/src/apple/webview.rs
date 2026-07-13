@@ -4,7 +4,6 @@ use super::bridge_transport::{
 };
 #[cfg(all(feature = "webview-input", target_os = "macos"))]
 use crate::WebViewInputError;
-use crate::events::NavigationCancellationReason;
 use crate::events::normalizer::{self, NativeNavigationResult, NativeSignal};
 #[cfg(all(feature = "webview-input", target_os = "macos"))]
 use crate::input_helper::INPUT_HELPER_BOOTSTRAP;
@@ -728,7 +727,7 @@ fn last_requested_url(webtag: &WebTag) -> Option<String> {
 /// Normalize and submit a failed-navigation callback: cancellations terminate
 /// as `Cancelled`, everything else as `Failed`, keyed by WKNavigation identity.
 fn submit_navigation_failure(webtag: &WebTag, navigation: *mut AnyObject, error: *mut NSError) {
-    let key = (!navigation.is_null()).then(|| navigation as usize as u64);
+    let key = (!navigation.is_null()).then_some(navigation as usize as u64);
     let result = match unsafe { ns_error_to_navigation_failure(error) } {
         AppleNavigationFailure::Cancelled { description } => {
             log::debug!("Cancelled navigation webtag={webtag} error={description}");
@@ -895,7 +894,7 @@ define_class!(
             normalizer::submit(
                 webtag,
                 NativeSignal::NavigationFinished {
-                    key: (!navigation.is_null()).then(|| navigation as usize as u64),
+                    key: (!navigation.is_null()).then_some(navigation as usize as u64),
                     result: NativeNavigationResult::Succeeded { final_url },
                 },
             );

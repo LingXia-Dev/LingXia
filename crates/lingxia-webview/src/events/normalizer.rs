@@ -16,13 +16,13 @@ use std::sync::{Arc, Mutex, OnceLock};
 /// identity). Meaningless outside one adapter.
 pub(crate) type NativeKey = u64;
 
+// Variants are constructed per-platform (e.g. only WebView2 submits
+// NavigationSuppressed; Apple never submits FaviconChanged), so no single
+// cfg constructs the full set.
+#[allow(dead_code)]
 #[derive(Debug)]
 pub(crate) enum NativeSignal {
     NavigationStarted {
-        key: Option<NativeKey>,
-        url: String,
-    },
-    NavigationRedirected {
         key: Option<NativeKey>,
         url: String,
     },
@@ -37,7 +37,6 @@ pub(crate) enum NativeSignal {
         key: Option<NativeKey>,
         result: NativeNavigationResult,
     },
-    StopRequested,
     LocationChanged {
         url: String,
     },
@@ -76,9 +75,6 @@ struct NavigationTracker {
     suppressed_keys: HashSet<NativeKey>,
     /// Keyless policy suppressions: consume that many keyless finishes.
     suppressed_keyless: u32,
-    /// An explicit stop was requested; refine the next unexplained
-    /// cancellation to `Stopped`.
-    stop_pending: bool,
     /// A keyless attempt just failed; backends that also emit a bare
     /// page-finished for the failed load (Android, ArkWeb) have that late
     /// success consumed instead of synthesizing a bogus lifecycle.
@@ -223,12 +219,7 @@ impl NavigationTracker {
             }
             NativeNavigationResult::Cancelled(reason) => NavigationEvent::Cancelled {
                 id,
-                reason: reason.unwrap_or(if self.stop_pending {
-                    self.stop_pending = false;
-                    NavigationCancellationReason::Stopped
-                } else {
-                    NavigationCancellationReason::Other
-                }),
+                reason: reason.unwrap_or(NavigationCancellationReason::Other),
             },
         }));
         out
@@ -370,15 +361,6 @@ impl EventNormalizer {
             NativeSignal::NavigationStarted { key, url } => {
                 state.tracker.start(&self.webtag, key, url)
             }
-            NativeSignal::NavigationRedirected { key, url: _ } => {
-                // Same attempt; keyed unknown/terminal redirects are dropped.
-                if let Some(key) = key
-                    && !state.tracker.by_key.contains_key(&key)
-                {
-                    log::debug!("{}: dropped redirect for unknown key {key}", self.webtag);
-                }
-                Vec::new()
-            }
             NativeSignal::NavigationSuppressed { key } => {
                 match key {
                     Some(key) => {
@@ -391,10 +373,6 @@ impl EventNormalizer {
             NativeSignal::DocumentCommitted => state.coalescer.document_committed(),
             NativeSignal::NavigationFinished { key, result } => {
                 state.tracker.finish(&self.webtag, key, result)
-            }
-            NativeSignal::StopRequested => {
-                state.tracker.stop_pending = true;
-                Vec::new()
             }
             NativeSignal::LocationChanged { url } => state.coalescer.location(url),
             NativeSignal::TitleChanged { title } => state.coalescer.title(title),
@@ -561,7 +539,7 @@ mod tests {
     }
 
     #[test]
-    fn keyless_supersession_and_stop_refinement() {
+    fn keyless_supersession_and_explicit_stop() {
         let webtag = tag("keyless");
         let events = capture(&webtag);
         submit(
@@ -578,12 +556,13 @@ mod tests {
                 url: "https://two/".into(),
             },
         );
-        submit(&webtag, NativeSignal::StopRequested);
         submit(
             &webtag,
             NativeSignal::NavigationFinished {
                 key: None,
-                result: NativeNavigationResult::Cancelled(None),
+                result: NativeNavigationResult::Cancelled(Some(
+                    NavigationCancellationReason::Stopped,
+                )),
             },
         );
         assert_eq!(
