@@ -378,27 +378,19 @@ macos:
 capabilities:
   terminal: true
 surfaces:
-  - id: home
-    render: lxapp
+  - lxapp: home
     role: main
     launch: true
     tray:
       icon: icons/tray.svg
       label: Demo
       action: activate
-  - id: chat
-    render: lxapp
+  - lxapp: chat
     role: aside
     edge: right
-    sidebar:
-      icon: icons/chat.svg
-      label: AI Chat
-  - id: terminal
-    render: native
+  - native: terminal
     role: aside
     edge: bottom
-    sidebar:
-      icon: __lingxia_builtin__/terminal.svg
 "#,
     )
     .unwrap();
@@ -446,18 +438,15 @@ surfaces:
     assert_eq!(surfaces[2]["edge"], "bottom");
     assert_eq!(surfaces[2]["size"]["height"], 320);
 
+    // Only the tray entry: persistent sidebar entries come from the runtime
+    // activator API, never from YAML.
     let activators = value["activators"].as_array().unwrap();
-    assert_eq!(activators.len(), 3);
+    assert_eq!(activators.len(), 1);
     assert_eq!(activators[0]["id"], "homeTray");
     assert_eq!(activators[0]["kind"], "menuBarItem");
     assert_eq!(activators[0]["label"], "Demo");
     assert_eq!(activators[0]["action"]["kind"], "openSurface");
     assert_eq!(activators[0]["action"]["surface"], "home");
-    assert_eq!(activators[1]["id"], "chatSidebar");
-    assert_eq!(activators[1]["label"], "AI Chat");
-    assert_eq!(activators[1]["action"]["surface"], "chat");
-    assert_eq!(activators[2]["id"], "terminalSidebar");
-    assert_eq!(activators[2]["action"]["surface"], "terminal");
 }
 
 #[test]

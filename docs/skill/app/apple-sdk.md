@@ -169,8 +169,7 @@ Equivalent product configuration:
 
 ```yaml
 surfaces:
-  - id: myapp
-    render: lxapp
+  - lxapp: myapp
     role: main
     launch: true
 ```

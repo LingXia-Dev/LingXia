@@ -220,9 +220,9 @@ mod tests {
         };
 
         let yaml = render_host_config(&config, &lxapp, AppServiceMode::Enabled);
-        // v2 single-declaration template.
+        // v2 single-declaration template, content-key form.
         assert!(yaml.contains("surfaces:"));
-        assert!(yaml.contains("render: lxapp"));
+        assert!(yaml.contains("lxapp:"));
         assert!(yaml.contains("role: main"));
         assert!(yaml.contains("launch: true"));
         let lingxia: LingXiaConfig = serde_yaml_ng::from_str(&yaml).unwrap();
@@ -230,7 +230,7 @@ mod tests {
             .surfaces
             .expect("macOS config should include default surfaces");
         assert_eq!(surfaces.len(), 1);
-        assert_eq!(surfaces[0].id, "demo-home");
+        assert_eq!(surfaces[0].lxapp.as_deref(), Some("demo-home"));
         assert!(surfaces[0].launch);
     }
 }
