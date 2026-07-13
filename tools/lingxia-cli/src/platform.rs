@@ -398,7 +398,7 @@ mod tests {
             .to_string();
 
         assert!(
-            error.contains("Pass --framework react|vue|html"),
+            error.contains("Pass --framework react|vue,"),
             "unexpected error: {error}"
         );
     }

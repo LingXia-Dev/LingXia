@@ -862,7 +862,10 @@ mod tests {
         let error = Project::discover(temp.path(), None)
             .unwrap_err()
             .to_string();
-        assert!(error.contains("Pass --framework react|vue|html"));
+        // Only the frameworks actually present are offered, and the manifest
+        // pin is suggested as the permanent fix.
+        assert!(error.contains("Pass --framework react|vue,"), "{error}");
+        assert!(error.contains("\"framework\""), "{error}");
     }
 
     #[test]
