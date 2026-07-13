@@ -17,6 +17,18 @@ lxdev --session ios ...          # target name, when unique
 
 Crashed sessions disappear from the broker automatically — there is nothing to prune. Re-running `lingxia dev` for the same target in a project stops the previous session and takes over; different targets run side by side.
 
+### Remote sessions (LAN)
+
+A session started with `lingxia dev --lan` on **another machine** prints a tokened attach URL. Pair once, then use it like any local session:
+
+```bash
+lxdev attach "ws://192.168.1.20:39142/?token=…" --name win   # once per machine
+lxdev --session win browser tabs                             # thereafter
+lxdev detach win                                             # explicit removal
+```
+
+The URL is stable across the remote's dev restarts, so one attach lasts. Attached sessions list with their real identity (id/target/project fetched live) tagged `[name]`; unreachable ones show `unreachable`, never block auto-selection, and never unpair themselves. All command families work remotely, including `logs` (`-f` polls through the dev server). `--ws "<url>"` / `LXDEV_WS` targets a URL one-off without pairing.
+
 ## Capabilities
 
 **`lxapp`** — the lxapps in the session. Every command targets the **current** lxapp by default (`--app` to pick another); page commands likewise default to the **current page** (`--page` to pick):

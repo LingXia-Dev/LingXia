@@ -99,6 +99,16 @@ automation, start it detached with `--background` (it returns once the session
 is live); a foreground run blocks the terminal and takes the session down when
 it exits. Either way the session publishes metadata + logs for `lxdev`.
 
+`--lan` (desktop platforms and the Runner) exposes the dev websocket on all
+interfaces behind a session token and prints a tokened attach URL for
+[`lxdev attach`](./lxdev.md) on another machine. The URL is stable across
+restarts (token persists in `~/.lingxia/dev-lan-token`; delete it to rotate).
+Without `--lan` the websocket stays loopback-only. The OS firewall prompts
+once per executable path for the inbound listener; over ssh no prompt can
+appear, so pre-authorize once from an elevated shell:
+`New-NetFirewallRule -DisplayName "LingXia Dev" -Direction Inbound -Program
+"<lingxia.exe path>" -Action Allow -Profile Private`.
+
 See `lingxia dev --help` for the flags.
 
 **Runner cloud defaults (`~/.lingxia/runner/config.toml`):**
