@@ -89,6 +89,9 @@ pub(crate) struct PageInstanceInner {
 
     // Async notification: bumped on every handle_loaded().
     loaded_tx: watch::Sender<u64>,
+
+    // Canonical attempt-correlation fold over typed navigation events.
+    navigation_progress: Arc<std::sync::Mutex<lingxia_webview::NavigationProgress>>,
 }
 
 #[derive(Clone, Debug)]
@@ -346,6 +349,7 @@ impl PageInstance {
         let (ready_tx, ready_rx) = watch::channel(None);
         let (loaded_tx, _) = watch::channel(0u64);
         let inner = Arc::new(PageInstanceInner {
+            navigation_progress: Arc::new(std::sync::Mutex::new(Default::default())),
             id,
             appid: appid.clone(),
             path: path.clone(),
@@ -470,6 +474,7 @@ impl PageInstance {
         let (ready_tx, ready_rx) = watch::channel(None);
         let (loaded_tx, _) = watch::channel(0u64);
         let inner = Arc::new(PageInstanceInner {
+            navigation_progress: Arc::new(std::sync::Mutex::new(Default::default())),
             id,
             appid,
             path,
@@ -1275,14 +1280,33 @@ impl PageInstance {
 }
 
 impl WebViewDelegate for PageInstance {
-    /// Called when the page starts loading
-    fn on_page_started(&self) {
-        self.notify_render_started_inner();
-    }
-
-    /// Called when the page finishes loading
-    fn on_page_finished(&self) {
-        self.handle_loaded();
+    fn on_navigation_event(&self, event: lingxia_webview::NavigationEvent) {
+        let mut progress = self
+            .inner
+            .navigation_progress
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        progress.apply(&event);
+        match &event {
+            lingxia_webview::NavigationEvent::Started { .. } => {
+                self.notify_render_started_inner();
+            }
+            // Only the current attempt's success drives the loaded lifecycle:
+            // a stale terminal must not mark a newer load as ready, and a
+            // failure or cancellation never calls handle_loaded().
+            lingxia_webview::NavigationEvent::Succeeded { id, .. } => {
+                if progress.is_current(*id) {
+                    drop(progress);
+                    self.handle_loaded();
+                }
+            }
+            lingxia_webview::NavigationEvent::Failed { error, .. } => {
+                error!("page load failed: {} ({:?})", error.description, error.kind)
+                    .with_appid(self.inner.appid.clone())
+                    .with_path(self.inner.path.clone());
+            }
+            lingxia_webview::NavigationEvent::Cancelled { .. } => {}
+        }
     }
 
     /// Handles a postMessage from the WebView
@@ -1292,7 +1316,7 @@ impl WebViewDelegate for PageInstance {
             return;
         }
         if let Some(component_payload) = decode_native_component_envelope(&msg) {
-            self.handle_native_component_message(&component_payload);
+            self.handle_native_component_message(component_payload);
             return;
         }
 
@@ -1314,8 +1338,8 @@ impl WebViewDelegate for PageInstance {
     /// Routes embedded native-component messages from the view to the
     /// registered in-process host (Windows; other platforms deliver
     /// component traffic through their own channels and never hit this).
-    fn handle_native_component_message(&self, message_json: &str) {
-        crate::native_component::dispatch_component_message(self, message_json);
+    fn handle_native_component_message(&self, message_json: String) {
+        crate::native_component::dispatch_component_message(self, &message_json);
     }
 
     /// Receive log from WebView

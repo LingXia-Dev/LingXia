@@ -2,6 +2,20 @@
 //! messages, resource requests).
 
 use super::*;
+use crate::events::normalizer::{self, NativeNavigationResult, NativeSignal};
+use crate::traits::{LoadError, LoadErrorKind};
+
+/// Map a WebView2 `COREWEBVIEW2_WEB_ERROR_STATUS` to the normalized error
+/// kind. Numeric values per the WebView2 SDK enum.
+fn windows_load_error_kind(status: i32) -> LoadErrorKind {
+    match status {
+        1..=5 => LoadErrorKind::Security,
+        6 | 9..=12 => LoadErrorKind::Network,
+        7 => LoadErrorKind::Timeout,
+        13 => LoadErrorKind::Dns,
+        _ => LoadErrorKind::Unknown,
+    }
+}
 
 pub(crate) fn register_event_handlers(
     env: &ICoreWebView2Environment,
@@ -24,16 +38,33 @@ pub(crate) fn register_event_handlers(
                     args.Uri(&mut uri)?;
                     let uri = CoTaskMemPWSTR::from(uri).to_string();
 
+                    let mut navigation_id = 0u64;
+                    args.NavigationId(&mut navigation_id)?;
+
                     if let Some(webview) = find_webview(&started_tag)
                         && matches!(webview.handle_navigation(&uri), NavigationPolicy::Cancel)
                     {
+                        // Policy rejected before loading: the follow-up
+                        // completion for this key is expected and consumed.
+                        normalizer::submit(
+                            &started_tag,
+                            NativeSignal::NavigationSuppressed {
+                                key: Some(navigation_id),
+                            },
+                        );
                         args.SetCancel(true)?;
                         return Ok(());
                     }
 
-                    if let Some(delegate) = find_webview_delegate(&started_tag) {
-                        delegate.on_page_started();
-                    }
+                    // Redirect restarts reuse the native id; the tracker
+                    // coalesces them into one attempt.
+                    normalizer::submit(
+                        &started_tag,
+                        NativeSignal::NavigationStarted {
+                            key: Some(navigation_id),
+                            url: uri,
+                        },
+                    );
                     Ok(())
                 })),
                 &mut token,
@@ -43,25 +74,62 @@ pub(crate) fn register_event_handlers(
             })?;
     }
 
+    let committed_tag = webtag.clone();
+    unsafe {
+        let mut token = 0;
+        webview
+            .add_ContentLoading(
+                &ContentLoadingEventHandler::create(Box::new(move |_sender, _args| {
+                    // Commit evidence: the displayed document was replaced.
+                    normalizer::submit(&committed_tag, NativeSignal::DocumentCommitted);
+                    Ok(())
+                })),
+                &mut token,
+            )
+            .map_err(|err| WebViewError::WebView(format!("add_ContentLoading failed: {err}")))?;
+    }
+
     let finished_tag = webtag.clone();
     unsafe {
         let mut token = 0;
         webview
             .add_NavigationCompleted(
                 &NavigationCompletedEventHandler::create(Box::new(move |sender, args| {
-                    if let Some(delegate) = find_webview_delegate(&finished_tag) {
-                        delegate.on_page_finished();
-                        if let (Some(sender), Some(args)) = (sender, args) {
-                            let mut succeeded = BOOL::default();
-                            args.IsSuccess(&mut succeeded)?;
-                            if succeeded.as_bool() {
-                                let mut source = PWSTR::null();
-                                sender.Source(&mut source)?;
-                                let source = CoTaskMemPWSTR::from(source).to_string();
-                                delegate.on_navigation_finished(&source);
-                            }
+                    let (Some(sender), Some(args)) = (sender, args) else {
+                        return Ok(());
+                    };
+                    let mut navigation_id = 0u64;
+                    args.NavigationId(&mut navigation_id)?;
+                    let mut succeeded = BOOL::default();
+                    args.IsSuccess(&mut succeeded)?;
+                    let result = if succeeded.as_bool() {
+                        // Final URL captured inside the callback: WebView2 COM
+                        // objects are thread-affine and cannot be queried later.
+                        let mut source = PWSTR::null();
+                        sender.Source(&mut source)?;
+                        let final_url = CoTaskMemPWSTR::from(source).to_string();
+                        NativeNavigationResult::Succeeded { final_url }
+                    } else {
+                        let mut status = COREWEBVIEW2_WEB_ERROR_STATUS::default();
+                        args.WebErrorStatus(&mut status)?;
+                        // 14 = OPERATION_CANCELED: control flow, not an error.
+                        if status.0 == 14 {
+                            NativeNavigationResult::Cancelled(None)
+                        } else {
+                            NativeNavigationResult::Failed(LoadError {
+                                failing_url: None,
+                                kind: windows_load_error_kind(status.0),
+                                description: format!("WebView2 web error status {}", status.0),
+                            })
                         }
-                    }
+                    };
+                    normalizer::submit(
+                        &finished_tag,
+                        NativeSignal::NavigationFinished {
+                            key: Some(navigation_id),
+                            result,
+                        },
+                    );
                     Ok(())
                 })),
                 &mut token,
@@ -83,9 +151,7 @@ pub(crate) fn register_event_handlers(
                     let mut source = PWSTR::null();
                     sender.Source(&mut source)?;
                     let source = CoTaskMemPWSTR::from(source).to_string();
-                    if let Some(delegate) = find_webview_delegate(&source_tag) {
-                        delegate.on_url_changed(&source);
-                    }
+                    normalizer::submit(&source_tag, NativeSignal::LocationChanged { url: source });
                     Ok(())
                 })),
                 &mut token,
@@ -106,9 +172,13 @@ pub(crate) fn register_event_handlers(
                     let mut can_forward = BOOL::default();
                     sender.CanGoBack(&mut can_back)?;
                     sender.CanGoForward(&mut can_forward)?;
-                    if let Some(delegate) = find_webview_delegate(&history_tag) {
-                        delegate.on_history_changed(can_back.as_bool(), can_forward.as_bool());
-                    }
+                    normalizer::submit(
+                        &history_tag,
+                        NativeSignal::BackForwardChanged {
+                            can_go_back: can_back.as_bool(),
+                            can_go_forward: can_forward.as_bool(),
+                        },
+                    );
                     Ok(())
                 })),
                 &mut token,
@@ -128,8 +198,11 @@ pub(crate) fn register_event_handlers(
                     let mut title = PWSTR::null();
                     sender.DocumentTitle(&mut title)?;
                     let title = CoTaskMemPWSTR::from(title).to_string();
-                    if let Some(delegate) = find_webview_delegate(&title_tag) {
-                        delegate.on_title_changed(&title);
+                    if !title.is_empty() {
+                        normalizer::submit(
+                            &title_tag,
+                            NativeSignal::TitleChanged { title: Some(title) },
+                        );
                     }
                     Ok(())
                 })),
@@ -163,10 +236,8 @@ pub(crate) fn register_event_handlers(
                         let png_bytes = stream
                             .as_ref()
                             .and_then(|stream| read_stream_to_end(stream).ok())
-                            .unwrap_or_default();
-                        if let Some(delegate) = find_webview_delegate(&tag) {
-                            delegate.on_favicon_changed(png_bytes);
-                        }
+                            .filter(|bytes| !bytes.is_empty());
+                        normalizer::submit(&tag, NativeSignal::FaviconChanged { png_bytes });
                         Ok(())
                     })),
                 )?;

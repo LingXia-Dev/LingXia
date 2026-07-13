@@ -2248,6 +2248,9 @@ pub(crate) fn find_webview_delegate(webtag: &WebTag) -> Option<Arc<dyn WebViewDe
 
 /// Destroy a WebView instance by WebTag and remove it from global storage
 pub(crate) fn destroy_webview(webtag: &WebTag) {
+    // Drain active navigations as Cancelled(WebViewDestroyed) while the
+    // delegate can still observe them, then drop the normalizer.
+    crate::events::normalizer::destroy(webtag);
     // Mark the session destroyed FIRST. If a native create is still in flight
     // (built on the main thread but not yet registered), it observes this via
     // `WebViewCreateSender::is_destroyed()` after registering and tears the

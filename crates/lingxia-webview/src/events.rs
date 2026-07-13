@@ -2,6 +2,8 @@
 //! state snapshots, and the canonical derived-state folds every consumer must
 //! use instead of hand-rolled equivalents.
 
+pub(crate) mod normalizer;
+
 use crate::traits::LoadError;
 use std::fmt;
 use std::sync::Arc;

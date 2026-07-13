@@ -1,5 +1,12 @@
 # WebView Lifecycle (Cross-Platform)
 
+> Delegate contract: navigation and observable state are delivered as typed
+> events (`NavigationEvent`, `WebViewStateChange`) through the per-WebView
+> event normalizer in `crates/lingxia-webview/src/events/` — correlated ids,
+> exactly-once terminals, coalesced state, flattened FIFO delivery. The
+> legacy per-callback surface (`on_page_started`/`on_page_finished`/…) is
+> gone. See the rustdoc on `WebViewDelegate` for the full invariants.
+
 ## Purpose
 
 This document explains the end-to-end lifecycle of LingXia WebView instances —
@@ -261,7 +268,9 @@ readiness (`mark_webview_ready()` / `wait_webview_ready()` live in
    - Browser tab: browser runtime stores tab state, delegate is
      `BrowserTabDelegate`, the pending URL or internal page is loaded.
 4. **Ready**: setup callback completes; `mark_webview_ready()` is called.
-5. **Rendering**: backend emits `on_page_started` / `on_page_finished`.
+5. **Rendering**: the backend submits native navigation signals; the
+   per-WebView event normalizer delivers typed `NavigationEvent`s
+   (`Started` → exactly one of `Succeeded`/`Failed`/`Cancelled`).
 6. **Visible**: SDK container attaches/shows the view; for strict pages this
    triggers `onShow` via `PageInstanceEvent::Visible`.
 7. **Detached/Destroyed**: both cycle edges cleared, references dropped, registry
@@ -416,8 +425,9 @@ reassign the active tab if the closed one was active.
 ## Page Lifecycle Events vs WebView Callbacks
 
 `PageInstance` implements `WebViewDelegate`:
-- `on_page_started()` → sets render status `Started`.
-- `on_page_finished()` → calls `handle_loaded()`, which sets render status
+- `on_navigation_event(Started)` → sets render status `Started`.
+- `on_navigation_event(Succeeded)` for the **current attempt** (folded
+  through `NavigationProgress`) → calls `handle_loaded()`, which sets render status
   `Finished`, injects page scripts, then dispatches `OnReady` **via**
   `dispatch_lifecycle_event` (so `OnReady` is gated, not unconditional).
 - `on_load_error()` → reports a `LoadError` (default no-op).
@@ -453,8 +463,11 @@ surfaces are WebView-lifecycle only — no app page lifecycle events fire.
    global map, fulfills the oneshot.
 
 Callbacks:
-- `didStartProvisionalNavigation` → `delegate.on_page_started()`.
-- `didFinishNavigation` → `delegate.on_page_finished()`.
+- `didStartProvisionalNavigation` → `NativeSignal::NavigationStarted` (keyed
+  by `WKNavigation` identity; URL captured in the callback).
+- `didCommitNavigation` → `NativeSignal::DocumentCommitted` (metadata reset).
+- `didFinishNavigation` / `didFail*` → `NativeSignal::NavigationFinished`
+  (success / failure / cancellation; cancellation is control flow).
 - `decidePolicyForNavigationAction`: the creator's navigation handler runs first
   (both profiles); strict carries an additional (currently inert) top-level
   `https://` interception behind it.
@@ -654,7 +667,7 @@ sequenceDiagram
   SDK->>LxApp: PageInstanceEvent::Mounted
   SDK->>LxApp: PageInstanceEvent::Visible
   LxApp->>Page: dispatch onShow
-  Backend->>Page: on_page_started / on_page_finished
+  Backend->>Page: NavigationEvent (via EventNormalizer)
   Page->>Page: dispatch OnReady (gated)
   SDK->>LxApp: PageInstanceEvent::Hidden (navigate away)
   LxApp->>Page: dispatch onHide

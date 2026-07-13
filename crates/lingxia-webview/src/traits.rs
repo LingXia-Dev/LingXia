@@ -602,50 +602,49 @@ pub struct LoadError {
     pub description: String,
 }
 
-/// WebView delegate trait - focused on WebView events only
+/// WebView delegate: typed navigation lifecycle, observable state, page
+/// messaging, and logging for one WebView. Exactly one owner per WebView
+/// (an lxapp `PageInstance` or a browser tab delegate); read-only watchers
+/// use [`crate::events::normalizer::add_observer`]-registered observers.
+///
+/// Delivery contract (enforced by the event normalizer):
+/// - events arrive by value, serially, synchronously on the submitting
+///   thread, flattened FIFO — a callback is never re-entered for the same
+///   WebView;
+/// - callbacks may arrive on the WebView's own UI thread; calling a
+///   synchronous WebView API (script injection, state queries) from a
+///   callback must hop to the executor first;
+/// - every `Started` gets exactly one terminal event; success owns a
+///   non-empty final URL; cancellation is control flow, never a load error;
+/// - state changes are snapshots, not lifecycle: `Location` alone is never
+///   evidence of a successful visit, and `None` clears title/favicon.
+///
+/// Fold navigation through [`crate::events::NavigationProgress`] and state
+/// through [`crate::events::ObservedWebViewState`] instead of hand-rolling
+/// attempt correlation:
+///
+/// ```ignore
+/// fn on_navigation_event(&self, event: NavigationEvent) {
+///     let mut progress = self.progress.lock().unwrap();
+///     progress.apply(&event);
+///     if let NavigationEvent::Succeeded { id, final_url } = &event
+///         && progress.is_current(*id)
+///     {
+///         self.loaded(final_url);
+///     }
+/// }
+/// ```
 pub trait WebViewDelegate: Send + Sync {
-    /// Called when the page starts loading
-    fn on_page_started(&self);
-
-    /// Called when the page finishes loading. Fires on every completed load
-    /// attempt, including failures, and carries no URL — for successful
-    /// navigations with the final URL see [`Self::on_navigation_finished`].
-    fn on_page_finished(&self);
-
-    /// Called after a successful top-level navigation with its final URL;
-    /// unlike [`Self::on_page_finished`] it never fires for failed loads.
-    /// Currently delivered on macOS/iOS/Windows only; default is a no-op.
-    fn on_navigation_finished(&self, _url: &str) {}
-
-    /// Called when a main-frame page load fails (e.g. DNS failure, network unreachable, TLS error).
+    /// One correlated top-level navigation lifecycle event.
     ///
-    /// Only fires for the main document; sub-resource errors are ignored.
-    /// Default is a no-op so existing implementations do not need to change.
-    fn on_load_error(&self, _error: &LoadError) {}
+    /// Required: after the typed-event migration every delegate must decide
+    /// how it handles the lifecycle — a silent default would lose page loads.
+    fn on_navigation_event(&self, event: crate::events::NavigationEvent);
 
-    /// Called when the document title changes (where the platform reports
-    /// it; currently Windows/WebView2). Default is a no-op so existing
-    /// implementations do not need to change.
-    fn on_title_changed(&self, _title: &str) {}
-
-    /// Called when the page favicon changes (where the platform reports it;
-    /// currently Windows/WebView2). `png_bytes` holds the favicon encoded
-    /// as PNG; an empty vector means the page has no favicon. Default is a
-    /// no-op so existing implementations do not need to change.
-    fn on_favicon_changed(&self, _png_bytes: Vec<u8>) {}
-
-    /// Called when the webview's session history changes, with the new
-    /// back/forward availability. Platforms whose host layer observes this
-    /// separately (e.g. macOS KVO on `canGoBack`) do not call it. Default is
-    /// a no-op so existing implementations do not need to change.
-    fn on_history_changed(&self, _can_go_back: bool, _can_go_forward: bool) {}
-
-    /// Called when the webview's document URL changes — including history
-    /// navigations, redirects, and same-document updates. Platforms whose
-    /// host layer observes this separately (e.g. macOS KVO on `url`) do not
-    /// call it. Default is a no-op so existing implementations do not need
-    /// to change.
-    fn on_url_changed(&self, _url: &str) {}
+    /// One observable-state snapshot (location, title, favicon,
+    /// back/forward availability), coalesced and generation-scoped by the
+    /// normalizer.
+    fn on_webview_state_change(&self, _change: crate::events::WebViewStateChange) {}
 
     /// Handles a postMessage from the page View(WebView)
     fn handle_post_message(&self, msg: String);
@@ -654,11 +653,8 @@ pub trait WebViewDelegate: Send + Sync {
     /// embedded-component channel (`window.NativeComponentBridge`), where
     /// the platform routes it in-process (currently Windows/WebView2).
     /// `message_json` is the raw component message (`component.mount`,
-    /// `component.update`, ...). Default is a no-op so existing
-    /// implementations do not need to change.
-    fn handle_native_component_message(&self, message_json: &str) {
-        let _ = message_json;
-    }
+    /// `component.update`, ...).
+    fn handle_native_component_message(&self, _message_json: String) {}
 
     /// Receive log from WebView
     fn log(&self, level: LogLevel, message: &str);
