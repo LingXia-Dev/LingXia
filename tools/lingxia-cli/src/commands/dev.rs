@@ -75,6 +75,10 @@ pub struct DevExecuteOptions {
     /// Runner simulator device (macOS lxapp runner only), e.g. `desktop-1440`.
     pub runner_device: Option<String>,
     pub background: bool,
+    /// Bind the dev websocket on all interfaces with a session token, so
+    /// `lxdev --ws <printed url>` can control this session from another
+    /// machine on the LAN. Desktop platforms only.
+    pub lan: bool,
     pub action: Option<DevSessionAction>,
 }
 
@@ -100,6 +104,83 @@ struct DevContext {
     reinstall: bool,
     resolved_env: crate::config::ResolvedEnv,
     extra_native_features: Vec<String>,
+    lan: bool,
+}
+
+/// Host + session token for the dev websocket bind, derived from `--lan`.
+/// Loopback (the default) needs no token; a LAN bind always gets one.
+struct DevBind {
+    host: &'static str,
+    auth_token: Option<String>,
+}
+
+impl DevContext {
+    fn ws_bind(&self) -> Result<DevBind> {
+        if self.lan {
+            Ok(DevBind {
+                host: "0.0.0.0",
+                auth_token: Some(persistent_lan_token()?),
+            })
+        } else {
+            Ok(DevBind {
+                host: "127.0.0.1",
+                auth_token: None,
+            })
+        }
+    }
+}
+
+/// Per-user LAN session token, generated once and reused across `lingxia dev
+/// --lan` restarts so the printed attach URL stays stable and a remote `lxdev
+/// attach` only ever has to happen once per machine.
+fn persistent_lan_token() -> Result<String> {
+    let dir = dirs::home_dir()
+        .ok_or_else(|| anyhow!("Cannot determine home directory for the LAN token"))?
+        .join(".lingxia");
+    std::fs::create_dir_all(&dir).context("Failed to create ~/.lingxia")?;
+    let path = dir.join("dev-lan-token");
+    if let Ok(existing) = std::fs::read_to_string(&path) {
+        let existing = existing.trim();
+        if !existing.is_empty() {
+            return Ok(existing.to_string());
+        }
+    }
+    let token = uuid::Uuid::new_v4().simple().to_string();
+    std::fs::write(&path, &token).context("Failed to persist the LAN token")?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
+    }
+    Ok(token)
+}
+
+impl DevBind {
+    /// The ws URL peers should be handed: token appended when present.
+    fn peer_ws_url(&self, base_ws_url: &str) -> String {
+        match &self.auth_token {
+            Some(token) => lingxia_devtool_protocol::ws_url_with_token(base_ws_url, token),
+            None => base_ws_url.to_string(),
+        }
+    }
+
+    /// Print the remote attach line for `--lan` sessions.
+    fn print_lan_attach(&self, port: u16) {
+        let Some(token) = &self.auth_token else {
+            return;
+        };
+        match lan_ws_url(port) {
+            Ok(lan_url) => {
+                let attach = lingxia_devtool_protocol::ws_url_with_token(&lan_url, token);
+                println!(
+                    "  {} LAN control enabled — from another machine: lxdev --ws \"{}\" …",
+                    "•".cyan(),
+                    attach
+                );
+            }
+            Err(err) => eprintln!("Warning: could not determine LAN address: {err:#}"),
+        }
+    }
 }
 
 fn prepare_dev_host_assets(
@@ -356,6 +437,7 @@ pub fn execute(options: DevExecuteOptions) -> Result<()> {
         reinstall: options.reinstall,
         resolved_env,
         extra_native_features,
+        lan: options.lan,
     };
 
     let result = match platform_type {
@@ -724,26 +806,61 @@ fn loopback_ws_url(port: u16) -> String {
 }
 
 fn lan_ws_url(port: u16) -> Result<String> {
-    let socket = std::net::UdpSocket::bind("0.0.0.0:0")
-        .context("Failed to create UDP socket for host address detection")?;
-    if let Err(err) = socket.connect("8.8.8.8:80") {
-        eprintln!(
-            "{} Failed to detect LAN address ({}); falling back to localhost. Use a reachable host address if your device cannot connect.",
-            "Warning:".yellow(),
-            err
-        );
-        return Ok(loopback_ws_url(port));
-    }
-    match socket.local_addr() {
-        Ok(addr) => Ok(format!("ws://{}:{port}", addr.ip())),
-        Err(err) => {
+    match detect_lan_ip() {
+        Some(ip) => Ok(format!("ws://{ip}:{port}")),
+        None => {
             eprintln!(
-                "{} Failed to read LAN address ({}); falling back to localhost. Use a reachable host address if your device cannot connect.",
+                "{} Failed to detect a LAN address; falling back to localhost. Use a reachable host address if your device cannot connect.",
                 "Warning:".yellow(),
-                err
             );
             Ok(loopback_ws_url(port))
         }
+    }
+}
+
+/// Address LAN peers should dial. Prefers a private (RFC1918) interface: the
+/// default-route probe follows VPN/proxy tunnels whose address LAN peers
+/// cannot reach, so a non-private result only wins when nothing private
+/// exists. Among private candidates, real-LAN ranges beat the 172.16/12
+/// block that virtual adapters (WSL, Docker) commonly squat on.
+fn detect_lan_ip() -> Option<std::net::IpAddr> {
+    let default_route_ip = std::net::UdpSocket::bind("0.0.0.0:0")
+        .ok()
+        .and_then(|socket| {
+            socket.connect("8.8.8.8:80").ok()?;
+            Some(socket.local_addr().ok()?.ip())
+        });
+    if let Some(ip) = default_route_ip
+        && is_private_v4(&ip)
+    {
+        return Some(ip);
+    }
+
+    let hostname = std::env::var("COMPUTERNAME")
+        .or_else(|_| std::env::var("HOSTNAME"))
+        .ok()?;
+    let candidates: Vec<std::net::IpAddr> =
+        std::net::ToSocketAddrs::to_socket_addrs(&(hostname.as_str(), 0u16))
+            .ok()?
+            .map(|addr| addr.ip())
+            .filter(is_private_v4)
+            .collect();
+    let preferred = |prefix: fn(&std::net::Ipv4Addr) -> bool| {
+        candidates.iter().copied().find(|ip| match ip {
+            std::net::IpAddr::V4(v4) => prefix(v4),
+            std::net::IpAddr::V6(_) => false,
+        })
+    };
+    preferred(|v4| v4.octets()[0] == 192)
+        .or_else(|| preferred(|v4| v4.octets()[0] == 10))
+        .or_else(|| candidates.first().copied())
+        .or(default_route_ip)
+}
+
+fn is_private_v4(ip: &std::net::IpAddr) -> bool {
+    match ip {
+        std::net::IpAddr::V4(v4) => v4.is_private(),
+        std::net::IpAddr::V6(_) => false,
     }
 }
 

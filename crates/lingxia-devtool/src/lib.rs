@@ -65,7 +65,7 @@ fn connect_with_timeout(
 ) -> Result<WebSocket<MaybeTlsStream<std::net::TcpStream>>, WsError> {
     let authority = ws_url
         .trim_start_matches("ws://")
-        .split('/')
+        .split(['/', '?'])
         .next()
         .unwrap_or_default();
     let addr = authority.parse::<std::net::SocketAddr>().map_err(|err| {
@@ -110,6 +110,7 @@ fn run_dev_bridge(ws_url: String) {
                     &mut websocket,
                     &DevtoolsWireMessage::Hello {
                         role: DevtoolsPeerRole::Devtool,
+                        token: lingxia_devtool_protocol::token_from_ws_url(&ws_url),
                     },
                 ) {
                     log::warn!("Failed to send devtool hello: {}", err);

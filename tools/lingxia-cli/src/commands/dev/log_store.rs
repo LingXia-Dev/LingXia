@@ -125,6 +125,7 @@ pub fn register_session(
         started_at: now_timestamp_ms(),
         ws_url: ws_url.to_string(),
         log_file: session.log_file.display().to_string(),
+        remote_name: None,
     };
     lingxia_devtool_protocol::broker::register_session(info, spawn_broker)
 }
@@ -206,6 +207,7 @@ pub fn request_shutdown(info: &SessionInfo) -> Result<()> {
         &mut websocket,
         &DevtoolsWireMessage::Hello {
             role: DevtoolsPeerRole::Client,
+            token: lingxia_devtool_protocol::token_from_ws_url(&info.ws_url),
         },
     )?;
 
@@ -261,6 +263,7 @@ fn devtools_ws_echo(ws_url: &str, timeout: Duration) -> Option<(bool, Option<ser
         &mut websocket,
         &DevtoolsWireMessage::Hello {
             role: DevtoolsPeerRole::Client,
+            token: lingxia_devtool_protocol::token_from_ws_url(ws_url),
         },
     )
     .is_err()

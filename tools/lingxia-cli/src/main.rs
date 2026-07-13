@@ -124,6 +124,11 @@ struct DevOptions {
     #[arg(long)]
     background: bool,
 
+    /// Expose the dev websocket on the LAN with a session token, so `lxdev`
+    /// on another machine can control this session (desktop platforms).
+    #[arg(long)]
+    lan: bool,
+
     #[command(subcommand)]
     action: Option<DevAction>,
 }
@@ -717,6 +722,7 @@ fn main() -> Result<()> {
                 provider_path: dev_options.build_options.provider_path,
                 runner_device: dev_options.runner,
                 background: dev_options.background,
+                lan: dev_options.lan,
                 action: dev_options.action.map(|action| match action {
                     DevAction::Status { json } => commands::dev::DevSessionAction::Status { json },
                     DevAction::Stop { session, force } => {

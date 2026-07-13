@@ -25,6 +25,7 @@ pub fn execute_command(
         &mut websocket,
         &DevtoolsWireMessage::Hello {
             role: DevtoolsPeerRole::Client,
+            token: lingxia_devtool_protocol::token_from_ws_url(ws_url),
         },
     )?;
 

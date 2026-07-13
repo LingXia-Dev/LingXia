@@ -96,6 +96,105 @@ pub fn execute(log_file: &Path, options: LogsOptions) -> Result<()> {
     Ok(())
 }
 
+/// Remote sessions: the log file lives on the machine running `lingxia dev`,
+/// so pull it in chunks through the dev server's `session.logs` command.
+/// Follow mode polls (one short-lived ws command per interval).
+pub fn execute_remote(ws_url: &str, options: LogsOptions) -> Result<()> {
+    const REMOTE_POLL_INTERVAL: Duration = Duration::from_millis(700);
+
+    let filters = Filters {
+        level: options.level.as_deref().map(parse_level).transpose()?,
+        source: options.source.as_deref().map(parse_source).transpose()?,
+        app: options.app.as_deref().map(str::to_lowercase),
+        grep: options.grep.as_deref().map(str::to_lowercase),
+        path: options.path.as_deref().map(str::to_lowercase),
+    };
+    let render = RenderOpts {
+        json: options.json,
+        pretty: options.pretty,
+        wide: options.wide,
+    };
+
+    // Backlog: pull everything, filter, print the last N matches.
+    let mut offset = 0u64;
+    if options.follow && options.limit == 0 {
+        let (_, next_offset, _) = fetch_log_chunk(ws_url, offset, Some(0))?;
+        offset = next_offset;
+    } else {
+        let mut matches = Vec::new();
+        loop {
+            let (chunk, next_offset, len) = fetch_log_chunk(ws_url, offset, None)?;
+            for line in chunk.lines() {
+                if let Some(entry) = parse_and_filter(line, &filters)? {
+                    matches.push(entry);
+                }
+            }
+            let stalled = next_offset == offset;
+            offset = next_offset;
+            if stalled || offset >= len {
+                break;
+            }
+        }
+        let start = matches.len().saturating_sub(options.limit);
+        for entry in matches.into_iter().skip(start) {
+            println!("{}", render_entry(&entry, render)?);
+        }
+    }
+
+    if !options.follow {
+        return Ok(());
+    }
+    if render.pretty {
+        println!("{}", "── live (Ctrl+C to exit) ──".dimmed());
+    }
+    loop {
+        let (chunk, next_offset, len) = fetch_log_chunk(ws_url, offset, None)?;
+        if len < offset {
+            // Truncation / rotation: the server replays from the start.
+            offset = 0;
+            continue;
+        }
+        for line in chunk.lines() {
+            if let Some(entry) = parse_and_filter(line, &filters)? {
+                println!("{}", render_entry(&entry, render)?);
+            }
+        }
+        offset = next_offset;
+        thread::sleep(REMOTE_POLL_INTERVAL);
+    }
+}
+
+fn fetch_log_chunk(
+    ws_url: &str,
+    offset: u64,
+    max_bytes: Option<u64>,
+) -> Result<(String, u64, u64)> {
+    let mut args = serde_json::json!({ "offset": offset });
+    if let Some(max_bytes) = max_bytes {
+        args["max_bytes"] = max_bytes.into();
+    }
+    let data = crate::client::execute_command(
+        ws_url,
+        lingxia_devtool_protocol::handlers::session::LOGS,
+        Some(args),
+    )?
+    .ok_or_else(|| anyhow!("session.logs returned no data"))?;
+    let chunk = data
+        .get("chunk")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    let next_offset = data
+        .get("next_offset")
+        .and_then(serde_json::Value::as_u64)
+        .ok_or_else(|| anyhow!("session.logs returned no next_offset"))?;
+    let len = data
+        .get("len")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(next_offset);
+    Ok((chunk, next_offset, len))
+}
+
 fn drain_backlog(
     log_file: &Path,
     filters: &Filters,

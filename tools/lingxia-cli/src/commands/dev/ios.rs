@@ -5,14 +5,21 @@ pub(super) fn execute_ios(ctx: DevContext) -> Result<()> {
     precheck_platform_session(&ctx.project_root, platform_name)?;
     let platform = platform::ios::IosPlatform::new();
     let stop_requested = Arc::new(AtomicBool::new(false));
+    // The iOS device reaches the host over Wi-Fi, so this bind was always
+    // 0.0.0.0 — it now carries the persistent session token so the open bind
+    // is no longer unauthenticated.
+    let auth_token = persistent_lan_token()?;
     let server = server::start_server_fixed_with_stop(
         &ctx.project_root,
         "0.0.0.0",
         platform_name,
         stop_requested.clone(),
+        Some(auth_token.clone()),
     )?;
-    let host_ws_url = loopback_ws_url(server.port());
-    let device_ws_url = lan_ws_url(server.port())?;
+    let host_ws_url =
+        lingxia_devtool_protocol::ws_url_with_token(&loopback_ws_url(server.port()), &auth_token);
+    let device_ws_url =
+        lingxia_devtool_protocol::ws_url_with_token(&lan_ws_url(server.port())?, &auth_token);
     let session = server.session().clone();
 
     let run_result = (|| -> Result<()> {

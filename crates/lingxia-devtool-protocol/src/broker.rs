@@ -41,6 +41,10 @@ pub struct SessionInfo {
     pub started_at: u64,
     pub ws_url: String,
     pub log_file: String,
+    /// Attach name when this entry is a remote session paired via
+    /// `lxdev attach` (never set for broker-registered local sessions).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remote_name: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -348,6 +352,7 @@ mod tests {
             started_at: 1,
             ws_url: "ws://127.0.0.1:1".to_string(),
             log_file: "/tmp/p/.lingxia/logs/x.jsonl".to_string(),
+            remote_name: None,
         }
     }
 

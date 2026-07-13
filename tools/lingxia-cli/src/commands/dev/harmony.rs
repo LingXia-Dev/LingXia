@@ -11,6 +11,7 @@ pub(super) fn execute_harmony(ctx: DevContext) -> Result<()> {
         "127.0.0.1",
         platform_name,
         stop_requested.clone(),
+        None,
     )?;
     let host_ws_url = server.ws_url();
     let device_ws_url = loopback_ws_url(server.port());

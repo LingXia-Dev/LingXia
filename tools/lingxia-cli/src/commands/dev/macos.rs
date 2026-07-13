@@ -23,13 +23,16 @@ Use `lingxia build --platform macos --macos-arch {}` for cross-arch builds.",
     }
 
     let stop_requested = Arc::new(AtomicBool::new(false));
+    let bind = ctx.ws_bind()?;
     let server = server::start_server_fixed_with_stop(
         &ctx.project_root,
-        "127.0.0.1",
+        bind.host,
         platform_name,
         stop_requested.clone(),
+        bind.auth_token.clone(),
     )?;
-    let ws_url = server.ws_url();
+    let ws_url = bind.peer_ws_url(&server.ws_url());
+    bind.print_lan_attach(server.port());
     let session = server.session().clone();
 
     let run_result = (|| -> Result<()> {
