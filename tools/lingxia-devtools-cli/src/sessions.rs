@@ -6,7 +6,7 @@ use lingxia_devtool_protocol::handlers;
 use serde_json::{Value, json};
 
 pub fn execute_list(json_output: bool) -> Result<()> {
-    let sessions = project::list_all_sessions()?;
+    let sessions = project::list_selectable_sessions()?;
 
     if json_output {
         let array: Vec<Value> = sessions
@@ -20,7 +20,13 @@ pub fn execute_list(json_output: bool) -> Result<()> {
                     "started_at": s.started_at,
                     "ws_url": s.ws_url,
                     "log_file": s.log_file,
-                    "stale": project::is_stale(s),
+                    "remote": s.remote_name.is_some(),
+                    "remote_name": s.remote_name,
+                    "stale": if s.remote_name.is_some() {
+                        !project::remote_is_reachable(s)
+                    } else {
+                        project::is_stale(s)
+                    },
                 })
             })
             .collect();
@@ -29,22 +35,54 @@ pub fn execute_list(json_output: bool) -> Result<()> {
     }
 
     if sessions.is_empty() {
-        println!("No live dev sessions.");
+        println!("No live dev sessions. Run `lingxia dev`, or `lxdev attach <ws-url>`.");
         return Ok(());
     }
 
+    let id_width = sessions
+        .iter()
+        .map(|s| s.session_id.len())
+        .chain([2])
+        .max()
+        .unwrap_or(2);
+    let target_width = sessions
+        .iter()
+        .map(|s| s.target.len())
+        .chain([6])
+        .max()
+        .unwrap_or(6);
+    let ws_width = sessions
+        .iter()
+        .map(|s| s.ws_url.len())
+        .chain([2])
+        .max()
+        .unwrap_or(2);
     println!(
-        "{:<8}  {:<8}  {:<19}  {:<22}  PROJECT",
+        "{:<id_width$}  {:<target_width$}  {:<19}  {:<ws_width$}  PROJECT",
         "ID", "TARGET", "STARTED", "WS"
     );
     for info in sessions.iter() {
+        // Remote rows carry the same identity as local ones (fetched live via
+        // session.info); the attach name tags the project column and the
+        // non-loopback ws URL is what marks them as remote.
+        let location = match info.remote_name.as_deref() {
+            Some(name) if !project::remote_is_reachable(info) => {
+                format!("[{name}] unreachable")
+            }
+            Some(name) => format!("[{name}] {}", info.project_root),
+            None => info.project_root.clone(),
+        };
         println!(
-            "{:<8}  {:<8}  {:<19}  {:<22}  {}",
+            "{:<id_width$}  {:<target_width$}  {:<19}  {:<ws_width$}  {}",
             info.session_id,
             info.target,
-            format_started(info.started_at),
+            if info.started_at == 0 {
+                "-".to_string()
+            } else {
+                format_started(info.started_at)
+            },
             info.ws_url,
-            info.project_root,
+            location,
         );
     }
     Ok(())
