@@ -21,7 +21,18 @@ type TenantLike = {
   logoUrl?: string;
 };
 
+type UserLike = {
+  id: string;
+  name: string;
+  avatar: string;
+};
+
 type LxIdentityLike = {
+  user?: {
+    id?: string;
+    name?: string;
+    avatar?: string;
+  };
   tenant?: {
     id?: string;
     name?: string;
@@ -108,6 +119,18 @@ function normalizeTenant(identityOrTenant: any): TenantLike | null {
   };
 }
 
+function normalizeUser(identity: any): UserLike | null {
+  const user = identity?.user;
+  if (!user || typeof user !== "object") {
+    return null;
+  }
+  return {
+    id: typeof user.id === "string" ? user.id : "",
+    name: typeof user.name === "string" ? user.name : "",
+    avatar: typeof user.avatar === "string" ? user.avatar : "",
+  };
+}
+
 function normalizeTenants(tenants: any[]): TenantLike[] {
   return tenants
     .map((tenant) => normalizeTenant(tenant))
@@ -124,6 +147,7 @@ Page({
     type: CLOUD_PAGE_TYPES.AUTH,
     status: "Idle",
     tenant: null,
+    user: null,
     tenants: [],
     mqttStatus: "Idle",
     mqttRuntimeState: "idle",
@@ -245,6 +269,7 @@ Page({
           ? "Ready"
           : "Authentication required. Call lx.auth.login() first.",
         tenant: normalizeTenant(identity),
+        user: normalizeUser(identity),
         tenants: normalizeTenants(identities),
       });
     } catch (error) {
