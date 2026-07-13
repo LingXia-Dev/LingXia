@@ -1038,11 +1038,20 @@ pub fn resolve_page_binding(
     session_id: u64,
 ) -> self::bridge::PageBindingResult {
     let page_instance_id = resolve_page_instance_id(appid, path, session_id);
-    let webview_ptr = if page_instance_id.is_empty() {
+    let mut webview_ptr = if page_instance_id.is_empty() {
         0
     } else {
         find_webview_by_page_instance_id(&page_instance_id)
     };
+    if webview_ptr == 0 {
+        // Browser tabs showing external documents have no bound lxapp
+        // PageInstance — the WebView belongs to the tab, not a page.
+        // Resolve it directly from the webview registry by webtag.
+        let webtag = lingxia_webview::WebTag::new(appid, path, Some(session_id));
+        if let Some(webview) = lingxia_webview::runtime::find_webview(&webtag) {
+            webview_ptr = webview.get_swift_webview_ptr();
+        }
+    }
     self::bridge::PageBindingResult {
         page_instance_id,
         webview_ptr,
