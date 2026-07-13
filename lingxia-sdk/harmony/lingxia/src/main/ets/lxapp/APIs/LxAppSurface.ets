@@ -10,6 +10,10 @@ import { disposePageInstance, notifyPageInstanceHidden, notifyPageInstanceMounte
 import { FloatWindowManager } from './LxAppFloatWindow';
 
 const DOMAIN = 0x0000;
+// Auth handoff surfaces (lingxia-cloud-client open_url_callback_surface) use
+// this id prefix; their Web runs incognito so each interactive login starts
+// with a clean IdP session (real logout; lx.auth.add() can switch accounts).
+const AUTH_CALLBACK_SURFACE_ID_PREFIX = 'cloud-auth-';
 const TAG = 'LingXia.Surface';
 const CONTENT_PAGE = 0;
 const CONTENT_URL = 1;
@@ -905,7 +909,7 @@ export struct SurfaceManager {
         }
         Column() {
           if (surface.content === CONTENT_URL) {
-            Web({ src: '', controller: this.getWebController(surface) })
+            Web({ src: '', controller: this.getWebController(surface), incognitoMode: surface.id.startsWith(AUTH_CALLBACK_SURFACE_ID_PREFIX) })
               .domStorageAccess(true)
               .javaScriptAccess(true)
               .fileAccess(false)
@@ -939,8 +943,23 @@ export struct SurfaceManager {
               .onAppear(() => {
                 const url = surface.path;
                 const controller = this.getWebController(surface);
+                const isAuth = surface.id.startsWith(AUTH_CALLBACK_SURFACE_ID_PREFIX);
                 setTimeout(() => {
                   try {
+                    if (isAuth) {
+                      // `incognitoMode` only stops on-disk persistence; the
+                      // incognito cookie/storage lives in a shared in-memory
+                      // store, so a prior IdP SSO session would carry into the
+                      // next lx.auth.add() and re-recognize the last account.
+                      // Wipe that store (synchronously, before loadUrl issues
+                      // the first request) so every login starts clean.
+                      try {
+                        webview.WebCookieManager.clearAllCookiesSync(true);
+                        webview.WebStorage.deleteAllData(true);
+                      } catch (clearErr) {
+                        LxLog.e(TAG, `failed to clear incognito web data: ${clearErr}`);
+                      }
+                    }
                     hilog.info(DOMAIN, TAG, `load surface url=${url}`);
                     controller.loadUrl(url);
                   } catch (error) {

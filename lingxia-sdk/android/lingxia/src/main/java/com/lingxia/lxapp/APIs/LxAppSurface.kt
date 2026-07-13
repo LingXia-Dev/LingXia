@@ -10,7 +10,9 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.WebChromeClient
+import android.webkit.CookieManager
 import android.webkit.WebResourceRequest
+import android.webkit.WebStorage
 import android.webkit.WebViewClient
 import android.widget.FrameLayout
 import android.util.Log
@@ -49,6 +51,7 @@ internal enum class SurfacePosition(val value: Int) {
 
 internal object LxAppSurface {
     private const val TAG = "LingXia.Surface"
+    private const val AUTH_CALLBACK_SURFACE_ID_PREFIX = "cloud-auth-"
     private const val CONTENT_PAGE = 0
     private const val CONTENT_URL = 1
     private const val KIND_WINDOW = 0
@@ -149,7 +152,7 @@ internal object LxAppSurface {
         pendingRequests[request.id] = request
         activity.runOnUiThread {
             if (request.content == CONTENT_URL) {
-                mount(activity, request, createExternalWebView(activity, request.path))
+                mount(activity, request, createExternalWebView(activity, request.id, request.path))
             } else {
                 mountWhenReady(activity, request, 0)
             }
@@ -593,8 +596,12 @@ internal object LxAppSurface {
     }
 
     @Suppress("DEPRECATION")
-    private fun createExternalWebView(activity: Activity, url: String): android.webkit.WebView {
-        return android.webkit.WebView(activity).apply {
+    private fun createExternalWebView(
+        activity: Activity,
+        id: String,
+        url: String
+    ): android.webkit.WebView {
+        val webView = android.webkit.WebView(activity).apply {
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
             settings.databaseEnabled = true
@@ -638,8 +645,26 @@ internal object LxAppSurface {
                 }
             }
             webChromeClient = WebChromeClient()
-            loadUrl(url)
         }
+        if (id.startsWith(AUTH_CALLBACK_SURFACE_ID_PREFIX)) {
+            // Auth handoff surfaces (lingxia-cloud-client open_url_callback_surface)
+            // start with a clean IdP session so logout is real and lx.auth.add()
+            // can switch accounts. Android's CookieManager is process-global AND
+            // removeAllCookies is asynchronous, so the load must wait for the
+            // removal callback — calling loadUrl immediately would race it and
+            // still send the stale SSO cookie on the first IdP request. Auth
+            // sheets are modal and rare, so clearing the global jar is acceptable
+            // (other surfaces simply re-auth).
+            val cookieManager = CookieManager.getInstance()
+            cookieManager.removeAllCookies {
+                cookieManager.flush()
+                WebStorage.getInstance().deleteAllData()
+                webView.post { webView.loadUrl(url) }
+            }
+        } else {
+            webView.loadUrl(url)
+        }
+        return webView
     }
 
     private fun layoutParams(

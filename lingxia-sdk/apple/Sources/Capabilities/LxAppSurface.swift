@@ -386,7 +386,7 @@ enum LxAppSurface {
             }
             pageInstanceId = ""
             hostView = nil
-            let configuration = WKWebViewConfiguration()
+            let configuration = webSurfaceConfiguration(id: id)
             let wkWebView = WKWebView(frame: contentHost.bounds, configuration: configuration)
             let delegate = WebNavigationDelegate(initialURL: url, allowsCrossOrigin: true)
             wkWebView.navigationDelegate = delegate
@@ -1544,7 +1544,9 @@ enum LxAppSurface {
             }
             pageInstanceId = ""
             hostView = nil
-            let wkWebView = WKWebView(frame: controller.contentView.bounds, configuration: WKWebViewConfiguration())
+            let wkWebView = WKWebView(
+                frame: controller.contentView.bounds,
+                configuration: webSurfaceConfiguration(id: id))
             let delegate = WebNavigationDelegate(initialURL: url, allowsCrossOrigin: true)
             wkWebView.navigationDelegate = delegate
             wkWebView.translatesAutoresizingMaskIntoConstraints = false
@@ -1805,4 +1807,30 @@ enum LxAppSurface {
     }
 }
 
+#endif
+
+// Web-surface helpers shared by the macOS and iOS `LxAppSurface` enums (both
+// carry a WebKit-backed URL/auth surface). Kept in one place — not duplicated
+// per platform, not stranded inside a single `#if` branch — so both compile.
+#if os(macOS) || os(iOS)
+import WebKit
+
+extension LxAppSurface {
+    /// Auth handoff surfaces (opened by lingxia-cloud-client's
+    /// `open_url_callback_surface`) use this id prefix. Their WebView gets an
+    /// ephemeral (in-memory) data store so each interactive login starts with a
+    /// clean IdP session — logout is real and `lx.auth.add()` can pick a
+    /// different account instead of silently reusing the last SSO cookie.
+    /// Tokens (not cookies) are lingxia's persistence; a clean sheet costs
+    /// nothing there.
+    static let authCallbackSurfaceIdPrefix = "cloud-auth-"
+
+    static func webSurfaceConfiguration(id: String) -> WKWebViewConfiguration {
+        let configuration = WKWebViewConfiguration()
+        if id.hasPrefix(authCallbackSurfaceIdPrefix) {
+            configuration.websiteDataStore = .nonPersistent()
+        }
+        return configuration
+    }
+}
 #endif
