@@ -134,14 +134,20 @@ final class WebViewManager {
         let pageInstanceId = binding.page_instance_id
             .toString()
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !pageInstanceId.isEmpty else {
+        // Browser tabs showing external documents have a WebView but no bound
+        // lxapp PageInstance — a valid pointer alone is a usable binding.
+        guard !pageInstanceId.isEmpty || binding.webview_ptr != 0 else {
             return nil
         }
         return (pageInstanceId: pageInstanceId, webViewPtr: binding.webview_ptr)
     }
 
     static func resolvePageInstanceId(appId: String, path: String, sessionId: UInt64) -> String? {
-        return lookupBinding(appId: appId, path: path, sessionId: sessionId)?.pageInstanceId
+        guard let binding = lookupBinding(appId: appId, path: path, sessionId: sessionId),
+              !binding.pageInstanceId.isEmpty else {
+            return nil
+        }
+        return binding.pageInstanceId
     }
 
     static func resolveWebView(appId: String, path: String, sessionId: UInt64) -> WKWebView? {
