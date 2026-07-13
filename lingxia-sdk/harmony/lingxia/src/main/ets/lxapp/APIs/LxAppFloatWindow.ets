@@ -21,7 +21,7 @@ import { Lingxia } from '../../app/Lingxia';
 import { LingXiaWebView } from '../LingXiaWebView';
 import { addWebViewUiCallback, removeWebViewUiCallback, WebViewInfo, WebViewManager, toWebTag } from '../WebViewBridge';
 import { notifyPageInstanceMounted, notifyPageInstanceVisible, urlCallbackDispatch } from 'liblingxia.so';
-import { isSameOrigin } from './LxAppSurface';
+import { isHttpUrl, isSameOrigin } from './LxAppSurface';
 import type { SurfaceLayoutConfig } from './LxAppSurface';
 
 const DOMAIN = 0x0000;
@@ -251,13 +251,15 @@ struct LingXiaFloatSurfacePage {
                 }
                 // A registered URL-callback sentinel (e.g. an auth handoff) is
                 // consumed by the waiting Rust channel; cancel the load.
+                // Cross-origin http(s) is allowed (multi-origin auth journey);
+                // non-http(s) deep links are handed to the system.
                 if (urlCallbackDispatch(targetUrl)) {
                   return true;
                 }
-                if (isSameOrigin(this.layout!.path, targetUrl)) {
+                if (isHttpUrl(targetUrl)) {
                   return false;
                 }
-                hilog.warn(DOMAIN, TAG, `blocked float surface navigation: ${targetUrl}`);
+                Lingxia.launchWithUrl(targetUrl);
                 return true;
               })
               .width('100%')

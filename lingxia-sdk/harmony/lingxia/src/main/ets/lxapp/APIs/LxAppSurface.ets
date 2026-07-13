@@ -1,5 +1,6 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { LxLog } from '../../app/LxLog';
+import { Lingxia } from '../../app/Lingxia';
 import { common } from '@kit.AbilityKit';
 import { display, window } from '@kit.ArkUI';
 import { webview } from '@kit.ArkWeb';
@@ -587,7 +588,7 @@ function normalizeReason(reason: string): string {
   return 'unknown';
 }
 
-function isHttpUrl(value: string): boolean {
+export function isHttpUrl(value: string): boolean {
   const normalized = value.trim().toLowerCase();
   return normalized.startsWith('https://') || normalized.startsWith('http://');
 }
@@ -919,13 +920,18 @@ export struct SurfaceManager {
                 }
                 // A registered URL-callback sentinel (e.g. an auth handoff) is
                 // consumed by the waiting Rust channel; cancel the load.
+                // URL surfaces host multi-origin journeys (an auth page may
+                // hop through an external IdP and back), so cross-origin
+                // http(s) navigation is allowed. Non-http(s) schemes are app
+                // deep links (dingtalk://, feishu://, ...) that IdP pages use
+                // to launch their native app; hand those to the system.
                 if (urlCallbackDispatch(targetUrl)) {
                   return true;
                 }
-                if (isSameOrigin(surface.path, targetUrl)) {
+                if (isHttpUrl(targetUrl)) {
                   return false;
                 }
-                hilog.warn(DOMAIN, TAG, `blocked surface navigation: ${targetUrl}`);
+                Lingxia.launchWithUrl(targetUrl);
                 return true;
               })
               .width('100%')
