@@ -157,9 +157,15 @@ enum LxAppSurface {
 
     private final class WebNavigationDelegate: NSObject, WKNavigationDelegate {
         let initialURL: URL
+        /// Browser-relaxed navigation for URL surfaces that host multi-origin
+        /// journeys (e.g. an auth page hopping through an external IdP and
+        /// back). The sentinel check above still intercepts the callback; the
+        /// relaxation only permits intermediate http(s) cross-origin hops.
+        let allowsCrossOrigin: Bool
 
-        init(initialURL: URL) {
+        init(initialURL: URL, allowsCrossOrigin: Bool = false) {
             self.initialURL = initialURL
+            self.allowsCrossOrigin = allowsCrossOrigin
         }
 
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void) {
@@ -171,6 +177,13 @@ enum LxAppSurface {
             // consumed by the waiting Rust channel; cancel the load.
             if urlCallbackDispatch(url.absoluteString) {
                 decisionHandler(.cancel)
+                return
+            }
+            if allowsCrossOrigin {
+                // Any http(s) destination may render; other schemes (app
+                // links etc.) stay blocked so the surface remains a web sheet.
+                let scheme = url.scheme?.lowercased()
+                decisionHandler(scheme == "http" || scheme == "https" ? .allow : .cancel)
                 return
             }
             guard LxAppSurface.isSameOrigin(initialURL, url) else {
@@ -369,7 +382,7 @@ enum LxAppSurface {
             hostView = nil
             let configuration = WKWebViewConfiguration()
             let wkWebView = WKWebView(frame: contentHost.bounds, configuration: configuration)
-            let delegate = WebNavigationDelegate(initialURL: url)
+            let delegate = WebNavigationDelegate(initialURL: url, allowsCrossOrigin: true)
             wkWebView.navigationDelegate = delegate
             wkWebView.translatesAutoresizingMaskIntoConstraints = false
             contentHost.addSubview(wkWebView)
@@ -1238,9 +1251,15 @@ enum LxAppSurface {
 
     private final class WebNavigationDelegate: NSObject, WKNavigationDelegate {
         let initialURL: URL
+        /// Browser-relaxed navigation for URL surfaces that host multi-origin
+        /// journeys (e.g. an auth page hopping through an external IdP and
+        /// back). The sentinel check above still intercepts the callback; the
+        /// relaxation only permits intermediate http(s) cross-origin hops.
+        let allowsCrossOrigin: Bool
 
-        init(initialURL: URL) {
+        init(initialURL: URL, allowsCrossOrigin: Bool = false) {
             self.initialURL = initialURL
+            self.allowsCrossOrigin = allowsCrossOrigin
         }
 
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void) {
@@ -1252,6 +1271,13 @@ enum LxAppSurface {
             // consumed by the waiting Rust channel; cancel the load.
             if urlCallbackDispatch(url.absoluteString) {
                 decisionHandler(.cancel)
+                return
+            }
+            if allowsCrossOrigin {
+                // Any http(s) destination may render; other schemes (app
+                // links etc.) stay blocked so the surface remains a web sheet.
+                let scheme = url.scheme?.lowercased()
+                decisionHandler(scheme == "http" || scheme == "https" ? .allow : .cancel)
                 return
             }
             guard LxAppSurface.isSameOrigin(initialURL, url) else {
@@ -1507,7 +1533,7 @@ enum LxAppSurface {
             pageInstanceId = ""
             hostView = nil
             let wkWebView = WKWebView(frame: controller.contentView.bounds, configuration: WKWebViewConfiguration())
-            let delegate = WebNavigationDelegate(initialURL: url)
+            let delegate = WebNavigationDelegate(initialURL: url, allowsCrossOrigin: true)
             wkWebView.navigationDelegate = delegate
             wkWebView.translatesAutoresizingMaskIntoConstraints = false
             controller.contentView.addSubview(wkWebView)
