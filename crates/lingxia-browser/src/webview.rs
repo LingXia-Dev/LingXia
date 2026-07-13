@@ -62,26 +62,21 @@ impl BrowserTabDelegate {
         if scripts.is_empty() {
             return;
         }
-        // exec_js is a synchronous dispatch that rejects calls from the
-        // WebView's own UI thread — where this delegate runs on Windows — so
-        // hop to the executor first.
-        let page_path = self.page_path.clone();
-        let session_id = self.session_id;
-        let tab_id = self.tab_id.clone();
-        rong::RongExecutor::global().spawn(async move {
-            let Ok(webview) = browser_find_webview(&page_path, session_id) else {
-                return;
-            };
-            for js in &scripts {
-                if let Err(err) = webview.exec_js(js) {
-                    lxapp::warn!(
-                        "[InternalBrowser] document script injection failed for tab {}: {}",
-                        tab_id,
-                        err
-                    );
-                }
+        // exec_js is same-thread-safe on every backend (the Windows
+        // controller queues without waiting on its own UI thread), so the
+        // delegate can inject directly from the event callback.
+        let Ok(webview) = browser_find_webview(&self.page_path, self.session_id) else {
+            return;
+        };
+        for js in &scripts {
+            if let Err(err) = webview.exec_js(js) {
+                lxapp::warn!(
+                    "[InternalBrowser] document script injection failed for tab {}: {}",
+                    self.tab_id,
+                    err
+                );
             }
-        });
+        }
     }
 }
 

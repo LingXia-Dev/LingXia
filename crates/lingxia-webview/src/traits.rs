@@ -611,9 +611,9 @@ pub struct LoadError {
 /// - events arrive by value, serially, synchronously on the submitting
 ///   thread, flattened FIFO — a callback is never re-entered for the same
 ///   WebView;
-/// - callbacks may arrive on the WebView's own UI thread; calling a
-///   synchronous WebView API (script injection, state queries) from a
-///   callback must hop to the executor first;
+/// - callbacks may arrive on the WebView's own UI thread; fire-and-forget
+///   commands (`exec_js`) are safe there, but result-awaiting APIs must not
+///   block the callback thread;
 /// - every `Started` gets exactly one terminal event; success owns a
 ///   non-empty final URL; cancellation is control flow, never a load error;
 /// - state changes are snapshots, not lifecycle: `Location` alone is never
