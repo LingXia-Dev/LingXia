@@ -179,7 +179,7 @@ pub fn register_bundled_assets() {
     }
 
     match bundled_context_menu_script() {
-        Ok(script) => lingxia_browser::register_startup_page_script(script),
+        Ok(script) => lingxia_browser::register_document_script(script),
         Err(err) => {
             lxapp::info!(
                 "[InternalBrowser] bundled browser context menu unavailable; skipping startup script: {}",

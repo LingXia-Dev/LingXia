@@ -691,6 +691,98 @@ unsafe fn ns_error_to_load_error(error: *mut NSError) -> LoadError {
     }
 }
 
+// KVO observer that turns WKWebView observable state (URL, title,
+// back/forward availability) into WebViewDelegate state callbacks, so Rust
+// consumers have one platform-adapter source of truth and host UI layers
+// never mirror these values into Rust themselves.
+pub struct LingXiaWebViewStateObserverIvars {
+    webtag: WebTag,
+}
+
+define_class!(
+    #[unsafe(super(NSObject))]
+    #[name = "LingXiaWebViewStateObserver"]
+    #[thread_kind = MainThreadOnly]
+    #[ivars = LingXiaWebViewStateObserverIvars]
+    pub struct LingXiaWebViewStateObserver;
+
+    unsafe impl NSObjectProtocol for LingXiaWebViewStateObserver {}
+
+    impl LingXiaWebViewStateObserver {
+        #[unsafe(method(observeValueForKeyPath:ofObject:change:context:))]
+        fn observe_value_for_key_path(
+            &self,
+            key_path: *mut NSString,
+            object: *mut AnyObject,
+            _change: *mut AnyObject,
+            _context: *mut std::ffi::c_void,
+        ) {
+            let Some(delegate) = find_webview_delegate(&self.ivars().webtag) else {
+                return;
+            };
+            let key = unsafe { key_path.as_ref() }
+                .map(|s| s.to_string())
+                .unwrap_or_default();
+            match key.as_str() {
+                "URL" => {
+                    if let Some(url) = source_page_url_from_webview(object) {
+                        delegate.on_url_changed(&url);
+                    }
+                }
+                "title" => {
+                    let title: *mut AnyObject = unsafe { msg_send![object, title] };
+                    let title =
+                        LingXiaNavigationDelegate::nsstring_ptr_to_string(title).unwrap_or_default();
+                    delegate.on_title_changed(&title);
+                }
+                "canGoBack" | "canGoForward" => {
+                    let can_go_back: objc2::runtime::Bool =
+                        unsafe { msg_send![object, canGoBack] };
+                    let can_go_forward: objc2::runtime::Bool =
+                        unsafe { msg_send![object, canGoForward] };
+                    delegate.on_history_changed(can_go_back.as_bool(), can_go_forward.as_bool());
+                }
+                _ => {}
+            }
+        }
+    }
+);
+
+const WEBVIEW_STATE_KEY_PATHS: [&str; 4] = ["URL", "title", "canGoBack", "canGoForward"];
+
+impl LingXiaWebViewStateObserver {
+    fn new(webtag: WebTag, mtm: MainThreadMarker) -> Retained<Self> {
+        let observer = mtm
+            .alloc::<LingXiaWebViewStateObserver>()
+            .set_ivars(LingXiaWebViewStateObserverIvars { webtag });
+        unsafe { msg_send![super(observer), init] }
+    }
+
+    /// Register KVO for the observed key paths (`NSKeyValueObservingOptionNew`;
+    /// values are re-read from the webview when a change fires).
+    unsafe fn observe(&self, webview: *mut AnyObject) {
+        for key in WEBVIEW_STATE_KEY_PATHS {
+            let key = NSString::from_str(key);
+            let _: () = unsafe {
+                msg_send![
+                    webview,
+                    addObserver: self,
+                    forKeyPath: &*key,
+                    options: 0x01usize,
+                    context: std::ptr::null_mut::<std::ffi::c_void>()
+                ]
+            };
+        }
+    }
+
+    unsafe fn unobserve(&self, webview: *mut AnyObject) {
+        for key in WEBVIEW_STATE_KEY_PATHS {
+            let key = NSString::from_str(key);
+            let _: () = unsafe { msg_send![webview, removeObserver: self, forKeyPath: &*key] };
+        }
+    }
+}
+
 // Custom Navigation Delegate for handling page lifecycle events
 pub struct LingXiaNavigationDelegateIvars {
     webtag: WebTag,
@@ -1555,6 +1647,9 @@ pub struct WebViewInner {
     _navigation_delegate: Retained<LingXiaNavigationDelegate>,
     _ui_delegate: Option<Retained<LingXiaUIDelegate>>,
     _message_handler: Retained<LingXiaMessageHandler>,
+    /// KVO observer for URL/title/back-forward state. `Option` so Drop can
+    /// move it onto the main thread for deregistration when dropped off-main.
+    state_observer: Option<Retained<LingXiaWebViewStateObserver>>,
     pub(crate) webtag: WebTag,
     apple_bridge_transport: Arc<AppleBridgeTransport>,
 }
@@ -2019,12 +2114,18 @@ impl WebViewInner {
                 inject_platform_baseline,
             )?;
 
+            // Observe URL/title/back-forward state so the Rust delegate is the
+            // single source of truth for observable WebView state.
+            let state_observer = LingXiaWebViewStateObserver::new(webtag.clone(), mtm);
+            state_observer.observe(webview);
+
             // Create WebViewInner instance with navigation delegate and message handler
             let webview_inner = WebViewInner {
                 webview,
                 _navigation_delegate: navigation_delegate,
                 _ui_delegate: ui_delegate,
                 _message_handler: message_handler,
+                state_observer: Some(state_observer),
                 apple_bridge_transport: AppleBridgeTransport::new(webtag.clone()),
                 webtag,
             };
@@ -3799,9 +3900,23 @@ impl Drop for WebViewInner {
             }
         } else {
             let webview_ptr_addr = self.webview as usize;
+            // The KVO observer must be deregistered on the main thread before
+            // the WKWebView deallocates; move the retained observer across as
+            // a raw pointer and release it there.
+            let observer_ptr_addr = self
+                .state_observer
+                .take()
+                .map(|observer| Retained::into_raw(observer) as usize)
+                .unwrap_or(0);
             DispatchQueue::main().exec_async(move || {
                 unsafe {
                     let webview_ptr = webview_ptr_addr as *mut AnyObject;
+                    if observer_ptr_addr != 0 {
+                        let observer_ptr = observer_ptr_addr as *mut LingXiaWebViewStateObserver;
+                        if let Some(observer) = Retained::from_raw(observer_ptr) {
+                            observer.unobserve(webview_ptr);
+                        }
+                    }
                     // Direct cleanup without creating temporary instance
                     let _: () = msg_send![webview_ptr, removeFromSuperview];
                     let _: () = msg_send![webview_ptr, stopLoading];
@@ -3819,6 +3934,11 @@ impl WebViewInner {
     /// Cleanup WebView resources on main thread and properly release the WebView
     fn cleanup_webview(&self) {
         unsafe {
+            // Deregister KVO before the WKWebView can deallocate.
+            if let Some(observer) = self.state_observer.as_ref() {
+                observer.unobserve(self.webview);
+            }
+
             // Remove from superview if attached to prevent memory leaks
             let _: () = msg_send![self.webview, removeFromSuperview];
 

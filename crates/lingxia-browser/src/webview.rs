@@ -5,8 +5,9 @@ use crate::BUILTIN_BROWSER_APPID;
 use crate::chooser::browser_choose_files;
 use crate::downloads::browser_download_resource;
 use crate::internal_pages::{
-    LingxiaSchemeContext, browser_attach_tab_page, browser_resolve_delegate_context,
-    browser_resolve_delegate_page, ensure_browser_startup_page, handle_browser_lingxia_scheme,
+    LingxiaSchemeContext, browser_attach_tab_page, browser_document_scripts_snapshot,
+    browser_resolve_delegate_context, browser_resolve_delegate_page, ensure_browser_startup_page,
+    handle_browser_lingxia_scheme,
 };
 use crate::policy::{
     LINGXIA_SCHEME, extract_url_scheme, handle_browser_navigation_policy,
@@ -37,17 +38,55 @@ use std::sync::Arc;
 
 /// WebView delegate for browser tab WebViews.
 ///
-/// All tab WebViews share a single headless startup PageInstance (and its PageSvc).
-/// This delegate routes postMessage, page-started, and page-finished events
-/// from the currently active tab WebView to that shared startup PageInstance.
+/// Each tab binds its own headless `PageInstance` (keyed by tab path), and
+/// only browser-internal `lingxia://` documents drive that page's lifecycle
+/// and receive its bridge. External documents update browser tab state only:
+/// they never call `notify_page_started`/`handle_loaded` and never emit an
+/// internal page's `onReady`.
 struct BrowserTabDelegate {
     tab_id: String,
     page_path: String,
     session_id: u64,
 }
 
+impl BrowserTabDelegate {
+    fn document_is_internal(&self) -> bool {
+        crate::tabs::browser_tab_document_is_internal(&self.tab_id)
+    }
+
+    fn inject_document_scripts(&self) {
+        let scripts = browser_document_scripts_snapshot();
+        if scripts.is_empty() {
+            return;
+        }
+        // exec_js is a synchronous dispatch that rejects calls from the
+        // WebView's own UI thread — where this delegate runs on Windows — so
+        // hop to the executor first.
+        let page_path = self.page_path.clone();
+        let session_id = self.session_id;
+        let tab_id = self.tab_id.clone();
+        rong::RongExecutor::global().spawn(async move {
+            let Ok(webview) = browser_find_webview(&page_path, session_id) else {
+                return;
+            };
+            for js in &scripts {
+                if let Err(err) = webview.exec_js(js) {
+                    lxapp::warn!(
+                        "[InternalBrowser] document script injection failed for tab {}: {}",
+                        tab_id,
+                        err
+                    );
+                }
+            }
+        });
+    }
+}
+
 impl WebViewDelegate for BrowserTabDelegate {
     fn on_page_started(&self) {
+        if !self.document_is_internal() {
+            return;
+        }
         match browser_resolve_delegate_page(&self.page_path, self.session_id) {
             Ok(page) => page.notify_page_started(),
             Err(err) => {
@@ -61,6 +100,13 @@ impl WebViewDelegate for BrowserTabDelegate {
     }
 
     fn on_page_finished(&self) {
+        // Browser-owned document scripts (context menu, …) run in every
+        // finished document — internal and external — independent of any
+        // lxapp page lifecycle.
+        self.inject_document_scripts();
+        if !self.document_is_internal() {
+            return;
+        }
         match browser_resolve_delegate_page(&self.page_path, self.session_id) {
             Ok(page) => page.handle_loaded(),
             Err(err) => {
@@ -74,6 +120,12 @@ impl WebViewDelegate for BrowserTabDelegate {
     }
 
     fn on_navigation_finished(&self, url: &str) {
+        // A commit that changes document kind to external terminates the
+        // internal page binding so bridge responses cannot target a document
+        // that is gone.
+        if extract_url_scheme(url).as_deref() != Some(LINGXIA_SCHEME) {
+            crate::internal_pages::detach_internal_tab_page(&self.page_path);
+        }
         crate::tabs::notify_navigation_finished(&self.tab_id, url);
     }
 
@@ -104,6 +156,16 @@ impl WebViewDelegate for BrowserTabDelegate {
     fn handle_post_message(&self, msg: String) {
         if let Some((level, message)) = decode_console_envelope(&msg) {
             self.log(level, &message);
+            return;
+        }
+
+        // The page bridge belongs to internal documents; an external document
+        // has no nonce and gets no page routing.
+        if !self.document_is_internal() {
+            lxapp::warn!(
+                "[InternalBrowser] Dropping bridge message from external document in tab {}",
+                self.tab_id
+            );
             return;
         }
 
@@ -409,7 +471,7 @@ async fn browser_on_webview_ready(
                     }
                 }
             } else {
-                // Startup page: attach WebView to shared startup PageInstance, then load with nonce.
+                // Startup page: attach WebView to the tab's headless PageInstance, then load with nonce.
                 if let Err(e) =
                     browser_attach_tab_page(webview.clone(), &path, session_id, &tab_id, None).await
                 {
@@ -420,11 +482,15 @@ async fn browser_on_webview_ready(
                     );
                     let _ = webview.load_url("about:blank");
                 } else {
+                    // Commit the real startup URL: document-kind gating reads
+                    // the committed URL, and platforms without URL-change
+                    // reporting never backfill it.
+                    let startup_url = format!("{}://newtab", LINGXIA_SCHEME);
                     browser_commit_navigation_if_token_matches(
                         &tab_id,
                         session_id,
                         create_token,
-                        None,
+                        Some(&startup_url),
                     );
                 }
             }

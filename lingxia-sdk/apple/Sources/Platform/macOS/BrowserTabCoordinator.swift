@@ -185,7 +185,6 @@ final class BrowserTabCoordinator: NSObject {
                 let title = (webView.title ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !title.isEmpty else { return }
                 self.handleTitleChanged(id: id, title: title)
-                _ = updateBrowserTabInfo(self.tabIdString(id), webView.url?.absoluteString ?? "", title)
             }
         }
     }
@@ -678,7 +677,6 @@ final class BrowserTabCoordinator: NSObject {
                 if !title.isEmpty {
                     self.handleTitleChanged(id: activeId, title: title)
                 }
-                _ = updateBrowserTabInfo(self.tabIdString(activeId), webView.url?.absoluteString ?? "", webView.title ?? "")
             }
         }
 
@@ -701,7 +699,6 @@ final class BrowserTabCoordinator: NSObject {
                     }
                 }
                 self.host?.updateSidebarBrowserItems(self.sidebarItems(), activeId: activeId)
-                _ = updateBrowserTabInfo(self.tabIdString(activeId), webView.url?.absoluteString ?? "", webView.title ?? "")
             }
         }
 

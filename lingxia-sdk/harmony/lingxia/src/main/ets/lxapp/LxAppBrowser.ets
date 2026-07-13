@@ -22,6 +22,7 @@ import {
   browserUrlIsHidden as nativeBrowserUrlIsHidden,
 	  getBuiltinBrowserAppId,
 	  getLxappSessionId,
+	  notifyWebViewState,
 	  openAsideBrowserTab,
 	  openBrowserTab
 	} from 'liblingxia.so';
@@ -890,6 +891,7 @@ export struct LxAppBrowser {
         );
       })
       .onPageEnd(() => {
+        this.pushWebViewState(entry);
         if (entry.tabId === this.activeTabId) {
           this.updateActiveState();
         }
@@ -898,8 +900,11 @@ export struct LxAppBrowser {
         }
       })
       .onProgressChange((event) => {
-        if (event && event.newProgress > 30 && entry.tabId === this.activeTabId) {
-          this.updateActiveState();
+        if (event && event.newProgress > 30) {
+          this.pushWebViewState(entry);
+          if (entry.tabId === this.activeTabId) {
+            this.updateActiveState();
+          }
         }
       })
   }
@@ -1546,6 +1551,26 @@ export struct LxAppBrowser {
       }
     } catch (error) {
       hilog.warn(DOMAIN, TAG, `updateActiveState failed: ${error}`);
+    }
+  }
+
+  /**
+   * Sample this tab's observable WebView state and push it into the Rust
+   * delegate: ArkWeb exposes URL/title/back-forward only on the ArkTS
+   * controller, so the ets layer is the sampling half of the Harmony
+   * adapter. Local @State updates stay presentation-only.
+   */
+  private pushWebViewState(entry: BrowserTabEntry): void {
+    try {
+      notifyWebViewState(
+        entry.webTag,
+        entry.controller.getUrl() ?? '',
+        entry.controller.getTitle() ?? '',
+        entry.controller.accessBackward(),
+        entry.controller.accessForward()
+      );
+    } catch (error) {
+      hilog.warn(DOMAIN, TAG, `notifyWebViewState failed for tab ${entry.tabId}: ${error}`);
     }
   }
 
