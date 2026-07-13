@@ -16,8 +16,8 @@
         </div>
       </div>
 
-      <!-- Cloud - Dropdown -->
-      <div class="bg-white rounded-lg shadow-sm">
+      <!-- Cloud - Dropdown (only when the host ships the cloud provider) -->
+      <div v-if="data.cloudAvailable" class="bg-white rounded-lg shadow-sm">
         <div
           class="px-4 py-4 flex items-center justify-between cursor-pointer hover:bg-gray-50"
           @click="toggleSection({ section: 'cloud' })"
@@ -607,7 +607,11 @@ type PageActions = {
   navigateToPullDownRefreshPage(): void;
 };
 
-const { actions } = useLxPage<Record<string, never>, PageActions>();
+type PageData = {
+  cloudAvailable: boolean;
+};
+
+const { data, actions } = useLxPage<PageData, PageActions>();
 const {
   navigateToUIPage,
   navigateToDevicePage,
