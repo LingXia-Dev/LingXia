@@ -19,6 +19,10 @@ const APPLE_BRIDGE_DOWNSTREAM_PATH: &str = "/downstream";
 const APPLE_BRIDGE_REPLAY_LIMIT: usize = 4096;
 // Query key carrying the client's last-seen transport seq on (re)connect.
 const APPLE_BRIDGE_FROM_QUERY: &str = "from";
+// A WKURLSchemeTask response carrying initial or replayed frames is completed
+// after its first burst. WebKit can otherwise buffer later `didReceiveData`
+// chunks indefinitely; EOF flushes them, and the client resumes by sequence.
+const APPLE_BRIDGE_BOOTSTRAP_IDLE: Duration = Duration::from_millis(10);
 // Heartbeat cadence for an idle connection. Keeps the socket warm and lets the
 // client detect a silently dead connection (half-open socket) it would
 // otherwise never see a read error for.
@@ -99,9 +103,21 @@ fn heartbeat_frame() -> Vec<u8> {
 
 /// Retained transport frames plus the seq counter. Kept free of socket/thread
 /// state so the replay logic is unit-testable in isolation.
+struct RetainedFrame {
+    seq: u64,
+    bytes: Vec<u8>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CursorState {
+    Replayable,
+    CaughtUp,
+    Unreplayable,
+}
+
 struct FrameLog {
-    // Ascending, gap-free seq. Each entry is the enveloped frame bytes.
-    buffer: VecDeque<(u64, Vec<u8>)>,
+    // Ascending, gap-free seq. Each entry remains independently replayable.
+    buffer: VecDeque<RetainedFrame>,
     // Seq to assign to the next enqueued frame (1-based).
     next_seq: u64,
     limit: usize,
@@ -121,7 +137,10 @@ impl FrameLog {
     fn push(&mut self, message: &str) -> u64 {
         let seq = self.next_seq;
         self.next_seq += 1;
-        self.buffer.push_back((seq, envelope(seq, message)));
+        self.buffer.push_back(RetainedFrame {
+            seq,
+            bytes: envelope(seq, message),
+        });
         while self.buffer.len() > self.limit {
             self.buffer.pop_front();
         }
@@ -133,7 +152,7 @@ impl FrameLog {
     fn earliest(&self) -> u64 {
         self.buffer
             .front()
-            .map(|(seq, _)| *seq)
+            .map(|frame| frame.seq)
             .unwrap_or(self.next_seq)
     }
 
@@ -143,20 +162,30 @@ impl FrameLog {
         from < self.next_seq && from + 1 >= self.earliest()
     }
 
+    fn cursor_state(&self, cursor: u64) -> CursorState {
+        if cursor < self.earliest() || cursor > self.next_seq {
+            CursorState::Unreplayable
+        } else if cursor == self.next_seq {
+            CursorState::CaughtUp
+        } else {
+            CursorState::Replayable
+        }
+    }
+
     /// The enveloped frame with exactly `seq`, using contiguous indexing.
     fn frame_at(&self, seq: u64) -> Option<&[u8]> {
-        let front = self.buffer.front()?.0;
+        let front = self.buffer.front()?.seq;
         if seq < front {
             return None;
         }
         self.buffer
             .get((seq - front) as usize)
-            .map(|(_, bytes)| bytes.as_slice())
+            .map(|frame| frame.bytes.as_slice())
     }
 
     /// Drop frames the client has confirmed by resuming past them.
     fn evict_through(&mut self, acked: u64) {
-        while self.buffer.front().is_some_and(|(seq, _)| *seq <= acked) {
+        while self.buffer.front().is_some_and(|frame| frame.seq <= acked) {
             self.buffer.pop_front();
         }
     }
@@ -167,6 +196,9 @@ struct AppleBridgeConnection {
     writer: UnixStream,
     // Next seq to write on this connection.
     cursor: u64,
+    // Finish an initial/replay response after catch-up so WebKit flushes it.
+    bootstrap: bool,
+    bootstrap_has_data: bool,
 }
 
 struct AppleBridgeTransportState {
@@ -229,7 +261,7 @@ impl AppleBridgeTransport {
             );
         }
 
-        let (replaced_existing, resumable) = {
+        let (replaced_existing, resumable, bootstrap) = {
             let mut guard = self.state.lock().unwrap_or_else(|e| e.into_inner());
             let replaced = guard.connection.is_some();
             guard.log.evict_through(from);
@@ -245,18 +277,21 @@ impl AppleBridgeTransport {
             } else {
                 guard.log.next_seq
             };
+            let bootstrap = !resumable || from == 0 || cursor < guard.log.next_seq;
             guard.next_connection_id += 1;
             let id = guard.next_connection_id;
             guard.connection = Some(AppleBridgeConnection {
                 id,
                 writer: write_end,
                 cursor,
+                bootstrap,
+                bootstrap_has_data: !resumable,
             });
-            (replaced, resumable)
+            (replaced, resumable, bootstrap)
         };
         self.signal.notify_all();
         log::info!(
-            "Apple bridge downstream connected webtag={} from={}{}{}",
+            "Apple bridge downstream connected webtag={} from={}{}{}{}",
             self.webtag,
             from,
             if replaced_existing {
@@ -268,7 +303,8 @@ impl AppleBridgeTransport {
                 ""
             } else {
                 " (unreplayable, reset)"
-            }
+            },
+            if bootstrap { " (bootstrap)" } else { "" }
         );
         Ok(reader)
     }
@@ -313,34 +349,85 @@ impl AppleBridgeTransport {
                     }
                     if let Some(connection) = guard.connection.as_ref() {
                         let cursor = connection.cursor;
-                        if let Some(frame) = guard.log.frame_at(cursor).map(<[u8]>::to_vec) {
-                            let id = connection.id;
-                            match connection.writer.try_clone() {
-                                Ok(writer) => break (id, writer, Some(cursor + 1), frame),
-                                Err(e) => {
-                                    log::warn!(
-                                        "Apple bridge downstream clone failed webtag={}: {}",
-                                        self.webtag,
-                                        e
-                                    );
-                                    guard.connection = None;
-                                    continue;
+                        match guard.log.cursor_state(cursor) {
+                            CursorState::Replayable => {
+                                if let Some(frame) = guard.log.frame_at(cursor).map(<[u8]>::to_vec)
+                                {
+                                    let id = connection.id;
+                                    match connection.writer.try_clone() {
+                                        Ok(writer) => {
+                                            break (id, writer, Some(cursor + 1), frame);
+                                        }
+                                        Err(e) => {
+                                            log::warn!(
+                                                "Apple bridge downstream clone failed webtag={}: {}",
+                                                self.webtag,
+                                                e
+                                            );
+                                            guard.connection = None;
+                                            continue;
+                                        }
+                                    }
                                 }
+                            }
+                            CursorState::CaughtUp => {}
+                            CursorState::Unreplayable => {
+                                log::warn!(
+                                    "Apple bridge downstream cursor fell outside replay window webtag={} cursor={} earliest={} next={}",
+                                    self.webtag,
+                                    cursor,
+                                    guard.log.earliest(),
+                                    guard.log.next_seq
+                                );
+                                guard.connection = None;
+                                continue;
                             }
                         }
                     }
-                    // No frame ready: wait, waking periodically to heartbeat an
-                    // idle connection so a dead socket is detected on both ends.
+                    // An initial/replay response is finite: once its first
+                    // frame burst is quiet, close it so WKURLSchemeTask must
+                    // flush all bytes. A caught-up reconnect is long-lived.
+                    let wait_duration = match guard.connection.as_ref() {
+                        Some(connection)
+                            if connection.bootstrap
+                                && connection.bootstrap_has_data
+                                && guard.log.cursor_state(connection.cursor)
+                                    == CursorState::CaughtUp =>
+                        {
+                            APPLE_BRIDGE_BOOTSTRAP_IDLE
+                        }
+                        _ => APPLE_BRIDGE_HEARTBEAT_INTERVAL,
+                    };
                     let (next_guard, timeout) = self
                         .signal
-                        .wait_timeout(guard, APPLE_BRIDGE_HEARTBEAT_INTERVAL)
+                        .wait_timeout(guard, wait_duration)
                         .unwrap_or_else(|e| e.into_inner());
                     guard = next_guard;
                     if timeout.timed_out() {
+                        let completed_bootstrap =
+                            guard.connection.as_ref().and_then(|connection| {
+                                (connection.bootstrap
+                                    && connection.bootstrap_has_data
+                                    && guard.log.cursor_state(connection.cursor)
+                                        == CursorState::CaughtUp)
+                                    .then_some(connection.id)
+                            });
+                        if let Some(id) = completed_bootstrap {
+                            guard.connection = None;
+                            log::debug!(
+                                "Apple bridge downstream bootstrap completed webtag={} connection={}",
+                                self.webtag,
+                                id
+                            );
+                            continue;
+                        }
                         // Snapshot under the borrow, then act, so the Err arm can
                         // clear the connection without a borrow conflict.
                         let idle = match guard.connection.as_ref() {
-                            Some(connection) if guard.log.frame_at(connection.cursor).is_none() => {
+                            Some(connection)
+                                if guard.log.cursor_state(connection.cursor)
+                                    == CursorState::CaughtUp =>
+                            {
                                 Some((connection.id, connection.writer.try_clone()))
                             }
                             _ => None,
@@ -377,6 +464,9 @@ impl AppleBridgeTransport {
                     && connection.id == connection_id
                 {
                     connection.cursor = next;
+                    if connection.bootstrap {
+                        connection.bootstrap_has_data = true;
+                    }
                 }
             } else {
                 log::debug!("Apple bridge downstream heartbeat webtag={}", self.webtag);
@@ -388,6 +478,8 @@ impl AppleBridgeTransport {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Read;
+    use std::os::fd::FromRawFd;
 
     fn message_of(frame: &[u8]) -> String {
         // Strip the {"lxff":N,"m": ... } envelope back to the inner message.
@@ -412,6 +504,101 @@ mod tests {
         assert_eq!(seq_of(frame), 1);
         assert_eq!(message_of(frame), r#"{"kind":"a"}"#);
         assert!(frame.ends_with(b"\n"));
+    }
+
+    #[test]
+    fn fresh_downstream_finishes_after_first_frame_burst() {
+        let transport = AppleBridgeTransport::new(WebTag::new("test", "page", None));
+        let reader = transport.connect_downstream(0).unwrap();
+        transport.enqueue_message(r#"{"kind":"helloAck"}"#).unwrap();
+
+        let mut downstream = unsafe { UnixStream::from_raw_fd(reader.into_raw_fd()) };
+        downstream
+            .set_read_timeout(Some(Duration::from_secs(1)))
+            .unwrap();
+        let mut bytes = Vec::new();
+        downstream.read_to_end(&mut bytes).unwrap();
+        transport.shutdown();
+
+        let text = String::from_utf8(bytes).unwrap();
+        assert!(text.starts_with('\n'));
+        assert!(text.contains(r#"{"lxff":1,"m":{"kind":"helloAck"}}"#));
+    }
+
+    #[test]
+    fn from_zero_with_prequeued_frames_still_finishes() {
+        let transport = AppleBridgeTransport::new(WebTag::new("test", "page", None));
+        transport.enqueue_message(r#"{"kind":"helloAck"}"#).unwrap();
+        transport.enqueue_message(r#"{"kind":"ready"}"#).unwrap();
+        let reader = transport.connect_downstream(0).unwrap();
+
+        let mut downstream = unsafe { UnixStream::from_raw_fd(reader.into_raw_fd()) };
+        downstream
+            .set_read_timeout(Some(Duration::from_secs(1)))
+            .unwrap();
+        let mut bytes = Vec::new();
+        downstream.read_to_end(&mut bytes).unwrap();
+        transport.shutdown();
+
+        let text = String::from_utf8(bytes).unwrap();
+        assert!(text.contains(r#"{"lxff":1,"m":{"kind":"helloAck"}}"#));
+        assert!(text.contains(r#"{"lxff":2,"m":{"kind":"ready"}}"#));
+    }
+
+    #[test]
+    fn resumed_downstream_finishes_after_replaying_backlog() {
+        let transport = AppleBridgeTransport::new(WebTag::new("test", "page", None));
+        transport.enqueue_message(r#"{"n":1}"#).unwrap();
+        transport.enqueue_message(r#"{"n":2}"#).unwrap();
+        transport.enqueue_message(r#"{"n":3}"#).unwrap();
+        let reader = transport.connect_downstream(1).unwrap();
+
+        let mut downstream = unsafe { UnixStream::from_raw_fd(reader.into_raw_fd()) };
+        downstream
+            .set_read_timeout(Some(Duration::from_secs(1)))
+            .unwrap();
+        let mut bytes = Vec::new();
+        downstream.read_to_end(&mut bytes).unwrap();
+        transport.shutdown();
+
+        let text = String::from_utf8(bytes).unwrap();
+        assert!(!text.contains(r#"{"lxff":1,"m":{"n":1}}"#));
+        assert!(text.contains(r#"{"lxff":2,"m":{"n":2}}"#));
+        assert!(text.contains(r#"{"lxff":3,"m":{"n":3}}"#));
+    }
+
+    #[test]
+    fn caught_up_resume_stays_streaming() {
+        let transport = AppleBridgeTransport::new(WebTag::new("test", "page", None));
+        transport.enqueue_message(r#"{"n":1}"#).unwrap();
+        let reader = transport.connect_downstream(1).unwrap();
+        let downstream = unsafe { UnixStream::from_raw_fd(reader.into_raw_fd()) };
+
+        let state = transport.state.lock().unwrap();
+        assert!(!state.connection.as_ref().unwrap().bootstrap);
+        drop(state);
+        transport.shutdown();
+        drop(downstream);
+    }
+
+    #[test]
+    fn unreplayable_downstream_finishes_after_reset_sentinel() {
+        let transport = AppleBridgeTransport::new(WebTag::new("test", "page", None));
+        let reader = transport.connect_downstream(5).unwrap();
+
+        let mut downstream = unsafe { UnixStream::from_raw_fd(reader.into_raw_fd()) };
+        downstream
+            .set_read_timeout(Some(Duration::from_secs(1)))
+            .unwrap();
+        let mut bytes = Vec::new();
+        downstream.read_to_end(&mut bytes).unwrap();
+        transport.shutdown();
+
+        assert!(
+            String::from_utf8(bytes)
+                .unwrap()
+                .contains(r#"{"lxreset":true}"#)
+        );
     }
 
     #[test]
@@ -457,6 +644,20 @@ mod tests {
         assert!(!log.resumable(3));
         // A client caught up to the retained window still resumes.
         assert!(log.resumable(15));
+    }
+
+    #[test]
+    fn cursor_before_replay_window_is_not_treated_as_idle() {
+        let mut log = FrameLog::new(2);
+        log.push(r#"{"n":1}"#);
+        log.push(r#"{"n":2}"#);
+        log.push(r#"{"n":3}"#);
+
+        assert_eq!(log.earliest(), 2);
+        assert_eq!(log.cursor_state(1), CursorState::Unreplayable);
+        assert_eq!(log.cursor_state(2), CursorState::Replayable);
+        assert_eq!(log.cursor_state(4), CursorState::CaughtUp);
+        assert_eq!(log.cursor_state(5), CursorState::Unreplayable);
     }
 
     #[test]

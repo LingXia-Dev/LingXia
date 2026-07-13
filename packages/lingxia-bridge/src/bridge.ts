@@ -345,7 +345,7 @@ async function runAppleDownstream(): Promise<void> {
     const tail = buffered.trim();
     if (tail) {
       try {
-        handleIncomingMessage(JSON.parse(tail));
+        handleAppleDownstreamFrame(JSON.parse(tail));
       } catch (e) {
         warn("Apple downstream trailing parse error:", e, tail);
       }
@@ -999,7 +999,13 @@ function isTransportReady(): boolean {
 }
 
 function canSendAppMessages(): boolean {
-  return isTransportReady() && handshakeDone;
+  if (!handshakeDone) return false;
+  // Apple upstream posts through WKScriptMessageHandler independently of the
+  // downstream fetch. During a replay reconnect, native retains responses by
+  // sequence, so treating that short gap as an unsendable session can strand
+  // requests in the outbox with no second `ready` event to flush them.
+  if (useAppleDownstreamTransport()) return true;
+  return isTransportReady();
 }
 
 function rejectPendingRequest(reqId: string, err: LxBridgeError): void {
