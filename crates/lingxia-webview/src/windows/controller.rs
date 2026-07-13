@@ -331,7 +331,9 @@ impl WebViewInner {
     }
 
     pub(crate) fn notify_parent_position_changed(&self) -> StdResult<()> {
-        self.dispatch_layout_command(|resp| UiCommand::NotifyParentPositionChanged { resp })
+        self.dispatch_command_same_thread_safe(|resp| UiCommand::NotifyParentPositionChanged {
+            resp,
+        })
     }
 
     fn wake_ui_thread(&self) {
