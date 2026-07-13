@@ -185,10 +185,18 @@ fn detect_framework_for_page_path(
     match candidates.as_slice() {
         [] => Ok(None),
         [framework] => Ok(Some(*framework)),
-        _ => Err(anyhow!(
-            "Multiple framework candidates found for {}. Pass --framework react|vue|html.",
-            normalize_relative_path(page_path)
-        )),
+        _ => {
+            let options = candidates
+                .iter()
+                .map(|framework| framework.as_str())
+                .collect::<Vec<_>>()
+                .join("|");
+            Err(anyhow!(
+                "Multiple framework implementations found for {}. Pass --framework {options}, \
+                 or set \"framework\": \"...\" in lxapp.json to pin it permanently.",
+                normalize_relative_path(page_path)
+            ))
+        }
     }
 }
 
@@ -211,4 +219,26 @@ fn preferred_extensions(framework: ProjectFramework) -> &'static [&'static str] 
 
 fn normalize_relative_path(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ambiguity_error_lists_only_actual_candidates() {
+        let dir = std::env::temp_dir().join("lingxia-framework-test");
+        let page_dir = dir.join("pages/home");
+        std::fs::create_dir_all(&page_dir).unwrap();
+        std::fs::write(page_dir.join("index.tsx"), "").unwrap();
+        std::fs::write(page_dir.join("index.vue"), "").unwrap();
+
+        let err = detect_framework_for_page_path(&dir, "pages/home/index").unwrap_err();
+        let message = err.to_string();
+        assert!(message.contains("react|vue"), "{message}");
+        assert!(!message.contains("html"), "{message}");
+        assert!(message.contains("lxapp.json"), "{message}");
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
 }
