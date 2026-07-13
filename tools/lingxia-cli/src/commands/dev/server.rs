@@ -26,8 +26,15 @@ pub struct DevServerHandle {
 }
 
 impl DevServerHandle {
+    /// Connectable ws URL for same-machine peers. A `0.0.0.0` LAN bind is
+    /// not a destination address — render it as loopback; remote peers use
+    /// the printed LAN attach URL instead.
     pub fn ws_url(&self) -> String {
-        format!("ws://{}", self.ws_addr)
+        if self.ws_addr.ip().is_unspecified() {
+            format!("ws://127.0.0.1:{}", self.ws_addr.port())
+        } else {
+            format!("ws://{}", self.ws_addr)
+        }
     }
 
     pub fn port(&self) -> u16 {
@@ -87,10 +94,31 @@ struct DevServerState {
     next_runtime_id: AtomicU64,
     pending_results: Mutex<std::collections::HashMap<String, Sender<DevtoolsWireMessage>>>,
     command_lock: Mutex<()>,
+    /// When set (non-loopback bind), every peer must present this token in
+    /// its `Hello` and HTTP requests must carry it as `?token=`.
+    auth_token: Option<String>,
+    /// Session log file, served to remote `lxdev logs` via `session.logs`.
+    log_file: PathBuf,
+    /// Identity served to remote `lxdev` via `session.info`, so attached
+    /// sessions list with the same fields as local ones.
+    session_id: String,
+    target: String,
+    started_at: u64,
 }
 
 impl DevServerState {
-    fn new(project_root: PathBuf, stop_flag: Arc<AtomicBool>) -> Self {
+    fn new(
+        project_root: PathBuf,
+        stop_flag: Arc<AtomicBool>,
+        auth_token: Option<String>,
+        log_file: PathBuf,
+        session_id: String,
+        target: String,
+    ) -> Self {
+        let started_at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|duration| duration.as_millis() as u64)
+            .unwrap_or_default();
         Self {
             project_root,
             stop_flag,
@@ -98,6 +126,28 @@ impl DevServerState {
             next_runtime_id: AtomicU64::new(1),
             pending_results: Mutex::new(std::collections::HashMap::new()),
             command_lock: Mutex::new(()),
+            auth_token,
+            log_file,
+            session_id,
+            target,
+            started_at,
+        }
+    }
+
+    fn session_info_json(&self) -> serde_json::Value {
+        serde_json::json!({
+            "session_id": self.session_id,
+            "target": self.target,
+            "project_root": self.project_root.to_string_lossy(),
+            "started_at": self.started_at,
+            "pid": std::process::id(),
+        })
+    }
+
+    fn authorizes(&self, presented: Option<&str>) -> bool {
+        match &self.auth_token {
+            None => true,
+            Some(expected) => presented == Some(expected.as_str()),
         }
     }
 
@@ -170,7 +220,9 @@ impl DevServerState {
 pub fn start_server_on_with_stop(
     project_root: &Path,
     bind_addr: &str,
+    platform: &str,
     stop_flag: Arc<AtomicBool>,
+    auth_token: Option<String>,
 ) -> Result<DevServerHandle> {
     let session = create_session(project_root)?;
     let listener = TcpListener::bind(bind_addr).context("Failed to bind dev websocket")?;
@@ -184,6 +236,10 @@ pub fn start_server_on_with_stop(
     let state = Arc::new(DevServerState::new(
         project_root.to_path_buf(),
         stop_flag.clone(),
+        auth_token,
+        session.log_file.clone(),
+        session.session_id.clone(),
+        platform.to_string(),
     ));
     let thread_stop_flag = stop_flag.clone();
     let server_thread =
@@ -202,16 +258,29 @@ pub fn start_server_fixed_with_stop(
     host: &str,
     platform: &str,
     stop_flag: Arc<AtomicBool>,
+    auth_token: Option<String>,
 ) -> Result<DevServerHandle> {
     let port = dev_port(&project_root.to_string_lossy(), platform);
-    match start_server_on_with_stop(project_root, &format!("{host}:{port}"), stop_flag.clone()) {
+    match start_server_on_with_stop(
+        project_root,
+        &format!("{host}:{port}"),
+        platform,
+        stop_flag.clone(),
+        auth_token.clone(),
+    ) {
         Ok(handle) => Ok(handle),
         Err(err) => {
             eprintln!(
                 "⚠ dev port {port} unavailable ({err:#}); using an OS-assigned port — \
                  reconnection after a client restart may need a re-forward."
             );
-            start_server_on_with_stop(project_root, &format!("{host}:0"), stop_flag)
+            start_server_on_with_stop(
+                project_root,
+                &format!("{host}:0"),
+                platform,
+                stop_flag,
+                auth_token,
+            )
         }
     }
 }
@@ -276,9 +345,15 @@ fn handle_connection(
     }
     let mut websocket = accept(stream).context("Failed to accept websocket")?;
     let hello = read_wire_message(&mut websocket)?;
-    let DevtoolsWireMessage::Hello { role } = hello else {
+    let DevtoolsWireMessage::Hello { role, token } = hello else {
         return Err(anyhow!("First websocket message must be hello"));
     };
+    if !state.authorizes(token.as_deref()) {
+        let _ = websocket.close(None);
+        return Err(anyhow!(
+            "Rejected dev websocket peer with a missing or wrong session token"
+        ));
+    }
     match role {
         DevtoolsPeerRole::Devtool => handle_devtool_connection(websocket, writer, state),
         DevtoolsPeerRole::Client => handle_client_connection(websocket, state),
@@ -305,6 +380,10 @@ fn handle_http_connection(mut stream: TcpStream, state: &DevServerState) -> Resu
     if method != "GET" {
         return write_http_error(&mut stream, 405, "Method Not Allowed");
     }
+    let presented = lingxia_devtool_protocol::token_from_ws_url(target);
+    if !state.authorizes(presented.as_deref()) {
+        return write_http_error(&mut stream, 403, "Forbidden");
+    }
     let target = target
         .split_once('?')
         .map(|(path, _)| path)
@@ -324,6 +403,57 @@ fn handle_http_connection(mut stream: TcpStream, state: &DevServerState) -> Resu
             write_http_error(&mut stream, status, &message)
         }
     }
+}
+
+/// Serve one chunk of the session log file for remote `lxdev logs`.
+/// Reads from `offset` (replaying from 0 after truncation/rotation), caps at
+/// `max_bytes`, and returns only complete lines so the client never parses a
+/// half-written JSONL record.
+fn read_log_chunk(log_file: &Path, args: Option<&serde_json::Value>) -> Result<serde_json::Value> {
+    const DEFAULT_MAX_BYTES: u64 = 256 * 1024;
+    const MAX_MAX_BYTES: u64 = 1024 * 1024;
+
+    let requested_offset = args
+        .and_then(|value| value.get("offset"))
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0);
+    let max_bytes = args
+        .and_then(|value| value.get("max_bytes"))
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(DEFAULT_MAX_BYTES)
+        .min(MAX_MAX_BYTES);
+
+    let mut file =
+        File::open(log_file).with_context(|| format!("Failed to open {}", log_file.display()))?;
+    let len = file.metadata().context("Failed to stat log file")?.len();
+    let offset = if requested_offset > len {
+        0
+    } else {
+        requested_offset
+    };
+
+    let want = max_bytes.min(len.saturating_sub(offset)) as usize;
+    let mut buf = vec![0u8; want];
+    if want > 0 {
+        use std::io::Seek;
+        file.seek(std::io::SeekFrom::Start(offset))
+            .context("Failed to seek log file")?;
+        file.read_exact(&mut buf)
+            .context("Failed to read log file")?;
+    }
+    // Trim to the last complete line; a trailing half-line waits for the next
+    // poll.
+    let complete = match buf.iter().rposition(|byte| *byte == b'\n') {
+        Some(pos) => pos + 1,
+        None => 0,
+    };
+    buf.truncate(complete);
+    let chunk = String::from_utf8_lossy(&buf).into_owned();
+    Ok(serde_json::json!({
+        "chunk": chunk,
+        "next_offset": offset + complete as u64,
+        "len": len,
+    }))
 }
 
 fn read_http_request_head(stream: &mut TcpStream) -> Result<String> {
@@ -585,6 +715,40 @@ fn handle_client_connection(
                 error: None,
             },
         )?;
+        let _ = websocket.close(None);
+        return Ok(());
+    }
+
+    if handler.as_str() == lingxia_devtool_protocol::handlers::session::INFO {
+        send_wire_message(
+            &mut websocket,
+            &DevtoolsWireMessage::Result {
+                command_id,
+                ok: true,
+                data: Some(state.session_info_json()),
+                error: None,
+            },
+        )?;
+        let _ = websocket.close(None);
+        return Ok(());
+    }
+
+    if handler.as_str() == lingxia_devtool_protocol::handlers::session::LOGS {
+        let payload = match read_log_chunk(&state.log_file, args.as_ref()) {
+            Ok(data) => DevtoolsWireMessage::Result {
+                command_id,
+                ok: true,
+                data: Some(data),
+                error: None,
+            },
+            Err(err) => DevtoolsWireMessage::Result {
+                command_id,
+                ok: false,
+                data: None,
+                error: Some(format!("{err:#}")),
+            },
+        };
+        send_wire_message(&mut websocket, &payload)?;
         let _ = websocket.close(None);
         return Ok(());
     }
