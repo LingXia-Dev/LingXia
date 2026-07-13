@@ -1167,8 +1167,9 @@ public class LingXiaWebView extends WebView {
     }
 
     native void onConsoleMessage(String appId, String path, long sessionId, int level, String message);
-    native void onPageStarted(String appId, String path, long sessionId);
-    native void onPageFinished(String appId, String path, long sessionId);
+    native void onPageStarted(String appId, String path, long sessionId, String url);
+    native void onPageFinished(String appId, String path, long sessionId, String url);
+    native void onPageCommitted(String appId, String path, long sessionId);
     native void onWebViewStateChanged(String appId, String path, long sessionId, String url, String title, boolean canGoBack, boolean canGoForward);
     native void onFaviconChanged(String appId, String path, long sessionId, byte[] pngBytes);
     native void onLoadError(String appId, String path, long sessionId, String url, int errorCode, String description);

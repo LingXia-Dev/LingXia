@@ -267,7 +267,11 @@ impl WebViewInner {
             .map_err(|err| err.into_webview_error("run synchronous WebView command"))?
     }
 
-    fn dispatch_layout_command(
+    /// Queue a fire-and-forget command and wake the UI thread; when already
+    /// on that thread, skip the reply wait (waiting would deadlock — the
+    /// thread cannot pump the queue while blocked). Errors on the same-thread
+    /// path surface only in the UI thread's own logging.
+    fn dispatch_command_same_thread_safe(
         &self,
         command: impl FnOnce(Sender<StdResult<()>>) -> UiCommand,
     ) -> StdResult<()> {
@@ -284,11 +288,11 @@ impl WebViewInner {
 
         recv_reply_pumping(&resp_rx, None)
             .map_err(|_| WebViewError::WebView("WebView UI thread did not reply".to_string()))?
-            .map_err(|err| WebViewError::WebView(format!("run WebView layout command: {err}")))
+            .map_err(|err| WebViewError::WebView(format!("run WebView command: {err}")))
     }
 
     pub(crate) fn set_content_bounds(&self, bounds: RECT) -> StdResult<()> {
-        self.dispatch_layout_command(|resp| UiCommand::SetContentBounds { bounds, resp })
+        self.dispatch_command_same_thread_safe(|resp| UiCommand::SetContentBounds { bounds, resp })
     }
 
     pub(crate) fn set_content_visible(&self, visible: bool) -> StdResult<()> {
@@ -299,11 +303,14 @@ impl WebViewInner {
         // permanently hidden after a same-page navigation: the reconcile's
         // show failed, the visibility registry went stale, and every later
         // layout pass failed the same way — a stuck white page.
-        self.dispatch_layout_command(|resp| UiCommand::SetContentVisible { visible, resp })
+        self.dispatch_command_same_thread_safe(|resp| UiCommand::SetContentVisible {
+            visible,
+            resp,
+        })
     }
 
     pub(crate) fn set_parent_window(&self, window: isize) -> StdResult<()> {
-        self.dispatch_layout_command(|resp| UiCommand::SetParentWindow { window, resp })
+        self.dispatch_command_same_thread_safe(|resp| UiCommand::SetParentWindow { window, resp })
     }
 
     pub(crate) fn dispatch_screenshot_command(&self) -> StdResult<Vec<u8>> {
@@ -324,7 +331,9 @@ impl WebViewInner {
     }
 
     pub(crate) fn notify_parent_position_changed(&self) -> StdResult<()> {
-        self.dispatch_layout_command(|resp| UiCommand::NotifyParentPositionChanged { resp })
+        self.dispatch_command_same_thread_safe(|resp| UiCommand::NotifyParentPositionChanged {
+            resp,
+        })
     }
 
     fn wake_ui_thread(&self) {
@@ -443,7 +452,10 @@ impl WebViewController for WebViewInner {
     }
 
     fn exec_js(&self, js: &str) -> StdResult<()> {
-        self.dispatch_command(|resp| UiCommand::ExecJs {
+        // Fire-and-forget script injection is called from delegate events,
+        // which are delivered on this webview's own UI thread — queue without
+        // waiting there so callers stay platform-innocent.
+        self.dispatch_command_same_thread_safe(|resp| UiCommand::ExecJs {
             js: js.to_string(),
             resp,
         })

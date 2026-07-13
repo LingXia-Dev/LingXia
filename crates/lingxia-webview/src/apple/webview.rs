@@ -4,6 +4,7 @@ use super::bridge_transport::{
 };
 #[cfg(all(feature = "webview-input", target_os = "macos"))]
 use crate::WebViewInputError;
+use crate::events::normalizer::{self, NativeNavigationResult, NativeSignal};
 #[cfg(all(feature = "webview-input", target_os = "macos"))]
 use crate::input_helper::INPUT_HELPER_BOOTSTRAP;
 #[cfg(all(feature = "webview-input", target_os = "macos"))]
@@ -608,17 +609,24 @@ pub(crate) fn apply_http_proxy(
     })?
 }
 
-/// Extract a `LoadError` from a raw `*mut NSError`.
+/// Outcome of normalizing a native navigation failure: cancellation is
+/// control flow and never becomes an application-visible `LoadError`.
+enum AppleNavigationFailure {
+    Cancelled { description: String },
+    Error(LoadError),
+}
+
+/// Normalize a raw `*mut NSError` from a failed navigation.
 ///
 /// # Safety
 /// `error` must be either null or a valid `NSError` pointer.
-unsafe fn ns_error_to_load_error(error: *mut NSError) -> LoadError {
+unsafe fn ns_error_to_navigation_failure(error: *mut NSError) -> AppleNavigationFailure {
     if error.is_null() {
-        return LoadError {
-            url: None,
+        return AppleNavigationFailure::Error(LoadError {
+            failing_url: None,
             kind: LoadErrorKind::Unknown,
             description: "unknown error".to_string(),
-        };
+        });
     }
     let description = {
         let s: *mut NSString = unsafe { msg_send![error, localizedDescription] };
@@ -637,8 +645,11 @@ unsafe fn ns_error_to_load_error(error: *mut NSError) -> LoadError {
             unsafe { val.as_ref() }.map(|v| v.to_string())
         }
     };
+    // NSURLErrorCancelled — supersession, explicit stop, or policy rejection.
+    if error_code == -999 {
+        return AppleNavigationFailure::Cancelled { description };
+    }
     let kind = match error_code {
-        -999 => LoadErrorKind::Cancelled,
         -1001 => LoadErrorKind::Timeout,
         -1002 => LoadErrorKind::InvalidUrl,
         -1003 | -1006 => LoadErrorKind::Dns,
@@ -663,7 +674,7 @@ unsafe fn ns_error_to_load_error(error: *mut NSError) -> LoadError {
             {
                 LoadErrorKind::Security
             } else if desc.contains("cancel") || desc.contains("aborted") {
-                LoadErrorKind::Cancelled
+                return AppleNavigationFailure::Cancelled { description };
             } else if desc.contains("bad url")
                 || desc.contains("invalid url")
                 || desc.contains("malformed")
@@ -684,11 +695,53 @@ unsafe fn ns_error_to_load_error(error: *mut NSError) -> LoadError {
             }
         }
     };
-    LoadError {
-        url,
+    AppleNavigationFailure::Error(LoadError {
+        failing_url: url,
         kind,
         description,
-    }
+    })
+}
+
+/// Last adapter-initiated load URL per webtag: the `Started` fallback when
+/// the provisional URL is not yet set on the WKWebView.
+static LAST_REQUESTED_URLS: std::sync::OnceLock<
+    std::sync::Mutex<std::collections::HashMap<String, String>>,
+> = std::sync::OnceLock::new();
+
+pub(crate) fn record_requested_url(webtag: &WebTag, url: &str) {
+    let map = LAST_REQUESTED_URLS.get_or_init(|| std::sync::Mutex::new(Default::default()));
+    map.lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .insert(webtag.key().to_string(), url.to_string());
+}
+
+fn last_requested_url(webtag: &WebTag) -> Option<String> {
+    LAST_REQUESTED_URLS
+        .get()?
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .get(webtag.key())
+        .cloned()
+}
+
+/// Normalize and submit a failed-navigation callback: cancellations terminate
+/// as `Cancelled`, everything else as `Failed`, keyed by WKNavigation identity.
+fn submit_navigation_failure(webtag: &WebTag, navigation: *mut AnyObject, error: *mut NSError) {
+    let key = (!navigation.is_null()).then_some(navigation as usize as u64);
+    let result = match unsafe { ns_error_to_navigation_failure(error) } {
+        AppleNavigationFailure::Cancelled { description } => {
+            log::debug!("Cancelled navigation webtag={webtag} error={description}");
+            NativeNavigationResult::Cancelled(None)
+        }
+        AppleNavigationFailure::Error(load_error) => {
+            log::warn!(
+                "WebView navigation failed webtag={webtag} error={}",
+                load_error.description
+            );
+            NativeNavigationResult::Failed(load_error)
+        }
+    };
+    normalizer::submit(webtag, NativeSignal::NavigationFinished { key, result });
 }
 
 // KVO observer that turns WKWebView observable state (URL, title,
@@ -717,30 +770,34 @@ define_class!(
             _change: *mut AnyObject,
             _context: *mut std::ffi::c_void,
         ) {
-            let Some(delegate) = find_webview_delegate(&self.ivars().webtag) else {
-                return;
-            };
+            let webtag = &self.ivars().webtag;
             let key = unsafe { key_path.as_ref() }
                 .map(|s| s.to_string())
                 .unwrap_or_default();
             match key.as_str() {
                 "URL" => {
                     if let Some(url) = source_page_url_from_webview(object) {
-                        delegate.on_url_changed(&url);
+                        normalizer::submit(webtag, NativeSignal::LocationChanged { url });
                     }
                 }
                 "title" => {
                     let title: *mut AnyObject = unsafe { msg_send![object, title] };
-                    let title =
-                        LingXiaNavigationDelegate::nsstring_ptr_to_string(title).unwrap_or_default();
-                    delegate.on_title_changed(&title);
+                    let title = LingXiaNavigationDelegate::nsstring_ptr_to_string(title)
+                        .filter(|title| !title.is_empty());
+                    normalizer::submit(webtag, NativeSignal::TitleChanged { title });
                 }
                 "canGoBack" | "canGoForward" => {
                     let can_go_back: objc2::runtime::Bool =
                         unsafe { msg_send![object, canGoBack] };
                     let can_go_forward: objc2::runtime::Bool =
                         unsafe { msg_send![object, canGoForward] };
-                    delegate.on_history_changed(can_go_back.as_bool(), can_go_forward.as_bool());
+                    normalizer::submit(
+                        webtag,
+                        NativeSignal::BackForwardChanged {
+                            can_go_back: can_go_back.as_bool(),
+                            can_go_forward: can_go_forward.as_bool(),
+                        },
+                    );
                 }
                 _ => {}
             }
@@ -803,32 +860,44 @@ define_class!(
         #[unsafe(method(webView:didStartProvisionalNavigation:))]
         fn did_start_provisional_navigation(
             &self,
-            _webview: *mut AnyObject,
-            _navigation: &WKNavigation,
+            webview: *mut AnyObject,
+            navigation: &WKNavigation,
         ) {
             let webtag = &self.ivars().webtag;
-            let (appid, path) = webtag.extract_parts();
+            // Requested URL: the provisional URL, falling back to the last
+            // adapter-initiated load. Captured here, on the callback thread.
+            let url = source_page_url_from_webview(webview)
+                .or_else(|| last_requested_url(webtag))
+                .unwrap_or_else(|| "about:blank".to_string());
+            normalizer::submit(
+                webtag,
+                NativeSignal::NavigationStarted {
+                    key: Some(navigation as *const WKNavigation as usize as u64),
+                    url,
+                },
+            );
+        }
 
-            // Call delegate's on_page_started
-            if let Some(delegate) = find_webview_delegate(webtag) {
-                delegate.on_page_started();
-            }
-            log::info!("WebView page started: {} at {}", appid, path);
+        #[unsafe(method(webView:didCommitNavigation:))]
+        fn did_commit_navigation(&self, _webview: *mut AnyObject, _navigation: &WKNavigation) {
+            // Commit evidence: the displayed document was replaced.
+            normalizer::submit(&self.ivars().webtag, NativeSignal::DocumentCommitted);
         }
 
         #[unsafe(method(webView:didFinishNavigation:))]
-        fn did_finish_navigation(&self, webview: *mut AnyObject, _navigation: &WKNavigation) {
+        fn did_finish_navigation(&self, webview: *mut AnyObject, navigation: *mut AnyObject) {
             let webtag = &self.ivars().webtag;
-            let (appid, path) = webtag.extract_parts();
-
-            // Call delegate's on_page_finished
-            if let Some(delegate) = find_webview_delegate(webtag) {
-                delegate.on_page_finished();
-                if let Some(url) = source_page_url_from_webview(webview) {
-                    delegate.on_navigation_finished(&url);
-                }
-            }
-            log::info!("WebView page finished: {} at {}", appid, path);
+            // Final URL captured inside the callback; nil navigation maps to
+            // the active attempt via a keyless finish.
+            let final_url =
+                source_page_url_from_webview(webview).unwrap_or_else(|| "about:blank".to_string());
+            normalizer::submit(
+                webtag,
+                NativeSignal::NavigationFinished {
+                    key: (!navigation.is_null()).then_some(navigation as usize as u64),
+                    result: NativeNavigationResult::Succeeded { final_url },
+                },
+            );
         }
 
         #[unsafe(method(webView:didFailProvisionalNavigation:withError:))]
@@ -838,24 +907,7 @@ define_class!(
             _navigation: *mut AnyObject,
             error: *mut NSError,
         ) {
-            let webtag = &self.ivars().webtag;
-            let load_error = unsafe { ns_error_to_load_error(error) };
-            if load_error.kind == LoadErrorKind::Cancelled {
-                log::debug!(
-                    "Ignoring cancelled provisional navigation webtag={} error={}",
-                    webtag,
-                    load_error.description
-                );
-                return;
-            }
-            log::warn!(
-                "WebView provisional navigation failed webtag={} error={}",
-                webtag,
-                load_error.description
-            );
-            if let Some(delegate) = find_webview_delegate(webtag) {
-                delegate.on_load_error(&load_error);
-            }
+            submit_navigation_failure(&self.ivars().webtag, _navigation, error);
         }
 
         #[unsafe(method(webView:didFailNavigation:withError:))]
@@ -865,24 +917,7 @@ define_class!(
             _navigation: *mut AnyObject,
             error: *mut NSError,
         ) {
-            let webtag = &self.ivars().webtag;
-            let load_error = unsafe { ns_error_to_load_error(error) };
-            if load_error.kind == LoadErrorKind::Cancelled {
-                log::debug!(
-                    "Ignoring cancelled navigation webtag={} error={}",
-                    webtag,
-                    load_error.description
-                );
-                return;
-            }
-            log::warn!(
-                "WebView navigation failed webtag={} error={}",
-                webtag,
-                load_error.description
-            );
-            if let Some(delegate) = find_webview_delegate(webtag) {
-                delegate.on_load_error(&load_error);
-            }
+            submit_navigation_failure(&self.ivars().webtag, _navigation, error);
         }
 
         #[unsafe(method(webView:decidePolicyForNavigationAction:decisionHandler:))]
@@ -2728,6 +2763,7 @@ impl WebViewInner {
 #[async_trait]
 impl WebViewController for WebViewInner {
     fn load_url(&self, url: &str) -> Result<(), WebViewError> {
+        record_requested_url(&self.webtag, url);
         if MainThreadMarker::new().is_some() {
             // Already on main thread, execute directly
             self.load_url_on_main_thread(url)

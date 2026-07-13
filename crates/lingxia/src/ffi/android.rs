@@ -300,6 +300,19 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_findWebView<'a>(
 
         let Some(page_instance_id) = resolve_page_instance_id(&appid, &path, session_id as u64)
         else {
+            // Browser tabs showing external documents have no bound lxapp
+            // PageInstance — the WebView belongs to the tab, not a page.
+            // Resolve it directly from the webview registry by webtag.
+            let webtag = lingxia_webview::WebTag::new(&appid, &path, Some(session_id as u64));
+            if let Some(webview) = lingxia_webview::runtime::find_webview(&webtag) {
+                return match env.new_local_ref(webview.get_java_webview()) {
+                    Ok(local_ref) => Ok(unsafe { JObject::from_raw(env, local_ref.into_raw()) }),
+                    Err(e) => {
+                        error!("Failed to create local reference to WebView: {:?}", e);
+                        Ok(JObject::null())
+                    }
+                };
+            }
             error!(
                 "WebView resolve failed for {}:{} (session={})",
                 appid, path, session_id

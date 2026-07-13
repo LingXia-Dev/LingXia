@@ -79,6 +79,9 @@ pub enum LogLevel {
     Error,
 }
 
+/// Typed delegate events: correlated navigation lifecycle, observable state
+/// snapshots, and the canonical derived-state folds.
+pub mod events;
 mod input_helper;
 mod traits;
 /// Process-local URL callback channels for navigation handoff.
@@ -99,6 +102,10 @@ mod windows;
 
 // Public exports
 // WebViewError and LogLevel are defined above
+pub use events::{
+    NavigationCancellationReason, NavigationEvent, NavigationId, NavigationProgress,
+    ObservedWebViewState, WebViewEventObserver, WebViewObservedEvent, WebViewStateChange,
+};
 pub use traits::{
     ClearSiteDataOptions, ClearSiteDataResult, ClickOptions, DownloadRequest, FileChooserFile,
     FileChooserRequest, FileChooserResponse, FillOptions, LoadDataRequest, LoadError,

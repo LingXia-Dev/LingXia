@@ -25,8 +25,9 @@ use lingxia_webview::runtime::{
     destroy_webview as destroy_managed_webview, find_webview as find_managed_webview,
 };
 use lingxia_webview::{
-    LogLevel, NavigationPolicy, NewWindowPolicy, WebTag, WebView, WebViewBuilder,
-    WebViewController, WebViewDelegate, WebViewSession,
+    LogLevel, NavigationEvent, NavigationPolicy, NavigationProgress, NewWindowPolicy, WebTag,
+    WebView, WebViewBuilder, WebViewController, WebViewDelegate, WebViewSession,
+    WebViewStateChange,
 };
 use lxapp::LxAppError;
 use serde_json::Value;
@@ -47,6 +48,8 @@ struct BrowserTabDelegate {
     tab_id: String,
     page_path: String,
     session_id: u64,
+    /// Canonical attempt-correlation fold over typed navigation events.
+    progress: std::sync::Mutex<NavigationProgress>,
 }
 
 impl BrowserTabDelegate {
@@ -59,98 +62,111 @@ impl BrowserTabDelegate {
         if scripts.is_empty() {
             return;
         }
-        // exec_js is a synchronous dispatch that rejects calls from the
-        // WebView's own UI thread — where this delegate runs on Windows — so
-        // hop to the executor first.
-        let page_path = self.page_path.clone();
-        let session_id = self.session_id;
-        let tab_id = self.tab_id.clone();
-        rong::RongExecutor::global().spawn(async move {
-            let Ok(webview) = browser_find_webview(&page_path, session_id) else {
-                return;
-            };
-            for js in &scripts {
-                if let Err(err) = webview.exec_js(js) {
-                    lxapp::warn!(
-                        "[InternalBrowser] document script injection failed for tab {}: {}",
-                        tab_id,
-                        err
-                    );
-                }
+        // exec_js is same-thread-safe on every backend (the Windows
+        // controller queues without waiting on its own UI thread), so the
+        // delegate can inject directly from the event callback.
+        let Ok(webview) = browser_find_webview(&self.page_path, self.session_id) else {
+            return;
+        };
+        for js in &scripts {
+            if let Err(err) = webview.exec_js(js) {
+                lxapp::warn!(
+                    "[InternalBrowser] document script injection failed for tab {}: {}",
+                    self.tab_id,
+                    err
+                );
             }
-        });
+        }
     }
 }
 
 impl WebViewDelegate for BrowserTabDelegate {
-    fn on_page_started(&self) {
-        if !self.document_is_internal() {
-            return;
+    fn on_navigation_event(&self, event: NavigationEvent) {
+        let mut progress = self.progress.lock().unwrap_or_else(|e| e.into_inner());
+        progress.apply(&event);
+        match &event {
+            NavigationEvent::Started { .. } => {
+                if !self.document_is_internal() {
+                    return;
+                }
+                match browser_resolve_delegate_page(&self.page_path, self.session_id) {
+                    Ok(page) => page.notify_page_started(),
+                    Err(err) => {
+                        lxapp::warn!(
+                            "[InternalBrowser] Failed to resolve delegate page for tab {} on start: {}",
+                            self.tab_id,
+                            err
+                        );
+                    }
+                }
+            }
+            NavigationEvent::Succeeded { id, final_url } => {
+                let is_current = progress.is_current(*id);
+                drop(progress);
+                // Browser-owned document scripts (context menu, …) run in
+                // every successfully loaded document — internal and external.
+                self.inject_document_scripts();
+                let internal = extract_url_scheme(final_url).as_deref() == Some(LINGXIA_SCHEME);
+                if !internal {
+                    // A commit that changes document kind to external
+                    // terminates the internal page binding so bridge
+                    // responses cannot target a document that is gone.
+                    crate::internal_pages::detach_internal_tab_page(&self.page_path);
+                }
+                // Persisted history: exactly one visit per success, keyed by
+                // the authoritative final URL.
+                crate::tabs::notify_navigation_finished(&self.tab_id, final_url);
+                if internal && is_current {
+                    match browser_resolve_delegate_page(&self.page_path, self.session_id) {
+                        Ok(page) => page.handle_loaded(),
+                        Err(err) => {
+                            lxapp::warn!(
+                                "[InternalBrowser] Failed to resolve delegate page for tab {} on finish: {}",
+                                self.tab_id,
+                                err
+                            );
+                        }
+                    }
+                }
+            }
+            // Failure and cancellation never record a visit, drive page
+            // lifecycle, or surface error UI from here.
+            NavigationEvent::Failed { .. } | NavigationEvent::Cancelled { .. } => {}
         }
-        match browser_resolve_delegate_page(&self.page_path, self.session_id) {
-            Ok(page) => page.notify_page_started(),
-            Err(err) => {
-                lxapp::warn!(
-                    "[InternalBrowser] Failed to resolve delegate page for tab {} on start: {}",
-                    self.tab_id,
-                    err
+    }
+
+    fn on_webview_state_change(&self, change: WebViewStateChange) {
+        match change {
+            WebViewStateChange::Location { url } => {
+                // Live tab URL for address displays; never a persisted visit.
+                let _ = crate::tabs::browser_update_tab_info(&self.tab_id, Some(&url), None);
+            }
+            WebViewStateChange::Title { title } => {
+                // Tab titles persist until the next document reports one, so
+                // a generation reset (None) is not mirrored into tab state.
+                if let Some(title) = title {
+                    let _ = crate::tabs::browser_update_tab_info(&self.tab_id, None, Some(&title));
+                }
+            }
+            WebViewStateChange::Favicon { png_bytes } => {
+                // Empty bytes are the tab-state clearing convention; the
+                // persisted site favicon cache is deliberately untouched.
+                let _ = crate::tabs::browser_update_tab_favicon(
+                    &self.tab_id,
+                    png_bytes.unwrap_or_default(),
+                );
+            }
+            WebViewStateChange::BackForwardAvailability {
+                can_go_back,
+                can_go_forward,
+            } => {
+                let _ = crate::tabs::browser_update_tab_nav_state(
+                    &self.tab_id,
+                    can_go_back,
+                    can_go_forward,
                 );
             }
         }
-    }
-
-    fn on_page_finished(&self) {
-        // Browser-owned document scripts (context menu, …) run in every
-        // finished document — internal and external — independent of any
-        // lxapp page lifecycle.
-        self.inject_document_scripts();
-        if !self.document_is_internal() {
-            return;
-        }
-        match browser_resolve_delegate_page(&self.page_path, self.session_id) {
-            Ok(page) => page.handle_loaded(),
-            Err(err) => {
-                lxapp::warn!(
-                    "[InternalBrowser] Failed to resolve delegate page for tab {} on finish: {}",
-                    self.tab_id,
-                    err
-                );
-            }
-        }
-    }
-
-    fn on_navigation_finished(&self, url: &str) {
-        // A commit that changes document kind to external terminates the
-        // internal page binding so bridge responses cannot target a document
-        // that is gone.
-        if extract_url_scheme(url).as_deref() != Some(LINGXIA_SCHEME) {
-            crate::internal_pages::detach_internal_tab_page(&self.page_path);
-        }
-        crate::tabs::notify_navigation_finished(&self.tab_id, url);
-    }
-
-    fn on_title_changed(&self, title: &str) {
-        // Mirror the document title into the tab state (fires the
-        // tabs-changed observer for shell sidebars). Platforms whose host
-        // layer reports titles separately (e.g. macOS KVO) do not call this.
-        let _ = crate::tabs::browser_update_tab_info(&self.tab_id, None, Some(title));
-    }
-
-    fn on_favicon_changed(&self, png_bytes: Vec<u8>) {
-        // Mirror the page favicon into the tab state (fires the tabs-changed
-        // observer for shell sidebars); empty bytes clear a stale favicon.
-        let _ = crate::tabs::browser_update_tab_favicon(&self.tab_id, png_bytes);
-    }
-
-    fn on_history_changed(&self, can_go_back: bool, can_go_forward: bool) {
-        let _ =
-            crate::tabs::browser_update_tab_nav_state(&self.tab_id, can_go_back, can_go_forward);
-    }
-
-    fn on_url_changed(&self, url: &str) {
-        // Mirror the live document URL into the tab state so address
-        // displays follow history navigations and redirects.
-        let _ = crate::tabs::browser_update_tab_info(&self.tab_id, Some(url), None);
     }
 
     fn handle_post_message(&self, msg: String) {
@@ -266,6 +282,7 @@ pub(crate) fn browser_create_webview(
             tab_id: tab_id_owned.clone(),
             page_path: tab_path_owned.clone(),
             session_id,
+            progress: std::sync::Mutex::new(NavigationProgress::default()),
         }))
         .on_scheme("lx", move |req| {
             let tab_id = tab_id_for_lx.clone();

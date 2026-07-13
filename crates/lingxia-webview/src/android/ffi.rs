@@ -1,3 +1,4 @@
+use crate::events::normalizer::{self, NativeNavigationResult, NativeSignal};
 use crate::traits::{
     FileChooserRequest, FileChooserResponse, LoadError, LoadErrorKind, NavigationPolicy,
     NewWindowPolicy,
@@ -72,14 +73,20 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onWebViewStateCha
         };
 
         let webtag = WebTag::new(&appid, &path, session_id);
-        if let Some(delegate) = find_webview_delegate(&webtag) {
+        if find_webview(&webtag).is_some() {
             if !url.is_empty() {
-                delegate.on_url_changed(&url);
+                normalizer::submit(&webtag, NativeSignal::LocationChanged { url });
             }
             if !title.is_empty() {
-                delegate.on_title_changed(&title);
+                normalizer::submit(&webtag, NativeSignal::TitleChanged { title: Some(title) });
             }
-            delegate.on_history_changed(can_go_back, can_go_forward);
+            normalizer::submit(
+                &webtag,
+                NativeSignal::BackForwardChanged {
+                    can_go_back,
+                    can_go_forward,
+                },
+            );
         }
         Ok(0)
     })
@@ -107,8 +114,13 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onFaviconChanged(
         };
 
         let webtag = WebTag::new(&appid, &path, session_id);
-        if let Some(delegate) = find_webview_delegate(&webtag) {
-            delegate.on_favicon_changed(png_bytes);
+        if find_webview(&webtag).is_some() {
+            normalizer::submit(
+                &webtag,
+                NativeSignal::FaviconChanged {
+                    png_bytes: Some(png_bytes),
+                },
+            );
         }
         Ok(0)
     })
@@ -122,10 +134,12 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onPageStarted(
     appid: JString,
     path: JString,
     session_id: jlong,
+    url: JString,
 ) -> jint {
     env.with_env(|env| -> Result<jint, jni::errors::Error> {
         let appid: String = appid.try_to_string(env)?;
         let path: String = path.try_to_string(env)?;
+        let url: String = url.try_to_string(env)?;
         let session_id = if session_id > 0 {
             Some(session_id as u64)
         } else {
@@ -133,16 +147,22 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onPageStarted(
         };
 
         let webtag = WebTag::new(&appid, &path, session_id);
-        if let Some(delegate) = find_webview_delegate(&webtag) {
-            delegate.on_page_started();
+        if find_webview(&webtag).is_some() {
+            let url = if url.is_empty() {
+                "about:blank".to_string()
+            } else {
+                url
+            };
+            normalizer::submit(&webtag, NativeSignal::NavigationStarted { key: None, url });
         }
         Ok(0)
     })
     .resolve::<ThrowRuntimeExAndDefault>()
 }
 
+/// `onPageCommitVisible`: commit evidence — the displayed document was replaced.
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onPageFinished(
+pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onPageCommitted(
     mut env: EnvUnowned,
     _this: JObject,
     appid: JString,
@@ -157,10 +177,48 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onPageFinished(
         } else {
             None
         };
+        let webtag = WebTag::new(&appid, &path, session_id);
+        if find_webview(&webtag).is_some() {
+            normalizer::submit(&webtag, NativeSignal::DocumentCommitted);
+        }
+        Ok(0)
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onPageFinished(
+    mut env: EnvUnowned,
+    _this: JObject,
+    appid: JString,
+    path: JString,
+    session_id: jlong,
+    url: JString,
+) -> jint {
+    env.with_env(|env| -> Result<jint, jni::errors::Error> {
+        let appid: String = appid.try_to_string(env)?;
+        let path: String = path.try_to_string(env)?;
+        let url: String = url.try_to_string(env)?;
+        let session_id = if session_id > 0 {
+            Some(session_id as u64)
+        } else {
+            None
+        };
 
         let webtag = WebTag::new(&appid, &path, session_id);
-        if let Some(delegate) = find_webview_delegate(&webtag) {
-            delegate.on_page_finished();
+        if find_webview(&webtag).is_some() {
+            let final_url = if url.is_empty() {
+                "about:blank".to_string()
+            } else {
+                url
+            };
+            normalizer::submit(
+                &webtag,
+                NativeSignal::NavigationFinished {
+                    key: None,
+                    result: NativeNavigationResult::Succeeded { final_url },
+                },
+            );
         }
         Ok(0)
     })
@@ -213,6 +271,14 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onScreenshotResul
     .resolve::<ThrowRuntimeExAndDefault>()
 }
 
+/// Whether the native failure is a cancellation — control flow that must
+/// terminate as a cancelled navigation, never as an application-visible
+/// load error.
+fn android_error_is_cancellation(description: &str) -> bool {
+    let desc = description.trim().to_ascii_lowercase();
+    desc.contains("cancel") || desc.contains("aborted")
+}
+
 fn android_load_error_kind(error_code: i32, description: &str) -> LoadErrorKind {
     match error_code {
         -2 => LoadErrorKind::Dns,
@@ -238,8 +304,6 @@ fn android_load_error_kind(error_code: i32, description: &str) -> LoadErrorKind 
                 || desc.contains("secure connection")
             {
                 LoadErrorKind::Security
-            } else if desc.contains("cancel") || desc.contains("aborted") {
-                LoadErrorKind::Cancelled
             } else if desc.contains("bad url")
                 || desc.contains("invalid url")
                 || desc.contains("malformed")
@@ -285,13 +349,24 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onLoadError(
         let description: String = description.try_to_string(env)?;
 
         let webtag = WebTag::new(&appid, &path, session_id);
-        if let Some(delegate) = find_webview_delegate(&webtag) {
-            delegate.on_load_error(&LoadError {
-                url: if url.is_empty() { None } else { Some(url) },
+        let result = if android_error_is_cancellation(&description) {
+            log::debug!(
+                "Cancelled navigation webtag={} error={}",
+                webtag,
+                description
+            );
+            NativeNavigationResult::Cancelled(None)
+        } else {
+            NativeNavigationResult::Failed(LoadError {
+                failing_url: if url.is_empty() { None } else { Some(url) },
                 kind: android_load_error_kind(error_code, &description),
                 description,
-            });
-        }
+            })
+        };
+        normalizer::submit(
+            &webtag,
+            NativeSignal::NavigationFinished { key: None, result },
+        );
         Ok(())
     })
     .resolve::<ThrowRuntimeExAndDefault>()

@@ -11,6 +11,9 @@ categories = ["web-programming", "api-bindings"]
 [features]
 default = []
 webview-input = []
+# Expose NavigationId::from_raw so downstream crates can build synthetic
+# NavigationEvent sequences in their own unit tests.
+test-support = []
 
 [dependencies]
 async-trait = "0.1"

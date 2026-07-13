@@ -1,6 +1,7 @@
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 
+use crate::events::normalizer::{self, NativeNavigationResult, NativeSignal};
 use crate::harmony::schemehandler::set_webview_scheme_handler;
 use crate::harmony::tsfn::call_arkts;
 use crate::input_helper::{build_async_eval_body, new_eval_token, parse_wrapped_eval_result};
@@ -1006,6 +1007,7 @@ impl WebViewInner {
 #[async_trait]
 impl WebViewController for WebViewInner {
     fn load_url(&self, url: &str) -> Result<(), WebViewError> {
+        record_map(&RECENT_NAV_URLS, &self.webtag, url);
         let ark_tag = self.ark_webtag_string();
         call_arkts("loadUrl", &[&ark_tag, &url])
     }
@@ -1449,6 +1451,38 @@ fn register_webview_callbacks(webtag: &WebTag) -> Result<(), WebViewError> {
 }
 
 // WebView lifecycle callback functions
+/// ArkWeb's C callbacks carry no URLs, so the adapter captures them where
+/// they are visible: API loads, navigation-policy checks, and the ets state
+/// samples. `Started`/`Succeeded` fall back to these captures.
+static RECENT_NAV_URLS: OnceLock<Mutex<std::collections::HashMap<String, String>>> =
+    OnceLock::new();
+static LAST_LOCATIONS: OnceLock<Mutex<std::collections::HashMap<String, String>>> = OnceLock::new();
+
+fn record_map(
+    map: &'static OnceLock<Mutex<std::collections::HashMap<String, String>>>,
+    webtag: &WebTag,
+    url: &str,
+) {
+    if url.is_empty() {
+        return;
+    }
+    map.get_or_init(|| Mutex::new(Default::default()))
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .insert(webtag.key().to_string(), url.to_string());
+}
+
+fn read_map(
+    map: &'static OnceLock<Mutex<std::collections::HashMap<String, String>>>,
+    webtag: &WebTag,
+) -> Option<String> {
+    map.get()?
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .get(webtag.key())
+        .cloned()
+}
+
 extern "C" fn on_controller_attached_callback(web_tag: *const c_char, _user_data: *mut c_void) {
     if web_tag.is_null() {
         log::warn!("WebView controller attached callback received null web_tag");
@@ -1478,9 +1512,8 @@ extern "C" fn on_page_begin_callback(web_tag: *const c_char, _user_data: *mut c_
             log::error!("Failed to inject console script for {}: {}", webtag_str, e);
         }
 
-        if let Some(delegate) = find_webview_delegate(&webtag) {
-            delegate.on_page_started();
-        }
+        let url = read_map(&RECENT_NAV_URLS, &webtag).unwrap_or_else(|| "about:blank".to_string());
+        normalizer::submit(&webtag, NativeSignal::NavigationStarted { key: None, url });
     }
 }
 
@@ -1498,9 +1531,18 @@ extern "C" fn on_page_end_callback(web_tag: *const c_char, _user_data: *mut c_vo
             return;
         }
 
-        if let Some(delegate) = find_webview_delegate(&webtag) {
-            delegate.on_page_finished();
-        }
+        // Final URL: the last ets-sampled location (progress fires before
+        // page end), else the last requested URL.
+        let final_url = read_map(&LAST_LOCATIONS, &webtag)
+            .or_else(|| read_map(&RECENT_NAV_URLS, &webtag))
+            .unwrap_or_else(|| "about:blank".to_string());
+        normalizer::submit(
+            &webtag,
+            NativeSignal::NavigationFinished {
+                key: None,
+                result: NativeNavigationResult::Succeeded { final_url },
+            },
+        );
     }
 }
 
@@ -1521,16 +1563,30 @@ pub fn notify_webview_state(
         log::debug!("Ignoring webview state for stale webview {}", web_tag);
         return;
     }
-    let Some(delegate) = find_webview_delegate(&webtag) else {
-        return;
-    };
     if !url.is_empty() {
-        delegate.on_url_changed(url);
+        record_map(&LAST_LOCATIONS, &webtag, url);
+        normalizer::submit(
+            &webtag,
+            NativeSignal::LocationChanged {
+                url: url.to_string(),
+            },
+        );
     }
     if !title.is_empty() {
-        delegate.on_title_changed(title);
+        normalizer::submit(
+            &webtag,
+            NativeSignal::TitleChanged {
+                title: Some(title.to_string()),
+            },
+        );
     }
-    delegate.on_history_changed(can_go_back, can_go_forward);
+    normalizer::submit(
+        &webtag,
+        NativeSignal::BackForwardChanged {
+            can_go_back,
+            can_go_forward,
+        },
+    );
 }
 
 extern "C" fn on_destroy_callback(web_tag: *const c_char, _user_data: *mut c_void) {
@@ -1792,6 +1848,7 @@ extern "C" fn on_web_message_received(
 /// Returns `true` to intercept (cancel) the navigation, `false` to allow it.
 /// Called from the ArkTS `onLoadIntercept` handler via NAPI.
 pub fn check_navigation_policy(webtag_str: &str, url: &str) -> bool {
+    record_map(&RECENT_NAV_URLS, &WebTag::from(webtag_str), url);
     let webtag = WebTag::from(webtag_str);
     if let Some(webview) = find_webview(&webtag) {
         return matches!(webview.handle_navigation(url), NavigationPolicy::Cancel);
@@ -1908,8 +1965,6 @@ fn harmony_load_error_kind(error_code: i32, description: &str) -> LoadErrorKind 
                 || desc.contains("secure connection")
             {
                 LoadErrorKind::Security
-            } else if desc.contains("cancel") || desc.contains("aborted") {
-                LoadErrorKind::Cancelled
             } else if desc.contains("bad url")
                 || desc.contains("invalid url")
                 || desc.contains("malformed")
@@ -1934,13 +1989,26 @@ fn harmony_load_error_kind(error_code: i32, description: &str) -> LoadErrorKind 
 
 pub fn on_load_error(webtag_str: &str, url: &str, error_code: i32, description: &str) {
     let webtag = WebTag::from(webtag_str);
-    if let Some(delegate) = find_webview_delegate(&webtag) {
-        delegate.on_load_error(&LoadError {
-            url: (!url.is_empty()).then(|| url.to_string()),
+    // Cancellation is control flow, never an application-visible load error.
+    let desc = description.trim().to_ascii_lowercase();
+    let result = if desc.contains("cancel") || desc.contains("aborted") {
+        log::debug!(
+            "Cancelled navigation webtag={} error={}",
+            webtag,
+            description
+        );
+        NativeNavigationResult::Cancelled(None)
+    } else {
+        NativeNavigationResult::Failed(LoadError {
+            failing_url: (!url.is_empty()).then(|| url.to_string()),
             kind: harmony_load_error_kind(error_code, description),
             description: description.to_string(),
-        });
-    }
+        })
+    };
+    normalizer::submit(
+        &webtag,
+        NativeSignal::NavigationFinished { key: None, result },
+    );
 }
 
 /// Console WebMessage callback

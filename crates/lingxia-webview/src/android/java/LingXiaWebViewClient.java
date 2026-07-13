@@ -37,7 +37,8 @@ public class LingXiaWebViewClient extends WebViewClient {
             webView.onPageStarted(
                 webView.getAppId() != null ? webView.getAppId() : "",
                 webView.getCurrentPath() != null ? webView.getCurrentPath() : "",
-                webView.getSessionId()
+                webView.getSessionId(),
+                url != null ? url : ""
             );
         }
     }
@@ -53,6 +54,21 @@ public class LingXiaWebViewClient extends WebViewClient {
             webView.resetViewport();
             webView.pushWebViewState();
             webView.onPageFinished(
+                webView.getAppId() != null ? webView.getAppId() : "",
+                webView.getCurrentPath() != null ? webView.getCurrentPath() : "",
+                webView.getSessionId(),
+                url != null ? url : ""
+            );
+        }
+    }
+
+    @Override
+    public void onPageCommitVisible(WebView view, String url) {
+        super.onPageCommitVisible(view, url);
+        // Commit evidence: the displayed document was replaced.
+        LingXiaWebView webView = webViewRef.get();
+        if (webView != null) {
+            webView.onPageCommitted(
                 webView.getAppId() != null ? webView.getAppId() : "",
                 webView.getCurrentPath() != null ? webView.getCurrentPath() : "",
                 webView.getSessionId()
