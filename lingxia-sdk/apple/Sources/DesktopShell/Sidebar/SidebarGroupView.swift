@@ -152,7 +152,7 @@ class SidebarGroupView: NSView {
     }()
     private let chevronIndicator = NSButton()
     /// Collapsed-state aggregate: a dot on the header while any tabbar item
-    /// carries a badge or red dot (spec §4.3 — notifications never vanish
+    /// carries a badge or red dot (notifications never vanish
     /// with the collapse).
     private let aggregateDot = NSView()
     private let closeButton = NSButton()
@@ -160,6 +160,10 @@ class SidebarGroupView: NSView {
     private var itemViews: [SidebarItemView] = []
 
     private var isExpanded = true
+    /// Last tabbar visibility applied from Rust. Collapse/expand only follows a
+    /// visibility CHANGE so unrelated refreshes (badge, style) don't undo a
+    /// manual chevron toggle.
+    private var lastAppliedTabBarVisible: Bool?
     /// True when this group's lxapp is the active main — set by SidebarView.
     /// Clicking the active group's header toggles collapse; a non-active group's
     /// header switches to it instead.
@@ -171,7 +175,7 @@ class SidebarGroupView: NSView {
     /// a light hairline, "black" (default) as the darker separator.
     private var attributionBaseColor: NSColor = .separatorColor
     /// Thin vertical line binding the expanded items to their group header
-    /// (spec §4.3 — Windows-baseline attribution line, tabbar-tinted).
+    /// (Windows-baseline attribution line, tabbar-tinted).
     private let attributionLine = NSView()
     private var attributionHeightConstraint: NSLayoutConstraint?
     private var itemsHeightConstraint: NSLayoutConstraint?
@@ -208,7 +212,7 @@ class SidebarGroupView: NSView {
 
     /// Identity cues only — app icon tile, name, chevron. No accent pill,
     /// no tinted items area, no connector line: decoration would break the
-    /// sidebar's uniform rhythm (spec §4.3).
+    /// sidebar's uniform rhythm.
     /// The lxapp tab (group header) highlights while its app owns the main —
     /// regardless of page or tabbar item — so a collapsed group still shows
     /// where you are. Distinct from the item accent (two independent levels).
@@ -426,6 +430,14 @@ class SidebarGroupView: NSView {
 
         let items = tabBar.getItems(appId: appId)
         rebuildItems(items: items)
+
+        // lx.hideTabBar/showTabBar map to collapsing/expanding this group.
+        if lastAppliedTabBarVisible != tabBar.is_visible {
+            lastAppliedTabBarVisible = tabBar.is_visible
+            if isExpanded != tabBar.is_visible && !itemViews.isEmpty {
+                toggleExpanded()
+            }
+        }
     }
 
     private func rebuildItems(items: [TabBarItem]) {
