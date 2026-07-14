@@ -48,6 +48,28 @@ fn action_event(id: &str) -> String {
     format!("lx.shell.activator:{id}")
 }
 
+/// Activator items persist in the host data dir (Rust-owned, like pins) so
+/// every platform skin restores the same entries before the home logic
+/// boots. Action items are stored too but skins skip them on restore —
+/// their handlers only exist once the writer re-declares them.
+fn persist_activator_items(lxapp: &LxApp, payload: &str) {
+    let path = lxapp.app_data_dir().join("shell-activator.json");
+    if let Err(err) = std::fs::write(&path, payload) {
+        log::warn!("failed to persist activator items: {err}");
+    }
+}
+
+/// Serialized activator items from the previous run ("[]" when none).
+pub(crate) fn persisted_activator_items() -> String {
+    lxapp::get_platform()
+        .map(|platform| {
+            use lingxia_platform::traits::app_runtime::AppRuntime;
+            platform.app_data_dir().join("shell-activator.json")
+        })
+        .and_then(|path| std::fs::read_to_string(path).ok())
+        .unwrap_or_else(|| "[]".to_string())
+}
+
 /// Serialize one incoming item, registering an action item's click handler.
 /// Surface items carry exactly one content key (`lxapp` / `native`); action
 /// items carry `id` + `handler`.
@@ -106,6 +128,7 @@ fn activator_set(ctx: JSContext, items: Vec<JSObject>) -> JSResult<()> {
     if let Ok(mut state) = ACTIVATOR_ITEMS.lock() {
         *state = specs;
     }
+    persist_activator_items(&lxapp, &payload);
     lxapp
         .runtime
         .set_activator_items(&payload)
@@ -142,6 +165,7 @@ fn activator_update(ctx: JSContext, key: String, patch: JSObject) -> JSResult<()
         }
         serde_json::to_string(&*state).unwrap_or_else(|_| "[]".to_string())
     };
+    persist_activator_items(&lxapp, &payload);
     lxapp
         .runtime
         .set_activator_items(&payload)

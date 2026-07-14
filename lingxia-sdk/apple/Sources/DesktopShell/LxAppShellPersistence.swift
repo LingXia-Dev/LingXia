@@ -49,15 +49,6 @@ enum LxAppShellPersistence {
         defaults.set(collapsed, forKey: "lingxia.shell.group.collapsed.\(appId)")
     }
 
-    /// Serialized activator SURFACE items (JSON array) for early restore at
-    /// launch; action items are excluded (their handlers live in the writer).
-    static var activatorItemsJSON: String? {
-        get { defaults.string(forKey: "lingxia.shell.activator.items") }
-        set {
-            if let newValue { defaults.set(newValue, forKey: "lingxia.shell.activator.items") }
-        }
-    }
-
     /// User-resized aside panel size (width or height by edge); nil when unset.
     static func asideSize(panelId: String) -> CGFloat? {
         let size = defaults.double(forKey: "lingxia.shell.aside.size.\(panelId)")

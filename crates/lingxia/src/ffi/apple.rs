@@ -267,6 +267,11 @@ mod bridge {
         #[swift_bridge(swift_name = "shellSetLxappPinned")]
         fn shell_set_lxapp_pinned(app_id: &str, pinned: bool) -> bool;
 
+        // Activator items persisted by the last writer set(), for the shell
+        // to restore before the home logic boots ("[]" when none).
+        #[swift_bridge(swift_name = "shellPersistedActivatorItems")]
+        fn shell_persisted_activator_items() -> String;
+
         #[swift_bridge(swift_name = "registerHostAside")]
         fn register_host_aside(appid: &str, surface_id: &str, edge: &str) -> bool;
 
@@ -1035,6 +1040,12 @@ pub fn shell_pinned_lxapps() -> String {
 pub fn shell_set_lxapp_pinned(app_id: &str, pinned: bool) -> bool {
     ffi_catch_unwind!("shell_set_lxapp_pinned", false, || {
         lxapp::shell_pins::set_lxapp_pinned(app_id.trim(), pinned)
+    })
+}
+
+pub fn shell_persisted_activator_items() -> String {
+    ffi_catch_unwind!("shell_persisted_activator_items", String::new(), || {
+        lingxia_logic::persisted_activator_items()
     })
 }
 
