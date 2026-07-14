@@ -84,6 +84,10 @@ static TRANSPARENT_TABBAR_OVERLAYS: OnceLock<Mutex<HashMap<isize, TransparentTab
     OnceLock::new();
 #[cfg(feature = "shell-chrome")]
 static SIDEBAR_TABBAR_POPUPS: OnceLock<Mutex<HashMap<isize, SidebarTabbarPopup>>> = OnceLock::new();
+#[cfg(feature = "shell-chrome")]
+static TERMINAL_WHEEL_REMAINDERS: OnceLock<Mutex<HashMap<isize, i32>>> = OnceLock::new();
+#[cfg(feature = "shell-chrome")]
+static TERMINAL_SELECTION_DRAGS: OnceLock<Mutex<HashMap<isize, String>>> = OnceLock::new();
 #[cfg(feature = "components")]
 static NAV_SNAPSHOT_SLIDES: OnceLock<Mutex<HashMap<isize, NavSnapshotSlide>>> = OnceLock::new();
 const WM_LINGXIA_RUN_CALLBACK: u32 = WindowsAndMessaging::WM_APP + 0x158;
@@ -4468,6 +4472,16 @@ fn handle_chrome_mouse_move(hwnd: HWND, point: (i32, i32), from_host: bool) -> b
         (Some(renderer), Some(state)) => renderer.hit_test(state, point),
         _ => None,
     };
+    #[cfg(feature = "shell-chrome")]
+    if let Some(panel_id) = TERMINAL_SELECTION_DRAGS
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+        .ok()
+        .and_then(|drags| drags.get(&hwnd_handle(hwnd)).cloned())
+    {
+        crate::shell::update_terminal_selection(&panel_id, point.0, point.1);
+        return true;
+    }
     if update_attached_panel_resize_drag(hwnd, point) {
         if let Some(vertical) = attached_panel_resize_drag_vertical() {
             set_divider_cursor(vertical);
@@ -4547,6 +4561,44 @@ fn handle_chrome_mouse_move(hwnd: HWND, point: (i32, i32), from_host: bool) -> b
     )
 }
 
+#[cfg(feature = "shell-chrome")]
+fn handle_chrome_mouse_wheel(hwnd: HWND, wparam: WPARAM, lparam: LPARAM) -> bool {
+    let mut point = lparam_screen_point(lparam);
+    if unsafe { !ScreenToClient(hwnd, &mut point).as_bool() } {
+        return false;
+    }
+    let client_point = (point.x, point.y);
+    let Some(WindowsChromeHit::Focusable { id, .. }) = chrome_hit_for_window(hwnd, client_point)
+    else {
+        return false;
+    };
+    if id != "terminal" {
+        return false;
+    }
+
+    const WHEEL_DELTA: i32 = 120;
+    const ROWS_PER_NOTCH: i32 = 3;
+    let wheel_delta = ((wparam.0 >> 16) & 0xffff) as u16 as i16 as i32;
+    if wheel_delta == 0 {
+        return true;
+    }
+    let delta_rows = {
+        let remainders = TERMINAL_WHEEL_REMAINDERS.get_or_init(|| Mutex::new(HashMap::new()));
+        let Ok(mut remainders) = remainders.lock() else {
+            return true;
+        };
+        let remainder = remainders.entry(hwnd_handle(hwnd)).or_default();
+        *remainder += wheel_delta.saturating_mul(ROWS_PER_NOTCH);
+        let rows = *remainder / WHEEL_DELTA;
+        *remainder %= WHEEL_DELTA;
+        rows
+    };
+    if delta_rows != 0 {
+        let _ = crate::shell::scroll_pane_at(&id, client_point.0, client_point.1, -delta_rows);
+    }
+    true
+}
+
 fn handle_chrome_left_down(hwnd: HWND, point: (i32, i32)) -> bool {
     if let Some(vertical) = begin_attached_panel_resize_drag(hwnd, point) {
         unsafe {
@@ -4593,6 +4645,17 @@ fn handle_chrome_left_down(hwnd: HWND, point: (i32, i32)) -> bool {
                 set_divider_cursor(vertical);
                 return true;
             }
+            #[cfg(feature = "shell-chrome")]
+            if id == "terminal" && crate::shell::begin_terminal_selection(&id, point.0, point.1) {
+                TERMINAL_SELECTION_DRAGS
+                    .get_or_init(|| Mutex::new(HashMap::new()))
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .insert(hwnd_handle(hwnd), id.clone());
+                unsafe {
+                    let _ = SetCapture(hwnd);
+                }
+            }
             focus_host_panel(&id);
             focus_host_window(hwnd);
             if let (Some(command), Some(webtag_key)) =
@@ -4609,6 +4672,20 @@ fn handle_chrome_left_down(hwnd: HWND, point: (i32, i32)) -> bool {
 }
 
 fn handle_chrome_left_up(hwnd: HWND, point: (i32, i32)) -> bool {
+    #[cfg(feature = "shell-chrome")]
+    if let Some(panel_id) = TERMINAL_SELECTION_DRAGS
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .remove(&hwnd_handle(hwnd))
+    {
+        crate::shell::update_terminal_selection(&panel_id, point.0, point.1);
+        crate::shell::end_terminal_selection(&panel_id);
+        unsafe {
+            let _ = ReleaseCapture();
+        }
+        return true;
+    }
     if attached_panel_resize_drag_vertical().is_some() {
         update_attached_panel_resize_drag(hwnd, point);
         end_attached_panel_resize_drag();
@@ -5984,6 +6061,16 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 }
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }
+            WindowsAndMessaging::WM_MOUSEWHEEL => {
+                #[cfg(feature = "shell-chrome")]
+                if windows_chrome_renderer().is_some()
+                    && !is_native_framed_window(hwnd)
+                    && handle_chrome_mouse_wheel(hwnd, wparam, lparam)
+                {
+                    return LRESULT(0);
+                }
+                unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
+            }
             WM_MOUSELEAVE => {
                 clear_chrome_hover(hwnd);
                 if chrome_interaction(hwnd).frame_button_hover.is_some() {
@@ -6042,6 +6129,18 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 destroy_transparent_tabbar_overlay(hwnd);
                 #[cfg(feature = "shell-chrome")]
                 destroy_sidebar_tabbar_popup(hwnd);
+                #[cfg(feature = "shell-chrome")]
+                if let Some(remainders) = TERMINAL_WHEEL_REMAINDERS.get()
+                    && let Ok(mut remainders) = remainders.lock()
+                {
+                    remainders.remove(&hwnd_handle(hwnd));
+                }
+                #[cfg(feature = "shell-chrome")]
+                if let Some(drags) = TERMINAL_SELECTION_DRAGS.get()
+                    && let Ok(mut drags) = drags.lock()
+                {
+                    drags.remove(&hwnd_handle(hwnd));
+                }
                 release_chrome_back_buffer(hwnd);
                 let webtag_key = window_webtag_key(hwnd);
                 if let Some(key) = webtag_key.as_deref() {
